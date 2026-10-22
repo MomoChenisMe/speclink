@@ -28,6 +28,7 @@
 - 所有專案的提案 Why 預設條列起草，共用提案畫面將 Why、What Changes、Proposed Solution 的散文區塊也逐項顯示；活動與已封存頁一致，保留原文及巢狀內容。
 
 - AI 工具清單新增 antigravity；工具名稱顯示 claude [.claude]、codex [.agents]、copilot [.github]、antigravity [.agent]。Antigravity 沿既有技能生成、更新、探測及取消清理流程；初始化、啟用、checkout 綁定與設定頁共用相同清單及標籤。
+- Node SDK 規格依現行 skills.list／skills.render API 修訂，移除已退役的 instructions.render、store 渲染軸及指令檔 worktree 軸承諾；補齊 Antigravity 的公開 TypeScript 型別與使用者端編譯回歸。
 
 ## Capabilities
 
@@ -37,7 +38,7 @@
 
 ### Modified Capabilities
 
-- `node-sdk`: 渲染 API 接受 Antigravity target，與 CLI 的獨立目錄技能內容一致；未知 target 的合法值提示同步。
+- `node-sdk`: 技能渲染 API 接受 Antigravity target，與 CLI 的獨立目錄技能內容一致；公開型別及合法值提示同步，規格選項對齊 target／invocation／specDir／toolName，移除已退役指令檔 API 與其 worktree 軸要求。
 
 - `workspace-tools`: 新增 Antigravity 內建工具與獨立技能目錄，沿用生成／更新／清理及工具選擇契約。
 
@@ -75,3 +76,4 @@
 - 2026-10-21 工具追加影響：`apps/desktop/src/builtinTools.ts`、`apps/desktop/src/views/project-settings/SpeclinkPage.tsx`、`apps/desktop/src/components/WorkspaceChooser.tsx`、`crates/engine/speclink-core/src/workspace/skills.rs`、`crates/engine/speclink-core/src/workspace/init.rs`、`crates/engine/speclink-core/src/workspace/config.rs`、`crates/adapters/speclink-cli/src/verbs/init.rs`、`crates/adapters/speclink-node/src/lib.rs`，同步既有測試、產生檔與中英文件。既有原始九項需求與 Proxy 打包後驗收安排保持有效。
 
 - checkout 原生接點同類修正：`apps/desktop/src-tauri/src/connections.rs` 的空選集訊息沿 Tool::ALL，測試涵蓋 codex／antigravity 共存。
+- 2026-10-22 SDK 補查修復：`crates/adapters/speclink-node/index.d.ts`、`package.json`、`package-lock.json`、`crates/adapters/speclink-node/src/render.rs` 的舊註解及 `__test__`；新增獨立 TypeScript 開發依賴及公開入口編譯測試，沿既有 Node SDK CI 的 npm test 執行。同步 `docs/sdk-node.md`、`docs/sdk-node.zh-TW.md` 的技能 API 邊界。現有 JavaScript 匯出、原生執行行為與 CLI 輸出不變，不復活退役介面。

@@ -92,6 +92,8 @@ enum KnowledgeCommand {
         #[arg(long)]
         root: Option<PathBuf>,
         #[arg(long)]
+        change: Option<String>,
+        #[arg(long)]
         json: bool,
     },
 }
@@ -234,7 +236,6 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         println!("{text}");
         return Ok(());
     }
-    let repository = crate::common::security_repository(&application_data)?;
     let job = DataJob::new(cancelled.clone());
     let progress = |p: speclink_core::security::JobProgress| {
         eprintln!(
@@ -243,16 +244,20 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         );
     };
     match args.command {
-        SecurityCommand::Review { command } => review_command(command, &application_data, &repository, cancelled),
-        SecurityCommand::Kb { command: KnowledgeCommand::Prepare { root, json } } => {
-            let args = TargetArgs { root, change: None, json };
+        SecurityCommand::Review { command } => {
+            let repository=crate::common::security_repository(&application_data).ok();
+            review_command(command, &application_data, repository.as_ref().map(|repo| repo as &dyn StandardRepository), cancelled)
+        },
+        SecurityCommand::Kb { command: KnowledgeCommand::Prepare { root, change, json } } => {
+            let repository = crate::common::security_repository(&application_data)?;
+            let args = TargetArgs { root, change: change.clone(), json };
             let location = target_location(&args)?;
             let prepared = speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
-            let target = location.review_target(&prepared, None)?;
+            let target = location.review_target(&prepared, change.clone())?;
             let cache_key=target.binding.project_key();
             let key = target.knowledge_project_key();
             let policy_text = if target.binding.is_remote() {
-                prepared.load_policy(&cache_key, None)?.ok_or_else(|| anyhow::anyhow!("missing_preparation"))?.policy_text
+                prepared.load_policy(&cache_key, change.as_deref())?.ok_or_else(|| anyhow::anyhow!("missing_preparation"))?.policy_text
             } else {
                 location.reader.read_optional_text(&format!("{}/config.yaml", location.spec_dir), 64 * 1024, &|| None)?.unwrap_or_default()
             };
@@ -269,6 +274,7 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         SecurityCommand::Rules { .. } => unreachable!(),
         SecurityCommand::Report { .. } => unreachable!(),
         SecurityCommand::Run(args) => {
+            let repository = crate::common::security_repository(&application_data)?;
             let prepared =
                 speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
             let location = target_location(&args)?;
@@ -332,7 +338,9 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
                 Ok(())
             }
         }
-        SecurityCommand::Data { command } => match command {
+        SecurityCommand::Data { command } => {
+          let repository = crate::common::security_repository(&application_data)?;
+          match command {
             DataCommand::List { json } => {
                 print_inventory(security_data::list_data(&repository)?, json)
             }
@@ -522,6 +530,7 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
                     Ok(())
                 }
             }
+          }
         },
     }
 }
@@ -551,7 +560,7 @@ fn print_inventory(data: security_data::StandardDataList, json: bool) -> Result<
     Ok(())
 }
 
-fn review_command(command: ReviewCommand, application_data: &std::path::Path, data: &dyn StandardRepository, cancelled: Arc<AtomicBool>) -> Result<()> {
+fn review_command(command: ReviewCommand, application_data: &std::path::Path, data: Option<&dyn StandardRepository>, cancelled: Arc<AtomicBool>) -> Result<()> {
     use speclink_core::{security::report::*, store::Store};
     let (change,json) = match &command {ReviewCommand::Show{change,json}|ReviewCommand::AddRound{change,json,..}|ReviewCommand::Accept{change,json,..}=>(change.clone(),*json)};
     let location = target_location(&TargetArgs {root:None,change:Some(change.clone()),json})?;
@@ -563,6 +572,7 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
     let target = location.review_target(&prepared,Some(change.clone()))?;
     match command {
         ReviewCommand::Accept {stdin:_,..} => {
+            let data=data.ok_or_else(||anyhow::anyhow!("standard_data_unavailable"))?;
             use std::io::Read;
             let mut bytes=Vec::new();std::io::stdin().take(16*1024+1).read_to_end(&mut bytes)?;
             anyhow::ensure!(bytes.len()<=16*1024,"size_limit: security acceptance input");
@@ -571,6 +581,7 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
             if json {crate::common::print_json(&receipt)} else {println!("Accepted security risk {} · report {} · finding {}",receipt.decision_id,receipt.report_id,receipt.finding_id);Ok(())}
         },
         ReviewCommand::AddRound {stdin:_,..} => {
+            let data=data.ok_or_else(||anyhow::anyhow!("standard_data_unavailable"))?;
             use std::io::Read;
             let mut bytes=Vec::new(); std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;
             anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
@@ -598,10 +609,12 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
             let mut reason=None;
             let mut fresh=None;
             let submission=if store.change_exists(&change) {
-                match security::submission_context(&target,&location.reader,data,&store,None,&ReviewBudget::new(cancelled)) {
+                if let Some(data)=data {
+                  match security::submission_context(&target,&location.reader,data,&store,None,&ReviewBudget::new(cancelled)) {
                     Ok((context,builtin))=>{fresh=Some(security::fresh_evidence(&context));let mut s=security::Submission::from(&context);s.builtin_report_id=builtin;Some(s)},
                     Err(error)=>{reason=Some(error.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned());None}
-                }
+                  }
+                } else {reason=Some("standard_data_unavailable".into());None}
             } else {None};
             let mut result=security::review_view(&store,&change,&target.binding.project_key(),&policy,fresh.as_ref())?;
             result.submission=submission.map(|s|serde_json::from_value(serde_json::to_value(s)?)).transpose()?;
@@ -856,7 +869,7 @@ fn remote_context(location:&TargetLocation,application_data:&std::path::Path,dat
     let snapshot=prepared.load(&target.binding.project_key(),Some(change))?.ok_or_else(||anyhow::anyhow!("missing_preparation"))?;
     security::prepared_submission_context(&target,&location.reader,data,&snapshot,basic,None,&ReviewBudget::new(cancelled))
 }
-fn remote_review_command(command:ReviewCommand,location:&TargetLocation,application_data:&std::path::Path,data:&dyn StandardRepository,cancelled:Arc<AtomicBool>)->Result<()> {
+fn remote_review_command(command:ReviewCommand,location:&TargetLocation,application_data:&std::path::Path,data:Option<&dyn StandardRepository>,cancelled:Arc<AtomicBool>)->Result<()> {
     use speclink_protocol::security::*;
     use speclink_core::security::report::*;
     use std::io::Read;
@@ -867,6 +880,7 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
         ReviewCommand::Show{change,..}=> {
             let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
             let computed=(||->Result<_>{
+                let data=data.ok_or_else(||anyhow::anyhow!("standard_data_unavailable"))?;
                 let target=location.review_target(&prepared,Some(change.clone()))?;
                 let basic=device.latest(&target.report_project_key(),Some(&change))?;
                 let (context,id)=remote_context(location,application_data,data,&change,basic.as_ref(),cancelled)?;
@@ -879,6 +893,7 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
             print_security_review(&result,json)
         }
         ReviewCommand::AddRound{change,..}=> {
+            let data=data.ok_or_else(||anyhow::anyhow!("standard_data_unavailable"))?;
             let mut bytes=Vec::new();std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
             let input:ReviewRoundInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: submission JSON"))?;
             let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
@@ -908,6 +923,7 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
             if json {crate::common::print_json(&receipt)}else{println!("Saved security review {} · {} · complete: {}",receipt.report_id,receipt.relative_path,receipt.complete);Ok(())}
         }
         ReviewCommand::Accept{change,..}=> {
+            let data=data.ok_or_else(||anyhow::anyhow!("standard_data_unavailable"))?;
             let mut bytes=Vec::new();std::io::stdin().take(16*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=16*1024,"size_limit: security acceptance input");
             let input:AcceptRiskInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_security_decision: JSON"))?;input.validate()?;
             let (context,_)=remote_context(location,application_data,data,&change,None,cancelled)?;

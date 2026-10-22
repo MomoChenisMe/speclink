@@ -654,6 +654,14 @@ impl FsTeamStore {
             }
         }
 
+        for (doc, expected) in uow.guards() {
+            let key = layout::doc_key(doc);
+            let current = index.documents.get(&key).copied().map(Revision);
+            if !expected.matches(current) {
+                return Err(StoreError::RevisionConflict { doc: DocRef::new(scope, doc.clone()), expected: *expected, actual: current });
+            }
+        }
+
         let next = Revision(project_revision(&self.root, scope.project.as_str())? + 1);
         create_dir(&paths.documents())?;
         create_dir(&paths.history())?;

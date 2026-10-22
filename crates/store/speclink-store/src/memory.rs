@@ -424,6 +424,13 @@ impl TeamStore for MemoryStore {
             }
         }
 
+        for (doc, expected) in uow.guards() {
+            let current = inner.docs.get(&key).and_then(|docs| docs.get(doc)).map(|cell| cell.revision);
+            if !expected.matches(current) {
+                return Err(StoreError::RevisionConflict { doc: DocRef::new(uow.scope(), doc.clone()), expected: *expected, actual: current });
+            }
+        }
+
         // Journal the intent, then apply stage by stage. The commit marker
         // at the end is the one atomic point: a crash at any boundary in
         // between leaves an uncommitted intent that recovery discards.

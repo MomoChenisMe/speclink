@@ -1,6 +1,19 @@
 # 換機接續開發
 
-## 2026-10-22 最新交付（以本段為準）
+## 2026-10-22 家中接續：第 1、2 步完成（目前以本段為準）
+
+已從 origin 快轉至 `c8b77ece`，本輪修改尚未提交／推送。使用者指定先做 CI 核對、SDK 規格方向與 Antigravity 型別修復；採現行技能 API，完成內容與測試見 [CI 與 SDK 修復紀錄](sdk-contract-fix-2026-10-22.md)。
+
+- CI 核對：PR #12 已合併，head `46803b2b` 與 main `9774b7a2` 的 CI／Node SDK 都成功；最新功能提交 `c8b77ece` 沒有 Actions 或 check-runs，不得沿用前次 success。現有 push 觸發只匹配 main／master，本次沒有開 PR、提交或推送；後續須核對新提交 SHA 的 CI。
+- SDK 規格方向已由本輪使用者要求採用：skills.list／skills.render，選項 target／invocation／specDir／toolName；不復活 instructions.render 或 store 渲染軸，delta 明確移除退役的指令檔 worktree 軸要求。原始九項需求與既有完成任務保留。
+- 公開 index.d.ts 已補 antigravity；新增獨立 TypeScript 依賴與套件入口 strict／noEmit 編譯測試，先重現 TS2322 再轉綠；既有 Node SDK npm test 自動涵蓋。補預設值、specDir／toolName 及錯誤 invocation 回歸，並以突變確認測試能失敗。SDK 全組 61 passed、scripts 386 passed，analyze 無 Critical／Warning，validate 與 diff 檢查通過。
+- 進度更新為程式 **61／61**、全部 **61／62**；公司 Proxy `[M]` 12.3 保持未完成。未執行完整品質重跑，舊 Round 2 與完成歷史不能當成本輪已通過。
+- 下一步先處理補查剩餘的 vscode／真 Git dirty 組合覆蓋及 configuration 中英表格缺口，再按既有工單／快照規則重開完整 discovery。兩份活動工單與 checks 歷史均保留，本輪沒有 discard、蓋章、合併、打包、封存或產生 manual。品質 trusted base 仍是 `faefda7dabde01b8d90974aea63f4f7a8bdd5c24`。
+- main 已含 PR #12 的歷史，故後續交付須以包含 c8b77ece 及本輪後續修復的新 main 提交為準，不能把舊 main 的 CI 或安裝包當成已包含本輪內容。
+
+下方交接為較早狀態，其中「先決定 SDK 方向」已由本輪完成；歷史證據保持原文。
+
+## 2026-10-22 前次換機交付
 
 分支仍為 `feat/desktop-workflow-offline-security-review`，origin 為 `https://github.com/mosutw/speclink.git`。本次依使用者要求提交並推送以換機接續；本文件不硬填自身提交 SHA，請以對話提供的 SHA、`git log -1` 與 `origin` 分支一致性核對。
 

@@ -124,6 +124,15 @@ pub enum ExpectedRevision {
     At(Revision),
 }
 
+impl ExpectedRevision {
+    pub fn matches(self, current: Option<Revision>) -> bool {
+        match self {
+            Self::Absent => current.is_none(),
+            Self::At(expected) => current == Some(expected),
+        }
+    }
+}
+
 /// A capability a driver declares in its manifest. Closed set: conformance
 /// maps each declared capability to tests, so an open string set would make
 /// driver behavior unverifiable.

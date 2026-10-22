@@ -34,7 +34,7 @@ export function useCheckRecords(adapter:CheckRecordsAdapter|undefined,change:str
 export function CheckRecordTree({state}:{state:ReturnType<typeof useCheckRecords>}){
  const {t}=useI18n();if(!state.enabled)return null;
  return <><DetailTreeLabel>{t('checks.title')}</DetailTreeLabel>
- {state.listError&&<p role="alert" className="px-3 text-xs text-destructive">{errorLabel(state.listError,t)}</p>}{state.loading&&<p className="px-3 text-xs text-muted-foreground">{t('checks.loading')}</p>}{state.entries.length===0?(!state.loading&&!state.listError&&<p className="px-3 text-xs text-muted-foreground">{t('checks.empty')}</p>):<TabsList aria-label={t('checks.title')}>
+ {state.listError&&<p role="alert" className="px-3 text-xs text-destructive">{errorLabel(state.listError,t)}</p>}{state.loading&&<p className="px-3 text-xs text-muted-foreground">{t('checks.loading')}</p>}{state.entries.length===0?(!state.loading&&!state.listError&&<p className="px-3 text-xs text-muted-foreground">{t('checks.empty')}</p>):<TabsList variant="tree" aria-label={t('checks.title')}>
   {(['review','verify','security'] as const).flatMap(kind=>state.entries.filter(e=>e.kind===kind).map(entry=><TabsTrigger key={checkTab(entry)} value={checkTab(entry)} title={entry.relativePath}><FileCheck className="h-3.5 w-3.5 shrink-0"/><span className="min-w-0 text-left"><span className="block">{t(entry.recordId==='acceptance'&&kind==='security'?'checks.acceptanceReceipt':`checks.${kind}`)} · {entry.createdAt}</span><span className="block text-xs text-muted-foreground">{t(`checks.outcome.${entry.outcome}`)}</span></span></TabsTrigger>))}
  </TabsList>}</>;
 }

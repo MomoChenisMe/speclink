@@ -250,6 +250,23 @@ fn settle<T>(
     }
 }
 
+fn fail_to_start(
+    runtime: &DeviceRuntime,
+    policy: &ProxyPolicy,
+    event: NetworkDiagnostic,
+    code: &str,
+    started: Instant,
+) -> UpdateError {
+    settle::<()>(
+        runtime,
+        policy,
+        event,
+        Err(UpdateFailure::code(code)),
+        started,
+    )
+    .unwrap_err()
+}
+
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ReleaseRepository {
@@ -377,9 +394,9 @@ pub async fn desktop_release(
         repo.repo()
     );
     event.destination = Some(endpoint.clone());
-    event
-        .set_route(&policy, &endpoint)
-        .map_err(UpdateError::from)?;
+    if let Err(code) = event.set_route(&policy, &endpoint) {
+        return Err(fail_to_start(runtime, &policy, event, &code, started));
+    }
     let _ = runtime.diagnostics.record(event.clone());
     let result = match speclink_host::network::github_release_metadata(&policy, repo.repo()).await {
         Ok(value) => select_desktop_release(repo, &value),
@@ -402,9 +419,6 @@ pub async fn check<B: UpdaterBackend>(
     endpoints: Vec<String>,
 ) -> Result<Option<CandidateInfo>, UpdateError> {
     let policy = runtime.policy().map_err(UpdateError::from)?;
-    let _ = policy
-        .configure_client(reqwest::Client::builder())
-        .map_err(UpdateError::from)?;
     let id = ulid::Ulid::new().to_string();
     let started = Instant::now();
     let mut event = NetworkDiagnostic::new(
@@ -413,11 +427,14 @@ pub async fn check<B: UpdaterBackend>(
         id.clone(),
     );
     event.proxy_mode = Some(policy.settings.mode.clone());
+    if let Err(code) = policy.configure_client(reqwest::Client::builder()) {
+        return Err(fail_to_start(runtime, &policy, event, &code, started));
+    }
     if endpoints.len() == 1 {
         event.destination = endpoints.first().cloned();
-        event
-            .set_route(&policy, &endpoints[0])
-            .map_err(UpdateError::from)?;
+        if let Err(code) = event.set_route(&policy, &endpoints[0]) {
+            return Err(fail_to_start(runtime, &policy, event, &code, started));
+        }
     }
     let _ = runtime.diagnostics.record(event.clone());
     let result = backend.check(policy.clone()).await.and_then(|candidate| {
@@ -522,6 +539,7 @@ pub async fn install<B: UpdaterBackend>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime_preferences::{self, RuntimePreferences};
     struct Backend {
         code: Option<&'static str>,
         source: &'static str,
@@ -548,6 +566,44 @@ mod tests {
             Ok(())
         }
     }
+    #[test]
+    fn proxy_startup_failure_is_saved_with_operation_id() {
+        let root = tempfile::tempdir().unwrap();
+        runtime_preferences::write(
+            root.path(),
+            &RuntimePreferences {
+                debug_enabled: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let runtime = DeviceRuntime::new(root.path().to_owned());
+        let policy = runtime.policy().unwrap();
+        let operation_id = ulid::Ulid::new().to_string();
+        let event = NetworkDiagnostic::new(
+            DiagnosticArea::Updater,
+            DiagnosticAction::Started,
+            operation_id.clone(),
+        );
+
+        let error = fail_to_start(
+            &runtime,
+            &policy,
+            event,
+            "proxy_unsupported",
+            Instant::now(),
+        );
+
+        assert_eq!(error.code, "proxy_unsupported");
+        assert_eq!(error.operation_id.as_deref(), Some(operation_id.as_str()));
+        runtime.diagnostics.flush();
+        let log = std::fs::read_to_string(root.path().join("diagnostics/events.jsonl")).unwrap();
+        let event: serde_json::Value = serde_json::from_str(log.lines().next().unwrap()).unwrap();
+        assert_eq!(event["operationId"], operation_id);
+        assert_eq!(event["event"], "failed");
+        assert_eq!(event["errorCode"], "proxy_unsupported");
+    }
+
     #[tokio::test]
     async fn failures_keep_codes_and_job_never_installs_before_download() {
         let root = tempfile::tempdir().unwrap();

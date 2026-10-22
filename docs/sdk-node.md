@@ -213,7 +213,9 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 | `target` | `claude`, `codex`, `copilot`, `antigravity`, `neutral` | `neutral` is for custom tools: no `/speclink-` slash commands and no plan-mode text |
 | `invocation` | `cli` (default), `tool-call` | `tool-call` writes verbs as "call the speclink tool with an argv array", for a tool built on `dispatch`. `cli` writes shell commands |
 | `specDir` | A string | The spec directory name in the skill text. Default: `openspec` |
-| `toolName` | A string | `neutral` only: the tool name in the skill text. Default: `speclink` |
+| `toolName` | A string | `neutral` only: the tool identity in the skill text, such as `--agent`. Default: `speclink`; the tool-call preamble still names the `speclink` tool |
+
+`skills.render` returns Markdown without writing files. The public TypeScript types accept all five targets, including `antigravity`. Rendering has no `store` or `worktree` option, and the SDK exports no `instructions.render` API. Storage belongs to `createEngine`; use `skills.list()` and `skills.render()` to produce skill content, then save the returned strings where your agent loads them.
 
 Write each `SKILL.md` into a directory, and let your agent load it. The `description` of each skill says when to use it. The Next steps section at the end says what to suggest after it. You do not need a separate system prompt. Your agent must read the skill descriptions for this to work.
 

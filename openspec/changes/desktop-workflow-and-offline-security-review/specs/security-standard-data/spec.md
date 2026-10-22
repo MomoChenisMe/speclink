@@ -36,7 +36,7 @@
 
 ### Requirement: 深度審查完整離線資料包
 
-使用者明確下載／重新下載選定標準時 SHALL 一併安裝該版本原文、可信版本化對照、適用的修復指南及授權來源文件。核准registry SHALL 區分standard／mapping／guidance，每檔有固定revision、相對路徑及sha256，不以浮動master／latest、虛構LTS版本或參考清單的installed欄位冒充已驗證資料。guidance SHALL 只作修正依據，不擴充專案檢核標準；關閉CWE時不提供其字典或對照引用。下載／匯入／匯出 SHALL 沿既有同代generation、大小、路徑、ZIP/XML、來源、取消及失敗保舊限制，無必要指南則knowledgeStatus=missing而非ready。舊v1包 SHALL 仍可供基本掃描，缺指南只影響深度審查；新v1與v2集合匯出 SHALL 保留完整同代原始補充檔，不只導出連結。
+使用者明確下載／重新下載選定標準時 SHALL 一併安裝該版本原文、可信版本化對照、適用的修復指南及授權來源文件。內建 spec_registry.json SHALL 以 standardCatalog 固定引用 sources.json 定義的標準版本，resources 僅接受 role=guidance 並附適用標準、固定revision、相對路徑、sha256及授權；CWE 對照由已安裝標準快照推導，不列為 registry resource。不以浮動master／latest、虛構LTS版本或參考清單的installed欄位冒充已驗證資料。guidance SHALL 只作修正依據，不擴充專案檢核標準；關閉CWE時不提供其字典或對照引用。下載／匯入／匯出 SHALL 沿既有同代generation、大小、路徑、ZIP/XML、來源、取消及失敗保舊限制，無必要指南則knowledgeStatus=missing而非ready。舊v1包 SHALL 仍可供基本掃描，缺指南只影響深度審查；新v1與v2集合匯出 SHALL 保留完整同代原始補充檔，不只導出連結。
 
 必要指南 SHALL 涵蓋認證、授權、機密儲存、日誌、TLS、REST、SQL／XSS／命令注入、反序列化、XXE、SSRF、原型鏈、Webhook及拒絕服務，語言指南只採官方實際存在且核准的檔案；Python／Rust SHALL 使用適用通用指南，不假造語言檔案。官方不存在、版本不符、授權或檔案缺失 SHALL 拒絕標為完整並保留舊包。
 
@@ -52,7 +52,7 @@
 
 ### Requirement: 本機知識庫準備命令
 
-CLI SHALL 提供security kb prepare [--root PATH] [--json]，不讀stdin，全域--no-color可用；只讀已安裝選定版本，將完整快照保存到授權checkout的.security_kb，不送網路或原始碼。JSON stdout SHALL 為{projectKey:string,path:string,policyDigest:string,files:number,bytes:number,standards:[{standardId:string,version:string,dataSha256:string}],knowledgeDigest:string}，人眼列同資訊；成功0、缺件／目標／I/O失敗stderr及1、取消130、參數錯誤2，進度只至stderr且JSON無ANSI。
+CLI SHALL 提供security kb prepare [--root PATH] [--change CHANGE] [--json]，不讀stdin，全域--no-color可用；只讀已安裝選定版本，將完整快照保存到授權checkout的.security_kb，不送網路或原始碼。Remote SHALL 依 --change 讀取對應已準備快照；省略時才使用 project scope。JSON stdout SHALL 為{projectKey:string,path:string,policyDigest:string,files:number,bytes:number,standards:[{standardId:string,version:string,dataSha256:string}],knowledgeDigest:string}，人眼列同資訊；成功0、缺件／目標／I/O失敗stderr及1、取消130、參數錯誤2，進度只至stderr且JSON無ANSI。
 
 快照 SHALL 含manifest、standards、mappings、cheatsheets及來源授權；manifest綁projectKey、政策、每檔SHA及資料代次，僅複製已選標準與指南。準備 SHALL 檢查暫存完整性後替換，失敗保舊，不覆蓋無本工具manifest的使用者目錄或連結；生成快照gitignored。Remote需先明確準備政策／規格，缺快照／checkout SHALL 失敗且不自動連server或下載。審查開始前 SHALL 驗manifest與本機檔案，不跟隨文件內網址。
 

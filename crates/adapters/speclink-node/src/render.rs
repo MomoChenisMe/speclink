@@ -1,5 +1,5 @@
 //! The render API: a direct pass-through of the core render matrix
-//! (target × invocation × store) — the same code paths `speclink init`/`update`
+//! (target × invocation) — the same code paths `speclink init`/`update`
 //! use, so SDK-rendered content and CLI-generated files cannot drift.
 
 use napi::bindgen_prelude::*;

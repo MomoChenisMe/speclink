@@ -354,6 +354,17 @@ fn explicit_unknown_tool_is_rejected_with_zero_writes() {
 }
 
 #[test]
+fn explicit_standalone_vscode_is_rejected_with_zero_writes() {
+    let env = TempEnv::new("standalone-vscode");
+    let before = env.snapshot();
+
+    let out = env.run(&["init", "--tools", "vscode"]);
+
+    assert_rejected_with_zero_writes(&env, &out, &before);
+    assert!(stderr_of(&out).contains("vscode"));
+}
+
+#[test]
 fn explicit_github_copilot_is_rejected_listing_the_supported_tools() {
     let env = TempEnv::new("unknown-github-copilot");
     let before = env.snapshot();

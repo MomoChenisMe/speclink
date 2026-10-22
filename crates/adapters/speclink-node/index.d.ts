@@ -234,12 +234,12 @@ export function createEngine(options: CreateEngineOptions): Engine
 
 /** The render matrix: target × invocation. */
 export interface RenderOptions {
-  target: 'claude' | 'codex' | 'copilot' | 'neutral'
+  target: 'claude' | 'codex' | 'copilot' | 'antigravity' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
   invocation?: 'cli' | 'tool-call'
   /** Spec directory name substituted into rendered content. Default: `"openspec"`. */
   specDir?: string
-  /** Neutral target only: the harness name (`{{TOOL}}` substitution). Default: `"speclink"`. */
+  /** Neutral target only: the identity in the skill body (`{{TOOL}}`, e.g. `--agent`). Default: `"speclink"`. */
   toolName?: string
 }
 

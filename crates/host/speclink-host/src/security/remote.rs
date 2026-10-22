@@ -44,6 +44,25 @@ fn expected(view: &BridgeStore, change: &str, revision: u64) -> Result<()> {
     Ok(())
 }
 
+/// Read the persisted proposal report and verdict without needing installed
+/// standard data. Freshness is checked only by the attested `Show` operation.
+pub fn show(
+    store: &dyn TeamStore,
+    ctx: &SpeclinkExecutionContext,
+    key: &str,
+    change: &str,
+) -> Result<wire::SecurityReviewView> {
+    validate_change(Some(change))?;
+    let scope = Scope::new(ctx.project.clone(), ctx.repo.clone());
+    let view = BridgeStore::materialize(store, &scope)?;
+    ensure!(view.change_exists(change) || view.archived_change_exists(change), "unknown_change");
+    let policy_text = view.read_workflow_config().unwrap_or_default();
+    let policy = speclink_core::config::WorkflowConfig::from_text(Some(&policy_text))?.security();
+    let mut result = review_view(&view, change, key, &policy, None)?;
+    result.expected_revision = Some(view.revision(&index_id(change)));
+    Ok(result)
+}
+
 /// Historical reports require only the scoped store, never installed standard data.
 pub fn report(
     store: &dyn TeamStore,
