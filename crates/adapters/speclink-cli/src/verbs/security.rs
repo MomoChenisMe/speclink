@@ -74,6 +74,17 @@ enum ReviewCommand {
     },
     Show { change: String, #[arg(long)] json: bool },
 }
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+struct LegacyReportImport {
+    legacy_import_report_id: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum ReviewRoundInput {
+    Legacy(LegacyReportImport),
+    Deep(speclink_core::security::report::DeepReportInput),
+}
 #[derive(Subcommand)]
 enum KnowledgeCommand {
     /// Build .security_kb without downloading resources
@@ -563,12 +574,9 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
             use std::io::Read;
             let mut bytes=Vec::new(); std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;
             anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
-            #[derive(serde::Deserialize)]
-            #[serde(rename_all="camelCase",deny_unknown_fields)]
-            struct Legacy {legacy_import_report_id:String}
-            let value:serde_json::Value=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: JSON"))?;
-            if value.get("legacyImportReportId").is_some() {
-                let input:Legacy=serde_json::from_value(value).map_err(|_|anyhow::anyhow!("invalid_report: legacy import"))?;
+            let input:ReviewRoundInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: submission JSON"))?;
+            let input=match input {
+              ReviewRoundInput::Legacy(input) => {
                 anyhow::ensure!(store.change_exists(&change), "unknown_change");
                 let reports = speclink_fs::security::reports::FsSecurityReports::new(application_data)?;
                 let report=reports.get(&input.legacy_import_report_id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
@@ -577,8 +585,9 @@ fn review_command(command: ReviewCommand, application_data: &std::path::Path, da
                 let result=serde_json::json!({"reportId":report.report_id(),"changeName":change,"relativePath":format!("checks/security/{}/report.md",report.report_id()),"complete":report.is_complete()});
                 if json { return crate::common::print_json(&result); }
                 println!("Imported legacy report {} · excluded from acceptance",report.report_id()); return Ok(());
-            }
-            let input:DeepReportInput=serde_json::from_value(value).map_err(|_|anyhow::anyhow!("invalid_report: deep submission schema"))?;
+              }
+              ReviewRoundInput::Deep(input) => input,
+            };
             let (context,builtin)=security::submission_context(&target,&location.reader,data,&store,speclink_host::context::git_identity(location.reader.root()),&ReviewBudget::new(cancelled))?;
             let receipt=security::add_deep_round(&store,&change,input,context,builtin)?;
             if json {crate::common::print_json(&receipt)} else {println!("Saved security review {} · {} · complete: {}",receipt.report_id,receipt.relative_path,receipt.complete);Ok(())}
@@ -871,17 +880,16 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
         }
         ReviewCommand::AddRound{change,..}=> {
             let mut bytes=Vec::new();std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
-            let value:serde_json::Value=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: JSON"))?;
+            let input:ReviewRoundInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: submission JSON"))?;
             let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
             let target=location.review_target(&prepared,Some(change.clone()))?;
-            let (report,basic,attestation)=if value.get("legacyImportReportId").is_some(){
-                #[derive(serde::Deserialize)] #[serde(rename_all="camelCase",deny_unknown_fields)] struct Legacy {legacy_import_report_id:String}
-                let legacy:Legacy=serde_json::from_value(value)?;
+            let (report,basic,attestation)=match input {
+              ReviewRoundInput::Legacy(legacy) => {
                 let basic=device.get(&legacy.legacy_import_report_id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
                 anyhow::ensure!(basic.project_key()==target.binding.project_key()&&basic.change_name()==Some(change.as_str()),"binding_mismatch");
                 (SecurityRoundPayload::Legacy(SecurityLegacyInput{legacy_import_report_id:legacy.legacy_import_report_id,legacy_project_key:basic.project_key().into()}),basic,None)
-            } else {
-                let input:DeepReportInput=serde_json::from_value(value).map_err(|_|anyhow::anyhow!("invalid_report: deep submission schema"))?;
+              }
+              ReviewRoundInput::Deep(mut input) => {
                 let id=input.builtin_report_id.as_deref().ok_or_else(||anyhow::anyhow!("missing_security_review"))?;
                 let basic=if let Some(b)=device.get(id)?{b}else{let document=remote_call(location,|client|client.security_change_report(&change,id))?;Report::from_json(&serde_json::to_vec(&document)?)?};
                 let (context,current)=remote_context(location,application_data,data,&change,Some(&basic),cancelled)?;
@@ -889,10 +897,10 @@ fn remote_review_command(command:ReviewCommand,location:&TargetLocation,applicat
                 let frame=security::source_attestation(&context,data)?;
                 // Validate and redact before crossing the HTTP boundary; server repeats validation.
                 let checked=DeepReport::new(input.clone(),context)?;
-                let redacted:serde_json::Value=serde_json::to_value(checked)?;
-                let mut input=serde_json::to_value(input)?;
-                input["findings"]=redacted["findings"].clone();input["checks"]=redacted["checks"].clone();
-                (SecurityRoundPayload::Deep(serde_json::from_value(input)?),basic,Some(frame))
+                input.findings=checked.findings().to_vec();
+                input.checks=checked.checks().to_vec();
+                (SecurityRoundPayload::Deep(serde_json::from_slice(&serde_json::to_vec(&input)?)?),basic,Some(frame))
+              }
             };
             let basic_document:SecurityBuiltinDocument=serde_json::from_value(serde_json::to_value(&basic)?)?;
             let receipt=remote_call(location,|client|client.security_review_submit(&change,&SecurityRoundRequest{project_key:target.report_project_key(),expected_revision:view.expected_revision.unwrap_or(0),report:report.clone(),builtin_report:Some(basic_document.clone()),security_source_attestation:attestation.clone()}))?;

@@ -160,13 +160,13 @@ mod tests {
         let device=tempfile::tempdir().unwrap();
         let shared=tempfile::tempdir().unwrap();
         let snapshot=crate::security_paths::read_at(config.path(),device.path()).unwrap();
-        assert_eq!(snapshot.effective_path,device.path().canonicalize().unwrap().join("security/standards").to_string_lossy());
+        assert_eq!(std::path::Path::new(&snapshot.effective_path).canonicalize().unwrap(),device.path().join("security/standards").canonicalize().unwrap());
         let json=serde_json::to_value(snapshot).unwrap();
         assert!(json["standardsPath"].is_null() && json["effectivePath"].is_string() && json["isDefault"].is_boolean() && json["access"].is_string());
         crate::security_paths::write_at(config.path(),device.path(),Some(shared.path().to_string_lossy().into())).unwrap();
-        assert_eq!(crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path,shared.path().canonicalize().unwrap().to_string_lossy());
+        assert_eq!(std::path::Path::new(&crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path).canonicalize().unwrap(),shared.path().canonicalize().unwrap());
         assert!(crate::security_paths::write_at(config.path(),device.path(),Some("relative".into())).is_err());
-        assert_eq!(crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path,shared.path().canonicalize().unwrap().to_string_lossy());
+        assert_eq!(std::path::Path::new(&crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path).canonicalize().unwrap(),shared.path().canonicalize().unwrap());
         std::fs::write(config.path().join("security-data-preferences.json"),r#"{"formatVersion":2,"standardsPath":null}"#).unwrap();
         assert!(crate::security_paths::read_at(config.path(),device.path()).is_err());
         for raw in [r#"{"formatVersion":1,"standardsPath":true}"#,r#"{"formatVersion":1,"standardsPath":"https://example.com"}"#] {
