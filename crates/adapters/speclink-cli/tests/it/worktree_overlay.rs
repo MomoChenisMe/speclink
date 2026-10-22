@@ -422,6 +422,24 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
 }
 
 #[test]
+fn change_schema_writes_the_worktree_copy_of_a_mapped_change() {
+    // workflow-schemas Scenario「目標變更在 worktree 內時寫入副本」：與 change depends
+    // 同一條路由——守門與寫入都對 worktree 副本，主副本不動。
+    let f = Fixture::new("schema-worktree", true);
+    let wt = f.add_worktree("add-dark-mode");
+    let out = f.run(&["change", "schema", "add-dark-mode", "no-spec-change"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let meta_of = |root: &Path| {
+        std::fs::read_to_string(
+            root.join("openspec").join("changes").join("add-dark-mode").join(".openspec.yaml"),
+        )
+        .unwrap()
+    };
+    assert_eq!(meta_of(&wt), "schema: no-spec-change\ncreated: 2026-07-01\n");
+    assert_eq!(meta_of(&f.repo), META, "the main copy stays untouched");
+}
+
+#[test]
 fn change_rank_writes_the_worktree_copy_of_a_mapped_change() {
     // change-plan spec「change rank 動詞寫入看板順序鍵」：與 change depends 同一
     // 聚合面——主 checkout 且政策開啟時，已映射的 change 寫它的 worktree 副本，

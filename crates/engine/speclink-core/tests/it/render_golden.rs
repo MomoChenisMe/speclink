@@ -1099,6 +1099,62 @@ fn verify_skill_checks_behavior_for_no_spec_change() {
     }
 }
 
+/// Spec ingest-skill「新需求改到承諾行為時切回 spec-driven」: the schema check opens
+/// the Update artifacts step — a no-spec-change change switches back before any
+/// artifact is touched, a refused switch stops the run, and the skill never
+/// switches a spec-driven change to no-spec-change on its own.
+#[test]
+fn ingest_skill_switches_schema_on_behavior_change() {
+    for (rel, content) in skill_for_both_tools("ingest-schema-switch", "ingest") {
+        let update = position(&rel, &content, "**Update artifacts**");
+        let check = position(&rel, &content, "**Check the schema first.**");
+        let instructions = position(&rel, &content, "For each artifact, get instructions first");
+        assert!(update < check && check < instructions, "{rel}: the schema check opens the step");
+        let step = &content[check..instructions];
+        for needle in [
+            "`schemaName`",
+            "speclink change schema \"<name>\" spec-driven",
+            "add a Capabilities section to the proposal",
+            "speclink new artifact spec",
+            "report the stderr reason",
+            "Do not write a delta around the refusal",
+            "keeps the schema as it is",
+            "Never switch a `spec-driven` change to `no-spec-change` on your own",
+        ] {
+            assert!(step.contains(needle), "{rel}: missing {needle:?}");
+        }
+    }
+}
+
+/// Spec verify-skill「不改規格變更改到行為時的修正步驟」: the behavior-change
+/// WARNING's recommendation lists discard → switch → ingest → verify again, warns
+/// off `--accept`, and the Next steps point at the same steps; a clean behavior
+/// check suggests no switch.
+#[test]
+fn verify_skill_lists_schema_fix_steps() {
+    for (rel, content) in skill_for_both_tools("verify-schema-fix", "verify") {
+        let changed = position(&rel, &content, "- A promised behavior changed:");
+        let clean = position(&rel, &content, "- No behavior change found");
+        let fix = &content[changed..clean];
+        let steps = [
+            "speclink verify discard <name>",
+            "speclink change schema <name> spec-driven",
+            "speclink-ingest <name>",
+            "run verify again",
+        ];
+        let at: Vec<usize> = steps.iter().map(|s| position(&rel, fix, s)).collect();
+        assert!(at.windows(2).all(|w| w[0] < w[1]), "{rel}: the four repair steps run in order");
+        assert!(fix.contains("Do not suggest `--accept`"), "{rel}: warns off --accept");
+        let clean_line = content[clean..].lines().next().unwrap_or_default();
+        assert!(!clean_line.contains("change schema"), "{rel}: a clean check suggests no switch");
+        let next_steps = &content[position(&rel, &content, "## Next steps")..];
+        assert!(
+            next_steps.contains("speclink change schema <change-name> spec-driven"),
+            "{rel}: the Next steps point at the repair steps"
+        );
+    }
+}
+
 // --- remote init: no instruction file is generated at all ---
 
 /// Spec Scenario「指令檔零受管區塊」in remote mode: the managed set is skills only,

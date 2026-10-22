@@ -97,7 +97,7 @@
    - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
    - A promised behavior changed:
      - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
-     - Recommendation: "Switch the change to spec-driven and add a delta spec for this requirement"
+     - Recommendation, in this order: abandon this verify ticket with `speclink verify discard <name>`; switch the change back with `speclink change schema <name> spec-driven`; add the delta spec for this requirement with `/speclink:ingest <name>`; then run verify again. Do not suggest `--accept` to pass this WARNING — the change would archive with no delta for a behavior it changed
    - No behavior change found → list the canonical specs you compared in the report.
 
    **Requirement Implementation Mapping**:
@@ -285,3 +285,4 @@ Check these before you report:
 - The verify stamp landed in the main checkout → `/speclink:archive <change-name>`
 - The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink:worktree-merge <change-name>` (archive runs only from the main checkout)
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
+- A no-spec-change change got a behavior-change WARNING → the repair steps in its recommendation: `speclink verify discard <change-name>`, `speclink change schema <change-name> spec-driven`, `/speclink:ingest <change-name>`, then verify again — not `--accept`

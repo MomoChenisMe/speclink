@@ -86,6 +86,9 @@ pub fn event_record_of(event: &DomainEvent, actor: &Actor) -> EventRecord {
         DomainEvent::ChangeDependsChanged { change, depends_on, occurred_at } => {
             (json!({ "change": change, "dependsOn": depends_on }), *occurred_at)
         }
+        DomainEvent::ChangeSchemaChanged { change, schema, occurred_at } => {
+            (json!({ "change": change, "schema": schema }), *occurred_at)
+        }
         DomainEvent::ChangeArchived { change, dated_name, occurred_at } => {
             (json!({ "change": change, "datedName": dated_name }), *occurred_at)
         }

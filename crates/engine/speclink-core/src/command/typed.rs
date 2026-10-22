@@ -7,7 +7,7 @@ use super::{
     CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
     DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
     DiscussSubjectOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
-    ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, ShowOutcome,
+    ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
     TaskFlipOutcome, ValidateOutcome,
 };
 use crate::analyzer::AnalyzeReport;
@@ -63,6 +63,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::InProgressAdd(_) => "InProgressAdd",
         CommandOutcome::InProgressRemove(_) => "InProgressRemove",
         CommandOutcome::ChangeDepends(_) => "ChangeDepends",
+        CommandOutcome::ChangeSchema(_) => "ChangeSchema",
         CommandOutcome::Archive(_) => "Archive",
         CommandOutcome::Discard(_) => "Discard",
         CommandOutcome::DiscussNew(_) => "DiscussNew",
@@ -123,6 +124,7 @@ typed_outcomes! {
     InProgressOutcome => [InProgressAdd],
     InProgressRemoveOutcome => [InProgressRemove],
     DependsOutcome => [ChangeDepends],
+    SchemaOutcome => [ChangeSchema],
     ArchiveOutcome => [Archive],
     DiscardOutcome => [Discard],
     DiscussionInfo => [DiscussNew],

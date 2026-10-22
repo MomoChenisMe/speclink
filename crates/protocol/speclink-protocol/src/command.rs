@@ -372,6 +372,27 @@ pub struct SetDependsResponse {
     pub depends_on: Vec<String>,
 }
 
+/// `POST /changes/{name}/schema` request body: the schema to switch to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSchemaRequest {
+    pub schema: String,
+}
+
+/// `POST /changes/{name}/schema` response: the schema after the call, the one
+/// before, whether the meta was written, and whether that write removed the
+/// verify stamp (the CLI prints the same clearing line in both modes).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetSchemaResponse {
+    pub change: String,
+    pub schema: String,
+    pub previous: String,
+    pub changed: bool,
+    #[serde(default)]
+    pub verify_stamp_cleared: bool,
+}
+
 /// 工單一輪的 wire 形狀——鏡射 CLI `review show --json`（審查站對外契約）。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -943,6 +964,34 @@ mod tests {
         // 移除到空的回應：舊寫法省略陣列時讀作空清單。
         let emptied: SetDependsResponse = serde_json::from_str(r#"{"change":"add-b"}"#).unwrap();
         assert!(emptied.depends_on.is_empty());
+    }
+
+    #[test]
+    fn set_schema_request_and_response_travel_in_camel_case() {
+        // 規格「變更 schema 寫入端點」：請求 `{ schema }`，回應五個欄位。
+        let req = SetSchemaRequest { schema: "no-spec-change".into() };
+        assert_eq!(serde_json::to_string(&req).unwrap(), r#"{"schema":"no-spec-change"}"#);
+        let resp: SetSchemaResponse = serde_json::from_str(
+            r#"{"change":"tidy","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":true}"#,
+        )
+        .unwrap();
+        assert!(resp.changed && resp.verify_stamp_cleared);
+        assert_eq!(
+            serde_json::to_value(&resp).unwrap(),
+            serde_json::json!({
+                "change": "tidy",
+                "schema": "no-spec-change",
+                "previous": "spec-driven",
+                "changed": true,
+                "verifyStampCleared": true,
+            })
+        );
+        // 少了清章欄位的回應讀作沒有清章。
+        let bare: SetSchemaResponse = serde_json::from_str(
+            r#"{"change":"tidy","schema":"spec-driven","previous":"spec-driven","changed":false}"#,
+        )
+        .unwrap();
+        assert!(!bare.verify_stamp_cleared);
     }
 
     #[test]

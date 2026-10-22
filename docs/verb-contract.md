@@ -27,7 +27,7 @@ All verbs work in both modes, except the "Local only" and "Remote only" rows bel
 | --- | --- | --- |
 | Local only | `demo`, `trace`, `change rank`, `plan --strict-overlap` | Remote mode refuses with a non-zero exit code. The CLI sends no request, and it refuses offline too. |
 | Remote only | `claim` | Local mode refuses with a non-zero exit code. stderr says that the verb needs a remote store. |
-| Both modes | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify`, `plan`, `change` (except `change rank`) | Not applicable. Remote mode reads and writes only the server. It never falls back to local files. |
+| Both modes | `list`, `show`, `validate`, `analyze`, `drift`, `archive`, `discard`, `artifact`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify`, `plan`, `change` (`change depends` and `change schema`; not `change rank`) | Not applicable. Remote mode reads and writes only the server. It never falls back to local files. |
 | Mode-free | `init`, `update`, `link`, `unlink`, `auth`, `schemas`, `templates`, `feedback`, `schema`, `config`, `completion` | Not applicable. These verbs do not use the store. |
 
 Why some verbs are local only:
@@ -203,6 +203,7 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 | DELETE | `/changes/{name}/in-progress` | editor | Remove the start marker (`speclink in-progress remove`) |
 | POST | `/changes/{name}/claim` | editor | Claim the change (`speclink claim`) |
 | POST | `/changes/{name}/depends` | editor | Declare or remove prerequisite changes (`speclink change depends`) |
+| POST | `/changes/{name}/schema` | editor | Switch the schema of the change (`speclink change schema`) |
 | POST | `/changes/{name}/archive?carryReview=<bool>&carryVerify=<bool>` | editor | Archive (`speclink archive`) |
 
 ### Tasks
@@ -293,6 +294,7 @@ The field shapes below come from real responses of the official server. If the r
 | `DELETE /changes/{name}?force=true` | None | `{"change":"add-search-bar","unlinkedDiscussions":[{"slug":"board-search-bar","status":"concluded"}]}` |
 | `POST /changes/{name}/claim` | None | `{"claimedBy":"Demo <demo@example.com>"}` |
 | `POST /changes/{name}/depends` | `{"on":["add-login"],"remove":false}` | `{"change":"add-logout","dependsOn":["add-login"]}` |
+| `POST /changes/{name}/schema` | `{"schema":"no-spec-change"}` | `{"change":"tidy","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":false}` |
 | `POST /changes/{name}/in-progress` | None | `{}` |
 | `DELETE /changes/{name}/in-progress` | None | `{"removed":true}`; `{"removed":false}` when the change was not started |
 | `POST /changes/{name}/archive` | None | `{"specs":[],"datedName":"2026-10-07-fix-typo","snapshotCreated":false,"archivedDiscussions":[],"evidenceRecorded":false}` |
@@ -306,6 +308,7 @@ Notes:
 - `force` on `DELETE /changes/{name}` is `false` by default. If the change has a start marker or a checked task, the server needs `force=true`. Without it, the server answers 409 `refused` and deletes nothing. Corrupt metadata gives 422 `invalid_config`, also with `force=true`. `unlinkedDiscussions` lists the source discussions that the server unlinked, with their new status.
 - `POST /changes/{name}/claim`: a repeat claim by the same person succeeds and writes nothing. If another person holds the claim, the server answers 409 `refused`. The `message` names the current holder.
 - `POST /changes/{name}/depends`: `on` is required, and `remove` is `false` by default. The server answers 409 `refused` for a self-dependency, a missing or archived target, or a dependency cycle.
+- `POST /changes/{name}/schema`: the server resolves built-in schemas only. It answers 409 `refused` for an unknown schema, for a switch to a schema without specs while the change has delta specs, and for an open verify ticket. The same schema gives 200 with `changed` set to `false`, and the server writes nothing. `verifyStampCleared` is `true` when the switch removed the verify stamp.
 - `POST /changes/{name}/in-progress`: a repeat call, or an unknown change name, also gives 200 `{}`. The server writes nothing.
 - `DELETE /changes/{name}/in-progress`: checked tasks or recorded files give 409 `refused`. The envelope then also has `"checkedTasks":1,"touchedFiles":["src/login.rs"]`.
 - `POST /changes/{name}/archive`: each `specs` item has `capability` and four requirement counts: `added`, `modified`, `removed`, and `renamed`. `carryReview=true` and `carryVerify=true` archive the change with an open ticket of that station. The ticket moves into the archive with the change.

@@ -60,11 +60,13 @@ fn resolve_output(kind: &str, capability: Option<&str>) -> Result<(String, Strin
 
 /// Create (write) an artifact for a change. `new_capability` is the `--new`
 /// confirmation: a spec whose capability the canonical specs do not carry is
-/// refused unless it is set (capability-naming-guard 主閘).
+/// refused unless it is set (capability-naming-guard 主閘). `schema` is the
+/// change's resolved schema; `None` (it did not resolve) keeps the best-effort
+/// path — the artifact is written with an empty template (frozen behavior).
 pub fn new_artifact(
     store: &dyn Store,
     change: &Change,
-    schema: &Schema,
+    schema: Option<&Schema>,
     kind: &str,
     capability: Option<&str>,
     content: Option<&str>,
@@ -75,6 +77,16 @@ pub fn new_artifact(
     // schema and produce an artifact from its templates.
     crate::model::require_valid_meta(change)?;
     let (artifact_id, rel) = resolve_output(kind, capability)?;
+    // 沒有 specs 的 schema 不收 delta（change-schema-verb design D6）：在命名主閘之前，
+    // 讓訊息指向切換，而不是指向 capability 名稱。
+    if let Some(schema) = schema.filter(|s| artifact_id == "specs" && s.artifact("specs").is_none()) {
+        return Err(crate::command::Refusal(format!(
+            "change '{}' uses schema '{}', which has no specs — switch it first: \
+             speclink change schema {} spec-driven",
+            change.name, schema.name, change.name
+        ))
+        .into());
+    }
     // 命名主閘（capability-naming-guard design D1/D2）：路徑解析後、任何寫入
     // 前，正典未收錄的 spec capability 未經 --new 顯性宣告即拒絕。閘門條件是
     // 二元事實（正典有無收錄）；近似名只進建議、不進判斷。兩側判定都走清單
@@ -101,7 +113,7 @@ pub fn new_artifact(
         // Template from the schema; a missing template file (or an artifact the schema doesn't
         // define) yields an empty file (frozen behavior).
         None => schema
-            .artifact(&artifact_id)
+            .and_then(|s| s.artifact(&artifact_id))
             .and_then(|a| a.template.clone())
             .unwrap_or_default(),
     };
@@ -261,13 +273,53 @@ mod tests {
         new_artifact(
             store,
             &change,
-            &crate::schema::spec_driven(),
+            Some(&crate::schema::spec_driven()),
             "spec",
             Some(cap),
             Some(DELTA),
             false,
             new_capability,
         )
+    }
+
+    // --- 沒有 specs 的 schema 拒絕寫 delta（change-schema-verb design D6）---
+
+    #[test]
+    fn a_schema_without_specs_refuses_a_delta_and_writes_nothing() {
+        // spec Scenario「不改規格變更寫 delta 被拒」：帶內容、--force、--new 都一樣被拒，
+        // 而且拒絕在命名主閘之前（auth 不在正典也是同一句）。spec-driven 照常寫入由
+        // `gate_passes_a_canonical_capability_unchanged` 釘住。
+        let store = TestStore::with_meta("tidy", "schema: no-spec-change\ncreated: 2026-10-01\n");
+        let change = model::find_change(&store, "tidy").expect("change resolves");
+        let schema = crate::schema::builtin("no-spec-change").expect("built-in");
+        for (content, force, new_capability) in
+            [(Some(DELTA), false, false), (Some(DELTA), true, false), (None, false, true)]
+        {
+            let err = new_artifact(&store, &change, Some(&schema), "spec", Some("auth"), content, force, new_capability)
+                .expect_err("a schema without specs refuses a delta");
+            assert!(err.downcast_ref::<crate::command::Refusal>().is_some(), "a refusal: {err}");
+            assert_eq!(
+                err.to_string(),
+                "change 'tidy' uses schema 'no-spec-change', which has no specs — switch it first: \
+                 speclink change schema tidy spec-driven"
+            );
+        }
+        assert_eq!(*store.artifact_writes.borrow(), 0, "zero writes");
+        assert!(store.delta_capabilities("tidy").is_empty(), "no specs/ appears");
+    }
+
+    #[test]
+    fn an_unresolved_schema_keeps_the_best_effort_write() {
+        // 解析不到的 schema（None）不套 D6：照舊寫入，沒有範本時是空檔（frozen behavior）。
+        let store = TestStore::with_meta("demo", "schema: gone-flow\ncreated: 2026-10-01\n");
+        store.canonical.borrow_mut().insert("auth".into(), CANON_AUTH.into());
+        let change = model::find_change(&store, "demo").expect("change resolves");
+        new_artifact(&store, &change, None, "spec", Some("auth"), Some(DELTA), false, false)
+            .expect("an unresolved schema still writes the delta");
+        assert_eq!(store.read_artifact("demo", "specs/auth/spec.md").as_deref(), Some(DELTA));
+        new_artifact(&store, &change, None, "proposal", None, None, false, false)
+            .expect("an unresolved schema still writes the proposal");
+        assert_eq!(store.read_artifact("demo", "proposal.md").as_deref(), Some(""), "no template");
     }
 
     #[test]
@@ -320,7 +372,7 @@ mod tests {
         let err = new_artifact(
             &store,
             &change,
-            &crate::schema::spec_driven(),
+            Some(&crate::schema::spec_driven()),
             "spec",
             Some("token-rotation"),
             Some("## Purpose\n\n沒有操作區塊。\n"),
@@ -370,7 +422,7 @@ mod tests {
         new_artifact(
             &store,
             &change,
-            &crate::schema::spec_driven(),
+            Some(&crate::schema::spec_driven()),
             "spec",
             Some("token-rotation"),
             Some(DELTA),

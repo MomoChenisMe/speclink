@@ -1,7 +1,8 @@
-//! Execution-order verbs: `plan` (read), `change depends` and `change rank`
-//! (writes).
+//! Execution-order verbs: `plan` (read), `change depends`, `change schema` and
+//! `change rank` (writes).
 //!
-//! `plan` and `change depends` are Dual (add-change-plan-remote D4): the fs
+//! `plan`, `change depends` and `change schema` are Dual (add-change-plan-remote
+//! D4; change-schema-verb D5): the fs
 //! arms read and write the local openspec/ tree; the remote arms call the
 //! server endpoints and render the response through the same functions, so
 //! both modes print alike. `change rank` is FsOnly: it writes the card metas'
@@ -56,6 +57,16 @@ enum ChangeCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Switch a change's workflow schema in its metadata
+    Schema {
+        /// Change name
+        name: String,
+        /// Schema name to switch to
+        schema: String,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
     /// Move a change right before or after another change of its stage by rewriting its board rank
     #[command(group(clap::ArgGroup::new("side").required(true).args(["before", "after"])))]
     Rank {
@@ -103,6 +114,15 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             )?;
             render_depends(&o.change, &o.depends_on, &on, remove, json)
         }
+        ChangeCommands::Schema { name, schema, json } => {
+            // Routed like `change depends`: a mapped change switches in its
+            // worktree copy, the one `list` and `plan` read.
+            let (ws, fs_store) = open_project()?;
+            let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), &name);
+            let o: core::command::SchemaOutcome =
+                run(&home, Some(&ws), core::command::Command::ChangeSchema { name, schema })?;
+            render_schema(&o, json)
+        }
         ChangeCommands::Rank {
             name,
             before,
@@ -142,10 +162,44 @@ pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
             let written = ctx.client.set_depends(&name, &on, remove)?;
             render_depends(&written.change, &written.depends_on, &on, remove, json)
         }
+        ChangeCommands::Schema { name, schema, json } => {
+            let w = ctx.client.set_schema(&name, &schema)?;
+            let o = core::command::SchemaOutcome {
+                change: w.change,
+                schema: w.schema,
+                previous: w.previous,
+                changed: w.changed,
+                verify_stamp_cleared: w.verify_stamp_cleared,
+            };
+            render_schema(&o, json)
+        }
         ChangeCommands::Rank { .. } => {
             unreachable!("dispatch refuses change rank in remote mode before the handshake")
         }
     }
+}
+
+/// One success line, and a second when the switch removed the verify stamp
+/// (design D5); `--json` carries the four facts — the clearing line is human
+/// output only.
+fn render_schema(o: &core::command::SchemaOutcome, json: bool) -> Result<()> {
+    if json {
+        return print_json(&serde_json::json!({
+            "change": o.change,
+            "schema": o.schema,
+            "previous": o.previous,
+            "changed": o.changed,
+        }));
+    }
+    if o.changed {
+        println!("{} {} schema: {} → {}", color::green("✓"), o.change, o.previous, o.schema);
+    } else {
+        println!("{} {} schema: {} (unchanged)", color::green("✓"), o.change, o.schema);
+    }
+    if o.verify_stamp_cleared {
+        println!("  verify stamp cleared — re-run verify under {}", o.schema);
+    }
+    Ok(())
 }
 
 /// One success line naming the side it landed on; `--json` carries the same

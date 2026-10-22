@@ -214,6 +214,8 @@ pub enum DomainEvent {
         depends_on: Vec<String>,
         occurred_at: chrono::DateTime<chrono::Utc>,
     },
+    /// `change schema` actually switched the schema; `schema` is the new value.
+    ChangeSchemaChanged { change: String, schema: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -246,6 +248,7 @@ impl DomainEvent {
             DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
             DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
             DomainEvent::ChangeDependsChanged { .. } => "change-depends-changed",
+            DomainEvent::ChangeSchemaChanged { .. } => "change-schema-changed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
@@ -396,6 +399,9 @@ pub enum Command {
     /// `change depends <name> --on <other>... [--remove]` — declare (or drop)
     /// prerequisites in the change's meta; every guard refuses with zero writes.
     ChangeDepends { name: String, on: Vec<String>, remove: bool },
+    /// `change schema <name> <schema>` — switch the change's schema in its meta
+    /// (change-schema-verb design D1); every guard refuses with zero writes.
+    ChangeSchema { name: String, schema: String },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -600,6 +606,18 @@ pub struct DependsOutcome {
     pub changed: bool,
 }
 
+/// `change schema` outcome: the schema after the call, the one before, whether
+/// THIS call wrote the meta (false for the same value — no event then), and
+/// whether the write removed a verify stamp.
+#[derive(Debug)]
+pub struct SchemaOutcome {
+    pub change: String,
+    pub schema: String,
+    pub previous: String,
+    pub changed: bool,
+    pub verify_stamp_cleared: bool,
+}
+
 /// `discuss context` / `discuss discard` outcome (subject only).
 #[derive(Debug)]
 pub struct DiscussSubjectOutcome {
@@ -704,6 +722,7 @@ pub enum CommandOutcome {
     InProgressAdd(InProgressOutcome),
     InProgressRemove(InProgressRemoveOutcome),
     ChangeDepends(DependsOutcome),
+    ChangeSchema(SchemaOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -831,6 +850,9 @@ pub fn execute(
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
         Command::ChangeDepends { name, on, remove } => run_change_depends(store, &name, &on, remove),
+        Command::ChangeSchema { name, schema } => {
+            run_change_schema(store, ws, ctx.user_config_dir.as_deref(), &name, &schema)
+        }
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -1009,6 +1031,12 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::ChangeDepends(o) => vec![DomainEvent::ChangeDependsChanged {
             change: o.change.clone(),
             depends_on: o.depends_on.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ChangeSchema(o) if !o.changed => Vec::new(),
+        CommandOutcome::ChangeSchema(o) => vec![DomainEvent::ChangeSchemaChanged {
+            change: o.change.clone(),
+            schema: o.schema.clone(),
             occurred_at: at,
         }],
         CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
@@ -1539,22 +1567,10 @@ fn run_new_artifact(
     };
     // Best-effort schema resolution: an unresolvable/broken schema still
     // creates the artifact (no template → empty file) — frozen behavior.
-    let schema = match crate::schema::resolve_with(ws, user_dir, &change.meta.schema_name()) {
-        Some(Ok(s)) => s,
-        _ => Schema {
-            name: change.meta.schema_name(),
-            display_name: change.meta.schema_name(),
-            description: None,
-            source: "project".to_string(),
-            artifacts: Vec::new(),
-            apply_requires: Vec::new(),
-            apply_tracks: None,
-            apply_instruction: None,
-        },
-    };
+    let schema = crate::schema::resolve_with(ws, user_dir, &change.meta.schema_name()).and_then(Result::ok);
     let had_content = content.is_some();
     let (artifact_id, path) =
-        crate::newcmd::new_artifact(store, &change, &schema, kind, capability, content, force, new_capability)
+        crate::newcmd::new_artifact(store, &change, schema.as_ref(), kind, capability, content, force, new_capability)
             .map_err(classify)?;
     Ok(CommandOutcome::NewArtifact(NewArtifactOutcome {
         artifact: artifact_id,
@@ -1808,6 +1824,34 @@ fn run_change_depends(
         change: name.to_string(),
         depends_on: write.depends_on,
         changed: write.changed,
+    }))
+}
+
+fn run_change_schema(
+    store: &dyn Store,
+    ws: Option<&Workspace>,
+    user_dir: Option<&std::path::Path>,
+    name: &str,
+    schema: &str,
+) -> Result<CommandOutcome, CommandError> {
+    // Same shape as `run_change_depends`: loud not-found under the stable code,
+    // every guard a typed Refusal inside the flow. A host without a workspace
+    // (the server) resolves built-ins only (design D2).
+    if crate::model::find_change(store, name).is_none() {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{name}' not found."),
+        ));
+    }
+    let resolve = |n: &str| crate::schema::resolve_with(ws, user_dir, n);
+    let write = crate::lifecycle::change_schema::set_schema(store, name, schema, &resolve)
+        .map_err(classify)?;
+    Ok(CommandOutcome::ChangeSchema(SchemaOutcome {
+        change: name.to_string(),
+        schema: write.schema,
+        previous: write.previous,
+        changed: write.changed,
+        verify_stamp_cleared: write.verify_stamp_cleared,
     }))
 }
 
