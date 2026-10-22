@@ -804,8 +804,16 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
 
     // archived_at lands before the move (process-cost-metrics design D3), from the same
     // instant as the dated name. A failed move leaves it on the in-progress change; the
-    // retry's `set` replaces it in place, so the document keeps one line.
-    crate::model::edit_meta(store, &change.name, |m| m.set("archived_at", &stamp))?;
+    // retry's `set` replaces it in place, so the document keeps one line. The canonical
+    // specs are already written here, so a failure names the snapshot location too.
+    crate::model::edit_meta(store, &change.name, |m| m.set("archived_at", &stamp)).map_err(|e| {
+        anyhow::anyhow!(
+            "Failed to write archived_at for '{}': {e} — the change was not moved; \
+             pre-archive backups are under {}",
+            change.name,
+            snapshot_dir.display()
+        )
+    })?;
 
     // Move change into the archive under its dated name. The in-progress marker
     // stays untouched on archive (frozen behavior).

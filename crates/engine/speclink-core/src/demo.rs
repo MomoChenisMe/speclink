@@ -116,11 +116,6 @@ mod tests {
     fn generate_writes_created_as_an_offset_stamp() {
         let store = TestStore::default();
         let outcome = super::generate(&store, None).expect("demo generates");
-        let meta = store.meta(&outcome.name);
-        let created = meta
-            .lines()
-            .find_map(|l| l.strip_prefix("created: "))
-            .expect("created line");
-        assert!(crate::util::is_offset_stamp(created), "created is not an offset stamp: {meta}");
+        crate::util::offset_stamp_line(&store.meta(&outcome.name), "created");
     }
 }

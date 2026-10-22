@@ -662,6 +662,7 @@ describe("ArchivedList（流程成本摘要）", () => {
     // Scenario「搜尋不改變摘要數字」。
     renderCosted("no-tasks");
     expect(document.querySelectorAll("[data-archived]")).toHaveLength(1);
-    expect(document.querySelector('[data-cost="docLines"]')!.textContent).toBe("中位數 200 · P90 400 · 3 筆");
+    const first = document.querySelector("[data-process-cost] [data-doc-tile]")!;
+    expect([...first.children].map((el) => el.textContent)).toEqual(["200", "文件行數（3 筆） · P90 400"]);
   });
 });

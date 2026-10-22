@@ -223,6 +223,19 @@ pub(crate) fn is_offset_stamp(value: &str) -> bool {
         .is_match(value)
 }
 
+/// Test helper: the value of a metadata document's `key: ` line, asserted to have
+/// the [`now_rfc3339`] shape.
+#[cfg(test)]
+pub(crate) fn offset_stamp_line<'a>(meta: &'a str, key: &str) -> &'a str {
+    let prefix = format!("{key}: ");
+    let value = meta
+        .lines()
+        .find_map(|l| l.strip_prefix(prefix.as_str()))
+        .unwrap_or_else(|| panic!("no {key} line: {meta}"));
+    assert!(is_offset_stamp(value), "{key} is not an offset stamp: {meta}");
+    value
+}
+
 /// 剝除 `YYYY-MM-DD-` 日期前綴（封存 change 目錄名、封存後的討論儲存名）；
 /// 不合格式原樣回傳（寬容）。共用於 discuss 的 promote 還原與 trace 的
 /// 鏈組裝。

@@ -75,6 +75,58 @@ fn show_outputs_only_the_date_part_of_a_stamped_created() {
 }
 
 #[test]
+fn plain_date_created_keeps_the_existing_outputs() {
+    // spec scenario「純日期記錄的輸出不變」：show --json 與 list --json 與本變更之前
+    // 的輸出相同，沒有警告。
+    let p = TempProject::new("plain", "demo", "schema: spec-driven\ncreated: 2026-07-29\n");
+    let show = p.run(&["show", "demo", "--json"]);
+    assert!(show.status.success() && show.stderr.is_empty(), "{}", String::from_utf8_lossy(&show.stderr));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&show.stdout).unwrap(),
+        serde_json::json!({
+            "created": "2026-07-29",
+            "deltaSpecs": [],
+            "design": null,
+            "fromDiscussions": [],
+            "name": "demo",
+            "proposal": "## Why\n\nDemo.\n",
+            "restaleFrom": [],
+            "schema": "spec-driven",
+            "tasks": "- [ ] 1.1 Do the thing\n"
+        })
+    );
+    let list = p.run(&["list", "--json"]);
+    assert!(list.status.success() && list.stderr.is_empty(), "{}", String::from_utf8_lossy(&list.stderr));
+    assert_eq!(
+        serde_json::from_slice::<serde_json::Value>(&list.stdout).unwrap(),
+        serde_json::json!({ "changes": [{
+            "completedTasks": 0,
+            "name": "demo",
+            "status": "in-progress",
+            "summary": "Demo.",
+            "totalTasks": 1
+        }] })
+    );
+}
+
+#[test]
+fn new_change_writes_created_as_an_rfc3339_stamp() {
+    // spec scenario「新變更寫入時戳」：經 CLI 建立的 change，檔內 created 是 RFC 3339。
+    let p = TempProject::new("new", "existing", "schema: spec-driven\ncreated: 2026-07-29\n");
+    let out = p.run(&["new", "change", "fresh"]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let meta = std::fs::read_to_string(
+        p.dir.join("openspec").join("changes").join("fresh").join(".openspec.yaml"),
+    )
+    .unwrap();
+    let created = meta.lines().find_map(|l| l.strip_prefix("created: ")).expect("created line");
+    assert!(
+        created.len() == 25 && chrono::DateTime::parse_from_rfc3339(created).is_ok(),
+        "created is an offset stamp at second precision: {meta}"
+    );
+}
+
+#[test]
 fn staleness_of_a_stamped_created_counts_from_its_date_part() {
     // 依建立日期計算的天數取日期部分：時戳不會讓過期判定解析失敗。
     let p = TempProject::new(

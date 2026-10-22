@@ -1202,12 +1202,7 @@ fn first_claim_on_a_team_store_stamps_the_owner_and_reports_change_claimed() {
 fn claim_writes_claimed_at_as_an_offset_stamp() {
     let store = TestStore::team_with_meta("demo", CLAIM_META);
     claim(&store, "Alice <a@example.com>").expect("first claim succeeds");
-    let meta = store.meta("demo");
-    let claimed = meta
-        .lines()
-        .find_map(|l| l.strip_prefix("claimed_at: "))
-        .expect("claimed_at line");
-    assert!(crate::util::is_offset_stamp(claimed), "claimed_at is not an offset stamp: {meta}");
+    crate::util::offset_stamp_line(&store.meta("demo"), "claimed_at");
 }
 
 #[test]

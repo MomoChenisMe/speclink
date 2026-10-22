@@ -112,6 +112,14 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
     let tasks = std::fs::read_to_string(archived.join("tasks.md")).unwrap();
     assert!(!tasks.contains("- [ ]"), "every task checked after archive: {tasks}");
     assert_eq!(tasks.matches("- [x]").count(), 3, "all three tasks present and checked: {tasks}");
+    // spec「封存寫入 archived_at」：封存目錄 metadata 有一行 RFC 3339 的 archived_at，
+    // 日期與目錄名前綴相同。
+    let meta = std::fs::read_to_string(archived.join(".openspec.yaml")).unwrap();
+    let stamps: Vec<&str> = meta.lines().filter_map(|l| l.strip_prefix("archived_at: ")).collect();
+    assert_eq!(stamps.len(), 1, "one archived_at line: {meta}");
+    assert!(chrono::DateTime::parse_from_rfc3339(stamps[0]).is_ok(), "RFC 3339: {meta}");
+    let dir_name = archived.file_name().unwrap().to_str().unwrap();
+    assert_eq!(&stamps[0][..10], &dir_name[..10], "same instant as the dated name: {meta}");
 }
 
 /// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 的 tasks.md

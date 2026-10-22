@@ -92,6 +92,24 @@ fn retried_archive_replaces_a_leftover_archived_at() {
     assert_eq!(&stamps[0][..10], &outcome.dated_name[..10], "the new stamp wins: {archived}");
 }
 
+#[test]
+fn a_failed_archived_at_write_names_the_snapshot_location() {
+    // archived_at 在正式規格寫入之後才寫：它失敗時規格已合併，錯誤訊息要像
+    // canonical 寫入失敗一樣指出 snapshot 備份位置，change 留在進行中。
+    let tw = TraceWs::new("archived-at-fails");
+    let store = trace_store();
+    *store.fail_meta_write.borrow_mut() = Some("demo".to_string());
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let err = archive(&tw.ws, &store, &change, &apply_opts(), None)
+        .expect_err("the injected meta write failure surfaces");
+    assert!(
+        err.to_string().contains(&tw.ws.snapshots_dir().display().to_string()),
+        "the failure names the snapshot location: {err}"
+    );
+    assert!(store.change_exists("demo"), "the change was not moved");
+    assert!(store.canonical.borrow().contains_key("auth"), "the canonical spec already landed");
+}
+
 // --- spec change-lifecycle「封存的章失效守門」（design D5）---
 
 mod stale_stamp_gate {
