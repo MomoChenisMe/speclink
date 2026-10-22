@@ -124,8 +124,12 @@ fn change_schema_refusals_exit_non_zero_and_leave_the_meta_untouched() {
     std::fs::write(c.join("specs").join("auth").join("spec.md"), DELTA).unwrap();
     let out = p.run(&["change", "schema", "c", "no-spec-change"]);
     assert!(!out.status.success());
-    let err = stderr_of(&out);
-    assert!(err.contains("auth") && err.contains("no-spec-change") && err.contains("no specs"), "{err}");
+    // 逐字：server 的 409 message（plan_api.rs）與這一行是同一句引擎原文。
+    assert_eq!(
+        stderr_of(&out),
+        "Error: cannot switch 'c' to 'no-spec-change': 'no-spec-change' has no specs, but the change \
+         has delta specs (auth) — remove them first\n"
+    );
     assert_eq!(p.meta("c"), SPEC_META);
 
     let out = p.run(&["change", "schema", "c", "no-such-flow"]);
@@ -135,6 +139,17 @@ fn change_schema_refusals_exit_non_zero_and_leave_the_meta_untouched() {
         "Error: Schema not found: Schema 'no-such-flow' not found in project, user, or built-in locations\n"
     );
     assert_eq!(p.meta("c"), SPEC_META);
+
+    // Scenario「不合法的 schema 名稱在解析前拒絕」。
+    for bad in ["../evil", "Spec-Driven"] {
+        let out = p.run(&["change", "schema", "c", bad]);
+        assert!(!out.status.success(), "{bad}");
+        assert_eq!(
+            stderr_of(&out),
+            format!("Error: Invalid schema name '{bad}': must be lowercase kebab-case (e.g. my-flow)\n")
+        );
+        assert_eq!(p.meta("c"), SPEC_META);
+    }
 
     std::fs::write(c.join("verify.md"), "# Verify\n").unwrap();
     let out = p.run(&["change", "schema", "c", "spec-driven"]);
@@ -185,6 +200,22 @@ fn change_schema_unknown_change_is_an_error() {
     assert!(stderr_of(&out).contains("ghost"), "{}", stderr_of(&out));
     assert!(!p.dir.join("openspec").join("changes").join("ghost").exists(), "nothing written");
     assert_eq!(p.meta("c"), SPEC_META);
+}
+
+#[test]
+fn change_schema_refuses_a_change_folder_without_metadata() {
+    // 名冊列得出目錄、卻沒有 `.openspec.yaml`：拒絕且不憑空建出 meta。
+    let p = TempProject::new("no-meta");
+    let dir = p.dir.join("openspec").join("changes").join("bare");
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
+    let out = p.run(&["change", "schema", "bare", "no-spec-change"]);
+    assert!(!out.status.success());
+    assert_eq!(
+        stderr_of(&out),
+        "Error: cannot write schema for 'bare': openspec/changes/bare/.openspec.yaml is missing\n"
+    );
+    assert!(!dir.join(".openspec.yaml").exists(), "nothing written");
 }
 
 #[test]

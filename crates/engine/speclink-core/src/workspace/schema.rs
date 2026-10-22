@@ -47,6 +47,10 @@ impl Schema {
     pub fn artifact(&self, id: &str) -> Option<&Artifact> {
         self.artifacts.iter().find(|a| a.id == id)
     }
+    /// 這個 schema 是否產出 delta spec（有 id 為 `specs` 的 artifact）。
+    pub fn has_specs(&self) -> bool {
+        self.artifact("specs").is_some()
+    }
     pub fn artifact_ids(&self) -> Vec<String> {
         self.artifacts.iter().map(|a| a.id.clone()).collect()
     }

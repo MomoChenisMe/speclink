@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: change schema 動詞切換變更的 schema
-`speclink change schema <name> <schema> [--json]` SHALL 把作用中變更 `.openspec.yaml` 的 `schema:` 值改為 `<schema>`，其餘位元組逐字保留、每行沿用自身行尾；metadata 沒有 `schema:` 行時 SHALL 新增一行。守門 SHALL 依序：`<name>` 不是作用中變更（以名稱逐字比對）即錯；`<name>` 的 metadata 無法解析即拒絕；`<schema>` 在專案層、user 層與內建都解析不到即錯（沿用現行的 schema 找不到訊息）；`<schema>` 沒有 id 為 `specs` 的 artifact 而變更含 delta spec 時即錯，訊息列出這些 capability；變更有未結的驗證工單時即錯，訊息提示先執行 `speclink verify discard <name>`。任一守門失敗 SHALL 以非零 exit code 結束、stderr 一行原因且零寫入。`<schema>` 與現值相同時 SHALL 成功且不寫檔。切換寫入時，若 metadata 帶著驗證章，同一次寫入 SHALL 移除 `verified_at`、`verified_by`、`verified_with`、`verified_tasks_total` 與 `verified_scope`，`verified_rounds` 與審查章欄位 SHALL 保留。成功時 stdout SHALL 為一行 `✓ <name> schema: <舊值> → <新值>`（未寫檔時為 `✓ <name> schema: <值> (unchanged)`，移除驗證章時另一行 `  verify stamp cleared — re-run verify under <新值>`）；`--json` 時 stdout SHALL 為 `{ "change": string, "schema": string, "previous": string, "changed": boolean }`。在主 checkout 且 worktree 政策開啟時，`<name>` 已映射到 worktree 者 SHALL 寫入 worktree 副本，主副本不變。指令在本機與遠端模式 SHALL 同語意、同輸出形狀。
+`speclink change schema <name> <schema> [--json]` SHALL 把作用中變更 `.openspec.yaml` 的 `schema:` 值改為 `<schema>`，其餘位元組逐字保留、每行沿用自身行尾；metadata 沒有 `schema:` 行時 SHALL 新增一行；`schema:` 不是第 0 欄的單行 `schema: <值>`（例如 `schema : x`，或值寫在縮排續行）時 SHALL 拒絕且零寫入，訊息提示先改成單行的 `schema: <name>`。守門 SHALL 依序：`<name>` 不是作用中變更（以名稱逐字比對）即錯；`<name>` 的 metadata 無法解析即拒絕；`<schema>` 不是小寫 kebab-case 名稱（含路徑分隔符、`..`、空白、換行、大寫字母，或為空字串）即拒絕，在解析之前判定，訊息沿用 `schema init`／`schema fork` 的名稱不合法訊息；`<schema>` 在專案層、user 層與內建都解析不到即錯（沿用現行的 schema 找不到訊息）；`<schema>` 沒有 id 為 `specs` 的 artifact 而變更含 delta spec 時即錯，訊息列出這些 capability；變更有未結的驗證工單時即錯，訊息提示先執行 `speclink verify discard <name>`。任一守門失敗 SHALL 以非零 exit code 結束、stderr 一行原因且零寫入。`<schema>` 與現值相同時 SHALL 成功且不寫檔。切換寫入時，若 metadata 帶著驗證章，同一次寫入 SHALL 移除 `verified_at`、`verified_by`、`verified_with`、`verified_tasks_total` 與 `verified_scope`，`verified_rounds` 與審查章欄位 SHALL 保留。成功時 stdout SHALL 為一行 `✓ <name> schema: <舊值> → <新值>`（未寫檔時為 `✓ <name> schema: <值> (unchanged)`，移除驗證章時另一行 `  verify stamp cleared — re-run verify under <新值>`）；`--json` 時 stdout SHALL 為 `{ "change": string, "schema": string, "previous": string, "changed": boolean }`。在主 checkout 且 worktree 政策開啟時，`<name>` 已映射到 worktree 者 SHALL 寫入 worktree 副本，主副本不變。指令在本機與遠端模式 SHALL 同語意、同輸出形狀。
 
 #### Scenario: 切到不改規格
 - **WHEN** 作用中變更 tidy 的 `.openspec.yaml` 為 `schema: spec-driven`、沒有 delta spec，執行 `speclink change schema tidy no-spec-change`
@@ -18,6 +18,10 @@
 #### Scenario: 解析不到的 schema 拒絕
 - **WHEN** 執行 `speclink change schema c no-such-flow`
 - **THEN** exit code 非零，stderr 為現行的 schema 找不到訊息，`.openspec.yaml` 逐位元不變
+
+#### Scenario: 不合法的 schema 名稱在解析前拒絕
+- **WHEN** 執行 `speclink change schema c ../evil` 或 `speclink change schema c Spec-Driven`
+- **THEN** exit code 非零，stderr 為 schema 名稱不合法的訊息（`must be lowercase kebab-case`），`.openspec.yaml` 逐位元不變
 
 #### Scenario: 未結驗證工單時拒絕
 - **WHEN** 變更 c 有未結的驗證工單，執行 `speclink change schema c spec-driven`

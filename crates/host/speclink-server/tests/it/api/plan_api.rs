@@ -485,13 +485,21 @@ fn switching_an_unknown_change_is_a_404() {
 #[test]
 fn schema_guard_refusals_are_refused_409s_with_the_engine_line() {
     // Scenario「守門失敗 409」：message 是引擎原文，與 fs 模式 stderr 同一句。
+    // 三種守門各一次：解析不到與帶 delta 排在驗證工單之前（守門順序），切到有
+    // specs 的 spec-driven 才輪到未結的驗證工單。
     let f = fixture(&[("c", meta("2026-09-01", None))]);
     seed(
         &f.store,
-        &[(
-            DocumentId::ChangeArtifact { change: "c".into(), artifact: "specs/auth/spec.md".into() },
-            "## ADDED Requirements\n".to_string(),
-        )],
+        &[
+            (
+                DocumentId::ChangeArtifact { change: "c".into(), artifact: "specs/auth/spec.md".into() },
+                "## ADDED Requirements\n".to_string(),
+            ),
+            (
+                DocumentId::ChangeArtifact { change: "c".into(), artifact: "verify.md".into() },
+                "# Verify\n".to_string(),
+            ),
+        ],
     );
     let meta_before = stored(&f, &change_meta("c"));
     let before = revision(&f);
@@ -505,6 +513,10 @@ fn schema_guard_refusals_are_refused_409s_with_the_engine_line() {
         (
             "no-such-flow",
             "Schema not found: Schema 'no-such-flow' not found in project, user, or built-in locations",
+        ),
+        (
+            "spec-driven",
+            "cannot switch 'c' while its verify ticket is open — abandon it first: speclink verify discard c",
         ),
     ] {
         let (status, error) = protocol_error(post_schema(&f, &f.editor_pat, "c", schema));

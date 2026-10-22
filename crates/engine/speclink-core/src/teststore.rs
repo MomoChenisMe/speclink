@@ -27,6 +27,10 @@ pub(crate) struct TestStore {
     pub evidence: RefCell<HashMap<String, String>>,
     /// Capability → canonical spec content.
     pub canonical: RefCell<HashMap<String, String>>,
+    /// When set to a change name, `read_change_meta` reads it as absent while
+    /// the change still lists — the fs shape of a change folder with no
+    /// `.openspec.yaml`.
+    pub missing_meta: RefCell<Option<String>>,
     /// Number of `write_change_meta` calls (idempotence assertions).
     pub meta_writes: RefCell<u32>,
     /// The change names `write_change_meta` wrote, in order (write-order
@@ -143,6 +147,9 @@ impl Store for TestStore {
         0
     }
     fn read_change_meta(&self, name: &str) -> Option<String> {
+        if self.missing_meta.borrow().as_deref() == Some(name) {
+            return None;
+        }
         self.metas.borrow().get(name).cloned()
     }
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {

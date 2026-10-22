@@ -79,7 +79,7 @@ pub fn new_artifact(
     let (artifact_id, rel) = resolve_output(kind, capability)?;
     // 沒有 specs 的 schema 不收 delta（change-schema-verb design D6）：在命名主閘之前，
     // 讓訊息指向切換，而不是指向 capability 名稱。
-    if let Some(schema) = schema.filter(|s| artifact_id == "specs" && s.artifact("specs").is_none()) {
+    if let Some(schema) = schema.filter(|s| artifact_id == "specs" && !s.has_specs()) {
         return Err(crate::command::Refusal(format!(
             "change '{}' uses schema '{}', which has no specs — switch it first: \
              speclink change schema {} spec-driven",

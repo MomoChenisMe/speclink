@@ -80,6 +80,19 @@ pub const VERIFY: Station = Station {
     round_requires_tasks_complete: true,
 };
 
+impl Station {
+    /// 一枚章的五個欄位：`<prefix>_at`、`_by`、`_with`、`_tasks_total`、`_scope`。
+    /// 回合數（[`Station::rounds_key`]）不在內：它是流程成本，清章時保留。
+    pub fn stamp_keys(&self) -> [String; 5] {
+        ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{}_{suffix}", self.meta_prefix))
+    }
+
+    /// 回合數欄位 `<prefix>_rounds`。
+    pub fn rounds_key(&self) -> String {
+        format!("{}_rounds", self.meta_prefix)
+    }
+}
+
 /// 工單 findings 行的分級。token 即工單文法與 CLI `--json` 的對外契約
 /// （spec「審查工單的建立與追加」：severity ∈ CRITICAL／WARNING／SUGGESTION）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -647,12 +660,10 @@ fn write_stamp(
     // 文字手術（直接用 `KeyLines`，不走 `edit_meta`：meta 原文已由 `stamp_gate`
     // 讀過並驗過，且「先刪工單再寫章」要求寫入前插一步刪除）：先移除既有站別
     // 五鍵與回合數（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
-    let prefix = st.meta_prefix;
-    let stamp_keys = ["at", "by", "with", "tasks_total", "rounds", "scope"]
-        .map(|suffix| format!("{prefix}_{suffix}"));
-    let [at_key, by_key, with_key, tasks_total_key, rounds_key, scope_key] = &stamp_keys;
+    let [at_key, by_key, with_key, tasks_total_key, scope_key] = &st.stamp_keys();
+    let rounds_key = &st.rounds_key();
     let mut m = KeyLines::whole(&gate.raw_meta);
-    for key in &stamp_keys {
+    for key in [at_key, by_key, with_key, tasks_total_key, rounds_key, scope_key] {
         m.remove(key);
     }
     // 身分／工具／指紋一律過 YAML 純量守門（沿 started_* 的同一道）：帶 `:`、
