@@ -9,7 +9,7 @@
 - 建立到封存：`leadDays` 的中位數（天）；有 `leadHours` 樣本時，同一項另顯示 `leadHours` 的中位數（小時）
 - 品質關卡輪數：`reviewRounds` 與 `verifyRounds` 各自的中位數，分別標為審查與驗證
 
-每個數字 SHALL 標出樣本數，也就是帶有該欄位的封存變更筆數。樣本數為 0 的數字 SHALL NOT 顯示；一項內所有數字都沒有樣本時，該項 SHALL NOT 顯示；沒有任何封存變更帶 `docLines`、`leadDays`、`leadHours`、`reviewRounds` 或 `verifyRounds` 時（包含沒有任何封存變更，以及清單只帶 `tasksTotal`、不帶這些欄位的遠端工作區），整個摘要 SHALL NOT 顯示，即使任務數有樣本。中位數 SHALL 為由小到大排序後的中間值，筆數為偶數時取中間兩值的平均；P90 SHALL 為由小到大第 ⌈0.9 × n⌉ 個值。數字 SHALL 以最多一位小數顯示，整數不帶小數點。摘要文案 SHALL 跟隨 UI 語言：繁中為「流程成本」「文件行數」「任務數」「建立到封存」「品質關卡輪數」「審查」「驗證」「中位數」「P90」「天」「小時」「筆」；英文為 "Process cost"、"Doc lines"、"Tasks"、"Created to archived"、"Quality gate rounds"、"Review"、"Verify"、"median"、"P90"、"days"、"hours"、"changes"。摘要 SHALL 為唯讀，SHALL NOT 提供任何寫入動作。
+每個數字 SHALL 標出樣本數，也就是帶有該欄位的封存變更筆數。樣本數為 0 的數字 SHALL NOT 顯示；一項內所有數字都沒有樣本時，該項 SHALL NOT 顯示；沒有任何封存變更帶 `docLines`、`leadDays`、`leadHours`、`reviewRounds` 或 `verifyRounds` 時（包含沒有任何封存變更，以及清單只帶 `tasksTotal`、不帶這些欄位的遠端工作區），整個摘要 SHALL NOT 顯示，即使任務數有樣本。中位數 SHALL 為由小到大排序後的中間值，筆數為偶數時取中間兩值的平均；P90 SHALL 為由小到大第 ⌈0.9 × n⌉ 個值。數字 SHALL 以最多一位小數顯示，整數不帶小數點。摘要文案 SHALL 跟隨 UI 語言：繁中為「流程成本」「文件行數」「任務數」「建立到封存」「品質關卡輪數」「審查」「驗證」「中位數」「P90」「天」「小時」「筆」；英文為 "Process cost"、"Doc lines"、"Tasks"、"Created to archived"、"Quality gate rounds"、"Review"、"Verify"、"median"、"P90"、"days"、"hours"、"changes"，數量為 1 時用單數形 "day"、"hour"、"change"。摘要 SHALL 為唯讀，SHALL NOT 提供任何寫入動作。
 
 #### Scenario: 顯示中位數、P90 與樣本數
 

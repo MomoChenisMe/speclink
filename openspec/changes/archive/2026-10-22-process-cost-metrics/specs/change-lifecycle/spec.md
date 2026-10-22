@@ -26,7 +26,7 @@
 
 ### Requirement: 封存寫入 archived_at
 
-`speclink archive <change>` 成功時，封存目錄的 `.openspec.yaml` SHALL 含 `archived_at`，值為 RFC 3339 時戳，且與封存目錄名的日期前綴、正式規格 `@trace` 的 `updated` 取自同一個「現在」。寫入順序 SHALL 為：守門全數通過後、把 change 移入封存目錄之前，先把 `archived_at` 寫入該 change 的 metadata（已有該鍵時取代，檔內只留一行）；移動失敗時，該 change 留在進行中並帶著 `archived_at`，之後重試封存成功時 SHALL 以新的「現在」取代。封存守門拒絕時 SHALL NOT 寫入 `archived_at`。
+`speclink archive <change>` 成功且該 change 帶 metadata（`.openspec.yaml`）時，封存目錄的 `.openspec.yaml` SHALL 含 `archived_at`，值為 RFC 3339 時戳，且與封存目錄名的日期前綴、正式規格 `@trace` 的 `updated` 取自同一個「現在」。寫入順序 SHALL 為：守門全數通過後、把 change 移入封存目錄之前，先把 `archived_at` 寫入該 change 的 metadata（已有該鍵時取代，檔內只留一行）；移動失敗時，該 change 留在進行中並帶著 `archived_at`，之後重試封存成功時 SHALL 以新的「現在」取代。封存守門拒絕時 SHALL NOT 寫入 `archived_at`。沒有 metadata 的舊式 change 照常封存，SHALL NOT 為了 `archived_at` 新建 metadata。
 
 #### Scenario: 成功封存帶封存時戳
 
