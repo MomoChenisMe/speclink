@@ -225,9 +225,9 @@ describe("ProjectSettingsView 載入", () => {
     expect(screen.getByRole("switch", { name: "tdd" }).getAttribute("aria-checked")).toBe("true");
     expect(screen.getByRole("switch", { name: "audit" }).getAttribute("aria-checked")).toBe("false");
     goto("speclink");
-    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
-    expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
-    expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("claude [.claude]").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("codex [.agents]").getAttribute("aria-checked")).toBe("false");
+    expect(screen.getByLabelText("copilot [.github]").getAttribute("aria-checked")).toBe("false");
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
@@ -271,7 +271,7 @@ describe("政策下拉未知值顯性呈現", () => {
 describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 codex 後儲存 → writeAppTools 收到完整選集", async () => {
     const ws = renderView(snapshot(), "speclink");
-    fireEvent.click(await screen.findByLabelText("codex"));
+    fireEvent.click(await screen.findByLabelText("codex [.agents]"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "codex"]));
   });
@@ -279,7 +279,7 @@ describe("ProjectSettingsView 寫入", () => {
   it("tools 加選 copilot 後儲存 → writeAppTools 收到完整選集", async () => {
     // spec「設定頁圖形化讀寫兩層設定」：AI 工具卡多選含 copilot。
     const ws = renderView(snapshot(), "speclink");
-    fireEvent.click(await screen.findByLabelText("copilot"));
+    fireEvent.click(await screen.findByLabelText("copilot [.github]"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "copilot"]));
   });
@@ -429,7 +429,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
     expect(note.className).toContain("font-mono");
     // 其他頁的內容不在畫面上。
     expect(screen.queryByTestId("policy-card")).toBeNull();
-    expect(screen.queryByLabelText("claude")).toBeNull();
+    expect(screen.queryByLabelText("claude [.claude]")).toBeNull();
 
     goto("rules");
     expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
@@ -443,7 +443,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
 
     goto("speclink");
     expect(screen.getByRole("region", { name: "AI 工具" })).toBeTruthy();
-    expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
+    expect(screen.getByLabelText("claude [.claude]").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByTestId("file-note-speclink").className).toContain("font-mono");
   });
 
@@ -508,7 +508,7 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
     goto("speclink");
     expect(await screen.findByText(/bad tools yaml/)).toBeTruthy();
     expect((screen.getByTestId("save-app") as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText("claude") as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("claude [.claude]") as HTMLButtonElement).disabled).toBe(true);
   });
 });
 
@@ -536,7 +536,7 @@ describe("未存修改回報", () => {
 
   it("勾選 AI 工具即 true，儲存成功後回 false", async () => {
     const onDirtyChange = dirtyHarness("speclink");
-    fireEvent.click(await screen.findByLabelText("codex"));
+    fireEvent.click(await screen.findByLabelText("codex [.agents]"));
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
@@ -1713,6 +1713,7 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     // 與產出流程頁的「檢視內容／收合」同一種展開鈕：展開後改為收合。
     expect(toggle.textContent).toBe("收合");
     const names = within(within(page).getByTestId("review-smells")).getAllByRole("listitem");
+    expect(within(names[0]).getByRole("button", { name: /說明$/ })).toBeTruthy();
     expect(names.map((n) => n.textContent)).toEqual(SMELLS);
   });
 
@@ -1974,4 +1975,51 @@ it("設定色票預覽全部深底白字",async()=>{
   expect(preview?.className).toContain(`bg-project-${color}`);
   expect(preview?.className).toContain("text-project-foreground");
  }
+});
+
+describe('安全驗收與紀錄保留政策',()=>{
+ it('驗收預設不勾、封存三類預設保留；取消不寫入',async()=>{
+  const ws=fakeSettings(snapshot());render(<Harness settings={ws} initial="workflow"/>);
+  const required=await screen.findByRole('checkbox',{name:'納入驗收條件'});
+  expect(required.getAttribute('aria-checked')).toBe('false');expect(required.hasAttribute('disabled')).toBe(true);
+  for(const name of ['封存時保留審查紀錄','封存時保留驗證紀錄','封存時保留安全審查紀錄']) expect(screen.getByRole('checkbox',{name}).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留審查紀錄'}));
+  fireEvent.click(screen.getByTestId('cancel-workflow'));
+  expect(screen.getByRole('checkbox',{name:'封存時保留審查紀錄'}).getAttribute('aria-checked')).toBe('true');expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+ });
+ it('主開關關閉保留驗收選擇，儲存只送明確修改的欄位',async()=>{
+  const ws=fakeSettings(projectSnap({securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}}));render(<Harness settings={ws} initial="workflow"/>);
+  fireEvent.click(await screen.findByRole('checkbox',{name:'納入驗收條件'}));
+  expect(screen.getByText(/未選標準或缺必要資料將阻擋驗收/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('switch',{name:'啟用 OWASP / CWE 安全審查'}));
+  expect(screen.getByRole('checkbox',{name:'納入驗收條件'}).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留安全審查紀錄'}));fireEvent.click(screen.getByTestId('save-workflow'));
+  await waitFor(()=>expect(ws.writeWorkflowConfig).toHaveBeenCalled());
+  const fields=vi.mocked(ws.writeWorkflowConfig).mock.calls[0][0];expect(JSON.parse(fields.securityPatch!)).toEqual({enabled:false,required_for_acceptance:true});expect(JSON.parse(fields.checkRecordsPatch!)).toEqual({archive:{security:false}});
+ });
+ it('reader 不可修改驗收與保留設定',async()=>{
+  const ws={...fakeSettings(projectSnap({securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}})),kind:'remote' as const,policyWrite:false,securityReviewV2:true,checkHistory:true};render(<Harness settings={ws} initial="workflow"/>);
+  expect((await screen.findByRole('checkbox',{name:'納入驗收條件'})).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}).hasAttribute('disabled')).toBe(true);
+ });
+ it('CAS 衝突保留驗收與保留草稿，確認後只套到最新快照',async()=>{
+  const initial=projectSnap({revision:1,securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true}});
+  const latest=projectSnap({revision:2,securityVerification:{...DEFAULT_SECURITY_POLICY,enabled:true,scope:'api'}});
+  const ws={...fakeSettings(initial),kind:'remote' as const,securityReviewV2:true,checkHistory:true};vi.mocked(ws.readSettings).mockResolvedValueOnce(initial).mockResolvedValue(latest);vi.mocked(ws.writeWorkflowConfig).mockRejectedValueOnce({reason:'revision_conflict',message:'conflict'});
+  render(<Harness settings={ws} initial="workflow"/>);fireEvent.click(await screen.findByRole('checkbox',{name:'納入驗收條件'}));fireEvent.click(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}));fireEvent.click(screen.getByTestId('save-workflow'));
+  const panel=await screen.findByTestId('policy-conflict-panel');expect(within(panel).getByTestId('conflict-row-security_verification.requiredForAcceptance')).toBeTruthy();expect(within(panel).getByTestId('conflict-row-check_records.archive.verify')).toBeTruthy();
+  expect(screen.getByRole('checkbox',{name:'封存時保留驗證紀錄'}).getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(within(panel).getByRole('button',{name:'檢視後以最新 revision 重新提交'}));await waitFor(()=>expect(ws.writeWorkflowConfig).toHaveBeenCalledTimes(2));
+  const resent=vi.mocked(ws.writeWorkflowConfig).mock.calls[1][0];expect(JSON.parse(resent.securityPatch!)).toEqual({required_for_acceptance:true});expect(JSON.parse(resent.checkRecordsPatch!)).toEqual({archive:{verify:false}});expect(screen.getByLabelText('驗證範圍').textContent).toContain('僅 API / 後端服務');
+ });
+})
+
+it("AI 工具名稱顯示技能目錄，Antigravity 儲存純工具名", async () => {
+ const ws=renderView(snapshot(),"speclink");
+ for(const label of ["claude [.claude]","codex [.agents]","copilot [.github]","antigravity [.agent]"]) {
+  expect(await screen.findByLabelText(label)).toBeTruthy();
+ }
+ fireEvent.click(screen.getByLabelText("antigravity [.agent]"));
+ fireEvent.click(screen.getByTestId("save-app"));
+ await waitFor(()=>expect(ws.writeAppTools).toHaveBeenCalledWith(["claude","antigravity"]));
 });

@@ -50,6 +50,37 @@ impl FsSecurityReports {
             max_reports: 1000,
         })
     }
+    /// A device copy remains a cache; only the server index is authoritative.
+    pub fn record_publication(
+        &self,
+        report: &Report,
+        change: &str,
+        deep_report_id: &str,
+    ) -> Result<()> {
+        ensure!(
+            valid_report_id(deep_report_id) && report.change_name() == Some(change),
+            "binding_mismatch"
+        );
+        let Some(local) = self.get(report.report_id())? else {
+            return Ok(());
+        };
+        ensure!(
+            local.project_key() == report.project_key(),
+            "binding_mismatch"
+        );
+        let directory = self
+            .root
+            .join(report.project_key())
+            .join(report.report_id());
+        check_directory(&directory)?;
+        let temp = directory.join(format!(".publication-{}", ulid::Ulid::new()));
+        let text = serde_json::to_vec(
+            &serde_json::json!({"formatVersion":1,"projectKey":report.project_key(),"changeName":change,"builtinReportId":report.report_id(),"deepReportId":deep_report_id,"authority":"server-index"}),
+        )?;
+        write_new(&temp, &text, &|| false)?;
+        atomic_replace(&temp, &directory.join("publication.json"))?;
+        sync_directory(&directory)
+    }
     fn directories(&self) -> Result<Vec<(String, String, PathBuf)>> {
         if !owned_directory(&self.root, &self.application_data, false)? {
             return Ok(Vec::new());
@@ -255,6 +286,69 @@ mod tests {
         policy::SecurityScope,
         report::{ReportContext, ReportRepository},
     };
+    #[test]
+    fn proposal_security_reports_keep_v1_and_redacted_v2_in_one_index() {
+        use speclink_core::{
+            security::report::{read_change_report, save_change_report, VersionedReport},
+            store::Store,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let store = crate::FsStore::new(directory.path(), "openspec");
+        store
+            .create_change("demo", "schema: spec-driven\n")
+            .unwrap();
+        let basic = report("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        let mut value = serde_json::to_value(&basic).unwrap();
+        assert!(matches!(
+            VersionedReport::from_json(&serde_json::to_vec(&value).unwrap()).unwrap(),
+            VersionedReport::Builtin(_)
+        ));
+        save_change_report(&store, "demo", &VersionedReport::Builtin(basic)).unwrap();
+        value["formatVersion"] = 2.into();
+        value["reportId"] = "01ARZ3NDEKTSV4RRFFQ69G5FAX".into();
+        value["executionMode"] = "deep-skill".into();
+        value["knowledgeDigest"] = "d".repeat(64).into();
+        value["scopeDigest"] = "c".repeat(64).into();
+        value["actor"] = "Reviewer".into();
+        value["builtinReportId"] = "01ARZ3NDEKTSV4RRFFQ69G5FAV".into();
+        value["targets"] = serde_json::json!(["app.ts"]);
+        value["checks"] = serde_json::json!([]);
+        value["configurationState"] = "configured".into();
+        value["findings"] = serde_json::json!([{"findingId":"H1","domain":"機密與通訊","title":"金鑰寫死","severity":"high","confidence":"high","confidenceReason":"程式已證明；無可信對照","references":[],"evidence":[{"path":"app.ts","line":1,"endLine":1,"function":"loadSecret"}],"codeSnippet":"api_key='unique-fs-deep-secret'","dataFlow":"input → secret → service","impact":"unique-fs-deep-secret 必須省略","remediation":"SHALL 使用本機機密管理指南修正。","acceptance":"測試不得輸出機密。"}]);
+        let deep = VersionedReport::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
+        save_change_report(&store, "demo", &deep).unwrap();
+        let index: serde_json::Value =
+            serde_json::from_str(&store.read_artifact("demo", "checks/index.json").unwrap())
+                .unwrap();
+        assert_eq!(index["entries"].as_array().unwrap().len(), 2);
+        let saved = read_change_report(&store, "demo", deep.report_id())
+            .unwrap()
+            .unwrap();
+        assert!(!saved.json().unwrap().contains("unique-fs-deep-secret"));
+        assert!(!saved.markdown().contains("unique-fs-deep-secret"));
+        let path = store
+            .layout()
+            .change_dir("demo")
+            .join(format!("checks/security/{}/report.json", deep.report_id()));
+        let original = std::fs::read(&path).unwrap();
+        let mut changed: serde_json::Value = serde_json::from_slice(&original).unwrap();
+        changed["policyDigest"] = "f".repeat(64).into();
+        std::fs::write(&path, serde_json::to_vec_pretty(&changed).unwrap()).unwrap();
+        assert!(read_change_report(&store, "demo", deep.report_id()).is_err());
+        std::fs::write(path, original).unwrap();
+        assert!(read_change_report(&store, "demo", "../../outside").is_err());
+        assert!(
+            read_change_report(&store, "demo", "01ARZ3NDEKTSV4RRFFQ69G5FAY")
+                .unwrap()
+                .is_none()
+        );
+        store.archive_change("demo", "2026-10-20-demo").unwrap();
+        assert!(
+            read_change_report(&store, "2026-10-20-demo", deep.report_id())
+                .unwrap()
+                .is_some()
+        );
+    }
     fn report(id: &str) -> Report {
         Report::new(
             ReportContext {

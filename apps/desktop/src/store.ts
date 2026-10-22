@@ -43,6 +43,7 @@ import {
   persistTabs,
   readPersistedTabs,
   removeTab,
+  reorderTabs,
   upsertTab,
   type ProjectTab,
 } from "./tabs";
@@ -67,6 +68,8 @@ import {
   focusRecheckDue,
   initialUpdaterState,
   reduceUpdater,
+  updateCheckFailure,
+  type UpdateCheckResult,
   type UpdaterState,
 } from "./core/updater";
 import type { PendingUpdate, UpdaterAdapter } from "./adapter/updater";
@@ -295,6 +298,7 @@ export interface AppState {
   detailArchived: ArchivedTarget | null;
 
   pendingArchive: string | null;
+  archivePreview: {loading:boolean;error:string|null;counts:ArchiveRecordCounts|null}|null;
   /** 封存守門已處置完的品質站（spec「封存入口三選項擴及驗證工單」）：雙工單
    * 並存時使用者須對兩站分別處置，處置完的站記在這裡，才不會再彈一次。
    * 「照樣帶走」的站同時記進 `pendingArchiveCarry`。 */
@@ -438,6 +442,7 @@ export interface AppState {
   /** 由 Tray 顯式開啟問題詳情：選取既有 recovery destination，但不隱含重試。 */
   showRemoteWorkspaceRecovery: (key: string) => void;
   closeTab: (key: string) => void;
+  reorderProject: (keys: string[]) => void;
   /** 專案層檔案系統動作（design D5）：作用於本機根或 remote checkout；無本機目錄時不動作。
    * 成功靜默、失敗 toast（i18n 鍵查表，否則原文）。 */
   revealProject: (key: string) => Promise<void>;
@@ -487,6 +492,7 @@ export interface AppState {
   // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
   /** 更新狀態機現值（core/updater reducer 驅動；執行期狀態、不持久化）。 */
   updater: UpdaterState;
+  updaterLastCheck: UpdateCheckResult | null;
   /** 檢查更新（manual＝手動入口）：自動失敗靜默、手動失敗浮出無法檢查。 */
   checkForUpdates: (manual: boolean) => Promise<void>;
   /** 關於頁的版本資訊（desktop-about-page design D1）；null＝尚未取得或取得失敗。 */
@@ -640,9 +646,13 @@ export function openTicketStation(
 }
 
 /** 封存守門的閒置狀態：無待封存目標，兩站都未處置、未帶走。 */
-function idleArchiveGate(): Pick<AppState, "pendingArchive" | "pendingArchiveSettled" | "pendingArchiveCarry"> {
+type ArchiveRecordCounts = {
+  review:{retained:number;omitted:number}; verify:{retained:number;omitted:number}; security:{retained:number;omitted:number}; acceptanceReceipt:boolean;
+};
+function idleArchiveGate(): Pick<AppState, "pendingArchive" | "pendingArchiveSettled" | "pendingArchiveCarry" | "archivePreview"> {
   return {
     pendingArchive: null,
+    archivePreview: null,
     pendingArchiveSettled: { review: false, verify: false },
     pendingArchiveCarry: { review: false, verify: false },
   };
@@ -897,7 +907,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       failKey: FailureMessageKey = "store.archiveFailed",
     ) {
       try {
-        await run();
+        const result=await run();
+        const counts=(result as {checkRecords?:{review:{retained:number;omitted:number};verify:{retained:number;omitted:number};security:{retained:number;omitted:number};acceptanceReceipt:boolean}}|null)?.checkRecords;
+        if(counts&&([counts.review,counts.verify,counts.security].some(c=>c.retained+c.omitted>0)||counts.acceptanceReceipt)){
+          const lines=(["review","verify","security"] as const).map(kind=>appT("store.archiveRecordCount").replace("{kind}",appT(`store.recordKind.${kind}`)).replace("{retained}",String(counts[kind].retained)).replace("{omitted}",String(counts[kind].omitted)));
+          if(counts.acceptanceReceipt)lines.push(appT("store.acceptanceReceiptKept"));toast(`${change} · ${appT("store.archivedWithRecords")}`,{id:"desktop-archive-records",description:lines.join("\n")});
+        }
         set({ detailChange: null });
       } catch (e) {
         showFailureToast(change, failKey, e);
@@ -1565,19 +1580,39 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     requestArchive(name) {
       set({ ...idleArchiveGate(), pendingArchive: name });
+      const session = activeSession();
+      const history = session?.dataSource.checkRecords;
+      if (!session || !history) return;
+      const preview = {loading:true,error:null,counts:null};
+      set({archivePreview:preview});
+      void Promise.all([history.list(name), session.settings.readSettings()]).then(([entries, settings])=>{
+        if (get().archivePreview !== preview || get().activeKey !== session.id) return;
+        if (settings.workflow.parseError) throw new Error(settings.workflow.parseError);
+        const retention = settings.workflow.checkRecords?.archive ?? {review:true,verify:true,security:true};
+        const policy = settings.workflow.securityVerification;
+        const counts:ArchiveRecordCounts = {review:{retained:0,omitted:0},verify:{retained:0,omitted:0},security:{retained:0,omitted:0},acceptanceReceipt:!!(policy?.enabled && policy.requiredForAcceptance)};
+        for (const entry of entries) {
+          if (entry.recordId !== "acceptance") counts[entry.kind][retention[entry.kind]?"retained":"omitted"]++;
+        }
+        set({archivePreview:{loading:false,error:null,counts}});
+      }).catch(error=>{
+        if (get().archivePreview === preview && get().activeKey === session.id) set({archivePreview:{loading:false,error:String(error),counts:null}});
+      });
     },
 
     async confirmArchive() {
+      if (get().archivePreview?.loading || get().archivePreview?.error) return;
       const name = get().pendingArchive;
-      set({ pendingArchive: null });
+      set({ pendingArchive: null, archivePreview:null });
       if (name) await get().runVerb("archive", name);
     },
 
     cancelArchive() {
-      set({ pendingArchive: null });
+      set({ pendingArchive: null, archivePreview:null });
     },
 
     async confirmArchiveDiscardTicket(station) {
+      if (get().archivePreview?.loading || get().archivePreview?.error) return;
       const gate = get();
       const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
@@ -1609,6 +1644,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     async confirmArchiveCarryTicket(station) {
+      if (get().archivePreview?.loading || get().archivePreview?.error) return;
       const gate = get();
       const name = gate.pendingArchive;
       if (!name || ticketSettling) return;
@@ -1942,6 +1978,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     // --- 自動更新（desktop-app「桌面自動更新」；design D6） ---
     updater: initialUpdaterState,
+    updaterLastCheck: null,
     appInfo: null,
     loadAppInfo() {
       if (!fetchAppInfo || get().appInfo) return Promise.resolve();
@@ -1964,25 +2001,26 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ updater: checking });
       try {
         const update = await updaterAdapter.check();
-        pendingUpdate = update;
+        pendingUpdate = update && !("manualUrl" in update) ? update : null;
         set({
+          updaterLastCheck: { checkedAt: Date.now(), status: update && "manualUrl" in update ? "manual" : update ? "available" : "up-to-date", errorCode: null, operationId: null },
           updater: reduceUpdater(
             get().updater,
-            update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
+            update && "manualUrl" in update ? {type:"manualUpdate",version:update.version,url:update.manualUrl} : update ? { type: "updateFound", version: update.version } : { type: "noUpdate" },
           ),
         });
         // 背景檢查（啟動或前景重檢）發現新版本：toast 一次，「查看」進設定頁軟體更新卡；手動
         // 檢查的結果在卡內行內呈現、不發；同版本第二次不再發（spec「背景檢查的 toast 只發一次」）。
-        if (update && !manual && notifiedVersion !== update.version) {
+        if (update && !("manualUrl" in update) && !manual && notifiedVersion !== update.version) {
           notifiedVersion = update.version;
           toast(appT("updater.toast.available").replace("{version}", update.version), {
             id: "updater-available",
             action: { label: appT("updater.toast.view"), onClick: () => get().openSettingsUpdate() },
           });
         }
-      } catch {
+      } catch (error) {
         // 離線／端點不可達：reducer 決定靜默（自動）或浮出（手動）。
-        set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }) });
+        set({ updater: reduceUpdater(get().updater, { type: "checkFailed" }), updaterLastCheck: updateCheckFailure(error) });
       }
     },
     async recheckOnFocus(now) {
@@ -2486,6 +2524,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!fsActionsAdapter || dir === null) return;
       // 相對路徑為正斜線；Windows 的 reveal 接受混合分隔符（Rust std::path 吸收）。
       await runOnDocument(relative, async () => fsActionsAdapter.reveal(`${dir}/${relative}`));
+    },
+
+    reorderProject(keys) {
+      try {
+        const { tabs, activeKey } = get();
+        const ordered = reorderTabs(tabs, keys);
+        persistTabs(ordered, activeKey);
+        set({ tabs: ordered });
+      } catch (error) {
+        showFailureToast(appT("app.projectRail"), "store.reorderFailed", error);
+      }
     },
 
     closeTab(key) {

@@ -11,6 +11,7 @@ import {
   removeTab,
   persistTabs,
   readPersistedTabs,
+  reorderTabs,
   type ProjectTab,
 } from "../tabs";
 import { locatorKey, type WorkspaceLocator } from "../session";
@@ -41,6 +42,23 @@ function memStorage(): Storage {
     },
   } as Storage;
 }
+
+describe("左側專案排序與裝置持久化", () => {
+  it("moves C before A and B and persists the active project", () => {
+    const input = [tab("A"), { locator: { kind: "remote", connectionId: "c", projectId: "p", repoId: "r" } as WorkspaceLocator, name: "B" }, tab("C")];
+    const ordered = reorderTabs(input, ["local:C", "local:A", "remote:c/p/r"]);
+    expect(ordered.map(t => t.name)).toEqual(["C", "A", "B"]);
+    const storage = memStorage();
+    persistTabs(ordered, "local:A", storage);
+    expect(readPersistedTabs(storage)).toEqual({ tabs: ordered, activeKey: "local:A" });
+    expect(input.map(t => t.name)).toEqual(["A", "B", "C"]);
+  });
+  it("rejects duplicate, unknown or missing project keys", () => {
+    for (const order of [["local:A", "local:A"], ["local:A", "local:X"], ["local:B"]]) {
+      expect(() => reorderTabs([tab("A"), tab("B")], order)).toThrow();
+    }
+  });
+});
 
 describe("upsertTab（spec「成功開啟後記入分頁並去重上移」的清單面）", () => {
   it("appends a new project at the end", () => {

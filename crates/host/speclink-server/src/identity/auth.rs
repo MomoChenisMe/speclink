@@ -77,8 +77,10 @@ impl Binding {
     /// capability declaration — the sse push transport at `/events` (resume
     /// supported) alongside the unchanged polling fallback over `/sync-state`
     /// with ETag. The declared urls match the served routes.
-    pub fn to_response(&self) -> BindingResponse {
-        BindingResponse {
+    pub fn to_response(&self,public_url:&str) -> Result<BindingResponse,ApiError> {
+        let key=speclink_host::security::remote_project_key(public_url,&self.project.key,&self.repo).map_err(|_|ApiError::invalid_config("invalid server public_url"))?;
+        Ok(BindingResponse {
+            security_project_key:Some(key),
             actor: BindingActor {
                 id: self.actor.id.clone(),
                 name: self.actor.display.clone(),
@@ -96,6 +98,8 @@ impl Binding {
             api_version: API_VERSION.to_string(),
             engine_version: ENGINE_VERSION.to_string(),
             capabilities: Capabilities {
+                security_review_v2:true,
+                check_history:true,
                 context_snapshots: true,
                 security_review: true,
                 policy_write: self.policy_write,
@@ -118,7 +122,7 @@ impl Binding {
                     }),
                 },
             },
-        }
+        })
     }
 }
 

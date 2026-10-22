@@ -1,0 +1,587 @@
+//! Journal only for proposal checks. Never discards the sole recovery copy.
+use crate::{security as io, FsStore};
+use anyhow::{ensure, Context, Result};
+use serde::{Deserialize, Serialize};
+use speclink_core::{
+    history::{valid_check_path, validate_id, ChecksCommit, INDEX, JOURNAL},
+    security::{data::sha256, prepared::valid_relative},
+};
+use std::{
+    collections::BTreeMap,
+    fs,
+    path::{Path, PathBuf},
+};
+const LIMIT: usize = 64 * 1024 * 1024;
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Backup {
+    name: String,
+    digest: String,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Journal {
+    transaction_id: String,
+    before: BTreeMap<String, Option<Backup>>,
+}
+fn directory(store: &FsStore, change: &str, create: bool) -> Result<Option<PathBuf>> {
+    ensure!(
+        valid_relative(change) && !change.contains('/'),
+        "invalid_change"
+    );
+    ensure!(
+        valid_relative(&store.layout().spec_dir_name),
+        "invalid_spec_directory"
+    );
+    if !store.layout().root.try_exists()? && !create {
+        return Ok(None);
+    }
+    let root = store.layout().root.canonicalize()?;
+    let path = root
+        .join(&store.layout().spec_dir_name)
+        .join("changes")
+        .join(change);
+    if !io::owned_directory(&path, &root, create)? {
+        return Ok(None);
+    }
+    Ok(Some(path))
+}
+fn current(root: &Path, relative: &str) -> Result<Option<Vec<u8>>> {
+    let path = root.join(relative);
+    if !io::owned_directory(path.parent().unwrap(), root, false)? {
+        return Ok(None);
+    }
+    match path.symlink_metadata() {
+        Ok(_) => io::read_limited(&path, LIMIT).map(Some),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
+}
+/// Check documents are bounded and opened without following file or parent links.
+pub(crate) fn read_document(
+    store: &FsStore,
+    change: &str,
+    relative: &str,
+    archived: bool,
+) -> Result<Option<String>> {
+    ensure!(
+        valid_relative(change)
+            && !change.contains('/')
+            && valid_relative(&store.layout().spec_dir_name)
+            && valid_check_path(relative),
+        "invalid_check_path"
+    );
+    let base = store.layout().root.canonicalize()?;
+    let changes = base.join(&store.layout().spec_dir_name).join("changes");
+    let root = if archived {
+        changes.join("archive").join(change)
+    } else {
+        changes.join(change)
+    };
+    if !io::owned_directory(&root, &base, false)? {
+        return Ok(None);
+    }
+    current(&root, relative)?
+        .map(String::from_utf8)
+        .transpose()
+        .map_err(Into::into)
+}
+pub(crate) fn readable(store: &FsStore, change: &str) -> Result<()> {
+    if let Some(root) = directory(store, change, false)? {
+        ensure!(
+            current(&root, JOURNAL)
+                .context("history_recovery_required")?
+                .is_none(),
+            "history_recovery_required"
+        );
+        if let Some(bytes) = current(&root, INDEX)? {
+            let index: speclink_core::history::CheckIndex =
+                serde_json::from_slice(&bytes).context("invalid_check_index")?;
+            index.validate()?;
+        }
+    }
+    Ok(())
+}
+fn lock(store: &FsStore, change: &str) -> Result<io::FileLock> {
+    ensure!(
+        valid_relative(change)
+            && !change.contains('/')
+            && valid_relative(&store.layout().spec_dir_name),
+        "invalid_change"
+    );
+    let base = store.layout().root.canonicalize()?;
+    let locks = base
+        .join(&store.layout().spec_dir_name)
+        .join(".checks-locks");
+    io::owned_directory(&locks, &base, true)?;
+    let ignore = locks.join(".gitignore");
+    if !ignore.try_exists()? {
+        // Concurrent creators can both reach here; only one publishes the identical file.
+        if let Err(error) = io::write_new(&ignore, b"*\n", &|| false) {
+            if !ignore.try_exists()? {
+                return Err(error);
+            }
+        }
+    }
+    ensure!(
+        io::read_limited(&ignore, 16)? == b"*\n",
+        "invalid_lock_directory"
+    );
+    let lock = io::open_lock(&locks.join(format!("{}.lock", sha256(change.as_bytes()))))?;
+    lock.try_lock()
+        .map_err(|_| anyhow::anyhow!("busy: checks transaction"))?;
+    let legacy = base
+        .join(&store.layout().spec_dir_name)
+        .join("changes")
+        .join(change)
+        .join(".checks.lock");
+    if legacy.try_exists()? {
+        let old = io::open_lock(&legacy)?;
+        old.try_lock().map_err(|_| {
+            anyhow::anyhow!("busy: legacy checks writer; stop older clients before upgrading")
+        })?;
+        // Windows cannot rename the proposal while a child file is locked. Old clients
+        // must be stopped during upgrade; the external lock protects all new writers.
+    }
+    Ok(io::FileLock(lock))
+}
+fn fault(_point: &str) -> Result<()> {
+    #[cfg(test)]
+    FAULTS.with(|faults| {
+        let mut faults = faults.borrow_mut();
+        if faults.first().is_some_and(|point| point == _point) {
+            faults.remove(0);
+            anyhow::bail!("injected check failure: {_point}");
+        }
+        Ok(())
+    })?;
+    Ok(())
+}
+fn cleanup(root: &Path, id: &str) {
+    for prefix in [".checks-backup-", ".checks-stage-"] {
+        let _ = fs::remove_dir_all(root.join(format!("{prefix}{id}")));
+    }
+}
+fn recover_locked(root: &Path) -> Result<()> {
+    let Some(bytes) = current(root, JOURNAL)? else {
+        return Ok(());
+    };
+    let journal: Journal =
+        serde_json::from_slice(&bytes).context("history_recovery_required: invalid journal")?;
+    validate_id(&journal.transaction_id).context("history_recovery_required: journal identity")?;
+    ensure!(
+        journal.before.len() <= 18,
+        "history_recovery_required: journal entries"
+    );
+    let backup_dir = root.join(format!(".checks-backup-{}", journal.transaction_id));
+    io::owned_directory(&backup_dir, root, false)?;
+    let mut originals = BTreeMap::new();
+    for (index, (path, backup)) in journal.before.iter().enumerate() {
+        ensure!(
+            valid_check_path(path)
+                || matches!(path.as_str(), ".openspec.yaml" | "review.md" | "verify.md"),
+            "history_recovery_required: unsafe target"
+        );
+        let original = if let Some(backup) = backup {
+            ensure!(
+                backup.name == index.to_string(),
+                "history_recovery_required: unsafe backup"
+            );
+            let bytes = io::read_limited(&backup_dir.join(&backup.name), LIMIT)?;
+            ensure!(
+                sha256(&bytes) == backup.digest,
+                "history_recovery_required: backup fingerprint"
+            );
+            Some(bytes)
+        } else {
+            None
+        };
+        originals.insert(path, original);
+    }
+    for (index, (path, bytes)) in originals.into_iter().enumerate() {
+        fault(&format!("recover:{index}"))?;
+        let destination = root.join(path);
+        if let Some(bytes) = bytes {
+            io::owned_directory(destination.parent().unwrap(), root, true)?;
+            let temp = backup_dir.join(format!("restore-{index}-{}", ulid::Ulid::new()));
+            io::write_new(&temp, &bytes, &|| false)?;
+            // Validate existing targets too; never replace an external link.
+            let _ = current(root, path)?;
+            io::atomic_replace(&temp, &destination)?;
+        } else if current(root, path)?.is_some() {
+            fs::remove_file(destination)?;
+        }
+    }
+    io::sync_directory(root)?;
+    fs::remove_file(root.join(JOURNAL))?;
+    cleanup(root, &journal.transaction_id);
+    Ok(())
+}
+pub(crate) fn recover(store: &FsStore, change: &str) -> Result<()> {
+    if let Some(root) = directory(store, change, false)? {
+        let _lock = lock(store, change)?;
+        recover_locked(&root).context("history_recovery_required")?;
+    }
+    Ok(())
+}
+pub(crate) fn with_write<T>(
+    store: &FsStore,
+    change: &str,
+    action: impl FnOnce() -> Result<T>,
+) -> Result<T> {
+    let _lock = lock(store, change)?;
+    let root = directory(store, change, false)?.ok_or_else(|| anyhow::anyhow!("change not found"))?;
+    recover_locked(&root).context("history_recovery_required")?;
+    action()
+}
+pub(crate) fn commit(store: &FsStore, change: &str, commit: &ChecksCommit) -> Result<()> {
+    commit.validate()?;
+    with_write(store, change, || {
+        let root =
+            directory(store, change, false)?.ok_or_else(|| anyhow::anyhow!("change not found"))?;
+        for (path, expected) in &commit.expected {
+            ensure!(
+                current(&root, path)?.map(|bytes| sha256(&bytes)) == *expected,
+                "revision_conflict"
+            );
+        }
+        let id = ulid::Ulid::new().to_string();
+        let stage = root.join(format!(".checks-stage-{id}"));
+        let backup = root.join(format!(".checks-backup-{id}"));
+        io::owned_directory(&stage, &root, true)?;
+        io::owned_directory(&backup, &root, true)?;
+        let mut before = BTreeMap::new();
+        let targets: BTreeMap<_, _> = commit
+            .writes
+            .keys()
+            .chain(commit.deletes.iter())
+            .map(|path| (path.clone(), ()))
+            .collect();
+        for (index, path) in targets.keys().enumerate() {
+            let old = current(&root, path)?;
+            let old = if let Some(bytes) = old {
+                io::write_new(&backup.join(index.to_string()), &bytes, &|| false)?;
+                Some(Backup {
+                    name: index.to_string(),
+                    digest: sha256(&bytes),
+                })
+            } else {
+                None
+            };
+            before.insert(path.clone(), old);
+        }
+        for (index, (_, text)) in commit.writes.iter().enumerate() {
+            ensure!(text.len() <= LIMIT, "size_limit: check document");
+            io::write_new(&stage.join(index.to_string()), text.as_bytes(), &|| false)?;
+        }
+        io::sync_directory(&stage)?;
+        io::sync_directory(&backup)?;
+        let journal = Journal {
+            transaction_id: id.clone(),
+            before,
+        };
+        io::write_new(&root.join(JOURNAL), &serde_json::to_vec(&journal)?, &|| {
+            false
+        })?;
+        io::sync_directory(&root)?;
+        let result = (|| -> Result<()> {
+            fault("journal")?;
+            let publish = |path: &str| -> Result<()> {
+                let index = commit
+                    .writes
+                    .keys()
+                    .position(|key| key == path)
+                    .expect("planned target");
+                let destination = root.join(path);
+                io::owned_directory(destination.parent().unwrap(), &root, true)?;
+                let _ = current(&root, path)?;
+                io::atomic_replace(&stage.join(index.to_string()), &destination)?;
+                io::sync_directory(destination.parent().unwrap())
+            };
+            for (index, path) in commit
+                .writes
+                .keys()
+                .filter(|p| !matches!(p.as_str(), INDEX | ".openspec.yaml"))
+                .enumerate()
+            {
+                publish(path)?;
+                fault(&format!("publish:{index}"))?;
+            }
+            for (index, path) in commit.deletes.iter().enumerate() {
+                if current(&root, path)?.is_some() {
+                    fs::remove_file(root.join(path))?;
+                }
+                fault(&format!("delete:{index}"))?;
+            }
+            if commit.writes.contains_key(INDEX) {
+                publish(INDEX)?;
+                fault("index")?;
+            }
+            if commit.writes.contains_key(".openspec.yaml") {
+                publish(".openspec.yaml")?;
+                fault("metadata")?;
+            }
+            io::sync_directory(&root)?;
+            fs::remove_file(root.join(JOURNAL))?;
+            Ok(())
+        })();
+        if let Err(error) = result {
+            if let Err(recovery) = recover_locked(&root) {
+                anyhow::bail!("history_recovery_required: {recovery}");
+            }
+            return Err(error);
+        }
+        cleanup(&root, &id);
+        Ok(())
+    })
+}
+
+#[cfg(test)]
+thread_local! { static FAULTS: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) }; }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn stamps_legacy_changes_without_metadata_and_rejects_concurrent_creation() {
+        use speclink_core::station::{self, REVIEW, VERIFY};
+        for st in [&REVIEW, &VERIFY] {
+            for initial_meta in [None, Some("")] {
+                for concurrent_creation in [false, true] {
+                    let dir = tempfile::tempdir().unwrap();
+                    let store = crate::FsStore::new(dir.path(), "openspec");
+                    fs::create_dir_all(store.layout().change_dir("demo")).unwrap();
+                    if let Some(text) = initial_meta {
+                        store.write_change_meta("demo", text).unwrap();
+                    }
+                    store.write_artifact("demo", "tasks.md", "- [x] Done\n").unwrap();
+                    station::add_round(st, &store, "demo", "**Scope**: app.ts\n").unwrap();
+                    let original = store.read_artifact("demo", st.doc).unwrap();
+                    let result = station::stamp(st, &store, "demo", false, Some("Reviewer"), Some("codex"), &|_| {
+                        if concurrent_creation {
+                            store.write_change_meta("demo", "schema: spec-driven\nboard_rank: 3\n").unwrap();
+                        }
+                        Some(b"const value = 1;\n".to_vec())
+                    }, &|_| true);
+                    if concurrent_creation {
+                        assert!(result.unwrap_err().to_string().contains("revision_conflict"));
+                        assert_eq!(store.read_artifact("demo", st.doc).as_deref(), Some(original.as_str()));
+                        assert!(store.read_change_meta("demo").unwrap().contains("board_rank: 3"));
+                        assert!(!store.artifact_exists("demo", "checks/index.json"));
+                    } else {
+                        result.unwrap();
+                        assert!(!store.artifact_exists("demo", st.doc));
+                        assert!(store.read_change_meta("demo").unwrap().contains(&format!("{}_at:", st.meta_prefix)));
+                        let index = speclink_core::history::index(&store, "demo").unwrap();
+                        assert_eq!(index.entries.len(), 1);
+                        assert!(store.read_artifact("demo", &index.entries[0].relative_path).unwrap().contains(&original));
+                    }
+                }
+            }
+        }
+    }
+    #[test]
+    fn late_writers_cannot_recreate_an_archived_change() {
+        let (_root, store, commit) = setup();
+        fs::create_dir_all(store.layout().archive_dir()).unwrap();
+        fs::rename(store.layout().change_dir("demo"), store.layout().archived_change_dir("2026-10-21-demo")).unwrap();
+        assert!(super::commit(&store, "demo", &commit).is_err());
+        assert!(!store.change_exists("demo"));
+        assert!(store.write_change_meta("demo", "schema: spec-driven\n").is_err());
+        assert!(store.write_artifact("demo", "review.md", "late ticket").is_err());
+        assert!(!store.change_exists("demo"));
+        assert!(store.list_changes().is_empty());
+        assert_eq!(fs::read_to_string(store.layout().archived_change_dir("2026-10-21-demo").join("review.md")).unwrap(), "original ticket");
+    }
+    #[test]
+    fn archive_move_keeps_exclusion_without_recreating_the_active_directory() {
+        let (_root, store, _) = setup();
+        with_write(&store, "demo", || {
+            fs::create_dir_all(store.layout().archive_dir())?;
+            fs::rename(
+                store.layout().change_dir("demo"),
+                store.layout().archived_change_dir("2026-10-21-demo"),
+            )?;
+            assert!(with_write(&store, "demo", || Ok(()))
+                .unwrap_err()
+                .to_string()
+                .contains("busy"));
+            assert!(!store.layout().change_dir("demo").exists());
+            Ok(())
+        })
+        .unwrap();
+    }
+    #[test]
+    fn a_running_legacy_writer_blocks_the_new_writer() {
+        let (_root, store, _) = setup();
+        let legacy =
+            io::open_lock(&store.layout().change_dir("demo").join(".checks.lock")).unwrap();
+        legacy.try_lock().unwrap();
+        assert!(with_write(&store, "demo", || Ok(()))
+            .unwrap_err()
+            .to_string()
+            .contains("busy"));
+    }
+    #[cfg(unix)]
+    #[test]
+    fn linked_external_lock_directory_is_rejected() {
+        let (_root, store, _) = setup();
+        let outside = tempfile::tempdir().unwrap();
+        let locks = store.layout().spec_dir().join(".checks-locks");
+        // setup already created locks through write_artifact; use a fresh spec directory.
+        let fresh = crate::FsStore::new(store.layout().root.as_path(), "other-spec");
+        fs::create_dir_all(fresh.layout().spec_dir()).unwrap();
+        std::os::unix::fs::symlink(
+            outside.path(),
+            fresh.layout().spec_dir().join(".checks-locks"),
+        )
+        .unwrap();
+        assert!(with_write(&fresh, "demo", || Ok(())).is_err());
+        assert_eq!(fs::read_dir(outside.path()).unwrap().count(), 0);
+        assert_eq!(fs::read(locks.join(".gitignore")).unwrap(), b"*\n");
+    }
+    use speclink_core::{
+        history::{ChecksCommit, JOURNAL},
+        security::data::sha256,
+        store::Store,
+    };
+    use std::collections::BTreeMap;
+    fn setup() -> (tempfile::TempDir, crate::FsStore, ChecksCommit) {
+        let root = tempfile::tempdir().unwrap();
+        let store = crate::FsStore::new(root.path(), "openspec");
+        store
+            .create_change("demo", "schema: spec-driven\n")
+            .unwrap();
+        store
+            .write_artifact("demo", "review.md", "original ticket")
+            .unwrap();
+        let path = "checks/review/01M5CP8YW64XQ0Y57ACZRH3PPE.md";
+        let commit = ChecksCommit {
+            writes: BTreeMap::from([
+                (path.into(), "completed ticket".into()),
+                (
+                    "checks/index.json".into(),
+                    "{\"formatVersion\":1,\"entries\":[]}".into(),
+                ),
+                (
+                    ".openspec.yaml".into(),
+                    "schema: spec-driven\nreviewed_at: 2026-10-20\n".into(),
+                ),
+            ]),
+            deletes: vec!["review.md".into()],
+            expected: BTreeMap::from([
+                (path.into(), None),
+                ("checks/index.json".into(), None),
+                (
+                    ".openspec.yaml".into(),
+                    Some(sha256(b"schema: spec-driven\n")),
+                ),
+                ("review.md".into(), Some(sha256(b"original ticket"))),
+            ]),
+        };
+        (root, store, commit)
+    }
+    #[test]
+    fn every_check_publish_failure_restores_the_only_ticket_and_metadata() {
+        for point in ["journal", "publish:0", "delete:0", "index", "metadata"] {
+            let (_root, store, commit) = setup();
+            FAULTS.with(|faults| *faults.borrow_mut() = vec![point.into()]);
+            assert!(store.commit_checks("demo", &commit).is_err(), "{point}");
+            assert_eq!(
+                store.read_artifact("demo", "review.md").as_deref(),
+                Some("original ticket")
+            );
+            assert_eq!(
+                store.read_change_meta("demo").as_deref(),
+                Some("schema: spec-driven\n")
+            );
+            assert!(!store.artifact_exists("demo", "checks/index.json"));
+            assert!(!store.layout().change_dir("demo").join(JOURNAL).exists());
+        }
+    }
+    #[test]
+    fn interrupted_recovery_blocks_readers_and_next_write_recovers_before_retrying() {
+        let (_root, store, commit) = setup();
+        FAULTS.with(|faults| *faults.borrow_mut() = vec!["delete:0".into(), "recover:0".into()]);
+        assert!(store
+            .commit_checks("demo", &commit)
+            .unwrap_err()
+            .to_string()
+            .contains("history_recovery_required"));
+        assert!(store
+            .ensure_checks_readable("demo")
+            .unwrap_err()
+            .to_string()
+            .contains("history_recovery_required"));
+        assert!(store.layout().change_dir("demo").join(JOURNAL).exists());
+        store
+            .write_artifact("demo", "proposal.md", "new proposal")
+            .unwrap();
+        assert_eq!(
+            store.read_artifact("demo", "review.md").as_deref(),
+            Some("original ticket")
+        );
+        store.commit_checks("demo", &commit).unwrap();
+        assert!(!store.artifact_exists("demo", "review.md"));
+        assert!(store
+            .read_change_meta("demo")
+            .unwrap()
+            .contains("reviewed_at"));
+    }
+    #[test]
+    fn comparison_conflicts_and_unsafe_journals_never_publish() {
+        let (_root, store, commit) = setup();
+        store
+            .write_artifact("demo", "review.md", "changed")
+            .unwrap();
+        assert!(store
+            .commit_checks("demo", &commit)
+            .unwrap_err()
+            .to_string()
+            .contains("revision_conflict"));
+        assert_eq!(
+            store.read_artifact("demo", "review.md").as_deref(),
+            Some("changed")
+        );
+        std::fs::write(
+            store.layout().change_dir("demo").join(JOURNAL),
+            "{\"transactionId\":\"../../outside\"}",
+        )
+        .unwrap();
+        assert!(store.recover_checks("demo").is_err());
+        assert!(store.layout().change_dir("demo").join(JOURNAL).exists());
+    }
+    #[cfg(unix)]
+    #[test]
+    fn linked_check_directories_cannot_publish_outside_the_proposal() {
+        let (_root, store, commit) = setup();
+        let outside = tempfile::tempdir().unwrap();
+        std::os::unix::fs::symlink(
+            outside.path(),
+            store.layout().change_dir("demo").join("checks"),
+        )
+        .unwrap();
+        assert!(store.commit_checks("demo", &commit).is_err());
+        assert_eq!(std::fs::read_dir(outside.path()).unwrap().count(), 0);
+        assert_eq!(
+            store.read_artifact("demo", "review.md").as_deref(),
+            Some("original ticket")
+        );
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_locked_metadata_keeps_the_original_ticket() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let (_root, store, commit) = setup();
+        let held = std::fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(store.layout().change_dir("demo").join(".openspec.yaml"))
+            .unwrap();
+        assert!(store.commit_checks("demo", &commit).is_err());
+        drop(held);
+        assert_eq!(
+            store.read_artifact("demo", "review.md").as_deref(),
+            Some("original ticket")
+        );
+    }
+}

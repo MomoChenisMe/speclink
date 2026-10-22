@@ -5,6 +5,7 @@ import {
   itemMarkdown,
   parseCapabilities,
   parseImpact,
+  parseListItems,
   splitAlternative,
   splitH2Sections,
   type H2Section,
@@ -109,7 +110,16 @@ function ProposalSection({
     );
   }
   if (key && ROW_SECTIONS.has(key)) return listSection((items) => <RowList items={items.map(itemMarkdown)} />);
-  if (key && STEP_SECTIONS.has(key)) return listSection((items) => <NumberedSteps items={items.map(itemMarkdown)} />);
+  if (key && STEP_SECTIONS.has(key)) {
+    const items = parseListItems(content).flatMap((block) =>
+      block.kind === "list" ? block.items.map(itemMarkdown) : block.text.trim() ? [block.text] : [],
+    );
+    return (
+      <DocSection sectionKey={key} title={title} count={items.length || undefined}>
+        {items.length > 0 && <NumberedSteps items={items} />}
+      </DocSection>
+    );
+  }
   if (key === "sections.nonGoals") {
     return listSection((items) => <RowList items={items.map(itemMarkdown)} icon={<Ban className="h-3.5 w-3.5" />} />);
   }

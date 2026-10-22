@@ -216,6 +216,87 @@ fn probe_error(error: reqwest::Error) -> (String, Vec<speclink_host::network::Er
 #[cfg(test)]
 mod probe_tests {
     use super::*;
+    #[tokio::test]
+    async fn connect_tunnel_completes_verified_tls_and_returns_an_update_candidate() {
+        use crate::{runtime_preferences::{self, DeviceRuntime, ProxyMode, ProxyPreferences, RuntimePreferences}, updater::{self, Candidate, Job, UpdateFailure, UpdaterBackend, UpdaterJobs}};
+        use std::{io::{Read, Write}, sync::Arc, time::Duration};
+        struct Backend;
+        impl UpdaterBackend for Backend {
+            type Update = ();
+            async fn check(&self, policy: ProxyPolicy) -> Result<Option<Candidate<()>>, UpdateFailure> {
+                // Only this test client trusts this fixture CA; all TLS checks remain enabled.
+                let root=reqwest::Certificate::from_der(include_bytes!("testdata/proxy-ca.der")).unwrap();
+                let client=policy.configure_client(reqwest::Client::builder().timeout(Duration::from_secs(3)).tls_certs_only([root])).unwrap().build().unwrap();
+                let response=client.get("https://updates.test/latest.json").send().await.unwrap();
+                assert_eq!(response.status(),200);
+                let manifest:serde_json::Value=serde_json::from_slice(&response.bytes().await.unwrap()).unwrap();
+                Ok(Some(Candidate {update:(), version:manifest["version"].as_str().unwrap().into(), download_url:manifest["url"].as_str().unwrap().into()}))
+            }
+            async fn download(&self,_:&())->Result<Vec<u8>,UpdateFailure>{unreachable!("check only")}
+            async fn install(&self,_:Arc<Job<()>>,_:Vec<u8>)->Result<(),UpdateFailure>{unreachable!("check only")}
+        }
+        fn headers(reader:&mut impl Read)->String {
+            let mut bytes=Vec::new();let mut byte=[0];
+            while !bytes.ends_with(b"\r\n\r\n") {
+                reader.read_exact(&mut byte).unwrap();bytes.push(byte[0]);assert!(bytes.len()<8192);
+            }
+            String::from_utf8(bytes).unwrap()
+        }
+        let listener=std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address=listener.local_addr().unwrap();
+        let server=std::thread::spawn(move||{
+            let (mut socket,_)=listener.accept().unwrap();
+            socket.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            socket.set_write_timeout(Some(Duration::from_secs(3))).unwrap();
+            let connect=headers(&mut socket);
+            socket.write_all(b"HTTP/1.1 200 Connection established\r\n\r\n").unwrap();
+            let config=rustls::ServerConfig::builder_with_provider(rustls::crypto::ring::default_provider().into()).with_safe_default_protocol_versions().unwrap().with_no_client_auth().with_single_cert(
+                vec![rustls::pki_types::CertificateDer::from(include_bytes!("testdata/proxy-server.der").to_vec())],
+                rustls::pki_types::PrivateKeyDer::Pkcs8(rustls::pki_types::PrivatePkcs8KeyDer::from(include_bytes!("testdata/proxy-server-key.der").to_vec()))
+            ).unwrap();
+            let mut tls=rustls::StreamOwned::new(rustls::ServerConnection::new(Arc::new(config)).unwrap(),socket);
+            let get=headers(&mut tls);
+            let body=r#"{"version":"1.2.3","url":"https://github.com/mosutw/speclink/releases/download/desktop-v1.2.3/update.zip"}"#;
+            write!(tls,"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",body.len(),body).unwrap();
+            tls.flush().unwrap();tls.conn.send_close_notify();let _=tls.flush();
+            (connect,get)
+        });
+        let root=tempfile::tempdir().unwrap();
+        runtime_preferences::write(root.path(),&RuntimePreferences {proxy:ProxyPreferences {mode:ProxyMode::Manual,url:Some(format!("http://{address}"))},..Default::default()}).unwrap();
+        let runtime=DeviceRuntime::new(root.path().into());
+        let candidate=updater::check(&Backend,&runtime,&UpdaterJobs::default(),vec![]).await.unwrap().unwrap();
+        assert_eq!(candidate.version,"1.2.3");assert!(!candidate.id.is_empty());
+        let (connect,get)=server.join().unwrap();
+        assert!(connect.starts_with("CONNECT updates.test:443 "),"{connect}");
+        assert!(get.starts_with("GET /latest.json "),"{get}");
+    }
+    #[tokio::test]
+    async fn connect_tunnel_success_does_not_disable_tls_or_hide_disconnects() {
+        use std::io::{Read, Write};
+        for reply in [
+            &b"HTTP/1.1 200 Connection established\r\n\r\nnot-a-tls-record"[..],
+            &b"HTTP/1.1 200 Connection established\r\n\r\n"[..],
+            &b"broken-proxy-response\r\n\r\n"[..],
+        ] {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            let address = listener.local_addr().unwrap();
+            let server = std::thread::spawn(move || {
+                let (mut stream, _) = listener.accept().unwrap();
+                stream.set_read_timeout(Some(std::time::Duration::from_secs(2))).unwrap();
+                let mut request = [0; 4096];
+                let count = stream.read(&mut request).unwrap();
+                let _ = stream.write_all(reply);
+                String::from_utf8_lossy(&request[..count]).into_owned()
+            });
+            let policy = ProxyPolicy::snapshot(crate::runtime_preferences::ProxyPreferences {
+                mode: crate::runtime_preferences::ProxyMode::Manual, url: Some(format!("http://{address}")),
+            }).unwrap();
+            let (result, _) = probe_endpoint(&policy, "https://github.com/").await;
+            assert!(server.join().unwrap().starts_with("CONNECT github.com:443"));
+            assert!(result.error_code.is_some(), "a tunnel is not a successful TLS response");
+            assert_eq!(result.http_status, None);
+        }
+    }
     #[test]
     fn probe_redirect_limit_preserves_https_and_three_hops() {
         assert!(probe_redirect_allowed("https", 3));

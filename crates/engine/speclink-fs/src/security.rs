@@ -1,4 +1,5 @@
 //! Device-owned security data. Generations are immutable; only current.json changes.
+pub mod knowledge;
 pub mod prepared;
 pub mod reports;
 pub mod scan;
@@ -24,6 +25,8 @@ use std::{
 pub struct FsSecurityData {
     application_data: PathBuf,
     root: PathBuf,
+    custom_root: bool,
+    path_lease: Option<std::sync::Arc<FileLock>>,
     #[cfg(test)]
     fault: Option<CommitFault>,
 }
@@ -49,14 +52,35 @@ impl FsSecurityData {
             application_data.is_absolute(),
             "data_directory_unavailable: absolute application data directory required"
         );
+        let application_data = speclink_core::util::resolve_system_path(application_data);
         Ok(Self {
-            application_data: application_data.to_path_buf(),
+            application_data: application_data.clone(),
             root: application_data.join("security/standards"),
+            custom_root: false,
+            path_lease: None,
             #[cfg(test)]
             fault: None,
         })
     }
+    pub fn with_standard_root(application_data: &Path, standards_root: &Path) -> Result<Self> {
+        let mut data=Self::new(application_data)?;
+        let resolved = speclink_core::util::resolve_system_path(standards_root);
+        let standards_root = resolved.as_path();
+        ensure!(standards_root.is_absolute(),"invalid_path: absolute standard root required");
+        if standards_root != data.root {
+            let anchor=standards_root.ancestors().last().expect("absolute path has root");
+            ensure!(owned_directory(standards_root,anchor,false)?,"data_directory_unavailable: standard root missing");
+            fs::read_dir(standards_root).context("data_directory_unavailable")?;
+            data.root=standards_root.into();data.custom_root=true;
+        }
+        Ok(data)
+    }
+    pub fn hold_path_lease(mut self, file: File) -> Self {
+        self.path_lease=Some(std::sync::Arc::new(FileLock(file)));self
+    }
+    fn standard_boundary(&self) -> &Path { if self.custom_root { &self.root } else { &self.application_data } }
     fn version_path(&self, id: StandardId, version: &str) -> Result<PathBuf> {
+        if self.custom_root { check_directory(&self.root).context("data_directory_unavailable")?; }
         ensure!(id.supports_version(version), "unsupported_version");
         Ok(self.root.join(id.as_str()).join(version))
     }
@@ -72,7 +96,7 @@ impl FsSecurityData {
         )>,
     > {
         let base = self.version_path(id, version)?;
-        if !owned_directory(&base, &self.application_data, false)? {
+        if !owned_directory(&base, self.standard_boundary(), false)? {
             return Ok(None);
         }
         let pointer = base.join("current.json");
@@ -114,7 +138,7 @@ impl FsSecurityData {
                     sha256(&metadata_bytes) == current.metadata_sha256,
                     "integrity_error: metadata fingerprint"
                 );
-                let metadata: StandardMetadata =
+                let mut metadata: StandardMetadata =
                     serde_json::from_slice(&metadata_bytes).context("invalid_package: metadata")?;
                 ensure!(
                     metadata.standard_id == id
@@ -129,6 +153,9 @@ impl FsSecurityData {
                         && metadata.files.contains_key("LICENSE"),
                     "invalid_package: metadata entries"
                 );
+                metadata.knowledge_status = speclink_core::security::knowledge::registry()?
+                    .status_digests(&metadata.files)?
+                    .into();
                 let mut total = 0usize;
                 let mut files = std::collections::BTreeMap::new();
                 for (name, expected) in &metadata.files {
@@ -206,10 +233,10 @@ impl StandardRepository for FsSecurityData {
     fn pin(&self, id: StandardId, version: &str) -> Result<Box<dyn StandardPin>> {
         let base = self.version_path(id, version)?;
         ensure!(
-            owned_directory(&base, &self.application_data, false)?,
+            owned_directory(&base, self.standard_boundary(), false)?,
             "missing_data"
         );
-        let lock = open_lock(&base.join(".lock"))?;
+        let lock = open_regular(&base.join(".lock"), false)?;
         lock.try_lock_shared()
             .map_err(|_| anyhow::anyhow!("busy: standard version is being modified"))?;
         let lock = FileLock(lock);
@@ -218,6 +245,7 @@ impl StandardRepository for FsSecurityData {
     }
 
     fn remove(&self, id: StandardId, version: &str) -> Result<()> {
+        ensure!(!self.custom_root,"shared_data: remove is disabled for custom standard roots");
         let base = self.version_path(id, version)?;
         let references = self.application_data.join("security/references");
         owned_directory(&references, &self.application_data, true)?;
@@ -299,7 +327,8 @@ impl StandardRepository for FsSecurityData {
         transaction.commit_cancellable(standard, cancelled)
     }
     fn versions(&self) -> Result<Vec<(StandardId, String)>> {
-        if !owned_directory(&self.root, &self.application_data, false)? {
+        if self.custom_root { check_directory(&self.root).context("data_directory_unavailable")?; }
+        if !owned_directory(&self.root, self.standard_boundary(), false)? {
             return Ok(Vec::new());
         }
         let mut versions = Vec::new();
@@ -357,7 +386,7 @@ impl StandardRepository for FsSecurityData {
 
     fn begin_install(&self, id: StandardId, version: &str) -> Result<Box<dyn StandardInstall>> {
         let base = self.version_path(id, version)?;
-        owned_directory(&base, &self.application_data, true)?;
+        owned_directory(&base, self.standard_boundary(), true)?;
         let lock = open_lock(&base.join(".lock"))?;
         match lock.try_lock() {
             Ok(()) => {}
@@ -381,7 +410,7 @@ impl StandardRepository for FsSecurityData {
     }
 }
 
-struct FileLock(File);
+pub(crate) struct FileLock(pub(crate) File);
 
 impl Drop for FileLock {
     fn drop(&mut self) {
@@ -478,6 +507,7 @@ impl StandardInstall for InstallTransaction {
                 .push("cleanup_warning: data installed; stale data cleanup can be retried".into());
         }
         Ok(InstallReceipt {
+            knowledge_status: metadata.knowledge_status,
             standard_id: self.id,
             version: self.version.clone(),
             installed_status: "installed".into(),
@@ -505,7 +535,7 @@ fn valid_generation(value: &str) -> bool {
     ulid::Ulid::from_string(value).is_ok_and(|id| id.to_string() == value)
 }
 
-fn check_directory(path: &Path) -> Result<()> {
+pub(crate) fn check_directory(path: &Path) -> Result<()> {
     let metadata = fs::symlink_metadata(path)?;
     ensure!(
         metadata.is_dir() && !metadata.file_type().is_symlink(),
@@ -522,7 +552,7 @@ fn check_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn owned_directory(path: &Path, root: &Path, create: bool) -> Result<bool> {
+pub(crate) fn owned_directory(path: &Path, root: &Path, create: bool) -> Result<bool> {
     if create {
         create_directories(root)?;
     } else if !root.try_exists()? {
@@ -607,11 +637,11 @@ fn regular(file: File) -> Result<File> {
 fn open_regular(path: &Path, write: bool) -> Result<File> {
     regular(file_options(write).open(path)?)
 }
-fn open_lock(path: &Path) -> Result<File> {
+pub(crate) fn open_lock(path: &Path) -> Result<File> {
     regular(file_options(true).create(true).truncate(false).open(path)?)
 }
 
-fn read_limited(path: &Path, limit: usize) -> Result<Vec<u8>> {
+pub(crate) fn read_limited(path: &Path, limit: usize) -> Result<Vec<u8>> {
     let mut file = open_regular(path, false)?;
     ensure!(
         file.metadata()?.len() <= limit as u64,
@@ -625,7 +655,7 @@ fn read_limited(path: &Path, limit: usize) -> Result<Vec<u8>> {
     Ok(bytes)
 }
 
-fn write_new(path: &Path, bytes: &[u8], cancelled: &dyn Fn() -> bool) -> Result<()> {
+pub(crate) fn write_new(path: &Path, bytes: &[u8], cancelled: &dyn Fn() -> bool) -> Result<()> {
     let mut file = regular(file_options(true).create_new(true).open(path)?)?;
     for chunk in bytes.chunks(64 * 1024) {
         ensure!(!cancelled(), "cancelled");
@@ -635,7 +665,7 @@ fn write_new(path: &Path, bytes: &[u8], cancelled: &dyn Fn() -> bool) -> Result<
     Ok(())
 }
 
-fn sync_directory(path: &Path) -> Result<()> {
+pub(crate) fn sync_directory(path: &Path) -> Result<()> {
     #[cfg(unix)]
     {
         File::open(path)?.sync_all()?;
@@ -647,7 +677,7 @@ fn sync_directory(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn atomic_replace(source: &Path, destination: &Path) -> Result<()> {
+pub(crate) fn atomic_replace(source: &Path, destination: &Path) -> Result<()> {
     // Rust's rename replaces an existing file on Windows as well as Unix.
     // ReplaceFileW can briefly remove the destination name during replacement,
     // making a concurrent inventory/read incorrectly report missing data.
@@ -827,8 +857,15 @@ fn checked_zip<'a>(
     for i in 0..archive.len() {
         ensure!(!cancelled(), "cancelled");
         let file = archive.by_index(i).context("invalid_package: ZIP entry")?;
-        crate::security_packages::check_local_header(&mut std::io::Cursor::new(bytes),file.header_start())?;
-        ensure!(file.extra_data().is_none_or(|data|!crate::security_packages::has_zip64(data)),"unsupported_format: ZIP64 entry");
+        crate::security_packages::check_local_header(
+            &mut std::io::Cursor::new(bytes),
+            file.header_start(),
+        )?;
+        ensure!(
+            file.extra_data()
+                .is_none_or(|data| !crate::security_packages::has_zip64(data)),
+            "unsupported_format: ZIP64 entry"
+        );
         let name = std::str::from_utf8(file.name_raw())
             .context("invalid_package: ZIP file name must be UTF-8")?;
         ensure!(
@@ -978,6 +1015,31 @@ fn cleanup_stale(base: &Path, current: &str) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shared_standard_root_keeps_private_data_local_and_refuses_shared_deletion() {
+        let a=tempfile::tempdir().unwrap();let b=tempfile::tempdir().unwrap();let shared=tempfile::tempdir().unwrap();
+        let first=FsSecurityData::with_standard_root(a.path(),shared.path()).unwrap();
+        let second=FsSecurityData::with_standard_root(b.path(),shared.path()).unwrap();
+        let value=standard("shared");let id=StandardId::OwaspAsvs;let version="5.0.0";
+        first.begin_install(id,&version).unwrap().commit(value).unwrap();
+        let installed=second.read(id,&version).unwrap().unwrap();
+        assert_eq!(first.read(id,&version).unwrap().unwrap().metadata.files,installed.metadata.files);
+        assert!(second.read_export_source(id,&version).unwrap().is_some());
+        let pin=second.pin(id,&version).unwrap();
+        assert!(first.begin_install(id,&version).is_err());drop(pin);
+        first.remember_policy("project",&Default::default()).unwrap();
+        assert!(a.path().join("security/references").exists());
+        assert!(!shared.path().join("security").exists());
+        assert!(first.remove(id,&version).unwrap_err().to_string().contains("shared_data"));
+        assert!(second.read(id,&version).unwrap().is_some());
+    }
+    #[test]
+    fn an_unavailable_custom_root_is_not_an_empty_local_inventory() {
+        let private=tempfile::tempdir().unwrap();let shared=tempfile::tempdir().unwrap();
+        let path=shared.path().join("missing");
+        assert!(FsSecurityData::with_standard_root(private.path(),&path).is_err());
+        assert!(!private.path().join("security/standards").exists());
+    }
     use speclink_core::security::data::{IntegrityKind, StandardRepository, ValidatedStandard};
     use speclink_core::security::standards::{standard_source, StandardId};
     use std::collections::BTreeMap;

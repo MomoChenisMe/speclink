@@ -88,7 +88,7 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot) or a
+/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot, antigravity) or a
 /// custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
@@ -155,7 +155,7 @@ impl ToolDescriptor {
             return Err(format!(
                 "tool descriptor: name '{name}' conflicts with a built-in tool name ({}){}",
                 crate::skills::Tool::supported_names(),
-                if name == "copilot" { "; rename it to copilot-custom to retain skills_dir/invocation, or use the built-in string copilot" } else { "" }
+                if matches!(name, "copilot" | "antigravity") { format!("; rename it to {name}-custom to retain skills_dir/invocation, or use the built-in string {name}") } else { String::new() }
             ));
         }
         // skills_dir 在這個邊界一次正規化：削去結尾分隔符，讓生成、足跡記錄與過期
@@ -359,6 +359,28 @@ pub struct WorkflowConfig {
     pub review: Option<ReviewConfig>,
     #[serde(default)]
     pub security_verification: Option<crate::security::policy::SecurityPolicy>,
+    #[serde(default)]
+    pub check_records: Option<CheckRecordsConfig>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct CheckRecordsConfig {
+    pub archive: ArchiveRecords,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct ArchiveRecords {
+    pub review: bool,
+    pub verify: bool,
+    pub security: bool,
+}
+
+impl Default for ArchiveRecords {
+    fn default() -> Self {
+        Self { review: true, verify: true, security: true }
+    }
 }
 
 /// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
@@ -626,6 +648,10 @@ impl WorkflowConfig {
 
     pub fn security(&self) -> crate::security::policy::SecurityPolicy {
         self.security_verification.clone().unwrap_or_default()
+    }
+
+    pub fn check_records(&self) -> CheckRecordsConfig {
+        self.check_records.clone().unwrap_or_default()
     }
 }
 

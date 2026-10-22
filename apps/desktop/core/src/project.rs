@@ -121,7 +121,7 @@ pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
 
 /// 對未初始化目錄執行與 `speclink init` 等效的初始化（design D3：消費
 /// `speclink_core::init::init`，force=false、spec_dir 固定 openspec），成功後
-/// 重跑三態判定回報命中的專案。`tools` 為內建工具名（claude／codex／copilot）；
+/// 重跑三態判定回報命中的專案。`tools` 為內建工具名（claude／codex／copilot／antigravity）；
 /// 未知名在任何寫入之前被拒，單行 Err。
 pub fn init_project_at(path: &Path, tools: &[String]) -> Result<ProjectProbe, String> {
     let selected = speclink_core::init::parse_tool_names(tools).map_err(|e| e.to_string())?;

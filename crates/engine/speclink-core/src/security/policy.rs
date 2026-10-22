@@ -122,6 +122,7 @@ impl Default for SecurityReviews {
 #[serde(rename_all = "camelCase", try_from = "PolicyInput")]
 pub struct SecurityPolicy {
     pub enabled: bool,
+    pub required_for_acceptance: bool,
     pub scope: SecurityScope,
     pub standards: SecurityStandards,
     pub reviews: SecurityReviews,
@@ -133,6 +134,8 @@ pub struct SecurityPolicy {
 #[serde(default, rename_all = "camelCase")]
 struct PolicyInput {
     enabled: bool,
+    #[serde(alias = "required_for_acceptance")]
+    required_for_acceptance: bool,
     scope: SecurityScope,
     standards: SecurityStandards,
     reviews: SecurityReviews,
@@ -147,6 +150,7 @@ impl TryFrom<PolicyInput> for SecurityPolicy {
     fn try_from(input: PolicyInput) -> std::result::Result<Self, String> {
         let policy = Self {
             enabled: input.enabled,
+            required_for_acceptance: input.required_for_acceptance,
             scope: input.scope,
             standards: input.standards,
             reviews: input.reviews,
@@ -159,6 +163,12 @@ impl TryFrom<PolicyInput> for SecurityPolicy {
 }
 
 impl SecurityPolicy {
+    /// Only review behavior affects evidence freshness; acceptance is evaluated separately.
+    pub fn review_digest(&self) -> Result<String> {
+        let mut policy = self.clone();
+        policy.required_for_acceptance = false;
+        Ok(super::data::sha256(&serde_json::to_vec(&policy)?))
+    }
     pub fn validate(&self) -> Result<()> {
         let standards = &self.standards;
         for (id, enabled, version, allowed) in [
@@ -253,9 +263,32 @@ fn strict_strings<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Vec<St
         .collect()
 }
 
+/// Capability negotiation inspects the same bounded YAML mapping accepted by patches.
+pub fn acceptance_patch_requested(patch:&str)->Result<bool>{
+    ensure!(patch.len()<=MAX_POLICY_PATCH_BYTES,"size_limit: security policy patch");
+    let map:Mapping=serde_yaml::from_str(patch).map_err(|_|anyhow::anyhow!("invalid_config: security policy patch"))?;
+    Ok(map.contains_key(Value::String("required_for_acceptance".into())))
+}
+
 /// Apply only known leaves. The original raw mapping is the preservation and
 /// verification oracle; serializing SecurityPolicy would drop future fields.
 pub fn patch_workflow_security(original: &str, patch: &str) -> Result<String> {
+    const LEAVES: &[&str] = &[
+        "enabled", "required_for_acceptance", "scope", "reviews.spec", "reviews.code",
+        "reviews.api_boundary", "disabled_rules", "exclude_dirs",
+        "standards.owasp_top10.enabled", "standards.owasp_top10.version",
+        "standards.owasp_api_top10.enabled", "standards.owasp_api_top10.version",
+        "standards.owasp_asvs.enabled", "standards.owasp_asvs.version", "standards.owasp_asvs.level",
+        "standards.cwe.enabled", "standards.cwe.version",
+    ];
+    patch_workflow_section(original, patch, "security_verification", LEAVES)
+}
+
+pub fn patch_workflow_check_records(original: &str, patch: &str) -> Result<String> {
+    patch_workflow_section(original, patch, "check_records", &["archive.review", "archive.verify", "archive.security"])
+}
+
+fn patch_workflow_section(original: &str, patch: &str, section: &str, leaves: &[&str]) -> Result<String> {
     ensure!(
         patch.len() <= MAX_POLICY_PATCH_BYTES,
         "security policy patch exceeds 64 KiB"
@@ -270,7 +303,7 @@ pub fn patch_workflow_security(original: &str, patch: &str) -> Result<String> {
         !patch.is_empty(),
         "security policy patch must be a nonempty mapping"
     );
-    validate_patch(&patch, "")?;
+    validate_patch(&patch, "", leaves)?;
     let base = if matches!(original.trim(), "{}" | "null" | "~") {
         ""
     } else {
@@ -284,13 +317,13 @@ pub fn patch_workflow_security(original: &str, patch: &str) -> Result<String> {
         .as_mapping_mut()
         .ok_or_else(|| anyhow::anyhow!("workflow config must be a mapping"))?;
     let current = root
-        .entry(Value::String("security_verification".into()))
+        .entry(Value::String(section.into()))
         .or_insert(Value::Mapping(Mapping::new()));
     merge_patch(current, &Value::Mapping(patch.clone()))?;
     let target_text = serde_yaml::to_string(&expected)?;
     crate::config::WorkflowConfig::from_text(Some(&target_text))?;
     let mut top = Mapping::new();
-    top.insert("security_verification".into(), Value::Mapping(patch));
+    top.insert(section.into(), Value::Mapping(patch));
     let eol = if base.contains("\r\n") { "\r\n" } else { "\n" };
     let output = rewrite_mapping(base, &top, 0, eol)?;
     let actual: Value = serde_yaml::from_str(&output)?;
@@ -302,25 +335,8 @@ pub fn patch_workflow_security(original: &str, patch: &str) -> Result<String> {
     Ok(output)
 }
 
-fn validate_patch(patch: &Mapping, prefix: &str) -> Result<()> {
-    const LEAVES: &[&str] = &[
-        "enabled",
-        "scope",
-        "reviews.spec",
-        "reviews.code",
-        "reviews.api_boundary",
-        "disabled_rules",
-        "exclude_dirs",
-        "standards.owasp_top10.enabled",
-        "standards.owasp_top10.version",
-        "standards.owasp_api_top10.enabled",
-        "standards.owasp_api_top10.version",
-        "standards.owasp_asvs.enabled",
-        "standards.owasp_asvs.version",
-        "standards.owasp_asvs.level",
-        "standards.cwe.enabled",
-        "standards.cwe.version",
-    ];
+fn validate_patch(patch: &Mapping, prefix: &str, leaves: &[&str]) -> Result<()> {
+    ensure!(!patch.is_empty(), "policy patch must contain a leaf value");
     for (key, value) in patch {
         let key = key
             .as_str()
@@ -330,11 +346,11 @@ fn validate_patch(patch: &Mapping, prefix: &str) -> Result<()> {
         } else {
             format!("{prefix}.{key}")
         };
-        if LEAVES.contains(&path.as_str()) {
+        if leaves.contains(&path.as_str()) {
             ensure!(!value.is_mapping(), "invalid security policy leaf: {path}");
         } else {
             ensure!(
-                LEAVES
+                leaves
                     .iter()
                     .any(|leaf| leaf.starts_with(&(path.clone() + "."))),
                 "unknown security policy patch key: {path}"
@@ -344,6 +360,7 @@ fn validate_patch(patch: &Mapping, prefix: &str) -> Result<()> {
                     .as_mapping()
                     .ok_or_else(|| anyhow::anyhow!("{path} must be a mapping"))?,
                 &path,
+                leaves,
             )?;
         }
     }

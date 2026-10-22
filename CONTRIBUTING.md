@@ -55,6 +55,10 @@ If you do not use an AI agent, the CLI does the same work: `speclink new change 
 
 ## Write commit messages
 
+GitHub's Contributors sidebar is calculated from eligible commits, not from a list in the README. Use an author email linked to your GitHub account and check again after the work reaches the repository's default branch. A fork retains upstream history, so it will not necessarily show only the fork's maintainers.
+
+For a real co-author, add a `Co-authored-by: Name <email>` trailer using that person's GitHub-linked email. Codex is credited here as an AI development tool; do not invent a bot account or email, rewrite upstream authorship, or promise that a README credit creates a sidebar contributor. See [GitHub's contributor rules](https://docs.github.com/en/repositories/viewing-activity-and-data-for-your-repository/viewing-a-projects-contributors) and [multiple-author commits](https://docs.github.com/en/pull-requests/how-tos/commit-changes/creating-a-commit-with-multiple-authors).
+
 Use [Conventional Commits](https://www.conventionalcommits.org/):
 
 ```text

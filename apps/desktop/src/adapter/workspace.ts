@@ -57,6 +57,7 @@ export interface SettingsSnapshot {
     /** worktree 政策現值；remote 快照恆為 false（該面不支援此軸）。 */
     worktree: boolean;
     securityVerification?: SecurityPolicy;
+    checkRecords?: import("./security").CheckRecordsConfig;
     /** 專案說明現值（config.yaml 的 context；null＝未設定）。 */
     context: string | null;
     /** 產出規則現值（依 artifact id 分組；條目順序即檔案順序）。 */
@@ -87,6 +88,7 @@ export interface WorkflowFields {
   worktree: boolean;
   /** JSON (a YAML mapping) containing only edited security leaves. */
   securityPatch?: string;
+  checkRecordsPatch?: string;
 }
 
 /** probe_assets 的回報（引擎 AssetProbe 的 camelCase 序列化）：
@@ -163,6 +165,7 @@ export function createWorkspaceSettings(
         audit: fields.audit,
         worktree: fields.worktree,
         ...(fields.securityPatch === undefined ? {} : { securityPatch: fields.securityPatch }),
+          ...(fields.checkRecordsPatch === undefined ? {} : { checkRecordsPatch: fields.checkRecordsPatch }),
       }),
     writeWorkflowContext: (context) =>
       invoke("write_workflow_content", { root, context, rules: null }),
@@ -188,6 +191,8 @@ export function createRemoteSettings(
   policyWrite: boolean,
   invoke: InvokeFn = tauriInvoke as InvokeFn,
   securityReview = true,
+  securityReviewV2 = false,
+  checkHistory = false,
 ): WorkspaceSettingsProvider {
   const scope = { connectionId, project, repo };
   let revision: number | null = null;
@@ -206,7 +211,7 @@ export function createRemoteSettings(
   return {
     kind: "remote",
     policyWrite,
-    securityReview,
+    securityReview,securityReviewV2,checkHistory,
     rememberSecurityPolicy: securityReview ? (policy) => invoke("security_remember_policy",{key:`remote:${connectionId}/${project}/${repo}`,policy}) : undefined,
     readSettings: async () => {
       const snapshot = await invoke<SettingsSnapshot>("remote_read_settings", scope);
@@ -217,7 +222,7 @@ export function createRemoteSettings(
     // kind 不渲染入口，拒絕是第二道防線，非 Refused Bequest（介面成員對 remote
     // 語意上就是「尚不支援」，與 writeAppTools 同款）。
     writeAppTools: () => Promise.reject(new Error("remote Workflow 無 .speclink.yaml 工具設定")),
-    writeWorkflowConfig: (fields) => fields.securityPatch && !securityReview ? Promise.reject(new Error("unsupported_version")) :
+    writeWorkflowConfig: (fields) => (fields.securityPatch && !securityReview)||(fields.checkRecordsPatch&&!checkHistory)||(fields.securityPatch&&JSON.parse(fields.securityPatch).required_for_acceptance!==undefined&&!securityReviewV2) ? Promise.reject(new Error("unsupported_version")) :
       adoptRevision(
         invoke<number>("remote_write_workflow_config", {
           ...scope,
@@ -227,6 +232,7 @@ export function createRemoteSettings(
           audit: fields.audit,
           expectedRevision: expectedRevision(),
           ...(fields.securityPatch === undefined ? {} : { securityPatch: fields.securityPatch }),
+          ...(fields.checkRecordsPatch === undefined ? {} : { checkRecordsPatch: fields.checkRecordsPatch }),
         }),
       ),
     writeWorkflowContext: (context) =>

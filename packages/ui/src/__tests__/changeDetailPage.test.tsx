@@ -2238,3 +2238,30 @@ describe("變更文件的籤、數字磚、提示框與跳轉", () => {
   });
 });
 
+
+describe('提案檢查紀錄文件樹',()=>{
+ const record=(id:string,date:string,kind='review')=>({recordId:id,kind,createdAt:date,outcome:'passed',relativePath:`checks/${kind}/${id}.md`,contentDigest:'a'.repeat(64)});
+ it('顯示歷次審查、驗證與安全文件，內容唯讀並遮罩',async()=>{
+  const records=[record('r1','2026-10-19'),record('r2','2026-10-20'),record('v1','2026-10-20','verify'),record('s1','2026-10-20','security')];
+  const checks={list:vi.fn().mockResolvedValue(records),read:vi.fn().mockResolvedValue('## 已保存紀錄\n\n[REDACTED] <script>alert(1)</script>')};
+  render(<ChangeDetailPage {...makeProps({checkRecords:checks})}/>);
+  expect(await screen.findByText('檢查紀錄')).toBeTruthy();fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-19/}));
+  expect(await screen.findByText('已保存紀錄')).toBeTruthy();expect(checks.read).toHaveBeenCalledWith(change.name,records[0]);expect(document.querySelector('script')).toBeNull();
+  expect(screen.getByRole('tab',{name:/安全審查.*2026-10-20/})).toBeTruthy();
+  const security=screen.getByRole('tab',{name:/安全審查.*2026-10-20/});security.focus();fireEvent.keyDown(security,{key:'Enter'});await waitFor(()=>expect(checks.read).toHaveBeenLastCalledWith(change.name,records[3]));
+ });
+ it('切換專案時遲到的文件不覆蓋新的提案，讀取失敗不借用舊內容',async()=>{
+  let settle!:(value:string)=>void;const old={list:vi.fn().mockResolvedValue([record('old','2026-10-19')]),read:vi.fn().mockImplementation(()=>new Promise<string>(resolve=>{settle=resolve}))};
+  const view=render(<ChangeDetailPage {...makeProps({checkRecords:old})}/>);fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-19/}));await waitFor(()=>expect(old.read).toHaveBeenCalled());
+  const next={list:vi.fn().mockRejectedValue(new Error('offline')),read:vi.fn()};view.rerender(<ChangeDetailPage {...makeProps({change:{...change,name:'other-change'},checkRecords:next})}/>);await act(async()=>{settle('舊專案秘密內容')});
+  expect(screen.queryByText('舊專案秘密內容')).toBeNull();expect((await screen.findByRole('alert')).textContent).toContain('offline');expect(next.read).not.toHaveBeenCalled();
+ });
+})
+
+it('同一提案的遠端查詢失敗時保留已載入唯讀紀錄並顯示錯誤',async()=>{
+ const entry={recordId:'r1',kind:'review',createdAt:'2026-10-20',outcome:'passed',relativePath:'checks/review/r1.md',contentDigest:'a'.repeat(64)};
+ const checks={list:vi.fn().mockResolvedValue([entry]),read:vi.fn().mockResolvedValue('## 已載入的遠端紀錄\n\n唯讀內容。')};const props=makeProps({checkRecords:checks});const view=render(<ChangeDetailPage {...props}/>);
+ fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-20/}));await screen.findByText('已載入的遠端紀錄');
+ checks.list.mockRejectedValue(new Error('offline'));checks.read.mockRejectedValue(new Error('offline'));view.rerender(<ChangeDetailPage {...props} refreshGen={1}/>);
+ await waitFor(()=>expect(screen.getAllByRole('alert').some(e=>e.textContent?.includes('offline'))).toBe(true));expect(within(screen.getByRole('tabpanel')).getByText('已載入的遠端紀錄')).toBeTruthy();
+})

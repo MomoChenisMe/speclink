@@ -28,7 +28,7 @@ import {
 import { latestOf } from "./UpdatesPage";
 
 /** 倉庫網址（原生選單的 GitHub／回報問題也用它；能力檔另放行安全標準的官方來源／授權）。 */
-export const REPO_URL = "https://github.com/MomoChenisMe/speclink";
+export const REPO_URL = "https://github.com/mosutw/speclink";
 export const ISSUE_URL = `${REPO_URL}/issues/new`;
 const DOCS_URL = `${REPO_URL}/tree/main/docs`;
 
@@ -110,6 +110,7 @@ export function AboutPage({
       </Card>
 
       <SettingsCard title={t("about.linksCard")}>
+        <SettingsLinkRow label={t("updater.sources.original")} description="MomoChenisMe / Speclink" onClick={()=>openExternal("https://github.com/MomoChenisMe/speclink")} />
         <SettingsLinkRow
           label={t("about.source")}
           description={<span className="font-mono">{REPO_URL.replace(/^https:\/\//, "")}</span>}

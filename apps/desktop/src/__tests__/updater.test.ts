@@ -30,6 +30,25 @@ function replay(events: Parameters<typeof reduceUpdater>[1][]): UpdaterState {
 }
 
 describe("更新狀態機（core/updater）", () => {
+  it("只有手動安裝檔時不進下載流程，也不冒稱已是最新", async () => {
+    const store = createAppStore({ createSession: () => { throw new Error("not used"); }, updater: {
+      check: vi.fn().mockResolvedValue({version:"0.10.0.4",manualUrl:"https://github.com/mosutw/speclink/releases"}), relaunch: vi.fn(),
+    } });
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updater).toEqual({phase:"manual",version:"0.10.0.4",url:"https://github.com/mosutw/speclink/releases"});
+    await store.getState().acceptUpdate();
+    expect(store.getState().updater.phase).toBe("manual");
+  });
+  it("背景失敗仍記錄安全錯誤代碼及 operationId，成功時清除舊錯誤", async () => {
+    const check = vi.fn().mockRejectedValueOnce({ code: "proxy-auth", operationId: "op-one", message: "secret" }).mockResolvedValueOnce(null);
+    const store = createAppStore({ createSession: () => { throw new Error("not used"); }, updater: { check, relaunch: vi.fn() } });
+    await store.getState().checkForUpdates(false);
+    expect(store.getState().updater).toEqual({ phase: "idle" });
+    expect(store.getState().updaterLastCheck).toEqual({ checkedAt: expect.any(Number), status: "failed", errorCode: "proxy-auth", operationId: "op-one" });
+    expect(JSON.stringify(store.getState().updaterLastCheck)).not.toContain("secret");
+    await store.getState().checkForUpdates(true);
+    expect(store.getState().updaterLastCheck).toEqual({ checkedAt: expect.any(Number), status: "up-to-date", errorCode: null, operationId: null });
+  });
   it("閒置→檢查中→發現新版（含目標版本）→同意→下載→待重啟", () => {
     let state: UpdaterState = initialUpdaterState;
     expect(state).toEqual({ phase: "idle" });
@@ -472,14 +491,47 @@ describe("前景重檢 store 接線（recheckOnFocus）", () => {
 });
 
 vi.mock("@tauri-apps/api/core",()=>({invoke:vi.fn()}));
+vi.mock("@tauri-apps/api/app",()=>({getVersion:vi.fn().mockResolvedValue("0.10.0.3")}));
+it("描述檔404才轉本分支手動更新，TLS失敗不被掩蓋", async () => {
+  const {invoke}=await import("@tauri-apps/api/core");
+  const {tauriUpdaterAdapter}=await import("../adapter/updater");
+  vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"http",httpStatus:404})
+    .mockResolvedValueOnce({version:"0.10.0.4",releaseUrl:"https://github.com/mosutw/speclink/releases/tag/desktop-v0.10.0.4"});
+  expect(await tauriUpdaterAdapter().check()).toEqual({version:"0.10.0.4",manualUrl:"https://github.com/mosutw/speclink/releases/tag/desktop-v0.10.0.4"});
+  expect(invoke).toHaveBeenLastCalledWith("desktop_release",{repo:"fork"});
+  vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"tls"});
+  await expect(tauriUpdaterAdapter().check()).rejects.toEqual({code:"tls"});
+  expect(invoke).toHaveBeenCalledTimes(1);
+});
 vi.mock("@tauri-apps/plugin-updater",()=>({check:vi.fn()}));
 it("更新adapter透過Rust保留候選更新id，下載及安裝沿用同一候選",async()=>{
  const {invoke}=await import("@tauri-apps/api/core");
  const {tauriUpdaterAdapter}=await import("../adapter/updater");
- vi.mocked(invoke).mockResolvedValueOnce({id:"candidate-one",version:"1.0.0"}).mockResolvedValue(undefined);
+ vi.mocked(invoke).mockReset().mockResolvedValueOnce({id:"candidate-one",version:"1.0.0"}).mockResolvedValue(undefined);
  const pending=await tauriUpdaterAdapter().check();
  expect(invoke).toHaveBeenCalledWith("updater_check");expect(pending?.version).toBe("1.0.0");
- await pending?.download();await pending?.install();
+ if(pending && !("manualUrl" in pending)) { await pending.download();await pending.install(); }
  expect(invoke).toHaveBeenCalledWith("updater_download",{id:"candidate-one"});
  expect(invoke).toHaveBeenCalledWith("updater_install",{id:"candidate-one"});
+});
+
+it.each(["0.10.0.4", "0.10.0.10", "0.11.0"])('installed %s does not suggest the same or older fork release', async (installed) => {
+ const {getVersion}=await import("@tauri-apps/api/app");
+ const {invoke}=await import("@tauri-apps/api/core");
+ const {tauriUpdaterAdapter}=await import("../adapter/updater");
+ vi.mocked(getVersion).mockResolvedValueOnce(installed);
+ vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"parse"}).mockResolvedValueOnce({version:"0.10.0.4",releaseUrl:"https://github.com/mosutw/speclink/releases/tag/desktop-v0.10.0.4"});
+ expect(await tauriUpdaterAdapter().check()).toBeNull();
+});
+
+it.each([
+  ["0.10.0.2", false], ["0.10.0.3", false], ["0.10.0.4", true], ["0.10.1", true],
+])("實際安裝 build.3 時只接受較新的本分支 %s", async (version, newer) => {
+ const {getVersion}=await import("@tauri-apps/api/app");
+ const {invoke}=await import("@tauri-apps/api/core");
+ const {tauriUpdaterAdapter}=await import("../adapter/updater");
+ vi.mocked(getVersion).mockResolvedValueOnce("0.10.0-build.3");
+ const url=`https://github.com/mosutw/speclink/releases/tag/desktop-v${version}`;
+ vi.mocked(invoke).mockReset().mockRejectedValueOnce({code:"parse"}).mockResolvedValueOnce({version,releaseUrl:url});
+ expect(await tauriUpdaterAdapter().check()).toEqual(newer ? {version,manualUrl:url} : null);
 });

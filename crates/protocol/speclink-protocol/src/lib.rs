@@ -15,6 +15,7 @@ pub mod drift;
 pub mod error;
 pub mod events;
 pub mod query;
+pub mod security;
 
 /// The contract major version this protocol speaks — sent as the
 /// `X-Speclink-Api-Version` request header and declared back by the server

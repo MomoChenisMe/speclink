@@ -8,7 +8,7 @@ export type GroupId = 'plan' | 'build' | 'quality' | 'ship' | 'other'
 export const GROUPS: { id: GroupId; skills: string[] }[] = [
   { id: 'plan', skills: ['discuss', 'improve', 'propose', 'ingest'] },
   { id: 'build', skills: ['apply', 'apply-with-worktree'] },
-  { id: 'quality', skills: ['quality', 'review', 'verify'] },
+  { id: 'quality', skills: ['quality', 'review', 'verify', 'security-review'] },
   { id: 'ship', skills: ['archive', 'archive+commit', 'worktree-merge'] },
   {
     id: 'other',

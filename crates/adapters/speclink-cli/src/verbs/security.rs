@@ -23,6 +23,16 @@ pub(crate) struct SecurityArgs {
 }
 #[derive(Subcommand)]
 enum SecurityCommand {
+    /// Submit or inspect deep security reviews attached to a proposal
+    Review {
+        #[command(subcommand)]
+        command: ReviewCommand,
+    },
+    /// Prepare the local knowledge snapshot from already installed data
+    Kb {
+        #[command(subcommand)]
+        command: KnowledgeCommand,
+    },
     /// Run built-in preliminary rules entirely offline
     Run(TargetArgs),
     /// Explicitly prepare policy and SDD artifacts for offline review
@@ -35,6 +45,8 @@ enum SecurityCommand {
     /// Read an existing redacted report without rescanning
     Report {
         id: String,
+        #[arg(long)]
+        change: Option<String>,
         #[arg(long, value_enum, default_value = "json")]
         format: Format,
     },
@@ -42,6 +54,45 @@ enum SecurityCommand {
     Data {
         #[command(subcommand)]
         command: DataCommand,
+    },
+}
+#[derive(Subcommand)]
+enum ReviewCommand {
+    Accept {
+        change: String,
+        #[arg(long, required=true)]
+        stdin: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    AddRound {
+        change: String,
+        #[arg(long, required=true)]
+        stdin: bool,
+        #[arg(long)]
+        json: bool,
+    },
+    Show { change: String, #[arg(long)] json: bool },
+}
+#[derive(serde::Deserialize)]
+#[serde(rename_all="camelCase", deny_unknown_fields)]
+struct LegacyReportImport {
+    legacy_import_report_id: String,
+}
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum ReviewRoundInput {
+    Legacy(LegacyReportImport),
+    Deep(speclink_core::security::report::DeepReportInput),
+}
+#[derive(Subcommand)]
+enum KnowledgeCommand {
+    /// Build .security_kb without downloading resources
+    Prepare {
+        #[arg(long)]
+        root: Option<PathBuf>,
+        #[arg(long)]
+        json: bool,
     },
 }
 #[derive(Args)]
@@ -157,7 +208,33 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         return Ok(());
     }
     let application_data = speclink_host::context::security_data_dir()?;
-    let repository = speclink_fs::security::FsSecurityData::new(&application_data)?;
+    if let SecurityCommand::Report { id, change, format } = &args.command {
+        if let Some(change) = change {
+            let location = target_location(&TargetArgs {root:None,change:Some(change.clone()),json:false})?;
+            if location.remote.is_some() {
+                let report=remote_call(&location,|client|client.security_change_report(change,id))?;
+                let report=speclink_core::security::report::VersionedReport::from_json(&serde_json::to_vec(&report)?)?;
+                println!("{}",match format {Format::Json=>report.json()?,Format::Markdown=>report.markdown()});return Ok(());
+            }
+            let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
+            let report = speclink_core::security::report::read_change_report(&store,change,id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
+            println!("{}", match format { Format::Json=>report.json()?,Format::Markdown=>report.markdown() });
+            return Ok(());
+        }
+        let reports =
+            speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
+        let text = security::export_report(
+            &reports,
+            id,
+            match format {
+                Format::Json => security::ReportFormat::Json,
+                Format::Markdown => security::ReportFormat::Markdown,
+            },
+        )?;
+        println!("{text}");
+        return Ok(());
+    }
+    let repository = crate::common::security_repository(&application_data)?;
     let job = DataJob::new(cancelled.clone());
     let progress = |p: speclink_core::security::JobProgress| {
         eprintln!(
@@ -166,21 +243,31 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
         );
     };
     match args.command {
-        SecurityCommand::Rules { .. } => unreachable!(),
-        SecurityCommand::Report { id, format } => {
-            let reports =
-                speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
-            let text = security::export_report(
-                &reports,
-                &id,
-                match format {
-                    Format::Json => security::ReportFormat::Json,
-                    Format::Markdown => security::ReportFormat::Markdown,
-                },
-            )?;
-            println!("{text}");
-            Ok(())
+        SecurityCommand::Review { command } => review_command(command, &application_data, &repository, cancelled),
+        SecurityCommand::Kb { command: KnowledgeCommand::Prepare { root, json } } => {
+            let args = TargetArgs { root, change: None, json };
+            let location = target_location(&args)?;
+            let prepared = speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
+            let target = location.review_target(&prepared, None)?;
+            let cache_key=target.binding.project_key();
+            let key = target.knowledge_project_key();
+            let policy_text = if target.binding.is_remote() {
+                prepared.load_policy(&cache_key, None)?.ok_or_else(|| anyhow::anyhow!("missing_preparation"))?.policy_text
+            } else {
+                location.reader.read_optional_text(&format!("{}/config.yaml", location.spec_dir), 64 * 1024, &|| None)?.unwrap_or_default()
+            };
+            let receipt = speclink_fs::security::knowledge::prepare(location.reader.root(), &key, &policy_text, &repository, &|| cancelled.load(Ordering::Relaxed))?;
+            if json { crate::common::print_json(&receipt) } else {
+                println!("Prepared knowledge at {} · {} files, {} bytes · {}", receipt.path, receipt.files, receipt.bytes, receipt.knowledge_digest);
+                println!("projectKey: {}\npolicyDigest: {}", receipt.project_key, receipt.policy_digest);
+                for standard in &receipt.standards {
+                    println!("standardId: {} · version: {} · dataSha256: {}", standard.standard_id.as_str(), standard.version, standard.data_sha256);
+                }
+                Ok(())
+            }
         }
+        SecurityCommand::Rules { .. } => unreachable!(),
+        SecurityCommand::Report { .. } => unreachable!(),
         SecurityCommand::Run(args) => {
             let prepared =
                 speclink_fs::security::prepared::FsPreparedReviews::new(&application_data)?;
@@ -188,12 +275,15 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
             let target = location.review_target(&prepared, args.change.clone())?;
             let reports =
                 speclink_fs::security::reports::FsSecurityReports::new(&application_data)?;
+            let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
+            let proposal = args.change.as_deref().filter(|_|location.remote.is_none()).map(|change|security::ProposalReports {store:&store,change});
+            let selected_reports: &dyn speclink_core::security::report::ReportRepository = proposal.as_ref().map(|p|p as _).unwrap_or(&reports);
             let outcome = security::run_review(
                 &target,
                 Some(&location.reader),
                 &repository,
                 &prepared,
-                &reports,
+                selected_reports,
                 &ReviewBudget::new(cancelled),
                 &progress,
             )?;
@@ -202,6 +292,7 @@ fn security_command(args: SecurityArgs, cancelled: Arc<AtomicBool>) -> Result<()
             } else {
                 println!("{}", outcome.report.summary());
             }
+            if location.remote.is_some()&&args.change.is_some(){eprintln!("pending_publication: saved a device draft; explicitly publish it with security review add-round");}
             for warning in outcome.receipt.warnings {
                 eprintln!("{warning}");
             }
@@ -460,6 +551,83 @@ fn print_inventory(data: security_data::StandardDataList, json: bool) -> Result<
     Ok(())
 }
 
+fn review_command(command: ReviewCommand, application_data: &std::path::Path, data: &dyn StandardRepository, cancelled: Arc<AtomicBool>) -> Result<()> {
+    use speclink_core::{security::report::*, store::Store};
+    let (change,json) = match &command {ReviewCommand::Show{change,json}|ReviewCommand::AddRound{change,json,..}|ReviewCommand::Accept{change,json,..}=>(change.clone(),*json)};
+    let location = target_location(&TargetArgs {root:None,change:Some(change.clone()),json})?;
+    if location.remote.is_some(){return remote_review_command(command,&location,application_data,data,cancelled);}
+    speclink_core::security::prepared::validate_change(Some(&change))?;
+    let store = speclink_fs::FsStore::new(location.reader.root(), &location.spec_dir);
+    speclink_core::history::index(&store,&change)?;
+    let prepared = speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
+    let target = location.review_target(&prepared,Some(change.clone()))?;
+    match command {
+        ReviewCommand::Accept {stdin:_,..} => {
+            use std::io::Read;
+            let mut bytes=Vec::new();std::io::stdin().take(16*1024+1).read_to_end(&mut bytes)?;
+            anyhow::ensure!(bytes.len()<=16*1024,"size_limit: security acceptance input");
+            let input:AcceptRiskInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_security_decision: input JSON"))?;
+            let receipt=security::accept_current_risk(&target,&location.reader,data,&store,input,speclink_host::context::git_identity(location.reader.root()),&ReviewBudget::new(cancelled))?;
+            if json {crate::common::print_json(&receipt)} else {println!("Accepted security risk {} · report {} · finding {}",receipt.decision_id,receipt.report_id,receipt.finding_id);Ok(())}
+        },
+        ReviewCommand::AddRound {stdin:_,..} => {
+            use std::io::Read;
+            let mut bytes=Vec::new(); std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;
+            anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
+            let input:ReviewRoundInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: submission JSON"))?;
+            let input=match input {
+              ReviewRoundInput::Legacy(input) => {
+                anyhow::ensure!(store.change_exists(&change), "unknown_change");
+                let reports = speclink_fs::security::reports::FsSecurityReports::new(application_data)?;
+                let report=reports.get(&input.legacy_import_report_id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
+                anyhow::ensure!(report.project_key()==target.binding.project_key() && report.change_name()==Some(change.as_str()),"binding_mismatch");
+                save_legacy_change_report(&store,&change,&report)?;
+                let result=serde_json::json!({"reportId":report.report_id(),"changeName":change,"relativePath":format!("checks/security/{}/report.md",report.report_id()),"complete":report.is_complete()});
+                if json { return crate::common::print_json(&result); }
+                println!("Imported legacy report {} · excluded from acceptance",report.report_id()); return Ok(());
+              }
+              ReviewRoundInput::Deep(input) => input,
+            };
+            let (context,builtin)=security::submission_context(&target,&location.reader,data,&store,speclink_host::context::git_identity(location.reader.root()),&ReviewBudget::new(cancelled))?;
+            let receipt=security::add_deep_round(&store,&change,input,context,builtin)?;
+            if json {crate::common::print_json(&receipt)} else {println!("Saved security review {} · {} · complete: {}",receipt.report_id,receipt.relative_path,receipt.complete);Ok(())}
+        },
+        ReviewCommand::Show {..} => {
+            let policy_text=location.reader.read_optional_text(&format!("{}/config.yaml",location.spec_dir),64*1024,&||None)?;
+            let policy = speclink_core::config::WorkflowConfig::from_text(policy_text.as_deref()).map_err(|_|anyhow::anyhow!("invalid_config: workflow policy could not be parsed"))?.security();
+            let mut reason=None;
+            let mut fresh=None;
+            let submission=if store.change_exists(&change) {
+                match security::submission_context(&target,&location.reader,data,&store,None,&ReviewBudget::new(cancelled)) {
+                    Ok((context,builtin))=>{fresh=Some(security::fresh_evidence(&context));let mut s=security::Submission::from(&context);s.builtin_report_id=builtin;Some(s)},
+                    Err(error)=>{reason=Some(error.to_string().split(':').next().unwrap_or("source_freshness_unverified").to_owned());None}
+                }
+            } else {None};
+            let mut result=security::review_view(&store,&change,&target.binding.project_key(),&policy,fresh.as_ref())?;
+            result.submission=submission.map(|s|serde_json::from_value(serde_json::to_value(s)?)).transpose()?;
+            if let Some(reason)=reason {if !result.acceptance.reasons.contains(&reason){result.acceptance.reasons.push(reason);}}
+            print_security_review(&result,json)
+        }
+    }
+}
+
+fn print_security_review(view: &speclink_protocol::security::SecurityReviewView, json: bool) -> Result<()> {
+    if json { return crate::common::print_json(view); }
+    println!("Security reviews for {}", view.change_name);
+    for report in &view.reports {
+        println!("{} · {} · {} · complete: {} · legacy: {}", report.report_id, report.execution_mode, report.relative_path, report.complete, report.legacy);
+    }
+    let acceptance=serde_json::to_value(&view.acceptance)?;
+    println!("Acceptance: {} · required: {} · blocking findings: {} · not verified: {} · source freshness: {:?}. PASS is limited to the recorded scope; it is not security certification.", acceptance["status"].as_str().unwrap_or_default(), view.acceptance.required, view.acceptance.blocking_findings, view.acceptance.not_verified, view.acceptance.source_freshness);
+    for reason in &view.acceptance.reasons { println!("Reason: {reason}"); }
+    for d in &view.decisions {
+        println!("Decision {} · action: {} · reportId: {} · findingId: {}\n  actor: {} · acceptedAt: {}\n  reason: {}\n  policyDigest: {} · scopeDigest: {}", d.decision_id, d.action, d.report_id, d.finding_id, d.actor, d.accepted_at, d.reason, d.policy_digest, d.scope_digest);
+    }
+    if let Some(submission)=&view.submission {println!("Submission: {}",serde_json::to_string(submission)?);}
+    if let Some(revision)=view.expected_revision {println!("expectedRevision: {revision}");}
+    Ok(())
+}
+
 fn remember_current_policy(repository: &dyn StandardRepository) -> Result<()> {
     let cwd = std::env::current_dir()?;
     if !cwd.ancestors().any(|directory| {
@@ -509,6 +677,7 @@ impl TargetLocation {
         change_name: Option<String>,
     ) -> ReviewTarget {
         ReviewTarget {
+            proposal_project_key:None,
             binding: ReviewBinding {
                 origin: Some(remote.origin.clone()),
                 project: Some(remote.project.clone()),
@@ -528,7 +697,10 @@ impl TargetLocation {
         if let Some(remote) = &self.remote {
             let root = self.reader.root().to_string_lossy();
             let binding=prepared.find_binding(&remote.origin,&remote.project,remote.repo.as_deref(),Some(&root),change_name.as_deref())?.ok_or_else(||anyhow::anyhow!("missing_preparation: explicitly run security prepare for this remote scope and checkout"))?;
-            Ok(self.remote_target(remote, binding.repo.unwrap(), change_name))
+            let header=prepared.load_policy(&binding.project_key(),change_name.as_deref())?;
+            let mut target=self.remote_target(remote,binding.repo.unwrap(),change_name);
+            target.proposal_project_key=header.and_then(|h|h.proposal_project_key);
+            Ok(target)
         } else {
             ReviewTarget::local(self.reader.root(), &self.spec_dir, change_name)
         }
@@ -627,7 +799,7 @@ fn remote_preparation(
             },
             &|| budget.stop_reason().is_some(),
         )?;
-        Ok((repo, snapshot))
+        Ok((repo, binding.security_project_key, snapshot))
     })
     .map_err(|error| match error {
         auth::CredentialError::NotLoggedIn => {
@@ -643,8 +815,9 @@ fn remote_preparation(
             anyhow::anyhow!("reauthentication_required: run speclink auth login")
         }
     })?;
-    let (repo, snapshot) = fetched.value;
-    let target = location.remote_target(remote, repo, change);
+    let (repo, canonical_key, snapshot) = fetched.value;
+    let mut target = location.remote_target(remote, repo, change);
+    target.proposal_project_key=canonical_key;
     let input = security::preparation_from_context(&target, snapshot)?;
     Ok((target, input))
 }
@@ -670,4 +843,87 @@ mod bundle_tests {
             assert_eq!(batch_exit_code(status), code);
         }
     }
+}
+
+fn remote_call<T>(location:&TargetLocation,call:impl Fn(&speclink_remote::client::Client)->std::result::Result<T,speclink_remote::RemoteError>)->Result<T> {
+    let remote=location.remote.as_ref().ok_or_else(||anyhow::anyhow!("binding_mismatch"))?;
+    let authenticated=speclink_remote::auth::with_resolved_credential(&remote.origin,|bearer|call(&speclink_remote::client::Client::new(&remote.url,bearer,remote.repo.as_deref()))).map_err(|e|match e {speclink_remote::auth::CredentialError::NotLoggedIn=>anyhow::anyhow!("not_logged_in: run speclink auth login"),speclink_remote::auth::CredentialError::Remote(e)=>anyhow::Error::new(e),speclink_remote::auth::CredentialError::Rotation(_)=>anyhow::anyhow!("reauthentication_required: run speclink auth login")})?;
+    Ok(authenticated.value)
+}
+fn remote_context(location:&TargetLocation,application_data:&std::path::Path,data:&dyn StandardRepository,change:&str,basic:Option<&speclink_core::security::report::Report>,cancelled:Arc<AtomicBool>)->Result<(speclink_core::security::report::DeepReportContext,Option<String>)> {
+    let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
+    let target=location.review_target(&prepared,Some(change.into()))?;
+    let snapshot=prepared.load(&target.binding.project_key(),Some(change))?.ok_or_else(||anyhow::anyhow!("missing_preparation"))?;
+    security::prepared_submission_context(&target,&location.reader,data,&snapshot,basic,None,&ReviewBudget::new(cancelled))
+}
+fn remote_review_command(command:ReviewCommand,location:&TargetLocation,application_data:&std::path::Path,data:&dyn StandardRepository,cancelled:Arc<AtomicBool>)->Result<()> {
+    use speclink_protocol::security::*;
+    use speclink_core::security::report::*;
+    use std::io::Read;
+    let (change,json)=match &command {ReviewCommand::Show{change,json}|ReviewCommand::AddRound{change,json,..}|ReviewCommand::Accept{change,json,..}=>(change,*json)};
+    let view=remote_call(location,|client|client.security_review_show(change))?;
+    let device=speclink_fs::security::reports::FsSecurityReports::new(application_data)?;
+    match command {
+        ReviewCommand::Show{change,..}=> {
+            let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
+            let computed=(||->Result<_>{
+                let target=location.review_target(&prepared,Some(change.clone()))?;
+                let basic=device.latest(&target.report_project_key(),Some(&change))?;
+                let (context,id)=remote_context(location,application_data,data,&change,basic.as_ref(),cancelled)?;
+                let mut submission=security::Submission::from(&context);submission.builtin_report_id=id;
+                let frame=security::source_attestation(&context,data)?;
+                let mut checked=remote_call(location,|client|client.security_review_check(&change,&SecurityCheckRequest{security_source_attestation:frame.clone()}))?;
+                checked.submission=Some(serde_json::from_value(serde_json::to_value(submission)?)?);Ok(checked)
+            })();
+            let result=match computed {Ok(v)=>v,Err(e)=>{let mut v=view;v.acceptance.reasons.push(e.to_string().split(':').next().unwrap_or("source_freshness_unverified").into());v}};
+            print_security_review(&result,json)
+        }
+        ReviewCommand::AddRound{change,..}=> {
+            let mut bytes=Vec::new();std::io::stdin().take(4*1024*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=4*1024*1024,"size_limit: security report input");
+            let input:ReviewRoundInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_report: submission JSON"))?;
+            let prepared=speclink_fs::security::prepared::FsPreparedReviews::new(application_data)?;
+            let target=location.review_target(&prepared,Some(change.clone()))?;
+            let (report,basic,attestation)=match input {
+              ReviewRoundInput::Legacy(legacy) => {
+                let basic=device.get(&legacy.legacy_import_report_id)?.ok_or_else(||anyhow::anyhow!("report_not_found"))?;
+                anyhow::ensure!(basic.project_key()==target.binding.project_key()&&basic.change_name()==Some(change.as_str()),"binding_mismatch");
+                (SecurityRoundPayload::Legacy(SecurityLegacyInput{legacy_import_report_id:legacy.legacy_import_report_id,legacy_project_key:basic.project_key().into()}),basic,None)
+              }
+              ReviewRoundInput::Deep(mut input) => {
+                let id=input.builtin_report_id.as_deref().ok_or_else(||anyhow::anyhow!("missing_security_review"))?;
+                let basic=if let Some(b)=device.get(id)?{b}else{let document=remote_call(location,|client|client.security_change_report(&change,id))?;Report::from_json(&serde_json::to_vec(&document)?)?};
+                let (context,current)=remote_context(location,application_data,data,&change,Some(&basic),cancelled)?;
+                anyhow::ensure!(current.as_deref()==Some(id),"security_report_stale: run current built-in review first");
+                let frame=security::source_attestation(&context,data)?;
+                // Validate and redact before crossing the HTTP boundary; server repeats validation.
+                let checked=DeepReport::new(input.clone(),context)?;
+                input.findings=checked.findings().to_vec();
+                input.checks=checked.checks().to_vec();
+                (SecurityRoundPayload::Deep(serde_json::from_slice(&serde_json::to_vec(&input)?)?),basic,Some(frame))
+              }
+            };
+            let basic_document:SecurityBuiltinDocument=serde_json::from_value(serde_json::to_value(&basic)?)?;
+            let receipt=remote_call(location,|client|client.security_review_submit(&change,&SecurityRoundRequest{project_key:target.report_project_key(),expected_revision:view.expected_revision.unwrap_or(0),report:report.clone(),builtin_report:Some(basic_document.clone()),security_source_attestation:attestation.clone()}))?;
+            if let Err(e)=device.record_publication(&basic,&change,&receipt.report_id){eprintln!("publication_cache_unavailable: {}",e.to_string().split(':').next().unwrap_or("io_error"));}
+            if json {crate::common::print_json(&receipt)}else{println!("Saved security review {} · {} · complete: {}",receipt.report_id,receipt.relative_path,receipt.complete);Ok(())}
+        }
+        ReviewCommand::Accept{change,..}=> {
+            let mut bytes=Vec::new();std::io::stdin().take(16*1024+1).read_to_end(&mut bytes)?;anyhow::ensure!(bytes.len()<=16*1024,"size_limit: security acceptance input");
+            let input:AcceptRiskInput=serde_json::from_slice(&bytes).map_err(|_|anyhow::anyhow!("invalid_security_decision: JSON"))?;input.validate()?;
+            let (context,_)=remote_context(location,application_data,data,&change,None,cancelled)?;
+            let frame=security::source_attestation(&context,data)?;
+            let receipt=remote_call(location,|client|client.security_review_accept(&change,&SecurityAcceptRequest{expected_revision:view.expected_revision.unwrap_or(0),report_id:input.report_id.clone(),finding_id:input.finding_id.clone(),reason:input.reason.clone(),security_source_attestation:frame.clone()}))?;
+            if json {crate::common::print_json(&receipt)}else{println!("Accepted security risk {} · report {} · finding {}",receipt.decision_id,receipt.report_id,receipt.finding_id);Ok(())}
+        }
+    }
+}
+
+pub(crate) fn remote_security_gate(change:&str)->Result<speclink_protocol::security::SecurityGateRequest> {
+    let location=target_location(&TargetArgs{root:None,change:Some(change.into()),json:false})?;
+    let application_data=speclink_host::context::security_data_dir()?;
+    let data=crate::common::security_repository(&application_data)?;
+    let (context,_)=remote_context(&location,&application_data,&data,change,None,Arc::new(AtomicBool::new(false)))?;
+    let frame=security::source_attestation(&context,&data)?;
+    let view=remote_call(&location,|client|client.security_review_show(change))?;
+    Ok(speclink_protocol::security::SecurityGateRequest{expected_revision:view.expected_revision,security_source_attestation:Some(frame)})
 }

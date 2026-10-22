@@ -156,6 +156,20 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 
 ## <a id="desktop-tags"></a>Publish desktop builds with a tag
 
+For this fork, finish implementation and the required pre-merge checks, merge the feature branch into `main`, then build installers from that exact `main` commit. Corporate Proxy acceptance happens after installing that build at the company. Record the source commit and installer filename; a dev window outside the company does not substitute. Merging does not complete the manual task or archive the change.
+
+The Updates page checks `mosutw/speclink` and separately displays the original author's `MomoChenisMe/speclink` version and project link. Upstream versions are informational, never installation candidates. Missing signed update packages lead to manual Release downloads; TLS and signature failures remain errors. Metadata excludes drafts, prereleases and CLI-only releases, with a limit of 100 entries. Four-part build tags are prereleases in the current workflow, so they are not advertised as stable updates. Bundled version and changelog information stays visible offline.
+
+### Shared security standard data
+
+Settings → Security standard data offers a local default and a custom absolute directory, including Windows UNC such as `\\fileserver\team\speclink-standards`. macOS/Linux use an already mounted path. The app does not mount SMB or store share credentials. Desktop and CLI share the device setting; a remote server uses its own service account's setting, not a client's path.
+
+A maintainer downloads/imports complete packages once and grants members read access to the files and lock files. Read-only shares allow review and export to a writable destination, but disable download/import. Deletion from custom roots is disabled because one device cannot know other members' references; maintain shared versions outside the app. Disconnection never causes a local download fallback. Switching or restoring the default does not move or delete files; active data, scan or knowledge jobs block path changes.
+
+Only standards are shared. Private reports, credentials, device references and each checkout's `.security_kb/` stay local, so knowledge snapshots still consume local space. Review does not download standards; shares still require filesystem connectivity. Tests use local shared-root fixtures, not a verified corporate NAS/SMB environment.
+
+History writers lock a dedicated `.checks-locks/` directory in the spec store so Windows can move proposals while retaining exclusion. Stop all old writers before upgrading: mixing old proposal-internal locks and new locks is unsupported. Lock files ignore themselves in Git and do not appear as proposal documents.
+
 `Desktop Build` supports manual builds and automatic releases on `desktop-vX.Y.Z` tags. Merge the workflow changes into `main` first; the tagged commit must include this workflow. The tag version must match both `apps/desktop/src-tauri/tauri.conf.json` (`version`) and `Cargo.toml` (`[workspace.package].version`), or the workflow stops before building. Commit the corresponding `Cargo.lock` changes when bumping the version.
 
 Prerelease tags such as `desktop-v0.9.0-build.m1` are also supported. Both App and CLI must use the full `0.9.0-build.m1` version. Tags with a prerelease suffix create a GitHub prerelease.

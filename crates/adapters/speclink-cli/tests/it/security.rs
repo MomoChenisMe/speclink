@@ -17,23 +17,125 @@ impl Fixture {
         std::fs::create_dir_all(path.with_extension("home")).unwrap();
         Self(path)
     }
-    fn run(&self, args: &[&str]) -> Output {
-        Command::new(env!("CARGO_BIN_EXE_speclink"))
-            .args(args)
+    fn command(&self, args: &[&str]) -> Command {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_speclink"));
+        command.args(args)
             .current_dir(&self.0)
             .env("HOME", self.0.with_extension("home"))
+            .env("USERPROFILE", self.0.with_extension("home"))
+            .env("XDG_CONFIG_HOME", self.0.with_extension("home").join("config"))
             .env("XDG_DATA_HOME", self.0.with_extension("home").join("data"))
             .env("LOCALAPPDATA", self.0.with_extension("home").join("data"))
-            .env("SPECLINK_TOKEN", "fixture-token")
-            .output()
-            .unwrap()
+            .env("SPECLINK_TOKEN", "fixture-token");
+        command
     }
+    fn run(&self, args: &[&str]) -> Output {
+        self.command(args).output().unwrap()
+    }
+    fn input(&self, args: &[&str], input: &str) -> Output {
+        use std::io::Write;
+        use std::process::Stdio;
+        let mut child = self.command(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
+        child.wait_with_output().unwrap()
+    }
+}
+
+#[test]
+fn security_data_custom_root_preserves_outputs_and_disconnection_never_falls_back() {
+    let fixture=Fixture::new();
+    let baseline=fixture.run(&["security","data","list","--json","--no-color"]);
+    assert!(baseline.status.success());
+    let home=fixture.0.with_extension("home");
+    let config=if cfg!(windows) {home.join("AppData/Roaming/speclink")} else if cfg!(target_os="macos") {home.join("Library/Application Support/speclink")} else {home.join("config/speclink")};
+    std::fs::create_dir_all(&config).unwrap();let shared=fixture.0.join("shared");std::fs::create_dir(&shared).unwrap();
+    std::fs::write(config.join("security-data-preferences.json"),serde_json::to_vec(&serde_json::json!({"formatVersion":1,"standardsPath":shared})).unwrap()).unwrap();
+    let out=fixture.run(&["security","data","list","--json","--no-color"]);
+    assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&out.stdout).unwrap(),serde_json::from_slice::<serde_json::Value>(&baseline.stdout).unwrap());
+    let human=fixture.run(&["security","data","list","--no-color"]);assert!(human.status.success());assert!(!human.stdout.contains(&27));
+    std::fs::rename(&shared,fixture.0.join("disconnected")).unwrap();
+    let failed=fixture.run(&["security","data","list","--json"]);
+    assert_eq!(failed.status.code(),Some(1));assert!(failed.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&failed.stderr).contains("data_directory_unavailable"));
+}
+
+#[test]
+fn disconnected_standards_do_not_block_existing_private_reports() {
+    let fixture = Fixture::new();
+    std::fs::create_dir_all(fixture.0.join("openspec")).unwrap();
+    std::fs::write(fixture.0.join(".speclink.yaml"), "tools: [codex]\n").unwrap();
+    let output = fixture.run(&["security", "run", "--json"]);
+    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+    let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let id = report["reportId"].as_str().unwrap();
+    let home = fixture.0.with_extension("home");
+    let config = if cfg!(windows) { home.join("AppData/Roaming/speclink") } else if cfg!(target_os="macos") { home.join("Library/Application Support/speclink") } else { home.join("config/speclink") };
+    std::fs::create_dir_all(&config).unwrap();
+    std::fs::write(config.join("security-data-preferences.json"), serde_json::to_vec(&serde_json::json!({"formatVersion":1,"standardsPath":fixture.0.join("disconnected")})).unwrap()).unwrap();
+    for format in ["json", "markdown"] {
+        let output = fixture.run(&["security", "report", id, "--format", format, "--no-color"]);
+        assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
+        assert!(!output.stdout.is_empty());
+    }
+    let output = fixture.run(&["security", "data", "list", "--json"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+}
+
+#[test]
+fn security_acceptance_and_record_policy_cli_contract() {
+    let fixture = Fixture::new();
+    std::fs::create_dir(fixture.0.join("openspec")).unwrap();
+    let path = fixture.0.join("openspec/config.yaml");
+    let original = "schema: spec-driven\n# keep\nfuture: untouched\n";
+    std::fs::write(&path, original).unwrap();
+    let args = ["workflow-config", "check-records", "--stdin", "--no-color"];
+    let dry = fixture.input(&["workflow-config", "check-records", "--stdin", "--dry-run", "--no-color"], "archive: {security: false}");
+    assert!(dry.status.success(), "{}", String::from_utf8_lossy(&dry.stderr));
+    assert!(!dry.stdout.contains(&27));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), original);
+    let out = fixture.input(&args, "archive: {security: false}");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    assert!(String::from_utf8_lossy(&out.stdout).contains("check_records updated"));
+    let out = fixture.input(&["workflow-config", "security", "--stdin"], "required_for_acceptance: true");
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let out = fixture.run(&["workflow-config", "show", "--json", "--no-color"]);
+    assert!(out.status.success());
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(json["checkRecords"]["archive"], serde_json::json!({"review":true,"verify":true,"security":false}));
+    assert_eq!(json["securityVerification"]["requiredForAcceptance"], true);
+    assert!(!out.stdout.contains(&27));
+    let saved = std::fs::read_to_string(&path).unwrap();
+    assert!(saved.contains("# keep\nfuture: untouched\n"));
+    for input in ["", "archive: {typo: true}", "archive: {security: 'false'}"] {
+        let out = fixture.input(&args, input);
+        assert_eq!(out.status.code(), Some(1));
+        assert!(out.stdout.is_empty());
+        assert!(!out.stderr.is_empty());
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), saved);
+    }
+    assert_eq!(fixture.run(&["workflow-config", "check-records"]).status.code(), Some(1));
+    assert_eq!(fixture.run(&["workflow-config", "check-records", "--json"]).status.code(), Some(2));
 }
 impl Drop for Fixture {
     fn drop(&mut self) {
         let _ = std::fs::remove_dir_all(&self.0);
         let _ = std::fs::remove_dir_all(self.0.with_extension("home"));
     }
+}
+
+#[test]
+fn security_kb_prepare_is_offline_and_missing_data_does_not_create_snapshot() {
+    let fixture = Fixture::new();
+    std::fs::create_dir(fixture.0.join("openspec")).unwrap();
+    std::fs::write(fixture.0.join("openspec/config.yaml"), "security_verification:\n  enabled: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n").unwrap();
+    let output = fixture.run(&["security", "kb", "prepare", "--json", "--no-color"]);
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing_knowledge"));
+    assert!(!fixture.0.join(".security_kb").exists());
+    assert_eq!(fixture.run(&["security", "kb", "prepare", "--stdin"]).status.code(), Some(2));
 }
 
 #[test]
@@ -48,8 +150,8 @@ fn security_data_list_is_mode_free_offline_json_and_no_color() {
     let output = fixture.run(&["security", "data", "list", "--json", "--no-color"]);
     assert!(
         output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout)
     );
     assert!(output.stderr.is_empty());
     let data: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -425,6 +527,15 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
         };
         files.insert(file.name.clone(), bytes);
     }
+    {
+        use std::io::Read;
+        let mut archive = zip::ZipArchive::new(std::io::Cursor::new(include_bytes!("../../../../engine/speclink-fs/tests/fixtures/security-guidance.zip"))).unwrap();
+        for index in 0..archive.len() {
+            let mut file = archive.by_index(index).unwrap();
+            let mut bytes = Vec::new(); file.read_to_end(&mut bytes).unwrap();
+            files.insert(file.name().into(), bytes);
+        }
+    }
     repository
         .begin_install(StandardId::OwaspTop10, "2025")
         .unwrap()
@@ -448,6 +559,24 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
     )
     .unwrap();
     std::fs::write(fixture.0.join("openspec/config.yaml"),"audit: false\nsecurity_verification:\n  enabled: true\n  scope: web-api\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n  reviews: {spec: false, code: true, api_boundary: false}\n").unwrap();
+    let kb = fixture.run(&["security", "kb", "prepare", "--json", "--no-color"]);
+    assert!(kb.status.success(), "{}", String::from_utf8_lossy(&kb.stderr));
+    assert!(kb.stderr.is_empty());
+    assert!(!kb.stdout.contains(&27));
+    let snapshot: serde_json::Value = serde_json::from_slice(&kb.stdout).unwrap();
+    for key in ["projectKey", "path", "policyDigest", "knowledgeDigest"] { assert!(snapshot[key].is_string()); }
+    assert!(snapshot["files"].is_u64()); assert!(snapshot["bytes"].is_u64());
+    assert_eq!(snapshot["standards"].as_array().unwrap().len(), 1);
+    assert_eq!(snapshot["standards"][0]["version"], "2025");
+    assert!(fixture.0.join(".security_kb/standards/owasp_top10/2025").is_dir());
+    for absent in ["2021", "cwe", "owasp_asvs", "owasp_api_top10"] { assert!(!fixture.0.join(".security_kb/standards").join(absent).exists()); }
+    assert!(!fixture.0.join(".security_kb/mappings/owasp_2021_cwe.json").exists());
+    let human = fixture.run(&["security", "kb", "prepare", "--no-color"]);
+    assert!(human.status.success());
+    let human_text=String::from_utf8_lossy(&human.stdout);
+    assert!(human_text.contains("Prepared knowledge at"));
+    for key in ["projectKey", "policyDigest"] {assert!(human_text.contains(snapshot[key].as_str().unwrap()), "{key}: {human_text}");}
+    for key in ["standardId", "version", "dataSha256"] {assert!(human_text.contains(snapshot["standards"][0][key].as_str().unwrap()), "{key}: {human_text}");}
     std::fs::write(
         fixture.0.join("app.ts"),
         "const api_key = 'offline-only-private-sentinel';\n",
@@ -469,8 +598,8 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
         .unwrap();
     assert!(
         output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
+        "{}\n{}",
+        String::from_utf8_lossy(&output.stderr), String::from_utf8_lossy(&output.stdout)
     );
     assert!(trap.try_recv().unwrap().is_none());
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
@@ -490,12 +619,88 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
     assert_eq!(reference["version"], "2025");
     let id = report["reportId"].as_str().unwrap();
     for format in ["json", "markdown"] {
-        let exported = fixture.run(&["security", "report", id, "--format", format]);
+        let exported = fixture.run(&["security", "report", id, "--change", "demo", "--format", format]);
         assert!(exported.status.success());
         assert!(
             !String::from_utf8_lossy(&exported.stdout).contains("offline-only-private-sentinel")
         );
     }
+    let shown = fixture.run(&["security", "review", "show", "demo", "--json", "--no-color"]);
+    assert!(shown.status.success(), "{}", String::from_utf8_lossy(&shown.stderr));
+    let shown: serde_json::Value = serde_json::from_slice(&shown.stdout).unwrap();
+    let submission = &shown["submission"];
+    assert_eq!(submission["builtinReportId"], id, "{shown}");
+    let checks = submission["requiredChecks"].as_array().unwrap().iter().map(|check| serde_json::json!({"checkId":check,"status":"PASS","reason":"已追蹤完整資料流並核對本機控制項","evidencePaths":submission["targets"],"resolvesCheckIds":submission["unverifiedChecks"]})).collect::<Vec<_>>();
+    let input = serde_json::json!({"formatVersion":2,"changeName":"demo","policyDigest":submission["policyDigest"],"knowledgeDigest":submission["knowledgeDigest"],"scopeDigest":submission["scopeDigest"],"builtinReportId":id,"complete":true,"targets":submission["targets"],"checks":checks,"findings":[]});
+    let add = fixture.input(&["security", "review", "add-round", "demo", "--stdin", "--json", "--no-color"], &input.to_string());
+    assert!(add.status.success(), "{}", String::from_utf8_lossy(&add.stderr));
+    let added: serde_json::Value = serde_json::from_slice(&add.stdout).unwrap();
+    assert!(added["complete"].is_boolean()); assert_eq!(added["changeName"], "demo");
+    assert!(!add.stdout.contains(&27));
+    let deep_id = added["reportId"].as_str().unwrap();
+    for format in ["json", "markdown"] {
+        let out = fixture.run(&["security", "report", deep_id, "--change", "demo", "--format", format]);
+        assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+        assert!(!String::from_utf8_lossy(&out.stdout).contains("offline-only-private-sentinel"));
+    }
+    for (field, value) in [("formatVersion", serde_json::json!(3)), ("scopeDigest", serde_json::json!("0".repeat(64))), ("targets", serde_json::json!(["../outside"]))] {
+        let mut invalid = input.clone(); invalid[field] = value;
+        let out = fixture.input(&["security", "review", "add-round", "demo", "--stdin", "--json"], &invalid.to_string());
+        assert_eq!(out.status.code(), Some(1)); assert!(out.stdout.is_empty());
+    }
+    assert_eq!(fixture.run(&["security", "review", "add-round", "demo"]).status.code(), Some(2));
+    let unknown = fixture.input(&["security", "review", "add-round", "missing", "--stdin"], &input.to_string());
+    assert_eq!(unknown.status.code(), Some(1));
+    let too_large = fixture.input(&["security", "review", "add-round", "demo", "--stdin"], &" ".repeat(4*1024*1024+1));
+    assert_eq!(too_large.status.code(), Some(1)); assert!(String::from_utf8_lossy(&too_large.stderr).contains("size_limit"));
+    let exact_limit = fixture.input(&["security", "review", "add-round", "demo", "--stdin"], &format!("{}{}", " ".repeat(4*1024*1024-input.to_string().len()), input));
+    assert!(exact_limit.status.success(), "{}", String::from_utf8_lossy(&exact_limit.stderr));
+    let mut duplicate = input.clone();
+    duplicate["checks"].as_array_mut().unwrap().push(input["checks"][0].clone());
+    assert_eq!(fixture.input(&["security","review","add-round","demo","--stdin"], &duplicate.to_string()).status.code(),Some(1));
+    // Pre-existing device reports require explicit import and retain a legacy marker.
+    use speclink_core::security::report::{Report,ReportRepository};
+    let legacy_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    let mut legacy = report.clone(); legacy["reportId"] = legacy_id.into();
+    for finding in legacy["findings"].as_array_mut().unwrap() { finding["findingId"] = format!("{legacy_id}:00001").into(); }
+    let device = speclink_fs::security::reports::FsSecurityReports::new(&app_data).unwrap();
+    device.save(&Report::from_json(&serde_json::to_vec(&legacy).unwrap()).unwrap()).unwrap();
+    let legacy_input = serde_json::json!({"legacyImportReportId":legacy_id}).to_string();
+    let imported = fixture.input(&["security","review","add-round","demo","--stdin","--json"], &legacy_input);
+    assert!(imported.status.success(), "{}", String::from_utf8_lossy(&imported.stderr));
+    let index:serde_json::Value=serde_json::from_str(&std::fs::read_to_string(fixture.0.join("openspec/changes/demo/checks/index.json")).unwrap()).unwrap();
+    assert_eq!(index["entries"].as_array().unwrap().iter().find(|e|e["recordId"]==legacy_id).unwrap()["outcome"],"legacy");
+    assert_eq!(fixture.input(&["security","review","add-round","demo","--stdin"], &legacy_input).status.code(),Some(1));
+    let required=fixture.input(&["workflow-config","security","--stdin"],"required_for_acceptance: true");assert!(required.status.success());
+    let risk=serde_json::json!({"reportId":id,"findingId":report["findings"][0]["findingId"],"reason":"本次已完成金鑰輪替，接受仍被列出的殘餘風險"});
+    let args=["security","review","accept","demo","--stdin","--json","--no-color"];
+    let no_identity=fixture.input(&args,&risk.to_string());assert_eq!(no_identity.status.code(),Some(1));assert!(String::from_utf8_lossy(&no_identity.stderr).contains("identity_required"));
+    for reason in [" ".to_owned(),"字".repeat(2001)] {
+        let mut invalid=risk.clone();invalid["reason"]=reason.into();let out=fixture.input(&args,&invalid.to_string());assert_eq!(out.status.code(),Some(1));assert!(out.stdout.is_empty());
+    }
+    let oversized=fixture.input(&args,&" ".repeat(16*1024+1));assert_eq!(oversized.status.code(),Some(1));assert!(String::from_utf8_lossy(&oversized.stderr).contains("size_limit"));
+    for arguments in [vec!["init"],vec!["config","user.name","Fixture Owner"],vec!["config","user.email","owner@example.test"]] {
+        let out=Command::new("git").args(arguments).current_dir(&fixture.0).output().unwrap();assert!(out.status.success());
+    }
+    let path=fixture.0.join(format!("openspec/changes/demo/checks/security/{id}/report.json"));let original=std::fs::read(&path).unwrap();
+    let accepted=fixture.input(&args,&risk.to_string());assert!(accepted.status.success(),"{}",String::from_utf8_lossy(&accepted.stderr));
+    let accepted:serde_json::Value=serde_json::from_slice(&accepted.stdout).unwrap();assert!(accepted["decisionId"].is_string());assert!(accepted["findingId"].is_string());assert_eq!(accepted["reportId"],id);assert_eq!(accepted["status"],"accepted");
+    assert_eq!(std::fs::read(&path).unwrap(),original);
+    let current=fixture.run(&["security","review","show","demo","--json"]);let current:serde_json::Value=serde_json::from_slice(&current.stdout).unwrap();assert_eq!(current["acceptance"]["status"],"passed");
+    for field in ["decisionId","action","reportId","findingId","reason","actor","acceptedAt","policyDigest","scopeDigest"] {assert!(current["decisions"][0][field].is_string(),"{field}");}
+    let human=fixture.run(&["security","review","show","demo","--no-color"]);
+    assert!(human.status.success(),"{}",String::from_utf8_lossy(&human.stderr));
+    let text=String::from_utf8_lossy(&human.stdout);
+    for field in ["decisionId","action","reportId","findingId","reason","actor","acceptedAt","policyDigest","scopeDigest"] {
+        assert!(text.contains(current["decisions"][0][field].as_str().unwrap()),"missing {field}: {text}");
+    }
+    for summary in ["required: true", "blocking findings: 0", "not verified: 0"] {assert!(text.contains(summary),"missing {summary}: {text}");}
+
+    let mut old=risk.clone();old["reportId"]=legacy_id.into();assert_eq!(fixture.input(&args,&old.to_string()).status.code(),Some(1));
+    let reference=fixture.input(&["workflow-config","security","--stdin"],"required_for_acceptance: false");assert!(reference.status.success());
+    let required=fixture.input(&["workflow-config","security","--stdin"],"required_for_acceptance: true");assert!(required.status.success());
+    let verify=fixture.input(&["verify","add-round","demo","--stdin"],"**Scope**: app.ts\n");assert!(verify.status.success(),"{}",String::from_utf8_lossy(&verify.stderr));
+    let stamp=fixture.run(&["verify","stamp","demo"]);assert!(stamp.status.success(),"{}",String::from_utf8_lossy(&stamp.stderr));
     let change = fixture.0.join("openspec/changes/demo");
     assert!(!change.join("verify.md").exists());
     assert!(!change.join("review.md").exists());
@@ -505,6 +710,10 @@ fn security_top10_2025_only_installed_then_offline_without_ai_or_archive_gate() 
         "{}",
         String::from_utf8_lossy(&archive.stderr)
     );
+    let archived=std::fs::read_dir(fixture.0.join("openspec/changes/archive")).unwrap().flatten().find(|e|e.file_name().to_string_lossy().ends_with("-demo")).unwrap().file_name().to_string_lossy().into_owned();
+    for args in [vec!["security","report",deep_id,"--change",archived.as_str()],vec!["security","review","show",archived.as_str(),"--json"]] {
+        let out=fixture.run(&args); assert!(out.status.success(),"{}",String::from_utf8_lossy(&out.stderr));
+    }
 }
 
 fn cwe_package(fixture: &Fixture) -> PathBuf {

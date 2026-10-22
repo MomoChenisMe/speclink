@@ -472,8 +472,23 @@ fn claim_while_gate_pending_points_at_the_approver() {
 // --- archive: check-all-then-apply outcomes ---
 
 #[test]
-fn archive_success_reports_archived() {
+fn archive_config_failure_does_not_send_archive() {
     let mock = mock_server(vec![(
+        "GET",
+        "/config",
+        404,
+        r#"{"reason":"not_found","message":"no config","resource":"config","name":"demo"}"#.into(),
+    )]);
+    let p = TempProject::remote("archive-config-failure", &mock.base, "backend");
+    let out = p.run(&["archive", "demo"]);
+    assert!(!out.status.success());
+    mock.find("GET", "/config");
+    assert!(mock.captured.lock().unwrap().iter().all(|request| request.method != "POST"));
+}
+
+#[test]
+fn archive_success_reports_archived() {
+    let mock = mock_server(vec![("GET", "/config", 200, r#"{"schema":"spec-driven","content":null}"#.into()), (
         "POST",
         "/changes/demo/archive",
         200,
@@ -483,11 +498,13 @@ fn archive_success_reports_archived() {
     let out = p.run(&["archive", "demo"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(stdout_of(&out).contains("demo"), "stdout: {}", stdout_of(&out));
+    mock.find("GET", "/config");
+    mock.find("POST", "/changes/demo/archive");
 }
 
 #[test]
 fn archive_with_open_tasks_counts_the_remainder() {
-    let mock = mock_server(vec![(
+    let mock = mock_server(vec![("GET", "/config", 200, r#"{"schema":"spec-driven","content":null}"#.into()), (
         "POST",
         "/changes/demo/archive",
         409,
@@ -501,7 +518,7 @@ fn archive_with_open_tasks_counts_the_remainder() {
 
 #[test]
 fn archive_spec_conflict_names_the_capabilities() {
-    let mock = mock_server(vec![(
+    let mock = mock_server(vec![("GET", "/config", 200, r#"{"schema":"spec-driven","content":null}"#.into()), (
         "POST",
         "/changes/demo/archive",
         409,

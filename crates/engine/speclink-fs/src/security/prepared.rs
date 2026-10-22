@@ -271,6 +271,7 @@ mod tests {
         )];
         let policy_text="security_verification:\n  enabled: true\n  standards:\n    owasp_top10: {enabled: true, version: '2025'}\n".to_owned();
         let mut snapshot = PreparedSnapshot {
+            proposal_project_key: None,
             format_version: 1,
             project_key: binding.project_key(),
             binding,

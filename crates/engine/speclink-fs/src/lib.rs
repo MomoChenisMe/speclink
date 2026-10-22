@@ -6,6 +6,8 @@
 //! discussion file naming); the engine itself only speaks the domain verbs of
 //! `speclink_core::store::Store`.
 
+mod archive_checks;
+mod checks;
 pub mod layout;
 pub mod security;
 pub mod security_packages;
@@ -40,9 +42,20 @@ impl FsStore {
 
     fn change_at(&self, name: &str, dir: PathBuf) -> Change {
         let meta_text = util::read_opt(&dir.join(".openspec.yaml"));
-        let (meta, meta_error) = match ChangeMeta::from_text(meta_text.as_deref()) {
-            Ok(meta) => (meta, None),
-            Err(reason) => (ChangeMeta::default(), Some(reason)),
+        let (meta, meta_error) = if dir
+            .join(speclink_core::history::JOURNAL)
+            .symlink_metadata()
+            .is_ok()
+        {
+            (
+                ChangeMeta::default(),
+                Some("history_recovery_required".into()),
+            )
+        } else {
+            match ChangeMeta::from_text(meta_text.as_deref()) {
+                Ok(meta) => (meta, None),
+                Err(reason) => (ChangeMeta::default(), Some(reason)),
+            }
         };
         Change {
             name: name.to_string(),
@@ -90,8 +103,12 @@ impl FsStore {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
-                let Some(stem) = name.strip_suffix(".md") else { continue };
-                let Some(rest) = strip_date_prefix(stem) else { continue };
+                let Some(stem) = name.strip_suffix(".md") else {
+                    continue;
+                };
+                let Some(rest) = strip_date_prefix(stem) else {
+                    continue;
+                };
                 let seq = if rest == slug {
                     Some(1)
                 } else {
@@ -153,6 +170,13 @@ impl Store for FsStore {
 
     fn read_change_meta(&self, name: &str) -> Option<String> {
         let dir = self.layout.change_dir(name);
+        if dir
+            .join(speclink_core::history::JOURNAL)
+            .symlink_metadata()
+            .is_ok()
+        {
+            return None;
+        }
         if !dir.is_dir() {
             return None;
         }
@@ -160,13 +184,20 @@ impl Store for FsStore {
     }
 
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {
-        util::write_file(&self.layout.change_dir(name).join(".openspec.yaml"), content)?;
-        Ok(())
+        checks::with_write(self, name, || {
+            util::write_file(
+                &self.layout.change_dir(name).join(".openspec.yaml"),
+                content,
+            )?;
+            Ok(())
+        })
     }
 
     fn delete_change(&self, name: &str) -> Result<()> {
-        std::fs::remove_dir_all(self.layout.change_dir(name))?;
-        Ok(())
+        checks::with_write(self, name, || {
+            std::fs::remove_dir_all(self.layout.change_dir(name))?;
+            Ok(())
+        })
     }
 
     fn updated_at_secs(&self, name: &str) -> u64 {
@@ -174,6 +205,7 @@ impl Store for FsStore {
         // seconds — the engine's "most recently modified" sort key.
         util::walk_files(&self.layout.change_dir(name))
             .into_iter()
+            .filter(|path| path.file_name().is_none_or(|name| name != ".checks.lock"))
             .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok())
             .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
@@ -184,23 +216,45 @@ impl Store for FsStore {
     // --- artifacts ---
 
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {
+        if artifact.starts_with("checks/") {
+            return checks::read_document(self, change, artifact, false)
+                .ok()
+                .flatten();
+        }
         util::read_opt(&self.layout.artifact_path(change, artifact))
     }
 
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf> {
         let path = self.layout.artifact_path(change, artifact);
-        util::write_file(&path, content)?;
-        Ok(path)
+        checks::with_write(self, change, || {
+            util::write_file(&path, content)?;
+            Ok(path.clone())
+        })
     }
 
     fn delete_artifact(&self, change: &str, artifact: &str) -> Result<()> {
         // Idempotent remove（與 delete_live_discussion 同款）：引擎在呼叫前
         // 守存在性，缺檔視為已達成刪除。
         let path = self.layout.artifact_path(change, artifact);
-        if path.exists() {
-            std::fs::remove_file(&path)?;
-        }
-        Ok(())
+        checks::with_write(self, change, || {
+            if path.exists() {
+                std::fs::remove_file(&path)?;
+            }
+            Ok(())
+        })
+    }
+    fn ensure_checks_readable(&self, change: &str) -> Result<()> {
+        checks::readable(self, change)
+    }
+    fn recover_checks(&self, change: &str) -> Result<()> {
+        checks::recover(self, change)
+    }
+    fn commit_checks(
+        &self,
+        change: &str,
+        commit: &speclink_core::history::ChecksCommit,
+    ) -> Result<()> {
+        checks::commit(self, change, commit)
     }
 
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {
@@ -288,7 +342,10 @@ impl Store for FsStore {
         };
         for entry in entries.flatten() {
             if entry.path().is_dir() {
-                names.push(entry.file_name().to_string_lossy().to_string());
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !archive_checks::uncommitted(self, &name) {
+                    names.push(name);
+                }
             }
         }
         names.sort_by(|a, b| b.cmp(a));
@@ -296,23 +353,51 @@ impl Store for FsStore {
     }
 
     fn archived_change_exists(&self, dated_name: &str) -> bool {
-        self.layout.archived_change_dir(dated_name).exists()
+        !archive_checks::uncommitted(self, dated_name)
+            && self.layout.archived_change_dir(dated_name).exists()
     }
 
     fn archive_change(&self, name: &str, dated_name: &str) -> Result<()> {
-        std::fs::create_dir_all(self.layout.archive_dir())?;
-        std::fs::rename(
-            self.layout.change_dir(name),
-            self.layout.archived_change_dir(dated_name),
-        )?;
-        Ok(())
+        checks::with_write(self, name, || {
+            std::fs::create_dir_all(self.layout.archive_dir())?;
+            std::fs::rename(
+                self.layout.change_dir(name),
+                self.layout.archived_change_dir(dated_name),
+            )?;
+            Ok(())
+        })
+    }
+
+    fn archive_change_with_checks(
+        &self,
+        name: &str,
+        dated: &str,
+        plan: &speclink_core::history::ArchiveChecksPlan,
+    ) -> Result<()> {
+        archive_checks::archive(self, name, dated, plan)
     }
 
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
-        util::read_opt(&self.layout.archived_change_dir(dated_name).join(".openspec.yaml"))
+        if archive_checks::uncommitted(self, dated_name) {
+            return None;
+        }
+        util::read_opt(
+            &self
+                .layout
+                .archived_change_dir(dated_name)
+                .join(".openspec.yaml"),
+        )
     }
 
     fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
+        if archive_checks::uncommitted(self, dated_name) {
+            return None;
+        }
+        if artifact.starts_with("checks/") {
+            return checks::read_document(self, dated_name, artifact, true)
+                .ok()
+                .flatten();
+        }
         let path = self
             .layout
             .archived_change_dir(dated_name)
@@ -337,7 +422,10 @@ impl Store for FsStore {
 
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()> {
         util::write_file(
-            &self.layout.archived_change_dir(dated_name).join(".openspec.yaml"),
+            &self
+                .layout
+                .archived_change_dir(dated_name)
+                .join(".openspec.yaml"),
             content,
         )?;
         Ok(())
@@ -400,8 +488,12 @@ impl Store for FsStore {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
-                let Some(slug) = name.strip_suffix(".md") else { continue };
-                let Some(text) = util::read_opt(&path) else { continue };
+                let Some(slug) = name.strip_suffix(".md") else {
+                    continue;
+                };
+                let Some(text) = util::read_opt(&path) else {
+                    continue;
+                };
                 out.push(DiscussionDoc {
                     slug: slug.to_string(),
                     text,
@@ -422,9 +514,13 @@ impl Store for FsStore {
                     continue;
                 }
                 let name = entry.file_name().to_string_lossy().to_string();
-                let Some(stem) = name.strip_suffix(".md") else { continue };
+                let Some(stem) = name.strip_suffix(".md") else {
+                    continue;
+                };
                 let slug = strip_date_prefix(stem).unwrap_or(stem).to_string();
-                let Some(text) = util::read_opt(&path) else { continue };
+                let Some(text) = util::read_opt(&path) else {
+                    continue;
+                };
                 out.push(DiscussionDoc {
                     slug,
                     text,

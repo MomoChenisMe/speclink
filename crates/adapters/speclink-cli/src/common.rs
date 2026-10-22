@@ -45,7 +45,14 @@ where
 {
     // Host boundary: identity and the SPECLINK_* env layer are resolved here
     // and injected — the engine runtime only ever consumes the context.
+    let security_change=match &cmd {
+        core::command::Command::VerifyStamp {change,..}=>Some(change.clone()),
+        core::command::Command::Archive {change,..}=>change.clone().or_else(||{let changes=core::model::list_changes(store);(changes.len()==1).then(||changes[0].name.clone())}),
+        _=>None,
+    };
+    let security_acceptance=match (ws,security_change) { (Some(ws),Some(change))=>security_proof(store,ws,&change)?,_=>None };
     let ctx = core::command::ExecutionContext {
+        security_acceptance,
         actor: ws.and_then(|w| speclink_host::context::git_identity(&w.root)),
         repo: Some(speclink_host::binding::local_default_binding().repo.as_str().to_string()),
         env: speclink_host::policy::process_env_overrides(),
@@ -54,6 +61,24 @@ where
     };
     let (outcome, _events) = core::command::execute(store, &ctx, cmd).map_err(anyhow::Error::new)?;
     Ok(T::try_from(outcome)?)
+}
+
+/// Shared by local archive and verification; every operation recomputes current source evidence.
+pub(crate) fn security_repository(application_data:&std::path::Path)->Result<speclink_fs::security::FsSecurityData> {
+    let paths=speclink_host::security_paths::lease(application_data)?;
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+}
+
+/// Shared by local archive and verification; every operation recomputes current source evidence.
+pub(crate) fn security_proof(store:&dyn Store,ws:&Workspace,change:&str) -> Result<Option<core::security::acceptance::AcceptanceProof>> {
+    if !store.change_exists(change) {return Ok(None);}
+    let policy=core::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?.security();
+    if !(policy.enabled&&policy.required_for_acceptance) {return Ok(None);}
+    let reader=speclink_fs::security::scan::AuthorizedProject::open(&ws.root)?;
+    let target=speclink_host::security::ReviewTarget::local(reader.root(),&ws.spec_dir_name,Some(change.into()))?;
+    let data=security_repository(&speclink_host::context::security_data_dir()?)?;
+    let budget=speclink_host::security::ReviewBudget::new(std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)));
+    speclink_host::security::acceptance_proof_for_target(&target,&reader,&data,store,&budget)
 }
 
 /// For read/analysis commands: when no change name is given and no changes exist, print the

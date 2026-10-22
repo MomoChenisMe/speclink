@@ -540,3 +540,30 @@ fn an_absent_evidence_record_reads_as_none() {
     let t = TempRoot::new("evidence-absent");
     assert_eq!(t.store().read_evidence("demo"), None, "absence is a normal state");
 }
+
+#[cfg(unix)]
+#[test]
+fn check_record_reads_never_follow_file_or_parent_links() {
+    use std::os::unix::fs::symlink;
+    let t = TempRoot::new("checks-read-links");
+    let store = t.store();
+    let secret = t.write("outside/record.md", "outside-secret-sentinel");
+    let path = t.write("openspec/changes/demo/checks/review/record.md", "safe");
+    std::fs::remove_file(&path).unwrap();
+    symlink(&secret, &path).unwrap();
+    assert_eq!(store.read_artifact("demo", "checks/review/record.md"), None);
+    std::fs::remove_file(&path).unwrap();
+    std::fs::remove_dir(path.parent().unwrap()).unwrap();
+    symlink(secret.parent().unwrap(), path.parent().unwrap()).unwrap();
+    assert_eq!(store.read_artifact("demo", "checks/review/record.md"), None);
+    let path = t.write(
+        "openspec/changes/archive/2026-10-21-demo/checks/acceptance.json",
+        "safe",
+    );
+    std::fs::remove_file(&path).unwrap();
+    symlink(&secret, &path).unwrap();
+    assert_eq!(
+        store.read_archived_artifact("2026-10-21-demo", "checks/acceptance.json"),
+        None
+    );
+}

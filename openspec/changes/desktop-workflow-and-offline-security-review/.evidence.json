@@ -1,0 +1,1212 @@
+{
+  "version": 2,
+  "change": "desktop-workflow-and-offline-security-review",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED：在 crates/engine/speclink-core/src/security/policy.rs 與 crates/engine/speclink-core/src/workspace/config/tests.rs 補「安全政策區塊預設與獨立選項」「安全政策部分更新與保值」「檢查紀錄封存政策」失敗案例：舊設定required=false、封存三項true、錯型別拒絕、未知鍵／註解保值、停用後保值；以 cargo test -p speclink-core --lib 確認新案例因缺功能失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 GREEN：在 crates/engine/speclink-core/src/security/policy.rs 與 crates/engine/speclink-core/src/workspace/config.rs 加入required_for_acceptance及check_records.archive三布林值，採既有文字手術與yaml_scalar，只改指定葉節點；以 cargo test -p speclink-core --lib 通過1.1，並檢查空mapping、65,537bytes及字串布林不寫入。",
+      "files": [
+        "crates/engine/speclink-core/src/security/policy.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 在 crates/adapters/speclink-cli/src 與 crates/host/speclink-host/src/policy.rs 接workflow-config check-records --stdin／--dry-run及既有security的新葉節點；先在 crates/adapters/speclink-cli/tests/it/security.rs 加CLI失敗測試再實作，驗證exit0/1/2、stdout摘要／diff、stderr、--no-color及show JSON新增欄位型別；執行 cargo test -p speclink-cli --test it security。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/security.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 RED：在 apps/desktop/src/__tests__/tabs.test.ts 與 apps/desktop/src/__tests__/projectRail.test.tsx 補「左側專案排序與裝置持久化」案例：C/A/B重排、Remote離線、Escape／無效位置、首末項、儲存失敗、activeKey不變及重開還原；以 npm test -w @speclink/desktop -- tabs projectRail 確認新行為失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/tabs.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 GREEN／REFACTOR：在 apps/desktop/src/tabs.ts、apps/desktop/src/store.ts、apps/desktop/src/components/ProjectRail.tsx 接單一排序動作、既有dnd-kit與上移／下移選單，Tray及切換快捷鍵共用tabs；以2.1同命令轉綠，核對拖曳不誤觸切換、不修改專案文件且失敗還原。",
+      "files": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tabs.ts",
+        "package-lock.json"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 RED：在 apps/desktop/src/__tests__/updatesPage.test.tsx 與 apps/desktop/src/__tests__/updater.test.ts 補「更新頁內附資訊不依賴網路成功」：無updater仍有內附日誌、背景失敗可查、未就緒動作停用、zh-TW/en；以 npm test -w @speclink/desktop -- updatesPage updater 確認失敗原因符合目前空白／idle缺口。",
+      "files": [
+        "apps/desktop/src/__tests__/updater.test.ts",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 GREEN：在 apps/desktop/src/views/settings/UpdatesPage.tsx、apps/desktop/src/core/updater.ts、apps/desktop/src/store.ts 分開內附內容、updater動作與lastCheck，保留背景靜默及原狀態機，失敗顯示重試／診斷入口；以3.1同命令轉綠，更新提示與下載同意行為不回歸。",
+      "files": [
+        "apps/desktop/src/core/updater.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 RED→GREEN：在 crates/host/speclink-host/src/network.rs、apps/desktop/core/src、apps/desktop/src-tauri/src/updater_commands.rs 補可重現CONNECT成功／407／TLS／斷線／壞回應測試，再修「公司 Proxy 更新失敗的定位與呈現」實測缺口；共用Proxy快照且不放寬TLS／來源／簽章，無狀態碼留null；執行 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core，Tauri殼只留委派。",
+      "files": [
+        "Cargo.lock",
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/network.rs",
+        "apps/desktop/src-tauri/src/updater_commands.rs",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/network.rs",
+        "apps/desktop/core/src/updater.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 RED：在 packages/ui/src/__tests__ 與 apps/desktop/src/__tests__ 加「預設十二條的問號說明」案例，逐名對照引擎十二項，驗證zh-TW/en、未知名稱、Enter／Space／Escape與焦點返回；以 npm test -w @speclink/ui 及 npm test -w @speclink/desktop -- review 確認新案例失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "packages/ui/src/__tests__/baselineSmellHelp.test.tsx"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.2 GREEN：在 packages/ui/src/components/BaselineSmellList.tsx、packages/ui/src/i18n.tsx 與 apps/desktop/src/views/project-settings/ReviewRulesPage.tsx 共用Popover／Button呈現用途、例子及extend／replace效果，工單套用規則列沿同元件；以4.1同命令轉綠，不在apps複製名稱或覆蓋UI變體樣式。",
+      "files": [
+        "apps/desktop/src/views/project-settings/ReviewRulesPage.tsx",
+        "packages/ui/src/components/BaselineSmellList.tsx",
+        "packages/ui/src/i18n.tsx"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 RED：在 crates/engine/speclink-core/src/security 與 crates/engine/speclink-fs/src/security_packages.rs 補「深度審查完整離線資料包」案例：固定版本、缺指南、假LTS、未知檔、授權缺件、匯出往返及舊包仍可基本掃描；執行 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs，確認深度ready條件尚未實作而失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/security/data.rs",
+        "crates/engine/speclink-fs/src/security_packages.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 核對並建立 crates/engine/speclink-core/assets/security/spec_registry.json，引用既有sources.json，逐項核對官方真實檔名、固定commit／版本、sha256及授權；涵蓋認證、授權、機密、日誌、TLS、REST、注入、反序列化、XXE、SSRF、原型鏈、Webhook、DoS與實際語言指南，不假造Python/Rust檔名；以registry fixture驗證浮動來源或缺檔不能ready，記錄實際採用及未採用理由，不把下載紀錄寫成官方認證。",
+      "files": [
+        "crates/engine/speclink-core/src/security/mod.rs",
+        "crates/engine/speclink-core/assets/security/spec_registry.json",
+        "crates/engine/speclink-core/src/security/knowledge.rs",
+        "crates/engine/speclink-fs/tests/fixtures/security-guidance.zip"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.3 GREEN：在 crates/host/speclink-host/src/security_data.rs、crates/engine/speclink-fs/src/security.rs、crates/engine/speclink-fs/src/security_packages.rs 接完整generation安裝、離線匯入／匯出與knowledgeStatus，維持ZIP v1及集合v2上限和失敗保舊；以5.1同命令及 cargo test -p speclink-host 驗證整包斷網交換，舊基本掃描回歸不變。",
+      "files": [
+        "crates/engine/speclink-fs/src/security.rs",
+        "crates/host/speclink-host/src/security_data.rs"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.4 RED→GREEN：先在 crates/engine/speclink-fs/src/security/knowledge.rs 與 crates/adapters/speclink-cli/tests/it/security.rs 加「本機知識庫準備命令」缺件、symlink、外來目錄、取消、SHA及只選2025案例，再實作security kb prepare與原子快照；以 cargo test -p speclink-fs 及 cargo test -p speclink-cli --test it security 驗證人眼／JSON型別、exit0/1/2/130、--no-color、無網路請求及.gitignore，不覆蓋用戶知識庫。",
+      "files": [
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-cli/src/verbs/security.rs",
+        "crates/engine/speclink-core/src/security/input.rs",
+        "crates/engine/speclink-fs/src/security/knowledge.rs"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "6.1 RED：在 crates/engine/speclink-core/src/quality/station/tests.rs 與 crates/engine/speclink-fs/src 補「蓋章守門與蓋章效果」「驗證蓋章守門與蓋章效果」的歷史保存、接受情形、工單刪除後可查及新輪不覆蓋案例；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs 確認舊刪除行為使新斷言失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.2 GREEN：在 crates/engine/speclink-core/src/quality/history.rs、crates/engine/speclink-core/src/quality/station.rs 定義checks/index.json、兩站完成快照與原活動工單身分，蓋章前保存原輪次／規則／指紋／身份／接受結果，discard不刪歷史；以6.1核心測試轉綠，原章欄位與成功摘要不變。",
+      "files": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/quality/mod.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-core/src/quality/history.rs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "6.3 在 crates/engine/speclink-fs/src/lib.rs 接專用checks journal，先加入每個發佈／刪工單／寫索引／寫metadata／恢復失敗點測試，再落實備份、sync、讀取拒半套與下次恢復；以 cargo test -p speclink-fs 驗證history_recovery_required、Windows鎖檔／路徑與唯一副本保全，不新增泛用交易框架。",
+      "files": [
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/src/checks.rs"
+      ]
+    },
+    {
+      "task_id": "19",
+      "task_desc": "6.4 在 crates/host/speclink-host/src/bridge.rs 與 crates/host/speclink-host/src 接兩站紀錄及index的同次staged transaction，先補CAS衝突與reader拒寫案例再實作；以 cargo test -p speclink-host 驗證歷史／章／活動工單同成同敗及正確scope，不傳送原始碼。",
+      "files": [
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/worktree.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs"
+      ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "6.5 RED→GREEN：在 crates/adapters/speclink-cli/tests/it/review_verbs.rs、crates/adapters/speclink-cli/tests/it/verify_verbs.rs 驗證「審查完成紀錄查詢」「驗證完成紀錄查詢」，再於 crates/adapters/speclink-cli/src 接兩個history命令；執行 cargo test -p speclink-cli --test it review_verbs 及 cargo test -p speclink-cli --test it verify_verbs，斷言list／單筆JSON欄位與型別、原文人眼、active／archive、未知ID、--no-color及exit0/1/2，原show位元級輸出不變。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "crates/engine/speclink-core/src/security/report.rs",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/Cargo.toml",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/host/speclink-host/src/history.rs"
+      ]
+    },
+    {
+      "task_id": "21",
+      "task_desc": "7.1 RED：在 crates/engine/speclink-core/src/security/report.rs、crates/engine/speclink-fs/src/security/reports.rs 加「版本化 JSON 報告模型」「深度報告九項內容與風險接受紀錄」的v1/v2、九欄、錯誤證據、400字元片段及唯一秘密sentinel案例；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs 確認新增v2與保存檢查尚未滿足。",
+      "files": [
+        "crates/engine/speclink-fs/src/security/reports.rs"
+      ]
+    },
+    {
+      "task_id": "22",
+      "task_desc": "7.2 GREEN：在 crates/engine/speclink-core/src/security/report.rs、crates/host/speclink-host/src/security.rs、crates/engine/speclink-fs/src/security/reports.rs 實作遮罩共用模型、提案checks/security與單一權威index，落實「本機報告保存與查詢」「報告輸出命令與語言」，v1及無change裝置報告維持；以7.1測試轉綠並執行 cargo test -p speclink-host 驗證日誌／事件／JSON／Markdown無秘密。",
+      "files": [
+        "crates/host/speclink-host/src/security.rs",
+        "crates/engine/speclink-core/src/security/report/deep.rs"
+      ]
+    },
+    {
+      "task_id": "23",
+      "task_desc": "7.3 先在 crates/adapters/speclink-cli/tests/it/security.rs 加「深度審查提交與查詢命令」及legacy匯入案例，再於 crates/adapters/speclink-cli/src/verbs/security.rs 接add-round／show及report --change；以 cargo test -p speclink-cli --test it security 驗證4MiB邊界、未知change／重複ID／越界證據／錯版拒寫、active／archive人眼與JSON型別及exit，legacy不作新驗收證據。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/engine/speclink-fs/src/security/scan.rs",
+        "crates/host/speclink-host/src/security/deep.rs"
+      ]
+    },
+    {
+      "task_id": "24",
+      "task_desc": "8.1 RED：在 crates/engine/speclink-core/tests/it/render_golden.rs 與 crates/engine/speclink-core/tests/golden 建立「保留基本掃描並提供深度安全審查技能」「五種語言的架構與資料流深度審查」原稿與各工具契約斷言；確認缺新skill、指定標準優先、禁連網取資料、主開關、九欄及明確接受指引使測試失敗，不呼叫實際雲端模型。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "41",
+      "task_desc": "12.4 RED：在 packages/ui/src/__tests__/proposalDoc.test.tsx 與 crates/engine/speclink-core/tests/it/render_golden.rs 建立「提案預設條列顯示」「提案內容預設以條列起草」案例，驗證兩份不同來源、Why散文加清單形成連續編號、保留巢狀／程式／連結、空章節與所有工具模板；執行 npm test -w @speclink/ui -- proposalDoc 及 cargo test -p speclink-core --test it render_golden::，確認新斷言因未條列而失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "crates/engine/speclink-core/assets/skills/security-review.md",
+        "crates/engine/speclink-core/tests/golden/security-review-claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/security-review-codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/security-review-copilot.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "25",
+      "task_desc": "8.2 GREEN：在 crates/engine/speclink-core/assets/skills/security-review.md 與 crates/engine/speclink-core/src/workspace/skills.rs 註冊單一security-review，完整寫入五種語言入口／授權／機密／TLS／特定風險／資料流流程與scope限制，先讀KB、基本結果再深審提交；以 cargo test -p speclink-core --test it render_golden:: 驗證Claude／Codex／Copilot生成一致且基本掃描仍在，人工核讀生成原稿不新增外部標準或自動接受。",
+      "files": [
+        "crates/engine/speclink-core/assets/schema/spec-driven/proposal.template.md",
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/config.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/assets/skills/review.md",
+        "crates/engine/speclink-core/assets/skills/verify.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ]
+    },
+    {
+      "task_id": "27",
+      "task_desc": "9.1 RED：在 crates/engine/speclink-core/src/security/acceptance.rs 與 crates/host/speclink-host/src/security.rs 建立「安全驗收的等級完整性與新鮮度判定」矩陣：reference、LOW、HIGH／MEDIUM／CRITICAL、接受、缺資料／未跑／取消／未驗證、ASVS等級、resolvesCheckIds、停用項、政策／來源新增刪除／KB變更；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-host 確認新判定缺席而失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/security/acceptance.rs"
+      ]
+    },
+    {
+      "task_id": "30",
+      "task_desc": "9.4 在 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/archive.rs 與 crates/host/speclink-host/src 接「必要安全驗收的封存判定」及verify stamp，先在 crates/adapters/speclink-cli/tests/it/verify_verbs.rs、crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs 加無章直封存、一般--accept與carry不能略過案例；以 cargo test -p speclink-cli --test it verify_verbs 及 cargo test -p speclink-cli --test it archive_readiness_gate 轉綠，reference既有輸出保持回歸對照。",
+      "files": [
+        "apps/desktop/core/src/verbs.rs",
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs"
+      ]
+    },
+    {
+      "task_id": "31",
+      "task_desc": "10.1 RED：在 crates/protocol/speclink-protocol/src、crates/protocol/speclink-remote/tests/it 與 crates/host/speclink-server/tests/it 補「檢查歷史與安全驗收的共用契約」及「標準 error reason registry」的序列化、舊欄位預設、unsupported_version、403／401／CAS及跨scope案例；以 cargo test -p speclink-protocol 及 cargo test -p speclink-remote 觀察缺新型別或路由造成失敗。",
+      "files": [
+        "crates/protocol/speclink-protocol/src/lib.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/protocol/speclink-protocol/src/security.rs"
+      ]
+    },
+    {
+      "task_id": "31",
+      "task_desc": "10.1 RED：在 crates/protocol/speclink-protocol/src、crates/protocol/speclink-remote/tests/it 與 crates/host/speclink-server/tests/it 補「檢查歷史與安全驗收的共用契約」及「標準 error reason registry」的序列化、舊欄位預設、unsupported_version、403／401／CAS及跨scope案例；以 cargo test -p speclink-protocol 及 cargo test -p speclink-remote 觀察缺新型別或路由造成失敗。",
+      "files": [
+        "apps/desktop/core/src/security.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/engine/speclink-core/src/security/prepared.rs",
+        "crates/engine/speclink-fs/src/security/prepared.rs",
+        "crates/host/speclink-server/src/identity/auth.rs",
+        "crates/protocol/speclink-protocol/src/binding.rs",
+        "crates/protocol/speclink-protocol/src/error.rs",
+        "crates/protocol/speclink-remote/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "32",
+      "task_desc": "10.2 GREEN：在 crates/protocol/speclink-protocol/src/command.rs、crates/protocol/speclink-protocol/src/query.rs、crates/protocol/speclink-remote/src/client.rs、crates/host/speclink-server/src 與 crates/adapters/speclink-node/src 接同一Host的history／report／accept契約；以10.1命令及 cargo test -p speclink-server 驗證型別與權限，Node先執行 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test，不複製驗收判定。",
+      "files": [
+        ".github/skills/speclink-apply-with-worktree/SKILL.md",
+        ".github/skills/speclink-apply/SKILL.md",
+        ".github/skills/speclink-archive/SKILL.md",
+        ".github/skills/speclink-audit/SKILL.md",
+        ".github/skills/speclink-baseline/SKILL.md",
+        ".github/skills/speclink-commit/SKILL.md",
+        ".github/skills/speclink-config/SKILL.md",
+        ".github/skills/speclink-discuss/SKILL.md",
+        ".github/skills/speclink-drift/SKILL.md",
+        ".github/skills/speclink-improve/SKILL.md",
+        ".github/skills/speclink-ingest/SKILL.md",
+        ".github/skills/speclink-manual/SKILL.md",
+        ".github/skills/speclink-propose/SKILL.md",
+        ".github/skills/speclink-quality/SKILL.md",
+        ".github/skills/speclink-review/SKILL.md",
+        ".github/skills/speclink-trace/SKILL.md",
+        ".github/skills/speclink-verify/SKILL.md",
+        ".github/skills/speclink-worktree-merge/SKILL.md",
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/store_bridge.rs",
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/api.rs",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/src/api/verb.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        ".github/skills/speclink-security-review/SKILL.md",
+        "crates/host/speclink-host/src/security/remote.rs",
+        "crates/host/speclink-host/tests/security_remote.rs",
+        "crates/host/speclink-server/src/api/security.rs"
+      ]
+    },
+    {
+      "task_id": "33",
+      "task_desc": "10.3 在 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src 接歷史、KB準備及結果查詢，先補projectKey／jobId隔離、取消、unknownID與Remote離線案例，再以 cargo test -p speclink-desktop-core 轉綠；Tauri命令維持單行委派，業務及事件結算不放殼層。",
+      "files": [
+        "apps/desktop/core/Cargo.toml",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/security_commands.rs",
+        "apps/desktop/src/__tests__/securityReview.test.tsx",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/adapter/security.ts",
+        "packages/ui/src/__tests__/securityReviewPanel.test.tsx",
+        "packages/ui/src/components/SecurityReviewPanel.tsx",
+        "packages/ui/src/security.ts"
+      ]
+    },
+    {
+      "task_id": "34",
+      "task_desc": "11.1 RED：在 apps/desktop/src/__tests__ 與 packages/ui/src/__tests__/changeDetailPage.test.tsx、packages/ui/src/__tests__/archivedDetailPage.test.tsx 補「納入安全驗收與封存紀錄的設定」「提案與已封存的檢查紀錄文件樹」：預設、取消／儲存、reader、CAS保草稿、歷次文件、A/B切換與已封存唯讀；以 npm test -w @speclink/desktop 及 npm test -w @speclink/ui 確認新行為失敗。",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx"
+      ]
+    },
+    {
+      "task_id": "35",
+      "task_desc": "11.2 GREEN：在 apps/desktop/src/views/project-settings/WorkflowPage.tsx、apps/desktop/src/views/project-settings/useProjectSettings.ts 及 packages/ui/src 實作checkbox與三類封存選項，主開關關閉保值、required未配置顯示阻擋說明，沿用SettingsCard／Row／Checkbox／CodeEditor；以11.1相關workspace測試轉綠，儲存不執行Agent或資料下載。",
+      "files": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/views/project-settings/WorkflowPage.tsx",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/checkRecords.ts",
+        "packages/ui/src/components/CheckRecords.tsx"
+      ]
+    },
+    {
+      "task_id": "36",
+      "task_desc": "11.3 GREEN：在 packages/ui/src/components/ChangeDetailPage.tsx、packages/ui/src/components/ArchivedDetailPage.tsx、apps/desktop/src/adapter 與 apps/desktop/src/store.ts 連同一index歷史查詢，顯示類別／時間／結果及唯讀內容，省略文件不留斷鏈，失敗不借用別專案內容；以 npm test -w @speclink/ui 及 npm test -w @speclink/desktop 轉綠並檢查鍵盤與Markdown遮罩。",
+      "files": [
+        "apps/desktop/src/adapter/tauriDataSource.ts",
+        "apps/desktop/src/__tests__/checkRecords.test.ts",
+        "apps/desktop/src/adapter/checkRecords.ts"
+      ]
+    },
+    {
+      "task_id": "37",
+      "task_desc": "11.4 RED→GREEN：在 crates/engine/speclink-core/src/lifecycle/archive.rs、crates/engine/speclink-fs/src/lib.rs 與 crates/host/speclink-host/src/bridge.rs 補「封存時按類別保留完成紀錄」8種組合、required最小收據、carry工單、staging失敗及Remote衝突，再實作裁切與索引；以 cargo test -p speclink-core --lib、cargo test -p speclink-fs、cargo test -p speclink-host 驗證原活動提案不先刪、成功後已封存可查，驗收摘要保留接受理由。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "crates/engine/speclink-core/src/quality/history/archive.rs",
+        "crates/engine/speclink-fs/src/archive_checks.rs"
+      ]
+    },
+    {
+      "task_id": "38",
+      "task_desc": "12.1 以先檢查再修正文案的方式，在 openspec/LANGUAGE.md、packages/ui/src/i18n.tsx、docs/product-status.zh-TW.md、docs/product-status.md 交付「安全驗收與檢查紀錄的用詞」，說明skill入口、基本掃描、資料離線、reference／required、歷史查詢、完整報告與驗收摘要的差別及版本需求；逐項核對九項原需求與追加checkbox均有手冊／操作說明，不把AI連線或驗收通過稱為離線認證。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "39",
+      "task_desc": "12.2 對 crates/engine/speclink-core/src/security/acceptance.rs、crates/engine/speclink-fs/src/security/knowledge.rs、crates/host/speclink-host/src/security.rs 與 Protocol／CLI 新邊界套用audit的三個精簡觀點：設定降級／錯型別、來源與decisionId混用、舊server靜默略過、路徑連結、敏感證據及接受理由；每個實際缺陷先補失敗案例再修正，記錄無新增泛用抽象且失敗不當成功，執行對應受影響package測試。",
+      "files": [
+        "crates/engine/speclink-fs/src/layout.rs"
+      ]
+    },
+    {
+      "task_id": "43",
+      "task_desc": "12.6 完成交付回歸與文件對照：核對 crates/engine/speclink-core/tests/golden、crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 的人眼／JSON契約，執行 cargo test -p speclink-core --test it render_golden:: 及 cargo test -p speclink-cli --test it remote_verb_parity，必要的刻意新欄位同批更新golden；檢查 docs/product-status.zh-TW.md 與 docs/product-status.md 對應、只重跑受影響面的失敗檢查，最後必跑 node --test scripts/*.test.mjs scripts/*/*.test.mjs，保留無法執行的原因，不將完整測試寫為本地任務驗證。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "integrations/claude-code/speclink-skills/hooks/groups.ts",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/case.yaml",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/no-resource-fetch.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/reports-missing-knowledge.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/prompt.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/scaffold.sh"
+      ]
+    },
+    {
+      "task_id": "44",
+      "task_desc": "13.1 RED：針對「本分支更新與原作者版本」，在 apps/desktop/core/src/updater.rs 與 apps/desktop/src/__tests__/updatesPage.test.tsx 加失敗案例：兩個固定repo獨立結果、draft／prerelease／CLI-only過濾、最多100筆未取得、Proxy407／403／429、latest.json缺失但有桌面Release、原作者版號更高不成安裝候選。執行 cargo test -p speclink-desktop-core 及 npm test -w @speclink/desktop -- updatesPage，記錄因缺行為失敗。",
+      "files": [
+        "$null"
+      ]
+    },
+    {
+      "task_id": "56",
+      "task_desc": "16.1 RED→GREEN：在 crates/engine/speclink-fs/src/checks.rs 與 apps/desktop/core/src/security.rs 保留並重現「檢查紀錄鎖與封存搬移」，將互斥鎖移至同spec store的.checks-locks並先鎖再建立活動目錄；補搬移期間競爭者busy且不重建活動目錄、舊鎖持有拒寫及鎖目錄拒連結測試。核對 archive_checks 的備份／發佈亦沿相同鎖、鎖不入Git且舊版寫入者必須先停止；執行 cargo test -p speclink-fs 及 cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check，失敗不略過、不代勾人工驗收。",
+      "files": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ]
+    },
+    {
+      "task_id": "45",
+      "task_desc": "13.2 GREEN：在 apps/desktop/core/src/updater.rs、apps/desktop/src-tauri/src/updater_commands.rs 與 crates/host/speclink-host/src/network.rs 沿固定repo、既有HTTP限制與Proxy快照查桌面Release；有可信簽包才進原更新流程，無包回手動Release狀態，原作者只供資訊；以 cargo test -p speclink-desktop-core 及 cargo test -p speclink-host 驗13.1、錯誤分類與無默默直連，不更換簽章信任或新增任意URL。",
+      "files": [
+        "CONTRIBUTING.md",
+        "README.md",
+        "README.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "48",
+      "task_desc": "14.1 RED：在 crates/host/speclink-host/src/context.rs 補「應用程式資料目錄與離線版本清單」及「安全標準資料存放路徑設定」測試：缺檔／null舊預設、portable、自訂磁碟／Windows UNC、相對／不完整UNC／URL／NUL拒絕、設定壞版／錯型別／寫失敗保舊、共用根與私人根分離；執行 cargo test -p speclink-host 確認新增行為未實作。",
+      "files": [
+        "crates/host/speclink-host/src/context.rs"
+      ]
+    },
+    {
+      "task_id": "50",
+      "task_desc": "14.3 RED：在 crates/engine/speclink-fs/src/security.rs 及其測試補分離標準根的讀／裝／匯入／匯出案例：兩個裝置共用一根、私人reports／references／prepared不入share、唯讀來源可讀／匯出、斷線拒fallback、跨程序writer互斥、發佈失敗保舊、自訂根拒刪；執行 cargo test -p speclink-fs 確認新案例失敗。",
+      "files": [
+        "crates/host/speclink-host/src/security_paths.rs"
+      ]
+    },
+    {
+      "task_id": "49",
+      "task_desc": "14.2 GREEN：在 crates/host/speclink-host/src/context.rs 及同crate負責裝置設定的模組建立單一security-data-preferences.json讀寫與根解析，原子保存formatVersion／standardsPath，缺值向後相容、錯值不fallback；接 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src/security_commands.rs 的讀寫IPC，回standardsPath／effectivePath／isDefault／access的camelCase型別，殼只委派。以 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core 驗14.1、busy與路徑快照、唯讀候選可儲存及失敗保草稿。",
+      "files": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "57",
+      "task_desc": "17.1 Antigravity 內建工具與獨立技能目錄（涵蓋「tools 自訂描述子的接受與驗證」「init 內建 Agent 工具選擇」「Antigravity 技能生成與獨立清理」）：先在 crates/engine/speclink-core/src/workspace/init/tests.rs 與 crates/engine/speclink-core/src/workspace/skills.rs 補 codex,antigravity 共存、正確前綴、取消清理保留自有檔、撞名／撞 .agent/skills 失敗測試，再擴充 Tool::ALL 與既有生成、CLI 提示及 Node 工具清單；保留舊工具渲染、JSON shape 與退出碼，更新既有 asset golden。執行 cargo test -p speclink-core --lib、cargo test -p speclink-core --test it render_golden::、cargo test -p speclink-cli --test it init；Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test。",
+      "files": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/builtinTools.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/core/whatsNew.ts",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/render.spec.ts",
+        "crates/adapters/speclink-node/src/render.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "apps/desktop/core/src/testdata/README.md",
+        "apps/desktop/core/src/testdata/proxy-ca.der",
+        "apps/desktop/core/src/testdata/proxy-server-key.der",
+        "apps/desktop/core/src/testdata/proxy-server.der",
+        "crates/engine/speclink-core/tests/golden/security-review-antigravity.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "59",
+      "task_desc": "17.3 風險與驗收（含 Node SDK「渲染 API」矩陣與 CLI 同源核對）：在 crates/engine/speclink-core、crates/adapters/speclink-cli、crates/adapters/speclink-node、apps/desktop 與 docs 以 rg 排查三工具清單、Tool::ALL、技能目錄及選項標籤，逐類記錄共修或保留理由；補中英工具說明與本地／Remote 初始化回歸、核對取消 Antigravity 不影響 Codex；執行 cargo test -p speclink-core --lib、cargo test -p speclink-cli --test it init、cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留原始九項需求、12.3 人工驗收與已完成任務，不蓋章、不封存。",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/adapter/connections.ts"
+      ]
+    },
+    {
+      "task_id": "60",
+      "task_desc": "18.1 RED→GREEN：在 crates/engine/speclink-core/assets/skills/archive.md、verify.md 精簡非必要全大寫措辭，保留停止、工單與安全驗收行為；在 crates/engine/speclink-core/tests/it/skill_authoring.rs 為 security-review.md 登記實際上限 2，不提高既有上限。以 rg 排查全部技能原稿與登記表並記錄共修／保留理由，執行 cargo test -p speclink-core --test it skill_authoring:: 重現後轉綠；同步 crates/engine/speclink-core/src/workspace/init.rs 的資產版本、golden 與生成技能，以 cargo build -p speclink-cli、cargo test -p speclink-core、cargo test -p speclink-cli --test it init 及 cargo test -p speclink-cli --test it remote_verb_parity 驗證，Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test；最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留全部已完成任務與 12.3 人工驗收，完成後另啟完整品質檢查，不蓋章。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M5CJM0GA79NNK3WQ4CAXJJFB",
+      "taskDesc": "1.1 RED：在 crates/engine/speclink-core/src/security/policy.rs 與 crates/engine/speclink-core/src/workspace/config/tests.rs 補「安全政策區塊預設與獨立選項」「安全政策部分更新與保值」「檢查紀錄封存政策」失敗案例：舊設定required=false、封存三項true、錯型別拒絕、未知鍵／註解保值、停用後保值；以 cargo test -p speclink-core --lib 確認新案例因缺功能失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ],
+      "recordedAt": "2026-10-20T12:01:47Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GACF0KJPQYTRPSKZBC",
+      "taskDesc": "1.2 GREEN：在 crates/engine/speclink-core/src/security/policy.rs 與 crates/engine/speclink-core/src/workspace/config.rs 加入required_for_acceptance及check_records.archive三布林值，採既有文字手術與yaml_scalar，只改指定葉節點；以 cargo test -p speclink-core --lib 通過1.1，並檢查空mapping、65,537bytes及字串布林不寫入。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/security/policy.rs",
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ],
+      "recordedAt": "2026-10-20T12:02:28Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA63QJXN39NRYX6KNS",
+      "taskDesc": "1.3 在 crates/adapters/speclink-cli/src 與 crates/host/speclink-host/src/policy.rs 接workflow-config check-records --stdin／--dry-run及既有security的新葉節點；先在 crates/adapters/speclink-cli/tests/it/security.rs 加CLI失敗測試再實作，驗證exit0/1/2、stdout摘要／diff、stderr、--no-color及show JSON新增欄位型別；執行 cargo test -p speclink-cli --test it security。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/security.rs"
+      ],
+      "recordedAt": "2026-10-20T12:05:20Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAN3BNR3516DT04SGT",
+      "taskDesc": "2.1 RED：在 apps/desktop/src/__tests__/tabs.test.ts 與 apps/desktop/src/__tests__/projectRail.test.tsx 補「左側專案排序與裝置持久化」案例：C/A/B重排、Remote離線、Escape／無效位置、首末項、儲存失敗、activeKey不變及重開還原；以 npm test -w @speclink/desktop -- tabs projectRail 確認新行為失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/tabs.test.ts",
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ],
+      "recordedAt": "2026-10-20T12:08:35Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAY70H2XTJQZN3S8KJ",
+      "taskDesc": "2.2 GREEN／REFACTOR：在 apps/desktop/src/tabs.ts、apps/desktop/src/store.ts、apps/desktop/src/components/ProjectRail.tsx 接單一排序動作、既有dnd-kit與上移／下移選單，Tray及切換快捷鍵共用tabs；以2.1同命令轉綠，核對拖曳不誤觸切換、不修改專案文件且失敗還原。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/store.ts",
+        "apps/desktop/src/tabs.ts",
+        "package-lock.json"
+      ],
+      "recordedAt": "2026-10-20T12:09:59Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAKTYBP5PN699SQTJX",
+      "taskDesc": "3.1 RED：在 apps/desktop/src/__tests__/updatesPage.test.tsx 與 apps/desktop/src/__tests__/updater.test.ts 補「更新頁內附資訊不依賴網路成功」：無updater仍有內附日誌、背景失敗可查、未就緒動作停用、zh-TW/en；以 npm test -w @speclink/desktop -- updatesPage updater 確認失敗原因符合目前空白／idle缺口。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/updater.test.ts",
+        "apps/desktop/src/__tests__/updatesPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-20T12:10:38Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GARVKQM3TBEGM77DNC",
+      "taskDesc": "3.2 GREEN：在 apps/desktop/src/views/settings/UpdatesPage.tsx、apps/desktop/src/core/updater.ts、apps/desktop/src/store.ts 分開內附內容、updater動作與lastCheck，保留背景靜默及原狀態機，失敗顯示重試／診斷入口；以3.1同命令轉綠，更新提示與下載同意行為不回歸。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/core/updater.ts",
+        "apps/desktop/src/views/AppSettingsView.tsx",
+        "apps/desktop/src/views/settings/UpdatesPage.tsx"
+      ],
+      "recordedAt": "2026-10-20T12:11:42Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAWAM2NZ2XN4JA9FAC",
+      "taskDesc": "3.3 RED→GREEN：在 crates/host/speclink-host/src/network.rs、apps/desktop/core/src、apps/desktop/src-tauri/src/updater_commands.rs 補可重現CONNECT成功／407／TLS／斷線／壞回應測試，再修「公司 Proxy 更新失敗的定位與呈現」實測缺口；共用Proxy快照且不放寬TLS／來源／簽章，無狀態碼留null；執行 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core，Tauri殼只留委派。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "Cargo.lock",
+        "apps/desktop/core/src/lib.rs",
+        "apps/desktop/core/src/network.rs",
+        "apps/desktop/src-tauri/src/updater_commands.rs",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/network.rs",
+        "apps/desktop/core/src/updater.rs"
+      ],
+      "recordedAt": "2026-10-20T12:16:24Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAFVVH2TQ1JTVX8D76",
+      "taskDesc": "4.1 RED：在 packages/ui/src/__tests__ 與 apps/desktop/src/__tests__ 加「預設十二條的問號說明」案例，逐名對照引擎十二項，驗證zh-TW/en、未知名稱、Enter／Space／Escape與焦點返回；以 npm test -w @speclink/ui 及 npm test -w @speclink/desktop -- review 確認新案例失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "packages/ui/src/__tests__/baselineSmellHelp.test.tsx"
+      ],
+      "recordedAt": "2026-10-20T12:17:44Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GACQC1MMJW4AR7WRMR",
+      "taskDesc": "4.2 GREEN：在 packages/ui/src/components/BaselineSmellList.tsx、packages/ui/src/i18n.tsx 與 apps/desktop/src/views/project-settings/ReviewRulesPage.tsx 共用Popover／Button呈現用途、例子及extend／replace效果，工單套用規則列沿同元件；以4.1同命令轉綠，不在apps複製名稱或覆蓋UI變體樣式。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/views/project-settings/ReviewRulesPage.tsx",
+        "packages/ui/src/components/BaselineSmellList.tsx",
+        "packages/ui/src/i18n.tsx"
+      ],
+      "recordedAt": "2026-10-20T12:19:28Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAN0F5S2Q6HDKYEE11",
+      "taskDesc": "5.1 RED：在 crates/engine/speclink-core/src/security 與 crates/engine/speclink-fs/src/security_packages.rs 補「深度審查完整離線資料包」案例：固定版本、缺指南、假LTS、未知檔、授權缺件、匯出往返及舊包仍可基本掃描；執行 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs，確認深度ready條件尚未實作而失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/security/data.rs",
+        "crates/engine/speclink-fs/src/security_packages.rs"
+      ],
+      "recordedAt": "2026-10-20T12:28:50Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GATGB05F0ZAQTAC1F9",
+      "taskDesc": "5.2 核對並建立 crates/engine/speclink-core/assets/security/spec_registry.json，引用既有sources.json，逐項核對官方真實檔名、固定commit／版本、sha256及授權；涵蓋認證、授權、機密、日誌、TLS、REST、注入、反序列化、XXE、SSRF、原型鏈、Webhook、DoS與實際語言指南，不假造Python/Rust檔名；以registry fixture驗證浮動來源或缺檔不能ready，記錄實際採用及未採用理由，不把下載紀錄寫成官方認證。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/security/mod.rs",
+        "crates/engine/speclink-core/assets/security/spec_registry.json",
+        "crates/engine/speclink-core/src/security/knowledge.rs",
+        "crates/engine/speclink-fs/tests/fixtures/security-guidance.zip"
+      ],
+      "recordedAt": "2026-10-20T12:30:18Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAEETWBC3W27KR1BNQ",
+      "taskDesc": "5.3 GREEN：在 crates/host/speclink-host/src/security_data.rs、crates/engine/speclink-fs/src/security.rs、crates/engine/speclink-fs/src/security_packages.rs 接完整generation安裝、離線匯入／匯出與knowledgeStatus，維持ZIP v1及集合v2上限和失敗保舊；以5.1同命令及 cargo test -p speclink-host 驗證整包斷網交換，舊基本掃描回歸不變。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/security.rs",
+        "crates/host/speclink-host/src/security_data.rs"
+      ],
+      "recordedAt": "2026-10-20T12:33:30Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GACQH91FWC07GEBSRP",
+      "taskDesc": "5.4 RED→GREEN：先在 crates/engine/speclink-fs/src/security/knowledge.rs 與 crates/adapters/speclink-cli/tests/it/security.rs 加「本機知識庫準備命令」缺件、symlink、外來目錄、取消、SHA及只選2025案例，再實作security kb prepare與原子快照；以 cargo test -p speclink-fs 及 cargo test -p speclink-cli --test it security 驗證人眼／JSON型別、exit0/1/2/130、--no-color、無網路請求及.gitignore，不覆蓋用戶知識庫。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-cli/src/verbs/security.rs",
+        "crates/engine/speclink-core/src/security/input.rs",
+        "crates/engine/speclink-fs/src/security/knowledge.rs"
+      ],
+      "recordedAt": "2026-10-20T13:00:17Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAJEWRBQR75J3VTHE7",
+      "taskDesc": "6.1 RED：在 crates/engine/speclink-core/src/quality/station/tests.rs 與 crates/engine/speclink-fs/src 補「蓋章守門與蓋章效果」「驗證蓋章守門與蓋章效果」的歷史保存、接受情形、工單刪除後可查及新輪不覆蓋案例；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs 確認舊刪除行為使新斷言失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs"
+      ],
+      "recordedAt": "2026-10-20T13:01:59Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA0YZVWXKXG980K2QC",
+      "taskDesc": "6.2 GREEN：在 crates/engine/speclink-core/src/quality/history.rs、crates/engine/speclink-core/src/quality/station.rs 定義checks/index.json、兩站完成快照與原活動工單身分，蓋章前保存原輪次／規則／指紋／身份／接受結果，discard不刪歷史；以6.1核心測試轉綠，原章欄位與成功摘要不變。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/quality/mod.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-core/src/quality/history.rs"
+      ],
+      "recordedAt": "2026-10-20T13:03:05Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GARPMY8K00CGYFG91D",
+      "taskDesc": "6.3 在 crates/engine/speclink-fs/src/lib.rs 接專用checks journal，先加入每個發佈／刪工單／寫索引／寫metadata／恢復失敗點測試，再落實備份、sync、讀取拒半套與下次恢復；以 cargo test -p speclink-fs 驗證history_recovery_required、Windows鎖檔／路徑與唯一副本保全，不新增泛用交易框架。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/src/checks.rs"
+      ],
+      "recordedAt": "2026-10-20T13:08:52Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAFV1DGKXJ126XWAFW",
+      "taskDesc": "6.4 在 crates/host/speclink-host/src/bridge.rs 與 crates/host/speclink-host/src 接兩站紀錄及index的同次staged transaction，先補CAS衝突與reader拒寫案例再實作；以 cargo test -p speclink-host 驗證歷史／章／活動工單同成同敗及正確scope，不傳送原始碼。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/worktree.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs"
+      ],
+      "recordedAt": "2026-10-20T13:12:56Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GARN4MGMTJ366ADYPZ",
+      "taskDesc": "6.5 RED→GREEN：在 crates/adapters/speclink-cli/tests/it/review_verbs.rs、crates/adapters/speclink-cli/tests/it/verify_verbs.rs 驗證「審查完成紀錄查詢」「驗證完成紀錄查詢」，再於 crates/adapters/speclink-cli/src 接兩個history命令；執行 cargo test -p speclink-cli --test it review_verbs 及 cargo test -p speclink-cli --test it verify_verbs，斷言list／單筆JSON欄位與型別、原文人眼、active／archive、未知ID、--no-color及exit0/1/2，原show位元級輸出不變。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/verify_verbs.rs",
+        "crates/engine/speclink-core/src/security/report.rs",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/Cargo.toml",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/host/speclink-host/src/history.rs"
+      ],
+      "recordedAt": "2026-10-20T13:27:38Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAM1DVKGHVGVBX5HQ8",
+      "taskDesc": "7.1 RED：在 crates/engine/speclink-core/src/security/report.rs、crates/engine/speclink-fs/src/security/reports.rs 加「版本化 JSON 報告模型」「深度報告九項內容與風險接受紀錄」的v1/v2、九欄、錯誤證據、400字元片段及唯一秘密sentinel案例；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-fs 確認新增v2與保存檢查尚未滿足。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/security/reports.rs"
+      ],
+      "recordedAt": "2026-10-20T13:36:50Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GADABAEV0B8CZKKN6D",
+      "taskDesc": "7.2 GREEN：在 crates/engine/speclink-core/src/security/report.rs、crates/host/speclink-host/src/security.rs、crates/engine/speclink-fs/src/security/reports.rs 實作遮罩共用模型、提案checks/security與單一權威index，落實「本機報告保存與查詢」「報告輸出命令與語言」，v1及無change裝置報告維持；以7.1測試轉綠並執行 cargo test -p speclink-host 驗證日誌／事件／JSON／Markdown無秘密。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/security.rs",
+        "crates/engine/speclink-core/src/security/report/deep.rs"
+      ],
+      "recordedAt": "2026-10-20T13:57:32Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA5PFJV68E23BZCAD7",
+      "taskDesc": "7.3 先在 crates/adapters/speclink-cli/tests/it/security.rs 加「深度審查提交與查詢命令」及legacy匯入案例，再於 crates/adapters/speclink-cli/src/verbs/security.rs 接add-round／show及report --change；以 cargo test -p speclink-cli --test it security 驗證4MiB邊界、未知change／重複ID／越界證據／錯版拒寫、active／archive人眼與JSON型別及exit，legacy不作新驗收證據。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs",
+        "crates/engine/speclink-fs/src/security/scan.rs",
+        "crates/host/speclink-host/src/security/deep.rs"
+      ],
+      "recordedAt": "2026-10-20T14:07:30Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAP6QNWN0F147QYD65",
+      "taskDesc": "8.1 RED：在 crates/engine/speclink-core/tests/it/render_golden.rs 與 crates/engine/speclink-core/tests/golden 建立「保留基本掃描並提供深度安全審查技能」「五種語言的架構與資料流深度審查」原稿與各工具契約斷言；確認缺新skill、指定標準優先、禁連網取資料、主開關、九欄及明確接受指引使測試失敗，不呼叫實際雲端模型。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-10-20T14:09:21Z"
+    },
+    {
+      "taskId": "tsk_01M5CTJ2NK1EC090BQS5VGVRH8",
+      "taskDesc": "12.4 RED：在 packages/ui/src/__tests__/proposalDoc.test.tsx 與 crates/engine/speclink-core/tests/it/render_golden.rs 建立「提案預設條列顯示」「提案內容預設以條列起草」案例，驗證兩份不同來源、Why散文加清單形成連續編號、保留巢狀／程式／連結、空章節與所有工具模板；執行 npm test -w @speclink/ui -- proposalDoc 及 cargo test -p speclink-core --test it render_golden::，確認新斷言因未條列而失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "packages/ui/src/__tests__/proposalDoc.test.tsx",
+        "crates/engine/speclink-core/assets/skills/security-review.md",
+        "crates/engine/speclink-core/tests/golden/security-review-claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/security-review-codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/security-review-copilot.snapshot.md"
+      ],
+      "recordedAt": "2026-10-20T14:14:43Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAVYGTGNQXA904MYJC",
+      "taskDesc": "8.2 GREEN：在 crates/engine/speclink-core/assets/skills/security-review.md 與 crates/engine/speclink-core/src/workspace/skills.rs 註冊單一security-review，完整寫入五種語言入口／授權／機密／TLS／特定風險／資料流流程與scope限制，先讀KB、基本結果再深審提交；以 cargo test -p speclink-core --test it render_golden:: 驗證Claude／Codex／Copilot生成一致且基本掃描仍在，人工核讀生成原稿不新增外部標準或自動接受。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/schema/spec-driven/proposal.template.md",
+        "crates/engine/speclink-core/assets/skills/archive.md",
+        "crates/engine/speclink-core/assets/skills/config.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/assets/skills/review.md",
+        "crates/engine/speclink-core/assets/skills/verify.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "packages/ui/src/components/ProposalDoc.tsx"
+      ],
+      "recordedAt": "2026-10-20T14:17:18Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA2CNB5G1FNYQXRPRQ",
+      "taskDesc": "9.1 RED：在 crates/engine/speclink-core/src/security/acceptance.rs 與 crates/host/speclink-host/src/security.rs 建立「安全驗收的等級完整性與新鮮度判定」矩陣：reference、LOW、HIGH／MEDIUM／CRITICAL、接受、缺資料／未跑／取消／未驗證、ASVS等級、resolvesCheckIds、停用項、政策／來源新增刪除／KB變更；以 cargo test -p speclink-core --lib 及 cargo test -p speclink-host 確認新判定缺席而失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/security/acceptance.rs"
+      ],
+      "recordedAt": "2026-10-20T14:22:50Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAV4B07B5TCEBPF61F",
+      "taskDesc": "9.4 在 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/archive.rs 與 crates/host/speclink-host/src 接「必要安全驗收的封存判定」及verify stamp，先在 crates/adapters/speclink-cli/tests/it/verify_verbs.rs、crates/adapters/speclink-cli/tests/it/archive_readiness_gate.rs 加無章直封存、一般--accept與carry不能略過案例；以 cargo test -p speclink-cli --test it verify_verbs 及 cargo test -p speclink-cli --test it archive_readiness_gate 轉綠，reference既有輸出保持回歸對照。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/core/src/verbs.rs",
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive.rs",
+        "crates/engine/speclink-core/src/lifecycle/archive/tests.rs"
+      ],
+      "recordedAt": "2026-10-20T14:49:52Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA516A83Z7XS7AD77K",
+      "taskDesc": "10.1 RED：在 crates/protocol/speclink-protocol/src、crates/protocol/speclink-remote/tests/it 與 crates/host/speclink-server/tests/it 補「檢查歷史與安全驗收的共用契約」及「標準 error reason registry」的序列化、舊欄位預設、unsupported_version、403／401／CAS及跨scope案例；以 cargo test -p speclink-protocol 及 cargo test -p speclink-remote 觀察缺新型別或路由造成失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/protocol/speclink-protocol/src/lib.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/protocol/speclink-protocol/src/security.rs"
+      ],
+      "recordedAt": "2026-10-20T15:02:35Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA516A83Z7XS7AD77K",
+      "taskDesc": "10.1 RED：在 crates/protocol/speclink-protocol/src、crates/protocol/speclink-remote/tests/it 與 crates/host/speclink-server/tests/it 補「檢查歷史與安全驗收的共用契約」及「標準 error reason registry」的序列化、舊欄位預設、unsupported_version、403／401／CAS及跨scope案例；以 cargo test -p speclink-protocol 及 cargo test -p speclink-remote 觀察缺新型別或路由造成失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/core/src/security.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/engine/speclink-core/src/security/prepared.rs",
+        "crates/engine/speclink-fs/src/security/prepared.rs",
+        "crates/host/speclink-server/src/identity/auth.rs",
+        "crates/protocol/speclink-protocol/src/binding.rs",
+        "crates/protocol/speclink-protocol/src/error.rs",
+        "crates/protocol/speclink-remote/src/lib.rs"
+      ],
+      "recordedAt": "2026-10-20T15:19:24Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GANR59CWB2499SZ7JX",
+      "taskDesc": "10.2 GREEN：在 crates/protocol/speclink-protocol/src/command.rs、crates/protocol/speclink-protocol/src/query.rs、crates/protocol/speclink-remote/src/client.rs、crates/host/speclink-server/src 與 crates/adapters/speclink-node/src 接同一Host的history／report／accept契約；以10.1命令及 cargo test -p speclink-server 驗證型別與權限，Node先執行 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test，不複製驗收判定。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        ".github/skills/speclink-apply-with-worktree/SKILL.md",
+        ".github/skills/speclink-apply/SKILL.md",
+        ".github/skills/speclink-archive/SKILL.md",
+        ".github/skills/speclink-audit/SKILL.md",
+        ".github/skills/speclink-baseline/SKILL.md",
+        ".github/skills/speclink-commit/SKILL.md",
+        ".github/skills/speclink-config/SKILL.md",
+        ".github/skills/speclink-discuss/SKILL.md",
+        ".github/skills/speclink-drift/SKILL.md",
+        ".github/skills/speclink-improve/SKILL.md",
+        ".github/skills/speclink-ingest/SKILL.md",
+        ".github/skills/speclink-manual/SKILL.md",
+        ".github/skills/speclink-propose/SKILL.md",
+        ".github/skills/speclink-quality/SKILL.md",
+        ".github/skills/speclink-review/SKILL.md",
+        ".github/skills/speclink-trace/SKILL.md",
+        ".github/skills/speclink-verify/SKILL.md",
+        ".github/skills/speclink-worktree-merge/SKILL.md",
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/store_bridge.rs",
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/api.rs",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/src/api/verb.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        ".github/skills/speclink-security-review/SKILL.md",
+        "crates/host/speclink-host/src/security/remote.rs",
+        "crates/host/speclink-host/tests/security_remote.rs",
+        "crates/host/speclink-server/src/api/security.rs"
+      ],
+      "recordedAt": "2026-10-20T16:10:01Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAWMEP28Q6GR1YCKN9",
+      "taskDesc": "10.3 在 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src 接歷史、KB準備及結果查詢，先補projectKey／jobId隔離、取消、unknownID與Remote離線案例，再以 cargo test -p speclink-desktop-core 轉綠；Tauri命令維持單行委派，業務及事件結算不放殼層。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/core/Cargo.toml",
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/security_commands.rs",
+        "apps/desktop/src/__tests__/securityReview.test.tsx",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/adapter/security.ts",
+        "packages/ui/src/__tests__/securityReviewPanel.test.tsx",
+        "packages/ui/src/components/SecurityReviewPanel.tsx",
+        "packages/ui/src/security.ts"
+      ],
+      "recordedAt": "2026-10-20T21:41:39Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAH91EHDVMJM9BP5T2",
+      "taskDesc": "11.1 RED：在 apps/desktop/src/__tests__ 與 packages/ui/src/__tests__/changeDetailPage.test.tsx、packages/ui/src/__tests__/archivedDetailPage.test.tsx 補「納入安全驗收與封存紀錄的設定」「提案與已封存的檢查紀錄文件樹」：預設、取消／儲存、reader、CAS保草稿、歷次文件、A/B切換與已封存唯讀；以 npm test -w @speclink/desktop 及 npm test -w @speclink/ui 確認新行為失敗。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx"
+      ],
+      "recordedAt": "2026-10-20T21:43:48Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GARKNWFXT8ZN6GZJFD",
+      "taskDesc": "11.2 GREEN：在 apps/desktop/src/views/project-settings/WorkflowPage.tsx、apps/desktop/src/views/project-settings/useProjectSettings.ts 及 packages/ui/src 實作checkbox與三類封存選項，主開關關閉保值、required未配置顯示阻擋說明，沿用SettingsCard／Row／Checkbox／CodeEditor；以11.1相關workspace測試轉綠，儲存不執行Agent或資料下載。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src/adapter/workspace.ts",
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/views/project-settings/WorkflowPage.tsx",
+        "apps/desktop/src/views/project-settings/useProjectSettings.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/index.ts",
+        "packages/ui/src/checkRecords.ts",
+        "packages/ui/src/components/CheckRecords.tsx"
+      ],
+      "recordedAt": "2026-10-20T21:47:41Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA6S6ZBP5GBHWP82DM",
+      "taskDesc": "11.3 GREEN：在 packages/ui/src/components/ChangeDetailPage.tsx、packages/ui/src/components/ArchivedDetailPage.tsx、apps/desktop/src/adapter 與 apps/desktop/src/store.ts 連同一index歷史查詢，顯示類別／時間／結果及唯讀內容，省略文件不留斷鏈，失敗不借用別專案內容；以 npm test -w @speclink/ui 及 npm test -w @speclink/desktop 轉綠並檢查鍵盤與Markdown遮罩。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/adapter/tauriDataSource.ts",
+        "apps/desktop/src/__tests__/checkRecords.test.ts",
+        "apps/desktop/src/adapter/checkRecords.ts"
+      ],
+      "recordedAt": "2026-10-20T21:58:57Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GABAXXT9363PB5R594",
+      "taskDesc": "11.4 RED→GREEN：在 crates/engine/speclink-core/src/lifecycle/archive.rs、crates/engine/speclink-fs/src/lib.rs 與 crates/host/speclink-host/src/bridge.rs 補「封存時按類別保留完成紀錄」8種組合、required最小收據、carry工單、staging失敗及Remote衝突，再實作裁切與索引；以 cargo test -p speclink-core --lib、cargo test -p speclink-fs、cargo test -p speclink-host 驗證原活動提案不先刪、成功後已封存可查，驗收摘要保留接受理由。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts",
+        "crates/engine/speclink-core/src/quality/history/archive.rs",
+        "crates/engine/speclink-fs/src/archive_checks.rs"
+      ],
+      "recordedAt": "2026-10-20T22:12:29Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA4F2CT0V5DE3FG1N8",
+      "taskDesc": "12.1 以先檢查再修正文案的方式，在 openspec/LANGUAGE.md、packages/ui/src/i18n.tsx、docs/product-status.zh-TW.md、docs/product-status.md 交付「安全驗收與檢查紀錄的用詞」，說明skill入口、基本掃描、資料離線、reference／required、歷史查詢、完整報告與驗收摘要的差別及版本需求；逐項核對九項原需求與追加checkbox均有手冊／操作說明，不把AI連線或驗收通過稱為離線認證。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-20T22:13:44Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GAPTTDTJYAA6AMSRD6",
+      "taskDesc": "12.2 對 crates/engine/speclink-core/src/security/acceptance.rs、crates/engine/speclink-fs/src/security/knowledge.rs、crates/host/speclink-host/src/security.rs 與 Protocol／CLI 新邊界套用audit的三個精簡觀點：設定降級／錯型別、來源與decisionId混用、舊server靜默略過、路徑連結、敏感證據及接受理由；每個實際缺陷先補失敗案例再修正，記錄無新增泛用抽象且失敗不當成功，執行對應受影響package測試。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/layout.rs"
+      ],
+      "recordedAt": "2026-10-20T22:26:57Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GA7BNHKJSKW2F6R6PB",
+      "taskDesc": "12.6 完成交付回歸與文件對照：核對 crates/engine/speclink-core/tests/golden、crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 的人眼／JSON契約，執行 cargo test -p speclink-core --test it render_golden:: 及 cargo test -p speclink-cli --test it remote_verb_parity，必要的刻意新欄位同批更新golden；檢查 docs/product-status.zh-TW.md 與 docs/product-status.md 對應、只重跑受影響面的失敗檢查，最後必跑 node --test scripts/*.test.mjs scripts/*/*.test.mjs，保留無法執行的原因，不將完整測試寫為本地任務驗證。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "integrations/claude-code/speclink-skills/hooks/groups.ts",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/case.yaml",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/no-resource-fetch.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/reports-missing-knowledge.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/prompt.md",
+        "integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/scaffold.sh"
+      ],
+      "recordedAt": "2026-10-20T22:33:01Z"
+    },
+    {
+      "taskId": "tsk_01M5E8TT291QTBCZ8KMCQS4636",
+      "taskDesc": "13.1 RED：針對「本分支更新與原作者版本」，在 apps/desktop/core/src/updater.rs 與 apps/desktop/src/__tests__/updatesPage.test.tsx 加失敗案例：兩個固定repo獨立結果、draft／prerelease／CLI-only過濾、最多100筆未取得、Proxy407／403／429、latest.json缺失但有桌面Release、原作者版號更高不成安裝候選。執行 cargo test -p speclink-desktop-core 及 npm test -w @speclink/desktop -- updatesPage，記錄因缺行為失敗。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "$null"
+      ],
+      "recordedAt": "2026-10-21T03:42:13Z"
+    },
+    {
+      "taskId": "tsk_01M5E9VVQ5S88C8NHQFP33DVFD",
+      "taskDesc": "16.1 RED→GREEN：在 crates/engine/speclink-fs/src/checks.rs 與 apps/desktop/core/src/security.rs 保留並重現「檢查紀錄鎖與封存搬移」，將互斥鎖移至同spec store的.checks-locks並先鎖再建立活動目錄；補搬移期間競爭者busy且不重建活動目錄、舊鎖持有拒寫及鎖目錄拒連結測試。核對 archive_checks 的備份／發佈亦沿相同鎖、鎖不入Git且舊版寫入者必須先停止；執行 cargo test -p speclink-fs 及 cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check，失敗不略過、不代勾人工驗收。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src/__tests__/aboutPage.test.tsx",
+        "apps/desktop/src/adapter/updater.ts",
+        "apps/desktop/src/views/settings/AboutPage.tsx"
+      ],
+      "recordedAt": "2026-10-21T04:00:16Z"
+    },
+    {
+      "taskId": "tsk_01M5E9YEBPMTHRTG55VBMCS7JE",
+      "taskDesc": "13.2 GREEN：在 apps/desktop/core/src/updater.rs、apps/desktop/src-tauri/src/updater_commands.rs 與 crates/host/speclink-host/src/network.rs 沿固定repo、既有HTTP限制與Proxy快照查桌面Release；有可信簽包才進原更新流程，無包回手動Release狀態，原作者只供資訊；以 cargo test -p speclink-desktop-core 及 cargo test -p speclink-host 驗13.1、錯誤分類與無默默直連，不更換簽章信任或新增任意URL。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "CONTRIBUTING.md",
+        "README.md",
+        "README.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-21T04:01:41Z"
+    },
+    {
+      "taskId": "tsk_01M5EA3FTR0513EXFHP0KFKG5E",
+      "taskDesc": "14.1 RED：在 crates/host/speclink-host/src/context.rs 補「應用程式資料目錄與離線版本清單」及「安全標準資料存放路徑設定」測試：缺檔／null舊預設、portable、自訂磁碟／Windows UNC、相對／不完整UNC／URL／NUL拒絕、設定壞版／錯型別／寫失敗保舊、共用根與私人根分離；執行 cargo test -p speclink-host 確認新增行為未實作。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/context.rs"
+      ],
+      "recordedAt": "2026-10-21T04:04:27Z"
+    },
+    {
+      "taskId": "tsk_01M5EA6H74322Y69F1P2QNHD04",
+      "taskDesc": "14.3 RED：在 crates/engine/speclink-fs/src/security.rs 及其測試補分離標準根的讀／裝／匯入／匯出案例：兩個裝置共用一根、私人reports／references／prepared不入share、唯讀來源可讀／匯出、斷線拒fallback、跨程序writer互斥、發佈失敗保舊、自訂根拒刪；執行 cargo test -p speclink-fs 確認新案例失敗。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/security_paths.rs"
+      ],
+      "recordedAt": "2026-10-21T04:06:06Z"
+    },
+    {
+      "taskId": "tsk_01M5EB3DSK8XJFXJM1Z25M4WKD",
+      "taskDesc": "14.2 GREEN：在 crates/host/speclink-host/src/context.rs 及同crate負責裝置設定的模組建立單一security-data-preferences.json讀寫與根解析，原子保存formatVersion／standardsPath，缺值向後相容、錯值不fallback；接 apps/desktop/core/src/security.rs 與 apps/desktop/src-tauri/src/security_commands.rs 的讀寫IPC，回standardsPath／effectivePath／isDefault／access的camelCase型別，殼只委派。以 cargo test -p speclink-host 及 cargo test -p speclink-desktop-core 驗14.1、busy與路徑快照、唯讀候選可儲存及失敗保草稿。",
+      "repo": "main",
+      "headCommit": "945175c570c904acd9245a5757429b39977289b1",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/appSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/securityDataPage.test.tsx",
+        "apps/desktop/src/views/settings/SecurityDataPage.tsx",
+        "docs/development.md",
+        "docs/development.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-21T04:21:53Z"
+    },
+    {
+      "taskId": "tsk_01M5FDJXY3QV2H66PVG8J2328W",
+      "taskDesc": "17.1 Antigravity 內建工具與獨立技能目錄（涵蓋「tools 自訂描述子的接受與驗證」「init 內建 Agent 工具選擇」「Antigravity 技能生成與獨立清理」）：先在 crates/engine/speclink-core/src/workspace/init/tests.rs 與 crates/engine/speclink-core/src/workspace/skills.rs 補 codex,antigravity 共存、正確前綴、取消清理保留自有檔、撞名／撞 .agent/skills 失敗測試，再擴充 Tool::ALL 與既有生成、CLI 提示及 Node 工具清單；保留舊工具渲染、JSON shape 與退出碼，更新既有 asset golden。執行 cargo test -p speclink-core --lib、cargo test -p speclink-core --test it render_golden::、cargo test -p speclink-cli --test it init；Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx",
+        "apps/desktop/src/builtinTools.ts",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/core/whatsNew.ts",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx",
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/render.spec.ts",
+        "crates/adapters/speclink-node/src/render.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/engine/speclink-core/src/workspace/init/tests.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "apps/desktop/core/src/testdata/README.md",
+        "apps/desktop/core/src/testdata/proxy-ca.der",
+        "apps/desktop/core/src/testdata/proxy-server-key.der",
+        "apps/desktop/core/src/testdata/proxy-server.der",
+        "crates/engine/speclink-core/tests/golden/security-review-antigravity.snapshot.md"
+      ],
+      "recordedAt": "2026-10-21T14:38:03Z"
+    },
+    {
+      "taskId": "tsk_01M5FDJXY32WFJRA32QVWCGQFN",
+      "taskDesc": "17.3 風險與驗收（含 Node SDK「渲染 API」矩陣與 CLI 同源核對）：在 crates/engine/speclink-core、crates/adapters/speclink-cli、crates/adapters/speclink-node、apps/desktop 與 docs 以 rg 排查三工具清單、Tool::ALL、技能目錄及選項標籤，逐類記錄共修或保留理由；補中英工具說明與本地／Remote 初始化回歸、核對取消 Antigravity 不影響 Codex；執行 cargo test -p speclink-core --lib、cargo test -p speclink-cli --test it init、cargo test -p speclink-desktop-core，最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留原始九項需求、12.3 人工驗收與已完成任務，不蓋章、不封存。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/adapter/connections.ts"
+      ],
+      "recordedAt": "2026-10-21T14:47:06Z"
+    },
+    {
+      "taskId": "tsk_01M5FFARG4AF27DTQ0BZHP14ZK",
+      "taskDesc": "18.1 RED→GREEN：在 crates/engine/speclink-core/assets/skills/archive.md、verify.md 精簡非必要全大寫措辭，保留停止、工單與安全驗收行為；在 crates/engine/speclink-core/tests/it/skill_authoring.rs 為 security-review.md 登記實際上限 2，不提高既有上限。以 rg 排查全部技能原稿與登記表並記錄共修／保留理由，執行 cargo test -p speclink-core --test it skill_authoring:: 重現後轉綠；同步 crates/engine/speclink-core/src/workspace/init.rs 的資產版本、golden 與生成技能，以 cargo build -p speclink-cli、cargo test -p speclink-core、cargo test -p speclink-cli --test it init 及 cargo test -p speclink-cli --test it remote_verb_parity 驗證，Node 先 npm --prefix crates/adapters/speclink-node run build 再 npm --prefix crates/adapters/speclink-node test；最後執行 node --test scripts/*.test.mjs scripts/*/*.test.mjs 與 git diff --check。保留全部已完成任務與 12.3 人工驗收，完成後另啟完整品質檢查，不蓋章。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ],
+      "recordedAt": "2026-10-21T14:59:33Z"
+    }
+  ]
+}

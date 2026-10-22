@@ -1976,3 +1976,14 @@ mod tests {
         assert!(archived_document_location_at(&root, "2026-07-04-old", "proposal.md").is_none());
     }
 }
+
+/// Indexed completed checks, shared by active and archived proposal file trees.
+pub fn check_history_at(root:&Path,change:&str,kind:&str,id:Option<&str>)->Result<speclink_protocol::query::CheckHistoryResponse,String>{
+    let kind=match kind{"review"=>speclink_core::history::CheckKind::Review,"verify"=>speclink_core::history::CheckKind::Verify,"security" if id.is_none()=>speclink_core::history::CheckKind::Security,_=>return Err("invalid_argument: check kind".into())};
+    let ctx=crate::require_context_for_change(root,change)?;
+    speclink_host::history::query(&ctx.store,change,kind,id).map_err(|e|e.to_string())
+}
+pub fn security_change_report_at(root:&Path,change:&str,id:&str)->Result<speclink_core::security::report::VersionedReport,String>{
+    let ctx=crate::require_context_for_change(root,change)?;
+    speclink_core::security::report::read_change_report(&ctx.store,change,id).map_err(|e|e.to_string())?.ok_or_else(||"unknown_report".into())
+}

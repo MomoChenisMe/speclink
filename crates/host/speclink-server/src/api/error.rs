@@ -1,10 +1,10 @@
 //! The wire error envelope and the single mapping point (design 決策六).
 //!
 //! Every failure leaves a handler as an [`ApiError`] — an HTTP status plus a
-//! reason from the protocol's eight-value closed registry plus the message.
+//! reason from the protocol's closed registry plus the message.
 //! The store's six failure classes, the Engine command layer's five codes, and
 //! binding refusals all map to this type here and nowhere else; the three
-//! vocabularies never merge and the registry is never widened.
+//! vocabularies never merge and security refusals retain their dedicated reasons.
 
 use crate::identity::IdentityError;
 use axum::http::StatusCode;
@@ -34,6 +34,33 @@ impl ApiError {
             message: message.into(),
             evidence: None,
         }
+    }
+
+    /// Security operations share the registry, while retaining typed store CAS errors.
+    pub fn security(error: anyhow::Error) -> ApiError {
+        if let Some(store) = error.downcast_ref::<StoreError>() { return match store {
+            StoreError::RevisionConflict { .. } => Self::revision_conflict("check index changed; refresh before retrying"),
+            StoreError::PermissionDenied => Self::forbidden("operation is not permitted"),
+            StoreError::Unavailable => Self::unavailable("store unavailable"),
+            _ => Self::internal("security store operation failed"),
+        }; }
+        let message = error.to_string();
+        let code = message.split(':').next().unwrap_or_default();
+        let reason = match code {
+            "missing_security_review"=>ErrorReason::MissingSecurityReview,
+            "security_acceptance_blocked"=>ErrorReason::SecurityAcceptanceBlocked,
+            "security_report_stale"=>ErrorReason::SecurityReportStale,
+            "missing_knowledge"=>ErrorReason::MissingKnowledge,
+            "history_recovery_required"=>ErrorReason::HistoryRecoveryRequired,
+            "source_freshness_unverified"=>ErrorReason::SourceFreshnessUnverified,
+            "identity_required"=>ErrorReason::IdentityRequired,
+            "unsupported_version"=>ErrorReason::UnsupportedVersion,
+            "revision_conflict"=>ErrorReason::RevisionConflict,
+            "unknown_change"|"unknown_report"=>return Self::not_found(code),
+            "invalid_argument"|"invalid_report"|"size_limit"|"invalid_security_decision"=>return Self::invalid_argument(message),
+            _=>ErrorReason::Refused,
+        };
+        Self::new(StatusCode::CONFLICT,reason,speclink_core::security::report::redact_text(&message))
     }
 
     /// 401 — the caller could not be authenticated for this operation.
@@ -136,6 +163,7 @@ impl IntoResponse for ApiError {
 /// mapping stays byte-identical to fs mode.
 impl From<CommandError> for ApiError {
     fn from(e: CommandError) -> ApiError {
+        if let Some(source)=e.source.as_ref() { if source.downcast_ref::<speclink_core::security::acceptance::GateFailure>().is_some() {return Self::security(anyhow::anyhow!(e.message));} }
         // in-progress 移除守門的結構化證據(D4):自 CommandError 的 source
         // 下鑽 RevertBlocked,轉為 wire 形狀隨 409 封套 flatten 輸出。
         let evidence = e.source.as_ref().and_then(|s| {
@@ -152,6 +180,7 @@ impl From<CommandError> for ApiError {
         let plan_cycle = e.source.as_ref().is_some_and(|s| {
             s.downcast_ref::<speclink_core::plan::PlanError>().is_some()
         });
+        if e.message.starts_with("revision_conflict:")||e.message.starts_with("security_report_stale:")||e.message.starts_with("source_freshness_unverified")||e.message.starts_with("missing_knowledge") {return Self::security(anyhow::anyhow!(e.message));}
         let message = e.message;
         let mut api = match e.code {
             ErrorCode::InvalidArgv => ApiError::invalid_argument(message),

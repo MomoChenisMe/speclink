@@ -15,15 +15,15 @@ export function SecurityReviewPanel({adapter,change,inspection,onInspection,onOp
    adapter.subscribe((event)=>{if(!disposed&&ticket.current?.jobId===event.jobId&&ticket.current.projectKey===event.projectKey)setProgress(event);}).then((unsubscribe)=>{if(disposed)unsubscribe();else stop=unsubscribe;}).catch((e)=>{if(!disposed)setError(message(e));});
    return ()=>{disposed=true;generation.current+=1;stop?.();};
  },[adapter,change]);
- async function run(prepare=false) {
+ async function run(mode:"review"|"prepare"|"knowledge"="review") {
    const current=generation.current;setBusy(true);setError(null);setProgress(null);
    try {
-     const next=await (prepare&&adapter.prepare?adapter.prepare(change):adapter.start(change));
+     const next=await (mode==="knowledge"&&adapter.prepareKnowledge?adapter.prepareKnowledge(change):mode==="prepare"&&adapter.prepare?adapter.prepare(change):adapter.start(change));
      if(current===generation.current)ticket.current=next;
      const result=await adapter.wait(next);
      if(current!==generation.current)return;
      if(result.projectKey!==inspection.projectKey)throw new Error("binding_mismatch");
-     if(result.reportId){const nextReport=await adapter.report(result.reportId);if(current===generation.current)setReport(nextReport);}
+     if(result.reportId){const nextReport=await adapter.report(result.reportId,change);if(current===generation.current)setReport(nextReport);}
      else {const fresh=await adapter.inspect(change);if(current===generation.current){onInspection?.(fresh);setReport(fresh.latest);}}
    }catch(e){if(current===generation.current)setError(message(e));}
    finally {if(current===generation.current){ticket.current=null;setBusy(false);}}
@@ -35,10 +35,12 @@ export function SecurityReviewPanel({adapter,change,inspection,onInspection,onOp
    <p className="text-muted-foreground">{t("securityReview.disclaimer")}</p>
    <p>{inspection.selectedStandards.length?inspection.selectedStandards.map((s)=>`${s.standardId} ${s.version}${s.level?` ${s.level}`:""}`).join(" · "):t("securityReview.unconfigured")}</p>
    {inspection.enabled===false&&<p>{t("securityReview.disabled")}</p>}
+   {inspection.deviceLocal&&<p role="status">{t("securityReview.deviceLocal")}</p>}
    {inspection.requiresPreparation&&<p>{t("securityReview.requiresPreparation")}</p>}
    <div className="flex flex-wrap gap-2">
     <Button size="sm" disabled={busy||inspection.enabled!==true||inspection.requiresPreparation} onClick={()=>void run()}>{t("securityReview.run")}</Button>
-    {adapter.prepare&&<Button size="sm" variant="secondary" disabled={busy} onClick={()=>void run(true)}>{t("securityReview.prepare")}</Button>}
+    {adapter.prepare&&<Button size="sm" variant="secondary" disabled={busy} onClick={()=>void run("prepare")}>{t("securityReview.prepare")}</Button>}
+    {adapter.prepareKnowledge&&<Button size="sm" variant="secondary" disabled={busy||inspection.enabled!==true||inspection.requiresPreparation} onClick={()=>void run("knowledge")}>{t("securityReview.prepareKnowledge")}</Button>}
     {busy&&<Button size="sm" variant="secondary" onClick={()=>{const active=ticket.current;if(active)void action(()=>adapter.cancel(active));}}>{t("securityReview.cancel")}</Button>}
     {(missing||report?.configurationState==="unconfigured")&&onOpenDataSettings&&<Button size="sm" variant="secondary" onClick={onOpenDataSettings}>{t("securityReview.dataSettings")}</Button>}
    </div>
@@ -50,10 +52,10 @@ export function SecurityReviewPanel({adapter,change,inspection,onInspection,onOp
     <p className="text-xs text-muted-foreground">{report.reviewedAt} · {report.executionMode} · {report.ruleVersion} · {report.scope}</p>
     {report.preparedAt&&<p className="text-xs text-muted-foreground">{t("securityReview.preparedAt")}: {report.preparedAt} · revision {report.policyRevision??"—"}</p>}
     <p>{t("securityReview.counts").replace("{findings}",String(report.counts.findings)).replace("{unverified}",String(report.counts.notVerified)).replace("{checked}",String(report.counts.checksSucceeded))}</p>
-    <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.exportReport(report.reportId,"json"))}>{t("securityReview.exportJson")}</Button><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.exportReport(report.reportId,"markdown"))}>{t("securityReview.exportMarkdown")}</Button><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.copySummary(report.reportId))}>{t("securityReview.copy")}</Button></div>
+    <div className="flex flex-wrap gap-2"><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.exportReport(report.reportId,"json",change))}>{t("securityReview.exportJson")}</Button><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.exportReport(report.reportId,"markdown",change))}>{t("securityReview.exportMarkdown")}</Button><Button size="sm" variant="secondary" onClick={()=>void action(()=>adapter.copySummary(report.reportId,change))}>{t("securityReview.copy")}</Button></div>
     <div className="space-y-3">{report.findings.slice(0,visible).map((f)=><div key={f.findingId} className="space-y-2 rounded-md border border-border p-3">
       <div className="flex flex-wrap gap-2"><code>{f.ruleId}</code><Badge variant="secondary">{t(`securityReview.severity.${f.severity}`)}</Badge><span>{t(f.kind==="missing_requirement"?"securityReview.requirementGap":"securityReview.potentialRisk")}</span><span>{t("securityReview.needsReview")} · {t("securityReview.confidence")}: {t(`securityReview.confidence.${f.confidence}`)}</span></div>
-      <p>{f.title}</p>{adapter.reveal?<button type="button" className="break-all font-mono text-xs underline" onClick={()=>void action(()=>adapter.reveal!(report.reportId,f.path,f.line))}>{f.path}:{f.line}</button>:<code>{f.path}:{f.line}</code>}
+      <p>{f.title}</p>{adapter.reveal?<button type="button" className="break-all font-mono text-xs underline" onClick={()=>void action(()=>adapter.reveal!(report.reportId,f.path,f.line,change))}>{f.path}:{f.line}</button>:<code>{f.path}:{f.line}</code>}
       <pre className="overflow-x-auto whitespace-pre-wrap rounded bg-muted p-2 text-xs">{f.evidence}</pre><p>{f.description}</p><p>{f.remediation}</p>
       {f.references.map((r)=><p key={`${r.standardId}/${r.version}/${r.controlId}`} className="text-xs">{r.standardId} {r.version} · {r.controlId}</p>)}
     </div>)}</div>

@@ -488,11 +488,11 @@ fn https_host(value: &str) -> Option<String> {
 }
 fn approved_source_url(url: &str) -> bool {
     https_host(url).is_some_and(|h| official_host(&h))
-        && source_catalog().is_ok_and(|sources| {
+        && (source_catalog().is_ok_and(|sources| {
             sources
                 .iter()
                 .any(|s| refresh_url(s) == url || s.files.iter().any(|f| f.url == url))
-        })
+        }) || speclink_core::security::knowledge::registry().is_ok_and(|registry| registry.files().any(|f| f.url == url)))
 }
 fn approved_redirect(original: &str, next: &str) -> bool {
     if !approved_source_url(original) {
@@ -753,7 +753,9 @@ fn install_source(
     }
     let mut files = BTreeMap::new();
     let mut downloaded = 0;
-    for (index, file) in source.files.iter().enumerate() {
+    let knowledge = speclink_core::security::knowledge::registry()?;
+    let download_files = source.files.iter().chain(knowledge.files()).collect::<Vec<_>>();
+    for (index, file) in download_files.iter().enumerate() {
         job.check()?;
         let bytes = download_file(&file.url, transport, job, &mut downloaded, &|mut p| {
             p.completed_files = index;
@@ -772,7 +774,8 @@ fn install_source(
     let validated = decoder(source.clone(), files, kind, &|| job.check().is_err());
     job.check()?;
     let validated = validated?;
-    progress(job.progress("installing", downloaded, source.files.len()));
+    ensure!(validated.knowledge_status()? == "ready", "missing_knowledge");
+    progress(job.progress("installing", downloaded, download_files.len()));
     let result = transaction.commit_cancellable(validated, &|| job.check().is_err());
     // A successful receipt means the atomic commit happened, even if cancel arrives later.
     if result.is_err() {
@@ -795,6 +798,7 @@ pub struct StandardDataEntry {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StandardVersionEntry {
+    pub knowledge_status: String,
     pub version: String,
     pub status: String,
     pub source_url: String,
@@ -809,14 +813,15 @@ pub fn list_data(repository: &dyn StandardRepository) -> Result<StandardDataList
     let catalog = source_catalog()?;
     let mut rows = std::collections::BTreeMap::<StandardId, Vec<StandardVersionEntry>>::new();
     for source in &catalog {
-        let (status, error) = match repository.read(source.standard_id, &source.version) {
-            Ok(Some(_)) => ("installed", None),
-            Ok(None) => ("missing", None),
-            Err(error) => ("invalid", Some(error.to_string())),
+        let (status, knowledge_status, error) = match repository.read(source.standard_id, &source.version) {
+            Ok(Some(data)) => ("installed", data.metadata.knowledge_status, None),
+            Ok(None) => ("missing", "missing".into(), None),
+            Err(error) => ("invalid", "missing".into(), Some(error.to_string())),
         };
         rows.entry(source.standard_id)
             .or_default()
             .push(StandardVersionEntry {
+                knowledge_status,
                 version: source.version.clone(),
                 status: status.into(),
                 source_url: source.source_url.clone(),
@@ -837,6 +842,7 @@ pub fn list_data(repository: &dyn StandardRepository) -> Result<StandardDataList
         if let Some(installed) = repository.read(id, &version)? {
             let m = installed.metadata;
             rows.entry(id).or_default().push(StandardVersionEntry {
+                knowledge_status: m.knowledge_status,
                 version,
                 status: "installed".into(),
                 source_url: m.source_url,
@@ -1266,7 +1272,12 @@ mod tests {
         struct MemoryTransport(BTreeMap<String, Vec<u8>>);
         impl DataTransport for MemoryTransport {
             fn fetch(&self, url: &str, _: &DataJob) -> Result<DataResponse> {
-                let bytes = self.0.get(url).unwrap().clone();
+                let bytes = if let Some(bytes) = self.0.get(url) { bytes.clone() } else {
+                    let registry = speclink_core::security::knowledge::registry()?;
+                    let file = registry.files().find(|f| f.url == url).unwrap();
+                    let mut archive = zip::ZipArchive::new(std::io::Cursor::new(include_bytes!("../../../engine/speclink-fs/tests/fixtures/security-guidance.zip")))?;
+                    let mut bytes = Vec::new(); archive.by_name(&file.name)?.read_to_end(&mut bytes)?; bytes
+                };
                 Ok(DataResponse {
                     status: 200,
                     location: None,
@@ -1299,7 +1310,8 @@ mod tests {
             .iter()
             .all(|p| p.job_id == job.id && p.project_key == "application-data"));
         assert_eq!(events.borrow().last().unwrap().phase, "installing");
-        assert_eq!(events.borrow().last().unwrap().completed_files, 2);
+        assert_eq!(events.borrow().last().unwrap().completed_files, 21);
+        assert_eq!(receipt.knowledge_status, "ready");
         let cancelled = download_job();
         cancelled.cancelled.store(true, Ordering::Relaxed);
         assert!(install_source(

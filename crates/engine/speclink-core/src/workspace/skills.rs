@@ -3,7 +3,7 @@
 use crate::config::{CustomTool, Invocation};
 use crate::init::ASSET_VERSION;
 
-/// The render targets: a built-in tool (claude, codex, copilot) or a custom descriptor.
+/// The render targets: a built-in tool (claude, codex, copilot, antigravity) or a custom descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
 /// references, verb wording decided by the descriptor's `invocation`.
 #[derive(Clone, Copy)]
@@ -13,12 +13,13 @@ pub enum RenderTarget<'a> {
 }
 
 /// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
-/// claude, codex and copilot.
+/// claude, codex, copilot and antigravity.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
     Codex,
     Copilot,
+    Antigravity,
 }
 
 impl Tool {
@@ -26,9 +27,9 @@ impl Tool {
     /// walks it for generation, deselection, the reserved descriptor names and
     /// directories, the asset lock and its error messages; the adapters (CLI hint, Node
     /// SDK, desktop) spell the set out in their own wording, pinned by their tests.
-    pub const ALL: [Tool; 3] = [Tool::Claude, Tool::Codex, Tool::Copilot];
+    pub const ALL: [Tool; 4] = [Tool::Claude, Tool::Codex, Tool::Copilot, Tool::Antigravity];
 
-    /// The built-in names as error messages list them: `claude, codex, copilot`.
+    /// The built-in names as error messages list them: `claude, codex, copilot, antigravity`.
     pub fn supported_names() -> String {
         Tool::ALL.map(|t| t.name()).join(", ")
     }
@@ -38,6 +39,7 @@ impl Tool {
             "claude" => Some(Tool::Claude),
             "codex" | "agents" => Some(Tool::Codex),
             "copilot" => Some(Tool::Copilot),
+            "antigravity" => Some(Tool::Antigravity),
             _ => None,
         }
     }
@@ -46,6 +48,7 @@ impl Tool {
             Tool::Claude => "claude",
             Tool::Codex => "codex",
             Tool::Copilot => "copilot",
+            Tool::Antigravity => "antigravity",
         }
     }
     /// Directory (relative to project root) that holds generated skill files.
@@ -54,19 +57,20 @@ impl Tool {
             Tool::Claude => ".claude/skills",
             Tool::Codex => ".agents/skills",
             Tool::Copilot => ".github/skills",
+            Tool::Antigravity => ".agent/skills",
         }
     }
     /// Where the tool keeps plan-mode files ({{PLAN_DIR}}); empty when the tool has none.
     fn plan_dir(&self) -> &'static str {
         match self {
             Tool::Claude => "~/.claude/plans/",
-            Tool::Codex | Tool::Copilot => "",
+            Tool::Codex | Tool::Copilot | Tool::Antigravity => "",
         }
     }
     /// The prefix that `/speclink:` becomes for this tool.
     fn slash_replacement(&self) -> &'static str {
         match self {
-            Tool::Claude | Tool::Copilot => "/speclink-",
+            Tool::Claude | Tool::Copilot | Tool::Antigravity => "/speclink-",
             Tool::Codex => "$speclink-",
         }
     }
@@ -104,6 +108,7 @@ const B_APPLY_WITH_WORKTREE: &str = concat!(
 const B_WORKTREE_MERGE: &str = include_str!("../../assets/skills/worktree-merge.md");
 const B_ARCHIVE: &str = include_str!("../../assets/skills/archive.md");
 const B_AUDIT: &str = include_str!("../../assets/skills/audit.md");
+const B_SECURITY_REVIEW: &str = include_str!("../../assets/skills/security-review.md");
 const B_COMMIT: &str = include_str!("../../assets/skills/commit.md");
 const B_CONFIG: &str = include_str!("../../assets/skills/config.md");
 const B_DISCUSS: &str = include_str!("../../assets/skills/discuss.md");
@@ -153,6 +158,7 @@ pub const REVIEW_BASELINE_SMELLS: [&str; 12] = [
 /// The skills that generate SKILL.md files.
 pub fn registry() -> Vec<Skill> {
     vec![
+        Skill { name: "security-review", description: "Use when explicitly requested to perform an offline OWASP/CWE deep review of a change using its selected local knowledge and authorized sources; records findings and the shared acceptance verdict.", fork: false, disallow_edit: true, claude_only: false, worktree_gated: false, body: B_SECURITY_REVIEW },
         Skill { name: "analyze", description: "Use when a change's artifacts should be cross-checked before implementing — coverage, consistency, ambiguity and gaps across proposal, design, specs and tasks; reports findings without editing anything.", fork: true, disallow_edit: true, claude_only: true, worktree_gated: false, body: B_ANALYZE },
         Skill { name: "apply", description: "Use when a change's tasks are ready to implement, or when resuming one left half-done — works through the task list, marking each checkbox as it lands.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_APPLY },
         // Same permissions as `apply` — it IS apply, wrapped in worktree setup
@@ -412,7 +418,7 @@ mod tests {
     }
 
     /// Spec requirement: 產物層版本戳同源 — the skill frontmatter version is the
-    /// ASSET_VERSION string, never a hardcoded "1.0", across all three render targets.
+    /// ASSET_VERSION string, never a hardcoded "1.0", across every render target.
     #[test]
     fn skill_frontmatter_version_is_asset_version() {
         let expected = format!("  version: \"{ASSET_VERSION}\"");
@@ -510,7 +516,7 @@ mod tests {
     fn review_baseline_smells_match_the_generated_review_skill_files() {
         let reg = registry();
         let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
-        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+        for tool in Tool::ALL {
             let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
             let names: Vec<&str> = rendered
                 .lines()
@@ -529,7 +535,7 @@ mod tests {
     fn review_skill_records_applied_rules_in_discovery_rounds() {
         let reg = registry();
         let review = reg.iter().find(|s| s.name == "review").expect("registry carries review");
-        for tool in [Tool::Claude, Tool::Codex, Tool::Copilot] {
+        for tool in Tool::ALL {
             let rendered = render_skill_file_for(RenderTarget::Builtin(tool), review, "openspec");
             let step: Vec<&str> = rendered
                 .lines()

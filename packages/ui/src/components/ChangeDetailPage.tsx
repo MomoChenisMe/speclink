@@ -93,6 +93,7 @@ import { setTaskMark } from "../tasks";
 import { SecurityReviewPanel } from "./SecurityReviewPanel";
 import type { SecurityInspection, SecurityReviewAdapter } from "../security";
 
+import {useCheckRecords,CheckRecordTree,CheckRecordBody} from "./CheckRecords";
 export interface ChangeDetailPageProps {
   change: ChangeItem | null;
   /** 刷新世代——遞增即重載已載入的文件內容（未傳＝0，行為等同僅開啟時載入）。 */
@@ -105,6 +106,7 @@ export interface ChangeDetailPageProps {
    * 內容為空態。 */
   loadStationTicket?: (change: string, station: TicketStation) => Promise<StationTicket | null>;
   securityReview?: SecurityReviewAdapter;
+  checkRecords?:import("../checkRecords").CheckRecordsAdapter;
   onOpenSecurityData?: () => void;
   onRunVerb?: (verb: Verb, change: string) => void;
   /** 頁內呈現的分析結構化結果（validate＋analyze 合併；僅當 change 相符時呈現；archive 不走此結果面）。 */
@@ -272,6 +274,7 @@ export function ChangeDetailPage({
   loadMeta,
   loadStationTicket,
   securityReview,
+  checkRecords,
   onOpenSecurityData,
   onRunVerb,
   detailVerb,
@@ -319,6 +322,7 @@ export function ChangeDetailPage({
 
   const name = change?.name ?? null;
   const gen = refreshGen ?? 0;
+  const checks=useCheckRecords(checkRecords,name,tab,gen);
   // latest-wins：每次載入取遞增序號，回應到達時序號已過期即丟棄（涵蓋世代與換 change 的交錯）。
   const requestSeq = useRef(0);
   // 已發起載入的世代——判斷外部世代是否落後需補載。
@@ -512,7 +516,7 @@ export function ChangeDetailPage({
   const wave = planWave(change);
   const blockedBy = planBlockedBy(change);
 
-  const docTarget = documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs, nav.specCap);
+  const docTarget:DocumentTarget|null = checks.entry?{doc:{change:change.name,artifact:checks.entry.relativePath},content:checks.content}:documentTarget(change.name, tab, { proposal, design, tasks: tasksMd }, specDocs, nav.specCap);
   const docPath = documentArtifact(docTarget);
   // 排程沒有檔案，內容即變更的排程欄位。
   const tocKey = changeDocTocKey(tab, { content: tab === "plan" ? change : docTarget?.content, specs: specDocs, tickets });
@@ -753,6 +757,7 @@ export function ChangeDetailPage({
         )}
       </TabsList>
 
+      <CheckRecordTree state={checks}/>
       <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
       <DetailStatus>
         <StatusRow mark="tasks" label={t("detail.statusTasks")}>
@@ -819,7 +824,7 @@ export function ChangeDetailPage({
 
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
-              title={t(DOC_TITLE_KEYS[tab])}
+              title={t(tab.startsWith("check:")?"checks.title":DOC_TITLE_KEYS[tab])}
               badges={summary.badges}
               actions={renderDocumentActions?.(docTarget)}
               provenance={[
@@ -829,6 +834,7 @@ export function ChangeDetailPage({
             <DocTiles tiles={summary.tiles} />
             {tab !== "proposal" && calloutSlot}
             <DocBody ref={bodyRef}>
+              <CheckRecordBody state={checks} tab={tab}/>
               {/* undefined＝載入在途、null＝文件不存在（空殼 change）——載入中畫骨架，
                   空態文案只在載入完成後出。 */}
               <TabsContent value="proposal">

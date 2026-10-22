@@ -279,6 +279,9 @@ impl Store for WorktreeOverlay<'_> {
     fn delete_artifact(&self, change: &str, artifact: &str) -> anyhow::Result<()> {
         self.inner.delete_artifact(change, artifact)
     }
+    fn ensure_checks_readable(&self, change: &str) -> anyhow::Result<()> { self.of(change).ensure_checks_readable(change) }
+    fn recover_checks(&self, change: &str) -> anyhow::Result<()> { self.inner.recover_checks(change) }
+    fn commit_checks(&self, change: &str, commit: &speclink_core::history::ChecksCommit) -> anyhow::Result<()> { self.inner.commit_checks(change, commit) }
 
     fn list_canonical_capabilities(&self) -> Vec<String> {
         self.inner.list_canonical_capabilities()
@@ -311,6 +314,8 @@ impl Store for WorktreeOverlay<'_> {
     fn archive_change(&self, name: &str, dated_name: &str) -> anyhow::Result<()> {
         self.inner.archive_change(name, dated_name)
     }
+
+    fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&speclink_core::history::ArchiveChecksPlan)->anyhow::Result<()>{self.inner.archive_change_with_checks(name,dated,plan)}
 
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
         self.inner.read_archived_meta(dated_name)

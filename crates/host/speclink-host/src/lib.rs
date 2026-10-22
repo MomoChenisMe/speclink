@@ -16,11 +16,13 @@ pub mod commit;
 pub mod context;
 pub mod drift;
 pub mod gate;
+pub mod history;
 pub mod policy;
 pub mod portable;
 pub mod projection;
 pub mod security;
 pub mod security_data;
+pub mod security_paths;
 pub mod worktree;
 
 pub mod network;

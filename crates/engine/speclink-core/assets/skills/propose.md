@@ -156,7 +156,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    ```markdown
    ## Why
 
-   <!-- Why this functionality is needed -->
+   <!-- Why this functionality is needed: one point per bullet -->
 
    ## What Changes
 
@@ -448,6 +448,8 @@ Check these before you present the Next steps:
 - Several independent changes will be implemented at once, and the project's worktree policy is on → `/speclink:apply-with-worktree <change-name>` (one git worktree per change)
 - The requirements turned out to be fuzzier than they looked → `/speclink:discuss` before implementing
 
+
+**Proposal lists are the default for all projects.** Write Why and What Changes with one point per bullet, separating independent motivations and changes while preserving every agreed requirement. Do not collapse them into a long paragraph or make this a project-specific option. The shared proposal view displays these sections as numbered items; update templates and skill sources together rather than editing one tool's generated copy. Existing proposals are not batch rewritten by init/update.
 
 **Preliminary security review boundary**
 

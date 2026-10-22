@@ -41,6 +41,14 @@ pub enum ErrorReason {
     Refused,
     Unavailable,
     Internal,
+    MissingSecurityReview,
+    SecurityAcceptanceBlocked,
+    SecurityReportStale,
+    MissingKnowledge,
+    HistoryRecoveryRequired,
+    SourceFreshnessUnverified,
+    IdentityRequired,
+    UnsupportedVersion,
     /// Forward-compatibility escape hatch — not a registry member. Carries
     /// the raw reason string a newer or non-conformant server sent.
     #[serde(untagged)]
@@ -59,6 +67,14 @@ impl ErrorReason {
             ErrorReason::Refused => "refused",
             ErrorReason::Unavailable => "unavailable",
             ErrorReason::Internal => "internal",
+            ErrorReason::MissingSecurityReview=>"missing_security_review",
+            ErrorReason::SecurityAcceptanceBlocked=>"security_acceptance_blocked",
+            ErrorReason::SecurityReportStale=>"security_report_stale",
+            ErrorReason::MissingKnowledge=>"missing_knowledge",
+            ErrorReason::HistoryRecoveryRequired=>"history_recovery_required",
+            ErrorReason::SourceFreshnessUnverified=>"source_freshness_unverified",
+            ErrorReason::IdentityRequired=>"identity_required",
+            ErrorReason::UnsupportedVersion=>"unsupported_version",
             ErrorReason::Unknown(raw) => raw,
         }
     }
@@ -101,6 +117,15 @@ mod tests {
             (ErrorReason::Refused, "refused"),
             (ErrorReason::Unavailable, "unavailable"),
             (ErrorReason::Internal, "internal"),
+            (ErrorReason::MissingSecurityReview, "missing_security_review"),
+            (ErrorReason::SecurityAcceptanceBlocked, "security_acceptance_blocked"),
+            (ErrorReason::SecurityReportStale, "security_report_stale"),
+            (ErrorReason::MissingKnowledge, "missing_knowledge"),
+            (ErrorReason::HistoryRecoveryRequired, "history_recovery_required"),
+            (ErrorReason::SourceFreshnessUnverified, "source_freshness_unverified"),
+            (ErrorReason::IdentityRequired, "identity_required"),
+            (ErrorReason::UnsupportedVersion, "unsupported_version"),
+
         ];
         for (reason, wire) in &cases {
             assert_eq!(wire_of(reason), *wire, "stable wire string for {reason:?}");
@@ -109,7 +134,7 @@ mod tests {
             assert_eq!(&back, reason, "round-trips from {wire}");
         }
         // Exhaustive match without a wildcard arm for the registry: adding a
-        // ninth registry value breaks this test at compile time — that is the
+        // new registry value breaks this test at compile time — that is the
         // point of a closed set.
         for (reason, _) in cases {
             match reason {
@@ -120,7 +145,16 @@ mod tests {
                 | ErrorReason::InvalidConfig
                 | ErrorReason::Refused
                 | ErrorReason::Unavailable
-                | ErrorReason::Internal => {}
+                | ErrorReason::Internal
+                | ErrorReason::MissingSecurityReview
+                | ErrorReason::SecurityAcceptanceBlocked
+                | ErrorReason::SecurityReportStale
+                | ErrorReason::MissingKnowledge
+                | ErrorReason::HistoryRecoveryRequired
+                | ErrorReason::SourceFreshnessUnverified
+                | ErrorReason::IdentityRequired
+                | ErrorReason::UnsupportedVersion
+                => {}
                 ErrorReason::Unknown(_) => unreachable!("registry values only"),
             }
         }

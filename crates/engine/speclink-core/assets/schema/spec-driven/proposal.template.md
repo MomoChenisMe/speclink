@@ -1,10 +1,12 @@
 ## Why
 
-<!-- Explain the motivation for this change. What problem does this solve? Why now? -->
+<!-- Explain the motivation: one point per bullet. What problem does this solve? Why now?
+Use a separate bullet for each independent motivation; preserve all agreed requirements. -->
 
 ## What Changes
 
-<!-- Describe what will change. Be specific about new capabilities, modifications, or removals. -->
+<!-- Describe what will change: one point per bullet. Be specific about new capabilities,
+modifications, or removals. This is the default for all projects, not a project option. -->
 
 ## Non-Goals (optional)
 

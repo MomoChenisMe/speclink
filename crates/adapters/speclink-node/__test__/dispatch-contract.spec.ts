@@ -107,3 +107,10 @@ describe('dispatch change-metadata fail-closed (invalid_config)', () => {
     expect('metaError' in good).toBe(false)
   })
 })
+
+ it('security review without a subcommand is an input error, never a panic', async () => {
+   const engine = createEngine({store:{type:'fs',root:makeFsFixture()}})
+   const err = await rejection(engine.dispatch(['security','review']))
+   expect(err.code).not.toBe('panic')
+   expect(err.message).toContain('invalid_argument: security review requires')
+ })

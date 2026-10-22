@@ -89,12 +89,12 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-`--tools` 選要產生技能的 Agent 工具：`claude`、`codex`、`copilot`，用逗號任意組合。只用 GitHub Copilot 就寫 `--tools copilot`。
+`--tools` 選要產生技能的 Agent 工具：`claude`、`codex`、`copilot`、`antigravity`，用逗號任意組合。只用 GitHub Copilot 就寫 `--tools copilot`。
 
 這一步會：
 
 - 建立 `openspec/` 與 `.speclink.yaml`。
-- 產生所選工具的技能檔：Claude 在 `.claude/skills/`，Codex 在 `.agents/skills/`，GitHub Copilot 在 `.github/skills/`。
+- 產生所選工具的技能檔：Claude 在 `.claude/skills/`，Codex 在 `.agents/skills/`，GitHub Copilot 在 `.github/skills/`，Antigravity 在 `.agent/skills/`。
 - 把 `.speclink/`（本機工作資料）加進 `.gitignore`。
 
 它不會改你的 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。Agent 靠技能檔自己的說明判斷什麼時候用哪個技能。
@@ -127,7 +127,7 @@ speclink validate --specs --all --strict
 
 ## <a id="propose"></a>3. 提案
 
-請 Agent 建立變更。在 Claude Code 或 GitHub Copilot：
+請 Agent 建立變更。在 Claude Code、GitHub Copilot 或 Antigravity：
 
 ```text
 /speclink-propose add-csv-export
@@ -198,7 +198,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ## <a id="apply"></a>4. 實作
 
-文件完成後，請 Agent 開始實作。在 Claude Code 或 GitHub Copilot：
+文件完成後，請 Agent 開始實作。在 Claude Code、GitHub Copilot 或 Antigravity：
 
 ```text
 /speclink-apply add-csv-export
@@ -265,7 +265,7 @@ Change: add-csv-export
 
 ## <a id="archive"></a>6. 封存
 
-任務全部完成、文件檢查通過、選擇要跑的品質關卡也結束之後，請 Agent 封存。在 Claude Code 或 GitHub Copilot：
+任務全部完成、文件檢查通過、選擇要跑的品質關卡也結束之後，請 Agent 封存。在 Claude Code、GitHub Copilot 或 Antigravity：
 
 ```text
 /speclink-archive add-csv-export

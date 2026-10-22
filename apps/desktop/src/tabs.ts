@@ -43,6 +43,15 @@ export function removeTab(tabs: ProjectTab[], key: string): ProjectTab[] {
   return tabs.filter((t) => locatorKey(t.locator) !== key);
 }
 
+/** 僅接受既有專案的完整排列，保留每個分頁的身分與狀態。 */
+export function reorderTabs(tabs: ProjectTab[], keys: string[]): ProjectTab[] {
+  const byKey = new Map(tabs.map((tab) => [locatorKey(tab.locator), tab]));
+  if (keys.length !== tabs.length || new Set(keys).size !== tabs.length || keys.some((key) => !byKey.has(key))) {
+    throw new Error("Invalid project order");
+  }
+  return keys.map((key) => byKey.get(key)!);
+}
+
 export function persistTabs(
   tabs: ProjectTab[],
   activeKey: string | null,

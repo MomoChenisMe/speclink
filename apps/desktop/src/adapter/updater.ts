@@ -2,6 +2,7 @@
 // 單行委派，加上主視窗焦點事件的委派（前景重檢的訊號；update-recheck-on-focus
 // design D1）。store 只依賴此介面，測試以假 adapter 注入。
 import { invoke } from "@tauri-apps/api/core";
+import { compareVersions } from "../core/whatsNew";
 import { relaunch } from "@tauri-apps/plugin-process";
 import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -16,10 +17,14 @@ export interface PendingUpdate {
   download: () => Promise<void>;
   install: () => Promise<void>;
 }
+export interface ManualUpdate { version: string; manualUrl: string }
+export interface DesktopRelease { version: string; repoUrl: string; releaseUrl: string; publishedAt: string }
+export type ReleaseRepository = "fork" | "upstream";
+export const desktopRelease = (repo: ReleaseRepository): Promise<DesktopRelease | null> => invoke("desktop_release", {repo});
 
 export interface UpdaterAdapter {
   /** 檢查更新端點；回 null＝已是最新。離線／端點不可達時 reject。 */
-  check: () => Promise<PendingUpdate | null>;
+  check: () => Promise<PendingUpdate | ManualUpdate | null>;
   /** 套用更新後重啟 app。 */
   relaunch: () => Promise<void>;
   /**
@@ -33,7 +38,17 @@ export interface UpdaterAdapter {
 export function tauriUpdaterAdapter(): UpdaterAdapter {
   return {
     async check() {
-      const update = await invoke<{id: string; version: string} | null>("updater_check");
+      let update: {id: string; version: string} | null;
+      try { update = await invoke("updater_check"); }
+      catch (error) {
+        const failure = error as {code?: string; httpStatus?: number};
+        if (failure?.httpStatus !== 404 && failure?.code !== "updater-unavailable" && failure?.code !== "parse") throw error;
+        const release = await desktopRelease("fork");
+        if (!release) throw error;
+        const installed = await appVersion();
+        if (compareVersions(release.version, installed) <= 0) return null;
+        return {version:release.version, manualUrl:release.releaseUrl};
+      }
       if (!update) return null;
       return {
         version: update.version,

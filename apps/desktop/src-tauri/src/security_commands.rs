@@ -42,6 +42,14 @@ fn data_dir() -> Result<PathBuf, JobError> {
     speclink_host::context::security_data_dir().map_err(|_| JobError::directory_unavailable())
 }
 #[tauri::command]
+pub async fn security_data_paths_read() -> Result<speclink_host::security_paths::PathSnapshot,JobError> {
+    tauri::async_runtime::spawn_blocking(move||security::data_paths_at(&data_dir()?)).await.map_err(|_|JobError::worker_failed())?
+}
+#[tauri::command]
+pub async fn security_data_paths_write(jobs:tauri::State<'_,SecurityJobs>,standards_path:Option<String>) -> Result<speclink_host::security_paths::PathSnapshot,JobError> {
+    let jobs=jobs.inner().clone();tauri::async_runtime::spawn_blocking(move||jobs.write_data_paths(&data_dir()?,standards_path)).await.map_err(|_|JobError::worker_failed())?
+}
+#[tauri::command]
 pub async fn security_inspect(
     app: tauri::AppHandle,
     target: Target,
@@ -132,37 +140,26 @@ pub async fn security_wait(
         .map_err(|_| JobError::worker_failed())?
 }
 #[tauri::command]
-pub async fn security_report(
-    id: String,
-) -> Result<speclink_core::security::report::Report, JobError> {
-    tauri::async_runtime::spawn_blocking(move || security::read_report_at(&data_dir()?, &id))
-        .await
-        .map_err(|_| JobError::worker_failed())?
+pub async fn security_report(app:tauri::AppHandle,target:Option<Target>,change:Option<String>,id:String)->Result<speclink_core::security::report::Report,JobError>{
+    tauri::async_runtime::spawn_blocking(move||match target {Some(t)=>security::read_target_basic_at(&data_dir()?,&t.resolve(&app)?,change.as_deref(),&id),None=>security::read_report_at(&data_dir()?,&id)}).await.map_err(|_|JobError::worker_failed())?
 }
 #[tauri::command]
-pub async fn security_report_summary(id: String) -> Result<String, JobError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        security::read_report_at(&data_dir()?, &id).map(|r| r.summary())
-    })
-    .await
-    .map_err(|_| JobError::worker_failed())?
+pub async fn security_report_summary(app:tauri::AppHandle,target:Option<Target>,change:Option<String>,id:String)->Result<String,JobError>{
+    security_report(app,target,change,id).await.map(|r|r.summary())
 }
 #[tauri::command]
-pub async fn security_report_export(
-    id: String,
-    format: String,
-    path: PathBuf,
-) -> Result<(), JobError> {
-    tauri::async_runtime::spawn_blocking(move || {
-        security::export_report_at(&data_dir()?, &id, &format, &path)
-    })
-    .await
-    .map_err(|_| JobError::worker_failed())?
+pub async fn security_report_export(app:tauri::AppHandle,target:Option<Target>,change:Option<String>,id:String,format:String,path:PathBuf)->Result<(),JobError>{
+    tauri::async_runtime::spawn_blocking(move||match target {Some(t)=>security::export_target_basic_at(&data_dir()?,&t.resolve(&app)?,change.as_deref(),&id,&format,&path),None=>security::export_report_at(&data_dir()?,&id,&format,&path)}).await.map_err(|_|JobError::worker_failed())?
+}
+#[tauri::command]
+pub async fn security_kb_prepare(app:tauri::AppHandle,jobs:tauri::State<'_,SecurityJobs>,target:Target,change:Option<String>)->Result<JobTicket,JobError>{
+    let jobs=jobs.inner().clone();tauri::async_runtime::spawn_blocking(move||{let input=target.resolve(&app)?;jobs.start_knowledge_at(data_dir()?,input,change,move|p|{let _=app.emit("security-completed",p);})}).await.map_err(|_|JobError::worker_failed())?
 }
 #[tauri::command]
 pub async fn security_reveal(
     app: tauri::AppHandle,
     target: Target,
+    change:Option<String>,
     id: String,
     path: String,
     line: u64,
@@ -170,7 +167,7 @@ pub async fn security_reveal(
     let resolver = app.clone();
     let _ = line;
     let path = tauri::async_runtime::spawn_blocking(move || {
-        security::reveal_report_path_at(&data_dir()?, &target.resolve(&resolver)?, &id, &path)
+        security::reveal_target_basic_at(&data_dir()?, &target.resolve(&resolver)?,change.as_deref(), &id, &path)
     })
     .await
     .map_err(|_| JobError::worker_failed())??;

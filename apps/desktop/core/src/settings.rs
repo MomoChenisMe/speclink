@@ -45,6 +45,7 @@ pub struct WorkflowSettings {
     pub audit: bool,
     pub worktree: bool,
     pub security_verification: speclink_core::security::policy::SecurityPolicy,
+    pub check_records: speclink_core::config::CheckRecordsConfig,
     pub context: Option<String>,
     pub rules: BTreeMap<String, Vec<String>>,
     /// 「審查規則」頁的現值；未寫 review 時為預設（extend 與三個空清單）。
@@ -136,6 +137,7 @@ fn workflow_settings_from_text(
                 audit: cfg.audit.unwrap_or(false),
                 worktree: cfg.worktree.unwrap_or(false),
                 security_verification: cfg.security(),
+                check_records:cfg.check_records(),
                 context: cfg.context.clone(),
                 rules: cfg.rules.clone(),
                 review: cfg.review(),
@@ -153,6 +155,7 @@ fn workflow_settings_from_text(
             audit: false,
             worktree: false,
             security_verification: Default::default(),
+            check_records:Default::default(),
             context: None,
             rules: Default::default(),
             review: ReviewConfig::default(),
@@ -387,6 +390,12 @@ pub fn rewrite_workflow_fields_with_security_text(
     }
 }
 
+/// Compose both partial patches before touching the workflow file.
+pub fn rewrite_workflow_fields_with_checks_text(original:&str,fields:&WorkflowPolicyFields,security_patch:Option<&str>,records_patch:Option<&str>)->Result<String,String>{
+    let text=rewrite_workflow_fields_with_security_text(original,fields,security_patch)?;
+    match records_patch{Some(patch)=>speclink_core::security::policy::patch_workflow_check_records(&text,patch).map_err(|e|single_line(&e.to_string())),None=>Ok(text)}
+}
+
 fn rewrite_workflow_fields_text_for(
     original: &str,
     fields: &WorkflowPolicyFields,
@@ -424,11 +433,14 @@ pub fn write_workflow_fields_with_security_at(
     fields: &WorkflowPolicyFields,
     security_patch: Option<&str>,
 ) -> Result<(), String> {
+    write_workflow_fields_with_checks_at(root,fields,security_patch,None)
+}
+pub fn write_workflow_fields_with_checks_at(root:&Path,fields:&WorkflowPolicyFields,security_patch:Option<&str>,records_patch:Option<&str>)->Result<(),String>{
     let ws = discover(root)?;
     let file = format!("{}/config.yaml", ws.spec_dir_name);
     let path = workflow_config_path(&ws);
     let original = read_opt(&path).unwrap_or_default();
-    let new_text = rewrite_workflow_fields_with_security_text(&original, fields, security_patch)?;
+    let new_text = rewrite_workflow_fields_with_checks_text(&original, fields, security_patch,records_patch)?;
     let worktree_was_on = WorkflowConfig::from_text(Some(&original))
         .ok()
         .and_then(|c| c.worktree)
@@ -1719,5 +1731,20 @@ mod tests {
         let output = rewrite_workflow_content_text(original, &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() })
             .expect("rewrite");
         assert!(output.ends_with("review:\n  baseline: replace # kept\n"), "{output}");
+    }
+}
+
+#[cfg(test)]
+mod record_policy_tests {
+    use super::*;
+    #[test]
+    fn combined_policy_patches_preserve_unknown_fields_and_reject_before_writing() {
+        let project=crate::testfixture::FixtureRoot::new("record-policy-settings");
+        let original="# keep\nsecurity_verification:\n  enabled: true\n  future: keep\ncheck_records:\n  archive:\n    review: true\n    future: keep\n";project.write("openspec/config.yaml",original);
+        let fields=WorkflowPolicyFields::default();
+        let next=rewrite_workflow_fields_with_checks_text(original,&fields,Some("required_for_acceptance: true\n"),Some("archive: {security: false}\n")).unwrap();
+        assert!(next.contains("future: keep"));assert!(next.starts_with("# keep"));
+        let snapshot=read_workflow_settings_from_text(Some(&next));assert!(snapshot.security_verification.required_for_acceptance);assert!(snapshot.check_records.archive.review);assert!(!snapshot.check_records.archive.security);
+        assert!(write_workflow_fields_with_checks_at(project.root(),&fields,Some("required_for_acceptance: true\n"),Some("archive: {security: 'false'}\n")).is_err());assert_eq!(std::fs::read_to_string(project.root().join("openspec/config.yaml")).unwrap(),original);
     }
 }

@@ -687,3 +687,21 @@ describe("已封存詳情頁的工單分頁", () => {
     await screen.findByText("工單尚未抵達或已被刪除");
   });
 });
+
+it('已封存文件樹可查保存的歷次紀錄，沒有寫入操作或省略報告的斷鏈',async()=>{
+ const entry={recordId:'r1',kind:'review',createdAt:'2026-10-20',outcome:'passed',relativePath:'checks/review/r1.md',contentDigest:'a'.repeat(64)};
+ const checks={list:vi.fn().mockResolvedValue([entry]),read:vi.fn().mockResolvedValue('## 封存完整審查紀錄\n\n原始工單內容。')};
+ render(<ArchivedDetailPage {...makeProps({checkRecords:checks})}/>);
+ fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-20/}));expect(await screen.findByText('封存完整審查紀錄')).toBeTruthy();expect(checks.read).toHaveBeenCalledWith('2026-07-04-old-change',entry);
+ expect(screen.queryByRole('tab',{name:/安全審查.*2026-/})).toBeNull();expect(screen.queryByRole('button',{name:/儲存|蓋章/})).toBeNull();
+})
+
+it('封存省略紀錄仍顯示政策狀態，不讀取已省略的報告',async()=>{
+ const entry={recordId:'omitted-review',kind:'review',createdAt:'2026-10-20',outcome:'omitted',relativePath:'checks/review/omitted-review.md',contentDigest:'a'.repeat(64)};
+ const checks={list:vi.fn().mockResolvedValue([entry]),read:vi.fn().mockRejectedValue(new Error('missing record'))};
+ render(<ArchivedDetailPage {...makeProps({checkRecords:checks})}/>);
+ fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-20/}));
+ expect(await screen.findByText('此紀錄已依封存政策省略完整文件。')).toBeTruthy();
+ expect(checks.read).not.toHaveBeenCalled();
+ expect(screen.queryByRole('alert')).toBeNull();
+});

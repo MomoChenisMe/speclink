@@ -62,6 +62,53 @@ const square = (key: string) =>
   ) as HTMLElement;
 
 describe("ProjectRail", () => {
+  it("末項不能下移，失效專案仍可上移", () => {
+    const onReorder = vi.fn();
+    renderRail({ onReorder, tabErrors: { [KEY_BETA]: "missing" } });
+    fireEvent.contextMenu(square(KEY_BETA));
+    expect(screen.getByRole("menuitem", { name: "下移" }).getAttribute("data-disabled")).not.toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "上移" }));
+    expect(onReorder).toHaveBeenCalledWith([KEY_BETA, KEY_ALPHA]);
+  });
+
+  it.each(["escape", "outside", "drop"])("拖曳後 %s 正確提交或取消，不切換專案", async (cancel) => {
+    // jsdom 的 MouseEvent 提供 PointerSensor 所需的座標；版面以兩個真實方塊位置表示。
+    vi.stubGlobal("PointerEvent", class extends MouseEvent { isPrimary = true; });
+    const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const y = this.closest("[data-project-sort]")?.getAttribute("data-project-sort") === KEY_BETA ? 80 : 20;
+      return new DOMRect(0, y, 40, 40);
+    });
+    const onReorder = vi.fn();
+    const onActivate = vi.fn();
+    try {
+      renderRail({ onReorder, onActivate });
+      fireEvent.pointerDown(square(KEY_ALPHA), { button: 0, isPrimary: true, clientX: 20, clientY: 40 });
+      fireEvent.pointerMove(document, { clientX: 20, clientY: 100 });
+      if (cancel === "escape") fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+      else if (cancel === "outside") fireEvent.pointerMove(document, { clientX: 500, clientY: 500 });
+      else fireEvent.pointerMove(document, { clientX: 20, clientY: 100 });
+      fireEvent.pointerUp(document, { clientX: cancel === "drop" ? 20 : 500, clientY: cancel === "drop" ? 100 : 500 });
+      fireEvent.click(square(KEY_ALPHA));
+      if (cancel === "drop") expect(onReorder).toHaveBeenCalledWith([KEY_BETA, KEY_ALPHA]);
+      else expect(onReorder).not.toHaveBeenCalled();
+      expect(onActivate).not.toHaveBeenCalled();
+    } finally {
+      rect.mockRestore(); vi.unstubAllGlobals();
+      // PointerSensor 在放開後短暫攔截 click，避免拖曳被當成開專案。
+      await new Promise((resolve) => setTimeout(resolve, 60));
+    }
+  });
+
+  it("offers bounded move actions without activating a project", () => {
+    const onReorder = vi.fn();
+    const onActivate = vi.fn();
+    renderRail({ onReorder, onActivate });
+    fireEvent.contextMenu(square(KEY_ALPHA));
+    expect(screen.getByRole("menuitem", { name: "上移" }).getAttribute("data-disabled")).not.toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "下移" }));
+    expect(onReorder).toHaveBeenCalledWith([KEY_BETA, KEY_ALPHA]);
+    expect(onActivate).not.toHaveBeenCalled();
+  });
   it("品牌標記在頂、方塊依序一個專案一個、作用中為主色底", () => {
     renderRail();
     const rail = document.querySelector("[data-project-rail]") as HTMLElement;

@@ -72,10 +72,28 @@ pub fn execute(
     ctx: &SpeclinkExecutionContext,
     cmd: Command,
 ) -> Result<BridgeExecution, BridgeError> {
+    execute_inner(store,ctx,cmd,None)
+}
+
+pub fn execute_with_security(store:&dyn TeamStore,ctx:&SpeclinkExecutionContext,cmd:Command,key:&str,gate:&speclink_protocol::security::SecurityGateRequest,data:&dyn speclink_core::security::data::StandardRepository)->Result<BridgeExecution,BridgeError> {
+    execute_inner(store,ctx,cmd,Some((key,gate,data)))
+}
+fn execute_inner(store:&dyn TeamStore,ctx:&SpeclinkExecutionContext,cmd:Command,security:Option<(&str,&speclink_protocol::security::SecurityGateRequest,&dyn speclink_core::security::data::StandardRepository)>)->Result<BridgeExecution,BridgeError> {
     let scope = Scope::new(ctx.project.clone(), ctx.repo.clone());
     let view = BridgeStore::materialize(store, &scope).map_err(BridgeError::Store)?;
+    let mut execution_context=engine_context(ctx,sys_locale::get_locale());
+    if let Some((key,gate,data))=security {
+        if let Some(attestation)=&gate.security_source_attestation {
+            let change=match &cmd {Command::VerifyStamp{change,..}=>change.as_str(),Command::Archive{change:Some(change),..}=>change.as_str(),_=>return Err(BridgeError::Command(CommandError::new(speclink_core::command::ErrorCode::InvalidArgv,"invalid_argument: security gate command")))};
+            let result=(||->anyhow::Result<_>{
+                anyhow::ensure!(gate.expected_revision==Some(view.revision(&DocumentId::ChangeArtifact{change:change.into(),artifact:speclink_core::history::INDEX.into()})),"revision_conflict: check index changed");
+                crate::security::remote::proof(&view,key,change,&view.read_workflow_config().unwrap_or_default(),data,attestation)
+            })();
+            execution_context.security_acceptance=Some(result.map_err(|error|BridgeError::Command(CommandError::new(speclink_core::command::ErrorCode::Refused,error.to_string())))?);
+        }
+    }
     let (outcome, events) =
-        engine_execute(&view, &engine_context(ctx, sys_locale::get_locale()), cmd).map_err(BridgeError::Command)?;
+        engine_execute(&view, &execution_context, cmd).map_err(BridgeError::Command)?;
     let staged = view.into_staged();
     if staged.is_empty() {
         // A query (or a no-op mutation): nothing to commit.
@@ -170,8 +188,10 @@ impl BridgeStore {
         })
     }
 
+    pub(crate) fn revision(&self, doc: &DocumentId) -> u64 { self.base.get(doc).map(|r| r.0).unwrap_or(0) }
+
     /// The staged operations to commit, in a deterministic document order.
-    fn into_staged(self) -> Vec<StagedOp> {
+    pub(crate) fn into_staged(self) -> Vec<StagedOp> {
         self.staged.into_inner().into_values().collect()
     }
 
@@ -370,6 +390,19 @@ impl Store for BridgeStore {
         });
         Ok(())
     }
+    fn commit_checks(&self, change: &str, commit: &speclink_core::history::ChecksCommit) -> anyhow::Result<()> {
+        commit.validate()?;
+        for (path, expected) in &commit.expected {
+            let content = if path == ".openspec.yaml" { self.read_change_meta(change) } else { self.read_artifact(change, path) };
+            anyhow::ensure!(content.map(|text| speclink_core::security::data::sha256(text.as_bytes())) == *expected, "revision_conflict");
+        }
+        for (path, content) in &commit.writes {
+            if path == ".openspec.yaml" { self.write_change_meta(change, content)?; }
+            else { self.write_artifact(change, path, content)?; }
+        }
+        for path in &commit.deletes { self.delete_artifact(change, path)?; }
+        Ok(())
+    }
 
     // --- completion evidence ---
 
@@ -499,6 +532,15 @@ impl Store for BridgeStore {
             self.put(dst, content);
             self.del(src);
         }
+        Ok(())
+    }
+
+    fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&speclink_core::history::ArchiveChecksPlan)->anyhow::Result<()> {
+        plan.validate_base(self,name)?;
+        self.archive_change(name,dated)?;
+        let omitted=self.view.borrow().keys().filter(|id|matches!(id,DocumentId::ArchivedChange{change,doc} if change==dated&&!plan.retains(doc))).cloned().collect::<Vec<_>>();
+        for doc in omitted{self.del(doc);}
+        for (path,content) in [(speclink_core::history::INDEX,&plan.index),("checks/acceptance.json",&plan.receipt),(".openspec.yaml",&plan.archived_meta)]{if let Some(content)=content{self.put(DocumentId::ArchivedChange{change:dated.into(),doc:path.into()},content.clone());}}
         Ok(())
     }
 
@@ -670,6 +712,59 @@ mod tests {
             uow.create(doc.clone(), *content);
         }
         store.commit(uow, Vec::new()).expect("commit seed data");
+    }
+
+    #[test]
+    fn completed_checks_share_one_revision_and_cas_conflict_leaves_all_documents_unchanged() {
+        use speclink_core::{station::{self, REVIEW, VERIFY}, model::ReviewedScopeEntry};
+        use speclink_store::{ExpectedRevision, StagedOp};
+        for st in [&REVIEW, &VERIFY] {
+            for conflict in [false, true] {
+                let store = MemoryStore::new();
+                let binding = local_default_binding(); let scope = Scope::new(binding.project, binding.repo);
+                let meta = DocumentId::ChangeMeta { change: "demo".into() };
+                let ticket = DocumentId::ChangeArtifact { change: "demo".into(), artifact: st.doc.into() };
+                let index = DocumentId::ChangeArtifact { change: "demo".into(), artifact: "checks/index.json".into() };
+                seeded(&store, &scope, &[(meta.clone(), "schema: spec-driven\n"), (ticket.clone(), "# Ticket\n\n## Round 1\n\n**Scope**: src/main.rs\n"), (DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() }, "- [x] Done\n")]);
+                let bridge = BridgeStore::materialize(&store, &scope).unwrap();
+                station::stamp_with_scope(st, &bridge, "demo", false, Some("Person"), Some("codex"), vec![ReviewedScopeEntry { path: "src/main.rs".into(), hash: station::content_fingerprint("fn main() {}") }], vec![]).unwrap();
+                let mut uow = store.begin_unit_of_work(&scope, CommandContext { command: "stamp".into(), actor: "Person".into() }).unwrap();
+                for op in bridge.into_staged() {
+                    match op { StagedOp::Put { doc, content, expected } => uow.put(doc, content, expected), StagedOp::Delete { doc, expected } => uow.delete(doc, expected) }
+                }
+                if conflict {
+                    let revision = store.snapshot(&scope).unwrap().read(&meta).unwrap().unwrap().revision;
+                    let mut other = store.begin_unit_of_work(&scope, CommandContext { command: "compete".into(), actor: "Other".into() }).unwrap();
+                    other.put(meta.clone(), "schema: spec-driven\n# competing change\n", ExpectedRevision::At(revision)); store.commit(other, vec![]).unwrap();
+                    assert_eq!(store.commit(uow, vec![]).unwrap_err().code(), "revision_conflict");
+                    let snapshot = store.snapshot(&scope).unwrap();
+                    assert!(snapshot.read(&ticket).unwrap().is_some()); assert!(snapshot.read(&index).unwrap().is_none());
+                } else {
+                    let revision = store.commit(uow, vec![]).unwrap(); let snapshot = store.snapshot(&scope).unwrap();
+                    assert!(snapshot.read(&ticket).unwrap().is_none());
+                    let document = snapshot.read(&index).unwrap().unwrap(); assert_eq!(document.revision, revision);
+                    let index: speclink_core::history::CheckIndex = serde_json::from_str(&document.content).unwrap();
+                    let history = snapshot.read(&DocumentId::ChangeArtifact { change: "demo".into(), artifact: index.entries[0].relative_path.clone() }).unwrap().unwrap();
+                    assert_eq!(history.revision, revision); assert_eq!(snapshot.read(&meta).unwrap().unwrap().revision, revision);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn archive_selection_commit_conflict_preserves_active_check_records(){
+        use speclink_core::history::{self,CheckIndex,CheckEntry,CheckKind};
+        use speclink_store::{ExpectedRevision,StagedOp};
+        let store=MemoryStore::new();let binding=local_default_binding();let scope=Scope::new(binding.project,binding.repo);
+        let id="01ARZ3NDEKTSV4RRFFQ69G5FAV";
+        let index=serde_json::to_string(&CheckIndex{format_version:1,entries:vec![CheckEntry{record_id:id.into(),kind:CheckKind::Review,created_at:"2026-10-21T00:00:00Z".into(),outcome:"passed".into(),relative_path:format!("checks/review/{id}.md"),content_digest:speclink_core::security::data::sha256(b"full review record")}]}).unwrap();
+        let index_doc=DocumentId::ChangeArtifact{change:"demo".into(),artifact:history::INDEX.into()};
+        seeded(&store,&scope,&[(DocumentId::ChangeMeta{change:"demo".into()},"schema: spec-driven\n"),(DocumentId::WorkflowConfig,"check_records:\n  archive: {review: false}\n"),(index_doc.clone(),&index),(DocumentId::ChangeArtifact{change:"demo".into(),artifact:format!("checks/review/{id}.md")},"full review record")]);
+        let view=BridgeStore::materialize(&store,&scope).unwrap();let plan=history::prepare_archive_checks(&view,"demo",None,"2026-10-21","2026-10-21T00:00:00Z",None).unwrap();view.archive_change_with_checks("demo","2026-10-21-demo",&plan).unwrap();
+        let mut archive=store.begin_unit_of_work(&scope,CommandContext{command:"archive".into(),actor:"Person".into()}).unwrap();for op in view.into_staged(){match op{StagedOp::Put{doc,content,expected}=>archive.put(doc,content,expected),StagedOp::Delete{doc,expected}=>archive.delete(doc,expected)}}
+        let revision=store.snapshot(&scope).unwrap().read(&index_doc).unwrap().unwrap().revision;
+        let mut other=store.begin_unit_of_work(&scope,CommandContext{command:"competing-review".into(),actor:"Other".into()}).unwrap();other.put(index_doc.clone(),index,ExpectedRevision::At(revision));store.commit(other,vec![]).unwrap();
+        assert_eq!(store.commit(archive,vec![]).unwrap_err().code(),"revision_conflict");let final_view=BridgeStore::materialize(&store,&scope).unwrap();assert!(final_view.change_exists("demo"));assert!(!final_view.archived_change_exists("2026-10-21-demo"));assert!(final_view.read_artifact("demo",&format!("checks/review/{id}.md")).is_some());
     }
 
     #[test]

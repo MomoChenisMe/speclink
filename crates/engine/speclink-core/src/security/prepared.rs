@@ -66,6 +66,8 @@ impl PreparedDocument {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PreparedSnapshot {
+    #[serde(default,skip_serializing_if="Option::is_none")]
+    pub proposal_project_key:Option<String>,
     pub format_version: u8,
     pub project_key: String,
     pub binding: ReviewBinding,
@@ -112,6 +114,7 @@ impl PreparedSnapshot {
         Ok(())
     }
     pub fn validate_header(&self) -> Result<()> {
+        ensure!(self.proposal_project_key.as_deref().is_none_or(valid_project_key),"binding_mismatch: proposal project key");
         self.binding.validate()?;
         validate_change(self.change_name.as_deref())?;
         ensure!(

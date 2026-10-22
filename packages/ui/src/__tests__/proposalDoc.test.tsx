@@ -115,6 +115,25 @@ describe("提案數字磚「影響的檔案」", () => {
 });
 
 describe("ProposalDoc", () => {
+  it.each(["專案 A 的動機", "專案 B 的動機"])("所有專案預設列式顯示散文與清單：%s", (motivation) => {
+    const md = `## Why\n\n${motivation}。[說明](https://example.com)\n\n- 第二點\n  - 子項保留\n- 第三點\n\n## What Changes\n\n一段變更說明。\n\n- 另一項變更\n\n## Proposed Solution\n\n\`\`\`ts\nconst x = 1;\n\`\`\`\n\n## Rollout\n\n維持一般段落。\n`;
+    const { container } = render(<ProposalDoc content={md} deltaCaps={[]} />);
+    const why = container.querySelector('[data-section="sections.why"]')!;
+    const steps = why.querySelector('[data-numbered-steps]')!;
+    expect(steps).toBeTruthy();
+    expect(steps.children).toHaveLength(3);
+    expect(why.querySelector("h2")!.parentElement!.textContent).toBe("為什麼3");
+    expect(steps.querySelector("a")!.getAttribute("href")).toBe("https://example.com");
+    expect(steps.textContent).toContain("子項保留");
+    expect(container.querySelector('[data-section="sections.whatChanges"] [data-numbered-steps]')!.children).toHaveLength(2);
+    expect(container.querySelector('[data-section="sections.proposedSolution"] pre')!.textContent).toContain("const x = 1;");
+    expect(container.querySelector('[data-section="custom"] [data-numbered-steps]')).toBeNull();
+  });
+
+  it("空章節不顯示空白編號", () => {
+    const { container } = render(<ProposalDoc content={"## Why\n\n## What Changes\n\n- 一項\n"} deltaCaps={[]} />);
+    expect(container.querySelector('[data-section="sections.why"] [data-numbered-steps]')).toBeNull();
+  });
   it("模板章節成中文段標題、依序進本頁目錄，英文標題不直出", () => {
     const { container } = render(<ProposalDoc content={FEATURE_MD} deltaCaps={[]} />);
     expect(headings(container)).toEqual(["為什麼", "變更內容", "非目標", "能力", "影響"]);

@@ -1,3 +1,10 @@
-/** 內建 AI 工具的勾選清單：初始化確認、啟用確認、checkout 綁定與設定頁 AI 工具卡共用。
- * 名稱與引擎 `Tool::parse` 認得的內建名一致，標籤直接顯示原始工具名。 */
-export const BUILTIN_TOOLS = ["claude", "codex", "copilot"] as const;
+/** Every built-in picker shares these names and generated skill roots. */
+const TOOL_ROOTS = {
+  claude: ".claude",
+  codex: ".agents",
+  copilot: ".github",
+  antigravity: ".agent",
+} as const;
+export type BuiltinTool = keyof typeof TOOL_ROOTS;
+export const BUILTIN_TOOLS = Object.keys(TOOL_ROOTS) as BuiltinTool[];
+export const builtinToolLabel = (tool: BuiltinTool): string => `${tool} [${TOOL_ROOTS[tool]}]`;

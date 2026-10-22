@@ -142,6 +142,35 @@ fn stderr_of(out: &Output) -> String {
 const TASKS_DONE: &str = "- [x] 1.1 first\n- [x] 1.2 second\n";
 const TASKS_PARTIAL: &str = "- [x] 1.1 first\n- [ ] 1.2 second\n";
 
+#[test]
+fn review_history_lists_completed_rounds_and_reads_active_or_archived_content() {
+    let p = TempProject::with_change("history", TASKS_DONE);
+    let empty = p.run(&["review", "history", "demo", "--json"]);
+    assert!(empty.status.success(), "{}", stderr_of(&empty));
+    assert_eq!(serde_json::from_slice::<serde_json::Value>(&empty.stdout).unwrap()["records"], serde_json::json!([]));
+    assert!(p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND).status.success());
+    let original = p.run(&["review", "show", "demo"]).stdout;
+    assert!(p.run(&["review", "stamp", "demo", "--agent", "codex"]).status.success());
+    let list = p.run(&["review", "history", "demo", "--json", "--no-color"]);
+    assert!(list.status.success(), "{}", stderr_of(&list)); assert!(!list.stdout.contains(&27));
+    let list: serde_json::Value = serde_json::from_slice(&list.stdout).unwrap();
+    let entry = &list["records"][0]; assert_eq!(entry["kind"], "review");
+    for key in ["recordId", "createdAt", "outcome", "relativePath", "contentDigest"] { assert!(entry[key].is_string()); }
+    let id = entry["recordId"].as_str().unwrap();
+    let record = p.run(&["review", "history", "demo", "--id", id, "--json"]);
+    let record: serde_json::Value = serde_json::from_slice(&record.stdout).unwrap();
+    assert_eq!(record["recordId"], id); assert_eq!(record["metadata"]["tool"], "codex");
+    assert!(record["metadata"]["scopeDigest"].is_string());
+    assert!(record["content"].as_str().unwrap().contains(std::str::from_utf8(&original).unwrap().trim_end()));
+    let human = p.run(&["review", "history", "demo", "--id", id, "--no-color"]);
+    assert!(human.status.success()); assert!(!human.stdout.contains(&27)); assert!(stdout_of(&human).contains("## Round 1"));
+    assert_eq!(p.run(&["review", "history", "demo", "--id", "01M5CP8YW64XQ0Y57ACZRH3PPA"]).status.code(), Some(1));
+    assert_eq!(p.run(&["review", "history", "demo", "--id"]).status.code(), Some(2));
+    std::fs::create_dir_all(p.dir.join("openspec/changes/archive")).unwrap();
+    std::fs::rename(p.dir.join("openspec/changes/demo"), p.dir.join("openspec/changes/archive/2026-10-20-demo")).unwrap();
+    assert!(p.run(&["review", "history", "2026-10-20-demo", "--id", id, "--json"]).status.success());
+}
+
 // --- review add-round ---
 
 #[test]

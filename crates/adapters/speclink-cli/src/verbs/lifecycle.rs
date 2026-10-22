@@ -46,6 +46,7 @@ pub(crate) struct ArchiveArgs {
 impl From<&ArchiveArgs> for core::archive::ArchiveOptions {
     fn from(a: &ArchiveArgs) -> Self {
         Self {
+            security_acceptance:None,
             skip_specs: a.skip_specs,
             no_validate: a.no_validate,
             mark_tasks_complete: a.mark_tasks_complete,
@@ -94,6 +95,7 @@ pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
 }
 fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
     println!("{} Archived: {} → {}", color::green("✓"), outcome.change_name, outcome.dated_name);
+    if outcome.check_records.has_records(){for (kind,count) in [("review",&outcome.check_records.review),("verify",&outcome.check_records.verify),("security",&outcome.check_records.security)]{println!("Check records {kind}: retained={}, omitted={}",count.retained,count.omitted);}if outcome.check_records.acceptance_receipt{println!("Security acceptance receipt retained.");}}
     if !outcome.caps.is_empty() {
         let names: Vec<&str> = outcome.caps.iter().map(|c| c.capability.as_str()).collect();
         let added: usize = outcome.caps.iter().map(|c| c.added).sum();
@@ -262,7 +264,11 @@ pub(crate) fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
     let Some(name) = a.changes.first().cloned().map(Some).unwrap_or(None) else {
         bail!("Please specify a change to archive.");
     };
-    let resp = ctx.client.archive(&name, a.carry_review, a.carry_verify)?;
+    let config=ctx.client.config()?;
+    let policy=core::config::WorkflowConfig::from_text(config.content.as_deref())?.security();
+    let resp=if policy.enabled&&policy.required_for_acceptance {
+        ctx.client.archive_with_security(&name,a.carry_review,a.carry_verify,&super::security::remote_security_gate(&name)?)?
+    }else{ctx.client.archive(&name,a.carry_review,a.carry_verify)?};
     // datedName 是哨兵：新 server 給得出完整封存結果，就走 fs 同一支渲染；
     // 舊 server 什麼都沒帶，退回既有的兩行輸出而不是半套。
     match to_archive_outcome(name, resp) {
@@ -315,6 +321,7 @@ fn to_archive_outcome(
             .collect(),
         // 缺席讀作「有證據」，零證據提示因此不會憑空冒出來。
         evidence_recorded: resp.evidence_recorded.unwrap_or(true),
+        check_records:resp.check_records.map(|c|serde_json::from_value(serde_json::to_value(c).expect("typed archive counts")).expect("shared archive counts")).unwrap_or_default(),
     })
 }
 /// remote discard：直通 DELETE 端點（--force 為 query 參數）。guard 拒絕由

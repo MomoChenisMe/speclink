@@ -73,7 +73,7 @@ export interface ScopesView {
 }
 
 /** inspect_checkout 的零寫入結果：確認過的 checkout 根路徑與要預選的既有 built-in
- * 工具選集（claude／codex／copilot）。不含任何 credential 或 Server 資料。 */
+ * 工具選集（claude／codex／copilot／antigravity）。不含任何 credential 或 Server 資料。 */
 export interface CheckoutInspection {
   root: string;
   tools: string[];

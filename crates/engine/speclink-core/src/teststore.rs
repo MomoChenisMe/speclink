@@ -56,6 +56,8 @@ pub(crate) struct TestStore {
     /// backend). Default `false` keeps every existing test on the fs-parity
     /// path; `claim` tests flip it via [`TestStore::team_with_meta`].
     pub ownership: bool,
+    /// One-shot interleaving after an artifact snapshot is read.
+    pub artifact_read_hook: RefCell<Option<Box<dyn Fn(&TestStore, &str, &str)>>>,
 }
 
 impl TestStore {
@@ -164,10 +166,10 @@ impl Store for TestStore {
         Ok(())
     }
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {
-        self.artifacts
-            .borrow()
-            .get(&(change.to_string(), artifact.to_string()))
-            .cloned()
+        let content = self.artifacts.borrow().get(&(change.to_string(), artifact.to_string())).cloned();
+        let hook = self.artifact_read_hook.borrow_mut().take();
+        if let Some(hook) = hook { hook(self, change, artifact); }
+        content
     }
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf> {
         self.put_artifact(change, artifact, content);
@@ -185,6 +187,19 @@ impl Store for TestStore {
         self.artifacts
             .borrow_mut()
             .remove(&(change.to_string(), artifact.to_string()));
+        Ok(())
+    }
+    fn commit_checks(&self, change: &str, commit: &crate::quality::history::ChecksCommit) -> Result<()> {
+        commit.validate()?;
+        if commit.writes.contains_key(".openspec.yaml") && self.fail_meta_write.borrow().as_deref() == Some(change) { anyhow::bail!("simulated meta write failure"); }
+        for (path, expected) in &commit.expected {
+            let old = if path == ".openspec.yaml" { self.read_change_meta(change) } else { self.read_artifact(change, path) };
+            anyhow::ensure!(old.map(|text| crate::security::data::sha256(text.as_bytes())) == *expected, "revision_conflict");
+        }
+        for (path, text) in &commit.writes {
+            if path == ".openspec.yaml" { self.write_change_meta(change, text)?; } else { self.write_artifact(change, path, text)?; }
+        }
+        for path in &commit.deletes { self.delete_artifact(change, path)?; }
         Ok(())
     }
     fn read_evidence(&self, change: &str) -> Option<String> {
@@ -259,6 +274,14 @@ impl Store for TestStore {
             archived.insert((dated_name.to_string(), key.1), content);
         }
         Ok(())
+    }
+    fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&crate::history::ArchiveChecksPlan)->Result<()> {
+        plan.validate_base(self,name)?;
+        self.archive_change(name,dated)?;
+        self.archived_artifacts.borrow_mut().retain(|(change,path),_|change!=dated||plan.retains(path));
+        if let Some(index)=&plan.index{self.archived_artifacts.borrow_mut().insert((dated.into(),crate::history::INDEX.into()),index.clone());}
+        if let Some(receipt)=&plan.receipt{self.archived_artifacts.borrow_mut().insert((dated.into(),"checks/acceptance.json".into()),receipt.clone());}
+        if let Some(meta)=&plan.archived_meta{self.write_archived_meta(dated,meta)?;}Ok(())
     }
     fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
         self.archived_artifacts

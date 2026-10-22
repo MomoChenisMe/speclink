@@ -30,10 +30,12 @@ pub struct ArchiveOutcome {
     /// gate: archiving without evidence is legitimate (a spec-only change earns
     /// none by construction), so the caller decides whether to say anything.
     pub evidence_recorded: bool,
+    pub check_records: crate::history::ArchiveRecordCounts,
 }
 
 #[derive(Debug, Default)]
 pub struct ArchiveOptions {
+    pub security_acceptance: Option<crate::security::acceptance::AcceptanceProof>,
     pub skip_specs: bool,
     pub no_validate: bool,
     pub mark_tasks_complete: bool,
@@ -83,8 +85,11 @@ fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Change) -> Res
     // 內容錨讀的是 repo 程式檔（host 側檔案，非 spec 文件）——沿 guard_linked_worktree
     // 的作法走 util 的通用檔案 helper，引擎流程模組本身不直接呼叫檔案 API。
     let read_file = |p: &str| util::read_bytes_opt(&ws.root.join(p));
-    let read_file: crate::station::ScopeReader<'_> =
-        if ws.root.as_os_str().is_empty() { None } else { Some(&read_file) };
+    let read_file: crate::station::ScopeReader<'_> = if ws.root.as_os_str().is_empty() {
+        None
+    } else {
+        Some(&read_file)
+    };
 
     let blocks: Vec<String> = [&crate::station::REVIEW, &crate::station::VERIFY]
         .into_iter()
@@ -203,7 +208,11 @@ pub(crate) fn parse_delta(text: &str) -> Vec<DeltaReq> {
         }
         if let Some(name) = t.strip_prefix("### Requirement:") {
             flush(&mut cur, &mut reqs);
-            cur = Some((operation.clone(), name.trim().to_string(), vec![line.to_string()]));
+            cur = Some((
+                operation.clone(),
+                name.trim().to_string(),
+                vec![line.to_string()],
+            ));
         } else if let Some((_, _, lines)) = cur.as_mut() {
             lines.push(line.to_string());
         }
@@ -326,8 +335,7 @@ fn has_unclosed_before(block: &str) -> bool {
             if line.trim_end().ends_with("-->") {
                 open = false;
             }
-        } else if line.trim_start().starts_with("<!-- BEFORE:")
-            && !line.trim_end().ends_with("-->")
+        } else if line.trim_start().starts_with("<!-- BEFORE:") && !line.trim_end().ends_with("-->")
         {
             open = true;
         }
@@ -379,7 +387,11 @@ pub fn merge_violations(store: &dyn Store, change: &str) -> Vec<MergeViolation> 
             .read_artifact(change, &model::delta_spec_artifact(&cap))
             .unwrap_or_default();
         let canonical = store.read_canonical_spec(&cap);
-        out.extend(capability_violations(&cap, &delta_text, canonical.as_deref()));
+        out.extend(capability_violations(
+            &cap,
+            &delta_text,
+            canonical.as_deref(),
+        ));
     }
     out
 }
@@ -409,7 +421,10 @@ pub(crate) fn capability_violations(
     let mut mentions: std::collections::BTreeMap<&str, Vec<&str>> =
         std::collections::BTreeMap::new();
     for r in &reqs {
-        mentions.entry(r.name.as_str()).or_default().push(r.operation.as_str());
+        mentions
+            .entry(r.name.as_str())
+            .or_default()
+            .push(r.operation.as_str());
     }
     for (from, to) in &renames {
         mentions.entry(from.as_str()).or_default().push("RENAMED");
@@ -433,7 +448,10 @@ pub(crate) fn capability_violations(
 
     // An unclosed `<!-- BEFORE:` makes the note-stripper swallow the rest of the block —
     // the requirement body would silently vanish from the canon, so the gate refuses.
-    for r in reqs.iter().filter(|r| matches!(r.operation.as_str(), "ADDED" | "MODIFIED")) {
+    for r in reqs
+        .iter()
+        .filter(|r| matches!(r.operation.as_str(), "ADDED" | "MODIFIED"))
+    {
         if has_unclosed_before(&r.block) {
             out.push(violation(&r.operation, &r.name, MALFORMED_BEFORE));
         }
@@ -461,8 +479,7 @@ pub(crate) fn capability_violations(
 
     let canonical = normalize_newlines(canonical);
     let blocks = parse_canonical(&canonical).1;
-    let names: std::collections::BTreeSet<&str> =
-        blocks.iter().map(|(n, _)| n.as_str()).collect();
+    let names: std::collections::BTreeSet<&str> = blocks.iter().map(|(n, _)| n.as_str()).collect();
     for r in &reqs {
         match r.operation.as_str() {
             // (1) ADDED colliding with a requirement the canon already carries.
@@ -607,7 +624,11 @@ fn incomplete_tasks(store: &dyn Store, name: &str) -> Option<TaskShortfall> {
 /// 順序判定，命中第一條即回、後面的條件不再算；零寫入。順序是 bulk 的凍結輸出契約，
 /// 不是 archive() 的守門序。`--skip-specs` 跳過 spec 套用，守門在那裡根本不跑，預檢
 /// 也不得以它過濾。
-pub fn skip_reason(store: &dyn Store, change: &Change, opts: &ArchiveOptions) -> Option<SkipReason> {
+pub fn skip_reason(
+    store: &dyn Store,
+    change: &Change,
+    opts: &ArchiveOptions,
+) -> Option<SkipReason> {
     if !opts.skip_specs {
         let violations = merge_violations(store, &change.name);
         if !violations.is_empty() {
@@ -616,14 +637,17 @@ pub fn skip_reason(store: &dyn Store, change: &Change, opts: &ArchiveOptions) ->
     }
     // Structural only: the merge gate above owns a stale delta's refusal, and
     // --skip-specs deliberately bypasses it — validate must not reintroduce it.
-    if !opts.no_validate && !crate::validate::validate_change_structural(store, change, false).valid {
+    if !opts.no_validate && !crate::validate::validate_change_structural(store, change, false).valid
+    {
         return Some(SkipReason::StructuralInvalid);
     }
     if opts.mark_tasks_complete {
         return None;
     }
-    incomplete_tasks(store, &change.name)
-        .map(|t| SkipReason::TasksIncomplete { complete: t.complete, total: t.total })
+    incomplete_tasks(store, &change.name).map(|t| SkipReason::TasksIncomplete {
+        complete: t.complete,
+        total: t.total,
+    })
 }
 
 /// The canonical @trace block: where a requirement came from and when it last
@@ -674,10 +698,45 @@ pub fn archive(
     // 章失效守門（design D5）：任務守門之後、任何檔案效果之前——任務未完成與
     // 章失效並存時，任務守門先拒且訊息不變。
     guard_stale_stamps(ws, store, change)?;
+    crate::security::require_acceptance(store, &change.name, opts.security_acceptance.as_ref())?;
+
+    let completed_tasks = if opts.mark_tasks_complete {
+        store.read_artifact(&change.name, "tasks.md").map(|text| {
+            let done = text
+                .replace("- [ ] ", "- [x] ")
+                .replace("- [ ]\t", "- [x]\t")
+                .replace("* [ ] ", "* [x] ")
+                .replace("* [ ]\t", "* [x]\t");
+            (text, done)
+        })
+    } else {
+        None
+    };
+    let policy = crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
+        .security();
+    if policy.enabled
+        && policy.required_for_acceptance
+        && completed_tasks
+            .as_ref()
+            .is_some_and(|(before, after)| before != after)
+    {
+        let path = format!("{}/changes/{}/tasks.md", ws.spec_dir_name, change.name);
+        if opts
+            .security_acceptance
+            .as_ref()
+            .and_then(|p| p.deep.as_ref())
+            .is_some_and(|r| r.sources().iter().any(|s| s.path == path))
+        {
+            bail!("security_report_stale: marking reviewed tasks changes the accepted source; complete tasks and repeat security review first");
+        }
+    }
 
     // One instant for the whole archive: the dated directory prefix and every
     // `@trace updated` stamp share it, so they never straddle midnight.
-    let util::NowStamps { date, rfc3339: stamp } = util::now_stamps();
+    let util::NowStamps {
+        date,
+        rfc3339: stamp,
+    } = util::now_stamps();
     let dated_name = format!("{date}-{}", change.name);
     if store.archived_change_exists(&dated_name) {
         bail!("Archived change '{}' already exists", dated_name);
@@ -703,7 +762,9 @@ pub fn archive(
     // Evidence is reported, never judged (discussion evidence-gate-false-blocks):
     // read once here so the outcome carries the fact even though the change
     // directory moves out from under this path below.
-    let evidence_recorded = !crate::tasks::TouchedRecord::load(store, &change.name).entries.is_empty();
+    let evidence_recorded = !crate::tasks::TouchedRecord::load(store, &change.name)
+        .entries
+        .is_empty();
 
     // --- Plan phase: read every capability, validate all of them, compute the merged
     // text. Nothing is written here, so a violation ends the archive with zero file
@@ -714,7 +775,9 @@ pub fn archive(
     if !opts.skip_specs {
         for cap in store.delta_capabilities(&change.name) {
             let delta_rel = model::delta_spec_artifact(&cap);
-            let delta_text = store.read_artifact(&change.name, &delta_rel).unwrap_or_default();
+            let delta_text = store
+                .read_artifact(&change.name, &delta_rel)
+                .unwrap_or_default();
             // Even with --no-validate, apply time hard-fails on a delta that
             // parses to zero operations, leaving the change in place.
             if store.artifact_exists(&change.name, &delta_rel)
@@ -739,26 +802,32 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
 
             let (content, counts) =
                 merge_capability(&cap, &change.name, &stamp, &delta_text, existing.as_deref());
-            plans.push(CapPlan { capability: cap, counts, backup: existing, content });
+            plans.push(CapPlan {
+                capability: cap,
+                counts,
+                backup: existing,
+                content,
+            });
         }
     }
     if !violations.is_empty() {
         return Err(merge_refusal(&change.name, &violations));
     }
 
+    let checks = crate::history::prepare_archive_checks(
+        store,
+        &change.name,
+        actor,
+        &date,
+        &stamp,
+        opts.security_acceptance.as_ref(),
+    )?;
+
     // --- 提交階段的第一個效果：--mark-tasks-complete 的代勾。所有守門與純讀計畫已過，
     // 從這一行起才有檔案效果（spec change-lifecycle「單筆封存的任務完成度守門」、
     // 「封存的章失效守門」；archive-merge「兩階段合併計畫與零半套寫入」）。
-    if opts.mark_tasks_complete {
-        if let Some(text) = store.read_artifact(&change.name, "tasks.md") {
-            // Star-bullet checkboxes are tasks too (frozen rule).
-            let done = text
-                .replace("- [ ] ", "- [x] ")
-                .replace("- [ ]\t", "- [x]\t")
-                .replace("* [ ] ", "* [x] ")
-                .replace("* [ ]\t", "* [x]\t");
-            store.write_artifact(&change.name, "tasks.md", &done)?;
-        }
+    if let Some((_, done)) = completed_tasks {
+        store.write_artifact(&change.name, "tasks.md", &done)?;
     }
 
     // --- Commit phase: snapshots first, then canonical specs, then the directory move.
@@ -769,7 +838,10 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         if let Some(previous) = &plan.backup {
             // Back up the pre-apply canonical spec for unarchive support
             // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
-            let backup_path = snapshot_dir.join("specs").join(&plan.capability).join("spec.md");
+            let backup_path = snapshot_dir
+                .join("specs")
+                .join(&plan.capability)
+                .join("spec.md");
             util::write_file(&backup_path, previous)
                 .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
             snapshot_created = true;
@@ -777,8 +849,11 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     }
     // Snapshot manifest: a bare array of created capability names, written only when a spec
     // was created (frozen byte-for-byte: `["cap-x"]`, no trailing newline).
-    let created_specs: Vec<&String> =
-        plans.iter().filter(|p| p.backup.is_none()).map(|p| &p.capability).collect();
+    let created_specs: Vec<&String> = plans
+        .iter()
+        .filter(|p| p.backup.is_none())
+        .map(|p| &p.capability)
+        .collect();
     if !created_specs.is_empty() {
         util::write_file(
             &snapshot_dir.join("created_specs.json"),
@@ -791,20 +866,22 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     for plan in &plans {
         // A mid-commit failure names the snapshot location (design risk table):
         // the pre-archive backups written above are the recovery path.
-        store.write_canonical_spec(&plan.capability, &plan.content).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to write canonical spec for '{}': {e} — pre-archive backups are \
+        store
+            .write_canonical_spec(&plan.capability, &plan.content)
+            .map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to write canonical spec for '{}': {e} — pre-archive backups are \
                  under {}",
-                plan.capability,
-                snapshot_dir.display()
-            )
-        })?;
+                    plan.capability,
+                    snapshot_dir.display()
+                )
+            })?;
     }
     let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
 
     // Move change into the archive under its dated name. The in-progress marker
     // stays untouched on archive (frozen behavior).
-    store.archive_change(&change.name, &dated_name)?;
+    store.archive_change_with_checks(&change.name, &dated_name, &checks)?;
 
     // Clear the app-side "started" marker for this change, if present.
     let _ = util::remove_file(
@@ -816,18 +893,6 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // outcome above, and a leftover would be read back as evidence for a future
     // change reusing this name.
     let _ = util::remove_file(&ws.legacy_touched_file(&change.name));
-
-    // Stamp archived_by / archived_at into the archived change metadata.
-    if let Some(mut meta) = store.read_archived_meta(&dated_name) {
-        if !meta.ends_with('\n') {
-            meta.push('\n');
-        }
-        if let Some(id) = actor {
-            meta.push_str(&format!("archived_by: {id}\n"));
-        }
-        meta.push_str(&format!("archived_at: {date}\n"));
-        store.write_archived_meta(&dated_name, &meta)?;
-    }
 
     // A change promoted from (or linked to) a discussion carries its record along into the
     // archive — but only the last change to reference it, only once the discussion has a
@@ -859,6 +924,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         skipped_specs: opts.skip_specs,
         archived_discussions,
         evidence_recorded,
+        check_records: checks.counts,
     })
 }
 
@@ -967,7 +1033,11 @@ fn merge_capability(
         } else {
             // Merging into an existing canonical normalizes the gap by operation
             // (probed): MODIFIED gets 2 blanks, ADDED 1, regardless of delta spacing.
-            let gap = if r.operation == "MODIFIED" { "\n\n\n" } else { "\n\n" };
+            let gap = if r.operation == "MODIFIED" {
+                "\n\n\n"
+            } else {
+                "\n\n"
+            };
             format!("{}{gap}{trace}", body.trim_end())
         }
     };
@@ -1058,7 +1128,10 @@ fn merge_capability(
     }
 
     let mut out = header;
-    let joined: Vec<String> = blocks.iter().map(|(_, b)| b.trim_end().to_string()).collect();
+    let joined: Vec<String> = blocks
+        .iter()
+        .map(|(_, b)| b.trim_end().to_string())
+        .collect();
     out.push_str(&joined.join("\n\n---\n"));
     // Dangling separator when the original last requirement was removed (frozen output shape).
     let last_removed = orig_last

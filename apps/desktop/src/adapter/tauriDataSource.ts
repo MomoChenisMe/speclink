@@ -17,6 +17,7 @@ import type {
 
 import type { InvokeFn } from "../session";
 import { createSecurityReviewAdapter } from "./security";
+import {createCheckRecordsAdapter} from "./checkRecords";
 
 // core-backed adapter：以 Tauri invoke 呼叫 speclink-desktop 的 #[command]，
 // 實作 @speclink/ui 的 SpeclinkDataSource 介面。command 名與參數對應 src-tauri/src/lib.rs。
@@ -27,6 +28,7 @@ export function createTauriDataSource(
   invoke: InvokeFn = tauriInvoke as InvokeFn,
 ): SpeclinkDataSource {
   return {
+    checkRecords:createCheckRecordsAdapter({root},invoke),
     securityReview: createSecurityReviewAdapter({kind:"local", root}, invoke),
     async listChanges(): Promise<ChangeListPayload> {
       // list_changes payload 原樣：清單項＋頂層 planError。

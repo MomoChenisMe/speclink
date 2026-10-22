@@ -741,6 +741,7 @@ async fn write_workflow_config(
     audit: bool,
     worktree: bool,
     security_patch: Option<String>,
+    check_records_patch:Option<String>,
 ) -> Result<(), String> {
     let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
         locale,
@@ -750,10 +751,11 @@ async fn write_workflow_config(
         worktree,
     };
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_fields_with_security_at(
+        speclink_desktop_core::settings::write_workflow_fields_with_checks_at(
             &root,
             &fields,
             security_patch.as_deref(),
+            check_records_patch.as_deref(),
         )
     })
     .await
@@ -1277,6 +1279,7 @@ async fn remote_write_workflow_config(
     audit: bool,
     expected_revision: u64,
     security_patch: Option<String>,
+    check_records_patch:Option<String>,
 ) -> Result<u64, remote::RemoteSettingsError> {
     let fields = speclink_desktop_core::settings::WorkflowPolicyFields {
         locale,
@@ -1287,10 +1290,11 @@ async fn remote_write_workflow_config(
         ..Default::default()
     };
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
-        ws.write_workflow_fields_with_security(
+        ws.write_workflow_fields_with_checks(
             credentials,
             &fields,
             security_patch.as_deref(),
+            check_records_patch.as_deref(),
             expected_revision,
         )
     })
@@ -1554,6 +1558,19 @@ async fn remote_document(
     .await
 }
 
+#[tauri::command]
+async fn check_history(root:PathBuf,change:String,kind:String,id:Option<String>)->Result<speclink_protocol::query::CheckHistoryResponse,String>{tauri::async_runtime::spawn_blocking(move||speclink_desktop_core::query::check_history_at(&root,&change,&kind,id.as_deref())).await.map_err(|e|e.to_string())?}
+#[tauri::command]
+async fn security_record(root:PathBuf,change:String,id:String)->Result<String,String>{tauri::async_runtime::spawn_blocking(move||speclink_desktop_core::query::security_change_report_at(&root,&change,&id).map(|r|r.markdown())).await.map_err(|e|e.to_string())?}
+#[tauri::command]
+async fn security_view(root:PathBuf,change:String)->Result<speclink_protocol::security::SecurityReviewView,String>{tauri::async_runtime::spawn_blocking(move||speclink_desktop_core::security::review_view_at(&speclink_host::context::security_data_dir().map_err(|e|e.to_string())?,&root,&change)).await.map_err(|e|e.to_string())?}
+#[tauri::command]
+async fn remote_check_history(app:tauri::AppHandle,connection_id:String,project:String,repo:String,change:String,kind:String,id:Option<String>)->Result<speclink_protocol::query::CheckHistoryResponse,String>{with_remote(app,connection_id,project,repo,move|ws,c|ws.check_history(c,&change,&kind,id.as_deref()).map_err(|e|if e.status==Some(401){"reauthentication_required".into()}else{e.message})).await}
+#[tauri::command]
+async fn remote_security_record(app:tauri::AppHandle,connection_id:String,project:String,repo:String,change:String,id:String)->Result<String,String>{with_remote(app,connection_id,project,repo,move|ws,c|ws.security_record(c,&change,&id).map_err(|e|if e.status==Some(401){"reauthentication_required".into()}else{e.message})).await}
+#[tauri::command]
+async fn remote_security_view(app:tauri::AppHandle,connection_id:String,project:String,repo:String,change:String)->Result<speclink_protocol::security::SecurityReviewView,String>{with_remote(app,connection_id,project,repo,move|ws,c|ws.security_view(c,&change).map_err(|e|if e.status==Some(401){"reauthentication_required".into()}else{e.message})).await}
+
 /// 遠端活工單：`GET /changes/{name}/{station}` 已是結構化 rounds，經
 /// `remote::station_ticket_payload` 交給與本機同一個組裝函式；404 與本地語意一致回
 /// null，不認得的 rules baseline 同樣 null。未知站別不拼 URL，直接 null。
@@ -1651,9 +1668,10 @@ async fn remote_archive(
     project: String,
     repo: String,
     change: String,
+    checkout_root:Option<PathBuf>,
 ) -> Result<Value, String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        let archived = ws.archive(credentials, &change).map_err(|e| e.message)?;
+        let archived = ws.archive_with_checkout(credentials, &change,checkout_root.as_deref()).map_err(|e| e.message)?;
         serde_json::to_value(&archived).map_err(|e| e.to_string())
     })
     .await
@@ -2074,10 +2092,18 @@ pub fn run() {
             runtime_commands::diagnostics_export,
             runtime_commands::network_probe_update,
             updater_commands::updater_check,
+            updater_commands::desktop_release,
             updater_commands::updater_download,
             updater_commands::updater_install,
             security_commands::security_inspect,
             security_commands::security_start,
+            security_commands::security_kb_prepare,
+            check_history,
+            security_record,
+            security_view,
+            remote_check_history,
+            remote_security_record,
+            remote_security_view,
             security_commands::security_prepare,
             security_commands::security_wait,
             security_commands::security_report,
@@ -2085,6 +2111,8 @@ pub fn run() {
             security_commands::security_report_summary,
             security_commands::security_reveal,
             security_data_list,
+            security_commands::security_data_paths_read,
+            security_commands::security_data_paths_write,
             security_data_start,
             security_data_wait,
             security_cancel,

@@ -49,6 +49,8 @@ export interface WorkspaceSettingsProvider {
   /** remote 取自 handshake；local 固定為 true。server 仍是最終防線。 */
   policyWrite: boolean;
   securityReview?: boolean;
+  securityReviewV2?: boolean;
+  checkHistory?: boolean;
   readSettings(): Promise<SettingsSnapshot>;
   /** 裝置本機的刪除保護紀錄；舊 adapter 沒有此能力。 */
   rememberSecurityPolicy?(policy:import("./adapter/security").SecurityPolicy):Promise<void>;
@@ -122,6 +124,8 @@ export interface WorkspaceCapabilities {
   /** remote membership 是否可寫 policy；local 固定為 true。 */
   policyWrite: boolean;
   securityReview?: boolean;
+  securityReviewV2?: boolean;
+  checkHistory?: boolean;
   /** server 是否宣告事件能力（SSE／polling）；缺席時退化為手動重整。 */
   liveUpdates: boolean;
 }
@@ -416,7 +420,7 @@ export function createRemoteSession(
     id: key,
     locator,
     descriptor: { name: `${info.projectName}/${info.repoName}`, badge: null },
-    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke, {supported:info.capabilities.securityReview===true,checkoutRoot}),
+    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke, {supported:info.capabilities.securityReview===true,checkoutRoot,history:info.capabilities.checkHistory===true,securityV2:info.capabilities.securityReviewV2===true}),
     settings: createRemoteSettings(
       connectionId,
       info.projectKey,
@@ -424,6 +428,8 @@ export function createRemoteSession(
       info.capabilities.policyWrite,
       invoke,
       info.capabilities.securityReview===true,
+      info.capabilities.securityReviewV2===true,
+      info.capabilities.checkHistory===true,
     ),
     events: {
       subscribe(onChange, onConnectionState) {

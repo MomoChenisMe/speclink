@@ -8,6 +8,43 @@ use super::{
 };
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
+mod deep;
+pub use deep::*;
+
+/// Redact credential-shaped values in prose without removing file paths or ordinary quotes.
+pub fn redact_text(text: &str) -> String {
+    use regex::Regex;
+    use std::sync::LazyLock;
+    static ASSIGNMENT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r#"(?i)((?:api[_-]?key|password|secret|(?:access|refresh)[_-]?token|authorization)["']?\s*[:=]\s*)(\[REDACTED(?: PRIVATE KEY| TOKEN)?\]|"[^"\r\n]*"|'[^'\r\n]*'|[^\s,;}\]]+)"#).expect("credential redaction")
+    });
+    static PRIVATE_KEY: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"(?s)-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----.*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|$)").expect("private key redaction")
+    });
+    static JWT: LazyLock<Regex> = LazyLock::new(|| {
+        Regex::new(r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b")
+            .expect("JWT redaction")
+    });
+    let text = PRIVATE_KEY.replace_all(text, "[REDACTED PRIVATE KEY]");
+    let text = JWT.replace_all(&text, "[REDACTED TOKEN]");
+    ASSIGNMENT
+        .replace_all(&text, |captures: &regex::Captures<'_>| {
+            let value = &captures[2];
+            format!(
+                "{}{}",
+                &captures[1],
+                if matches!(
+                    value,
+                    "[REDACTED]" | "[REDACTED PRIVATE KEY]" | "[REDACTED TOKEN]"
+                ) {
+                    value
+                } else {
+                    "[REDACTED]"
+                }
+            )
+        })
+        .into_owned()
+}
 
 pub struct ReportContext {
     pub report_id: String,
@@ -124,6 +161,21 @@ struct ReportWire {
 #[serde(transparent)]
 pub struct Report(ReportWire);
 impl Report {
+    pub fn sources(&self) -> &[SourceIdentity] {
+        &self.0.sources
+    }
+    pub fn policy_digest(&self) -> &str {
+        &self.0.policy_digest
+    }
+    pub fn checks(&self) -> &[Check] {
+        &self.0.checks
+    }
+    pub fn coverage(&self) -> &Coverage {
+        &self.0.coverage
+    }
+    pub fn findings(&self) -> &[ReportFinding] {
+        &self.0.findings
+    }
     pub fn new(
         context: ReportContext,
         configuration_state: &str,
@@ -388,7 +440,7 @@ impl Report {
                 && report.sources.len() <= 10_000,
             "size_limit: report"
         );
-        report.project_name = plain(&report.project_name);
+        report.project_name = redact_text(&plain(&report.project_name));
         report.change_name = report.change_name.as_deref().map(plain);
         report.disclaimer = disclaimer(&report.locale).into();
         report.commit_sha = report.commit_sha.take().filter(|sha| {
@@ -423,9 +475,9 @@ impl Report {
             );
             risk.confirmation_status = "needs_review".into();
             risk.path = plain(&risk.path);
-            risk.title = plain(&risk.title);
-            risk.description = plain(&risk.description);
-            risk.remediation = plain(&risk.remediation);
+            risk.title = redact_text(&plain(&risk.title));
+            risk.description = redact_text(&plain(&risk.description));
+            risk.remediation = redact_text(&plain(&risk.remediation));
             risk.evidence = if risk.rule_id == "SL-SEC-001" {
                 "[REDACTED: potential credential assignment]".into()
             } else {
@@ -467,6 +519,9 @@ impl Report {
     }
     pub fn is_complete(&self) -> bool {
         self.0.complete
+    }
+    pub fn rule_version(&self) -> &str {
+        &self.0.rule_version
     }
     pub fn counts(&self) -> &Counts {
         &self.0.counts
@@ -733,6 +788,318 @@ pub trait ReportRepository: Send + Sync {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn deep_policy_digest_ignores_acceptance_but_tracks_review_scope() {
+        let mut policy = crate::security::policy::SecurityPolicy::default();
+        let before = policy.review_digest().unwrap();
+        policy.required_for_acceptance = true;
+        assert_eq!(before, policy.review_digest().unwrap());
+        policy.reviews.code = !policy.reviews.code;
+        assert_ne!(before, policy.review_digest().unwrap());
+    }
+    #[test]
+    fn publication_rejects_an_index_changed_after_its_snapshot() {
+        use crate::{history, store::Store, teststore::TestStore};
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        let report = VersionedReport::Deep(DeepReport::new(deep_input(), deep_context()).unwrap());
+        *store.artifact_read_hook.borrow_mut() = Some(Box::new(|store, change, path| {
+            assert_eq!(path, history::INDEX);
+            let id = "01ARZ3NDEKTSV4RRFFQ69G5FAX";
+            let content = "completed review";
+            let entry = history::CheckEntry {
+                record_id: id.into(), kind: history::CheckKind::Review,
+                created_at: "2026-10-21T00:00:00Z".into(), outcome: "passed".into(),
+                relative_path: history::CheckKind::Review.path(id).unwrap(),
+                content_digest: crate::security::data::sha256(content.as_bytes()),
+            };
+            store.put_artifact(change, &entry.relative_path, content);
+            store.put_artifact(change, history::INDEX, &serde_json::to_string(&history::CheckIndex {format_version:1,entries:vec![entry]}).unwrap());
+            store.write_change_meta(change, "schema: spec-driven\nreviewed_at: 2026-10-21\n").unwrap();
+            store.delete_artifact(change, "review.md").unwrap();
+        }));
+        let err = save_change_report(&store, "demo", &report).unwrap_err();
+        assert!(err.to_string().contains("revision_conflict"), "{err}");
+        let index = history::index(&store, "demo").unwrap();
+        assert_eq!(index.entries.len(), 1);
+        assert_eq!(index.entries[0].kind, history::CheckKind::Review);
+        assert!(!store.artifact_exists("demo", &format!("checks/security/{}/report.md", report.report_id())));
+        assert!(store.meta("demo").contains("reviewed_at"));
+    }
+    #[test]
+    fn deep_submission_rejects_missing_null_and_empty_evidence_fields() {
+        for field in ["endLine", "function"] {
+            for absent in [true, false] {
+                let mut value = serde_json::to_value(deep_input()).unwrap();
+                let evidence = value["findings"][0]["evidence"][0].as_object_mut().unwrap();
+                if absent { evidence.remove(field); } else { evidence.insert(field.into(), serde_json::Value::Null); }
+                let parsed = serde_json::from_value::<DeepReportInput>(value);
+                assert!(parsed.and_then(|input| DeepReport::new(input, deep_context()).map_err(serde::de::Error::custom)).is_err(), "{field} absent={absent}");
+            }
+        }
+        let mut value = serde_json::to_value(deep_input()).unwrap();
+        value["findings"][0]["evidence"][0]["function"] = "  ".into();
+        let input: DeepReportInput = serde_json::from_value(value).unwrap();
+        assert!(DeepReport::new(input, deep_context()).is_err());
+    }
+    fn deep_input() -> DeepReportInput {
+        serde_json::from_value(serde_json::json!({
+            "formatVersion":2,"changeName":"demo","policyDigest":"b".repeat(64),"knowledgeDigest":"d".repeat(64),"scopeDigest":"c".repeat(64),"builtinReportId":null,"complete":true,"targets":["app.ts"],
+            "checks":[{"checkId":"review/code","status":"FINDING","reason":"已追蹤入口","evidencePaths":["app.ts"],"resolvesCheckIds":[]}],
+            "findings":[{"findingId":"H1","domain":"認證與業務授權","title":"跨帳戶修改缺少擁有者檢查","severity":"high","confidence":"high","confidenceReason":"程式已證明缺少檢查；外部ACL未確認；無可信對照","references":[],"evidence":[{"path":"app.ts","line":1,"endLine":2,"function":"updateAccount"}],"codeSnippet":"const api_key = 'unique-deep-secret-sentinel';","dataFlow":"request.id → updateAccount → database；缺少帳戶擁有者比對","impact":"已證明跨帳戶路徑；unique-deep-secret-sentinel 不得出現在報告","remediation":"SHALL 依 .security_kb/cheatsheets/Authorization_Cheat_Sheet.md 驗證資源擁有者。","acceptance":"以帳戶A修改B的ID應回403，且資料不變。"}]
+        })).unwrap()
+    }
+    fn deep_context() -> DeepReportContext {
+        DeepReportContext {
+            common: context(),
+            actor: Some("Reviewer".into()),
+            knowledge_digest: "d".repeat(64),
+            scope_digest: "c".repeat(64),
+            standards: vec![],
+            source_licenses: vec![],
+            sources: vec![SourceIdentity {
+                path: "app.ts".into(),
+                content_digest: "e".repeat(64),
+            }],
+            source_lines: std::collections::BTreeMap::from([("app.ts".into(), 3)]),
+            required_checks: std::collections::BTreeSet::from(["review/code".into()]),
+            required_evidence: std::collections::BTreeMap::from([(
+                "review/code".into(),
+                std::collections::BTreeSet::from(["app.ts".into()]),
+            )]),
+            permitted_references: std::collections::BTreeSet::new(),
+            builtin_unverified: std::collections::BTreeSet::new(),
+            bytes_read: 20,
+        }
+    }
+    #[test]
+    fn deep_report_v2_masks_every_representation_and_has_all_nine_finding_groups() {
+        let report = DeepReport::new(deep_input(), deep_context()).unwrap();
+        assert!(serde_json::to_string(&report)
+            .unwrap()
+            .contains("原始碼中的金鑰值在此省略"));
+        let json = serde_json::to_string(&report).unwrap();
+        let markdown = report.markdown();
+        assert!(!json.contains("unique-deep-secret-sentinel"));
+        assert!(!markdown.contains("unique-deep-secret-sentinel"));
+        let value: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(value["formatVersion"], 2);
+        assert_eq!(value["executionMode"], "deep-skill");
+        assert_eq!(value["actor"], "Reviewer");
+        for heading in [
+            "## 認證與業務授權",
+            "### [H1]",
+            "等級",
+            "信心",
+            "對照",
+            "證據",
+            "片段",
+            "資料流",
+            "影響",
+            "修正",
+            "驗收",
+            "原始碼中的金鑰值在此省略",
+        ] {
+            assert!(markdown.contains(heading), "{heading}");
+        }
+        let reread = VersionedReport::from_json(json.as_bytes()).unwrap();
+        assert!(matches!(reread, VersionedReport::Deep(_)));
+        assert_eq!(reread.markdown(), markdown);
+        let mut bad = serde_json::from_str::<serde_json::Value>(&json).unwrap();
+        bad["formatVersion"] = 3.into();
+        assert!(VersionedReport::from_json(&serde_json::to_vec(&bad).unwrap()).is_err());
+    }
+    #[test]
+    fn deep_report_rejects_missing_groups_unknown_ids_outside_evidence_and_401_chars() {
+        let mut value = serde_json::to_value(deep_input()).unwrap();
+        for key in [
+            "title",
+            "severity",
+            "confidence",
+            "confidenceReason",
+            "references",
+            "evidence",
+            "codeSnippet",
+            "dataFlow",
+            "impact",
+            "remediation",
+            "acceptance",
+        ] {
+            let mut missing = value.clone();
+            missing["findings"][0].as_object_mut().unwrap().remove(key);
+            assert!(
+                serde_json::from_value::<DeepReportInput>(missing).is_err(),
+                "{key}"
+            );
+        }
+        for pointer in ["/findings/0/evidence/0/path", "/checks/0/checkId"] {
+            let mut bad = value.clone();
+            *bad.pointer_mut(pointer).unwrap() = "../outside".into();
+            assert!(DeepReport::new(serde_json::from_value(bad).unwrap(), deep_context()).is_err());
+        }
+        for line in [0, 4] {
+            value["findings"][0]["evidence"][0]["line"] = line.into();
+            assert!(DeepReport::new(
+                serde_json::from_value(value.clone()).unwrap(),
+                deep_context()
+            )
+            .is_err());
+        }
+        let mut input = deep_input();
+        input.findings[0].code_snippet = "x".repeat(400);
+        assert!(DeepReport::new(input.clone(), deep_context()).is_ok());
+        input.findings[0].code_snippet.push('x');
+        assert!(DeepReport::new(input, deep_context()).is_err());
+        let mut input = deep_input();
+        input.findings.push(input.findings[0].clone());
+        assert!(DeepReport::new(input, deep_context()).is_err());
+    }
+    #[test]
+    fn deep_report_does_not_claim_complete_without_target_evidence() {
+        let mut input = deep_input();
+        input.checks[0].evidence_paths.clear();
+        input.findings[0].code_snippet = "api_key=unique-bare-credential".into();
+        input.findings[0].impact = "unique-bare-credential 不得外洩".into();
+        let report = DeepReport::new(input, deep_context()).unwrap();
+        assert!(!report.is_complete());
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("unique-bare-credential"));
+    }
+    #[test]
+    fn deep_empty_family_requires_evidenced_not_applicable_and_standard_status_follows_checks() {
+        let mut input = deep_input();
+        let mut ctx = deep_context();
+        ctx.required_checks.insert("review/spec".into());
+        ctx.required_evidence
+            .insert("review/spec".into(), Default::default());
+        input.checks.push(DeepCheck {
+            check_id: "review/spec".into(),
+            status: ReviewStatus::Pass,
+            reason: String::new(),
+            evidence_paths: vec![],
+            resolves_check_ids: vec![],
+        });
+        assert!(
+            !DeepReport::new(input.clone(), ctx).unwrap().is_complete(),
+            "empty family must not pass vacuously"
+        );
+        let mut ctx = deep_context();
+        ctx.required_checks.insert("review/spec".into());
+        ctx.required_evidence
+            .insert("review/spec".into(), Default::default());
+        input.checks[1].status = ReviewStatus::NotApplicable;
+        input.checks[1].reason = "已確認此提案沒有規格文件".into();
+        input.checks[1].evidence_paths = vec!["app.ts".into()];
+        assert!(DeepReport::new(input, ctx).unwrap().is_complete());
+        let mut input = deep_input();
+        let mut ctx = deep_context();
+        let id = "owasp_top10/2021/A01:2021";
+        ctx.required_checks.insert(id.into());
+        input.checks.push(DeepCheck {
+            check_id: id.into(),
+            status: ReviewStatus::Pass,
+            reason: "已追蹤授權路徑".into(),
+            evidence_paths: vec!["app.ts".into()],
+            resolves_check_ids: vec![],
+        });
+        ctx.standards.push(ReportStandard {
+            standard_id: StandardId::OwaspTop10,
+            version: Some("2021".into()),
+            level: None,
+            data_sha256: None,
+            source_revision: None,
+            installed_status: "installed".into(),
+            status: ReviewStatus::NotVerified,
+            reason: Some("awaiting_deep_review".into()),
+            controls: vec![ControlAssessment {
+                control_id: "A01:2021".into(),
+                status: ReviewStatus::NotVerified,
+                reason: "awaiting_deep_review".into(),
+            }],
+        });
+        let value = serde_json::to_value(DeepReport::new(input, ctx).unwrap()).unwrap();
+        assert_eq!(value["standards"][0]["controls"][0]["status"], "PASS");
+        assert_eq!(value["standards"][0]["status"], "PASS");
+    }
+    #[test]
+    fn basic_wire_prose_cannot_echo_secret_assignments() {
+        let report = Report::new(
+            context(),
+            "configured",
+            true,
+            vec![],
+            vec![],
+            &ScanInputs {
+                documents: vec![],
+                coverage: vec![],
+                visited_files: 0,
+                total_bytes: 0,
+                complete: true,
+                remaining_targets: vec![],
+                stop_reason: None,
+            },
+        )
+        .unwrap();
+        let mut value = serde_json::to_value(report).unwrap();
+        value["projectName"] = "password=unique-prose-secret".into();
+        let report = Report::from_json(&serde_json::to_vec(&value).unwrap()).unwrap();
+        assert!(!serde_json::to_string(&report)
+            .unwrap()
+            .contains("unique-prose-secret"));
+        assert!(!report.markdown().contains("unique-prose-secret"));
+    }
+    #[test]
+    fn security_risk_decision_validates_reason_identity_and_cas_without_rewriting_report() {
+        use crate::{security::acceptance::RiskDecision, store::Store, teststore::TestStore};
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        let report = VersionedReport::Deep(DeepReport::new(deep_input(), deep_context()).unwrap());
+        save_change_report(&store, "demo", &report).unwrap();
+        let original = report.json().unwrap();
+        let mut d = RiskDecision {
+            decision_id: "01ARZ3NDEKTSV4RRFFQ69G5FAW".into(),
+            action: "accepted".into(),
+            report_id: report.report_id().into(),
+            finding_id: "H1".into(),
+            reason: "接受本次範圍的殘餘風險".into(),
+            actor: "Owner".into(),
+            accepted_at: "2026-10-20T00:00:00Z".into(),
+            policy_digest: "b".repeat(64),
+            scope_digest: "c".repeat(64),
+        };
+        for reason in [" ".into(), "字".repeat(2001)] {
+            d.reason = reason;
+            assert!(prepare_decision(&store, "demo", &d).is_err());
+        }
+        d.reason = "字".repeat(2000);
+        assert!(prepare_decision(&store, "demo", &d).is_ok());
+        d.actor.clear();
+        assert!(prepare_decision(&store, "demo", &d).is_err());
+        d.actor = "Owner".into();
+        d.reason = "API_KEY=unique-decision-private-sentinel 已經輪替".into();
+        let plan = prepare_decision(&store, "demo", &d).unwrap();
+        let old = store.read_artifact("demo", crate::history::INDEX).unwrap();
+        store
+            .write_artifact("demo", crate::history::INDEX, &format!("{old}\n"))
+            .unwrap();
+        assert!(store.commit_checks("demo", &plan).is_err());
+        let path = format!("checks/security/{}/decisions.jsonl", report.report_id());
+        assert!(store.read_artifact("demo", &path).is_none());
+        let plan = prepare_decision(&store, "demo", &d).unwrap();
+        store.commit_checks("demo", &plan).unwrap();
+        assert!(!store
+            .read_artifact("demo", &path)
+            .unwrap()
+            .contains("unique-decision-private-sentinel"));
+        assert_eq!(
+            store
+                .read_artifact(
+                    "demo",
+                    &format!("checks/security/{}/report.json", report.report_id())
+                )
+                .unwrap(),
+            original
+        );
+    }
     #[test]
     fn security_report_localizes_owned_rule_explanations_and_markdown_sections() {
         for locale in ["tw", "ja"] {

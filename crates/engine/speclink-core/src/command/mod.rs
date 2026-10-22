@@ -124,7 +124,9 @@ impl std::error::Error for InvalidContent {}
 /// Message text passes through verbatim; the original error rides along as
 /// `source` for host-side refinement.
 fn classify(e: anyhow::Error) -> CommandError {
-    let (code, message) = if let Some(r) = e.downcast_ref::<Refusal>() {
+    let (code, message) = if let Some(r) = e.downcast_ref::<crate::security::acceptance::GateFailure>() {
+        (ErrorCode::Refused, r.to_string())
+    } else if let Some(r) = e.downcast_ref::<Refusal>() {
         (ErrorCode::Refused, r.0.clone())
     } else if let Some(c) = e.downcast_ref::<InvalidContent>() {
         (ErrorCode::InvalidArgv, c.0.clone())
@@ -733,6 +735,8 @@ pub enum CommandOutcome {
 /// the Engine itself never reads process env or git identity.
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionContext {
+    /// Request-scoped Host evidence; never a command argument or a caller-supplied PASS flag.
+    pub security_acceptance: Option<crate::security::acceptance::AcceptanceProof>,
     /// Display identity ("Name <email>") stamping flows record. `None` =
     /// anonymous: stamping flows stamp nothing (the current local behavior
     /// when git is absent or user.name is unset).
@@ -836,7 +840,7 @@ pub fn execute(
             ws,
             ctx.actor.as_deref(),
             change.as_deref(),
-            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify },
+            crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify, security_acceptance:ctx.security_acceptance.clone() },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
         Command::DiscussNew { topic, slug, kind } => {
@@ -923,7 +927,7 @@ pub fn execute(
             Ok(CommandOutcome::VerifyShow(station_show(&VERIFY, store, change)?))
         }
         Command::VerifyStamp { change, accept, tool, scope, missing } => {
-            station::stamp_with_scope(
+            station::stamp_with_scope_and_acceptance(
                 &VERIFY,
                 store,
                 &change,
@@ -932,6 +936,7 @@ pub fn execute(
                 tool.as_deref(),
                 scope,
                 missing,
+                ctx.security_acceptance.as_ref(),
             )
             .map_err(classify)?;
             Ok(CommandOutcome::VerifyStamp(ReviewSubjectOutcome { change }))

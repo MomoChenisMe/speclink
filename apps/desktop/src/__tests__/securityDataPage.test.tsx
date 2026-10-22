@@ -11,17 +11,52 @@ import { readFileSync } from "node:fs";
 vi.mock("@tauri-apps/plugin-opener", () => ({openUrl:vi.fn()}));
 vi.mock("sonner", () => ({toast:{error:vi.fn()}}));
 
-vi.mock("../adapter/security", () => ({listSecurityData:vi.fn(),startSecurityData:vi.fn(),waitSecurityData:vi.fn(),cancelSecurityJob:vi.fn(),watchSecurityProgress:vi.fn(),chooseSecurityPackage:vi.fn(),chooseSecurityExport:vi.fn()}));
+vi.mock("../adapter/security", () => ({readSecurityDataPaths:vi.fn(),writeSecurityDataPaths:vi.fn(),chooseSecurityDataDirectory:vi.fn(),listSecurityData:vi.fn(),startSecurityData:vi.fn(),waitSecurityData:vi.fn(),cancelSecurityJob:vi.fn(),watchSecurityProgress:vi.fn(),chooseSecurityPackage:vi.fn(),chooseSecurityExport:vi.fn()}));
 const inventory = {standards:[{standardId:"owasp_top10",versions:[{version:"2025",status:"missing",sourceUrl:"https://github.com/OWASP/Top10",licenseName:"CC-BY-SA-4.0",licenseUrl:"https://creativecommons.org/licenses/by-sa/4.0/",attribution:"OWASP Foundation",sourceFormat:"markdown",error:null}]}]};
 const mount = () => render(<I18nProvider locale="zh-TW" messages={APP_MESSAGES}><SecurityDataPage /></I18nProvider>);
 beforeEach(() => {
   vi.resetAllMocks();
+  vi.mocked(api.readSecurityDataPaths).mockResolvedValue({standardsPath:null,effectivePath:"/device/security/standards",isDefault:true,access:"readWrite"});
   vi.mocked(openUrl).mockResolvedValue(undefined);
   vi.mocked(api.listSecurityData).mockResolvedValue(structuredClone(inventory));
   vi.mocked(api.watchSecurityProgress).mockResolvedValue(() => {});
   vi.mocked(api.startSecurityData).mockResolvedValue({jobId:"job-one",projectKey:"application-data"});
   vi.mocked(api.waitSecurityData).mockResolvedValue({});
   vi.mocked(api.cancelSecurityJob).mockResolvedValue(true);
+});
+
+it("UNC路徑儲存失敗保留草稿，唯讀共用只准讀取／匯出，還原不搬檔",async()=>{
+  const share=String.raw`\\fileserver\team\standards`;
+  mount();const input=await screen.findByRole("textbox",{name:"標準資料存放路徑"});
+  fireEvent.change(input,{target:{value:share}});
+  vi.mocked(api.writeSecurityDataPaths).mockRejectedValueOnce({message:"settings_write_failed"});
+  fireEvent.click(screen.getByRole("button",{name:"儲存路徑"}));
+  expect((await screen.findByRole("alert")).textContent).toContain("settings_write_failed");
+  expect((input as HTMLInputElement).value).toBe(share);
+  vi.mocked(api.writeSecurityDataPaths).mockResolvedValueOnce({standardsPath:share,effectivePath:share,isDefault:false,access:"readOnly"});
+  fireEvent.click(screen.getByRole("button",{name:"儲存路徑"}));
+  expect(await screen.findByText("唯讀：可以查詢及匯出，不能修改資料。" )).toBeTruthy();
+  expect((screen.getByRole("button",{name:"匯入離線資料包"}) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button",{name:"全部匯出"}) as HTMLButtonElement).disabled).toBe(false);
+  vi.mocked(api.writeSecurityDataPaths).mockResolvedValueOnce({standardsPath:null,effectivePath:"/device/security/standards",isDefault:true,access:"readWrite"});
+  fireEvent.click(screen.getByRole("button",{name:"還原本機預設"}));
+  await waitFor(()=>expect(api.writeSecurityDataPaths).toHaveBeenLastCalledWith(null));
+  expect(api.startSecurityData).not.toHaveBeenCalled();
+});
+
+it.each(["zh-TW","en"] as const)("%s：選目錄與取消只改草稿，離線路徑停用資料操作",async(locale)=>{
+  const m=APP_MESSAGES[locale];
+  vi.mocked(api.readSecurityDataPaths).mockResolvedValue({standardsPath:"/offline/share",effectivePath:"/offline/share",isDefault:false,access:"unavailable"});
+  vi.mocked(api.chooseSecurityDataDirectory).mockResolvedValue("/chosen/share");
+  render(<I18nProvider locale={locale} messages={APP_MESSAGES}><SecurityDataPage/></I18nProvider>);
+  const input=await screen.findByRole("textbox",{name:m["securityData.path.title"]});
+  await waitFor(()=>expect((input as HTMLInputElement).value).toBe("/offline/share"));
+  expect((screen.getByRole("button",{name:m["securityData.exportAll"]}) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole("button",{name:m["securityData.path.choose"]}));
+  await waitFor(()=>expect((input as HTMLInputElement).value).toBe("/chosen/share"));
+  fireEvent.click(screen.getByRole("button",{name:m["securityData.path.cancel"]}));
+  expect((input as HTMLInputElement).value).toBe("/offline/share");
+  expect(api.writeSecurityDataPaths).not.toHaveBeenCalled();expect(api.startSecurityData).not.toHaveBeenCalled();
 });
 
 it("零專案進頁只讀清單，來源授權可讀，下載必須明確操作", async () => {

@@ -10,7 +10,7 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import { BUILTIN_TOOLS } from "../../builtinTools";
+import { BUILTIN_TOOLS, builtinToolLabel } from "../../builtinTools";
 import { PageAlerts } from "./parts";
 import type { ProjectSettingsState } from "./useProjectSettings";
 
@@ -42,8 +42,8 @@ export function SpeclinkPage({ ps }: { ps: ProjectSettingsState }) {
         <SettingsCard title={t("settings.toolsLabel")}>
           {BUILTIN_TOOLS.map((tool) => (
             <SettingsRow
-              key={tool}
-              label={tool}
+              key={builtinToolLabel(tool)}
+              label={builtinToolLabel(tool)}
               htmlFor={`tool-${tool}`}
               control={
                 <Switch

@@ -149,7 +149,7 @@ pub fn upsert_connection(
 }
 
 /// `inspect_checkout` 的零寫入結果：確認過的 checkout 根路徑，以及要在 picker
-/// 中預選的既有 built-in 工具選集（claude／codex／copilot，順序穩定）。IPC 序列化為
+/// 中預選的既有 built-in 工具選集（claude／codex／copilot／antigravity，順序穩定）。IPC 序列化為
 /// camelCase `{ root, tools }`——不攜帶任何 credential 或 Server 資料。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -198,7 +198,7 @@ fn validate_checkout(
     Ok(root.display().to_string())
 }
 
-/// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（claude／codex／copilot，
+/// 決定 picker 的預選：`.speclink.yaml` 記錄了 built-in 選集就用它（claude／codex／copilot／antigravity，
 /// 去重、順序穩定）；缺清單、或清單裡沒有任何可解析的內建名（只有描述子／未知名）時，
 /// 只依實際 Claude／Codex footprint 預選（`.github/` 不算 Copilot footprint），絕不補 Claude fallback。
 fn preselected_tools(root: &Path) -> Vec<String> {
@@ -246,7 +246,7 @@ pub fn bind_checkout(
     let selected =
         speclink_core::init::parse_tool_names(tools).map_err(|e| single_line(&e.to_string()))?;
     if selected.is_empty() {
-        return Err("請至少選擇一個內建工具：claude、codex、copilot".to_string());
+        return Err(format!("請至少選擇一個內建工具：{}", speclink_core::skills::Tool::ALL.map(|tool|tool.name()).join("、")));
     }
     let root_str = validate_checkout(root, selected_origin, selected_repo)?;
 
@@ -697,6 +697,16 @@ mod checkout_tests {
     }
 
     #[test]
+    fn bind_codex_and_antigravity_uses_independent_directories() {
+        let dir=git_checkout();
+        bind(dir.path(),&["codex","antigravity"]).expect("new binding");
+        assert!(exists(dir.path(),".agents/skills/speclink-propose/SKILL.md"));
+        assert!(exists(dir.path(),".agent/skills/speclink-propose/SKILL.md"));
+        assert_eq!(inspect(dir.path()).unwrap().tools,vec!["codex","antigravity"]);
+        assert!(!exists(dir.path(),"GEMINI.md"));
+    }
+
+    #[test]
     fn bind_claude_and_copilot_generates_both_skill_sets() {
         let dir = git_checkout();
         write(dir.path(), ".github/workflows/ci.yml", "on: push\n");
@@ -753,7 +763,7 @@ mod checkout_tests {
 
         let err = bind(dir.path(), &[]).expect_err("空選集必須被拒");
 
-        for tool in ["claude", "codex", "copilot"] {
+        for tool in ["claude", "codex", "copilot", "antigravity"] {
             assert!(err.contains(tool), "must list {tool}: {err}");
         }
         assert_eq!(snapshot(dir.path()), before, "拒絕時磁碟不變");

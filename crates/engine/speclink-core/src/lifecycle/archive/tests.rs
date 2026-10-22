@@ -29,6 +29,7 @@ fn archive_preserves_started_fields_and_stamps_the_archived_station() {
         &store,
         &change,
         &ArchiveOptions {
+            security_acceptance: None,
             skip_specs: true,
             carry_review: false,
             carry_verify: false,
@@ -214,6 +215,7 @@ fn ghost_ws() -> Workspace {
 
 fn skip_opts() -> ArchiveOptions {
     ArchiveOptions {
+        security_acceptance: None,
         skip_specs: true,
         no_validate: true,
         mark_tasks_complete: false,
@@ -1564,5 +1566,117 @@ fn security_policy_remains_advisory_and_original_verify_gate_still_applies() {
         let outcome = archive(&ghost_ws(), &store, &change, &skip_opts(), None);
         assert_eq!(outcome.is_err(), open_ticket);
         assert_eq!(store.change_exists("demo"), open_ticket);
+    }
+}
+
+#[test]
+fn archive_records_obey_all_eight_retention_combinations_and_keep_carried_tickets() {
+    use crate::{
+        history,
+        security::{input::ScanInputs, policy::SecurityScope, report::*},
+        station,
+    };
+    for bits in 0..8 {
+        let store = gate_store("- [x] 1.1 Done\n");
+        for st in [&station::REVIEW, &station::VERIFY] {
+            station::add_round(st, &store, "demo", "**Scope**: app.ts\n").unwrap();
+            station::stamp_with_scope(
+                st,
+                &store,
+                "demo",
+                false,
+                Some("Tester"),
+                None,
+                vec![crate::model::ReviewedScopeEntry {
+                    path: "app.ts".into(),
+                    hash: "a".repeat(64),
+                }],
+                vec![],
+            )
+            .unwrap();
+        }
+        let report = Report::new(
+            ReportContext {
+                report_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+                project_key: "a".repeat(64),
+                project_name: "Demo".into(),
+                change_name: Some("demo".into()),
+                reviewed_at: "2026-10-21T00:00:00Z".into(),
+                commit_sha: None,
+                policy_digest: "b".repeat(64),
+                policy_revision: None,
+                prepared_at: None,
+                rule_version: "1.0.0".into(),
+                scope: SecurityScope::Off,
+                locale: "tw".into(),
+                review_methods: vec![],
+            },
+            "disabled",
+            true,
+            vec![],
+            vec![],
+            &ScanInputs {
+                visited_files: 0,
+                documents: vec![],
+                coverage: vec![],
+                remaining_targets: vec![],
+                total_bytes: 0,
+                complete: true,
+                stop_reason: None,
+            },
+        )
+        .unwrap();
+        save_change_report(&store, "demo", &VersionedReport::Builtin(report)).unwrap();
+        for st in [&station::REVIEW, &station::VERIFY] {
+            station::add_round(st, &store, "demo", "**Scope**: app.ts\n").unwrap();
+        }
+        *store.workflow_config.borrow_mut() = Some(format!(
+            "check_records:\n  archive: {{review: {}, verify: {}, security: {}}}\n",
+            bits & 1 != 0,
+            bits & 2 != 0,
+            bits & 4 != 0
+        ));
+        let source = history::index(&store, "demo").unwrap();
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        let outcome = archive(
+            &Workspace {
+                root: std::path::PathBuf::new(),
+                spec_dir_name: "openspec".into(),
+            },
+            &store,
+            &change,
+            &ArchiveOptions {
+                carry_review: true,
+                carry_verify: true,
+                ..skip_opts()
+            },
+            None,
+        )
+        .unwrap();
+        let archived = history::index(&store, &outcome.dated_name).unwrap();
+        for (mask, kind) in [
+            (1, history::CheckKind::Review),
+            (2, history::CheckKind::Verify),
+            (4, history::CheckKind::Security),
+        ] {
+            assert_eq!(
+                archived.entries.iter().find(|e| e.kind == kind).map(|e| e.outcome.as_str() == "omitted"),
+                Some(bits & mask == 0),
+                "bits {bits}, {kind:?}"
+            );
+            let original = source.entries.iter().find(|e| e.kind == kind).unwrap();
+            assert_eq!(
+                store
+                    .read_archived_artifact(&outcome.dated_name, &original.relative_path)
+                    .is_some(),
+                bits & mask != 0
+            );
+        }
+        assert!(store
+            .read_archived_artifact(&outcome.dated_name, "review.md")
+            .is_some());
+        assert!(store
+            .read_archived_artifact(&outcome.dated_name, "verify.md")
+            .is_some());
     }
 }

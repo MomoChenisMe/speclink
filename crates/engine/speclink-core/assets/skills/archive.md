@@ -1,5 +1,11 @@
 Archive a completed change.
 
+**Security acceptance and check records**
+
+Read `speclink security review show "<name>" --json` when security is enabled. Effective required mode is security_verification.enabled && required_for_acceptance; in reference mode security findings add no archive blocker. In required mode, missing/stale deep reports, necessary unverified checks and unresolved CRITICAL/HIGH/MEDIUM must be settled through the shared Host verdict. Hand off to `/speclink:security-review` when deep evidence is needed. Do not replace it with a basic scan, choose risk acceptance for the user, change policy or bypass security through carry/--no-validate/ordinary --accept. Preserve existing open-ticket/stale-stamp gates.
+
+Completed review/verify/security history always remains in the active proposal after stamps. At archive, check_records.archive.review/verify/security (all default true) controls which full records travel to the archive. Do not delete active records beforehand or rewrite historical findings. Required mode retains a minimal acceptance receipt even when full security reports are omitted; it is an acceptance basis, not the complete evidence. Report the actual retention/omission result. Failed archive means no claimed completion or manual cleanup of recovery backups.
+
 **Input**: Optionally specify a change name after `/speclink:archive` (e.g., `/speclink:archive add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
@@ -19,7 +25,7 @@ Archive a completed change.
    Show only active changes (not already archived).
    Include the schema used for each change if available.
 
-   Do NOT guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
+   Do not guess or auto-select a change — always let the user choose, and wait for the answer; a candidate marked 「可封存」 is not picked for them either.
 
 2. **Check artifact completion status**
 

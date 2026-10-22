@@ -1,7 +1,7 @@
 // 更新頁（desktop-settings-mode design D6；spec「桌面自動更新」「更新日誌彈窗」）：頁標題右側
 // 「檢查更新」；版本卡（目前版本、最新版本＋狀態籤）；下載與安裝卡（只在有事等使用者處置時）；
 // 更新日誌卡（最新版本展開、較舊版本一列一個；條目與分組標題依介面語言）；自動檢查卡（背景檢查開關）。
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Button,
   SettingsCard,
@@ -14,9 +14,12 @@ import {
 } from "@speclink/ui";
 
 import { UpdateInstallRow } from "../../components/UpdateInstallRow";
+import { ReleaseNotesDialog } from "../../components/ReleaseNotesDialog";
 import { updateNeedsAttention, type UpdaterState } from "../../core/updater";
 import { entryText, RELEASE_NOTES } from "../../release-notes/release-notes";
 import type { AppSettingsUpdaterProps } from "../AppSettingsView";
+import { desktopRelease, type DesktopRelease, type ReleaseRepository } from "../../adapter/updater";
+import { openExternal } from "./AboutPage";
 
 /** 「最新版本」列：等寬版號（無則「—」或不顯示）＋狀態籤；關於頁版本列的狀態籤共用。 */
 export function latestOf(state: UpdaterState, currentVersion: string | null | undefined): {
@@ -24,6 +27,8 @@ export function latestOf(state: UpdaterState, currentVersion: string | null | un
   pill: StatusPillLabel;
 } {
   switch (state.phase) {
+    case "manual":
+      return {version:state.version,pill:{key:"updater.sources.manual",tone:"neutral"}};
     case "available":
     case "downloading":
     case "restartPending":
@@ -46,8 +51,29 @@ const VersionText = ({ children }: { children: string }) => (
   <span className="font-mono text-[13px]">{children}</span>
 );
 
-export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) {
+export function UpdatesPage({ updater, currentVersion, releaseLookup = desktopRelease }: { updater?: AppSettingsUpdaterProps; currentVersion?: string | null; releaseLookup?: typeof desktopRelease }) {
   const { t, locale } = useI18n();
+  const [notes, setNotes] = useState<{ version?: string } | null>(null);
+  const [sources, setSources] = useState<Partial<Record<ReleaseRepository, {release?:DesktopRelease|null;checkedAt?:number;busy?:boolean;error?:string}>>>({});
+  const lookup = async (repo:ReleaseRepository) => {
+    setSources(previous=>({...previous,[repo]:{...previous[repo],busy:true,error:undefined}}));
+    try {
+      const release = await releaseLookup(repo);
+      setSources(previous=>({...previous,[repo]:{release,checkedAt:Date.now(),busy:false}}));
+    } catch (error) {
+      const failure = error as {code?:string;httpStatus?:number};
+      const code = ["http","tls","timeout","connect","proxy-auth","parse","budget_exceeded","untrusted_source","proxy_unsupported"].includes(failure?.code ?? "") ? failure.code : "update_failed";
+      setSources(previous=>({...previous,[repo]:{...previous[repo],busy:false,error:`${code}${failure?.httpStatus ? ` (${failure.httpStatus})` : ""}`}}));
+    }
+  };
+  const ready = !!updater && updater.ready !== false;
+  const state = updater?.state ?? { phase: "idle" };
+  const version = currentVersion ?? updater?.currentVersion;
+  const showNotes = (version?: string) => {
+    if (!updater) setNotes({ version });
+    else if (version === undefined) updater.onShowReleaseNotes();
+    else updater.onShowReleaseNotes(version);
+  };
   // 聚焦捲動（圖示列更新鈕、toast「查看」、技能檔較新態的入口舉旗）：捲到下載與安裝卡，
   // 沒有該卡時捲到版本卡；捲一次並回呼清旗標。
   const versionCard = useRef<HTMLDivElement>(null);
@@ -60,10 +86,7 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
     onFocusHandled?.();
   }, [focus, onFocusHandled]);
 
-  if (!updater) {
-    return <SettingsPageHeader title={t("settings.section.updates")} />;
-  }
-  const latest = latestOf(updater.state, updater.currentVersion);
+  const latest = latestOf(state, version);
   const [newest, ...older] = RELEASE_NOTES;
   const autoCheckLabel = t("updater.page.autoCheck");
   return (
@@ -76,16 +99,17 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
             type="button"
             variant="outline"
             size="sm"
-            disabled={updater.state.phase === "checking"}
-            onClick={updater.onCheck}
+            disabled={!ready || state.phase === "checking" || sources.fork?.busy}
+            onClick={()=>{void lookup("fork");updater?.onCheck();}}
           >
             {t("updater.check")}
           </Button>
         }
       />
+      {!ready && <p role="status" className="text-sm text-muted-foreground">{t("updater.page.unavailable")}</p>}
       <div ref={versionCard}>
         <SettingsCard title={t("updater.page.versionCard")}>
-          <SettingsRow label={t("updater.currentVersion")} control={<VersionText>{updater.currentVersion ?? "—"}</VersionText>} />
+          <SettingsRow label={t("updater.currentVersion")} control={<VersionText>{version ?? "—"}</VersionText>} />
           <SettingsRow
             label={t("updater.page.latest")}
             control={
@@ -97,11 +121,37 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
           />
         </SettingsCard>
       </div>
-      {updateNeedsAttention(updater.state) && (
+      <SettingsCard title={t("updater.sources.title")}>
+        {(["fork","upstream"] as const).map(repo=>{
+          const result=sources[repo];
+          const url=`https://github.com/${repo==="fork"?"mosutw":"MomoChenisMe"}/speclink`;
+          return <SettingsRow key={repo} label={t(`updater.sources.${repo}`)} description={<>
+            <a href={url} className="underline" onClick={event=>{event.preventDefault();openExternal(url);}}>{t(repo==="fork"?"updater.sources.project":"updater.sources.original")}</a>
+            {result?.checkedAt && <span> · {t("updater.sources.obtained")} {new Date(result.checkedAt).toLocaleString(locale)}</span>}
+            {result?.error && <span role="status"> · {result.error}</span>}
+          </>} control={<>
+            <VersionText>{result?.release?.version ?? "—"}</VersionText>
+            <span>{t(result?.busy?"updater.page.pill.checking":result?.release?"updater.sources.obtained":"updater.sources.missing")}</span>
+            {repo==="fork" && result?.release && <a className="underline" href={result.release.releaseUrl} onClick={event=>{event.preventDefault();openExternal(result.release!.releaseUrl);}}>{t("updater.sources.download")}</a>}
+            {repo==="upstream" && <Button size="sm" variant="outline" disabled={!ready||result?.busy} onClick={()=>void lookup(repo)}>{t("updater.sources.checkOriginal")}</Button>}
+          </>}/>;
+        })}
+      </SettingsCard>
+      {state.phase==="manual" && <p className="text-sm">{t("updater.sources.manual")} · <a className="underline" href={state.url} onClick={event=>{event.preventDefault();openExternal(state.url);}}>{t("updater.sources.download")}</a></p>}
+      {updater?.lastCheck && <div role="status" aria-label={t("updater.page.lastCheck")} className="flex flex-wrap items-center gap-2 text-sm">
+        <span>{new Date(updater.lastCheck.checkedAt).toLocaleString(locale)} · {t(`updater.page.result.${updater.lastCheck.status}`)}</span>
+        {updater.lastCheck.errorCode && <span>{updater.lastCheck.errorCode}</span>}
+        {updater.lastCheck.operationId && <span>{updater.lastCheck.operationId}</span>}
+        {updater.lastCheck.status === "failed" && <>
+          <Button size="sm" variant="outline" disabled={!ready || state.phase === "checking"} onClick={updater.onCheck}>{t("updater.row.retry")}</Button>
+          {updater.onDiagnostics && <Button size="sm" variant="ghost" onClick={updater.onDiagnostics}>{t("network.title")}</Button>}
+        </>}
+      </div>}
+      {updater && updateNeedsAttention(state) && (
         <div ref={installCard}>
           <SettingsCard title={t("updater.page.installCard")}>
             <UpdateInstallRow
-              state={updater.state}
+              state={state}
               onAccept={updater.onAccept}
               onCancel={updater.onCancel}
               onRelaunch={updater.onRelaunch}
@@ -141,14 +191,14 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
               </span>
             }
             control={
-              <Button type="button" variant="ghost" size="sm" onClick={() => updater.onShowReleaseNotes(entry.version)}>
+              <Button type="button" variant="ghost" size="sm" onClick={() => showNotes(entry.version)}>
                 {t("updater.page.viewNotes")}
               </Button>
             }
           />
         ))}
         <div className="flex justify-end px-4 py-2">
-          <Button type="button" variant="ghost" size="sm" onClick={() => updater.onShowReleaseNotes()}>
+          <Button type="button" variant="ghost" size="sm" onClick={() => showNotes()}>
             {t("updater.page.allNotes")}
           </Button>
         </div>
@@ -160,12 +210,14 @@ export function UpdatesPage({ updater }: { updater?: AppSettingsUpdaterProps }) 
           control={
             <Switch
               aria-label={autoCheckLabel}
-              checked={updater.autoCheck}
-              onCheckedChange={updater.onAutoCheckChange}
+              checked={updater?.autoCheck ?? true}
+              disabled={!ready}
+              onCheckedChange={updater?.onAutoCheckChange}
             />
           }
         />
       </SettingsCard>
+      <ReleaseNotesDialog open={notes !== null} mode="browse" entries={RELEASE_NOTES} focusVersion={notes?.version} onOpenChange={(open) => { if (!open) setNotes(null); }} />
     </>
   );
 }

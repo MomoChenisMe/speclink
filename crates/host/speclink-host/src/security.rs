@@ -21,6 +21,9 @@ use std::{
     },
     time::{Duration, Instant},
 };
+mod deep;
+pub mod remote;
+pub use deep::*;
 #[derive(Clone)]
 pub struct ReviewBudget {
     job_id: String,
@@ -57,6 +60,7 @@ impl ReviewBudget {
 
 #[derive(Debug, Clone)]
 pub struct ReviewTarget {
+    pub proposal_project_key: Option<String>,
     pub binding: ReviewBinding,
     pub spec_dir: String,
     pub change_name: Option<String>,
@@ -69,6 +73,7 @@ impl ReviewTarget {
         change_name: Option<String>,
     ) -> Result<Self> {
         let target = Self {
+            proposal_project_key:None,
             binding: ReviewBinding {
                 origin: None,
                 project: None,
@@ -87,6 +92,7 @@ impl ReviewTarget {
         Ok(target)
     }
     pub fn validate(&self) -> Result<()> {
+        ensure!(self.proposal_project_key.as_deref().is_none_or(speclink_core::security::report::valid_project_key),"binding_mismatch");
         self.binding.validate()?;
         validate_change(self.change_name.as_deref())?;
         ensure!(
@@ -95,9 +101,12 @@ impl ReviewTarget {
         );
         Ok(())
     }
+    pub fn knowledge_project_key(&self)->String {self.proposal_project_key.clone().unwrap_or_else(||self.binding.project_key())}
+    pub fn report_project_key(&self)->String {if self.change_name.is_some(){self.knowledge_project_key()}else{self.binding.project_key()}}
 }
 #[derive(Clone)]
 pub struct PreparationInput {
+    pub proposal_project_key:Option<String>,
     pub policy_text: String,
     pub policy_revision: Option<u64>,
     pub documents: Vec<PreparedDocument>,
@@ -123,6 +132,7 @@ pub fn prepare_review(
     let input = fetch()?;
     check_budget(budget)?;
     let snapshot = PreparedSnapshot {
+        proposal_project_key:input.proposal_project_key,
         format_version: 1,
         project_key: target.binding.project_key(),
         binding: target.binding.clone(),
@@ -201,6 +211,7 @@ pub fn local_preparation(
         "incomplete_preparation: could not read all selected specifications"
     );
     Ok(PreparationInput {
+        proposal_project_key:None,
         policy_text,
         policy_revision: None,
         documents: inputs
@@ -276,6 +287,7 @@ pub fn preparation_from_context(
     })?;
     let locale = effective_locale(&policy_text)?;
     Ok(PreparationInput {
+        proposal_project_key:target.proposal_project_key.clone(),
         policy_text,
         policy_revision: snapshot.policy_revision,
         documents,
@@ -431,10 +443,11 @@ pub fn run_review(
             "binding_mismatch: selected checkout differs"
         );
     }
-    let project_key = target.binding.project_key();
+    let cache_key=target.binding.project_key();
+    let project_key = target.report_project_key();
     let header = if target.binding.is_remote() {
         let header = prepared
-            .load_policy(&project_key, target.change_name.as_deref())?
+            .load_policy(&cache_key, target.change_name.as_deref())?
             .ok_or_else(|| {
                 anyhow::anyhow!("missing_preparation: explicitly prepare this remote target first")
             })?;
@@ -483,7 +496,7 @@ pub fn run_review(
     let emit = |phase: &str, inputs: &ScanInputs| {
         progress(JobProgress {
             job_id: budget.job_id.clone(),
-            project_key: project_key.clone(),
+            project_key: cache_key.clone(),
             phase: phase.into(),
             completed_bytes: inputs.total_bytes,
             total_bytes: None,
@@ -645,7 +658,7 @@ pub fn run_review(
                 inputs.stop_reason = Some(reason.into());
                 Ok(None)
             } else {
-                prepared.load(&project_key, target.change_name.as_deref())
+                prepared.load(&cache_key, target.change_name.as_deref())
             };
             let full = loaded.ok().flatten().filter(|full| {
                 full.validate_binding(&target.binding, target.change_name.as_deref())
@@ -962,10 +975,34 @@ pub fn export_report(
         ReportFormat::Markdown => Ok(report.markdown()),
     }
 }
+
+/// Bind built-in results to the proposal's canonical check index.
+pub struct ProposalReports<'a, S: speclink_core::store::Store + Send + Sync> {
+    pub store: &'a S,
+    pub change: &'a str,
+}
+impl<S: speclink_core::store::Store + Send + Sync> ReportRepository for ProposalReports<'_, S> {
+    fn save(&self, report: &Report) -> Result<ReportReceipt> {
+        speclink_core::security::report::save_change_report(self.store, self.change, &speclink_core::security::report::VersionedReport::Builtin(report.clone()))
+    }
+    fn get(&self, id: &str) -> Result<Option<Report>> {
+        Ok(match speclink_core::security::report::read_change_report(self.store, self.change, id)? {
+            Some(speclink_core::security::report::VersionedReport::Builtin(report)) => Some(report), _ => None,
+        })
+    }
+    fn latest(&self, project_key: &str, change: Option<&str>) -> Result<Option<Report>> {
+        ensure!(change == Some(self.change), "binding_mismatch");
+        let index = speclink_core::history::index(self.store, self.change)?;
+        for entry in index.entries.iter().rev().filter(|entry| entry.kind == speclink_core::history::CheckKind::Security && entry.outcome != "legacy") {
+            if let Some(report) = self.get(&entry.record_id)? { if report.project_key() == project_key { return Ok(Some(report)); } }
+        }
+        Ok(None)
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
-    static REVIEW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    pub(super) static REVIEW_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     #[test]
     fn security_budget_deadline_and_cancel_are_not_success() {
         use std::sync::{
@@ -1006,6 +1043,11 @@ mod tests {
         impl ProjectInput for Spy {
             fn root(&self) -> &std::path::Path {
                 self.inner.root()
+            }
+            fn read_optional_bytes(
+                &self, _: &str, _: usize, _: &dyn Fn() -> Option<&'static str>,
+            ) -> anyhow::Result<Option<Vec<u8>>> {
+                panic!("disabled policy must not read knowledge");
             }
             fn read_optional_text(
                 &self,
@@ -1097,6 +1139,7 @@ mod tests {
         let reports =
             speclink_fs::security::reports::FsSecurityReports::new(device.path()).unwrap();
         let target = ReviewTarget {
+            proposal_project_key:None,
             binding: ReviewBinding {
                 origin: Some("https://example.invalid".into()),
                 project: Some("p".into()),
@@ -1109,6 +1152,7 @@ mod tests {
         };
         let budget = ReviewBudget::new(Arc::new(AtomicBool::new(false)));
         let input = PreparationInput {
+            proposal_project_key:None,
             policy_text: "security_verification: {enabled: true}\n".into(),
             policy_revision: Some(7),
             documents: Vec::new(),

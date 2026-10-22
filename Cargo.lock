@@ -4524,6 +4524,7 @@ dependencies = [
  "speclink-protocol",
  "speclink-remote",
  "tiny_http",
+ "zip",
 ]
 
 [[package]]
@@ -4586,12 +4587,14 @@ dependencies = [
  "regex",
  "reqwest",
  "rusqlite",
+ "rustls",
  "serde",
  "serde_json",
  "serde_yaml",
  "speclink-core",
  "speclink-fs",
  "speclink-host",
+ "speclink-protocol",
  "tempfile",
  "tokio",
  "ulid",
@@ -4634,10 +4637,12 @@ dependencies = [
  "speclink-store",
  "sys-locale",
  "tempfile",
+ "tokio",
  "ulid",
  "ureq",
  "url",
  "webpki-roots 0.26.11",
+ "zip",
 ]
 
 [[package]]
@@ -4685,6 +4690,7 @@ dependencies = [
  "tiny_http",
  "tokio",
  "ureq",
+ "url",
 ]
 
 [[package]]

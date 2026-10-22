@@ -247,6 +247,7 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
+    store.recover_checks(change)?;
     // 寫入前先驗證（系統邊界：stdin 為外部輸入）——拒絕路徑零寫入。文法錯誤
     // 只在這裡標成呼叫端內容錯誤（invalid_argv）；同一文法解析既存工單時的
     // 壞檔仍是一般錯誤。
@@ -323,6 +324,7 @@ pub fn show_with_content(
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
+    store.ensure_checks_readable(change)?;
     let Some(text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };
@@ -337,6 +339,7 @@ pub fn discard(st: &Station, store: &dyn Store, change: &str) -> Result<()> {
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
+    store.recover_checks(change)?;
     if !store.artifact_exists(change, st.doc) {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     }
@@ -358,6 +361,12 @@ pub fn stamp_with_scope(
     scope: Vec<ReviewedScopeEntry>,
     missing: Vec<String>,
 ) -> Result<()> {
+    stamp_with_scope_and_acceptance(st,store,change,accept,actor,tool,scope,missing,None)
+}
+pub fn stamp_with_scope_and_acceptance(
+    st:&Station,store:&dyn Store,change:&str,accept:bool,actor:Option<&str>,tool:Option<&str>,scope:Vec<ReviewedScopeEntry>,missing:Vec<String>,security:Option<&crate::security::acceptance::AcceptanceProof>,
+) -> Result<()> {
+    if st.noun=="verify" {crate::security::require_acceptance(store,change,security)?;}
     let gate = stamp_gate(st, store, change, accept)?;
     let mut entries: Vec<(String, String)> =
         scope.into_iter().map(|e| (e.path.replace('\\', "/"), e.hash)).collect();
@@ -434,6 +443,12 @@ pub fn stamp(
     read_file: &ScopeReadFn<'_>,
     file_exists: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
+    stamp_with_acceptance(st,store,change,accept,actor,tool,read_file,file_exists,None)
+}
+pub fn stamp_with_acceptance(
+    st:&Station,store:&dyn Store,change:&str,accept:bool,actor:Option<&str>,tool:Option<&str>,read_file:&ScopeReadFn<'_>,file_exists:&dyn Fn(&str)->bool,security:Option<&crate::security::acceptance::AcceptanceProof>,
+) -> Result<()> {
+    if st.noun=="verify" {crate::security::require_acceptance(store,change,security)?;}
     let gate = stamp_gate(st, store, change, accept)?;
     let (present, gone): (Vec<String>, Vec<String>) =
         gate.paths.iter().cloned().partition(|p| file_exists(p));
@@ -580,9 +595,11 @@ pub fn fingerprint_scope(
 /// 兩個蓋章入口共用的守門結果：解析通過的 meta 原文、工單 Scope 聯集
 /// （`\`→`/` 正規化、去重、排序）與任務錨總數。
 struct StampGate {
-    raw_meta: String,
+    raw_meta: Option<String>,
     paths: Vec<String>,
     tasks_total: usize,
+    ticket_text: String,
+    outcome: &'static str,
 }
 
 fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Result<StampGate> {
@@ -590,9 +607,10 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
+    store.recover_checks(change)?;
     // Fail-closed gate（沿 set_board_rank）：文字手術前先解析，壞檔不得被疊寫。
-    let raw_meta = store.read_change_meta(change).unwrap_or_default();
-    crate::model::check_meta_text(change, Some(&raw_meta))?;
+    let raw_meta = store.read_change_meta(change);
+    crate::model::check_meta_text(change, raw_meta.as_deref())?;
     let Some(ticket_text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };
@@ -628,7 +646,7 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     let paths =
         scope_union(ticket.rounds.iter().flat_map(|r| r.scope.iter().map(String::as_str)));
     // 錨記全任務總數（含 `[M]`）——欄位形狀不變，舊章資料相容。
-    Ok(StampGate { raw_meta, paths, tasks_total: counts.total })
+    Ok(StampGate { raw_meta, paths, tasks_total: counts.total, ticket_text, outcome: if outstanding > 0 && accept { "accepted" } else { "clean" } })
 }
 
 fn write_stamp(
@@ -647,7 +665,7 @@ fn write_stamp(
     let stamp_keys =
         ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{prefix}_{suffix}"));
     let [at_key, by_key, with_key, tasks_total_key, scope_key] = &stamp_keys;
-    let mut m = KeyLines::whole(&gate.raw_meta);
+    let mut m = KeyLines::whole(gate.raw_meta.as_deref().unwrap_or_default());
     for key in &stamp_keys {
         m.remove(key);
     }
@@ -673,12 +691,25 @@ fn write_stamp(
         .collect();
     m.set_block(scope_key, &body)?;
 
-    // 同一原子寫入（design D3）：remote 走 bridge 的 staged commit 天然原子；
-    // 本地順序為先刪工單再寫章——中斷時寧可退回「未檢查」，也不得出現
-    // 「章已寫而工單仍在」的半套狀態（spec 明文禁止的唯一中間態）。
-    store.delete_artifact(change, st.doc)?;
-    store.write_change_meta(change, &m.text())?;
-    Ok(())
+    use super::history::{self, CheckEntry, CheckKind, CheckMetadata, ChecksCommit};
+    use crate::security::data::sha256;
+    let kind = match st.id { StationId::Review => CheckKind::Review, StationId::Verify => CheckKind::Verify };
+    let record_id = ulid::Ulid::new().to_string();
+    let path = kind.path(&record_id)?;
+    let created_at = chrono::Utc::now().to_rfc3339();
+    let metadata = CheckMetadata { created_at: created_at.clone(), actor: actor.map(str::to_owned), tool: tool.map(str::to_owned), outcome: gate.outcome.into(), scope_digest: sha256(&serde_json::to_vec(entries)?) };
+    let content = format!("<!-- speclink-check: {} -->\n\n{}", serde_json::to_string(&metadata)?, gate.ticket_text);
+    let old_index = store.read_artifact(change, history::INDEX);
+    let mut index = history::index(store, change)?;
+    index.append(CheckEntry { record_id, kind, created_at, outcome: gate.outcome.into(), relative_path: path.clone(), content_digest: sha256(content.as_bytes()) })?;
+    let writes = std::collections::BTreeMap::from([
+        (path.clone(), content), (history::INDEX.into(), serde_json::to_string_pretty(&index)?), (".openspec.yaml".into(), m.text()),
+    ]);
+    let expected = std::collections::BTreeMap::from([
+        (path, None), (history::INDEX.into(), old_index.map(|text| sha256(text.as_bytes()))),
+        (".openspec.yaml".into(), gate.raw_meta.as_ref().map(|text| sha256(text.as_bytes()))), (st.doc.into(), Some(sha256(gate.ticket_text.as_bytes()))),
+    ]);
+    store.commit_checks(change, &ChecksCommit { writes, deletes: vec![st.doc.into()], expected })
 }
 
 /// 文字指紋規則：CRLF→LF 正規化後的 SHA-256（spec「內容指紋錨與失效判定」）。

@@ -92,6 +92,27 @@ impl AuthorizedProject {
             Err(error) => Err(error),
         }
     }
+    pub fn read_optional_bytes(
+        &self,
+        relative: &str,
+        limit: usize,
+        stop: Stop<'_>,
+    ) -> Result<Option<Vec<u8>>> {
+        let path = relative_path(relative)?;
+        let file = match self.open_relative(&path) {
+            Ok(file) => file,
+            Err(error) if error.downcast_ref::<std::io::Error>()
+                .is_some_and(|e| e.kind() == std::io::ErrorKind::NotFound) => return Ok(None),
+            Err(error) => return Err(error),
+        };
+        let mut consumed = 0;
+        read_file(file, limit, stop, &mut consumed, false).map(Some).map_err(|error| {
+            anyhow::Error::new(speclink_core::security::input::InputReadFailure {
+                code: stop().unwrap_or_else(|| error_code(&error)),
+                bytes_read: consumed,
+            })
+        })
+    }
     fn open_relative(&self, path: &Path) -> Result<File> {
         #[cfg(unix)]
         {
@@ -267,10 +288,43 @@ impl AuthorizedProject {
                 continue;
             }
             let language = Language::from_path(&label);
+            let extension = path
+                .extension()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or_default()
+                .to_ascii_lowercase();
+            let deep_language = matches!(
+                extension.as_str(),
+                "cs" | "java"
+                    | "py"
+                    | "rs"
+                    | "js"
+                    | "jsx"
+                    | "ts"
+                    | "tsx"
+                    | "json"
+                    | "yaml"
+                    | "yml"
+                    | "ini"
+                    | "toml"
+                    | "properties"
+                    | "config"
+                    | "xml"
+            ) || name == ".env"
+                || name.starts_with(".env.");
             if kind.is_some_and(|kind| match kind {
                 InputKind::Code => language == Language::Markdown,
                 InputKind::Api => !matches!(language, Language::Json | Language::Yaml),
                 InputKind::Spec => language != Language::Markdown,
+                InputKind::Deep => {
+                    language == Language::Markdown
+                        || (language == Language::Unsupported && !deep_language)
+                }
             }) {
                 skip(&mut result, label, "review_not_selected");
                 continue;
@@ -320,7 +374,9 @@ impl AuthorizedProject {
                         skip(&mut result, label, "generated");
                         continue;
                     }
-                    if Language::from_path(&label) == Language::Unsupported {
+                    if Language::from_path(&label) == Language::Unsupported
+                        && !(matches!(kind, Some(InputKind::Deep)) && deep_language)
+                    {
                         skip(&mut result, label, "unsupported_language");
                         continue;
                     }
@@ -349,6 +405,9 @@ impl AuthorizedProject {
 impl ProjectInput for AuthorizedProject {
     fn root(&self) -> &Path {
         &self.root
+    }
+    fn read_optional_bytes(&self, path: &str, limit: usize, stop: Stop<'_>) -> Result<Option<Vec<u8>>> {
+        AuthorizedProject::read_optional_bytes(self, path, limit, stop)
     }
     fn read_optional_text(
         &self,
@@ -454,11 +513,22 @@ fn error_code(error: &anyhow::Error) -> &'static str {
     "io_error"
 }
 fn read_text_file(
-    mut file: File,
+    file: File,
     limit: usize,
     stop: Stop<'_>,
     consumed: &mut usize,
 ) -> Result<String> {
+    String::from_utf8(read_file(file, limit, stop, consumed, true)?)
+        .map_err(|_| anyhow::anyhow!("unsupported_encoding"))
+}
+
+fn read_file(
+    mut file: File,
+    limit: usize,
+    stop: Stop<'_>,
+    consumed: &mut usize,
+    text: bool,
+) -> Result<Vec<u8>> {
     ensure!(file.metadata()?.is_file(), "special_file");
     ensure!(file.metadata()?.len() <= limit as u64, "file_too_large");
     let mut bytes = Vec::new();
@@ -479,10 +549,12 @@ fn read_text_file(
             break;
         }
         ensure!(count <= limit.saturating_sub(bytes.len()), "file_too_large");
-        ensure!(!chunk[..count].contains(&0), "binary");
+        if text {
+            ensure!(!chunk[..count].contains(&0), "binary");
+        }
         bytes.extend_from_slice(&chunk[..count]);
     }
-    String::from_utf8(bytes).map_err(|_| anyhow::anyhow!("unsupported_encoding"))
+    Ok(bytes)
 }
 
 #[cfg(unix)]
@@ -604,6 +676,56 @@ fn directory_names(_file: &File, _path: &Path, _stop: Stop<'_>) -> Result<Vec<st
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn raw_knowledge_reads_keep_bytes_and_enforce_authorized_bounds() {
+        use super::*;
+        let fixture = Fixture::new();
+        let bytes = [b'P', b'K', 0, 255];
+        fixture.write("knowledge.zip", bytes);
+        let reader = AuthorizedProject::open(&fixture.0).unwrap();
+        assert_eq!(reader.read_optional_bytes("knowledge.zip", 4, &|| None).unwrap(), Some(bytes.to_vec()));
+        assert!(reader.read_optional_bytes("missing.zip", 4, &|| None).unwrap().is_none());
+        assert!(reader.read_optional_bytes("knowledge.zip", 3, &|| None).unwrap_err().to_string().contains("file_too_large"));
+        assert!(reader.read_optional_bytes("knowledge.zip", 4, &|| Some("cancelled")).unwrap_err().to_string().contains("cancelled"));
+        assert!(reader.read_optional_bytes("../knowledge.zip", 4, &|| None).is_err());
+        assert!(reader.read_optional_text("knowledge.zip", 4, &|| None).unwrap_err().to_string().contains("binary"));
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(fixture.0.join("knowledge.zip"), fixture.0.join("link.zip")).unwrap();
+            assert!(reader.read_optional_bytes("link.zip", 4, &|| None).unwrap_err().to_string().contains("skipped_link"));
+        }
+    }
+    #[test]
+    fn deep_inputs_include_five_languages_without_changing_basic_support() {
+        use super::*;
+        let dir = tempfile::tempdir().unwrap();
+        for path in [
+            "a.cs",
+            "b.java",
+            "c.py",
+            "d.rs",
+            "e.ts",
+            "f.js",
+            ".env",
+            ".env.production",
+            "APP.CS",
+            "app.properties",
+            "app.config",
+        ] {
+            std::fs::write(dir.path().join(path), "source\n").unwrap();
+        }
+        std::fs::write(dir.path().join("logo.png"), [0, 1, 2]).unwrap();
+        let reader = AuthorizedProject::open(dir.path()).unwrap();
+        let basic = reader
+            .scan_selected(&[], InputKind::Code, &[], &ScanLimits::default(), &|| None)
+            .unwrap();
+        assert_eq!(basic.documents.len(), 3);
+        let deep = reader
+            .scan_selected(&[], InputKind::Deep, &[], &ScanLimits::default(), &|| None)
+            .unwrap();
+        assert_eq!(deep.documents.len(), 11);
+        assert!(deep.complete);
+    }
     use super::*;
     use speclink_core::security::input::ScanLimits;
     use std::{

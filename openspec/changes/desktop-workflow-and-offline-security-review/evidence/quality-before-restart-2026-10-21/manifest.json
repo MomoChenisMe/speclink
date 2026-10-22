@@ -1,0 +1,16 @@
+{
+  "change": "desktop-workflow-and-offline-security-review",
+  "sourceCommit": "f5f5179c805590e94fdf08083905874a6bb0507b",
+  "trustedBase": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+  "reason": "使用者同意換機缺快照時備份舊票據並重新進行兩站 discovery",
+  "files": {
+    "review.md": {
+      "sha256": "1471f36270b78163f27786f9a3e183af0bda1a27afe4ad372b97e058bf1fcb1e",
+      "bytes": 12973
+    },
+    "verify.md": {
+      "sha256": "59ef55eb138fffa2892f4a6158998c8f4b961a67979f07122d80e610771b2058",
+      "bytes": 12572
+    }
+  }
+}

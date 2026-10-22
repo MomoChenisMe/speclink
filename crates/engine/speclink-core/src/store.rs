@@ -94,6 +94,11 @@ pub trait Store {
     }
 
     // --- completion evidence ---
+    fn ensure_checks_readable(&self, _change: &str) -> Result<()> { Ok(()) }
+    fn recover_checks(&self, _change: &str) -> Result<()> { Ok(()) }
+    fn commit_checks(&self, _change: &str, _commit: &crate::quality::history::ChecksCommit) -> Result<()> {
+        anyhow::bail!("this store backend does not support completed check transactions")
+    }
 
     /// The change's completion-evidence record text (the serialized
     /// [`crate::tasks::TouchedRecord`]), or None when the change carries no
@@ -137,6 +142,12 @@ pub trait Store {
     fn archived_change_exists(&self, dated_name: &str) -> bool;
     /// Move an active change into the archive under its dated name.
     fn archive_change(&self, name: &str, dated_name: &str) -> Result<()>;
+    /// Official backends publish selection, receipt and metadata in the archive commit.
+    fn archive_change_with_checks(&self,name:&str,dated_name:&str,plan:&crate::history::ArchiveChecksPlan)->Result<()> {
+        anyhow::ensure!(!plan.modifies_checks(),"unsupported_version: archive check selection is not supported by this store");
+        self.archive_change(name,dated_name)?;
+        if let Some(meta)=&plan.archived_meta{self.write_archived_meta(dated_name,meta)?;}Ok(())
+    }
     /// Raw metadata document of an archived change.
     fn read_archived_meta(&self, dated_name: &str) -> Option<String>;
     /// Overwrite the metadata document of an archived change.

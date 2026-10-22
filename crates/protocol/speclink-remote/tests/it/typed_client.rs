@@ -15,6 +15,14 @@ use std::sync::{Arc, Mutex};
 
 // --- capturing mock server (serves every request with one status/body) ---
 
+#[test]
+fn deep_security_commands_refuse_an_older_server_before_posting() {
+    let server=serve(200,r#"{"actor":{"id":"u","name":"U"},"project":{"id":"p","key":"demo"},"repo":{"id":"r","key":"backend"},"apiVersion":"1","engineVersion":"old","capabilities":{"securityReview":true}}"#);
+    let client=Client::new(&format!("{}/projects/demo",server.base),"token",Some("backend"));
+    let error=client.security_review_show("demo").unwrap_err();assert_eq!(error.reason.as_deref(),Some("unsupported_version"));
+    let requests=server.captured.lock().unwrap();assert_eq!(requests.len(),1);assert!(requests[0].path.ends_with("/binding"));
+}
+
 #[derive(Clone, Debug)]
 struct Captured {
     method: String,
@@ -771,12 +779,11 @@ fn every_registry_reason_maps_to_the_frozen_cli_message() {
             "change is held by chiang — coordinate, or re-claim if it was released".into(),
             Some("refused"),
         ),
-        // Unknown reasons stay a generic error with the status for bug
-        // reports only — never a panic.
+        // Unknown reasons retain the server message and status, never a panic.
         (
             418,
             r#"{"status":418,"reason":"im_a_teapot","message":"short and stout"}"#,
-            "unexpected server response — update speclink or report a bug (HTTP 418)".into(),
+            "short and stout (HTTP 418)".into(),
             Some("im_a_teapot"),
         ),
     ];

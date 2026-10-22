@@ -705,12 +705,13 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待初始化框的專屬控制項，避免抓到尚未卸載的 chooser。
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
-    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    const codex = within(dialog).getByRole("checkbox", { name: "codex [.agents]" });
     // spec「未初始化目錄經確認後自動初始化」：多選含 copilot，預設只勾 claude。
-    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot [.github]" });
+    expect(within(dialog).getByRole("checkbox", {name:"antigravity [.agent]"}).getAttribute("aria-checked")).toBe("false");
     // 主題化原語（button 元素）而非原生 input。
     expect(claude.tagName).not.toBe("INPUT");
     // 預設勾選狀態與替換前相同：claude 勾、codex 未勾。
@@ -742,17 +743,18 @@ describe("App (kanban primary + rich detail)", () => {
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
     // chooser 關閉有離場動畫；等待啟用框的專屬控制項。
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
     // 啟用語意文案（非初始化文案）。
     expect(within(dialog).getByText("啟用 speclink？")).toBeTruthy();
     // 工具多選預設勾 claude、codex 未勾。
     expect(claude.getAttribute("aria-checked")).toBe("true");
-    const codex = within(dialog).getByRole("checkbox", { name: "codex" });
+    const codex = within(dialog).getByRole("checkbox", { name: "codex [.agents]" });
     expect(codex.getAttribute("aria-checked")).toBe("false");
     // 多選含 copilot、預設未勾。
-    const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
+    const copilot = within(dialog).getByRole("checkbox", { name: "copilot [.github]" });
+    expect(within(dialog).getByRole("checkbox", {name:"antigravity [.agent]"}).getAttribute("aria-checked")).toBe("false");
     expect(copilot.getAttribute("aria-checked")).toBe("false");
     // 確認 → 以所選工具呼叫 adopt（而非 init）。
     fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
@@ -771,10 +773,10 @@ describe("App (kanban primary + rich detail)", () => {
     const chooser = await screen.findByRole("alertdialog");
     fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
     fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
-    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const claude = await screen.findByRole("checkbox", { name: "claude [.claude]" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     fireEvent.click(within(dialog).getByRole("button", { name: "取消" }));
-    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "claude" })).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("checkbox", { name: "claude [.claude]" })).toBeNull());
     expect(ws.adoptProject).not.toHaveBeenCalled();
     expect(ws.initProject).not.toHaveBeenCalled();
   });
@@ -1070,7 +1072,8 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     const titleBar = screen.getByTestId("main-titlebar");
     expect(titleBar.parentElement?.firstElementChild).toBe(titleBar);
     expect(titleBar.nextElementSibling?.tagName).toBe("MAIN");
-    expect(screen.queryByRole("status")).toBeNull();
+    // Project reordering uses a hidden accessibility announcement region.
+    expect(screen.queryAllByRole("status").filter(node => !node.id.startsWith("DndLiveRegion-"))).toHaveLength(0);
   });
 
   it("有新版本時圖示列齒輪上方出現更新鈕（提示帶版號）；點擊進設定頁、齒輪作用中（spec「桌面自動更新」）", async () => {
@@ -2855,8 +2858,8 @@ describe("macOS 原生選單接線（desktop-app「macOS 原生選單」）", ()
     act(() => menuDeps().dispatch("github"));
     act(() => menuDeps().dispatch("reportIssue"));
     expect(vi.mocked(openUrl).mock.calls).toEqual([
-      ["https://github.com/MomoChenisMe/speclink"],
-      ["https://github.com/MomoChenisMe/speclink/issues/new"],
+      ["https://github.com/mosutw/speclink"],
+      ["https://github.com/mosutw/speclink/issues/new"],
     ]);
   });
 
@@ -3102,6 +3105,26 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     });
     await waitFor(() => expect(currentChange()).toBe("change-b"));
     expect(screen.getByTestId("detail-page").scrollTop).toBe(0);
+  });
+
+  it.each(["zh-TW", "en"] as const)("%s：封存確認前顯示三類數量，取消不寫入", async locale => {
+    localStorage.setItem("speclink.uiLocale", locale);
+    const m = APP_MESSAGES[locale];
+    const ds = fakeDataSource({listChanges:vi.fn().mockResolvedValue(changeList([{name:"change-a",status:"in-progress",totalTasks:1,completedTasks:1}])),checkRecords:{
+      list:vi.fn().mockResolvedValue((["review","verify","security"] as const).map(kind=>({kind,recordId:kind,createdAt:"2026-10-21",outcome:"passed",relativePath:`checks/${kind}/record.md`,contentDigest:"a".repeat(64)}))),read:vi.fn(),
+    }});
+    renderApp(ds);
+    fireEvent.click(await screen.findByText("change-a"));
+    await screen.findByTestId("detail-page");
+    fireEvent.click(within(titlebar()).getByRole("button", {name:m["app.archiveConfirm"]}));
+    const dialog = await screen.findByRole("alertdialog");
+    for (const kind of ["review","verify","security"] as const) {
+      const text = m["store.archiveRecordCount"].replace("{kind}",m[`store.recordKind.${kind}`]).replace("{retained}","1").replace("{omitted}","0");
+      expect(await within(dialog).findByText(text)).toBeTruthy();
+    }
+    expect(ds.runVerb).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", {name:locale === "en" ? "Cancel" : "取消"}));
+    expect(ds.runVerb).not.toHaveBeenCalled();
   });
 
   it("封存確認在途時 ⌥↓ 不切換（成功後的關頁不得關掉切過去的新頁）", async () => {

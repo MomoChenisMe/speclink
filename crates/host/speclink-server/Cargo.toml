@@ -11,6 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 speclink-core = { path = "../../engine/speclink-core" }
+speclink-fs = { path = "../../engine/speclink-fs" }
 speclink-host = { path = "../speclink-host" }
 speclink-protocol = { path = "../../protocol/speclink-protocol" }
 speclink-store = { path = "../../store/speclink-store" }

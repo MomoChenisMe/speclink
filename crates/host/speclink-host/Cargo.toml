@@ -13,6 +13,7 @@ anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2 = "0.10"
+tempfile = "3"
 chrono.workspace = true
 sys-locale = "0.3.2"
 ureq = { version = "2.12.1", default-features = false, features = ["tls"] }
@@ -24,5 +25,7 @@ reqwest = { version = "0.13", default-features = false, features = ["rustls-no-p
 hyper-util = { version = "0.1.20", features = ["client-proxy", "client-proxy-system"] }
 
 [dev-dependencies]
+zip = { version = "4.6.1", default-features = false, features = ["deflate-flate2"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider", "stream", "json"] }
 speclink-fs = { path = "../../engine/speclink-fs" }
-tempfile = "3"

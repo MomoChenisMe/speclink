@@ -154,6 +154,41 @@ pub fn git_identity(root: &std::path::Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn standard_path_preferences_are_device_only_atomic_and_fail_closed() {
+        let config=tempfile::tempdir().unwrap();
+        let device=tempfile::tempdir().unwrap();
+        let shared=tempfile::tempdir().unwrap();
+        let snapshot=crate::security_paths::read_at(config.path(),device.path()).unwrap();
+        assert_eq!(std::path::Path::new(&snapshot.effective_path).canonicalize().unwrap(),device.path().join("security/standards").canonicalize().unwrap());
+        let json=serde_json::to_value(snapshot).unwrap();
+        assert!(json["standardsPath"].is_null() && json["effectivePath"].is_string() && json["isDefault"].is_boolean() && json["access"].is_string());
+        crate::security_paths::write_at(config.path(),device.path(),Some(shared.path().to_string_lossy().into())).unwrap();
+        assert_eq!(std::path::Path::new(&crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path).canonicalize().unwrap(),shared.path().canonicalize().unwrap());
+        assert!(crate::security_paths::write_at(config.path(),device.path(),Some("relative".into())).is_err());
+        assert_eq!(std::path::Path::new(&crate::security_paths::read_at(config.path(),device.path()).unwrap().effective_path).canonicalize().unwrap(),shared.path().canonicalize().unwrap());
+        std::fs::write(config.path().join("security-data-preferences.json"),r#"{"formatVersion":2,"standardsPath":null}"#).unwrap();
+        assert!(crate::security_paths::read_at(config.path(),device.path()).is_err());
+        for raw in [r#"{"formatVersion":1,"standardsPath":true}"#,r#"{"formatVersion":1,"standardsPath":"https://example.com"}"#] {
+            std::fs::write(config.path().join("security-data-preferences.json"),raw).unwrap();
+            assert!(crate::security_paths::read_at(config.path(),device.path()).is_err());
+        }
+    }
+    #[test]
+    fn standard_path_change_is_busy_while_a_reader_holds_its_snapshot() {
+        let config=tempfile::tempdir().unwrap();let device=tempfile::tempdir().unwrap();let shared=tempfile::tempdir().unwrap();
+        let lease=crate::security_paths::lease_at(config.path(),device.path()).unwrap();
+        assert!(crate::security_paths::write_at(config.path(),device.path(),Some(shared.path().to_string_lossy().into())).unwrap_err().to_string().contains("busy"));
+        drop(lease);
+        crate::security_paths::write_at(config.path(),device.path(),None).unwrap();
+        assert!(crate::security_paths::read_at(config.path(),device.path()).unwrap().is_default);
+    }
+    #[cfg(windows)]
+    #[test]
+    fn standard_path_accepts_complete_unc_and_rejects_partial_or_device_paths() {
+        for raw in [r"\\server\team\standards",r"D:\standards"] { assert!(crate::security_paths::validate_path(raw).is_ok()); }
+        for raw in [r"\\server",r"\standards",r"C:relative",r"\\?\C:\data",r"\\.\pipe\test", "~", "", "a\0b"] { assert!(crate::security_paths::validate_path(raw).is_err(),"{raw}"); }
+    }
     use crate::binding::local_default_binding;
     use crate::policy::EffectiveWorkflowPolicy;
     use speclink_core::config::ResolvedPolicy;

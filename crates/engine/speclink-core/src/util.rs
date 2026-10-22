@@ -3,6 +3,21 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Resolve macOS system aliases before strict directory traversal. Never follows user links.
+pub fn resolve_system_path(path: &Path) -> PathBuf {
+    #[cfg(target_os = "macos")]
+    for name in ["var", "tmp", "etc"] {
+        let alias = PathBuf::from("/").join(name);
+        let physical = PathBuf::from("/private").join(name);
+        if let Ok(rest) = path.strip_prefix(&alias) {
+            if std::fs::read_link(&alias).is_ok_and(|target| target == PathBuf::from("private").join(name) || target == physical) {
+                return physical.join(rest);
+            }
+        }
+    }
+    path.to_path_buf()
+}
+
 /// Read a file to string, returning None if it does not exist / cannot be read.
 pub fn read_opt(path: &Path) -> Option<String> {
     std::fs::read_to_string(path).ok()
@@ -308,6 +323,16 @@ pub fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn system_paths_resolve_only_os_aliases() {
+        for name in ["var", "tmp", "etc"] {
+            assert_eq!(resolve_system_path(&PathBuf::from("/").join(name).join("speclink")), PathBuf::from("/private").join(name).join("speclink"));
+        }
+        assert_eq!(resolve_system_path(Path::new("/Users/example/user-link")), PathBuf::from("/Users/example/user-link"));
+    }
+
 
     #[test]
     fn yaml_unscalar_inverts_yaml_scalar() {
