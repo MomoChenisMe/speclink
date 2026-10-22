@@ -288,7 +288,8 @@ fn change_status_carries_the_attribution_meta_fields() {
     assert_eq!(full["deltaCapabilities"], serde_json::json!(["auth"]));
     assert_eq!(full["createdBy"], "Demo <d@e.com>");
     assert_eq!(full["createdWith"], "claude-code");
-    assert_eq!(full["startedAt"], "2026-08-25T00:00:00Z");
+    // 時戳只輸出日期部分（change-lifecycle「change metadata 時間欄位寫入時戳、對外輸出日期」）。
+    assert_eq!(full["startedAt"], "2026-08-25");
     assert_eq!(full["startedBy"], "Demo <d@e.com>");
 
     let bare = get("bare");
