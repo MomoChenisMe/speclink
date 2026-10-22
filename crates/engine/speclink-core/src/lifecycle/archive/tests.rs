@@ -79,6 +79,18 @@ fn archive_writes_one_archived_at_stamp_from_the_dated_name_instant() {
 }
 
 #[test]
+fn archived_at_equals_the_trace_updated_stamp() {
+    // 同一個「現在」的第三方：正式規格 `@trace` 的 `updated` 與 archived_at 逐字相同。
+    let t = TraceWs::new("archived-at-trace");
+    let store = trace_store();
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let outcome = archive(&t.ws, &store, &change, &apply_opts(), None).unwrap();
+    let trace = assert_trace_stamp(&store.read_canonical_spec("auth").unwrap(), &outcome.dated_name);
+    let archived = store.read_archived_meta(&outcome.dated_name).unwrap();
+    assert_eq!(archived_at_values(&archived), vec![trace.as_str()], "{archived}");
+}
+
+#[test]
 fn retried_archive_replaces_a_leftover_archived_at() {
     // Scenario「重試封存只留一行封存時戳」：前一次移動失敗留下的 archived_at 被取代。
     let leftover = "archived_at: 2026-10-20T09:00:00+08:00\n";
@@ -108,6 +120,21 @@ fn a_failed_archived_at_write_names_the_snapshot_location() {
     );
     assert!(store.change_exists("demo"), "the change was not moved");
     assert!(store.canonical.borrow().contains_key("auth"), "the canonical spec already landed");
+}
+
+#[test]
+fn a_failed_archived_at_write_without_merged_specs_names_no_backup() {
+    // 沒有 delta 要合併時沒有寫任何備份：錯誤訊息不指向不存在的 snapshot 目錄，
+    // 也不暗示正式規格已合併。
+    let store = gate_store("- [x] 1.1 a\n");
+    *store.fail_meta_write.borrow_mut() = Some("demo".to_string());
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let err = archive(&ghost_ws(), &store, &change, &skip_opts(), None)
+        .expect_err("the injected meta write failure surfaces");
+    let msg = err.to_string();
+    assert!(msg.contains("the change was not moved"), "{msg}");
+    assert!(!msg.contains("backups"), "no backup was written, none is named: {msg}");
+    assert!(store.change_exists("demo"), "the change was not moved");
 }
 
 // --- spec change-lifecycle「封存的章失效守門」（design D5）---

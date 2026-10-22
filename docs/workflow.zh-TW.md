@@ -255,6 +255,8 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 封存後的變更與討論都在桌面 app 的「已封存」頁，分成已封存的變更與已封存的討論兩個分頁。
 
+已封存的變更列表上方有「流程成本（中位數）」摘要，列出全部已封存變更的中位數：文件行數（附 P90）、任務數、建立到封存的天數，以及品質關卡輪數。每個數字都標出用了幾筆變更。搜尋不會改變摘要。小時數與輪數只有這個版本之後封存的變更才有。遠端模式不顯示這個摘要。
+
 ![桌面 app 的已封存頁，分成已封存的變更與已封存的討論兩個分頁](assets/screenshots/zh-TW/desktop-archived.png)
 
 ### <a id="validate"></a>validate：格式檢查

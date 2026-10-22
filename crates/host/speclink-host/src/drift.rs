@@ -264,7 +264,7 @@ impl RemoteDriftStore {
         Change {
             name: self.change.clone(),
             dir: std::path::PathBuf::from(format!("openspec/changes/{}", self.change)),
-            meta: ChangeMeta { created: self.created.clone(), ..Default::default() },
+            meta: ChangeMeta::from_fields(|m| m.created = self.created.clone()),
             meta_error: None,
         }
     }
@@ -757,6 +757,20 @@ mod tests {
             store.list_archived_changes().is_empty(),
             "the drift-only adapter never exposes archive browsing"
         );
+    }
+
+    /// 尚未升版的 server 可能原樣送出時戳 `created`——與本機解析同一道收斂，
+    /// Time 維度與 `git log --since` 拿到的仍是日期部分。
+    #[test]
+    fn remote_drift_store_collapses_a_stamped_created_to_its_date() {
+        let store = RemoteDriftStore::new(
+            "demo",
+            Some("2026-07-13T10:00:00+08:00".to_string()),
+            None,
+            None,
+            None,
+        );
+        assert_eq!(store.change().meta.created.as_deref(), Some("2026-07-13"));
     }
 
     /// 缺席與空內容是兩件事：`artifact_exists` 驅動 Structure 維度的「no design」

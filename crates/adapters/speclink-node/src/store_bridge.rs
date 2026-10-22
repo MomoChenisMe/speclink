@@ -283,23 +283,21 @@ fn change_from_value(v: &serde_json::Value) -> Option<Change> {
     let get = |key: &str| -> Option<String> {
         meta.and_then(|m| m.get(key)).and_then(|x| x.as_str()).map(str::to_string)
     };
-    let mut meta = ChangeMeta {
-        schema: get("schema"),
-        created: get("created"),
-        created_by: get("createdBy"),
-        created_with: get("createdWith"),
-        from_discussion: get("fromDiscussion"),
-        restale_from: get("restaleFrom"),
-        started_at: get("startedAt"),
-        started_by: get("startedBy"),
-        started_with: get("startedWith"),
-        board_rank: get("boardRank"),
-        // 審查章欄位不過 JS bridge（SDK 清單面不消費審查狀態；缺席讀作
-        // 未審查——與 pre-migration meta 同語意）。
-        ..Default::default()
-    };
-    // 宿主可能照引擎寫入的原文給出時戳——與 `from_text` 同一道收斂，輸出只給日期。
-    meta.collapse_time_fields();
+    // 宿主可能照引擎寫入的原文給出時戳——`from_fields` 收尾跑與 `from_text` 同一道
+    // 收斂，輸出只給日期。審查章欄位不過 JS bridge（SDK 清單面不消費審查狀態；
+    // 缺席讀作未審查——與 pre-migration meta 同語意）。
+    let meta = ChangeMeta::from_fields(|m| {
+        m.schema = get("schema");
+        m.created = get("created");
+        m.created_by = get("createdBy");
+        m.created_with = get("createdWith");
+        m.from_discussion = get("fromDiscussion");
+        m.restale_from = get("restaleFrom");
+        m.started_at = get("startedAt");
+        m.started_by = get("startedBy");
+        m.started_with = get("startedWith");
+        m.board_rank = get("boardRank");
+    });
     Some(Change {
         name,
         dir,

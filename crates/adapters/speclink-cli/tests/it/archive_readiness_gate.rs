@@ -122,6 +122,19 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
     assert_eq!(&stamps[0][..10], &dir_name[..10], "same instant as the dated name: {meta}");
 }
 
+#[test]
+fn archiving_a_change_without_metadata_creates_none() {
+    // spec「封存寫入 archived_at」：沒有 `.openspec.yaml` 的舊式 change 照常封存，
+    // 不為了 archived_at 新建一份 metadata。
+    let p = TempProject::new("no-meta", "- [x] 1.1 a\n");
+    std::fs::remove_file(p.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml"))
+        .unwrap();
+    let out = p.run(&["archive", "demo"]);
+    assert!(out.status.success(), "a meta-less change archives: {}", String::from_utf8_lossy(&out.stderr));
+    let archived = p.archived_demo().expect("dated archive directory exists");
+    assert!(!archived.join(".openspec.yaml").exists(), "no metadata is created for archived_at");
+}
+
 /// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 的 tasks.md
 /// 由呼叫端給定:全勾時任何拒絕都只可能來自環境守門,不會與完成度守門混淆。
 struct GitProject {

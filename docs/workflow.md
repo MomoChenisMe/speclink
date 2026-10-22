@@ -255,6 +255,8 @@ Merge the delta specs into the specs, and move the done change into the archive.
 
 The desktop app shows archived changes and archived discussions on the Archived page, in two tabs.
 
+Above the list of archived changes, the "Process cost (median)" summary shows the medians of all archived changes: document lines (with the P90), tasks, the days from created to archived, and the quality gate rounds. Each number shows how many changes it uses. A search does not change the summary. Only the changes that this version archives have the hours and the rounds. In remote mode, the app does not show the summary.
+
 ![The Archived page in the desktop app, with the Archived changes and Archived discussions tabs](assets/screenshots/en/desktop-archived.png)
 
 ### <a id="validate"></a>validate: format check

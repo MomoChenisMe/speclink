@@ -1,7 +1,9 @@
 //! 一個封存變更的流程成本（process-cost-metrics design D4）：只依賴 [`Store`]，
 //! desktop 快取建表時逐項呼叫；中位數與 P90 的彙總屬呈現層，不在這裡。
 
+use crate::keylines::KeyLines;
 use crate::store::Store;
+use chrono::{DateTime, NaiveDate};
 
 /// 單一封存變更的流程成本。來源缺席或無法解析的欄位為 `None`——呼叫端據此
 /// 不輸出該欄位，不以 0 佔位。
@@ -14,33 +16,35 @@ pub struct ProcessCost {
     pub verify_rounds: Option<u64>,
 }
 
-/// 計算封存目錄 `dated_name`（`YYYY-MM-DD-<name>`）的流程成本。歸檔 metadata
-/// 壞檔不在 fail-closed 範圍（同 desktop 快取）——讀作沒有 metadata。
+/// 計算封存目錄 `dated_name`（`YYYY-MM-DD-<name>`）的流程成本。metadata 逐鍵讀原文
+/// （不經 `ChangeMeta`）：一個鍵缺席、重複或壞掉只讓用到它的欄位缺席；歸檔
+/// metadata 不在 fail-closed 範圍（同 desktop 快取）。
 pub fn archived_cost(store: &dyn Store, dated_name: &str) -> ProcessCost {
-    let meta = crate::model::ChangeMeta::from_text(store.read_archived_meta(dated_name).as_deref())
-        .unwrap_or_default();
+    let raw = store.read_archived_meta(dated_name).unwrap_or_default();
+    let meta = KeyLines::whole(&raw);
+    let value = |key: &str| meta.get(key).map(crate::util::yaml_unscalar);
+    let stamp = |key: &str| value(key).and_then(|v| DateTime::parse_from_rfc3339(&v).ok());
     let archived_date =
-        dated_name.get(..10).and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
-    let created_date = meta
-        .created
-        .as_deref()
-        .and_then(|d| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
+        dated_name.get(..10).and_then(|d| NaiveDate::parse_from_str(d, "%Y-%m-%d").ok());
+    // 時戳取寫入者時區的日期，與 `ChangeMeta` 收斂出的前 10 個字元相同。
+    let created_date = value("created").and_then(|v| match DateTime::parse_from_rfc3339(&v) {
+        Ok(t) => Some(t.date_naive()),
+        Err(_) => NaiveDate::parse_from_str(&v, "%Y-%m-%d").ok(),
+    });
     let lead_days = archived_date
         .zip(created_date)
         .map(|(archived, created)| (archived - created).num_days().max(0));
-    let stamp = |v: Option<&str>| v.and_then(|v| chrono::DateTime::parse_from_rfc3339(v).ok());
-    let lead_hours = stamp(meta.archived_at.as_deref())
-        .zip(stamp(meta.created_stamp.as_deref()))
-        .map(|(archived, created)| {
-            let hours = (archived - created).num_seconds().max(0) as f64 / 3600.0;
-            (hours * 10.0).round() / 10.0
-        });
+    let lead_hours = stamp("archived_at").zip(stamp("created")).map(|(archived, created)| {
+        let hours = (archived - created).num_seconds().max(0) as f64 / 3600.0;
+        (hours * 10.0).round() / 10.0
+    });
+    let rounds = |key: &str| value(key).and_then(|v| v.parse::<u64>().ok());
     ProcessCost {
         doc_lines: doc_lines(store, dated_name),
         lead_days,
         lead_hours,
-        review_rounds: meta.reviewed_rounds,
-        verify_rounds: meta.verified_rounds,
+        review_rounds: rounds("reviewed_rounds"),
+        verify_rounds: rounds("verified_rounds"),
     }
 }
 
@@ -128,6 +132,27 @@ mod tests {
         // spec client-protocol scenario「沒有 metadata 與文件時欄位全部缺席」。
         let store = TestStore::default();
         assert_eq!(archived_cost(&store, "2026-08-15-empty"), ProcessCost::default());
+    }
+
+    #[test]
+    fn a_broken_key_only_drops_its_own_field() {
+        // spec client-protocol「來源缺席或無法解析時，該欄位 SHALL 缺席」是逐欄的：
+        // 手改壞的輪數與舊版追加的第二行 archived_at 都不連帶清掉其他欄位。
+        let store = TestStore::default();
+        let dated = "2026-10-22-hand-edited";
+        store.archived_metas.borrow_mut().insert(
+            dated.to_string(),
+            "created: 2026-10-21T10:00:00+08:00\nreviewed_rounds: many\nverified_rounds: 3\narchived_at: 2026-10-22T16:30:00+08:00\narchived_at: 2026-10-22\n".to_string(),
+        );
+        assert_eq!(
+            archived_cost(&store, dated),
+            ProcessCost {
+                lead_days: Some(1),
+                lead_hours: Some(30.5),
+                verify_rounds: Some(3),
+                ..ProcessCost::default()
+            }
+        );
     }
 
     #[test]
