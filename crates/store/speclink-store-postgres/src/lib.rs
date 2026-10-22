@@ -439,6 +439,14 @@ fn commit_txn(
         }
     }
 
+    for (doc, expected) in uow.guards() {
+        let doc_id = encode_doc(doc);
+        let current = current_revision(&mut tx, project, repo, &doc_id)?.map(Revision);
+        if !expected.matches(current) {
+            return Err(StoreError::RevisionConflict { doc: DocRef::new(scope, doc.clone()), expected: *expected, actual: current });
+        }
+    }
+
     // 2. Document writes.
     for op in uow.ops() {
         let doc_id = encode_doc(op.doc());

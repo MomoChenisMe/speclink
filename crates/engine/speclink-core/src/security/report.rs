@@ -908,6 +908,59 @@ mod tests {
         bad["formatVersion"] = 3.into();
         assert!(VersionedReport::from_json(&serde_json::to_vec(&bad).unwrap()).is_err());
     }
+
+    #[test]
+    fn deep_report_binds_dirty_source_digest_to_repository_head() {
+        use std::{fs, process::Command};
+
+        let root = std::env::temp_dir().join(format!(
+            "speclink-security-report-git-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let run_git = |args: &[&str]| {
+            let output = Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&output.stderr));
+            String::from_utf8_lossy(&output.stdout).trim().to_owned()
+        };
+
+        let result = (|| {
+            run_git(&["init", "-q"]);
+            run_git(&["config", "user.name", "Speclink Test"]);
+            run_git(&["config", "user.email", "speclink-test@example.invalid"]);
+            let source_path = "app.ts";
+            let source = root.join(source_path);
+            fs::write(&source, "export const safe = true;\n").unwrap();
+            run_git(&["add", source_path]);
+            run_git(&["commit", "-q", "-m", "seed"]);
+            let head = run_git(&["rev-parse", "HEAD"]);
+
+            let dirty_source = "export const safe = false;\n";
+            fs::write(&source, dirty_source).unwrap();
+            let expected_digest = crate::security::data::sha256(dirty_source.as_bytes());
+            let mut context = deep_context();
+            context.common.commit_sha = Some(head.clone());
+            context.sources[0].content_digest = expected_digest.clone();
+            let report = DeepReport::new(deep_input(), context).unwrap();
+            let value: serde_json::Value = serde_json::from_str(&serde_json::to_string(&report).unwrap()).unwrap();
+
+            assert_eq!(value["commitSha"], head);
+            assert_eq!(value["sources"][0]["contentDigest"], expected_digest);
+            assert_ne!(value["sources"][0]["contentDigest"], crate::security::data::sha256(b"export const safe = true;\n"));
+        })();
+
+        let _ = fs::remove_dir_all(root);
+        result
+    }
     #[test]
     fn deep_report_rejects_missing_groups_unknown_ids_outside_evidence_and_401_chars() {
         let mut value = serde_json::to_value(deep_input()).unwrap();

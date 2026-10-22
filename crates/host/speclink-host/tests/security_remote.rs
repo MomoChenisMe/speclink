@@ -229,6 +229,10 @@ fn paired_remote_publication_is_atomic_scoped_fresh_and_cas_guarded() {
     };
     assert_eq!(view.reports.len(), 2);
     assert_eq!(view.acceptance.status, SecurityAcceptanceStatus::Blocked);
+    let persisted=security::remote::show(&server,&ctx,&key,"demo").unwrap();
+    assert_eq!(persisted.reports.len(),2);
+    assert_eq!(persisted.acceptance.status,SecurityAcceptanceStatus::Blocked);
+    assert!(persisted.submission.is_none(),"read-only overview does not claim current freshness without attestation");
     let accept = SecurityAcceptRequest {
         expected_revision: view.expected_revision.unwrap(),
         report_id: receipt.report_id.clone(),

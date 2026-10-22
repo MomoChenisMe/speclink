@@ -512,6 +512,31 @@
       "files": [
         "crates/engine/speclink-core/tests/it/skill_authoring.rs"
       ]
+    },
+    {
+      "task_id": "61",
+      "task_desc": "19.1 RED→GREEN：在 crates/adapters/speclink-node/__test__ 新增透過公開套件入口的 strict／noEmit TypeScript 編譯測試，合法五種 target 與完整選項通過，未知 target／invocation、store／worktree 與 instructions 匯入維持預期錯誤；先重現 Antigravity TS2322，再修 index.d.ts 的 RenderOptions.target。package.json／package-lock.json 加獨立 TypeScript 開發依賴，使 Node SDK CI 單獨 npm ci 後的 npm test 自動包含編譯測試，不依賴 root workspace。先 npm --prefix crates/adapters/speclink-node run build，再 npm --prefix crates/adapters/speclink-node test -- types 驗證。",
+      "files": [
+        "crates/adapters/speclink-node/package-lock.json",
+        "crates/adapters/speclink-node/package.json",
+        "crates/adapters/speclink-node/__test__/types.spec.ts",
+        "crates/adapters/speclink-node/__test__/types/render-api.ts",
+        "crates/adapters/speclink-node/__test__/types/tsconfig.json"
+      ]
+    },
+    {
+      "task_id": "40",
+      "task_desc": "12.3 公司 Proxy 打包後驗收（依 2026-10-21 使用者要求，開發期間跳過，待可安裝版本交付後執行）：在公司Proxy環境啟用診斷，以打包安裝的實際Desktop確認更新頁版本與日誌可見、手動檢查／下載或手動Release入口的正確路由與錯誤狀態；記錄app版本、OS、Proxy模式、遮罩operationId及結果到 openspec/changes/desktop-workflow-and-offline-security-review/evidence/company-proxy.md，不放憑證／URL機密；若仍失敗列具體錯誤並保持此任務未完成，不能以模擬測試或公司外網測試宣稱公司驗收通過。延期不阻擋繼續實作或產生測試安裝檔，不代表已通過正式品質驗收或封存。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs",
+        "crates/store/speclink-store-fs/src/lib.rs",
+        "crates/store/speclink-store-postgres/src/lib.rs",
+        "crates/store/speclink-store-sqlite/src/lib.rs",
+        "crates/store/speclink-store/src/conformance/mod.rs",
+        "crates/store/speclink-store/src/memory.rs",
+        "crates/store/speclink-store/src/types.rs",
+        "crates/store/speclink-store/src/uow.rs"
+      ]
     }
   ],
   "entries": [
@@ -1207,6 +1232,38 @@
         "crates/engine/speclink-core/tests/it/skill_authoring.rs"
       ],
       "recordedAt": "2026-10-21T14:59:33Z"
+    },
+    {
+      "taskId": "tsk_01M5HS1SSSXBAEY2FRYWXSF1R1",
+      "taskDesc": "19.1 RED→GREEN：在 crates/adapters/speclink-node/__test__ 新增透過公開套件入口的 strict／noEmit TypeScript 編譯測試，合法五種 target 與完整選項通過，未知 target／invocation、store／worktree 與 instructions 匯入維持預期錯誤；先重現 Antigravity TS2322，再修 index.d.ts 的 RenderOptions.target。package.json／package-lock.json 加獨立 TypeScript 開發依賴，使 Node SDK CI 單獨 npm ci 後的 npm test 自動包含編譯測試，不依賴 root workspace。先 npm --prefix crates/adapters/speclink-node run build，再 npm --prefix crates/adapters/speclink-node test -- types 驗證。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "c8b77ece886d3db0b0883ba9b70b0b66a34e344d",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/package-lock.json",
+        "crates/adapters/speclink-node/package.json",
+        "crates/adapters/speclink-node/__test__/types.spec.ts",
+        "crates/adapters/speclink-node/__test__/types/render-api.ts",
+        "crates/adapters/speclink-node/__test__/types/tsconfig.json"
+      ],
+      "recordedAt": "2026-10-22T12:23:23Z"
+    },
+    {
+      "taskId": "tsk_01M5CJM0GADJK9R5AYBYKKR8VC",
+      "taskDesc": "12.3 公司 Proxy 打包後驗收（依 2026-10-21 使用者要求，開發期間跳過，待可安裝版本交付後執行）：在公司Proxy環境啟用診斷，以打包安裝的實際Desktop確認更新頁版本與日誌可見、手動檢查／下載或手動Release入口的正確路由與錯誤狀態；記錄app版本、OS、Proxy模式、遮罩operationId及結果到 openspec/changes/desktop-workflow-and-offline-security-review/evidence/company-proxy.md，不放憑證／URL機密；若仍失敗列具體錯誤並保持此任務未完成，不能以模擬測試或公司外網測試宣稱公司驗收通過。延期不阻擋繼續實作或產生測試安裝檔，不代表已通過正式品質驗收或封存。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "headCommit": "c8b77ece886d3db0b0883ba9b70b0b66a34e344d",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs",
+        "crates/store/speclink-store-fs/src/lib.rs",
+        "crates/store/speclink-store-postgres/src/lib.rs",
+        "crates/store/speclink-store-sqlite/src/lib.rs",
+        "crates/store/speclink-store/src/conformance/mod.rs",
+        "crates/store/speclink-store/src/memory.rs",
+        "crates/store/speclink-store/src/types.rs",
+        "crates/store/speclink-store/src/uow.rs"
+      ],
+      "recordedAt": "2026-10-22T15:22:04Z"
     }
   ]
 }

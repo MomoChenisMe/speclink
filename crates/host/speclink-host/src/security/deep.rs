@@ -39,6 +39,21 @@ pub fn fresh_evidence(context: &DeepReportContext) -> FreshEvidence {
     }
 }
 
+pub(crate) fn report_decisions(
+    store: &dyn Store,
+    change: &str,
+    builtin: Option<&Report>,
+    deep: Option<&DeepReport>,
+) -> Result<Vec<RiskDecision>> {
+    let mut decisions = Vec::new();
+    for id in deep.into_iter().map(DeepReport::report_id)
+        .chain(builtin.into_iter().map(Report::report_id))
+    {
+        decisions.extend(read_decisions(store, change, id)?);
+    }
+    Ok(decisions)
+}
+
 pub fn acceptance_proof_for_target(
     target: &ReviewTarget,
     reader: &dyn ProjectInput,
@@ -74,14 +89,7 @@ pub fn acceptance_proof_for_target(
         .read_artifact(change, history::INDEX)
         .map(|s| sha256(s.as_bytes()));
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = vec![];
-    for id in deep
-        .iter()
-        .map(DeepReport::report_id)
-        .chain(builtin.iter().map(Report::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let mut reasons = vec![];
     let fresh = if deep.is_some() {
         match submission_context(target, reader, data, store, None, budget) {
@@ -290,14 +298,7 @@ pub fn acceptance_from_fresh(
         ));
     }
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = Vec::new();
-    for id in deep
-        .iter()
-        .map(DeepReport::report_id)
-        .chain(builtin.iter().map(Report::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let bound_change = if store.change_exists(change) {
         change
     } else {
@@ -801,7 +802,7 @@ fn build_submission_context(
                 project_name: target.project_name.clone(),
                 change_name: Some(change.into()),
                 reviewed_at: chrono::Utc::now().to_rfc3339(),
-                commit_sha: None,
+                commit_sha: super::git_commit(reader.root(), budget),
                 policy_digest: policy.review_digest()?,
                 policy_revision: None,
                 prepared_at: None,
@@ -885,6 +886,24 @@ mod tests {
         )
         .unwrap();
         std::fs::write(root.join("app.ts"), "const value = 1;\n").unwrap();
+        for args in [
+            vec!["init", "-q"],
+            vec!["config", "user.name", "SpecLink Test"],
+            vec!["config", "user.email", "speclink-test@example.invalid"],
+            vec!["add", "openspec/config.yaml", "openspec/changes/demo/tasks.md", "app.ts"],
+            vec!["commit", "-qm", "baseline"],
+        ] {
+            let output = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(output.status.success(), "git command failed");
+        }
+        let head = speclink_core::util::git(&root, &["rev-parse", "HEAD"]).unwrap();
+        let dirty_source = "const value = 2;\n";
+        std::fs::write(root.join("app.ts"), dirty_source).unwrap();
         let store = speclink_fs::FsStore::new(&root, "openspec");
         let data = speclink_fs::security::FsSecurityData::new(&temp.path().join("data")).unwrap();
         let mut source = standard_source(StandardId::OwaspTop10, "2025").unwrap();
@@ -940,7 +959,16 @@ mod tests {
         .unwrap();
         let (context, builtin) =
             submission_context(&target, &reader, &data, &store, None, &budget).unwrap();
-        assert!(builtin.is_some());
+        assert_eq!(context.common.commit_sha.as_deref(), Some(head.as_str()));
+        assert_eq!(
+            context
+                .sources
+                .iter()
+                .find(|source| source.path == "app.ts")
+                .unwrap()
+                .content_digest,
+            speclink_core::security::data::sha256(dirty_source.as_bytes())
+        );
         assert!(
             !context
                 .permitted_references

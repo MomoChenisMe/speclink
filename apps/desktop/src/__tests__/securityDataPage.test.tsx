@@ -59,6 +59,22 @@ it.each(["zh-TW","en"] as const)("%s：選目錄與取消只改草稿，離線�
   expect(api.writeSecurityDataPaths).not.toHaveBeenCalled();expect(api.startSecurityData).not.toHaveBeenCalled();
 });
 
+it("儲存新資料路徑後忽略舊路徑延遲回來的清單",async()=>{
+  vi.mocked(api.writeSecurityDataPaths).mockResolvedValue({standardsPath:"/new/standards",effectivePath:"/new/standards",isDefault:false,access:"readWrite"});
+  let finishOld!:(value:typeof inventory)=>void;
+  vi.mocked(api.listSecurityData)
+    .mockImplementationOnce(()=>new Promise(resolve=>{finishOld=resolve;}))
+    .mockResolvedValueOnce({standards:[{...inventory.standards[0],versions:[{...inventory.standards[0].versions[0],status:"installed"}]}]});
+  mount();
+  const input=await screen.findByRole("textbox",{name:"標準資料存放路徑"});
+  fireEvent.change(input,{target:{value:"/new/standards"}});
+  fireEvent.click(screen.getByRole("button",{name:"儲存路徑"}));
+  await waitFor(()=>expect(api.listSecurityData).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText("已安裝")).toBeTruthy();
+  await act(async()=>finishOld(structuredClone(inventory)));
+  expect(screen.getByText("已安裝")).toBeTruthy();
+});
+
 it("零專案進頁只讀清單，來源授權可讀，下載必須明確操作", async () => {
   mount();
   expect(await screen.findByRole("heading",{name:"安全標準資料"})).toBeTruthy();

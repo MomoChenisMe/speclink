@@ -53,10 +53,12 @@ pub async fn show(
     binding: Binding,
     Path((_key, change)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    match run(state, binding, change, Operation::Show(None)).await? {
-        Outcome::View(v) => Ok(Json(v).into_response()),
-        _ => Err(ApiError::internal("security outcome")),
-    }
+    let store=state.store.clone();
+    let ctx=binding.execution_context();
+    let key=speclink_host::security::remote_project_key(&state.config.public_url,&binding.project.key,&binding.repo).map_err(ApiError::security)?;
+    let view=tokio::task::spawn_blocking(move||speclink_host::security::remote::show(store.as_ref(),&ctx,&key,&change))
+        .await.map_err(|_|ApiError::internal("security worker failed"))?.map_err(ApiError::security)?;
+    Ok(Json(view).into_response())
 }
 pub async fn check(
     State(state): State<AppState>,

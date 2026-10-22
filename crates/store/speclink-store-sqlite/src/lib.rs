@@ -289,6 +289,19 @@ impl Inner {
             }
         }
 
+        for (doc, expected) in uow.guards() {
+            let doc_id = encode_doc(doc);
+            let current: Option<u64> = tx.query_row(
+                "SELECT revision FROM documents WHERE project = ?1 AND repo = ?2 AND doc_id = ?3",
+                params![project, repo, doc_id],
+                |r| r.get::<_, i64>(0),
+            ).optional().map_err(map_sqlite)?.map(|v| v as u64);
+            let current = current.map(Revision);
+            if !expected.matches(current) {
+                return Err(StoreError::RevisionConflict { doc: DocRef::new(scope, doc.clone()), expected: *expected, actual: current });
+            }
+        }
+
         // 2. Document writes.
         for op in uow.ops() {
             let doc_id = encode_doc(op.doc());

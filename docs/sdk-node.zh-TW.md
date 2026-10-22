@@ -213,7 +213,9 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 | `target` | `claude`、`codex`、`copilot`、`antigravity`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
 | `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配以 `dispatch` 實作的工具；`cli` 寫成 shell 指令 |
 | `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `openspec` |
-| `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
+| `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具身分，例如 `--agent`，預設 `speclink`；工具呼叫前言仍使用 `speclink` 工具名 |
+
+`skills.render` 回傳 Markdown，不會寫入檔案。公開 TypeScript 型別接受全部五種 target，包含 `antigravity`。渲染沒有 `store` 或 `worktree` 選項，SDK 也沒有匯出 `instructions.render` API。儲存設定屬於 `createEngine`；請用 `skills.list()` 與 `skills.render()` 產生技能內容，再把回傳字串存到 agent 會載入的目錄。
 
 把產生的 `SKILL.md` 寫進一個目錄，交給你的 agent 載入。每個技能的 `description` 說明什麼時候用它，結尾的 Next steps 說明之後建議做什麼，不需要另外的系統提示。前提是你的 agent 會讀技能的 description。
 

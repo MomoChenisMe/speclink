@@ -3,6 +3,7 @@
 //! operation carries its CAS precondition.
 
 use crate::types::{DocumentId, ExpectedRevision, Revision, Scope};
+use std::collections::BTreeMap;
 
 /// Identity of the command performing a unit of work: which command it is
 /// and who runs it. Recorded in history and available to drivers for
@@ -49,6 +50,7 @@ pub struct UnitOfWork {
     scope: Scope,
     ctx: CommandContext,
     ops: Vec<StagedOp>,
+    guards: BTreeMap<DocumentId, ExpectedRevision>,
 }
 
 impl UnitOfWork {
@@ -57,6 +59,7 @@ impl UnitOfWork {
             scope,
             ctx,
             ops: Vec::new(),
+            guards: BTreeMap::new(),
         }
     }
 
@@ -94,6 +97,16 @@ impl UnitOfWork {
 
     pub fn ops(&self) -> &[StagedOp] {
         &self.ops
+    }
+
+    /// Require a document read during the transaction to remain at the
+    /// revision observed by its snapshot, without writing that document.
+    pub fn guard(&mut self, doc: DocumentId, expected: ExpectedRevision) {
+        self.guards.insert(doc, expected);
+    }
+
+    pub fn guards(&self) -> &BTreeMap<DocumentId, ExpectedRevision> {
+        &self.guards
     }
 }
 

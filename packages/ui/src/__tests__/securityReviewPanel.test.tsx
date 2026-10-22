@@ -10,6 +10,7 @@ function adapter():SecurityReviewAdapter{return {inspect:vi.fn().mockResolvedVal
 it("顯示標準、未驗證與遮罩證據，輸出及資料管理操作不開工單",async()=>{
  const api=adapter();const settings=vi.fn();render(<I18nProvider locale="zh-TW"><SecurityReviewPanel adapter={api} change="demo" inspection={inspection} onOpenDataSettings={settings}/></I18nProvider>);
  expect(screen.getByText(/不代表不存在其他漏洞/)).toBeTruthy();expect(screen.getAllByText(/2025/)[0]).toBeTruthy();expect(screen.getByText("[REDACTED] <script>alert(1)</script>")).toBeTruthy();expect(document.querySelector("script")).toBeNull();
+ const location=screen.getByRole("button",{name:"app.ts:3"});expect(location.classList.contains("underline-offset-4")).toBe(true);
  fireEvent.click(screen.getByRole("button",{name:"前往安全標準資料"}));expect(settings).toHaveBeenCalled();
  fireEvent.click(screen.getByRole("button",{name:"匯出 JSON"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","json","demo"));
  fireEvent.click(screen.getByRole("button",{name:"匯出 Markdown"}));await waitFor(()=>expect(api.exportReport).toHaveBeenCalledWith("report-one","markdown","demo"));

@@ -44,6 +44,25 @@ fn expected(view: &BridgeStore, change: &str, revision: u64) -> Result<()> {
     Ok(())
 }
 
+/// Read the persisted proposal report and verdict without needing installed
+/// standard data. Freshness is checked only by the attested `Show` operation.
+pub fn show(
+    store: &dyn TeamStore,
+    ctx: &SpeclinkExecutionContext,
+    key: &str,
+    change: &str,
+) -> Result<wire::SecurityReviewView> {
+    validate_change(Some(change))?;
+    let scope = Scope::new(ctx.project.clone(), ctx.repo.clone());
+    let view = BridgeStore::materialize(store, &scope)?;
+    ensure!(view.change_exists(change) || view.archived_change_exists(change), "unknown_change");
+    let policy_text = view.read_workflow_config().unwrap_or_default();
+    let policy = speclink_core::config::WorkflowConfig::from_text(Some(&policy_text))?.security();
+    let mut result = review_view(&view, change, key, &policy, None)?;
+    result.expected_revision = Some(view.revision(&index_id(change)));
+    Ok(result)
+}
+
 /// Historical reports require only the scoped store, never installed standard data.
 pub fn report(
     store: &dyn TeamStore,
@@ -526,14 +545,7 @@ pub(crate) fn proof(
 ) -> Result<AcceptanceProof> {
     let (context, _) = context(store, key, change, policy_text, data, a, None, None)?;
     let (builtin, deep) = current_reports(store, change)?;
-    let mut decisions = Vec::new();
-    for id in builtin
-        .iter()
-        .map(Report::report_id)
-        .chain(deep.iter().map(DeepReport::report_id))
-    {
-        decisions.extend(read_decisions(store, change, id)?);
-    }
+    let decisions = report_decisions(store, change, builtin.as_ref(), deep.as_ref())?;
     let mut fresh = fresh_evidence(&context);
     fresh.source_freshness = SourceFreshness::ClientAttested;
     Ok(AcceptanceProof {

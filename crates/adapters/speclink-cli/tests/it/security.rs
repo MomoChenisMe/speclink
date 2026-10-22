@@ -135,6 +135,9 @@ fn security_kb_prepare_is_offline_and_missing_data_does_not_create_snapshot() {
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("missing_knowledge"));
     assert!(!fixture.0.join(".security_kb").exists());
+    let with_change = fixture.run(&["security", "kb", "prepare", "--change", "demo", "--json", "--no-color"]);
+    assert_eq!(with_change.status.code(), Some(1), "--change must resolve the selected preparation, then report missing installed guidance");
+    assert!(String::from_utf8_lossy(&with_change.stderr).contains("missing_knowledge"));
     assert_eq!(fixture.run(&["security", "kb", "prepare", "--stdin"]).status.code(), Some(2));
 }
 

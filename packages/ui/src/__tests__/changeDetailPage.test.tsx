@@ -2245,7 +2245,9 @@ describe('提案檢查紀錄文件樹',()=>{
   const records=[record('r1','2026-10-19'),record('r2','2026-10-20'),record('v1','2026-10-20','verify'),record('s1','2026-10-20','security')];
   const checks={list:vi.fn().mockResolvedValue(records),read:vi.fn().mockResolvedValue('## 已保存紀錄\n\n[REDACTED] <script>alert(1)</script>')};
   render(<ChangeDetailPage {...makeProps({checkRecords:checks})}/>);
-  expect(await screen.findByText('檢查紀錄')).toBeTruthy();fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-19/}));
+  expect(await screen.findByText('檢查紀錄')).toBeTruthy();
+  expect(screen.getByRole('tablist',{name:'檢查紀錄'}).className).toContain('flex-col');
+  fireEvent.mouseDown(await screen.findByRole('tab',{name:/審查.*2026-10-19/}));
   expect(await screen.findByText('已保存紀錄')).toBeTruthy();expect(checks.read).toHaveBeenCalledWith(change.name,records[0]);expect(document.querySelector('script')).toBeNull();
   expect(screen.getByRole('tab',{name:/安全審查.*2026-10-20/})).toBeTruthy();
   const security=screen.getByRole('tab',{name:/安全審查.*2026-10-20/});security.focus();fireEvent.keyDown(security,{key:'Enter'});await waitFor(()=>expect(checks.read).toHaveBeenLastCalledWith(change.name,records[3]));

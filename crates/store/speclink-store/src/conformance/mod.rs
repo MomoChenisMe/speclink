@@ -468,7 +468,22 @@ fn gate_cas_race(harness: &mut dyn StoreHarness) -> Result<(), String> {
     match read_content(store, &scope, &doc("auth"))? {
         Some(content) if content == "winner" => Ok(()),
         other => Err(format!("store content is not the winner's write: {other:?}")),
+    }?;
+
+    let store=harness.reset();
+    let seeded_at=create(store,&scope,&[(doc("auth"),"base")],vec![])?;
+    let mut guarded=store.begin_unit_of_work(&scope,ctx("conformance-read-guard")).map_err(|e|format!("begin guarded write failed: {e}"))?;
+    guarded.create(doc("billing"),"must not commit");
+    guarded.guard(doc("auth"),crate::types::ExpectedRevision::At(seeded_at));
+    let mut competitor=store.begin_unit_of_work(&scope,ctx("conformance-guard-writer")).map_err(|e|format!("begin competing write failed: {e}"))?;
+    competitor.update(doc("auth"),"changed",seeded_at);
+    store.commit(competitor,vec![]).map_err(|e|format!("competing write should win: {e}"))?;
+    match store.commit(guarded,vec![]) {
+        Err(StoreError::RevisionConflict{doc:conflicting,..}) if conflicting.doc==doc("auth")=>{},
+        other=>return Err(format!("read guard did not reject stale transaction: {other:?}")),
     }
+    if read_content(store,&scope,&doc("billing"))?.is_some(){return Err("guarded write partially committed".into());}
+    Ok(())
 }
 
 /// A commit crashed mid-way must be invisible in full after restart.

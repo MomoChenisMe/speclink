@@ -43,7 +43,7 @@ BaselineSmellList 增加逐名稱 help 按鈕，沿用 @speclink/ui 的 Popover�
 
 ### 離線知識資料
 
-新增的 spec_registry.json 是程式內建的核准資源目錄，採 formatVersion=1，resources 每筆含 id、role（standard／mapping／guidance）、standardId/version 或 appliesTo、sourceUrl、sourceRevision、files（name/url/sha256）、licenseName/licenseUrl/attribution。只接受經發行流程核對的固定 commit 或官方固定版資產；不用附件的 status 判斷本機安裝，不接受任意使用者 URL。既有 sources.json 的標準身分及解析器不另做一套，由 registry 引用原標準版本。
+新增的 spec_registry.json 是程式內建的核准指引目錄，採 formatVersion=1，standardCatalog 固定引用 sources.json；resources 僅接受 role=guidance，含 id、appliesTo、sourceUrl、sourceRevision、files（name/url/sha256）、licenseName/licenseUrl/attribution。標準原文與版本仍由 sources.json 定義；CWE 對照由已安裝標準快照推導，不另列為 registry resource。只接受經發行流程核對的固定 commit 或官方固定版資產；不用附件的 status 判斷本機安裝，不接受任意使用者 URL。
 
 指南最小清單為 Authentication、Authorization、Cryptographic Storage、Logging、TLS、REST、SQL Injection Prevention、XSS Prevention、OS Command Injection Defense、Deserialization、XXE Prevention、SSRF Prevention、Prototype Pollution Prevention、Webhook Security、Denial of Service，另附已驗證存在的 DotNet／Java／Nodejs 指南。Python／Rust 以這些通用指南及資料流證據給工程修正，不假設附件的 Python_Security／Rust_Security 檔名存在；無適用依據時明示未驗證。發行任務要將每個真實檔名、固定 commit、指紋與授權寫進 registry；只要缺一份必要檔案，該深度資料包就不能宣告 ready。來源核對依 OWASP 官方 CheatSheetSeries repository，已核對的頁面為 https://cheatsheetseries.owasp.org/cheatsheets/DotNet_Security_Cheat_Sheet.html 、https://cheatsheetseries.owasp.org/cheatsheets/Java_Security_Cheat_Sheet.html 、https://cheatsheetseries.owasp.org/cheatsheets/Nodejs_Security_Cheat_Sheet.html 。網頁只用於開發時核實來源，執行時只使用包內 Markdown。
 
@@ -127,6 +127,16 @@ FsSecurityData 保留 application_data 的本機用途，另接受 Host 已解�
 
 ## Implementation Contract
 
+### SDK 技能 API 與公開型別補查修復
+
+2026-10-22 使用者要求完成 CI 核對與 SDK 修復，採補查建議的現行技能 API 方向。保留全部原始九項需求與已完成任務；本段更新 delta 的要求，不改寫歷史品質證據或 canonical specs。
+
+- 行為與介面：沿 `index.js` 的 skills.list()／skills.render(name, options) 與 Rust 共用渲染器；options 為 target（claude／codex／copilot／antigravity／neutral）、invocation（cli／tool-call，預設 cli）、specDir（預設 openspec）、toolName（neutral 專用，預設 speclink）。回傳字串、不寫檔、與相同 specDir 的 CLI 技能同源。
+- 決策：對齊現行 API；不另建已退役的 instructions.render 或 store 渲染軸。delta 明確移除「渲染 API 的 worktree 軸」，避免封存後仍留下依賴退役 API 的矛盾要求；createEngine 的 Store 儲存契約保持原樣。
+- 型別與錯誤：手寫公開 `index.d.ts` 補 antigravity。編譯測試經套件入口解析 package.json 的 types，五個 target 與完整選項均可用；以預期編譯錯誤檢查未知 target／invocation、store／worktree 與 instructions 匯入。執行測試保留未知 target／技能拒絕，補未知 invocation 拒絕、預設值與自訂 specDir／toolName 替換。
+- 驗收：在 Node 套件新增 TypeScript 開發依賴，npm ci 單獨安裝即可執行編譯測試，不依賴根 workspace 的 compiler。先以新測試重現 Antigravity TS2322，再修型別；沿既有 npm test 納入 CI。建置原生 binding 後跑 Node SDK 全組，保留 CLI 同源、Codex／Antigravity 獨立目錄及無指令檔測試。最後跑 scripts 全組、analyze、validate、git diff --check。
+- 範圍：本輪只修 SDK 契約、型別、必要測試與雙語 SDK 說明，記錄最新提交 CI 查詢結果；不處理另一組 vscode／dirty Git 覆蓋與 configuration 表格缺口，不清除或重開品質工單、不蓋章、不合併或發版。那些補查項留待下一步完整品質檢查前處理，公司 Proxy 仍打包後驗收。
+
 2026-10-21 使用者同意修復 Windows 封存鎖：所有新版本的 checks 寫入／復原／封存，先取得 `<spec_dir>/.checks-locks/<sha256(change-name)>.lock`，再建立或讀取活動提案，整段搬移／備份／發佈仍持鎖；鎖檔不跟提案搬移且不可置於單機快取。同一spec store的各程序共用同一路徑；目錄與鎖檔拒連結，鎖目錄內建立只含 `*` 的 .gitignore，鎖不列文件樹。既有提案內 .checks.lock 只作舊版相容性偵測：若仍被鎖定就回busy，不移除舊鎖。升級時須先停止所有舊版寫入者，混用新舊鎖定協定不受支援；不能以先解除新鎖再搬移或放棄跨程序保護規避Windows限制。沿原復原journal及generation格式，不修改原已完成任務，追加16.1作為接續實作前置修復。
 
 2026-10-21 追加範圍：打包後公司驗收、本分支更新與原作者資訊、中英專案署名、標準根目錄設定與 UNC 共用。不在範圍：現在打包／發行／推送、建立 GitHub bot、重寫作者歷史、取得簽章金鑰、SMB 帳密管理、共用私人報告、刪除其他主機仍會使用的資料、自動搬移舊資料。原已完成任務逐字保留；新增工作使用第 13–15 組任務，完成前不得沿用 42／42 已完成的舊結論。
@@ -137,7 +147,7 @@ FsSecurityData 保留 application_data 的本機用途，另接受 Host 已解�
 | --- | --- |
 | workflow-config security --stdin [--dry-run] | 原YAML部分patch增加 required_for_acceptance:boolean；原摘要、diff、exit不變；show JSON 的 securityVerification 增 requiredForAcceptance:boolean |
 | workflow-config check-records --stdin [--dry-run] | 最多64KiB YAML，如 archive: {review: true, verify: true, security: true}；只改 check_records；stdout 摘要或實際行diff，無 --json；未知鍵／錯型別拒寫；show 增 checkRecords:{archive:{review:boolean,verify:boolean,security:boolean}} |
-| security kb prepare [--root PATH] [--json] | stdout {projectKey:string,path:string,policyDigest:string,files:number,bytes:number,standards:[{standardId:string,version:string,dataSha256:string}],knowledgeDigest:string}；完全本機，缺件 missing_knowledge 不改舊快照 |
+| security kb prepare [--root PATH] [--change CHANGE] [--json] | stdout {projectKey:string,path:string,policyDigest:string,files:number,bytes:number,standards:[{standardId:string,version:string,dataSha256:string}],knowledgeDigest:string}；完全本機，Remote 依指定提案載入已準備的政策，缺件 missing_knowledge 不改舊快照 |
 | security review add-round CHANGE --stdin [--json] | 至多4MiB JSON 的 deep report 輸入，schema 見下；由 Host 補 reportId／actor／時間及驗證來源digest，stdout {reportId:string,changeName:string,relativePath:string,complete:boolean}；不接受任意路徑，舊報告匯入使用只有 legacyImportReportId:string 的另一種輸入，並標legacy |
 | security review show CHANGE [--json] | stdout {changeName:string,reports:[{reportId:string,executionMode:string,relativePath:string,complete:boolean}],acceptance:{required:boolean,status:string,blockingFindings:number,notVerified:number,reasons:string[]}}；status=reference|passed|blocked|stale；人眼列同資訊與 PASS 限制 |
 | security review accept CHANGE --stdin [--json] | 至多16KiB JSON {reportId:string,findingId:string,reason:string}；只接受當前報告真實 finding；stdout {decisionId:string,reportId:string,findingId:string,status:"accepted"}，舊報告／未知ID／缺身份／空理由拒寫 |

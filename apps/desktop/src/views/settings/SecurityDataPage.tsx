@@ -21,11 +21,13 @@ export function SecurityDataPage() {
   const [progress,setProgress] = useState<SecurityProgress|null>(null);
   const [ticket,setTicket] = useState<SecurityJobTicket|null>(null);
   const active = useRef<SecurityJobTicket|null>(null);
+  const dataRequest = useRef(0);
   useEffect(() => {
     let disposed = false;
     let unlisten: (()=>void)|undefined;
     readSecurityDataPaths().then(value=>{if(!disposed){setPaths(value);setDraft(value.standardsPath??value.effectivePath);}}).catch(e=>{if(!disposed)setError(errorMessage(e));});
-    listSecurityData().then((value)=>{if(!disposed)setData(value);}).catch((e)=>{if(!disposed)setError(errorMessage(e));});
+    const request=++dataRequest.current;
+    listSecurityData().then((value)=>{if(!disposed&&request===dataRequest.current)setData(value);}).catch((e)=>{if(!disposed&&request===dataRequest.current)setError(errorMessage(e));});
     watchSecurityProgress((event)=>{
       if (event.jobId === active.current?.jobId && event.projectKey === active.current.projectKey) setProgress(event);
     }).then((stop)=>{if(disposed)stop();else unlisten=stop;}).catch((e)=>{if(!disposed)setError(errorMessage(e));});
@@ -48,10 +50,13 @@ export function SecurityDataPage() {
     finally { active.current=null;setTicket(null);setBusy(false);setRequest(null);void readSecurityDataPaths().then(setPaths).catch(()=>{}); }
   }
   async function savePath(path:string|null) {
+    dataRequest.current++;
     setPathSaving(true);setError(null);
     try {
       const next=await writeSecurityDataPaths(path);setPaths(next);setDraft(next.standardsPath??next.effectivePath);
-      setData(await listSecurityData());
+      const request=++dataRequest.current;
+      const inventory=await listSecurityData();
+      if(request===dataRequest.current)setData(inventory);
     } catch(e) {setError(errorMessage(e));}
     finally {setPathSaving(false);}
   }

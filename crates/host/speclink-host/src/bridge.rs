@@ -63,6 +63,15 @@ fn engine_context(ctx: &SpeclinkExecutionContext, system_locale: Option<String>)
     }
 }
 
+fn attested_document(change: &str, path: &str) -> Option<DocumentId> {
+    if let Some(artifact)=path.strip_prefix(&format!("openspec/changes/{change}/")) {
+        return Some(DocumentId::ChangeArtifact { change: change.into(), artifact: artifact.into() });
+    }
+    let capability=path.strip_prefix("openspec/specs/")?.strip_suffix("/spec.md")?;
+    if capability.is_empty() || capability.contains('/') { return None; }
+    Some(DocumentId::CanonicalSpec { capability: capability.into() })
+}
+
 /// Run one Engine command over `store`'s scope (resolved from `ctx`) through
 /// the bridge. Reads are served from a consistent snapshot; a mutating verb's
 /// writes are committed atomically with its domain events. Queries never open
@@ -87,13 +96,19 @@ fn execute_inner(store:&dyn TeamStore,ctx:&SpeclinkExecutionContext,cmd:Command,
             let change=match &cmd {Command::VerifyStamp{change,..}=>change.as_str(),Command::Archive{change:Some(change),..}=>change.as_str(),_=>return Err(BridgeError::Command(CommandError::new(speclink_core::command::ErrorCode::InvalidArgv,"invalid_argument: security gate command")))};
             let result=(||->anyhow::Result<_>{
                 anyhow::ensure!(gate.expected_revision==Some(view.revision(&DocumentId::ChangeArtifact{change:change.into(),artifact:speclink_core::history::INDEX.into()})),"revision_conflict: check index changed");
-                crate::security::remote::proof(&view,key,change,&view.read_workflow_config().unwrap_or_default(),data,attestation)
+                let proof=crate::security::remote::proof(&view,key,change,&view.read_workflow_config().unwrap_or_default(),data,attestation)?;
+                view.guard_revision(DocumentId::WorkflowConfig);
+                for source in &attestation.sources {
+                    if let Some(doc)=attested_document(change,&source.path) { view.guard_revision(doc); }
+                }
+                Ok(proof)
             })();
             execution_context.security_acceptance=Some(result.map_err(|error|BridgeError::Command(CommandError::new(speclink_core::command::ErrorCode::Refused,error.to_string())))?);
         }
     }
     let (outcome, events) =
         engine_execute(&view, &execution_context, cmd).map_err(BridgeError::Command)?;
+    let guards=view.guards();
     let staged = view.into_staged();
     if staged.is_empty() {
         // A query (or a no-op mutation): nothing to commit.
@@ -107,6 +122,7 @@ fn execute_inner(store:&dyn TeamStore,ctx:&SpeclinkExecutionContext,cmd:Command,
             StagedOp::Delete { doc, expected } => uow.delete(doc, expected),
         }
     }
+    for (doc,expected) in guards { uow.guard(doc,expected); }
     let revision = commit_with_events(store, ctx, uow, &events).map_err(BridgeError::Store)?;
     Ok(BridgeExecution { outcome, events, revision: Some(revision) })
 }
@@ -157,6 +173,7 @@ pub(crate) struct BridgeStore {
     view: RefCell<BTreeMap<DocumentId, String>>,
     base: BTreeMap<DocumentId, Revision>,
     staged: RefCell<BTreeMap<DocumentId, StagedOp>>,
+    guards: RefCell<BTreeMap<DocumentId, ExpectedRevision>>,
 }
 
 impl BridgeStore {
@@ -185,6 +202,7 @@ impl BridgeStore {
             view: RefCell::new(view),
             base,
             staged: RefCell::new(BTreeMap::new()),
+            guards: RefCell::new(BTreeMap::new()),
         })
     }
 
@@ -193,6 +211,15 @@ impl BridgeStore {
     /// The staged operations to commit, in a deterministic document order.
     pub(crate) fn into_staged(self) -> Vec<StagedOp> {
         self.staged.into_inner().into_values().collect()
+    }
+
+    pub(crate) fn guard_revision(&self, doc: DocumentId) {
+        let expected=self.base.get(&doc).copied().map(ExpectedRevision::At).unwrap_or(ExpectedRevision::Absent);
+        self.guards.borrow_mut().insert(doc,expected);
+    }
+
+    pub(crate) fn guards(&self) -> BTreeMap<DocumentId,ExpectedRevision> {
+        self.guards.borrow().clone()
     }
 
     /// Read a materialized document's content.
@@ -537,6 +564,7 @@ impl Store for BridgeStore {
 
     fn archive_change_with_checks(&self,name:&str,dated:&str,plan:&speclink_core::history::ArchiveChecksPlan)->anyhow::Result<()> {
         plan.validate_base(self,name)?;
+        plan.write_canonical_specs(self)?;
         self.archive_change(name,dated)?;
         let omitted=self.view.borrow().keys().filter(|id|matches!(id,DocumentId::ArchivedChange{change,doc} if change==dated&&!plan.retains(doc))).cloned().collect::<Vec<_>>();
         for doc in omitted{self.del(doc);}
@@ -694,7 +722,7 @@ impl Store for BridgeStore {
 
 #[cfg(test)]
 mod tests {
-    use super::BridgeStore;
+    use super::{attested_document,BridgeStore};
     use crate::binding::local_default_binding;
     use speclink_core::store::Store;
     use speclink_store::memory::MemoryStore;
@@ -748,6 +776,33 @@ mod tests {
                     assert_eq!(history.revision, revision); assert_eq!(snapshot.read(&meta).unwrap().unwrap().revision, revision);
                 }
             }
+        }
+    }
+
+    #[test]
+    fn security_gate_read_guards_reject_policy_or_spec_edits_before_stamp_writes() {
+        let policy=DocumentId::WorkflowConfig;
+        let proposal=DocumentId::ChangeArtifact{change:"demo".into(),artifact:"proposal.md".into()};
+        assert_eq!(attested_document("demo","openspec/changes/demo/proposal.md"),Some(proposal.clone()));
+        assert_eq!(attested_document("demo","openspec/specs/auth/spec.md"),Some(DocumentId::CanonicalSpec{capability:"auth".into()}));
+        for conflict_doc in [policy.clone(),proposal.clone()] {
+            let store=MemoryStore::new();let binding=local_default_binding();let scope=Scope::new(binding.project,binding.repo);
+            seeded(&store,&scope,&[(DocumentId::WorkflowConfig,"security_verification: {}\n"),(DocumentId::ChangeMeta{change:"demo".into()},"schema: spec-driven\n"),(proposal.clone(),"# Original\n")]);
+            let view=BridgeStore::materialize(&store,&scope).unwrap();
+            view.guard_revision(policy.clone());view.guard_revision(proposal.clone());
+            let guards=view.guards();
+            let mut stamp=store.begin_unit_of_work(&scope,CommandContext{command:"verify-stamp".into(),actor:"Reviewer".into()}).unwrap();
+            stamp.create(DocumentId::ChangeArtifact{change:"demo".into(),artifact:"verify.md".into()},"# Stamp\n");
+            for (doc,expected) in guards {stamp.guard(doc,expected);}
+            let expected=store.snapshot(&scope).unwrap().read(&conflict_doc).unwrap().unwrap().revision;
+            let mut other=store.begin_unit_of_work(&scope,CommandContext{command:"competing-edit".into(),actor:"Other".into()}).unwrap();
+            match &conflict_doc {
+                DocumentId::WorkflowConfig=>other.update(conflict_doc.clone(),"security_verification: {enabled: true}\n",expected),
+                _=>other.update(conflict_doc.clone(),"# Changed\n",expected),
+            }
+            store.commit(other,vec![]).unwrap();
+            assert!(store.commit(stamp,vec![]).unwrap_err().to_string().contains("revision_conflict"));
+            assert!(store.snapshot(&scope).unwrap().read(&DocumentId::ChangeArtifact{change:"demo".into(),artifact:"verify.md".into()}).unwrap().is_none());
         }
     }
 

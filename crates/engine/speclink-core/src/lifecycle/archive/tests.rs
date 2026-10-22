@@ -1239,6 +1239,26 @@ fn one_violating_capability_leaves_every_capability_untouched() {
 }
 
 #[test]
+fn archive_index_conflict_leaves_canonical_specs_unchanged() {
+    let root = temp_root("checks-conflict-before-canonical");
+    let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".into() };
+    let delta = "## ADDED Requirements\n\n### Requirement: Fresh\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+    let new_delta = format!("## Purpose\n\nThis capability exists to exercise canonical publication during a concurrent archive conflict.\n\n{delta}");
+    let store = merge_store(&[("auth", delta), ("new-cap", &new_delta)], &[("auth", CANON_R1)]);
+    let before = store.canonical.borrow().clone();
+    *store.archive_commit_hook.borrow_mut() = Some(Box::new(|store| {
+        store.put_artifact("demo", crate::history::INDEX, "{\"formatVersion\":1,\"entries\":[]}\n");
+    }));
+    let change = crate::model::find_change(&store, "demo").unwrap();
+    let error = archive(&ws, &store, &change, &apply_opts(), None).unwrap_err();
+    assert!(error.to_string().contains("revision_conflict"), "{error}");
+    assert_eq!(*store.canonical.borrow(), before, "neither existing nor new canonical specs may be written");
+    assert!(store.change_exists("demo"));
+    assert!(store.archived_metas.borrow().is_empty());
+    let _ = std::fs::remove_dir_all(root);
+}
+
+#[test]
 fn all_snapshots_land_before_any_canonical_write() {
     // spec Scenario「snapshot 先於正式規格寫入」：對第一個 capability 的正式規格寫入注入
     // 失敗；順序正確時第二個 capability 的 snapshot 已在磁碟上（交錯寫入則不會）。

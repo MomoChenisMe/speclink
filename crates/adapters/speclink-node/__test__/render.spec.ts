@@ -43,6 +43,28 @@ describe('skills.list', () => {
 })
 
 describe('skills.render — render matrix', () => {
+  it('neutral defaults match explicit cli, openspec and speclink options', () => {
+    expect(skills.render('propose', { target: 'neutral' })).toBe(skills.render('propose', {
+      target: 'neutral', invocation: 'cli', specDir: 'openspec', toolName: 'speclink',
+    }))
+  })
+
+  it('neutral tool-call substitutes the custom specDir and toolName', () => {
+    const rendered = skills.render('verify', {
+      target: 'neutral', invocation: 'tool-call', specDir: 'specs-local', toolName: 'project-tool',
+    })
+    expect(rendered).toContain('calling the speclink tool')
+    expect(rendered).toContain('--agent project-tool')
+    expect(rendered).toContain('specs-local/changes/')
+    expect(rendered).not.toContain('{{')
+  })
+
+  it('unknown invocation fails loud, listing the supported values', () => {
+    expect(() => skills.render('apply', {
+      target: 'neutral', invocation: 'shell' as never,
+    })).toThrow("invocation 'shell' must be 'cli' or 'tool-call'")
+  })
+
   it('copilot renders native syntax for every skill and matches CLI output', () => {
     const fixture = mkdtempSync(join(tmpdir(), 'speclink-node-copilot-'))
     try {

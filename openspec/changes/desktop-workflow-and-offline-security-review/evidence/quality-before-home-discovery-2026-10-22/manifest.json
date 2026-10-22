@@ -1,0 +1,20 @@
+{
+  "reason": "使用者同意備份兩站活動工單，正式 discard 後以 faefda7d 重跑 discovery；保留 checks 歷史，不蓋章。",
+  "head": "c8b77ece886d3db0b0883ba9b70b0b66a34e344d",
+  "trustedBase": "faefda7dabde01b8d90974aea63f4f7a8bdd5c24",
+  "tickets": {
+    "review.md": {
+      "bytes": 14451,
+      "sha256": "6172b2bca69d8ac7a7d70ee45243ee8ed683966b5889654c5c9297a1ab293ed3"
+    },
+    "verify.md": {
+      "bytes": 12561,
+      "sha256": "b8056e08ce93f04f78c7c2f6cb37d6c4e06952da72b5e2880284d537f6d3adaa"
+    }
+  },
+  "checks": {
+    "checks/index.json": "bf1287570195a7e99108d467285aa5d09d2843bcba65b8c566d96a9ee1947c24",
+    "checks/review/01M5G7A0SG0MJSX5702N57717V.md": "877d4b127d7ed602fd7620e48d43c326ff04d45288519a0f2e0197f0a725cca8",
+    "checks/verify/01M5G7A1NX8HQY1RB7P86F7ZER.md": "bb2cf8be88629bd63564877533a4f8524d56db35aa2b44f86c4ed72a4587d1eb"
+  }
+}
