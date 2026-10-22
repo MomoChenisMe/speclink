@@ -1,5 +1,45 @@
 [
   {
+    "version": "0.10.1",
+    "date": "2026-10-23",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "Teams can run offline OWASP/CWE reviews against selected standards and keep review, verification, and security reports with each proposal.",
+            "zh-TW": "團隊可依選定標準執行離線 OWASP／CWE 審查，並在提案內保留審查、驗證與安全報告。"
+          },
+          {
+            "en": "Desktop now checks this fork's updates and shares installed security standards with the CLI while keeping private reports on the device.",
+            "zh-TW": "Desktop 現在會檢查本分支的更新，並與 CLI 共用已安裝的安全標準資料；私人報告仍留在本機。"
+          },
+          {
+            "en": "Antigravity is now available as a built-in skills target with its own skills directory.",
+            "zh-TW": "Antigravity 已加入內建技能目標，並使用專屬技能目錄。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "Remote archive and security-report operations now validate policy before saving and mask sensitive report values.",
+            "zh-TW": "遠端封存與安全報告會在儲存前驗證政策，並遮蔽報告中的敏感值。"
+          },
+          {
+            "en": "Review and verification histories now remain available after stamping, and archive failures preserve the decision trail.",
+            "zh-TW": "審查與驗證蓋章後仍可查閱歷史；封存失敗時也會保留決策紀錄。"
+          },
+          {
+            "en": "Proxy startup failures now keep traceable diagnostics, and the Node SDK's public types match its supported rendering targets.",
+            "zh-TW": "Proxy 啟動失敗現在會留下可追查的診斷紀錄，Node SDK 公開型別也已對齊支援的渲染目標。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.10.0",
     "date": "2026-10-16",
     "sections": [

@@ -1,6 +1,20 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.10.1 (2026-10-23)
+
+### New features
+
+- Teams can run offline OWASP/CWE reviews against selected standards and keep review, verification, and security reports with each proposal.
+- Desktop now checks this fork's updates and shares installed security standards with the CLI while keeping private reports on the device.
+- Antigravity is now available as a built-in skills target with its own skills directory.
+
+### Fixes
+
+- Remote archive and security-report operations now validate policy before saving and mask sensitive report values.
+- Review and verification histories now remain available after stamping, and archive failures preserve the decision trail.
+- Proxy startup failures now keep traceable diagnostics, and the Node SDK's public types match its supported rendering targets.
+
 ## 0.10.0 (2026-10-16)
 
 ### New features
