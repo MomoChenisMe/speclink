@@ -29,7 +29,7 @@ updated: 2026-08-07
 ---
 ### Requirement: 兩站時序的編排行為
 
-技能 SHALL 只承載兩站時序與子代理的派出時機,SHALL NOT 重述兩站的檢查內容、簡報規則、工單與蓋章語意(由 review/verify 技能正典各自承載)。前提為 change 寫碼任務全數完成(非 `[M]` 任務全數勾選;僅餘 `[M]` 手動測試任務未勾時前提成立,技能於報告點名尚餘手測);寫碼任務未完成時 SHALL 依兩站既有前提行為呈現(拒絕或中途盤點,依該站正典),技能不另設守門。
+技能 SHALL 只承載兩站時序與子代理的派出時機;唯一的例外是「蓋章前的預防提醒」要求的第一輪前主分支比對(含它帶來的停頓、rebase 後的 commit 確認與起點重設)與收尾補蓋選項的 CI 附註,兩者以該需求為準。技能 SHALL NOT 重述兩站的檢查內容、簡報規則、工單與蓋章語意(由 review/verify 技能正典各自承載)。前提為 change 寫碼任務全數完成(非 `[M]` 任務全數勾選;僅餘 `[M]` 手動測試任務未勾時前提成立,技能於報告點名尚餘手測);寫碼任務未完成時 SHALL 依兩站既有前提行為呈現(拒絕或中途盤點,依該站正典),技能不另設守門。
 
 時序 SHALL 為每輪暫停制:
 
@@ -112,8 +112,8 @@ updated: 2026-08-07
 
 
 <!-- @trace
-source: quality-gate-wording-in-specs
-updated: 2026-10-21T22:05:05+08:00
+source: stamp-order-rules
+updated: 2026-10-22T22:36:29+08:00
 -->
 
 ---
@@ -155,4 +155,49 @@ session 於品質關卡的修正途中被關閉時,使用者 SHALL 能以再次�
 <!-- @trace
 source: quality-gate-speedup
 updated: 2026-10-14T21:31:03+08:00
+-->
+
+---
+### Requirement: 蓋章前的預防提醒
+
+quality 技能 SHALL 在兩條會讓章失效的情境上，於事前提醒使用者：
+
+- **跑關卡前比對主分支**：準備兩道關卡、凍結第一輪範圍之前，若目前分支不是 repo 的主分支（例如 worktree 或功能分支），技能 SHALL 以 git 找出主分支在分岔點之後改過的檔案，並與本分支自分岔點以來改過的檔案取交集。交集不為空時，技能 SHALL 停下來列出這些檔案，說明之後再 rebase 會讓章失效、重蓋要從首輪重跑兩道關卡，並建議先 commit 本變更的檔（含新檔）再 rebase（或合併）主分支，等使用者回答後才繼續。使用者 rebase 或合併之後，技能 SHALL 先確認本變更的檔（含新檔）都已 commit——沒 commit 的檔會被記成開工前就有的修改，讓第一輪範圍停下——仍有未 commit 的檔時請使用者 commit，或經使用者同意代為 commit；再以 `speclink review prepare --base <新的分岔點>` 把兩站的起點移到新的分岔點，否則第一輪會把主分支的修改算成本變更的；這個指令失敗時 SHALL 回報錯誤，排除原因後在任何關卡開跑前重跑。交集為空、目前就在主分支上、或找不到主分支時，SHALL 直接繼續，不停頓。
+- **收尾蓋章前提醒 CI**：每輪停下來詢問時，若 repo 有 CI 設定（例如 `.github/workflows/` 下有工作流程檔），「進入收尾蓋章」選項的說明 SHALL 附註「建議先 commit 並 push，再確認該 commit 的 CI 已在所有平台通過——蓋章後為了 CI 再修會讓章失效」；技能 SHALL NOT 為此新增問題，也 SHALL NOT 自動 push 或查詢 CI 狀態。
+
+技能 SHALL NOT 自動執行 rebase、合併或 push。
+
+#### Scenario: 主分支改過本變更的檔時先停下
+
+- **WHEN** 在 worktree 分支上對變更執行 `/speclink-quality`，主分支在分岔點之後改過 `crates/engine/speclink-core/src/util.rs`，而本分支也改過這個檔
+- **THEN** 技能在凍結第一輪範圍之前停下，列出 `crates/engine/speclink-core/src/util.rs`，建議先 rebase 主分支並說明原因；使用者回答前沒有任何工單或範圍被建立
+
+#### Scenario: 使用者 rebase 後先確認 commit 再重設起點
+
+- **WHEN** 技能停下建議 rebase 後，使用者 rebase 了主分支，而本變更還有一個新檔沒 commit
+- **THEN** 技能先請使用者 commit 這個檔（或經使用者同意代為 commit），再以 `speclink review prepare --base <新的分岔點>` 移動兩站的起點，之後才凍結第一輪範圍
+
+#### Scenario: 沒有交集時直接開始
+
+- **WHEN** 在功能分支上執行 `/speclink-quality`，主分支在分岔點之後只改過本分支沒碰的檔
+- **THEN** 技能不停頓，直接凍結第一輪範圍並送出檢查
+
+#### Scenario: 在主分支上不比對
+
+- **WHEN** 目前就在主分支上執行 `/speclink-quality`
+- **THEN** 技能不做分支比對，直接凍結第一輪範圍
+
+#### Scenario: 有 CI 設定時收尾選項附註
+
+- **WHEN** repo 有 `.github/workflows/ci.yml`，某一輪兩道關卡的必修 finding 皆為零，技能停下來詢問
+- **THEN** 「進入收尾蓋章」選項的說明附註先確認 CI 已在所有平台通過的建議，選項數量與沒有 CI 設定時相同
+
+#### Scenario: 沒有 CI 設定時不附註
+
+- **WHEN** repo 沒有任何 CI 設定檔，某一輪兩道關卡的必修 finding 皆為零，技能停下來詢問
+- **THEN** 「進入收尾蓋章」選項的說明沒有 CI 附註
+
+<!-- @trace
+source: stamp-order-rules
+updated: 2026-10-22T22:36:29+08:00
 -->
