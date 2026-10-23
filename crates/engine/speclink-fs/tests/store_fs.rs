@@ -4,8 +4,9 @@
 //! (`<root>/openspec/...`). Assertions pin the behaviors the engine relies on:
 //! change enumeration and updated_at ordering (whole-second truncation, newest first),
 //! artifact read/write/exists, empty-list/default fallbacks for missing files and
-//! directories, default metadata for a corrupt `.openspec.yaml`, and discussion
-//! creation/append/archive naming.
+//! directories, default metadata for a corrupt `.openspec.yaml`, the change
+//! data file name (`.meta.yaml` written, legacy `.openspec.yaml` read as a
+//! fallback), and discussion creation/append/archive naming.
 
 use speclink_core::store::Store;
 use speclink_fs::FsStore;
@@ -120,10 +121,133 @@ fn create_change_writes_meta_and_reports_dir() {
     let dir = store.create_change("demo", "schema: spec-driven\ncreated: 2026-07-04\n").unwrap();
     assert!(store.change_exists("demo"));
     assert_eq!(dir, root.dir.join("openspec").join("changes").join("demo"));
-    let meta = std::fs::read_to_string(dir.join(".openspec.yaml")).unwrap();
+    let meta = std::fs::read_to_string(dir.join(".meta.yaml")).unwrap();
     assert_eq!(meta, "schema: spec-driven\ncreated: 2026-07-04\n");
+    assert!(!dir.join(".openspec.yaml").exists(), "a new change never gets the legacy name");
     let c = store.find_change("demo").unwrap();
     assert_eq!(c.dir, dir);
+}
+
+// --- change data file name: `.meta.yaml`, legacy `.openspec.yaml` read as a fallback ---
+
+#[test]
+fn a_change_with_only_the_legacy_data_file_reads_as_before() {
+    // spec store-abstraction「只有舊檔名時照常讀取」。
+    let root = TempRoot::new("legacy-meta-read");
+    root.write("speclink/changes/old/.openspec.yaml", "schema: spec-driven\ndepends_on: base\n");
+    root.write("speclink/changes/archive/2026-07-01-gone/.openspec.yaml", "schema: spec-driven\ncreated_by: Tester\n");
+    let store = FsStore::new(&root.dir, "speclink");
+
+    let old = store.find_change("old").unwrap();
+    assert_eq!(old.meta.depends_on(), vec!["base".to_string()]);
+    assert!(old.meta_error.is_none());
+    assert_eq!(
+        store.read_change_meta("old").as_deref(),
+        Some("schema: spec-driven\ndepends_on: base\n")
+    );
+    assert_eq!(
+        store.read_archived_meta("2026-07-01-gone").as_deref(),
+        Some("schema: spec-driven\ncreated_by: Tester\n")
+    );
+}
+
+#[test]
+fn writing_metadata_leaves_only_the_new_data_file() {
+    // spec store-abstraction「寫入時移除舊檔名」：內容為舊檔加上新值。
+    let root = TempRoot::new("legacy-meta-write");
+    let legacy = root.write("speclink/changes/old/.openspec.yaml", "schema: spec-driven\n");
+    let archived_legacy =
+        root.write("speclink/changes/archive/2026-07-01-gone/.openspec.yaml", "schema: spec-driven\n");
+    let store = FsStore::new(&root.dir, "speclink");
+
+    let mut text = store.read_change_meta("old").unwrap();
+    text.push_str("depends_on: base2\n");
+    store.write_change_meta("old", &text).unwrap();
+    let dir = root.dir.join("speclink").join("changes").join("old");
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".meta.yaml")).unwrap(),
+        "schema: spec-driven\ndepends_on: base2\n"
+    );
+    assert!(!legacy.exists(), "the legacy data file goes in the same write");
+
+    let mut text = store.read_archived_meta("2026-07-01-gone").unwrap();
+    text.push_str("archived_at: 2026-07-02\n");
+    store.write_archived_meta("2026-07-01-gone", &text).unwrap();
+    assert_eq!(
+        std::fs::read_to_string(archived_legacy.with_file_name(".meta.yaml")).unwrap(),
+        "schema: spec-driven\narchived_at: 2026-07-02\n"
+    );
+    assert!(!archived_legacy.exists(), "the archived legacy data file goes too");
+}
+
+#[test]
+fn the_new_data_file_wins_when_both_names_exist() {
+    // spec store-abstraction「新舊檔名並存時以新檔名為準」。
+    let root = TempRoot::new("both-meta");
+    root.write("speclink/changes/both/.meta.yaml", "schema: no-spec-change\n");
+    root.write("speclink/changes/both/.openspec.yaml", "schema: spec-driven\n");
+    root.write("speclink/changes/archive/2026-07-01-both/.meta.yaml", "schema: no-spec-change\n");
+    root.write("speclink/changes/archive/2026-07-01-both/.openspec.yaml", "schema: spec-driven\n");
+    let store = FsStore::new(&root.dir, "speclink");
+
+    assert_eq!(store.find_change("both").unwrap().meta.schema_name(), "no-spec-change");
+    assert_eq!(store.read_change_meta("both").as_deref(), Some("schema: no-spec-change\n"));
+    assert_eq!(
+        store.read_archived_meta("2026-07-01-both").as_deref(),
+        Some("schema: no-spec-change\n")
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn an_unreadable_new_data_file_never_falls_back_to_the_stale_legacy_one() {
+    // 只有「新檔不存在」才讀舊檔名：新檔存在卻讀不到時，舊檔是過時內容。
+    use std::os::unix::fs::PermissionsExt;
+    let root = TempRoot::new("unreadable-meta");
+    let meta = root.write("speclink/changes/demo/.meta.yaml", "schema: no-spec-change\n");
+    root.write("speclink/changes/demo/.openspec.yaml", "schema: spec-driven\n");
+    std::fs::set_permissions(&meta, std::fs::Permissions::from_mode(0o000)).unwrap();
+    let store = FsStore::new(&root.dir, "speclink");
+    let read = store.read_change_meta("demo");
+    std::fs::set_permissions(&meta, std::fs::Permissions::from_mode(0o644)).unwrap();
+    assert_eq!(read, None);
+}
+
+#[test]
+fn archiving_carries_the_data_file_with_the_directory() {
+    // spec store-abstraction：封存移動變更資料夾時，資料檔隨資料夾移動、檔名不變。
+    let root = TempRoot::new("archive-meta");
+    let store = FsStore::new(&root.dir, "speclink");
+    store.create_change("demo", "schema: spec-driven\ncreated: 2026-07-04\n").unwrap();
+    store.archive_change("demo", "2026-07-04-demo").unwrap();
+
+    let archived = root.dir.join("speclink").join("changes").join("archive").join("2026-07-04-demo");
+    assert_eq!(
+        std::fs::read_to_string(archived.join(".meta.yaml")).unwrap(),
+        "schema: spec-driven\ncreated: 2026-07-04\n"
+    );
+    assert!(!archived.join(".openspec.yaml").exists());
+}
+
+#[test]
+fn metadata_errors_name_the_data_file_under_the_actual_spec_directory() {
+    // command-runtime：錯誤訊息指出 metadata 檔的 workspace 相對路徑——舊佈局是
+    // `openspec/`，不是寫死的新預設；檔名是實際存在的那一個。
+    let root = TempRoot::new("meta-error-path");
+    root.write("openspec/changes/broken/.meta.yaml", ": : :\n\t bad yaml [unclosed\n");
+    root.write("openspec/changes/legacy/.openspec.yaml", ": : :\n\t bad yaml [unclosed\n");
+    let store = root.store();
+    assert_eq!(store.spec_dir_display(), "openspec");
+
+    for (name, file) in [
+        ("broken", "openspec/changes/broken/.meta.yaml"),
+        ("legacy", "openspec/changes/legacy/.openspec.yaml"),
+    ] {
+        let change = store.find_change(name).unwrap();
+        let err = speclink_core::model::require_valid_meta(&store, &change).unwrap_err();
+        assert!(err.to_string().starts_with(&format!("invalid {file}: ")), "{err}");
+    }
+    assert_eq!(store.change_meta_display("absent"), "openspec/changes/absent/.meta.yaml");
 }
 
 // --- delete change (discard) ---

@@ -120,7 +120,7 @@ impl std::error::Error for InvalidContent {}
 
 /// Classify a core-flow anyhow error: a [`Refusal`] marker → `refused`, an
 /// [`InvalidContent`] marker → `invalid_argv`, a [`crate::model::MetaError`]
-/// (corrupt `.openspec.yaml`) → `invalid_config`, everything else → `error`.
+/// (corrupt `.meta.yaml`) → `invalid_config`, everything else → `error`.
 /// Message text passes through verbatim; the original error rides along as
 /// `source` for host-side refinement.
 fn classify(e: anyhow::Error) -> CommandError {
@@ -177,8 +177,8 @@ fn station_discard(
 /// Command-layer fail-closed gate: a resolved change whose metadata is corrupt
 /// refuses as `invalid_config` before the verb's flow runs (spec「單一 change
 /// 查詢對壞 metadata fail closed」).
-fn guard_meta(change: &Change) -> Result<(), CommandError> {
-    crate::model::require_valid_meta(change).map_err(|e| classify(e.into()))
+fn guard_meta(store: &dyn Store, change: &Change) -> Result<(), CommandError> {
+    crate::model::require_valid_meta(store, change).map_err(|e| classify(e.into()))
 }
 
 /// Domain events reported by mutating verbs (design 決策四). Payload = subject
@@ -1184,7 +1184,7 @@ fn resolve_schema(
 fn host_workspace(ws: Option<&Workspace>) -> Workspace {
     ws.cloned().unwrap_or(Workspace {
         root: std::path::PathBuf::new(),
-        spec_dir_name: "openspec".to_string(),
+        spec_dir_name: crate::workspace::DEFAULT_SPEC_DIR.to_string(),
     })
 }
 
@@ -1287,7 +1287,7 @@ fn run_status(
     schema: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
-    guard_meta(&change)?;
+    guard_meta(store, &change)?;
     let schema_name = match schema {
         Some(s) => s.to_string(),
         None => change.meta.schema_name(),
@@ -1308,7 +1308,7 @@ fn run_instructions(
     schema: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
-    guard_meta(&change)?;
+    guard_meta(store, &change)?;
     let schema = match schema {
         Some(s) => resolve_schema(ws, user_dir, s)?,
         None => resolve_schema(ws, user_dir, &change.meta.schema_name())?,
@@ -1357,7 +1357,7 @@ fn run_validate(
         let c = crate::model::find_change(store, item).ok_or_else(|| {
             CommandError::new(ErrorCode::NotFound, format!("Change '{item}' not found."))
         })?;
-        guard_meta(&c)?;
+        guard_meta(store, &c)?;
         vec![c]
     } else if all || changes_flag {
         crate::model::list_changes(store)
@@ -1366,7 +1366,7 @@ fn run_validate(
         // back to validating everything (frozen behavior).
         match resolve_change(store, None, SPECIFY_FLAG) {
             Ok(c) => {
-                guard_meta(&c)?;
+                guard_meta(store, &c)?;
                 vec![c]
             }
             Err(_) => crate::model::list_changes(store),
@@ -1395,7 +1395,7 @@ fn run_validate(
 
 fn run_analyze(store: &dyn Store, change: Option<&str>) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
-    guard_meta(&change)?;
+    guard_meta(store, &change)?;
     // The analyzer is schema-agnostic and never resolves the change's schema.
     let schema = crate::schema::spec_driven();
     Ok(CommandOutcome::Analyze(crate::analyzer::analyze(
@@ -1419,7 +1419,7 @@ pub fn resolve_guarded_change(
     change: Option<&str>,
 ) -> Result<Change, CommandError> {
     let change = resolve_change(store, change, SPECIFY_POSITIONAL)?;
-    guard_meta(&change)?;
+    guard_meta(store, &change)?;
     Ok(change)
 }
 
@@ -1449,7 +1449,7 @@ fn run_artifact_cat(
     change: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
     let change = resolve_change(store, change, SPECIFY_FLAG)?;
-    guard_meta(&change)?;
+    guard_meta(store, &change)?;
     let rel = artifact_rel_path(artifact)?;
     match store.read_artifact(&change.name, &rel) {
         Some(content) => Ok(CommandOutcome::ArtifactCat(content)),
@@ -1494,7 +1494,7 @@ fn run_new_change(
     // here (downstream commands fail on resolution).
     let schema = match schema {
         Some(s) => s,
-        None => crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
+        None => crate::config::WorkflowConfig::from_store(store)?
             .schema_name(),
     };
     let mut linked = None;
@@ -1714,7 +1714,7 @@ fn run_claim(
     // Fail-closed gate first: claiming a change whose metadata is corrupt must
     // name the broken file, not the missing remote store.
     if let Some(change) = crate::model::find_change(store, name) {
-        guard_meta(&change)?;
+        guard_meta(store, &change)?;
     }
     if !store.supports_ownership() {
         return Err(CommandError::new(
@@ -1722,6 +1722,7 @@ fn run_claim(
             "claim requires a remote store — this project uses the local fs store",
         ));
     }
+    let meta_file = store.change_meta_display(name);
     let claimed = crate::model::edit_meta(store, name, |m| {
         // An owner is the whole point of the verb: with nobody to record, a
         // stamp would make the change unclaimable while naming no one to
@@ -1750,7 +1751,7 @@ fn run_claim(
             }
             (None, Some(_)) => {
                 return Err(Refusal(format!(
-                    "cannot claim '{name}': its metadata carries claimed_at with no claimed_by — restore or remove that line in openspec/changes/{name}/.openspec.yaml"
+                    "cannot claim '{name}': its metadata carries claimed_at with no claimed_by — restore or remove that line in {meta_file}"
                 ))
                 .into())
             }

@@ -181,7 +181,7 @@ fn fs_init_explicit_tools_generate_exactly_the_selection() {
             copilot,
             "--tools {spec}: {generated}"
         );
-        assert!(env.exists("openspec/specs"), "--tools {spec}: filesystem spec tree");
+        assert!(env.exists("speclink/specs"), "--tools {spec}: filesystem spec tree");
     }
 }
 
@@ -201,7 +201,7 @@ fn remote_init_explicit_both_tools_writes_section_without_a_spec_tree() {
     assert_eq!(remote.get("repo").and_then(|v| v.as_str()), Some("backend"));
     assert!(env.exists(".claude/skills/speclink-propose/SKILL.md"));
     assert!(env.exists(".agents/skills/speclink-propose/SKILL.md"));
-    assert!(!env.exists("openspec"), "remote 模式不建立本機規格樹");
+    assert!(!env.exists("speclink"), "remote 模式不建立本機規格樹");
 }
 
 // --- 範本的政策示例（spec Scenario「新專案初始化的範本內容」） ---
@@ -236,8 +236,8 @@ fn init_workflow_config_template_documents_every_policy_key() {
     let out = env.run(&["init", "--tools", "claude"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
 
-    let workflow = std::fs::read_to_string(env.dir.join("openspec").join("config.yaml"))
-        .expect("openspec/config.yaml exists");
+    let workflow = std::fs::read_to_string(env.dir.join("speclink").join("config.yaml"))
+        .expect("speclink/config.yaml exists");
     for key in POLICY_KEYS {
         assert!(documents_key(&workflow, key), "範本示範政策鍵 {key}:\n{workflow}");
     }
@@ -245,7 +245,7 @@ fn init_workflow_config_template_documents_every_policy_key() {
         assert!(workflow.contains(name), "範本的覆寫提示列出 {name}:\n{workflow}");
     }
 
-    // 政策的正典歸屬只有 openspec/config.yaml 一處：.speclink.yaml 不得把任何
+    // 政策的正典歸屬只有 speclink/config.yaml 一處：.speclink.yaml 不得把任何
     // 政策鍵寫成鍵（含註解示例）。與上方同一把行首比對，措辭撞字不誤紅。
     let app = std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect(".speclink.yaml exists");
     for key in POLICY_KEYS {

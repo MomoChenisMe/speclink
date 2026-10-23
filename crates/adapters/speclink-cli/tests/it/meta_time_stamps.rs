@@ -17,11 +17,11 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("specs")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("specs")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let change = dir.join("openspec").join("changes").join(name);
+        let change = dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), meta).unwrap();
+        std::fs::write(change.join(".meta.yaml"), meta).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [ ] 1.1 Do the thing\n").unwrap();
         TempProject { dir }
@@ -116,7 +116,7 @@ fn new_change_writes_created_as_an_rfc3339_stamp() {
     let out = p.run(&["new", "change", "fresh"]);
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     let meta = std::fs::read_to_string(
-        p.dir.join("openspec").join("changes").join("fresh").join(".openspec.yaml"),
+        p.dir.join("speclink").join("changes").join("fresh").join(".meta.yaml"),
     )
     .unwrap();
     let created = meta.lines().find_map(|l| l.strip_prefix("created: ")).expect("created line");

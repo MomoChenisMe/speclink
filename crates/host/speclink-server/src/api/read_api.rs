@@ -10,7 +10,7 @@ use axum::http::header::ETAG;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde::{Deserialize, Serialize};
-use speclink_core::model::ChangeMeta;
+use speclink_core::model::{ChangeMeta, META_READ_ORDER};
 use speclink_protocol::binding::ScopeRef;
 use speclink_protocol::query::{
     ArchivedItem, ArchivedListResponse, ProjectScope, ScopesResponse, SearchHit, SearchResponse,
@@ -262,9 +262,11 @@ fn archived_item(documents: &BTreeMap<DocumentId, String>, dated_name: String) -
             let (total, done, _) = speclink_core::tasks::progress(&parsed);
             (total, done)
         });
-    let meta = documents.get(&DocumentId::ArchivedChange {
-        change: dated_name.clone(),
-        doc: ".openspec.yaml".to_string(),
+    let meta = META_READ_ORDER.into_iter().find_map(|doc| {
+        documents.get(&DocumentId::ArchivedChange {
+            change: dated_name.clone(),
+            doc: doc.to_string(),
+        })
     });
     let parsed_meta = ChangeMeta::from_text(meta.map(String::as_str)).unwrap_or_default();
     let from_discussions = parsed_meta.from_discussions();

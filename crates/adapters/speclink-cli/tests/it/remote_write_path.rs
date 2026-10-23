@@ -204,7 +204,7 @@ fn new_change_posts_with_repo_header_and_name() {
     assert_eq!(body["name"], "demo");
     assert_eq!(body["agent"], "claude");
     // No local spec tree appears — the change lives on the server.
-    assert!(!p.dir.join("openspec").exists(), "no local openspec/ tree in remote mode");
+    assert!(!p.dir.join("speclink").exists(), "no local speclink/ tree in remote mode");
 }
 
 #[test]
@@ -808,7 +808,7 @@ fn in_progress_add_posts_to_the_server_and_stays_silent() {
     assert_eq!(stdout_of(&out), "", "unknown names stay silent");
     assert_eq!(stderr_of(&out), "");
     mock.find("POST", "/changes/no-such/in-progress");
-    assert!(!p.dir.join("openspec").exists(), "no local store is created or read");
+    assert!(!p.dir.join("speclink").exists(), "no local store is created or read");
 }
 
 #[test]
@@ -830,7 +830,7 @@ fn in_progress_remove_deletes_on_the_server_with_fs_parity_output() {
     );
     let cap = mock.find("DELETE", "/changes/demo/in-progress");
     assert_eq!(cap.header("x-speclink-repo"), Some("backend"));
-    assert!(!p.dir.join("openspec").exists(), "no local store is created or read");
+    assert!(!p.dir.join("speclink").exists(), "no local store is created or read");
 }
 
 #[test]
@@ -874,9 +874,9 @@ fn in_progress_add_fs_output_stays_frozen() {
     let dir = std::env::temp_dir()
         .join(format!("speclink-cli-remote-write-inprog-fs-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    std::fs::create_dir_all(dir.join("openspec/changes/demo")).unwrap();
+    std::fs::create_dir_all(dir.join("speclink/changes/demo")).unwrap();
     std::fs::write(
-        dir.join("openspec/changes/demo/.openspec.yaml"),
+        dir.join("speclink/changes/demo/.meta.yaml"),
         "schema: spec-driven\n",
     )
     .unwrap();
@@ -891,7 +891,7 @@ fn in_progress_add_fs_output_stays_frozen() {
     assert_eq!(stdout_of(&out), "", "fs mode stays byte-identically silent");
     assert_eq!(stderr_of(&out), "");
     let meta =
-        std::fs::read_to_string(dir.join("openspec/changes/demo/.openspec.yaml")).unwrap();
+        std::fs::read_to_string(dir.join("speclink/changes/demo/.meta.yaml")).unwrap();
     assert!(meta.contains("started_at: "), "the fs marker still lands: {meta}");
     let _ = std::fs::remove_dir_all(&dir);
 }
@@ -908,7 +908,7 @@ fn demo_in_remote_mode_refuses_and_creates_nothing() {
         "stderr explains the local-only verb: {stderr}"
     );
     assert_eq!(stdout_of(&out), "", "no success output");
-    assert!(!p.dir.join("openspec").exists(), "no local demo change is created");
+    assert!(!p.dir.join("speclink").exists(), "no local demo change is created");
     assert!(
         mock.captured.lock().unwrap().is_empty(),
         "no request reaches the server: {:?}",

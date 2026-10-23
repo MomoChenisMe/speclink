@@ -579,7 +579,7 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
                         gaps.push(make_finding(
                             "GAP", n, "Gaps", Severity::Warning, loc,
                             &format!("MODIFIED requirements reference capability '{cap}' but no main spec found"),
-                            &format!("Check if openspec/specs/{cap}/spec.md exists"),
+                            &format!("Check if {}/specs/{cap}/spec.md exists", store.spec_dir_display()),
                             "gapNoMainSpec", [("spec", cap)],
                         ));
                     }
@@ -592,7 +592,11 @@ pub fn analyze(store: &dyn Store, change: &Change, schema: &Schema) -> AnalyzeRe
                         let mut f = make_finding(
                             "GAP", n, "Gaps", Severity::Warning, loc,
                             &format!("MODIFIED requirement '{}' not found in main spec", req.name),
-                            &format!("Verify requirement '{}' exists in openspec/specs/{cap}/spec.md", req.name),
+                            &format!(
+                                "Verify requirement '{}' exists in {}/specs/{cap}/spec.md",
+                                req.name,
+                                store.spec_dir_display()
+                            ),
                             "gapModifiedNotFound", [("name", req.name.as_str())],
                         );
                         f.recommendation_msg

@@ -37,9 +37,9 @@ impl TempProject {
 
     /// 一份結構完備、任務全勾的 change。
     fn add_change(&self, name: &str, capability: &str) {
-        let change = self.dir.join("openspec").join("changes").join(name);
+        let change = self.dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(change.join("specs").join(capability)).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
         std::fs::write(change.join("specs").join(capability).join("spec.md"), DELTA_SPEC).unwrap();
@@ -56,12 +56,12 @@ impl TempProject {
     }
 
     fn change_dir(&self, name: &str) -> PathBuf {
-        self.dir.join("openspec").join("changes").join(name)
+        self.dir.join("speclink").join("changes").join(name)
     }
 
     fn canonical_spec(&self, capability: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("specs").join(capability).join("spec.md"),
+            self.dir.join("speclink").join("specs").join(capability).join("spec.md"),
         )
         .unwrap()
     }
@@ -158,7 +158,7 @@ fn a_recorded_change_archives_and_the_canon_gets_a_two_field_trace() {
     assert!(!canon.contains("code:"), "no file list in the canon: {canon}");
     assert!(!canon.contains("src/a.rs"), "no file list in the canon: {canon}");
 
-    let archived = std::fs::read_dir(p.dir.join("openspec").join("changes").join("archive"))
+    let archived = std::fs::read_dir(p.dir.join("speclink").join("changes").join("archive"))
         .expect("archive dir")
         .filter_map(|e| e.ok())
         .find(|e| e.file_name().to_string_lossy().ends_with("-demo"))

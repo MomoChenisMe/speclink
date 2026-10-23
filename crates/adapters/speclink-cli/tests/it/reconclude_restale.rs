@@ -17,9 +17,9 @@ impl TempProject {
         let dir =
             std::env::temp_dir().join(format!("speclink-cli-restale-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let discussions = dir.join("openspec").join("discussions");
+        let discussions = dir.join("speclink").join("discussions");
         std::fs::create_dir_all(&discussions).unwrap();
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
         let doc = format!(
             "---\ntopic: {slug}\nslug: {slug}\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\
              # Discussion: {slug}\n\n## Context\n\nFixture.\n\n## Rounds\n\n\
@@ -69,7 +69,7 @@ impl TempProject {
 
     fn change_meta(&self, change: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("changes").join(change).join(".openspec.yaml"),
+            self.dir.join("speclink").join("changes").join(change).join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -176,9 +176,9 @@ fn conclude_before_seal_flags_nothing() {
     // re-conclude, and the --json payload omits restaleFlagged (parity-preserving).
     let dir = std::env::temp_dir().join(format!("speclink-cli-restale-preseal-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
-    let discussions = dir.join("openspec").join("discussions");
+    let discussions = dir.join("speclink").join("discussions");
     std::fs::create_dir_all(&discussions).unwrap();
-    std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+    std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
     std::fs::write(
         discussions.join("alpha.md"),
         "---\ntopic: alpha\nslug: alpha\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\

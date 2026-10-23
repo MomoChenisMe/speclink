@@ -85,7 +85,7 @@ speclink init --tools claude,codex
 **預期輸出**：
 
 ```text
-✓ Initialized at /path/to/your-repo/openspec
+✓ Initialized at /path/to/your-repo/speclink
 Generated files for: claude, codex
 ```
 
@@ -93,16 +93,16 @@ Generated files for: claude, codex
 
 這一步會：
 
-- 建立 `openspec/` 與 `.speclink.yaml`。
+- 建立 `speclink/` 與 `.speclink.yaml`。
 - 產生所選工具的技能檔：Claude 在 `.claude/skills/`，Codex 在 `.agents/skills/`，GitHub Copilot 在 `.github/skills/`。
 - 把 `.speclink/`（本機工作資料）加進 `.gitignore`。
 
 它不會改你的 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。Agent 靠技能檔自己的說明判斷什麼時候用哪個技能。
 
-`openspec/` 的目錄結構：
+`speclink/` 的目錄結構：
 
 ```text
-openspec/
+speclink/
 ├── config.yaml                  工作流設定
 ├── specs/<capability>/spec.md   正式規格，一個 capability 一份
 ├── changes/<名稱>/               進行中的變更
@@ -110,7 +110,7 @@ openspec/
 └── discussions/                 討論記錄（Speclink 新增）
 ```
 
-全部是純 Markdown 與 YAML。不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多兩樣東西：`discussions/`，以及每個變更目錄裡的 `.openspec.yaml`（記錄開工時間、來源討論等生命週期資料）。
+全部是純 Markdown 與 YAML。不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多兩樣東西：`discussions/`，以及每個變更目錄裡的 `.meta.yaml`（記錄開工時間、來源討論等生命週期資料）。
 
 這一點只適用 Local 模式。接上遠端 server 之後，正式規格在 Store 裡，本機只有唯讀的投影（`.speclink/context/`）。
 
@@ -190,7 +190,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ```text
 ✓ Created change: add-csv-export
-  Path: /path/to/your-repo/openspec/changes/add-csv-export
+  Path: /path/to/your-repo/speclink/changes/add-csv-export
   Schema: spec-driven
 ```
 
@@ -291,7 +291,7 @@ Specs applied: csv-export (added: 1, modified: 0, removed: 0, renamed: 0)
 Snapshot created for unarchive support.
 ```
 
-封存會把 delta 規格合併進正式規格，並把變更移到 `openspec/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，`openspec/specs/csv-export/` 出現。這就是這一輪的成果。
+封存會把 delta 規格合併進正式規格，並把變更移到 `speclink/changes/archive/`。之後 `speclink list` 回到 `No active changes.`，`speclink/specs/csv-export/` 出現。這就是這一輪的成果。
 
 在桌面 app 的「規格」頁可以看到合併後的正式規格，每項能力一列；點一列開啟它的詳情頁，看得到需求與情境。
 
@@ -303,15 +303,34 @@ Snapshot created for unarchive support.
 
 | 路徑 | 內容 |
 | --- | --- |
-| `openspec/specs/<capability>/spec.md` | 正式規格：系統現在的行為 |
-| `openspec/changes/<名稱>/` | 進行中的變更與它的文件 |
-| `openspec/changes/archive/` | 已封存的變更 |
-| `openspec/discussions/` | 討論記錄（需要做決定時才有） |
-| `openspec/config.yaml` | 工作流設定：語言、專案說明、產出規則、TDD、audit、worktree |
+| `speclink/specs/<capability>/spec.md` | 正式規格：系統現在的行為 |
+| `speclink/changes/<名稱>/` | 進行中的變更與它的文件 |
+| `speclink/changes/archive/` | 已封存的變更 |
+| `speclink/discussions/` | 討論記錄（需要做決定時才有） |
+| `speclink/config.yaml` | 工作流設定：語言、專案說明、產出規則、TDD、audit、worktree |
 | `.speclink.yaml` | 這個 checkout 的工具與遠端綁定 |
 | `.speclink/` | 本機工作資料（不進 Git） |
 
 設定的細節見[設定說明](configuration.zh-TW.md)。
+
+## <a id="upgrade"></a>舊專案升級與 OpenSpec 匯入
+
+**舊版 Speclink 建立的專案**把規格放在 `openspec/`。升級 Speclink 之後，在專案根執行：
+
+```bash
+speclink update
+```
+
+`update` 會把 `openspec/` 搬到 `speclink/`，再把每個變更（進行中與已封存）的 `.openspec.yaml` 改名為 `.meta.yaml`，檔案內容不變。它不會幫你 commit：搬完請自己 commit，`speclink/` 是新增、`openspec/` 是刪除。團隊成員要先升級 Speclink 再 pull 這個 commit，舊版看不到新的資料夾，會以為專案是空的。你自己的腳本、CI 設定與 `.gitignore` 裡寫到 `openspec/` 的地方，也要自己改。
+
+遇到下面兩種情況，`update` 會暫緩搬移並說明原因，技能檔照常更新：
+
+- 還有其他 worktree：每個 worktree 都有自己的一份 `openspec/`。先合併或移除它們再執行。在 linked worktree 裡執行時，請回主目錄執行。
+- `openspec/` 有未提交的修改（包含還沒追蹤的新檔）：先 commit 再執行。
+
+不搬也能照常使用：Speclink 會繼續讀 `openspec/`，每次執行時在 stderr 印一行提醒。`.speclink.yaml` 寫明 `spec_dir` 的專案不會自動搬移。
+
+**OpenSpec 專案**：在專案根執行 `speclink init`（加上需要的 `--tools`）。Speclink 會把 `openspec/` 搬到 `speclink/`，保留原本的 `config.yaml`、`schemas/`、正式規格與變更，再補上 `.speclink.yaml`、`.gitignore` 設定與技能檔。有其他 worktree 或 `openspec/` 有未提交的修改時，`init` 會拒絕，不寫任何檔案。匯入是單向的：之後 OpenSpec CLI 讀不到這個專案。OpenSpec 自己裝的技能與指令檔不會被搬動或刪除，不再使用的話請自己刪。
 
 ## <a id="next"></a>接下來
 

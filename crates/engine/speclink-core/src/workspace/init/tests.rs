@@ -364,6 +364,19 @@ fn adopt_backfills_missing_skeleton() {
     assert_eq!(root.read("openspec/config.yaml"), WORKFLOW_CONFIG_TEMPLATE);
 }
 
+/// adopt 依實際的規格資料夾補骨架：只有 `speclink/` 的專案不得另建 `openspec/`。
+#[test]
+fn adopt_fills_the_folder_the_project_actually_uses() {
+    let root = TempRoot::new("adopt-speclink-only");
+    root.write("speclink/changes/add-auth/proposal.md", "## Why\n既有變更。\n");
+
+    adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
+
+    assert!(root.at("speclink/specs").is_dir());
+    assert!(root.at("speclink/config.yaml").is_file());
+    assert!(!root.at("openspec").exists(), "no second spec folder");
+}
+
 /// Spec Scenario「工作資料夾納入版控忽略」：.gitignore 缺席時建立並涵蓋 `.speclink/`。
 #[test]
 fn adopt_creates_gitignore_covering_the_work_dir() {
@@ -1339,9 +1352,10 @@ fn the_gate_applies_to_codex_and_custom_descriptors_alike() {
     // 需求句「此過濾對 claude、codex 與自訂描述子工具一視同仁」。
     let root = TempRoot::new("gate-all-targets");
     init(&root.dir, &[Tool::Claude, Tool::Codex], true, "openspec").unwrap();
+    // init 以非預設資料夾初始化時會寫明 spec_dir；改寫時保留它，免得變成待遷移的舊佈局。
     root.write(
         ".speclink.yaml",
-        &format!("tools:\n  - claude\n  - codex\n{CUSTOM_DESCRIPTOR}"),
+        &format!("spec_dir: openspec\ntools:\n  - claude\n  - codex\n{CUSTOM_DESCRIPTOR}"),
     );
 
     update(&root.dir, false).unwrap();

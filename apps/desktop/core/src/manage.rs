@@ -401,7 +401,7 @@ mod tests {
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("proposal.md"), "## Why\ntest\n").unwrap();
         fs::write(
-            dir.join(".openspec.yaml"),
+            dir.join(".meta.yaml"),
             "schema: spec-driven\ncreated: 2026-07-05\ncreated_by: momo\ncreated_with: claude\n",
         )
         .unwrap();
@@ -463,7 +463,7 @@ mod tests {
         let wt = fx.attach_worktree("add-auth");
         fs::write(
             wt.change_dir("add-auth")
-                .join(".openspec.yaml"),
+                .join(".meta.yaml"),
             "schema: spec-driven\ncreated: 2026-07-05\nstarted_at: 2026-07-06\nstarted_by: Worker <w@example.com>\nstarted_with: claude\n",
         )
         .unwrap();
@@ -493,7 +493,7 @@ mod tests {
         fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
         revert_change_to_proposed_at(fx.root(), "demo").expect("zero-trace revert succeeds");
         let meta = fs::read_to_string(
-            fx.root().join("openspec/changes/demo/.openspec.yaml"),
+            fx.root().join("openspec/changes/demo/.meta.yaml"),
         )
         .unwrap();
         assert_eq!(
@@ -530,7 +530,7 @@ mod tests {
 
         let err = revert_change_to_proposed_at(fx.root(), "demo").expect_err("必須拒絕");
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
-        let meta = fs::read_to_string(fx.root().join("openspec/changes/demo/.openspec.yaml")).unwrap();
+        let meta = fs::read_to_string(fx.root().join("openspec/changes/demo/.meta.yaml")).unwrap();
         assert!(meta.contains("started_at"), "拒絕時開工戳記不得被移除: {meta}");
     }
 
@@ -559,7 +559,7 @@ mod tests {
         // remote bridge 走同一轉譯函式——形狀由這條斷言釘住。
         assert_eq!(err, revert_blocked_error(1, &["src/a.rs".to_string()]));
         let meta = fs::read_to_string(
-            fx.root().join("openspec/changes/demo/.openspec.yaml"),
+            fx.root().join("openspec/changes/demo/.meta.yaml"),
         )
         .unwrap();
         assert_eq!(meta, STARTED_META, "a refusal must not touch the meta");
@@ -624,7 +624,7 @@ mod tests {
         );
         fx.write("openspec/changes/cut/tasks.md", "- [ ] 1.1 open\n");
         fx.write("openspec/discussions/d1.md", PROMOTED_D1);
-        let meta_path = fx.root().join("openspec/changes/cut/.openspec.yaml");
+        let meta_path = fx.root().join("openspec/changes/cut/.meta.yaml");
         let meta_before = fs::read_to_string(&meta_path).unwrap();
 
         delete_change_at(fx.root(), "cut").expect_err("started change must refuse delete");
@@ -672,10 +672,10 @@ mod tests {
             "主 checkout 不留記錄"
         );
         // 首次完成的開工章同樣落在副本。
-        let wt_meta = fs::read_to_string(wt_change.join(".openspec.yaml")).unwrap();
+        let wt_meta = fs::read_to_string(wt_change.join(".meta.yaml")).unwrap();
         assert!(wt_meta.contains("started_at:"), "開工章須落在副本: {wt_meta}");
         assert!(
-            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.openspec.yaml"))
+            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.meta.yaml"))
                 .unwrap()
                 .contains("started_at:"),
             "主 checkout 的 metadata 不被寫入"
@@ -781,12 +781,12 @@ mod tests {
 
         let wt_meta = fs::read_to_string(
             wt.change_dir("add-auth")
-                .join(".openspec.yaml"),
+                .join(".meta.yaml"),
         )
         .unwrap();
         assert!(wt_meta.contains("board_rank:"), "rank 須寫入 worktree 副本: {wt_meta}");
         assert!(
-            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.openspec.yaml"))
+            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.meta.yaml"))
                 .unwrap()
                 .contains("board_rank:"),
             "主 checkout 的 metadata 不被寫入"
@@ -810,10 +810,10 @@ mod tests {
 
         let meta = |p: &std::path::Path| fs::read_to_string(p).unwrap();
         let main_meta =
-            |name: &str| meta(&fx.root().join(format!("openspec/changes/{name}/.openspec.yaml")));
+            |name: &str| meta(&fx.root().join(format!("openspec/changes/{name}/.meta.yaml")));
         let wt_meta = |name: &str| {
             meta(&wt.change_dir(name)
-                .join(".openspec.yaml"))
+                .join(".meta.yaml"))
         };
 
         assert!(wt_meta("add-auth").contains("board_rank:"), "被拖卡寫進 worktree 副本");
@@ -1272,7 +1272,7 @@ mod tests {
     }
 
     fn meta_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> String {
-        fs::read_to_string(change_file(fx, name, ".openspec.yaml")).unwrap()
+        fs::read_to_string(change_file(fx, name, ".meta.yaml")).unwrap()
     }
 
     /// 證據記錄的家：change 目錄的 `.evidence.json`（隨 change 提交與封存移動）。
@@ -1561,7 +1561,7 @@ mod tests {
         assert!(meta_of(&fx, "a").starts_with(META_UNSTARTED));
     }
 
-    /// `.openspec.yaml` 存在但解析失敗的固定樣本（與 core 測試同款）。
+    /// `.meta.yaml` 存在但解析失敗的固定樣本（與 core 測試同款）。
     const BAD_META: &str = ": : :\n\t bad yaml [unclosed\n";
 
     #[test]
@@ -1597,7 +1597,7 @@ mod tests {
         let err = reorder_card_at(fx.root(), "change", "broken", Some("a"), None)
             .expect_err("dragging the invalid card must be refused");
         assert!(
-            err.contains("openspec/changes/broken/.openspec.yaml"),
+            err.contains("openspec/changes/broken/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(meta_of(&fx, "broken"), BAD_META, "meta byte-identical");
@@ -1724,8 +1724,8 @@ mod tests {
         fx.add_change("a", META_UNSTARTED);
         fx.add_change("b", META_UNSTARTED);
         let wt = fx.attach_worktree("a");
-        fx.write("openspec/changes/b/.openspec.yaml", &format!("{META_UNSTARTED}depends_on: a\n"));
-        let a_wt = wt.change_dir("a").join(".openspec.yaml");
+        fx.write("openspec/changes/b/.meta.yaml", &format!("{META_UNSTARTED}depends_on: a\n"));
+        let a_wt = wt.change_dir("a").join(".meta.yaml");
         let a_before = fs::read_to_string(&a_wt).unwrap();
 
         let err = set_depends_at(fx.root(), "a", &on(&["b"]), false).expect_err("cycle on the board view");

@@ -371,7 +371,7 @@ fn render_plan(plan: &core::command::PlanReport, json: bool) -> Result<()> {
                 "  {} {} {}",
                 color::cyan("•"),
                 s.change,
-                color::red("(invalid .openspec.yaml)")
+                color::red("(invalid .meta.yaml)")
             );
         }
     }

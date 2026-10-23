@@ -7,7 +7,16 @@ use crate::store::Store;
 use serde::Deserialize;
 use std::path::PathBuf;
 
-/// `.openspec.yaml` — per-change metadata. 建構要經過時間欄位收斂：文字走
+/// The per-change data file inside every change directory, active or archived.
+pub const META_FILE: &str = ".meta.yaml";
+/// The data file's name before the rename — read only when [`META_FILE`] is
+/// absent, never written.
+pub const LEGACY_META_FILE: &str = ".openspec.yaml";
+/// The order every reader tries the data file's names in. Remote data is never
+/// re-keyed, so archives written before the rename are reached the same way.
+pub const META_READ_ORDER: [&str; 2] = [META_FILE, LEGACY_META_FILE];
+
+/// `.meta.yaml` — per-change metadata. 建構要經過時間欄位收斂：文字走
 /// [`ChangeMeta::from_text`]、已結構化的欄位走 [`ChangeMeta::from_fields`]。
 /// `#[non_exhaustive]` 讓 core 以外的字面值建構編譯不過；`Default` 只當讀檔失敗時
 /// 的空白後備，不在它上面逐欄填值。
@@ -217,7 +226,12 @@ fn comma_list(value: Option<&str>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// A change's `.openspec.yaml` exists but cannot be parsed. Fail-closed
+/// Workspace-relative display path of `change`'s data file `file` under `spec_dir`.
+pub fn change_meta_file(spec_dir: &str, change: &str, file: &str) -> String {
+    format!("{spec_dir}/changes/{change}/{file}")
+}
+
+/// A change's `.meta.yaml` exists but cannot be parsed. Fail-closed
 /// (design 決策二): every flow that reads or writes the change's metadata
 /// semantics refuses with this error instead of proceeding on defaults.
 /// Display mirrors [`crate::config::ConfigError`] (`invalid <path>: <reason>`);
@@ -225,20 +239,26 @@ fn comma_list(value: Option<&str>) -> Vec<String> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetaError {
     pub change: String,
+    /// Workspace-relative display path of the broken metadata document.
+    pub file: String,
     /// Parse-failure reason as reported by the YAML parser.
     pub reason: String,
 }
 
 impl MetaError {
-    /// Workspace-relative display path of the broken metadata document.
-    pub fn file(&self) -> String {
-        format!("openspec/changes/{}/.openspec.yaml", self.change)
+    /// The error for `change`'s data file in `store`.
+    pub fn new(store: &dyn Store, change: &str, reason: String) -> MetaError {
+        MetaError {
+            change: change.to_string(),
+            file: store.change_meta_display(change),
+            reason,
+        }
     }
 }
 
 impl std::fmt::Display for MetaError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "invalid {}: {}", self.file(), self.reason)
+        write!(f, "invalid {}: {}", self.file, self.reason)
     }
 }
 
@@ -246,12 +266,9 @@ impl std::error::Error for MetaError {}
 
 /// The fail-closed gate shared by every flow that holds a resolved [`Change`]:
 /// corrupt metadata refuses with [`MetaError`], valid or absent metadata passes.
-pub fn require_valid_meta(change: &Change) -> Result<(), MetaError> {
+pub fn require_valid_meta(store: &dyn Store, change: &Change) -> Result<(), MetaError> {
     match &change.meta_error {
-        Some(reason) => Err(MetaError {
-            change: change.name.clone(),
-            reason: reason.clone(),
-        }),
+        Some(reason) => Err(MetaError::new(store, &change.name, reason.clone())),
         None => Ok(()),
     }
 }
@@ -260,11 +277,12 @@ pub fn require_valid_meta(change: &Change) -> Result<(), MetaError> {
 /// metadata document (text surgery paths): existing-but-unparsable text refuses
 /// with [`MetaError`]; missing text keeps its default semantics and passes. The
 /// parsed metadata comes back for callers that also read it.
-pub fn check_meta_text(change: &str, text: Option<&str>) -> Result<ChangeMeta, MetaError> {
-    ChangeMeta::from_text(text).map_err(|reason| MetaError {
-        change: change.to_string(),
-        reason,
-    })
+pub fn check_meta_text(
+    store: &dyn Store,
+    change: &str,
+    text: Option<&str>,
+) -> Result<ChangeMeta, MetaError> {
+    ChangeMeta::from_text(text).map_err(|reason| MetaError::new(store, change, reason))
 }
 
 /// A discovered change.
@@ -275,7 +293,7 @@ pub struct Change {
     /// human output; content access goes through the [`Store`]).
     pub dir: PathBuf,
     pub meta: ChangeMeta,
-    /// Parse-failure reason when `.openspec.yaml` exists but is corrupt — the
+    /// Parse-failure reason when `.meta.yaml` exists but is corrupt — the
     /// change is listed with default `meta` for display, and every verb that
     /// needs metadata semantics must refuse (fail-closed). `None` = valid or
     /// absent metadata.
@@ -364,7 +382,7 @@ pub fn edit_meta<T>(
     let Some(meta) = store.read_change_meta(name) else {
         return Ok(None);
     };
-    check_meta_text(name, Some(&meta))?;
+    check_meta_text(store, name, Some(&meta))?;
     let mut lines = KeyLines::whole(&meta);
     let out = edit(&mut lines)?;
     let edited = lines.text();
@@ -773,7 +791,7 @@ mod tests {
         let store = TestStore::with_meta("demo", BAD);
         let err = super::set_board_rank(&store, "demo", "n").unwrap_err();
         assert!(
-            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            err.to_string().contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(store.meta("demo"), BAD, "meta byte-identical");

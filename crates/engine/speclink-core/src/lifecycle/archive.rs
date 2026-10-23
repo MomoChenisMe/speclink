@@ -650,7 +650,7 @@ pub fn archive(
 
     // Fail-closed gate: archiving stamps and moves the metadata document —
     // refuse a corrupt one before any validation or file effect.
-    crate::model::require_valid_meta(change)?;
+    crate::model::require_valid_meta(store, change)?;
 
     guard_open_tickets(store, &change.name, opts.carry_review, opts.carry_verify)?;
 

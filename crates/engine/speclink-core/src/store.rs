@@ -40,6 +40,19 @@ pub struct DiscussionDoc {
 /// They are domain vocabulary (every schema names its artifacts this way),
 /// not storage layout.
 pub trait Store {
+    /// Workspace-relative name of the spec directory, for the paths messages
+    /// render (`<spec dir>/changes/<name>/.meta.yaml`). Backends without a
+    /// local spec directory keep the default folder name.
+    fn spec_dir_display(&self) -> String {
+        crate::workspace::DEFAULT_SPEC_DIR.to_string()
+    }
+    /// Workspace-relative display path of a change's data file, as messages
+    /// render it. Backends that still read a legacy name override this so a
+    /// message names the file that is actually there.
+    fn change_meta_display(&self, name: &str) -> String {
+        crate::model::change_meta_file(&self.spec_dir_display(), name, crate::model::META_FILE)
+    }
+
     // --- changes ---
 
     /// Active changes with parsed metadata, sorted by name. Missing storage

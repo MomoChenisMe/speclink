@@ -1,4 +1,4 @@
-//! Configuration: `.speclink.yaml` (app) and `openspec/config.yaml` (workflow).
+//! Configuration: `.speclink.yaml` (app) and `<spec dir>/config.yaml` (workflow).
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 /// path and the parser's reason so every entry point names the exact file.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConfigError {
-    /// Workspace-relative display path (".speclink.yaml" / "openspec/config.yaml").
+    /// Workspace-relative display path (".speclink.yaml" / "speclink/config.yaml").
     pub file: String,
     /// Parse-failure reason as reported by the YAML parser.
     pub reason: String,
@@ -562,16 +562,33 @@ pub fn resolve_spec_locale(wf: &WorkflowConfig) -> Option<String> {
     spec_locale_code(&EnvOverrides::default(), wf)
 }
 
+/// The workflow config's display path where no spec directory is known — the
+/// remote shape, and the label the pure text functions use.
+fn default_config_label() -> String {
+    format!("{}/config.yaml", crate::workspace::DEFAULT_SPEC_DIR)
+}
+
 impl WorkflowConfig {
     /// Parse the raw workflow-config document (as handed over by the Store).
     /// A missing (or empty/null) document yields the defaults; a document that
     /// exists but cannot parse → `ConfigError` (fail-closed, never defaults).
     /// Tolerance for successfully parsing documents is unchanged.
+    /// Errors name the document under the default spec directory — the remote
+    /// shape; local callers go through [`WorkflowConfig::from_store`].
     pub fn from_text(text: Option<&str>) -> Result<WorkflowConfig, ConfigError> {
         match text {
-            Some(s) => parse_config(s, "openspec/config.yaml"),
+            Some(s) => parse_config(s, &default_config_label()),
             None => Ok(WorkflowConfig::default()),
         }
+    }
+
+    /// Parse the store's workflow-config document; a parse error names it under
+    /// the store's own spec directory.
+    pub fn from_store(store: &dyn crate::store::Store) -> Result<WorkflowConfig, ConfigError> {
+        WorkflowConfig::from_text(store.read_workflow_config().as_deref()).map_err(|e| ConfigError {
+            file: format!("{}/config.yaml", store.spec_dir_display()),
+            ..e
+        })
     }
 
     pub fn schema_name(&self) -> String {
@@ -686,7 +703,7 @@ pub fn update_workflow_config_text(
         "{}" | "null" | "~" => "",
         _ => original,
     };
-    let parsed = parse_yaml_mapping(base, "openspec/config.yaml")?;
+    let parsed = parse_yaml_mapping(base, &default_config_label())?;
 
     // rules 與 review 的滌洗結果由手術（序列化區塊）與目標狀態（驗證基準）共用。
     let rules_value = rules.map(|sections| {
@@ -762,7 +779,7 @@ pub fn set_workflow_schema_text(original: Option<&str>, name: &str) -> anyhow::R
         None | Some("" | "{}" | "null" | "~") => return Ok(format!("schema: {name}\n")),
         Some(_) => original.unwrap(),
     };
-    let mut target = parse_yaml_mapping(base, "openspec/config.yaml")?;
+    let mut target = parse_yaml_mapping(base, &default_config_label())?;
     target.insert("schema".into(), name.into());
 
     let lines: Vec<&str> = base.split_inclusive('\n').collect();
@@ -801,12 +818,12 @@ pub fn set_workflow_schema_text(original: Option<&str>, name: &str) -> anyhow::R
 /// that no longer parses — refuses the write with a single-line error, so a
 /// text-surgery bug can never reach the user's file.
 fn verify_rewritten_config(output: &str, target: &serde_yaml::Mapping) -> anyhow::Result<()> {
-    let reparsed = parse_yaml_mapping(output, "openspec/config.yaml").map_err(|e| {
+    let reparsed = parse_yaml_mapping(output, &default_config_label()).map_err(|e| {
         anyhow::anyhow!("internal rewrite verification failed: rewritten config does not parse ({e})")
     })?;
     if &reparsed != target {
         anyhow::bail!(
-            "internal rewrite verification failed: rewritten openspec/config.yaml does not match the intended state"
+            "internal rewrite verification failed: rewritten config.yaml does not match the intended state"
         );
     }
     Ok(())

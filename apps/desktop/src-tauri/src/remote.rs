@@ -462,7 +462,7 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     let mut documents = BTreeMap::<ImportDocumentId, String>::new();
 
     for change in store.list_changes() {
-        require_valid_meta(&change).map_err(|error| error.to_string())?;
+        require_valid_meta(store, &change).map_err(|error| error.to_string())?;
         let meta = store.read_change_meta(&change.name).unwrap_or_default();
         insert_import_document(
             &mut documents,
@@ -975,6 +975,11 @@ pub(crate) fn reorder_full_text(
             {
                 let broken = speclink_core::model::MetaError {
                     change: id.to_string(),
+                    file: speclink_core::model::change_meta_file(
+                        speclink_core::workspace::DEFAULT_SPEC_DIR,
+                        id,
+                        speclink_core::model::META_FILE,
+                    ),
                     reason: skipped.reason.clone(),
                 };
                 return Err(RemoteError {
@@ -2364,7 +2369,7 @@ mod board_reorder_tests {
     #[test]
     fn dragging_a_skipped_card_is_refused_with_the_local_line_and_no_put() {
         // 被拖卡本身被 plan 略過（壞 meta）：寫進 rank 也會被顯示序排回欄尾，與本地寫壞 meta
-        // 被拒同構——回同一句 `invalid …/.openspec.yaml: <原因>`，不發 PUT。
+        // 被拒同構——回同一句 `invalid …/.meta.yaml: <原因>`，不發 PUT。
         let mut snap = snapshot(
             vec![change("add-a", 0, 4), change("add-x", 0, 4)],
             vec![],
@@ -2376,7 +2381,7 @@ mod board_reorder_tests {
         snap.plan = Some(skipping);
         let io = FakeIo::new(vec![snap], vec![true]);
         let error = io.run("change", "add-x", None, Some("add-a")).expect_err("a skipped card cannot move");
-        assert_eq!(error.message, "invalid openspec/changes/add-x/.openspec.yaml: bad yaml");
+        assert_eq!(error.message, "invalid speclink/changes/add-x/.meta.yaml: bad yaml");
         assert_eq!(error.reason.as_deref(), Some("invalid_config"));
         assert!(io.puts.borrow().is_empty(), "a refused move sends no PUT");
     }

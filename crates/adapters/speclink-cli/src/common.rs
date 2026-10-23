@@ -1,6 +1,6 @@
 //! Cross-family plumbing: the pieces two or more verb families share, plus
 //! the dispatch-level preamble main.rs runs before any family is entered
-//! (warn_leftover_remote_file).
+//! (warn_leftover_remote_file, warn_spec_layout).
 //!
 //! Admission rule (design D3): a symbol lands here when two or more families
 //! use it, or when dispatch itself does. Single-family helpers stay private
@@ -27,6 +27,35 @@ pub(crate) fn warn_leftover_remote_file() {
     eprintln!(
         "speclink: warning: .speclink.remote.yaml is no longer read and does not affect the store mode — move its url/repo into the `remote:` section of .speclink.yaml and delete the old file"
     );
+}
+
+/// Layout signal for a project whose spec directory is not settled yet: one
+/// fixed-prefix stderr line per invocation (spec-dir-migration D3). An explicit
+/// `spec_dir`, the default layout and remote mode stay silent; `init` and
+/// `update` skip it because they act on the layout themselves. stdout and exit
+/// codes stay untouched.
+pub(crate) fn warn_spec_layout() {
+    use core::workspace::SpecLayout;
+    let Ok(Some(ws)) = Workspace::discover_cwd() else {
+        return;
+    };
+    let remote = core::config::AppConfig::load(&ws.app_config()).map(|c| c.remote.is_some());
+    if remote.unwrap_or(true) {
+        return;
+    }
+    let line = match ws.spec_layout() {
+        SpecLayout::Legacy => {
+            "this project keeps its specs in openspec/ — run `speclink update` to move them to speclink/"
+        }
+        SpecLayout::OpenSpec => {
+            "openspec/ is an OpenSpec project — run `speclink init` to import it into speclink/"
+        }
+        SpecLayout::Both => {
+            "openspec/ is not read because speclink/ exists — an older speclink may have created it; upgrade speclink, then move its contents into speclink/"
+        }
+        SpecLayout::Explicit | SpecLayout::Default => return,
+    };
+    eprintln!("speclink: warning: {line}");
 }
 
 /// Route a command through the engine runtime and convert the outcome into

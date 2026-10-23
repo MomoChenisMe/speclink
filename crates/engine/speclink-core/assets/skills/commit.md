@@ -79,8 +79,8 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    ## Commit Plan: <change-name>
 
    ### Change Artifacts
-   - M  openspec/changes/<name>/proposal.md
-   - M  openspec/changes/<name>/tasks.md
+   - M  {{SPEC_DIR}}changes/<name>/proposal.md
+   - M  {{SPEC_DIR}}changes/<name>/tasks.md
 
    ### Source Files
    **Task 1: <task description>**
@@ -195,20 +195,20 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     ## Updated Commit Plan: <change-name> (with archive)
 
     ### Change Artifacts (archived)
-    - D  openspec/changes/<name>/proposal.md
-    - D  openspec/changes/<name>/tasks.md
+    - D  {{SPEC_DIR}}changes/<name>/proposal.md
+    - D  {{SPEC_DIR}}changes/<name>/tasks.md
     - ...
 
     ### Archived Files
-    - A  openspec/changes/archive/<name>/proposal.md
-    - A  openspec/changes/archive/<name>/tasks.md
+    - A  {{SPEC_DIR}}changes/archive/<name>/proposal.md
+    - A  {{SPEC_DIR}}changes/archive/<name>/tasks.md
     - ...
 
     ### Source Files
     (same as before)
 
     ### Main Spec Updates (from archive's delta application)
-    - M  openspec/specs/<spec-name>/spec.md
+    - M  {{SPEC_DIR}}specs/<spec-name>/spec.md
     - ...
 
     ### Commit Message

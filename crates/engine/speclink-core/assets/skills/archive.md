@@ -234,7 +234,7 @@ Check these before you show the summary:
 - [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
 - [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
 - [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
-- [ ] `.openspec.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
+- [ ] `.meta.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
 
 
 ## RENAMED is actually executed (speclink-specific)

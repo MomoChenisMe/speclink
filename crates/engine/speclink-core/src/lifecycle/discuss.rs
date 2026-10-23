@@ -955,7 +955,7 @@ pub fn promote(
     // exists" on a half-built change).
     let linked = promoted_text(store, slug, &change_name, last)?;
     let schema =
-        crate::config::WorkflowConfig::from_text(store.read_workflow_config().as_deref())?
+        crate::config::WorkflowConfig::from_store(store)?
             .schema_name();
     let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), actor)?;
     // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
@@ -1026,9 +1026,7 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<(
     };
     // Fail-closed gate: a corrupt document must report itself, not a missing
     // from_discussion chain.
-    let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-        crate::model::MetaError { change: change.to_string(), reason }
-    })?;
+    let parsed = crate::model::check_meta_text(store, change, Some(&meta))?;
     if !parsed
         .from_discussions()
         .iter()

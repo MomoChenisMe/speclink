@@ -352,7 +352,7 @@ mod tests {
         assert_eq!(v["change"], "alpha-search");
 
         let meta = std::fs::read_to_string(
-            fx.root().join("openspec/changes/alpha-search/.openspec.yaml"),
+            fx.root().join("openspec/changes/alpha-search/.meta.yaml"),
         )
         .expect("change meta exists");
         assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");

@@ -19,7 +19,7 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), app_yaml).unwrap();
         TempProject { dir }
     }

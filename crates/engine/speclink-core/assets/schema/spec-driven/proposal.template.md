@@ -22,7 +22,7 @@
 
 <!-- Existing capabilities whose REQUIREMENTS are changing (not just implementation).
      Only list here if spec-level behavior changes. Each needs a delta spec file.
-     Use existing spec names from openspec/specs/. Leave empty if no requirement changes. -->
+     Use existing spec names from speclink/specs/. Leave empty if no requirement changes. -->
 
 - `<existing-name>`: <what requirement is changing>
 

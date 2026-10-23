@@ -11,18 +11,18 @@ struct TempProject {
 }
 
 impl TempProject {
-    /// Project skeleton with one change; `wf_yaml: None` = no openspec/config.yaml.
+    /// Project skeleton with one change; `wf_yaml: None` = no speclink/config.yaml.
     fn new(tag: &str, app_yaml: &str, wf_yaml: Option<&str>) -> TempProject {
         let dir = std::env::temp_dir().join(format!(
             "speclink-cli-fail-closed-{tag}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        let change = dir.join("openspec").join("changes").join("demo-change");
+        let change = dir.join("speclink").join("changes").join("demo-change");
         std::fs::create_dir_all(&change).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), app_yaml).unwrap();
         if let Some(wf) = wf_yaml {
-            std::fs::write(dir.join("openspec").join("config.yaml"), wf).unwrap();
+            std::fs::write(dir.join("speclink").join("config.yaml"), wf).unwrap();
         }
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [ ] 1.1 Do the thing\n").unwrap();
@@ -56,7 +56,7 @@ impl Drop for TempProject {
 
 const BAD_YAML: &str = ": not yaml : [\n";
 
-// --- broken openspec/config.yaml: reading policy fails, never silent defaults ---
+// --- broken speclink/config.yaml: reading policy fails, never silent defaults ---
 
 #[test]
 fn bad_workflow_config_fails_instructions_naming_file_and_reason() {
@@ -65,11 +65,11 @@ fn bad_workflow_config_fails_instructions_naming_file_and_reason() {
     let out = p.run(&["instructions", "tasks", "--change", "demo-change", "--json"], &[]);
     assert!(
         !out.status.success(),
-        "must exit non-zero on a broken openspec/config.yaml"
+        "must exit non-zero on a broken speclink/config.yaml"
     );
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
-        err.contains("openspec/config.yaml"),
+        err.contains("speclink/config.yaml"),
         "stderr names the file: {err}"
     );
     assert!(
@@ -89,7 +89,7 @@ fn env_var_does_not_bypass_a_broken_workflow_config() {
     );
     assert!(!out.status.success(), "env var must not bypass the broken file");
     assert!(
-        String::from_utf8_lossy(&out.stderr).contains("openspec/config.yaml"),
+        String::from_utf8_lossy(&out.stderr).contains("speclink/config.yaml"),
         "stderr still names the file"
     );
 }
@@ -114,7 +114,7 @@ fn missing_workflow_config_still_runs_with_defaults() {
 #[test]
 fn bad_app_yaml_fails_list_without_reading_openspec() {
     // Spec scenario 壞 .speclink.yaml 不落入 fs 模式: syntax error + local
-    // openspec/ present. The command must fail naming the file — not list the
+    // speclink/ present. The command must fail naming the file — not list the
     // local changes (fs mode) and not attempt any remote request (the parse
     // error, not a connection error, is what stderr carries).
     let p = TempProject::new("bad-app", BAD_YAML, Some("schema: spec-driven\n"));
@@ -125,7 +125,7 @@ fn bad_app_yaml_fails_list_without_reading_openspec() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert!(
         !stdout.contains("demo-change"),
-        "must not read local openspec/ (fs mode): {stdout}"
+        "must not read local speclink/ (fs mode): {stdout}"
     );
 }
 

@@ -228,11 +228,19 @@ pub fn engine_from_fs(
             "createEngine: store.root must be a non-empty path",
         ));
     }
+    let root = PathBuf::from(root);
+    let spec_dir = match spec_dir {
+        Some(dir) => dir,
+        None => {
+            // The same resolution the CLI runs: an explicit `spec_dir` first.
+            let explicit = core::config::AppConfig::load(&root.join(".speclink.yaml"))
+                .map_err(|e| Error::from_reason(format!("createEngine: {e}")))?
+                .spec_dir;
+            core::workspace::resolve_spec_dir(&root, explicit.as_deref()).0
+        }
+    };
     Ok(Engine {
-        backend: Arc::new(Backend::Fs {
-            root: PathBuf::from(root),
-            spec_dir: spec_dir.unwrap_or_else(|| "openspec".to_string()),
-        }),
+        backend: Arc::new(Backend::Fs { root, spec_dir }),
         actor: normalize_actor(actor),
         stamp_lock: Arc::new(std::sync::Mutex::new(())),
     })

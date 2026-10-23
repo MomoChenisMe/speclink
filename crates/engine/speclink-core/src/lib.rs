@@ -30,4 +30,4 @@ pub use lifecycle::{
     rank, status, tasks, trace,
 };
 pub use quality::{analyzer, drift, station, validate};
-pub use workspace_group::{config, init, instructions, schema, skills, workspace};
+pub use workspace_group::{config, init, instructions, migrate, schema, skills, workspace};

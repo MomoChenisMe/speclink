@@ -111,7 +111,7 @@ fn conclude_archive_step_failure_keeps_conclusion_and_outcome() {
 
 #[test]
 fn conclude_closing_step_fails_closed_on_corrupt_change_meta() {
-    // 壞 meta fail-closed（與 link 的紀律一致）：在途變更的 .openspec.yaml
+    // 壞 meta fail-closed（與 link 的紀律一致）：在途變更的 .meta.yaml
     // 解析失敗時，讀不出它引用誰——視同仍引用，不誤封存討論。
     const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
     let store = TestStore::with_meta("broken-cut", BAD);
@@ -995,7 +995,7 @@ fn link_rejects_corrupt_change_meta_without_writes() {
     store.metas.borrow_mut().insert("broken-cut".into(), BAD.into());
     let err = super::link(&store, "alpha-search", "broken-cut").unwrap_err();
     assert!(
-        err.to_string().contains("openspec/changes/broken-cut/.openspec.yaml"),
+        err.to_string().contains("speclink/changes/broken-cut/.meta.yaml"),
         "error must name the metadata file: {err}"
     );
     assert_eq!(store.meta("broken-cut"), BAD, "change meta byte-identical");
@@ -1044,7 +1044,7 @@ fn seal_rejects_corrupt_change_meta_not_misreporting_the_chain() {
     store.metas.borrow_mut().insert("broken-cut".into(), BAD.into());
     let err = super::seal(&store, "alpha-search", "broken-cut", false).unwrap_err();
     assert!(
-        err.to_string().contains("openspec/changes/broken-cut/.openspec.yaml"),
+        err.to_string().contains("speclink/changes/broken-cut/.meta.yaml"),
         "error must name the metadata file: {err}"
     );
     assert!(

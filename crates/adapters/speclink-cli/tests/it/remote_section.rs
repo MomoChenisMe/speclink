@@ -30,10 +30,10 @@ impl TempEnv {
         TempEnv { dir, home }
     }
 
-    fn with_openspec(self) -> TempEnv {
-        std::fs::create_dir_all(self.dir.join("openspec").join("changes").join("archive"))
+    fn with_spec_tree(self) -> TempEnv {
+        std::fs::create_dir_all(self.dir.join("speclink").join("changes").join("archive"))
             .unwrap();
-        std::fs::create_dir_all(self.dir.join("openspec").join("specs")).unwrap();
+        std::fs::create_dir_all(self.dir.join("speclink").join("specs")).unwrap();
         self
     }
 
@@ -110,7 +110,7 @@ fn init_store_remote_writes_the_remote_section() {
     assert_eq!(str_of(remote, "url"), URL);
     assert_eq!(str_of(remote, "repo"), "backend");
     assert!(!env.dir.join("CLAUDE.md").exists(), "remote init 不生成指令檔");
-    assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
+    assert!(!env.dir.join("speclink").exists(), "no local spec tree in remote mode");
     assert!(
         !env.dir.join(".speclink.remote.yaml").exists(),
         "the legacy connection file is never created"
@@ -222,7 +222,7 @@ fn link_in_an_empty_dir_creates_the_file() {
 #[test]
 fn unlink_removes_the_section_and_returns_to_fs_mode() {
     let env = TempEnv::new("unlink")
-        .with_openspec()
+        .with_spec_tree()
         .with_app_yaml(&format!(
             "tools:\n  - claude\nremote:\n  url: {URL}\n  repo: backend\n"
         ));
@@ -252,7 +252,7 @@ fn unlink_removes_the_section_and_returns_to_fs_mode() {
 #[test]
 fn leftover_connection_file_warns_once_without_affecting_the_command() {
     let env = TempEnv::new("leftover")
-        .with_openspec()
+        .with_spec_tree()
         .with_app_yaml("tools:\n  - claude\n")
         .with_leftover_remote_file(&format!("url: {URL}\nrepo: backend\n"));
     let out = env.run(&["list", "--json"]);
@@ -284,7 +284,7 @@ fn leftover_connection_file_warns_once_without_affecting_the_command() {
 fn leftover_warning_appears_on_other_verbs_too() {
     // "Any command" — pin a second verb so the warning isn't wired to `list` only.
     let env = TempEnv::new("leftover-status")
-        .with_openspec()
+        .with_spec_tree()
         .with_app_yaml("tools:\n  - claude\n")
         .with_leftover_remote_file(&format!("url: {URL}\n"));
     let out = env.run(&["list", "--specs"]);
@@ -315,7 +315,7 @@ fn missing_url_everywhere_fails_naming_both_settings() {
 #[test]
 fn unlink_without_a_section_is_an_error() {
     let env = TempEnv::new("unlink-none")
-        .with_openspec()
+        .with_spec_tree()
         .with_app_yaml("tools:\n  - claude\n");
     let out = env.run(&["unlink"]);
     assert!(!out.status.success(), "nothing to unlink → non-zero exit");

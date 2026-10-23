@@ -889,6 +889,8 @@ mod tests {
     fn write_turns_worktree_off_when_none_is_active() {
         // 無活躍 worktree（此 fixture 連 git repo 都不是）＝ fail-open，照常寫入。
         let fx = FixtureRoot::new("wf-write-wt-free");
+        // 桌面的設定寫入仍以 openspec/ 為準：明寫 spec_dir，免得技能同步把舊佈局搬走。
+        fx.write(".speclink.yaml", "spec_dir: openspec\n");
         fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
         write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default()).expect("write ok");
         let text = read(&fx.root().join("openspec/config.yaml"));

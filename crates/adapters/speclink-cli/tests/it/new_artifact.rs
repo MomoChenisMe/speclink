@@ -27,10 +27,10 @@ impl TempProject {
         // canonicalize 會加 \\?\ 前綴，跳過。
         let dir = if cfg!(windows) { dir } else { dir.canonicalize().unwrap() };
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
-        let auth = dir.join("openspec").join("specs").join("auth");
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
+        let auth = dir.join("speclink").join("specs").join("auth");
         std::fs::create_dir_all(&auth).unwrap();
         std::fs::write(
             auth.join("spec.md"),
@@ -59,7 +59,7 @@ impl TempProject {
     }
 
     fn delta_dir(&self, cap: &str) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo").join("specs").join(cap)
+        self.dir.join("speclink").join("changes").join("demo").join("specs").join(cap)
     }
 }
 

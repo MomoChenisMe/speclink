@@ -253,7 +253,8 @@ fn point_context_files_at_projection(
     }
     core::instructions::project_context_files(
         context_files,
-        &speclink_host::projection::projection_dir(&ctx.ws).join("openspec"),
+        &speclink_host::projection::projection_dir(&ctx.ws)
+            .join(speclink_host::projection::mirror_root(&ctx.ws)),
         name,
     );
 }

@@ -472,7 +472,7 @@ pub fn complete(
 ) -> Result<CompleteOutcome> {
     // Fail-closed gate before any write: a checked task implies the
     // work-started stamp, which must not land on a corrupt metadata document.
-    crate::model::check_meta_text(change, store.read_change_meta(change).as_deref())?;
+    crate::model::check_meta_text(store, change, store.read_change_meta(change).as_deref())?;
     let text = store
         .read_artifact(change, "tasks.md")
         .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change}'"))?;
@@ -555,7 +555,7 @@ pub struct UncompleteOutcome {
 pub fn uncomplete(store: &dyn Store, change: &str, addr: &TaskAddr) -> Result<UncompleteOutcome> {
     // Same fail-closed gate as [`complete`]: lifecycle state of a change with
     // corrupt metadata must not be edited until the document is repaired.
-    crate::model::check_meta_text(change, store.read_change_meta(change).as_deref())?;
+    crate::model::check_meta_text(store, change, store.read_change_meta(change).as_deref())?;
     let text = store
         .read_artifact(change, "tasks.md")
         .ok_or_else(|| anyhow::anyhow!("tasks.md not found for change '{change}'"))?;

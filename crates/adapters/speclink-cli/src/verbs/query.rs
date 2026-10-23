@@ -118,7 +118,7 @@ fn render_list(list: &core::command::ListOutcome, json: bool) -> Result<()> {
         // Fail-closed diagnostic (frozen marker text): only corrupt-metadata
         // lines gain the trailing marker; valid lines stay byte-identical.
         let invalid = if c.meta_error.is_some() {
-            format!(" {}", color::red("(invalid .openspec.yaml)"))
+            format!(" {}", color::red("(invalid .meta.yaml)"))
         } else {
             String::new()
         };

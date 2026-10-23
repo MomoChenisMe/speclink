@@ -14,9 +14,9 @@ impl TempProject {
     fn with_concluded(tag: &str, slug: &str, topic: &str) -> TempProject {
         let dir = std::env::temp_dir().join(format!("speclink-cli-seal-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let discussions = dir.join("openspec").join("discussions");
+        let discussions = dir.join("speclink").join("discussions");
         std::fs::create_dir_all(&discussions).unwrap();
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
         let doc = format!(
             "---\ntopic: {topic}\nslug: {slug}\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\
              # Discussion: {topic}\n\n## Context\n\nFixture.\n\n## Rounds\n\n\
@@ -42,7 +42,7 @@ impl TempProject {
 
     fn discussion_text(&self, slug: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("discussions").join(format!("{slug}.md")),
+            self.dir.join("speclink").join("discussions").join(format!("{slug}.md")),
         )
         .unwrap()
     }

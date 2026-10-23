@@ -21,10 +21,10 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("specs").join("demo")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("specs").join("demo")).unwrap();
         std::fs::create_dir_all(dir.join("home")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        std::fs::write(dir.join("openspec").join("specs").join("demo").join("spec.md"), CANON)
+        std::fs::write(dir.join("speclink").join("specs").join("demo").join("spec.md"), CANON)
             .unwrap();
         TempProject { dir }
     }
@@ -44,12 +44,12 @@ impl TempProject {
     }
 
     fn change_dir(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("tidy")
+        self.dir.join("speclink").join("changes").join("tidy")
     }
 
     /// 正式規格目錄的全部檔案（相對路徑, 內容），排序後供前後比對。
     fn canonical_snapshot(&self) -> Vec<(String, String)> {
-        let root = self.dir.join("openspec").join("specs");
+        let root = self.dir.join("speclink").join("specs");
         let mut out = Vec::new();
         for cap in std::fs::read_dir(&root).unwrap().flatten() {
             for f in std::fs::read_dir(cap.path()).unwrap().flatten() {
@@ -143,10 +143,10 @@ fn a_no_spec_change_change_runs_from_new_to_archive_without_touching_specs() {
     // 封存：不帶 --skip-specs 也成功，正式規格逐檔不變。
     ok(&p.run(&["archive", "tidy"]), "archive");
     assert!(!p.change_dir().exists(), "變更移出 changes/");
-    let archived = std::fs::read_dir(p.dir.join("openspec").join("changes").join("archive"))
+    let archived = std::fs::read_dir(p.dir.join("speclink").join("changes").join("archive"))
         .expect("archive dir")
         .flatten()
         .any(|e| e.file_name().to_string_lossy().ends_with("-tidy"));
     assert!(archived, "變更移入封存目錄");
-    assert_eq!(p.canonical_snapshot(), before, "openspec/specs/ 不得有任何變動");
+    assert_eq!(p.canonical_snapshot(), before, "speclink/specs/ 不得有任何變動");
 }

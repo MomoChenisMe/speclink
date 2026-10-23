@@ -2,7 +2,7 @@
 
 <!-- Explain the motivation for this change. What problem does this solve? Why now?
      Then say why this change alters no behavior the canonical specs promise,
-     and list the canonical specs you checked (openspec/specs/<capability>/spec.md). -->
+     and list the canonical specs you checked (speclink/specs/<capability>/spec.md). -->
 
 ## What Changes
 

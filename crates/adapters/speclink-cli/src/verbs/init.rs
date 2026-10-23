@@ -77,11 +77,26 @@ pub(crate) fn cmd_init(a: InitArgs) -> Result<()> {
     if a.store == "remote" {
         return cmd_init_remote(&a, &root, &display_base, &tools);
     }
-    let spec_dir = a.dir.clone().unwrap_or_else(|| "openspec".to_string());
-    core::init::init(&root, &tools, a.force, &spec_dir)?;
-    println!("{} Initialized at {display_base}{}{spec_dir}", color::green("✓"), std::path::MAIN_SEPARATOR);
+    let spec_dir = a.dir.clone().unwrap_or_else(|| core::workspace::DEFAULT_SPEC_DIR.to_string());
+    let outcome = core::init::init(&root, &tools, a.force, &spec_dir)?;
+    if let Some(report) = &outcome.imported {
+        println!("{} Imported the OpenSpec project: {}", color::green("✓"), moved_summary(report));
+    }
+    // A legacy project's --force re-init stays in openspec/: name the folder init used.
+    let folder = outcome.spec_dir_abs.strip_prefix(&root).unwrap_or(&outcome.spec_dir_abs);
+    println!(
+        "{} Initialized at {display_base}{}{}",
+        color::green("✓"),
+        std::path::MAIN_SEPARATOR,
+        folder.display()
+    );
     let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
     println!("Generated files for: {}", names.join(", "));
+    if outcome.imported.is_some() {
+        println!("! Commit the import: speclink/ (added), openspec/ (deleted), .speclink.yaml, .gitignore and the generated skill files");
+        println!("! The OpenSpec CLI no longer sees this project — the move is one-way");
+        println!("! OpenSpec's own skills and command files were not moved or deleted — remove them yourself if you no longer use OpenSpec");
+    }
     Ok(())
 }
 /// The single line every missing/empty selection ends on — it names the flag and every
@@ -165,12 +180,13 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     } else {
         std::env::current_dir()?.join(root)
     };
-    if !root.join(".speclink.yaml").is_file() && !root.join("openspec").is_dir() {
+    if !core::workspace::is_project_root(&root) {
         bail!("Not initialized. Run 'speclink init' to initialize.");
     }
     let _ = a.force;
     // 降級守門在引擎的 update 本體（唯一實作落點）；--allow-downgrade 是唯一越過。
     let outcome = core::init::update(&root, a.allow_downgrade)?;
+    print_migration(&outcome.migration, &outcome.migrated);
     for note in &outcome.notes {
         println!("! {note}");
     }
@@ -201,6 +217,39 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     }
     Ok(())
 }
+/// The spec directory migration's lines (spec-dir-migration D5): what moved and
+/// what to do next, or why it waits.
+fn print_migration(plan: &core::migrate::MigrationPlan, report: &core::migrate::MigrationReport) {
+    use core::migrate::MigrationPlan;
+    match plan {
+        MigrationPlan::Nothing => {}
+        MigrationPlan::MoveFolder => {
+            println!("{} Migrated the spec folder: {}", color::green("✓"), moved_summary(report));
+            println!("! Commit the move: speclink/ (added) and openspec/ (deleted)");
+            println!("! Teammates must upgrade speclink before pulling that commit — older versions see an empty project");
+            println!("! Update your own scripts, CI settings and .gitignore entries that still name openspec/");
+        }
+        MigrationPlan::RenameLeftovers => {
+            println!(
+                "{} Renamed {} change data file(s) in speclink/ from .openspec.yaml to .meta.yaml — commit them",
+                color::green("✓"),
+                report.renamed
+            );
+        }
+        MigrationPlan::Deferred(reason) => {
+            println!("! Spec folder migration skipped: {reason}");
+        }
+    }
+}
+
+/// The folder move's result, shared by `update`'s migration and `init`'s import.
+fn moved_summary(report: &core::migrate::MigrationReport) -> String {
+    format!(
+        "moved openspec/ to speclink/ and renamed {} change data file(s) from .openspec.yaml to .meta.yaml",
+        report.renamed
+    )
+}
+
 #[cfg(test)]
 mod init_tools_tests {
     //! `init` 的工具解析入口（spec「init 內建 Agent 工具選擇」、design「CLI 互動解析

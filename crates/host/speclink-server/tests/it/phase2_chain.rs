@@ -407,7 +407,7 @@ fn canonical_spec(project_url: &str, token: &str, cap: &str) -> Option<String> {
         ContextSnapshotOutcome::Fresh(s) => s,
         ContextSnapshotOutcome::Unchanged => panic!("a fresh request is never unchanged"),
     };
-    let path = format!("openspec/specs/{cap}/spec.md");
+    let path = format!("speclink/specs/{cap}/spec.md");
     snapshot.documents.into_iter().find(|d| d.path == path).map(|d| d.content)
 }
 
@@ -626,10 +626,10 @@ fn run_chain(recovery: Recovery) {
         let out = cli(&project, &["instructions", "apply", "--change", CHANGE, "--json"], &pat);
         let projection = projection_root(&project).join(".speclink").join("context");
         for rel in [
-            &format!("openspec/changes/{CHANGE}/proposal.md"),
-            &format!("openspec/changes/{CHANGE}/design.md"),
-            &format!("openspec/changes/{CHANGE}/tasks.md"),
-            &format!("openspec/changes/{CHANGE}/specs/{CAP}/spec.md"),
+            &format!("speclink/changes/{CHANGE}/proposal.md"),
+            &format!("speclink/changes/{CHANGE}/design.md"),
+            &format!("speclink/changes/{CHANGE}/tasks.md"),
+            &format!("speclink/changes/{CHANGE}/specs/{CAP}/spec.md"),
             "INDEX.md",
             "manifest.json",
         ] {
@@ -637,7 +637,7 @@ fn run_chain(recovery: Recovery) {
         }
         // 此刻尚未 archive，正式規格為空——其進投影的斷言在步驟 (10) 收口。
         assert!(
-            !projection.join(format!("openspec/specs/{CAP}/spec.md")).exists(),
+            !projection.join(format!("speclink/specs/{CAP}/spec.md")).exists(),
             "no canonical spec exists before archive",
         );
         let ws = speclink_core::workspace::Workspace {
@@ -764,7 +764,7 @@ fn run_chain(recovery: Recovery) {
         cli_stdin(&project, &["new", "artifact", "spec", CAP, "--change", POSTSCRIPT, "--stdin"], &pat, POST_SPEC);
         cli(&project, &["instructions", "apply", "--change", POSTSCRIPT, "--json"], &pat);
         let projection = projection_root(&project).join(".speclink").join("context");
-        let canon_path = projection.join(format!("openspec/specs/{CAP}/spec.md"));
+        let canon_path = projection.join(format!("speclink/specs/{CAP}/spec.md"));
         assert!(canon_path.is_file(), "the promoted canonical spec enters the projection");
         let canon = std::fs::read_to_string(&canon_path).unwrap();
         assert!(

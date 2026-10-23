@@ -35,12 +35,12 @@ export function makeFsFixture(): string {
   // realpath: macOS 的 tmpdir 是 /var → /private/var 的 symlink；CLI 以 getcwd 回報
   // 實體路徑，engine 則沿用傳入字串——不先解析，兩邊的 path 欄位無法逐位元比對。
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-node-fixture-')))
-  const changes = join(root, 'openspec', 'changes')
+  const changes = join(root, 'speclink', 'changes')
 
   const alpha = join(changes, 'alpha')
   mkdirSync(alpha, { recursive: true })
   writeFileSync(
-    join(alpha, '.openspec.yaml'),
+    join(alpha, '.meta.yaml'),
     'schema: spec-driven\ncreated: "2026-07-01"\ncreated_by: tester\n',
   )
   writeFileSync(join(alpha, 'proposal.md'), PROPOSAL_ALPHA)
@@ -52,13 +52,13 @@ export function makeFsFixture(): string {
   const beta = join(changes, 'beta')
   mkdirSync(beta, { recursive: true })
   writeFileSync(
-    join(beta, '.openspec.yaml'),
+    join(beta, '.meta.yaml'),
     'schema: spec-driven\ncreated: "2026-07-02"\ncreated_by: tester\n',
   )
   writeFileSync(join(beta, 'proposal.md'), PROPOSAL_BETA)
   writeFileSync(join(beta, 'tasks.md'), TASKS_BETA)
 
-  const specDir = join(root, 'openspec', 'specs', 'user-auth')
+  const specDir = join(root, 'speclink', 'specs', 'user-auth')
   mkdirSync(specDir, { recursive: true })
   writeFileSync(join(specDir, 'spec.md'), SPEC_USER_AUTH)
   return root

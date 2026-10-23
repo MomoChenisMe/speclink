@@ -199,6 +199,14 @@ impl<'a> WorktreeOverlay<'a> {
 }
 
 impl Store for WorktreeOverlay<'_> {
+    fn spec_dir_display(&self) -> String {
+        self.inner.spec_dir_display()
+    }
+
+    fn change_meta_display(&self, name: &str) -> String {
+        self.of(name).change_meta_display(name)
+    }
+
     // --- change-scoped reads: redirected as a set, so a mapped change never
     // presents a half-worktree view ---
 

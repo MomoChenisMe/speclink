@@ -6,7 +6,7 @@ mod color;
 mod common;
 mod remote_base;
 mod verbs;
-use common::warn_leftover_remote_file;
+use common::{warn_leftover_remote_file, warn_spec_layout};
 use remote_base::{remote_ctx, RemoteCtx};
 use std::process::ExitCode;
 use verbs::checks::{
@@ -137,7 +137,7 @@ enum Commands {
     Schema(SchemaArgs),
     /// Config management commands
     Config(ConfigArgs),
-    /// Workflow config commands (openspec/config.yaml)
+    /// Workflow config commands (<spec dir>/config.yaml)
     #[command(name = "workflow-config")]
     WorkflowConfig(WorkflowConfigArgs),
     /// Shell completion commands
@@ -171,6 +171,9 @@ fn main() -> ExitCode {
 
 fn dispatch(cli: Cli) -> Result<()> {
     warn_leftover_remote_file();
+    if !matches!(cli.command, Commands::Init(_) | Commands::Update(_)) {
+        warn_spec_layout();
+    }
     // 全部頂層動詞的模式形狀宣告（design D5 分類表）：ModeFree 直呼、Dual
     // 兩臂必填、FsOnly／RemoteOnly 明寫拒絕。分岔決策只活在這一層。
     match cli.command {
@@ -292,12 +295,12 @@ const CLAIM_FS_REFUSAL: &str =
 // 本質本機動詞：remote 模式明確拒絕（比照 claim 在 fs 的 fail-loud），
 // 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。
 const DEMO_REMOTE_REFUSAL: &str =
-    "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree";
+    "demo is not available in remote mode — it seeds a demo change into the local spec directory";
 
 // trace 讀本機封存目錄、討論檔與 evidence 組裝溯源鏈；remote 端點屬本
 // change 的 Non-Goal（v1 僅本地 CLI），比照 demo 的 FsOnly 形狀明寫拒絕。
 const TRACE_REMOTE_REFUSAL: &str =
-    "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree";
+    "trace is not available in remote mode — it assembles the provenance chain from the local spec directory";
 
 // Dual 家族裡只限本機的兩個子情形（理由見 dispatch 的對應分支）。
 const CHANGE_RANK_REMOTE_REFUSAL: &str =

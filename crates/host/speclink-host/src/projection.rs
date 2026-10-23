@@ -446,6 +446,21 @@ pub fn current_snapshot_id(ws: &Workspace) -> Option<String> {
     Some(manifest.snapshot_id)
 }
 
+/// The mirror's folder inside the projection: the first path segment of the
+/// documents the manifest records — `speclink` from a current server,
+/// `openspec` from an older one — or the default when it holds none.
+pub fn mirror_root(ws: &Workspace) -> String {
+    speclink_core::util::read_opt(&projection_dir(ws).join("manifest.json"))
+        .and_then(|text| serde_json::from_str::<ProjectionManifest>(&text).ok())
+        .and_then(|manifest| {
+            manifest
+                .files
+                .iter()
+                .find_map(|f| f.path.split_once('/').map(|(root, _)| root.to_string()))
+        })
+        .unwrap_or_else(|| speclink_core::workspace::DEFAULT_SPEC_DIR.to_string())
+}
+
 /// Rebuild the projection from a fresh snapshot (full rebuild — the
 /// blueprint's disposable semantics); the whole-directory switch means the
 /// stale marker does not survive.

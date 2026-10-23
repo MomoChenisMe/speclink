@@ -1,7 +1,7 @@
 //! `speclink change schema` — fs 模式契約（workflow-schemas「change schema 動詞切換
 //! 變更的 schema」與「schema 沒有 specs 產出時拒絕寫入 delta spec」）。
 //!
-//! 每個拒絕都斷言 `.openspec.yaml` 逐位元不變；worktree 映射的情境在
+//! 每個拒絕都斷言 `.meta.yaml` 逐位元不變；worktree 映射的情境在
 //! worktree_overlay.rs（要真實 git repo）。user 層 schema 位置導進暫存專案，
 //! 開發者的 home 不影響結果。
 
@@ -24,26 +24,26 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("specs").join("auth")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("specs").join("auth")).unwrap();
         std::fs::create_dir_all(dir.join("home")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        std::fs::write(dir.join("openspec").join("specs").join("auth").join("spec.md"), CANON_AUTH)
+        std::fs::write(dir.join("speclink").join("specs").join("auth").join("spec.md"), CANON_AUTH)
             .unwrap();
         TempProject { dir }
     }
 
-    /// 一個作用中變更：`.openspec.yaml` 與一份 proposal。
+    /// 一個作用中變更：`.meta.yaml` 與一份 proposal。
     fn change(&self, name: &str, meta: &str) -> PathBuf {
-        let dir = self.dir.join("openspec").join("changes").join(name);
+        let dir = self.dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".openspec.yaml"), meta).unwrap();
+        std::fs::write(dir.join(".meta.yaml"), meta).unwrap();
         std::fs::write(dir.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         dir
     }
 
     fn meta(&self, name: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("changes").join(name).join(".openspec.yaml"),
+            self.dir.join("speclink").join("changes").join(name).join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -198,24 +198,24 @@ fn change_schema_unknown_change_is_an_error() {
     let out = p.run(&["change", "schema", "ghost", "spec-driven"]);
     assert!(!out.status.success());
     assert!(stderr_of(&out).contains("ghost"), "{}", stderr_of(&out));
-    assert!(!p.dir.join("openspec").join("changes").join("ghost").exists(), "nothing written");
+    assert!(!p.dir.join("speclink").join("changes").join("ghost").exists(), "nothing written");
     assert_eq!(p.meta("c"), SPEC_META);
 }
 
 #[test]
 fn change_schema_refuses_a_change_folder_without_metadata() {
-    // 名冊列得出目錄、卻沒有 `.openspec.yaml`：拒絕且不憑空建出 meta。
+    // 名冊列得出目錄、卻沒有 `.meta.yaml`：拒絕且不憑空建出 meta。
     let p = TempProject::new("no-meta");
-    let dir = p.dir.join("openspec").join("changes").join("bare");
+    let dir = p.dir.join("speclink").join("changes").join("bare");
     std::fs::create_dir_all(&dir).unwrap();
     std::fs::write(dir.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
     let out = p.run(&["change", "schema", "bare", "no-spec-change"]);
     assert!(!out.status.success());
     assert_eq!(
         stderr_of(&out),
-        "Error: cannot write schema for 'bare': openspec/changes/bare/.openspec.yaml is missing\n"
+        "Error: cannot write schema for 'bare': speclink/changes/bare/.meta.yaml is missing\n"
     );
-    assert!(!dir.join(".openspec.yaml").exists(), "nothing written");
+    assert!(!dir.join(".meta.yaml").exists(), "nothing written");
 }
 
 #[test]

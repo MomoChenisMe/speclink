@@ -88,7 +88,7 @@ impl FixtureRoot {
 
     /// 建一個含 proposal 與 tasks 的 change；meta 原文由呼叫端給（測 started_* 疊加）。
     pub fn add_change(&self, name: &str, meta: &str) {
-        self.write(&format!("openspec/changes/{name}/.openspec.yaml"), meta);
+        self.write(&format!("openspec/changes/{name}/.meta.yaml"), meta);
         self.write(
             &format!("openspec/changes/{name}/proposal.md"),
             "## Why\n\nDemo change.\n\n## What Changes\n\n- something\n",

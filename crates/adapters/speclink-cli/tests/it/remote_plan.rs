@@ -1,7 +1,7 @@
 //! `plan` 與 `change depends` 的 remote 臂（change-plan「plan 與 change depends 的
 //! remote 臂」、verb-contract「模式分岔的單點宣告」）：remote 模式打 server 端點、
 //! 回應轉回引擎型別後走 fs 模式同一渲染——同一份內容兩模式 stdout、stderr 與
-//! exit code 逐位元一致，且 remote 模式不讀本機 openspec/。沿 remote_verb_parity
+//! exit code 逐位元一致，且 remote 模式不讀本機 speclink/。沿 remote_verb_parity
 //! 的 capturing mock server 模式。
 
 use std::path::PathBuf;
@@ -108,10 +108,10 @@ impl TempProject {
         TempProject { dir }
     }
 
-    /// fs 專案：只有 openspec/changes/，change 由測試逐一放入。
+    /// fs 專案：只有 speclink/changes/，change 由測試逐一放入。
     fn at(tag: &str) -> TempProject {
         let p = TempProject::bare(tag);
-        std::fs::create_dir_all(p.dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(p.dir.join("speclink").join("changes")).unwrap();
         p
     }
 
@@ -127,14 +127,14 @@ impl TempProject {
     }
 
     fn put_change(&self, name: &str, meta: &str) {
-        let dir = self.dir.join("openspec").join("changes").join(name);
+        let dir = self.dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".openspec.yaml"), meta).unwrap();
+        std::fs::write(dir.join(".meta.yaml"), meta).unwrap();
     }
 
     /// 給 change 一份 capability delta，MODIFIED 一個 requirement。
     fn put_modified(&self, change: &str, cap: &str, requirement: &str) {
-        let dir = self.dir.join("openspec").join("changes").join(change).join("specs").join(cap);
+        let dir = self.dir.join("speclink").join("changes").join(change).join("specs").join(cap);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
             dir.join("spec.md"),
@@ -201,7 +201,7 @@ fn remote_plan_prints_the_fs_output_for_the_same_content() {
 
     let mock = mock_server(vec![("GET", "/plan".into(), 200, stdout_of(&fs_json))]);
     let remote = TempProject::remote("plan-remote", &mock.base);
-    // 只存在本機的 change 當誘餌：remote 臂若讀了本機 openspec/，輸出就會多出它
+    // 只存在本機的 change 當誘餌：remote 臂若讀了本機 speclink/，輸出就會多出它
     //（本機樹與 remote 設定並存時 stderr 另有一行並存警告，這裡只比 stdout）。
     remote.put_change("local-only", "schema: spec-driven\ncreated: 2026-01-01\n");
     let out = remote.run(&["plan", "--json"]);
@@ -221,7 +221,7 @@ fn remote_plan_prints_the_fs_output_for_the_same_content() {
     assert!(human.status.success(), "stderr: {}", stderr_of(&human));
     assert_eq!(stdout_of(&human), stdout_of(&fs_human), "remote human lines match fs");
     assert!(stdout_of(&human).contains("archive after: add-a"), "{}", stdout_of(&human));
-    assert!(!stdout_of(&human).contains("local-only"), "the local openspec/ tree is never read");
+    assert!(!stdout_of(&human).contains("local-only"), "the local speclink/ tree is never read");
     assert_eq!(mock.verb_calls(), ["GET /plan", "GET /plan"]);
 }
 

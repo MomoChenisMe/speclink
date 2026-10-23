@@ -27,9 +27,9 @@ impl TempProject {
         let dir =
             std::env::temp_dir().join(format!("speclink-cli-verify-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
+        std::fs::write(change.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
             .unwrap();
         std::fs::write(change.join("tasks.md"), tasks).unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
@@ -116,16 +116,16 @@ impl TempProject {
     }
 
     fn ticket_path(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo").join("verify.md")
+        self.dir.join("speclink").join("changes").join("demo").join("verify.md")
     }
 
     fn review_ticket_path(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo").join("review.md")
+        self.dir.join("speclink").join("changes").join("demo").join("review.md")
     }
 
     fn meta(&self) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml"),
+            self.dir.join("speclink").join("changes").join("demo").join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -233,7 +233,7 @@ fn add_round_accepts_a_finding_anchored_on_a_delta_spec() {
     let out = p.run_stdin(
         &["verify", "add-round", "demo", "--stdin"],
         "**Scope**: src/lib.rs\n\n\
-         - [CRITICAL] openspec/changes/demo/specs/auth/spec.md — Completeness: Requirement not found: 登入逾時\n",
+         - [CRITICAL] speclink/changes/demo/specs/auth/spec.md — Completeness: Requirement not found: 登入逾時\n",
     );
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(
@@ -415,7 +415,7 @@ fn stamp_refuses_incomplete_tasks() {
     // 守門 (1)：工單開立後任務被退勾 → 非零，訊息用 verify 的動詞。
     let p = TempProject::with_change("stamp-partial", TASKS_DONE);
     p.run_stdin(&["verify", "add-round", "demo", "--stdin"], CLEAN_ROUND);
-    p.write("openspec/changes/demo/tasks.md", TASKS_PARTIAL);
+    p.write("speclink/changes/demo/tasks.md", TASKS_PARTIAL);
     let out = p.run(&["verify", "stamp", "demo"]);
     assert!(!out.status.success());
     let err = stderr_of(&out);
@@ -491,7 +491,7 @@ fn archive_carry_verify_moves_the_ticket_into_the_archive() {
     p.run_stdin(&["verify", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
     let out = p.run(&["archive", "demo", "--skip-specs", "--no-validate", "--carry-verify"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let archive_root = p.dir.join("openspec").join("changes").join("archive");
+    let archive_root = p.dir.join("speclink").join("changes").join("archive");
     let dated = std::fs::read_dir(&archive_root)
         .expect("archive dir")
         .next()
@@ -516,7 +516,7 @@ fn archive_carries_both_tickets_when_both_flags_ride_along() {
         "--carry-verify",
     ]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let archive_root = p.dir.join("openspec").join("changes").join("archive");
+    let archive_root = p.dir.join("speclink").join("changes").join("archive");
     let dated =
         std::fs::read_dir(&archive_root).unwrap().next().unwrap().unwrap().path();
     assert!(dated.join("review.md").is_file(), "{dated:?}");
@@ -660,9 +660,9 @@ fn verify_scope_dirty_at_start_and_active_overlap_fail_closed() {
     let dirty = scope_fixture("scope-dirty");
     // baseline 已記錄乾淨起點；把 touched 檔宣告為起始即髒需要重錄 baseline，
     // 故改以另一個 active change 認領同一路徑觸發 overlap。
-    let other = dirty.dir.join("openspec").join("changes").join("other");
+    let other = dirty.dir.join("speclink").join("changes").join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
+    std::fs::write(other.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
         .unwrap();
     std::fs::write(other.join("tasks.md"), "- [ ] 1.1 x\n").unwrap();
     dirty.touched("other", &["src/lib.rs"]);

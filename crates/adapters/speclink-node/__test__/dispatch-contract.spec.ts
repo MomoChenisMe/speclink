@@ -1,7 +1,8 @@
 // dispatch 的輸入輸出契約（spec: 壞工作流設定經 dispatch 拒絕 / CLI 與 dispatch
 // 的錯誤分類一致）：錯誤碼出自引擎命令層的封閉註冊表，message 與 CLI 訊息相同。
 import { execFileSync } from 'node:child_process'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
@@ -26,7 +27,7 @@ describe('dispatch config fail-closed (invalid_config)', () => {
     const engine = createEngine({ store: memoryStore(project) })
     const err = await rejection(engine.dispatch(['new', 'change', 'demo']))
     expect(err.code).toBe('invalid_config')
-    expect(err.message).toContain('openspec/config.yaml')
+    expect(err.message).toContain('speclink/config.yaml')
     expect(err.message).toContain('invalid')
     // Fail-closed: the default-schema path must NOT have created the change.
     const list = (await engine.dispatch(['list', '--sort', 'name', '--json'])) as {
@@ -62,12 +63,12 @@ describe('dispatch error classification matches the CLI', () => {
 })
 
 describe('dispatch change-metadata fail-closed (invalid_config)', () => {
-  // 壞 .openspec.yaml 只存在於 fs store（JS host store 交付結構化 meta，
+  // 壞 .meta.yaml 只存在於 fs store（JS host store 交付結構化 meta，
   // 無原始 YAML 文字）——兩案皆以 fs fixture 驗證。
   const brokenFixture = () => {
     const root = makeFsFixture()
     writeFileSync(
-      join(root, 'openspec', 'changes', 'alpha', '.openspec.yaml'),
+      join(root, 'speclink', 'changes', 'alpha', '.meta.yaml'),
       ': : :\n\t bad yaml [unclosed\n',
     )
     return root
@@ -78,7 +79,7 @@ describe('dispatch change-metadata fail-closed (invalid_config)', () => {
     const engine = createEngine({ store: { type: 'fs', root } })
     const err = await rejection(engine.dispatch(['status', '--change', 'alpha', '--json']))
     expect(err.code).toBe('invalid_config')
-    expect(err.message).toContain('invalid openspec/changes/alpha/.openspec.yaml: ')
+    expect(err.message).toContain('invalid speclink/changes/alpha/.meta.yaml: ')
     // 與 CLI 訊息文字相同：CLI stderr 為 `Error: <message>`。
     let cliStderr = ''
     try {
@@ -105,5 +106,22 @@ describe('dispatch change-metadata fail-closed (invalid_config)', () => {
     expect((broken.metaError as string).length).toBeGreaterThan(0)
     const good = list.changes.find((c) => c.name === 'beta')!
     expect('metaError' in good).toBe(false)
+  })
+})
+
+describe('fs form honors an explicit spec_dir in .speclink.yaml', () => {
+  it('reads the folder .speclink.yaml names when specDir is not given', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'speclink-node-specdir-'))
+    try {
+      writeFileSync(join(root, '.speclink.yaml'), 'spec_dir: docs/specs\n')
+      const change = join(root, 'docs', 'specs', 'changes', 'gamma')
+      mkdirSync(change, { recursive: true })
+      writeFileSync(join(change, '.meta.yaml'), 'schema: spec-driven\n')
+      const engine = createEngine({ store: { type: 'fs', root } })
+      const list = (await engine.dispatch(['list', '--json'])) as { changes: Array<{ name: string }> }
+      expect(list.changes.map((c) => c.name)).toEqual(['gamma'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 })
