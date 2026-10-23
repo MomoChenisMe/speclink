@@ -236,6 +236,8 @@ Compare the delivery with each spec of the change, one by one.
 
 On cards and in the tray panel, the review stamp and the verify stamp show side by side, review first. The tray panel opens from the Speclink icon in the macOS menu bar. It shows the changes and the quality stations of each project without the main window.
 
+In Desktop change details, click “Reviewed” or “Verified” under Quality gates to expand that station's records independently. Entries are sorted newest start time first; selecting one opens it in the existing read-only viewer. Record filenames begin with the round's UTC start time in `YYYYMMDDHHmmss` format, and legacy filenames remain readable.
+
 <img src="assets/screenshots/en/desktop-tray.png" width="280" alt="The Speclink tray panel, with the changes grouped by Proposed, In progress, Ready, and Discussions" />
 
 ### <a id="archive"></a>archive: archive

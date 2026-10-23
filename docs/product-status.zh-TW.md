@@ -114,6 +114,7 @@
 8. 安全資料下載清單由固定來源與 SHA 的 `spec_registry.json` 定義；附件僅是資料結構參考，不能當作執行指令或未核實來源。
 9. 內建基本掃描保留；`/speclink-security-review CHANGE`（Codex 使用 `$speclink-security-review`）另外讀取本機知識庫，針對五種語言的架構、業務邏輯與資料流產出繁中九項結構報告。skill 是使用者明確執行的深度審查，不以基本掃描替代，也不把連網 AI 稱為離線。
 10. OWASP／CWE 主開關下的「納入驗收條件」預設不勾選：結果只供參考。勾選並啟用安全審查後，缺資料、過期、未驗證及未處理的 CRITICAL／HIGH／MEDIUM 會阻擋驗證蓋章與封存；LOW 只列建議。需要接受風險時，用 `security review accept CHANGE --stdin` 提供報告、發現編號與具體理由，不能用一般 `--accept` 跳過。關閉主開關暫停生效但保留勾選值。
+11. 審查與驗證紀錄檔名以該輪開始時間（UTC，`YYYYMMDDHHmmss`）開頭，舊版 ULID 檔名仍可讀。Desktop 詳情的品質關卡中，點「已審查」或「已驗證」可各自展開開始時間倒序的紀錄；選取後在既有檢視器唯讀查看。
 
 所有專案的提案預設以條列方式呈現，包含既有散文提案；不重寫舊文件。Remote 基本掃描可離線產生待發佈草稿，僅明確提交深度報告時連線發佈成對報告；讀取自己的 server 紀錄不等於下載標準資源。Remote 原始碼新鮮度由當次授權 checkout 核對並標示 client-attested，server 不會假稱自行讀過原始碼。通過只涵蓋本次證據與規則，並非資安認證。
 

@@ -296,7 +296,11 @@ pub fn add_round(st: &Station, store: &dyn Store, change: &str, content: &str) -
             let next = ticket.expect("existing document parsed above").last_round().index + 1;
             (existing, next)
         }
-        None => (format!("# {} — {change}\n", st.title), 1),
+        None => {
+            let started_at = chrono::Utc::now()
+                .to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+            (format!("# {} — {change}\n<!-- speclink-check-started-at: {started_at} -->\n", st.title), 1)
+        },
     };
     if !text.ends_with('\n') {
         text.push('\n');
@@ -695,9 +699,10 @@ fn write_stamp(
     use super::history::{self, CheckEntry, CheckKind, CheckMetadata, ChecksCommit};
     use crate::security::data::sha256;
     let kind = match st.id { StationId::Review => CheckKind::Review, StationId::Verify => CheckKind::Verify };
-    let record_id = ulid::Ulid::new().to_string();
-    let path = kind.path(&record_id)?;
     let created_at = chrono::Utc::now().to_rfc3339();
+    let started_at = ticket_started_at(&gate.ticket_text)?.unwrap_or_else(|| created_at.clone());
+    let record_id = ulid::Ulid::new().to_string();
+    let path = kind.path_with_started_at(&record_id, &started_at)?;
     let metadata = CheckMetadata { created_at: created_at.clone(), actor: actor.map(str::to_owned), tool: tool.map(str::to_owned), outcome: gate.outcome.into(), scope_digest: sha256(&serde_json::to_vec(entries)?) };
     let content = format!("<!-- speclink-check: {} -->\n\n{}", serde_json::to_string(&metadata)?, gate.ticket_text);
     let old_index = store.read_artifact(change, history::INDEX);
@@ -715,6 +720,20 @@ fn write_stamp(
         (".openspec.yaml".into(), gate.raw_meta.as_ref().map(|text| sha256(text.as_bytes()))), (st.doc.into(), Some(sha256(gate.ticket_text.as_bytes()))),
     ]);
     store.commit_checks(change, &ChecksCommit { writes, deletes: vec![st.doc.into()], expected })
+}
+
+fn ticket_started_at(text: &str) -> Result<Option<String>> {
+    let mut values = text.lines().filter_map(|line| {
+        line.strip_prefix("<!-- speclink-check-started-at: ")?
+            .strip_suffix(" -->")
+    });
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    anyhow::ensure!(values.next().is_none(), "invalid_check_started_at");
+    let parsed = chrono::DateTime::parse_from_rfc3339(value)
+        .map_err(|_| anyhow!("invalid_check_started_at"))?;
+    Ok(Some(parsed.to_rfc3339()))
 }
 
 /// 文字指紋規則：CRLF→LF 正規化後的 SHA-256（spec「內容指紋錨與失效判定」）。

@@ -93,7 +93,7 @@ import { setTaskMark } from "../tasks";
 import { SecurityReviewPanel } from "./SecurityReviewPanel";
 import type { SecurityInspection, SecurityReviewAdapter } from "../security";
 
-import {useCheckRecords,CheckRecordTree,CheckRecordBody} from "./CheckRecords";
+import {useCheckRecords,CheckRecordBody,QualityCheckRecordList,checkTab} from "./CheckRecords";
 export interface ChangeDetailPageProps {
   change: ChangeItem | null;
   /** 刷新世代——遞增即重載已載入的文件內容（未傳＝0，行為等同僅開啟時載入）。 */
@@ -195,18 +195,18 @@ interface Stamp {
 /** 「品質關卡」列的站章籤：圖示＋狀態詞，已蓋章時旁接蓋章日期；蓋章日期與蓋章者完整
     識別（含 email）收進提示，整枚章籤（含日期）為觸發點，可用鍵盤聚焦叫出。兩站同構，
     只換站別——資料缺席（進行中、無戳記）時整個提示缺席，章籤也不進 Tab 序。 */
-function QualityStamp({ stamp }: { stamp: Stamp }) {
+function QualityStamp({ stamp, expanded, controlsId, onToggle }: { stamp: Stamp; expanded:boolean; controlsId:string; onToggle:()=>void }) {
   // 既有 data 標記維持站別各一份（回歸對照沿用 data-review-row／data-verify-row）。
   const rowMark = stamp.station === "review" ? { "data-review-row": "" } : { "data-verify-row": "" };
   const toneMark = stamp.station === "review" ? { "data-review-tone": "" } : { "data-verify-tone": "" };
   const detail = [stamp.at, stamp.by].filter(Boolean).join(" · ");
   const chip = (
-    <span {...rowMark} tabIndex={detail ? 0 : undefined} className="inline-flex shrink-0 items-center gap-1.5">
+    <button {...rowMark} type="button" aria-expanded={expanded} aria-controls={controlsId} aria-label={stamp.label} onClick={onToggle} className="inline-flex shrink-0 items-center gap-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
       <StatusPill {...toneMark} tone={stamp.tone} icon={stamp.icon}>
         {stamp.label}
       </StatusPill>
       {stamp.at && <span className="font-mono text-[11px] text-muted-foreground">{stamp.at}</span>}
-    </span>
+    </button>
   );
   if (!detail) return chip;
   return (
@@ -322,7 +322,11 @@ export function ChangeDetailPage({
 
   const name = change?.name ?? null;
   const gen = refreshGen ?? 0;
-  const checks=useCheckRecords(checkRecords,name,tab,gen);
+  const [expandedChecks,setExpandedChecks]=useState<{change:string|null;review:boolean;verify:boolean}>({change:null,review:false,verify:false});
+  const checksForCurrent=expandedChecks.change===name;
+  const reviewHistoryOpen=checksForCurrent&&expandedChecks.review;
+  const verifyHistoryOpen=checksForCurrent&&expandedChecks.verify;
+  const checks=useCheckRecords(checkRecords,name,tab,gen,reviewHistoryOpen||verifyHistoryOpen);
   // latest-wins：每次載入取遞增序號，回應到達時序號已過期即丟棄（涵蓋世代與換 change 的交錯）。
   const requestSeq = useRef(0);
   // 已發起載入的世代——判斷外部世代是否落後需補載。
@@ -757,7 +761,6 @@ export function ChangeDetailPage({
         )}
       </TabsList>
 
-      <CheckRecordTree state={checks}/>
       <DetailTreeLabel>{t("detail.status")}</DetailTreeLabel>
       <DetailStatus>
         <StatusRow mark="tasks" label={t("detail.statusTasks")}>
@@ -770,7 +773,19 @@ export function ChangeDetailPage({
           {stamps.length === 0 ? (
             <span className="text-muted-foreground">{t("detail.noQuality")}</span>
           ) : (
-            stamps.map((s) => <QualityStamp key={s.station} stamp={s} />)
+            stamps.map((s) => {
+              const id=`quality-records-${s.station}`;
+              const expanded=s.station==="review"?reviewHistoryOpen:verifyHistoryOpen;
+              const toggle=()=>setExpandedChecks(previous=>({
+                change:name,
+                review:(previous.change===name?previous.review:false)!==(s.station==="review"),
+                verify:(previous.change===name?previous.verify:false)!==(s.station==="verify"),
+              }));
+              return <div key={s.station} className="flex min-w-0 flex-wrap items-center gap-x-2">
+                <QualityStamp stamp={s} expanded={expanded} controlsId={id} onToggle={toggle}/>
+                <QualityCheckRecordList id={id} kind={s.station} state={checks} onSelect={entry=>setTab(checkTab(entry))} hidden={!expanded}/>
+              </div>;
+            })
           )}
         </StatusRow>
         <StatusRow mark="plan" label={t("detail.statusPlan")}>

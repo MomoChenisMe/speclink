@@ -537,6 +537,14 @@
         "crates/store/speclink-store/src/types.rs",
         "crates/store/speclink-store/src/uow.rs"
       ]
+    },
+    {
+      "task_id": "64",
+      "task_desc": "20.2 品質關卡點選狀態展開對應紀錄（品質關卡展開審查與驗證紀錄）：讓 Desktop「已審查」與「已驗證」可獨立展開各自時間倒序清單、空／錯誤／載入狀態，選取後沿既有歷史檢視器顯示內容；補滑鼠、鍵盤、重試、切換變更及兩清單互不污染案例，執行 `apps/desktop` 品質關卡相關測試及 build，並確認文件樹入口仍可用。",
+      "files": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
     }
   ],
   "entries": [
@@ -1264,6 +1272,18 @@
         "crates/store/speclink-store/src/uow.rs"
       ],
       "recordedAt": "2026-10-22T15:22:04Z"
+    },
+    {
+      "taskId": "tsk_01M5JZP06NPVGDYDSJCWP53Q7A",
+      "taskDesc": "20.2 品質關卡點選狀態展開對應紀錄（品質關卡展開審查與驗證紀錄）：讓 Desktop「已審查」與「已驗證」可獨立展開各自時間倒序清單、空／錯誤／載入狀態，選取後沿既有歷史檢視器顯示內容；補滑鼠、鍵盤、重試、切換變更及兩清單互不污染案例，執行 `apps/desktop` 品質關卡相關測試及 build，並確認文件樹入口仍可用。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "53a404c544e2e9d3fb3005edd804b9590f253eb4",
+      "touchedFiles": [
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-22T23:48:53Z"
     }
   ]
 }

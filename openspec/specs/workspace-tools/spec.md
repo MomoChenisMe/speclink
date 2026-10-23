@@ -8,7 +8,7 @@ AI 工具指令檔在工作區的生成與維護：內建與自訂 tools 描述�
 
 ### Requirement: tools 自訂描述子的接受與驗證
 
-.speclink.yaml 的 tools 清單 SHALL 接受兩種元素形式：內建工具名字串（claude、codex、copilot），或自訂描述子物件（欄位：name 必填、skills_dir 必填、instructions_file 選填且不再驅動任何生成、invocation 選填且值域為 cli 或 tool-call、預設 cli）。描述子驗證規則：name SHALL 為 kebab-case（2 至 50 字）且 SHALL NOT 與內建工具名（claude、codex、copilot，以及 codex 的別名 agents）衝突；skills_dir 與（存在時）instructions_file SHALL 為專案根相對路徑，正規化後 SHALL NOT 逸出專案根——instructions_file 保留驗證僅為遺留 marker 剝除的定位所需。skills_dir SHALL 於驗證時削去結尾的 `/`，其後所有消費端（技能生成、足跡記錄與清理、過期探測的路徑回報）SHALL 一律使用削去後的形式。以下兩條拒絕 SHALL 比對詞法正規化後的路徑（丟棄 `.` 段、以 `..` 回退一段，零檔案系統存取），因此等價拼法與字面拼法同樣被拒：正規化後等同專案根本身的 skills_dir SHALL 被拒絕；正規化後等同任一內建工具 skills 目錄（`.claude/skills`、`.agents/skills`、`.github/skills`）的 skills_dir SHALL 被拒絕，且這條比對 SHALL 不分大小寫（macOS 與 Windows 的檔案系統上 `.GitHub/skills` 就是 `.github/skills`）。描述子仍帶 instructions_file 欄位時，workspace 檢查 SHALL 輸出一行棄用提示（非錯誤、不影響 exit code）。驗證失敗時指令 SHALL 以非 0 exit code 結束並輸出單行語義化錯誤訊息（指明錯誤欄位與原因）。
+.speclink.yaml 的 tools 清單 SHALL 接受兩種元素形式：內建工具名字串（claude、codex、copilot、antigravity），或自訂描述子物件（欄位：name 必填、skills_dir 必填、instructions_file 選填且不再驅動任何生成、invocation 選填且值域為 cli 或 tool-call、預設 cli）。描述子驗證規則：name SHALL 為 kebab-case（2 至 50 字）且 SHALL NOT 與內建工具名（claude、codex、copilot、antigravity，以及 codex 的別名 agents）衝突；skills_dir 與（存在時）instructions_file SHALL 為專案根相對路徑，正規化後 SHALL NOT 逸出專案根——instructions_file 保留驗證僅為遺留 marker 剝除的定位所需。skills_dir SHALL 於驗證時削去結尾的 `/`，其後所有消費端（技能生成、足跡記錄與清理、過期探測的路徑回報）SHALL 一律使用削去後的形式。以下兩條拒絕 SHALL 比對詞法正規化後的路徑（丟棄 `.` 段、以 `..` 回退一段，零檔案系統存取），因此等價拼法與字面拼法同樣被拒：正規化後等同專案根本身的 skills_dir SHALL 被拒絕；正規化後等同任一內建工具 skills 目錄（`.claude/skills`、`.agents/skills`、`.github/skills`、`.agent/skills`）的 skills_dir SHALL 被拒絕，且這條比對 SHALL 不分大小寫（macOS 與 Windows 的檔案系統上 `.GitHub/skills` 就是 `.github/skills`）。描述子仍帶 instructions_file 欄位時，workspace 檢查 SHALL 輸出一行棄用提示（非錯誤、不影響 exit code）。驗證失敗時指令 SHALL 以非 0 exit code 結束並輸出單行語義化錯誤訊息（指明錯誤欄位與原因）。
 
 #### Scenario: 合法描述子生成對應工具檔
 
@@ -69,9 +69,10 @@ AI 工具指令檔在工作區的生成與維護：內建與自訂 tools 描述�
 
 保留舊 name: copilot 描述子的遷移指引：驗證錯誤 SHALL 提示改名 copilot-custom 可保留 skills_dir/invocation，或明確改為內建字串 copilot；SHALL NOT 靜默覆寫自訂設定。
 
+
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->
 
 ---
@@ -119,7 +120,7 @@ updated: 2026-10-08T11:52:22+08:00
 ---
 ### Requirement: init 內建 Agent 工具選擇
 
-所有 `speclink init`（filesystem 與 Remote Store）SHALL 在任何 Workspace 寫入前解析至少一個內建 Agent 工具。顯式 `--tools` SHALL 接受 `claude`、`codex`、`copilot` 中的一個，或其中任意多個以逗號分隔（重複名稱合併為一個）並跳過詢問；解析後為空或含未知名稱 SHALL 以非零 exit code 失敗，未知名稱的 stderr 單行訊息 SHALL 列出三個支援的工具名。未提供 `--tools` 且 stdin 為互動終端時，CLI SHALL 於 stderr 依序明示詢問 Claude、Codex、Copilot 三題並允許選任意非空組合；三題皆未選 SHALL NOT 開始 init，並 SHALL 繼續要求有效選擇。未提供 `--tools` 且 stdin 非互動終端時，CLI SHALL 在零寫入狀態以非零 exit code 失敗，stderr SHALL 為單行訊息並指出 `--tools`、三個工具名與逗號分隔的組合寫法，stdout SHALL 為空。init SHALL NOT 將 redirected／piped stdin 當作工具答案，SHALL NOT 新增 stdin payload 或 `--json` 介面。此行為是對早期 footprint 自動偵測的刻意分歧；顯式提供 `--tools` 時成功輸出的格式與 `--no-color` 行為 SHALL 維持既有基線（Generated files 清單內容隨受管集合縮減為技能檔與工作區檔）。
+所有 `speclink init`（filesystem 與 Remote Store）SHALL 在任何 Workspace 寫入前解析至少一個內建 Agent 工具。顯式 `--tools` SHALL 接受 `claude`、`codex`、`copilot`、`antigravity` 中的一個，或其中任意多個以逗號分隔（重複名稱合併為一個）並跳過詢問；解析後為空或含未知名稱 SHALL 以非零 exit code 失敗，未知名稱的 stderr 單行訊息 SHALL 列出四個支援的工具名。未提供 `--tools` 且 stdin 為互動終端時，CLI SHALL 於 stderr 依序明示詢問 Claude、Codex、Copilot、Antigravity 四題並允許選任意非空組合；四題皆未選 SHALL NOT 開始 init，並 SHALL 繼續要求有效選擇。未提供 `--tools` 且 stdin 非互動終端時，CLI SHALL 在零寫入狀態以非零 exit code 失敗，stderr SHALL 為單行訊息並指出 `--tools`、四個工具名與逗號分隔的組合寫法，stdout SHALL 為空。init SHALL NOT 將 redirected／piped stdin 當作工具答案，SHALL NOT 新增 stdin payload 或 `--json` 介面。此行為是對早期 footprint 自動偵測的刻意分歧；顯式提供 `--tools` 時成功輸出的格式與 `--no-color` 行為 SHALL 維持既有基線（Generated files 清單內容隨受管集合縮減為技能檔與工作區檔）。
 
 #### Scenario: filesystem init 顯式選擇 Codex
 
@@ -133,13 +134,13 @@ updated: 2026-10-08T11:52:22+08:00
 
 #### Scenario: 互動終端選擇 Claude 與 Codex
 
-- **WHEN** 未提供 `--tools` 且 stdin 為互動終端，使用者對 Claude 與 Codex 都回答 yes、對 Copilot 回答 no
-- **THEN** 詢問文字依 Claude、Codex、Copilot 順序只寫入 stderr，init 以 claude 與 codex 兩個工具執行，成功摘要寫入 stdout
+- **WHEN** 未提供 `--tools` 且 stdin 為互動終端，使用者對 Claude 與 Codex 都回答 yes、對 Copilot 與 Antigravity 回答 no
+- **THEN** 詢問文字依 Claude、Codex、Copilot、Antigravity 順序只寫入 stderr，init 以 claude 與 codex 兩個工具執行，成功摘要寫入 stdout
 
 #### Scenario: 互動終端不得提交空選集
 
-- **WHEN** 未提供 `--tools` 且 stdin 為互動終端，使用者對 Claude、Codex、Copilot 三題都回答 no
-- **THEN** CLI 不建立 `.speclink.yaml`、`openspec/`、`.gitignore` 或 Skills，於 stderr 印一行要求至少選取一個工具，並從 Claude 起再次詢問三題
+- **WHEN** 未提供 `--tools` 且 stdin 為互動終端，使用者對 Claude、Codex、Copilot、Antigravity 四題都回答 no
+- **THEN** CLI 不建立 `.speclink.yaml`、`openspec/`、`.gitignore` 或 Skills，於 stderr 印一行要求至少選取一個工具，並從 Claude 起再次詢問四題
 
 #### Scenario: 非互動 init 缺少 tools 零寫入失敗
 
@@ -179,8 +180,8 @@ updated: 2026-10-08T11:52:22+08:00
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->
 
 ---
@@ -688,4 +689,29 @@ updated: 2026-10-08T11:52:22+08:00
 <!-- @trace
 source: add-copilot-tool
 updated: 2026-10-08T11:52:22+08:00
+-->
+
+---
+### Requirement: Antigravity 技能生成與獨立清理
+
+Antigravity SHALL 為內建工具名 antigravity，使用專案根 .agent/skills 下的 speclink-* 技能目錄。生成 SHALL 沿既有 Tool::ALL 生成計畫，使用非 Claude 技能 frontmatter 與 /speclink- 呼叫樣式；SHALL NOT 生成 AGENTS.md、GEMINI.md 或修改使用者全域設定。更新、過期探測及取消清理 SHALL 與其他內建工具一致；取消 SHALL 只清理受管技能並保留其他工具、自有技能與 .agent 下其他檔案。舊自訂描述子撞名或撞 .agent/skills SHALL 在寫入前拒絕並給明確遷移提示，不靜默覆寫。
+
+#### Scenario: 同時使用 Codex 與 Antigravity
+
+- **WHEN** 使用者以 tools codex,antigravity 初始化或更新專案
+- **THEN** tools 保存兩種名稱，Codex 技能生成於 .agents/skills 並沿 $speclink-，Antigravity 技能生成於 .agent/skills 並沿 /speclink-，兩者內容互不覆寫
+
+#### Scenario: 取消 Antigravity 保留使用者檔案
+
+- **WHEN** 已生成 Antigravity 技能的專案將它自 tools 移除並更新
+- **THEN** .agent/skills 下受管 speclink-* 移除，自有技能、.agent 其他檔案與 .agents 下 Codex 內容保持不變；連結目錄不被跟隨清理
+
+#### Scenario: 舊自訂描述子與新內建工具衝突
+
+- **WHEN** tools 含 name antigravity 的描述子，或自訂 skills_dir 正規化等同 .agent/skills
+- **THEN** 更新以非零退出、提示撞名或撞目錄及改名 antigravity-custom／改用內建工具的可行方式，工作區檔案不變
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->

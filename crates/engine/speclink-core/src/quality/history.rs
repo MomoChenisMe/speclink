@@ -1,4 +1,4 @@
-//! Completed checks share one index; paths are generated from kind and ULID only.
+//! Completed checks share one index; review/verify paths include the run start time and ULID.
 mod archive;
 use crate::{security::data::sha256, store::Store};
 use anyhow::{ensure, Result};
@@ -29,6 +29,32 @@ impl CheckKind {
             Self::Security => format!("checks/security/{id}/report.md"),
             _ => format!("checks/{}/{id}.md", self.as_str()),
         })
+    }
+    pub fn path_with_started_at(self, id: &str, started_at: &str) -> Result<String> {
+        validate_id(id)?;
+        let timestamp = chrono::DateTime::parse_from_rfc3339(started_at)?
+            .with_timezone(&chrono::Utc)
+            .format("%Y%m%d%H%M%S");
+        Ok(match self {
+            Self::Security => self.path(id)?,
+            _ => format!("checks/{}/{timestamp}{id}.md", self.as_str()),
+        })
+    }
+    fn accepts_path(self, path: &str, id: &str) -> Result<bool> {
+        if path == self.path(id)? {
+            return Ok(true);
+        }
+        let Some(stem) = path
+            .strip_prefix(&format!("checks/{}/", self.as_str()))
+            .and_then(|name| name.strip_suffix(".md"))
+        else {
+            return Ok(false);
+        };
+        if matches!(self, Self::Security) || stem.len() != 14 + id.len() {
+            return Ok(false);
+        }
+        let bytes = stem.as_bytes();
+        Ok(bytes[..14].iter().all(u8::is_ascii_digit) && &bytes[14..] == id.as_bytes())
     }
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -65,7 +91,7 @@ impl CheckIndex {
         for entry in &self.entries {
             ensure!(
                 ids.insert(&entry.record_id)
-                    && entry.relative_path == entry.kind.path(&entry.record_id)?,
+                    && entry.kind.accepts_path(&entry.relative_path, &entry.record_id)?,
                 "invalid_check_index: duplicate ID or path"
             );
             ensure!(
@@ -144,7 +170,17 @@ pub fn valid_check_path(path: &str) -> bool {
             .strip_prefix(&format!("checks/{}/", kind.as_str()))
             .and_then(|p| p.strip_suffix(".md"))
         {
-            return validate_id(id).is_ok();
+            if validate_id(id).is_ok() {
+                return true;
+            }
+            let bytes = id.as_bytes();
+            if bytes.len() == 14 + 26 && bytes[..14].iter().all(u8::is_ascii_digit) {
+                if let Ok(suffix) = std::str::from_utf8(&bytes[14..]) {
+                    if validate_id(suffix).is_ok() {
+                        return true;
+                    }
+                }
+            }
         }
     }
     if let Some((id, file)) = path
@@ -240,4 +276,53 @@ pub fn record(store: &dyn Store, change: &str, id: &str, kind: CheckKind) -> Res
         content: crate::security::report::redact_text(&content),
         metadata,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const ID_A: &str = "01M5JZP06MG4MC3S53AGJAZMX9";
+    const ID_B: &str = "01M5JZP06NPVGDYDSJCWP53Q7A";
+
+    #[test]
+    fn started_paths_convert_offsets_to_utc_and_keep_same_second_ids_distinct() {
+        let started_at = "2026-10-22T23:37:33-08:00";
+        let first = CheckKind::Review.path_with_started_at(ID_A, started_at).unwrap();
+        let second = CheckKind::Review.path_with_started_at(ID_B, started_at).unwrap();
+        assert_eq!(first, format!("checks/review/20261023073733{ID_A}.md"));
+        assert_eq!(second, format!("checks/review/20261023073733{ID_B}.md"));
+        assert_ne!(first, second);
+        assert!(valid_check_path(&first));
+    }
+
+    #[test]
+    fn index_accepts_started_and_legacy_ulid_paths() {
+        let index = CheckIndex {
+            format_version: 1,
+            entries: vec![
+                CheckEntry {
+                    record_id: ID_A.into(),
+                    kind: CheckKind::Review,
+                    created_at: "2026-10-23T07:37:33Z".into(),
+                    outcome: "clean".into(),
+                    relative_path: CheckKind::Review
+                        .path_with_started_at(ID_A, "2026-10-23T07:37:33Z")
+                        .unwrap(),
+                    content_digest: "a".repeat(64),
+                },
+                CheckEntry {
+                    record_id: ID_B.into(),
+                    kind: CheckKind::Verify,
+                    created_at: "2026-10-23T07:38:33Z".into(),
+                    outcome: "clean".into(),
+                    relative_path: CheckKind::Verify.path(ID_B).unwrap(),
+                    content_digest: "b".repeat(64),
+                },
+            ],
+        };
+        index.validate().unwrap();
+        assert!(!valid_check_path("checks/review/../escape.md"));
+        assert!(!valid_check_path(&format!("checks/review/{}x.md", "9".repeat(14) + ID_A)));
+    }
 }

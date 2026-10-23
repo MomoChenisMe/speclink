@@ -1459,7 +1459,7 @@ updated: 2026-10-12T16:18:33+08:00
 
 變更詳情頁與已封存檢視的提案／設計文件 SHALL 以二級標題切段：每個二級標題 SHALL 成為一段、帶本頁目錄錨點、算進數字磚；已知模板章節標題（提案側 Why／What Changes／Non-Goals／Capabilities／New Capabilities／Modified Capabilities／Impact／Problem／Root Cause／Proposed Solution／Success Criteria／Summary／Motivation／Alternatives Considered；設計側 Context／Goals / Non-Goals／Decisions／Implementation Contract／Risks / Trade-offs／Migration Plan／Open Questions；標題尾的「(optional)」於比對前剝除）SHALL 顯示中文標籤與該章節的專屬畫法，英文模板標題 SHALL NOT 以標題文字直出；白名單以外的二級標題 SHALL 以原文為段標題（不翻譯）、內文照 prose 排版。章節標題款式 SHALL 為 16px 粗體（計算字級 16px、大於內文的 15px），與任務群組卡頭、規格 delta 的需求標題、排程四卡頭、工單輪卡頭同款式（色標區段標頭保留各 delta 色彩）；列式章節的標題右端 SHALL 附列點數籤。整份文件沒有任何二級標題時 SHALL 整篇以單一 markdown 檢視退回，不報錯。章節白名單 SHALL 留在前端，SHALL NOT 讀 schema 模板。渲染 SHALL NOT 修改任何來源檔案。
 
-提案側的專屬畫法 SHALL 為：Summary 成灰底引言段；Why／Motivation／Problem／Root Cause／Success Criteria 的頂層列點成細線列（非列點段落照 prose）；What Changes／Proposed Solution 的頂層列點與編號項成編號步驟；Non-Goals 的列點成帶禁止圖示的細線列；Alternatives Considered 的每個列點以首個「——」切成「方案／落敗理由」兩段，切不到時整條當一般列；Capabilities 的 New Capabilities／Modified Capabilities 次級標籤之下每個「`能力名`: 說明」列點成能力籤＋說明，能力名在本變更已載入的 delta 規格中時籤 SHALL 可點——點擊切到規格文件並選定該能力（規格文件捲到該能力段、「開啟 ▾」指向它），不在時為不可點的籤，「(none)」顯示「無」；Impact 的「Affected specs:」列成「規格」列（能力籤規則同上），「Affected code:」之下的 New／Modified／Removed 子列點依序成「新增 N」「修改 N」「移除 N」三組等寬路徑籤（路徑以「、」或「,」分隔，「(none)」顯示「無」），路徑籤 hover 時 SHALL 出現複製鈕，宿主提供本機路徑動作時 SHALL 另出「在 Finder 顯示」鈕（非 macOS 依平台詞條），「移除」組的路徑籤 SHALL NOT 出該鈕（那些檔案在 apply 後已不存在）；Impact 段不符這個形狀時 SHALL 整段當一般細線列。
+提案側的專屬畫法 SHALL 為：Summary 成灰底引言段；Why／What Changes／Proposed Solution 的頂層列點與編號項成編號步驟，連續散文區塊亦各作一項，混合內容依來源順序形成同一連續編號序列並顯示項目數；此為所有專案的預設，不依專案名稱或設定，活動／已封存及Local／Remote共用ProposalDoc，顯示不改來源檔；巢狀列點、連結、續行與程式區塊保留，不依標點拆句，空章節不產生空項。Motivation／Problem／Root Cause／Success Criteria 的頂層列點成細線列（非列點段落照 prose）；Non-Goals 的列點成帶禁止圖示的細線列；Alternatives Considered 的每個列點以首個「——」切成「方案／落敗理由」兩段，切不到時整條當一般列；Capabilities 的 New Capabilities／Modified Capabilities 次級標籤之下每個「`能力名`: 說明」列點成能力籤＋說明，能力名在本變更已載入的 delta 規格中時籤 SHALL 可點——點擊切到規格文件並選定該能力（規格文件捲到該能力段、「開啟 ▾」指向它），不在時為不可點的籤，「(none)」顯示「無」；Impact 的「Affected specs:」列成「規格」列（能力籤規則同上），「Affected code:」之下的 New／Modified／Removed 子列點依序成「新增 N」「修改 N」「移除 N」三組等寬路徑籤（路徑以「、」或「,」分隔，「(none)」顯示「無」），路徑籤 hover 時 SHALL 出現複製鈕，宿主提供本機路徑動作時 SHALL 另出「在 Finder 顯示」鈕（非 macOS 依平台詞條），「移除」組的路徑籤 SHALL NOT 出該鈕（那些檔案在 apply 後已不存在）；Impact 段不符這個形狀時 SHALL 整段當一般細線列。
 
 設計側的專屬畫法 SHALL 為：Context 成細線列；Goals / Non-Goals 以「**Goals:**」與「**Non-Goals:**」兩個粗體標籤切成左右兩欄（各列其下的列點），切不到時照 prose；Decisions 之下每個三級標題一張可收合卡（標題開頭的 D 編號成籤、卡頭右端標列點數；預設收合，點卡頭展開；自任務文件的 D 籤跳來時該卡展開並捲到卡頭）；Implementation Contract 的「- **鍵**：值」列點成鍵值列，切不到時照 prose；Risks / Trade-offs 的每個列點成一個 warning 提示框（以首個「→」切標題與內文，切不到時整條歸標題；標題只取首行並以行內標記呈現，其餘行（巢狀子項、續行）接在內文之前）；Migration Plan 與 Open Questions 照 prose。
 
@@ -1475,7 +1475,7 @@ updated: 2026-10-12T16:18:33+08:00
 | 來源章節標題 | 呈現標籤 | 畫法 |
 | ------------ | -------- | ---- |
 | ## Summary | 摘要 | 灰底引言段 |
-| ## Why | 為什麼 | 細線列 |
+| ## Why | 為什麼 | 編號步驟（含散文區塊） |
 | ## What Changes | 變更內容 | 編號步驟 |
 | ## Proposed Solution | 解法 | 編號步驟 |
 | ## Non-Goals | 非目標 | 禁止圖示細線列 |
@@ -1537,6 +1537,18 @@ updated: 2026-10-12T16:18:33+08:00
 <!-- @trace
 source: desktop-change-doc-views
 updated: 2026-10-12T16:18:33+08:00
+-->
+
+---
+#### Scenario: 不同專案的散文提案預設列式
+
+- **WHEN** 使用者分別開啟專案A的活動提案與專案B的已封存提案，Why含一段散文接兩項列點
+- **THEN** 兩者皆依原序顯示三項連續編號，保留原文與巢狀內容，不需設定，不修改任何來源檔案
+
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->
 
 ---
@@ -4379,4 +4391,133 @@ Desktop SHALL 在應用程式設定及專案設定點左側專案圖示或使用
 <!-- @trace
 source: desktop-colors-network-and-offline-bundles
 updated: 2026-10-19T23:00:19+08:00
+-->
+
+---
+### Requirement: 本分支更新與原作者版本
+
+更新頁主要版本檢查、更新候選與下載入口 SHALL 以 https://github.com/mosutw/speclink 為來源，原作者版本 SHALL 在獨立列顯示並可點往 https://github.com/MomoChenisMe/speclink。原作者版本 SHALL NOT 成為本分支安裝候選，也 SHALL NOT 與目前分支版號混用判定更新。About／原生選單的本專案原始碼與回報問題 SHALL 指向 mosutw，原作者 SHALL 另保留清楚署名與專案連結，zh-TW／en 行為一致。
+
+本分支或原作者的已發布桌面版本 SHALL 從固定專案的 GitHub Releases metadata 查詢，排除 draft、prerelease、CLI-only 發行；單次最多讀 100 筆，沒有合格桌面版本 SHALL 顯示未取得而非已是最新。兩者各自顯示版本、狀態與查詢時間；失敗時舊版本只能標為上次取得，未曾成功則顯示未取得。403／429、404、TLS、Proxy 或解析錯誤 SHALL 不清除內附版本與日誌，不將失敗當成最新，不以另一個專案的資料補位。兩者 SHALL 共用已選 Proxy 政策且不偷偷直連。
+
+只有本分支提供與信任公鑰相符的合法簽章更新包時 SHALL 使用既有同意、下載及安裝流程；缺少 latest.json／對應平台或沒有可驗簽套件時 SHALL 呈現手動更新狀態及本分支 Release 連結，不靜默降級成未簽章安裝。簽章不符 SHALL 保持拒裝錯誤。版本查詢 SHALL NOT 要求使用者提供 GitHub token 或由前端直接連 GitHub。
+
+#### Scenario: 本分支有新版而原作者版號更高
+
+- **WHEN** 本機版本為 0.10.0-build.3，本分支有較新版桌面 Release，原作者另有更高版本
+- **THEN** 更新候選只對照本分支，原作者版本顯示在獨立列，點原作者連結導向原作專案，不以原作者包覆蓋本分支
+
+#### Scenario: 只有未簽章安裝檔
+
+- **WHEN** 本分支已發布桌面安裝檔，但未發布 latest.json 或有效簽章更新包
+- **THEN** 顯示取得的本分支版本與手動下載入口，沒有可直接安裝的自動更新動作，不把描述檔缺失說成已是最新
+
+#### Scenario: 原作者查詢失敗且本分支正常
+
+- **WHEN** 本分支查詢成功，原作者查詢遇到 403 或 TLS 失敗
+- **THEN** 本分支結果不變，原作者列顯示其獨立錯誤及上次成功時間或未取得，內附版本與日誌仍可讀
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 專案貢獻與原作署名
+
+中英 README SHALL 清楚列出 mosutw 為本分支維護者、Codex 為 AI 開發協作工具，並保留 MomoChenisMe 原作者及原作專案連結與既有授權。貢獻說明 SHALL 區分 README 的人工署名與 GitHub 側欄 Contributors 的自動統計，說明作者 email 與 GitHub 帳號關聯、預設分支及真實共同作者的 Co-authored-by 用法；SHALL NOT 承諾 README 文字可控制側欄或偽造 Codex 帳號／email。此交付 SHALL 不修改 Git 身分、歷史或推送遠端。
+
+#### Scenario: 查看本分支貢獻說明
+
+- **WHEN** 使用者檢視任一語言 README 與 CONTRIBUTING.md
+- **THEN** 可辨認維護者、AI 協作與原作者，並理解側欄需由符合 GitHub 規則的實際提交統計，不將 AI 工具標示為已驗證 GitHub 帳號
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 左側專案排序與裝置持久化
+
+Desktop SHALL 提供垂直拖曳及右鍵上移／下移來調整左側專案順序，沿用 locator 身分與裝置 tabs 順序。成功保存後重開、Tray 及專案切換快捷鍵 SHALL 使用相同順序；新增專案附尾、關閉只刪指定項。排序 SHALL NOT 切換作用中專案、丟失草稿或更動專案文件；失效／離線專案仍可排序。取消、未知或重複項目、超出範圍 SHALL 不更動原順序，保存失敗 SHALL 顯示錯誤並維持舊值。第一／末項對應的移動項 SHALL 停用。
+
+#### Scenario: 本機與遠端混排後重開
+
+- **WHEN** 使用者把順序 A（本機）、B（Remote離線）、C 的 C 拖到 A 前並重開 Desktop
+- **THEN** 左側列與Tray皆為 C、A、B，目前專案及三者身分不變，沒有專案文件寫入
+
+#### Scenario: 取消與保存失敗
+
+- **WHEN** 拖曳後按 Escape、拖到無效位置，或上移操作的裝置儲存寫入失敗
+- **THEN** 順序仍是操作前值；儲存失敗顯示錯誤，無誤觸專案切換
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 更新頁內附資訊不依賴網路成功
+
+Desktop 更新頁 SHALL 在 updater 尚未就緒、檢查失敗、Proxy／TLS 錯誤時仍呈現已知目前版本與程式內附更新日誌，不用網路空結果取代內附內容。未就緒 SHALL 顯示說明並停用更新動作；失敗 SHALL 顯示最後一次檢查狀態、重試及前往網路與診斷的入口。背景檢查不主動打擾的行為 SHALL 保留，但設定頁 SHALL NOT 將背景失敗顯示為已是最新。內附日誌 SHALL 隨zh-TW／en切換。
+
+#### Scenario: 更新元件缺席
+
+- **WHEN** updater 未完成初始化而使用者進入更新頁
+- **THEN** 日誌及已知版本可讀，顯示更新服務尚未就緒，不能觸發無效下載
+
+#### Scenario: Proxy拒絕與背景失敗
+
+- **WHEN** 更新請求遭Proxy拒絕，或背景檢查失敗後回到設定頁
+- **THEN** 日誌仍可讀，顯示失敗狀態及診斷入口，不把失敗當作最新版本或只顯示頁標題
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 文件區只顯示進行中的審查與驗證
+
+Desktop 提案詳情的文件區 SHALL 只顯示目前進行中的 `review.md` 與 `verify.md` 工單；蓋章後的歷史紀錄 SHALL NOT 出現在文件區、文件樹或獨立「檢查紀錄」清單。已審查與已驗證的歷史紀錄 SHALL 僅能從品質關卡各自的狀態控制項展開與查閱，並依開始時間由新到舊排列。已封存詳情 SHALL NOT 另顯示審查／驗證歷史清單。切換專案或變更時 SHALL 清除舊文件與清單選取，且不得跨專案顯示內容。
+
+#### Scenario: 文件區只顯示進行中的工單
+
+- **WHEN** 提案同時有進行中的 `review.md`、`verify.md` 及過往完成紀錄
+- **THEN** 文件區只呈現兩份進行中的工單；完成紀錄不出現在文件區或文件樹
+
+#### Scenario: 蓋章後從品質關卡查詢歷史
+
+- **WHEN** 使用者展開品質關卡的「已審查」或「已驗證」
+- **THEN** 該類完成紀錄依開始時間由新到舊顯示；歷史紀錄不額外出現在文件區或已封存詳情
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 品質關卡展開審查與驗證紀錄
+
+Desktop SHALL 讓提案詳情品質關卡中的「已審查」與「已驗證」狀態分別作為展開控制項。展開一類 SHALL 從同一 Store 載入該類已保存紀錄，依紀錄開始時間由新到舊列出開始時間、結果及紀錄 ID；使用者選取一筆 SHALL 在提案詳情中顯示相應紀錄內容。兩類展開狀態互相獨立且控制項可用鍵盤操作。空清單 SHALL 顯示無紀錄；讀取失敗 SHALL 顯示錯誤與重試入口；載入中的紀錄 SHALL 不跨專案或變更顯示。此入口 SHALL 是審查與驗證歷史紀錄的唯一 Desktop 查閱入口，不觸發重跑。
+
+#### Scenario: 展開並查看審查紀錄
+
+- **WHEN** 使用者在提案詳情點選「已審查」並選取一筆審查紀錄
+- **THEN** 只列出審查紀錄且顯示所選完整紀錄內容，「已驗證」清單維持原狀
+
+#### Scenario: 展開並查看驗證紀錄
+
+- **WHEN** 使用者在提案詳情以滑鼠或鍵盤點選「已驗證」並選取一筆驗證紀錄
+- **THEN** 只列出驗證紀錄且顯示所選完整紀錄內容，「已審查」清單維持原狀
+
+#### Scenario: 空清單、失敗與切換變更
+
+- **WHEN** 清單為空、查詢失敗，或讀取期間切換到另一個變更
+- **THEN** 分別顯示空狀態、可重試錯誤，或只顯示新變更的資料，且不啟動審查／驗證
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->

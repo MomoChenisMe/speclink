@@ -5,10 +5,10 @@ created_with: codex
 from_discussion: desktop-workflow-and-offline-security-review, owasp-cwe-acceptance-policy
 started_at: 2026-10-20
 started_by: mosutw <luke1974@gmail.com>
-reviewed_at: 2026-10-22
+reviewed_at: 2026-10-23
 reviewed_by: mosutw <luke1974@gmail.com>
 reviewed_with: codex
-reviewed_tasks_total: 62
+reviewed_tasks_total: 66
 reviewed_scope:
   - path: .github/skills/speclink-apply-with-worktree/SKILL.md
     hash: e3c24e5abf3277a1ac888dcd5181365ceb8599736fcff2979716da364c9a8658
@@ -51,7 +51,7 @@ reviewed_scope:
   - path: CONTRIBUTING.md
     hash: f5795c278bdc053bf413aa67d3eeae007fc9e1bb1b916e08cabc2519e2fa2f49
   - path: Cargo.lock
-    hash: bfc16d0a81397e42e097473248bfee44daa65abc7e388ecad2df037182618dda
+    hash: 2449dc51a214bff1f769ebe76a2966686f4f49925230460cc02f585252a33cd5
   - path: README.md
     hash: 7045682e4bdfb8e98be598e5e935698f55e0850691cef761fd1a3c377683a044
   - path: README.zh-TW.md
@@ -251,15 +251,15 @@ reviewed_scope:
   - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
     hash: f730269cc7e691f890fa7cd005830f26628e2d147fe08cfc9a5fe12fb60bab8f
   - path: crates/engine/speclink-core/src/quality/history.rs
-    hash: a0522588663ceac11276662deafedf10530f672359d28928e3854f920bbf7aaa
+    hash: 09ce334bf0599fb854d53bdf8f72aa9a1c3b9fef1b5d621e44ef15afecb9c7e4
   - path: crates/engine/speclink-core/src/quality/history/archive.rs
     hash: 1309e3d424a5f3557e175e19e38779ae244145ae518e5562fd6b86dd874f22db
   - path: crates/engine/speclink-core/src/quality/mod.rs
     hash: e444159b0384265ab677aff5fc3b056360e91d9609988a48165d0c91768429f7
   - path: crates/engine/speclink-core/src/quality/station.rs
-    hash: 9e140f9ba2819ba69dbc4a11e58f717f5e91a7be81f669f6202ec15551972f6c
+    hash: b2f48022fb42d3046ef49d9de66d4e0d8c7d4778ad3ad4e7b69fcdf7e7597ce2
   - path: crates/engine/speclink-core/src/quality/station/tests.rs
-    hash: 45356d106a5a2228ddeee55f7fea28da4843527b5949ca9874cb5862ccbb669e
+    hash: 88b31910120dc98e7274600445c7dd64717280a1c5c5d1b6b03951c6fe071495
   - path: crates/engine/speclink-core/src/security/acceptance.rs
     hash: 77eced836d909d00086e0eff0827bb59a1252037231518f53e8b6d38b25dad40
   - path: crates/engine/speclink-core/src/security/data.rs
@@ -323,7 +323,7 @@ reviewed_scope:
   - path: crates/engine/speclink-fs/src/archive_checks.rs
     hash: ffaba9aa7157a8dedd5a3ef7beac02afb63223a2eef29a4e6b90848e5e64e877
   - path: crates/engine/speclink-fs/src/checks.rs
-    hash: 8dfb9a5e191aeab9fc62cb98878f142897a29b4c0def43ca7bdbc69da0f1f08d
+    hash: b445229412aefe9f7ec1d3137ac7d5ca186330adac62cbfa8d8ce68b1ee201d5
   - path: crates/engine/speclink-fs/src/layout.rs
     hash: 2abd447d5c80456a4c0504abaef956bd23d8b46d9f5a072da5d1f19b6b12d821
   - path: crates/engine/speclink-fs/src/lib.rs
@@ -439,13 +439,17 @@ reviewed_scope:
   - path: docs/getting-started.zh-TW.md
     hash: 32d3fc2dcddecf1df480af7cb10429d4b82ec11536088470e815dd1cadb38825
   - path: docs/product-status.md
-    hash: ff5fc3f7b1c0565815896b8bed31afa914b8f89ce083a9a4a03b29cd59ddbbbb
+    hash: 37d3b557d265b32f84fa0dff4b5ed7dfd2fe35b5b00fb435e3b1757989831b85
   - path: docs/product-status.zh-TW.md
-    hash: 23e420f3b434d95cb4b3c1053d81cda3449dcaf72ad9b56b9663d6da2da607aa
+    hash: fbc4bde495d6aea6e68c610c9b0b3e10cdb12853724c3ee6f89bdd73f4c3af7f
   - path: docs/sdk-node.md
     hash: b1f02b2c3fde91c6438b2a795bdd8adbd44ac5a256eac837f7e07b41f9ce944f
   - path: docs/sdk-node.zh-TW.md
     hash: 85d52b62a29340829e1e4ae2d2a2abf6a525f79ba31ec88c771d75ec6056f82d
+  - path: docs/workflow.md
+    hash: af7371fc521c201fd4b9439dbd5725cc10843a46c0d057598b4de3346765dc7d
+  - path: docs/workflow.zh-TW.md
+    hash: a55bdad30245e8c27d864e7fb10720d8bee69103f61b15233476ca8546ad6714
   - path: integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/case.yaml
     hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
   - path: integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/no-resource-fetch.md
@@ -461,11 +465,11 @@ reviewed_scope:
   - path: package-lock.json
     hash: ca910580d22b0ec8757530c2b1105c5be78c05451408975d2114dd4a122e7c44
   - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
-    hash: 70caa6d5b710da13cb7f6a6c79498ebdad40389ccd7e782ec70a4b6ba0ba8bbe
+    hash: bc5efd340d88b3535b11d8e59fb28e64887959bedc0a2d1b86d356d8f5bf087d
   - path: packages/ui/src/__tests__/baselineSmellHelp.test.tsx
     hash: bfbfbed0ee6e7ad17e465513418cb53c5844be5b7c26c8634c15a5bd00fa6a25
   - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
-    hash: 56703f11a6f9bb618a841200bd9ab4f2bb45d0918437ce2a1879dec7207af128
+    hash: 56b79218fc6297dcfa2a778178e1da53acb2d46a2103201e5d076cece3e07b73
   - path: packages/ui/src/__tests__/proposalDoc.test.tsx
     hash: 7be6b9013b817968500e4daae996310cdf3d5f28565fbbb6610a272285318861
   - path: packages/ui/src/__tests__/securityReviewPanel.test.tsx
@@ -474,28 +478,26 @@ reviewed_scope:
     hash: 5fd8d92e5d2fb41191840b44ab55b807040735efa22e52fa0639a3accec1df30
   - path: packages/ui/src/checkRecords.ts
     hash: 142721d2af1e6cfaebf5976d9bed80844fb7b7f86fce26a982bda195415cf1c1
-  - path: packages/ui/src/components/ArchivedDetailPage.tsx
-    hash: 99ca8804b1d12cbe1551a66e15296111df4eeebfa55fca1070ed23ea523d2227
   - path: packages/ui/src/components/BaselineSmellList.tsx
     hash: faa9d3410a1bb42686a35de4992515c53ad9ea6a946037794256c4fe98df8839
   - path: packages/ui/src/components/ChangeDetailPage.tsx
-    hash: 13a4b1e9bd3e3023869f6751dd980f80f392cf431c277d9c7893c3b85cf9c3f6
+    hash: 5a3b063b4d942cf9e94cfce611eb147322ce132cb329b3f12e4ebbb9f2a840b0
   - path: packages/ui/src/components/CheckRecords.tsx
-    hash: 1cf2d85180b6213b5f01d00916644a94334784c3081ffaf9a175d9d5f3340f37
+    hash: b162f509ad7725675aa587919bb96b7794fa81c8c5c762e1ee2338d4f316b100
   - path: packages/ui/src/components/ProposalDoc.tsx
     hash: ceb70b1c2d201e931e24e54a8791935624e86b3a6c7486c172b17d45a9c65cd9
   - path: packages/ui/src/components/SecurityReviewPanel.tsx
     hash: 33cbf20fb8b1b790acc1c1580d123a58a9de6ade48a643f79a8308c5debc7996
   - path: packages/ui/src/i18n.tsx
-    hash: c7c6db8c5965fdaee77c3e98e73aa6c5fd793e4f3e8ddf2d7952e6bd64a6d7d2
+    hash: 9835951cfa1e327a86ffc5f5f3576f2cff4cd4695862455ea8fb6ddd25e800db
   - path: packages/ui/src/index.ts
     hash: f9e3e695929e851bded1582cc4a78df398e4007de7d55a986b6a9b3199d72023
   - path: packages/ui/src/security.ts
     hash: f0b205844dd721ee363a97123d96500a018411d12764176c9a96c700f303f5ea
-verified_at: 2026-10-22
+verified_at: 2026-10-23
 verified_by: mosutw <luke1974@gmail.com>
 verified_with: codex
-verified_tasks_total: 62
+verified_tasks_total: 66
 verified_scope:
   - path: .github/skills/speclink-apply-with-worktree/SKILL.md
     hash: e3c24e5abf3277a1ac888dcd5181365ceb8599736fcff2979716da364c9a8658
@@ -538,7 +540,7 @@ verified_scope:
   - path: CONTRIBUTING.md
     hash: f5795c278bdc053bf413aa67d3eeae007fc9e1bb1b916e08cabc2519e2fa2f49
   - path: Cargo.lock
-    hash: bfc16d0a81397e42e097473248bfee44daa65abc7e388ecad2df037182618dda
+    hash: 2449dc51a214bff1f769ebe76a2966686f4f49925230460cc02f585252a33cd5
   - path: README.md
     hash: 7045682e4bdfb8e98be598e5e935698f55e0850691cef761fd1a3c377683a044
   - path: README.zh-TW.md
@@ -738,15 +740,15 @@ verified_scope:
   - path: crates/engine/speclink-core/src/lifecycle/archive/tests.rs
     hash: f730269cc7e691f890fa7cd005830f26628e2d147fe08cfc9a5fe12fb60bab8f
   - path: crates/engine/speclink-core/src/quality/history.rs
-    hash: a0522588663ceac11276662deafedf10530f672359d28928e3854f920bbf7aaa
+    hash: 09ce334bf0599fb854d53bdf8f72aa9a1c3b9fef1b5d621e44ef15afecb9c7e4
   - path: crates/engine/speclink-core/src/quality/history/archive.rs
     hash: 1309e3d424a5f3557e175e19e38779ae244145ae518e5562fd6b86dd874f22db
   - path: crates/engine/speclink-core/src/quality/mod.rs
     hash: e444159b0384265ab677aff5fc3b056360e91d9609988a48165d0c91768429f7
   - path: crates/engine/speclink-core/src/quality/station.rs
-    hash: 9e140f9ba2819ba69dbc4a11e58f717f5e91a7be81f669f6202ec15551972f6c
+    hash: b2f48022fb42d3046ef49d9de66d4e0d8c7d4778ad3ad4e7b69fcdf7e7597ce2
   - path: crates/engine/speclink-core/src/quality/station/tests.rs
-    hash: 45356d106a5a2228ddeee55f7fea28da4843527b5949ca9874cb5862ccbb669e
+    hash: 88b31910120dc98e7274600445c7dd64717280a1c5c5d1b6b03951c6fe071495
   - path: crates/engine/speclink-core/src/security/acceptance.rs
     hash: 77eced836d909d00086e0eff0827bb59a1252037231518f53e8b6d38b25dad40
   - path: crates/engine/speclink-core/src/security/data.rs
@@ -810,7 +812,7 @@ verified_scope:
   - path: crates/engine/speclink-fs/src/archive_checks.rs
     hash: ffaba9aa7157a8dedd5a3ef7beac02afb63223a2eef29a4e6b90848e5e64e877
   - path: crates/engine/speclink-fs/src/checks.rs
-    hash: 8dfb9a5e191aeab9fc62cb98878f142897a29b4c0def43ca7bdbc69da0f1f08d
+    hash: b445229412aefe9f7ec1d3137ac7d5ca186330adac62cbfa8d8ce68b1ee201d5
   - path: crates/engine/speclink-fs/src/layout.rs
     hash: 2abd447d5c80456a4c0504abaef956bd23d8b46d9f5a072da5d1f19b6b12d821
   - path: crates/engine/speclink-fs/src/lib.rs
@@ -926,13 +928,17 @@ verified_scope:
   - path: docs/getting-started.zh-TW.md
     hash: 32d3fc2dcddecf1df480af7cb10429d4b82ec11536088470e815dd1cadb38825
   - path: docs/product-status.md
-    hash: ff5fc3f7b1c0565815896b8bed31afa914b8f89ce083a9a4a03b29cd59ddbbbb
+    hash: 37d3b557d265b32f84fa0dff4b5ed7dfd2fe35b5b00fb435e3b1757989831b85
   - path: docs/product-status.zh-TW.md
-    hash: 23e420f3b434d95cb4b3c1053d81cda3449dcaf72ad9b56b9663d6da2da607aa
+    hash: fbc4bde495d6aea6e68c610c9b0b3e10cdb12853724c3ee6f89bdd73f4c3af7f
   - path: docs/sdk-node.md
     hash: b1f02b2c3fde91c6438b2a795bdd8adbd44ac5a256eac837f7e07b41f9ce944f
   - path: docs/sdk-node.zh-TW.md
     hash: 85d52b62a29340829e1e4ae2d2a2abf6a525f79ba31ec88c771d75ec6056f82d
+  - path: docs/workflow.md
+    hash: af7371fc521c201fd4b9439dbd5725cc10843a46c0d057598b4de3346765dc7d
+  - path: docs/workflow.zh-TW.md
+    hash: a55bdad30245e8c27d864e7fb10720d8bee69103f61b15233476ca8546ad6714
   - path: integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/case.yaml
     hash: 718c0ea96be9f1c80fc4b9335fa1a10fba6eeb959ac5947e133b77b321243ed0
   - path: integrations/claude-code/skill-evals/evals/security-review-missing-local-knowledge/graders/no-resource-fetch.md
@@ -948,11 +954,11 @@ verified_scope:
   - path: package-lock.json
     hash: ca910580d22b0ec8757530c2b1105c5be78c05451408975d2114dd4a122e7c44
   - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
-    hash: 70caa6d5b710da13cb7f6a6c79498ebdad40389ccd7e782ec70a4b6ba0ba8bbe
+    hash: bc5efd340d88b3535b11d8e59fb28e64887959bedc0a2d1b86d356d8f5bf087d
   - path: packages/ui/src/__tests__/baselineSmellHelp.test.tsx
     hash: bfbfbed0ee6e7ad17e465513418cb53c5844be5b7c26c8634c15a5bd00fa6a25
   - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
-    hash: 56703f11a6f9bb618a841200bd9ab4f2bb45d0918437ce2a1879dec7207af128
+    hash: 56b79218fc6297dcfa2a778178e1da53acb2d46a2103201e5d076cece3e07b73
   - path: packages/ui/src/__tests__/proposalDoc.test.tsx
     hash: 7be6b9013b817968500e4daae996310cdf3d5f28565fbbb6610a272285318861
   - path: packages/ui/src/__tests__/securityReviewPanel.test.tsx
@@ -961,21 +967,21 @@ verified_scope:
     hash: 5fd8d92e5d2fb41191840b44ab55b807040735efa22e52fa0639a3accec1df30
   - path: packages/ui/src/checkRecords.ts
     hash: 142721d2af1e6cfaebf5976d9bed80844fb7b7f86fce26a982bda195415cf1c1
-  - path: packages/ui/src/components/ArchivedDetailPage.tsx
-    hash: 99ca8804b1d12cbe1551a66e15296111df4eeebfa55fca1070ed23ea523d2227
   - path: packages/ui/src/components/BaselineSmellList.tsx
     hash: faa9d3410a1bb42686a35de4992515c53ad9ea6a946037794256c4fe98df8839
   - path: packages/ui/src/components/ChangeDetailPage.tsx
-    hash: 13a4b1e9bd3e3023869f6751dd980f80f392cf431c277d9c7893c3b85cf9c3f6
+    hash: 5a3b063b4d942cf9e94cfce611eb147322ce132cb329b3f12e4ebbb9f2a840b0
   - path: packages/ui/src/components/CheckRecords.tsx
-    hash: 1cf2d85180b6213b5f01d00916644a94334784c3081ffaf9a175d9d5f3340f37
+    hash: b162f509ad7725675aa587919bb96b7794fa81c8c5c762e1ee2338d4f316b100
   - path: packages/ui/src/components/ProposalDoc.tsx
     hash: ceb70b1c2d201e931e24e54a8791935624e86b3a6c7486c172b17d45a9c65cd9
   - path: packages/ui/src/components/SecurityReviewPanel.tsx
     hash: 33cbf20fb8b1b790acc1c1580d123a58a9de6ade48a643f79a8308c5debc7996
   - path: packages/ui/src/i18n.tsx
-    hash: c7c6db8c5965fdaee77c3e98e73aa6c5fd793e4f3e8ddf2d7952e6bd64a6d7d2
+    hash: 9835951cfa1e327a86ffc5f5f3576f2cff4cd4695862455ea8fb6ddd25e800db
   - path: packages/ui/src/index.ts
     hash: f9e3e695929e851bded1582cc4a78df398e4007de7d55a986b6a9b3199d72023
   - path: packages/ui/src/security.ts
     hash: f0b205844dd721ee363a97123d96500a018411d12764176c9a96c700f303f5ea
+archived_by: mosutw <luke1974@gmail.com>
+archived_at: 2026-10-23

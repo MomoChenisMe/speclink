@@ -499,6 +499,21 @@ mod tests {
         }
     }
     #[test]
+    fn publishes_records_with_start_time_prefixed_paths() {
+        let (_root, store, mut commit) = setup();
+        let (old_path, content) = commit.writes.remove_entry("checks/review/01M5CP8YW64XQ0Y57ACZRH3PPE.md").unwrap();
+        let id = old_path
+            .strip_prefix("checks/review/")
+            .and_then(|path| path.strip_suffix(".md"))
+            .unwrap();
+        let path = format!("checks/review/20261022153733{id}.md");
+        commit.expected.remove(&old_path);
+        commit.expected.insert(path.clone(), None);
+        commit.writes.insert(path.clone(), content);
+        store.commit_checks("demo", &commit).unwrap();
+        assert_eq!(store.read_artifact("demo", &path).as_deref(), Some("completed ticket"));
+    }
+    #[test]
     fn interrupted_recovery_blocks_readers_and_next_write_recovers_before_retrying() {
         let (_root, store, commit) = setup();
         FAULTS.with(|faults| *faults.borrow_mut() = vec!["delete:0".into(), "recover:0".into()]);

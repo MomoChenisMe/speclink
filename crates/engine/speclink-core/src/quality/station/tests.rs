@@ -47,6 +47,31 @@ fn stamped_review_and_verify_keep_immutable_complete_records_after_discard_and_n
     }
 }
 
+#[test]
+fn review_and_verify_record_filenames_use_the_first_round_start_time() {
+    for st in [&REVIEW, &VERIFY] {
+        let store = TestStore::with_meta("demo", META);
+        store.put_artifact("demo", "tasks.md", "- [x] Done\n");
+        add_round(st, &store, "demo", "**Scope**: crates/a/src/lib.rs\n").unwrap();
+        let ticket = store.read_artifact("demo", st.doc).unwrap();
+        let started_at = ticket
+            .lines()
+            .find_map(|line| line.strip_prefix("<!-- speclink-check-started-at: ")?.strip_suffix(" -->"))
+            .expect("a new ticket records its start time");
+        let parsed = chrono::DateTime::parse_from_rfc3339(started_at).unwrap();
+        add_round(st, &store, "demo", "**Scope**: crates/a/src/lib.rs\n").unwrap();
+        assert!(store.read_artifact("demo", st.doc).unwrap().contains(started_at));
+        let read = |_: &str| Some(b"fn a() {}\n".to_vec());
+        stamp(st, &store, "demo", false, None, None, &read, &|_| true).unwrap();
+        let index = crate::history::index(&store, "demo").unwrap();
+        let record = &index.entries[0];
+        let prefix = parsed.with_timezone(&chrono::Utc).format("%Y%m%d%H%M%S").to_string();
+        let filename = record.relative_path.rsplit('/').next().unwrap();
+        assert!(filename.starts_with(&prefix), "{filename} must begin with {prefix}");
+        assert!(filename.ends_with(&format!("{}.md", record.record_id)));
+    }
+}
+
 fn store_with_round(round: &str) -> TestStore {
     let store = TestStore::with_meta("demo", META);
     store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");

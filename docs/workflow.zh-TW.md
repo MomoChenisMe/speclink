@@ -236,6 +236,8 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 卡片與系統匣面板上，審查章與驗證章並排顯示，審查在前。系統匣面板從 macOS 選單列的 Speclink 圖示打開，不開主視窗也能看到各專案的變更與品質關卡。
 
+Desktop 提案詳情的品質關卡中，點「已審查」或「已驗證」可分別展開該站紀錄，依開始時間由新到舊排列；選取紀錄會在既有檢視器開啟文件。紀錄檔名以開始時間的 UTC `YYYYMMDDHHmmss` 開頭，舊版檔名仍可查閱。
+
 <img src="assets/screenshots/zh-TW/desktop-tray.png" width="280" alt="Speclink 系統匣面板，依提案中、進行中、已就緒與討論分組列出變更" />
 
 ### <a id="archive"></a>archive：封存

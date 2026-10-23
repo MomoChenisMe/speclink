@@ -2,6 +2,7 @@
 
 - 透過 AI 代理跑 SDD 的開發者、PO 與 PM，需要調整桌面專案順序、在公司 Proxy 內查看更新狀態，並理解預設審查規則。
 - 審查／驗證蓋章後目前刪除工單，安全報告另存裝置，團隊無法在提案內回看，需保存完整紀錄供後續查詢。
+- 歷次審查／驗證紀錄需要直接從 Desktop 品質關卡開啟，並能從檔名辨認該輪開始時間，方便查找與排序。
 - 需要保留內建基本掃描，並加入使用完整本機標準資料的深度審查 skill，追查架構、業務邏輯與跨模組資料流。
 - 團隊需依專案選擇是否把安全結果納入驗收，並明確記錄風險接受與封存保留政策。
 - 提案動機應與變更內容同樣容易逐項閱讀；所有專案預設條列起草與顯示，不依賴單一專案設定。
@@ -20,7 +21,8 @@
 - 「查看 12 條」每條增加問號說明，說明用途、例子與預設只列建議的效果，共用引擎的名稱清單。
 - 標準下載／匯入即備齊原文、對照表及修復指南；新增本機知識庫準備入口，審查期間不得取得任何網路資源。附件資料清單僅作結構參考，不採浮動來源、虛構版本或未核對的檔名。
 - 保留內建基本掃描，新增 speclink-security-review skill；沿用 security_verification 的主開關、範圍與標準版本，審查五種語言的架構、業務授權及跨模組資料流，依指定九項結構產生遮罩報告。
-- 審查／驗證完成紀錄與安全報告放進提案的 checks 目錄；進行中工單仍用原路徑，蓋章前先保全紀錄。Desktop 的文件樹及已封存詳情可查歷次紀錄。
+- 審查／驗證完成紀錄與安全報告放進提案的 checks 目錄；進行中工單仍用原路徑，蓋章前先保全紀錄。Desktop 文件區只呈現進行中的審查／驗證工單，完成紀錄不另列在文件樹或已封存詳情。
+- 審查與驗證完成紀錄的檔名包含該輪開始時間及紀錄 ID；Desktop 品質關卡的「已審查」與「已驗證」狀態是歷史紀錄的唯一 Desktop 查閱入口，分別展開相應紀錄並依時間由新到舊排列。
 - 在產出流程新增 check_records.archive 的 review／verify／security 布林值，皆預設 true：控制封存時保留三類完整紀錄；蓋章後、封存前仍一律可查，調整設定不回溯刪除既有紀錄。
 - 安全政策新增 required_for_acceptance=false；主開關下方新增「納入驗收條件」checkbox。勾選時，未處理的 CRITICAL／HIGH／MEDIUM 須修復或有明確接受理由，LOW 只列建議；未審查、缺必要資料或必要項未驗證不得通過。驗證蓋章與封存共用判定，既有 --accept 不豁免安全要求。
 - 風險接受是可查詢的具體紀錄，綁報告、finding 與來源指紋；程式碼或政策變更後須重新審查，不能靠舊報告通過。參考模式不新增驗收阻擋。
@@ -60,7 +62,7 @@
 
 ## Impact
 
-- 主要範圍：speclink-core、speclink-fs、speclink-host、speclink-protocol／remote、speclink-cli／server／node、speclink-desktop-core、apps/desktop、packages/ui。
+- 主要範圍：speclink-core、speclink-fs、speclink-host、speclink-protocol／remote、speclink-cli／server／node、speclink-desktop-core、apps/desktop、packages/ui；審查／驗證紀錄命名及 Desktop 品質關卡入口延伸既有 review-station、verify-station、desktop-app 能力。
 - Planned new files（本次建立）: `crates/engine/speclink-core/assets/skills/security-review.md`、`crates/engine/speclink-core/assets/security/spec_registry.json`、`crates/engine/speclink-core/src/security/acceptance.rs`、`crates/engine/speclink-core/src/quality/history.rs`、`crates/engine/speclink-fs/src/security/knowledge.rs`；新檔負責判定、紀錄或安全資料準備，不增加純轉送層；公司環境證據新增於 openspec/changes/desktop-workflow-and-offline-security-review/evidence/company-proxy.md。
 - Affected code — Modified: `apps/desktop/src/tabs.ts`、`apps/desktop/src/store.ts`、`apps/desktop/src/components/ProjectRail.tsx`、`apps/desktop/src/views/settings/UpdatesPage.tsx`、`apps/desktop/src/core/updater.ts`、`apps/desktop/src-tauri/src/updater_commands.rs`、`apps/desktop/src/views/project-settings/WorkflowPage.tsx`、`apps/desktop/src/views/project-settings/ReviewRulesPage.tsx`、`apps/desktop/src/views/project-settings/useProjectSettings.ts`、`packages/ui/src/components/BaselineSmellList.tsx`、`packages/ui/src/i18n.tsx`、`apps/desktop/src/i18n/messages.ts`、`packages/ui/src/components/ChangeDetailPage.tsx`、`packages/ui/src/components/ArchivedDetailPage.tsx`。
 - Affected code — Modified: `crates/engine/speclink-core/src/security/policy.rs`、`crates/engine/speclink-core/src/security/report.rs`、`crates/engine/speclink-core/src/quality/station.rs`、`crates/engine/speclink-core/src/lifecycle/archive.rs`、`crates/engine/speclink-core/src/workspace/config.rs`、`crates/engine/speclink-core/src/workspace/skills.rs`、`crates/engine/speclink-fs/src/lib.rs`、`crates/engine/speclink-fs/src/security.rs`、`crates/engine/speclink-fs/src/security/reports.rs`、`crates/engine/speclink-fs/src/security_packages.rs`、`crates/host/speclink-host/src/security.rs`、`crates/host/speclink-host/src/security_data.rs`、`crates/host/speclink-host/src/bridge.rs`、`crates/host/speclink-host/src/network.rs`。

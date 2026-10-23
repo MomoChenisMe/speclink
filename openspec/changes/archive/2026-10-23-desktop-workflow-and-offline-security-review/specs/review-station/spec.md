@@ -3,7 +3,7 @@
 ### Requirement: 蓋章守門與蓋章效果
 <!-- BEFORE: 蓋章刪除活動工單，Remote無法回讀已刪文字，本機只剩Git歷史。 -->
 
-系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.openspec.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。活動工單刪除前 SHALL 將完整輪次、當時規則、接受情形、操作者及章指紋保存於checks/review/<ULID>.md，並於checks/index.json登錄；完成紀錄不視為未結工單，蓋章後及保留紀錄的封存後仍可查詢。這是刻意新增的檔案效果，原成功stdout及JSON SHALL 維持；歷史、索引或章寫入失敗 SHALL 不回成功，本機journal恢復原工單／metadata／索引、Remote交易不提交；恢復未完成時 SHALL 明示history_recovery_required。
+系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.openspec.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。活動工單刪除前 SHALL 將完整輪次、當時規則、接受情形、操作者及章指紋保存於checks/review/<YYYYMMDDHHmmss><ULID>.md，時間為審查開始的UTC時間，ULID仍為索引中的recordId，checks/index.json SHALL 登錄完整relativePath。舊checks/review/<ULID>.md紀錄 SHALL 仍可讀且不重新命名；完成紀錄不視為未結工單，蓋章後及保留紀錄的封存後仍可查詢。這是刻意新增的檔案效果，原成功stdout及JSON SHALL 維持；歷史、索引或章寫入失敗 SHALL 不回成功，本機journal恢復原工單／metadata／索引、Remote交易不提交；恢復未完成時 SHALL 明示history_recovery_required。
 
 #### Scenario: 寫碼任務未全完成即拒絕
 
@@ -45,6 +45,11 @@
 
 - **WHEN** 蓋章時完成紀錄、索引或metadata寫入失敗
 - **THEN** 命令非零退出，不顯示完成；原工單與章恢復原值，若恢復失敗則明示history_recovery_required且保留復原資料
+
+#### Scenario: 審查紀錄檔名保留開始時間
+
+- **WHEN** 審查於 2026-10-22 15:37:33 UTC 開始並成功蓋章，索引登錄該筆紀錄
+- **THEN** 紀錄檔名以 `20261022153733` 開頭並接該紀錄 ULID，索引的 `recordId` 維持 ULID 且 `relativePath` 指向新檔名
 
 
 ## ADDED Requirements

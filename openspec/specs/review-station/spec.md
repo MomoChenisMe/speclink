@@ -140,7 +140,7 @@ updated: 2026-10-15T09:31:43+08:00
 ---
 ### Requirement: 蓋章守門與蓋章效果
 
-系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.openspec.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。工單刪除後其文字於 fs 模式僅存於 git 歷史;remote 模式的 store 不保留已刪文件內容,蓋章後工單文字不可回讀。
+系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.openspec.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。活動工單刪除前 SHALL 將完整輪次、當時規則、接受情形、操作者及章指紋保存於checks/review/<YYYYMMDDHHmmss><ULID>.md，時間為審查開始的UTC時間，ULID仍為索引中的recordId，checks/index.json SHALL 登錄完整relativePath。舊checks/review/<ULID>.md紀錄 SHALL 仍可讀且不重新命名；完成紀錄不視為未結工單，蓋章後及保留紀錄的封存後仍可查詢。這是刻意新增的檔案效果，原成功stdout及JSON SHALL 維持；歷史、索引或章寫入失敗 SHALL 不回成功，本機journal恢復原工單／metadata／索引、Remote交易不提交；恢復未完成時 SHALL 明示history_recovery_required。
 
 #### Scenario: 寫碼任務未全完成即拒絕
 
@@ -160,7 +160,7 @@ updated: 2026-10-15T09:31:43+08:00
 #### Scenario: 僅 SUGGESTION 的末輪乾淨蓋章
 
 - **WHEN** 寫碼任務全數完成且工單末輪僅含 SUGGESTION 級 findings 時執行 `review stamp`(無 `--accept`)
-- **THEN** exit code 0,五個 reviewed 欄位寫入且 `review.md` 刪除;fs 模式下 SUGGESTION 紀錄留在工單的 git 歷史,remote 模式下工單文字不保留
+- **THEN** exit code 0,五個 reviewed 欄位寫入且 `review.md` 刪除;兩種模式均可從checks/review的完成紀錄查到SUGGESTION原文
 
 #### Scenario: 帶保留蓋章
 
@@ -178,10 +178,20 @@ updated: 2026-10-15T09:31:43+08:00
 - **WHEN** `review stamp` 成功
 - **THEN** `.openspec.yaml` 內 `reviewed_tasks_total` 為 5(全任務總數,含未勾的 `[M]` 任務)
 
+#### Scenario: 歷史寫入失敗保全工單
+
+- **WHEN** 蓋章時完成紀錄、索引或metadata寫入失敗
+- **THEN** 命令非零退出，不顯示完成；原工單與章恢復原值，若恢復失敗則明示history_recovery_required且保留復原資料
+
+#### Scenario: 審查紀錄檔名保留開始時間
+
+- **WHEN** 審查於 2026-10-22 15:37:33 UTC 開始並成功蓋章，索引登錄該筆紀錄
+- **THEN** 紀錄檔名以 `20261022153733` 開頭並接該紀錄 ULID，索引的 `recordId` 維持 ULID 且 `relativePath` 指向新檔名
+
 
 <!-- @trace
-source: stamp-contract-trace-docs
-updated: 2026-08-27
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->
 
 ---
@@ -628,4 +638,39 @@ code:
 <!-- @trace
 source: quality-gate-speedup
 updated: 2026-10-14T21:31:03+08:00
+-->
+
+---
+### Requirement: 檢查紀錄鎖與封存搬移
+
+本機檢查紀錄的寫入、復原與封存 SHALL 使用同一spec store內、不隨提案搬移的跨程序鎖；SHALL 先取得鎖再建立活動目錄，整段封存搬移仍持鎖，不能先解鎖或改用單機記憶體鎖。鎖 SHALL 不進Git或文件樹，目錄及檔案 SHALL 拒連結。舊提案內鎖仍被持有時 SHALL 回busy而不搬移；升級文件 SHALL 明示停止舊版寫入者，不支援混用鎖定協定。
+
+#### Scenario: Windows 封存與競爭寫入
+
+- **WHEN** Windows上封存者持鎖搬移提案，另一個新版本寫入者同時嘗試寫入同一提案
+- **THEN** 封存成功、歷史仍可查，競爭者回busy且不重建已搬移的活動目錄；失敗仍依原journal復原
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
+-->
+
+---
+### Requirement: 審查完成紀錄查詢
+
+CLI SHALL 提供review history CHANGE [--id ID] [--json]，不讀stdin，支援全域--no-color。無ID時JSON為{records:[{recordId:string,kind:string,createdAt:string,outcome:string,relativePath:string,contentDigest:string}]}；有ID時為{recordId:string,content:string,metadata:{createdAt:string,actor:string|null,tool:string|null,outcome:string,scopeDigest:string}}。人眼同列紀錄摘要或完整遮罩工單；成功0，找不到／非法ULID／壞索引／讀取失敗stderr及1，參數錯誤2。CHANGE SHALL 接受active名稱或已封存dated名稱，只能讀該變更index列明的checks/review路徑，不讀任意檔案。Remote reader可讀，401／離線明示失敗；新輪次、discard及重蓋章 SHALL 不覆蓋舊紀錄。既有review show只讀活動工單的契約 SHALL 不變。
+
+#### Scenario: 查詢已蓋章紀錄的人眼與JSON
+
+- **WHEN** 對完成蓋章的變更分別執行review history CHANGE --json --no-color及帶合法--id的人眼查詢
+- **THEN** 前者回單一camelCase物件，後者stdout列同一完整輪次與完成metadata，皆無ANSI且exit0；舊工單已不在活動路徑
+
+#### Scenario: 缺歷史與非法ID
+
+- **WHEN** 舊變更從未保存完成紀錄，或--id為../../secret
+- **THEN** 前者清單為空而不編造Git歷史，後者exit1且不讀變更外檔案；Remote401不假裝清單為空
+
+<!-- @trace
+source: desktop-workflow-and-offline-security-review
+updated: 2026-10-23T14:12:44+08:00
 -->
