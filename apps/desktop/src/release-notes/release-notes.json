@@ -1,5 +1,33 @@
 [
   {
+    "version": "0.10.2",
+    "date": "2026-10-23",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "Desktop lets teams open review and verification histories from active and archived quality gates. A damaged record is identified without hiding other records.",
+            "zh-TW": "Desktop 讓團隊從活動與已封存的品質關卡開啟審查及驗證歷史；單筆紀錄異常時會標示問題，不會隱藏其他紀錄。"
+          },
+          {
+            "en": "Proposal sections now display as lists by default across all projects.",
+            "zh-TW": "所有專案的提案章節現在都預設以條列方式顯示。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "Because the updater signing key changed, installs from earlier versions need one manual installation of 0.10.2 before in-app updates resume.",
+            "zh-TW": "由於更新簽章金鑰已更換，舊版需先手動安裝一次 0.10.2，之後才能恢復 App 內自動更新。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.10.1",
     "date": "2026-10-23",
     "sections": [

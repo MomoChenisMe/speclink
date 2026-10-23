@@ -105,7 +105,7 @@
 以下入口已於目前原始碼實作；安裝版須更新至包含本變更的版本。Remote 必須回報 `securityReviewV2` 與 `checkHistory` 能力，舊 server 明確停用新政策與寫入，不把不支援當作通過。
 
 1. 左側專案列可拖曳，或使用上移／下移；順序只存這台裝置，重開還原。
-2. 設定 → 軟體更新可直接讀內附版本與更新日誌。手動連線檢查另顯示 Proxy、TLS、407 或解析失敗；公司 Proxy 尚待[實機驗收](../openspec/changes/desktop-workflow-and-offline-security-review/evidence/company-proxy.md)，不宣稱已修復公司環境。
+2. 設定 → 軟體更新可直接讀內附版本與更新日誌。手動連線檢查另顯示 Proxy、TLS、407 或解析失敗；公司 Proxy 尚待[實機驗收](../openspec/changes/archive/2026-10-23-desktop-workflow-and-offline-security-review/evidence/company-proxy.md)，不宣稱已修復公司環境。
 3. 專案設定 → 審查規則 → 預設清單 →「查看 12 條」，每項問號說明用途、例子與效果，可用鍵盤開啟。
 4. 系統設定 → 安全標準資料先下載／離線匯入指定版本的原文、對照表與修復最佳實踐文件；CLI `speclink security kb prepare --root <專案>` 或 Desktop 的準備知識庫建立 `.security_kb/`。缺件拒絕且保留舊快照，審查期間不得下載資源。
 5. 只用專案設定選定的標準、版本與 ASVS 等級，不自行補查其他版本或標準。
@@ -118,4 +118,4 @@
 
 所有專案的提案預設以條列方式呈現，包含既有散文提案；不重寫舊文件。Remote 基本掃描可離線產生待發佈草稿，僅明確提交深度報告時連線發佈成對報告；讀取自己的 server 紀錄不等於下載標準資源。Remote 原始碼新鮮度由當次授權 checkout 核對並標示 client-attested，server 不會假稱自行讀過原始碼。通過只涵蓋本次證據與規則，並非資安認證。
 
-驗證見[封存保留](../openspec/changes/desktop-workflow-and-offline-security-review/evidence/archive-retention.md)、[Remote 安全流程](../openspec/changes/desktop-workflow-and-offline-security-review/evidence/remote-security.md)與[Desktop 安全流程](../openspec/changes/desktop-workflow-and-offline-security-review/evidence/desktop-security.md)。
+驗證見[封存保留](../openspec/changes/archive/2026-10-23-desktop-workflow-and-offline-security-review/evidence/archive-retention.md)、[Remote 安全流程](../openspec/changes/archive/2026-10-23-desktop-workflow-and-offline-security-review/evidence/remote-security.md)與[Desktop 安全流程](../openspec/changes/archive/2026-10-23-desktop-workflow-and-offline-security-review/evidence/desktop-security.md)。

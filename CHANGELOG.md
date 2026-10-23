@@ -1,6 +1,17 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.10.2 (2026-10-23)
+
+### New features
+
+- Desktop lets teams open review and verification histories from active and archived quality gates. A damaged record is identified without hiding other records.
+- Proposal sections now display as lists by default across all projects.
+
+### Improvements
+
+- Because the updater signing key changed, installs from earlier versions need one manual installation of 0.10.2 before in-app updates resume.
+
 ## 0.10.1 (2026-10-23)
 
 ### New features
