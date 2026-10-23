@@ -1,4 +1,4 @@
-//! Integration tests: change metadata is fail-closed — a `.openspec.yaml` that
+//! Integration tests: change metadata is fail-closed — a `.meta.yaml` that
 //! EXISTS but cannot be parsed marks the change invalid in `list` (which stays
 //! available) and stops every verb that needs the change's metadata semantics,
 //! naming the file and the parse reason. Valid-workspace output stays frozen.
@@ -15,7 +15,7 @@ const GOOD_META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
 
 impl TempProject {
     /// Project skeleton with one valid change (`good-change`) and one whose
-    /// `.openspec.yaml` is corrupt (`broken-change`).
+    /// `.meta.yaml` is corrupt (`broken-change`).
     fn new(tag: &str) -> TempProject {
         let dir = std::env::temp_dir().join(format!(
             "speclink-cli-meta-fail-closed-{tag}-{}",
@@ -25,9 +25,9 @@ impl TempProject {
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         for (name, meta) in [("good-change", GOOD_META), ("broken-change", BAD_YAML)] {
-            let change = dir.join("openspec").join("changes").join(name);
+            let change = dir.join("speclink").join("changes").join(name);
             std::fs::create_dir_all(&change).unwrap();
-            std::fs::write(change.join(".openspec.yaml"), meta).unwrap();
+            std::fs::write(change.join(".meta.yaml"), meta).unwrap();
             std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
             std::fs::write(change.join("tasks.md"), "- [ ] 1.1 Do the thing\n").unwrap();
         }
@@ -51,7 +51,7 @@ impl TempProject {
 
     fn meta_of(&self, name: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("changes").join(name).join(".openspec.yaml"),
+            self.dir.join("speclink").join("changes").join(name).join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -64,7 +64,7 @@ impl Drop for TempProject {
 }
 
 /// The frozen path+reason prefix every fail-closed error must carry.
-const BROKEN_FILE_PREFIX: &str = "invalid openspec/changes/broken-change/.openspec.yaml: ";
+const BROKEN_FILE_PREFIX: &str = "invalid speclink/changes/broken-change/.meta.yaml: ";
 
 // --- list: stays available, marks the broken item (spec「list 對壞 metadata 標 invalid 而不失效」) ---
 
@@ -76,7 +76,7 @@ fn list_human_output_appends_invalid_marker_to_the_broken_line_only() {
     let stdout = String::from_utf8_lossy(&out.stdout);
     let broken_line = stdout.lines().find(|l| l.contains("broken-change")).expect("broken listed");
     assert!(
-        broken_line.ends_with("(invalid .openspec.yaml)"),
+        broken_line.ends_with("(invalid .meta.yaml)"),
         "broken line carries the frozen marker: {broken_line}"
     );
     let good_line = stdout.lines().find(|l| l.contains("good-change")).expect("good listed");
@@ -172,7 +172,7 @@ fn discard_with_force_on_broken_meta_refuses_and_keeps_the_change() {
         "stderr names the file"
     );
     assert!(
-        p.dir.join("openspec").join("changes").join("broken-change").join("proposal.md").is_file(),
+        p.dir.join("speclink").join("changes").join("broken-change").join("proposal.md").is_file(),
         "change directory fully preserved"
     );
     assert_eq!(p.meta_of("broken-change"), BAD_YAML);

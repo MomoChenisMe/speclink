@@ -78,7 +78,7 @@ impl TempProject {
 
     fn fs_project(tag: &str) -> TempProject {
         let p = TempProject::new(tag);
-        let change = p.dir.join("openspec").join("changes").join("demo");
+        let change = p.dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nProposal body\n").unwrap();
         p
@@ -181,7 +181,7 @@ fn remote_artifact_cat_missing_document_fails_semantically() {
 fn fs_language_show_prints_the_vocabulary() {
     let p = TempProject::fs_project("lang-fs");
     std::fs::write(
-        p.dir.join("openspec").join("LANGUAGE.md"),
+        p.dir.join("speclink").join("LANGUAGE.md"),
         "# Language\n\n- term: 客戶\n",
     )
     .unwrap();

@@ -2,13 +2,13 @@
 
 **繁體中文** · [English](configuration.md)
 
-Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟著規格走；這個 checkout 接哪些 AI 工具、連哪個遠端，寫在 `.speclink.yaml`；登入憑證放在使用者層，不進專案。環境變數可以在單次執行時蓋過政策。
+Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟著規格走；這個 checkout 接哪些 AI 工具、連哪個遠端，寫在 `.speclink.yaml`；登入憑證放在使用者層，不進專案。環境變數可以在單次執行時蓋過政策。
 
 ## <a id="layers"></a>設定放在哪裡
 
 | 位置 | 放什麼 | 誰會讀 | 進版本控制 |
 | --- | --- | --- | --- |
-| `openspec/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
+| `speclink/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
 | `.speclink.yaml` | 這個 checkout 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
 | `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
 | 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
@@ -29,7 +29,7 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 新設定該放哪裡，照這三條判斷：
 
-- 會改變產出內容的設定（語言、TDD、audit、worktree 流程）是**政策**，放 `openspec/config.yaml`，全隊讀到同一份。
+- 會改變產出內容的設定（語言、TDD、audit、worktree 流程）是**政策**，放 `speclink/config.yaml`，全隊讀到同一份。
 - 只跟這個 checkout 有關的設定（接哪些 AI 工具、連哪個遠端）放 `.speclink.yaml`。
 - 個人或 CI 的臨時差異用環境變數，不改任何檔案。
 
@@ -42,14 +42,14 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 | 順序 | 來源 | 說明 |
 | --- | --- | --- |
 | 1 | `SPECLINK_LOCALE`、`SPECLINK_SPEC_LOCALE`、`SPECLINK_TDD`、`SPECLINK_AUDIT`、`SPECLINK_WORKTREE` | 布林變數只認 `true`／`false`（不分大小寫）。`1`、`yes`、空字串都當成沒設，往下一層找 |
-| 2 | `openspec/config.yaml` | 專案的正式值 |
+| 2 | `speclink/config.yaml` | 專案的正式值 |
 | 3 | 內建預設 | `locale` 與 `spec_locale` 為 English；`tdd`、`audit`、`worktree` 為關閉；`schema` 為 `spec-driven` |
 
 另外三件事：
 
-- `.speclink.yaml` 裡的政策鍵（`locale`、`tdd` 等）不會生效，也不會警告。請照原值搬到 `openspec/config.yaml`。
+- `.speclink.yaml` 裡的政策鍵（`locale`、`tdd` 等）不會生效，也不會警告。請照原值搬到 `speclink/config.yaml`。
 - 環境變數只影響你這台機器上執行的 CLI 與 Node SDK。遠端模式的指引由 server 依團隊設定產生，本機環境變數蓋不過團隊政策。
-- 要不要產生兩個 worktree 技能，只看 `openspec/config.yaml` 的 `worktree`。`SPECLINK_WORKTREE` 不影響技能檔。
+- 要不要產生兩個 worktree 技能，只看 `speclink/config.yaml` 的 `worktree`。`SPECLINK_WORKTREE` 不影響技能檔。
 
 遠端連線另有兩條順序：
 
@@ -58,7 +58,7 @@ Speclink 的設定分三層：工作流政策寫在 `openspec/config.yaml`，跟
 
 ## <a id="workflow-config"></a>修改工作流政策
 
-用 `speclink workflow-config`。本機模式改 `openspec/config.yaml`，遠端模式改 server 上的那一份。
+用 `speclink workflow-config`。本機模式改 `speclink/config.yaml`，遠端模式改 server 上的那一份。
 
 | 子指令 | 作用 |
 | --- | --- |
@@ -90,8 +90,8 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 在剛 `speclink init` 完的專案跑第一行，**預期輸出**：
 
 ```text
---- a/openspec/config.yaml
-+++ b/openspec/config.yaml
+--- a/speclink/config.yaml
++++ b/speclink/config.yaml
 @@ -1,5 +1,7 @@
  schema: spec-driven
  
@@ -104,7 +104,7 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 
 `workflow-config set` 不收 `schema`。要換 schema，用下列任一種方式：
 
-- 直接編輯 `openspec/config.yaml` 的 `schema:` 那一行。
+- 直接編輯 `speclink/config.yaml` 的 `schema:` 那一行。
 - `speclink schema init <name> --default`：建立一個新的自訂 schema，並設成專案預設。
 - 桌面 app「專案設定」的「產出流程」頁。
 
@@ -153,7 +153,7 @@ tools:
 接上遠端後，設定的歸屬不變，只是「規格放在哪裡」換成 server：
 
 - `speclink link <url> --repo <name>` 在 `.speclink.yaml` 寫入 `remote:` 區段（`url` 與 `repo`），`speclink unlink` 移除它。有這個區段就是遠端模式。
-- 工作流政策改存在 server 上。`speclink workflow-config` 讀寫 server 那一份，本機的 `openspec/config.yaml` 不再生效。
+- 工作流政策改存在 server 上。`speclink workflow-config` 讀寫 server 那一份，本機的 `speclink/config.yaml` 不再生效。
 - `.speclink/context/` 是遠端內容的唯讀快照。不要手改，下一個指令會發現它被改過而拒絕執行；要刷新就重新執行 `speclink instructions`。
 - 憑證不寫進任何專案檔案，所以 `.speclink.yaml` 可以放心 commit。
 
@@ -161,7 +161,7 @@ tools:
 
 ## <a id="reference"></a>完整鍵值參考
 
-### `openspec/config.yaml`
+### `speclink/config.yaml`
 
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
@@ -182,7 +182,7 @@ tools:
 
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
-| `spec_dir` | 相對路徑 | `openspec` | 規格目錄的位置，相對於專案根目錄 |
+| `spec_dir` | 相對路徑 | `speclink` | 規格目錄的位置，相對於專案根目錄。沒寫時，舊版建立、只有 `openspec/` 的專案照常讀 `openspec/`，直到 `speclink update` 把它搬到 `speclink/`；搬移與 OpenSpec 匯入都不會寫入這個鍵。寫明這個鍵的專案不會自動搬移 |
 | `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot` 或自訂工具描述子 |
 | `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
 | `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |

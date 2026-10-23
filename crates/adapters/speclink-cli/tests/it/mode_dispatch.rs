@@ -130,7 +130,7 @@ fn fs_only_demo_rejects_remote_mode_without_any_server_request() {
     assert_fs_only_refuses_remote(
         "fsonly-demo",
         &["demo"],
-        "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree",
+        "demo is not available in remote mode — it seeds a demo change into the local spec directory",
     );
 }
 
@@ -152,7 +152,7 @@ fn fs_only_demo_rejects_remote_mode_when_no_server_listens() {
     let err = String::from_utf8_lossy(&out.stderr);
     assert!(
         err.contains(
-            "demo is not available in remote mode — it seeds a demo change into a local openspec/ tree"
+            "demo is not available in remote mode — it seeds a demo change into the local spec directory"
         ),
         "frozen refusal text: {err}"
     );
@@ -164,7 +164,7 @@ fn fs_only_trace_rejects_remote_mode_without_any_server_request() {
     assert_fs_only_refuses_remote(
         "fsonly-trace",
         &["trace", "some-capability"],
-        "trace is not available in remote mode — it assembles the provenance chain from the local openspec/ tree",
+        "trace is not available in remote mode — it assembles the provenance chain from the local spec directory",
     );
 }
 

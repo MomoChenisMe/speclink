@@ -162,7 +162,7 @@ fn snapshot_is_consistent_and_identified_by_the_scope_token() {
     let tasks_before = snap1
         .documents
         .iter()
-        .find(|d| d.path == "openspec/changes/demo/tasks.md")
+        .find(|d| d.path == "speclink/changes/demo/tasks.md")
         .expect("tasks.md is in the snapshot")
         .content
         .clone();
@@ -179,7 +179,7 @@ fn snapshot_is_consistent_and_identified_by_the_scope_token() {
     let tasks_after = snap2
         .documents
         .iter()
-        .find(|d| d.path == "openspec/changes/demo/tasks.md")
+        .find(|d| d.path == "speclink/changes/demo/tasks.md")
         .expect("tasks.md present")
         .content
         .clone();
@@ -213,7 +213,7 @@ fn policy_revision_is_the_config_revision_and_absent_without_config() {
     let config_rev = snap
         .documents
         .iter()
-        .find(|d| d.path == "openspec/config.yaml")
+        .find(|d| d.path == "speclink/config.yaml")
         .expect("config document present")
         .revision;
     assert!(config_rev.is_some(), "the config document carries a revision");
@@ -224,7 +224,7 @@ fn policy_revision_is_the_config_revision_and_absent_without_config() {
     let (_status, _etag, body) = post_context(&context_url(&base), &pat, &for_change("demo"), None);
     let snap = parse(&body);
     assert!(
-        snap.documents.iter().all(|d| d.path != "openspec/config.yaml"),
+        snap.documents.iter().all(|d| d.path != "speclink/config.yaml"),
         "no config document without config"
     );
     assert_eq!(snap.policy_revision, None, "no config → policy revision absent");
@@ -254,15 +254,15 @@ fn change_narrowed_document_set_is_complete() {
     let got = paths(&snap);
 
     let expected: BTreeSet<String> = [
-        "openspec/changes/demo/proposal.md",
-        "openspec/changes/demo/design.md",
-        "openspec/changes/demo/tasks.md",
-        "openspec/changes/demo/specs/payment/spec.md",
-        "openspec/specs/payment/spec.md",
-        "openspec/specs/auth/spec.md",
-        "openspec/specs/billing/spec.md",
-        "openspec/config.yaml",
-        "openspec/LANGUAGE.md",
+        "speclink/changes/demo/proposal.md",
+        "speclink/changes/demo/design.md",
+        "speclink/changes/demo/tasks.md",
+        "speclink/changes/demo/specs/payment/spec.md",
+        "speclink/specs/payment/spec.md",
+        "speclink/specs/auth/spec.md",
+        "speclink/specs/billing/spec.md",
+        "speclink/config.yaml",
+        "speclink/LANGUAGE.md",
     ]
     .into_iter()
     .map(str::to_string)
@@ -274,7 +274,7 @@ fn change_narrowed_document_set_is_complete() {
         "the other change's documents are excluded: {got:?}"
     );
     assert!(
-        got.iter().all(|p| !p.ends_with(".openspec.yaml")),
+        got.iter().all(|p| !p.ends_with(".meta.yaml")),
         "internal change metadata is not projected: {got:?}"
     );
 }
@@ -286,10 +286,10 @@ fn absent_change_returns_the_full_content() {
     let (status, _etag, body) = post_context(&context_url(&base), &pat, &request, None);
     assert_eq!(status, 200);
     let got = paths(&parse(&body));
-    assert!(got.contains("openspec/changes/demo/proposal.md"), "demo carried: {got:?}");
-    assert!(got.contains("openspec/changes/other/proposal.md"), "every change carried: {got:?}");
-    assert!(got.contains("openspec/specs/auth/spec.md"), "all canonical specs carried");
-    assert!(got.contains("openspec/config.yaml") && got.contains("openspec/LANGUAGE.md"));
+    assert!(got.contains("speclink/changes/demo/proposal.md"), "demo carried: {got:?}");
+    assert!(got.contains("speclink/changes/other/proposal.md"), "every change carried: {got:?}");
+    assert!(got.contains("speclink/specs/auth/spec.md"), "all canonical specs carried");
+    assert!(got.contains("speclink/config.yaml") && got.contains("speclink/LANGUAGE.md"));
 }
 
 #[test]

@@ -43,19 +43,19 @@ impl TempProject {
         let dir = if cfg!(windows) { dir } else { dir.canonicalize().unwrap() };
         let p = TempProject { dir };
         p.write(".speclink.yaml", "tools:\n  - claude\n");
-        p.write("openspec/specs/checkout/spec.md", CANON_CHECKOUT);
+        p.write("speclink/specs/checkout/spec.md", CANON_CHECKOUT);
         p.write(
-            "openspec/specs/billing/spec.md",
+            "speclink/specs/billing/spec.md",
             "# billing Specification\n\n## Purpose\n\nBilling flow.\n\n## Requirements\n\n### Requirement: B1\n\nIt SHALL bill.\n",
         );
-        p.write("openspec/changes/archive/2026-07-10-alpha/.openspec.yaml", META_ALPHA);
-        p.write("openspec/changes/archive/2026-07-10-alpha/specs/checkout/spec.md", "delta");
-        p.write("openspec/changes/archive/2026-07-10-alpha/.evidence.json", EVIDENCE_ALPHA);
-        p.write("openspec/changes/archive/2026-08-02-beta/.openspec.yaml", META_PLAIN);
-        p.write("openspec/changes/archive/2026-08-02-beta/specs/checkout/spec.md", "delta");
-        p.write("openspec/changes/archive/2026-07-12-cousin/.openspec.yaml", META_PLAIN);
-        p.write("openspec/changes/archive/2026-07-12-cousin/specs/billing/spec.md", "delta");
-        p.write("openspec/discussions/origin-talk.md", DISCUSSION);
+        p.write("speclink/changes/archive/2026-07-10-alpha/.meta.yaml", META_ALPHA);
+        p.write("speclink/changes/archive/2026-07-10-alpha/specs/checkout/spec.md", "delta");
+        p.write("speclink/changes/archive/2026-07-10-alpha/.evidence.json", EVIDENCE_ALPHA);
+        p.write("speclink/changes/archive/2026-08-02-beta/.meta.yaml", META_PLAIN);
+        p.write("speclink/changes/archive/2026-08-02-beta/specs/checkout/spec.md", "delta");
+        p.write("speclink/changes/archive/2026-07-12-cousin/.meta.yaml", META_PLAIN);
+        p.write("speclink/changes/archive/2026-07-12-cousin/specs/billing/spec.md", "delta");
+        p.write("speclink/discussions/origin-talk.md", DISCUSSION);
         p
     }
 

@@ -61,7 +61,7 @@ pub fn build_artifact(
     let Some(artifact) = schema.artifact(artifact_id) else {
         return Ok(None);
     };
-    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
+    let wf = WorkflowConfig::from_store(store)?;
     // Policy values come from the three-layer resolution (env > config.yaml >
     // default) — never from one config file alone. The env layer arrives
     // injected from the Host boundary.
@@ -311,7 +311,7 @@ pub fn build_apply(
     change: &Change,
     schema: &Schema,
 ) -> Result<ApplyInstructions, crate::config::ConfigError> {
-    let wf = WorkflowConfig::from_text(store.read_workflow_config().as_deref())?;
+    let wf = WorkflowConfig::from_store(store)?;
     let policy = crate::config::resolve_policy(env, &wf);
     let tasks_md = store.read_artifact(&change.name, "tasks.md").unwrap_or_default();
     let parsed = tasks::parse(&tasks_md);

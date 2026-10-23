@@ -21,11 +21,14 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
+use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_store::{content_digest, DocumentId, Scope, TeamStore};
 
-/// The openspec projection path of the workflow config — the policy-revision
-/// source and the config mirror path.
-const CONFIG_PATH: &str = "openspec/config.yaml";
+/// The projection path of the workflow config — the policy-revision source and
+/// the config mirror path.
+fn config_path() -> String {
+    format!("{DEFAULT_SPEC_DIR}/config.yaml")
+}
 
 /// `POST /context` — one consistent context snapshot of the binding's scope.
 pub async fn snapshot(
@@ -118,7 +121,7 @@ fn build(
     // snapshot, absent when the scope has no config (design 決策二).
     let policy_revision = documents
         .iter()
-        .find(|d| d.path == CONFIG_PATH)
+        .find(|d| d.path == config_path())
         .and_then(|d| d.revision);
     let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
     let digest = content_digest(&combined.join("\n"));
@@ -131,7 +134,7 @@ fn build(
     Ok(BuildOutcome::Snapshot { etag, snapshot })
 }
 
-/// The openspec projection path of a document when the request selects it, or
+/// The projection path (under `speclink/`) of a document when the request selects it, or
 /// `None` to exclude it. `change = Some(A)` narrows to A's artifacts (proposal /
 /// design / tasks and delta specs), all canonical specs, config and LANGUAGE;
 /// `change = None` is the full mirror — every change's artifacts plus all
@@ -144,16 +147,16 @@ fn select_path(doc: &DocumentId, change: Option<&str>) -> Option<String> {
             artifact,
         } => change
             .map_or(true, |n| n == c)
-            .then(|| format!("openspec/changes/{c}/{artifact}")),
+            .then(|| format!("{DEFAULT_SPEC_DIR}/changes/{c}/{artifact}")),
         DocumentId::CanonicalSpec { capability } => {
-            Some(format!("openspec/specs/{capability}/spec.md"))
+            Some(format!("{DEFAULT_SPEC_DIR}/specs/{capability}/spec.md"))
         }
-        DocumentId::WorkflowConfig => Some(CONFIG_PATH.to_string()),
-        DocumentId::Language => Some("openspec/LANGUAGE.md".to_string()),
+        DocumentId::WorkflowConfig => Some(config_path()),
+        DocumentId::Language => Some(format!("{DEFAULT_SPEC_DIR}/LANGUAGE.md")),
         DocumentId::Discussion {
             slug,
             archived: false,
-        } if change.is_none() => Some(format!("openspec/discussions/{slug}.md")),
+        } if change.is_none() => Some(format!("{DEFAULT_SPEC_DIR}/discussions/{slug}.md")),
         _ => None,
     }
 }

@@ -24,9 +24,9 @@ impl TempProject {
         let dir =
             std::env::temp_dir().join(format!("speclink-cli-review-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
+        std::fs::write(change.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
             .unwrap();
         std::fs::write(change.join("tasks.md"), tasks).unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
@@ -114,12 +114,12 @@ impl TempProject {
     }
 
     fn ticket_path(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo").join("review.md")
+        self.dir.join("speclink").join("changes").join("demo").join("review.md")
     }
 
     fn meta(&self) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml"),
+            self.dir.join("speclink").join("changes").join("demo").join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -203,7 +203,7 @@ fn add_round_accepts_spec_dir_anchors_with_the_unchanged_stdout() {
     let p = TempProject::with_change("addround-specdir", TASKS_DONE);
     let out = p.run_stdin(
         &["review", "add-round", "demo", "--stdin"],
-        "**Scope**: src/lib.rs\n\n- [WARNING] openspec/changes/demo/design.md — Correctness: drift\n",
+        "**Scope**: src/lib.rs\n\n- [WARNING] speclink/changes/demo/design.md — Correctness: drift\n",
     );
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(
@@ -212,7 +212,7 @@ fn add_round_accepts_spec_dir_anchors_with_the_unchanged_stdout() {
         "success output unchanged"
     );
     let doc = std::fs::read_to_string(p.ticket_path()).unwrap();
-    assert!(doc.contains("openspec/changes/demo/design.md — Correctness: drift"), "{doc}");
+    assert!(doc.contains("speclink/changes/demo/design.md — Correctness: drift"), "{doc}");
 }
 
 #[test]
@@ -350,7 +350,7 @@ fn stamp_clean_round_writes_the_anchors_and_deletes_the_ticket() {
 
 #[test]
 fn discard_deletes_the_ticket_and_leaves_meta() {
-    // spec「放棄審查」：exit 0、review.md 不存在、.openspec.yaml 不變。
+    // spec「放棄審查」：exit 0、review.md 不存在、.meta.yaml 不變。
     let p = TempProject::with_change("discard", TASKS_DONE);
     p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
     let before = p.meta();
@@ -391,7 +391,7 @@ fn archive_carry_review_moves_the_ticket_into_the_archive() {
     p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
     let out = p.run(&["archive", "demo", "--skip-specs", "--no-validate", "--carry-review"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let archive_root = p.dir.join("openspec").join("changes").join("archive");
+    let archive_root = p.dir.join("speclink").join("changes").join("archive");
     let dated = std::fs::read_dir(&archive_root)
         .expect("archive dir exists")
         .filter_map(|e| e.ok())
@@ -430,7 +430,7 @@ fn review_prepare_late_warns_on_stderr_but_exits_zero() {
     // Scenario 已開始但 baseline 缺失：exit 0、stderr 說明 baseline 為 late、
     // 後續審查需明示 fixed point。
     let p = TempProject::with_git_change("prepare-late", TASKS_DONE);
-    let meta = p.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml");
+    let meta = p.dir.join("speclink").join("changes").join("demo").join(".meta.yaml");
     std::fs::write(
         &meta,
         "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-02\n",
@@ -725,9 +725,9 @@ fn review_scope_empty_touched_needs_input_and_never_reviews_the_worktree() {
 fn review_scope_active_overlap_needs_input() {
     // spec：另一 active change 的 touched record 認領同一路徑 → needsInput。
     let p = scope_fixture("scope-overlap");
-    let other = p.dir.join("openspec").join("changes").join("other");
+    let other = p.dir.join("speclink").join("changes").join("other");
     std::fs::create_dir_all(&other).unwrap();
-    std::fs::write(other.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
+    std::fs::write(other.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-07-01\n")
         .unwrap();
     p.touched("other", &["src/lib.rs"]);
     let out = p.run(&["review", "scope", "demo", "--json"]);

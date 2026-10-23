@@ -1,5 +1,5 @@
 //! Integration tests: the instructions payload takes its policy values (locale, tdd,
-//! audit) from the THREE-LAYER resolution (env > `openspec/config.yaml` > default) —
+//! audit) from the THREE-LAYER resolution (env > `speclink/config.yaml` > default) —
 //! `.speclink.yaml` policy keys are inert and warning-free. The toggles surface
 //! inside the existing `instruction` text, locale in the existing `locale` field.
 
@@ -17,10 +17,10 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        let change = dir.join("openspec").join("changes").join("demo-change");
+        let change = dir.join("speclink").join("changes").join("demo-change");
         std::fs::create_dir_all(&change).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), app_yaml).unwrap();
-        std::fs::write(dir.join("openspec").join("config.yaml"), wf_yaml).unwrap();
+        std::fs::write(dir.join("speclink").join("config.yaml"), wf_yaml).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [ ] 1.1 Do the thing\n").unwrap();
         TempProject { dir }
@@ -66,7 +66,7 @@ fn instruction_text(payload: &serde_json::Value) -> String {
 
 #[test]
 fn canonical_config_yaml_toggles_reach_the_tasks_instruction() {
-    // Spec scenario 正典值生效: policy only in openspec/config.yaml.
+    // Spec scenario 正典值生效: policy only in speclink/config.yaml.
     let p = TempProject::new(
         "canonical",
         "tools:\n  - claude\n",
@@ -188,7 +188,7 @@ fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
         "locale: ja\n",
     );
     let app_before = std::fs::read_to_string(p.dir.join(".speclink.yaml")).unwrap();
-    let wf_before = std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap();
+    let wf_before = std::fs::read_to_string(p.dir.join("speclink").join("config.yaml")).unwrap();
 
     let mut cmd = std::process::Command::new(env!("CARGO_BIN_EXE_speclink"));
     for key in [
@@ -210,9 +210,9 @@ fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
         "update must not rewrite .speclink.yaml"
     );
     assert_eq!(
-        std::fs::read_to_string(p.dir.join("openspec").join("config.yaml")).unwrap(),
+        std::fs::read_to_string(p.dir.join("speclink").join("config.yaml")).unwrap(),
         wf_before,
-        "update must not rewrite openspec/config.yaml"
+        "update must not rewrite speclink/config.yaml"
     );
     assert_eq!(
         String::from_utf8_lossy(&out.stderr).trim(),

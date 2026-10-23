@@ -23,7 +23,7 @@ struct Fixture {
 
 impl Fixture {
     /// 建一個含單一 change `add-dark-mode` 的 git repo。`worktree_policy` 決定
-    /// `openspec/config.yaml` 是否寫入 `worktree: true`。
+    /// `speclink/config.yaml` 是否寫入 `worktree: true`。
     fn new(tag: &str, worktree_policy: bool) -> Fixture {
         let root = std::env::temp_dir().join(format!(
             "speclink-cli-worktree-{tag}-{}",
@@ -31,7 +31,7 @@ impl Fixture {
         ));
         let _ = std::fs::remove_dir_all(&root);
         let repo = root.join("repo");
-        let change = repo.join("openspec").join("changes").join("add-dark-mode");
+        let change = repo.join("speclink").join("changes").join("add-dark-mode");
         std::fs::create_dir_all(&change).unwrap();
         std::fs::write(repo.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         let config = if worktree_policy {
@@ -39,8 +39,8 @@ impl Fixture {
         } else {
             "schema: spec-driven\n"
         };
-        std::fs::write(repo.join("openspec").join("config.yaml"), config).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(repo.join("speclink").join("config.yaml"), config).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("tasks.md"), TASKS).unwrap();
         std::fs::write(change.join("proposal.md"), PROPOSAL).unwrap();
 
@@ -49,7 +49,7 @@ impl Fixture {
         f.git(&["config", "user.name", "Sandbox Tester"]);
         f.git(&["config", "user.email", "sandbox@example.com"]);
         // Windows 的 git 預設 core.autocrlf=true，`git worktree add` 會在 checkout
-        // 時把 LF 換成 CRLF——worktree 副本的 .openspec.yaml 於是與 META 的位元
+        // 時把 LF 換成 CRLF——worktree 副本的 .meta.yaml 於是與 META 的位元
         // 不同，引擎沿用各行行尾寫回後，拿 LF 字面逐位元比對便會誤紅。沙盒的
         // 行尾由測試自己決定，不隨機器的 git 設定漂移。
         f.git(&["config", "core.autocrlf", "false"]);
@@ -162,7 +162,7 @@ fn first_change(out: &Output) -> serde_json::Value {
 /// 勾掉一個 worktree 副本內的任務（不經 CLI，直接改檔——測的是讀取面）。
 fn check_one_task(worktree: &Path) {
     let tasks = worktree
-        .join("openspec")
+        .join("speclink")
         .join("changes")
         .join("add-dark-mode")
         .join("tasks.md");
@@ -313,7 +313,7 @@ fn a_worktree_without_the_change_directory_reads_back_the_main_copy() {
     let f = Fixture::new("no-change-dir", true);
     let wt = f.add_worktree("add-dark-mode");
     check_one_task(&wt);
-    std::fs::remove_dir_all(wt.join("openspec").join("changes").join("add-dark-mode")).unwrap();
+    std::fs::remove_dir_all(wt.join("speclink").join("changes").join("add-dark-mode")).unwrap();
 
     let out = f.run(&["list", "--json"]);
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -343,7 +343,7 @@ fn an_unparseable_policy_document_disables_the_overlay_without_failing_list() {
     // 原本會成功的 list 變成失敗。
     let f = Fixture::new("bad-policy", true);
     f.add_worktree("add-dark-mode");
-    std::fs::write(f.repo.join("openspec").join("config.yaml"), ": not yaml : [\n").unwrap();
+    std::fs::write(f.repo.join("speclink").join("config.yaml"), ": not yaml : [\n").unwrap();
 
     let out = f.run(&["list", "--json"]);
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
@@ -357,10 +357,10 @@ fn a_corrupt_worktree_meta_surfaces_the_existing_diagnostic() {
     let f = Fixture::new("corrupt", true);
     let wt = f.add_worktree("add-dark-mode");
     std::fs::write(
-        wt.join("openspec")
+        wt.join("speclink")
             .join("changes")
             .join("add-dark-mode")
-            .join(".openspec.yaml"),
+            .join(".meta.yaml"),
         ": not yaml : [\n",
     )
     .unwrap();
@@ -376,9 +376,9 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
     // 目標 change 已映射到 worktree 就寫那份副本——plan 讀的也是它，宣告立刻可見；
     // 主副本的 meta 不動。前置 add-auth 在分支前就存在，兩份 roster 都有它。
     let f = Fixture::new("depends-worktree", true);
-    let auth = f.repo.join("openspec").join("changes").join("add-auth");
+    let auth = f.repo.join("speclink").join("changes").join("add-auth");
     std::fs::create_dir_all(&auth).unwrap();
-    std::fs::write(auth.join(".openspec.yaml"), META).unwrap();
+    std::fs::write(auth.join(".meta.yaml"), META).unwrap();
     f.git(&["add", "-A"]);
     f.git(&["commit", "-q", "-m", "add-auth"]);
     let wt = f.add_worktree("add-dark-mode");
@@ -387,10 +387,10 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     let meta_of = |root: &Path| {
         std::fs::read_to_string(
-            root.join("openspec")
+            root.join("speclink")
                 .join("changes")
                 .join("add-dark-mode")
-                .join(".openspec.yaml"),
+                .join(".meta.yaml"),
         )
         .unwrap()
     };
@@ -412,9 +412,9 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
     let wt = off.add_worktree("add-dark-mode");
     let out = off.run(&["change", "depends", "add-dark-mode", "--on", "add-dark-mode", "--remove"]);
     assert!(!out.status.success(), "self reference still refuses");
-    let auth = off.repo.join("openspec").join("changes").join("add-auth");
+    let auth = off.repo.join("speclink").join("changes").join("add-auth");
     std::fs::create_dir_all(&auth).unwrap();
-    std::fs::write(auth.join(".openspec.yaml"), META).unwrap();
+    std::fs::write(auth.join(".meta.yaml"), META).unwrap();
     let out = off.run(&["change", "depends", "add-dark-mode", "--on", "add-auth"]);
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(meta_of(&off.repo), format!("{META}depends_on: add-auth\n"));
@@ -431,7 +431,7 @@ fn change_schema_writes_the_worktree_copy_of_a_mapped_change() {
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     let meta_of = |root: &Path| {
         std::fs::read_to_string(
-            root.join("openspec").join("changes").join("add-dark-mode").join(".openspec.yaml"),
+            root.join("speclink").join("changes").join("add-dark-mode").join(".meta.yaml"),
         )
         .unwrap()
     };
@@ -439,7 +439,7 @@ fn change_schema_writes_the_worktree_copy_of_a_mapped_change() {
     assert_eq!(meta_of(&f.repo), META, "the main copy stays untouched");
 
     // 專案層 schema 也從寫入的那份副本解析：只在 worktree 裡 fork 出來的 schema
-    // 切得過去，不會被主 checkout 的 openspec/schemas 誤拒。
+    // 切得過去，不會被主 checkout 的 speclink/schemas 誤拒。
     let fork = f.run_in(&wt, &["schema", "fork", "spec-driven", "tidy-flow"]);
     assert!(fork.status.success(), "stderr: {}", String::from_utf8_lossy(&fork.stderr));
     let out = f.run(&["change", "schema", "add-dark-mode", "tidy-flow"]);
@@ -455,9 +455,9 @@ fn change_rank_writes_the_worktree_copy_of_a_mapped_change() {
     // plan 讀的也是那份，順序立刻可見；主副本不動。錨點 add-auth 已有 rank，
     // 這一欄不需補章，只寫被移動的那一檔。
     let f = Fixture::new("rank-worktree", true);
-    let auth = f.repo.join("openspec").join("changes").join("add-auth");
+    let auth = f.repo.join("speclink").join("changes").join("add-auth");
     std::fs::create_dir_all(&auth).unwrap();
-    std::fs::write(auth.join(".openspec.yaml"), format!("{META}board_rank: n\n")).unwrap();
+    std::fs::write(auth.join(".meta.yaml"), format!("{META}board_rank: n\n")).unwrap();
     f.git(&["add", "-A"]);
     f.git(&["commit", "-q", "-m", "add-auth"]);
     let wt = f.add_worktree("add-dark-mode");
@@ -465,7 +465,7 @@ fn change_rank_writes_the_worktree_copy_of_a_mapped_change() {
     let out = f.run(&["change", "rank", "add-dark-mode", "--before", "add-auth"]);
     assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
     let meta_of = |root: &Path, change: &str| {
-        std::fs::read_to_string(root.join("openspec").join("changes").join(change).join(".openspec.yaml"))
+        std::fs::read_to_string(root.join("speclink").join("changes").join(change).join(".meta.yaml"))
             .unwrap()
     };
     assert!(meta_of(&wt, "add-dark-mode").contains("board_rank: "), "the worktree copy is ranked");
@@ -483,13 +483,13 @@ fn change_rank_writes_the_worktree_copy_of_a_mapped_change() {
 
 /// 一個只在主 checkout 新建的 change（worktree 分支之後才出現，副本裡沒有它）。
 fn add_main_only(f: &Fixture, change: &str) {
-    let dir = f.repo.join("openspec").join("changes").join(change);
+    let dir = f.repo.join("speclink").join("changes").join(change);
     std::fs::create_dir_all(&dir).unwrap();
-    std::fs::write(dir.join(".openspec.yaml"), META).unwrap();
+    std::fs::write(dir.join(".meta.yaml"), META).unwrap();
 }
 
 fn meta_at(root: &Path, change: &str) -> String {
-    std::fs::read_to_string(root.join("openspec").join("changes").join(change).join(".openspec.yaml"))
+    std::fs::read_to_string(root.join("speclink").join("changes").join(change).join(".meta.yaml"))
         .unwrap()
 }
 

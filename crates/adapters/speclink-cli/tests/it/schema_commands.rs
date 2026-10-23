@@ -20,7 +20,7 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink")).unwrap();
         std::fs::create_dir_all(dir.join("home")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         TempProject { dir }
@@ -40,7 +40,7 @@ impl TempProject {
     }
 
     fn schema_dir(&self, name: &str) -> PathBuf {
-        self.dir.join("openspec").join("schemas").join(name)
+        self.dir.join("speclink").join("schemas").join(name)
     }
 }
 
@@ -238,7 +238,7 @@ fn validate_verbose_prints_each_check() {
 #[test]
 fn init_default_sets_the_project_schema_and_preserves_the_rest() {
     let p = TempProject::new("init-default");
-    let config = p.dir.join("openspec").join("config.yaml");
+    let config = p.dir.join("speclink").join("config.yaml");
     let original = "# a leading comment\nlocale: tw\ntdd: true\n";
     std::fs::write(&config, original).unwrap();
 
@@ -258,7 +258,7 @@ fn init_default_sets_the_project_schema_and_preserves_the_rest() {
 #[test]
 fn init_default_creates_the_config_when_it_is_absent() {
     let p = TempProject::new("init-default-absent");
-    let config = p.dir.join("openspec").join("config.yaml");
+    let config = p.dir.join("speclink").join("config.yaml");
     assert!(!config.exists());
 
     let out = p.run(&["schema", "init", "my-flow", "--default"]);
@@ -311,7 +311,7 @@ fn init_produces_a_skeleton_that_loads_and_validates() {
 #[test]
 fn init_default_refuses_when_the_config_cannot_be_read() {
     let p = TempProject::new("init-default-unreadable");
-    let config = p.dir.join("openspec").join("config.yaml");
+    let config = p.dir.join("speclink").join("config.yaml");
     // 非 UTF-8 內容：檔案存在但讀取失敗——與「缺席」是兩回事，不得被當成空白覆寫。
     std::fs::write(&config, [0xFF, 0xFE, b'x']).unwrap();
     let before = std::fs::read(&config).unwrap();

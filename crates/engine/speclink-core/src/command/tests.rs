@@ -225,7 +225,7 @@ fn validate_item_with_specs_flag_is_rejected() {
 #[test]
 fn single_change_queries_on_corrupt_meta_are_invalid_config_with_path_and_reason() {
     // spec「單一 change 查詢對壞 metadata fail closed」＋「穩定錯誤碼註冊表」
-    // Example 新行：.openspec.yaml 存在但解析失敗 → invalid_config，訊息
+    // Example 新行：.meta.yaml 存在但解析失敗 → invalid_config，訊息
     // 沿 ConfigError 形式指出 workspace 相對路徑與解析原因。
     let store = TestStore::with_meta("demo", BAD_META);
     store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
@@ -265,12 +265,12 @@ fn single_change_queries_on_corrupt_meta_are_invalid_config_with_path_and_reason
             err.message
         );
         assert!(
-            err.message.starts_with("invalid openspec/changes/demo/.openspec.yaml: "),
+            err.message.starts_with("invalid speclink/changes/demo/.meta.yaml: "),
             "{verb} message must name path then reason: {}",
             err.message
         );
         assert!(
-            err.message.len() > "invalid openspec/changes/demo/.openspec.yaml: ".len(),
+            err.message.len() > "invalid speclink/changes/demo/.meta.yaml: ".len(),
             "{verb} message must carry the parse reason"
         );
     }
@@ -300,13 +300,13 @@ fn list_on_corrupt_meta_flags_the_item_and_keeps_valid_items_intact() {
 
 // --- 壞 change metadata 的生命週期寫入 fail closed（spec change-lifecycle）---
 
-/// `.openspec.yaml` 存在但 YAML 解析失敗的固定樣本（與 store_fs 測試同款）。
+/// `.meta.yaml` 存在但 YAML 解析失敗的固定樣本（與 store_fs 測試同款）。
 const BAD_META: &str = ": : :\n\t bad yaml [unclosed\n";
 
 #[test]
 fn task_flip_on_corrupt_meta_refuses_and_leaves_files_untouched() {
     // spec「task done 因蘊含開工標記而拒絕」：done 與 undone 皆拒，
-    // tasks.md 與 .openspec.yaml 逐位元不變。
+    // tasks.md 與 .meta.yaml 逐位元不變。
     const TASKS: &str = "- [ ] 1.1 a\n- [x] 1.2 b\n";
     let store = TestStore::with_meta("demo", BAD_META);
     store.put_artifact("demo", "tasks.md", TASKS);
@@ -317,7 +317,7 @@ fn task_flip_on_corrupt_meta_refuses_and_leaves_files_untouched() {
     )
     .expect_err("task done on corrupt meta must refuse");
     assert!(
-        err.message.contains("openspec/changes/demo/.openspec.yaml"),
+        err.message.contains("speclink/changes/demo/.meta.yaml"),
         "error must name the metadata file: {}",
         err.message
     );
@@ -327,7 +327,7 @@ fn task_flip_on_corrupt_meta_refuses_and_leaves_files_untouched() {
         Command::TaskUndone { task_id: "2".to_string(), change: Some("demo".to_string()) },
     )
     .expect_err("task undone on corrupt meta must refuse");
-    assert!(err.message.contains("openspec/changes/demo/.openspec.yaml"));
+    assert!(err.message.contains("speclink/changes/demo/.meta.yaml"));
     assert_eq!(
         store.artifacts.borrow().get(&("demo".to_string(), "tasks.md".to_string())).unwrap(),
         TASKS,
@@ -344,7 +344,7 @@ fn claim_on_corrupt_meta_refuses_naming_the_file() {
     let err = execute(&store, &ExecutionContext::default(), Command::Claim { name: "demo".to_string() })
         .expect_err("claim on corrupt meta must refuse");
     assert!(
-        err.message.contains("openspec/changes/demo/.openspec.yaml"),
+        err.message.contains("speclink/changes/demo/.meta.yaml"),
         "error must name the metadata file: {}",
         err.message
     );
@@ -406,7 +406,7 @@ fn archive_on_corrupt_meta_refuses_without_moving_or_merging() {
         )
         .expect_err("archive on corrupt meta must refuse");
         assert!(
-            err.message.contains("openspec/changes/demo/.openspec.yaml"),
+            err.message.contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file (mark={mark}): {}",
             err.message
         );
@@ -440,7 +440,7 @@ fn new_artifact_on_corrupt_meta_refuses_without_default_schema_fallback() {
     )
     .expect_err("new artifact on corrupt meta must refuse");
     assert!(
-        err.message.contains("openspec/changes/demo/.openspec.yaml"),
+        err.message.contains("speclink/changes/demo/.meta.yaml"),
         "error must name the metadata file: {}",
         err.message
     );
@@ -1295,7 +1295,7 @@ fn claim_on_a_team_store_with_corrupt_meta_fails_closed_without_writing() {
     let err = claim(&store, "Alice <a@example.com>").expect_err("corrupt meta refuses");
     assert_eq!(err.code, ErrorCode::InvalidConfig);
     assert!(
-        err.message.contains("openspec/changes/demo/.openspec.yaml"),
+        err.message.contains("speclink/changes/demo/.meta.yaml"),
         "the error must name the metadata file: {}",
         err.message
     );

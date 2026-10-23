@@ -606,7 +606,7 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     }
     // Fail-closed gate（沿 set_board_rank）：文字手術前先解析，壞檔不得被疊寫。
     let raw_meta = store.read_change_meta(change).unwrap_or_default();
-    let meta = crate::model::check_meta_text(change, Some(&raw_meta))?;
+    let meta = crate::model::check_meta_text(store, change, Some(&raw_meta))?;
     let Some(ticket_text) = store.read_artifact(change, st.doc) else {
         bail!(NotFound(format!("no {} ticket for change '{change}'", st.noun)));
     };

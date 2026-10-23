@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.52.0"
+  version: "v1.53.0"
   generatedBy: "Speclink"
 ---
 
@@ -123,7 +123,7 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 **Passive Trigger**
 
-When `/speclink-apply` is invoked on a change whose `.openspec.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
+When `/speclink-apply` is invoked on a change whose `.meta.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
 
 (Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
 

@@ -26,14 +26,14 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(change.join("specs").join("demo-cap")).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
         std::fs::write(change.join("specs").join("demo-cap").join("spec.md"), delta).unwrap();
         if let Some(text) = canonical {
-            let canon = dir.join("openspec").join("specs").join("demo-cap");
+            let canon = dir.join("speclink").join("specs").join("demo-cap");
             std::fs::create_dir_all(&canon).unwrap();
             std::fs::write(canon.join("spec.md"), text).unwrap();
         }
@@ -52,13 +52,13 @@ impl TempProject {
 
     fn canonical_spec(&self) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("specs").join("demo-cap").join("spec.md"),
+            self.dir.join("speclink").join("specs").join("demo-cap").join("spec.md"),
         )
         .unwrap()
     }
 
     fn change_dir(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo")
+        self.dir.join("speclink").join("changes").join("demo")
     }
 
     fn snapshots_dir(&self) -> PathBuf {

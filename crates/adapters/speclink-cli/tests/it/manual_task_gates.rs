@@ -40,9 +40,9 @@ impl TempProject {
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         std::fs::create_dir_all(dir.join("src")).unwrap();
         std::fs::write(dir.join(SCOPE_FILE), SCOPE_BODY).unwrap();
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(change.join("specs").join("demo-cap")).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), tasks_md).unwrap();
         std::fs::write(change.join("specs").join("demo-cap").join("spec.md"), DELTA_SPEC).unwrap();
@@ -82,11 +82,11 @@ impl TempProject {
     }
 
     fn change_dir(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("demo")
+        self.dir.join("speclink").join("changes").join("demo")
     }
 
     fn meta(&self) -> String {
-        std::fs::read_to_string(self.change_dir().join(".openspec.yaml")).expect("meta")
+        std::fs::read_to_string(self.change_dir().join(".meta.yaml")).expect("meta")
     }
 
     fn write_tasks(&self, tasks_md: &str) {
@@ -100,7 +100,7 @@ impl TempProject {
     }
 
     fn archived_demo_exists(&self) -> bool {
-        let archive = self.dir.join("openspec").join("changes").join("archive");
+        let archive = self.dir.join("speclink").join("changes").join("archive");
         std::fs::read_dir(archive).is_ok_and(|entries| {
             entries.filter_map(|e| e.ok()).any(|e| {
                 e.path().file_name().and_then(|n| n.to_str()).is_some_and(|n| n.ends_with("-demo"))
@@ -318,9 +318,9 @@ fn bulk_archive_fails_fast_on_a_stale_stamp() {
     let p = TempProject::new("arch-bulk", ALL_DONE);
     p.stamp_both();
     p.touch_scope_file(); // demo 的兩章 stale
-    let later = p.dir.join("openspec").join("changes").join("later");
+    let later = p.dir.join("speclink").join("changes").join("later");
     std::fs::create_dir_all(later.join("specs").join("later-cap")).unwrap();
-    std::fs::write(later.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-07-02\n")
+    std::fs::write(later.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-07-02\n")
         .unwrap();
     std::fs::write(later.join("proposal.md"), "## Why\n\nLater.\n").unwrap();
     std::fs::write(later.join("tasks.md"), "- [x] 1.1 a\n").unwrap();
@@ -349,7 +349,7 @@ fn validate_refuses_a_task_whose_marker_sits_after_the_number() {
     assert!(!out.status.success(), "誤置必須讓 validate 失敗");
     let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
     // design D3:路徑是含 change 目錄的邏輯路徑,渲染統一正斜線(Windows 亦然)。
-    for key in ["openspec/changes/demo/tasks.md", "Task 2", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"]
+    for key in ["speclink/changes/demo/tasks.md", "Task 2", "6.2 [M] 手動驗收", "- [ ] [M] 6.2 手動驗收"]
     {
         assert!(text.contains(key), "訊息缺 {key:?}: {text}");
     }

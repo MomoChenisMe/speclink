@@ -18,7 +18,7 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("discussions")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("discussions")).unwrap();
         TempProject { dir }
     }
 
@@ -37,7 +37,7 @@ impl TempProject {
     }
 
     fn discussions(&self) -> PathBuf {
-        self.dir.join("openspec").join("discussions")
+        self.dir.join("speclink").join("discussions")
     }
 }
 

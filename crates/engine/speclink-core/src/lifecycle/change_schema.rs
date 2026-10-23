@@ -31,7 +31,7 @@ pub fn set_schema(
     }
     let refuse = |msg: String| anyhow::Error::from(crate::command::Refusal(msg));
     let previous =
-        crate::model::check_meta_text(name, store.read_change_meta(name).as_deref())?.schema_name();
+        crate::model::check_meta_text(store, name, store.read_change_meta(name).as_deref())?.schema_name();
     // 名稱守門在解析之前：專案層解析把名字接成路徑，寫入把它原樣接進 meta。
     if !crate::schema::is_valid_schema_name(schema) {
         return Err(refuse(crate::schema::invalid_name_msg(schema)));
@@ -66,7 +66,7 @@ pub fn set_schema(
     if previous == schema {
         return Ok(write(false, false));
     }
-    let meta_file = format!("openspec/changes/{name}/.openspec.yaml");
+    let meta_file = store.change_meta_display(name);
     let cleared = crate::model::edit_meta(store, name, |m| {
         m.set("schema", schema)?;
         // 清章的欄位清單由 station 管；`verified_rounds` 不在內，流程成本跨章累加（D3）。
@@ -77,7 +77,7 @@ pub fn set_schema(
         }
         // KeyLines 只認第 0 欄的 `schema:`：`schema : x` 會讓手術補出重複鍵、縮排續行
         // 會被併進新值。寫入前以解析結果把關，讀不出新值就零寫入。
-        let reparsed = crate::model::check_meta_text(name, Some(&m.text()));
+        let reparsed = crate::model::check_meta_text(store, name, Some(&m.text()));
         if !reparsed.is_ok_and(|meta| meta.schema_name() == schema) {
             return Err(refuse(format!(
                 "cannot switch '{name}': {meta_file} has a `schema:` line this command cannot \
@@ -86,7 +86,7 @@ pub fn set_schema(
         }
         Ok(cleared)
     })?
-    // 名冊列得出目錄卻讀不到文件：這個 change 根本沒有 `.openspec.yaml`。
+    // 名冊列得出目錄卻讀不到文件：這個 change 根本沒有 `.meta.yaml`。
     .ok_or_else(|| refuse(format!("cannot write schema for '{name}': {meta_file} is missing")))?;
     Ok(write(true, cleared))
 }
@@ -256,20 +256,20 @@ verified_rounds: 2\n"
         ] {
             let store = TestStore::with_meta("c", meta);
             let err = switch(&store, "c", "no-spec-change").expect_err(meta);
-            assert!(err.to_string().contains(".openspec.yaml"), "{err}");
+            assert!(err.to_string().contains(".meta.yaml"), "{err}");
             assert_refused(&store, &err, meta);
         }
     }
 
     #[test]
     fn a_change_without_a_meta_file_refuses() {
-        // 名冊列得出目錄卻讀不到 `.openspec.yaml`：拒絕，不憑空建出 meta。
+        // 名冊列得出目錄卻讀不到 `.meta.yaml`：拒絕，不憑空建出 meta。
         let store = TestStore::with_meta("c", SPEC_META);
         *store.missing_meta.borrow_mut() = Some("c".into());
         let err = switch(&store, "c", "no-spec-change").unwrap_err();
         assert_eq!(
             err.to_string(),
-            "cannot write schema for 'c': openspec/changes/c/.openspec.yaml is missing"
+            "cannot write schema for 'c': speclink/changes/c/.meta.yaml is missing"
         );
         assert_refused(&store, &err, SPEC_META);
     }

@@ -21,11 +21,11 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let changes = dir.join("openspec").join("changes");
+        let changes = dir.join("speclink").join("changes");
         for name in ["with-deltas", "no-deltas"] {
             let change = changes.join(name);
             std::fs::create_dir_all(&change).unwrap();
-            std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-09-16\n")
+            std::fs::write(change.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-09-16\n")
                 .unwrap();
             std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
             std::fs::write(change.join("tasks.md"), "- [ ] 1.1 Do the thing\n").unwrap();

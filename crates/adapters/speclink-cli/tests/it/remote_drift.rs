@@ -111,7 +111,7 @@ impl TempProject {
         TempProject { dir }
     }
 
-    /// A remote-mode project bound to `url`, with no local `openspec/`.
+    /// A remote-mode project bound to `url`, with no local `speclink/`.
     fn remote(tag: &str, url: &str) -> TempProject {
         let p = TempProject::new(tag);
         std::fs::write(
@@ -125,13 +125,13 @@ impl TempProject {
     /// The fs-mode twin of the same change content — the shape authority.
     fn fs_twin(tag: &str) -> TempProject {
         let p = TempProject::new(tag);
-        let change = p.dir.join("openspec").join("changes").join("demo");
+        let change = p.dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(change.join("specs").join("auth")).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("design.md"), DESIGN).unwrap();
         std::fs::write(change.join("tasks.md"), TASKS).unwrap();
         std::fs::write(change.join("specs").join("auth").join("spec.md"), DELTA).unwrap();
-        let specs = p.dir.join("openspec").join("specs").join("auth");
+        let specs = p.dir.join("speclink").join("specs").join("auth");
         std::fs::create_dir_all(&specs).unwrap();
         std::fs::write(specs.join("spec.md"), CANONICAL).unwrap();
         p
@@ -286,7 +286,7 @@ fn remote_and_fs_drift_json_have_the_same_shape_and_spec_side() {
 #[test]
 fn without_a_checkout_the_workspace_side_is_unavailable_never_clean() {
     let mock = mock_server(routes_serving_drift());
-    // 無 openspec/、無 git —— 只有 .speclink.yaml。
+    // 無 speclink/、無 git —— 只有 .speclink.yaml。
     let remote = TempProject::remote("nocheckout", &mock.base);
 
     let out = remote.run(&["drift", "demo", "--json"], Some("tok"));

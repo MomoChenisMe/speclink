@@ -85,7 +85,7 @@ speclink init --tools claude,codex
 **Expected output**:
 
 ```text
-✓ Initialized at /path/to/your-repo/openspec
+✓ Initialized at /path/to/your-repo/speclink
 Generated files for: claude, codex
 ```
 
@@ -93,16 +93,16 @@ Generated files for: claude, codex
 
 This step does three things:
 
-- It creates `openspec/` and `.speclink.yaml`.
+- It creates `speclink/` and `.speclink.yaml`.
 - It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, and `.github/skills/` for GitHub Copilot.
 - It adds `.speclink/` (local work data) to `.gitignore`.
 
 It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`. The agent reads the description in each skill file to choose the right skill.
 
-`openspec/` has this folder layout:
+`speclink/` has this folder layout:
 
 ```text
-openspec/
+speclink/
 ├── config.yaml                  workflow settings
 ├── specs/<capability>/spec.md   specs, one file for each capability
 ├── changes/<name>/              active changes
@@ -110,7 +110,7 @@ openspec/
 └── discussions/                 discussion records (added by Speclink)
 ```
 
-All files are plain Markdown and YAML. You can read and edit them without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/`, and a `.openspec.yaml` file in each change folder. That file keeps lifecycle data, such as the start time and the source discussion.
+All files are plain Markdown and YAML. You can read and edit them without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/`, and a `.meta.yaml` file in each change folder. That file keeps lifecycle data, such as the start time and the source discussion.
 
 This applies to Local mode only. After you connect a remote server, the specs live in the Store. Your machine keeps only a read-only projection (`.speclink/context/`).
 
@@ -190,7 +190,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ```text
 ✓ Created change: add-csv-export
-  Path: /path/to/your-repo/openspec/changes/add-csv-export
+  Path: /path/to/your-repo/speclink/changes/add-csv-export
   Schema: spec-driven
 ```
 
@@ -291,7 +291,7 @@ Specs applied: csv-export (added: 1, modified: 0, removed: 0, renamed: 0)
 Snapshot created for unarchive support.
 ```
 
-The archive step merges the delta specs into the specs and moves the change to `openspec/changes/archive/`. After that, `speclink list` shows `No active changes.` again, and `openspec/specs/csv-export/` exists. This folder is the result of the round.
+The archive step merges the delta specs into the specs and moves the change to `speclink/changes/archive/`. After that, `speclink list` shows `No active changes.` again, and `speclink/specs/csv-export/` exists. This folder is the result of the round.
 
 In the desktop app, the Specs page lists the merged specs, one row for each capability. Click a row to open the detail page of that spec, with its requirements and scenarios.
 
@@ -303,15 +303,34 @@ Do not use `--mark-tasks-complete` or `--no-validate` to skip work that is not d
 
 | Path | Content |
 | --- | --- |
-| `openspec/specs/<capability>/spec.md` | The specs: the current behavior of the system |
-| `openspec/changes/<name>/` | An active change and its documents |
-| `openspec/changes/archive/` | Archived changes |
-| `openspec/discussions/` | Discussion records (only when a decision is necessary) |
-| `openspec/config.yaml` | Workflow settings: language, project context, rules, TDD, audit, worktree |
+| `speclink/specs/<capability>/spec.md` | The specs: the current behavior of the system |
+| `speclink/changes/<name>/` | An active change and its documents |
+| `speclink/changes/archive/` | Archived changes |
+| `speclink/discussions/` | Discussion records (only when a decision is necessary) |
+| `speclink/config.yaml` | Workflow settings: language, project context, rules, TDD, audit, worktree |
 | `.speclink.yaml` | The tools and the remote binding of this checkout |
 | `.speclink/` | Local work data (not in Git) |
 
 For the settings, see [Configuration](configuration.md).
+
+## <a id="upgrade"></a>Upgrade an older project or import an OpenSpec project
+
+**A project that an older Speclink created** keeps its specs in `openspec/`. After you upgrade Speclink, run this in the project root:
+
+```bash
+speclink update
+```
+
+`update` moves `openspec/` to `speclink/`. Then it renames the `.openspec.yaml` file of each change (active and archived) to `.meta.yaml`. The file contents do not change. `update` does not commit for you: after the move, commit it yourself. `speclink/` is an addition and `openspec/` is a deletion. Teammates must upgrade Speclink before they pull that commit, because an older version cannot see the new folder and shows an empty project. Your own scripts, CI settings, and `.gitignore` entries that name `openspec/` also need your changes.
+
+In these two cases, `update` waits with the move and tells you why. It still updates the skill files:
+
+- Other worktrees exist: each worktree has its own copy of `openspec/`. Merge or remove them first. Inside a linked worktree, run `update` in the main checkout instead.
+- `openspec/` has uncommitted changes (new untracked files too): commit them first.
+
+The project works without the move: Speclink keeps reading `openspec/` and prints one reminder line on stderr at each run. A project whose `.speclink.yaml` sets `spec_dir` is never moved automatically.
+
+**An OpenSpec project**: run `speclink init` (with the `--tools` you need) in the project root. Speclink moves `openspec/` to `speclink/` and keeps your `config.yaml`, `schemas/`, specs, and changes. Then it adds `.speclink.yaml`, the `.gitignore` entry, and the skill files. When other worktrees exist or `openspec/` has uncommitted changes, `init` refuses and writes nothing. The import is one-way: after it, the OpenSpec CLI cannot read the project. Speclink does not move or delete the skills and command files that OpenSpec installed. Remove them yourself if you no longer use OpenSpec.
 
 ## <a id="next"></a>What to do next
 

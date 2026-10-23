@@ -24,7 +24,7 @@ Speclink is a Spec-Driven Development (SDD) engine written in Rust. It makes AI-
 
 Speclink has two deployment paths. One person needs only Local Repo. A team that wants shared specs connects a Remote Store.
 
-- **Local Repo**: Specs live in the `openspec/` folder of your repo. Git handles collaboration. No server is necessary.
+- **Local Repo**: Specs live in the `speclink/` folder of your repo. Git handles collaboration. No server is necessary.
 - **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own. At this team layer, PMs and POs take part in discussions and proposals, and they share one set of terms with engineers and AI agents: change, artifact, task, verify, and archive.
 
 ![The Speclink desktop app: a board with the columns Discussions, Proposed, In progress, and Ready](docs/assets/screenshots/en/desktop-board.png)
@@ -77,7 +77,7 @@ For the full first round (propose, apply, check, archive), see [Getting started]
 
 ## <a id="features"></a>Features
 
-- **Plain text**: In Local mode, the files live under `openspec/` in your repo: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.openspec.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection.
+- **Plain text**: In Local mode, the files live under `speclink/` in your repo: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.meta.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection. To import a project that uses OpenSpec, run `speclink init` in the project root. Speclink moves `openspec/` to `speclink/`, and after that the OpenSpec CLI cannot read the project. The import is one-way: you cannot convert the project back.
 - **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, and GitHub Copilot. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex).
 - **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
 - **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.

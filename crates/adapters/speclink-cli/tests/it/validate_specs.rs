@@ -27,13 +27,13 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [ ] 1.1 a\n").unwrap();
         for (cap, purpose) in specs {
-            let dir_cap = dir.join("openspec").join("specs").join(cap);
+            let dir_cap = dir.join("speclink").join("specs").join(cap);
             std::fs::create_dir_all(&dir_cap).unwrap();
             let body = match purpose {
                 Some(p) => format!("# {cap} Specification\n\n## Purpose\n\n{p}\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n"),
@@ -48,7 +48,7 @@ impl TempProject {
     fn put_delta(&self, cap: &str, text: &str) {
         let dir = self
             .dir
-            .join("openspec")
+            .join("speclink")
             .join("changes")
             .join("demo")
             .join("specs")
@@ -211,7 +211,7 @@ fn validate_and_drift_name_the_same_stale_operation() {
     // 單筆封存的守門序只在 archive() 一份（任務完成度先於 merge 守門）：先把任務
     // 勾齊，讓 merge 守門成為唯一的拒絕理由。
     std::fs::write(
-        p.dir.join("openspec").join("changes").join("demo").join("tasks.md"),
+        p.dir.join("speclink").join("changes").join("demo").join("tasks.md"),
         "- [x] 1.1 a\n",
     )
     .unwrap();

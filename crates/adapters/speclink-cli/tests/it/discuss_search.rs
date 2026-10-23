@@ -95,7 +95,7 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("discussions").join("archive")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("discussions").join("archive")).unwrap();
         TempProject { dir }
     }
 
@@ -105,14 +105,14 @@ impl TempProject {
     fn seeded(tag: &str) -> TempProject {
         let p = TempProject::empty(tag);
         p.write(
-            "openspec/discussions/golden-policy.md",
+            "speclink/discussions/golden-policy.md",
             "---\ntopic: Golden snapshot policy\nslug: golden-policy\nstatus: open\ncreated: 2026-07-01\n---\n\n\
              # Discussion: Golden snapshot policy\n\n## Context\n\nseed\n\n## Rounds\n\n\
              ### Round 1 — interview (2026-07-01)\n\n**Focus**: golden\n**Evidence**: golden.rs\n\n\
              ## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
         );
         p.write(
-            "openspec/discussions/archive/2026-08-01-transport-choice.md",
+            "speclink/discussions/archive/2026-08-01-transport-choice.md",
             "---\ntopic: Transport choice\nslug: transport-choice\nstatus: concluded\ncreated: 2026-08-01\n---\n\n\
              # Discussion: Transport choice\n\n## Context\n\nseed\n\n## Rounds\n\n\
              ### Round 1 — assumptions (2026-08-01)\n\n**Focus**: transport\n**Ruled out**: polling\n\n\
@@ -120,13 +120,13 @@ impl TempProject {
         );
         // 只有 frontmatter 與 Context 的在途記錄（尚無輪與 Conclusion）。
         p.write(
-            "openspec/discussions/release-memo.md",
+            "speclink/discussions/release-memo.md",
             "---\ntopic: Release notes\nslug: release-memo\nstatus: open\ncreated: 2026-05-01\n---\n\n\
              # Discussion: Release notes\n\n## Context\n\nseed\n",
         );
         // 封存記錄，Ruled out 標記獨占一行、內容寫在下一行條列（封存記錄的慣用寫法）。
         p.write(
-            "openspec/discussions/archive/2026-04-01-tray-fallback.md",
+            "speclink/discussions/archive/2026-04-01-tray-fallback.md",
             "---\ntopic: Tray fallback page\nslug: tray-fallback\nstatus: concluded\ncreated: 2026-04-01\n---\n\n\
              # Discussion: Tray fallback page\n\n## Context\n\nseed\n\n## Rounds\n\n\
              ### Round 1 — interview (2026-04-01)\n\n**Focus**: fallback\n\
@@ -134,7 +134,7 @@ impl TempProject {
              ## Conclusion\n\n**Decision**: keep the page\n",
         );
         p.write(
-            "openspec/discussions/desktop-packaging.md",
+            "speclink/discussions/desktop-packaging.md",
             "---\ntopic: Desktop packaging\nslug: desktop-packaging\nstatus: open\ncreated: 2026-06-01\n---\n\n\
              # Discussion: Desktop packaging\n\n## Context\n\nseed\n\n## Rounds\n\n\
              ### Round 1 — interview (2026-06-01)\n\n**Position**: sidecar first\n**Evidence**: sidecar.rs\n\n\

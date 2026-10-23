@@ -1,5 +1,5 @@
 //! speclink-fs: the default filesystem implementation of the engine's storage
-//! interface, preserving the classic `openspec/` layout byte-for-byte.
+//! interface over the spec directory layout (`speclink/` by default).
 //!
 //! All layout knowledge migrated here from the engine (path composition,
 //! directory enumeration, mtime-derived ordering, archive move-and-name,
@@ -10,7 +10,7 @@ pub mod layout;
 
 use anyhow::Result;
 use layout::Layout;
-use speclink_core::model::{Change, ChangeMeta};
+use speclink_core::model::{change_meta_file, Change, ChangeMeta, LEGACY_META_FILE, META_FILE};
 use speclink_core::store::{DiscussionDoc, Store};
 use speclink_core::util;
 use std::path::{Path, PathBuf};
@@ -23,7 +23,7 @@ pub struct FsStore {
 
 impl FsStore {
     /// Build a store rooted at the project directory with the given spec
-    /// directory name (default "openspec").
+    /// directory name.
     pub fn new(root: &Path, spec_dir_name: &str) -> FsStore {
         FsStore {
             layout: Layout::new(root, spec_dir_name),
@@ -37,7 +37,7 @@ impl FsStore {
     }
 
     fn change_at(&self, name: &str, dir: PathBuf) -> Change {
-        let meta_text = util::read_opt(&dir.join(".openspec.yaml"));
+        let meta_text = read_meta(&dir.join(META_FILE));
         let (meta, meta_error) = match ChangeMeta::from_text(meta_text.as_deref()) {
             Ok(meta) => (meta, None),
             Err(reason) => (ChangeMeta::default(), Some(reason)),
@@ -48,6 +48,30 @@ impl FsStore {
             meta_error,
             dir,
         }
+    }
+}
+
+/// Read a change data file: the `.meta.yaml` at `path` first, the legacy
+/// `.openspec.yaml` beside it only when that is absent — a new file that exists
+/// but cannot be read never falls back to the stale legacy one.
+fn read_meta(path: &Path) -> Option<String> {
+    match std::fs::read_to_string(path) {
+        Ok(text) => Some(text),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            util::read_opt(&path.with_file_name(LEGACY_META_FILE))
+        }
+        Err(_) => None,
+    }
+}
+
+/// Write a change data file under the new name and drop the legacy one in the
+/// same call. A failed delete surfaces as an error after the new file landed;
+/// the next write retries it.
+fn write_meta(path: &Path, content: &str) -> Result<()> {
+    util::write_file(path, content)?;
+    match std::fs::remove_file(path.with_file_name(LEGACY_META_FILE)) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.into()),
+        _ => Ok(()),
     }
 }
 
@@ -108,6 +132,22 @@ impl FsStore {
 }
 
 impl Store for FsStore {
+    fn spec_dir_display(&self) -> String {
+        self.layout.spec_dir_name.clone()
+    }
+
+    fn change_meta_display(&self, name: &str) -> String {
+        // Name the file that is actually there: an unmigrated change still
+        // carries only the legacy name.
+        let path = self.layout.change_meta(name);
+        let file = if !path.exists() && path.with_file_name(LEGACY_META_FILE).exists() {
+            LEGACY_META_FILE
+        } else {
+            META_FILE
+        };
+        change_meta_file(&self.layout.spec_dir_name, name, file)
+    }
+
     // --- changes ---
 
     fn list_changes(&self) -> Vec<Change> {
@@ -144,22 +184,19 @@ impl Store for FsStore {
     }
 
     fn create_change(&self, name: &str, meta_text: &str) -> Result<PathBuf> {
-        let dir = self.layout.change_dir(name);
-        util::write_file(&dir.join(".openspec.yaml"), meta_text)?;
-        Ok(dir)
+        util::write_file(&self.layout.change_meta(name), meta_text)?;
+        Ok(self.layout.change_dir(name))
     }
 
     fn read_change_meta(&self, name: &str) -> Option<String> {
-        let dir = self.layout.change_dir(name);
-        if !dir.is_dir() {
+        if !self.layout.change_dir(name).is_dir() {
             return None;
         }
-        util::read_opt(&dir.join(".openspec.yaml"))
+        read_meta(&self.layout.change_meta(name))
     }
 
     fn write_change_meta(&self, name: &str, content: &str) -> Result<()> {
-        util::write_file(&self.layout.change_dir(name).join(".openspec.yaml"), content)?;
-        Ok(())
+        write_meta(&self.layout.change_meta(name), content)
     }
 
     fn delete_change(&self, name: &str) -> Result<()> {
@@ -307,7 +344,7 @@ impl Store for FsStore {
     }
 
     fn read_archived_meta(&self, dated_name: &str) -> Option<String> {
-        util::read_opt(&self.layout.archived_change_dir(dated_name).join(".openspec.yaml"))
+        read_meta(&self.layout.archived_change_meta(dated_name))
     }
 
     fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
@@ -334,11 +371,7 @@ impl Store for FsStore {
     }
 
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> Result<()> {
-        util::write_file(
-            &self.layout.archived_change_dir(dated_name).join(".openspec.yaml"),
-            content,
-        )?;
-        Ok(())
+        write_meta(&self.layout.archived_change_meta(dated_name), content)
     }
 
     // --- discussions ---

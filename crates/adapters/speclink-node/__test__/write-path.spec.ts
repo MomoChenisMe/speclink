@@ -61,7 +61,7 @@ describe('dispatch write path — stdin parameter form', () => {
       validated: true,
     })
     expect(result.path.endsWith('design.md')).toBe(true)
-    const onDisk = readFileSync(join(fsFixture, 'openspec', 'changes', 'alpha', 'design.md'), 'utf8')
+    const onDisk = readFileSync(join(fsFixture, 'speclink', 'changes', 'alpha', 'design.md'), 'utf8')
     expect(onDisk).toBe(content)
   })
 

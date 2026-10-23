@@ -67,7 +67,10 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
     };
     Ok(Matrix {
         target,
-        spec_dir: opts.spec_dir.clone().unwrap_or_else(|| "openspec".to_string()),
+        spec_dir: opts
+            .spec_dir
+            .clone()
+            .unwrap_or_else(|| speclink_core::workspace::DEFAULT_SPEC_DIR.to_string()),
     })
 }
 
@@ -78,7 +81,7 @@ pub fn skills_list() -> Vec<SkillInfo> {
         .into_iter()
         .map(|s| SkillInfo {
             name: s.name.to_string(),
-            description: s.description.to_string(),
+            description: skills::description_for(&s, speclink_core::workspace::DEFAULT_SPEC_DIR),
         })
         .collect()
 }

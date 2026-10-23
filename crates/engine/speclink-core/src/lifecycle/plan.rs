@@ -258,10 +258,11 @@ pub fn set_depends(
         })
     })?;
     // The roster listed a directory, so a missing document is a change with no
-    // `.openspec.yaml` at all — nothing to append the line to.
+    // `.meta.yaml` at all — nothing to append the line to.
     write.ok_or_else(|| {
         anyhow::anyhow!(
-            "cannot write depends_on for '{name}': openspec/changes/{name}/.openspec.yaml is missing"
+            "cannot write depends_on for '{name}': {} is missing",
+            store.change_meta_display(name)
         )
     })
 }
@@ -888,7 +889,7 @@ pub fn set_rank(
             inactive_reason(store, anchor)
         )));
     };
-    model::require_valid_meta(anchored)?;
+    model::require_valid_meta(store, anchored)?;
     if name == anchor {
         return Err(refuse(format!("'{name}' cannot be ranked against itself")));
     }
@@ -948,7 +949,7 @@ fn move_start(
     let Some(moved) = find_active(&changes, name) else {
         anyhow::bail!("Change '{name}' not found.");
     };
-    model::require_valid_meta(moved)?;
+    model::require_valid_meta(store, moved)?;
     let ranks = meta_ranks(&changes);
     let (entries, _) = entries_of(store, changes, &ranks);
     Ok((ranks, entries))
@@ -993,7 +994,7 @@ fn shown_order(entries: &[Entry]) -> Vec<usize> {
 /// (a hand-edited key has no midpoint), the whole column is stamped first by
 /// the board's rule, so the new key has real neighbors on both sides.
 /// Every checked thing comes before any write, so a refusal writes nothing: a
-/// change to write needs its `.openspec.yaml`, and the stamps plus the new key
+/// change to write needs its `.meta.yaml`, and the stamps plus the new key
 /// must cross no declared dependency. Writes go stamps first, `name` last; a
 /// failed write stops the run and keeps the stamps already written — a partly
 /// stamped column is still a valid order, and running the move again resumes
@@ -1030,12 +1031,13 @@ fn write_between(
     keys.extend(stamps.iter().map(|(n, key)| (*n, key.clone())));
     let key = crate::rank::neighbor_midpoint(&keys, prev, next);
 
-    // A change directory without its .openspec.yaml has no line to take the
+    // A change directory without its .meta.yaml has no line to take the
     // rank: refuse before the first write, not halfway through the column.
     for target in stamps.iter().map(|(n, _)| *n).chain([name]) {
         if store.read_change_meta(target).is_none() {
             return Err(refuse(format!(
-                "cannot write a board rank for '{target}': openspec/changes/{target}/.openspec.yaml is missing"
+                "cannot write a board rank for '{target}': {} is missing",
+                store.change_meta_display(target)
             )));
         }
     }
@@ -2815,8 +2817,8 @@ mod tests {
         refuse("../evil", "c", "not found");
         refuse("c", "ghost", "no active change with that name");
         refuse("c", "old", "already archived");
-        refuse("c", "bad", "invalid openspec/changes/bad/.openspec.yaml");
-        refuse("bad", "c", "invalid openspec/changes/bad/.openspec.yaml");
+        refuse("c", "bad", "invalid speclink/changes/bad/.meta.yaml");
+        refuse("bad", "c", "invalid speclink/changes/bad/.meta.yaml");
         assert_eq!(*store.meta_writes.borrow(), 0);
         assert_eq!(store.meta("bad"), BAD);
     }
@@ -2889,7 +2891,7 @@ mod tests {
         let err = move_rank(&store, &rank_writer(&store), "ghost", None, None).unwrap_err().to_string();
         assert!(err.contains("Change 'ghost' not found."), "{err}");
         let err = move_rank(&store, &rank_writer(&store), "bad", Some("a"), None).unwrap_err().to_string();
-        assert!(err.contains("invalid openspec/changes/bad/.openspec.yaml"), "{err}");
+        assert!(err.contains("invalid speclink/changes/bad/.meta.yaml"), "{err}");
         assert_eq!(*store.meta_writes.borrow(), 0);
         assert_eq!(store.meta("bad"), BAD);
     }

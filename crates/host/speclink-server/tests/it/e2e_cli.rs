@@ -695,11 +695,11 @@ fn remote_apply_materializes_a_consistent_context_projection_from_the_real_serve
     // matching canonical spec (apply flow narrows to the delta's capability),
     // plus INDEX and manifest.
     for rel in [
-        "openspec/changes/demo/proposal.md",
-        "openspec/changes/demo/design.md",
-        "openspec/changes/demo/tasks.md",
-        "openspec/changes/demo/specs/cap-a/spec.md",
-        "openspec/specs/cap-a/spec.md",
+        "speclink/changes/demo/proposal.md",
+        "speclink/changes/demo/design.md",
+        "speclink/changes/demo/tasks.md",
+        "speclink/changes/demo/specs/cap-a/spec.md",
+        "speclink/specs/cap-a/spec.md",
         "INDEX.md",
         "manifest.json",
     ] {
@@ -723,8 +723,8 @@ fn remote_apply_materializes_a_consistent_context_projection_from_the_real_serve
         ContextSnapshotOutcome::Unchanged => panic!("a fresh request is never unchanged"),
     };
     let doc_paths: Vec<&str> = snapshot.documents.iter().map(|d| d.path.as_str()).collect();
-    assert!(doc_paths.contains(&"openspec/config.yaml"), "server response carries config: {doc_paths:?}");
-    assert!(doc_paths.contains(&"openspec/LANGUAGE.md"), "server response carries LANGUAGE: {doc_paths:?}");
+    assert!(doc_paths.contains(&"speclink/config.yaml"), "server response carries config: {doc_paths:?}");
+    assert!(doc_paths.contains(&"speclink/LANGUAGE.md"), "server response carries LANGUAGE: {doc_paths:?}");
     let id_before = manifest_snapshot_id(&projection);
     assert_eq!(id_before, snapshot.snapshot_id, "the manifest id is the server's snapshot id");
 

@@ -178,7 +178,7 @@ pub fn registry() -> Vec<Skill> {
         // Tool skill with two modes (spec manual-skill): generation writes the
         // manual pages under the spec dir, so Edit/Write stay allowed; tour mode
         // asks the user one role question interactively, so not a fork.
-        Skill { name: "manual", description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under openspec/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_MANUAL },
+        Skill { name: "manual", description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under {{SPEC_DIR}}manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_MANUAL },
         Skill { name: "propose", description: "Use when a change needs planning, proposing or designing — creates the change with every required artifact; seed it from a concluded discussion with --from-discussion.", fork: false, disallow_edit: false, claude_only: false, worktree_gated: false, body: B_PROPOSE },
         // Pure ordering over the two stations plus the per-round pause（design
         // D1）：不是 fork——它要在主線依序呼叫兩站技能、停下問使用者，且步驟 4
@@ -266,12 +266,23 @@ impl Substitutions<'_> {
     }
 }
 
-fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<'a> {
-    let spec_dir_slash = if spec_dir.ends_with('/') {
+/// `spec_dir` with exactly one trailing slash — the `{{SPEC_DIR}}` rendering.
+fn spec_dir_slash(spec_dir: &str) -> String {
+    if spec_dir.ends_with('/') {
         spec_dir.to_string()
     } else {
         format!("{spec_dir}/")
-    };
+    }
+}
+
+/// A skill's description with `{{SPEC_DIR}}` rendered — the only substitution a
+/// description gets: it is one frozen line.
+pub fn description_for(skill: &Skill, spec_dir: &str) -> String {
+    skill.description.replace("{{SPEC_DIR}}", &spec_dir_slash(spec_dir))
+}
+
+fn substitutions<'a>(target: RenderTarget<'a>, spec_dir: &str) -> Substitutions<'a> {
+    let spec_dir_slash = spec_dir_slash(spec_dir);
     match target {
         RenderTarget::Builtin(tool) => Substitutions {
             spec_dir_slash,
@@ -346,9 +357,12 @@ as argv.\n\n---\n\n"
 /// frontmatter plus an invocation preamble (frozen output shape).
 pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str) -> String {
     let claude = matches!(target, RenderTarget::Builtin(Tool::Claude));
+    let subs = substitutions(target, spec_dir);
     let mut fm = String::from("---\n");
     fm.push_str(&format!("name: speclink-{}\n", skill.name));
-    fm.push_str(&format!("description: \"{}\"\n", skill.description));
+    // A YAML double-quoted scalar: a spec_dir may bring a backslash or a quote.
+    let description = description_for(skill, spec_dir).replace('\\', "\\\\").replace('"', "\\\"");
+    fm.push_str(&format!("description: \"{description}\"\n"));
     if claude {
         if skill.fork {
             fm.push_str("context: fork\n");
@@ -375,7 +389,6 @@ pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str
         }
         RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
     }
-    let subs = substitutions(target, spec_dir);
     fm.push_str(subs.apply(CONVERSATION_LANGUAGE).trim_end());
     fm.push_str("\n\n");
     fm.push_str(&subs.apply(skill.body));
@@ -392,6 +405,16 @@ pub fn render_skill_file_for(target: RenderTarget, skill: &Skill, spec_dir: &str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_spec_dir_with_quotes_or_backslashes_keeps_the_description_valid_yaml() {
+        let manual = registry().into_iter().find(|s| s.name == "manual").unwrap();
+        let rendered = render_skill_file_for(RenderTarget::Builtin(Tool::Claude), &manual, r#"docs\"specs"#);
+        let front = rendered.split("---\n").nth(1).expect("frontmatter");
+        let yaml: serde_yaml::Value = serde_yaml::from_str(front).expect("frontmatter parses");
+        let description = yaml["description"].as_str().unwrap();
+        assert!(description.contains(r#"docs\"specs/manual/"#), "{description}");
+    }
     use crate::config::Invocation;
     use crate::init::ASSET_VERSION;
 

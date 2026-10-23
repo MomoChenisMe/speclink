@@ -12,7 +12,7 @@
 /** A Store method may return its value directly or as a Promise. */
 export type MaybePromise<T> = T | Promise<T>
 
-/** Per-change metadata (the parsed `.openspec.yaml` fields). */
+/** Per-change metadata (the parsed `.meta.yaml` fields). */
 export interface ChangeMeta {
   schema?: string
   created?: string
@@ -64,7 +64,7 @@ export interface Store {
   updatedAtSecs(name: string): MaybePromise<number>
   /**
    * OPTIONAL: the raw metadata document of an active change (the
-   * `.openspec.yaml` text). Stamping is a read-modify-write of this document,
+   * `.meta.yaml` text). Stamping is a read-modify-write of this document,
    * so the review/verify stamp verbs require BOTH methods together with
    * `deleteArtifact` — a store missing any of the three is refused before the
    * stamp touches anything. All other verbs never call them.
@@ -160,12 +160,16 @@ export interface Store {
   claim?(name: string): MaybePromise<unknown>
 }
 
-/** The built-in filesystem store: a local project root with an `openspec/` tree. */
+/** The built-in filesystem store: a local project root with a spec directory. */
 export interface FsStoreOptions {
   type: 'fs'
   /** Project root (the directory containing the spec directory). */
   root: string
-  /** Spec directory name relative to root. Default: `"openspec"`. */
+  /**
+   * Spec directory name relative to root. Default: the CLI's resolution —
+   * `.speclink.yaml`'s `spec_dir`, else `speclink/`, else a legacy `openspec/`,
+   * else `"speclink"`.
+   */
   specDir?: string
 }
 
@@ -225,7 +229,7 @@ export interface RenderOptions {
   target: 'claude' | 'codex' | 'copilot' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
   invocation?: 'cli' | 'tool-call'
-  /** Spec directory name substituted into rendered content. Default: `"openspec"`. */
+  /** Spec directory name substituted into rendered content. Default: `"speclink"`. */
   specDir?: string
   /** Neutral target only: the harness name (`{{TOOL}}` substitution). Default: `"speclink"`. */
   toolName?: string

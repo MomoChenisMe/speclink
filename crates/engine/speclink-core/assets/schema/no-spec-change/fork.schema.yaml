@@ -19,7 +19,7 @@ artifacts:
     Sections:
     - **Why**: 1-2 sentences on the problem or opportunity. Then say why this change
       alters no behavior the canonical specs promise, and list the canonical specs you checked
-      (`openspec/specs/<capability>/spec.md`). The verify station starts its behavior check
+      (`speclink/specs/<capability>/spec.md`). The verify station starts its behavior check
       from this list.
     - **What Changes**: Bullet list of changes. Be specific about what moves, what is renamed, and what is removed.
     - **Non-Goals** (optional): Scope exclusions and rejected approaches. If design.md will be created, Non-Goals belong there (in Goals/Non-Goals section) — leave this section empty or omit it. If design.md will be skipped, write Non-Goals here so rejected approaches and scope exclusions are recorded in a persistent artifact.

@@ -263,7 +263,11 @@ impl RemoteDriftStore {
     pub fn change(&self) -> Change {
         Change {
             name: self.change.clone(),
-            dir: std::path::PathBuf::from(format!("openspec/changes/{}", self.change)),
+            dir: std::path::PathBuf::from(format!(
+                "{}/changes/{}",
+                speclink_core::workspace::DEFAULT_SPEC_DIR,
+                self.change
+            )),
             meta: ChangeMeta::from_fields(|m| m.created = self.created.clone()),
             meta_error: None,
         }

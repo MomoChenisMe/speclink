@@ -90,7 +90,7 @@ fn assert_matches_golden(name: &str, actual: &str) {
 #[test]
 fn claude_rendering_is_bit_identical_to_golden() {
     let root = TempRoot::new("claude");
-    init::init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+    init::init(&root.dir, &[Tool::Claude], true, "speclink").unwrap();
     assert_matches_golden(
         "claude.snapshot.md",
         &snapshot(&root.dir, ".claude/skills"),
@@ -100,7 +100,7 @@ fn claude_rendering_is_bit_identical_to_golden() {
 #[test]
 fn codex_rendering_is_bit_identical_to_golden() {
     let root = TempRoot::new("codex");
-    init::init(&root.dir, &[Tool::Codex], true, "openspec").unwrap();
+    init::init(&root.dir, &[Tool::Codex], true, "speclink").unwrap();
     assert_matches_golden(
         "codex.snapshot.md",
         &snapshot(&root.dir, ".agents/skills"),
@@ -110,7 +110,7 @@ fn codex_rendering_is_bit_identical_to_golden() {
 #[test]
 fn copilot_rendering_is_bit_identical_to_golden() {
     let root = TempRoot::new("copilot");
-    init::init(&root.dir, &[Tool::Copilot], true, "openspec").unwrap();
+    init::init(&root.dir, &[Tool::Copilot], true, "speclink").unwrap();
     assert_matches_golden(
         "copilot.snapshot.md",
         &snapshot(&root.dir, ".github/skills"),
@@ -125,9 +125,9 @@ fn copilot_rendering_is_bit_identical_to_golden() {
 #[test]
 fn claude_rendering_with_the_worktree_policy_on_is_bit_identical_to_golden() {
     let root = TempRoot::new("claude-worktree");
-    init::init(&root.dir, &[Tool::Claude], true, "openspec").unwrap();
+    init::init(&root.dir, &[Tool::Claude], true, "speclink").unwrap();
     std::fs::write(
-        root.dir.join("openspec").join("config.yaml"),
+        root.dir.join("speclink").join("config.yaml"),
         "schema: spec-driven\nworktree: true\n",
     )
     .unwrap();
@@ -152,7 +152,7 @@ fn commit_skill_confirmation_gate_sees_plan_and_message() {
     ];
     for (tag, tool, skills_dir) in cases {
         let root = TempRoot::new(tag);
-        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        init::init(&root.dir, &[tool], true, "speclink").unwrap();
         let rel = format!("{skills_dir}/speclink-commit/SKILL.md");
         let content = std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
             .expect(&rel);
@@ -282,7 +282,7 @@ fn trace_skill_keeps_degradations_invisible_and_archaeology_in_format() {
 fn commit_skill_attributes_files_from_the_change_directory_record() {
     for (rel, content) in skill_for_both_tools("commit-evidence", "commit") {
         for needle in [
-            "openspec/changes/<change-name>/.evidence.json",
+            "speclink/changes/<change-name>/.evidence.json",
             "the pre-move location `.speclink/touched/<change-name>.json`",
             "belongs to this change's commit",
         ] {
@@ -470,7 +470,7 @@ fn review_skill_binds_locale_across_output_chain() {
     ];
     for (tag, tool, skills_dir) in cases {
         let root = TempRoot::new(tag);
-        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        init::init(&root.dir, &[tool], true, "speclink").unwrap();
         let rel = format!("{skills_dir}/speclink-review/SKILL.md");
         let content = std::fs::read_to_string(root.dir.join(rel.split('/').collect::<PathBuf>()))
             .expect(&rel);
@@ -723,9 +723,9 @@ fn worktree_skill_for_both_tools(tag: &str, skill: &str) -> Vec<(String, String)
 /// written and the skills are regenerated from it.
 fn workspace_for(tag: &str, tool: Tool, config: Option<&str>) -> TempRoot {
     let root = TempRoot::new(tag);
-    init::init(&root.dir, &[tool], true, "openspec").unwrap();
+    init::init(&root.dir, &[tool], true, "speclink").unwrap();
     if let Some(config) = config {
-        std::fs::write(root.dir.join("openspec").join("config.yaml"), config).unwrap();
+        std::fs::write(root.dir.join("speclink").join("config.yaml"), config).unwrap();
         init::update(&root.dir, false).unwrap();
     }
     root
@@ -1190,7 +1190,7 @@ fn remote_init_writes_no_instruction_file() {
 
 fn neutral_project(tag: &str, invocation: &str) -> TempRoot {
     let root = TempRoot::new(tag);
-    std::fs::create_dir_all(root.dir.join("openspec").join("changes")).unwrap();
+    std::fs::create_dir_all(root.dir.join("speclink").join("changes")).unwrap();
     std::fs::write(
         root.dir.join(".speclink.yaml"),
         format!(
@@ -1391,7 +1391,7 @@ records the old fingerprint.\n{}",
 /// The apply asset as the tool of the generated file `rel` renders it.
 fn rendered_apply_body(rel: &str) -> String {
     let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
-    skills::substitute(skills::skill_body("apply").expect("apply body"), tool, "openspec")
+    skills::substitute(skills::skill_body("apply").expect("apply body"), tool, "speclink")
 }
 
 /// Spec「apply-with-worktree 技能的生成與組合」: both tool targets generate the
@@ -2732,7 +2732,7 @@ fn skill_references_render_per_tool() {
         ),
     ] {
         let root = TempRoot::new(tag);
-        init::init(&root.dir, &[tool], true, "openspec").unwrap();
+        init::init(&root.dir, &[tool], true, "speclink").unwrap();
         let files = generated_files(&root.dir, skills_dir);
         let (rel, drift) = files
             .iter()
@@ -2873,6 +2873,67 @@ fn discuss_skill_carries_the_conclusion_bullets_rule() {
         for block in blocks {
             let no_change = block.contains("**Decision**: no change");
             assert_conclusion_bullets(&rel, block, !no_change);
+        }
+    }
+}
+
+// --- spec-dir-migration「技能檔依實際規格資料夾渲染」 ---
+
+/// A project with `.speclink.yaml` (claude, plus `extra` lines) and a legacy
+/// `openspec/` holding one change, synced by `update`.
+fn layout_project(tag: &str, extra: &str, git_init: bool) -> TempRoot {
+    let root = TempRoot::new(tag);
+    std::fs::write(root.dir.join(".speclink.yaml"), format!("tools: [claude]\n{extra}")).unwrap();
+    let change = root.dir.join("openspec").join("changes").join("demo");
+    std::fs::create_dir_all(&change).unwrap();
+    std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\n").unwrap();
+    if git_init {
+        // An untracked openspec/ counts as uncommitted: the migration waits.
+        let ok = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&root.dir)
+            .args(["init", "-q"])
+            .status()
+            .is_ok_and(|s| s.success());
+        assert!(ok, "git init");
+    }
+    init::update(&root.dir, false).unwrap();
+    root
+}
+
+fn commit_skill(root: &TempRoot) -> String {
+    std::fs::read_to_string(root.dir.join(".claude/skills/speclink-commit/SKILL.md")).unwrap()
+}
+
+#[test]
+fn skills_render_effective_spec_dir() {
+    // 遷移後：規格資料夾為 speclink/。
+    let migrated = layout_project("effective-migrated", "", false);
+    assert!(migrated.dir.join("speclink").is_dir(), "the legacy layout migrated");
+    let commit = commit_skill(&migrated);
+    assert!(commit.contains("M  speclink/changes/<name>/proposal.md"), "{commit}");
+    assert!(!commit.contains("openspec/"), "no openspec/ left in speclink-commit");
+    let manual =
+        std::fs::read_to_string(migrated.dir.join(".claude/skills/speclink-manual/SKILL.md")).unwrap();
+    let description = manual.lines().find(|l| l.starts_with("description:")).unwrap();
+    assert!(description.contains("speclink/manual/"), "{description}");
+
+    // 暫緩中：仍是 openspec/。
+    let deferred = layout_project("effective-deferred", "", true);
+    assert!(deferred.dir.join("openspec").is_dir() && !deferred.dir.join("speclink").exists());
+    assert!(commit_skill(&deferred).contains("M  openspec/changes/<name>/proposal.md"));
+
+    // 自訂 spec_dir：docs/specs/。
+    let custom = layout_project("effective-custom", "spec_dir: docs/specs\n", false);
+    assert!(commit_skill(&custom).contains("M  docs/specs/changes/<name>/proposal.md"));
+
+    // 原稿不寫死舊資料夾或舊資料檔名。
+    let assets = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets").join("skills");
+    for entry in std::fs::read_dir(&assets).unwrap() {
+        let path = entry.unwrap().path();
+        let text = std::fs::read_to_string(&path).unwrap();
+        for needle in ["openspec/", ".openspec.yaml"] {
+            assert!(!text.contains(needle), "{} still names {needle}", path.display());
         }
     }
 }

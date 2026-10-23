@@ -75,7 +75,7 @@ pub fn new_artifact(
 ) -> Result<(String, PathBuf)> {
     // Fail-closed gate: corrupt metadata must not be read as the default
     // schema and produce an artifact from its templates.
-    crate::model::require_valid_meta(change)?;
+    crate::model::require_valid_meta(store, change)?;
     let (artifact_id, rel) = resolve_output(kind, capability)?;
     // 沒有 specs 的 schema 不收 delta（change-schema-verb design D6）：在命名主閘之前，
     // 讓訊息指向切換，而不是指向 capability 名稱。

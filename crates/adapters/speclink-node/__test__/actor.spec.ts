@@ -17,7 +17,7 @@ let fsFixture: string
 
 /** fs 形式的 change metadata 原文。 */
 function fsMeta(change: string): string {
-  return readFileSync(join(fsFixture, 'openspec', 'changes', change, '.openspec.yaml'), 'utf8')
+  return readFileSync(join(fsFixture, 'speclink', 'changes', change, '.meta.yaml'), 'utf8')
 }
 
 /** metadata 中的 created_by 整行（無則 null）——逐位元比對用。 */

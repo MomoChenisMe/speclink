@@ -1,8 +1,8 @@
-//! `openspec/manual/`（手冊頁目錄）對 `speclink list --json`、`speclink list --specs
+//! `speclink/manual/`（手冊頁目錄）對 `speclink list --json`、`speclink list --specs
 //! --json` 與 `speclink validate --specs` 無感（spec manual-pages「手冊頁的落點與
-//! 檔名」；design「手冊落點 openspec/manual/ 且 list 與 validate 無感」）。
+//! 檔名」；design「手冊落點 speclink/manual/ 且 list 與 validate 無感」）。
 //!
-//! 手冊是規格的衍生物，與源頭同住 `openspec/`；引擎動詞不得因多出這個目錄而改變
+//! 手冊是規格的衍生物，與源頭同住 `speclink/`；引擎動詞不得因多出這個目錄而改變
 //! 輸出。以 `speclink init` 建工作區、放一個 change 與一份正式規格後，先記錄各指令
 //! 的 stdout 與 exit code，再放入一頁合規 frontmatter 六欄的 `index.md` 重跑，
 //! stdout 逐位元比對、exit code 皆為 0。`list --json` 只列 changes、`list --specs
@@ -56,13 +56,13 @@ impl TempEnv {
         let init = env.run(&["init", "--tools", "claude"]);
         assert!(init.status.success(), "init stderr: {}", stderr_of(&init));
 
-        let change = env.dir.join("openspec").join("changes").join("demo");
+        let change = env.dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), "- [ ] 1.1 a\n").unwrap();
 
-        let spec = env.dir.join("openspec").join("specs").join("search");
+        let spec = env.dir.join("speclink").join("specs").join("search");
         std::fs::create_dir_all(&spec).unwrap();
         std::fs::write(
             spec.join("spec.md"),
@@ -93,7 +93,7 @@ impl TempEnv {
 
     /// 放入一頁合規的手冊首頁（目錄不存在時建立），回傳其路徑。
     fn write_manual_index(&self) -> PathBuf {
-        let manual = self.dir.join("openspec").join("manual");
+        let manual = self.dir.join("speclink").join("manual");
         std::fs::create_dir_all(&manual).unwrap();
         let index = manual.join("index.md");
         std::fs::write(&index, INDEX_PAGE).unwrap();
@@ -118,7 +118,7 @@ fn assert_same_success(before: &Output, after: &Output, verb: &str) {
     assert_eq!(
         String::from_utf8_lossy(&after.stdout),
         String::from_utf8_lossy(&before.stdout),
-        "{verb} 的 stdout 不得因 openspec/manual/ 出現而改變"
+        "{verb} 的 stdout 不得因 speclink/manual/ 出現而改變"
     );
 }
 
@@ -132,7 +132,7 @@ fn list_json_is_unchanged_by_the_manual_dir() {
     );
 
     let index = env.write_manual_index();
-    assert!(index.is_file(), "手冊首頁落在 openspec/manual/index.md");
+    assert!(index.is_file(), "手冊首頁落在 speclink/manual/index.md");
 
     let after = env.run(&["list", "--json"]);
     assert_same_success(&before, &after, "list --json");

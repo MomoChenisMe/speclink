@@ -130,7 +130,13 @@ fn context_mock(apply_body: &str, behavior: ContextBehavior) -> MockServer {
 /// A full apply-flow context snapshot for `demo` with the given id: the change's
 /// artifacts, its delta spec, the matching canonical spec, config and LANGUAGE —
 /// digests computed with the contract digest so the materializer accepts it.
+/// Paths sit under `openspec/`, the shape an older server serves.
 fn demo_snapshot(snapshot_id: &str) -> String {
+    demo_snapshot_under("openspec", snapshot_id)
+}
+
+/// [`demo_snapshot`] with the mirror under `root` (`speclink` for a current server).
+fn demo_snapshot_under(root: &str, snapshot_id: &str) -> String {
     use speclink_host::projection::content_digest;
     use speclink_protocol::context::{ContextDocument, ContextSnapshot};
     let doc = |path: &str, content: &str| ContextDocument {
@@ -140,16 +146,16 @@ fn demo_snapshot(snapshot_id: &str) -> String {
         digest: content_digest(content),
     };
     let documents = vec![
-        doc("openspec/changes/demo/proposal.md", "## Why\n\nDemo change summary\n"),
-        doc("openspec/changes/demo/design.md", "## Context\n\nDemo design\n"),
-        doc("openspec/changes/demo/tasks.md", "- [x] 1.1 First\n- [x] 1.2 Second\n"),
+        doc(&format!("{root}/changes/demo/proposal.md"), "## Why\n\nDemo change summary\n"),
+        doc(&format!("{root}/changes/demo/design.md"), "## Context\n\nDemo design\n"),
+        doc(&format!("{root}/changes/demo/tasks.md"), "- [x] 1.1 First\n- [x] 1.2 Second\n"),
         doc(
-            "openspec/changes/demo/specs/cap-a/spec.md",
+            &format!("{root}/changes/demo/specs/cap-a/spec.md"),
             "## MODIFIED Requirements\n\n### Requirement: Demo\n",
         ),
-        doc("openspec/specs/cap-a/spec.md", "### Requirement: Demo\nDemo SHALL work.\n"),
-        doc("openspec/config.yaml", "schema: spec-driven\n"),
-        doc("openspec/LANGUAGE.md", "# Vocabulary\n"),
+        doc(&format!("{root}/specs/cap-a/spec.md"), "### Requirement: Demo\nDemo SHALL work.\n"),
+        doc(&format!("{root}/config.yaml"), "schema: spec-driven\n"),
+        doc(&format!("{root}/LANGUAGE.md"), "# Vocabulary\n"),
     ];
     let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
     let snapshot = ContextSnapshot {
@@ -470,6 +476,48 @@ fn instructions_apply_materializes_the_projection_from_the_context_api() {
             .contains("Demo change summary"),
         "projected content is the server's"
     );
+}
+
+/// The apply payload's contextFiles resolve to files that exist under the
+/// projection's `root/changes/demo/` mirror.
+fn assert_context_files_under(remote: &TempProject, out: &Output, root: &str) {
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    let payload = stdout_json(out);
+    let mirror = projection_dir_of(remote).join(root).join("changes").join("demo");
+    for key in ["design", "proposal", "tasks"] {
+        let value = PathBuf::from(payload["contextFiles"][key].as_str().unwrap());
+        assert!(value.starts_with(&mirror), "{key} points into {root}/: {}", value.display());
+        assert!(value.is_file(), "{key} names a file that exists: {}", value.display());
+    }
+}
+
+#[test]
+fn a_current_server_mirrors_under_speclink() {
+    // context-projection「新 server 的鏡像根為 speclink」。
+    let mock = context_mock(
+        APPLY_BODY,
+        ContextBehavior::Serve {
+            snapshot_id: "snap-new".to_string(),
+            body: demo_snapshot_under("speclink", "snap-new"),
+        },
+    );
+    let remote = TempProject::remote("proj-new-root", &mock.base, Some("backend"));
+    let out = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert_context_files_under(&remote, &out, "speclink");
+}
+
+#[test]
+fn an_older_server_projection_still_resolves() {
+    // context-projection「舊 server 的投影照常可讀」——也涵蓋快照未變、不重寫投影的那一輪。
+    let mock = context_mock(
+        APPLY_BODY,
+        ContextBehavior::Serve { snapshot_id: "snap-old".to_string(), body: demo_snapshot("snap-old") },
+    );
+    let remote = TempProject::remote("proj-old-root", &mock.base, Some("backend"));
+    let first = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert_context_files_under(&remote, &first, "openspec");
+    let unchanged = remote.run(&["instructions", "apply", "--change", "demo", "--json"], Some("tok"));
+    assert_context_files_under(&remote, &unchanged, "openspec");
 }
 
 #[test]

@@ -22,9 +22,9 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(&change).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         if let Some(t) = tasks_md {
             std::fs::write(change.join("tasks.md"), t).unwrap();
         }
@@ -59,10 +59,10 @@ impl TempProject {
     fn meta(&self) -> String {
         std::fs::read_to_string(
             self.dir
-                .join("openspec")
+                .join("speclink")
                 .join("changes")
                 .join("demo")
-                .join(".openspec.yaml"),
+                .join(".meta.yaml"),
         )
         .unwrap()
     }
@@ -70,7 +70,7 @@ impl TempProject {
     fn tasks(&self) -> String {
         std::fs::read_to_string(
             self.dir
-                .join("openspec")
+                .join("speclink")
                 .join("changes")
                 .join("demo")
                 .join("tasks.md"),
@@ -144,10 +144,10 @@ fn already_started_change_keeps_first_stamp_verbatim() {
     let stamped = format!("{META}started_at: 2026-07-01\nstarted_by: First <first@example.com>\n");
     std::fs::write(
         p.dir
-            .join("openspec")
+            .join("speclink")
             .join("changes")
             .join("demo")
-            .join(".openspec.yaml"),
+            .join(".meta.yaml"),
         &stamped,
     )
     .unwrap();

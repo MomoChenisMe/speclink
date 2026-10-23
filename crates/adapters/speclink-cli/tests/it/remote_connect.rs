@@ -206,11 +206,11 @@ fn init_store_remote_scaffolds_workspace_without_spec_tree() {
     // spec Scenario「Remote init 顯式選擇 Claude」：受管集合只剩 Skills。
     assert!(!env.dir.join("CLAUDE.md").exists(), "remote init 不生成指令檔");
     assert!(env.dir.join(".claude").join("skills").is_dir(), "skills installed");
-    assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
+    assert!(!env.dir.join("speclink").exists(), "no local spec tree in remote mode");
 }
 
 /// spec「Remote Workspace bootstrap 跨入口一致性」的 CLI 端：Codex Remote init
-/// 產生 Codex Skills、`tools: [codex]` 與 remote section，不建 `openspec/`、也不建
+/// 產生 Codex Skills、`tools: [codex]` 與 remote section，不建 `speclink/`、也不建
 /// 任何指令檔——與 Desktop bind 走同一份 Core 正典來源。
 #[test]
 fn init_store_remote_codex_bootstrap_is_canonical() {
@@ -245,7 +245,7 @@ fn init_store_remote_codex_bootstrap_is_canonical() {
     // remote 語意由技能本文與 instructions payload 承載，技能檔不得烙本機規格路徑。
     let body = std::fs::read_to_string(&propose).unwrap();
     assert!(!body.contains("<!-- SPECLINK:START"), "技能檔不得帶受管區塊");
-    assert!(!env.dir.join("openspec").exists(), "no local spec tree in remote mode");
+    assert!(!env.dir.join("speclink").exists(), "no local spec tree in remote mode");
 }
 
 #[test]

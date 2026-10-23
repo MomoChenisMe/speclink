@@ -24,7 +24,7 @@ Speclink 是用 Rust 寫的 Spec-Driven Development（SDD，規格驅動開發�
 
 Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共用規格再接 Remote Store。
 
-- **Local Repo**：規格放在 repo 的 `openspec/`，用 Git 協作，不需要 server。
+- **Local Repo**：規格放在 repo 的 `speclink/`，用 Git 協作，不需要 server。
 - **Remote Store**：規格放在團隊共用的 Store，由 Host 統一處理認證、版本、交易、事件與流程判定。Host 與 Protocol 都是公開契約，server 可以用官方那一份，也可以自己寫。PM、PO 在團隊這一層參與討論與提案，和 RD、AI Agent 用同一套語意協作：change（變更）、artifact（產物）、task（任務）、verify（驗證）與 archive（封存）。
 
 ![Speclink 桌面 app 的看板，分成討論、提案中、進行中與已就緒四欄](docs/assets/screenshots/zh-TW/desktop-board.png)
@@ -77,7 +77,7 @@ Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共�
 
 ## <a id="features"></a>特色
 
-- **純文字**：Local 模式的產物放在 repo 的 `openspec/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.openspec.yaml`（生命週期資料）。這一點只適用 Local 模式；遠端模式的正式規格在 Store，本機只有唯讀投影。
+- **純文字**：Local 模式的產物放在 repo 的 `speclink/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.meta.yaml`（生命週期資料）。這一點只適用 Local 模式；遠端模式的正式規格在 Store，本機只有唯讀投影。已經在用 OpenSpec 的專案，在專案根執行 `speclink init` 就能匯入：`openspec/` 會搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案，所以這是單向的匯入，不能再轉回去。
 - **給 AI Agent 的技能**：`speclink init` 為 Claude Code、Codex 與 GitHub Copilot 產生技能檔。從討論、提案、實作、品質關卡到封存，每一站都有對應的 `/speclink-*` 指令（Codex 寫成 `$speclink-*`）。
 - **桌面看板**：每個變更是一張卡片。你看得到它在哪一站、任務做到哪裡、規格改了什麼。
 - **品質關卡**：`review` 看程式碼寫得好不好，`verify` 看交付是否符合規格。兩道都是選用的。

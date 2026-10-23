@@ -357,10 +357,10 @@ fn workflow_config_from_text_bad_yaml_is_a_config_error() {
     for bad in ["rules: [unclosed", "tdd: [true]", ": not yaml : ["] {
         let err = WorkflowConfig::from_text(Some(bad))
             .expect_err(&format!("{bad:?} must be a config error"));
-        assert_eq!(err.file, "openspec/config.yaml", "for {bad:?}");
+        assert_eq!(err.file, "speclink/config.yaml", "for {bad:?}");
         assert!(!err.reason.is_empty(), "reason must not be empty for {bad:?}");
         let msg = err.to_string();
-        assert!(msg.contains("openspec/config.yaml"), "display names the file: {msg}");
+        assert!(msg.contains("speclink/config.yaml"), "display names the file: {msg}");
     }
 }
 
@@ -1494,7 +1494,7 @@ fn review_strict_parse_rejects_and_names_the_offending_key_or_value() {
     ] {
         let err = WorkflowConfig::from_text(Some(doc))
             .expect_err(&format!("{doc:?} must be a config error"));
-        assert_eq!(err.file, "openspec/config.yaml", "for {doc:?}");
+        assert_eq!(err.file, "speclink/config.yaml", "for {doc:?}");
         assert!(err.reason.contains(needle), "reason must name {needle:?}, got: {}", err.reason);
     }
 }

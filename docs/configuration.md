@@ -2,13 +2,13 @@
 
 [繁體中文](configuration.zh-TW.md) · **English**
 
-Speclink keeps settings in three layers. Workflow policy lives in `openspec/config.yaml` and travels with the specs. The AI tools and the remote connection of this checkout live in `.speclink.yaml`. Sign-in credentials live at the user level and never enter the project. Environment variables can override policy for one run.
+Speclink keeps settings in three layers. Workflow policy lives in `speclink/config.yaml` and travels with the specs. The AI tools and the remote connection of this checkout live in `.speclink.yaml`. Sign-in credentials live at the user level and never enter the project. Environment variables can override policy for one run.
 
 ## <a id="layers"></a>Where settings live
 
 | Location | Contents | Read by | In version control |
 | --- | --- | --- | --- |
-| `openspec/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
+| `speclink/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
 | `.speclink.yaml` | The binding of this checkout: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
 | `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of remote mode | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
 | User config directory | `credentials.yaml` (the credential that the CLI stores for an access-token login), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
@@ -29,7 +29,7 @@ In the desktop app, Settings opens in settings mode. The left column lists the c
 
 Use these three rules to place a new setting:
 
-- A setting that changes what the workflow produces (language, TDD, audit, the worktree flow) is **policy**. Put it in `openspec/config.yaml`, so the whole team reads the same values.
+- A setting that changes what the workflow produces (language, TDD, audit, the worktree flow) is **policy**. Put it in `speclink/config.yaml`, so the whole team reads the same values.
 - A setting that concerns only this checkout (AI tools, remote connection) goes in `.speclink.yaml`.
 - A personal or CI difference uses an environment variable and changes no file.
 
@@ -42,14 +42,14 @@ Speclink checks the layers from top to bottom. The first layer with a value wins
 | Order | Source | Notes |
 | --- | --- | --- |
 | 1 | `SPECLINK_LOCALE`, `SPECLINK_SPEC_LOCALE`, `SPECLINK_TDD`, `SPECLINK_AUDIT`, `SPECLINK_WORKTREE` | Boolean variables accept only `true` / `false` (any case). Speclink treats `1`, `yes`, and an empty value as unset and checks the next layer |
-| 2 | `openspec/config.yaml` | The project values |
+| 2 | `speclink/config.yaml` | The project values |
 | 3 | Built-in defaults | `locale` and `spec_locale` are English. `tdd`, `audit`, and `worktree` are off. `schema` is `spec-driven` |
 
 Three more points:
 
-- Policy keys in `.speclink.yaml` (`locale`, `tdd`, and so on) have no effect and show no warning. Move them to `openspec/config.yaml` with the same values.
+- Policy keys in `.speclink.yaml` (`locale`, `tdd`, and so on) have no effect and show no warning. Move them to `speclink/config.yaml` with the same values.
 - Environment variables affect only the CLI and the Node SDK on your machine. In remote mode, the server makes the instructions from the team policy, so a local variable cannot override team policy.
-- Only the `worktree` key in `openspec/config.yaml` decides whether the two worktree skills exist. `SPECLINK_WORKTREE` does not change skill files.
+- Only the `worktree` key in `speclink/config.yaml` decides whether the two worktree skills exist. `SPECLINK_WORKTREE` does not change skill files.
 
 The remote connection has two more orders:
 
@@ -58,7 +58,7 @@ The remote connection has two more orders:
 
 ## <a id="workflow-config"></a>Change workflow policy
 
-Use `speclink workflow-config`. In local mode it changes `openspec/config.yaml`. In remote mode it changes the copy on the server.
+Use `speclink workflow-config`. In local mode it changes `speclink/config.yaml`. In remote mode it changes the copy on the server.
 
 | Subcommand | What it does |
 | --- | --- |
@@ -90,8 +90,8 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 Run the first line in a project right after `speclink init`. **Expected output**:
 
 ```text
---- a/openspec/config.yaml
-+++ b/openspec/config.yaml
+--- a/speclink/config.yaml
++++ b/speclink/config.yaml
 @@ -1,5 +1,7 @@
  schema: spec-driven
  
@@ -104,7 +104,7 @@ Run the first line in a project right after `speclink init`. **Expected output**
 
 `workflow-config set` does not accept `schema`. To change the schema, use one of these:
 
-- Edit the `schema:` line in `openspec/config.yaml`.
+- Edit the `schema:` line in `speclink/config.yaml`.
 - Run `speclink schema init <name> --default`. It makes a new custom schema and sets it as the project default.
 - Use the Workflow page in **Project Settings** of the desktop app.
 
@@ -153,7 +153,7 @@ Old versions accepted a descriptor named `copilot`, or a descriptor with `skills
 When you connect to a remote, each setting keeps its layer. Only the location of the specs moves to the server:
 
 - `speclink link <url> --repo <name>` writes a `remote:` section (`url` and `repo`) into `.speclink.yaml`. `speclink unlink` removes it. The section turns on remote mode.
-- Workflow policy lives on the server. `speclink workflow-config` reads and writes the server copy, and the local `openspec/config.yaml` has no effect.
+- Workflow policy lives on the server. `speclink workflow-config` reads and writes the server copy, and the local `speclink/config.yaml` has no effect.
 - `.speclink/context/` is a read-only snapshot of the remote content. Do not edit it. The next command finds the edit and refuses to run. Run `speclink instructions` again to refresh it.
 - No credential goes into a project file, so you can safely commit `.speclink.yaml`.
 
@@ -161,7 +161,7 @@ When you connect to a remote, each setting keeps its layer. Only the location of
 
 ## <a id="reference"></a>Key reference
 
-### `openspec/config.yaml`
+### `speclink/config.yaml`
 
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
@@ -182,7 +182,7 @@ Speclink ignores other keys.
 
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
-| `spec_dir` | A relative path | `openspec` | The spec directory, relative to the project root |
+| `spec_dir` | A relative path | `speclink` | The spec directory, relative to the project root. Without it, a project that an older version created with only `openspec/` keeps reading `openspec/` until `speclink update` moves it to `speclink/`. The move and the OpenSpec import never write this key. A project that sets this key is never moved automatically |
 | `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, `copilot`, or custom tool descriptors |
 | `remote.url` | A URL | None | The connection URL of the remote project (project-scoped URL) |
 | `remote.repo` | A name | None | The registered name of this repo in the remote project. A project with one repo can leave it out |

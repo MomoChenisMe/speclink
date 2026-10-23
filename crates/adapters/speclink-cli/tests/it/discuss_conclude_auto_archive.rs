@@ -17,9 +17,9 @@ impl TempProject {
         let dir = std::env::temp_dir()
             .join(format!("speclink-cli-conclude-auto-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        let discussions = dir.join("openspec").join("discussions");
+        let discussions = dir.join("speclink").join("discussions");
         std::fs::create_dir_all(&discussions).unwrap();
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
         std::fs::write(discussions.join(format!("{slug}.md")), doc).unwrap();
         TempProject { dir }
     }
@@ -51,10 +51,10 @@ impl TempProject {
     /// An in-flight change whose `from_discussion` points at `slug`, with every
     /// task done so the archive completeness gate passes.
     fn put_change(&self, name: &str, slug: &str) {
-        let dir = self.dir.join("openspec").join("changes").join(name);
+        let dir = self.dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(
-            dir.join(".openspec.yaml"),
+            dir.join(".meta.yaml"),
             format!("schema: spec-driven\ncreated: 2026-01-02\nfrom_discussion: {slug}\n"),
         )
         .unwrap();
@@ -64,7 +64,7 @@ impl TempProject {
     /// 在途記錄的全文。
     fn discussion(&self, slug: &str) -> String {
         std::fs::read_to_string(
-            self.dir.join("openspec").join("discussions").join(format!("{slug}.md")),
+            self.dir.join("speclink").join("discussions").join(format!("{slug}.md")),
         )
         .unwrap()
     }
@@ -72,18 +72,18 @@ impl TempProject {
     /// 讓 `name` 通過封存的完整度守門（promote 建出的骨架沒有已完成任務）。
     fn finish_tasks(&self, name: &str) {
         std::fs::write(
-            self.dir.join("openspec").join("changes").join(name).join("tasks.md"),
+            self.dir.join("speclink").join("changes").join(name).join("tasks.md"),
             "- [x] 1.1 done\n",
         )
         .unwrap();
     }
 
     fn live_exists(&self, slug: &str) -> bool {
-        self.dir.join("openspec").join("discussions").join(format!("{slug}.md")).exists()
+        self.dir.join("speclink").join("discussions").join(format!("{slug}.md")).exists()
     }
 
     fn archived_exists(&self, slug: &str) -> bool {
-        let archive = self.dir.join("openspec").join("discussions").join("archive");
+        let archive = self.dir.join("speclink").join("discussions").join("archive");
         std::fs::read_dir(&archive)
             .map(|rd| {
                 rd.filter_map(|e| e.ok())
@@ -139,7 +139,7 @@ fn conclude_auto_archives_and_reports_in_human_output() {
         text.to_lowercase().contains("archived"),
         "closing step must be announced: {text}"
     );
-    assert!(!p.live_exists("alpha"), "record leaves openspec/discussions/");
+    assert!(!p.live_exists("alpha"), "record leaves speclink/discussions/");
     assert!(p.archived_exists("alpha"), "record lands in discussions/archive/");
 }
 
@@ -197,11 +197,11 @@ fn conclude_with_hold_keeps_the_record_live_and_reports_it() {
     assert!(text.contains("Concluded discussion 'alpha'"), "stdout: {text}");
     assert!(text.contains("Held live (a later spin-out is planned)"), "stdout: {text}");
     assert!(!text.contains("Auto-archived"), "閉環不觸發: {text}");
-    assert!(p.live_exists("alpha"), "record stays in openspec/discussions/");
+    assert!(p.live_exists("alpha"), "record stays in speclink/discussions/");
     assert!(!p.archived_exists("alpha"));
 
     let doc = std::fs::read_to_string(
-        p.dir.join("openspec").join("discussions").join("alpha.md"),
+        p.dir.join("speclink").join("discussions").join("alpha.md"),
     )
     .unwrap();
     assert!(doc.contains("hold: true"), "frontmatter carries the flag: {doc}");
@@ -498,7 +498,7 @@ fn new_change_last_without_from_discussion_is_a_usage_error_that_writes_nothing(
         "stderr 說明 --last 需要 --from-discussion: {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(!p.dir.join("openspec").join("changes").join("beta").exists(), "不建目錄");
+    assert!(!p.dir.join("speclink").join("changes").join("beta").exists(), "不建目錄");
     assert_eq!(p.discussion("alpha"), before, "記錄逐位元不變");
 }
 
@@ -520,7 +520,7 @@ fn conclude_with_hold_refuses_a_record_without_frontmatter() {
     // 不帶 --hold 沿 pre-scaffold 既有路徑照常結論。
     let bare = "# Discussion: bare\n\n## Rounds\n";
     let p = TempProject::with_discussion("bare", "bare", bare);
-    let path = p.dir.join("openspec").join("discussions").join("bare.md");
+    let path = p.dir.join("speclink").join("discussions").join("bare.md");
 
     let out = p.run_stdin(&["discuss", "conclude", "bare", "--stdin", "--hold"], "**Decision**: x\n");
     assert!(!out.status.success(), "帶 --hold 必須拒絕");

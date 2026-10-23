@@ -33,9 +33,9 @@ impl TempProject {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        let change = dir.join("openspec").join("changes").join("demo");
+        let change = dir.join("speclink").join("changes").join("demo");
         std::fs::create_dir_all(change.join("specs").join("demo-cap")).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), tasks_md).unwrap();
         std::fs::write(change.join("specs").join("demo-cap").join("spec.md"), DELTA_SPEC).unwrap();
@@ -53,7 +53,7 @@ impl TempProject {
     }
 
     fn archive_dir(&self) -> PathBuf {
-        self.dir.join("openspec").join("changes").join("archive")
+        self.dir.join("speclink").join("changes").join("archive")
     }
 
     /// The dated archived change directory (`<date>-demo`), if any.
@@ -84,11 +84,11 @@ fn incomplete_change_refuses_with_evidence_and_no_archive_dir() {
     assert!(stderr.contains("--mark-tasks-complete"), "exit route named: {stderr}");
     assert!(p.archived_demo().is_none(), "no archived directory appears");
     assert!(
-        p.dir.join("openspec").join("changes").join("demo").join("tasks.md").is_file(),
+        p.dir.join("speclink").join("changes").join("demo").join("tasks.md").is_file(),
         "change stays in place"
     );
     let tasks =
-        std::fs::read_to_string(p.dir.join("openspec").join("changes").join("demo").join("tasks.md"))
+        std::fs::read_to_string(p.dir.join("speclink").join("changes").join("demo").join("tasks.md"))
             .unwrap();
     assert_eq!(tasks, "- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n", "tasks.md byte-identical");
 }
@@ -105,7 +105,7 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !p.dir.join("openspec").join("changes").join("demo").exists(),
+        !p.dir.join("speclink").join("changes").join("demo").exists(),
         "active change moved into the archive"
     );
     let archived = p.archived_demo().expect("dated archive directory exists");
@@ -114,7 +114,7 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
     assert_eq!(tasks.matches("- [x]").count(), 3, "all three tasks present and checked: {tasks}");
     // spec「封存寫入 archived_at」：封存目錄 metadata 有一行 RFC 3339 的 archived_at，
     // 日期與目錄名前綴相同。
-    let meta = std::fs::read_to_string(archived.join(".openspec.yaml")).unwrap();
+    let meta = std::fs::read_to_string(archived.join(".meta.yaml")).unwrap();
     let stamps: Vec<&str> = meta.lines().filter_map(|l| l.strip_prefix("archived_at: ")).collect();
     assert_eq!(stamps.len(), 1, "one archived_at line: {meta}");
     assert!(chrono::DateTime::parse_from_rfc3339(stamps[0]).is_ok(), "RFC 3339: {meta}");
@@ -124,15 +124,15 @@ fn mark_tasks_complete_archives_and_checks_every_task() {
 
 #[test]
 fn archiving_a_change_without_metadata_creates_none() {
-    // spec「封存寫入 archived_at」：沒有 `.openspec.yaml` 的舊式 change 照常封存，
+    // spec「封存寫入 archived_at」：沒有 `.meta.yaml` 的舊式 change 照常封存，
     // 不為了 archived_at 新建一份 metadata。
     let p = TempProject::new("no-meta", "- [x] 1.1 a\n");
-    std::fs::remove_file(p.dir.join("openspec").join("changes").join("demo").join(".openspec.yaml"))
+    std::fs::remove_file(p.dir.join("speclink").join("changes").join("demo").join(".meta.yaml"))
         .unwrap();
     let out = p.run(&["archive", "demo"]);
     assert!(out.status.success(), "a meta-less change archives: {}", String::from_utf8_lossy(&out.stderr));
     let archived = p.archived_demo().expect("dated archive directory exists");
-    assert!(!archived.join(".openspec.yaml").exists(), "no metadata is created for archived_at");
+    assert!(!archived.join(".meta.yaml").exists(), "no metadata is created for archived_at");
 }
 
 /// 真實 git repo ＋ sibling linked worktree 的沙盒。change `demo` 的 tasks.md
@@ -170,9 +170,9 @@ impl GitProject {
     /// 自行 git add ＋ commit —— `git worktree add` 只帶得走已提交的內容。每個
     /// change 各配一個 capability,同一沙盒裡連續封存兩筆才不會撞正典。
     fn add_change(&self, name: &str, tasks_md: &str) {
-        let change = self.repo.join("openspec").join("changes").join(name);
+        let change = self.repo.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(change.join("specs").join(format!("{name}-cap"))).unwrap();
-        std::fs::write(change.join(".openspec.yaml"), META).unwrap();
+        std::fs::write(change.join(".meta.yaml"), META).unwrap();
         std::fs::write(change.join("proposal.md"), "## Why\n\nDemo.\n").unwrap();
         std::fs::write(change.join("tasks.md"), tasks_md).unwrap();
         std::fs::write(
@@ -185,7 +185,7 @@ impl GitProject {
     /// 封存後的日期目錄(`<date>-<name>`)是否已出現在 repo 本體(比照
     /// `TempProject::archived_demo`,多帶 change 名以支援同沙盒兩筆)。
     fn archived(&self, name: &str) -> bool {
-        let Ok(entries) = std::fs::read_dir(self.repo.join("openspec").join("changes").join("archive"))
+        let Ok(entries) = std::fs::read_dir(self.repo.join("speclink").join("changes").join("archive"))
         else {
             return false;
         };
@@ -247,15 +247,15 @@ fn archive_inside_a_speclink_worktree_refuses_with_zero_file_effects() {
     assert!(stderr.contains("worktree"), "worktree fact on stderr: {stderr}");
     assert!(stderr.contains("worktree-merge"), "worktree-merge route named: {stderr}");
     assert!(
-        wt.join("openspec").join("changes").join("demo").join("tasks.md").is_file(),
+        wt.join("speclink").join("changes").join("demo").join("tasks.md").is_file(),
         "change stays in place"
     );
     assert!(
-        !wt.join("openspec").join("changes").join("archive").exists(),
+        !wt.join("speclink").join("changes").join("archive").exists(),
         "no archive directory appears"
     );
     assert!(
-        !wt.join("openspec").join("specs").exists(),
+        !wt.join("speclink").join("specs").exists(),
         "no canonical spec is written"
     );
     assert!(!wt.join(".speclink").join("snapshots").exists(), "no unarchive backup is written");
@@ -275,7 +275,7 @@ fn archive_inside_a_non_speclink_branch_worktree_behaves_like_a_main_checkout() 
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !wt.join("openspec").join("changes").join("demo").exists(),
+        !wt.join("speclink").join("changes").join("demo").exists(),
         "active change moved into the archive"
     );
 }
@@ -294,7 +294,7 @@ fn archive_inside_a_worktree_without_git_fails_open() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !wt.join("openspec").join("changes").join("demo").exists(),
+        !wt.join("speclink").join("changes").join("demo").exists(),
         "active change moved into the archive"
     );
 }
@@ -319,7 +319,7 @@ fn archive_from_a_main_checkout_on_a_speclink_branch_passes_through() {
         String::from_utf8_lossy(&out.stderr)
     );
     assert!(
-        !p.repo.join("openspec").join("changes").join("demo").exists(),
+        !p.repo.join("speclink").join("changes").join("demo").exists(),
         "active change moved into the archive"
     );
     assert!(p.archived("demo"), "dated archive directory for demo exists");
@@ -349,7 +349,7 @@ fn refused_archive_leaves_the_mark_tasks_complete_pre_write_undone() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("worktree-merge"), "the worktree gate did the refusing: {stderr}");
     let tasks =
-        std::fs::read_to_string(wt.join("openspec").join("changes").join("demo").join("tasks.md"))
+        std::fs::read_to_string(wt.join("speclink").join("changes").join("demo").join("tasks.md"))
             .unwrap();
     assert_eq!(tasks, TASKS, "tasks.md byte-identical — the pre-write never happened");
 }
@@ -378,14 +378,14 @@ fn bulk_archive_inside_a_speclink_worktree_refuses_too() {
     assert!(stderr.contains("bulk archive failed at 'demo'"), "bulk summary on stderr: {stderr}");
     for name in ["demo", "demo2"] {
         assert!(
-            wt.join("openspec").join("changes").join(name).join("tasks.md").is_file(),
+            wt.join("speclink").join("changes").join(name).join("tasks.md").is_file(),
             "{name} stays in place"
         );
     }
     assert!(
-        !wt.join("openspec").join("changes").join("archive").exists(),
+        !wt.join("speclink").join("changes").join("archive").exists(),
         "no archive directory appears"
     );
-    assert!(!wt.join("openspec").join("specs").exists(), "no canonical spec is written");
+    assert!(!wt.join("speclink").join("specs").exists(), "no canonical spec is written");
     assert!(!wt.join(".speclink").join("snapshots").exists(), "no unarchive backup is written");
 }

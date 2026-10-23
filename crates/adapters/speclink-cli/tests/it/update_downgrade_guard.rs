@@ -172,7 +172,7 @@ fn workflow_config_worktree_sync_refuses_a_newer_workspace() {
     );
     // 釘住既有的同步失敗形狀：config 本體已寫入（半狀態是此路徑的文件化行為），
     // 只有技能足跡同步被守門擋下。
-    let config = std::fs::read_to_string(env.dir.join("openspec/config.yaml")).unwrap();
+    let config = std::fs::read_to_string(env.dir.join("speclink/config.yaml")).unwrap();
     assert!(config.contains("worktree: true"), "config 須已寫入 worktree: true：{config}");
 }
 

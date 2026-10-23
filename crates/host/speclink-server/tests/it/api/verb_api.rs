@@ -155,7 +155,7 @@ fn validate_reports_the_engines_frozen_errors_without_advancing_revision() {
             body["errors"].as_array().expect("errors array").iter().filter_map(|e| e.as_str()).collect();
         assert_eq!(
             errors.first().copied(),
-            Some("openspec/changes/demo/specs/auth/spec.md: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"),
+            Some("speclink/changes/demo/specs/auth/spec.md: Parse error: Invalid format: Delta spec must contain at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"),
             "the endpoint relays the engine's fs-mode frozen error verbatim"
         );
         // 同一份 delta 也是「正典尚無的 capability 缺 Purpose」——引擎的第二條

@@ -37,7 +37,7 @@ pub fn discard(
     // Fail-closed gate before the started-work guard: corrupt metadata must not
     // read as "not started" and let the delete through — even with --force (the
     // user repairs the document first, then decides).
-    crate::model::require_valid_meta(&change)?;
+    crate::model::require_valid_meta(store, &change)?;
 
     if !force && has_started_work(store, &change) {
         // Typed refusal: same frozen text, but the command layer classifies it
@@ -188,7 +188,7 @@ mod tests {
             let err = discard(&ghost_ws(), &store, "cut", force)
                 .expect_err("corrupt meta must refuse discard");
             assert!(
-                err.to_string().contains("openspec/changes/cut/.openspec.yaml"),
+                err.to_string().contains("speclink/changes/cut/.meta.yaml"),
                 "error must name the metadata file (force={force}): {err}"
             );
             assert!(store.change_exists("cut"), "change dir preserved (force={force})");

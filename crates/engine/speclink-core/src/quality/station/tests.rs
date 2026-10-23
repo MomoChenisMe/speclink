@@ -234,7 +234,7 @@ mod stamp_rounds {
             let store = ticketed(st, &meta, 1, CLEAN);
             let err = stamp_at(st, &store, false).expect_err("unparsable meta refuses");
             assert!(
-                err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+                err.to_string().contains("speclink/changes/demo/.meta.yaml"),
                 "{}: the error names the metadata file: {err}",
                 st.noun
             );
@@ -548,7 +548,7 @@ mod review {
 
     #[test]
     fn discard_deletes_ticket_and_leaves_meta_untouched() {
-        // spec Scenario「放棄既有工單」：工單刪除、`.openspec.yaml` 位元級不變。
+        // spec Scenario「放棄既有工單」：工單刪除、`.meta.yaml` 位元級不變。
         let store = store_with_change();
         add_round(&REVIEW, &store, "demo", ROUND_1).expect("round 1");
         discard(&REVIEW, &store, "demo").expect("discard");
@@ -805,7 +805,7 @@ mod review {
         add_round(&REVIEW, &store, "demo", CLEAN_ROUND).expect("round");
         let err = stamp_demo(&store, false).expect_err("corrupt meta must refuse");
         assert!(
-            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            err.to_string().contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(store.meta("demo"), BAD);
@@ -943,7 +943,7 @@ mod review {
     #[test]
     fn stamp_quotes_scope_scalars_so_yaml_metacharacters_survive() {
         // path 以未引號純量寫出時，「空白＋#」會被當註解截斷（該檔永遠 stale），
-        // 而 `@`／`*`／`&`／`!` 開頭讓整份 .openspec.yaml 解析失敗——之後所有
+        // 而 `@`／`*`／`&`／`!` 開頭讓整份 .meta.yaml 解析失敗——之後所有
         // 動詞對該 change fail-closed。寫入端負責引號。
         let store = store_with_change();
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
@@ -1808,7 +1808,7 @@ mod verify {
 
     #[test]
     fn discard_deletes_the_verify_ticket_and_leaves_meta_untouched() {
-        // spec Scenario「放棄既有工單」：工單刪除、`.openspec.yaml` 位元級不變。
+        // spec Scenario「放棄既有工單」：工單刪除、`.meta.yaml` 位元級不變。
         let store = finished_change();
         add_round(&VERIFY, &store, "demo", ROUND_1).expect("round 1");
         discard(&VERIFY, &store, "demo").expect("discard");
@@ -2136,7 +2136,7 @@ mod verify {
         add_round(&VERIFY, &corrupt, "demo", CLEAN_ROUND).expect("round");
         let err = stamp_demo(&corrupt, false).expect_err("corrupt meta must refuse");
         assert!(
-            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            err.to_string().contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(corrupt.meta("demo"), BAD);

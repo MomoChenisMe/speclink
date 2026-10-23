@@ -3,13 +3,14 @@
 use crate::config::{CustomTool, ToolEntry};
 use crate::skills::{self, Tool};
 use crate::util;
+use crate::workspace::{resolve_spec_dir, DEFAULT_SPEC_DIR, LEGACY_SPEC_DIR};
 use anyhow::{bail, Result};
 use std::path::{Path, PathBuf};
 
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.52.0";
+pub const ASSET_VERSION: &str = "v1.53.0";
 
 const APP_CONFIG_TEMPLATE: &str = concat!(
     "# Speclink application config
@@ -17,7 +18,7 @@ const APP_CONFIG_TEMPLATE: &str = concat!(
     env!("CARGO_PKG_REPOSITORY"),
     "
 
-# OpenSpec directory path (relative to project root)
+# Spec directory (relative to project root; default: speclink)
 # spec_dir: docs/specs
 
 # AI tools to generate instruction files for
@@ -67,9 +68,11 @@ const GITIGNORE_BLOCK: &str = "# Speclink app data\n.speclink/\n";
 
 pub struct InitOutcome {
     pub spec_dir_abs: PathBuf,
+    /// Set when `init` imported an OpenSpec project (spec-dir-migration D5).
+    pub imported: Option<crate::migrate::MigrationReport>,
 }
 
-/// Initialize speclink in `root`: the spec-document tree (`openspec/` skeleton and
+/// Initialize speclink in `root`: the spec-document tree (spec directory skeleton and
 /// workflow-config template), then the host-side files — `.speclink.yaml`, the
 /// `.gitignore` entry and the selected tools' skills. Instruction files (`CLAUDE.md`,
 /// `AGENTS.md`) are NOT part of the managed set (change: remove-marker-injection);
@@ -85,31 +88,64 @@ pub struct InitOutcome {
 /// template. Of a tool's own content only `speclink-` prefixed directories are removed;
 /// a skills directory (and its parent) that this leaves empty goes too, as does an
 /// emptied `.speclink/`.
+///
+/// A directory with `openspec/` and neither `.speclink.yaml` nor `speclink/` is an OpenSpec
+/// project: under the default spec_dir, init imports it first — the same checks and move
+/// as `update`'s migration, refusing with zero writes when a check fails — and never lays a
+/// template over the files it brought along.
+///
+/// A `--force` re-init of a legacy project (`.speclink.yaml` and only `openspec/`) under
+/// the default spec_dir works on `openspec/` in place and writes no `spec_dir` line, so
+/// the project keeps its specs and stays free to migrate.
 pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<InitOutcome> {
-    let spec_root = root.join(spec_dir);
+    use crate::workspace::SpecLayout;
+    let layout = resolve_spec_dir(root, None).1;
+    let default = spec_dir == DEFAULT_SPEC_DIR;
+    let import = default && layout == SpecLayout::OpenSpec;
+    // The folder this init writes into; `spec_dir` stays what `.speclink.yaml` records.
+    let folder = if default && layout == SpecLayout::Legacy { LEGACY_SPEC_DIR } else { spec_dir };
+    let spec_root = root.join(folder);
     if !force && (spec_root.exists() || root.join(".speclink.yaml").is_file()) {
         bail!("Already initialized. Use --force to reinitialize.");
     }
+    let import_plan = if import { Some(planned_import(root)?) } else { None };
     // 守門在任何寫入之前：檢查面就是這次要寫的 skills 目錄。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).guard()?;
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder).guard()?;
 
-    store_init(&spec_root, force)?;
+    let imported = match &import_plan {
+        Some(plan) => Some(crate::migrate::apply(root, plan)?),
+        None => None,
+    };
+    // 匯入時既有的 config.yaml 是使用者的，`--force` 也不得以範本覆蓋。
+    store_init(&spec_root, force && !import)?;
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, spec_dir), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
     // 第二次解析是刻意的：政策以 store_init 之後的 config.yaml 為準——`--force` 會把
     // 它寫回範本，寫入用的計畫要在那之後才解析才會排除被政策關掉的技能。守門面只取
     // 決於選集，所以兩次的目錄集合相同。apply 的回報（pruned／stripped）在 init 不
     // 呈現：init 的 stdout 維持既有兩行（proposal Non-Goal）。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), spec_dir).apply(root)?;
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder).apply(root)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
+        imported,
     })
+}
+
+/// The import's move, after the same checks `update`'s migration defers on — as a
+/// refusal here: init leaves an OpenSpec project untouched rather than half-imported.
+fn planned_import(root: &Path) -> Result<crate::migrate::MigrationPlan> {
+    match crate::migrate::plan_import(root) {
+        crate::migrate::MigrationPlan::Deferred(reason) => {
+            bail!("cannot import {LEGACY_SPEC_DIR}/: {reason}")
+        }
+        plan => Ok(plan),
+    }
 }
 
 /// Remote-store initialization: the same host-side files as [`init`] plus the
 /// `remote:` section in `.speclink.yaml` — deliberately NO spec-document tree (it
-/// lives on the server, so no `openspec/` skeleton and no local workflow-config
+/// lives on the server, so no spec directory skeleton and no local workflow-config
 /// template).
 pub fn init_remote(
     root: &Path,
@@ -121,11 +157,11 @@ pub fn init_remote(
     if !force && root.join(".speclink.yaml").is_file() {
         bail!("Already initialized. Use --force to reinitialize.");
     }
-    // Remote init 不寫 openspec/，政策檔不會被重寫，所以一份計畫同時服務守門與寫入。
-    let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), "openspec");
+    // Remote init 不寫規格資料夾，政策檔不會被重寫，所以一份計畫同時服務守門與寫入。
+    let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), DEFAULT_SPEC_DIR);
     plan.guard()?;
 
-    write_if(&root.join(".speclink.yaml"), &app_config_text(tools, "openspec"), force)?;
+    write_if(&root.join(".speclink.yaml"), &app_config_text(tools, DEFAULT_SPEC_DIR), force)?;
     ensure_gitignore(&root.join(".gitignore"))?;
     // 回報同 `init`：不呈現。
     plan.apply(root)?;
@@ -142,13 +178,13 @@ fn app_config_text(tools: &[Tool], spec_dir: &str) -> String {
         let names: Vec<&str> = tools.iter().map(|t| t.name()).collect();
         format!("{APP_CONFIG_TEMPLATE}tools: [{}]\n", names.join(", "))
     };
-    if spec_dir != "openspec" {
+    if spec_dir != DEFAULT_SPEC_DIR {
         content = content.replace("# spec_dir: docs/specs", &format!("spec_dir: {spec_dir}"));
     }
     content
 }
 
-/// Store init: the spec-document tree (`openspec/` skeleton) and the workflow-config
+/// Store init: the spec-document tree (the spec directory skeleton) and the workflow-config
 /// template — the canonical home of the policy fields.
 fn store_init(spec_root: &Path, force: bool) -> Result<()> {
     std::fs::create_dir_all(spec_root.join("specs"))?;
@@ -165,6 +201,11 @@ pub struct UpdateOutcome {
     /// 棄用提示（design D3）：非錯誤、不影響 exit code，CLI 走 stderr。
     pub deprecations: Vec<String>,
     pub notes: Vec<String>,
+    /// What `update` decided about the spec directory layout before syncing
+    /// (spec-dir-migration D5); `Nothing` for every other entry.
+    pub migration: crate::migrate::MigrationPlan,
+    /// What that migration did.
+    pub migrated: crate::migrate::MigrationReport,
 }
 
 /// The tool selection `.speclink.yaml` records, resolved ONCE: built-in names
@@ -422,6 +463,8 @@ impl SyncPlan {
             stripped: Vec::new(),
             deprecations: Vec::new(),
             notes: self.selection.notes.clone(),
+            migration: crate::migrate::MigrationPlan::Nothing,
+            migrated: crate::migrate::MigrationReport::default(),
         };
 
         // 1. 遺留剝除——內建工具唯一的剝除點（prune_tool 只清技能足跡）。
@@ -499,9 +542,12 @@ impl SyncPlan {
 /// on both CLI and desktop, the desktop update entry, tool reconciliation) funnels through
 /// here, so the guard lives here and nowhere else; `allow_downgrade` is the single explicit
 /// override.
+///
+/// The spec directory migration (spec-dir-migration D5) runs after the guard and before
+/// the sync, so the skills render against the folder the project ends up with.
 pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     let app = crate::config::AppConfig::load(&root.join(".speclink.yaml"))?;
-    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let (spec_dir, _) = resolve_spec_dir(root, app.spec_dir.as_deref());
     let selection = ToolSelection::resolve(root, &app);
     // 壞描述子＝零寫入：錯誤在任何檔案動作之前轉出來。
     if let Some(message) = &selection.descriptor_error {
@@ -511,7 +557,18 @@ pub fn update(root: &Path, allow_downgrade: bool) -> Result<UpdateOutcome> {
     if !allow_downgrade {
         plan.guard()?;
     }
-    plan.apply(root)
+    let migration = crate::migrate::plan(root, &app);
+    let migrated = crate::migrate::apply(root, &migration)?;
+    // 守門面只取決於選集；搬完資料夾後以實際資料夾重新解析寫入用的計畫。
+    let plan = if migrated.moved_folder {
+        SyncPlan::resolve(root, ToolSelection::resolve(root, &app), DEFAULT_SPEC_DIR)
+    } else {
+        plan
+    };
+    let mut outcome = plan.apply(root)?;
+    outcome.migration = migration;
+    outcome.migrated = migrated;
+    Ok(outcome)
 }
 
 /// Converge a workspace on `tools` as the COMPLETE desired state of its built-ins —
@@ -537,7 +594,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     // 零寫入，不留「config 已改、受管檔未同步」的半狀態。
     let app: crate::config::AppConfig = crate::config::parse_lenient_or_reason(&rewritten)
         .map_err(|reason| anyhow::anyhow!("invalid .speclink.yaml: {reason}"))?;
-    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let (spec_dir, _) = resolve_spec_dir(root, app.spec_dir.as_deref());
     let selection = ToolSelection::resolve(root, &app);
     if let Some(message) = &selection.descriptor_error {
         bail!("{message}");
@@ -554,8 +611,8 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
 /// create_dir_all; the workflow-config template only when config.yaml is absent — an
 /// existing file with user policy is never touched) with [`reconcile_builtin_tools`]
 /// (tools recorded in `.speclink.yaml`, managed skills regenerated).
-/// Deliberately NOT behind `init`'s "Already initialized" guard; spec_dir is fixed to
-/// `openspec` — without a `.speclink.yaml`, discovery's fallback is exactly that.
+/// Deliberately NOT behind `init`'s "Already initialized" guard; the skeleton goes into
+/// the folder discovery resolves for the directory (`openspec/` for an OpenSpec tree).
 /// An empty selection is rejected before anything is written.
 ///
 /// `.gitignore` is covered here explicitly: the `reconcile_builtin_tools` → `update`
@@ -565,7 +622,7 @@ pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     if tools.is_empty() {
         bail!("no tools selected (supported: {})", Tool::supported_names());
     }
-    store_init(&root.join("openspec"), false)?;
+    store_init(&root.join(resolve_spec_dir(root, None).0), false)?;
     ensure_gitignore(&root.join(".gitignore"))?;
     reconcile_builtin_tools(root, tools)
 }
@@ -1013,7 +1070,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     let Ok(app) = crate::config::AppConfig::load(&root.join(".speclink.yaml")) else {
         return without_tools(AssetStatus::Unknown);
     };
-    let spec_dir = app.spec_dir.clone().unwrap_or_else(|| "openspec".to_string());
+    let (spec_dir, _) = resolve_spec_dir(root, app.spec_dir.as_deref());
     let selection = ToolSelection::resolve(root, &app);
     // 探測只讀 tools 清單宣告的工具：沒有清單就沒有受管工具可查（目錄偵測的回退
     // 是 update 的再生規則，不是探測的判定面）。

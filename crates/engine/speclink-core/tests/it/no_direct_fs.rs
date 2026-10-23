@@ -16,6 +16,9 @@
 //! - `init.rs` — project bootstrap: scaffolds the initial (empty) storage
 //!   skeleton and host tool files (CLAUDE.md, skills, .gitignore) before a
 //!   store exists.
+//! - `migrate.rs` — the spec directory migration (spec-dir-migration D4): it
+//!   renames the spec directory itself and each change's data file, a layout
+//!   operation that runs before a store over the new location exists.
 //! - `schema.rs` — workflow schema definitions (project/user `schemas/`
 //!   directories); outside the Store method inventory by design decision 1.
 //! - `testkit.rs` — doc-hidden test-support helpers for the workspace's test
@@ -43,6 +46,7 @@ fn rust_sources(dir: &Path, out: &mut Vec<PathBuf>) {
 const ALLOWLIST: &[&str] = &[
     "util.rs",
     "init.rs",
+    "migrate.rs",
     "schema.rs",
     "testkit.rs",
 ];

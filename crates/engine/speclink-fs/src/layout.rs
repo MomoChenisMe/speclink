@@ -1,9 +1,11 @@
-//! The `openspec/` directory layout — the single place that knows where spec
+//! The spec directory layout — the single place that knows where spec
 //! documents physically live: `specs/<capability>/spec.md` (canonical),
-//! `changes/<name>/` (active changes), `changes/archive/<date>-<name>/`
-//! (archived changes), `discussions/<slug>.md` (+ `discussions/archive/`),
-//! and `config.yaml` (workflow configuration).
+//! `changes/<name>/` (active changes, each with its `.meta.yaml`),
+//! `changes/archive/<date>-<name>/` (archived changes),
+//! `discussions/<slug>.md` (+ `discussions/archive/`), and `config.yaml`
+//! (workflow configuration).
 
+use speclink_core::model::META_FILE;
 use std::path::{Path, PathBuf};
 
 /// Path composition for a project's spec directory.
@@ -11,7 +13,7 @@ use std::path::{Path, PathBuf};
 pub struct Layout {
     /// Project root (the directory that contains the spec dir).
     pub root: PathBuf,
-    /// Spec directory name relative to root (default "openspec").
+    /// Spec directory name relative to root.
     pub spec_dir_name: String,
 }
 
@@ -49,6 +51,14 @@ impl Layout {
     }
     pub fn archived_change_dir(&self, dated_name: &str) -> PathBuf {
         self.archive_dir().join(dated_name)
+    }
+    /// A change's data file (`.meta.yaml`); the legacy name sits beside it.
+    pub fn change_meta(&self, name: &str) -> PathBuf {
+        self.change_dir(name).join(META_FILE)
+    }
+    /// An archived change's data file (`.meta.yaml`).
+    pub fn archived_change_meta(&self, dated_name: &str) -> PathBuf {
+        self.archived_change_dir(dated_name).join(META_FILE)
     }
     pub fn discussions_dir(&self) -> PathBuf {
         self.spec_dir().join("discussions")

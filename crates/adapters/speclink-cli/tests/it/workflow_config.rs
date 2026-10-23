@@ -1,4 +1,4 @@
-//! `speclink workflow-config` — the CLI verb that manages `openspec/config.yaml`
+//! `speclink workflow-config` — the CLI verb that manages `speclink/config.yaml`
 //! (workflow policy, context, rules), in both fs and remote mode.
 //!
 //! fs mode reads and writes the file through the workspace; remote mode reads
@@ -47,14 +47,14 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink")).unwrap();
         std::fs::write(dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
-        std::fs::write(dir.join("openspec").join("config.yaml"), wf_yaml).unwrap();
+        std::fs::write(dir.join("speclink").join("config.yaml"), wf_yaml).unwrap();
         TempProject { dir }
     }
 
     fn config_path(&self) -> PathBuf {
-        self.dir.join("openspec").join("config.yaml")
+        self.dir.join("speclink").join("config.yaml")
     }
 
     fn config_bytes(&self) -> Vec<u8> {
@@ -215,7 +215,7 @@ fn show_fails_closed_on_an_unparseable_config() {
     let out = p.run(&["workflow-config", "show"]);
     assert!(!out.status.success(), "must exit non-zero on a broken config");
     assert!(
-        stderr_of(&out).contains("openspec/config.yaml"),
+        stderr_of(&out).contains("speclink/config.yaml"),
         "stderr names the file: {}",
         stderr_of(&out)
     );
@@ -236,12 +236,12 @@ fn set_locale_writes_the_key_and_preserves_the_others() {
 
 #[test]
 fn set_leaves_no_temp_residue_beside_the_config() {
-    // Spec scenario 設定寫入走同一原子入口——觀察面：寫入成功後 openspec/ 無暫存
+    // Spec scenario 設定寫入走同一原子入口——觀察面：寫入成功後 speclink/ 無暫存
     // 殘留、config.yaml 為完整全文。
     let p = TempProject::new("set-atomic-face", WF_YAML);
     let out = p.run(&["workflow-config", "set", "locale", "ja"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
-    let residue: Vec<String> = std::fs::read_dir(p.dir.join("openspec"))
+    let residue: Vec<String> = std::fs::read_dir(p.dir.join("speclink"))
         .unwrap()
         .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
         .filter(|n| n.ends_with(".tmp"))
@@ -343,8 +343,8 @@ fn set_dry_run_prints_a_unified_diff_and_writes_nothing() {
     let out = p.run(&["workflow-config", "set", "locale", "ja", "--dry-run"]);
     assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
     let diff = stdout_of(&out);
-    assert!(diff.contains("--- a/openspec/config.yaml"), "unified diff header: {diff}");
-    assert!(diff.contains("+++ b/openspec/config.yaml"), "unified diff header: {diff}");
+    assert!(diff.contains("--- a/speclink/config.yaml"), "unified diff header: {diff}");
+    assert!(diff.contains("+++ b/speclink/config.yaml"), "unified diff header: {diff}");
     assert!(diff.contains("@@"), "unified diff hunk: {diff}");
     assert!(diff.contains("-locale: tw"), "removed line: {diff}");
     assert!(diff.contains("+locale: ja"), "added line: {diff}");
@@ -422,7 +422,7 @@ fn set_refuses_to_rewrite_an_unparseable_config() {
     let out = p.run(&["workflow-config", "set", "locale", "tw"]);
     assert!(!out.status.success(), "must exit non-zero on a broken config");
     let err = stderr_of(&out);
-    assert!(err.contains("openspec/config.yaml"), "stderr names the file: {err}");
+    assert!(err.contains("speclink/config.yaml"), "stderr names the file: {err}");
     assert!(err.contains("refused"), "stderr says the write was refused: {err}");
     assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
 }
@@ -546,7 +546,7 @@ fn rules_dry_run_prints_a_unified_diff_and_writes_nothing() {
     );
     assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
     let diff = stdout_of(&out);
-    assert!(diff.contains("--- a/openspec/config.yaml"), "unified diff header: {diff}");
+    assert!(diff.contains("--- a/speclink/config.yaml"), "unified diff header: {diff}");
     assert!(diff.contains("@@"), "unified diff hunk: {diff}");
     assert!(diff.contains("+  - Only one rule now"), "added rule line: {diff}");
     assert!(diff.contains("-  - Use checkbox format"), "removed rule line: {diff}");
@@ -725,7 +725,7 @@ fn review_dry_run_prints_a_unified_diff_and_writes_nothing() {
     );
     assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
     let diff = stdout_of(&out);
-    assert!(diff.contains("--- a/openspec/config.yaml"), "unified diff header: {diff}");
+    assert!(diff.contains("--- a/speclink/config.yaml"), "unified diff header: {diff}");
     let changed: Vec<&str> = diff
         .lines()
         .filter(|l| {
@@ -760,7 +760,7 @@ fn review_refuses_to_rewrite_an_unparseable_config() {
         let out = p.run_stdin(&["workflow-config", "review", "critical", "--stdin"], "x\n");
         assert!(!out.status.success(), "{tag}: must exit non-zero");
         let err = stderr_of(&out);
-        assert!(err.contains("openspec/config.yaml"), "{tag}: stderr names the file: {err}");
+        assert!(err.contains("speclink/config.yaml"), "{tag}: stderr names the file: {err}");
         assert!(err.contains("write refused"), "{tag}: stderr says the write is refused: {err}");
         assert_eq!(p.config_bytes(), before, "{tag}: no file effect");
     }
@@ -774,7 +774,7 @@ fn show_prints_the_review_line_after_rules() {
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert_eq!(
         stdout_of(&out),
-        "Workflow config: openspec/config.yaml\n\n  schema       spec-driven\n  locale       tw\n  spec_locale  unset (specs in English)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
+        "Workflow config: speclink/config.yaml\n\n  schema       spec-driven\n  locale       tw\n  spec_locale  unset (specs in English)\n  tdd          on\n  audit        unset (off)\n  worktree     unset (off)\n  context      2 lines\n  rules        design 2, tasks 1\n  review       none\n"
     );
     // Spec Example review 行的值.
     for (tag, review, value) in [
@@ -852,16 +852,16 @@ fn a_review_typo_fails_show_and_instructions_closed() {
     let out = p.run(&["workflow-config", "show"]);
     assert!(!out.status.success(), "show must exit non-zero");
     let err = stderr_of(&out);
-    assert!(err.contains("openspec/config.yaml") && err.contains("critcal"), "{err}");
+    assert!(err.contains("speclink/config.yaml") && err.contains("critcal"), "{err}");
     assert!(stdout_of(&out).trim().is_empty(), "no stdout: {}", stdout_of(&out));
     let p = TempProject::new("review-typo-instructions", "review:\n  baseline: keep\n");
-    let change = p.dir.join("openspec").join("changes").join("any-change");
+    let change = p.dir.join("speclink").join("changes").join("any-change");
     std::fs::create_dir_all(&change).unwrap();
-    std::fs::write(change.join(".openspec.yaml"), "schema: spec-driven\ncreated: 2026-10-14\n").unwrap();
+    std::fs::write(change.join(".meta.yaml"), "schema: spec-driven\ncreated: 2026-10-14\n").unwrap();
     let out = p.run(&["instructions", "proposal", "--change", "any-change", "--json"]);
     assert!(!out.status.success(), "instructions must exit non-zero");
     let err = stderr_of(&out);
-    assert!(err.contains("openspec/config.yaml") && err.contains("keep"), "{err}");
+    assert!(err.contains("speclink/config.yaml") && err.contains("keep"), "{err}");
     assert!(stdout_of(&out).trim().is_empty(), "no default payload: {}", stdout_of(&out));
 }
 
@@ -1469,7 +1469,7 @@ fn git_init(p: &TempProject) {
 /// Attach a linked worktree on `speclink/<change>` with that change present in
 /// both copies — the three conditions discovery requires for a mapping.
 fn attach_worktree(p: &TempProject, change: &str) -> PathBuf {
-    let change_dir = p.dir.join("openspec").join("changes").join(change);
+    let change_dir = p.dir.join("speclink").join("changes").join(change);
     std::fs::create_dir_all(&change_dir).unwrap();
     std::fs::write(change_dir.join("proposal.md"), "## Why\n\nseed\n").unwrap();
     let git = |args: &[&str]| {

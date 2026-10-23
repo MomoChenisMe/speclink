@@ -20,7 +20,7 @@ impl TempProject {
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        let discussions = dir.join("openspec").join("discussions");
+        let discussions = dir.join("speclink").join("discussions");
         std::fs::create_dir_all(&discussions).unwrap();
         // macOS 的 temp_dir 在 /var → /private/var symlink 下，CLI 由 getcwd 回報實體
         // 路徑，期望字串必須同底才能逐位元比對；Windows 的 canonicalize 會加 \\?\ 前綴
@@ -71,7 +71,7 @@ impl TempProject {
     }
 
     fn change_dir(&self, name: &str) -> PathBuf {
-        self.dir.join("openspec").join("changes").join(name)
+        self.dir.join("speclink").join("changes").join(name)
     }
 
     fn slash(p: &std::path::Path) -> String {
@@ -153,7 +153,7 @@ fn discuss_list_json_is_pinned() {
              \x20     \"status\": \"concluded\",\n\
              \x20     \"topic\": \"{topic}\"\n\
              \x20   }}",
-            TempProject::slash(&p.dir.join("openspec").join("discussions").join(format!("{slug}.md")))
+            TempProject::slash(&p.dir.join("speclink").join("discussions").join(format!("{slug}.md")))
         )
     };
     let expected = format!(

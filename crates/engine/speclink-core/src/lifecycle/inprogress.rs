@@ -254,13 +254,13 @@ mod tests {
     #[test]
     fn add_refuses_on_corrupt_meta_without_writing() {
         // spec「壞 metadata 使生命週期寫入 fail closed」：壞檔不得被解讀為
-        // 未開工而疊寫 started_* 行——拒絕、指名檔案，.openspec.yaml 逐位元不變。
+        // 未開工而疊寫 started_* 行——拒絕、指名檔案，.meta.yaml 逐位元不變。
         const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
         let store = TestStore::with_meta("demo", BAD);
         let err = super::add(&store, "demo", Some("T <t@example.com>"), Some("claude"))
             .expect_err("corrupt meta must refuse the stamp");
         assert!(
-            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            err.to_string().contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(store.meta("demo"), BAD, "meta byte-identical");
@@ -452,7 +452,7 @@ mod tests {
         let err = super::remove(&store, "demo").expect_err("corrupt meta must refuse");
 
         assert!(
-            err.to_string().contains("openspec/changes/demo/.openspec.yaml"),
+            err.to_string().contains("speclink/changes/demo/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(store.meta("demo"), BAD, "meta byte-identical");

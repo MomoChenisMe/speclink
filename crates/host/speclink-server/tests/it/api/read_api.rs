@@ -393,6 +393,18 @@ fn an_archived_list_derives_truth_after_the_archive_verb() {
         Some("Original Creator <creator@example.com>")
     );
     assert_eq!(item.from_discussions, ["source-one", "source-two"]);
+    // spec store-abstraction「新封存寫新鍵」：封存動詞只寫 `.meta.yaml` 鍵。
+    let snapshot = read
+        .fixture
+        .store
+        .snapshot(&Scope::new(ProjectId::new("demo"), RepoId::new("backend")))
+        .expect("snapshot");
+    let archived_doc = |doc: &str| DocumentId::ArchivedChange {
+        change: read.dated_name.clone(),
+        doc: doc.to_string(),
+    };
+    assert!(snapshot.read(&archived_doc(".meta.yaml")).expect("read").is_some());
+    assert!(snapshot.read(&archived_doc(".openspec.yaml")).expect("read").is_none());
 
     let other_scope: ArchivedListResponse = serde_json::from_str(
         &read
@@ -405,6 +417,41 @@ fn an_archived_list_derives_truth_after_the_archive_verb() {
         other_scope.archived.is_empty(),
         "another scope cannot see the archive"
     );
+}
+
+#[test]
+fn a_legacy_archived_data_key_still_yields_creator_and_source_discussions() {
+    // spec store-abstraction「舊鍵照常讀取」：遠端資料不改鍵，清單照常帶出欄位。
+    let fixture = Fixture::new();
+    let (pat, _) = fixture.seed_user("legacy@example.com", &["demo"], false);
+    fixture.seed_docs(
+        "demo",
+        "backend",
+        vec![(
+            DocumentId::ArchivedChange {
+                change: "2026-07-01-legacy".to_string(),
+                doc: ".openspec.yaml".to_string(),
+            },
+            "schema: spec-driven\ncreated_by: Legacy Creator <legacy@example.com>\nfrom_discussion: old-talk\n"
+                .to_string(),
+        )],
+    );
+
+    let response: ArchivedListResponse = serde_json::from_str(
+        &fixture
+            .project_request("demo", "backend", &pat, "/archived")
+            .expect("archived request succeeds")
+            .into_string()
+            .expect("archived body"),
+    )
+    .expect("ArchivedListResponse");
+    let item = response
+        .archived
+        .iter()
+        .find(|item| item.dated_name == "2026-07-01-legacy")
+        .expect("the legacy archived change is listed");
+    assert_eq!(item.created_by.as_deref(), Some("Legacy Creator <legacy@example.com>"));
+    assert_eq!(item.from_discussions, ["old-talk"]);
 }
 
 #[test]

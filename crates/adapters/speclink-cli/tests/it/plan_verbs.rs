@@ -14,24 +14,24 @@ struct TempProject {
 }
 
 impl TempProject {
-    /// 空專案：只有 openspec/changes/ 目錄，change 由測試逐一放入。
+    /// 空專案：只有 speclink/changes/ 目錄，change 由測試逐一放入。
     fn new(tag: &str) -> TempProject {
         let dir =
             std::env::temp_dir().join(format!("speclink-cli-plan-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
         TempProject { dir }
     }
 
     fn change_dir(&self, name: &str) -> PathBuf {
-        self.dir.join("openspec").join("changes").join(name)
+        self.dir.join("speclink").join("changes").join(name)
     }
 
     /// 放入一個 change：meta 原文＋（可選）delta capability 名。
     fn put_change(&self, name: &str, meta: &str, caps: &[&str]) {
         let dir = self.change_dir(name);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".openspec.yaml"), meta).unwrap();
+        std::fs::write(dir.join(".meta.yaml"), meta).unwrap();
         for cap in caps {
             let spec = dir.join("specs").join(cap);
             std::fs::create_dir_all(&spec).unwrap();
@@ -53,16 +53,16 @@ impl TempProject {
     fn archive(&self, dated_name: &str, meta: &str) {
         let dir = self
             .dir
-            .join("openspec")
+            .join("speclink")
             .join("changes")
             .join("archive")
             .join(dated_name);
         std::fs::create_dir_all(&dir).unwrap();
-        std::fs::write(dir.join(".openspec.yaml"), meta).unwrap();
+        std::fs::write(dir.join(".meta.yaml"), meta).unwrap();
     }
 
     fn meta(&self, name: &str) -> Vec<u8> {
-        std::fs::read(self.change_dir(name).join(".openspec.yaml")).unwrap()
+        std::fs::read(self.change_dir(name).join(".meta.yaml")).unwrap()
     }
 
     fn run(&self, args: &[&str]) -> Output {
@@ -946,7 +946,7 @@ fn spec_example_ingest_shrunk_change_jumps_the_queue() {
 
 #[test]
 fn change_rank_refuses_a_change_without_metadata_before_any_write() {
-    // 缺 .openspec.yaml 的 change 仍在 plan 裡，但沒有地方寫 rank：不論它是被移動
+    // 缺 .meta.yaml 的 change 仍在 plan 裡，但沒有地方寫 rank：不論它是被移動
     // 的那個、還是欄內要補章的那個，都在第一筆寫入前拒絕，零寫入。
     let p = TempProject::new("rank-no-meta");
     p.put_change("p1", "schema: spec-driven\ncreated: 2026-09-01\n", &[]);
@@ -958,15 +958,15 @@ fn change_rank_refuses_a_change_without_metadata_before_any_write() {
     let out = p.run(&["change", "rank", "p2", "--before", "p1"]);
     assert!(!out.status.success(), "the moved change has no metadata");
     let err = stderr_of(&out);
-    assert!(err.contains("openspec/changes/p2/.openspec.yaml is missing"), "stderr: {err}");
+    assert!(err.contains("speclink/changes/p2/.meta.yaml is missing"), "stderr: {err}");
 
     let out = p.run(&["change", "rank", "p3", "--before", "p1"]);
     assert!(!out.status.success(), "a change to stamp has no metadata");
     let err = stderr_of(&out);
-    assert!(err.contains("openspec/changes/p2/.openspec.yaml is missing"), "stderr: {err}");
+    assert!(err.contains("speclink/changes/p2/.meta.yaml is missing"), "stderr: {err}");
 
     for change in ["p1", "p3"] {
         assert_eq!(rank_line(&p.meta(change)), None, "{change} is not stamped");
     }
-    assert!(!p.change_dir("p2").join(".openspec.yaml").exists());
+    assert!(!p.change_dir("p2").join(".meta.yaml").exists());
 }

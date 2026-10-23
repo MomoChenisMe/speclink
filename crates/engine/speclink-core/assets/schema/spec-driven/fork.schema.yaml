@@ -15,7 +15,7 @@ artifacts:
     - **Non-Goals** (optional): Scope exclusions and rejected approaches. If design.md will be created, Non-Goals belong there (in Goals/Non-Goals section) — leave this section empty or omit it. If design.md will be skipped, write Non-Goals here so rejected approaches and scope exclusions are recorded in a persistent artifact.
     - **Capabilities**: Identify which specs will be created or modified:
       - **New Capabilities**: List capabilities being introduced. Each becomes a new `specs/<name>/spec.md`. Use kebab-case names (e.g., `user-auth`, `data-export`).
-      - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs a delta spec file. Check `openspec/specs/` for existing spec names. Leave empty if no requirement changes.
+      - **Modified Capabilities**: List existing capabilities whose REQUIREMENTS are changing. Only include if spec-level behavior changes (not just implementation details). Each needs a delta spec file. Check `speclink/specs/` for existing spec names. Leave empty if no requirement changes.
     - **Impact**: Affected code, APIs, dependencies, or systems.
 
     IMPORTANT: The Capabilities section is critical. It creates the contract between
@@ -38,7 +38,7 @@ artifacts:
 
     Create one spec file per capability listed in the proposal's Capabilities section.
     - New capabilities: use the exact kebab-case name from the proposal (specs/<capability>/spec.md).
-    - Modified capabilities: use the existing spec folder name from openspec/specs/<capability>/ when creating the delta spec at specs/<capability>/spec.md.
+    - Modified capabilities: use the existing spec folder name from speclink/specs/<capability>/ when creating the delta spec at specs/<capability>/spec.md.
 
     Delta operations (use ## headers):
     - **ADDED Requirements**: New capabilities
@@ -63,7 +63,7 @@ artifacts:
       and never rewrites the canonical Purpose.
     - To change an existing capability's Purpose (including a leftover
       `TBD - created by archiving ...` placeholder), edit
-      openspec/specs/<capability>/spec.md directly. It is not a delta operation.
+      speclink/specs/<capability>/spec.md directly. It is not a delta operation.
 
     Example (new capability):
 
@@ -78,7 +78,7 @@ artifacts:
         ...
 
     MODIFIED requirements workflow:
-    1. Locate the existing requirement in openspec/specs/<capability>/spec.md
+    1. Locate the existing requirement in speclink/specs/<capability>/spec.md
     2. Copy the ENTIRE requirement block (from `### Requirement:` through all scenarios)
     3. Paste under `## MODIFIED Requirements` and edit to reflect new behavior
     4. Ensure header text matches exactly (whitespace-insensitive)
@@ -149,7 +149,7 @@ artifacts:
     Examples are optional — the analyzer will suggest adding them for abstract scenarios
     but will not block specs without examples.
 
-    Spec file language: English by default. If the project sets `spec_locale` in `openspec/config.yaml`,
+    Spec file language: English by default. If the project sets `spec_locale` in `speclink/config.yaml`,
     write spec prose in that language instead — `spec_locale: auto`
     follows the project `locale`. Regardless of language, structural markers
     (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, `#### Scenario:`,
