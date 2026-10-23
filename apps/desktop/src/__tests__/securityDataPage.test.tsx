@@ -151,7 +151,9 @@ it("桌面外開權限包含標準清單中的官方來源與授權",()=>{
 it("單一及全部匯出先選路徑，取消不啟動工作，成功顯示位置",async()=>{
  vi.mocked(api.listSecurityData).mockResolvedValue({standards:[{...inventory.standards[0],versions:[{...inventory.standards[0].versions[0],status:"installed"}]}]});
  vi.mocked(api.chooseSecurityExport).mockResolvedValue(null);
- mount();fireEvent.click(await screen.findByRole("button",{name:"全部匯出"}));
+ mount();const exportAll=await screen.findByRole("button",{name:"全部匯出"});
+ await waitFor(()=>expect((exportAll as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(exportAll);
  await waitFor(()=>expect(api.chooseSecurityExport).toHaveBeenCalled());expect(api.startSecurityData).not.toHaveBeenCalled();
  vi.mocked(api.chooseSecurityExport).mockResolvedValue("/exports/one.zip");
  vi.mocked(api.waitSecurityData).mockResolvedValue({path:"/exports/one.zip",formatVersion:1,bytes:42,packages:[],skipped:[]});

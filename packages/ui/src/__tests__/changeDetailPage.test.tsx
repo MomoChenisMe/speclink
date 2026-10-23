@@ -2284,7 +2284,7 @@ describe('品質關卡的審查與驗證紀錄',()=>{
   fireEvent.click(review);
   expect(review.getAttribute('aria-expanded')).toBe('true');
   const list=await screen.findByRole('region',{name:'審查紀錄'});
-  const reviewButtons=within(list).getAllByRole('button');
+  const reviewButtons=await within(list).findAllByRole('button');
   expect(reviewButtons.map(button=>button.textContent?.split(' · ')[0])).toEqual(['2026-10-22 15:37:33 UTC','2026-10-21 15:37:33 UTC']);
   expect(within(list).queryByText('01K86W6F000000000000000003')).toBeNull();
   fireEvent.click(within(list).getByRole('button',{name:/2026-10-22 15:37:33 UTC/}));
