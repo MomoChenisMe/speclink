@@ -167,7 +167,9 @@ it("單一及全部匯出先選路徑，取消不啟動工作，成功顯示位�
 it("集合匯入顯示部分成功與每項失敗，刷新清單",async()=>{
  vi.mocked(api.chooseSecurityPackage).mockResolvedValue("/offline/batch.zip");
  vi.mocked(api.waitSecurityData).mockResolvedValue({formatVersion:2,status:"partial",results:[{standardId:"cwe",version:"4.20",status:"installed",sha256:"abc",errorCode:null},{standardId:"owasp_top10",version:"2025",status:"failed",sha256:null,errorCode:"busy"},{standardId:"owasp_asvs",version:"5.0.0",status:"notAttempted",sha256:null,errorCode:null}]});
- mount();fireEvent.click(await screen.findByRole("button",{name:"匯入離線資料包"}));
+ mount();const importPackage=await screen.findByRole("button",{name:"匯入離線資料包"});
+ await waitFor(()=>expect((importPackage as HTMLButtonElement).disabled).toBe(false));
+ fireEvent.click(importPackage);
  expect(await screen.findByText("部分完成")).toBeTruthy();expect(screen.getByText(/2025.*失敗.*busy/)).toBeTruthy();expect(screen.getByText(/5.0.0.*尚未處理/)).toBeTruthy();
  expect(api.listSecurityData).toHaveBeenCalledTimes(2);
 });
