@@ -4,7 +4,7 @@ section: 桌面 app
 order: 320
 keywords: [規格頁, 規格詳情頁, 溯源, 討論詳情頁, 結論, 分刀, 討論過程, 已封存, 換頁, 來源討論, 同源, 章節標籤, delta, 搜尋需求]
 sources: ["desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#規格頁提供清單、搜尋與展開檢視", "desktop-app#規格與封存卡片收合資訊", "desktop-app#清單最新在前與換頁瀏覽", "desktop-app#提案與設計章節以中文標籤呈現", "desktop-app#規格分頁 delta 區段以色標呈現", "desktop-app#詳情頁的文件樹、閱讀卡與本頁目錄", "desktop-app#詳情頁的文件動作", "desktop-app#變更與討論詳情頁的宿主為看板", "desktop-app#討論於看板第 0 欄兩級呈現", "desktop-app#討論詳情頁檢視與轉出變更", "desktop-app#討論結論以欄位標籤呈現", "desktop-app#討論輪以卡片呈現", "desktop-app#討論詳情頁的改進標示", "desktop-app#看板討論卡片的改進標示", "desktop-app#變更的來源討論多值呈現", "desktop-app#詳情頁標頭標記受寬度約束且頁不產生水平捲軸", "desktop-app#已封存頁含討論節", "desktop-app#已封存項目以詳情頁檢視", "desktop-app#歸檔清單經衍生快取加速且可重建"]
-generated: 2026-10-15T12:33:36+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 規格、討論、已封存與搜尋
@@ -101,7 +101,7 @@ generated: 2026-10-15T12:33:36+08:00
 | 來源章節 | 呈現標籤 | 畫法 |
 | --- | --- | --- |
 | Summary | 摘要 | 灰底引言段 |
-| Why | 為什麼 | 細線列 |
+| Why | 為什麼 | 編號步驟 |
 | What Changes | 變更內容 | 編號步驟 |
 | Proposed Solution | 解法 | 編號步驟 |
 | Non-Goals | 非目標 | 帶禁止圖示的細線列 |
@@ -114,6 +114,8 @@ generated: 2026-10-15T12:33:36+08:00
 | Risks / Trade-offs | 風險與取捨 | 每條一個警告提示框 |
 
 其他白名單章節也各有畫法：Motivation、Problem、Root Cause、Success Criteria 的列點成細線列；Goals / Non-Goals 以「**Goals:**」與「**Non-Goals:**」切成左右兩欄；Migration Plan 與 Open Questions 照常排版。章節標題尾的「(optional)」比對前會先去掉。列式章節的標題右端附列點數籤。
+
+「為什麼」「變更內容」與「解法」的頂層列點、編號項，以及連續散文區塊都排成編號步驟，混合時依文件原順序連續編號。這是所有專案共用的預設顯示方式，不依專案名稱或設定；巢狀列點、連結、續行與程式區塊會保留，渲染不會改寫來源文件。
 
 提案的幾個專屬畫法：
 

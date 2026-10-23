@@ -4,12 +4,14 @@ section: SDD 工作流
 order: 110
 keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 提案：建立變更與產物
 
 需求清楚之後，呼叫 `/speclink-propose` 建立變更。agent 依需求來源寫出提案、任務清單與 delta 規格。過程中有兩道守門：capability 的名稱不能跟既有規格撞名或走音，新開的 capability 要寫合格的 Purpose。任務清單裡需要你親手做的事，會標上手動任務標記。
+
+提案中的「為什麼」與「變更內容」預設一事一項列出，完整保留動機與變更內容，不把多個獨立需求合併成一大段。共用技能與模板對所有專案一致生效；更新技能不會批次改寫已存在的提案。桌面 app 也會把這些段落以條列方式呈現，見[規格、討論、已封存與搜尋](desktop-browse.md)。
 
 ## 需求從哪裡來
 

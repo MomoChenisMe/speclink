@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 170
 keywords: [封存, archive, 正式規格, 守門, Purpose, 證據, 手冊, 封存順序, 同名衝突]
 sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序"]
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 封存
@@ -41,6 +41,8 @@ generated: 2026-09-25T08:39:09+08:00
 ## 封存前的守門
 
 封存會依序過幾道守門。任何一道擋下，都是零檔案效果：正式規格不動、沒有新的快照、變更目錄不搬。
+
+如果專案啟用了「納入驗收條件」，封存還會確認有完整且仍有效的深度安全報告、必要檢查都完成，且中高嚴重度風險已修復或逐項留下接受理由。缺報告、資料不齊、結果過期或仍有未處理風險時，封存會列出阻擋原因；一般接受旗標或跳過其他驗證選項不會略過這項安全條件。若安全審查只是參考用途，保留報告不會因此成為未結工單。
 
 ### 1. metadata 完整
 

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 140
 keywords: [品質關卡, 審查, 驗證, 工單, 蓋章, 審查面, 首輪, 複驗, 子代理, 中斷接續, review prepare]
 sources: [quality-skill, review-station, verify-station, change-diff-scope]
-generated: 2026-10-15T12:29:49+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 品質關卡總覽：審查與驗證
@@ -91,7 +91,7 @@ speclink review prepare <變更名> --base <commit> --from <來源 checkout 的�
 - 蓋章時的任務總數（含 `[M]` 任務）。
 - 審查面每個檔案的內容指紋。
 
-蓋章後，fs 模式的工單文字只留在 git 歷史；remote 模式的 store 不保留已刪文件，工單文字不可回讀。所以蓋章後 `speclink review show` 回報「無工單」是正常的。
+蓋章後，活動工單仍會從 `review.md` 或 `verify.md` 移除，但完整內容會以審查／驗證開始時間命名，保存到提案內的 `checks/review/` 或 `checks/verify/`，並登記索引。用 `speclink review history CHANGE_NAME` 或 `speclink verify history CHANGE_NAME` 列出歷史，加入 `--id RECORD_ID` 讀指定紀錄；Remote reader 也能查。`show` 仍只讀進行中的工單，因此蓋章後回報「無工單」是正常的。封存時是否保留完整紀錄由三個獨立選項控制，預設保留；選擇不保留不會刪掉封存前已存在的歷史。
 
 審查面裡的檔案如果在修正過程中被刪掉或改名，蓋章時會自動排除，不會因此失敗。但整個審查面的檔案全部消失時，蓋章會拒絕並列出檔案，要你還原或放棄工單。
 

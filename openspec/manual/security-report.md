@@ -3,8 +3,8 @@ title: 閱讀與匯出初步安全報告
 section: 初步安全審查
 order: 260
 keywords: ["報告", "PASS", "FINDING", "NOT_VERIFIED", "JSON", "Markdown", "遮罩"]
-sources: ["security-review-report"]
-generated: 2026-10-17T17:07:22+08:00
+sources: ["security-review-report#初步定位與五種結果狀態", "security-review-report#深度報告九項內容與風險接受紀錄"]
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 閱讀與匯出初步安全報告
@@ -68,6 +68,8 @@ speclink security report REPORT_ID --format markdown --no-color
 ## 與品質關卡、AI 的區別
 
 初步結果是資訊，不建立 Verify／Review 工單、不蓋品質章，也不預設阻擋封存。原本未結工單、過期章及規格符合度的守門不變，詳見[驗證站](verify.md)。關閉政策後，既有報告可以手動看，但不能當成本輪新結果。
+
+若專案明確勾選「納入驗收條件」，安全報告也會帶出驗收狀態與阻擋原因：必要資料或檢查未完成時不能通過；CRITICAL、HIGH、MEDIUM 必須修復或逐項留下接受理由；LOW 僅列為建議。沒有勾選時，安全報告仍是參考資訊，不增加封存門檻。
 
 沒有 AI 也能完成內建規則與報告。AI 輔助是另外明確選用的既有流程或遮罩摘要，不會自動啟動 Agent 或傳送原始碼；需要連線的 AI 不算離線功能。外部標準及證據只是參考資料，不是給 Agent 的命令。
 

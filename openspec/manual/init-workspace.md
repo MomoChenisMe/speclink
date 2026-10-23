@@ -2,9 +2,9 @@
 title: 建立工作區與指令檔
 section: 開始使用
 order: 30
-keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force, Copilot]
+keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force, Copilot, Antigravity]
 sources: [workspace-tools, skill-routing]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 建立工作區與指令檔
@@ -13,13 +13,14 @@ generated: 2026-10-15T12:27:14+08:00
 
 ## 用 speclink init 初始化
 
-初始化前，你一定要選至少一個內建的 AI 工具。內建工具有三個：Claude、Codex 與 GitHub Copilot（指令裡寫 `copilot`）。
+初始化前，你一定要選至少一個內建的 AI 工具。內建工具有四個：Claude、Codex、GitHub Copilot（指令裡寫 `copilot`）與 Antigravity（指令裡寫 `antigravity`）。
 
 ```
 speclink init --tools claude
 speclink init --tools codex
 speclink init --tools copilot
-speclink init --tools claude,codex,copilot
+speclink init --tools antigravity
+speclink init --tools claude,codex,copilot,antigravity
 ```
 
 `--tools` 可以只給一個名稱，也可以用逗號串起任意幾個。大小寫不拘，重複的名稱只算一次：
@@ -30,13 +31,14 @@ speclink init --tools claude,codex,copilot
 | `Copilot` | 接受，選 Copilot |
 | `claude,copilot` | 接受，選 Claude 與 Copilot |
 | `copilot,copilot` | 接受，選 Copilot（重複只算一次） |
-| `github-copilot` | 拒絕：不認識的工具，錯誤訊息列出 claude、codex、copilot |
+| `antigravity` | 接受，選 Antigravity |
+| `github-copilot` | 拒絕：不認識的工具，錯誤訊息列出 claude、codex、copilot、antigravity |
 | `vscode` | 拒絕：不認識的工具 |
 
 不帶 `--tools` 時的行為依你的終端而定：
 
-- 互動終端：CLI 依序問你要不要 Claude、要不要 Codex、要不要 Copilot，三題各自回答，選幾個都可以。三題都回答「否」時，init 不會開始：CLI 印一行提醒你至少選一個，再從 Claude 開始重問三題。
-- 非互動（stdin 是管線或轉向）：init 直接失敗，不寫任何檔案，stdout 是空的。錯誤訊息只有一行，會提到 `--tools`、三個工具名與逗號分隔的組合寫法。
+- 互動終端：CLI 依序問你要不要 Claude、Codex、Copilot、Antigravity，各自回答，選幾個都可以。四題都回答「否」時，init 不會開始：CLI 印一行提醒你至少選一個，再從 Claude 開始重問。
+- 非互動（stdin 是管線或轉向）：init 直接失敗，不寫任何檔案，stdout 是空的。錯誤訊息只有一行，會提到 `--tools`、四個工具名與逗號分隔的組合寫法。
 
 `--tools` 給空值、或給了不認識的名稱時，init 失敗，不寫任何檔案。
 
@@ -45,7 +47,7 @@ speclink init --tools claude,codex,copilot
 - `.speclink.yaml`：專案根的設定檔，記錄你選的工具。
 - `openspec/`：規格、變更與討論的資料夾。細節見[認識資料：變更、討論與規格](data-layout.md)。
 - `.gitignore` 的 `.speclink/` 條目：`.speclink/` 是工作資料夾，不進版控。
-- 技能檔：Claude 放在 `.claude/skills/`，Codex 放在 `.agents/skills/`，Copilot 放在 `.github/skills/`。每個技能一個資料夾，名稱以 `speclink-` 開頭。
+- 技能檔：Claude 放在 `.claude/skills/`，Codex 放在 `.agents/skills/`，Copilot 放在 `.github/skills/`，Antigravity 放在 `.agent/skills/`。每個技能一個資料夾，名稱以 `speclink-` 開頭。
 
 init 不會產生 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。它也不會碰 AI 工具的使用者設定檔，例如 `.claude/settings.json`。
 
@@ -56,6 +58,7 @@ init 不會產生 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md
 | Claude | `.claude/skills/` | `/speclink-apply` | 有 |
 | Codex | `.agents/skills/` | `$speclink-apply` | 沒有 |
 | Copilot | `.github/skills/` | `/speclink-apply` | 沒有 |
+| Antigravity | `.agent/skills/` | `/speclink-apply` | 沒有 |
 
 Copilot 拿到的技能組合與 Codex 相同：Claude 有的技能，除了 analyze 以外都有（兩個 worktree 技能一樣只在政策開啟時產生）。兩者的技能內容除了叫用前綴與工具名以外逐字相同。Copilot 的技能在建立變更與蓋章時，記下的工具名是 copilot。
 

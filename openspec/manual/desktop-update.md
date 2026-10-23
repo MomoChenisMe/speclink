@@ -3,8 +3,8 @@ title: 自動更新、CLI、技能檔過期與關於頁
 section: 桌面 app
 order: 350
 keywords: [檢查更新, 更新頁, 回到前景, 更新日誌, 安裝 CLI, PATH, 技能檔過期, 保留現狀, speclink update, 關於 Speclink, 版本資訊, 第三方授權]
-sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "desktop-app#更新日誌依介面語言呈現"]
-generated: 2026-10-15T17:40:05+08:00
+sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "desktop-app#更新日誌依介面語言呈現", "desktop-app#更新頁內附資訊不依賴網路成功", "desktop-network-diagnostics"]
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 自動更新、CLI、技能檔過期與關於頁
@@ -53,6 +53,8 @@ app 啟動後在背景查一次 GitHub Releases 有沒有新版。你也可以�
 - 「自動檢查」卡：一個開關「啟動時在背景檢查新版本」，預設開，存在 app 本機。關掉後，啟動檢查與回到前景的重檢都不做；手動按「檢查更新」照常。重新打開後，下次啟動恢復背景檢查。
 
 應用程式設定裡，「檢查更新」、更新日誌與下載安裝的控制只放在更新頁，別頁不重複。
+
+目前版本與程式內附更新日誌即使 updater 尚未就緒，或 Proxy／TLS 檢查失敗，也仍可查看。未就緒時會說明更新服務狀態並停用更新動作；檢查失敗時頁面保留最後狀態，提供重試與前往「網路與診斷」的入口。背景檢查失敗不會被顯示成「已是最新」。
 
 一次完整的更新長這樣：
 

@@ -3,18 +3,22 @@ title: 執行 OWASP / CWE 初步安全審查
 section: 初步安全審查
 order: 250
 keywords: ["OWASP", "CWE", "初步安全審查", "離線", "API", "取消", "Remote"]
-sources: ["security-review", "desktop-config#產出政策的初步安全審查控制", "desktop-config#範圍與標準各自獨立選用", "security-review-report#Desktop 初步安全審查入口"]
-generated: 2026-10-17T17:07:22+08:00
+sources: ["security-review#審查主開關與獨立自有規則", "security-review#保留基本掃描並提供深度安全審查技能", "security-review#五種語言的架構與資料流深度審查", "security-standard-data#本機知識庫準備命令", "security-standard-data#深度審查完整離線資料包", "desktop-config#產出政策的初步安全審查控制", "desktop-config#範圍與標準各自獨立選用", "security-review-report#Desktop 初步安全審查入口"]
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 執行 OWASP / CWE 初步安全審查
 
 本功能以 SpecLink 自有基本規則，對你授權的本機專案做初步檢查。不執行受檢程式、Shell 或套件指令，不上傳原始碼，也不需要 AI 或其他獨立掃描引擎。它會找疑似風險及未驗證項目，不能證明專案沒有漏洞。
 
+內建基本掃描會保留。需要更深入的架構、業務授權與跨模組資料流檢查時，另行呼叫 `speclink-security-review` 技能；兩者是分開的檢查方式。深度技能只使用已準備的 `.security_kb/`、目前政策選定的標準與授權目標，不連網補資料、不執行專案腳本，也不自行擴查其他標準或版本。技能停用時不讀取目標來源；缺少必要政策快照、標準資料或指南時，會列為未驗證，不會給安全通過結論。
+
 ## 先完成兩項準備
 
 1. 在專案設定 → 產出流程 → 產出政策開啟「啟用 OWASP / CWE 安全審查」，選範圍、標準、版本與審查項目後儲存。詳見[政策設定](policy-config.md)。
 2. 到應用程式設定的「安全標準資料」，[安裝所選版本](security-data.md)。只選 Top 10 2025 時，其他標準可全部關閉。
+
+深度審查還需要先把已安裝、且符合所選政策的資料準備成目標專案內的 `.security_kb/` 快照。準備動作只複製所選標準、對照及指南；缺資料時必須回到資料管理頁安裝或匯入，不會在審查時連線下載。
 
 範圍的「關閉／不指定範圍」不等於主開關關閉，只是不自動限定 Web／API。主開關關閉時不讀受檢來源、不下載資料，結果為 DISABLED。主開關開著而所有標準關閉時，會顯示已啟用但未配置；明確選用的自有規則仍可執行，結果與標準對應分開。
 

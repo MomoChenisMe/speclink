@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-10-19T23:07:34+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 本手冊的來源
@@ -36,7 +36,7 @@ generated: 2026-10-19T23:07:34+08:00
 
 1. **政策解析層數**：`workflow-config` 的 Purpose 寫「四層解析：環境變數 ＞ .speclink.yaml 舊鍵 ＞ 正典檔 ＞ 內建預設」且舊鍵命中會出警告；同規格的需求「工作流政策的正典歸屬與三層解析順序」（2026-08-23）改為三層，.speclink.yaml 的同名鍵一律不生效、不出警告。內文採三層。
 2. **綁定 checkout 後產生什麼**：`remote-connection`「Remote Workspace bootstrap 跨入口一致性」（2026-07-24）寫 CLI 的 remote init 與桌面綁定會產生 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-chooser`「checkout 綁定驗證與 marker 寫入」與 `workspace-tools`「built-in tools 權威收斂」（都是 2026-10-08T11:52:22+08:00），以及 `remote-connection` 自己的「remote 初始化與連接指令」（2026-08-23），都寫只生成技能檔、並剝除指令檔裡遺留的 SPECLINK 區塊。內文採只生成技能檔。
-3. **可選的 AI 工具有幾個**：`remote-connection`「remote 初始化與連接指令」（2026-08-23）寫 remote init 要一個 Claude／Codex 的選集，非互動終端只指引 `--tools claude`、`codex` 或 `claude,codex`；同規格「Remote Workspace bootstrap 跨入口一致性」（2026-07-24）也寫「相同 Claude／Codex 選集」。`workspace-tools`「init 內建 Agent 工具選擇」（2026-10-08T11:52:22+08:00）寫所有 `speclink init`（含 remote）都接受 claude、codex、copilot 三個，`workspace-chooser` 與 `desktop-config` 的勾選框也已是三個。內文採三個，[CLI 連接 remote](cli-remote.md) 以附註指出差異。
+3. **可選的 AI 工具有幾個**：較早的 `remote-connection` 需求「remote 初始化與連接指令」（2026-08-23）與「Remote Workspace bootstrap 跨入口一致性」（2026-07-24）只列 Claude／Codex。較新的 `workspace-tools`「init 內建 Agent 工具選擇」與 `desktop-config`「AI 工具名稱顯示技能目錄」（2026-10-23T14:12:44+08:00）把選項擴為 Claude、Codex、Copilot、Antigravity；但 `workspace-tools` 同一需求的較早情境仍只列三個工具。內文採四個工具，[建立工作區與指令檔](init-workspace.md)與[CLI 連接 remote](cli-remote.md)據此撰寫。
 4. **技能檔過期怎麼判**：`desktop-app`「指令檔過期提示」（2026-10-10T23:13:14+08:00）的情境仍以「CLAUDE.md 不存在就提示安裝」「指令檔的 SPECLINK 標記被移除不提示」舉例；`workspace-tools`「技能檔過期探測」（2026-10-08T11:52:22+08:00）以 skills 目錄下的 speclink- 技能檔與版號判定。`desktop-app` 時戳較晚，但那次改的是提示卡的位置與按鈕；它的需求本文只說「執行指令檔過期探測」，不定義判定方式。內文照探測規格寫。
 5. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`「帳號、PAT 與 membership 的操作邊界明確」（2026-10-08T10:00:10+08:00）、`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-19T23:00:19+08:00）與 `server-web-console`「管理列表以詳情頁與對話框承載檢視與建立」（2026-10-15T10:20:04+08:00）寫 reader；`server-identity`「帳號 browser API 保持憑證祕密邊界」的一條 scenario（2026-07-28）與 `server-verb-api`「task done 消費 touchedFiles 且 evidence 有唯讀端點」（2026-08-25）寫 viewer。內文採 reader。
 6. **server 的官方發布物**：`server-release`「Server 交付物內嵌同版本 SPA 資產」（2026-07-25）寫 release binary 與「tag 觸發 server binary 與 Docker image 發布」；同規格「release 產物含 server 與部署文件」（2026-08-14）寫 server binary 不上傳 GitHub Release，官方通路只有 Docker 映像與 npm 套件。內文採後者。
@@ -91,6 +91,6 @@ generated: 2026-10-19T23:07:34+08:00
 
 ## 編纂日期
 
-2026-10-19
+2026-10-23
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

@@ -3,8 +3,8 @@ title: 認識資料：變更、討論與規格
 section: 開始使用
 order: 40
 keywords: [openspec, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
-sources: [change-lifecycle, discussion-docs, user-documentation]
-generated: 2026-10-15T17:40:05+08:00
+sources: ["change-lifecycle#in-progress 標記真相存於 change meta", "change-lifecycle#任務完成蘊含開工標記", "change-lifecycle#變更以 discard 動詞廢棄", "change-lifecycle#必要安全驗收的封存判定", "change-lifecycle#封存時按類別保留完成紀錄", discussion-docs, user-documentation]
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -19,6 +19,7 @@ Speclink 的資料都是純文字檔，放在專案的 `openspec/` 資料夾。�
 | --- | --- |
 | `specs/<capability>/spec.md` | 正式規格。每個 capability 一份，是「現況唯一真相」 |
 | `changes/<名稱>/` | 進行中的變更。裡面有提案、設計、任務清單與 delta 規格 |
+| `changes/<名稱>/checks/review/`、`checks/verify/`、`checks/security/` | 審查、驗證及深度安全審查的完整歷史紀錄 |
 | `changes/archive/` | 已封存的變更 |
 | `config.yaml` | 工作流政策與專案設定，見[工作流政策與設定](policy-config.md) |
 
@@ -41,6 +42,8 @@ Speclink 在這個結構上多加了兩樣東西：
 | 封存 | 封存時間、封存者 | 封存時 |
 
 封存不會剝掉開工站的欄位。三站的章會一起留在封存目錄裡。
+
+審查或驗證蓋章時，活動工單會從 `review.md` 或 `verify.md` 移除，但完整紀錄會先存入各自的 `checks/` 子目錄並登記在索引中。完整的安全審查紀錄也會依序保存。封存時，是否保留這三類完整檢查紀錄由產出流程設定決定；預設保留。安全驗收模式的最小摘要收據仍會保留，即使完整安全報告選擇不隨封存保存。詳見[桌面上的品質關卡](desktop-quality.md)與[封存](archive.md)。
 
 狀態檔還可以有一行「前置變更」（`depends_on`）：逗號分隔的變更名清單，意思是這個變更要等那些變更先落地。這一行由 `speclink change depends` 寫入，沒有這一行就是沒有依賴。有沒有這一行，`speclink list` 與 `speclink status` 的輸出都一樣，前置只影響 `speclink plan` 算出來的順序與波次。見[執行順序：plan 與依賴](plan.md)。
 

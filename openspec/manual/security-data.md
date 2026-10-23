@@ -3,8 +3,8 @@ title: 安裝與管理安全標準資料
 section: 初步安全審查
 order: 240
 keywords: ["OWASP", "CWE", "下載", "下載中", "離線匯入", "匯出", "全部匯出", "集合包", "授權", "取消"]
-sources: ["security-standard-data", "desktop-config#應用程式設定的安全標準資料管理", "desktop-network-diagnostics#裝置網路與診斷偏好"]
-generated: 2026-10-19T23:07:34+08:00
+sources: ["security-standard-data#應用程式資料目錄與離線版本清單", "security-standard-data#核准來源與版本資料解析", "security-standard-data#來源與授權 metadata", "security-standard-data#已安裝標準資料的離線匯出", "security-standard-data#離線集合包匯入與逐版本結果", "security-standard-data#深度審查完整離線資料包", "desktop-config#應用程式設定的安全標準資料管理", "desktop-network-diagnostics#裝置網路與診斷偏好"]
+generated: 2026-10-23T14:19:42+08:00
 ---
 
 # 安裝與管理安全標準資料
@@ -34,6 +34,10 @@ generated: 2026-10-19T23:07:34+08:00
 Desktop 可按取消，CLI 可按 Ctrl+C；取消應在兩秒內結束，未完成版本不會成為可用資料。單次下載上限64 MiB、解壓總量256 MiB、最多128個項目、工作上限120秒，超限會中止並保留舊資料。
 
 ## 匯出資料，帶到離線電腦
+
+深度審查需要的資料也包含在明確下載或重新下載的標準版本中：除標準原文外，還會帶上可信版本對照、適用修復指南及授權來源文件。匯入後即可離線查詢，不會在審查期間跟隨資料內的網址或臨時補下載；沒有必要指南時會標示知識缺失，基本掃描仍可執行，但深度審查不能當成完整通過。
+
+若要準備目標專案的離線審查快照，使用 `speclink security kb prepare --change CHANGE_NAME --root "YOUR_PROJECT_DIRECTORY"`。它只從本機已安裝且政策選定的版本建立 `.security_kb/`，不連網、不送出原始碼；Remote 專案也要先有授權 checkout 與準備好的快照，審查不會自動向 server 取資料。
 
 先在一台已有有效安裝資料的電腦開啟「安全標準資料」：
 

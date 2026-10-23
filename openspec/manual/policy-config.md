@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 210
 keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run, 對話語言]
 sources: ["skill-authoring#技能共用的對話語言段落", "workflow-config", "config-skill#技能規定固定輸入來源與四條內容判準", "config-skill#技能規定 diff 先行與收斂驗收", "config-skill#技能規定政策語系欄位寫入代碼", "config-skill#技能規定任務驗證測試範圍的第五問", "config-skill#技能規定審查規則的第六問與規則接收", "config-skill#技能規定政策欄位一次確認現值", "config-skill#技能規定提醒的分流"]
-generated: 2026-10-17T17:07:22+08:00
+generated: 2026-10-23T14:19:42+08:00
 ---
 # 工作流政策與設定
 
@@ -88,6 +88,10 @@ remote 模式下，指令先讀 server 上的現行設定，套用同樣的改�
 ## OWASP / CWE 初步安全審查政策
 
 舊專案沒有安全設定時，主開關預設關閉，原有 audit、TDD 與 worktree 不受影響。設定入口在桌面 app 的專案設定 → 產出流程 → 產出政策，audit 下方的「啟用 OWASP / CWE 安全審查」。
+
+安全主開關下另有預設未勾選的「納入驗收條件」。勾選後，安全審查結果會影響驗收：CRITICAL／HIGH／MEDIUM 需修復或逐項記錄接受理由，LOW 只列建議；必要檢查未完成時不能通過。儲存這個選項不會自動啟動審查。主開關關閉時，checkbox 暫時停用但保留勾選值，重新啟用後才生效。
+
+產出流程也能分別設定封存時是否保留審查、驗證及安全審查的完整紀錄；三項預設都保留。取消某項只影響之後的封存，不會刪除既有歷史，安全驗收摘要仍會保留。
 
 ### 先選範圍，再選標準
 
