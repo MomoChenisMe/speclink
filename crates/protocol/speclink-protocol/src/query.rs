@@ -21,6 +21,15 @@ pub struct CheckHistoryEntry {
     pub outcome: String,
     pub relative_path: String,
     pub content_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub read_error: Option<CheckHistoryReadError>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum CheckHistoryReadError {
+    MissingCheckRecord,
+    IntegrityError,
+    CheckRecordReadError,
 }
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -812,6 +821,43 @@ pub struct PlanSkipped {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn check_history_read_error_is_optional_and_does_not_replace_outcome() {
+        use super::*;
+        let healthy = CheckHistoryEntry {
+            record_id: "01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
+            kind: "review".into(),
+            created_at: "2026-10-22T15:37:33Z".into(),
+            outcome: "clean".into(),
+            relative_path: "checks/review/01ARZ3NDEKTSV4RRFFQ69G5FAV.md".into(),
+            content_digest: "a".repeat(64),
+            read_error: None,
+        };
+        let healthy_json = serde_json::to_value(&healthy).unwrap();
+        assert!(healthy_json.get("readError").is_none());
+        let old: CheckHistoryEntry = serde_json::from_value(serde_json::json!({
+            "recordId": "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+            "kind": "review",
+            "createdAt": "2026-10-22T15:37:33Z",
+            "outcome": "clean",
+            "relativePath": "checks/review/01ARZ3NDEKTSV4RRFFQ69G5FAV.md",
+            "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        })).unwrap();
+        assert!(old.read_error.is_none());
+
+        for (error, expected) in [
+            (CheckHistoryReadError::MissingCheckRecord, "missing_check_record"),
+            (CheckHistoryReadError::IntegrityError, "integrity_error"),
+            (CheckHistoryReadError::CheckRecordReadError, "check_record_read_error"),
+        ] {
+            let mut record = healthy.clone();
+            record.read_error = Some(error);
+            let json = serde_json::to_value(&record).unwrap();
+            assert_eq!(json["outcome"], "clean");
+            assert_eq!(json["readError"], expected);
+        }
+    }
+
     use crate::query::*;
 
     #[test]

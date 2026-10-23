@@ -80,6 +80,21 @@ pub trait Store {
 
     /// Artifact content, or None when it does not exist.
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String>;
+    /// Read one check-history document without collapsing storage failures into
+    /// absence. Filesystem-backed stores must preserve path and I/O errors;
+    /// in-memory stores may use the ordinary artifact lookup as their source.
+    fn read_check_document(
+        &self,
+        change: &str,
+        relative_path: &str,
+        archived: bool,
+    ) -> Result<Option<String>> {
+        Ok(if archived {
+            self.read_archived_artifact(change, relative_path)
+        } else {
+            self.read_artifact(change, relative_path)
+        })
+    }
     /// Write (create or overwrite) an artifact. Returns its display location.
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf>;
     /// Whether an artifact exists (an empty document counts).

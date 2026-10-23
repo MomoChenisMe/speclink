@@ -93,7 +93,7 @@ import { setTaskMark } from "../tasks";
 import { SecurityReviewPanel } from "./SecurityReviewPanel";
 import type { SecurityInspection, SecurityReviewAdapter } from "../security";
 
-import {useCheckRecords,CheckRecordBody,QualityCheckRecordList,checkTab} from "./CheckRecords";
+import {useCheckRecords,CheckRecordBody,QualityCheckRecordList,QualityHistoryToggle,checkTab} from "./CheckRecords";
 export interface ChangeDetailPageProps {
   change: ChangeItem | null;
   /** 刷新世代——遞增即重載已載入的文件內容（未傳＝0，行為等同僅開啟時載入）。 */
@@ -197,16 +197,15 @@ interface Stamp {
     只換站別——資料缺席（進行中、無戳記）時整個提示缺席，章籤也不進 Tab 序。 */
 function QualityStamp({ stamp, expanded, controlsId, onToggle }: { stamp: Stamp; expanded:boolean; controlsId:string; onToggle:()=>void }) {
   // 既有 data 標記維持站別各一份（回歸對照沿用 data-review-row／data-verify-row）。
-  const rowMark = stamp.station === "review" ? { "data-review-row": "" } : { "data-verify-row": "" };
   const toneMark = stamp.station === "review" ? { "data-review-tone": "" } : { "data-verify-tone": "" };
   const detail = [stamp.at, stamp.by].filter(Boolean).join(" · ");
   const chip = (
-    <button {...rowMark} type="button" aria-expanded={expanded} aria-controls={controlsId} aria-label={stamp.label} onClick={onToggle} className="inline-flex shrink-0 items-center gap-1.5 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+    <QualityHistoryToggle station={stamp.station} label={stamp.label} expanded={expanded} controlsId={controlsId} onToggle={onToggle}>
       <StatusPill {...toneMark} tone={stamp.tone} icon={stamp.icon}>
         {stamp.label}
       </StatusPill>
       {stamp.at && <span className="font-mono text-[11px] text-muted-foreground">{stamp.at}</span>}
-    </button>
+    </QualityHistoryToggle>
   );
   if (!detail) return chip;
   return (

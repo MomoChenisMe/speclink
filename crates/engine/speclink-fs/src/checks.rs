@@ -342,6 +342,26 @@ thread_local! { static FAULTS: std::cell::RefCell<Vec<String>> = const { std::ce
 mod tests {
     use super::*;
     #[test]
+    fn checked_check_reads_distinguish_absence_from_invalid_utf8_for_active_and_archive() {
+        let (_root, store, _) = setup();
+        let missing = "checks/review/01M5CP8YW64XQ0Y57ACZRH3PPE.md";
+        assert_eq!(store.read_check_document("demo", missing, false).unwrap(), None);
+
+        let invalid = "checks/review/01M5CP8YW64XQ0Y57ACZRH3PPF.md";
+        let active_path = store.layout().change_dir("demo").join(invalid);
+        fs::create_dir_all(active_path.parent().unwrap()).unwrap();
+        fs::write(&active_path, [0xff]).unwrap();
+        assert!(store.read_check_document("demo", invalid, false).is_err());
+
+        let dated = "2026-10-21-demo";
+        let archived = store.layout().archived_change_dir(dated);
+        fs::create_dir_all(archived.join("checks/review")).unwrap();
+        fs::write(archived.join(".openspec.yaml"), "schema: spec-driven\n").unwrap();
+        fs::write(archived.join(invalid), [0xff]).unwrap();
+        assert_eq!(store.read_check_document(dated, missing, true).unwrap(), None);
+        assert!(store.read_check_document(dated, invalid, true).is_err());
+    }
+    #[test]
     fn stamps_legacy_changes_without_metadata_and_rejects_concurrent_creation() {
         use speclink_core::station::{self, REVIEW, VERIFY};
         for st in [&REVIEW, &VERIFY] {

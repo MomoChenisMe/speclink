@@ -4,7 +4,8 @@
 // 任務唯讀；封存討論——slug＋「已封存」籤、階段列現站「已封存」、衍生變更三態、結論／討論過程／
 // 背景／衍生變更分頁、「開啟 ▾」只能複製內容。兩者皆無寫入動詞。
 import { describe, it, expect, vi } from "vitest";
-import { render as rtlRender, screen, waitFor, fireEvent, within } from "@testing-library/react";
+import { render as rtlRender, screen, waitFor, fireEvent, within, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -689,14 +690,58 @@ describe("已封存詳情頁的工單分頁", () => {
 });
 
 it('已封存文件樹不列審查與驗證歷史紀錄',async()=>{
- render(<ArchivedDetailPage {...makeProps()}/>);
+ render(<ArchivedDetailPage {...(makeProps() as Parameters<typeof ArchivedDetailPage>[0])}/>);
  await screen.findByText('封存提案內文。');
  expect(screen.queryByRole('tablist',{name:'檢查紀錄'})).toBeNull();
  expect(screen.queryByRole('tab',{name:/安全審查.*2026-/})).toBeNull();expect(screen.queryByRole('button',{name:/儲存|蓋章/})).toBeNull();
 })
 
 it('封存文件區也不列省略的歷史紀錄',async()=>{
- render(<ArchivedDetailPage {...makeProps()}/>);
+ render(<ArchivedDetailPage {...(makeProps() as Parameters<typeof ArchivedDetailPage>[0])}/>);
  await screen.findByText('封存提案內文。');
  expect(screen.queryByText('此紀錄已依封存政策省略完整文件。')).toBeNull();
+});
+
+it('封存品質章各自展開六筆歷史，鍵盤可用且文件動作保留datedName與相對路徑',async()=>{
+ const datedName='2026-07-04-old-change';
+ const make=(kind:'review'|'verify',index:number)=>({recordId:`01K86W6F0000000000000000${String(index).padStart(2,'0')}`,kind,createdAt:`2026-10-${String(23-index).padStart(2,'0')}T00:00:00Z`,outcome:'passed',relativePath:`checks/${kind}/record-${index}.md`,contentDigest:'a'.repeat(64)});
+ const records=[...Array.from({length:6},(_,i)=>make('review',i+1)),...Array.from({length:6},(_,i)=>make('verify',i+1))];
+ const targets:unknown[]=[];
+ const checkRecords={list:vi.fn().mockResolvedValue(records),read:vi.fn(async(_change:string,entry:typeof records[number])=>`## ${entry.recordId}`)};
+ render(<ArchivedDetailPage {...(makeProps({datedName,reviewStatus:'reviewed',verifyStatus:'verified',checkRecords,renderDocumentActions:(target:unknown)=>{targets.push(target);return null}}) as Parameters<typeof ArchivedDetailPage>[0])}/>);
+ const review=await screen.findByRole('button',{name:'已審查'});
+ const verify=await screen.findByRole('button',{name:'已驗證'});
+ fireEvent.click(review);expect(review.getAttribute('aria-expanded')).toBe('true');
+ const reviewList=await screen.findByRole('region',{name:'審查紀錄'});
+ expect(within(reviewList).getAllByRole('button')).toHaveLength(6);
+ fireEvent.click(within(reviewList).getByRole('button',{name:/record-1|000000000001/}));
+ expect(await screen.findByText('01K86W6F000000000000000001')).toBeTruthy();
+ expect(checkRecords.read).toHaveBeenCalledWith(datedName,expect.objectContaining({kind:'review'}));
+ expect(verify.getAttribute('aria-expanded')).toBe('false');
+ fireEvent.click(verify);expect(verify.getAttribute('aria-expanded')).toBe('true');
+ const verifyList=await screen.findByRole('region',{name:'驗證紀錄'});
+ expect(within(verifyList).getAllByRole('button')).toHaveLength(6);
+ verify.focus();await userEvent.keyboard('{Enter}');expect(verify.getAttribute('aria-expanded')).toBe('false');
+ await userEvent.keyboard('{Enter}');expect(verify.getAttribute('aria-expanded')).toBe('true');
+ expect(review.getAttribute('aria-expanded')).toBe('true');
+ expect(targets.some((target:any)=>target?.doc?.archived===datedName&&target?.doc?.artifact==='proposal.md')).toBe(true);
+ expect(targets.some((target:any)=>target?.doc?.archived===datedName&&target?.doc?.artifact==='checks/review/record-1.md')).toBe(true);
+});
+
+it('切換封存項目時不讓舊紀錄的晚到正文出現在新項目',async()=>{
+ let resolveOld!:(value:string)=>void;
+ const oldEntry={recordId:'old-record',kind:'review' as const,createdAt:'2026-10-20',outcome:'passed',relativePath:'checks/review/old.md',contentDigest:'a'.repeat(64)};
+ const oldAdapter={list:vi.fn().mockResolvedValue([oldEntry]),read:vi.fn(()=>new Promise<string>(resolve=>{resolveOld=resolve}))};
+ const first=makeProps({target:{kind:'change',datedName:'2026-07-04-old'},reviewStatus:'reviewed',checkRecords:oldAdapter});
+ const view=render(<ArchivedDetailPage {...(first as Parameters<typeof ArchivedDetailPage>[0])}/>);
+ fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
+ fireEvent.click(await screen.findByRole('button',{name:/old-record/}));
+ await waitFor(()=>expect(oldAdapter.read).toHaveBeenCalled());
+ const nextEntry={...oldEntry,recordId:'new-record',relativePath:'checks/review/new.md'};
+ const nextAdapter={list:vi.fn().mockResolvedValue([nextEntry]),read:vi.fn().mockResolvedValue('## 新封存紀錄')};
+ view.rerender(<ArchivedDetailPage {...(makeProps({target:{kind:'change',datedName:'2026-07-05-new'},reviewStatus:'reviewed',checkRecords:nextAdapter}) as Parameters<typeof ArchivedDetailPage>[0])}/>);
+ await act(async()=>resolveOld('## 舊封存秘密'));
+ expect(screen.queryByText('舊封存秘密')).toBeNull();
+ fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
+ expect(await screen.findByRole('button',{name:/new-record/})).toBeTruthy();
 });

@@ -2250,7 +2250,7 @@ describe('提案文件區不列歷史檢查紀錄',()=>{
   expect(screen.queryByRole('tab',{name:/安全審查.*2026-/})).toBeNull();
   expect(checks.read).not.toHaveBeenCalled();
   fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
-  await waitFor(()=>expect(checks.list).toHaveBeenCalledWith(change.name));
+  await waitFor(()=>expect(checks.list).toHaveBeenCalledWith(change.name,['review','verify']));
   const history=await screen.findByRole('region',{name:'審查紀錄'});
   fireEvent.click(within(history).getByRole('button',{name:/2026-10-20/}));
   expect(await screen.findByText('已保存紀錄')).toBeTruthy();expect(checks.read).toHaveBeenCalledWith(change.name,records[1]);expect(document.querySelector('script')).toBeNull();
@@ -2309,13 +2309,95 @@ describe('品質關卡的審查與驗證紀錄',()=>{
   expect(await screen.findByRole('button',{name:/2026-10-22 15:37:33 UTC/})).toBeTruthy();
   expect(screen.queryByRole('button',{name:/2026-10-23 15:37:33 UTC/})).toBeNull();
  });
+ it('保留異常與省略列，顯示逐筆狀態且選取讀取失敗後可重試',async()=>{
+  const records=[
+   {...record('01K86W6F000000000000000006','20261023153733','2026-10-23T01:00:00Z','review'),readError:'missing_check_record'},
+   {...record('01K86W6F000000000000000007','20261022153733','2026-10-22T01:00:00Z','review'),readError:'integrity_error'},
+   {...record('01K86W6F000000000000000008','20261021153733','2026-10-21T01:00:00Z','review'),readError:'check_record_read_error'},
+   {...record('01K86W6F000000000000000009','20261020153733','2026-10-20T01:00:00Z','review'),outcome:'omitted'},
+   record('01K86W6F000000000000000010','20261019153733','2026-10-19T01:00:00Z','review'),
+  ];
+  const repaired=records.map(entry=>entry.recordId==='01K86W6F000000000000000008'?{...entry,readError:undefined}:entry);
+  const checks={list:vi.fn().mockResolvedValueOnce(records).mockResolvedValue(repaired),read:vi.fn().mockResolvedValueOnce('## 修復後成功').mockRejectedValueOnce(new Error('disk unavailable')).mockResolvedValue('## 重試成功')};
+  render(<ChangeDetailPage {...makeProps({change:{...change,reviewStatus:'reviewed'},checkRecords:checks})}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
+  const list=await screen.findByRole('region',{name:'審查紀錄'});
+  expect(list.textContent).toContain('文件缺失');
+  expect(list.textContent).toContain('內容完整性錯誤');
+  expect(list.textContent).toContain('讀取失敗');
+  expect(list.textContent).toContain('依封存政策省略');
+  expect(within(list).getByRole('button',{name:/通過.*文件缺失/})).toBeTruthy();
+  fireEvent.click(within(list).getByRole('button',{name:/2026-10-20/}));
+  expect(checks.read).not.toHaveBeenCalled();
+  fireEvent.click(within(list).getByRole('button',{name:/2026-10-21/}));
+  expect((await screen.findByRole('alert')).textContent).toContain('讀取失敗');
+  expect(within(screen.getByRole('tabpanel')).getByRole('button',{name:'重試'})).toBeTruthy();
+  await userEvent.click(within(screen.getByRole('tabpanel')).getByRole('button',{name:'重試'}));
+  await waitFor(()=>expect(checks.list).toHaveBeenCalledTimes(2));
+  await waitFor(()=>expect(checks.read).toHaveBeenCalledTimes(1));
+  expect(await within(screen.getByRole('tabpanel')).findByText('修復後成功')).toBeTruthy();
+  fireEvent.click(within(list).getByRole('button',{name:/2026-10-19/}));
+  expect((await screen.findByRole('alert')).textContent).toContain('disk unavailable');
+  expect(screen.queryByText('載入紀錄中…')).toBeNull();
+  expect(within(screen.getByRole('tabpanel')).getByRole('button',{name:'重試'})).toBeTruthy();
+  await userEvent.click(within(screen.getByRole('tabpanel')).getByRole('button',{name:'重試'}));
+  await waitFor(()=>expect(checks.read).toHaveBeenCalledTimes(3));
+  await waitFor(()=>expect(screen.queryByRole('alert')).toBeNull());
+  expect(within(screen.getByRole('tabpanel')).queryByText('載入紀錄中…')).toBeNull();
+ });
+ it('收合歷史清單後仍可重新查詢失敗的正文',async()=>{
+  const entry=record('01K86W6F000000000000000015','20261023153733','2026-10-23T01:00:00Z','review');
+  const checks={list:vi.fn().mockResolvedValue([entry]),read:vi.fn().mockRejectedValueOnce(new Error('disk unavailable')).mockResolvedValue('## 重試成功')};
+  render(<ChangeDetailPage {...makeProps({change:{...change,reviewStatus:'reviewed'},checkRecords:checks})}/>);
+  const toggle=await screen.findByRole('button',{name:'已審查'});
+  fireEvent.click(toggle);
+  const list=await screen.findByRole('region',{name:'審查紀錄'});
+  fireEvent.click(within(list).getByRole('button',{name:/2026-10-23/}));
+  expect((await screen.findByRole('alert')).textContent).toContain('disk unavailable');
+  fireEvent.click(toggle);
+  expect(toggle.getAttribute('aria-expanded')).toBe('false');
+  await userEvent.click(within(screen.getByRole('tabpanel')).getByRole('button',{name:'重試'}));
+  await waitFor(()=>expect(checks.list).toHaveBeenCalledTimes(2));
+  expect(await within(screen.getByRole('tabpanel')).findByText('重試成功')).toBeTruthy();
+ });
+ it('以檔名開始時間排序，並讓同秒紀錄及舊檔名排序穩定',async()=>{
+  const records=[
+   record('01K86W6F000000000000000013','20261023153733','2026-10-23T07:00:00Z','review'),
+   record('01K86W6F000000000000000012','20261023153733','2026-10-23T06:00:00Z','review'),
+   record('01K86W6F000000000000000014','20261023153732','2026-10-23T05:00:00Z','review'),
+   {...record('legacy-b','20261023153731','2026-10-23T08:00:00Z','review'),relativePath:'checks/review/legacy-b.md'},
+   {...record('legacy-a','20261023153730','2026-10-23T08:00:00Z','review'),relativePath:'checks/review/legacy-a.md'},
+  ];
+  const checks={list:vi.fn().mockResolvedValue(records),read:vi.fn()};
+  render(<ChangeDetailPage {...makeProps({change:{...change,reviewStatus:'reviewed'},checkRecords:checks})}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
+  const rows=await within(await screen.findByRole('region',{name:'審查紀錄'})).findAllByRole('button');
+  expect(rows.map(row=>row.textContent?.match(/(?:01K86W6F0000000000000000\d{2}|legacy-[ab])/)?.[0])).toEqual([
+   '01K86W6F000000000000000012','01K86W6F000000000000000013','01K86W6F000000000000000014','legacy-a','legacy-b',
+  ]);
+ });
+ it('依實際時間解析時區 offset，並將無效時間排在有效紀錄之後',async()=>{
+  const records=[
+   {...record('offset','20261023140000','2026-10-23T14:00:00+08:00','review'),relativePath:'checks/review/legacy-offset.md'},
+   {...record('latest','20261023070000','2026-10-23T07:00:00Z','review'),relativePath:'checks/review/legacy-latest.md'},
+   {...record('oldest','20261023050000','2026-10-23T05:00:00Z','review'),relativePath:'checks/review/legacy-oldest.md'},
+   {...record('invalid','20261023090000','not-a-date','review'),relativePath:'checks/review/legacy-invalid.md'},
+  ];
+  const checks={list:vi.fn().mockResolvedValue(records),read:vi.fn()};
+  render(<ChangeDetailPage {...makeProps({change:{...change,reviewStatus:'reviewed'},checkRecords:checks})}/>);
+  fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
+  const rows=await within(await screen.findByRole('region',{name:'審查紀錄'})).findAllByRole('button');
+  expect(rows.map(row=>row.textContent?.match(/(?:latest|offset|oldest|invalid)/)?.[0])).toEqual([
+   'latest','offset','oldest','invalid',
+  ]);
+ });
 });
 
-it('同一提案的遠端查詢失敗時保留已載入唯讀紀錄並顯示錯誤',async()=>{
+it('同一提案的遠端重新讀取失敗時清除舊正文並顯示錯誤',async()=>{
  const entry={recordId:'r1',kind:'review',createdAt:'2026-10-20',outcome:'passed',relativePath:'checks/review/r1.md',contentDigest:'a'.repeat(64)};
  const checks={list:vi.fn().mockResolvedValue([entry]),read:vi.fn().mockResolvedValue('## 已載入的遠端紀錄\n\n唯讀內容。')};const props=makeProps({change:{...change,reviewStatus:'reviewed'},checkRecords:checks});const view=render(<ChangeDetailPage {...props}/>);
  fireEvent.click(await screen.findByRole('button',{name:'已審查'}));
  fireEvent.click(await screen.findByRole('button',{name:/2026-10-20/}));await screen.findByText('已載入的遠端紀錄');
  checks.list.mockRejectedValue(new Error('offline'));checks.read.mockRejectedValue(new Error('offline'));view.rerender(<ChangeDetailPage {...props} refreshGen={1}/>);
- await waitFor(()=>expect(screen.getAllByRole('alert').some(e=>e.textContent?.includes('offline'))).toBe(true));expect(within(screen.getByRole('tabpanel')).getByText('已載入的遠端紀錄')).toBeTruthy();
+ await waitFor(()=>expect(screen.getAllByRole('alert').some(e=>e.textContent?.includes('offline'))).toBe(true));expect(within(screen.getByRole('tabpanel')).queryByText('已載入的遠端紀錄')).toBeNull();
 })

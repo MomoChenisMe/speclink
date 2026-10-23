@@ -9,11 +9,14 @@ export function createCheckRecordsAdapter(scope:Scope,invoke:InvokeFn,includeSec
  const remote='connectionId' in scope;
  const history=remote?'remote_check_history':'check_history';
  return {
-  async list(change){
-   const kinds:CheckKind[]=includeSecurity?['review','verify','security']:['review','verify'];
+  async list(change,requestedKinds){
+   const kinds:CheckKind[]=requestedKinds??(includeSecurity?['review','verify','security']:['review','verify']);
    const lists=await Promise.all(kinds.map(kind=>invoke<{records:CheckRecordEntry[];acceptanceReceipt?:Receipt}>(history,{...scope,change,kind})));
-   const receipt=lists.find(list=>list.acceptanceReceipt)?.acceptanceReceipt;
-   if(receipt)receipts.set(change,receipt);else receipts.delete(change);
+   if(kinds.includes('security')){
+    const receipt=lists.find(list=>list.acceptanceReceipt)?.acceptanceReceipt;
+    if(receipt)receipts.set(change,receipt);else receipts.delete(change);
+   }
+   const receipt=receipts.get(change);
    return [...lists.flatMap(list=>list.records),...(receipt?[{recordId:'acceptance',kind:'security' as const,createdAt:receipt.createdAt,outcome:'passed',relativePath:'checks/acceptance.json',contentDigest:receipt.contentDigest}]:[])];
   },
   async read(change,entry){

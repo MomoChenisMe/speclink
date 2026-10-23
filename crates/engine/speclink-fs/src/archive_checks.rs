@@ -62,6 +62,22 @@ pub(crate) fn uncommitted(store: &FsStore, dated: &str) -> bool {
         Err(_) => true,
     }
 }
+
+pub(crate) fn ensure_committed(store: &FsStore, dated: &str) -> Result<()> {
+    let Some(name) = dated.get(11..) else {
+        return Ok(());
+    };
+    if let Some(journal) = load(store, name)? {
+        if journal.dated_name == dated {
+            let (_, backup, _) = locations(store, &journal);
+            ensure!(
+                backup.exists() || !store.layout().change_dir(name).exists(),
+                "history_recovery_required"
+            );
+        }
+    }
+    Ok(())
+}
 fn validate_tree(root: &Path) -> Result<()> {
     if root.join(INDEX).try_exists()? {
         let index: CheckIndex =

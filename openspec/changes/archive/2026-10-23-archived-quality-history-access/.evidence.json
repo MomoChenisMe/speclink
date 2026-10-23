@@ -1,0 +1,162 @@
+{
+  "version": 2,
+  "change": "archived-quality-history-access",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 RED：為「檢查紀錄的缺席與讀取失敗可區分」建立活動及封存fixture，分別重現真正缺檔、索引IO／編碼錯誤、單筆IO、連結、越界與未提交交易被吞成None的問題（D1、D6；crates/engine/speclink-fs/src/checks.rs、crates/engine/speclink-fs/src/lib.rs、crates/host/speclink-host/tests/security_remote.rs）。驗證：cargo test -p speclink-fs及cargo test -p speclink-host，記錄新行為的失敗斷言；既有拒越界測試須維持通過，不刪真實封存文件。",
+      "files": [
+        "crates/engine/speclink-fs/src/checks.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 GREEN／REFACTOR：於crates/engine/speclink-core/src/store.rs加入可信檢查文件窄介面，由crates/engine/speclink-fs/src/lib.rs委派既有受控讀取，crates/host/speclink-host/src/bridge.rs使用已授權快照；真正不存在與Err分開，保留活動／封存路徑、限制及交易狀態（D1）。驗證：1.1新增測試轉綠，cargo test -p speclink-fs及cargo test -p speclink-host通過，讀取前後檔案與revision無變化。",
+      "files": [
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-fs/src/archive_checks.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/host/speclink-host/src/bridge.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 RED：在crates/engine/speclink-core/src/quality/history.rs與crates/engine/speclink-core/src/quality/station/tests.rs建立六筆review及六筆verify、omitted、壞索引、單筆metadata異動及清單後刪檔的行為測試，重現「審查完成紀錄查詢」與「驗證完成紀錄查詢」的完整單筆被別筆缺損拖累；另鎖定同一fixture的嚴格index、蓋章與封存仍拒絕、預設封存保留全部及false仍omitted（D2、D6）。驗證：cargo test -p speclink-core，新查閱隔離斷言為紅，原嚴格守門與保留政策斷言為綠。",
+      "files": [
+        "crates/engine/speclink-core/src/quality/history.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 RED：在crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/tests/security_remote.rs與crates/host/speclink-server/tests/it/api/review_api.rs，為「檢查歷史與安全驗收的共用契約」加入健康payload無readError、舊payload可讀、異常列有三種readError且outcome不變、Local／Remote同形、跨類缺檔、401／403與唯讀revision測試（D3、D6）。驗證：cargo test -p speclink-protocol、cargo test -p speclink-host及cargo test -p speclink-server，新增契約測試先紅且無模擬安全驗收通過。",
+      "files": [
+        "crates/host/speclink-host/src/history.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 RED：在crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs及crates/adapters/speclink-node既有測試加入review／verify history的健康人眼、JSON、--no-color、異常清單exit0與指定異常ID失敗、非法ID、參數exit2、舊server失敗及SDK選填欄位測試（D3、D6）。驗證：cargo test -p speclink-cli及Node建置後測試，先確認新增人眼異常標記斷言失敗，健康golden保持原值。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 RED：於packages/ui/src/__tests__/changeDetailPage.test.tsx透過活動頁測試共用元件，為「品質關卡展開審查與驗證紀錄」加入三種readError、omitted、來源錯誤、選取後缺檔、重試、清除舊正文、時間offset與舊檔名排序測試；以07:00Z、06:00Z、05:00Z斷言倒序及同秒ID穩定序（D4、D6）。驗證：npm test -w packages/ui，新增逐筆錯誤與時間排序測試先紅，其他既有品質章測試維持綠。",
+      "files": [
+        "apps/desktop/src/adapter/checkRecords.ts",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/checkRecords.ts",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/CheckRecords.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 RED：在packages/ui/src/__tests__/archivedDetailPage.test.tsx、apps/desktop/src/__tests__/checkRecords.test.ts與apps/desktop/src/__tests__/App.test.tsx重現「文件區只顯示進行中的審查與驗證」及封存品質章無歷史入口；建立六筆各類紀錄，斷言兩站獨立展開、鍵盤、完整datedName與docTarget、carried工單保留、切專案晚回應隔離、adapter只查review／verify且安全摘要失敗不拖累（D4、D5、D6）。驗證：npm test -w packages/ui及npm test -w apps/desktop，封存入口與指定類別請求斷言先紅。",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/checkRecords.test.ts",
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M5M8N2SH5SKF68K91EED63KP",
+      "taskDesc": "1.1 RED：為「檢查紀錄的缺席與讀取失敗可區分」建立活動及封存fixture，分別重現真正缺檔、索引IO／編碼錯誤、單筆IO、連結、越界與未提交交易被吞成None的問題（D1、D6；crates/engine/speclink-fs/src/checks.rs、crates/engine/speclink-fs/src/lib.rs、crates/host/speclink-host/tests/security_remote.rs）。驗證：cargo test -p speclink-fs及cargo test -p speclink-host，記錄新行為的失敗斷言；既有拒越界測試須維持通過，不刪真實封存文件。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/checks.rs"
+      ],
+      "recordedAt": "2026-10-23T11:39:45Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SHXQ18K0PP1C8SY99V",
+      "taskDesc": "1.2 GREEN／REFACTOR：於crates/engine/speclink-core/src/store.rs加入可信檢查文件窄介面，由crates/engine/speclink-fs/src/lib.rs委派既有受控讀取，crates/host/speclink-host/src/bridge.rs使用已授權快照；真正不存在與Err分開，保留活動／封存路徑、限制及交易狀態（D1）。驗證：1.1新增測試轉綠，cargo test -p speclink-fs及cargo test -p speclink-host通過，讀取前後檔案與revision無變化。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-fs/src/archive_checks.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/host/speclink-host/src/bridge.rs"
+      ],
+      "recordedAt": "2026-10-23T11:47:33Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SHWC2QRAVVD96B40W8",
+      "taskDesc": "2.1 RED：在crates/engine/speclink-core/src/quality/history.rs與crates/engine/speclink-core/src/quality/station/tests.rs建立六筆review及六筆verify、omitted、壞索引、單筆metadata異動及清單後刪檔的行為測試，重現「審查完成紀錄查詢」與「驗證完成紀錄查詢」的完整單筆被別筆缺損拖累；另鎖定同一fixture的嚴格index、蓋章與封存仍拒絕、預設封存保留全部及false仍omitted（D2、D6）。驗證：cargo test -p speclink-core，新查閱隔離斷言為紅，原嚴格守門與保留政策斷言為綠。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/quality/history.rs"
+      ],
+      "recordedAt": "2026-10-23T11:51:14Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SHEKCKEQQV24Q3NGS8",
+      "taskDesc": "3.1 RED：在crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/tests/security_remote.rs與crates/host/speclink-server/tests/it/api/review_api.rs，為「檢查歷史與安全驗收的共用契約」加入健康payload無readError、舊payload可讀、異常列有三種readError且outcome不變、Local／Remote同形、跨類缺檔、401／403與唯讀revision測試（D3、D6）。驗證：cargo test -p speclink-protocol、cargo test -p speclink-host及cargo test -p speclink-server，新增契約測試先紅且無模擬安全驗收通過。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/history.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-10-23T12:01:04Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SH5HPVS93CES8WQC3R",
+      "taskDesc": "3.3 RED：在crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs及crates/adapters/speclink-node既有測試加入review／verify history的健康人眼、JSON、--no-color、異常清單exit0與指定異常ID失敗、非法ID、參數exit2、舊server失敗及SDK選填欄位測試（D3、D6）。驗證：cargo test -p speclink-cli及Node建置後測試，先確認新增人眼異常標記斷言失敗，健康golden保持原值。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs"
+      ],
+      "recordedAt": "2026-10-23T12:41:37Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SH9G79Y0JV87KX1H3Q",
+      "taskDesc": "4.1 RED：於packages/ui/src/__tests__/changeDetailPage.test.tsx透過活動頁測試共用元件，為「品質關卡展開審查與驗證紀錄」加入三種readError、omitted、來源錯誤、選取後缺檔、重試、清除舊正文、時間offset與舊檔名排序測試；以07:00Z、06:00Z、05:00Z斷言倒序及同秒ID穩定序（D4、D6）。驗證：npm test -w packages/ui，新增逐筆錯誤與時間排序測試先紅，其他既有品質章測試維持綠。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "apps/desktop/src/adapter/checkRecords.ts",
+        "packages/ui/src/__tests__/changeDetailPage.test.tsx",
+        "packages/ui/src/checkRecords.ts",
+        "packages/ui/src/components/ChangeDetailPage.tsx",
+        "packages/ui/src/components/CheckRecords.tsx",
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/index.ts"
+      ],
+      "recordedAt": "2026-10-23T13:37:04Z"
+    },
+    {
+      "taskId": "tsk_01M5M8N2SHP7DPNV559VGRSK6Z",
+      "taskDesc": "5.1 RED：在packages/ui/src/__tests__/archivedDetailPage.test.tsx、apps/desktop/src/__tests__/checkRecords.test.ts與apps/desktop/src/__tests__/App.test.tsx重現「文件區只顯示進行中的審查與驗證」及封存品質章無歷史入口；建立六筆各類紀錄，斷言兩站獨立展開、鍵盤、完整datedName與docTarget、carried工單保留、切專案晚回應隔離、adapter只查review／verify且安全摘要失敗不拖累（D4、D5、D6）。驗證：npm test -w packages/ui及npm test -w apps/desktop，封存入口與指定類別請求斷言先紅。",
+      "actor": "mosutw <luke1974@gmail.com>",
+      "repo": "main",
+      "headCommit": "0fa1354ec340bebfd87ad0f195d880d176ec1471",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/checkRecords.test.ts",
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/components/ArchivedDetailPage.tsx"
+      ],
+      "recordedAt": "2026-10-23T13:42:40Z"
+    }
+  ]
+}

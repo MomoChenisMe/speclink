@@ -175,7 +175,17 @@ fn print_history(response: speclink_protocol::query::CheckHistoryResponse, json:
     match response {
         CheckHistoryResponse::List(list) => {
             if list.records.is_empty() { println!("No completed records."); }
-            for record in list.records { println!("{} · {} · {} · {} · {}", record.record_id, record.kind, record.created_at, record.outcome, record.relative_path); }
+            for record in list.records {
+                let read_error = record.read_error.map(|error| {
+                    let code = match error {
+                        speclink_protocol::query::CheckHistoryReadError::MissingCheckRecord => "missing_check_record",
+                        speclink_protocol::query::CheckHistoryReadError::IntegrityError => "integrity_error",
+                        speclink_protocol::query::CheckHistoryReadError::CheckRecordReadError => "check_record_read_error",
+                    };
+                    format!(" · readError={code}")
+                }).unwrap_or_default();
+                println!("{} · {} · {} · {} · {}{}", record.record_id, record.kind, record.created_at, record.outcome, record.relative_path, read_error);
+            }
         }
         CheckHistoryResponse::Record(record) => println!("{}", record.content),
     }

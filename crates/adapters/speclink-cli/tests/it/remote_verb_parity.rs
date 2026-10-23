@@ -397,6 +397,39 @@ fn remote_show_change_matches_fs_output_byte_for_byte() {
 }
 
 #[test]
+fn remote_history_marks_partial_records_in_human_and_json_output() {
+    let binding = BINDING_BODY.replace(
+        "\"events\":",
+        "\"checkHistory\":true,\"events\":",
+    );
+    let record_id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+    let payload = serde_json::json!({ "records": [{
+        "recordId": record_id,
+        "kind": "review",
+        "createdAt": "2026-10-22T15:37:33Z",
+        "outcome": "clean",
+        "relativePath": format!("checks/review/{record_id}.md"),
+        "contentDigest": "a".repeat(64),
+        "readError": "missing_check_record"
+    }] }).to_string();
+    let mock = mock_server(vec![
+        ("GET", "/binding", 200, binding),
+        ("GET", "/changes/demo/review/history", 200, payload),
+    ]);
+    let project = TempProject::remote("history-partial", &mock.base, "backend");
+    let human = project.run(&["review", "history", "demo", "--no-color"]);
+    assert!(human.status.success(), "stderr: {}", stderr_of(&human));
+    assert!(stdout_of(&human).contains("readError=missing_check_record"), "{}", stdout_of(&human));
+    assert!(!stdout_of(&human).contains('\u{1b}'));
+
+    let json = project.run(&["review", "history", "demo", "--json", "--no-color"]);
+    assert!(json.status.success(), "stderr: {}", stderr_of(&json));
+    let value: serde_json::Value = serde_json::from_str(stdout_of(&json).trim()).unwrap();
+    assert_eq!(value["records"][0]["outcome"], "clean");
+    assert_eq!(value["records"][0]["readError"], "missing_check_record");
+}
+
+#[test]
 fn remote_show_spec_matches_fs_output_byte_for_byte() {
     let fs = TempProject::fs("show-spec-fs");
     fs.write("openspec/specs/user-auth/spec.md", SHOW_SPEC_DOC);

@@ -224,6 +224,20 @@ impl Store for FsStore {
         util::read_opt(&self.layout.artifact_path(change, artifact))
     }
 
+    fn read_check_document(
+        &self,
+        change: &str,
+        relative_path: &str,
+        archived: bool,
+    ) -> Result<Option<String>> {
+        if archived {
+            archive_checks::ensure_committed(self, change)?;
+        } else {
+            checks::readable(self, change)?;
+        }
+        checks::read_document(self, change, relative_path, archived)
+    }
+
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> Result<PathBuf> {
         let path = self.layout.artifact_path(change, artifact);
         checks::with_write(self, change, || {

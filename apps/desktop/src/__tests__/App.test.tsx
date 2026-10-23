@@ -1593,6 +1593,18 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(crumbText()).toBe("proj-a/已封存/old");
   });
 
+  it("已封存詳情使用同一 workspace 的紀錄 adapter 與完整 datedName", async () => {
+    const checkRecords={list:vi.fn().mockResolvedValue([{recordId:"review-record",kind:"review",createdAt:"2026-10-20",outcome:"passed",relativePath:"checks/review/review-record.md",contentDigest:"a".repeat(64)}]),read:vi.fn().mockResolvedValue("## 封存審查全文")};
+    const ds=fakeDataSource({listArchived:vi.fn().mockResolvedValue([{datedName:"2026-07-04-old",date:"2026-07-04",name:"old",tasksTotal:2,tasksDone:2,specCount:1,createdBy:null,fromDiscussions:[],reviewStatus:"reviewed"}]),getArchivedDocument:vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),checkRecords});
+    renderApp(ds);
+    fireEvent.click(within(projectColumn()).getByRole("button",{name:/已封存/}));
+    fireEvent.click(await screen.findByText("old"));
+    fireEvent.click(await screen.findByRole("button",{name:"已審查"}));
+    fireEvent.click(await screen.findByRole("button",{name:/review-record/}));
+    expect(await screen.findByText("封存審查全文")).toBeTruthy();
+    expect(checkRecords.list).toHaveBeenCalledWith("2026-07-04-old",["review","verify"]);
+  });
+
   it("封存變更詳情頁點來源討論籤，該討論的已封存詳情頁取代顯示、宿主維持已封存頁", async () => {
     // spec Scenario「自封存變更詳情頁跳轉來源討論」的接線面：fromDiscussions →
     // 出身列「來自」籤 → openArchived({ kind: "discussion" })。

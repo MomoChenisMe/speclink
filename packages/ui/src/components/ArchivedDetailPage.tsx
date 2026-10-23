@@ -2,6 +2,7 @@ import { useRef, useState, type Dispatch, type ReactNode, type SetStateAction } 
 import { Code2, FileText, Flag, ListChecks, MessagesSquare, PenTool, Rocket } from "lucide-react";
 
 import type { ArchivedItem, ChangeItem, StationTicket, TicketStation } from "../adapter";
+import type { CheckRecordsAdapter } from "../checkRecords";
 import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
@@ -37,6 +38,7 @@ import { DocSkeleton } from "./skeletons";
 import { SourceChipRow, type SourceLinkItem } from "./SourceDiscussionChip";
 import { TaskList } from "./TaskList";
 import { TicketTabBody, useStationTickets } from "./TicketView";
+import { CheckRecordBody, QualityCheckRecordList, QualityHistoryToggle, checkRecordStartedAt, checkTab, useCheckRecords } from "./CheckRecords";
 import { useDocNav } from "./useDocNav";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_PILL_TONE } from "./verifyStyle";
 
@@ -47,6 +49,8 @@ export type ArchivedTarget =
 
 export interface ArchivedDetailPageProps {
   target: ArchivedTarget | null;
+  /** 封存詳情的唯讀審查與驗證歷史來源。 */
+  checkRecords?: CheckRecordsAdapter;
   /** 刷新世代——遞增即就地重載（不清空、latest-wins；未傳＝0）。 */
   refreshGen?: number;
   /** 讀取封存變更的 artifact 原文（dated name 定址）；缺件回 null。 */
@@ -140,10 +144,17 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   // undefined＝capability 清單與其規格文件尚未載完（與「無規格差異」的空物件分流）。
   const [specDocs, setSpecDocs] = useState<Record<string, string | null> | undefined>();
   const [tab, setTab] = useState("proposal");
+  const [historyExpanded,setHistoryExpanded]=useState<{datedName:string;gen:number;review:boolean;verify:boolean}>({datedName,gen:props.refreshGen??0,review:false,verify:false});
   // 能力籤→規格段、D 籤→決策卡、「前往」→任務列的跳轉請求（與變更詳情頁同一套；換變更時以 key 重掛）。
   const nav = useDocNav(setTab);
   const bodyRef = useRef<HTMLDivElement>(null);
   const gen = props.refreshGen ?? 0;
+  const expanded=historyExpanded.datedName===datedName&&historyExpanded.gen===gen?historyExpanded:{datedName,gen,review:false,verify:false};
+  const setExpanded=(station:'review'|'verify')=>setHistoryExpanded(previous=>{
+    const current=previous.datedName===datedName&&previous.gen===gen?previous:{datedName,gen,review:false,verify:false};
+    return {...current,[station]:!current[station]};
+  });
+  const checks=useCheckRecords(props.checkRecords,datedName,tab,gen,expanded.review||expanded.verify);
 
   useGenerationLoad(gen, (isLatest) => {
     const fresh = (apply: (v: string | null) => void) => (v: string | null) => {
@@ -177,14 +188,20 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   const outcomes = (
     <>
       {review && (
-        <StatusPill data-review-outcome tone={REVIEW_PILL_TONE[review]} icon={REVIEW_ICON[review]}>
-          {t(REVIEW_LABEL_KEY[review])}
-        </StatusPill>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <QualityHistoryToggle station="review" label={t(REVIEW_LABEL_KEY[review])} expanded={expanded.review} controlsId="archived-quality-records-review" onToggle={()=>setExpanded('review')}>
+            <StatusPill data-review-outcome tone={REVIEW_PILL_TONE[review]} icon={REVIEW_ICON[review]}>{t(REVIEW_LABEL_KEY[review])}</StatusPill>
+          </QualityHistoryToggle>
+          <QualityCheckRecordList id="archived-quality-records-review" kind="review" state={checks} onSelect={entry=>setTab(checkTab(entry))} hidden={!expanded.review}/>
+        </div>
       )}
       {verify && (
-        <StatusPill data-verify-outcome tone={VERIFY_PILL_TONE[verify]} icon={VERIFY_ICON[verify]}>
-          {t(VERIFY_LABEL_KEY[verify])}
-        </StatusPill>
+        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+          <QualityHistoryToggle station="verify" label={t(VERIFY_LABEL_KEY[verify])} expanded={expanded.verify} controlsId="archived-quality-records-verify" onToggle={()=>setExpanded('verify')}>
+            <StatusPill data-verify-outcome tone={VERIFY_PILL_TONE[verify]} icon={VERIFY_ICON[verify]}>{t(VERIFY_LABEL_KEY[verify])}</StatusPill>
+          </QualityHistoryToggle>
+          <QualityCheckRecordList id="archived-quality-records-verify" kind="verify" state={checks} onSelect={entry=>setTab(checkTab(entry))} hidden={!expanded.verify}/>
+        </div>
       )}
     </>
   );
@@ -192,8 +209,9 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
   const tasks = parseTasks(tasksMd);
   const specCaps = Object.keys(specDocs ?? {});
   const shownCap = nav.specCap && specCaps.includes(nav.specCap) ? nav.specCap : specCaps[0];
-  const docTarget: DocumentTarget | null =
-    tab === "specs"
+  const docTarget: DocumentTarget | null = checks.entry
+    ? {doc:{archived:datedName,artifact:checks.entry.relativePath},content:checks.content}
+    : tab === "specs"
       ? shownCap
         ? { doc: { archived: datedName, artifact: `specs/${shownCap}/spec.md` }, content: specDocs![shownCap] }
         : null
@@ -307,7 +325,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
         <DetailShell data-archived-detail="change" tree={tree} activeDoc={tab} tocKey={tocKey} bodyRef={bodyRef}>
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
-              title={t(DOC_TITLE_KEYS[tab])}
+              title={checks.entry?`${t(checks.entry.kind==='review'?'checks.reviewRecords':'checks.verifyRecords')} · ${checkRecordStartedAt(checks.entry)}`:t(DOC_TITLE_KEYS[tab])}
               badges={summary.badges}
               actions={props.renderDocumentActions?.(docTarget)}
               provenance={[docPath && <span className="font-mono">{docPath}</span>]}
@@ -379,6 +397,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
                   <TicketTabBody station="verify" ticket={tickets.verify} />
                 </TabsContent>
               )}
+              <CheckRecordBody state={checks} tab={tab}/>
             </DocBody>
           </Card>
         </DetailShell>

@@ -16,6 +16,7 @@ use speclink_core::command::{
 };
 use speclink_core::model::{Change, ChangeMeta};
 use speclink_core::store::{DiscussionDoc, Store};
+use speclink_core::history::valid_check_path;
 use speclink_store::{
     DocumentId, ExpectedRevision, Revision, Scope, StagedOp, StoreError, TeamStore,
 };
@@ -390,6 +391,20 @@ impl Store for BridgeStore {
         })
     }
 
+    fn read_check_document(
+        &self,
+        change: &str,
+        relative_path: &str,
+        archived: bool,
+    ) -> anyhow::Result<Option<String>> {
+        anyhow::ensure!(valid_check_path(relative_path), "invalid_check_path");
+        Ok(if archived {
+            self.read_archived_artifact(change, relative_path)
+        } else {
+            self.read_artifact(change, relative_path)
+        })
+    }
+
     fn write_artifact(&self, change: &str, artifact: &str, content: &str) -> anyhow::Result<PathBuf> {
         self.put(
             DocumentId::ChangeArtifact {
@@ -740,6 +755,32 @@ mod tests {
             uow.create(doc.clone(), *content);
         }
         store.commit(uow, Vec::new()).expect("commit seed data");
+    }
+
+    #[test]
+    fn checked_check_reads_use_only_the_authorized_snapshot_without_writes() {
+        let store = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        let id = "01ARZ3NDEKTSV4RRFFQ69G5FAV";
+        let active_path = format!("checks/review/{id}.md");
+        let archived_path = format!("checks/verify/{id}.md");
+        seeded(
+            &store,
+            &scope,
+            &[
+                (DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n"),
+                (DocumentId::ChangeArtifact { change: "demo".into(), artifact: active_path.clone() }, "active record"),
+                (DocumentId::ArchivedChange { change: "2026-10-21-demo".into(), doc: archived_path.clone() }, "archived record"),
+            ],
+        );
+        let before = store.snapshot(&scope).unwrap().revision();
+        let bridge = BridgeStore::materialize(&store, &scope).unwrap();
+
+        assert_eq!(bridge.read_check_document("demo", &active_path, false).unwrap().as_deref(), Some("active record"));
+        assert_eq!(bridge.read_check_document("2026-10-21-demo", &archived_path, true).unwrap().as_deref(), Some("archived record"));
+        assert_eq!(bridge.read_check_document("demo", "checks/review/../secret.md", false).unwrap_err().to_string(), "invalid_check_path");
+        assert_eq!(store.snapshot(&scope).unwrap().revision(), before);
     }
 
     #[test]

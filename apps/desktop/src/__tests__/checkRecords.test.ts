@@ -23,3 +23,13 @@ it('不保留完整報告仍可讀封存驗收摘要，摘要不送入報告 ID 
  expect(await api.read('2026-10-21-demo',list[0])).toBe(receipt.content);
  expect(ipc.mock.calls.every(([command])=>command==='check_history')).toBe(true);
 });
+it('品質關卡只查指定的review與verify，不讓安全收據來源失敗拖累清單',async()=>{
+ const invoke=vi.fn().mockImplementation(async(_command:string,args:Record<string,unknown>)=>{
+  if(args.kind==='security')throw new Error('security receipt offline');
+  return {records:[{recordId:args.kind,kind:args.kind,createdAt:'2026-10-20',outcome:'passed',relativePath:`checks/${args.kind}/record.md`,contentDigest:'a'.repeat(64)}]};
+ });
+ const adapter=createTauriDataSource('/project-a',invoke).checkRecords!;
+ const list=await adapter.list('2026-07-04-change',['review','verify']);
+ expect(list.map(record=>record.kind)).toEqual(['review','verify']);
+ expect(invoke.mock.calls.map(([command,args])=>[command,(args as Record<string,unknown>).kind])).toEqual([['check_history','review'],['check_history','verify']]);
+});

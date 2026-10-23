@@ -332,4 +332,4 @@ export {
 // 手冊頁（desktop-manual-page）
 export { ManualPage, type ManualPageProps } from "./components/ManualPage";
 
-export type {CheckKind,CheckRecordEntry,CheckRecordsAdapter} from "./checkRecords";
+export type {CheckKind,CheckRecordEntry,CheckRecordReadError,CheckRecordsAdapter} from "./checkRecords";
