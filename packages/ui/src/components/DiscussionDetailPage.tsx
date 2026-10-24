@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive, Check, Circle, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
-import type { ArchivedItem, ChangeItem, DiscussionItem } from "../adapter";
+import { DEFAULT_SPEC_DIR, type ArchivedItem, type ChangeItem, type DiscussionItem } from "../adapter";
 import { countPriorDiscussions, type DiscussionSections } from "../discussionModel";
 import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
@@ -69,6 +69,8 @@ export interface DiscussionDetailPageProps {
   onArchiveDiscussion?: (slug: string) => void;
   /** 內容卡標頭右端的文件動作（design D4「開啟 ▾」）：各分頁皆為討論記錄檔，原文未載完為 null。 */
   renderDocumentActions?: (target: DocumentTarget | null) => ReactNode;
+  /** 規格資料夾（資料來源帶出的相對路徑）：記錄路徑由它組成；缺席時用 speclink。 */
+  specDir?: string;
 }
 
 /** 標題列狀態籤（design D7）：判準與看板討論卡一致——尚無結論的已轉出、保留中的已轉出
@@ -265,6 +267,7 @@ export function DiscussionDetailPage({
   onOpenDiscussion,
   onArchiveDiscussion,
   renderDocumentActions,
+  specDir = DEFAULT_SPEC_DIR,
 }: DiscussionDetailPageProps) {
   const { t, tn } = useI18n();
   const [doc, setDoc] = useState<string | null | undefined>();
@@ -315,7 +318,7 @@ export function DiscussionDetailPage({
   // 衍生列與背景的已封存變更籤都以變更名開啟：換成封存目錄名再交給宿主。
   const openArchivedName = onOpenArchivedChange && openArchivedByName(archivedChanges, onOpenArchivedChange);
   const rows = promotedRows(discussion.promotedTo, changes, archivedChanges, t, onOpenChangeCard, openArchivedName);
-  const recordPath = `openspec/discussions/${discussion.slug}.md`;
+  const recordPath = `${specDir}/discussions/${discussion.slug}.md`;
   const data = discussionDocData({
     text: doc,
     status: discussion.status,

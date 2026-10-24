@@ -29,7 +29,7 @@ export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
             onSave={save}
           />
         }
-        note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · rules" testId="file-note-config" />}
+        note={<PageNote remote={ps.remoteNote} fileKey={`${ps.configFile} · rules`} testId="file-note-config" />}
       />
       <PageAlerts ps={ps} parseError={ps.snap.workflow.parseError} />
       <Card className="flex flex-col gap-3 p-4">

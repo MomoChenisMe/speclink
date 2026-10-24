@@ -3,7 +3,25 @@
 //! 「把工作區技能檔的版號改成指定值」在 core、CLI 與 desktop 的測試各需要一份——
 //! 集中在這裡，frontmatter 的讀寫邏輯才不會抄三份、改一處漏兩處。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
+
+/// `root` 之外的 worktree 路徑，逐字取 `git worktree list --porcelain` 的拼法——產品
+/// 也是這樣取的。期望值不得自行 canonicalize：Windows 上它會加 `\\?\` 前綴，git
+/// 回報的卻是正斜線路徑，兩種拼法指同一目錄仍對不上。
+pub fn listed_worktrees(root: &Path) -> Vec<PathBuf> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(root)
+        .args(["worktree", "list", "--porcelain"])
+        .output()
+        .expect("git worktree list");
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|l| l.strip_prefix("worktree "))
+        .skip(1)
+        .map(PathBuf::from)
+        .collect()
+}
 
 /// 把 `skills_root` 下每份 speclink-*/SKILL.md 的 frontmatter 版號字串改成
 /// `version`（模擬以別版引擎生成的工作區——舊值模擬落後、新值模擬領先）。

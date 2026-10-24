@@ -589,7 +589,7 @@ mod tests {
             md.push_str(&format!("- [x] 1.{i} task\n"));
         }
         md.push_str("- [ ] [M] 手動驗證\n");
-        fx.write("openspec/changes/demo/tasks.md", &md);
+        fx.write("speclink/changes/demo/tasks.md", &md);
         let v = list_changes_at(fx.root());
         let item = &v["changes"][0];
         assert_eq!(item["codeTotal"], 9, "{item}");
@@ -637,7 +637,7 @@ mod tests {
 
         let targets = watch_targets_at(fx.root());
 
-        assert_eq!(targets[0], fx.root().join("openspec"), "第一項恆為 spec 目錄");
+        assert_eq!(targets[0], fx.root().join("speclink"), "第一項恆為 spec 目錄");
         let want_copy = wt.change_dir("add-auth");
         assert!(targets.contains(&want_copy), "須監看 worktree 副本的 change 目錄: {targets:?}");
         let want_registry = fx.root().join(".git").join("worktrees");
@@ -664,7 +664,7 @@ mod tests {
 
         let targets = watch_targets_at(fx.root());
 
-        assert_eq!(targets[0], fx.root().join("openspec"), "第一項恆為 spec 目錄");
+        assert_eq!(targets[0], fx.root().join("speclink"), "第一項恆為 spec 目錄");
         assert!(
             targets.contains(&fx.root().join(".git")),
             "git repo 無 worktree 時須含 .git 哨兵: {targets:?}"
@@ -679,7 +679,7 @@ mod tests {
     fn watch_targets_are_just_the_spec_dir_without_worktrees() {
         let fx = FixtureRoot::new("q-watch-plain");
         fx.add_change("demo", OLD_META);
-        assert_eq!(watch_targets_at(fx.root()), vec![fx.root().join("openspec")]);
+        assert_eq!(watch_targets_at(fx.root()), vec![fx.root().join("speclink")]);
     }
 
     #[test]
@@ -761,7 +761,7 @@ mod tests {
             .clone();
         assert_eq!(design["status"], "done", "狀態報告須反映 worktree 副本: {report}");
         assert!(
-            !fx.root().join("openspec/changes/add-auth/design.md").exists(),
+            !fx.root().join("speclink/changes/add-auth/design.md").exists(),
             "主 checkout 確實沒有這份文件（測試前提）"
         );
     }
@@ -774,7 +774,7 @@ mod tests {
         let fx = FixtureRoot::new("q-policy-off");
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: false\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\nworktree: false\n");
         let wt_change = wt.change_dir("add-auth");
         std::fs::write(wt_change.join("tasks.md"), TASKS_ALL_DONE).unwrap();
         std::fs::write(wt_change.join("design.md"), "## Context\n\n只在 worktree。\n").unwrap();
@@ -949,18 +949,18 @@ mod tests {
         let fx = FixtureRoot::new("q-review");
         fx.add_change("plain", OLD_META);
         fx.add_change("underway", OLD_META);
-        fx.write("openspec/changes/underway/review.md", TICKET);
+        fx.write("speclink/changes/underway/review.md", TICKET);
         // reviewed：任務錨（2/2 全完成、蓋章總數 2）與內容錨（現值指紋相符）皆符。
         let content = "fn keep() {}\n";
         fx.write("src/lib.rs", content);
         let hash = station::content_fingerprint(content);
         fx.add_change("stamped", &reviewed_meta("src/lib.rs", &hash));
-        fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/stamped/tasks.md", TASKS_ALL_DONE);
         // reviewedStale（spec Example「章在但指紋不符」）：scope 檔其後追加了一行。
         let old_hash = station::content_fingerprint("fn keep() {}\n");
         fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
         fx.add_change("gone-stale", &reviewed_meta("src/stale.rs", &old_hash));
-        fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
 
         let v = list_changes_at(fx.root());
         let arr = v["changes"].as_array().expect("changes array");
@@ -994,7 +994,7 @@ mod tests {
         std::fs::write(fx.root().join("logo.png"), bin).unwrap();
         let hash = station::content_fingerprint_bytes(bin);
         fx.add_change("bin-scope", &reviewed_meta("logo.png", &hash));
-        fx.write("openspec/changes/bin-scope/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/bin-scope/tasks.md", TASKS_ALL_DONE);
 
         let v = list_changes_at(fx.root());
         assert_eq!(v["changes"][0]["reviewStatus"], "reviewed", "位元組未變 → reviewed: {v}");
@@ -1020,16 +1020,16 @@ mod tests {
         let fx = FixtureRoot::new("q-verify");
         fx.add_change("plain", OLD_META);
         fx.add_change("underway", OLD_META);
-        fx.write("openspec/changes/underway/verify.md", TICKET);
+        fx.write("speclink/changes/underway/verify.md", TICKET);
         let content = "fn keep() {}\n";
         fx.write("src/lib.rs", content);
         let hash = station::content_fingerprint(content);
         fx.add_change("stamped", &verified_meta("src/lib.rs", &hash));
-        fx.write("openspec/changes/stamped/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/stamped/tasks.md", TASKS_ALL_DONE);
         let old_hash = station::content_fingerprint("fn keep() {}\n");
         fx.write("src/stale.rs", "fn keep() {}\nfn extra() {}\n");
         fx.add_change("gone-stale", &verified_meta("src/stale.rs", &old_hash));
-        fx.write("openspec/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/gone-stale/tasks.md", TASKS_ALL_DONE);
 
         let v = list_changes_at(fx.root());
         let arr = v["changes"].as_array().expect("changes array");
@@ -1059,8 +1059,8 @@ mod tests {
         fx.write("src/lib.rs", content);
         let hash = station::content_fingerprint(content);
         fx.add_change("mixed", &reviewed_meta("src/lib.rs", &hash));
-        fx.write("openspec/changes/mixed/tasks.md", TASKS_ALL_DONE);
-        fx.write("openspec/changes/mixed/verify.md", TICKET);
+        fx.write("speclink/changes/mixed/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/mixed/verify.md", TICKET);
 
         let v = list_changes_at(fx.root());
         let item = v["changes"].as_array().unwrap()[0].clone();
@@ -1080,7 +1080,7 @@ mod tests {
         let hash = station::content_fingerprint(STAMPED_SCOPE);
         fx.write("src/auth.rs", main);
         fx.add_change("fix-auth", &reviewed_meta("src/auth.rs", &hash));
-        fx.write("openspec/changes/fix-auth/tasks.md", TASKS_ALL_DONE);
+        fx.write("speclink/changes/fix-auth/tasks.md", TASKS_ALL_DONE);
         let wt = fx.attach_worktree("fix-auth");
         std::fs::write(wt.path().join("src").join("auth.rs"), worktree).unwrap();
         fx
@@ -1125,7 +1125,7 @@ mod tests {
         fx.add_change("demo", OLD_META);
         fx.add_change("prefixed", OLD_META);
         fx.write(
-            "openspec/changes/prefixed/proposal.md",
+            "speclink/changes/prefixed/proposal.md",
             "## Summary\n\nOne liner.\n\n## Why\n\nReal reason here.\nSecond line ignored.\n",
         );
         let v = list_changes_at(fx.root());
@@ -1141,11 +1141,11 @@ mod tests {
         // 缺件容錯（board-card-anatomy design D2）：無 proposal.md、Why 區段缺席或
         // 區段為空時 whyExcerpt 為 null，清單照常回傳（描述列由前端缺席處理）。
         let fx = FixtureRoot::new("q-why-missing");
-        fx.write("openspec/changes/no-proposal/.openspec.yaml", OLD_META);
-        fx.write("openspec/changes/no-proposal/tasks.md", "- [ ] 1.1 t\n");
+        fx.write("speclink/changes/no-proposal/.meta.yaml", OLD_META);
+        fx.write("speclink/changes/no-proposal/tasks.md", "- [ ] 1.1 t\n");
         fx.add_change("empty-why", OLD_META);
         fx.write(
-            "openspec/changes/empty-why/proposal.md",
+            "speclink/changes/empty-why/proposal.md",
             "## Why\n\n## What Changes\n\n- something\n",
         );
         let v = list_changes_at(fx.root());
@@ -1245,7 +1245,7 @@ mod tests {
     /// 在 `change` 的 desktop-app delta 以 MODIFIED 動到「看板與任務」。
     fn modify_board_requirement(fx: &FixtureRoot, change: &str) {
         fx.write(
-            &format!("openspec/changes/{change}/specs/desktop-app/spec.md"),
+            &format!("speclink/changes/{change}/specs/desktop-app/spec.md"),
             "## MODIFIED Requirements\n\n### Requirement: 看板與任務\n\nText.\n",
         );
     }
@@ -1323,7 +1323,7 @@ mod tests {
         fx.add_change("add-c", OLD_META);
         for name in ["add-a", "add-c"] {
             fx.write(
-                &format!("openspec/changes/{name}/specs/shared-cap/spec.md"),
+                &format!("speclink/changes/{name}/specs/shared-cap/spec.md"),
                 &format!("## ADDED Requirements\n\n### Requirement: R of {name}\n\nText.\n"),
             );
         }
@@ -1428,7 +1428,7 @@ mod tests {
     #[test]
     fn list_specs_shape_matches_cli() {
         let fx = FixtureRoot::new("q-specs");
-        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n\n## Requirements\n");
+        fx.write("speclink/specs/cap-x/spec.md", "# cap-x Specification\n\n## Requirements\n");
         let v = list_specs_at(fx.root());
         let arr = v["specs"].as_array().expect("specs array");
         let ids: Vec<&str> = arr.iter().filter_map(|s| s["id"].as_str()).collect();
@@ -1442,7 +1442,7 @@ mod tests {
         // traceCount 為全文 @trace 標記的 source 去重數；欄位 camelCase。
         let fx = FixtureRoot::new("q-spec-card");
         fx.write(
-            "openspec/specs/cap-x/spec.md",
+            "speclink/specs/cap-x/spec.md",
             concat!(
                 "# cap-x Specification\n\n",
                 "## Purpose\n\nSearch behavior for the desktop app.\nSecond line ignored.\n\n",
@@ -1474,7 +1474,7 @@ mod tests {
         // 這份 fixture 隨之變動，偵測不需要跟著改。
         let fx = FixtureRoot::new("q-spec-tbd");
         fx.write(
-            "openspec/specs/cap-new/spec.md",
+            "speclink/specs/cap-new/spec.md",
             &format!(
                 "# cap-new Specification\n\n## Purpose\n\n{} change 'demo'. Update Purpose after archive.\n\n## Requirements\n\n### Requirement: Fresh works\n\nIt SHALL work.\n",
                 speclink_core::model::PURPOSE_TBD_PREFIX
@@ -1492,7 +1492,7 @@ mod tests {
         // 容錯（Implementation Contract 失敗模式）：無 Purpose 區段、無 Requirement、
         // 無 @trace 的規格計數欄位為 0、excerpt 為 null，清單照常回傳。
         let fx = FixtureRoot::new("q-spec-card-bare");
-        fx.write("openspec/specs/bare/spec.md", "# bare Specification\n");
+        fx.write("speclink/specs/bare/spec.md", "# bare Specification\n");
         let v = list_specs_at(fx.root());
         let arr = v["specs"].as_array().expect("specs array");
         let item = arr.iter().find(|s| s["id"] == "bare").expect("bare listed");
@@ -1509,9 +1509,9 @@ mod tests {
         // 不因單筆壞檔讓整頁失敗。
         use std::os::unix::fs::PermissionsExt;
         let fx = FixtureRoot::new("q-spec-card-unreadable");
-        fx.write("openspec/specs/ok/spec.md", "## Purpose\n\nFine.\n\n### Requirement: A\n\nx\n");
-        fx.write("openspec/specs/locked/spec.md", "## Purpose\n\nHidden.\n");
-        let locked = fx.root().join("openspec/specs/locked/spec.md");
+        fx.write("speclink/specs/ok/spec.md", "## Purpose\n\nFine.\n\n### Requirement: A\n\nx\n");
+        fx.write("speclink/specs/locked/spec.md", "## Purpose\n\nHidden.\n");
+        let locked = fx.root().join("speclink/specs/locked/spec.md");
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o000)).unwrap();
         let v = list_specs_at(fx.root());
         std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o644)).unwrap();
@@ -1531,7 +1531,7 @@ mod tests {
         // 呈現層輔助欄位（design D2）：規格清單查詢對每個 spec 帶 modifiedAt——
         // spec.md 檔案系統 mtime 的本地日期（YYYY-MM-DD）。剛寫入的檔案即今天。
         let fx = FixtureRoot::new("q-specs-mtime");
-        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n");
+        fx.write("speclink/specs/cap-x/spec.md", "# cap-x Specification\n");
         let v = list_specs_at(fx.root());
         let arr = v["specs"].as_array().expect("specs array");
         let item = arr.iter().find(|s| s["id"] == "cap-x").expect("cap-x listed");
@@ -1542,7 +1542,7 @@ mod tests {
     fn modified_date_is_absent_when_mtime_unavailable() {
         // mtime 不可得時欄位缺席（衍生為 None、overlay 不插 key，而非塞 null）。
         let fx = FixtureRoot::new("q-specs-no-mtime");
-        let ghost = fx.root().join("openspec/specs/ghost/spec.md");
+        let ghost = fx.root().join("speclink/specs/ghost/spec.md");
         assert!(modified_date(&ghost).is_none());
     }
 
@@ -1560,17 +1560,17 @@ mod tests {
     #[test]
     fn evidence_record_never_shows_up_as_a_change_artifact() {
         // design Risk「.evidence.json 意外出現在桌面 artifact 清單」：證據記錄是
-        // 機器寫入的 dot 檔，與 `.openspec.yaml` 同待遇——不進 artifact 清單、
+        // 機器寫入的 dot 檔，與 `.meta.yaml` 同待遇——不進 artifact 清單、
         // 不進規格分頁的 capability 清單、不成為搜尋命中的 artifact 名。
         // 三個面在固定 schema 清單下對 dot 檔永真，所以再放一個非 dot 的 stray
         // 檔當判別器：哪天清單改成掃目錄，stray 檔會現形、此測試才會真的失敗。
         let fx = FixtureRoot::new("q-evidence-hidden");
         fx.add_change("demo", OLD_META);
         fx.write(
-            "openspec/changes/demo/.evidence.json",
+            "speclink/changes/demo/.evidence.json",
             r#"{"version":2,"change":"demo","entries":[{"taskId":"1","taskDesc":"1.1 a","touchedFiles":["src/searchable-token.rs"],"basisDigests":{"spec":"sha256:0","tasks":"sha256:0","policy":"sha256:0"},"recordedAt":"2026-07-13T00:00:00Z"}]}"#,
         );
-        fx.write("openspec/changes/demo/stray-notes.md", "searchable-token stray notes\n");
+        fx.write("speclink/changes/demo/stray-notes.md", "searchable-token stray notes\n");
 
         let v = status_at(fx.root(), "demo").expect("status ok");
         let paths: Vec<&str> = v["artifacts"]
@@ -1623,7 +1623,7 @@ mod tests {
     #[test]
     fn spec_document_reads_canonical() {
         let fx = FixtureRoot::new("q-canonical");
-        fx.write("openspec/specs/cap-x/spec.md", "# cap-x Specification\n");
+        fx.write("speclink/specs/cap-x/spec.md", "# cap-x Specification\n");
         let doc = spec_document_at(fx.root(), "cap-x").expect("spec exists");
         assert!(!doc.trim().is_empty());
     }
@@ -1652,13 +1652,13 @@ mod tests {
     fn archived_document_reads_content_and_lists_capabilities() {
         let fx = FixtureRoot::new("q-archived");
         fx.write(
-            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "speclink/changes/archive/2026-07-04-old/.meta.yaml",
             "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
         );
-        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
-        fx.write("openspec/changes/archive/2026-07-04-old/tasks.md", "- [x] 1.1 done\n");
+        fx.write("speclink/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
+        fx.write("speclink/changes/archive/2026-07-04-old/tasks.md", "- [x] 1.1 done\n");
         fx.write(
-            "openspec/changes/archive/2026-07-04-old/specs/cap-x/spec.md",
+            "speclink/changes/archive/2026-07-04-old/specs/cap-x/spec.md",
             "## ADDED Requirements\n",
         );
 
@@ -1675,7 +1675,7 @@ mod tests {
     #[test]
     fn archived_document_rejects_path_traversal() {
         let fx = FixtureRoot::new("q-archived-traversal");
-        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
+        fx.write("speclink/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
         fx.write("secret.txt", "top secret");
 
         assert!(
@@ -1710,7 +1710,7 @@ mod tests {
         // findings 三欄；不帶 lastRound／change／content。
         let fx = FixtureRoot::new("q-ticket-shape");
         fx.add_change("x", OLD_META);
-        fx.write("openspec/changes/x/review.md", &two_round_ticket());
+        fx.write("speclink/changes/x/review.md", &two_round_ticket());
 
         let v = station_ticket_at(fx.root(), "x", "review").expect("ticket present");
         let rounds = v["rounds"].as_array().expect("rounds array");
@@ -1747,7 +1747,7 @@ mod tests {
         // additive shape 同款，前端不必分辨「缺鍵」與「null」。
         let fx = FixtureRoot::new("q-ticket-legacy");
         fx.add_change("x", OLD_META);
-        fx.write("openspec/changes/x/verify.md", TICKET);
+        fx.write("speclink/changes/x/verify.md", TICKET);
 
         let v = station_ticket_at(fx.root(), "x", "verify").expect("verify ticket present");
         let r = &v["rounds"][0];
@@ -1762,7 +1762,7 @@ mod tests {
         let fx = FixtureRoot::new("q-ticket-none");
         fx.add_change("x", OLD_META);
         assert!(station_ticket_at(fx.root(), "x", "review").is_none(), "no ticket → None");
-        fx.write("openspec/changes/x/review.md", TICKET);
+        fx.write("speclink/changes/x/review.md", TICKET);
         assert!(station_ticket_at(fx.root(), "x", "verify").is_none(), "the other station's ticket does not count");
         assert!(station_ticket_at(fx.root(), "x", "quality").is_none(), "unknown station → None");
         assert!(station_ticket_at(fx.root(), "ghost", "review").is_none(), "unknown change → None");
@@ -1775,7 +1775,7 @@ mod tests {
         // 與其他文件分頁「缺件即空態」同款。
         let fx = FixtureRoot::new("q-ticket-corrupt");
         fx.add_change("x", OLD_META);
-        fx.write("openspec/changes/x/review.md", "# Review — x\n\n## Round one\n\n**Scope**: src/lib.rs\n");
+        fx.write("speclink/changes/x/review.md", "# Review — x\n\n## Round one\n\n**Scope**: src/lib.rs\n");
         assert!(station_ticket_at(fx.root(), "x", "review").is_none());
     }
 
@@ -1786,7 +1786,7 @@ mod tests {
         // 讀錯一份會停在一輪。
         let fx = FixtureRoot::new("q-ticket-wt");
         fx.add_change("x", OLD_META);
-        fx.write("openspec/changes/x/review.md", TICKET);
+        fx.write("speclink/changes/x/review.md", TICKET);
         let wt = fx.attach_worktree("x");
         std::fs::write(wt.change_dir("x").join("review.md"), two_round_ticket()).unwrap();
 
@@ -1802,11 +1802,11 @@ mod tests {
         let fx = FixtureRoot::new("q-archived-ticket");
         let carried = two_round_ticket().replace("# Review — x", "# Verify — old");
         fx.write(
-            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "speclink/changes/archive/2026-07-04-old/.meta.yaml",
             "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
         );
-        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
-        fx.write("openspec/changes/archive/2026-07-04-old/verify.md", &carried);
+        fx.write("speclink/changes/archive/2026-07-04-old/proposal.md", "## Why\n\nOld body.\n");
+        fx.write("speclink/changes/archive/2026-07-04-old/verify.md", &carried);
 
         let v = archived_station_ticket_at(fx.root(), "2026-07-04-old", "verify").expect("carried ticket");
         let rounds = v["rounds"].as_array().expect("rounds array");
@@ -1842,12 +1842,12 @@ mod tests {
         );
         let fx = FixtureRoot::new("q-ticket-rules");
         fx.add_change("x", OLD_META);
-        fx.write("openspec/changes/x/review.md", &text);
+        fx.write("speclink/changes/x/review.md", &text);
         fx.write(
-            "openspec/changes/archive/2026-07-04-old/.openspec.yaml",
+            "speclink/changes/archive/2026-07-04-old/.meta.yaml",
             "schema: spec-driven\ncreated: 2026-07-01\narchived_at: 2026-07-04\n",
         );
-        fx.write("openspec/changes/archive/2026-07-04-old/review.md", &text);
+        fx.write("speclink/changes/archive/2026-07-04-old/review.md", &text);
 
         let live = station_ticket_at(fx.root(), "x", "review").expect("live ticket");
         assert_eq!(live["reviewBaselineSmells"], json!(speclink_core::skills::REVIEW_BASELINE_SMELLS));
@@ -1884,14 +1884,14 @@ mod tests {
         // 活變更與封存兩條路一致。
         let fx = FixtureRoot::new("q-ticket-bytes");
         fx.add_change("x", OLD_META);
-        let live = fx.root().join("openspec").join("changes").join("x").join("review.md");
+        let live = fx.root().join("speclink").join("changes").join("x").join("review.md");
         std::fs::write(&live, [0x23, 0x20, 0xFF, 0xFE, 0x0A]).unwrap();
         assert!(station_ticket_at(fx.root(), "x", "review").is_none());
 
-        fx.write("openspec/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
+        fx.write("speclink/changes/archive/2026-07-04-old/proposal.md", "## Why\n");
         let carried = fx
             .root()
-            .join("openspec")
+            .join("speclink")
             .join("changes")
             .join("archive")
             .join("2026-07-04-old")
@@ -1917,10 +1917,10 @@ mod tests {
         let fx = FixtureRoot::new("q-doc-loc");
         fx.add_change("demo", OLD_META);
         let loc = document_location_at(fx.root(), "demo", "proposal.md").expect("location");
-        assert_eq!(loc.relative, "openspec/changes/demo/proposal.md");
-        assert!(Path::new(&loc.path).ends_with("openspec/changes/demo/proposal.md"), "{}", loc.path);
+        assert_eq!(loc.relative, "speclink/changes/demo/proposal.md");
+        assert!(Path::new(&loc.path).ends_with("speclink/changes/demo/proposal.md"), "{}", loc.path);
         let spec = document_location_at(fx.root(), "demo", "specs/auth/spec.md").expect("spec location");
-        assert_eq!(spec.relative, "openspec/changes/demo/specs/auth/spec.md");
+        assert_eq!(spec.relative, "speclink/changes/demo/specs/auth/spec.md");
     }
 
     #[test]
@@ -1930,7 +1930,7 @@ mod tests {
         fx.add_change("add-auth", OLD_META);
         let wt = fx.attach_worktree("add-auth");
         let loc = document_location_at(fx.root(), "add-auth", "tasks.md").expect("location");
-        assert_eq!(loc.relative, "openspec/changes/add-auth/tasks.md");
+        assert_eq!(loc.relative, "speclink/changes/add-auth/tasks.md");
         assert!(Path::new(&loc.path).starts_with(wt.path()), "{} 應在 {}", loc.path, wt.path().display());
     }
 
@@ -1948,17 +1948,17 @@ mod tests {
     fn spec_location_resolves_the_canonical_spec_under_the_spec_dir() {
         let fx = FixtureRoot::new("q-spec-loc");
         let loc = spec_location_at(fx.root(), "auth").expect("location");
-        assert_eq!(loc.relative, "openspec/specs/auth/spec.md");
-        assert!(Path::new(&loc.path).ends_with("openspec/specs/auth/spec.md"), "{}", loc.path);
+        assert_eq!(loc.relative, "speclink/specs/auth/spec.md");
+        assert!(Path::new(&loc.path).ends_with("speclink/specs/auth/spec.md"), "{}", loc.path);
     }
 
     #[test]
     fn archived_document_location_resolves_inside_the_dated_archive_dir() {
         let fx = FixtureRoot::new("q-arch-loc");
         let loc = archived_document_location_at(fx.root(), "2026-07-04-old", "proposal.md").expect("location");
-        assert_eq!(loc.relative, "openspec/changes/archive/2026-07-04-old/proposal.md");
+        assert_eq!(loc.relative, "speclink/changes/archive/2026-07-04-old/proposal.md");
         let spec = archived_document_location_at(fx.root(), "2026-07-04-old", "specs/auth/spec.md").expect("spec");
-        assert_eq!(spec.relative, "openspec/changes/archive/2026-07-04-old/specs/auth/spec.md");
+        assert_eq!(spec.relative, "speclink/changes/archive/2026-07-04-old/specs/auth/spec.md");
     }
 
     #[test]

@@ -83,7 +83,7 @@ export function WorkflowPage({ ps }: { ps: ProjectSettingsState }) {
       <SettingsPageHeader
         title={t("settings.projectSection.workflow")}
         description={t("settings.schemaCardHelp")}
-        note={<PageNote remote={ps.remoteNote} fileKey={`openspec/config.yaml · ${policyKeys}`} testId="file-note-config" />}
+        note={<PageNote remote={ps.remoteNote} fileKey={`${ps.configFile} · ${policyKeys}`} testId="file-note-config" />}
       />
       <PageAlerts ps={ps} parseError={snap.workflow.parseError} />
       <div data-testid="policy-card">

@@ -28,6 +28,7 @@ const SMELLS = ["Mysterious Name", "Duplicated Code", "Feature Envy", "Data Clum
 
 function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
   return {
+    specDir: over.specDir ?? "speclink",
     app: { tools: ["claude"], customTools: [], parseError: null, ...(over.app ?? {}) },
     workflow: {
       locale: "tw",
@@ -75,11 +76,13 @@ function Harness({
   initial = "context",
   onParseErrors,
   onDirtyChange,
+  onConfigFile,
 }: {
   settings: WorkspaceSettingsProvider;
   initial?: ProjectSettingsSection;
   onParseErrors?: (errors: { config: boolean; speclink: boolean }) => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onConfigFile?: (file: string | null) => void;
 }) {
   const [section, setSection] = useState<ProjectSettingsSection>(initial);
   nav.goto = setSection;
@@ -89,6 +92,7 @@ function Harness({
       section={section}
       onParseErrors={onParseErrors}
       onDirtyChange={onDirtyChange}
+      onConfigFile={onConfigFile}
     />
   );
 }
@@ -314,7 +318,7 @@ describe("ProjectSettingsView 寫入", () => {
   it("寫入失敗：顯示單行錯誤訊息", async () => {
     const ws = renderView(snapshot(), "workflow");
     (ws.writeWorkflowConfig as ReturnType<typeof vi.fn>).mockRejectedValue(
-      "openspec/config.yaml: write failed: denied",
+      "speclink/config.yaml: write failed: denied",
     );
     fireEvent.click(await screen.findByLabelText("tdd"));
     fireEvent.click(screen.getByTestId("save-workflow"));
@@ -324,20 +328,38 @@ describe("ProjectSettingsView 寫入", () => {
 
 // ---- 分類頁組織（spec 需求「設定頁圖形化讀寫兩層設定」；desktop-settings-mode design D8）----
 
+describe("檔案註記依實際規格資料夾（spec「畫面依實際規格資料夾與資料檔名顯示」）", () => {
+  it("暫緩遷移的舊佈局專案：產出規則頁註記為 openspec/config.yaml · rules，並回報給分類欄", async () => {
+    const onConfigFile = vi.fn();
+    const ws = fakeSettings({ ...projectSnap(), specDir: "openspec" });
+    render(<Harness settings={ws} initial="rules" onConfigFile={onConfigFile} />);
+    await screen.findByTestId("rules-page");
+    expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
+    expect(onConfigFile).toHaveBeenLastCalledWith("openspec/config.yaml");
+  });
+
+  it("明寫 spec_dir：註記為該路徑", async () => {
+    renderView({ ...projectSnap(), specDir: "docs/specs" }, "workflow");
+    await screen.findByTestId("file-note-config");
+    expect(screen.getByTestId("file-note-config").textContent).toMatch(/^docs\/specs\/config\.yaml · /);
+  });
+});
+
 describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分類」）", () => {
   it("專案說明頁標題下等寬註記檔案與鍵；產出流程頁依序為產出政策卡與產出流程卡；.speclink.yaml 頁有檔案列與 AI 工具卡", async () => {
     renderView(projectSnap());
     const page = await screen.findByTestId("context-page");
     expect(within(page).getByRole("heading", { level: 2, name: "專案說明" })).toBeTruthy();
+    // spec Scenario「新佈局專案的檔案註記」。
     const note = screen.getByTestId("file-note-config");
-    expect(note.textContent).toBe("openspec/config.yaml · context");
+    expect(note.textContent).toBe("speclink/config.yaml · context");
     expect(note.className).toContain("font-mono");
     // 其他頁的內容不在畫面上。
     expect(screen.queryByTestId("policy-card")).toBeNull();
     expect(screen.queryByLabelText("claude")).toBeNull();
 
     goto("rules");
-    expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
+    expect(screen.getByTestId("file-note-config").textContent).toBe("speclink/config.yaml · rules");
 
     goto("workflow");
     const regions = screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"));
@@ -817,7 +839,7 @@ describe("拆卡獨立編輯態（spec 需求「設定頁編輯專案說明與�
   it("寫入失敗：顯示單行錯誤並維持編輯態不遺失輸入（design 契約失敗模式）", async () => {
     const ws = renderView(projectSnap());
     (ws.writeWorkflowContext as ReturnType<typeof vi.fn>).mockRejectedValue(
-      "openspec/config.yaml: write failed: denied",
+      "speclink/config.yaml: write failed: denied",
     );
     const card = await screen.findByTestId("context-page");
     fireEvent.click(within(card).getByTestId("context-edit"));
@@ -1106,7 +1128,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     artifacts: [
       { id: "plan", description: "計畫文件", instruction: "先寫計畫", template: "# 計畫模板" },
     ],
-    path: "/proj/openspec/schemas/my-flow",
+    path: "/proj/speclink/schemas/my-flow",
     error: null,
   };
 
@@ -1203,7 +1225,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
   it("切換寫入失敗：錯誤浮出於表單，不靜默", async () => {
     const ws = schemaSettings(projectSnap());
     (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
-      "openspec/config.yaml: write failed: denied",
+      "speclink/config.yaml: write failed: denied",
     );
     render(<Harness settings={ws} />);
     await openSchemasTab();
@@ -1338,7 +1360,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
   it("同名跨層項目只有解析命中的那層有 fork 按鈕（review R8）", async () => {
     // 引擎 fork 以 project→user 第一命中解析：被 shadow 的 user 層項若給 fork，
     // 複製到的會是專案層同名內容——不給入口。
-    const dupProject: SchemaEntry = { ...CUSTOM_ENTRY, name: "dup", path: "/proj/openspec/schemas/dup" };
+    const dupProject: SchemaEntry = { ...CUSTOM_ENTRY, name: "dup", path: "/proj/speclink/schemas/dup" };
     const dupUser: SchemaEntry = {
       ...CUSTOM_ENTRY,
       name: "dup",
@@ -1359,7 +1381,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
       source: "project",
       artifactIds: ["plan", "tasks"],
       artifacts: [],
-      path: "/proj/openspec/schemas/my-new-flow",
+      path: "/proj/speclink/schemas/my-new-flow",
       error: null,
     };
     const ws = schemaSettings(projectSnap());
@@ -1386,7 +1408,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
     expect(screen.queryByTestId("schema-reveal-spec-driven")).toBeNull();
     fireEvent.click(screen.getByTestId("schema-reveal-my-flow"));
     await waitFor(() =>
-      expect(ws.revealSchema).toHaveBeenCalledWith("/proj/openspec/schemas/my-flow"),
+      expect(ws.revealSchema).toHaveBeenCalledWith("/proj/speclink/schemas/my-flow"),
     );
   });
 
@@ -1484,7 +1506,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
   it("切換失敗後下拉退回現值，不謊報活躍 schema（review N2）", async () => {
     const ws = schemaSettings(projectSnap());
     (ws.writeWorkflowSchema as ReturnType<typeof vi.fn>).mockRejectedValue(
-      "openspec/config.yaml: write failed: denied",
+      "speclink/config.yaml: write failed: denied",
     );
     render(<Harness settings={ws} />);
     await openSchemasTab();
@@ -1502,7 +1524,7 @@ describe("產出流程頁（spec「產出流程頁」）", () => {
       source: "project",
       artifactIds: [],
       artifacts: [],
-      path: "/proj/openspec/schemas/dup",
+      path: "/proj/speclink/schemas/dup",
       error: "Schema parse error: bad yaml",
     };
     const dupUser: SchemaEntry = {
@@ -1593,7 +1615,7 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     renderView(reviewSnap(), "review");
     const page = await screen.findByTestId("review-page");
     expect(within(page).getByRole("heading", { level: 2, name: "審查規則" })).toBeTruthy();
-    expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · review");
+    expect(screen.getByTestId("file-note-config").textContent).toBe("speclink/config.yaml · review");
     expect(within(page).getByTestId("review-baseline-mode").textContent).toBe("沿用並追加");
     const expected = {
       critical: ["CRITICAL", "2 條", "擋蓋章；要接受放行須逐條再確認"],

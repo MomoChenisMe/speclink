@@ -17,6 +17,9 @@ pub use speclink_core::config::{ContentEdit, ContextEdit, ReviewConfig, Workflow
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SettingsSnapshot {
+    /// 規格資料夾的專案根相對路徑（`speclink`、舊佈局 `openspec` 或明寫的 spec_dir）——
+    /// 設定頁檔案註記與分類欄組名由它組成（desktop-spec-dir-migration D4）。
+    pub spec_dir: String,
     pub app: AppSettings,
     pub workflow: WorkflowSettings,
 }
@@ -99,7 +102,10 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
         // 壞 .speclink.yaml：discover fail-closed。設定頁沿用既有 UI——app 面
         // 浮出 parse_error（表單停用），workflow 面以預設佈局照常呈現。
         Err(e) => (
-            Workspace { root: root.to_path_buf(), spec_dir_name: "openspec".to_string() },
+            Workspace {
+                root: root.to_path_buf(),
+                spec_dir_name: speclink_core::workspace::resolve_spec_dir(root, None).0,
+            },
             AppSettings {
                 tools: Vec::new(),
                 custom_tools: Vec::new(),
@@ -111,7 +117,7 @@ pub fn read_settings_at(root: &Path) -> Result<SettingsSnapshot, String> {
         read_opt(&workflow_config_path(&ws)).as_deref(),
         Some(&ws),
     );
-    Ok(SettingsSnapshot { app, workflow })
+    Ok(SettingsSnapshot { spec_dir: ws.spec_dir_name, app, workflow })
 }
 
 /// 從 server `/config` 或本機檔案原文建立 workflow 設定快照。此入口不讀檔、
@@ -418,8 +424,9 @@ pub fn write_workflow_fields_at(
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
     verify_workflow_text(&reread, fields, &file, "verify after write")?;
+    // 只同步技能檔、不遷移規格資料夾（desktop-spec-dir-migration D6）。
     if worktree_was_on != fields.worktree {
-        speclink_core::init::update(&ws.root, false).map_err(|e| {
+        speclink_core::init::sync_skills(&ws.root).map_err(|e| {
             format!(
                 "{file} written, but the skill footprint did not sync: {} — fix the cause above, then re-run `speclink update` to rebuild it",
                 single_line(&e.to_string())
@@ -648,7 +655,7 @@ mod tests {
 
     #[test]
     fn read_settings_absent_files_report_defaults_without_parse_error() {
-        // FixtureRoot 只建 openspec/changes——兩份設定檔皆缺席＝預設值狀態。
+        // FixtureRoot 只建 speclink/changes——兩份設定檔皆缺席＝預設值狀態。
         let fx = FixtureRoot::new("settings-absent");
         let s = read_settings_at(fx.root()).expect("read ok");
         assert_eq!(s.app.tools, Vec::<String>::new());
@@ -662,6 +669,22 @@ mod tests {
     }
 
     #[test]
+    fn read_settings_reports_the_spec_folder_relative_to_the_root() {
+        // spec「畫面依實際規格資料夾與資料檔名顯示」：設定頁的檔案註記與分類欄組名由它組成。
+        let fx = FixtureRoot::legacy("settings-spec-dir");
+        fx.write(".speclink.yaml", "tools: [claude]\n");
+        let value = serde_json::to_value(read_settings_at(fx.root()).expect("read ok")).unwrap();
+        assert_eq!(value["specDir"], "openspec", "舊佈局");
+        fx.write(".speclink.yaml", "spec_dir: docs/specs\n");
+        std::fs::create_dir_all(fx.root().join("docs/specs")).unwrap();
+        assert_eq!(read_settings_at(fx.root()).unwrap().spec_dir, "docs/specs", "明寫 spec_dir");
+        // 壞 .speclink.yaml：依實際佈局推斷，不寫死 openspec。
+        fx.write(".speclink.yaml", "tools: [\n");
+        std::fs::rename(fx.root().join("openspec"), fx.root().join("speclink")).unwrap();
+        assert_eq!(read_settings_at(fx.root()).unwrap().spec_dir, "speclink", "壞設定");
+    }
+
+    #[test]
     fn read_settings_parses_actual_values_and_flags_custom_descriptors() {
         let fx = FixtureRoot::new("settings-values");
         fx.write(
@@ -669,7 +692,7 @@ mod tests {
             "tools:\n  - claude\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n",
         );
         fx.write(
-            "openspec/config.yaml",
+            "speclink/config.yaml",
             "schema: spec-driven\nlocale: tw\nspec_locale: auto\ntdd: true\naudit: true\n",
         );
         let s = read_settings_at(fx.root()).expect("read ok");
@@ -689,7 +712,7 @@ mod tests {
         // 「設定寫入具解析驗證且失敗浮出」的載入面）。兩檔各自獨立。
         let fx = FixtureRoot::new("settings-badwf");
         fx.write(".speclink.yaml", "tools:\n  - claude\n");
-        fx.write("openspec/config.yaml", "rules: [unclosed\n");
+        fx.write("speclink/config.yaml", "rules: [unclosed\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         assert_eq!(s.app.parse_error, None);
         let msg = s.workflow.parse_error.expect("workflow parse error surfaced");
@@ -697,7 +720,7 @@ mod tests {
 
         let fx = FixtureRoot::new("settings-badapp");
         fx.write(".speclink.yaml", "tools: [unclosed\n");
-        fx.write("openspec/config.yaml", "locale: tw\n");
+        fx.write("speclink/config.yaml", "locale: tw\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         let msg = s.app.parse_error.expect("app parse error surfaced");
         assert!(!msg.is_empty() && !msg.contains('\n'), "single line: {msg:?}");
@@ -832,12 +855,12 @@ mod tests {
         // spec Scenario「寫入政策欄位且未觸及鍵原樣保留」。
         let fx = FixtureRoot::new("wf-write");
         let doc = "schema: spec-driven\ncontext: |\n  keep me\nrules:\n  proposal:\n    - keep rule\n";
-        fx.write("openspec/config.yaml", doc);
+        fx.write("speclink/config.yaml", doc);
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
         write_workflow_fields_at(fx.root(), &fields).expect("write ok");
         // 手術改寫：tdd 插於 schema 之下、前後恰一空行，其餘行逐位元保留（不再整檔重排）。
         assert_eq!(
-            read(&fx.root().join("openspec/config.yaml")),
+            read(&fx.root().join("speclink/config.yaml")),
             "schema: spec-driven\n\ntdd: true\n\ncontext: |\n  keep me\nrules:\n  proposal:\n    - keep rule\n"
         );
     }
@@ -848,16 +871,16 @@ mod tests {
         // 殘留、內容為完整全文（收編一旦回歸普通 fs::write 前者仍綠，但殘留斷言
         // 釘住原子入口的成功路徑契約）。
         let fx = FixtureRoot::new("wf-write-atomic-face");
-        fx.write("openspec/config.yaml", "schema: spec-driven\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\n");
         let fields = WorkflowPolicyFields { tdd: true, ..Default::default() };
         write_workflow_fields_at(fx.root(), &fields).expect("write ok");
-        let residue: Vec<String> = std::fs::read_dir(fx.root().join("openspec"))
+        let residue: Vec<String> = std::fs::read_dir(fx.root().join("speclink"))
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
             .filter(|n| n.ends_with(".tmp"))
             .collect();
         assert!(residue.is_empty(), "temp residue left behind: {residue:?}");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         assert!(
             text.contains("schema: spec-driven") && text.contains("tdd: true"),
             "content is the complete new document: {text}"
@@ -873,7 +896,7 @@ mod tests {
         let fx = FixtureRoot::new("wf-write-wt-block");
         fx.add_change("add-auth", "");
         let wt = fx.attach_worktree("add-auth");
-        let before = read(&fx.root().join("openspec/config.yaml"));
+        let before = read(&fx.root().join("speclink/config.yaml"));
 
         let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
             .expect_err("有活躍 worktree 時必須拒絕");
@@ -882,18 +905,32 @@ mod tests {
         assert!(err.contains("speclink/add-auth"), "須列分支: {err}");
         assert!(err.contains(wt.path().to_str().unwrap()), "須列路徑: {err}");
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
-        assert_eq!(read(&fx.root().join("openspec/config.yaml")), before, "檔案不得變動");
+        assert_eq!(read(&fx.root().join("speclink/config.yaml")), before, "檔案不得變動");
+    }
+
+    #[test]
+    fn toggling_worktree_on_a_legacy_layout_never_moves_the_spec_folder() {
+        // spec「技能足跡同步不遷移規格資料夾」Scenario「桌面切換 worktree 不遷移」：遷移只走
+        // 技能檔提示的「更新」（會暫停監看、說明改名）。
+        let fx = FixtureRoot::legacy("wf-write-wt-legacy");
+        fx.write(".speclink.yaml", "tools: [claude]\n");
+        fx.write("openspec/changes/demo/.openspec.yaml", "schema: spec-driven\n");
+        let fields = WorkflowPolicyFields { worktree: true, ..WorkflowPolicyFields::default() };
+        write_workflow_fields_at(fx.root(), &fields).expect("write ok");
+        assert!(fx.root().join("openspec/changes/demo/.openspec.yaml").is_file(), "openspec/ 原封不動");
+        assert!(!fx.root().join("speclink").exists());
+        for skill in ["speclink-apply-with-worktree", "speclink-worktree-merge"] {
+            assert!(fx.root().join(".claude/skills").join(skill).join("SKILL.md").is_file(), "{skill}");
+        }
     }
 
     #[test]
     fn write_turns_worktree_off_when_none_is_active() {
         // 無活躍 worktree（此 fixture 連 git repo 都不是）＝ fail-open，照常寫入。
         let fx = FixtureRoot::new("wf-write-wt-free");
-        // 桌面的設定寫入仍以 openspec/ 為準：明寫 spec_dir，免得技能同步把舊佈局搬走。
-        fx.write(".speclink.yaml", "spec_dir: openspec\n");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\nworktree: true\n");
         write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default()).expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         let parsed = WorkflowConfig::from_text(Some(&text)).expect("parse");
         assert_eq!(parsed.worktree, None, "關閉後鍵應被移除: {text}");
     }
@@ -903,7 +940,7 @@ mod tests {
         let fx = FixtureRoot::new("wf-write-fresh");
         let fields = WorkflowPolicyFields { locale: Some("tw".into()), ..Default::default() };
         write_workflow_fields_at(fx.root(), &fields).expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         let new: WorkflowConfig = serde_yaml::from_str(&text).expect("output parses");
         assert_eq!(new.locale.as_deref(), Some("tw"));
     }
@@ -913,12 +950,12 @@ mod tests {
         // spec Scenario「解析失敗的檔案拒絕寫入」＋「寫入驗證失敗檔案不變」的寫前面。
         let fx = FixtureRoot::new("wf-write-bad");
         let bad = "rules: [unclosed\n";
-        fx.write("openspec/config.yaml", bad);
+        fx.write("speclink/config.yaml", bad);
         let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
             .expect_err("must refuse");
         assert!(err.contains("config.yaml"), "must name the file: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
-        assert_eq!(read(&fx.root().join("openspec/config.yaml")), bad, "file must be untouched");
+        assert_eq!(read(&fx.root().join("speclink/config.yaml")), bad, "file must be untouched");
     }
 
     #[test]
@@ -926,8 +963,8 @@ mod tests {
         // 擋下寫入觸發寫檔階段失敗：Err 指明檔案與階段、內容逐字元不變。
         let fx = FixtureRoot::new("wf-write-ro");
         let doc = "locale: tw\n";
-        fx.write("openspec/config.yaml", doc);
-        let path = fx.root().join("openspec/config.yaml");
+        fx.write("speclink/config.yaml", doc);
+        let path = fx.root().join("speclink/config.yaml");
         block_writes(&path, true);
         let err = write_workflow_fields_at(fx.root(), &WorkflowPolicyFields::default())
             .expect_err("must fail");
@@ -943,7 +980,7 @@ mod tests {
         // spec Scenario「tools 變更後技能同步」：加選 codex 生成 .agents/skills/
         // 而無 AGENTS.md。從 init 過的 claude 專案出發。
         let fx = FixtureRoot::new("tools-write-add");
-        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        std::fs::remove_dir_all(fx.root().join("speclink")).unwrap();
         crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
         write_tools_at(fx.root(), &["claude".into(), "codex".into()]).expect("write ok");
         let app = read(&fx.root().join(".speclink.yaml"));
@@ -957,7 +994,7 @@ mod tests {
         // spec Scenario「加選與取消 copilot 後技能同步」：加選生成 .github/skills/，
         // 取消後 speclink- 目錄全數移除，.github/ 下其他檔案不動。
         let fx = FixtureRoot::new("tools-write-copilot");
-        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        std::fs::remove_dir_all(fx.root().join("speclink")).unwrap();
         crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
         let workflow = fx.root().join(".github").join("workflows").join("ci.yml");
         std::fs::create_dir_all(workflow.parent().unwrap()).unwrap();
@@ -984,7 +1021,7 @@ mod tests {
         // spec Scenario「tools 變更後技能同步」的遺留面（design D2）：同步時把舊版
         // 引擎注入的區塊剝掉，使用者自己的段落原樣保留。
         let fx = FixtureRoot::new("tools-write-strip");
-        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        std::fs::remove_dir_all(fx.root().join("speclink")).unwrap();
         crate::project::init_project_at(fx.root(), &["claude".into()]).expect("init ok");
         std::fs::write(
             fx.root().join("CLAUDE.md"),
@@ -1002,7 +1039,7 @@ mod tests {
     #[test]
     fn write_tools_prunes_deselected_tool_leftovers() {
         let fx = FixtureRoot::new("tools-write-prune");
-        std::fs::remove_dir_all(fx.root().join("openspec")).unwrap();
+        std::fs::remove_dir_all(fx.root().join("speclink")).unwrap();
         crate::project::init_project_at(fx.root(), &["claude".into(), "codex".into()])
             .expect("init ok");
         assert!(fx.root().join(".agents").join("skills").is_dir(), "precondition");
@@ -1097,8 +1134,8 @@ mod tests {
         // 來源層級欄位：內建之外，專案層與 user 層各自帶正確 source。
         let fx = FixtureRoot::new("schemas-layers");
         let ws = discovered(&fx);
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         fx.write(
             "userdir/schemas/their-flow/schema.yaml",
             &CUSTOM_SCHEMA_YAML.replace("my-flow", "their-flow"),
@@ -1130,9 +1167,9 @@ mod tests {
         // design D1：壞 schema 逐項標記錯誤，不拖垮整份快照。
         let fx = FixtureRoot::new("schemas-broken");
         let ws = discovered(&fx);
-        fx.write("openspec/schemas/bad-flow/schema.yaml", "artifacts: [unclosed\n");
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/schemas/bad-flow/schema.yaml", "artifacts: [unclosed\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         let snap = schemas_snapshot(Some(&ws), None);
         let bad = snap.iter().find(|s| s.name == "bad-flow").expect("broken entry listed");
         let msg = bad.error.as_deref().expect("error marked");
@@ -1176,8 +1213,8 @@ mod tests {
         //（開啟所在資料夾的把手），內建無磁碟檔案為 None。
         let fx = FixtureRoot::new("schemas-path");
         let ws = discovered(&fx);
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         fx.write(
             "userdir/schemas/their-flow/schema.yaml",
             &CUSTOM_SCHEMA_YAML.replace("my-flow", "their-flow"),
@@ -1189,7 +1226,7 @@ mod tests {
         let project = snap.iter().find(|s| s.name == "my-flow").expect("project entry");
         assert_eq!(
             project.path.as_deref(),
-            fx.root().join("openspec").join("schemas").join("my-flow").to_str(),
+            fx.root().join("speclink").join("schemas").join("my-flow").to_str(),
             "專案層帶目錄絕對路徑"
         );
         let user = snap.iter().find(|s| s.name == "their-flow").expect("user entry");
@@ -1265,9 +1302,9 @@ mod tests {
     fn local_snapshot_keeps_three_layer_resolution() {
         // design D3：限縮只作用於 remote 入口——local（workspace Some）三層不變。
         let fx = FixtureRoot::new("local-schema-layers");
-        fx.write("openspec/config.yaml", "schema: my-flow\n");
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/config.yaml", "schema: my-flow\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         assert_eq!(s.workflow.schema_artifacts, ["plan"], "專案層自訂 schema 照常解析");
         assert!(s.workflow.schema_known);
@@ -1280,12 +1317,12 @@ mod tests {
         // spec Scenario「切換寫入且其餘內容保留」：僅 schema 鍵行變動。
         let fx = FixtureRoot::new("schema-write");
         fx.write(
-            "openspec/config.yaml",
+            "speclink/config.yaml",
             "schema: spec-driven\n# 註解保留\nlocale: tw\n",
         );
         write_workflow_schema_at(fx.root(), "my-flow").expect("write ok");
         assert_eq!(
-            read(&fx.root().join("openspec/config.yaml")),
+            read(&fx.root().join("speclink/config.yaml")),
             "schema: my-flow\n# 註解保留\nlocale: tw\n"
         );
     }
@@ -1295,22 +1332,22 @@ mod tests {
         // spec Scenario「壞檔拒寫顯性失敗」：檔案一個位元組不變。
         let fx = FixtureRoot::new("schema-write-bad");
         let bad = "rules: [unclosed\n";
-        fx.write("openspec/config.yaml", bad);
+        fx.write("speclink/config.yaml", bad);
         let err = write_workflow_schema_at(fx.root(), "my-flow").expect_err("must refuse");
         assert!(!err.is_empty() && !err.contains('\n'), "single line: {err:?}");
-        assert_eq!(read(&fx.root().join("openspec/config.yaml")), bad, "file untouched");
+        assert_eq!(read(&fx.root().join("speclink/config.yaml")), bad, "file untouched");
     }
 
     #[test]
     fn fork_schema_copies_into_the_project_layer() {
-        // spec Scenario「fork 產出專案層複本」：openspec/schemas/spec-driven-custom/
+        // spec Scenario「fork 產出專案層複本」：speclink/schemas/spec-driven-custom/
         // 建立（schema.yaml 與 templates），快照清單反映新專案層項目。
         // 複本名固定為引擎預設 <source>-custom——UI 不收自訂名（review R2：
         // 生產路徑恆為預設，砍掉未被要求的參數）。
         let fx = FixtureRoot::new("schema-fork");
         let name = fork_schema_at(fx.root(), "spec-driven").expect("fork ok");
         assert_eq!(name, "spec-driven-custom");
-        let dir = fx.root().join("openspec/schemas/spec-driven-custom");
+        let dir = fx.root().join("speclink/schemas/spec-driven-custom");
         assert!(dir.join("schema.yaml").is_file());
         assert!(dir.join("templates").is_dir());
         let snap = read_schemas_at(fx.root()).expect("read ok");
@@ -1326,7 +1363,7 @@ mod tests {
         // spec Example「建立輸入與結果」row 1：my-flow → 骨架建立、清單新增專案層項目。
         let fx = FixtureRoot::new("schema-init");
         init_schema_at(fx.root(), "my-flow").expect("init ok");
-        let dir = fx.root().join("openspec/schemas/my-flow");
+        let dir = fx.root().join("speclink/schemas/my-flow");
         assert!(dir.join("schema.yaml").is_file());
         assert!(dir.join("templates").is_dir());
         let snap = read_schemas_at(fx.root()).expect("read ok");
@@ -1342,7 +1379,7 @@ mod tests {
         let fx = FixtureRoot::new("schema-init-badname");
         let err = init_schema_at(fx.root(), "My Flow").expect_err("must refuse");
         assert!(err.contains("kebab-case"), "engine message surfaced: {err}");
-        assert!(!fx.root().join("openspec/schemas").exists(), "磁碟不變");
+        assert!(!fx.root().join("speclink/schemas").exists(), "磁碟不變");
     }
 
     #[test]
@@ -1350,11 +1387,11 @@ mod tests {
         // spec Example「建立輸入與結果」row 3：同名再建拒絕、既有骨架不變。
         let fx = FixtureRoot::new("schema-init-dup");
         init_schema_at(fx.root(), "my-flow").expect("first init ok");
-        let before = read(&fx.root().join("openspec/schemas/my-flow/schema.yaml"));
+        let before = read(&fx.root().join("speclink/schemas/my-flow/schema.yaml"));
         let err = init_schema_at(fx.root(), "my-flow").expect_err("must refuse");
         assert!(err.contains("already exists"), "engine message surfaced: {err}");
         assert_eq!(
-            read(&fx.root().join("openspec/schemas/my-flow/schema.yaml")),
+            read(&fx.root().join("speclink/schemas/my-flow/schema.yaml")),
             before,
             "既有骨架不得被覆寫"
         );
@@ -1366,11 +1403,11 @@ mod tests {
     fn delete_schema_removes_a_project_layer_schema_and_the_snapshot_reflects_it() {
         // spec Scenario「刪除經確認後移除專案層目錄」的 core 面。
         let fx = FixtureRoot::new("schema-delete");
-        fx.write("openspec/config.yaml", "schema: spec-driven\n");
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         delete_schema_at(fx.root(), "my-flow").expect("delete ok");
-        assert!(!fx.root().join("openspec/schemas/my-flow").exists(), "整個目錄移除");
+        assert!(!fx.root().join("speclink/schemas/my-flow").exists(), "整個目錄移除");
         let snap = read_schemas_at(fx.root()).expect("read ok");
         assert!(snap.iter().all(|s| s.name != "my-flow"), "清單不再列出");
     }
@@ -1379,18 +1416,18 @@ mod tests {
     fn delete_schema_refuses_the_active_schema_and_leaves_it_intact() {
         // spec Scenario「使用中的 schema 拒刪」：錯誤浮出、目錄原封不動。
         let fx = FixtureRoot::new("schema-delete-active");
-        fx.write("openspec/config.yaml", "schema: my-flow\n");
-        fx.write("openspec/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
-        fx.write("openspec/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
+        fx.write("speclink/config.yaml", "schema: my-flow\n");
+        fx.write("speclink/schemas/my-flow/schema.yaml", CUSTOM_SCHEMA_YAML);
+        fx.write("speclink/schemas/my-flow/templates/plan.md", "# 計畫模板\n");
         let err = delete_schema_at(fx.root(), "my-flow").expect_err("must refuse");
         assert!(!err.is_empty() && !err.contains('\n'), "single line: {err:?}");
-        assert!(fx.root().join("openspec/schemas/my-flow/schema.yaml").is_file(), "目錄不變");
+        assert!(fx.root().join("speclink/schemas/my-flow/schema.yaml").is_file(), "目錄不變");
     }
 
     #[test]
     fn delete_schema_refuses_a_missing_directory() {
         let fx = FixtureRoot::new("schema-delete-missing");
-        fx.write("openspec/config.yaml", "schema: spec-driven\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\n");
         assert!(delete_schema_at(fx.root(), "no-such-flow").is_err());
     }
 
@@ -1408,7 +1445,7 @@ mod tests {
         // review S7：name 不經 kebab-case 驗證時 `..` 可讓 remove_dir_all 逃出
         // 專案目錄——與 init／fork 同一道名稱門。
         let fx = FixtureRoot::new("schema-delete-badname");
-        fx.write("openspec/config.yaml", "schema: spec-driven\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\n");
         fx.write("outside/schema.yaml", "decoy\n");
         let err = delete_schema_at(fx.root(), "../../outside").expect_err("must refuse");
         assert!(err.contains("kebab-case"), "name gate surfaced: {err}");
@@ -1435,7 +1472,7 @@ mod tests {
     fn read_settings_includes_context_rules_and_schema_artifacts() {
         let fx = FixtureRoot::new("settings-content");
         fx.write(
-            "openspec/config.yaml",
+            "speclink/config.yaml",
             "schema: spec-driven\ncontext: |\n  第一行\n  第二行\nrules:\n  tasks:\n    - 先寫失敗測試\n    - 更新文件\n  proposal:\n    - 提案必須列出影響的 crates\n",
         );
         let s = read_settings_at(fx.root()).expect("read ok");
@@ -1471,7 +1508,7 @@ mod tests {
     fn read_settings_parse_error_empties_content_fields() {
         // 解析失敗浮出 parseError；內容欄位不得以猜測值呈現（表單將整份停用）。
         let fx = FixtureRoot::new("settings-content-bad");
-        fx.write("openspec/config.yaml", "rules: [unclosed\n");
+        fx.write("speclink/config.yaml", "rules: [unclosed\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         assert!(s.workflow.parse_error.is_some());
         assert_eq!(s.workflow.context, None);
@@ -1486,14 +1523,14 @@ mod tests {
         // spec Scenario「編輯專案說明並儲存」＋政策欄位不受內容寫入波及。
         let fx = FixtureRoot::new("wf-content-write");
         let doc = "schema: spec-driven\nlocale: tw\ntdd: true\nrules:\n  proposal:\n    - 舊規則\n";
-        fx.write("openspec/config.yaml", doc);
+        fx.write("speclink/config.yaml", doc);
         let rules = sections(&[("proposal", &["舊規則"]), ("tasks", &["@完成後執行全部測試"])]);
         write_workflow_content_at(
             fx.root(),
             &ContentEdit { context: ContextEdit::Set("新的專案說明\n跨兩行\n".into()), rules: Some(&rules), ..Default::default() },
         )
         .expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         let new: WorkflowConfig = serde_yaml::from_str(&text).expect("output parses");
         assert_eq!(new.context.as_deref(), Some("新的專案說明\n跨兩行\n"));
         assert_eq!(
@@ -1511,12 +1548,12 @@ mod tests {
         // spec Scenario「清空即移除鍵」。
         let fx = FixtureRoot::new("wf-content-clear");
         fx.write(
-            "openspec/config.yaml",
+            "speclink/config.yaml",
             "schema: spec-driven\ncontext: 舊說明\nrules:\n  tasks:\n    - t1\n",
         );
         write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("   ".into()), rules: Some(&sections(&[("tasks", &[])])), ..Default::default() })
             .expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         let m: serde_yaml::Mapping = serde_yaml::from_str(&text).expect("mapping");
         assert!(!m.contains_key("context"), "blank context removes the key: {text}");
         assert!(!m.contains_key("rules"), "all-empty rules removes the key: {text}");
@@ -1527,20 +1564,20 @@ mod tests {
     fn write_workflow_content_refuses_unparseable_original_and_leaves_file_intact() {
         let fx = FixtureRoot::new("wf-content-bad");
         let bad = "rules: [unclosed\n";
-        fx.write("openspec/config.yaml", bad);
+        fx.write("speclink/config.yaml", bad);
         let err = write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("x".into()), ..Default::default() })
             .expect_err("must refuse");
         assert!(err.contains("config.yaml"), "must name the file: {err}");
         assert!(!err.contains('\n'), "single line: {err:?}");
-        assert_eq!(read(&fx.root().join("openspec/config.yaml")), bad, "file must be untouched");
+        assert_eq!(read(&fx.root().join("speclink/config.yaml")), bad, "file must be untouched");
     }
 
     #[test]
     fn write_workflow_content_surfaces_write_failure_with_file_and_stage() {
         let fx = FixtureRoot::new("wf-content-ro");
         let doc = "context: old\n";
-        fx.write("openspec/config.yaml", doc);
-        let path = fx.root().join("openspec/config.yaml");
+        fx.write("speclink/config.yaml", doc);
+        let path = fx.root().join("speclink/config.yaml");
         block_writes(&path, true);
         let err = write_workflow_content_at(fx.root(), &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() })
             .expect_err("must fail");
@@ -1567,7 +1604,7 @@ mod tests {
     #[test]
     fn read_settings_carries_review_and_the_engine_smell_names() {
         let fx = FixtureRoot::new("settings-review");
-        fx.write("openspec/config.yaml", "review:\n  baseline: replace\n  critical:\n    - 不得寫死金鑰\n");
+        fx.write("speclink/config.yaml", "review:\n  baseline: replace\n  critical:\n    - 不得寫死金鑰\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         assert_eq!(s.workflow.review, review_of(ReviewBaseline::Replace, [&["不得寫死金鑰"], &[], &[]]));
         assert_eq!(s.workflow.review_baseline_smells, speclink_core::skills::REVIEW_BASELINE_SMELLS);
@@ -1589,7 +1626,7 @@ mod tests {
     fn read_settings_review_typo_surfaces_a_parse_error_naming_the_key() {
         // spec Scenario「解析失敗時停用編輯」：解析說明含 critcal。
         let fx = FixtureRoot::new("settings-review-typo");
-        fx.write("openspec/config.yaml", "review:\n  critcal:\n    - x\n");
+        fx.write("speclink/config.yaml", "review:\n  critcal:\n    - x\n");
         let s = read_settings_at(fx.root()).expect("read ok");
         let msg = s.workflow.parse_error.expect("parse error surfaced");
         assert!(msg.contains("critcal") && !msg.contains('\n'), "single line naming the key: {msg:?}");
@@ -1601,10 +1638,10 @@ mod tests {
         // spec Scenario「編輯並儲存僅寫 review」：context、rules 與政策欄位逐字元不變。
         let fx = FixtureRoot::new("wf-review-write");
         let prefix = "schema: spec-driven\nlocale: tw\ntdd: true\ncontext: |\n  說明\nrules:\n  tasks:\n    - t1\n";
-        fx.write("openspec/config.yaml", &format!("{prefix}review:\n  warning:\n    - 舊規則\n"));
+        fx.write("speclink/config.yaml", &format!("{prefix}review:\n  warning:\n    - 舊規則\n"));
         let want = review_of(ReviewBaseline::Extend, [&[], &["舊規則", "新增的公開 API 要有對應的測試"], &[]]);
         write_workflow_content_at(fx.root(), &ContentEdit { review: Some(&want), ..Default::default() }).expect("write ok");
-        let text = read(&fx.root().join("openspec/config.yaml"));
+        let text = read(&fx.root().join("speclink/config.yaml"));
         assert!(text.starts_with(prefix), "everything outside review is byte-identical: {text}");
         let cfg = WorkflowConfig::from_text(Some(&text)).expect("output parses");
         assert_eq!(cfg.review(), want);
@@ -1628,9 +1665,9 @@ mod tests {
         ];
         for (i, (before, want, block)) in rows.into_iter().enumerate() {
             let fx = FixtureRoot::new(&format!("wf-review-remove-{i}"));
-            fx.write("openspec/config.yaml", &format!("schema: spec-driven\n{before}"));
+            fx.write("speclink/config.yaml", &format!("schema: spec-driven\n{before}"));
             write_workflow_content_at(fx.root(), &ContentEdit { review: Some(&want), ..Default::default() }).expect("write ok");
-            let text = read(&fx.root().join("openspec/config.yaml"));
+            let text = read(&fx.root().join("speclink/config.yaml"));
             match block {
                 Some(block) => assert_eq!(text, format!("schema: spec-driven\n{block}"), "row {i}"),
                 None => assert_eq!(text, "schema: spec-driven\n", "row {i}: review key removed"),

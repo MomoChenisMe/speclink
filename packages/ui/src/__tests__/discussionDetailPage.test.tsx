@@ -817,11 +817,27 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
     expect(document.querySelector("[data-relation-related]")).toBeNull();
   });
 
+  it("記錄路徑依資料來源的規格資料夾組成（spec Scenario「討論詳情的記錄路徑」）", async () => {
+    const r = render(
+      <DiscussionDetailPage
+        {...(makeProps({ discussion: { ...promotedD, slug: "board-search-bar" }, specDir: "speclink" }) as never)}
+      />,
+    );
+    await screen.findByRole("tab", { name: /背景/ });
+    const provenance = () => document.querySelector("[data-doc-header] [data-doc-provenance]")?.textContent;
+    expect(provenance()).toContain("speclink/discussions/board-search-bar.md");
+    r.unmount();
+    render(<DiscussionDetailPage {...(makeProps({ discussion: promotedD, specDir: "openspec" }) as never)} />);
+    await screen.findByRole("tab", { name: /背景/ });
+    expect(provenance()).toContain("openspec/discussions/alpha-search.md");
+  });
+
   it("閱讀卡出處行依文件切換", async () => {
     render(<DiscussionDetailPage {...(makeProps({ discussion: promotedD }) as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     const provenance = () => document.querySelector("[data-doc-header] [data-doc-provenance]")?.textContent;
-    expect(provenance()).toBe("openspec/discussions/alpha-search.md·1 輪之後寫入");
+    // 資料來源沒帶規格資料夾時以預設 speclink 組成。
+    expect(provenance()).toBe("speclink/discussions/alpha-search.md·1 輪之後寫入");
     fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
     expect(provenance()).toBe("2026-07-01·assumptions 1 輪");
     fireEvent.mouseDown(screen.getByRole("tab", { name: /背景/ }));

@@ -22,9 +22,10 @@ function render(ui: ReactElement) {
   return rtlRender(ui, { wrapper: zhWrapper });
 }
 
-const STALE: AssetPromptState = { kind: "stale", fileCount: 3, version: "v1.3.0", projectVersion: "v0.9.0" };
-const MISSING: AssetPromptState = { kind: "missing", fileCount: 12, version: "v1.3.0", projectVersion: null };
-const NEWER: AssetPromptState = { kind: "newer", fileCount: 2, version: "v1.3.0", projectVersion: "v1.4.0" };
+const NONE = { state: "none" } as const;
+const STALE: AssetPromptState = { kind: "stale", fileCount: 3, version: "v1.3.0", projectVersion: "v0.9.0", migration: NONE };
+const MISSING: AssetPromptState = { kind: "missing", fileCount: 12, version: "v1.3.0", projectVersion: null, migration: NONE };
+const NEWER: AssetPromptState = { kind: "newer", fileCount: 2, version: "v1.3.0", projectVersion: "v1.4.0", migration: NONE };
 
 const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
 
@@ -69,6 +70,8 @@ function dialogProps(over: Partial<AssetNoticeDialogProps> = {}): AssetNoticeDia
     onApply: vi.fn(),
     onDismiss: vi.fn(),
     onOpenSettingsUpdate: vi.fn(),
+    migrated: null,
+    onDone: vi.fn(),
     ...over,
   };
 }
@@ -192,5 +195,123 @@ describe("AssetNoticeDialog", () => {
   it("無提示時不渲染框", () => {
     render(<AssetNoticeDialog {...dialogProps({ prompt: null })} />);
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+// --- 技能檔提示承載規格資料夾遷移（desktop-app spec「技能檔提示承載規格資料夾遷移」；
+// desktop-spec-dir-migration design D2） ---
+
+const PENDING = { state: "pending", folder: "openspec", metaFiles: 4 } as const;
+const DEFERRED = {
+  state: "deferred",
+  folder: "openspec",
+  reason: "otherWorktrees",
+  worktrees: ["/work/side"],
+} as const;
+const MIGRATE: AssetPromptState = {
+  kind: "migrate",
+  fileCount: 0,
+  version: "v1.3.0",
+  projectVersion: "v1.3.0",
+  migration: PENDING,
+};
+
+describe("AssetNoticeCard：規格資料夾遷移", () => {
+  it("技能檔不過期但待遷移：卡片照樣出現，寫明資料夾會改名", () => {
+    render(<AssetNoticeCard prompt={MIGRATE} onOpen={vi.fn()} />);
+    const card = screen.getByTestId("asset-notice-card");
+    expect(card.getAttribute("aria-label")).toBe("規格資料夾要改名");
+    expect(card.textContent).toContain("openspec/ 會改名為 speclink/");
+  });
+
+  it("只剩舊檔名的資料檔：卡片寫檔案數", () => {
+    render(
+      <AssetNoticeCard
+        prompt={{ ...MIGRATE, migration: { state: "pending", folder: "speclink", metaFiles: 2 } }}
+        onOpen={vi.fn()}
+      />,
+    );
+    expect(screen.getByTestId("asset-notice-card").textContent).toContain("2 個變更資料檔要改名");
+  });
+
+});
+
+describe("AssetNoticeDialog：規格資料夾遷移", () => {
+  const migration = () => screen.getByTestId("asset-notice-migration").textContent ?? "";
+
+  it("待遷移：按下前寫明 openspec/ 會改名為 speclink/、資料檔數與不會 commit", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: { ...STALE, migration: PENDING } })} />);
+    expect(migration()).toContain("openspec/ 會改名為 speclink/");
+    expect(migration()).toContain("4 個變更資料檔會從 .openspec.yaml 改名為 .meta.yaml");
+    expect(migration()).toContain("不會幫你 commit");
+  });
+
+  it("暫緩：列出原因與 worktree 路徑，說明按更新只更新技能檔", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: { ...STALE, migration: DEFERRED } })} />);
+    expect(migration()).toContain("/work/side");
+    expect(migration()).toContain("只更新技能檔，資料夾不動");
+    expect(migration()).not.toContain("會改名為 speclink/");
+  });
+
+  it.each([
+    ["linkedWorktree", "請在主目錄開啟這個專案"],
+    ["uncommitted", "openspec/ 有還沒 commit 的修改"],
+    ["symlinkedFolder", "符號連結"],
+    ["specFolderTaken", "已被其他檔案或資料夾使用"],
+  ] as const)("暫緩原因 %s 有自己的說明", (reason, text) => {
+    render(
+      <AssetNoticeDialog
+        {...dialogProps({ prompt: { ...STALE, migration: { ...DEFERRED, reason, worktrees: [] } } })}
+      />,
+    );
+    expect(migration()).toContain(text);
+  });
+
+  it("沒有遷移時不顯示遷移段落", () => {
+    render(<AssetNoticeDialog {...dialogProps()} />);
+    expect(screen.queryByTestId("asset-notice-migration")).toBeNull();
+  });
+
+  it("技能檔不過期但待遷移：不顯示版本列，按鈕為稍後、保留現狀、更新規格資料夾", () => {
+    const p = dialogProps({ prompt: MIGRATE });
+    render(<AssetNoticeDialog {...p} />);
+    expect(screen.getByRole("alertdialog").textContent).toContain("這個專案的規格資料夾要改名");
+    expect(screen.queryByTestId("asset-notice-rows")).toBeNull();
+    const footer = screen.getByTestId("asset-notice-actions");
+    expect(within(footer).getAllByRole("button").map((b) => b.textContent)).toEqual([
+      "稍後",
+      "保留現狀",
+      "更新規格資料夾",
+    ]);
+    fireEvent.click(button("更新規格資料夾"));
+    expect(p.onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("更新進行中按 Esc 不關框：完成態與錯誤都要留在框內", () => {
+    const p = dialogProps({ prompt: { ...STALE, migration: PENDING }, busy: true });
+    render(<AssetNoticeDialog {...p} />);
+    fireEvent.keyDown(screen.getByRole("alertdialog"), { key: "Escape" });
+    expect(p.onOpenChange).not.toHaveBeenCalled();
+  });
+
+  it("完成：顯示要 commit 的路徑與兩則提醒；提示已消失也照樣顯示", () => {
+    const p = dialogProps({ prompt: null, migrated: { movedFolder: true, renamed: 4 } });
+    render(<AssetNoticeDialog {...p} />);
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("規格資料夾已改名");
+    expect(dialog.textContent).toContain("4 個變更資料檔已改名為 .meta.yaml");
+    expect(dialog.textContent).toContain("speclink/（新增）與 openspec/（刪除）");
+    expect(dialog.textContent).toContain("團隊成員要先升級 Speclink 再 pull");
+    expect(dialog.textContent).toContain("腳本、CI 設定與 .gitignore");
+    fireEvent.click(button("知道了"));
+    expect(p.onDone).toHaveBeenCalledTimes(1);
+  });
+
+  it("完成（只改名舊檔名的資料檔）：只提醒 commit 改名的資料檔", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: null, migrated: { movedFolder: false, renamed: 2 } })} />);
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("speclink/ 裡 2 個變更資料檔已改名為 .meta.yaml");
+    expect(dialog.textContent).not.toContain("openspec/（刪除）");
+    expect(dialog.textContent).not.toContain("團隊成員");
   });
 });

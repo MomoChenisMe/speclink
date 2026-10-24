@@ -93,6 +93,21 @@ fn init_app_config_template_links_the_real_repository() {
 }
 
 #[test]
+fn init_over_a_speclink_entry_that_is_no_spec_folder_names_it() {
+    // 同名的 speclink 不是規格資料夾（例如同名的 repo clone）：說清楚原因、零寫入，
+    // 不回誤導的「Already initialized」。
+    let root = TempRoot::new("init-speclink-taken");
+    root.write("speclink/src/main.rs", "fn main() {}\n");
+    let before = snapshot(&root);
+    let Err(err) = init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR) else {
+        panic!("init must refuse");
+    };
+    let err = err.to_string();
+    assert!(err.contains("speclink") && err.contains("not a spec folder"), "{err}");
+    assert_eq!(snapshot(&root), before, "零寫入");
+}
+
+#[test]
 fn init_with_tools_records_selection_without_policy_keys() {
     let root = TempRoot::new("app-tools");
     init(&root.dir, &[Tool::Claude, Tool::Codex], false, "openspec").unwrap();
@@ -314,8 +329,9 @@ fn reconcile_in_remote_mode_writes_no_instruction_file_and_no_spec_tree() {
 }
 
 // --- adopt：工作區補齊入口 ---
-// Spec requirement:「工作區補齊入口」（desktop-enable-speclink-prompt）——
-// 冪等補骨架缺件、寫 tools、生成受管檔，既有 openspec/ 內容零觸碰。
+// Spec requirement:「工作區補齊入口」（desktop-enable-speclink-prompt；desktop-spec-dir-migration
+// D3）——OpenSpec 專案先以 init 匯入的同一套程式改名為 speclink/，再冪等補骨架缺件、寫 tools、
+// 生成受管檔；既有規格文件內容不被改寫。
 
 const CUSTOM_WORKFLOW_CONFIG: &str =
     "schema: spec-driven\nlocale: tw\nrules:\n  proposal:\n    - 保持提案精簡\n";
@@ -325,33 +341,43 @@ const CUSTOM_WORKFLOW_CONFIG: &str =
 fn seed_unadopted(root: &TempRoot) {
     root.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格文件。\n");
     root.write("openspec/changes/add-auth/proposal.md", "## Why\n既有變更。\n");
+    root.write("openspec/changes/add-auth/.openspec.yaml", "schema: spec-driven\ncreated: 2026-10-01\n");
     root.write("openspec/discussions/auth-scope.md", "# Discussion\n既有討論。\n");
     root.write("openspec/config.yaml", CUSTOM_WORKFLOW_CONFIG);
 }
 
-/// Spec Scenario「補齊工作區檔且既有內容零觸碰」：工作區檔補齊，
-/// 既有 openspec/ 文件（含自訂 config.yaml）位元級不變。
+/// 目錄快照去掉 `.git/`：git status 會刷新 index，零寫入斷言只看專案檔。
+fn project_snapshot(root: &TempRoot) -> Vec<(String, Vec<u8>)> {
+    snapshot(root).into_iter().filter(|(rel, _)| !rel.starts_with(".git/")).collect()
+}
+
+/// Spec Scenario「匯入後既有內容位元級不變」：openspec/ 改名為 speclink/、資料檔改名為
+/// .meta.yaml，內容逐位元組不變；.speclink.yaml 記錄 tools、不寫 spec_dir。
 #[test]
-fn adopt_fills_workspace_files_with_existing_content_untouched() {
-    let root = TempRoot::new("adopt-fill");
+fn adopt_imports_an_openspec_project_byte_for_byte() {
+    let root = TempRoot::new("adopt-import");
     seed_unadopted(&root);
-    let before = snapshot(&root);
+    commit_all(&root);
+    let before = project_snapshot(&root);
 
     adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
 
+    assert!(!root.exists("openspec"), "openspec/ 必須已改名");
+    let after = project_snapshot(&root);
+    for (rel, bytes) in before.iter().filter(|(rel, _)| rel.starts_with("openspec/") && !rel.ends_with('/')) {
+        let moved = rel.replacen("openspec/", "speclink/", 1).replace(".openspec.yaml", ".meta.yaml");
+        let found = after.iter().find(|(r, _)| *r == moved).map(|(_, b)| b);
+        assert_eq!(found, Some(bytes), "{rel} 必須位元級搬到 {moved}");
+    }
+    assert!(!root.exists("speclink/changes/add-auth/.openspec.yaml"));
     let app = root.read(".speclink.yaml");
     assert!(app.contains("claude"), "tools 須記錄 claude：{app}");
+    assert!(!app.lines().any(|l| l.trim_start().starts_with("spec_dir")), "不得寫入 spec_dir：{app}");
     assert!(!root.exists("CLAUDE.md"), "工作區補齊不得產生指令檔");
     assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"));
-
-    let after = snapshot(&root);
-    for entry in before.iter().filter(|(rel, _)| !rel.ends_with('/')) {
-        assert!(after.contains(entry), "既有文件必須位元級不變：{}", entry.0);
-    }
-    assert_eq!(root.read("openspec/config.yaml"), CUSTOM_WORKFLOW_CONFIG);
 }
 
-/// Spec Scenario「骨架缺件補齊」：缺 specs/ 與 config.yaml 時補齊目錄與範本。
+/// Spec Scenario「骨架缺件補齊」：缺 specs/ 與 config.yaml 時，匯入後在 speclink/ 補齊目錄與範本。
 #[test]
 fn adopt_backfills_missing_skeleton() {
     let root = TempRoot::new("adopt-skeleton");
@@ -359,9 +385,33 @@ fn adopt_backfills_missing_skeleton() {
 
     adopt(&root.dir, &[Tool::Claude]).expect("adopt succeeds");
 
-    assert!(root.at("openspec/specs").is_dir());
-    assert!(root.at("openspec/changes/archive").is_dir());
-    assert_eq!(root.read("openspec/config.yaml"), WORKFLOW_CONFIG_TEMPLATE);
+    assert!(!root.exists("openspec"));
+    assert!(root.at("speclink/specs").is_dir());
+    assert!(root.at("speclink/changes/archive").is_dir());
+    assert_eq!(root.read("speclink/config.yaml"), WORKFLOW_CONFIG_TEMPLATE);
+}
+
+/// Spec Scenario「有未提交修改時拒絕匯入」：單行錯誤、零寫入；另有 worktree 時同樣拒絕。
+#[test]
+fn adopt_refuses_an_unsafe_import_with_zero_writes() {
+    let root = TempRoot::new("adopt-dirty");
+    seed_unadopted(&root);
+    commit_all(&root);
+    root.write("openspec/changes/add-auth/proposal.md", "## Why\n改到一半。\n");
+    let before = project_snapshot(&root);
+
+    let err = adopt(&root.dir, &[Tool::Claude]).expect_err("未提交修改必須拒絕").to_string();
+    assert!(err.contains("openspec/ has uncommitted changes"), "{err}");
+    assert_eq!(err.lines().count(), 1, "錯誤須為單行：{err}");
+    assert_eq!(project_snapshot(&root), before, "拒絕不得留下任何寫入");
+
+    let clean = TempRoot::new("adopt-worktree");
+    seed_unadopted(&clean);
+    commit_all(&clean);
+    git(&clean, &["worktree", "add", "-q", clean.at("wt").to_str().unwrap(), "-b", "side"]);
+    let err = adopt(&clean.dir, &[Tool::Claude]).expect_err("另有 worktree 必須拒絕").to_string();
+    assert!(err.contains("other worktrees"), "{err}");
+    assert!(clean.exists("openspec") && !clean.exists("speclink") && !clean.exists(".speclink.yaml"));
 }
 
 /// adopt 依實際的規格資料夾補骨架：只有 `speclink/` 的專案不得另建 `openspec/`。
@@ -1287,6 +1337,151 @@ fn probe_with_an_empty_tools_list_reports_current_and_writes_nothing() {
     assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
     assert!(probe.tools.is_empty());
     assert_eq!(snapshot(&root), before, "探測不得寫入任何檔案");
+}
+
+// --- 探測回報遷移狀態（desktop-spec-dir-migration D1；需求「技能檔提示承載規格資料夾遷移」）---
+
+fn git(root: &TempRoot, args: &[&str]) {
+    let ok = std::process::Command::new("git")
+        .arg("-C")
+        .arg(&root.dir)
+        .args(["-c", "user.name=T", "-c", "user.email=t@example.com"])
+        .args(args)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    assert!(ok, "git {args:?} failed");
+}
+
+fn commit_all(root: &TempRoot) {
+    git(root, &["init", "-q"]);
+    git(root, &["add", "-A"]);
+    git(root, &["commit", "-qm", "init"]);
+}
+
+/// 舊佈局專案：`.speclink.yaml` 沒有 spec_dir、規格在 openspec/，兩個變更資料檔
+///（一個作用中、一個已封存），技能檔為現版。
+fn legacy_workspace(tag: &str) -> TempRoot {
+    let root = TempRoot::new(tag);
+    init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
+    root.write(".speclink.yaml", "tools: [claude]\n");
+    root.write("openspec/changes/demo/.openspec.yaml", "schema: spec-driven\n");
+    root.write("openspec/changes/archive/2026-01-01-done/.openspec.yaml", "schema: spec-driven\n");
+    root
+}
+
+fn pending(meta_files: usize) -> crate::migrate::MigrationProbe {
+    crate::migrate::MigrationProbe::Pending { folder: crate::migrate::SpecFolder::Openspec, meta_files }
+}
+
+fn deferred(reason: crate::migrate::DeferCode, worktrees: Vec<String>) -> crate::migrate::MigrationProbe {
+    crate::migrate::MigrationProbe::Deferred { folder: crate::migrate::SpecFolder::Openspec, reason, worktrees }
+}
+
+#[test]
+fn probe_reports_a_pending_migration_even_when_the_skills_are_current() {
+    // Scenario「技能檔不過期也提示遷移」：技能檔是現版，遷移狀態照樣回報。
+    let root = legacy_workspace("probe-migration-pending");
+    commit_all(&root);
+    let before = project_snapshot(&root);
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
+    assert_eq!(probe.migration, pending(2), "{probe:?}");
+    // Scenario「app 升版不在背景遷移」：探測只讀，openspec/ 原封不動。
+    assert_eq!(project_snapshot(&root), before, "探測不得移動或寫入任何檔案");
+    assert!(root.exists("openspec/changes/demo/.openspec.yaml"));
+}
+
+#[test]
+fn probe_reports_the_migration_beside_stale_skills() {
+    let root = legacy_workspace("probe-migration-stale");
+    set_skill_version(&root, Tool::Claude, "v0.9.0");
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
+    assert_eq!(probe.migration, pending(2), "{probe:?}");
+}
+
+#[test]
+fn probe_defers_the_migration_while_other_worktrees_exist() {
+    // Scenario「暫緩時只更新技能檔」：主目錄看到其他 worktree 的路徑；
+    // linked worktree 本身回報 linkedWorktree。
+    let root = legacy_workspace("probe-migration-worktrees");
+    commit_all(&root);
+    let wt = root.at("wt");
+    git(&root, &["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "side"]);
+    let listed: Vec<String> =
+        crate::testkit::listed_worktrees(&root.dir).iter().map(|p| p.display().to_string()).collect();
+    assert_eq!(listed.len(), 1);
+
+    assert_eq!(probe_assets(&root.dir).migration, deferred(crate::migrate::DeferCode::OtherWorktrees, listed));
+    assert_eq!(probe_assets(&wt).migration, deferred(crate::migrate::DeferCode::LinkedWorktree, Vec::new()));
+}
+
+#[test]
+fn probe_defers_the_migration_while_openspec_has_uncommitted_changes() {
+    let root = legacy_workspace("probe-migration-dirty");
+    commit_all(&root);
+    root.write("openspec/changes/demo/tasks.md", "- [ ] 1.1 x\n");
+
+    assert_eq!(probe_assets(&root.dir).migration, deferred(crate::migrate::DeferCode::Uncommitted, Vec::new()));
+}
+
+#[test]
+fn probe_reports_no_migration_for_the_new_layout_an_explicit_spec_dir_or_remote_mode() {
+    let fresh = TempRoot::new("probe-migration-new-layout");
+    init(&fresh.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    assert_eq!(probe_assets(&fresh.dir).migration, crate::migrate::MigrationProbe::None, "new layout");
+
+    // init 以非預設資料夾初始化會寫入 `spec_dir: openspec`。
+    let explicit = TempRoot::new("probe-migration-explicit");
+    init(&explicit.dir, &[Tool::Claude], false, "openspec").unwrap();
+    explicit.write("openspec/changes/demo/.openspec.yaml", "schema: spec-driven\n");
+    assert_eq!(probe_assets(&explicit.dir).migration, crate::migrate::MigrationProbe::None, "explicit spec_dir");
+
+    let remote = TempRoot::new("probe-migration-remote");
+    seed_remote_workspace(&remote, &[Tool::Claude]);
+    remote.write("openspec/changes/demo/.openspec.yaml", "schema: spec-driven\n");
+    assert_eq!(probe_assets(&remote.dir).migration, crate::migrate::MigrationProbe::None, "remote");
+}
+
+#[test]
+fn sync_skills_regenerates_without_moving_the_spec_folder() {
+    // spec「技能足跡同步不遷移規格資料夾」（desktop-spec-dir-migration D6）：worktree 政策
+    // 切換的技能同步不遷移；降級守門照舊。
+    let root = legacy_workspace("sync-skills-no-migration");
+    commit_all(&root);
+    std::fs::remove_dir_all(root.at(".claude/skills/speclink-propose")).unwrap();
+
+    let outcome = sync_skills(&root.dir).expect("sync succeeds");
+    assert_eq!(outcome.migration, crate::migrate::MigrationPlan::Nothing);
+    assert!(root.exists("openspec/changes/demo/.openspec.yaml"), "openspec/ 原封不動");
+    assert!(!root.exists("speclink"));
+    assert!(root.exists(".claude/skills/speclink-propose/SKILL.md"), "技能檔照常再生");
+
+    set_skill_version(&root, Tool::Claude, &ahead_of_current());
+    assert!(sync_skills(&root.dir).is_err(), "工作區領先引擎時照樣拒絕");
+}
+
+#[test]
+fn probe_serializes_the_migration_in_camel_case() {
+    let root = legacy_workspace("probe-migration-json");
+    let value = serde_json::to_value(probe_assets(&root.dir)).unwrap();
+    assert_eq!(
+        value["migration"],
+        serde_json::json!({ "state": "pending", "folder": "openspec", "metaFiles": 2 })
+    );
+
+    let value = serde_json::to_value(deferred(crate::migrate::DeferCode::OtherWorktrees, vec!["/w".into()])).unwrap();
+    assert_eq!(
+        value,
+        serde_json::json!({ "state": "deferred", "folder": "openspec", "reason": "otherWorktrees", "worktrees": ["/w"] })
+    );
+    assert_eq!(
+        serde_json::to_value(crate::migrate::MigrationProbe::None).unwrap(),
+        serde_json::json!({ "state": "none" })
+    );
 }
 
 // --- worktree 政策閘：生成集合隨 openspec/config.yaml 的 worktree 檔值 ---

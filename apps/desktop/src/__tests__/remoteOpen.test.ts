@@ -433,7 +433,7 @@ describe("remote marker probe 分流", () => {
       adoptRemote: vi.fn().mockImplementation(async (root: string) => {
         order.push("backup");
         return {
-          backupPath: `${root}/openspec.migrated-2026-07-21`,
+          backupPath: `${root}/speclink.migrated-2026-07-21`,
           checkoutRoot: root,
         };
       }),

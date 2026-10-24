@@ -357,3 +357,17 @@ describe("原語游標：選單項與下拉選項", () => {
     }
   });
 });
+
+describe("資料檔解析失敗的提示（spec「畫面依實際規格資料夾與資料檔名顯示」）", () => {
+  it("以「變更資料檔」稱呼並附原因，不帶寫死的檔名", async () => {
+    const { translatorFor } = await import("../i18n");
+    const zh = translatorFor("zh-TW").t("card.invalidMetaTitle");
+    const en = translatorFor("en").t("card.invalidMetaTitle");
+    expect(zh).toContain("變更資料檔解析失敗");
+    expect(en).toContain("change data file");
+    for (const text of [zh, en]) {
+      expect(text).toContain("{reason}");
+      expect(text).not.toContain(".openspec.yaml");
+    }
+  });
+});

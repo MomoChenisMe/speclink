@@ -425,7 +425,7 @@ mod tests {
 
     fn page(fx: &FixtureRoot, slug: &str, frontmatter: &str, body: &str) {
         fx.write(
-            &format!("openspec/manual/{slug}.md"),
+            &format!("speclink/manual/{slug}.md"),
             &format!("---\n{frontmatter}\n---\n\n{body}\n"),
         );
     }
@@ -436,7 +436,7 @@ mod tests {
             .map(|d| format!("<!-- @trace\nsource: some-change\nupdated: {d}\n-->\n"))
             .collect();
         fx.write(
-            &format!("openspec/specs/{cap}/spec.md"),
+            &format!("speclink/specs/{cap}/spec.md"),
             &format!("# {cap} Specification\n\n## Purpose\n\nx\n\n{blocks}"),
         );
     }
@@ -465,10 +465,10 @@ mod tests {
         // 不檢查檔案存在；slug 守門與 manual_page_at 同一條。
         let fx = FixtureRoot::new("manual-loc");
         let loc = manual_location_at(fx.root(), "tray").expect("location");
-        assert_eq!(loc.relative, "openspec/manual/tray.md");
+        assert_eq!(loc.relative, "speclink/manual/tray.md");
         let abs = Path::new(&loc.path);
         assert!(abs.starts_with(fx.root()), "{} 應在 {}", loc.path, fx.root().display());
-        assert!(abs.ends_with("openspec/manual/tray.md"), "{}", loc.path);
+        assert!(abs.ends_with("speclink/manual/tray.md"), "{}", loc.path);
         assert!(manual_location_at(fx.root(), "../x").is_none());
         assert!(manual_location_at(fx.root(), "a/b").is_none());
         assert!(manual_location_at(fx.root(), "a\\b").is_none());
@@ -556,9 +556,9 @@ mod tests {
         // --- 的頁都以檔名為標題列出並進 malformed；其他頁順序與內容不受影響。
         let fx = FixtureRoot::new("manual-malformed");
         page(&fx, "index", "title: 手冊\nsection: 開始使用\norder: 10", "");
-        fx.write("openspec/manual/plain.md", "# 沒有 frontmatter\n\n內文。\n");
-        fx.write("openspec/manual/broken.md", "---\ntitle: [unclosed\norder: 5\n---\n\n內文。\n");
-        fx.write("openspec/manual/unterminated.md", "---\ntitle: 永遠不收尾\n\n內文。\n");
+        fx.write("speclink/manual/plain.md", "# 沒有 frontmatter\n\n內文。\n");
+        fx.write("speclink/manual/broken.md", "---\ntitle: [unclosed\norder: 5\n---\n\n內文。\n");
+        fx.write("speclink/manual/unterminated.md", "---\ntitle: 永遠不收尾\n\n內文。\n");
         let v = list_manual_pages_at(fx.root());
         assert_eq!(v["present"], true);
         assert_eq!(slugs(&v), ["index", "broken", "plain", "unterminated"]);
@@ -578,7 +578,7 @@ mod tests {
         assert_eq!(manual_page_at(fx.root(), "plain").as_deref(), Some("# 沒有 frontmatter\n\n內文。\n"));
         // 首行水平線、到下一條水平線之間只有標題行：YAML 解成 Null，不是 frontmatter——
         // 走 malformed、全文保留，內容不得無聲消失。
-        fx.write("openspec/manual/ruled.md", "---\n# 標題\n---\n\n內文。\n");
+        fx.write("speclink/manual/ruled.md", "---\n# 標題\n---\n\n內文。\n");
         let v = list_manual_pages_at(fx.root());
         assert!(v["malformed"].as_array().unwrap().contains(&serde_json::json!("ruled")));
         assert_eq!(manual_page_at(fx.root(), "ruled").as_deref(), Some("---\n# 標題\n---\n\n內文。\n"));
@@ -627,7 +627,7 @@ mod tests {
         // generated 帶尾空白時解析後回傳的原字串已 trim。
         let fx = FixtureRoot::new("manual-single-line-trace");
         fx.write(
-            "openspec/specs/x/spec.md",
+            "speclink/specs/x/spec.md",
             "# x Specification\n\n## Purpose\n\nx\n\n<!-- @trace source: x updated: 2026-09-05T23:40:00+08:00 -->\n",
         );
         page(&fx, "p", "order: 10\nsources: [x]\ngenerated: \"2026-09-05T23:31:00+08:00 \"", "");
@@ -710,7 +710,7 @@ mod tests {
         spec_with_trace(&fx, "z", &["2026-09-03", "2026-09-04"]);
         spec_with_trace(&fx, "w", &["2026-09-03"]);
         spec_with_trace(&fx, "v", &["2026-08-01", "2026-09-04"]);
-        fx.write("openspec/specs/no-trace/spec.md", "# no-trace\n");
+        fx.write("speclink/specs/no-trace/spec.md", "# no-trace\n");
         page(&fx, "index", "order: 10\nsources: []\ngenerated: 2026-08-15", "");
         page(&fx, "pw", "order: 20\nsources: [w]\ngenerated: 2026-09-01", "");
         let v = list_manual_pages_at(fx.root());
@@ -755,7 +755,7 @@ mod tests {
                 "malformed": []
             })
         );
-        fx.write("openspec/manual/notes.txt", "not a page");
+        fx.write("speclink/manual/notes.txt", "not a page");
         let v = list_manual_pages_at(fx.root());
         assert_eq!(v["present"], false);
         assert_eq!(v["pages"], serde_json::json!([]));
@@ -771,7 +771,7 @@ mod tests {
         // design Risks：Windows 換行——frontmatter 以行為單位剝 \r；內文原樣回傳。
         let fx = FixtureRoot::new("manual-crlf");
         fx.write(
-            "openspec/manual/index.md",
+            "speclink/manual/index.md",
             "---\r\ntitle: 手冊\r\nsection: 開始使用\r\norder: 10\r\nkeywords: [a, b]\r\nsources: []\r\ngenerated: 2026-09-02\r\n---\r\n\r\n# 標題\r\n\r\n內文。\r\n",
         );
         let v = list_manual_pages_at(fx.root());
@@ -789,8 +789,8 @@ mod tests {
     fn manual_page_strips_frontmatter_and_refuses_escapes() {
         let fx = FixtureRoot::new("manual-page");
         page(&fx, "index", "title: 手冊\norder: 10", "# 手冊\n\n內文。");
-        fx.write("openspec/manual/empty-fm.md", "---\n---\nbody only\n");
-        fx.write("openspec/secret.md", "not a manual page");
+        fx.write("speclink/manual/empty-fm.md", "---\n---\nbody only\n");
+        fx.write("speclink/secret.md", "not a manual page");
         assert_eq!(manual_page_at(fx.root(), "index").as_deref(), Some("\n# 手冊\n\n內文。\n"));
         assert_eq!(manual_page_at(fx.root(), "empty-fm").as_deref(), Some("body only\n"));
         assert_eq!(manual_page_at(fx.root(), "missing"), None);
@@ -813,7 +813,7 @@ mod tests {
     fn sources_drop_values_that_are_not_a_single_path_segment() {
         // sources 會拼成正典路徑去讀：`..`、分隔符、絕對路徑一律丟棄，不去讀 specs 外的檔。
         let fx = FixtureRoot::new("manual-sources-guard");
-        fx.write("openspec/secret/spec.md", "<!-- @trace\nsource: s\nupdated: 2026-09-09\n-->\n");
+        fx.write("speclink/secret/spec.md", "<!-- @trace\nsource: s\nupdated: 2026-09-09\n-->\n");
         spec_with_trace(&fx, "ok-cap", &["2026-08-01"]);
         page(
             &fx,
@@ -838,7 +838,7 @@ mod tests {
             }
             doc.push_str("---\n");
         }
-        fx.write(&format!("openspec/specs/{cap}/spec.md"), &doc.replace('\n', newline));
+        fx.write(&format!("speclink/specs/{cap}/spec.md"), &doc.replace('\n', newline));
     }
 
     #[test]

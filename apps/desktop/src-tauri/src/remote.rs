@@ -12,7 +12,8 @@
 use crate::connections::RefreshFailure;
 use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::Serialize;
-use speclink_core::model::{require_valid_meta, ChangeMeta};
+use speclink_core::model::{require_valid_meta, ChangeMeta, LEGACY_META_FILE, META_FILE};
+use speclink_core::workspace::{Workspace, DEFAULT_SPEC_DIR, LEGACY_SPEC_DIR};
 use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
     read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
@@ -523,13 +524,21 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     for dated_name in store.list_archived_changes() {
         let meta = store.read_archived_meta(&dated_name).unwrap_or_default();
         let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-            format!("invalid openspec/changes/archive/{dated_name}/.openspec.yaml: {reason}")
+            // 讀取先新後舊：新檔名不在時，壞的是舊檔名那份。
+            let dir = format!("{}/changes/archive/{dated_name}", context.workspace.spec_dir_name);
+            let file = if context.workspace.root.join(&dir).join(META_FILE).is_file() {
+                META_FILE
+            } else {
+                LEGACY_META_FILE
+            };
+            format!("invalid {dir}/{file}: {reason}")
         })?;
+        // 讀取先新後舊，上傳一律以 .meta.yaml 為鍵（desktop-spec-dir-migration D5）。
         insert_import_document(
             &mut documents,
             ImportDocumentId::ArchivedChange {
                 change: dated_name.clone(),
-                doc: ".openspec.yaml".to_string(),
+                doc: META_FILE.to_string(),
             },
             meta,
         )?;
@@ -639,8 +648,34 @@ pub struct RemoteAdoptionResult {
     pub checkout_root: String,
 }
 
+/// The spec folder a local-to-remote move works on: the default `speclink/` or
+/// the legacy `openspec/`. An explicit custom `spec_dir` is refused before any
+/// remote write (desktop-spec-dir-migration D5).
+fn migratable_spec_dir(workspace: &Workspace, action: &str) -> Result<String, String> {
+    let name = &workspace.spec_dir_name;
+    if name != DEFAULT_SPEC_DIR && name != LEGACY_SPEC_DIR {
+        return Err(format!(
+            "{action} requires the default spec folder (speclink/ or openspec/); this workspace uses {name}/"
+        ));
+    }
+    // 只備份其中一個會留下另一個：轉成 checkout 後一開就是本機與遠端並存。
+    let other = if name == DEFAULT_SPEC_DIR { LEGACY_SPEC_DIR } else { DEFAULT_SPEC_DIR };
+    let other_dir = workspace.root.join(other);
+    let coexists = if other == LEGACY_SPEC_DIR {
+        other_dir.is_dir()
+    } else {
+        speclink_core::workspace::is_spec_folder(&other_dir)
+    };
+    if coexists {
+        return Err(format!(
+            "{action} cannot run while both speclink/ and openspec/ exist — move or remove {other}/ first"
+        ));
+    }
+    Ok(name.clone())
+}
+
 /// Bundle and import a local workspace, then—and only then—rename the local
-/// `openspec/` tree to a dated backup and write the remote marker.
+/// spec folder to a dated backup and write the remote marker.
 pub fn migrate_workspace(
     root: &Path,
     origin: &str,
@@ -651,12 +686,7 @@ pub fn migrate_workspace(
 ) -> Result<MigrationResult, String> {
     let context = speclink_desktop_core::init_core_context(root)
         .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
-    if context.workspace.spec_dir_name != "openspec" {
-        return Err(format!(
-            "local-to-remote migration requires the default openspec/ directory; this workspace uses {}/",
-            context.workspace.spec_dir_name
-        ));
-    }
+    let folder = migratable_spec_dir(&context.workspace, "local-to-remote migration")?;
     let checkout_root = context.workspace.root;
     let bundle = build_import_bundle(root, project, repo)?;
     let project_base = format!(
@@ -671,7 +701,7 @@ pub fn migrate_workspace(
 
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     let backup_path =
-        finalize_local_migration_with(&checkout_root, origin, project, repo, &date, |from, to| {
+        finalize_local_migration_with(&checkout_root, &folder, origin, project, repo, &date, |from, to| {
             std::fs::rename(from, to)
         })?;
     Ok(MigrationResult {
@@ -681,22 +711,18 @@ pub fn migrate_workspace(
     })
 }
 
-/// Retain the local `openspec/` tree and leave the existing remote marker
+/// Retain the local spec folder as a backup and leave the existing remote marker
 /// byte-for-byte intact. Used only after the UI has successfully handshaken
 /// with the marker's server scope.
 pub fn adopt_remote_workspace(root: &Path) -> Result<RemoteAdoptionResult, String> {
     let context = speclink_desktop_core::init_core_context(root)
         .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
-    if context.workspace.spec_dir_name != "openspec" {
-        return Err(format!(
-            "adopting server truth requires the default openspec/ directory; this workspace uses {}/",
-            context.workspace.spec_dir_name
-        ));
-    }
+    let folder = migratable_spec_dir(&context.workspace, "adopting server truth")?;
     let checkout_root = context.workspace.root;
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
-    let backup_path =
-        adopt_remote_workspace_with(&checkout_root, &date, |from, to| std::fs::rename(from, to))?;
+    let backup_path = adopt_remote_workspace_with(&checkout_root, &folder, &date, |from, to| {
+        std::fs::rename(from, to)
+    })?;
     Ok(RemoteAdoptionResult {
         backup_path: backup_path.display().to_string(),
         checkout_root: checkout_root.display().to_string(),
@@ -705,6 +731,7 @@ pub fn adopt_remote_workspace(root: &Path) -> Result<RemoteAdoptionResult, Strin
 
 fn adopt_remote_workspace_with(
     root: &Path,
+    folder: &str,
     date: &str,
     rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<std::path::PathBuf, String> {
@@ -715,11 +742,11 @@ fn adopt_remote_workspace_with(
             marker.display()
         ));
     }
-    let source = root.join("openspec");
-    let backup = next_migration_backup(root, date);
+    let source = root.join(folder);
+    let backup = next_migration_backup(root, folder, date);
     rename(&source, &backup).map_err(|error| {
         format!(
-            "server content was verified but the local backup rename failed ({error}). Local openspec/ remains intact; no upload or server write was attempted. Rename '{}' to '{}' manually before reopening the checkout.",
+            "server content was verified but the local backup rename failed ({error}). Local {folder}/ remains intact; no upload or server write was attempted. Rename '{}' to '{}' manually before reopening the checkout.",
             source.display(),
             backup.display()
         )
@@ -729,17 +756,18 @@ fn adopt_remote_workspace_with(
 
 fn finalize_local_migration_with(
     root: &Path,
+    folder: &str,
     origin: &str,
     project: &str,
     repo: &str,
     date: &str,
     rename: impl FnOnce(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<std::path::PathBuf, String> {
-    let source = root.join("openspec");
-    let backup = next_migration_backup(root, date);
+    let source = root.join(folder);
+    let backup = next_migration_backup(root, folder, date);
     rename(&source, &backup).map_err(|error| {
         format!(
-            "server import succeeded, but the local backup rename failed ({error}). Local openspec/ remains intact and no remote marker was written. Rename '{}' to '{}' manually, then reconnect this folder as a checkout; do not retry import into the same scope.",
+            "server import succeeded, but the local backup rename failed ({error}). Local {folder}/ remains intact and no remote marker was written. Rename '{}' to '{}' manually, then reconnect this folder as a checkout; do not retry import into the same scope.",
             source.display(),
             backup.display()
         )
@@ -758,8 +786,9 @@ fn finalize_local_migration_with(
     Ok(backup)
 }
 
-fn next_migration_backup(root: &Path, date: &str) -> std::path::PathBuf {
-    let base = format!("openspec.migrated-{date}");
+/// `<folder>.migrated-<date>`, or the first free `-2`, `-3`, … after it.
+fn next_migration_backup(root: &Path, folder: &str, date: &str) -> std::path::PathBuf {
+    let base = format!("{folder}.migrated-{date}");
     let first = root.join(&base);
     if !first.exists() {
         return first;
@@ -2600,7 +2629,9 @@ mod board_reorder_tests {
 
 #[cfg(test)]
 mod migration_bundle_tests {
-    use super::{adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with};
+    use super::{
+        adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with, migratable_spec_dir,
+    };
     use speclink_protocol::query::ImportDocumentId;
     use std::collections::BTreeMap;
     use std::path::Path;
@@ -2754,9 +2785,10 @@ mod migration_bundle_tests {
                 "---\ntopic: Old plan\nslug: old-plan\nstatus: concluded\ncreated: 2026-07-20\n---\n\nArchived discussion.\n".into(),
             ),
             (
+                // 舊檔名的已封存資料檔一律以 .meta.yaml 為鍵上傳（desktop-spec-dir-migration D5）。
                 ImportDocumentId::ArchivedChange {
                     change: "2026-07-20-old-change".into(),
-                    doc: ".openspec.yaml".into(),
+                    doc: ".meta.yaml".into(),
                 },
                 "schema: spec-driven\ncreated: 2026-07-20\n".into(),
             ),
@@ -2816,6 +2848,7 @@ mod migration_bundle_tests {
         let marker = root.path().join(".speclink.yaml");
         let backup = finalize_local_migration_with(
             root.path(),
+            "openspec",
             "https://spec.example.test",
             "demo",
             "backend",
@@ -2844,6 +2877,7 @@ mod migration_bundle_tests {
 
         let backup = finalize_local_migration_with(
             root.path(),
+            "openspec",
             "https://spec.example.test",
             "demo",
             "backend",
@@ -2856,12 +2890,104 @@ mod migration_bundle_tests {
     }
 
     #[test]
+    fn the_backup_is_named_after_the_actual_folder_and_keeps_the_sequence_rule() {
+        // spec Scenario「備份目錄依實際資料夾命名」。
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "speclink/changes/demo/proposal.md", "## Why\n");
+        std::fs::create_dir(root.path().join("speclink.migrated-2026-11-02")).unwrap();
+
+        let backup = finalize_local_migration_with(
+            root.path(),
+            "speclink",
+            "https://spec.example.test",
+            "demo",
+            "backend",
+            "2026-11-02",
+            |from, to| std::fs::rename(from, to),
+        )
+        .expect("conversion succeeds");
+        assert_eq!(backup, root.path().join("speclink.migrated-2026-11-02-2"));
+        assert!(!root.path().join("speclink").exists());
+        assert!(backup.join("changes/demo/proposal.md").is_file());
+    }
+
+    #[test]
+    fn only_an_explicit_custom_spec_folder_is_refused() {
+        // spec「新舊預設資料夾都可遷移到遠端」：預設與舊佈局放行，自訂資料夾在任何遠端寫入前被拒。
+        let workspace = |name: &str| speclink_core::workspace::Workspace {
+            root: std::path::PathBuf::from("/p"),
+            spec_dir_name: name.to_string(),
+        };
+        assert_eq!(migratable_spec_dir(&workspace("speclink"), "migration").unwrap(), "speclink");
+        assert_eq!(migratable_spec_dir(&workspace("openspec"), "migration").unwrap(), "openspec");
+        let error = migratable_spec_dir(&workspace("docs/specs"), "local-to-remote migration").unwrap_err();
+        assert!(error.contains("default spec folder") && error.contains("docs/specs/"), "{error}");
+    }
+
+    #[test]
+    fn both_default_folders_side_by_side_are_refused() {
+        // 只備份 speclink/ 會留下 openspec/：轉成 checkout 後一開就是本機與遠端並存。
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(root.path().join("speclink/changes")).unwrap();
+        std::fs::create_dir_all(root.path().join("openspec/changes")).unwrap();
+        let workspace = speclink_core::workspace::Workspace {
+            root: root.path().to_path_buf(),
+            spec_dir_name: "speclink".to_string(),
+        };
+        let error = migratable_spec_dir(&workspace, "local-to-remote migration").unwrap_err();
+        assert!(error.contains("move or remove openspec/ first"), "{error}");
+
+        // 反方向：明寫 spec_dir: openspec，旁邊又有作為規格資料夾的 speclink/。
+        let legacy = speclink_core::workspace::Workspace {
+            root: root.path().to_path_buf(),
+            spec_dir_name: "openspec".to_string(),
+        };
+        let error = migratable_spec_dir(&legacy, "local-to-remote migration").unwrap_err();
+        assert!(error.contains("move or remove speclink/ first"), "{error}");
+    }
+
+    #[test]
+    fn a_corrupt_legacy_archived_data_file_is_named_as_it_is_on_disk() {
+        let root = complete_workspace();
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml",
+            "schema: [unterminated\n",
+        );
+        let error = build_import_bundle(root.path(), "demo", "backend").expect_err("corrupt metadata must fail closed");
+        assert!(
+            error.contains("openspec/changes/archive/2026-07-20-old-change/.openspec.yaml"),
+            "error names the file that is on disk: {error}"
+        );
+    }
+
+    #[test]
+    fn an_archived_change_with_both_data_files_uploads_only_the_new_one() {
+        let root = complete_workspace();
+        write(
+            root.path(),
+            "openspec/changes/archive/2026-07-20-old-change/.meta.yaml",
+            "schema: spec-driven\ncreated: 2026-07-19\n",
+        );
+        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+        let metas: Vec<(String, String)> = bundle
+            .documents
+            .into_iter()
+            .filter_map(|d| match d.document {
+                ImportDocumentId::ArchivedChange { doc, .. } if doc.ends_with(".yaml") => Some((doc, d.content)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(metas, [(".meta.yaml".to_string(), "schema: spec-driven\ncreated: 2026-07-19\n".to_string())]);
+    }
+
+    #[test]
     fn adopting_server_truth_only_renames_local_truth_and_preserves_the_marker() {
         let root = complete_workspace();
         let marker = "remote:\n  url: https://spec.example.test/api/speclink/v1/projects/demo\n  repo: backend\n";
         write(root.path(), ".speclink.yaml", marker);
 
-        let backup = adopt_remote_workspace_with(root.path(), "2026-07-21", |from, to| {
+        let backup = adopt_remote_workspace_with(root.path(), "openspec", "2026-07-21", |from, to| {
             std::fs::rename(from, to)
         })
         .expect("server truth adoption succeeds");
@@ -2881,6 +3007,7 @@ mod migration_bundle_tests {
         let root = complete_workspace();
         let error = finalize_local_migration_with(
             root.path(),
+            "openspec",
             "https://spec.example.test",
             "demo",
             "backend",

@@ -72,7 +72,7 @@ pub fn is_project_root(dir: &Path) -> bool {
 /// Whether a `speclink` entry is a spec folder rather than something else of
 /// that name — a clone of the speclink repo beside other projects, or a
 /// package: it holds `changes/`, `specs/`, `discussions/` or `config.yaml`.
-fn is_spec_folder(dir: &Path) -> bool {
+pub fn is_spec_folder(dir: &Path) -> bool {
     ["changes", "specs", "discussions"].iter().any(|d| dir.join(d).is_dir())
         || dir.join("config.yaml").is_file()
 }

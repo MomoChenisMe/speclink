@@ -498,6 +498,32 @@ struct WatcherState {
     slot: std::sync::Mutex<watch::WatchSlot>,
 }
 
+impl WatcherState {
+    /// 取號是純記憶體操作，於 command 進 pool 前呼叫。
+    fn next_ticket(&self) -> u64 {
+        self.tickets.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+    }
+
+    fn slot(&self) -> std::sync::MutexGuard<'_, watch::WatchSlot> {
+        self.slot.lock().expect("watcher lock poisoned")
+    }
+
+    /// 暫停監看期間執行 `f`（desktop-spec-dir-migration D2）；`f` 結束（含 panic）即恢復。
+    fn while_paused<T>(&self, ticket: u64, f: impl FnOnce() -> T) -> T {
+        struct Resume<'a>(&'a WatcherState);
+        impl Drop for Resume<'_> {
+            fn drop(&mut self) {
+                if let Ok(mut slot) = self.0.slot.lock() {
+                    slot.resume();
+                }
+            }
+        }
+        self.slot().pause(ticket);
+        let _resume = Resume(self);
+        f()
+    }
+}
+
 /// git 身分預熱（design D1）：首抓可能秒級（GUI 進程 spawn git 極慢的環境），
 /// 掛監看（＝專案成為活躍）時背景執行緒先填快取——首次勾選不再付這筆成本。
 /// 失敗靜默，完成路徑的 cached_git_identity 會自行補抓。
@@ -578,10 +604,17 @@ async fn probe_assets(path: String) -> Result<Value, String> {
 
 /// 技能檔整套再生（決策 5）：委派引擎既有 update()。寫入型 command 一律
 /// async＋spawn_blocking（design D2）——再生十餘個檔案，不得凍結主執行緒。
+/// update 可能把 openspec/ 改名為 speclink/：整段更新期間暫停監看（Windows 上活著的
+/// 監看會擋住改名），前端完成後以 watch_workspace 重掛（desktop-spec-dir-migration D2）。
 #[tauri::command]
-async fn update_assets(path: String) -> Result<Value, String> {
+async fn update_assets(app: tauri::AppHandle, path: String) -> Result<Value, String> {
+    let ticket = app.try_state::<WatcherState>().map(|state| state.next_ticket());
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::project::update_assets_at(std::path::Path::new(&path))
+        let update = || speclink_desktop_core::project::update_assets_at(std::path::Path::new(&path));
+        match (app.try_state::<WatcherState>(), ticket) {
+            (Some(state), Some(ticket)) => state.while_paused(ticket, update),
+            _ => update(),
+        }
     })
     .await
     .map_err(|e| format!("asset update worker failed: {e}"))?
@@ -599,9 +632,7 @@ async fn update_assets(path: String) -> Result<Value, String> {
 #[tauri::command]
 async fn watch_workspace(app: tauri::AppHandle, root: String) {
     let ticket = match app.try_state::<WatcherState>() {
-        Some(state) => state
-            .tickets
-            .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        Some(state) => state.next_ticket(),
         None => return,
     };
     let root_path = PathBuf::from(&root);
@@ -610,7 +641,7 @@ async fn watch_workspace(app: tauri::AppHandle, root: String) {
         let Some(state) = app.try_state::<WatcherState>() else {
             return;
         };
-        let rearmed = state.slot.lock().expect("watcher lock poisoned").rearm(
+        let rearmed = state.slot().rearm(
             ticket,
             &root_path,
             std::time::Duration::from_millis(400),

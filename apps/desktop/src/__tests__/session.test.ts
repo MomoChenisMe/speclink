@@ -147,7 +147,7 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     await settings.writeWorkflowSchema("my-flow");
     await settings.forkSchema("spec-driven");
     await settings.createSchema("my-flow");
-    await settings.revealSchema("/proj/a/openspec/schemas/my-flow");
+    await settings.revealSchema("/proj/a/speclink/schemas/my-flow");
     await settings.deleteSchema("my-flow");
     expect(calls.map((c) => c.cmd)).toEqual([
       "read_schemas",
@@ -162,7 +162,7 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     expect(calls[2]?.args).toEqual({ root: ROOT, source: "spec-driven" });
     expect(calls[3]?.args).toEqual({ root: ROOT, name: "my-flow" });
     // reveal 以快照給的絕對路徑為準，不帶 root、不自行拼路徑（D6）。
-    expect(calls[4]?.args).toEqual({ path: "/proj/a/openspec/schemas/my-flow" });
+    expect(calls[4]?.args).toEqual({ path: "/proj/a/speclink/schemas/my-flow" });
     // 刪除收名稱、目標由 core 固定解析為專案層目錄（D7）。
     expect(calls[5]?.args).toEqual({ root: ROOT, name: "my-flow" });
   });

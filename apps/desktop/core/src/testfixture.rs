@@ -1,4 +1,5 @@
-//! 測試共用的暫存專案 fixture：真實 openspec/ 目錄佈局，測試結束自動清除。
+//! 測試共用的暫存專案 fixture：真實 speclink/ 目錄佈局（舊佈局 openspec/ 見
+//! [`FixtureRoot::legacy`]），測試結束自動清除。
 //! 取代早期直接指向本 repo 的自參照 fixture——repo 內容會隨 change 歸檔而變，
 //! 自參照測試會無聲腐化（desktop-shell-and-browser 歸檔後即斷）。
 
@@ -7,7 +8,7 @@ use std::path::{Path, PathBuf};
 pub(crate) struct FixtureRoot(PathBuf);
 
 /// [`FixtureRoot::attach_worktree`] 建立的 worktree 副本：路徑帶著往 change
-/// 目錄的導航，測試不再以裸 `PathBuf` 流轉、逐處手拼 `openspec/changes/<名>`。
+/// 目錄的導航，測試不再以裸 `PathBuf` 流轉、逐處手拼 `speclink/changes/<名>`。
 pub(crate) struct WorktreeCopy(PathBuf);
 
 impl WorktreeCopy {
@@ -18,18 +19,27 @@ impl WorktreeCopy {
 
     /// 一個 change 在這份副本內的目錄——寫入「只存在於 worktree」的內容用。
     pub fn change_dir(&self, change: &str) -> PathBuf {
-        self.0.join("openspec").join("changes").join(change)
+        self.0.join("speclink").join("changes").join(change)
     }
 }
 
 impl FixtureRoot {
     pub fn new(tag: &str) -> FixtureRoot {
+        FixtureRoot::with_spec_dir(tag, "speclink")
+    }
+
+    /// 舊佈局（openspec/）的專案：只給驗證舊佈局、匯入與遷移的測試用。
+    pub fn legacy(tag: &str) -> FixtureRoot {
+        FixtureRoot::with_spec_dir(tag, "openspec")
+    }
+
+    fn with_spec_dir(tag: &str, spec_dir: &str) -> FixtureRoot {
         let dir = std::env::temp_dir().join(format!(
             "speclink-dtcore-{tag}-{}",
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&dir);
-        std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+        std::fs::create_dir_all(dir.join(spec_dir).join("changes")).unwrap();
         FixtureRoot(dir)
     }
 
@@ -62,7 +72,7 @@ impl FixtureRoot {
             assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
         };
         self.write(".speclink.yaml", "tools:\n  - claude\n");
-        self.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        self.write("speclink/config.yaml", "schema: spec-driven\nworktree: true\n");
         git(&["init", "-q", "-b", "main"]);
         git(&["add", "-A"]);
         git(&["commit", "-qm", "seed"]);
@@ -88,13 +98,13 @@ impl FixtureRoot {
 
     /// 建一個含 proposal 與 tasks 的 change；meta 原文由呼叫端給（測 started_* 疊加）。
     pub fn add_change(&self, name: &str, meta: &str) {
-        self.write(&format!("openspec/changes/{name}/.meta.yaml"), meta);
+        self.write(&format!("speclink/changes/{name}/.meta.yaml"), meta);
         self.write(
-            &format!("openspec/changes/{name}/proposal.md"),
+            &format!("speclink/changes/{name}/proposal.md"),
             "## Why\n\nDemo change.\n\n## What Changes\n\n- something\n",
         );
         self.write(
-            &format!("openspec/changes/{name}/tasks.md"),
+            &format!("speclink/changes/{name}/tasks.md"),
             "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n",
         );
     }
@@ -111,7 +121,7 @@ pub(crate) fn board_names(root: &Path) -> Vec<String> {
         .collect()
 }
 
-/// 非 speclink 專案的空暫存目錄（向上探索找不到 openspec/ 的情境）。
+/// 非 speclink 專案的空暫存目錄（向上探索找不到規格資料夾的情境）。
 pub(crate) fn fresh_non_project_dir(tag: &str) -> PathBuf {
     let dir = std::env::temp_dir().join(format!("speclink-dtcore-nonproject-{tag}-{}", std::process::id()));
     let _ = std::fs::create_dir_all(&dir);

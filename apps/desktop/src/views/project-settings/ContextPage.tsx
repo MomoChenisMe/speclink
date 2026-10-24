@@ -54,7 +54,7 @@ export function ContextPage({ ps }: { ps: ProjectSettingsState }) {
             onSave={save}
           />
         }
-        note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · context" testId="file-note-config" />}
+        note={<PageNote remote={ps.remoteNote} fileKey={`${ps.configFile} · context`} testId="file-note-config" />}
       />
       <PageAlerts ps={ps} parseError={ps.snap.workflow.parseError} />
       {ps.ctxEditing ? (

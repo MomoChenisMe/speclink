@@ -41,7 +41,14 @@ import {
   type Verb,
 } from "@speclink/ui";
 
-import { createAppStore, isSettingsView, openTicketStation, selectAssetPrompt, type AppState } from "./store";
+import {
+  createAppStore,
+  isSettingsView,
+  openTicketStation,
+  selectAssetMigrated,
+  selectAssetPrompt,
+  type AppState,
+} from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
@@ -411,9 +418,13 @@ function AppInner({
       setAssetDialogOpen(false);
     }
   }, [openedDrawer]);
+  // 遷移完成態（desktop-spec-dir-migration D2）在提示消失後仍留著，直到使用者按「知道了」；
+  // 它屬於套用的分頁——更新途中切走的，切回來才開框顯示。
+  const assetMigratedNow = selectAssetMigrated(s);
   useEffect(() => {
-    if (!assetPromptNow) setAssetDialogOpen(false);
-  }, [assetPromptNow]);
+    if (assetMigratedNow) setAssetDialogOpen(true);
+    else if (!assetPromptNow) setAssetDialogOpen(false);
+  }, [assetPromptNow, assetMigratedNow]);
   // 初始化確認框的工具多選（預設勾 claude）；對話框每次開啟重設。
   const [initTools, setInitTools] = useState<string[]>(["claude"]);
   useEffect(() => {
@@ -813,6 +824,8 @@ function AppInner({
   const projectSettingsMode = inSettingsMode(s) && !settingsMode;
   // 專案設定分類欄的解析失敗警示點：由專案設定頁讀到設定快照後回報。
   const [projectParseErrors, setProjectParseErrors] = useState({ config: false, speclink: false });
+  // 專案設定分類欄的組名（工作流設定檔的相對路徑）；設定頁載入前不顯示。
+  const [projectConfigFile, setProjectConfigFile] = useState<string | null>(null);
   const connectionNames = Object.fromEntries(s.connections.map((c) => [c.id, c.name]));
   const PAGE_LABEL_KEY: Record<Exclude<typeof s.boardView, "settings">, string> = {
     board: "app.navChanges",
@@ -994,6 +1007,7 @@ function AppInner({
           : s.requestArchiveDiscussion
       }
       renderDocumentActions={renderDocumentActions}
+      specDir={s.discussions.specDir}
     />
   );
   // 規格詳情頁（desktop-readonly-detail-pages design D2）：宿主為規格頁或手冊頁，皆不切頁。
@@ -1110,6 +1124,7 @@ function AppInner({
             <ProjectSettingsColumn
               section={projectSettingsSection}
               remote={remoteProject}
+              configFile={projectConfigFile}
               configParseError={projectParseErrors.config}
               speclinkParseError={projectParseErrors.speclink}
               onSelect={s.setProjectSettingsSection}
@@ -1276,6 +1291,7 @@ function AppInner({
                 settings={activeSession.settings}
                 section={projectSettingsSection}
                 onParseErrors={setProjectParseErrors}
+                onConfigFile={setProjectConfigFile}
                 onDirtyChange={onProjectSettingsDirty}
               />
             ) : s.boardView === "manual" ? (
@@ -1439,6 +1455,11 @@ function AppInner({
         onApply={() => void s.applyAssetUpdate()}
         onDismiss={s.dismissAssetPrompt}
         onOpenSettingsUpdate={s.openSettingsUpdate}
+        migrated={assetMigratedNow}
+        onDone={() => {
+          s.closeAssetMigrated();
+          setAssetDialogOpen(false);
+        }}
       />
 
       {updater && (
@@ -1507,7 +1528,12 @@ function AppInner({
         open={s.pendingAdopt !== null}
         onOpenChange={(o) => !o && s.cancelAdopt()}
         title={t("app.adoptTitle")}
-        description={<BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />}
+        description={
+          <>
+            <BoldName text={t("app.adoptDesc")} name={s.pendingAdopt ?? ""} />
+            {s.pendingAdoptImport && ` ${t("app.adoptImportNote")}`}
+          </>
+        }
         confirmLabel={t("app.adoptConfirm")}
         onConfirm={() => s.confirmAdopt(adoptTools)}
       >

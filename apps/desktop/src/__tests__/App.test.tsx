@@ -174,7 +174,7 @@ function staleWorkspace() {
       ...STALE_PROBE,
       differingFiles: [...STALE_PROBE.differingFiles, ".claude/skills/speclink-propose/SKILL.md"],
     }),
-    updateAssets: vi.fn().mockResolvedValue(undefined),
+    updateAssets: vi.fn().mockResolvedValue({ migrated: { movedFolder: false, renamed: 0 } }),
   };
 }
 
@@ -708,6 +708,9 @@ describe("App (kanban primary + rich detail)", () => {
     const claude = await screen.findByRole("checkbox", { name: "claude" });
     const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
     expect(dialog).toBeTruthy();
+    // spec「未初始化目錄經確認後自動初始化」：說明文字寫明會建立 speclink/。
+    expect(dialog.textContent).toContain("speclink/");
+    expect(dialog.textContent).not.toContain("openspec/");
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
     // spec「未初始化目錄經確認後自動初始化」：多選含 copilot，預設只勾 claude。
     const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
@@ -730,7 +733,7 @@ describe("App (kanban primary + rich detail)", () => {
   it("啟用確認對話框：unadopted 探測開框、預設勾 claude、確認以所選工具呼叫 adopt", async () => {
     const ws = fakeWorkspace();
     ws.pickFolder = vi.fn().mockResolvedValue("D:/migrated");
-    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
+    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated", needsImport: false });
     ws.adoptProject = vi
       .fn()
       .mockResolvedValue({ status: "project", root: "D:/migrated", name: "migrated" });
@@ -747,6 +750,8 @@ describe("App (kanban primary + rich detail)", () => {
     expect(dialog).toBeTruthy();
     // 啟用語意文案（非初始化文案）。
     expect(within(dialog).getByText("啟用 speclink？")).toBeTruthy();
+    // 規格資料夾已是 speclink/：沒有改名說明。
+    expect(dialog.textContent).not.toContain("OpenSpec CLI");
     // 工具多選預設勾 claude、codex 未勾。
     expect(claude.getAttribute("aria-checked")).toBe("true");
     const codex = within(dialog).getByRole("checkbox", { name: "codex" });
@@ -760,10 +765,28 @@ describe("App (kanban primary + rich detail)", () => {
     expect(ws.initProject).not.toHaveBeenCalled();
   });
 
+  it("啟用確認對話框：OpenSpec 專案寫明 openspec/ 會改名為 speclink/、OpenSpec CLI 之後讀不到", async () => {
+    // spec「未啟用資料夾經確認後補齊啟用」Scenario「OpenSpec 專案確認啟用後匯入並切入」。
+    const ws = fakeWorkspace();
+    ws.pickFolder = vi.fn().mockResolvedValue("D:/legacy");
+    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/legacy", needsImport: true });
+    const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
+    render(<App createSession={makeSession(ds)} workspace={ws as never} />);
+    const openButtons = await screen.findAllByText("新增專案");
+    fireEvent.click(openButtons[openButtons.length - 1]);
+    const chooser = await screen.findByRole("alertdialog");
+    fireEvent.click(within(chooser).getByRole("button", { name: /本機資料夾/ }));
+    fireEvent.click(within(chooser).getByRole("button", { name: "選擇資料夾…" }));
+    const claude = await screen.findByRole("checkbox", { name: "claude" });
+    const dialog = claude.closest('[role="alertdialog"]') as HTMLElement;
+    expect(dialog.textContent).toContain("openspec/ 會改名為 speclink/");
+    expect(dialog.textContent).toContain("OpenSpec CLI 之後讀不到這個專案");
+  });
+
   it("啟用確認對話框：取消關框且零寫入呼叫", async () => {
     const ws = fakeWorkspace();
     ws.pickFolder = vi.fn().mockResolvedValue("D:/migrated");
-    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated" });
+    ws.openProject = vi.fn().mockResolvedValue({ status: "unadopted", root: "D:/migrated", needsImport: false });
     const ds = fakeDataSource({ listChanges: vi.fn().mockResolvedValue(changeList([])) });
     render(<App createSession={makeSession(ds)} workspace={ws as never} />);
     const openButtons = await screen.findAllByText("新增專案");
@@ -2051,7 +2074,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     expect(screen.getByText("看板說明。")).toBeTruthy();
   });
 
-  it("手冊頁閱讀卡標題列有「開啟 ▾」，展開後首列為 openspec/manual/tray.md，選「複製路徑」寫入絕對路徑；過期提示框讀出處規格", async () => {
+  it("手冊頁閱讀卡標題列有「開啟 ▾」，展開後首列為 speclink/manual/tray.md，選「複製路徑」寫入絕對路徑；過期提示框讀出處規格", async () => {
     // spec desktop-app Scenario「手冊頁的開啟選單」＋desktop-manual-page「來源更新後標示可能過期」的 App 半邊。
     const tray = {
       slug: "tray",
@@ -2072,7 +2095,7 @@ describe("手冊頁接線（desktop-manual-page）", () => {
           "# tray-status-menu Specification\n\n## Purpose\n\np\n\n### Requirement: 甲\n\n內文。\n\n<!-- @trace\nsource: tray-panel-restyle\nupdated: 2026-10-12T16:18:33+08:00\n-->\n",
         ),
     });
-    const location = { path: "/work/app/openspec/manual/tray.md", relative: "openspec/manual/tray.md" };
+    const location = { path: "/work/app/speclink/manual/tray.md", relative: "speclink/manual/tray.md" };
     const fsActions: FsActionsAdapter = {
       reveal: vi.fn().mockResolvedValue(undefined),
       openDefault: vi.fn().mockResolvedValue(undefined),
@@ -2088,16 +2111,16 @@ describe("手冊頁接線（desktop-manual-page）", () => {
     const header = document.querySelector("[data-manual-card] [data-doc-header]") as HTMLElement;
     // 出處行首段是 core 解析的同一相對路徑。
     await waitFor(() =>
-      expect(header.querySelector("[data-doc-provenance]")!.textContent).toContain("openspec/manual/tray.md"),
+      expect(header.querySelector("[data-doc-provenance]")!.textContent).toContain("speclink/manual/tray.md"),
     );
     const u = userEvent.setup({ pointerEventsCheck: 0 });
     await u.click(within(header).getByRole("button", { name: /開啟/ }));
     // 出處行也有同一路徑：首列只在選單內找。
     const menu = await screen.findByRole("menu");
-    expect(await within(menu).findByText("openspec/manual/tray.md")).toBeTruthy();
+    expect(await within(menu).findByText("speclink/manual/tray.md")).toBeTruthy();
     expect(fsActions.locate).toHaveBeenCalledWith("A", { manual: "tray" });
     await u.click(screen.getByRole("menuitem", { name: "複製路徑" }));
-    await waitFor(() => expect(fsActions.copyText).toHaveBeenCalledWith("/work/app/openspec/manual/tray.md"));
+    await waitFor(() => expect(fsActions.copyText).toHaveBeenCalledWith("/work/app/speclink/manual/tray.md"));
     // 過期提示框經 dataSource.getSpecDocument 讀出處規格的最近 @trace。
     await waitFor(() =>
       expect(document.querySelector('[data-callout="stale"]')?.textContent).toContain(

@@ -8,4 +8,5 @@ export const STALE_PROBE: AssetProbeResult = {
   currentVersion: "v1.3.0",
   tools: [{ tool: "claude", workspaceVersion: "v0.9.0", stale: true, newer: false, missing: false }],
   differingFiles: ["CLAUDE.md", ".claude/skills/speclink-apply/SKILL.md"],
+  migration: { state: "none" },
 };

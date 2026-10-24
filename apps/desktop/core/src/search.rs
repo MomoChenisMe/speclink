@@ -117,7 +117,7 @@ mod tests {
 
     fn write_discussion(fx: &FixtureRoot, slug: &str, body: &str) {
         fx.write(
-            &format!("openspec/discussions/{slug}.md"),
+            &format!("speclink/discussions/{slug}.md"),
             &format!("---\ntopic: t\nslug: {slug}\nstatus: open\ncreated: 2026-07-01\n---\n\n{body}\n"),
         );
     }
@@ -127,7 +127,7 @@ mod tests {
         let fx = FixtureRoot::new("s-change");
         fx.add_change("demo", META);
         fx.write(
-            "openspec/changes/demo/design.md",
+            "speclink/changes/demo/design.md",
             "## Context\n\n唯一 Command Runtime 的 Dispatch 相容層設計。\n",
         );
         let v = search_workspace_at(fx.root(), "dispatch");
@@ -146,8 +146,8 @@ mod tests {
         // 每卡一命中：proposal 先於 design 掃描，兩者皆含關鍵字時取 proposal。
         let fx = FixtureRoot::new("s-first");
         fx.add_change("demo", META);
-        fx.write("openspec/changes/demo/proposal.md", "## Why\n\nkeyword here\n");
-        fx.write("openspec/changes/demo/design.md", "## Context\n\nkeyword again\n");
+        fx.write("speclink/changes/demo/proposal.md", "## Why\n\nkeyword here\n");
+        fx.write("speclink/changes/demo/design.md", "## Context\n\nkeyword again\n");
         let v = search_workspace_at(fx.root(), "keyword");
         let hits = v["hits"].as_array().unwrap();
         assert_eq!(hits.len(), 1);
@@ -159,7 +159,7 @@ mod tests {
         let fx = FixtureRoot::new("s-spec-disc");
         fx.add_change("demo", META);
         fx.write(
-            "openspec/changes/demo/specs/some-cap/spec.md",
+            "speclink/changes/demo/specs/some-cap/spec.md",
             "## ADDED Requirements\n\n### Requirement: 浮層落點\n\n內容 zebra-token 在此。\n",
         );
         write_discussion(&fx, "talk", "## Rounds\n\n關於 zebra-token 的討論。");
@@ -179,7 +179,7 @@ mod tests {
         // 取自副本內容。
         let fx = FixtureRoot::new("s-worktree");
         fx.add_change("add-auth", META);
-        fx.write("openspec/changes/add-auth/design.md", "## Context\n\n主 checkout 的舊設計。\n");
+        fx.write("speclink/changes/add-auth/design.md", "## Context\n\n主 checkout 的舊設計。\n");
         let wt = fx.attach_worktree("add-auth");
         std::fs::write(
             wt.change_dir("add-auth").join("design.md"),
@@ -215,7 +215,7 @@ mod tests {
         let fx = FixtureRoot::new("s-cjk");
         fx.add_change("demo", META);
         let long = format!("{}目標詞{}", "前".repeat(80), "後".repeat(80));
-        fx.write("openspec/changes/demo/design.md", &format!("## Context\n\n{long}\n"));
+        fx.write("speclink/changes/demo/design.md", &format!("## Context\n\n{long}\n"));
         let v = search_workspace_at(fx.root(), "目標詞");
         let snippet = v["hits"][0]["snippet"].as_str().unwrap().to_string();
         assert!(snippet.starts_with('…') && snippet.ends_with('…'), "兩端截斷補 …: {snippet}");

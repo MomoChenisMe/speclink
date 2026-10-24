@@ -28,7 +28,7 @@ import {
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
-import type { ProjectProbe, WorkspaceAdapter } from "./adapter/workspace";
+import type { AssetUpdateResult, ProjectProbe, WorkspaceAdapter } from "./adapter/workspace";
 import type { MigrationAdapter } from "./adapter/migration";
 import {
   applyRemoteConnectionState,
@@ -386,6 +386,9 @@ export interface AppState {
   pendingInit: string | null;
   /** 待確認的啟用專案根（unadopted 判定觸發、錨定探測回報 root；null＝無對話框）。 */
   pendingAdopt: string | null;
+  /** 待確認的啟用會先把 openspec/ 改名為 speclink/（desktop-spec-dir-migration D3）；
+   * 只在 pendingAdopt 有值時有意義。 */
+  pendingAdoptImport: boolean;
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
   /** 最近開啟清單（design D1）：曾成功開啟過的 workspace，最新在前，與分頁列分離。 */
@@ -474,10 +477,16 @@ export interface AppState {
   assetUpdateError: string | null;
   /** 更新進行中（動作停用、避免重複觸發）。 */
   assetUpdating: boolean;
+  /** 上次更新的規格資料夾遷移結果與套用它的分頁（確認框的完成態；desktop-spec-dir-migration
+   * D2）；null＝沒有待讀的完成態。以 `selectAssetMigrated` 取活躍分頁的那一份，關框才清空。 */
+  assetMigrated: (AssetUpdateResult["migrated"] & { key: string }) | null;
   /** 對活躍本地分頁重跑探測並裁決是否提示；remote 分頁與無 adapter 時無動作。 */
   refreshAssetPrompt: () => Promise<void>;
-  /** 主動作（更新／安裝）：經引擎既有再生入口整套再生，成功後重查。 */
+  /** 主動作（更新／安裝）：經引擎既有再生入口整套再生，成功後重查。按下前重探一次：
+   * 遷移狀態與確認框所寫的不同時不更新，改顯示最新內容。 */
   applyAssetUpdate: () => Promise<void>;
+  /** 收起確認框的遷移完成態。 */
+  closeAssetMigrated: () => void;
   /** 保留現狀：記下此專案已略過當前產物層版號並收合提示，不寫入專案任何檔案。 */
   dismissAssetPrompt: () => void;
 
@@ -655,6 +664,7 @@ function cancelableOverlaysCleared(): Partial<AppState> {
     workspaceChooser: null,
     pendingInit: null,
     pendingAdopt: null,
+    pendingAdoptImport: false,
     ...idleArchiveGate(),
     pendingArchiveDiscussion: null,
     pendingDelete: null,
@@ -666,6 +676,13 @@ function cancelableOverlaysCleared(): Partial<AppState> {
 /** 不可取消浮層（遷移、遠端衝突）開啟中——變更詳情與討論的開啟動作此時不改任何狀態。 */
 function uncancelableOverlayOpen(s: AppState): boolean {
   return s.migrationRoot !== null || s.pendingRemoteConflict !== null;
+}
+
+/** 活躍分頁的遷移完成態：更新途中切走的分頁，切回來才顯示。 */
+export function selectAssetMigrated(
+  state: Pick<AppState, "activeKey" | "assetMigrated">,
+): AppState["assetMigrated"] {
+  return state.assetMigrated && state.assetMigrated.key === state.activeKey ? state.assetMigrated : null;
 }
 
 /** 活躍分頁的技能檔提示：`assetPrompts[activeKey]` 的推算值（null＝不提示）。 */
@@ -786,11 +803,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       };
     }
 
+    /** 探測 `root` 的技能檔並裁決提示；探測失敗照樣拋出，由呼叫端決定怎麼呈現。 */
+    async function promptAt(ws: WorkspaceAdapter, root: string): Promise<AssetPromptState | null> {
+      return assetPrompt(await ws.probeAssets(root), root, readAssetSkips());
+    }
+
     /** 探測指定分頁的技能檔並記進該分頁的記憶（結果屬於探測時的分頁，期間切走也不錯置）。 */
     async function probeAssetPromptFor(ws: WorkspaceAdapter, key: string, root: string): Promise<void> {
       let next: AssetPromptState | null;
       try {
-        next = assetPrompt(await ws.probeAssets(root), root, readAssetSkips());
+        next = await promptAt(ws, root);
       } catch {
         // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
         next = null;
@@ -1832,6 +1854,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     pendingTabKey: null,
     pendingInit: null,
     pendingAdopt: null,
+    pendingAdoptImport: false,
     tabErrors: {},
     recents: [],
     remoteRecovery: {},
@@ -2243,7 +2266,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         } else if (probe.status === "unadopted") {
           // 有規格資料但未啟用（spec「未啟用資料夾經確認後補齊啟用」）：
           // 錨定探測回報的專案根開啟用確認框，確認前零寫入。
-          set({ pendingAdopt: probe.root });
+          set({ pendingAdopt: probe.root, pendingAdoptImport: probe.needsImport });
         } else if (probe.hasLocalOpenspec) {
           set({
             pendingRemoteConflict: {
@@ -2560,6 +2583,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     assetPrompts: {},
     assetUpdateError: null,
     assetUpdating: false,
+    assetMigrated: null,
 
     async refreshAssetPrompt() {
       const key = get().activeKey;
@@ -2575,16 +2599,43 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const root = activeLocalRoot();
       if (!workspace || !root || !key || get().assetUpdating) return;
       set({ assetUpdating: true, assetUpdateError: null });
+      // 確認框寫的遷移內容是承諾（例如「資料夾不動」）：按下前狀態變了就改顯示最新內容。
+      const shown = get().assetPrompts[key]?.migration.state ?? "none";
+      let fresh: AssetPromptState | null;
       try {
-        await workspace.updateAssets(root);
+        fresh = await promptAt(workspace, root);
       } catch (error) {
-        // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
         set({ assetUpdateError: String(error), assetUpdating: false });
         return;
       }
-      set({ assetUpdating: false });
+      if ((fresh?.migration.state ?? "none") !== shown) {
+        set({ assetPrompts: { ...get().assetPrompts, [key]: fresh }, assetUpdating: false });
+        return;
+      }
+      let result: AssetUpdateResult;
+      try {
+        result = await workspace.updateAssets(root);
+      } catch (error) {
+        // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
+        set({ assetUpdateError: String(error), assetUpdating: false });
+        // 更新期間監看已暫停（Windows 上監看會擋住資料夾改名）。
+        await get().rearmWatch();
+        return;
+      }
+      const { migrated } = result;
+      set({
+        assetUpdating: false,
+        assetMigrated: migrated.movedFolder || migrated.renamed > 0 ? { ...migrated, key } : null,
+      });
+      // 資料夾改名後監看依新的規格資料夾重新解析；重掛不發事件，資料改從 speclink/ 讀要整批重載。
+      await get().rearmWatch();
+      if (migrated.movedFolder && get().activeKey === key) await get().refresh();
       // 重探套用的那個分頁：使用者途中切走，它的提示與琥珀點仍要收合。
       await probeAssetPromptFor(workspace, key, root);
+    },
+
+    closeAssetMigrated() {
+      set({ assetMigrated: null });
     },
 
     dismissAssetPrompt() {
