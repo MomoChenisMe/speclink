@@ -36,7 +36,7 @@ const assets = {
   exe: `Speclink_${version}_x64-setup.exe`,
   appImageX64: `Speclink_${version}_amd64.AppImage`,
   appImageArm64: `Speclink_${version}_aarch64.AppImage`,
-  dockerImage: `ghcr.io/momochenisme/speclink-server:${version}`,
+  dockerImage: `ghcr.io/mosutw/speclink-server:${version}`,
 };
 const NPM_INSTALL = 'npm i -g @speclink/cli';
 const SH_INSTALL = 'curl -fsSL https://raw.githubusercontent.com/MomoChenisMe/speclink/main/scripts/install.sh | sh';

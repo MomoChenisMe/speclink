@@ -42,7 +42,7 @@ services:
       retries: 5
 
   server:
-    image: ghcr.io/momochenisme/speclink-server:latest
+    image: ghcr.io/mosutw/speclink-server:latest
     # 同 docker-compose.yml：本機無映像時就地建置。要用官方映像先 docker compose pull。
     build:
       context: ..

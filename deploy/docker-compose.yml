@@ -31,7 +31,7 @@ configs:
 
 services:
   server:
-    image: ghcr.io/momochenisme/speclink-server:latest
+    image: ghcr.io/mosutw/speclink-server:latest
     # 本機沒有該映像時就地從原始碼建置（首次正式發版前 registry 尚無映像，
     # 這個回退讓 compose 現在就能起、CI 也能驗真正的 compose 路徑）。
     # 要用官方映像請先 docker compose pull。

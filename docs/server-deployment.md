@@ -48,13 +48,13 @@ By default, only the local computer can connect to an npx server. For a team, us
 
 ## <a id="docker"></a>Docker
 
-The official image is `ghcr.io/momochenisme/speclink-server`. It supports `linux/amd64` and `linux/arm64`. Each release pushes three tags: the full version (for example `0.8.0`), the `major.minor` version (for example `0.8`), and `latest`.
+The official image is `ghcr.io/mosutw/speclink-server`. It supports `linux/amd64` and `linux/arm64`. Each release pushes three tags: the full version (for example `0.8.0`), the `major.minor` version (for example `0.8`), and `latest`.
 
 ```bash
 docker run -d --name speclink \
   -p 8080:8080 \
   -v speclink-data:/data \
-  ghcr.io/momochenisme/speclink-server:latest
+  ghcr.io/mosutw/speclink-server:latest
 docker logs speclink        # get the one-time setup link
 ```
 
@@ -67,7 +67,7 @@ docker run -d --name speclink \
   -p 8080:8080 \
   -v speclink-data:/data \
   -v ./server.yaml:/etc/speclink/config.yaml:ro \
-  ghcr.io/momochenisme/speclink-server:latest
+  ghcr.io/mosutw/speclink-server:latest
 ```
 
 If the port mapping is not `8080:8080`, or the public URL is not `http://localhost:8080`, you must change `public_url`. If you do not, the setup link shows the wrong URL, and the server rejects browser forms because the origin does not match.
@@ -245,7 +245,7 @@ If the new version needs a newer account database (identity) structure, the serv
 
 To roll back, deploy the **previous** binary or image:
 
-- Docker Compose: change `image:` in the compose file to the previous tag (for example `ghcr.io/momochenisme/speclink-server:0.7.0`), and then run `docker compose up -d`. The volume does not change.
+- Docker Compose: change `image:` in the compose file to the previous tag (for example `ghcr.io/mosutw/speclink-server:0.7.0`), and then run `docker compose up -d`. The volume does not change.
 - npx: `npx @speclink/server@<previous version>`.
 - Your own binary: check out the previous tag and build again, or use the previous image.
 

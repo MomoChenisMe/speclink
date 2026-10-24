@@ -177,7 +177,7 @@ You need a server only when a team shares one set of specs. For one person in on
 | Method | Command |
 | --- | --- |
 | npx (needs only Node.js) | `npx @speclink/server` |
-| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
+| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/mosutw/speclink-server:latest` |
 | Docker Compose | `cd deploy && docker compose up -d` |
 
 On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default Store is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md). To connect the desktop app and the CLI, see [Remote getting started](docs/remote-getting-started.md).

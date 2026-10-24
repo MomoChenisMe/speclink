@@ -116,7 +116,7 @@ test('兩種語言都有 server 一行啟動節：npx 與 Docker image 指令（
   const { stdout } = run(['--tag', 'v0.1.0']);
   for (const [lang, text] of Object.entries(sections(stdout))) {
     assert.ok(text.includes('npx @speclink/server'), `${lang} 缺 npx 一行啟動指令`);
-    assert.ok(text.includes('ghcr.io/momochenisme/speclink-server:0.1.0'), `${lang} 缺 Docker image 一行`);
+    assert.ok(text.includes('ghcr.io/mosutw/speclink-server:0.1.0'), `${lang} 缺 Docker image 一行`);
   }
 });
 

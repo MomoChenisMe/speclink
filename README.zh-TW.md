@@ -177,7 +177,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | 跑法 | 指令 |
 | --- | --- |
 | npx（有 Node.js 就能跑） | `npx @speclink/server` |
-| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
+| Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/mosutw/speclink-server:latest` |
 | Docker Compose | `cd deploy && docker compose up -d` |
 
 第一次啟動時，server 會印出一次性的 `/setup` 連結；之後重啟不會再印。預設用 SQLite，資料放在 `./speclink-data`（容器內是 `/data`）。環境變數、PostgreSQL 與升級回退見 [Server 部署](docs/server-deployment.zh-TW.md)。桌面 app 與 CLI 怎麼連上，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。

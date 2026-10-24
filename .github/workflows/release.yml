@@ -30,7 +30,7 @@ permissions:
 
 env:
   # server image 的正典名（ghcr 要求小寫；per-arch digest 推送與 manifest 合併共用）。
-  REGISTRY_IMAGE: ghcr.io/momochenisme/speclink-server
+  REGISTRY_IMAGE: ghcr.io/mosutw/speclink-server
 
 jobs:
   build:

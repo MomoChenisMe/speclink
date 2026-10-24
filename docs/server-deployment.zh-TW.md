@@ -48,13 +48,13 @@ npx 預設只有本機連得到。要給團隊用，建議改用 Docker Compose�
 
 ## <a id="docker"></a>Docker
 
-官方映像是 `ghcr.io/momochenisme/speclink-server`，支援 `linux/amd64` 與 `linux/arm64`。每次發版會推三個 tag：完整版號（例如 `0.8.0`）、`主.次` 版號（例如 `0.8`）與 `latest`。
+官方映像是 `ghcr.io/mosutw/speclink-server`，支援 `linux/amd64` 與 `linux/arm64`。每次發版會推三個 tag：完整版號（例如 `0.8.0`）、`主.次` 版號（例如 `0.8`）與 `latest`。
 
 ```bash
 docker run -d --name speclink \
   -p 8080:8080 \
   -v speclink-data:/data \
-  ghcr.io/momochenisme/speclink-server:latest
+  ghcr.io/mosutw/speclink-server:latest
 docker logs speclink        # 取得一次性設定連結
 ```
 
@@ -67,7 +67,7 @@ docker run -d --name speclink \
   -p 8080:8080 \
   -v speclink-data:/data \
   -v ./server.yaml:/etc/speclink/config.yaml:ro \
-  ghcr.io/momochenisme/speclink-server:latest
+  ghcr.io/mosutw/speclink-server:latest
 ```
 
 埠對映不是 `8080:8080`，或對外網址不是 `http://localhost:8080` 時，一定要改 `public_url`。否則設定連結的網址不對，瀏覽器送出的表單也會因為來源不符而被拒。
@@ -245,7 +245,7 @@ curl -o /dev/null -w "%{http_code}\n" https://<你的網址>/healthz
 
 回退就是部署**上一版**的 binary 或映像：
 
-- Docker Compose：把 compose 檔的 `image:` 改成上一版的 tag（例如 `ghcr.io/momochenisme/speclink-server:0.7.0`），再 `docker compose up -d`。volume 不受影響。
+- Docker Compose：把 compose 檔的 `image:` 改成上一版的 tag（例如 `ghcr.io/mosutw/speclink-server:0.7.0`），再 `docker compose up -d`。volume 不受影響。
 - npx：`npx @speclink/server@<上一版號>`。
 - 自建 binary：checkout 上一版的 tag 重新建置，或改用上一版的映像。
 
