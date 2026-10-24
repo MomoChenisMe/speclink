@@ -145,7 +145,7 @@ describe("卡頂分頁與網址", () => {
     renderAt("/admin/users", makeAdminClient());
     expect(await screen.findByRole("combobox", { name: /狀態/ })).toBeTruthy();
     const user = userEvent.setup();
-    await user.click(tab(/^邀請中/));
+    await user.click(await screen.findByRole("tab", { name: /^邀請中/ }));
     await screen.findByText("invited@example.com");
     expect(screen.queryByRole("combobox", { name: /狀態/ })).toBeNull();
     expect(screen.getByRole("textbox", { name: "搜尋" })).toBeTruthy();
