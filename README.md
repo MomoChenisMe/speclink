@@ -123,10 +123,10 @@ The desktop app and the CLI are two ways to use the same engine. Pick one:
 
 Download the installer for your platform from [Releases](https://github.com/MomoChenisMe/speclink/releases/latest):
 
-| Platform | Installer |
+| Platform | Download |
 | --- | --- |
 | macOS | `Speclink_<version>_universal.dmg` (one file for Apple Silicon and Intel) |
-| Windows | `Speclink_<version>_x64-setup.exe` |
+| Windows | `Speclink_<version>_x64-setup.exe` (installer) or `Speclink_<version>_x64-portable.zip` (portable) |
 | Linux desktop | `Speclink_<version>_amd64.AppImage` (x86_64) or `Speclink_<version>_aarch64.AppImage` (arm64), no install step |
 
 - The Windows installer has no code signature. On the first run, SmartScreen shows a warning. Click "More info", then "Run anyway".

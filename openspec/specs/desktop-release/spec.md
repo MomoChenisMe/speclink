@@ -8,12 +8,17 @@
 
 ### Requirement: Release 產出三平台桌面安裝檔
 
-push 符合 v* 的 tag 後，release 管線 SHALL 產出桌面安裝檔並附於同一個 GitHub Release，且該 Release 的 assets SHALL 恰為下列六個檔案：macOS universal dmg（Apple Silicon 與 Intel 同一檔，檔名 Speclink_<版本>_universal.dmg）、macOS universal 更新包（Speclink_<版本>_universal.app.tar.gz）、Windows NSIS 安裝器（x86_64，Speclink_<版本>_x64-setup.exe）、Linux AppImage（x86_64 為 Speclink_<版本>_amd64.AppImage、aarch64 為 Speclink_<版本>_aarch64.AppImage）、更新描述檔 latest.json。Release assets SHALL NOT 含 .sig 簽章檔、.deb、CLI 壓縮檔、SHA256SUMS.txt 或 server 壓縮檔（CLI 通路見 cli-distribution，server 發布通路見 server-release）。桌面安裝檔 SHALL 內含同版 speclink CLI binary，macOS 內含的 CLI SHALL 為含 arm64 與 x86_64 兩個架構的 universal binary。Windows NSIS 安裝器 SHALL 內建繁體中文與英文語系並跟隨系統顯示語言（繁中系統顯示繁中、其餘落回英文），安裝器圖示 SHALL 為 Speclink 產品圖示。
+push 符合 v* 的 tag 後，release 管線 SHALL 產出桌面安裝檔並附於同一個 GitHub Release，且該 Release 的 assets SHALL 恰為下列七個檔案：macOS universal dmg（Apple Silicon 與 Intel 同一檔，檔名 Speclink_<版本>_universal.dmg）、macOS universal 更新包（Speclink_<版本>_universal.app.tar.gz）、Windows NSIS 安裝器（x86_64，Speclink_<版本>_x64-setup.exe）、Windows x64 免安裝包（Speclink_<版本>_x64-portable.zip）、Linux AppImage（x86_64 為 Speclink_<版本>_amd64.AppImage、aarch64 為 Speclink_<版本>_aarch64.AppImage）、更新描述檔 latest.json。Release assets SHALL NOT 含 .sig 簽章檔、.deb、CLI 壓縮檔、SHA256SUMS.txt 或 server 壓縮檔（CLI 通路見 cli-distribution，server 發布通路見 server-release）。Windows 免安裝 ZIP SHALL 包含同版桌面程式與 CLI，並通過解壓縮、CLI 設定寫入及搬移後設定仍隨資料夾的檢查。桌面安裝檔 SHALL 內含同版 speclink CLI binary，macOS 內含的 CLI SHALL 為含 arm64 與 x86_64 兩個架構的 universal binary。Windows NSIS 安裝器 SHALL 內建繁體中文與英文語系並跟隨系統顯示語言（繁中系統顯示繁中、其餘落回英文），安裝器圖示 SHALL 為 Speclink 產品圖示。
 
 #### Scenario: tag 發布產出完整安裝檔集
 
 - **WHEN** push tag v0.5.0 且 workflow 全部成功
-- **THEN** 該 Release 的 assets 恰為 Speclink_0.5.0_universal.dmg、Speclink_0.5.0_universal.app.tar.gz、Speclink_0.5.0_x64-setup.exe、Speclink_0.5.0_amd64.AppImage、Speclink_0.5.0_aarch64.AppImage 與 latest.json 六個，無任何 .sig、.deb、.zip、speclink-v* 壓縮檔或 SHA256SUMS.txt
+- **THEN** 該 Release 的 assets 恰為 Speclink_0.5.0_universal.dmg、Speclink_0.5.0_universal.app.tar.gz、Speclink_0.5.0_x64-setup.exe、Speclink_0.5.0_x64-portable.zip、Speclink_0.5.0_amd64.AppImage、Speclink_0.5.0_aarch64.AppImage 與 latest.json 七個，無任何 .sig、.deb、CLI／server 壓縮檔或 SHA256SUMS.txt
+
+#### Scenario: Windows portable ZIP 可解壓並可搬移
+
+- **WHEN** Windows x64 portable ZIP 從 Release 下載、解壓縮並執行 CLI，再將資料夾搬到另一個位置
+- **THEN** 桌面程式與同版 CLI 存在，CLI 設定寫入 ZIP 目錄內，搬移後仍從搬移後目錄讀取設定
 
 #### Scenario: 任一形態失敗則不發布
 

@@ -34,6 +34,7 @@ if (!entry) fail(`release-notes.json 沒有 ${version} 的條目——先執行 
 const assets = {
   dmg: `Speclink_${version}_universal.dmg`,
   exe: `Speclink_${version}_x64-setup.exe`,
+  portable: `Speclink_${version}_x64-portable.zip`,
   appImageX64: `Speclink_${version}_amd64.AppImage`,
   appImageArm64: `Speclink_${version}_aarch64.AppImage`,
   dockerImage: `ghcr.io/mosutw/speclink-server:${version}`,
@@ -49,7 +50,8 @@ const guideEn = `## 📦 Which file should I download?
 | Your system | Download this (in Assets below) |
 | --- | --- |
 | macOS (Apple Silicon and Intel use the same file) | \`${assets.dmg}\` |
-| Windows (x64) | \`${assets.exe}\` |
+| Windows (x64, installer) | \`${assets.exe}\` |
+| Windows (x64, portable ZIP; extract and run) | \`${assets.portable}\` |
 | Linux desktop (x64) | \`${assets.appImageX64}\` |
 | Linux desktop (arm64) | \`${assets.appImageArm64}\` |
 | Linux server or no graphical interface | No download — use the one-line CLI install below |
@@ -85,7 +87,8 @@ const guideZh = `## 📦 我該下載哪個檔案？
 | 你的環境 | 下載這個（在下方 Assets 區） |
 | --- | --- |
 | macOS（Apple Silicon 與 Intel 同一檔） | \`${assets.dmg}\` |
-| Windows（x64） | \`${assets.exe}\` |
+| Windows（x64 安裝器） | \`${assets.exe}\` |
+| Windows（x64 免安裝 ZIP；解壓縮後即可執行） | \`${assets.portable}\` |
 | Linux 桌面機（x64） | \`${assets.appImageX64}\` |
 | Linux 桌面機（arm64） | \`${assets.appImageArm64}\` |
 | Linux 伺服器或無圖形介面 | 不用下載——用下方的 CLI 一行安裝 |

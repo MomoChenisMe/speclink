@@ -187,7 +187,7 @@ git tag -a desktop-v0.9.0 -m "Speclink Desktop 0.9.0"
 git push origin desktop-v0.9.0
 ```
 
-After all four platforms succeed, the repository's Releases page receives five assets: a macOS universal DMG, Windows x64 installer, Windows x64 portable ZIP, and Linux amd64/aarch64 AppImages. The Windows ZIP retains the extraction, CLI configuration, and relocation checks. A failed platform prevents the release job from running; rerun failed jobs in Actions. Manual runs still create only Artifacts retained for 14 days, without a Release.
+After all four platforms succeed, the repository's Releases page receives five desktop downloads: a macOS universal DMG, Windows x64 installer and portable ZIP, and Linux amd64/aarch64 AppImages. The Windows ZIP retains the extraction, CLI configuration, and relocation checks. A failed platform prevents the release job from running; rerun failed jobs in Actions. Manual runs still create only Artifacts retained for 14 days, without a Release.
 
 The workflow uses the built-in `GITHUB_TOKEN`; only the release job receives `contents: write`. No additional private key is needed. macOS uses ad-hoc signing, and Windows has no publisher certificate; see the installation instructions below. This channel has no signed updater packages or `latest.json`; download updates manually. The app's updater URL now points to origin's Latest Release, but this desktop channel provides no signed update metadata. Fork auto-updates still need an update manifest and packages signed with a key matching the app's public key.
 
@@ -203,6 +203,7 @@ The desktop installers are on [Releases](https://github.com/MomoChenisMe/speclin
 | --- | --- | --- |
 | macOS (one file for Apple Silicon and Intel) | `Speclink_<version>_universal.dmg` | No: the project signs it, and Apple notarizes it |
 | Windows (x64) | `Speclink_<version>_x64-setup.exe` | Yes: the installer has no code signature |
+| Windows (x64, portable) | `Speclink_<version>_x64-portable.zip` | Yes: the app has no publisher certificate |
 | Linux (x86_64) | `Speclink_<version>_amd64.AppImage` | No: make the file executable |
 | Linux (aarch64) | `Speclink_<version>_aarch64.AppImage` | No: make the file executable |
 

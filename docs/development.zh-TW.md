@@ -187,7 +187,7 @@ git tag -a desktop-v0.9.0 -m "Speclink Desktop 0.9.0"
 git push origin desktop-v0.9.0
 ```
 
-四個平台全部成功後，會在此儲存庫的 Releases 發布五個附件：macOS universal DMG、Windows x64 安裝器、Windows x64 免安裝 ZIP，以及 Linux amd64／aarch64 AppImage。Windows ZIP 沿用解壓縮、CLI 設定與搬移測試。任一平台失敗不會進入發布步驟；可在 Actions 重跑失敗工作。手動執行仍只保留 14 天的 Artifacts，不建立 Release。
+四個平台全部成功後，會在此儲存庫的 Releases 提供五種桌面下載：macOS universal DMG、Windows x64 安裝器與免安裝 ZIP，以及 Linux amd64／aarch64 AppImage。Windows ZIP 沿用解壓縮、CLI 設定與搬移測試。任一平台失敗不會進入發布步驟；可在 Actions 重跑失敗工作。手動執行仍只保留 14 天的 Artifacts，不建立 Release。
 
 此流程使用 GitHub 內建的 `GITHUB_TOKEN`，只有發布工作取得 `contents: write`，不需另外設定私鑰。macOS 使用 ad-hoc 簽章，Windows 未使用發行者憑證；安裝方式見下節。此發布通道沒有簽章更新包與 `latest.json`，請手動下載更新。App 更新網址已指向 origin 的 Latest Release，但此桌面通道不提供簽章更新清單；Fork 自動更新仍需補齊與公鑰相符的更新包及 manifest。
 
@@ -203,6 +203,7 @@ git push origin desktop-v0.9.0
 | --- | --- | --- |
 | macOS（Apple Silicon 與 Intel 同一檔） | `Speclink_<版本>_universal.dmg` | 不用：已簽章並經 Apple 公證 |
 | Windows（x64） | `Speclink_<版本>_x64-setup.exe` | 要：安裝器沒有程式碼簽章 |
+| Windows（x64 免安裝） | `Speclink_<版本>_x64-portable.zip` | 要：程式未使用發行者憑證 |
 | Linux（x86_64） | `Speclink_<版本>_amd64.AppImage` | 不用：加上執行權限即可 |
 | Linux（aarch64） | `Speclink_<版本>_aarch64.AppImage` | 不用：加上執行權限即可 |
 

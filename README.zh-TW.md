@@ -123,10 +123,10 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 到 [Releases](https://github.com/MomoChenisMe/speclink/releases/latest) 下載你的平台的安裝檔：
 
-| 平台 | 安裝檔 |
+| 平台 | 下載 |
 | --- | --- |
 | macOS | `Speclink_<版本>_universal.dmg`（Apple Silicon 與 Intel 同一檔） |
-| Windows | `Speclink_<版本>_x64-setup.exe` |
+| Windows | `Speclink_<版本>_x64-setup.exe`（安裝版）或 `Speclink_<版本>_x64-portable.zip`（免安裝） |
 | Linux 桌面 | `Speclink_<版本>_amd64.AppImage`（x86_64）或 `Speclink_<版本>_aarch64.AppImage`（arm64），免安裝 |
 
 - Windows 安裝檔沒有程式碼簽章。第一次執行時 SmartScreen 會跳出警告，點「其他資訊」→「仍要執行」。

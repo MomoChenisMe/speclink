@@ -4,7 +4,7 @@
 
 ## 下載與啟動
 
-1. 正式桌面發布請從此儲存庫的 **Releases** 下載 `desktop-vX.Y.Z` 下的 `Speclink_<版本>_x64-portable.zip`，直接解壓縮即可。若要測試未發布的分支，在 **Actions → Desktop Build → Run workflow** 選分支並執行，再依以下步驟下載 Artifacts。
+1. 正式發布請從此儲存庫的 **Releases** 下載 `Speclink_<版本>_x64-portable.zip`，直接解壓縮即可。若要測試未發布的分支，在 **Actions → Desktop Build → Run workflow** 選分支並執行，再依以下步驟下載 Artifacts。
 2. 等 Windows 工作成功後，從該次 **Summary → Artifacts** 下載 `desktop-x86_64-pc-windows-msvc-portable`。
 3. 解開 GitHub 下載的外層 ZIP，再解開裡面的 `Speclink_<版本>_x64-portable.zip`。
 4. 將整個資料夾放到自己可讀寫的位置，雙擊 **`speclink-desktop.exe`**。

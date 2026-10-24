@@ -2,7 +2,7 @@
 # for Windows / Linux / macOS (x86_64 + arm64 where applicable), desktop installers
 # (macOS universal dmg / Windows NSIS / Linux AppImage, each bundling the same-version
 # CLI as a Tauri sidecar) plus the updater manifest latest.json, publishes a GitHub
-# Release with exactly those six assets attached, publishes the CLI to npm (the single
+# Release with exactly those seven assets attached, publishes the CLI to npm (the single
 # binary source for npm / Homebrew / install.sh), and pushes the server Docker image
 # to ghcr.
 #
@@ -300,6 +300,42 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run -w apps/desktop tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
 
+      # Windows portable ZIP（desktop-release spec）：安裝器之外，另提供可解壓使用的版本。
+      # 內容與獨立 Desktop Build 流程相同，並檢查 CLI 設定會跟著資料夾搬移。
+      - name: Package and check Windows portable ZIP
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          node scripts/desktop/windows-portable.mjs
+          if ($LASTEXITCODE -ne 0) { throw 'Portable staging failed' }
+          $version = (Get-Content apps/desktop/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $folder = "target/x86_64-pc-windows-msvc/release/bundle/portable/Speclink_${version}_x64-portable"
+          Compress-Archive -Path $folder -DestinationPath "$folder.zip" -Force
+          $check = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          Expand-Archive -Path "$folder.zip" -DestinationPath $check
+          $extracted = Join-Path $check "Speclink_${version}_x64-portable"
+          if (!(Test-Path "$extracted/speclink-desktop.exe")) { throw 'Desktop executable missing' }
+          & "$extracted/speclink.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw 'Portable CLI failed' }
+          $config = & "$extracted/speclink.exe" config path
+          if ($LASTEXITCODE -ne 0) { throw 'Portable config lookup failed' }
+          $expected = Join-Path $extracted 'data/speclink/config.yaml'
+          if ([IO.Path]::GetFullPath($config.Trim()) -ne [IO.Path]::GetFullPath($expected)) {
+            throw 'Portable CLI is using a machine config directory'
+          }
+          & "$extracted/speclink.exe" config set locale English
+          if ($LASTEXITCODE -ne 0 -or !(Test-Path $expected)) { throw 'Portable config write failed' }
+          $moved = Join-Path $check 'moved-portable'
+          Move-Item -Path $extracted -Destination $moved
+          $config = & "$moved/speclink.exe" config path
+          if ($LASTEXITCODE -ne 0) { throw 'Moved portable config lookup failed' }
+          $expected = Join-Path $moved 'data/speclink/config.yaml'
+          if ([IO.Path]::GetFullPath($config.Trim()) -ne [IO.Path]::GetFullPath($expected)) {
+            throw 'Portable config did not follow the relocated EXE'
+          }
+          $locale = & "$moved/speclink.exe" config get locale
+          if ($LASTEXITCODE -ne 0 -or $locale.Trim() -ne 'English') { throw 'Moved portable config lost' }
+
       # 佈署收集：installers/ 進 Release assets；updater/<platform>/ 供 latest.json
       # 組裝（每個更新包目錄恰一更新包＋同名 .sig——scripts/release/release-latest-json.mjs
       # 的目錄契約；darwin-universal 一個目錄餵 darwin-aarch64 與 darwin-x86_64 兩鍵）。
@@ -320,6 +356,7 @@ jobs:
               ;;
             windows-*)
               cp "$BUNDLE"/nsis/*-setup.exe installers/
+              cp "$BUNDLE"/portable/*.zip installers/
               cp "$BUNDLE"/nsis/*-setup.exe "$UPDATER"/
               cp "$BUNDLE"/nsis/*-setup.exe.sig "$UPDATER"/
               ;;
@@ -464,7 +501,7 @@ jobs:
       - uses: actions/checkout@v5
 
       # Release assets 是封閉集合（desktop-release spec「Release 產出三平台桌面安裝檔」；
-      # 設計 D1）：安裝檔＋更新包本體＋latest.json，共六個檔。dist 只攤平合併
+      # 設計 D1）：安裝檔（含 Windows portable ZIP）＋更新包本體＋latest.json，共七個檔。dist 只攤平合併
       # desktop-*；cli-*／server-* 各給自己的 npm 發布 job，不落入。
       - uses: actions/download-artifact@v4
         with:

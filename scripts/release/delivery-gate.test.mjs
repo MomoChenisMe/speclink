@@ -499,6 +499,7 @@ test('release.yml 的 npm-publish job 重用 npm-publish.yml：下載 server-*�
 test('release.yml 的 Release 資產只收安裝檔與更新包本體：dist 只合併 desktop-*，updater-* 保留目錄，.sig 不進 dist，無 SHA256SUMS', () => {
   const release = read('.github/workflows/release.yml');
   const job = jobBlock(release, 'release', 'release.yml');
+  const desktop = jobBlock(release, 'desktop', 'release.yml');
 
   const blocks = job
     .split(/- uses: actions\/download-artifact@v4/)
@@ -533,6 +534,9 @@ test('release.yml 的 Release 資產只收安裝檔與更新包本體：dist 只
   // 校驗碼檔退場：唯一的機器讀者（install.sh、formula 產生器）都改讀 npm。
   assert.ok(!release.includes('SHA256SUMS'), 'release.yml：不得再產出或下載 SHA256SUMS.txt');
   assert.ok(!job.includes('sha256sum'), 'release job：不得再有 Checksums 步驟');
+  assert.match(desktop, /node scripts\/desktop\/windows-portable\.mjs/, 'desktop job：Windows 必須產生 portable ZIP');
+  assert.match(desktop, /Compress-Archive/, 'desktop job：必須將 portable 目錄壓成 ZIP');
+  assert.match(desktop, /cp "\$BUNDLE"\/portable\/\*\.zip installers\//, 'desktop artifact：portable ZIP 必須進 Release assets');
 });
 
 test('release.yml 的 docker 建置逐架構原生分開建、合併 job 打 tag（禁 QEMU 編譯路徑）', () => {

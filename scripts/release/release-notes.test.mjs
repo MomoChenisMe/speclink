@@ -13,10 +13,11 @@ const run = (args) => repo.run('release-notes.mjs', args);
 
 // 下載指南的檔名必須與 release 管線的資產命名逐字一致（desktop-release spec
 // 「指南檔名對齊版號與資產命名」；release-assets-trim 後的四個安裝檔）——這份清單
-// 就是那個命名契約。
+// 就是那個命名契約（含 Windows portable ZIP）。
 const installersFor = (version) => [
   `Speclink_${version}_universal.dmg`,
   `Speclink_${version}_x64-setup.exe`,
+  `Speclink_${version}_x64-portable.zip`,
   `Speclink_${version}_amd64.AppImage`,
   `Speclink_${version}_aarch64.AppImage`,
 ];
@@ -48,7 +49,7 @@ test('輸出依序為英文指南、英文片段、收合的「繁體中文」�
   assert.ok(!en.includes('乙') && !zh.includes('Beta'), '兩段的條目各用自己的語言');
 });
 
-test('兩種語言的對照表都列出四個安裝檔且檔名含版號；macOS 一列註明兩種晶片同一檔', () => {
+test('兩種語言的對照表都列出安裝檔與 Windows 免安裝 ZIP 且檔名含版號；macOS 一列註明兩種晶片同一檔', () => {
   const { stdout } = run(['--tag', 'v0.1.0']);
   const { en, zh } = sections(stdout);
   for (const [lang, text] of Object.entries({ en, zh })) {
@@ -83,7 +84,7 @@ test('對照表為 Linux 伺服器／無圖形介面另列一列，指向 CLI �
 
 test('退場的檔案不再出現：.sig、.deb、校驗碼檔、CLI 壓縮檔、PowerShell 腳本', () => {
   const { stdout } = run(['--tag', 'v0.1.0']);
-  for (const gone of ['.sig', '.deb', 'SHA256SUMS', 'install.ps1', '.zip', 'speclink-v0.1.0-']) {
+  for (const gone of ['.sig', '.deb', 'SHA256SUMS', 'install.ps1', 'speclink-v0.1.0-']) {
     assert.ok(!stdout.includes(gone), `指南不得再提及 ${gone}`);
   }
   // .app.tar.gz 仍在（自動更新用）；其他 .tar.gz 都不該出現。
