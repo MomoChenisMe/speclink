@@ -19,7 +19,8 @@ export type ProjectProbe =
       hasLocalOpenspec: boolean;
     }
   | { status: "uninitialized"; dir: string }
-  | { status: "unadopted"; root: string };
+  /** needsImport：規格資料夾是舊佈局 openspec/，啟用會先改名為 speclink/。 */
+  | { status: "unadopted"; root: string; needsImport: boolean };
 
 /** schema 的來源層級（引擎的 resolution 層命名：內建／專案層／user 層）。 */
 export type SchemaSource = "package" | "project" | "user";
@@ -47,6 +48,8 @@ export interface SchemaArtifactDetail {
 
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
+  /** 規格資料夾的專案根相對路徑（speclink、舊佈局 openspec 或明寫的 spec_dir）；遠端快照不帶。 */
+  specDir?: string;
   app: { tools: string[]; customTools: string[]; parseError: string | null };
   workflow: {
     locale: string | null;
@@ -99,6 +102,27 @@ export interface AssetProbeResult {
     missing: boolean;
   }>;
   differingFiles: string[];
+  /** 規格資料夾遷移狀態（desktop-spec-dir-migration D1）。 */
+  migration: MigrationProbe;
+}
+
+/** 遷移暫緩的原因（引擎 DeferReason 的代碼）。 */
+export type MigrationDeferReason =
+  | "linkedWorktree"
+  | "otherWorktrees"
+  | "uncommitted"
+  | "symlinkedFolder"
+  | "specFolderTaken";
+
+/** `folder` 是資料檔現在所在的資料夾：openspec 會改名為 speclink，speclink 只改名舊檔名的資料檔。 */
+export type MigrationProbe =
+  | { state: "none" }
+  | { state: "pending"; folder: string; metaFiles: number }
+  | { state: "deferred"; folder: string; reason: MigrationDeferReason; worktrees: string[] };
+
+/** update_assets 的回報中桌面用到的部分：這次遷移做了什麼。 */
+export interface AssetUpdateResult {
+  migrated: { movedFolder: boolean; renamed: number };
 }
 
 /** 探測面：開啟／初始化／統計皆收路徑參數、無全域語意（設定面見
@@ -113,8 +137,9 @@ export interface WorkspaceAdapter {
   projectStats(path: string): Promise<{ pendingWrapUp: number }>;
   /** 技能檔過期探測（唯讀）；探測失敗以 status=unknown 表達，不 reject。 */
   probeAssets(path: string): Promise<AssetProbeResult>;
-  /** 技能檔整套再生（委派引擎 update()）；失敗為單行錯誤訊息。 */
-  updateAssets(path: string): Promise<void>;
+  /** 技能檔整套再生（委派引擎 update()，含規格資料夾遷移；呼叫期間暫停監看）；
+   * 失敗為單行錯誤訊息。 */
+  updateAssets(path: string): Promise<AssetUpdateResult>;
   /** 監看重掛（workspace-session 決策 5）：顯式跟隨活躍 session。 */
   watchWorkspace(root: string): Promise<void>;
   /** 原生資料夾選擇器；取消回 null。 */

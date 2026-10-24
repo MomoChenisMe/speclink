@@ -397,7 +397,7 @@ mod tests {
     fn fixture_with_change(tag: &str, name: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!("speclink-manage-{}-{}", tag, std::process::id()));
         let _ = fs::remove_dir_all(&root);
-        let dir = root.join("openspec").join("changes").join(name);
+        let dir = root.join("speclink").join("changes").join(name);
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("proposal.md"), "## Why\ntest\n").unwrap();
         fs::write(
@@ -490,10 +490,10 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("m-revert-ok");
         fx.add_change("demo", STARTED_META);
         // add_change 預設 tasks.md 含一個已勾任務——覆寫為零勾選(零痕跡)。
-        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        fx.write("speclink/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
         revert_change_to_proposed_at(fx.root(), "demo").expect("zero-trace revert succeeds");
         let meta = fs::read_to_string(
-            fx.root().join("openspec/changes/demo/.meta.yaml"),
+            fx.root().join("speclink/changes/demo/.meta.yaml"),
         )
         .unwrap();
         assert_eq!(
@@ -508,9 +508,9 @@ mod tests {
         // 與封存同一條紅線——工作在 worktree 副本裡，主 checkout 不該擅自退回。
         let fx = crate::testfixture::FixtureRoot::new("m-revert-wt");
         fx.add_change("demo", STARTED_META);
-        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        fx.write("speclink/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
         fx.write(".speclink.yaml", "tools:\n  - claude\n");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: true\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\nworktree: true\n");
         let git = |args: &[&str]| {
             let out = std::process::Command::new("git")
                 .args(args)
@@ -530,7 +530,7 @@ mod tests {
 
         let err = revert_change_to_proposed_at(fx.root(), "demo").expect_err("必須拒絕");
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
-        let meta = fs::read_to_string(fx.root().join("openspec/changes/demo/.meta.yaml")).unwrap();
+        let meta = fs::read_to_string(fx.root().join("speclink/changes/demo/.meta.yaml")).unwrap();
         assert!(meta.contains("started_at"), "拒絕時開工戳記不得被移除: {meta}");
     }
 
@@ -538,7 +538,7 @@ mod tests {
     fn revert_on_unstarted_change_is_idempotent_success() {
         let fx = crate::testfixture::FixtureRoot::new("m-revert-idem");
         fx.add_change("demo", "schema: spec-driven\ncreated: 2026-07-05\n");
-        fx.write("openspec/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
+        fx.write("speclink/changes/demo/tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n");
         revert_change_to_proposed_at(fx.root(), "demo").expect("idempotent success");
     }
 
@@ -559,7 +559,7 @@ mod tests {
         // remote bridge 走同一轉譯函式——形狀由這條斷言釘住。
         assert_eq!(err, revert_blocked_error(1, &["src/a.rs".to_string()]));
         let meta = fs::read_to_string(
-            fx.root().join("openspec/changes/demo/.meta.yaml"),
+            fx.root().join("speclink/changes/demo/.meta.yaml"),
         )
         .unwrap();
         assert_eq!(meta, STARTED_META, "a refusal must not touch the meta");
@@ -571,7 +571,7 @@ mod tests {
         // 守門放行的基準案例。
         let root = fixture_with_change("del", "doomed-change");
         fs::write(
-            root.join("openspec").join("changes").join("doomed-change").join("tasks.md"),
+            root.join("speclink").join("changes").join("doomed-change").join("tasks.md"),
             "- [ ] 1.1 open\n",
         )
         .unwrap();
@@ -594,18 +594,18 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("del-unlink");
         fx.add_change("cut", "schema: spec-driven\ncreated: 2026-07-05\nfrom_discussion: d1\n");
         // add_change 預設 tasks.md 含一個已勾任務——覆寫為零痕跡。
-        fx.write("openspec/changes/cut/tasks.md", "- [ ] 1.1 open\n");
-        fx.write("openspec/discussions/d1.md", PROMOTED_D1);
+        fx.write("speclink/changes/cut/tasks.md", "- [ ] 1.1 open\n");
+        fx.write("speclink/discussions/d1.md", PROMOTED_D1);
         fx.write(".speclink/touched/cut.json", "{\"change\":\"cut\",\"touched\":[]}");
 
         delete_change_at(fx.root(), "cut").expect("trace-free delete succeeds");
 
-        assert!(!fx.root().join("openspec/changes/cut").exists(), "change directory gone");
+        assert!(!fx.root().join("speclink/changes/cut").exists(), "change directory gone");
         assert!(
             !fx.root().join(".speclink/touched/cut.json").exists(),
             "touched record cleared"
         );
-        let doc = fs::read_to_string(fx.root().join("openspec/discussions/d1.md")).unwrap();
+        let doc = fs::read_to_string(fx.root().join("speclink/discussions/d1.md")).unwrap();
         assert!(!doc.contains("promoted_to"), "promoted_to entry removed: {doc}");
         assert!(
             doc.contains("status: concluded\n"),
@@ -616,23 +616,23 @@ mod tests {
     #[test]
     fn delete_started_change_is_refused_with_zero_file_effects() {
         // spec scenario「有開工痕跡的本地刪除被拒」：meta 含 started_at → Err，
-        // openspec/ 下任何檔案逐位元不變（含來源討論不解鏈）。
+        // speclink/ 下任何檔案逐位元不變（含來源討論不解鏈）。
         let fx = crate::testfixture::FixtureRoot::new("del-refused");
         fx.add_change(
             "cut",
             "schema: spec-driven\ncreated: 2026-07-05\nstarted_at: 2026-07-06\nfrom_discussion: d1\n",
         );
-        fx.write("openspec/changes/cut/tasks.md", "- [ ] 1.1 open\n");
-        fx.write("openspec/discussions/d1.md", PROMOTED_D1);
-        let meta_path = fx.root().join("openspec/changes/cut/.meta.yaml");
+        fx.write("speclink/changes/cut/tasks.md", "- [ ] 1.1 open\n");
+        fx.write("speclink/discussions/d1.md", PROMOTED_D1);
+        let meta_path = fx.root().join("speclink/changes/cut/.meta.yaml");
         let meta_before = fs::read_to_string(&meta_path).unwrap();
 
         delete_change_at(fx.root(), "cut").expect_err("started change must refuse delete");
 
-        assert!(fx.root().join("openspec/changes/cut").exists(), "change directory preserved");
+        assert!(fx.root().join("speclink/changes/cut").exists(), "change directory preserved");
         assert_eq!(fs::read_to_string(&meta_path).unwrap(), meta_before, "meta byte-identical");
         assert_eq!(
-            fs::read_to_string(fx.root().join("openspec/discussions/d1.md")).unwrap(),
+            fs::read_to_string(fx.root().join("speclink/discussions/d1.md")).unwrap(),
             PROMOTED_D1,
             "discussion untouched — no unlink on a refused delete"
         );
@@ -647,9 +647,9 @@ mod tests {
         // 同落副本（歸因掃的是副本的髒檔），主 checkout 的 tasks.md 位元級不變。
         let fx = crate::testfixture::FixtureRoot::new("m-task-wt");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
-        fx.write("openspec/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
+        fx.write("speclink/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
         let wt = fx.attach_worktree("add-auth");
-        let main_tasks = fx.root().join("openspec/changes/add-auth/tasks.md");
+        let main_tasks = fx.root().join("speclink/changes/add-auth/tasks.md");
         let main_before = fs::read_to_string(&main_tasks).unwrap();
         // 副本內的未認領髒檔——勾選的歸因來源。
         fs::write(wt.path().join("src.rs"), "fn implemented_in_the_worktree() {}\n").unwrap();
@@ -668,14 +668,14 @@ mod tests {
             .expect("touched 記錄落在 worktree 副本");
         assert!(record.contains("src.rs"), "歸因掃的是副本的髒檔: {record}");
         assert!(
-            !fx.root().join("openspec/changes/add-auth/.evidence.json").exists(),
+            !fx.root().join("speclink/changes/add-auth/.evidence.json").exists(),
             "主 checkout 不留記錄"
         );
         // 首次完成的開工章同樣落在副本。
         let wt_meta = fs::read_to_string(wt_change.join(".meta.yaml")).unwrap();
         assert!(wt_meta.contains("started_at:"), "開工章須落在副本: {wt_meta}");
         assert!(
-            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.meta.yaml"))
+            !fs::read_to_string(fx.root().join("speclink/changes/add-auth/.meta.yaml"))
                 .unwrap()
                 .contains("started_at:"),
             "主 checkout 的 metadata 不被寫入"
@@ -689,11 +689,11 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("m-bulk-wt");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
         fx.write(
-            "openspec/changes/add-auth/tasks.md",
+            "speclink/changes/add-auth/tasks.md",
             "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n",
         );
         let wt = fx.attach_worktree("add-auth");
-        let main_tasks = fx.root().join("openspec/changes/add-auth/tasks.md");
+        let main_tasks = fx.root().join("speclink/changes/add-auth/tasks.md");
         let main_before = fs::read_to_string(&main_tasks).unwrap();
         let wt_tasks = wt.change_dir("add-auth")
             .join("tasks.md");
@@ -720,7 +720,7 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("m-bulk-evidence");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
         fx.write(
-            "openspec/changes/add-auth/tasks.md",
+            "speclink/changes/add-auth/tasks.md",
             "## 1. Group\n\n- [ ] 1.1 first\n- [ ] 1.2 second\n",
         );
         git_with_identity(fx.root(), "Bulk Tester", "bulk@example.test");
@@ -739,7 +739,7 @@ mod tests {
 
         set_all_tasks_at(fx.root(), "add-auth", true).expect("全勾成功");
 
-        let store = speclink_fs::FsStore::new(fx.root(), "openspec");
+        let store = speclink_fs::FsStore::new(fx.root(), "speclink");
         let rec = speclink_core::tasks::TouchedRecord::load(&store, "add-auth");
         assert_eq!(rec.touched.len(), 1, "v1 file-list channel keeps its entry");
         assert_eq!(rec.entries.len(), 1, "the v2 evidence entry lands too: {rec:?}");
@@ -755,7 +755,7 @@ mod tests {
         // 放棄審查工單同屬粒度寫入動詞：刪的是副本的工單，主 checkout 的同名檔不動。
         let fx = crate::testfixture::FixtureRoot::new("m-discard-wt");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
-        fx.write("openspec/changes/add-auth/review.md", "# Review — 主 checkout 的舊工單\n");
+        fx.write("speclink/changes/add-auth/review.md", "# Review — 主 checkout 的舊工單\n");
         let wt = fx.attach_worktree("add-auth");
         let wt_ticket = wt.change_dir("add-auth")
             .join("review.md");
@@ -764,7 +764,7 @@ mod tests {
 
         assert!(!wt_ticket.exists(), "副本的工單須被刪除");
         assert!(
-            fx.root().join("openspec/changes/add-auth/review.md").is_file(),
+            fx.root().join("speclink/changes/add-auth/review.md").is_file(),
             "主 checkout 的工單不受影響"
         );
     }
@@ -786,7 +786,7 @@ mod tests {
         .unwrap();
         assert!(wt_meta.contains("board_rank:"), "rank 須寫入 worktree 副本: {wt_meta}");
         assert!(
-            !fs::read_to_string(fx.root().join("openspec/changes/add-auth/.meta.yaml"))
+            !fs::read_to_string(fx.root().join("speclink/changes/add-auth/.meta.yaml"))
                 .unwrap()
                 .contains("board_rank:"),
             "主 checkout 的 metadata 不被寫入"
@@ -810,7 +810,7 @@ mod tests {
 
         let meta = |p: &std::path::Path| fs::read_to_string(p).unwrap();
         let main_meta =
-            |name: &str| meta(&fx.root().join(format!("openspec/changes/{name}/.meta.yaml")));
+            |name: &str| meta(&fx.root().join(format!("speclink/changes/{name}/.meta.yaml")));
         let wt_meta = |name: &str| {
             meta(&wt.change_dir(name)
                 .join(".meta.yaml"))
@@ -836,7 +836,7 @@ mod tests {
         let fx = crate::testfixture::FixtureRoot::new("m-del-wt");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
         // 零痕跡：守門之外的既有前置都會放行，拒絕只可能來自 worktree 守門。
-        fx.write("openspec/changes/add-auth/tasks.md", "- [ ] 1.1 open\n");
+        fx.write("speclink/changes/add-auth/tasks.md", "- [ ] 1.1 open\n");
         let wt = fx.attach_worktree("add-auth");
 
         let err = delete_change_at(fx.root(), "add-auth").expect_err("有 worktree 映射時必須拒絕");
@@ -844,7 +844,7 @@ mod tests {
         assert!(err.contains("worktree-merge"), "須指出收尾方式: {err}");
         assert!(err.contains("add-auth"), "須指名 change: {err}");
         assert!(
-            fx.root().join("openspec/changes/add-auth").is_dir(),
+            fx.root().join("speclink/changes/add-auth").is_dir(),
             "主 checkout 的 change 目錄不變"
         );
         assert!(
@@ -859,14 +859,14 @@ mod tests {
         // checkout、守門退場，與 worktree 功能出現前完全相同。
         let fx = crate::testfixture::FixtureRoot::new("m-policy-off");
         fx.add_change("add-auth", "schema: spec-driven\ncreated: 2026-07-05\n");
-        fx.write("openspec/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
+        fx.write("speclink/changes/add-auth/tasks.md", "## 1. Group\n\n- [ ] 1.1 first\n");
         let wt = fx.attach_worktree("add-auth");
-        fx.write("openspec/config.yaml", "schema: spec-driven\nworktree: false\n");
+        fx.write("speclink/config.yaml", "schema: spec-driven\nworktree: false\n");
 
         set_task_done_at(fx.root(), "add-auth", "1", true).expect("勾選成功");
 
         let main_tasks =
-            fs::read_to_string(fx.root().join("openspec/changes/add-auth/tasks.md")).unwrap();
+            fs::read_to_string(fx.root().join("speclink/changes/add-auth/tasks.md")).unwrap();
         assert!(main_tasks.contains("- [x] 1.1 first"), "勾章落在主 checkout: {main_tasks}");
         let wt_tasks = fs::read_to_string(
             wt.change_dir("add-auth").join("tasks.md"),
@@ -881,7 +881,7 @@ mod tests {
 
     fn fixture_with_tasks(tag: &str) -> PathBuf {
         let root = fixture_with_change(tag, "task-change");
-        let dir = root.join("openspec").join("changes").join("task-change");
+        let dir = root.join("speclink").join("changes").join("task-change");
         fs::write(
             dir.join("tasks.md"),
             "## 1. Group A\n\n- [ ] 1.1 first\n- [x] 1.2 second\n\n## 2. Group B\n\n- [ ] 2.1 third\n",
@@ -892,7 +892,7 @@ mod tests {
 
     fn read_tasks(root: &PathBuf) -> String {
         fs::read_to_string(
-            root.join("openspec").join("changes").join("task-change").join("tasks.md"),
+            root.join("speclink").join("changes").join("task-change").join("tasks.md"),
         )
         .unwrap()
     }
@@ -944,7 +944,7 @@ mod tests {
 
     fn fixture_with_tasks_md(tag: &str, tasks: &str) -> PathBuf {
         let root = fixture_with_change(tag, "task-change");
-        let dir = root.join("openspec").join("changes").join("task-change");
+        let dir = root.join("speclink").join("changes").join("task-change");
         fs::write(dir.join("tasks.md"), tasks).unwrap();
         root
     }
@@ -1268,7 +1268,7 @@ mod tests {
     }
 
     fn change_file(fx: &crate::testfixture::FixtureRoot, name: &str, file: &str) -> PathBuf {
-        fx.root().join("openspec").join("changes").join(name).join(file)
+        fx.root().join("speclink").join("changes").join(name).join(file)
     }
 
     fn meta_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> String {
@@ -1279,7 +1279,7 @@ mod tests {
     fn touched_of(fx: &crate::testfixture::FixtureRoot, name: &str) -> Option<String> {
         fs::read_to_string(
             fx.root()
-                .join("openspec")
+                .join("speclink")
                 .join("changes")
                 .join(name)
                 .join(".evidence.json"),
@@ -1344,7 +1344,7 @@ mod tests {
         // dirty 檔在場更能證明「不記 touched」是行為而非碰巧無料可記。
         giterize(fx.root(), Some("src/lib.rs"));
         let touched_before = "{\n  \"change\": \"demo\",\n  \"touched\": []\n}";
-        fx.write("openspec/changes/demo/.evidence.json", touched_before);
+        fx.write("speclink/changes/demo/.evidence.json", touched_before);
 
         set_task_done_at(fx.root(), "demo", "2", false).expect("uncheck ok");
         move_task_at(fx.root(), "demo", 1, 2, None).expect("move ok");
@@ -1365,7 +1365,7 @@ mod tests {
         for n in 1..=4 {
             let fx = crate::testfixture::FixtureRoot::new(&format!("align-{n}"));
             fx.add_change("demo", META_UNSTARTED);
-            fx.write("openspec/changes/demo/tasks.md", mixed);
+            fx.write("speclink/changes/demo/tasks.md", mixed);
             set_task_done_at(fx.root(), "demo", &n.to_string(), true).expect("check ok");
             let text = fs::read_to_string(change_file(&fx, "demo", "tasks.md")).unwrap();
             let parsed = speclink_core::tasks::parse(&text);
@@ -1539,7 +1539,7 @@ mod tests {
         // 他欄卡（proposed：零完成、未開工）不得被補章。
         fx.add_change("other-col", META_UNSTARTED);
         fx.write(
-            "openspec/changes/other-col/tasks.md",
+            "speclink/changes/other-col/tasks.md",
             "## 1. Group\n\n- [ ] 1.1 First task\n- [ ] 1.2 Second task\n",
         );
         let other_before = meta_of(&fx, "other-col");
@@ -1597,7 +1597,7 @@ mod tests {
         let err = reorder_card_at(fx.root(), "change", "broken", Some("a"), None)
             .expect_err("dragging the invalid card must be refused");
         assert!(
-            err.contains("openspec/changes/broken/.meta.yaml"),
+            err.contains("speclink/changes/broken/.meta.yaml"),
             "error must name the metadata file: {err}"
         );
         assert_eq!(meta_of(&fx, "broken"), BAD_META, "meta byte-identical");
@@ -1612,20 +1612,20 @@ mod tests {
                 "---\ntopic: T {slug}\nslug: {slug}\nstatus: open\nboard_rank: {rank}\ncreated: 2026-07-01\n---\n\n# Discussion: T {slug}\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- p -->\n"
             )
         };
-        fx.write("openspec/discussions/alpha.md", &doc("alpha", "b"));
-        fx.write("openspec/discussions/beta.md", &doc("beta", "n"));
-        fx.write("openspec/discussions/gamma.md", &doc("gamma", "t"));
-        let alpha_before = fs::read_to_string(fx.root().join("openspec/discussions/alpha.md")).unwrap();
+        fx.write("speclink/discussions/alpha.md", &doc("alpha", "b"));
+        fx.write("speclink/discussions/beta.md", &doc("beta", "n"));
+        fx.write("speclink/discussions/gamma.md", &doc("gamma", "t"));
+        let alpha_before = fs::read_to_string(fx.root().join("speclink/discussions/alpha.md")).unwrap();
 
         reorder_card_at(fx.root(), "discussion", "gamma", Some("alpha"), Some("beta"))
             .expect("discussion reorder ok");
 
         assert_eq!(
-            fs::read_to_string(fx.root().join("openspec/discussions/alpha.md")).unwrap(),
+            fs::read_to_string(fx.root().join("speclink/discussions/alpha.md")).unwrap(),
             alpha_before,
             "neighbor discussion files must not change"
         );
-        let gamma = fs::read_to_string(fx.root().join("openspec/discussions/gamma.md")).unwrap();
+        let gamma = fs::read_to_string(fx.root().join("speclink/discussions/gamma.md")).unwrap();
         let new_rank = {
             let line = gamma.lines().find(|l| l.starts_with("board_rank:")).expect("rank line");
             line.trim_start_matches("board_rank:").trim().to_string()
@@ -1683,7 +1683,7 @@ mod tests {
         fx.add_change("b", &ranked_meta("f"));
         for name in ["a", "b"] {
             fx.write(
-                &format!("openspec/changes/{name}/specs/shared-cap/spec.md"),
+                &format!("speclink/changes/{name}/specs/shared-cap/spec.md"),
                 "## ADDED Requirements\n\n### Requirement: R\n\nText.\n",
             );
         }
@@ -1724,7 +1724,7 @@ mod tests {
         fx.add_change("a", META_UNSTARTED);
         fx.add_change("b", META_UNSTARTED);
         let wt = fx.attach_worktree("a");
-        fx.write("openspec/changes/b/.meta.yaml", &format!("{META_UNSTARTED}depends_on: a\n"));
+        fx.write("speclink/changes/b/.meta.yaml", &format!("{META_UNSTARTED}depends_on: a\n"));
         let a_wt = wt.change_dir("a").join(".meta.yaml");
         let a_before = fs::read_to_string(&a_wt).unwrap();
 

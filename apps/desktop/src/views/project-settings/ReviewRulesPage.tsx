@@ -49,7 +49,7 @@ export function ReviewRulesPage({ ps }: { ps: ProjectSettingsState }) {
             onSave={save}
           />
         }
-        note={<PageNote remote={ps.remoteNote} fileKey="openspec/config.yaml · review" testId="file-note-config" />}
+        note={<PageNote remote={ps.remoteNote} fileKey={`${ps.configFile} · review`} testId="file-note-config" />}
       />
       <PageAlerts ps={ps} parseError={ps.snap.workflow.parseError} />
 

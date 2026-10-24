@@ -46,7 +46,8 @@ pub fn list_discussions_at(root: &Path) -> Value {
     let store: &dyn Store = &ctx.store;
     let active: Vec<Value> = board_sorted_active(store).iter().map(|(_, i)| entry(i)).collect();
     let archived: Vec<Value> = discuss::list_archived(store).iter().map(entry).collect();
-    json!({ "active": active, "archived": archived })
+    // specDir：詳情頁以它組記錄路徑（desktop-spec-dir-migration D4）。
+    json!({ "active": active, "archived": archived, "specDir": ctx.workspace.spec_dir_name })
 }
 
 /// 看板顯示序的 active 討論清單（design D2）：slug 序當回退，穩定排序疊上
@@ -138,19 +139,19 @@ mod tests {
     fn fx_with_discussions(tag: &str) -> FixtureRoot {
         let fx = FixtureRoot::new(tag);
         fx.write(
-            "openspec/discussions/alpha-search.md",
+            "speclink/discussions/alpha-search.md",
             &discussion_doc("alpha-search", "Alpha search", "concluded", "", 1, "**Decision**: build alpha search"),
         );
         fx.write(
-            "openspec/discussions/beta-open.md",
+            "speclink/discussions/beta-open.md",
             &discussion_doc("beta-open", "Beta open", "open", "", 2, "<!-- placeholder -->"),
         );
         fx.write(
-            "openspec/discussions/gamma-promoted.md",
+            "speclink/discussions/gamma-promoted.md",
             &discussion_doc("gamma-promoted", "Gamma promoted", "promoted", "promoted_to: cut-a, cut-b\n", 3, "**Decision**: split"),
         );
         fx.write(
-            "openspec/discussions/archive/2026-01-03-old-topic.md",
+            "speclink/discussions/archive/2026-01-03-old-topic.md",
             &discussion_doc("old-topic", "Old topic", "promoted", "promoted_to: first-cut\n", 1, "**Decision**: done"),
         );
         fx
@@ -200,11 +201,11 @@ mod tests {
         // 看板與系統匣才分得出「還欠一刀」與「做完等封存」。
         let fx = FixtureRoot::new("d-hold");
         fx.write(
-            "openspec/discussions/held.md",
+            "speclink/discussions/held.md",
             &discussion_doc("held", "Held", "promoted", "promoted_to: cut-a\nhold: true\n", 1, "**Decision**: more cuts"),
         );
         fx.write(
-            "openspec/discussions/freed.md",
+            "speclink/discussions/freed.md",
             &discussion_doc("freed", "Freed", "promoted", "promoted_to: cut-b\n", 1, "**Decision**: done"),
         );
 
@@ -235,11 +236,11 @@ mod tests {
     fn list_discussions_exposes_created_by_camel_case_when_present() {
         let fx = FixtureRoot::new("d-createdby");
         fx.write(
-            "openspec/discussions/with-author.md",
+            "speclink/discussions/with-author.md",
             &discussion_doc("with-author", "With author", "open", "created_by: Base Line <base@example.com>\n", 1, "<!-- x -->"),
         );
         fx.write(
-            "openspec/discussions/no-author.md",
+            "speclink/discussions/no-author.md",
             &discussion_doc("no-author", "No author", "open", "", 1, "<!-- x -->"),
         );
         let v = super::list_discussions_at(fx.root());
@@ -258,11 +259,11 @@ mod tests {
         // 一般討論省略該鍵（既有 payload 形狀不變）。
         let fx = FixtureRoot::new("d-kind");
         fx.write(
-            "openspec/discussions/improve-store.md",
+            "speclink/discussions/improve-store.md",
             &discussion_doc("improve-store", "Store 層改進", "open", "kind: improve\n", 1, "<!-- x -->"),
         );
         fx.write(
-            "openspec/discussions/plain-topic.md",
+            "speclink/discussions/plain-topic.md",
             &discussion_doc("plain-topic", "Plain topic", "open", "", 1, "<!-- x -->"),
         );
         let v = super::list_discussions_at(fx.root());
@@ -278,23 +279,23 @@ mod tests {
         // 缺值卡置頂維持回退序（slug 升冪），具值卡依 rank 升冪；同值以 slug 決斷。
         let fx = FixtureRoot::new("d-rank-sort");
         fx.write(
-            "openspec/discussions/delta.md",
+            "speclink/discussions/delta.md",
             &discussion_doc("delta", "Delta", "open", "board_rank: b\n", 0, "<!-- placeholder -->"),
         );
         fx.write(
-            "openspec/discussions/charlie.md",
+            "speclink/discussions/charlie.md",
             &discussion_doc("charlie", "Charlie", "open", "board_rank: n\n", 0, "<!-- placeholder -->"),
         );
         fx.write(
-            "openspec/discussions/echo.md",
+            "speclink/discussions/echo.md",
             &discussion_doc("echo", "Echo", "open", "board_rank: n\n", 0, "<!-- placeholder -->"),
         );
         fx.write(
-            "openspec/discussions/beta.md",
+            "speclink/discussions/beta.md",
             &discussion_doc("beta", "Beta", "open", "", 0, "<!-- placeholder -->"),
         );
         fx.write(
-            "openspec/discussions/alpha.md",
+            "speclink/discussions/alpha.md",
             &discussion_doc("alpha", "Alpha", "open", "", 0, "<!-- placeholder -->"),
         );
         let v = super::list_discussions_at(fx.root());
@@ -309,6 +310,16 @@ mod tests {
             ["alpha", "beta", "delta", "charlie", "echo"],
             "unranked (slug order) on top, then rank asc (delta=b before charlie=n) with slug tiebreak (charlie before echo at n)"
         );
+    }
+
+    #[test]
+    fn list_discussions_carries_the_spec_folder_for_the_record_path() {
+        // spec「畫面依實際規格資料夾與資料檔名顯示」：詳情頁以資料來源帶出的資料夾組記錄路徑。
+        let fx = fx_with_discussions("d-list-spec-dir");
+        assert_eq!(super::list_discussions_at(fx.root())["specDir"], "speclink");
+        fx.write(".speclink.yaml", "spec_dir: docs/specs\n");
+        std::fs::create_dir_all(fx.root().join("docs/specs/discussions")).unwrap();
+        assert_eq!(super::list_discussions_at(fx.root())["specDir"], "docs/specs");
     }
 
     #[test]
@@ -352,18 +363,18 @@ mod tests {
         assert_eq!(v["change"], "alpha-search");
 
         let meta = std::fs::read_to_string(
-            fx.root().join("openspec/changes/alpha-search/.meta.yaml"),
+            fx.root().join("speclink/changes/alpha-search/.meta.yaml"),
         )
         .expect("change meta exists");
         assert!(meta.contains("from_discussion: alpha-search\n"), "meta: {meta}");
 
         let proposal = std::fs::read_to_string(
-            fx.root().join("openspec/changes/alpha-search/proposal.md"),
+            fx.root().join("speclink/changes/alpha-search/proposal.md"),
         )
         .expect("proposal exists");
         assert!(proposal.starts_with("## Why\n\n**Decision**: build alpha search\n"), "proposal: {proposal}");
 
-        let doc = std::fs::read_to_string(fx.root().join("openspec/discussions/alpha-search.md")).unwrap();
+        let doc = std::fs::read_to_string(fx.root().join("speclink/discussions/alpha-search.md")).unwrap();
         assert!(doc.contains("status: promoted\n"), "doc: {doc}");
         assert!(doc.contains("promoted_to: alpha-search\n"), "doc: {doc}");
     }
@@ -378,7 +389,7 @@ mod tests {
         fx.add_change("alpha-search", "schema: spec-driven\ncreated: 2026-07-01\n");
         let err = super::promote_discussion_at(fx.root(), "alpha-search", None).unwrap_err();
         assert!(err.contains("already exists"), "err: {err}");
-        let doc = std::fs::read_to_string(fx.root().join("openspec/discussions/alpha-search.md")).unwrap();
+        let doc = std::fs::read_to_string(fx.root().join("speclink/discussions/alpha-search.md")).unwrap();
         assert!(doc.contains("status: concluded\n"), "discussion must stay concluded: {doc}");
     }
 
@@ -387,7 +398,7 @@ mod tests {
         let fx = fx_with_discussions("d-promote-name");
         let v = super::promote_discussion_at(fx.root(), "gamma-promoted", Some("cut-c")).expect("re-promote ok");
         assert_eq!(v["change"], "cut-c");
-        let doc = std::fs::read_to_string(fx.root().join("openspec/discussions/gamma-promoted.md")).unwrap();
+        let doc = std::fs::read_to_string(fx.root().join("speclink/discussions/gamma-promoted.md")).unwrap();
         assert!(doc.contains("promoted_to: cut-a, cut-b, cut-c\n"), "doc: {doc}");
     }
 
@@ -398,10 +409,10 @@ mod tests {
         let fx = fx_with_discussions("d-archive");
         let v = super::archive_discussion_at(fx.root(), "alpha-search").expect("archive ok");
         assert_eq!(v["archivedTo"], "discussions/archive/2026-01-02-alpha-search.md");
-        assert!(!fx.root().join("openspec/discussions/alpha-search.md").exists());
+        assert!(!fx.root().join("speclink/discussions/alpha-search.md").exists());
         assert!(fx
             .root()
-            .join("openspec/discussions/archive/2026-01-02-alpha-search.md")
+            .join("speclink/discussions/archive/2026-01-02-alpha-search.md")
             .exists());
     }
 
@@ -433,10 +444,10 @@ mod tests {
     fn discussion_location_prefers_live_and_falls_back_to_the_archived_file() {
         let fx = fx_with_discussions("d-loc");
         let live = super::discussion_location_at(fx.root(), "alpha-search").expect("live");
-        assert_eq!(live.relative, "openspec/discussions/alpha-search.md");
+        assert_eq!(live.relative, "speclink/discussions/alpha-search.md");
         let archived = super::discussion_location_at(fx.root(), "old-topic").expect("archived");
-        assert_eq!(archived.relative, "openspec/discussions/archive/2026-01-03-old-topic.md");
-        assert!(std::path::Path::new(&archived.path).ends_with("openspec/discussions/archive/2026-01-03-old-topic.md"));
+        assert_eq!(archived.relative, "speclink/discussions/archive/2026-01-03-old-topic.md");
+        assert!(std::path::Path::new(&archived.path).ends_with("speclink/discussions/archive/2026-01-03-old-topic.md"));
         assert!(super::discussion_location_at(fx.root(), "no-such-slug").is_none());
         assert!(super::discussion_location_at(fx.root(), "../alpha-search").is_none());
     }

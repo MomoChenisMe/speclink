@@ -309,6 +309,27 @@ fn set_worktree_true_lands_in_the_file_and_in_show() {
 }
 
 #[test]
+fn set_worktree_on_a_legacy_layout_syncs_skills_without_moving_the_folder() {
+    // spec「技能足跡同步不遷移規格資料夾」Scenario「CLI 切換 worktree 不遷移」：不在 git 裡，
+    // 遷移沒有暫緩條件，`speclink update` 會搬——設定寫入的同步不得搬。
+    let p = TempProject::new("set-worktree-legacy", WF_YAML);
+    std::fs::rename(p.dir.join("speclink"), p.dir.join("openspec")).unwrap();
+    std::fs::create_dir_all(p.dir.join("openspec/changes/demo")).unwrap();
+    std::fs::write(p.dir.join("openspec/changes/demo/.openspec.yaml"), "schema: spec-driven\n").unwrap();
+
+    let out = p.run(&["workflow-config", "set", "worktree", "true"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(p.dir.join("openspec/changes/demo/.openspec.yaml").is_file(), "openspec/ 原封不動");
+    assert!(!p.dir.join("speclink").exists());
+    let skill = std::fs::read_to_string(p.dir.join(".claude/skills/speclink-apply-with-worktree/SKILL.md"))
+        .expect("worktree skill generated");
+    assert!(skill.contains("openspec/changes"), "技能檔以 openspec/ 同步");
+    assert!(p.dir.join(".claude/skills/speclink-worktree-merge/SKILL.md").is_file(), "兩顆 worktree 技能都生成");
+    let stdout = stdout_of(&out);
+    assert!(!stdout.contains("Migrated") && !stdout.contains("migration"), "沒有遷移提示: {stdout}");
+}
+
+#[test]
 fn set_worktree_rejects_a_non_boolean_value() {
     // Spec scenario worktree 非法值報錯.
     let p = TempProject::new("set-worktree-bad", WF_YAML);

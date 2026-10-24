@@ -8,7 +8,7 @@ import type {
   StatusReport,
 } from "@speclink/ui";
 
-import { createAppStore, openTicketStation, selectAssetPrompt, type AppState } from "../store";
+import { createAppStore, openTicketStation, selectAssetMigrated, selectAssetPrompt, type AppState } from "../store";
 import { assetPrompt } from "../assetPrompt";
 import type { ConnectionsAdapter } from "../adapter/connections";
 import type { FsActionsAdapter } from "../adapter/fsActions";
@@ -1547,7 +1547,7 @@ function fakeInstructionWorkspace(over: Partial<WorkspaceAdapter> = {}) {
     startupDir: vi.fn().mockRejectedValue("none"),
     projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
     probeAssets: vi.fn().mockResolvedValue(STALE_PROBE),
-    updateAssets: vi.fn().mockResolvedValue(undefined),
+    updateAssets: vi.fn().mockResolvedValue({ migrated: { movedFolder: false, renamed: 0 } }),
     watchWorkspace: vi.fn().mockResolvedValue(undefined),
     pickFolder: vi.fn().mockResolvedValue(null),
     ...over,
@@ -1616,6 +1616,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       fileCount: 2,
       version: "v1.3.0",
       projectVersion: "v0.9.0",
+      migration: { state: "none" },
     });
   });
 
@@ -1651,6 +1652,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       fileCount: 2,
       version: "v1.3.0",
       projectVersion: "v1.4.0",
+      migration: { state: "none" },
     });
   });
 
@@ -1710,6 +1712,7 @@ describe("指令檔過期提示的顯示裁決", () => {
           currentVersion: "v1.3.0",
           tools: [],
           differingFiles: [],
+          migration: { state: "none" as const },
         }),
       }),
     );
@@ -1749,6 +1752,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       currentVersion: "v1.3.0",
       tools: [],
       differingFiles: [],
+      migration: { state: "none" as const },
     });
     await store.getState().applyAssetUpdate();
 
@@ -1781,6 +1785,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       currentVersion: "v1.3.0",
       tools: [],
       differingFiles: [],
+      migration: { state: "none" as const },
     });
     await store.getState().refreshAssetPrompt();
     expect(selectAssetPrompt(store.getState())).toBeNull();
@@ -1794,6 +1799,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     currentVersion: "v1.3.0",
     tools: [],
     differingFiles: [],
+    migration: { state: "none" as const },
   };
 
   /** 兩個本地分頁 A（作用中）與 B，共用同一個 workspace 探測面。 */
@@ -1824,6 +1830,7 @@ describe("指令檔過期提示的顯示裁決", () => {
       fileCount: 2,
       version: "v1.3.0",
       projectVersion: "v0.9.0",
+      migration: { state: "none" },
     });
     expect(selectAssetPrompt(store.getState())).toEqual(store.getState().assetPrompts["local:A"]);
   });
@@ -1861,7 +1868,7 @@ describe("指令檔過期提示的顯示裁決", () => {
   });
 
   it("套用途中切走分頁：完成後重探套用的那個分頁，它的提示收合、另一分頁的記憶不受影響", async () => {
-    const update = deferred<void>();
+    const update = deferred<{ migrated: { movedFolder: boolean; renamed: number } }>();
     const probe = vi.fn().mockResolvedValue(STALE_PROBE);
     const ws = fakeInstructionWorkspace({ probeAssets: probe, updateAssets: vi.fn(() => update.promise) });
     const store = storeWithTwoLocalTabs(ws);
@@ -1873,7 +1880,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     const applying = store.getState().applyAssetUpdate();
     store.setState({ activeKey: "local:B" });
     probe.mockImplementation((root: string) => Promise.resolve(root === "A" ? CURRENT_PROBE : STALE_PROBE));
-    update.resolve();
+    update.resolve({ migrated: { movedFolder: false, renamed: 0 } });
     await applying;
 
     expect(ws.updateAssets).toHaveBeenCalledWith("A");
@@ -1909,6 +1916,157 @@ describe("指令檔過期提示的顯示裁決", () => {
       {},
     );
     expect(missing?.projectVersion).toBeNull();
+  });
+});
+
+// --- 技能檔提示承載規格資料夾遷移（desktop-spec-dir-migration design D2） ---
+
+const PENDING_PROBE = {
+  ...STALE_PROBE,
+  migration: { state: "pending" as const, folder: "openspec", metaFiles: 4 },
+};
+const SETTLED_PROBE = {
+  status: "current" as const,
+  currentVersion: "v1.3.0",
+  tools: [],
+  differingFiles: [],
+  migration: { state: "none" as const },
+};
+const DEFERRED_MIGRATION = {
+  state: "deferred" as const,
+  folder: "openspec",
+  reason: "otherWorktrees" as const,
+  worktrees: ["/work/side"],
+};
+
+describe("技能檔提示承載規格資料夾遷移", () => {
+  beforeEach(() => {
+    localStorage.removeItem("speclink.assetSkips");
+    localStorage.removeItem("speclink.instructionSkips");
+  });
+
+  it("更新完成且資料夾已改名：記下遷移結果，重掛監看並重新整理", async () => {
+    const probe = vi.fn().mockResolvedValue(PENDING_PROBE);
+    const updateAssets = vi.fn(async () => {
+      probe.mockResolvedValue(SETTLED_PROBE);
+      return { migrated: { movedFolder: true, renamed: 4 } };
+    });
+    const ws = fakeInstructionWorkspace({ probeAssets: probe, updateAssets });
+    const ds = fakeDataSource();
+    const store = storeWithAssetProbe(ws, ds);
+    await store.getState().refreshAssetPrompt();
+
+    await store.getState().applyAssetUpdate();
+
+    expect(selectAssetMigrated(store.getState())).toEqual({ key: "local:A", movedFolder: true, renamed: 4 });
+    const watch = vi.mocked(ws.watchWorkspace);
+    expect(watch).toHaveBeenCalledWith("A");
+    expect(watch.mock.invocationCallOrder.at(-1)).toBeGreaterThan(updateAssets.mock.invocationCallOrder[0]);
+    // 改名後資料來源讀到的是 speclink/：整批重新整理（討論記錄路徑等跟著換）。
+    const listDiscussions = vi.mocked(ds.listDiscussions);
+    expect(listDiscussions.mock.invocationCallOrder.at(-1)).toBeGreaterThan(updateAssets.mock.invocationCallOrder[0]);
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+
+    store.getState().closeAssetMigrated();
+    expect(selectAssetMigrated(store.getState())).toBeNull();
+  });
+
+  it("更新途中切走分頁：完成態屬於套用的分頁，切回來才顯示", async () => {
+    const update = deferred<{ migrated: { movedFolder: boolean; renamed: number } }>();
+    const probe = vi.fn().mockResolvedValue(PENDING_PROBE);
+    const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe, updateAssets: vi.fn(() => update.promise) }));
+    await store.getState().refreshAssetPrompt();
+
+    const applying = store.getState().applyAssetUpdate();
+    store.setState({ activeKey: "local:B" });
+    update.resolve({ migrated: { movedFolder: true, renamed: 4 } });
+    await applying;
+
+    expect(selectAssetMigrated(store.getState())).toBeNull();
+    store.setState({ activeKey: "local:A" });
+    expect(selectAssetMigrated(store.getState())).toMatchObject({ key: "local:A", movedFolder: true });
+  });
+
+  it("按下前的重探失敗：錯誤留在對話框，不更新", async () => {
+    const probe = vi.fn().mockResolvedValue(PENDING_PROBE);
+    const ws = fakeInstructionWorkspace({ probeAssets: probe });
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
+
+    probe.mockRejectedValue("probe failed");
+    await store.getState().applyAssetUpdate();
+
+    expect(ws.updateAssets).not.toHaveBeenCalled();
+    expect(store.getState().assetUpdateError).toContain("probe failed");
+    expect(store.getState().assetUpdating).toBe(false);
+    expect(selectAssetPrompt(store.getState())?.migration).toEqual(PENDING_PROBE.migration);
+  });
+
+  it("更新失敗：錯誤原樣留在對話框，監看照樣重掛", async () => {
+    const message = "cannot move openspec/ to speclink/ — nothing was moved";
+    const ws = fakeInstructionWorkspace({
+      probeAssets: vi.fn().mockResolvedValue(PENDING_PROBE),
+      updateAssets: vi.fn().mockRejectedValue(message),
+    });
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
+    vi.mocked(ws.watchWorkspace).mockClear();
+
+    await store.getState().applyAssetUpdate();
+
+    expect(store.getState().assetUpdateError).toBe(message);
+    expect(selectAssetMigrated(store.getState())).toBeNull();
+    expect(ws.watchWorkspace).toHaveBeenCalledWith("A");
+  });
+
+  it("暫緩時按更新：只更新技能檔，沒有遷移結果；技能檔成為現版後暫緩不再提示", async () => {
+    const probe = vi.fn().mockResolvedValue({ ...STALE_PROBE, migration: DEFERRED_MIGRATION });
+    const updateAssets = vi.fn(async () => {
+      probe.mockResolvedValue({ ...SETTLED_PROBE, migration: DEFERRED_MIGRATION });
+      return { migrated: { movedFolder: false, renamed: 0 } };
+    });
+    const store = storeWithAssetProbe(fakeInstructionWorkspace({ probeAssets: probe, updateAssets }));
+    await store.getState().refreshAssetPrompt();
+
+    await store.getState().applyAssetUpdate();
+
+    expect(updateAssets).toHaveBeenCalledWith("A");
+    expect(selectAssetMigrated(store.getState())).toBeNull();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+  });
+
+  it("對話框寫著暫緩、按下前已可遷移：不執行更新，改顯示最新內容", async () => {
+    const probe = vi.fn().mockResolvedValue({ ...STALE_PROBE, migration: DEFERRED_MIGRATION });
+    const ws = fakeInstructionWorkspace({ probeAssets: probe });
+    const store = storeWithAssetProbe(ws);
+    await store.getState().refreshAssetPrompt();
+
+    probe.mockResolvedValue(PENDING_PROBE);
+    await store.getState().applyAssetUpdate();
+
+    expect(ws.updateAssets).not.toHaveBeenCalled();
+    expect(selectAssetPrompt(store.getState())?.migration).toEqual(PENDING_PROBE.migration);
+    expect(store.getState().assetUpdating).toBe(false);
+  });
+
+  it("remote 分頁沒有遷移提示", async () => {
+    const ws = fakeInstructionWorkspace({ probeAssets: vi.fn().mockResolvedValue(PENDING_PROBE) });
+    const store = trackedAppStore({
+      createSession: () => {
+        throw new Error("remote 分頁不建 local session");
+      },
+      workspace: ws,
+    });
+    const remote = remoteSession(fakeDataSource(), "repo-a");
+    store.setState({
+      tabs: [{ locator: remote.locator, name: remote.descriptor.name }],
+      sessions: { [remote.id]: remote },
+      activeKey: remote.id,
+    });
+
+    await store.getState().refreshAssetPrompt();
+    expect(ws.probeAssets).not.toHaveBeenCalled();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 });
 
@@ -2752,8 +2910,8 @@ describe("專案層檔案系統動作", () => {
 describe("詳情頁文件動作", () => {
   const DOC = { change: "add-auth", artifact: "proposal.md" };
   const LOC = {
-    path: "/work/app-wt/add-auth/openspec/changes/add-auth/proposal.md",
-    relative: "openspec/changes/add-auth/proposal.md",
+    path: "/work/app-wt/add-auth/speclink/changes/add-auth/proposal.md",
+    relative: "speclink/changes/add-auth/proposal.md",
   };
 
   function fakeFsActions(): { [K in keyof FsActionsAdapter]: ReturnType<typeof vi.fn> } {

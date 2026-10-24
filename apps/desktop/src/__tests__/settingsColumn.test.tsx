@@ -90,13 +90,20 @@ describe("SettingsColumn", () => {
 });
 
 describe("ProjectSettingsColumn", () => {
-  it("local：兩群組——openspec/config.yaml 四項與專案組 .speclink.yaml", () => {
+  it("local：兩群組——規格資料夾的 config.yaml 四項與專案組 .speclink.yaml", () => {
     const onSelect = vi.fn();
     render(
-      <ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />,
+      <ProjectSettingsColumn
+        section="context"
+        remote={false}
+        configFile="speclink/config.yaml"
+        configParseError={false}
+        speclinkParseError={false}
+        onSelect={onSelect}
+      />,
     );
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
-    expect(within(nav).getByText("openspec/config.yaml")).toBeTruthy();
+    expect(within(nav).getByText("speclink/config.yaml")).toBeTruthy();
     expect(within(nav).getByText("專案")).toBeTruthy();
     expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", ".speclink.yaml"]);
     expect(within(nav).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
@@ -104,9 +111,25 @@ describe("ProjectSettingsColumn", () => {
     expect(onSelect).toHaveBeenCalledWith("speclink");
   });
 
+  it("舊佈局專案：群組名為 openspec/config.yaml", () => {
+    render(
+      <ProjectSettingsColumn section="context" remote={false} configFile="openspec/config.yaml" configParseError={false} speclinkParseError={false} onSelect={() => {}} />,
+    );
+    expect(within(screen.getByRole("navigation", { name: "專案設定分類" })).getByText("openspec/config.yaml")).toBeTruthy();
+  });
+
+  it("設定還沒載入：先不顯示規格資料夾組名，免得舊佈局專案閃一下預設名稱", () => {
+    render(
+      <ProjectSettingsColumn section="context" remote={false} configFile={null} configParseError={false} speclinkParseError={false} onSelect={() => {}} />,
+    );
+    const nav = screen.getByRole("navigation", { name: "專案設定分類" });
+    expect(within(nav).queryByText(/config\.yaml/)).toBeNull();
+    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", ".speclink.yaml"]);
+  });
+
   it("remote：無專案組與 .speclink.yaml", () => {
     render(
-      <ProjectSettingsColumn section="context" remote configParseError={false} speclinkParseError={false} onSelect={() => {}} />,
+      <ProjectSettingsColumn section="context" remote configFile="speclink/config.yaml" configParseError={false} speclinkParseError={false} onSelect={() => {}} />,
     );
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
     expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
@@ -115,13 +138,13 @@ describe("ProjectSettingsColumn", () => {
 
   it("config.yaml 解析失敗時前四項帶警示點；.speclink.yaml 解析失敗時第五項帶警示點", () => {
     const { rerender } = render(
-      <ProjectSettingsColumn section="context" remote={false} configParseError speclinkParseError={false} onSelect={() => {}} />,
+      <ProjectSettingsColumn section="context" remote={false} configFile="speclink/config.yaml" configParseError speclinkParseError={false} onSelect={() => {}} />,
     );
     const warned = () =>
       screen.getAllByTestId("tab-warning").map((dot) => dot.closest("button")?.getAttribute("aria-label") ?? dot.closest("button")?.textContent);
     expect(warned()).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
     rerender(
-      <ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError onSelect={() => {}} />,
+      <ProjectSettingsColumn section="context" remote={false} configFile="speclink/config.yaml" configParseError={false} speclinkParseError onSelect={() => {}} />,
     );
     expect(warned()).toEqual([".speclink.yaml"]);
   });
@@ -131,6 +154,7 @@ describe("ProjectSettingsColumn", () => {
       <ProjectSettingsColumn
         section="context"
         remote={false}
+        configFile="speclink/config.yaml"
         configParseError={false}
         speclinkParseError={false}
         onSelect={() => {}}

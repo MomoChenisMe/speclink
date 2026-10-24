@@ -1,0 +1,242 @@
+schema: spec-driven
+created: 2026-10-22
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: positioning-and-process-cost
+depends_on: spec-dir-migration
+started_at: 2026-10-23T23:50:42+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-24T22:31:01+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_rounds: 4
+reviewed_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 47e6926fe2c1b5c0e5bb28f928a72f686e581d728ee754ba6cb6a0cf748b1a63
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 2f77813317d01a57fb71d5bdf26e7683926831b583bf2ed6faf5cfa2785143d0
+  - path: apps/desktop/core/src/manage.rs
+    hash: f6713ffa25e5da9e7e6ad2728b91f9049e3210e6b62df216444969fa2f72f4c2
+  - path: apps/desktop/core/src/manual.rs
+    hash: 76f7b5108332d71ad08fcbdc73037fd4f0155107e462f770265cdb0bc1802e8f
+  - path: apps/desktop/core/src/project.rs
+    hash: c6c68b0e33ae0e87c05dbc9adcae935ad58f68dbdfcbf79adb88f691976ca39c
+  - path: apps/desktop/core/src/query.rs
+    hash: fd765ad6ff992efc3b1856761f9fd622e3cc5fefe10009f22c4653c8e88146b1
+  - path: apps/desktop/core/src/search.rs
+    hash: 9556b036379c5ca518d2bffba164edafc22efd63a47d8f3a5c273829a4793f2b
+  - path: apps/desktop/core/src/settings.rs
+    hash: b02e580504b98d8468173bdb6d4f707d84bd34533dc9b45529902d506429b6a0
+  - path: apps/desktop/core/src/testfixture.rs
+    hash: b2875a036658281af881e59d9700b926d906be784bc47bbdac9312f1664192f6
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 773e7bc0434c82c1d628be2018ba12a7b5ee092c9b58b7a5baf71d4cc11ca939
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 7265a44ea174ea98b4d11b2f9bf13a8797bd036b63cf1c19b928e78fe277b105
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 617321cab63624985dafd774500a8162a6f28dfaeb4fbf36edaacdcde2f4315e
+  - path: apps/desktop/src-tauri/src/watch.rs
+    hash: bccf7731dba8879ec28379502c9fb0b057211306f362628a0baae76b05a11baf
+  - path: apps/desktop/src/App.tsx
+    hash: 105d426c88fb978aa249c3266ed2ba2623e06376f9e65f32c2ad94f798911ee8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: af254164b6ebf98a6f238c434054217dd8d8e9b3fd5a74bf0c2e932518bfcc7d
+  - path: apps/desktop/src/__tests__/assetNotice.test.tsx
+    hash: 98d7ab4a90e4ed3fc819d8ab25b1a7ba77769c70bb39ee3243f2680c0cec8688
+  - path: apps/desktop/src/__tests__/assetPrompt.test.ts
+    hash: 8d27ec9539d18da3522522919fa0fc47cde8a025f7aa91e5e33257165e0fbdb4
+  - path: apps/desktop/src/__tests__/documentActionsMenu.test.tsx
+    hash: 453ea9e98312403846c18c57df8773e2e2721bf3216172637b7ada9ca239102b
+  - path: apps/desktop/src/__tests__/emptyWorkspace.test.tsx
+    hash: cd3a2d966cf815b6a2e6bd5df566f9f3467fa09435f8f75779236b8cc152f03a
+  - path: apps/desktop/src/__tests__/helpers/assetFixtures.ts
+    hash: e3701ac00f513e9534f27c27ad921c83091a0da4435dd7137beb0377885c7860
+  - path: apps/desktop/src/__tests__/migrationDialog.test.tsx
+    hash: 96443a6a4ff37e6fbca204e5160453e593b66c55581a0329c1ded4322313fd0c
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 2b3ec6b8431fec9e63fdb767d9bee9cbc1892e47053890348d5c45dbdeceafbd
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: b28550f44740a8f05008eba1cda8b9ecab56ecc95a7a8e4c0a935560e7d575bb
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 87fc31675868ee4028f13d0a76d146ed3711d99209d2146279d99851df7db7c9
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: 908d3613bb69d39786f31d1ec945ef70ba0adfaafd3779ea827cfa6292f623cd
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 6b015f256bd786ed707cf3fe32a2840e6dcc370affadb08afa42249611e18cff
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 33c0110844ac4ac6b021a942774dc709ea768cb597351e4c3389a1b0c82d3e14
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 9369411ce448d210ccd2c27cd954bdd6a07248b7031ad813558e3bbfdddbf41f
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 41e7f8677c1d582c1ced68208c2bb9d3e59c2639becccbe9deed0b71a3e4b078
+  - path: apps/desktop/src/assetPrompt.ts
+    hash: 975759367ca6a5ece001a06e6f1073577982db5053c7b2c808e1af64b8ddde33
+  - path: apps/desktop/src/components/AssetNoticeCard.tsx
+    hash: 67ff149cca4fe5a96c22c08e15e5a8cc673fe1d04ab8ff705bd4a2903b3d7e0a
+  - path: apps/desktop/src/components/AssetNoticeDialog.tsx
+    hash: e5a8cf98fe0b0c034aeac0c13af7ecb9a6a96407eaaac8ecbe8d2743cd0f3c3b
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: f4fa58d26a67fff22a55e02e332909648bcb0debb63ae71c3cea47521095e0e4
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 7fb1c73b60fe2b4a9ecc3610dc537de37069d7d9c3e08dc3a7e6e38423ed50ea
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 522dc17a169bad92e120d6afb494bb92b1c9bfca989007dd5b0b22f36656a84c
+  - path: apps/desktop/src/store.ts
+    hash: cdb65da6b1248241cde467158e6e413296a794b28b5efa434e42e87e8fc61769
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 9001832c6bfeca5fde478452de852cb757a47ae4d121cc153837d59d4429df8c
+  - path: apps/desktop/src/views/project-settings/ContextPage.tsx
+    hash: 86fe521ce6d4c3f202c1dac9d2c1d35a48d58403eda1e4ea6e9fc5d43d12150b
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: aae8090c38f163615246ef34861c00cf76135c0bc061f294b36cc8cab966aa72
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: 941fb5474ae2538072c119a97c778b0c6a700a5fb4093a844858260a5a444c08
+  - path: apps/desktop/src/views/project-settings/WorkflowPage.tsx
+    hash: 6315bb99409ddd346ad5e901cfe7402afc42f9d9d73de1f9aa835b31c31d5806
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 04c0a9944e999e1052a3e6cb8d66258411640874cb006b6c153e78c5d55428c1
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 719c9982e5f12036150996791aca5554636dad9330f987e36769c890d52cb393
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 961efd9984ec5a11d2ac2a43ae2387b044e44f00030c03424658ef49647c8157
+  - path: crates/engine/speclink-core/src/testkit.rs
+    hash: ee89720b3371313008f3b6d6a3532611d20b0aa69d54625ed6d388b5366c402c
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 90115a231f38fbdc989247ef8074cd28b6519a36ac8ed28e73ad8643da9aab0c
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: 82c017ef34bf733110b77dbdf2612032ffacf6bfd525c507227baf27c09a5ae2
+  - path: crates/engine/speclink-core/src/workspace/migrate.rs
+    hash: d0bfa027041d6ba18df4046ec1368135df7caff150405e95f585f5a94ad03d58
+  - path: crates/engine/speclink-core/src/workspace/workspace.rs
+    hash: fa1cf8eb7e9addbeefce215108c13a7ef48798ad0ccad967de601a2ef2a543d3
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 4a9be9913359c372870b2e3c061b3bca2c09b7152f36ddb9add65ad2b55abbfe
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 2807a06bc833d91f77f429349a39e734fd1ef01b8433bc8940729b51bdad0be6
+  - path: packages/ui/src/adapter.ts
+    hash: 817c382c4c81cf15e4d5931140ba4cadfa61b4ee0a28aed3e3e44835eb4fcdd0
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 4ad7c90c47bcd826adb46bc892913d46e233a33cbb2fa66fdc32f34dd2e684b4
+  - path: packages/ui/src/i18n.tsx
+    hash: 0895582164163bf23c87d383658d8da089fefbedd552472a0e5ef42b4e939926
+  - path: packages/ui/src/index.ts
+    hash: 03a41ea2a0a844c11cb13ac8dc69c0dd8f501a12404be7efb9d761dd2e1fc308
+verified_at: 2026-10-24T22:31:07+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_rounds: 4
+verified_scope:
+  - path: apps/desktop/core/src/cache.rs
+    hash: 47e6926fe2c1b5c0e5bb28f928a72f686e581d728ee754ba6cb6a0cf748b1a63
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 2f77813317d01a57fb71d5bdf26e7683926831b583bf2ed6faf5cfa2785143d0
+  - path: apps/desktop/core/src/manage.rs
+    hash: f6713ffa25e5da9e7e6ad2728b91f9049e3210e6b62df216444969fa2f72f4c2
+  - path: apps/desktop/core/src/manual.rs
+    hash: 76f7b5108332d71ad08fcbdc73037fd4f0155107e462f770265cdb0bc1802e8f
+  - path: apps/desktop/core/src/project.rs
+    hash: c6c68b0e33ae0e87c05dbc9adcae935ad58f68dbdfcbf79adb88f691976ca39c
+  - path: apps/desktop/core/src/query.rs
+    hash: fd765ad6ff992efc3b1856761f9fd622e3cc5fefe10009f22c4653c8e88146b1
+  - path: apps/desktop/core/src/search.rs
+    hash: 9556b036379c5ca518d2bffba164edafc22efd63a47d8f3a5c273829a4793f2b
+  - path: apps/desktop/core/src/settings.rs
+    hash: b02e580504b98d8468173bdb6d4f707d84bd34533dc9b45529902d506429b6a0
+  - path: apps/desktop/core/src/testfixture.rs
+    hash: b2875a036658281af881e59d9700b926d906be784bc47bbdac9312f1664192f6
+  - path: apps/desktop/core/src/verbs.rs
+    hash: 773e7bc0434c82c1d628be2018ba12a7b5ee092c9b58b7a5baf71d4cc11ca939
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 7265a44ea174ea98b4d11b2f9bf13a8797bd036b63cf1c19b928e78fe277b105
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 617321cab63624985dafd774500a8162a6f28dfaeb4fbf36edaacdcde2f4315e
+  - path: apps/desktop/src-tauri/src/watch.rs
+    hash: bccf7731dba8879ec28379502c9fb0b057211306f362628a0baae76b05a11baf
+  - path: apps/desktop/src/App.tsx
+    hash: 105d426c88fb978aa249c3266ed2ba2623e06376f9e65f32c2ad94f798911ee8
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: af254164b6ebf98a6f238c434054217dd8d8e9b3fd5a74bf0c2e932518bfcc7d
+  - path: apps/desktop/src/__tests__/assetNotice.test.tsx
+    hash: 98d7ab4a90e4ed3fc819d8ab25b1a7ba77769c70bb39ee3243f2680c0cec8688
+  - path: apps/desktop/src/__tests__/assetPrompt.test.ts
+    hash: 8d27ec9539d18da3522522919fa0fc47cde8a025f7aa91e5e33257165e0fbdb4
+  - path: apps/desktop/src/__tests__/documentActionsMenu.test.tsx
+    hash: 453ea9e98312403846c18c57df8773e2e2721bf3216172637b7ada9ca239102b
+  - path: apps/desktop/src/__tests__/emptyWorkspace.test.tsx
+    hash: cd3a2d966cf815b6a2e6bd5df566f9f3467fa09435f8f75779236b8cc152f03a
+  - path: apps/desktop/src/__tests__/helpers/assetFixtures.ts
+    hash: e3701ac00f513e9534f27c27ad921c83091a0da4435dd7137beb0377885c7860
+  - path: apps/desktop/src/__tests__/migrationDialog.test.tsx
+    hash: 96443a6a4ff37e6fbca204e5160453e593b66c55581a0329c1ded4322313fd0c
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 2b3ec6b8431fec9e63fdb767d9bee9cbc1892e47053890348d5c45dbdeceafbd
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: b28550f44740a8f05008eba1cda8b9ecab56ecc95a7a8e4c0a935560e7d575bb
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 87fc31675868ee4028f13d0a76d146ed3711d99209d2146279d99851df7db7c9
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: 908d3613bb69d39786f31d1ec945ef70ba0adfaafd3779ea827cfa6292f623cd
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 6b015f256bd786ed707cf3fe32a2840e6dcc370affadb08afa42249611e18cff
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 33c0110844ac4ac6b021a942774dc709ea768cb597351e4c3389a1b0c82d3e14
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 9369411ce448d210ccd2c27cd954bdd6a07248b7031ad813558e3bbfdddbf41f
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 41e7f8677c1d582c1ced68208c2bb9d3e59c2639becccbe9deed0b71a3e4b078
+  - path: apps/desktop/src/assetPrompt.ts
+    hash: 975759367ca6a5ece001a06e6f1073577982db5053c7b2c808e1af64b8ddde33
+  - path: apps/desktop/src/components/AssetNoticeCard.tsx
+    hash: 67ff149cca4fe5a96c22c08e15e5a8cc673fe1d04ab8ff705bd4a2903b3d7e0a
+  - path: apps/desktop/src/components/AssetNoticeDialog.tsx
+    hash: e5a8cf98fe0b0c034aeac0c13af7ecb9a6a96407eaaac8ecbe8d2743cd0f3c3b
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: f4fa58d26a67fff22a55e02e332909648bcb0debb63ae71c3cea47521095e0e4
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 7fb1c73b60fe2b4a9ecc3610dc537de37069d7d9c3e08dc3a7e6e38423ed50ea
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 522dc17a169bad92e120d6afb494bb92b1c9bfca989007dd5b0b22f36656a84c
+  - path: apps/desktop/src/store.ts
+    hash: cdb65da6b1248241cde467158e6e413296a794b28b5efa434e42e87e8fc61769
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 9001832c6bfeca5fde478452de852cb757a47ae4d121cc153837d59d4429df8c
+  - path: apps/desktop/src/views/project-settings/ContextPage.tsx
+    hash: 86fe521ce6d4c3f202c1dac9d2c1d35a48d58403eda1e4ea6e9fc5d43d12150b
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: aae8090c38f163615246ef34861c00cf76135c0bc061f294b36cc8cab966aa72
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: 941fb5474ae2538072c119a97c778b0c6a700a5fb4093a844858260a5a444c08
+  - path: apps/desktop/src/views/project-settings/WorkflowPage.tsx
+    hash: 6315bb99409ddd346ad5e901cfe7402afc42f9d9d73de1f9aa835b31c31d5806
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 04c0a9944e999e1052a3e6cb8d66258411640874cb006b6c153e78c5d55428c1
+  - path: crates/adapters/speclink-cli/src/verbs/config.rs
+    hash: 719c9982e5f12036150996791aca5554636dad9330f987e36769c890d52cb393
+  - path: crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    hash: 961efd9984ec5a11d2ac2a43ae2387b044e44f00030c03424658ef49647c8157
+  - path: crates/engine/speclink-core/src/testkit.rs
+    hash: ee89720b3371313008f3b6d6a3532611d20b0aa69d54625ed6d388b5366c402c
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: 90115a231f38fbdc989247ef8074cd28b6519a36ac8ed28e73ad8643da9aab0c
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: 82c017ef34bf733110b77dbdf2612032ffacf6bfd525c507227baf27c09a5ae2
+  - path: crates/engine/speclink-core/src/workspace/migrate.rs
+    hash: d0bfa027041d6ba18df4046ec1368135df7caff150405e95f585f5a94ad03d58
+  - path: crates/engine/speclink-core/src/workspace/workspace.rs
+    hash: fa1cf8eb7e9addbeefce215108c13a7ef48798ad0ccad967de601a2ef2a543d3
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: 4a9be9913359c372870b2e3c061b3bca2c09b7152f36ddb9add65ad2b55abbfe
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 2807a06bc833d91f77f429349a39e734fd1ef01b8433bc8940729b51bdad0be6
+  - path: packages/ui/src/adapter.ts
+    hash: 817c382c4c81cf15e4d5931140ba4cadfa61b4ee0a28aed3e3e44835eb4fcdd0
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 4ad7c90c47bcd826adb46bc892913d46e233a33cbb2fa66fdc32f34dd2e684b4
+  - path: packages/ui/src/i18n.tsx
+    hash: 0895582164163bf23c87d383658d8da089fefbedd552472a0e5ef42b4e939926
+  - path: packages/ui/src/index.ts
+    hash: 03a41ea2a0a844c11cb13ac8dc69c0dd8f501a12404be7efb9d761dd2e1fc308
+archived_at: 2026-10-24T22:35:52+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

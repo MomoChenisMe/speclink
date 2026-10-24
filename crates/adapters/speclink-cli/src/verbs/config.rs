@@ -356,8 +356,9 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
     println!("{} {}", color::green("✓"), edit.summary);
     warn_if_review_skills_stale(&ws.root, &write);
+    // 只同步技能檔：規格資料夾的遷移只走 `speclink update`（desktop-spec-dir-migration D6）。
     if worktree_target.is_some() {
-        let outcome = core::init::update(&ws.root, false).map_err(|e| {
+        let outcome = core::init::sync_skills(&ws.root).map_err(|e| {
             anyhow::anyhow!("{label} written, but the skill footprint did not sync: {e} — fix the cause above, then re-run `speclink update` to rebuild it")
         })?;
         println!(

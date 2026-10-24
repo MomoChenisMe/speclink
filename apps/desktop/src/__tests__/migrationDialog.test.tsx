@@ -31,7 +31,7 @@ const RESULT: MigrationResult = {
     projectRevision: 8,
     documents: Array.from({ length: 14 }, (_, index) => ({ index })),
   },
-  backupPath: "/work/local/openspec.migrated-2026-07-21",
+  backupPath: "/work/local/speclink.migrated-2026-07-21",
   checkoutRoot: "/work/local",
 };
 
@@ -82,7 +82,7 @@ describe("MigrationDialog", () => {
     await reachConfirmation();
 
     expect(screen.getAllByText("speclink / desktop")).toHaveLength(2);
-    expect(screen.getByText(/openspec\/.*改名備份/)).toBeTruthy();
+    expect(screen.getByText(/本機規格資料夾.*改名備份/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "開始遷移" }));
 
     expect(screen.getByRole("status").textContent).toContain("正在建立 Bundle 並上傳");
@@ -121,7 +121,7 @@ describe("MigrationDialog", () => {
     const dialog = screen.getByTestId("migration-dialog");
     const eyebrow = screen.getByText("Local → Remote").closest("div") as HTMLElement;
     expect(eyebrow.className).not.toContain("text-primary");
-    expect(screen.getByText(/openspec\/.*改名備份/).closest("div")!.className).toContain("status-warning");
+    expect(screen.getByText(/本機規格資料夾.*改名備份/).closest("div")!.className).toContain("status-warning");
 
     fireEvent.click(screen.getByRole("button", { name: "開始遷移" }));
     const running = screen.getByRole("status");

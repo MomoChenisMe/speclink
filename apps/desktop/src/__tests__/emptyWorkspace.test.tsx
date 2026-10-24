@@ -48,7 +48,8 @@ describe("EmptyWorkspace", () => {
     expect(wordmark.className).toContain("dark:hidden");
     expect(dark.getAttribute("src")).toContain("logo-horizontal-dark");
     expect(screen.getByRole("heading", { level: 2, name: "開啟一個專案開始" })).toBeTruthy();
-    expect(screen.getByText(zh["app.emptyDesc"]).textContent).toContain("openspec/");
+    // 新專案的說明寫預設規格資料夾 speclink/（spec「畫面依實際規格資料夾與資料檔名顯示」）。
+    expect(screen.getByText(zh["app.emptyDesc"]).textContent).toContain("speclink/");
     expect(screen.getByText(zh["app.emptyCli"])).toBeTruthy();
   });
 

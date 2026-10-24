@@ -22,13 +22,25 @@ export interface ProjectSettingsViewProps {
   onParseErrors?: (errors: { config: boolean; speclink: boolean }) => void;
   /** 回報有無未存修改——App 的返回據此先問要不要捨棄。 */
   onDirtyChange?: (dirty: boolean) => void;
+  /** 回報工作流設定檔的相對路徑——專案設定分類欄以它當組名（null＝尚未載入）。 */
+  onConfigFile?: (file: string | null) => void;
 }
 
-export function ProjectSettingsView({ settings, section, onParseErrors, onDirtyChange }: ProjectSettingsViewProps) {
+export function ProjectSettingsView({
+  settings,
+  section,
+  onParseErrors,
+  onDirtyChange,
+  onConfigFile,
+}: ProjectSettingsViewProps) {
   const ps = useProjectSettings(settings);
   const configParseError = ps !== null && ps.snap.workflow.parseError !== null;
   const speclinkParseError = ps !== null && ps.snap.app.parseError !== null;
   const dirty = ps !== null && ps.dirty;
+  const configFile = ps?.configFile ?? null;
+  useEffect(() => {
+    onConfigFile?.(configFile);
+  }, [onConfigFile, configFile]);
   useEffect(() => {
     onParseErrors?.({ config: configParseError, speclink: speclinkParseError });
   }, [onParseErrors, configParseError, speclinkParseError]);
@@ -41,8 +53,9 @@ export function ProjectSettingsView({ settings, section, onParseErrors, onDirtyC
     () => () => {
       onParseErrors?.({ config: false, speclink: false });
       onDirtyChange?.(false);
+      onConfigFile?.(null);
     },
-    [onParseErrors, onDirtyChange],
+    [onParseErrors, onDirtyChange, onConfigFile],
   );
 
   if (!ps) return null;

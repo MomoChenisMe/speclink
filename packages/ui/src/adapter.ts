@@ -232,10 +232,15 @@ export interface DiscussionItem {
   hold?: boolean;
 }
 
+/** 預設規格資料夾（資料來源沒帶出時用它組路徑；desktop-spec-dir-migration D4）。 */
+export const DEFAULT_SPEC_DIR = "speclink";
+
 /** 討論清單兩節：看板討論欄（active）與已封存頁討論節（archived）。 */
 export interface DiscussionLists {
   active: DiscussionItem[];
   archived: DiscussionItem[];
+  /** 規格資料夾的專案根相對路徑——詳情頁的記錄路徑由它組成；缺席（遠端）時用 speclink。 */
+  specDir?: string;
 }
 
 /** 手冊索引的一頁（desktop-manual-page design D2；欄位 camelCase，由 desktop core

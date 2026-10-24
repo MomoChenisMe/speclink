@@ -1,4 +1,4 @@
-//! openspec/ 檔案監看（design D3）：遞迴監看探索出的 spec 目錄樹，事件合併
+//! 規格資料夾檔案監看（design D3）：遞迴監看探索出的 spec 目錄樹，事件合併
 //! 去抖後以回呼通知——回呼不帶參數，訂閱端一律整批 refresh，不做細粒度 diff。
 //! 回呼式核心與 Tauri 事件發送分離：本模組不知道 Tauri 存在，lib.rs 的
 //! watch_workspace command 把回呼接到 `workspace-changed` 事件上（payload 為
@@ -54,7 +54,7 @@ pub fn resolve_watch_targets(start: &Path) -> Result<Vec<PathBuf>, String> {
 /// 例外：名為 `.git` 的目標是「登記簿出生前」的哨兵（推導層在
 /// `.git/worktrees/` 尚不存在時以它代位），非遞迴掛載——只等直接子目錄
 /// worktrees/ 的建立事件，不吞 objects/ 的海量寫入。
-pub fn watch_openspec(
+pub fn watch_targets(
     targets: &[PathBuf],
     debounce: Duration,
     on_change: impl Fn() + Send + 'static,
@@ -119,6 +119,8 @@ pub fn watch_openspec(
 pub struct WatchSlot {
     current: Option<(Vec<PathBuf>, WorkspaceWatcher)>,
     last_ticket: u64,
+    /// [`WatchSlot::pause`] 到 [`WatchSlot::resume`] 之間不掛任何監看。
+    paused: bool,
 }
 
 impl WatchSlot {
@@ -126,6 +128,7 @@ impl WatchSlot {
         WatchSlot {
             current: None,
             last_ticket: 0,
+            paused: false,
         }
     }
 
@@ -139,7 +142,7 @@ impl WatchSlot {
         debounce: Duration,
         on_change: impl Fn() + Send + 'static,
     ) -> Result<bool, String> {
-        if ticket < self.last_ticket {
+        if self.paused || ticket < self.last_ticket {
             return Ok(false);
         }
         let targets = match resolve_watch_targets(start) {
@@ -150,6 +153,20 @@ impl WatchSlot {
             }
         };
         self.rearm_with_targets(ticket, targets, debounce, on_change)
+    }
+
+    /// 暫停監看（desktop-spec-dir-migration D2）：drop 目前的監看，到 [`WatchSlot::resume`]
+    /// 之前任何重掛都不掛回（在途的 workspace-changed、切回分頁都會重掛）——更新可能把規格
+    /// 資料夾改名，Windows 上活著的監看會擋住改名。推進序號，暫停前取號的重掛之後也略過；
+    /// 恢復後的 [`WatchSlot::rearm`] 必定重建，依新的規格資料夾解析。
+    pub fn pause(&mut self, ticket: u64) {
+        self.last_ticket = self.last_ticket.max(ticket);
+        self.current = None;
+        self.paused = true;
+    }
+
+    pub fn resume(&mut self) {
+        self.paused = false;
     }
 
     /// 判等基準是「可掛載集合」（首項＋其餘存在的目錄），不是解析集合——
@@ -175,7 +192,7 @@ impl WatchSlot {
         if matches!(&self.current, Some((prev, _)) if *prev == mountable) {
             return Ok(false);
         }
-        match watch_openspec(&targets, debounce, on_change) {
+        match watch_targets(&targets, debounce, on_change) {
             Ok(watcher) => {
                 self.current = Some((mountable, watcher));
                 Ok(true)
@@ -209,7 +226,7 @@ mod tests {
                 .join("target")
                 .join(format!("speclink-watch-{tag}-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&dir);
-            std::fs::create_dir_all(dir.join("openspec").join("changes")).unwrap();
+            std::fs::create_dir_all(dir.join("speclink").join("changes")).unwrap();
             TempRoot(dir)
         }
     }
@@ -221,23 +238,23 @@ mod tests {
     }
 
     #[test]
-    fn writes_inside_openspec_coalesce_to_at_most_one_notification_per_file() {
+    fn writes_inside_the_spec_folder_coalesce_to_at_most_one_notification_per_file() {
         let root = TempRoot::new("coalesce");
         // demo/ 先於監看存在：Linux inotify 對新目錄要事件後補掛 watch，目錄
         // 建立與其內容寫入會被拆進不同 debounce 批次，計數斷言只能建立在
         // 已被監看的目錄上（macOS FSEvents 無此拆分，先前不可見）。
-        let changes = root.0.join("openspec").join("changes");
+        let changes = root.0.join("speclink").join("changes");
         std::fs::create_dir_all(changes.join("demo")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
-        let _watcher = watch_openspec(
-            &[root.0.join("openspec")],
+        let _watcher = watch_targets(
+            &[root.0.join("speclink")],
             Duration::from_millis(300),
             move || {
                 h.fetch_add(1, Ordering::SeqCst);
             },
         )
-        .expect("watcher starts on an existing openspec tree");
+        .expect("watcher starts on an existing spec folder");
         // 監看就緒緩衝（Windows ReadDirectoryChangesW 掛載非同步），並讓 Linux 的掛載
         // 自我通知流完：notify 以 WalkDir 遞迴補掛 watch，父目錄的 OPEN 遮罩把走訪
         // 本身變成一批事件（FSEvents／RDCW 不報 open，僅 inotify 可見）。
@@ -266,13 +283,13 @@ mod tests {
     }
 
     #[test]
-    fn writes_outside_openspec_do_not_notify() {
+    fn writes_outside_the_spec_folder_do_not_notify() {
         let root = TempRoot::new("outside");
         std::fs::create_dir_all(root.0.join(".speclink")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
-        let _watcher = watch_openspec(
-            &[root.0.join("openspec")],
+        let _watcher = watch_targets(
+            &[root.0.join("speclink")],
             Duration::from_millis(200),
             move || {
                 h.fetch_add(1, Ordering::SeqCst);
@@ -283,7 +300,7 @@ mod tests {
         std::thread::sleep(Duration::from_millis(600));
         hits.store(0, Ordering::SeqCst);
 
-        // 快取與專案雜項都在 openspec/ 外——不得觸發。
+        // 快取與專案雜項都在規格資料夾外——不得觸發。
         std::fs::write(root.0.join(".speclink").join("desktop-cache.db"), "cache").unwrap();
         std::fs::write(root.0.join("note.txt"), "not a spec doc").unwrap();
 
@@ -291,7 +308,7 @@ mod tests {
         assert_eq!(
             hits.load(Ordering::SeqCst),
             0,
-            "writes outside openspec/ must not notify"
+            "writes outside the spec folder must not notify"
         );
     }
 
@@ -305,8 +322,8 @@ mod tests {
         std::fs::create_dir_all(git_dir.join("objects").join("aa")).unwrap();
         let hits = Arc::new(AtomicUsize::new(0));
         let h = Arc::clone(&hits);
-        let _watcher = watch_openspec(
-            &[root.0.join("openspec"), git_dir.clone()],
+        let _watcher = watch_targets(
+            &[root.0.join("speclink"), git_dir.clone()],
             Duration::from_millis(200),
             move || {
                 h.fetch_add(1, Ordering::SeqCst);
@@ -350,7 +367,7 @@ mod tests {
         // 否則該目錄永久失去監看。判等基準是「可掛載集合」，不是解析集合。
         let root = TempRoot::new("rearm-late");
         let late = root.0.join("late-dir");
-        let targets = vec![root.0.join("openspec"), late.clone()];
+        let targets = vec![root.0.join("speclink"), late.clone()];
         let mut slot = WatchSlot::new();
         let rebuilt = slot
             .rearm_with_targets(1, targets.clone(), Duration::from_millis(200), || {})
@@ -418,6 +435,56 @@ mod tests {
     }
 
     #[test]
+    fn rearm_after_the_spec_folder_is_renamed_watches_the_new_folder() {
+        // desktop-spec-dir-migration D2：更新前暫停監看，openspec/ 改名為 speclink/ 後
+        // 重掛重新解析出 speclink/，其下的寫入照樣通知。
+        let root = TempRoot::new("renamed");
+        std::fs::write(root.0.join(".speclink.yaml"), "tools: [claude]\n").unwrap();
+        std::fs::rename(root.0.join("speclink"), root.0.join("openspec")).unwrap();
+        let hits = Arc::new(AtomicUsize::new(0));
+        let mut slot = WatchSlot::new();
+        let h = Arc::clone(&hits);
+        slot.rearm(1, &root.0, Duration::from_millis(200), move || {
+            h.fetch_add(1, Ordering::SeqCst);
+        })
+        .expect("mounts on openspec/");
+
+        slot.pause(2);
+        std::fs::rename(root.0.join("openspec"), root.0.join("speclink")).unwrap();
+        slot.resume();
+        let h = Arc::clone(&hits);
+        let rebuilt = slot
+            .rearm(3, &root.0, Duration::from_millis(200), move || {
+                h.fetch_add(1, Ordering::SeqCst);
+            })
+            .expect("rearm resolves speclink/");
+        assert!(rebuilt, "暫停後的重掛必為重建");
+        assert_eq!(resolve_watch_targets(&root.0).unwrap()[0], root.0.join("speclink"));
+        std::thread::sleep(Duration::from_millis(600));
+        hits.store(0, Ordering::SeqCst); // 丟棄掛載批次
+
+        std::fs::write(root.0.join("speclink").join("changes").join("note.md"), "x").unwrap();
+        std::thread::sleep(Duration::from_millis(1200));
+        assert!(hits.load(Ordering::SeqCst) >= 1, "speclink/ 下的寫入必須通知");
+    }
+
+    #[test]
+    fn a_paused_slot_mounts_nothing_until_resumed() {
+        // 更新期間（可能改名規格資料夾）任何重掛都不得掛回，連較新的序號也一樣——
+        // 在途的 workspace-changed 或切回分頁都會重掛。
+        let root = TempRoot::new("pause");
+        let mut slot = WatchSlot::new();
+        assert!(slot.rearm(1, &root.0, Duration::from_millis(200), || {}).unwrap());
+        slot.pause(3);
+        assert!(!slot.rearm(2, &root.0, Duration::from_millis(200), || {}).unwrap(), "暫停前取號的重掛");
+        assert!(!slot.rearm(4, &root.0, Duration::from_millis(200), || {}).unwrap(), "暫停期間取號的重掛");
+        slot.resume();
+        assert!(!slot.rearm(2, &root.0, Duration::from_millis(200), || {}).unwrap(), "恢復後陳舊序號照舊略過");
+        let rebuilt = slot.rearm(5, &root.0, Duration::from_millis(200), || {}).unwrap();
+        assert!(rebuilt, "恢復後必為重建：暫停已 drop 原監看");
+    }
+
+    #[test]
     fn resolve_watch_target_walks_up_from_project_subdir() {
         // 模擬自建置輸出目錄（如 target/release）為 cwd 啟動：起點在專案根
         // 之下，仍須向上探索出專案的 spec 目錄。
@@ -425,7 +492,7 @@ mod tests {
         let sub = root.0.join("target").join("release");
         std::fs::create_dir_all(&sub).unwrap();
         let target = resolve_watch_targets(&sub).expect("subdir inside a project must resolve")[0].clone();
-        assert_eq!(target, root.0.join("openspec"));
+        assert_eq!(target, root.0.join("speclink"));
     }
 
     #[test]
@@ -464,7 +531,7 @@ mod tests {
         // 監看目標（含其整條路徑）不存在。
         let ghost = std::env::temp_dir().join("speclink-watch-ghost-root-nonexistent");
         let _ = std::fs::remove_dir_all(&ghost);
-        let err = watch_openspec(&[ghost.join("openspec")], Duration::from_millis(100), || {});
+        let err = watch_targets(&[ghost.join("speclink")], Duration::from_millis(100), || {});
         assert!(
             err.is_err(),
             "missing target must be a loggable error, not a panic"
@@ -475,7 +542,7 @@ mod tests {
             std::env::temp_dir().join(format!("speclink-watch-nospec-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
-        let err = watch_openspec(&[root.join("openspec")], Duration::from_millis(100), || {});
+        let err = watch_targets(&[root.join("speclink")], Duration::from_millis(100), || {});
         assert!(
             err.is_err(),
             "nonexistent target dir must be a loggable error"

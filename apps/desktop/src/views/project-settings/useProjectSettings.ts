@@ -10,6 +10,7 @@ import type {
   WorkflowFields,
 } from "../../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../../session";
+import { workflowConfigFile } from "../../settingsCatalog";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 export const LOCALE_UNSET = "__unset__";
@@ -694,8 +695,11 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   );
 
 
+  // 頁標題下檔案註記的檔名：依專案實際的規格資料夾（desktop-spec-dir-migration D4）。
+  const configFile = workflowConfigFile(snap.specDir);
+
   return {
-    settings, snap, isRemote, appDisabled, wfDisabled, dirty, remoteNote,
+    settings, snap, isRemote, appDisabled, wfDisabled, dirty, remoteNote, configFile,
     tools, toggleTool, saveApp, appMsg,
     locale, setLocale, specLocale, setSpecLocale, tdd, setTdd, audit, setAudit, worktree, setWorktree,
     saveWorkflow, wfMsg,

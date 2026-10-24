@@ -79,6 +79,76 @@ impl std::fmt::Display for DeferReason {
     }
 }
 
+/// The folder a migration works on: `openspec` moves to `speclink`, `speclink`
+/// only renames leftover data files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum SpecFolder {
+    Openspec,
+    Speclink,
+}
+
+impl SpecFolder {
+    fn name(self) -> &'static str {
+        match self {
+            SpecFolder::Openspec => LEGACY_SPEC_DIR,
+            SpecFolder::Speclink => DEFAULT_SPEC_DIR,
+        }
+    }
+}
+
+/// Why a due migration waits, as the skill-file probe reports it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum DeferCode {
+    LinkedWorktree,
+    OtherWorktrees,
+    Uncommitted,
+    SymlinkedFolder,
+    SpecFolderTaken,
+}
+
+/// The migration as the skill-file probe reports it (desktop-spec-dir-migration
+/// D1): [`plan`] seen from the desktop prompt, `folder` being where the data
+/// files sit now.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "camelCase", rename_all_fields = "camelCase")]
+pub enum MigrationProbe {
+    None,
+    Pending { folder: SpecFolder, meta_files: usize },
+    Deferred { folder: SpecFolder, reason: DeferCode, worktrees: Vec<String> },
+}
+
+/// What `update` would do about the spec folder, for the probe. An OpenSpec
+/// project is init's or adopt's to import, so it reports nothing here.
+pub fn probe(root: &Path, app: &AppConfig) -> MigrationProbe {
+    let folder = match resolve_spec_dir(root, None).1 {
+        SpecLayout::Legacy => SpecFolder::Openspec,
+        _ => SpecFolder::Speclink,
+    };
+    let (reason, worktrees) = match plan(root, app) {
+        MigrationPlan::Nothing | MigrationPlan::Deferred(DeferReason::OpenSpecProject) => return MigrationProbe::None,
+        MigrationPlan::MoveFolder | MigrationPlan::RenameLeftovers => {
+            let meta_files = legacy_data_files(&root.join(folder.name())).len();
+            return MigrationProbe::Pending { folder, meta_files };
+        }
+        MigrationPlan::Deferred(DeferReason::OtherWorktrees(paths)) => {
+            (DeferCode::OtherWorktrees, paths.iter().map(|p| p.display().to_string()).collect())
+        }
+        MigrationPlan::Deferred(DeferReason::LinkedWorktree) => (DeferCode::LinkedWorktree, Vec::new()),
+        MigrationPlan::Deferred(DeferReason::Uncommitted(_)) => (DeferCode::Uncommitted, Vec::new()),
+        MigrationPlan::Deferred(DeferReason::SymlinkedFolder) => (DeferCode::SymlinkedFolder, Vec::new()),
+        MigrationPlan::Deferred(DeferReason::SpecFolderTaken) => (DeferCode::SpecFolderTaken, Vec::new()),
+    };
+    MigrationProbe::Deferred { folder, reason, worktrees }
+}
+
+/// Whether the project at `root` is an OpenSpec project — `openspec/` and neither
+/// `.speclink.yaml` nor `speclink/` — that enabling speclink imports first.
+pub fn needs_import(root: &Path) -> bool {
+    resolve_spec_dir(root, None).1 == SpecLayout::OpenSpec
+}
+
 /// What [`apply`] did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct MigrationReport {
@@ -210,6 +280,24 @@ fn shown(root: &Path, path: &Path) -> String {
     util::to_slash(path.strip_prefix(root).unwrap_or(path))
 }
 
+/// Windows closes a watched directory's handle only once the watcher thread wakes
+/// up after the watch is dropped, and virus scanners hold files briefly: there, a
+/// failed folder rename is retried for about a second before it counts.
+const RENAME_ATTEMPTS: u32 = if cfg!(windows) { 10 } else { 1 };
+
+/// Run `op` up to `attempts` times, 100 ms apart, until it succeeds.
+fn retried<T>(attempts: u32, mut op: impl FnMut() -> std::io::Result<T>) -> std::io::Result<T> {
+    let mut result = op();
+    for _ in 1..attempts {
+        if result.is_ok() {
+            break;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        result = op();
+    }
+    result
+}
+
 /// Carry out `plan`. A failed folder rename moves nothing; a failed data-file
 /// rename names that file and keeps the renames before it — the next run picks
 /// up the rest as leftovers.
@@ -222,7 +310,7 @@ pub fn apply(root: &Path, plan: &MigrationPlan) -> Result<MigrationReport> {
             if to.symlink_metadata().is_ok() {
                 bail!("cannot move {LEGACY_SPEC_DIR}/ to {DEFAULT_SPEC_DIR}/: {DEFAULT_SPEC_DIR} already exists — nothing was moved");
             }
-            std::fs::rename(&from, &to).with_context(|| {
+            retried(RENAME_ATTEMPTS, || std::fs::rename(&from, &to)).with_context(|| {
                 format!("cannot move {LEGACY_SPEC_DIR}/ to {DEFAULT_SPEC_DIR}/ — nothing was moved (close programs that hold files in it, such as the desktop app, and retry)")
             })?;
             report.moved_folder = true;
@@ -382,10 +470,11 @@ mod tests {
         p.commit_all();
         let wt = p.base.join("wt");
         p.git(&["worktree", "add", "-q", wt.to_str().unwrap(), "-b", "side"]);
-        let listed = std::fs::canonicalize(&wt).unwrap();
+        let listed = crate::testkit::listed_worktrees(&p.root);
+        assert_eq!(listed.len(), 1);
         assert_eq!(
             p.plan(),
-            MigrationPlan::Deferred(DeferReason::OtherWorktrees(vec![listed]))
+            MigrationPlan::Deferred(DeferReason::OtherWorktrees(listed))
         );
         assert_eq!(
             plan(&wt, &p.app()),
@@ -503,6 +592,24 @@ mod tests {
             let moved = p.root.join("speclink").join("changes").join(name).join(META_FILE);
             assert_eq!(std::fs::read_to_string(moved).unwrap(), name);
         }
+    }
+
+    #[test]
+    fn a_failed_rename_is_retried_up_to_the_attempt_count() {
+        // Windows 關監看的目錄 handle 是非同步的：改名失敗要在短時間內重試。
+        let mut calls = 0;
+        let result = retried(3, || {
+            calls += 1;
+            if calls < 3 { Err(std::io::Error::other("busy")) } else { Ok(calls) }
+        });
+        assert_eq!(result.unwrap(), 3);
+        let mut calls = 0;
+        let result: std::io::Result<()> = retried(1, || {
+            calls += 1;
+            Err(std::io::Error::other("busy"))
+        });
+        assert!(result.is_err());
+        assert_eq!(calls, 1, "只試一次就不重試");
     }
 
     // --- apply ---

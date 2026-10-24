@@ -169,20 +169,30 @@ describe("開啟專案 action 三態（design D3）", () => {
   it("unadopted：顯示啟用確認（pendingAdopt 錨定回報 root），分頁與資料不動", async () => {
     const ds = fakeDataSource();
     const ws = fakeWorkspace({
-      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated", needsImport: false }),
     });
     const store = makeStore(ds, ws);
     // 自子目錄開啟：pendingAdopt 必須是探測回報的專案根，非使用者所選路徑。
     await store.getState().openProjectAt("C:\\migrated\\sub");
     const s = store.getState();
     expect(s.pendingAdopt).toBe("C:\\migrated");
+    expect(s.pendingAdoptImport).toBe(false);
     expect(s.tabs).toEqual([]);
     expect(ds.listChanges).not.toHaveBeenCalled();
   });
 
+  it("unadopted 且需要匯入：記下啟用會改名規格資料夾", async () => {
+    const ws = fakeWorkspace({
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\legacy", needsImport: true }),
+    });
+    const store = makeStore(fakeDataSource(), ws);
+    await store.getState().openProjectAt("C:\\legacy");
+    expect(store.getState().pendingAdoptImport).toBe(true);
+  });
+
   it("取消啟用：狀態清空、無任何寫入呼叫", async () => {
     const ws = fakeWorkspace({
-      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated", needsImport: false }),
     });
     const store = makeStore(fakeDataSource(), ws);
     await store.getState().openProjectAt("C:\\migrated");
@@ -197,7 +207,7 @@ describe("開啟專案 action 三態（design D3）", () => {
   it("確認啟用：以所選工具呼叫 adopt，成功後以回報 root 切入專案", async () => {
     const ds = fakeDataSource();
     const ws = fakeWorkspace({
-      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated", needsImport: false }),
     });
     const store = makeStore(ds, ws);
     await store.getState().openProjectAt("C:\\migrated");
@@ -211,7 +221,7 @@ describe("開啟專案 action 三態（design D3）", () => {
 
   it("啟用失敗：單行錯誤 toast、不切換專案", async () => {
     const ws = fakeWorkspace({
-      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated" }),
+      openProject: vi.fn().mockResolvedValue({ status: "unadopted", root: "C:\\migrated", needsImport: false }),
       adoptProject: vi.fn().mockRejectedValue("cannot adopt 'C:\\migrated': permission denied"),
     });
     const store = makeStore(fakeDataSource(), ws);

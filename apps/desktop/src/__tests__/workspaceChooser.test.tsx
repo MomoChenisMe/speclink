@@ -196,11 +196,11 @@ describe("WorkspaceChooser", () => {
     expect(within(dialog).getByRole("heading", { name: "新增專案" })).toBeTruthy();
     expect(dialog.textContent).not.toMatch(/workspace/i);
     expect(APP_MESSAGES.en["chooser.sourceTitle"]).toBe("New project");
-    // 說明先講清楚：本機資料夾沒有 openspec/ 時會先問要不要初始化。
+    // 說明先講清楚：本機資料夾沒有 speclink/ 時會先問要不要初始化。
     expect(within(dialog).getByText(APP_MESSAGES["zh-TW"]["chooser.sourceDesc"]).textContent).toContain(
-      "openspec/",
+      "speclink/",
     );
-    expect(APP_MESSAGES.en["chooser.sourceDesc"]).toContain("openspec/");
+    expect(APP_MESSAGES.en["chooser.sourceDesc"]).toContain("speclink/");
   });
 
   // 來源卡不綁產品品牌：卡名與其下一步標題都只稱 Server。定位錨在開頭，

@@ -23,8 +23,8 @@ afterEach(cleanup);
 
 const DOC = { change: "add-auth", artifact: "proposal.md" };
 const LOC: DocumentLocation = {
-  path: "/work/app/openspec/changes/add-auth/proposal.md",
-  relative: "openspec/changes/add-auth/proposal.md",
+  path: "/work/app/speclink/changes/add-auth/proposal.md",
+  relative: "speclink/changes/add-auth/proposal.md",
 };
 
 function setup({
@@ -64,8 +64,8 @@ describe("DocumentActionsMenu", () => {
   it("首列與動作採宿主回報的實際位置（已封存討論的日期檔名）", async () => {
     const u = user();
     const archived = {
-      path: "/work/app/openspec/discussions/archive/2026-01-03-old-topic.md",
-      relative: "openspec/discussions/archive/2026-01-03-old-topic.md",
+      path: "/work/app/speclink/discussions/archive/2026-01-03-old-topic.md",
+      relative: "speclink/discussions/archive/2026-01-03-old-topic.md",
     };
     const cb = setup({
       target: { doc: { discussion: "old-topic" }, content: "# 記錄" },
@@ -147,7 +147,7 @@ describe("DocumentActionsMenu", () => {
 
   it("正式規格與封存變更的文件參照原樣交給宿主查位置", async () => {
     const u = user();
-    const spec = { path: "/work/app/openspec/specs/auth/spec.md", relative: "openspec/specs/auth/spec.md" };
+    const spec = { path: "/work/app/speclink/specs/auth/spec.md", relative: "speclink/specs/auth/spec.md" };
     const cb = setup({ target: { doc: { spec: "auth" }, content: "# spec" }, locate: vi.fn().mockResolvedValue(spec) });
     await openMenu(u);
     await screen.findByText(spec.relative);

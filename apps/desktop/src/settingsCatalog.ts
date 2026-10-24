@@ -13,6 +13,7 @@ import {
   Workflow,
   type LucideIcon,
 } from "lucide-react";
+import { DEFAULT_SPEC_DIR } from "@speclink/ui";
 
 export interface AppSettingsCategory {
   id: "general" | "updates" | "cli" | "servers" | "about";
@@ -28,10 +29,16 @@ export interface ProjectSettingsCategory {
   id: "context" | "rules" | "review" | "workflow" | "speclink";
   labelKey: string;
   icon: LucideIcon;
-  /** config＝openspec/config.yaml 組；project＝「專案」組（.speclink.yaml）。 */
+  /** config＝規格資料夾的 config.yaml 組；project＝「專案」組（.speclink.yaml）。 */
   group: "config" | "project";
   /** 遠端專案是否呈現（.speclink.yaml 屬本機 checkout，遠端無此分類）。 */
   remote: boolean;
+}
+
+/** 工作流設定檔的專案根相對路徑（desktop-spec-dir-migration D4）：專案設定各頁的檔案註記與
+ * 分類欄組名由它組成；快照沒帶規格資料夾（遠端、尚未載入）時用預設 speclink。 */
+export function workflowConfigFile(specDir: string | undefined): string {
+  return `${specDir ?? DEFAULT_SPEC_DIR}/config.yaml`;
 }
 
 export type SettingsSection = AppSettingsCategory["id"];
