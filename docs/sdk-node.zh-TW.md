@@ -44,11 +44,11 @@ const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-nod
 
 `createEngine` 有兩種儲存方式。
 
-**本機檔案**：指向含 `openspec/` 的專案根目錄，適合本機工具與測試。
+**本機檔案**：指向含 `speclink/`（或舊版建立的 `openspec/`）的專案根目錄，適合本機工具與測試。
 
 ```js
 const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
-// 選填：specDir（預設 "openspec"）
+// 選填：specDir（預設與 CLI 相同：依序取 .speclink.yaml 的 spec_dir、speclink/、openspec/，都沒有時為 "speclink"）
 ```
 
 **自己的 Store**：傳入一個實作 Store 介面的物件（見[自己實作 Store](#store)），引擎透過它讀寫文件。
@@ -212,7 +212,7 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 | --- | --- | --- |
 | `target` | `claude`、`codex`、`copilot`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
 | `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配以 `dispatch` 實作的工具；`cli` 寫成 shell 指令 |
-| `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `openspec` |
+| `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `speclink` |
 | `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
 
 把產生的 `SKILL.md` 寫進一個目錄，交給你的 agent 載入。每個技能的 `description` 說明什麼時候用它，結尾的 Next steps 說明之後建議做什麼，不需要另外的系統提示。前提是你的 agent 會讀技能的 description。
@@ -266,7 +266,7 @@ async function startSession() {
 }
 ```
 
-技能用工具呼叫的方式描述動詞，工具把呼叫送進同一個程序裡的引擎，引擎再透過你的 Store 存檔。整條路上沒有 CLI、沒有子程序，也不需要本機的 `openspec/` 目錄。
+技能用工具呼叫的方式描述動詞，工具把呼叫送進同一個程序裡的引擎，引擎再透過你的 Store 存檔。整條路上沒有 CLI、沒有子程序，也不需要本機的 `speclink/` 目錄。
 
 ## <a id="limits"></a>目前的限制
 

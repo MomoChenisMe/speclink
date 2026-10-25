@@ -34,7 +34,8 @@ updated: 2026-10-13T17:38:06+08:00
 
 ---
 ### Requirement: 選單內容與看板同源
-選單內容 SHALL 由前端資料層（與看板同一 store）供給，並於資料變動時重建；SHALL NOT 為 tray 另建第二條資料查詢路徑。外部寫者改動 openspec/ 觸發既有自動刷新後，選單 SHALL 反映刷新後的狀態，無需主視窗位於前景。
+
+選單內容 SHALL 由前端資料層（與看板同一 store）供給，並於資料變動時重建；SHALL NOT 為 tray 另建第二條資料查詢路徑。外部寫者改動 speclink/ 觸發既有自動刷新後，選單 SHALL 反映刷新後的狀態，無需主視窗位於前景。
 
 #### Scenario: 背景寫入後選單反映新進度
 - **WHEN** 主視窗不在前景，agent 或 CLI 將某進行中變更的任務自 0/12 推進至 3/12，既有自動刷新管線生效
@@ -42,37 +43,8 @@ updated: 2026-10-13T17:38:06+08:00
 
 
 <!-- @trace
-source: system-tray-status
-updated: 2026-07-13
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/128x128.png
-  - apps/desktop/src-tauri/icons/128x128@2x.png
-  - apps/desktop/src-tauri/icons/32x32.png
-  - apps/desktop/src-tauri/icons/64x64.png
-  - apps/desktop/src-tauri/icons/Square107x107Logo.png
-  - apps/desktop/src-tauri/icons/Square142x142Logo.png
-  - apps/desktop/src-tauri/icons/Square150x150Logo.png
-  - apps/desktop/src-tauri/icons/Square284x284Logo.png
-  - apps/desktop/src-tauri/icons/Square30x30Logo.png
-  - apps/desktop/src-tauri/icons/Square310x310Logo.png
-  - apps/desktop/src-tauri/icons/Square44x44Logo.png
-  - apps/desktop/src-tauri/icons/Square71x71Logo.png
-  - apps/desktop/src-tauri/icons/Square89x89Logo.png
-  - apps/desktop/src-tauri/icons/StoreLogo.png
-  - apps/desktop/src-tauri/icons/icon.icns
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/icons/icon.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18.png
-  - apps/desktop/src-tauri/icons/speclink-tray-18@2x.png
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/trayIcon.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

@@ -119,7 +119,7 @@ updated: 2026-10-14T16:37:17+08:00
 
 #### Scenario: locale tw 時工單 findings 為中文
 
-- **WHEN** 專案 openspec/config.yaml 設 locale: tw，審查輪產出 findings 並以 `review add-round` 寫入工單
+- **WHEN** 專案 speclink/config.yaml 設 locale: tw，審查輪產出 findings 並以 `review add-round` 寫入工單
 - **THEN** 該輪 findings 行的描述文字為繁體中文，severity 標籤與 `Standards:`／`Correctness:` 前綴維持英文
 
 #### Scenario: locale 未設定時全英文
@@ -129,71 +129,8 @@ updated: 2026-10-14T16:37:17+08:00
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -439,7 +376,7 @@ Discovery 時 Standards 軸的 sub-agent 簡報 SHALL 依嚴重度分組帶入�
 
 #### Scenario: 讀不到設定即停止
 
-- **WHEN** openspec/config.yaml 的 review 區塊含未知子鍵，執行 speclink-review
+- **WHEN** speclink/config.yaml 的 review 區塊含未知子鍵，執行 speclink-review
 - **THEN** 技能原樣回報 workflow-config show 的錯誤並停止，不呼叫 review scope、不派出 sub-agent、不寫工單
 
 #### Scenario: 續輪不因規則新增 finding
@@ -447,9 +384,10 @@ Discovery 時 Standards 軸的 sub-agent 簡報 SHALL 依嚴重度分組帶入�
 - **WHEN** Round 1 後使用者在 review.critical 新增一條規則，接著跑 validation 輪
 - **THEN** validation 只判定前輪 finding 是否已解與 remediation patch 的直接 regression，不依新規則回報新 finding
 
+
 <!-- @trace
-source: review-rules-config
-updated: 2026-10-14T16:37:17+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -578,7 +516,7 @@ updated: 2026-10-14T21:31:03+08:00
 
 #### Scenario: 沒有 review 區塊時只記模式
 
-- **WHEN** openspec/config.yaml 沒有 review 區塊，執行 speclink-review 的 discovery
+- **WHEN** speclink/config.yaml 沒有 review 區塊，執行 speclink-review 的 discovery
 - **THEN** add-round 的 stdin 含一行 `**Rules**: extend`，不含任何 `**Rule**:` 行
 
 #### Scenario: 複驗輪不寫記錄
@@ -596,7 +534,8 @@ updated: 2026-10-14T21:31:03+08:00
 - **WHEN** 檢視生成的 speclink-review 技能檔關於記錄輪次的步驟
 - **THEN** 步驟明定 discovery 輪在 Patch 與 Scope 之間寫入 `**Rules**:` 與每條專案規則的 `**Rule**:` 行、validation 輪不寫，且三種工具（claude、codex、copilot）生成的技能檔都含這段
 
+
 <!-- @trace
-source: review-ticket-applied-rules
-updated: 2026-10-15T09:31:43+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

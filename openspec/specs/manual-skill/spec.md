@@ -18,12 +18,12 @@
 #### Scenario: description 以觸發情境開場
 
 - **WHEN** 檢視渲染產出的 speclink-manual 技能檔 frontmatter 的 description
-- **THEN** 句子先陳述觸發情境（需要人類操作手冊、或想被導覽），再說明產出（生成 openspec/manual/ 的 Markdown 手冊，或對話內導覽）
+- **THEN** 句子先陳述觸發情境（需要人類操作手冊、或想被導覽），再說明產出（生成 speclink/manual/ 的 Markdown 手冊，或對話內導覽）
 
 
 <!-- @trace
-source: manual-skill
-updated: 2026-09-02
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -65,7 +65,7 @@ updated: 2026-09-02
 #### Scenario: 不讀規格以外的來源
 
 - **WHEN** 工作區同時存在 README 與 docs 目錄
-- **THEN** 生成的任何頁的內容與出處只引用 openspec/specs/ 的 capability，不引用 README 或 docs
+- **THEN** 生成的任何頁的內容與出處只引用 speclink/specs/ 的 capability，不引用 README 或 docs
 
 #### Scenario: 同日先封存後生成的頁不列為過期
 
@@ -74,8 +74,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: manual-stale-time-granularity
-updated: 2026-09-07T12:40:29+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -85,7 +85,7 @@ updated: 2026-09-07T12:40:29+08:00
 
 #### Scenario: 首次生成完整手冊
 
-- **WHEN** 工作區無 openspec/manual/ 而執行生成模式
+- **WHEN** 工作區無 speclink/manual/ 而執行生成模式
 - **THEN** 產出含 index.md 與 about.md 的完整手冊，每頁 generated 為 RFC 3339 時戳，只取材部分 Requirement 的頁其 sources 帶錨定，摘要列出新增頁數且重生、只換時戳與未動為零
 
 #### Scenario: 二次只重生過期頁
@@ -115,8 +115,8 @@ updated: 2026-09-07T12:40:29+08:00
 
 
 <!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -126,18 +126,18 @@ updated: 2026-09-11T11:59:38+08:00
 
 #### Scenario: 有手冊的導覽
 
-- **WHEN** openspec/manual/ 存在且使用者呼叫導覽模式
+- **WHEN** speclink/manual/ 存在且使用者呼叫導覽模式
 - **THEN** 技能先問角色一題，依手冊順序導覽，回答附出處，過程中零檔案寫入
 
 #### Scenario: 無手冊的導覽
 
-- **WHEN** openspec/manual/ 不存在且使用者呼叫導覽模式
+- **WHEN** speclink/manual/ 不存在且使用者呼叫導覽模式
 - **THEN** 技能明示尚無手冊並改以規格直接導覽，過程中零檔案寫入
 
 
 <!-- @trace
-source: manual-skill
-updated: 2026-09-02
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -148,14 +148,15 @@ updated: 2026-09-02
 #### Scenario: remote 綁定專案的生成被擋
 
 - **WHEN** 於 remote 綁定的專案呼叫生成模式
-- **THEN** 技能輸出不支援的說明並停止，openspec/manual/ 未被建立或改動
+- **THEN** 技能輸出不支援的說明並停止，speclink/manual/ 未被建立或改動
 
 #### Scenario: remote 綁定專案的導覽照常
 
 - **WHEN** 於 remote 綁定的專案呼叫導覽模式
 - **THEN** 導覽照常進行（以規格或既有手冊為索引），零檔案寫入
 
+
 <!-- @trace
-source: manual-skill
-updated: 2026-09-02
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

@@ -72,12 +72,12 @@ code:
 #### Scenario: 既有相符 marker 缺少 Skills 時補齊
 
 - **WHEN** checkout 的 remote marker 與 scope 相符、built-in tools 為 `[codex]`，但 Codex Skills 缺少，使用者保持 Codex 選取並提交
-- **THEN** 缺少的 Codex 受管產物被補齊，remote section 值不變，不建立 `openspec/`，同步成功後才開啟 Workspace
+- **THEN** 缺少的 Codex 受管產物被補齊，remote section 值不變，不建立 `speclink/`，同步成功後才開啟 Workspace
 
 #### Scenario: 既有 checkout 從 Claude 切換為 Codex
 
 - **WHEN** checkout 原 built-in tools 為 `[claude]`，`CLAUDE.md` 同時含 Speclink 區塊與使用者文字，使用者改為只選 Codex並提交
-- **THEN** `.speclink.yaml` built-in tools 成為 `[codex]`，Codex Skills 被補齊且不生成 `AGENTS.md`，Claude Skills 與 `CLAUDE.md` 的遺留 Speclink 區塊被移除，`CLAUDE.md` 使用者文字與 remote section 保留，且不存在本機 `openspec/`
+- **THEN** `.speclink.yaml` built-in tools 成為 `[codex]`，Codex Skills 被補齊且不生成 `AGENTS.md`，Claude Skills 與 `CLAUDE.md` 的遺留 Speclink 區塊被移除，`CLAUDE.md` 使用者文字與 remote section 保留，且不存在本機 `speclink/`
 
 #### Scenario: 同步失敗不開啟且可重試
 
@@ -91,8 +91,8 @@ code:
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -100,7 +100,7 @@ updated: 2026-10-08T11:52:22+08:00
 
 專案探測 SHALL 辨識 remote marker。資料夾僅含 marker 且對應 connection 已登入時，若 `.speclink.yaml` 有至少一個有效 built-in tool，Desktop SHALL 先依該選集 reconciliation，成功後才 handshake 開啟 remote tab並以呼叫端原始 path 作為 checkoutRoot；同步失敗 SHALL 顯示錯誤且不建立 session。marker 缺少有效 built-in tool 選集時 SHALL 導向 chooser 的 checkout 步驟、預填 server／scope／path 並要求明示選擇 Claude／Codex／Copilot，不得直接開啟。無對應 connection 或未登入 SHALL 引導至 chooser 的 server 步驟並預填 server 位址。
 
-marker 與本地 `openspec/` 並存時 SHALL 停下強制選擇，提供三個出口且皆無靜默覆蓋：「繼續本地」（本次以本地開啟、marker 不動）；「以 server 為準」（本地 `openspec/` 改名為帶日期備份後，資料夾轉為 checkout，完成工具 reconciliation 後開啟 remote tab，不上傳本地內容、不改動 server）；「遷移本地內容」（進入 workspace-migration 的遷移流程、目標為空 scope）。對話文案 SHALL 明說「以 server 為準」為備份後棄用本地、非合併。marker YAML 損壞 SHALL 沿 `.speclink.yaml` 既有 fail-closed 語意呈現錯誤。
+marker 與本地 `speclink/` 並存時 SHALL 停下強制選擇，提供三個出口且皆無靜默覆蓋：「繼續本地」（本次以本地開啟、marker 不動）；「以 server 為準」（本地 `speclink/` 改名為帶日期備份後，資料夾轉為 checkout，完成工具 reconciliation 後開啟 remote tab，不上傳本地內容、不改動 server）；「遷移本地內容」（進入 workspace-migration 的遷移流程、目標為空 scope）。對話文案 SHALL 明說「以 server 為準」為備份後棄用本地、非合併。marker YAML 損壞 SHALL 沿 `.speclink.yaml` 既有 fail-closed 語意呈現錯誤。
 
 #### Scenario: 有工具選集的 checkout 直達 remote tab
 
@@ -119,7 +119,7 @@ marker 與本地 `openspec/` 並存時 SHALL 停下強制選擇，提供三個�
 
 #### Scenario: 並存衝突三出口
 
-- **WHEN** 開啟同時含本地 `openspec/` 與 remote marker 的資料夾
+- **WHEN** 開啟同時含本地 `speclink/` 與 remote marker 的資料夾
 - **THEN** 呈現強制選擇對話含三出口：繼續本地以本地開啟；以 server 為準將本地改名備份後執行工具 reconciliation 再開 remote tab且 server 內容未變；遷移本地內容進入遷移流程；無任何自動覆蓋
 
 #### Scenario: 壞 marker fail-closed
@@ -134,8 +134,8 @@ marker 與本地 `openspec/` 並存時 SHALL 停下強制選擇，提供三個�
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -181,7 +181,7 @@ app 升級後首次啟動、localStorage 尚無最近開啟鍵時，app SHALL �
 
 #### Scenario: 點未初始化資料夾的條目仍走 init 確認
 
-- **WHEN** 使用者點最近開啟中的本機條目，而該資料夾的 openspec 骨架已被移除
+- **WHEN** 使用者點最近開啟中的本機條目，而該資料夾的 speclink 骨架已被移除
 - **THEN** app 顯示既有的初始化確認對話框，未經確認前不寫入該資料夾
 
 #### Scenario: 點 remote 條目以原綁定開啟
@@ -241,8 +241,8 @@ app 升級後首次啟動、localStorage 尚無最近開啟鍵時，app SHALL �
 
 
 <!-- @trace
-source: desktop-shell-redesign
-updated: 2026-10-09T12:33:58+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

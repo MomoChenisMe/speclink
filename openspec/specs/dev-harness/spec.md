@@ -230,12 +230,12 @@ repo root SHALL 提供 npm run dev:desktop：啟動 desktop 的 tauri dev，其�
 #### Scenario: 無 server 亦可用
 
 - **WHEN** 機器上沒有任何 speclink-server 在跑時執行 npm run dev:desktop
-- **THEN** desktop 視窗以本地模式開啟並可瀏覽本地 openspec/ 看板，不因 remote 不可達而阻擋啟動
+- **THEN** desktop 視窗以本地模式開啟並可瀏覽本地 speclink/ 看板，不因 remote 不可達而阻擋啟動
 
 
 <!-- @trace
-source: desktop-dev-frontend-hmr
-updated: 2026-08-08
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

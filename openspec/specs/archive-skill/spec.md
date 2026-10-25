@@ -43,7 +43,7 @@ updated: 2026-08-06
 ---
 ### Requirement: 封存完成後的收尾提交提醒
 
-內嵌 speclink-archive 技能（事實來源 crates/engine/speclink-core/assets/skills/archive.md，經 init 與 update 渲染至工具技能目錄）SHALL 於結尾敘明：封存完成後提醒使用者以一般提交收尾本次封存產生的異動（delta 併入正式規格、變更目錄搬移至 archive）——commit 技能的變更選檔流程不適用於封存後，SHALL NOT 導向之。此提醒 SHALL 涵蓋所有進入封存的路徑（apply 直達、review、verify、quality、worktree-merge 之後），且 SHALL 明文為僅提醒——SHALL NOT 代跑提交。技能檔 SHALL 另敘明：工作區存在 openspec/manual/ 時，提醒使用者可跑 manual 技能檢查手冊是否因本次封存而過期——條件僅為該目錄存在（不判斷本次封存動到哪些規格），且 SHALL 明文為僅提醒、SHALL NOT 代跑 manual 技能。技能檔 SHALL 再敘明「下一個可開工」提示：封存完成後執行 speclink plan --json，`next` 非 null 時提一句「plan 的下一個可開工：<next>，執行 /speclink-apply <next>」；有效 worktree 政策（含 SPECLINK_WORKTREE 環境覆寫層）開啟且第 1 波（waves[0].changes）中 blockedBy 為空且未開工的 change 有兩個以上時，SHALL 列出該名單為可並行（各開一個 session 走 apply-with-worktree）；`next` 為 null 或 plan 失敗（依賴成環）時 SHALL NOT 提及順序。此提示 SHALL 明文為僅提醒、SHALL NOT 代跑 apply。
+內嵌 speclink-archive 技能（事實來源 crates/engine/speclink-core/assets/skills/archive.md，經 init 與 update 渲染至工具技能目錄）SHALL 於結尾敘明：封存完成後提醒使用者以一般提交收尾本次封存產生的異動（delta 併入正式規格、變更目錄搬移至 archive）——commit 技能的變更選檔流程不適用於封存後，SHALL NOT 導向之。此提醒 SHALL 涵蓋所有進入封存的路徑（apply 直達、review、verify、quality、worktree-merge 之後），且 SHALL 明文為僅提醒——SHALL NOT 代跑提交。技能檔 SHALL 另敘明：工作區存在 speclink/manual/ 時，提醒使用者可跑 manual 技能檢查手冊是否因本次封存而過期——條件僅為該目錄存在（不判斷本次封存動到哪些規格），且 SHALL 明文為僅提醒、SHALL NOT 代跑 manual 技能。技能檔 SHALL 再敘明「下一個可開工」提示：封存完成後執行 speclink plan --json，`next` 非 null 時提一句「plan 的下一個可開工：<next>，執行 /speclink-apply <next>」；有效 worktree 政策（含 SPECLINK_WORKTREE 環境覆寫層）開啟且第 1 波（waves[0].changes）中 blockedBy 為空且未開工的 change 有兩個以上時，SHALL 列出該名單為可並行（各開一個 session 走 apply-with-worktree）；`next` 為 null 或 plan 失敗（依賴成環）時 SHALL NOT 提及順序。此提示 SHALL 明文為僅提醒、SHALL NOT 代跑 apply。
 
 #### Scenario: 技能檔結尾含提交提醒
 
@@ -53,7 +53,7 @@ updated: 2026-08-06
 #### Scenario: 手冊存在時的過期檢查提醒
 
 - **WHEN** 檢視渲染產出的 speclink-archive 技能檔結尾段對手冊的敘述
-- **THEN** 內文含「工作區有 openspec/manual/ 時建議跑 manual 技能檢查手冊是否過期」，條件為目錄存在，且明文僅提醒、不代跑
+- **THEN** 內文含「工作區有 speclink/manual/ 時建議跑 manual 技能檢查手冊是否過期」，條件為目錄存在，且明文僅提醒、不代跑
 
 #### Scenario: 封存後提示下一個可開工
 
@@ -72,8 +72,8 @@ updated: 2026-08-06
 
 
 <!-- @trace
-source: add-plan-handoff-after-archive
-updated: 2026-09-16T16:37:51+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

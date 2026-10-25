@@ -8,7 +8,7 @@
 
 ### Requirement: 審查工單的建立與追加
 
-系統 SHALL 提供 speclink review add-round <change> --stdin：自 stdin 讀入一輪審查內容，於 `openspec/changes/<change>/review.md` 追加 `## Round N` 區段（工單不存在時建立並自 Round 1 起算）。每輪內容 SHALL 含 `**Scope**:` repo-root 相對路徑清單與零或多行分級 findings（severity ∈ CRITICAL／WARNING／SUGGESTION）。
+系統 SHALL 提供 speclink review add-round <change> --stdin：自 stdin 讀入一輪審查內容，於 `speclink/changes/<change>/review.md` 追加 `## Round N` 區段（工單不存在時建立並自 Round 1 起算）。每輪內容 SHALL 含 `**Scope**:` repo-root 相對路徑清單與零或多行分級 findings（severity ∈ CRITICAL／WARNING／SUGGESTION）。
 
 結構化新輪次 SHALL 同時含 `**Phase**: discovery|validation` 與 `**Patch**: sha256:<64 lowercase hex>`；兩欄只出現其一、phase token 無效或 hash 格式無效時 SHALL 非零拒絕且工單零寫入。工單首個結構化 round SHALL 為 discovery；已有結構化 round 後追加者 SHALL 為 validation。既有兩欄皆缺席的 legacy round SHALL 保持可建立、追加與解析；legacy ticket 後 SHALL 能追加 validation round。
 
@@ -78,8 +78,8 @@
 
 
 <!-- @trace
-source: review-ticket-applied-rules
-updated: 2026-10-15T09:31:43+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -140,7 +140,7 @@ updated: 2026-10-15T09:31:43+08:00
 ---
 ### Requirement: 蓋章守門與蓋章效果
 
-系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.openspec.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。工單刪除後其文字於 fs 模式僅存於 git 歷史;remote 模式的 store 不保留已刪文件內容,蓋章後工單文字不可回讀。
+系統 SHALL 提供 `speclink review stamp <change> [--accept]`。守門條件:(1) change 的寫碼任務全數完成(非 `[M]` 任務全數勾選;手動測試任務不計,見 manual-task-marker 的寫碼任務全完成預測子);(2) 工單末輪零未解必修 findings。必修 SHALL 以嚴重度界定:CRITICAL 與 WARNING 級為必修、擋乾淨蓋章;SUGGESTION 級 SHALL NOT 擋章——末輪僅含 SUGGESTION 級 findings 時蓋章照常放行。`--accept` SHALL 僅豁免條件 (2) 的必修部分。守門通過時系統 SHALL 於同一原子寫入內:將 `reviewed_at`/`reviewed_by`/`reviewed_with`/`reviewed_tasks_total`(蓋章時全任務總數,含 `[M]` 任務)/`reviewed_scope`(指紋清單)寫入該 change 的 `.meta.yaml`,並刪除 `review.md`。不得出現「章已寫入而工單仍存在」的中間狀態。工單刪除後其文字於 fs 模式僅存於 git 歷史;remote 模式的 store 不保留已刪文件內容,蓋章後工單文字不可回讀。
 
 #### Scenario: 寫碼任務未全完成即拒絕
 
@@ -170,18 +170,18 @@ updated: 2026-10-15T09:31:43+08:00
 #### Scenario: 乾淨蓋章
 
 - **WHEN** 任務 5/5 完成且工單末輪 findings 為空時執行 `review stamp`
-- **THEN** exit code 0,`.openspec.yaml` 含五個 reviewed 欄位且 `review.md` 不存在
+- **THEN** exit code 0,`.meta.yaml` 含五個 reviewed 欄位且 `review.md` 不存在
 
 ##### Example: 蓋章寫入的任務錨
 
 - **GIVEN** change 有 5 個任務,其中 4 個寫碼任務全數勾選、1 個 `[M]` 任務未勾,工單 Round 2 的 findings 為空
 - **WHEN** `review stamp` 成功
-- **THEN** `.openspec.yaml` 內 `reviewed_tasks_total` 為 5(全任務總數,含未勾的 `[M]` 任務)
+- **THEN** `.meta.yaml` 內 `reviewed_tasks_total` 為 5(全任務總數,含未勾的 `[M]` 任務)
 
 
 <!-- @trace
-source: stamp-contract-trace-docs
-updated: 2026-08-27
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -257,7 +257,7 @@ updated: 2026-08-20
 #### Scenario: 放棄既有工單
 
 - **WHEN** 對有工單的 change 執行 `review discard`
-- **THEN** exit code 0，`review.md` 不存在，`.openspec.yaml` 不變
+- **THEN** exit code 0，`review.md` 不存在，`.meta.yaml` 不變
 
 #### Scenario: 無工單可放棄
 
@@ -266,71 +266,8 @@ updated: 2026-08-20
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -429,76 +366,13 @@ code:
 
 #### Scenario: 帶章的 change 不外洩新欄位
 
-- **WHEN** 某 change 的 `.openspec.yaml` 含全套 reviewed 欄位時執行 `speclink list --json`
+- **WHEN** 某 change 的 `.meta.yaml` 含全套 reviewed 欄位時執行 `speclink list --json`
 - **THEN** 該 change 的 JSON 項目與無 reviewed 欄位的 change 具有相同的欄位集合
 
 
 <!-- @trace
-source: code-review-stage
-updated: 2026-08-02
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - README.en.md
-  - README.md
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/review_verbs.rs
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-core/src/util.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/commit.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - crates/speclink-remote/tests/typed_client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/read_api.rs
-  - crates/speclink-server/tests/review_api.rs
-  - packages/ui/src/__tests__/reviewBadge.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedDrawer.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ReviewArchiveDialog.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/reviewStyle.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -585,7 +459,7 @@ code:
 `speclink review add-round <change> --stdin` SHALL 在寫入之前檢查本輪每一條 finding 的路徑。這項檢查排在既有的 change 存在檢查與輪次序列檢查之前：同一份輸入同時違反多項時，先回報路徑違規；格式錯誤照舊回報同一則錯誤。規則如下：
 
 - 路徑在最後一個冒號之後只剩行號寫法（例如 `src/a.rs:42`、`src/a.rs:42-50`、`src/a.rs:42-`、`src/a.rs:L42`），或以單獨的冒號結尾時 SHALL 拒絕。
-- 路徑（`\` 正規化為 `/` 後）不在「工單既有各輪 `**Scope**:` 的聯集，加上本輪 `**Scope**:`」之內時 SHALL 拒絕。此聯集與蓋章指紋範圍採同一定義。路徑位於規格目錄（預設 `openspec/`）或 `.speclink/` 之下時 SHALL 免除這一項——這類路徑本來就不進驗證 patch，複驗的範圍解析會略過它們。
+- 路徑（`\` 正規化為 `/` 後）不在「工單既有各輪 `**Scope**:` 的聯集，加上本輪 `**Scope**:`」之內時 SHALL 拒絕。此聯集與蓋章指紋範圍採同一定義。路徑位於規格目錄（預設 `speclink/`）或 `.speclink/` 之下時 SHALL 免除這一項——這類路徑本來就不進驗證 patch，複驗的範圍解析會略過它們。
 - 與工單上一輪某條 finding 的 severity、路徑與描述完全相同的行（描述結尾的 `(accepted)` 標記不計），視為沿用的未解項，SHALL NOT 受上述兩項檢查。
 
 違規時 SHALL 以非零 exit code 結束、stderr 逐一列出違規的路徑與原因，`review.md` SHALL 零寫入、位元級不變。合法內容的成功行為與 stdout SHALL 維持既有輸出不變。remote 模式下 CLI SHALL 以同一套規則先讀取工單再檢查，違規時於送出前非零結束、stderr 帶違規路徑，server 端工單零寫入；離線、認證失效與 revision 衝突沿用既有 remote 動詞行為。
@@ -607,7 +481,7 @@ code:
 
 #### Scenario: 規格目錄下的路徑免除範圍檢查
 
-- **WHEN** Scope 只含 `src/a.rs`，新 finding 的路徑為 `openspec/changes/demo/design.md`
+- **WHEN** Scope 只含 `src/a.rs`，新 finding 的路徑為 `speclink/changes/demo/design.md`
 - **THEN** exit code 0，該 finding 照原文寫入
 
 #### Scenario: 沿用的未解項不受檢查
@@ -625,37 +499,39 @@ code:
 - **WHEN** remote 模式下對工單追加一條範圍外路徑的 finding
 - **THEN** CLI 非零結束、stderr 帶該路徑，不送出寫入，server 端工單零寫入
 
+
 <!-- @trace
-source: quality-gate-speedup
-updated: 2026-10-14T21:31:03+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 蓋章記錄審查輪數
 
-`speclink review stamp <change>` 守門通過時，系統 SHALL 在寫入其他章欄位的同一次原子寫入中，把 `reviewed_rounds` 寫入該 change 的 `.openspec.yaml`：值為原有 `reviewed_rounds`（缺席視為 0）加上本次蓋章的審查工單回合數，檔內 SHALL 只有一行 `reviewed_rounds`。帶 `--accept` 的蓋章 SHALL 同樣記錄。守門失敗時 SHALL NOT 改動 `reviewed_rounds`；放棄審查（只刪工單、未蓋章）SHALL NOT 改動 `reviewed_rounds`。原有 `reviewed_rounds` 不是非負整數時，metadata 視為無法解析，蓋章 SHALL 以非零 exit code 拒絕且零寫入。
+`speclink review stamp <change>` 守門通過時，系統 SHALL 在寫入其他章欄位的同一次原子寫入中，把 `reviewed_rounds` 寫入該 change 的 `.meta.yaml`：值為原有 `reviewed_rounds`（缺席視為 0）加上本次蓋章的審查工單回合數，檔內 SHALL 只有一行 `reviewed_rounds`。帶 `--accept` 的蓋章 SHALL 同樣記錄。守門失敗時 SHALL NOT 改動 `reviewed_rounds`；放棄審查（只刪工單、未蓋章）SHALL NOT 改動 `reviewed_rounds`。原有 `reviewed_rounds` 不是非負整數時，metadata 視為無法解析，蓋章 SHALL 以非零 exit code 拒絕且零寫入。
 
 #### Scenario: 首次蓋章記錄回合數
 
 - **WHEN** change 的審查工單有 3 個回合、寫碼任務全數完成、末輪零必修 findings，執行 `speclink review stamp <change>`
-- **THEN** exit code 為 0，`.openspec.yaml` 含 `reviewed_rounds: 3` 與 `reviewed_at` 等章欄位，`review.md` 已刪除
+- **THEN** exit code 為 0，`.meta.yaml` 含 `reviewed_rounds: 3` 與 `reviewed_at` 等章欄位，`review.md` 已刪除
 
 #### Scenario: 章失效後重新蓋章累加輪數
 
-- **WHEN** change 的 `.openspec.yaml` 已有 `reviewed_rounds: 3`，章失效後重開的審查工單有 2 個回合，再次執行 `speclink review stamp <change>` 且守門通過
-- **THEN** exit code 為 0，`.openspec.yaml` 只有一行 `reviewed_rounds`，值為 5
+- **WHEN** change 的 `.meta.yaml` 已有 `reviewed_rounds: 3`，章失效後重開的審查工單有 2 個回合，再次執行 `speclink review stamp <change>` 且守門通過
+- **THEN** exit code 為 0，`.meta.yaml` 只有一行 `reviewed_rounds`，值為 5
 
 #### Scenario: 守門失敗不改輪數
 
 - **WHEN** 審查工單末輪有一條未解的 WARNING finding，執行 `speclink review stamp <change>` 且未帶 `--accept`
-- **THEN** exit code 非零，`.openspec.yaml` 的 `reviewed_rounds` 與其他欄位皆不變，`review.md` 仍存在
+- **THEN** exit code 非零，`.meta.yaml` 的 `reviewed_rounds` 與其他欄位皆不變，`review.md` 仍存在
 
 #### Scenario: 原有輪數不是整數時拒絕
 
-- **WHEN** change 的 `.openspec.yaml` 含 `reviewed_rounds: many`，執行 `speclink review stamp <change>`
-- **THEN** exit code 非零，stderr 說明該 change 的 metadata 無法解析，`.openspec.yaml` 與 `review.md` 皆不變
+- **WHEN** change 的 `.meta.yaml` 含 `reviewed_rounds: many`，執行 `speclink review stamp <change>`
+- **THEN** exit code 非零，stderr 說明該 change 的 metadata 無法解析，`.meta.yaml` 與 `review.md` 皆不變
+
 
 <!-- @trace
-source: process-cost-metrics
-updated: 2026-10-22T14:30:23+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

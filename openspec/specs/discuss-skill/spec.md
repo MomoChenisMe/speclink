@@ -70,7 +70,7 @@ updated: 2026-08-21
 #### Scenario: 規格段納入進行中 delta 規格
 
 - **WHEN** 檢視渲染產出的 speclink-discuss 技能檔的 Canon pass 段落
-- **THEN** 技能檔 SHALL 規定命中 capability 名後以 speclink list --json 各變更項的 deltaCapabilities 欄位比對（不以 status 過濾、不逐一執行 speclink show），含該 capability 者列為進行中 delta 命中並記變更名，以 speclink artifact cat specs/<capability> --change <name> 只讀 Requirement 標題與 ADDED／MODIFIED／REMOVED／RENAMED 標記、至多 3 份且依候選順序取前 3 個命中，清單項帶 worktree 物件時於其 worktree.path 下執行 artifact cat；正式規格零命中、沒有進行中變更或沒有變更的 deltaCapabilities 含命中的 capability 時靜默跳過；技能檔 SHALL NOT 含直接開啟 openspec/changes/ 路徑的讀檔指示；三段順序描述仍為「正式規格 → 舊討論查核 → 程式碼」且 SHALL NOT 出現獨立的「進行中變更」偵察段
+- **THEN** 技能檔 SHALL 規定命中 capability 名後以 speclink list --json 各變更項的 deltaCapabilities 欄位比對（不以 status 過濾、不逐一執行 speclink show），含該 capability 者列為進行中 delta 命中並記變更名，以 speclink artifact cat specs/<capability> --change <name> 只讀 Requirement 標題與 ADDED／MODIFIED／REMOVED／RENAMED 標記、至多 3 份且依候選順序取前 3 個命中，清單項帶 worktree 物件時於其 worktree.path 下執行 artifact cat；正式規格零命中、沒有進行中變更或沒有變更的 deltaCapabilities 含命中的 capability 時靜默跳過；技能檔 SHALL NOT 含直接開啟 speclink/changes/ 路徑的讀檔指示；三段順序描述仍為「正式規格 → 舊討論查核 → 程式碼」且 SHALL NOT 出現獨立的「進行中變更」偵察段
 
 ##### Example: 命中 client-protocol 且有進行中 delta
 
@@ -80,8 +80,8 @@ updated: 2026-08-21
 
 
 <!-- @trace
-source: discuss-scout-in-flight-deltas
-updated: 2026-09-17T10:13:18+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -281,7 +281,7 @@ updated: 2026-08-21
 ---
 ### Requirement: 中途轉出教學
 
-技能檔 SHALL 規定：多需求討論中單項談定、使用者要先立案時，代理人 SHALL 教執行 speclink discuss promote 即刻轉出（引擎於無結論時以 topic 預填提案），討論 SHALL 繼續加輪談剩餘項，SHALL NOT 要求先寫結論。最終 conclude SHALL 照常執行——引擎保留 promoted 狀態、寫入結論、並將已轉出變更標為待重新反映；技能檔 SHALL 註明該標記與最終結論無關時僅需一次確認。技能檔 SHALL 另規定分期轉出：結論規劃「之後回同一份記錄再轉出一個或多個變更」（例：多刀依序立案）時，conclude SHALL 帶 --hold 一次；技能檔 SHALL 說明 hold 不因不帶 --last 的轉出而清除，只由不帶 --hold 的 conclude、speclink discuss archive，或帶 --last 的轉出解除；最後一刀 SHALL 由 /speclink-propose 於 speclink new change --from-discussion 帶 --last 轉出（判定規則在 propose 技能），其後最後一個轉出變更封存時記錄自動隨行封存，SHALL NOT 教執行 speclink discuss archive 作為常態收尾；技能檔 SHALL 註明忘了帶 --last 時記錄留在途、看板標「已轉出・保留中」，執行 speclink discuss archive <slug> 一次即可收尾；未帶 --hold 的記錄會在最後一個轉出變更封存時隨行封存，之後的刀 SHALL 走新討論。技能檔 SHALL NOT 含「旗標由下一次轉出清除」、「discard 後要重跑 conclude --hold」或「最後一刀封存後手動 discuss archive 收尾」作為常態步驟的規定。技能檔 SHALL 另註明救援路徑：討論被誤封存時（含在不是最後一刀的變更上帶了 --last），把記錄檔自 openspec/discussions/archive/ 搬回 openspec/discussions/ 即可續用（引擎對已封存討論的轉出錯誤訊息即指向此路）。conclude 指令範例 SHALL 標示 --hold 的用途。
+技能檔 SHALL 規定：多需求討論中單項談定、使用者要先立案時，代理人 SHALL 教執行 speclink discuss promote 即刻轉出（引擎於無結論時以 topic 預填提案），討論 SHALL 繼續加輪談剩餘項，SHALL NOT 要求先寫結論。最終 conclude SHALL 照常執行——引擎保留 promoted 狀態、寫入結論、並將已轉出變更標為待重新反映；技能檔 SHALL 註明該標記與最終結論無關時僅需一次確認。技能檔 SHALL 另規定分期轉出：結論規劃「之後回同一份記錄再轉出一個或多個變更」（例：多刀依序立案）時，conclude SHALL 帶 --hold 一次；技能檔 SHALL 說明 hold 不因不帶 --last 的轉出而清除，只由不帶 --hold 的 conclude、speclink discuss archive，或帶 --last 的轉出解除；最後一刀 SHALL 由 /speclink-propose 於 speclink new change --from-discussion 帶 --last 轉出（判定規則在 propose 技能），其後最後一個轉出變更封存時記錄自動隨行封存，SHALL NOT 教執行 speclink discuss archive 作為常態收尾；技能檔 SHALL 註明忘了帶 --last 時記錄留在途、看板標「已轉出・保留中」，執行 speclink discuss archive <slug> 一次即可收尾；未帶 --hold 的記錄會在最後一個轉出變更封存時隨行封存，之後的刀 SHALL 走新討論。技能檔 SHALL NOT 含「旗標由下一次轉出清除」、「discard 後要重跑 conclude --hold」或「最後一刀封存後手動 discuss archive 收尾」作為常態步驟的規定。技能檔 SHALL 另註明救援路徑：討論被誤封存時（含在不是最後一刀的變更上帶了 --last），把記錄檔自 speclink/discussions/archive/ 搬回 speclink/discussions/ 即可續用（引擎對已封存討論的轉出錯誤訊息即指向此路）。conclude 指令範例 SHALL 標示 --hold 的用途。
 
 #### Scenario: 單項談定即中途轉出
 
@@ -300,8 +300,8 @@ updated: 2026-08-21
 
 
 <!-- @trace
-source: discussion-last-cut-release
-updated: 2026-09-12T22:38:53+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -378,7 +378,7 @@ updated: 2026-09-17T10:13:18+08:00
 
 #### Scenario: locale 與對話語言不同時記錄依 locale
 
-- **WHEN** 專案 openspec/config.yaml 設 `locale: tw`，使用者以英文開啟一個新討論
+- **WHEN** 專案 speclink/config.yaml 設 `locale: tw`，使用者以英文開啟一個新討論
 - **THEN** Agent 以英文跟使用者對話；新建記錄的 Context、各輪內容與結論為繁體中文，`**Focus**:` 等欄位標記與 slug 為英文，topic 為使用者輸入的英文原文
 
 #### Scenario: 恢復既有記錄沿用原語言
@@ -396,7 +396,8 @@ updated: 2026-09-17T10:13:18+08:00
 | 未設定 | `"locale": null` | 英文 | 英文 |
 | 任一 | 指令失敗 | 英文 | 英文 |
 
+
 <!-- @trace
-source: skill-conversation-language
-updated: 2026-10-16T23:14:02+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

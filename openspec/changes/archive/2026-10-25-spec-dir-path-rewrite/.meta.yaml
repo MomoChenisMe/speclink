@@ -1,0 +1,70 @@
+schema: spec-driven
+created: 2026-10-22
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: positioning-and-process-cost
+depends_on: spec-dir-migration, desktop-spec-dir-migration
+started_at: 2026-10-24T22:47:45+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-25T21:15:00+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 6
+reviewed_rounds: 2
+reviewed_scope:
+  - path: README.md
+    hash: 0ce4cb9915dd0297545c978f11036a8e6ac76516ba37cfc836aadaed72cd3907
+  - path: README.zh-TW.md
+    hash: 7be066eec9fee33c8a869f1c1524dbb050f66ee854d0c208c2365119bdca752f
+  - path: docs/development.md
+    hash: cb05d6877084a2796b024633d190fb8f7dde3a6b9eb86203f770d88c7bba979e
+  - path: docs/development.zh-TW.md
+    hash: d1dd6609e4b3102a644bc02e629cfb2616072e45ec5662e8af37865afe5ba36b
+  - path: docs/product-status.md
+    hash: 63f874669fbe59e87024c247a9bf018cd5cacaba0998a168e8876c7765948633
+  - path: docs/product-status.zh-TW.md
+    hash: 3adf66a826760d28b5dd4009aff18bb62a55a1f5408b63742939b291af4e87c6
+  - path: docs/sdk-node.md
+    hash: 3a25e33fbe8dbacd542ac08f482f12ea5ebc6df3c9d9ff24ef1019348a137279
+  - path: docs/sdk-node.zh-TW.md
+    hash: 146bc474c82e6d4f01c0efcd1d7c8630798f373cb84b2ecbffc955885fb44eab
+  - path: docs/verb-contract.md
+    hash: 9475e1b5577cbc7a7203c395c803063db44795c17aafd98c43b48a6225766aa8
+  - path: docs/verb-contract.zh-TW.md
+    hash: 2af6ae31d1349fad7838520eaac4239e97a35d3424fb00fc5f4d9eac2ce71f23
+  - path: docs/workflow.md
+    hash: 79af0d3e083b7b7bfa2a3deacc120c9e1b3b6b7c0ee4dbb905828857fb411064
+  - path: docs/workflow.zh-TW.md
+    hash: c51f6ee08a6cee5671d36275405e44521ae8ef35e276a35b4d10d3a953629b72
+verified_at: 2026-10-25T21:15:00+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 6
+verified_rounds: 2
+verified_scope:
+  - path: README.md
+    hash: 0ce4cb9915dd0297545c978f11036a8e6ac76516ba37cfc836aadaed72cd3907
+  - path: README.zh-TW.md
+    hash: 7be066eec9fee33c8a869f1c1524dbb050f66ee854d0c208c2365119bdca752f
+  - path: docs/development.md
+    hash: cb05d6877084a2796b024633d190fb8f7dde3a6b9eb86203f770d88c7bba979e
+  - path: docs/development.zh-TW.md
+    hash: d1dd6609e4b3102a644bc02e629cfb2616072e45ec5662e8af37865afe5ba36b
+  - path: docs/product-status.md
+    hash: 63f874669fbe59e87024c247a9bf018cd5cacaba0998a168e8876c7765948633
+  - path: docs/product-status.zh-TW.md
+    hash: 3adf66a826760d28b5dd4009aff18bb62a55a1f5408b63742939b291af4e87c6
+  - path: docs/sdk-node.md
+    hash: 3a25e33fbe8dbacd542ac08f482f12ea5ebc6df3c9d9ff24ef1019348a137279
+  - path: docs/sdk-node.zh-TW.md
+    hash: 146bc474c82e6d4f01c0efcd1d7c8630798f373cb84b2ecbffc955885fb44eab
+  - path: docs/verb-contract.md
+    hash: 9475e1b5577cbc7a7203c395c803063db44795c17aafd98c43b48a6225766aa8
+  - path: docs/verb-contract.zh-TW.md
+    hash: 2af6ae31d1349fad7838520eaac4239e97a35d3424fb00fc5f4d9eac2ce71f23
+  - path: docs/workflow.md
+    hash: 79af0d3e083b7b7bfa2a3deacc120c9e1b3b6b7c0ee4dbb905828857fb411064
+  - path: docs/workflow.zh-TW.md
+    hash: c51f6ee08a6cee5671d36275405e44521ae8ef35e276a35b4d10d3a953629b72
+archived_at: 2026-10-25T21:44:20+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

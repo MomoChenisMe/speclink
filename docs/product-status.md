@@ -30,7 +30,7 @@ In the wrong mode, the CLI rejects these verbs. It does not switch to the other 
 
 | Capability | Local Repo | Remote Store | Note |
 | --- | --- | --- | --- |
-| Read and write specs and changes | Available | Available | Local mode reads and writes `openspec/` directly. Remote mode writes only through Host commands and keeps no second writable copy on your machine. |
+| Read and write specs and changes | Available | Available | Local mode reads and writes `speclink/` directly. Remote mode writes only through Host commands and keeps no second writable copy on your machine. |
 | Change lifecycle (`propose` → `apply` → `archive`) | Available | Available | Remote mode archives one change at a time. |
 | Discussions (`discuss`) | Available | Available | Promote, link to an existing change, and archive work the same in both modes. |
 | Quality stations (`review`, `verify`) | Available | Available | Tickets, rounds, and stamps follow the same rules in both modes. |

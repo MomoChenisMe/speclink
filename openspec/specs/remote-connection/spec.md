@@ -8,14 +8,14 @@
 
 ### Requirement: remote 初始化與連接指令
 
-`speclink init --store remote --url <url> [--repo <name>]` SHALL 在寫入前取得至少一個明示的 Claude／Codex 選集：顯式 `--tools` SHALL 直接採用；互動終端缺少 `--tools` SHALL 於 stderr 詢問；非互動終端缺少 `--tools` SHALL 在零寫入狀態以非零 exit code 失敗並指引顯式值。選集有效時，Remote init SHALL 執行 Workspace init（`.speclink.yaml` tools、Skills、`.gitignore`）並將 URL 與 repo 寫入 `.speclink.yaml` 的 remote section（檔案不存在時建立、既有欄位保留），且 SHALL NOT 建立 `openspec/` 目錄樹、獨立連接檔或任何指令檔。
+`speclink init --store remote --url <url> [--repo <name>]` SHALL 在寫入前取得至少一個明示的 Claude／Codex 選集：顯式 `--tools` SHALL 直接採用；互動終端缺少 `--tools` SHALL 於 stderr 詢問；非互動終端缺少 `--tools` SHALL 在零寫入狀態以非零 exit code 失敗並指引顯式值。選集有效時，Remote init SHALL 執行 Workspace init（`.speclink.yaml` tools、Skills、`.gitignore`）並將 URL 與 repo 寫入 `.speclink.yaml` 的 remote section（檔案不存在時建立、既有欄位保留），且 SHALL NOT 建立 `speclink/` 目錄樹、獨立連接檔或任何指令檔。
 
 `speclink link <url> [--repo <name>]` SHALL 維持既有行為，只寫入或更新 remote section並保留 tools 及其他欄位；`speclink unlink` SHALL 移除 remote section並保留檔內其他欄位。init 或 link 當下若已有可用憑證，CLI SHALL 立即向 Server 查驗 repo 是否屬於專案並回報結果；無憑證時 SHALL 提示執行 auth login。此變更 SHALL NOT 為 init／link 新增 stdin payload 或 `--json` 介面；顯式 `--tools` 的既有成功 stdout、stderr、exit code 與 `--no-color` 行為 SHALL 維持基線。
 
 #### Scenario: Remote init 顯式選擇 Claude
 
 - **WHEN** 於空目錄執行 Remote Store init，提供有效 project URL、repo 與 `--tools claude`
-- **THEN** 生成 Claude Skills、`.gitignore` 與含 `tools: [claude]`、remote URL／repo 的 `.speclink.yaml`，不存在 `openspec/`、獨立連接檔與 `CLAUDE.md`，exit code 為 0
+- **THEN** 生成 Claude Skills、`.gitignore` 與含 `tools: [claude]`、remote URL／repo 的 `.speclink.yaml`，不存在 `speclink/`、獨立連接檔與 `CLAUDE.md`，exit code 為 0
 
 #### Scenario: Remote init 互動選擇 Codex
 
@@ -25,7 +25,7 @@
 #### Scenario: Remote init 非互動缺少 tools 被拒
 
 - **WHEN** stdin 非互動，執行 Remote Store init 且未提供 `--tools`
-- **THEN** exit code 非 0、stdout 為空、stderr 指引 `--tools claude`／`codex`／`claude,codex`，且 `.speclink.yaml`、`.gitignore`、Skills 與 `openspec/` 均未建立
+- **THEN** exit code 非 0、stdout 為空、stderr 指引 `--tools claude`／`codex`／`claude,codex`，且 `.speclink.yaml`、`.gitignore`、Skills 與 `speclink/` 均未建立
 
 #### Scenario: link 保留既有 tools 與其他欄位
 
@@ -44,8 +44,8 @@
 
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -120,18 +120,18 @@ code:
 ---
 ### Requirement: remote 區段與模式解析
 
-`.speclink.yaml` 的 remote 區段（欄位：url 選填——缺席時由環境變數 SPECLINK_STORE_URL 供給、含專案範疇；repo 選填為本 repo 在專案內的註冊名）存在時，CLI SHALL 以 remote 模式運作；不存在時 SHALL 以 fs 模式運作。remote 區段與 openspec/ 目錄並存時，remote 模式 SHALL 生效且 CLI SHALL 於 stderr 輸出一行並存警告。環境變數 SPECLINK_STORE_URL 存在時 SHALL 覆寫區段的 url。remote 區段存在但區段 url 與環境變數皆缺席時，CLI SHALL 以非 0 exit code 明確失敗並同時提示 remote.url 欄位與 SPECLINK_STORE_URL 兩種設定方式，SHALL NOT 靜默改以 fs 模式執行。
+`.speclink.yaml` 的 remote 區段（欄位：url 選填——缺席時由環境變數 SPECLINK_STORE_URL 供給、含專案範疇；repo 選填為本 repo 在專案內的註冊名）存在時，CLI SHALL 以 remote 模式運作；不存在時 SHALL 以 fs 模式運作。remote 區段與 speclink/ 目錄並存時，remote 模式 SHALL 生效且 CLI SHALL 於 stderr 輸出一行並存警告。環境變數 SPECLINK_STORE_URL 存在時 SHALL 覆寫區段的 url。remote 區段存在但區段 url 與環境變數皆缺席時，CLI SHALL 以非 0 exit code 明確失敗並同時提示 remote.url 欄位與 SPECLINK_STORE_URL 兩種設定方式，SHALL NOT 靜默改以 fs 模式執行。
 
 `.speclink.yaml` 檔案存在但無法解析（YAML 語法錯誤或型別不符）時，模式判定 SHALL fail-closed：任何依賴模式判定或應用層設定的指令 SHALL 以非零 exit code 失敗，stderr SHALL 指出 .speclink.yaml 與解析原因；SHALL NOT 視為無 remote 區段而以 fs 模式執行，SHALL NOT 發出任何遠端請求。檔案不存在時 SHALL 以 fs 模式運作。此 fail-closed 行為為刻意設計。
 
 #### Scenario: 有 remote 區段即 remote 模式
 
 - **WHEN** .speclink.yaml 含 remote 區段（url 指向團隊 server），執行 speclink list --json
-- **THEN** 指令向區段 url 的契約端點發出請求（而非讀取本地 openspec/），輸出 JSON 形狀與 fs 模式一致
+- **THEN** 指令向區段 url 的契約端點發出請求（而非讀取本地 speclink/），輸出 JSON 形狀與 fs 模式一致
 
 #### Scenario: 並存時 remote 勝出並警告
 
-- **WHEN** .speclink.yaml 含 remote 區段且專案根同時有 openspec/ 目錄，執行 speclink list
+- **WHEN** .speclink.yaml 含 remote 區段且專案根同時有 speclink/ 目錄，執行 speclink list
 - **THEN** 指令以 remote 模式執行，stderr 恰有一行警告指出兩者並存且 remote 生效
 
 #### Scenario: 環境變數覆寫區段 url
@@ -146,58 +146,13 @@ code:
 
 #### Scenario: 壞 .speclink.yaml 不落入 fs 模式
 
-- **WHEN** .speclink.yaml 含 YAML 語法錯誤且專案根有 openspec/ 目錄，執行 speclink list
-- **THEN** exit code 非 0，stderr 指出 .speclink.yaml 與解析原因，指令不讀取本地 openspec/、不發出任何遠端請求
+- **WHEN** .speclink.yaml 含 YAML 語法錯誤且專案根有 speclink/ 目錄，執行 speclink list
+- **THEN** exit code 非 0，stderr 指出 .speclink.yaml 與解析原因，指令不讀取本地 speclink/、不發出任何遠端請求
 
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
-code:
-  - README.en.md
-  - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -207,28 +162,13 @@ code:
 
 #### Scenario: 殘留舊檔僅警告不生效
 
-- **WHEN** 專案根含 .speclink.remote.yaml（url 指向某 server），.speclink.yaml 無 remote 區段且 openspec/ 目錄存在，執行 speclink list
-- **THEN** 指令以 fs 模式讀取本地 openspec/ 執行，stderr 恰有一行遷移警告，exit code 為 0
+- **WHEN** 專案根含 .speclink.remote.yaml（url 指向某 server），.speclink.yaml 無 remote 區段且 speclink/ 目錄存在，執行 speclink list
+- **THEN** 指令以 fs 模式讀取本地 speclink/ 執行，stderr 恰有一行遷移警告，exit code 為 0
+
 
 <!-- @trace
-source: remote-section-in-speclink-yaml
-updated: 2026-07-05
-code:
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/doc_verbs.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_read_path.rs
-  - crates/speclink-cli/tests/remote_section.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/mode_resolution.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - docs/team-mode.md
-  - docs/team-mode.zh-TW.md
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -279,12 +219,12 @@ code:
 ---
 ### Requirement: Remote Workspace bootstrap 跨入口一致性
 
-CLI Remote init 與 Desktop Remote checkout 綁定 SHALL 使用相同的正典生成來源，對相同 Claude／Codex 選集 SHALL 產生語意相同的 `.speclink.yaml.tools`、Skills 與 `AGENTS.md`／`CLAUDE.md` Speclink 區塊。兩個入口 SHALL 使用 Remote 指令區塊措辭、SHALL NOT 建立本機 `openspec/`，且 SHALL 保留 remote section、custom descriptor、未知設定及指令區塊外的使用者內容。Desktop 綁定既有相符 marker 時 SHALL 重新同步受管產物；同步完全成功前 SHALL NOT 開始 Remote handshake。
+CLI Remote init 與 Desktop Remote checkout 綁定 SHALL 使用相同的正典生成來源，對相同 Claude／Codex 選集 SHALL 產生語意相同的 `.speclink.yaml.tools`、Skills 與 `AGENTS.md`／`CLAUDE.md` Speclink 區塊。兩個入口 SHALL 使用 Remote 指令區塊措辭、SHALL NOT 建立本機 `speclink/`，且 SHALL 保留 remote section、custom descriptor、未知設定及指令區塊外的使用者內容。Desktop 綁定既有相符 marker 時 SHALL 重新同步受管產物；同步完全成功前 SHALL NOT 開始 Remote handshake。
 
 #### Scenario: CLI 與 Desktop 的 Codex bootstrap 同構
 
 - **WHEN** 對兩個等價的新 Git checkout，分別以 CLI Remote init 與 Desktop checkout 綁定選取 Codex及相同 project／repo
-- **THEN** 兩個 checkout 的 built-in tools 都僅含 `codex`、Codex Skills 與 `AGENTS.md` Remote Speclink 區塊使用相同正典內容、remote binding 語意相同，且兩者均不存在 `openspec/`
+- **THEN** 兩個 checkout 的 built-in tools 都僅含 `codex`、Codex Skills 與 `AGENTS.md` Remote Speclink 區塊使用相同正典內容、remote binding 語意相同，且兩者均不存在 `speclink/`
 
 #### Scenario: Desktop 補齊既有 Remote Workspace
 
@@ -294,31 +234,10 @@ CLI Remote init 與 Desktop Remote checkout 綁定 SHALL 使用相同的正典�
 #### Scenario: Remote bootstrap 不改變 Server 內容
 
 - **WHEN** CLI 或 Desktop 只執行本機 Remote Workspace bootstrap
-- **THEN** 除既有 init credential 驗證或 Desktop 後續 handshake 外，不上傳、合併或修改 Server 規格內容，本機不建立 `openspec/`
+- **THEN** 除既有 init credential 驗證或 Desktop 後續 handshake 外，不上傳、合併或修改 Server 規格內容，本機不建立 `speclink/`
+
 
 <!-- @trace
-source: unify-agent-tool-bootstrap
-updated: 2026-07-24
-code:
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/src-tauri/src/connections.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/__tests__/serversPanel.test.tsx
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/connections.ts
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/init_tools.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_section.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/init.rs
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

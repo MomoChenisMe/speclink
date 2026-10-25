@@ -8,7 +8,7 @@ Read this document if you write your own client, run your own server, or call Sp
 
 This document answers three questions:
 
-- Which CLI verbs work in local mode and in remote mode, and how their output differs. Local mode keeps the documents in the repo's `openspec/`. Remote mode keeps them on a server; `.speclink.yaml` then has a `remote:` section.
+- Which CLI verbs work in local mode and in remote mode, and how their output differs. Local mode keeps the documents in the repo's `speclink/` (or `openspec/`, for a project that an older version created). Remote mode keeps them on a server; `.speclink.yaml` then has a `remote:` section.
 - What the shared rules, error codes, and endpoints of the remote HTTP API are.
 - What the request and response bodies look like.
 
@@ -32,8 +32,8 @@ All verbs work in both modes, except the "Local only" and "Remote only" rows bel
 
 Why some verbs are local only:
 
-- `demo` writes a demo change into the local `openspec/`.
-- `trace` builds the provenance chain from the archived changes and discussion files in the local `openspec/`.
+- `demo` writes a demo change into the local `speclink/`.
+- `trace` builds the provenance chain from the archived changes and discussion files in the local `speclink/`.
 - `change rank` writes the order of the local cards. In remote mode, the board order lives at `/board-order`.
 - `plan --strict-overlap` finds overlap by capability directory. The server finds overlap by requirement only.
 

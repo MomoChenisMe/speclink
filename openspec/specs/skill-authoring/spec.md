@@ -248,14 +248,15 @@ speclink 渲染的每一份產品技能檔（registry 中的全部技能；claud
 
 ##### Example: 段落與 locale 無關
 
-| openspec/config.yaml 的 locale | 技能檔中的段落 |
+| speclink/config.yaml 的 locale | 技能檔中的段落 |
 | ------------------------------ | -------------- |
 | tw | 與原稿逐字相同的英文段落 |
 | ja | 與原稿逐字相同的英文段落 |
 | en | 與原稿逐字相同的英文段落 |
 | 未設定 | 與原稿逐字相同的英文段落 |
 
+
 <!-- @trace
-source: skill-conversation-language
-updated: 2026-10-16T23:14:02+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

@@ -122,58 +122,28 @@ local session 的 dataSource 與 settings SHALL 將 root 綁入閉包，使每�
 #### Scenario: 設定讀寫落在正確專案
 
 - **WHEN** 分頁列有 A、B 兩專案且活躍為 B，使用者於設定頁修改 Workflow 欄位
-- **THEN** 寫入落在 B 的 openspec/config.yaml，A 的設定檔內容不變
+- **THEN** 寫入落在 B 的 speclink/config.yaml，A 的設定檔內容不變
 
 
 <!-- @trace
-source: fix-multitab-reconnect-recovery
-updated: 2026-07-22
-code:
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/phase3_chain.rs
-  - apps/desktop/src-tauri/tests/remote_runtime.rs
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/store.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: watcher 顯式跟隨活躍 session 且事件攜帶 root
 
-檔案監看 SHALL 維持單一實例並跟隨活躍 session：重掛 SHALL 由顯式的監看命令觸發（探測命令 SHALL NOT 附帶重掛副作用）；workspace-changed 事件 SHALL 攜帶被監看的 root，session 的事件來源 SHALL 以自身 locator 過濾後才觸發重載。監看不可用時僅失去自動刷新、app 照常運作的既有語意 SHALL 保留。外部寫者修改活躍專案 openspec/ 後看板秒級自動更新的既有行為 SHALL 不變。
+檔案監看 SHALL 維持單一實例並跟隨活躍 session：重掛 SHALL 由顯式的監看命令觸發（探測命令 SHALL NOT 附帶重掛副作用）；workspace-changed 事件 SHALL 攜帶被監看的 root，session 的事件來源 SHALL 以自身 locator 過濾後才觸發重載。監看不可用時僅失去自動刷新、app 照常運作的既有語意 SHALL 保留。外部寫者修改活躍專案 speclink/ 後看板秒級自動更新的既有行為 SHALL 不變。
 
 #### Scenario: 外部變更僅觸發活躍 session 重載
 
-- **WHEN** 活躍分頁為 A 時，外部寫者修改 A 的 openspec/ 下文件
+- **WHEN** 活躍分頁為 A 時，外部寫者修改 A 的 speclink/ 下文件
 - **THEN** A 的看板數秒內自動更新；事件 payload 為 A 的 root，非活躍分頁不因此發出任何查詢
 
 
 <!-- @trace
-source: workspace-session-model
-updated: 2026-07-17
-code:
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/watch.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/session.test.ts
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/__tests__/tray.test.ts
-  - apps/desktop/src/__tests__/trayPanel.test.tsx
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/panel/TrayPanel.tsx
-  - apps/desktop/src/session.ts
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - apps/desktop/src/tray.ts
-  - apps/desktop/src/views/SettingsView.tsx
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

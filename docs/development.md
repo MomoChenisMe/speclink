@@ -141,7 +141,7 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 | --- | --- |
 | `apps/desktop/` | The desktop app (Tauri): `src/` is the frontend; `core/` and `src-tauri/` are two Rust crates |
 | `apps/server-web/` | The server web console (React). Its build goes into `speclink-server` |
-| `crates/engine/` | The engine core: `speclink-core` (verbs, workflow, skill generation) and `speclink-fs` (reads and writes the local `openspec/`) |
+| `crates/engine/` | The engine core: `speclink-core` (verbs, workflow, skill generation) and `speclink-fs` (reads and writes the local `speclink/`) |
 | `crates/protocol/` | The remote protocol: `speclink-protocol` (data types that the client and the server share) and `speclink-remote` (the remote client and sign-in for the CLI and the desktop app) |
 | `crates/store/` | The server Store drivers: the shared interface `speclink-store`, plus sqlite, file (serverfs), and postgres drivers |
 | `crates/host/` | `speclink-host` (the shared layer between the engine and the CLI, desktop app, and server) and `speclink-server` (the official reference server) |

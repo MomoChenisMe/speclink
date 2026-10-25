@@ -7,10 +7,11 @@ Speclink 桌面 app 的圖形操作面：直嵌引擎、以本地檔案為真相
 ## Requirements
 
 ### Requirement: 桌面 app 直嵌引擎並以本地檔案為真相
-桌面 app SHALL 以 Tauri 殼直接內嵌 speclink-core（非 spawn CLI 子進程），於本地 openspec/ 專案根運作，且 SHALL NOT 改變 fs 模式下 markdown 檔案的真相地位——所有呈現資料由內嵌 core 讀取檔案取得，app 不將任何 change/spec 文件的真相移出檔案系統。
+
+桌面 app SHALL 以 Tauri 殼直接內嵌 speclink-core（非 spawn CLI 子進程），於本地 speclink/ 專案根運作，且 SHALL NOT 改變 fs 模式下 markdown 檔案的真相地位——所有呈現資料由內嵌 core 讀取檔案取得，app 不將任何 change/spec 文件的真相移出檔案系統。
 
 #### Scenario: 於 fs 專案根啟動並讀取本地文件
-- **WHEN** 使用者於含 openspec/ 的專案根啟動桌面 app
+- **WHEN** 使用者於含 speclink/ 的專案根啟動桌面 app
 - **THEN** app 經內嵌 core 讀取本地 markdown 顯示 change 與 spec，未 spawn speclink CLI 子進程，且未寫入或搬移任何文件真相
 
 #### Scenario: 非專案目錄啟動顯示空狀態而非崩潰
@@ -19,76 +20,8 @@ Speclink 桌面 app 的圖形操作面：直嵌引擎、以本地檔案為真相
 
 
 <!-- @trace
-source: desktop-shell-and-browser
-updated: 2026-07-05
-code:
-  - CLAUDE.md
-  - Cargo.lock
-  - Cargo.toml
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/cache.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/verbs.rs
-  - apps/desktop/index.html
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/build.rs
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/icons/icon.ico
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/main.rs
-  - apps/desktop/src-tauri/tauri.conf.json
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/index.css
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/tsconfig.json
-  - apps/desktop/vite.config.ts
-  - apps/desktop/vitest.config.ts
-  - package-lock.json
-  - package.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/stage.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DocumentTree.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/alert-dialog.tsx
-  - packages/ui/src/components/ui/badge.tsx
-  - packages/ui/src/components/ui/button.tsx
-  - packages/ui/src/components/ui/card.tsx
-  - packages/ui/src/components/ui/input.tsx
-  - packages/ui/src/components/ui/sheet.tsx
-  - packages/ui/src/components/ui/tabs.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/lib/utils.ts
-  - packages/ui/src/stage.ts
-  - packages/ui/src/tasks.ts
-  - packages/ui/tsconfig.json
-  - packages/ui/vitest.config.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -98,7 +31,7 @@ code:
 
 規格詳情頁 SHALL 採「詳情頁的文件樹、閱讀卡與本頁目錄」的三欄骨架（以引用共用，本需求只敘述規格詳情頁放進各欄的內容）。左欄身分區 SHALL 為：capability 名（等寬字型，其後緊跟複製名稱鈕，複製後 SHALL 有已複製回饋）、「正式規格」籤、一行出身「N 條需求 · M 個 scenario」與「最近更新 YYYY-MM-DD」（N 為 `### Requirement:` 段數、M 為各需求段 Scenario 數加總、最近更新取全部 `@trace` 的最大 updated；缺席段整段缺席），其下「溯源」關聯列呈現首顆來源變更籤與其餘數「+N」（來源為零時該列缺席），點擊 SHALL 切到溯源文件。「文件」節點依序 SHALL 為「規格」（徽章為需求數）與「溯源」（徽章為 `@trace` 來源變更去重數），預設開啟「規格」。「狀態」列 SHALL 為「需求」N、「溯源」M、「最近更新」日期與變更名（無 `@trace` 時最近更新列缺席）。主區標題列 SHALL NOT 有變更層動作。
 
-「規格」文件的閱讀卡 SHALL 由上而下為：標題區（標題「規格」、需求數籤、同列右端的「搜尋需求」輸入與「開啟 ▾」）、出處行（`<spec.md 路徑> · 正式規格 · 最近更新 YYYY-MM-DD（<變更>）`：路徑為 spec.md 相對所在 checkout 根的實際位置，spec 目錄名依專案設定、預設為 `openspec/specs/<capability>/spec.md`，remote 專案無本機 checkout 時路徑段缺席；無 `@trace` 時最近更新段缺席）、數字磚「需求」「Scenario」「溯源變更」「最近更新 · <變更>」（值為最近更新的日曆日；無 `@trace` 時該格缺席）、提示框、內文。「搜尋需求」SHALL 以大小寫不敏感子字串比對需求標題、只呈現命中的需求段（Purpose 段恆在），無命中時顯示「沒有符合的需求」，字串 SHALL NOT 持久化。內文 SHALL 先呈現 Purpose（標題「Purpose」為本頁目錄錨點、內文為灰底引言段），其後每條需求一段：「Requirement」小標＋需求標題（本頁目錄錨點）＋右端錨點「來自 <變更> · <日期>」（取該需求段尾的 `@trace` source 與 updated；該變更在封存清單中時錨點可點、點擊開啟該封存變更的已封存詳情頁；無 `@trace` 時錨點缺席）、需求文（`SHALL`／`SHALL NOT`／`MUST`／`MUST NOT` 以等寬灰底標示）、每個 Scenario 為左側細線縮排區塊（標題＋內文，`##### Example` 歸屬所在 Scenario）；命中的第一條需求段 SHALL 預設展開、其餘 SHALL 預設收合為一列（小標、標題、錨點與 Scenario 數籤），點擊列 SHALL 切換展開。本頁目錄（右欄，頁寬 ≥1200px 時顯示）SHALL 列出 Purpose 與全部呈現中的需求標題，點擊 SHALL 捲至該段、捲動時 SHALL 高亮目前段；搜尋過濾後目錄只列命中段。需求段之外的內容（`## Requirements` 下的引言、需求之間或之後的其他 `## ` 區段）SHALL 照原文呈現、SHALL NOT 丟棄：引言在 Purpose 段之後、其他區段在全部需求段之後。辨認結構時 fenced code block 內的行一律是內容，收尾圍欄 SHALL 與開頭同字元且不短於開頭（巢狀圍欄內的 `### Requirement:` 不是需求）。規格全文不含任何 `### Requirement:` 標題時 SHALL 整篇以單一 markdown 檢視退回、無數字磚、無提示框、無本頁目錄錨點，不報錯。
+「規格」文件的閱讀卡 SHALL 由上而下為：標題區（標題「規格」、需求數籤、同列右端的「搜尋需求」輸入與「開啟 ▾」）、出處行（`<spec.md 路徑> · 正式規格 · 最近更新 YYYY-MM-DD（<變更>）`：路徑為 spec.md 相對所在 checkout 根的實際位置，spec 目錄名依專案設定、預設為 `speclink/specs/<capability>/spec.md`，remote 專案無本機 checkout 時路徑段缺席；無 `@trace` 時最近更新段缺席）、數字磚「需求」「Scenario」「溯源變更」「最近更新 · <變更>」（值為最近更新的日曆日；無 `@trace` 時該格缺席）、提示框、內文。「搜尋需求」SHALL 以大小寫不敏感子字串比對需求標題、只呈現命中的需求段（Purpose 段恆在），無命中時顯示「沒有符合的需求」，字串 SHALL NOT 持久化。內文 SHALL 先呈現 Purpose（標題「Purpose」為本頁目錄錨點、內文為灰底引言段），其後每條需求一段：「Requirement」小標＋需求標題（本頁目錄錨點）＋右端錨點「來自 <變更> · <日期>」（取該需求段尾的 `@trace` source 與 updated；該變更在封存清單中時錨點可點、點擊開啟該封存變更的已封存詳情頁；無 `@trace` 時錨點缺席）、需求文（`SHALL`／`SHALL NOT`／`MUST`／`MUST NOT` 以等寬灰底標示）、每個 Scenario 為左側細線縮排區塊（標題＋內文，`##### Example` 歸屬所在 Scenario）；命中的第一條需求段 SHALL 預設展開、其餘 SHALL 預設收合為一列（小標、標題、錨點與 Scenario 數籤），點擊列 SHALL 切換展開。本頁目錄（右欄，頁寬 ≥1200px 時顯示）SHALL 列出 Purpose 與全部呈現中的需求標題，點擊 SHALL 捲至該段、捲動時 SHALL 高亮目前段；搜尋過濾後目錄只列命中段。需求段之外的內容（`## Requirements` 下的引言、需求之間或之後的其他 `## ` 區段）SHALL 照原文呈現、SHALL NOT 丟棄：引言在 Purpose 段之後、其他區段在全部需求段之後。辨認結構時 fenced code block 內的行一律是內容，收尾圍欄 SHALL 與開頭同字元且不短於開頭（巢狀圍欄內的 `### Requirement:` 不是需求）。規格全文不含任何 `### Requirement:` 標題時 SHALL 整篇以單一 markdown 檢視退回、無數字磚、無提示框、無本頁目錄錨點，不報錯。
 
 「規格」文件的提示框只放推得出的事實：Purpose 段內文以引擎封存流程的佔位前綴「TBD - created by archiving」起頭時 SHALL 有 warning 提示框「Purpose 待補」，內文指引直接編輯正式規格的 Purpose 段、不走 delta；有需求段缺 `@trace` 時 SHALL 有 note 提示框「N 條需求沒有來源變更」，內文列出這些需求的標題並說明溯源文件與「溯源變更」磚不含它們；兩者皆無時 SHALL NOT 有提示框。
 
@@ -170,7 +103,7 @@ code:
 #### Scenario: 規格文件的出處行、數字磚與狀態列
 
 - **WHEN** 使用者開啟 tray-status-menu（15 條需求、74 個 scenario、9 個 `@trace` 來源變更、最近更新 2026-10-12 來自 tray-panel-restyle）的規格詳情頁
-- **THEN** 「規格」文件出處行為 `openspec/specs/tray-status-menu/spec.md · 正式規格 · 最近更新 2026-10-12（tray-panel-restyle）`；數字磚依序為 15「需求」、74「Scenario」、9「溯源變更」、2026-10-12「最近更新 · tray-panel-restyle」；左欄「狀態」列為需求 15、溯源 9、最近更新 2026-10-12；無提示框
+- **THEN** 「規格」文件出處行為 `speclink/specs/tray-status-menu/spec.md · 正式規格 · 最近更新 2026-10-12（tray-panel-restyle）`；數字磚依序為 15「需求」、74「Scenario」、9「溯源變更」、2026-10-12「最近更新 · tray-panel-restyle」；左欄「狀態」列為需求 15、溯源 9、最近更新 2026-10-12；無提示框
 
 #### Scenario: 溯源關聯列切到溯源文件
 
@@ -180,7 +113,7 @@ code:
 #### Scenario: Purpose 待補提示框
 
 - **WHEN** 使用者開啟一份 Purpose 段內文以「TBD - created by archiving」起頭的規格詳情頁
-- **THEN** 「規格」文件的數字磚之下有 warning 提示框「Purpose 待補」，內文含該規格 spec.md 的實際相對路徑（預設 spec 目錄下為 `openspec/specs/<capability>/spec.md`；remote 無本機 checkout 時不列路徑、改指引直接編輯這份規格檔）並指引直接編輯 Purpose 段；Purpose 引言段仍呈現佔位原文
+- **THEN** 「規格」文件的數字磚之下有 warning 提示框「Purpose 待補」，內文含該規格 spec.md 的實際相對路徑（預設 spec 目錄下為 `speclink/specs/<capability>/spec.md`；remote 無本機 checkout 時不列路徑、改指引直接編輯這份規格檔）並指引直接編輯 Purpose 段；Purpose 引言段仍呈現佔位原文
 
 #### Scenario: 缺來源變更的需求提示框
 
@@ -194,16 +127,8 @@ code:
 
 
 <!-- @trace
-source: desktop-readonly-detail-pages
-updated: 2026-10-10T19:39:25+08:00
--->
-
----
-
-
-<!-- @trace
-source: desktop-spec-manual-pages
-updated: 2026-10-12T22:59:10+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -434,7 +359,7 @@ code:
 ---
 ### Requirement: 外部變更即時反映
 
-桌面 app SHALL 監看目前專案的 openspec/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情頁、討論詳情頁與已封存頁 SHALL 在短時間內（秒級）自動更新呈現；已開啟檢視中「已載入的內容」——任務清單勾選狀態、proposal／design／specs 文件原文、meta 開工歸屬、討論記錄各分頁——SHALL 重載至磁碟現況，SHALL NOT 要求重啟、重開詳情頁或任何 app 內操作。使用者互動進行中（任務勾選寫回、拖曳排序）時外部觸發的內容重載 SHALL 讓路，互動結束後 SHALL 補一次重載至磁碟現況——SHALL NOT 打斷或蓋掉進行中的操作；重載回應交錯時 SHALL 以最新一次為準，較舊回應 SHALL NOT 覆蓋較新內容。app 內操作（勾任務、拖曳、動詞）後 SHALL 重載受影響的已載入內容——含任務清單與 meta。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
+桌面 app SHALL 監看目前專案的 speclink/ 目錄樹：app 之外的寫者（CLI、agent、手動編輯器）修改其下任何文件後，看板、詳情頁、討論詳情頁與已封存頁 SHALL 在短時間內（秒級）自動更新呈現；已開啟檢視中「已載入的內容」——任務清單勾選狀態、proposal／design／specs 文件原文、meta 開工歸屬、討論記錄各分頁——SHALL 重載至磁碟現況，SHALL NOT 要求重啟、重開詳情頁或任何 app 內操作。使用者互動進行中（任務勾選寫回、拖曳排序）時外部觸發的內容重載 SHALL 讓路，互動結束後 SHALL 補一次重載至磁碟現況——SHALL NOT 打斷或蓋掉進行中的操作；重載回應交錯時 SHALL 以最新一次為準，較舊回應 SHALL NOT 覆蓋較新內容。app 內操作（勾任務、拖曳、動詞）後 SHALL 重載受影響的已載入內容——含任務清單與 meta。監看不可用時（如檔案系統權限）app SHALL 照常提供其餘功能——僅失去自動刷新，SHALL NOT 崩潰或反覆彈出錯誤。
 
 #### Scenario: 外部勾選任務後看板自動更新
 
@@ -468,8 +393,8 @@ code:
 
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -627,11 +552,11 @@ code:
 
 promoted 細列 SHALL 以討論 slug 為首行（等寬字型）且帶複製 slug 鈕、topic 為次行描述，其下每個 promoted_to 子變更 SHALL 以樹狀前綴（末列 └、其餘 ├）逐列列出名稱與階段 chip。子變更的階段 SHALL 由其於清單中的存在性派生：active 清單命中依看板欄位規則、封存清單命中為已封存、兩者皆無 SHALL 標示為已刪除且討論維持已轉出不回退。階段 chip SHALL 以看板階段配色呈現：提案中、進行中、已就緒各對應該階段欄的 teal 濃度，已封存為中性色，已刪除為 destructive 色加刪除線。
 
-slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 openspec/LANGUAGE.md 明載的受控例外。討論欄的計數徽章 SHALL 顯示上區全卡數（open、concluded、已轉出但尚無結論、已轉出且保留在途）。當討論欄上區無任何全卡但存在已有結論且未保留的 promoted 討論時，SHALL NOT 顯示「尚無討論」空狀態（欄底收合列已傳達）。封存的討論 SHALL NOT 出現於此欄。輪數文案 SHALL 使用「N 輪」。
+slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 speclink/LANGUAGE.md 明載的受控例外。討論欄的計數徽章 SHALL 顯示上區全卡數（open、concluded、已轉出但尚無結論、已轉出且保留在途）。當討論欄上區無任何全卡但存在已有結論且未保留的 promoted 討論時，SHALL NOT 顯示「尚無討論」空狀態（欄底收合列已傳達）。封存的討論 SHALL NOT 出現於此欄。輪數文案 SHALL 使用「N 輪」。
 
 #### Scenario: 進行中與已結論討論的全卡呈現
 
-- **WHEN** openspec/discussions/ 下存在一筆 status: open（3 輪、frontmatter 含 created_by 與 created）與一筆 status: concluded 的討論、無任何 promoted 討論
+- **WHEN** speclink/discussions/ 下存在一筆 status: open（3 輪、frontmatter 含 created_by 與 created）與一筆 status: concluded 的討論、無任何 promoted 討論
 - **THEN** 討論欄顯示兩張全卡，各以 slug 為標題（等寬字型）、topic 為描述，複製 slug 鈕行內尾隨於標題末字元後，建立者呈頭像圓點且 hover 顯示全名、卡面無全名直出文字，卡底 meta 列並排「3 輪」與建立時間；open 卡無動詞按鈕，concluded 卡帶「封存」按鈕且無「轉為變更」按鈕；欄計數徽章顯示 2，欄底無「已轉出」收合列
 
 #### Scenario: 未結論的已轉出討論留在上區並帶標示
@@ -701,8 +626,8 @@ slug 為題與複製鈕（討論全卡標題、promoted 細列首行）屬 opens
 
 
 <!-- @trace
-source: tray-panel-content-priority
-updated: 2026-10-13T12:56:33+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -739,22 +664,22 @@ updated: 2026-10-10T19:39:25+08:00
 #### Scenario: 勾選首任務蓋章並移欄
 
 - **WHEN** 使用者於看板勾選某 meta 無 started_* 的 change 的第一項任務
-- **THEN** tasks.md 該任務成 [x]，.openspec.yaml 新增 started_at（git 身分可得時含 started_by），看板刷新後卡片移入「進行中」欄且詳情頁顯示開工列
+- **THEN** tasks.md 該任務成 [x]，.meta.yaml 新增 started_at（git 身分可得時含 started_by），看板刷新後卡片移入「進行中」欄且詳情頁顯示開工列
 
 #### Scenario: 取消勾選不動 meta 與 touched
 
 - **WHEN** 使用者取消勾選一項已完成任務
-- **THEN** 僅 tasks.md 該行標記變為 [ ]；.openspec.yaml 與 touched 記錄逐字元不變
+- **THEN** 僅 tasks.md 該行標記變為 [ ]；.meta.yaml 與 touched 記錄逐字元不變
 
 #### Scenario: 拖曳排序不觸發完成語意
 
 - **WHEN** 使用者拖曳任務改變順序（含跨群組重編號）
-- **THEN** 僅 tasks.md 變動；.openspec.yaml 與 touched 記錄逐字元不變
+- **THEN** 僅 tasks.md 變動；.meta.yaml 與 touched 記錄逐字元不變
 
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -852,7 +777,7 @@ updated: 2026-10-10T15:55:28+08:00
 
 桌面 app 的左側 SHALL 分兩層:全域的圖示列(約 56px)與每專案的專案欄(固定 200px,SHALL NOT 可收合)。圖示列自左側標題列下方起由上而下 SHALL 為品牌標記、每個開著的專案一個方塊、「新增專案」的「＋」、底部的「設定」;專案欄自左側標題列下方起由上而下 SHALL 為變更、已封存、規格、手冊,底部 SHALL 固定為專案設定,中間為彈性空間。「設定」SHALL NOT 出現在專案欄,其入口為圖示列底部的齒輪。專案欄 SHALL NOT 含備忘項、SHALL NOT 呈現常駐 app 版號文字;app 版號的呈現位置 SHALL 為應用程式設定的更新頁版本卡與關於頁品牌卡。已封存導覽項 SHALL 帶封存變更數量徽章,數字 SHALL 隨封存清單變動即時更新;其無障礙標籤 SHALL 為「已封存」。手冊導覽項的無障礙標籤 SHALL 為「手冊」,點擊進入手冊頁(行為見 desktop-manual-page)。導覽項點擊 SHALL 為單純切頁——切至對應頁並以視覺高亮(主色淡底、主色字)標示現行項,SHALL NOT 具再次點擊返回看板的 toggle 行為。左側頂端 48px SHALL 為一條連續的標題列(圖示列與專案欄共用、同側欄底色、48px 內無直向分隔線,下緣 SHALL 有與主區頂列同高的橫向細線,使頂列橫貫整個視窗、圖示列分隔線自此線往下),承載 macOS 紅綠燈的留白、作用中專案的純文字名稱(左緣 SHALL 與下方專案欄導覽項文字左緣對齊;hover 顯示完整路徑)與右端的「⋯」專案動作鈕;設定模式時左端 SHALL 為「← 設定」返回鈕且無「⋯」;專案設定模式時左端 SHALL 為「← 專案設定」返回鈕、右端為等寬小字的專案名;兩個返回鈕點擊皆 SHALL 回到進入設定前所在的頁面(兩種設定模式之間切換不改變此頁;零專案時為空狀態);零專案且非設定模式時左側標題列 SHALL 留白(只剩圖示列寬,放不下文字)。
 
-設定(齒輪)SHALL 開啟應用程式設定且 SHALL NOT 依賴任何已開啟的專案——零專案時點擊 SHALL 照常進入且頁內功能可操作;設定模式下齒輪 SHALL 為作用中,專案欄 SHALL 換成設定分類欄(200px;頂部全圓搜尋框,以分類名與各頁列標籤做大小寫不敏感比對過濾,無命中時顯示「沒有符合的設定」;其下群組「應用程式」:一般、更新、CLI、伺服器,再下群組「關於」:關於 Speclink;群組內沒有命中的分類時連群組標題一併隱藏),左側因此恆為圖示列加分類欄的寬度(零專案亦然),主區麵包屑為「設定 / 分類名」(「設定」可點回一般頁)。設定模式與專案設定模式下,Esc、⌘[、⌘←(非 macOS 為 Alt+←)、滑鼠側鍵「上一頁」與 macOS 上觸控板兩指往返回方向(手指向右)的水平滑動 SHALL 等效於左側標題列的返回鈕;快捷鍵的不作用條件(焦點在文字輸入、按鍵已被浮層處理)與觸控板滑動返回的平台限制、返回指示、門檻、結算時機與不觸發條件同需求「詳情頁的導覽與返回」。專案設定有未儲存的修改時,返回 SHALL 先詢問是否捨棄,確認後才離開;取消時 SHALL 留在原頁且修改保留。有對話框開著時,所有返回操作 SHALL NOT 作用,對話框 SHALL NOT 被連帶收掉。詳情頁、設定模式與專案設定模式以外的頁面沒有返回去處,上述操作 SHALL NOT 作用。專案設定項 SHALL 進入專案設定模式:專案欄換成專案設定分類欄(群組「openspec/config.yaml」:專案說明、產出規則、審查規則、產出流程;群組「專案」:.speclink.yaml,遠端專案無此組;解析失敗的檔所掛分類項帶警示點),主區麵包屑為「專案名 / 專案設定 / 分類名」(前兩段可點:專案名回看板、專案設定回專案說明頁)。兩種分類欄 SHALL 記住上次所在分類。零專案時 SHALL NOT 渲染專案欄,圖示列 SHALL 只有品牌標記、「＋」與設定。有專案且非設定模式時專案欄五個導覽項 SHALL 恆常渲染,SHALL NOT 依頁面狀態顯隱。
+設定(齒輪)SHALL 開啟應用程式設定且 SHALL NOT 依賴任何已開啟的專案——零專案時點擊 SHALL 照常進入且頁內功能可操作;設定模式下齒輪 SHALL 為作用中,專案欄 SHALL 換成設定分類欄(200px;頂部全圓搜尋框,以分類名與各頁列標籤做大小寫不敏感比對過濾,無命中時顯示「沒有符合的設定」;其下群組「應用程式」:一般、更新、CLI、伺服器,再下群組「關於」:關於 Speclink;群組內沒有命中的分類時連群組標題一併隱藏),左側因此恆為圖示列加分類欄的寬度(零專案亦然),主區麵包屑為「設定 / 分類名」(「設定」可點回一般頁)。設定模式與專案設定模式下,Esc、⌘[、⌘←(非 macOS 為 Alt+←)、滑鼠側鍵「上一頁」與 macOS 上觸控板兩指往返回方向(手指向右)的水平滑動 SHALL 等效於左側標題列的返回鈕;快捷鍵的不作用條件(焦點在文字輸入、按鍵已被浮層處理)與觸控板滑動返回的平台限制、返回指示、門檻、結算時機與不觸發條件同需求「詳情頁的導覽與返回」。專案設定有未儲存的修改時,返回 SHALL 先詢問是否捨棄,確認後才離開;取消時 SHALL 留在原頁且修改保留。有對話框開著時,所有返回操作 SHALL NOT 作用,對話框 SHALL NOT 被連帶收掉。詳情頁、設定模式與專案設定模式以外的頁面沒有返回去處,上述操作 SHALL NOT 作用。專案設定項 SHALL 進入專案設定模式:專案欄換成專案設定分類欄(群組「speclink/config.yaml」:專案說明、產出規則、審查規則、產出流程;群組「專案」:.speclink.yaml,遠端專案無此組;解析失敗的檔所掛分類項帶警示點),主區麵包屑為「專案名 / 專案設定 / 分類名」(前兩段可點:專案名回看板、專案設定回專案說明頁)。兩種分類欄 SHALL 記住上次所在分類。零專案時 SHALL NOT 渲染專案欄,圖示列 SHALL 只有品牌標記、「＋」與設定。有專案且非設定模式時專案欄五個導覽項 SHALL 恆常渲染,SHALL NOT 依頁面狀態顯隱。
 
 #### Scenario: 專案欄順序與設定在圖示列底部
 
@@ -921,8 +846,8 @@ updated: 2026-10-10T15:55:28+08:00
 
 
 <!-- @trace
-source: review-rules-config
-updated: 2026-10-14T16:37:17+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -1018,7 +943,7 @@ updated: 2026-10-12T22:59:10+08:00
 #### Scenario: 討論記錄的 scaffold 註解不顯示
 
 - **WHEN** 開啟討論詳情頁的討論過程分頁，其來源在 Rounds 區段含 CLI scaffold 產生的 HTML 註解行
-- **THEN** 渲染結果不含該註解的任何文字，openspec/ 下的討論記錄檔案內容位元不變
+- **THEN** 渲染結果不含該註解的任何文字，speclink/ 下的討論記錄檔案內容位元不變
 
 #### Scenario: 程式碼區塊內的 HTML 原文照常顯示
 
@@ -1027,8 +952,8 @@ updated: 2026-10-12T22:59:10+08:00
 
 
 <!-- @trace
-source: desktop-detail-page
-updated: 2026-10-10T15:55:28+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -1338,7 +1263,7 @@ updated: 2026-10-13T15:43:46+08:00
 #### Scenario: 結論文件的數字磚與出處行
 
 - **WHEN** 開啟一份 11 輪、Decision 有 20 條細節與 3 刀、Rejected alternatives 有 11 條、Deferred 有 4 條、三刀的變更皆在 `promoted_to` 的 live 討論結論文件
-- **THEN** 閱讀卡出處行為 `openspec/discussions/<slug>.md · 11 輪之後寫入`；數字磚依序為 20「定案細節」、3「分刀 · 3 個變更」、11「否決的替代方案」、4「擱置」；無提示框
+- **THEN** 閱讀卡出處行為 `speclink/discussions/<slug>.md · 11 輪之後寫入`；數字磚依序為 20「定案細節」、3「分刀 · 3 個變更」、11「否決的替代方案」、4「擱置」；無提示框
 
 #### Scenario: 未轉出刀的提示框與前往
 
@@ -1367,8 +1292,8 @@ updated: 2026-10-13T15:43:46+08:00
 
 
 <!-- @trace
-source: discussion-stage-and-unpromoted-cuts
-updated: 2026-10-13T22:22:52+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -2231,33 +2156,17 @@ updated: 2026-10-10T15:55:28+08:00
 #### Scenario: 有開工痕跡的本地刪除被拒
 
 - **WHEN** 使用者對 meta 含 started_at 的 change 觸發刪除並確認(UI 停用未及反應的併發情境)
-- **THEN** 引擎拒絕,openspec/ 下任何檔案逐位元不變,app 依既有失敗 toast 語意呈現拒絕訊息
+- **THEN** 引擎拒絕,speclink/ 下任何檔案逐位元不變,app 依既有失敗 toast 語意呈現拒絕訊息
 
 #### Scenario: remote 刪除已開工 change 被 server 拒絕
 
 - **WHEN** 使用者於 remote 分頁對已勾任務的 change 觸發刪除並確認
 - **THEN** server 以需要強制的拒絕語意回應,scope 內容零改動,app 依既有失敗 toast 語意呈現
 
+
 <!-- @trace
-source: archive-readiness-gating
-updated: 2026-07-31
-code:
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteResilience.test.tsx
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - crates/speclink-cli/tests/archive_readiness_gate.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/i18n.tsx
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -2267,7 +2176,7 @@ code:
 
 點提示卡 SHALL 開啟確認框:琥珀圖示、標題、說明,一張細框卡三列(這個專案的技能檔版本、你的 Speclink 版本、會改寫的檔案數——較新態第三列為會被換回舊內容的檔案數),按鈕依探測狀態:過期為「稍後」「保留現狀」「更新技能檔」、缺失為「稍後」「保留現狀」「安裝技能檔」(從未安裝的專案不以「更新」稱之)、較新為「保留現狀」「更新 Speclink」。較新時 SHALL 以「app 本體是舊版、專案檔案較新」語意呈現,SHALL NOT 提供任何改寫專案檔案的動作,「更新 Speclink」SHALL 開啟應用程式設定的更新頁。「稍後」SHALL 只關閉確認框、提示卡維持。
 
-「更新技能檔」與「安裝技能檔」SHALL 經引擎既有的指令檔再生入口整套再生受管檔,成功後提示卡與確認框消失;失敗時錯誤 SHALL 呈現於確認框內原位且可重試,SHALL NOT 阻斷專案其他功能。「保留現狀」SHALL 將該專案與當前產物層版號記入 app 本機持久化,SHALL NOT 寫入專案內任何檔案;同版不再提示(缺失、過期與較新共用同一略過記憶),產物層版號變動後 SHALL 重新提示。提示文案 SHALL 遵循 openspec/LANGUAGE.md 詞彙原則,SHALL NOT 出現工程詞。主區各視圖的高度 SHALL NOT 因提示存在而改變。
+「更新技能檔」與「安裝技能檔」SHALL 經引擎既有的指令檔再生入口整套再生受管檔,成功後提示卡與確認框消失;失敗時錯誤 SHALL 呈現於確認框內原位且可重試,SHALL NOT 阻斷專案其他功能。「保留現狀」SHALL 將該專案與當前產物層版號記入 app 本機持久化,SHALL NOT 寫入專案內任何檔案;同版不再提示(缺失、過期與較新共用同一略過記憶),產物層版號變動後 SHALL 重新提示。提示文案 SHALL 遵循 speclink/LANGUAGE.md 詞彙原則,SHALL NOT 出現工程詞。主區各視圖的高度 SHALL NOT 因提示存在而改變。
 
 #### Scenario: 開啟過期專案出現提示並更新
 
@@ -2331,8 +2240,8 @@ code:
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -3314,13 +3223,13 @@ updated: 2026-10-10T15:55:28+08:00
 ---
 ### Requirement: 討論詳情頁檢視與轉出變更
 
-點擊討論卡或細列 SHALL 開啟討論詳情頁，採「詳情頁的文件樹、閱讀卡與本頁目錄」的三欄骨架。左欄身分區 SHALL 以討論 slug 為題（等寬 14px）、緊跟複製 slug 鈕與狀態籤（討論中／已結論／已轉出／已轉出・尚無結論／已轉出・保留中，判準與看板討論卡一致），topic SHALL 為其下最多三行、溢出截斷的文字（slug 為題屬 openspec/LANGUAGE.md 明載的受控例外）；出身 SHALL 一行依序呈現建立者頭像＋名字、「N 輪」與建立日，缺席的段整段缺席；其下「關聯」列呈現先前討論數（自背景的 `Prior discussions:` 行計數；`none` 時該列缺席），點擊 SHALL 切到背景文件。主區標題列右端 SHALL 為動作區：concluded 且未封存的討論、以及已轉出且保留在途（hold 為 true）的討論呈現「封存」動作（outline）；保留在途時「封存」SHALL 停用並以提示說明結論保留在途、最後一刀轉出後自動封存；其餘（討論中、已轉出且未保留、已封存）的討論 SHALL NOT 呈現封存動作。
+點擊討論卡或細列 SHALL 開啟討論詳情頁，採「詳情頁的文件樹、閱讀卡與本頁目錄」的三欄骨架。左欄身分區 SHALL 以討論 slug 為題（等寬 14px）、緊跟複製 slug 鈕與狀態籤（討論中／已結論／已轉出／已轉出・尚無結論／已轉出・保留中，判準與看板討論卡一致），topic SHALL 為其下最多三行、溢出截斷的文字（slug 為題屬 speclink/LANGUAGE.md 明載的受控例外）；出身 SHALL 一行依序呈現建立者頭像＋名字、「N 輪」與建立日，缺席的段整段缺席；其下「關聯」列呈現先前討論數（自背景的 `Prior discussions:` 行計數；`none` 時該列缺席），點擊 SHALL 切到背景文件。主區標題列右端 SHALL 為動作區：concluded 且未封存的討論、以及已轉出且保留在途（hold 為 true）的討論呈現「封存」動作（outline）；保留在途時「封存」SHALL 停用並以提示說明結論保留在途、最後一刀轉出後自動封存；其餘（討論中、已轉出且未保留、已封存）的討論 SHALL NOT 呈現封存動作。
 
 左欄「狀態」列 SHALL 為：「階段」列為步驟列「討論中 → 已結論 → 已轉出 → 已封存」且現站可辨識（promoted 為已轉出、concluded 為已結論、其餘為討論中；已封存站保留給已封存討論頁）；現站籤的色調 SHALL 與身分區狀態籤一致——狀態籤為「已轉出・保留中」或「已轉出・尚無結論」時現站為 warning 語意色，其餘為主色；現站之前的站 SHALL 呈現為已過站（打勾），但已轉出且尚無結論（concluded 為 false）時「已結論」站 SHALL 呈現為未到站（灰圈、無勾）；hold 為 true 時 SHALL 另有「保留在途」列呈現說明；promoted_to 非空時 SHALL 另有「衍生變更」列，每個子變更一顆可點等寬籤並附階段籤（階段派生與配色同「討論於看板第 0 欄兩級呈現」的 chip 矩陣），點籤 SHALL 開啟該變更的詳情頁；無衍生變更時該列缺席。
 
 左欄「文件」節點依序 SHALL 為：結論、討論過程 N、背景、衍生變更 N——前三者呈現記錄文件對應區段（區段缺失或格式非預期時 SHALL 整篇以單一檢視退回而非報錯，此時節點為「記錄」與「衍生變更」）；記錄切分成功且結論區段非空時 SHALL 預設開啟「結論」，結論為空時預設「背景」。結論與討論過程的畫法見「討論結論以欄位標籤呈現」與「討論輪以卡片呈現」。
 
-背景文件 SHALL 先把 Context 區段收尾的 `Related specs:`／`Related changes:`／`Prior discussions:`／`Source doc:` 四行自內文剝離，其餘分三段（各為本頁目錄錨點）：「起因與範圍」——第一段散文為引言、以灰底引言段呈現，其餘照 markdown，內文中與正式規格名、作用中變更名、已封存變更名、其他討論 slug 完全相同的字詞（前後皆非英數、連字號與底線；反引號內的不算）SHALL 自動成為可點籤，點擊分別開啟該規格的規格詳情頁、該變更的詳情頁、該封存變更的已封存詳情頁、該討論的詳情頁；「關聯」——鍵值列「正式規格」「在途變更」「已封存變更」「先前討論」「來源文件」，值為前述四行解析出的名稱（去掉括號備註、以逗號、頓號或分號切項、`none` 為空）與內文命中名稱的聯集籤（可點規則同上），值為空的列 SHALL 缺席（來源文件為 `none` 時顯示「無」、行缺席時列缺席），全部缺席時「關聯」段缺席；「記錄」——「建立」（建立日與建立者名字）、「種類」（kind 為 improve 時「改進討論」、否則「一般討論」）、「檔案」（live 討論為 `openspec/discussions/<slug>.md` 等寬文字附複製鈕；已封存討論頁該列缺席）。背景文件的數字磚 SHALL 為「命中的正式規格」「在途變更」「相關已封存變更」（各為關聯列的籤數，0 時缺席）與「先前討論」（`Prior discussions:` 行缺席時缺席，`none` 為 0）；出處行為「記錄建立時寫入一次」與建立日；首輪 mode 為 `assumptions` 時 SHALL 有 note 提示框「沒有 grill 階段」，否則無提示框。
+背景文件 SHALL 先把 Context 區段收尾的 `Related specs:`／`Related changes:`／`Prior discussions:`／`Source doc:` 四行自內文剝離，其餘分三段（各為本頁目錄錨點）：「起因與範圍」——第一段散文為引言、以灰底引言段呈現，其餘照 markdown，內文中與正式規格名、作用中變更名、已封存變更名、其他討論 slug 完全相同的字詞（前後皆非英數、連字號與底線；反引號內的不算）SHALL 自動成為可點籤，點擊分別開啟該規格的規格詳情頁、該變更的詳情頁、該封存變更的已封存詳情頁、該討論的詳情頁；「關聯」——鍵值列「正式規格」「在途變更」「已封存變更」「先前討論」「來源文件」，值為前述四行解析出的名稱（去掉括號備註、以逗號、頓號或分號切項、`none` 為空）與內文命中名稱的聯集籤（可點規則同上），值為空的列 SHALL 缺席（來源文件為 `none` 時顯示「無」、行缺席時列缺席），全部缺席時「關聯」段缺席；「記錄」——「建立」（建立日與建立者名字）、「種類」（kind 為 improve 時「改進討論」、否則「一般討論」）、「檔案」（live 討論為 `speclink/discussions/<slug>.md` 等寬文字附複製鈕；已封存討論頁該列缺席）。背景文件的數字磚 SHALL 為「命中的正式規格」「在途變更」「相關已封存變更」（各為關聯列的籤數，0 時缺席）與「先前討論」（`Prior discussions:` 行缺席時缺席，`none` 為 0）；出處行為「記錄建立時寫入一次」與建立日；首輪 mode 為 `assumptions` 時 SHALL 有 note 提示框「沒有 grill 階段」，否則無提示框。
 
 衍生變更文件 SHALL 列出各子變更現況與跳轉且 SHALL 為唯讀——SHALL NOT 提供「轉為變更」或「再轉出一個變更」動作。結論的 Decision 列點可解析出分刀（見「討論結論以欄位標籤呈現」）時 SHALL 依刀分組：每組組頭為刀的識別籤、範圍句與該組變更數（組頭為本頁目錄錨點），組內列為該刀變更名籤中存在於 `promoted_to` 的變更、依籤序；不屬任何刀的子變更接在最後、無組頭。解析不出分刀時 SHALL 退回依轉出順序的平面清單、無組頭。每列 SHALL 呈現：階段籤（作用中變更依看板階段；已封存為「已封存」中性；兩者皆無為「已刪除」警示色加刪除線）、等寬變更名、任務進度（細進度條與 n/m；作用中取其任務完成數／總數、已封存取封存清單的任務數；無資料時缺席）、審查章與驗證章（作用中變更帶審查章或驗證章、已封存變更的結局為已審查或已驗證時各自出現）、日期（已封存為封存日期；作用中為最近蓋章日；皆無時缺席）、開啟鈕（作用中開啟該變更的詳情頁、已封存開啟其已封存詳情頁；已刪除無鈕）。衍生變更文件的數字磚 SHALL 為「變更」（總數）、「已封存」、「作用中」、「任務」（有任務資料的列加總 n/m；皆無資料時缺席）；出處行為「依結論的分刀分組」（有分刀時）或「依轉出順序」；討論為已轉出、hold 為 false 且恰有一個作用中子變更時 SHALL 有 tip 提示框「只差最後一刀」，內文點名該變更與其階段並說明它封存後討論會自動隨之封存；其他情況 SHALL NOT 有提示框。無衍生變更時衍生變更文件顯示既有空態文案、無數字磚。已封存討論頁的衍生變更文件 SHALL 同款（無「只差最後一刀」提示框）。
 
@@ -3374,7 +3283,7 @@ concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論詳情頁
 #### Scenario: 背景文件的引言、關聯與記錄列
 
 - **WHEN** 使用者開啟一筆 live 討論（2026-10-08 由 MomoChen 建立、無 kind）的背景文件，其 Context 內文提到正式規格 desktop-app 與 tray-status-menu、作用中變更 add-copilot-tool、已封存變更 tray-panel-card-design，收尾行為「Related specs: desktop-app（79 條）、tray-status-menu」「Prior discussions: card-drawer-header-colors, admin-console-redesign」「Source doc: none」
-- **THEN** 「起因與範圍」的第一段為灰底引言，內文中 desktop-app、tray-status-menu、add-copilot-tool、tray-panel-card-design 各成可點籤且收尾四行不出現在內文；「關聯」列為正式規格（desktop-app、tray-status-menu）、在途變更（add-copilot-tool）、已封存變更（tray-panel-card-design）、先前討論（兩顆）、來源文件「無」；「記錄」列為建立「2026-10-08 · MomoChen」、種類「一般討論」、檔案 `openspec/discussions/<slug>.md` 附複製鈕；數字磚為 2「命中的正式規格」、1「在途變更」、1「相關已封存變更」、2「先前討論」
+- **THEN** 「起因與範圍」的第一段為灰底引言，內文中 desktop-app、tray-status-menu、add-copilot-tool、tray-panel-card-design 各成可點籤且收尾四行不出現在內文；「關聯」列為正式規格（desktop-app、tray-status-menu）、在途變更（add-copilot-tool）、已封存變更（tray-panel-card-design）、先前討論（兩顆）、來源文件「無」；「記錄」列為建立「2026-10-08 · MomoChen」、種類「一般討論」、檔案 `speclink/discussions/<slug>.md` 附複製鈕；數字磚為 2「命中的正式規格」、1「在途變更」、1「相關已封存變更」、2「先前討論」
 
 #### Scenario: 背景的名稱籤跳轉與沒有 grill 階段提示框
 
@@ -3413,8 +3322,8 @@ concluded 且未封存討論的封存動詞 SHALL 於討論卡與討論詳情頁
 
 
 <!-- @trace
-source: discussion-stage-and-unpromoted-cuts
-updated: 2026-10-13T22:22:52+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -3659,7 +3568,7 @@ change 詳情頁 SHALL 於左欄「文件」節點「規格」之後提供「排
 #### Scenario: 新增前置寫回
 
 - **WHEN** 於排程文件的下拉選單選擇 add-c
-- **THEN** 該變更 .openspec.yaml 的 depends_on 含 add-c，前置卡出現 add-c，看板順序刷新
+- **THEN** 該變更 .meta.yaml 的 depends_on 含 add-c，前置卡出現 add-c，看板順序刷新
 
 #### Scenario: 引擎拒絕新增
 
@@ -3733,8 +3642,8 @@ change 詳情頁 SHALL 於左欄「文件」節點「規格」之後提供「排
 
 
 <!-- @trace
-source: desktop-change-doc-views
-updated: 2026-10-12T16:18:33+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -3915,22 +3824,22 @@ updated: 2026-10-14T14:34:02+08:00
 ---
 ### Requirement: 詳情頁的文件動作
 
-變更詳情頁、討論詳情頁、規格詳情頁與手冊頁的閱讀卡標題列右端 SHALL 提供「開啟 ▾」選單（outline 樣式、與標題同列），對目前文件對應的檔案提供：以預設 App 開啟、在 Finder 顯示（標籤隨平台：Finder／檔案總管／檔案管理員）、複製路徑；選單首列 SHALL 以等寬灰字顯示該檔案相對所在 checkout 根的路徑。文件與檔案的對應 SHALL 為：提案 `openspec/changes/<name>/proposal.md`、設計 `design.md`、任務 `tasks.md`、規格 `specs/<capability>/spec.md`（目前選定的 capability）、審查 `review.md`、驗證 `verify.md`；討論各文件皆為該討論的記錄檔；正式規格為 `openspec/specs/<capability>/spec.md`；手冊頁為 `openspec/manual/<slug>.md`（spec 目錄名依專案設定）。檔案的實際位置 SHALL 與詳情頁讀取內容的位置相同：綁定 worktree 的變更指向 worktree 副本、spec 目錄名依專案設定、已封存的討論指向 `openspec/discussions/archive/<封存日>-<slug>.md`。沒有對應檔案的文件（排程、規格詳情頁的溯源）SHALL NOT 顯示選單。remote 專案無本機 checkout 時選單 SHALL 只有「複製內容」（該文件已載入的原文；未載完時項目停用）且首列路徑缺席；工單文件（審查、驗證）不載原文，此時 SHALL NOT 顯示選單。「以預設 App 開啟」SHALL 只開啟 markdown 文件：傳入的檔名與符號連結的實際指向皆須為 markdown。動作失敗時 SHALL 以既有失敗 toast 語意呈現錯誤，SHALL NOT 彈出錯誤視窗。「開啟 ▾」SHALL NOT 出現在主區標題列，也 SHALL NOT 收進「⋯」選單。
+變更詳情頁、討論詳情頁、規格詳情頁與手冊頁的閱讀卡標題列右端 SHALL 提供「開啟 ▾」選單（outline 樣式、與標題同列），對目前文件對應的檔案提供：以預設 App 開啟、在 Finder 顯示（標籤隨平台：Finder／檔案總管／檔案管理員）、複製路徑；選單首列 SHALL 以等寬灰字顯示該檔案相對所在 checkout 根的路徑。文件與檔案的對應 SHALL 為：提案 `speclink/changes/<name>/proposal.md`、設計 `design.md`、任務 `tasks.md`、規格 `specs/<capability>/spec.md`（目前選定的 capability）、審查 `review.md`、驗證 `verify.md`；討論各文件皆為該討論的記錄檔；正式規格為 `speclink/specs/<capability>/spec.md`；手冊頁為 `speclink/manual/<slug>.md`（spec 目錄名依專案設定）。檔案的實際位置 SHALL 與詳情頁讀取內容的位置相同：綁定 worktree 的變更指向 worktree 副本、spec 目錄名依專案設定、已封存的討論指向 `speclink/discussions/archive/<封存日>-<slug>.md`。沒有對應檔案的文件（排程、規格詳情頁的溯源）SHALL NOT 顯示選單。remote 專案無本機 checkout 時選單 SHALL 只有「複製內容」（該文件已載入的原文；未載完時項目停用）且首列路徑缺席；工單文件（審查、驗證）不載原文，此時 SHALL NOT 顯示選單。「以預設 App 開啟」SHALL 只開啟 markdown 文件：傳入的檔名與符號連結的實際指向皆須為 markdown。動作失敗時 SHALL 以既有失敗 toast 語意呈現錯誤，SHALL NOT 彈出錯誤視窗。「開啟 ▾」SHALL NOT 出現在主區標題列，也 SHALL NOT 收進「⋯」選單。
 
 #### Scenario: 提案分頁的開啟選單
 
 - **WHEN** 使用者於本機專案 /work/app 的變更 add-auth 詳情頁提案文件展開閱讀卡標題列的「開啟 ▾」並選「複製路徑」
-- **THEN** 選單首列為 `openspec/changes/add-auth/proposal.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/openspec/changes/add-auth/proposal.md`
+- **THEN** 選單首列為 `speclink/changes/add-auth/proposal.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/speclink/changes/add-auth/proposal.md`
 
 #### Scenario: worktree 中的變更指向 worktree 副本
 
 - **WHEN** 變更 add-auth 綁定 worktree /work/app-wt/add-auth，使用者於其詳情頁任務文件展開「開啟 ▾」並選「在 Finder 顯示」
-- **THEN** 選單首列為 `openspec/changes/add-auth/tasks.md`，Finder 顯示 `/work/app-wt/add-auth/openspec/changes/add-auth/tasks.md`（詳情頁所讀的那一份）
+- **THEN** 選單首列為 `speclink/changes/add-auth/tasks.md`，Finder 顯示 `/work/app-wt/add-auth/speclink/changes/add-auth/tasks.md`（詳情頁所讀的那一份）
 
 #### Scenario: 已封存討論指向封存檔
 
-- **WHEN** 使用者自變更詳情頁的來源討論籤開啟已封存的討論 old-topic（封存檔為 `openspec/discussions/archive/2026-01-03-old-topic.md`）並展開「開啟 ▾」
-- **THEN** 選單首列為 `openspec/discussions/archive/2026-01-03-old-topic.md`，複製路徑得到該封存檔的絕對路徑
+- **WHEN** 使用者自變更詳情頁的來源討論籤開啟已封存的討論 old-topic（封存檔為 `speclink/discussions/archive/2026-01-03-old-topic.md`）並展開「開啟 ▾」
+- **THEN** 選單首列為 `speclink/discussions/archive/2026-01-03-old-topic.md`，複製路徑得到該封存檔的絕對路徑
 
 #### Scenario: 排程分頁無選單
 
@@ -3949,19 +3858,13 @@ updated: 2026-10-14T14:34:02+08:00
 
 #### Scenario: 手冊頁的開啟選單
 
-- **WHEN** 使用者於本機專案 /work/app 的手冊頁閱讀〈系統匣選單〉（檔案 `openspec/manual/tray.md`），展開閱讀卡標題列的「開啟 ▾」並選「複製路徑」
-- **THEN** 選單首列為 `openspec/manual/tray.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/openspec/manual/tray.md`；規格詳情頁的「溯源」文件無選單；remote 模式的手冊頁顯示既有空狀態，無閱讀卡與選單
+- **WHEN** 使用者於本機專案 /work/app 的手冊頁閱讀〈系統匣選單〉（檔案 `speclink/manual/tray.md`），展開閱讀卡標題列的「開啟 ▾」並選「複製路徑」
+- **THEN** 選單首列為 `speclink/manual/tray.md`，其後三項為以預設 App 開啟、在 Finder 顯示（macOS）、複製路徑；剪貼簿寫入 `/work/app/speclink/manual/tray.md`；規格詳情頁的「溯源」文件無選單；remote 模式的手冊頁顯示既有空狀態，無閱讀卡與選單
 
 
 <!-- @trace
-source: desktop-detail-doc-tree
-updated: 2026-10-12T13:39:16+08:00
--->
-
-
-<!-- @trace
-source: desktop-spec-manual-pages
-updated: 2026-10-12T22:59:10+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -3999,7 +3902,7 @@ updated: 2026-10-10T15:55:28+08:00
 
 已封存頁的變更列與討論列 SHALL 以列式清單呈現，點擊列 SHALL 開啟唯讀的已封存詳情頁（宿主維持已封存頁），SHALL NOT 提供行內展開。已封存詳情頁 SHALL 與變更／討論詳情頁同骨架（「詳情頁的文件樹、閱讀卡與本頁目錄」：左欄身分區、文件節點、「狀態」列，中欄閱讀卡，右欄本頁目錄）且唯讀——SHALL NOT 提供任務勾選、動詞執行或任何寫入操作；身分區 SHALL NOT 呈現進度條，標題列 SHALL NOT 有動作區——封存是唯讀定格；開啟期間內容 SHALL 隨外部檔案變更反映；所請求的文件不存在時對應閱讀卡 SHALL 顯示空狀態而非錯誤。
 
-封存變更的詳情頁 SHALL 至少含提案、設計、任務、規格文件節點（內容來自封存目錄的實體文件），閱讀卡標題列右端提供「開啟 ▾」（對應 `openspec/changes/archive/<封存目錄名>/` 下的檔案）；任務文件的勾選框不可點擊、無拖曳把手、無批次工具列、整列不回應點擊。身分區 SHALL 為變更名（等寬）緊跟複製鈕（複製含日期前綴的封存目錄名，複製後 SHALL 有已複製回饋）與「已封存」籤，審查／驗證結局籤 SHALL NOT 出現在身分區——結局只由「狀態」列的品質關卡結局承載；出身 SHALL 一行依序呈現建立者（首字母圓標＋名字，完整識別收 hover 提示）、建立日期、「封存 YYYY-MM-DD」，其下「來自」列呈現來源討論籤（有來源討論時；點擊 SHALL 開啟該討論的已封存詳情頁，記錄以 live 優先、封存後備載入），出身行恆定單行、溢出裁切，任一欄位資料缺席時該欄位 SHALL 缺席、其餘照常。「狀態」列 SHALL 為三列：任務 n/m（無 tasks.md 時「—」）、品質關卡結局（皆無時「未經品質關卡」）、封存日期。
+封存變更的詳情頁 SHALL 至少含提案、設計、任務、規格文件節點（內容來自封存目錄的實體文件），閱讀卡標題列右端提供「開啟 ▾」（對應 `speclink/changes/archive/<封存目錄名>/` 下的檔案）；任務文件的勾選框不可點擊、無拖曳把手、無批次工具列、整列不回應點擊。身分區 SHALL 為變更名（等寬）緊跟複製鈕（複製含日期前綴的封存目錄名，複製後 SHALL 有已複製回饋）與「已封存」籤，審查／驗證結局籤 SHALL NOT 出現在身分區——結局只由「狀態」列的品質關卡結局承載；出身 SHALL 一行依序呈現建立者（首字母圓標＋名字，完整識別收 hover 提示）、建立日期、「封存 YYYY-MM-DD」，其下「來自」列呈現來源討論籤（有來源討論時；點擊 SHALL 開啟該討論的已封存詳情頁，記錄以 live 優先、封存後備載入），出身行恆定單行、溢出裁切，任一欄位資料缺席時該欄位 SHALL 缺席、其餘照常。「狀態」列 SHALL 為三列：任務 n/m（無 tasks.md 時「—」）、品質關卡結局（皆無時「未經品質關卡」）、封存日期。
 
 封存討論的詳情頁身分區 SHALL 以 slug 為題（等寬）緊跟複製 slug 鈕與「已封存」籤（kind 為 improve 時另帶改進籤），topic 為其下最多三行；出身為建立者、建立日期與「封存 YYYY-MM-DD」，任一欄位資料缺席時該欄位 SHALL 缺席、其餘照常（清單資料不帶封存討論的封存日期時，「封存」欄缺席）。「狀態」列 SHALL 含階段列（步驟列與討論詳情頁相同、現站為「已封存」）；promoted_to 非空時 SHALL 另有「衍生變更」列：每顆籤依子變更所在呈現三態——在封存清單中者為可點籤、副標為封存日期、點擊開啟該封存變更的已封存詳情頁；在活躍變更清單中者為可點籤、副標為其看板階段詞、點擊開啟該變更的詳情頁（宿主依「變更與討論詳情頁的宿主為看板」切回看板）；兩者皆無者為不可點籤、副標「無封存記錄」；順序依轉出順序；無衍生變更時該列缺席，封存變更的詳情頁 SHALL NOT 顯示該列。文件節點 SHALL 為「結論」「討論過程」「背景」「衍生變更」；「開啟 ▾」SHALL 只有「複製內容」。
 
@@ -4063,8 +3966,8 @@ updated: 2026-10-10T15:55:28+08:00
 
 
 <!-- @trace
-source: detail-quality-stamp-dedup
-updated: 2026-10-13T23:23:36+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -4160,7 +4063,7 @@ updated: 2026-10-12T09:12:54+08:00
 #### Scenario: 閱讀卡的出處行
 
 - **WHEN** 使用者於變更詳情頁依序看「提案」與「排程」兩份文件，再開啟一筆 11 輪、2026-10-12 建立的 live 討論詳情頁依序看結論、討論過程、背景、衍生變更，最後開啟一筆已封存討論的結論文件
-- **THEN** 提案的出處行為 `proposal.md`，排程的出處行為「由 speclink plan 推算」；討論的結論出處行為 `openspec/discussions/<slug>.md · 11 輪之後寫入`、討論過程為日期範圍與各 mode 輪數、背景為「記錄建立時寫入一次 · 2026-10-12」、衍生變更為「依結論的分刀分組」；已封存討論的結論出處行只有「N 輪之後寫入」、無路徑段
+- **THEN** 提案的出處行為 `proposal.md`，排程的出處行為「由 speclink plan 推算」；討論的結論出處行為 `speclink/discussions/<slug>.md · 11 輪之後寫入`、討論過程為日期範圍與各 mode 輪數、背景為「記錄建立時寫入一次 · 2026-10-12」、衍生變更為「依結論的分刀分組」；已封存討論的結論出處行只有「N 輪之後寫入」、無路徑段
 
 #### Scenario: 本頁目錄的錨點與高亮
 
@@ -4184,8 +4087,8 @@ updated: 2026-10-12T09:12:54+08:00
 
 
 <!-- @trace
-source: detail-quality-stamp-dedup
-updated: 2026-10-13T23:23:36+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

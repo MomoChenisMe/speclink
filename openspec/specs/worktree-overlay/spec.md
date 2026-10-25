@@ -8,7 +8,7 @@
 
 ### Requirement: worktree discovery 與映射慣例
 
-於 local workspace 的主 checkout（workspace 根目錄的 .git 為目錄）執行 speclink list，且有效 worktree 政策為 true 時，引擎 SHALL 以 git 的 worktree 名冊（git worktree list --porcelain 的輸出語意）探索 linked worktrees，並依分支命名慣例建立 change 與 worktree 的映射。映射 SHALL 於三條件同時成立時建立：(a) 該 worktree 的分支名為 speclink/<change名>；(b) 同名 change 存在於主 workspace 且未封存；(c) 該 worktree 路徑下 openspec/changes/<change名>/ 目錄可讀。任一條件不成立時該條目 SHALL 被靜默略過並回讀主副本；detached HEAD 與資料夾已不存在的名冊條目 SHALL 一律略過。git 指令不可用或執行失敗時，discovery SHALL 回傳空映射且 list SHALL 照常輸出，SHALL NOT 因此以非零 exit code 失敗。映射 SHALL NOT 依賴 git 名冊以外的任何持久化儲存。
+於 local workspace 的主 checkout（workspace 根目錄的 .git 為目錄）執行 speclink list，且有效 worktree 政策為 true 時，引擎 SHALL 以 git 的 worktree 名冊（git worktree list --porcelain 的輸出語意）探索 linked worktrees，並依分支命名慣例建立 change 與 worktree 的映射。映射 SHALL 於三條件同時成立時建立：(a) 該 worktree 的分支名為 speclink/<change名>；(b) 同名 change 存在於主 workspace 且未封存；(c) 該 worktree 路徑下 speclink/changes/<change名>/ 目錄可讀。任一條件不成立時該條目 SHALL 被靜默略過並回讀主副本；detached HEAD 與資料夾已不存在的名冊條目 SHALL 一律略過。git 指令不可用或執行失敗時，discovery SHALL 回傳空映射且 list SHALL 照常輸出，SHALL NOT 因此以非零 exit code 失敗。映射 SHALL NOT 依賴 git 名冊以外的任何持久化儲存。
 
 有效 worktree 政策為 false 或未設定時，list SHALL NOT 執行 discovery，其人眼與 --json 輸出 SHALL 與本能力導入前位元級一致。於 linked worktree 內（workspace 根目錄的 .git 為檔案）執行 list SHALL NOT 套用映射；remote workspace SHALL NOT 套用映射。
 
@@ -16,12 +16,12 @@ discovery 為此觀察面讀取政策時 SHALL fail-open：政策文件或應用
 
 #### Scenario: 壞政策文件不使 list 失敗
 
-- **WHEN** openspec/config.yaml 含 YAML 語法錯誤，於主 checkout 執行 speclink list --json
+- **WHEN** speclink/config.yaml 含 YAML 語法錯誤，於主 checkout 執行 speclink list --json
 - **THEN** exit code 為 0，所有條目均無 worktree 欄位
 
 #### Scenario: 映射成立
 
-- **WHEN** 主 checkout 啟用 worktree 政策，存在分支 speclink/add-dark-mode 的 linked worktree，其內 openspec/changes/add-dark-mode/ 可讀，且主 workspace 有未封存的 change add-dark-mode，執行 speclink list --json
+- **WHEN** 主 checkout 啟用 worktree 政策，存在分支 speclink/add-dark-mode 的 linked worktree，其內 speclink/changes/add-dark-mode/ 可讀，且主 workspace 有未封存的 change add-dark-mode，執行 speclink list --json
 - **THEN** add-dark-mode 條目含 worktree 欄位，exit code 為 0
 
 #### Scenario: 分支不合慣例即略過
@@ -36,7 +36,7 @@ discovery 為此觀察面讀取政策時 SHALL fail-open：政策文件或應用
 
 #### Scenario: worktree 內 spec 目錄不可讀即回讀主副本
 
-- **WHEN** 存在分支 speclink/add-dark-mode 的 linked worktree，但其內 openspec/changes/add-dark-mode/ 不存在，執行 speclink list --json
+- **WHEN** 存在分支 speclink/add-dark-mode 的 linked worktree，但其內 speclink/changes/add-dark-mode/ 不存在，執行 speclink list --json
 - **THEN** add-dark-mode 條目無 worktree 欄位，任務計數與狀態來自主副本
 
 #### Scenario: 政策關閉時零介入
@@ -56,8 +56,8 @@ discovery 為此觀察面讀取政策時 SHALL fail-open：政策文件或應用
 
 
 <!-- @trace
-source: worktree-parallel-apply
-updated: 2026-08-04
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -65,7 +65,7 @@ updated: 2026-08-04
 
 映射成立的 change，speclink list SHALL 呈現 worktree 觀察面：--json 條目 SHALL 增加 worktree 物件欄位（camelCase），含 path（字串，worktree 絕對路徑）與 branch（字串，分支全名）兩欄；人眼輸出 SHALL 於該 change 既有行尾追加固定字面「 [worktree]」，--no-color 下字面相同。無映射的 change 條目 SHALL NOT 出現 worktree 欄位（缺席不序列化）。此為刻意變更：既有無 worktree 情境的輸出維持位元級不變，新增情境的 golden 與 CLI 測試同批更新。
 
-映射成立的 change，其任務計數、狀態與開工戳記等既有欄位的「值」SHALL 來自該 worktree 副本內的 change 目錄（openspec/changes/<change名>/），欄位名與型別 SHALL 維持既有契約不變；該 change 於主副本的檔案 SHALL NOT 被 list 讀取或寫入變更。worktree 移除後重跑 list，SHALL 回讀主副本且 worktree 觀察面消失，SHALL NOT 留下任何殘餘標示或欄位。worktree 副本內 change 中介資料損壞時，SHALL 沿用既有的損壞診斷欄位行為（metaError）如實呈現。
+映射成立的 change，其任務計數、狀態與開工戳記等既有欄位的「值」SHALL 來自該 worktree 副本內的 change 目錄（speclink/changes/<change名>/），欄位名與型別 SHALL 維持既有契約不變；該 change 於主副本的檔案 SHALL NOT 被 list 讀取或寫入變更。worktree 移除後重跑 list，SHALL 回讀主副本且 worktree 觀察面消失，SHALL NOT 留下任何殘餘標示或欄位。worktree 副本內 change 中介資料損壞時，SHALL 沿用既有的損壞診斷欄位行為（metaError）如實呈現。
 
 #### Scenario: 任務計數即時反映 worktree 副本
 
@@ -90,18 +90,19 @@ updated: 2026-08-04
 
 #### Scenario: worktree 副本中介資料損壞如實診斷
 
-- **WHEN** 映射成立，但 worktree 副本內該 change 的 .openspec.yaml 為無法解析的 YAML，執行 speclink list --json
+- **WHEN** 映射成立，但 worktree 副本內該 change 的 .meta.yaml 為無法解析的 YAML，執行 speclink list --json
 - **THEN** 該條目呈現 metaError 欄位（與主副本損壞時同款行為）
 
+
 <!-- @trace
-source: worktree-parallel-apply
-updated: 2026-08-04
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: desktop 看板的 worktree 呈現
 
-local workspace 的 desktop 看板 SHALL 經與 CLI list 同一觀察面組裝取得 worktree facts：有 worktree 映射的 change，卡片 SHALL 帶 worktree 標示，變更抽屜 SHALL 顯示分支名（speclink/<change名>）與 worktree 路徑（OS 原生路徑形式）。文案於 zh-TW 與 en 介面語言下均直出「worktree」一詞。worktree 的增減、或其內 openspec/changes/<change名>/ 目錄的變動，SHALL 使看板自動更新（無需手動重整）；worktree 移除（merge 收尾）後標示與抽屜資訊 SHALL 退場。git 不可用時看板照常呈現且無任何 worktree 標示（fail-open，沿用 discovery 慣例）。remote 工作區不適用本需求。
+local workspace 的 desktop 看板 SHALL 經與 CLI list 同一觀察面組裝取得 worktree facts：有 worktree 映射的 change，卡片 SHALL 帶 worktree 標示，變更抽屜 SHALL 顯示分支名（speclink/<change名>）與 worktree 路徑（OS 原生路徑形式）。文案於 zh-TW 與 en 介面語言下均直出「worktree」一詞。worktree 的增減、或其內 speclink/changes/<change名>/ 目錄的變動，SHALL 使看板自動更新（無需手動重整）；worktree 移除（merge 收尾）後標示與抽屜資訊 SHALL 退場。git 不可用時看板照常呈現且無任何 worktree 標示（fail-open，沿用 discovery 慣例）。remote 工作區不適用本需求。
 
 對有 worktree 映射的 change，desktop 的全部 per-change 讀取面 SHALL 解析到該 worktree 副本：變更抽屜各分頁的文件原文（提案／設計／任務／規格）、metadata 欄位（建立與開工資訊）、狀態報告、驗證與分析報告，以及看板全文搜尋的 artifact 掃描。同一 change 於同一畫面的計數與內容 SHALL 同源（SHALL NOT 出現計數來自 worktree、內容來自主 checkout 的劈半）。observed_facts 為空（政策關閉、非主 checkout、git 不可用）時，上述讀取面行為 SHALL 與本需求擴充前完全相同；worktree 內 change 目錄不可讀時該條目依 discovery 慣例靜默回讀主副本。
 
@@ -140,12 +141,10 @@ local workspace 的 desktop 看板 SHALL 經與 CLI list 同一觀察面組裝�
 - **WHEN** git 於環境中不可用時開啟 desktop 看板
 - **THEN** 看板照常列出 changes 且無任何 worktree 標示，不顯示錯誤
 
----
-
 
 <!-- @trace
-source: worktree-data-routing
-updated: 2026-08-05
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

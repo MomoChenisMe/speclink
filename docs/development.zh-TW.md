@@ -141,7 +141,7 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 | --- | --- |
 | `apps/desktop/` | 桌面 app（Tauri）：`src/` 是前端，`core/` 與 `src-tauri/` 是兩個 Rust crate |
 | `apps/server-web/` | server 的網頁後台（React），建置後內嵌進 `speclink-server` |
-| `crates/engine/` | 引擎核心：`speclink-core`（動詞、工作流、技能產生）與 `speclink-fs`（讀寫本機 `openspec/`） |
+| `crates/engine/` | 引擎核心：`speclink-core`（動詞、工作流、技能產生）與 `speclink-fs`（讀寫本機 `speclink/`） |
 | `crates/protocol/` | 遠端協定：`speclink-protocol`（client 與 server 共用的資料型別）與 `speclink-remote`（CLI 與桌面 app 用的遠端 client 與登入） |
 | `crates/store/` | server 的儲存後端（Store driver）：共用介面 `speclink-store`，以及 sqlite、檔案（serverfs）、postgres 三種實作 |
 | `crates/host/` | `speclink-host`（引擎與 CLI、桌面 app、server 之間的共用層）與 `speclink-server`（官方參考 server） |

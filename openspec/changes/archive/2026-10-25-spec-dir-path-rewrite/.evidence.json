@@ -1,0 +1,48 @@
+{
+  "version": 2,
+  "change": "spec-dir-path-rewrite",
+  "touched": [
+    {
+      "task_id": "4",
+      "task_desc": "2.1 （D4）使用者文件（中英）改寫描述使用者專案的路徑：docs/workflow.md、docs/workflow.zh-TW.md、docs/verb-contract.md、docs/verb-contract.zh-TW.md、docs/product-status.md、docs/product-status.zh-TW.md（本地讀寫的資料夾）、docs/sdk-node.md、docs/sdk-node.zh-TW.md（本機檔案說明、`specDir` 預設值改為 `speclink`、不需要本機資料夾的說明）、docs/development.md、docs/development.zh-TW.md（speclink-fs 讀寫的資料夾）、README.md 與 README.zh-TW.md 文件地圖的設定檔路徑；指向 repo 內檔案的相對連結與描述 repo 自身的段落不改。驗證：中英兩版一一對應；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過",
+      "files": [
+        "README.md",
+        "README.zh-TW.md",
+        "docs/development.md",
+        "docs/development.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M5J3KA4DJ0KKE6H27YV3XDCQ",
+      "taskDesc": "2.1 （D4）使用者文件（中英）改寫描述使用者專案的路徑：docs/workflow.md、docs/workflow.zh-TW.md、docs/verb-contract.md、docs/verb-contract.zh-TW.md、docs/product-status.md、docs/product-status.zh-TW.md（本地讀寫的資料夾）、docs/sdk-node.md、docs/sdk-node.zh-TW.md（本機檔案說明、`specDir` 預設值改為 `speclink`、不需要本機資料夾的說明）、docs/development.md、docs/development.zh-TW.md（speclink-fs 讀寫的資料夾）、README.md 與 README.zh-TW.md 文件地圖的設定檔路徑；指向 repo 內檔案的相對連結與描述 repo 自身的段落不改。驗證：中英兩版一一對應；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6f2d5bf83e8b23c86112506f00c99011e164efa6",
+      "touchedFiles": [
+        "README.md",
+        "README.zh-TW.md",
+        "docs/development.md",
+        "docs/development.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-10-24T14:54:14Z"
+    }
+  ]
+}

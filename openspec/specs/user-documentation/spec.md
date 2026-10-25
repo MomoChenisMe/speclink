@@ -174,7 +174,7 @@ code:
 ---
 ### Requirement: 中英文文件保持結構與事實對等
 
-`README.zh-TW.md`／`README.md`（繁中／英文），以及 `docs/` 下每一組 `<名稱>.zh-TW.md`／`<名稱>.md`（getting-started、workflow、product-status、roadmap、remote-getting-started、development、configuration、verb-contract、sdk-node、server-deployment、server-store-drivers、server-backup）SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意、截圖檔名序列及交叉連結。英文版 SHALL 為無語言後綴的檔名，繁中版 SHALL 帶 `.zh-TW` 後綴。每個 H2 SHALL 寫成 `## <a id="<錨點>"></a><標題>`，兩版的錨點序列 SHALL 逐項相同；標題文字 SHALL 各用該版的語言，SHALL NOT 在單一語言版本使用雙語標題。兩版 README SHALL 共用品牌圖片；截圖 SHALL 以相同檔名、各自引用該語言介面的那一組。兩版 README SHALL 保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 行為參考起源及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `openspec/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。
+`README.zh-TW.md`／`README.md`（繁中／英文），以及 `docs/` 下每一組 `<名稱>.zh-TW.md`／`<名稱>.md`（getting-started、workflow、product-status、roadmap、remote-getting-started、development、configuration、verb-contract、sdk-node、server-deployment、server-store-drivers、server-backup）SHALL 分別保持相同的 H2 章節集合與順序、狀態矩陣列集合、命令語意、截圖檔名序列及交叉連結。英文版 SHALL 為無語言後綴的檔名，繁中版 SHALL 帶 `.zh-TW` 後綴。每個 H2 SHALL 寫成 `## <a id="<錨點>"></a><標題>`，兩版的錨點序列 SHALL 逐項相同；標題文字 SHALL 各用該版的語言，SHALL NOT 在單一語言版本使用雙語標題。兩版 README SHALL 共用品牌圖片；截圖 SHALL 以相同檔名、各自引用該語言介面的那一組。兩版 README SHALL 保持標語、產品定位、共同流程語意、Local Repo／Remote Store、Spectra App 2.3.1 行為參考起源及目前狀態摘要的概念對等。繁體中文散文 SHALL 使用 `speclink/LANGUAGE.md` 的正典詞彙；引擎動詞、CLI 命令、欄位名與程式識別符 SHALL 保留於 code span，不以避免詞取代使用者文案。
 
 #### Scenario: 語言切換不遺失流程資訊
 
@@ -198,8 +198,8 @@ code:
 
 
 <!-- @trace
-source: readme-open-source-refresh
-updated: 2026-10-15T14:00:05+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -521,7 +521,7 @@ updated: 2026-10-15T14:00:05+08:00
 ---
 ### Requirement: 官方 server 定位為參考實作而非唯一路徑
 
-使用者文件描述遠端模式時 SHALL 說明 `speclink-server` 是官方的參考實作，用途是開箱即用與試用遠端功能，SHALL NOT 把它寫成遠端模式的唯一路徑。文件 SHALL 說明遠端模式由 Host 與 Protocol 兩份公開契約定義（`openspec/specs/` 的 `host-runtime` 與 `client-protocol`），使用者得以 Speclink 引擎自行實作 server 端並接上既有的認證、資料庫與權限模型，且 CLI 與桌面 app 對自建 server 同樣可用。此說明 SHALL 出現於 README 中英兩版、Remote 入門教學中英兩版、Node SDK 中英兩版與 Server 部署文件。
+使用者文件描述遠端模式時 SHALL 說明 `speclink-server` 是官方的參考實作，用途是開箱即用與試用遠端功能，SHALL NOT 把它寫成遠端模式的唯一路徑。文件 SHALL 說明遠端模式由 Host 與 Protocol 兩份公開契約定義（`speclink/specs/` 的 `host-runtime` 與 `client-protocol`），使用者得以 Speclink 引擎自行實作 server 端並接上既有的認證、資料庫與權限模型，且 CLI 與桌面 app 對自建 server 同樣可用。此說明 SHALL 出現於 README 中英兩版、Remote 入門教學中英兩版、Node SDK 中英兩版與 Server 部署文件。
 
 #### Scenario: 讀者判斷得出 server 端可替換
 
@@ -533,9 +533,10 @@ updated: 2026-10-15T14:00:05+08:00
 - **WHEN** 讀者查閱本地與遠端能力對照表
 - **THEN** 表格載明 Remote 欄以官方參考 server 為量測對象，且同樣的欄位適用於自建 server
 
+
 <!-- @trace
-source: user-docs-overhaul
-updated: 2026-08-14
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -543,7 +544,7 @@ updated: 2026-08-14
 
 版本庫根目錄 SHALL 提供英文的 `CONTRIBUTING.md` 與 `SECURITY.md`；`.github/ISSUE_TEMPLATE/` SHALL 提供 bug 回報與功能建議兩份 YAML issue form 及一份 `config.yml`；`.github/` SHALL 提供 `PULL_REQUEST_TEMPLATE.md`。
 
-`CONTRIBUTING.md` SHALL 涵蓋：開發環境入口（連到 `docs/development.md`）、送出 PR 前要執行的測試指令、Conventional Commits 規範、以 Speclink 變更（`openspec/changes/`）描述行為改動的做法，以及 issue 與 PR 可用英文或繁體中文撰寫。
+`CONTRIBUTING.md` SHALL 涵蓋：開發環境入口（連到 `docs/development.md`）、送出 PR 前要執行的測試指令、Conventional Commits 規範、以 Speclink 變更（`speclink/changes/`）描述行為改動的做法，以及 issue 與 PR 可用英文或繁體中文撰寫。
 
 `SECURITY.md` SHALL 指示以 GitHub 私下漏洞回報（Security 分頁的 Report a vulnerability）回報漏洞，SHALL 載明受支援的版本為最新發布版本，SHALL NOT 要求在公開 issue 揭露漏洞細節，SHALL NOT 列出任何個人信箱。
 
@@ -564,9 +565,10 @@ bug 回報表單 SHALL 以必填欄位要求 Speclink 版本、作業系統、�
 - **WHEN** 使用者以 bug 回報表單新增 issue 而未填 Speclink 版本或重現步驟
 - **THEN** GitHub 依表單的必填設定拒絕送出；表單說明可見「不要貼上存取金鑰、setup token 或內部網址」的提醒
 
+
 <!-- @trace
-source: readme-open-source-refresh
-updated: 2026-10-15T14:00:05+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

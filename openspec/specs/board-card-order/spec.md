@@ -8,7 +8,7 @@
 
 ### Requirement: 看板卡片順序以 board_rank 欄位為真相
 
-本地 session 的看板欄內顯示順序 SHALL 為引擎 plan 配置順序（見 change-plan 能力）投影到該欄的結果；plan 的輸入之一是卡片自身 meta 的 `board_rank` 欄位：變更卡讀自 change 目錄的 .openspec.yaml、討論卡讀自 openspec/discussions/<slug>.md 的 frontmatter（討論卡不參與 plan，維持 rank 升冪、缺 rank 置頂依 slug 序）。remote session 的順序真相 SHALL 為 scope 的 board resource 文件，SHALL NOT 讀寫卡片 meta 的 `board_rank`；remote 的排序語意（含回退序與是否套用 plan）SHALL 依 remote-board-order 能力的規定，本需求不另行規定。rank 值 SHALL 為小寫英文字母組成的字串，以位元組字典序升冪排列。本地變更卡的同欄基底序 SHALL 為：具 rank 的卡在前依字典序升冪，缺 rank 的卡在後依 change-plan「執行順序的基底與拓樸修正」規定的缺 rank 順序（被依賴數多者在前 → task 總數少者在前 → created 升冪、缺 created 者殿後）；同值以變更名字典序決斷；此基底序再經宣告依賴修正（宣告前置一律在其依賴者之前）。repo 內所有變更卡皆缺 rank 時，欄內顯示 SHALL 為上述缺 rank 順序，plan 成環時退回此基底序。`board_rank` 的寫入來源 SHALL 為桌面拖排與 CLI 的 change rank 動詞（見 change-plan 能力），兩者寫同一欄位、同一中點演算。
+本地 session 的看板欄內顯示順序 SHALL 為引擎 plan 配置順序（見 change-plan 能力）投影到該欄的結果；plan 的輸入之一是卡片自身 meta 的 `board_rank` 欄位：變更卡讀自 change 目錄的 .meta.yaml、討論卡讀自 speclink/discussions/<slug>.md 的 frontmatter（討論卡不參與 plan，維持 rank 升冪、缺 rank 置頂依 slug 序）。remote session 的順序真相 SHALL 為 scope 的 board resource 文件，SHALL NOT 讀寫卡片 meta 的 `board_rank`；remote 的排序語意（含回退序與是否套用 plan）SHALL 依 remote-board-order 能力的規定，本需求不另行規定。rank 值 SHALL 為小寫英文字母組成的字串，以位元組字典序升冪排列。本地變更卡的同欄基底序 SHALL 為：具 rank 的卡在前依字典序升冪，缺 rank 的卡在後依 change-plan「執行順序的基底與拓樸修正」規定的缺 rank 順序（被依賴數多者在前 → task 總數少者在前 → created 升冪、缺 created 者殿後）；同值以變更名字典序決斷；此基底序再經宣告依賴修正（宣告前置一律在其依賴者之前）。repo 內所有變更卡皆缺 rank 時，欄內顯示 SHALL 為上述缺 rank 順序，plan 成環時退回此基底序。`board_rank` 的寫入來源 SHALL 為桌面拖排與 CLI 的 change rank 動詞（見 change-plan 能力），兩者寫同一欄位、同一中點演算。
 
 #### Scenario: 依 rank 升冪且缺值置後
 
@@ -47,12 +47,12 @@
 #### Scenario: remote 拖排不寫卡片 meta
 
 - **WHEN** editor 於 remote 分頁拖排一張變更卡
-- **THEN** 順序變動記錄於 board resource，該變更的 .openspec.yaml 內容不變
+- **THEN** 順序變動記錄於 board resource，該變更的 .meta.yaml 內容不變
 
 
 <!-- @trace
-source: plan-requirement-overlap
-updated: 2026-09-24T22:20:29+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -63,7 +63,7 @@ updated: 2026-09-24T22:20:29+08:00
 #### Scenario: 穩態拖排只改一檔
 
 - **WHEN** 使用者於全員具 `board_rank` 且 rank 序與顯示序一致的欄內拖動一張卡到兩鄰居之間放開
-- **THEN** 只有被拖卡的 meta 檔被修改（變更卡＝該 change 的 .openspec.yaml、討論卡＝該討論的 .md），diff 僅含 `board_rank` 一行的增改，重啟 app 後順序不變
+- **THEN** 只有被拖卡的 meta 檔被修改（變更卡＝該 change 的 .meta.yaml、討論卡＝該討論的 .md），diff 僅含 `board_rank` 一行的增改，重啟 app 後順序不變
 
 ##### Example: 中點與延長
 
@@ -96,14 +96,14 @@ updated: 2026-09-24T22:20:29+08:00
 
 
 <!-- @trace
-source: add-change-plan-desktop
-updated: 2026-09-16T14:57:15+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 欄內存在缺 rank 卡時整欄補章
 
-拖排落點所在欄內（被拖卡除外）存在缺 `board_rank`、或 `board_rank` 不合生成格式（非空、只含小寫英文字母、不以 a 結尾；手改的鍵不合時算不出中點）的卡時，該次寫回 SHALL 先依當前顯示序對該欄其餘卡片派發 `board_rank`（鍵列嚴格遞增且兩兩留有可再分縫隙），再以落點鄰居的中點寫被拖卡；被拖卡本身缺 rank SHALL NOT 觸發補章（它的新鍵由本次移動寫入）。補章 SHALL 只涵蓋該欄，SHALL NOT 波及其他欄的卡片。補章、中點與依賴檢查 SHALL 與 CLI 的 change rank 為同一份引擎實作（見 change-plan「change rank 動詞寫入看板順序鍵」），所有檢查（宣告依賴檢查、要寫入的卡皆有 .openspec.yaml）SHALL 在第一筆寫入之前完成：被拒時補章與被拖卡 SHALL NOT 寫入任何一檔。
+拖排落點所在欄內（被拖卡除外）存在缺 `board_rank`、或 `board_rank` 不合生成格式（非空、只含小寫英文字母、不以 a 結尾；手改的鍵不合時算不出中點）的卡時，該次寫回 SHALL 先依當前顯示序對該欄其餘卡片派發 `board_rank`（鍵列嚴格遞增且兩兩留有可再分縫隙），再以落點鄰居的中點寫被拖卡；被拖卡本身缺 rank SHALL NOT 觸發補章（它的新鍵由本次移動寫入）。補章 SHALL 只涵蓋該欄，SHALL NOT 波及其他欄的卡片。補章、中點與依賴檢查 SHALL 與 CLI 的 change rank 為同一份引擎實作（見 change-plan「change rank 動詞寫入看板順序鍵」），所有檢查（宣告依賴檢查、要寫入的卡皆有 .meta.yaml）SHALL 在第一筆寫入之前完成：被拒時補章與被拖卡 SHALL NOT 寫入任何一檔。
 
 #### Scenario: 首次拖排補章整欄
 
@@ -133,8 +133,8 @@ updated: 2026-09-16T14:57:15+08:00
 
 
 <!-- @trace
-source: plan-requirement-overlap
-updated: 2026-09-24T22:20:29+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -192,58 +192,13 @@ code:
 
 #### Scenario: 含 rank 的 repo 之 CLI 輸出不變
 
-- **WHEN** repo 內數個 change 的 .openspec.yaml 與討論 frontmatter 含 `board_rank`，執行 speclink list --json 與 speclink discuss list --json
+- **WHEN** repo 內數個 change 的 .meta.yaml 與討論 frontmatter 含 `board_rank`，執行 speclink list --json 與 speclink discuss list --json
 - **THEN** 兩者輸出與移除全部 `board_rank` 後執行的輸出逐位元相同，payload 不含 rank 欄位
 
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
-code:
-  - README.en.md
-  - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -254,61 +209,41 @@ code:
 #### Scenario: 拖排保留既有欄位
 
 - **WHEN** 對含 created_*、started_* 欄位的變更卡拖排寫回 `board_rank`
-- **THEN** 該 .openspec.yaml 除 `board_rank` 外逐位元組不變
+- **THEN** 該 .meta.yaml 除 `board_rank` 外逐位元組不變
 
 #### Scenario: 開工標記保留 rank
 
 - **WHEN** 對 meta 已含 `board_rank` 的 change 執行開工標記
 - **THEN** 寫回後 `board_rank` 值原樣保留，開工欄位如常寫入
 
+
 <!-- @trace
-source: desktop-card-reorder
-updated: 2026-07-08
-code:
-  - apps/desktop/core/src/discussions.rs
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/manage.rs
-  - apps/desktop/core/src/query.rs
-  - apps/desktop/core/src/rank.rs
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/store.test.ts
-  - apps/desktop/src/__tests__/tauriDataSource.test.ts
-  - apps/desktop/src/adapter/tauriDataSource.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/inprogress.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/util.rs
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/adapter.ts
-  - packages/ui/src/boardDnd.ts
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 壞 metadata 不參與看板排序寫入
 
-`.openspec.yaml` 存在但 YAML 解析失敗的 change：排序寫入（桌面拖排經引擎的 board_rank 寫入）SHALL 在文字手術前拒絕且 SHALL NOT 寫檔；欄內補章 SHALL NOT 將該 change 視為缺 rank 卡——補章 SHALL 僅對 metadata 有效的缺 rank 卡寫入，metadata 損壞的卡片 SHALL 照其階段顯示並帶 invalid 標記，且 SHALL NOT 因補章被寫入。單一損壞卡 SHALL NOT 使整欄補章或看板清單中止。
+`.meta.yaml` 存在但 YAML 解析失敗的 change：排序寫入（桌面拖排經引擎的 board_rank 寫入）SHALL 在文字手術前拒絕且 SHALL NOT 寫檔；欄內補章 SHALL NOT 將該 change 視為缺 rank 卡——補章 SHALL 僅對 metadata 有效的缺 rank 卡寫入，metadata 損壞的卡片 SHALL 照其階段顯示並帶 invalid 標記，且 SHALL NOT 因補章被寫入。單一損壞卡 SHALL NOT 使整欄補章或看板清單中止。
 
 #### Scenario: 排序寫入對壞 metadata 拒絕
 
 - **WHEN** 對壞 metadata 的 change 執行 board_rank 排序寫入
-- **THEN** 回帶檔案位置與解析原因的錯誤；該 `.openspec.yaml` 逐位元不變
+- **THEN** 回帶檔案位置與解析原因的錯誤；該 `.meta.yaml` 逐位元不變
 
 #### Scenario: 補章排除 invalid 卡且不中止
 
 - **WHEN** 同一欄內同時存在缺 rank 的有效卡與 metadata 損壞卡，觸發整欄補章
-- **THEN** 僅有效卡被寫入 board_rank；損壞卡的 `.openspec.yaml` 逐位元不變；其餘卡片補章照常完成
+- **THEN** 僅有效卡被寫入 board_rank；損壞卡的 `.meta.yaml` 逐位元不變；其餘卡片補章照常完成
 
 #### Scenario: 看板照常開啟並標記損壞卡
 
 - **WHEN** 桌面看板載入含 metadata 損壞 change 的 workspace
 - **THEN** 看板照常開啟且列出全部卡片；損壞卡帶 invalid 標記；對其發起的變更操作被引擎錯誤拒絕
+
+
+<!-- @trace
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
+-->

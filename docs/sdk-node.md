@@ -44,11 +44,11 @@ const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-nod
 
 `createEngine` supports two storage forms.
 
-**Local files**: point the engine at a project root that contains `openspec/`. This form suits local tools and tests.
+**Local files**: point the engine at a project root that contains `speclink/` (or `openspec/`, for a project that an older version created). This form suits local tools and tests.
 
 ```js
 const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
-// optional: specDir (default "openspec")
+// optional: specDir (default: the same folder the CLI uses — spec_dir in .speclink.yaml, else speclink/, else openspec/, else "speclink")
 ```
 
 **Your own Store**: pass an object that implements the Store interface (see [Implement your own Store](#store)). The engine reads and writes documents through it.
@@ -212,7 +212,7 @@ const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-
 | --- | --- | --- |
 | `target` | `claude`, `codex`, `copilot`, `neutral` | `neutral` is for custom tools: no `/speclink-` slash commands and no plan-mode text |
 | `invocation` | `cli` (default), `tool-call` | `tool-call` writes verbs as "call the speclink tool with an argv array", for a tool built on `dispatch`. `cli` writes shell commands |
-| `specDir` | A string | The spec directory name in the skill text. Default: `openspec` |
+| `specDir` | A string | The spec directory name in the skill text. Default: `speclink` |
 | `toolName` | A string | `neutral` only: the tool name in the skill text. Default: `speclink` |
 
 Write each `SKILL.md` into a directory, and let your agent load it. The `description` of each skill says when to use it. The Next steps section at the end says what to suggest after it. You do not need a separate system prompt. Your agent must read the skill descriptions for this to work.
@@ -266,7 +266,7 @@ async function startSession() {
 }
 ```
 
-The skills describe each verb as a tool call. The tool sends the call to the engine in the same process, and the engine saves through your Store. No CLI, no child process, and no local `openspec/` directory take part.
+The skills describe each verb as a tool call. The tool sends the call to the engine in the same process, and the engine saves through your Store. No CLI, no child process, and no local `speclink/` directory take part.
 
 ## <a id="limits"></a>Current limits
 

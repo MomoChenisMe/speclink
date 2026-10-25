@@ -12,12 +12,12 @@
 
 #### Scenario: 選定既有專案後全視圖切換
 
-- **WHEN** 使用者於專案 A 中經「開啟專案」選定含 openspec/ 的專案 B 根目錄
+- **WHEN** 使用者於專案 A 中經「開啟專案」選定含 speclink/ 的專案 B 根目錄
 - **THEN** 看板顯示專案 B 的 change、分頁列新增專案 B 的分頁並標示為 active，過程中 app 未重啟，且專案 A 與 B 的檔案內容均未被此操作改動
 
 #### Scenario: 自子目錄向上探索至專案根
 
-- **WHEN** 使用者選定專案 B 根目錄下的子目錄（子目錄本身不含 openspec/）
+- **WHEN** 使用者選定專案 B 根目錄下的子目錄（子目錄本身不含 speclink/）
 - **THEN** app 切換至向上探索命中的專案 B 根目錄，行為與直接選定專案根一致
 
 #### Scenario: 開啟失敗維持原專案
@@ -27,68 +27,8 @@
 
 
 <!-- @trace
-source: desktop-config-multiproject
-updated: 2026-07-07
-code:
-  - CLAUDE.md
-  - Cargo.lock
-  - apps/desktop/core/Cargo.toml
-  - apps/desktop/core/src/lib.rs
-  - apps/desktop/core/src/project.rs
-  - apps/desktop/core/src/settings.rs
-  - apps/desktop/package.json
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/capabilities/default.json
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/locale.test.ts
-  - apps/desktop/src/__tests__/messages.test.ts
-  - apps/desktop/src/__tests__/projectTabs.test.tsx
-  - apps/desktop/src/__tests__/settingsView.test.tsx
-  - apps/desktop/src/__tests__/tabs.test.ts
-  - apps/desktop/src/__tests__/workspace.test.ts
-  - apps/desktop/src/adapter/workspace.ts
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/i18n/locale.ts
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/i18n/runtime.ts
-  - apps/desktop/src/main.tsx
-  - apps/desktop/src/store.ts
-  - apps/desktop/src/tabs.ts
-  - apps/desktop/src/views/SettingsView.tsx
-  - crates/speclink-core/src/config.rs
-  - package-lock.json
-  - packages/ui/package.json
-  - packages/ui/src/__tests__/archivedList.test.tsx
-  - packages/ui/src/__tests__/changeListItem.test.tsx
-  - packages/ui/src/__tests__/components.test.tsx
-  - packages/ui/src/__tests__/discussionColumn.test.tsx
-  - packages/ui/src/__tests__/discussionDrawer.test.tsx
-  - packages/ui/src/__tests__/i18n.test.tsx
-  - packages/ui/src/__tests__/kanban.test.tsx
-  - packages/ui/src/__tests__/richDrawer.test.tsx
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/__tests__/ui.test.tsx
-  - packages/ui/src/components/ArchivedList.tsx
-  - packages/ui/src/components/ChangeBoard.tsx
-  - packages/ui/src/components/ChangeCard.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/ChangeListItem.tsx
-  - packages/ui/src/components/DetailDrawer.tsx
-  - packages/ui/src/components/DiscussionColumn.tsx
-  - packages/ui/src/components/DiscussionDrawer.tsx
-  - packages/ui/src/components/DocumentViewer.tsx
-  - packages/ui/src/components/KanbanBoard.tsx
-  - packages/ui/src/components/Markdown.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/components/TaskList.tsx
-  - packages/ui/src/components/ui/checkbox.tsx
-  - packages/ui/src/components/ui/select.tsx
-  - packages/ui/src/components/ui/tooltip.tsx
-  - packages/ui/src/i18n.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/stage.ts
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -155,12 +95,12 @@ app SHALL 以圖示列的專案方塊呈現目前開著的專案(每個專案一
 #### Scenario: 零分頁時顯示空狀態引導頁
 
 - **WHEN** app 於無任何持久化專案的狀態下啟動(如首次使用)
-- **THEN** 左側只有圖示列(品牌標記、「＋」、設定),無專案欄;主區置中顯示字標、「開啟一個專案開始」標題、說明(含「資料夾還沒有 openspec/ 時會先問你要不要初始化」)、「新增專案」與「連線 Server」兩鈕,而非空白看板
+- **THEN** 左側只有圖示列(品牌標記、「＋」、設定),無專案欄;主區置中顯示字標、「開啟一個專案開始」標題、說明(含「資料夾還沒有 speclink/ 時會先問你要不要初始化」)、「新增專案」與「連線 Server」兩鈕,而非空白看板
 
 
 <!-- @trace
-source: desktop-shell-redesign
-updated: 2026-10-09T12:33:58+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -168,7 +108,7 @@ updated: 2026-10-09T12:33:58+08:00
 
 設定 SHALL 拆分為兩種模式：**專案設定**（跟隨 active 專案，自專案欄底部「專案設定」進入）與**應用程式設定**（與任何專案無關，自圖示列齒輪進入）。兩種模式 SHALL 以左側分類欄取代頁簽：點分類即切換主區為該分類的單一頁，分類欄 SHALL 記住上次所在分類；每頁 SHALL 以共用設定零件排版——24px 頁標題＋灰字說明＋右側頁級動作、14px 小標＋16px 圓角卡、卡內一列一筆細線分隔（左標籤與說明、右控制項）、列右側下拉。
 
-專案設定的分類欄 SHALL 分兩組：「openspec/config.yaml」組依序為專案說明、產出規則、審查規則、產出流程；「專案」組為 .speclink.yaml；預設落在專案說明。
+專案設定的分類欄 SHALL 分兩組：「speclink/config.yaml」組依序為專案說明、產出規則、審查規則、產出流程；「專案」組為 .speclink.yaml；預設落在專案說明。
 
 - **專案說明**頁 SHALL 含專案說明卡、**產出規則**頁 SHALL 含產出規則卡（行為見需求「設定頁編輯專案說明與產出規則」）。
 - **審查規則**頁 SHALL 含預設清單卡與專案規則卡（行為見需求「設定頁編輯審查規則」）。
@@ -184,14 +124,14 @@ updated: 2026-10-09T12:33:58+08:00
 
 應用程式設定的同一個設定列 SHALL 只出現在一個分類頁，SHALL NOT 在其他分類頁重複。
 
-專案設定每頁的頁標題下 SHALL 以等寬字註記對應檔案路徑與鍵（如 `openspec/config.yaml · context`）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 寫入後保留。任一層設定檔解析失敗時，分類欄中掛該檔的分類項（config.yaml 掛專案說明、產出規則、審查規則、產出流程；.speclink.yaml 掛 .speclink.yaml）SHALL 帶警示點、頁內 SHALL 浮出解析失敗說明且該頁表單 SHALL 停用；應用程式設定 SHALL NOT 受任何專案設定檔解析失敗影響。
+專案設定每頁的頁標題下 SHALL 以等寬字註記對應檔案路徑與鍵（如 `speclink/config.yaml · context`）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 寫入後保留。任一層設定檔解析失敗時，分類欄中掛該檔的分類項（config.yaml 掛專案說明、產出規則、審查規則、產出流程；.speclink.yaml 掛 .speclink.yaml）SHALL 帶警示點、頁內 SHALL 浮出解析失敗說明且該頁表單 SHALL 停用；應用程式設定 SHALL NOT 受任何專案設定檔解析失敗影響。
 
-遠端 workspace 為 active 專案時，專案設定的分類欄 SHALL 只有「openspec/config.yaml」組的四項（無 .speclink.yaml——tools 屬本機 checkout 概念），四頁內容來自 server 的 policy 文件，頁標題下的註記 SHALL 以等寬字顯示 policy revision；鍵保留語意與本地一致（未觸及鍵原樣保留、設回預設移除鍵）。儲存 SHALL 帶 expected revision；收到 revision 衝突時 SHALL 原樣保留使用者輸入並於頁頂浮出逐欄位對照（server 現值｜我的輸入），僅提供「以 server 版重載」與「檢視後以最新 revision 重新提交」兩出口——SHALL NOT 提供未經對照的強制覆寫。policy 寫入權為假（reader）時四頁 SHALL 唯讀、儲存停用附繁中角色說明。應用程式設定不受 active 專案種類影響。
+遠端 workspace 為 active 專案時，專案設定的分類欄 SHALL 只有「speclink/config.yaml」組的四項（無 .speclink.yaml——tools 屬本機 checkout 概念），四頁內容來自 server 的 policy 文件，頁標題下的註記 SHALL 以等寬字顯示 policy revision；鍵保留語意與本地一致（未觸及鍵原樣保留、設回預設移除鍵）。儲存 SHALL 帶 expected revision；收到 revision 衝突時 SHALL 原樣保留使用者輸入並於頁頂浮出逐欄位對照（server 現值｜我的輸入），僅提供「以 server 版重載」與「檢視後以最新 revision 重新提交」兩出口——SHALL NOT 提供未經對照的強制覆寫。policy 寫入權為假（reader）時四頁 SHALL 唯讀、儲存停用附繁中角色說明。應用程式設定不受 active 專案種類影響。
 
 #### Scenario: 兩種設定模式與預設分類
 
 - **WHEN** 使用者於 local 專案分別點專案欄「專案設定」與圖示列齒輪
-- **THEN** 專案設定的分類欄為「openspec/config.yaml」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（.speclink.yaml），預設在專案說明頁（頁標題下等寬註記 `openspec/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 .speclink.yaml 頁見檔案列與 AI 工具卡；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
+- **THEN** 專案設定的分類欄為「speclink/config.yaml」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（.speclink.yaml），預設在專案說明頁（頁標題下等寬註記 `speclink/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 .speclink.yaml 頁見檔案列與 AI 工具卡；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
 
 #### Scenario: 遠端專案的專案設定分類
 
@@ -248,8 +188,8 @@ updated: 2026-10-09T12:33:58+08:00
 
 
 <!-- @trace
-source: review-rules-config
-updated: 2026-10-14T16:37:17+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -532,22 +472,22 @@ updated: 2026-10-24T22:35:52+08:00
 ---
 ### Requirement: 產出政策的 worktree 開關
 
-local workspace 的產出流程頁產出政策卡 SHALL 顯示 worktree 開關（列右側開關），文案於 zh-TW 與 en 介面語言下均直出「worktree」一詞（LANGUAGE.md 明文例外）。存檔 SHALL 以開關的畫面實值寫入 openspec/config.yaml 的 worktree 鍵（汰換「UI 無此欄位時恆回填原值」的保值行為），寫入成功後 SHALL 觸發與 CLI workflow-config set 同一技能足跡同步；設定頁載入時 SHALL 反映 config 現值。由開改關存檔且存在活躍 linked worktree 時，SHALL 拒絕寫入並浮出擋下訊息——列出各活躍 worktree 的 change 名、分支與路徑，提示先執行 worktree-merge 收尾——config 維持不變。remote 工作區的設定頁 SHALL NOT 顯示此開關。
+local workspace 的產出流程頁產出政策卡 SHALL 顯示 worktree 開關（列右側開關），文案於 zh-TW 與 en 介面語言下均直出「worktree」一詞（LANGUAGE.md 明文例外）。存檔 SHALL 以開關的畫面實值寫入 speclink/config.yaml 的 worktree 鍵（汰換「UI 無此欄位時恆回填原值」的保值行為），寫入成功後 SHALL 觸發與 CLI workflow-config set 同一技能足跡同步；設定頁載入時 SHALL 反映 config 現值。由開改關存檔且存在活躍 linked worktree 時，SHALL 拒絕寫入並浮出擋下訊息——列出各活躍 worktree 的 change 名、分支與路徑，提示先執行 worktree-merge 收尾——config 維持不變。remote 工作區的設定頁 SHALL NOT 顯示此開關。
 
 #### Scenario: 開關顯示且存檔生效
 
 - **WHEN** local workspace 於產出流程頁將 worktree 開關切為開啟並存檔
-- **THEN** openspec/config.yaml 的 worktree 鍵為 true，技能足跡出現兩顆 worktree 技能，設定頁重新載入後開關維持開啟
+- **THEN** speclink/config.yaml 的 worktree 鍵為 true，技能足跡出現兩顆 worktree 技能，設定頁重新載入後開關維持開啟
 
 #### Scenario: 關閉遇活躍 worktree 浮出擋下
 
 - **WHEN** 存在活躍 linked worktree 時於設定頁將 worktree 開關切為關閉並存檔
-- **THEN** 存檔失敗浮出，訊息列出各 worktree 的 change 名、分支與路徑及先收尾的指引，openspec/config.yaml 不變，開關回復為開啟
+- **THEN** 存檔失敗浮出，訊息列出各 worktree 的 change 名、分支與路徑及先收尾的指引，speclink/config.yaml 不變，開關回復為開啟
 
 #### Scenario: CLI 先行寫入後設定頁不吃鍵
 
 - **WHEN** 以 CLI 將 worktree 設為 true 後，開啟設定頁再存檔
-- **THEN** 設定頁載入時開關即呈現開啟，存檔後 openspec/config.yaml 的 worktree 鍵維持 true
+- **THEN** 設定頁載入時開關即呈現開啟，存檔後 speclink/config.yaml 的 worktree 鍵維持 true
 
 #### Scenario: remote 工作區不顯示開關
 
@@ -556,13 +496,14 @@ local workspace 的產出流程頁產出政策卡 SHALL 顯示 worktree 開關�
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 產出流程的切換寫入
-產出流程頁的產出流程卡 SHALL 提供下拉切換專案 schema：選定後把 schema 鍵寫入 openspec/config.yaml，寫入 SHALL 複用引擎的 byte-preserving setter（set_workflow_schema_text）——其餘內容逐位元組保留、無法解析的文件拒寫。local 模式直寫檔案；remote 模式 SHALL 走既有 revision 守門的 config 寫入通道，revision 落後時顯性失敗。切換成功後產出規則分節的固定鍵 SHALL 隨新 schema 的 artifact 圖更新——例外：產出規則正在編輯中時，編輯面 SHALL 凍結在開編輯當下的分節（草稿不因換集而丟棄或清空），固定鍵於該次編輯儲存或取消後才跟上；編輯期間換入的新固定鍵其既有規則 SHALL 在儲存時原樣保留。
+
+產出流程頁的產出流程卡 SHALL 提供下拉切換專案 schema：選定後把 schema 鍵寫入 speclink/config.yaml，寫入 SHALL 複用引擎的 byte-preserving setter（set_workflow_schema_text）——其餘內容逐位元組保留、無法解析的文件拒寫。local 模式直寫檔案；remote 模式 SHALL 走既有 revision 守門的 config 寫入通道，revision 落後時顯性失敗。切換成功後產出規則分節的固定鍵 SHALL 隨新 schema 的 artifact 圖更新——例外：產出規則正在編輯中時，編輯面 SHALL 凍結在開編輯當下的分節（草稿不因換集而丟棄或清空），固定鍵於該次編輯儲存或取消後才跟上；編輯期間換入的新固定鍵其既有規則 SHALL 在儲存時原樣保留。
 
 #### Scenario: 切換寫入且其餘內容保留
 - **WHEN** 使用者把專案 schema 從 spec-driven 切到自訂 schema
@@ -574,17 +515,18 @@ updated: 2026-10-10T23:13:14+08:00
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 產出流程的客製 fork
-產出流程頁的產出流程卡 SHALL 提供 fork 動作（僅 local 模式顯示）：把選中的 schema 複製到專案 openspec/schemas/ 下，複用引擎既有的 fork 函式（複本名為引擎預設 <source>-custom，不收自訂名）；成功後清單 SHALL 即時反映新的專案層 schema。同名跨層時 fork 動作 SHALL 只出現在引擎解析會命中的那一層（project→user→內建的第一命中，含壞檔——引擎的層命中只看檔案存在）：被 shadow 的清單項不提供 fork，避免複製到前層內容。remote 模式 SHALL 不顯示 fork 動作。
+
+產出流程頁的產出流程卡 SHALL 提供 fork 動作（僅 local 模式顯示）：把選中的 schema 複製到專案 speclink/schemas/ 下，複用引擎既有的 fork 函式（複本名為引擎預設 <source>-custom，不收自訂名）；成功後清單 SHALL 即時反映新的專案層 schema。同名跨層時 fork 動作 SHALL 只出現在引擎解析會命中的那一層（project→user→內建的第一命中，含壞檔——引擎的層命中只看檔案存在）：被 shadow 的清單項不提供 fork，避免複製到前層內容。remote 模式 SHALL 不顯示 fork 動作。
 
 #### Scenario: fork 產出專案層複本
 - **WHEN** 使用者在 local 模式對 spec-driven 按下 fork
-- **THEN** openspec/schemas/spec-driven-custom/ 建立（schema.yaml 與 templates 目錄），清單新增該專案層項目
+- **THEN** speclink/schemas/spec-driven-custom/ 建立（schema.yaml 與 templates 目錄），清單新增該專案層項目
 
 #### Scenario: remote 模式無 fork 入口
 - **WHEN** 工作區連線 remote store 且使用者開啟產出流程頁
@@ -592,26 +534,27 @@ updated: 2026-10-10T23:13:14+08:00
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 產出流程的建立
-產出流程頁的產出流程卡 SHALL 提供建立動作（僅 local 模式顯示）：收 kebab-case 名稱，呼叫引擎既有的 init_schema 在專案 openspec/schemas/ 下產出預設骨架（schema.yaml 與 templates/ 內每個 artifact 的範本檔）；成功後清單 SHALL 即時反映新的專案層 schema。名稱驗證 SHALL 由引擎承擔（前端不重複規則）：名稱不合法或目標已存在時 SHALL 浮出引擎的錯誤訊息且磁碟不變。建立 SHALL NOT 提供 artifact 佈局輸入——骨架佈局用引擎預設，內容客製交外部編輯器。remote 模式 SHALL 不顯示建立動作。
+
+產出流程頁的產出流程卡 SHALL 提供建立動作（僅 local 模式顯示）：收 kebab-case 名稱，呼叫引擎既有的 init_schema 在專案 speclink/schemas/ 下產出預設骨架（schema.yaml 與 templates/ 內每個 artifact 的範本檔）；成功後清單 SHALL 即時反映新的專案層 schema。名稱驗證 SHALL 由引擎承擔（前端不重複規則）：名稱不合法或目標已存在時 SHALL 浮出引擎的錯誤訊息且磁碟不變。建立 SHALL NOT 提供 artifact 佈局輸入——骨架佈局用引擎預設，內容客製交外部編輯器。remote 模式 SHALL 不顯示建立動作。
 
 #### Scenario: 建立產出專案層骨架
 - **WHEN** 使用者在 local 模式輸入名稱 my-flow 並送出建立
-- **THEN** openspec/schemas/my-flow/ 建立（schema.yaml 與 templates/ 內引擎預設 artifact 的範本檔），清單新增該專案層項目
+- **THEN** speclink/schemas/my-flow/ 建立（schema.yaml 與 templates/ 內引擎預設 artifact 的範本檔），清單新增該專案層項目
 
 #### Scenario: 不合法名稱顯性失敗
 - **WHEN** 使用者輸入非 kebab-case 名稱（如 My Flow）並送出建立
-- **THEN** 引擎的名稱錯誤訊息浮出於表單，openspec/schemas/ 無任何新目錄
+- **THEN** 引擎的名稱錯誤訊息浮出於表單，speclink/schemas/ 無任何新目錄
 
 ##### Example: 建立輸入與結果
 | 輸入名稱 | 結果 |
 |----------|------|
-| my-flow | openspec/schemas/my-flow/ 骨架建立，清單新增專案層項目 |
+| my-flow | speclink/schemas/my-flow/ 骨架建立，清單新增專案層項目 |
 | My Flow | 拒絕：引擎 kebab-case 錯誤浮出，磁碟不變 |
 | my-flow（已存在） | 拒絕：引擎 already exists 錯誤浮出，磁碟不變 |
 
@@ -621,17 +564,18 @@ updated: 2026-10-10T23:13:14+08:00
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 產出流程的編輯入口
+
 產出流程頁的清單項 SHALL 對有磁碟路徑的 schema（專案層與 user 層）提供「開啟所在資料夾」動作（僅 local 模式顯示）：按下後在系統檔案管理器顯示該 schema 的目錄（schema.yaml 與 templates/ 所在處），內容編輯交外部編輯器。內建 schema（內嵌於程式、無磁碟檔案）SHALL 不顯示此動作。快照的每個清單項 SHALL 帶其 schema 目錄的絕對路徑（內建為空）——user 層路徑由快照組裝端解析，前端不自行拼路徑。remote 模式 SHALL 不顯示此動作。
 
 #### Scenario: 專案層項目開啟所在資料夾
 - **WHEN** 使用者在 local 模式對建立出的專案層 schema 按下開啟所在資料夾
-- **THEN** 系統檔案管理器顯示 openspec/schemas/<name>/ 目錄
+- **THEN** 系統檔案管理器顯示 speclink/schemas/<name>/ 目錄
 
 #### Scenario: 內建項無編輯入口
 - **WHEN** 使用者在 local 模式檢視內建 spec-driven 的清單項
@@ -639,17 +583,18 @@ updated: 2026-10-10T23:13:14+08:00
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 產出流程的刪除
-產出流程頁的產出流程卡 SHALL 對專案層項目提供刪除動作（僅 local 模式顯示；內建無檔案、user 層跨專案共用，均不提供）：按下 SHALL 先開確認對話框，取消 SHALL 零變動；確認後移除專案 openspec/schemas/<name>/ 整個目錄，成功後清單 SHALL 即時反映。刪除目標 SHALL 由名稱固定解析為專案層目錄（不接受任意路徑）。config 的 schema 鍵正指著的 schema（使用中）SHALL 拒刪並浮出顯性錯誤、磁碟不變。remote 模式 SHALL 不顯示刪除動作。
+
+產出流程頁的產出流程卡 SHALL 對專案層項目提供刪除動作（僅 local 模式顯示；內建無檔案、user 層跨專案共用，均不提供）：按下 SHALL 先開確認對話框，取消 SHALL 零變動；確認後移除專案 speclink/schemas/<name>/ 整個目錄，成功後清單 SHALL 即時反映。刪除目標 SHALL 由名稱固定解析為專案層目錄（不接受任意路徑）。config 的 schema 鍵正指著的 schema（使用中）SHALL 拒刪並浮出顯性錯誤、磁碟不變。remote 模式 SHALL 不顯示刪除動作。
 
 #### Scenario: 刪除經確認後移除專案層目錄
 - **WHEN** 使用者對非使用中的專案層 schema 按刪除並在確認對話框按下確認
-- **THEN** openspec/schemas/<name>/ 整個目錄移除，清單不再列出該項
+- **THEN** speclink/schemas/<name>/ 整個目錄移除，清單不再列出該項
 
 #### Scenario: 取消確認零變動
 - **WHEN** 使用者按刪除後在確認對話框取消
@@ -657,12 +602,12 @@ updated: 2026-10-10T23:13:14+08:00
 
 #### Scenario: 使用中的 schema 拒刪
 - **WHEN** config.yaml 的 schema 鍵指著 my-flow 且使用者確認刪除 my-flow
-- **THEN** 錯誤浮出於表單、openspec/schemas/my-flow/ 原封不動
+- **THEN** 錯誤浮出於表單、speclink/schemas/my-flow/ 原封不動
 
 
 <!-- @trace
-source: desktop-settings-mode
-updated: 2026-10-10T23:13:14+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -762,7 +707,7 @@ updated: 2026-10-12T09:12:54+08:00
 ---
 ### Requirement: 設定頁編輯審查規則
 
-專案設定的「審查規則」頁 SHALL 呈現兩張卡——預設清單卡與專案規則卡——預設唯讀並有自身的編輯態，一頁進入編輯 SHALL NOT 影響其他專案設定頁的唯讀呈現與可用性；頁標題下 SHALL 以等寬字註記 `openspec/config.yaml · review`。介面文案 SHALL 隨 UI 介面語言（zh-TW、en）切換，嚴重度籤 CRITICAL、WARNING、SUGGESTION 與 smell 名稱維持英文。
+專案設定的「審查規則」頁 SHALL 呈現兩張卡——預設清單卡與專案規則卡——預設唯讀並有自身的編輯態，一頁進入編輯 SHALL NOT 影響其他專案設定頁的唯讀呈現與可用性；頁標題下 SHALL 以等寬字註記 `speclink/config.yaml · review`。介面文案 SHALL 隨 UI 介面語言（zh-TW、en）切換，嚴重度籤 CRITICAL、WARNING、SUGGESTION 與 smell 名稱維持英文。
 
 唯讀呈現：預設清單卡 SHALL 顯示目前模式（「沿用並追加」或「整份換掉」）與一句說明，並 SHALL 提供「查看 12 條」展開鈕，展開後列出 12 條 smell 名稱——名稱 SHALL 取自引擎提供的清單，desktop SHALL NOT 另存一份。專案規則卡 SHALL 依 CRITICAL、WARNING、SUGGESTION 三節列出規則，每節帶嚴重度籤、一行效果說明與條數；效果說明 SHALL 為：CRITICAL「擋蓋章；要接受放行須逐條再確認」、WARNING「擋蓋章；偶有正當例外可接受放行」、SUGGESTION「只記在工單，不擋蓋章」。三節皆空時 SHALL 顯示空狀態。
 
@@ -773,7 +718,7 @@ updated: 2026-10-12T09:12:54+08:00
 #### Scenario: 唯讀呈現
 
 - **WHEN** config.yaml 的 review 為 critical 兩條、warning 一條、suggestion 一條且未寫 baseline，使用者開啟專案設定的審查規則頁
-- **THEN** 預設清單卡顯示「沿用並追加」；專案規則卡依 CRITICAL（2 條）、WARNING（1 條）、SUGGESTION（1 條）三節列出規則與各自的效果說明；頁標題下等寬註記 `openspec/config.yaml · review`
+- **THEN** 預設清單卡顯示「沿用並追加」；專案規則卡依 CRITICAL（2 條）、WARNING（1 條）、SUGGESTION（1 條）三節列出規則與各自的效果說明；頁標題下等寬註記 `speclink/config.yaml · review`
 
 #### Scenario: 展開 12 條名稱
 
@@ -818,9 +763,10 @@ updated: 2026-10-12T09:12:54+08:00
 - **WHEN** active 專案為遠端 workspace 且使用者具 policy 寫入權，於審查規則頁新增一條 CRITICAL 規則並儲存
 - **THEN** 儲存帶 expected revision，成功後 revision 前進、server 端 config 的 review.critical 含該條且其他鍵原樣保留；遇 revision 衝突時輸入原樣保留並浮出逐欄位對照
 
+
 <!-- @trace
-source: review-rules-config
-updated: 2026-10-14T16:37:17+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
