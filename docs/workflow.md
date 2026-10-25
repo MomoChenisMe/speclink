@@ -71,7 +71,7 @@ Each stage uses the same format. The first sentence gives the purpose. The list 
 Write specs for the current behavior from the existing code and tests. The old name of this stage is onboard.
 
 - **When to use**: An existing project starts to use Speclink and has no specs, or you want to add a capability that the specs do not cover. **Skip**: The specs are already sufficient, or you want to describe a new requirement.
-- **Input → output**: The README, entry points, source code, tests, the project context and rules in `openspec/config.yaml`, and the capability list that you approve → specs in `openspec/specs/<capability>/spec.md`. It creates no change.
+- **Input → output**: The README, entry points, source code, tests, the project context and rules in `speclink/config.yaml`, and the capability list that you approve → specs in `speclink/specs/<capability>/spec.md`. It creates no change.
 - **Skill**: `/speclink-baseline [scope]`
 - **CLI**: No `speclink baseline` command exists. After the agent writes the specs, it runs `speclink validate --specs --all --strict`.
 - **Done**: You approve the capability boundaries, each spec has evidence from the code, and the strict check passes.
@@ -83,7 +83,7 @@ Write specs for the current behavior from the existing code and tests. The old n
 Talk through a decision round by round, and keep a conclusion with its sources.
 
 - **When to use**: The requirement is not clear, several approaches are possible, or you must make a decision. **Skip**: You only want to understand something, or the requirement is clear (use `propose`).
-- **Input → output**: A topic, or the path of a document (your own plan, or a plan-mode output) → `openspec/discussions/<slug>.md` with the context, the rounds, and the conclusion.
+- **Input → output**: A topic, or the path of a document (your own plan, or a plan-mode output) → `speclink/discussions/<slug>.md` with the context, the rounds, and the conclusion.
 - **Skill**: `/speclink-discuss <topic or document path>`. At the start, it searches old discussions so that it does not bring back a rejected idea.
 - **CLI**: `speclink discuss new`, `context`, `add-round`, `conclude`, `search`.
 - **Done**: The conclusion states the decision, the reasons, the rejected options, the deferred items, and the next step.
@@ -124,7 +124,7 @@ Create a change that is ready for the work.
 Do the tasks in the task list, and check each task when it is done.
 
 - **When to use**: The documents for the work are complete. **Skip**: Documents are missing, the requirement is changing, or the change stopped for a while and you did not run `drift`.
-- **Input → output**: The proposal, specs, design (if one exists), and tasks → code and test changes, checked tasks, and file evidence. The evidence lists the files that each task touched. It goes into `openspec/changes/<name>/.evidence.json`, and you commit it with the change.
+- **Input → output**: The proposal, specs, design (if one exists), and tasks → code and test changes, checked tasks, and file evidence. The evidence lists the files that each task touched. It goes into `speclink/changes/<name>/.evidence.json`, and you commit it with the change.
 - **Skill**: `/speclink-apply <change-name>`
 - **CLI**: Before the work starts, the agent runs `speclink plan` and stops if another change blocks this one. Then it runs `speclink review prepare` (to record the start point for the quality stations) and `speclink in-progress add`. During the work, it uses `speclink instructions apply --change <name> --json` for context and runs `speclink task done --change <name> <number>` after each task.
 - **Done**: The behavior and tests of each task pass, and `instructions apply` reports `state: all_done`. You check the `[M]` manual tasks yourself. The agent does not check them.
@@ -245,7 +245,7 @@ On cards and in the tray panel, the review stamp and the verify stamp show side 
 Merge the delta specs into the specs, and move the done change into the archive.
 
 - **When to use**: All tasks are done (`[M]` manual tasks too), the document checks pass, the plan is not out of date, and the quality stations that you chose are complete. **Skip**: Some tasks are not done, `validate` fails, or the requirement still changes.
-- **Input → output**: A change that is ready → updated specs and `openspec/changes/archive/<date>-<name>/`.
+- **Input → output**: A change that is ready → updated specs and `speclink/changes/archive/<date>-<name>/`.
 - **Skill**: `/speclink-archive <change-name>`. Before the archive, it uses `plan` to show the archive order. After the archive, it names the next change that is ready to start.
 - **CLI**: `speclink archive <name>`. You can give several names, or use `--all` to archive every change that is ready. Remote mode archives one change at a time.
 - **Done**: The command succeeds, shows the merge counts for the specs, and the change is in the archive. If the change came from a concluded discussion and it is the last open change of that discussion, the discussion goes into the archive too (not when the discussion has `hold`).
@@ -287,7 +287,7 @@ Compare the proposal, design, specs, and tasks, and find four types of problems:
 
 Check the code changes that are not committed yet, from a security view: dangerous defaults, type confusion, and silent failures.
 
-- **When to use**: The change touches authentication, permissions, settings, outside input, or public interfaces. When `openspec/config.yaml` has `audit: true`, `apply` also uses a short version of this check during the work. **Skip**: Changes to documents only.
+- **When to use**: The change touches authentication, permissions, settings, outside input, or public interfaces. When `speclink/config.yaml` has `audit: true`, `apply` also uses a short version of this check during the work. **Skip**: Changes to documents only.
 - **Input → output**: `git diff HEAD` (changes that are not committed yet) → a list of problems by severity. It does not change the state of a change, and a change does not have to go through it.
 - **Skill**: `/speclink-audit` (no change name)
 - **CLI**: No `speclink audit` command exists.
@@ -308,7 +308,7 @@ Commit only the files that belong to one change.
 
 ### <a id="config"></a>config: workflow settings
 
-Write the project context and rules from the code into `openspec/config.yaml`, so that the documents from the agent fit this repo.
+Write the project context and rules from the code into `speclink/config.yaml`, so that the documents from the agent fit this repo.
 
 - **When to use**: When you start with Speclink, or after the project conventions change. **Skip**: The defaults are sufficient.
 - **Input → output**: The code, package settings, README, and tests → a diff that you approve.
@@ -320,7 +320,7 @@ Write the project context and rules from the code into `openspec/config.yaml`, s
 
 ### <a id="manual"></a>manual: manual
 
-Generate a manual for people from the specs (`openspec/manual/`), or get a tour of the system in the conversation.
+Generate a manual for people from the specs (`speclink/manual/`), or get a tour of the system in the conversation.
 
 - **When to use**: You need a manual, or a tour for a new person. Or, after an archive, you want to know which manual pages can be stale. **Skip**: No specs describe user-facing behavior, or nobody reads the manual.
 - **Input → output**: Only the specs. It does not read the README, docs, or code → manual pages (with a home page and a source page). The tour mode writes no files.

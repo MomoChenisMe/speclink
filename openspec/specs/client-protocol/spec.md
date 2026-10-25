@@ -742,10 +742,11 @@ desktop 協定的已封存清單項 SHALL 增列五個選填數字欄位，由�
 
 #### Scenario: 沒有 metadata 與文件時欄位全部缺席
 
-- **WHEN** desktop 載入已封存清單，某項封存目錄沒有 `.openspec.yaml`，也沒有 proposal.md、design.md、tasks.md 與 delta spec
+- **WHEN** desktop 載入已封存清單，某項封存目錄沒有 `.meta.yaml`，也沒有 proposal.md、design.md、tasks.md 與 delta spec
 - **THEN** 該項沒有 `docLines`、`leadDays`、`leadHours`、`reviewRounds`、`verifyRounds` 任一鍵，清單照常回傳
 
+
 <!-- @trace
-source: process-cost-metrics
-updated: 2026-10-22T14:30:23+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

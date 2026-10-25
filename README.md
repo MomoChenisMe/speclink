@@ -192,7 +192,7 @@ Remote mode does not depend on this server. Two public contracts define remote m
 | --- | --- |
 | [Getting started](docs/getting-started.md) | From install to your first archive |
 | [SDD workflow](docs/workflow.md) | The purpose, skill, done criteria, and next step of each stage |
-| [Configuration](docs/configuration.md) | `.speclink.yaml`, `openspec/config.yaml`, and remote settings |
+| [Configuration](docs/configuration.md) | `.speclink.yaml`, `speclink/config.yaml`, and remote settings |
 
 **For a team that shares one set of specs**
 

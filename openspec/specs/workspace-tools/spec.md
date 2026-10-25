@@ -128,7 +128,7 @@ updated: 2026-10-08T11:52:22+08:00
 #### Scenario: Remote init 顯式選擇兩個工具
 
 - **WHEN** 在空目錄執行 Remote Store init 並顯式提供 `--tools claude,codex`、有效 project URL 與 repo
-- **THEN** exit code 為 0，`.speclink.yaml` 同時含兩個 built-in tools 與 remote section，生成兩組 Skills，且不存在 `openspec/` 與任何指令檔
+- **THEN** exit code 為 0，`.speclink.yaml` 同時含兩個 built-in tools 與 remote section，生成兩組 Skills，且不存在 `speclink/` 與任何指令檔
 
 #### Scenario: 互動終端選擇 Claude 與 Codex
 
@@ -138,7 +138,7 @@ updated: 2026-10-08T11:52:22+08:00
 #### Scenario: 互動終端不得提交空選集
 
 - **WHEN** 未提供 `--tools` 且 stdin 為互動終端，使用者對 Claude、Codex、Copilot 三題都回答 no
-- **THEN** CLI 不建立 `.speclink.yaml`、`openspec/`、`.gitignore` 或 Skills，於 stderr 印一行要求至少選取一個工具，並從 Claude 起再次詢問三題
+- **THEN** CLI 不建立 `.speclink.yaml`、`speclink/`、`.gitignore` 或 Skills，於 stderr 印一行要求至少選取一個工具，並從 Claude 起再次詢問三題
 
 #### Scenario: 非互動 init 缺少 tools 零寫入失敗
 
@@ -178,8 +178,8 @@ updated: 2026-10-08T11:52:22+08:00
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -309,13 +309,13 @@ updated: 2026-10-24T22:35:52+08:00
 
 #### Scenario: 工作區補齊不產生使用者設定檔
 
-- **WHEN** 對「已有 openspec/ 但無 .speclink.yaml」的目錄以 tools=[claude] 執行工作區補齊（adopt）
+- **WHEN** 對「已有 speclink/ 但無 .speclink.yaml」的目錄以 tools=[claude] 執行工作區補齊（adopt）
 - **THEN** 工作區檔照常補齊（.speclink.yaml、技能檔、.gitignore 條目），`.claude/settings.json` 不存在
 
 
 <!-- @trace
-source: remove-marker-injection
-updated: 2026-08-23
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -422,16 +422,16 @@ code:
 ---
 ### Requirement: worktree 技能的政策條件式生成
 
-技能足跡生成（speclink init 與 speclink update）SHALL 依 openspec/config.yaml 的 worktree 檔值過濾兩顆 worktree 技能（speclink-apply-with-worktree 與 speclink-worktree-merge）：值為 true 時生成，false 或未設時不生成，且既有生成物依既有清理生命週期移除（技能目錄移除，因而變空的目錄一併移除）。生成判定 SHALL NOT 納入 SPECLINK_WORKTREE 環境變數（環境層僅影響執行期政策，不影響足跡）。其餘技能的生成集合不受 worktree 政策影響。此過濾對 claude、codex、copilot 與自訂描述子工具一視同仁。
+技能足跡生成（speclink init 與 speclink update）SHALL 依 speclink/config.yaml 的 worktree 檔值過濾兩顆 worktree 技能（speclink-apply-with-worktree 與 speclink-worktree-merge）：值為 true 時生成，false 或未設時不生成，且既有生成物依既有清理生命週期移除（技能目錄移除，因而變空的目錄一併移除）。生成判定 SHALL NOT 納入 SPECLINK_WORKTREE 環境變數（環境層僅影響執行期政策，不影響足跡）。其餘技能的生成集合不受 worktree 政策影響。此過濾對 claude、codex、copilot 與自訂描述子工具一視同仁。
 
 #### Scenario: 政策關閉時生成集合不含 worktree 技能
 
-- **WHEN** openspec/config.yaml 無 worktree 鍵（或值為 false）的專案執行 speclink update
+- **WHEN** speclink/config.yaml 無 worktree 鍵（或值為 false）的專案執行 speclink update
 - **THEN** 各工具 skills 目錄不含 speclink-apply-with-worktree 與 speclink-worktree-merge 目錄，其餘技能照常生成
 
 #### Scenario: 政策開啟時注入兩顆技能
 
-- **WHEN** openspec/config.yaml 含 worktree: true 的專案執行 speclink update
+- **WHEN** speclink/config.yaml 含 worktree: true 的專案執行 speclink update
 - **THEN** 各工具 skills 目錄含兩顆 worktree 技能，內容與 golden 對照一致
 
 #### Scenario: 政策由開改關後再生即清理
@@ -441,7 +441,7 @@ code:
 
 #### Scenario: 環境變數不影響生成
 
-- **WHEN** openspec/config.yaml 無 worktree 鍵，但於 SPECLINK_WORKTREE=true 環境下執行 speclink update
+- **WHEN** speclink/config.yaml 無 worktree 鍵，但於 SPECLINK_WORKTREE=true 環境下執行 speclink update
 - **THEN** 兩顆 worktree 技能不生成——環境層僅於技能執行期由 P1 政策檢查讀取
 
 #### Scenario: 過期探測不把被政策排除的技能報成過期
@@ -451,8 +451,8 @@ code:
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -647,13 +647,13 @@ updated: 2026-10-08T11:52:22+08:00
 
 #### Scenario: 不帶 force 的 init 改寫殘留技能檔
 
-- **WHEN** 目錄無 `.speclink.yaml`、無 `openspec/`，但 `.claude/skills/speclink-apply/SKILL.md` 為舊版內容且 `.claude/skills/speclink-onboard/` 殘留，執行 `speclink init --tools claude`
+- **WHEN** 目錄無 `.speclink.yaml`、無規格資料夾，但 `.claude/skills/speclink-apply/SKILL.md` 為舊版內容且 `.claude/skills/speclink-onboard/` 殘留，執行 `speclink init --tools claude`
 - **THEN** exit code 為 0；speclink-apply 的 SKILL.md 為現版內容；speclink-onboard 目錄不存在；其餘生成集合補齊
 
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -676,7 +676,7 @@ updated: 2026-10-08T11:52:22+08:00
 
 #### Scenario: Copilot 與 Codex 生成集合相同
 
-- **WHEN** 在 openspec/config.yaml 無 worktree 鍵的專案以 tools 為 `[codex, copilot]` 執行 speclink update
+- **WHEN** 在 speclink/config.yaml 無 worktree 鍵的專案以 tools 為 `[codex, copilot]` 執行 speclink update
 - **THEN** `.github/skills/` 與 `.agents/skills/` 下的 `speclink-` 目錄名稱集合相同，兩者都不含 `speclink-analyze`、`speclink-apply-with-worktree`、`speclink-worktree-merge`
 
 #### Scenario: 選取 Copilot 不產生指令檔
@@ -689,7 +689,8 @@ updated: 2026-10-08T11:52:22+08:00
 - **WHEN** 專案含 `.claude/` 目錄與 `.github/workflows/ci.yml`、`.speclink.yaml` 不含 tools 清單，執行 speclink update
 - **THEN** 只生成 `.claude/skills/` 下的技能檔，`.github/skills/` 不被建立，`.github/workflows/ci.yml` 位元級不變
 
+
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

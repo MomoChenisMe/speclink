@@ -8,17 +8,17 @@
 
 ### Requirement: 討論記錄以 --slug 覆寫檔名
 
-speclink discuss new SHALL 接受選配旗標 --slug,用於覆寫討論記錄的檔名與 frontmatter slug 欄位;topic SHALL 維持使用者輸入原文不受影響。--slug 的值 SHALL 僅接受純 ASCII kebab-case:小寫英文字母與數字組成的段落以單一連字號串接(不得為空、不得含大寫、空白、底線或非 ASCII 字元、不得以連字號開頭或結尾、不得出現連續連字號)。非法值時指令 SHALL 以非零 exit code 結束、於 stderr 說明原因,且 SHALL NOT 建立任何檔案。合法時 SHALL 於 openspec/discussions/ 下以該值為檔名建立記錄,人眼輸出與 --json 的 slug 欄位 SHALL 反映覆寫值;--slug 與既有討論同名時 SHALL 沿用現行已存在錯誤行為。本旗標為 Speclink 自有延伸,未帶 --slug 的既有輸出 SHALL 逐位元不變,回歸對照不受影響。
+speclink discuss new SHALL 接受選配旗標 --slug,用於覆寫討論記錄的檔名與 frontmatter slug 欄位;topic SHALL 維持使用者輸入原文不受影響。--slug 的值 SHALL 僅接受純 ASCII kebab-case:小寫英文字母與數字組成的段落以單一連字號串接(不得為空、不得含大寫、空白、底線或非 ASCII 字元、不得以連字號開頭或結尾、不得出現連續連字號)。非法值時指令 SHALL 以非零 exit code 結束、於 stderr 說明原因,且 SHALL NOT 建立任何檔案。合法時 SHALL 於 speclink/discussions/ 下以該值為檔名建立記錄,人眼輸出與 --json 的 slug 欄位 SHALL 反映覆寫值;--slug 與既有討論同名時 SHALL 沿用現行已存在錯誤行為。本旗標為 Speclink 自有延伸,未帶 --slug 的既有輸出 SHALL 逐位元不變,回歸對照不受影響。
 
 #### Scenario: 帶合法 --slug 以中文主題建立討論
 
 - **WHEN** 執行 speclink discuss new 並給定中文主題「看板搜尋列」與 --slug board-search-bar
-- **THEN** 建立 openspec/discussions/board-search-bar.md,frontmatter 的 topic 為「看板搜尋列」、slug 為 board-search-bar;stdout 顯示建立訊息含 board-search-bar;帶 --json 時 payload 的 slug 欄位為 board-search-bar、topic 欄位為原文
+- **THEN** 建立 speclink/discussions/board-search-bar.md,frontmatter 的 topic 為「看板搜尋列」、slug 為 board-search-bar;stdout 顯示建立訊息含 board-search-bar;帶 --json 時 payload 的 slug 欄位為 board-search-bar、topic 欄位為原文
 
 #### Scenario: 非法 --slug 值被拒且不落檔
 
 - **WHEN** 執行 speclink discuss new 且 --slug 的值不符合純 ASCII kebab-case
-- **THEN** 指令以非零 exit code 結束,stderr 說明 slug 格式要求,openspec/discussions/ 下不新增任何檔案
+- **THEN** 指令以非零 exit code 結束,stderr 說明 slug 格式要求,speclink/discussions/ 下不新增任何檔案
 
 ##### Example: 非法值一覽
 
@@ -38,6 +38,12 @@ speclink discuss new SHALL 接受選配旗標 --slug,用於覆寫討論記錄的
 - **WHEN** 執行 speclink discuss new 且 --slug 的值等於一份既有討論的 slug
 - **THEN** 指令以非零 exit code 結束並回報該討論已存在,不覆寫既有檔案
 
+
+<!-- @trace
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
+-->
+
 ---
 ### Requirement: 未帶 --slug 時自主題衍生檔名
 
@@ -46,7 +52,7 @@ speclink discuss new SHALL 接受選配旗標 --slug,用於覆寫討論記錄的
 #### Scenario: 中英混合主題衍生 slug
 
 - **WHEN** 執行 speclink discuss new 並給定主題且未帶 --slug
-- **THEN** 以衍生規則產生 slug 並建立 openspec/discussions/ 下的對應檔案
+- **THEN** 以衍生規則產生 slug 並建立 speclink/discussions/ 下的對應檔案
 
 ##### Example: 衍生規則對照
 
@@ -56,6 +62,12 @@ speclink discuss new SHALL 接受選配旗標 --slug,用於覆寫討論記錄的
 | config context 與 rules GUI 編輯 | config-context-與-rules-gui-編輯 |
 | 看板 搜尋列 | 看板-搜尋列 |
 | !?! | (空,報錯) |
+
+
+<!-- @trace
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
+-->
 
 ---
 ### Requirement: 討論技能指示要求英文 slug
@@ -70,12 +82,12 @@ speclink 生成的 discuss 技能內容 SHALL 指示 agent 在建立討論記錄
 ---
 ### Requirement: 討論以 link 動詞併入既有變更
 
-speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變更名），鑄造變更側連結：變更 meta 檔（openspec/changes/<change>/.openspec.yaml）的 from_discussion 欄位 SHALL 為逗號分隔清單——尚無該欄位時增寫為單值；已指向其他討論時 SHALL 於既有值尾端以逗號累加本 slug、既有值保留不覆蓋；清單已含本 slug 時 SHALL 為冪等成功不改檔。討論記錄（openspec/discussions/<slug>.md）SHALL 逐位元不變——link SHALL NOT 標記 status: promoted、SHALL NOT 寫 promoted_to；「已轉出」的標記職責移交 speclink discuss seal。open 與 concluded 狀態的討論皆 SHALL 可併入；已封存討論 SHALL NOT 可併入。指令不吃 stdin，旗標僅 --json。成功時 exit code 0，stdout 輸出單行成功訊息（含討論 slug 與變更名；--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。守衛失敗（討論不存在、討論已封存、變更不存在）時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案 SHALL 逐位元不變。同一組合重跑 SHALL 為冪等成功：exit code 0 且兩側檔案內容不變。變更封存時，其 from_discussion 清單中的每份討論 SHALL 各自檢查三個條件皆成立才隨行封存：無其他在途變更的 from_discussion 清單引用該討論、該討論的 Conclusion 段已寫入內文（scaffold 佔位註解不算內文；判準 SHALL NOT 依 frontmatter status——promoted 討論寫入結論後 status 仍為 promoted）、且該討論的 frontmatter 不帶 `hold: true` 行；三條件皆成立時既有自動封存機制 SHALL 將該記錄移入 openspec/discussions/archive/。Conclusion 未寫入或帶 hold 的討論 SHALL 維持在途、SHALL NOT 隨行封存、SHALL NOT 出現於封存輸出的隨行封存清單，其後 discuss add-round、discuss conclude 與轉出動詞 SHALL 照常可用；討論記錄讀取失敗時 SHALL 視同未寫入結論（留在途，不吞進封存區）。「無其他在途變更引用」的判定 SHALL 對 meta 損壞的在途變更 fail-closed：任一在途變更的 .openspec.yaml 存在但解析失敗時，SHALL 視同該變更仍引用此討論（無論其 from_discussion 實際內容為何），該討論 SHALL 維持在途、SHALL NOT 隨行封存、SHALL NOT 出現於封存輸出的隨行封存清單；變更本身照常封存。此判定與 speclink discuss conclude 閉環步的「壞 meta 視為仍引用」為同一條規則。僅單一來源討論且該討論已有結論、無 hold 之變更，其封存的人眼輸出 SHALL 與變更前逐位元一致。本指令為 Speclink 自有延伸；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
+speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變更名），鑄造變更側連結：變更 meta 檔（speclink/changes/<change>/.meta.yaml）的 from_discussion 欄位 SHALL 為逗號分隔清單——尚無該欄位時增寫為單值；已指向其他討論時 SHALL 於既有值尾端以逗號累加本 slug、既有值保留不覆蓋；清單已含本 slug 時 SHALL 為冪等成功不改檔。討論記錄（speclink/discussions/<slug>.md）SHALL 逐位元不變——link SHALL NOT 標記 status: promoted、SHALL NOT 寫 promoted_to；「已轉出」的標記職責移交 speclink discuss seal。open 與 concluded 狀態的討論皆 SHALL 可併入；已封存討論 SHALL NOT 可併入。指令不吃 stdin，旗標僅 --json。成功時 exit code 0，stdout 輸出單行成功訊息（含討論 slug 與變更名；--no-color 下無 ANSI 色彩）；帶 --json 時輸出含 slug 與 change 欄位（camelCase）的 payload。守衛失敗（討論不存在、討論已封存、變更不存在）時 SHALL 以非零 exit code 結束、stderr 說明原因，且兩側檔案 SHALL 逐位元不變。同一組合重跑 SHALL 為冪等成功：exit code 0 且兩側檔案內容不變。變更封存時，其 from_discussion 清單中的每份討論 SHALL 各自檢查三個條件皆成立才隨行封存：無其他在途變更的 from_discussion 清單引用該討論、該討論的 Conclusion 段已寫入內文（scaffold 佔位註解不算內文；判準 SHALL NOT 依 frontmatter status——promoted 討論寫入結論後 status 仍為 promoted）、且該討論的 frontmatter 不帶 `hold: true` 行；三條件皆成立時既有自動封存機制 SHALL 將該記錄移入 speclink/discussions/archive/。Conclusion 未寫入或帶 hold 的討論 SHALL 維持在途、SHALL NOT 隨行封存、SHALL NOT 出現於封存輸出的隨行封存清單，其後 discuss add-round、discuss conclude 與轉出動詞 SHALL 照常可用；討論記錄讀取失敗時 SHALL 視同未寫入結論（留在途，不吞進封存區）。「無其他在途變更引用」的判定 SHALL 對 meta 損壞的在途變更 fail-closed：任一在途變更的 .meta.yaml 存在但解析失敗時，SHALL 視同該變更仍引用此討論（無論其 from_discussion 實際內容為何），該討論 SHALL 維持在途、SHALL NOT 隨行封存、SHALL NOT 出現於封存輸出的隨行封存清單；變更本身照常封存。此判定與 speclink discuss conclude 閉環步的「壞 meta 視為仍引用」為同一條規則。僅單一來源討論且該討論已有結論、無 hold 之變更，其封存的人眼輸出 SHALL 與變更前逐位元一致。本指令為 Speclink 自有延伸；既有指令的人眼與 --json 輸出 SHALL 逐位元不變。
 
 #### Scenario: 成功併入既有變更
 
 - **WHEN** 執行 speclink discuss link 並給定一份未封存討論的 slug 與一個尚無 from_discussion 的既有變更名
-- **THEN** exit code 0；stdout 單行成功訊息含該 slug 與變更名；openspec/changes/<change>/.openspec.yaml 增寫 from_discussion: <slug>；討論記錄逐位元不變（status 與 promoted_to 皆不變）；帶 --json 時 payload 的 slug 與 change 欄位分別為兩參數值
+- **THEN** exit code 0；stdout 單行成功訊息含該 slug 與變更名；speclink/changes/<change>/.meta.yaml 增寫 from_discussion: <slug>；討論記錄逐位元不變（status 與 promoted_to 皆不變）；帶 --json 時 payload 的 slug 與 change 欄位分別為兩參數值
 
 #### Scenario: link 不改討論記錄
 
@@ -101,43 +113,43 @@ speclink discuss link SHALL 接受兩個位置參數（討論 slug 與既有變�
 #### Scenario: 守衛拒絕且不落檔
 
 - **WHEN** 執行 speclink discuss link 且命中任一守衛：討論不存在、討論已封存、變更不存在
-- **THEN** 指令以非零 exit code 結束，stderr 說明原因，openspec/changes/ 與 openspec/discussions/ 下任何檔案逐位元不變
+- **THEN** 指令以非零 exit code 結束，stderr 說明原因，speclink/changes/ 與 speclink/discussions/ 下任何檔案逐位元不變
 
 #### Scenario: 併入後隨變更自動封存
 
 - **WHEN** 已 link 且 Conclusion 段已寫入內文、無 hold 行的討論，其變更執行封存，且無其他在途變更引用同一討論
-- **THEN** 討論記錄自動移入 openspec/discussions/archive/，與 promote 型討論的既有封存行為一致
+- **THEN** 討論記錄自動移入 speclink/discussions/archive/，與 promote 型討論的既有封存行為一致
 
 #### Scenario: 未有結論的討論不隨變更封存
 
 - **WHEN** 討論中途轉出（或併入）的變更執行封存，該討論的 Conclusion 段仍為 scaffold 佔位註解、無其他在途變更引用它
-- **THEN** 變更照常封存（exit code 0），該討論維持於 openspec/discussions/、SHALL NOT 移入 openspec/discussions/archive/，封存輸出的隨行封存清單不含該討論；其後對該討論執行 discuss add-round 與 discuss conclude 皆照常成功
+- **THEN** 變更照常封存（exit code 0），該討論維持於 speclink/discussions/、SHALL NOT 移入 speclink/discussions/archive/，封存輸出的隨行封存清單不含該討論；其後對該討論執行 discuss add-round 與 discuss conclude 皆照常成功
 
 #### Scenario: 帶 hold 的討論不隨變更封存
 
 - **WHEN** 討論轉出的唯一變更執行封存，該討論 Conclusion 已寫入、frontmatter 帶 `hold: true`、無其他在途變更引用它
-- **THEN** 變更照常封存（exit code 0），該討論維持於 openspec/discussions/、SHALL NOT 移入 openspec/discussions/archive/，封存輸出的隨行封存清單不含該討論；其後對該討論執行 speclink discuss promote 照常成功
+- **THEN** 變更照常封存（exit code 0），該討論維持於 speclink/discussions/、SHALL NOT 移入 speclink/discussions/archive/，封存輸出的隨行封存清單不含該討論；其後對該討論執行 speclink discuss promote 照常成功
 
 #### Scenario: 多來源討論的變更封存逐一共行
 
 - **WHEN** 封存 from_discussion 清單含兩份討論的變更
-- **THEN** 清單中每份討論各自檢查存活引用、結論與 hold：無其他在途變更引用、已有結論且無 hold 者移入 openspec/discussions/archive/、人眼輸出逐討論各一行共行訊息；仍被引用、未有結論或帶 hold 者維持在途不動
+- **THEN** 清單中每份討論各自檢查存活引用、結論與 hold：無其他在途變更引用、已有結論且無 hold 者移入 speclink/discussions/archive/、人眼輸出逐討論各一行共行訊息；仍被引用、未有結論或帶 hold 者維持在途不動
 
 #### Scenario: 在途變更 meta 損壞時討論不隨變更封存
 
-- **WHEN** 封存一個 from_discussion 指向某討論的變更，該討論 Conclusion 已寫入、無 hold 行，且另有一個在途變更的 openspec/changes/<other>/.openspec.yaml 存在但 YAML 解析失敗（其 from_discussion 內容不論）
-- **THEN** 本變更照常封存（exit code 0）；該討論維持於 openspec/discussions/、SHALL NOT 移入 openspec/discussions/archive/，封存輸出的隨行封存清單不含該討論；人眼輸出與 --json payload 的其餘部分與變更前逐位元一致；修復該 meta 後再封存任一引用此討論的變更，三條件成立時討論照常隨行封存
+- **WHEN** 封存一個 from_discussion 指向某討論的變更，該討論 Conclusion 已寫入、無 hold 行，且另有一個在途變更的 speclink/changes/<other>/.meta.yaml 存在但 YAML 解析失敗（其 from_discussion 內容不論）
+- **THEN** 本變更照常封存（exit code 0）；該討論維持於 speclink/discussions/、SHALL NOT 移入 speclink/discussions/archive/，封存輸出的隨行封存清單不含該討論；人眼輸出與 --json payload 的其餘部分與變更前逐位元一致；修復該 meta 後再封存任一引用此討論的變更，三條件成立時討論照常隨行封存
 
 ##### Example: 壞 meta 的在途變更擋住隨行封存
 
-- **GIVEN** 討論 d1 已有結論、無 hold；變更 cut 的 meta 含 from_discussion: d1，tasks 全數完成；另一在途變更 broken 的 .openspec.yaml 內容為 `schema: [unclosed`（解析失敗）
+- **GIVEN** 討論 d1 已有結論、無 hold；變更 cut 的 meta 含 from_discussion: d1，tasks 全數完成；另一在途變更 broken 的 .meta.yaml 內容為 `schema: [unclosed`（解析失敗）
 - **WHEN** 執行 speclink archive cut
-- **THEN** exit code 0，cut 移入 openspec/changes/archive/；d1 仍在 openspec/discussions/d1.md；封存輸出不含 d1 的隨行封存行
+- **THEN** exit code 0，cut 移入 speclink/changes/archive/；d1 仍在 speclink/discussions/d1.md；封存輸出不含 d1 的隨行封存行
 
 
 <!-- @trace
-source: lifecycle-discussion-head
-updated: 2026-09-09T22:31:02+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -344,7 +356,7 @@ code:
 ---
 ### Requirement: 討論重新結論標記已反映變更待重新反映
 
-speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter 的 promoted_to：非空時 SHALL 對其中每個變更名判存活——僅 openspec/changes/<name>/ 存在（active）者納入蓋章，僅存在於 openspec/changes/archive/ 者 SHALL 跳過。對每個納入的 active 變更，其 meta 檔（openspec/changes/<name>/.openspec.yaml）的 restale_from 欄位 SHALL 以逗號累加本討論 slug——尚無該欄位時增寫為單值、已有其他值時於尾端累加、已含本 slug 時 SHALL 冪等不改該檔；既有 meta 欄位 SHALL 逐字保留。判存活的鍵 SHALL 為 promoted_to 非空（曾被反映），SHALL NOT 綁 status 欄位值。promoted_to 為空、或其項全為已歸檔變更時，SHALL NOT 寫入任何變更 meta。討論記錄的 Context、Rounds 區 SHALL 逐位元不變（僅 Conclusion 區依既有 conclude 行為改寫）。成功時 stdout SHALL 於既有結論訊息後，另報告被標記待重新反映的 active 變更清單（無則不報告）；帶 --json 時 payload SHALL 含被標記變更名的陣列。本行為為 Speclink 自有延伸；未觸發蓋章時（promoted_to 空）既有 conclude 的人眼與 --json 輸出 SHALL 逐位元不變。
+speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter 的 promoted_to：非空時 SHALL 對其中每個變更名判存活——僅 speclink/changes/<name>/ 存在（active）者納入蓋章，僅存在於 speclink/changes/archive/ 者 SHALL 跳過。對每個納入的 active 變更，其 meta 檔（speclink/changes/<name>/.meta.yaml）的 restale_from 欄位 SHALL 以逗號累加本討論 slug——尚無該欄位時增寫為單值、已有其他值時於尾端累加、已含本 slug 時 SHALL 冪等不改該檔；既有 meta 欄位 SHALL 逐字保留。判存活的鍵 SHALL 為 promoted_to 非空（曾被反映），SHALL NOT 綁 status 欄位值。promoted_to 為空、或其項全為已歸檔變更時，SHALL NOT 寫入任何變更 meta。討論記錄的 Context、Rounds 區 SHALL 逐位元不變（僅 Conclusion 區依既有 conclude 行為改寫）。成功時 stdout SHALL 於既有結論訊息後，另報告被標記待重新反映的 active 變更清單（無則不報告）；帶 --json 時 payload SHALL 含被標記變更名的陣列。本行為為 Speclink 自有延伸；未觸發蓋章時（promoted_to 空）既有 conclude 的人眼與 --json 輸出 SHALL 逐位元不變。
 
 #### Scenario: 重新結論已反映討論蓋章其 active 變更
 
@@ -374,53 +386,8 @@ speclink discuss conclude 寫入結論後 SHALL 檢查討論記錄 frontmatter �
 
 
 <!-- @trace
-source: spectra-legacy-cleanup
-updated: 2026-07-27
-code:
-  - README.en.md
-  - README.md
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/components/ProjectTabs.tsx
-  - apps/desktop/src/index.css
-  - crates/speclink-cli/src/color.rs
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/tests/discuss_promote_snapshot.rs
-  - crates/speclink-cli/tests/task_done_stamps.rs
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/src/analyzer.rs
-  - crates/speclink-core/src/archive.rs
-  - crates/speclink-core/src/command/mod.rs
-  - crates/speclink-core/src/config.rs
-  - crates/speclink-core/src/demo.rs
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/drift.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-core/src/model.rs
-  - crates/speclink-core/src/newcmd.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/schema.rs
-  - crates/speclink-core/src/skills.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/validate.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-host/src/context.rs
-  - docs/platform-architecture.zh-TW.md
-  - packages/ui/src/__tests__/delta.test.ts
-  - packages/ui/src/__tests__/taskList.test.tsx
-  - packages/ui/src/components/ChangeList.tsx
-  - packages/ui/src/components/DeltaBadges.tsx
-  - packages/ui/src/components/RichDetailDrawer.tsx
-  - packages/ui/src/delta.ts
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -555,17 +522,23 @@ code:
 ---
 ### Requirement: 討論鏈結動詞對壞 change metadata 拒絕
 
-speclink discuss link 與 speclink discuss seal 在對象 change 的 `.openspec.yaml` 存在但 YAML 解析失敗時 SHALL 以帶檔案位置與解析原因的錯誤拒絕：SHALL NOT 寫入該 change 的 metadata，也 SHALL NOT 改動討論記錄。壞 metadata SHALL NOT 被解讀為「無 from_discussion 鏈」或「無 restale 旗標」——拒絕原因 SHALL 是 metadata 損壞，而非既有守衛的「鏈不存在」誤導訊息。
+speclink discuss link 與 speclink discuss seal 在對象 change 的 `.meta.yaml` 存在但 YAML 解析失敗時 SHALL 以帶檔案位置與解析原因的錯誤拒絕：SHALL NOT 寫入該 change 的 metadata，也 SHALL NOT 改動討論記錄。壞 metadata SHALL NOT 被解讀為「無 from_discussion 鏈」或「無 restale 旗標」——拒絕原因 SHALL 是 metadata 損壞，而非既有守衛的「鏈不存在」誤導訊息。
 
 #### Scenario: link 對壞 metadata 拒絕且兩側皆不寫
 
-- **WHEN** 執行 speclink discuss link 給定一份未封存討論的 slug 與一個 `.openspec.yaml` 為壞 YAML 的既有變更名
-- **THEN** 以非零 exit code 結束；該 `.openspec.yaml` 與 discussions/ 下該討論記錄皆逐位元不變
+- **WHEN** 執行 speclink discuss link 給定一份未封存討論的 slug 與一個 `.meta.yaml` 為壞 YAML 的既有變更名
+- **THEN** 以非零 exit code 結束；該 `.meta.yaml` 與 discussions/ 下該討論記錄皆逐位元不變
 
 #### Scenario: seal 對壞 metadata 拒絕且不誤報鏈缺失
 
 - **WHEN** 對壞 metadata 的變更執行 speclink discuss seal（兩個位置參數：討論 slug 與該變更名）
 - **THEN** 以非零 exit code 結束；stderr 指出 metadata 檔損壞（而非 from_discussion 不含該 slug）；兩側檔案逐位元不變
+
+
+<!-- @trace
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
+-->
 
 ---
 ### Requirement: 討論動詞於 remote 模式與本機同語意
@@ -637,7 +610,7 @@ speclink discuss new SHALL 接受選配旗標 --kind,白名單僅接受 improve�
 #### Scenario: 非法 kind 值被拒且不落檔
 
 - **WHEN** 執行 speclink discuss new 且 --kind 的值不是 improve
-- **THEN** 指令以非零 exit code 結束,stderr 說明僅接受 improve,openspec/discussions/ 下不新增任何檔案
+- **THEN** 指令以非零 exit code 結束,stderr 說明僅接受 improve,speclink/discussions/ 下不新增任何檔案
 
 #### Scenario: 未帶 --kind 輸出不變
 
@@ -649,9 +622,10 @@ speclink discuss new SHALL 接受選配旗標 --kind,白名單僅接受 improve�
 - **WHEN** 對含 kind: improve 的記錄執行 speclink discuss list --json 與 speclink discuss show --json
 - **THEN** 兩者 payload 均含 kind 欄位且值為 improve;對無 kind 的記錄則 payload 不含該鍵
 
+
 <!-- @trace
-source: add-improve-flow
-updated: 2026-08-07
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -693,22 +667,22 @@ updated: 2026-08-27
 ---
 ### Requirement: conclude 於全數轉出變更已封存時順手封存討論
 
-speclink discuss conclude 寫入結論後 SHALL 檢查閉環條件：討論 frontmatter 的 promoted_to 清單非空、無任何在途變更的 from_discussion 清單引用本討論，且本次寫入後記錄不帶 `hold: true` 行。三條件皆成立時 SHALL 於結論寫入後將討論記錄移入 openspec/discussions/archive/（沿用既有討論封存的檔名與同日撞名解法），stdout 於既有輸出之後 SHALL 多一行告知已順手封存（--no-color 下無 ANSI 色彩），帶 --json 時 payload SHALL 增 autoArchived 欄位（camelCase 布林）且僅於觸發時出現。任一條件不成立時 SHALL NOT 封存，不帶 --hold 時人眼與 --json 輸出 SHALL 與變更前逐位元一致（不出現 autoArchived 鍵）。寫入順序為兩步：先寫結論（含 hold 行的寫入或移除）、再嘗試封存；封存步失敗時結論寫入 SHALL NOT 回滾——可觀察狀態為「已結論、記錄仍在 openspec/discussions/」，指令以非零 exit code 結束、stderr 說明封存步失敗原因，其後執行 speclink discuss archive SHALL 可收尾。此閉環與連帶封存守門互補：conclude 時仍有轉出變更在途則交由最後一個變更封存時隨行封存；帶 hold 的記錄則等待帶 --last 的轉出清掉旗標後，由最後一個轉出變更封存時隨行封存，或由使用者以 speclink discuss archive 收尾。
+speclink discuss conclude 寫入結論後 SHALL 檢查閉環條件：討論 frontmatter 的 promoted_to 清單非空、無任何在途變更的 from_discussion 清單引用本討論，且本次寫入後記錄不帶 `hold: true` 行。三條件皆成立時 SHALL 於結論寫入後將討論記錄移入 speclink/discussions/archive/（沿用既有討論封存的檔名與同日撞名解法），stdout 於既有輸出之後 SHALL 多一行告知已順手封存（--no-color 下無 ANSI 色彩），帶 --json 時 payload SHALL 增 autoArchived 欄位（camelCase 布林）且僅於觸發時出現。任一條件不成立時 SHALL NOT 封存，不帶 --hold 時人眼與 --json 輸出 SHALL 與變更前逐位元一致（不出現 autoArchived 鍵）。寫入順序為兩步：先寫結論（含 hold 行的寫入或移除）、再嘗試封存；封存步失敗時結論寫入 SHALL NOT 回滾——可觀察狀態為「已結論、記錄仍在 speclink/discussions/」，指令以非零 exit code 結束、stderr 說明封存步失敗原因，其後執行 speclink discuss archive SHALL 可收尾。此閉環與連帶封存守門互補：conclude 時仍有轉出變更在途則交由最後一個變更封存時隨行封存；帶 hold 的記錄則等待帶 --last 的轉出清掉旗標後，由最後一個轉出變更封存時隨行封存，或由使用者以 speclink discuss archive 收尾。
 
 #### Scenario: 全數轉出變更已封存時 conclude 順手封存
 
 - **WHEN** 對 promoted_to 含一個變更名、該變更已封存、無在途變更引用的討論執行不帶 --hold 的 speclink discuss conclude 寫入結論
-- **THEN** exit code 0；結論寫入記錄且 status 保持 promoted；記錄移入 openspec/discussions/archive/；stdout 多一行告知順手封存；帶 --json 時 payload 含 autoArchived: true
+- **THEN** exit code 0；結論寫入記錄且 status 保持 promoted；記錄移入 speclink/discussions/archive/；stdout 多一行告知順手封存；帶 --json 時 payload 含 autoArchived: true
 
 #### Scenario: 仍有轉出變更在途時 conclude 不封存
 
 - **WHEN** 對 promoted_to 非空、但仍有一個在途變更的 from_discussion 引用本討論的討論執行 speclink discuss conclude
-- **THEN** exit code 0；結論寫入，記錄維持於 openspec/discussions/；人眼與 --json 輸出與本變更前的 conclude 行為逐位元一致，無 autoArchived 鍵
+- **THEN** exit code 0；結論寫入，記錄維持於 speclink/discussions/；人眼與 --json 輸出與本變更前的 conclude 行為逐位元一致，無 autoArchived 鍵
 
 #### Scenario: 帶 --hold 時 conclude 不封存
 
 - **WHEN** 對 promoted_to 含一個已封存變更名、無在途變更引用的討論執行 speclink discuss conclude --hold
-- **THEN** exit code 0；結論寫入、frontmatter 含 `hold: true`；記錄維持於 openspec/discussions/；stdout 無順手封存行、有保留在途行；帶 --json 時 payload 含 held: true 且無 autoArchived 鍵
+- **THEN** exit code 0；結論寫入、frontmatter 含 `hold: true`；記錄維持於 speclink/discussions/；stdout 無順手封存行、有保留在途行；帶 --json 時 payload 含 held: true 且無 autoArchived 鍵
 
 #### Scenario: 未曾轉出的討論 conclude 行為不變
 
@@ -718,18 +692,18 @@ speclink discuss conclude 寫入結論後 SHALL 檢查閉環條件：討論 fron
 #### Scenario: 閉環封存步失敗保留結論
 
 - **WHEN** conclude 的閉環條件成立、結論寫入成功、但封存步因儲存層錯誤失敗
-- **THEN** 指令以非零 exit code 結束，stderr 說明封存步失敗原因；結論已寫入且不回滾，記錄仍於 openspec/discussions/；其後執行 speclink discuss archive 該 slug 成功收尾
+- **THEN** 指令以非零 exit code 結束，stderr 說明封存步失敗原因；結論已寫入且不回滾，記錄仍於 speclink/discussions/；其後執行 speclink discuss archive 該 slug 成功收尾
 
 
 <!-- @trace
-source: discussion-last-cut-release
-updated: 2026-09-12T22:38:53+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: 討論定案以 search 動詞可查
 
-speclink discuss search SHALL 接受一個以上的位置參數作為關鍵字，旗標僅 --json 與 --no-color，不吃 stdin。比對 SHALL 為不分大小寫的子字串比對，多個關鍵字任一命中即算命中。比對範圍 SHALL 限於記錄的 topic、slug 與四種決定行：各輪內以 `**Ruled out**:` 起頭的行，以及 Conclusion 區內以 `**Decision**:`、`**Rejected alternatives**:`、`**Deferred**:` 起頭的行；每個決定行 SHALL 連同其後緊接的條列行（以 `- `、`* `、`+ ` 或 `N. ` 起頭、直到第一個非條列行為止）一併參與比對，每個命中的條列行各為一筆 match，kind 與 where 同其標記行。其他行（Focus、Position、Open、Evidence 與散文）SHALL NOT 參與比對。搜尋範圍 SHALL 預設同時涵蓋在途（openspec/discussions/）與封存（openspec/discussions/archive/）記錄，無旗標可縮減。每筆命中 SHALL 帶該記錄的既有列表欄位（slug、topic、status、rounds、created、createdBy 有才出、kind 有才出、path、archived）與 matches 陣列；每個 match SHALL 帶 kind（topic、slug、ruled-out、decision、rejected、deferred 之一）、where（frontmatter、round-N 或 conclusion）與 text（該行原文去前後空白）。排序 SHALL 為 topic 或 slug 命中者排前、其餘其後；兩群內各依 created 由新到舊、同日依 slug 字典序；同一記錄的 matches 依文件順序。人眼輸出：零命中 SHALL 於 stdout 印 `No discussions match "<關鍵字以空白接起>".`；有命中 SHALL 以標題行 `Discussions matching "<關鍵字>":` 起頭，每筆一行 `  • <slug> [<status>, archived|live] (<created>) — <topic>`，其下每個 match 各一行縮排的 `<where> <kind>: <text>`；--no-color 下 SHALL 無 ANSI 色彩。--json SHALL 輸出 `{ "hits": [...] }`（欄位 camelCase），零命中為空陣列。成功（含零命中）exit code SHALL 為 0；未帶任何關鍵字 SHALL 以非零 exit code 結束、stderr 說明用法、stdout 無輸出。記錄缺輪標題或 Conclusion 區時 SHALL 仍以 topic 與 slug 參與比對，缺的區段視為無決定行，SHALL NOT 使整個查詢失敗。本動詞 SHALL NOT 寫入任何檔案。既有 discuss list 與 discuss show 的人眼與 --json 輸出 SHALL 逐位元不變。remote 模式下本動詞 SHALL 可用且人眼與 --json 輸出與本機同形（path 缺席與 promotedTo、concluded 增欄沿用 discuss list 的既定分歧）；離線、認證失效與 revision 衝突的可觀察行為 SHALL 沿既有 remote 讀取動詞的錯誤分類與訊息，不另立訊息。人眼輸出為英文，與既有 discuss 動詞一致，不隨 locale 設定變動。本動詞為 Speclink 自有延伸。
+speclink discuss search SHALL 接受一個以上的位置參數作為關鍵字，旗標僅 --json 與 --no-color，不吃 stdin。比對 SHALL 為不分大小寫的子字串比對，多個關鍵字任一命中即算命中。比對範圍 SHALL 限於記錄的 topic、slug 與四種決定行：各輪內以 `**Ruled out**:` 起頭的行，以及 Conclusion 區內以 `**Decision**:`、`**Rejected alternatives**:`、`**Deferred**:` 起頭的行；每個決定行 SHALL 連同其後緊接的條列行（以 `- `、`* `、`+ ` 或 `N. ` 起頭、直到第一個非條列行為止）一併參與比對，每個命中的條列行各為一筆 match，kind 與 where 同其標記行。其他行（Focus、Position、Open、Evidence 與散文）SHALL NOT 參與比對。搜尋範圍 SHALL 預設同時涵蓋在途（speclink/discussions/）與封存（speclink/discussions/archive/）記錄，無旗標可縮減。每筆命中 SHALL 帶該記錄的既有列表欄位（slug、topic、status、rounds、created、createdBy 有才出、kind 有才出、path、archived）與 matches 陣列；每個 match SHALL 帶 kind（topic、slug、ruled-out、decision、rejected、deferred 之一）、where（frontmatter、round-N 或 conclusion）與 text（該行原文去前後空白）。排序 SHALL 為 topic 或 slug 命中者排前、其餘其後；兩群內各依 created 由新到舊、同日依 slug 字典序；同一記錄的 matches 依文件順序。人眼輸出：零命中 SHALL 於 stdout 印 `No discussions match "<關鍵字以空白接起>".`；有命中 SHALL 以標題行 `Discussions matching "<關鍵字>":` 起頭，每筆一行 `  • <slug> [<status>, archived|live] (<created>) — <topic>`，其下每個 match 各一行縮排的 `<where> <kind>: <text>`；--no-color 下 SHALL 無 ANSI 色彩。--json SHALL 輸出 `{ "hits": [...] }`（欄位 camelCase），零命中為空陣列。成功（含零命中）exit code SHALL 為 0；未帶任何關鍵字 SHALL 以非零 exit code 結束、stderr 說明用法、stdout 無輸出。記錄缺輪標題或 Conclusion 區時 SHALL 仍以 topic 與 slug 參與比對，缺的區段視為無決定行，SHALL NOT 使整個查詢失敗。本動詞 SHALL NOT 寫入任何檔案。既有 discuss list 與 discuss show 的人眼與 --json 輸出 SHALL 逐位元不變。remote 模式下本動詞 SHALL 可用且人眼與 --json 輸出與本機同形（path 缺席與 promotedTo、concluded 增欄沿用 discuss list 的既定分歧）；離線、認證失效與 revision 衝突的可觀察行為 SHALL 沿既有 remote 讀取動詞的錯誤分類與訊息，不另立訊息。人眼輸出為英文，與既有 discuss 動詞一致，不隨 locale 設定變動。本動詞為 Speclink 自有延伸。
 
 #### Scenario: 決定行命中回傳輪號與原文
 
@@ -785,20 +759,21 @@ speclink discuss search SHALL 接受一個以上的位置參數作為關鍵字�
 - **WHEN** 於本變更前後對同一 workspace 執行 speclink discuss list、speclink discuss list --archived 與 speclink discuss show 某 slug（人眼與 --json）
 - **THEN** stdout、stderr 與 exit code 逐位元一致
 
+
 <!-- @trace
-source: discuss-search-recall
-updated: 2026-09-05
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: conclude 以 --hold 保留討論在途
 
-speclink discuss conclude SHALL 接受布林旗標 --hold，表示「本討論還欠至少一個尚未建立的變更」。帶 --hold 時 SHALL 於同一次寫入將結論內文與 frontmatter 的 `hold: true` 行一併落盤（hold 行為 frontmatter 的獨立一行；記錄已有該行時 SHALL NOT 重複），status 的轉換規則（open 轉 concluded、promoted 保持）與待重新反映蓋章 SHALL 與不帶旗標時相同。不帶 --hold 的 conclude SHALL 移除記錄既有的任何 `hold:` 行（含手改的 `hold: false` 等變體）；帶 --hold 而記錄已有 `hold:` 行時 SHALL 原位改寫為 `hold: true`、不留重複鍵。記錄無 frontmatter 而帶 --hold 時 SHALL 以非零 exit code 拒絕、stderr 說明原因、記錄逐位元不變（不帶 --hold 時沿既有路徑照常結論）。帶 --hold 的 conclude SHALL NOT 觸發閉環封存。人眼輸出 SHALL 於既有各行之後多一行告知記錄保留在途（--no-color 下無 ANSI 色彩）；帶 --json 時 payload SHALL 增 held 欄位（camelCase 布林），且僅於本次寫入後記錄帶 hold 時出現；不帶 --hold 且記錄無 hold 行時，人眼與 --json 輸出 SHALL 與本變更前逐位元一致。轉出動詞（speclink discuss promote、speclink new change --from-discussion、speclink discuss seal）SHALL 各接受布林旗標 --last，表示「本次轉出的是結論規劃的最後一刀」；new change 的 --last SHALL 與 --from-discussion 綁定，缺 --from-discussion 時 SHALL 以 exit code 2 拒絕、stderr 說明相依、不建立任何檔案。不帶 --last 的轉出累加 promoted_to 時 SHALL NOT 改動 `hold:` 行——旗標逐字保留，不論累加的是新變更名或已在清單的名字。帶 --last 的轉出 SHALL 於累加 promoted_to 的同一次寫入移除記錄的 `hold:` 行；名字已在清單（重複轉出、re-ingest 的 seal）時 SHALL 同樣移除；記錄無 hold 行時 SHALL 為無害的無操作、記錄逐位元不變。hold SHALL 只由不帶 --hold 的 conclude、speclink discuss archive，或帶 --last 的轉出解除。轉出動詞帶或不帶 --last 的人眼與 --json 輸出 SHALL 與本變更前逐位元一致（轉出不報告 hold）。speclink discuss link SHALL 維持討論記錄逐位元不變、SHALL NOT 接受 --last 以外的旗標變動。speclink discuss archive SHALL 無視 hold 照常封存。帶 hold 而未以 --last 轉出的討論在其所有轉出變更封存後 SHALL 維持在途（隨行封存三條件之「無 hold」不成立），封存輸出的隨行封存清單 SHALL NOT 列它；以 --last 轉出過的討論 SHALL 在其最後一個轉出變更封存時（不論封存順序）由既有隨行封存機制移入 openspec/discussions/archive/，封存輸出列它。remote 模式下 --hold、--last 與轉出保留或解除旗標的可觀察行為 SHALL 與本機一致。
+speclink discuss conclude SHALL 接受布林旗標 --hold，表示「本討論還欠至少一個尚未建立的變更」。帶 --hold 時 SHALL 於同一次寫入將結論內文與 frontmatter 的 `hold: true` 行一併落盤（hold 行為 frontmatter 的獨立一行；記錄已有該行時 SHALL NOT 重複），status 的轉換規則（open 轉 concluded、promoted 保持）與待重新反映蓋章 SHALL 與不帶旗標時相同。不帶 --hold 的 conclude SHALL 移除記錄既有的任何 `hold:` 行（含手改的 `hold: false` 等變體）；帶 --hold 而記錄已有 `hold:` 行時 SHALL 原位改寫為 `hold: true`、不留重複鍵。記錄無 frontmatter 而帶 --hold 時 SHALL 以非零 exit code 拒絕、stderr 說明原因、記錄逐位元不變（不帶 --hold 時沿既有路徑照常結論）。帶 --hold 的 conclude SHALL NOT 觸發閉環封存。人眼輸出 SHALL 於既有各行之後多一行告知記錄保留在途（--no-color 下無 ANSI 色彩）；帶 --json 時 payload SHALL 增 held 欄位（camelCase 布林），且僅於本次寫入後記錄帶 hold 時出現；不帶 --hold 且記錄無 hold 行時，人眼與 --json 輸出 SHALL 與本變更前逐位元一致。轉出動詞（speclink discuss promote、speclink new change --from-discussion、speclink discuss seal）SHALL 各接受布林旗標 --last，表示「本次轉出的是結論規劃的最後一刀」；new change 的 --last SHALL 與 --from-discussion 綁定，缺 --from-discussion 時 SHALL 以 exit code 2 拒絕、stderr 說明相依、不建立任何檔案。不帶 --last 的轉出累加 promoted_to 時 SHALL NOT 改動 `hold:` 行——旗標逐字保留，不論累加的是新變更名或已在清單的名字。帶 --last 的轉出 SHALL 於累加 promoted_to 的同一次寫入移除記錄的 `hold:` 行；名字已在清單（重複轉出、re-ingest 的 seal）時 SHALL 同樣移除；記錄無 hold 行時 SHALL 為無害的無操作、記錄逐位元不變。hold SHALL 只由不帶 --hold 的 conclude、speclink discuss archive，或帶 --last 的轉出解除。轉出動詞帶或不帶 --last 的人眼與 --json 輸出 SHALL 與本變更前逐位元一致（轉出不報告 hold）。speclink discuss link SHALL 維持討論記錄逐位元不變、SHALL NOT 接受 --last 以外的旗標變動。speclink discuss archive SHALL 無視 hold 照常封存。帶 hold 而未以 --last 轉出的討論在其所有轉出變更封存後 SHALL 維持在途（隨行封存三條件之「無 hold」不成立），封存輸出的隨行封存清單 SHALL NOT 列它；以 --last 轉出過的討論 SHALL 在其最後一個轉出變更封存時（不論封存順序）由既有隨行封存機制移入 speclink/discussions/archive/，封存輸出列它。remote 模式下 --hold、--last 與轉出保留或解除旗標的可觀察行為 SHALL 與本機一致。
 
 #### Scenario: 帶 --hold 的 conclude 寫入旗標且不閉環
 
 - **WHEN** 對 promoted_to 含一個已封存變更名、無在途變更引用的討論執行 speclink discuss conclude --hold 並自 stdin 給定結論
-- **THEN** exit code 0；結論寫入且 frontmatter 含 `hold: true` 行、status 保持 promoted；記錄維持於 openspec/discussions/；stdout 於既有各行後多一行告知保留在途；帶 --json 時 payload 含 held: true 且無 autoArchived 鍵
+- **THEN** exit code 0；結論寫入且 frontmatter 含 `hold: true` 行、status 保持 promoted；記錄維持於 speclink/discussions/；stdout 於既有各行後多一行告知保留在途；帶 --json 時 payload 含 held: true 且無 autoArchived 鍵
 
 #### Scenario: 不帶 --hold 的 conclude 輸出不變並清除旗標
 
@@ -819,7 +794,7 @@ speclink discuss conclude SHALL 接受布林旗標 --hold，表示「本討論�
 
 - **GIVEN** 討論 alpha 尚未轉出任何變更，結論以 --hold 寫入
 - **WHEN** 對 alpha 執行 speclink discuss promote --name cut-a；封存 cut-a；再 promote --name cut-b；封存 cut-b；再 promote --name cut-c --last；封存 cut-c
-- **THEN** 三次 promote 後 alpha 的 promoted_to 依序累加 cut-a、cut-b、cut-c；前兩次 promote 後 `hold: true` 行保留，第三次後消失；封存 cut-a 與 cut-b 後 alpha 皆留在 openspec/discussions/ 且封存輸出不列它；封存 cut-c 後 alpha 移入 openspec/discussions/archive/ 且封存輸出列它；全程未執行 speclink discuss archive
+- **THEN** 三次 promote 後 alpha 的 promoted_to 依序累加 cut-a、cut-b、cut-c；前兩次 promote 後 `hold: true` 行保留，第三次後消失；封存 cut-a 與 cut-b 後 alpha 皆留在 speclink/discussions/ 且封存輸出不列它；封存 cut-c 後 alpha 移入 speclink/discussions/archive/ 且封存輸出列它；全程未執行 speclink discuss archive
 
 #### Scenario: 已在清單的名字帶 --last 仍解除旗標
 
@@ -829,7 +804,7 @@ speclink discuss conclude SHALL 接受布林旗標 --hold，表示「本討論�
 #### Scenario: new change 的 --last 缺 --from-discussion 被拒
 
 - **WHEN** 執行 speclink new change beta --last 而不帶 --from-discussion
-- **THEN** exit code 2；stderr 說明 --last 需要 --from-discussion；openspec/changes/beta 不存在、任何討論記錄逐位元不變
+- **THEN** exit code 2；stderr 說明 --last 需要 --from-discussion；speclink/changes/beta 不存在、任何討論記錄逐位元不變
 
 #### Scenario: 無 frontmatter 的記錄拒絕 --hold
 
@@ -839,10 +814,10 @@ speclink discuss conclude SHALL 接受布林旗標 --hold，表示「本討論�
 #### Scenario: 手動封存無視旗標
 
 - **WHEN** 對 frontmatter 帶 `hold: true` 的討論執行 speclink discuss archive
-- **THEN** exit code 0；記錄移入 openspec/discussions/archive/，人眼與 --json 輸出與既有 archive 動詞相同
+- **THEN** exit code 0；記錄移入 speclink/discussions/archive/，人眼與 --json 輸出與既有 archive 動詞相同
 
 
 <!-- @trace
-source: discussion-last-cut-release
-updated: 2026-09-12T22:38:53+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

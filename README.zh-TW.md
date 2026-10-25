@@ -192,7 +192,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | --- | --- |
 | [Local Repo 入門](docs/getting-started.zh-TW.md) | 從安裝到第一次封存 |
 | [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、技能、完成判準與下一站 |
-| [設定說明](docs/configuration.zh-TW.md) | `.speclink.yaml`、`openspec/config.yaml` 與遠端設定 |
+| [設定說明](docs/configuration.zh-TW.md) | `.speclink.yaml`、`speclink/config.yaml` 與遠端設定 |
 
 **團隊共用一份正式規格**
 

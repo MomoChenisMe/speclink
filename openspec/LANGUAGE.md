@@ -34,7 +34,7 @@
 
 ### 封存
 
-- **definition**: 把完成的變更或收尾的討論移入 archive（`openspec/changes/archive/`、`openspec/discussions/archive/`），於「已封存」頁唯讀檢視。對應引擎動詞 `archive`。
+- **definition**: 把完成的變更或收尾的討論移入 archive（`speclink/changes/archive/`、`speclink/discussions/archive/`），於「已封存」頁唯讀檢視。對應引擎動詞 `archive`。
 - **avoid**: 歸檔
 - **why**: 「封存」是 change 側與已封存頁的既定詞；同概念兩詞（歸檔/封存）曾在討論卡按鈕上並存。
 
@@ -64,26 +64,26 @@
 
 ### 專案說明
 
-- **definition**: `openspec/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（專案設定的分類名）。
+- **definition**: `speclink/config.yaml` 的 `context` 欄位——注入 AI 指令的專案自由文字說明（專案設定的分類名）。
 - **avoid**: context（使用者可見文案中）、背景（此概念上）
 - **why**: 「背景」已被討論記錄的 Context 區段佔用，同詞兩義會混淆；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
 ### 產出規則
 
-- **definition**: `openspec/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（專案設定的分類名）。
+- **definition**: `speclink/config.yaml` 的 `rules` 欄位——依 artifact 注入產出指令的規則清單（專案設定的分類名）。
 - **avoid**: rules（使用者可見文案中）、規則（單獨使用時）
 - **why**: 「產出」點明規則作用於 artifacts 的產出過程；對齊 Spectra 用詞。2026-07-07 討論「config-context-與-rules-gui-編輯」定案。
 
 ### 產出流程
 
-- **definition**: `openspec/config.yaml` 的 `schema` 鍵概念——一個變更會產出哪些文件、什麼順序的定義（設定頁的檢視／切換／複製為專案版區段名）。
+- **definition**: `speclink/config.yaml` 的 `schema` 鍵概念——一個變更會產出哪些文件、什麼順序的定義（設定頁的檢視／切換／複製為專案版區段名）。
 - **avoid**: schema（使用者可見文案中）
 - **why**: 與「產出規則」「產出政策」同族，字面可推出「這個變更會產出哪些文件、什麼順序」；schema 僅留於技術 token（鍵名、CLI 指令、識別符如 spec-driven）。經使用者裁定用譯詞（desktop-schema-panel，2026-08-20）。
 - **明文例外（已退場）**：設定頁產出流程頁籤直出「Schema」的例外（desktop-schema-panel，2026-08-22）已隨設定分類欄取代頁籤而退場（desktop-settings-mode，2026-10-10）；分類名與頁標題皆為「產出流程」，不再有例外。
 
 ### 審查規則
 
-- **definition**: `openspec/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定的分類名）。
+- **definition**: `speclink/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定的分類名）。
 - **avoid**: review rules（中文散文中）、自訂規則（指此概念時）
 - **why**: 與「產出規則」同族，字面即可推出用途——一個管產出、一個管審查。2026-10-14 討論「custom-review-rules」定案。
 
@@ -214,7 +214,7 @@
 
 ### 手冊
 
-- **definition**: 由正式規格生成、給人閱讀的 wiki 式操作文件，存於 openspec/manual/。生成與導覽對應 skill `/speclink-manual`；頁格式契約為 capability `manual-pages`。
+- **definition**: 由正式規格生成、給人閱讀的 wiki 式操作文件，存於 speclink/manual/。生成與導覽對應 skill `/speclink-manual`；頁格式契約為 capability `manual-pages`。
 - **avoid**: 說明書、指南、使用文件
 - **why**: 一個概念一個詞，與技能名 manual 與 desktop 頁名對齊；「說明書／指南／使用文件」三詞在專案內同時指向手寫的 docs 與規格衍生的手冊，讀者分不出來源。2026-09-02 變更「manual-skill」定案。
 
@@ -250,7 +250,7 @@
 
 ### 正式規格
 
-- **definition**: `openspec/specs/<capability>/spec.md`——封存後的現況唯一真相，對照 OpenSpec 的 specs。與變更裡的「delta 規格」（`openspec/changes/<name>/specs/`，封存時合併進正式規格）成對；英文維持 specs／canonical specs。
+- **definition**: `speclink/specs/<capability>/spec.md`——封存後的現況唯一真相，對照 OpenSpec 的 specs。與變更裡的「delta 規格」（`speclink/changes/<name>/specs/`，封存時合併進正式規格）成對；英文維持 specs／canonical specs。
 - **avoid**: 正典規格、正典 spec、正典 specs、規格正典、正典（指這個規格集合時）
 - **why**: 「正典」讀不出「合併後的定案」，與 delta 對著看才分得清哪個是草稿、哪個是定案。「正典」在專案內另有正典詞彙、正典值、正典化、正典 YAML 等別義，那些不改。2026-09-12 討論「canonical-spec-zh-wording」定案。
 

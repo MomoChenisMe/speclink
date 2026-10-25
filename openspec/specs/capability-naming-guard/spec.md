@@ -18,7 +18,7 @@ capability 命名守門機制：在 delta spec 建立點以確定性規則拒絕
 #### Scenario: 未收錄名稱未帶 --new 遭拒且不落盤
 
 - **WHEN** 正式規格有 `auth` 而無 `authentication`，執行 `speclink new artifact spec authentication --change some-change` 並經 stdin 提供 delta 內容
-- **THEN** 指令以非零 exit code 結束，stderr 含近似建議與兩條指引，且 `openspec/changes/some-change/specs/authentication/` SHALL NOT 存在
+- **THEN** 指令以非零 exit code 結束，stderr 含近似建議與兩條指引，且 `speclink/changes/some-change/specs/authentication/` SHALL NOT 存在
 
 #### Scenario: 命中正式規格名稱照常放行
 
@@ -32,8 +32,8 @@ capability 命名守門機制：在 delta spec 建立點以確定性規則拒絕
 
 
 <!-- @trace
-source: capability-naming-guard
-updated: 2026-08-21
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

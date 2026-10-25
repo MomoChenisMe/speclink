@@ -71,7 +71,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 從現有的程式碼與測試，為系統現在的行為建立正式規格。舊稱 onboard。
 
 - **什麼時候用**：既有專案剛導入 Speclink、還沒有規格，或只想補上沒涵蓋的能力。**跳過**：已經有足夠的規格，或你要寫的是新需求。
-- **輸入 → 產物**：README、程式入口、原始碼、測試、`openspec/config.yaml` 的專案說明與產出規則，以及你確認過的 capability 清單 → 直接寫進 `openspec/specs/<capability>/spec.md`，不建立變更。
+- **輸入 → 產物**：README、程式入口、原始碼、測試、`speclink/config.yaml` 的專案說明與產出規則，以及你確認過的 capability 清單 → 直接寫進 `speclink/specs/<capability>/spec.md`，不建立變更。
 - **技能**：`/speclink-baseline [範圍]`
 - **底層 CLI**：沒有 `speclink baseline` 指令。Agent 寫完規格後，用 `speclink validate --specs --all --strict` 檢查。
 - **完成**：你確認了能力的邊界，每份規格都有程式碼證據，strict 檢查通過。
@@ -83,7 +83,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 把需要取捨的問題一輪一輪談清楚，留下有來源的結論。
 
 - **什麼時候用**：需求模糊、有好幾個合理做法、需要做決定。**跳過**：只是想了解某件事；或需求已經清楚，直接 `propose`。
-- **輸入 → 產物**：一個主題，或一份文件的路徑（自己寫的計畫、plan mode 的產出）→ `openspec/discussions/<slug>.md`，含背景、每一輪與結論。
+- **輸入 → 產物**：一個主題，或一份文件的路徑（自己寫的計畫、plan mode 的產出）→ `speclink/discussions/<slug>.md`，含背景、每一輪與結論。
 - **技能**：`/speclink-discuss <主題或文件路徑>`。開場會先搜尋舊討論，不重提已否決的方向。
 - **底層 CLI**：`speclink discuss new`、`context`、`add-round`、`conclude`、`search`。
 - **完成**：結論寫明決定、理由、否決的方案、暫緩的事與下一步。
@@ -124,7 +124,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 照任務清單實作，每完成一項就勾掉。
 
 - **什麼時候用**：開工需要的文件都齊了。**跳過**：文件還沒齊、需求正在變，或變更停了一陣子還沒跑 `drift`。
-- **輸入 → 產物**：提案、規格、設計（如果有）與任務 → 程式碼與測試的修改、勾好的任務，以及每項任務動到哪些檔案的證據。證據寫在 `openspec/changes/<名稱>/.evidence.json`，跟著變更一起提交。
+- **輸入 → 產物**：提案、規格、設計（如果有）與任務 → 程式碼與測試的修改、勾好的任務，以及每項任務動到哪些檔案的證據。證據寫在 `speclink/changes/<名稱>/.evidence.json`，跟著變更一起提交。
 - **技能**：`/speclink-apply <變更名稱>`
 - **底層 CLI**：開工前先跑 `speclink plan`，被其他變更擋住就停下來。接著 `speclink review prepare`（記下品質關卡要用的起點）與 `speclink in-progress add`。實作時用 `speclink instructions apply --change <名稱> --json` 取得背景，每完成一項跑 `speclink task done --change <名稱> <編號>`。
 - **完成**：每項任務的行為與該過的測試都通過，`instructions apply` 回報 `state: all_done`。標著 `[M]` 的手動任務由你確認，Agent 不會代勾。
@@ -245,7 +245,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 把 delta 規格合併進正式規格，並把完成的變更移進封存區。
 
 - **什麼時候用**：任務全部完成（含 `[M]` 手動任務）、文件檢查通過、假設沒有過期，而且選擇要跑的品質關卡都結束了。**跳過**：還有任務沒做完、`validate` 沒過，或需求還在變。
-- **輸入 → 產物**：可以封存的變更 → 更新後的正式規格，以及 `openspec/changes/archive/<日期>-<名稱>/`。
+- **輸入 → 產物**：可以封存的變更 → 更新後的正式規格，以及 `speclink/changes/archive/<日期>-<名稱>/`。
 - **技能**：`/speclink-archive <變更名稱>`。封存前會依 `plan` 提醒封存順序，封存後點名下一個可以開工的變更。
 - **底層 CLI**：`speclink archive <名稱>`。可以一次列多個名稱，或用 `--all` 封存所有可以封存的變更。遠端一次只能封存一個。
 - **完成**：指令成功，印出合併進正式規格的統計，變更已移進封存區。如果變更來自一份已寫結論的討論，而且它是那份討論最後一個還沒封存的變更，討論也會一起封存（討論標了 `hold` 的除外）。
@@ -287,7 +287,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 從安全的角度檢查還沒提交的程式修改：危險的預設值、型別混淆、靜默失敗。
 
-- **什麼時候用**：碰到認證、權限、設定、外部輸入或對外介面時。`openspec/config.yaml` 設了 `audit: true` 時，`apply` 實作時也會套用精簡版的檢查。**跳過**：只改文件。
+- **什麼時候用**：碰到認證、權限、設定、外部輸入或對外介面時。`speclink/config.yaml` 設了 `audit: true` 時，`apply` 實作時也會套用精簡版的檢查。**跳過**：只改文件。
 - **輸入 → 產物**：`git diff HEAD`（目前還沒提交的修改）→ 依嚴重度排序的問題清單。它不改變變更的狀態，也不是每個變更都要跑。
 - **技能**：`/speclink-audit`（不帶變更名稱）
 - **CLI**：沒有 `speclink audit` 指令。
@@ -308,7 +308,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### <a id="config"></a>config：工作流設定
 
-從程式碼整理出專案說明與產出規則，寫進 `openspec/config.yaml`，讓 Agent 寫出的文件貼合這個 repo。
+從程式碼整理出專案說明與產出規則，寫進 `speclink/config.yaml`，讓 Agent 寫出的文件貼合這個 repo。
 
 - **什麼時候用**：剛導入時，或專案慣例改變後。**跳過**：預設已經夠用。
 - **輸入 → 產物**：程式碼、套件設定、README 與測試 → 經你核可的 diff。
@@ -320,7 +320,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 ### <a id="manual"></a>manual：手冊
 
-從正式規格產生給人讀的操作手冊（`openspec/manual/`），或在對話中帶你導覽系統。
+從正式規格產生給人讀的操作手冊（`speclink/manual/`），或在對話中帶你導覽系統。
 
 - **什麼時候用**：需要一份手冊、要帶新人認識系統，或封存後想知道哪些手冊頁可能過期。**跳過**：沒有使用者面的規格，或沒人要讀手冊。
 - **輸入 → 產物**：只讀正式規格，不讀 README、docs 或程式碼 → 手冊頁（含首頁與來源頁）。導覽模式不寫檔。

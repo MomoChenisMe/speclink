@@ -8,7 +8,7 @@
 
 這份文件回答三件事：
 
-- CLI 的每個動詞在本機模式與遠端模式能不能用、輸出哪裡不同。本機模式指文件存在 repo 裡的 `openspec/`；遠端模式指 `.speclink.yaml` 有 `remote:` 區段、文件存在 server 上。
+- CLI 的每個動詞在本機模式與遠端模式能不能用、輸出哪裡不同。本機模式指文件存在 repo 裡的 `speclink/`（或舊版建立的 `openspec/`）；遠端模式指 `.speclink.yaml` 有 `remote:` 區段、文件存在 server 上。
 - 遠端 HTTP API 的共同規則、錯誤碼與全部端點。
 - 需要送 body 的端點，請求與回應長什麼樣子。
 
@@ -32,8 +32,8 @@
 
 為什麼只限本機：
 
-- `demo` 把示範變更寫進本機的 `openspec/`。
-- `trace` 從本機 `openspec/` 的封存變更與討論檔組出溯源鏈。
+- `demo` 把示範變更寫進本機的 `speclink/`。
+- `trace` 從本機 `speclink/` 的封存變更與討論檔組出溯源鏈。
 - `change rank` 寫本機卡片的排序；遠端的看板順序存在 `/board-order`。
 - `plan --strict-overlap` 依目錄判斷重疊；server 只依 requirement 判斷。
 

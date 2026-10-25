@@ -1,0 +1,111 @@
+## MODIFIED Requirements
+
+### Requirement: 技能檔的渲染
+
+<!-- BEFORE: 以 openspec/ 與 .openspec.yaml 描述規格資料夾與變更資料檔 -->
+
+內嵌 speclink-manual 技能（事實來源 crates/engine/speclink-core/assets/skills/manual.md）SHALL 經 init 與 update 渲染至 claude（`.claude/skills/speclink-manual/SKILL.md`）、codex 與 neutral 三種目標。其 description SHALL 以觸發情境句開場（需要一份人類操作手冊、或想被導覽如何操作系統時），再以一句說明產出。渲染產物由 speclink-core 的 render_golden 測試保護，golden 快照更新屬刻意變更。
+
+#### Scenario: 三目標皆渲染
+
+- **WHEN** 於 tools 含 claude 與 codex 的工作區執行 speclink update
+- **THEN** 兩種工具的技能目錄各出現 speclink-manual 技能檔，內容與 golden 快照一致
+
+#### Scenario: description 以觸發情境開場
+
+- **WHEN** 檢視渲染產出的 speclink-manual 技能檔 frontmatter 的 description
+- **THEN** 句子先陳述觸發情境（需要人類操作手冊、或想被導覽），再說明產出（生成 speclink/manual/ 的 Markdown 手冊，或對話內導覽）
+
+### Requirement: 生成模式的讀取策略
+
+<!-- BEFORE: 以 openspec/ 與 .openspec.yaml 描述規格資料夾與變更資料檔 -->
+
+生成模式 SHALL 只以正式規格為內容來源：先以 speclink list --specs --json 取得全部 capability，再以 speclink show 讀各 capability 的 Purpose，將其分流為使用者面向與引擎內部；Purpose 為空或為 TBD 佔位時 SHALL 改以該 capability 的 Requirement 標題判斷。旅程骨幹 SHALL 依序優先取自劇本型規格（驗收劇本）、路由交棒型規格（技能交棒表）、使用者文件型規格；三者皆無時 SHALL 按功能域從使用者面向的能力規格重建旅程，並在 about 頁載明屬重建。技能 SHALL NOT 以 README、docs 目錄或程式碼作為手冊內容來源。已有手冊時，每個 capability 的 Purpose 與其全部 @trace updated 時戳仍 SHALL 讀取（分流與過期判定所需；時戳得為 RFC 3339 或純日期，依 manual-pages 契約「過期判定基準」分段比較），Requirement 內文 SHALL 只讀過期頁與未入冊能力所涉的規格。
+
+#### Scenario: 有劇本型規格的專案
+
+- **WHEN** 規格中存在驗收劇本與交棒表型的 capability
+- **THEN** 手冊的旅程章節順序與站別取自該等規格，about 頁載明旅程「轉寫自」哪些規格
+
+#### Scenario: 無劇本型規格且 Purpose 為 TBD 的專案
+
+- **WHEN** 規格皆無劇本型內容且多數 Purpose 為 TBD 佔位
+- **THEN** 技能以 Requirement 標題分流、按功能域重建旅程，about 頁載明屬重建並列出規格內部的新舊矛盾
+
+#### Scenario: 不讀規格以外的來源
+
+- **WHEN** 工作區同時存在 README 與 docs 目錄
+- **THEN** 生成的任何頁的內容與出處只引用 speclink/specs/ 的 capability，不引用 README 或 docs
+
+#### Scenario: 同日先封存後生成的頁不列為過期
+
+- **WHEN** 手冊已存在，一頁 generated 為 2026-09-05T23:31:00+08:00，其 sources 規格最新 @trace updated 為 2026-09-05T23:17:28+08:00
+- **THEN** 技能的過期報告不列該頁，也不重讀該規格的 Requirement 內文
+
+### Requirement: 生成模式的輸出與報告
+
+<!-- BEFORE: 以 openspec/ 與 .openspec.yaml 描述規格資料夾與變更資料檔 -->
+
+生成模式 SHALL 依 manual-pages 契約寫頁，每頁 frontmatter 的 generated SHALL 為生成當下帶時區偏移量的 RFC 3339 時戳（秒級，例 2026-09-05T23:31:00+08:00），技能檔 SHALL 給 agent 一條取得該時戳的建議指令；已有手冊時預設 SHALL 只重生過期頁並為未入冊能力新增頁，使用者明示要求時方全部重新產生。過期判定 SHALL 與 manual-pages 契約「過期判定基準」同基準，含 sources 項的 Requirement 錨定：帶錨定的項只看該 Requirement 段落的 @trace updated，錨定找不到即過期。新頁與整頁重寫的頁，其 sources 每項 SHALL 依取材範圍寫出：該頁只取材該 capability 的部分 Requirement 時，每條寫一項帶錨定的 `capability#Requirement 名`（以雙引號包住）；取材該 capability 全部 Requirement 時寫不帶錨定的名稱。被判過期的頁重生後（含重新推導的 sources）除 generated 行外與磁碟內容逐位元相同時，SHALL 只把 generated 換成本次時戳、其餘位元不動，並在摘要的「只換時戳」列計入該頁；內文或 sources 不同時整頁重寫並計入「重生」——錨定找不到而過期的頁 SHALL NOT 走只換時戳。index.md 與 about.md SHALL 在任一頁新增、重生或只換時戳時隨之重生。技能檔 SHALL 把 sources 錨定的語意集中寫成一段，其他提及 sources 的規則引用該段。結束時 SHALL 於對話輸出摘要：新增、重生、只換時戳、未動的頁數；可能過期的頁清單；未入冊能力清單；about 頁記錄的矛盾數。無過期頁且無未入冊能力時 SHALL 零檔案寫入並如實回報。摘要末尾 SHALL 建議以一般提交收尾手冊異動——僅建議、SHALL NOT 代跑。
+
+#### Scenario: 首次生成完整手冊
+
+- **WHEN** 工作區無 speclink/manual/ 而執行生成模式
+- **THEN** 產出含 index.md 與 about.md 的完整手冊，每頁 generated 為 RFC 3339 時戳，只取材部分 Requirement 的頁其 sources 帶錨定，摘要列出新增頁數且重生、只換時戳與未動為零
+
+#### Scenario: 二次只重生過期頁
+
+- **WHEN** 手冊已存在且兩頁過期、一個能力未入冊
+- **THEN** 僅該兩頁被重寫（generated 換成本次時戳）、新增一頁，其餘頁逐位元不變，摘要列出可能過期的頁與新入冊能力
+
+#### Scenario: 過期但內文不變只換時戳
+
+- **WHEN** 手冊已存在，一頁 sources 為 `[desktop-app]`、generated 為 2026-09-05，規格 desktop-app 有 2026-09-10T17:15:24+08:00 的 @trace updated，但該頁重生後內文與磁碟相同
+- **THEN** 該頁只有 generated 行改為本次時戳，sources 仍為 `[desktop-app]`，摘要「只換時戳：1 頁」列出該頁，「重生」不計入；index.md 與 about.md 隨之重生
+
+#### Scenario: 錨定失效的頁不走只換時戳
+
+- **WHEN** 手冊已存在，一頁 sources 為 `["desktop-app#舊段名"]` 而正式規格已把該 Requirement 改名
+- **THEN** 該頁整頁重寫、sources 改為現行標題並計入「重生」，不計入「只換時戳」
+
+#### Scenario: 錨定頁不受他段封存影響
+
+- **WHEN** 手冊已存在，一頁 sources 為 `["desktop-app#桌面上的品質關卡"]`、generated 為 2026-09-05，規格 desktop-app 只有「看板與任務」段帶 2026-09-10T17:15:24+08:00 的 @trace updated
+- **THEN** 技能的過期報告不列該頁，也不重讀該規格的 Requirement 內文
+
+#### Scenario: 無異動時零寫入
+
+- **WHEN** 手冊已存在且無任何過期頁或未入冊能力
+- **THEN** 無檔案被寫入，摘要明示手冊已是最新
+
+### Requirement: 導覽模式的行為
+
+<!-- BEFORE: 以 openspec/ 與 .openspec.yaml 描述規格資料夾與變更資料檔 -->
+
+導覽模式 SHALL NOT 寫入任何檔案。有手冊時 SHALL 讀取各頁 frontmatter 為索引，先以一個問題確認使用者角色，再依 section 與 order 帶領旅程，每個回答 SHALL 附出處（capability 名或手冊頁名）。無手冊時 SHALL 明示「尚無手冊，改以規格直接導覽」並以 speclink list --specs 與 speclink show 讀規格作答。導覽結束時的後續建議（例如跑生成模式產出手冊）SHALL 明文為僅建議、SHALL NOT 自動呼叫其他技能。
+
+#### Scenario: 有手冊的導覽
+
+- **WHEN** speclink/manual/ 存在且使用者呼叫導覽模式
+- **THEN** 技能先問角色一題，依手冊順序導覽，回答附出處，過程中零檔案寫入
+
+#### Scenario: 無手冊的導覽
+
+- **WHEN** speclink/manual/ 不存在且使用者呼叫導覽模式
+- **THEN** 技能明示尚無手冊並改以規格直接導覽，過程中零檔案寫入
+
+### Requirement: remote 模式的限制敘述
+
+<!-- BEFORE: 以 openspec/ 與 .openspec.yaml 描述規格資料夾與變更資料檔 -->
+
+技能 SHALL 於生成模式開始前判斷專案是否綁定 remote store（.speclink.yaml 含 remote 區段）：綁定時 SHALL 明示 remote 模式尚不支援手冊生成並停止，零檔案寫入；導覽模式不受此限。技能檔 SHALL 敘明此限制。
+
+#### Scenario: remote 綁定專案的生成被擋
+
+- **WHEN** 於 remote 綁定的專案呼叫生成模式
+- **THEN** 技能輸出不支援的說明並停止，speclink/manual/ 未被建立或改動
+
+#### Scenario: remote 綁定專案的導覽照常
+
+- **WHEN** 於 remote 綁定的專案呼叫導覽模式
+- **THEN** 導覽照常進行（以規格或既有手冊為索引），零檔案寫入

@@ -2,39 +2,39 @@
 
 ## Purpose
 
-手冊頁的格式與落點契約：`openspec/manual/` 下由技能生成、給人閱讀的 Markdown 頁——檔名、frontmatter 六欄（即索引與過期比對的唯一依據）、內文慣例、必產的首頁與來源頁、過期判定基準，以及重生時保留既有順序的規則。本 capability 是生成端（manual 技能）與所有讀取端（desktop 手冊頁、SSG、其他工具）共用的契約；不涵蓋任何讀取端的呈現行為。
+手冊頁的格式與落點契約：`speclink/manual/` 下由技能生成、給人閱讀的 Markdown 頁——檔名、frontmatter 六欄（即索引與過期比對的唯一依據）、內文慣例、必產的首頁與來源頁、過期判定基準，以及重生時保留既有順序的規則。本 capability 是生成端（manual 技能）與所有讀取端（desktop 手冊頁、SSG、其他工具）共用的契約；不涵蓋任何讀取端的呈現行為。
 
 ## Requirements
 
 ### Requirement: 手冊頁的落點與檔名
 
-手冊頁 SHALL 位於工作區的 `openspec/manual/` 目錄，每頁一個檔案，檔名 SHALL 為 kebab-case 的 ASCII 英文並以 `.md` 結尾（例：`first-login.md`）。生成端 SHALL 只寫入此目錄，目錄不存在時 SHALL 建立；SHALL NOT 在其他路徑放置手冊頁或索引檔。
+手冊頁 SHALL 位於工作區的 `speclink/manual/` 目錄，每頁一個檔案，檔名 SHALL 為 kebab-case 的 ASCII 英文並以 `.md` 結尾（例：`first-login.md`）。生成端 SHALL 只寫入此目錄，目錄不存在時 SHALL 建立；SHALL NOT 在其他路徑放置手冊頁或索引檔。
 
 #### Scenario: 首次生成建立目錄與頁
 
-- **WHEN** 工作區尚無 `openspec/manual/` 而生成端寫出手冊
-- **THEN** `openspec/manual/` 被建立，其下每個檔案皆為 kebab-case ASCII 檔名的 `.md`，工作區其他路徑無新增檔案
+- **WHEN** 工作區尚無 `speclink/manual/` 而生成端寫出手冊
+- **THEN** `speclink/manual/` 被建立，其下每個檔案皆為 kebab-case ASCII 檔名的 `.md`，工作區其他路徑無新增檔案
 
 #### Scenario: 檔名不合規即違反契約
 
-- **WHEN** 檢視 `openspec/manual/` 下任一頁的檔名
+- **WHEN** 檢視 `speclink/manual/` 下任一頁的檔名
 - **THEN** 不含空白、大寫字母、非 ASCII 字元或 `.md` 以外的副檔名
 
 
 <!-- @trace
-source: manual-skill
-updated: 2026-09-02
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
 ### Requirement: frontmatter 六欄
 
-每頁 SHALL 以 YAML frontmatter 開頭並含下列欄位：`title`（字串，必填，頁的人類標題）、`section`（字串，必填，側欄分區名）、`order`（整數，必填，全手冊唯一的全域序號，慣例以 10 為間隔）、`keywords`（字串陣列，選填，供搜尋）、`sources`（字串陣列，必填，本頁取材的正式規格；首頁與來源頁得為空陣列）、`generated`（必填，本頁最近一次生成的時戳，格式為帶時區偏移量的 RFC 3339，秒級，例 `2026-09-05T23:31:00+08:00`）。`sources` 的每一項 SHALL 為 `<capability>` 或 `<capability>#<Requirement 名>` 兩種形式之一：井號前為 `openspec/specs/` 下既有的 capability 目錄名，井號後為該正式規格中某條 `### Requirement:` 標題的原文（去頭尾空白）；一項至多一個井號錨定，同一 capability 的多條 Requirement SHALL 寫成多項。生成端寫出帶錨定的項時 SHALL 以雙引號包住。除過期判定外，其他以 `sources` 為依據的規則（未入冊、出處行、來源消失）SHALL 只看井號前的 capability 名。讀取端 SHALL 同時接受純日期 `YYYY-MM-DD` 的 `generated`（本契約放寬前生成的頁），既有頁 SHALL NOT 因此需要回改；不帶錨定的既有 `sources` 項 SHALL 維持整份規格的語意，既有頁 SHALL NOT 因此需要回改。frontmatter SHALL NOT 含其他欄位。頁的排序 SHALL 僅由 `order` 決定；分區順序 SHALL 由分區內最小 `order` 決定。
+每頁 SHALL 以 YAML frontmatter 開頭並含下列欄位：`title`（字串，必填，頁的人類標題）、`section`（字串，必填，側欄分區名）、`order`（整數，必填，全手冊唯一的全域序號，慣例以 10 為間隔）、`keywords`（字串陣列，選填，供搜尋）、`sources`（字串陣列，必填，本頁取材的正式規格；首頁與來源頁得為空陣列）、`generated`（必填，本頁最近一次生成的時戳，格式為帶時區偏移量的 RFC 3339，秒級，例 `2026-09-05T23:31:00+08:00`）。`sources` 的每一項 SHALL 為 `<capability>` 或 `<capability>#<Requirement 名>` 兩種形式之一：井號前為 `speclink/specs/` 下既有的 capability 目錄名，井號後為該正式規格中某條 `### Requirement:` 標題的原文（去頭尾空白）；一項至多一個井號錨定，同一 capability 的多條 Requirement SHALL 寫成多項。生成端寫出帶錨定的項時 SHALL 以雙引號包住。除過期判定外，其他以 `sources` 為依據的規則（未入冊、出處行、來源消失）SHALL 只看井號前的 capability 名。讀取端 SHALL 同時接受純日期 `YYYY-MM-DD` 的 `generated`（本契約放寬前生成的頁），既有頁 SHALL NOT 因此需要回改；不帶錨定的既有 `sources` 項 SHALL 維持整份規格的語意，既有頁 SHALL NOT 因此需要回改。frontmatter SHALL NOT 含其他欄位。頁的排序 SHALL 僅由 `order` 決定；分區順序 SHALL 由分區內最小 `order` 決定。
 
 #### Scenario: 合規的 frontmatter
 
 - **WHEN** 檢視一頁的 frontmatter
-- **THEN** 六欄齊備（`keywords` 得缺席），`order` 為整數且與其他頁不重複，`generated` 為合法的 RFC 3339 時戳或純日期，`sources` 每項井號前的名稱對應 `openspec/specs/` 下既有的 capability 目錄名
+- **THEN** 六欄齊備（`keywords` 得缺席），`order` 為整數且與其他頁不重複，`generated` 為合法的 RFC 3339 時戳或純日期，`sources` 每項井號前的名稱對應 `speclink/specs/` 下既有的 capability 目錄名
 
 ##### Example: 一頁的 frontmatter
 
@@ -59,8 +59,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -87,12 +87,12 @@ updated: 2026-09-02
 ---
 ### Requirement: 必產的首頁與來源頁
 
-每份手冊 SHALL 含 `index.md`（`title` 為手冊名、`section` 為第一個分區、`order` 為全手冊最小值；內容為系統一句話定位、三個以內的核心概念、依角色分流的入口連結）與 `about.md`（`title`「本手冊的來源」、`order` 為全手冊最大值；內容 SHALL 載明取材範圍為 `openspec/specs/`、規格內部新舊描述矛盾的清單（無矛盾時明寫「未發現」）、已知侷限（無截圖、以實機為準）與編成日期）。兩頁為衍生頁：任一其他頁新增或重生時 SHALL 隨之重生（`section` 與 `order` 保留），且 SHALL NOT 被判為過期、未入冊或來源消失。
+每份手冊 SHALL 含 `index.md`（`title` 為手冊名、`section` 為第一個分區、`order` 為全手冊最小值；內容為系統一句話定位、三個以內的核心概念、依角色分流的入口連結）與 `about.md`（`title`「本手冊的來源」、`order` 為全手冊最大值；內容 SHALL 載明取材範圍為 `speclink/specs/`、規格內部新舊描述矛盾的清單（無矛盾時明寫「未發現」）、已知侷限（無截圖、以實機為準）與編成日期）。兩頁為衍生頁：任一其他頁新增或重生時 SHALL 隨之重生（`section` 與 `order` 保留），且 SHALL NOT 被判為過期、未入冊或來源消失。
 
 #### Scenario: 生成後兩頁存在
 
 - **WHEN** 生成端完成任一次生成
-- **THEN** `openspec/manual/index.md` 與 `openspec/manual/about.md` 存在，`index.md` 的 `order` 為全手冊最小、`about.md` 為最大，且 `about.md` 含矛盾清單段（或「未發現」字樣）
+- **THEN** `speclink/manual/index.md` 與 `speclink/manual/about.md` 存在，`index.md` 的 `order` 為全手冊最小、`about.md` 為最大，且 `about.md` 含矛盾清單段（或「未發現」字樣）
 
 #### Scenario: 無可入冊能力時仍產兩頁
 
@@ -101,8 +101,8 @@ updated: 2026-09-02
 
 
 <!-- @trace
-source: manual-skill
-updated: 2026-09-02
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -194,11 +194,11 @@ updated: 2026-09-11T11:59:38+08:00
 
 #### Scenario: 來源消失的頁不自動刪
 
-- **WHEN** 某頁 `sources` 所列的 capability（取井號前名稱）已全部自 `openspec/specs/` 移除
+- **WHEN** 某頁 `sources` 所列的 capability（取井號前名稱）已全部自 `speclink/specs/` 移除
 - **THEN** 該頁保留於磁碟，生成端於報告中列出該頁並說明來源已消失
 
 
 <!-- @trace
-source: manual-stale-requirement-anchor
-updated: 2026-09-11T11:59:38+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

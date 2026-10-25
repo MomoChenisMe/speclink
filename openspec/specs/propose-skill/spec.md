@@ -141,7 +141,7 @@ updated: 2026-09-24T22:20:29+08:00
 ---
 ### Requirement: 從討論轉出最後一刀時帶 --last
 
-內嵌 speclink-propose 技能（事實來源 crates/engine/speclink-core/assets/skills/propose.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 於「以 --from-discussion 建立變更」那一步規定最後一刀的判定與標記：代理人 SHALL 讀取討論記錄 Conclusion 的 Decision 段所列的分期刀清單（刀一／刀二／…或 cut A／cut B 等任一寫法）與記錄 frontmatter 的 promoted_to 清單；本次建立的變更是結論規劃的最後一刀時，speclink new change 的 --from-discussion SHALL 併帶 --last；立案期把結論的一刀拆成多個變更時，SHALL 只在拆出的最後一段帶 --last；結論未規劃分期（單刀）時 SHALL NOT 帶（記錄無 hold 行時帶了亦為無害無操作，但技能檔 SHALL 以「不帶」為規定）。技能檔 SHALL 說明帶 --last 的效果：記錄的 hold 解除，其後最後一個轉出變更封存時記錄自動隨行封存；並 SHALL 註明標錯（不是最後一刀卻帶了）的後果與救援：記錄會在最後一個在途變更封存時被隨行封存，再立一刀前把記錄自 openspec/discussions/archive/ 搬回 openspec/discussions/。技能檔 SHALL 在指令範例中展示帶 --last 的 speclink new change 形式。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
+內嵌 speclink-propose 技能（事實來源 crates/engine/speclink-core/assets/skills/propose.md，經 init 與 update 渲染至 claude 與 codex 工具技能目錄）SHALL 於「以 --from-discussion 建立變更」那一步規定最後一刀的判定與標記：代理人 SHALL 讀取討論記錄 Conclusion 的 Decision 段所列的分期刀清單（刀一／刀二／…或 cut A／cut B 等任一寫法）與記錄 frontmatter 的 promoted_to 清單；本次建立的變更是結論規劃的最後一刀時，speclink new change 的 --from-discussion SHALL 併帶 --last；立案期把結論的一刀拆成多個變更時，SHALL 只在拆出的最後一段帶 --last；結論未規劃分期（單刀）時 SHALL NOT 帶（記錄無 hold 行時帶了亦為無害無操作，但技能檔 SHALL 以「不帶」為規定）。技能檔 SHALL 說明帶 --last 的效果：記錄的 hold 解除，其後最後一個轉出變更封存時記錄自動隨行封存；並 SHALL 註明標錯（不是最後一刀卻帶了）的後果與救援：記錄會在最後一個在途變更封存時被隨行封存，再立一刀前把記錄自 speclink/discussions/archive/ 搬回 speclink/discussions/。技能檔 SHALL 在指令範例中展示帶 --last 的 speclink new change 形式。本能力屬 Speclink 自身延伸；渲染產物內容由 speclink-core 的 render_golden 測試（cargo test）保護，golden 快照更新屬刻意變更。
 
 #### Scenario: 最後一刀的判定規則
 
@@ -158,9 +158,10 @@ updated: 2026-09-24T22:20:29+08:00
 | 刀一、刀二、刀三 | cut-a, cut-b, cut-c1 | 刀三拆出的後半 | 是 |
 | 單刀（未規劃分期） | （空） | 唯一的變更 | 否 |
 
+
 <!-- @trace
-source: discussion-last-cut-release
-updated: 2026-09-12T22:38:53+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
@@ -192,7 +193,7 @@ propose 技能 SHALL 在建立變更之前決定它的 schema，依下列順序�
 
 #### Scenario: 專案預設為自訂 schema
 
-- **WHEN** 專案 `openspec/config.yaml` 的 `schema` 為自訂的 `my-flow`，使用者沒有指定 schema
+- **WHEN** 專案 `speclink/config.yaml` 的 `schema` 為自訂的 `my-flow`，使用者沒有指定 schema
 - **THEN** 技能以專案預設 `my-flow` 建立變更，不做 spec-driven 與 no-spec-change 的判定
 
 #### Scenario: 判斷不了時詢問
@@ -200,7 +201,8 @@ propose 技能 SHALL 在建立變更之前決定它的 schema，依下列順序�
 - **WHEN** 需求為「調整匯出檔的欄位順序」，技能無法從正式規格判斷欄位順序是否為承諾的行為
 - **THEN** 技能以兩個選項詢問使用者，建議的選項放第一個並附理由；使用者回答前不建立變更
 
+
 <!-- @trace
-source: no-spec-change-schema
-updated: 2026-10-21T23:33:58+08:00
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->

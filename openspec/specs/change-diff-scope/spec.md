@@ -36,7 +36,7 @@ updated: 2026-10-14T21:31:03+08:00
 ---
 ### Requirement: Git-backed discovery scope 解析完整 worktree patch
 
-speclink review scope <change> SHALL 以 touchedFiles 聯集作自動候選路徑，使用可信 baseCommit 到目前 worktree 的 Git diff，涵蓋 staged、unstaged、rename、delete 與 touched untracked additions；SHALL NOT 使用只比較 commit graph 的 `<base>...HEAD`。openspec artifacts 與 `.speclink` work data SHALL NOT 成為 review target。
+speclink review scope <change> SHALL 以 touchedFiles 聯集作自動候選路徑，使用可信 baseCommit 到目前 worktree 的 Git diff，涵蓋 staged、unstaged、rename、delete 與 touched untracked additions；SHALL NOT 使用只比較 commit graph 的 `<base>...HEAD`。規格資料夾內的 artifacts 與 `.speclink` work data SHALL NOT 成為 review target。
 
 成功的文字 file delta SHALL 回報 oldPath、newPath、kind、beforeHash、afterHash 與 hunks；每個 hunk SHALL 含 id、oldStart、oldLines、newStart、newLines。addition SHALL 允許 oldStart=0、oldLines=0；deletion SHALL 允許 newStart=0、newLines=0；多段修改 SHALL 保留多筆 hunk。rename SHALL 保留 oldPath 與 newPath。binary SHALL 回報 file hashes 與 kind=binary，hunks 為空。
 
@@ -57,36 +57,8 @@ speclink review scope <change> SHALL 以 touchedFiles 聯集作自動候選路�
 
 
 <!-- @trace
-source: converge-review-remediation-rounds
-updated: 2026-08-03
-code:
-  - AGENTS.md
-  - CLAUDE.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/it/remote_verb_parity.rs
-  - crates/speclink-cli/tests/it/review_verbs.rs
-  - crates/speclink-core/assets/skills/apply.md
-  - crates/speclink-core/assets/skills/review.md
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/review.rs
-  - crates/speclink-core/src/tasks.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/assets.lock
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/it/render_golden.rs
-  - crates/speclink-host/src/change_diff.rs
-  - crates/speclink-host/src/lib.rs
-  - crates/speclink-protocol/src/command.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/it/typed_client.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/it/review_api.rs
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---

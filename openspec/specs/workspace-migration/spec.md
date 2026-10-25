@@ -115,38 +115,17 @@ updated: 2026-10-24T22:35:52+08:00
 ---
 ### Requirement: 遷移入口雙路且不經並存合併
 
-遷移流程 SHALL 可自兩處進入：chooser 本機路徑開到含 openspec/ 的專案時的次要動作，與並存衝突對話。SHALL NOT 提供「上傳合併至非空 scope」的任何路徑——CreateNew 為唯一遷移語意。
+遷移流程 SHALL 可自兩處進入：chooser 本機路徑開到含 speclink/ 的專案時的次要動作，與並存衝突對話。SHALL NOT 提供「上傳合併至非空 scope」的任何路徑——CreateNew 為唯一遷移語意。
 
 #### Scenario: chooser 次要動作進入遷移
 
-- **WHEN** 於 chooser 本機路徑選到含 openspec/ 的專案並選擇遷移動作
+- **WHEN** 於 chooser 本機路徑選到含 speclink/ 的專案並選擇遷移動作
 - **THEN** 進入同一遷移流程（選 connection 與空 scope、確認、上傳、轉換）
 
+
 <!-- @trace
-source: local-remote-migration
-updated: 2026-07-21
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/migrationDialog.test.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/migration.ts
-  - apps/desktop/src/components/MigrationDialog.tsx
-  - apps/desktop/src/components/RemoteConflictDialog.tsx
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/import_api.rs
+source: spec-dir-path-rewrite
+updated: 2026-10-25T21:44:20+08:00
 -->
 
 ---
