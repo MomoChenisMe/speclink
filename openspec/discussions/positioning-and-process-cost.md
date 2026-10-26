@@ -4,8 +4,7 @@ slug: positioning-and-process-cost
 status: promoted
 created: 2026-10-21
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: readme-positioning, process-cost-metrics, no-spec-change-schema, change-schema-verb, stamp-order-rules, quality-gate-wording-in-specs
+promoted_to: readme-positioning, process-cost-metrics, no-spec-change-schema, change-schema-verb, stamp-order-rules, quality-gate-wording-in-specs, spec-dir-migration, desktop-spec-dir-migration, spec-dir-path-rewrite, self-spec-dir-migration
 ---
 
 # Discussion: speclink 定位建議 1～4：README 定位句、官方小修正路徑、章失效重跑成本、流程成本數字（第 5 項 agent 工具層延後）
