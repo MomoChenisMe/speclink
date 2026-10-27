@@ -2,9 +2,9 @@
 title: 續作與需求變更：drift 與 ingest
 section: SDD 工作流
 order: 130
-keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate]
+keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate, no-spec-change, change schema]
 sources: [drift-computation, archive-merge, skill-routing, user-documentation, ingest-skill]
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -15,7 +15,7 @@ generated: 2026-10-15T17:40:05+08:00
 - **實作到一半需求變了**：走 ingest，把新的需求併進這個變更的產物，再回去實作。
 
 > [!NOTE]
-> drift 技能的內文行為規格未載；ingest 技能只有參數的解讀與收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 怎麼解讀你帶的參數、收尾怎麼重判依賴，以及兩個技能的交棒方向。
+> drift 技能的內文行為規格未載；ingest 技能只有參數的解讀、不改規格變更的產出流程切換，以及收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 怎麼解讀你帶的參數、什麼時候切回 spec-driven、收尾怎麼重判依賴，以及兩個技能的交棒方向。
 
 ## drift：看漂移了多少
 
@@ -89,6 +89,21 @@ link 只建立變更側的來源鏈；seal 只在內容已經反映後才做。�
 | `/speclink-ingest add-ath`（拼錯） | 沒有叫 add-ath 的作用中變更，也沒有 add-ath.md | 回報錯誤並停止，不改任何產物 |
 
 計畫檔放在哪個目錄，規格未載。
+
+### 新需求改到行為時，切回 spec-driven
+
+ingest 更新產物之前，先讀這個變更的產出流程。變更是 no-spec-change（不改規格），而新需求會新增、修改或移除正式規格承諾的行為時，ingest 依序：
+
+1. 執行 `speclink change schema <變更名> spec-driven`。
+2. 成功後，在提案補上 Capabilities 段，用 `speclink new artifact spec` 寫出 delta。
+3. 再依新需求更新設計與任務。摘要會說明產出流程已切換，以及原因。
+
+切換被拒時（例如有未結的驗證工單），ingest 回報拒絕的原因並停止，例如提示先執行 `speclink verify discard <變更名>`。它不會繞過切換直接寫 delta。
+
+新需求不改承諾的行為時（例如只是再多搬一個內部函式），產出流程不變，ingest 只更新設計與任務。
+
+> [!NOTE]
+> ingest 不會自己把 spec-driven 的變更切成 no-spec-change。只有你明確要求、而且變更已經沒有 delta 時才會切。切換指令的規則見[產出流程 schema 管理](schemas.md)。
 
 ### ingest 收尾：重判這個變更的依賴
 

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 190
 keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併]
 sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, workflow-config]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 # 平行實作與合回：worktree
 

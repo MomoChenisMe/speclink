@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 125
 keywords: [plan, 執行順序, 波次, 依賴, 前置, depends, 阻擋, 並行, 依賴成環, change depends, 封存順序, 同名重疊, 衝突, change rank, 插隊, strict-overlap]
 sources: [change-plan]
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 執行順序：plan 與依賴
@@ -145,7 +145,7 @@ speclink change depends <變更名> --on <前置變更>...
 speclink change depends <變更名> --on <前置變更>... --remove
 ```
 
-指令把前置寫進變更狀態檔（`.openspec.yaml`）頂層的前置那一行，逗號分隔；其餘內容逐位元保留，換行形式沿用原檔。多個 `--on` 一次寫完。加已經存在的邊、或移除不存在的邊，不改檔、直接成功。移除到清單為空時整行拿掉。
+指令把前置寫進變更狀態檔（`.meta.yaml`）頂層的前置那一行，逗號分隔；其餘內容逐位元保留，換行形式沿用原檔。多個 `--on` 一次寫完。加已經存在的邊、或移除不存在的邊，不改檔、直接成功。移除到清單為空時整行拿掉。
 
 成功時 stdout 一行 `✓ <變更名> depends on: …`（移除時是 `✓ <變更名> no longer depends on: …`）；`--json` 時回寫入後的完整前置清單。
 
@@ -191,7 +191,7 @@ speclink change rank <變更名> --after <另一個變更>
 | 兩者階段不同 | 拒絕：順序鍵只在同一欄內有意義 |
 | 變更已經有順序鍵，而且沒帶 `--force` | 拒絕，訊息含 `already has a board rank` 與 `--force` |
 | 新位置違反宣告依賴 | 拒絕，列出必須排在它前面與後面的變更，例如 `cannot move 'c' there` 與 `it depends on a` |
-| 要寫入的變更缺 `.openspec.yaml` | 拒絕，訊息含該檔路徑與 `is missing` |
+| 要寫入的變更缺 `.meta.yaml` | 拒絕，訊息含該檔路徑與 `is missing` |
 
 已經有順序鍵、確定要覆寫時，加 `--force`：
 
@@ -231,7 +231,7 @@ speclink change rank <變更名> --after <另一個變更> --force
 
 ## remote 模式
 
-remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 openspec 資料夾。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
+remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 speclink 資料夾。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
 
 有兩件事只能在本機模式做。remote 模式下它們以錯誤結束，而且不向 server 發出任何請求：
 

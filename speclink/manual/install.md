@@ -4,7 +4,7 @@ section: 開始使用
 order: 20
 keywords: [安裝, CLI, 桌面 app, npm, Homebrew, 安裝腳本, 未簽章, universal, AppImage]
 sources: [cli-distribution, user-documentation]
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 安裝 CLI 與桌面 app

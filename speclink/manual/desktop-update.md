@@ -2,9 +2,9 @@
 title: 自動更新、CLI、技能檔過期與關於頁
 section: 桌面 app
 order: 350
-keywords: [檢查更新, 更新頁, 回到前景, 更新日誌, 安裝 CLI, PATH, 技能檔過期, 保留現狀, speclink update, 關於 Speclink, 版本資訊, 第三方授權]
-sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "desktop-app#更新日誌依介面語言呈現"]
-generated: 2026-10-15T17:40:05+08:00
+keywords: [檢查更新, 更新頁, 回到前景, 更新日誌, 安裝 CLI, PATH, 技能檔過期, 保留現狀, speclink update, 關於 Speclink, 版本資訊, 第三方授權, 規格資料夾遷移, openspec]
+sources: ["desktop-app#桌面自動更新", "desktop-app#更新日誌彈窗", "desktop-app#安裝 CLI 指令到 PATH", "desktop-app#指令檔過期提示", "desktop-app#指令檔過期提示捲動釘選", "desktop-app#關於頁", "workspace-tools#技能檔過期探測", "workspace-tools#受管檔再生的降級守門", "workspace-tools#引擎版號查詢面", "workspace-tools#產物層版本戳同源", "workspace-tools#內嵌資產版本鎖定紀律", "workspace-tools#update 清除孤兒技能目錄", "desktop-app#更新日誌依介面語言呈現", "desktop-app#技能檔提示承載規格資料夾遷移"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 自動更新、CLI、技能檔過期與關於頁
@@ -184,6 +184,29 @@ PATH 的處理：
 - 「更新 Speclink」（只在較新時出現）：開啟應用程式設定的更新頁。較新代表 app 本體是舊版、專案檔案領先，所以確認框沒有任何改寫專案檔案的按鈕，app 不會用舊版內容改寫領先的專案檔案。
 
 你在終端執行 `speclink update` 把技能檔更新到現版時，app 偵測到檔案變動後重新探測，提示卡自己消失，不用重開專案。
+
+### 舊佈局專案的資料夾遷移
+
+專案還是舊佈局 `openspec/` 時，技能檔過期探測會多回報一項「規格資料夾的遷移狀態」，判定方式與 `speclink update` 相同：
+
+| 遷移狀態 | 意思 |
+| --- | --- |
+| 無 | 不需要遷移 |
+| 待遷移 | 可以搬，附上要改名的資料檔數 |
+| 暫緩 | 現在不能搬，附上原因：其他 worktree 的路徑、`openspec/` 有未提交修改，或目前位在 linked worktree 裡 |
+
+app 沿用上面的提示卡與確認框，不另開流程：
+
+- **待遷移**：確認框在你按下之前寫明 `openspec/` 會改名為 `speclink/`、N 個資料檔會改名為 `.meta.yaml`、不會幫你 commit。按更新鈕後，app 呼叫與 CLI 相同的 `speclink update`。
+- **暫緩**：確認框列出暫緩原因。按更新鈕只更新技能檔，資料夾不動。例如專案另有一個 worktree，確認框列出那個 worktree 的路徑。
+- **遷移完成後**：確認框顯示與 CLI 相同的提醒：要 commit 的路徑、團隊成員要先升級再 pull、你自己的腳本與 CI 設定裡寫到 `openspec/` 的地方要自己改。app 重新認定規格資料夾，改監看 `speclink/`，看板與詳情頁照常自動更新。
+- **技能檔是現版、但還待遷移**：提示卡與確認框照樣出現，確認框寫明待遷移的內容。
+- **按「保留現狀」**：與一般的保留現狀相同，只記住這一版。之後專案照常讀 `openspec/`、照常自動更新，這一版不再提示。
+
+app 自己升版時，不會在背景遷移任何專案。只有你開啟那個專案、在確認框按下更新鈕時才遷移。remote 專案不會出現遷移提示。遷移的完整條件與 CLI 的提醒見[規格資料夾與舊佈局遷移](spec-folder.md)。
+
+> [!NOTE]
+> 遷移這段需求把兩顆按鈕寫成「更新」與「略過」；按鈕字面照提示卡需求寫，是「更新技能檔」（或「安裝技能檔」）與「保留現狀」。詳見[本手冊的來源](about.md)。
 
 ### 只更新、不降級
 

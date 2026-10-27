@@ -2,26 +2,26 @@
 title: 操作手冊：生成與導覽
 section: SDD 工作流
 order: 230
-keywords: [manual, 手冊, 導覽, tour, 生成, 過期, 未入冊, openspec/manual, frontmatter]
+keywords: [manual, 手冊, 導覽, tour, 生成, 過期, 未入冊, speclink/manual, frontmatter]
 sources: [manual-skill, manual-pages]
-generated: 2026-09-11T12:10:31+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 操作手冊：生成與導覽
 
-你正在讀的這份手冊，就是 `/speclink-manual` 技能從正式規格生成的。這一站有兩種用法：**生成**手冊頁到 `openspec/manual/`，或在對話裡**導覽**你怎麼操作系統。這一頁講技能怎麼分流、手冊只取材自什麼、頁面長什麼樣、什麼時候該重生。
+你正在讀的這份手冊，就是 `/speclink-manual` 技能從正式規格生成的。這一站有兩種用法：**生成**手冊頁到 `speclink/manual/`，或在對話裡**導覽**你怎麼操作系統。這一頁講技能怎麼分流、手冊只取材自什麼、頁面長什麼樣、什麼時候該重生。
 
 ## 兩種模式，由引數決定
 
 | 你怎麼呼叫 | 模式 |
 | --- | --- |
-| `/speclink-manual` | 生成：讀規格，寫 `openspec/manual/` 底下的頁 |
+| `/speclink-manual` | 生成：讀規格，寫 `speclink/manual/` 底下的頁 |
 | `/speclink-manual 導覽`（或 `tour`） | 導覽：不寫任何檔案，在對話裡帶你走一遍 |
 | `/speclink-manual <其他文字>` | 生成，但把文字當範圍提示（例如只重生某個分區或某一頁）。摘要開頭會覆述技能理解的範圍 |
 
 ## 手冊只取材自正式規格
 
-生成模式的內容來源只有 `openspec/specs/` 底下的正式規格。技能先取得全部 capability 的清單，再讀每個 capability 的 Purpose，把它們分成兩類：
+生成模式的內容來源只有 `speclink/specs/` 底下的正式規格。技能先取得全部 capability 的清單，再讀每個 capability 的 Purpose，把它們分成兩類：
 
 - **使用者面向**：你會操作或看到的東西（畫面、指令、技能、輸出、檔案）。進手冊。
 - **引擎內部**：儲存、wire 契約、host 執行期、測試骨架、建置與發布管線。不進手冊。
@@ -77,7 +77,7 @@ sources 的每一項有兩種寫法：
 
 ## 手冊頁長什麼樣
 
-每一頁都是 `openspec/manual/` 底下的一個 Markdown 檔。檔名是 kebab-case 的 ASCII 英文（例如 `first-login.md`），不含空白、大寫或非 ASCII 字元。技能只寫這個目錄。
+每一頁都是 `speclink/manual/` 底下的一個 Markdown 檔。檔名是 kebab-case 的 ASCII 英文（例如 `first-login.md`），不含空白、大寫或非 ASCII 字元。技能只寫這個目錄。
 
 每頁開頭是 YAML frontmatter，恰好這六欄：
 

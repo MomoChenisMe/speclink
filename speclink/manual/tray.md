@@ -4,7 +4,7 @@ section: 桌面 app
 order: 360
 keywords: [系統匣, 選單列, 面板, 原生選單, 進度, 複製名稱, 複製 slug, 已轉出, 收合, 保留在途, Windows 面板, 工作列]
 sources: [tray-status-menu]
-generated: 2026-10-15T12:27:40+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 系統匣面板與選單

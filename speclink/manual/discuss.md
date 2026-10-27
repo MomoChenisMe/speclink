@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 100
 keywords: [討論, discuss, 決策樹, slug, 結論, 條列, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search, locale, 記錄語言]
 sources: [discuss-skill, discussion-docs, improve-skill, user-documentation]
-generated: 2026-10-16T23:25:26+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 討論：需求還模糊時
@@ -287,7 +287,7 @@ speclink discuss conclude <slug> --hold
 沒有 frontmatter 的舊記錄不能帶 `--hold`：指令以錯誤結束、記錄不動；不帶 `--hold` 照常結論。remote 模式的 `--hold`、`--last` 與旗標的行為都與本機相同。
 
 > [!TIP]
-> 討論被誤封存時，把記錄檔從 `openspec/discussions/archive/` 搬回 `openspec/discussions/` 就能繼續用。在不是最後一刀的變更上帶了 `--last`，記錄會在最後一個在途變更封存時被收走，也走這條路救回。引擎對已封存討論的轉出錯誤訊息也會指向這條路。
+> 討論被誤封存時，把記錄檔從 `speclink/discussions/archive/` 搬回 `speclink/discussions/` 就能繼續用。在不是最後一刀的變更上帶了 `--last`，記錄會在最後一個在途變更封存時被收走，也走這條路救回。引擎對已封存討論的轉出錯誤訊息也會指向這條路。
 
 ### link 與 seal 的細節
 

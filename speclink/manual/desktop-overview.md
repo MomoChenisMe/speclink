@@ -3,13 +3,13 @@ title: 認識桌面 app
 section: 桌面 app
 order: 300
 keywords: [桌面, 圖示列, 專案欄, 標題列, 麵包屑, 選單列, 詳情頁, 文件樹, 閱讀卡, 本頁目錄, 滑動返回, 即時更新, 浮層提示, 語意色]
-sources: ["desktop-app#桌面 app 直嵌引擎並以本地檔案為真相", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#外部變更即時反映", "desktop-app#監看根解析與專案探索一致", "desktop-app#側欄導覽結構", "desktop-app#視窗預設尺寸與置中", "desktop-app#隱藏原生標題列與三平台視窗殼", "desktop-app#macOS 原生選單", "desktop-app#關於頁", "desktop-app#介面文字以打包的 Noto Sans TC 呈現", "desktop-app#markdown 內容保留文件結構呈現", "desktop-app#raw HTML 不以原文呈現", "desktop-app#表單控制項與按鈕以主題化元件呈現", "desktop-app#markdown 文件內容行寬有上限", "desktop-app#詳情頁互斥", "desktop-app#詳情頁的導覽與返回", "desktop-app#變更與討論詳情頁的宿主為看板", "desktop-app#詳情頁標頭標記受寬度約束且頁不產生水平捲軸", "desktop-app#詳情頁文件載入以 skeleton 呈現", "desktop-app#詳情頁與浮層的進出動畫", "desktop-app#詳情頁的文件樹、閱讀卡與本頁目錄", "desktop-app#詳情頁的文件動作", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#品質站蓋章配色與主色分離", "desktop-app#介面狀態語意色分層", "desktop-app#主題化提示統一延遲", "desktop-app#截斷省略號的統一字形", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#分頁切換中即時回饋", "desktop-app#看板首訪以 skeleton 佔位", "desktop-app#首訪載入失敗終態呈現", "desktop-app#可點元素的游標與 hover 回饋", "desktop-app#詳情頁狀態列的標籤欄依最長標籤對齊"]
-generated: 2026-10-15T17:40:05+08:00
+sources: ["desktop-app#桌面 app 直嵌引擎並以本地檔案為真相", "desktop-app#桌面 app 呈現 change 與 spec 的清單與內容", "desktop-app#桌面 app 提供動詞操作面", "desktop-app#外部變更即時反映", "desktop-app#監看根解析與專案探索一致", "desktop-app#側欄導覽結構", "desktop-app#視窗預設尺寸與置中", "desktop-app#隱藏原生標題列與三平台視窗殼", "desktop-app#macOS 原生選單", "desktop-app#關於頁", "desktop-app#介面文字以打包的 Noto Sans TC 呈現", "desktop-app#markdown 內容保留文件結構呈現", "desktop-app#raw HTML 不以原文呈現", "desktop-app#表單控制項與按鈕以主題化元件呈現", "desktop-app#markdown 文件內容行寬有上限", "desktop-app#詳情頁互斥", "desktop-app#詳情頁的導覽與返回", "desktop-app#變更與討論詳情頁的宿主為看板", "desktop-app#詳情頁標頭標記受寬度約束且頁不產生水平捲軸", "desktop-app#詳情頁文件載入以 skeleton 呈現", "desktop-app#詳情頁與浮層的進出動畫", "desktop-app#詳情頁的文件樹、閱讀卡與本頁目錄", "desktop-app#詳情頁的文件動作", "desktop-app#看板全域操作成功靜默、失敗以 toast 浮層呈現", "desktop-app#品質關卡蓋章配色與主色分離", "desktop-app#介面狀態語意色分層", "desktop-app#主題化提示統一延遲", "desktop-app#截斷省略號的統一字形", "desktop-app#觸及檔案系統的 command 不佔用主執行緒", "desktop-app#分頁切換中即時回饋", "desktop-app#看板首訪以 skeleton 佔位", "desktop-app#首訪載入失敗終態呈現", "desktop-app#可點元素的游標與 hover 回饋", "desktop-app#詳情頁狀態列的標籤欄依最長標籤對齊", "desktop-config#畫面依實際規格資料夾與資料檔名顯示"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 認識桌面 app
 
-桌面 app 是 Speclink 的圖形操作面。它讀的是你專案裡 `openspec/` 底下的檔案，和 CLI 看的是同一份資料。這一頁帶你認識視窗外殼、四種詳情頁的共通規則、即時更新、載入與回饋，以及顏色與排版。看板與任務的操作見[看板與任務](desktop-board.md)；規格、討論、已封存的內容怎麼呈現，見[規格、討論、已封存與搜尋](desktop-browse.md)。
+桌面 app 是 Speclink 的圖形操作面。它讀的是你專案規格資料夾（預設 `speclink/`）底下的檔案，和 CLI 看的是同一份資料。這一頁帶你認識視窗外殼、四種詳情頁的共通規則、即時更新、載入與回饋，以及顏色與排版。看板與任務的操作見[看板與任務](desktop-board.md)；規格、討論、已封存的內容怎麼呈現，見[規格、討論、已封存與搜尋](desktop-browse.md)。
 
 ## 它是什麼
 
@@ -72,7 +72,7 @@ generated: 2026-10-15T17:40:05+08:00
 
 分類欄的搜尋框以分類名與各頁的列標籤比對，不分大小寫。例如輸入「外觀」，分類欄只剩「一般」（外觀列在一般頁），「關於」群組標題一起隱藏；沒有命中時顯示「沒有符合的設定」；清空後五項還原。
 
-點專案欄的「專案設定」進入**專案設定模式**：專案欄換成專案設定分類欄。群組「openspec/config.yaml」有專案說明、產出規則、審查規則、產出流程；群組「專案」有 .speclink.yaml（remote 專案沒有這組）。解析失敗的設定檔，其分類項帶警示點。左側標題列左端是「← 專案設定」、右端是等寬小字的專案名；麵包屑是「專案名 / 專案設定 / 分類名」，前兩段可點：專案名回看板，專案設定回專案說明頁。
+點專案欄的「專案設定」進入**專案設定模式**：專案欄換成專案設定分類欄。群組「speclink/config.yaml」（組名照專案實際的規格資料夾顯示，舊佈局專案是「openspec/config.yaml」）有專案說明、產出規則、審查規則、產出流程；群組「專案」有 .speclink.yaml（remote 專案沒有這組）。解析失敗的設定檔，其分類項帶警示點。左側標題列左端是「← 專案設定」、右端是等寬小字的專案名；麵包屑是「專案名 / 專案設定 / 分類名」，前兩段可點：專案名回看板，專案設定回專案說明頁。
 
 兩種分類欄都會記得你上次所在的分類。
 
@@ -246,21 +246,21 @@ macOS 上 app 用自己的選單列，共六組。Windows 與 Linux 沒有選單
 
 | 文件 | 對應的檔案 |
 | --- | --- |
-| 提案、設計、任務 | `openspec/changes/<名稱>/` 底下的 `proposal.md`、`design.md`、`tasks.md` |
+| 提案、設計、任務 | `speclink/changes/<名稱>/` 底下的 `proposal.md`、`design.md`、`tasks.md` |
 | 變更裡的規格 | `specs/<capability>/spec.md`（目前選定的能力） |
 | 審查、驗證 | `review.md`、`verify.md` |
 | 討論的各文件 | 該討論的記錄檔 |
-| 規格詳情頁 | `openspec/specs/<capability>/spec.md` |
-| 手冊頁 | `openspec/manual/<檔名>.md` |
+| 規格詳情頁 | `speclink/specs/<capability>/spec.md` |
+| 手冊頁 | `speclink/manual/<檔名>.md` |
 
-- 檔案位置與詳情頁讀內容的位置相同：綁定 worktree 的變更指向 worktree 裡的那一份；規格目錄名依專案設定；已封存的討論指向 `openspec/discussions/archive/<封存日>-<slug>.md`。已封存頁開啟的封存討論詳情頁例外，只有「複製內容」，見[規格、討論、已封存與搜尋](desktop-browse.md)。
+- 檔案位置與詳情頁讀內容的位置相同：綁定 worktree 的變更指向 worktree 裡的那一份；規格目錄名依專案設定；已封存的討論指向 `speclink/discussions/archive/<封存日>-<slug>.md`。已封存頁開啟的封存討論詳情頁例外，只有「複製內容」，見[規格、討論、已封存與搜尋](desktop-browse.md)。
 - 沒有對應檔案的文件（排程、規格詳情頁的溯源）不顯示選單。
 - remote 專案沒有本機 checkout 時，選單只有「複製內容」（複製該文件已載入的原文，還沒載完時停用），也沒有路徑首列；審查與驗證工單在這種情況下不載原文，所以不顯示選單。
 - 「以預設 App 開啟」只開 markdown 檔：檔名與符號連結的實際指向都必須是 markdown。
 - 動作失敗（例如檔案已被外部刪除）時，以失敗浮層提示呈現錯誤，詳情頁維持開啟，不跳錯誤視窗。
 - 「開啟 ▾」不會出現在主區標題列，也不會收進「⋯」選單。
 
-例：本機專案 `/work/app` 的變更 add-auth，在提案文件展開「開啟 ▾」，首列是 `openspec/changes/add-auth/proposal.md`；選「複製路徑」，剪貼簿是 `/work/app/openspec/changes/add-auth/proposal.md`。若 add-auth 綁定 worktree `/work/app-wt/add-auth`，在任務文件選「在 Finder 顯示」，Finder 顯示的是 `/work/app-wt/add-auth/openspec/changes/add-auth/tasks.md`。
+例：本機專案 `/work/app` 的變更 add-auth，在提案文件展開「開啟 ▾」，首列是 `speclink/changes/add-auth/proposal.md`；選「複製路徑」，剪貼簿是 `/work/app/speclink/changes/add-auth/proposal.md`。若 add-auth 綁定 worktree `/work/app-wt/add-auth`，在任務文件選「在 Finder 顯示」，Finder 顯示的是 `/work/app-wt/add-auth/speclink/changes/add-auth/tasks.md`。
 
 ## 外部變更即時反映
 
@@ -362,4 +362,4 @@ app 會監看目前專案的規格目錄樹。CLI、agent 或編輯器改了底�
 
 **提示**：指標停在有提示的元素上 300ms 後才顯示；在同一群組內連續移動時，後續提示立即顯示。看板卡片的章與詳情頁的章籤都是同一個延遲。系統匣面板的原生提示不受此規則約束。
 
-**出處**：`desktop-app`
+**出處**：`desktop-app`、`desktop-config`

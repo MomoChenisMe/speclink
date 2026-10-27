@@ -2,9 +2,9 @@
 title: 工作流總覽：站別與交棒
 section: 開始使用
 order: 50
-keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊]
+keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊, 蓋章, CI, rebase]
 sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門", "workspace-tools#Copilot 渲染目標"]
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 工作流總覽：站別與交棒
@@ -82,8 +82,8 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 | ingest | 產物更新完 | 回 apply |
 | review、verify | 落章 | archive。在 worktree 內則先提交蓋章寫入的異動，再 worktree-merge |
 | quality | 兩站落章 | archive。在 worktree 內則 worktree-merge |
-| archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `openspec/manual/` 時另提醒可跑 manual 檢查手冊是否過期；plan 算得出下一個可開工的變更時，提一句「下一個可開工」。都只提醒，不代跑 |
-| commit（先封存子流程） | 封存並提交完 | 有 `openspec/manual/` 時提醒可跑 manual；plan 算得出下一個可開工時提「下一個可開工」。都只提醒，不代跑 |
+| archive | 封存完成 | 提醒你提交封存產生的異動；工作區有 `speclink/manual/` 時另提醒可跑 manual 檢查手冊是否過期；plan 算得出下一個可開工的變更時，提一句「下一個可開工」。都只提醒，不代跑 |
+| commit（先封存子流程） | 封存並提交完 | 有 `speclink/manual/` 時提醒可跑 manual；plan 算得出下一個可開工時提「下一個可開工」。都只提醒，不代跑 |
 
 apply 完成時如果還剩手動任務，建議會說品質關卡可以先跑，封存要等手動任務完成。worktree 流程為什麼依手動任務與 CI 分兩條路，見[平行實作與合回：worktree](worktree.md)。
 
@@ -102,6 +102,13 @@ review 與 verify 蓋章時，會在同一個寫入裡寫下章欄位並刪除�
 - 本地模式的工單文字只留在 git 歷史；remote 模式蓋章後工單文字讀不回來。
 
 蓋章後執行 show 回報「無工單」是預期行為。細節見[品質關卡總覽](quality-stations.md)。
+
+### 蓋章前的兩條預防規矩
+
+- **先把最新的主分支合進來，再跑品質關卡**（rebase 或合併都可以）。原因：主分支前進時改到變更範圍內的檔，就算合併沒有衝突，也會讓章失效。
+- **專案有 CI 時，先等 CI 在所有平台通過，再蓋章**。原因：章凍結了範圍內每個檔案的內容指紋，蓋章後為了 CI 再修任何一行，章就失效。
+
+章失效後重新蓋章，要從首輪重跑兩道關卡，不是「再跑一輪」就好，因為工單在蓋章時已經刪掉了。`/speclink-quality` 怎麼在事前提醒你，見[品質關卡總覽](quality-stations.md)。
 
 ## 各站的頁面
 
