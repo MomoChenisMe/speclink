@@ -4,7 +4,7 @@ section: Remote 模式
 order: 470
 keywords: [伺服器頁, 裝置登入, 存取金鑰, Keychain, 新增專案, 預設連線, 最近開啟, Project／Repo, checkout, 只看規格, Copilot]
 sources: [desktop-connections, workspace-chooser, server-device-auth]
-generated: 2026-10-15T12:28:45+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 桌面連線 server 與 remote 專案
@@ -109,7 +109,7 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 - 全部同步成功後，app 才建立 remote 專案並向 server 連線確認。
 - 同步失敗時，對話框顯示一行含失敗階段的錯誤，並保留路徑與工具選集。修好後用相同選集再按一次即可。這時不會建立專案。
 - 滑鼠停在圖示列的專案方塊上，提示顯示已連接的 checkout 路徑。
-- 這個過程不建立本機 `openspec/`，也不上傳或修改 server 上的內容。
+- 這個過程不建立本機 `speclink/`，也不上傳或修改 server 上的內容。
 
 | 情況 | 按下開啟後 |
 | --- | --- |
@@ -128,10 +128,10 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 - 補齊受管產物時遇到檔案系統錯誤：app 顯示含路徑與失敗階段的錯誤，不開啟、不連線。
 - 標記無法解析：app 顯示解析錯誤，不動資料夾，不開啟。
 
-資料夾同時有本地 `openspec/` 與 remote 標記時，app 停下來要你選。三個出口都不會自動覆蓋：
+資料夾同時有本地 `speclink/` 與 remote 標記時，app 停下來要你選。三個出口都不會自動覆蓋：
 
 - 「繼續本地」：這次以本地模式開啟，標記不動。
-- 「以 server 為準」：本地 `openspec/` 改名為帶日期的備份，資料夾轉為 checkout，同步工具後開 remote 專案。對話文案明說這是備份後棄用本地，不是合併。本地內容不上傳，server 不改動。
+- 「以 server 為準」：本地 `speclink/` 改名為帶日期的備份，資料夾轉為 checkout，同步工具後開 remote 專案。對話文案明說這是備份後棄用本地，不是合併。本地內容不上傳，server 不改動。
 - 「遷移本地內容」：進入遷移流程，目標必須是空的 Project／Repo。見 [本地工作區遷移到 remote](migrate.md)。
 
 remote 專案的專案設定（政策版次、版次衝突、reader 唯讀）見[專案、新增專案與設定頁](desktop-projects.md)。

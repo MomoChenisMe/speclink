@@ -4,11 +4,11 @@ section: SDD 工作流
 order: 210
 keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run, 對話語言]
 sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落"]
-generated: 2026-10-16T23:25:26+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 # 工作流政策與設定
 
-工作流政策存在 `openspec/config.yaml`。這個檔有四類內容：五個政策欄位、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
+工作流政策存在 `speclink/config.yaml`。這個檔有四類內容：五個政策欄位、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
 
 ## 五個政策欄位
 
@@ -39,13 +39,13 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 有效值依下列順序解析，先命中者勝：
 
 1. 環境變數：SPECLINK_LOCALE、SPECLINK_SPEC_LOCALE、SPECLINK_TDD、SPECLINK_AUDIT、SPECLINK_WORKTREE。
-2. `openspec/config.yaml` 的值。
+2. `speclink/config.yaml` 的值。
 3. 內建預設。
 
 布林環境變數只接受 true 或 false。其他值視為未設定，落到下一層，不報錯。`.speclink.yaml` 裡的同名鍵一律不生效，也不會有警告。
 
 > [!WARNING]
-> `openspec/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。review 區塊寫錯也算無法解析，見下方「審查規則」。
+> `speclink/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。review 區塊寫錯也算無法解析，見下方「審查規則」。
 
 ## 讀設定：workflow-config show
 
@@ -53,7 +53,17 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 speclink workflow-config show
 ```
 
-顯示 config.yaml 裡的正典內容：五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+顯示 config.yaml 裡的正典內容：專案預設的產出流程（schema）、五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+
+產出流程那一行在最上面，標題空行之後、locale 那一行之前，標籤欄寬與其他行相同：
+
+| config.yaml 的 schema 鍵 | schema 行的值 |
+| --- | --- |
+| 沒寫 | unset (spec-driven) |
+| schema: spec-driven | spec-driven |
+| schema: my-flow | my-flow |
+
+產出流程是什麼、怎麼設專案預設，見[產出流程 schema 管理](schemas.md)。
 
 審查規則那一行接在產出規則那一行之後：
 
@@ -270,7 +280,7 @@ config 已有 review 區塊時，確認表帶出模式與三個清單各自的�
 - **兩邊都放的條件**：只有兩個階段各自有用時才兩邊放，其餘選一邊，因為產出規則每次產出該 artifact 都會注入。兩句描述不同對象：產出規則要求計畫寫出什麼，審查規則檢查程式本身。
 - **審查規則不寫驗證站的工作**：不寫成「程式要照 artifact 做」。
 - **搬移建議**：模式為附加或覆蓋時，既有產出規則裡如果有一句其實在檢查程式本身，技能會建議拆到審查規則；你確認才搬，拒絕就原句保留。技能不記被拒絕的建議，下次執行會再提一次，這是預期行為。模式為不設定時不提搬移建議。
-- **時機**：提醒依賴的行為還沒進程式（例如討論已定案、對應的變更還沒實作）時先不寫，技能會告訴你並在最後報告列出。查討論或變更的狀態只用 `speclink discuss list --json` 或 `speclink list --json`，不直接讀 openspec/ 目錄。
+- **時機**：提醒依賴的行為還沒進程式（例如討論已定案、對應的變更還沒實作）時先不寫，技能會告訴你並在最後報告列出。查討論或變更的狀態只用 `speclink discuss list --json` 或 `speclink list --json`，不直接讀 speclink/ 目錄。
 - **各自的判準**：分到產出規則的提醒照四條判準檢查；分到審查規則的照「第六問」的檢查。
 
 最後報告逐條列出每條提醒的去處；不收或沒寫入的附上理由：不過判準、重述 smell、已有測試或 lint 守門、屬其他關卡、尚未進程式、屬審查規則未寫入。

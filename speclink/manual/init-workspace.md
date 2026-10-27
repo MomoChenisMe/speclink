@@ -2,14 +2,17 @@
 title: 建立工作區與指令檔
 section: 開始使用
 order: 30
-keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force, Copilot]
-sources: [workspace-tools, skill-routing]
-generated: 2026-10-15T12:27:14+08:00
+keywords: [init, update, 工作區, 技能檔, 指令檔, 過期, 降級, skills_dir, init --force, Copilot, OpenSpec, 匯入]
+sources: [workspace-tools, skill-routing, "spec-dir-migration#init 匯入 OpenSpec 專案", "spec-dir-migration#update 自動遷移舊佈局"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 建立工作區與指令檔
 
-一個專案要用 Speclink，先在專案根目錄執行 `speclink init`。這個指令會建立 openspec 資料夾、寫下設定檔，並替你選的 AI 工具產生技能檔。之後引擎版本更新時，用 `speclink update` 讓技能檔跟上。
+一個專案要用 Speclink，先在專案根目錄執行 `speclink init`。這個指令會建立規格資料夾 `speclink/`、寫下設定檔，並替你選的 AI 工具產生技能檔。之後引擎版本更新時，用 `speclink update` 讓技能檔跟上。
+
+> [!NOTE]
+> 在 OpenSpec 專案（有 `openspec/`、沒有 `.speclink.yaml`）執行 `speclink init` 會直接匯入：`openspec/` 搬到 `speclink/`，之後 OpenSpec CLI 讀不到這個專案。舊版 Speclink 建立的 `openspec/` 專案則由 `speclink update` 搬過來。兩者的條件與提醒見[規格資料夾與舊佈局遷移](spec-folder.md)。
 
 ## 用 speclink init 初始化
 
@@ -43,7 +46,7 @@ speclink init --tools claude,codex,copilot
 成功時，stdout 印出 Initialized 與 Generated files 摘要。產生的東西有：
 
 - `.speclink.yaml`：專案根的設定檔，記錄你選的工具。
-- `openspec/`：規格、變更與討論的資料夾。細節見[認識資料：變更、討論與規格](data-layout.md)。
+- `speclink/`：規格、變更與討論的資料夾。細節見[認識資料：變更、討論與規格](data-layout.md)。
 - `.gitignore` 的 `.speclink/` 條目：`.speclink/` 是工作資料夾，不進版控。
 - 技能檔：Claude 放在 `.claude/skills/`，Codex 放在 `.agents/skills/`，Copilot 放在 `.github/skills/`。每個技能一個資料夾，名稱以 `speclink-` 開頭。
 
@@ -61,7 +64,7 @@ Copilot 拿到的技能組合與 Codex 相同：Claude 有的技能，除了 ana
 
 在 `.github/` 底下，選 Copilot 只會動到 `.github/skills/`。Speclink 不建立、不改寫、也不剝除 `.github/copilot-instructions.md`，`.github/` 底下的其他檔案（例如 CI 設定）一律不碰。`.speclink.yaml` 沒有工具清單時，引擎會依資料夾裡的工具痕跡決定產生哪些技能，但不會因為專案裡有 `.github/` 或 `.github/skills/` 就推斷你用 Copilot。
 
-Remote 模式的 init 同樣要選工具，規則與上面相同。產物是帶 remote 區段的 `.speclink.yaml` 與技能檔，不會建立 `openspec/`。見 [CLI 連接 remote](cli-remote.md)。
+Remote 模式的 init 同樣要選工具，規則與上面相同。產物是帶 remote 區段的 `.speclink.yaml` 與技能檔，不會建立 `speclink/`。見 [CLI 連接 remote](cli-remote.md)。
 
 ## 指令檔裡沒有 Speclink 的受管區塊
 
@@ -82,6 +85,7 @@ update 會：
 - 清掉已經從清單移除的工具所產生的技能檔。拿掉 Copilot 時，只移除 `.github/skills/` 底下名稱以 `speclink-` 開頭的資料夾；`.github/skills/` 因此變空才一併移除，原本就是空的會保留；`.github/` 的其他內容不動。被拿掉的工具，如果它的技能資料夾本身是 symlink，Speclink 不會穿過 symlink 刪任何東西，symlink 本身也保留。
 - 清掉技能資料夾下名稱以 `speclink-` 開頭、但這次不該產生的資料夾。例如舊版的 speclink-onboard 會被清掉，換成 speclink-baseline。你自己建的技能資料夾（名稱不以 `speclink-` 開頭）不會被動到。
 - 補齊缺少的技能檔。
+- 專案還是舊佈局 `openspec/` 時，先把它搬到 `speclink/`，再同步技能檔。有其他 worktree 或未提交修改時暫緩，見[規格資料夾與舊佈局遷移](spec-folder.md)。
 
 `.speclink.yaml` 無法解析時，update 以單行解析錯誤失敗，任何檔案都不會改。
 
@@ -96,11 +100,11 @@ update 會：
 - `CLAUDE.md` 與 `AGENTS.md` 裡遺留的 SPECLINK 區塊，不論有沒有選那個工具都剝除，你自己的內容保留。不存在的指令檔不會被建立。
 - stdout 仍然只有 Initialized 與 Generated files 兩行，不列清理明細。
 
-不帶 `--force` 的 init 在一個沒有 `.speclink.yaml`、沒有 `openspec/`、但殘留舊技能檔的資料夾執行時，也會把舊技能檔改寫成現版、清掉不該有的 speclink- 資料夾、補齊其餘技能檔。
+不帶 `--force` 的 init 在一個沒有 `.speclink.yaml`、沒有 `speclink/`、但殘留舊技能檔的資料夾執行時，也會把舊技能檔改寫成現版、清掉不該有的 speclink- 資料夾、補齊其餘技能檔。
 
 ### worktree 技能只在政策開啟時產生
 
-speclink-apply-with-worktree 與 speclink-worktree-merge 這兩個技能，只在 `openspec/config.yaml` 的 worktree 設為 true 時才會產生。政策關閉或未設時不產生。從開改關後再跑 update，這兩個技能資料夾會被移除。環境變數不影響技能檔的產生。見[平行實作與合回：worktree](worktree.md)。
+speclink-apply-with-worktree 與 speclink-worktree-merge 這兩個技能，只在 `speclink/config.yaml` 的 worktree 設為 true 時才會產生。政策關閉或未設時不產生。從開改關後再跑 update，這兩個技能資料夾會被移除。環境變數不影響技能檔的產生。見[平行實作與合回：worktree](worktree.md)。
 
 ## 技能檔的版本與過期
 
@@ -162,10 +166,17 @@ skills_dir 還有兩條拒絕規則，比對的是把 `.` 段丟掉、`..` 回�
 
 自訂工具的技能檔用中性寫法：不含 `/speclink-` 前綴，也不提 plan mode。描述子驗證失敗時，指令以單行錯誤結束並指出錯誤欄位。通過驗證的描述子也參與技能檔過期探測，逐工具結果用描述子的 name 表示；沒通過驗證的描述子不參與探測、不讓結果變成無法判定，錯誤由 update 報出。
 
-## 已有 openspec 但沒有 .speclink.yaml 的專案
+## 已有規格資料夾但沒有 .speclink.yaml 的專案
 
-引擎提供「工作區補齊」入口：對已有 `openspec/` 但沒有 `.speclink.yaml` 的資料夾，補齊 openspec 骨架缺件（specs 與 changes/archive 目錄；config.yaml 只在不存在時寫範本）、寫 `.speclink.yaml`、產生技能檔、確保 `.gitignore` 涵蓋 `.speclink/`。既有的規格、變更、討論與 config.yaml 完全不動。重複執行得到相同結果。規格未載對應的 CLI 指令名。
+引擎提供「工作區補齊」入口，給已有規格資料夾、但沒有 `.speclink.yaml` 的資料夾用。它做這幾件事：
+
+1. 規格資料夾是舊佈局的 `openspec/`（而且沒有 `speclink/`）時，先匯入：用與 `speclink init` 匯入相同的做法，把 `openspec/` 改名為 `speclink/`、每個 `.openspec.yaml` 改名為 `.meta.yaml`，檔案內容逐位元組不變。在 git repo 裡、有主目錄以外的 worktree，或 `openspec/` 有未提交修改時，回一行錯誤說明原因，什麼都不寫。
+2. 補齊 `speclink/` 骨架缺件：specs 與 changes/archive 目錄；config.yaml 只在不存在時寫範本。
+3. 在專案根寫 `.speclink.yaml`，記錄你選的工具，不寫規格資料夾的路徑。
+4. 產生技能檔，並確保 `.gitignore` 涵蓋 `.speclink/`。
+
+既有的規格、變更、討論、自訂產出流程與 config.yaml，內容都不會被改寫。重複執行得到相同結果。規格未載對應的 CLI 指令名；桌面 app 的「啟用」就是走這個入口，見[專案、新增專案與設定頁](desktop-projects.md)。
 
 下一步：[工作流總覽：站別與交棒](workflow-overview.md)。
 
-**出處**：`workspace-tools`、`skill-routing`
+**出處**：`workspace-tools`、`skill-routing`、`spec-dir-migration`

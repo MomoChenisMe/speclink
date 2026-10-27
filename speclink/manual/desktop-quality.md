@@ -3,8 +3,8 @@ title: 桌面上的品質關卡
 section: 桌面 app
 order: 330
 keywords: [審查, 驗證, 蓋章, 工單, 首輪, 複驗, 套用規則, 封存, 三選項, 曾審查未通過]
-sources: ["desktop-app#看板卡片的審查標示", "desktop-app#看板卡片的驗證標示", "desktop-app#變更詳情頁的標頭與狀態卡", "desktop-app#詳情頁的工單分頁", "desktop-app#已封存側的審查標示", "desktop-app#已封存側的驗證標示", "desktop-app#已封存項目以詳情頁檢視", "desktop-app#已封存詳情頁的工單分頁", "desktop-app#封存入口的未結工單三選項", "desktop-app#封存入口三選項擴及驗證工單", "desktop-app#品質站蓋章配色與主色分離", "desktop-app#主題化提示統一延遲", "desktop-app#變更與討論詳情頁的宿主為看板"]
-generated: 2026-10-15T12:29:42+08:00
+sources: ["desktop-app#看板卡片的審查標示", "desktop-app#看板卡片的驗證標示", "desktop-app#變更詳情頁的標頭與狀態卡", "desktop-app#詳情頁的工單分頁", "desktop-app#已封存側的審查標示", "desktop-app#已封存側的驗證標示", "desktop-app#已封存項目以詳情頁檢視", "desktop-app#已封存詳情頁的工單分頁", "desktop-app#封存入口的未結工單三選項", "desktop-app#封存入口三選項擴及驗證工單", "desktop-app#品質關卡蓋章配色與主色分離", "desktop-app#主題化提示統一延遲", "desktop-app#變更與討論詳情頁的宿主為看板"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 桌面上的品質關卡

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 120
 keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據]
 sources: [change-lifecycle, manual-task-marker, task-identity, verify-evidence, verb-contract, skill-routing, "change-plan#apply 技能以 plan 挑選與守門"]
-generated: 2026-10-15T12:27:14+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 實作：完成任務
@@ -60,7 +60,7 @@ speclink task done <任務序號或 ID> --change <變更名>
 - 任務已經勾過：指令以「already done」訊息結束。
 - 變更沒有 tasks.md：指令以「tasks.md not found」訊息結束。
 - 序號超出範圍或 ID 查無：報錯，形狀與序號超界一致。
-- 變更的 .openspec.yaml 壞掉解析不了：報錯並指出檔案位置與原因。引擎不會把壞檔當成「未開工」。
+- 變更的 .meta.yaml 壞掉解析不了：報錯並指出檔案位置與原因。引擎不會把壞檔當成「未開工」。
 
 ## 取消勾選
 
@@ -103,7 +103,7 @@ speclink in-progress remove <變更名>
 speclink discard <變更名>
 ```
 
-這會整棵刪掉變更目錄與它的 touched 記錄，並把來源討論解鏈。有動工痕跡（已蓋開工章、或任何一個任務已勾）時會拒絕，要帶 `--force` 才放行。.openspec.yaml 壞掉時就算帶 `--force` 也拒絕，修好再刪。remote 模式下 CLI 的 discard 會報「不支援」。變更的各種狀態見 [認識資料：變更、討論與規格](data-layout.md)。
+這會整棵刪掉變更目錄與它的 touched 記錄，並把來源討論解鏈。有動工痕跡（已蓋開工章、或任何一個任務已勾）時會拒絕，要帶 `--force` 才放行。.meta.yaml 壞掉時就算帶 `--force` 也拒絕，修好再刪。remote 模式下 CLI 的 discard 會報「不支援」。變更的各種狀態見 [認識資料：變更、討論與規格](data-layout.md)。
 
 ## 需求中途變更
 
@@ -113,7 +113,7 @@ speclink discard <變更名>
 
 remote 模式下每個變更恰好屬於一個 repo。建立變更時歸屬到你所在的 repo（單 repo 的專案自動預設），清單也只列這個 repo 的變更。需求跨 repo 時，拆成多個變更，每個各屬一個 repo。
 
-`speclink plan` 與 `speclink change depends` 在 remote 模式一樣可用：它們改向 server 查詢或寫入，輸出的長相與本機模式相同，不會碰本機的 openspec 資料夾。
+`speclink plan` 與 `speclink change depends` 在 remote 模式一樣可用：它們改向 server 查詢或寫入，輸出的長相與本機模式相同，不會碰本機的 speclink 資料夾。
 
 ## 做完之後
 

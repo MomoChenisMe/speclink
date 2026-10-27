@@ -2,14 +2,14 @@
 title: 提案：建立變更與產物
 section: SDD 工作流
 order: 110
-keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊]
+keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊, schema, no-spec-change, 不改規格]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-09-25T08:39:09+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 提案：建立變更與產物
 
-需求清楚之後，呼叫 `/speclink-propose` 建立變更。agent 依需求來源寫出提案、任務清單與 delta 規格。過程中有兩道守門：capability 的名稱不能跟既有規格撞名或走音，新開的 capability 要寫合格的 Purpose。任務清單裡需要你親手做的事，會標上手動任務標記。
+需求清楚之後，呼叫 `/speclink-propose` 建立變更。agent 先決定這個變更要不要改正式規格，再依需求來源寫出提案、任務清單與 delta 規格（不改規格的變更沒有 delta）。過程中有兩道守門：capability 的名稱不能跟既有規格撞名或走音，新開的 capability 要寫合格的 Purpose。任務清單裡需要你親手做的事，會標上手動任務標記。
 
 ## 需求從哪裡來
 
@@ -54,11 +54,35 @@ speclink new change <變更名> --from-discussion <slug> --last
 帶 `--last` 的效果：記錄的保留在途旗標解除，之後最後一個轉出變更封存時，記錄自動隨行封存，不用再手動執行 `speclink discuss archive`。
 
 > [!WARNING]
-> 不是最後一刀卻帶了 `--last`，記錄會在最後一個在途變更封存時被收走。再立下一刀之前，把記錄檔從 `openspec/discussions/archive/` 搬回 `openspec/discussions/`。
+> 不是最後一刀卻帶了 `--last`，記錄會在最後一個在途變更封存時被收走。再立下一刀之前，把記錄檔從 `speclink/discussions/archive/` 搬回 `speclink/discussions/`。
 
 ### 從文件建立
 
 用 `--from-doc <路徑>` 時，提案的 Why 或 Impact 段會留一行 `Source doc: <路徑>`，記下出處。這是技能層的約定，不改變任何 CLI 語法。
+
+## 選擇產出流程：要不要改規格
+
+建立變更之前，agent 先決定它的產出流程（schema）。規則由上往下，取第一條成立的：
+
+1. **你指定了**：需求或參數裡寫了用哪個產出流程，就用它，不再問。
+2. **專案預設是自訂產出流程**：`speclink workflow-config show --json` 讀到的專案預設不是內建的兩個，就用專案預設，不做下面的判斷。
+3. **需求來自討論**（`--from-discussion`）：看討論結論。結論寫明不改任何正式規格承諾的行為、或點名 no-spec-change，就用 no-spec-change。結論會新增、修改或移除行為，就用 spec-driven。
+4. **其他情況**：agent 依需求內容與它掃過的正式規格，問自己「這個變更會不會改到正式規格承諾的行為？」不會就用 no-spec-change，會就用 spec-driven。
+
+> [!NOTE]
+> 修 bug 預設用 spec-driven，因為通常要寫 delta 把正確的行為釘住。只有說得出「沒有任何正式規格的承諾被改到」時，才用 no-spec-change。
+
+第 3、4 條判斷不了時，agent 會用兩個選項問你，建議的選項放第一個並寫出理由。它不會自己猜，你回答之前也不會建立變更。
+
+| 情境 | 結果 |
+| --- | --- |
+| 討論結論寫「純重構，不改任何正式規格承諾的行為」，你沒指定，專案預設是 spec-driven | 用 no-spec-change |
+| 需求是「修正封存時日期錯一天」，這個行為有正式規格承諾 | 用 spec-driven，並寫出修正該行為的 delta |
+| 你寫明「用 spec-driven」，需求看起來是不改行為的重構 | 用 spec-driven，不再問 |
+| 專案預設是自訂的 my-flow，你沒指定 | 用 my-flow，不判斷 |
+| 需求是「調整匯出檔的欄位順序」，從正式規格看不出欄位順序是不是承諾的行為 | 用兩個選項問你 |
+
+agent 以 `speclink new change "<變更名>" --schema <選定的產出流程>` 建立變更。選了 no-spec-change 時，提案照它的範本寫：沒有 Capabilities 段，Why 寫明為什麼不改正式規格承諾的行為，並列出查過的正式規格。收尾摘要會寫出選定的產出流程，no-spec-change 寫成「不改規格（no-spec-change）」。兩個產出流程的差別見[產出流程 schema 管理](schemas.md)。
 
 ## capability 命名守門
 

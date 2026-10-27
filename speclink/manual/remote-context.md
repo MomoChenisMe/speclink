@@ -4,7 +4,7 @@ section: Remote 模式
 order: 490
 keywords: [投影, context, refresh, stale, 唯讀, gitignore]
 sources: [context-projection]
-generated: 2026-09-02
+generated: 2026-10-27T11:03:57+08:00
 ---
 # remote 模式的規格投影
 
@@ -16,7 +16,9 @@ remote 模式的正式規格在 server 上。為了讓 AI 工具在本機讀得�
 
 - 一份清單檔（manifest.json）：記錄這次快照的識別、政策版本，以及每份文件的摘要值與版本。
 - 一份索引（INDEX.md）。
-- 一組鏡像 `openspec/` 佈局的文件：設定、共用詞彙、正式規格與變更文件。
+- 一組鏡像規格資料夾佈局的文件：設定、共用詞彙、正式規格與變更文件。
+
+鏡像的根目錄名照 server 給的文件路徑第一段決定，不寫死。新版 server 的路徑以 `speclink/` 開頭，所以變更 demo 的文件在投影裡的 `speclink/changes/demo/` 底下；舊版 server 的路徑以 `openspec/` 開頭，投影就用 `openspec/changes/demo/`，照常讀得到。`speclink instructions` 指給 AI 讀的檔案，也都指向投影裡實際存在的那一份。
 
 投影可以隨時整個目錄刪掉重建。重建後內容等價。
 

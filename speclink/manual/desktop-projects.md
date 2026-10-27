@@ -3,8 +3,8 @@ title: 專案、新增專案與設定頁
 section: 桌面 app
 order: 340
 keywords: [專案, 圖示列, 新增專案, 最近開啟, 初始化, 啟用, 專案動作選單, 專案設定, 應用程式設定, 專案說明, 產出規則, 審查規則, 產出流程, config.yaml, 顯示語言, 外觀, 鍵盤快捷鍵]
-sources: [desktop-config, "workspace-chooser#新增專案的來源分流", "workspace-chooser#最近開啟清單", "desktop-app#專案層檔案系統動作", "desktop-app#設定頁的鍵盤快捷鍵卡"]
-generated: 2026-10-15T17:40:05+08:00
+sources: [desktop-config, "workspace-chooser#新增專案的來源分流", "workspace-chooser#最近開啟清單", "desktop-app#專案層檔案系統動作", "desktop-app#設定頁的鍵盤快捷鍵卡", "spec-dir-migration#技能足跡同步不遷移規格資料夾"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 專案、新增專案與設定頁
@@ -33,10 +33,10 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 | 資料夾狀態 | app 的反應 |
 | --- | --- |
 | 專案根有 `.speclink.yaml` | 直接開啟，不問任何問題 |
-| 有 openspec/ 但沒有 `.speclink.yaml` | 顯示啟用確認對話框 |
+| 有規格資料夾（`speclink/`，或舊佈局的 `openspec/`）但沒有 `.speclink.yaml` | 顯示啟用確認對話框 |
 | 往上找不到任何 speclink 專案 | 顯示初始化確認對話框 |
 
-兩種確認對話框都有 AI 工具多選（claude、codex、copilot），預設只勾 claude。你按確認之前，app 不會在資料夾寫入任何東西。你取消，資料夾內容維持原樣。
+兩種確認對話框都有 AI 工具多選（claude、codex、copilot），預設只勾 claude。初始化對話框的說明文字寫明會建立 `speclink/`。你按確認之前，app 不會在資料夾寫入任何東西。你取消，資料夾內容維持原樣。
 
 每個工具的技能檔放在各自的目錄：
 
@@ -46,11 +46,13 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 | codex | `.agents/skills/` |
 | copilot | `.github/skills/` |
 
-**初始化**（全新資料夾）：確認後 app 做的事等同於 `speclink init`。它建立 openspec/ 骨架（specs/、changes/archive/、config.yaml）、在專案根寫 `.speclink.yaml` 記錄你選的工具、為每個工具生成技能檔。它不會產生 CLAUDE.md、AGENTS.md 或 `.github/copilot-instructions.md`。接著切到該專案，看板是空的。
+**初始化**（全新資料夾）：確認後 app 做的事等同於 `speclink init`。它建立 speclink/ 骨架（specs/、changes/archive/、config.yaml）、在專案根寫 `.speclink.yaml` 記錄你選的工具、為每個工具生成技能檔。它不會產生 CLAUDE.md、AGENTS.md 或 `.github/copilot-instructions.md`。接著切到該專案，看板是空的。
 
-**啟用**（已有 openspec/ 的資料夾，例如從別處搬來的專案）：確認後 app 只補缺的東西：openspec/ 缺的骨架、專案根的 `.speclink.yaml`、你選的工具的技能檔，同樣不生成指令檔。既有的 openspec/ 內容一個位元都不動，包含你自訂過的 config.yaml。判定與寫入都以往上找到的專案根為準，不是你點的子目錄。例如只勾 copilot 啟用，專案根只會多出 `.speclink.yaml`（工具只有 copilot）與 `.github/skills/`，不會產生 `.claude/`、`.agents/`、CLAUDE.md、AGENTS.md。
+**啟用**（已有規格資料夾的資料夾，例如從別處搬來的專案）：確認後 app 只補缺的東西：`speclink/` 缺的骨架、專案根的 `.speclink.yaml`、你選的工具的技能檔，同樣不生成指令檔。既有規格文件的內容不會被改寫，包含你自訂過的 config.yaml。判定與寫入都以往上找到的專案根為準，不是你點的子目錄。例如只勾 copilot 啟用，專案根只會多出 `.speclink.yaml`（工具只有 copilot）與 `.github/skills/`，不會產生 `.claude/`、`.agents/`、CLAUDE.md、AGENTS.md。
 
-初始化或啟用失敗時，app 顯示一行錯誤訊息，不切換專案。
+規格資料夾是舊佈局的 `openspec/`（例如 OpenSpec 專案）時，啟用對話框另外寫明：確認後資料夾會改名為 `speclink/`，之後 OpenSpec CLI 讀不到這個專案。確認後 app 先匯入：`openspec/` 改名為 `speclink/`、內容逐位元組不變，每個 `.openspec.yaml` 改名為 `.meta.yaml`；接著才補缺件，然後在看板呈現既有內容。這條路與 CLI 的工作區補齊相同，見[建立工作區與指令檔](init-workspace.md)。
+
+初始化或啟用失敗時，app 顯示一行錯誤訊息說明原因，不切換專案。舊佈局的資料夾有其他 worktree、或 `openspec/` 有未提交修改時，匯入會被拒絕：例如錯誤訊息說明 `openspec/` 有未提交修改，目前專案不變，所選資料夾的內容也不變。
 
 資料夾帶 remote 標記（`.speclink.yaml` 的 remote 區段）時另有分流，見[桌面連線 server 與 remote 專案](desktop-remote.md)。
 
@@ -78,7 +80,7 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 - 滑鼠停在條目上會出現 ×（「自最近開啟移除」）。移除後從畫面與記錄一起消失，重啟 app 也不會回來，其餘條目順序不變。
 - 介面語言是英文時，這幾個字面分別是「Recently opened」、「Remove from recently opened」、「Connection removed」、「Connection signed out」。
 
-**點本機條目**：app 先探測那個路徑。探測成功就關掉對話框，走與「本機資料夾」選同一路徑完全相同的流程：既有專案直接開、沒有 openspec 骨架的走初始化確認（確認前不寫入）、帶 remote 標記的走 remote 分流。探測失敗（例如資料夾已被刪除）時，該條目變成錯誤態並顯示一行原因，對話框留在原地，目前專案不變。條目會留在清單裡，直到你自己移除；你也可以再點一次重試，重試開始時錯誤態清掉。
+**點本機條目**：app 先探測那個路徑。探測成功就關掉對話框，走與「本機資料夾」選同一路徑完全相同的流程：既有專案直接開、沒有 speclink 骨架的走初始化確認（確認前不寫入）、帶 remote 標記的走 remote 分流。探測失敗（例如資料夾已被刪除）時，該條目變成錯誤態並顯示一行原因，對話框留在原地，目前專案不變。條目會留在清單裡，直到你自己移除；你也可以再點一次重試，重試開始時錯誤態清掉。
 
 **點 remote 條目**：app 先確認原本綁定的 checkout 仍然對得上那個 Project／Repo，再用同一個連線開啟。連線已移除或已登出的條目會停用開啟，規則見[桌面連線 server 與 remote 專案](desktop-remote.md)。
 
@@ -100,7 +102,7 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 
 方塊指到的資料夾已經不存在時，方塊變成錯誤態（角落紅點，提示附錯誤原因）。點它會彈出選單，第一列是一行錯誤訊息，其後只有「自專案列移除」，不會切換專案。app 啟動時會對每個背景本地專案探測一次路徑，失效的也轉成錯誤態。
 
-沒有任何專案時（例如第一次使用），左側只有圖示列（品牌標記、「＋」、設定），沒有專案欄。主區置中顯示空狀態：字標、「開啟一個專案開始」標題、說明（含「資料夾還沒有 openspec/ 時會先問你要不要初始化」）、「新增專案」與「連線 Server」兩顆按鈕，以及最近開啟卡。
+沒有任何專案時（例如第一次使用），左側只有圖示列（品牌標記、「＋」、設定），沒有專案欄。主區置中顯示空狀態：字標、「開啟一個專案開始」標題、說明（含「資料夾還沒有 speclink/ 時會先問你要不要初始化」）、「新增專案」與「連線 Server」兩顆按鈕，以及最近開啟卡。
 
 ## 專案動作選單
 
@@ -150,13 +152,22 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 
 | 組 | 分類 | 內容 |
 | --- | --- | --- |
-| openspec/config.yaml | 專案說明 | 專案說明卡 |
+| speclink/config.yaml | 專案說明 | 專案說明卡 |
 | | 產出規則 | 產出規則卡 |
 | | 審查規則 | 預設清單卡、專案規則卡 |
 | | 產出流程 | 產出政策卡、產出流程卡 |
 | 專案 | .speclink.yaml | 檔案列、AI 工具卡 |
 
-每頁頁標題下用等寬字註記對應的檔案與鍵，例如 `openspec/config.yaml · context`。
+每頁頁標題下用等寬字註記對應的檔案與鍵，例如 `speclink/config.yaml · context`。註記與分類欄的組名都照專案實際的規格資料夾顯示：還沒遷移的舊佈局專案是 `openspec/config.yaml · rules` 這種寫法，`.speclink.yaml` 明寫了規格資料夾路徑時就用那個路徑。
+
+整個 app 提到規格資料夾或變更資料檔的地方都照這條規則，不寫死舊名稱：
+
+- 討論詳情顯示的記錄路徑，例如 `speclink/discussions/board-search-bar.md`。
+- 遷移到遠端與來源選擇對話框，把本機的規格資料夾稱為「本機規格資料夾」。
+- 某個變更的資料檔解析失敗時，看板卡片的提示稱它為「變更資料檔」並附解析原因，不出現 `.openspec.yaml` 字樣。
+- 新專案的說明文字（初始化對話框、空狀態、來源選擇）寫 `speclink/`。
+
+這些文案都跟隨介面語言。
 
 #### 專案說明
 
@@ -183,7 +194,7 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 
 #### 審查規則
 
-頁標題下註記 `openspec/config.yaml · review`。介面文案跟隨介面語言，但嚴重度籤 CRITICAL、WARNING、SUGGESTION 與 smell 名稱維持英文。這些規則在審查時怎麼生效、CLI 怎麼寫，見[工作流政策與設定](policy-config.md)與[審查](review.md)。
+頁標題下註記 `speclink/config.yaml · review`。介面文案跟隨介面語言，但嚴重度籤 CRITICAL、WARNING、SUGGESTION 與 smell 名稱維持英文。這些規則在審查時怎麼生效、CLI 怎麼寫，見[工作流政策與設定](policy-config.md)與[審查](review.md)。
 
 唯讀時兩張卡：
 
@@ -223,18 +234,18 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
   | tdd: true | tdd 切關閉 | tdd 被移除（預設就是關） |
   | locale: tw，還有產出規則 | spec_locale 選 auto | 新增 spec_locale: auto，locale 與產出規則不動 |
 
-- worktree 開關的文案直接寫「worktree」，中英文介面都一樣。開關顯示 config.yaml 的現值，儲存時以畫面上的值寫入，成功後同步技能檔（與 CLI 改 worktree 相同）。由開改關時，如果還有活躍的 linked worktree，app 拒絕寫入並浮出擋下訊息：列出每個 worktree 的變更名、分支與路徑，提示先執行 worktree-merge 收尾。設定不變、開關回到開啟。見[平行實作與合回：worktree](worktree.md)。
+- worktree 開關的文案直接寫「worktree」，中英文介面都一樣。開關顯示 config.yaml 的現值，儲存時以畫面上的值寫入，成功後同步技能檔（與 CLI 改 worktree 相同）。這個同步只動技能檔：還是舊佈局 `openspec/` 的專案，資料夾原封不動，兩顆 worktree 技能照常以 `openspec/` 生成，看板持續自動更新；搬資料夾只由技能檔提示的「更新」做，見[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。由開改關時，如果還有活躍的 linked worktree，app 拒絕寫入並浮出擋下訊息：列出每個 worktree 的變更名、分支與路徑，提示先執行 worktree-merge 收尾。設定不變、開關回到開啟。見[平行實作與合回：worktree](worktree.md)。
 - locale 或 spec_locale 的儲存值不在合法選項內時（例如有人手改成「繁體中文」），下拉直接顯示那個原始值，帶無效標註與警示樣式，欄位下方出現提示文字，引導你改選合法代碼。app 不會自動清空或改寫它。你改選合法代碼並儲存後，值被覆蓋、提示消失。合法代碼：locale 為 tw、ja、en；spec_locale 為 tw、ja、en、auto。
 
 **產出流程卡**：列出每個可解析的產出流程，每列有名稱、來源層級、產物順序圖（例如 proposal → design → specs → tasks）。點進去是唯讀詳情，列出每個產物的說明、指令與範本全文；內建流程的內容不能在桌面編輯。卡上提供的動作：
 
 - 切換：用下拉選專案要用的產出流程，寫進 config.yaml 的 schema 鍵，其他內容逐位元組不變。config.yaml 壞掉時拒寫，錯誤浮出、檔案不變。產出規則頁的分節隨新流程更新；如果產出規則正在編輯中，分節等你儲存或取消後才跟上，草稿不會丟。
-- fork：把選中的流程複製到專案的 openspec/schemas/ 下，複本名固定為「原名-custom」，例如 spec-driven 的複本是 spec-driven-custom。同名流程出現在不同層時，只有引擎實際會用到的那一層提供 fork。
-- 建立：輸入 kebab-case 名稱，在專案 openspec/schemas/ 下產出預設骨架。
+- fork：把選中的流程複製到專案的 speclink/schemas/ 下，複本名固定為「原名-custom」，例如 spec-driven 的複本是 spec-driven-custom。同名流程出現在不同層時，只有引擎實際會用到的那一層提供 fork。
+- 建立：輸入 kebab-case 名稱，在專案 speclink/schemas/ 下產出預設骨架。
 
   | 輸入 | 結果 |
   | --- | --- |
-  | my-flow | 建立 openspec/schemas/my-flow/，清單新增這一項 |
+  | my-flow | 建立 speclink/schemas/my-flow/，清單新增這一項 |
   | My Flow | 拒絕，引擎的名稱錯誤浮出，磁碟不變 |
   | my-flow（已存在） | 拒絕，引擎的已存在錯誤浮出，磁碟不變 |
 
@@ -251,11 +262,11 @@ app 從你選的資料夾往上找 speclink 專案根。找到就直接切換過
 
 ### 專案設定（remote 專案）
 
-作用中的是 remote 專案時，分類欄只有 openspec/config.yaml 組的四項：專案說明、產出規則、審查規則、產出流程。沒有 .speclink.yaml，因為工具屬於本機 checkout。四頁的內容來自 server 上的政策文件，頁標題下以等寬字顯示政策版次。鍵的保留規則與本地相同：沒動到的鍵原樣保留，設回預設就移除。
+作用中的是 remote 專案時，分類欄只有 speclink/config.yaml 組的四項：專案說明、產出規則、審查規則、產出流程。沒有 .speclink.yaml，因為工具屬於本機 checkout。四頁的內容來自 server 上的政策文件，頁標題下以等寬字顯示政策版次。鍵的保留規則與本地相同：沒動到的鍵原樣保留，設回預設就移除。
 
 - 儲存時 app 帶著你讀到的版次送出。別人先一步改過時，你會收到版次衝突：你的輸入原樣保留，頁頂浮出逐欄位對照（server 現值｜我的輸入）。只有兩個出口：「以 server 版重載」與「檢視後以最新 revision 重新提交」。沒有強制覆寫。
 - 你在這個 Project 的角色是 reader 時，四頁唯讀、儲存停用，並附繁中角色說明。
-- 產出流程頁只列內建流程，切換下拉也只有內建可選。config 指到非內建名稱時，以停用項顯示現值、不可選取，並顯示「遠端自訂尚不支援」，產出規則的分節留空。fork、建立、開啟所在資料夾、刪除都不出現，也沒有 worktree 開關。
+- 產出流程頁只列兩個內建流程（spec-driven 與 no-spec-change，後者的產物圖是 proposal、design、tasks），切換下拉也只有這兩個可選。config 指到非內建名稱時，以停用項顯示現值、不可選取，並顯示「遠端自訂尚不支援」，產出規則的分節留空。fork、建立、開啟所在資料夾、刪除都不出現，也沒有 worktree 開關。
 - 審查規則頁一樣能展開 12 條名稱，儲存同樣帶版次。
 
 ### 應用程式設定
@@ -327,4 +338,4 @@ Windows 與 Linux 不列只經 macOS 原生選單才生效的項目（設定、�
 - 應用程式設定不受任何專案設定檔壞掉的影響，例如顯示語言照常可改。
 - 每次寫入前 app 先確認新內容解析得回來、目標欄位值正確。寫檔後再回讀驗證一次。任一步失敗就顯示一行指明檔案與階段的錯誤訊息，磁碟上的檔案維持原內容，不會留下解析不了的設定檔。
 
-**出處**：`desktop-config`、`workspace-chooser`、`desktop-app`
+**出處**：`desktop-config`、`workspace-chooser`、`desktop-app`、`spec-dir-migration`

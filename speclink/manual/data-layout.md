@@ -2,18 +2,18 @@
 title: 認識資料：變更、討論與規格
 section: 開始使用
 order: 40
-keywords: [openspec, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
-sources: [change-lifecycle, discussion-docs, user-documentation]
-generated: 2026-10-15T17:40:05+08:00
+keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
+sources: [change-lifecycle, discussion-docs, user-documentation, "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 認識資料：變更、討論與規格
 
-Speclink 的資料都是純文字檔，放在專案的 `openspec/` 資料夾。你不用打開 Speclink 也能讀寫它們，每一次變動都會出現在 git diff 裡。這一頁介紹資料夾長什麼樣、一個變更會經過哪些狀態、討論記錄與變更怎麼連在一起。
+Speclink 的資料都是純文字檔，放在專案的規格資料夾（預設是 `speclink/`）。你不用打開 Speclink 也能讀寫它們，每一次變動都會出現在 git diff 裡。這一頁介紹資料夾長什麼樣、一個變更會經過哪些狀態、討論記錄與變更怎麼連在一起。
 
-## openspec 資料夾
+## speclink 資料夾
 
-本地模式的 `openspec/` 沿用 OpenSpec 的目錄結構，內容全是 Markdown 與 YAML：
+本地模式的 `speclink/` 內容全是 Markdown 與 YAML：
 
 | 路徑 | 放什麼 |
 | --- | --- |
@@ -22,25 +22,31 @@ Speclink 的資料都是純文字檔，放在專案的 `openspec/` 資料夾。�
 | `changes/archive/` | 已封存的變更 |
 | `config.yaml` | 工作流政策與專案設定，見[工作流政策與設定](policy-config.md) |
 
-Speclink 在這個結構上多加了兩樣東西：
+Speclink 在這些產物之外多加了兩樣東西：
 
 - `discussions/`：討論記錄，每份一個 `.md` 檔。已封存的討論在 `discussions/archive/`。
-- 每個變更資料夾裡的 `.openspec.yaml`：這個變更的狀態檔。
+- 每個變更資料夾裡的 `.meta.yaml`：這個變更的狀態檔。
 
 > [!NOTE]
-> 這個相容性只適用本地模式。Remote 模式的正式規格存在 server 的 Store，本機只有唯讀投影。見 [remote 模式總覽](remote-overview.md)。
+> 這種可攜性只適用本地模式。Remote 模式的正式規格存在 server 的 Store，本機只有唯讀投影。見 [remote 模式總覽](remote-overview.md)。
+
+可以從 OpenSpec 專案匯入，但只能單向：在 OpenSpec 專案執行 `speclink init`，會把 `openspec/` 搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案。舊版 Speclink 建立的專案仍是 `openspec/` 資料夾與 `.openspec.yaml` 狀態檔，怎麼搬過來見[規格資料夾與舊佈局遷移](spec-folder.md)。
 
 ## 變更的生命週期
 
-變更的狀態真相只有一個地方：它自己資料夾裡的 `.openspec.yaml`。這個檔案記錄三站的章：
+變更的狀態真相只有一個地方：它自己資料夾裡的 `.meta.yaml`。這個檔案記錄三站的章：
 
 | 站 | 記錄什麼 | 何時寫入 |
 | --- | --- | --- |
 | 建立 | 建立時間、建立者、建立工具 | 變更建立時 |
-| 開工 | 開工日期、開工者 | 第一次標記開工、或第一次完成任務時 |
+| 開工 | 開工時間、開工者 | 第一次標記開工、或第一次完成任務時 |
 | 封存 | 封存時間、封存者 | 封存時 |
 
 封存不會剝掉開工站的欄位。三站的章會一起留在封存目錄裡。
+
+**時間怎麼記、怎麼顯示**：新寫入的時間（建立、開工、認領、審查章、驗證章、封存）都是帶本機時區、精確到秒的時戳，例如 `2026-10-21T14:05:00+08:00`。對外輸出只給日期部分：CLI 的一般輸出與 `--json`（例如 `speclink show`、`speclink list --json`、drift 報告）、server 的回應與桌面 app 都只顯示 `2026-10-21`。所以同一天寫入的舊式純日期記錄與新式時戳記錄，輸出完全相同。既有的純日期記錄不會被改寫。變更放了幾天（過期判定）也只看日期部分。值既不是日期也不是時戳時（例如 `someday`），照原樣輸出，也不計算過期天數。
+
+**封存時間**：封存成功時，封存目錄裡的狀態檔多一行封存時間。它與封存目錄名的日期前綴、正式規格上的更新時戳，取自同一個時刻。封存守門拒絕時不寫這一行。上一次封存在搬移資料夾時失敗、留下了一行封存時間的話，下次封存成功會換成新的時間，檔內只留一行。沒有狀態檔的舊式變更照常封存，不會為了這一行新建狀態檔。
 
 狀態檔還可以有一行「前置變更」（`depends_on`）：逗號分隔的變更名清單，意思是這個變更要等那些變更先落地。這一行由 `speclink change depends` 寫入，沒有這一行就是沒有依賴。有沒有這一行，`speclink list` 與 `speclink status` 的輸出都一樣，前置只影響 `speclink plan` 算出來的順序與波次。見[執行順序：plan 與依賴](plan.md)。
 
@@ -107,11 +113,11 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 
 ### 狀態檔壞掉時
 
-`.openspec.yaml` 存在但無法解析時，所有會改狀態的動作都會拒絕，並指出檔案位置與解析原因：標記開工、認領、完成任務、取消完成、新增產物、封存、廢棄。壞掉的狀態檔不會被當成「未開工」處理，discard 帶 `--force` 也一樣拒絕。修好檔案再重試。
+`.meta.yaml` 存在但無法解析時，所有會改狀態的動作都會拒絕，並指出檔案位置與解析原因：標記開工、認領、完成任務、取消完成、新增產物、封存、廢棄。壞掉的狀態檔不會被當成「未開工」處理，discard 帶 `--force` 也一樣拒絕。修好檔案再重試。
 
 ## 討論記錄
 
-討論記錄放在 `openspec/discussions/<slug>.md`。slug 是檔名，也是所有討論指令的把手。每份記錄有三個區段：Context（背景）、Rounds（輪）、Conclusion（結論）。輪只能往後追加，不能改寫既有的輪。
+討論記錄放在 `speclink/discussions/<slug>.md`。slug 是檔名，也是所有討論指令的把手。每份記錄有三個區段：Context（背景）、Rounds（輪）、Conclusion（結論）。輪只能往後追加，不能改寫既有的輪。
 
 記錄的狀態有三種：
 
@@ -154,4 +160,4 @@ promote、seal 與 `speclink new change --from-discussion` 都可以帶 `--last`
 
 操作細節見[討論：需求還模糊時](discuss.md)。
 
-**出處**：`change-lifecycle`、`discussion-docs`、`user-documentation`
+**出處**：`change-lifecycle`、`discussion-docs`、`user-documentation`、`spec-dir-migration`

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 90
 keywords: [baseline, 基準, 盤點, 既有專案, 採用, capability map, rules.specs, onboard]
 sources: [baseline-skill, skill-routing, user-documentation]
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 
 # 基準盤點：既有專案採用 Speclink
@@ -17,7 +17,7 @@ generated: 2026-10-15T17:40:05+08:00
 
 1. **只記錄已存在的行為**。每條需求都要能追溯到實際讀過的程式碼或測試。無法驗證的推論會標記出來，或直接省略。
 2. **不修改任何程式碼**。
-3. **不建立變更**。正式規格直接寫進 `openspec/specs/<capability>/spec.md`，變更目錄底下不會多出任何東西。
+3. **不建立變更**。正式規格直接寫進 `speclink/specs/<capability>/spec.md`，變更目錄底下不會多出任何東西。
 4. **已有規格時只補缺**。技能進入補缺模式，只盤點還沒被覆蓋的行為區域，既有的規格檔一個字都不動。要改既有規格，走變更流程，見[提案：建立變更與產物](propose.md)。
 5. **capability map 經你確認前，不寫任何規格**。
 6. **寫完後做嚴格結構驗證**，並修正結構性發現。
@@ -28,13 +28,13 @@ generated: 2026-10-15T17:40:05+08:00
 
 1. **讀工作流設定**：技能一開始就執行 `speclink workflow-config show --json`，取得專案說明、規格語言與規格產出規則。細節見下一節。
 2. **提出 capability map**：技能提出一份能力對照表（哪些行為歸哪個 capability），並等你確認。你可以合併、拆分或刪除 capability。確認前，規格目錄下沒有任何新檔。
-3. **寫入規格**：技能依確認後的清單，把規格寫進 `openspec/specs/`。
+3. **寫入規格**：技能依確認後的清單，把規格寫進 `speclink/specs/`。
 4. **驗證**：技能執行 `speclink validate --specs --all --strict`。有結構性發現就修正後重跑。
 5. **報告**：最後的報告列出建立的 capability（含需求數與情境數）、標記為未驗證的行為、刻意略過的區域，以及規則揭露段。
 
 ## 盤點前先讀工作流設定
 
-技能只透過 `speclink workflow-config show --json` 讀設定。它不會自己去讀 `openspec/config.yaml`，也不會自己解析 YAML。從結果讀三個欄位：
+技能只透過 `speclink workflow-config show --json` 讀設定。它不會自己去讀 `speclink/config.yaml`，也不會自己解析 YAML。從結果讀三個欄位：
 
 | 欄位 | 用途 |
 | --- | --- |
@@ -64,7 +64,7 @@ generated: 2026-10-15T17:40:05+08:00
 > [!NOTE]
 > 這些規則是 agent 產生內容時必須遵守的指令。`speclink validate` 只檢查結構，不會機械式驗證自由文字的規則有沒有被遵守。
 
-**設定讀不到就停止**：`speclink workflow-config show --json` 失敗時（`openspec/config.yaml` 無法解析、remote 模式離線或認證失效），技能回報錯誤並停止。它不寫任何規格，也不會退回去手讀設定檔。remote 模式與本地模式的設定內容形狀相同，技能對兩種模式沒有差別規定。
+**設定讀不到就停止**：`speclink workflow-config show --json` 失敗時（`speclink/config.yaml` 無法解析、remote 模式離線或認證失效），技能回報錯誤並停止。它不寫任何規格，也不會退回去手讀設定檔。remote 模式與本地模式的設定內容形狀相同，技能對兩種模式沒有差別規定。
 
 工作流設定的內容與寫法見[工作流政策與設定](policy-config.md)。
 

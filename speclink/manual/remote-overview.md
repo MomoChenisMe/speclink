@@ -4,7 +4,7 @@ section: Remote 模式
 order: 400
 keywords: [remote, server, link, 參考實作, project-scoped URL, .speclink.yaml]
 sources: [user-documentation, remote-connection]
-generated: 2026-10-15T17:40:05+08:00
+generated: 2026-10-27T11:03:57+08:00
 ---
 # remote 模式總覽
 
@@ -12,13 +12,13 @@ Speclink 有兩種工作方式。本地模式把正式規格放在你的 repo �
 
 ## 本地與 remote 的差別
 
-**本地模式**的產物沿用 OpenSpec 的目錄結構：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容是純 Markdown 與 YAML，不經 Speclink 也讀得到、改得動，每次變動都呈現在 git diff 裡。Speclink 在這個結構上多加兩樣東西：`discussions/` 目錄，以及各變更目錄裡的 `.openspec.yaml`。細節見 [認識資料：變更、討論與規格](data-layout.md)。
+**本地模式**的產物放在規格資料夾（預設 `speclink/`）底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容是純 Markdown 與 YAML，不經 Speclink 也讀得到、改得動，每次變動都呈現在 git diff 裡。Speclink 另外多加兩樣東西：`discussions/` 目錄，以及各變更目錄裡的 `.meta.yaml`。細節見 [認識資料：變更、討論與規格](data-layout.md)。
 
-**remote 模式**的正式規格在 server 的儲存後端。本機沒有 `openspec/` 目錄，只有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述目錄相容性不適用 remote 模式。
+**remote 模式**的正式規格在 server 的儲存後端。本機沒有 `speclink/` 目錄，只有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述的純文字可攜性不適用 remote 模式。
 
 ## 官方 server 是參考實作
 
-`speclink-server` 是官方的參考實作，用途是開箱即用與試用遠端功能。它不是 remote 模式的唯一路徑。remote 模式由兩份公開契約定義：`openspec/specs/` 裡的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自行實作 server 端，接上自己的認證、資料庫與權限模型。CLI 與桌面 app 對自建 server 同樣可用。
+`speclink-server` 是官方的參考實作，用途是開箱即用與試用遠端功能。它不是 remote 模式的唯一路徑。remote 模式由兩份公開契約定義：`speclink/specs/` 裡的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自行實作 server 端，接上自己的認證、資料庫與權限模型。CLI 與桌面 app 對自建 server 同樣可用。
 
 本地與 remote 的能力對照表以官方參考 server 為量測對象，同樣的欄位適用於自建 server。
 
@@ -40,12 +40,12 @@ CLI 看 `.speclink.yaml` 裡有沒有 remote 區段。
 
 - 有 remote 區段：remote 模式。區段的 url 是 project-scoped API URL，repo 是這個 repo 在 Project 內的註冊名。
 - 沒有 remote 區段：本地模式。
-- remote 區段與 `openspec/` 目錄並存：remote 模式生效，並在錯誤輸出印一行並存警告。
+- remote 區段與 `speclink/` 目錄並存：remote 模式生效，並在錯誤輸出印一行並存警告。
 - 環境變數 SPECLINK_STORE_URL 存在時，覆寫區段的 url。
 - remote 區段存在，但區段的 url 與環境變數都沒有：指令失敗，並同時提示 remote.url 欄位與 SPECLINK_STORE_URL 兩種設定方式。它不會悄悄改用本地模式。
 
 > [!WARNING]
-> `.speclink.yaml` 存在但無法解析時，所有依賴模式判定的指令都失敗。錯誤訊息指出檔案與解析原因。指令不會當成沒有 remote 區段而讀本地 `openspec/`，也不會發出任何遠端請求。
+> `.speclink.yaml` 存在但無法解析時，所有依賴模式判定的指令都失敗。錯誤訊息指出檔案與解析原因。指令不會當成沒有 remote 區段而讀本地 `speclink/`，也不會發出任何遠端請求。
 
 專案根還留著舊的 `.speclink.remote.yaml` 時，CLI 只印一行遷移警告，提示你把 url 與 repo 搬進 `.speclink.yaml` 的 remote 區段並刪掉舊檔。舊檔不參與模式判定，內容不會被讀。
 
@@ -53,7 +53,7 @@ CLI 看 `.speclink.yaml` 裡有沒有 remote 區段。
 
 | 指令 | 作用 |
 | --- | --- |
-| `speclink init --store remote --url <url> [--repo <name>]` | 在空資料夾建立 remote 工作區：寫入 `.speclink.yaml` 的 tools 與 remote 區段、生成技能與 `.gitignore`。不建立 `openspec/`，也不建立任何指令檔 |
+| `speclink init --store remote --url <url> [--repo <name>]` | 在空資料夾建立 remote 工作區：寫入 `.speclink.yaml` 的 tools 與 remote 區段、生成技能與 `.gitignore`。不建立 `speclink/`，也不建立任何指令檔 |
 | `speclink link <url> [--repo <name>]` | 只寫入或更新 remote 區段，保留 tools 與其他欄位 |
 | `speclink unlink` | 移除 remote 區段，保留其他欄位。之後指令回到本地模式 |
 | `speclink auth login` | 取得憑證 |

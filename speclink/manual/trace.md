@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 200
 keywords: [溯源, trace, 演進鏈, 證據, 來源討論]
 sources: [trace-skill, trace-verb]
-generated: 2026-09-02
+generated: 2026-10-27T11:03:57+08:00
 ---
 # 溯源：一個功能怎麼來的
 
