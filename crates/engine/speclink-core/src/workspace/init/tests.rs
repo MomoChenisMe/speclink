@@ -183,22 +183,29 @@ fn marker_count(text: &str) -> usize {
 
 /// 目錄快照（檔案內容與目錄項目），供「零寫入」斷言逐位元組比對。
 fn snapshot(root: &TempRoot) -> Vec<(String, Vec<u8>)> {
-    fn walk(dir: &Path, prefix: &str, out: &mut Vec<(String, Vec<u8>)>) {
+    walk_snapshot(root, false)
+}
+
+fn walk_snapshot(root: &TempRoot, skip_git: bool) -> Vec<(String, Vec<u8>)> {
+    fn walk(dir: &Path, prefix: &str, skip_git: bool, out: &mut Vec<(String, Vec<u8>)>) {
         let mut entries: Vec<_> = std::fs::read_dir(dir).unwrap().flatten().collect();
         entries.sort_by_key(|e| e.file_name());
         for entry in entries {
             let name = entry.file_name().to_string_lossy().to_string();
+            if skip_git && prefix.is_empty() && name == ".git" {
+                continue;
+            }
             let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
             if entry.path().is_dir() {
                 out.push((format!("{rel}/"), Vec::new()));
-                walk(&entry.path(), &rel, out);
+                walk(&entry.path(), &rel, skip_git, out);
             } else {
                 out.push((rel, std::fs::read(entry.path()).unwrap()));
             }
         }
     }
     let mut out = Vec::new();
-    walk(&root.dir, "", &mut out);
+    walk(&root.dir, "", skip_git, &mut out);
     out
 }
 
@@ -347,8 +354,10 @@ fn seed_unadopted(root: &TempRoot) {
 }
 
 /// 目錄快照去掉 `.git/`：git status 會刷新 index，零寫入斷言只看專案檔。
+/// 同 snapshot，但不走進 `.git/`：commit 後 git 可能在背景整理，`.git/` 裡的檔案
+/// 會在讀到一半時消失。
 fn project_snapshot(root: &TempRoot) -> Vec<(String, Vec<u8>)> {
-    snapshot(root).into_iter().filter(|(rel, _)| !rel.starts_with(".git/")).collect()
+    walk_snapshot(root, true)
 }
 
 /// Spec Scenario「匯入後既有內容位元級不變」：openspec/ 改名為 speclink/、資料檔改名為

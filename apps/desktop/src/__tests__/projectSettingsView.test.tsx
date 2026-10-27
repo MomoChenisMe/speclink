@@ -335,7 +335,7 @@ describe("檔案註記依實際規格資料夾（spec「畫面依實際規格資
     render(<Harness settings={ws} initial="rules" onConfigFile={onConfigFile} />);
     await screen.findByTestId("rules-page");
     expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
-    expect(onConfigFile).toHaveBeenLastCalledWith("openspec/config.yaml");
+    await waitFor(() => expect(onConfigFile).toHaveBeenLastCalledWith("openspec/config.yaml"));
   });
 
   it("明寫 spec_dir：註記為該路徑", async () => {
