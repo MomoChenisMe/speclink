@@ -1,6 +1,17 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.11.0 (2026-10-27)
+
+### New features
+
+- The spec folder is now `speclink/` by default, and the data file of each change is now `.meta.yaml`. After you upgrade, run `speclink update` in an existing `openspec/` project to move it. The update waits and tells you why when other worktrees or uncommitted changes exist. It does not commit for you, and your team should upgrade before they pull the commit. In an OpenSpec project, `speclink init` now imports the project. Projects that you do not move yet still work and show a one-line warning.
+- The desktop app supports the folder move. When you open an old project, the skill file prompt tells you that `openspec/` becomes `speclink/`. After you click update, the app moves the folder and keeps the board up to date. Enabling an OpenSpec project imports it first. Settings and dialogs show the folder that the project actually uses.
+- A new built-in workflow, no-spec-change, is for changes that alter no behavior the specs promise. It has no delta spec, `speclink validate` does not warn about a missing delta, and archive does not need `--skip-specs`. `/speclink-propose` picks the workflow for you, and `/speclink-verify` checks that such a change really keeps the promised behavior.
+- The new `speclink change schema <change> <workflow>` command switches the workflow of a change that is not archived yet. When a no-spec-change change turns out to alter promised behavior, `/speclink-ingest` switches it back to spec-driven before it writes the delta spec, and `/speclink-verify` lists the steps to do so. A change without a specs step can no longer get a delta spec by mistake.
+- Review and verify stamps now record how many rounds each gate ran, and archive records the archive time. The time fields of a change are now timestamps to the second with the time zone, but output still shows only the date. The Archived page of the desktop app shows a new "Process cost" summary with the median doc lines, tasks, days and hours from creation to archive, and quality gate rounds.
+- Before the first round, `/speclink-quality` now compares your branch with the main branch. If the main branch changed files that this change also changed, it stops and suggests a rebase, so the stamp does not become invalid later. When the repo has CI, the option to stamp now reminds you to wait until CI passes on all platforms.
+
 ## 0.10.0 (2026-10-16)
 
 ### New features
