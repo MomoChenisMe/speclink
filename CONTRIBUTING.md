@@ -46,7 +46,7 @@ If you change the human output or the `--json` output of a command, update the g
 
 ## Describe a behavior change with Speclink
 
-Speclink builds Speclink. The specs of the project are in `openspec/specs/`, and each behavior change has a folder in `openspec/changes/`.
+Speclink builds Speclink. The specs of the project are in `speclink/specs/`, and each behavior change has a folder in `speclink/changes/`.
 
 - **A small fix** (a typo, a clear bug, a test): send a pull request with a test. You do not need a change folder.
 - **A new behavior, or a change to an existing behavior**: open an issue first, so that we agree on the direction. Then create a change with your agent (`/speclink-propose <change-name>`, or `$speclink-propose <change-name>` in Codex). The change holds the proposal, the delta specs, and the task list. Implement it with `/speclink-apply`.

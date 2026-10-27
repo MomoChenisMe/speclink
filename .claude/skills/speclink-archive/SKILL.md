@@ -84,7 +84,7 @@ Archive a completed change.
 
 4. **Assess delta spec completeness**
 
-   Check for delta specs at `openspec/changes/<name>/specs/`. If none exist, skip this step.
+   Check for delta specs at `speclink/changes/<name>/specs/`. If none exist, skip this step.
 
    Background: the merge engine is fail-closed. It validates every capability's delta
    against the canonical spec first and writes nothing until all of them pass, so a stale
@@ -110,7 +110,7 @@ Archive a completed change.
    A delta for a capability being created may also carry a `## Purpose` section; it becomes
    the new canonical spec's Purpose (without one, a TBD placeholder is written).
 
-   **For each delta spec, compare against `openspec/specs/<capability>/spec.md`:**
+   **For each delta spec, compare against `speclink/specs/<capability>/spec.md`:**
    - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
    - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
@@ -156,7 +156,7 @@ Archive a completed change.
    `--skip-specs` skips spec application entirely.
 
    **The zero-evidence note.** A change accumulates completion evidence in
-   `openspec/changes/<name>/.evidence.json` as `speclink task done` records which code
+   `speclink/changes/<name>/.evidence.json` as `speclink task done` records which code
    files each task touched. When a change carries none, the archive still succeeds and
    stderr gains one line:
 
@@ -186,7 +186,7 @@ Archive a completed change.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs
 
 All artifacts complete. All tasks complete.
@@ -199,7 +199,7 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** No delta specs
 
 All artifacts complete. All tasks complete.
@@ -212,7 +212,7 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
-**Archived to:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** Sync skipped (user chose to skip)
 
 **Warnings:**
@@ -229,7 +229,7 @@ Review the archive if this was not intentional.
 ## Archive Failed
 
 **Change:** <change-name>
-**Target:** openspec/changes/archive/YYYY-MM-DD-<name>/
+**Target:** speclink/changes/archive/YYYY-MM-DD-<name>/
 
 Target archive directory already exists.
 
@@ -310,7 +310,7 @@ with a plain git commit — the change-scoped `/speclink-commit` flow does not a
 after the archive (its file selection reads the change directory that has just moved).
 This is a reminder only — never run the commit yourself.
 
-When the workspace has a `openspec/manual/` directory, add one more line to that
+When the workspace has a `speclink/manual/` directory, add one more line to that
 reminder: the manual may be stale now, and `/speclink-manual` will report which pages
 this archive's spec changes outdated. The condition is the directory's existence only —
 do not work out which specs this archive touched, and do not judge whether the manual

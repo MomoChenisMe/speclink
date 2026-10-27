@@ -1,5 +1,5 @@
 // 使用者可見繁中文案的正典詞彙守門（ui-copy-vocabulary spec、design D4）。
-// 守門詞由 openspec/LANGUAGE.md 動態解析——新增詞條自動生效，這是「擋住新的越界」
+// 守門詞由 speclink/LANGUAGE.md 動態解析——新增詞條自動生效，這是「擋住新的越界」
 // 而非「追討存量」：規格散文、程式碼註解與已封存內容都不在掃描面內。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -77,7 +77,7 @@ function scanText(relative, text, terms) {
 
 const scanFiles = (files, terms) => files.flatMap((relative) => scanText(relative, read(relative), terms));
 
-const TERMS = avoidTerms(read('openspec/LANGUAGE.md'));
+const TERMS = avoidTerms(read('speclink/LANGUAGE.md'));
 
 test('詞彙守門：使用者可見文案面不出現 LANGUAGE.md 的 avoid 詞', () => {
   const hits = scanFiles(surface(), TERMS);
@@ -151,16 +151,16 @@ test('CRLF 與 LF 行尾的判定結果相同', () => {
   assert.deepEqual(lf, ['docs/x.md:3 「抽屜」']);
 });
 
-test('LANGUAGE.md 正典自身與 openspec/specs 的存量不在掃描面內', () => {
+test('LANGUAGE.md 正典自身與 speclink/specs 的存量不在掃描面內', () => {
   const scanned = surface();
-  assert.ok(!scanned.includes('openspec/LANGUAGE.md'), '正典自身入面會使 avoid 欄違規');
+  assert.ok(!scanned.includes('speclink/LANGUAGE.md'), '正典自身入面會使 avoid 欄違規');
   assert.ok(
-    !scanned.some((relative) => relative.startsWith('openspec/')),
-    'openspec/ 底下的規格散文與封存內容不在掃描面內',
+    !scanned.some((relative) => relative.startsWith('speclink/')),
+    'speclink/ 底下的規格散文與封存內容不在掃描面內',
   );
   // 正典與規格散文都還帶著存量舊詞——它們被排除，不是剛好乾淨。
-  assert.ok(scanText('openspec/LANGUAGE.md', read('openspec/LANGUAGE.md'), TERMS).length > 0);
+  assert.ok(scanText('speclink/LANGUAGE.md', read('speclink/LANGUAGE.md'), TERMS).length > 0);
   assert.ok(
-    scanText('openspec/specs/desktop-app/spec.md', read('openspec/specs/desktop-app/spec.md'), TERMS).length > 0,
+    scanText('speclink/specs/desktop-app/spec.md', read('speclink/specs/desktop-app/spec.md'), TERMS).length > 0,
   );
 });

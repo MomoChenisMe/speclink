@@ -14,8 +14,8 @@
 
 官方 `speclink-server` 是參考實作，你可以照這份文件自建 server。這份文件與正式規格有出入時，以正式規格為準：
 
-- [動詞契約正式規格](../openspec/specs/verb-contract/spec.md)
-- [客戶端協定正式規格](../openspec/specs/client-protocol/spec.md)
+- [動詞契約正式規格](../speclink/specs/verb-contract/spec.md)
+- [客戶端協定正式規格](../speclink/specs/client-protocol/spec.md)
 
 架 server、建立存取金鑰（PAT）的步驟見 [Remote 入門](remote-getting-started.zh-TW.md)。
 

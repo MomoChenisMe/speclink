@@ -125,7 +125,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
    **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
-   - If delta specs exist in `openspec/changes/<name>/specs/`:
+   - If delta specs exist in `speclink/changes/<name>/specs/`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
        - Look for its implementation in the frozen patch first
@@ -252,7 +252,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 11 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `openspec/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+    NEVER hand-write or edit `speclink/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 13. **Branch on the blocking set**
 

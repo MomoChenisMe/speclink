@@ -4,7 +4,7 @@
 
 最後查核日期：**2026-10-07**（0.8.0）。
 
-這份文件回答「這項能力現在能不能用」。行為的正式定義在 `openspec/specs/`；還沒做的方向在[專案路線圖](roadmap.zh-TW.md)。只有程式碼、crate 或正式規格存在，不代表使用者已經用得到。
+這份文件回答「這項能力現在能不能用」。行為的正式定義在 `speclink/specs/`；還沒做的方向在[專案路線圖](roadmap.zh-TW.md)。只有程式碼、crate 或正式規格存在，不代表使用者已經用得到。
 
 要實際操作 Remote Server、Desktop 與 CLI，照 [Remote 入門](remote-getting-started.zh-TW.md)做一次。
 
@@ -57,7 +57,7 @@
 | Local 桌面 app | 可用 | 看板、詳情頁、規格、已封存、手冊、設定模式（應用程式設定、專案設定與「關於 Speclink」頁）與系統匣 | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI 測試](../apps/desktop/src/__tests__/App.test.tsx)<br>[設定模式測試](../apps/desktop/src/__tests__/settingsColumn.test.tsx)<br>[關於頁測試](../apps/desktop/src/__tests__/aboutPage.test.tsx)<br>[自動更新測試](../apps/desktop/src/__tests__/updater.test.ts) | 遠端專案的狀態另列在下面。 | 2026-10-15 |
 | 安裝通路 | 可用 | 桌面安裝檔（macOS universal dmg、Windows 安裝器、Linux AppImage）；CLI 的 npm、安裝腳本、Homebrew；server 的 npx 與 Docker | [npm 啟動器測試](../scripts/npm/npm-cli-launcher.test.mjs)<br>[安裝腳本測試](../scripts/install.test.mjs)<br>[Homebrew formula 產生器](../scripts/release/homebrew-formula.mjs) | Windows 安裝檔沒有程式碼簽章，第一次執行要放行 SmartScreen。 | 2026-10-07 |
 | Node SDK（`@speclink/engine`） | 可用 | `npm install @speclink/engine` | [套件入口](../crates/adapters/speclink-node/package.json)<br>[dispatch 契約測試](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[版號測試](../scripts/npm/npm-engine-package.test.mjs) | 0.2.0 起在 npm 上，含五個平台子套件。還沒有：型別化的 JS 方法、JS 版遠端 client、Agent 工具層。見[路線圖](roadmap.zh-TW.md)。 | 2026-10-07 |
-| Command Runtime、Host 與 Protocol | 可用 | CLI、server 與 Node SDK 共用的 Rust crates | [Host 雙路徑測試](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol 正式規格](../openspec/specs/client-protocol/spec.md) | 給 Agent 用的工具包裝還沒做。 | 2026-10-07 |
+| Command Runtime、Host 與 Protocol | 可用 | CLI、server 與 Node SDK 共用的 Rust crates | [Host 雙路徑測試](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol 正式規格](../speclink/specs/client-protocol/spec.md) | 給 Agent 用的工具包裝還沒做。 | 2026-10-07 |
 | SQLite TeamStore | 可用 | `speclink-server` 預設的 `sqlite` | [SQLite 一致性測試](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[儲存後端選擇](server-store-drivers.zh-TW.md) | 只支援單一 server instance。 | 2026-10-07 |
 | Server FS TeamStore | 可用 | server 設定的 `serverfs` | [Server FS 一致性測試](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[原子發布測試](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | 需要可靠的檔案鎖（flock）；一個資料目錄只能有一個 server。 | 2026-10-07 |
 | PostgreSQL TeamStore | 可用 | server 設定的 `postgres` | [PostgreSQL 一致性測試](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[韌性測試](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | server 仍是單一 instance。 | 2026-10-07 |
@@ -79,7 +79,7 @@
 1. 執行 `speclink --help` 與各子指令的 `--help`，核對 CLI 入口。
 2. 執行 `speclink-server --help`，核對 server、帳號與備份的入口。
 3. 比較 `.claude/skills/` 與 `.agents/skills/` 的目錄清單。兩邊只差 `speclink-analyze`（只有 Claude 有）。
-4. 用[動詞契約的正式規格](../openspec/specs/verb-contract/spec.md)核對本地與遠端對照表。
+4. 用[動詞契約的正式規格](../speclink/specs/verb-contract/spec.md)核對本地與遠端對照表。
 5. 用 `npm view @speclink/engine version` 等指令核對 npm 上的版本。
 6. 交叉核對 `Cargo.toml`、各 package 的 scripts、整合與端到端測試，以及正式規格。沒有使用者入口的能力，不能因為 crate 存在就標成可用。
 

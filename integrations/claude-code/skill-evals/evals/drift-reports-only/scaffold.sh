@@ -6,7 +6,7 @@ eval_init
 mkdir -p src
 echo 'module.exports = () => "hello";' >src/old.js
 eval_greeting_change
-printf '\n### Helper\n\nThe helper in `src/old.js` returns the greeting text.\n' >>openspec/changes/add-greeting/design.md
+printf '\n### Helper\n\nThe helper in `src/old.js` returns the greeting text.\n' >>speclink/changes/add-greeting/design.md
 eval_commit 'add helper and change'
 git mv src/old.js src/new.js
 eval_commit 'rename helper'

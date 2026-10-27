@@ -1,6 +1,6 @@
 ---
 name: speclink-manual
-description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under openspec/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced."
+description: "Use when a human-readable operating manual is needed, or when someone wants to be walked through how to operate the system — generates a wiki-style Markdown manual under speclink/manual/ from the canonical specs, or gives an in-conversation tour with every answer sourced."
 license: MIT
 compatibility: Requires speclink CLI.
 metadata:
@@ -11,19 +11,19 @@ metadata:
 
 **Conversation language**: write to the user in the language they use with you — progress updates, questions, and summaries. This skill is written in English, and its example messages show structure, not language: translate their prose, and keep commands, file paths, code, and fixed tokens (severity labels, status words) as they are. When a step sets the language of its own output — a document, a report, or the way it presents results and asks about them (for example through `locale`) — that step decides for that output. When you edit a document that already exists and no step sets its language, keep the language it is written in. When you run in a forked context that cannot see the conversation, use the language of the request you were given.
 
-Generate a human-readable operating manual from the canonical specs, or walk the user through the system in conversation. The manual is a wiki-style set of Markdown pages under `openspec/manual/`, written for someone who joined today and only wants to know how to operate the system.
+Generate a human-readable operating manual from the canonical specs, or walk the user through the system in conversation. The manual is a wiki-style set of Markdown pages under `speclink/manual/`, written for someone who joined today and only wants to know how to operate the system.
 
 **Input**: Optional arguments after `/speclink-manual`. They pick the mode:
 
 | Arguments | Mode |
 | --- | --- |
-| none | **Generation** (the default) — read the specs, write `openspec/manual/*.md` |
+| none | **Generation** (the default) — read the specs, write `speclink/manual/*.md` |
 | contain `導覽` or `tour` | **Tour** — no file is written; guide the user through the system in conversation |
 | anything else | **Generation with a scope hint** — e.g. one section, one page, or "全部重生"; restate the scope you understood at the top of the summary |
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
-**The one-source rule**: the manual's content comes from the canonical specs under `openspec/specs/` and nothing else. Never read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
+**The one-source rule**: the manual's content comes from the canonical specs under `speclink/specs/` and nothing else. Never read README files, a `docs/` directory, or source code as a content source — not to fill a gap, not to "confirm" wording, not for screenshots. Where the specs are silent, the manual is silent or says so. Every page cites the capabilities it was written from.
 
 ---
 
@@ -41,7 +41,7 @@ and STOP. Zero files are written. Tour mode is unaffected by this check.
 
 ### Step 1: Read the existing manual
 
-If `openspec/manual/` exists, read the frontmatter of every `.md` page in it before anything else. Keep, per page: filename, `title`, `section`, `order`, `sources`, `generated`. This index drives the staleness report (Step 3) and the order-preservation rule (Step 5).
+If `speclink/manual/` exists, read the frontmatter of every `.md` page in it before anything else. Keep, per page: filename, `title`, `section`, `order`, `sources`, `generated`. This index drives the staleness report (Step 3) and the order-preservation rule (Step 5).
 
 A page whose frontmatter cannot be parsed is listed in the report and skipped — never overwritten.
 
@@ -68,7 +68,7 @@ Compute, from the Step 1 index and the specs:
 | --- | --- |
 | **stale page** | any item of the page's `sources` is stale. An item is judged on its own (see **Source anchors**): a bare item looks at every `@trace updated` stamp in that canonical spec; an anchored item looks only at the stamps inside its requirement section (heading text, trimmed, equal to the anchor). An anchored item whose heading no longer exists, or whose spec is gone, is stale — a renamed or removed requirement must be visible, never silently widened to the whole spec. A stamp is *after* the page's `generated` by format: when both are RFC 3339 timestamps, the spec stamp must be strictly later than the page stamp (same second is not after); when either side is a plain `YYYY-MM-DD` date, compare calendar days and a same-day tie counts (an archive on the day of generation must not slip through — a timestamp's day is the day in its own offset). A value that is neither format is ignored |
 | **unlisted capability** | a user-facing capability that appears in no page's `sources` (capability names per **Source anchors**) |
-| **orphan page** | a page with a non-empty `sources` whose capabilities have all disappeared from `openspec/specs/` — reported, NEVER deleted |
+| **orphan page** | a page with a non-empty `sources` whose capabilities have all disappeared from `speclink/specs/` — reported, NEVER deleted |
 
 `index.md` and `about.md` (empty `sources`) are derived pages: never stale, never orphan, never "unlisted" — they are rewritten whenever any other page is added, regenerated or stamp-only (Step 5), keeping their `section` and `order`. The `@trace updated` stamps are read from every `<!-- @trace … updated: … -->` block inside the canonical spec file — newer archives write an RFC 3339 timestamp with offset (`2026-09-05T23:17:28+08:00`), older ones a plain date; the **stale page** rule above decides, stamp by stamp, whether any of them is after the page's `generated`.
 
@@ -93,7 +93,7 @@ When 1–3 applies, the about page names the specs the journeys were transcribed
 
 This is the `manual-pages` contract. Every reader — the desktop manual page, a static-site generator, a person — relies on it, so follow it exactly.
 
-**Location and filename**: every page is a file directly under `openspec/manual/` (create the directory when missing). Filenames are kebab-case ASCII ending in `.md` — `first-login.md`; never spaces, capitals, or non-ASCII. Nothing is written anywhere else.
+**Location and filename**: every page is a file directly under `speclink/manual/` (create the directory when missing). Filenames are kebab-case ASCII ending in `.md` — `first-login.md`; never spaces, capitals, or non-ASCII. Nothing is written anywhere else.
 
 **Frontmatter** — YAML, exactly these fields and no others:
 
@@ -151,7 +151,7 @@ Before writing, check the value matches `^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(Z|
 **Two required pages**:
 
 - `index.md` — `title` is the manual's name, `section` is the first section, `order` is the smallest in the manual. Body: one sentence positioning the system, at most three core concepts, and entry links grouped by role.
-- `about.md` — `title` is `本手冊的來源`, `order` is the largest in the manual. Body states: the source scope is `openspec/specs/`; the journey backbone (transcribed from which specs, or rebuilt); the list of contradictions found between newer and older descriptions inside the specs (write `未發現` when there are none); known limits (no screenshots — the running product wins); and the compilation date.
+- `about.md` — `title` is `本手冊的來源`, `order` is the largest in the manual. Body states: the source scope is `speclink/specs/`; the journey backbone (transcribed from which specs, or rebuilt); the list of contradictions found between newer and older descriptions inside the specs (write `未發現` when there are none); known limits (no screenshots — the running product wins); and the compilation date.
 
 When no capability is user-facing, still write both pages: `about.md` says `尚無可入冊的使用者面向能力` and no other page exists.
 
@@ -190,7 +190,7 @@ When a scope hint was given, restate the scope you understood first. When nothin
 
 Tour mode writes NOTHING — no manual pages, no notes, no scratch files. It is a conversation.
 
-1. **Manual exists** (`openspec/manual/` present): read every page's frontmatter as the index.
+1. **Manual exists** (`speclink/manual/` present): read every page's frontmatter as the index.
    - Ask exactly one question first: which role the user has (e.g. developer running SDD through an agent, product owner, someone who joined today), so you can pick the entry from the index page's role links.
    - Then walk the journey in `section` / `order` order, one station at a time, reading the page body as you go; answer questions as they come.
    - Every answer names its source: the capability (from the page's `sources`, per **Source anchors**) or the page's filename.
@@ -206,7 +206,7 @@ When the tour ends you may suggest running generation mode (`/speclink-manual`) 
 Check these before you report:
 
 - [ ] Content came from the canonical specs only — no README, docs or code ("The one-source rule"), in both modes.
-- [ ] Generation wrote only under `openspec/manual/` (Step 5); tour mode wrote nothing; a remote-bound project got no generation (Step 0).
+- [ ] Generation wrote only under `speclink/manual/` (Step 5); tour mode wrote nothing; a remote-bound project got no generation (Step 0).
 - [ ] No page was deleted or renumbered, and no page with unparseable frontmatter was overwritten (Steps 1, 3 and 5).
 - [ ] Every page has exactly the six frontmatter fields, the `**出處**：` line, and a `generated` value that matches the format check (Step 5).
 - [ ] Contradictions inside the specs are listed on the about page, never silently resolved (Step 5).

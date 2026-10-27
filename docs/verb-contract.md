@@ -14,8 +14,8 @@ This document answers three questions:
 
 The official `speclink-server` is a reference implementation. You can use this document to build your own server. If this document and the canonical specs disagree, the canonical specs win:
 
-- [Canonical verb-contract spec](../openspec/specs/verb-contract/spec.md)
-- [Canonical client-protocol spec](../openspec/specs/client-protocol/spec.md)
+- [Canonical verb-contract spec](../speclink/specs/verb-contract/spec.md)
+- [Canonical client-protocol spec](../speclink/specs/client-protocol/spec.md)
 
 To start a server and make an access key (PAT), see [Remote Getting Started](remote-getting-started.md).
 

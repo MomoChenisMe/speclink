@@ -7,7 +7,7 @@
 Two common uses:
 
 - Connect Speclink to an existing flow, such as a script, an internal tool, or a service that runs an AI agent.
-- Use it as **the engine of your own server**. The official `speclink-server` is only a reference implementation. Two public contracts under `openspec/specs/` define remote mode: `host-runtime` and `client-protocol`. You can follow these contracts and build your own server on this engine, with your own authentication, database, and permission model. The CLI and the desktop app connect to it the same way. For the official server, see [Remote Getting Started](remote-getting-started.md).
+- Use it as **the engine of your own server**. The official `speclink-server` is only a reference implementation. Two public contracts under `speclink/specs/` define remote mode: `host-runtime` and `client-protocol`. You can follow these contracts and build your own server on this engine, with your own authentication, database, and permission model. The CLI and the desktop app connect to it the same way. For the official server, see [Remote Getting Started](remote-getting-started.md).
 
 ## <a id="install"></a>Install
 

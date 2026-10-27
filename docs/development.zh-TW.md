@@ -51,7 +51,7 @@
 - **預期可觀察結果**：
   1. 先建置 `speclink-cli`，再把它放到桌面 app 需要的位置。這個內附在桌面 app 裡的 CLI 叫做 sidecar。終端會印出 `sidecar 佈署完成（debug）：…`，或內容沒變時印出 `sidecar 內容未變，跳過複製：…`。這一步失敗就以非零結束，不開視窗。
   2. Vite dev server 啟動後開啟桌面視窗。畫面來自目前的原始碼，改前端會就地重載。
-  3. 視窗以本機模式運作，可以直接開這個 repo 的 `openspec/` 看板。機器上沒有 server 也能用。
+  3. 視窗以本機模式運作，可以直接開這個 repo 的 `speclink/` 看板。機器上沒有 server 也能用。
 
 ## <a id="dev-reset"></a>`npm run dev:reset`：清掉本機開發狀態
 
@@ -152,7 +152,7 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 | `scripts/` | 開發入口、文件守門、桌面建置、npm 打包與發版用的腳本 |
 | `deploy/` | Docker Compose 部署檔（sqlite 與 postgres 各一份） |
 | `docs/` | 使用者文件 |
-| `openspec/` | Speclink 自己的規格、變更與討論 |
+| `speclink/` | Speclink 自己的規格、變更與討論 |
 
 ## <a id="unsigned"></a>下載安裝檔的未簽章放行
 

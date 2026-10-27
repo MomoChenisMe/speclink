@@ -6,7 +6,7 @@
 
 ## <a id="reference-implementation"></a>官方 server 是參考實作
 
-`speclink-server` 是 Speclink 官方的**參考實作**，讓你開箱即用、試遠端功能。遠端模式不綁這一份 server：它由 `openspec/specs/` 底下的兩份公開契約 `host-runtime` 與 `client-protocol` 定義。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與 Desktop 一樣接得上。本文只講官方這一份怎麼部署。
+`speclink-server` 是 Speclink 官方的**參考實作**，讓你開箱即用、試遠端功能。遠端模式不綁這一份 server：它由 `speclink/specs/` 底下的兩份公開契約 `host-runtime` 與 `client-protocol` 定義。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與 Desktop 一樣接得上。本文只講官方這一份怎麼部署。
 
 ## <a id="choose"></a>選一種跑法
 

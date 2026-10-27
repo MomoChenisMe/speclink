@@ -4,7 +4,7 @@
 
 照這份文件做一次，你會在自己的電腦上起一台 Speclink server，再用 Desktop 和 CLI 連上同一個專案。每一步都附上你該看到的結果。不需要 server 的本地路徑見 [Local Repo 入門](getting-started.zh-TW.md)；哪些能力現在能用，以[專案能力狀態](product-status.zh-TW.md)為準。
 
-這裡用的 `speclink-server` 是官方的**參考實作**，讓你開箱即用、試遠端功能。遠端模式不綁這一份 server：它由 `openspec/specs/` 底下的兩份公開契約 `host-runtime` 與 `client-protocol` 定義。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與 Desktop 一樣接得上。下面的畫面與指令屬於官方 server；連上之後 CLI 與 Desktop 的行為由契約決定，換成自建 server 也一樣。
+這裡用的 `speclink-server` 是官方的**參考實作**，讓你開箱即用、試遠端功能。遠端模式不綁這一份 server：它由 `speclink/specs/` 底下的兩份公開契約 `host-runtime` 與 `client-protocol` 定義。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與 Desktop 一樣接得上。下面的畫面與指令屬於官方 server；連上之後 CLI 與 Desktop 的行為由契約決定，換成自建 server 也一樣。
 
 ## <a id="before-you-begin"></a>開始前
 

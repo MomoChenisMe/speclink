@@ -7,7 +7,7 @@
 常見的兩種用法：
 
 - 把 Speclink 接進既有流程，例如腳本、內部工具，或執行 AI agent 的服務。
-- 拿它當**自建 server 的引擎**。官方的 `speclink-server` 只是參考實作；遠端模式由 `openspec/specs/` 底下的 `host-runtime` 與 `client-protocol` 兩份公開契約定義。你可以照這兩份契約，用這個引擎寫自己的 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。官方 server 的用法見 [Remote 入門](remote-getting-started.zh-TW.md)。
+- 拿它當**自建 server 的引擎**。官方的 `speclink-server` 只是參考實作；遠端模式由 `speclink/specs/` 底下的 `host-runtime` 與 `client-protocol` 兩份公開契約定義。你可以照這兩份契約，用這個引擎寫自己的 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。官方 server 的用法見 [Remote 入門](remote-getting-started.zh-TW.md)。
 
 ## <a id="install"></a>安裝
 

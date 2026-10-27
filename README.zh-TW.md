@@ -182,7 +182,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 
 第一次啟動時，server 會印出一次性的 `/setup` 連結；之後重啟不會再印。預設用 SQLite，資料放在 `./speclink-data`（容器內是 `/data`）。環境變數、PostgreSQL 與升級回退見 [Server 部署](docs/server-deployment.zh-TW.md)。桌面 app 與 CLI 怎麼連上，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
 
-遠端模式不綁這一份 server。遠端模式由兩份公開契約定義：`openspec/specs/` 底下的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
+遠端模式不綁這一份 server。遠端模式由兩份公開契約定義：`speclink/specs/` 底下的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
 
 ## <a id="docs"></a>文件
 
@@ -219,7 +219,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | [更新日誌](CHANGELOG.zh-TW.md) | 每個版本改了什麼 |
 | [品牌資產](docs/assets/brand/README.md) | Logo、配色與使用方式 |
 
-`openspec/` 是 Speclink 自己的規格。`openspec/changes/archive/` 與 `openspec/discussions/archive/` 是歷史記錄，不是操作文件。
+`speclink/` 是 Speclink 自己的規格。`speclink/changes/archive/` 與 `speclink/discussions/archive/` 是歷史記錄，不是操作文件。
 
 ## <a id="status"></a>目前狀態
 

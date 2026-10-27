@@ -4,7 +4,7 @@
 /crates/adapters/speclink-node/target/
 
 # Legacy app data
-openspec/.vector-search.db*
+speclink/.vector-search.db*
 
 # Speclink app data
 .speclink/

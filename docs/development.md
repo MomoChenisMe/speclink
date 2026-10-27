@@ -51,7 +51,7 @@ The CLI build comes first on purpose. When you then check things with [`npm run 
 - **Expected observable results**:
   1. It builds `speclink-cli` and copies it to the location that the desktop app needs. This CLI inside the desktop app is the sidecar. The terminal shows `sidecar 佈署完成（debug）：…`, or `sidecar 內容未變，跳過複製：…` when nothing changed. If this step fails, the command exits non-zero and opens no window.
   2. The Vite dev server starts, then the desktop window opens. The UI comes from the current source, and frontend edits reload in place.
-  3. The window runs in local mode and can open the `openspec/` board of this repo. It works with no server on the machine.
+  3. The window runs in local mode and can open the `speclink/` board of this repo. It works with no server on the machine.
 
 ## <a id="dev-reset"></a>`npm run dev:reset`: remove local dev state
 
@@ -152,7 +152,7 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 | `scripts/` | Scripts for the dev entry points, documentation checks, desktop builds, npm packaging, and releases |
 | `deploy/` | Docker Compose files (one for sqlite, one for postgres) |
 | `docs/` | User documentation |
-| `openspec/` | The specs, changes, and discussions of Speclink itself |
+| `speclink/` | The specs, changes, and discussions of Speclink itself |
 
 ## <a id="unsigned"></a>Open unsigned installers
 

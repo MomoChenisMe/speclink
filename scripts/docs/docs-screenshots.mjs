@@ -664,7 +664,7 @@ export const DEMO_DISCUSSION = {
 `,
 };
 
-/// 示範用的 git 身分：示範 workspace 內的 .openspec.yaml 會記下 created_by，
+/// 示範用的 git 身分：示範 workspace 內的 .meta.yaml 會記下 created_by，
 /// 沿用使用者的全域 git 設定就會把真名與 email 拍進截圖裡。
 const DEMO_IDENTITY = { name: 'Speclink Demo', email: 'demo@speclink.invalid' };
 
@@ -747,7 +747,7 @@ The audit log answers one question: who changed what, and when.
 
 ## Scope
 
-Every page comes from the specs in \`openspec/specs/\`. The manual does not read the code.
+Every page comes from the specs in \`speclink/specs/\`. The manual does not read the code.
 
 ## Contradictions in the specs
 
@@ -874,7 +874,7 @@ export function createDemoWorkspace(workspace) {
   mkdirSync(workspace, { recursive: true });
 
   run('git', ['init', '-q', '.'], { cwd: workspace });
-  // local 設定蓋過全域：created_by 會被寫進每個 .openspec.yaml。
+  // local 設定蓋過全域：created_by 會被寫進每個 .meta.yaml。
   run('git', ['config', 'user.name', DEMO_IDENTITY.name], { cwd: workspace });
   run('git', ['config', 'user.email', DEMO_IDENTITY.email], { cwd: workspace });
 
@@ -918,7 +918,7 @@ export function createDemoWorkspace(workspace) {
     stdio: ['pipe', 'inherit', 'inherit'],
   });
 
-  const manualDir = path.join(workspace, 'openspec', 'manual');
+  const manualDir = path.join(workspace, 'speclink', 'manual');
   mkdirSync(manualDir, { recursive: true });
   const generated = localTimestamp();
   for (const page of DEMO_MANUAL) {
@@ -927,7 +927,7 @@ export function createDemoWorkspace(workspace) {
 }
 
 function writeChangeArtifacts(workspace, change) {
-  const dir = path.join(workspace, 'openspec', 'changes', change.name);
+  const dir = path.join(workspace, 'speclink', 'changes', change.name);
   writeFileSync(path.join(dir, 'proposal.md'), change.artifacts.proposal);
   writeFileSync(path.join(dir, 'design.md'), change.artifacts.design);
   writeFileSync(path.join(dir, 'tasks.md'), change.artifacts.tasks);

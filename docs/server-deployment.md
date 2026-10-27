@@ -6,7 +6,7 @@ This document shows how to run the official `speclink-server` for a team. It cov
 
 ## <a id="reference-implementation"></a>The official server is a reference implementation
 
-`speclink-server` is the official Speclink **reference implementation**. It lets you start out of the box and try the remote features. Remote mode does not depend on this server. Two public contracts under `openspec/specs/` define remote mode: `host-runtime` and `client-protocol`. You can write your own server on the Speclink engine and connect your own authentication, database, and permission model. The CLI and the Desktop app connect to it in the same way. This document covers only the deployment of the official server.
+`speclink-server` is the official Speclink **reference implementation**. It lets you start out of the box and try the remote features. Remote mode does not depend on this server. Two public contracts under `speclink/specs/` define remote mode: `host-runtime` and `client-protocol`. You can write your own server on the Speclink engine and connect your own authentication, database, and permission model. The CLI and the Desktop app connect to it in the same way. This document covers only the deployment of the official server.
 
 ## <a id="choose"></a>Choose a run mode
 

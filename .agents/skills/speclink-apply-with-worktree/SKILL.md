@@ -98,19 +98,19 @@ Once a change is selected, announce: "Using change: <change-name>" and how to ov
 
 ### P3. Get the change's artifacts into HEAD
 
-A worktree is materialized from HEAD. If the change's artifacts (`openspec/changes/<change-name>/`) are not committed yet — which is the normal state right after `$speclink-propose` — the new worktree simply will not contain the change, and every later step dead-ends.
+A worktree is materialized from HEAD. If the change's artifacts (`speclink/changes/<change-name>/`) are not committed yet — which is the normal state right after `$speclink-propose` — the new worktree simply will not contain the change, and every later step dead-ends.
 
 Check:
 
 ```bash
-git status --porcelain -- "openspec/changes/<change-name>/"
+git status --porcelain -- "speclink/changes/<change-name>/"
 ```
 
 - **Output empty** (artifacts already committed, unchanged) — continue to P4.
 - **Output non-empty** — commit exactly that directory, nothing else:
 
   ```bash
-  git add "openspec/changes/<change-name>"
+  git add "speclink/changes/<change-name>"
   git commit -m "<a conventional-commit message for the change's spec artifacts, in the project's language>"
   ```
 
@@ -123,7 +123,7 @@ P3 commits the change's **artifacts**. Its **source changes** are a separate mat
 Read the change's evidence record and check those files against the main tree:
 
 ```bash
-cat "openspec/changes/<change-name>/.evidence.json"
+cat "speclink/changes/<change-name>/.evidence.json"
 git status --porcelain -- <each touched path from that record>
 ```
 
@@ -299,7 +299,7 @@ Run `speclink analyze <change-name> --json` to check cross-artifact consistency 
 
 When the change has been dormant for more than 5 days AND the change directory has had zero commits in the past 3 days, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
 
-Detect dormancy from `.meta.yaml` `created` and `git log -1 --format=%at -- openspec/changes/<name>/`:
+Detect dormancy from `.meta.yaml` `created` and `git log -1 --format=%at -- speclink/changes/<name>/`:
 
 - **Both conditions met** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
@@ -523,7 +523,7 @@ The apply body's own **Next steps** section does not apply here — this worktre
 
 ### W1. Commit the change in the worktree
 
-Follow the `$speclink-commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `openspec/changes/<change-name>/` plus the source files recorded in the change's evidence record), leave unrelated dirty files alone, and write the commit message in the project's language.
+Follow the `$speclink-commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `speclink/changes/<change-name>/` plus the source files recorded in the change's evidence record), leave unrelated dirty files alone, and write the commit message in the project's language.
 
 The commit lands on branch `speclink/<change-name>` inside the worktree. Nothing reaches the main branch yet.
 
