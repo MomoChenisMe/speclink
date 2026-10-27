@@ -1,6 +1,17 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.11.0（2026-10-27）
+
+### 新功能
+
+- 規格資料夾預設改為 `speclink/`、變更資料檔改為 `.meta.yaml`：既有的 `openspec/` 專案升級後執行 `speclink update` 就會搬過來（有其他 worktree 或未提交修改時會暫緩並說明原因，搬完要自己 commit，團隊成員請先升級再 pull），在 OpenSpec 專案執行 `speclink init` 會直接匯入，還沒搬的專案照常可用、只多印一行警告。
+- 桌面 app 跟上規格資料夾遷移：開啟舊專案時，技能檔提示會寫明 `openspec/` 將改名為 `speclink/`，按下更新後搬好並照常自動更新；「啟用」OpenSpec 專案時會先匯入；設定頁與對話框都照專案實際使用的資料夾顯示路徑。
+- 新增內建產出流程 no-spec-change（不改規格），給不改任何正式規格承諾行為的變更使用：沒有 delta 規格、`speclink validate` 不再警告缺少 delta、封存不必帶 `--skip-specs`，`/speclink-propose` 會替你判斷該用哪一個，`/speclink-verify` 會檢查這類變更真的沒改到承諾的行為。
+- 新增 `speclink change schema <變更名> <產出流程>`，可以替還沒封存的變更換產出流程；不改規格的變更後來改到承諾的行為時，`/speclink-ingest` 會先切回 spec-driven 再補 delta 規格，`/speclink-verify` 的建議也會列出切換步驟，沒有 specs 這一步的變更也不會再被誤寫 delta 規格。
+- 審查與驗證蓋章時會記下各自跑了幾輪，封存時會記下封存時間，變更的時間欄位改為帶時區的秒級時戳（輸出仍只顯示日期）；桌面 app 的已封存頁新增「流程成本」摘要，列出文件行數、任務數、建立到封存的天數與小時數，以及品質關卡輪數的中位數。
+- `/speclink-quality` 在第一輪之前會先比對主分支：主分支改過本變更也改過的檔時，先停下來建議你 rebase，免得蓋章後章失效；repo 有 CI 時，收尾蓋章的選項會提醒你先等 CI 在所有平台通過。
+
 ## 0.10.0（2026-10-16）
 
 ### 新功能
