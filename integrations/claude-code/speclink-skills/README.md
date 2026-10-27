@@ -53,7 +53,7 @@
 
 ## 已知限制
 
-- **面板不顯示 review、verify 的章**（品質分頁只列未結的工單）：CLI 的輸出沒有蓋章狀態。`list --json` 刻意不放這些欄位；蓋章時工單會被刪掉，所以蓋過章的 `review show` 也會失敗。蓋章紀錄只在變更的 `.openspec.yaml` 裡，要看章請用桌面 app。
+- **面板不顯示 review、verify 的章**（品質分頁只列未結的工單）：CLI 的輸出沒有蓋章狀態。`list --json` 刻意不放這些欄位；蓋章時工單會被刪掉，所以蓋過章的 `review show` 也會失敗。蓋章紀錄只在變更的 `.meta.yaml` 裡，要看章請用桌面 app。
 - **`archive+commit`**：Claude Code 只把第一個斜線指令當成指令。實際執行的是 `/speclink-archive`，後面的 `+ /speclink-commit …` 成為它的參數，由模型在封存後接著提交。
 - **session 標題要等下一次送出才更新**：Claude Code 只在送出訊息與開 session 時讓 mod 改標題，所以技能中途才認出（或換了）的 change、封存的 `✓`、`/clear` 後改回 `Claude Code`、按 Esc 後回到原本的步驟，技能列會立刻更新，標題要等你下一次送出訊息。設定了焦點之後，你用 `/rename` 取的名字也會在下一次送出時被換掉；`/clear` 時只改回這個 mod 設的標題，你自己取的不動。
 - **Windows**：面板經 `cmd.exe /d /c speclink …` 執行 CLI。npm 裝的 `speclink` 是 `.cmd` 殼，而 mod 執行指令時不經過 shell，直接執行會失敗。這條路徑還沒有在實機 Windows 上驗證。

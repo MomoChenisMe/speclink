@@ -76,13 +76,13 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 策展規則：
 
 1. **封存變更優先、一變更一條**：主旨形如 `speclink(<變更名>): …` 的 commit 是封存變更。讀
-   `openspec/changes/archive/*-<變更名>/proposal.md` 的 `## Why`，連同該變更開發過程的 feat／fix commit，
+   `speclink/changes/archive/*-<變更名>/proposal.md` 的 `## Why`，連同該變更開發過程的 feat／fix commit，
    合寫成**一條**。開發過程的 commit 不另列。
 2. **不屬於任何變更的 feat／fix／perf 逐筆改寫**成一條。
 3. **雜訊不進**：`chore`、`test`、`refactor`、`docs`、`ci`、`build`、`style` 一律不出現在條目中
    （純內部重構的封存變更也不進）。
 4. **使用者語氣、不照抄主旨**：兩種語言都寫「使用者會看到什麼／能做什麼」，不寫「修了哪個函式」。
-5. **繁中寫法**：每條一句話，句尾句號；使用者可見文案遵守 `openspec/LANGUAGE.md` 的正典詞彙
+5. **繁中寫法**：每條一句話，句尾句號；使用者可見文案遵守 `speclink/LANGUAGE.md` 的正典詞彙
    （例：「變更」不寫 change、「產出流程」不寫 schema、「更新日誌」不寫 changelog）。
 6. **英文寫法**：簡化技術英文——一句一事、主動語態、只用簡單式，不用完成式（寫 `plan now shows …`，
    不寫 `plan has shown …`）。

@@ -4,7 +4,7 @@
 
 ## Speclink change
 
-<!-- The change folder in openspec/changes/, if there is one. Write "none" for a small fix. -->
+<!-- The change folder in speclink/changes/, if there is one. Write "none" for a small fix. -->
 
 ## Tests
 

@@ -34,7 +34,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 2. **Read the evidence record**
 
-   Check for `openspec/changes/<change-name>/.evidence.json` — the change's completion
+   Check for `speclink/changes/<change-name>/.evidence.json` — the change's completion
    evidence, written by `speclink task done`. If it exists, parse it to get source files
    grouped by task.
 
@@ -59,7 +59,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 3. **Collect artifact files**
 
-   Run `git status --porcelain` and filter the output to files under `openspec/changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.) — including `.evidence.json` itself, which is version-controlled and belongs to this change's commit.
+   Run `git status --porcelain` and filter the output to files under `speclink/changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.) — including `.evidence.json` itself, which is version-controlled and belongs to this change's commit.
 
 4. **Identify unrelated dirty files**
 
@@ -92,8 +92,8 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    ## Commit Plan: <change-name>
 
    ### Change Artifacts
-   - M  openspec/changes/<name>/proposal.md
-   - M  openspec/changes/<name>/tasks.md
+   - M  speclink/changes/<name>/proposal.md
+   - M  speclink/changes/<name>/tasks.md
 
    ### Source Files
    **Task 1: <task description>**
@@ -157,10 +157,10 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-ii. Delta spec completeness check**
 
-    Check whether delta specs exist at `openspec/changes/<name>/specs/`.
+    Check whether delta specs exist at `speclink/changes/<name>/specs/`.
 
     - If **no delta specs exist** (directory is empty or absent): skip to 7a-ii-b.
-    - If **delta specs exist**: compare each delta against `openspec/specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
+    - If **delta specs exist**: compare each delta against `speclink/specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
         - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
@@ -199,7 +199,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     After archive completes successfully:
 
-    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `openspec/changes/<name>/`, additions in `openspec/changes/archive/`)
+    1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `speclink/changes/<name>/`, additions in `speclink/changes/archive/`)
     2. Add these archive-related file changes to the commit set
     3. Regenerate the commit message with an `Archived: yes` line appended to the body
     4. Display an **updated commit plan and message** as one visible message, showing all sections:
@@ -208,20 +208,20 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     ## Updated Commit Plan: <change-name> (with archive)
 
     ### Change Artifacts (archived)
-    - D  openspec/changes/<name>/proposal.md
-    - D  openspec/changes/<name>/tasks.md
+    - D  speclink/changes/<name>/proposal.md
+    - D  speclink/changes/<name>/tasks.md
     - ...
 
     ### Archived Files
-    - A  openspec/changes/archive/<name>/proposal.md
-    - A  openspec/changes/archive/<name>/tasks.md
+    - A  speclink/changes/archive/<name>/proposal.md
+    - A  speclink/changes/archive/<name>/tasks.md
     - ...
 
     ### Source Files
     (same as before)
 
     ### Main Spec Updates (from archive's delta application)
-    - M  openspec/specs/<spec-name>/spec.md
+    - M  speclink/specs/<spec-name>/spec.md
     - ...
 
     ### Commit Message
@@ -236,7 +236,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
-       - When the workspace has a `openspec/manual/` directory, add one line: the manual may be stale now, and `/speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink-manual` yourself.
+       - When the workspace has a `speclink/manual/` directory, add one line: the manual may be stale now, and `/speclink-manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink-manual` yourself.
        - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
 
          > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink-ingest`），再封存它們。

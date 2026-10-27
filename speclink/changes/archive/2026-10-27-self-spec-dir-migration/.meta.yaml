@@ -1,0 +1,182 @@
+schema: no-spec-change
+created: 2026-10-22T23:28:25+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: positioning-and-process-cost
+depends_on: spec-dir-path-rewrite
+started_at: 2026-10-26T20:51:16+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-10-27T10:06:31+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 10
+reviewed_rounds: 3
+reviewed_scope:
+  - path: .dockerignore
+    hash: 5bfa9f1a9f998d610cf82b840fb4fc27b225844a20cfd1e12b69acc6b234f70b
+  - path: .github/PULL_REQUEST_TEMPLATE.md
+    hash: bab77b607af07589448cc358268768757e808fb498971f2bbd5dd6a54202b719
+  - path: CONTRIBUTING.md
+    hash: 0899c4461b5964e571d2a250d2ec868f246fe44b1096a0e7c2034d8a35bc2257
+  - path: README.md
+    hash: f6727771604b7c5ba0437fb7632a271f429d9f7bfc1a488ae3f377a48a93cf9b
+  - path: README.zh-TW.md
+    hash: 3747e8815ab17beb9207c39e2c20ab5bec9622663ea0f4225fa5fe605ef1622a
+  - path: docs/development.md
+    hash: 343d8d45cb361fd14ed2c487cbc6f5c1d7d9195326e0cba5c861d19ea0c0a72c
+  - path: docs/development.zh-TW.md
+    hash: 88a3a65627ae011fedaefda0f95b6df0bf11d262ce73b0d874d0755f41ddaf45
+  - path: docs/product-status.md
+    hash: bc4822d2055056ec8820d3353d009021003bd217a08a48df2fcc3d64580e5801
+  - path: docs/product-status.zh-TW.md
+    hash: e46a2dbdbda056084f6fba008a68317a7b9e8871d1d845cac60e1d0caf4b8187
+  - path: docs/remote-getting-started.md
+    hash: d54faa93d98659698630d48d3eba3ba4bed83e71ea08ddb2d21557cda8a43407
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: b0f3f55ac85e87269e598128ed90db55aa23220a07b6db3648cee508079576a9
+  - path: docs/roadmap.md
+    hash: 075ea9fb2cf0ce9e47d800c82953db6ce0577d3c51cc0b84175e8ba821e165dc
+  - path: docs/roadmap.zh-TW.md
+    hash: 8386de54121b8bcd6691552c71f6df233ecbd529eb3d78d32a4997b96169d919
+  - path: docs/sdk-node.md
+    hash: 12097ff44096a25f099bacee92f666f2f013be67aa6b6c9939acb0486be08c54
+  - path: docs/sdk-node.zh-TW.md
+    hash: 4dbff3d922638acfbfb535fe40d570bad4b4bab9062cf768f52ccfb8c69dc85f
+  - path: docs/server-deployment.md
+    hash: b6c9f45138f067672c1727362707ef11eb91497ccc327b4648caf322a06345f4
+  - path: docs/server-deployment.zh-TW.md
+    hash: c3adf4e2e64ab0993b63569c7f27dca6b0f05c18420d389fbf0668825076d002
+  - path: docs/verb-contract.md
+    hash: e8ef34aa46a3c6c7450363007cc57975eff405608fcc784fca18d57564fb35be
+  - path: docs/verb-contract.zh-TW.md
+    hash: 811cff765aed402226a4cb2736236a04c3a8d3264e041a6fe403403f4ec3778c
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh
+    hash: dc7215de508c6e91e5780f9ef7b3111ba593a52048361520142ed5fb92a7ff89
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md
+    hash: f5a69302329cdd4a5906943d8bd40f5f3df6e762984e7253e73aa1e93c8ee15e
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md
+    hash: 911263f8487ecdfe41a61c6eddc7fcadbaba152d9cdd0f464ebeeabee242f3c6
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md
+    hash: c21f7a1fbdd20a40e03dbaa508f682696eaeb6953c16b1336715eab1e05347a5
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-write.md
+    hash: 99aa0bd157c0ad6744e3022b1e2b183d8d30a4dedf64c9cc671bff6fd54b0ca0
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md
+    hash: 69d2eba0b7ab38fe682b6623b7d92327e8760240c60bfc261d1a2a7c3201ca1b
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md
+    hash: ddf8eebb483a6067f3bd57768a44b7879b19d66ae45739d5b0ab48e208c889e1
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md
+    hash: 8e446b98dcdfe70bb9f212880c6186e4a307ebf291425decaf32a0f3f5f30115
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh
+    hash: b742a3cdc5e979a1a55839df228fa58bd77a605e7d6b6f74b801f94b91fc81e4
+  - path: integrations/claude-code/skill-evals/evals/fixtures.sh
+    hash: 94ded8e440be3c72765e2eb60912ec2da31c85e781f8a594e84f056523f9263b
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md
+    hash: 651efc2118d92a1e2042a051e71ec0316956a6a9a0123d6962a83aa6e895dd38
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md
+    hash: e13edc8b1b3e64f0eb375421f955312a4f0053ce0897706f474c825736c738f4
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md
+    hash: c257c7ad29f3a8530e2ac764fb30364c3acb95831771620621c2eadc4519f1ce
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh
+    hash: a975ba173a1b09311f7a56978e172646ffef941c5c01e233241ec19edd4ce737
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md
+    hash: 971f16079174397340dbd1689e3e4423dff305b781bdce323b95c4be63b7f1e2
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md
+    hash: 0bd2ff20836c582e4dcdce087bd1735639041383684e6551ae68e9dbde3a82cd
+  - path: integrations/claude-code/speclink-skills/README.en.md
+    hash: 75b1abdf56b78ea039c94df1a46813c502d2ce0c1eed86620e35759b3009da8a
+  - path: integrations/claude-code/speclink-skills/README.md
+    hash: c2fb940eacb5e6ba3c4a02aaaa91ddcadf9556545b1f92e5012dbbdaabddde65
+  - path: scripts/docs/docs-screenshots.mjs
+    hash: c87b63274d6b4fbca2c593fd116f97778ee6573941599d12f78ececc93d1fdf9
+  - path: scripts/docs/vocabulary-guard.test.mjs
+    hash: 0bd3235f5f5c29bb2c43f33692a55c783dfd2963e52b4fe02b2df3d8fd9d8bd5
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: aedf0e0a19047b29a2003c905f066931b65b0bf4946c2993ed504d479ad17ff6
+verified_at: 2026-10-27T10:06:39+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 10
+verified_rounds: 3
+verified_scope:
+  - path: .dockerignore
+    hash: 5bfa9f1a9f998d610cf82b840fb4fc27b225844a20cfd1e12b69acc6b234f70b
+  - path: .github/PULL_REQUEST_TEMPLATE.md
+    hash: bab77b607af07589448cc358268768757e808fb498971f2bbd5dd6a54202b719
+  - path: CONTRIBUTING.md
+    hash: 0899c4461b5964e571d2a250d2ec868f246fe44b1096a0e7c2034d8a35bc2257
+  - path: README.md
+    hash: f6727771604b7c5ba0437fb7632a271f429d9f7bfc1a488ae3f377a48a93cf9b
+  - path: README.zh-TW.md
+    hash: 3747e8815ab17beb9207c39e2c20ab5bec9622663ea0f4225fa5fe605ef1622a
+  - path: docs/development.md
+    hash: 343d8d45cb361fd14ed2c487cbc6f5c1d7d9195326e0cba5c861d19ea0c0a72c
+  - path: docs/development.zh-TW.md
+    hash: 88a3a65627ae011fedaefda0f95b6df0bf11d262ce73b0d874d0755f41ddaf45
+  - path: docs/product-status.md
+    hash: bc4822d2055056ec8820d3353d009021003bd217a08a48df2fcc3d64580e5801
+  - path: docs/product-status.zh-TW.md
+    hash: e46a2dbdbda056084f6fba008a68317a7b9e8871d1d845cac60e1d0caf4b8187
+  - path: docs/remote-getting-started.md
+    hash: d54faa93d98659698630d48d3eba3ba4bed83e71ea08ddb2d21557cda8a43407
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: b0f3f55ac85e87269e598128ed90db55aa23220a07b6db3648cee508079576a9
+  - path: docs/roadmap.md
+    hash: 075ea9fb2cf0ce9e47d800c82953db6ce0577d3c51cc0b84175e8ba821e165dc
+  - path: docs/roadmap.zh-TW.md
+    hash: 8386de54121b8bcd6691552c71f6df233ecbd529eb3d78d32a4997b96169d919
+  - path: docs/sdk-node.md
+    hash: 12097ff44096a25f099bacee92f666f2f013be67aa6b6c9939acb0486be08c54
+  - path: docs/sdk-node.zh-TW.md
+    hash: 4dbff3d922638acfbfb535fe40d570bad4b4bab9062cf768f52ccfb8c69dc85f
+  - path: docs/server-deployment.md
+    hash: b6c9f45138f067672c1727362707ef11eb91497ccc327b4648caf322a06345f4
+  - path: docs/server-deployment.zh-TW.md
+    hash: c3adf4e2e64ab0993b63569c7f27dca6b0f05c18420d389fbf0668825076d002
+  - path: docs/verb-contract.md
+    hash: e8ef34aa46a3c6c7450363007cc57975eff405608fcc784fca18d57564fb35be
+  - path: docs/verb-contract.zh-TW.md
+    hash: 811cff765aed402226a4cb2736236a04c3a8d3264e041a6fe403403f4ec3778c
+  - path: integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh
+    hash: dc7215de508c6e91e5780f9ef7b3111ba593a52048361520142ed5fb92a7ff89
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md
+    hash: f5a69302329cdd4a5906943d8bd40f5f3df6e762984e7253e73aa1e93c8ee15e
+  - path: integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/manual-task-left-open.md
+    hash: 911263f8487ecdfe41a61c6eddc7fcadbaba152d9cdd0f464ebeeabee242f3c6
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-edit.md
+    hash: c21f7a1fbdd20a40e03dbaa508f682696eaeb6953c16b1336715eab1e05347a5
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/no-hand-write.md
+    hash: 99aa0bd157c0ad6744e3022b1e2b183d8d30a4dedf64c9cc671bff6fd54b0ca0
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/graders/spec-merged.md
+    hash: 69d2eba0b7ab38fe682b6623b7d92327e8760240c60bfc261d1a2a7c3201ca1b
+  - path: integrations/claude-code/skill-evals/evals/archive-folds-delta/prompt.md
+    hash: ddf8eebb483a6067f3bd57768a44b7879b19d66ae45739d5b0ab48e208c889e1
+  - path: integrations/claude-code/skill-evals/evals/baseline-map-before-specs/graders/no-specs-yet.md
+    hash: 8e446b98dcdfe70bb9f212880c6186e4a307ebf291425decaf32a0f3f5f30115
+  - path: integrations/claude-code/skill-evals/evals/drift-reports-only/scaffold.sh
+    hash: b742a3cdc5e979a1a55839df228fa58bd77a605e7d6b6f74b801f94b91fc81e4
+  - path: integrations/claude-code/skill-evals/evals/fixtures.sh
+    hash: 94ded8e440be3c72765e2eb60912ec2da31c85e781f8a594e84f056523f9263b
+  - path: integrations/claude-code/skill-evals/evals/ingest-folds-new-requirement/graders/delta-has-new-requirement.md
+    hash: 651efc2118d92a1e2042a051e71ec0316956a6a9a0123d6962a83aa6e895dd38
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/graders/manual-page-written.md
+    hash: e13edc8b1b3e64f0eb375421f955312a4f0053ce0897706f474c825736c738f4
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/prompt.md
+    hash: c257c7ad29f3a8530e2ac764fb30364c3acb95831771620621c2eadc4519f1ce
+  - path: integrations/claude-code/skill-evals/evals/manual-generates-pages/scaffold.sh
+    hash: a975ba173a1b09311f7a56978e172646ffef941c5c01e233241ec19edd4ce737
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/manual-marker-after-checkbox.md
+    hash: 971f16079174397340dbd1689e3e4423dff305b781bdce323b95c4be63b7f1e2
+  - path: integrations/claude-code/skill-evals/evals/propose-from-discussion/graders/no-marker-after-number.md
+    hash: 0bd2ff20836c582e4dcdce087bd1735639041383684e6551ae68e9dbde3a82cd
+  - path: integrations/claude-code/speclink-skills/README.en.md
+    hash: 75b1abdf56b78ea039c94df1a46813c502d2ce0c1eed86620e35759b3009da8a
+  - path: integrations/claude-code/speclink-skills/README.md
+    hash: c2fb940eacb5e6ba3c4a02aaaa91ddcadf9556545b1f92e5012dbbdaabddde65
+  - path: scripts/docs/docs-screenshots.mjs
+    hash: c87b63274d6b4fbca2c593fd116f97778ee6573941599d12f78ececc93d1fdf9
+  - path: scripts/docs/vocabulary-guard.test.mjs
+    hash: 0bd3235f5f5c29bb2c43f33692a55c783dfd2963e52b4fe02b2df3d8fd9d8bd5
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: aedf0e0a19047b29a2003c905f066931b65b0bf4946c2993ed504d479ad17ff6
+archived_at: 2026-10-27T10:34:48+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

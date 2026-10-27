@@ -4,7 +4,7 @@
 
 Last check: **2026-10-07** (0.8.0).
 
-This document tells you if a capability is available now. The specs in `openspec/specs/` define the behavior. The [Roadmap](roadmap.md) lists the work that is not done yet. Code, a crate, or a spec alone does not make a capability available to users.
+This document tells you if a capability is available now. The specs in `speclink/specs/` define the behavior. The [Roadmap](roadmap.md) lists the work that is not done yet. Code, a crate, or a spec alone does not make a capability available to users.
 
 To try the Remote Server, the desktop app, and the CLI, follow [Remote getting started](remote-getting-started.md).
 
@@ -57,7 +57,7 @@ In the wrong mode, the CLI rejects these verbs. It does not switch to the other 
 | Local desktop app | Available | Board, detail pages, specs, archived, manual, settings mode (app settings, project settings, and the About page), and tray | [Desktop scripts](../apps/desktop/package.json)<br>[Desktop UI tests](../apps/desktop/src/__tests__/App.test.tsx)<br>[Settings mode tests](../apps/desktop/src/__tests__/settingsColumn.test.tsx)<br>[About page tests](../apps/desktop/src/__tests__/aboutPage.test.tsx)<br>[Auto-update tests](../apps/desktop/src/__tests__/updater.test.ts) | Remote projects have their own row below. | 2026-10-15 |
 | Install channels | Available | Desktop installers (macOS universal dmg, Windows installer, Linux AppImage); CLI through npm, install script, and Homebrew; server through npx and Docker | [npm launcher tests](../scripts/npm/npm-cli-launcher.test.mjs)<br>[Install script tests](../scripts/install.test.mjs)<br>[Homebrew formula generator](../scripts/release/homebrew-formula.mjs) | The Windows installer has no code signature. On the first run, you must allow it in SmartScreen. | 2026-10-07 |
 | Node SDK (`@speclink/engine`) | Available | `npm install @speclink/engine` | [Package entry](../crates/adapters/speclink-node/package.json)<br>[Dispatch contract tests](../crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts)<br>[Version tests](../scripts/npm/npm-engine-package.test.mjs) | On npm since 0.2.0, with five platform packages. Not done yet: typed JS methods, a JS remote client, an agent tool layer. See the [Roadmap](roadmap.md). | 2026-10-07 |
-| Command Runtime, Host, and Protocol | Available | Rust crates that the CLI, the server, and the Node SDK share | [Host dual-path tests](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../openspec/specs/client-protocol/spec.md) | The tool wrapper for agents is not done yet. | 2026-10-07 |
+| Command Runtime, Host, and Protocol | Available | Rust crates that the CLI, the server, and the Node SDK share | [Host dual-path tests](../crates/host/speclink-host/tests/bridge_dual_path.rs)<br>[Client Protocol spec](../speclink/specs/client-protocol/spec.md) | The tool wrapper for agents is not done yet. | 2026-10-07 |
 | SQLite TeamStore | Available | The default `sqlite` driver of `speclink-server` | [SQLite conformance tests](../crates/store/speclink-store-sqlite/tests/conformance.rs)<br>[Store driver choice](server-store-drivers.md) | One server instance only. | 2026-10-07 |
 | Server FS TeamStore | Available | The `serverfs` driver in the server config | [Server FS conformance tests](../crates/store/speclink-store-fs/tests/it/conformance.rs)<br>[Atomic publish tests](../crates/store/speclink-store-fs/tests/it/atomic_publish.rs) | Needs reliable file locks (flock). One data folder allows one server. | 2026-10-07 |
 | PostgreSQL TeamStore | Available | The `postgres` driver in the server config | [PostgreSQL conformance tests](../crates/store/speclink-store-postgres/tests/it/conformance.rs)<br>[Resilience tests](../crates/store/speclink-store-postgres/tests/it/resilience.rs) | The server is still one instance. | 2026-10-07 |
@@ -79,7 +79,7 @@ When you update this document, check again with the current checkout. Do not kee
 1. Run `speclink --help` and the `--help` of each subcommand to check the CLI entry points.
 2. Run `speclink-server --help` to check the server, account, and backup entry points.
 3. Compare the folder lists of `.claude/skills/` and `.agents/skills/`. The only difference is `speclink-analyze` (Claude only).
-4. Use the [verb contract spec](../openspec/specs/verb-contract/spec.md) to check the local and remote table.
+4. Use the [verb contract spec](../speclink/specs/verb-contract/spec.md) to check the local and remote table.
 5. Use `npm view @speclink/engine version` and similar commands to check the versions on npm.
 6. Compare `Cargo.toml`, the package scripts, the integration and end-to-end tests, and the specs. A crate without a user entry point does not make a capability available.
 

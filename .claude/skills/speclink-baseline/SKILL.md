@@ -13,7 +13,7 @@ metadata:
 
 Establish the baseline for an existing codebase: generate the initial canonical specs from current behavior, so later changes have a spec baseline to build on.
 
-**The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`/speclink-propose`) after the baseline is written. Because nothing is changing, baseline writes directly to `openspec/specs/` — no change folder is involved, and no code is changed: do not refactor while writing the baseline.
+**The baseline documents what the system does TODAY — not what it should do.** Specs written here describe observed behavior with evidence. Aspirations, fixes, and improvements belong in a change (`/speclink-propose`) after the baseline is written. Because nothing is changing, baseline writes directly to `speclink/specs/` — no change folder is involved, and no code is changed: do not refactor while writing the baseline.
 
 **Input**: Optionally a scope hint after `/speclink-baseline` (e.g., "auth and billing only"). If omitted, baseline the whole codebase.
 
@@ -29,13 +29,13 @@ speclink workflow-config show --json
 - **No specs yet** → full baseline pass; continue below.
 - **Some specs exist** → gap-filling mode: inventory what is not yet covered and scope the rest of this flow to those areas. Never rewrite an existing spec here — modifications go through a change (`/speclink-propose`).
 
-The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `openspec/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are not applied; that is the same reading the file itself gives. Read these fields from it:
+The `workflow-config show --json` payload is the canonical workflow config for this workspace — the values `speclink/config.yaml` holds (the store's config document in remote mode), in the same shape either way. Environment overrides (`SPECLINK_*`) are not applied; that is the same reading the file itself gives. Read these fields from it:
 
 - `context` — the project context; carry it as background for the inventory and for every spec you write.
 - `specLocale` — the JSON name of `spec_locale`: the language for spec prose. `null` means English, `auto` means use the payload's `locale`, any other value is the locale code to write in. Structural markers and SHALL/MUST keywords stay in English regardless.
 - `rules.specs` — the project's specs rules, a list of strings (absent when the project sets none). They bind every spec you write in Step 4 — see the last rule there. When the list is absent or empty, nothing changes.
 
-If `speclink workflow-config show --json` exits non-zero (a config that does not parse fails closed; a remote store that is offline or rejects the credentials does the same), report the error and STOP — never fall back to reading `openspec/config.yaml` by hand, and never parse the YAML yourself.
+If `speclink workflow-config show --json` exits non-zero (a config that does not parse fails closed; a remote store that is offline or rejects the credentials does the same), report the error and STOP — never fall back to reading `speclink/config.yaml` by hand, and never parse the YAML yourself.
 
 ## Step 2: Inventory the codebase
 
@@ -70,7 +70,7 @@ Specs rules applied this run: none (no rules.specs configured)
 
 ## Step 4: Write the specs
 
-For each confirmed capability, create `openspec/specs/<capability>/spec.md`:
+For each confirmed capability, create `speclink/specs/<capability>/spec.md`:
 
 ```markdown
 # <capability> Specification
@@ -110,11 +110,11 @@ Fix structural findings, then report: capabilities created (with requirement/sce
 Check these before you report:
 
 - [ ] Every requirement traces to code or tests you read; unverified inferences are flagged or omitted (Step 4).
-- [ ] No code was changed and no change folder was created — only `openspec/specs/` was written.
+- [ ] No code was changed and no change folder was created — only `speclink/specs/` was written.
 - [ ] No existing spec was rewritten (Step 1).
 - [ ] The capability map was confirmed before any spec was written (Step 3).
 - [ ] The `Specs rules applied this run` block appeared in the map confirmation and in the final report (Steps 3 and 5).
-- [ ] The workflow config came from `speclink workflow-config show --json`, never from reading `openspec/config.yaml` (Step 1).
+- [ ] The workflow config came from `speclink workflow-config show --json`, never from reading `speclink/config.yaml` (Step 1).
 
 ## Next steps
 

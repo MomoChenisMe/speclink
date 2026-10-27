@@ -42,7 +42,7 @@ eval_greeting_artifacts_with_baseline() {
 # change add-greeting：在 repo 根目錄建立內容為 hello 的 greeting.txt。
 # 參數 manual：多一個 [M] 任務（打開檔案確認內容）。
 eval_greeting_change() {
-  local dir=openspec/changes/add-greeting
+  local dir=speclink/changes/add-greeting
   speclink new change add-greeting >/dev/null
   mkdir -p "$dir/specs/greeting"
   cat >"$dir/proposal.md" <<'EOF'
@@ -112,7 +112,7 @@ eval_greeting_done() {
   speclink task done --change add-greeting 1 >/dev/null
 }
 
-# 已封存的 add-greeting：openspec/specs/greeting/spec.md 成為正式規格。
+# 已封存的 add-greeting：speclink/specs/greeting/spec.md 成為正式規格。
 eval_greeting_archived() {
   eval_greeting_change
   eval_greeting_done
@@ -130,7 +130,7 @@ eval_greeting_committed() {
 # 品質關卡用的 add-greeting：src/greet.js 已實作並 commit，但有一個真的錯誤——條件式把空字串
 # 指派給 name，任何呼叫都回傳 "hello, "，違反規格的兩個 scenario，也是程式上的錯。
 eval_buggy_greet_committed() {
-  local dir=openspec/changes/add-greeting
+  local dir=speclink/changes/add-greeting
   speclink new change add-greeting >/dev/null
   mkdir -p "$dir/specs/greeting"
   cat >"$dir/proposal.md" <<'EOF'

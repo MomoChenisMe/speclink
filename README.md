@@ -182,7 +182,7 @@ You need a server only when a team shares one set of specs. For one person in on
 
 On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default Store is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md). To connect the desktop app and the CLI, see [Remote getting started](docs/remote-getting-started.md).
 
-Remote mode does not depend on this server. Two public contracts define remote mode: `host-runtime` and `client-protocol` in `openspec/specs/`. You can write your own server with the Speclink engine and connect your own authentication, database, and permission model. The CLI and the desktop app work with it too. To load the engine, see the [Node SDK](docs/sdk-node.md).
+Remote mode does not depend on this server. Two public contracts define remote mode: `host-runtime` and `client-protocol` in `speclink/specs/`. You can write your own server with the Speclink engine and connect your own authentication, database, and permission model. The CLI and the desktop app work with it too. To load the engine, see the [Node SDK](docs/sdk-node.md).
 
 ## <a id="docs"></a>Documentation
 
@@ -219,7 +219,7 @@ Remote mode does not depend on this server. Two public contracts define remote m
 | [Changelog](CHANGELOG.md) | The changes in each version |
 | [Brand assets](docs/assets/brand/README.en.md) | Logo, colors, and usage |
 
-`openspec/` holds the specs of Speclink itself. `openspec/changes/archive/` and `openspec/discussions/archive/` are history records, not user guides.
+`speclink/` holds the specs of Speclink itself. `speclink/changes/archive/` and `speclink/discussions/archive/` are history records, not user guides.
 
 ## <a id="status"></a>Project status
 

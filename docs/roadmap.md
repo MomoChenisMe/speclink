@@ -39,7 +39,7 @@ The desktop app is only one front end of the engine. The CLI, the server, and th
 **Where it is now**
 
 - One crate, `speclink-core`, holds all the rules. The Host handles authentication, revisions, transactions, and events.
-- The [Client Protocol spec](../openspec/specs/client-protocol/spec.md) defines the wire contract for all clients. The [Verb and flag contract](verb-contract.md) shows the local and remote mode of each verb and its output shape.
+- The [Client Protocol spec](../speclink/specs/client-protocol/spec.md) defines the wire contract for all clients. The [Verb and flag contract](verb-contract.md) shows the local and remote mode of each verb and its output shape.
 - Missing:
   - A document that shows how to build a client from zero.
   - A remote HTTP client in JS. Now only the Rust `speclink-remote` client exists.

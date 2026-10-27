@@ -3,5 +3,5 @@
 source "$(dirname "$0")/../fixtures.sh"
 eval_init
 speclink demo >/dev/null
-demo=$(ls openspec/changes | grep -v '^archive$')
-mv "openspec/changes/$demo" openspec/changes/demo-change
+demo=$(ls speclink/changes | grep -v '^archive$')
+mv "speclink/changes/$demo" speclink/changes/demo-change

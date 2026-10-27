@@ -39,7 +39,7 @@
 **目前到哪**
 
 - 規則只在 `speclink-core` 實作一次。Host 負責認證、版本、交易與事件。
-- [Client Protocol 正式規格](../openspec/specs/client-protocol/spec.md)定義跨客戶端的線上契約。[動詞與旗標契約](verb-contract.zh-TW.md)寫下每個動詞在本地與遠端的歸屬與輸出格式。
+- [Client Protocol 正式規格](../speclink/specs/client-protocol/spec.md)定義跨客戶端的線上契約。[動詞與旗標契約](verb-contract.zh-TW.md)寫下每個動詞在本地與遠端的歸屬與輸出格式。
 - 還缺：
   - 一份「從零做一個客戶端」的文件。
   - JS 版的遠端 HTTP client。目前只有 Rust 的 `speclink-remote`。

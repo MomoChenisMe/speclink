@@ -1,6 +1,6 @@
 ---
 name: archive-folds-delta
-description: archive 以 speclink archive 把 delta 併進正式規格，不手改 openspec/specs。
+description: archive 以 speclink archive 把 delta 併進正式規格，不手改 speclink/specs。
 tags: [skill:archive]
 max_turns: 40
 timeout_seconds: 900

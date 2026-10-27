@@ -1,4 +1,4 @@
 ---
 type: file_exists
-path: openspec/manual/*.md
+path: speclink/manual/*.md
 ---

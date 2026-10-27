@@ -4,7 +4,7 @@
 
 Follow this guide once. You start a Speclink server on your own computer, and then you connect the Desktop app and the CLI to the same project. Each step shows the result that you must see. For the local path without a server, see [Local Repo Getting Started](getting-started.md). [Project Capability Status](product-status.md) is the reference for what works today.
 
-The `speclink-server` in this guide is the official **reference implementation**. It lets you start out of the box and try the remote features. Remote mode does not depend on this server. Two public contracts under `openspec/specs/` define remote mode: `host-runtime` and `client-protocol`. You can write your own server on the Speclink engine and connect your own authentication, database, and permission model. The CLI and the Desktop app connect to it in the same way. The screens and commands below belong to the official server. After you connect, the contracts control what the CLI and the Desktop app do, so the behavior is the same on your own server.
+The `speclink-server` in this guide is the official **reference implementation**. It lets you start out of the box and try the remote features. Remote mode does not depend on this server. Two public contracts under `speclink/specs/` define remote mode: `host-runtime` and `client-protocol`. You can write your own server on the Speclink engine and connect your own authentication, database, and permission model. The CLI and the Desktop app connect to it in the same way. The screens and commands below belong to the official server. After you connect, the contracts control what the CLI and the Desktop app do, so the behavior is the same on your own server.
 
 ## <a id="before-you-begin"></a>Before you begin
 
