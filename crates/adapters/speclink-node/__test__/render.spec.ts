@@ -1,7 +1,7 @@
 // Render API tests (spec: 渲染 API — 中性 tool-call 渲染 / 與 CLI 生成一致).
 import { beforeAll, afterAll, describe, expect, it } from 'vitest'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -82,7 +82,7 @@ describe('skills.render — render matrix', () => {
   })
 
   it('unknown targets list copilot and unknown skills still fail', () => {
-    expect(() => skills.render('propose', { target: 'vscode' as never })).toThrow(/claude.*codex.*copilot.*neutral/)
+    expect(() => skills.render('propose', { target: 'vscode' as never })).toThrow(/claude.*codex.*copilot.*antigravity.*neutral/)
     expect(() => skills.render('no-such-skill', { target: 'copilot' })).toThrow(/Unknown skill/)
   })
   it('neutral × tool-call speaks tool-call wording without local prefixes/paths', () => {
@@ -147,3 +147,29 @@ it('antigravity renders the same skills as init under its independent .agent dir
   expect(readFileSync(join(fixture,'.agent','skills','speclink-propose','SKILL.md'),'utf8')).toContain('/speclink-');
  } finally {rmSync(fixture,{recursive:true,force:true})}
 });
+
+it('index.d.ts accepts antigravity target under tsc typecheck', () => {
+  const fixture = mkdtempSync(join(tmpdir(), 'speclink-node-types-'))
+  try {
+    const pkgRoot = join(repoRoot, 'crates', 'adapters', 'speclink-node')
+    const tsFile = join(fixture, 'test.ts')
+    writeFileSync(
+      tsFile,
+      `import { skills } from ${JSON.stringify(pkgRoot)}\nskills.render('apply', { target: 'antigravity' })\n`,
+    )
+    const tscBin = join(repoRoot, 'node_modules', 'typescript', 'bin', 'tsc')
+    execFileSync(process.execPath, [
+      tscBin,
+      '--noEmit',
+      '--strict',
+      '--skipLibCheck',
+      '--moduleResolution',
+      'node',
+      '--target',
+      'ES2022',
+      tsFile,
+    ])
+  } finally {
+    rmSync(fixture, { recursive: true, force: true })
+  }
+})
