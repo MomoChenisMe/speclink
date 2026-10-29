@@ -66,7 +66,7 @@ where
 /// Shared by local archive and verification; every operation recomputes current source evidence.
 pub(crate) fn security_repository(application_data:&std::path::Path)->Result<speclink_fs::security::FsSecurityData> {
     let paths=speclink_host::security_paths::lease(application_data)?;
-    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock.into_inner()))
 }
 
 /// Shared by local archive and verification; every operation recomputes current source evidence.
