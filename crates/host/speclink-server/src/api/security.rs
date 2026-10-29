@@ -10,7 +10,7 @@ use speclink_protocol::security::*;
 
 pub(crate) fn standard_repository(application_data:&std::path::Path)->anyhow::Result<speclink_fs::security::FsSecurityData> {
     let paths=speclink_host::security_paths::lease(application_data)?;
-    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock.into_inner()))
 }
 
 async fn run(

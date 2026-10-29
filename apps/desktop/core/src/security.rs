@@ -311,7 +311,7 @@ pub fn list_data_at(
 }
 pub fn repository_at(application_data:&Path)->anyhow::Result<speclink_fs::security::FsSecurityData> {
     let paths=speclink_host::security_paths::lease(application_data)?;
-    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock))
+    Ok(speclink_fs::security::FsSecurityData::with_standard_root(application_data,&paths.standards_root)?.hold_path_lease(paths.lock.into_inner()))
 }
 pub fn data_paths_at(application_data:&Path)->std::result::Result<speclink_host::security_paths::PathSnapshot,JobError> {
     speclink_host::security_paths::read_at(&speclink_host::context::global_config_dir(),application_data).map_err(|e|JobError::from_message(&e.to_string()))
