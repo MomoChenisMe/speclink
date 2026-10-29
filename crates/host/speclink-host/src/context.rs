@@ -183,6 +183,25 @@ mod tests {
         crate::security_paths::write_at(config.path(),device.path(),None).unwrap();
         assert!(crate::security_paths::read_at(config.path(),device.path()).unwrap().is_default);
     }
+    #[test]
+    #[cfg(unix)]
+    fn standard_path_lease_release_survives_inherited_handle() {
+        let config = tempfile::tempdir().unwrap();
+        let device = tempfile::tempdir().unwrap();
+        let shared = tempfile::tempdir().unwrap();
+        let lease = crate::security_paths::lease_at(config.path(), device.path()).unwrap();
+        let inherited = lease.lock.try_clone().unwrap();
+        assert!(crate::security_paths::write_at(
+            config.path(),
+            device.path(),
+            Some(shared.path().to_string_lossy().into())
+        )
+        .is_err());
+        drop(lease);
+        crate::security_paths::write_at(config.path(), device.path(), None).unwrap();
+        assert!(crate::security_paths::read_at(config.path(), device.path()).unwrap().is_default);
+        drop(inherited);
+    }
     #[cfg(windows)]
     #[test]
     fn standard_path_accepts_complete_unc_and_rejects_partial_or_device_paths() {

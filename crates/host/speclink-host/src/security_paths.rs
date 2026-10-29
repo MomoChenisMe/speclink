@@ -22,9 +22,43 @@ pub struct PathSnapshot {
     pub is_default: bool,
     pub access: &'static str,
 }
+pub struct PathLock(Option<File>);
+
+impl PathLock {
+    pub fn new(file: File) -> Self {
+        Self(Some(file))
+    }
+
+    pub fn into_inner(mut self) -> File {
+        self.0.take().expect("PathLock already consumed")
+    }
+}
+
+impl Drop for PathLock {
+    fn drop(&mut self) {
+        if let Some(file) = &self.0 {
+            // Closing alone can leave a Unix lock held by a forked child's inherited handle.
+            let _ = file.unlock();
+        }
+    }
+}
+
+impl std::ops::Deref for PathLock {
+    type Target = File;
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref().expect("PathLock already consumed")
+    }
+}
+
+impl std::ops::DerefMut for PathLock {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.0.as_mut().expect("PathLock already consumed")
+    }
+}
+
 pub struct PathLease {
     pub standards_root: PathBuf,
-    pub lock: File,
+    pub lock: PathLock,
 }
 
 pub fn validate_path(raw: &str) -> Result<()> {
@@ -155,7 +189,7 @@ fn snapshot(value: Preferences, application_data: &Path) -> Result<PathSnapshot>
 pub fn read_at(config: &Path, application_data: &Path) -> Result<PathSnapshot> {
     snapshot(load(config)?, application_data)
 }
-fn gate(config: &Path, exclusive: bool) -> Result<File> {
+fn gate(config: &Path, exclusive: bool) -> Result<PathLock> {
     check_directory(config, true)?;
     let path = config.join(".security-data-path.lock");
     if let Ok(metadata) = fs::symlink_metadata(&path) {
@@ -176,7 +210,7 @@ fn gate(config: &Path, exclusive: bool) -> Result<File> {
         file.try_lock_shared()
     }
     .map_err(|_| anyhow::anyhow!("busy: standard data operation in progress"))?;
-    Ok(file)
+    Ok(PathLock::new(file))
 }
 pub fn lease_at(config: &Path, application_data: &Path) -> Result<PathLease> {
     let lock = gate(config, false)?;
