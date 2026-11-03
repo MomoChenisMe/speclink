@@ -28,7 +28,7 @@ use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
     ArchivedListResponse, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
     DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId, ImportReportResponse,
-    ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse, ScopesResponse,
+    ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse, PlanUnpromotedCut, ScopesResponse,
     SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
 };
 use speclink_remote::client::Client;
@@ -843,12 +843,15 @@ fn schedule_of(entry: &PlanChangeEntry) -> serde_json::Map<String, serde_json::V
         .collect()
 }
 
-/// `remote_list_changes` 的 payload：清單項＋頂層 planError（成環時為訊息，否則 null）。
+/// `remote_list_changes` 的 payload：清單項＋頂層 planError（成環時為訊息，否則 null）、
+/// plan 的 next 與尚未轉出的刀（plan 不可得時為 null 與空陣列）。
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoteChangeList {
     pub changes: Vec<RemoteChangeItem>,
     pub plan_error: Option<String>,
+    pub next: Option<String>,
+    pub unpromoted_cuts: Vec<PlanUnpromotedCut>,
 }
 
 /// 清單合併 plan（D5）：順序與排程欄位來自 [`display_order`]。GET /plan 唯一的 409
@@ -870,7 +873,8 @@ pub(crate) fn merge_plan(
             schedule: entry.map(schedule_of),
         })
         .collect();
-    RemoteChangeList { changes, plan_error }
+    let (next, unpromoted_cuts) = plan.map(|p| (p.next, p.unpromoted_cuts)).unwrap_or_default();
+    RemoteChangeList { changes, plan_error, next, unpromoted_cuts }
 }
 
 /// 變更卡的顯示序（清單與拖排共用，D5／D6）：有 plan 時照其配置序，plan 沒列到
@@ -2070,7 +2074,7 @@ mod plan_merge_tests {
     use super::board_order_tests::change;
     use super::{merge_plan, RemoteChangeList};
     use speclink_desktop_core::query::PLAN_FIELDS;
-    use speclink_protocol::query::{BoardOrderDoc, PlanChangeEntry, PlanResponse};
+    use speclink_protocol::query::{BoardOrderDoc, PlanChangeEntry, PlanResponse, PlanUnpromotedCut};
     use speclink_remote::RemoteError;
 
     pub(super) fn entry(name: &str, wave: usize, depends_on: &[&str], blocked_by: &[&str]) -> PlanChangeEntry {
@@ -2230,6 +2234,62 @@ mod plan_merge_tests {
         for item in json["changes"].as_array().unwrap() {
             assert_eq!(item["requirementOverlap"], serde_json::json!([]), "{item}");
             assert_eq!(item["archiveAfter"], serde_json::json!([]), "{item}");
+        }
+        // 舊 server 的 plan 回應沒有 unpromotedCuts 鍵：頂層讀作空陣列，next 照搬。
+        assert_eq!(list.next.as_deref(), Some("a"));
+        assert!(list.unpromoted_cuts.is_empty());
+        assert_eq!(json["unpromotedCuts"], serde_json::json!([]), "{json}");
+    }
+
+    fn panel_cut() -> PlanUnpromotedCut {
+        PlanUnpromotedCut {
+            discussion: "panel".into(),
+            cut: "cut 3".into(),
+            title: "路線圖".into(),
+            changes: vec!["add-z".into()],
+            unpromoted: vec!["add-z".into()],
+        }
+    }
+
+    #[test]
+    fn merge_plan_carries_the_next_and_unpromoted_cuts() {
+        // 規格 Scenario「remote 清單帶 next 與尚未轉出的刀」：兩欄逐欄搬運自 GET /plan，
+        // 序列化為頂層的 next 與 unpromotedCuts（五鍵 camelCase）。
+        let mut response = plan(vec![entry("add-a", 1, &[], &[])]);
+        response.next = Some("add-a".into());
+        response.unpromoted_cuts = vec![panel_cut()];
+        let list = merge_plan(vec![change("add-a", 0, 0)], &BoardOrderDoc::default(), Ok(response));
+        assert_eq!(list.next.as_deref(), Some("add-a"));
+        assert_eq!(list.unpromoted_cuts, [panel_cut()]);
+        let json = serde_json::to_value(&list).unwrap();
+        assert_eq!(json["next"], "add-a");
+        assert_eq!(
+            json["unpromotedCuts"],
+            serde_json::json!([{
+                "discussion": "panel",
+                "cut": "cut 3",
+                "title": "路線圖",
+                "changes": ["add-z"],
+                "unpromoted": ["add-z"],
+            }])
+        );
+    }
+
+    #[test]
+    fn merge_plan_errors_clear_the_next_and_unpromoted_cuts() {
+        // 規格「remote 變更清單的排程欄位」：409（成環）與其他錯誤（404、連線失敗）
+        // 時 next 為 null、unpromotedCuts 為空陣列——兩鍵照樣出現在 payload。
+        for error in [
+            failure(Some(409), Some("refused"), "dependency cycle: a -> b -> a"),
+            failure(Some(404), Some("not_found"), "resource not found"),
+            failure(None, None, "server unreachable"),
+        ] {
+            let list = merge_plan(vec![change("a", 0, 0)], &board(), Err(error));
+            assert_eq!(list.next, None);
+            assert!(list.unpromoted_cuts.is_empty());
+            let json = serde_json::to_value(&list).unwrap();
+            assert!(json.get("next").is_some_and(serde_json::Value::is_null), "{json}");
+            assert_eq!(json["unpromotedCuts"], serde_json::json!([]), "{json}");
         }
     }
 }

@@ -21,6 +21,15 @@ describe("parseSpeclinkUrl：合法網址", () => {
       url: "speclink://change/add-search?project=C%3A%2Fwork%2Fapp",
       link: { kind: "change", name: "add-search", project: "C:/work/app" },
     },
+    // 路線圖網址（desktop-roadmap）：path 為空或單一 /，不帶名稱。
+    {
+      url: "speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink",
+      link: { kind: "roadmap", project: "/Users/dev/speclink" },
+    },
+    {
+      url: "speclink://roadmap/?project=%2Fa",
+      link: { kind: "roadmap", project: "/a" },
+    },
   ])("$url", ({ url, link }) => {
     expect(parseSpeclinkUrl(url)).toEqual({ ok: true, link });
   });
@@ -28,6 +37,7 @@ describe("parseSpeclinkUrl：合法網址", () => {
 
 describe("parseSpeclinkUrl：格式錯誤", () => {
   it.each([
+    { url: "speclink://roadmap/waves?project=%2Fa", reason: "name" }, // 路線圖不帶名稱
     { url: "speclink://spec/desktop-app?project=%2Fa", reason: "kind" }, // 未知種類
     { url: "speclink://change/a/b?project=%2Fa", reason: "name" }, // 名稱多於一段
     { url: "speclink://change/?project=%2Fa", reason: "name" }, // 名稱為空
@@ -51,8 +61,26 @@ describe("parseSpeclinkUrl：不可信網址", () => {
     { url: "speclink://CHANGE/x?project=%2Fa", reason: "kind" },
     // 判定：.. 不構成缺口——URL 解析先把它收成空名稱；名稱只拿來比對清單，從不當檔案路徑。
     { url: "speclink://change/..?project=%2Fa", reason: "name" },
+    // 路線圖網址的稽核（desktop-roadmap 任務 5.3）——五項都沒有缺口：
+    // 判定：host 大小寫不放寬，與 CHANGE 同理——ROADMAP 照未知種類出 toast。
+    { url: "speclink://ROADMAP?project=%2Fa", reason: "kind" },
+    // 判定：path 為 // 時剩下的 / 算一段名稱，照「路線圖不帶名稱」擋下，不當成空 path。
+    { url: "speclink://roadmap//?project=%2Fa", reason: "name" },
+    // 判定：重複的 project 與其他種類同樣有歧義，不挑一個用。
+    { url: "speclink://roadmap?project=%2Fa&project=%2Fb", reason: "project" },
+    // 判定：project 含控制字元走同一個嚴格解碼，擋下。
+    { url: "speclink://roadmap?project=%2Fa%0Ab", reason: "project" },
   ])("$url → $reason", ({ url, reason }) => {
     expect(parseSpeclinkUrl(url)).toEqual({ ok: false, reason });
+  });
+
+  // 判定：多餘的 query 參數不構成缺口——只讀 project，其他參數不影響開哪個專案，也不觸發
+  // 任何寫入；與變更、討論網址同一規則。
+  it("路線圖網址帶多餘的 query 參數時只讀 project", () => {
+    expect(parseSpeclinkUrl("speclink://roadmap?view=waves&project=%2Fa&x=1")).toEqual({
+      ok: true,
+      link: { kind: "roadmap", project: "/a" },
+    });
   });
 
   // + 照字面保留（RFC 3986 的 query 不是表單編碼）：路徑 /a+b 不得被讀成 /a b。
@@ -89,6 +117,7 @@ const PROJECT = "/Users/dev/speclink";
 const PROJECT_KEY = `local:${PROJECT}`;
 const CHANGE_URL = "speclink://change/add-search?project=%2FUsers%2Fdev%2Fspeclink";
 const DISCUSSION_URL = "speclink://discussion/board-search-bar?project=%2FUsers%2Fdev%2Fspeclink";
+const ROADMAP_URL = "speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -135,6 +164,7 @@ function harness(
     openDetail: vi.fn((name: string) => log.push(`openDetail:${name}`)),
     openDiscussion: vi.fn((slug: string) => log.push(`openDiscussion:${slug}`)),
     setBoardView: vi.fn((view: string) => log.push(`setBoardView:${view}`)),
+    setBoardMode: vi.fn((mode: string) => log.push(`setBoardMode:${mode}`)),
   };
   const dispose = installDeepLinks({ getState: () => state as never }, over.ready ?? Promise.resolve());
   return { state, dispose, emit: (urls: string[]) => plugin.emit(urls) };
@@ -232,6 +262,35 @@ describe("installDeepLinks", () => {
 
   it("(h) 不可取消的浮層開著：喚起主視窗，但不切專案、不開詳情、不出 toast", async () => {
     const h = harness({ launch: [CHANGE_URL], migrationRoot: "/Users/dev/legacy" });
+    await flush();
+    expect(log).toEqual(["openMainWindow"]);
+    expect(h.state.openProjectAt).not.toHaveBeenCalled();
+  });
+
+  // 路線圖網址（desktop-roadmap）：開專案後關閉詳情頁（setBoardView 切頁即離開詳情頁）、
+  // 主區切到看板頁的路線圖檢視；沒有找不到目標的情形，不出 toast。
+  it("(j) 路線圖網址依序喚起主視窗、開專案、切回看板頁、切到路線圖", async () => {
+    const h = harness({ launch: [ROADMAP_URL] });
+    await flush();
+    expect(log).toEqual([
+      "openMainWindow",
+      `openProjectAt:${PROJECT}`,
+      "setBoardView:board",
+      "setBoardMode:roadmap",
+    ]);
+    expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
+    expect(h.state.openDetail).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("(k) 路線圖網址在 openProjectAt 回傳 null 時不切檢視", async () => {
+    harness({ launch: [ROADMAP_URL], openKey: null });
+    await flush();
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
+  });
+
+  it("(l) 路線圖網址遇到不可取消的浮層：只喚起主視窗", async () => {
+    const h = harness({ launch: [ROADMAP_URL], migrationRoot: "/Users/dev/legacy" });
     await flush();
     expect(log).toEqual(["openMainWindow"]);
     expect(h.state.openProjectAt).not.toHaveBeenCalled();

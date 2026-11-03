@@ -1,6 +1,7 @@
 // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）：外部程式以
 // speclink://change/<name>?project=<path> 或 speclink://discussion/<slug>?project=<path>
-// 叫桌面 app 開啟詳情頁。解析與派送都在這裡；Tauri 殼只註冊外掛。
+// 叫桌面 app 開啟詳情頁，以 speclink://roadmap?project=<path> 開啟該專案的路線圖。
+// 解析與派送都在這裡；Tauri 殼只註冊外掛。
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { toast } from "sonner";
 
@@ -10,19 +11,21 @@ import { openMainWindow } from "./tray";
 
 export type SpeclinkLinkKind = "change" | "discussion";
 
-export interface SpeclinkLink {
-  kind: SpeclinkLinkKind;
-  /** 變更名稱或討論 slug（已百分比解碼）。 */
-  name: string;
-  /** 專案資料夾的絕對路徑（已百分比解碼）。 */
-  project: string;
-}
+/** 解析後的網址；名稱與路徑都已百分比解碼，`project` 為專案資料夾的絕對路徑。 */
+export type SpeclinkLink =
+  | {
+      kind: SpeclinkLinkKind;
+      /** 變更名稱或討論 slug。 */
+      name: string;
+      project: string;
+    }
+  | { kind: "roadmap"; project: string };
 
 export type ParsedSpeclinkUrl =
   | { ok: true; link: SpeclinkLink }
   | { ok: false; reason: "scheme" | "kind" | "name" | "project" };
 
-const KINDS: readonly string[] = ["change", "discussion"];
+const KINDS: readonly string[] = ["change", "discussion", "roadmap"];
 /** POSIX 以 / 開頭；Windows 以磁碟代號加 :\ 或 :/ 開頭。 */
 const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/;
 
@@ -48,7 +51,13 @@ export function parseSpeclinkUrl(raw: string): ParsedSpeclinkUrl {
   if (url.protocol !== "speclink:") return { ok: false, reason: "scheme" };
   if (!KINDS.includes(url.host)) return { ok: false, reason: "kind" };
   const segment = url.pathname.replace(/^\//, "");
-  const name = segment === "" || segment.includes("/") ? null : decodeStrict(segment);
+  let name: string | null;
+  if (url.host === "roadmap") {
+    // 路線圖不帶名稱：path 只能為空或單一 /。
+    name = segment === "" ? "" : null;
+  } else {
+    name = segment === "" || segment.includes("/") ? null : decodeStrict(segment);
+  }
   if (name === null) return { ok: false, reason: "name" };
   // 恰好一個 project 參數；重複時有歧義，不挑一個用。
   const values = url.search
@@ -58,6 +67,7 @@ export function parseSpeclinkUrl(raw: string): ParsedSpeclinkUrl {
     .map((pair) => pair.slice("project=".length));
   const project = values.length === 1 ? decodeStrict(values[0]) : null;
   if (project === null || !ABSOLUTE_PATH.test(project)) return { ok: false, reason: "project" };
+  if (url.host === "roadmap") return { ok: true, link: { kind: "roadmap", project } };
   return { ok: true, link: { kind: url.host as SpeclinkLinkKind, name, project } };
 }
 
@@ -74,6 +84,7 @@ export interface DeepLinkStore {
     | "openDetail"
     | "openDiscussion"
     | "setBoardView"
+    | "setBoardMode"
   >;
 }
 
@@ -127,12 +138,19 @@ async function openLink(store: DeepLinkStore, url: string): Promise<void> {
   }
   // 不可取消的浮層開著：不切專案、不開詳情（與系統匣同語意）。
   if (uncancelableOverlayOpen(store.getState())) return;
-  const { kind, name, project } = parsed.link;
+  const { link } = parsed;
   // null＝現在不能拿這個專案的清單來用：確認框、選擇器或錯誤已由開啟專案流程接手，
   // 或載入失敗、載入期間已切走。remote 標記一律走選擇器，確認前零寫入。
-  const key = await store.getState().openProjectAt(project, { remoteViaChooser: true });
+  const key = await store.getState().openProjectAt(link.project, { remoteViaChooser: true });
   if (key === null) return;
   const s = store.getState();
+  if (link.kind === "roadmap") {
+    // 切回看板頁即關閉開著的詳情頁；路線圖沒有找不到目標的情形。
+    s.setBoardView("board");
+    s.setBoardMode("roadmap");
+    return;
+  }
+  const { kind, name, project } = link;
   const target = TARGETS[kind];
   if (!target.exists(s, name)) {
     s.setBoardView("board");

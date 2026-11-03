@@ -2,6 +2,7 @@ import { create, type StoreApi, type UseBoundStore } from "zustand";
 import { toast } from "sonner";
 import type {
   ArchivedTarget,
+  BoardMode,
   CardKind,
   ChangeItem,
   ChangeListPayload,
@@ -14,6 +15,7 @@ import type {
   ManualIndex,
   SearchHit,
   SpeclinkDataSource,
+  UnpromotedCutItem,
   Verb,
   AnalyzeReport,
   VerbDrawerResult,
@@ -245,6 +247,10 @@ export interface AppState {
   changes: ChangeItem[];
   /** 清單 payload 的頂層 planError（依賴成環訊息；null＝無成環或資料源不供）。 */
   planError: string | null;
+  /** 清單 payload 的頂層 next（plan 的下一個；缺鍵、成環或 plan 不可得為 null）——路線圖的「下一個」籤。 */
+  planNext: string | null;
+  /** 清單 payload 的頂層 unpromotedCuts（缺鍵為空陣列）——路線圖的「尚未轉出」欄。 */
+  unpromotedCuts: UnpromotedCutItem[];
   specs: SpecItem[];
   archived: ArchivedItem[];
   /** 討論兩節（active 進看板第 0 欄、archived 進已封存頁討論節）。 */
@@ -266,6 +272,8 @@ export interface AppState {
   manual: ManualIndex | null;
 
   boardView: BoardView;
+  /** 看板頁顯示哪一種檢視：app 層級、啟動時為 cards、不寫入任何檔案；詳情頁開關不動它。 */
+  boardMode: BoardMode;
   /** 應用程式設定的所在分類（desktop-settings-mode design D1）：切回設定模式時沿用上次分類。 */
   settingsSection: SettingsSection;
   /** 專案設定的所在分類；遠端專案無 .speclink.yaml 頁，呈現端退回專案說明。 */
@@ -318,6 +326,7 @@ export interface AppState {
    * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
   refreshManual: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
+  setBoardMode: (mode: BoardMode) => void;
   /** 離開設定模式，回到 settingsReturnView。 */
   leaveSettings: () => void;
   setSettingsSection: (section: SettingsSection) => void;
@@ -572,7 +581,15 @@ export interface AppState {
 
 type WorkspaceSnapshot = Pick<
   AppState,
-  "changes" | "planError" | "specs" | "archived" | "discussions" | "loaded" | "loadFailed"
+  | "changes"
+  | "planError"
+  | "planNext"
+  | "unpromotedCuts"
+  | "specs"
+  | "archived"
+  | "discussions"
+  | "loaded"
+  | "loadFailed"
 >;
 
 type CliProbe = Awaited<ReturnType<CliInstallAdapter["probe"]>>;
@@ -786,6 +803,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       return {
         changes: [],
         planError: null,
+        planNext: null,
+        unpromotedCuts: [],
         specs: [],
         archived: [],
         discussions: { active: [], archived: [] },
@@ -1301,6 +1320,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     return {
     changes: [],
     planError: null,
+    planNext: null,
+    unpromotedCuts: [],
     specs: [],
     archived: [],
     discussions: { active: [], archived: [] },
@@ -1310,6 +1331,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     refreshGen: 0,
     manual: null,
     boardView: "board",
+    boardMode: "cards",
     settingsSection: "general",
     settingsReturnView: "board",
     projectSettingsSection: "context",
@@ -1370,10 +1392,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           }
           return;
         }
-        const [{ changes, planError }, specs, archived, discussions] = loaded;
+        const [{ changes, planError, next, unpromotedCuts }, specs, archived, discussions] = loaded;
         const snapshot: WorkspaceSnapshot = {
           changes,
           planError,
+          planNext: next ?? null,
+          unpromotedCuts: unpromotedCuts ?? [],
           specs,
           archived,
           discussions,
@@ -1448,6 +1472,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         detailVerb: null,
       });
       if (boardView === "manual") void get().refreshManual();
+    },
+
+    setBoardMode(boardMode) {
+      set({ boardMode });
     },
 
     leaveSettings() {
@@ -1792,6 +1820,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         previousSnapshot = workspaceSnapshots.get(sourceKey) ?? {
           changes: current.changes,
           planError: current.planError,
+          planNext: current.planNext,
+          unpromotedCuts: current.unpromotedCuts,
           specs: current.specs,
           archived: current.archived,
           discussions: current.discussions,

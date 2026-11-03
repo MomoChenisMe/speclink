@@ -1,0 +1,238 @@
+{
+  "version": 2,
+  "change": "desktop-roadmap",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）需求「變更清單的排程欄位」：在 apps/desktop/core/src/query.rs 的測試模組新增 `list_changes_at` 的測試——(a) 一個專案有兩個變更與一份未封存討論（結論 Decision 有 ``**cut 2 `add-y`**`` 與 ``**cut 3 `add-z`**``、promoted_to 只含 add-y），回應頂層 `next` 為引擎 plan 的 next、`unpromotedCuts` 恰一項且五鍵（discussion、cut、title、changes、unpromoted）為 camelCase、值與 `speclink_core::plan::compute` 的 `unpromoted_cuts` 相同；(b) 依賴成環時 `next` 為 null、`unpromotedCuts` 為空陣列，既有 `planError` 與六欄斷言不變。驗證：`cargo test -p speclink-desktop-core` 因缺兩鍵而失敗",
+      "files": [
+        "apps/desktop/core/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red）需求「remote 變更清單的排程欄位」：在 apps/desktop/src-tauri/src/remote.rs 的測試模組新增 `merge_plan` 的測試——plan 回應帶 next 與一項 unpromoted_cuts 時 `RemoteChangeList` 帶同值、序列化為 `next` 與 `unpromotedCuts` 兩鍵；plan 回 409 與其他錯誤時 next 為 None、unpromoted_cuts 為空；舊 server 回應沒有 unpromotedCuts 鍵時為空。驗證：`cargo test -p speclink-desktop --lib merge_plan` 因欄位不存在而編譯失敗",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "1.5 （Red）在 apps/desktop/src/__tests__/store.test.ts 新增測試：資料源的 `listChanges` 回傳帶 `next` 與 `unpromotedCuts` 時 `refresh()` 後 store 的 `planNext` 與 `unpromotedCuts` 為同值；回傳缺這兩鍵時為 null 與空陣列；切到另一個 workspace 再切回時兩欄由快照還原。驗證：`npm test -w apps/desktop -- store` 因欄位不存在而失敗",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "1.6 （Green）在 packages/ui/src/adapter.ts 的 `ChangeListPayload` 增 `next?: string | null` 與 `unpromotedCuts?: UnpromotedCutItem[]`（型別自 packages/ui/src/index.ts 匯出），在 apps/desktop/src/store.ts 增 `planNext`、`unpromotedCuts` 並納入 `WorkspaceSnapshot`。驗證：`npm test -w apps/desktop -- store` 全部通過",
+      "files": [
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/index.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.1 （Red）依設計「路線圖模型為純函式」在 packages/ui/src/__tests__/roadmapModel.test.ts 新增測試：`roadmapModel` 依波次升冪分組、波內維持清單順序、站的 stage 與 blockedBy 對照 spec「站的階段文字」Example 四列、`next` 只標在同名站、沒有 wave 的變更進 `unplaced`、連線只收兩端都在路線圖上的 dependsOn（前置已封存時沒有線）；`roadmapRoute` 對照 spec「路線的範圍」Example 三列（遞移前置、遞移依賴者與其間的線）。驗證：`npm test -w packages/ui -- roadmapModel` 因模組不存在而失敗",
+      "files": [
+        "packages/ui/src/__tests__/roadmapModel.test.ts"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.2 （Green）在 packages/ui/src/roadmapModel.ts 實作 `roadmapModel(changes, next)` 與 `roadmapRoute(model, name)`，階段與阻擋沿用 packages/ui/src/stage.ts 的 `changeStage`、`planWave`、`planBlockedBy`。驗證：`npm test -w packages/ui -- roadmapModel` 全部通過",
+      "files": [
+        "packages/ui/src/roadmapModel.ts"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.1 （Red）在 packages/ui/src/__tests__/roadmapView.test.tsx 新增 `RoadmapView` 的測試，涵蓋需求「路線圖依波次排列變更」「路線圖列出尚未轉出的刀」「路線圖的成環與空狀態」：spec 場景「兩波與下一個」的欄頭文字（第 1 波 · 2 · 可以並行、第 2 波 · 1 · 等第 1 波）、站的次行、「下一個」籤、被擋的站帶變淡標記並寫出等 add-a；點站與聚焦後按 Enter 都以變更名呼叫 `onOpenChange`；`unplaced` 的一行說明；尚未轉出欄的卡頭（slug · cut 4 與「尚未轉出」籤）、尚未轉出的變更名、範圍句、`CommandChip` 的指令 `/speclink-propose --from-discussion herdr-speclink-panel`；slug 在 `discussions` 內時可點並呼叫 `onOpenDiscussion`、不在時不是按鈕；`unpromotedCuts` 為空時沒有該欄；`planError` 非空時沒有波次欄與線並顯示成環提示與訊息；沒有站也沒有刀時顯示「沒有進行中的變更」。驗證：`npm test -w packages/ui -- roadmapView` 因元件不存在而失敗",
+      "files": [
+        "packages/ui/src/__tests__/roadmapView.test.tsx"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 （Green）在 packages/ui/src/components/RoadmapView.tsx 實作版面：依設計「站的外觀表示階段，next 標示下一個」畫波次欄與站（進行中的任務進度圓圈以 SVG 圓弧繪製），依設計「尚未轉出的刀放在最右一欄」畫尚未轉出欄（`border-dashed` 加 `SEMANTIC_SURFACE.manual`、`StatusPill tone=\"manual\"`、`CommandChip`），依設計「成環與空狀態」處理 planError、空狀態與載入中；依設計「文字走 @speclink/ui 的 i18n」把新文字加進 packages/ui/src/i18n.tsx 的 tw 與 en，並自 packages/ui/src/index.ts 匯出 `RoadmapView`。驗證：`npm test -w packages/ui -- roadmapView` 中版面相關的測試通過",
+      "files": [
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/components/RoadmapView.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首搜尋列之前；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.1 （Red）需求「以 speclink 網址開啟詳情頁」的 roadmap 網址：在 apps/desktop/src/__tests__/deepLink.test.ts 的解析表加入 spec「網址解析」Example 新增的三列（`speclink://roadmap?project=…` 與 `speclink://roadmap/?project=…` 為路線圖、`speclink://roadmap/waves?project=…` 為格式錯誤 reason `name`），並新增派送測試：roadmap 網址依序呼叫 openMainWindow → openProjectAt(project) → 關閉詳情頁 → setBoardView(\"board\") → setBoardMode(\"roadmap\")，不呼叫 toast；openProjectAt 回傳 null 時不切檢視；不可取消的浮層開著時不呼叫 openProjectAt。驗證：`npm test -w apps/desktop -- deepLink` 失敗",
+      "files": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.2 （Green）依設計「網址加 roadmap 這種」在 apps/desktop/src/deepLink.ts 擴充 `parseSpeclinkUrl`（host `roadmap`、path 為空或單一 `/`，結果型別改為聯集）與 `openLink` 的 roadmap 分支；既有 change、discussion 的行為與 toast 不變。驗證：`npm test -w apps/desktop -- deepLink` 全部通過",
+      "files": [
+        "apps/desktop/src/deepLink.ts"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate desktop-roadmap` 通過",
+      "files": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M6G9AM7YAXN13Y3DMMK9VYW5",
+      "taskDesc": "1.1 （Red）需求「變更清單的排程欄位」：在 apps/desktop/core/src/query.rs 的測試模組新增 `list_changes_at` 的測試——(a) 一個專案有兩個變更與一份未封存討論（結論 Decision 有 ``**cut 2 `add-y`**`` 與 ``**cut 3 `add-z`**``、promoted_to 只含 add-y），回應頂層 `next` 為引擎 plan 的 next、`unpromotedCuts` 恰一項且五鍵（discussion、cut、title、changes、unpromoted）為 camelCase、值與 `speclink_core::plan::compute` 的 `unpromoted_cuts` 相同；(b) 依賴成環時 `next` 為 null、`unpromotedCuts` 為空陣列，既有 `planError` 與六欄斷言不變。驗證：`cargo test -p speclink-desktop-core` 因缺兩鍵而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs"
+      ],
+      "recordedAt": "2026-11-03T09:18:19Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YNCX9QEGWBK2HSMA2",
+      "taskDesc": "1.3 （Red）需求「remote 變更清單的排程欄位」：在 apps/desktop/src-tauri/src/remote.rs 的測試模組新增 `merge_plan` 的測試——plan 回應帶 next 與一項 unpromoted_cuts 時 `RemoteChangeList` 帶同值、序列化為 `next` 與 `unpromotedCuts` 兩鍵；plan 回 409 與其他錯誤時 next 為 None、unpromoted_cuts 為空；舊 server 回應沒有 unpromotedCuts 鍵時為空。驗證：`cargo test -p speclink-desktop --lib merge_plan` 因欄位不存在而編譯失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs"
+      ],
+      "recordedAt": "2026-11-03T09:19:56Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7Y70YHVKBKWNGB3B41",
+      "taskDesc": "1.5 （Red）在 apps/desktop/src/__tests__/store.test.ts 新增測試：資料源的 `listChanges` 回傳帶 `next` 與 `unpromotedCuts` 時 `refresh()` 後 store 的 `planNext` 與 `unpromotedCuts` 為同值；回傳缺這兩鍵時為 null 與空陣列；切到另一個 workspace 再切回時兩欄由快照還原。驗證：`npm test -w apps/desktop -- store` 因欄位不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ],
+      "recordedAt": "2026-11-03T09:21:26Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YZK8MZ1K8MWZ0Y86F",
+      "taskDesc": "1.6 （Green）在 packages/ui/src/adapter.ts 的 `ChangeListPayload` 增 `next?: string | null` 與 `unpromotedCuts?: UnpromotedCutItem[]`（型別自 packages/ui/src/index.ts 匯出），在 apps/desktop/src/store.ts 增 `planNext`、`unpromotedCuts` 並納入 `WorkspaceSnapshot`。驗證：`npm test -w apps/desktop -- store` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/store.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/index.ts"
+      ],
+      "recordedAt": "2026-11-03T09:22:39Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YJ0ZFGQ8PS4BBCAFM",
+      "taskDesc": "2.1 （Red）依設計「路線圖模型為純函式」在 packages/ui/src/__tests__/roadmapModel.test.ts 新增測試：`roadmapModel` 依波次升冪分組、波內維持清單順序、站的 stage 與 blockedBy 對照 spec「站的階段文字」Example 四列、`next` 只標在同名站、沒有 wave 的變更進 `unplaced`、連線只收兩端都在路線圖上的 dependsOn（前置已封存時沒有線）；`roadmapRoute` 對照 spec「路線的範圍」Example 三列（遞移前置、遞移依賴者與其間的線）。驗證：`npm test -w packages/ui -- roadmapModel` 因模組不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/roadmapModel.test.ts"
+      ],
+      "recordedAt": "2026-11-03T09:23:35Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7Y8X4ZQC05TFJSP0KG",
+      "taskDesc": "2.2 （Green）在 packages/ui/src/roadmapModel.ts 實作 `roadmapModel(changes, next)` 與 `roadmapRoute(model, name)`，階段與阻擋沿用 packages/ui/src/stage.ts 的 `changeStage`、`planWave`、`planBlockedBy`。驗證：`npm test -w packages/ui -- roadmapModel` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/roadmapModel.ts"
+      ],
+      "recordedAt": "2026-11-03T09:24:09Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YWB3XHGQNHNS3T3KT",
+      "taskDesc": "3.1 （Red）在 packages/ui/src/__tests__/roadmapView.test.tsx 新增 `RoadmapView` 的測試，涵蓋需求「路線圖依波次排列變更」「路線圖列出尚未轉出的刀」「路線圖的成環與空狀態」：spec 場景「兩波與下一個」的欄頭文字（第 1 波 · 2 · 可以並行、第 2 波 · 1 · 等第 1 波）、站的次行、「下一個」籤、被擋的站帶變淡標記並寫出等 add-a；點站與聚焦後按 Enter 都以變更名呼叫 `onOpenChange`；`unplaced` 的一行說明；尚未轉出欄的卡頭（slug · cut 4 與「尚未轉出」籤）、尚未轉出的變更名、範圍句、`CommandChip` 的指令 `/speclink-propose --from-discussion herdr-speclink-panel`；slug 在 `discussions` 內時可點並呼叫 `onOpenDiscussion`、不在時不是按鈕；`unpromotedCuts` 為空時沒有該欄；`planError` 非空時沒有波次欄與線並顯示成環提示與訊息；沒有站也沒有刀時顯示「沒有進行中的變更」。驗證：`npm test -w packages/ui -- roadmapView` 因元件不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/roadmapView.test.tsx"
+      ],
+      "recordedAt": "2026-11-03T09:27:08Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7Y4AQ6YYH05HP6F83B",
+      "taskDesc": "3.2 （Green）在 packages/ui/src/components/RoadmapView.tsx 實作版面：依設計「站的外觀表示階段，next 標示下一個」畫波次欄與站（進行中的任務進度圓圈以 SVG 圓弧繪製），依設計「尚未轉出的刀放在最右一欄」畫尚未轉出欄（`border-dashed` 加 `SEMANTIC_SURFACE.manual`、`StatusPill tone=\"manual\"`、`CommandChip`），依設計「成環與空狀態」處理 planError、空狀態與載入中；依設計「文字走 @speclink/ui 的 i18n」把新文字加進 packages/ui/src/i18n.tsx 的 tw 與 en，並自 packages/ui/src/index.ts 匯出 `RoadmapView`。驗證：`npm test -w packages/ui -- roadmapView` 中版面相關的測試通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/i18n.tsx",
+        "packages/ui/src/components/RoadmapView.tsx"
+      ],
+      "recordedAt": "2026-11-03T09:29:16Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YAYJA8A0GQ2GB8564",
+      "taskDesc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首搜尋列之前；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "packages/ui/src/__tests__/kanban.test.tsx",
+        "packages/ui/src/components/KanbanBoard.tsx"
+      ],
+      "recordedAt": "2026-11-03T09:39:37Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YEJ8R1CJFQ0WYEAX9",
+      "taskDesc": "5.1 （Red）需求「以 speclink 網址開啟詳情頁」的 roadmap 網址：在 apps/desktop/src/__tests__/deepLink.test.ts 的解析表加入 spec「網址解析」Example 新增的三列（`speclink://roadmap?project=…` 與 `speclink://roadmap/?project=…` 為路線圖、`speclink://roadmap/waves?project=…` 為格式錯誤 reason `name`），並新增派送測試：roadmap 網址依序呼叫 openMainWindow → openProjectAt(project) → 關閉詳情頁 → setBoardView(\"board\") → setBoardMode(\"roadmap\")，不呼叫 toast；openProjectAt 回傳 null 時不切檢視；不可取消的浮層開著時不呼叫 openProjectAt。驗證：`npm test -w apps/desktop -- deepLink` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ],
+      "recordedAt": "2026-11-03T09:40:39Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YC488ZMB7C5CBGZGC",
+      "taskDesc": "5.2 （Green）依設計「網址加 roadmap 這種」在 apps/desktop/src/deepLink.ts 擴充 `parseSpeclinkUrl`（host `roadmap`、path 為空或單一 `/`，結果型別改為聯集）與 `openLink` 的 roadmap 分支；既有 change、discussion 的行為與 toast 不變。驗證：`npm test -w apps/desktop -- deepLink` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/deepLink.ts"
+      ],
+      "recordedAt": "2026-11-03T09:41:11Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7Y0HJN054HGYF6AZCA",
+      "taskDesc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate desktop-roadmap` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts"
+      ],
+      "recordedAt": "2026-11-03T09:46:28Z"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -116,6 +116,8 @@ interface KanbanBoardBaseProps {
    * 缺席＝搜尋列照舊單獨一列。 */
   title?: string;
   description?: string;
+  /** 頁首的「看板｜路線圖」切換（宿主給 BoardViewSwitch）：放在搜尋列之前。 */
+  viewSwitch?: ReactNode;
   /** 看板目前呈現順序（含搜尋與篩選；design D2）——詳情頁 ‹ n／m › 與 ⌥↑／⌥↓ 的序列。
    * 變更依欄序（提案中 → 進行中 → 已就緒）再依欄內順序；討論為上區全卡依序、其後接
    * 欄底「已轉出」細列（不論收合）。順序改變時才回報。 */
@@ -219,6 +221,7 @@ export function KanbanBoard({
   loadFailed,
   title,
   description,
+  viewSwitch,
   onVisibleOrderChange,
   ...promotedExpansion
 }: KanbanBoardProps) {
@@ -446,6 +449,14 @@ export function KanbanBoard({
     </BoardSearchBar>
   );
 
+  const headerActions =
+    viewSwitch || searchBar ? (
+      <>
+        {viewSwitch}
+        {searchBar}
+      </>
+    ) : undefined;
+
   return (
     <DndContext
       sensors={sensors}
@@ -475,13 +486,9 @@ export function KanbanBoard({
         </div>
       )}
       {title ? (
-        <PageHeader
-          title={title}
-          description={description}
-          actions={searchBar}
-        />
+        <PageHeader title={title} description={description} actions={headerActions} />
       ) : (
-        searchBar
+        headerActions
       )}
       {/* relative wrapper 供封存落點浮層錨定於「可視」右緣（design D8）——浮層
           在捲動容器之外、不進 flex 流，欄寬零變動且不隨水平捲動漂移。 */}
