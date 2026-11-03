@@ -20,5 +20,5 @@
 
 ## 4. 手動驗收與收尾
 
-- [ ] [M] 4.1 在 macOS 以安裝版驗收需求「以 speclink 網址開啟詳情頁」：先用 scripts/desktop/desktop-install.mjs 安裝本分支的 app。app 關閉時，在終端機用 open 指令送出指向本 repo 變更 desktop-deep-link 的網址（project 為 repo 絕對路徑的百分比編碼）→ app 啟動、還原分頁後開著該變更詳情頁；app 執行中送出指向討論 herdr-speclink-panel 的網址 → 開著討論詳情頁，且 Dock 只有一個 Speclink；送出 host 為 spec 的網址 → 出現「無法開啟」toast、分頁不變；送出不存在的變更名稱 → 出現「找不到變更」toast <!-- speclink-task:tsk_01M6G1PHC38T5ETSN78D0Q662V -->
+- [x] [M] 4.1 在 macOS 以安裝版驗收需求「以 speclink 網址開啟詳情頁」：先用 scripts/desktop/desktop-install.mjs 安裝本分支的 app。app 關閉時，在終端機用 open 指令送出指向本 repo 變更 desktop-deep-link 的網址（project 為 repo 絕對路徑的百分比編碼）→ app 啟動、還原分頁後開著該變更詳情頁；app 執行中送出指向討論 herdr-speclink-panel 的網址 → 開著討論詳情頁，且 Dock 只有一個 Speclink；送出 host 為 spec 的網址 → 出現「無法開啟」toast、分頁不變；送出不存在的變更名稱 → 出現「找不到變更」toast <!-- speclink-task:tsk_01M6G1PHC38T5ETSN78D0Q662V -->
 - [x] 4.2 受影響面測試與文件守門全部通過。驗證：`npm test -w apps/desktop`、`cargo build -p speclink-desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate desktop-deep-link` 通過 <!-- speclink-task:tsk_01M6G1PHC3ZQBDDWAS2DSM297S -->
