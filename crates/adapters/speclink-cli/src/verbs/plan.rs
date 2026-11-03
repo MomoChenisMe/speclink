@@ -375,6 +375,23 @@ fn render_plan(plan: &core::command::PlanReport, json: bool) -> Result<()> {
             );
         }
     }
+    if !plan.unpromoted_cuts.is_empty() {
+        println!("{}", color::bold("Unpromoted cuts"));
+        for cut in &plan.unpromoted_cuts {
+            let title = if cut.title.is_empty() {
+                String::new()
+            } else {
+                color::dim(&format!(" — {}", cut.title))
+            };
+            println!(
+                "  {} {} {}: {}{title}",
+                color::cyan("•"),
+                cut.discussion,
+                cut.cut,
+                cut.unpromoted.join(", ")
+            );
+        }
+    }
     match &plan.next {
         Some(next) => println!("next: {next}"),
         None => println!("next: none"),

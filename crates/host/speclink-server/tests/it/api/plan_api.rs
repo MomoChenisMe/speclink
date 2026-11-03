@@ -186,6 +186,35 @@ fn reader_reads_the_plan_with_the_scope_etag_and_nothing_is_written() {
 }
 
 #[test]
+fn plan_carries_the_unpromoted_cuts_of_the_scope_discussions() {
+    // Scenario「回應帶尚未轉出的刀」：talk-a 只轉出了 cut 1。
+    let f = fixture(&[("add-a", meta("2026-09-01", None))]);
+    let talk = "---\ntopic: talk-a\nslug: talk-a\nstatus: promoted\npromoted_to: add-a\n\
+                created: 2026-09-01\n---\n\n# Discussion: talk-a\n\n## Context\n\n背景。\n\n\
+                ## Rounds\n\n### Round 1 — assumptions (2026-09-01)\n\n**Focus**: scope\n\n\
+                ## Conclusion\n\n**Decision**: 定案。\n\n\
+                - **cut 1 `add-a`**: 第一刀\n- **cut 2 `add-b`**: 第二刀\n";
+    seed(
+        &f.store,
+        &[(DocumentId::Discussion { slug: "talk-a".into(), archived: false }, talk.to_string())],
+    );
+    let before = revision(&f);
+
+    let (plan, _) = get_plan(&f, &f.reader_pat);
+    assert_eq!(
+        plan["unpromotedCuts"],
+        json!([{
+            "discussion": "talk-a",
+            "cut": "cut 2",
+            "title": "第二刀",
+            "changes": ["add-b"],
+            "unpromoted": ["add-b"]
+        }])
+    );
+    assert_eq!(revision(&f), before, "a derived query never advances the revision");
+}
+
+#[test]
 fn plan_ranks_come_from_the_board_resource() {
     // Scenario「rank 來自 board resource」：無 board 時依 created，有 rank 圖
     // 時依 rank 字典序。

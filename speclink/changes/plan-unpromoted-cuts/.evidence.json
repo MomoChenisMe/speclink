@@ -1,0 +1,192 @@
+{
+  "version": 2,
+  "change": "plan-unpromoted-cuts",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）需求「plan 列出討論結論中尚未轉出的刀」的分刀解析：在 crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs 的單元測試逐列寫入 spec「分刀解析」Example 的八列（斷言 cut、changes、title，以及不是刀、粗體內無名稱的判定），另加 Decision 欄位邊界三例：`**Rationale**:` 之後的粗體 cut 列點不算、巢狀列點不算、Conclusion 沒有 `**Decision**:` 時回空。驗證：`cargo test -p speclink-core discuss::cuts` 因 `parse_cuts` 不存在而編譯失敗",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 （Red）在 crates/engine/speclink-core/src/lifecycle/plan.rs 的測試以記憶體 store 建立討論記錄，涵蓋：只轉出 cut 1 時列出 cut 2、全部轉出時為空、一刀兩個變更只轉出一個時 `unpromoted` 只含未轉出者、粗體內無名稱的刀不列、已封存討論不列、沒有 Conclusion 的討論不列、兩份討論依討論清單順序排列；並斷言 `compute_with_ranks` 與 `compute_strict` 的結果同樣帶 `unpromoted_cuts`。驗證：`cargo test -p speclink-core plan` 因欄位不存在而失敗",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 （Green）依設計 D2「plan 在 compute_from 結尾附上尚未轉出的刀」新增 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`（camelCase 序列化）與 `Plan.unpromoted_cuts`（序列化為 `unpromotedCuts`），在 `compute_from` 結尾以 `list_discussions`、`conclusion_text`、`parse_cuts` 算出；讀不到結論的討論略過。驗證：`cargo test -p speclink-core plan` 與 `cargo test -p speclink-core discuss` 全部通過",
+      "files": [
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 （Red）需求「plan 動詞輸出波次與阻擋清單」：在 crates/adapters/speclink-cli/tests/it/plan_verbs.rs 把「JSON 輸出形狀」的斷言改為 waves、changes、next、skipped、unpromotedCuts 五鍵，並斷言 unpromotedCuts 每項的 discussion、cut、title 為字串、changes 與 unpromoted 為字串陣列；新增人眼輸出測試——一個提案中變更加一把未轉出的刀時 `--no-color` 的 stdout 恰為 spec「人眼輸出的 Unpromoted cuts 段」的五行且無 ANSI，所有刀都已轉出時 stdout 不含 `Unpromoted cuts`。驗證：`cargo test -p speclink-cli --test it plan_verbs` 失敗",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 （Green）依設計 D3「人眼輸出加一段 Unpromoted cuts」在 crates/adapters/speclink-cli/src/verbs/plan.rs 的 `render_plan` 於 Skipped 段之後、`next:` 行之前加印該段，樣式全部經 `color`。驗證：`cargo test -p speclink-cli --test it plan_verbs` 全部通過",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/plan.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 （Red）需求「plan 回應 payload」：在 crates/protocol/speclink-protocol/src/query.rs 的測試斷言 `PlanResponse` 缺 `unpromotedCuts` 鍵時反序列化為空陣列；在 crates/protocol/speclink-remote/src/convert.rs 的測試斷言 spec「尚未轉出的刀逐欄搬回」與「舊 server 缺尚未轉出的刀」兩個情境。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-remote --lib` 失敗",
+      "files": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 （Green）依設計 D4「GET /plan 與 remote 轉換逐欄搬運」新增 `PlanUnpromotedCut` 與 `PlanResponse.unpromoted_cuts`（`#[serde(default)]`），`plan_report` 逐欄搬回引擎的 `UnpromotedCut`。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-remote --lib` 全部通過",
+      "files": [
+        "crates/host/speclink-server/src/api/routes.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.3 （Red）需求「plan 唯讀衍生查詢端點」：在 crates/host/speclink-server/tests/it/api/plan_api.rs 新增情境「回應帶尚未轉出的刀」——scope 內討論 talk-a 的 promoted_to 為 add-a、結論有 cut 1 `add-a` 與 cut 2 `add-b`，GET /plan 回 200 且 unpromotedCuts 恰一項、revision 不前進。驗證：`cargo test -p speclink-server --test it plan_api` 失敗",
+      "files": [
+        "crates/host/speclink-server/tests/it/api/plan_api.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.5 （Red→Green）remote CLI 同形：在 crates/adapters/speclink-cli/tests/it/remote_plan.rs 斷言 server 回帶 unpromotedCuts 的 plan 時，remote 模式 `speclink plan --json` 的 unpromotedCuts 與回應相同、`--no-color` 人眼輸出含 `Unpromoted cuts` 段；server 回缺這個鍵的舊格式時 `--json` 的 unpromotedCuts 為 `[]`、人眼輸出不含該段；在 crates/protocol/speclink-remote/tests/it/typed_client.rs 的 plan 測試斷言型別化呼叫帶回 unpromoted_cuts。渲染與 fs 模式共用，不另寫第二份。驗證：`cargo test -p speclink-cli --test it remote_plan` 與 `cargo test -p speclink-remote --test it` 全部通過",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-desktop-core`（plan 報告多一個欄位，桌面核心讀 plan 的測試照舊通過）、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate plan-unpromoted-cuts` 通過",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M6G268J84685PP3AHJDK14J2",
+      "taskDesc": "1.1 （Red）需求「plan 列出討論結論中尚未轉出的刀」的分刀解析：在 crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs 的單元測試逐列寫入 spec「分刀解析」Example 的八列（斷言 cut、changes、title，以及不是刀、粗體內無名稱的判定），另加 Decision 欄位邊界三例：`**Rationale**:` 之後的粗體 cut 列點不算、巢狀列點不算、Conclusion 沒有 `**Decision**:` 時回空。驗證：`cargo test -p speclink-core discuss::cuts` 因 `parse_cuts` 不存在而編譯失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs"
+      ],
+      "recordedAt": "2026-11-03T06:52:07Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8WE3FQHMQ99Q00B79",
+      "taskDesc": "2.1 （Red）在 crates/engine/speclink-core/src/lifecycle/plan.rs 的測試以記憶體 store 建立討論記錄，涵蓋：只轉出 cut 1 時列出 cut 2、全部轉出時為空、一刀兩個變更只轉出一個時 `unpromoted` 只含未轉出者、粗體內無名稱的刀不列、已封存討論不列、沒有 Conclusion 的討論不列、兩份討論依討論清單順序排列；並斷言 `compute_with_ranks` 與 `compute_strict` 的結果同樣帶 `unpromoted_cuts`。驗證：`cargo test -p speclink-core plan` 因欄位不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ],
+      "recordedAt": "2026-11-03T06:53:37Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8RJB2CESDEBX4EBJE",
+      "taskDesc": "2.2 （Green）依設計 D2「plan 在 compute_from 結尾附上尚未轉出的刀」新增 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`（camelCase 序列化）與 `Plan.unpromoted_cuts`（序列化為 `unpromotedCuts`），在 `compute_from` 結尾以 `list_discussions`、`conclusion_text`、`parse_cuts` 算出；讀不到結論的討論略過。驗證：`cargo test -p speclink-core plan` 與 `cargo test -p speclink-core discuss` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ],
+      "recordedAt": "2026-11-03T06:54:40Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8M3AVCW7S8VEBDYF0",
+      "taskDesc": "3.1 （Red）需求「plan 動詞輸出波次與阻擋清單」：在 crates/adapters/speclink-cli/tests/it/plan_verbs.rs 把「JSON 輸出形狀」的斷言改為 waves、changes、next、skipped、unpromotedCuts 五鍵，並斷言 unpromotedCuts 每項的 discussion、cut、title 為字串、changes 與 unpromoted 為字串陣列；新增人眼輸出測試——一個提案中變更加一把未轉出的刀時 `--no-color` 的 stdout 恰為 spec「人眼輸出的 Unpromoted cuts 段」的五行且無 ANSI，所有刀都已轉出時 stdout 不含 `Unpromoted cuts`。驗證：`cargo test -p speclink-cli --test it plan_verbs` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs"
+      ],
+      "recordedAt": "2026-11-03T06:55:49Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8EFB5PVERTY6GQHXW",
+      "taskDesc": "3.2 （Green）依設計 D3「人眼輸出加一段 Unpromoted cuts」在 crates/adapters/speclink-cli/src/verbs/plan.rs 的 `render_plan` 於 Skipped 段之後、`next:` 行之前加印該段，樣式全部經 `color`。驗證：`cargo test -p speclink-cli --test it plan_verbs` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/plan.rs"
+      ],
+      "recordedAt": "2026-11-03T06:56:13Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8R3ZR7CTBJ8GP4PA2",
+      "taskDesc": "4.1 （Red）需求「plan 回應 payload」：在 crates/protocol/speclink-protocol/src/query.rs 的測試斷言 `PlanResponse` 缺 `unpromotedCuts` 鍵時反序列化為空陣列；在 crates/protocol/speclink-remote/src/convert.rs 的測試斷言 spec「尚未轉出的刀逐欄搬回」與「舊 server 缺尚未轉出的刀」兩個情境。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-remote --lib` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-11-03T06:57:27Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J86SM220C0RAS4JY54",
+      "taskDesc": "4.2 （Green）依設計 D4「GET /plan 與 remote 轉換逐欄搬運」新增 `PlanUnpromotedCut` 與 `PlanResponse.unpromoted_cuts`（`#[serde(default)]`），`plan_report` 逐欄搬回引擎的 `UnpromotedCut`。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-remote --lib` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/host/speclink-server/src/api/routes.rs"
+      ],
+      "recordedAt": "2026-11-03T06:58:05Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8B3J8VSFEXKF2SYRZ",
+      "taskDesc": "4.3 （Red）需求「plan 唯讀衍生查詢端點」：在 crates/host/speclink-server/tests/it/api/plan_api.rs 新增情境「回應帶尚未轉出的刀」——scope 內討論 talk-a 的 promoted_to 為 add-a、結論有 cut 1 `add-a` 與 cut 2 `add-b`，GET /plan 回 200 且 unpromotedCuts 恰一項、revision 不前進。驗證：`cargo test -p speclink-server --test it plan_api` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/api/plan_api.rs"
+      ],
+      "recordedAt": "2026-11-03T06:58:40Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8Z1AWVR2QWDYYR78J",
+      "taskDesc": "4.5 （Red→Green）remote CLI 同形：在 crates/adapters/speclink-cli/tests/it/remote_plan.rs 斷言 server 回帶 unpromotedCuts 的 plan 時，remote 模式 `speclink plan --json` 的 unpromotedCuts 與回應相同、`--no-color` 人眼輸出含 `Unpromoted cuts` 段；server 回缺這個鍵的舊格式時 `--json` 的 unpromotedCuts 為 `[]`、人眼輸出不含該段；在 crates/protocol/speclink-remote/tests/it/typed_client.rs 的 plan 測試斷言型別化呼叫帶回 unpromoted_cuts。渲染與 fs 模式共用，不另寫第二份。驗證：`cargo test -p speclink-cli --test it remote_plan` 與 `cargo test -p speclink-remote --test it` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-11-03T06:59:51Z"
+    },
+    {
+      "taskId": "tsk_01M6G268J8GKV161PACZ5ARSET",
+      "taskDesc": "5.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-desktop-core`（plan 報告多一個欄位，桌面核心讀 plan 的測試照舊通過）、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate plan-unpromoted-cuts` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs"
+      ],
+      "recordedAt": "2026-11-03T07:05:35Z"
+    }
+  ]
+}

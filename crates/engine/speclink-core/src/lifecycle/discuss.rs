@@ -13,6 +13,8 @@ use anyhow::{bail, Result};
 use serde::Serialize;
 use std::path::PathBuf;
 
+pub mod cuts;
+
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
 pub struct DiscussionInfo {
     pub slug: String,
