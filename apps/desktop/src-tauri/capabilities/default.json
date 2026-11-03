@@ -15,6 +15,7 @@
     "core:window:allow-set-focus",
     "core:window:allow-unminimize",
     "updater:default",
+    "deep-link:default",
     "process:allow-restart",
     "core:window:allow-start-dragging",
     "core:window:allow-minimize",

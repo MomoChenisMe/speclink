@@ -46,7 +46,7 @@ export interface WorkspaceChooserProps {
     "scopes" | "inspectCheckout" | "bindCheckout"
   >;
   workspace: Pick<WorkspaceAdapter, "pickFolder" | "openProject">;
-  onOpenLocal: (path: string) => Promise<void>;
+  onOpenLocal: (path: string) => Promise<unknown>;
   onRequestMigration?: (root: string) => Promise<void>;
   /** 新增並隨即登入；回傳正規化 origin 供本面追蹤該連線的互動狀態。 */
   onAddServer: (baseUrl: string, name: string) => Promise<string | null>;

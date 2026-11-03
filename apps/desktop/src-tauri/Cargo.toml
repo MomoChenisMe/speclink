@@ -22,6 +22,7 @@ tauri-plugin-clipboard-manager = "2"
 tauri-plugin-opener = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+tauri-plugin-deep-link = "2"
 chrono = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -40,6 +41,11 @@ speclink-server = { path = "../../../crates/host/speclink-server" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tiny_http = "0.12"
+
+# speclink 網址（desktop-deep-link）：Windows、Linux 再次啟動時把網址轉給執行中的 app 並喚起視窗；
+# macOS 由系統確保單一實例，不攜入。
+[target.'cfg(any(target_os = "windows", target_os = "linux"))'.dependencies]
+tauri-plugin-single-instance = { version = "2", features = ["deep-link"] }
 
 # macOS 面板（tray-status-menu「面板樣式」）的 NSPanel 容器、tray 相對定位與毛玻璃材質：
 # 其他平台建置不攜入（Windows 面板由殼依圖示位置自行定位，tray-panel-windows design D3）。

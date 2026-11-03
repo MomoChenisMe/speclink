@@ -1923,7 +1923,20 @@ fn quit_app(app: tauri::AppHandle) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let builder = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // speclink 網址（desktop-deep-link）：Windows、Linux 再次啟動（含作業系統帶網址啟動）時交給
+    // 執行中的 app——外掛的 deep-link 功能先把網址轉成前端 onOpenUrl 事件，callback 再把主視窗
+    // 帶到前景。外掛要求排在所有外掛之前。macOS 由系統確保單一實例，網址走 RunEvent::Opened。
+    #[cfg(any(target_os = "windows", target_os = "linux"))]
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        if let Some(main) = app.get_webview_window("main") {
+            let _ = main.unminimize();
+            let _ = main.show();
+            let _ = main.set_focus();
+        }
+    }));
+    let builder = builder
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_opener::init())
@@ -1964,6 +1977,15 @@ pub fn run() {
             // 觸控板滑動返回的手指按下／離開訊號（desktop-swipe-back-finger-lift）：只在 macOS 提供。
             #[cfg(target_os = "macos")]
             trackpad_gesture::install(app.handle());
+            // Linux 的 AppImage 不經安裝程式，執行期補登 speclink 網址格式（desktop-deep-link）；
+            // 失敗只記錄，app 照常、只是網址開不了。
+            #[cfg(target_os = "linux")]
+            {
+                use tauri_plugin_deep_link::DeepLinkExt;
+                if let Err(e) = app.deep_link().register_all() {
+                    eprintln!("speclink-desktop: speclink:// scheme registration failed: {e}");
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

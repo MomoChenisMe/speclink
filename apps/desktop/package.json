@@ -22,6 +22,7 @@
     "@speclink/ui": "*",
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-clipboard-manager": "^2.0.0",
+    "@tauri-apps/plugin-deep-link": "^2.4.10",
     "@tauri-apps/plugin-dialog": "^2.0.0",
     "@tauri-apps/plugin-opener": "^2.5.4",
     "@tauri-apps/plugin-positioner": "^2.0.0",

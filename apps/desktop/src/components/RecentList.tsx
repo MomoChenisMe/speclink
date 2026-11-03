@@ -147,7 +147,7 @@ export function useRecentOpener({
   connectionAdapter: Pick<ConnectionsAdapter, "inspectCheckout">;
   /** 重整連線清單；回傳讀取是否成功（成功才判定 remote 列的連線錯誤態）。 */
   onRefreshConnections: () => Promise<boolean>;
-  onOpenLocal: (path: string) => Promise<void>;
+  onOpenLocal: (path: string) => Promise<unknown>;
   onOpenRemote: (connectionId: string, target: string, checkoutRoot?: string) => Promise<void>;
   /** 本機探測成功、交給開啟流程之前（對話框於此關閉自己）。 */
   onLocalProbed?: () => void;

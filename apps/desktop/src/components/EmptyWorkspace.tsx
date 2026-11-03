@@ -19,7 +19,7 @@ export interface EmptyWorkspaceProps {
   onRefreshConnections: () => Promise<boolean>;
   workspace: Pick<WorkspaceAdapter, "openProject">;
   connectionAdapter: Pick<ConnectionsAdapter, "inspectCheckout">;
-  onOpenLocal: (path: string) => Promise<void>;
+  onOpenLocal: (path: string) => Promise<unknown>;
   onOpenRemote: (connectionId: string, target: string, checkoutRoot?: string) => Promise<void>;
   onRemoveRecent: (key: string) => void;
   onOpenChooser: (intent?: WorkspaceChooserIntent) => void;

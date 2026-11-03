@@ -3268,3 +3268,43 @@ describe("關於頁的版本資訊", () => {
     expect(store.getState().appInfo).toEqual(INFO);
   });
 });
+
+// speclink 網址（desktop-deep-link「專案一律走 openProjectAt，詳情等載入後再開」）：
+// 呼叫端靠回傳值知道是否進入了本機專案，再決定要不要開詳情頁。
+describe("openProjectAt 的回傳值", () => {
+  function storeWithProbe(openProject: WorkspaceAdapter["openProject"], ds = fakeDataSource()) {
+    return trackedAppStore({
+      createSession: (root, name) => fakeSession(ds, root, name),
+      workspace: fakeInstructionWorkspace({ openProject }),
+    });
+  }
+
+  it("探測為本機專案：整批載入完成後才 resolve，值為該分頁的 locator key", async () => {
+    const load = deferred<ChangeListPayload>();
+    const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
+    const store = storeWithProbe(vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }), ds);
+    let settled = false;
+    const opening = store.getState().openProjectAt("B").then((key) => {
+      settled = true;
+      return key;
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(store.getState().activeKey).toBe("local:B");
+    expect(settled).toBe(false);
+    load.resolve(changeList([]));
+    expect(await opening).toBe("local:B");
+  });
+
+  it.each([
+    ["未初始化", { status: "uninitialized", dir: "C" }],
+    ["未啟用", { status: "unadopted", root: "C", needsImport: false }],
+  ])("探測為%s：回傳 null", async (_label, probe) => {
+    const store = storeWithProbe(vi.fn().mockResolvedValue(probe));
+    expect(await store.getState().openProjectAt("C")).toBeNull();
+  });
+
+  it("探測失敗：回傳 null", async () => {
+    const store = storeWithProbe(vi.fn().mockRejectedValue(new Error("gone")));
+    expect(await store.getState().openProjectAt("C")).toBeNull();
+  });
+});
