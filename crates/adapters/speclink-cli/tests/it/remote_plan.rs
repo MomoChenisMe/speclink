@@ -143,6 +143,20 @@ impl TempProject {
         .unwrap();
     }
 
+    /// 放入一份已寫結論的未封存討論：只轉出了 cut 1 `add-a`，cut 2 `add-b` 尚未轉出。
+    fn put_half_promoted_discussion(&self, slug: &str) {
+        let dir = self.dir.join("speclink").join("discussions");
+        std::fs::create_dir_all(&dir).unwrap();
+        let doc = format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: add-a\n\
+             created: 2026-09-01\n---\n\n# Discussion: {slug}\n\n## Context\n\n背景。\n\n\
+             ## Rounds\n\n### Round 1 — assumptions (2026-09-01)\n\n**Focus**: scope\n\n\
+             ## Conclusion\n\n**Decision**: 定案。\n\n\
+             - **cut 1 `add-a`**: 第一刀\n- **cut 2 `add-b`**: 第二刀\n"
+        );
+        std::fs::write(dir.join(format!("{slug}.md")), doc).unwrap();
+    }
+
     fn run(&self, args: &[&str]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
         cmd.args(args).current_dir(&self.dir);
@@ -210,7 +224,7 @@ fn remote_plan_prints_the_fs_output_for_the_same_content() {
     let payload: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
     let mut keys: Vec<&str> = payload.as_object().unwrap().keys().map(String::as_str).collect();
     keys.sort();
-    assert_eq!(keys, ["changes", "next", "skipped", "waves"]);
+    assert_eq!(keys, ["changes", "next", "skipped", "unpromotedCuts", "waves"]);
     let add_b = &payload["changes"][1];
     assert_eq!(add_b["name"], "add-b");
     assert_eq!(add_b.as_object().unwrap().len(), 9, "nine keys per change: {add_b}");
@@ -223,6 +237,46 @@ fn remote_plan_prints_the_fs_output_for_the_same_content() {
     assert!(stdout_of(&human).contains("archive after: add-a"), "{}", stdout_of(&human));
     assert!(!stdout_of(&human).contains("local-only"), "the local speclink/ tree is never read");
     assert_eq!(mock.verb_calls(), ["GET /plan", "GET /plan"]);
+}
+
+#[test]
+fn remote_plan_prints_the_unpromoted_cuts_like_fs_mode() {
+    // 規格「plan 回應 payload」：unpromotedCuts 五鍵逐欄搬回，渲染與 fs 模式共用。
+    let fs = fs_pair("cuts-fs");
+    fs.put_half_promoted_discussion("talk-a");
+    let fs_json = fs.run(&["plan", "--json"]);
+    assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+    let fs_human = fs.run(&["plan", "--no-color"]);
+    assert!(fs_human.status.success(), "fs stderr: {}", stderr_of(&fs_human));
+
+    let mock = mock_server(vec![("GET", "/plan".into(), 200, stdout_of(&fs_json))]);
+    let remote = TempProject::remote("cuts-remote", &mock.base);
+    let out = remote.run(&["plan", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
+    let response: serde_json::Value = serde_json::from_str(&stdout_of(&fs_json)).expect("JSON");
+    assert_eq!(payload["unpromotedCuts"], response["unpromotedCuts"]);
+    assert_eq!(payload["unpromotedCuts"][0]["unpromoted"], serde_json::json!(["add-b"]));
+
+    let human = remote.run(&["plan", "--no-color"]);
+    assert!(human.status.success(), "stderr: {}", stderr_of(&human));
+    assert_eq!(stdout_of(&human), stdout_of(&fs_human), "remote human lines match fs");
+    assert!(stdout_of(&human).contains("Unpromoted cuts"), "{}", stdout_of(&human));
+}
+
+#[test]
+fn remote_plan_reads_an_old_server_without_unpromoted_cuts() {
+    // 規格「plan 回應 payload」Scenario「舊 server 缺尚未轉出的刀」：讀作空，人眼不印該段。
+    let old = r#"{"waves":[{"index":1,"changes":["add-a"]}],"changes":[{"name":"add-a","wave":1,"stage":"proposed","dependsOn":[],"overlaps":[],"blockedBy":[],"ready":true,"requirementOverlap":[],"archiveAfter":[]}],"next":"add-a","skipped":[]}"#;
+    let mock = mock_server(vec![("GET", "/plan".into(), 200, old.to_string())]);
+    let remote = TempProject::remote("cuts-old", &mock.base);
+    let out = remote.run(&["plan", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("JSON");
+    assert_eq!(payload["unpromotedCuts"], serde_json::json!([]));
+    let human = remote.run(&["plan", "--no-color"]);
+    assert!(human.status.success(), "stderr: {}", stderr_of(&human));
+    assert!(!stdout_of(&human).contains("Unpromoted cuts"), "{}", stdout_of(&human));
 }
 
 #[test]

@@ -7,6 +7,7 @@
 //! (`archive_after`). Corrupt metadata is reported in `skipped` and takes no
 //! part in placement or overlap.
 
+use crate::discuss;
 use crate::model::{self, Change, Stage};
 use crate::store::Store;
 use serde::Serialize;
@@ -114,6 +115,25 @@ pub struct Plan {
     /// The first proposed change with nothing blocking it.
     pub next: Option<String>,
     pub skipped: Vec<Skipped>,
+    /// Cuts planned in live discussions' conclusions that are not all promoted yet.
+    #[serde(rename = "unpromotedCuts")]
+    pub unpromoted_cuts: Vec<UnpromotedCut>,
+}
+
+/// A cut in a live discussion's Decision field with a change name not yet in
+/// the discussion's `promoted_to` (plan-unpromoted-cuts design D2).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnpromotedCut {
+    /// The discussion slug.
+    pub discussion: String,
+    /// The cut's id as written (`cut 2`).
+    pub cut: String,
+    pub title: String,
+    /// Every change name in the cut's bold.
+    pub changes: Vec<String>,
+    /// The names of `changes` not in `promoted_to`, in `changes` order.
+    pub unpromoted: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -769,7 +789,39 @@ fn compute_from(
         changes: plan_changes,
         next,
         skipped,
+        unpromoted_cuts: unpromoted_cuts(store),
     })
+}
+
+/// The cuts of every live discussion's conclusion whose bold names a change
+/// not yet promoted, in discussion-list order then cut order. A cut without a
+/// name in its bold cannot be judged and is left out; a discussion whose
+/// conclusion cannot be read is skipped.
+fn unpromoted_cuts(store: &dyn Store) -> Vec<UnpromotedCut> {
+    let mut out = Vec::new();
+    for info in discuss::list_discussions(store).into_iter().filter(|d| d.concluded) {
+        let Some(conclusion) = discuss::conclusion_text(store, &info.slug) else {
+            continue;
+        };
+        let promoted = &info.head.promoted_to;
+        for cut in discuss::cuts::parse_cuts(&conclusion) {
+            if !cut.names_in_bold {
+                continue;
+            }
+            let unpromoted: Vec<String> =
+                cut.names.iter().filter(|n| !promoted.contains(n)).cloned().collect();
+            if !unpromoted.is_empty() {
+                out.push(UnpromotedCut {
+                    discussion: info.slug.clone(),
+                    cut: cut.id,
+                    title: cut.title,
+                    changes: cut.names,
+                    unpromoted,
+                });
+            }
+        }
+    }
+    out
 }
 
 /// Every (dependent, prerequisite) pair of `depends_on` whose dependent sits
@@ -1770,7 +1822,7 @@ mod tests {
 
     #[test]
     fn plan_serializes_camel_case_with_empty_skipped_as_an_array() {
-        // design D3 的 payload 形狀：四鍵、九鍵皆 camelCase，skipped 空時為 []。
+        // design D3 的 payload 形狀：五鍵、九鍵皆 camelCase，skipped 與 unpromotedCuts 空時為 []。
         let store = store_of(&[
             ("a", "schema: spec-driven\ncreated: 2026-09-01\n"),
             (
@@ -1785,8 +1837,12 @@ mod tests {
         let json = serde_json::to_value(compute(&store).unwrap()).unwrap();
         let keys =
             |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-        assert_eq!(keys(&json), ["changes", "next", "skipped", "waves"]);
+        assert_eq!(
+            keys(&json),
+            ["changes", "next", "skipped", "unpromotedCuts", "waves"]
+        );
         assert_eq!(json["skipped"], serde_json::json!([]));
+        assert_eq!(json["unpromotedCuts"], serde_json::json!([]));
         assert_eq!(json["next"], "a");
         assert_eq!(
             json["waves"],
@@ -1821,6 +1877,158 @@ mod tests {
             b["overlaps"],
             serde_json::json!([{ "change": "a", "capabilities": ["alpha", "zeta"] }]),
             "capabilities ascending"
+        );
+    }
+
+    // --- 尚未轉出的刀（plan-unpromoted-cuts design D2；spec「plan 列出討論結論中尚未轉出的刀」）---
+
+    /// 一份已寫結論的討論記錄：`promoted_to` 為空時不寫這一行；`decision` 接在 Decision 定論句之後。
+    fn discussion_doc(slug: &str, promoted_to: &str, decision: &str) -> String {
+        let promoted = if promoted_to.is_empty() {
+            String::new()
+        } else {
+            format!("promoted_to: {promoted_to}\n")
+        };
+        format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\n{promoted}created: 2026-09-01\n---\n\n\
+             # Discussion: {slug}\n\n## Context\n\n背景。\n\n## Rounds\n\n\
+             ### Round 1 — assumptions (2026-09-01)\n\n**Focus**: scope\n\n\
+             ## Conclusion\n\n**Decision**: 定案。\n\n{decision}\n"
+        )
+    }
+
+    fn live_discussion(store: &TestStore, slug: &str, promoted_to: &str, decision: &str) {
+        store
+            .discussions
+            .borrow_mut()
+            .insert(slug.to_string(), discussion_doc(slug, promoted_to, decision));
+    }
+
+    const TWO_CUTS: &str = "- **cut 1 `add-a`**: 第一刀\n- **cut 2 `add-b`**: 第二刀";
+
+    fn unpromoted(discussion: &str, cut: &str, title: &str, changes: &[&str], left: &[&str]) -> UnpromotedCut {
+        let owned = |names: &[&str]| names.iter().map(|n| n.to_string()).collect();
+        UnpromotedCut {
+            discussion: discussion.to_string(),
+            cut: cut.to_string(),
+            title: title.to_string(),
+            changes: owned(changes),
+            unpromoted: owned(left),
+        }
+    }
+
+    #[test]
+    fn a_cut_whose_change_is_not_promoted_is_listed() {
+        // Scenario 列出尚未轉出的刀：只轉出 cut 1。
+        let store = TestStore::default();
+        live_discussion(&store, "talk-a", "add-a", TWO_CUTS);
+        assert_eq!(
+            compute(&store).unwrap().unpromoted_cuts,
+            [unpromoted("talk-a", "cut 2", "第二刀", &["add-b"], &["add-b"])]
+        );
+    }
+
+    #[test]
+    fn a_fully_promoted_discussion_lists_nothing() {
+        // Scenario 全部轉出的討論不產生項目。
+        let store = TestStore::default();
+        live_discussion(&store, "talk-a", "add-a, add-b", TWO_CUTS);
+        assert_eq!(compute(&store).unwrap().unpromoted_cuts, []);
+    }
+
+    #[test]
+    fn a_cut_with_two_changes_lists_only_the_unpromoted_one() {
+        // Scenario 一刀多個變更時只列還沒轉出的。
+        let store = TestStore::default();
+        live_discussion(&store, "talk-a", "add-a", "- **cut 1 `add-a` `add-c`**: 兩個變更");
+        assert_eq!(
+            compute(&store).unwrap().unpromoted_cuts,
+            [unpromoted("talk-a", "cut 1", "兩個變更", &["add-a", "add-c"], &["add-c"])]
+        );
+    }
+
+    #[test]
+    fn a_cut_without_names_in_bold_is_not_listed() {
+        // Scenario 粗體內沒有變更名的刀不列出。
+        let store = TestStore::default();
+        live_discussion(&store, "talk-a", "", "- **cut 2 外殼**（`add-x`、`add-y`）");
+        assert_eq!(compute(&store).unwrap().unpromoted_cuts, []);
+    }
+
+    #[test]
+    fn an_archived_discussion_lists_nothing() {
+        // Scenario 已封存的討論不產生項目。
+        let store = TestStore::default();
+        store
+            .archived_discussions
+            .borrow_mut()
+            .insert("talk-a".to_string(), discussion_doc("talk-a", "", TWO_CUTS));
+        assert_eq!(compute(&store).unwrap().unpromoted_cuts, []);
+    }
+
+    #[test]
+    fn a_discussion_without_a_conclusion_lists_nothing() {
+        let store = TestStore::default();
+        let doc = discussion_doc("talk-a", "", TWO_CUTS);
+        let placeholder = format!(
+            "{}## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+            &doc[..doc.find("## Conclusion").unwrap()]
+        );
+        store.discussions.borrow_mut().insert("talk-a".to_string(), placeholder);
+        assert_eq!(compute(&store).unwrap().unpromoted_cuts, []);
+    }
+
+    #[test]
+    fn an_unreadable_conclusion_skips_that_discussion_only() {
+        // frontmatter 的 slug 被手改成別的名字：清單上的 slug 讀不到記錄，略過它，plan 照常。
+        let store = TestStore::default();
+        let renamed = discussion_doc("talk-a", "", TWO_CUTS).replace("slug: talk-a", "slug: renamed");
+        store.discussions.borrow_mut().insert("talk-a".to_string(), renamed);
+        live_discussion(&store, "talk-b", "add-a", TWO_CUTS);
+        let plan = compute(&store).unwrap();
+        assert_eq!(
+            plan.unpromoted_cuts,
+            [unpromoted("talk-b", "cut 2", "第二刀", &["add-b"], &["add-b"])]
+        );
+    }
+
+    #[test]
+    fn unpromoted_cuts_follow_the_discussion_list_order() {
+        let store = TestStore::default();
+        live_discussion(&store, "talk-b", "", "- **cut 1 `add-c`**: 乙");
+        live_discussion(&store, "talk-a", "add-a", TWO_CUTS);
+        assert_eq!(
+            compute(&store).unwrap().unpromoted_cuts,
+            [
+                unpromoted("talk-a", "cut 2", "第二刀", &["add-b"], &["add-b"]),
+                unpromoted("talk-b", "cut 1", "乙", &["add-c"], &["add-c"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn every_compute_entry_carries_the_unpromoted_cuts() {
+        let store = store_of(&[("a", PROPOSED)]);
+        live_discussion(&store, "talk-a", "add-a", TWO_CUTS);
+        let expected = [unpromoted("talk-a", "cut 2", "第二刀", &["add-b"], &["add-b"])];
+        assert_eq!(compute_with_ranks(&store, &BTreeMap::new()).unwrap().unpromoted_cuts, expected);
+        assert_eq!(compute_strict(&store).unwrap().unpromoted_cuts, expected);
+    }
+
+    #[test]
+    fn an_unpromoted_cut_serializes_its_five_keys() {
+        let store = TestStore::default();
+        live_discussion(&store, "talk-a", "add-a", TWO_CUTS);
+        let json = serde_json::to_value(compute(&store).unwrap()).unwrap();
+        assert_eq!(
+            json["unpromotedCuts"],
+            serde_json::json!([{
+                "discussion": "talk-a",
+                "cut": "cut 2",
+                "title": "第二刀",
+                "changes": ["add-b"],
+                "unpromoted": ["add-b"],
+            }])
         );
     }
 

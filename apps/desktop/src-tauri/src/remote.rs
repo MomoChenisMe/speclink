@@ -2088,7 +2088,13 @@ mod plan_merge_tests {
     }
 
     pub(super) fn plan(entries: Vec<PlanChangeEntry>) -> PlanResponse {
-        PlanResponse { waves: Vec::new(), changes: entries, next: None, skipped: Vec::new() }
+        PlanResponse {
+            waves: Vec::new(),
+            changes: entries,
+            next: None,
+            skipped: Vec::new(),
+            unpromoted_cuts: Vec::new(),
+        }
     }
 
     fn failure(status: Option<u16>, reason: Option<&str>, message: &str) -> RemoteError {

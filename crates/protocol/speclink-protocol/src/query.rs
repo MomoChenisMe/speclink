@@ -653,8 +653,9 @@ pub struct SearchDiscussionsResponse {
 }
 
 /// `GET /plan` response — the CLI `plan --json` shape: waves, every placed
-/// change in placement order, the next startable change, and the changes left
-/// out for corrupt metadata. Array fields read an absent key as empty.
+/// change in placement order, the next startable change, the changes left
+/// out for corrupt metadata, and the discussion cuts not yet promoted. Array
+/// fields read an absent key as empty (a new client reading an old server).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanResponse {
@@ -665,6 +666,23 @@ pub struct PlanResponse {
     pub next: Option<String>,
     #[serde(default)]
     pub skipped: Vec<PlanSkipped>,
+    #[serde(default)]
+    pub unpromoted_cuts: Vec<PlanUnpromotedCut>,
+}
+
+/// A cut planned in a live discussion's conclusion with a change name not yet
+/// promoted: `changes` are every name in the cut's bold, `unpromoted` the ones
+/// not in the discussion's `promoted_to`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanUnpromotedCut {
+    pub discussion: String,
+    pub cut: String,
+    pub title: String,
+    #[serde(default)]
+    pub changes: Vec<String>,
+    #[serde(default)]
+    pub unpromoted: Vec<String>,
 }
 
 /// One wave of the plan: the changes that may run in parallel.
@@ -1350,6 +1368,31 @@ mod tests {
     }
 
     #[test]
+    fn plan_response_reads_a_missing_unpromoted_cuts_as_empty() {
+        // 規格「plan 回應 payload」：新 client 讀舊 server，頂層缺 unpromotedCuts 讀作空。
+        let plan: PlanResponse =
+            serde_json::from_str(r#"{"waves":[],"changes":[],"next":null,"skipped":[]}"#).unwrap();
+        assert!(plan.unpromoted_cuts.is_empty());
+    }
+
+    #[test]
+    fn plan_unpromoted_cut_reads_its_five_keys_and_missing_arrays_as_empty() {
+        let plan: PlanResponse = serde_json::from_str(
+            r#"{"next":null,"unpromotedCuts":[{"discussion":"talk-a","cut":"cut 2","title":"第二刀","changes":["add-b","add-c"],"unpromoted":["add-c"]},{"discussion":"talk-b","cut":"cut 1","title":""}]}"#,
+        )
+        .unwrap();
+        let first = &plan.unpromoted_cuts[0];
+        assert_eq!(
+            (first.discussion.as_str(), first.cut.as_str(), first.title.as_str()),
+            ("talk-a", "cut 2", "第二刀")
+        );
+        assert_eq!(first.changes, ["add-b", "add-c"]);
+        assert_eq!(first.unpromoted, ["add-c"]);
+        assert!(plan.unpromoted_cuts[1].changes.is_empty());
+        assert!(plan.unpromoted_cuts[1].unpromoted.is_empty());
+    }
+
+    #[test]
     fn plan_response_serializes_the_cli_plan_json_keys() {
         // 回應與 CLI `plan --json` 同形：camelCase、next 為 null 時照樣出現。
         let plan = PlanResponse {
@@ -1374,6 +1417,13 @@ mod tests {
             }],
             next: None,
             skipped: vec![PlanSkipped { change: "c".into(), reason: "bad meta".into() }],
+            unpromoted_cuts: vec![PlanUnpromotedCut {
+                discussion: "talk-a".into(),
+                cut: "cut 2".into(),
+                title: "第二刀".into(),
+                changes: vec!["add-b".into()],
+                unpromoted: vec!["add-b".into()],
+            }],
         };
         let json = serde_json::to_value(&plan).unwrap();
         // 比鍵集合、不比鍵序：serde_json 的 preserve_order 可能被別的 crate 統一開啟。
@@ -1382,7 +1432,11 @@ mod tests {
             k.sort();
             k
         };
-        assert_eq!(keys(&json), ["changes", "next", "skipped", "waves"]);
+        assert_eq!(keys(&json), ["changes", "next", "skipped", "unpromotedCuts", "waves"]);
+        assert_eq!(
+            keys(&json["unpromotedCuts"][0]),
+            ["changes", "cut", "discussion", "title", "unpromoted"]
+        );
         assert_eq!(
             keys(&json["changes"][0]),
             [
@@ -1445,6 +1499,8 @@ mod tests {
             "requirementOverlap",
             "archiveAfter",
             "ownOperation",
+            "unpromotedCuts",
+            "unpromoted",
         ] {
             assert!(text.contains(field), "plan schema exposes {field}: {text}");
         }

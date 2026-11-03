@@ -50,6 +50,25 @@ impl TempProject {
         std::fs::write(spec.join("spec.md"), text).unwrap();
     }
 
+    /// 放入一份已寫結論的未封存討論：`promoted_to` 為空時不寫這一行，
+    /// `cuts` 為 Decision 定論句之後的列點。
+    fn put_discussion(&self, slug: &str, promoted_to: &str, cuts: &str) {
+        let dir = self.dir.join("speclink").join("discussions");
+        std::fs::create_dir_all(&dir).unwrap();
+        let promoted = if promoted_to.is_empty() {
+            String::new()
+        } else {
+            format!("promoted_to: {promoted_to}\n")
+        };
+        let doc = format!(
+            "---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\n{promoted}created: 2026-09-01\n---\n\n\
+             # Discussion: {slug}\n\n## Context\n\n背景。\n\n## Rounds\n\n\
+             ### Round 1 — assumptions (2026-09-01)\n\n**Focus**: scope\n\n\
+             ## Conclusion\n\n**Decision**: 定案。\n\n{cuts}\n"
+        );
+        std::fs::write(dir.join(format!("{slug}.md")), doc).unwrap();
+    }
+
     fn archive(&self, dated_name: &str, meta: &str) {
         let dir = self
             .dir
@@ -129,12 +148,38 @@ fn plan_json_has_nine_keys_and_requirement_overlap_shape() {
     for name in ["a", "b"] {
         p.put_delta(name, "desktop-app", &modified("看板與任務"));
     }
+    p.put_discussion("talk-a", "add-a", TWO_CUTS);
     let out = p.run(&["plan", "--json"]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     let json = json_of(&out);
     let keys = |v: &serde_json::Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
-    assert_eq!(keys(&json), ["changes", "next", "skipped", "waves"]);
+    assert_eq!(
+        keys(&json),
+        ["changes", "next", "skipped", "unpromotedCuts", "waves"]
+    );
     assert_eq!(json["skipped"], serde_json::json!([]));
+    let cuts = json["unpromotedCuts"].as_array().unwrap();
+    assert_eq!(cuts.len(), 1, "got: {cuts:?}");
+    for cut in cuts {
+        assert_eq!(
+            keys(cut),
+            ["changes", "cut", "discussion", "title", "unpromoted"]
+        );
+        assert!(cut["discussion"].is_string() && cut["cut"].is_string() && cut["title"].is_string());
+        for list in [&cut["changes"], &cut["unpromoted"]] {
+            assert!(list.as_array().unwrap().iter().all(serde_json::Value::is_string));
+        }
+    }
+    assert_eq!(
+        cuts[0],
+        serde_json::json!({
+            "discussion": "talk-a",
+            "cut": "cut 2",
+            "title": "第二刀",
+            "changes": ["add-b"],
+            "unpromoted": ["add-b"]
+        })
+    );
     assert_eq!(json["next"], "a");
     assert_eq!(
         json["waves"],
@@ -273,6 +318,44 @@ fn plan_human_output_prints_waves_and_next_without_ansi_under_no_color() {
         "got: {text}"
     );
     assert_eq!(lines.last().copied(), Some("next: a"), "got: {text}");
+}
+
+/// 討論結論的兩把刀：cut 1 `add-a`、cut 2 `add-b`。
+const TWO_CUTS: &str = "- **cut 1 `add-a`**: 第一刀\n- **cut 2 `add-b`**: 第二刀";
+
+#[test]
+fn plan_human_output_lists_unpromoted_cuts_before_next() {
+    // Scenario 人眼輸出的 Unpromoted cuts 段：CLICOLOR_FORCE 逼出有色路徑，--no-color 仍勝。
+    let p = TempProject::new("human-cuts");
+    p.put_change("add-a", PROPOSED, &[]);
+    p.put_discussion("talk-a", "add-a", TWO_CUTS);
+    let out = p.run_env(&["plan", "--no-color"], &[("CLICOLOR_FORCE", "1")]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let text = stdout_of(&out);
+    assert_eq!(
+        text.lines().collect::<Vec<_>>(),
+        [
+            "Wave 1",
+            "  • add-a [proposed]",
+            "Unpromoted cuts",
+            "  • talk-a cut 2: add-b — 第二刀",
+            "next: add-a"
+        ],
+        "got: {text:?}"
+    );
+}
+
+#[test]
+fn plan_human_output_is_unchanged_when_every_cut_is_promoted() {
+    // Scenario 沒有尚未轉出的刀時人眼輸出不變：與沒有討論時逐位元相同。
+    let p = TempProject::new("human-cuts-done");
+    p.put_change("add-a", PROPOSED, &[]);
+    let before = p.run(&["plan", "--no-color"]);
+    p.put_discussion("talk-a", "add-a, add-b", TWO_CUTS);
+    let after = p.run(&["plan", "--no-color"]);
+    assert!(after.status.success(), "stderr: {}", stderr_of(&after));
+    assert!(!stdout_of(&after).contains("Unpromoted cuts"), "got: {}", stdout_of(&after));
+    assert_eq!(after.stdout, before.stdout);
 }
 
 /// 一份只 ADDED 一個 requirement 的 delta 原文。

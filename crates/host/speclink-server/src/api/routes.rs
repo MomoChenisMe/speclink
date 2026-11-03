@@ -44,7 +44,8 @@ use speclink_protocol::query::{
     ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, PlanChangeEntry,
-    PlanOverlap, PlanRequirementOverlap, PlanResponse, PlanSkipped, PlanWave, Progress,
+    PlanOverlap, PlanRequirementOverlap, PlanResponse, PlanSkipped, PlanUnpromotedCut, PlanWave,
+    Progress,
     PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest, PutConfigResponse,
     SearchDiscussionsResponse, ShowDiscussionResponse, SpecSummary, TaskEntry,
     ValidateChangeResponse, WhoamiRepo,
@@ -376,6 +377,17 @@ pub async fn plan(State(state): State<AppState>, binding: Binding) -> Result<Res
             .skipped
             .into_iter()
             .map(|s| PlanSkipped { change: s.change, reason: s.reason })
+            .collect(),
+        unpromoted_cuts: plan
+            .unpromoted_cuts
+            .into_iter()
+            .map(|c| PlanUnpromotedCut {
+                discussion: c.discussion,
+                cut: c.cut,
+                title: c.title,
+                changes: c.changes,
+                unpromoted: c.unpromoted,
+            })
             .collect(),
     };
     Ok(ok(dto, &result.etag))

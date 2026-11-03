@@ -53,13 +53,15 @@ pub fn analyze_report(p: AnalyzeReportResponse) -> speclink_core::analyzer::Anal
     }
 }
 
-/// `GET /plan` 回應 → 引擎 `PlanReport`，九鍵逐欄搬運。`stage` 以引擎 `Stage::parse`、
+/// `GET /plan` 回應 → 引擎 `PlanReport`，changes 九鍵與 unpromotedCuts 五鍵逐欄搬運。`stage` 以引擎 `Stage::parse`、
 /// requirement 重疊的兩個操作以 `DeltaOp::parse` 轉回（字串表只有引擎那一份）。不認得的
 /// 階段或操作、或 wave 列了 changes 沒有的名稱，都是 server 違約：回錯誤，不猜，也不讓
 /// 渲染端逐波查無此項而 panic。
 pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport, RemoteError> {
     use speclink_core::model::Stage;
-    use speclink_core::plan::{DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, Wave};
+    use speclink_core::plan::{
+        DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, UnpromotedCut, Wave,
+    };
     let violation = |detail: String| RemoteError {
         message: format!("unexpected server response — {detail}"),
         reason: None,
@@ -126,16 +128,30 @@ pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport
             .into_iter()
             .map(|s| Skipped { change: s.change, reason: s.reason })
             .collect(),
+        unpromoted_cuts: p
+            .unpromoted_cuts
+            .into_iter()
+            .map(|c| UnpromotedCut {
+                discussion: c.discussion,
+                cut: c.cut,
+                title: c.title,
+                changes: c.changes,
+                unpromoted: c.unpromoted,
+            })
+            .collect(),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use speclink_core::model::Stage;
-    use speclink_core::plan::{DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, Wave};
+    use speclink_core::plan::{
+        DeltaOp, Overlap, Plan, PlanChange, RequirementOverlap, Skipped, UnpromotedCut, Wave,
+    };
     use speclink_protocol::query::PlanResponse;
 
-    /// 三個階段、重疊、壞 meta 各一的引擎 plan；add-b 帶一項 requirement 重疊與封存順序。
+    /// 三個階段、重疊、壞 meta、尚未轉出的刀各一的引擎 plan；add-b 帶一項 requirement
+    /// 重疊與封存順序。
     fn engine_plan() -> Plan {
         Plan {
             waves: vec![
@@ -186,6 +202,13 @@ mod tests {
             ],
             next: None,
             skipped: vec![Skipped { change: "broken".into(), reason: "bad yaml".into() }],
+            unpromoted_cuts: vec![UnpromotedCut {
+                discussion: "talk-a".into(),
+                cut: "cut 3".into(),
+                title: "收尾".into(),
+                changes: vec!["add-d".into()],
+                unpromoted: vec!["add-d".into()],
+            }],
         }
     }
 
@@ -209,6 +232,40 @@ mod tests {
         assert_eq!(b.requirement_overlap.len(), 1);
         assert_eq!(b.requirement_overlap[0].other_operation, DeltaOp::Removed);
         assert_eq!(b.archive_after, ["add-a"]);
+    }
+
+    #[test]
+    fn plan_report_reads_an_old_server_without_unpromoted_cuts() {
+        // 規格「plan 回應 payload」Scenario「舊 server 缺尚未轉出的刀」。
+        let wire: PlanResponse = serde_json::from_value(serde_json::json!({
+            "waves": [], "changes": [], "next": null, "skipped": []
+        }))
+        .unwrap();
+        assert!(super::plan_report(wire).unwrap().unpromoted_cuts.is_empty());
+    }
+
+    #[test]
+    fn plan_report_carries_unpromoted_cuts_field_by_field() {
+        // 規格「plan 回應 payload」Scenario「尚未轉出的刀逐欄搬回」。
+        let wire: PlanResponse = serde_json::from_value(serde_json::json!({
+            "waves": [], "changes": [], "next": null, "skipped": [],
+            "unpromotedCuts": [{
+                "discussion": "talk-a", "cut": "cut 2", "title": "第二刀",
+                "changes": ["add-b", "add-c"], "unpromoted": ["add-c"]
+            }]
+        }))
+        .unwrap();
+        let report = super::plan_report(wire).unwrap();
+        assert_eq!(
+            report.unpromoted_cuts,
+            [UnpromotedCut {
+                discussion: "talk-a".into(),
+                cut: "cut 2".into(),
+                title: "第二刀".into(),
+                changes: vec!["add-b".into(), "add-c".into()],
+                unpromoted: vec!["add-c".into()],
+            }]
+        );
     }
 
     #[test]
