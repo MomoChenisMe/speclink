@@ -4,8 +4,7 @@ slug: herdr-speclink-panel
 status: promoted
 created: 2026-11-03
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: desktop-deep-link, plan-unpromoted-cuts
+promoted_to: desktop-deep-link, plan-unpromoted-cuts, desktop-roadmap, discussion-cuts-from-engine
 ---
 
 # Discussion: 做一個 herdr 裡面可以用的 speclink 面板（含 macOS 系統匣面板的內容、技能清單，並找其他可整合的 speclink 功能）
