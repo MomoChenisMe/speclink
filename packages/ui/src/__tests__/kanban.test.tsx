@@ -1127,3 +1127,28 @@ describe("KanbanBoard 呈現順序回報", () => {
     });
   });
 });
+
+// spec desktop-roadmap「看板頁的路線圖檢視」：卡片檢視的頁首放「看板｜路線圖」切換，位在搜尋列之前。
+describe("KanbanBoard 頁首的檢視切換", () => {
+  it("viewSwitch 放在頁首、搜尋列之前", () => {
+    render(
+      <KanbanBoard
+        changes={changes}
+        title="變更"
+        query=""
+        onQuery={vi.fn()}
+        viewSwitch={<span data-testid="view-switch" />}
+      />,
+    );
+    const header = document.querySelector("[data-page-header]") as HTMLElement;
+    const viewSwitch = within(header).getByTestId("view-switch");
+    const search = within(header).getByPlaceholderText("搜尋看板卡片…");
+    expect(viewSwitch.compareDocumentPosition(search) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("沒有頁標題時切換與搜尋列照樣出現", () => {
+    render(<KanbanBoard changes={changes} query="" onQuery={vi.fn()} viewSwitch={<span data-testid="view-switch" />} />);
+    expect(screen.getByTestId("view-switch")).toBeTruthy();
+    expect(screen.getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
+  });
+});

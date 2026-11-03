@@ -417,8 +417,10 @@ describe("App (kanban primary + rich detail)", () => {
       ),
     });
     renderApp(ds);
-    await waitFor(() => screen.getByText("依賴成環：dependency cycle: add-a -> add-b -> add-a"));
-    expect(screen.getByText("add-a")).toBeTruthy();
+    // 看板頁同時掛著隱藏的路線圖（desktop-roadmap）：成環提示以卡片檢視為準。
+    const cards = () => within(screen.getByTestId("board-cards"));
+    await waitFor(() => cards().getByText("依賴成環：dependency cycle: add-a -> add-b -> add-a"));
+    expect(cards().getByText("add-a")).toBeTruthy();
   });
 
   it("資料源提供 dependsCandidates 時，排程分頁的新增候選取自它（宿主接線）", async () => {
@@ -442,7 +444,8 @@ describe("App (kanban primary + rich detail)", () => {
       dependsCandidates,
     });
     renderApp(ds);
-    fireEvent.click(await screen.findByText("add-dark-mode"));
+    // 帶波次的變更也是隱藏路線圖上的站（desktop-roadmap）：點卡片檢視的卡。
+    fireEvent.click(await within(await screen.findByTestId("board-cards")).findByText("add-dark-mode"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
     await waitFor(() => expect(dependsCandidates).toHaveBeenCalledWith("add-dark-mode"));
     const user = userEvent.setup({ pointerEventsCheck: 0 });
@@ -470,7 +473,7 @@ describe("App (kanban primary + rich detail)", () => {
       listChanges: vi.fn().mockResolvedValue(changeList([item("add-c", "add-b", []), item("add-b", "add-c", ["add-c"])])),
     });
     renderApp(ds);
-    fireEvent.click(await screen.findByText("add-b"));
+    fireEvent.click(await within(await screen.findByTestId("board-cards")).findByText("add-b"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
     const section = (name: string) => document.querySelector(`[data-plan-section="${name}"]`) as HTMLElement;
     await waitFor(() => expect(section("archive")).toBeTruthy());
@@ -3482,5 +3485,85 @@ describe("詳情頁層與導覽（desktop-detail-page）", () => {
     expect(ds.getSpecDocument).toHaveBeenCalledWith("desktop-app");
     // 宿主仍是看板（openSpec 不切宿主頁）：麵包屑為「專案 / 變更 / 能力名」，Esc 回看板。
     expect(crumbText()).toBe("proj-a/變更/desktop-app");
+  });
+});
+
+// spec desktop-roadmap「看板頁的路線圖檢視」：卡片與路線圖同時掛載，只顯示 boardMode 指定的一個。
+describe("看板頁的路線圖檢視（desktop-roadmap）", () => {
+  const planned = () =>
+    fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue({
+        ...changeList([
+          { name: "add-a", status: "in-progress", totalTasks: 4, completedTasks: 0, wave: 1, blockedBy: [], dependsOn: [] },
+          {
+            name: "add-b",
+            status: "in-progress",
+            totalTasks: 3,
+            completedTasks: 0,
+            wave: 2,
+            blockedBy: ["add-a"],
+            dependsOn: ["add-a"],
+          },
+        ]),
+        next: "add-a",
+        unpromotedCuts: [],
+      }),
+    });
+
+  it("切到路線圖再切回看板（Scenario「切到路線圖再切回看板」）", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp(planned());
+    const cards = await screen.findByTestId("board-cards");
+    const roadmap = screen.getByTestId("board-roadmap");
+    await within(cards).findByText("add-b");
+    expect(roadmap.hidden).toBe(true);
+    expect(roadmap.hasAttribute("inert")).toBe(true);
+    fireEvent.change(within(cards).getByPlaceholderText("搜尋看板卡片…"), { target: { value: "add" } });
+
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    expect(cards.hidden).toBe(true);
+    expect(cards.hasAttribute("inert")).toBe(true);
+    expect(roadmap.hidden).toBe(false);
+    expect(roadmap.hasAttribute("inert")).toBe(false);
+    expect(within(roadmap).getByRole("tab", { name: "路線圖" }).getAttribute("aria-selected")).toBe("true");
+    expect(roadmap.querySelector('[data-station="add-b"]')).not.toBeNull();
+    // 專案欄的「變更」項照舊高亮。
+    expect(within(projectColumn()).getByRole("button", { name: "變更" }).className).toContain("bg-primary");
+
+    await user.click(within(roadmap).getByRole("tab", { name: "看板" }));
+    expect(cards.hidden).toBe(false);
+    expect(roadmap.hidden).toBe(true);
+    expect((within(cards).getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement).value).toBe("add");
+  });
+
+  it("自路線圖開詳情頁，按 Esc 回到路線圖（Scenario「自路線圖開詳情頁後回到路線圖」）", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp(planned());
+    const cards = await screen.findByTestId("board-cards");
+    await within(cards).findByText("add-b");
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    const roadmap = screen.getByTestId("board-roadmap");
+    fireEvent.click(roadmap.querySelector('[data-station="add-b"]') as HTMLElement);
+    await screen.findByTestId("detail-page");
+    expect(crumbText()).toContain("add-b");
+    act(() => {
+      fireEvent.keyDown(window, { key: "Escape" });
+    });
+    await waitFor(() => expect(screen.queryByTestId("detail-page")).toBeNull());
+    expect(screen.getByTestId("board-roadmap").hidden).toBe(false);
+    expect(screen.getByTestId("board-cards").hidden).toBe(true);
+  });
+
+  it("切到其他頁再回到變更頁時維持路線圖（Scenario「切到其他頁再回來維持路線圖」）", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp(planned());
+    const cards = await screen.findByTestId("board-cards");
+    await within(cards).findByText("add-b");
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "規格" }));
+    await waitFor(() => expect(screen.queryByTestId("board-roadmap")).toBeNull());
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "變更" }));
+    expect((await screen.findByTestId("board-roadmap")).hidden).toBe(false);
+    expect(screen.getByTestId("board-cards").hidden).toBe(true);
   });
 });

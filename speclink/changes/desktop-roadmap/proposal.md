@@ -55,5 +55,9 @@
     - apps/desktop/src/deepLink.ts
     - apps/desktop/src/__tests__/deepLink.test.ts
     - apps/desktop/src/__tests__/store.test.ts
+    - apps/desktop/src/__tests__/App.test.tsx
+    - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    - apps/desktop/src/__tests__/remoteDataSource.test.ts
+    - packages/ui/src/__tests__/kanban.test.tsx
 - 影響的 app：apps/desktop（Tauri 殼的清單回應與前端）、packages/ui；speclink-core、speclink-cli、server 不動
 - 依賴：不新增套件；依賴線以 SVG 自行繪製

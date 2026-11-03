@@ -5,6 +5,8 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { CloudOff, MoreHorizontal } from "lucide-react";
 import {
   KanbanBoard,
+  RoadmapView,
+  BoardViewSwitch,
   ArchivedList,
   ArchivedDetailPage,
   SpecList,
@@ -820,6 +822,12 @@ function AppInner({
   // 殼（design D2）：標題列文字與麵包屑依模式——設定、有作用中專案、零專案（留白）。
   // projectTab＝標題列要呈現的專案（設定模式時沒有）。
   const projectTab = s.boardView === "settings" ? undefined : activeTab;
+  // 看板頁兩種檢視共用的載入狀態。骨架的前提是「首訪的載入正在進行」：探測中
+  // （pendingTabKey）或整批載入中（loadingActive），且尚無真值。只看 loaded 會讓探測
+  // 失敗或讀取失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
+  const boardLoading = (s.pendingTabKey !== null || s.loadingActive) && !s.loaded;
+  const boardLoadFailed = !s.loaded && s.loadFailed;
+  const boardViewSwitch = <BoardViewSwitch value={s.boardMode} onChange={s.setBoardMode} />;
   // 設定模式（desktop-settings-mode design D1／D2）：遠端專案沒有 .speclink.yaml 頁，記住的分類
   // 落在那頁時退回專案說明。
   const remoteProject = activeTab?.locator.kind === "remote";
@@ -1322,46 +1330,77 @@ function AppInner({
                 onVisibleOrderChange={(specs) => setVisibleOrder((v) => ({ ...v, specs }))}
               />
             ) : s.boardView === "board" ? (
-              <KanbanBoard
-                title={t("app.navChanges")}
-                description={t("board.pageDesc")}
-                changes={s.changes}
-                onOpenChange={s.openDetail}
-                onArchive={caps && !caps.archive ? undefined : s.requestArchive}
-                onRevert={s.requestRevert}
-                discussions={s.discussions}
-                archivedChanges={s.archived}
-                onOpenDiscussion={s.openDiscussion}
-                onArchiveDiscussion={
-                  caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
-                }
-                query={s.boardQuery}
-                onQuery={s.setBoardQuery}
-                fulltextHits={s.searchHits}
-                searchUnavailableReason={
-                  caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
-                }
-                onReorder={
-                  caps?.reorderCard
-                    ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
-                    : undefined
-                }
-                reorderUnavailableReason={
-                  caps && !caps.reorderCard ? writeDisabledReason : undefined
-                }
-                planError={s.planError}
-                onDragActiveChange={handleBoardDragActive}
-                onVisibleOrderChange={(order) => setVisibleOrder((v) => ({ ...v, ...order }))}
-                promotedExpanded={s.promotedExpanded}
-                onPromotedExpandedChange={s.setPromotedExpanded}
-                // 骨架的前提是「首訪的載入正在進行」：探測中（pendingTabKey）或整批
-                // 載入中（loadingActive），且尚無真值。只看 loaded 會讓探測失敗或讀取
-                // 失敗的 workspace 永遠停在載入中——讀不到不等於還在讀。
-                loading={(s.pendingTabKey !== null || s.loadingActive) && !s.loaded}
-                // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
-                // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
-                loadFailed={!s.loaded && s.loadFailed}
-              />
+              // 看板頁的兩種檢視（desktop-roadmap design「路線圖是看板頁的一種檢視」）：兩者同時
+              // 掛載、只顯示 boardMode 指定的一個——卡片的捲動、搜尋與篩選在切換間原樣保留，
+              // 詳情頁的 ‹ › 照舊依卡片順序；兩者吃同一份清單資料，不各自查詢。
+              <>
+                <div
+                  data-testid="board-cards"
+                  hidden={s.boardMode !== "cards"}
+                  inert={s.boardMode !== "cards" || undefined}
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <KanbanBoard
+                    viewSwitch={boardViewSwitch}
+                    title={t("app.navChanges")}
+                    description={t("board.pageDesc")}
+                    changes={s.changes}
+                    onOpenChange={s.openDetail}
+                    onArchive={caps && !caps.archive ? undefined : s.requestArchive}
+                    onRevert={s.requestRevert}
+                    discussions={s.discussions}
+                    archivedChanges={s.archived}
+                    onOpenDiscussion={s.openDiscussion}
+                    onArchiveDiscussion={
+                      caps && !caps.archiveDiscussion ? undefined : s.requestArchiveDiscussion
+                    }
+                    query={s.boardQuery}
+                    onQuery={s.setBoardQuery}
+                    fulltextHits={s.searchHits}
+                    searchUnavailableReason={
+                      caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
+                    }
+                    onReorder={
+                      caps?.reorderCard
+                        ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)
+                        : undefined
+                    }
+                    reorderUnavailableReason={
+                      caps && !caps.reorderCard ? writeDisabledReason : undefined
+                    }
+                    planError={s.planError}
+                    onDragActiveChange={handleBoardDragActive}
+                    onVisibleOrderChange={(order) => setVisibleOrder((v) => ({ ...v, ...order }))}
+                    promotedExpanded={s.promotedExpanded}
+                    onPromotedExpandedChange={s.setPromotedExpanded}
+                    loading={boardLoading}
+                    // 首訪失敗的終態：讀不到 ≠ 確認是空的，故不落回空態文案。已有舊
+                    // 快取（loaded）時照舊靜默沿用最後成功快照，不顯示提示。
+                    loadFailed={boardLoadFailed}
+                  />
+                </div>
+                <div
+                  data-testid="board-roadmap"
+                  hidden={s.boardMode !== "roadmap"}
+                  inert={s.boardMode !== "roadmap" || undefined}
+                  className="flex min-h-0 flex-1 flex-col"
+                >
+                  <RoadmapView
+                    viewSwitch={boardViewSwitch}
+                    title={t("app.navChanges")}
+                    description={t("roadmap.pageDesc")}
+                    changes={s.changes}
+                    next={s.planNext}
+                    unpromotedCuts={s.unpromotedCuts}
+                    planError={s.planError}
+                    discussions={s.discussions}
+                    onOpenChange={s.openDetail}
+                    onOpenDiscussion={s.openDiscussion}
+                    loading={boardLoading}
+                    loadFailed={boardLoadFailed}
+                  />
+                </div>
+              </>
             ) : (
               <ArchivedList
                 title={t("app.archived")}

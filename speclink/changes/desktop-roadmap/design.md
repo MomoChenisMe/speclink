@@ -102,7 +102,7 @@ store 新增 `boardMode: "cards" | "roadmap"`（app 層級、預設 "cards"、�
 - local 與 remote 的變更清單回應頂層：`changes`、`planError`（既有），新增 `next`（字串或 null）與 `unpromotedCuts`（陣列，每項 `discussion`、`cut`、`title` 字串與 `changes`、`unpromoted` 字串陣列）
 - TS：`ChangeListPayload` 增 `next?: string | null`、`unpromotedCuts?: UnpromotedCutItem[]`（缺席讀作 null 與空陣列）；store 增 `planNext`、`unpromotedCuts`（隨 `WorkspaceSnapshot` 快取）、`boardMode`、`setBoardMode`
 - `roadmapModel(changes, next)`、`roadmapRoute(model, name)`（見「路線圖模型為純函式」）
-- `RoadmapView` props：`changes`、`next`、`unpromotedCuts`、`planError`、`discussions`、`onOpenChange(name)`、`onOpenDiscussion(slug)`、`viewSwitch`、`loading`；`BoardViewSwitch` props：`value`、`onChange`
+- `RoadmapView` props：`changes`、`next`、`unpromotedCuts`、`planError`、`discussions`、`onOpenChange(name)`、`onOpenDiscussion(slug)`、`viewSwitch`、`loading`、`loadFailed`（首訪載入失敗時與卡片檢視同樣顯示失敗提示，不落回空狀態），以及與卡片檢視同一頁的 `title`、`description`；`BoardViewSwitch` props：`value`、`onChange`
 - `parseSpeclinkUrl` 的成功結果為 `{ kind: "change" | "discussion"; name; project }` 或 `{ kind: "roadmap"; project }`；失敗 reason 不變
 
 **失敗模式**

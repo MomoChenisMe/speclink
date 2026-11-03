@@ -6,6 +6,7 @@ import type {
   SearchHit,
   SpeclinkDataSource,
   StatusReport,
+  UnpromotedCutItem,
 } from "@speclink/ui";
 
 import { createAppStore, openTicketStation, selectAssetMigrated, selectAssetPrompt, type AppState } from "../store";
@@ -587,6 +588,103 @@ describe("app store (Zustand)", () => {
     const plain = storeWith(fakeDataSource());
     await plain.getState().refresh();
     expect(plain.getState().planError).toBeNull();
+  });
+
+  // desktop-roadmap：路線圖的 next 與尚未轉出的刀隨同一次 listChanges 進 store。
+  const PANEL_CUT: UnpromotedCutItem = {
+    discussion: "panel",
+    cut: "cut 3",
+    title: "路線圖",
+    changes: ["add-z"],
+    unpromoted: ["add-z"],
+  };
+
+  it("refresh：清單回應的 next 與 unpromotedCuts 進 store 的 planNext 與 unpromotedCuts", async () => {
+    const store = storeWith(
+      fakeDataSource({
+        listChanges: vi.fn().mockResolvedValue({
+          ...changeList([{ name: "add-a", status: "proposed", totalTasks: 1, completedTasks: 0 }]),
+          next: "add-a",
+          unpromotedCuts: [PANEL_CUT],
+        }),
+      }),
+    );
+    await store.getState().refresh();
+    expect(store.getState().planNext).toBe("add-a");
+    expect(store.getState().unpromotedCuts).toEqual([PANEL_CUT]);
+  });
+
+  it("refresh：清單回應缺 next 與 unpromotedCuts 時為 null 與空陣列", async () => {
+    const store = storeWith(fakeDataSource());
+    await store.getState().refresh();
+    expect(store.getState().planNext).toBeNull();
+    expect(store.getState().unpromotedCuts).toEqual([]);
+  });
+
+  it("切到另一個 workspace 再切回時 planNext 與 unpromotedCuts 由快照還原", async () => {
+    const aChanges = vi.fn().mockResolvedValue({
+      ...changeList([{ name: "a-change", status: "proposed", totalTasks: 1, completedTasks: 0 }]),
+      next: "a-change",
+      unpromotedCuts: [PANEL_CUT],
+    });
+    const a = remoteSession(fakeDataSource({ listChanges: aChanges }), "alpha");
+    const b = remoteSession(fakeDataSource(), "beta");
+    const store = storeWithRemoteSessions(a, b);
+
+    await store.getState().refresh();
+    await store.getState().activateTab(b.id);
+    expect(store.getState().planNext).toBeNull();
+    expect(store.getState().unpromotedCuts).toEqual([]);
+
+    // 切回 A 時重載失敗：畫面上的兩欄只能來自 A 的快照。
+    aChanges.mockRejectedValue(new Error("alpha offline"));
+    await store.getState().activateTab(a.id);
+    expect(store.getState().planNext).toBe("a-change");
+    expect(store.getState().unpromotedCuts).toEqual([PANEL_CUT]);
+  });
+
+  // spec desktop-roadmap「看板頁的路線圖檢視」：卡片／路線圖是看板頁的兩種檢視。
+  it("boardMode 預設為 cards", () => {
+    expect(storeWith(fakeDataSource()).getState().boardMode).toBe("cards");
+  });
+
+  it("openDetail、openDiscussion 與關閉詳情頁都不改變 boardMode（自路線圖開詳情、關閉後回到路線圖）", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    store.getState().setBoardMode("roadmap");
+    store.getState().openDetail("desktop-shell-and-browser");
+    expect(store.getState().detailChange?.name).toBe("desktop-shell-and-browser");
+    expect(store.getState().boardMode).toBe("roadmap");
+    store.getState().closeDetailPage();
+    expect(store.getState().boardMode).toBe("roadmap");
+    store.getState().openDiscussion("topic-a");
+    expect(store.getState().detailDiscussion?.slug).toBe("topic-a");
+    expect(store.getState().boardMode).toBe("roadmap");
+    store.getState().closeDetailPage();
+    expect(store.getState().boardView).toBe("board");
+    expect(store.getState().boardMode).toBe("roadmap");
+  });
+
+  it("切到其他頁再回到看板頁時維持上次選的檢視（Scenario「切到其他頁再回來維持路線圖」）", () => {
+    const store = storeWith(fakeDataSource());
+    store.getState().setBoardMode("roadmap");
+    store.getState().setBoardView("specs");
+    store.getState().setBoardView("board");
+    expect(store.getState().boardMode).toBe("roadmap");
+  });
+
+  it("boardMode 不寫進 localStorage", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    store.getState().setBoardMode("roadmap");
+    store.getState().setBoardView("specs");
+    store.getState().setBoardView("board");
+    store.getState().openDetail("desktop-shell-and-browser");
+    store.getState().closeDetailPage();
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i)!;
+      expect(`${key}=${localStorage.getItem(key)}`).not.toMatch(/roadmap|boardMode/);
+    }
   });
 
   it("setDepends：成功後刷新清單，失敗以同一單槽 toast 呈現引擎訊息", async () => {

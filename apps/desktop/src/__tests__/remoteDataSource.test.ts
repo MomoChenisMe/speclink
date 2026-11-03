@@ -367,6 +367,17 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(payload.changes[0].dependsOn).toEqual(["b"]);
   });
 
+  it("listChanges 帶出頂層 next 與 unpromotedCuts（desktop-roadmap）", async () => {
+    const cut = { discussion: "panel", cut: "cut 3", title: "路線圖", changes: ["add-z"], unpromoted: ["add-z"] };
+    const invoke = async <T,>(cmd: string): Promise<T> =>
+      (cmd === "remote_list_changes"
+        ? { changes: [], planError: null, next: "add-a", unpromotedCuts: [cut] }
+        : null) as T;
+    const payload = await createRemoteDataSource(CONN, PROJECT, REPO, invoke).listChanges();
+    expect(payload.next).toBe("add-a");
+    expect(payload.unpromotedCuts).toEqual([cut]);
+  });
+
   it("listChanges 帶出 claimedBy（認領人呈現的資料源）", async () => {
     const { invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);

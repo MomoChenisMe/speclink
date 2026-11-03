@@ -356,8 +356,10 @@ describe("排程分頁的前置編輯依 role（add-change-plan-remote D7）", (
   }
 
   async function openPlanTab() {
-    await waitFor(() => expect(screen.getByText("remote-change")).toBeTruthy());
-    fireEvent.click(screen.getByText("remote-change"));
+    // 帶波次的變更也是隱藏路線圖上的站（desktop-roadmap）：點卡片檢視的卡。
+    const cards = () => within(screen.getByTestId("board-cards"));
+    await waitFor(() => expect(cards().getByText("remote-change")).toBeTruthy());
+    fireEvent.click(cards().getByText("remote-change"));
     fireEvent.mouseDown(await screen.findByRole("tab", { name: /排程/ }));
     // 狀態卡的排程列也寫「第 2 波」——以排程分頁的波次卡為準。
     await waitFor(() =>
