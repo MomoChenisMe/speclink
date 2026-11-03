@@ -337,6 +337,27 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(s.tabs.every((t) => !("badge" in t))).toBe(true);
   });
 
+  // speclink 網址以 restoreTabs 為就緒訊號：某個背景分頁卡住（例如網路磁碟斷線）不得拖住它。
+  it("restoreTabs：活躍分頁還原完成即 resolve，不等背景分頁的路徑探測", async () => {
+    persistTabs([tab("A", "a"), tab("B", "b")], "local:A");
+    const ws = fakeWorkspace({
+      openProject: vi
+        .fn()
+        .mockImplementation((p: string) =>
+          Promise.resolve({ status: "project", root: p, name: p.toLowerCase() }),
+        ),
+      projectStats: vi.fn().mockReturnValue(new Promise(() => {})),
+    });
+    const store = makeStore(fakeDataSource(), ws);
+    const settled = await Promise.race([
+      store.getState().restoreTabs().then(() => "resolved"),
+      new Promise((r) => setTimeout(() => r("pending"), 200)),
+    ]);
+    expect(settled).toBe("resolved");
+    expect(store.getState().activeKey).toBe("local:A");
+    expect(ws.projectStats).toHaveBeenCalledWith("B");
+  });
+
   it("首啟無持久化分頁：啟動目錄（cwd 探索）為專案時自動記入（決策 4 首啟路徑）", async () => {
     const ws = fakeWorkspace({
       startupDir: vi.fn().mockResolvedValue("C:\\proj\\alpha"),

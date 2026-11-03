@@ -27,7 +27,7 @@ import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
 import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
-import { RecentList, useRecentOpener } from "./RecentList";
+import { RecentList, useRecentOpener, type OpenLocal } from "./RecentList";
 import { BUILTIN_TOOLS } from "../builtinTools";
 
 type Step = "source" | "server" | "scopes" | "checkout";
@@ -46,7 +46,7 @@ export interface WorkspaceChooserProps {
     "scopes" | "inspectCheckout" | "bindCheckout"
   >;
   workspace: Pick<WorkspaceAdapter, "pickFolder" | "openProject">;
-  onOpenLocal: (path: string) => Promise<unknown>;
+  onOpenLocal: OpenLocal;
   onRequestMigration?: (root: string) => Promise<void>;
   /** 新增並隨即登入；回傳正規化 origin 供本面追蹤該連線的互動狀態。 */
   onAddServer: (baseUrl: string, name: string) => Promise<string | null>;

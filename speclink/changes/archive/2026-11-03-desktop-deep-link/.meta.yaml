@@ -1,0 +1,105 @@
+schema: spec-driven
+created: 2026-11-03T14:27:24+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: herdr-speclink-panel
+started_at: 2026-11-03T14:47:40+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-03T16:24:23+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_rounds: 2
+reviewed_scope:
+  - path: Cargo.lock
+    hash: cd762e2156c493dbe939731d507ff15addf4956aab40fff86d6e6e695d620e75
+  - path: apps/desktop/package.json
+    hash: 4e0480153349093a256df4ba0c325969b8a39c5d95b35efa31dbbb27e9d7fd21
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: f781a9acac80ebc2b16e5118240625cd9c6068da1f96ad2a6f258ce043d6de5f
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: bb247bf26337254bac9bbf6048a16615556122efbf099acc68b1919a5329f6af
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 30186db4a79c74add5cb911f4442f2445e97c9e206385346f8221679cdb9f0f8
+  - path: apps/desktop/src-tauri/tauri.conf.json
+    hash: 76bc7d188210165856bb7a58dc54623016e9e6dce85260e44fd5989630767f3e
+  - path: apps/desktop/src/App.tsx
+    hash: e4d9ff8e6e6ed3c792667281c16c54f4ae104bdcfd38392cbc7915520277145e
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0b2a5dfaa3bc37d3bd55a20c6b0cf0b2069ec93d10bd643e7c48b7d765761ade
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: 3b6071067b23cfede908156dd59bf1878ab2e247cc9bc7656d4ba2a8f7062582
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 902badfa30343619fd44ae519b9ed071221f7bcde7018140eed1d0463ab98fda
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 5d37fc80903e4fcc2ed848f0dfdd832c3b564a0dd478b5b2de8e383fe8e22071
+  - path: apps/desktop/src/components/EmptyWorkspace.tsx
+    hash: 9f9af2d498dda4e65f0e47f9c891a52c06130e79ae36a2d4de43d3ffaac1e2f5
+  - path: apps/desktop/src/components/RecentList.tsx
+    hash: a480f15ed57c2f17f029b0e8d636c4ebcfa1701ed1e3736512e825032509aff5
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: 4238093e5e0e99a6ec89b7669570be2cbf523d3c30c8fa2a3c57ad3981e5d65f
+  - path: apps/desktop/src/deepLink.ts
+    hash: 2a9573df4f56aab6459571101a939958414afa20ac7b460f148b50ea90164edb
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 43c257884875b82f735df459213cf258d5ad65bcaccdd9341cb4fcf79a38ee97
+  - path: apps/desktop/src/store.ts
+    hash: 9c21e31e0fc9198118acd7b529ef32151747314d8b25ab3235e9b1aeccaa4e3a
+  - path: apps/desktop/src/tray.ts
+    hash: 81741f3d09b205fd044498e89c929277c463818dce5db5a8bf51061ca8248ab3
+  - path: docs/product-status.md
+    hash: c0e7b0aebcc9f65838e5ef8b78c597a2f48f885c411f63b55fb6a28107503f51
+  - path: docs/product-status.zh-TW.md
+    hash: c0e8d61ce4d9c81c802bccfb7c69eb0391befea1ed4ff38904a3eb03adc0714d
+  - path: package-lock.json
+    hash: a0145b17c9f9a4e0cda7541fc22da00d51118e163c3854b7dcdbe385792d4a5b
+verified_at: 2026-11-03T16:24:28+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_rounds: 2
+verified_scope:
+  - path: Cargo.lock
+    hash: cd762e2156c493dbe939731d507ff15addf4956aab40fff86d6e6e695d620e75
+  - path: apps/desktop/package.json
+    hash: 4e0480153349093a256df4ba0c325969b8a39c5d95b35efa31dbbb27e9d7fd21
+  - path: apps/desktop/src-tauri/Cargo.toml
+    hash: f781a9acac80ebc2b16e5118240625cd9c6068da1f96ad2a6f258ce043d6de5f
+  - path: apps/desktop/src-tauri/capabilities/default.json
+    hash: bb247bf26337254bac9bbf6048a16615556122efbf099acc68b1919a5329f6af
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 30186db4a79c74add5cb911f4442f2445e97c9e206385346f8221679cdb9f0f8
+  - path: apps/desktop/src-tauri/tauri.conf.json
+    hash: 76bc7d188210165856bb7a58dc54623016e9e6dce85260e44fd5989630767f3e
+  - path: apps/desktop/src/App.tsx
+    hash: e4d9ff8e6e6ed3c792667281c16c54f4ae104bdcfd38392cbc7915520277145e
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0b2a5dfaa3bc37d3bd55a20c6b0cf0b2069ec93d10bd643e7c48b7d765761ade
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: 3b6071067b23cfede908156dd59bf1878ab2e247cc9bc7656d4ba2a8f7062582
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 902badfa30343619fd44ae519b9ed071221f7bcde7018140eed1d0463ab98fda
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 5d37fc80903e4fcc2ed848f0dfdd832c3b564a0dd478b5b2de8e383fe8e22071
+  - path: apps/desktop/src/components/EmptyWorkspace.tsx
+    hash: 9f9af2d498dda4e65f0e47f9c891a52c06130e79ae36a2d4de43d3ffaac1e2f5
+  - path: apps/desktop/src/components/RecentList.tsx
+    hash: a480f15ed57c2f17f029b0e8d636c4ebcfa1701ed1e3736512e825032509aff5
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: 4238093e5e0e99a6ec89b7669570be2cbf523d3c30c8fa2a3c57ad3981e5d65f
+  - path: apps/desktop/src/deepLink.ts
+    hash: 2a9573df4f56aab6459571101a939958414afa20ac7b460f148b50ea90164edb
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 43c257884875b82f735df459213cf258d5ad65bcaccdd9341cb4fcf79a38ee97
+  - path: apps/desktop/src/store.ts
+    hash: 9c21e31e0fc9198118acd7b529ef32151747314d8b25ab3235e9b1aeccaa4e3a
+  - path: apps/desktop/src/tray.ts
+    hash: 81741f3d09b205fd044498e89c929277c463818dce5db5a8bf51061ca8248ab3
+  - path: docs/product-status.md
+    hash: c0e7b0aebcc9f65838e5ef8b78c597a2f48f885c411f63b55fb6a28107503f51
+  - path: docs/product-status.zh-TW.md
+    hash: c0e8d61ce4d9c81c802bccfb7c69eb0391befea1ed4ff38904a3eb03adc0714d
+  - path: package-lock.json
+    hash: a0145b17c9f9a4e0cda7541fc22da00d51118e163c3854b7dcdbe385792d4a5b
+archived_at: 2026-11-03T16:29:25+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

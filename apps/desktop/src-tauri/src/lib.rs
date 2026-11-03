@@ -1927,8 +1927,11 @@ pub fn run() {
     // speclink 網址（desktop-deep-link）：Windows、Linux 再次啟動（含作業系統帶網址啟動）時交給
     // 執行中的 app——外掛的 deep-link 功能先把網址轉成前端 onOpenUrl 事件，callback 再把主視窗
     // 帶到前景。外掛要求排在所有外掛之前。macOS 由系統確保單一實例，網址走 RunEvent::Opened。
+    // 喚起步驟與前端 tray.ts 的 openMainWindow 相同（先收合面板）；不帶網址的再次啟動不會經過前端，
+    // 所以這裡要自己做一次。
     #[cfg(any(target_os = "windows", target_os = "linux"))]
     let builder = builder.plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+        panel::hide(app);
         if let Some(main) = app.get_webview_window("main") {
             let _ = main.unminimize();
             let _ = main.show();

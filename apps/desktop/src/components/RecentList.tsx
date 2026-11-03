@@ -130,6 +130,10 @@ export function RecentList({
   );
 }
 
+/** 本機開啟動作（store 的 openProjectAt）：EmptyWorkspace、WorkspaceChooser 與這裡共用的
+ * prop 型別；三者都不讀回傳值。 */
+export type OpenLocal = (path: string) => Promise<unknown>;
+
 /** 最近開啟條目的開啟流程（design D4）：本機先探測再沿既有開啟流程（分流由
  * openProjectAt 承擔）；remote 以原 connection／scope／checkout 走既有 remote 開啟。
  * 失敗只標記該列——錯誤態只活在呼叫端畫面，重試或 reset 即清。 */
@@ -147,7 +151,7 @@ export function useRecentOpener({
   connectionAdapter: Pick<ConnectionsAdapter, "inspectCheckout">;
   /** 重整連線清單；回傳讀取是否成功（成功才判定 remote 列的連線錯誤態）。 */
   onRefreshConnections: () => Promise<boolean>;
-  onOpenLocal: (path: string) => Promise<unknown>;
+  onOpenLocal: OpenLocal;
   onOpenRemote: (connectionId: string, target: string, checkoutRoot?: string) => Promise<void>;
   /** 本機探測成功、交給開啟流程之前（對話框於此關閉自己）。 */
   onLocalProbed?: () => void;

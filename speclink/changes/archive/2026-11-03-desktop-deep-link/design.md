@@ -33,19 +33,19 @@
 
 ### 解析與派送落在前端模組，Tauri 殼只註冊外掛
 
-新增前端模組 deepLink.ts，內含兩部分：純函式 `parseSpeclinkUrl(url)`（字串 → `{ kind: "change" | "discussion", name, project }` 或錯誤原因），與 `installDeepLinks(store, deps)`（訂閱外掛事件、排隊、派送）。理由：要呼叫的 `openProjectAt`、`openDetail`、`openDiscussion` 都是前端 store 動作；外掛的 JS API（`@tauri-apps/plugin-deep-link` 的 `getCurrent`、`onOpenUrl`）直接把網址交給前端，不需要新增 Tauri command。沒有領域邏輯要放 speclink-desktop-core，Rust 端只做外掛註冊與 single-instance 的視窗喚起。這是唯一的網址處理落點，App.tsx 只呼叫一次 `installDeepLinks`。
+新增前端模組 deepLink.ts，內含兩部分：純函式 `parseSpeclinkUrl(url)`（字串 → `{ kind: "change" | "discussion", name, project }` 或錯誤原因），與 `installDeepLinks(store, ready)`（訂閱外掛事件、排隊、派送）。外掛的 `getCurrent`、`onOpenUrl`、sonner 的 `toast` 與 tray.ts 的 `openMainWindow` 由 deepLink.ts 直接 import，測試以 vi.mock 替換（與 tray.ts 的作法一致），不另做注入介面。理由：要呼叫的 `openProjectAt`、`openDetail`、`openDiscussion` 都是前端 store 動作；外掛的 JS API（`@tauri-apps/plugin-deep-link` 的 `getCurrent`、`onOpenUrl`）直接把網址交給前端，不需要新增 Tauri command。沒有領域邏輯要放 speclink-desktop-core，Rust 端只做外掛註冊與 single-instance 的視窗喚起。這是唯一的網址處理落點，App.tsx 只呼叫一次 `installDeepLinks`。
 
 替代方案：Rust 端解析後 emit 事件——多一層轉手且仍要回前端呼叫 store 動作，是零深度的轉接層。
 
 ### 啟動時的網址排隊到分頁還原之後
 
-App.tsx 保留 `restoreTabs()` 的 promise，傳給 `installDeepLinks` 當「就緒」訊號。就緒前收到的網址（含 `getCurrent()` 取得的啟動網址與 `onOpenUrl` 事件）依到達順序排隊；就緒後逐一處理，同一時間只處理一個，前一個完成（或失敗）才處理下一個。沒有 workspace（非 Tauri 環境、測試）時不安裝。
+App.tsx 保留 `restoreTabs()` 的 promise，傳給 `installDeepLinks` 當「就緒」訊號。`restoreTabs()` 在活躍分頁還原完成即 resolve，背景分頁的路徑探測不等它完成——卡住的背景分頁（例如網路磁碟斷線）不得拖住網址。就緒前收到的網址（含 `getCurrent()` 取得的啟動網址與 `onOpenUrl` 事件）依到達順序排隊；就緒後逐一處理，同一時間只處理一個，前一個完成（或失敗）才處理下一個。沒有 workspace（非 Tauri 環境、測試）時不安裝。
 
 ### 專案一律走 openProjectAt，詳情等載入後再開
 
-處理一個網址的順序：1. `openMainWindow()` 喚起主視窗（先做，讓後續的確認對話框出現在使用者眼前）；2. `openProjectAt(project)`——已是分頁的專案會被 upsert 成活躍分頁並重新整批載入，未開過的會加成分頁，未初始化、未啟用、帶 remote 標記的資料夾照既有流程跳出對話框或選擇器；3. 第 2 步進入了本機專案時，執行 `openDetail(name)` 或 `openDiscussion(slug)`；4. 目標不在已載入的清單裡時以 toast 說明找不到。對話框或選擇器出現的情況（第 2 步沒有進入專案）不開詳情、不出 toast。
+處理一個網址的順序：1. `openMainWindow()` 喚起主視窗（先做，讓後續的確認對話框出現在使用者眼前；喚起失敗照常往下處理）；不可取消的浮層開著時到此為止，不切專案、不開詳情；2. `openProjectAt(project, { remoteViaChooser: true })`——已是分頁的專案會被 upsert 成活躍分頁並重新整批載入，未開過的會加成分頁，未初始化、未啟用的資料夾照既有流程跳出確認對話框；帶 remote 標記的資料夾一律打開選擇器（預選連線、scope 與 checkout），不自動同步技能檔、不自動連線，確認前零寫入；3. 第 2 步回傳 key 時，執行 `openDetail(name)` 或 `openDiscussion(slug)`；4. 目標不在已載入的清單裡時，主區切回看板（關掉已開的詳情頁）並以 toast 說明找不到。對話框或選擇器出現的情況（第 2 步回傳 null）不開詳情、不出 toast。
 
-為了讓第 3 步知道第 2 步的結果，apps/desktop/src/store.ts 的 `openProjectAt(path)` 由回傳 `Promise<void>` 改為回傳 `Promise<string | null>`：探測結果為本機專案、且整批載入完成時回傳該分頁的 locator key，其餘情況（未初始化、未啟用、帶 remote 標記、探測失敗）回傳 null。既有呼叫端都忽略回傳值，行為不受影響；把它當 `onOpenLocal` 往下傳的三個元件（WorkspaceChooser、EmptyWorkspace、RecentList）把該 prop 的型別由 `Promise<void>` 放寬為 `Promise<unknown>`。
+為了讓第 3 步知道第 2 步的結果，apps/desktop/src/store.ts 的 `openProjectAt(path)` 由回傳 `Promise<void>` 改為回傳 `Promise<string | null>`：探測結果為本機專案、整批載入成功、且載入完成時它仍是活躍分頁，才回傳該分頁的 locator key；其餘情況（未初始化、未啟用、帶 remote 標記、探測或載入失敗、載入期間已切到別的分頁）回傳 null——回傳 key 的意思是「現在可以拿這個專案的清單來用」。另加選項 `remoteViaChooser`，讓網址入口把 remote 標記一律交給選擇器。既有呼叫端不帶選項、忽略回傳值，行為不受影響；把它當 `onOpenLocal` 往下傳的三個元件（WorkspaceChooser、EmptyWorkspace、RecentList）改用 RecentList.tsx 匯出的共用型別 `OpenLocal`（`(path: string) => Promise<unknown>`）。
 
 替代方案：已是分頁時改用 `activateTab`——要自己比對 locator 與路徑正規化；`openProjectAt` 已能處理「已存在的分頁」，少一條分支。不改 store、改由 deepLink.ts 自己比對活躍分頁與 pending 對話框狀態——要同時盯住四種 pending 欄位，日後新增探測分支時容易漏，不如由 `openProjectAt` 直接說出結果。
 
@@ -79,29 +79,29 @@ tauri.conf.json 的 `plugins` 加上 deep-link 設定（desktop 的 schemes 為 
 **介面**
 
 - `parseSpeclinkUrl(url: string)` → `{ ok: true, link: { kind: "change" | "discussion"; name: string; project: string } }` 或 `{ ok: false, reason: "scheme" | "kind" | "name" | "project" }`；`name`、`project` 為百分比解碼後的字串
-- `installDeepLinks(store, { ready, getCurrent, onOpenUrl, openMainWindow, toast })` → 回傳卸載函式；依賴以參數注入，測試以假物件替換
-- store 的 `openProjectAt(path)` 回傳 `Promise<string | null>`：進入本機專案時為分頁的 locator key，其餘為 null
+- `installDeepLinks(store, ready)` → 回傳卸載函式；`getCurrent`、`onOpenUrl`、`toast` 與 `openMainWindow` 由 deepLink.ts 直接 import，測試以 vi.mock 替換
+- store 的 `openProjectAt(path, options?: { remoteViaChooser?: boolean })` 回傳 `Promise<string | null>`：進入本機專案、載入成功且仍是活躍分頁時為分頁的 locator key，其餘為 null；`remoteViaChooser` 讓 remote 標記一律改開選擇器
 - 不新增 Tauri command；前端只用 `@tauri-apps/plugin-deep-link` 的 `getCurrent`、`onOpenUrl`
 
 **失敗模式**
 
 - 格式錯誤：主視窗照常喚起，toast「無法開啟這個 speclink 網址」，不切換專案
 - 專案資料夾探測失敗或不是專案：沿用 `openProjectAt` 既有的對話框、選擇器或錯誤處理，不另出 toast、不開詳情
-- 目標不在清單裡（打錯名稱、已封存、在別的分支）：活躍專案已切過去，toast「在 <專案名稱> 找不到變更 <name>」或「找不到討論 <slug>」
-- 不可取消的浮層開著：詳情頁不開（與系統匣同語意），主視窗仍喚起
-- 網址只能開啟與檢視：處理流程不呼叫任何寫入動詞；未初始化、未啟用的資料夾只出現既有確認框，確認前零寫入
+- 目標不在清單裡（打錯名稱、已封存、在別的分支）：活躍專案已切過去，主區切回看板並關掉已開的詳情頁，toast「在 <專案名稱> 找不到變更 <name>」或「找不到討論 <slug>」
+- 不可取消的浮層開著：不切換專案、詳情頁不開（與系統匣同語意），主視窗仍喚起
+- 網址只能開啟與檢視：處理流程不呼叫任何寫入動詞；未初始化、未啟用的資料夾只出現既有確認框，帶 remote 標記的資料夾只出現選擇器，確認前零寫入
 
 **驗收**
 
 - vitest：`parseSpeclinkUrl` 的合法與不合法網址表（含 Windows 路徑、百分比編碼、多段 path、缺 project、未知 host）
-- vitest：`installDeepLinks` 以假 store 驗證——就緒前的網址會排隊到就緒後依序處理；成功時依序呼叫 openMainWindow → openProjectAt → openDetail／openDiscussion；目標不在清單時呼叫 toast 且不呼叫 openDetail；格式錯誤時只喚起視窗與 toast、不呼叫 openProjectAt
+- vitest：`installDeepLinks` 以假 store 與 vi.mock 驗證——就緒前的網址會排隊到就緒後依序處理；成功時依序呼叫 openMainWindow → openProjectAt → openDetail／openDiscussion；目標不在清單時切回看板、呼叫 toast 且不呼叫 openDetail；格式錯誤時只喚起視窗與 toast、不呼叫 openProjectAt；不可取消的浮層開著時不呼叫 openProjectAt
 - vitest：讀 tauri.conf.json 與 capabilities/default.json，確認網址格式為 `speclink`、預設權限已列入
 - `cargo build -p speclink-desktop` 在三平台 CI 通過（Windows、Linux 會編入 single-instance）
 - 手動（macOS 安裝版）：app 關閉與開啟兩種情況下，以終端機執行 open 指令送出網址，詳情頁正確開啟；送出格式錯誤的網址會出現 toast
 
 **範圍**
 
-- 範圍內：apps/desktop 的 Tauri 殼（外掛註冊、設定、權限）與前端（deepLink.ts、App.tsx 的安裝、tray.ts 匯出 openMainWindow、store.ts 的 openProjectAt 回傳值、i18n 文字）
+- 範圍內：apps/desktop 的 Tauri 殼（外掛註冊、設定、權限）與前端（deepLink.ts、App.tsx 的安裝、tray.ts 匯出 openMainWindow、store.ts 的 openProjectAt 回傳值與 remoteViaChooser 選項、restoreTabs 不等背景探測、i18n 文字）
 - 範圍外：speclink-core、speclink-cli、server、Herdr mod；路線圖網址；remote 專案
 
 ## Risks / Trade-offs

@@ -3307,4 +3307,71 @@ describe("openProjectAt 的回傳值", () => {
     const store = storeWithProbe(vi.fn().mockRejectedValue(new Error("gone")));
     expect(await store.getState().openProjectAt("C")).toBeNull();
   });
+
+  // 清單沒載進來時，呼叫端不得把空清單當成「找不到目標」。
+  it("整批載入失敗：回傳 null", async () => {
+    const ds = fakeDataSource({ listChanges: vi.fn().mockRejectedValue(new Error("io")) });
+    const store = storeWithProbe(vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }), ds);
+    expect(await store.getState().openProjectAt("B")).toBeNull();
+    expect(store.getState().loadFailed).toBe(true);
+  });
+
+  // 回傳的 key 代表「現在可以拿這個專案的清單來用」：載入期間切走就不成立。
+  it("載入期間使用者切到別的分頁：回傳 null", async () => {
+    const load = deferred<ChangeListPayload>();
+    const ds = fakeDataSource({ listChanges: vi.fn(() => load.promise) });
+    const store = storeWithProbe(vi.fn().mockResolvedValue({ status: "project", root: "B", name: "b" }), ds);
+    const opening = store.getState().openProjectAt("B");
+    await new Promise((r) => setTimeout(r, 0));
+    store.setState({ activeKey: "local:A" });
+    load.resolve(changeList([]));
+    expect(await opening).toBeNull();
+  });
+
+  describe("帶 remote 標記（已登入、checkout 已有工具選集）", () => {
+    const MARKER = {
+      status: "remoteBinding",
+      url: "https://spec.example.test/api/speclink/v1/projects/demo",
+      repo: "backend",
+      hasLocalOpenspec: false,
+    };
+    function storeWithMarker() {
+      const connections = {
+        list: vi.fn().mockResolvedValue([
+          { id: "c1", origin: "https://spec.example.test", name: "Team", loggedIn: true },
+        ]),
+        inspectCheckout: vi.fn().mockResolvedValue({ root: "/work/backend", tools: ["claude"] }),
+        bindCheckout: vi.fn().mockResolvedValue("/work/backend"),
+      } as unknown as ConnectionsAdapter;
+      const openRemote = vi.fn().mockResolvedValue(remoteSession(fakeDataSource(), "backend"));
+      const store = trackedAppStore({
+        createSession: vi.fn() as never,
+        workspace: fakeInstructionWorkspace({ openProject: vi.fn().mockResolvedValue(MARKER) }),
+        connections,
+        openRemote,
+      });
+      return { store, connections, openRemote };
+    }
+
+    it("既有流程自動同步並開 remote 分頁：回傳 null", async () => {
+      const { store, connections, openRemote } = storeWithMarker();
+      expect(await store.getState().openProjectAt("/work/backend")).toBeNull();
+      expect(connections.bindCheckout).toHaveBeenCalled();
+      expect(openRemote).toHaveBeenCalled();
+    });
+
+    // speclink 網址入口：確認前零寫入，交給使用者在選擇器確認。
+    it("remoteViaChooser：改開選擇器（預選連線、scope 與 checkout），不同步、不連線，回傳 null", async () => {
+      const { store, connections, openRemote } = storeWithMarker();
+      expect(await store.getState().openProjectAt("/work/backend", { remoteViaChooser: true })).toBeNull();
+      expect(connections.inspectCheckout).not.toHaveBeenCalled();
+      expect(connections.bindCheckout).not.toHaveBeenCalled();
+      expect(openRemote).not.toHaveBeenCalled();
+      expect(store.getState().workspaceChooser).toEqual({
+        initialConnectionId: "c1",
+        initialScope: { projectKey: "demo", repoKey: "backend" },
+        initialCheckoutPath: "/work/backend",
+      });
+    });
+  });
 });
