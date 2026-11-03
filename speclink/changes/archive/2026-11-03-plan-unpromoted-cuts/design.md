@@ -33,12 +33,13 @@
 3. 刀編號 `id`：上述起頭片段的原文（例 `cut 2`、`第 2 刀`、`刀二`）
 4. 變更名 `names`：粗體內不含空白的反引號片段，依出現順序去重；粗體內沒有時改取粗體之後的反引號片段，並把 `names_in_bold` 設為 false
 5. 範圍句 `title`：粗體內編號之後還有文字（去掉前導空白與 `:：、—–-`）時取該文字；否則取粗體之後去掉前導冒號的文字，遇到第一個「——」就截斷
+6. 圍欄：與 docModel.ts 的 `parseListItems` 同用 specSections.ts 的 `fenceFlags` 規則——圍欄行為 3 個以上 ` 或 ~（容忍前導空白）；收尾行要與開頭同字元、長度不短於開頭、其後沒有 info 字串；圍欄行與圍欄內的行都不是列點
 
 替代方案：在 CLI 或 server 各自解析——兩份實作會漂移，且違反「同一對外契約唯一實作落點」。
 
 ### D2 plan 在 compute_from 結尾附上尚未轉出的刀
 
-`compute_from` 組完既有欄位後呼叫 `unpromoted_cuts(store)`：對 `list_discussions(store)`（未封存）依序取 `conclusion_text`，以 `parse_cuts` 解析；`names_in_bold` 為 true 且至少一個名稱不在該討論 `promoted_to` 的刀，產出 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`。`Plan` 新增欄位 `unpromoted_cuts: Vec<UnpromotedCut>`，序列化為 `unpromotedCuts`（`UnpromotedCut` 以 camelCase）。三個 compute 入口都經 `compute_from`，所以 CLI 本機、`--strict-overlap` 與 server 都帶這個欄位。成環時整個 plan 照舊回錯誤，不輸出尚未轉出的刀。一份討論讀不到結論時跳過該討論，不讓 plan 失敗。
+`compute_from` 組完既有欄位後呼叫 `unpromoted_cuts(store)`：對 `discuss::live_conclusions(store)`（未封存、依 `list_discussions` 的順序；每份記錄只讀一次，結論（與 `conclusion_text` 同樣剝掉 HTML 註解）與 `promoted_to` 出自同一份記錄）的結論以 `parse_cuts` 解析，以 `Cut::unpromoted` 判定；`names_in_bold` 為 true 且至少一個名稱不在該討論 `promoted_to` 的刀，產出 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`。`Plan` 新增欄位 `unpromoted_cuts: Vec<UnpromotedCut>`，序列化為 `unpromotedCuts`（`UnpromotedCut` 以 camelCase）。三個 compute 入口都經 `compute_from`，所以 CLI 本機、`--strict-overlap` 與 server 都帶這個欄位。成環時整個 plan 照舊回錯誤，不輸出尚未轉出的刀。一份討論讀不到結論時跳過該討論，不讓 plan 失敗。只需要成環判定的呼叫端（桌面 `set_depends_at` 的 overlay 複檢）改走 `plan::check_cycle`：同一套配置與成環判定，不讀討論、不算重疊。
 
 替代方案：做成獨立動詞或 `discuss` 的新旗標——使用者「挑下一刀」時本來就在看 plan，分開要多跑一支，Herdr 與路線圖也要多一次呼叫。
 
@@ -60,7 +61,9 @@ speclink-protocol 的 `PlanResponse` 新增 `#[serde(default)] unpromoted_cuts: 
 
 **介面**
 
-- `speclink_core::discuss::cuts::parse_cuts(&str) -> Vec<Cut>`；`Cut { id, title, names, names_in_bold }`
+- `speclink_core::discuss::cuts::parse_cuts(&str) -> Vec<Cut>`；`Cut { id, title, names, names_in_bold }`；`Cut::unpromoted(&[String]) -> Vec<String>`
+- `speclink_core::discuss::live_conclusions(&dyn Store) -> Vec<(DiscussionInfo, String)>`
+- `speclink_core::plan::check_cycle(&dyn Store) -> Result<(), PlanError>`
 - `speclink_core::plan::UnpromotedCut { discussion, cut, title, changes, unpromoted }`，`Plan.unpromoted_cuts`
 - `speclink_protocol::query::PlanUnpromotedCut`，`PlanResponse.unpromoted_cuts`
 - CLI 旗標、stdin、exit code 不變
@@ -81,8 +84,8 @@ speclink-protocol 的 `PlanResponse` 新增 `#[serde(default)] unpromoted_cuts: 
 
 **範圍**
 
-- 範圍內：speclink-core（cuts.rs、plan.rs）、speclink-cli（plan 渲染與測試）、speclink-protocol、speclink-remote、speclink-server（GET /plan）
-- 範圍外：apps/desktop 與 packages/ui（第 4 刀才改討論詳情頁）、桌面路線圖、Herdr、`discuss` 動詞輸出
+- 範圍內：speclink-core（cuts.rs、discuss.rs、plan.rs）、speclink-cli（plan 渲染與測試）、speclink-protocol、speclink-remote、speclink-server（GET /plan）；apps/desktop 只有兩處：core/src/manage.rs 的成環複檢改用 `check_cycle`，src-tauri/src/remote.rs 的測試 helper 補 `PlanResponse` 新欄位
+- 範圍外：apps/desktop 的其餘部分與 packages/ui（第 4 刀才改討論詳情頁）、桌面路線圖、Herdr、`discuss` 動詞輸出
 
 ## Risks / Trade-offs
 

@@ -191,7 +191,7 @@ pub fn set_depends_at(root: &Path, change: &str, on: &[String], remove: bool) ->
     let write = speclink_core::plan::set_depends(&home, change, on, remove).map_err(|e| e.to_string())?;
     if !remove && write.changed {
         let overlaid = crate::query::overlay_store(&ctx, &facts);
-        if let Err(cycle) = speclink_core::plan::compute(&overlaid) {
+        if let Err(cycle) = speclink_core::plan::check_cycle(&overlaid) {
             let added: Vec<String> = on.iter().filter(|n| !before.contains(n)).cloned().collect();
             speclink_core::plan::set_depends(&home, change, &added, true).map_err(|e| e.to_string())?;
             return Err(cycle.to_string());

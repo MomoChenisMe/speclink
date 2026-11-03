@@ -170,6 +170,16 @@ pub(crate) fn compute_strict(store: &dyn Store) -> Result<Plan, PlanError> {
     compute_from(store, changes, &ranks, true)
 }
 
+/// The plan's cycle check alone: the same placement [`compute`] runs, without
+/// the overlap and discussion reads — for a caller that only needs to know
+/// whether the declared prerequisites form a cycle.
+pub fn check_cycle(store: &dyn Store) -> Result<(), PlanError> {
+    let changes = model::list_changes(store);
+    let ranks = meta_ranks(&changes);
+    let (entries, _) = entries_of(store, changes, &ranks);
+    place(&entries, &deps_of(&entries), false).map(|_| ())
+}
+
 /// Each change's own `board_rank`, keyed by name; unranked changes are absent.
 fn meta_ranks(changes: &[Change]) -> BTreeMap<String, String> {
     changes
@@ -793,23 +803,14 @@ fn compute_from(
     })
 }
 
-/// The cuts of every live discussion's conclusion whose bold names a change
-/// not yet promoted, in discussion-list order then cut order. A cut without a
-/// name in its bold cannot be judged and is left out; a discussion whose
-/// conclusion cannot be read is skipped.
+/// The cuts of every live discussion's conclusion with a change not yet
+/// promoted ([`discuss::cuts::Cut::unpromoted`]), in discussion-list order then
+/// cut order.
 fn unpromoted_cuts(store: &dyn Store) -> Vec<UnpromotedCut> {
     let mut out = Vec::new();
-    for info in discuss::list_discussions(store).into_iter().filter(|d| d.concluded) {
-        let Some(conclusion) = discuss::conclusion_text(store, &info.slug) else {
-            continue;
-        };
-        let promoted = &info.head.promoted_to;
+    for (info, conclusion) in discuss::live_conclusions(store) {
         for cut in discuss::cuts::parse_cuts(&conclusion) {
-            if !cut.names_in_bold {
-                continue;
-            }
-            let unpromoted: Vec<String> =
-                cut.names.iter().filter(|n| !promoted.contains(n)).cloned().collect();
+            let unpromoted = cut.unpromoted(&info.head.promoted_to);
             if !unpromoted.is_empty() {
                 out.push(UnpromotedCut {
                     discussion: info.slug.clone(),
@@ -1979,16 +1980,38 @@ mod tests {
     }
 
     #[test]
-    fn an_unreadable_conclusion_skips_that_discussion_only() {
-        // frontmatter 的 slug 被手改成別的名字：清單上的 slug 讀不到記錄，略過它，plan 照常。
+    fn each_record_pairs_its_own_conclusion_with_its_own_promoted_to() {
+        // 檔名 talk-a 的 frontmatter slug 被手改成 talk-b，而另一份檔名 talk-b 的記錄 slug 為
+        // talk-z：每份記錄的刀只配它自己的 promoted_to，不會讀到同名的別份記錄。
         let store = TestStore::default();
-        let renamed = discussion_doc("talk-a", "", TWO_CUTS).replace("slug: talk-a", "slug: renamed");
+        let renamed = discussion_doc("talk-a", "add-a", TWO_CUTS).replace("slug: talk-a", "slug: talk-b");
         store.discussions.borrow_mut().insert("talk-a".to_string(), renamed);
-        live_discussion(&store, "talk-b", "add-a", TWO_CUTS);
-        let plan = compute(&store).unwrap();
+        let other = discussion_doc("talk-b", "", "- **cut 1 `add-c`**: 乙").replace("slug: talk-b", "slug: talk-z");
+        store.discussions.borrow_mut().insert("talk-b".to_string(), other);
         assert_eq!(
-            plan.unpromoted_cuts,
-            [unpromoted("talk-b", "cut 2", "第二刀", &["add-b"], &["add-b"])]
+            compute(&store).unwrap().unpromoted_cuts,
+            [
+                unpromoted("talk-b", "cut 2", "第二刀", &["add-b"], &["add-b"]),
+                unpromoted("talk-z", "cut 1", "乙", &["add-c"], &["add-c"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn html_comments_hide_cuts_like_rendered_markdown() {
+        // 判定：結論剝掉 HTML 註解，與 markdown 的顯示一致——註解裡的刀不列，沒收尾的 `<!--`
+        // 在 markdown 也會藏住後文；前端不剝註解，第 4 刀前端改讀引擎資料後兩邊一致。
+        let store = TestStore::default();
+        let commented = "- **cut 1 `add-a`**: 一\n<!--\n- **cut 2 `add-b`**: 舊方案\n-->";
+        live_discussion(&store, "talk-a", "", commented);
+        let unclosed = "- **cut 1 `add-c`**: 一\n<!-- 未收尾\n- **cut 2 `add-d`**: 被藏住";
+        live_discussion(&store, "talk-b", "", unclosed);
+        assert_eq!(
+            compute(&store).unwrap().unpromoted_cuts,
+            [
+                unpromoted("talk-a", "cut 1", "一", &["add-a"], &["add-a"]),
+                unpromoted("talk-b", "cut 1", "一", &["add-c"], &["add-c"]),
+            ]
         );
     }
 
@@ -2013,6 +2036,28 @@ mod tests {
         let expected = [unpromoted("talk-a", "cut 2", "第二刀", &["add-b"], &["add-b"])];
         assert_eq!(compute_with_ranks(&store, &BTreeMap::new()).unwrap().unpromoted_cuts, expected);
         assert_eq!(compute_strict(&store).unwrap().unpromoted_cuts, expected);
+    }
+
+    // --- 只檢查成環（桌面 set_depends_at 的 overlay 複檢用）---
+
+    #[test]
+    fn check_cycle_reports_the_same_cycle_as_compute() {
+        let store = store_of(&[
+            ("a", "schema: spec-driven\ndepends_on: b\n"),
+            ("b", "schema: spec-driven\ndepends_on: a\n"),
+        ]);
+        assert_eq!(check_cycle(&store), compute(&store).map(|_| ()));
+        assert!(check_cycle(&store).is_err());
+    }
+
+    #[test]
+    fn check_cycle_passes_an_acyclic_plan() {
+        let store = store_of(&[
+            ("a", PROPOSED),
+            ("b", "schema: spec-driven\ndepends_on: a\n"),
+        ]);
+        live_discussion(&store, "talk-a", "", TWO_CUTS);
+        assert_eq!(check_cycle(&store), Ok(()));
     }
 
     #[test]
