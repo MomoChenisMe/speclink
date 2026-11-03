@@ -411,9 +411,11 @@ export interface AppState {
   migrationRoot: string | null;
   requestMigration: (root: string) => Promise<void>;
   cancelMigration: () => void;
-  /** 開啟專案（dialog 或還原路徑）：三態分流。進入本機專案且整批載入完成時回傳
-   * 該分頁的 locator key；其餘（未初始化、未啟用、remote 標記、探測失敗）為 null。 */
-  openProjectAt: (path: string) => Promise<string | null>;
+  /** 開啟專案（dialog 或還原路徑）：三態分流。進入本機專案、整批載入成功、且載入完成時
+   * 它仍是活躍分頁，才回傳該分頁的 locator key；其餘（未初始化、未啟用、remote 標記、
+   * 探測或載入失敗、載入期間已切走）為 null。remoteViaChooser：remote 標記一律改開選擇器，
+   * 不自動同步、不自動連線（speclink 網址入口，確認前零寫入）。 */
+  openProjectAt: (path: string, options?: { remoteViaChooser?: boolean }) => Promise<string | null>;
   /** 開啟 remote workspace（remote-data-source 決策 6）：handshake 成功才建
    * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。第四參數
    * dropLocalRoot 供本機資料夾轉 remote 的路徑移除同一資料夾的 local 最近
@@ -462,7 +464,8 @@ export interface AppState {
   cancelInit: () => void;
   confirmAdopt: (tools: string[]) => Promise<void>;
   cancelAdopt: () => void;
-  /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案、背景 local 分頁各探測一次路徑有效性。 */
+  /** 啟動：還原持久化分頁、依持久化 activeKey 切回最後活躍專案（完成即 resolve）；
+   * 背景 local 分頁各探測一次路徑有效性，不等它們完成。 */
   restoreTabs: () => Promise<void>;
   /** Ctrl+Tab：循環切至下一分頁（走開啟專案語意）。 */
   cycleTab: () => Promise<void>;
@@ -674,9 +677,23 @@ function cancelableOverlaysCleared(): Partial<AppState> {
   };
 }
 
-/** 不可取消浮層（遷移、遠端衝突）開啟中——變更詳情與討論的開啟動作此時不改任何狀態。 */
-function uncancelableOverlayOpen(s: AppState): boolean {
+/** 不可取消浮層（遷移、遠端衝突）開啟中——變更詳情與討論的開啟動作此時不改任何狀態；
+ * speclink 網址（deepLink.ts）此時也不切換專案。 */
+export function uncancelableOverlayOpen(s: Pick<AppState, "migrationRoot" | "pendingRemoteConflict">): boolean {
   return s.migrationRoot !== null || s.pendingRemoteConflict !== null;
+}
+
+/** 活躍專案清單中的變更——openDetail 與 speclink 網址共用的查找。 */
+export function findChange(s: Pick<AppState, "changes">, name: string): ChangeItem | undefined {
+  return s.changes.find((x) => x.name === name);
+}
+
+/** 活躍專案清單中的討論（進行中先於已封存）——openDiscussion 與 speclink 網址共用的查找。 */
+export function findDiscussion(
+  s: Pick<AppState, "discussions">,
+  slug: string,
+): AppState["discussions"]["active"][number] | undefined {
+  return s.discussions.active.find((x) => x.slug === slug) ?? s.discussions.archived.find((x) => x.slug === slug);
 }
 
 /** 活躍分頁的遷移完成態：更新途中切走的分頁，切回來才顯示。 */
@@ -1518,7 +1535,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     // 開啟中則不改任何狀態（系統匣仍會把主視窗帶到前景）。
     openDetail(name) {
       if (uncancelableOverlayOpen(get())) return;
-      const c = get().changes.find((x) => x.name === name);
+      const c = findChange(get(), name);
       // 換 change 清掉上一個 change 的動詞結果（detailVerb keyed by change）。
       if (c)
         set({
@@ -1534,10 +1551,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     openDiscussion(slug) {
       if (uncancelableOverlayOpen(get())) return;
-      const lists = get().discussions;
-      const d =
-        lists.active.find((x) => x.slug === slug) ??
-        lists.archived.find((x) => x.slug === slug);
+      const d = findDiscussion(get(), slug);
       // 取代變更詳情頁時 detailVerb 一併清空（比照 closeDetailPage）。
       if (d)
         set({
@@ -2258,12 +2272,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
     },
 
-    async openProjectAt(path) {
+    async openProjectAt(path, options) {
       if (!workspace) return null;
       try {
         const probe = await workspace.openProject(path);
         if (probe.status === "project") {
-          return await enterProject(probe.root, probe.name);
+          const key = await enterProject(probe.root, probe.name);
+          return get().activeKey === key && !get().loadFailed ? key : null;
         } else if (probe.status === "uninitialized") {
           set({ pendingInit: probe.dir });
         } else if (probe.status === "unadopted") {
@@ -2291,6 +2306,16 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
           const target = probe.repo ? `${marker.project}/${probe.repo}` : marker.project;
           if (!connection) {
             set({ workspaceChooser: { initialServerUrl: marker.origin } });
+          } else if (options?.remoteViaChooser) {
+            // speclink 網址入口（desktop-deep-link）：不自動同步技能檔、不自動連線——
+            // 預選好連線、scope 與 checkout，交給使用者在選擇器確認。
+            set({
+              workspaceChooser: {
+                initialConnectionId: connection.id,
+                initialScope: probe.repo ? { projectKey: marker.project, repoKey: probe.repo } : null,
+                initialCheckoutPath: path,
+              },
+            });
           } else if (connectionsAdapter && probe.repo) {
             // 開啟前先收斂本機 Agent 工具（spec「remote marker 資料夾的探測分流」）：
             // 有既有選集就自動 reconciliation 後才 handshake；缺選集則導回 chooser
@@ -2680,8 +2705,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         }
       }
       // 背景 local 分頁啟動時各探測一次路徑有效性；失效轉錯誤態（design D11）。
+      // 不等它們完成：restoreTabs 是 speclink 網址的就緒訊號，卡住的背景分頁不得拖住它。
       const active = get().activeKey;
-      await Promise.all(
+      void Promise.all(
         get()
           .tabs.filter((t) => locatorKey(t.locator) !== active)
           .map(async (t) => {

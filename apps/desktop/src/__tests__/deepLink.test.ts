@@ -1,6 +1,6 @@
 // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）：解析表逐列對照 spec 的
 // 「網址解析」Example。
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 import defaultCapsRaw from "../../src-tauri/capabilities/default.json?raw";
 import baseConfRaw from "../../src-tauri/tauri.conf.json?raw";
@@ -65,7 +65,26 @@ describe("parseSpeclinkUrl：不可信網址", () => {
 });
 
 // 派送（design「啟動時的網址排隊到分頁還原之後」「專案一律走 openProjectAt，詳情等載入後再開」）：
-// 假 store 與假依賴記下呼叫順序。
+// 外掛、sonner 與 tray.ts 的 openMainWindow 換成假模組，假 store 記下呼叫順序。
+const { plugin, toastError, openMainWindow } = vi.hoisted(() => ({
+  plugin: {
+    launch: null as string[] | null,
+    emit: (_urls: string[]) => {},
+    unlisten: (() => {}) as () => void,
+  },
+  toastError: vi.fn(),
+  openMainWindow: vi.fn(),
+}));
+vi.mock("@tauri-apps/plugin-deep-link", () => ({
+  getCurrent: async () => plugin.launch,
+  onOpenUrl: async (handler: (urls: string[]) => void) => {
+    plugin.emit = handler;
+    return () => plugin.unlisten();
+  },
+}));
+vi.mock("sonner", () => ({ toast: { error: toastError } }));
+vi.mock("../tray", () => ({ openMainWindow }));
+
 const PROJECT = "/Users/dev/speclink";
 const PROJECT_KEY = `local:${PROJECT}`;
 const CHANGE_URL = "speclink://change/add-search?project=%2FUsers%2Fdev%2Fspeclink";
@@ -81,35 +100,44 @@ function deferred<T>() {
   return { promise, resolve };
 }
 
-function harness(over: { ready?: Promise<void>; launch?: string[] | null; openKey?: string | null } = {}) {
-  const log: string[] = [];
-  let emit: (urls: string[]) => void = () => {};
-  const unlisten = vi.fn();
+let log: string[] = [];
+beforeEach(() => {
+  log = [];
+  plugin.launch = null;
+  plugin.emit = () => {};
+  plugin.unlisten = vi.fn();
+  openMainWindow.mockReset().mockImplementation(async () => {
+    log.push("openMainWindow");
+  });
+  toastError.mockReset().mockImplementation((message: string) => log.push(`toast:${message}`));
+});
+
+function harness(
+  over: {
+    ready?: Promise<void>;
+    launch?: string[];
+    openKey?: string | null;
+    projectName?: string;
+    migrationRoot?: string | null;
+  } = {},
+) {
+  plugin.launch = over.launch ?? null;
   const state = {
     changes: [{ name: "add-search" }],
     discussions: { active: [{ slug: "board-search-bar" }], archived: [] },
-    sessions: { [PROJECT_KEY]: { descriptor: { name: "speclink" } } },
-    openProjectAt: vi.fn(async (path: string) => {
+    sessions: { [PROJECT_KEY]: { descriptor: { name: over.projectName ?? "speclink" } } },
+    migrationRoot: over.migrationRoot ?? null,
+    pendingRemoteConflict: null,
+    openProjectAt: vi.fn(async (path: string, _options?: { remoteViaChooser?: boolean }) => {
       log.push(`openProjectAt:${path}`);
       return over.openKey === undefined ? PROJECT_KEY : over.openKey;
     }),
     openDetail: vi.fn((name: string) => log.push(`openDetail:${name}`)),
     openDiscussion: vi.fn((slug: string) => log.push(`openDiscussion:${slug}`)),
+    setBoardView: vi.fn((view: string) => log.push(`setBoardView:${view}`)),
   };
-  const deps = {
-    ready: over.ready ?? Promise.resolve(),
-    getCurrent: vi.fn(async () => over.launch ?? null),
-    onOpenUrl: vi.fn(async (handler: (urls: string[]) => void) => {
-      emit = handler;
-      return unlisten;
-    }),
-    openMainWindow: vi.fn(async () => {
-      log.push("openMainWindow");
-    }),
-    toast: vi.fn((message: string) => log.push(`toast:${message}`)),
-  };
-  const dispose = installDeepLinks({ getState: () => state as never }, deps);
-  return { log, state, deps, unlisten, dispose, emit: (urls: string[]) => emit(urls) };
+  const dispose = installDeepLinks({ getState: () => state as never }, over.ready ?? Promise.resolve());
+  return { state, dispose, emit: (urls: string[]) => plugin.emit(urls) };
 }
 
 describe("installDeepLinks", () => {
@@ -119,21 +147,21 @@ describe("installDeepLinks", () => {
     await flush();
     h.emit([DISCUSSION_URL]);
     await flush();
-    expect(h.log).toEqual([]);
+    expect(log).toEqual([]);
 
     // 第一個網址的開專案卡住時，第二個網址不得開始。
     const slow = deferred<string | null>();
     h.state.openProjectAt.mockImplementationOnce(async (path: string) => {
-      h.log.push(`openProjectAt:${path}`);
+      log.push(`openProjectAt:${path}`);
       return slow.promise;
     });
     ready.resolve();
     await flush();
-    expect(h.log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
 
     slow.resolve(PROJECT_KEY);
     await flush();
-    expect(h.log).toEqual([
+    expect(log).toEqual([
       "openMainWindow",
       `openProjectAt:${PROJECT}`,
       "openDetail:add-search",
@@ -143,11 +171,12 @@ describe("installDeepLinks", () => {
     ]);
   });
 
-  it("(b) 變更網址依序喚起主視窗、開專案、開變更詳情", async () => {
+  it("(b) 變更網址依序喚起主視窗、開專案（remote 標記改走選擇器）、開變更詳情", async () => {
     const h = harness({ launch: [CHANGE_URL] });
     await flush();
-    expect(h.log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openDetail:add-search"]);
-    expect(h.deps.toast).not.toHaveBeenCalled();
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openDetail:add-search"]);
+    expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
+    expect(toastError).not.toHaveBeenCalled();
   });
 
   it("(c) 討論網址開討論詳情", async () => {
@@ -155,33 +184,37 @@ describe("installDeepLinks", () => {
     await flush();
     h.emit([DISCUSSION_URL]);
     await flush();
-    expect(h.log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openDiscussion:board-search-bar"]);
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openDiscussion:board-search-bar"]);
   });
 
   it("(d) openProjectAt 回傳 null（對話框或選擇器接手）時不開詳情、不出 toast", async () => {
-    const h = harness({ launch: [CHANGE_URL], openKey: null });
+    harness({ launch: [CHANGE_URL], openKey: null });
     await flush();
-    expect(h.log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
   });
 
   it.each([
-    ["變更", "speclink://change/no-such-change?project=%2FUsers%2Fdev%2Fspeclink", "no-such-change"],
-    ["討論", "speclink://discussion/no-such-topic?project=%2FUsers%2Fdev%2Fspeclink", "no-such-topic"],
-  ])("(e) 找不到%s：出 toast（含專案名稱與目標名稱），不開詳情", async (_label, url, target) => {
+    ["變更", "speclink://change/no-such-change?project=%2FUsers%2Fdev%2Fspeclink", "deepLink.changeNotFound", "no-such-change"],
+    ["討論", "speclink://discussion/no-such-topic?project=%2FUsers%2Fdev%2Fspeclink", "deepLink.discussionNotFound", "no-such-topic"],
+  ])("(e) 找不到%s：主區切回看板（關掉詳情頁），toast 含專案名稱與目標名稱", async (_label, url, key, target) => {
     const h = harness({ launch: [url] });
     await flush();
+    const message = APP_MESSAGES["zh-TW"][key].replace("{project}", "speclink").replace("{name}", target);
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "setBoardView:board", `toast:${message}`]);
     expect(h.state.openDetail).not.toHaveBeenCalled();
     expect(h.state.openDiscussion).not.toHaveBeenCalled();
-    expect(h.deps.toast).toHaveBeenCalledTimes(1);
-    const message = h.deps.toast.mock.calls[0][0];
-    expect(message).toContain("speclink");
-    expect(message).toContain(target);
+  });
+
+  it("(e2) 專案名稱含 {name} 字樣時照原字顯示，不被當成佔位符", async () => {
+    harness({ launch: ["speclink://change/x?project=%2FUsers%2Fdev%2Fspeclink"], projectName: "a{name}b" });
+    await flush();
+    expect(toastError).toHaveBeenCalledWith("在 a{name}b 找不到變更 x");
   });
 
   it("(f) 格式錯誤：只喚起主視窗並出 toast，不開專案", async () => {
     const h = harness({ launch: ["speclink://spec/desktop-app?project=%2FUsers%2Fdev%2Fspeclink"] });
     await flush();
-    expect(h.log).toEqual(["openMainWindow", `toast:${APP_MESSAGES["zh-TW"]["deepLink.invalid"]}`]);
+    expect(log).toEqual(["openMainWindow", `toast:${APP_MESSAGES["zh-TW"]["deepLink.invalid"]}`]);
     expect(h.state.openProjectAt).not.toHaveBeenCalled();
   });
 
@@ -191,10 +224,24 @@ describe("installDeepLinks", () => {
     await flush();
     h.dispose();
     await flush();
-    expect(h.unlisten).toHaveBeenCalledTimes(1);
+    expect(plugin.unlisten).toHaveBeenCalledTimes(1);
     ready.resolve();
     await flush();
-    expect(h.log).toEqual([]);
+    expect(log).toEqual([]);
+  });
+
+  it("(h) 不可取消的浮層開著：喚起主視窗，但不切專案、不開詳情、不出 toast", async () => {
+    const h = harness({ launch: [CHANGE_URL], migrationRoot: "/Users/dev/legacy" });
+    await flush();
+    expect(log).toEqual(["openMainWindow"]);
+    expect(h.state.openProjectAt).not.toHaveBeenCalled();
+  });
+
+  it("(i) 喚起主視窗失敗時照常處理網址", async () => {
+    openMainWindow.mockRejectedValueOnce(new Error("window gone"));
+    harness({ launch: [CHANGE_URL] });
+    await flush();
+    expect(log).toEqual([`openProjectAt:${PROJECT}`, "openDetail:add-search"]);
   });
 });
 

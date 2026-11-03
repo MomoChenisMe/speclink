@@ -2,9 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { CloudOff, MoreHorizontal } from "lucide-react";
-import { toast } from "sonner";
 import {
   KanbanBoard,
   ArchivedList,
@@ -52,7 +50,7 @@ import {
   type AppState,
 } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
-import { initTray, openMainWindow, type TrayController } from "./tray";
+import { initTray, type TrayController } from "./tray";
 import { installDeepLinks } from "./deepLink";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
 import { ProjectRail, tabPathHint } from "./components/ProjectRail";
@@ -467,13 +465,7 @@ function AppInner({
     // 背景徽章快照）；否則維持既有的整批 refresh（無活躍 session 時為無事）。
     // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）排隊到分頁還原之後才處理。
     const uninstallDeepLinks = workspace
-      ? installDeepLinks(useStore, {
-          ready: useStore.getState().restoreTabs(),
-          getCurrent,
-          onOpenUrl,
-          openMainWindow,
-          toast: (message) => toast.error(message),
-        })
+      ? installDeepLinks(useStore, useStore.getState().restoreTabs())
       : null;
     if (!workspace) void useStore.getState().refresh();
     if (connections) void useStore.getState().refreshConnections();

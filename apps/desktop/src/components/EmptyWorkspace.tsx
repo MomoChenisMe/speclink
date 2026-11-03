@@ -9,7 +9,7 @@ import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { WorkspaceChooserIntent } from "../store";
-import { RecentList, useRecentOpener } from "./RecentList";
+import { RecentList, useRecentOpener, type OpenLocal } from "./RecentList";
 
 export interface EmptyWorkspaceProps {
   /** 已濾掉專案列上開著的項目（零專案時即全部記錄）。 */
@@ -19,7 +19,7 @@ export interface EmptyWorkspaceProps {
   onRefreshConnections: () => Promise<boolean>;
   workspace: Pick<WorkspaceAdapter, "openProject">;
   connectionAdapter: Pick<ConnectionsAdapter, "inspectCheckout">;
-  onOpenLocal: (path: string) => Promise<unknown>;
+  onOpenLocal: OpenLocal;
   onOpenRemote: (connectionId: string, target: string, checkoutRoot?: string) => Promise<void>;
   onRemoveRecent: (key: string) => void;
   onOpenChooser: (intent?: WorkspaceChooserIntent) => void;
