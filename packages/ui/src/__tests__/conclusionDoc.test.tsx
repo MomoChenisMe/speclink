@@ -5,6 +5,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
 import { ConclusionDoc } from "../components/ConclusionDoc";
+import { engineCut } from "./engineCuts";
 
 const wrapper = ({ children }: { children: ReactNode }) => <I18nProvider locale="zh-TW">{children}</I18nProvider>;
 const render = (ui: ReactElement) => rtlRender(ui, { wrapper });
@@ -20,14 +21,23 @@ const section = (container: HTMLElement, key: string) =>
 const countOf = (el: HTMLElement) => el.querySelector("h2")!.parentElement!.querySelector(".tabular-nums")?.textContent;
 
 // spec Scenario「決定主句放大與細節收合」：一句定論＋27 條頂層列點（其中 7 條為分刀列）。
+// 每 3 條細節後插一條分刀列，最後一刀接在尾端：20 條細節＋7 條分刀。
+const MANY_CUT_AT = Array.from({ length: 20 }, (_, i) => i).filter((i) => i % 3 === 2 || i === 19);
+const manyCutLine = (i: number) => `**cut ${Math.floor(i / 3)} \`chg-${i}\`**: 範圍 ${i}`;
 const MANY = [
   "**Decision**: 一句定論。",
-  // 每 3 條細節後插一條分刀列，最後一刀接在尾端：20 條細節＋7 條分刀。
-  ...Array.from({ length: 20 }, (_, i) => [
-    `- 細節 ${i + 1}`,
-    ...(i % 3 === 2 || i === 19 ? [`- **cut ${Math.floor(i / 3)} \`chg-${i}\`**: 範圍 ${i}`] : []),
-  ]).flat(),
+  ...Array.from({ length: 20 }, (_, i) => [`- 細節 ${i + 1}`, ...(MANY_CUT_AT.includes(i) ? [`- ${manyCutLine(i)}`] : [])]).flat(),
 ].join("\n");
+// 引擎對 MANY 回的七把刀（promoted_to 為空）。
+const MANY_CUTS = MANY_CUT_AT.map((i) =>
+  engineCut(manyCutLine(i), {
+    cut: `cut ${Math.floor(i / 3)}`,
+    title: `範圍 ${i}`,
+    changes: [`chg-${i}`],
+    changesInBold: true,
+    unpromoted: [`chg-${i}`],
+  }),
+);
 
 // spec Scenario「分刀卡與變更籤」：detail-content-redesign 的三條分刀列，前兩刀已封存、第三刀未轉出。
 const CUTS = [
@@ -51,10 +61,35 @@ const CUTS = [
   "**Capture to**: proposal、design、spec（desktop-app MODIFIED）、tasks",
   "**Next**: /speclink-propose --from-discussion detail-content-redesign（先建 cut 1）",
 ].join("\n");
+// 引擎對 CUTS 回的三把刀：promoted_to 含前兩刀的變更。
+const CUTS_ENGINE = [
+  engineCut("**cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄", {
+    cut: "cut 1",
+    title: "骨架",
+    note: "三種詳情頁改三欄",
+    changes: ["desktop-detail-doc-tree"],
+    changesInBold: true,
+  }),
+  engineCut("**cut 2 `desktop-change-doc-views`**: 變更文件渲染器——提案、設計的新畫法", {
+    cut: "cut 2",
+    title: "變更文件渲染器",
+    note: "提案、設計的新畫法",
+    changes: ["desktop-change-doc-views"],
+    changesInBold: true,
+  }),
+  engineCut("**cut 3 `desktop-discussion-doc-views`**: 討論文件渲染器——結論分刀卡", {
+    cut: "cut 3",
+    title: "討論文件渲染器",
+    note: "結論分刀卡",
+    changes: ["desktop-discussion-doc-views"],
+    changesInBold: true,
+    unpromoted: ["desktop-discussion-doc-views"],
+  }),
+];
 
 describe("ConclusionDoc", () => {
   it("27 條細節含 7 條分刀：細線列 4 條、鈕文字「展開其餘 16 項定案細節」、點後 20 條、計數 20", () => {
-    const { container } = render(<ConclusionDoc text={MANY} />);
+    const { container } = render(<ConclusionDoc text={MANY} cuts={MANY_CUTS} />);
     const decision = section(container, "conclusion.decision");
     expect(decision.querySelector("[data-verdict]")!.textContent).toBe("一句定論。");
     const rows = () => decision.querySelectorAll("[data-row-list] > li");
@@ -72,7 +107,7 @@ describe("ConclusionDoc", () => {
       name === "desktop-detail-doc-tree" || name === "desktop-change-doc-views"
         ? { label: "已封存", tone: "neutral" as const, onOpen: () => opened(name) }
         : null;
-    const { container } = render(<ConclusionDoc text={CUTS} stageOf={stageOf} />);
+    const { container } = render(<ConclusionDoc text={CUTS} cuts={CUTS_ENGINE} stageOf={stageOf} />);
     const cuts = section(container, "conclusion.cuts");
     expect(countOf(cuts)).toBe("3");
     const cards = Array.from(cuts.querySelectorAll<HTMLElement>("[data-cut]"));
@@ -107,10 +142,17 @@ describe("ConclusionDoc", () => {
     expect(section(container, "conclusion.decision").querySelectorAll("[data-row-list] > li").length).toBe(1);
   });
 
-  it("部分轉出：卡無 data-cut-todo，只有未轉出的變更名籤之後有「尚未轉出」", () => {
+  it("部分轉出：卡無 data-cut-todo，只有 unpromoted 內的變更名籤之後有「尚未轉出」", () => {
     const stageOf = (name: string) => (name === "a-one" ? { label: "進行中", tone: "progress" as const } : null);
+    const cut = engineCut("**cut 2 `a-one` `b-two`**: 外殼", {
+      cut: "cut 2",
+      title: "外殼",
+      changes: ["a-one", "b-two"],
+      changesInBold: true,
+      unpromoted: ["b-two"],
+    });
     const { container } = render(
-      <ConclusionDoc text={"**Decision**: 定。\n- **cut 2 `a-one` `b-two`**: 外殼"} stageOf={stageOf} />,
+      <ConclusionDoc text={"**Decision**: 定。\n- **cut 2 `a-one` `b-two`**: 外殼"} cuts={[cut]} stageOf={stageOf} />,
     );
     const card = container.querySelector<HTMLElement>("[data-cut]")!;
     expect(card.hasAttribute("data-cut-todo")).toBe(false);
@@ -124,7 +166,10 @@ describe("ConclusionDoc", () => {
   });
 
   it("刀列沒有變更名籤時卡無 data-cut-todo、無「尚未轉出」", () => {
-    const { container } = render(<ConclusionDoc text={"**Decision**: 定。\n- **刀三**：系統匣面板"} stageOf={() => null} />);
+    const cut = engineCut("**刀三**：系統匣面板", { cut: "刀三", title: "系統匣面板" });
+    const { container } = render(
+      <ConclusionDoc text={"**Decision**: 定。\n- **刀三**：系統匣面板"} cuts={[cut]} stageOf={() => null} />,
+    );
     const card = container.querySelector<HTMLElement>("[data-cut]")!;
     expect(card.getAttribute("data-cut")).toBe("刀三");
     expect(card.hasAttribute("data-cut-todo")).toBe(false);
@@ -132,12 +177,14 @@ describe("ConclusionDoc", () => {
   });
 
   it("名稱只寫在粗體之後的舊式刀列（反引號裡是識別字與檔名）卡無 data-cut-todo、無「尚未轉出」", () => {
-    const { container } = render(
-      <ConclusionDoc
-        text={"**Decision**: 定。\n- **刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`"}
-        stageOf={() => null}
-      />,
-    );
+    const line = "**刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`";
+    const cut = engineCut(line, {
+      cut: "刀一",
+      title: "（候選 1＋2）",
+      note: "`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`",
+      changes: ["KeyLines", "DiscussionHead", "util.rs"],
+    });
+    const { container } = render(<ConclusionDoc text={`**Decision**: 定。\n- ${line}`} cuts={[cut]} stageOf={() => null} />);
     const card = container.querySelector<HTMLElement>("[data-cut]")!;
     expect(card.getAttribute("data-cut")).toBe("刀一");
     expect(card.querySelector('[data-cut-change="KeyLines"]')).toBeTruthy();
@@ -151,7 +198,9 @@ describe("ConclusionDoc", () => {
       targets.push(this);
     });
     const onJumped = vi.fn();
-    const { container } = render(<ConclusionDoc text={CUTS} jump={{ id: "cut 2", seq: 1 }} onJumped={onJumped} />);
+    const { container } = render(
+      <ConclusionDoc text={CUTS} cuts={CUTS_ENGINE} jump={{ id: "cut 2", seq: 1 }} onJumped={onJumped} />,
+    );
     expect(targets).toEqual([container.querySelector('[data-cut="cut 2"]')]);
     expect(scrollSpy).toHaveBeenCalledWith(expect.objectContaining({ block: "center" }));
     expect(onJumped).toHaveBeenCalledTimes(1);
@@ -160,7 +209,7 @@ describe("ConclusionDoc", () => {
   it("jump 的目標刀卡不存在時不捲動、照樣呼叫 onJumped", () => {
     const scrollSpy = vi.spyOn(Element.prototype, "scrollIntoView").mockImplementation(() => {});
     const onJumped = vi.fn();
-    render(<ConclusionDoc text={CUTS} jump={{ id: "cut 9", seq: 1 }} onJumped={onJumped} />);
+    render(<ConclusionDoc text={CUTS} cuts={CUTS_ENGINE} jump={{ id: "cut 9", seq: 1 }} onJumped={onJumped} />);
     expect(scrollSpy).not.toHaveBeenCalled();
     expect(onJumped).toHaveBeenCalledTimes(1);
   });
@@ -224,7 +273,7 @@ describe("ConclusionDoc", () => {
   });
 
   it("[data-doc-heading] 依序為決定、分刀、理由、否決替代案、擱置、記錄去向、下一步", () => {
-    const { container } = render(<ConclusionDoc text={CUTS} />);
+    const { container } = render(<ConclusionDoc text={CUTS} cuts={CUTS_ENGINE} />);
     expect(Array.from(container.querySelectorAll("[data-doc-heading]")).map((h) => h.textContent)).toEqual([
       "決定",
       "分刀",
@@ -234,6 +283,28 @@ describe("ConclusionDoc", () => {
       "記錄去向",
       "下一步",
     ]);
+  });
+
+  it("以 `*` 起頭的刀列不是引擎的刀：留在定案細節、沒有分刀區段", () => {
+    const { container } = render(<ConclusionDoc text={"**Decision**: 定。\n* **cut 3 `add-x`**: 範圍"} cuts={[]} />);
+    expect(section(container, "conclusion.cuts")).toBeNull();
+    const decision = section(container, "conclusion.decision");
+    expect(countOf(decision)).toBe("1");
+    expect(decision.querySelector("[data-row-list] > li")!.textContent).toContain("cut 3");
+  });
+
+  it("舊 server 沒有分刀資料（cuts 為空）：沒有分刀區段，3 條刀列與 5 條細節都在定案細節", () => {
+    const md = [
+      "**Decision**: 定論。",
+      ...Array.from({ length: 5 }, (_, i) => `- 細節 ${i + 1}`),
+      "- **cut 1 `a-one`**: 一",
+      "- **cut 2 `b-two`**: 二",
+      "- **cut 3 `c-three`**: 三",
+    ].join("\n");
+    const { container } = render(<ConclusionDoc text={md} cuts={[]} />);
+    expect(section(container, "conclusion.cuts")).toBeNull();
+    expect(container.querySelector("[data-cut]")).toBeNull();
+    expect(countOf(section(container, "conclusion.decision"))).toBe("8");
   });
 
   it("缺席欄位不渲染空區段；記錄去向切不出籤時照 markdown", () => {

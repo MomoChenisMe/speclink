@@ -821,6 +821,17 @@ pub fn conclusion_text(store: &dyn Store, slug: &str) -> Option<String> {
     conclusion_body(&store.read_discussion(slug)?.text)
 }
 
+/// The cuts in a record's conclusion with their promotion state, in conclusion
+/// order — the one entry point the server's discussion detail and the desktop
+/// read. `text` and `promoted_to` MUST come from the same read of the same
+/// record (`read_discussion`'s text and its head), as in [`live_conclusions`].
+/// No conclusion, or no cut in it, gives an empty list.
+pub fn record_cuts(text: &str, promoted_to: &[String]) -> Vec<cuts::RecordCut> {
+    conclusion_body(text)
+        .map(|c| cuts::parse_cuts(&c).into_iter().map(|cut| cut.record(promoted_to)).collect())
+        .unwrap_or_default()
+}
+
 fn conclusion_body(text: &str) -> Option<String> {
     let (s, e) = section_body_range(text, "Conclusion")?;
     let body = strip_html_comments(&text[s..e]).trim().to_string();

@@ -1,13 +1,14 @@
 import type { ReactNode } from "react";
 import { ArrowRight } from "lucide-react";
 
-import type { ArchivedItem, ChangeItem } from "../adapter";
+import type { ArchivedItem, ChangeItem, DiscussionDocument } from "../adapter";
 import type { Translator } from "../i18n";
 import {
   contextModel,
+  cutCards,
+  cutPromotion,
   openItems,
   parseConclusion,
-  parseCuts,
   roundStats,
   splitDiscussionSections,
   splitRounds,
@@ -21,10 +22,9 @@ import {
 } from "../discussionModel";
 import { Button } from "./ui/button";
 import { Callout } from "./ui/callout";
-import { cutPromotionOf } from "./ConclusionDoc";
 import type { DocSummary, DocTile } from "./DetailShell";
 import { CommandChip, InlineMarks, NAME_CHIP_CLS } from "./DocParts";
-import { rowStage, type PromotedRow } from "./PromotedDoc";
+import type { PromotedRow } from "./PromotedDoc";
 
 /** 討論頁的文件節點：記錄切分成功時結論、討論過程、背景，失敗時「記錄」；衍生變更恆在。 */
 export type DiscussionTab = "conclusion" | "rounds" | "context" | "promote" | "record";
@@ -34,7 +34,10 @@ export interface DiscussionDocData {
   sections: DiscussionSections | null;
   rounds: DiscussionRound[] | null;
   conclusion: ReturnType<typeof parseConclusion>;
+  /** 引擎的刀對回決定細節後的刀卡（記錄沒有分刀資料時為空）。 */
   cuts: CutCard[];
+  /** 決定的定案細節數（刀卡認領的列不計）；結論沒有決定欄位時為 null。 */
+  detailCount: number | null;
   /** 背景的推導（記錄切分失敗時為 null）：ContextDoc 與背景數字磚共用。 */
   context: ContextModel | null;
   status: string;
@@ -60,9 +63,9 @@ export function discussionNames(
   };
 }
 
-/** 記錄全文（undefined＝載入中、null＝不存在）與頁已持有的清單 → `DiscussionDocData`。 */
+/** 記錄全文與其刀（undefined＝載入中、null＝不存在）與頁已持有的清單 → `DiscussionDocData`。 */
 export function discussionDocData(input: {
-  text: string | null | undefined;
+  doc: DiscussionDocument | null | undefined;
   status: string;
   hold: boolean;
   created: string | null;
@@ -71,14 +74,16 @@ export function discussionDocData(input: {
   names: ContextNames;
   onLocateCut?: (id: string) => void;
 }): DiscussionDocData {
-  const sections = input.text ? splitDiscussionSections(input.text) : null;
+  const sections = input.doc?.content ? splitDiscussionSections(input.doc.content) : null;
   const conclusion = sections ? parseConclusion(sections.conclusion) : null;
   const decision = conclusion?.fields.Decision;
+  const split = decision !== undefined ? cutCards(splitVerdict(decision).details, input.doc?.cuts ?? []) : null;
   return {
     sections,
     rounds: sections ? splitRounds(sections.rounds) : null,
     conclusion,
-    cuts: decision !== undefined ? parseCuts(splitVerdict(decision).details).cuts : [],
+    cuts: split?.cuts ?? [],
+    detailCount: split ? split.rest.length : null,
     context: sections ? contextModel(sections.context, input.names) : null,
     status: input.status,
     hold: input.hold,
@@ -122,7 +127,7 @@ function conclusionTiles(data: DiscussionDocData, { t, tn }: Translator): DocTil
   const fields = data.conclusion?.fields;
   if (!fields) return [];
   const rowsOf = (md: string | undefined) => (md === undefined ? null : splitRows(md).length);
-  const details = fields.Decision === undefined ? null : parseCuts(splitVerdict(fields.Decision).details).rest.length;
+  const details = data.detailCount;
   const changes = new Set(data.cuts.flatMap((c) => c.names)).size;
   const tiles: (DocTile | null)[] = [
     details === null ? null : { value: details, label: t("conclusion.tileDetails") },
@@ -136,12 +141,11 @@ function conclusionTiles(data: DiscussionDocData, { t, tn }: Translator): DocTil
 }
 
 /** 結論的未轉出提示框（live 討論、至少一刀整刀未轉出）：每刀一列附「前往」，末行接轉出指令籤。判定與刀卡同一支
- * `cutPromotionOf`（同一份衍生列），列出的刀＝畫成虛線框的刀。只排除已封存：引擎只拒絕從已封存的記錄轉出，
+ * `cutPromotion`（只讀引擎欄位），列出的刀＝畫成虛線框的刀。只排除已封存：引擎只拒絕從已封存的記錄轉出，
  * 已轉出、未保留的 live 討論照樣能轉出下一刀。 */
 function unpromotedCallout(data: DiscussionDocData, t: Translate): ReactNode {
   if (data.status === "archived") return null;
-  const stageOf = rowStage(data.rows);
-  const todo = data.cuts.filter((cut) => cutPromotionOf(cut, stageOf) === "none");
+  const todo = data.cuts.filter((cut) => cutPromotion(cut) === "none");
   if (todo.length === 0) return null;
   const { onLocateCut } = data;
   const slug = data.context?.names.self;

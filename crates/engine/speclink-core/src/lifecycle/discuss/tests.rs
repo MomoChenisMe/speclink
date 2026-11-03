@@ -2241,3 +2241,87 @@ fn mark_promoted_on_an_unclosed_record_without_promoted_to_errors_and_keeps_the_
     assert!(super::mark_promoted(&store, "x", "cut", false).is_err(), "無處可插要大聲失敗");
     assert_eq!(store.discussion("x"), unclosed);
 }
+
+// --- record_cuts（discussion-cuts-from-engine design「一份記錄的刀以單一入口計算」）---
+
+use super::cuts::RecordCut;
+
+/// Decision 為 client-protocol「分刀各欄」Example 三列的已結論記錄。
+fn cuts_doc() -> String {
+    concluded_doc(
+        "panel",
+        "Panel",
+        "定案。\n\n- **cut 1 `a`**: 骨架——三種詳情頁改三欄\n\
+         - **cut 2 外殼**（拆兩個 change：`b` 外殼、`c` 選單）\n\
+         - **cut 3 `d` `e`**: 收尾\n",
+    )
+}
+
+fn names(list: &[&str]) -> Vec<String> {
+    list.iter().map(|s| s.to_string()).collect()
+}
+
+fn record_cut(cut: &str, title: &str, note: &str, line: &str, changes: &[&str], in_bold: bool, unpromoted: &[&str]) -> RecordCut {
+    RecordCut {
+        cut: cut.into(),
+        title: title.into(),
+        note: note.into(),
+        line: line.into(),
+        changes: names(changes),
+        changes_in_bold: in_bold,
+        unpromoted: names(unpromoted),
+    }
+}
+
+#[test]
+fn record_cuts_carries_the_example_columns() {
+    let cuts = super::record_cuts(&cuts_doc(), &names(&["a"]));
+    assert_eq!(
+        cuts,
+        [
+            record_cut("cut 1", "骨架", "三種詳情頁改三欄", "**cut 1 `a`**: 骨架——三種詳情頁改三欄", &["a"], true, &[]),
+            record_cut(
+                "cut 2",
+                "外殼",
+                "拆兩個 change：`b` 外殼、`c` 選單",
+                "**cut 2 外殼**（拆兩個 change：`b` 外殼、`c` 選單）",
+                &["b", "c"],
+                false,
+                &[],
+            ),
+            record_cut("cut 3", "收尾", "", "**cut 3 `d` `e`**: 收尾", &["d", "e"], true, &["d", "e"]),
+        ]
+    );
+}
+
+#[test]
+fn record_cuts_unpromoted_follows_promoted_to_and_stays_empty_without_names_in_bold() {
+    let none = super::record_cuts(&cuts_doc(), &[]);
+    let unpromoted: Vec<_> = none.iter().map(|c| c.unpromoted.clone()).collect();
+    // promoted_to 為空：粗體內有變更名的刀全部尚未轉出；變更名不在粗體內的 cut 2 無從判定、為空。
+    assert_eq!(unpromoted, [names(&["a"]), names(&[]), names(&["d", "e"])]);
+    let all = super::record_cuts(&cuts_doc(), &names(&["a", "b", "c", "d", "e"]));
+    assert!(all.iter().all(|c| c.unpromoted.is_empty()));
+}
+
+#[test]
+fn record_cuts_is_empty_without_a_conclusion() {
+    assert_eq!(super::record_cuts(&open_doc("fresh-topic", "Fresh"), &names(&["a"])), []);
+}
+
+#[test]
+fn record_cuts_line_has_the_html_comment_removed() {
+    let text = concluded_doc("panel", "Panel", "定案。\n\n- **cut 1 `a`**: 骨架 <!-- 備註 -->\n");
+    let cuts = super::record_cuts(&text, &[]);
+    assert_eq!(cuts[0].line, "**cut 1 `a`**: 骨架");
+    assert_eq!(cuts[0].title, "骨架");
+}
+
+#[test]
+fn record_cuts_serialize_as_seven_camel_case_keys() {
+    let cut = super::record_cuts(&cuts_doc(), &[]).remove(0);
+    let value = serde_json::to_value(&cut).unwrap();
+    let mut keys: Vec<_> = value.as_object().unwrap().keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["changes", "changesInBold", "cut", "line", "note", "title", "unpromoted"]);
+}

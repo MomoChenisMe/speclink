@@ -31,6 +31,8 @@ use speclink_protocol::query::{
     ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse, PlanUnpromotedCut, ScopesResponse,
     SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
 };
+use speclink_core::discuss::cuts::RecordCut;
+use speclink_desktop_core::discussions::DiscussionDocument;
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
@@ -1093,6 +1095,32 @@ pub(crate) fn reorder_full_text(
     })
 }
 
+/// GET /discussions/{slug} 的結果轉成桌面的討論記錄回應：`content` 與 `cuts` 逐欄搬運
+/// （舊 server 缺 `cuts` 時 protocol 已讀作空陣列），404 與本地語意一致為 None。
+pub(crate) fn discussion_document_of(
+    shown: Result<ShowDiscussionResponse, RemoteError>,
+) -> Result<Option<DiscussionDocument>, RemoteError> {
+    let shown = match shown {
+        Ok(shown) => shown,
+        Err(e) if e.status == Some(404) => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let cuts = shown
+        .cuts
+        .into_iter()
+        .map(|c| RecordCut {
+            cut: c.cut,
+            title: c.title,
+            note: c.note,
+            line: c.line,
+            changes: c.changes,
+            changes_in_bold: c.changes_in_bold,
+            unpromoted: c.unpromoted,
+        })
+        .collect();
+    Ok(Some(DiscussionDocument { content: shown.content, cuts }))
+}
+
 /// 拖排寫回的 CAS 收斂迴圈（決策 5）：讀現況 → 重算全文 → PUT 帶 If-Match；
 /// 409 重讀重算重試恰一次，再敗原樣回錯——呼叫端刷新 server 現況，絕不保留
 /// 未落檔的假象順序。
@@ -1784,12 +1812,13 @@ impl RemoteWorkspace {
         )
     }
 
+    /// 討論記錄全文與 server 解析的刀，與本地的討論記錄回應同形；404 回 None。
     pub fn discussion_document(
         &self,
         credentials: &dyn CredentialStore,
         slug: &str,
-    ) -> Result<ShowDiscussionResponse, RemoteError> {
-        self.run(credentials, |client| client.show_discussion(slug))
+    ) -> Result<Option<DiscussionDocument>, RemoteError> {
+        discussion_document_of(self.run(credentials, |client| client.show_discussion(slug)))
     }
 
     pub fn promote_discussion(
@@ -3092,5 +3121,44 @@ mod migration_bundle_tests {
         assert!(root.path().join("openspec").is_dir());
         assert!(!root.path().join("openspec.migrated-2026-07-21").exists());
         assert!(!root.path().join(".speclink.yaml").exists());
+    }
+}
+
+#[cfg(test)]
+mod discussion_document_tests {
+    use super::discussion_document_of;
+    use speclink_protocol::query::ShowDiscussionResponse;
+    use speclink_remote::RemoteError;
+
+    const INFO: &str = r#"{"slug":"panel","topic":"Panel","status":"promoted","rounds":0,"created":"2026-11-01","promotedTo":["add-y"],"path":"discussions/panel.md","archived":false}"#;
+
+    fn shown(cuts: &str) -> ShowDiscussionResponse {
+        serde_json::from_str(&format!(r##"{{"info":{INFO},"content":"# Discussion\n"{cuts}}}"##)).unwrap()
+    }
+
+    #[test]
+    fn discussion_document_carries_the_cuts_of_the_detail_response() {
+        let wire = r#"[{"cut":"cut 3","title":"路線圖","note":"","line":"**cut 3 `add-z`**: 路線圖","changes":["add-z"],"changesInBold":true,"unpromoted":["add-z"]}]"#;
+        let doc = discussion_document_of(Ok(shown(&format!(r#","cuts":{wire}"#)))).unwrap().expect("found");
+        let json = serde_json::to_value(&doc).unwrap();
+        assert_eq!(json["content"], "# Discussion\n");
+        assert_eq!(json["cuts"], serde_json::from_str::<serde_json::Value>(wire).unwrap(), "cuts 逐欄同值");
+        let mut keys: Vec<_> = json.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["content", "cuts"], "與本地的討論記錄回應同形");
+    }
+
+    #[test]
+    fn discussion_document_from_an_old_server_has_empty_cuts() {
+        let doc = discussion_document_of(Ok(shown(""))).unwrap().expect("found");
+        assert_eq!(doc.content, "# Discussion\n");
+        assert!(doc.cuts.is_empty());
+    }
+
+    #[test]
+    fn discussion_document_not_found_is_none_and_other_errors_pass_through() {
+        let error = |status| RemoteError { message: "boom".into(), reason: None, status, evidence: None };
+        assert_eq!(discussion_document_of(Err(error(Some(404)))).unwrap(), None);
+        assert_eq!(discussion_document_of(Err(error(Some(500)))).unwrap_err().message, "boom");
     }
 }

@@ -828,11 +828,17 @@ fn discussion_flow_reads_and_writes_through() {
 
     let shown = ws
         .discussion_document(&credentials, "rate-limiting")
-        .expect("show");
-    assert_eq!(shown.info.topic, "Rate limiting");
+        .expect("show")
+        .expect("found");
+    assert!(shown.content.contains("topic: Rate limiting"));
     assert!(
         shown.content.contains("**Decision**: do it"),
         "討論內文是 server 真值"
+    );
+    assert!(shown.cuts.is_empty(), "結論沒有刀");
+    assert!(
+        ws.discussion_document(&credentials, "no-such-topic").expect("404 is not an error").is_none(),
+        "不存在的討論回 None"
     );
 
     let promoted = ws

@@ -1,9 +1,10 @@
 //! 討論結論的分刀解析（plan-unpromoted-cuts design D1）：Decision 欄位裡以粗體刀編號
-//! 開頭的頂層列點為一把刀。規則逐條移植自桌面 packages/ui/src/discussionModel.ts 的
-//! `cutCard`（第 4 刀改由前端讀引擎資料前，兩邊的判定必須相同）。純函式，不做 I/O。
+//! 開頭的頂層列點為一把刀。`plan`、server 的討論詳情回應與桌面詳情頁都讀這一份
+//! （discussion-cuts-from-engine），前端不另做判定。純函式，不做 I/O。
 
 use super::{DECISION_LABEL, DEFERRED_LABEL, REJECTED_LABEL};
 use regex::Regex;
+use serde::Serialize;
 use std::sync::LazyLock;
 
 /// 結論裡規劃的一把刀。
@@ -18,6 +19,26 @@ pub struct Cut {
     /// 變更名寫在粗體內（``**cut N `change-name`**``）。false 時名稱取自粗體之後，
     /// 可能混有識別字或檔名，無從判定是否已轉出。
     pub names_in_bold: bool,
+    /// 首行其餘的說明（刀卡的第一條細線列）：範圍句取自粗體時為粗體之後的全部文字
+    /// （去掉開頭冒號、外圍整組括號），否則為第一個「——」之後的文字；沒有時為空字串。
+    pub note: String,
+    /// 列點首行去掉 `- ` 與頭尾空白的原文——前端以它把刀對回結論裡的那一條列點。
+    pub line: String,
+}
+
+/// 一份記錄裡的一把刀，連同它在該記錄 `promoted_to` 下的轉出狀態
+/// （[`super::record_cuts`]）。欄名沿用 `plan` 的 `unpromotedCuts`。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecordCut {
+    pub cut: String,
+    pub title: String,
+    pub note: String,
+    pub line: String,
+    pub changes: Vec<String>,
+    pub changes_in_bold: bool,
+    /// [`Cut::unpromoted`]。
+    pub unpromoted: Vec<String>,
 }
 
 impl Cut {
@@ -28,6 +49,19 @@ impl Cut {
             return Vec::new();
         }
         self.names.iter().filter(|n| !promoted_to.contains(n)).cloned().collect()
+    }
+
+    /// 這把刀在 `promoted_to` 下的 [`RecordCut`]。
+    pub fn record(self, promoted_to: &[String]) -> RecordCut {
+        RecordCut {
+            unpromoted: self.unpromoted(promoted_to),
+            cut: self.id,
+            title: self.title,
+            note: self.note,
+            line: self.line,
+            changes: self.names,
+            changes_in_bold: self.names_in_bold,
+        }
     }
 }
 
@@ -97,7 +131,8 @@ fn fence_of(line: &str) -> Option<(&str, &str)> {
 
 /// 頂層列點首行（去掉 `- `）為一把刀時回刀。
 fn cut_of(item: &str) -> Option<Cut> {
-    let rest = item.trim().strip_prefix("**")?;
+    let line = item.trim();
+    let rest = line.strip_prefix("**")?;
     let close = rest.find("**")?;
     let (bold, after) = (&rest[..close], &rest[close + 2..]);
     let plain = TICKS
@@ -112,10 +147,13 @@ fn cut_of(item: &str) -> Option<Cut> {
     let tail = after.trim_start();
     let tail = tail.strip_prefix([':', '：']).unwrap_or(tail).trim();
     // 範圍句取自粗體時粗體之後全部是說明；否則以第一個「——」切範圍句與說明。
-    let title = if !scope.is_empty() {
-        scope
+    let (title, note) = if !scope.is_empty() {
+        (scope, unwrap_parens(tail))
     } else {
-        tail.find("——").map_or(tail, |i| tail[..i].trim())
+        match tail.find("——") {
+            Some(i) => (tail[..i].trim(), tail[i + "——".len()..].trim()),
+            None => (tail, ""),
+        }
     };
     let in_bold = tick_names(bold);
     let names_in_bold = !in_bold.is_empty();
@@ -124,7 +162,29 @@ fn cut_of(item: &str) -> Option<Cut> {
         title: title.to_string(),
         names: if names_in_bold { in_bold } else { tick_names(after) },
         names_in_bold,
+        note: note.to_string(),
+        line: line.to_string(),
     })
+}
+
+/// 外圍恰為一整組括號（`（…）`／`(…)`，可巢狀；全形與半形視為同一種）時拿掉，否則原樣。
+fn unwrap_parens(text: &str) -> &str {
+    let Some(first) = text.chars().next().filter(|c| "（(".contains(*c)) else {
+        return text;
+    };
+    let mut depth = 0usize;
+    for (i, c) in text.char_indices() {
+        if "（(".contains(c) {
+            depth += 1;
+        } else if "）)".contains(c) {
+            depth -= 1;
+            if depth == 0 {
+                let end = i + c.len_utf8();
+                return if end == text.len() { text[first.len_utf8()..i].trim() } else { text };
+            }
+        }
+    }
+    text
 }
 
 /// 反引號片段裡的名稱，依出現順序去重；內容含空白的不算（`speclink plan` 這類指令不是變更名）。
@@ -330,6 +390,217 @@ mod tests {
         // 粗體內沒有變更名：無從判定，不算尚未轉出。
         let cut = only_cut("**cut 2 外殼**（`add-x`）");
         assert!(cut.unpromoted(&[]).is_empty());
+    }
+
+    // --- 首行說明與列點原文（discussion-cuts-from-engine）---
+
+    #[test]
+    fn example_rows_carry_note_and_line() {
+        // client-protocol「分刀各欄」Example 三列：(列點首行, cut, title, note, changes, changesInBold)
+        let rows: &[(&str, &str, &str, &str, &[&str], bool)] = &[
+            ("**cut 1 `a`**: 骨架——三種詳情頁改三欄", "cut 1", "骨架", "三種詳情頁改三欄", &["a"], true),
+            (
+                "**cut 2 外殼**（拆兩個 change：`b` 外殼、`c` 選單）",
+                "cut 2",
+                "外殼",
+                "拆兩個 change：`b` 外殼、`c` 選單",
+                &["b", "c"],
+                false,
+            ),
+            ("**cut 3 `d` `e`**: 收尾", "cut 3", "收尾", "", &["d", "e"], true),
+        ];
+        for (item, id, title, note, names, in_bold) in rows {
+            let cut = only_cut(item);
+            assert_eq!(cut.id, *id, "{item}");
+            assert_eq!(cut.title, *title, "{item}");
+            assert_eq!(cut.note, *note, "{item}");
+            assert_eq!(cut.names, *names, "{item}");
+            assert_eq!(cut.names_in_bold, *in_bold, "{item}");
+            assert_eq!(cut.line, *item, "{item}");
+        }
+    }
+
+    #[test]
+    fn note_matches_the_desktop_rows() {
+        // 前端 discussionModel.test.ts 的說明列案例（detail-content-redesign、desktop-ui-redesign 真實結論）：
+        // (列點首行, note)
+        let rows: &[(&str, &str)] = &[
+            (
+                "**cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄，九份文件先以現有渲染器落進新骨架",
+                "三種詳情頁改三欄，九份文件先以現有渲染器落進新骨架",
+            ),
+            (
+                "**cut 2 `desktop-change-doc-views`**: 變更文件渲染器——提案、設計的新畫法；依賴 cut 1",
+                "提案、設計的新畫法；依賴 cut 1",
+            ),
+            // 沒有「——」、範圍句不在粗體內：沒有說明。
+            ("**cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已封存）", ""),
+            ("**cut 5 `tray-panel-restyle`**: 系統匣面板，可與 3a、3b、4 並行", ""),
+            // 粗體內有範圍詞：外圍整組括號（內含巢狀括號）拿掉。
+            (
+                "**cut 2 外殼**（propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、\
+                 `desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出）",
+                "propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、\
+                 `desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出",
+            ),
+            ("**cut 3a 看板**(半形括號說明)", "半形括號說明"),
+            // 外圍不是一整組括號：原樣。
+            ("**cut 2 外殼**（甲）乙（丙）", "（甲）乙（丙）"),
+            // 粗體內有範圍詞：粗體之後的全部文字（去掉開頭冒號）都是說明，「——」不切。
+            ("**cut 2 外殼**: 說明——補充", "說明——補充"),
+            ("**刀三**：系統匣面板", ""),
+            ("**Cut 3a `x-y`**", ""),
+        ];
+        for (item, note) in rows {
+            assert_eq!(only_cut(item).note, *note, "{item}");
+        }
+    }
+
+    #[test]
+    fn line_is_the_first_line_without_the_marker_and_outer_whitespace() {
+        let conclusion = "**Decision**: 定案。\n\n- **cut 1 `a`**: 骨架   \n  續行散文。\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts[0].line, "**cut 1 `a`**: 骨架");
+    }
+
+    // --- sharp-edges 稽核（discussion-cuts-from-engine tasks 2.4）：GET /discussions/{slug} 的 cuts
+    // 來自 store 裡手改得到的記錄 ---
+
+    #[test]
+    fn a_very_long_note_and_line_parse_in_linear_time() {
+        // 判定：無缺口——unwrap_parens 單趟掃描、note 與 line 只是複製，回應大小為內容的常數倍；長度不設上限。
+        let long = "長".repeat(200_000);
+        let cut = only_cut(&format!("**cut 1 外殼**（{long}）"));
+        assert_eq!(cut.note.chars().count(), 200_000);
+        assert_eq!(cut.line.chars().count(), 200_000 + "**cut 1 外殼**（）".chars().count());
+    }
+
+    #[test]
+    fn mixed_and_unbalanced_parens_follow_the_desktop_rule() {
+        // 判定：無缺口——全形與半形視為同一種括號（與前端 unwrapParens 同規則）；不成對時原樣保留；
+        // 切點都落在 char_indices 給的字元邊界，多位元組括號不會 panic。
+        for (item, note) in [
+            ("**cut 2 外殼**（混用)", "混用"),
+            ("**cut 2 外殼**(混用）", "混用"),
+            ("**cut 2 外殼**（沒有收尾", "（沒有收尾"),
+            ("**cut 2 外殼**（（只收一層）", "（（只收一層）"),
+            ("**cut 2 外殼**（）", ""),
+        ] {
+            assert_eq!(only_cut(item).note, note, "{item}");
+        }
+    }
+
+    #[test]
+    fn an_unpaired_bold_leaves_no_cut_for_the_detail_response() {
+        // 判定：無缺口——只有開頭 `**` 的列不成刀（cut_of 找不到收尾即回 None），詳情回應的 cuts 為空。
+        assert_eq!(parse_cuts(&decision_with("**cut 1 外殼（`add-a`）")), []);
+    }
+
+    #[test]
+    fn an_empty_promoted_to_leaves_every_name_in_bold_unpromoted() {
+        // 判定：無缺口——promoted_to 為空時粗體內的變更名全部尚未轉出；名稱不在粗體內的刀仍為空（無從判定）。
+        assert_eq!(only_cut("**cut 1 `add-a` `add-b`**: 一").record(&[]).unpromoted, ["add-a", "add-b"]);
+        assert!(only_cut("**cut 2 外殼**（`add-x`）").record(&[]).unpromoted.is_empty());
+    }
+
+    // --- 自前端 discussionModel.test.ts 移來的案例（discussion-cuts-from-engine 移除前端分刀解析時逐列對照）---
+
+    #[test]
+    fn desktop_rows_that_are_cuts() {
+        // (列點首行, cut, changes, title, changesInBold)
+        let rows: &[(&str, &str, &[&str], &str, bool)] = &[
+            ("**刀三**：系統匣面板", "刀三", &[], "系統匣面板", false),
+            ("**第三刀**：系統匣", "第三刀", &[], "系統匣", false),
+            (
+                "**cut 2 `desktop-shell-redesign` `desktop-notice-relocation`**: 外殼 7 項",
+                "cut 2",
+                &["desktop-shell-redesign", "desktop-notice-relocation"],
+                "外殼 7 項",
+                true,
+            ),
+            // 粗體之後含空白的反引號片段（指令）不算變更名。
+            (
+                "**cut 4 設定**（先跑 `speclink plan`，再建 `desktop-settings-mode`）",
+                "cut 4",
+                &["desktop-settings-mode"],
+                "設定",
+                false,
+            ),
+            // 識別籤止於括號；粗體內沒有反引號片段時名稱取自粗體之後。
+            ("**刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`", "刀一", &["KeyLines", "DiscussionHead"], "（候選 1＋2）", false),
+        ];
+        for (item, id, names, title, in_bold) in rows {
+            let cut = only_cut(item);
+            assert_eq!(cut.id, *id, "{item}");
+            assert_eq!(cut.names, *names, "{item}");
+            assert_eq!(cut.title, *title, "{item}");
+            assert_eq!(cut.names_in_bold, *in_bold, "{item}");
+        }
+    }
+
+    #[test]
+    fn desktop_rows_that_are_not_cuts() {
+        for item in [
+            "**範圍與驗收**：只改 UI 渲染",
+            "**cutover 計畫**：切換步驟",
+            "**Cut scope**：範圍說明",
+            "**`desktop-app`**: 粗體內只有反引號",
+            "cut 1 `x`：沒有粗體",
+        ] {
+            assert_eq!(parse_cuts(&decision_with(item)), [], "{item}");
+        }
+    }
+
+    fn ids_titles_names(conclusion: &str) -> Vec<(String, String, Vec<String>)> {
+        parse_cuts(conclusion).into_iter().map(|c| (c.id, c.title, c.names)).collect()
+    }
+
+    fn row(id: &str, title: &str, names: &[&str]) -> (String, String, Vec<String>) {
+        (id.into(), title.into(), names.iter().map(|n| n.to_string()).collect())
+    }
+
+    #[test]
+    fn the_detail_content_redesign_conclusion_has_three_cuts() {
+        let conclusion = "**Decision**: 變更、討論、已封存三種詳情頁的內容呈現改成手冊式三欄閱讀頁，原始 Markdown 格式與模板不動，分三刀落地。\n\
+             - 範圍與驗收：只改 UI 渲染\n\
+             - 版面：左欄 240px 文件樹\n\
+             - **cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄，九份文件先以現有渲染器落進新骨架\n\
+             \x20 - 文件樹欄（身分區、文件節點、狀態區）\n\
+             \x20 - 分頁列退場；已封存詳情頁同步\n\
+             - **cut 2 `desktop-change-doc-views`**: 變更文件渲染器——提案、設計的新畫法；依賴 cut 1\n\
+             \x20 - 章節白名單與逐項降級規則落在這一刀\n\
+             - **cut 3 `desktop-discussion-doc-views`**: 討論文件渲染器——結論分刀卡；最後一刀\n\
+             \x20 - desktop-app 討論輪、討論結論、討論詳情頁需求 MODIFIED\n\
+             **Rationale**: 手冊頁已經證明三欄閱讀頁成立。\n";
+        assert_eq!(
+            ids_titles_names(conclusion),
+            [
+                row("cut 1", "骨架", &["desktop-detail-doc-tree"]),
+                row("cut 2", "變更文件渲染器", &["desktop-change-doc-views"]),
+                row("cut 3", "討論文件渲染器", &["desktop-discussion-doc-views"]),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_desktop_ui_redesign_cuts_take_names_after_a_scoped_bold() {
+        let conclusion = "**Decision**: 整個介面重新設計，分七刀落地。\n\
+             - 底層不換：React 19＋Tailwind v4\n\
+             - **cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已封存）\n\
+             \x20 - openDetail 清掉可取消浮層\n\
+             - **cut 2 外殼**（propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、`desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出）\n\
+             \x20 - 三平台標題列\n\
+             - **cut 3a 看板**（propose 期拆兩個 change：`desktop-board-reskin` 欄與卡、`desktop-list-pages-reskin` 規格／已封存／手冊三頁；皆依賴 desktop-shell-redesign；兩者皆已轉出）\n\
+             - **cut 5 `tray-panel-restyle`**: 系統匣面板，可與 3a、3b、4 並行\n";
+        assert_eq!(
+            ids_titles_names(conclusion),
+            [
+                row("cut 0", "獨立 bug 修，不等換皮（已封存）", &["fix-drawer-open-dismisses-overlays"]),
+                row("cut 2", "外殼", &["desktop-shell-redesign", "desktop-notice-relocation", "desktop-native-menu"]),
+                row("cut 3a", "看板", &["desktop-board-reskin", "desktop-list-pages-reskin"]),
+                row("cut 5", "系統匣面板，可與 3a、3b、4 並行", &["tray-panel-restyle"]),
+            ]
+        );
     }
 
     #[test]

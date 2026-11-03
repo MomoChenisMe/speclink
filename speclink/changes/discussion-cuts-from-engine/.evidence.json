@@ -1,0 +1,244 @@
+{
+  "version": 2,
+  "change": "discussion-cuts-from-engine",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）依設計「引擎多回傳首行說明與列點原文」與「一份記錄的刀以單一入口計算」，在 crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs 的測試模組新增測試：`note` 對照 client-protocol「分刀各欄」Example 三列與前端 discussionModel.test.ts 既有的說明列案例（「——」之後的文字、粗體內有範圍詞時拿掉外圍整組括號、巢狀括號、沒有說明時為空字串）；`line` 為去掉 `- ` 與頭尾空白的首行；在 discuss.rs 的測試模組新增 `record_cuts` 的測試——`unpromoted` 依 promoted_to、`changesInBold` 為 false 時 `unpromoted` 為空、沒有結論時回空、首行的 HTML 註解已去掉、`RecordCut` 序列化為 camelCase 的七鍵。驗證：`cargo test -p speclink-core --lib cuts` 因欄位與函式不存在而編譯失敗",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）在 cuts.rs 的 `Cut` 增 `note`、`line` 並新增 `RecordCut`（`Serialize`、camelCase），在 discuss.rs 新增 `record_cuts(text, promoted_to)`（以 `conclusion_body` 取結論再 `parse_cuts`）；`parse_cuts` 的刀判定與既有四欄不變。驗證：`cargo test -p speclink-core --lib cuts` 與 `cargo test -p speclink-core --lib plan` 全部通過",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 （Red）需求「討論詳情回應的分刀 payload」與「討論詳情回應攜帶分刀」：在 crates/protocol/speclink-protocol/src/query.rs 的測試新增——`ShowDiscussionResponse` 缺 `cuts` 讀作空陣列、`DiscussionCut` 缺欄讀作空字串／空陣列／false、JSON Schema 匯出含 `cuts`；在 crates/host/speclink-server/tests/it/api/discussion_routes.rs 新增 spec 場景「live 記錄帶分刀」「已封存記錄帶分刀」「沒有結論的記錄」三個測試，斷言 `cuts` 的鍵名為 camelCase、值與場景相同，且依需求「討論搜尋回應 payload」既有的 `info` 與 `content` 欄位與改動前逐位元一致。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server --test it discussion_routes` 失敗",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/host/speclink-server/tests/it/api/discussion_routes.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 （Green）依設計「protocol 與 server：詳情回應增列 cuts」：query.rs 新增 `DiscussionCut` 並在 `ShowDiscussionResponse` 增 `#[serde(default)] cuts`；crates/host/speclink-server/src/api/routes.rs 的 `show_discussion` 以 `record_cuts(&content, &info.head.promoted_to)` 計算並逐欄搬進回應（提案時 `ShowDiscussionResponse` 只有這一處以 struct 字面值建構；實作時以 grep 再確認）。驗證：`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it discussion_routes`、`cargo test -p speclink-remote` 全部通過",
+      "files": [
+        "apps/desktop/core/src/discussions.rs",
+        "crates/host/speclink-server/src/api/routes.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 （Green）discussions.rs 的 `discussion_document_at` 改回 `Option<DiscussionDocument>`，以一次 `store.read_discussion` 取 `text` 與 head 的 `promoted_to` 呼叫 `record_cuts`；apps/desktop/src-tauri/src/lib.rs 的 `discussion_document` command 單行委派、回傳型別跟著改。驗證：`cargo test -p speclink-desktop-core discussions` 全部通過",
+      "files": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.3 （Red→Green）在 apps/desktop/src-tauri/src/remote.rs 先新增測試：`RemoteWorkspace::discussion_document` 對帶 `cuts` 的詳情回應回傳同值的 `{ content, cuts }`、對缺 `cuts` 的舊 server 回傳空陣列、404 照舊為 None；再實作。驗證：`cargo test -p speclink-desktop --lib discussion_document` 全部通過",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 （Red）依設計「前端以列點原文把刀對回細節列」，新增 packages/ui/src/__tests__/discussionCuts.test.ts：`cutCards` 依 `cuts` 順序認領 `text` 等於 `line` 的細節列並自 `rest` 移除、同一首行出現兩次時各認領一列、找不到對應列的刀仍成卡且 `items` 只有 `note`、`items` 為 `note` 接巢狀子項與續行散文的細線列；`cutPromotion` 對照 desktop-app「刀的轉出判定」Example 的 promoted、partial、none、unknown 四種。驗證：`npm test -w packages/ui -- discussionCuts` 因函式不存在而失敗",
+      "files": [
+        "packages/ui/src/__tests__/discussionCuts.test.ts",
+        "packages/ui/src/__tests__/engineCuts.ts"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.2 （Green）在 packages/ui/src/discussionModel.ts 新增 `cutCards`、改寫 `cutPromotion(cut)` 並調整 `CutCard` 型別，移除 `CUT_ID_RE`、`tickNames`、`unwrapParens`、`cutCard`、`parseCuts`；packages/ui/src/__tests__/discussionModel.test.ts 中測試已移除函式的案例刪除，刪除前逐列確認 cuts.rs 測試已有對應案例，沒有的先補進 cuts.rs。驗證：`npm test -w packages/ui -- discussionCuts`、`npm test -w packages/ui -- discussionModel` 與 `cargo test -p speclink-core --lib cuts` 全部通過",
+      "files": [
+        "packages/ui/src/__tests__/discussionModel.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/discussionModel.ts"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 （Red）需求「討論結論以欄位標籤呈現」：在 packages/ui/src/__tests__/ 新增測試輔助函式，以記錄原文加手寫的引擎形狀 `cuts` 組成 `DiscussionDocument`；把 conclusionDoc.test.tsx、discussionDetailPage.test.tsx、archivedDetailPage.test.tsx、promotedDoc.test.tsx 既有的刀卡、計數、數字磚、提示框與分組測試改為餵入該形狀，並新增測試：spec Example 中以 `*` 起頭的刀列留在定案細節；`cuts` 為空陣列時沒有「分刀」區段、「分刀」數字磚與提示框且「決定」計數含刀列（spec 場景「舊 server 沒有分刀資料時刀列留在定案細節」）；部分轉出時「尚未轉出」籤接在 `unpromoted` 內的變更名之後。驗證：`npm test -w packages/ui` 因 `cuts` prop 與 `doc` 輸入不存在而失敗",
+      "files": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/promotedDoc.test.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 （Green）依設計「消費端改讀引擎的刀」：packages/ui/src/adapter.ts 新增 `DiscussionCut`、`DiscussionDocument` 並把 `getDiscussionDocument` 改回 `Promise<DiscussionDocument | null>`（型別自 packages/ui/src/index.ts 匯出）；ConclusionDoc.tsx 增 `cuts` prop、`DecisionSections` 改用 `cutCards`、`CutCardView` 改用 `cutPromotion(cut)` 與 `unpromoted`；discussionDocSummary.tsx 的 `discussionDocData` 改收 `doc`、數字磚與 `unpromotedCallout` 改用 `cutCards` 與 `cutPromotion`；PromotedDoc.tsx 隨型別調整；DiscussionDetailPage.tsx 的 `loadDocument` 與 ArchivedDetailPage.tsx 的 `loadDiscussionDocument` 改收 `DiscussionDocument`。驗證：`npm test -w packages/ui` 全部通過",
+      "files": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ConclusionDoc.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/discussionDocSummary.tsx",
+        "packages/ui/src/index.ts"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.3 apps/desktop/src/adapter/tauriDataSource.ts 與 remoteDataSource.ts 的 `getDiscussionDocument` 回傳 `{ content, cuts }`（`cuts` 缺席補空陣列）；apps/desktop/src/__tests__/remoteDataSource.test.ts、App.test.tsx 與 helpers/remoteFixtures.ts 的假回應改為新形狀，remoteDataSource.test.ts 新增缺 `cuts` 時為空陣列的測試。驗證：`npm test -w apps/desktop` 全部通過",
+      "files": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/adapter/tauriDataSource.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M6G9NXHKHR2P0WJK4ZV31TH5",
+      "taskDesc": "1.1 （Red）依設計「引擎多回傳首行說明與列點原文」與「一份記錄的刀以單一入口計算」，在 crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs 的測試模組新增測試：`note` 對照 client-protocol「分刀各欄」Example 三列與前端 discussionModel.test.ts 既有的說明列案例（「——」之後的文字、粗體內有範圍詞時拿掉外圍整組括號、巢狀括號、沒有說明時為空字串）；`line` 為去掉 `- ` 與頭尾空白的首行；在 discuss.rs 的測試模組新增 `record_cuts` 的測試——`unpromoted` 依 promoted_to、`changesInBold` 為 false 時 `unpromoted` 為空、沒有結論時回空、首行的 HTML 註解已去掉、`RecordCut` 序列化為 camelCase 的七鍵。驗證：`cargo test -p speclink-core --lib cuts` 因欄位與函式不存在而編譯失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs"
+      ],
+      "recordedAt": "2026-11-03T09:19:19Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHK3E01B8G8J2N91080",
+      "taskDesc": "1.2 （Green）在 cuts.rs 的 `Cut` 增 `note`、`line` 並新增 `RecordCut`（`Serialize`、camelCase），在 discuss.rs 新增 `record_cuts(text, promoted_to)`（以 `conclusion_body` 取結論再 `parse_cuts`）；`parse_cuts` 的刀判定與既有四欄不變。驗證：`cargo test -p speclink-core --lib cuts` 與 `cargo test -p speclink-core --lib plan` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs"
+      ],
+      "recordedAt": "2026-11-03T09:20:15Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKPRTQXZHJQ1AQNGDQ",
+      "taskDesc": "2.1 （Red）需求「討論詳情回應的分刀 payload」與「討論詳情回應攜帶分刀」：在 crates/protocol/speclink-protocol/src/query.rs 的測試新增——`ShowDiscussionResponse` 缺 `cuts` 讀作空陣列、`DiscussionCut` 缺欄讀作空字串／空陣列／false、JSON Schema 匯出含 `cuts`；在 crates/host/speclink-server/tests/it/api/discussion_routes.rs 新增 spec 場景「live 記錄帶分刀」「已封存記錄帶分刀」「沒有結論的記錄」三個測試，斷言 `cuts` 的鍵名為 camelCase、值與場景相同，且依需求「討論搜尋回應 payload」既有的 `info` 與 `content` 欄位與改動前逐位元一致。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server --test it discussion_routes` 失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/host/speclink-server/tests/it/api/discussion_routes.rs",
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-11-03T09:23:29Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHK83ZJ04039EWQYXP0",
+      "taskDesc": "2.2 （Green）依設計「protocol 與 server：詳情回應增列 cuts」：query.rs 新增 `DiscussionCut` 並在 `ShowDiscussionResponse` 增 `#[serde(default)] cuts`；crates/host/speclink-server/src/api/routes.rs 的 `show_discussion` 以 `record_cuts(&content, &info.head.promoted_to)` 計算並逐欄搬進回應（提案時 `ShowDiscussionResponse` 只有這一處以 struct 字面值建構；實作時以 grep 再確認）。驗證：`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it discussion_routes`、`cargo test -p speclink-remote` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/core/src/discussions.rs",
+        "crates/host/speclink-server/src/api/routes.rs"
+      ],
+      "recordedAt": "2026-11-03T09:25:06Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKXW0T683TYNW9YM7W",
+      "taskDesc": "3.2 （Green）discussions.rs 的 `discussion_document_at` 改回 `Option<DiscussionDocument>`，以一次 `store.read_discussion` 取 `text` 與 head 的 `promoted_to` 呼叫 `record_cuts`；apps/desktop/src-tauri/src/lib.rs 的 `discussion_document` command 單行委派、回傳型別跟著改。驗證：`cargo test -p speclink-desktop-core discussions` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-03T09:26:39Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKZ689Q7P22K28NC6J",
+      "taskDesc": "3.3 （Red→Green）在 apps/desktop/src-tauri/src/remote.rs 先新增測試：`RemoteWorkspace::discussion_document` 對帶 `cuts` 的詳情回應回傳同值的 `{ content, cuts }`、對缺 `cuts` 的舊 server 回傳空陣列、404 照舊為 None；再實作。驗證：`cargo test -p speclink-desktop --lib discussion_document` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs"
+      ],
+      "recordedAt": "2026-11-03T09:30:01Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKFV2E2DVFVM49NZ63",
+      "taskDesc": "4.1 （Red）依設計「前端以列點原文把刀對回細節列」，新增 packages/ui/src/__tests__/discussionCuts.test.ts：`cutCards` 依 `cuts` 順序認領 `text` 等於 `line` 的細節列並自 `rest` 移除、同一首行出現兩次時各認領一列、找不到對應列的刀仍成卡且 `items` 只有 `note`、`items` 為 `note` 接巢狀子項與續行散文的細線列；`cutPromotion` 對照 desktop-app「刀的轉出判定」Example 的 promoted、partial、none、unknown 四種。驗證：`npm test -w packages/ui -- discussionCuts` 因函式不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionCuts.test.ts",
+        "packages/ui/src/__tests__/engineCuts.ts"
+      ],
+      "recordedAt": "2026-11-03T09:32:15Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKF9FG9PTCCF0N71EM",
+      "taskDesc": "4.2 （Green）在 packages/ui/src/discussionModel.ts 新增 `cutCards`、改寫 `cutPromotion(cut)` 並調整 `CutCard` 型別，移除 `CUT_ID_RE`、`tickNames`、`unwrapParens`、`cutCard`、`parseCuts`；packages/ui/src/__tests__/discussionModel.test.ts 中測試已移除函式的案例刪除，刪除前逐列確認 cuts.rs 測試已有對應案例，沒有的先補進 cuts.rs。驗證：`npm test -w packages/ui -- discussionCuts`、`npm test -w packages/ui -- discussionModel` 與 `cargo test -p speclink-core --lib cuts` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/discussionModel.test.ts",
+        "packages/ui/src/adapter.ts",
+        "packages/ui/src/discussionModel.ts"
+      ],
+      "recordedAt": "2026-11-03T09:33:55Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKYZYTG8CRX0P8R6XM",
+      "taskDesc": "5.1 （Red）需求「討論結論以欄位標籤呈現」：在 packages/ui/src/__tests__/ 新增測試輔助函式，以記錄原文加手寫的引擎形狀 `cuts` 組成 `DiscussionDocument`；把 conclusionDoc.test.tsx、discussionDetailPage.test.tsx、archivedDetailPage.test.tsx、promotedDoc.test.tsx 既有的刀卡、計數、數字磚、提示框與分組測試改為餵入該形狀，並新增測試：spec Example 中以 `*` 起頭的刀列留在定案細節；`cuts` 為空陣列時沒有「分刀」區段、「分刀」數字磚與提示框且「決定」計數含刀列（spec 場景「舊 server 沒有分刀資料時刀列留在定案細節」）；部分轉出時「尚未轉出」籤接在 `unpromoted` 內的變更名之後。驗證：`npm test -w packages/ui` 因 `cuts` prop 與 `doc` 輸入不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/archivedDetailPage.test.tsx",
+        "packages/ui/src/__tests__/conclusionDoc.test.tsx",
+        "packages/ui/src/__tests__/discussionDetailPage.test.tsx",
+        "packages/ui/src/__tests__/promotedDoc.test.tsx"
+      ],
+      "recordedAt": "2026-11-03T09:37:26Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKK79JM27W2ZJH9SSW",
+      "taskDesc": "5.2 （Green）依設計「消費端改讀引擎的刀」：packages/ui/src/adapter.ts 新增 `DiscussionCut`、`DiscussionDocument` 並把 `getDiscussionDocument` 改回 `Promise<DiscussionDocument | null>`（型別自 packages/ui/src/index.ts 匯出）；ConclusionDoc.tsx 增 `cuts` prop、`DecisionSections` 改用 `cutCards`、`CutCardView` 改用 `cutPromotion(cut)` 與 `unpromoted`；discussionDocSummary.tsx 的 `discussionDocData` 改收 `doc`、數字磚與 `unpromotedCallout` 改用 `cutCards` 與 `cutPromotion`；PromotedDoc.tsx 隨型別調整；DiscussionDetailPage.tsx 的 `loadDocument` 與 ArchivedDetailPage.tsx 的 `loadDiscussionDocument` 改收 `DiscussionDocument`。驗證：`npm test -w packages/ui` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "packages/ui/src/components/ArchivedDetailPage.tsx",
+        "packages/ui/src/components/ConclusionDoc.tsx",
+        "packages/ui/src/components/DiscussionDetailPage.tsx",
+        "packages/ui/src/components/discussionDocSummary.tsx",
+        "packages/ui/src/index.ts"
+      ],
+      "recordedAt": "2026-11-03T09:38:39Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHK9VXQXFR9KZ859WS3",
+      "taskDesc": "5.3 apps/desktop/src/adapter/tauriDataSource.ts 與 remoteDataSource.ts 的 `getDiscussionDocument` 回傳 `{ content, cuts }`（`cuts` 缺席補空陣列）；apps/desktop/src/__tests__/remoteDataSource.test.ts、App.test.tsx 與 helpers/remoteFixtures.ts 的假回應改為新形狀，remoteDataSource.test.ts 新增缺 `cuts` 時為空陣列的測試。驗證：`npm test -w apps/desktop` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "562afc780c0d9241555ab17a2675f367434625cb",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/adapter/tauriDataSource.ts"
+      ],
+      "recordedAt": "2026-11-03T09:42:25Z"
+    }
+  ]
+}

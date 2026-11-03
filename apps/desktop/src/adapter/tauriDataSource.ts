@@ -6,6 +6,8 @@ import type {
   ChangeListPayload,
   SpecItem,
   ArchivedItem,
+  DiscussionCut,
+  DiscussionDocument,
   DiscussionLists,
   ManualIndex,
   SearchHit,
@@ -122,8 +124,9 @@ export function createTauriDataSource(
     async listDiscussions(): Promise<DiscussionLists> {
       return await invoke<DiscussionLists>("list_discussions", { root });
     },
-    async getDiscussionDocument(slug: string): Promise<string | null> {
-      return await invoke<string | null>("discussion_document", { root, slug });
+    async getDiscussionDocument(slug: string): Promise<DiscussionDocument | null> {
+      const doc = await invoke<{ content: string; cuts?: DiscussionCut[] } | null>("discussion_document", { root, slug });
+      return doc && { content: doc.content, cuts: doc.cuts ?? [] };
     },
     async promoteDiscussion(slug: string, name?: string): Promise<{ change: string }> {
       return await invoke<{ change: string }>("promote_discussion", {

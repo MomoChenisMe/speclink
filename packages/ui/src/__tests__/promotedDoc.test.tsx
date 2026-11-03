@@ -4,7 +4,8 @@ import { fireEvent, render as rtlRender } from "@testing-library/react";
 import type { ReactElement, ReactNode } from "react";
 
 import type { ArchivedItem, ChangeItem } from "../adapter";
-import type { CutCard } from "../discussionModel";
+import { cutCards, type CutCard } from "../discussionModel";
+import { engineCut } from "./engineCuts";
 import { I18nProvider, MESSAGES } from "../i18n";
 import { PromotedDoc, promotedRows, type PromotedRow } from "../components/PromotedDoc";
 
@@ -108,13 +109,16 @@ describe("PromotedDoc", () => {
   it("7 刀分組：組頭數 7、cut 2 組內 3 列、組頭為 data-doc-heading、不在任何刀的列接在最後無組頭", () => {
     const cutNames = [["a0"], ["a1"], ["b1", "b2", "b3"], ["c1", "c2"], ["d1", "d2"], ["e1", "e2", "e3"], ["f1"]];
     const ids = ["cut 0", "cut 1", "cut 2", "cut 3a", "cut 3b", "cut 4", "cut 5"];
-    const cuts: CutCard[] = cutNames.map((names, i) => ({
-      id: ids[i],
-      title: `範圍 ${i}`,
-      names,
-      namesInBold: true,
-      items: [],
-    }));
+    // 引擎形狀的刀轉成刀卡（衍生變更頁沒有細節列可認領）。
+    const engine = cutNames.map((names, i) =>
+      engineCut(`**${ids[i]} ${names.map((n) => `\`${n}\``).join(" ")}**: 範圍 ${i}`, {
+        cut: ids[i],
+        title: `範圍 ${i}`,
+        changes: names,
+        changesInBold: true,
+      }),
+    );
+    const cuts: CutCard[] = cutCards([], engine).cuts;
     const all = [...cutNames.flat(), "stray"];
     const { container } = render(<PromotedDoc rows={rows(all)} cuts={cuts} />);
     const groups = Array.from(container.querySelectorAll<HTMLElement>("[data-cut-group]"));

@@ -21,7 +21,7 @@ import type { DocumentTarget } from "../components/DetailHeader";
 import { SECTION_HEADING_CLS } from "../components/DocParts";
 import { ChangeCard } from "../components/ChangeCard";
 import { ChangeDetailPage } from "../components/ChangeDetailPage";
-import type { ChangeItem, ArchivedItem, DiscussionItem } from "../adapter";
+import type { ChangeItem, ArchivedItem, DiscussionCut, DiscussionItem } from "../adapter";
 import { DocHeader, DocTiles } from "../components/DetailShell";
 import {
   discussionDocData,
@@ -31,6 +31,7 @@ import {
   type DiscussionTab,
 } from "../components/discussionDocSummary";
 import { promotedRows, type PromotedRow } from "../components/PromotedDoc";
+import { discussionDoc, engineCut } from "./engineCuts";
 
 // spec 需求「討論詳情頁檢視與轉出變更」的 jsdom 可驗部分。
 
@@ -81,7 +82,7 @@ const archivedChanges: ArchivedItem[] = [];
 function makeProps(over: Record<string, unknown> = {}) {
   return {
     discussion: concludedD,
-    loadDocument: vi.fn(async () => DOC),
+    loadDocument: vi.fn(async () => discussionDoc(DOC)),
     changes,
     archivedChanges,
     onOpenChangeCard: vi.fn(),
@@ -133,7 +134,7 @@ ${ROUNDS_TEXT}
 
 describe("輪卡片渲染（討論輪以卡片呈現）", () => {
   async function openRoundsTab(doc: string) {
-    const props = makeProps({ loadDocument: vi.fn(async () => doc) });
+    const props = makeProps({ loadDocument: vi.fn(async () => discussionDoc(doc)) });
     const result = render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => screen.getByRole("tab", { name: /討論過程/ }));
     fireEvent.mouseDown(screen.getByRole("tab", { name: /討論過程/ }));
@@ -209,6 +210,15 @@ const WAD_DECISION = [
   "- **cut 2 `remove-builtin-wad-work`**: 移除內建 wad-work",
 ].join("\n");
 
+/** 引擎對 WAD_DECISION 回的兩把刀：`promoted` 之外的變更名尚未轉出。 */
+const wadCuts = (promoted: string[]) =>
+  [
+    ["**cut 1 `add-team-plugin-library`**: 團隊外掛庫", "cut 1", "團隊外掛庫", "add-team-plugin-library"],
+    ["**cut 2 `remove-builtin-wad-work`**: 移除內建 wad-work", "cut 2", "移除內建 wad-work", "remove-builtin-wad-work"],
+  ].map(([line, cut, title, name]) =>
+    engineCut(line, { cut, title, changes: [name], changesInBold: true, unpromoted: promoted.includes(name) ? [] : [name] }),
+  );
+
 const FULL_CONCLUSION = [
   "**Decision**: 拍板做 A",
   "**Rationale**: 因為證據充分",
@@ -222,7 +232,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
   // 欄位標籤同時是本頁目錄的錨點：斷言限定在閱讀卡內文。
   const body = () => within(document.querySelector("[data-doc-body]") as HTMLElement);
   it("scaffold 結論六欄位成標籤區塊，粗體前綴原文不出現", async () => {
-    const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
+    const props = makeProps({ loadDocument: vi.fn(async () => discussionDoc(docWithConclusion(FULL_CONCLUSION))) });
     render(<DiscussionDetailPage {...(props as never)} />);
     // 結論非空 → 預設分頁即結論。
     await waitFor(() => expect(screen.getByText("拍板做 A")).toBeTruthy());
@@ -235,7 +245,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
 
   it("缺席欄位不渲染空標籤", async () => {
     const doc = docWithConclusion("**Decision**: 只有決定\n**Rationale**: 與理由");
-    const props = makeProps({ loadDocument: vi.fn(async () => doc) });
+    const props = makeProps({ loadDocument: vi.fn(async () => discussionDoc(doc)) });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText("只有決定")).toBeTruthy());
     expect(body().getByText("決定")).toBeTruthy();
@@ -246,7 +256,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
 
   // 段落標籤從 20px 粗體大標改為 16px 章節標題（detail-content-redesign 結論）。
   it("結論欄位的區段標題為 16px 粗體章節標題", async () => {
-    const props = makeProps({ loadDocument: vi.fn(async () => docWithConclusion(FULL_CONCLUSION)) });
+    const props = makeProps({ loadDocument: vi.fn(async () => discussionDoc(docWithConclusion(FULL_CONCLUSION))) });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(body().getByText("決定")).toBeTruthy());
     const conclusionLabel = body().getByText("決定");
@@ -260,7 +270,11 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
       discussion: { ...concludedD, status: "promoted", promotedTo: ["cut-old"] },
       archivedChanges: [{ datedName: "2026-07-20-cut-old", date: "2026-07-20", name: "cut-old" }],
       onOpenArchivedChange,
-      loadDocument: vi.fn(async () => docWithConclusion("**Decision**: 一刀\n- **cut 1 `cut-old`**: 骨架")),
+      loadDocument: vi.fn(async () =>
+        discussionDoc(docWithConclusion("**Decision**: 一刀\n- **cut 1 `cut-old`**: 骨架"), [
+          engineCut("**cut 1 `cut-old`**: 骨架", { cut: "cut 1", title: "骨架", changes: ["cut-old"], changesInBold: true }),
+        ]),
+      ),
     });
     render(<DiscussionDetailPage {...(props as never)} />);
     const card = await waitFor(() => {
@@ -288,7 +302,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
         promotedTo: ["add-team-plugin-library"],
       },
       changes: [{ name: "add-team-plugin-library", status: "in-progress", totalTasks: 3, completedTasks: 1 }],
-      loadDocument: vi.fn(async () => docWithConclusion(WAD_DECISION)),
+      loadDocument: vi.fn(async () => discussionDoc(docWithConclusion(WAD_DECISION), wadCuts(["add-team-plugin-library"]))),
     });
     render(<DiscussionDetailPage {...(props as never)} />);
     const row = await waitFor(() => {
@@ -309,7 +323,7 @@ describe("結論欄位標籤化（討論結論以欄位標籤呈現）", () => {
 
   it("自由格式結論整篇以單一 markdown 檢視退回", async () => {
     const props = makeProps({
-      loadDocument: vi.fn(async () => docWithConclusion("就這樣定了，大家都同意這個方向。")),
+      loadDocument: vi.fn(async () => discussionDoc(docWithConclusion("就這樣定了，大家都同意這個方向。"))),
     });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/就這樣定了/)).toBeTruthy());
@@ -375,7 +389,7 @@ describe("DiscussionDetailPage", () => {
   });
 
   it("結論為空（僅鷹架註解）時預設呈現背景", async () => {
-    const props = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
+    const props = makeProps({ discussion: openD, loadDocument: vi.fn(async () => discussionDoc(OPEN_DOC)) });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/開放討論的背景內容/)).toBeTruthy());
   });
@@ -399,7 +413,7 @@ describe("DiscussionDetailPage", () => {
 
   it("非預期格式整篇以單一檢視退回（無背景分頁、全文可見）", async () => {
     const props = makeProps({
-      loadDocument: vi.fn(async () => "手寫的自由格式記錄，沒有標準區段。"),
+      loadDocument: vi.fn(async () => discussionDoc("手寫的自由格式記錄，沒有標準區段。")),
     });
     render(<DiscussionDetailPage {...(props as never)} />);
     await waitFor(() => expect(screen.getByText(/自由格式記錄/)).toBeTruthy());
@@ -445,7 +459,7 @@ describe("DiscussionDetailPage", () => {
     expect(screen.queryByRole("button", { name: /轉為變更/ })).toBeNull();
     unmount2();
 
-    const props3 = makeProps({ discussion: openD, loadDocument: vi.fn(async () => OPEN_DOC) });
+    const props3 = makeProps({ discussion: openD, loadDocument: vi.fn(async () => discussionDoc(OPEN_DOC)) });
     render(<DiscussionDetailPage {...(props3 as never)} />);
     await screen.findByRole("tab", { name: /背景/ });
     fireEvent.mouseDown(screen.getByRole("tab", { name: /衍生變更/ }));
@@ -540,7 +554,7 @@ describe("DiscussionDetailPage 世代重載（spec：外部推進討論後頁內
       "## Conclusion",
       "### Round 2 — assumptions (2026-07-02)\n\n**Focus**: 第二輪新內容\n\n## Conclusion",
     );
-    (props.loadDocument as ReturnType<typeof vi.fn>).mockResolvedValue(DOC2);
+    (props.loadDocument as ReturnType<typeof vi.fn>).mockResolvedValue(discussionDoc(DOC2));
     rerender(<DiscussionDetailPage {...(props as never)} refreshGen={1} />);
     await waitFor(() => expect(calls()).toBeGreaterThan(c0));
     await waitFor(() => expect(screen.getByText(/第二輪新內容/)).toBeTruthy());
@@ -777,7 +791,7 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
   const withPrior = (line: string) => DOC.replace("框架脈絡內容。", `框架脈絡內容。\n\n${line}`);
 
   it("Prior discussions 三筆時關聯列顯示「先前討論 3」，點擊切到背景", async () => {
-    const props = makeProps({ loadDocument: vi.fn(async () => withPrior("Prior discussions: a-one, b-two, c-three")) });
+    const props = makeProps({ loadDocument: vi.fn(async () => discussionDoc(withPrior("Prior discussions: a-one, b-two, c-three"))) });
     render(<DiscussionDetailPage {...(props as never)} />);
     const related = await waitFor(() => {
       const el = document.querySelector("[data-relation-related]") as HTMLElement | null;
@@ -794,7 +808,7 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
 
   it("頓號分隔且帶括號備註時依項目計數（括號內的逗號不算）", async () => {
     const line = "Prior discussions: alpha-one（備註，含逗號）、beta-two（另一則）";
-    render(<DiscussionDetailPage {...(makeProps({ loadDocument: vi.fn(async () => withPrior(line)) }) as never)} />);
+    render(<DiscussionDetailPage {...(makeProps({ loadDocument: vi.fn(async () => discussionDoc(withPrior(line))) }) as never)} />);
     const related = await waitFor(() => {
       const el = document.querySelector("[data-relation-related]") as HTMLElement | null;
       expect(el).toBeTruthy();
@@ -806,7 +820,7 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
   it("Prior discussions 為 none 或缺行時無關聯列", async () => {
     const r = render(
       <DiscussionDetailPage
-        {...(makeProps({ loadDocument: vi.fn(async () => withPrior("Prior discussions: none")) }) as never)}
+        {...(makeProps({ loadDocument: vi.fn(async () => discussionDoc(withPrior("Prior discussions: none"))) }) as never)}
       />,
     );
     await screen.findByRole("tab", { name: /背景/ });
@@ -853,7 +867,7 @@ describe("討論詳情頁的關聯列與標題列動作", () => {
     render(
       <DiscussionDetailPage
         {...(makeProps({
-          loadDocument: vi.fn(async () => doc),
+          loadDocument: vi.fn(async () => discussionDoc(doc)),
           specNames: ["desktop-app"],
           discussionSlugs: ["alpha-search", "beta-talk"],
           onOpenSpec,
@@ -939,7 +953,7 @@ describe("數字磚、出處行與提示框", () => {
   it("討論過程的數字磚、出處行與已收斂提示框", () => {
     const modes = Array.from({ length: 20 }, (_, i) => (i % 2 === 0 ? "assumptions" : "interview"));
     const data = discussionDocData({
-      text: record(roundsOf(modes, Array(20).fill("2026-10-08")), "**Decision**: 定案"),
+      doc: discussionDoc(record(roundsOf(modes, Array(20).fill("2026-10-08")), "**Decision**: 定案")),
       status: "concluded",
       hold: false,
       created: "2026-10-08",
@@ -970,8 +984,17 @@ describe("數字磚、出處行與提示框", () => {
       "**Deferred**:",
       ...Array.from({ length: 4 }, (_, i) => `- 擱置 ${i}`),
     ].join("\n");
+    // 引擎對三條刀列回的刀（三刀的變更皆在 promoted_to）。
+    const cuts = [1, 2, 3].map((n) =>
+      engineCut(`**cut ${n} \`chg-${n}\`**: 第 ${n} 刀`, {
+        cut: `cut ${n}`,
+        title: `第 ${n} 刀`,
+        changes: [`chg-${n}`],
+        changesInBold: true,
+      }),
+    );
     const data = discussionDocData({
-      text: record(roundsOf(Array(11).fill("interview"), Array(11).fill("2026-10-12")), decision),
+      doc: discussionDoc(record(roundsOf(Array(11).fill("interview"), Array(11).fill("2026-10-12")), decision), cuts),
       status: "concluded",
       hold: false,
       created: "2026-10-12",
@@ -991,9 +1014,15 @@ describe("數字磚、出處行與提示框", () => {
   });
 
   // spec Scenario「未轉出刀的提示框與前往」「沒有整刀未轉出的刀時無提示框」「已封存討論頁不出未轉出提示框」。
-  const wadData = (decision: string, promoted: string[], status = "promoted", hold = true) =>
+  const wadData = (
+    decision: string,
+    promoted: string[],
+    status = "promoted",
+    hold = true,
+    cuts: DiscussionCut[] = wadCuts(promoted),
+  ) =>
     discussionDocData({
-      text: record(roundsOf(["interview"], ["2026-10-12"]), decision),
+      doc: discussionDoc(record(roundsOf(["interview"], ["2026-10-12"]), decision), cuts),
       status,
       hold,
       created: "2026-10-12",
@@ -1028,16 +1057,20 @@ describe("數字磚、出處行與提示框", () => {
   });
 
   it("名稱只寫在粗體之後的舊式刀列不列入提示框", () => {
-    const decision = ["**Decision**: 一刀。", "- **刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`"].join(
-      "\n",
-    );
-    render(<Harness tab="conclusion" data={wadData(decision, ["lifecycle-discussion-head"])} />);
+    const line = "**刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`";
+    const cut = engineCut(line, {
+      cut: "刀一",
+      title: "（候選 1＋2）",
+      note: "`KeyLines` 原語＋`DiscussionHead`。檔案面：`util.rs`",
+      changes: ["KeyLines", "DiscussionHead", "util.rs"],
+    });
+    render(<Harness tab="conclusion" data={wadData(`**Decision**: 一刀。\n- ${line}`, ["lifecycle-discussion-head"], "promoted", true, [cut])} />);
     expect(callout()).toBeNull();
   });
 
   it("名稱清單沒有本討論的 slug 時提示框照列刀、不出指令籤", () => {
     const data = discussionDocData({
-      text: record(roundsOf(["interview"], ["2026-10-12"]), WAD_DECISION),
+      doc: discussionDoc(record(roundsOf(["interview"], ["2026-10-12"]), WAD_DECISION), wadCuts(["add-team-plugin-library"])),
       status: "promoted",
       hold: true,
       created: "2026-10-12",
@@ -1059,7 +1092,18 @@ describe("數字磚、出處行與提示框", () => {
       "- **cut 2 `c-three`**: 已轉出",
       "- **刀三**：沒有變更名",
     ].join("\n");
-    render(<Harness tab="conclusion" data={wadData(decision, ["a-one", "c-three"])} />);
+    const cuts = [
+      engineCut("**cut 1 `a-one` `b-two`**: 部分轉出", {
+        cut: "cut 1",
+        title: "部分轉出",
+        changes: ["a-one", "b-two"],
+        changesInBold: true,
+        unpromoted: ["b-two"],
+      }),
+      engineCut("**cut 2 `c-three`**: 已轉出", { cut: "cut 2", title: "已轉出", changes: ["c-three"], changesInBold: true }),
+      engineCut("**刀三**：沒有變更名", { cut: "刀三", title: "沒有變更名" }),
+    ];
+    render(<Harness tab="conclusion" data={wadData(decision, ["a-one", "c-three"], "promoted", true, cuts)} />);
     expect(tiles()[1]).toEqual(["3", "分刀 · 3 個變更"]);
     expect(callout()).toBeNull();
   });
@@ -1067,6 +1111,20 @@ describe("數字磚、出處行與提示框", () => {
   it("status 為 archived 時無提示框", () => {
     render(<Harness tab="conclusion" data={wadData(WAD_DECISION, ["add-team-plugin-library"], "archived")} />);
     expect(tiles()[1]).toEqual(["2", "分刀 · 2 個變更"]);
+    expect(callout()).toBeNull();
+  });
+
+  // spec Scenario「舊 server 沒有分刀資料時刀列留在定案細節」：3 條刀列＋5 條其他細節、cuts 為空。
+  it("沒有分刀資料時沒有「分刀」數字磚與提示框，定案細節含刀列共 8 條", () => {
+    const decision = [
+      "**Decision**: 定論。",
+      ...Array.from({ length: 5 }, (_, i) => `- 細節 ${i + 1}`),
+      "- **cut 1 `add-team-plugin-library`**: 團隊外掛庫",
+      "- **cut 2 `remove-builtin-wad-work`**: 移除內建 wad-work",
+      "- **cut 3 `add-z`**: 路線圖",
+    ].join("\n");
+    render(<Harness tab="conclusion" data={wadData(decision, [], "promoted", true, [])} />);
+    expect(tiles()).toEqual([["8", "定案細節"]]);
     expect(callout()).toBeNull();
   });
 
@@ -1079,7 +1137,7 @@ describe("數字磚、出處行與提示框", () => {
       "Source doc: none",
     ].join("\n");
     const data = discussionDocData({
-      text: record(roundsOf(["assumptions", "interview"], ["2026-10-08", "2026-10-08"]), "", context),
+      doc: discussionDoc(record(roundsOf(["assumptions", "interview"], ["2026-10-08", "2026-10-08"]), "", context)),
       status: "open",
       hold: false,
       created: "2026-10-08",
@@ -1111,7 +1169,7 @@ describe("數字磚、出處行與提示框", () => {
       "### 插入的手寫標題",
     );
     const data = discussionDocData({
-      text: record(rounds, "**Decision**: 定案"),
+      doc: discussionDoc(record(rounds, "**Decision**: 定案")),
       status: "concluded",
       hold: false,
       created: null,
@@ -1127,7 +1185,7 @@ describe("數字磚、出處行與提示框", () => {
 
   it("自由格式結論整篇退回時結論無數字磚", () => {
     const data = discussionDocData({
-      text: record(roundsOf(["interview"], ["2026-10-08"]), "就這樣定了，大家都同意這個方向。"),
+      doc: discussionDoc(record(roundsOf(["interview"], ["2026-10-08"]), "就這樣定了，大家都同意這個方向。")),
       status: "concluded",
       hold: false,
       created: null,
@@ -1141,9 +1199,8 @@ describe("數字磚、出處行與提示框", () => {
 
   it("結論缺 Deferred 時數字磚沒有「擱置」格", () => {
     const data = discussionDocData({
-      text: record(
-        roundsOf(["interview"], ["2026-10-08"]),
-        "**Decision**: 定論。\n- 細節一\n**Rejected alternatives**:\n- 方案 — 理由",
+      doc: discussionDoc(
+        record(roundsOf(["interview"], ["2026-10-08"]), "**Decision**: 定論。\n- 細節一\n**Rejected alternatives**:\n- 方案 — 理由"),
       ),
       status: "concluded",
       hold: false,
@@ -1161,7 +1218,7 @@ describe("數字磚、出處行與提示框", () => {
 
   it("背景無關聯時數字磚整列缺席；首輪不是 assumptions 時無提示框", () => {
     const data = discussionDocData({
-      text: record(roundsOf(["interview"], ["2026-10-08"]), "", "兩段純散文。\n\n第二段。"),
+      doc: discussionDoc(record(roundsOf(["interview"], ["2026-10-08"]), "", "兩段純散文。\n\n第二段。")),
       status: "open",
       hold: false,
       created: null,
@@ -1185,10 +1242,11 @@ describe("數字磚、出處行與提示框", () => {
     });
     const docData = (rows: PromotedRow[], over: Partial<{ status: string; hold: boolean; cuts: boolean }> = {}) =>
       discussionDocData({
-        text: record(
-          roundsOf(["interview"], ["2026-10-08"]),
-          over.cuts ? "**Decision**: 定案\n- **cut 1 `a-one`**: 一" : "**Decision**: 定案",
-        ),
+        doc: over.cuts
+          ? discussionDoc(record(roundsOf(["interview"], ["2026-10-08"]), "**Decision**: 定案\n- **cut 1 `a-one`**: 一"), [
+              engineCut("**cut 1 `a-one`**: 一", { cut: "cut 1", title: "一", changes: ["a-one"], changesInBold: true }),
+            ])
+          : discussionDoc(record(roundsOf(["interview"], ["2026-10-08"]), "**Decision**: 定案")),
         status: over.status ?? "promoted",
         hold: over.hold ?? false,
         created: "2026-10-08",
@@ -1232,7 +1290,9 @@ describe("數字磚、出處行與提示框", () => {
       expect(callout()!.textContent).toContain("討論已收斂");
       unmount();
       const open = discussionDocData({
-        text: record(roundsOf(["interview", "interview", "interview"], ["2026-10-08", "2026-10-09", "2026-10-10"]), "<!-- scaffold -->"),
+        doc: discussionDoc(
+          record(roundsOf(["interview", "interview", "interview"], ["2026-10-08", "2026-10-09", "2026-10-10"]), "<!-- scaffold -->"),
+        ),
         status: "open",
         hold: false,
         created: null,
@@ -1253,7 +1313,7 @@ describe("數字磚、出處行與提示框", () => {
 
   it("記錄切分失敗時三者皆空", () => {
     const data = discussionDocData({
-      text: "手寫的自由格式記錄。",
+      doc: discussionDoc("手寫的自由格式記錄。"),
       status: "open",
       hold: false,
       created: "2026-10-08",

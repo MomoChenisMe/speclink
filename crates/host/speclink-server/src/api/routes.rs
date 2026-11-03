@@ -40,7 +40,8 @@ use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
     ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderDoc, BoardOrderResponse,
     ChangeEvidenceResponse, ChangeStatus,
-    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionHit, DiscussionInfo, DiscussionMatch,
+    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionCut, DiscussionHit, DiscussionInfo,
+    DiscussionMatch,
     ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
     ListChangesResponse, ListDiscussionsResponse, ListSpecsResponse, PlanChangeEntry,
@@ -1849,9 +1850,23 @@ pub async fn show_discussion(
     let info = show
         .info
         .ok_or_else(|| ApiError::internal("discuss-show: missing discussion info"))?;
+    // 刀與 content、info.promotedTo 出自同一次 DiscussShow（server-verb-api「討論詳情回應攜帶分刀」）。
+    let cuts = speclink_core::discuss::record_cuts(&show.content, &info.head.promoted_to)
+        .into_iter()
+        .map(|c| DiscussionCut {
+            cut: c.cut,
+            title: c.title,
+            note: c.note,
+            line: c.line,
+            changes: c.changes,
+            changes_in_bold: c.changes_in_bold,
+            unpromoted: c.unpromoted,
+        })
+        .collect();
     let dto = ShowDiscussionResponse {
         info: discussion_dto(info),
         content: show.content,
+        cuts,
     };
     Ok(ok(dto, &result.etag))
 }

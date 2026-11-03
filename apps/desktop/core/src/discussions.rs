@@ -5,8 +5,10 @@
 
 use std::path::Path;
 
+use serde::Serialize;
 use serde_json::{json, Value};
-use speclink_core::discuss::{self, DiscussionInfo};
+use speclink_core::discuss::cuts::RecordCut;
+use speclink_core::discuss::{self, DiscussionHead, DiscussionInfo};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -67,14 +69,24 @@ pub(crate) fn board_sorted_active(store: &dyn Store) -> Vec<(Option<String>, Dis
     ranked
 }
 
-/// 讀取討論記錄全文（slug 定址；live 優先、封存為後備——同 CLI `discuss show`）。
-/// 不存在回 `None`；含路徑穿越的 slug 一律拒絕。
-pub fn discussion_document_at(root: &Path, slug: &str) -> Option<String> {
+/// 討論記錄全文與引擎解析的刀——JSON 為 `{ content, cuts }`，`cuts` 每項與 server 的
+/// GET /discussions/{slug} 同形同值。
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct DiscussionDocument {
+    pub content: String,
+    pub cuts: Vec<RecordCut>,
+}
+
+/// 讀取討論記錄全文與其刀（slug 定址；live 優先、封存為後備——同 CLI `discuss show`）。
+/// 內文與 `promoted_to` 取自同一次讀取。不存在回 `None`；含路徑穿越的 slug 一律拒絕。
+pub fn discussion_document_at(root: &Path, slug: &str) -> Option<DiscussionDocument> {
     if !is_safe_path_param(slug) {
         return None;
     }
     let ctx = init_core_context(root)?;
-    discuss::show_discussion(&ctx.store, slug)
+    let doc = ctx.store.read_discussion(slug)?;
+    let cuts = discuss::record_cuts(&doc.text, &DiscussionHead::parse(&doc.text).promoted_to);
+    Some(DiscussionDocument { content: doc.text, cuts })
 }
 
 /// 討論記錄的磁碟位置——與 [`discussion_document_at`] 同一套解析（live 優先、封存為
@@ -121,6 +133,7 @@ pub fn archive_discussion_at(root: &Path, slug: &str) -> Result<Value, String> {
 #[cfg(test)]
 mod tests {
     use crate::testfixture::FixtureRoot;
+    use speclink_core::discuss;
 
     /// 鷹架版討論記錄；`extra_fm` 插在 status 行之後（如 promoted_to）。
     fn discussion_doc(slug: &str, topic: &str, status: &str, extra_fm: &str, rounds: usize, conclusion: &str) -> String {
@@ -335,11 +348,47 @@ mod tests {
 
     #[test]
     fn discussion_document_reads_live_and_archived_by_slug() {
+        // 回應為 `{ content, cuts }`：cuts 與引擎 record_cuts 對同一份記錄同值（discussion-cuts-from-engine）。
         let fx = fx_with_discussions("d-doc");
-        let live = super::discussion_document_at(fx.root(), "alpha-search").expect("live doc");
-        assert!(live.contains("**Decision**: build alpha search"), "live: {live}");
-        let archived = super::discussion_document_at(fx.root(), "old-topic").expect("archived fallback");
-        assert!(archived.contains("topic: Old topic"), "archived: {archived}");
+        let live_text = discussion_doc(
+            "panel",
+            "Panel",
+            "promoted",
+            "promoted_to: add-y\n",
+            1,
+            "**Decision**: 分兩刀。\n\n- **cut 2 `add-y`**: 引擎解析\n- **cut 3 `add-z`**: 路線圖",
+        );
+        fx.write("speclink/discussions/panel.md", &live_text);
+        let archived_text = discussion_doc(
+            "old-cuts",
+            "Old cuts",
+            "promoted",
+            "promoted_to: add-a\n",
+            1,
+            "**Decision**: 一刀。\n\n- **cut 1 `add-a`**: 骨架",
+        );
+        fx.write("speclink/discussions/archive/2026-01-04-old-cuts.md", &archived_text);
+
+        let live = super::discussion_document_at(fx.root(), "panel").expect("live doc");
+        assert_eq!(live.content, live_text);
+        assert_eq!(live.cuts, discuss::record_cuts(&live_text, &["add-y".to_string()]));
+        let unpromoted: Vec<_> = live.cuts.iter().map(|c| c.unpromoted.clone()).collect();
+        assert_eq!(unpromoted, [vec![], vec!["add-z".to_string()]]);
+
+        let archived = super::discussion_document_at(fx.root(), "old-cuts").expect("archived fallback");
+        assert_eq!(archived.content, archived_text);
+        assert_eq!(archived.cuts, discuss::record_cuts(&archived_text, &["add-a".to_string()]));
+        assert_eq!(archived.cuts.len(), 1);
+
+        let json = serde_json::to_value(&live).unwrap();
+        let mut keys: Vec<_> = json.as_object().unwrap().keys().cloned().collect();
+        keys.sort();
+        assert_eq!(keys, ["content", "cuts"]);
+        assert_eq!(json["cuts"][1]["changesInBold"], true, "cuts 每項為 camelCase");
+
+        let no_cuts = super::discussion_document_at(fx.root(), "alpha-search").expect("live doc without cuts");
+        assert!(no_cuts.content.contains("**Decision**: build alpha search"));
+        assert!(no_cuts.cuts.is_empty());
         assert!(super::discussion_document_at(fx.root(), "no-such-slug").is_none());
     }
 

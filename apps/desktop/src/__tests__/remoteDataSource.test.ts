@@ -19,6 +19,17 @@ const PROJECT = "demo";
 const REPO = "backend";
 
 /** 假 invoke：記錄每筆 (cmd, args) 並依 cmd 回覆最小合法 payload。 */
+/** remote 討論記錄回應裡的一把刀（server 的 GET /discussions/{slug} 逐欄搬運）。 */
+const DISCUSSION_CUT = {
+  cut: "cut 1",
+  title: "骨架",
+  note: "",
+  line: "**cut 1 `a-one`**: 骨架",
+  changes: ["a-one"],
+  changesInBold: true,
+  unpromoted: ["a-one"],
+};
+
 function fakeInvoke() {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   const results: Record<string, unknown> = {
@@ -89,7 +100,7 @@ function fakeInvoke() {
       ],
       archived: [],
     },
-    remote_discussion_document: "discussion text",
+    remote_discussion_document: { content: "discussion text", cuts: [DISCUSSION_CUT] },
     remote_promote_discussion: { change: "chg" },
     remote_read_settings: {
       app: { tools: [], customTools: [], parseError: null },
@@ -406,6 +417,7 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
       ds.getArchivedDocument("2026-01-01-old", "proposal.md"),
     ).resolves.toBe("archived content");
     await expect(ds.archivedCapabilities("2026-01-01-old")).resolves.toEqual(["auth"]);
+    await expect(ds.getDiscussionDocument("s1")).resolves.toEqual({ content: "discussion text", cuts: [DISCUSSION_CUT] });
     const discussions = await ds.listDiscussions();
     // promotedTo 映射 wire 欄位（remote-read-parity）：缺席以空清單容錯、
     // 非空如實攜帶，不再以 client 端固定值補齊。
@@ -416,6 +428,15 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(discussions.active[0].concluded).toBeUndefined();
     expect(discussions.active[1].concluded).toBe(true);
     expect(discussions.active[2]).toMatchObject({ slug: "s3", concluded: false });
+  });
+
+  it("getDiscussionDocument：回應缺 cuts 時補空陣列、不存在時為 null", async () => {
+    let reply: unknown = { content: "old server text" };
+    const invoke = async <T,>(): Promise<T> => reply as T;
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await expect(ds.getDiscussionDocument("s1")).resolves.toEqual({ content: "old server text", cuts: [] });
+    reply = null;
+    await expect(ds.getDiscussionDocument("s1")).resolves.toBeNull();
   });
 
   it("wire 的 startedAt 進入 ChangeItem，changeStage 對開工零進度卡判進行中", async () => {

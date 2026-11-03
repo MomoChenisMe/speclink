@@ -9,6 +9,7 @@ import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
 import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
+import { discussionDoc, engineCut } from "./engineCuts";
 
 const zhWrapper = ({ children }: { children: ReactNode }) => (
   <I18nProvider locale="zh-TW">{children}</I18nProvider>
@@ -54,7 +55,7 @@ function makeProps(over: Record<string, unknown> = {}) {
       return artifact.startsWith("specs/") ? SPEC_DELTA : null;
     }),
     loadCapabilities: vi.fn(async () => ["cap-x"]),
-    loadDiscussionDocument: vi.fn(async () => DISCUSSION_DOC),
+    loadDiscussionDocument: vi.fn(async () => discussionDoc(DISCUSSION_DOC)),
     ...over,
   };
 }
@@ -424,9 +425,24 @@ describe("ArchivedDetailPage（封存討論）", () => {
       "**Decision**: 就這麼辦",
       "**Decision**: 就這麼辦\n- **cut 1 `child-a`**: 一\n- **cut 2 `child-z`**: 二",
     );
+    // 引擎對兩條刀列回的刀：child-a 已轉出、child-z 不在 promoted_to。
+    const cuts = [
+      engineCut("**cut 1 `child-a`**: 一", { cut: "cut 1", title: "一", changes: ["child-a"], changesInBold: true }),
+      engineCut("**cut 2 `child-z`**: 二", {
+        cut: "cut 2",
+        title: "二",
+        changes: ["child-z"],
+        changesInBold: true,
+        unpromoted: ["child-z"],
+      }),
+    ];
     render(
       <ArchivedDetailPage
-        {...(discussionProps({ promotedChanges: LINKS, ...LISTS, loadDiscussionDocument: vi.fn(async () => doc) }) as never)}
+        {...(discussionProps({
+          promotedChanges: LINKS,
+          ...LISTS,
+          loadDiscussionDocument: vi.fn(async () => discussionDoc(doc, cuts)),
+        }) as never)}
       />,
     );
     const todo = await waitFor(() => {

@@ -1,7 +1,7 @@
 import { useRef, useState, type Dispatch, type ReactNode, type SetStateAction } from "react";
 import { Code2, FileText, Flag, ListChecks, MessagesSquare, PenTool, Rocket } from "lucide-react";
 
-import type { ArchivedItem, ChangeItem, StationTicket, TicketStation } from "../adapter";
+import type { ArchivedItem, ChangeItem, DiscussionDocument, StationTicket, TicketStation } from "../adapter";
 import { useI18n } from "../i18n";
 import { parseTasks } from "../tasks";
 import { settle, useGenerationLoad } from "../lib/useGenerationLoad";
@@ -56,8 +56,8 @@ export interface ArchivedDetailPageProps {
   /** 封存目錄帶走的化石工單（spec「已封存詳情頁的工單分頁」）：對應分頁出現時載入；
    * 回 null 或 reject 皆為分頁空態。未提供時內容為空態。 */
   loadStationTicket?: (datedName: string, station: TicketStation) => Promise<StationTicket | null>;
-  /** 讀取封存討論記錄全文（slug 定址）；缺席回 null。 */
-  loadDiscussionDocument: (slug: string) => Promise<string | null>;
+  /** 讀取封存討論記錄全文與引擎解析的刀（slug 定址）；缺席回 null。 */
+  loadDiscussionDocument: (slug: string) => Promise<DiscussionDocument | null>;
   /** 封存變更的來源討論（slug＋topic，宿主解析；缺席／空＝出身列無「來自」）。 */
   sourceDiscussions?: { slug: string; topic: string }[];
   /** 點來源討論籤：宿主開啟該討論的已封存詳情頁。 */
@@ -390,7 +390,7 @@ function ArchivedChangeView({ datedName, ...props }: ArchivedDetailPageProps & {
 /** 封存討論變體（design D3）。 */
 function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { slug: string }) {
   const { t, tn } = useI18n();
-  const [doc, setDoc] = useState<Doc>();
+  const [doc, setDoc] = useState<DiscussionDocument | null | undefined>();
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -419,7 +419,7 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
       : promotedRowsFromLinks(promoted, onOpenPromotedChange);
   // 已封存：沒有記錄路徑段、不出「只差最後一刀」。
   const data = discussionDocData({
-    text: doc,
+    doc,
     status: "archived",
     hold: false,
     created: props.created ?? null,
@@ -513,14 +513,14 @@ function ArchivedDiscussionView({ slug, ...props }: ArchivedDetailPageProps & { 
           data-archived-detail="discussion"
           tree={tree}
           activeDoc={tab}
-          tocKey={`${tab}\u0000${doc ?? ""}`}
+          tocKey={`${tab}\u0000${doc?.content ?? ""}`}
           bodyRef={bodyRef}
         >
           <Card className="flex flex-col gap-5 p-6">
             {/* 封存討論的檔名帶封存日期而清單資料不帶：「開啟 ▾」只能複製內容。 */}
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
-              actions={props.renderDocumentActions?.({ doc: null, content: doc ?? null })}
+              actions={props.renderDocumentActions?.({ doc: null, content: doc?.content ?? null })}
               provenance={discussionDocProvenance(tab, data, { t, tn })}
             />
             <DocTiles tiles={summary.tiles} />

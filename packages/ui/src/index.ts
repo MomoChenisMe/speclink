@@ -89,6 +89,8 @@ export type {
   ArchivedItem,
   DiscussionItem,
   DiscussionLists,
+  DiscussionCut,
+  DiscussionDocument,
   ManualIndex,
   ManualPageItem,
   SearchHit,

@@ -27,6 +27,26 @@ describe("createTauriDataSource", () => {
     expect(payload.planError).toBe("dependency cycle: a -> b -> a");
   });
 
+  it("getDiscussionDocument 回 { content, cuts }：cuts 照傳、缺席補空陣列、不存在為 null", async () => {
+    const cut = {
+      cut: "cut 1",
+      title: "骨架",
+      note: "",
+      line: "**cut 1 `a-one`**: 骨架",
+      changes: ["a-one"],
+      changesInBold: true,
+      unpromoted: [],
+    };
+    invoke.mockResolvedValueOnce({ content: "record", cuts: [cut] });
+    const ds = createTauriDataSource("/r");
+    await expect(ds.getDiscussionDocument("s1")).resolves.toEqual({ content: "record", cuts: [cut] });
+    expect(invoke).toHaveBeenCalledWith("discussion_document", { root: "/r", slug: "s1" });
+    invoke.mockResolvedValueOnce({ content: "record" });
+    await expect(ds.getDiscussionDocument("s1")).resolves.toEqual({ content: "record", cuts: [] });
+    invoke.mockResolvedValueOnce(null);
+    await expect(ds.getDiscussionDocument("s1")).resolves.toBeNull();
+  });
+
   it("listSpecs unwraps the { specs } envelope and carries the presentation helper fields", async () => {
     // spec「桌面 app 呈現 change 與 spec 的清單與內容」呈現層輔助欄位（design D2、
     // spec-archive-drawer design D4）：modifiedAt 之外，規格卡收合資訊欄位原樣透傳。
