@@ -1,0 +1,73 @@
+schema: spec-driven
+created: 2026-11-03T14:37:01+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: herdr-speclink-panel
+started_at: 2026-11-03T14:47:46+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-03T15:38:41+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_rounds: 2
+reviewed_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 43a411009f1a488cf2873807c78eb16dfe4ecf6aa59954cb26bdf5ae4641b8ab
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: abc90368a2fc6e1790c89c58f5a6956a735f2171a1d30115c5d8069ec7dab435
+  - path: crates/adapters/speclink-cli/src/verbs/plan.rs
+    hash: 22e4f3be5e8875bbd2a05b49f6b182697f63db0ea84d28723dd1d852bf5866fa
+  - path: crates/adapters/speclink-cli/tests/it/plan_verbs.rs
+    hash: 2117f4db2d93f93bc642c57a26748edb7a9c460538e93de60fc173fe295bea7f
+  - path: crates/adapters/speclink-cli/tests/it/remote_plan.rs
+    hash: b6e4913f98e6e7ae2f84f24bf12e9cd084ccdb4f4a164af7fb3319c817ee794f
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: f25dbd423160900f0520da062916e4a34ed4a0b07ed7b5cb266dcf63c3fc68e8
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
+    hash: 6507b962897d5fda3798588e43465399a6acf06ab56f2a89bfb1bd087b58b088
+  - path: crates/engine/speclink-core/src/lifecycle/plan.rs
+    hash: 525acefa83b4301837a2a3b86b7970b2623c47b72d3d6692fd936354abcd3bdb
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 9401d5a0c5120c60f11f1f7ae85d871a9c7a831de74d3bfa84a299c971065d41
+  - path: crates/host/speclink-server/tests/it/api/plan_api.rs
+    hash: 3c41fbc6c282ae119b8ef3de0de665581d1939d7bce8073465349336e7200b88
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: 4ff263054d6ed70ca069d4a74397efa051862d4114d78c3bc02c71d0853c0e2c
+  - path: crates/protocol/speclink-remote/src/convert.rs
+    hash: 0f1f1756b10b480fef530aa18b1e125824a4c9aaf8063707bb2c259c54645b2b
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: 05589b49ff887ba82082cb9c0f826ecb4ee9af8cf1375a3175153f53359e008e
+verified_at: 2026-11-03T15:38:45+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_rounds: 2
+verified_scope:
+  - path: apps/desktop/core/src/manage.rs
+    hash: 43a411009f1a488cf2873807c78eb16dfe4ecf6aa59954cb26bdf5ae4641b8ab
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: abc90368a2fc6e1790c89c58f5a6956a735f2171a1d30115c5d8069ec7dab435
+  - path: crates/adapters/speclink-cli/src/verbs/plan.rs
+    hash: 22e4f3be5e8875bbd2a05b49f6b182697f63db0ea84d28723dd1d852bf5866fa
+  - path: crates/adapters/speclink-cli/tests/it/plan_verbs.rs
+    hash: 2117f4db2d93f93bc642c57a26748edb7a9c460538e93de60fc173fe295bea7f
+  - path: crates/adapters/speclink-cli/tests/it/remote_plan.rs
+    hash: b6e4913f98e6e7ae2f84f24bf12e9cd084ccdb4f4a164af7fb3319c817ee794f
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: f25dbd423160900f0520da062916e4a34ed4a0b07ed7b5cb266dcf63c3fc68e8
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
+    hash: 6507b962897d5fda3798588e43465399a6acf06ab56f2a89bfb1bd087b58b088
+  - path: crates/engine/speclink-core/src/lifecycle/plan.rs
+    hash: 525acefa83b4301837a2a3b86b7970b2623c47b72d3d6692fd936354abcd3bdb
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 9401d5a0c5120c60f11f1f7ae85d871a9c7a831de74d3bfa84a299c971065d41
+  - path: crates/host/speclink-server/tests/it/api/plan_api.rs
+    hash: 3c41fbc6c282ae119b8ef3de0de665581d1939d7bce8073465349336e7200b88
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: 4ff263054d6ed70ca069d4a74397efa051862d4114d78c3bc02c71d0853c0e2c
+  - path: crates/protocol/speclink-remote/src/convert.rs
+    hash: 0f1f1756b10b480fef530aa18b1e125824a4c9aaf8063707bb2c259c54645b2b
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: 05589b49ff887ba82082cb9c0f826ecb4ee9af8cf1375a3175153f53359e008e
+archived_at: 2026-11-03T15:39:49+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

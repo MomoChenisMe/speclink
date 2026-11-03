@@ -2,7 +2,7 @@
 //! 開頭的頂層列點為一把刀。規則逐條移植自桌面 packages/ui/src/discussionModel.ts 的
 //! `cutCard`（第 4 刀改由前端讀引擎資料前，兩邊的判定必須相同）。純函式，不做 I/O。
 
-use super::is_fence_line;
+use super::{DECISION_LABEL, DEFERRED_LABEL, REJECTED_LABEL};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -20,13 +20,22 @@ pub struct Cut {
     pub names_in_bold: bool,
 }
 
-const DECISION_LABEL: &str = "**Decision**:";
+impl Cut {
+    /// 還不在 `promoted_to` 的變更名，依 `names` 的順序。全部已轉出時為空；變更名不在粗體內時
+    /// 也為空——無從判定，不算尚未轉出（與前端 `cutPromotion` 的 unknown 同義）。
+    pub fn unpromoted(&self, promoted_to: &[String]) -> Vec<String> {
+        if !self.names_in_bold {
+            return Vec::new();
+        }
+        self.names.iter().filter(|n| !promoted_to.contains(n)).cloned().collect()
+    }
+}
 
 /// Decision 欄位到這些標籤行為止。
 const NEXT_LABELS: [&str; 5] = [
     "**Rationale**:",
-    "**Rejected alternatives**:",
-    "**Deferred**:",
+    REJECTED_LABEL,
+    DEFERRED_LABEL,
     "**Capture to**:",
     "**Next**:",
 ];
@@ -53,19 +62,37 @@ pub fn parse_cuts(conclusion: &str) -> Vec<Cut> {
     };
     // 標籤行的其餘文字也屬於欄位（與前端 splitLabeledFields 的 `:\s?` 同形）。
     let first = first.strip_prefix(' ').unwrap_or(first);
-    let mut in_fence = false;
+    // 開著的圍欄符號串；圍欄行與圍欄內的行都不是列點。
+    let mut open: Option<&str> = None;
     std::iter::once(first)
         .chain(lines.take_while(|l| !NEXT_LABELS.iter().any(|label| l.starts_with(label))))
         .filter(|line| {
-            if is_fence_line(line) {
-                in_fence = !in_fence;
-                return false;
+            let fence = fence_of(line);
+            match (open, fence) {
+                (None, Some((marks, _))) => open = Some(marks),
+                (Some(o), Some((marks, info)))
+                    if marks.starts_with(&o[..1]) && marks.len() >= o.len() && info.trim().is_empty() =>
+                {
+                    open = None
+                }
+                (None, None) => return true,
+                _ => {}
             }
-            !in_fence
+            false
         })
         .filter_map(|line| line.strip_prefix("- "))
         .filter_map(cut_of)
         .collect()
+}
+
+/// 圍欄行的符號串（3 個以上 ` 或 ~，容忍前導空白）與其後的 info 字串；不是圍欄行時為 None。
+/// 與前端 specSections.ts 的 `FENCE_RE` 同形：收尾行要與開頭同字元、長度不短於開頭、
+/// 其後沒有 info 字串。
+fn fence_of(line: &str) -> Option<(&str, &str)> {
+    let t = line.trim_start();
+    let mark = t.chars().next().filter(|c| *c == '`' || *c == '~')?;
+    let n = t.len() - t.trim_start_matches(mark).len();
+    (n >= 3).then(|| t.split_at(n))
 }
 
 /// 頂層列點首行（去掉 `- `）為一把刀時回刀。
@@ -240,6 +267,69 @@ mod tests {
         let cuts = parse_cuts(conclusion);
         assert_eq!(cuts[0].names, ["add-a"]);
         assert_eq!(cuts[1].names, ["add-a"]);
+    }
+
+    // --- 圍欄：與前端 specSections.ts 的 fenceFlags 同一條收尾規則 ---
+
+    #[test]
+    fn a_shorter_fence_inside_a_longer_one_does_not_close_it() {
+        let conclusion = "**Decision**: 定案。\n\n````\n```\n- **cut 1 `add-a`**: 範例\n```\n````\n\
+                          - **cut 2 `add-b`**: 真的\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 2"]);
+    }
+
+    #[test]
+    fn a_tilde_line_does_not_close_a_backtick_fence() {
+        let conclusion = "**Decision**: 定案。\n\n```\n~~~\n- **cut 1 `add-a`**: 範例\n```\n\
+                          - **cut 2 `add-b`**: 真的\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 2"]);
+    }
+
+    #[test]
+    fn a_fence_line_with_an_info_string_does_not_close_a_fence() {
+        let conclusion = "**Decision**: 定案。\n\n```\n```rust\n- **cut 1 `add-a`**: 範例\n```\n\
+                          - **cut 2 `add-b`**: 真的\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 2"]);
+    }
+
+    // --- 與前端判定不同、依規格字面的兩處（第 4 刀前端改讀引擎資料後兩邊一致）---
+
+    #[test]
+    fn a_bold_cut_paragraph_outside_a_list_item_is_not_a_cut() {
+        // 判定：依規格只認行首 `- ` 的頂層列點；前端 splitVerdict 另把列點後的散文段交給 cutCard。
+        let conclusion = "**Decision**: 定案。\n\n- **cut 1 `add-a`**: 一\n\n**cut 2 `add-b`**: 散文段\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 1"]);
+    }
+
+    #[test]
+    fn a_second_decision_label_does_not_end_the_field() {
+        // 判定：依規格 Decision 欄位到下一個 Rationale／Rejected alternatives／Deferred／
+        // Capture to／Next 標籤行為止，第二行 `**Decision**:` 不是邊界；前端只取最後一段。
+        let conclusion = "**Decision**: 一\n\n- **cut 1 `add-a`**: 一\n\n**Decision**: 二\n\n- **cut 2 `add-b`**: 二\n";
+        let cuts = parse_cuts(conclusion);
+        assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 1", "cut 2"]);
+    }
+
+    // --- 轉出判定 ---
+
+    #[test]
+    fn unpromoted_lists_the_names_not_in_promoted_to_in_names_order() {
+        let cut = only_cut("**cut 1 `add-c` `add-a` `add-b`**: 三個");
+        let promoted = ["add-a".to_string()];
+        assert_eq!(cut.unpromoted(&promoted), ["add-c", "add-b"]);
+        let all = ["add-a".to_string(), "add-b".to_string(), "add-c".to_string()];
+        assert!(cut.unpromoted(&all).is_empty());
+    }
+
+    #[test]
+    fn unpromoted_is_empty_when_the_names_are_not_in_bold() {
+        // 粗體內沒有變更名：無從判定，不算尚未轉出。
+        let cut = only_cut("**cut 2 外殼**（`add-x`）");
+        assert!(cut.unpromoted(&[]).is_empty());
     }
 
     #[test]

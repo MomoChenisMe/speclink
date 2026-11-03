@@ -6,7 +6,7 @@
 ## 2. plan 計算（D2）
 
 - [x] 2.1 （Red）在 crates/engine/speclink-core/src/lifecycle/plan.rs 的測試以記憶體 store 建立討論記錄，涵蓋：只轉出 cut 1 時列出 cut 2、全部轉出時為空、一刀兩個變更只轉出一個時 `unpromoted` 只含未轉出者、粗體內無名稱的刀不列、已封存討論不列、沒有 Conclusion 的討論不列、兩份討論依討論清單順序排列；並斷言 `compute_with_ranks` 與 `compute_strict` 的結果同樣帶 `unpromoted_cuts`。驗證：`cargo test -p speclink-core plan` 因欄位不存在而失敗 <!-- speclink-task:tsk_01M6G268J8WE3FQHMQ99Q00B79 -->
-- [x] 2.2 （Green）依設計 D2「plan 在 compute_from 結尾附上尚未轉出的刀」新增 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`（camelCase 序列化）與 `Plan.unpromoted_cuts`（序列化為 `unpromotedCuts`），在 `compute_from` 結尾以 `list_discussions`、`conclusion_text`、`parse_cuts` 算出；讀不到結論的討論略過。驗證：`cargo test -p speclink-core plan` 與 `cargo test -p speclink-core discuss` 全部通過 <!-- speclink-task:tsk_01M6G268J8RJB2CESDEBX4EBJE -->
+- [x] 2.2 （Green）依設計 D2「plan 在 compute_from 結尾附上尚未轉出的刀」新增 `UnpromotedCut { discussion, cut, title, changes, unpromoted }`（camelCase 序列化）與 `Plan.unpromoted_cuts`（序列化為 `unpromotedCuts`），在 `compute_from` 結尾以 `discuss::live_conclusions`（每份記錄只讀一次）與 `parse_cuts` 算出；讀不到結論的討論略過。驗證：`cargo test -p speclink-core plan` 與 `cargo test -p speclink-core discuss` 全部通過 <!-- speclink-task:tsk_01M6G268J8RJB2CESDEBX4EBJE -->
 
 ## 3. CLI 輸出（D3）
 

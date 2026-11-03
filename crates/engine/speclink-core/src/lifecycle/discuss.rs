@@ -549,6 +549,20 @@ pub fn list_discussions(store: &dyn Store) -> Vec<DiscussionInfo> {
     out
 }
 
+/// Every live discussion whose Conclusion holds content, with that content as
+/// [`conclusion_text`] returns it (HTML comments stripped) — each record read
+/// once, so its conclusion and its `promoted_to` come from the same document,
+/// in [`list_discussions`] order.
+pub fn live_conclusions(store: &dyn Store) -> Vec<(DiscussionInfo, String)> {
+    let mut out: Vec<(DiscussionInfo, String)> = store
+        .list_live_discussions()
+        .iter()
+        .filter_map(|doc| Some((info_from_doc(doc), conclusion_body(&doc.text)?)))
+        .collect();
+    out.sort_by(|a, b| a.0.slug.cmp(&b.0.slug));
+    out
+}
+
 /// List archived discussions (sorted by archived file name, i.e. by archive date).
 pub fn list_archived(store: &dyn Store) -> Vec<DiscussionInfo> {
     let mut out: Vec<DiscussionInfo> = store
@@ -594,10 +608,14 @@ pub struct DiscussionHit {
 /// Decision-line markers (design D2): the round-side one and the three
 /// conclusion-side ones, each with the `kind` it reports.
 const RULED_OUT_MARKER: &str = "**Ruled out**:";
+/// 結論欄位的標籤行前綴——搜尋（[`CONCLUSION_MARKERS`]）與分刀解析（[`cuts`]）共用。
+const DECISION_LABEL: &str = "**Decision**:";
+const REJECTED_LABEL: &str = "**Rejected alternatives**:";
+const DEFERRED_LABEL: &str = "**Deferred**:";
 const CONCLUSION_MARKERS: &[(&str, &str)] = &[
-    ("**Decision**:", "decision"),
-    ("**Rejected alternatives**:", "rejected"),
-    ("**Deferred**:", "deferred"),
+    (DECISION_LABEL, "decision"),
+    (REJECTED_LABEL, "rejected"),
+    (DEFERRED_LABEL, "deferred"),
 ];
 
 /// Search live and archived discussions for any of `terms` (case-insensitive

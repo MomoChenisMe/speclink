@@ -50,6 +50,7 @@
     - crates/host/speclink-server/src/api/routes.rs
     - crates/host/speclink-server/tests/it/api/plan_api.rs
     - apps/desktop/src-tauri/src/remote.rs
-- 影響的 crate：speclink-core（解析與 plan 計算）、speclink-cli（plan 的人眼與 JSON 輸出）、speclink-protocol 與 speclink-remote（GET /plan 型別與轉換）、speclink-server（GET /plan 回應）；apps/desktop 產品碼不動（plan 報告多一個欄位，桌面只讀既有欄位），只在 apps/desktop/src-tauri/src/remote.rs 的測試 helper 補上 `PlanResponse` 新欄位，否則測試編譯失敗
+    - apps/desktop/core/src/manage.rs
+- 影響的 crate：speclink-core（解析與 plan 計算）、speclink-cli（plan 的人眼與 JSON 輸出）、speclink-protocol 與 speclink-remote（GET /plan 型別與轉換）、speclink-server（GET /plan 回應）；apps/desktop 只改兩處（plan 報告多一個欄位，桌面只讀既有欄位）：apps/desktop/core/src/manage.rs 的 `set_depends_at` 成環複檢改用只檢查成環的 `plan::check_cycle`，不必每次讀討論；apps/desktop/src-tauri/src/remote.rs 的測試 helper 補上 `PlanResponse` 新欄位，否則測試編譯失敗
 - CLI：`speclink plan`，旗標、stdin、exit code 都不變；`--json` 多 `unpromotedCuts` 鍵，人眼輸出有資料時多一段；`--no-color` 下新段落同樣無 ANSI
 - 設定：無
