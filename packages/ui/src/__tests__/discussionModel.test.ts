@@ -1,21 +1,18 @@
 // 討論記錄解析器（desktop-discussion-doc-views design D1）：純函式，形狀不符時逐項降級（回 null、空陣列或整條
-// 當一般列），不拋錯。案例取自 spec Example 與 detail-content-redesign、desktop-ui-redesign 兩份真實結論。
+// 當一般列），不拋錯。案例取自 spec Example 與 detail-content-redesign 真實結論；分刀由引擎解析（見 discussionCuts.test.ts）。
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-import { listItemsOf, parseListItems } from "../docModel";
 import {
   captureTargets,
   commandChips,
   contextRelations,
   countPriorDiscussions,
-  cutPromotion,
   matchNames,
   openItems,
   parseConclusion,
   parseContextMeta,
-  parseCuts,
   roundStats,
   splitDiscussionSections,
   splitLead,
@@ -244,19 +241,6 @@ const DCR_CONCLUSION = [
   "**Next**: /speclink-propose --from-discussion detail-content-redesign（先建 cut 1 `desktop-detail-doc-tree`；cut 3 帶 --last）",
 ].join("\n");
 
-// desktop-ui-redesign 結論的分刀列節錄：cut 2／3a 把變更名寫在粗體之後的括號裡、粗體內另有範圍詞。
-const UIR_DECISION = [
-  "整個介面重新設計，分七刀落地。",
-  "- 底層不換：React 19＋Tailwind v4",
-  "- **cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已封存）",
-  "  - openDetail 清掉可取消浮層",
-  "- **cut 2 外殼**（propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、`desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出）",
-  "  - 三平台標題列",
-  "  - 新原語 dropdown-menu、kbd、page-header",
-  "- **cut 3a 看板**（propose 期拆兩個 change：`desktop-board-reskin` 欄與卡、`desktop-list-pages-reskin` 規格／已封存／手冊三頁；皆依賴 desktop-shell-redesign；兩者皆已轉出）",
-  "- **cut 5 `tray-panel-restyle`**: 系統匣面板，可與 3a、3b、4 並行",
-].join("\n");
-
 describe("parseConclusion", () => {
   it("六詞白名單切出六個欄位；第一個標籤前無內文時 lead 為空", () => {
     const c = parseConclusion(DCR_CONCLUSION);
@@ -308,125 +292,6 @@ describe("splitVerdict", () => {
 
   it("只有一句時沒有細節", () => {
     expect(splitVerdict("只有一句定論。")).toEqual({ verdict: "只有一句定論。", details: [] });
-  });
-});
-
-// spec Example「分刀列的解析」逐列一案。
-describe("parseCuts", () => {
-  const one = (line: string) => parseCuts(listItemsOf(parseListItems(`- ${line}`)));
-
-  it.each<[string, string, string[], string]>([
-    ["**cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄", "cut 1", ["desktop-detail-doc-tree"], "骨架"],
-    [
-      "**cut 2 `desktop-shell-redesign` `desktop-notice-relocation`**: 外殼 7 項",
-      "cut 2",
-      ["desktop-shell-redesign", "desktop-notice-relocation"],
-      "外殼 7 項",
-    ],
-    ["**刀三**：系統匣面板", "刀三", [], "系統匣面板"],
-    [
-      "**cut 2 外殼**（propose 期拆兩個 change：`desktop-shell-redesign` 外殼結構、`desktop-native-menu` 原生選單）",
-      "cut 2",
-      ["desktop-shell-redesign", "desktop-native-menu"],
-      "外殼",
-    ],
-    ["**第三刀**：系統匣", "第三刀", [], "系統匣"],
-    ["**Cut 3a `x-y`**", "Cut 3a", ["x-y"], ""],
-  ])("%s → 識別籤 %s、變更名籤 %j、範圍句 %s", (line, id, names, title) => {
-    const { cuts, rest } = one(line);
-    expect(rest).toEqual([]);
-    expect(cuts).toHaveLength(1);
-    expect(cuts[0]).toMatchObject({ id, names, title });
-  });
-
-  it.each([
-    "**範圍與驗收**：只改 UI 渲染",
-    "**cutover 計畫**：切換步驟",
-    "**Cut scope**：範圍說明",
-    "**`desktop-app`**: 粗體內只有反引號",
-    "cut 1 `x`：沒有粗體",
-  ])("%s 不是分刀，留在定案細節", (line) => {
-    const { cuts, rest } = one(line);
-    expect(cuts).toEqual([]);
-    expect(rest).toHaveLength(1);
-  });
-
-  it("「——」之後的文字成為卡內第一條細線列，其後接巢狀子項", () => {
-    const details = splitVerdict(parseConclusion(DCR_CONCLUSION)!.fields.Decision!).details;
-    const { cuts, rest } = parseCuts(details);
-    expect(rest.map((r) => r.text)).toEqual(["範圍與驗收：只改 UI 渲染", "版面：左欄 240px 文件樹"]);
-    expect(cuts.map((c) => [c.id, c.title, c.names])).toEqual([
-      ["cut 1", "骨架", ["desktop-detail-doc-tree"]],
-      ["cut 2", "變更文件渲染器", ["desktop-change-doc-views"]],
-      ["cut 3", "討論文件渲染器", ["desktop-discussion-doc-views"]],
-    ]);
-    expect(cuts[0].items).toEqual([
-      "三種詳情頁改三欄，九份文件先以現有渲染器落進新骨架",
-      "文件樹欄（身分區、文件節點、狀態區）",
-      "分頁列退場；已封存詳情頁同步",
-    ]);
-  });
-
-  it("粗體內有範圍詞時，粗體之後的括號說明（拿掉外圍括號）成為第一條細線列、變更名取自括號內", () => {
-    const { cuts, rest } = parseCuts(splitVerdict(UIR_DECISION).details);
-    expect(rest.map((r) => r.text)).toEqual(["底層不換：React 19＋Tailwind v4"]);
-    expect(cuts.map((c) => [c.id, c.title, c.names])).toEqual([
-      ["cut 0", "獨立 bug 修，不等換皮（已封存）", ["fix-drawer-open-dismisses-overlays"]],
-      ["cut 2", "外殼", ["desktop-shell-redesign", "desktop-notice-relocation", "desktop-native-menu"]],
-      ["cut 3a", "看板", ["desktop-board-reskin", "desktop-list-pages-reskin"]],
-      ["cut 5", "系統匣面板，可與 3a、3b、4 並行", ["tray-panel-restyle"]],
-    ]);
-    expect(cuts[0].items).toEqual(["openDetail 清掉可取消浮層"]);
-    expect(cuts[1].items).toEqual([
-      "propose 期拆三個 change：`desktop-shell-redesign` 外殼結構、`desktop-notice-relocation` 提示歸位（依賴前者）、`desktop-native-menu` macOS 原生選單（獨立）；三者皆已轉出",
-      "三平台標題列",
-      "新原語 dropdown-menu、kbd、page-header",
-    ]);
-  });
-
-  it("分刀列的縮排續行散文與巢狀子項依序成為卡內細線列，不丟內容", () => {
-    const { cuts } = parseCuts(
-      splitVerdict(["定論。", "- **cut 1 `a-one`**: 骨架——說明", "  續行散文一句。", "  - 子項"].join("\n")).details,
-    );
-    expect(cuts[0].items).toEqual(["說明", "續行散文一句。", "子項"]);
-  });
-
-  it("含空白的反引號片段不算變更名", () => {
-    const { cuts } = one("**cut 4 設定**（先跑 `speclink plan`，再建 `desktop-settings-mode`）");
-    expect(cuts[0].names).toEqual(["desktop-settings-mode"]);
-  });
-
-  it.each<[string, boolean]>([
-    ["**cut 1 `a-one`**: 骨架", true],
-    ["**cut 2 外殼**（`a-one` 外殼結構）", false],
-    ["**刀一（候選 1＋2）**：`KeyLines` 原語＋`DiscussionHead`", false],
-    ["**刀三**：系統匣面板", false],
-  ])("%s → 變更名在粗體內 %s", (line, inBold) => {
-    expect(one(line).cuts[0].namesInBold).toBe(inBold);
-  });
-});
-
-describe("cutPromotion（刀的轉出判定）", () => {
-  const cut = (names: string[], namesInBold = names.length > 0) => ({
-    id: "cut 1",
-    title: "骨架",
-    names,
-    namesInBold,
-    items: [],
-  });
-
-  it.each<[string[], string[], string]>([
-    [["a", "b"], ["a", "b"], "promoted"],
-    [["a", "b"], ["a"], "partial"],
-    [["a"], [], "none"],
-    [[], [], "unknown"],
-  ])("變更名籤 %j、已轉出 %j → %s", (names, promoted, verdict) => {
-    const set = new Set(promoted);
-    expect(cutPromotion(cut(names), (n) => set.has(n))).toBe(verdict);
-  });
-
-  it("名稱只寫在粗體之後（舊式刀列，可能混有識別字與檔名）時無從判定", () => {
-    expect(cutPromotion(cut(["KeyLines", "util.rs"], false), () => false)).toBe("unknown");
   });
 });
 

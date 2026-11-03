@@ -1,15 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { Clock } from "lucide-react";
 
+import type { DiscussionCut } from "../adapter";
 import { itemMarkdown } from "../docModel";
 import {
   CONCLUSION_LABELS,
   captureTargets,
   commandChips,
+  cutCards,
   cutPromotion,
   nameSpans,
   parseConclusion,
-  parseCuts,
   splitOption,
   splitRows,
   splitVerdict,
@@ -40,6 +41,8 @@ export interface CutStage {
 
 export interface ConclusionDocProps {
   text: string;
+  /** 引擎對該記錄解析的刀；空陣列（沒有刀或舊 server 沒有分刀資料）時沒有分刀段，刀列留在定案細節。 */
+  cuts?: DiscussionCut[];
   empty?: string;
   /** 分刀卡變更籤的階段與開啟；回 null＝不在 `promoted_to`（不可點、無階段籤）。 */
   stageOf?: (name: string) => CutStage | null;
@@ -68,7 +71,7 @@ const DETAILS_SHOWN = 4;
  * 結論文件（desktop-discussion-doc-views design D2；spec「討論結論以欄位標籤呈現」）：六欄位各一段，決定之後
  * 有分刀時多一段「分刀」；欄位一個都沒有時整篇 Markdown 退回。討論詳情頁與已封存討論頁共用。
  */
-export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec, jump, onJumped }: ConclusionDocProps) {
+export function ConclusionDoc({ text, cuts = [], empty, stageOf, specNames, onOpenSpec, jump, onJumped }: ConclusionDocProps) {
   const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
   // 刀卡在這一輪 commit 後才在 DOM 裡，effect 裡捲動才找得到；找不到時只清請求。
@@ -95,7 +98,7 @@ export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec, jum
         const title = t(FIELD_KEYS[l]);
         switch (l) {
           case "Decision":
-            return <DecisionSections key={l} md={md} stageOf={stageOf} />;
+            return <DecisionSections key={l} md={md} engineCuts={cuts} stageOf={stageOf} />;
           case "Rejected alternatives":
           case "Deferred": {
             const rows = splitRows(md).map(splitOption);
@@ -129,12 +132,20 @@ export function ConclusionDoc({ text, empty, stageOf, specNames, onOpenSpec, jum
   );
 }
 
-/** 決定：定論句放大、定案細節收合；分刀列抽成其後的「分刀」段。 */
-function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDocProps["stageOf"] }) {
+/** 決定：定論句放大、定案細節收合；引擎的刀對回的列抽成其後的「分刀」段。 */
+function DecisionSections({
+  md,
+  engineCuts,
+  stageOf,
+}: {
+  md: string;
+  engineCuts: DiscussionCut[];
+  stageOf?: ConclusionDocProps["stageOf"];
+}) {
   const { t, tn } = useI18n();
   const [expanded, setExpanded] = useState(false);
   const { verdict, details } = splitVerdict(md);
-  const { cuts, rest } = parseCuts(details);
+  const { cuts, rest } = cutCards(details, engineCuts);
   const rows = rest.map(itemMarkdown);
   const hidden = expanded ? 0 : Math.max(0, rows.length - DETAILS_SHOWN);
   return (
@@ -170,16 +181,11 @@ function DecisionSections({ md, stageOf }: { md: string; stageOf?: ConclusionDoc
   );
 }
 
-/** 刀的轉出判定（刀卡與未轉出提示框共用）：變更名查得到階段籤即已轉出。 */
-export function cutPromotionOf(cut: CutCard, stageOf: ConclusionDocProps["stageOf"]) {
-  return cutPromotion(cut, (name) => stageOf?.(name) != null);
-}
-
-/** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。整刀未轉出時橄欖色虛線框、卡頭
- * 「尚未轉出」籤；部分轉出時未轉出的變更名籤之後接同款籤。 */
+/** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。轉出判定取自引擎（`cutPromotion`）：
+ * 整刀未轉出時橄欖色虛線框、卡頭「尚未轉出」籤；部分轉出時 `unpromoted` 內的變更名籤之後接同款籤。 */
 function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocProps["stageOf"] }) {
   const { t, tn } = useI18n();
-  const promotion = cutPromotionOf(cut, stageOf);
+  const promotion = cutPromotion(cut);
   const todo = promotion === "none";
   const notPromoted = <StatusPill tone="manual">{t("conclusion.notPromoted")}</StatusPill>;
   return (
@@ -212,7 +218,7 @@ function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocPr
                     {stage.label}
                   </StatusPill>
                 ) : (
-                  promotion === "partial" && notPromoted
+                  promotion === "partial" && cut.unpromoted.includes(name) && notPromoted
                 )}
               </span>
             );

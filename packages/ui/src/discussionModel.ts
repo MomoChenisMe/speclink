@@ -1,6 +1,8 @@
-// 討論記錄的結構解析（desktop-discussion-doc-views design D1）：區段、輪、結論欄位、分刀、背景收尾行與文中名稱。
+// 討論記錄的結構解析（desktop-discussion-doc-views design D1）：區段、輪、結論欄位、背景收尾行與文中名稱；分刀由
+// 引擎解析（discussion-cuts-from-engine），這裡只把引擎的刀對回結論的細節列。
 // 全部是純函式、不碰 React；形狀不符時回 null、空陣列或整條當一般列（逐項降級），不拋錯——呼叫端照 Markdown 排。
 // 記錄格式由引擎（speclink-core discuss）與 discuss 技能擁有：區段與輪標題的切分規則與引擎逐字同源。
+import type { DiscussionCut } from "./adapter";
 import { itemMarkdown, parseListItems, type ListBlock, type ListItem } from "./docModel";
 
 /** 討論記錄的三個標準區段。 */
@@ -186,82 +188,43 @@ export function splitVerdict(md: string): { verdict: string; details: ListItem[]
   return { verdict: lead, details };
 }
 
-/** 分刀卡：識別籤、範圍句、變更名籤、卡內細線列。 */
+/** 分刀卡：識別籤、範圍句、變更名籤、尚未轉出的變更名與卡內細線列——判定全部取自引擎的刀（`DiscussionCut`）。 */
 export interface CutCard {
   id: string;
   title: string;
   names: string[];
   /** 變更名寫在粗體內（討論技能的寫法 **cut N `change-name`**）；false 時名稱取自粗體之後，可能混有識別字或檔名。 */
   namesInBold: boolean;
+  /** `names` 中不在 `promoted_to` 的名稱（引擎判定）。 */
+  unpromoted: string[];
   items: string[];
 }
 
-/** 粗體開頭的分刀識別：`cut <編號>`（編號以數字起頭：`cut 3a`；`cutover`、`Cut scope` 不算）、`刀…`、`第 N 刀`。 */
-const CUT_ID_RE = /^(?:cut\s*\d[^\s，,：:（(]*|第\s*[^\s刀]+?\s*刀|刀[^\s，,：:（(]*)/i;
-
-/** 反引號片段（不含空白的才算名稱：`speclink plan` 這類指令不是變更名）。 */
-const tickNames = (text: string) =>
-  unique([...text.matchAll(/`([^`]+)`/g)].map((m) => m[1].trim()).filter((s) => /^\S+$/.test(s)));
-
-/** 外圍整組括號（`（…）`／`(…)`，含巢狀）拿掉；不是一整組時原樣。 */
-function unwrapParens(text: string): string {
-  if (!/^[（(]/.test(text)) return text;
-  let depth = 0;
-  for (let i = 0; i < text.length; i++) {
-    if ("（(".includes(text[i])) depth += 1;
-    else if ("）)".includes(text[i]) && --depth === 0) return i === text.length - 1 ? text.slice(1, -1).trim() : text;
-  }
-  return text;
+/** 引擎的刀依序對回決定細節：每把刀認領第一個尚未被認領、首行等於 `line` 的細節列，認領到的列自 rest 移除；
+ * 卡內細線列為說明（非空時）接該列的巢狀內容。找不到對應列的刀仍成卡，只有說明（該列留在 rest，不丟內容）。 */
+export function cutCards(details: ListItem[], cuts: DiscussionCut[]): { cuts: CutCard[]; rest: ListItem[] } {
+  const claimed = new Set<number>();
+  const cards = cuts.map((cut): CutCard => {
+    const at = details.findIndex((item, i) => !claimed.has(i) && item.text.trim() === cut.line);
+    if (at >= 0) claimed.add(at);
+    return {
+      id: cut.cut,
+      title: cut.title,
+      names: cut.changes,
+      namesInBold: cut.changesInBold,
+      unpromoted: cut.unpromoted,
+      items: [...(cut.note ? [cut.note] : []), ...(at >= 0 ? blockRows(parseListItems(details[at].body)) : [])],
+    };
+  });
+  return { cuts: cards, rest: details.filter((_, i) => !claimed.has(i)) };
 }
 
-/** 首行為一張分刀卡時回卡，否則 null。 */
-function cutCard(item: ListItem): CutCard | null {
-  if (!item.text.startsWith("**")) return null;
-  const close = item.text.indexOf("**", 2);
-  if (close < 0) return null;
-  const bold = item.text.slice(2, close);
-  const after = item.text.slice(close + 2);
-  const plain = bold.replace(/`[^`]*`/g, " ").replace(/\s+/g, " ").trim();
-  const id = CUT_ID_RE.exec(plain);
-  if (!id) return null;
-  const scope = plain.slice(id[0].length).replace(/^[\s:：、—–-]+/, "").trim();
-  const tail = after.replace(/^\s*[:：]\s*/, "").trim();
-  // 範圍句取自粗體時（「**cut 2 外殼**（…）」）粗體之後全部是說明；否則以第一個「——」切範圍句與說明。
-  const dash = scope ? -1 : tail.indexOf("——");
-  const title = scope || (dash < 0 ? tail : tail.slice(0, dash).trim());
-  const note = scope ? unwrapParens(tail) : dash < 0 ? "" : tail.slice(dash + 2).trim();
-  const inBold = tickNames(bold);
-  return {
-    id: id[0],
-    title,
-    names: inBold.length > 0 ? inBold : tickNames(after),
-    namesInBold: inBold.length > 0,
-    items: [...(note ? [note] : []), ...blockRows(parseListItems(item.body))],
-  };
-}
-
-/** 決定細節中抽出分刀卡；其餘留在 rest。沒有命中時 cuts 為空陣列。 */
-export function parseCuts(details: ListItem[]): { cuts: CutCard[]; rest: ListItem[] } {
-  const cuts: CutCard[] = [];
-  const rest: ListItem[] = [];
-  for (const item of details) {
-    const card = cutCard(item);
-    if (card) cuts.push(card);
-    else rest.push(item);
-  }
-  return { cuts, rest };
-}
-
-/** 刀的轉出判定：只看粗體內的變更名籤是否已轉出（刀卡與未轉出提示框共用，兩處不會分岔）；粗體內沒有變更名
- * （沒有名稱，或舊式刀列把名稱寫在粗體之後）時無從判定。 */
-export function cutPromotion(
-  cut: CutCard,
-  isPromoted: (name: string) => boolean,
-): "promoted" | "partial" | "none" | "unknown" {
+/** 刀的轉出判定（刀卡與未轉出提示框共用，兩處不會分岔）：只讀引擎欄位——變更名不在粗體內（沒有名稱，或舊式
+ * 刀列把名稱寫在粗體之後）時無從判定。 */
+export function cutPromotion(cut: CutCard): "promoted" | "partial" | "none" | "unknown" {
   if (!cut.namesInBold) return "unknown";
-  const promoted = cut.names.filter(isPromoted).length;
-  if (promoted === cut.names.length) return "promoted";
-  return promoted === 0 ? "none" : "partial";
+  if (cut.unpromoted.length === 0) return "promoted";
+  return cut.unpromoted.length === cut.names.length ? "none" : "partial";
 }
 
 /** 否決與擱置的一列：第一個「——」或前後帶空白的「 — 」（discuss 技能檔寫「option — why it lost」）切方案與

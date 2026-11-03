@@ -1,7 +1,13 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Archive, Check, Circle, FileText, Flag, MessagesSquare, Rocket } from "lucide-react";
 
-import { DEFAULT_SPEC_DIR, type ArchivedItem, type ChangeItem, type DiscussionItem } from "../adapter";
+import {
+  DEFAULT_SPEC_DIR,
+  type ArchivedItem,
+  type ChangeItem,
+  type DiscussionDocument,
+  type DiscussionItem,
+} from "../adapter";
 import { countPriorDiscussions, type DiscussionSections } from "../discussionModel";
 import { useI18n } from "../i18n";
 import { changeStage } from "../stage";
@@ -46,8 +52,8 @@ export interface DiscussionDetailPageProps {
   discussion: DiscussionItem | null;
   /** 刷新世代——遞增即重載討論記錄內容（未傳＝0，行為等同僅開啟時載入）。 */
   refreshGen?: number;
-  /** 記錄全文載入（slug 定址）。 */
-  loadDocument: (slug: string) => Promise<string | null>;
+  /** 記錄全文與引擎解析的刀（slug 定址）。 */
+  loadDocument: (slug: string) => Promise<DiscussionDocument | null>;
   /** active change 清單（衍生變更現況派生）。 */
   changes: ChangeItem[];
   /** 已封存 change 清單（衍生變更已封存態派生）。 */
@@ -193,7 +199,7 @@ export function DiscussionDocs({
   jump,
   onJumped,
 }: {
-  doc: string | null | undefined;
+  doc: DiscussionDocument | null | undefined;
   data: DiscussionDocData;
   /** 背景文件的身分與開啟回呼；推導、建立日與記錄路徑取自 `data`。 */
   context: Omit<ContextDocProps, "model" | "empty" | "created" | "recordPath">;
@@ -211,6 +217,7 @@ export function DiscussionDocs({
           <TabsContent value="conclusion">
             <ConclusionDoc
               text={sections.conclusion}
+              cuts={doc?.cuts ?? []}
               empty={empty.conclusion}
               stageOf={rowStage(data.rows)}
               specNames={model.names.specs}
@@ -236,7 +243,7 @@ export function DiscussionDocs({
       ) : (
         // 區段缺失或格式非預期：整篇以單一檢視退回（不報錯）；載入中畫骨架、空態文案只在載入完成後出。
         <TabsContent value="record">
-          {doc === undefined ? <DocSkeleton /> : <Markdown content={doc} empty={t("common.noContent")} />}
+          {doc === undefined ? <DocSkeleton /> : <Markdown content={doc?.content ?? null} empty={t("common.noContent")} />}
         </TabsContent>
       )}
       <TabsContent value="promote">
@@ -270,7 +277,7 @@ export function DiscussionDetailPage({
   specDir = DEFAULT_SPEC_DIR,
 }: DiscussionDetailPageProps) {
   const { t, tn } = useI18n();
-  const [doc, setDoc] = useState<string | null | undefined>();
+  const [doc, setDoc] = useState<DiscussionDocument | null | undefined>();
   // 使用者選的文件；null＝依預設規則（記錄載入前後、結論有無都跟著走）。
   const [picked, setPicked] = useState<string | null>(null);
   // 未轉出提示框「前往」的捲動請求（seq 遞增，同一刀可重複跳）；結論文件處理完即清除。
@@ -320,7 +327,7 @@ export function DiscussionDetailPage({
   const rows = promotedRows(discussion.promotedTo, changes, archivedChanges, t, onOpenChangeCard, openArchivedName);
   const recordPath = `${specDir}/discussions/${discussion.slug}.md`;
   const data = discussionDocData({
-    text: doc,
+    doc,
     status: discussion.status,
     hold: discussion.hold === true,
     created: discussion.created ?? null,
@@ -492,14 +499,14 @@ export function DiscussionDetailPage({
           data-discussion-detail
           tree={tree}
           activeDoc={`${discussion.slug}\u0000${tab}`}
-          tocKey={`${tab}\u0000${doc ?? ""}`}
+          tocKey={`${tab}\u0000${doc?.content ?? ""}`}
           bodyRef={bodyRef}
         >
           {archiveAction && <DetailActions>{archiveAction}</DetailActions>}
           <Card className="flex flex-col gap-5 p-6">
             <DocHeader
               title={t(DOC_TITLE_KEYS[tab])}
-              actions={renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc ?? null })}
+              actions={renderDocumentActions?.({ doc: { discussion: discussion.slug }, content: doc?.content ?? null })}
               provenance={discussionDocProvenance(tab, data, { t, tn })}
             />
             <DocTiles tiles={summary.tiles} />

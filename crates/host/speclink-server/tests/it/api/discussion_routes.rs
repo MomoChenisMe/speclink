@@ -893,3 +893,108 @@ fn discussion_search_route_matches_the_engine_search_over_the_same_records() {
         serde_json::to_value(&hits).unwrap().as_array().unwrap().iter().map(strip).collect();
     assert_eq!(route, engine, "the endpoint and the engine agree on order, fields and matches");
 }
+
+// --- 規格「討論詳情回應攜帶分刀」（discussion-cuts-from-engine）---
+
+const CUTS_LIVE_RECORD: &str =
+    "---\ntopic: Panel\nslug: panel\nstatus: promoted\npromoted_to: add-y\ncreated: 2026-11-01\n---\n\n\
+     # Discussion: Panel\n\n## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n\n\
+     **Decision**: 分兩刀。\n\n- **cut 2 `add-y`**: 引擎解析\n- **cut 3 `add-z`**: 路線圖\n";
+const CUTS_ARCHIVED_RECORD: &str =
+    "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\npromoted_to: add-a\ncreated: 2026-08-01\n---\n\n\
+     # Discussion: Old topic\n\n## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n\n\
+     **Decision**: 一刀。\n\n- **cut 1 `add-a`**: 骨架\n";
+const CUTS_FRESH_RECORD: &str =
+    "---\ntopic: Fresh topic\nslug: fresh-topic\nstatus: open\ncreated: 2026-11-02\n---\n\n\
+     # Discussion: Fresh topic\n\n## Context\n\nseed\n\n## Rounds\n\n\
+     ### Round 1 — assumptions (2026-11-02)\n\n**Focus**: scope\n";
+
+/// GET /discussions/{slug} 的原始 JSON。
+fn show_body(f: &Fixture, slug: &str) -> Value {
+    request("GET", f, &f.reader_pat, &format!("discussions/{slug}"))
+        .call()
+        .expect("GET /discussions/{slug}")
+        .into_json()
+        .expect("JSON body")
+}
+
+/// 回應頂層只多 `cuts`；`content` 為記錄原文；`info` 除 path（各 store 的位置）外與既有欄位逐一相同。
+fn assert_info_and_content_unchanged(body: &Value, text: &str, info: Value) {
+    let mut keys: Vec<_> = body.as_object().expect("object body").keys().cloned().collect();
+    keys.sort();
+    assert_eq!(keys, ["content", "cuts", "info"]);
+    assert_eq!(body["content"], text);
+    let mut got = body["info"].clone();
+    let path = got.as_object_mut().unwrap().remove("path").expect("info.path");
+    assert!(path.as_str().unwrap().ends_with(".md"), "{path}");
+    assert_eq!(got, info);
+}
+
+#[test]
+fn show_discussion_carries_cuts_for_a_live_record() {
+    let f = fixture();
+    seed_discussion(&f, "panel", false, CUTS_LIVE_RECORD);
+    let body = show_body(&f, "panel");
+    assert_eq!(
+        body["cuts"],
+        json!([
+            {
+                "cut": "cut 2", "title": "引擎解析", "note": "", "line": "**cut 2 `add-y`**: 引擎解析",
+                "changes": ["add-y"], "changesInBold": true, "unpromoted": []
+            },
+            {
+                "cut": "cut 3", "title": "路線圖", "note": "", "line": "**cut 3 `add-z`**: 路線圖",
+                "changes": ["add-z"], "changesInBold": true, "unpromoted": ["add-z"]
+            }
+        ])
+    );
+    let engine = speclink_core::discuss::record_cuts(CUTS_LIVE_RECORD, &["add-y".to_string()]);
+    assert_eq!(body["cuts"], serde_json::to_value(engine).unwrap(), "the route reports the engine's cuts");
+    assert_info_and_content_unchanged(
+        &body,
+        CUTS_LIVE_RECORD,
+        json!({
+            "slug": "panel", "topic": "Panel", "status": "promoted", "rounds": 0, "created": "2026-11-01",
+            "promotedTo": ["add-y"], "concluded": true, "hold": false, "archived": false
+        }),
+    );
+}
+
+#[test]
+fn show_discussion_carries_cuts_for_an_archived_record() {
+    let f = fixture();
+    seed_discussion(&f, "old-topic", true, CUTS_ARCHIVED_RECORD);
+    let body = show_body(&f, "old-topic");
+    assert_eq!(body["info"]["archived"], true);
+    assert_eq!(
+        body["cuts"],
+        json!([{
+            "cut": "cut 1", "title": "骨架", "note": "", "line": "**cut 1 `add-a`**: 骨架",
+            "changes": ["add-a"], "changesInBold": true, "unpromoted": []
+        }])
+    );
+    assert_info_and_content_unchanged(
+        &body,
+        CUTS_ARCHIVED_RECORD,
+        json!({
+            "slug": "old-topic", "topic": "Old topic", "status": "promoted", "rounds": 0, "created": "2026-08-01",
+            "promotedTo": ["add-a"], "concluded": true, "hold": false, "archived": true
+        }),
+    );
+}
+
+#[test]
+fn show_discussion_without_a_conclusion_has_empty_cuts() {
+    let f = fixture();
+    seed_discussion(&f, "fresh-topic", false, CUTS_FRESH_RECORD);
+    let body = show_body(&f, "fresh-topic");
+    assert_eq!(body["cuts"], json!([]));
+    assert_info_and_content_unchanged(
+        &body,
+        CUTS_FRESH_RECORD,
+        json!({
+            "slug": "fresh-topic", "topic": "Fresh topic", "status": "open", "rounds": 1, "created": "2026-11-02",
+            "concluded": false, "hold": false, "archived": false
+        }),
+    );
+}

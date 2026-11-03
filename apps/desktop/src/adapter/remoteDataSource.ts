@@ -6,6 +6,8 @@ import type {
   ChangeListPayload,
   SpecItem,
   ArchivedItem,
+  DiscussionCut,
+  DiscussionDocument,
   DiscussionItem,
   DiscussionLists,
   ManualIndex,
@@ -206,8 +208,9 @@ export function createRemoteDataSource(
       );
       return { active: r.active.map(toDiscussionItem), archived: r.archived.map(toDiscussionItem) };
     },
-    async getDiscussionDocument(slug: string): Promise<string | null> {
-      return await invoke<string | null>("remote_discussion_document", { ...locator, slug });
+    async getDiscussionDocument(slug: string): Promise<DiscussionDocument | null> {
+      const doc = await invoke<{ content: string; cuts?: DiscussionCut[] } | null>("remote_discussion_document", { ...locator, slug });
+      return doc && { content: doc.content, cuts: doc.cuts ?? [] };
     },
     async promoteDiscussion(slug: string, name?: string): Promise<{ change: string }> {
       return await invoke<{ change: string }>("remote_promote_discussion", {

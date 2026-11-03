@@ -641,6 +641,45 @@ fn discuss_show_json_field_names_match_fs_mode() {
     assert_same_keys(&stdout_json(&r), &stdout_json(&f), "discuss show --json");
 }
 
+/// 結論帶一刀的記錄——fs 端寫進檔案，remote 端放進詳情回應的 `content`。
+const CUT_RECORD: &str = "---\ntopic: Demo topic\nslug: demo-topic\nstatus: open\ncreated: 2026-07-01\n---\n\n\
+     # Discussion: Demo topic\n\n## Context\n\nSome context\n\n## Rounds\n\n## Conclusion\n\n\
+     **Decision**: 一刀。\n\n- **cut 1 `add-a`**: 骨架\n";
+
+#[test]
+fn discuss_show_json_carries_no_cuts_in_either_mode() {
+    // client-protocol 場景「CLI 的 discuss show 不含 cuts」：server 的詳情回應帶 cuts，
+    // remote 模式照舊只取 info 與 content；fs 模式不經 server。
+    let body = serde_json::json!({
+        "info": {
+            "slug": "demo-topic", "topic": "Demo topic", "status": "open", "rounds": 0,
+            "created": "2026-07-01", "path": "discussions/demo-topic.md", "archived": false
+        },
+        "content": CUT_RECORD,
+        "cuts": [{
+            "cut": "cut 1", "title": "骨架", "note": "", "line": "**cut 1 `add-a`**: 骨架",
+            "changes": ["add-a"], "changesInBold": true, "unpromoted": ["add-a"]
+        }]
+    });
+    let mock = mock_server(vec![("GET", "/discussions/demo-topic", body.to_string())]);
+    let remote = TempProject::remote("disc-show-cuts", &mock.base, Some("backend"));
+    let fs = TempProject::fs_twin("disc-show-cuts-fs");
+    std::fs::write(fs.dir.join("openspec").join("discussions").join("demo-topic.md"), CUT_RECORD).unwrap();
+
+    let r = remote.run(&["discuss", "show", "demo-topic", "--json"], Some("tok"));
+    assert!(r.status.success(), "remote discuss show failed: {}", String::from_utf8_lossy(&r.stderr));
+    let f = fs.run(&["discuss", "show", "demo-topic", "--json"], None);
+    assert!(f.status.success());
+    let (r, f) = (stdout_json(&r), stdout_json(&f));
+    for (mode, out) in [("remote", &r), ("fs", &f)] {
+        assert!(
+            !keys_of(out).iter().any(|k| k.ends_with("/cuts")),
+            "{mode} discuss show --json must not carry cuts: {out}"
+        );
+    }
+    assert_same_keys(&r, &f, "discuss show --json");
+}
+
 // --- CLI-level mode behaviors ---
 
 #[test]

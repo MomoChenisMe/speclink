@@ -460,7 +460,10 @@ async fn list_discussions(root: PathBuf) -> Result<Value, String> {
 }
 
 #[tauri::command]
-async fn discussion_document(root: PathBuf, slug: String) -> Result<Option<String>, String> {
+async fn discussion_document(
+    root: PathBuf,
+    slug: String,
+) -> Result<Option<speclink_desktop_core::discussions::DiscussionDocument>, String> {
     tauri::async_runtime::spawn_blocking(move || {
         speclink_desktop_core::discussions::discussion_document_at(&root, &slug)
     })
@@ -1754,7 +1757,7 @@ async fn remote_list_discussions(
     .await
 }
 
-/// 討論內文：404 與本地語意一致回 null。
+/// 討論記錄全文與其刀（`{ content, cuts }`）：404 與本地語意一致回 null。
 #[tauri::command]
 async fn remote_discussion_document(
     app: tauri::AppHandle,
@@ -1762,18 +1765,10 @@ async fn remote_discussion_document(
     project: String,
     repo: String,
     slug: String,
-) -> Result<Option<String>, String> {
-    with_remote(
-        app,
-        connection_id,
-        project,
-        repo,
-        move |ws, credentials| match ws.discussion_document(credentials, &slug) {
-            Ok(shown) => Ok(Some(shown.content)),
-            Err(e) if e.status == Some(404) => Ok(None),
-            Err(e) => Err(e.message),
-        },
-    )
+) -> Result<Option<speclink_desktop_core::discussions::DiscussionDocument>, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        ws.discussion_document(credentials, &slug).map_err(|e| e.message)
+    })
     .await
 }
 

@@ -1643,9 +1643,11 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
       getDiscussionDocument: vi
         .fn()
-        .mockResolvedValue(
-          "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
-        ),
+        .mockResolvedValue({
+          content:
+            "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+          cuts: [],
+        }),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
@@ -1678,9 +1680,11 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
       getDiscussionDocument: vi
         .fn()
-        .mockResolvedValue(
-          "---\ntopic: Held topic\nslug: held-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Held topic\n\n## Context\n\n背景。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
-        ),
+        .mockResolvedValue({
+          content:
+            "---\ntopic: Held topic\nslug: held-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Held topic\n\n## Context\n\n背景。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+          cuts: [],
+        }),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
@@ -1705,9 +1709,11 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       }),
       getDiscussionDocument: vi
         .fn()
-        .mockResolvedValue(
-          "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
-        ),
+        .mockResolvedValue({
+          content:
+            "---\ntopic: Old topic\nslug: old-topic\nstatus: promoted\ncreated: 2026-06-30\n---\n\n# Discussion: Old topic\n\n## Context\n\n封存背景內文。\n\n## Rounds\n\n## Conclusion\n\n**Decision**: 收工\n",
+          cuts: [],
+        }),
     });
     renderApp(ds);
     await waitFor(() => screen.getByText("desktop-shell-and-browser"));
@@ -2277,7 +2283,7 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
         ],
       }),
       getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
-      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+      getDiscussionDocument: vi.fn().mockResolvedValue({ content: DISCUSSION_DOC, cuts: [] }),
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
@@ -2312,7 +2318,7 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
           { slug: "old-topic", topic: "Old topic", status: "promoted", rounds: 1, created: "2026-06-30", promotedTo: ["live-child"] },
         ],
       }),
-      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+      getDiscussionDocument: vi.fn().mockResolvedValue({ content: DISCUSSION_DOC, cuts: [] }),
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
@@ -2347,7 +2353,7 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
       }),
       getDiscussionDocument: vi
         .fn()
-        .mockResolvedValue(DISCUSSION_DOC.replace("封存背景內文。", "背景提到 desktop-app 的需求。")),
+        .mockResolvedValue({ content: DISCUSSION_DOC.replace("封存背景內文。", "背景提到 desktop-app 的需求。"), cuts: [] }),
       getSpecDocument: vi.fn().mockResolvedValue("# desktop-app Specification\n\n### Requirement: 甲\n\n正典內文段落。"),
     });
     renderApp(ds);
@@ -2387,7 +2393,7 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
         ],
       }),
       getArchivedDocument: vi.fn().mockResolvedValue("## Why\n\n封存提案內文。"),
-      getDiscussionDocument: vi.fn().mockResolvedValue(DISCUSSION_DOC),
+      getDiscussionDocument: vi.fn().mockResolvedValue({ content: DISCUSSION_DOC, cuts: [] }),
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");
@@ -2420,7 +2426,7 @@ describe("溯源與衍生變更接線（desktop-readonly-detail-pages）", () =>
       }),
       getDiscussionDocument: vi
         .fn()
-        .mockResolvedValue(DISCUSSION_DOC.replace("封存背景內文。", "接續 topic-a 與 older-topic 的討論。")),
+        .mockResolvedValue({ content: DISCUSSION_DOC.replace("封存背景內文。", "接續 topic-a 與 older-topic 的討論。"), cuts: [] }),
     });
     renderApp(ds);
     await screen.findByText("desktop-shell-and-browser");

@@ -612,12 +612,39 @@ pub struct DiscussionInfo {
     pub archived: bool,
 }
 
-/// `GET /discussions/{slug}` response.
+/// `GET /discussions/{slug}` response. `cuts` reads an absent key as empty
+/// (a new client reading an old server).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ShowDiscussionResponse {
     pub info: DiscussionInfo,
     pub content: String,
+    #[serde(default)]
+    pub cuts: Vec<DiscussionCut>,
+}
+
+/// One cut in the record's conclusion, in conclusion order, as the engine
+/// parses it from the same read as `content` and `info.promotedTo`: `line` is
+/// the cut's list item first line (marker and outer whitespace removed),
+/// `unpromoted` the names of `changes` not in `promotedTo` (always empty when
+/// `changesInBold` is false). Every field reads an absent key as empty.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussionCut {
+    #[serde(default)]
+    pub cut: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub line: String,
+    #[serde(default)]
+    pub changes: Vec<String>,
+    #[serde(default)]
+    pub changes_in_bold: bool,
+    #[serde(default)]
+    pub unpromoted: Vec<String>,
 }
 
 /// One keyword match inside a discussion record (`GET /discussions/search`).
@@ -1095,6 +1122,49 @@ mod tests {
         assert_eq!(show.content, "# Discussion\n");
     }
 
+    // --- client-protocol「討論詳情回應的分刀 payload」---
+
+    const SHOW_INFO: &str = r#"{"slug":"panel","topic":"Panel","status":"promoted","rounds":0,"created":"2026-11-01","promotedTo":["a"],"path":"discussions/panel.md","archived":false}"#;
+
+    #[test]
+    fn show_discussion_without_cuts_reads_as_empty() {
+        // 場景「舊 server 缺 cuts 讀作空陣列」：回應只有 info 與 content 兩鍵。
+        let show: ShowDiscussionResponse =
+            serde_json::from_str(&format!(r##"{{"info":{SHOW_INFO},"content":"# Discussion\n"}}"##)).unwrap();
+        assert!(show.cuts.is_empty());
+    }
+
+    #[test]
+    fn discussion_cut_absent_fields_read_as_empty_values() {
+        let cut: DiscussionCut = serde_json::from_str("{}").unwrap();
+        assert_eq!(
+            cut,
+            DiscussionCut {
+                cut: String::new(),
+                title: String::new(),
+                note: String::new(),
+                line: String::new(),
+                changes: Vec::new(),
+                changes_in_bold: false,
+                unpromoted: Vec::new(),
+            }
+        );
+    }
+
+    #[test]
+    fn discussion_cuts_are_camel_case_on_the_wire() {
+        let wire = format!(
+            r##"{{"info":{SHOW_INFO},"content":"# Discussion\n","cuts":[{{"cut":"cut 3","title":"收尾","note":"","line":"**cut 3 `d` `e`**: 收尾","changes":["d","e"],"changesInBold":true,"unpromoted":["d","e"]}}]}}"##
+        );
+        let show: ShowDiscussionResponse = serde_json::from_str(&wire).unwrap();
+        assert_eq!(show.cuts[0].cut, "cut 3");
+        assert!(show.cuts[0].changes_in_bold);
+        assert_eq!(show.cuts[0].unpromoted, ["d", "e"]);
+        let back = serde_json::to_value(&show).unwrap();
+        let wire: serde_json::Value = serde_json::from_str(&wire).unwrap();
+        assert_eq!(back, wire, "the wire shape round-trips key for key");
+    }
+
     #[test]
     fn discussion_search_hits_carry_info_fields_and_matches() {
         // discuss-search-recall「討論搜尋回應 payload」：hits 每筆 = 討論資訊欄位 + matches。
@@ -1334,6 +1404,11 @@ mod tests {
         assert!(
             status.contains("changeName") && status.contains("applyRequires"),
             "schema fields are camelCase: {status}"
+        );
+        let show = serde_json::to_string(&schemars::schema_for!(ShowDiscussionResponse)).unwrap();
+        assert!(
+            show.contains("\"cuts\"") && show.contains("changesInBold"),
+            "the discussion detail schema carries cuts: {show}"
         );
     }
 

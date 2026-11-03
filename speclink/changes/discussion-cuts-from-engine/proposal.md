@@ -37,9 +37,11 @@
 - Affected code:
   - New:
     - packages/ui/src/__tests__/discussionCuts.test.ts
+    - packages/ui/src/__tests__/engineCuts.ts
   - Modified:
     - crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
     - crates/engine/speclink-core/src/lifecycle/discuss.rs
+    - crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
     - crates/protocol/speclink-protocol/src/query.rs
     - crates/host/speclink-server/src/api/routes.rs
     - crates/host/speclink-server/tests/it/api/discussion_routes.rs
@@ -47,11 +49,13 @@
     - apps/desktop/core/src/discussions.rs
     - apps/desktop/src-tauri/src/lib.rs
     - apps/desktop/src-tauri/src/remote.rs
+    - apps/desktop/src-tauri/tests/it/remote_data.rs
     - apps/desktop/src/adapter/tauriDataSource.ts
     - apps/desktop/src/adapter/remoteDataSource.ts
     - apps/desktop/src/App.tsx
     - apps/desktop/src/__tests__/App.test.tsx
     - apps/desktop/src/__tests__/remoteDataSource.test.ts
+    - apps/desktop/src/__tests__/tauriDataSource.test.ts
     - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
     - packages/ui/src/adapter.ts
     - packages/ui/src/index.ts
