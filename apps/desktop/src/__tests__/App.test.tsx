@@ -87,6 +87,12 @@ vi.mock("../appMenu", async (importOriginal) => ({
   },
 }));
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn().mockResolvedValue(undefined) }));
+// speclink 網址（desktop-deep-link）：jsdom 無 Tauri IPC，外掛換成不帶任何網址的假模組；
+// 派送行為由 deepLink.test 承載。
+vi.mock("@tauri-apps/plugin-deep-link", () => ({
+  getCurrent: vi.fn().mockResolvedValue(null),
+  onOpenUrl: vi.fn().mockResolvedValue(() => {}),
+}));
 
 // 系統匣（tray-status-menu）：jsdom 載不了原生圖示，initTray 原本就會失敗而靜默降級。
 // 這裡改為捕捉 App 交給系統匣的 store，測試以它呼叫系統匣「開啟此變更」所走的同一個動作。

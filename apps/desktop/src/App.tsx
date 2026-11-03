@@ -2,7 +2,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { CloudOff, MoreHorizontal } from "lucide-react";
+import { toast } from "sonner";
 import {
   KanbanBoard,
   ArchivedList,
@@ -50,7 +52,8 @@ import {
   type AppState,
 } from "./store";
 import { locatorKey, type WorkspaceSession } from "./session";
-import { initTray, type TrayController } from "./tray";
+import { initTray, openMainWindow, type TrayController } from "./tray";
+import { installDeepLinks } from "./deepLink";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
 import { ProjectRail, tabPathHint } from "./components/ProjectRail";
 import { ProjectColumn } from "./components/ProjectColumn";
@@ -462,8 +465,17 @@ function AppInner({
   useEffect(() => {
     // 啟動：有 workspace 即還原分頁列（依持久化 activeKey 切回上次活躍專案、
     // 背景徽章快照）；否則維持既有的整批 refresh（無活躍 session 時為無事）。
-    if (workspace) void useStore.getState().restoreTabs();
-    else void useStore.getState().refresh();
+    // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）排隊到分頁還原之後才處理。
+    const uninstallDeepLinks = workspace
+      ? installDeepLinks(useStore, {
+          ready: useStore.getState().restoreTabs(),
+          getCurrent,
+          onOpenUrl,
+          openMainWindow,
+          toast: (message) => toast.error(message),
+        })
+      : null;
+    if (!workspace) void useStore.getState().refresh();
     if (connections) void useStore.getState().refreshConnections();
     // 啟動背景檢查更新（非阻塞；失敗靜默——desktop-app「檢查失敗靜默」）。
     if (updater) void useStore.getState().checkForUpdates(false);
@@ -480,6 +492,7 @@ function AppInner({
     // CLI 佈署狀態探測（含 AppImage 版本不符的啟動自我修復）。
     if (cliInstall) void useStore.getState().refreshCliInstall();
     return () => {
+      uninstallDeepLinks?.();
       void focusUnlisten?.then((unlisten) => unlisten?.());
       // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
       useStore.getState().disposeSearch();

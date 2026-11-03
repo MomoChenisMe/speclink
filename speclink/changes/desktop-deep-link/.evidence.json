@@ -1,0 +1,172 @@
+{
+  "version": 2,
+  "change": "desktop-deep-link",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）需求「以 speclink 網址開啟詳情頁」的網址解析：在 apps/desktop/src/__tests__/deepLink.test.ts 新增 `parseSpeclinkUrl` 的表格測試，逐列對照 spec 的「網址解析」Example——三列合法（POSIX 路徑、Windows 反斜線路徑、Windows 正斜線路徑，斷言 kind、解碼後的 name 與 project）與六列格式錯誤（未知種類、名稱多於一段、名稱為空、缺 project、project 不是絕對路徑、不是 speclink 網址，斷言 `ok: false` 與對應的 reason）。驗證：`npm test -w apps/desktop -- deepLink` 因函式不存在而失敗",
+      "files": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）依設計「網址格式：種類放 host、識別放 path、專案放 query」在 apps/desktop/src/deepLink.ts 實作 `parseSpeclinkUrl(url)`：以標準 URL 解析，host 只收 change 與 discussion，path 恰為一段非空名稱，`project` 必須是絕對路徑，名稱與路徑做百分比解碼，回傳設計 Implementation Contract 的資料形狀。驗證：`npm test -w apps/desktop -- deepLink` 的解析表全部通過",
+      "files": [
+        "apps/desktop/src/deepLink.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 （Red）依設計「專案一律走 openProjectAt，詳情等載入後再開」，在 apps/desktop/src/__tests__/store.test.ts 新增 `openProjectAt` 回傳值的測試：探測為本機專案時回傳該分頁的 locator key（整批載入完成後才 resolve），探測為未初始化、未啟用與探測失敗時回傳 null。驗證：`npm test -w apps/desktop -- store` 因回傳 undefined 而失敗",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 （Green）在 apps/desktop/src/store.ts 讓 `openProjectAt(path)` 回傳 `Promise<string | null>`（型別一併更新），既有呼叫端行為不變。驗證：`npm test -w apps/desktop -- store` 全部通過",
+      "files": [
+        "apps/desktop/src/components/EmptyWorkspace.tsx",
+        "apps/desktop/src/components/RecentList.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.4 （Green）在 apps/desktop/src/deepLink.ts 實作 `installDeepLinks`；依設計「主視窗喚起沿用系統匣的 openMainWindow」把 apps/desktop/src/tray.ts 的 `openMainWindow` 改為匯出；依設計「提示文字走既有 i18n」在 apps/desktop/src/i18n/messages.ts 新增格式錯誤、找不到變更、找不到討論三則 tw 與 en 文字並以 `appT` 取用。驗證：`npm test -w apps/desktop -- deepLink` 與 `npm test -w apps/desktop -- tray` 全部通過",
+      "files": [
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/tray.ts"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.5 在 apps/desktop/src/App.tsx 的啟動流程保留 `restoreTabs()` 的 promise，於有 workspace 時呼叫一次 `installDeepLinks`（ready 為該 promise，getCurrent、onOpenUrl 取自 `@tauri-apps/plugin-deep-link`，openMainWindow 取自 tray.ts，toast 取自 sonner），卸載時呼叫回傳的卸載函式；App 的測試環境把 `@tauri-apps/plugin-deep-link` 換成假模組。驗證：`npm test -w apps/desktop` 全部通過（含 App.test.tsx）",
+      "files": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "package-lock.json"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 （Green）在 tauri.conf.json 加入 deep-link 外掛設定（desktop schemes 為 `speclink`）、在 capabilities/default.json 加入 deep-link 預設權限，並以 npm 安裝 `@tauri-apps/plugin-deep-link` 到 apps/desktop/package.json（package-lock.json 隨之更新）。驗證：`npm test -w apps/desktop -- deepLink` 全部通過",
+      "files": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "3.3 依設計「Windows、Linux 以 single-instance 轉交網址並喚起視窗」：apps/desktop/src-tauri/Cargo.toml 加入 tauri-plugin-deep-link（全平台）與 tauri-plugin-single-instance（僅 Windows、Linux，開 deep-link 功能）；apps/desktop/src-tauri/src/lib.rs 在 Windows、Linux 把 single-instance 註冊為第一個外掛，callback 對主視窗執行 unminimize、show、set_focus，接著註冊 deep-link 外掛；Linux 於 setup 以 deep-link 外掛的執行期註冊 API 補登網址格式，失敗只記錄。外掛 API 依該版本的官方文件確認，不憑印象寫。驗證：`cargo build -p speclink-desktop` 在 macOS 通過（Cargo.lock 隨之更新），push 後 CI 的 Windows、Linux 建置通過",
+      "files": [
+        "Cargo.lock",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/src/lib.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M6G1PHC3S7NE842DJSJ4DQW2",
+      "taskDesc": "1.1 （Red）需求「以 speclink 網址開啟詳情頁」的網址解析：在 apps/desktop/src/__tests__/deepLink.test.ts 新增 `parseSpeclinkUrl` 的表格測試，逐列對照 spec 的「網址解析」Example——三列合法（POSIX 路徑、Windows 反斜線路徑、Windows 正斜線路徑，斷言 kind、解碼後的 name 與 project）與六列格式錯誤（未知種類、名稱多於一段、名稱為空、缺 project、project 不是絕對路徑、不是 speclink 網址，斷言 `ok: false` 與對應的 reason）。驗證：`npm test -w apps/desktop -- deepLink` 因函式不存在而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ],
+      "recordedAt": "2026-11-03T06:51:22Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3RMDQ1X381KWJYSS3",
+      "taskDesc": "1.2 （Green）依設計「網址格式：種類放 host、識別放 path、專案放 query」在 apps/desktop/src/deepLink.ts 實作 `parseSpeclinkUrl(url)`：以標準 URL 解析，host 只收 change 與 discussion，path 恰為一段非空名稱，`project` 必須是絕對路徑，名稱與路徑做百分比解碼，回傳設計 Implementation Contract 的資料形狀。驗證：`npm test -w apps/desktop -- deepLink` 的解析表全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src/deepLink.ts"
+      ],
+      "recordedAt": "2026-11-03T06:51:42Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC377Y7KTBHFZYCTDB1",
+      "taskDesc": "2.1 （Red）依設計「專案一律走 openProjectAt，詳情等載入後再開」，在 apps/desktop/src/__tests__/store.test.ts 新增 `openProjectAt` 回傳值的測試：探測為本機專案時回傳該分頁的 locator key（整批載入完成後才 resolve），探測為未初始化、未啟用與探測失敗時回傳 null。驗證：`npm test -w apps/desktop -- store` 因回傳 undefined 而失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ],
+      "recordedAt": "2026-11-03T06:53:20Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3A6WFNZ6AKFV8BKH3",
+      "taskDesc": "2.2 （Green）在 apps/desktop/src/store.ts 讓 `openProjectAt(path)` 回傳 `Promise<string | null>`（型別一併更新），既有呼叫端行為不變。驗證：`npm test -w apps/desktop -- store` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src/components/EmptyWorkspace.tsx",
+        "apps/desktop/src/components/RecentList.tsx",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-11-03T06:55:00Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3S1MEBXGXPAP9BC92",
+      "taskDesc": "2.4 （Green）在 apps/desktop/src/deepLink.ts 實作 `installDeepLinks`；依設計「主視窗喚起沿用系統匣的 openMainWindow」把 apps/desktop/src/tray.ts 的 `openMainWindow` 改為匯出；依設計「提示文字走既有 i18n」在 apps/desktop/src/i18n/messages.ts 新增格式錯誤、找不到變更、找不到討論三則 tw 與 en 文字並以 `appT` 取用。驗證：`npm test -w apps/desktop -- deepLink` 與 `npm test -w apps/desktop -- tray` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-11-03T06:58:07Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3M4BJJ5F36ZF3EAMP",
+      "taskDesc": "2.5 在 apps/desktop/src/App.tsx 的啟動流程保留 `restoreTabs()` 的 promise，於有 workspace 時呼叫一次 `installDeepLinks`（ready 為該 promise，getCurrent、onOpenUrl 取自 `@tauri-apps/plugin-deep-link`，openMainWindow 取自 tray.ts，toast 取自 sonner），卸載時呼叫回傳的卸載函式；App 的測試環境把 `@tauri-apps/plugin-deep-link` 換成假模組。驗證：`npm test -w apps/desktop` 全部通過（含 App.test.tsx）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/package.json",
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "package-lock.json"
+      ],
+      "recordedAt": "2026-11-03T06:59:49Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3QANWMDQ7VQ8XWXFD",
+      "taskDesc": "3.2 （Green）在 tauri.conf.json 加入 deep-link 外掛設定（desktop schemes 為 `speclink`）、在 capabilities/default.json 加入 deep-link 預設權限，並以 npm 安裝 `@tauri-apps/plugin-deep-link` 到 apps/desktop/package.json（package-lock.json 隨之更新）。驗證：`npm test -w apps/desktop -- deepLink` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/capabilities/default.json",
+        "apps/desktop/src-tauri/tauri.conf.json"
+      ],
+      "recordedAt": "2026-11-03T07:00:20Z"
+    },
+    {
+      "taskId": "tsk_01M6G1PHC3PFA0S3SG5WY9DFR1",
+      "taskDesc": "3.3 依設計「Windows、Linux 以 single-instance 轉交網址並喚起視窗」：apps/desktop/src-tauri/Cargo.toml 加入 tauri-plugin-deep-link（全平台）與 tauri-plugin-single-instance（僅 Windows、Linux，開 deep-link 功能）；apps/desktop/src-tauri/src/lib.rs 在 Windows、Linux 把 single-instance 註冊為第一個外掛，callback 對主視窗執行 unminimize、show、set_focus，接著註冊 deep-link 外掛；Linux 於 setup 以 deep-link 外掛的執行期註冊 API 補登網址格式，失敗只記錄。外掛 API 依該版本的官方文件確認，不憑印象寫。驗證：`cargo build -p speclink-desktop` 在 macOS 通過（Cargo.lock 隨之更新），push 後 CI 的 Windows、Linux 建置通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7b812a7f4154de416d74a795bbe1804b7bde2925",
+      "touchedFiles": [
+        "Cargo.lock",
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-03T07:04:47Z"
+    }
+  ]
+}

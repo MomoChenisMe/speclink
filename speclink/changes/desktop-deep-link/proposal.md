@@ -46,6 +46,9 @@
     - apps/desktop/package.json
     - apps/desktop/src/App.tsx
     - apps/desktop/src/store.ts
+    - apps/desktop/src/components/WorkspaceChooser.tsx
+    - apps/desktop/src/components/EmptyWorkspace.tsx
+    - apps/desktop/src/components/RecentList.tsx
     - apps/desktop/src/tray.ts
     - apps/desktop/src/__tests__/store.test.ts
     - apps/desktop/src/i18n/messages.ts

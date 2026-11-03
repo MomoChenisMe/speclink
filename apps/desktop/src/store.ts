@@ -411,8 +411,9 @@ export interface AppState {
   migrationRoot: string | null;
   requestMigration: (root: string) => Promise<void>;
   cancelMigration: () => void;
-  /** 開啟專案（dialog 或還原路徑）：三態分流。 */
-  openProjectAt: (path: string) => Promise<void>;
+  /** 開啟專案（dialog 或還原路徑）：三態分流。進入本機專案且整批載入完成時回傳
+   * 該分頁的 locator key；其餘（未初始化、未啟用、remote 標記、探測失敗）為 null。 */
+  openProjectAt: (path: string) => Promise<string | null>;
   /** 開啟 remote workspace（remote-data-source 決策 6）：handshake 成功才建
    * session 與分頁並切至看板；失敗上拋、由開啟表單就地呈現。第四參數
    * dropLocalRoot 供本機資料夾轉 remote 的路徑移除同一資料夾的 local 最近
@@ -1116,8 +1117,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     }
 
     /** 命中專案的共同尾聲：upsert session 與分頁（去重）、設 activeKey、清對話框、
-     * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。 */
-    async function enterProject(root: string, name: string) {
+     * persist、顯式重掛監看、整批 refresh。probe 為純探測，其回報值即後端真相。
+     * 回傳該分頁的 locator key。 */
+    async function enterProject(root: string, name: string): Promise<string> {
       const locator = { kind: "local", root } as const;
       const key = locatorKey(locator);
       const tabs = upsertTab(get().tabs, { locator, name });
@@ -1158,6 +1160,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 首批讀取先於掛載完成，窗口內的變動無事件也不在首批結果內——掛載成功後
       // 補一發蓋掉靜默過時窗口（降級模式本就無自動刷新，不補）。
       if (watched && get().activeKey === key) await get().refresh();
+      return key;
     }
 
     /** remote session 的入列尾聲（remote-data-source 決策 6）：upsert 分頁與
@@ -2256,11 +2259,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     async openProjectAt(path) {
-      if (!workspace) return;
+      if (!workspace) return null;
       try {
         const probe = await workspace.openProject(path);
         if (probe.status === "project") {
-          await enterProject(probe.root, probe.name);
+          return await enterProject(probe.root, probe.name);
         } else if (probe.status === "uninitialized") {
           set({ pendingInit: probe.dir });
         } else if (probe.status === "unadopted") {
@@ -2324,6 +2327,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         // 開啟失敗（spec：顯示帶所選路徑的單行錯誤並維持原專案）。
         showFailureToast(path, "store.openProjectFailed", e);
       }
+      return null;
     },
 
     async openProjectViaDialog() {

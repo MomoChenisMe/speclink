@@ -45,7 +45,7 @@ App.tsx 保留 `restoreTabs()` 的 promise，傳給 `installDeepLinks` 當「就
 
 處理一個網址的順序：1. `openMainWindow()` 喚起主視窗（先做，讓後續的確認對話框出現在使用者眼前）；2. `openProjectAt(project)`——已是分頁的專案會被 upsert 成活躍分頁並重新整批載入，未開過的會加成分頁，未初始化、未啟用、帶 remote 標記的資料夾照既有流程跳出對話框或選擇器；3. 第 2 步進入了本機專案時，執行 `openDetail(name)` 或 `openDiscussion(slug)`；4. 目標不在已載入的清單裡時以 toast 說明找不到。對話框或選擇器出現的情況（第 2 步沒有進入專案）不開詳情、不出 toast。
 
-為了讓第 3 步知道第 2 步的結果，apps/desktop/src/store.ts 的 `openProjectAt(path)` 由回傳 `Promise<void>` 改為回傳 `Promise<string | null>`：探測結果為本機專案、且整批載入完成時回傳該分頁的 locator key，其餘情況（未初始化、未啟用、帶 remote 標記、探測失敗）回傳 null。既有呼叫端都忽略回傳值，不受影響。
+為了讓第 3 步知道第 2 步的結果，apps/desktop/src/store.ts 的 `openProjectAt(path)` 由回傳 `Promise<void>` 改為回傳 `Promise<string | null>`：探測結果為本機專案、且整批載入完成時回傳該分頁的 locator key，其餘情況（未初始化、未啟用、帶 remote 標記、探測失敗）回傳 null。既有呼叫端都忽略回傳值，行為不受影響；把它當 `onOpenLocal` 往下傳的三個元件（WorkspaceChooser、EmptyWorkspace、RecentList）把該 prop 的型別由 `Promise<void>` 放寬為 `Promise<unknown>`。
 
 替代方案：已是分頁時改用 `activateTab`——要自己比對 locator 與路徑正規化；`openProjectAt` 已能處理「已存在的分頁」，少一條分支。不改 store、改由 deepLink.ts 自己比對活躍分頁與 pending 對話框狀態——要同時盯住四種 pending 欄位，日後新增探測分支時容易漏，不如由 `openProjectAt` 直接說出結果。
 
