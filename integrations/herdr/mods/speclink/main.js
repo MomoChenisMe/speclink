@@ -28,6 +28,7 @@ import {
   discussionActions,
   isUninitialized,
   joinAgents,
+  logoOpenAttempts,
   speclinkUrl,
   startChoices,
   waveToStart,
@@ -40,7 +41,6 @@ import { codeRemaining, firstLine, location, openTabs, placeInInput, projectRoot
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
 const ICONS = "mods/speclink/icons";
-const APP_ID = "app.speclink.desktop";
 // 溢出摺疊的門檻與桌面 app 的系統匣面板相同。
 const OVERFLOW_LIMIT = 5;
 const STAGES = [
@@ -253,9 +253,19 @@ export default class SpeclinkPanel extends View {
 
   // 叫 Speclink 桌面 app。open 只有 macOS 有；沒裝 app 時 open 也會失敗。
   openInApp(args, cx) {
+    this.openFirstInApp([args], cx);
+  }
+
+  // 依序試 open，成功就停；全部失敗才跳通知，內容是最後一次的錯誤。
+  openFirstInApp(attempts, cx) {
     cx.spawn(async () => {
-      const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
-      if (r.code !== 0) notify({ title: tr("開不了 Speclink"), body: firstLine(r.stderr), level: "warning" });
+      let stderr = "";
+      for (const args of attempts) {
+        const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
+        if (r.code === 0) return;
+        stderr = r.stderr;
+      }
+      notify({ title: tr("開不了 Speclink"), body: firstLine(stderr), level: "warning" });
     });
   }
 
@@ -820,8 +830,10 @@ export default class SpeclinkPanel extends View {
       .child(label);
   }
 
-  // Logo 也是叫出 Speclink app 的鈕。沒有網址，所以 app 不切專案。別台機器的 space 和沒初始化的專案也能按。
+  // Logo 也是叫出 Speclink app 的鈕，讀得到這台機器上的專案時會切過去。別台機器的 space 和
+  // 沒初始化的專案也能按，只叫出 app。
   logoButton(t) {
+    const attempts = logoOpenAttempts({ root: this.root, hasBoard: Boolean(this.board), on: this.place.on });
     return div()
       .id("open-app")
       .flex_none()
@@ -829,9 +841,9 @@ export default class SpeclinkPanel extends View {
       .rounded(5)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(tr("開啟 Speclink app"))
+      .tooltip(attempts.length > 1 ? tr("在 Speclink app 開啟這個專案") : tr("開啟 Speclink app"))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-      .on_click((_e, cx) => this.openInApp(["-b", APP_ID], cx))
+      .on_click((_e, cx) => this.openFirstInApp(attempts, cx))
       .child(image(`${ICONS}/logo.svg`).w(21).h(24));
   }
 

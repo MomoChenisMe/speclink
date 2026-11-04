@@ -1,0 +1,156 @@
+{
+  "version": 2,
+  "change": "desktop-project-deep-link",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （紅燈）`apps/desktop/src/__tests__/store.test.ts` 新增 `openBoard` 的測試，對應決策「新增 store 動作 `openBoard`，固定切到卡片檢視」：從開著的詳情頁、規格頁、路線圖檢視呼叫後，`boardView` 都是 `board`、`boardMode` 都是 `cards`、`detailChange` 是 null；可取消浮層一併收掉（加進既有的 `OPENERS` 表）；不可取消浮層開著時狀態不變。驗證：`npm test -w apps/desktop -- src/__tests__/store.test.ts` 因 `openBoard` 不存在而失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （綠燈）`apps/desktop/src/store.ts` 新增 `openBoard` 動作，結構同 `openRoadmap`，差別是把 `boardMode` 設成 `cards`。驗證：`npm test -w apps/desktop -- src/__tests__/store.test.ts` 全部通過。",
+      "files": [
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （紅燈）`apps/desktop/src/__tests__/deepLink.test.ts` 依規格「以 speclink 網址開啟詳情頁」的「網址解析」Example 加四列：兩列合法（`speclink://project?project=%2FUsers%2Fdev%2Fspeclink`、`speclink://project/?project=%2Fa`）、兩列格式錯誤（`speclink://project/board?project=%2Fa` 回報 `name`、`speclink://project` 回報 `project`）。再加三個派送案例：依序是 `openMainWindow`、`openProjectAt`、`openBoard` 且沒有 toast；`openProjectAt` 回傳 null 時不呼叫 `openBoard`；不可取消浮層開著時只喚起主視窗。harness 的假 state 補上 `openBoard`。驗證：`npm test -w apps/desktop -- src/__tests__/deepLink.test.ts` 只有新案例失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 （綠燈）`apps/desktop/src/deepLink.ts` 依決策「新增 `speclink://project` 網址種類，沿用路線圖的解析規則」實作：`KINDS` 加 `project`，與 `roadmap` 共用無名稱的解析分支；`SpeclinkLink` 的無名稱分支擴成 `\"roadmap\" | \"project\"`；`DeepLinkStore` 的 `Pick` 加 `openBoard`；`openLink` 收到 `project` 時呼叫 `openBoard`，不查目標也不出 toast；檔頭註解補上新網址。驗證：`npm test -w apps/desktop -- src/__tests__/deepLink.test.ts` 全部通過，既有案例不用改。",
+      "files": [
+        "apps/desktop/src/deepLink.ts"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.1 （紅燈）`scripts/herdr/panel-model.test.mjs` 新增測試：`speclinkUrl('project', '/Users/dev/speclink')` 等於 `speclink://project?project=%2FUsers%2Fdev%2Fspeclink`，含中文與空白的路徑要百分比編碼；`logoOpenAttempts` 在 `hasBoard` 為真且沒有 `on` 時回傳「先網址、再 -b 參數」兩組，在 `hasBoard` 為假時、有 `on` 時都只回傳 -b 參數一組。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 因 `logoOpenAttempts` 不存在而失敗。",
+      "files": [
+        "scripts/herdr/panel-model.test.mjs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.2 （綠燈）`integrations/herdr/mods/speclink/model.js` 依決策「Logo 由純函式 `logoOpenAttempts` 決定要送什麼」新增 `logoOpenAttempts({ root, hasBoard, on })`，`APP_ID` 從 `integrations/herdr/mods/speclink/main.js` 搬過來並匯出，`speclinkUrl` 的註解補上 `project`。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "integrations/herdr/mods/speclink/model.js"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "2.3 `integrations/herdr/mods/speclink/main.js` 依決策「舊版 app 靠「送不出去就退回」處理，不偵測版本」新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停，全部失敗才跳「開不了 Speclink」通知並帶最後一次的錯誤；`openInApp` 改成委派給它。`logoButton` 改用 `logoOpenAttempts`（`hasBoard` 取 `Boolean(this.board)`，`on` 取 `this.place.on`），提示文字在會切專案時寫「在 Speclink app 開啟這個專案」，其他時候維持「開啟 Speclink app」，新文字的英文加進 `integrations/herdr/mods/speclink/i18n.js`；移除過期的註解。驗證：`node --check integrations/herdr/mods/speclink/main.js` 結束碼為 0，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過（含面板文字都有英文的守門），畫面行為由任務 3.2 驗收。",
+      "files": [
+        "integrations/herdr/mods/speclink/i18n.js",
+        "integrations/herdr/mods/speclink/main.js"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.2 `docs/product-status.md` 與 `docs/product-status.zh-TW.md` 的網址那一列補上 `speclink://project`（切到專案並顯示看板），更新該列的核對日期。驗證：內容對照 `apps/desktop/src/__tests__/deepLink.test.ts`，並跑 `npm test -w apps/desktop -- src/__tests__/deepLink.test.ts src/__tests__/store.test.ts` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`，全部通過。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M6JNXWME659XF1WH2P17ZGFX",
+      "taskDesc": "1.1 （紅燈）`apps/desktop/src/__tests__/store.test.ts` 新增 `openBoard` 的測試，對應決策「新增 store 動作 `openBoard`，固定切到卡片檢視」：從開著的詳情頁、規格頁、路線圖檢視呼叫後，`boardView` 都是 `board`、`boardMode` 都是 `cards`、`detailChange` 是 null；可取消浮層一併收掉（加進既有的 `OPENERS` 表）；不可取消浮層開著時狀態不變。驗證：`npm test -w apps/desktop -- src/__tests__/store.test.ts` 因 `openBoard` 不存在而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/store.test.ts"
+      ],
+      "recordedAt": "2026-11-04T07:57:16Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWME77PNY3RCYEYJ661K",
+      "taskDesc": "1.2 （綠燈）`apps/desktop/src/store.ts` 新增 `openBoard` 動作，結構同 `openRoadmap`，差別是把 `boardMode` 設成 `cards`。驗證：`npm test -w apps/desktop -- src/__tests__/store.test.ts` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-11-04T07:57:19Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWME68B2V24NNBCHQ2VF",
+      "taskDesc": "1.3 （紅燈）`apps/desktop/src/__tests__/deepLink.test.ts` 依規格「以 speclink 網址開啟詳情頁」的「網址解析」Example 加四列：兩列合法（`speclink://project?project=%2FUsers%2Fdev%2Fspeclink`、`speclink://project/?project=%2Fa`）、兩列格式錯誤（`speclink://project/board?project=%2Fa` 回報 `name`、`speclink://project` 回報 `project`）。再加三個派送案例：依序是 `openMainWindow`、`openProjectAt`、`openBoard` 且沒有 toast；`openProjectAt` 回傳 null 時不呼叫 `openBoard`；不可取消浮層開著時只喚起主視窗。harness 的假 state 補上 `openBoard`。驗證：`npm test -w apps/desktop -- src/__tests__/deepLink.test.ts` 只有新案例失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/deepLink.test.ts"
+      ],
+      "recordedAt": "2026-11-04T07:58:08Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWMEFGRSRMSHHMYBSHF9",
+      "taskDesc": "1.4 （綠燈）`apps/desktop/src/deepLink.ts` 依決策「新增 `speclink://project` 網址種類，沿用路線圖的解析規則」實作：`KINDS` 加 `project`，與 `roadmap` 共用無名稱的解析分支；`SpeclinkLink` 的無名稱分支擴成 `\"roadmap\" | \"project\"`；`DeepLinkStore` 的 `Pick` 加 `openBoard`；`openLink` 收到 `project` 時呼叫 `openBoard`，不查目標也不出 toast；檔頭註解補上新網址。驗證：`npm test -w apps/desktop -- src/__tests__/deepLink.test.ts` 全部通過，既有案例不用改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "apps/desktop/src/deepLink.ts"
+      ],
+      "recordedAt": "2026-11-04T07:58:44Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWMEW6MQH5WT1XYS1Q8J",
+      "taskDesc": "2.1 （紅燈）`scripts/herdr/panel-model.test.mjs` 新增測試：`speclinkUrl('project', '/Users/dev/speclink')` 等於 `speclink://project?project=%2FUsers%2Fdev%2Fspeclink`，含中文與空白的路徑要百分比編碼；`logoOpenAttempts` 在 `hasBoard` 為真且沒有 `on` 時回傳「先網址、再 -b 參數」兩組，在 `hasBoard` 為假時、有 `on` 時都只回傳 -b 參數一組。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 因 `logoOpenAttempts` 不存在而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "scripts/herdr/panel-model.test.mjs"
+      ],
+      "recordedAt": "2026-11-04T08:00:10Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWMEQGPKA44J279A4HWP",
+      "taskDesc": "2.2 （綠燈）`integrations/herdr/mods/speclink/model.js` 依決策「Logo 由純函式 `logoOpenAttempts` 決定要送什麼」新增 `logoOpenAttempts({ root, hasBoard, on })`，`APP_ID` 從 `integrations/herdr/mods/speclink/main.js` 搬過來並匯出，`speclinkUrl` 的註解補上 `project`。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "integrations/herdr/mods/speclink/model.js"
+      ],
+      "recordedAt": "2026-11-04T08:00:32Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWMEH5BFXB5H07F86N37",
+      "taskDesc": "2.3 `integrations/herdr/mods/speclink/main.js` 依決策「舊版 app 靠「送不出去就退回」處理，不偵測版本」新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停，全部失敗才跳「開不了 Speclink」通知並帶最後一次的錯誤；`openInApp` 改成委派給它。`logoButton` 改用 `logoOpenAttempts`（`hasBoard` 取 `Boolean(this.board)`，`on` 取 `this.place.on`），提示文字在會切專案時寫「在 Speclink app 開啟這個專案」，其他時候維持「開啟 Speclink app」，新文字的英文加進 `integrations/herdr/mods/speclink/i18n.js`；移除過期的註解。驗證：`node --check integrations/herdr/mods/speclink/main.js` 結束碼為 0，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過（含面板文字都有英文的守門），畫面行為由任務 3.2 驗收。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "integrations/herdr/mods/speclink/i18n.js",
+        "integrations/herdr/mods/speclink/main.js"
+      ],
+      "recordedAt": "2026-11-04T08:01:08Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWMEHQ5WJG1H0EB6TKQZ",
+      "taskDesc": "4.2 `docs/product-status.md` 與 `docs/product-status.zh-TW.md` 的網址那一列補上 `speclink://project`（切到專案並顯示看板），更新該列的核對日期。驗證：內容對照 `apps/desktop/src/__tests__/deepLink.test.ts`，並跑 `npm test -w apps/desktop -- src/__tests__/deepLink.test.ts src/__tests__/store.test.ts` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`，全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1424443128f3e277b4f881db395684cc2a2d40e4",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-04T08:01:51Z"
+    }
+  ]
+}

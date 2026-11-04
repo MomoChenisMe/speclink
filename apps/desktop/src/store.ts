@@ -330,6 +330,9 @@ export interface AppState {
   /** 開路線圖（speclink://roadmap 網址）：切回看板頁、離開詳情頁並顯示路線圖，與 openDetail 一樣收掉
    * 可取消浮層；不可取消浮層開啟中不改任何狀態。 */
   openRoadmap: () => void;
+  /** 顯示看板（speclink://project 網址）：切回看板頁、離開詳情頁並固定顯示卡片檢視，與 openDetail 一樣收掉
+   * 可取消浮層；不可取消浮層開啟中不改任何狀態。 */
+  openBoard: () => void;
   /** 離開設定模式，回到 settingsReturnView。 */
   leaveSettings: () => void;
   setSettingsSection: (section: SettingsSection) => void;
@@ -1485,6 +1488,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (uncancelableOverlayOpen(get())) return;
       get().setBoardView("board");
       set({ boardMode: "roadmap", ...cancelableOverlaysCleared() });
+    },
+
+    openBoard() {
+      if (uncancelableOverlayOpen(get())) return;
+      get().setBoardView("board");
+      set({ boardMode: "cards", ...cancelableOverlaysCleared() });
     },
 
     leaveSettings() {

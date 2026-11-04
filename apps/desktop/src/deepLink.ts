@@ -1,6 +1,7 @@
 // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）：外部程式以
 // speclink://change/<name>?project=<path> 或 speclink://discussion/<slug>?project=<path>
-// 叫桌面 app 開啟詳情頁，以 speclink://roadmap?project=<path> 開啟該專案的路線圖。
+// 叫桌面 app 開啟詳情頁，以 speclink://roadmap?project=<path> 開啟該專案的路線圖，
+// 以 speclink://project?project=<path> 切到該專案並顯示看板。
 // 解析與派送都在這裡；Tauri 殼只註冊外掛。
 import { getCurrent, onOpenUrl } from "@tauri-apps/plugin-deep-link";
 import { toast } from "sonner";
@@ -19,13 +20,13 @@ export type SpeclinkLink =
       name: string;
       project: string;
     }
-  | { kind: "roadmap"; project: string };
+  | { kind: "roadmap" | "project"; project: string };
 
 export type ParsedSpeclinkUrl =
   | { ok: true; link: SpeclinkLink }
   | { ok: false; reason: "scheme" | "kind" | "name" | "project" };
 
-const KINDS: readonly string[] = ["change", "discussion", "roadmap"];
+const KINDS: readonly string[] = ["change", "discussion", "roadmap", "project"];
 /** POSIX 以 / 開頭；Windows 以磁碟代號加 :\ 或 :/ 開頭。 */
 const ABSOLUTE_PATH = /^(\/|[A-Za-z]:[\\/])/;
 
@@ -51,11 +52,11 @@ export function parseSpeclinkUrl(raw: string): ParsedSpeclinkUrl {
   if (url.protocol !== "speclink:") return { ok: false, reason: "scheme" };
   if (!KINDS.includes(url.host)) return { ok: false, reason: "kind" };
   const segment = url.pathname.replace(/^\//, "");
-  if (url.host === "roadmap") {
-    // 路線圖不帶名稱：path 只能為空或單一 /。
+  if (url.host === "roadmap" || url.host === "project") {
+    // 路線圖與專案網址不帶名稱：path 只能為空或單一 /。
     if (segment !== "") return { ok: false, reason: "name" };
     const project = projectParam(url);
-    return project === null ? { ok: false, reason: "project" } : { ok: true, link: { kind: "roadmap", project } };
+    return project === null ? { ok: false, reason: "project" } : { ok: true, link: { kind: url.host, project } };
   }
   const name = segment === "" || segment.includes("/") ? null : decodeStrict(segment);
   if (name === null) return { ok: false, reason: "name" };
@@ -89,6 +90,7 @@ export interface DeepLinkStore {
     | "openDiscussion"
     | "setBoardView"
     | "openRoadmap"
+    | "openBoard"
   >;
 }
 
@@ -148,9 +150,10 @@ async function openLink(store: DeepLinkStore, url: string): Promise<void> {
   const key = await store.getState().openProjectAt(link.project, { remoteViaChooser: true });
   if (key === null) return;
   const s = store.getState();
-  if (link.kind === "roadmap") {
-    // 路線圖沒有找不到目標的情形。
-    s.openRoadmap();
+  if (!("name" in link)) {
+    // 路線圖與專案網址沒有找不到目標的情形。
+    if (link.kind === "roadmap") s.openRoadmap();
+    else s.openBoard();
     return;
   }
   const { kind, name, project } = link;
