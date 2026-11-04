@@ -10,6 +10,7 @@ import {
   ALL_SKILLS,
   PICKER_SKILLS,
   attachPlan,
+  agentChange,
   batchPlan,
   buildBoard,
   changeActions,
@@ -22,11 +23,13 @@ import {
   inside,
   isUninitialized,
   joinAgents,
+  groupedOrder,
   newTabPlan,
   placePlan,
   planDelivery,
   sendArgs,
   skillTargets,
+  statusCounts,
   speclinkUrl,
   startAction,
   titleChange,
@@ -812,4 +815,40 @@ test('整波開工：未開 worktree 政策時不提供', () => {
 test('整波開工：沒有可用的 agent 時不提供', () => {
   const two = stages(row({ name: 'add-a', stage: 'proposed' }), row({ name: 'add-b', stage: 'proposed' }));
   assert.equal(waveToStart(two, waveCtx({ known: [] })), null);
+});
+
+const seat = (over) => ({ address: 't1', labels: {}, cwd: '/p', title: '', ...over });
+const boardOf = (...rows) => ({ stages: { proposed: rows, 'in-progress': [], ready: [] } });
+
+test('agentChange：和面板同一套比對，標籤、worktree、外掛回報都算；查不到是 null', () => {
+  const foo = { name: 'add-foo', worktree: null };
+  const bar = { name: 'add-bar', worktree: { path: '/p/.wt/add-bar' } };
+  const board = boardOf(foo, bar);
+  assert.equal(agentChange(seat({ labels: { 'speclink.change': 'add-foo' } }), board), foo);
+  assert.equal(agentChange(seat({ cwd: '/p/.wt/add-bar/src' }), board), bar);
+  assert.equal(agentChange(seat({ labels: { 'speclink.focus': 'add-bar' } }), board), bar);
+  assert.equal(agentChange(seat({ labels: { 'speclink.focus': '-' } }), board), null);
+  assert.equal(agentChange(seat(), board), null);
+});
+
+test('groupedOrder：等你回答的放最前面，其他照 Spaces 順序，同一個 space 裡急的和新的在前面', () => {
+  const rank = { blocked: 4, done: 3, working: 2, idle: 1 };
+  const a = (address, space, status, at, seq = 0) => ({ address, space, status, at, seq });
+  const list = [
+    a('c-idle', 'c', 'idle', 9),
+    a('b-idle-old', 'b', 'idle', 1),
+    a('b-idle-new', 'b', 'idle', 2),
+    a('b-working', 'b', 'working', 0),
+    a('c-blocked', 'c', 'blocked', 0),
+    a('gone', 'z', 'idle', 0),
+    a('a-done', 'a', 'done', 0),
+  ];
+  const order = groupedOrder(list, [{ id: 'a' }, { id: 'b' }, { id: 'c' }], (x) => rank[x.status], (x) => x.at);
+  assert.deepEqual(order.map((x) => x.address), ['c-blocked', 'a-done', 'b-working', 'b-idle-new', 'b-idle-old', 'c-idle', 'gone']);
+});
+
+test('statusCounts：最急的在前面，沒有的不列', () => {
+  const members = ['idle', 'working', 'idle', 'done'].map((status) => ({ status }));
+  assert.deepEqual(statusCounts(members), [['done', 1], ['working', 1], ['idle', 2]]);
+  assert.deepEqual(statusCounts([]), []);
 });
