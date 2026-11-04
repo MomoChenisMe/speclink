@@ -51,7 +51,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 | 工作流設定的 `worktree` | 按下開工 |
 | --- | --- |
-| 開啟 | 開一個以變更命名的新 space，跑 `/speclink-apply-with-worktree <變更>` |
+| 開啟 | 開一個新 space，跑 `/speclink-apply-with-worktree <變更>`。space 的名稱維持 Herdr 原樣，分頁名稱會寫出變更 |
 | 關閉 | 在主資料夾的 space 開新分頁，跑 `/speclink-apply <變更>` |
 
 沒被擋、任務還沒做完、也沒有 agent 在做的變更才有開工鈕。討論重新定案的變更要先 ingest，所以也沒有。
@@ -96,7 +96,7 @@ Herdr 會自動載入。接著在 `~/.config/herdr-app/keys.json` 的 `global` �
 - **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
 - **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。
 - **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣開新 space，技能會自己停下來並說明。
-- **開工 space 可能還在主資料夾**：agent 用 `cd` 進 worktree，終端機回報的資料夾不一定跟著變，所以 space 才用變更命名。這時它不會縮排在專案底下。
+- **開工 space 可能還在主資料夾**：agent 用 `cd` 進 worktree，終端機回報的資料夾不一定跟著變。這時 space 的名稱是專案名，也不會縮排在專案底下，要看分頁名稱才分得出變更。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
 - **整波開工可能撞 git 鎖**：每個 agent 都可能在主資料夾 commit 規格或建 worktree。撞到時那個 agent 會停下來回報，再按一次技能鈕即可。
 - **畫面只有繁體中文**。
