@@ -157,6 +157,8 @@ export const TO_EN = {
   "找不到有 speclink 技能的 agent": "No agent has the speclink skills",
   開工: "Start",
   這個變更: "this change",
+  這場討論: "this discussion",
+  "送給這場討論的 agent": "Send to the agent on this discussion",
   目前分頁: "the current tab",
   "{0}的 agent {1}": "Agent on {0}: {1}",
   開新分頁: "Open a new tab",

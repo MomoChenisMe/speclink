@@ -26,6 +26,7 @@ import {
   changeAgents,
   deliveryHint,
   discussionActions,
+  discussionAgents,
   isUninitialized,
   joinAgents,
   logoOpenAttempts,
@@ -214,10 +215,8 @@ export default class SpeclinkPanel extends View {
         name: delivery.tabName,
         space: spaceFor(delivery.folder)?.id,
       });
-      if (delivery.change) {
-        this.labelNew(before, delivery, cx, 10);
-        this.markStarting(delivery.change, cx);
-      }
+      this.labelNew(before, delivery, cx, 10);
+      if (delivery.change) this.markStarting(delivery.change, cx);
     }
   }
 
@@ -247,7 +246,7 @@ export default class SpeclinkPanel extends View {
       const tabs = new Map(spaces().flatMap((s) => s.tabs).map((t) => [t.id, t]));
       const pane = panes().find((p) => p.terminal && !before.has(p.terminal) && tabs.get(p.tab)?.name === delivery.tabName);
       if (pane) {
-        hc(["label", pane.terminal, `speclink.change=${delivery.change}`, `speclink.skill=speclink-${delivery.skill}`]);
+        hc(["label", pane.terminal, ...delivery.labels]);
       } else if (tries > 1) {
         this.labelNew(before, delivery, cx, tries - 1);
       }
@@ -628,6 +627,7 @@ export default class SpeclinkPanel extends View {
           .child(this.attachButton(`discussion-${d.slug}`, d.slug, ctx, t))
           .child(this.copyButton(`discussion-${d.slug}`, d.slug, tr("複製 slug"), t)),
       )
+      .children(discussionAgents(d, ctx.agents).map((a) => this.agentChip(`discussion-${d.slug}`, a, t)))
       .child(this.skillRow({ id: `discussion-${d.slug}`, actions, target: d.slug, hint }, t));
     return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
   }
