@@ -39,7 +39,8 @@ export default class SkillPicker {
     this.handle = cx.focus_handle();
     this.note = InputState.new({ placeholder: "打完按 Enter" });
     this.note.on("change", (_e, cx) => cx.notify());
-    this.note.on("submit", (_e, cx) => this.submit(cx));
+    // ⌘Enter 在輸入框裡是 secondary 的 submit。
+    this.note.on("submit", (e, cx) => (e.secondary ? this.startTabs(cx) : this.submit(cx)));
     this.focusKeys();
     // 和 Herdr 內建的跳窗相同：剛開的前幾個畫面可能還拿不到焦點。
     cx.timer.after(600, () => this.focusKeys());
@@ -116,27 +117,43 @@ export default class SkillPicker {
     return plan.kind === "none" ? plan.reason : null;
   }
 
-  plan() {
-    const targets = this.targets();
+  selection() {
+    return {
+      target: this.targets().find((t) => t.name === this.target) ?? null,
+      note: this.hasNote() ? this.note.value().trim() : "",
+    };
+  }
+
+  // 開新分頁：複選時開勾選的那幾個，其他時候開目前選的那一個。
+  tabPlan() {
     if (this.multi()) {
-      return batchPlan({ ...this.tabContext(), targets: targets.filter((t) => this.checked.has(t.name)) });
+      return batchPlan({ ...this.tabContext(), targets: this.targets().filter((t) => this.checked.has(t.name)) });
     }
-    const note = this.hasNote() ? this.note.value().trim() : "";
-    const target = targets.find((t) => t.name === this.target) ?? null;
-    if (this.newTab) return newTabPlan({ ...this.tabContext(), target, note });
+    return newTabPlan({ ...this.tabContext(), ...this.selection() });
+  }
+
+  inputPlan() {
     const f = focused();
     return placePlan({
       skill: this.skill().skill,
-      target,
-      note,
+      ...this.selection(),
       agents: joinAgents(agents(), terminals(), panes()),
       focus: { tab: f?.tab, terminal: f?.terminal },
     });
   }
 
+  // Enter 做的事。
+  plan() {
+    return this.newTab ? this.tabPlan() : this.inputPlan();
+  }
+
+  // 不管有沒有勾選，⌘Enter 和旁邊那顆鈕都是開新分頁。
+  startTabs(cx) {
+    this.submit(cx, this.tabPlan());
+  }
+
   // 做完才關跳窗：關掉就收不到失敗的訊息了。
-  submit(cx) {
-    const plan = this.plan();
+  submit(cx, plan = this.plan()) {
     if (this.sending || plan.kind === "none") return;
     this.sending = true;
     this.error = null;
@@ -429,10 +446,27 @@ export default class SkillPicker {
     return this.newTab ? "開新分頁並開工 ⏎" : "放到輸入框 ⏎";
   }
 
+  goButton({ id, label, ready, strong, tip, click }, t) {
+    return div()
+      .id(id)
+      .flex_none()
+      .px(10)
+      .py(4)
+      .rounded(6)
+      .border_1()
+      .border_color(ready && strong ? t.accent : t.border)
+      .text_color(ready ? t.foreground : t.dim)
+      .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
+      .when(Boolean(tip), (el) => el.tooltip(tip))
+      .on_click((_e, cx) => click(cx))
+      .child(label);
+  }
+
   footer(t) {
     const plan = this.plan();
     const ready = plan.kind !== "none" && !this.sending;
     const message = this.error ?? (plan.kind === "none" ? plan.reason : plan.text);
+    const tabs = this.newTab ? null : this.tabPlan();
     return v_flex()
       .flex_none()
       .px(12)
@@ -453,19 +487,23 @@ export default class SkillPicker {
           .items_center()
           .child(this.newTabBox(t))
           .child(div().flex_1())
+          // 有勾選時 Enter 就是開新分頁，不用第二顆鈕。
+          .when(!this.newTab, (el) =>
+            el.child(
+              this.goButton(
+                {
+                  id: "skill-go-tab",
+                  label: "開新分頁並開工 ⌘⏎",
+                  ready: tabs.kind !== "none" && !this.sending,
+                  tip: tabs.kind === "none" ? tabs.reason : `在目前的 space 開新分頁並執行：${tabs.text}`,
+                  click: (cx) => this.startTabs(cx),
+                },
+                t,
+              ),
+            ),
+          )
           .child(
-            div()
-              .id("skill-go")
-              .flex_none()
-              .px(10)
-              .py(4)
-              .rounded(6)
-              .border_1()
-              .border_color(ready ? t.accent : t.border)
-              .text_color(ready ? t.foreground : t.dim)
-              .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
-              .on_click((_e, cx) => this.submit(cx))
-              .child(this.goLabel(plan)),
+            this.goButton({ id: "skill-go", label: this.goLabel(plan), ready, strong: true, click: (cx) => this.submit(cx) }, t),
           ),
       );
   }
@@ -474,6 +512,7 @@ export default class SkillPicker {
     if (e.key === "escape") return closeOverlay(props().overlay);
     if (this.uninitialized) return;
     if (e.keystroke === "cmd-o") return this.toggleNewTab(cx);
+    if (e.keystroke === "cmd-enter") return this.startTabs(cx);
     // 有輸入框時 Enter 由輸入框的 submit 處理。
     if (e.key === "enter" && !this.hasNote()) return this.submit(cx);
     // 輸入框有字時，左右鍵留給輸入框移動游標。

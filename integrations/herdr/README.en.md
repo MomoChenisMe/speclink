@@ -82,12 +82,12 @@ Press the "技能" (Skills) button at the top or `⌘⇧N` to open the pop-up. P
 - **Right**: the changes or discussions that this skill can use. The rules are the same as for skill buttons. Select one with `←` `→` or the mouse. You can also select none (不指定). Skills that do not use a change (discuss, propose and the project group) have an input box for a topic or a note.
 - **Bottom**: the command that goes in, or the reason why it cannot be used now.
 
-Enter has two results. The "開新分頁" (new tab) checkbox decides which one. Use `⌘O` or the mouse to change it. The checkbox starts empty each time.
+The bottom has two buttons, one for each result:
 
-- **Not checked: put it in the input box.** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
-- **Checked: open a new tab and start.** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
+- **Put it in the input box (Enter).** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
+- **Open a new tab and start (`⌘Enter`).** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
 
-When the box is checked and the skill uses a change, you can open many at once, one tab for each change. Use `←` `→` to move, `Space` to check a row, and `⌘A` or "全選" (all) to check all rows. These rows cannot be checked and show the reason: the change already has an agent, another change blocks it (apply), the main folder already runs an apply, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
+Check "開新分頁" (new tab) with `⌘O` or the mouse, and Enter also opens a new tab. The checkbox starts empty each time. When the skill uses a change, you can then open many at once, one tab for each change. Use `←` `→` to move, `Space` to check a row, and `⌘A` or "全選" (all) to check all rows. These rows cannot be checked and show the reason: the change already has an agent, another change blocks it (apply), the main folder already runs an apply, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
 
 ### Open in Speclink
 
@@ -171,7 +171,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.
 - **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.
 - **The button and the folder have different names**: the button is "技能" (Skills) and the folder is still `speclink-new`, so `keys.json` does not change.
-- **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, check "開新分頁" (new tab).
+- **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, use the button that opens a new tab.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
 - **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still opens a new space, and the skill stops and explains why.
