@@ -14,7 +14,7 @@
 
 ## 3. 手動驗收
 
-- [ ] [M] 3.1 用還沒重新安裝的桌面 app（有註冊 speclink 網址但不認得 `project`）驗舊版：把 mod 複製到 `~/.config/herdr-app/mods/` 後按 Logo。預期 app 到前景、專案不切換、跳出「無法開啟這個 speclink 網址」。把看到的結果告訴 agent，文件任務會照實寫。 <!-- speclink-task:tsk_01M6JNXWME8GZSE68GMTXB6JGG -->
+- [x] [M] 3.1 用還沒重新安裝的桌面 app（有註冊 speclink 網址但不認得 `project`）驗舊版：把 mod 複製到 `~/.config/herdr-app/mods/` 後按 Logo。預期 app 到前景、專案不切換、跳出「無法開啟這個 speclink 網址」。把看到的結果告訴 agent，文件任務會照實寫。 <!-- speclink-task:tsk_01M6JNXWME8GZSE68GMTXB6JGG -->
 - [ ] [M] 3.2 重新安裝桌面 app 後，在真實的 Herdr 按 Logo，逐項對照 design 的「可觀察行為」表：本機專案（從別的分頁、開著詳情頁、路線圖檢視各按一次，都回到該專案的卡片檢視）；worktree 裡的 space（切到主專案的分頁）；沒初始化的資料夾與別台機器的 space（只叫出 app，分頁與畫面不變）。沒有別台機器的 space 時，這一項註記略過。 <!-- speclink-task:tsk_01M6JNXWMEY0GV0741EXDJFXEX -->
 
 ## 4. 文件
