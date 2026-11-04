@@ -13,12 +13,14 @@ import {
   panes,
   props,
   run,
+  setShared,
   spaces,
   terminals,
   theme,
   watchFolder,
 } from "herdr";
 import {
+  attachPlan,
   buildBoard,
   changeActions,
   changeAgents,
@@ -32,7 +34,7 @@ import {
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
 import SkillPicker from "./skill-picker.js";
-import { firstLine, location, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
+import { firstLine, location, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
@@ -305,16 +307,62 @@ export default class SpeclinkPanel extends View {
       .child(action.skill);
   }
 
-  skillRow(id, actions, hint, t) {
-    return v_flex()
-      .gap(3)
-      .child(
-        h_flex()
-          .flex_wrap()
-          .gap(4)
-          .children(actions.map((a) => this.skillButton(id, a, t))),
-      )
-      .when(Boolean(hint), (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(hint)));
+  // 把名稱接到目前分頁的輸入框，不送出。
+  attachButton(id, name, ctx, t) {
+    const plan = attachPlan({ name, agents: ctx.agents, focus: ctx.focus });
+    const ready = plan.kind !== "none";
+    return div()
+      .id(`attach-${id}`)
+      .flex_none()
+      .p(3)
+      .rounded(4)
+      .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
+      .when(!ready, (el) => el.opacity(0.45))
+      .tooltip(ready ? "附加到目前分頁的輸入框" : plan.reason)
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (!ready) return;
+        cx.spawn(async (cx) => {
+          const failed = await placeInInput(plan, cx);
+          if (failed) notify({ title: "沒有放進輸入框", body: sendError(failed), level: "warning" });
+        });
+      })
+      .child(icon("message-plus", 12, t.muted));
+  }
+
+  // 其他技能在跳窗裡：開跳窗，並先選好這個技能和這一列。
+  moreButton(id, skill, target, t) {
+    return h_flex()
+      .id(`more-${id}`)
+      .flex_none()
+      .h(22)
+      .px(5)
+      .items_center()
+      .rounded(5)
+      .text_color(t.muted)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .tooltip("其他技能")
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        setShared("speclink.pick", { skill, target, when: Date.now() });
+        run("mod.open", { name: "speclink-new" });
+      })
+      .child("⋯");
+  }
+
+  // 每列只留建議的下一步。能開工的列多一顆開工。
+  skillRow({ id, actions, start, target, hint }, t) {
+    const next = actions.find((a) => a.primary) ?? actions[0];
+    return h_flex()
+      .gap(4)
+      .items_center()
+      .when(Boolean(start), (el) => el.child(this.skillButton(id, start, t)))
+      .child(this.skillButton(id, next, t))
+      .child(this.moreButton(id, next.skill, target, t))
+      .when(Boolean(hint), (el) =>
+        el.child(div().flex_1().min_w_0().truncate().text_size(11).text_color(t.dim).child(hint)),
+      );
   }
 
   // 和 Herdr 內建的 Agents 清單同一套：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等回答是膠囊。
@@ -393,12 +441,7 @@ export default class SpeclinkPanel extends View {
     const actions = changeActions(row, ctx);
     const start = startAction(row, ctx);
     const blocked = row.blockedBy.length > 0;
-    const main = actions.find((a) => a.primary) ?? actions.find((a) => a.delivery);
-    const waiting = blocked ? `等 ${row.blockedBy.join("、")}` : "";
-    // 忙碌的原因只放在按鈕的提示裡：列上寫「agent 正在做事」會和 agent 的狀態圖示重複，
-    // 被擋住的列上講的又是目前分頁的 agent，和這一列無關。
-    const sends = main?.delivery && main.delivery.kind !== "busy";
-    const hint = [waiting, sends ? deliveryHint(main.delivery) : ""].filter(Boolean).join(" · ");
+    const hint = blocked ? `等 ${row.blockedBy.join("、")}` : "";
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
     const el = v_flex()
       .id(`change-${row.name}`)
@@ -424,6 +467,7 @@ export default class SpeclinkPanel extends View {
           .when(row.total > 0, (el) =>
             el.child(div().flex_none().text_size(11).text_color(t.muted).child(`${row.completed}/${row.total}`)),
           )
+          .child(this.attachButton(`change-${row.name}`, row.name, ctx, t))
           .child(this.copyButton(`change-${row.name}`, row.name, "複製名稱", t)),
       )
       .when(row.total > 0, (el) =>
@@ -438,7 +482,7 @@ export default class SpeclinkPanel extends View {
         ),
       )
       .children(changeAgents(row, ctx.agents).map((a) => this.agentChip(`change-${row.name}`, a, t)))
-      .child(this.skillRow(`change-${row.name}`, start ? [start, ...actions] : actions, hint, t));
+      .child(this.skillRow({ id: `change-${row.name}`, actions, start, target: row.name, hint }, t));
     return this.openOnClick(el, speclinkUrl("change", this.root, row.name), t);
   }
 
@@ -461,9 +505,10 @@ export default class SpeclinkPanel extends View {
               .child(div().truncate().child(d.slug))
               .child(div().truncate().text_size(11).text_color(t.muted).child(d.topic)),
           )
+          .child(this.attachButton(`discussion-${d.slug}`, d.slug, ctx, t))
           .child(this.copyButton(`discussion-${d.slug}`, d.slug, "複製 slug", t)),
       )
-      .child(this.skillRow(`discussion-${d.slug}`, actions, hint, t));
+      .child(this.skillRow({ id: `discussion-${d.slug}`, actions, target: d.slug, hint }, t));
     return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
   }
 
