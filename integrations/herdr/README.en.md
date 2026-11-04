@@ -4,6 +4,8 @@
 
 Open a panel in [Herdr](https://herdr.dev) that shows the changes and discussions of the current project. One click hands a skill to the correct agent, starts work on a change, or tells Speclink to open a detail page. You do not type a change name and you do not look for a window.
 
+![A Herdr window: the stage badges and the Agents list on the left, and the Speclink panel on the right](../../docs/assets/screenshots/en/herdr-panel.png)
+
 ## What the panel shows
 
 The panel has two placements. Neither takes the keyboard. In both, the project follows the terminal that has focus, so a switch of space also switches the project.
@@ -80,6 +82,8 @@ A change has the Start button only if it is not blocked, has unfinished tasks an
 **Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them with no more questions, always with a worktree. The waves come from `speclink plan`.
 
 ### Skills pop-up
+
+![The Skills pop-up: skills in five groups on the left, and the changes that can pair with the skill on the right](../../docs/assets/screenshots/en/herdr-skill-picker.png)
 
 Press the "技能" (Skills) button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
 

@@ -252,7 +252,7 @@ test('示範內容：進行中的變更只完成一部分任務，卡片才看�
   }
 });
 
-test('待拍清單：十五個檔名，中英介面各一組（截圖依語言分目錄、檔名相同）', () => {
+test('待拍清單：十七個檔名，中英介面各一組（截圖依語言分目錄、檔名相同）', () => {
   assert.deepEqual(
     SHOT_LIST.map((s) => s.file),
     [
@@ -271,11 +271,13 @@ test('待拍清單：十五個檔名，中英介面各一組（截圖依語言�
       'claude-code-panel.png',
       'claude-code-quality.png',
       'claude-code-hash-menu.png',
+      'herdr-panel.png',
+      'herdr-skill-picker.png',
     ],
   );
   assert.deepEqual(SHOT_LOCALES, ['en', 'zh-TW']);
   for (const shot of SHOT_LIST) {
-    assert.match(shot.file, /^(desktop|server|claude-code)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
+    assert.match(shot.file, /^(desktop|server|claude-code|herdr)-[a-z-]+\.png$/, `${shot.file} 命名不符`);
     assert.ok(shot.what.length > 0, `${shot.file} 要說明拍什麼`);
   }
 });

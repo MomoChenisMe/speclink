@@ -82,6 +82,7 @@ Now Speclink works with agents through generated skill files. A skill file gives
 
 - The skills are mature. Claude Code and Codex have a skill for each stage. See the [SDD workflow](workflow.md). Other AI tools can get skills through a custom tool descriptor. See [Configuration](configuration.md).
 - The Claude Code plugin `speclink-skills` adds a skill button row and a side panel.
+- The Herdr mod `speclink` adds a panel and connects the sidebar lists to Speclink.
 - The tools have no entry point yet: no tool package to install and no MCP adapter.
 - The direction under discussion (not final):
   - First, `@speclink/engine` gets one general tool that takes CLI arguments and stdin, with examples that connect it to agent SDKs.

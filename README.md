@@ -168,6 +168,26 @@ Do you want both the CLI and the desktop app? The desktop app can replace your C
 
 For requirements, settings, and known limits, see [speclink-skills](integrations/claude-code/speclink-skills/README.en.md).
 
+### Herdr mod (optional)
+
+`speclink` adds a panel to [Herdr](https://herdr.dev), next to your terminals. The panel lists the changes and discussions of the current project, sends a skill to the right agent, and starts new agents. The sidebar shows how many changes each project has in each stage, and it groups the agents by space. The text follows your system language.
+
+Keep Herdr open and run these lines in a clone of this repo:
+
+```bash
+cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/
+node scripts/herdr/dock-panel.mjs
+```
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/en/herdr-panel.png" alt="A Herdr window: the stage badges and the Agents list on the left, and the Speclink panel on the right" /><br /><sub>The sidebar and the panel in Herdr</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/herdr-skill-picker.png" alt="The Skills pop-up: skills in five groups on the left, and the changes that can pair with the skill on the right" /><br /><sub>Pick a skill and a change, then put the command in the input box or open a new tab</sub></td>
+  </tr>
+</table>
+
+For keyboard shortcuts, requirements, and known limits, see [speclink for Herdr](integrations/herdr/README.en.md).
+
 ## <a id="self-hosting"></a>Self-hosting a server
 
 You need a server only when a team shares one set of specs. For one person in one repo, you do not need a server.
@@ -224,7 +244,7 @@ Remote mode does not depend on this server. Two public contracts define remote m
 ## <a id="status"></a>Project status
 
 - **Available**: Local Repo CLI, Local desktop app, agent skills (Claude, Codex, and GitHub Copilot), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
-- **Partial**: Remote workspaces in the desktop app, the Claude Code plugin.
+- **Partial**: Remote workspaces in the desktop app, the Claude Code plugin, the Herdr mod.
 - **Planned**: Agent tool packages and MCP, SSO, runtime plugins, multi-node deployment.
 
 For the evidence, limits, and check date of each item, see [Product status](docs/product-status.md). For the work that is not done yet, see the [Roadmap](docs/roadmap.md).
