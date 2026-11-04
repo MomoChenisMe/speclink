@@ -14,6 +14,7 @@ import {
   placePlan,
   skillTargets,
 } from "./model.js";
+import { tr } from "./i18n.js";
 import { location, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
 
 const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: "已就緒" };
@@ -21,6 +22,8 @@ const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: 
 const GROUP_TONE = { 規劃: "ansi5", 實作: "ansi4", 品質: "ansi3", 收尾: "ansi2", 專案: "dim" };
 // 勾選框連同可以點的邊。不能勾的列留同樣的空位，名稱才對得齊。
 const TICK_SIZE = 18;
+const PAIR_LABEL = { 討論: "搭配的討論", 變更: "搭配的變更" };
+const PAIR_EMPTY = { 討論: "目前沒有可以搭配的討論", 變更: "目前沒有可以搭配的變更" };
 
 export default class SkillPicker {
   init(cx) {
@@ -38,7 +41,7 @@ export default class SkillPicker {
     this.sending = false;
     this.error = null;
     this.handle = cx.focus_handle();
-    this.note = InputState.new({ placeholder: "打完按 Enter" });
+    this.note = InputState.new();
     this.note.on("change", (_e, cx) => cx.notify());
     // ⌘Enter 在輸入框裡是 secondary 的 submit。
     this.note.on("submit", (e, cx) => (e.secondary ? this.startTabs(cx) : this.putInInput(cx)));
@@ -140,7 +143,7 @@ export default class SkillPicker {
   }
 
   inputPlan() {
-    if (this.ticked().length > 1) return { kind: "none", reason: "輸入框一次只能放一個。勾兩個以上請開新分頁" };
+    if (this.ticked().length > 1) return { kind: "none", reason: tr("輸入框一次只能放一個。勾兩個以上請開新分頁") };
     const f = focused();
     return placePlan({
       skill: this.skill().skill,
@@ -245,7 +248,7 @@ export default class SkillPicker {
             .gap(5)
             .items_center()
             .child(div().w(7).h(7).flex_none().rounded_full().bg(t[GROUP_TONE[w.group]]))
-            .child(div().text_size(10.5).text_color(t.dim).child(w.group)),
+            .child(div().text_size(10.5).text_color(t.dim).child(tr(w.group))),
         );
       }
       const count = this.board && w.pair ? this.targets(w.skill).length : null;
@@ -344,7 +347,7 @@ export default class SkillPicker {
     if (x.kind === "discussion") {
       return this.targetRow({ id: x.name, name: x.name, topic: x.topic, current: selected === x.name, click: select }, t);
     }
-    const progress = `${STAGE_LABEL[x.row.stage]} ${x.row.completed}/${x.row.total}`;
+    const progress = `${tr(STAGE_LABEL[x.row.stage])} ${x.row.completed}/${x.row.total}`;
     const reason = this.blockedReason(x);
     return this.targetRow(
       {
@@ -376,9 +379,9 @@ export default class SkillPicker {
       .border_l_1()
       .border_color(t.border)
       .overflow_y_scrollbar()
-      .child(div().flex_none().mx(8).mb(5).text_size(12).text_color(t.muted).child(w.about))
+      .child(div().flex_none().mx(8).mb(5).text_size(12).text_color(t.muted).child(tr(w.about)))
       .when(this.hasNote(), (el) =>
-        el.child(label(w.skill === "discuss" ? "主題" : "補充說明（可留空）")).child(
+        el.child(label(tr(w.skill === "discuss" ? "主題" : "補充說明（可留空）"))).child(
           div()
             .flex_none()
             .mx(8)
@@ -397,8 +400,8 @@ export default class SkillPicker {
             ),
         ),
       )
-      .when(!w.pair, (el) => el.child(label("這個技能用在整個專案，不用搭配")))
-      .when(Boolean(w.pair) && targets.length === 0, (el) => el.child(label(`目前沒有可以搭配的${w.pair}`)))
+      .when(!w.pair, (el) => el.child(label(tr("這個技能用在整個專案，不用搭配"))))
+      .when(Boolean(w.pair) && targets.length === 0, (el) => el.child(label(tr(PAIR_EMPTY[w.pair]))))
       .when(targets.length > 0, (el) =>
         el
           .child(
@@ -406,7 +409,7 @@ export default class SkillPicker {
               .flex_none()
               .mr(8)
               .items_center()
-              .child(div().flex_1().child(label(`搭配的${w.pair}`)))
+              .child(div().flex_1().child(label(tr(PAIR_LABEL[w.pair]))))
               .when(tickable, (row) =>
                 row.child(
                   div()
@@ -419,7 +422,7 @@ export default class SkillPicker {
                       this.focusKeys();
                       cx.notify();
                     })
-                    .child("全選 ⌘A"),
+                    .child(tr("全選 ⌘A")),
                 ),
               ),
           )
@@ -427,7 +430,7 @@ export default class SkillPicker {
             this.targetRow(
               {
                 id: "none",
-                name: "不指定",
+                name: tr("不指定"),
                 current: selected === null,
                 box: tickable ? div().size(TICK_SIZE).flex_none() : undefined,
                 click: () => (this.target = null),
@@ -462,7 +465,7 @@ export default class SkillPicker {
     const input = this.inputPlan();
     // 勾兩個以上時只有開新分頁能用，所以寫它會開什麼。
     const shown = many ? tabs : input;
-    const message = this.sending ? "處理中…" : this.error ?? (shown.kind === "none" ? shown.reason : shown.text);
+    const message = this.sending ? tr("處理中…") : this.error ?? (shown.kind === "none" ? shown.reason : shown.text);
     return v_flex()
       .flex_none()
       .px(12)
@@ -486,10 +489,10 @@ export default class SkillPicker {
             this.goButton(
               {
                 id: "skill-go-tab",
-                label: many ? `開 ${count} 個分頁並開工 ⌘⏎` : "開新分頁並開工 ⌘⏎",
+                label: many ? tr("開 {0} 個分頁並開工 ⌘⏎", count) : tr("開新分頁並開工 ⌘⏎"),
                 ready: tabs.kind !== "none" && !this.sending,
                 strong: many,
-                tip: tabs.kind === "none" ? tabs.reason : `在目前的 space 開新分頁並執行：${tabs.text}`,
+                tip: tabs.kind === "none" ? tabs.reason : tr("在目前的工作區開新分頁並執行：{0}", tabs.text),
                 click: (cx) => this.startTabs(cx),
               },
               t,
@@ -499,7 +502,7 @@ export default class SkillPicker {
             this.goButton(
               {
                 id: "skill-go",
-                label: "放到輸入框 ⏎",
+                label: tr("放到輸入框 ⏎"),
                 ready: input.kind !== "none" && !this.sending,
                 strong: !many,
                 tip: input.kind === "none" ? input.reason : null,
@@ -551,19 +554,19 @@ export default class SkillPicker {
           .items_center()
           .border_b_1()
           .border_color(t.border)
-          .child(div().flex_1().font_semibold().child("技能"))
+          .child(div().flex_1().font_semibold().child(tr("技能")))
           .when(!this.uninitialized, (el) =>
             el.child(
               div()
                 .text_size(11)
                 .text_color(t.dim)
-                .child(this.canTick() ? "↑↓ 技能　←→ 搭配　Space 勾選" : "↑↓ 技能　←→ 搭配"),
+                .child(tr(this.canTick() ? "↑↓ 技能　←→ 搭配　Space 勾選" : "↑↓ 技能　←→ 搭配")),
             ),
           )
           .child(div().text_size(11).text_color(t.dim).child("Esc")),
       )
       .when(this.uninitialized, (el) =>
-        el.child(div().flex_1().p(12).text_color(t.muted).child("這個專案還沒有 Speclink。到面板按「初始化」後再用。")),
+        el.child(div().flex_1().p(12).text_color(t.muted).child(tr("這個專案還沒有 Speclink。到面板按「初始化」後再用。"))),
       )
       .when(!this.uninitialized, (el) =>
         el

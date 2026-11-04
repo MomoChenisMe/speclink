@@ -2,7 +2,7 @@
 // 面板的列、每一列有哪些技能鈕、技能要送給誰。畫面與 Herdr API 不在這裡測。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -36,6 +36,7 @@ import {
   titleChange,
   waveToStart,
 } from '../../integrations/herdr/mods/speclink/model.js';
+import { TO_EN, TO_ZH, langFrom, setLang, tr } from '../../integrations/herdr/mods/speclink/i18n.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = '/work/repo';
@@ -762,7 +763,7 @@ test('開工：這些情況沒有開工鈕', () => {
 });
 
 test('deliveryHint：開新 space', () => {
-  assert.equal(deliveryHint(start().delivery), '開新 space');
+  assert.equal(deliveryHint(start().delivery), '開新工作區');
 });
 
 const stages = (...rows) => ({
@@ -860,4 +861,69 @@ test('statusCounts：最急的在前面，沒有的不列', () => {
   const members = ['idle', 'working', 'idle', 'done'].map((status) => ({ status }));
   assert.deepEqual(statusCounts(members), [['done', 1], ['working', 1], ['idle', 2]]);
   assert.deepEqual(statusCounts([]), []);
+});
+
+test('langFrom：第一個語言算數，中文之外都用英文', () => {
+  assert.equal(langFrom('(\n    "zh-Hant-TW"\n)\n'), 'zh');
+  assert.equal(langFrom('(\n    "en-US",\n    "zh-Hant-TW"\n)\n'), 'en');
+  assert.equal(langFrom('  zh_TW.UTF-8\n'), 'zh');
+  assert.equal(langFrom('ja_JP.UTF-8'), 'en');
+  assert.equal(langFrom(''), 'en');
+});
+
+test('tr：中文系統翻 Herdr 的英文，其他系統翻面板的中文，查不到用原文，佔位符照順序', () => {
+  try {
+    setLang('zh');
+    assert.equal(tr('Needs you'), '需要你');
+    assert.equal(tr('要等 {0} 落地', 'a'), '要等 a 落地');
+    assert.equal(tr('apply'), 'apply');
+    setLang('en');
+    assert.equal(tr('Needs you'), 'Needs you');
+    assert.equal(tr('要等 {0} 落地', 'a'), 'Waiting for a to land');
+    assert.equal(tr('第 {0} 波可以一起開工：{1}', 2, 'x'), 'Wave 2 can start together: x');
+    assert.equal(tr('apply'), 'apply');
+    assert.equal(tr('$&{0}', 'x'), '$&x', '參數和原文裡的特殊字元不會被取代樣式吃掉');
+  } finally {
+    setLang('zh');
+  }
+});
+
+test('placePlan：原因跟著語系', () => {
+  try {
+    setLang('en');
+    const plan = placePlan({ skill: 'apply', target: null, note: '', agents: [], focus: {} });
+    assert.equal(plan.reason, 'The current tab has no agent. You can open a new tab');
+  } finally {
+    setLang('zh');
+  }
+});
+
+const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));
+const code = (file) =>
+  readFileSync(path.join(HERDR_DIR, file), 'utf8')
+    .split('\n')
+    .filter((line) => !/^\s*\/\//.test(line))
+    .join('\n');
+
+test('語系守門：顯示的中文都有英文，也不用樣板字串繞過 tr', () => {
+  const files = ['mods/speclink/main.js', 'mods/speclink/skill-picker.js', 'mods/speclink/shared.js', 'mods/speclink/model.js', 'spaces-badge/stage-badge.js', 'agents-list/speclink-rows.js'];
+  for (const file of files) {
+    const source = code(file).replace(/\s\/\/.*$/gm, '');
+    for (const line of source.split('\n')) {
+      assert.doesNotMatch(line.replace(/"[^"]*"/g, '""'), /`[^`]*\p{Script=Han}[^`]*`/u, `${file} 有中文樣板字串`);
+    }
+    for (const [, text] of source.matchAll(/"([^"\n]*)"/g)) {
+      if (/\p{Script=Han}/u.test(text)) assert.ok(Object.hasOwn(TO_EN, text), `${file} 的「${text}」沒有英文`);
+    }
+  }
+  for (const { group, about } of PICKER_SKILLS) {
+    assert.ok(Object.hasOwn(TO_EN, group) && Object.hasOwn(TO_EN, about), `${group}／${about} 沒有英文`);
+  }
+});
+
+test('語系守門：dock-panel 翻譯的英文都有中文', () => {
+  const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
+  const keys = [...source.matchAll(/tr\([^"()]*"([^"]+)"(?: : "([^"]+)")?/g)].flatMap((m) => m.slice(1)).filter(Boolean);
+  assert.ok(keys.length > 10);
+  for (const key of keys) assert.ok(Object.hasOwn(TO_ZH, key), `「${key}」沒有中文`);
 });

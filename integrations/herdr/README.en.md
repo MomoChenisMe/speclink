@@ -21,6 +21,7 @@ What the panel contains:
 - **Attach button**: the chat icon beside the name. It adds the name of the change or discussion to the input box in the current tab and does not send it. The button is gray when the current tab has no agent or the agent waits for your answer.
 - **Stage badge**: only in the `speclink` layout. A project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
 - **Agents list**: only in the `speclink` layout. The list at the bottom left groups agents by space, in the same order as the Spaces list. Each space has its own Done, Working and Idle sections, and the title of a folded space shows the count for each status. An agent that waits for your answer goes in Needs you at the top, for any space. An agent with its own tab no longer shows a second time under the agent that started it. A row for an agent that works on a change ends with the stage color and the task progress. A tab with no name shows the change name. The match rules are the same as in the panel. The clock icon menu can still switch to Priority.
+- **Language**: the interface follows the system language: Chinese on a Chinese system, and English on other systems. This applies to the panel on the right, the Skills pop-up and the sidebar on the left. Restart Herdr after you change the system language.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to bring up the Speclink app.
@@ -131,7 +132,7 @@ Work from the repo root, with Herdr open:
    "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
    ```
 
-3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the Spaces list and the Agents list with clones connected to Speclink, and switches to it. To keep the pop-up only, skip this step.
+3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the left sidebar with clones connected to Speclink, and switches to it. To keep the pop-up only, skip this step.
 
    ```bash
    node scripts/herdr/dock-panel.mjs
@@ -152,8 +153,8 @@ node scripts/herdr/dock-panel.mjs
 The script does these steps:
 
 1. It switches to `main`.
-2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces` and `mods/speclink-agents`.
-3. It clones the new `spaces` and `agents` and connects them. If Herdr changed the lines the script edits, the script stops before it changes anything.
+2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents` and `mods/speclink-chrome`.
+3. It clones the new `spaces`, `agents` and `workspace-chrome` and connects them. If Herdr changed the lines the script edits, the script stops before it changes anything.
 4. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
 
 After this, the panel column has its default width, and the other column widths and open or closed states are the same as in `main`. The state that each space remembers does not change. If you edited the old clone by hand, your edits are in the `.old` file, and you must move them yourself. You can delete the `.old` file when all is well.
@@ -161,7 +162,7 @@ After this, the panel column has its default width, and the other column widths 
 ### Remove
 
 1. Press `⌘⇧L` to switch to `main`.
-2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces` and `speclink-agents` in `~/.config/herdr-app/mods/`.
+2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces`, `speclink-agents` and `speclink-chrome` in `~/.config/herdr-app/mods/`.
 3. Remove the additions from `keys.json`.
 
 ### Why a cloned layout
@@ -171,6 +172,8 @@ The conclusion of the `herdr-speclink-panel` discussion rejected a dedicated clo
 The same conclusion rejected the Spaces sidebar badge, because it needs a clone of the spaces mod. The layout is a clone now and several projects run at once, so this was reversed on the same day. The built-in spaces mod has no extension point, so the script clones it, adds `integrations/herdr/spaces-badge/stage-badge.js`, and changes a few lines to connect it. One change moves the git arrows next to the badge, so they do not cover the name when the row is full.
 
 The Agents list works the same way. The built-in agents mod has no extension point, so the script clones it, adds `integrations/herdr/agents-list/speclink-rows.js` and the panel's `model.js` and `shared.js`, and changes about fifteen lines. The list and the panel then use the same rules to find the change that an agent works on.
+
+The Settings and Add machine rows at the bottom of the sidebar are in `workspace-chrome`, so the script clones it too, only to translate them. The translations for all the clones are in the panel's `i18n.js`.
 
 Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` has no effect, and `layout.set` on `main` is refused.
 
@@ -189,6 +192,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. In this case the space has the name of the project and does not nest under the project. Only the tab name shows the change.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.
 - **Starting a whole wave can hit a git lock**: each agent can commit specs or make a worktree in the main folder. An agent that hits a lock stops and reports it. Click its skill button again.
+- **Herdr's own text is not translated**: Files and Changes in the tab bar, the status bar at the bottom, right-click menus and the settings page stay as they are.
 - **Limits of the Agents list**: the sidebar is narrow, so a row with progress shows no time. A discuss or propose tab shows no progress, because it does not count as work on a change.
 - **The badge needs a machine it can reach**: a machine that cannot be reached shows no badge. The narrow sidebar also shows no badge. If a row does not have enough space, the space name gets shorter, so the arrows and the badge stay visible.
 - **The panel text is Traditional Chinese only**.
