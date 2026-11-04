@@ -104,6 +104,21 @@ export function logoOpenAttempts({ root, hasBoard, on }) {
   return hasBoard && !on ? [[speclinkUrl("project", root)], bringUp] : [bringUp];
 }
 
+// 這個 agent 接下來在做什麼。沒指定變更時不動 speclink.change，不做變更的技能要清掉它（hc label k= 是移除）。
+export function skillLabels(skill, change) {
+  const labels = [`speclink.skill=speclink-${skill}`];
+  const pair = PICKER_SKILLS.find((w) => w.skill === skill)?.pair;
+  if (pair !== "變更") labels.push("speclink.change=");
+  else if (change) labels.push(`speclink.change=${change}`);
+  return labels;
+}
+
+// hook 用：送出的訊息是 speclink 技能指令時，回傳要貼的標籤，其他訊息回傳 null。變更名稱只認第一個參數。
+export function promptLabels(prompt) {
+  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+([A-Za-z0-9][A-Za-z0-9._-]*)(?=\s|$))?/);
+  return match && ALL_SKILLS.has(match[1]) ? skillLabels(match[1], match[2]) : null;
+}
+
 export function changeSkills(row) {
   // 有 worktree 就要先合併才能封存。合併不看任務做到哪裡，所以每個階段都能選。
   const skills = row.worktree
@@ -143,10 +158,6 @@ export function sendArgs(agent, text) {
   return null;
 }
 
-// Claude Code 外掛把終端機標題設成「<步驟> · <變更>」，封存後多一個 ✓。
-export function titleChange(title) {
-  return title?.match(/ · (\S+?)(?: ✓)?$/)?.[1] ?? null;
-}
 
 export const inside = (path, folder) => Boolean(path) && (path === folder || path.startsWith(`${folder}/`));
 
@@ -200,19 +211,13 @@ export function joinAgents(agents, terminals, panes) {
   });
 }
 
-// 正在做這個變更的 agent，依開工時貼的標籤、worktree 路徑、外掛回報的焦點、終端機標題的順序。
-// 開工時貼了標籤的 agent 專做那個變更，焦點和標題提到別的變更都不算。
-// 外掛回報的焦點（speclink.focus）和技能列相同，而且是即時的，有回報就不看標題。標題只有送出訊息時才
-// 更新，是舊版外掛或沒重新載入的 session 才用得到的線索；討論和提案的標題多半只是提到那個變更，不算。
+// 正在做這個變更的 agent，依標籤、worktree 路徑、外掛回報的焦點的順序。
+// speclink.change 由開工、面板、技能跳窗和 hook 貼上。貼了標籤的 agent 專做那個變更，焦點提到別的變更不算。
 export function changeAgents(row, agents) {
   const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name);
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];
-  const free = agents.filter((a) => !a.labels["speclink.change"]);
-  const byFocus = free.filter((a) => a.labels["speclink.focus"] === row.name);
-  const byTitle = free.filter(
-    (a) => !a.labels["speclink.focus"] && !/^(discuss|propose) · /.test(a.title ?? "") && titleChange(a.title) === row.name,
-  );
-  return [...new Set([...byLabel, ...byPath, ...byFocus, ...byTitle])];
+  const byFocus = agents.filter((a) => !a.labels["speclink.change"] && a.labels["speclink.focus"] === row.name);
+  return [...new Set([...byLabel, ...byPath, ...byFocus])];
 }
 
 const sendable = (a) => a.status === "idle" || a.status === "done";
@@ -222,7 +227,7 @@ function pickAgent({ change, folder, root, agents, focus }) {
   if (change) {
     const mine = changeAgents(change, pool);
     const here = mine.filter((a) => inside(a.cwd, folder));
-    // agent 用 cd 進 worktree 時，終端機回報的資料夾還是主資料夾；標籤與標題已標明它在做這個變更。
+    // agent 用 cd 進 worktree 時，終端機回報的資料夾還是主資料夾；標籤已標明它在做這個變更。
     const moved = folder === root ? [] : mine.filter((a) => inside(a.cwd, root));
     const group = here.length > 0 ? here : moved;
     if (group.length > 0) return { agent: group.find(sendable) ?? group[0], where: "change" };
@@ -246,7 +251,7 @@ export function planDelivery({ skill, change = null, args, root, agents, focus, 
     const { agent, where } = target;
     if (!sendable(agent)) return { kind: "busy", where, agent, reason: BUSY[agent.status] ?? agent.status };
     const text = commandText(agent.key, name, args);
-    return { kind: "send", where, agent, text, hc: sendArgs(agent, text) };
+    return { kind: "send", where, agent, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name) };
   }
   return newAgent({ name, args, folder, change, known });
 }
@@ -357,7 +362,12 @@ export function placePlan({ skill, target, note, agents, focus }) {
   if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
   if (agent.status === "blocked") return none(WAITING);
   if (onlyClaude(skill, agent.key)) return none("{0} 只有 Claude Code 能用", skill);
-  return { kind: "place", agent, text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `) };
+  return {
+    kind: "place",
+    agent,
+    text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `),
+    labels: skillLabels(skill, target?.kind === "change" ? target.name : null),
+  };
 }
 
 // 面板的附加鈕：把變更或討論的名稱接在輸入框現有的文字後面。讀不到輸入框，所以前後都留空白。

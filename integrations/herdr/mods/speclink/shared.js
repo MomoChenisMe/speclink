@@ -97,6 +97,8 @@ export async function placeInInput(plan) {
   const { rows, cols } = JSON.parse(got.stdout);
   const r = await exec("sh", ["-c", PASTE, "sh", address, String(rows), String(cols), plan.text]);
   if (r.code !== 0) return { ...r, stderr: tr("貼不進 {0}（結束碼 {1}）", address, r.code) };
+  // 附加名稱不算開始做，所以只有技能指令帶標籤。
+  if (plan.labels) await hc(["label", address, ...plan.labels]);
   run("pane.focus", { terminal: address });
   return null;
 }

@@ -198,8 +198,11 @@ export default class SpeclinkPanel extends View {
       cx.spawn(async (cx) => {
         const r = await hc(delivery.hc);
         this.sending.delete(address);
-        if (r.code === 0) run("pane.focus", { terminal: address });
-        else notify({ title: tr("技能沒有送出"), body: sendError(r), level: "warning" });
+        if (r.code === 0) {
+          // 面板才知道這個 agent 接下來在做什麼。
+          hc(["label", address, ...delivery.labels]);
+          run("pane.focus", { terminal: address });
+        } else notify({ title: tr("技能沒有送出"), body: sendError(r), level: "warning" });
         cx.notify();
       });
     } else if (delivery.kind === "new") {
