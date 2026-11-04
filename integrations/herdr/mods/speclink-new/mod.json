@@ -6,7 +6,7 @@
     "at": "top",
     "offset": 40,
     "width": 600,
-    "height": 510,
+    "height": 660,
     "layout": { "type": "block", "content": { "mod": "speclink", "props": { "view": "new-work" } } }
   }
 }
