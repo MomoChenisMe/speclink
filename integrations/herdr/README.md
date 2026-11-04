@@ -18,7 +18,7 @@
 - **頂端**：專案名稱，下面一行寫「目前的 space · 分支」。
 - **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
-- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 Claude Code 裡手打指令時，要裝 hook 面板才知道。
+- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 Claude Code 裡直接打字時，要裝 hook 面板才知道。
 - **技能鈕**：每列只留建議的下一步。`⋯` 開技能跳窗，並先選好這個技能和這一列。滑鼠停在鈕上會寫出會送給誰。
 - **附加鈕**：名稱旁邊的對話圖示，把變更或討論的名稱接到目前分頁的輸入框，不送出。目前分頁沒有 agent，或 agent 在等你回答時，這顆鈕會變灰。
 - **階段徽章**：只在 `speclink` 版面。左邊 Spaces 清單的專案列會依階段寫出變更的數量，順序和顏色都和面板的卡片相同：提案中和進行中是圓點加數字，已就緒是綠色的 `✓2`。數量是 0 的階段不顯示。游標移上去會寫出階段名稱。約 30 秒更新一次。
@@ -42,31 +42,37 @@
 
 | 狀態 | 能用的技能（粗體是建議的下一步，也是列上顯示的那一顆） |
 | --- | --- |
-| 提案中，沒被擋 | **apply**、analyze、ingest |
-| 提案中，被擋 | apply（灰掉，列上顯示這一顆）、analyze、ingest |
-| 進行中 | **apply**、ingest、drift、verify、quality、review、commit |
+| 提案中，沒被擋 | **apply**、analyze、ingest、drift、commit |
+| 提案中，被擋 | apply（灰掉，列上顯示這一顆）、analyze、ingest、drift、commit |
+| 進行中 | **apply**、ingest、drift、verify、quality、review、analyze、commit |
 | 進行中，只剩手動任務 | 同上，但建議改成 **quality**，也沒有開工鈕 |
-| 已就緒 | **quality**、review、verify、archive、commit |
+| 已就緒 | **quality**、review、verify、archive、ingest、drift、commit |
 | 任何階段，有 worktree | 多一個 worktree-merge，少一個 archive（要先合併才能封存） |
 | 討論重新定案，變更還沒更新 | 建議改成 **ingest** |
 | 討論中 | **discuss** |
 | 已定案，或還有刀沒轉出 | **propose --from-discussion**、discuss |
 
-### 追蹤手打的指令（選用）
+### 追蹤直接打的指令（選用）
 
-從面板和技能跳窗開始的工作，面板都知道。在 Claude Code 裡手打 `/speclink-apply <變更>` 時，面板要靠 hook 才知道，否則那一列看不到 agent，開工鈕也還在。
+從面板和技能跳窗開始的工作，面板都知道。在 Claude Code 裡直接打字時，面板要靠 hook 才知道，否則那一列看不到 agent，開工鈕也還在。
 
 在 `~/.claude/settings.json` 加上這段，新開的 Claude Code session 就會生效：
 
 ```json
 "hooks": {
-  "UserPromptSubmit": [
-    { "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }
-  ]
+  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }],
+  "PostToolUse": [{ "matcher": "Skill|Bash", "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5, "async": true }] }],
+  "SessionStart": [{ "matcher": "clear|resume", "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }]
 }
 ```
 
-它只在訊息開頭是 `/speclink-…` 時貼標籤，不會輸出任何東西，也不會擋住訊息。變更或討論的名稱只認第一個參數（`--from-discussion` 後面的 slug 也算）。不在 Herdr 裡時什麼都不做。只支援 Claude Code。
+三個 hook 各管一件事：
+
+- **`UserPromptSubmit`**：訊息開頭是 `/speclink-…` 時記下技能和第一個參數（`--from-discussion` 後面的 slug 也算）。
+- **`PostToolUse`**：模型自己叫用技能時，記下技能和參數。agent 跑了會動到變更或討論的 speclink 指令時，記下名稱。所以指令沒帶名稱、用一般句子下指令、提案新建的變更、討論新建的 slug 都認得出來。`show`、`status` 這類查詢不算，可能只是提到。它在背景跑，不會拖慢指令。
+- **`SessionStart`**：`/clear` 和 `/resume` 換了對話，清掉舊的標籤。
+
+它們不會輸出任何東西，也不會擋住訊息。不在 Herdr 裡時什麼都不做。只支援 Claude Code，而且 `--resume` 接回的對話要等下一個指令才認得出來。
 
 ### 技能會送給誰
 

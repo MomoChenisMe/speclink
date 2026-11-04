@@ -33,6 +33,8 @@ import {
   sendArgs,
   promptLabels,
   skillLabels,
+  commandLabels,
+  hookLabels,
   skillTargets,
   statusCounts,
   statusSections,
@@ -188,7 +190,7 @@ test('buildBoard：程式任務數取自 instructions，已就緒一定是 0，�
 
 test('changeSkills：提案中且沒被擋，建議 apply', () => {
   const skills = changeSkills(row({ stage: 'proposed' }));
-  assert.deepEqual(names(skills), ['apply', 'analyze', 'ingest']);
+  assert.deepEqual(names(skills), ['apply', 'analyze', 'ingest', 'drift', 'commit']);
   assert.deepEqual(primary(skills), ['apply']);
 });
 
@@ -200,7 +202,7 @@ test('changeSkills：被擋時 apply 要等前一個變更，也不算建議', (
 
 test('changeSkills：進行中建議 apply', () => {
   const skills = changeSkills(row());
-  assert.deepEqual(names(skills), ['apply', 'ingest', 'drift', 'verify', 'quality', 'review', 'commit']);
+  assert.deepEqual(names(skills), ['apply', 'ingest', 'drift', 'verify', 'quality', 'review', 'analyze', 'commit']);
   assert.deepEqual(primary(skills), ['apply']);
 });
 
@@ -256,16 +258,72 @@ test('開工：只剩手動任務時沒有開工鈕，因為沒有程式要寫',
 
 test('changeSkills：已就緒且沒有 worktree 可封存，建議 quality', () => {
   const skills = changeSkills(row({ stage: 'ready' }));
-  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'archive', 'commit']);
+  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'archive', 'ingest', 'drift', 'commit']);
   assert.deepEqual(primary(skills), ['quality']);
 });
 
 test('changeSkills：已就緒且有 worktree 要先合併，不能封存', () => {
   const skills = changeSkills(row({ stage: 'ready', worktree: { path: TREE, branch: 'b' } }));
-  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'commit', 'worktree-merge']);
+  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'ingest', 'drift', 'commit', 'worktree-merge']);
 });
 
-test('changeSkills：討論重新定案時建議改成 ingest，沒有 ingest 的階段也會加上', () => {
+test('changeSkills：沒有階段限制的技能每個階段都有', () => {
+  for (const stage of ['proposed', 'in-progress', 'ready']) {
+    const skills = names(changeSkills(row({ stage })));
+    for (const skill of ['ingest', 'drift', 'commit']) assert.ok(skills.includes(skill), `${stage} 要有 ${skill}`);
+  }
+});
+
+test('commandLabels：只認會動到變更或討論的 speclink 指令，名稱的引號要拿掉', () => {
+  const change = (name) => [`speclink.change=${name}`, 'speclink.discussion='];
+  assert.deepEqual(commandLabels('speclink instructions apply --change "add-a" --json'), change('add-a'));
+  assert.deepEqual(commandLabels('cd /x && speclink instructions apply --change add-a --json'), change('add-a'));
+  assert.deepEqual(commandLabels('SPECLINK_WORKTREE=true speclink in-progress add add-a'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink new change "add-a" --schema spec-driven --agent claude --from-discussion talk'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink task done --change add-a tsk_1'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink review prepare "add-a" --base abc'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink verify prepare add-a'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink archive add-a -y'), change('add-a'));
+  const talk = (slug) => ['speclink.change=', `speclink.discussion=${slug}`];
+  assert.deepEqual(commandLabels('speclink discuss new "要不要改" --slug talk-a --kind x'), talk('talk-a'));
+  assert.deepEqual(commandLabels("speclink discuss add-round talk-a --stdin <<'EOF'"), talk('talk-a'));
+  assert.deepEqual(commandLabels('speclink discuss conclude talk-a --stdin'), talk('talk-a'));
+});
+
+test('commandLabels：查詢、提到和參數不是名稱時都不算', () => {
+  for (const command of [
+    'speclink show add-a',
+    'speclink status --change add-a --json',
+    'speclink artifact cat tasks --change add-a',
+    'speclink plan --json',
+    'speclink discuss show talk-a --json',
+    'speclink review prepare --base abc',
+    'git commit -m "speclink archive add-a"',
+    'echo speclink archive add-a',
+    "cat <<'EOF'\nspeclink archive add-a\nEOF",
+    'grep speclink README.md',
+    '',
+  ]) {
+    assert.equal(commandLabels(command), null, command);
+  }
+});
+
+test('hookLabels：依事件決定看哪個欄位', () => {
+  const apply = ['speclink.skill=speclink-apply', 'speclink.change=add-a', 'speclink.discussion='];
+  assert.deepEqual(hookLabels({ hook_event_name: 'UserPromptSubmit', prompt: '/speclink-apply add-a' }), apply);
+  assert.deepEqual(hookLabels({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: 'speclink-apply', args: 'add-a' } }), apply);
+  assert.deepEqual(hookLabels({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: 'speclink-quality' } }), ['speclink.skill=speclink-quality', 'speclink.discussion=']);
+  assert.equal(hookLabels({ hook_event_name: 'PostToolUse', tool_name: 'Skill', tool_input: { skill: 'frontend-design' } }), null, '別的技能不算');
+  assert.deepEqual(hookLabels({ hook_event_name: 'PostToolUse', tool_name: 'Bash', tool_input: { command: 'speclink archive add-a' } }), ['speclink.change=add-a', 'speclink.discussion=']);
+  assert.equal(hookLabels({ hook_event_name: 'PostToolUse', tool_name: 'Read', tool_input: { file_path: 'x' } }), null);
+  const cleared = ['speclink.change=', 'speclink.discussion=', 'speclink.skill='];
+  assert.deepEqual(hookLabels({ hook_event_name: 'SessionStart', source: 'clear' }), cleared);
+  assert.deepEqual(hookLabels({ hook_event_name: 'SessionStart', source: 'resume' }), cleared);
+  assert.equal(hookLabels({ hook_event_name: 'SessionStart', source: 'startup' }), null, 'hc run 開的 agent 一開始就有標籤，不能清');
+  assert.equal(hookLabels({ hook_event_name: 'SessionStart', source: 'compact' }), null, '壓縮不換對話');
+});
+
+test('changeSkills：討論重新定案時建議改成 ingest', () => {
   assert.deepEqual(primary(changeSkills(row({ restale: true }))), ['ingest']);
   const ready = changeSkills(row({ stage: 'ready', restale: true }));
   assert.deepEqual(primary(ready), ['ingest']);
@@ -587,9 +645,9 @@ test('changeActions：被擋的 apply 不算送達，analyze 只在 Claude Code 
   const blocked = changeActions(row({ stage: 'proposed', blockedBy: ['add-z'] }), ctx());
   assert.equal(blocked.find((a) => a.skill === 'apply').delivery, null);
   const codex = changeActions(row({ stage: 'proposed' }), ctx({ agents: [agent({ key: 'codex' })] }));
-  assert.deepEqual(names(codex), ['apply', 'ingest']);
+  assert.deepEqual(names(codex), ['apply', 'ingest', 'drift', 'commit']);
   const claude = changeActions(row({ stage: 'proposed' }), ctx({ agents: [agent()] }));
-  assert.deepEqual(names(claude), ['apply', 'analyze', 'ingest']);
+  assert.deepEqual(names(claude), ['apply', 'analyze', 'ingest', 'drift', 'commit']);
 });
 
 test('discussionActions：帶討論 slug 送達', () => {

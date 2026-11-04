@@ -14,10 +14,11 @@ const BUSY = { working: "正在做事", blocked: "在等你回答", error: "出�
 const MAIN_FOLDER = new Set(["archive", "worktree-merge", "apply-with-worktree"]);
 const CLAUDE_ONLY = new Set(["analyze"]);
 
+// 第一個是建議的下一步。這裡只放合理的選項，技能本身沒有階段限制的（ingest、drift、commit）每個階段都有。
 const STAGE_SKILLS = {
-  proposed: ["apply", "analyze", "ingest"],
-  "in-progress": ["apply", "ingest", "drift", "verify", "quality", "review", "commit"],
-  ready: ["quality", "review", "verify", "archive", "commit"],
+  proposed: ["apply", "analyze", "ingest", "drift", "commit"],
+  "in-progress": ["apply", "ingest", "drift", "verify", "quality", "review", "analyze", "commit"],
+  ready: ["quality", "review", "verify", "archive", "ingest", "drift", "commit"],
 };
 // 這些技能要等程式任務都做完才能跑，手動任務（[M]）不算。沒做完時技能也會自己停下來。
 const NEEDS_CODE_DONE = new Set(["quality", "review"]);
@@ -123,16 +124,49 @@ export function promptLabels(prompt) {
   return skillLabels(skill, isChange && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name ?? "") ? undefined : name);
 }
 
+// 從 speclink 指令看出 agent 在做哪個變更或討論。只認會動到它的指令，show、status 這類可能只是查一下。
+// 指令要在開頭，或接在 ; & | ( 後面，所以 commit 訊息裡提到的不算；heredoc 的內文也不看。
+const NAME = String.raw`"?([A-Za-z0-9][^\s"';&|]*)"?`;
+const speclinkAt = (verb) => new RegExp(String.raw`(?:^|[;&|(]\s*)(?:\w+=\S*\s+)*speclink\s+${verb}\s+${NAME}`, "m");
+const CHANGE_COMMANDS = [
+  "new\\s+change",
+  "instructions\\s+apply\\s+--change",
+  "task\\s+done\\s+--change",
+  "in-progress\\s+add",
+  "(?:review|verify)\\s+prepare",
+  "archive",
+].map(speclinkAt);
+const DISCUSSION_COMMANDS = ["discuss\\s+new\\s+.*--slug", "discuss\\s+(?:context|add-round|conclude)"].map(speclinkAt);
+
+export function commandLabels(command) {
+  const text = command.split("<<")[0];
+  const change = CHANGE_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
+  if (change) return [`speclink.change=${change}`, "speclink.discussion="];
+  const discussion = DISCUSSION_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
+  return discussion ? ["speclink.change=", `speclink.discussion=${discussion}`] : null;
+}
+
+// Claude Code hook 收到的事件要貼哪些標籤，不用貼時是 null。
+// /clear 和 /resume 換了對話，舊的標籤不算數。模型自己叫用技能時，Skill 工具帶著技能和參數。
+export function hookLabels({ hook_event_name: event, source, prompt, tool_name: tool, tool_input: input }) {
+  if (event === "UserPromptSubmit") return promptLabels(prompt ?? "");
+  if (event === "SessionStart") {
+    return source === "clear" || source === "resume" ? ["speclink.change=", "speclink.discussion=", "speclink.skill="] : null;
+  }
+  if (tool === "Skill") return promptLabels(`/${input?.skill} ${input?.args ?? ""}`);
+  if (tool === "Bash") return commandLabels(input?.command ?? "");
+  return null;
+}
+
 export function changeSkills(row) {
   // 有 worktree 就要先合併才能封存。合併不看任務做到哪裡，所以每個階段都能選。
   const skills = row.worktree
     ? [...STAGE_SKILLS[row.stage].filter((skill) => skill !== "archive"), "worktree-merge"]
     : STAGE_SKILLS[row.stage];
-  const shown = row.restale && !skills.includes("ingest") ? ["ingest", ...skills] : skills;
   // 只剩手動任務時，下一步是品質關卡，不是 apply。
   const codeDone = row.stage === "in-progress" && row.codeRemaining === 0;
-  const suggested = row.restale ? "ingest" : codeDone ? "quality" : shown[0];
-  return shown.map((skill) => {
+  const suggested = row.restale ? "ingest" : codeDone ? "quality" : skills[0];
+  return skills.map((skill) => {
     const waiting = skill === "apply" && row.blockedBy.length > 0;
     return {
       skill,

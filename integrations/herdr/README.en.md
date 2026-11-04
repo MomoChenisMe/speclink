@@ -18,7 +18,7 @@ What the panel contains:
 - **Top**: the project name. The line below it says "目前的 space · <branch>" (the current space and its branch).
 - **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
-- **The agent on this change or discussion**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. For a change, the panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. For a discussion, it matches only the `speclink.discussion` label. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For commands that you type in Claude Code, the panel needs the hook.
+- **The agent on this change or discussion**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. For a change, the panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. For a discussion, it matches only the `speclink.discussion` label. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For what you type directly in Claude Code, the panel needs the hooks.
 - **Skill buttons**: each row keeps only the suggested next step. `⋯` opens the Skills pop-up with this skill and this row already selected. A tooltip on the button tells where it goes.
 - **Attach button**: the chat icon beside the name. It adds the name of the change or discussion to the input box in the current tab and does not send it. The button is gray when the current tab has no agent or the agent waits for your answer.
 - **Stage badge**: only in the `speclink` layout. A project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
@@ -42,31 +42,37 @@ Only a project that is not initialized shows this card. Other problems, such as 
 
 | State | Available skills (bold is the suggested next step, the one the row shows) |
 | --- | --- |
-| Proposed, not blocked | **apply**, analyze, ingest |
-| Proposed, blocked | apply is disabled, analyze, ingest |
-| In progress | **apply**, ingest, drift, verify, quality, review, commit |
+| Proposed, not blocked | **apply**, analyze, ingest, drift, commit |
+| Proposed, blocked | apply is disabled, analyze, ingest, drift, commit |
+| In progress | **apply**, ingest, drift, verify, quality, review, analyze, commit |
 | In progress, only manual tasks left | the same, but the suggestion changes to **quality**, and there is no Start button |
-| Ready | **quality**, review, verify, archive, commit |
+| Ready | **quality**, review, verify, archive, ingest, drift, commit |
 | Any stage, with a worktree | adds worktree-merge and removes archive (merge before you archive) |
 | Discussion concluded again, change not updated | the suggestion changes to **ingest** |
 | Open discussion | **discuss** |
 | Concluded, or cuts left to promote | **propose --from-discussion**, discuss |
 
-### Track the commands that you type (optional)
+### Track what you type directly (optional)
 
-The panel knows about work that starts from the panel or the Skills pop-up. For `/speclink-apply <change>` that you type in Claude Code, the panel needs a hook. Without the hook, that row shows no agent and still has the Start button.
+The panel knows about work that starts from the panel or the Skills pop-up. For what you type directly in Claude Code, the panel needs hooks. Without them, that row shows no agent and still has the Start button.
 
 Add this to `~/.claude/settings.json`. New Claude Code sessions then use it:
 
 ```json
 "hooks": {
-  "UserPromptSubmit": [
-    { "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }
-  ]
+  "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }],
+  "PostToolUse": [{ "matcher": "Skill|Bash", "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5, "async": true }] }],
+  "SessionStart": [{ "matcher": "clear|resume", "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }]
 }
 ```
 
-It sets labels only when a message starts with `/speclink-…`. It writes no output and does not stop the message. Only the first argument counts as the name of the change or discussion (the slug after `--from-discussion` also counts). Outside Herdr it does nothing. It works only with Claude Code.
+Each hook has one job:
+
+- **`UserPromptSubmit`**: when a message starts with `/speclink-…`, it records the skill and the first argument (the slug after `--from-discussion` also counts).
+- **`PostToolUse`**: when the model calls a skill, it records the skill and the arguments. When the agent runs a speclink command that changes a change or discussion, it records the name. So the panel also finds a command with no name, a request in plain words, a change that propose creates, and a slug that discuss creates. Queries such as `show` and `status` do not count, because they can be only a mention. This hook runs in the background and does not slow the command.
+- **`SessionStart`**: `/clear` and `/resume` change the conversation, so it removes the old labels.
+
+The hooks write no output and do not stop the message. Outside Herdr they do nothing. They work only with Claude Code, and a conversation that `--resume` brings back shows up only after its next command.
 
 ### Where a skill goes
 
