@@ -11,6 +11,8 @@ import { findChange, findDiscussion, uncancelableOverlayOpen, type AppState } fr
 import { openMainWindow } from "./tray";
 
 export type SpeclinkLinkKind = "change" | "discussion";
+/** 不帶名稱的網址種類：開專案後切畫面，沒有找不到目標的情形。 */
+type SpeclinkViewKind = "roadmap" | "project";
 
 /** 解析後的網址；名稱與路徑都已百分比解碼，`project` 為專案資料夾的絕對路徑。 */
 export type SpeclinkLink =
@@ -20,7 +22,7 @@ export type SpeclinkLink =
       name: string;
       project: string;
     }
-  | { kind: "roadmap" | "project"; project: string };
+  | { kind: SpeclinkViewKind; project: string };
 
 export type ParsedSpeclinkUrl =
   | { ok: true; link: SpeclinkLink }
@@ -113,6 +115,12 @@ const TARGETS: Record<
   },
 };
 
+/** 不帶名稱的網址各自切到哪個畫面。 */
+const VIEWS: Record<SpeclinkViewKind, (s: DeepLinkState) => void> = {
+  roadmap: (s) => s.openRoadmap(),
+  project: (s) => s.openBoard(),
+};
+
 /** 訂閱啟動網址與執行中的網址，ready（分頁列還原完成）之後依到達順序一次處理一個。
  * 回傳卸載函式：解除訂閱，尚未處理的網址也不再處理（StrictMode 會先卸載再重裝一次）。 */
 export function installDeepLinks(store: DeepLinkStore, ready: Promise<unknown>): () => void {
@@ -151,9 +159,7 @@ async function openLink(store: DeepLinkStore, url: string): Promise<void> {
   if (key === null) return;
   const s = store.getState();
   if (!("name" in link)) {
-    // 路線圖與專案網址沒有找不到目標的情形。
-    if (link.kind === "roadmap") s.openRoadmap();
-    else s.openBoard();
+    VIEWS[link.kind](s);
     return;
   }
   const { kind, name, project } = link;

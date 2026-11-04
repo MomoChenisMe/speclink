@@ -3449,6 +3449,15 @@ describe("openProjectAt 的回傳值", () => {
     expect(await store.getState().openProjectAt("C")).toBeNull();
   });
 
+  // Scenario「專案網址指向未初始化的資料夾」：確認框接手，主區維持原本的頁面。
+  it("探測為未初始化：開初始化確認框，主區維持原本的頁面", async () => {
+    const store = storeWithProbe(vi.fn().mockResolvedValue({ status: "uninitialized", dir: "C" }));
+    store.getState().setBoardView("specs");
+    await store.getState().openProjectAt("C");
+    expect(store.getState().pendingInit).toBe("C");
+    expect(store.getState().boardView).toBe("specs");
+  });
+
   it("探測失敗：回傳 null", async () => {
     const store = storeWithProbe(vi.fn().mockRejectedValue(new Error("gone")));
     expect(await store.getState().openProjectAt("C")).toBeNull();

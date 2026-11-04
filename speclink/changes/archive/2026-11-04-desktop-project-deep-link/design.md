@@ -60,7 +60,7 @@ Logo 的提示文字跟著這個結果走：會切專案時寫「在 Speclink ap
 
 ### 舊版 app 靠「送不出去就退回」處理，不偵測版本
 
-`main.js` 新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停；全部失敗才跳既有的「開不了 Speclink」通知，內容是最後一次的錯誤。`openInApp` 改成委派給它，所以現有呼叫端不用改。
+`main.js` 新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停；全部失敗才跳既有的「開不了 Speclink」通知，內文是最後一次有內容的錯誤。`openInApp` 改成委派給它，所以現有呼叫端不用改。
 
 兩種舊版的結果：
 

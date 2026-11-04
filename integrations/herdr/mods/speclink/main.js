@@ -22,6 +22,7 @@ import {
 import {
   attachPlan,
   buildBoard,
+  canOpenProject,
   changeActions,
   changeAgents,
   deliveryHint,
@@ -29,6 +30,7 @@ import {
   discussionAgents,
   isUninitialized,
   joinAgents,
+  lastOpenError,
   logoOpenAttempts,
   speclinkUrl,
   startChoices,
@@ -258,17 +260,17 @@ export default class SpeclinkPanel extends View {
     this.openFirstInApp([args], cx);
   }
 
-  // 依序試 open，成功就停；全部失敗才跳通知，內容是最後一次的錯誤。
+  // 依序試 open，成功就停；全部失敗才跳通知，內文是最後一次有內容的錯誤。
   openFirstInApp(attempts, cx) {
     cx.spawn(async () => {
-      let stderr = "";
-      for (const args of attempts) {
-        const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
-        if (r.code === 0) return;
-        stderr = r.stderr;
-      }
-      notify({ title: tr("開不了 Speclink"), body: firstLine(stderr), level: "warning" });
+      const error = await lastOpenError(attempts, exec);
+      if (error !== null) notify({ title: tr("開不了 Speclink"), body: firstLine(error), level: "warning" });
     });
+  }
+
+  // 判斷這個 space 的專案能不能用網址開時看的兩件事。
+  projectTarget() {
+    return { hasBoard: Boolean(this.board), on: this.place.on };
   }
 
   copy(text, cx) {
@@ -836,7 +838,8 @@ export default class SpeclinkPanel extends View {
   // Logo 也是叫出 Speclink app 的鈕，讀得到這台機器上的專案時會切過去。別台機器的 space 和
   // 沒初始化的專案也能按，只叫出 app。
   logoButton(t) {
-    const attempts = logoOpenAttempts({ root: this.root, hasBoard: Boolean(this.board), on: this.place.on });
+    const target = this.projectTarget();
+    const attempts = logoOpenAttempts({ root: this.root, ...target });
     return div()
       .id("open-app")
       .flex_none()
@@ -844,7 +847,7 @@ export default class SpeclinkPanel extends View {
       .rounded(5)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(attempts.length > 1 ? tr("在 Speclink app 開啟這個專案") : tr("開啟 Speclink app"))
+      .tooltip(canOpenProject(target) ? tr("在 Speclink app 開啟這個專案") : tr("開啟 Speclink app"))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => this.openFirstInApp(attempts, cx))
       .child(image(`${ICONS}/logo.svg`).w(21).h(24));
@@ -885,7 +888,7 @@ export default class SpeclinkPanel extends View {
               ),
           )
           // 讀不到專案（資料夾沒有 speclink）時不給鈕：網址會跳到桌面 app 的初始化確認框。
-          .when(Boolean(this.board) && !this.place.on, (el) =>
+          .when(canOpenProject(this.projectTarget()), (el) =>
             el.child(
               this.headerButton("roadmap", "roadmap", tr("路線圖"), t, (cx) =>
                 this.openInApp([speclinkUrl("roadmap", this.root)], cx),

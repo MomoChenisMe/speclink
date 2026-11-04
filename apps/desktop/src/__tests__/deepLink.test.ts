@@ -289,53 +289,34 @@ describe("installDeepLinks", () => {
     expect(h.state.openProjectAt).not.toHaveBeenCalled();
   });
 
-  // 路線圖網址（desktop-roadmap）：開專案後以 openRoadmap 關閉詳情頁與可取消浮層、主區切到
-  // 看板頁的路線圖檢視（store 測試驗 openRoadmap 本身）；沒有找不到目標的情形，不出 toast。
-  it("(j) 路線圖網址依序喚起主視窗、開專案、開路線圖", async () => {
-    const h = harness({ launch: [ROADMAP_URL] });
-    await flush();
-    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openRoadmap"]);
-    expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
-    expect(h.state.openDetail).not.toHaveBeenCalled();
-    expect(toastError).not.toHaveBeenCalled();
-  });
+  // 不帶名稱的網址：開專案後切畫面（store 測試驗 openRoadmap、openBoard 本身）；沒有找不到目標
+  // 的情形，不出 toast。
+  describe.each([
+    { label: "路線圖網址", url: ROADMAP_URL, open: "openRoadmap", other: "openBoard" },
+    { label: "專案網址", url: PROJECT_URL, open: "openBoard", other: "openRoadmap" },
+  ] as const)("$label", ({ url, open, other }) => {
+    it("依序喚起主視窗、開專案、切畫面，不出 toast", async () => {
+      const h = harness({ launch: [url] });
+      await flush();
+      expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, open]);
+      expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
+      expect(h.state.openDetail).not.toHaveBeenCalled();
+      expect(h.state[other]).not.toHaveBeenCalled();
+      expect(toastError).not.toHaveBeenCalled();
+    });
 
-  it("(k) 路線圖網址在 openProjectAt 回傳 null 時不切檢視", async () => {
-    harness({ launch: [ROADMAP_URL], openKey: null });
-    await flush();
-    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
-  });
+    it("openProjectAt 回傳 null 時不切畫面、不出 toast", async () => {
+      harness({ launch: [url], openKey: null });
+      await flush();
+      expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
+    });
 
-  it("(l) 路線圖網址遇到不可取消的浮層：只喚起主視窗", async () => {
-    const h = harness({ launch: [ROADMAP_URL], migrationRoot: "/Users/dev/legacy" });
-    await flush();
-    expect(log).toEqual(["openMainWindow"]);
-    expect(h.state.openProjectAt).not.toHaveBeenCalled();
-  });
-
-  // 專案網址：開專案後以 openBoard 關閉詳情頁與可取消浮層、主區切到看板頁的卡片檢視（store 測試驗
-  // openBoard 本身）；沒有找不到目標的情形，不出 toast。
-  it("(m) 專案網址依序喚起主視窗、開專案、顯示看板，不出 toast", async () => {
-    const h = harness({ launch: [PROJECT_URL] });
-    await flush();
-    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openBoard"]);
-    expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
-    expect(h.state.openDetail).not.toHaveBeenCalled();
-    expect(h.state.openRoadmap).not.toHaveBeenCalled();
-    expect(toastError).not.toHaveBeenCalled();
-  });
-
-  it("(n) 專案網址在 openProjectAt 回傳 null 時不切畫面、不出 toast", async () => {
-    harness({ launch: [PROJECT_URL], openKey: null });
-    await flush();
-    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
-  });
-
-  it("(o) 專案網址遇到不可取消的浮層：只喚起主視窗", async () => {
-    const h = harness({ launch: [PROJECT_URL], migrationRoot: "/Users/dev/legacy" });
-    await flush();
-    expect(log).toEqual(["openMainWindow"]);
-    expect(h.state.openProjectAt).not.toHaveBeenCalled();
+    it("遇到不可取消的浮層：只喚起主視窗", async () => {
+      const h = harness({ launch: [url], migrationRoot: "/Users/dev/legacy" });
+      await flush();
+      expect(log).toEqual(["openMainWindow"]);
+      expect(h.state.openProjectAt).not.toHaveBeenCalled();
+    });
   });
 
   it("(i) 喚起主視窗失敗時照常處理網址", async () => {

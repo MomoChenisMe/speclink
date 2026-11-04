@@ -10,12 +10,12 @@
 
 - [x] 2.1 （紅燈）`scripts/herdr/panel-model.test.mjs` 新增測試：`speclinkUrl('project', '/Users/dev/speclink')` 等於 `speclink://project?project=%2FUsers%2Fdev%2Fspeclink`，含中文與空白的路徑要百分比編碼；`logoOpenAttempts` 在 `hasBoard` 為真且沒有 `on` 時回傳「先網址、再 -b 參數」兩組，在 `hasBoard` 為假時、有 `on` 時都只回傳 -b 參數一組。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 因 `logoOpenAttempts` 不存在而失敗。 <!-- speclink-task:tsk_01M6JNXWMEW6MQH5WT1XYS1Q8J -->
 - [x] 2.2 （綠燈）`integrations/herdr/mods/speclink/model.js` 依決策「Logo 由純函式 `logoOpenAttempts` 決定要送什麼」新增 `logoOpenAttempts({ root, hasBoard, on })`，`APP_ID` 從 `integrations/herdr/mods/speclink/main.js` 搬過來並匯出，`speclinkUrl` 的註解補上 `project`。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。 <!-- speclink-task:tsk_01M6JNXWMEQGPKA44J279A4HWP -->
-- [x] 2.3 `integrations/herdr/mods/speclink/main.js` 依決策「舊版 app 靠「送不出去就退回」處理，不偵測版本」新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停，全部失敗才跳「開不了 Speclink」通知並帶最後一次的錯誤；`openInApp` 改成委派給它。`logoButton` 改用 `logoOpenAttempts`（`hasBoard` 取 `Boolean(this.board)`，`on` 取 `this.place.on`），提示文字在會切專案時寫「在 Speclink app 開啟這個專案」，其他時候維持「開啟 Speclink app」，新文字的英文加進 `integrations/herdr/mods/speclink/i18n.js`；移除過期的註解。驗證：`node --check integrations/herdr/mods/speclink/main.js` 結束碼為 0，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過（含面板文字都有英文的守門），畫面行為由任務 3.2 驗收。 <!-- speclink-task:tsk_01M6JNXWMEH5BFXB5H07F86N37 -->
+- [x] 2.3 `integrations/herdr/mods/speclink/main.js` 依決策「舊版 app 靠「送不出去就退回」處理，不偵測版本」新增 `openFirstInApp(attempts, cx)`：依序跑 open，成功就停，全部失敗才跳「開不了 Speclink」通知並帶最後一次有內容的錯誤；`openInApp` 改成委派給它。`logoButton` 改用 `logoOpenAttempts`（`hasBoard` 取 `Boolean(this.board)`，`on` 取 `this.place.on`），提示文字在會切專案時寫「在 Speclink app 開啟這個專案」，其他時候維持「開啟 Speclink app」，新文字的英文加進 `integrations/herdr/mods/speclink/i18n.js`；移除過期的註解。驗證：`node --check integrations/herdr/mods/speclink/main.js` 結束碼為 0，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過（含面板文字都有英文的守門），畫面行為由任務 3.2 驗收。 <!-- speclink-task:tsk_01M6JNXWMEH5BFXB5H07F86N37 -->
 
 ## 3. 手動驗收
 
 - [x] [M] 3.1 用還沒重新安裝的桌面 app（有註冊 speclink 網址但不認得 `project`）驗舊版：把 mod 複製到 `~/.config/herdr-app/mods/` 後按 Logo。預期 app 到前景、專案不切換、跳出「無法開啟這個 speclink 網址」。把看到的結果告訴 agent，文件任務會照實寫。 <!-- speclink-task:tsk_01M6JNXWME8GZSE68GMTXB6JGG -->
-- [ ] [M] 3.2 重新安裝桌面 app 後，在真實的 Herdr 按 Logo，逐項對照 design 的「可觀察行為」表：本機專案（從別的分頁、開著詳情頁、路線圖檢視各按一次，都回到該專案的卡片檢視）；worktree 裡的 space（切到主專案的分頁）；沒初始化的資料夾與別台機器的 space（只叫出 app，分頁與畫面不變）。沒有別台機器的 space 時，這一項註記略過。 <!-- speclink-task:tsk_01M6JNXWMEY0GV0741EXDJFXEX -->
+- [x] [M] 3.2 重新安裝桌面 app 後，在真實的 Herdr 按 Logo，逐項對照 design 的「可觀察行為」表：本機專案（從別的分頁、開著詳情頁、路線圖檢視各按一次，都回到該專案的卡片檢視）；worktree 裡的 space（切到主專案的分頁）；沒初始化的資料夾與別台機器的 space（只叫出 app，分頁與畫面不變）。沒有別台機器的 space 時，這一項註記略過。**別台機器的 space 略過**（沒有別台機器，2026-11-04）。 <!-- speclink-task:tsk_01M6JNXWMEY0GV0741EXDJFXEX -->
 
 ## 4. 文件
 

@@ -14,6 +14,7 @@ import {
   agentChange,
   batchPlan,
   buildBoard,
+  canOpenProject,
   changeActions,
   changeAgents,
   changeSkills,
@@ -26,15 +27,16 @@ import {
   isUninitialized,
   joinAgents,
   groupedOrder,
+  lastOpenError,
   logoOpenAttempts,
   newTabPlan,
   placePlan,
   planDelivery,
   sendArgs,
-  promptLabels,
-  skillLabels,
   commandLabels,
   hookLabels,
+  promptLabels,
+  skillLabels,
   skillTargets,
   statusCounts,
   statusSections,
@@ -906,6 +908,12 @@ test('speclinkUrl：專案網址不帶名稱，路徑要百分比編碼', () => 
   assert.equal(speclinkUrl('project', '/Users/我 的/app'), 'speclink://project?project=%2FUsers%2F%E6%88%91%20%E7%9A%84%2Fapp');
 });
 
+test('canOpenProject：讀得到專案，而且專案在這台機器上，才能用網址開', () => {
+  assert.equal(canOpenProject({ hasBoard: true, on: null }), true);
+  assert.equal(canOpenProject({ hasBoard: false, on: null }), false);
+  assert.equal(canOpenProject({ hasBoard: true, on: 'build-box' }), false);
+});
+
 const LOGO_ROOT = '/Users/dev/speclink';
 const BRING_UP = ['-b', APP_ID];
 
@@ -923,6 +931,48 @@ test('logoOpenAttempts：沒初始化、還在載入或讀不到專案時只叫�
 
 test('logoOpenAttempts：別台機器的 space 只叫出 app，路徑在這台開不了', () => {
   assert.deepEqual(logoOpenAttempts({ root: LOGO_ROOT, hasBoard: true, on: 'build-box' }), [BRING_UP]);
+});
+
+// 假的 exec：依序回傳給定的結果，Error 代表 exec 本身失敗（例如系統沒有 open 指令）。
+function fakeExec(...results) {
+  const calls = [];
+  const exec = async (command, args) => {
+    calls.push([command, args]);
+    const result = results.shift();
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  return { calls, exec };
+}
+
+const URL_ARGS = ['speclink://project?project=%2Fa'];
+const NOT_REGISTERED = { code: 1, stderr: 'No application knows how to open URL speclink://project?project=%2Fa\nmore' };
+
+test('lastOpenError：第一組成功就停，沒有錯誤', async () => {
+  const { calls, exec } = fakeExec({ code: 0, stderr: '' });
+  assert.equal(await lastOpenError([URL_ARGS, BRING_UP], exec), null);
+  assert.deepEqual(calls, [['open', URL_ARGS]]);
+});
+
+test('lastOpenError：沒有註冊網址的舊版 app 退回下一組，成功就沒有錯誤', async () => {
+  const { calls, exec } = fakeExec(NOT_REGISTERED, { code: 0, stderr: '' });
+  assert.equal(await lastOpenError([URL_ARGS, BRING_UP], exec), null);
+  assert.deepEqual(calls, [['open', URL_ARGS], ['open', BRING_UP]]);
+});
+
+test('lastOpenError：全部失敗回傳最後一次有內容的錯誤', async () => {
+  const { exec } = fakeExec(NOT_REGISTERED, { code: 1, stderr: 'Unable to find application' });
+  assert.equal(await lastOpenError([URL_ARGS, BRING_UP], exec), 'Unable to find application');
+});
+
+test('lastOpenError：後一次沒有錯誤訊息時，保留前一次的訊息', async () => {
+  const { exec } = fakeExec(NOT_REGISTERED, { code: 1, stderr: '' });
+  assert.equal(await lastOpenError([URL_ARGS, BRING_UP], exec), NOT_REGISTERED.stderr);
+});
+
+test('lastOpenError：exec 拋例外算失敗，錯誤是例外的訊息', async () => {
+  const { exec } = fakeExec(new Error('open: command not found'));
+  assert.equal(await lastOpenError([BRING_UP], exec), 'open: command not found');
 });
 
 // ---- 開工 ----
