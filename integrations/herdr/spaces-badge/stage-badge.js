@@ -3,6 +3,7 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { exec } from "herdr";
+import { tr } from "./i18n.js";
 
 const STAGES = [
   { id: "proposed", label: "提案中", tone: "ansi3" },
@@ -58,7 +59,7 @@ export function rowEnd(g, tree, t) {
             .items_center()
             .text_size(10.5)
             .font_semibold()
-            .tooltip(shown.map((s) => `${s.label} ${s.n}`).join("　"))
+            .tooltip(shown.map((s) => `${tr(s.label)} ${s.n}`).join("　"))
             .children(shown.map((s) => stageMark(s, t))),
         ]
       : []),

@@ -1,5 +1,6 @@
 // 面板和技能跳窗共用的 Herdr 小工具。
 import { exec, focused, hc, panes, run, spaces } from "herdr";
+import { tr } from "./i18n.js";
 import { inside } from "./model.js";
 
 export const firstLine = (text) => text.trim().split("\n")[0];
@@ -37,7 +38,7 @@ export function spaceFor(folder) {
 // 跑 speclink 動詞並讀它的 JSON。失敗時丟出 CLI 的第一行訊息。
 export async function speclinkJson(verb, cwd, on) {
   const r = await exec("speclink", [...verb, "--json"], { cwd, on });
-  if (r.code !== 0) throw new Error(firstLine(r.stderr) || `speclink ${verb.join(" ")} 結束碼 ${r.code}`);
+  if (r.code !== 0) throw new Error(firstLine(r.stderr) || tr("speclink {0} 結束碼 {1}", verb.join(" "), r.code));
   return JSON.parse(r.stdout);
 }
 
@@ -54,7 +55,7 @@ export async function placeInInput(plan) {
   if (got.code !== 0) return got;
   const { rows, cols } = JSON.parse(got.stdout);
   const r = await exec("sh", ["-c", PASTE, "sh", address, String(rows), String(cols), plan.text]);
-  if (r.code !== 0) return { ...r, stderr: `貼不進 ${address}（結束碼 ${r.code}）` };
+  if (r.code !== 0) return { ...r, stderr: tr("貼不進 {0}（結束碼 {1}）", address, r.code) };
   run("pane.focus", { terminal: address });
   return null;
 }
@@ -63,6 +64,6 @@ export function sendError(result) {
   try {
     return JSON.parse(result.stderr).error.message;
   } catch {
-    return firstLine(result.stderr) || `hc 結束碼 ${result.code}`;
+    return firstLine(result.stderr) || tr("hc 結束碼 {0}", result.code);
   }
 }

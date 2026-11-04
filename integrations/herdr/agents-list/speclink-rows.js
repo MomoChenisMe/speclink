@@ -4,6 +4,7 @@
 import { div } from "gpui-kit";
 import { h_flex } from "gpui-base";
 import { agents, panes, terminals } from "herdr";
+import { tr } from "./i18n.js";
 import { agentChange, buildBoard, joinAgents } from "./model.js";
 import { projectRoot, speclinkJson } from "./shared.js";
 
@@ -67,7 +68,7 @@ export function planMark(a, t) {
       .items_center()
       .text_size(10.5)
       .text_color(t[tone])
-      .tooltip(`${row.name}：${label} ${progress}`.trim())
+      .tooltip(tr("{0}：{1}", row.name, `${tr(label)} ${progress}`.trim()))
       .child(div().size(6).rounded_full().bg(t[tone]))
       .when(Boolean(progress), (el) => el.child(progress)),
   ];

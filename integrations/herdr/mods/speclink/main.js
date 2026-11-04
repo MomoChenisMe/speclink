@@ -33,6 +33,7 @@ import {
   waveToStart,
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
+import { tr, watchLang } from "./i18n.js";
 import SkillPicker from "./skill-picker.js";
 import { firstLine, location, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
@@ -47,7 +48,7 @@ const STAGES = [
   { id: "in-progress", label: "進行中", tone: "ansi4" },
   { id: "ready", label: "已就緒", tone: "ansi2" },
 ];
-const AGENT_STATE = { working: "做事中", blocked: "在等你回答", done: "做完了", idle: "閒置" };
+const AGENT_STATE = { working: "執行中", blocked: "在等你回答", done: "已完成", idle: "閒置" };
 
 const icon = (name, size, color) => svg(`${ICONS}/${name}.svg`).size(size).flex_none().text_color(color);
 const baseName = (path) => path.split("/").filter(Boolean).pop() ?? path;
@@ -62,6 +63,7 @@ function programIcon(program, size, color) {
 
 export default class SpeclinkPanel extends View {
   init(_props, cx) {
+    watchLang(exec, cx);
     const Other = VIEWS[props()?.view];
     if (Other) {
       this.other = new Other();
@@ -193,7 +195,7 @@ export default class SpeclinkPanel extends View {
         const r = await hc(delivery.hc);
         this.sending.delete(address);
         if (r.code === 0) run("pane.focus", { terminal: address });
-        else notify({ title: "技能沒有送出", body: sendError(r), level: "warning" });
+        else notify({ title: tr("技能沒有送出"), body: sendError(r), level: "warning" });
         cx.notify();
       });
     } else if (delivery.kind === "new" || delivery.kind === "space") {
@@ -239,7 +241,7 @@ export default class SpeclinkPanel extends View {
   openInApp(args, cx) {
     cx.spawn(async () => {
       const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
-      if (r.code !== 0) notify({ title: "開不了 Speclink", body: firstLine(r.stderr), level: "warning" });
+      if (r.code !== 0) notify({ title: tr("開不了 Speclink"), body: firstLine(r.stderr), level: "warning" });
     });
   }
 
@@ -285,7 +287,7 @@ export default class SpeclinkPanel extends View {
     const d = action.delivery;
     const ready = d && (d.kind === "send" || d.kind === "new" || d.kind === "space");
     const tip = action.waitingFor
-      ? `等 ${action.waitingFor.join("、")} 先完成`
+      ? tr("等 {0} 先完成", action.waitingFor.join(tr("、")))
       : d.text
         ? `${deliveryHint(d)}：${d.text}`
         : deliveryHint(d);
@@ -306,7 +308,7 @@ export default class SpeclinkPanel extends View {
         if (ready) this.deliver(d, cx);
       })
       .tooltip(tip)
-      .child(action.skill);
+      .child(tr(action.skill));
   }
 
   // 貼上要約 0.7 秒，所以按下去要先有反應。貼上中再按一次不算，否則名稱會貼兩次。
@@ -318,7 +320,7 @@ export default class SpeclinkPanel extends View {
       const failed = await placeInInput(plan);
       if (failed) {
         this.attaching.delete(name);
-        notify({ title: "沒有放進輸入框", body: sendError(failed), level: "warning" });
+        notify({ title: tr("沒有放進輸入框"), body: sendError(failed), level: "warning" });
       } else {
         this.attaching.set(name, "done");
         cx.timer.after(1200, (cx) => {
@@ -342,7 +344,7 @@ export default class SpeclinkPanel extends View {
       .rounded(4)
       .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
       .when(!ready && !state, (el) => el.opacity(0.45))
-      .tooltip(ready ? "附加到目前分頁的輸入框" : plan.reason)
+      .tooltip(ready ? tr("附加到目前分頁的輸入框") : plan.reason)
       .on_click((_e, cx) => {
         cx.stop_propagation();
         if (ready) this.attach(plan, name, cx);
@@ -366,7 +368,7 @@ export default class SpeclinkPanel extends View {
       .text_color(t.muted)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip("其他技能")
+      .tooltip(tr("其他技能"))
       .on_click((_e, cx) => {
         cx.stop_propagation();
         setShared("speclink.pick", { skill, target, when: Date.now() });
@@ -404,7 +406,7 @@ export default class SpeclinkPanel extends View {
         .text_size(10.5)
         .font_semibold()
         .text_color(t.blocked)
-        .child(AGENT_STATE.blocked);
+        .child(tr(AGENT_STATE.blocked));
     }
     if (view === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle);
     return div().size(7).mx(3).flex_none().rounded(4).bg(t[view] ?? t.dim);
@@ -421,7 +423,7 @@ export default class SpeclinkPanel extends View {
       .text_size(11)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(`切到這個 agent（${AGENT_STATE[a.view] ?? a.view}）`)
+      .tooltip(tr("切到這個 agent（{0}）", tr(AGENT_STATE[a.view] ?? a.view)))
       .on_click((_e, cx) => {
         cx.stop_propagation();
         run("agent.focus", { terminal: a.address });
@@ -454,7 +456,7 @@ export default class SpeclinkPanel extends View {
       .rounded(3)
       .cursor_pointer()
       .hover((s) => s.bg(t.raised))
-      .tooltip("在 Speclink 開路線圖")
+      .tooltip(tr("在 Speclink 開路線圖"))
       .on_click((_e, cx) => {
         cx.stop_propagation();
         this.openInApp([speclinkUrl("roadmap", this.root)], cx);
@@ -465,7 +467,7 @@ export default class SpeclinkPanel extends View {
     const actions = changeActions(row, ctx);
     const start = startAction(row, ctx);
     const blocked = row.blockedBy.length > 0;
-    const hint = blocked ? `等 ${row.blockedBy.join("、")}` : "";
+    const hint = blocked ? tr("等 {0}", row.blockedBy.join(tr("、"))) : "";
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
     const el = v_flex()
       .id(`change-${row.name}`)
@@ -492,7 +494,7 @@ export default class SpeclinkPanel extends View {
             el.child(div().flex_none().text_size(11).text_color(t.muted).child(`${row.completed}/${row.total}`)),
           )
           .child(this.attachButton(`change-${row.name}`, row.name, ctx, t))
-          .child(this.copyButton(`change-${row.name}`, row.name, "複製名稱", t)),
+          .child(this.copyButton(`change-${row.name}`, row.name, tr("複製名稱"), t)),
       )
       .when(row.total > 0, (el) =>
         el.child(
@@ -512,7 +514,7 @@ export default class SpeclinkPanel extends View {
 
   discussionRow(d, ctx, t) {
     const actions = discussionActions(d, ctx);
-    const hint = d.cuts.length > 0 ? `還有 ${d.cuts.length} 刀沒轉出` : "";
+    const hint = d.cuts.length > 0 ? tr("還有 {0} 刀沒轉出", d.cuts.length) : "";
     const el = v_flex()
       .id(`discussion-${d.slug}`)
       .px(10)
@@ -530,7 +532,7 @@ export default class SpeclinkPanel extends View {
               .child(div().truncate().text_size(11).text_color(t.muted).child(d.topic)),
           )
           .child(this.attachButton(`discussion-${d.slug}`, d.slug, ctx, t))
-          .child(this.copyButton(`discussion-${d.slug}`, d.slug, "複製 slug", t)),
+          .child(this.copyButton(`discussion-${d.slug}`, d.slug, tr("複製 slug"), t)),
       )
       .child(this.skillRow({ id: `discussion-${d.slug}`, actions, target: d.slug, hint }, t));
     return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
@@ -555,7 +557,7 @@ export default class SpeclinkPanel extends View {
           else this.more.add(id);
           cx.notify();
         })
-        .child(open ? "收合" : `還有 ${rows.length - OVERFLOW_LIMIT} 個…`),
+        .child(open ? tr("收合") : tr("還有 {0} 個…", rows.length - OVERFLOW_LIMIT)),
     ];
   }
 
@@ -579,7 +581,7 @@ export default class SpeclinkPanel extends View {
           .when(open && rows.length > 0, (el) => el.border_b_1().border_color(t.border))
           .on_click((_e, cx) => this.toggleSection(id, cx))
           .child(div().w(8).h(8).flex_none().rounded_full().bg(tone))
-          .child(div().font_semibold().text_size(12).child(label))
+          .child(div().font_semibold().text_size(12).child(tr(label)))
           .child(div().px(6).rounded_full().bg(t.raised).text_size(11).text_color(t.muted).child(String(rows.length)))
           .child(div().flex_1())
           .child(icon(open ? "chevron-down" : "chevron-right", 13, t.muted)),
@@ -605,7 +607,7 @@ export default class SpeclinkPanel extends View {
           .min_w_0()
           .text_size(11.5)
           .text_color(t.muted)
-          .child(`第 ${wave} 波可以一起開工：${deliveries.map((d) => d.change).join("、")}`),
+          .child(tr("第 {0} 波可以一起開工：{1}", wave, deliveries.map((d) => d.change).join(tr("、")))),
       )
       .child(
         h_flex()
@@ -620,9 +622,9 @@ export default class SpeclinkPanel extends View {
           .text_size(11.5)
           .cursor_pointer()
           .hover((s) => s.bg(t.hover))
-          .tooltip(`開 ${deliveries.length} 個新 space，各跑一個 agent`)
+          .tooltip(tr("開 {0} 個新工作區，各跑一個 agent", deliveries.length))
           .on_click((_e, cx) => deliveries.forEach((d) => this.deliver(d, cx)))
-          .child("整波開工"),
+          .child(tr("整波開工")),
       );
   }
 
@@ -638,7 +640,7 @@ export default class SpeclinkPanel extends View {
       .border_1()
       .border_color(t.border)
       .bg(t.surface)
-      .child(div().font_semibold().text_size(12).child("這個專案還沒有 Speclink"))
+      .child(div().font_semibold().text_size(12).child(tr("這個專案還沒有 Speclink")))
       .child(div().text_size(11).text_color(t.muted).child(this.root))
       .child(
         h_flex().child(
@@ -654,9 +656,9 @@ export default class SpeclinkPanel extends View {
             .text_size(11.5)
             .cursor_pointer()
             .hover((s) => s.bg(t.hover))
-            .tooltip("在新分頁執行 speclink init")
+            .tooltip(tr("在新分頁執行 speclink init"))
             .on_click(() => run("tab.new", { name: "speclink init", folder: this.root, argv: ["speclink", "init"] }))
-            .child("初始化"),
+            .child(tr("初始化")),
         ),
       );
   }
@@ -712,7 +714,7 @@ export default class SpeclinkPanel extends View {
           .px(4)
           .text_size(11)
           .text_color(t.blocked)
-          .child(`這些變更讀不到 metadata：${skipped.map((s) => s.change).join("、")}`),
+          .child(tr("這些變更讀不到 metadata：{0}", skipped.map((s) => s.change).join(tr("、")))),
       );
     }
     return cards;
@@ -746,7 +748,7 @@ export default class SpeclinkPanel extends View {
       .rounded(5)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip("開啟 Speclink app")
+      .tooltip(tr("開啟 Speclink app"))
       .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
       .on_click((_e, cx) => this.openInApp(["-b", APP_ID], cx))
       .child(image(`${ICONS}/logo.svg`).w(21).h(24));
@@ -783,13 +785,13 @@ export default class SpeclinkPanel extends View {
                   .truncate()
                   .text_size(11)
                   .text_color(t.muted)
-                  .child(["目前的 space", this.place.branch].filter(Boolean).join(" · ")),
+                  .child([tr("目前的工作區"), this.place.branch].filter(Boolean).join(" · ")),
               ),
           )
           // 讀不到專案（資料夾沒有 speclink）時不給鈕：網址會跳到桌面 app 的初始化確認框。
           .when(Boolean(this.board) && !this.place.on, (el) =>
             el.child(
-              this.headerButton("roadmap", "roadmap", "路線圖", t, (cx) =>
+              this.headerButton("roadmap", "roadmap", tr("路線圖"), t, (cx) =>
                 this.openInApp([speclinkUrl("roadmap", this.root)], cx),
               ),
             ),
@@ -797,7 +799,7 @@ export default class SpeclinkPanel extends View {
           // 還沒初始化時，這些技能在這個專案還不存在。
           .when(!this.uninitialized, (el) =>
             el.child(
-              this.headerButton("skills", "zap", "技能", t, () => run("mod.open", { name: "speclink-new" })),
+              this.headerButton("skills", "zap", tr("技能"), t, () => run("mod.open", { name: "speclink-new" })),
             ),
           )
           .when(Boolean(overlay), (el) =>
@@ -830,7 +832,7 @@ export default class SpeclinkPanel extends View {
           )
           .when(this.uninitialized, (el) => el.child(this.initCard(t)))
           .when(!this.board && !this.error && !this.uninitialized, (el) =>
-            el.child(div().flex_none().px(4).text_size(11.5).text_color(t.dim).child("載入中…")),
+            el.child(div().flex_none().px(4).text_size(11.5).text_color(t.dim).child(tr("載入中…"))),
           )
           .when(Boolean(this.board), (el) => el.children(this.body(ctx, t))),
       );

@@ -3,6 +3,8 @@
 //
 // 階段、波次、依賴、尚未轉出的刀都取自 CLI 的 --json，這裡不重算。
 
+import { tr } from "./i18n.js";
+
 // 有 speclink 技能的 agent（program.key）與叫用技能的前綴。
 const PREFIX = { claude: "/speclink-", copilot: "/speclink-", codex: "$speclink-" };
 // sending：hc send 要等 agent 開工才回來（約兩秒），這段時間再按一次會重複送出。
@@ -234,9 +236,9 @@ export function planDelivery({ skill, change = null, args, root, agents, focus, 
 
 // 新開一個 agent：選最常用且已安裝、有 speclink 技能的那一個。
 function newAgent({ name, args, folder, change, known }) {
-  if (!known) return { kind: "none", where: "none", reason: "還在確認可用的 agent" };
+  if (!known) return { kind: "none", where: "none", reason: tr("還在確認可用的 agent") };
   const pick = known.find((a) => a.installed && Object.hasOwn(PREFIX, a.key));
-  if (!pick) return { kind: "none", where: "none", reason: "找不到有 speclink 技能的 agent" };
+  if (!pick) return { kind: "none", where: "none", reason: tr("找不到有 speclink 技能的 agent") };
   return {
     kind: "new",
     where: "new",
@@ -295,11 +297,11 @@ export function discussionActions(d, ctx) {
 
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
 export function deliveryHint(delivery) {
-  if (delivery.kind === "busy") return `${delivery.where === "change" ? "這個變更" : "目前分頁"}的 agent ${delivery.reason}`;
+  if (delivery.kind === "busy") return tr("{0}的 agent {1}", tr(delivery.where === "change" ? "這個變更" : "目前分頁"), tr(delivery.reason));
   if (delivery.kind === "none") return delivery.reason;
-  if (delivery.kind === "new") return "開新分頁";
-  if (delivery.kind === "space") return "開新 space";
-  return delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent";
+  if (delivery.kind === "new") return tr("開新分頁");
+  if (delivery.kind === "space") return tr("開新工作區");
+  return tr(delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent");
 }
 
 // 技能跳窗可以搭配的變更與討論。哪個階段能用哪個技能，規則和面板的技能鈕相同。
@@ -317,7 +319,7 @@ export function skillTargets(skill, board) {
   return [...changes, ...discussions];
 }
 
-const none = (reason) => ({ kind: "none", reason });
+const none = (reason, ...args) => ({ kind: "none", reason: tr(reason, ...args) });
 const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
 const joinArgs = (target, note) => [target?.args, note].filter(Boolean).join(" ");
 // 控制字元會被終端機當成按鍵（換行就送出了），一律換成空白。
@@ -337,7 +339,7 @@ export function placePlan({ skill, target, note, agents, focus }) {
   const agent = inputAgent(agents, focus);
   if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
   if (agent.status === "blocked") return none(WAITING);
-  if (onlyClaude(skill, agent.key)) return none(`${skill} 只有 Claude Code 能用`);
+  if (onlyClaude(skill, agent.key)) return none("{0} 只有 Claude Code 能用", skill);
   return { kind: "place", agent, text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `) };
 }
 
@@ -354,7 +356,7 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   const change = target?.kind === "change" ? target.row : null;
   const applying = skill === "apply" || skill === "apply-with-worktree";
   if (change && changeAgents(change, agents).length > 0) return none("已經有 agent 在做");
-  if (change && applying && change.blockedBy.length > 0) return none(`要等 ${change.blockedBy.join("、")} 落地`);
+  if (change && applying && change.blockedBy.length > 0) return none("要等 {0} 落地", change.blockedBy.join(tr("、")));
   // 有 worktree 的變更，apply 要從主資料夾接續 worktree。
   const name = skill === "apply" && change?.worktree ? "apply-with-worktree" : skill;
   // 政策沒開時這個技能會自己停下來。
@@ -366,7 +368,7 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
   const d = newAgent({ name, args: joinArgs(target, note), folder, change, known });
   if (d.kind === "none") return d;
-  if (onlyClaude(skill, d.key)) return none(`${skill} 只有 Claude Code 能用`);
+  if (onlyClaude(skill, d.key)) return none("{0} 只有 Claude Code 能用", skill);
   return {
     ...d,
     kind: "tab",
