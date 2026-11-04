@@ -32,7 +32,7 @@ import {
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
 import NewWork from "./new-work.js";
-import { firstLine, location, projectRoot, sendError, spaceFor } from "./shared.js";
+import { firstLine, location, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "new-work": NewWork, "column-sync": ColumnSync };
@@ -121,11 +121,7 @@ export default class SpeclinkPanel extends View {
           this.uninitialized = false;
           this.watch(root, on, cx);
         }
-        const read = async (...verb) => {
-          const r = await exec("speclink", [...verb, "--json"], { cwd: root, on });
-          if (r.code !== 0) throw new Error(firstLine(r.stderr) || `speclink ${verb.join(" ")} 結束碼 ${r.code}`);
-          return JSON.parse(r.stdout);
-        };
+        const read = (...verb) => speclinkJson(verb, root, on);
         const [list, plan, discussions, config] = await Promise.all([
           read("list"),
           read("plan"),

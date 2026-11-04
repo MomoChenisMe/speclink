@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALL_SKILLS,
+  NEW_WORK,
   buildBoard,
   changeActions,
   changeAgents,
@@ -15,12 +16,13 @@ import {
   commandText,
   deliveryHint,
   discussionActions,
-  enterHint,
   discussionSkills,
   inside,
   isUninitialized,
   joinAgents,
-  newWorkActions,
+  newTabPlan,
+  newWorkTargets,
+  placePlan,
   planDelivery,
   sendArgs,
   speclinkUrl,
@@ -438,19 +440,152 @@ test('deliveryHint：說明會送去哪裡，或為什麼不能送', () => {
   assert.equal(deliveryHint(deliver({ known: null })), '還在確認可用的 agent');
 });
 
-test('newWorkActions：列出不帶變更名稱的技能', () => {
-  const actions = newWorkActions(ctx());
-  assert.deepEqual(names(actions), ['discuss', 'propose', 'improve', 'config', 'audit', 'trace', 'manual', 'baseline']);
-  assert.ok(actions.every((a) => a.delivery.kind === 'new'));
-  assert.deepEqual([...new Set(actions.map((a) => a.group))], ['規劃', '其他']);
-  assert.ok(actions.every((a) => a.about));
+// ---- 新工作跳窗 ----
+
+test('新工作的技能表：分組和順序與 Claude Code 的技能列相同，每個技能都有說明', () => {
+  assert.deepEqual([...new Set(NEW_WORK.map((w) => w.group))], ['規劃', '實作', '品質', '收尾', '其他']);
+  assert.ok(NEW_WORK.every((w) => w.about));
 });
 
-test('enterHint：寫出按 Enter 會送給哪個 agent，忙碌時寫原因', () => {
-  const claude = { program: { name: 'Claude Code' } };
-  assert.equal(enterHint(deliver({ agents: [agent(claude)] })), 'Enter 送給目前分頁的 Claude Code');
-  assert.equal(enterHint(deliver({})), 'Enter 開新分頁');
-  assert.equal(enterHint(deliver({ agents: [agent({ status: 'working' })] })), '目前分頁的 agent 正在做事');
+const board = () =>
+  buildBoard(
+    {
+      changes: [
+        { name: 'add-p', completedTasks: 0, totalTasks: 2 },
+        { name: 'add-i', completedTasks: 1, totalTasks: 2 },
+        { name: 'add-r', completedTasks: 2, totalTasks: 2 },
+        { name: 'add-w', completedTasks: 2, totalTasks: 2, worktree: { path: TREE } },
+      ],
+    },
+    {
+      changes: [
+        { name: 'add-p', stage: 'proposed', wave: 1, blockedBy: [] },
+        { name: 'add-i', stage: 'in-progress', wave: 1, blockedBy: [] },
+        { name: 'add-r', stage: 'ready', wave: 1, blockedBy: [] },
+        { name: 'add-w', stage: 'ready', wave: 1, blockedBy: [] },
+      ],
+    },
+    {
+      discussions: [
+        { slug: 'talk-open', topic: '還在談', status: 'open' },
+        { slug: 'talk-done', topic: '談完了', status: 'concluded' },
+        { slug: 'talk-old', topic: '已轉出', status: 'promoted' },
+      ],
+    },
+  );
+const targetNames = (skill) => newWorkTargets(skill, board()).map((t) => t.name);
+
+test('newWorkTargets：只列這個技能能搭配的變更，規則和面板的技能鈕相同', () => {
+  assert.deepEqual(targetNames('apply'), ['add-p', 'add-i']);
+  assert.deepEqual(targetNames('apply-with-worktree'), ['add-p', 'add-i']);
+  assert.deepEqual(targetNames('archive'), ['add-r']);
+  assert.deepEqual(targetNames('worktree-merge'), ['add-w']);
+  assert.deepEqual(targetNames('verify'), ['add-i', 'add-r', 'add-w']);
+});
+
+test('newWorkTargets：討論帶對應的參數，已轉出完的不列', () => {
+  assert.deepEqual(
+    newWorkTargets('discuss', board()).map((t) => t.args),
+    ['talk-open', 'talk-done'],
+  );
+  assert.deepEqual(
+    newWorkTargets('propose', board()).map((t) => t.args),
+    ['--from-discussion talk-done'],
+  );
+});
+
+test('newWorkTargets：不搭配東西的技能沒有選項', () => {
+  assert.deepEqual(targetNames('improve'), []);
+});
+
+const place = (over) => placePlan({ skill: 'apply', target: null, agents: [agent()], focus: { tab: 'tab1', terminal: 't1' }, ...over });
+
+test('placePlan：一個字一個字打進目前分頁的 agent，不按 Enter，結尾留空白好接著打字', () => {
+  const plan = place({ skill: 'improve' });
+  assert.equal(plan.kind, 'place');
+  assert.equal(plan.text, '/speclink-improve ');
+  assert.deepEqual(plan.hc, ['keys', 't1', ...'/speclink-improve'.split(''), 'space']);
+  assert.ok(!plan.hc.includes('enter'));
+});
+
+test('placePlan：帶搭配的變更或討論', () => {
+  assert.equal(place({ target: { args: 'add-a' } }).text, '/speclink-apply add-a ');
+  assert.equal(place({ skill: 'propose', target: { args: '--from-discussion s' } }).text, '/speclink-propose --from-discussion s ');
+});
+
+test('placePlan：焦點所在的 agent 優先，焦點不在 agent 時用同分頁的第一個', () => {
+  const two = [agent({ address: 't1' }), agent({ address: 't2' })];
+  assert.equal(place({ agents: two, focus: { tab: 'tab1', terminal: 't2' } }).agent.address, 't2');
+  assert.equal(place({ agents: two, focus: { tab: 'tab1', terminal: 't9' } }).agent.address, 't1');
+});
+
+test('placePlan：agent 在做事也可以放，因為不會送出', () => {
+  assert.equal(place({ agents: [agent({ status: 'working' })] }).kind, 'place');
+});
+
+test('placePlan：這些情況不放，並寫出原因', () => {
+  assert.match(place({ agents: [] }).reason, /目前分頁沒有 agent/);
+  assert.match(place({ agents: [agent({ tab: 'other' })] }).reason, /目前分頁沒有 agent/);
+  assert.match(place({ agents: [agent({ key: 'shell' })] }).reason, /目前分頁沒有 agent/);
+  assert.match(place({ agents: [agent({ status: 'blocked' })] }).reason, /在等你回答/);
+  assert.match(place({ skill: 'analyze', agents: [agent({ key: 'copilot' })] }).reason, /只有 Claude Code/);
+});
+
+test('placePlan：hc keys 打不出來的字元不放（Codex 的 $、中文的討論名稱）', () => {
+  assert.match(place({ agents: [agent({ key: 'codex' })] }).reason, /打不出來/);
+  assert.match(place({ skill: 'discuss', target: { args: '中文討論' } }).reason, /打不出來/);
+});
+
+const tab = (over) =>
+  newTabPlan({ skill: 'improve', target: null, note: '', root: REPO, agents: [], known: CLAUDE, space: 'sp1', on: null, ...over });
+const changeTarget = (over = {}) => ({ kind: 'change', name: 'add-a', args: 'add-a', row: row(over) });
+
+test('newTabPlan：和 herdr-dispatch 相同，用 hc run 開在目前的 space，不接在誰底下', () => {
+  const plan = tab({ skill: 'review', target: changeTarget() });
+  assert.equal(plan.kind, 'tab');
+  assert.equal(plan.tabName, 'review · add-a');
+  assert.deepEqual(plan.hc, [
+    'run', '--bg', '--json', '--no-parent',
+    '--cwd', REPO,
+    '--label', 'herdr.space=sp1',
+    '--name', 'add-a',
+    '--label', 'speclink.change=add-a',
+    '--label', 'speclink.skill=speclink-review',
+    'claude', '/speclink-review add-a',
+  ]);
+});
+
+test('newTabPlan：不帶變更時不取名也不貼變更標籤，補充說明接在指令後面', () => {
+  const plan = tab({ skill: 'discuss', note: '要談的主題' });
+  assert.equal(plan.tabName, 'discuss');
+  assert.ok(!plan.hc.includes('--name'));
+  assert.equal(plan.hc.at(-1), '/speclink-discuss 要談的主題');
+  assert.equal(tab({ skill: 'discuss', target: { kind: 'discussion', args: 's' }, note: '接著談' }).hc.at(-1), '/speclink-discuss s 接著談');
+});
+
+test('newTabPlan：有 worktree 的變更開在 worktree；apply 從主資料夾接續；另一台機器帶 --on', () => {
+  const worktree = { worktree: { path: TREE } };
+  assert.equal(tab({ skill: 'review', target: changeTarget(worktree) }).folder, TREE);
+  const apply = tab({ skill: 'apply', target: changeTarget(worktree) });
+  assert.equal(apply.folder, REPO);
+  assert.equal(apply.hc.at(-1), '/speclink-apply-with-worktree add-a');
+  assert.deepEqual(tab({ on: 'vps' }).hc.slice(4, 6), ['--on', 'vps']);
+});
+
+test('newTabPlan：Codex 用錢字號並帶 --no-daemon', () => {
+  const plan = tab({ known: [{ key: 'codex', run: ['codex'], installed: true }] });
+  assert.deepEqual(plan.hc.slice(-3), ['codex', '--no-daemon', '$speclink-improve']);
+});
+
+test('newTabPlan：這些情況不開，並寫出原因', () => {
+  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  assert.match(tab({ skill: 'review', target: changeTarget(), agents: [mine] }).reason, /已經有 agent 在做/);
+  assert.match(tab({ skill: 'apply', target: changeTarget({ blockedBy: ['add-b'] }) }).reason, /要等 add-b 落地/);
+  const running = agent({ labels: { 'speclink.skill': 'speclink-apply' } });
+  assert.match(tab({ skill: 'apply', agents: [running] }).reason, /主資料夾已經有 apply/);
+  assert.equal(tab({ skill: 'apply-with-worktree', agents: [running] }).kind, 'tab');
+  assert.match(tab({ skill: 'analyze', known: [{ key: 'copilot', run: ['copilot'], installed: true }] }).reason, /只有 Claude Code/);
+  assert.equal(tab({ known: null }).reason, '還在確認可用的 agent');
 });
 
 // ---- 叫 Speclink 開頁面 ----

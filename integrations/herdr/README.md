@@ -19,7 +19,7 @@
 - **做這個變更的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛設的終端機標題。
 - **技能鈕**：只列這個階段用得到的技能，建議的下一步加粗外框。
 - **開工**：變更列上的鈕，為這個變更開一個專用的新 agent。見下面的「開工」。
-- **＋ 新工作**：頂端的鈕或 `⌘⇧N` 開跳窗，選不帶變更名稱的技能。見下面的「新工作」。
+- **＋ 新工作**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。見下面的「新工作」。
 - **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
@@ -76,11 +76,14 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 按頂端的「＋ 新工作」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
 
-- **左邊**：不帶變更名稱的技能。用方向鍵或滑鼠選。
-- **右邊**：選 discuss 時打一句主題，或點「或接續一場討論」裡的討論。其他技能可以補充說明，也可以留空。
-- **底部**：寫出按 Enter 會送給誰，規則和技能鈕相同。目前分頁的 agent 在忙時不送，這裡會寫出原因。
+- **左邊**：所有技能，分組和順序與 Claude Code 的技能列相同。用 `↑` `↓` 或滑鼠選。
+- **右邊**：這個技能能搭配的變更或討論，規則和技能鈕相同。用 `←` `→` 或滑鼠選，也可以不指定。
+- **底部**：寫出會打進去的指令，或為什麼現在不能用。
 
-送出後跳窗關閉，畫面切到那個 agent。
+按 Enter 有兩種結果，由「開新分頁」決定（`⌘O` 或滑鼠勾選）：
+
+- **沒勾：放到輸入框。** 把指令打進目前分頁 agent 的輸入框，不送出。你可以接著打補充說明，再自己按 Enter。agent 在做事也可以放；在等你回答時不放，因為打字可能答掉對話框。
+- **有勾：開新分頁並開工。** 做法和 `herdr-dispatch` 技能相同：用 `hc run` 在目前的 space 開新分頁，分頁名稱是「技能 · 變更」，畫面留在原分頁。右邊多一個輸入框，內容會接在指令後面一起送出。這些情況不開，底部會寫原因：這個變更已經有 agent、apply 被別的變更擋住、主資料夾已經有 apply 在跑。
 
 ### 叫 Speclink 開頁面
 
@@ -159,6 +162,7 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **不顯示 review、verify 的章**：CLI 的輸出沒有蓋章狀態。已就緒的變更蓋完章後，建議仍停在 quality，archive 要自己按。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
+- **Codex 的分頁放不進輸入框**：Herdr 沒有「只貼上不按 Enter」的指令，所以用 `hc keys` 一個字一個字打。它只打得出英數、`/`、`-`、`.` 和空白，打不出 Codex 的 `$`，也打不出中文的討論名稱。這些情況要勾選「開新分頁」。
 - **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
 - **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。
 - **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣開新 space，技能會自己停下來並說明。
@@ -175,4 +179,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`new-work.js` 是新工作跳窗，`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
+`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`new-work.js` 是新工作跳窗（選擇的畫面，放到輸入框和開新分頁的規則在 `model.js`），`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。

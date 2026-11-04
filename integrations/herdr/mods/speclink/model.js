@@ -18,24 +18,30 @@ const STAGE_SKILLS = {
   ready: ["quality", "review", "verify", "archive", "commit"],
   "ready-worktree": ["quality", "review", "verify", "commit", "worktree-merge"],
 };
-// 新工作跳窗的技能。分組與前四條說明取自討論 herdr-speclink-panel 的定案。
-const NEW_WORK = [
+// 新工作跳窗的技能。分組和順序與 Claude Code 的技能列相同（integrations/claude-code 的 groups.ts）。
+export const NEW_WORK = [
   { skill: "discuss", group: "規劃", about: "把模糊的需求談清楚" },
-  { skill: "propose", group: "規劃", about: "建立變更與文件" },
   { skill: "improve", group: "規劃", about: "掃描程式碼找改善點" },
-  { skill: "config", group: "其他", about: "整理專案說明與產出規則" },
+  { skill: "propose", group: "規劃", about: "建立變更與文件" },
+  { skill: "ingest", group: "規劃", about: "把新需求併進變更" },
+  { skill: "apply", group: "實作", about: "照任務清單實作" },
+  { skill: "apply-with-worktree", group: "實作", about: "在獨立的 worktree 裡實作" },
+  { skill: "quality", group: "品質", about: "跑 review 和 verify 兩站" },
+  { skill: "review", group: "品質", about: "檢查實作的品質" },
+  { skill: "verify", group: "品質", about: "對照文件檢查實作" },
+  { skill: "archive", group: "收尾", about: "把變更併進規格並封存" },
+  { skill: "worktree-merge", group: "收尾", about: "把 worktree 合回主分支" },
+  { skill: "commit", group: "其他", about: "只提交這個變更的檔案" },
+  { skill: "analyze", group: "其他", about: "實作前交叉檢查文件" },
+  { skill: "drift", group: "其他", about: "查程式碼離變更的假設多遠" },
   { skill: "audit", group: "其他", about: "找出程式碼的安全問題" },
   { skill: "trace", group: "其他", about: "查一項能力的來龍去脈" },
   { skill: "manual", group: "其他", about: "從規格產生操作手冊" },
   { skill: "baseline", group: "其他", about: "從現有程式碼產生初始規格" },
+  { skill: "config", group: "其他", about: "整理專案說明與產出規則" },
 ];
 
-// 全部技能都要有放處。apply-with-worktree 沒有自己的鈕：apply 鈕接續 worktree 時才送它。
-export const ALL_SKILLS = new Set([
-  ...Object.values(STAGE_SKILLS).flat(),
-  ...NEW_WORK.map((w) => w.skill),
-  "apply-with-worktree",
-]);
+export const ALL_SKILLS = new Set(NEW_WORK.map((w) => w.skill));
 
 export function buildBoard(list, plan, discussions) {
   const listed = new Map(list.changes.map((c) => [c.name, c]));
@@ -247,10 +253,6 @@ export function discussionActions(d, ctx) {
   return discussionSkills(d).map((s) => ({ ...s, delivery: planDelivery({ ...ctx, skill: s.skill, args: s.args }) }));
 }
 
-export function newWorkActions(ctx) {
-  return NEW_WORK.map((w) => ({ ...w, delivery: planDelivery({ ...ctx, skill: w.skill }) }));
-}
-
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
 export function deliveryHint(delivery) {
   if (delivery.kind === "busy") return `${delivery.where === "change" ? "這個變更" : "目前分頁"}的 agent ${delivery.reason}`;
@@ -260,9 +262,74 @@ export function deliveryHint(delivery) {
   return delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent";
 }
 
-// 新工作跳窗底部的說明：按 Enter 會發生什麼。
-export function enterHint(delivery) {
-  if (delivery.kind === "send") return `Enter 送給目前分頁的 ${delivery.agent.program?.name ?? "agent"}`;
-  if (delivery.kind === "new") return "Enter 開新分頁";
-  return deliveryHint(delivery);
+// 新工作跳窗可以搭配的變更與討論。哪個階段能用哪個技能，規則和面板的技能鈕相同。
+export function newWorkTargets(skill, board) {
+  const name = skill === "apply-with-worktree" ? "apply" : skill;
+  const changes = Object.values(board.stages)
+    .flat()
+    .filter((row) => changeSkills(row).some((s) => s.skill === name))
+    .map((row) => ({ kind: "change", name: row.name, args: row.name, row }));
+  const discussions = board.discussions.flatMap((d) =>
+    discussionSkills(d)
+      .filter((s) => s.skill === skill)
+      .map((s) => ({ kind: "discussion", name: d.slug, args: s.args, topic: d.topic })),
+  );
+  return [...changes, ...discussions];
+}
+
+const none = (reason) => ({ kind: "none", reason });
+const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
+// hc keys 打得出來的字元。打不出來的有 Codex 的 $ 和討論名稱裡的中文。
+const TYPABLE = /^[a-z0-9/. -]+$/;
+
+// 放到輸入框：只打字、不按 Enter，所以 agent 在做事也可以放。agent 在等回答時不放，打字可能答掉對話框。
+export function placePlan({ skill, target, agents, focus }) {
+  const here = agents.filter((a) => a.tab === focus?.tab && Object.hasOwn(PREFIX, a.key));
+  const agent = here.find((a) => a.address === focus?.terminal) ?? here[0];
+  if (!agent) return none("目前分頁沒有 agent。可以勾選「開新分頁」");
+  if (agent.status === "blocked") return none("目前分頁的 agent 在等你回答");
+  if (onlyClaude(skill, agent.key)) return none(`${skill} 只有 Claude Code 能用`);
+  const text = `${commandText(agent.key, skill, target?.args)} `;
+  if (!TYPABLE.test(text)) return none("這段指令有打不出來的字元。可以勾選「開新分頁」");
+  return { kind: "place", agent, text, hc: ["keys", agent.address, ...[...text].map((c) => (c === " " ? "space" : c))] };
+}
+
+// 開新分頁：做法和檢查都跟 herdr-dispatch 技能相同。分頁開在目前的 space，畫面留在原地。
+export function newTabPlan({ skill, target, note, root, agents, known, space, on }) {
+  const change = target?.kind === "change" ? target.row : null;
+  const applying = skill === "apply" || skill === "apply-with-worktree";
+  if (change && changeAgents(change, agents).length > 0) return none(`${change.name} 已經有 agent 在做`);
+  if (change && applying && change.blockedBy.length > 0) return none(`要等 ${change.blockedBy.join("、")} 落地`);
+  // 有 worktree 的變更，apply 要從主資料夾接續 worktree。
+  const name = skill === "apply" && change?.worktree ? "apply-with-worktree" : skill;
+  // 主資料夾一次只能跑一個 apply，兩個一起跑會互相踩到檔案。
+  if (name === "apply" && agents.some((a) => a.labels["speclink.skill"] === "speclink-apply")) {
+    return none("主資料夾已經有 apply 在跑。可以改選 apply-with-worktree");
+  }
+  const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
+  const args = [target?.args, note].filter(Boolean).join(" ");
+  const d = newAgent({ name, args, folder, change, known });
+  if (d.kind === "none") return d;
+  if (onlyClaude(skill, d.key)) return none(`${skill} 只有 Claude Code 能用`);
+  return {
+    ...d,
+    kind: "tab",
+    hc: [
+      "run",
+      "--bg",
+      "--json",
+      "--no-parent",
+      ...(on ? ["--on", on] : []),
+      "--cwd",
+      folder,
+      "--label",
+      `herdr.space=${space}`,
+      // hc 的名稱不能重複，所以只有變更才取名：同一個變更只會有一個 agent。
+      ...(change
+        ? ["--name", change.name.slice(0, 32), "--label", `speclink.change=${change.name}`, "--label", `speclink.skill=speclink-${name}`]
+        : []),
+      ...d.argv,
+      d.text,
+    ],
+  };
 }

@@ -34,6 +34,13 @@ export function spaceFor(folder) {
   return all.find((s) => s.active && holds(s)) ?? all.find(holds);
 }
 
+// 跑 speclink 動詞並讀它的 JSON。失敗時丟出 CLI 的第一行訊息。
+export async function speclinkJson(verb, cwd, on) {
+  const r = await exec("speclink", [...verb, "--json"], { cwd, on });
+  if (r.code !== 0) throw new Error(firstLine(r.stderr) || `speclink ${verb.join(" ")} 結束碼 ${r.code}`);
+  return JSON.parse(r.stdout);
+}
+
 export function sendError(result) {
   try {
     return JSON.parse(result.stderr).error.message;
