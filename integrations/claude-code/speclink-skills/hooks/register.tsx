@@ -5,7 +5,7 @@ import type { Board, Detail, Focus, Lang, PanelChange, PanelDiscussion, PanelTab
 
 import { buildBoard, discussionBody, isNoTicket, parseTasks, proposedRows, speclinkArgv, toTicket } from './board'
 import type { DiscussJson, DiscussShowJson, ListJson, PlanJson, ShowJson, StatusJson, TicketJson } from './board'
-import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, PLAIN_TITLE, speclinkCommand, titleOf } from './focus'
+import { afterPrompt, commandChange, focusFromHistory, focusFromTitle, PLAIN_TITLE, speclinkCommand, titleOf, withVerb } from './focus'
 import type { GroupId } from './groups'
 import { commandHead, groupSkills, PREFIX, withArgument, withCommand } from './skills'
 import { resolveLang, TEXT } from './text'
@@ -31,7 +31,28 @@ let undo: Focus | null = null
 // 輸入框 `#` 選單用的 change 與階段（`speclink plan`）。每打一個字都會問一次，5 秒內用同一份。
 let planned: { changes: PlanJson['changes']; loadedAt: number } = { changes: [], loadedAt: 0 }
 
+// 上一次回報給 Herdr 的 change。undefined 是還沒回報過。
+let reported: string | null | undefined
+
 // 用 `$` 的函式都留在這個檔：`$` 只能傳進同檔宣告的函式，不能跨 import。
+
+// 在 Herdr 的終端機裡，把目前的 change 寫成標籤，Herdr 面板才能和技能列同步：標題只有送出訊息時才能改。
+// 沒有 change 也要寫（`-`），面板才知道不用再看標題。不在 Herdr 裡就什麼都不做，回報失敗也不影響技能列。
+const reportFocus = async ($: EngineInterface, change: string | null) => {
+  if (reported === change) {
+    return
+  }
+  reported = change
+  const terminal = await $.env.get('HC_TERMINAL_ID')
+  if (terminal !== undefined && terminal !== '') {
+    await $.process.run(['hc', 'label', terminal, `speclink.focus=${change ?? '-'}`]).catch(() => undefined)
+  }
+}
+
+const setFocus = async ($: EngineInterface, change: (f: Focus) => Focus) => {
+  await update($, focus, change)
+  await reportFocus($, (await read($, focus)).change)
+}
 
 const refresh = async ($: EngineInterface) => {
   const found = (await $.command.list())
@@ -86,24 +107,25 @@ const recall = async ($: EngineInterface, title?: string) => {
   const here = known.worktrees.find(w => cwd === w.path || cwd.startsWith(`${w.path}/`))
   const history = here !== undefined ? { verb: null, change: here.name } : focusFromHistory(await $.session.messages(), known.names, PANEL_COMMAND)
   const found = history.verb !== null || history.change !== null ? history : (focusFromTitle(title, known.names) ?? history)
-  await update($, focus, () => found)
+  await setFocus($, () => found)
   return found
 }
 
 // speclink 指令跑完後認 change；認不出來時可能是剛建的 change，重讀一次清單（最多每 10 秒一次）。
 // 封存指令跑完也重讀：change 從清單消失就是封存好了，標上 ✓。名稱要用封存前的清單認。
 const noteCommand = async ($: EngineInterface, command: string) => {
-  let change = changeIn(command, known.names)
+  const current = await read($, focus)
+  let change = commandChange(current, command, known.names)
   const archiving = /(^|[\s;&|(])speclink\s+archive\b/.test(command)
   if (archiving || (change === null && Date.now() - known.loadedAt > 10_000)) {
     await loadKnown($)
-    change ??= changeIn(command, known.names)
+    change ??= commandChange(current, command, known.names)
   }
   if (change === null) {
     return
   }
   const archived = archiving && !known.names.includes(change)
-  await update($, focus, f =>
+  await setFocus($, f =>
     f.change === change && (f.archived === true) === archived ? f : archived ? { ...f, change, archived: true as const } : { verb: f.verb, change },
   )
 }
@@ -321,8 +343,10 @@ export const register: Register = (on, options) => {
     if (e.source === 'clear') {
       staleTitle = fromTitle !== null
     } else if (fromTitle !== null) {
-      await update($, focus, f => (f.verb === null && f.change === null ? fromTitle : f))
+      await setFocus($, f => (f.verb === null && f.change === null ? fromTitle : f))
     }
+    // /clear、/resume 換了 session，焦點也跟著換。
+    await reportFocus($, (await read($, focus)).change)
 
     return next(e)
   })
@@ -335,7 +359,7 @@ export const register: Register = (on, options) => {
       const back = e.isAborted ? undo : null
       undo = null
       if (back !== null) {
-        await update($, focus, () => back)
+        await setFocus($, () => back)
       }
     }
     await refresh($)
@@ -375,7 +399,7 @@ export const register: Register = (on, options) => {
   // 模型自己呼叫的 speclink 技能（例如 quality 裡接著跑 review）：換成那一步。
   on('tool.call', { tool: 'Skill' }, async ($, e, next) => {
     if (e.agentId === undefined && e.skill.startsWith(PREFIX)) {
-      await update($, focus, f => ({ ...f, verb: e.skill.slice(PREFIX.length) }))
+      await setFocus($, f => withVerb(f, e.skill.slice(PREFIX.length)))
     }
 
     return next(e)
@@ -390,7 +414,7 @@ export const register: Register = (on, options) => {
     const after = afterPrompt(before, e.prompt, known.names, PANEL_COMMAND)
     undo = after !== before ? before : null
     if (after !== before) {
-      await update($, focus, () => after)
+      await setFocus($, () => after)
     }
     const title = titleOf(after) ?? (staleTitle ? PLAIN_TITLE : null)
     staleTitle = false

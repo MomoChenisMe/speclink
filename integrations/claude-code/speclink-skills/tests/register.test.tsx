@@ -1,7 +1,7 @@
 import { expect, mock, test } from 'claude-code/testing'
 import type { On } from 'claude-code'
 
-import { afterPrompt, changeIn, focusFromHistory, focusFromTitle, speclinkCommand, titleOf, verbOf } from '../hooks/focus'
+import { afterPrompt, changeIn, commandChange, focusFromHistory, focusFromTitle, speclinkCommand, titleOf, verbOf, withVerb } from '../hooks/focus'
 import { buildBoard, discussionBody, isNoTicket, parseTasks, proposedRows, speclinkArgv, toTicket } from '../hooks/board'
 import type { PlanJson } from '../hooks/board'
 import { cells } from '../hooks/register'
@@ -110,8 +110,8 @@ const cli = (argv: readonly string[]) => {
 
 // 引擎在測試裡的替身：已安裝的技能、設定、輸入框與 CLI 輸出。
 // panes：開著的面板（ui.panes 的答案）。
-const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = [], panes: () => string[] = () => []) => {
-  mock.env(on, {})
+const engine = (on: On, filled: string[], claudeLanguage: string, runs: Run[] = [], panes: () => string[] = () => [], env: Record<string, string> = {}) => {
+  mock.env(on, env)
   on('settings.read', () => ({ value: { language: claudeLanguage } }))
   on('command.list', () => ({
     value: [
@@ -547,6 +547,53 @@ const focusEngine = (on: On, cwd = '/repo') => {
   on('classic.SessionStart', () => ({}))
   on('tool.call', () => ({ result: { stdout: '', stderr: '', interrupted: false } }) as never)
 }
+
+test('討論、查來源這類步驟不做 change：訊息和指令裡提到的名稱不算，propose 之後建的 change 才算', () => {
+  const names = ['add-auth', 'refactor-store']
+  const applying = { verb: 'apply', change: 'add-auth' }
+  const talking = afterPrompt(applying, '/speclink-discuss 來源是 refactor-store 的稽核', names, 'speclink-panel')
+  expect(talking).toEqual({ verb: 'discuss', change: null })
+  expect(commandChange(talking, 'speclink show refactor-store --json', names)).toBe(null)
+
+  const proposing = afterPrompt(talking, '/speclink-propose --from-discussion talk', names, 'speclink-panel')
+  expect(proposing).toEqual({ verb: 'propose', change: null })
+  expect(commandChange(proposing, 'speclink status --change add-auth --json', names)).toBe('add-auth')
+
+  expect(withVerb(applying, 'review')).toEqual({ verb: 'review', change: 'add-auth' })
+  expect(withVerb(applying, 'trace')).toEqual({ verb: 'trace', change: null })
+
+  const history = [
+    { role: 'user', text: '/speclink-discuss 提到 add-auth', toolUses: [{ tool: 'Bash', input: { command: 'speclink show add-auth --json' } }] },
+  ]
+  expect(focusFromHistory(history, names, 'speclink-panel')).toEqual({ verb: 'discuss', change: null })
+})
+
+test('在 Herdr 的終端機裡，焦點變了就寫標籤回報，同一個 change 不重複寫', async ($, on) => {
+  const runs: Run[] = []
+  engine(on, [], 'English', runs, () => [], { HC_TERMINAL_ID: 't7' })
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.UserPromptSubmit', () => ({}))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  const labels = () => runs.filter(r => r.argv[0] === 'hc').map(r => r.argv.join(' '))
+  expect(labels().at(-1)).toBe('hc label t7 speclink.focus=-')
+
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-apply add-x' })
+  const named = labels().at(-1) ?? ''
+  await $.classic.UserPromptSubmit({ prompt: '繼續' })
+  expect(labels().at(-1)).toBe(named)
+})
+
+test('不在 Herdr 的終端機裡不跑 hc', async ($, on) => {
+  const runs: Run[] = []
+  engine(on, [], 'English', runs)
+  on('session.cwd', () => ({ value: '/repo' }))
+  on('session.messages', () => ({ value: [] }))
+  on('classic.UserPromptSubmit', () => ({}))
+  await $.session.start({ cwd: '/repo', surface: 'terminal', isInteractive: true })
+  await $.classic.UserPromptSubmit({ prompt: '/speclink-apply add-x' })
+  expect(runs.filter(r => r.argv[0] === 'hc')).toEqual([])
+})
 
 test('/clear：技能列清空；標題是這個 mod 設的，下一次送出時改回 Claude Code，你自己取的不動', async ($, on) => {
   focusEngine(on)
