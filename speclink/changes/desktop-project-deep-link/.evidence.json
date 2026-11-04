@@ -59,6 +59,14 @@
         "docs/product-status.md",
         "docs/product-status.zh-TW.md"
       ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.1 依任務 3.1 看到的結果更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`：功能總覽與「叫 Speclink 開頁面」說明 Logo 會切到這個 space 的專案，沒初始化與別台機器的 space 只叫出 app；「需求」寫明切專案要 v0.11.0 之後的版本，更舊的發佈版只會叫出 app，自行建置的舊版會跳網址無效的提示、更新 app 後消失；已知限制的 Logo 句子跟著改。兩份語言的內容要對齊。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（中英對照與詞彙守門）全部通過。",
+      "files": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ]
     }
   ],
   "entries": [
@@ -151,6 +159,18 @@
         "docs/product-status.zh-TW.md"
       ],
       "recordedAt": "2026-11-04T08:01:51Z"
+    },
+    {
+      "taskId": "tsk_01M6JNXWME5H3A2MN3X1Q7GK7N",
+      "taskDesc": "4.1 依任務 3.1 看到的結果更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`：功能總覽與「叫 Speclink 開頁面」說明 Logo 會切到這個 space 的專案，沒初始化與別台機器的 space 只叫出 app；「需求」寫明切專案要 v0.11.0 之後的版本，更舊的發佈版只會叫出 app，自行建置的舊版會跳網址無效的提示、更新 app 後消失；已知限制的 Logo 句子跟著改。兩份語言的內容要對齊。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（中英對照與詞彙守門）全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "865c4f343593eab15a7a293831a55ba553ea9b3a",
+      "touchedFiles": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ],
+      "recordedAt": "2026-11-04T08:25:38Z"
     }
   ]
 }

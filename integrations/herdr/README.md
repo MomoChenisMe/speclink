@@ -26,7 +26,7 @@
 - **語言**：介面跟隨系統語系，中文系統用中文，其他系統用英文。範圍是右邊的面板、技能跳窗和左邊的側欄。改系統語言後要重開 Herdr。
 - **開工**：變更列上的鈕，在目前的工作區為這個變更開一個專用的新 agent。見下面的「開工」。
 - **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。見下面的「技能跳窗」。
-- **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。點左上角的 Logo 叫出 Speclink app。
+- **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。點左上角的 Logo 切到這個 space 的專案並顯示看板；專案沒初始化或 space 在別台機器上時，只叫出 app。
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
 
@@ -109,14 +109,14 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 面板用 `open` 送出 `speclink://` 網址，桌面 app 會切到這個專案再開頁面。app 沒開時會自動啟動。網址只能開啟與檢視，不會寫入任何檔案。
 
-Logo 不帶網址，只叫出 app，所以 app 停在原來的專案。要切到這個專案，請按「路線圖」或點一列。
+Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案，關掉開著的詳情頁，顯示看板的卡片檢視，不開詳情頁也不開路線圖。worktree 裡的 space 會切到主專案的分頁。專案沒初始化、還在載入，或 space 在別台機器上時，Logo 不帶網址，只叫出 app，分頁和畫面不變。
 
 ## 需求
 
 - Herdr 0.1.12 以上（以這一版測試）。
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show` 的 `--json` 輸出。
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
-- 要叫 Speclink 開頁面時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。
+- 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
 - 要停靠時需要 Node.js，用來執行複製版面的腳本。
 
 ## 安裝
@@ -197,7 +197,7 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **按鈕和資料夾的名稱不一樣**：按鈕叫「技能」，資料夾還是 `speclink-new`，這樣 `keys.json` 不用改。
 - **貼進輸入框只有 macOS，要約 0.7 秒**：Herdr 沒有「只貼上不按 Enter」的指令，所以面板用 `script` 開一個看不見的 `hc attach`，送出貼上的資料後離開。它是一次貼上，不是打字，不碰剪貼簿，也不會改變終端機大小。附加鈕在貼上時顯示轉動的圓弧，貼完顯示勾勾。其他系統的 `script` 用法不同，會失敗並跳通知，這時請改用「開新分頁並開工」。
 - **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
-- **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，它叫出的是這台電腦的 app。
+- **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，但只叫出這台電腦的 app，不切專案。
 - **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣會問。選「用 worktree」的話，技能會自己停下來並說明。
 - **worktree 不會自動出現在左邊**：agent 的終端機留在主資料夾，只在每個指令切到 worktree，所以 Herdr 不會多一列 worktree。要在 worktree 開 shell 或跑測試時，用 Herdr 內建的 Open worktree。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
