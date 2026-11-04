@@ -170,7 +170,7 @@ For requirements, settings, and known limits, see [speclink-skills](integrations
 
 ### Herdr mod (optional)
 
-`speclink` adds a panel to [Herdr](https://herdr.dev), next to your terminals. The panel lists the changes and discussions of the current project, sends a skill to the right agent, and starts new agents. The sidebar shows how many changes each project has in each stage, and it groups the agents by space. The text follows your system language.
+`speclink` adds a panel to [Herdr](https://herdr.dev), next to your terminals. The panel lists the changes and discussions of the current project and shows the review and verify stamps. It suggests the next skill, sends the skill to the right agent, and starts new agents. The sidebar shows how many changes each project has in each stage, and it groups the agents by space. The text follows your system language, also on Herdr's own screens such as the settings page and the menus.
 
 Keep Herdr open and run these lines in a clone of this repo:
 

@@ -170,7 +170,7 @@ CLI 與桌面 app 都想裝？桌面 app 可能換掉你的 CLI，先看 [Local 
 
 ### Herdr mod（選用）
 
-`speclink` 在 [Herdr](https://herdr.dev) 的終端機旁邊加一個面板，列出目前專案的變更與討論，可以把技能交給對的 agent，也可以開新的 agent。左邊側欄會顯示每個專案在各階段有幾個變更，並依 space 整理 agent。介面文字跟隨系統語言。
+`speclink` 在 [Herdr](https://herdr.dev) 的終端機旁邊加一個面板，列出目前專案的變更與討論，並顯示 review 和 verify 的章。它會建議下一步，把技能交給對的 agent，也可以開新的 agent。左邊側欄會顯示每個專案在各階段有幾個變更，並依 space 整理 agent。介面文字跟隨系統語言，Herdr 內建的設定頁和選單也一樣。
 
 讓 Herdr 開著，在這個 repo 的 clone 裡執行：
 

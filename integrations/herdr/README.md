@@ -6,6 +6,18 @@
 
 ![Herdr 視窗：左邊是階段徽章與 Agent 清單，右邊是 Speclink 面板](../../docs/assets/screenshots/zh-TW/herdr-panel.png)
 
+## 一個變更怎麼走
+
+面板依階段和章建議下一步，所以大多時候只要按列上那一顆鈕：
+
+1. **提案中**：按「開工」，新 agent 開在目前的工作區。有開 worktree 流程時，會先問要用 worktree 還是直接 apply。
+2. **進行中**：列上看得到 agent 和任務進度。只剩手動任務時，有 worktree 的建議 `worktree-merge`，沒有的建議 `quality`。
+3. **程式任務做完，有 worktree**：按 `worktree-merge` 合併回主分支。沒有 worktree 就跳過這一步。
+4. **已就緒**：按 `quality`。跑的時候名稱旁邊是藍色圖示，兩站都蓋章後變成紫色。
+5. **兩站都蓋章**：按 `archive+commit` 封存並提交。
+
+要跑別的技能時按 `⋯`。
+
 ## 面板有什麼
 
 面板有兩種放法。兩種都不搶鍵盤，專案都跟著目前焦點所在的終端機走，切 space 就換專案。
@@ -15,20 +27,32 @@
 
 面板的內容：
 
-- **頂端**：專案名稱，下面一行寫「目前的 space · 分支」。
+- **頂端**：Logo 和專案名稱，下面一行寫「目前的工作區 · 分支」。右邊是「路線圖」和「技能」兩顆鈕。
 - **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、review 和 verify 的章、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
 - **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 Claude Code 裡直接打字時，要裝 hook 面板才知道。
-- **技能鈕**：每列只留建議的下一步。`⋯` 在列上展開這個變更其他能用的技能，按一下就送出，規則和建議的那一顆相同。沒有其他技能的列沒有 `⋯`。要開新分頁或放到輸入框時，用頂端的「技能」鈕。滑鼠停在鈕上會寫出會送給誰。
-- **附加鈕**：名稱旁邊的對話圖示，把變更或討論的名稱接到目前分頁的輸入框，不送出。目前分頁沒有 agent，或 agent 在等你回答時，這顆鈕會變灰。
-- **階段徽章**：只在 `speclink` 版面。左邊 Spaces 清單的專案列會依階段寫出變更的數量，順序和顏色都和面板的卡片相同：提案中和進行中是圓點加數字，已就緒是綠色的 `✓2`。數量是 0 的階段不顯示。游標移上去會寫出階段名稱。約 30 秒更新一次。
-- **Agents 清單**：只在 `speclink` 版面。左下的清單依 space 分組，順序和 Spaces 清單相同。每個 space 裡再分 已完成、執行中、閒置，收起 space 時標題右邊寫各狀態的數量。等你回答的 agent 不分 space，放在最上面的「需要你」。有自己分頁的 agent 不再重複接在開它的 agent 底下。在做變更的 agent，列尾有階段顏色和任務進度，沒取過名的分頁會寫變更名稱，比對規則和面板相同。時鐘圖示的選單還能切回依狀態排序。
-- **語言**：介面跟隨系統語系，中文系統用中文，其他系統用英文。範圍是右邊的面板、技能跳窗和左邊的側欄。改系統語言後要重開 Herdr。
+- **技能鈕**：每列放建議的下一步，建議怎麼決定見「各階段的技能」。`⋯` 在列上展開這一列其他能用的技能，按一下就送出，規則和建議的那一顆相同，見「技能會送給誰」。沒有其他技能的列沒有 `⋯`。滑鼠停在鈕上會寫出會送給誰。
 - **開工**：變更列上的鈕，在目前的工作區為這個變更開一個專用的新 agent。見下面的「開工」。
-- **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。見下面的「技能跳窗」。
+- **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。要開新分頁、放到輸入框或勾多個變更時用它。見下面的「技能跳窗」。
+- **附加鈕**：名稱旁邊的對話圖示，把變更或討論的名稱接到目前分頁的輸入框，不送出。目前分頁沒有 agent，或 agent 在等你回答時，這顆鈕會變灰。
 - **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。點左上角的 Logo 切到這個 space 的專案並顯示看板；專案沒初始化或 space 在別台機器上時，只叫出 app。
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
+
+### 左邊的側欄
+
+只在 `speclink` 版面。
+
+- **階段徽章**：Spaces 清單的專案列會依階段寫出變更的數量，順序和顏色都和面板的卡片相同：提案中和進行中是圓點加數字，已就緒是綠色的 `✓2`。數量是 0 的階段不顯示。游標移上去會寫出階段名稱。約 30 秒更新一次。
+- **Agents 清單**：左下的清單依 space 分組，順序和 Spaces 清單相同。每個 space 裡再分 已完成、執行中、閒置，收起 space 時標題右邊寫各狀態的數量。等你回答的 agent 不分 space，放在最上面的「需要你」。有自己分頁的 agent 不再重複接在開它的 agent 底下。在做變更的 agent，列尾有階段顏色和任務進度，沒取過名的分頁會寫變更名稱，比對規則和面板相同。標題旁的圖示是排序選單，可以切回依狀態排序。
+
+### 語言
+
+介面跟隨系統語系，中文系統用中文，其他系統用英文。改系統語言後要重開 Herdr。
+
+範圍是 Speclink 的面板和技能跳窗，以及 Herdr 內建的畫面：左邊的側欄、分頁列、狀態列、設定頁、檔案和變更面板、右鍵和新增分頁的選單。
+
+內建畫面不用複製就能翻。Herdr 所有 mod 共用同一份 JS 環境，所以面板載入時會讓畫面上的字串先查 `i18n.js` 的對照表，查不到就維持英文。Herdr 更新新增的句子會先是英文，不會壞。檔案樹的名稱和差異內容不經過對照表，資料夾叫 `Settings` 也不會被翻。
 
 ### 不是 Speclink 專案時
 
@@ -49,7 +73,7 @@
 | 進行中，只剩手動任務，兩站都蓋章 | 同上，建議留在 **apply**，由它處理手動任務，不用再跑一次 quality |
 | 已就緒 | **quality**、review、verify、archive、archive+commit、ingest、drift、commit |
 | 已就緒，兩站都蓋章而且章有效 | 同上，但建議改成 **archive+commit** |
-| 任何階段，有 worktree | 多一個 worktree-merge，少了 archive 和 archive+commit（要先合併才能封存）。已就緒而且兩站都蓋章時，建議是 **worktree-merge** |
+| 任何階段，有 worktree | 多一個 worktree-merge，少了 archive 和 archive+commit（要先合併才能封存）。程式任務做完後，不管有沒有蓋章，建議都是 **worktree-merge**，合併後再跑 quality |
 | 討論重新定案，變更還沒更新 | 建議改成 **ingest** |
 | 討論中 | **discuss** |
 | 已定案，或還有刀沒轉出 | **propose --from-discussion**、discuss |
@@ -101,7 +125,9 @@
 
 每一步都會檢查 agent 所在的資料夾。有 worktree 的變更要在 worktree 裡跑技能；archive、worktree-merge、apply-with-worktree 要在主資料夾跑。agent 在別的資料夾就換下一步。有 worktree 但裡面沒有 agent 時，apply 鈕會改送 apply-with-worktree，接續原本的 worktree。
 
-agent 在做事、在等你回答或出錯時不送，按鈕變灰，滑鼠停在按鈕上會寫出原因。送出後畫面切到那個 agent。
+agent 在做事、在等你回答或出錯時不送，按鈕變灰，滑鼠停在按鈕上會寫出原因。送出後畫面切到那個 agent，`⋯` 展開的列也會收起來。
+
+列上的鈕一定照這個順序。變更有停著的 agent 時，要讓它在新分頁跑，請用頂端的「技能」鈕。
 
 Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
 
@@ -117,7 +143,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 主資料夾一次只能跑一個 apply。有 apply 還沒做完時，「直接 apply」不能按，游標移上去會寫是哪個變更。那個變更的任務做完或封存後就能按，分頁開著也沒關係。
 
-沒被擋、任務還沒做完、也沒有 agent 在做的變更才有開工鈕。討論重新定案的變更要先 ingest，所以也沒有。
+沒被擋、任務還沒做完、也沒有 agent 的變更才有開工鈕。已經有 agent 時，列上的技能鈕會送給它。討論重新定案的變更要先 ingest，所以也沒有開工鈕。
 
 **整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問，一律用 worktree。波次取自 `speclink plan`。
 
@@ -128,7 +154,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 按頂端的「技能」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
 
 - **左邊**：所有技能，分成規劃、實作、品質、收尾、專案五組。用 `↑` `↓` 或滑鼠選。右邊的數字是現在有幾個變更或討論可以搭配，沒有變更可搭配的技能會變淡。「專案」組用在整個專案，不搭配東西，所以沒有數字。
-- **右邊**：這個技能能搭配的變更或討論，規則和技能鈕相同。用 `←` `→` 或滑鼠選，也可以不指定。不搭配變更的技能（discuss、propose 和專案組）有輸入框，可以打主題或補充說明。
+- **右邊**：這個技能能搭配的變更或討論，規則和技能鈕相同。用 `←` `→` 或滑鼠選，也可以不指定。打開時不會先選好變更。不搭配變更的技能（discuss、propose 和專案組）有輸入框，可以打主題或補充說明。
 - **底部**：寫出會打進去的指令，或為什麼現在不能用。
 
 底部有兩顆鈕，兩種結果都可以直接按：
@@ -142,7 +168,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 - 勾一個：兩顆鈕都用勾的那一個。
 - 勾兩個以上：左邊的鈕變成「開 N 個分頁並開工」。「放到輸入框」不能用，因為輸入框一次只放一個。
 
-這些變更沒有勾選框，那一列會寫原因：已經有 agent 正在忙（做完停著的不算，所以 apply 做完後可以開新分頁跑 worktree-merge）、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。
+這些變更沒有勾選框，那一列會寫原因：已經有 agent 正在忙（做完停著的不算，所以 apply 做完後可以開新分頁跑 worktree-merge）、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。`archive+commit` 一次只能勾一個。
 
 ### 叫 Speclink 開頁面
 
@@ -152,11 +178,12 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
 
 ## 需求
 
-- Herdr 0.1.12 以上（以這一版測試）。
-- `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show` 的 `--json` 輸出。
+- Herdr 0.1.13 以上（以這一版測試）。`dock-panel.mjs` 要改的程式行跟著 Herdr 的版本走，在 0.1.12 上會停下來。
+- `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show`、`speclink instructions apply` 的 `--json` 輸出。CLI 沒有提供的章，另外讀變更資料夾的 `.meta.yaml`。
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
-- 要停靠時需要 Node.js，用來執行複製版面的腳本。
+- 要停靠或裝 hook 時需要 Node.js，用來執行複製版面的腳本和 hook。
+- 要判斷章有沒有過期時需要 `perl`。macOS 內建。
 
 ## 安裝
 
@@ -185,7 +212,22 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
    node scripts/herdr/dock-panel.mjs
    ```
 
-用 `⌘⇧L` 切換版面。更新 mod 時再執行一次 `cp`，Herdr 會立刻重新載入。
+4. 要讓面板認得在 Claude Code 裡直接打的指令，再加上 hook，見「追蹤直接打的指令」。
+
+用 `⌘⇧L` 切換版面。
+
+### 更新 mod
+
+側欄的複製版裡也有面板檔案的副本，所以要一起複製。Herdr 會立刻重新載入，版面和欄寬都不變：
+
+```bash
+M=integrations/herdr/mods/speclink; H=~/.config/herdr-app/mods
+cp -R $M integrations/herdr/mods/speclink-new $H/
+cp $M/i18n.js $M/model.js $M/shared.js $H/speclink-agents/
+cp $M/i18n.js $H/speclink-spaces/
+```
+
+`integrations/herdr/spaces-badge/`、`integrations/herdr/agents-list/` 或 `scripts/herdr/dock-panel.mjs` 有改時，要重做停靠，見下一節。
 
 不要用符號連結安裝：Herdr 載入得到程式，但畫不出連結裡的 SVG 圖示，存檔也不會自動重新載入。
 
@@ -200,16 +242,18 @@ node scripts/herdr/dock-panel.mjs
 它會做這些事：
 
 1. 切回 `main`。
-2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`、`mods/speclink-agents` 和 `mods/speclink-chrome`。
-3. 用新版的 `spaces`、`agents`、`workspace-chrome` 重新複製並接上。Herdr 改了要接的那幾行時，腳本會在動任何東西之前停下來。
+2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`、`mods/speclink-agents`、`mods/speclink-files` 和 `mods/speclink-changes`。
+3. 用新版的 `spaces`、`agents`、`files`、`changes` 重新複製並接上。Herdr 改了 `spaces`、`agents` 要接的那幾行時，腳本會在動任何東西之前停下來。`files`、`changes` 改不到時，腳本會警告並改用內建的，不擋停靠。
 4. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
+
+改過 `keys.json` 的話，Herdr 更新不會自動加新的快捷鍵，要自己加。例如 0.1.13 的終端機搜尋，要在 `terminal` 區段加 `"cmd-f": "terminal.search"`。
 
 重做後，面板那一欄回到預設寬度，其他欄寬和開關狀態和 `main` 相同，每個 space 記住的開關不變。你手改過舊版的話，內容還在 `.old` 檔裡，要自己搬過來。確認沒問題後可以刪掉 `.old` 檔。
 
 ### 移除
 
 1. 用 `⌘⇧L` 切回 `main`。
-2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`，以及 `~/.config/herdr-app/mods/` 底下的 `speclink`、`speclink-new`、`speclink-spaces`、`speclink-agents`、`speclink-chrome`。
+2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`，以及 `~/.config/herdr-app/mods/` 底下的 `speclink`、`speclink-new`、`speclink-spaces`、`speclink-agents`、`speclink-files`、`speclink-changes`。
 3. 刪掉 `keys.json` 裡加的那幾行。
 
 ### 為什麼用複製的版面
@@ -222,7 +266,7 @@ node scripts/herdr/dock-panel.mjs
 
 Agents 清單也是同樣的做法。內建的 agents mod 沒有擴充點，所以腳本複製它、放進 `integrations/herdr/agents-list/speclink-rows.js` 和面板的 `model.js`、`shared.js`，再改十幾行。這樣清單和面板用同一套規則判斷 agent 在做哪個變更。
 
-側欄最下面的設定和新增機器在 `workspace-chrome` 裡，也複製一份，只為了翻譯。這些複製版的翻譯都在面板的 `i18n.js`。
+檔案和變更面板也各複製一份，只改兩三行，讓檔案名稱和差異內容不會被翻。其他內建畫面不用複製，見「語言」。
 
 Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` 沒有作用，對 `main` 跑 `layout.set` 也會被拒。
 
@@ -242,10 +286,11 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **worktree 不會自動出現在左邊**：agent 的終端機留在主資料夾，只在每個指令切到 worktree，所以 Herdr 不會多一列 worktree。要在 worktree 開 shell 或跑測試時，用 Herdr 內建的 Open worktree。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
 - **整波開工可能撞 git 鎖**：每個 agent 都可能在主資料夾 commit 規格或建 worktree。撞到時那個 agent 會停下來回報，再按一次技能鈕即可。
-- **Herdr 本身的文字不會翻譯**：分頁列的 Files、Changes，底部的狀態列，右鍵選單和設定頁都維持原樣。
+- **Herdr 有些文字沒有翻譯**：指令面板、worktree 和新增機器的對話框、新功能頁維持英文。角落的更新通知是 Herdr 原生畫的，翻不到。
+- **內建畫面的翻譯靠文件沒寫的行為**：它假設所有 mod 共用同一份 JS 環境。Herdr 改掉後，內建畫面會回到英文，不會壞。在 `main` 版面要開過面板才會翻。
+- **名稱剛好和介面文字相同時會被翻**：例如分頁或工作區叫 `Settings`。檔案樹和差異內容已經排除。
 - **Agents 清單的限制**：側欄窄，所以有進度的列不顯示時間。discuss 和 propose 的分頁沒有進度，因為它們不算在做某個變更。
 - **徽章只看本機和連得上的機器**：連不上的機器沒有徽章。折疊成窄欄時也不顯示。一列放不下時，space 名字會變短，箭頭和徽章不會被擠掉。
-- **畫面只有繁體中文**。
 
 ## 開發
 
@@ -255,4 +300,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`skill-picker.js` 是技能跳窗（選擇的畫面，放到輸入框和開新分頁的規則在 `model.js`），`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
+`model.js` 是純邏輯：資料合併、技能表、章的判斷、送達決策，測試直接跑它。`i18n.js` 是介面文字的對照表。`shared.js` 放面板和跳窗共用、會碰 Herdr API 的小工具，包括讀章。`label-skill.mjs` 是追蹤指令的 hook。`main.js` 是面板畫面與 Herdr API，`skill-picker.js` 是技能跳窗（選擇的畫面，放到輸入框和開新分頁的規則在 `model.js`），`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
