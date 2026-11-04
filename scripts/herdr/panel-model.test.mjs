@@ -544,12 +544,21 @@ test('skillTargets：不搭配東西的技能沒有選項；表上的 pair 和�
 
 const place = (over) => placePlan({ skill: 'apply', target: null, agents: [agent()], focus: { tab: 'tab1', terminal: 't1' }, ...over });
 
-test('placePlan：一個字一個字打進目前分頁的 agent，不按 Enter，結尾留空白好接著打字', () => {
+test('placePlan：放進目前分頁的 agent，結尾留空白好接著打字', () => {
   const plan = place({ skill: 'improve' });
   assert.equal(plan.kind, 'place');
+  assert.equal(plan.agent.address, 't1');
   assert.equal(plan.text, '/speclink-improve ');
-  assert.deepEqual(plan.hc, ['keys', 't1', ...'/speclink-improve'.split(''), 'space']);
-  assert.ok(!plan.hc.includes('enter'));
+});
+
+test('placePlan：什麼字都貼得進去，Codex 的錢字號和中文都可以', () => {
+  assert.equal(place({ agents: [agent({ key: 'codex' })] }).text, '$speclink-apply ');
+  assert.equal(place({ skill: 'discuss', note: '要談的主題', agents: [agent({ key: 'copilot' })] }).text, '/speclink-discuss 要談的主題 ');
+  assert.equal(place({ skill: 'discuss', target: { args: '中文討論' } }).text, '/speclink-discuss 中文討論 ');
+});
+
+test('placePlan：控制字元換成空白，貼上時換行才不會變成送出', () => {
+  assert.equal(place({ skill: 'discuss', note: 'a\nb\u001b[201~c' }).text, '/speclink-discuss a b [201~c ');
 });
 
 test('placePlan：帶搭配的變更或討論', () => {
@@ -575,40 +584,20 @@ test('placePlan：這些情況不放，並寫出原因', () => {
   assert.match(place({ skill: 'analyze', agents: [agent({ key: 'copilot' })] }).reason, /只有 Claude Code/);
 });
 
-test('placePlan：中文打不出來，Claude Code 改用 hc send 貼上，結尾的反斜線讓 Enter 變換行', () => {
-  const plan = place({ skill: 'discuss', note: '要談的主題' });
-  assert.equal(plan.text, '/speclink-discuss 要談的主題 ');
-  assert.deepEqual(plan.hc, ['send', 't1', '/speclink-discuss 要談的主題 \\']);
-  assert.equal(place({ skill: 'discuss', target: { args: '中文討論' } }).hc[0], 'send');
-  assert.equal(place({ skill: 'discuss', note: 'OK' }).hc[0], 'send');
-});
-
 test('placePlan：補充說明接在搭配的東西後面', () => {
   assert.equal(place({ skill: 'discuss', target: { args: 's' }, note: 'next' }).text, '/speclink-discuss s next ');
 });
 
-test('placePlan：其他 agent 不知道反斜線的行為，打不出來就不放', () => {
-  assert.match(place({ agents: [agent({ key: 'codex' })] }).reason, /打不出來/);
-  assert.match(place({ skill: 'discuss', note: '主題', agents: [agent({ key: 'copilot' })] }).reason, /打不出來/);
-  assert.equal(place({ skill: 'improve', agents: [agent({ key: 'copilot' })] }).hc[0], 'keys');
-});
-
 const attach = (over) => attachPlan({ name: 'add-a', agents: [agent()], focus: { tab: 'tab1', terminal: 't1' }, ...over });
 
-test('attachPlan：名稱前後留空白打進輸入框，不按 Enter', () => {
-  const plan = attach();
-  assert.equal(plan.text, ' add-a ');
-  assert.deepEqual(plan.hc, ['keys', 't1', 'space', 'a', 'd', 'd', '-', 'a', 'space']);
-});
-
-test('attachPlan：agent 在做事也可以附加，Codex 也可以，因為名稱沒有 $', () => {
+test('attachPlan：名稱前後留空白，agent 在做事也可以附加，中文名稱也可以', () => {
+  assert.equal(attach().text, ' add-a ');
   assert.equal(attach({ agents: [agent({ status: 'working' })] }).kind, 'place');
   assert.equal(attach({ agents: [agent({ key: 'codex' })] }).kind, 'place');
+  assert.equal(attach({ name: '中文討論' }).text, ' 中文討論 ');
 });
 
-test('attachPlan：中文名稱在 Claude Code 用貼上，其他 agent 不放；沒有 agent 或在等回答時不放', () => {
-  assert.equal(attach({ name: '中文討論' }).hc[0], 'send');
-  assert.equal(attach({ name: '中文討論', agents: [agent({ key: 'codex' })] }).reason, '這段文字有打不出來的字元');
+test('attachPlan：沒有 agent 或在等回答時不放', () => {
   assert.equal(attach({ agents: [] }).reason, '目前分頁沒有 agent');
   assert.equal(attach({ agents: [agent({ status: 'blocked' })] }).reason, '目前分頁的 agent 在等你回答');
 });

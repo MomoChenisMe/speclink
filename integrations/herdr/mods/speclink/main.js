@@ -308,13 +308,13 @@ export default class SpeclinkPanel extends View {
       .child(action.skill);
   }
 
-  // hc keys 一個字一個字打，名稱長時要一秒以上，所以按下去要先有反應。打字中再按一次不算。
+  // 貼上要約 0.7 秒，所以按下去要先有反應。貼上中再按一次不算，否則名稱會貼兩次。
   attach(plan, name, cx) {
     if (this.attaching.has(name)) return;
-    this.attaching.set(name, "typing");
+    this.attaching.set(name, "pasting");
     cx.notify();
     cx.spawn(async (cx) => {
-      const failed = await placeInInput(plan, cx);
+      const failed = await placeInInput(plan);
       if (failed) {
         this.attaching.delete(name);
         notify({ title: "沒有放進輸入框", body: sendError(failed), level: "warning" });
@@ -347,7 +347,7 @@ export default class SpeclinkPanel extends View {
         if (ready) this.attach(plan, name, cx);
       })
       .child(
-        state === "typing"
+        state === "pasting"
           ? icon("spinner", 12, t.working).spin(900)
           : icon(state === "done" ? "check" : "message-plus", 12, t.muted),
       );
