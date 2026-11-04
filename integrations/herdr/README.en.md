@@ -18,7 +18,7 @@ What the panel contains:
 - **Top**: the project name. The line below it says "目前的 space · <branch>" (the current space and its branch).
 - **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
-- **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label from Start, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports (the same as the skill bar, and live), then the terminal title. The title changes only when you send a message, so the panel ignores it when the plugin reports. A title with the step discuss or propose also does not count, because the name there is often only a mention.
+- **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For commands that you type in Claude Code, the panel needs the hook.
 - **Skill buttons**: each row keeps only the suggested next step. `⋯` opens the Skills pop-up with this skill and this row already selected. A tooltip on the button tells where it goes.
 - **Attach button**: the chat icon beside the name. It adds the name of the change or discussion to the input box in the current tab and does not send it. The button is gray when the current tab has no agent or the agent waits for your answer.
 - **Stage badge**: only in the `speclink` layout. A project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
@@ -51,6 +51,22 @@ Only a project that is not initialized shows this card. Other problems, such as 
 | Discussion concluded again, change not updated | the suggestion changes to **ingest** |
 | Open discussion | **discuss** |
 | Concluded, or cuts left to promote | **propose --from-discussion**, discuss |
+
+### Track the commands that you type (optional)
+
+The panel knows about work that starts from the panel or the Skills pop-up. For `/speclink-apply <change>` that you type in Claude Code, the panel needs a hook. Without the hook, that row shows no agent and still has the Start button.
+
+Add this to `~/.claude/settings.json`. New Claude Code sessions then use it:
+
+```json
+"hooks": {
+  "UserPromptSubmit": [
+    { "hooks": [{ "type": "command", "command": "node \"$HOME/.config/herdr-app/mods/speclink/label-skill.mjs\"", "timeout": 5 }] }
+  ]
+}
+```
+
+It sets labels only when a message starts with `/speclink-…`. It writes no output and does not stop the message. Only the first argument counts as the change name. Outside Herdr it does nothing. It works only with Claude Code.
 
 ### Where a skill goes
 

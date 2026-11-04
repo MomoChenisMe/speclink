@@ -30,12 +30,13 @@ import {
   placePlan,
   planDelivery,
   sendArgs,
+  promptLabels,
+  skillLabels,
   skillTargets,
   statusCounts,
   statusSections,
   speclinkUrl,
   startChoices,
-  titleChange,
   waveToStart,
 } from '../../integrations/herdr/mods/speclink/model.js';
 import { TO_EN, TO_ZH, langFrom, setLang, tr } from '../../integrations/herdr/mods/speclink/i18n.js';
@@ -308,14 +309,6 @@ test('sendArgs：idle 用 --if idle；done 不帶旗標（--if idle 會拒絕 do
 
 // ---- 誰在做這個變更 ----
 
-test('titleChange：讀 Claude Code 外掛設的標題，步驟與變更之間是「 · 」', () => {
-  assert.equal(titleChange('apply · add-a'), 'add-a');
-  assert.equal(titleChange('⠐ apply · add-a'), 'add-a');
-  assert.equal(titleChange('archive · add-a ✓'), 'add-a');
-  assert.equal(titleChange('Claude Code'), null);
-  assert.equal(titleChange(''), null);
-});
-
 test('inside：同資料夾與子資料夾算在內，同前綴的兄弟資料夾不算', () => {
   assert.equal(inside(REPO, REPO), true);
   assert.equal(inside(`${REPO}/crates`, REPO), true);
@@ -323,32 +316,60 @@ test('inside：同資料夾與子資料夾算在內，同前綴的兄弟資料�
   assert.equal(inside(null, REPO), false);
 });
 
-test('changeAgents：依標籤、worktree 路徑、終端機標題的順序，同一個 agent 不重複', () => {
-  const byTitle = agent({ address: 't3', title: 'apply · add-a' });
+test('changeAgents：依標籤、worktree 路徑、外掛回報的焦點的順序，同一個 agent 不重複', () => {
+  const byFocus = agent({ address: 't3', labels: { 'speclink.focus': 'add-a' } });
   const byPath = agent({ address: 't2', cwd: TREE });
-  const byLabel = agent({ address: 't1', labels: { 'speclink.change': 'add-a' }, title: 'apply · add-a' });
-  const other = agent({ address: 't4', title: 'apply · add-z' });
-  const found = changeAgents(row({ worktree: { path: TREE, branch: 'b' } }), [byTitle, other, byPath, byLabel]);
+  const byLabel = agent({ address: 't1', labels: { 'speclink.change': 'add-a' } });
+  const other = agent({ address: 't4', labels: { 'speclink.focus': 'add-z' } });
+  const found = changeAgents(row({ worktree: { path: TREE, branch: 'b' } }), [byFocus, other, byPath, byLabel]);
   assert.deepEqual(
     found.map((a) => a.address),
     ['t1', 't2', 't3'],
   );
 });
 
-test('changeAgents：討論或提案的標題只是提到變更，不算在做', () => {
+test('changeAgents：不看終端機標題，標題可能過時或只是提到變更', () => {
   const change = row({ name: 'add-a' });
-  const talk = agent({ address: 't1', title: 'discuss · add-a' });
-  const propose = agent({ address: 't2', title: 'propose · add-a' });
-  const work = agent({ address: 't3', title: 'apply · add-a' });
-  assert.deepEqual(changeAgents(change, [talk, propose, work]).map((a) => a.address), ['t3']);
+  const titled = agent({ address: 't1', title: 'apply · add-a' });
+  const none = agent({ address: 't2', title: 'apply · add-a', labels: { 'speclink.focus': '-' } });
+  assert.deepEqual(changeAgents(change, [titled, none]), []);
 });
 
-test('changeAgents：外掛回報的焦點優先於標題，回報「沒有變更」時也不看標題', () => {
-  const change = row({ name: 'add-a' });
-  const moved = agent({ address: 't1', title: 'apply · add-a', labels: { 'speclink.focus': 'add-b' } });
-  const none = agent({ address: 't2', title: 'apply · add-a', labels: { 'speclink.focus': '-' } });
-  const here = agent({ address: 't3', title: 'propose · add-b', labels: { 'speclink.focus': 'add-a' } });
-  assert.deepEqual(changeAgents(change, [moved, none, here]).map((a) => a.address), ['t3']);
+test('skillLabels：做變更的技能記下變更，沒指定就不動，不做變更的技能要清掉', () => {
+  assert.deepEqual(skillLabels('apply', 'add-a'), ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
+  assert.deepEqual(skillLabels('quality'), ['speclink.skill=speclink-quality']);
+  assert.deepEqual(skillLabels('discuss', 'talk'), ['speclink.skill=speclink-discuss', 'speclink.change=']);
+  assert.deepEqual(skillLabels('improve'), ['speclink.skill=speclink-improve', 'speclink.change=']);
+});
+
+test('promptLabels：只認開頭的 speclink 技能指令，變更名稱只看第一個參數', () => {
+  assert.deepEqual(promptLabels('/speclink-apply add-a'), ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
+  assert.deepEqual(promptLabels('  /speclink-ingest add-a 補充說明'), ['speclink.skill=speclink-ingest', 'speclink.change=add-a']);
+  assert.deepEqual(promptLabels('/speclink-quality'), ['speclink.skill=speclink-quality']);
+  assert.deepEqual(promptLabels('/speclink-apply 請接著做'), ['speclink.skill=speclink-apply'], '中文不是變更名稱');
+  assert.deepEqual(promptLabels('/speclink-discuss add-a 要不要改'), ['speclink.skill=speclink-discuss', 'speclink.change='], '討論只是提到變更');
+  assert.equal(promptLabels('請跑 /speclink-apply add-a'), null, '句子裡提到不算');
+  assert.equal(promptLabels('/speclink-unknown add-a'), null);
+  assert.equal(promptLabels('/herdr-dispatch add-a'), null);
+  assert.equal(promptLabels(''), null);
+});
+
+test('送達：送給現有 agent 時帶上標籤，apply 改走 worktree 時用實際的技能', () => {
+  const here = agent({ address: 't1', tab: 'tab1', cwd: REPO, status: 'idle' });
+  const d = planDelivery({ skill: 'quality', change: row(), args: 'add-a', ...ctx({ agents: [here], focus: { tab: 'tab1', terminal: 't1' } }) });
+  assert.equal(d.kind, 'send');
+  assert.deepEqual(d.labels, ['speclink.skill=speclink-quality', 'speclink.change=add-a']);
+  const moved = planDelivery({ skill: 'apply', change: row({ worktree: { path: TREE, branch: 'b' } }), args: 'add-a', ...ctx({ agents: [here], focus: { tab: 'tab1', terminal: 't1' } }) });
+  assert.deepEqual(moved.labels, ['speclink.skill=speclink-apply-with-worktree', 'speclink.change=add-a']);
+});
+
+test('放到輸入框：技能指令帶標籤，附加名稱不帶', () => {
+  const agents = [agent({ tab: 'tb1', address: 't1', key: 'claude', status: 'idle' })];
+  const focus = { tab: 'tb1', terminal: 't1' };
+  const target = { kind: 'change', name: 'add-a', args: 'add-a', row: row() };
+  assert.deepEqual(placePlan({ skill: 'apply', target, note: '', agents, focus }).labels, ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
+  assert.deepEqual(placePlan({ skill: 'discuss', target: null, note: '主題', agents, focus }).labels, ['speclink.skill=speclink-discuss', 'speclink.change=']);
+  assert.equal(attachPlan({ name: 'add-a', agents, focus }).labels, undefined);
 });
 
 test('changeAgents：開工時貼了標籤的 agent 專做那個變更，焦點提到別的變更不算', () => {
@@ -359,7 +380,7 @@ test('changeAgents：開工時貼了標籤的 agent 專做那個變更，焦點�
 
 test('送達：這個變更的 agent 在做事時，不會把技能送給只是提到它的討論分頁（實際發生過）', () => {
   const change = row({ name: 'add-a' });
-  const apply = agent({ address: 't1', status: 'working', title: 'apply · add-a', labels: { 'speclink.change': 'add-a' } });
+  const apply = agent({ address: 't1', status: 'working', labels: { 'speclink.change': 'add-a' } });
   const talk = agent({ address: 't2', status: 'done', title: 'propose · add-a', labels: { 'speclink.skill': 'speclink-discuss' } });
   const d = planDelivery({ skill: 'apply', change, args: 'add-a', ...ctx({ agents: [apply, talk] }) });
   assert.equal(d.kind, 'busy');
@@ -476,9 +497,9 @@ test('有 worktree 的變更：worktree 裡的 agent 優先於標籤標在主資
   assert.equal(treeCase({ agents: [labelled, there] }).agent.address, 't2');
 });
 
-test('有 worktree 的變更：標籤或標題標明的 agent 即使資料夾還在主資料夾也算（agent 用 cd 進 worktree）', () => {
-  const titled = agent({ title: 'apply-with-worktree · add-a' });
-  assert.equal(treeCase({ agents: [titled] }).where, 'change');
+test('有 worktree 的變更：標籤標明的 agent 即使資料夾還在主資料夾也算（agent 用 cd 進 worktree）', () => {
+  const labeled = agent({ labels: { 'speclink.change': 'add-a' } });
+  assert.equal(treeCase({ agents: [labeled] }).where, 'change');
 });
 
 test('worktree-merge 要在主資料夾跑，不送進 worktree', () => {
