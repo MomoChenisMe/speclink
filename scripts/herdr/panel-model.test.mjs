@@ -495,10 +495,11 @@ test('送達：這個變更的 agent 在做事時，不會把技能送給只是�
 test('joinAgents：狀態用 core 的原始字（done 不會被 Herdr 改寫成 idle）', () => {
   const [a] = joinAgents(
     [{ address: 't1', status: 'idle', program: { key: 'claude', name: 'Claude Code' }, title: 'x', pane: 'p1', tab: 'tab1', tab_name: '1', space_name: 's' }],
-    [{ address: 't1', status: 'done', labels: { a: 'b' } }],
+    [{ address: 't1', status: 'done', name: 'add-a', labels: { a: 'b' } }],
     [{ pane: 'p1', terminal: 't1', cwd: REPO }],
   );
   assert.equal(a.status, 'done');
+  assert.equal(a.name, 'add-a');
   assert.equal(a.view, 'idle');
   assert.equal(a.cwd, REPO);
   assert.equal(a.key, 'claude');
@@ -841,13 +842,56 @@ test('newTabPlan：有 worktree 的變更開在 worktree；apply 從主資料夾
   assert.deepEqual(tab({ on: 'vps' }).hc.slice(4, 6), ['--on', 'vps']);
 });
 
+test('newTabPlan：變更的 agent 在忙才擋，做完停著的不算', () => {
+  const on = (status) => agent({ status, labels: { 'speclink.change': 'add-a' } });
+  const merge = (status) => tab({ skill: 'worktree-merge', target: changeTarget(), agents: [on(status)] });
+  for (const status of ['working', 'blocked', 'error']) assert.equal(merge(status).reason, '已經有 agent 在做', status);
+  for (const status of ['idle', 'done']) assert.equal(merge(status).kind, 'tab', status);
+  // 一個在忙一個停著，還是擋
+  const both = tab({ skill: 'worktree-merge', target: changeTarget(), agents: [on('idle'), on('working')] });
+  assert.equal(both.reason, '已經有 agent 在做');
+});
+
+test('newTabPlan：主資料夾的 apply 還沒做完時，agent 停著也不能再開一個', () => {
+  const row = changeTarget().row;
+  const board = { stages: { proposed: [], 'in-progress': [{ ...row, stage: 'in-progress' }], ready: [] } };
+  const idle = agent({ status: 'idle', labels: { 'speclink.change': 'add-a', 'speclink.skill': 'speclink-apply' } });
+  assert.equal(tab({ skill: 'apply', target: changeTarget(), agents: [idle], board }).reason, 'add-a 的 apply 還沒做完');
+});
+
+test('newTabPlan：名稱被別的終端機佔用時不取名，其他照舊', () => {
+  const held = agent({ status: 'idle', name: 'add-a', labels: { 'speclink.change': 'add-a' } });
+  const plan = tab({ skill: 'worktree-merge', target: changeTarget(), agents: [held] });
+  assert.ok(!plan.hc.includes('--name'));
+  assert.ok(plan.hc.includes('speclink.change=add-a'));
+  assert.ok(plan.hc.includes('speclink.skill=speclink-worktree-merge'));
+  // 標籤已經換到別的變更，名稱還佔著
+  const moved = agent({ status: 'idle', name: 'add-a', labels: { 'speclink.change': 'add-z' } });
+  assert.ok(!tab({ skill: 'review', target: changeTarget(), agents: [moved] }).hc.includes('--name'));
+  // 名稱沒人用就照舊取名，hc 的名稱最多 32 個字
+  const free = tab({ skill: 'review', target: changeTarget(), agents: [agent({ name: 'other' })] });
+  assert.equal(free.hc[free.hc.indexOf('--name') + 1], 'add-a');
+  const long = 'a'.repeat(33);
+  const cut = agent({ status: 'idle', name: 'a'.repeat(32), labels: {} });
+  const target = changeTarget({ name: long });
+  assert.ok(!tab({ skill: 'review', target: { ...target, name: long, args: long }, agents: [cut] }).hc.includes('--name'));
+});
+
+test('batchPlan：做完停著的 agent 不會讓那一列被略過', () => {
+  const target = (name) => ({ kind: 'change', name, args: name, row: row({ name, stage: 'ready' }) });
+  const idle = agent({ status: 'idle', labels: { 'speclink.change': 'add-a' } });
+  const plan = batchPlan({ ...ctx({ agents: [idle] }), skill: 'review', targets: [target('add-a'), target('add-b')], space: 's1', on: null });
+  assert.equal(plan.kind, 'tabs');
+  assert.equal(plan.plans.length, 2);
+});
+
 test('newTabPlan：Codex 用錢字號並帶 --no-daemon', () => {
   const plan = tab({ known: [{ key: 'codex', run: ['codex'], installed: true }] });
   assert.deepEqual(plan.hc.slice(-3), ['codex', '--no-daemon', '$speclink-improve']);
 });
 
 test('newTabPlan：這些情況不開，並寫出原因', () => {
-  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  const mine = agent({ status: 'working', labels: { 'speclink.change': 'add-a' } });
   assert.equal(tab({ skill: 'review', target: changeTarget(), agents: [mine] }).reason, '已經有 agent 在做');
   assert.match(tab({ skill: 'apply', target: changeTarget({ blockedBy: ['add-b'] }) }).reason, /要等 add-b 落地/);
   assert.match(tab({ skill: 'analyze', known: [{ key: 'copilot', run: ['copilot'], installed: true }] }).reason, /只有 Claude Code/);
@@ -872,12 +916,12 @@ test('batchPlan：一個變更開一個分頁，互不相干', () => {
 
 test('batchPlan：沒有勾或勾的都不能開時不做事', () => {
   assert.equal(batch().reason, '勾選要開工的變更');
-  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  const mine = agent({ status: 'working', labels: { 'speclink.change': 'add-a' } });
   assert.equal(batch({ targets: [named('add-a')], agents: [mine] }).reason, '勾選要開工的變更');
 });
 
 test('batchPlan：不能開的變更略過，其他照開', () => {
-  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  const mine = agent({ status: 'working', labels: { 'speclink.change': 'add-a' } });
   const plan = batch({ targets: [named('add-a'), named('add-b')], agents: [mine] });
   assert.deepEqual(plan.plans.map((p) => p.change), ['add-b']);
 });

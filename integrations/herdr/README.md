@@ -142,7 +142,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 - 勾一個：兩顆鈕都用勾的那一個。
 - 勾兩個以上：左邊的鈕變成「開 N 個分頁並開工」。「放到輸入框」不能用，因為輸入框一次只放一個。
 
-這些變更沒有勾選框，那一列會寫原因：已經有 agent、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。
+這些變更沒有勾選框，那一列會寫原因：已經有 agent 正在忙（做完停著的不算，所以 apply 做完後可以開新分頁跑 worktree-merge）、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。
 
 ### 叫 Speclink 開頁面
 
