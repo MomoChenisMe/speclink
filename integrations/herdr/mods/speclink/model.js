@@ -222,12 +222,14 @@ export function hookLabels({ hook_event_name: event, source, prompt, tool_name: 
   return null;
 }
 
-// 建議的下一步。兩站都蓋章就是收尾：有 worktree 要先合併；手動任務還沒做完時還不能封存，交給 apply 處理。
+// 建議的下一步。有 worktree 時，程式任務做完就先合併，回主資料夾再跑品質關卡。
+// 沒有 worktree 時，兩站都蓋章就是收尾；手動任務還沒做完時還不能封存，交給 apply 處理。
 // 沒蓋章時，只剩手動任務的下一步是品質關卡，不是 apply。
 function suggestedSkill(row, skills) {
   if (row.restale) return "ingest";
+  if (row.worktree && (row.stage === "ready" || row.codeRemaining === 0)) return "worktree-merge";
   const stamped = row.stations?.review === "stamped" && row.stations?.verify === "stamped";
-  if (stamped && row.stage === "ready") return row.worktree ? "worktree-merge" : "archive+commit";
+  if (stamped && row.stage === "ready") return "archive+commit";
   if (!stamped && row.stage === "in-progress" && row.codeRemaining === 0) return "quality";
   return skills[0];
 }

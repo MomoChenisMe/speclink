@@ -1377,12 +1377,32 @@ test('rowChoices：建議的那一顆放外面，其他的按 ⋯ 才展開', ()
   assert.deepEqual(rowChoices([quality]), { next: quality, others: [] });
 });
 
-test('rowChoices：做完 apply 還沒蓋章的 worktree 變更，展開後看得到 worktree-merge', () => {
+test('rowChoices：做完 apply 的 worktree 變更，建議合併，展開後還能跑 quality', () => {
   const actions = changeActions(row({ stage: 'ready', worktree: { path: TREE, branch: 'b' } }), ctx());
   const { next, others } = rowChoices(actions);
-  assert.equal(next.skill, 'quality');
-  assert.ok(others.some((a) => a.skill === 'worktree-merge'));
-  assert.ok(others.every((a) => a.skill !== 'quality'));
+  assert.equal(next.skill, 'worktree-merge');
+  assert.ok(others.some((a) => a.skill === 'quality'));
+  assert.ok(others.every((a) => a.skill !== 'worktree-merge'));
+});
+
+test('changeSkills：有 worktree 時，程式任務做完就建議合併，不管有沒有蓋章', () => {
+  const tree = { path: TREE, branch: 'b' };
+  const primary = (over) => changeSkills(row({ worktree: tree, ...over })).find((s) => s.primary)?.skill;
+  assert.equal(primary({ stage: 'ready' }), 'worktree-merge');
+  for (const verify of ['none', 'stale', 'open', 'stamped']) {
+    assert.equal(primary({ stage: 'ready', stations: { review: 'stamped', verify } }), 'worktree-merge', verify);
+  }
+  // 只剩手動任務
+  assert.equal(primary({ stage: 'in-progress', codeRemaining: 0 }), 'worktree-merge');
+  // 程式還沒做完、查不到進度、還沒開工，都留在 apply
+  assert.equal(primary({ stage: 'in-progress', codeRemaining: 2 }), 'apply');
+  assert.equal(primary({ stage: 'in-progress', codeRemaining: null }), 'apply');
+  assert.equal(primary({ stage: 'proposed' }), 'apply');
+  // 討論重新定案優先
+  assert.equal(primary({ stage: 'ready', restale: true }), 'ingest');
+  // 沒有 worktree 不受影響
+  assert.equal(changeSkills(row({ stage: 'ready' })).find((s) => s.primary).skill, 'quality');
+  assert.equal(changeSkills(row({ stage: 'in-progress', codeRemaining: 0 })).find((s) => s.primary).skill, 'quality');
 });
 
 // ---- archive+commit ----
