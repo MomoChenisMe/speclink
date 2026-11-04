@@ -22,7 +22,7 @@ What the panel contains:
 - **Stage badge**: only in the `speclink` layout. A project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
 - **Agents list**: only in the `speclink` layout. The list at the bottom left groups agents by space, in the same order as the Spaces list. Each space has its own Done, Working and Idle sections, and the title of a folded space shows the count for each status. An agent that waits for your answer goes in Needs you at the top, for any space. An agent with its own tab no longer shows a second time under the agent that started it. A row for an agent that works on a change ends with the stage color and the task progress. A tab with no name shows the change name. The match rules are the same as in the panel. The clock icon menu can still switch to Priority.
 - **Language**: the interface follows the system language: Chinese on a Chinese system, and English on other systems. This applies to the panel on the right, the Skills pop-up and the sidebar on the left. Restart Herdr after you change the system language.
-- **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
+- **Start**: a button on a change row that starts a new agent for this change only, in the current space. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to bring up the Speclink app.
 
@@ -65,16 +65,19 @@ Claude Code and GitHub Copilot get `/speclink-<skill>`. Codex gets `$speclink-<s
 
 ### Start
 
-Start is different from a skill button. A skill button first tries an existing agent. Start always makes a new agent.
+Start is different from a skill button. A skill button first tries an existing agent. Start always makes a new agent. The new agent opens in a new tab in the current space, the tab name shows the change, and the view stays on the current tab.
 
-| `worktree` in the workflow config | What Start does |
+| Situation | What Start does |
 | --- | --- |
-| On | Opens a new space and runs `/speclink-apply-with-worktree <change>`. The space keeps the name that Herdr gives it. The tab name shows the change |
-| Off | Opens a new tab in the space of the main folder and runs `/speclink-apply <change>` |
+| `worktree` in the workflow config is on, and the change has no worktree yet | Asks first: "用 worktree" (use a worktree, `/speclink-apply-with-worktree <change>`) or "直接 apply" (apply directly, `/speclink-apply <change>`) |
+| The change already has a worktree | Does not ask, and runs `/speclink-apply-with-worktree <change>` to continue |
+| `worktree` is off | Does not ask, and runs `/speclink-apply <change>` |
+
+The main folder runs one apply at a time. If an apply already runs there, the apply-directly button does not work, and its tooltip shows the reason.
 
 A change has the Start button only if it is not blocked, has unfinished tasks and has no agent on it. A change whose discussion was concluded again needs ingest first, so it has no Start button.
 
-**Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them, with no second question. The waves come from `speclink plan`.
+**Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them with no more questions, always with a worktree. The waves come from `speclink plan`.
 
 ### Skills pop-up
 
@@ -171,6 +174,8 @@ The conclusion of the `herdr-speclink-panel` discussion rejected a dedicated clo
 
 The same conclusion rejected the Spaces sidebar badge, because it needs a clone of the spaces mod. The layout is a clone now and several projects run at once, so this was reversed on the same day. The built-in spaces mod has no extension point, so the script clones it, adds `integrations/herdr/spaces-badge/stage-badge.js`, and changes a few lines to connect it. One change moves the git arrows next to the badge, so they do not cover the name when the row is full.
 
+The conclusion first said that Start opens a new space, on the assumption that it would indent under the project. A real test showed that it does not: the skill must check and commit documents in the main folder before it makes the worktree, and the terminal stays in the main folder. The result was only a second space with the same name. So on the same day Start changed to open in the current space, and to ask first about a worktree or a direct apply.
+
 The Agents list works the same way. The built-in agents mod has no extension point, so the script clones it, adds `integrations/herdr/agents-list/speclink-rows.js` and the panel's `model.js` and `shared.js`, and changes about fifteen lines. The list and the panel then use the same rules to find the change that an agent works on.
 
 The Settings and Add machine rows at the bottom of the sidebar are in `workspace-chrome`, so the script clones it too, only to translate them. The translations for all the clones are in the panel's `i18n.js`.
@@ -188,8 +193,8 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, use the button that opens a new tab.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
 - **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, because it brings up the app on this computer.
-- **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still opens a new space, and the skill stops and explains why.
-- **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. In this case the space has the name of the project and does not nest under the project. Only the tab name shows the change.
+- **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still asks. If you choose a worktree, the skill stops and explains why.
+- **A worktree does not show on the left by itself**: the agent's terminal stays in the main folder and only each command goes into the worktree, so Herdr shows no row for the worktree. To open a shell or run tests in the worktree, use Herdr's built-in Open worktree.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.
 - **Starting a whole wave can hit a git lock**: each agent can commit specs or make a worktree in the main folder. An agent that hits a lock stops and reports it. Click its skill button again.
 - **Herdr's own text is not translated**: Files and Changes in the tab bar, the status bar at the bottom, right-click menus and the settings page stay as they are.

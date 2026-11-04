@@ -22,7 +22,7 @@
 - **階段徽章**：只在 `speclink` 版面。左邊 Spaces 清單的專案列會依階段寫出變更的數量，順序和顏色都和面板的卡片相同：提案中和進行中是圓點加數字，已就緒是綠色的 `✓2`。數量是 0 的階段不顯示。游標移上去會寫出階段名稱。約 30 秒更新一次。
 - **Agents 清單**：只在 `speclink` 版面。左下的清單依 space 分組，順序和 Spaces 清單相同。每個 space 裡再分 已完成、執行中、閒置，收起 space 時標題右邊寫各狀態的數量。等你回答的 agent 不分 space，放在最上面的「需要你」。有自己分頁的 agent 不再重複接在開它的 agent 底下。在做變更的 agent，列尾有階段顏色和任務進度，沒取過名的分頁會寫變更名稱，比對規則和面板相同。時鐘圖示的選單還能切回依狀態排序。
 - **語言**：介面跟隨系統語系，中文系統用中文，其他系統用英文。範圍是右邊的面板、技能跳窗和左邊的側欄。改系統語言後要重開 Herdr。
-- **開工**：變更列上的鈕，為這個變更開一個專用的新 agent。見下面的「開工」。
+- **開工**：變更列上的鈕，在目前的工作區為這個變更開一個專用的新 agent。見下面的「開工」。
 - **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。見下面的「技能跳窗」。
 - **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。點左上角的 Logo 叫出 Speclink app。
 
@@ -65,16 +65,19 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 ### 開工
 
-開工和技能鈕不同：技能鈕優先交給現有的 agent，開工一定開新的 agent。
+開工和技能鈕不同：技能鈕優先交給現有的 agent，開工一定開新的 agent。新 agent 開在目前工作區的新分頁，分頁名稱會寫出變更，畫面留在原分頁。
 
-| 工作流設定的 `worktree` | 按下開工 |
+| 情況 | 按下開工 |
 | --- | --- |
-| 開啟 | 開一個新 space，跑 `/speclink-apply-with-worktree <變更>`。space 的名稱維持 Herdr 原樣，分頁名稱會寫出變更 |
-| 關閉 | 在主資料夾的 space 開新分頁，跑 `/speclink-apply <變更>` |
+| 工作流設定的 `worktree` 開啟，變更還沒有 worktree | 先問要「用 worktree」（`/speclink-apply-with-worktree <變更>`）還是「直接 apply」（`/speclink-apply <變更>`） |
+| 變更已經有 worktree | 不問，跑 `/speclink-apply-with-worktree <變更>` 接續 |
+| `worktree` 關閉 | 不問，跑 `/speclink-apply <變更>` |
+
+主資料夾一次只能跑一個 apply。已經有 apply 在跑時，「直接 apply」不能按，游標移上去會寫原因。
 
 沒被擋、任務還沒做完、也沒有 agent 在做的變更才有開工鈕。討論重新定案的變更要先 ingest，所以也沒有。
 
-**整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問。波次取自 `speclink plan`。
+**整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問，一律用 worktree。波次取自 `speclink plan`。
 
 ### 技能跳窗
 
@@ -171,6 +174,8 @@ node scripts/herdr/dock-panel.mjs
 
 同一份結論也否決過「space 側欄徽章」，理由是要複製並維護 spaces mod。版面既然已經複製，又有多個專案同時進行，同一天也推翻這一條。內建的 spaces mod 沒有擴充點，所以腳本複製它、放進 `integrations/herdr/spaces-badge/stage-badge.js`，再改幾行接上去。其中一處把 git 的箭頭搬到徽章旁邊，放不下時才不會疊在名字上。
 
+討論的結論本來是開工開一個新 space，預期它會縮排在專案底下。實測不會：技能要先在主資料夾檢查和提交文件，才建立 worktree，終端機也一直留在主資料夾，所以只會多一個同名的 space。同一天改成開在目前的工作區，並先問要用 worktree 還是直接 apply。
+
 Agents 清單也是同樣的做法。內建的 agents mod 沒有擴充點，所以腳本複製它、放進 `integrations/herdr/agents-list/speclink-rows.js` 和面板的 `model.js`、`shared.js`，再改十幾行。這樣清單和面板用同一套規則判斷 agent 在做哪個變更。
 
 側欄最下面的設定和新增機器在 `workspace-chrome` 裡，也複製一份，只為了翻譯。這些複製版的翻譯都在面板的 `i18n.js`。
@@ -188,8 +193,8 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **貼進輸入框只有 macOS，要約 0.7 秒**：Herdr 沒有「只貼上不按 Enter」的指令，所以面板用 `script` 開一個看不見的 `hc attach`，送出貼上的資料後離開。它是一次貼上，不是打字，不碰剪貼簿，也不會改變終端機大小。附加鈕在貼上時顯示轉動的圓弧，貼完顯示勾勾。其他系統的 `script` 用法不同，會失敗並跳通知，這時請改用「開新分頁並開工」。
 - **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
 - **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，它叫出的是這台電腦的 app。
-- **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣開新 space，技能會自己停下來並說明。
-- **開工 space 可能還在主資料夾**：agent 用 `cd` 進 worktree，終端機回報的資料夾不一定跟著變。這時 space 的名稱是專案名，也不會縮排在專案底下，要看分頁名稱才分得出變更。
+- **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣會問。選「用 worktree」的話，技能會自己停下來並說明。
+- **worktree 不會自動出現在左邊**：agent 的終端機留在主資料夾，只在每個指令切到 worktree，所以 Herdr 不會多一列 worktree。要在 worktree 開 shell 或跑測試時，用 Herdr 內建的 Open worktree。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
 - **整波開工可能撞 git 鎖**：每個 agent 都可能在主資料夾 commit 規格或建 worktree。撞到時那個 agent 會停下來回報，再按一次技能鈕即可。
 - **Herdr 本身的文字不會翻譯**：分頁列的 Files、Changes，底部的狀態列，右鍵選單和設定頁都維持原樣。

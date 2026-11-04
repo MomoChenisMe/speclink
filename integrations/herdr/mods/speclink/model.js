@@ -253,31 +253,29 @@ function newAgent({ name, args, folder, change, known }) {
   };
 }
 
-// 開工：開一個專門做這個變更的新 agent。沒被擋、任務還沒做完、沒有 agent 在做才有這個鈕；
-// 討論重新定案的變更要先 ingest，不直接開工。開 worktree 政策時開新 space，技能在主資料夾
-// 建好或接續 worktree；沒開時在主資料夾開新分頁跑 apply。
-export function startAction(row, ctx) {
+// 開工：開一個專門做這個變更的新 agent，開在目前的工作區。沒被擋、任務還沒做完、沒有 agent 在做才有這個鈕；
+// 討論重新定案的變更要先 ingest，不直接開工。回傳可以選的做法，沒有鈕時是 null。
+// 已有 worktree 就接續，沒開 worktree 流程就只能直接 apply，這兩種不用問；其他情況要問用 worktree 還是直接 apply。
+export function startChoices(row, ctx) {
   const open = row.stage !== "ready" && row.blockedBy.length === 0 && !row.restale;
   if (!open || ctx.starting?.has(row.name) || changeAgents(row, ctx.agents).length > 0) return null;
-  const name = ctx.worktreePolicy ? "apply-with-worktree" : "apply";
-  const delivery = newAgent({ name, args: row.name, folder: ctx.root, change: row, known: ctx.known });
-  return {
-    skill: "開工",
-    primary: false,
-    delivery: ctx.worktreePolicy && delivery.kind === "new" ? { ...delivery, kind: "space", where: "space" } : delivery,
-  };
+  const target = { kind: "change", name: row.name, args: row.name, row };
+  const choice = (label, skill) => ({ label, plan: newTabPlan({ ...ctx, skill, target, note: "" }) });
+  if (row.worktree) return [choice("開工", "apply-with-worktree")];
+  if (!ctx.worktreePolicy) return [choice("開工", "apply")];
+  return [choice("用 worktree", "apply-with-worktree"), choice("直接 apply", "apply")];
 }
 
-// 整波開工：最前面那一波裡能開工的變更。波次由引擎決定，這裡只分組。不到兩個就不必整波。
+// 整波開工：最前面那一波能開工的變更。一律用 worktree，因為主資料夾一次只能跑一個 apply。
 export function waveToStart(stages, ctx) {
   if (!ctx.worktreePolicy) return null;
   const startable = Object.values(stages)
     .flat()
-    .map((row) => ({ wave: row.wave, delivery: startAction(row, ctx)?.delivery }))
-    .filter((s) => s.delivery?.kind === "space");
+    .map((row) => ({ wave: row.wave, plan: startChoices(row, ctx)?.[0].plan }))
+    .filter((s) => s.plan?.kind === "tab");
   const wave = Math.min(...startable.map((s) => s.wave));
-  const deliveries = startable.filter((s) => s.wave === wave).map((s) => s.delivery);
-  return deliveries.length >= 2 ? { wave, deliveries } : null;
+  const plans = startable.filter((s) => s.wave === wave).map((s) => s.plan);
+  return plans.length >= 2 ? { wave, plans } : null;
 }
 
 const deliveryKey = (d) => d?.agent?.key ?? d?.key;
@@ -300,7 +298,6 @@ export function deliveryHint(delivery) {
   if (delivery.kind === "busy") return tr("{0}的 agent {1}", tr(delivery.where === "change" ? "這個變更" : "目前分頁"), tr(delivery.reason));
   if (delivery.kind === "none") return delivery.reason;
   if (delivery.kind === "new") return tr("開新分頁");
-  if (delivery.kind === "space") return tr("開新工作區");
   return tr(delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent");
 }
 
