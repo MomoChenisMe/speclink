@@ -19,14 +19,14 @@ What the panel contains:
 - **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
 - **Skill buttons**: only the skills that apply to the stage. The suggested next step has a heavy border.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
-- **+ New work**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "New work" below.
+- **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap.
 
 Each card can collapse. More than 5 rows fold into "N more…". Each row has a copy button.
 
 ### When the space is not a Speclink project
 
-If the current space is not a Speclink project, the panel shows a hint card with the project folder and an initialize button (初始化). The Roadmap and New work buttons are not there, because they do not work here yet.
+If the current space is not a Speclink project, the panel shows a hint card with the project folder and an initialize button (初始化). The Roadmap and Skills buttons are not there, because they do not work here yet.
 
 The initialize button opens a new tab and runs `speclink init` in the project folder. The command asks, one question at a time, which agents to generate files for. It writes files only after your answers. To stop, close that tab. After the command completes, the panel shows the change list within 10 seconds.
 
@@ -72,18 +72,20 @@ A change has the Start button only if it is not blocked, has unfinished tasks an
 
 **Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them, with no second question. The waves come from `speclink plan`.
 
-### New work
+### Skills pop-up
 
-Press the "+ New work" button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
+Press the "技能" (Skills) button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
 
-- **Left**: all skills, with the same groups and order as the Claude Code skill bar. Select one with `↑` `↓` or the mouse.
-- **Right**: the changes or discussions that this skill can use. The rules are the same as for skill buttons. Select one with `←` `→` or the mouse. You can also select none (不指定).
+- **Left**: all skills in five groups: 規劃 (plan), 實作 (build), 品質 (quality), 收尾 (ship) and 專案 (project). Select one with `↑` `↓` or the mouse. The number at the right is how many changes or discussions the skill can use now. A skill that uses a change shows dim when the number is zero. The project group works on the whole project and has no number.
+- **Right**: the changes or discussions that this skill can use. The rules are the same as for skill buttons. Select one with `←` `→` or the mouse. You can also select none (不指定). Skills that do not use a change (discuss, propose and the project group) have an input box for a topic or a note.
 - **Bottom**: the command that goes in, or the reason why it cannot be used now.
 
-Enter has two results. The "開新分頁" (new tab) checkbox decides which one. Use `⌘O` or the mouse to change it.
+Enter has two results. The "開新分頁" (new tab) checkbox decides which one. Use `⌘O` or the mouse to change it. The checkbox starts empty each time.
 
-- **Not checked: put it in the input box.** The pop-up types the command into the input box of the agent in the current tab and does not send it. You can type a note after it and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the keys can answer its dialog.
-- **Checked: open a new tab and start.** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab. An input box shows at the right, and its text goes after the command. The tab does not open in these cases, and the bottom line gives the reason: the change already has an agent, another change blocks the apply, or the main folder already runs an apply.
+- **Not checked: put it in the input box.** The command goes into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the keys can answer its dialog.
+- **Checked: open a new tab and start.** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
+
+When the box is checked and the skill uses a change, you can open many at once, one tab for each change. Use `←` `→` to move, `Space` to check a row, and `⌘A` or "全選" (all) to check all rows. These rows cannot be checked and show the reason: the change already has an agent, another change blocks it (apply), the main folder already runs an apply, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
 
 ### Open in Speclink
 
@@ -107,7 +109,7 @@ Work from the repo root, with Herdr open:
    cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/
    ```
 
-2. In `~/.config/herdr-app/keys.json`, add the first two lines to `global`. Then add the `layout:speclink` section ([keys.json](keys.json) has the same content). `⌘⇧N` opens New work. In the `speclink` layout, `⌘⇧S` opens or closes the right column. In other layouts, `⌘⇧S` pops up the floating window.
+2. In `~/.config/herdr-app/keys.json`, add the first two lines to `global`. Then add the `layout:speclink` section ([keys.json](keys.json) has the same content). `⌘⇧N` opens the Skills pop-up. In the `speclink` layout, `⌘⇧S` opens or closes the right column. In other layouts, `⌘⇧S` pops up the floating window.
 
    ```json
    "cmd-shift-s": "mod.open:speclink",
@@ -162,7 +164,10 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **No review or verify stamps**: the CLI output has no stamp state. After you stamp a ready change, the suggestion stays on quality, and you click archive yourself.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
 - **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.
-- **A Codex tab cannot take a command in its input box**: Herdr has no command that pastes without Enter, so the pop-up uses `hc keys` to type one key at a time. It can type letters, digits, `/`, `-`, `.` and spaces. It cannot type the `$` of Codex or a discussion name in Chinese. In these cases, check "開新分頁" (new tab).
+- **The input box uses two methods**: Herdr has no command that pastes without Enter. A command with only lowercase letters and digits goes in with `hc keys`, one key at a time. With Chinese or capital letters, `hc send` pastes it with `\` at the end: Claude Code takes `\` plus Enter as a new line and does not send. A backspace then removes the new line. If Claude Code changes this behavior, the text is sent at once.
+- **A Codex tab cannot take a command in its input box**: `hc keys` cannot type the `$` of Codex, and the backslash method is not checked on Codex. Copilot can take only commands without Chinese. In these cases, check "開新分頁" (new tab).
+- **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.
+- **The button and the folder have different names**: the button is "技能" (Skills) and the folder is still `speclink-new`, so `keys.json` does not change.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
 - **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still opens a new space, and the skill stops and explains why.
@@ -179,4 +184,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the panel view and the Herdr API calls. `new-work.js` holds the New work pop-up view. The rules for the input box and the new tab are in `model.js`. `column-sync.js` makes each space remember the state of the right column. It runs in the invisible floating block that `dock-panel.mjs` adds, because the panel does not redraw while its column is closed. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.
+`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the panel view and the Herdr API calls. `skill-picker.js` holds the Skills pop-up view. The rules for the input box and the new tab are in `model.js`. `column-sync.js` makes each space remember the state of the right column. It runs in the invisible floating block that `dock-panel.mjs` adds, because the panel does not redraw while its column is closed. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.

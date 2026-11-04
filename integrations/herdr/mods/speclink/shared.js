@@ -1,4 +1,4 @@
-// 面板和新工作跳窗共用的 Herdr 小工具。
+// 面板和技能跳窗共用的 Herdr 小工具。
 import { exec, focused, panes, spaces } from "herdr";
 import { inside } from "./model.js";
 
