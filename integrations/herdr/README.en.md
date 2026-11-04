@@ -26,7 +26,7 @@ What the panel contains:
 - **Language**: the interface follows the system language: Chinese on a Chinese system, and English on other systems. This applies to the panel on the right, the Skills pop-up and the sidebar on the left. Restart Herdr after you change the system language.
 - **Start**: a button on a change row that starts a new agent for this change only, in the current space. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
-- **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to bring up the Speclink app.
+- **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to go to the project of this space and show the board. If the project is not initialized or the space is on another machine, the logo only brings up the app.
 
 Each card can collapse. More than 5 rows fold into "N more…". Each row has a copy button.
 
@@ -109,14 +109,14 @@ These rows have no checkbox and show the reason: the change already has an agent
 
 The panel uses `open` to send a `speclink://` URL. The desktop app goes to this project and then opens the page. If the app is not running, it starts. The URL can only open and show things. It writes no files.
 
-The logo sends no URL. It only brings up the app, so the app stays on its current project. To go to this project, use the Roadmap button or click a row.
+The logo sends a `speclink://project` URL. The desktop app goes to the project of this space, closes an open detail page, and shows the card view of the board. It opens no detail page and no roadmap. A space in a worktree goes to the tab of the main project. If the project is not initialized or still loading, or if the space is on another machine, the logo sends no URL. It only brings up the app, and the tabs and the screen do not change.
 
 ## Requirements
 
 - Herdr 0.1.12 or later (tested with this version).
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads only the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list` and `speclink workflow-config show`.
 - A project with `speclink init` done. If it is not done, the panel gives an initialize button.
-- To open pages in Speclink, a desktop app that knows `speclink://` URLs (a version after v0.11.0).
+- To open pages in Speclink, or to go to a project with the logo, a desktop app that knows `speclink://` URLs (a version after v0.11.0). Releases up to and including v0.11.0 do not have these URLs, so the logo only brings up the app. A version that you built yourself after 2026-11-03 may not know `speclink://project` yet. In that version the logo brings the app to the front, the project does not change, and the app shows "Can't open this speclink link". The message goes away after you update the app.
 - To dock the panel, Node.js, which runs the script that clones the layout.
 
 ## Install
@@ -197,7 +197,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **The button and the folder have different names**: the button is "技能" (Skills) and the folder is still `speclink-new`, so `keys.json` does not change.
 - **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, use the button that opens a new tab.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
-- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, because it brings up the app on this computer.
+- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, but it only brings up the app on this computer and does not change the project.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still asks. If you choose a worktree, the skill stops and explains why.
 - **A worktree does not show on the left by itself**: the agent's terminal stays in the main folder and only each command goes into the worktree, so Herdr shows no row for the worktree. To open a shell or run tests in the worktree, use Herdr's built-in Open worktree.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.

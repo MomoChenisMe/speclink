@@ -19,5 +19,5 @@
 
 ## 4. 文件
 
-- [ ] 4.1 依任務 3.1 看到的結果更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`：功能總覽與「叫 Speclink 開頁面」說明 Logo 會切到這個 space 的專案，沒初始化與別台機器的 space 只叫出 app；「需求」寫明切專案要 v0.11.0 之後的版本，更舊的發佈版只會叫出 app，自行建置的舊版會跳網址無效的提示、更新 app 後消失；已知限制的 Logo 句子跟著改。兩份語言的內容要對齊。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（中英對照與詞彙守門）全部通過。 <!-- speclink-task:tsk_01M6JNXWME5H3A2MN3X1Q7GK7N -->
+- [x] 4.1 依任務 3.1 看到的結果更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`：功能總覽與「叫 Speclink 開頁面」說明 Logo 會切到這個 space 的專案，沒初始化與別台機器的 space 只叫出 app；「需求」寫明切專案要 v0.11.0 之後的版本，更舊的發佈版只會叫出 app，自行建置的舊版會跳網址無效的提示、更新 app 後消失；已知限制的 Logo 句子跟著改。兩份語言的內容要對齊。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs`（中英對照與詞彙守門）全部通過。 <!-- speclink-task:tsk_01M6JNXWME5H3A2MN3X1Q7GK7N -->
 - [x] 4.2 `docs/product-status.md` 與 `docs/product-status.zh-TW.md` 的網址那一列補上 `speclink://project`（切到專案並顯示看板），更新該列的核對日期。驗證：內容對照 `apps/desktop/src/__tests__/deepLink.test.ts`，並跑 `npm test -w apps/desktop -- src/__tests__/deepLink.test.ts src/__tests__/store.test.ts` 與 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`，全部通過。 <!-- speclink-task:tsk_01M6JNXWMEHQ5WJG1H0EB6TKQZ -->
