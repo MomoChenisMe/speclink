@@ -142,7 +142,7 @@ When the skill uses a change, each row has a checkbox, so you can open many tabs
 - One check: both buttons use the checked row.
 - Two or more checks: the left button changes to "開 N 個分頁並開工" (open N tabs and start). "放到輸入框" (put in the input box) does not work, because the input box takes one command at a time.
 
-These rows have no checkbox and show the reason: the change already has an agent, another change blocks it (apply), an apply in the main folder is not finished, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
+These rows have no checkbox and show the reason: an agent is busy on the change (an agent that finished and stopped does not count, so you can open a new tab for worktree-merge after apply), another change blocks it (apply), an apply in the main folder is not finished, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
 
 ### Open in Speclink
 

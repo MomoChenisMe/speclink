@@ -319,6 +319,7 @@ export function joinAgents(agents, terminals, panes) {
       ...a,
       status: t?.status ?? a.status,
       view: a.status,
+      name: t?.name ?? null,
       key: a.program?.key,
       cwd: byPane.get(a.pane)?.cwd ?? t?.cwd ?? null,
       labels: t?.labels ?? {},
@@ -537,7 +538,8 @@ function unfinishedApply(agents, board) {
 export function newTabPlan({ skill, target, note, root, agents, known, worktreePolicy, space, on, board }) {
   const change = target?.kind === "change" ? target.row : null;
   const applying = skill === "apply" || skill === "apply-with-worktree";
-  if (change && changeAgents(change, agents).length > 0) return none("已經有 agent 在做");
+  // 只擋正在忙的 agent。標籤在分頁關掉前都留著，做完停著的不算，例如 apply 做完後開新分頁 merge。
+  if (change && changeAgents(change, agents).some((a) => !sendable(a))) return none("已經有 agent 在做");
   if (change && applying && change.blockedBy.length > 0) return none("要等 {0} 落地", change.blockedBy.join(tr("、")));
   const left = codeLeft(skill, change);
   if (left) return none("還有 {0} 個程式任務沒做完", left);
@@ -566,9 +568,15 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
       folder,
       "--label",
       `herdr.space=${space}`,
-      // hc 的名稱不能重複，所以只有變更才取名：同一個變更只會有一個 agent。
+      // 只有變更才取名。hc 的名稱不能重複（name_taken），已經被佔用時就不取名。
       ...(change
-        ? ["--name", change.name.slice(0, 32), "--label", `speclink.change=${change.name}`, "--label", skillLabel(name)]
+        ? [
+            ...(agents.some((a) => a.name === change.name.slice(0, 32)) ? [] : ["--name", change.name.slice(0, 32)]),
+            "--label",
+            `speclink.change=${change.name}`,
+            "--label",
+            skillLabel(name),
+          ]
         : []),
       ...(discussion ? ["--label", `speclink.discussion=${discussion.slug}`, "--label", `speclink.skill=speclink-${name}`] : []),
       ...d.argv,
