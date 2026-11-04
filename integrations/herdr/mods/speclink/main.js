@@ -377,6 +377,27 @@ export default class SpeclinkPanel extends View {
       .when(Boolean(hint), (el) => el.child(div().truncate().text_size(11).text_color(t.dim).child(hint)));
   }
 
+  // 和 Herdr 內建的 Agents 清單同一套：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等回答是膠囊。
+  agentStatus(view, t) {
+    if (view === "working") return icon("spinner", 12, t.working).mx(1).spin(900);
+    if (view === "blocked") {
+      return div()
+        .flex()
+        .flex_none()
+        .h(18)
+        .px(6)
+        .items_center()
+        .rounded(5)
+        .bg(`${t.blocked}26`)
+        .text_size(10.5)
+        .font_semibold()
+        .text_color(t.blocked)
+        .child(AGENT_STATE.blocked);
+    }
+    if (view === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle);
+    return div().size(7).mx(3).flex_none().rounded(4).bg(t[view] ?? t.dim);
+  }
+
   agentChip(id, a, t) {
     return h_flex()
       .id(`agent-${id}-${a.address}`)
@@ -388,15 +409,14 @@ export default class SpeclinkPanel extends View {
       .text_size(11)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip("切到這個 agent")
+      .tooltip(`切到這個 agent（${AGENT_STATE[a.view] ?? a.view}）`)
       .on_click((_e, cx) => {
         cx.stop_propagation();
         run("agent.focus", { terminal: a.address });
       })
-      .child(div().w(7).h(7).flex_none().rounded_full().bg(t[a.view] ?? t.idle))
       .child(programIcon(a.program, 12, t.muted))
       .child(div().flex_1().min_w_0().truncate().text_color(t.muted).child(`${a.space_name} / ${a.tab_name}`))
-      .child(div().flex_none().text_color(t.dim).child(AGENT_STATE[a.view] ?? a.view));
+      .child(this.agentStatus(a.view, t));
   }
 
   // 點列本身叫 Speclink 開詳情。列上的鈕都會擋下點擊。別台機器的專案路徑在這台開不了。
