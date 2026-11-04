@@ -6,9 +6,15 @@ Open a panel in [Herdr](https://herdr.dev) that shows the changes and discussion
 
 ## What the panel shows
 
-Press `⌘⇧S` to open or close the panel. The panel is a floating window that you can drag. It does not take the keyboard. The project follows the terminal that has focus, so a switch of space also switches the project.
+The panel has two placements. Neither takes the keyboard. In both, the project follows the terminal that has focus, so a switch of space also switches the project.
 
-- **Changes**: three permanent cards for proposed, in progress and ready. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
+- **Docked**: with the cloned `speclink` layout (see "Install"), the panel stays in the rightmost column of the window, beside the terminals. `⌘⇧S` opens or closes this column. Drag its edge to change the width.
+- **Popped up**: in other layouts, `⌘⇧S` opens or closes the panel as a floating window that you can drag.
+
+What the panel contains:
+
+- **Top**: the project name. The line below it says "目前的 space · <branch>" (the current space and its branch).
+- **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
 - **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
 - **Skill buttons**: only the skills that apply to the stage. The suggested next step has a heavy border.
@@ -68,28 +74,69 @@ The panel uses `open` to send a `speclink://` URL. The desktop app goes to this 
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads only the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list` and `speclink workflow-config show`.
 - A project with `speclink init` done.
 - To open pages in Speclink, a desktop app that knows `speclink://` URLs (a version after v0.11.0).
+- To dock the panel, Node.js, which runs the script that clones the layout.
 
 ## Install
 
-Run this from the repo root:
+Work from the repo root, with Herdr open:
 
-```bash
-cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
-```
+1. Copy the mod. Herdr loads it automatically.
 
-Herdr loads it automatically. Then add this line to `global` in `~/.config/herdr-app/keys.json` ([keys.json](keys.json) has the same line):
+   ```bash
+   cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
+   ```
 
-```json
-"cmd-shift-s": "mod.open:speclink"
-```
+2. In `~/.config/herdr-app/keys.json`, add the first line to `global`. Then add the `layout:speclink` section ([keys.json](keys.json) has the same content). In the `speclink` layout, `⌘⇧S` opens or closes the right column. In other layouts, `⌘⇧S` pops up the floating window.
 
-To update, run `cp` again. Herdr reloads at once. To remove, delete the folder and the line.
+   ```json
+   "cmd-shift-s": "mod.open:speclink"
+   ```
+
+   ```json
+   "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
+   ```
+
+3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, and switches to it. To keep the pop-up only, skip this step.
+
+   ```bash
+   node scripts/herdr/dock-panel.mjs
+   ```
+
+Use `⌘⇧L` to switch layouts. To update the mod, run `cp` again. Herdr reloads at once.
 
 Do not install with a symbolic link. Herdr loads the code, but it does not draw the SVG icons behind a link, and a save does not reload the mod.
 
+### Dock again after a Herdr update
+
+A clone does not follow Herdr updates: new things in Herdr's `main` layout do not appear in the `speclink` layout. `cloned_from.version` in `~/.config/herdr-app/layouts/speclink.json` is the Herdr version at the time of the clone. When it differs from `herdr-app --version`, dock again. Run the same line:
+
+```bash
+node scripts/herdr/dock-panel.mjs
+```
+
+The script does these steps:
+
+1. It switches to `main`.
+2. It renames the old clone to `layouts/speclink.json.old-<time>`.
+3. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
+
+After this, the panel column has its default width, and the other column widths and open or closed states are the same as in `main`. If you edited the old clone by hand, your edits are in the `.old` file, and you must move them yourself. You can delete the `.old` file when all is well.
+
+### Remove
+
+1. Press `⌘⇧L` to switch to `main`.
+2. Delete `~/.config/herdr-app/layouts/speclink.json` and `~/.config/herdr-app/mods/speclink`.
+3. Remove the two additions from `keys.json`.
+
+### Why a cloned layout
+
+The conclusion of the `herdr-speclink-panel` discussion rejected a dedicated cloned `speclink` layout, because a clone does not follow Herdr updates. On 2026-11-04, after a look at the real screen, this decision was reversed and the cost of a clone was accepted: the floating window covers the terminal, and that is too far from the agreed right column.
+
+Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` has no effect, and `layout.set` on `main` is refused.
+
 ## Known limits
 
-- **No docking in the window**: Herdr's own layouts do not let a mod dock. Docking needs a cloned layout, and a clone does not follow Herdr updates. So the panel opens with a key.
+- **A clone does not follow Herdr updates**: the `speclink` layout stays as `main` was at the time of the clone. Dock again after a Herdr update. See "Dock again after a Herdr update".
 - **No review or verify stamps**: the CLI output has no stamp state. After you stamp a ready change, the suggestion stays on quality, and you click archive yourself.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
 - **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.

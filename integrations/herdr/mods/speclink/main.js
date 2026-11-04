@@ -64,7 +64,11 @@ function location() {
   const pane = f?.pane ? ps.find((p) => p.pane === f.pane) : null;
   const tabs = new Set(space?.tabs.map((t) => t.id));
   const first = ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd;
-  return { cwd: pane?.cwd || f?.cwd || first || space?.folder || null, on: space?.machine ?? null };
+  return {
+    cwd: pane?.cwd || f?.cwd || first || space?.folder || null,
+    on: space?.machine ?? null,
+    branch: pane?.branch ?? space?.branch ?? null,
+  };
 }
 
 // 主資料夾：在 worktree 裡也要回到主 checkout，變更清單才完整。
@@ -119,10 +123,10 @@ export default class SpeclinkPanel extends View {
   // 焦點或資料夾變了就改跟新的專案。render 會隨 Herdr 的即時資料重跑，所以平常立刻跟上；
   // 視窗沒有畫面更新時（被其他視窗完全蓋住）render 不會跑，由計時補上。
   follow(cx) {
-    const place = location();
-    if (place.cwd === this.place.cwd && place.on === this.place.on) return;
-    if (place.on !== this.place.on) this.loadKnown(cx);
-    this.place = place;
+    const { cwd, on } = this.place;
+    this.place = location();
+    if (this.place.cwd === cwd && this.place.on === on) return;
+    if (this.place.on !== on) this.loadKnown(cx);
     this.reload(cx);
   }
 
@@ -515,7 +519,7 @@ export default class SpeclinkPanel extends View {
     ];
   }
 
-  card({ id, iconName, tone, label, rows, open }, t) {
+  card({ id, tone, label, rows, open }, t) {
     return v_flex()
       .flex_none()
       .rounded(10)
@@ -534,9 +538,10 @@ export default class SpeclinkPanel extends View {
           .hover((s) => s.bg(t.hover))
           .when(open && rows.length > 0, (el) => el.border_b_1().border_color(t.border))
           .on_click((_e, cx) => this.toggleSection(id, cx))
-          .child(icon(iconName, 13, tone))
-          .child(div().flex_1().font_semibold().text_size(12).child(label))
-          .child(div().px(5).rounded(4).bg(t.raised).text_size(11).text_color(tone).child(String(rows.length)))
+          .child(div().w(8).h(8).flex_none().rounded_full().bg(tone))
+          .child(div().font_semibold().text_size(12).child(label))
+          .child(div().px(6).rounded_full().bg(t.raised).text_size(11).text_color(t.muted).child(String(rows.length)))
+          .child(div().flex_1())
           .child(icon(open ? "chevron-down" : "chevron-right", 13, t.muted)),
       )
       .when(open, (el) => el.children(this.overflow(id, rows, t)));
@@ -624,7 +629,6 @@ export default class SpeclinkPanel extends View {
         this.card(
           {
             id: stage.id,
-            iconName: stage.id,
             tone: t[stage.tone],
             label: stage.label,
             rows: stages[stage.id].map((row) => this.changeRow(row, stage, ctx, t)),
@@ -638,7 +642,6 @@ export default class SpeclinkPanel extends View {
       this.card(
         {
           id: "discussions",
-          iconName: "discussion",
           tone: t.ansi5,
           label: "討論",
           rows: discussions.map((d) => this.discussionRow(d, ctx, t)),
@@ -652,7 +655,6 @@ export default class SpeclinkPanel extends View {
         this.card(
           {
             id: "promoted",
-            iconName: "discussion",
             tone: t.muted,
             label: "已轉出",
             rows: promoted.map((d) => this.discussionRow(d, ctx, t)),
@@ -702,17 +704,30 @@ export default class SpeclinkPanel extends View {
     return v_flex()
       .id("speclink-panel")
       .size_full()
-      .bg(t.popover)
+      // 沒有 overlay 就是停靠在版面裡，底色和側欄一樣，卡片才浮得出來。
+      .bg(overlay ? t.popover : t.chrome)
       .text_size(12.5)
       .text_color(t.foreground)
       .child(
         h_flex()
           .flex_none()
-          .h(38)
+          .h(46)
           .px(10)
           .gap(6)
           .items_center()
-          .child(div().flex_1().min_w_0().truncate().font_semibold().child(this.root ? baseName(this.root) : "Speclink"))
+          .child(
+            v_flex()
+              .flex_1()
+              .min_w_0()
+              .child(div().truncate().font_semibold().child(this.root ? baseName(this.root) : "Speclink"))
+              .child(
+                div()
+                  .truncate()
+                  .text_size(11)
+                  .text_color(t.muted)
+                  .child(["目前的 space", this.place.branch].filter(Boolean).join(" · ")),
+              ),
+          )
           // 讀不到專案（資料夾沒有 speclink）時不給鈕：網址會跳到桌面 app 的初始化確認框。
           .when(Boolean(this.board) && !this.place.on, (el) =>
             el.child(
