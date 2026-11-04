@@ -27,12 +27,10 @@ use speclink_protocol::command::{
 use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
     ArchivedListResponse, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
-    DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId, ImportReportResponse,
-    ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse, PlanUnpromotedCut, ScopesResponse,
-    SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
+    DiscussionCut, DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId,
+    ImportReportResponse, ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse,
+    PlanUnpromotedCut, ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
 };
-use speclink_core::discuss::cuts::RecordCut;
-use speclink_desktop_core::discussions::DiscussionDocument;
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
@@ -1095,30 +1093,25 @@ pub(crate) fn reorder_full_text(
     })
 }
 
-/// GET /discussions/{slug} 的結果轉成桌面的討論記錄回應：`content` 與 `cuts` 逐欄搬運
-/// （舊 server 缺 `cuts` 時 protocol 已讀作空陣列），404 與本地語意一致為 None。
+/// remote 的討論記錄回應：與本地的 `speclink_desktop_core::discussions::DiscussionDocument`
+/// 同形（`{ content, cuts }`），`cuts` 原樣轉交 server 回應的 protocol 型別（同
+/// [`RemoteChangeList`] 的 `unpromoted_cuts`）。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RemoteDiscussionDocument {
+    pub content: String,
+    pub cuts: Vec<DiscussionCut>,
+}
+
+/// GET /discussions/{slug} 的結果轉成桌面的討論記錄回應（舊 server 缺 `cuts` 時
+/// protocol 已讀作空陣列），404 與本地語意一致為 None。
 pub(crate) fn discussion_document_of(
     shown: Result<ShowDiscussionResponse, RemoteError>,
-) -> Result<Option<DiscussionDocument>, RemoteError> {
-    let shown = match shown {
-        Ok(shown) => shown,
-        Err(e) if e.status == Some(404) => return Ok(None),
-        Err(e) => return Err(e),
-    };
-    let cuts = shown
-        .cuts
-        .into_iter()
-        .map(|c| RecordCut {
-            cut: c.cut,
-            title: c.title,
-            note: c.note,
-            line: c.line,
-            changes: c.changes,
-            changes_in_bold: c.changes_in_bold,
-            unpromoted: c.unpromoted,
-        })
-        .collect();
-    Ok(Some(DiscussionDocument { content: shown.content, cuts }))
+) -> Result<Option<RemoteDiscussionDocument>, RemoteError> {
+    match shown {
+        Ok(shown) => Ok(Some(RemoteDiscussionDocument { content: shown.content, cuts: shown.cuts })),
+        Err(e) if e.status == Some(404) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 /// 拖排寫回的 CAS 收斂迴圈（決策 5）：讀現況 → 重算全文 → PUT 帶 If-Match；
@@ -1817,7 +1810,7 @@ impl RemoteWorkspace {
         &self,
         credentials: &dyn CredentialStore,
         slug: &str,
-    ) -> Result<Option<DiscussionDocument>, RemoteError> {
+    ) -> Result<Option<RemoteDiscussionDocument>, RemoteError> {
         discussion_document_of(self.run(credentials, |client| client.show_discussion(slug)))
     }
 

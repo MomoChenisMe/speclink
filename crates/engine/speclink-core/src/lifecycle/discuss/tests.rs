@@ -2325,3 +2325,20 @@ fn record_cuts_serialize_as_seven_camel_case_keys() {
     keys.sort();
     assert_eq!(keys, ["changes", "changesInBold", "cut", "line", "note", "title", "unpromoted"]);
 }
+
+#[test]
+fn show_returns_the_text_and_info_of_one_read() {
+    // server 以 discuss show 的 content 與 info 的 promoted_to 計算詳情回應的 cuts：
+    // 兩者 SHALL 取自同一次讀取（design「一份記錄的刀以單一入口計算」）。
+    let doc = cuts_doc().replacen("status: concluded\n", "status: concluded\npromoted_to: a\n", 1);
+    let store = TestStore::with_live_discussion("panel", &doc);
+    let (info, text) = super::show(&store, "panel").expect("found");
+    assert_eq!(text, doc);
+    assert_eq!(info.head.promoted_to, ["a"]);
+    assert_eq!(
+        serde_json::to_value(&info).unwrap(),
+        serde_json::to_value(super::info(&store, "panel").unwrap()).unwrap(),
+        "info 與 discuss::info 同值"
+    );
+    assert!(super::show(&store, "no-such-topic").is_none());
+}

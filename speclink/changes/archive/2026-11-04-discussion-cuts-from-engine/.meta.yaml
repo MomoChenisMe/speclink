@@ -1,0 +1,149 @@
+schema: spec-driven
+created: 2026-11-03T16:46:33+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: herdr-speclink-panel
+started_at: 2026-11-03T17:16:05+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-04T09:57:01+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 17
+reviewed_rounds: 2
+reviewed_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 4bd5c5c9d83cfa4ebbb4697a66e4b5fa2f2a068b28297427f258aa612127a289
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 6caac008601a9271eb27c80c09b156b737742094bd8b1407be2fdb8d5bd5c9db
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 499f9b2f63a141d09895f3ae28de68128c8678505c7aefc91153ddf92283b8d5
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 8e82099a23a4d4eeffe1024ae4699f3ea652ce1121ea11fd04f0fbaf56c1dae7
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: fa84df74eda06b96f0f7b1cfd5d3d0735ca7d657abce44e70835ea0f0614779d
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: 94abb2224479fb952ebcbcea0372f3a5a1c488f8669927a39b1f13eddbf51302
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 2d96f21db15cf889a5969f03110913807fb9bbde2bc311e4319c275af83b9a8d
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 2db342c988e19f728338cfcc170fb01d480329f3f3df5781f0e4dc18c22a66ed
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: be49362da59ab860bdccf7ea737f6d708576bc5f6945acf18285221cca0ea7b4
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 6ffdda1301641b48e5e8ff087981c77a00a52454d626c6172fe0edc686369818
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: ea4e40cdd05b54dab5df0424efbbc82ebf500e1d4f5ee706767fce63d9ef120f
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: 19a948f759c305923bd653d2d782459b388eaf6c6364b0172f7cb8434cf7a9ca
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
+    hash: c62eb04f3a5859414a325178c6b4e9f2ef6216ac58e661835f6f5f8f34be2f59
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
+    hash: 5999c8eda0798368a6c0769e079737c24e6191a33f11c190306d22712242f67a
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: da9ac1f2afee20cd6bbbc928f4028cd5eec3c161d49088e37dedced07efb9281
+  - path: crates/host/speclink-server/tests/it/api/discussion_routes.rs
+    hash: 7a49f3f9d759301571a65cc569076a4d01de99cfb67aa584759132ce816e983a
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: dbb783e2a3f92a0c09aeaed314d4f437c1aa2989cb00469c56f7bfca1dbf3204
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: e255526996347f026f40b9c473a5846d5de2803bd5b5c1ebc82bf3f809a0c6b0
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: be604a78a12f6d3ea7642616b5836ce8245956b5cc7bcf46695d58197a5115d7
+  - path: packages/ui/src/__tests__/discussionCuts.test.ts
+    hash: 5e9324a957f4b5f91420a96f65886ffc3e27198d69d9105896bde86be505835d
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: c2b99a4b6bc7db4a50521bc39fb9bf84ea8aefe62963ac2f198825d700f72f63
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 9c25ce0780a15e3ff8091b10282ef6f7d06459cc1455d2cbed9fa9280f6cf3f0
+  - path: packages/ui/src/__tests__/engineCuts.ts
+    hash: b1b924f5e9322cd0e990834764b39b2805917f07a53303d16e57555a4e95b4c9
+  - path: packages/ui/src/__tests__/improveBadge.test.tsx
+    hash: 762473f194a8e9c23a49a27437a2cbae2f9c4f712a1f262de75cf7e68ae67f9e
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: cb975b05652ceb5794e585e26f415505438e72fa2b1e37e681eb91f5bedb47cf
+  - path: packages/ui/src/adapter.ts
+    hash: 671e4a29494e94942cd189f794ce7cc46a68999bca45ed0147c8ae1e478628e9
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 765c10fc1ec106a0359473cc53c1e9985c19de2fb4d6c6765bbff91f442b4408
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 9efb6bf96d54936751b1a9a9b15a5d654aa09d481e2ae8befb031ce28ad46210
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 9f51c79d4006ac943d5d0b82a7d0504a3ba8e89b5c5b0f0601a460500ddc8ff2
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 4a8f837115491962c71eb9114b5d4fd38b8bf94ce59f685968513030e45b8cbe
+  - path: packages/ui/src/discussionModel.ts
+    hash: 7ebc87e13bfc574a4ab9079365777d5c49beb07cb01ac46220cf9f5e012ff0c6
+  - path: packages/ui/src/index.ts
+    hash: aed3bcc34fd9c1579f4351c5fe4cbbe7a5ef8f4ebc61dbb3c30cc21ace3844b3
+verified_at: 2026-11-04T09:57:01+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 17
+verified_rounds: 2
+verified_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 4bd5c5c9d83cfa4ebbb4697a66e4b5fa2f2a068b28297427f258aa612127a289
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 6caac008601a9271eb27c80c09b156b737742094bd8b1407be2fdb8d5bd5c9db
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 499f9b2f63a141d09895f3ae28de68128c8678505c7aefc91153ddf92283b8d5
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 8e82099a23a4d4eeffe1024ae4699f3ea652ce1121ea11fd04f0fbaf56c1dae7
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: fa84df74eda06b96f0f7b1cfd5d3d0735ca7d657abce44e70835ea0f0614779d
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: 94abb2224479fb952ebcbcea0372f3a5a1c488f8669927a39b1f13eddbf51302
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 2d96f21db15cf889a5969f03110913807fb9bbde2bc311e4319c275af83b9a8d
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 2db342c988e19f728338cfcc170fb01d480329f3f3df5781f0e4dc18c22a66ed
+  - path: apps/desktop/src/adapter/tauriDataSource.ts
+    hash: be49362da59ab860bdccf7ea737f6d708576bc5f6945acf18285221cca0ea7b4
+  - path: crates/adapters/speclink-cli/tests/it/remote_read_path.rs
+    hash: 6ffdda1301641b48e5e8ff087981c77a00a52454d626c6172fe0edc686369818
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: ea4e40cdd05b54dab5df0424efbbc82ebf500e1d4f5ee706767fce63d9ef120f
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: 19a948f759c305923bd653d2d782459b388eaf6c6364b0172f7cb8434cf7a9ca
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
+    hash: c62eb04f3a5859414a325178c6b4e9f2ef6216ac58e661835f6f5f8f34be2f59
+  - path: crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
+    hash: 5999c8eda0798368a6c0769e079737c24e6191a33f11c190306d22712242f67a
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: da9ac1f2afee20cd6bbbc928f4028cd5eec3c161d49088e37dedced07efb9281
+  - path: crates/host/speclink-server/tests/it/api/discussion_routes.rs
+    hash: 7a49f3f9d759301571a65cc569076a4d01de99cfb67aa584759132ce816e983a
+  - path: crates/protocol/speclink-protocol/src/query.rs
+    hash: dbb783e2a3f92a0c09aeaed314d4f437c1aa2989cb00469c56f7bfca1dbf3204
+  - path: packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    hash: e255526996347f026f40b9c473a5846d5de2803bd5b5c1ebc82bf3f809a0c6b0
+  - path: packages/ui/src/__tests__/conclusionDoc.test.tsx
+    hash: be604a78a12f6d3ea7642616b5836ce8245956b5cc7bcf46695d58197a5115d7
+  - path: packages/ui/src/__tests__/discussionCuts.test.ts
+    hash: 5e9324a957f4b5f91420a96f65886ffc3e27198d69d9105896bde86be505835d
+  - path: packages/ui/src/__tests__/discussionDetailPage.test.tsx
+    hash: c2b99a4b6bc7db4a50521bc39fb9bf84ea8aefe62963ac2f198825d700f72f63
+  - path: packages/ui/src/__tests__/discussionModel.test.ts
+    hash: 9c25ce0780a15e3ff8091b10282ef6f7d06459cc1455d2cbed9fa9280f6cf3f0
+  - path: packages/ui/src/__tests__/engineCuts.ts
+    hash: b1b924f5e9322cd0e990834764b39b2805917f07a53303d16e57555a4e95b4c9
+  - path: packages/ui/src/__tests__/improveBadge.test.tsx
+    hash: 762473f194a8e9c23a49a27437a2cbae2f9c4f712a1f262de75cf7e68ae67f9e
+  - path: packages/ui/src/__tests__/promotedDoc.test.tsx
+    hash: cb975b05652ceb5794e585e26f415505438e72fa2b1e37e681eb91f5bedb47cf
+  - path: packages/ui/src/adapter.ts
+    hash: 671e4a29494e94942cd189f794ce7cc46a68999bca45ed0147c8ae1e478628e9
+  - path: packages/ui/src/components/ArchivedDetailPage.tsx
+    hash: 765c10fc1ec106a0359473cc53c1e9985c19de2fb4d6c6765bbff91f442b4408
+  - path: packages/ui/src/components/ConclusionDoc.tsx
+    hash: 9efb6bf96d54936751b1a9a9b15a5d654aa09d481e2ae8befb031ce28ad46210
+  - path: packages/ui/src/components/DiscussionDetailPage.tsx
+    hash: 9f51c79d4006ac943d5d0b82a7d0504a3ba8e89b5c5b0f0601a460500ddc8ff2
+  - path: packages/ui/src/components/discussionDocSummary.tsx
+    hash: 4a8f837115491962c71eb9114b5d4fd38b8bf94ce59f685968513030e45b8cbe
+  - path: packages/ui/src/discussionModel.ts
+    hash: 7ebc87e13bfc574a4ab9079365777d5c49beb07cb01ac46220cf9f5e012ff0c6
+  - path: packages/ui/src/index.ts
+    hash: aed3bcc34fd9c1579f4351c5fe4cbbe7a5ef8f4ebc61dbb3c30cc21ace3844b3
+archived_at: 2026-11-04T09:58:38+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

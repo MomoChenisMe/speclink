@@ -30,5 +30,5 @@
 
 ## 6. 手動驗收與收尾
 
-- [ ] [M] 6.1 在 macOS 以 root 的 `npm run dev:desktop` 開本 repo，打開已封存與 live 各一份有刀的討論（例：herdr-speclink-panel 與 2026-10 的 detail-content-redesign），確認刀卡、「分刀」數字磚、「定案細節」計數、「N 刀尚未轉出」提示框與衍生變更分組與改版前相同 <!-- speclink-task:tsk_01M6G9NXHKPKN2QTJREBWQ689N -->
+- [x] [M] 6.1 在 macOS 以 root 的 `npm run dev:desktop` 開本 repo，打開已封存與 live 各一份有刀的討論（例：herdr-speclink-panel 與 2026-10 的 detail-content-redesign），確認刀卡、「分刀」數字磚、「定案細節」計數、「N 刀尚未轉出」提示框與衍生變更分組與改版前相同 <!-- speclink-task:tsk_01M6G9NXHKPKN2QTJREBWQ689N -->
 - [x] 6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate discussion-cuts-from-engine` 通過 <!-- speclink-task:tsk_01M6G9NXHKQBXMT1CA04DPS2AH -->

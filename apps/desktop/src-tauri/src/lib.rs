@@ -1765,7 +1765,7 @@ async fn remote_discussion_document(
     project: String,
     repo: String,
     slug: String,
-) -> Result<Option<speclink_desktop_core::discussions::DiscussionDocument>, String> {
+) -> Result<Option<remote::RemoteDiscussionDocument>, String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
         ws.discussion_document(credentials, &slug).map_err(|e| e.message)
     })

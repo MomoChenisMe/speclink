@@ -42,6 +42,7 @@
     - crates/engine/speclink-core/src/lifecycle/discuss/cuts.rs
     - crates/engine/speclink-core/src/lifecycle/discuss.rs
     - crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
+    - crates/engine/speclink-core/src/command/mod.rs
     - crates/protocol/speclink-protocol/src/query.rs
     - crates/host/speclink-server/src/api/routes.rs
     - crates/host/speclink-server/tests/it/api/discussion_routes.rs
@@ -70,4 +71,5 @@
     - packages/ui/src/__tests__/discussionDetailPage.test.tsx
     - packages/ui/src/__tests__/promotedDoc.test.tsx
     - packages/ui/src/__tests__/archivedDetailPage.test.tsx
+    - packages/ui/src/__tests__/improveBadge.test.tsx
 - 影響的層：speclink-core（純函式擴充）、speclink-protocol、speclink-server、speclink-desktop-core、Tauri 殼、@speclink/ui、apps/desktop；speclink-cli 的程式不動（remote 模式照舊只取 `info` 與 `content`），只在 remote_read_path.rs 加一個測試
