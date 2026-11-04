@@ -302,7 +302,7 @@ const WAITING = "目前分頁的 agent 在等你回答";
 // 技能跳窗：把指令放到輸入框。
 export function placePlan({ skill, target, note, agents, focus }) {
   const agent = inputAgent(agents, focus);
-  if (!agent) return none("目前分頁沒有 agent。可以勾選「開新分頁」");
+  if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
   if (agent.status === "blocked") return none(WAITING);
   if (onlyClaude(skill, agent.key)) return none(`${skill} 只有 Claude Code 能用`);
   return { kind: "place", agent, text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `) };
