@@ -49,7 +49,7 @@ import {
   stationViews,
   waveToStart,
 } from '../../integrations/herdr/mods/speclink/model.js';
-import { TO_EN, TO_ZH, langFrom, setLang, tr } from '../../integrations/herdr/mods/speclink/i18n.js';
+import { TO_EN, TO_ZH, autoTr, langFrom, setLang, tr, translateHerdr } from '../../integrations/herdr/mods/speclink/i18n.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const REPO = '/work/repo';
@@ -1442,6 +1442,76 @@ test('promptLabels：認得疊加的指令', () => {
   assert.deepEqual(promptLabels('/speclink-archive + /speclink-commit add-a'), labels);
   assert.deepEqual(hookLabels({ tool_name: 'Skill', tool_input: { skill: 'speclink-archive', args: '+ /speclink-commit add-a' } }), labels);
   assert.deepEqual(promptLabels('/speclink-archive + /speclink-commit'), ['speclink.skill=speclink-archive', 'speclink.discussion=']);
+});
+
+// ---- 內建畫面的翻譯 ----
+
+test('autoTr：中文系統查對照表，英文系統維持原文', () => {
+  try {
+    setLang('zh');
+    assert.equal(autoTr('Settings'), '設定');
+    assert.equal(autoTr('Commit'), '提交');
+    assert.equal(autoTr('LAYOUT'), '版面');
+    setLang('en');
+    assert.equal(autoTr('Settings'), 'Settings');
+    assert.equal(autoTr('7 agents'), '7 agents');
+  } finally {
+    setLang('zh');
+  }
+});
+
+test('autoTr：帶變數的句子要整句符合才翻', () => {
+  assert.equal(autoTr('7 agents'), '7 個 agent');
+  assert.equal(autoTr('· 1 needs you'), '· 1 個需要你');
+  assert.equal(autoTr('⌘⇧P  commands'), '⌘⇧P  指令');
+  assert.equal(autoTr('12 files'), '12 個檔案');
+  assert.equal(autoTr('Theme: graphite'), '主題：graphite');
+  assert.equal(autoTr('Default (Geist)'), '預設（Geist）');
+  assert.equal(autoTr('Up to date. Checked at 09:30.'), '已是最新版本。檢查時間 09:30。');
+  assert.equal(autoTr('0.1.13 is ready. Restart to switch now; it also switches when you quit.'), '0.1.13 已經準備好。重新啟動就會切換，結束 Herdr 時也會切換。');
+  // 使用者取的名稱不算
+  for (const name of ['two agents', 'speclink', 'add-team-invites', 'my files', 'main']) assert.equal(autoTr(name), name);
+});
+
+test('translateHerdr：畫面上的字串都查對照表，其他東西原樣傳下去', () => {
+  class Fake {
+    child(c) {
+      this.got = c;
+      return this;
+    }
+    children(items) {
+      this.got = [...items];
+      return this;
+    }
+    tooltip(t) {
+      this.got = t;
+      return this;
+    }
+  }
+  const inputs = { new: (options) => options };
+  const ui = { div: () => new Fake(), InputState: inputs };
+  translateHerdr(ui);
+  const element = new Fake();
+  assert.equal(element.child('Settings').got, '設定');
+  assert.equal(element.child('add-team-invites').got, 'add-team-invites');
+  assert.equal(element.child(3).got, 3);
+  const inner = new Fake();
+  assert.equal(element.child(inner).got, inner);
+  assert.deepEqual(element.children(['Look', 5, 'x']).got, ['外觀', 5, 'x']);
+  assert.equal(element.tooltip('Rename').got, '重新命名');
+  assert.deepEqual(inputs.new({ placeholder: 'Commit message', value: 'a' }), { placeholder: '提交訊息', value: 'a' });
+  assert.equal(inputs.new(), undefined);
+  // 再裝一次（mod 重新載入）不會包兩層
+  const once = Fake.prototype.child;
+  translateHerdr(ui);
+  assert.equal(Fake.prototype.child, once);
+  assert.equal(new Fake().child('Settings').got, '設定');
+});
+
+test('dock-panel：檔案樹的名稱不會被翻，改不到時不擋停靠', () => {
+  const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
+  assert.match(source, /as: 'speclink-files'.*optional: true/);
+  for (const name of ['speclink-tabs', 'speclink-status', 'speclink-chrome']) assert.ok(!source.includes(name), name);
 });
 
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));

@@ -1,7 +1,7 @@
 // Speclink 面板：目前 space 的專案有哪些變更與討論、各自做到哪裡，以及按一下把技能交給對的
 // agent。資料只來自 speclink CLI 的 --json；判斷邏輯都在 model.js。
 import { View, div, image, svg } from "gpui-kit";
-import { h_flex, v_flex } from "gpui-base";
+import { InputState, h_flex, v_flex } from "gpui-base";
 import {
   agents,
   closeOverlay,
@@ -83,7 +83,7 @@ function programIcon(program, size, color) {
 
 export default class SpeclinkPanel extends View {
   init(_props, cx) {
-    watchLang(exec, cx);
+    watchLang(exec, cx, { div, InputState });
     const Other = VIEWS[props()?.view];
     if (Other) {
       this.other = new Other();

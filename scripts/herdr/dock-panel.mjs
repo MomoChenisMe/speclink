@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板。
-// 也複製 spaces、agents、workspace-chrome 三個 mod，接上階段徽章、Speclink 資訊和系統語系，因為內建的沒有擴充點。
+// 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉。
 // 內建版面不能停靠，複製版又不會跟著 Herdr 更新，所以 Herdr 更新後要重跑這支。
 // 舊的版面會留在 layouts/speclink.json.old-<時間>，和 Herdr 的 layout.reset 同樣做法；
 // 舊的 mod 複製版直接刪掉，那些資料夾沒有使用者的資料。
@@ -30,8 +30,8 @@ const COLUMN_SYNC = { id: 'speclink-column-sync', content: { mod: 'speclink', pr
 
 // 接上徽章要改的地方。Herdr 改了這幾行就停下來，不要裝出半套。
 const SPACES_EDITS = [
-  ['import { View, div, svg } from "gpui-kit";', 'import { View, div, svg } from "gpui-kit";\nimport { tr, watchLang } from "./i18n.js";\nimport { rowEnd, watchStages } from "./stage-badge.js";'],
-  ['export default class Spaces extends View {\n  init(_props, cx) {', 'export default class Spaces extends View {\n  init(_props, cx) {\n    watchLang(exec, cx);\n    watchStages(this, cx);'],
+  ['import { View, div, svg } from "gpui-kit";', 'import { View, div, svg } from "gpui-kit";\nimport { InputState as LangInput } from "gpui-base";\nimport { tr, watchLang } from "./i18n.js";\nimport { rowEnd, watchStages } from "./stage-badge.js";'],
+  ['export default class Spaces extends View {\n  init(_props, cx) {', 'export default class Spaces extends View {\n  init(_props, cx) {\n    watchLang(exec, cx, { div, InputState: LangInput });\n    watchStages(this, cx);'],
   [
     '.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())',
     '.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())\n          .children(rowEnd(g, tree, t))',
@@ -72,8 +72,8 @@ const AGENTS_EDITS = [
   ],
   // 沒取過名的分頁，列上寫在做的變更。
   [
-    'return tab ? title(tab, lead(tab)) : a.title || a.program?.name || "";',
-    'const change = tab?.named ? null : changeOf(a)?.name;\n      return change ?? (tab ? title(tab, lead(tab)) : a.title || a.program?.name || "");',
+    'const label = (a) => labels.get(a.address);',
+    'const named = new Set(spaces().flatMap((s) => s.tabs).filter((tab) => tab.named).map((tab) => tab.id));\n    const label = (a) => (named.has(a.tab) ? null : changeOf(a)?.name) ?? labels.get(a.address);',
   ],
   // Needs you 那一組沒有 space 標題，所以列上要寫 space。
   ['const full = byPriority || isPinned;', 'const full = byPriority || isPinned || rankOf(a) === RANK.blocked;'],
@@ -121,12 +121,12 @@ const AGENTS_EDITS = [
   ['.child("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not.")', '.child(tr("No agent status yet. Agents show up here when they report their status. Older versions and agents inside tmux may not."))'],
 ];
 
-// 側欄最下面的 Settings 和 Add machine。
-const CHROME_EDITS = [
-  ['import { theme, run, props, window, shared, setShared, updates, layout } from "herdr";', 'import { theme, run, props, window, shared, setShared, updates, layout, exec } from "herdr";\nimport { tr, watchLang } from "./i18n.js";'],
-  ['export default class WorkspaceChrome extends View {\n', 'export default class WorkspaceChrome extends View {\n  init(_props, cx) {\n    watchLang(exec, cx);\n  }\n'],
-  ['row("settings", "settings", "Settings", false,', 'row("settings", "settings", tr("Settings"), false,'],
-  ['row("machine", "plus", "Add machine", true,', 'row("machine", "plus", tr("Add machine"), true,'],
+// i18n.js 會翻畫面上所有符合對照表的字串，但資料夾可能剛好叫 Settings，差異的某一行也可能剛好是 Commit。
+// 字尾加上看不見的 U+2060，對照表就查不到。
+const FILES_EDITS = [['.truncate().child(entry.name))', '.truncate().child(`${entry.name}\u2060`))']];
+const CHANGES_EDITS = [
+  ['.max_w(260).min_w(0).truncate().child(name)))', '.max_w(260).min_w(0).truncate().child(`${name}\u2060`)))'],
+  ['.child(div().flex_1().min_w(0).truncate().child(text));', '.child(div().flex_1().min_w(0).truncate().child(`${text}\u2060`));'],
 ];
 
 const integration = (file) => fileURLToPath(new URL(`../../integrations/herdr/${file}`, import.meta.url));
@@ -147,13 +147,9 @@ const CLONES = [
     edits: AGENTS_EDITS,
     files: { ...I18N, 'speclink-rows.js': 'agents-list/speclink-rows.js', 'model.js': 'mods/speclink/model.js', 'shared.js': 'mods/speclink/shared.js' },
   },
-  {
-    mod: 'workspace-chrome',
-    blocks: ['brand', 'sidebar-footer'],
-    as: 'speclink-chrome',
-    edits: CHROME_EDITS,
-    files: I18N,
-  },
+  // 只是保護，Herdr 改了這幾行就用內建的，不擋停靠。
+  { mod: 'files', blocks: ['files'], as: 'speclink-files', edits: FILES_EDITS, files: {}, optional: true },
+  { mod: 'changes', blocks: ['changes'], as: 'speclink-changes', edits: CHANGES_EDITS, files: {}, optional: true },
 ];
 
 const home = process.env.HERDR_APP_HOME ?? path.join(homedir(), '.config/herdr-app');
@@ -165,11 +161,15 @@ for (const clone of CLONES) {
   clone.source = readFileSync(path.join(home, 'mods', clone.mod, 'main.js'), 'utf8');
   for (const [from, to] of clone.edits) {
     if (clone.source.split(from).length !== 2) {
-      throw new Error(`Herdr 的 ${clone.mod} mod 改了，找不到這一行，這支腳本要跟著改：${from}`);
+      if (!clone.optional) throw new Error(`Herdr 的 ${clone.mod} mod 改了，找不到這一行，這支腳本要跟著改：${from}`);
+      console.warn(`Herdr 的 ${clone.mod} mod 改了，改用內建的。名稱剛好和介面文字相同時會被翻。找不到：${from}`);
+      clone.skip = true;
+      break;
     }
     clone.source = clone.source.replace(from, () => to);
   }
 }
+const clones = CLONES.filter((clone) => !clone.skip);
 
 // 版面裡指定 id 的區塊。
 function findBlock(node, id) {
@@ -187,7 +187,7 @@ if (existsSync(file)) {
   renameSync(file, `${file}.old-${Date.now()}`);
 }
 
-for (const clone of CLONES) {
+for (const clone of clones) {
   const dir = path.join(home, 'mods', clone.as);
   rmSync(dir, { recursive: true, force: true });
   herdr('mod.clone', { name: clone.mod, as: clone.as });
@@ -200,7 +200,7 @@ const layout = JSON.parse(readFileSync(file, 'utf8'));
 if (layout.type !== 'row') {
   throw new Error(`main 版面的最外層不再是 row（現在是 ${layout.type}），這支腳本要跟著改`);
 }
-for (const clone of CLONES) {
+for (const clone of clones) {
   for (const id of clone.blocks) {
     const block = findBlock(layout, id);
     if (block?.content?.mod !== clone.mod) {
