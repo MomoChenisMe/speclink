@@ -98,11 +98,26 @@ export function speclinkUrl(kind, project, name) {
 // 桌面 app 的 bundle id。
 export const APP_ID = "app.speclink.desktop";
 
-// Logo 依序嘗試的 open 參數。讀得到這台機器上的專案時先送網址切過去；沒有註冊 speclink 網址的
-// 舊版 app 會讓網址送不出去，這時退回只叫出 app。門檻與「路線圖」鈕相同。
+// 這個 space 的專案能不能用網址在桌面 app 開：讀得到專案，而且專案在這台機器上。
+// Logo 和「路線圖」鈕用同一個門檻。
+export const canOpenProject = ({ hasBoard, on }) => hasBoard && !on;
+
+// Logo 依序嘗試的 open 參數。能用網址開時先送網址切過去；沒有註冊 speclink 網址的舊版 app 會讓
+// 網址送不出去，這時退回只叫出 app。
 export function logoOpenAttempts({ root, hasBoard, on }) {
   const bringUp = ["-b", APP_ID];
-  return hasBoard && !on ? [[speclinkUrl("project", root)], bringUp] : [bringUp];
+  return canOpenProject({ hasBoard, on }) ? [[speclinkUrl("project", root)], bringUp] : [bringUp];
+}
+
+// 依序跑 open，成功就停並回傳 null；全部失敗回傳最後一次有內容的錯誤。exec 由呼叫端傳入。
+export async function lastOpenError(attempts, exec) {
+  let error = "";
+  for (const args of attempts) {
+    const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
+    if (r.code === 0) return null;
+    error = r.stderr || error;
+  }
+  return error;
 }
 
 // 這個 agent 接下來在做什麼。name 是技能搭配的變更或討論。變更的技能沒指定時不動 speclink.change，

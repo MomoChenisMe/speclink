@@ -1,0 +1,68 @@
+schema: spec-driven
+created: 2026-11-04T15:00:22+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-11-04T15:56:08+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-04T17:09:58+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_rounds: 3
+reviewed_scope:
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: f90a8fd00f37683c9880ab4804dab894fdb188ce402a00284253e2587b41bf19
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 90c8730ab81faf093a09de3c79312031cbbac6ae1419aabb821168fed32f3479
+  - path: apps/desktop/src/deepLink.ts
+    hash: 6ed7297c56c2f154e5a9fc00f22c87bc5aa2d1390c031765f609d7d0a2a15b23
+  - path: apps/desktop/src/store.ts
+    hash: 11d3b58b0bd98d76351677fdd3698ab76a988772146beb8bffae3b24dd8f98ad
+  - path: docs/product-status.md
+    hash: 027d2b150fe69100d02ea4b6e1724ca89953bb53c676096c48317cbef0d6da7c
+  - path: docs/product-status.zh-TW.md
+    hash: 3d927b554e0aa05b0d6338f0468c161616d82d579928d93577d0d1620c498f02
+  - path: integrations/herdr/README.en.md
+    hash: dacd818445b6fba5d692f33b0aaf7f43f840bb2e5d48112faa4f170fd91d4205
+  - path: integrations/herdr/README.md
+    hash: 2068dfad4a63b21f4b6facb7f8cd6a18983b56107ede001d000e1ccb4dfab91f
+  - path: integrations/herdr/mods/speclink/i18n.js
+    hash: ec5da18c9d6d34e25c1363e1f78fc09abdf69bc17e11cd4987b01ef15711b097
+  - path: integrations/herdr/mods/speclink/main.js
+    hash: d761422d54695ff50d32a23cdd3b6ccee82e3bff69e4208e51f882667ffdd2dc
+  - path: integrations/herdr/mods/speclink/model.js
+    hash: 5b13ca8bf7d63fc779c5997e5dcb9fbf555d14b87694cda3141cc637652cf2a6
+  - path: scripts/herdr/panel-model.test.mjs
+    hash: 4d061ab079b93f3f44a123f5882e8f914dae470ddfcf45467b42be8988d68a76
+verified_at: 2026-11-04T17:09:58+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_rounds: 3
+verified_scope:
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: f90a8fd00f37683c9880ab4804dab894fdb188ce402a00284253e2587b41bf19
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 90c8730ab81faf093a09de3c79312031cbbac6ae1419aabb821168fed32f3479
+  - path: apps/desktop/src/deepLink.ts
+    hash: 6ed7297c56c2f154e5a9fc00f22c87bc5aa2d1390c031765f609d7d0a2a15b23
+  - path: apps/desktop/src/store.ts
+    hash: 11d3b58b0bd98d76351677fdd3698ab76a988772146beb8bffae3b24dd8f98ad
+  - path: docs/product-status.md
+    hash: 027d2b150fe69100d02ea4b6e1724ca89953bb53c676096c48317cbef0d6da7c
+  - path: docs/product-status.zh-TW.md
+    hash: 3d927b554e0aa05b0d6338f0468c161616d82d579928d93577d0d1620c498f02
+  - path: integrations/herdr/README.en.md
+    hash: dacd818445b6fba5d692f33b0aaf7f43f840bb2e5d48112faa4f170fd91d4205
+  - path: integrations/herdr/README.md
+    hash: 2068dfad4a63b21f4b6facb7f8cd6a18983b56107ede001d000e1ccb4dfab91f
+  - path: integrations/herdr/mods/speclink/i18n.js
+    hash: ec5da18c9d6d34e25c1363e1f78fc09abdf69bc17e11cd4987b01ef15711b097
+  - path: integrations/herdr/mods/speclink/main.js
+    hash: d761422d54695ff50d32a23cdd3b6ccee82e3bff69e4208e51f882667ffdd2dc
+  - path: integrations/herdr/mods/speclink/model.js
+    hash: 5b13ca8bf7d63fc779c5997e5dcb9fbf555d14b87694cda3141cc637652cf2a6
+  - path: scripts/herdr/panel-model.test.mjs
+    hash: 4d061ab079b93f3f44a123f5882e8f914dae470ddfcf45467b42be8988d68a76
+archived_at: 2026-11-04T17:36:39+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

@@ -751,6 +751,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     loadAppInfo: fetchAppInfo,
   } = deps;
   return create<AppState>((set, get) => {
+    /** 切回看板頁、離開詳情頁並顯示指定的檢視，同時收掉可取消浮層；不可取消浮層開啟中不改任何狀態。 */
+    const showBoardMode = (boardMode: BoardMode) => {
+      if (uncancelableOverlayOpen(get())) return;
+      get().setBoardView("board");
+      set({ boardMode, ...cancelableOverlaysCleared() });
+    };
     /** 分頁的本機目錄：local 為專案根、remote 為 checkout；remote 無 checkout 時為 null。 */
     const localDirOf = (key: string | null): string | null => {
       const tab = get().tabs.find((entry) => locatorKey(entry.locator) === key);
@@ -1485,15 +1491,11 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     },
 
     openRoadmap() {
-      if (uncancelableOverlayOpen(get())) return;
-      get().setBoardView("board");
-      set({ boardMode: "roadmap", ...cancelableOverlaysCleared() });
+      showBoardMode("roadmap");
     },
 
     openBoard() {
-      if (uncancelableOverlayOpen(get())) return;
-      get().setBoardView("board");
-      set({ boardMode: "cards", ...cancelableOverlaysCleared() });
+      showBoardMode("cards");
     },
 
     leaveSettings() {

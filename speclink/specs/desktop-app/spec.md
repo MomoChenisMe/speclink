@@ -4306,9 +4306,9 @@ updated: 2026-10-24T22:35:52+08:00
 ---
 ### Requirement: 以 speclink 網址開啟詳情頁
 
-桌面 app SHALL 註冊 `speclink` 網址格式，接受三種網址：`speclink://change/<變更名稱>?project=<專案資料夾絕對路徑>` 開啟變更詳情頁，`speclink://discussion/<討論 slug>?project=<專案資料夾絕對路徑>` 開啟討論詳情頁，`speclink://roadmap?project=<專案資料夾絕對路徑>` 開啟該專案的路線圖（依 desktop-roadmap「看板頁的路線圖檢視」）；名稱與路徑 SHALL 以百分比編碼傳遞並在處理前解碼。網址的 host SHALL 只接受 `change`、`discussion` 與 `roadmap`；`change` 與 `discussion` 的 path SHALL 恰為一段非空名稱，`roadmap` 的 path SHALL 為空（可帶單一 `/`），`project` SHALL 為絕對路徑（POSIX 以 `/` 開頭，Windows 以磁碟代號加 `:\` 或 `:/` 開頭）；不符者 SHALL 視為格式錯誤。
+桌面 app SHALL 註冊 `speclink` 網址格式，接受四種網址：`speclink://change/<變更名稱>?project=<專案資料夾絕對路徑>` 開啟變更詳情頁，`speclink://discussion/<討論 slug>?project=<專案資料夾絕對路徑>` 開啟討論詳情頁，`speclink://roadmap?project=<專案資料夾絕對路徑>` 開啟該專案的路線圖（依 desktop-roadmap「看板頁的路線圖檢視」），`speclink://project?project=<專案資料夾絕對路徑>` 切到該專案並顯示看板；名稱與路徑 SHALL 以百分比編碼傳遞並在處理前解碼。網址的 host SHALL 只接受 `change`、`discussion`、`roadmap` 與 `project`；`change` 與 `discussion` 的 path SHALL 恰為一段非空名稱，`roadmap` 與 `project` 的 path SHALL 為空（可帶單一 `/`），`project` SHALL 為絕對路徑（POSIX 以 `/` 開頭，Windows 以磁碟代號加 `:\` 或 `:/` 開頭）；不符者 SHALL 視為格式錯誤。
 
-處理一個網址時，桌面 app SHALL 依序：顯示主視窗並取得焦點（自最小化亦還原）；以與「開啟專案」相同的探測流程開啟 `project`——已是分頁的專案成為活躍分頁，未開過的加成分頁；探測結果進入專案且該專案的資料載入完成後，`change` 與 `discussion` 開啟目標的詳情頁，詳情頁的互斥與宿主規則與系統匣的「開啟此變更」「開啟此討論」相同（依「詳情頁互斥」「變更與討論詳情頁的宿主為看板」）；`roadmap` SHALL 關閉開著的詳情頁並把主區切到該專案看板頁的路線圖檢視，沒有找不到目標的情形。探測結果為未初始化、未啟用或帶 remote 標記的資料夾時，SHALL 沿用「開啟專案」的既有對話框或選擇器，SHALL NOT 開啟詳情頁，確認前 SHALL NOT 寫入任何檔案。
+處理一個網址時，桌面 app SHALL 依序：顯示主視窗並取得焦點（自最小化亦還原）；以與「開啟專案」相同的探測流程開啟 `project`——已是分頁的專案成為活躍分頁，未開過的加成分頁；探測結果進入專案且該專案的資料載入完成後，`change` 與 `discussion` 開啟目標的詳情頁，詳情頁的互斥與宿主規則與系統匣的「開啟此變更」「開啟此討論」相同（依「詳情頁互斥」「變更與討論詳情頁的宿主為看板」）；`roadmap` SHALL 關閉開著的詳情頁並把主區切到該專案看板頁的路線圖檢視，沒有找不到目標的情形；`project` SHALL 關閉開著的詳情頁與可取消的浮層，並把主區切到該專案看板頁的卡片檢視（上次選的是路線圖時也一樣），SHALL NOT 開啟詳情頁或路線圖，沒有找不到目標的情形。探測結果為未初始化、未啟用或帶 remote 標記的資料夾時，SHALL 沿用「開啟專案」的既有對話框或選擇器，SHALL NOT 開啟詳情頁，`roadmap` 與 `project` SHALL NOT 切換主區，確認前 SHALL NOT 寫入任何檔案。
 
 網址 SHALL 只能開啟與檢視：處理流程 SHALL NOT 觸發任何寫入動詞（勾任務、封存、轉出、刪除等）。格式錯誤時 SHALL 顯示主視窗並以 toast 說明網址無法開啟，SHALL NOT 切換專案；目標不在該專案已載入的清單內時 SHALL 停在已切換的專案並以 toast 說明找不到該變更或討論。
 
@@ -4353,7 +4353,11 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 | `speclink://change/add-search?project=C%3A%2Fwork%2Fapp` | 變更 add-search，專案 C:/work/app |
 | `speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink` | 路線圖，專案 /Users/dev/speclink |
 | `speclink://roadmap/?project=%2Fa` | 路線圖，專案 /a |
+| `speclink://project?project=%2FUsers%2Fdev%2Fspeclink` | 切到專案 /Users/dev/speclink |
+| `speclink://project/?project=%2Fa` | 切到專案 /a |
 | `speclink://roadmap/waves?project=%2Fa` | 格式錯誤（路線圖不帶名稱） |
+| `speclink://project/board?project=%2Fa` | 格式錯誤（專案網址不帶名稱） |
+| `speclink://project` | 格式錯誤（缺 project） |
 | `speclink://spec/desktop-app?project=%2Fa` | 格式錯誤（未知種類） |
 | `speclink://change/a/b?project=%2Fa` | 格式錯誤（名稱多於一段） |
 | `speclink://change/?project=%2Fa` | 格式錯誤（名稱為空） |
@@ -4366,6 +4370,16 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 - **WHEN** app 執行中、主區開著某變更的詳情頁，外部程式送出 `speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink`
 - **THEN** 主視窗顯示於前景並取得焦點，活躍分頁為 speclink，詳情頁已關閉，主區為看板頁的路線圖檢視，沒有出現 toast
 
+#### Scenario: 以網址切到專案並顯示看板
+
+- **WHEN** app 執行中、活躍分頁為 other、主區開著某變更的詳情頁、看板頁上次選的是路線圖，外部程式送出 `speclink://project?project=%2FUsers%2Fdev%2Fspeclink`
+- **THEN** 主視窗顯示於前景並取得焦點，活躍分頁為 speclink，詳情頁已關閉，主區為看板頁的卡片檢視，沒有開啟詳情頁或路線圖，沒有出現 toast
+
+#### Scenario: 以網址切到尚未開啟的專案
+
+- **WHEN** 分頁列沒有 /Users/dev/other，外部程式送出 `speclink://project?project=%2FUsers%2Fdev%2Fother`，該資料夾是已啟用的專案
+- **THEN** 分頁列多出 other 並成為活躍分頁，資料載入完成後主區為看板頁的卡片檢視
+
 #### Scenario: 找不到目標變更
 
 - **WHEN** 外部程式送出 `speclink://change/no-such-change?project=%2FUsers%2Fdev%2Fspeclink`，speclink 專案沒有這個進行中的變更
@@ -4376,10 +4390,20 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 - **WHEN** 外部程式送出 `speclink://change/x?project=%2FUsers%2Fdev%2Fplain`，該資料夾尚未初始化 speclink
 - **THEN** 主視窗出現「開啟專案」流程的既有初始化確認框，未開任何詳情頁，使用者確認前該資料夾沒有新增或修改任何檔案
 
+#### Scenario: 專案網址指向未初始化的資料夾
+
+- **WHEN** 活躍分頁為 speclink、主區為規格頁，外部程式送出 `speclink://project?project=%2FUsers%2Fdev%2Fplain`，該資料夾尚未初始化 speclink
+- **THEN** 主視窗出現「開啟專案」流程的既有初始化確認框，主區維持規格頁，使用者確認前該資料夾沒有新增或修改任何檔案
+
 #### Scenario: 不可取消的浮層開著時不開詳情
 
 - **WHEN** 主視窗開著不可取消的浮層，外部程式送出指向已開專案某變更的合法網址
 - **THEN** 主視窗顯示於前景，浮層與目前畫面維持不變，未開啟該變更的詳情頁
+
+#### Scenario: 不可取消的浮層開著時不切專案
+
+- **WHEN** 主視窗開著不可取消的浮層，外部程式送出 `speclink://project?project=%2FUsers%2Fdev%2Fother`
+- **THEN** 主視窗顯示於前景，浮層、活躍分頁與目前畫面維持不變，沒有出現 toast
 
 #### Scenario: Windows 與 Linux 再次啟動時帶到前景
 
@@ -4388,6 +4412,6 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 
 
 <!-- @trace
-source: desktop-roadmap
-updated: 2026-11-04T08:50:07+08:00
+source: desktop-project-deep-link
+updated: 2026-11-04T17:36:39+08:00
 -->
