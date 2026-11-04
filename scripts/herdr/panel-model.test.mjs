@@ -260,6 +260,37 @@ test('changeAgents：依標籤、worktree 路徑、終端機標題的順序，�
   );
 });
 
+test('changeAgents：討論或提案的標題只是提到變更，不算在做', () => {
+  const change = row({ name: 'add-a' });
+  const talk = agent({ address: 't1', title: 'discuss · add-a' });
+  const propose = agent({ address: 't2', title: 'propose · add-a' });
+  const work = agent({ address: 't3', title: 'apply · add-a' });
+  assert.deepEqual(changeAgents(change, [talk, propose, work]).map((a) => a.address), ['t3']);
+});
+
+test('changeAgents：外掛回報的焦點優先於標題，回報「沒有變更」時也不看標題', () => {
+  const change = row({ name: 'add-a' });
+  const moved = agent({ address: 't1', title: 'apply · add-a', labels: { 'speclink.focus': 'add-b' } });
+  const none = agent({ address: 't2', title: 'apply · add-a', labels: { 'speclink.focus': '-' } });
+  const here = agent({ address: 't3', title: 'propose · add-b', labels: { 'speclink.focus': 'add-a' } });
+  assert.deepEqual(changeAgents(change, [moved, none, here]).map((a) => a.address), ['t3']);
+});
+
+test('changeAgents：開工時貼了標籤的 agent 專做那個變更，焦點提到別的變更不算', () => {
+  const change = row({ name: 'add-a' });
+  const owned = agent({ address: 't1', labels: { 'speclink.change': 'add-b', 'speclink.focus': 'add-a' } });
+  assert.deepEqual(changeAgents(change, [owned]), []);
+});
+
+test('送達：這個變更的 agent 在做事時，不會把技能送給只是提到它的討論分頁（實際發生過）', () => {
+  const change = row({ name: 'add-a' });
+  const apply = agent({ address: 't1', status: 'working', title: 'apply · add-a', labels: { 'speclink.change': 'add-a' } });
+  const talk = agent({ address: 't2', status: 'done', title: 'propose · add-a', labels: { 'speclink.skill': 'speclink-discuss' } });
+  const d = planDelivery({ skill: 'apply', change, args: 'add-a', ...ctx({ agents: [apply, talk] }) });
+  assert.equal(d.kind, 'busy');
+  assert.equal(d.agent.address, 't1');
+});
+
 test('joinAgents：狀態用 core 的原始字（done 不會被 Herdr 改寫成 idle）', () => {
   const [a] = joinAgents(
     [{ address: 't1', status: 'idle', program: { key: 'claude', name: 'Claude Code' }, title: 'x', pane: 'p1', tab: 'tab1', tab_name: '1', space_name: 's' }],

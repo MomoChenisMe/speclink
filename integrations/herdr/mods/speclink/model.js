@@ -148,12 +148,19 @@ export function joinAgents(agents, terminals, panes) {
   });
 }
 
-// 正在做這個變更的 agent，依標籤、worktree 路徑、終端機標題的順序。
+// 正在做這個變更的 agent，依開工時貼的標籤、worktree 路徑、外掛回報的焦點、終端機標題的順序。
+// 開工時貼了標籤的 agent 專做那個變更，焦點和標題提到別的變更都不算。
+// 外掛回報的焦點（speclink.focus）和技能列相同，而且是即時的，有回報就不看標題。標題只有送出訊息時才
+// 更新，是舊版外掛或沒重新載入的 session 才用得到的線索；討論和提案的標題多半只是提到那個變更，不算。
 export function changeAgents(row, agents) {
   const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name);
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];
-  const byTitle = agents.filter((a) => titleChange(a.title) === row.name);
-  return [...new Set([...byLabel, ...byPath, ...byTitle])];
+  const free = agents.filter((a) => !a.labels["speclink.change"]);
+  const byFocus = free.filter((a) => a.labels["speclink.focus"] === row.name);
+  const byTitle = free.filter(
+    (a) => !a.labels["speclink.focus"] && !/^(discuss|propose) · /.test(a.title ?? "") && titleChange(a.title) === row.name,
+  );
+  return [...new Set([...byLabel, ...byPath, ...byFocus, ...byTitle])];
 }
 
 const sendable = (a) => a.status === "idle" || a.status === "done";
