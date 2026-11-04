@@ -429,7 +429,11 @@ test('deliveryHint：說明會送去哪裡，或為什麼不能送', () => {
   assert.equal(deliveryHint(deliver({ agents: [agent({ labels: { 'speclink.change': 'add-a' } })] })), '送給這個變更的 agent');
   assert.equal(deliveryHint(deliver({ agents: [agent()] })), '送給目前分頁的 agent');
   assert.equal(deliveryHint(deliver({})), '開新分頁');
-  assert.equal(deliveryHint(deliver({ agents: [agent({ status: 'blocked' })] })), 'agent 在等你回答');
+  assert.equal(deliveryHint(deliver({ agents: [agent({ status: 'blocked' })] })), '目前分頁的 agent 在等你回答');
+  assert.equal(
+    deliveryHint(deliver({ agents: [agent({ status: 'working', labels: { 'speclink.change': 'add-a' } })] })),
+    '這個變更的 agent 正在做事',
+  );
   assert.equal(deliveryHint(deliver({ known: null })), '還在確認可用的 agent');
 });
 

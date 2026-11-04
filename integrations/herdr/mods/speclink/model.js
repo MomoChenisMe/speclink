@@ -239,7 +239,7 @@ export function newWorkActions(ctx) {
 
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
 export function deliveryHint(delivery) {
-  if (delivery.kind === "busy") return `agent ${delivery.reason}`;
+  if (delivery.kind === "busy") return `${delivery.where === "change" ? "這個變更" : "目前分頁"}的 agent ${delivery.reason}`;
   if (delivery.kind === "none") return delivery.reason;
   if (delivery.kind === "new") return "開新分頁";
   if (delivery.kind === "space") return "開新 space";
