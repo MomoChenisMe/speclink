@@ -19,7 +19,7 @@ What the panel contains:
 - **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label from Start, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports (the same as the skill bar, and live), then the terminal title. The title changes only when you send a message, so the panel ignores it when the plugin reports. A title with the step discuss or propose also does not count, because the name there is often only a mention.
 - **Skill buttons**: each row keeps only the suggested next step. `⋯` opens the Skills pop-up with this skill and this row already selected. A tooltip on the button tells where it goes.
 - **Attach button**: the chat icon beside the name. It adds the name of the change or discussion to the input box in the current tab and does not send it. The button is gray when the current tab has no agent or the agent waits for your answer.
-- **Ready badge**: only in the `speclink` layout. A project row in the Spaces list shows `✓2` when the project has 2 changes that are ready. It updates about every 30 seconds and does not show when nothing is ready.
+- **Stage badge**: only in the `speclink` layout. A project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to bring up the Speclink app.
@@ -130,7 +130,7 @@ Work from the repo root, with Herdr open:
    "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
    ```
 
-3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the Spaces list with a clone that has the ready badge, and switches to it. To keep the pop-up only, skip this step.
+3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the Spaces list with a clone that has the stage badge, and switches to it. To keep the pop-up only, skip this step.
 
    ```bash
    node scripts/herdr/dock-panel.mjs
@@ -167,7 +167,7 @@ After this, the panel column has its default width, and the other column widths 
 
 The conclusion of the `herdr-speclink-panel` discussion rejected a dedicated cloned `speclink` layout, because a clone does not follow Herdr updates. On 2026-11-04, after a look at the real screen, this decision was reversed and the cost of a clone was accepted: the floating window covers the terminal, and that is too far from the agreed right column.
 
-The same conclusion rejected the Spaces sidebar badge, because it needs a clone of the spaces mod. The layout is a clone now and several projects run at once, so this was reversed on the same day. The built-in spaces mod has no extension point, so the script clones it, adds `integrations/herdr/spaces-badge/ready-badge.js`, and connects it with three lines.
+The same conclusion rejected the Spaces sidebar badge, because it needs a clone of the spaces mod. The layout is a clone now and several projects run at once, so this was reversed on the same day. The built-in spaces mod has no extension point, so the script clones it, adds `integrations/herdr/spaces-badge/stage-badge.js`, and changes a few lines to connect it. One change moves the git arrows next to the badge, so they do not cover the name when the row is full.
 
 Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` has no effect, and `layout.set` on `main` is refused.
 
@@ -186,7 +186,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. In this case the space has the name of the project and does not nest under the project. Only the tab name shows the change.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.
 - **Starting a whole wave can hit a git lock**: each agent can commit specs or make a worktree in the main folder. An agent that hits a lock stops and reports it. Click its skill button again.
-- **The badge needs a machine it can reach**: a machine that cannot be reached shows no badge. The narrow sidebar also shows no badge.
+- **The badge needs a machine it can reach**: a machine that cannot be reached shows no badge. The narrow sidebar also shows no badge. If a row does not have enough space, the space name gets shorter, so the arrows and the badge stay visible.
 - **The panel text is Traditional Chinese only**.
 
 ## Development
