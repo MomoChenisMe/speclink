@@ -1,4 +1,4 @@
-// 技能跳窗：選技能和搭配的變更或討論。Enter 把指令放到目前分頁的輸入框，不送出。
+// 技能跳窗：選技能和搭配的變更或討論。Enter 把指令貼到目前分頁的輸入框，不送出。
 // 勾選「開新分頁」時改成 herdr-dispatch 技能的做法：用 hc run 開新分頁並開工，變更可以複選。
 // 由 speclink-new 的 mod.json 開啟，main.js 看到 props 的 view 就把畫面交給這裡。
 import { div, svg } from "gpui-kit";
@@ -154,7 +154,7 @@ export default class SkillPicker {
   }
 
   async place(plan, cx) {
-    const failed = await placeInInput(plan, cx);
+    const failed = await placeInInput(plan);
     if (failed) return this.fail(failed, cx);
     closeOverlay(props().overlay);
   }

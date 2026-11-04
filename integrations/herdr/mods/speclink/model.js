@@ -287,8 +287,8 @@ export function skillTargets(skill, board) {
 const none = (reason) => ({ kind: "none", reason });
 const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
 const joinArgs = (target, note) => [target?.args, note].filter(Boolean).join(" ");
-// hc keys 打得出來的字元。打不出來的有中文、大寫和 Codex 的 $。
-const TYPABLE = /^[a-z0-9/. -]+$/;
+// 控制字元會被終端機當成按鍵（換行就送出了），一律換成空白。
+const pasteable = (text) => text.replace(/[\u0000-\u001f\u007f]/g, " ");
 
 // 放進輸入框的對象：目前分頁的 agent，焦點所在的優先。
 function inputAgent(agents, focus) {
@@ -296,30 +296,16 @@ function inputAgent(agents, focus) {
   return here.find((a) => a.address === focus?.terminal) ?? here[0] ?? null;
 }
 
-function typeInto(agent, text) {
-  const plan = { kind: "place", agent, text };
-  if (TYPABLE.test(text)) {
-    return { ...plan, hc: ["keys", agent.address, ...[...text].map((c) => (c === " " ? "space" : c))] };
-  }
-  // 其他字元只有 hc send 貼得進去，而它一定按 Enter。Claude Code 把結尾的「\」加 Enter 當成換行，
-  // 不會送出（閒置和做事中都實測過）。輸入框會多一個空行。不再按退格去掉它：退格萬一排到 Enter 之前，
-  // 刪掉的是「\」，文字就送出去了。
-  if (agent.key === "claude") return { ...plan, hc: ["send", agent.address, `${text}\\`] };
-  return none("這段文字有打不出來的字元");
-}
-
-// agent 在等回答時不放，打字可能答掉對話框。在做事可以放，因為不會送出。
+// agent 在等回答時不放，貼上可能答掉對話框。在做事可以放，因為不會送出。
 const WAITING = "目前分頁的 agent 在等你回答";
-const TRY_NEW_TAB = "。可以勾選「開新分頁」";
 
 // 技能跳窗：把指令放到輸入框。
 export function placePlan({ skill, target, note, agents, focus }) {
   const agent = inputAgent(agents, focus);
-  if (!agent) return none(`目前分頁沒有 agent${TRY_NEW_TAB}`);
+  if (!agent) return none("目前分頁沒有 agent。可以勾選「開新分頁」");
   if (agent.status === "blocked") return none(WAITING);
   if (onlyClaude(skill, agent.key)) return none(`${skill} 只有 Claude Code 能用`);
-  const plan = typeInto(agent, `${commandText(agent.key, skill, joinArgs(target, note))} `);
-  return plan.kind === "none" ? none(`${plan.reason}${TRY_NEW_TAB}`) : plan;
+  return { kind: "place", agent, text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `) };
 }
 
 // 面板的附加鈕：把變更或討論的名稱接在輸入框現有的文字後面。讀不到輸入框，所以前後都留空白。
@@ -327,7 +313,7 @@ export function attachPlan({ name, agents, focus }) {
   const agent = inputAgent(agents, focus);
   if (!agent) return none("目前分頁沒有 agent");
   if (agent.status === "blocked") return none(WAITING);
-  return typeInto(agent, ` ${name} `);
+  return { kind: "place", agent, text: pasteable(` ${name} `) };
 }
 
 // 開新分頁：做法和檢查都跟 herdr-dispatch 技能相同。分頁開在目前的 space，畫面留在原地。
