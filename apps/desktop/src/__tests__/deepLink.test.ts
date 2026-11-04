@@ -164,7 +164,7 @@ function harness(
     openDetail: vi.fn((name: string) => log.push(`openDetail:${name}`)),
     openDiscussion: vi.fn((slug: string) => log.push(`openDiscussion:${slug}`)),
     setBoardView: vi.fn((view: string) => log.push(`setBoardView:${view}`)),
-    setBoardMode: vi.fn((mode: string) => log.push(`setBoardMode:${mode}`)),
+    openRoadmap: vi.fn(() => log.push("openRoadmap")),
   };
   const dispose = installDeepLinks({ getState: () => state as never }, over.ready ?? Promise.resolve());
   return { state, dispose, emit: (urls: string[]) => plugin.emit(urls) };
@@ -267,17 +267,12 @@ describe("installDeepLinks", () => {
     expect(h.state.openProjectAt).not.toHaveBeenCalled();
   });
 
-  // 路線圖網址（desktop-roadmap）：開專案後關閉詳情頁（setBoardView 切頁即離開詳情頁）、
-  // 主區切到看板頁的路線圖檢視；沒有找不到目標的情形，不出 toast。
-  it("(j) 路線圖網址依序喚起主視窗、開專案、切回看板頁、切到路線圖", async () => {
+  // 路線圖網址（desktop-roadmap）：開專案後以 openRoadmap 關閉詳情頁與可取消浮層、主區切到
+  // 看板頁的路線圖檢視（store 測試驗 openRoadmap 本身）；沒有找不到目標的情形，不出 toast。
+  it("(j) 路線圖網址依序喚起主視窗、開專案、開路線圖", async () => {
     const h = harness({ launch: [ROADMAP_URL] });
     await flush();
-    expect(log).toEqual([
-      "openMainWindow",
-      `openProjectAt:${PROJECT}`,
-      "setBoardView:board",
-      "setBoardMode:roadmap",
-    ]);
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openRoadmap"]);
     expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
     expect(h.state.openDetail).not.toHaveBeenCalled();
     expect(toastError).not.toHaveBeenCalled();

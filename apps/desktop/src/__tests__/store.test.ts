@@ -614,7 +614,7 @@ describe("app store (Zustand)", () => {
     expect(store.getState().unpromotedCuts).toEqual([PANEL_CUT]);
   });
 
-  it("refresh：清單回應缺 next 與 unpromotedCuts 時為 null 與空陣列", async () => {
+  it("refresh：清單回應的 next 為 null、unpromotedCuts 為空陣列時照樣寫入", async () => {
     const store = storeWith(fakeDataSource());
     await store.getState().refresh();
     expect(store.getState().planNext).toBeNull();
@@ -670,6 +670,20 @@ describe("app store (Zustand)", () => {
     store.getState().setBoardMode("roadmap");
     store.getState().setBoardView("specs");
     store.getState().setBoardView("board");
+    expect(store.getState().boardMode).toBe("roadmap");
+  });
+
+  it("openRoadmap 關閉開著的詳情頁、切回看板頁並顯示路線圖（Scenario「以網址開啟路線圖」）", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    store.getState().openDetail("desktop-shell-and-browser");
+    store.getState().openRoadmap();
+    expect(store.getState().detailChange).toBeNull();
+    expect(store.getState().boardView).toBe("board");
+    expect(store.getState().boardMode).toBe("roadmap");
+    store.getState().setBoardView("specs");
+    store.getState().openRoadmap();
+    expect(store.getState().boardView).toBe("board");
     expect(store.getState().boardMode).toBe("roadmap");
   });
 
@@ -1357,6 +1371,8 @@ describe("app store (Zustand)", () => {
       (s) => s.detailChange?.name === "desktop-shell-and-browser",
     ],
     ["openDiscussion", (s) => s.openDiscussion("topic-a"), (s) => s.detailDiscussion?.slug === "topic-a"],
+    // 路線圖網址（desktop-roadmap）與開詳情的網址一樣收掉可取消浮層。
+    ["openRoadmap", (s) => s.openRoadmap(), (s) => s.boardMode === "roadmap"],
   ];
   describe.each(OPENERS)("open 動作清除可取消浮層：%s", (_name, open, drawerOpen) => {
     it.each<[string, Partial<AppState>]>([

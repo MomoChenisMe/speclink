@@ -23,6 +23,7 @@ export function BoardSearchBar({
   activeFilterCount = 0,
   children,
   disabledReason,
+  onReveal,
 }: {
   query: string;
   onQuery: (q: string) => void;
@@ -41,16 +42,21 @@ export function BoardSearchBar({
   /** 搜尋不可用的說明（remote capability 缺口）：提供時輸入 disabled 並以其
    * 文字為 tooltip（title）、聚焦快捷鍵停用；缺席＝照常。 */
   disabledReason?: string;
+  /** 搜尋列所在的卡片檢視被藏起來時由宿主提供：快捷鍵與 speclink:focus-search 改呼叫它（宿主切回
+   * 卡片後再聚焦），不去聚焦藏起來的輸入。 */
+  onReveal?: () => void;
 }) {
   const { t, tn } = useI18n();
   const inputRef = useRef<HTMLInputElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
+  const revealRef = useRef(onReveal);
+  revealRef.current = onReveal;
   // 全域快捷鍵聚焦：macOS Cmd+F、其他平台 Ctrl+F（spec「快捷鍵聚焦搜尋輸入」）。
   // macOS 的 ⌘F 也是這裡的 keydown 先收到（preventDefault 後原生選單不再觸發）；原生選單的
   // 「搜尋看板」項目（點選，或不在看板時按 ⌘F）改派 speclink:focus-search。
   useEffect(() => {
     if (disabledReason !== undefined) return; // 停用時快捷鍵一併不掛。
-    const focus = () => inputRef.current?.focus();
+    const focus = () => (revealRef.current ? revealRef.current() : inputRef.current?.focus());
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();

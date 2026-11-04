@@ -1,0 +1,121 @@
+schema: spec-driven
+created: 2026-11-03T16:37:08+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: herdr-speclink-panel
+started_at: 2026-11-03T17:16:01+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-04T08:42:33+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 18
+reviewed_rounds: 3
+reviewed_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: 2fd5605e0951061d6428c936df067df3ee653f9c540d4e952e10c2b1166158e1
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 329c15ccfe2b9dbab6f4bb479390f94111b8c03926b3403e35c510edb1281083
+  - path: apps/desktop/src/App.tsx
+    hash: f64a83a917839ff4010e72eb5e207ad83068ef56e37dce4e00698078762752ff
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0011abf0f7e8cb0bed606c039879c332c1e3b5715b910513b269d0e8064cb2fa
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: f8c570fc102702a3baabc3a7eab2ff14d0a0bcf047d184ce82852936448911b3
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 09b3e64ec92c0fffa6858c9e685ecef7e9b9ac563cfcf0982621c970833ad84f
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: fc68c955bf243065a37814d8b2fae14694776ff0cc6481f6acb41655d6394df8
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: fe72ae6017192538d53ea20897220844120e14613aff74050e12058c5692a6d1
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 699c9990c9fb61285494ebc06362402ee6f1a5aeb2cfde4fa7ab46154749d3c8
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 076f34fb1eb002666ff17310eee87ad6cda9c1e195878c6d56430d7741b7af5d
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 365421006f743c1381853a37bf3af665dc88f05862406ade52c20b072cf2cd95
+  - path: apps/desktop/src/deepLink.ts
+    hash: 1f1dfb78ed2cb8cfa0f12a2c1da76b3607029a05092433fca60bf57bae593e5a
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: dfe55b2ca10b0a05ade0426c2c37160cdff3c5306b27c30d08e8998be5af7b65
+  - path: apps/desktop/src/store.ts
+    hash: 25172c17a0bc14a5d9caaac785dcd7cc020596bd8fd3f25144284378708f1347
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: 594da415b4593e82093db961d8392c159d2c4a5130b0cd887d0cfe990d10b19d
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 979f633a96ce3c955392e1ef263041215af6a8b80b96dc33a52ac41284f634ec
+  - path: packages/ui/src/__tests__/roadmapModel.test.ts
+    hash: c30f889723ec0bbfc9fd7447cba652a35894de7c1e4ba3e4e93b38eec180e515
+  - path: packages/ui/src/__tests__/roadmapView.test.tsx
+    hash: 9388ef699d6f9c4a91e6098bd8d8dd98c165acf666c242482eb191dd035eb938
+  - path: packages/ui/src/adapter.ts
+    hash: 7f3cebf30cf82b0ac65a8e244070960aed72da3515107a662ac4d2f1e89b0bf3
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 0ac8a39a0e6bc6c51b7538ba9c8569539c1a7797d056647d91241decdfd1d46c
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 661ce4448878147c1163827f6d95d8649a3fe8243eb769eae5d05236abe3e15e
+  - path: packages/ui/src/components/RoadmapView.tsx
+    hash: f438c286a557d2357adcfeb595e5283d3760f6af5c1fb027b028a80be5366141
+  - path: packages/ui/src/i18n.tsx
+    hash: cae925f05c68403081d5ef1210a151dd002af01763ea7e85d4d29f341f5ed3d9
+  - path: packages/ui/src/index.ts
+    hash: a4d1884a779afd3e1b149c4868f960524aa75e13a10ab278c422075481305879
+  - path: packages/ui/src/roadmapModel.ts
+    hash: 728f0db7d410ad3b5c347d7b67dc45ad2f0a70076db76293182e7ad2f2980ef3
+verified_at: 2026-11-04T08:42:41+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 18
+verified_rounds: 3
+verified_scope:
+  - path: apps/desktop/core/src/query.rs
+    hash: 2fd5605e0951061d6428c936df067df3ee653f9c540d4e952e10c2b1166158e1
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 329c15ccfe2b9dbab6f4bb479390f94111b8c03926b3403e35c510edb1281083
+  - path: apps/desktop/src/App.tsx
+    hash: f64a83a917839ff4010e72eb5e207ad83068ef56e37dce4e00698078762752ff
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 0011abf0f7e8cb0bed606c039879c332c1e3b5715b910513b269d0e8064cb2fa
+  - path: apps/desktop/src/__tests__/deepLink.test.ts
+    hash: f8c570fc102702a3baabc3a7eab2ff14d0a0bcf047d184ce82852936448911b3
+  - path: apps/desktop/src/__tests__/helpers/changeList.ts
+    hash: 09b3e64ec92c0fffa6858c9e685ecef7e9b9ac563cfcf0982621c970833ad84f
+  - path: apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    hash: fc68c955bf243065a37814d8b2fae14694776ff0cc6481f6acb41655d6394df8
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: fe72ae6017192538d53ea20897220844120e14613aff74050e12058c5692a6d1
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 699c9990c9fb61285494ebc06362402ee6f1a5aeb2cfde4fa7ab46154749d3c8
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 076f34fb1eb002666ff17310eee87ad6cda9c1e195878c6d56430d7741b7af5d
+  - path: apps/desktop/src/__tests__/tauriDataSource.test.ts
+    hash: 365421006f743c1381853a37bf3af665dc88f05862406ade52c20b072cf2cd95
+  - path: apps/desktop/src/deepLink.ts
+    hash: 1f1dfb78ed2cb8cfa0f12a2c1da76b3607029a05092433fca60bf57bae593e5a
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: dfe55b2ca10b0a05ade0426c2c37160cdff3c5306b27c30d08e8998be5af7b65
+  - path: apps/desktop/src/store.ts
+    hash: 25172c17a0bc14a5d9caaac785dcd7cc020596bd8fd3f25144284378708f1347
+  - path: packages/ui/src/__tests__/boardSearchBar.test.tsx
+    hash: 594da415b4593e82093db961d8392c159d2c4a5130b0cd887d0cfe990d10b19d
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: 979f633a96ce3c955392e1ef263041215af6a8b80b96dc33a52ac41284f634ec
+  - path: packages/ui/src/__tests__/roadmapModel.test.ts
+    hash: c30f889723ec0bbfc9fd7447cba652a35894de7c1e4ba3e4e93b38eec180e515
+  - path: packages/ui/src/__tests__/roadmapView.test.tsx
+    hash: 9388ef699d6f9c4a91e6098bd8d8dd98c165acf666c242482eb191dd035eb938
+  - path: packages/ui/src/adapter.ts
+    hash: 7f3cebf30cf82b0ac65a8e244070960aed72da3515107a662ac4d2f1e89b0bf3
+  - path: packages/ui/src/components/BoardSearchBar.tsx
+    hash: 0ac8a39a0e6bc6c51b7538ba9c8569539c1a7797d056647d91241decdfd1d46c
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 661ce4448878147c1163827f6d95d8649a3fe8243eb769eae5d05236abe3e15e
+  - path: packages/ui/src/components/RoadmapView.tsx
+    hash: f438c286a557d2357adcfeb595e5283d3760f6af5c1fb027b028a80be5366141
+  - path: packages/ui/src/i18n.tsx
+    hash: cae925f05c68403081d5ef1210a151dd002af01763ea7e85d4d29f341f5ed3d9
+  - path: packages/ui/src/index.ts
+    hash: a4d1884a779afd3e1b149c4868f960524aa75e13a10ab278c422075481305879
+  - path: packages/ui/src/roadmapModel.ts
+    hash: 728f0db7d410ad3b5c347d7b67dc45ad2f0a70076db76293182e7ad2f2980ef3
+archived_at: 2026-11-04T08:50:07+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

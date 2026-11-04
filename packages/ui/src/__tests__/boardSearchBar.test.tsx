@@ -1,6 +1,6 @@
 // spec 需求「看板搜尋過濾卡片」的搜尋列（design D5）：搜尋圖示、輸入非空時的
 // 清除鈕（清空後保持聚焦）與即時命中數、Cmd+F／Ctrl+F 聚焦快捷鍵。
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useState, type ReactElement, type ReactNode } from "react";
@@ -85,6 +85,16 @@ describe("BoardSearchBar（搜尋列，design D5）", () => {
     expect(document.activeElement).not.toBe(input);
     fireEvent(window, new CustomEvent("speclink:focus-search"));
     expect(document.activeElement).toBe(input);
+  });
+
+  it("卡片檢視被藏起來時（宿主給 onRevealSearch）快捷鍵與選單事件改呼叫它，不聚焦藏起來的輸入", () => {
+    const onRevealSearch = vi.fn();
+    render(<KanbanBoard changes={changes} discussions={discussions} query="" onQuery={() => {}} onRevealSearch={onRevealSearch} />);
+    const input = screen.getByPlaceholderText("搜尋看板卡片…");
+    fireEvent.keyDown(window, { key: "f", metaKey: true });
+    fireEvent(window, new CustomEvent("speclink:focus-search"));
+    expect(onRevealSearch).toHaveBeenCalledTimes(2);
+    expect(document.activeElement).not.toBe(input);
   });
 
   it("搜尋圖示呈現於輸入框內", () => {

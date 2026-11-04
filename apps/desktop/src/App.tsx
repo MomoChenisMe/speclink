@@ -679,13 +679,25 @@ function AppInner({
   // 取消尚未套用的上一次；非 macOS 由 installAppMenu 自行 no-op。選單動作只派發到 store 既有
   // 動作、看板搜尋列的 window 事件、更新日誌對話框，或外部瀏覽器。
   const hasProject = s.activeKey !== null;
-  // 不在看板時的「搜尋看板」：先切回看板，等搜尋列掛上（子元件的 effect 先於本元件）再聚焦。
+  // 「搜尋看板」的共用入口（選單項，以及路線圖顯示中的搜尋快捷鍵）：看板的卡片檢視顯示中直接聚焦；
+  // 不在看板頁或正顯示路線圖時先切回卡片，等搜尋列掛上且不再藏著（子元件的 effect 先於本元件）
+  // 再聚焦。
   const pendingSearchFocus = useRef(false);
   useEffect(() => {
-    if (s.boardView !== "board" || !pendingSearchFocus.current) return;
+    if (s.boardView !== "board" || s.boardMode !== "cards" || !pendingSearchFocus.current) return;
     pendingSearchFocus.current = false;
     window.dispatchEvent(new CustomEvent("speclink:focus-search"));
-  }, [s.boardView]);
+  }, [s.boardView, s.boardMode]);
+  const focusBoardSearch = useCallback(() => {
+    const st = useStore.getState();
+    if (st.boardView === "board" && st.boardMode === "cards") {
+      window.dispatchEvent(new CustomEvent("speclink:focus-search"));
+      return;
+    }
+    pendingSearchFocus.current = true;
+    if (st.boardView !== "board") st.setBoardView("board");
+    st.setBoardMode("cards");
+  }, [useStore]);
   useEffect(() => {
     const dispatch = (action: AppMenuAction) => {
       const st = useStore.getState();
@@ -725,11 +737,7 @@ function AppInner({
         case "viewProjectSettings":
           return st.setBoardView("project-settings");
         case "focusSearch":
-          if (st.boardView === "board") {
-            return void window.dispatchEvent(new CustomEvent("speclink:focus-search"));
-          }
-          pendingSearchFocus.current = true;
-          return st.setBoardView("board");
+          return focusBoardSearch();
         case "refresh":
           return void st.refresh();
         case "nextProject":
@@ -745,7 +753,7 @@ function AppInner({
       }
     };
     return installAppMenu({ isMacOS: platform === "macos", t, hasProject, dispatch });
-  }, [useStore, platform, t, hasProject]);
+  }, [useStore, platform, t, hasProject, focusBoardSearch]);
 
   const onRunVerb = (verb: Verb, change: string) => {
     if (verb === "archive") s.requestArchive(change);
@@ -1360,6 +1368,7 @@ function AppInner({
                     searchUnavailableReason={
                       caps && !caps.searchWorkspace ? t("remote.searchUnavailable") : undefined
                     }
+                    onRevealSearch={s.boardMode === "roadmap" ? focusBoardSearch : undefined}
                     onReorder={
                       caps?.reorderCard
                         ? (kind, id, prevId, nextId) => void s.reorderCard(kind, id, prevId, nextId)

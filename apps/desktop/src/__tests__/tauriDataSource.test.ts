@@ -17,6 +17,8 @@ describe("createTauriDataSource", () => {
     invoke.mockResolvedValueOnce({
       changes: [{ name: "a", status: "s", totalTasks: 1, completedTasks: 0, restaleFrom: ["alpha"] }],
       planError: "dependency cycle: a -> b -> a",
+      next: null,
+      unpromotedCuts: [],
     });
     const ds = createTauriDataSource("/r");
     const payload = await ds.listChanges();

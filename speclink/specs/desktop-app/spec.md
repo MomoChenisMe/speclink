@@ -4300,9 +4300,9 @@ updated: 2026-10-24T22:35:52+08:00
 ---
 ### Requirement: 以 speclink 網址開啟詳情頁
 
-桌面 app SHALL 註冊 `speclink` 網址格式，接受兩種網址：`speclink://change/<變更名稱>?project=<專案資料夾絕對路徑>` 開啟變更詳情頁，`speclink://discussion/<討論 slug>?project=<專案資料夾絕對路徑>` 開啟討論詳情頁；名稱與路徑 SHALL 以百分比編碼傳遞並在處理前解碼。網址的 host SHALL 只接受 `change` 與 `discussion`，path SHALL 恰為一段非空名稱，`project` SHALL 為絕對路徑（POSIX 以 `/` 開頭，Windows 以磁碟代號加 `:\` 或 `:/` 開頭）；不符者 SHALL 視為格式錯誤。
+桌面 app SHALL 註冊 `speclink` 網址格式，接受三種網址：`speclink://change/<變更名稱>?project=<專案資料夾絕對路徑>` 開啟變更詳情頁，`speclink://discussion/<討論 slug>?project=<專案資料夾絕對路徑>` 開啟討論詳情頁，`speclink://roadmap?project=<專案資料夾絕對路徑>` 開啟該專案的路線圖（依 desktop-roadmap「看板頁的路線圖檢視」）；名稱與路徑 SHALL 以百分比編碼傳遞並在處理前解碼。網址的 host SHALL 只接受 `change`、`discussion` 與 `roadmap`；`change` 與 `discussion` 的 path SHALL 恰為一段非空名稱，`roadmap` 的 path SHALL 為空（可帶單一 `/`），`project` SHALL 為絕對路徑（POSIX 以 `/` 開頭，Windows 以磁碟代號加 `:\` 或 `:/` 開頭）；不符者 SHALL 視為格式錯誤。
 
-處理一個網址時，桌面 app SHALL 依序：顯示主視窗並取得焦點（自最小化亦還原）；以與「開啟專案」相同的探測流程開啟 `project`——已是分頁的專案成為活躍分頁，未開過的加成分頁；探測結果進入專案且該專案的資料載入完成後，開啟目標的詳情頁，詳情頁的互斥與宿主規則與系統匣的「開啟此變更」「開啟此討論」相同（依「詳情頁互斥」「變更與討論詳情頁的宿主為看板」）。探測結果為未初始化、未啟用或帶 remote 標記的資料夾時，SHALL 沿用「開啟專案」的既有對話框或選擇器，SHALL NOT 開啟詳情頁，確認前 SHALL NOT 寫入任何檔案。
+處理一個網址時，桌面 app SHALL 依序：顯示主視窗並取得焦點（自最小化亦還原）；以與「開啟專案」相同的探測流程開啟 `project`——已是分頁的專案成為活躍分頁，未開過的加成分頁；探測結果進入專案且該專案的資料載入完成後，`change` 與 `discussion` 開啟目標的詳情頁，詳情頁的互斥與宿主規則與系統匣的「開啟此變更」「開啟此討論」相同（依「詳情頁互斥」「變更與討論詳情頁的宿主為看板」）；`roadmap` SHALL 關閉開著的詳情頁並把主區切到該專案看板頁的路線圖檢視，沒有找不到目標的情形。探測結果為未初始化、未啟用或帶 remote 標記的資料夾時，SHALL 沿用「開啟專案」的既有對話框或選擇器，SHALL NOT 開啟詳情頁，確認前 SHALL NOT 寫入任何檔案。
 
 網址 SHALL 只能開啟與檢視：處理流程 SHALL NOT 觸發任何寫入動詞（勾任務、封存、轉出、刪除等）。格式錯誤時 SHALL 顯示主視窗並以 toast 說明網址無法開啟，SHALL NOT 切換專案；目標不在該專案已載入的清單內時 SHALL 停在已切換的專案並以 toast 說明找不到該變更或討論。
 
@@ -4345,12 +4345,20 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 | `speclink://change/add-search?project=%2FUsers%2Fdev%2Fspeclink` | 變更 add-search，專案 /Users/dev/speclink |
 | `speclink://discussion/board-search-bar?project=C%3A%5Cwork%5Capp` | 討論 board-search-bar，專案 C:\work\app |
 | `speclink://change/add-search?project=C%3A%2Fwork%2Fapp` | 變更 add-search，專案 C:/work/app |
+| `speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink` | 路線圖，專案 /Users/dev/speclink |
+| `speclink://roadmap/?project=%2Fa` | 路線圖，專案 /a |
+| `speclink://roadmap/waves?project=%2Fa` | 格式錯誤（路線圖不帶名稱） |
 | `speclink://spec/desktop-app?project=%2Fa` | 格式錯誤（未知種類） |
 | `speclink://change/a/b?project=%2Fa` | 格式錯誤（名稱多於一段） |
 | `speclink://change/?project=%2Fa` | 格式錯誤（名稱為空） |
 | `speclink://change/add-search` | 格式錯誤（缺 project） |
 | `speclink://change/add-search?project=work%2Fapp` | 格式錯誤（project 不是絕對路徑） |
 | `https://change/add-search?project=%2Fa` | 格式錯誤（不是 speclink 網址） |
+
+#### Scenario: 以網址開啟路線圖
+
+- **WHEN** app 執行中、主區開著某變更的詳情頁，外部程式送出 `speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink`
+- **THEN** 主視窗顯示於前景並取得焦點，活躍分頁為 speclink，詳情頁已關閉，主區為看板頁的路線圖檢視，沒有出現 toast
 
 #### Scenario: 找不到目標變更
 
@@ -4372,7 +4380,8 @@ app 未執行時，網址 SHALL 啟動 app，並在分頁列還原完成後才�
 - **WHEN** 於 Windows 或 Linux，app 執行中且主視窗已最小化，使用者再次從開始選單或啟動器啟動 Speclink
 - **THEN** 既有主視窗還原、顯示於前景並取得焦點，沒有出現第二個 app
 
+
 <!-- @trace
-source: desktop-deep-link
-updated: 2026-11-03T16:29:25+08:00
+source: desktop-roadmap
+updated: 2026-11-04T08:50:07+08:00
 -->
