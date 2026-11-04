@@ -25,6 +25,7 @@ import {
   deliveryHint,
   discussionActions,
   inside,
+  isUninitialized,
   joinAgents,
   newWorkActions,
   planDelivery,
@@ -99,6 +100,7 @@ export default class SpeclinkPanel extends View {
     this.root = null;
     this.board = null;
     this.error = null;
+    this.uninitialized = false;
     this.known = null;
     this.copied = null;
     this.newWork = false;
@@ -151,6 +153,7 @@ export default class SpeclinkPanel extends View {
         if (root !== this.root) {
           this.root = root;
           this.board = null;
+          this.uninitialized = false;
           this.watch(root, on, cx);
         }
         const read = async (...verb) => {
@@ -167,8 +170,13 @@ export default class SpeclinkPanel extends View {
         this.board = buildBoard(list, plan, discussions);
         this.worktreePolicy = config.worktree === true;
         this.error = null;
+        this.uninitialized = false;
       } catch (e) {
-        this.error = String(e.message ?? e);
+        const message = String(e.message ?? e);
+        this.uninitialized = isUninitialized(message);
+        this.error = this.uninitialized ? null : message;
+        // 切到沒有 Speclink 的分支時，舊的變更清單不能留著。
+        if (this.uninitialized) this.board = null;
       }
       this.loading = false;
       cx.notify();
@@ -586,6 +594,41 @@ export default class SpeclinkPanel extends View {
       );
   }
 
+  // 開新分頁跑 speclink init，不交給 agent：它要在真的終端機逐題問裝哪些技能，答完才寫入檔案。
+  // 寫出資料夾，按之前看得到會裝在哪裡。
+  initCard(t) {
+    return v_flex()
+      .flex_none()
+      .px(10)
+      .py(8)
+      .gap(6)
+      .rounded(10)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.surface)
+      .child(div().font_semibold().text_size(12).child("這個專案還沒有 Speclink"))
+      .child(div().text_size(11).text_color(t.muted).child(this.root))
+      .child(
+        h_flex().child(
+          h_flex()
+            .id("init")
+            .h(22)
+            .px(7)
+            .items_center()
+            .rounded(5)
+            .border_2()
+            .border_color(t.accent)
+            .font_semibold()
+            .text_size(11.5)
+            .cursor_pointer()
+            .hover((s) => s.bg(t.hover))
+            .tooltip("在新分頁執行 speclink init")
+            .on_click(() => run("tab.new", { name: "speclink init", folder: this.root, argv: ["speclink", "init"] }))
+            .child("初始化"),
+        ),
+      );
+  }
+
   newWorkPanel(ctx, t) {
     const actions = newWorkActions(ctx);
     const discuss = actions.find((a) => a.skill === "discuss");
@@ -736,11 +779,14 @@ export default class SpeclinkPanel extends View {
               ),
             ),
           )
-          .child(
-            this.headerButton("new-work", "plus", "新工作", t, (cx) => {
-              this.newWork = !this.newWork;
-              cx.notify();
-            }),
+          // 還沒初始化時，這些技能在這個專案還不存在。
+          .when(!this.uninitialized, (el) =>
+            el.child(
+              this.headerButton("new-work", "plus", "新工作", t, (cx) => {
+                this.newWork = !this.newWork;
+                cx.notify();
+              }),
+            ),
           )
           .when(Boolean(overlay), (el) =>
             el.child(
@@ -756,7 +802,7 @@ export default class SpeclinkPanel extends View {
             ),
           ),
       )
-      .when(this.newWork && Boolean(this.root), (el) =>
+      .when(this.newWork && Boolean(this.root) && !this.uninitialized, (el) =>
         el.child(div().flex_none().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(this.newWorkPanel(ctx, t))),
       )
       .child(
@@ -773,7 +819,8 @@ export default class SpeclinkPanel extends View {
           .when(Boolean(this.error), (el) =>
             el.child(div().flex_none().px(4).text_size(11.5).text_color(t.blocked).child(this.error)),
           )
-          .when(!this.board && !this.error, (el) =>
+          .when(this.uninitialized, (el) => el.child(this.initCard(t)))
+          .when(!this.board && !this.error && !this.uninitialized, (el) =>
             el.child(div().flex_none().px(4).text_size(11.5).text_color(t.dim).child("載入中…")),
           )
           .when(Boolean(this.board), (el) => el.children(this.body(ctx, t))),

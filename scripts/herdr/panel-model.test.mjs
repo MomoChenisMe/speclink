@@ -17,6 +17,7 @@ import {
   discussionActions,
   discussionSkills,
   inside,
+  isUninitialized,
   joinAgents,
   newWorkActions,
   planDelivery,
@@ -102,6 +103,11 @@ test('buildBoard：階段、波次、順序取自 plan，任務數與 worktree �
   ]);
   assert.deepEqual(board.stages['in-progress'][0].blockedBy, ['add-a']);
   assert.deepEqual(board.stages.ready, []);
+});
+
+test('isUninitialized：只認沒有專案的那句，設定檔壞掉仍算錯誤', () => {
+  assert.equal(isUninitialized("Error: Not initialized. Run 'speclink init' to initialize."), true);
+  assert.equal(isUninitialized('Error: failed to parse .speclink.yaml'), false);
 });
 
 test('buildBoard：metadata 壞掉的變更不會憑空消失', () => {

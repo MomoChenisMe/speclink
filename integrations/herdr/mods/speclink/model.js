@@ -59,6 +59,9 @@ export function buildBoard(list, plan, discussions) {
   };
 }
 
+// 資料夾沒有 Speclink 專案時，CLI 所有動詞都回這句，而且不是 JSON。設定檔壞掉是另一句，要照常當錯誤。
+export const isUninitialized = (message) => message.includes("Not initialized");
+
 // speclink 網址（正式規格 desktop-app「以 speclink 網址開啟詳情頁」）。kind 是 change、
 // discussion 或 roadmap；roadmap 不帶名稱。
 export function speclinkUrl(kind, project, name) {

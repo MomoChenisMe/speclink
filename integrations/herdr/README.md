@@ -24,6 +24,14 @@
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
 
+### 不是 Speclink 專案時
+
+目前的 space 不是 Speclink 專案時，面板顯示一張提示卡，寫出專案資料夾和「初始化」鈕。沒有「路線圖」和「新工作」，因為這些功能在這裡還用不了。
+
+按「初始化」會開一個新分頁，在專案資料夾執行 `speclink init`。它會逐題問要產生哪些 agent 的檔案，答完才寫入。不想初始化就關掉那個分頁。初始化完成後，面板在 10 秒內換成變更清單。
+
+只有「沒有初始化」會顯示這張卡。其他問題（例如找不到 `speclink`、設定檔壞掉）仍然顯示紅字。
+
 ### 各階段的技能
 
 | 狀態 | 技能鈕（粗體是建議的下一步） |
@@ -72,7 +80,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 - Herdr 0.1.12 以上（以這一版測試）。
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show` 的 `--json` 輸出。
-- 專案執行過 `speclink init`。
+- 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。
 - 要停靠時需要 Node.js，用來執行複製版面的腳本。
 
