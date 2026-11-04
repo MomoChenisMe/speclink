@@ -39,6 +39,7 @@ import { firstLine, location, placeInInput, projectRoot, sendError, spaceFor, sp
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
 const ICONS = "mods/speclink/icons";
+const APP_ID = "app.speclink.desktop";
 // 溢出摺疊的門檻與桌面 app 的系統匣面板相同。
 const OVERFLOW_LIMIT = 5;
 const STAGES = [
@@ -234,10 +235,10 @@ export default class SpeclinkPanel extends View {
     });
   }
 
-  // 叫 Speclink 桌面 app 開網址。open 只有 macOS 有；沒裝 app 時 open 也會失敗。
-  openInApp(url, cx) {
+  // 叫 Speclink 桌面 app。open 只有 macOS 有；沒裝 app 時 open 也會失敗。
+  openInApp(args, cx) {
     cx.spawn(async () => {
-      const r = await exec("open", [url]).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
+      const r = await exec("open", args).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
       if (r.code !== 0) notify({ title: "開不了 Speclink", body: firstLine(r.stderr), level: "warning" });
     });
   }
@@ -436,7 +437,7 @@ export default class SpeclinkPanel extends View {
     return el
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .on_click((_e, cx) => this.openInApp(url, cx));
+      .on_click((_e, cx) => this.openInApp([url], cx));
   }
 
   waveNumber(row, t) {
@@ -456,7 +457,7 @@ export default class SpeclinkPanel extends View {
       .tooltip("在 Speclink 開路線圖")
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        this.openInApp(speclinkUrl("roadmap", this.root), cx);
+        this.openInApp([speclinkUrl("roadmap", this.root)], cx);
       });
   }
 
@@ -736,6 +737,21 @@ export default class SpeclinkPanel extends View {
       .child(label);
   }
 
+  // Logo 也是叫出 Speclink app 的鈕。沒有網址，所以 app 不切專案。別台機器的 space 和沒初始化的專案也能按。
+  logoButton(t) {
+    return div()
+      .id("open-app")
+      .flex_none()
+      .p(3)
+      .rounded(5)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .tooltip("開啟 Speclink app")
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => this.openInApp(["-b", APP_ID], cx))
+      .child(image(`${ICONS}/logo.svg`).w(21).h(24));
+  }
+
   render(cx) {
     if (this.other) return this.other.render(cx);
     const t = theme();
@@ -756,6 +772,7 @@ export default class SpeclinkPanel extends View {
           .px(10)
           .gap(6)
           .items_center()
+          .child(this.logoButton(t))
           .child(
             v_flex()
               .flex_1()
@@ -773,7 +790,7 @@ export default class SpeclinkPanel extends View {
           .when(Boolean(this.board) && !this.place.on, (el) =>
             el.child(
               this.headerButton("roadmap", "roadmap", "路線圖", t, (cx) =>
-                this.openInApp(speclinkUrl("roadmap", this.root), cx),
+                this.openInApp([speclinkUrl("roadmap", this.root)], cx),
               ),
             ),
           )
