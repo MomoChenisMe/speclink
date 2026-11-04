@@ -31,11 +31,11 @@ import {
   waveToStart,
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
-import NewWork from "./new-work.js";
+import SkillPicker from "./skill-picker.js";
 import { firstLine, location, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
-const VIEWS = { "new-work": NewWork, "column-sync": ColumnSync };
+const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
 const ICONS = "mods/speclink/icons";
 // 溢出摺疊的門檻與桌面 app 的系統匣面板相同。
 const OVERFLOW_LIMIT = 5;
@@ -712,7 +712,7 @@ export default class SpeclinkPanel extends View {
           // 還沒初始化時，這些技能在這個專案還不存在。
           .when(!this.uninitialized, (el) =>
             el.child(
-              this.headerButton("new-work", "plus", "新工作", t, () => run("mod.open", { name: "speclink-new" })),
+              this.headerButton("skills", "zap", "技能", t, () => run("mod.open", { name: "speclink-new" })),
             ),
           )
           .when(Boolean(overlay), (el) =>

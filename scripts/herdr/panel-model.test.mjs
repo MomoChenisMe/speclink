@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALL_SKILLS,
-  NEW_WORK,
+  PICKER_SKILLS,
+  batchPlan,
   buildBoard,
   changeActions,
   changeAgents,
@@ -21,10 +22,10 @@ import {
   isUninitialized,
   joinAgents,
   newTabPlan,
-  newWorkTargets,
   placePlan,
   planDelivery,
   sendArgs,
+  skillTargets,
   speclinkUrl,
   startAction,
   titleChange,
@@ -440,11 +441,16 @@ test('deliveryHint：說明會送去哪裡，或為什麼不能送', () => {
   assert.equal(deliveryHint(deliver({ known: null })), '還在確認可用的 agent');
 });
 
-// ---- 新工作跳窗 ----
+// ---- 技能跳窗 ----
 
-test('新工作的技能表：分組和順序與 Claude Code 的技能列相同，每個技能都有說明', () => {
-  assert.deepEqual([...new Set(NEW_WORK.map((w) => w.group))], ['規劃', '實作', '品質', '收尾', '其他']);
-  assert.ok(NEW_WORK.every((w) => w.about));
+test('技能表：前四組依工作流程，都有東西可以搭配；專案組不搭配', () => {
+  assert.deepEqual([...new Set(PICKER_SKILLS.map((w) => w.group))], ['規劃', '實作', '品質', '收尾', '專案']);
+  assert.ok(PICKER_SKILLS.every((w) => w.about));
+  assert.ok(PICKER_SKILLS.every((w) => (w.group === '專案' ? w.pair === null : w.pair)));
+  assert.deepEqual(
+    PICKER_SKILLS.filter((w) => w.pair === '討論').map((w) => w.skill),
+    ['discuss', 'propose'],
+  );
 });
 
 const board = () =>
@@ -473,9 +479,9 @@ const board = () =>
       ],
     },
   );
-const targetNames = (skill) => newWorkTargets(skill, board()).map((t) => t.name);
+const targetNames = (skill) => skillTargets(skill, board()).map((t) => t.name);
 
-test('newWorkTargets：只列這個技能能搭配的變更，規則和面板的技能鈕相同', () => {
+test('skillTargets：只列這個技能能搭配的變更，規則和面板的技能鈕相同', () => {
   assert.deepEqual(targetNames('apply'), ['add-p', 'add-i']);
   assert.deepEqual(targetNames('apply-with-worktree'), ['add-p', 'add-i']);
   assert.deepEqual(targetNames('archive'), ['add-r']);
@@ -483,19 +489,25 @@ test('newWorkTargets：只列這個技能能搭配的變更，規則和面板的
   assert.deepEqual(targetNames('verify'), ['add-i', 'add-r', 'add-w']);
 });
 
-test('newWorkTargets：討論帶對應的參數，已轉出完的不列', () => {
+test('skillTargets：討論帶對應的參數，已轉出完的不列', () => {
   assert.deepEqual(
-    newWorkTargets('discuss', board()).map((t) => t.args),
+    skillTargets('discuss', board()).map((t) => t.args),
     ['talk-open', 'talk-done'],
   );
   assert.deepEqual(
-    newWorkTargets('propose', board()).map((t) => t.args),
+    skillTargets('propose', board()).map((t) => t.args),
     ['--from-discussion talk-done'],
   );
 });
 
-test('newWorkTargets：不搭配東西的技能沒有選項', () => {
+test('skillTargets：不搭配東西的技能沒有選項；表上的 pair 和實際列出的種類一致', () => {
   assert.deepEqual(targetNames('improve'), []);
+  for (const w of PICKER_SKILLS) {
+    const kinds = new Set(skillTargets(w.skill, board()).map((t) => t.kind));
+    if (w.pair === null) assert.equal(kinds.size, 0, w.skill);
+    if (w.pair === '變更') assert.ok(!kinds.has('discussion'), w.skill);
+    if (w.pair === '討論') assert.ok(!kinds.has('change'), w.skill);
+  }
 });
 
 const place = (over) => placePlan({ skill: 'apply', target: null, agents: [agent()], focus: { tab: 'tab1', terminal: 't1' }, ...over });
@@ -504,8 +516,9 @@ test('placePlan：一個字一個字打進目前分頁的 agent，不按 Enter�
   const plan = place({ skill: 'improve' });
   assert.equal(plan.kind, 'place');
   assert.equal(plan.text, '/speclink-improve ');
-  assert.deepEqual(plan.hc, ['keys', 't1', ...'/speclink-improve'.split(''), 'space']);
-  assert.ok(!plan.hc.includes('enter'));
+  assert.deepEqual(plan.keys, ['keys', 't1', ...'/speclink-improve'.split(''), 'space']);
+  assert.equal(plan.paste, undefined);
+  assert.ok(!plan.keys.includes('enter'));
 });
 
 test('placePlan：帶搭配的變更或討論', () => {
@@ -531,13 +544,28 @@ test('placePlan：這些情況不放，並寫出原因', () => {
   assert.match(place({ skill: 'analyze', agents: [agent({ key: 'copilot' })] }).reason, /只有 Claude Code/);
 });
 
-test('placePlan：hc keys 打不出來的字元不放（Codex 的 $、中文的討論名稱）', () => {
-  assert.match(place({ agents: [agent({ key: 'codex' })] }).reason, /打不出來/);
-  assert.match(place({ skill: 'discuss', target: { args: '中文討論' } }).reason, /打不出來/);
+test('placePlan：中文打不出來，Claude Code 改用 hc send 貼上，結尾的反斜線讓 Enter 變換行，再退格去掉', () => {
+  const plan = place({ skill: 'discuss', note: '要談的主題' });
+  assert.equal(plan.text, '/speclink-discuss 要談的主題 ');
+  assert.deepEqual(plan.paste, ['send', 't1', '/speclink-discuss 要談的主題 \\']);
+  assert.deepEqual(plan.keys, ['keys', 't1', 'backspace']);
+  assert.ok(place({ skill: 'discuss', target: { args: '中文討論' } }).paste);
+  assert.ok(place({ skill: 'discuss', note: 'OK' }).paste);
 });
 
+test('placePlan：補充說明接在搭配的東西後面', () => {
+  assert.equal(place({ skill: 'discuss', target: { args: 's' }, note: 'next' }).text, '/speclink-discuss s next ');
+});
+
+test('placePlan：其他 agent 不知道反斜線的行為，打不出來就不放', () => {
+  assert.match(place({ agents: [agent({ key: 'codex' })] }).reason, /打不出來/);
+  assert.match(place({ skill: 'discuss', note: '主題', agents: [agent({ key: 'copilot' })] }).reason, /打不出來/);
+  assert.ok(place({ skill: 'improve', agents: [agent({ key: 'copilot' })] }).keys);
+});
+
+const TAB = { skill: 'improve', target: null, note: '', root: REPO, agents: [], known: CLAUDE, worktreePolicy: true, space: 'sp1', on: null };
 const tab = (over) =>
-  newTabPlan({ skill: 'improve', target: null, note: '', root: REPO, agents: [], known: CLAUDE, space: 'sp1', on: null, ...over });
+  newTabPlan({ ...TAB, ...over });
 const changeTarget = (over = {}) => ({ kind: 'change', name: 'add-a', args: 'add-a', row: row(over) });
 
 test('newTabPlan：和 herdr-dispatch 相同，用 hc run 開在目前的 space，不接在誰底下', () => {
@@ -579,13 +607,49 @@ test('newTabPlan：Codex 用錢字號並帶 --no-daemon', () => {
 
 test('newTabPlan：這些情況不開，並寫出原因', () => {
   const mine = agent({ labels: { 'speclink.change': 'add-a' } });
-  assert.match(tab({ skill: 'review', target: changeTarget(), agents: [mine] }).reason, /已經有 agent 在做/);
+  assert.equal(tab({ skill: 'review', target: changeTarget(), agents: [mine] }).reason, '已經有 agent 在做');
   assert.match(tab({ skill: 'apply', target: changeTarget({ blockedBy: ['add-b'] }) }).reason, /要等 add-b 落地/);
   const running = agent({ labels: { 'speclink.skill': 'speclink-apply' } });
-  assert.match(tab({ skill: 'apply', agents: [running] }).reason, /主資料夾已經有 apply/);
+  assert.equal(tab({ skill: 'apply', agents: [running] }).reason, '主資料夾已經有 apply 在跑');
   assert.equal(tab({ skill: 'apply-with-worktree', agents: [running] }).kind, 'tab');
   assert.match(tab({ skill: 'analyze', known: [{ key: 'copilot', run: ['copilot'], installed: true }] }).reason, /只有 Claude Code/);
   assert.equal(tab({ known: null }).reason, '還在確認可用的 agent');
+});
+
+test('newTabPlan：沒開 worktree 流程時 apply-with-worktree 不開，因為技能會自己停下來', () => {
+  assert.equal(tab({ skill: 'apply-with-worktree', worktreePolicy: false }).reason, '這個專案沒開 worktree 流程');
+  assert.equal(tab({ skill: 'apply', worktreePolicy: false }).kind, 'tab');
+});
+
+const batch = (over) => batchPlan({ ...TAB, skill: 'quality', targets: [], ...over });
+const named = (name, over = {}) => ({ kind: 'change', name, args: name, row: row({ name, ...over }) });
+
+test('batchPlan：一個變更開一個分頁，互不相干', () => {
+  const plan = batch({ targets: [named('add-a'), named('add-b')] });
+  assert.equal(plan.kind, 'tabs');
+  assert.deepEqual(plan.plans.map((p) => p.hc.at(-1)), ['/speclink-quality add-a', '/speclink-quality add-b']);
+  assert.deepEqual(plan.plans.map((p) => p.tabName), ['quality · add-a', 'quality · add-b']);
+  assert.equal(plan.text, '/speclink-quality add-a　/speclink-quality add-b');
+});
+
+test('batchPlan：沒有勾或勾的都不能開時不做事', () => {
+  assert.equal(batch().reason, '勾選要開工的變更');
+  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  assert.equal(batch({ targets: [named('add-a')], agents: [mine] }).reason, '勾選要開工的變更');
+});
+
+test('batchPlan：不能開的變更略過，其他照開', () => {
+  const mine = agent({ labels: { 'speclink.change': 'add-a' } });
+  const plan = batch({ targets: [named('add-a'), named('add-b')], agents: [mine] });
+  assert.deepEqual(plan.plans.map((p) => p.change), ['add-b']);
+});
+
+test('batchPlan：兩個 apply 都在主資料夾就擋下；有 worktree 的接續 worktree，不算', () => {
+  const two = [named('add-a'), named('add-b')];
+  assert.match(batch({ skill: 'apply', targets: two }).reason, /一次只能跑一個 apply/);
+  const one = [named('add-a'), named('add-b', { worktree: { path: TREE } })];
+  assert.deepEqual(batch({ skill: 'apply', targets: one }).plans.map((p) => p.skill), ['apply', 'apply-with-worktree']);
+  assert.equal(batch({ skill: 'apply-with-worktree', targets: two }).plans.length, 2);
 });
 
 // ---- 叫 Speclink 開頁面 ----

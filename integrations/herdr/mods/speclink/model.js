@@ -18,30 +18,30 @@ const STAGE_SKILLS = {
   ready: ["quality", "review", "verify", "archive", "commit"],
   "ready-worktree": ["quality", "review", "verify", "commit", "worktree-merge"],
 };
-// 新工作跳窗的技能。分組和順序與 Claude Code 的技能列相同（integrations/claude-code 的 groups.ts）。
-export const NEW_WORK = [
-  { skill: "discuss", group: "規劃", about: "把模糊的需求談清楚" },
-  { skill: "improve", group: "規劃", about: "掃描程式碼找改善點" },
-  { skill: "propose", group: "規劃", about: "建立變更與文件" },
-  { skill: "ingest", group: "規劃", about: "把新需求併進變更" },
-  { skill: "apply", group: "實作", about: "照任務清單實作" },
-  { skill: "apply-with-worktree", group: "實作", about: "在獨立的 worktree 裡實作" },
-  { skill: "quality", group: "品質", about: "跑 review 和 verify 兩站" },
-  { skill: "review", group: "品質", about: "檢查實作的品質" },
-  { skill: "verify", group: "品質", about: "對照文件檢查實作" },
-  { skill: "archive", group: "收尾", about: "把變更併進規格並封存" },
-  { skill: "worktree-merge", group: "收尾", about: "把 worktree 合回主分支" },
-  { skill: "commit", group: "其他", about: "只提交這個變更的檔案" },
-  { skill: "analyze", group: "其他", about: "實作前交叉檢查文件" },
-  { skill: "drift", group: "其他", about: "查程式碼離變更的假設多遠" },
-  { skill: "audit", group: "其他", about: "找出程式碼的安全問題" },
-  { skill: "trace", group: "其他", about: "查一項能力的來龍去脈" },
-  { skill: "manual", group: "其他", about: "從規格產生操作手冊" },
-  { skill: "baseline", group: "其他", about: "從現有程式碼產生初始規格" },
-  { skill: "config", group: "其他", about: "整理專案說明與產出規則" },
+// 技能跳窗的技能。前四組依工作流程，pair 是可以搭配的東西；「專案」用在整個專案，不搭配。
+export const PICKER_SKILLS = [
+  { skill: "discuss", group: "規劃", pair: "討論", about: "把模糊的需求談清楚" },
+  { skill: "propose", group: "規劃", pair: "討論", about: "建立變更與文件" },
+  { skill: "ingest", group: "規劃", pair: "變更", about: "把新需求併進變更" },
+  { skill: "apply", group: "實作", pair: "變更", about: "照任務清單實作" },
+  { skill: "apply-with-worktree", group: "實作", pair: "變更", about: "在獨立的 worktree 裡實作" },
+  { skill: "analyze", group: "實作", pair: "變更", about: "實作前交叉檢查文件" },
+  { skill: "drift", group: "實作", pair: "變更", about: "查程式碼離變更的假設多遠" },
+  { skill: "quality", group: "品質", pair: "變更", about: "跑 review 和 verify 兩站" },
+  { skill: "review", group: "品質", pair: "變更", about: "檢查實作的品質" },
+  { skill: "verify", group: "品質", pair: "變更", about: "對照文件檢查實作" },
+  { skill: "archive", group: "收尾", pair: "變更", about: "把變更併進規格並封存" },
+  { skill: "worktree-merge", group: "收尾", pair: "變更", about: "把 worktree 合回主分支" },
+  { skill: "commit", group: "收尾", pair: "變更", about: "只提交這個變更的檔案" },
+  { skill: "improve", group: "專案", pair: null, about: "掃描程式碼找改善點" },
+  { skill: "audit", group: "專案", pair: null, about: "找出程式碼的安全問題" },
+  { skill: "trace", group: "專案", pair: null, about: "查一項能力的來龍去脈" },
+  { skill: "manual", group: "專案", pair: null, about: "從規格產生操作手冊" },
+  { skill: "baseline", group: "專案", pair: null, about: "從現有程式碼產生初始規格" },
+  { skill: "config", group: "專案", pair: null, about: "整理專案說明與產出規則" },
 ];
 
-export const ALL_SKILLS = new Set(NEW_WORK.map((w) => w.skill));
+export const ALL_SKILLS = new Set(PICKER_SKILLS.map((w) => w.skill));
 
 export function buildBoard(list, plan, discussions) {
   const listed = new Map(list.changes.map((c) => [c.name, c]));
@@ -262,8 +262,8 @@ export function deliveryHint(delivery) {
   return delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent";
 }
 
-// 新工作跳窗可以搭配的變更與討論。哪個階段能用哪個技能，規則和面板的技能鈕相同。
-export function newWorkTargets(skill, board) {
+// 技能跳窗可以搭配的變更與討論。哪個階段能用哪個技能，規則和面板的技能鈕相同。
+export function skillTargets(skill, board) {
   const name = skill === "apply-with-worktree" ? "apply" : skill;
   const changes = Object.values(board.stages)
     .flat()
@@ -279,36 +279,46 @@ export function newWorkTargets(skill, board) {
 
 const none = (reason) => ({ kind: "none", reason });
 const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
-// hc keys 打得出來的字元。打不出來的有 Codex 的 $ 和討論名稱裡的中文。
+const joinArgs = (target, note) => [target?.args, note].filter(Boolean).join(" ");
+// hc keys 打得出來的字元。打不出來的有中文、大寫和 Codex 的 $。
 const TYPABLE = /^[a-z0-9/. -]+$/;
 
-// 放到輸入框：只打字、不按 Enter，所以 agent 在做事也可以放。agent 在等回答時不放，打字可能答掉對話框。
-export function placePlan({ skill, target, agents, focus }) {
+// 放到輸入框：不送出，所以 agent 在做事也可以放。agent 在等回答時不放，打字可能答掉對話框。
+export function placePlan({ skill, target, note, agents, focus }) {
   const here = agents.filter((a) => a.tab === focus?.tab && Object.hasOwn(PREFIX, a.key));
   const agent = here.find((a) => a.address === focus?.terminal) ?? here[0];
   if (!agent) return none("目前分頁沒有 agent。可以勾選「開新分頁」");
   if (agent.status === "blocked") return none("目前分頁的 agent 在等你回答");
   if (onlyClaude(skill, agent.key)) return none(`${skill} 只有 Claude Code 能用`);
-  const text = `${commandText(agent.key, skill, target?.args)} `;
-  if (!TYPABLE.test(text)) return none("這段指令有打不出來的字元。可以勾選「開新分頁」");
-  return { kind: "place", agent, text, hc: ["keys", agent.address, ...[...text].map((c) => (c === " " ? "space" : c))] };
+  const text = `${commandText(agent.key, skill, joinArgs(target, note))} `;
+  const plan = { kind: "place", agent, text };
+  if (TYPABLE.test(text)) {
+    return { ...plan, keys: ["keys", agent.address, ...[...text].map((c) => (c === " " ? "space" : c))] };
+  }
+  // 其他字元只有 hc send 貼得進去，而它一定按 Enter。Claude Code 把結尾的「\」加 Enter 當成換行，
+  // 不會送出（閒置和做事中都實測過），再按退格去掉這個換行。
+  if (agent.key === "claude") {
+    return { ...plan, paste: ["send", agent.address, `${text}\\`], keys: ["keys", agent.address, "backspace"] };
+  }
+  return none("這段指令有打不出來的字元。可以勾選「開新分頁」");
 }
 
 // 開新分頁：做法和檢查都跟 herdr-dispatch 技能相同。分頁開在目前的 space，畫面留在原地。
-export function newTabPlan({ skill, target, note, root, agents, known, space, on }) {
+export function newTabPlan({ skill, target, note, root, agents, known, worktreePolicy, space, on }) {
   const change = target?.kind === "change" ? target.row : null;
   const applying = skill === "apply" || skill === "apply-with-worktree";
-  if (change && changeAgents(change, agents).length > 0) return none(`${change.name} 已經有 agent 在做`);
+  if (change && changeAgents(change, agents).length > 0) return none("已經有 agent 在做");
   if (change && applying && change.blockedBy.length > 0) return none(`要等 ${change.blockedBy.join("、")} 落地`);
   // 有 worktree 的變更，apply 要從主資料夾接續 worktree。
   const name = skill === "apply" && change?.worktree ? "apply-with-worktree" : skill;
+  // 政策沒開時這個技能會自己停下來。
+  if (name === "apply-with-worktree" && !worktreePolicy) return none("這個專案沒開 worktree 流程");
   // 主資料夾一次只能跑一個 apply，兩個一起跑會互相踩到檔案。
   if (name === "apply" && agents.some((a) => a.labels["speclink.skill"] === "speclink-apply")) {
-    return none("主資料夾已經有 apply 在跑。可以改選 apply-with-worktree");
+    return none("主資料夾已經有 apply 在跑");
   }
   const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
-  const args = [target?.args, note].filter(Boolean).join(" ");
-  const d = newAgent({ name, args, folder, change, known });
+  const d = newAgent({ name, args: joinArgs(target, note), folder, change, known });
   if (d.kind === "none") return d;
   if (onlyClaude(skill, d.key)) return none(`${skill} 只有 Claude Code 能用`);
   return {
@@ -332,4 +342,14 @@ export function newTabPlan({ skill, target, note, root, agents, known, space, on
       d.text,
     ],
   };
+}
+
+// 一次開多個分頁，一個變更一個分頁。不能開的變更略過，兩個都要在主資料夾跑的 apply 整批擋下。
+export function batchPlan({ skill, targets, ...context }) {
+  const plans = targets.map((target) => newTabPlan({ ...context, skill, target, note: "" })).filter((p) => p.kind === "tab");
+  if (plans.length === 0) return none("勾選要開工的變更");
+  if (plans.filter((p) => p.skill === "apply").length > 1) {
+    return none("主資料夾一次只能跑一個 apply。可以改選 apply-with-worktree");
+  }
+  return { kind: "tabs", plans, text: plans.map((p) => p.text).join("　") };
 }
