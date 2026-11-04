@@ -74,6 +74,7 @@ export default class SpeclinkPanel extends View {
     this.uninitialized = false;
     this.known = null;
     this.copied = null;
+    this.attaching = new Map();
     this.more = new Set();
     this.sending = new Set();
     this.starting = new Set();
@@ -307,27 +308,49 @@ export default class SpeclinkPanel extends View {
       .child(action.skill);
   }
 
+  // hc keys 一個字一個字打，名稱長時要一秒以上，所以按下去要先有反應。打字中再按一次不算。
+  attach(plan, name, cx) {
+    if (this.attaching.has(name)) return;
+    this.attaching.set(name, "typing");
+    cx.notify();
+    cx.spawn(async (cx) => {
+      const failed = await placeInInput(plan, cx);
+      if (failed) {
+        this.attaching.delete(name);
+        notify({ title: "沒有放進輸入框", body: sendError(failed), level: "warning" });
+      } else {
+        this.attaching.set(name, "done");
+        cx.timer.after(1200, (cx) => {
+          this.attaching.delete(name);
+          cx.notify();
+        });
+      }
+      cx.notify();
+    });
+  }
+
   // 把名稱接到目前分頁的輸入框，不送出。
   attachButton(id, name, ctx, t) {
     const plan = attachPlan({ name, agents: ctx.agents, focus: ctx.focus });
     const ready = plan.kind !== "none";
+    const state = this.attaching.get(name);
     return div()
       .id(`attach-${id}`)
       .flex_none()
       .p(3)
       .rounded(4)
       .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
-      .when(!ready, (el) => el.opacity(0.45))
+      .when(!ready && !state, (el) => el.opacity(0.45))
       .tooltip(ready ? "附加到目前分頁的輸入框" : plan.reason)
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        if (!ready) return;
-        cx.spawn(async (cx) => {
-          const failed = await placeInInput(plan, cx);
-          if (failed) notify({ title: "沒有放進輸入框", body: sendError(failed), level: "warning" });
-        });
+        if (ready) this.attach(plan, name, cx);
       })
-      .child(icon("message-plus", 12, t.muted));
+      .child(
+        state === "typing"
+          ? icon("spinner", 12, t.working).spin(900)
+          : icon(state === "done" ? "check" : "message-plus", 12, t.muted),
+      );
   }
 
   // 其他技能在跳窗裡：開跳窗，並先選好這個技能和這一列。
