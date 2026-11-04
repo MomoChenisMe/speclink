@@ -87,7 +87,13 @@ The bottom has two buttons, one for each result:
 - **Put it in the input box (Enter).** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
 - **Open a new tab and start (`⌘Enter`).** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
 
-Check "開新分頁" (new tab) with `⌘O` or the mouse, and Enter also opens a new tab. The checkbox starts empty each time. When the skill uses a change, you can then open many at once, one tab for each change. Use `←` `→` to move, `Space` to check a row, and `⌘A` or "全選" (all) to check all rows. These rows cannot be checked and show the reason: the change already has an agent, another change blocks it (apply), the main folder already runs an apply, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
+When the skill uses a change, each row has a checkbox, so you can open many tabs at once, one tab for each change. Click the box or press `Space` to check a row. Use `⌘A` or "全選" (all) to check all rows. A click on the row only selects it and does not check it.
+
+- No check: both buttons use the selected row.
+- One check: both buttons use the checked row.
+- Two or more checks: the left button changes to "開 N 個分頁並開工" (open N tabs and start). "放到輸入框" (put in the input box) does not work, because the input box takes one command at a time.
+
+These rows have no checkbox and show the reason: the change already has an agent, another change blocks it (apply), the main folder already runs an apply, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree.
 
 ### Open in Speclink
 
