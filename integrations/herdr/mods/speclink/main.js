@@ -455,7 +455,10 @@ export default class SpeclinkPanel extends View {
     const blocked = row.blockedBy.length > 0;
     const main = actions.find((a) => a.primary) ?? actions.find((a) => a.delivery);
     const waiting = blocked ? `等 ${row.blockedBy.join("、")}` : "";
-    const hint = [waiting, main?.delivery ? deliveryHint(main.delivery) : ""].filter(Boolean).join(" · ");
+    // 忙碌的原因只放在按鈕的提示裡：列上寫「agent 正在做事」會和 agent 的狀態圖示重複，
+    // 被擋住的列上講的又是目前分頁的 agent，和這一列無關。
+    const sends = main?.delivery && main.delivery.kind !== "busy";
+    const hint = [waiting, sends ? deliveryHint(main.delivery) : ""].filter(Boolean).join(" · ");
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
     const el = v_flex()
       .id(`change-${row.name}`)
