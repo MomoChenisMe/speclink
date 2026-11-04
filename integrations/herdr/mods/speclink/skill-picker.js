@@ -112,6 +112,7 @@ export default class SkillPicker {
       worktreePolicy: this.worktreePolicy,
       space: focused()?.space,
       on: this.on,
+      board: this.board,
     };
   }
 

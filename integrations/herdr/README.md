@@ -75,7 +75,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 | 變更已經有 worktree | 不問，跑 `/speclink-apply-with-worktree <變更>` 接續 |
 | `worktree` 關閉 | 不問，跑 `/speclink-apply <變更>` |
 
-主資料夾一次只能跑一個 apply。已經有 apply 在跑時，「直接 apply」不能按，游標移上去會寫原因。
+主資料夾一次只能跑一個 apply。有 apply 還沒做完時，「直接 apply」不能按，游標移上去會寫是哪個變更。那個變更的任務做完或封存後就能按，分頁開著也沒關係。
 
 沒被擋、任務還沒做完、也沒有 agent 在做的變更才有開工鈕。討論重新定案的變更要先 ingest，所以也沒有。
 
@@ -102,7 +102,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 - 勾一個：兩顆鈕都用勾的那一個。
 - 勾兩個以上：左邊的鈕變成「開 N 個分頁並開工」。「放到輸入框」不能用，因為輸入框一次只放一個。
 
-這些變更沒有勾選框，那一列會寫原因：已經有 agent、被別的變更擋住（apply）、主資料夾已經有 apply 在跑、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。
+這些變更沒有勾選框，那一列會寫原因：已經有 agent、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。
 
 ### 叫 Speclink 開頁面
 
