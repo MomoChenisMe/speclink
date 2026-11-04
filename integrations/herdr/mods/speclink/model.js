@@ -104,19 +104,23 @@ export function logoOpenAttempts({ root, hasBoard, on }) {
   return hasBoard && !on ? [[speclinkUrl("project", root)], bringUp] : [bringUp];
 }
 
-// 這個 agent 接下來在做什麼。沒指定變更時不動 speclink.change，不做變更的技能要清掉它（hc label k= 是移除）。
-export function skillLabels(skill, change) {
-  const labels = [`speclink.skill=speclink-${skill}`];
+// 這個 agent 接下來在做什麼。name 是技能搭配的變更或討論。變更的技能沒指定時不動 speclink.change，
+// 那通常是同一個變更的下一步；其他情況清掉用不到的標籤（hc label k= 是移除）。
+export function skillLabels(skill, name) {
   const pair = PICKER_SKILLS.find((w) => w.skill === skill)?.pair;
-  if (pair !== "變更") labels.push("speclink.change=");
-  else if (change) labels.push(`speclink.change=${change}`);
-  return labels;
+  const labels = [`speclink.skill=speclink-${skill}`];
+  if (pair === "變更") return [...labels, ...(name ? [`speclink.change=${name}`] : []), "speclink.discussion="];
+  return [...labels, "speclink.change=", `speclink.discussion=${pair === "討論" && name ? name : ""}`];
 }
 
-// hook 用：送出的訊息是 speclink 技能指令時，回傳要貼的標籤，其他訊息回傳 null。變更名稱只認第一個參數。
+// hook 用：送出的訊息是 speclink 技能指令時，回傳要貼的標籤，其他訊息回傳 null。名稱只認第一個參數。
+// 變更名稱只有英數，所以中文不算；討論的 slug 可能有中文。
 export function promptLabels(prompt) {
-  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+([A-Za-z0-9][A-Za-z0-9._-]*)(?=\s|$))?/);
-  return match && ALL_SKILLS.has(match[1]) ? skillLabels(match[1], match[2]) : null;
+  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+(?:--from-discussion\s+)?(\S+))?/);
+  if (!match || !ALL_SKILLS.has(match[1])) return null;
+  const [, skill, name] = match;
+  const isChange = PICKER_SKILLS.find((w) => w.skill === skill).pair === "變更";
+  return skillLabels(skill, isChange && !/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(name ?? "") ? undefined : name);
 }
 
 export function changeSkills(row) {
@@ -213,6 +217,9 @@ export function joinAgents(agents, terminals, panes) {
 
 // 正在做這個變更的 agent，依標籤、worktree 路徑、外掛回報的焦點的順序。
 // speclink.change 由開工、面板、技能跳窗和 hook 貼上。貼了標籤的 agent 專做那個變更，焦點提到別的變更不算。
+// 正在做這場討論的 agent。討論沒有 worktree，只看標籤。
+export const discussionAgents = (d, agents) => agents.filter((a) => a.labels["speclink.discussion"] === d.slug);
+
 export function changeAgents(row, agents) {
   const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name);
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];
@@ -222,8 +229,12 @@ export function changeAgents(row, agents) {
 
 const sendable = (a) => a.status === "idle" || a.status === "done";
 
-function pickAgent({ change, folder, root, agents, focus }) {
+function pickAgent({ change, discussion, folder, root, agents, focus }) {
   const pool = agents.filter((a) => Object.hasOwn(PREFIX, a.key));
+  if (discussion) {
+    const mine = discussionAgents(discussion, pool);
+    if (mine.length > 0) return { agent: mine.find(sendable) ?? mine[0], where: "discussion" };
+  }
   if (change) {
     const mine = changeAgents(change, pool);
     const here = mine.filter((a) => inside(a.cwd, folder));
@@ -237,10 +248,10 @@ function pickAgent({ change, folder, root, agents, focus }) {
   return current ? { agent: current, where: "tab" } : null;
 }
 
-export function planDelivery({ skill, change = null, args, root, agents, focus, known }) {
+export function planDelivery({ skill, change = null, discussion = null, args, root, agents, focus, known }) {
   let name = skill;
   let folder = change?.worktree && !MAIN_FOLDER.has(skill) ? change.worktree.path : root;
-  let target = pickAgent({ change, folder, root, agents, focus });
+  let target = pickAgent({ change, discussion, folder, root, agents, focus });
   // 有 worktree 但 agent 不在裡面：apply 改走 apply-with-worktree，它會接續原本的 worktree。
   if (skill === "apply" && change?.worktree && !inside(target?.agent.cwd, folder)) {
     name = "apply-with-worktree";
@@ -251,13 +262,13 @@ export function planDelivery({ skill, change = null, args, root, agents, focus, 
     const { agent, where } = target;
     if (!sendable(agent)) return { kind: "busy", where, agent, reason: BUSY[agent.status] ?? agent.status };
     const text = commandText(agent.key, name, args);
-    return { kind: "send", where, agent, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name) };
+    return { kind: "send", where, agent, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name ?? discussion?.slug) };
   }
-  return newAgent({ name, args, folder, change, known });
+  return newAgent({ name, args, folder, change, discussion, known });
 }
 
 // 新開一個 agent：選最常用且已安裝、有 speclink 技能的那一個。
-function newAgent({ name, args, folder, change, known }) {
+function newAgent({ name, args, folder, change, discussion, known }) {
   if (!known) return { kind: "none", where: "none", reason: tr("還在確認可用的 agent") };
   const pick = known.find((a) => a.installed && Object.hasOwn(PREFIX, a.key));
   if (!pick) return { kind: "none", where: "none", reason: tr("找不到有 speclink 技能的 agent") };
@@ -269,9 +280,10 @@ function newAgent({ name, args, folder, change, known }) {
     // hc --skill：Codex 要帶 --no-daemon，否則它的指令跑在 hc 之外。
     argv: pick.key === "codex" ? [...pick.run, "--no-daemon"] : pick.run,
     text: commandText(pick.key, name, args),
-    tabName: change ? `${name} · ${change.name}` : name,
+    tabName: change || discussion ? `${name} · ${change?.name ?? discussion.slug}` : name,
     change: change?.name ?? null,
     skill: name,
+    labels: skillLabels(name, change?.name ?? discussion?.slug),
   };
 }
 
@@ -312,15 +324,18 @@ export function changeActions(row, ctx) {
 }
 
 export function discussionActions(d, ctx) {
-  return discussionSkills(d).map((s) => ({ ...s, delivery: planDelivery({ ...ctx, skill: s.skill, args: s.args }) }));
+  return discussionSkills(d).map((s) => ({ ...s, delivery: planDelivery({ ...ctx, skill: s.skill, discussion: d, args: s.args }) }));
 }
+
+const WHERE = { change: "這個變更", discussion: "這場討論" };
+const SEND_TO = { change: "送給這個變更的 agent", discussion: "送給這場討論的 agent" };
 
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
 export function deliveryHint(delivery) {
-  if (delivery.kind === "busy") return tr("{0}的 agent {1}", tr(delivery.where === "change" ? "這個變更" : "目前分頁"), tr(delivery.reason));
+  if (delivery.kind === "busy") return tr("{0}的 agent {1}", tr(WHERE[delivery.where] ?? "目前分頁"), tr(delivery.reason));
   if (delivery.kind === "none") return delivery.reason;
   if (delivery.kind === "new") return tr("開新分頁");
-  return tr(delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent");
+  return tr(SEND_TO[delivery.where] ?? "送給目前分頁的 agent");
 }
 
 // 技能跳窗可以搭配的變更與討論。哪個階段能用哪個技能，規則和面板的技能鈕相同。
@@ -366,7 +381,7 @@ export function placePlan({ skill, target, note, agents, focus }) {
     kind: "place",
     agent,
     text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `),
-    labels: skillLabels(skill, target?.kind === "change" ? target.name : null),
+    labels: skillLabels(skill, target?.name),
   };
 }
 
@@ -402,7 +417,8 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   const unfinished = name === "apply" ? unfinishedApply(agents, board) : null;
   if (unfinished) return none("{0} 的 apply 還沒做完", unfinished);
   const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
-  const d = newAgent({ name, args: joinArgs(target, note), folder, change, known });
+  const discussion = target?.kind === "discussion" ? { slug: target.name } : null;
+  const d = newAgent({ name, args: joinArgs(target, note), folder, change, discussion, known });
   if (d.kind === "none") return d;
   if (onlyClaude(skill, d.key)) return none("{0} 只有 Claude Code 能用", skill);
   return {
@@ -422,6 +438,7 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
       ...(change
         ? ["--name", change.name.slice(0, 32), "--label", `speclink.change=${change.name}`, "--label", `speclink.skill=speclink-${name}`]
         : []),
+      ...(discussion ? ["--label", `speclink.discussion=${discussion.slug}`, "--label", `speclink.skill=speclink-${name}`] : []),
       ...d.argv,
       d.text,
     ],

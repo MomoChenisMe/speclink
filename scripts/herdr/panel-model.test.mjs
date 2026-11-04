@@ -20,6 +20,7 @@ import {
   commandText,
   deliveryHint,
   discussionActions,
+  discussionAgents,
   discussionSkills,
   inside,
   isUninitialized,
@@ -335,40 +336,79 @@ test('changeAgents：不看終端機標題，標題可能過時或只是提到�
   assert.deepEqual(changeAgents(change, [titled, none]), []);
 });
 
-test('skillLabels：做變更的技能記下變更，沒指定就不動，不做變更的技能要清掉', () => {
-  assert.deepEqual(skillLabels('apply', 'add-a'), ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
-  assert.deepEqual(skillLabels('quality'), ['speclink.skill=speclink-quality']);
-  assert.deepEqual(skillLabels('discuss', 'talk'), ['speclink.skill=speclink-discuss', 'speclink.change=']);
-  assert.deepEqual(skillLabels('improve'), ['speclink.skill=speclink-improve', 'speclink.change=']);
+test('skillLabels：做變更的技能記下變更，討論的技能記下討論，用不到的標籤要清掉', () => {
+  assert.deepEqual(skillLabels('apply', 'add-a'), ['speclink.skill=speclink-apply', 'speclink.change=add-a', 'speclink.discussion=']);
+  assert.deepEqual(skillLabels('quality'), ['speclink.skill=speclink-quality', 'speclink.discussion='], '沒指定就不動變更');
+  assert.deepEqual(skillLabels('discuss', 'talk'), ['speclink.skill=speclink-discuss', 'speclink.change=', 'speclink.discussion=talk']);
+  assert.deepEqual(skillLabels('propose'), ['speclink.skill=speclink-propose', 'speclink.change=', 'speclink.discussion=']);
+  assert.deepEqual(skillLabels('improve', 'x'), ['speclink.skill=speclink-improve', 'speclink.change=', 'speclink.discussion=']);
 });
 
-test('promptLabels：只認開頭的 speclink 技能指令，變更名稱只看第一個參數', () => {
-  assert.deepEqual(promptLabels('/speclink-apply add-a'), ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
-  assert.deepEqual(promptLabels('  /speclink-ingest add-a 補充說明'), ['speclink.skill=speclink-ingest', 'speclink.change=add-a']);
-  assert.deepEqual(promptLabels('/speclink-quality'), ['speclink.skill=speclink-quality']);
-  assert.deepEqual(promptLabels('/speclink-apply 請接著做'), ['speclink.skill=speclink-apply'], '中文不是變更名稱');
-  assert.deepEqual(promptLabels('/speclink-discuss add-a 要不要改'), ['speclink.skill=speclink-discuss', 'speclink.change='], '討論只是提到變更');
+test('promptLabels：只認開頭的 speclink 技能指令，名稱只看第一個參數', () => {
+  const change = (skill, name) => [`speclink.skill=speclink-${skill}`, ...(name ? [`speclink.change=${name}`] : []), 'speclink.discussion='];
+  assert.deepEqual(promptLabels('/speclink-apply add-a'), change('apply', 'add-a'));
+  assert.deepEqual(promptLabels('  /speclink-ingest add-a 補充說明'), change('ingest', 'add-a'));
+  assert.deepEqual(promptLabels('/speclink-quality'), change('quality'));
+  assert.deepEqual(promptLabels('/speclink-apply 請接著做'), change('apply'), '中文不是變更名稱');
+  assert.deepEqual(promptLabels('/speclink-apply --flag'), change('apply'));
   assert.equal(promptLabels('請跑 /speclink-apply add-a'), null, '句子裡提到不算');
   assert.equal(promptLabels('/speclink-unknown add-a'), null);
   assert.equal(promptLabels('/herdr-dispatch add-a'), null);
   assert.equal(promptLabels(''), null);
 });
 
+test('promptLabels：討論記下 slug，提案接續討論也算，slug 可以有中文', () => {
+  const talk = (skill, slug) => [`speclink.skill=speclink-${skill}`, 'speclink.change=', `speclink.discussion=${slug}`];
+  assert.deepEqual(promptLabels('/speclink-discuss agent-tool-sdk-layering'), talk('discuss', 'agent-tool-sdk-layering'));
+  assert.deepEqual(promptLabels('/speclink-propose --from-discussion talk'), talk('propose', 'talk'));
+  assert.deepEqual(promptLabels('/speclink-discuss 提示詞分開'), talk('discuss', '提示詞分開'));
+  assert.deepEqual(promptLabels('/speclink-discuss'), talk('discuss', ''));
+});
+
+test('討論：標籤認得出這場討論的 agent，技能優先送給它，它在做事就等', () => {
+  const d = { slug: 'talk', status: 'open', cuts: [] };
+  const here = agent({ address: 't1', tab: 'tab1', cwd: REPO, status: 'idle' });
+  const mine = agent({ address: 't2', tab: 'tab2', cwd: REPO, status: 'idle', labels: { 'speclink.discussion': 'talk' } });
+  const other = agent({ address: 't3', labels: { 'speclink.discussion': 'other' } });
+  assert.deepEqual(discussionAgents(d, [here, mine, other]).map((a) => a.address), ['t2']);
+  const context = ctx({ agents: [here, mine], focus: { tab: 'tab1', terminal: 't1' } });
+  const [sent] = discussionActions(d, context);
+  assert.equal(sent.delivery.agent.address, 't2', '不是送給目前分頁');
+  assert.equal(deliveryHint({ kind: 'send', where: sent.delivery.where }), '送給這場討論的 agent');
+  assert.deepEqual(sent.delivery.labels, ['speclink.skill=speclink-discuss', 'speclink.change=', 'speclink.discussion=talk']);
+  const [busy] = discussionActions(d, ctx({ agents: [{ ...mine, status: 'working' }], focus: { tab: 'tab1', terminal: 't1' } }));
+  assert.equal(busy.delivery.kind, 'busy');
+  assert.equal(deliveryHint(busy.delivery), '這場討論的 agent 正在做事');
+});
+
+test('討論：沒有 agent 時開新分頁，分頁名稱和標籤都寫出討論', () => {
+  const d = { slug: 'talk', status: 'open', cuts: [] };
+  const [fresh] = discussionActions(d, ctx({ agents: [] }));
+  assert.equal(fresh.delivery.kind, 'new');
+  assert.equal(fresh.delivery.tabName, 'discuss · talk');
+  assert.deepEqual(fresh.delivery.labels, ['speclink.skill=speclink-discuss', 'speclink.change=', 'speclink.discussion=talk']);
+  const plan = newTabPlan({ ...TAB, skill: 'discuss', target: { kind: 'discussion', name: 'talk', args: 'talk' } });
+  assert.equal(plan.tabName, 'discuss · talk');
+  assert.ok(plan.hc.includes('speclink.discussion=talk'));
+  assert.ok(plan.hc.includes('speclink.skill=speclink-discuss'));
+});
+
 test('送達：送給現有 agent 時帶上標籤，apply 改走 worktree 時用實際的技能', () => {
   const here = agent({ address: 't1', tab: 'tab1', cwd: REPO, status: 'idle' });
   const d = planDelivery({ skill: 'quality', change: row(), args: 'add-a', ...ctx({ agents: [here], focus: { tab: 'tab1', terminal: 't1' } }) });
   assert.equal(d.kind, 'send');
-  assert.deepEqual(d.labels, ['speclink.skill=speclink-quality', 'speclink.change=add-a']);
+  assert.deepEqual(d.labels, ['speclink.skill=speclink-quality', 'speclink.change=add-a', 'speclink.discussion=']);
   const moved = planDelivery({ skill: 'apply', change: row({ worktree: { path: TREE, branch: 'b' } }), args: 'add-a', ...ctx({ agents: [here], focus: { tab: 'tab1', terminal: 't1' } }) });
-  assert.deepEqual(moved.labels, ['speclink.skill=speclink-apply-with-worktree', 'speclink.change=add-a']);
+  assert.deepEqual(moved.labels, ['speclink.skill=speclink-apply-with-worktree', 'speclink.change=add-a', 'speclink.discussion=']);
 });
 
 test('放到輸入框：技能指令帶標籤，附加名稱不帶', () => {
   const agents = [agent({ tab: 'tb1', address: 't1', key: 'claude', status: 'idle' })];
   const focus = { tab: 'tb1', terminal: 't1' };
   const target = { kind: 'change', name: 'add-a', args: 'add-a', row: row() };
-  assert.deepEqual(placePlan({ skill: 'apply', target, note: '', agents, focus }).labels, ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
-  assert.deepEqual(placePlan({ skill: 'discuss', target: null, note: '主題', agents, focus }).labels, ['speclink.skill=speclink-discuss', 'speclink.change=']);
+  assert.deepEqual(placePlan({ skill: 'apply', target, note: '', agents, focus }).labels, ['speclink.skill=speclink-apply', 'speclink.change=add-a', 'speclink.discussion=']);
+  assert.deepEqual(placePlan({ skill: 'discuss', target: { kind: 'discussion', name: 'talk', args: 'talk' }, note: '', agents, focus }).labels, ['speclink.skill=speclink-discuss', 'speclink.change=', 'speclink.discussion=talk']);
+  assert.deepEqual(placePlan({ skill: 'discuss', target: null, note: '主題', agents, focus }).labels, ['speclink.skill=speclink-discuss', 'speclink.change=', 'speclink.discussion=']);
   assert.equal(attachPlan({ name: 'add-a', agents, focus }).labels, undefined);
 });
 
@@ -435,6 +475,7 @@ test('送達第三順位：都沒有就開新分頁，開在該去的資料夾',
     tabName: 'apply · add-a',
     change: 'add-a',
     skill: 'apply',
+    labels: ['speclink.skill=speclink-apply', 'speclink.change=add-a', 'speclink.discussion='],
   });
 });
 
