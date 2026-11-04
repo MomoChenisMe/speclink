@@ -8,7 +8,7 @@ Open a panel in [Herdr](https://herdr.dev) that shows the changes and discussion
 
 The panel has two placements. Neither takes the keyboard. In both, the project follows the terminal that has focus, so a switch of space also switches the project.
 
-- **Docked**: with the cloned `speclink` layout (see "Install"), the panel stays in the rightmost column of the window, beside the terminals. `⌘⇧S` opens or closes this column. Drag its edge to change the width.
+- **Docked**: with the cloned `speclink` layout (see "Install"), the panel stays in the rightmost column of the window, beside the terminals. `⌘⇧S` opens or closes this column. Drag its edge to change the width. Each space remembers its own open or closed state, and a switch of space restores it. A space with no saved state starts open, so close it once in a project that does not use Speclink.
 - **Popped up**: in other layouts, `⌘⇧S` opens or closes the panel as a floating window that you can drag.
 
 What the panel contains:
@@ -139,7 +139,7 @@ The script does these steps:
 2. It renames the old clone to `layouts/speclink.json.old-<time>`.
 3. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
 
-After this, the panel column has its default width, and the other column widths and open or closed states are the same as in `main`. If you edited the old clone by hand, your edits are in the `.old` file, and you must move them yourself. You can delete the `.old` file when all is well.
+After this, the panel column has its default width, and the other column widths and open or closed states are the same as in `main`. The state that each space remembers does not change. If you edited the old clone by hand, your edits are in the `.old` file, and you must move them yourself. You can delete the `.old` file when all is well.
 
 ### Remove
 
@@ -175,4 +175,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the panel view and the Herdr API calls. `new-work.js` holds the New work pop-up. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.
+`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the panel view and the Herdr API calls. `new-work.js` holds the New work pop-up. `column-sync.js` makes each space remember the state of the right column. It runs in the invisible floating block that `dock-panel.mjs` adds, because the panel does not redraw while its column is closed. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.

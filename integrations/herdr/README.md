@@ -8,7 +8,7 @@
 
 面板有兩種放法。兩種都不搶鍵盤，專案都跟著目前焦點所在的終端機走，切 space 就換專案。
 
-- **停靠**：用複製出來的 `speclink` 版面（見「安裝」），面板常駐在視窗最右邊一欄，和終端機並排。`⌘⇧S` 開關這一欄，拖動邊界可以改寬度。
+- **停靠**：用複製出來的 `speclink` 版面（見「安裝」），面板常駐在視窗最右邊一欄，和終端機並排。`⌘⇧S` 開關這一欄，拖動邊界可以改寬度。每個 space 各自記住開或關，切 space 會還原，還沒記過的 space 預設打開，所以用不到 Speclink 的專案關一次就好。
 - **彈出**：其他版面按 `⌘⇧S` 開關面板，面板是一個可以拖動的浮動視窗。
 
 面板的內容：
@@ -139,7 +139,7 @@ node scripts/herdr/dock-panel.mjs
 2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`。
 3. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
 
-重做後，面板那一欄回到預設寬度，其他欄寬和開關狀態和 `main` 相同。你手改過舊版的話，內容還在 `.old` 檔裡，要自己搬過來。確認沒問題後可以刪掉 `.old` 檔。
+重做後，面板那一欄回到預設寬度，其他欄寬和開關狀態和 `main` 相同，每個 space 記住的開關不變。你手改過舊版的話，內容還在 `.old` 檔裡，要自己搬過來。確認沒問題後可以刪掉 `.old` 檔。
 
 ### 移除
 
@@ -175,4 +175,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`new-work.js` 是新工作跳窗。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
+`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`new-work.js` 是新工作跳窗，`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。

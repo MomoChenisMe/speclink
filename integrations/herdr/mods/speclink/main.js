@@ -30,9 +30,12 @@ import {
   startAction,
   waveToStart,
 } from "./model.js";
+import ColumnSync from "./column-sync.js";
 import NewWork from "./new-work.js";
 import { firstLine, location, projectRoot, sendError, spaceFor } from "./shared.js";
 
+// 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
+const VIEWS = { "new-work": NewWork, "column-sync": ColumnSync };
 const ICONS = "mods/speclink/icons";
 // 溢出摺疊的門檻與桌面 app 的系統匣面板相同。
 const OVERFLOW_LIMIT = 5;
@@ -56,10 +59,10 @@ function programIcon(program, size, color) {
 
 export default class SpeclinkPanel extends View {
   init(_props, cx) {
-    // speclink-new 開的跳窗也是這個 mod 的一份，畫面交給 new-work.js。
-    if (props()?.view === "new-work") {
-      this.newWork = new NewWork();
-      this.newWork.init(cx);
+    const Other = VIEWS[props()?.view];
+    if (Other) {
+      this.other = new Other();
+      this.other.init(cx);
       return;
     }
     this.place = location();
@@ -670,7 +673,7 @@ export default class SpeclinkPanel extends View {
   }
 
   render(cx) {
-    if (this.newWork) return this.newWork.render(cx);
+    if (this.other) return this.other.render(cx);
     const t = theme();
     this.follow(cx);
     const ctx = this.context();
