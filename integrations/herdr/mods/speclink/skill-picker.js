@@ -3,7 +3,7 @@
 // 由 speclink-new 的 mod.json 開啟，main.js 看到 props 的 view 就把畫面交給這裡。
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { agents, closeOverlay, focused, hc, knownAgents, panes, props, run, terminals, theme } from "herdr";
+import { agents, closeOverlay, focused, hc, knownAgents, panes, props, run, shared, terminals, theme } from "herdr";
 import {
   PICKER_SKILLS,
   batchPlan,
@@ -14,7 +14,7 @@ import {
   placePlan,
   skillTargets,
 } from "./model.js";
-import { location, projectRoot, sendError, speclinkJson } from "./shared.js";
+import { location, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
 
 const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: "已就緒" };
 // 顏色和 Claude Code 的技能列對應。
@@ -22,8 +22,11 @@ const GROUP_TONE = { 規劃: "ansi5", 實作: "ansi4", 品質: "ansi3", 收尾: 
 
 export default class SkillPicker {
   init(cx) {
-    this.at = 0;
-    this.target = null;
+    // 面板的 ⋯ 會先寫好要選哪個技能和哪一列。太舊的不算：那次按的是關閉跳窗。
+    const pick = shared("speclink.pick");
+    const fresh = pick && Date.now() - pick.when < 3000;
+    this.at = fresh ? Math.max(PICKER_SKILLS.findIndex((w) => w.skill === pick.skill), 0) : 0;
+    this.target = fresh ? pick.target : null;
     this.checked = new Set();
     this.newTab = false;
     this.board = null;
@@ -151,17 +154,8 @@ export default class SkillPicker {
   }
 
   async place(plan, cx) {
-    if (plan.paste) {
-      // hc send 會等 agent 開工才回來，這裡 agent 不會開工，所以要等滿約 5 秒。貼上在一開始就完成了，
-      // 不等它，只留一點時間接住立刻回來的失敗。
-      const pasted = hc(plan.paste);
-      const wait = new Promise((resolve) => cx.timer.after(600, () => resolve(null)));
-      const early = await Promise.race([pasted, wait]);
-      if (early && early.code !== 0) return this.fail(early, cx);
-    }
-    const r = await hc(plan.keys);
-    if (r.code !== 0) return this.fail(r, cx);
-    run("pane.focus", { terminal: plan.agent.address });
+    const failed = await placeInInput(plan, cx);
+    if (failed) return this.fail(failed, cx);
     closeOverlay(props().overlay);
   }
 

@@ -17,7 +17,8 @@ What the panel contains:
 - **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
 - **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
-- **Skill buttons**: only the skills that apply to the stage. The suggested next step has a heavy border.
+- **Skill buttons**: each row keeps only the suggested next step. `⋯` opens the Skills pop-up with this skill and this row already selected. A tooltip on the button tells where it goes.
+- **Attach button**: the chat icon beside the name. It adds the name of the change or discussion to the input box in the current tab and does not send it. The button is gray when the current tab has no agent or the agent waits for your answer.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap.
@@ -34,7 +35,7 @@ Only a project that is not initialized shows this card. Other problems, such as 
 
 ### Skills per stage
 
-| State | Skill buttons (bold is the suggested next step) |
+| State | Available skills (bold is the suggested next step, the one the row shows) |
 | --- | --- |
 | Proposed, not blocked | **apply**, analyze, ingest |
 | Proposed, blocked | apply is disabled, analyze, ingest |
@@ -164,8 +165,8 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **No review or verify stamps**: the CLI output has no stamp state. After you stamp a ready change, the suggestion stays on quality, and you click archive yourself.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
 - **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.
-- **The input box uses two methods**: Herdr has no command that pastes without Enter. A command with only lowercase letters and digits goes in with `hc keys`, one key at a time. With Chinese or capital letters, `hc send` pastes it with `\` at the end: Claude Code takes `\` plus Enter as a new line and does not send. A backspace then removes the new line. If Claude Code changes this behavior, the text is sent at once.
-- **A Codex tab cannot take a command in its input box**: `hc keys` cannot type the `$` of Codex, and the backslash method is not checked on Codex. Copilot can take only commands without Chinese. In these cases, check "開新分頁" (new tab).
+- **The input box uses two methods**: Herdr has no command that pastes without Enter. A command with only lowercase letters and digits goes in with `hc keys`, one key at a time. With Chinese or capital letters, `hc send` pastes it with `\` at the end: Claude Code takes `\` plus Enter as a new line and does not send, so the input box ends with an empty line. Enter still sends it, and the command still runs. If Claude Code changes this behavior, the text is sent at once.
+- **A Codex tab cannot take a skill command in its input box**: `hc keys` cannot type the `$` of Codex, and the backslash method is not checked on Codex. Copilot can take only commands without Chinese. In these cases, check "開新分頁" (new tab). The attach button adds only a name with no `$`, so it works on Codex, but a name in Chinese does not go in.
 - **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.
 - **The button and the folder have different names**: the button is "技能" (Skills) and the folder is still `speclink-new`, so `keys.json` does not change.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.

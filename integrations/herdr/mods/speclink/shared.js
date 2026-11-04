@@ -1,5 +1,5 @@
 // 面板和技能跳窗共用的 Herdr 小工具。
-import { exec, focused, panes, spaces } from "herdr";
+import { exec, focused, hc, panes, run, spaces } from "herdr";
 import { inside } from "./model.js";
 
 export const firstLine = (text) => text.trim().split("\n")[0];
@@ -39,6 +39,18 @@ export async function speclinkJson(verb, cwd, on) {
   const r = await exec("speclink", [...verb, "--json"], { cwd, on });
   if (r.code !== 0) throw new Error(firstLine(r.stderr) || `speclink ${verb.join(" ")} 結束碼 ${r.code}`);
   return JSON.parse(r.stdout);
+}
+
+// 照 placePlan 或 attachPlan 的結果放進輸入框，再把焦點切過去。失敗時回傳 hc 的結果。
+export async function placeInInput(plan, cx) {
+  const typed = hc(plan.hc);
+  // hc send 會等 agent 開工才回來，這裡 agent 不會開工，所以要等滿約 5 秒。貼上和 Enter 在前半秒就
+  // 完成了，不等它，只留一點時間接住立刻回來的失敗。
+  const quick = new Promise((resolve) => cx.timer.after(600, () => resolve(null)));
+  const r = await (plan.hc[0] === "send" ? Promise.race([typed, quick]) : typed);
+  if (r && r.code !== 0) return r;
+  run("pane.focus", { terminal: plan.agent.address });
+  return null;
 }
 
 export function sendError(result) {
