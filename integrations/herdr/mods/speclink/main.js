@@ -34,12 +34,13 @@ import {
   logoOpenAttempts,
   speclinkUrl,
   startChoices,
+  stationViews,
   waveToStart,
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
 import { tr, watchLang } from "./i18n.js";
 import SkillPicker from "./skill-picker.js";
-import { codeRemaining, firstLine, location, openTabs, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
+import { codeRemaining, firstLine, location, openTabs, placeInInput, projectRoot, sendError, spaceFor, speclinkJson, stationFacts } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
@@ -52,6 +53,22 @@ const STAGES = [
   { id: "ready", label: "已就緒", tone: "ansi2" },
 ];
 const AGENT_STATE = { working: "執行中", blocked: "在等你回答", done: "已完成", idle: "閒置" };
+// 圖示和文字與桌面 app 的看板卡片相同：形狀分站別（徽章是 review，盾牌是 verify），顏色分狀態。
+const STATION_BADGE = {
+  review: {
+    stamped: ["badge-check", "已審查"],
+    stale: ["badge-alert", "已審查·其後有變動"],
+    open: ["stamp", "審查中"],
+    running: ["stamp", "審查中"],
+  },
+  verify: {
+    stamped: ["shield-check", "已驗證"],
+    stale: ["shield-alert", "已驗證·其後有變動"],
+    open: ["shield", "驗證中"],
+    running: ["shield", "驗證中"],
+  },
+};
+const STATION_TONE = { stamped: "ansi5", stale: "ansi3", open: "ansi4", running: "ansi4" };
 
 const icon = (name, size, color) => svg(`${ICONS}/${name}.svg`).size(size).flex_none().text_color(color);
 const baseName = (path) => path.split("/").filter(Boolean).pop() ?? path;
@@ -138,7 +155,8 @@ export default class SpeclinkPanel extends View {
           read("discuss", "list"),
           read("workflow-config", "show"),
         ]);
-        this.board = buildBoard(list, plan, discussions, await codeRemaining(list, plan, root, on));
+        const [remaining, facts] = await Promise.all([codeRemaining(list, plan, root, on), stationFacts(list, plan, root, on)]);
+        this.board = buildBoard(list, plan, discussions, remaining, facts);
         this.worktreePolicy = config.worktree === true;
         this.error = null;
         this.uninitialized = false;
@@ -158,7 +176,7 @@ export default class SpeclinkPanel extends View {
     });
   }
 
-  // 規格資料夾有動靜就重抓；內容一律問 CLI，這裡不讀檔。watchFolder 只看得到本機。
+  // 規格資料夾有動靜就重抓。內容問 CLI，只有章 CLI 不給（見 stationFacts）。watchFolder 只看得到本機。
   watch(root, on, cx) {
     if (on) return;
     cx.spawn(async (cx) => {
@@ -558,6 +576,19 @@ export default class SpeclinkPanel extends View {
       });
   }
 
+  // agent 正在跑的站會呼吸，和工單開著但沒人在跑的站分得開。
+  stationBadges(row, ctx, t) {
+    return stationViews(row, ctx.agents).map(({ station, state }) => {
+      const [name, label] = STATION_BADGE[station][state];
+      return div()
+        .id(`station-${row.name}-${station}`)
+        .flex_none()
+        .when(state === "running", (el) => el.loop("opacity", { from: 0.35, to: 1, period: 1400 }))
+        .tooltip(tr(label))
+        .child(icon(name, 13, t[STATION_TONE[state]]));
+    });
+  }
+
   changeRow(row, stage, ctx, t) {
     const actions = changeActions(row, ctx);
     const start = startChoices(row, ctx);
@@ -576,6 +607,7 @@ export default class SpeclinkPanel extends View {
           .when(blocked, (el) => el.opacity(0.6))
           .child(this.waveNumber(row, t))
           .child(div().flex_1().min_w_0().truncate().child(row.name))
+          .children(this.stationBadges(row, ctx, t))
           .when(Boolean(row.worktree), (el) =>
             el.child(
               div()

@@ -11,14 +11,14 @@ const PREFIX = { claude: "/speclink-", copilot: "/speclink-", codex: "$speclink-
 const BUSY = { working: "正在做事", blocked: "在等你回答", error: "出錯了", sending: "正在收指令" };
 
 // 這些技能要在主資料夾跑；其餘技能跟著變更走，有 worktree 就在 worktree 裡跑。
-const MAIN_FOLDER = new Set(["archive", "worktree-merge", "apply-with-worktree"]);
+const MAIN_FOLDER = new Set(["archive", "archive+commit", "worktree-merge", "apply-with-worktree"]);
 const CLAUDE_ONLY = new Set(["analyze"]);
 
 // 第一個是建議的下一步。這裡只放合理的選項，技能本身沒有階段限制的（ingest、drift、commit）每個階段都有。
 const STAGE_SKILLS = {
   proposed: ["apply", "analyze", "ingest", "drift", "commit"],
   "in-progress": ["apply", "ingest", "drift", "verify", "quality", "review", "analyze", "commit"],
-  ready: ["quality", "review", "verify", "archive", "ingest", "drift", "commit"],
+  ready: ["quality", "review", "verify", "archive", "archive+commit", "ingest", "drift", "commit"],
 };
 // 這些技能要等程式任務都做完才能跑，手動任務（[M]）不算。沒做完時技能也會自己停下來。
 const NEEDS_CODE_DONE = new Set(["quality", "review"]);
@@ -35,6 +35,7 @@ export const PICKER_SKILLS = [
   { skill: "review", group: "品質", pair: "變更", about: "檢查實作的品質" },
   { skill: "verify", group: "品質", pair: "變更", about: "對照文件檢查實作" },
   { skill: "archive", group: "收尾", pair: "變更", about: "把變更併進規格並封存" },
+  { skill: "archive+commit", group: "收尾", pair: "變更", about: "封存後接著提交這個變更" },
   { skill: "worktree-merge", group: "收尾", pair: "變更", about: "把 worktree 合回主分支" },
   { skill: "commit", group: "收尾", pair: "變更", about: "只提交這個變更的檔案" },
   { skill: "improve", group: "專案", pair: null, about: "掃描程式碼找改善點" },
@@ -45,15 +46,59 @@ export const PICKER_SKILLS = [
   { skill: "config", group: "專案", pair: null, about: "整理專案說明與產出規則" },
 ];
 
-export const ALL_SKILLS = new Set(PICKER_SKILLS.map((w) => w.skill));
+// 真正存在的技能。疊加的 archive+commit 是兩個技能。
+export const ALL_SKILLS = new Set(PICKER_SKILLS.map((w) => w.skill).filter((skill) => !skill.includes("+")));
 
-// remaining 是每個變更還剩幾個程式任務（見 shared.js 的 codeRemaining），查不到的不放。
-export function buildBoard(list, plan, discussions, remaining = {}) {
+// 品質關卡的兩站，值是 .meta.yaml 裡欄位的開頭。
+const STATIONS = { review: "reviewed", verify: "verified" };
+
+function readStamp(meta, prefix) {
+  const field = (name) => meta.match(new RegExp(`^${prefix}_${name}:[ \\t]*(\\S.*)$`, "m"))?.[1];
+  const block = meta.match(new RegExp(`^${prefix}_scope:\\n((?:[ \\t-].*\\n?)*)`, "m"))?.[1] ?? "";
+  const scope = [...block.matchAll(/path:[ \t]*(.+)\n\s*hash:[ \t]*(\S+)/g)].map(([, path, hash]) => ({
+    path: path.replace(/^["']|["']$/g, ""),
+    hash,
+  }));
+  const total = Number(field("tasks_total"));
+  // 欄位不全不算章，和引擎的 is_stamped 相同。
+  return field("at") && Number.isInteger(total) && scope.length > 0 ? { total, scope } : null;
+}
+
+// 讀 shared.js 的 stationFacts 拿到的文字：.meta.yaml 加上 open_ticket: 列。CLI 的 list --json 刻意不帶章，所以要自己讀。
+export function parseStations(text) {
+  return Object.fromEntries(
+    Object.entries(STATIONS).map(([station, prefix]) => [
+      station,
+      { ticket: new RegExp(`^open_ticket: ${station}$`, "m").test(text), stamp: readStamp(text, prefix) },
+    ]),
+  );
+}
+
+export const stampedPaths = (stations) => [
+  ...new Set(Object.keys(STATIONS).flatMap((station) => stations[station].stamp?.scope.map((f) => f.path) ?? [])),
+];
+
+// 每一站的狀態：none、open（工單開著）、stamped（章有效）或 stale（章過期）。判斷和引擎的封存守門相同：
+// 工單開著的站不看章；章要任務數沒變、程式任務都做完、範圍內的檔案內容沒變。hashes 查不到時只看任務。
+export function stationStates(facts, row) {
+  const state = (station) => {
+    const { ticket, stamp } = facts?.[station] ?? {};
+    if (ticket) return "open";
+    if (!stamp) return "none";
+    if (stamp.total !== row.total || row.codeRemaining > 0) return "stale";
+    return facts.hashes && stamp.scope.some((f) => facts.hashes[f.path] !== f.hash) ? "stale" : "stamped";
+  };
+  return Object.fromEntries(Object.keys(STATIONS).map((station) => [station, state(station)]));
+}
+
+// remaining 是每個變更還剩幾個程式任務（見 shared.js 的 codeRemaining），facts 是章和工單（見 stationFacts），
+// 查不到的不放。
+export function buildBoard(list, plan, discussions, remaining = {}, facts = {}) {
   const listed = new Map(list.changes.map((c) => [c.name, c]));
   const stages = { proposed: [], "in-progress": [], ready: [] };
   for (const c of plan.changes) {
     const l = listed.get(c.name);
-    stages[c.stage].push({
+    const row = {
       name: c.name,
       stage: c.stage,
       wave: c.wave,
@@ -63,7 +108,8 @@ export function buildBoard(list, plan, discussions, remaining = {}) {
       codeRemaining: c.stage === "ready" ? 0 : remaining[c.name] ?? null,
       worktree: l?.worktree ?? null,
       restale: (l?.restaleFrom ?? []).length > 0,
-    });
+    };
+    stages[c.stage].push({ ...row, stations: stationStates(facts[c.name], row) });
   }
   const cuts = new Map();
   for (const cut of plan.unpromotedCuts ?? []) {
@@ -120,19 +166,22 @@ export async function lastOpenError(attempts, exec) {
   return error;
 }
 
+// 疊加的技能（archive+commit）依序跑，標籤和 hook 一樣算第一個。
+const skillLabel = (skill) => `speclink.skill=speclink-${skill.split("+")[0]}`;
+
 // 這個 agent 接下來在做什麼。name 是技能搭配的變更或討論。變更的技能沒指定時不動 speclink.change，
 // 那通常是同一個變更的下一步；其他情況清掉用不到的標籤（hc label k= 是移除）。
 export function skillLabels(skill, name) {
   const pair = PICKER_SKILLS.find((w) => w.skill === skill)?.pair;
-  const labels = [`speclink.skill=speclink-${skill}`];
+  const labels = [skillLabel(skill)];
   if (pair === "變更") return [...labels, ...(name ? [`speclink.change=${name}`] : []), "speclink.discussion="];
   return [...labels, "speclink.change=", `speclink.discussion=${pair === "討論" && name ? name : ""}`];
 }
 
 // hook 用：送出的訊息是 speclink 技能指令時，回傳要貼的標籤，其他訊息回傳 null。名稱只認第一個參數。
-// 變更名稱只有英數，所以中文不算；討論的 slug 可能有中文。
+// 變更名稱只有英數，所以中文不算；討論的 slug 可能有中文。疊加的指令（/speclink-archive + /speclink-commit x）算第一個技能。
 export function promptLabels(prompt) {
-  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+(?:--from-discussion\s+)?(\S+))?/);
+  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+\+\s+\/speclink-[a-z-]+)?(?:\s+(?:--from-discussion\s+)?(\S+))?/);
   if (!match || !ALL_SKILLS.has(match[1])) return null;
   const [, skill, name] = match;
   const isChange = PICKER_SKILLS.find((w) => w.skill === skill).pair === "變更";
@@ -173,14 +222,22 @@ export function hookLabels({ hook_event_name: event, source, prompt, tool_name: 
   return null;
 }
 
+// 建議的下一步。兩站都蓋章就是收尾：有 worktree 要先合併；手動任務還沒做完時還不能封存，交給 apply 處理。
+// 沒蓋章時，只剩手動任務的下一步是品質關卡，不是 apply。
+function suggestedSkill(row, skills) {
+  if (row.restale) return "ingest";
+  const stamped = row.stations?.review === "stamped" && row.stations?.verify === "stamped";
+  if (stamped && row.stage === "ready") return row.worktree ? "worktree-merge" : "archive+commit";
+  if (!stamped && row.stage === "in-progress" && row.codeRemaining === 0) return "quality";
+  return skills[0];
+}
+
 export function changeSkills(row) {
   // 有 worktree 就要先合併才能封存。合併不看任務做到哪裡，所以每個階段都能選。
   const skills = row.worktree
-    ? [...STAGE_SKILLS[row.stage].filter((skill) => skill !== "archive"), "worktree-merge"]
+    ? [...STAGE_SKILLS[row.stage].filter((skill) => !skill.startsWith("archive")), "worktree-merge"]
     : STAGE_SKILLS[row.stage];
-  // 只剩手動任務時，下一步是品質關卡，不是 apply。
-  const codeDone = row.stage === "in-progress" && row.codeRemaining === 0;
-  const suggested = row.restale ? "ingest" : codeDone ? "quality" : skills[0];
+  const suggested = suggestedSkill(row, skills);
   return skills.map((skill) => {
     const waiting = skill === "apply" && row.blockedBy.length > 0;
     return {
@@ -200,7 +257,12 @@ export function discussionSkills(d) {
   return [discuss(false)];
 }
 
-export const commandText = (key, skill, args) => `${PREFIX[key]}${skill}${args ? ` ${args}` : ""}`;
+// 疊加的技能和 Claude Code mod 的寫法相同：/speclink-archive + /speclink-commit x。
+// agent 只把第一個當指令，後面的是它的參數，模型做完第一個會接著做。
+export const commandText = (key, skill, args) => {
+  const command = skill.split("+").map((part) => `${PREFIX[key]}${part}`).join(" + ");
+  return `${command}${args ? ` ${args}` : ""}`;
+};
 
 // `--if idle` 只認 idle：agent 做完一輪後 core 的狀態是 done（Herdr 看過後才顯示 idle），
 // 所以 done 改用不帶旗標的 send。不帶旗標時 hc 仍會拒絕 blocked，但 working 會照送，所以
@@ -274,6 +336,27 @@ export function changeAgents(row, agents) {
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];
   const byFocus = agents.filter((a) => !a.labels["speclink.change"] && a.labels["speclink.focus"] === row.name);
   return [...new Set([...byLabel, ...byPath, ...byFocus])];
+}
+
+const STATION_SKILLS = {
+  "speclink-quality": Object.keys(STATIONS),
+  "speclink-review": ["review"],
+  "speclink-verify": ["verify"],
+};
+
+// 列上要畫的站。agent 正在跑的站是 running（第一輪做完前還沒有工單），蓋好章的站不管 agent 還在不在跑都算蓋好了。
+export function stationViews(row, agents) {
+  const running = new Set(
+    changeAgents(row, agents)
+      .filter((a) => a.status === "working")
+      .flatMap((a) => STATION_SKILLS[a.labels["speclink.skill"]] ?? []),
+  );
+  return Object.keys(STATIONS)
+    .map((station) => {
+      const state = row.stations?.[station] ?? "none";
+      return { station, state: state !== "stamped" && running.has(station) ? "running" : state };
+    })
+    .filter((view) => view.state !== "none");
 }
 
 const sendable = (a) => a.status === "idle" || a.status === "done";
@@ -485,7 +568,7 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
       `herdr.space=${space}`,
       // hc 的名稱不能重複，所以只有變更才取名：同一個變更只會有一個 agent。
       ...(change
-        ? ["--name", change.name.slice(0, 32), "--label", `speclink.change=${change.name}`, "--label", `speclink.skill=speclink-${name}`]
+        ? ["--name", change.name.slice(0, 32), "--label", `speclink.change=${change.name}`, "--label", skillLabel(name)]
         : []),
       ...(discussion ? ["--label", `speclink.discussion=${discussion.slug}`, "--label", `speclink.skill=speclink-${name}`] : []),
       ...d.argv,
@@ -500,6 +583,9 @@ export function batchPlan({ skill, targets, ...context }) {
   if (plans.length === 0) return none("勾選要開工的變更");
   if (plans.filter((p) => p.skill === "apply").length > 1) {
     return none("主資料夾一次只能跑一個 apply。可以改選 apply-with-worktree");
+  }
+  if (plans.filter((p) => p.skill === "archive+commit").length > 1) {
+    return none("一次只能跑一個 archive+commit，同時提交會互相影響");
   }
   return { kind: "tabs", plans, text: plans.map((p) => p.text).join("　") };
 }

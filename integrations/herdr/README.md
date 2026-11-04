@@ -16,7 +16,7 @@
 面板的內容：
 
 - **頂端**：專案名稱，下面一行寫「目前的 space · 分支」。
-- **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
+- **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、review 和 verify 的章、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
 - **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 Claude Code 裡直接打字時，要裝 hook 面板才知道。
 - **技能鈕**：每列只留建議的下一步。`⋯` 開技能跳窗，並先選好這個技能和這一列。滑鼠停在鈕上會寫出會送給誰。
@@ -46,11 +46,28 @@
 | 提案中，被擋 | apply（灰掉，列上顯示這一顆）、analyze、ingest、drift、commit |
 | 進行中 | **apply**、ingest、drift、verify、quality、review、analyze、commit |
 | 進行中，只剩手動任務 | 同上，但建議改成 **quality**，也沒有開工鈕 |
-| 已就緒 | **quality**、review、verify、archive、ingest、drift、commit |
-| 任何階段，有 worktree | 多一個 worktree-merge，少一個 archive（要先合併才能封存） |
+| 進行中，只剩手動任務，兩站都蓋章 | 同上，建議留在 **apply**，由它處理手動任務，不用再跑一次 quality |
+| 已就緒 | **quality**、review、verify、archive、archive+commit、ingest、drift、commit |
+| 已就緒，兩站都蓋章而且章有效 | 同上，但建議改成 **archive+commit** |
+| 任何階段，有 worktree | 多一個 worktree-merge，少了 archive 和 archive+commit（要先合併才能封存）。已就緒而且兩站都蓋章時，建議是 **worktree-merge** |
 | 討論重新定案，變更還沒更新 | 建議改成 **ingest** |
 | 討論中 | **discuss** |
 | 已定案，或還有刀沒轉出 | **propose --from-discussion**、discuss |
+
+`archive+commit` 送出的指令和 Claude Code mod 相同：`/speclink-archive + /speclink-commit <變更>`。Claude Code 只把第一個斜線指令當成指令，後面的是它的參數，模型封存後會接著提交。技能跳窗裡它在「收尾」那一組，一次只能開一個，因為同時提交會互相影響。
+
+### 章的圖示
+
+變更列的名稱旁邊有 review 和 verify 的章，圖示和桌面 app 的看板卡片相同。形狀分站別，顏色分狀態。還沒開始的站不顯示。
+
+| 狀態 | review | verify | 顏色 |
+| --- | --- | --- | --- |
+| 已蓋章，章有效 | 打勾的徽章 | 打勾的盾牌 | 紫色 |
+| 已蓋章，其後有變動（要重跑） | 驚嘆號徽章 | 驚嘆號盾牌 | 琥珀色 |
+| 工單開著 | 印章 | 盾牌 | 藍色 |
+| agent 正在跑 | 印章 | 盾牌 | 藍色，會呼吸 |
+
+判斷方式和 `speclink archive` 相同：工單開著的站不看章；章要任務數沒變、程式任務都做完、範圍內的檔案內容沒變。`quality` 會讓兩站一起顯示「正在跑」，還沒有工單時也一樣。已蓋章的站維持蓋章的樣子。
 
 ### 追蹤直接打的指令（選用）
 
@@ -212,7 +229,8 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 ## 已知限制
 
 - **複製版不會跟著 Herdr 更新**：`speclink` 版面停在複製當下的 `main`，Spaces 清單和 Agents 清單停在複製當下的 `spaces` 和 `agents`。Herdr 更新後要重做，方法見「Herdr 更新後重做停靠」。
-- **不顯示 review、verify 的章**：CLI 的輸出沒有蓋章狀態。已就緒的變更蓋完章後，建議仍停在 quality，archive 要自己按。
+- **章是面板自己讀的**：CLI 的 `list --json` 刻意不帶章，所以面板讀變更資料夾的 `.meta.yaml`，再用 `perl` 算檔案指紋。有 worktree 的變更讀 worktree 裡的那份。機器上沒有 `perl` 或它的 `Digest::SHA` 時只看任務數。最後的判斷還是在 `speclink archive`，章過期時它會拒絕。
+- **範圍內的檔案改了，最多 10 秒才會變色**：那些檔案不在面板監看的資料夾裡，要等計時更新。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
 - **一次開多個分頁可能撞 git 鎖**：和整波開工相同，撞到時那個 agent 會停下來回報。

@@ -30,6 +30,7 @@ import {
   lastOpenError,
   logoOpenAttempts,
   newTabPlan,
+  parseStations,
   placePlan,
   planDelivery,
   sendArgs,
@@ -41,7 +42,10 @@ import {
   statusCounts,
   statusSections,
   speclinkUrl,
+  stampedPaths,
   startChoices,
+  stationStates,
+  stationViews,
   waveToStart,
 } from '../../integrations/herdr/mods/speclink/model.js';
 import { TO_EN, TO_ZH, langFrom, setLang, tr } from '../../integrations/herdr/mods/speclink/i18n.js';
@@ -118,6 +122,7 @@ test('buildBoard：階段、波次、順序取自 plan，任務數與 worktree �
       codeRemaining: null,
       worktree: { path: TREE, branch: 'speclink/add-a' },
       restale: true,
+      stations: { review: 'none', verify: 'none' },
     },
   ]);
   assert.deepEqual(board.stages['in-progress'][0].blockedBy, ['add-a']);
@@ -260,7 +265,7 @@ test('開工：只剩手動任務時沒有開工鈕，因為沒有程式要寫',
 
 test('changeSkills：已就緒且沒有 worktree 可封存，建議 quality', () => {
   const skills = changeSkills(row({ stage: 'ready' }));
-  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'archive', 'ingest', 'drift', 'commit']);
+  assert.deepEqual(names(skills), ['quality', 'review', 'verify', 'archive', 'archive+commit', 'ingest', 'drift', 'commit']);
   assert.deepEqual(primary(skills), ['quality']);
 });
 
@@ -1185,6 +1190,194 @@ test('placePlan：原因跟著語系', () => {
   } finally {
     setLang('zh');
   }
+});
+
+// ---- 品質關卡的章 ----
+
+const META = `schema: spec-driven
+created: 2026-11-04T15:00:22+08:00
+reviewed_at: 2026-11-04T17:09:58+08:00
+reviewed_by: M <m@example.com>
+reviewed_tasks_total: 12
+reviewed_rounds: 3
+reviewed_scope:
+  - path: src/a.js
+    hash: aaa
+  - path: "src/b c.js"
+    hash: bbb
+verified_at: 2026-11-04T17:09:58+08:00
+verified_tasks_total: 12
+verified_scope:
+  - path: src/a.js
+    hash: aaa
+`;
+const STAMP_R = { total: 12, scope: [{ path: 'src/a.js', hash: 'aaa' }, { path: 'src/b c.js', hash: 'bbb' }] };
+const STAMP_V = { total: 12, scope: [{ path: 'src/a.js', hash: 'aaa' }] };
+
+test('parseStations：讀 .meta.yaml 的章和工單', () => {
+  assert.deepEqual(parseStations(META), {
+    review: { ticket: false, stamp: STAMP_R },
+    verify: { ticket: false, stamp: STAMP_V },
+  });
+  assert.deepEqual(parseStations(`${META}\nopen_ticket: verify\n`).verify.ticket, true);
+  assert.deepEqual(parseStations('schema: spec-driven\n'), {
+    review: { ticket: false, stamp: null },
+    verify: { ticket: false, stamp: null },
+  });
+  assert.equal(parseStations('').review.stamp, null);
+});
+
+test('parseStations：欄位不全不算章（引擎的 is_stamped）', () => {
+  const noScope = 'reviewed_at: x\nreviewed_tasks_total: 3\n';
+  const noTotal = 'reviewed_at: x\nreviewed_scope:\n  - path: a\n    hash: b\n';
+  const noTime = 'reviewed_tasks_total: 3\nreviewed_scope:\n  - path: a\n    hash: b\n';
+  for (const meta of [noScope, noTotal, noTime]) assert.equal(parseStations(meta).review.stamp, null);
+});
+
+test('stampedPaths：要查的檔案不重複', () => {
+  assert.deepEqual(stampedPaths(parseStations(META)), ['src/a.js', 'src/b c.js']);
+  assert.deepEqual(stampedPaths(parseStations('')), []);
+});
+
+test('stationStates：判斷和引擎的封存守門相同', () => {
+  const fresh = { 'src/a.js': 'aaa', 'src/b c.js': 'bbb' };
+  const facts = (over = {}) => ({ ...parseStations(META), hashes: fresh, ...over });
+  const base = { total: 12, codeRemaining: 0 };
+  assert.deepEqual(stationStates(facts(), base), { review: 'stamped', verify: 'stamped' });
+  // 任務數變了
+  assert.deepEqual(stationStates(facts(), { ...base, total: 13 }), { review: 'stale', verify: 'stale' });
+  // 程式任務又多了沒做完的
+  assert.deepEqual(stationStates(facts(), { ...base, codeRemaining: 1 }), { review: 'stale', verify: 'stale' });
+  // 只有範圍內的檔案算：b 只在 review 的範圍內
+  assert.deepEqual(stationStates(facts({ hashes: { ...fresh, 'src/b c.js': 'xxx' } }), base), { review: 'stale', verify: 'stamped' });
+  // 檔案不見了
+  assert.deepEqual(stationStates(facts({ hashes: { 'src/a.js': 'aaa' } }), base), { review: 'stale', verify: 'stamped' });
+  // 查不到雜湊時只看任務，和引擎沒有工作樹時相同
+  assert.deepEqual(stationStates(facts({ hashes: null }), base), { review: 'stamped', verify: 'stamped' });
+  // 查不到程式任務數不算過期
+  assert.deepEqual(stationStates(facts(), { total: 12, codeRemaining: null }), { review: 'stamped', verify: 'stamped' });
+  // 工單開著就不看章
+  const open = parseStations(`${META}\nopen_ticket: review\n`);
+  assert.deepEqual(stationStates({ ...open, hashes: { 'src/a.js': 'xxx' } }, base), { review: 'open', verify: 'stale' });
+  // 沒有資料
+  assert.deepEqual(stationStates(undefined, base), { review: 'none', verify: 'none' });
+});
+
+test('buildBoard：列上帶兩站的狀態', () => {
+  const list = { changes: [{ name: 'a', completedTasks: 12, totalTasks: 12 }, { name: 'b', completedTasks: 0, totalTasks: 12 }] };
+  const plan = {
+    changes: [
+      { name: 'a', wave: 1, stage: 'ready', blockedBy: [] },
+      { name: 'b', wave: 1, stage: 'proposed', blockedBy: [] },
+    ],
+  };
+  const hashes = { 'src/a.js': 'aaa', 'src/b c.js': 'bbb' };
+  const board = buildBoard(list, plan, { discussions: [] }, {}, { a: { ...parseStations(META), hashes } });
+  assert.deepEqual(board.stages.ready[0].stations, { review: 'stamped', verify: 'stamped' });
+  assert.deepEqual(board.stages.proposed[0].stations, { review: 'none', verify: 'none' });
+  // 技能跳窗不查章，也不會壞
+  assert.deepEqual(buildBoard(list, plan, { discussions: [] }).stages.ready[0].stations, { review: 'none', verify: 'none' });
+});
+
+test('stationViews：agent 正在跑的站顯示 running，沒有狀態的站不畫', () => {
+  const on = (skill, status = 'working') => agent({ status, labels: { 'speclink.change': 'add-a', 'speclink.skill': `speclink-${skill}` } });
+  const stations = (review, verify) => row({ stage: 'ready', stations: { review, verify } });
+  const states = (r, agents = []) => stationViews(r, agents).map((v) => [v.station, v.state]);
+  assert.deepEqual(states(stations('none', 'none')), []);
+  assert.deepEqual(states(row({ stage: 'ready' })), [], '沒有查過章的列');
+  assert.deepEqual(states(stations('stamped', 'open')), [['review', 'stamped'], ['verify', 'open']]);
+  // quality 跑兩站，還沒有工單時也要顯示
+  assert.deepEqual(states(stations('none', 'none'), [on('quality')]), [['review', 'running'], ['verify', 'running']]);
+  assert.deepEqual(states(stations('none', 'none'), [on('review')]), [['review', 'running']]);
+  assert.deepEqual(states(stations('none', 'none'), [on('verify')]), [['verify', 'running']]);
+  // 蓋好的站就算蓋好了，另一站還在跑
+  assert.deepEqual(states(stations('stamped', 'open'), [on('quality')]), [['review', 'stamped'], ['verify', 'running']]);
+  // 重跑過期的章
+  assert.deepEqual(states(stations('stale', 'stale'), [on('quality')]), [['review', 'running'], ['verify', 'running']]);
+  // agent 停下來、做別的事、或做別的變更，都不算在跑
+  assert.deepEqual(states(stations('open', 'none'), [on('quality', 'blocked')]), [['review', 'open']]);
+  assert.deepEqual(states(stations('none', 'none'), [on('apply')]), []);
+  const other = agent({ status: 'working', labels: { 'speclink.change': 'add-z', 'speclink.skill': 'speclink-quality' } });
+  assert.deepEqual(states(stations('none', 'none'), [other]), []);
+});
+
+test('changeSkills：兩站都蓋章後，建議封存加提交', () => {
+  const primary = (over) => changeSkills(row({ stage: 'ready', ...over })).find((s) => s.primary)?.skill;
+  const both = { review: 'stamped', verify: 'stamped' };
+  assert.equal(primary({}), 'quality');
+  assert.equal(primary({ stations: both }), 'archive+commit');
+  // 只蓋了一站、章過期、工單開著，都還要跑
+  for (const verify of ['none', 'stale', 'open']) assert.equal(primary({ stations: { review: 'stamped', verify } }), 'quality');
+  // 有 worktree 要先合併，封存不能選
+  const merged = changeSkills(row({ stage: 'ready', stations: both, worktree: { path: TREE, branch: 'b' } }));
+  assert.equal(merged.find((s) => s.primary).skill, 'worktree-merge');
+  assert.ok(!merged.some((s) => s.skill.startsWith('archive')));
+  // 討論重新定案優先
+  assert.equal(primary({ stations: both, restale: true }), 'ingest');
+  // 蓋了章但手動任務還沒做：不用再跑一次 quality，也還不能封存
+  const manual = changeSkills(row({ stage: 'in-progress', codeRemaining: 0, stations: both }));
+  assert.equal(manual.find((s) => s.primary).skill, 'apply');
+  assert.ok(!manual.some((s) => s.skill.startsWith('archive')));
+  assert.equal(changeSkills(row({ stage: 'in-progress', codeRemaining: 0 })).find((s) => s.primary).skill, 'quality');
+});
+
+// ---- archive+commit ----
+
+const readyRow = (over = {}) => row({ stage: 'ready', stations: { review: 'stamped', verify: 'stamped' }, ...over });
+
+test('archive+commit：指令和 Claude Code mod 相同，兩個都帶前綴', () => {
+  assert.equal(commandText('claude', 'archive+commit', 'add-a'), '/speclink-archive + /speclink-commit add-a');
+  assert.equal(commandText('codex', 'archive+commit', 'add-a'), '$speclink-archive + $speclink-commit add-a');
+  assert.equal(commandText('claude', 'archive+commit'), '/speclink-archive + /speclink-commit');
+  assert.equal(commandText('claude', 'archive', 'add-a'), '/speclink-archive add-a');
+});
+
+test('archive+commit：跳窗放在封存後面，對象和封存相同', () => {
+  const names = PICKER_SKILLS.filter((w) => w.group === '收尾').map((w) => w.skill);
+  assert.deepEqual(names, ['archive', 'archive+commit', 'worktree-merge', 'commit']);
+  const board = {
+    stages: { proposed: [], 'in-progress': [], ready: [readyRow(), readyRow({ name: 'add-t', worktree: { path: TREE, branch: 'b' } })] },
+    discussions: [],
+  };
+  assert.deepEqual(skillTargets('archive+commit', board).map((t) => t.name), skillTargets('archive', board).map((t) => t.name));
+  assert.deepEqual(skillTargets('archive+commit', board).map((t) => t.name), ['add-a']);
+});
+
+test('archive+commit：面板的鈕送到主資料夾的 agent，標籤算 archive', () => {
+  const idle = agent({ labels: { 'speclink.change': 'add-a' } });
+  const send = planDelivery({ ...ctx({ agents: [idle] }), skill: 'archive+commit', change: readyRow(), args: 'add-a' });
+  assert.equal(send.kind, 'send');
+  assert.equal(send.text, '/speclink-archive + /speclink-commit add-a');
+  assert.deepEqual(send.labels, ['speclink.skill=speclink-archive', 'speclink.change=add-a', 'speclink.discussion=']);
+  const fresh = planDelivery({ ...ctx(), focus: { tab: 'other', terminal: null }, skill: 'archive+commit', change: readyRow(), args: 'add-a' });
+  assert.equal(fresh.kind, 'new');
+  assert.equal(fresh.folder, REPO);
+  assert.equal(fresh.tabName, 'archive+commit · add-a');
+});
+
+test('archive+commit：跳窗放到輸入框和開新分頁', () => {
+  const target = { kind: 'change', name: 'add-a', args: 'add-a', row: readyRow() };
+  const placed = placePlan({ skill: 'archive+commit', target, note: '', agents: [agent()], focus: { tab: 'tab1', terminal: 't1' } });
+  assert.equal(placed.text, '/speclink-archive + /speclink-commit add-a ');
+  assert.deepEqual(placed.labels, ['speclink.skill=speclink-archive', 'speclink.change=add-a', 'speclink.discussion=']);
+  const tab = newTabPlan({ ...ctx(), skill: 'archive+commit', target, note: '', space: 's1', on: null });
+  assert.equal(tab.kind, 'tab');
+  assert.ok(tab.hc.includes('speclink.skill=speclink-archive'));
+  assert.equal(tab.hc.at(-1), '/speclink-archive + /speclink-commit add-a');
+});
+
+test('archive+commit：一次只開一個，同時提交會互相影響', () => {
+  const targets = ['add-a', 'add-b'].map((name) => ({ kind: 'change', name, args: name, row: readyRow({ name }) }));
+  const plan = batchPlan({ ...ctx(), skill: 'archive+commit', targets, space: 's1', on: null });
+  assert.equal(plan.kind, 'none');
+  assert.equal(batchPlan({ ...ctx(), skill: 'archive', targets, space: 's1', on: null }).kind, 'tabs');
+});
+
+test('promptLabels：認得疊加的指令', () => {
+  const labels = ['speclink.skill=speclink-archive', 'speclink.change=add-a', 'speclink.discussion='];
+  assert.deepEqual(promptLabels('/speclink-archive + /speclink-commit add-a'), labels);
+  assert.deepEqual(hookLabels({ tool_name: 'Skill', tool_input: { skill: 'speclink-archive', args: '+ /speclink-commit add-a' } }), labels);
+  assert.deepEqual(promptLabels('/speclink-archive + /speclink-commit'), ['speclink.skill=speclink-archive', 'speclink.discussion=']);
 });
 
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));

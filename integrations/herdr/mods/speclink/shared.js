@@ -1,7 +1,7 @@
 // 面板和技能跳窗共用的 Herdr 小工具。
 import { exec, focused, hc, panes, run, spaces } from "herdr";
 import { tr } from "./i18n.js";
-import { inside } from "./model.js";
+import { inside, parseStations, stampedPaths } from "./model.js";
 
 export const firstLine = (text) => text.trim().split("\n")[0];
 
@@ -53,6 +53,42 @@ export async function codeRemaining(list, plan, root, on) {
     ),
   );
   return Object.fromEntries(names.flatMap((name, i) => (answers[i]?.progress ? [[name, answers[i].progress.codeRemaining]] : [])));
+}
+
+// 這個變更的 .meta.yaml，加上開著的工單。
+const READ_STATIONS = `for d in speclink openspec; do
+  c="$d/changes/$1"
+  [ -d "$c" ] || continue
+  cat "$c/.meta.yaml" 2>/dev/null; echo
+  for s in review verify; do [ -e "$c/$s.md" ] && echo "open_ticket: $s"; done
+  exit 0
+done`;
+
+// 檔案的指紋，規則和引擎的 content_fingerprint_bytes 相同：UTF-8 文字先把 CRLF 換成 LF，其他檔案看原始位元組。
+// 不見的檔案不輸出。
+const FINGERPRINT = String.raw`for my $f (@ARGV) { open(my $h, "<:raw", $f) or next; my $b = <$h> // ""; my $u = $b; $b =~ s/\r\n/\n/g if utf8::decode($u); print sha256_hex($b), "  $f\n" }`;
+
+async function fingerprints(paths, cwd, on) {
+  const r = await exec("perl", ["-MDigest::SHA=sha256_hex", "-0777", "-e", FINGERPRINT, "--", ...paths], { cwd, on }).catch(() => null);
+  if (r?.code !== 0) return null;
+  return Object.fromEntries(r.stdout.split("\n").filter(Boolean).map((line) => [line.slice(66), line.slice(0, 64)]));
+}
+
+// 品質關卡的章和工單。CLI 沒有給，只好讀檔；有 worktree 的要到 worktree 裡讀，主資料夾的副本不會更新。
+// 提案中的變更還沒有章。讀不到時沒有章，封存時引擎還會再查一次。
+export async function stationFacts(list, plan, root, on) {
+  const folders = new Map(list.changes.map((c) => [c.name, c.worktree?.path ?? root]));
+  const names = plan.changes.filter((c) => c.stage !== "proposed").map((c) => c.name);
+  const facts = await Promise.all(
+    names.map(async (name) => {
+      const cwd = folders.get(name) ?? root;
+      const r = await exec("sh", ["-c", READ_STATIONS, "sh", name], { cwd, on }).catch(() => null);
+      const stations = parseStations(r?.stdout ?? "");
+      const paths = stampedPaths(stations);
+      return [name, { ...stations, hashes: paths.length > 0 ? await fingerprints(paths, cwd, on) : null }];
+    }),
+  );
+  return Object.fromEntries(facts);
 }
 
 // hc run 回來時分頁可能還沒出現，等它出現才能改名。
