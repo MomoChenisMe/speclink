@@ -348,8 +348,16 @@ export function attachPlan({ name, agents, focus }) {
   return { kind: "place", agent, text: pasteable(` ${name} `) };
 }
 
+// 主資料夾哪個變更的 apply 還沒做完。標籤在分頁關掉前都留著，所以要看變更本身：
+// 任務做完或已經封存就不算，不管那個分頁還開著。查不到時是 null。
+function unfinishedApply(agents, board) {
+  const open = Object.values(board?.stages ?? {}).flat().filter((row) => row.stage !== "ready").map((row) => row.name);
+  const applying = agents.filter((a) => a.labels["speclink.skill"] === "speclink-apply").map((a) => a.labels["speclink.change"]);
+  return applying.find((name) => open.includes(name)) ?? null;
+}
+
 // 開新分頁：做法和檢查都跟 herdr-dispatch 技能相同。分頁開在目前的 space，畫面留在原地。
-export function newTabPlan({ skill, target, note, root, agents, known, worktreePolicy, space, on }) {
+export function newTabPlan({ skill, target, note, root, agents, known, worktreePolicy, space, on, board }) {
   const change = target?.kind === "change" ? target.row : null;
   const applying = skill === "apply" || skill === "apply-with-worktree";
   if (change && changeAgents(change, agents).length > 0) return none("已經有 agent 在做");
@@ -359,9 +367,8 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   // 政策沒開時這個技能會自己停下來。
   if (name === "apply-with-worktree" && !worktreePolicy) return none("這個專案沒開 worktree 流程");
   // 主資料夾一次只能跑一個 apply，兩個一起跑會互相踩到檔案。
-  if (name === "apply" && agents.some((a) => a.labels["speclink.skill"] === "speclink-apply")) {
-    return none("主資料夾已經有 apply 在跑");
-  }
+  const unfinished = name === "apply" ? unfinishedApply(agents, board) : null;
+  if (unfinished) return none("{0} 的 apply 還沒做完", unfinished);
   const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
   const d = newAgent({ name, args: joinArgs(target, note), folder, change, known });
   if (d.kind === "none") return d;

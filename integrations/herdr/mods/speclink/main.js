@@ -183,6 +183,7 @@ export default class SpeclinkPanel extends View {
       focus: { tab: f?.tab ?? null, terminal: f?.terminal ?? null },
       space: f?.space ?? null,
       on: this.place.on,
+      board: this.board,
       known: this.known,
       worktreePolicy: this.worktreePolicy,
       starting: this.starting,

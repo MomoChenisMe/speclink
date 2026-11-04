@@ -653,9 +653,6 @@ test('newTabPlan：這些情況不開，並寫出原因', () => {
   const mine = agent({ labels: { 'speclink.change': 'add-a' } });
   assert.equal(tab({ skill: 'review', target: changeTarget(), agents: [mine] }).reason, '已經有 agent 在做');
   assert.match(tab({ skill: 'apply', target: changeTarget({ blockedBy: ['add-b'] }) }).reason, /要等 add-b 落地/);
-  const running = agent({ labels: { 'speclink.skill': 'speclink-apply' } });
-  assert.equal(tab({ skill: 'apply', agents: [running] }).reason, '主資料夾已經有 apply 在跑');
-  assert.equal(tab({ skill: 'apply-with-worktree', agents: [running] }).kind, 'tab');
   assert.match(tab({ skill: 'analyze', known: [{ key: 'copilot', run: ['copilot'], installed: true }] }).reason, /只有 Claude Code/);
   assert.equal(tab({ known: null }).reason, '還在確認可用的 agent');
 });
@@ -734,10 +731,31 @@ test('開工：開 worktree 政策、還沒有 worktree 時要問，兩種都開
   assert.equal(planOf(choices, '直接 apply').folder, REPO);
 });
 
-test('開工：主資料夾已經有 apply 在跑時，直接 apply 不能選，worktree 還可以', () => {
-  const choices = start({}, { agents: [agent({ labels: { 'speclink.change': 'add-z', 'speclink.skill': 'speclink-apply' } })] });
-  assert.equal(planOf(choices, '直接 apply').reason, '主資料夾已經有 apply 在跑');
+const applyAgent = (change, over = {}) =>
+  agent({ labels: { 'speclink.change': change, 'speclink.skill': 'speclink-apply' }, ...over });
+const boardWith = (...rows) => ({ stages: { proposed: rows.filter((r) => r.stage === 'proposed'), 'in-progress': rows.filter((r) => r.stage === 'in-progress'), ready: rows.filter((r) => r.stage === 'ready') } });
+
+test('開工：主資料夾的 apply 還沒做完時，直接 apply 不能選並寫出是哪個變更，worktree 還可以', () => {
+  const board = boardWith(row({ name: 'add-z', stage: 'in-progress' }));
+  // 分頁閒置也算：做到一半停下來，檔案還在主資料夾。
+  const choices = start({}, { board, agents: [applyAgent('add-z', { status: 'idle' })] });
+  assert.equal(planOf(choices, '直接 apply').reason, 'add-z 的 apply 還沒做完');
   assert.equal(planOf(choices, '用 worktree').kind, 'tab');
+});
+
+test('開工：apply 跑完了分頁還開著，不算佔用主資料夾', () => {
+  // 已經封存，不在清單裡；這就是分頁留著、標籤還在的情況。
+  const archived = start({}, { board: boardWith(row({ name: 'add-a', stage: 'proposed' })), agents: [applyAgent('add-z', { status: 'done' })] });
+  assert.equal(planOf(archived, '直接 apply').kind, 'tab');
+  // 任務都做完，接著在同一個分頁跑 quality。
+  const ready = start({}, { board: boardWith(row({ name: 'add-z', stage: 'ready' })), agents: [applyAgent('add-z', { status: 'working' })] });
+  assert.equal(planOf(ready, '直接 apply').kind, 'tab');
+});
+
+test('newTabPlan：apply-with-worktree 不受主資料夾的 apply 影響', () => {
+  const board = boardWith(row({ name: 'add-z', stage: 'in-progress' }));
+  assert.equal(tab({ skill: 'apply', board, agents: [applyAgent('add-z')] }).reason, 'add-z 的 apply 還沒做完');
+  assert.equal(tab({ skill: 'apply-with-worktree', board, agents: [applyAgent('add-z')] }).kind, 'tab');
 });
 
 test('開工：未開 worktree 政策時不問，直接 apply', () => {
