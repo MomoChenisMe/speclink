@@ -19,6 +19,7 @@
 - **做這個變更的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛設的終端機標題。
 - **技能鈕**：每列只留建議的下一步。`⋯` 開技能跳窗，並先選好這個技能和這一列。滑鼠停在鈕上會寫出會送給誰。
 - **附加鈕**：名稱旁邊的對話圖示，把變更或討論的名稱接到目前分頁的輸入框，不送出。目前分頁沒有 agent，或 agent 在等你回答時，這顆鈕會變灰。
+- **待收尾徽章**：只在 `speclink` 版面。左邊 Spaces 清單的專案列會多一個 `✓2`，表示這個專案有 2 個已就緒的變更，約 30 秒更新一次。沒有待收尾時不顯示。
 - **開工**：變更列上的鈕，為這個變更開一個專用的新 agent。見下面的「開工」。
 - **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。見下面的「技能跳窗」。
 - **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。
@@ -121,7 +122,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
    "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
    ```
 
-3. 要停靠就執行這一行。它把 Herdr 的 `main` 版面複製成 `speclink` 版面，在最右邊加一欄面板，然後切過去。不想停靠就跳過這一步，用 `⌘⇧S` 彈出。
+3. 要停靠就執行這一行。它把 Herdr 的 `main` 版面複製成 `speclink` 版面，在最右邊加一欄面板，把 Spaces 清單換成有待收尾徽章的複製版，然後切過去。不想停靠就跳過這一步，用 `⌘⇧S` 彈出。
 
    ```bash
    node scripts/herdr/dock-panel.mjs
@@ -133,7 +134,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 ### Herdr 更新後重做停靠
 
-複製版不會跟著 Herdr 更新：Herdr 的 `main` 版面有新東西時，`speclink` 版面不會有。`~/.config/herdr-app/layouts/speclink.json` 的 `cloned_from.version` 是複製時的 Herdr 版本，和 `herdr-app --version` 不同時就該重做。重做是再執行一次同一行：
+複製版不會跟著 Herdr 更新：Herdr 的 `main` 版面或 Spaces 清單有新東西時，`speclink` 版面不會有。`~/.config/herdr-app/layouts/speclink.json` 的 `cloned_from.version` 是複製時的 Herdr 版本，和 `herdr-app --version` 不同時就該重做。重做是再執行一次同一行：
 
 ```bash
 node scripts/herdr/dock-panel.mjs
@@ -142,26 +143,29 @@ node scripts/herdr/dock-panel.mjs
 它會做這些事：
 
 1. 切回 `main`。
-2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`。
-3. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
+2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`。
+3. 用新版的 `spaces` 重新複製並接上徽章。Herdr 改了要接的那幾行時，腳本會在動任何東西之前停下來。
+4. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
 
 重做後，面板那一欄回到預設寬度，其他欄寬和開關狀態和 `main` 相同，每個 space 記住的開關不變。你手改過舊版的話，內容還在 `.old` 檔裡，要自己搬過來。確認沒問題後可以刪掉 `.old` 檔。
 
 ### 移除
 
 1. 用 `⌘⇧L` 切回 `main`。
-2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`、`~/.config/herdr-app/mods/speclink` 和 `~/.config/herdr-app/mods/speclink-new`。
+2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`，以及 `~/.config/herdr-app/mods/` 底下的 `speclink`、`speclink-new`、`speclink-spaces`。
 3. 刪掉 `keys.json` 裡加的那幾行。
 
 ### 為什麼用複製的版面
 
 討論 `herdr-speclink-panel` 的結論否決過「複製 speclink 專用版面」，理由是複製版不會跟著 Herdr 更新。2026-11-04 看過實際畫面後推翻這個否決，接受複製版的維護代價：浮動視窗蓋住終端機，和定案的右邊一欄差太多。
 
+同一份結論也否決過「space 側欄徽章」，理由是要複製並維護 spaces mod。版面既然已經複製，又有多個專案同時進行，同一天也推翻這一條。內建的 spaces mod 沒有擴充點，所以腳本複製它、放進 `integrations/herdr/spaces-badge/ready-badge.js`，再接上三行。
+
 Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` 沒有作用，對 `main` 跑 `layout.set` 也會被拒。
 
 ## 已知限制
 
-- **複製版不會跟著 Herdr 更新**：`speclink` 版面停在複製當下的 `main`。Herdr 更新後要重做，方法見「Herdr 更新後重做停靠」。
+- **複製版不會跟著 Herdr 更新**：`speclink` 版面停在複製當下的 `main`，Spaces 清單停在複製當下的 `spaces`。Herdr 更新後要重做，方法見「Herdr 更新後重做停靠」。
 - **不顯示 review、verify 的章**：CLI 的輸出沒有蓋章狀態。已就緒的變更蓋完章後，建議仍停在 quality，archive 要自己按。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
@@ -175,6 +179,7 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **開工 space 可能還在主資料夾**：agent 用 `cd` 進 worktree，終端機回報的資料夾不一定跟著變。這時 space 的名稱是專案名，也不會縮排在專案底下，要看分頁名稱才分得出變更。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
 - **整波開工可能撞 git 鎖**：每個 agent 都可能在主資料夾 commit 規格或建 worktree。撞到時那個 agent 會停下來回報，再按一次技能鈕即可。
+- **徽章只看本機和連得上的機器**：連不上的機器沒有徽章。折疊成窄欄時也不顯示。
 - **畫面只有繁體中文**。
 
 ## 開發
