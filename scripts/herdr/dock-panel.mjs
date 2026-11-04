@@ -51,7 +51,7 @@ const SPACES_EDITS = [
 const AGENTS_EDITS = [
   [
     'closeOverlay, props, window, layout } from "herdr";',
-    'closeOverlay, props, window, layout } from "herdr";\nimport { groupedOrder, statusCounts } from "./model.js";\nimport { changeOf, planMark, watchPlans } from "./speclink-rows.js";',
+    'closeOverlay, props, window, layout } from "herdr";\nimport { groupedOrder, statusCounts, statusSections } from "./model.js";\nimport { changeOf, planMark, watchPlans } from "./speclink-rows.js";',
   ],
   // 預設依 space 分組。時鐘選單還能切回 Priority。
   ['shared("agents.sort")) ?? SORTS[0];', 'shared("agents.sort")) ?? SORTS[1];'],
@@ -67,7 +67,7 @@ const AGENTS_EDITS = [
     'return tab ? title(tab, lead(tab)) : a.title || a.program?.name || "";',
     'const change = tab?.named ? null : changeOf(a)?.name;\n      return change ?? (tab ? title(tab, lead(tab)) : a.title || a.program?.name || "");',
   ],
-  // 「需要你」那一組沒有 space 標題，所以列上要寫 space。
+  // Needs you 那一組沒有 space 標題，所以列上要寫 space。
   ['const full = byPriority || isPinned;', 'const full = byPriority || isPinned || rankOf(a) === RANK.blocked;'],
   ['.child(this.status(t, a, byPriority && !isPinned));', '.child(this.status(t, a, full && !isPinned));'],
   ['.child(`\\u00b7 ${more}`))))', '.child(`\\u00b7 ${more}`)))\n          .children(planMark(a, t)))'],
@@ -79,14 +79,26 @@ const AGENTS_EDITS = [
   ],
   [
     'label: byPriority ? SECTION[r] : a.space_name || "", status: byPriority ? SECTION_STATUS[r] : null,',
-    'label: byPriority ? SECTION[r] : section ? "需要你" : a.space_name || "", status: section ? SECTION_STATUS[r] : null,',
+    'label: section ? SECTION[r] : a.space_name || "", status: section ? SECTION_STATUS[r] : null,',
   ],
-  // space 那一組在右邊寫各狀態的數量，其他組照內建寫總數。
+  // space 的標題要比裡面的狀態小標題明顯。收起時右邊寫各狀態的數量，其他組照內建寫總數。
+  ['.child(div().truncate().text_color(t[g.status] ?? t.dim).child(g.label))', '.child(div().truncate().text_color(t[g.status] ?? (g.id.startsWith("sp-") ? t.foreground : t.dim)).child(g.label))'],
   ['      const top = g.members.reduce((m, a) => ((RANK[a.status] ?? 0) > (RANK[m] ?? 0) ? a.status : m), null);\n      return h_flex()\n        .id(g.id)', '      return h_flex()\n        .id(g.id)'],
   ['.when(byPriority || !open, (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))', '.when(!g.id.startsWith("sp-"), (el) => el.child(div().text_color(t.dim).child(String(g.members.length))))'],
   [
     '.when(!open, (el) => el\n          .when(!byPriority && top && top !== "idle", (el) => el.child(this.status(t, { status: top }, true)))\n          .child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));',
-    '.when(g.id.startsWith("sp-"), (el) => el.children(statusCounts(g.members).map(([status, n]) =>\n          h_flex().gap(3).items_center().text_color(t.dim).child(this.status(t, { status }, true)).child(String(n)))))\n        .when(!open, (el) => el.child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));',
+    '.when(g.id.startsWith("sp-") && !open, (el) => el.children(statusCounts(g.members).map(([status, n]) =>\n          h_flex().gap(3).items_center().text_color(t.dim).child(this.status(t, { status }, true)).child(String(n)))))\n        .when(!open, (el) => el.child(svg("mods/workspace-chrome/chevron-right.svg").size(11).flex_none().text_color(t.dim)));',
+  ],
+  // space 那一組裡再依狀態分段。
+  [
+    'const rows = collapsed\n      ? list.flatMap(withKids)\n      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : g.members.flatMap(withKids))]);',
+    `const body = (g) => !g.id.startsWith("sp-") ? g.members.flatMap(withKids) : statusSections(g.members, rankOf).flatMap((s) => [
+      h_flex().id(\`\${g.id}-\${s.rank}\`).pl(16).h(22).flex_none().items_center().text_size(10.5).font_medium().text_color(t[SECTION_STATUS[s.rank]] ?? t.dim).child(SECTION[s.rank]),
+      ...s.members.flatMap(withKids),
+    ]);
+    const rows = collapsed
+      ? list.flatMap(withKids)
+      : groups.flatMap((g) => [header(g), ...(this.folded.has(g.id) ? [] : body(g))]);`,
   ],
 ];
 

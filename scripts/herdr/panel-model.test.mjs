@@ -30,6 +30,7 @@ import {
   sendArgs,
   skillTargets,
   statusCounts,
+  statusSections,
   speclinkUrl,
   startAction,
   titleChange,
@@ -845,6 +846,14 @@ test('groupedOrder：等你回答的放最前面，其他照 Spaces 順序，同
   ];
   const order = groupedOrder(list, [{ id: 'a' }, { id: 'b' }, { id: 'c' }], (x) => rank[x.status], (x) => x.at);
   assert.deepEqual(order.map((x) => x.address), ['c-blocked', 'a-done', 'b-working', 'b-idle-new', 'b-idle-old', 'c-idle', 'gone']);
+});
+
+test('statusSections：狀態相同的相鄰成一段，順序照排好的清單', () => {
+  const rank = { done: 3, working: 2, idle: 1 };
+  const members = ['done', 'working', 'idle', 'idle'].map((status, i) => ({ status, i }));
+  const sections = statusSections(members, (a) => rank[a.status]);
+  assert.deepEqual(sections.map((s) => [s.rank, s.members.map((a) => a.i)]), [[3, [0]], [2, [1]], [1, [2, 3]]]);
+  assert.deepEqual(statusSections([], () => 1), []);
 });
 
 test('statusCounts：最急的在前面，沒有的不列', () => {
