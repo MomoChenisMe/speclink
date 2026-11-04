@@ -6,9 +6,15 @@
 
 ## 面板有什麼
 
-按 `⌘⇧S` 開關面板。面板是一個可以拖動的浮動視窗，開著也不搶鍵盤。專案跟著目前焦點所在的終端機走，切 space 就換專案。
+面板有兩種放法。兩種都不搶鍵盤，專案都跟著目前焦點所在的終端機走，切 space 就換專案。
 
-- **變更**：提案中、進行中、已就緒三張卡常駐。每一列有波次、名稱、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
+- **停靠**：用複製出來的 `speclink` 版面（見「安裝」），面板常駐在視窗最右邊一欄，和終端機並排。`⌘⇧S` 開關這一欄，拖動邊界可以改寬度。
+- **彈出**：其他版面按 `⌘⇧S` 開關面板，面板是一個可以拖動的浮動視窗。
+
+面板的內容：
+
+- **頂端**：專案名稱，下面一行寫「目前的 space · 分支」。
+- **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
 - **做這個變更的 agent**：列上顯示 agent 的位置與狀態，點了切過去。比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛設的終端機標題。
 - **技能鈕**：只列這個階段用得到的技能，建議的下一步加粗外框。
@@ -68,28 +74,69 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show` 的 `--json` 輸出。
 - 專案執行過 `speclink init`。
 - 要叫 Speclink 開頁面時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。
+- 要停靠時需要 Node.js，用來執行複製版面的腳本。
 
 ## 安裝
 
-在 repo 根目錄執行：
+在 repo 根目錄操作，Herdr 要開著：
 
-```bash
-cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
-```
+1. 複製 mod。Herdr 會自動載入。
 
-Herdr 會自動載入。接著在 `~/.config/herdr-app/keys.json` 的 `global` 加上這一行（[keys.json](keys.json) 是同一行）：
+   ```bash
+   cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
+   ```
 
-```json
-"cmd-shift-s": "mod.open:speclink"
-```
+2. 在 `~/.config/herdr-app/keys.json` 的 `global` 加上第一行，再加上 `layout:speclink` 這一段（內容和 [keys.json](keys.json) 相同）。在 `speclink` 版面，`⌘⇧S` 開關右邊那一欄；在其他版面，`⌘⇧S` 彈出浮動視窗。
 
-更新時再執行一次 `cp`，Herdr 會立刻重新載入。移除時刪掉那個資料夾和那一行。
+   ```json
+   "cmd-shift-s": "mod.open:speclink"
+   ```
+
+   ```json
+   "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
+   ```
+
+3. 要停靠就執行這一行。它把 Herdr 的 `main` 版面複製成 `speclink` 版面，在最右邊加一欄面板，然後切過去。不想停靠就跳過這一步，用 `⌘⇧S` 彈出。
+
+   ```bash
+   node scripts/herdr/dock-panel.mjs
+   ```
+
+用 `⌘⇧L` 切換版面。更新 mod 時再執行一次 `cp`，Herdr 會立刻重新載入。
 
 不要用符號連結安裝：Herdr 載入得到程式，但畫不出連結裡的 SVG 圖示，存檔也不會自動重新載入。
 
+### Herdr 更新後重做停靠
+
+複製版不會跟著 Herdr 更新：Herdr 的 `main` 版面有新東西時，`speclink` 版面不會有。`~/.config/herdr-app/layouts/speclink.json` 的 `cloned_from.version` 是複製時的 Herdr 版本，和 `herdr-app --version` 不同時就該重做。重做是再執行一次同一行：
+
+```bash
+node scripts/herdr/dock-panel.mjs
+```
+
+它會做這些事：
+
+1. 切回 `main`。
+2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`。
+3. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
+
+重做後，面板那一欄回到預設寬度，其他欄寬和開關狀態和 `main` 相同。你手改過舊版的話，內容還在 `.old` 檔裡，要自己搬過來。確認沒問題後可以刪掉 `.old` 檔。
+
+### 移除
+
+1. 用 `⌘⇧L` 切回 `main`。
+2. 刪掉 `~/.config/herdr-app/layouts/speclink.json` 和 `~/.config/herdr-app/mods/speclink`。
+3. 刪掉 `keys.json` 裡加的那兩處。
+
+### 為什麼用複製的版面
+
+討論 `herdr-speclink-panel` 的結論否決過「複製 speclink 專用版面」，理由是複製版不會跟著 Herdr 更新。2026-11-04 看過實際畫面後推翻這個否決，接受複製版的維護代價：浮動視窗蓋住終端機，和定案的右邊一欄差太多。
+
+Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` 沒有作用，對 `main` 跑 `layout.set` 也會被拒。
+
 ## 已知限制
 
-- **不能停靠在視窗裡**：Herdr 內建的 layout 不讓 mod 停靠，要複製 layout 才行，而複製版不會跟著 Herdr 更新。所以面板用快捷鍵彈出。
+- **複製版不會跟著 Herdr 更新**：`speclink` 版面停在複製當下的 `main`。Herdr 更新後要重做，方法見「Herdr 更新後重做停靠」。
 - **不顯示 review、verify 的章**：CLI 的輸出沒有蓋章狀態。已就緒的變更蓋完章後，建議仍停在 quality，archive 要自己按。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
