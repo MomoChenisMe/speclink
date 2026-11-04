@@ -22,7 +22,7 @@ What the panel contains:
 - **Ready badge**: only in the `speclink` layout. A project row in the Spaces list shows `✓2` when the project has 2 changes that are ready. It updates about every 30 seconds and does not show when nothing is ready.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
 - **Skills (技能)**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. See "Skills pop-up" below.
-- **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap.
+- **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap. Click the logo at the top left to bring up the Speclink app.
 
 Each card can collapse. More than 5 rows fold into "N more…". Each row has a copy button.
 
@@ -98,6 +98,8 @@ These rows have no checkbox and show the reason: the change already has an agent
 ### Open in Speclink
 
 The panel uses `open` to send a `speclink://` URL. The desktop app goes to this project and then opens the page. If the app is not running, it starts. The URL can only open and show things. It writes no files.
+
+The logo sends no URL. It only brings up the app, so the app stays on its current project. To go to this project, use the Roadmap button or click a row.
 
 ## Requirements
 
@@ -179,7 +181,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **The button and the folder have different names**: the button is "技能" (Skills) and the folder is still `speclink-new`, so `keys.json` does not change.
 - **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, use the button that opens a new tab.
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
-- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button.
+- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, because it brings up the app on this computer.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still opens a new space, and the skill stops and explains why.
 - **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. In this case the space has the name of the project and does not nest under the project. Only the tab name shows the change.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.
