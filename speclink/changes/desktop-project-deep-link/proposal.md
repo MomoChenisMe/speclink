@@ -40,6 +40,7 @@ Herdr 面板（開發者在 Herdr 終端機裡看專案進度的側欄）左上�
     - `apps/desktop/src/__tests__/store.test.ts`
     - `integrations/herdr/mods/speclink/main.js`
     - `integrations/herdr/mods/speclink/model.js`
+    - `integrations/herdr/mods/speclink/i18n.js`
     - `integrations/herdr/README.md`
     - `integrations/herdr/README.en.md`
     - `scripts/herdr/panel-model.test.mjs`

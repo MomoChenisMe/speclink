@@ -88,10 +88,20 @@ export function buildBoard(list, plan, discussions, remaining = {}) {
 export const isUninitialized = (message) => message.includes("Not initialized");
 
 // speclink 網址（正式規格 desktop-app「以 speclink 網址開啟詳情頁」）。kind 是 change、
-// discussion 或 roadmap；roadmap 不帶名稱。
+// discussion、roadmap 或 project；roadmap 與 project 不帶名稱。
 export function speclinkUrl(kind, project, name) {
   const path = name ? `/${encodeURIComponent(name)}` : "";
   return `speclink://${kind}${path}?project=${encodeURIComponent(project)}`;
+}
+
+// 桌面 app 的 bundle id。
+export const APP_ID = "app.speclink.desktop";
+
+// Logo 依序嘗試的 open 參數。讀得到這台機器上的專案時先送網址切過去；沒有註冊 speclink 網址的
+// 舊版 app 會讓網址送不出去，這時退回只叫出 app。門檻與「路線圖」鈕相同。
+export function logoOpenAttempts({ root, hasBoard, on }) {
+  const bringUp = ["-b", APP_ID];
+  return hasBoard && !on ? [[speclinkUrl("project", root)], bringUp] : [bringUp];
 }
 
 export function changeSkills(row) {

@@ -687,6 +687,36 @@ describe("app store (Zustand)", () => {
     expect(store.getState().boardMode).toBe("roadmap");
   });
 
+  it("openBoard 從詳情頁、規格頁與路線圖檢視都回到看板頁的卡片檢視（Scenario「以網址切到專案並顯示看板」）", async () => {
+    const store = storeWith(withTopicA());
+    await store.getState().refresh();
+    const expectBoardCards = () =>
+      expect(store.getState()).toMatchObject({
+        boardView: "board",
+        boardMode: "cards",
+        detailChange: null,
+        detailDiscussion: null,
+      });
+    // 開著變更詳情頁，而且上次選的是路線圖。
+    store.getState().setBoardMode("roadmap");
+    store.getState().openDetail("desktop-shell-and-browser");
+    store.getState().openBoard();
+    expectBoardCards();
+    // 開著討論詳情頁。
+    store.getState().setBoardMode("roadmap");
+    store.getState().openDiscussion("topic-a");
+    store.getState().openBoard();
+    expectBoardCards();
+    // 規格頁。
+    store.getState().setBoardView("specs");
+    store.getState().openBoard();
+    expectBoardCards();
+    // 路線圖檢視。
+    store.getState().openRoadmap();
+    store.getState().openBoard();
+    expectBoardCards();
+  });
+
   it("boardMode 不寫進 localStorage", async () => {
     const store = storeWith(withTopicA());
     await store.getState().refresh();
@@ -1373,6 +1403,8 @@ describe("app store (Zustand)", () => {
     ["openDiscussion", (s) => s.openDiscussion("topic-a"), (s) => s.detailDiscussion?.slug === "topic-a"],
     // 路線圖網址（desktop-roadmap）與開詳情的網址一樣收掉可取消浮層。
     ["openRoadmap", (s) => s.openRoadmap(), (s) => s.boardMode === "roadmap"],
+    // 專案網址（desktop-app）同樣收掉可取消浮層，並固定回到卡片檢視。
+    ["openBoard", (s) => s.openBoard(), (s) => s.boardMode === "cards" && s.detailChange === null],
   ];
   describe.each(OPENERS)("open 動作清除可取消浮層：%s", (_name, open, drawerOpen) => {
     it.each<[string, Partial<AppState>]>([

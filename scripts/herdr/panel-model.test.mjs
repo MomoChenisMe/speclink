@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   ALL_SKILLS,
+  APP_ID,
   PICKER_SKILLS,
   attachPlan,
   agentChange,
@@ -24,6 +25,7 @@ import {
   isUninitialized,
   joinAgents,
   groupedOrder,
+  logoOpenAttempts,
   newTabPlan,
   placePlan,
   planDelivery,
@@ -777,6 +779,30 @@ test('speclinkUrl：與 desktop-app「以 speclink 網址開啟詳情頁」的�
 
 test('speclinkUrl：名稱與路徑要百分比編碼', () => {
   assert.equal(speclinkUrl('change', '/Users/我 的/app', 'add a'), 'speclink://change/add%20a?project=%2FUsers%2F%E6%88%91%20%E7%9A%84%2Fapp');
+});
+
+test('speclinkUrl：專案網址不帶名稱，路徑要百分比編碼', () => {
+  assert.equal(speclinkUrl('project', '/Users/dev/speclink'), 'speclink://project?project=%2FUsers%2Fdev%2Fspeclink');
+  assert.equal(speclinkUrl('project', '/Users/我 的/app'), 'speclink://project?project=%2FUsers%2F%E6%88%91%20%E7%9A%84%2Fapp');
+});
+
+const LOGO_ROOT = '/Users/dev/speclink';
+const BRING_UP = ['-b', APP_ID];
+
+test('logoOpenAttempts：本機已初始化的專案先送網址，送不出去再退回只叫出 app', () => {
+  assert.deepEqual(logoOpenAttempts({ root: LOGO_ROOT, hasBoard: true, on: null }), [
+    ['speclink://project?project=%2FUsers%2Fdev%2Fspeclink'],
+    BRING_UP,
+  ]);
+});
+
+test('logoOpenAttempts：沒初始化、還在載入或讀不到專案時只叫出 app', () => {
+  assert.deepEqual(logoOpenAttempts({ root: LOGO_ROOT, hasBoard: false, on: null }), [BRING_UP]);
+  assert.deepEqual(logoOpenAttempts({ root: null, hasBoard: false, on: null }), [BRING_UP]);
+});
+
+test('logoOpenAttempts：別台機器的 space 只叫出 app，路徑在這台開不了', () => {
+  assert.deepEqual(logoOpenAttempts({ root: LOGO_ROOT, hasBoard: true, on: 'build-box' }), [BRING_UP]);
 });
 
 // ---- 開工 ----

@@ -98,6 +98,7 @@ export const TO_EN = {
   已轉出: "Promoted",
   "這些變更讀不到 metadata：{0}": "Could not read metadata for these changes: {0}",
   "開啟 Speclink app": "Open the Speclink app",
+  "在 Speclink app 開啟這個專案": "Open this project in the Speclink app",
   目前的工作區: "Current space",
   路線圖: "Roadmap",
   技能: "Skills",

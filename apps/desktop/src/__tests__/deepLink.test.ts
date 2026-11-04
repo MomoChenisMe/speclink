@@ -30,6 +30,15 @@ describe("parseSpeclinkUrl：合法網址", () => {
       url: "speclink://roadmap/?project=%2Fa",
       link: { kind: "roadmap", project: "/a" },
     },
+    // 專案網址：只切專案並顯示看板，path 為空或單一 /，不帶名稱。
+    {
+      url: "speclink://project?project=%2FUsers%2Fdev%2Fspeclink",
+      link: { kind: "project", project: "/Users/dev/speclink" },
+    },
+    {
+      url: "speclink://project/?project=%2Fa",
+      link: { kind: "project", project: "/a" },
+    },
   ])("$url", ({ url, link }) => {
     expect(parseSpeclinkUrl(url)).toEqual({ ok: true, link });
   });
@@ -38,6 +47,8 @@ describe("parseSpeclinkUrl：合法網址", () => {
 describe("parseSpeclinkUrl：格式錯誤", () => {
   it.each([
     { url: "speclink://roadmap/waves?project=%2Fa", reason: "name" }, // 路線圖不帶名稱
+    { url: "speclink://project/board?project=%2Fa", reason: "name" }, // 專案網址不帶名稱
+    { url: "speclink://project", reason: "project" }, // 缺 project
     { url: "speclink://spec/desktop-app?project=%2Fa", reason: "kind" }, // 未知種類
     { url: "speclink://change/a/b?project=%2Fa", reason: "name" }, // 名稱多於一段
     { url: "speclink://change/?project=%2Fa", reason: "name" }, // 名稱為空
@@ -70,6 +81,15 @@ describe("parseSpeclinkUrl：不可信網址", () => {
     { url: "speclink://roadmap?project=%2Fa&project=%2Fb", reason: "project" },
     // 判定：project 含控制字元走同一個嚴格解碼，擋下。
     { url: "speclink://roadmap?project=%2Fa%0Ab", reason: "project" },
+    // 專案網址的稽核：與路線圖走同一條解析分支，五項都沒有缺口。
+    // 判定：重複的 project 有歧義，不挑一個用；不是絕對路徑的 project 不開。
+    { url: "speclink://project?project=%2Fa&project=%2Fb", reason: "project" },
+    { url: "speclink://project?project=work%2Fapp", reason: "project" },
+    // 判定：無效編碼與控制字元走同一個嚴格解碼，擋下。
+    { url: "speclink://project?project=%2Fa%E0%A4", reason: "project" },
+    { url: "speclink://project?project=%2Fa%0Ab", reason: "project" },
+    // 判定：host 大小寫不放寬——PROJECT 照未知種類出 toast。
+    { url: "speclink://PROJECT?project=%2Fa", reason: "kind" },
   ])("$url → $reason", ({ url, reason }) => {
     expect(parseSpeclinkUrl(url)).toEqual({ ok: false, reason });
   });
@@ -118,6 +138,7 @@ const PROJECT_KEY = `local:${PROJECT}`;
 const CHANGE_URL = "speclink://change/add-search?project=%2FUsers%2Fdev%2Fspeclink";
 const DISCUSSION_URL = "speclink://discussion/board-search-bar?project=%2FUsers%2Fdev%2Fspeclink";
 const ROADMAP_URL = "speclink://roadmap?project=%2FUsers%2Fdev%2Fspeclink";
+const PROJECT_URL = "speclink://project?project=%2FUsers%2Fdev%2Fspeclink";
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -165,6 +186,7 @@ function harness(
     openDiscussion: vi.fn((slug: string) => log.push(`openDiscussion:${slug}`)),
     setBoardView: vi.fn((view: string) => log.push(`setBoardView:${view}`)),
     openRoadmap: vi.fn(() => log.push("openRoadmap")),
+    openBoard: vi.fn(() => log.push("openBoard")),
   };
   const dispose = installDeepLinks({ getState: () => state as never }, over.ready ?? Promise.resolve());
   return { state, dispose, emit: (urls: string[]) => plugin.emit(urls) };
@@ -286,6 +308,31 @@ describe("installDeepLinks", () => {
 
   it("(l) 路線圖網址遇到不可取消的浮層：只喚起主視窗", async () => {
     const h = harness({ launch: [ROADMAP_URL], migrationRoot: "/Users/dev/legacy" });
+    await flush();
+    expect(log).toEqual(["openMainWindow"]);
+    expect(h.state.openProjectAt).not.toHaveBeenCalled();
+  });
+
+  // 專案網址：開專案後以 openBoard 關閉詳情頁與可取消浮層、主區切到看板頁的卡片檢視（store 測試驗
+  // openBoard 本身）；沒有找不到目標的情形，不出 toast。
+  it("(m) 專案網址依序喚起主視窗、開專案、顯示看板，不出 toast", async () => {
+    const h = harness({ launch: [PROJECT_URL] });
+    await flush();
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`, "openBoard"]);
+    expect(h.state.openProjectAt).toHaveBeenCalledWith(PROJECT, { remoteViaChooser: true });
+    expect(h.state.openDetail).not.toHaveBeenCalled();
+    expect(h.state.openRoadmap).not.toHaveBeenCalled();
+    expect(toastError).not.toHaveBeenCalled();
+  });
+
+  it("(n) 專案網址在 openProjectAt 回傳 null 時不切畫面、不出 toast", async () => {
+    harness({ launch: [PROJECT_URL], openKey: null });
+    await flush();
+    expect(log).toEqual(["openMainWindow", `openProjectAt:${PROJECT}`]);
+  });
+
+  it("(o) 專案網址遇到不可取消的浮層：只喚起主視窗", async () => {
+    const h = harness({ launch: [PROJECT_URL], migrationRoot: "/Users/dev/legacy" });
     await flush();
     expect(log).toEqual(["openMainWindow"]);
     expect(h.state.openProjectAt).not.toHaveBeenCalled();
