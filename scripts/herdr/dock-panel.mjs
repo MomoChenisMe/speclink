@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板。
-// 也複製 spaces mod，接上待收尾徽章（integrations/herdr/spaces-badge），因為內建的沒有擴充點。
+// 也複製 spaces mod，接上階段徽章（integrations/herdr/spaces-badge），因為內建的沒有擴充點。
 // 內建版面不能停靠，複製版又不會跟著 Herdr 更新，所以 Herdr 更新後要重跑這支。
 // 舊的版面會留在 layouts/speclink.json.old-<時間>，和 Herdr 的 layout.reset 同樣做法；
 // 舊的 spaces 複製版直接刪掉，那份資料夾沒有使用者的資料。
@@ -29,14 +29,23 @@ const PANEL = {
 const COLUMN_SYNC = { id: 'speclink-column-sync', content: { mod: 'speclink', props: { view: 'column-sync' } } };
 
 const SPACES = 'speclink-spaces';
-const BADGE = fileURLToPath(new URL('../../integrations/herdr/spaces-badge/ready-badge.js', import.meta.url));
-// 接上徽章的三處。Herdr 改了這幾行就停下來，不要裝出半套。
+const BADGE = fileURLToPath(new URL('../../integrations/herdr/spaces-badge/stage-badge.js', import.meta.url));
+// 接上徽章要改的地方。Herdr 改了這幾行就停下來，不要裝出半套。
 const SPACES_EDITS = [
-  ['import { View, div, svg } from "gpui-kit";', 'import { View, div, svg } from "gpui-kit";\nimport { readyBadge, watchReady } from "./ready-badge.js";'],
-  ['export default class Spaces extends View {\n  init(_props, cx) {', 'export default class Spaces extends View {\n  init(_props, cx) {\n    watchReady(this, cx);'],
+  ['import { View, div, svg } from "gpui-kit";', 'import { View, div, svg } from "gpui-kit";\nimport { rowEnd, watchStages } from "./stage-badge.js";'],
+  ['export default class Spaces extends View {\n  init(_props, cx) {', 'export default class Spaces extends View {\n  init(_props, cx) {\n    watchStages(this, cx);'],
   [
     '.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())',
-    '.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())\n          .children(readyBadge(g, tree, t))',
+    '.child(g ? this.gitTail(g, tree, w.name, t) : div().flex_1())\n          .children(rowEnd(g, tree, t))',
+  ],
+  // 徽章會佔掉寬度。git 的箭頭搬到 rowEnd，和徽章一起固定在右邊；放不下時讓 space 名字變短，才不會疊在一起。
+  [
+    '.child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))',
+    '.child(div().max_w(150).truncate().text_color(t.foreground).child(w.name))',
+  ],
+  [
+    '.child(where)))\n      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\\u2191${g.ahead}`)))\n      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\\u2193${g.behind}`)));',
+    '.child(where)));',
   ],
 ];
 
@@ -73,7 +82,7 @@ if (existsSync(file)) {
 rmSync(spacesDir, { recursive: true, force: true });
 herdr('mod.clone', { name: 'spaces', as: SPACES });
 writeFileSync(path.join(spacesDir, 'main.js'), spacesSource);
-copyFileSync(BADGE, path.join(spacesDir, 'ready-badge.js'));
+copyFileSync(BADGE, path.join(spacesDir, 'stage-badge.js'));
 
 herdr('layout.clone', { name: 'main', as: NAME });
 const layout = JSON.parse(readFileSync(file, 'utf8'));
