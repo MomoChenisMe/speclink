@@ -28,6 +28,9 @@ import {
   joinAgents,
   newWorkActions,
   planDelivery,
+  speclinkUrl,
+  startAction,
+  waveToStart,
 } from "./model.js";
 
 const ICONS = "mods/speclink/icons";
@@ -98,6 +101,8 @@ export default class SpeclinkPanel extends View {
     this.topicOpen = false;
     this.more = new Set();
     this.sending = new Set();
+    this.starting = new Set();
+    this.worktreePolicy = false;
     this.collapsed = new Set(JSON.parse(localStorage.getItem("collapsed") ?? "[]"));
     this.promotedOpen = localStorage.getItem("promotedOpen") === "true";
     this.topic = InputState.new({ placeholder: "要討論的主題，按 Enter 送出" });
@@ -149,8 +154,14 @@ export default class SpeclinkPanel extends View {
           if (r.code !== 0) throw new Error(firstLine(r.stderr) || `speclink ${verb.join(" ")} 結束碼 ${r.code}`);
           return JSON.parse(r.stdout);
         };
-        const [list, plan, discussions] = await Promise.all([read("list"), read("plan"), read("discuss", "list")]);
+        const [list, plan, discussions, config] = await Promise.all([
+          read("list"),
+          read("plan"),
+          read("discuss", "list"),
+          read("workflow-config", "show"),
+        ]);
         this.board = buildBoard(list, plan, discussions);
+        this.worktreePolicy = config.worktree === true;
         this.error = null;
       } catch (e) {
         this.error = String(e.message ?? e);
@@ -191,6 +202,8 @@ export default class SpeclinkPanel extends View {
       ),
       focus: { tab: f?.tab ?? null, terminal: f?.terminal ?? null },
       known: this.known,
+      worktreePolicy: this.worktreePolicy,
+      starting: this.starting,
     };
   }
 
@@ -206,17 +219,30 @@ export default class SpeclinkPanel extends View {
         else notify({ title: "技能沒有送出", body: sendError(r), level: "warning" });
         cx.notify();
       });
-    } else if (delivery.kind === "new") {
+    } else if (delivery.kind === "new" || delivery.kind === "space") {
       const before = new Set(terminals().map((t) => t.address));
-      run("tab.new", {
-        name: delivery.tabName,
-        space: spaceFor(delivery.folder)?.id,
-        folder: delivery.folder,
-        argv: delivery.argv,
-        task: delivery.text,
-      });
-      if (delivery.change) this.labelNew(before, delivery, cx, 10);
+      const agent = { folder: delivery.folder, argv: delivery.argv, task: delivery.text };
+      if (delivery.kind === "space") {
+        // 帶名稱：agent 用 cd 進 worktree 時，終端機回報的資料夾可能還在主資料夾，不帶就全叫專案名。
+        run("space.new", { ...agent, name: delivery.change, tab: delivery.tabName, machine: this.place.on ?? "" });
+      } else {
+        run("tab.new", { ...agent, name: delivery.tabName, space: spaceFor(delivery.folder)?.id });
+      }
+      if (delivery.change) {
+        this.labelNew(before, delivery, cx, 10);
+        this.markStarting(delivery.change, cx);
+      }
     }
+  }
+
+  // agent 開好並回報狀態要幾秒，這段時間列上還看不到它，再按一次開工會多開一個。
+  markStarting(change, cx) {
+    this.starting.add(change);
+    cx.notify();
+    cx.timer.after(15000, (cx) => {
+      this.starting.delete(change);
+      cx.notify();
+    });
   }
 
   // 新分頁貼上標籤，之後按這個變更的技能才認得它。tab.new 不回傳終端機位址，要等它出現。
@@ -229,6 +255,14 @@ export default class SpeclinkPanel extends View {
       } else if (tries > 1) {
         this.labelNew(before, delivery, cx, tries - 1);
       }
+    });
+  }
+
+  // 叫 Speclink 桌面 app 開網址。open 只有 macOS 有；沒裝 app 時 open 也會失敗。
+  openInApp(url, cx) {
+    cx.spawn(async () => {
+      const r = await exec("open", [url]).catch((e) => ({ code: 1, stderr: String(e.message ?? e) }));
+      if (r.code !== 0) notify({ title: "開不了 Speclink", body: firstLine(r.stderr), level: "warning" });
     });
   }
 
@@ -283,14 +317,17 @@ export default class SpeclinkPanel extends View {
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .tooltip(label)
-      .on_click((_e, cx) => this.copy(text, cx))
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        this.copy(text, cx);
+      })
       .child(icon(this.copied === text ? "check" : "copy", 12, t.muted));
   }
 
   // onClick：不直接送出的鈕（discuss 要先輸入主題）。
   skillButton(id, action, t, onClick) {
     const d = action.delivery;
-    const ready = d && (d.kind === "send" || d.kind === "new");
+    const ready = d && (d.kind === "send" || d.kind === "new" || d.kind === "space");
     const tip = action.waitingFor
       ? `等 ${action.waitingFor.join("、")} 先完成`
       : d.text
@@ -305,13 +342,13 @@ export default class SpeclinkPanel extends View {
       .text_size(11.5)
       .when(action.primary, (el) => el.border_2().border_color(t.accent).font_semibold())
       .when(!action.primary, (el) => el.border_1().border_color(t.input))
-      .when(ready, (el) =>
-        el
-          .cursor_pointer()
-          .hover((s) => s.bg(t.hover))
-          .on_click((_e, cx) => (onClick ? onClick(cx) : this.deliver(d, cx))),
-      )
+      .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
       .when(!ready, (el) => el.opacity(0.45))
+      // 灰掉的鈕也要擋下點擊，否則會變成點到列本身。
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        if (ready) onClick ? onClick(cx) : this.deliver(d, cx);
+      })
       .tooltip(tip)
       .child(action.skill);
   }
@@ -340,21 +377,55 @@ export default class SpeclinkPanel extends View {
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
       .tooltip("切到這個 agent")
-      .on_click(() => run("agent.focus", { terminal: a.address }))
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        run("agent.focus", { terminal: a.address });
+      })
       .child(div().w(7).h(7).flex_none().rounded_full().bg(t[a.view] ?? t.idle))
       .child(programIcon(a.program, 12, t.muted))
       .child(div().flex_1().min_w_0().truncate().text_color(t.muted).child(`${a.space_name} / ${a.tab_name}`))
       .child(div().flex_none().text_color(t.dim).child(AGENT_STATE[a.view] ?? a.view));
   }
 
+  // 點列本身叫 Speclink 開詳情。列上的鈕都會擋下點擊。別台機器的專案路徑在這台開不了。
+  openOnClick(el, url, t) {
+    if (this.place.on) return el;
+    return el
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_click((_e, cx) => this.openInApp(url, cx));
+  }
+
+  waveNumber(row, t) {
+    const number = div()
+      .id(`wave-${row.name}`)
+      .flex_none()
+      .text_size(11)
+      .font_semibold()
+      .text_color(t.accent)
+      .child(String(row.wave));
+    if (this.place.on) return number;
+    return number
+      .px(3)
+      .rounded(3)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.raised))
+      .tooltip("在 Speclink 開路線圖")
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        this.openInApp(speclinkUrl("roadmap", this.root), cx);
+      });
+  }
+
   changeRow(row, stage, ctx, t) {
     const actions = changeActions(row, ctx);
+    const start = startAction(row, ctx);
     const blocked = row.blockedBy.length > 0;
     const main = actions.find((a) => a.primary) ?? actions.find((a) => a.delivery);
     const waiting = blocked ? `等 ${row.blockedBy.join("、")}` : "";
     const hint = [waiting, main?.delivery ? deliveryHint(main.delivery) : ""].filter(Boolean).join(" · ");
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
-    return v_flex()
+    const el = v_flex()
       .id(`change-${row.name}`)
       .px(10)
       .py(8)
@@ -364,7 +435,7 @@ export default class SpeclinkPanel extends View {
           .gap(6)
           .items_center()
           .when(blocked, (el) => el.opacity(0.6))
-          .child(div().flex_none().text_size(11).font_semibold().text_color(t.accent).child(String(row.wave)))
+          .child(this.waveNumber(row, t))
           .child(div().flex_1().min_w_0().truncate().child(row.name))
           .when(Boolean(row.worktree), (el) =>
             el.child(
@@ -392,13 +463,14 @@ export default class SpeclinkPanel extends View {
         ),
       )
       .children(changeAgents(row, ctx.agents).map((a) => this.agentChip(`change-${row.name}`, a, t)))
-      .child(this.skillRow(`change-${row.name}`, actions, hint, t));
+      .child(this.skillRow(`change-${row.name}`, start ? [start, ...actions] : actions, hint, t));
+    return this.openOnClick(el, speclinkUrl("change", this.root, row.name), t);
   }
 
   discussionRow(d, ctx, t) {
     const actions = discussionActions(d, ctx);
     const hint = d.cuts.length > 0 ? `還有 ${d.cuts.length} 刀沒轉出` : "";
-    return v_flex()
+    const el = v_flex()
       .id(`discussion-${d.slug}`)
       .px(10)
       .py(8)
@@ -417,6 +489,7 @@ export default class SpeclinkPanel extends View {
           .child(this.copyButton(`discussion-${d.slug}`, d.slug, "複製 slug", t)),
       )
       .child(this.skillRow(`discussion-${d.slug}`, actions, hint, t));
+    return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
   }
 
   // 超過門檻的列收進「還有 N 個…」。
@@ -469,6 +542,45 @@ export default class SpeclinkPanel extends View {
       .when(open, (el) => el.children(this.overflow(id, rows, t)));
   }
 
+  // 整波開工不再多問一次：同一列已經寫出會開哪些變更。
+  waveBar({ wave, deliveries }, t) {
+    return h_flex()
+      .flex_none()
+      .gap(8)
+      .px(10)
+      .py(6)
+      .items_center()
+      .rounded(10)
+      .border_1()
+      .border_color(t.border)
+      .bg(t.surface)
+      .child(
+        div()
+          .flex_1()
+          .min_w_0()
+          .text_size(11.5)
+          .text_color(t.muted)
+          .child(`第 ${wave} 波可以一起開工：${deliveries.map((d) => d.change).join("、")}`),
+      )
+      .child(
+        h_flex()
+          .id("start-wave")
+          .flex_none()
+          .h(22)
+          .px(7)
+          .items_center()
+          .rounded(5)
+          .border_1()
+          .border_color(t.input)
+          .text_size(11.5)
+          .cursor_pointer()
+          .hover((s) => s.bg(t.hover))
+          .tooltip(`開 ${deliveries.length} 個新 space，各跑一個 agent`)
+          .on_click((_e, cx) => deliveries.forEach((d) => this.deliver(d, cx)))
+          .child("整波開工"),
+      );
+  }
+
   newWorkPanel(ctx, t) {
     const actions = newWorkActions(ctx);
     const discuss = actions.find((a) => a.skill === "discuss");
@@ -505,19 +617,23 @@ export default class SpeclinkPanel extends View {
 
   body(ctx, t) {
     const { stages, discussions, promoted, skipped } = this.board;
-    const cards = STAGES.map((stage) =>
-      this.card(
-        {
-          id: stage.id,
-          iconName: stage.id,
-          tone: t[stage.tone],
-          label: stage.label,
-          rows: stages[stage.id].map((row) => this.changeRow(row, stage, ctx, t)),
-          open: !this.collapsed.has(stage.id),
-        },
-        t,
-      ),
-    );
+    const wave = waveToStart(stages, ctx);
+    const cards = wave ? [this.waveBar(wave, t)] : [];
+    for (const stage of STAGES) {
+      cards.push(
+        this.card(
+          {
+            id: stage.id,
+            iconName: stage.id,
+            tone: t[stage.tone],
+            label: stage.label,
+            rows: stages[stage.id].map((row) => this.changeRow(row, stage, ctx, t)),
+            open: !this.collapsed.has(stage.id),
+          },
+          t,
+        ),
+      );
+    }
     cards.push(
       this.card(
         {
@@ -559,6 +675,25 @@ export default class SpeclinkPanel extends View {
     return cards;
   }
 
+  headerButton(id, iconName, label, t, onClick) {
+    return h_flex()
+      .id(id)
+      .h(24)
+      .px(7)
+      .gap(4)
+      .items_center()
+      .rounded(5)
+      .border_1()
+      .border_color(t.input)
+      .text_size(11.5)
+      .cursor_pointer()
+      .hover((s) => s.bg(t.hover))
+      .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
+      .on_click((_e, cx) => onClick(cx))
+      .child(icon(iconName, 12, t.foreground))
+      .child(label);
+  }
+
   render(cx) {
     const t = theme();
     this.follow(cx);
@@ -578,26 +713,19 @@ export default class SpeclinkPanel extends View {
           .gap(6)
           .items_center()
           .child(div().flex_1().min_w_0().truncate().font_semibold().child(this.root ? baseName(this.root) : "Speclink"))
+          // 讀不到專案（資料夾沒有 speclink）時不給鈕：網址會跳到桌面 app 的初始化確認框。
+          .when(Boolean(this.board) && !this.place.on, (el) =>
+            el.child(
+              this.headerButton("roadmap", "roadmap", "路線圖", t, (cx) =>
+                this.openInApp(speclinkUrl("roadmap", this.root), cx),
+              ),
+            ),
+          )
           .child(
-            h_flex()
-              .id("new-work")
-              .h(24)
-              .px(7)
-              .gap(4)
-              .items_center()
-              .rounded(5)
-              .border_1()
-              .border_color(t.input)
-              .text_size(11.5)
-              .cursor_pointer()
-              .hover((s) => s.bg(t.hover))
-              .on_mouse_down("left", (_e, cx) => cx.stop_propagation())
-              .on_click((_e, cx) => {
-                this.newWork = !this.newWork;
-                cx.notify();
-              })
-              .child(icon("plus", 12, t.foreground))
-              .child("新工作"),
+            this.headerButton("new-work", "plus", "新工作", t, (cx) => {
+              this.newWork = !this.newWork;
+              cx.notify();
+            }),
           )
           .when(Boolean(overlay), (el) =>
             el.child(

@@ -2,7 +2,7 @@
 
 [English](README.en.md)
 
-在 [Herdr](https://herdr.dev) 裡開一個面板，看目前專案的變更與討論，按一下就把技能交給對的 agent。全程不用手打變更名稱、不用找視窗。
+在 [Herdr](https://herdr.dev) 裡開一個面板，看目前專案的變更與討論，按一下就把技能交給對的 agent、開工，或叫 Speclink 開詳情。全程不用手打變更名稱、不用找視窗。
 
 ## 面板有什麼
 
@@ -12,7 +12,9 @@
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
 - **做這個變更的 agent**：列上顯示 agent 的位置與狀態，點了切過去。比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛設的終端機標題。
 - **技能鈕**：只列這個階段用得到的技能，建議的下一步加粗外框。
+- **開工**：變更列上的鈕，為這個變更開一個專用的新 agent。見下面的「開工」。
 - **＋ 新工作**：不帶變更名稱的技能。選 discuss 可以直接輸入主題。
+- **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
 
@@ -43,11 +45,29 @@ agent 在做事、在等你回答或出錯時不送，按鈕變灰，旁邊寫�
 
 Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
 
+### 開工
+
+開工和技能鈕不同：技能鈕優先交給現有的 agent，開工一定開新的 agent。
+
+| 工作流設定的 `worktree` | 按下開工 |
+| --- | --- |
+| 開啟 | 開一個以變更命名的新 space，跑 `/speclink-apply-with-worktree <變更>` |
+| 關閉 | 在主資料夾的 space 開新分頁，跑 `/speclink-apply <變更>` |
+
+沒被擋、任務還沒做完、也沒有 agent 在做的變更才有開工鈕。討論重新定案的變更要先 ingest，所以也沒有。
+
+**整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問。波次取自 `speclink plan`。
+
+### 叫 Speclink 開頁面
+
+面板用 `open` 送出 `speclink://` 網址，桌面 app 會切到這個專案再開頁面。app 沒開時會自動啟動。網址只能開啟與檢視，不會寫入任何檔案。
+
 ## 需求
 
 - Herdr 0.1.12 以上（以這一版測試）。
-- `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list` 的 `--json` 輸出。
+- `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板只讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show` 的 `--json` 輸出。
 - 專案執行過 `speclink init`。
+- 要叫 Speclink 開頁面時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。
 
 ## 安裝
 
@@ -74,6 +94,11 @@ Herdr 會自動載入。接著在 `~/.config/herdr-app/keys.json` 的 `global` �
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
 - **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
+- **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。
+- **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣開新 space，技能會自己停下來並說明。
+- **開工 space 可能還在主資料夾**：agent 用 `cd` 進 worktree，終端機回報的資料夾不一定跟著變，所以 space 才用變更命名。這時它不會縮排在專案底下。
+- **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。
+- **整波開工可能撞 git 鎖**：每個 agent 都可能在主資料夾 commit 規格或建 worktree。撞到時那個 agent 會停下來回報，再按一次技能鈕即可。
 - **畫面只有繁體中文**。
 
 ## 開發
