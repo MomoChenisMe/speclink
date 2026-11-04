@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-04T17:42:55+08:00
 ---
 
 # Speclink 操作手冊
@@ -36,14 +36,14 @@ Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Developmen
 - 建立與實作變更：[提案](propose.md)（含要不要改規格的判斷）、[分析：交叉檢查變更的產物](analyze.md)、[實作](apply.md)、[執行順序：plan 與依賴](plan.md)
 - 放了一陣子再回來、或需求中途變了：[續作與需求變更](drift-ingest.md)
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
-- 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)，再走[平行實作與合回](worktree.md)
+- 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)（桌面的[路線圖](desktop-roadmap.md)畫的是同一份結果），再走[平行實作與合回](worktree.md)
 - 工具：[提交單一變更的檔案](commit.md)、[安全稽核](audit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
 ### 產品負責人／PM（看進度、不碰 checkout）
 
-- [認識桌面 app](desktop-overview.md)、[看板與任務](desktop-board.md)
+- [認識桌面 app](desktop-overview.md)、[看板與任務](desktop-board.md)、[路線圖](desktop-roadmap.md)
 - [規格、討論、已封存與搜尋](desktop-browse.md)、[桌面 app 的手冊頁](desktop-manual.md)、[桌面上的品質關卡](desktop-quality.md)
-- [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)
+- [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)、[用 speclink 網址開啟畫面](desktop-deep-link.md)
 - 接上團隊 server：[桌面連線 server 與 remote 專案](desktop-remote.md)
 
 ### 團隊協作（remote 模式）
