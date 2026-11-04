@@ -16,10 +16,11 @@ const CLAUDE_ONLY = new Set(["analyze"]);
 
 const STAGE_SKILLS = {
   proposed: ["apply", "analyze", "ingest"],
-  "in-progress": ["apply", "ingest", "drift", "verify"],
+  "in-progress": ["apply", "ingest", "drift", "verify", "quality", "review", "commit"],
   ready: ["quality", "review", "verify", "archive", "commit"],
-  "ready-worktree": ["quality", "review", "verify", "commit", "worktree-merge"],
 };
+// 這些技能要等程式任務都做完才能跑，手動任務（[M]）不算。沒做完時技能也會自己停下來。
+const NEEDS_CODE_DONE = new Set(["quality", "review"]);
 // 技能跳窗的技能。前四組依工作流程，pair 是可以搭配的東西；「專案」用在整個專案，不搭配。
 export const PICKER_SKILLS = [
   { skill: "discuss", group: "規劃", pair: "討論", about: "把模糊的需求談清楚" },
@@ -45,7 +46,8 @@ export const PICKER_SKILLS = [
 
 export const ALL_SKILLS = new Set(PICKER_SKILLS.map((w) => w.skill));
 
-export function buildBoard(list, plan, discussions) {
+// remaining 是每個變更還剩幾個程式任務（見 shared.js 的 codeRemaining），查不到的不放。
+export function buildBoard(list, plan, discussions, remaining = {}) {
   const listed = new Map(list.changes.map((c) => [c.name, c]));
   const stages = { proposed: [], "in-progress": [], ready: [] };
   for (const c of plan.changes) {
@@ -57,6 +59,7 @@ export function buildBoard(list, plan, discussions) {
       blockedBy: c.blockedBy,
       completed: l?.completedTasks ?? 0,
       total: l?.totalTasks ?? 0,
+      codeRemaining: c.stage === "ready" ? 0 : remaining[c.name] ?? null,
       worktree: l?.worktree ?? null,
       restale: (l?.restaleFrom ?? []).length > 0,
     });
@@ -92,10 +95,14 @@ export function speclinkUrl(kind, project, name) {
 }
 
 export function changeSkills(row) {
-  const key = row.stage === "ready" && row.worktree ? "ready-worktree" : row.stage;
-  const skills = STAGE_SKILLS[key];
+  // 有 worktree 就要先合併才能封存。合併不看任務做到哪裡，所以每個階段都能選。
+  const skills = row.worktree
+    ? [...STAGE_SKILLS[row.stage].filter((skill) => skill !== "archive"), "worktree-merge"]
+    : STAGE_SKILLS[row.stage];
   const shown = row.restale && !skills.includes("ingest") ? ["ingest", ...skills] : skills;
-  const suggested = row.restale ? "ingest" : shown[0];
+  // 只剩手動任務時，下一步是品質關卡，不是 apply。
+  const codeDone = row.stage === "in-progress" && row.codeRemaining === 0;
+  const suggested = row.restale ? "ingest" : codeDone ? "quality" : shown[0];
   return shown.map((skill) => {
     const waiting = skill === "apply" && row.blockedBy.length > 0;
     return {
@@ -257,7 +264,7 @@ function newAgent({ name, args, folder, change, known }) {
 // 討論重新定案的變更要先 ingest，不直接開工。回傳可以選的做法，沒有鈕時是 null。
 // 已有 worktree 就接續，沒開 worktree 流程就只能直接 apply，這兩種不用問；其他情況要問用 worktree 還是直接 apply。
 export function startChoices(row, ctx) {
-  const open = row.stage !== "ready" && row.blockedBy.length === 0 && !row.restale;
+  const open = row.stage !== "ready" && row.codeRemaining !== 0 && row.blockedBy.length === 0 && !row.restale;
   if (!open || ctx.starting?.has(row.name) || changeAgents(row, ctx.agents).length > 0) return null;
   const target = { kind: "change", name: row.name, args: row.name, row };
   const choice = (label, skill) => ({ label, plan: newTabPlan({ ...ctx, skill, target, note: "" }) });
@@ -321,6 +328,7 @@ const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
 const joinArgs = (target, note) => [target?.args, note].filter(Boolean).join(" ");
 // 控制字元會被終端機當成按鍵（換行就送出了），一律換成空白。
 const pasteable = (text) => text.replace(/[\u0000-\u001f\u007f]/g, " ");
+const codeLeft = (skill, change) => (NEEDS_CODE_DONE.has(skill) && change?.codeRemaining > 0 ? change.codeRemaining : 0);
 
 // 放進輸入框的對象：目前分頁的 agent，焦點所在的優先。
 function inputAgent(agents, focus) {
@@ -333,6 +341,8 @@ const WAITING = "目前分頁的 agent 在等你回答";
 
 // 技能跳窗：把指令放到輸入框。
 export function placePlan({ skill, target, note, agents, focus }) {
+  const left = codeLeft(skill, target?.row);
+  if (left) return none("還有 {0} 個程式任務沒做完", left);
   const agent = inputAgent(agents, focus);
   if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
   if (agent.status === "blocked") return none(WAITING);
@@ -362,6 +372,8 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   const applying = skill === "apply" || skill === "apply-with-worktree";
   if (change && changeAgents(change, agents).length > 0) return none("已經有 agent 在做");
   if (change && applying && change.blockedBy.length > 0) return none("要等 {0} 落地", change.blockedBy.join(tr("、")));
+  const left = codeLeft(skill, change);
+  if (left) return none("還有 {0} 個程式任務沒做完", left);
   // 有 worktree 的變更，apply 要從主資料夾接續 worktree。
   const name = skill === "apply" && change?.worktree ? "apply-with-worktree" : skill;
   // 政策沒開時這個技能會自己停下來。

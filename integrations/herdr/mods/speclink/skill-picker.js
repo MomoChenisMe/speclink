@@ -15,7 +15,7 @@ import {
   skillTargets,
 } from "./model.js";
 import { tr } from "./i18n.js";
-import { location, openTabs, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
+import { codeRemaining, location, openTabs, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
 
 const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: "已就緒" };
 // 顏色和 Claude Code 的技能列對應。
@@ -84,7 +84,7 @@ export default class SkillPicker {
           read("discuss", "list"),
           read("workflow-config", "show"),
         ]);
-        this.board = buildBoard(list, plan, discussions);
+        this.board = buildBoard(list, plan, discussions, await codeRemaining(list, plan, this.root, on));
         this.worktreePolicy = config.worktree === true;
       } catch (e) {
         const message = String(e.message ?? e);

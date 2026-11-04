@@ -44,9 +44,10 @@
 | --- | --- |
 | 提案中，沒被擋 | **apply**、analyze、ingest |
 | 提案中，被擋 | apply（灰掉，列上顯示這一顆）、analyze、ingest |
-| 進行中 | **apply**、ingest、drift、verify |
-| 已就緒，沒有 worktree | **quality**、review、verify、archive、commit |
-| 已就緒，有 worktree | **quality**、review、verify、commit、worktree-merge |
+| 進行中 | **apply**、ingest、drift、verify、quality、review、commit |
+| 進行中，只剩手動任務 | 同上，但建議改成 **quality**，也沒有開工鈕 |
+| 已就緒 | **quality**、review、verify、archive、commit |
+| 任何階段，有 worktree | 多一個 worktree-merge，少一個 archive（要先合併才能封存） |
 | 討論重新定案，變更還沒更新 | 建議改成 **ingest** |
 | 討論中 | **discuss** |
 | 已定案，或還有刀沒轉出 | **propose --from-discussion**、discuss |

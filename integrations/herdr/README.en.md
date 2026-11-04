@@ -44,9 +44,10 @@ Only a project that is not initialized shows this card. Other problems, such as 
 | --- | --- |
 | Proposed, not blocked | **apply**, analyze, ingest |
 | Proposed, blocked | apply is disabled, analyze, ingest |
-| In progress | **apply**, ingest, drift, verify |
-| Ready, no worktree | **quality**, review, verify, archive, commit |
-| Ready, with worktree | **quality**, review, verify, commit, worktree-merge |
+| In progress | **apply**, ingest, drift, verify, quality, review, commit |
+| In progress, only manual tasks left | the same, but the suggestion changes to **quality**, and there is no Start button |
+| Ready | **quality**, review, verify, archive, commit |
+| Any stage, with a worktree | adds worktree-merge and removes archive (merge before you archive) |
 | Discussion concluded again, change not updated | the suggestion changes to **ingest** |
 | Open discussion | **discuss** |
 | Concluded, or cuts left to promote | **propose --from-discussion**, discuss |
