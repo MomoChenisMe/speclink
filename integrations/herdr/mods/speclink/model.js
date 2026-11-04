@@ -249,6 +249,12 @@ export function changeSkills(row) {
   });
 }
 
+// 列上放建議的那一顆，其他的按 ⋯ 才展開。apply 被擋時沒有建議，放第一顆。
+export function rowChoices(actions) {
+  const next = actions.find((a) => a.primary) ?? actions[0];
+  return { next, others: actions.filter((a) => a !== next) };
+}
+
 export function discussionSkills(d) {
   const discuss = (primary) => ({ skill: "discuss", args: d.slug, primary });
   const propose = { skill: "propose", args: `--from-discussion ${d.slug}`, primary: true };

@@ -33,6 +33,7 @@ import {
   parseStations,
   placePlan,
   planDelivery,
+  rowChoices,
   sendArgs,
   commandLabels,
   hookLabels,
@@ -1363,6 +1364,25 @@ test('changeSkills：兩站都蓋章後，建議封存加提交', () => {
   assert.equal(manual.find((s) => s.primary).skill, 'apply');
   assert.ok(!manual.some((s) => s.skill.startsWith('archive')));
   assert.equal(changeSkills(row({ stage: 'in-progress', codeRemaining: 0 })).find((s) => s.primary).skill, 'quality');
+});
+
+test('rowChoices：建議的那一顆放外面，其他的按 ⋯ 才展開', () => {
+  const quality = { skill: 'quality', primary: true };
+  const review = { skill: 'review', primary: false };
+  const merge = { skill: 'worktree-merge', primary: false };
+  assert.deepEqual(rowChoices([review, quality, merge]), { next: quality, others: [review, merge] });
+  // apply 被擋時沒有建議，列上放第一顆
+  assert.deepEqual(rowChoices([review, merge]), { next: review, others: [merge] });
+  // 討論中只有一個技能，沒有東西可以展開
+  assert.deepEqual(rowChoices([quality]), { next: quality, others: [] });
+});
+
+test('rowChoices：做完 apply 還沒蓋章的 worktree 變更，展開後看得到 worktree-merge', () => {
+  const actions = changeActions(row({ stage: 'ready', worktree: { path: TREE, branch: 'b' } }), ctx());
+  const { next, others } = rowChoices(actions);
+  assert.equal(next.skill, 'quality');
+  assert.ok(others.some((a) => a.skill === 'worktree-merge'));
+  assert.ok(others.every((a) => a.skill !== 'quality'));
 });
 
 // ---- archive+commit ----

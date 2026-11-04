@@ -13,7 +13,6 @@ import {
   panes,
   props,
   run,
-  setShared,
   spaces,
   terminals,
   theme,
@@ -32,6 +31,7 @@ import {
   joinAgents,
   lastOpenError,
   logoOpenAttempts,
+  rowChoices,
   speclinkUrl,
   startChoices,
   stationViews,
@@ -99,6 +99,7 @@ export default class SpeclinkPanel extends View {
     this.copied = null;
     this.attaching = new Map();
     this.choosing = null;
+    this.expanded = null;
     this.more = new Set();
     this.sending = new Set();
     this.starting = new Set();
@@ -212,6 +213,7 @@ export default class SpeclinkPanel extends View {
   }
 
   deliver(delivery, cx) {
+    this.expanded = null;
     if (delivery.kind === "send") {
       const { address } = delivery.agent;
       this.sending.add(address);
@@ -448,8 +450,9 @@ export default class SpeclinkPanel extends View {
       );
   }
 
-  // 其他技能在跳窗裡：開跳窗，並先選好這個技能和這一列。
-  moreButton(id, skill, target, t) {
+  // 展開這一列其他能用的技能。沒有其他技能的列不放這顆鈕。
+  moreButton(id, target, t) {
+    const open = this.expanded === target;
     return h_flex()
       .id(`more-${id}`)
       .flex_none()
@@ -459,17 +462,18 @@ export default class SpeclinkPanel extends View {
       .rounded(5)
       .text_color(t.muted)
       .cursor_pointer()
+      .when(open, (el) => el.bg(t.selected))
       .hover((s) => s.bg(t.hover))
       .tooltip(tr("其他技能"))
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        setShared("speclink.pick", { skill, target, when: Date.now() });
-        run("mod.open", { name: "speclink-new" });
+        this.expanded = open ? null : target;
+        cx.notify();
       })
       .child("⋯");
   }
 
-  // 每列只留建議的下一步。能開工的列多一顆開工。
+  // 每列只留建議的下一步，其他的按 ⋯ 才展開。能開工的列多一顆開工。
   skillRow({ id, actions, start, target, hint }, t) {
     // 開工要選做法時，這一列只放選項。
     if (start?.length > 1 && this.choosing === target) {
@@ -492,15 +496,22 @@ export default class SpeclinkPanel extends View {
           ),
         );
     }
-    const next = actions.find((a) => a.primary) ?? actions[0];
-    return h_flex()
+    const { next, others } = rowChoices(actions);
+    return v_flex()
       .gap(4)
-      .items_center()
-      .when(Boolean(start), (el) => el.child(this.startButton(id, target, start, t)))
-      .child(this.skillButton(id, next, t))
-      .child(this.moreButton(id, next.skill, target, t))
-      .when(Boolean(hint), (el) =>
-        el.child(div().flex_1().min_w_0().truncate().text_size(11).text_color(t.dim).child(hint)),
+      .child(
+        h_flex()
+          .gap(4)
+          .items_center()
+          .when(Boolean(start), (el) => el.child(this.startButton(id, target, start, t)))
+          .child(this.skillButton(id, next, t))
+          .when(others.length > 0, (el) => el.child(this.moreButton(id, target, t)))
+          .when(Boolean(hint), (el) =>
+            el.child(div().flex_1().min_w_0().truncate().text_size(11).text_color(t.dim).child(hint)),
+          ),
+      )
+      .when(this.expanded === target && others.length > 0, (el) =>
+        el.child(h_flex().flex_wrap().gap(4).items_center().children(others.map((action) => this.skillButton(id, action, t)))),
       );
   }
 
