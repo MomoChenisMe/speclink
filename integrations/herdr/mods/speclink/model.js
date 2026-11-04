@@ -59,6 +59,13 @@ export function buildBoard(list, plan, discussions) {
   };
 }
 
+// speclink 網址（正式規格 desktop-app「以 speclink 網址開啟詳情頁」）。kind 是 change、
+// discussion 或 roadmap；roadmap 不帶名稱。
+export function speclinkUrl(kind, project, name) {
+  const path = name ? `/${encodeURIComponent(name)}` : "";
+  return `speclink://${kind}${path}?project=${encodeURIComponent(project)}`;
+}
+
 export function changeSkills(row) {
   const key = row.stage === "ready" && row.worktree ? "ready-worktree" : row.stage;
   const skills = STAGE_SKILLS[key];
@@ -159,6 +166,11 @@ export function planDelivery({ skill, change = null, args, root, agents, focus, 
     const text = commandText(agent.key, name, args);
     return { kind: "send", where, agent, text, hc: sendArgs(agent, text) };
   }
+  return newAgent({ name, args, folder, change, known });
+}
+
+// 新開一個 agent：選最常用且已安裝、有 speclink 技能的那一個。
+function newAgent({ name, args, folder, change, known }) {
   if (!known) return { kind: "none", where: "none", reason: "還在確認可用的 agent" };
   const pick = known.find((a) => a.installed && Object.hasOwn(PREFIX, a.key));
   if (!pick) return { kind: "none", where: "none", reason: "找不到有 speclink 技能的 agent" };
@@ -174,6 +186,33 @@ export function planDelivery({ skill, change = null, args, root, agents, focus, 
     change: change?.name ?? null,
     skill: name,
   };
+}
+
+// 開工：開一個專門做這個變更的新 agent。沒被擋、任務還沒做完、沒有 agent 在做才有這個鈕；
+// 討論重新定案的變更要先 ingest，不直接開工。開 worktree 政策時開新 space，技能在主資料夾
+// 建好或接續 worktree；沒開時在主資料夾開新分頁跑 apply。
+export function startAction(row, ctx) {
+  const open = row.stage !== "ready" && row.blockedBy.length === 0 && !row.restale;
+  if (!open || ctx.starting?.has(row.name) || changeAgents(row, ctx.agents).length > 0) return null;
+  const name = ctx.worktreePolicy ? "apply-with-worktree" : "apply";
+  const delivery = newAgent({ name, args: row.name, folder: ctx.root, change: row, known: ctx.known });
+  return {
+    skill: "開工",
+    primary: false,
+    delivery: ctx.worktreePolicy && delivery.kind === "new" ? { ...delivery, kind: "space", where: "space" } : delivery,
+  };
+}
+
+// 整波開工：最前面那一波裡能開工的變更。波次由引擎決定，這裡只分組。不到兩個就不必整波。
+export function waveToStart(stages, ctx) {
+  if (!ctx.worktreePolicy) return null;
+  const startable = Object.values(stages)
+    .flat()
+    .map((row) => ({ wave: row.wave, delivery: startAction(row, ctx)?.delivery }))
+    .filter((s) => s.delivery?.kind === "space");
+  const wave = Math.min(...startable.map((s) => s.wave));
+  const deliveries = startable.filter((s) => s.wave === wave).map((s) => s.delivery);
+  return deliveries.length >= 2 ? { wave, deliveries } : null;
 }
 
 const deliveryKey = (d) => d?.agent?.key ?? d?.key;
@@ -200,5 +239,6 @@ export function deliveryHint(delivery) {
   if (delivery.kind === "busy") return `agent ${delivery.reason}`;
   if (delivery.kind === "none") return delivery.reason;
   if (delivery.kind === "new") return "開新分頁";
+  if (delivery.kind === "space") return "開新 space";
   return delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent";
 }
