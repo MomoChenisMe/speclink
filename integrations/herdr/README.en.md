@@ -51,7 +51,7 @@ Start is different from a skill button. A skill button first tries an existing a
 
 | `worktree` in the workflow config | What Start does |
 | --- | --- |
-| On | Opens a new space named after the change and runs `/speclink-apply-with-worktree <change>` |
+| On | Opens a new space and runs `/speclink-apply-with-worktree <change>`. The space keeps the name that Herdr gives it. The tab name shows the change |
 | Off | Opens a new tab in the space of the main folder and runs `/speclink-apply <change>` |
 
 A change has the Start button only if it is not blocked, has unfinished tasks and has no agent on it. A change whose discussion was concluded again needs ingest first, so it has no Start button.
@@ -96,7 +96,7 @@ Do not install with a symbolic link. Herdr loads the code, but it does not draw 
 - **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
 - **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still opens a new space, and the skill stops and explains why.
-- **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. This is why the space takes the name of the change. In this case the space does not nest under the project.
+- **A started space can stay in the main folder**: the agent uses `cd` to go into the worktree, and the folder that the terminal reports does not always follow. In this case the space has the name of the project and does not nest under the project. Only the tab name shows the change.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.
 - **Starting a whole wave can hit a git lock**: each agent can commit specs or make a worktree in the main folder. An agent that hits a lock stops and reports it. Click its skill button again.
 - **The panel text is Traditional Chinese only**.

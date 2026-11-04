@@ -223,8 +223,8 @@ export default class SpeclinkPanel extends View {
       const before = new Set(terminals().map((t) => t.address));
       const agent = { folder: delivery.folder, argv: delivery.argv, task: delivery.text };
       if (delivery.kind === "space") {
-        // 帶名稱：agent 用 cd 進 worktree 時，終端機回報的資料夾可能還在主資料夾，不帶就全叫專案名。
-        run("space.new", { ...agent, name: delivery.change, tab: delivery.tabName, machine: this.place.on ?? "" });
+        // 不帶 name：space 的名稱維持 Herdr 原樣，跟著第一個終端機所在的資料夾。
+        run("space.new", { ...agent, tab: delivery.tabName, machine: this.place.on ?? "" });
       } else {
         run("tab.new", { ...agent, name: delivery.tabName, space: spaceFor(delivery.folder)?.id });
       }
