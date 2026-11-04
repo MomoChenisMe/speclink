@@ -165,6 +165,38 @@ describe("ConclusionDoc", () => {
     expect(todo.lastElementChild!.className).toContain("text-status-manual");
   });
 
+  it("清單的 promotedTo 與文件不同步（stageOf 對 unpromoted 內的名稱也回階段）：籤的轉出狀態只依引擎的 unpromoted", () => {
+    const stageOf = () => ({ label: "進行中", tone: "progress" as const, onOpen: () => {} });
+    const partial = engineCut("**cut 2 `a-one` `b-two`**: 外殼", {
+      cut: "cut 2",
+      title: "外殼",
+      changes: ["a-one", "b-two"],
+      changesInBold: true,
+      unpromoted: ["b-two"],
+    });
+    const none = engineCut("**cut 3 `c-three`**: 收尾", {
+      cut: "cut 3",
+      title: "收尾",
+      changes: ["c-three"],
+      changesInBold: true,
+      unpromoted: ["c-three"],
+    });
+    const { container } = render(
+      <ConclusionDoc
+        text={"**Decision**: 定。\n- **cut 2 `a-one` `b-two`**: 外殼\n- **cut 3 `c-three`**: 收尾"}
+        cuts={[partial, none]}
+        stageOf={stageOf}
+      />,
+    );
+    const [p, n] = container.querySelectorAll<HTMLElement>("[data-cut]");
+    expect(p.querySelector('[data-cut-change="a-one"]')!.textContent).toBe("a-one進行中");
+    const todo = p.querySelector<HTMLElement>('[data-cut-change="b-two"]')!;
+    expect(todo.textContent).toBe("b-two尚未轉出");
+    expect(todo.querySelector("button")).toBeNull();
+    expect(n.querySelector("header")!.textContent).toContain("尚未轉出");
+    expect(n.querySelector('[data-cut-change="c-three"]')!.textContent).toBe("c-three");
+  });
+
   it("刀列沒有變更名籤時卡無 data-cut-todo、無「尚未轉出」", () => {
     const cut = engineCut("**刀三**：系統匣面板", { cut: "刀三", title: "系統匣面板" });
     const { container } = render(

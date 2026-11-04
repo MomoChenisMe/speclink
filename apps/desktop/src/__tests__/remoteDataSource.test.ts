@@ -18,8 +18,7 @@ const CONN = "conn_abc";
 const PROJECT = "demo";
 const REPO = "backend";
 
-/** 假 invoke：記錄每筆 (cmd, args) 並依 cmd 回覆最小合法 payload。 */
-/** remote 討論記錄回應裡的一把刀（server 的 GET /discussions/{slug} 逐欄搬運）。 */
+/** remote 討論記錄回應裡的一把刀（server 的 GET /discussions/{slug} 原樣轉交）。 */
 const DISCUSSION_CUT = {
   cut: "cut 1",
   title: "骨架",
@@ -30,6 +29,7 @@ const DISCUSSION_CUT = {
   unpromoted: ["a-one"],
 };
 
+/** 假 invoke：記錄每筆 (cmd, args) 並依 cmd 回覆最小合法 payload。 */
 function fakeInvoke() {
   const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
   const results: Record<string, unknown> = {

@@ -97,6 +97,14 @@
         "apps/desktop/src/adapter/remoteDataSource.ts",
         "apps/desktop/src/adapter/tauriDataSource.ts"
       ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate discussion-cuts-from-engine` 通過",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "packages/ui/src/__tests__/improveBadge.test.tsx"
+      ]
     }
   ],
   "entries": [
@@ -239,6 +247,18 @@
         "apps/desktop/src/adapter/tauriDataSource.ts"
       ],
       "recordedAt": "2026-11-03T09:42:25Z"
+    },
+    {
+      "taskId": "tsk_01M6G9NXHKQBXMT1CA04DPS2AH",
+      "taskDesc": "6.2 受影響面測試與文件守門全部通過。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-protocol`、`cargo test -p speclink-server --test it`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib`、`npm test -w packages/ui`、`npm test -w apps/desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 皆通過，且 `speclink validate discussion-cuts-from-engine` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4f81bf4b75e93af7324507b888524ff33caf9a75",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "packages/ui/src/__tests__/improveBadge.test.tsx"
+      ],
+      "recordedAt": "2026-11-04T01:52:03Z"
     }
   ]
 }

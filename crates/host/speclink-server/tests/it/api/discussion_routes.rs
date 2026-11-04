@@ -998,3 +998,46 @@ fn show_discussion_without_a_conclusion_has_empty_cuts() {
         }),
     );
 }
+
+/// client-protocol「分刀各欄」Example 的記錄：promoted_to 為 `a`，Decision 三條頂層列點。
+const CUTS_EXAMPLE_RECORD: &str =
+    "---\ntopic: Panel\nslug: panel\nstatus: promoted\npromoted_to: a\ncreated: 2026-11-01\n---\n\n\
+     # Discussion: Panel\n\n## Context\n\nseed\n\n## Rounds\n\n## Conclusion\n\n\
+     **Decision**: 分三刀。\n\n- **cut 1 `a`**: 骨架——三種詳情頁改三欄\n\
+     - **cut 2 外殼**（拆兩個 change：`b` 外殼、`c` 選單）\n- **cut 3 `d` `e`**: 收尾\n";
+
+#[test]
+fn show_discussion_carries_the_example_cut_columns() {
+    // client-protocol 場景「詳情回應帶分刀」：三列的各欄（note 非空、changesInBold 為 false、
+    // unpromoted 為 d、e）經 GET /discussions/panel 原樣送出。
+    let f = fixture();
+    seed_discussion(&f, "panel", false, CUTS_EXAMPLE_RECORD);
+    let body = show_body(&f, "panel");
+    assert_eq!(
+        body["cuts"],
+        json!([
+            {
+                "cut": "cut 1", "title": "骨架", "note": "三種詳情頁改三欄",
+                "line": "**cut 1 `a`**: 骨架——三種詳情頁改三欄",
+                "changes": ["a"], "changesInBold": true, "unpromoted": []
+            },
+            {
+                "cut": "cut 2", "title": "外殼", "note": "拆兩個 change：`b` 外殼、`c` 選單",
+                "line": "**cut 2 外殼**（拆兩個 change：`b` 外殼、`c` 選單）",
+                "changes": ["b", "c"], "changesInBold": false, "unpromoted": []
+            },
+            {
+                "cut": "cut 3", "title": "收尾", "note": "", "line": "**cut 3 `d` `e`**: 收尾",
+                "changes": ["d", "e"], "changesInBold": true, "unpromoted": ["d", "e"]
+            }
+        ])
+    );
+    assert_info_and_content_unchanged(
+        &body,
+        CUTS_EXAMPLE_RECORD,
+        json!({
+            "slug": "panel", "topic": "Panel", "status": "promoted", "rounds": 0, "created": "2026-11-01",
+            "promotedTo": ["a"], "concluded": true, "hold": false, "archived": false
+        }),
+    );
+}

@@ -182,7 +182,8 @@ function DecisionSections({
 }
 
 /** 一張分刀卡：識別籤、範圍句、變更數；變更名籤附階段籤；卡內細線列。轉出判定取自引擎（`cutPromotion`）：
- * 整刀未轉出時橄欖色虛線框、卡頭「尚未轉出」籤；部分轉出時 `unpromoted` 內的變更名籤之後接同款籤。 */
+ * 整刀未轉出時橄欖色虛線框、卡頭「尚未轉出」籤；部分轉出時 `unpromoted` 內的變更名籤之後接同款籤。
+ * `unpromoted` 內的名稱不取 `stageOf`（清單的 promotedTo 可能與文件不同步），同一顆籤只有一種轉出狀態。 */
 function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocProps["stageOf"] }) {
   const { t, tn } = useI18n();
   const promotion = cutPromotion(cut);
@@ -209,7 +210,8 @@ function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocPr
       {cut.names.length > 0 && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
           {cut.names.map((name) => {
-            const stage = stageOf?.(name) ?? null;
+            const unpromoted = cut.unpromoted.includes(name);
+            const stage = unpromoted ? null : (stageOf?.(name) ?? null);
             return (
               <span key={name} data-cut-change={name} className="inline-flex items-center gap-1">
                 <NameChip name={name} onClick={stage?.onOpen} />
@@ -218,7 +220,7 @@ function CutCardView({ cut, stageOf }: { cut: CutCard; stageOf?: ConclusionDocPr
                     {stage.label}
                   </StatusPill>
                 ) : (
-                  promotion === "partial" && cut.unpromoted.includes(name) && notPromoted
+                  promotion === "partial" && unpromoted && notPromoted
                 )}
               </span>
             );

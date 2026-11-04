@@ -355,11 +355,11 @@ mod tests {
         assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 2"]);
     }
 
-    // --- 與前端判定不同、依規格字面的兩處（第 4 刀前端改讀引擎資料後兩邊一致）---
+    // --- 與改版前的前端判定不同、依規格字面的兩處（第 4 刀起前端改讀引擎資料，兩邊一致）---
 
     #[test]
     fn a_bold_cut_paragraph_outside_a_list_item_is_not_a_cut() {
-        // 判定：依規格只認行首 `- ` 的頂層列點；前端 splitVerdict 另把列點後的散文段交給 cutCard。
+        // 判定：依規格只認行首 `- ` 的頂層列點；改版前的前端另把列點後的散文段也當刀。
         let conclusion = "**Decision**: 定案。\n\n- **cut 1 `add-a`**: 一\n\n**cut 2 `add-b`**: 散文段\n";
         let cuts = parse_cuts(conclusion);
         assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 1"]);
@@ -368,7 +368,7 @@ mod tests {
     #[test]
     fn a_second_decision_label_does_not_end_the_field() {
         // 判定：依規格 Decision 欄位到下一個 Rationale／Rejected alternatives／Deferred／
-        // Capture to／Next 標籤行為止，第二行 `**Decision**:` 不是邊界；前端只取最後一段。
+        // Capture to／Next 標籤行為止，第二行 `**Decision**:` 不是邊界；改版前的前端只取最後一段。
         let conclusion = "**Decision**: 一\n\n- **cut 1 `add-a`**: 一\n\n**Decision**: 二\n\n- **cut 2 `add-b`**: 二\n";
         let cuts = parse_cuts(conclusion);
         assert_eq!(cuts.iter().map(|c| c.id.as_str()).collect::<Vec<_>>(), ["cut 1", "cut 2"]);
@@ -422,7 +422,8 @@ mod tests {
 
     #[test]
     fn note_matches_the_desktop_rows() {
-        // 前端 discussionModel.test.ts 的說明列案例（detail-content-redesign、desktop-ui-redesign 真實結論）：
+        // 自前端 discussionModel.test.ts 移來的說明列案例（detail-content-redesign、desktop-ui-redesign 真實結論），
+        // 加上 desktop-app「分刀列的解析」Example 第 1、4 列原句：
         // (列點首行, note)
         let rows: &[(&str, &str)] = &[
             (
@@ -432,6 +433,11 @@ mod tests {
             (
                 "**cut 2 `desktop-change-doc-views`**: 變更文件渲染器——提案、設計的新畫法；依賴 cut 1",
                 "提案、設計的新畫法；依賴 cut 1",
+            ),
+            ("**cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄", "三種詳情頁改三欄"),
+            (
+                "**cut 2 外殼**（propose 期拆兩個 change：`desktop-shell-redesign` 外殼結構、`desktop-native-menu` 原生選單）",
+                "propose 期拆兩個 change：`desktop-shell-redesign` 外殼結構、`desktop-native-menu` 原生選單",
             ),
             // 沒有「——」、範圍句不在粗體內：沒有說明。
             ("**cut 0 `fix-drawer-open-dismisses-overlays`**: 獨立 bug 修，不等換皮（已封存）", ""),
@@ -477,7 +483,7 @@ mod tests {
 
     #[test]
     fn mixed_and_unbalanced_parens_follow_the_desktop_rule() {
-        // 判定：無缺口——全形與半形視為同一種括號（與前端 unwrapParens 同規則）；不成對時原樣保留；
+        // 判定：無缺口——全形與半形視為同一種括號（與改版前的前端規則相同）；不成對時原樣保留；
         // 切點都落在 char_indices 給的字元邊界，多位元組括號不會 panic。
         for (item, note) in [
             ("**cut 2 外殼**（混用)", "混用"),
@@ -509,6 +515,15 @@ mod tests {
     fn desktop_rows_that_are_cuts() {
         // (列點首行, cut, changes, title, changesInBold)
         let rows: &[(&str, &str, &[&str], &str, bool)] = &[
+            // desktop-app「分刀列的解析」Example 第 1、4 列原句（第 2、3 列見下方兩列）。
+            ("**cut 1 `desktop-detail-doc-tree`**: 骨架——三種詳情頁改三欄", "cut 1", &["desktop-detail-doc-tree"], "骨架", true),
+            (
+                "**cut 2 外殼**（propose 期拆兩個 change：`desktop-shell-redesign` 外殼結構、`desktop-native-menu` 原生選單）",
+                "cut 2",
+                &["desktop-shell-redesign", "desktop-native-menu"],
+                "外殼",
+                false,
+            ),
             ("**刀三**：系統匣面板", "刀三", &[], "系統匣面板", false),
             ("**第三刀**：系統匣", "第三刀", &[], "系統匣", false),
             (
@@ -548,6 +563,16 @@ mod tests {
             "cut 1 `x`：沒有粗體",
         ] {
             assert_eq!(parse_cuts(&decision_with(item)), [], "{item}");
+        }
+    }
+
+    #[test]
+    fn bullets_other_than_a_dash_are_not_cuts() {
+        // desktop-app「分刀列的解析」Example 第 6 列與同類寫法：只認 `- ` 起頭的頂層列點，
+        // `*`、`+`、編號列點的刀列不成刀、留在定案細節（與 plan 的 unpromotedCuts 一致）。
+        for item in ["* **cut 3 `add-x`**: 範圍", "+ **cut 3 `add-x`**: 範圍", "1. **cut 3 `add-x`**: 範圍"] {
+            let conclusion = format!("**Decision**: 定案。\n\n{item}\n");
+            assert_eq!(parse_cuts(&conclusion), [], "{item}");
         }
     }
 

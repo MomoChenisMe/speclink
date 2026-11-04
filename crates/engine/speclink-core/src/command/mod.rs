@@ -1471,13 +1471,10 @@ fn run_language_show(store: &dyn Store) -> Result<CommandOutcome, CommandError> 
 }
 
 fn run_discuss_show(store: &dyn Store, slug: &str) -> Result<CommandOutcome, CommandError> {
-    let content = crate::discuss::show_discussion(store, slug).ok_or_else(|| {
+    let (info, content) = crate::discuss::show(store, slug).ok_or_else(|| {
         CommandError::new(ErrorCode::NotFound, format!("discussion '{slug}' not found"))
     })?;
-    Ok(CommandOutcome::DiscussShow(DiscussShowOutcome {
-        info: crate::discuss::info(store, slug),
-        content,
-    }))
+    Ok(CommandOutcome::DiscussShow(DiscussShowOutcome { info: Some(info), content }))
 }
 
 fn run_new_change(

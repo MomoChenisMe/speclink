@@ -574,8 +574,9 @@ pub fn list_archived(store: &dyn Store) -> Vec<DiscussionInfo> {
     out
 }
 
-pub fn show_discussion(store: &dyn Store, slug: &str) -> Option<String> {
-    store.read_discussion(slug).map(|d| d.text)
+/// 記錄的 info 與全文，取自同一次讀取（server 以兩者計算詳情回應的 `cuts`，見 [`record_cuts`]）。
+pub fn show(store: &dyn Store, slug: &str) -> Option<(DiscussionInfo, String)> {
+    store.read_discussion(slug).map(|d| (info_from_doc(&d), d.text))
 }
 
 pub fn info(store: &dyn Store, slug: &str) -> Option<DiscussionInfo> {

@@ -21,6 +21,7 @@ import { DiscussionDetailPage } from "../components/DiscussionDetailPage";
 import { ArchivedList } from "../components/ArchivedList";
 import { ArchivedDetailPage } from "../components/ArchivedDetailPage";
 import type { DiscussionItem } from "../adapter";
+import { discussionDoc } from "./engineCuts";
 
 const IMPROVE_TW = "改進討論";
 const IMPROVE_EN = MESSAGES.en["discussion.kindImprove"];
@@ -49,7 +50,7 @@ function pageProps(discussion: DiscussionItem) {
     discussion,
     changes: [],
     archivedChanges: [],
-    loadDocument: vi.fn(async () => "## Rounds\n"),
+    loadDocument: vi.fn(async () => discussionDoc("## Rounds\n")),
   };
 }
 
