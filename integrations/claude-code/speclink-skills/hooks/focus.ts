@@ -22,11 +22,27 @@ export const changeIn = (text: string, names: readonly string[]) =>
 export const speclinkCommand = (command: unknown) =>
   typeof command === 'string' && /(^|[\s;&|(])speclink\s/.test(command) ? command : null
 
+// 這些步驟不是在做某個 change，訊息或指令裡的 change 名稱多半只是提到（討論的背景、查來源）。
+// propose 也沒有現成的 change，但它會建一個，所以之後的 CLI 指令還是認。
+const NO_CHANGE_VERBS = new Set(['discuss', 'propose', 'improve', 'audit', 'trace', 'manual', 'baseline', 'config'])
+const IGNORES_COMMANDS = new Set([...NO_CHANGE_VERBS].filter(verb => verb !== 'propose'))
+
+// 換步驟：不做 change 的步驟要放掉上一個 change。
+export const withVerb = (focus: Focus, verb: string): Focus =>
+  NO_CHANGE_VERBS.has(verb) ? { verb, change: null } : { ...focus, verb }
+
+// speclink 指令裡的 change 名稱就是正在處理的 change。討論、查來源這類步驟除外。
+export const commandChange = (focus: Focus, command: string, names: readonly string[]) =>
+  focus.verb !== null && IGNORES_COMMANDS.has(focus.verb) ? null : changeIn(command, names)
+
 // 送出的訊息帶來的變動：speclink 技能指令換成新的步驟，指令裡有 change 名稱就換掉 change，
 // 沒有就留著上一個（通常是同一個 change 的下一步）。其他訊息不動。
 export const afterPrompt = (focus: Focus, prompt: string, names: readonly string[], panelCommand: string): Focus => {
   const verb = verbOf(prompt, panelCommand)
-  return verb === null ? focus : { verb, change: changeIn(prompt, names) ?? focus.change }
+  if (verb === null) {
+    return focus
+  }
+  return NO_CHANGE_VERBS.has(verb) ? withVerb(focus, verb) : { verb, change: changeIn(prompt, names) ?? focus.change }
 }
 
 // 接回的對話（/resume）裡最後的步驟與 change：依序看你送出的技能指令、模型呼叫的技能與 speclink 指令。
@@ -43,10 +59,10 @@ export const focusFromHistory = (
     for (const use of message.toolUses) {
       const skill = use.tool === 'Skill' ? use.input.skill : undefined
       if (typeof skill === 'string' && skill.startsWith(PREFIX)) {
-        focus = { ...focus, verb: skill.slice(PREFIX.length) }
+        focus = withVerb(focus, skill.slice(PREFIX.length))
       }
       const command = use.tool === 'Bash' ? speclinkCommand(use.input.command) : null
-      const change = command === null ? null : changeIn(command, names)
+      const change = command === null ? null : commandChange(focus, command, names)
       if (change !== null) {
         focus = { ...focus, change }
       }
