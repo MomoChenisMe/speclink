@@ -149,6 +149,7 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 | `packages/ui/` | 桌面 app 與網頁後台共用的 UI 元件 |
 | `packages/cli-npm/`、`packages/server-npm/` | npm 套件 `@speclink/cli` 與 `@speclink/server` 的外殼；各平台的 binary 另外發布 |
 | `integrations/claude-code/` | Claude Code 的 mod（`speclink-skills`：技能列與側邊面板） |
+| `integrations/herdr/` | Herdr 的 mod（`speclink`：面板與技能跳窗），以及 `scripts/herdr/dock-panel.mjs` 放進側欄複製版的檔案 |
 | `scripts/` | 開發入口、文件守門、桌面建置、npm 打包與發版用的腳本 |
 | `deploy/` | Docker Compose 部署檔（sqlite 與 postgres 各一份） |
 | `docs/` | 使用者文件 |

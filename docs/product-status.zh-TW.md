@@ -70,6 +70,7 @@
 | 桌面 Server 連線 | 可用 | 設定的「伺服器」頁、device 登入、存取金鑰、登出與 OS Keychain | [連線流程](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers 面板測試](../apps/desktop/src/__tests__/serversPanel.test.tsx) | — | 2026-10-15 |
 | 桌面遠端專案 | 部分可用 | 「新增專案」對話框的遠端開啟：只看規格，或綁本機 checkout；詳情頁可認領 | [新增專案對話框](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報 touched files；認領沒有釋放或接手的動詞。 | 2026-10-07 |
 | Claude Code 外掛（`speclink-skills`） | 部分可用 | `/plugin install speclink-skills --marketplace MomoChenisMe/speclink` | [外掛測試](../integrations/claude-code/speclink-skills/tests/register.test.tsx)<br>[技能分組測試](../scripts/claude-code/skill-groups.test.mjs) | 建立在 Claude Code 的 early-access 外掛介面上，Claude Code 改版時可能要跟著更新。Windows 尚未實機測試。 | 2026-10-07 |
+| Herdr mod（`speclink`） | 部分可用 | `cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/` | [面板邏輯測試](../scripts/herdr/panel-model.test.mjs)<br>[安裝說明](../integrations/herdr/README.md) | 停靠的版面和側欄清單是 Herdr 內建版面與 mod 的複製版，Herdr 更新後要重做停靠。貼進輸入框和開頁面只有 macOS。沒有用 Codex 測試過。 | 2026-11-04 |
 | MCP 與 Agent 工具套件 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「Agent 工具整合」。 | 2026-10-07 |
 | SSO、runtime plugin 與多節點 | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「系統整合」。 | 2026-10-07 |
 

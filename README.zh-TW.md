@@ -168,6 +168,26 @@ CLI 與桌面 app 都想裝？桌面 app 可能換掉你的 CLI，先看 [Local 
 
 需求、設定與已知限制見 [speclink-skills](integrations/claude-code/speclink-skills/README.md)。
 
+### Herdr mod（選用）
+
+`speclink` 在 [Herdr](https://herdr.dev) 的終端機旁邊加一個面板，列出目前專案的變更與討論，可以把技能交給對的 agent，也可以開新的 agent。左邊側欄會顯示每個專案在各階段有幾個變更，並依 space 整理 agent。介面文字跟隨系統語言。
+
+讓 Herdr 開著，在這個 repo 的 clone 裡執行：
+
+```bash
+cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/
+node scripts/herdr/dock-panel.mjs
+```
+
+<table>
+  <tr>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/herdr-panel.png" alt="Herdr 視窗：左邊是階段徽章與 Agent 清單，右邊是 Speclink 面板" /><br /><sub>Herdr 裡的側欄與面板</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/herdr-skill-picker.png" alt="技能跳窗：左邊是分成五組的技能，右邊是這個技能能搭配的變更" /><br /><sub>選技能和變更，放到輸入框或開新分頁</sub></td>
+  </tr>
+</table>
+
+快捷鍵、需求與已知限制見 [Speclink 的 Herdr mod](integrations/herdr/README.md)。
+
 ## <a id="self-hosting"></a>自架 server
 
 Server 只有在團隊要共用同一份正式規格時才需要。一個人在自己的 repo 裡用，不必裝 server。
@@ -224,7 +244,7 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 ## <a id="status"></a>目前狀態
 
 - **可用**：Local Repo CLI、Local 桌面 app、Agent 技能（Claude、Codex 與 GitHub Copilot）、品質關卡、執行順序、手冊與溯源、Node SDK（`@speclink/engine`）、三種 TeamStore（SQLite、Server FS、PostgreSQL）、單節點 server 與後台、Remote CLI、安裝通路、server 營運（部署、備份還原）。
-- **部分可用**：桌面 app 的遠端專案、Claude Code 外掛。
+- **部分可用**：桌面 app 的遠端專案、Claude Code 外掛、Herdr mod。
 - **規劃中**：Agent 工具套件與 MCP、SSO、runtime plugin、多節點部署。
 
 每一項的證據、限制與查核日期見[專案能力狀態](docs/product-status.zh-TW.md)。還沒做的方向見[專案路線圖](docs/roadmap.zh-TW.md)。

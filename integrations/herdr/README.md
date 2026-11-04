@@ -4,6 +4,8 @@
 
 在 [Herdr](https://herdr.dev) 裡開一個面板，看目前專案的變更與討論，按一下就把技能交給對的 agent、開工，或叫 Speclink 開詳情。全程不用手打變更名稱、不用找視窗。
 
+![Herdr 視窗：左邊是階段徽章與 Agent 清單，右邊是 Speclink 面板](../../docs/assets/screenshots/zh-TW/herdr-panel.png)
+
 ## 面板有什麼
 
 面板有兩種放法。兩種都不搶鍵盤，專案都跟著目前焦點所在的終端機走，切 space 就換專案。
@@ -80,6 +82,8 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 **整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問，一律用 worktree。波次取自 `speclink plan`。
 
 ### 技能跳窗
+
+![技能跳窗：左邊是分成五組的技能，右邊是這個技能能搭配的變更](../../docs/assets/screenshots/zh-TW/herdr-skill-picker.png)
 
 按頂端的「技能」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
 

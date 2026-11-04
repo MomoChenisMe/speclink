@@ -143,6 +143,8 @@ export const SHOT_LIST = [
   { file: 'claude-code-panel.png', what: 'Claude Code 技能列與側邊面板的看板分頁' },
   { file: 'claude-code-quality.png', what: 'Claude Code 側邊面板的品質分頁（列出示範審查工單）' },
   { file: 'claude-code-hash-menu.png', what: 'Claude Code 輸入框打 # 跳出的變更選單' },
+  { file: 'herdr-panel.png', what: 'Herdr 視窗：左邊的階段徽章與 Agents 清單、右邊的 Speclink 面板（用隔離視窗和假 agent 拍）' },
+  { file: 'herdr-skill-picker.png', what: 'Herdr 的技能跳窗（只裁跳窗）' },
 ];
 
 /// 截圖的介面語言，也是 SHOT_DIR 底下的子目錄名。

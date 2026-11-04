@@ -149,6 +149,7 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 | `packages/ui/` | UI components that the desktop app and the web console share |
 | `packages/cli-npm/`, `packages/server-npm/` | The npm packages `@speclink/cli` and `@speclink/server`. Each platform binary ships as a separate package |
 | `integrations/claude-code/` | The Claude Code mod (`speclink-skills`: skill bar and side panel) |
+| `integrations/herdr/` | The Herdr mods (`speclink`: panel and Skills pop-up) and the files that `scripts/herdr/dock-panel.mjs` adds to the cloned sidebar mods |
 | `scripts/` | Scripts for the dev entry points, documentation checks, desktop builds, npm packaging, and releases |
 | `deploy/` | Docker Compose files (one for sqlite, one for postgres) |
 | `docs/` | User documentation |

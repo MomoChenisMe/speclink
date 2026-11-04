@@ -82,6 +82,7 @@ Speclink 目前透過生成的技能檔與 Agent 協作。技能檔是「把流�
 
 - 技能這一側已經成熟：Claude Code 與 Codex 涵蓋每一站，見[完整 SDD 工作流](workflow.zh-TW.md)。其他 AI 工具可以用自訂工具描述子產生技能，見[設定說明](configuration.zh-TW.md)。
 - Claude Code 外掛 `speclink-skills` 提供技能按鈕列與側邊面板。
+- Herdr mod `speclink` 提供面板，並把側欄清單接上 Speclink。
 - 工具這一側還沒有入口：沒有可安裝的工具套件，也沒有 MCP adapter。
 - 目前討論中的方向（尚未定案）：
   - 先在 `@speclink/engine` 提供一個通用工具，接收 CLI 參數與 stdin，並附上接到 Agent SDK 的範例。
