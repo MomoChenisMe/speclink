@@ -29,13 +29,13 @@ import {
   isUninitialized,
   joinAgents,
   speclinkUrl,
-  startAction,
+  startChoices,
   waveToStart,
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
 import { tr, watchLang } from "./i18n.js";
 import SkillPicker from "./skill-picker.js";
-import { firstLine, location, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
+import { firstLine, location, openTabs, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
@@ -78,6 +78,7 @@ export default class SpeclinkPanel extends View {
     this.known = null;
     this.copied = null;
     this.attaching = new Map();
+    this.choosing = null;
     this.more = new Set();
     this.sending = new Set();
     this.starting = new Set();
@@ -180,6 +181,8 @@ export default class SpeclinkPanel extends View {
         this.sending.has(a.address) ? { ...a, status: "sending" } : a,
       ),
       focus: { tab: f?.tab ?? null, terminal: f?.terminal ?? null },
+      space: f?.space ?? null,
+      on: this.place.on,
       known: this.known,
       worktreePolicy: this.worktreePolicy,
       starting: this.starting,
@@ -198,20 +201,30 @@ export default class SpeclinkPanel extends View {
         else notify({ title: tr("技能沒有送出"), body: sendError(r), level: "warning" });
         cx.notify();
       });
-    } else if (delivery.kind === "new" || delivery.kind === "space") {
+    } else if (delivery.kind === "new") {
       const before = new Set(terminals().map((t) => t.address));
-      const agent = { folder: delivery.folder, argv: delivery.argv, task: delivery.text };
-      if (delivery.kind === "space") {
-        // 不帶 name：space 的名稱維持 Herdr 原樣，跟著第一個終端機所在的資料夾。
-        run("space.new", { ...agent, tab: delivery.tabName, machine: this.place.on ?? "" });
-      } else {
-        run("tab.new", { ...agent, name: delivery.tabName, space: spaceFor(delivery.folder)?.id });
-      }
+      run("tab.new", {
+        folder: delivery.folder,
+        argv: delivery.argv,
+        task: delivery.text,
+        name: delivery.tabName,
+        space: spaceFor(delivery.folder)?.id,
+      });
       if (delivery.change) {
         this.labelNew(before, delivery, cx, 10);
         this.markStarting(delivery.change, cx);
       }
     }
+  }
+
+  // 開工和技能跳窗的開新分頁相同：開在目前的工作區，畫面留在原分頁。
+  startTabs(plans, cx) {
+    this.choosing = null;
+    for (const plan of plans) this.markStarting(plan.change, cx);
+    cx.spawn(async (cx) => {
+      const failed = await openTabs(plans, cx);
+      if (failed) notify({ title: tr("開工失敗"), body: sendError(failed), level: "warning" });
+    });
   }
 
   // agent 開好並回報狀態要幾秒，這段時間列上還看不到它，再按一次開工會多開一個。
@@ -283,32 +296,78 @@ export default class SpeclinkPanel extends View {
       .child(icon(this.copied === text ? "check" : "copy", 12, t.muted));
   }
 
-  skillButton(id, action, t) {
-    const d = action.delivery;
-    const ready = d && (d.kind === "send" || d.kind === "new" || d.kind === "space");
-    const tip = action.waitingFor
-      ? tr("等 {0} 先完成", action.waitingFor.join(tr("、")))
-      : d.text
-        ? `${deliveryHint(d)}：${d.text}`
-        : deliveryHint(d);
+  chip({ id, label, ready, primary, tip, click }, t) {
     return h_flex()
-      .id(`skill-${id}-${action.skill}`)
+      .id(id)
       .h(22)
       .px(7)
       .items_center()
       .rounded(5)
       .text_size(11.5)
-      .when(action.primary, (el) => el.border_2().border_color(t.accent).font_semibold())
-      .when(!action.primary, (el) => el.border_1().border_color(t.input))
+      .when(primary, (el) => el.border_2().border_color(t.accent).font_semibold())
+      .when(!primary, (el) => el.border_1().border_color(t.input))
       .when(ready, (el) => el.cursor_pointer().hover((s) => s.bg(t.hover)))
       .when(!ready, (el) => el.opacity(0.45))
       // 灰掉的鈕也要擋下點擊，否則會變成點到列本身。
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        if (ready) this.deliver(d, cx);
+        if (ready) click(cx);
       })
-      .tooltip(tip)
-      .child(tr(action.skill));
+      .when(Boolean(tip), (el) => el.tooltip(tip))
+      .child(label);
+  }
+
+  skillButton(id, action, t) {
+    const d = action.delivery;
+    const tip = action.waitingFor
+      ? tr("等 {0} 先完成", action.waitingFor.join(tr("、")))
+      : d.text
+        ? `${deliveryHint(d)}：${d.text}`
+        : deliveryHint(d);
+    return this.chip(
+      {
+        id: `skill-${id}-${action.skill}`,
+        label: tr(action.skill),
+        ready: d && (d.kind === "send" || d.kind === "new"),
+        primary: action.primary,
+        tip,
+        click: (cx) => this.deliver(d, cx),
+      },
+      t,
+    );
+  }
+
+  // 開工的一種做法。
+  startChoice(id, { label, plan }, t) {
+    const ready = plan.kind === "tab";
+    return this.chip(
+      {
+        id: `start-${id}-${label}`,
+        label: tr(label),
+        ready,
+        tip: ready ? tr("在目前的工作區開新分頁並執行：{0}", plan.text) : plan.reason,
+        click: (cx) => this.startTabs([plan], cx),
+      },
+      t,
+    );
+  }
+
+  // 只有一種做法就直接開工，有兩種時按下去才展開選項。
+  startButton(id, target, choices, t) {
+    if (choices.length === 1) return this.startChoice(id, choices[0], t);
+    return this.chip(
+      {
+        id: `start-${id}`,
+        label: tr("開工"),
+        ready: true,
+        tip: tr("選擇用 worktree 或直接 apply"),
+        click: (cx) => {
+          this.choosing = target;
+          cx.notify();
+        },
+      },
+      t,
+    );
   }
 
   // 貼上要約 0.7 秒，所以按下去要先有反應。貼上中再按一次不算，否則名稱會貼兩次。
@@ -379,11 +438,32 @@ export default class SpeclinkPanel extends View {
 
   // 每列只留建議的下一步。能開工的列多一顆開工。
   skillRow({ id, actions, start, target, hint }, t) {
+    // 開工要選做法時，這一列只放選項。
+    if (start?.length > 1 && this.choosing === target) {
+      return h_flex()
+        .gap(4)
+        .items_center()
+        .children(start.map((choice) => this.startChoice(id, choice, t)))
+        .child(
+          this.chip(
+            {
+              id: `start-${id}-cancel`,
+              label: tr("取消"),
+              ready: true,
+              click: (cx) => {
+                this.choosing = null;
+                cx.notify();
+              },
+            },
+            t,
+          ),
+        );
+    }
     const next = actions.find((a) => a.primary) ?? actions[0];
     return h_flex()
       .gap(4)
       .items_center()
-      .when(Boolean(start), (el) => el.child(this.skillButton(id, start, t)))
+      .when(Boolean(start), (el) => el.child(this.startButton(id, target, start, t)))
       .child(this.skillButton(id, next, t))
       .child(this.moreButton(id, next.skill, target, t))
       .when(Boolean(hint), (el) =>
@@ -465,7 +545,7 @@ export default class SpeclinkPanel extends View {
 
   changeRow(row, stage, ctx, t) {
     const actions = changeActions(row, ctx);
-    const start = startAction(row, ctx);
+    const start = startChoices(row, ctx);
     const blocked = row.blockedBy.length > 0;
     const hint = blocked ? tr("等 {0}", row.blockedBy.join(tr("、"))) : "";
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
@@ -590,7 +670,7 @@ export default class SpeclinkPanel extends View {
   }
 
   // 整波開工不再多問一次：同一列已經寫出會開哪些變更。
-  waveBar({ wave, deliveries }, t) {
+  waveBar({ wave, plans }, t) {
     return h_flex()
       .flex_none()
       .gap(8)
@@ -607,7 +687,7 @@ export default class SpeclinkPanel extends View {
           .min_w_0()
           .text_size(11.5)
           .text_color(t.muted)
-          .child(tr("第 {0} 波可以一起開工：{1}", wave, deliveries.map((d) => d.change).join(tr("、")))),
+          .child(tr("第 {0} 波可以一起開工：{1}", wave, plans.map((p) => p.change).join(tr("、")))),
       )
       .child(
         h_flex()
@@ -622,8 +702,8 @@ export default class SpeclinkPanel extends View {
           .text_size(11.5)
           .cursor_pointer()
           .hover((s) => s.bg(t.hover))
-          .tooltip(tr("開 {0} 個新工作區，各跑一個 agent", deliveries.length))
-          .on_click((_e, cx) => deliveries.forEach((d) => this.deliver(d, cx)))
+          .tooltip(tr("開 {0} 個新分頁，各跑一個 agent", plans.length))
+          .on_click((_e, cx) => this.startTabs(plans, cx))
           .child(tr("整波開工")),
       );
   }

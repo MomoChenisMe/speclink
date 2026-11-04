@@ -32,7 +32,7 @@ import {
   statusCounts,
   statusSections,
   speclinkUrl,
-  startAction,
+  startChoices,
   titleChange,
   waveToStart,
 } from '../../integrations/herdr/mods/speclink/model.js';
@@ -716,42 +716,53 @@ test('speclinkUrl：名稱與路徑要百分比編碼', () => {
 
 // ---- 開工 ----
 
-const start = (over = {}, ctxOver = {}) => startAction(row(over), ctx({ worktreePolicy: true, ...ctxOver }));
+const start = (over = {}, ctxOver = {}) => startChoices(row(over), ctx({ worktreePolicy: true, space: 'sp1', ...ctxOver }));
+const planOf = (choices, label) => choices.find((c) => c.label === label).plan;
 
-test('開工：開 worktree 政策時開新 space，跑 apply-with-worktree，開在主資料夾', () => {
-  const { delivery: d } = start({ stage: 'proposed', completed: 0 });
-  assert.equal(d.kind, 'space');
-  assert.equal(d.folder, REPO);
-  assert.equal(d.text, '/speclink-apply-with-worktree add-a');
-  assert.equal(d.tabName, 'apply-with-worktree · add-a');
-  assert.equal(d.change, 'add-a');
-  assert.equal(d.skill, 'apply-with-worktree');
-  assert.deepEqual(d.argv, ['claude']);
+test('開工：開 worktree 政策、還沒有 worktree 時要問，兩種都開在目前的工作區和主資料夾', () => {
+  const choices = start({ stage: 'proposed', completed: 0 });
+  assert.deepEqual(choices.map((c) => c.label), ['用 worktree', '直接 apply']);
+  const tree = planOf(choices, '用 worktree');
+  assert.equal(tree.kind, 'tab');
+  assert.equal(tree.folder, REPO);
+  assert.equal(tree.text, '/speclink-apply-with-worktree add-a');
+  assert.equal(tree.tabName, 'apply-with-worktree · add-a');
+  assert.equal(tree.change, 'add-a');
+  assert.ok(tree.hc.includes('herdr.space=sp1'), '開在目前的工作區，不開新工作區');
+  assert.ok(tree.hc.includes('speclink.change=add-a'));
+  assert.equal(planOf(choices, '直接 apply').text, '/speclink-apply add-a');
+  assert.equal(planOf(choices, '直接 apply').folder, REPO);
 });
 
-test('開工：未開 worktree 政策時改開新分頁，跑 apply', () => {
-  const { delivery: d } = start({}, { worktreePolicy: false });
-  assert.equal(d.kind, 'new');
-  assert.equal(d.folder, REPO);
-  assert.equal(d.text, '/speclink-apply add-a');
+test('開工：主資料夾已經有 apply 在跑時，直接 apply 不能選，worktree 還可以', () => {
+  const choices = start({}, { agents: [agent({ labels: { 'speclink.change': 'add-z', 'speclink.skill': 'speclink-apply' } })] });
+  assert.equal(planOf(choices, '直接 apply').reason, '主資料夾已經有 apply 在跑');
+  assert.equal(planOf(choices, '用 worktree').kind, 'tab');
 });
 
-test('開工：已有 worktree 但沒有 agent 時也從主資料夾接續', () => {
-  const { delivery: d } = start({ worktree: { path: TREE, branch: 'speclink/add-a' } });
-  assert.equal(d.kind, 'space');
-  assert.equal(d.folder, REPO);
-  assert.equal(d.text, '/speclink-apply-with-worktree add-a');
+test('開工：未開 worktree 政策時不問，直接 apply', () => {
+  const choices = start({}, { worktreePolicy: false });
+  assert.deepEqual(choices.map((c) => c.label), ['開工']);
+  assert.equal(choices[0].plan.text, '/speclink-apply add-a');
+  assert.equal(choices[0].plan.folder, REPO);
+});
+
+test('開工：已有 worktree 時不問，從主資料夾接續', () => {
+  const choices = start({ worktree: { path: TREE, branch: 'speclink/add-a' } });
+  assert.deepEqual(choices.map((c) => c.label), ['開工']);
+  assert.equal(choices[0].plan.folder, REPO);
+  assert.equal(choices[0].plan.text, '/speclink-apply-with-worktree add-a');
 });
 
 test('開工：Codex 用錢字號並帶 --no-daemon', () => {
-  const { delivery: d } = start({}, { known: [{ key: 'codex', run: ['codex'], installed: true }] });
-  assert.equal(d.text, '$speclink-apply-with-worktree add-a');
-  assert.deepEqual(d.argv, ['codex', '--no-daemon']);
+  const plan = planOf(start({}, { known: [{ key: 'codex', run: ['codex'], installed: true }] }), '用 worktree');
+  assert.equal(plan.text, '$speclink-apply-with-worktree add-a');
+  assert.ok(plan.hc.includes('--no-daemon'));
 });
 
 test('開工：沒有可用的 agent 時鈕還在，並說明原因', () => {
-  assert.equal(deliveryHint(start({}, { known: null }).delivery), '還在確認可用的 agent');
-  assert.equal(start({}, { known: [] }).delivery.kind, 'none');
+  assert.equal(planOf(start({}, { known: null }), '用 worktree').reason, '還在確認可用的 agent');
+  assert.equal(planOf(start({}, { known: [] }), '直接 apply').kind, 'none');
 });
 
 test('開工：這些情況沒有開工鈕', () => {
@@ -760,10 +771,6 @@ test('開工：這些情況沒有開工鈕', () => {
   assert.equal(start({ restale: true }), null, '討論重新定案，要先 ingest');
   assert.equal(start({}, { agents: [agent({ labels: { 'speclink.change': 'add-a' } })] }), null, '已有 agent 在做');
   assert.equal(start({}, { starting: new Set(['add-a']) }), null, '剛按過，agent 還沒開好');
-});
-
-test('deliveryHint：開新 space', () => {
-  assert.equal(deliveryHint(start().delivery), '開新工作區');
 });
 
 const stages = (...rows) => ({
@@ -784,10 +791,10 @@ test('整波開工：開工最前面那一波能開工的變更，波次取自 p
   );
   assert.equal(wave.wave, 1);
   assert.deepEqual(
-    wave.deliveries.map((d) => d.text),
+    wave.plans.map((p) => p.text),
     ['/speclink-apply-with-worktree add-a', '/speclink-apply-with-worktree add-b'],
   );
-  assert.ok(wave.deliveries.every((d) => d.kind === 'space'));
+  assert.ok(wave.plans.every((p) => p.kind === 'tab'));
 });
 
 test('整波開工：已有 agent、已就緒、被擋的變更不算在內', () => {
@@ -801,7 +808,7 @@ test('整波開工：已有 agent、已就緒、被擋的變更不算在內', ()
     ),
     waveCtx({ agents: [agent({ labels: { 'speclink.change': 'add-c' } })] }),
   );
-  assert.deepEqual(wave.deliveries.map((d) => d.change), ['add-a', 'add-b']);
+  assert.deepEqual(wave.plans.map((p) => p.change), ['add-a', 'add-b']);
 });
 
 test('整波開工：能開工的不到兩個時不提供，因為列上的開工鈕就夠了', () => {

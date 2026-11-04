@@ -42,6 +42,34 @@ export async function speclinkJson(verb, cwd, on) {
   return JSON.parse(r.stdout);
 }
 
+// hc run 回來時分頁可能還沒出現，等它出現才能改名。
+const nameTabs = (waiting, cx, tries = 20) =>
+  new Promise((done) => {
+    const left = waiting.filter(({ address, name }) => {
+      const pane = panes().find((p) => p.terminal === address);
+      if (pane) run("tab.rename", { id: pane.tab, name });
+      return !pane;
+    });
+    if (left.length === 0 || tries === 0) return done();
+    cx.timer.after(150, (cx) => nameTabs(left, cx, tries - 1).then(done));
+  });
+
+// 依序開新分頁並取名。中途失敗就停下來，已經開好的分頁留著，回傳失敗的結果；全部成功時回傳 null。
+export async function openTabs(plans, cx) {
+  const opened = [];
+  let failed = null;
+  for (const plan of plans) {
+    const r = await hc(plan.hc);
+    if (r.code !== 0) {
+      failed = r;
+      break;
+    }
+    opened.push({ address: JSON.parse(r.stdout).address, name: plan.tabName });
+  }
+  await nameTabs(opened, cx);
+  return failed;
+}
+
 // Herdr 沒有「只貼上不按 Enter」的指令，所以暫時當一個看不見的檢視者：hc attach 要真的終端機才肯跑，
 // script 給它一個。送出括號貼上（程式會當成貼上，不是打字），再按 ctrl+\ 離開。
 // 大小用終端機現在的大小，它才不會跳動。ctrl+\ 要和貼上分開送，同一次讀到時 hc 不會當成離開；

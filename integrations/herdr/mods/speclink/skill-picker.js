@@ -3,7 +3,7 @@
 // 由 speclink-new 的 mod.json 開啟，main.js 看到 props 的 view 就把畫面交給這裡。
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
-import { agents, closeOverlay, focused, hc, knownAgents, panes, props, run, shared, terminals, theme } from "herdr";
+import { agents, closeOverlay, focused, knownAgents, panes, props, shared, terminals, theme } from "herdr";
 import {
   PICKER_SKILLS,
   batchPlan,
@@ -15,7 +15,7 @@ import {
   skillTargets,
 } from "./model.js";
 import { tr } from "./i18n.js";
-import { location, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
+import { location, openTabs, placeInInput, projectRoot, sendError, speclinkJson } from "./shared.js";
 
 const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: "已就緒" };
 // 顏色和 Claude Code 的技能列對應。
@@ -169,7 +169,7 @@ export default class SkillPicker {
     cx.notify();
     cx.spawn(async (cx) => {
       if (plan.kind === "place") await this.place(plan, cx);
-      else await this.openTabs(plan.plans ?? [plan], cx);
+      else await this.open(plan.plans ?? [plan], cx);
     });
   }
 
@@ -185,29 +185,10 @@ export default class SkillPicker {
     closeOverlay(props().overlay);
   }
 
-  async openTabs(plans, cx) {
-    const opened = [];
-    for (const plan of plans) {
-      const r = await hc(plan.hc);
-      // 已經開好的分頁留著。失敗的那個寫出來，跳窗不關。
-      if (r.code !== 0) {
-        this.nameTabs(opened, cx, 20, false);
-        return this.fail(r, cx);
-      }
-      opened.push({ address: JSON.parse(r.stdout).address, name: plan.tabName });
-    }
-    this.nameTabs(opened, cx, 20, true);
-  }
-
-  // hc run 回來時分頁可能還沒出現，等它出現才能改名。
-  nameTabs(waiting, cx, tries, close) {
-    const left = waiting.filter(({ address, name }) => {
-      const pane = panes().find((p) => p.terminal === address);
-      if (pane) run("tab.rename", { id: pane.tab, name });
-      return !pane;
-    });
-    if (left.length > 0 && tries > 0) return cx.timer.after(150, (cx) => this.nameTabs(left, cx, tries - 1, close));
-    if (close) closeOverlay(props().overlay);
+  async open(plans, cx) {
+    const failed = await openTabs(plans, cx);
+    if (failed) return this.fail(failed, cx);
+    closeOverlay(props().overlay);
   }
 
   moveSkill(step) {
