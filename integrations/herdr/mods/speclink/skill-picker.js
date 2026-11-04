@@ -1,5 +1,5 @@
-// 技能跳窗：選技能和搭配的變更或討論。Enter 把指令貼到目前分頁的輸入框，不送出。
-// 勾選「開新分頁」時改成 herdr-dispatch 技能的做法：用 hc run 開新分頁並開工，變更可以複選。
+// 技能跳窗：選技能和搭配的變更或討論。底部兩顆鈕：Enter 把指令貼到目前分頁的輸入框，不送出；
+// ⌘Enter 照 herdr-dispatch 技能的做法，用 hc run 開新分頁並開工。變更可以勾選，一次開多個分頁。
 // 由 speclink-new 的 mod.json 開啟，main.js 看到 props 的 view 就把畫面交給這裡。
 import { div, svg } from "gpui-kit";
 import { h_flex, v_flex, InputState, Input } from "gpui-base";
@@ -19,6 +19,8 @@ import { location, placeInInput, projectRoot, sendError, speclinkJson } from "./
 const STAGE_LABEL = { proposed: "提案中", "in-progress": "進行中", ready: "已就緒" };
 // 顏色和 Claude Code 的技能列對應。
 const GROUP_TONE = { 規劃: "ansi5", 實作: "ansi4", 品質: "ansi3", 收尾: "ansi2", 專案: "dim" };
+// 勾選框連同可以點的邊。不能勾的列留同樣的空位，名稱才對得齊。
+const TICK_SIZE = 18;
 
 export default class SkillPicker {
   init(cx) {
@@ -28,7 +30,6 @@ export default class SkillPicker {
     this.at = fresh ? Math.max(PICKER_SKILLS.findIndex((w) => w.skill === pick.skill), 0) : 0;
     this.target = fresh ? pick.target : null;
     this.checked = new Set();
-    this.newTab = false;
     this.board = null;
     this.root = null;
     this.known = null;
@@ -40,7 +41,7 @@ export default class SkillPicker {
     this.note = InputState.new({ placeholder: "打完按 Enter" });
     this.note.on("change", (_e, cx) => cx.notify());
     // ⌘Enter 在輸入框裡是 secondary 的 submit。
-    this.note.on("submit", (e, cx) => (e.secondary ? this.startTabs(cx) : this.submit(cx)));
+    this.note.on("submit", (e, cx) => (e.secondary ? this.startTabs(cx) : this.putInInput(cx)));
     this.focusKeys();
     // 和 Herdr 內建的跳窗相同：剛開的前幾個畫面可能還拿不到焦點。
     cx.timer.after(600, () => this.focusKeys());
@@ -56,9 +57,9 @@ export default class SkillPicker {
     return !this.uninitialized && this.skill().pair !== "變更";
   }
 
-  // 只有變更能複選：討論一次接續一場，專案的技能不搭配東西。
-  multi() {
-    return this.newTab && this.skill().pair === "變更";
+  // 只有變更能勾：討論一次接續一場，專案的技能不搭配東西。
+  canTick() {
+    return this.skill().pair === "變更";
   }
 
   // 沒有輸入框時由跳窗本身接按鍵。
@@ -117,22 +118,29 @@ export default class SkillPicker {
     return plan.kind === "none" ? plan.reason : null;
   }
 
+  // 畫面上看得到的勾。從別的技能留下來、在這裡不能開的不算，因為那一列沒有框可以取消。
+  ticked() {
+    if (!this.canTick()) return [];
+    return this.targets().filter((t) => this.checked.has(t.name) && !this.blockedReason(t));
+  }
+
+  // 只勾一個就用它，沒勾就用目前選的那一列。
   selection() {
+    const ticked = this.ticked();
     return {
-      target: this.targets().find((t) => t.name === this.target) ?? null,
+      target: ticked.length === 1 ? ticked[0] : this.targets().find((t) => t.name === this.target) ?? null,
       note: this.hasNote() ? this.note.value().trim() : "",
     };
   }
 
-  // 開新分頁：複選時開勾選的那幾個，其他時候開目前選的那一個。
   tabPlan() {
-    if (this.multi()) {
-      return batchPlan({ ...this.tabContext(), targets: this.targets().filter((t) => this.checked.has(t.name)) });
-    }
+    const ticked = this.ticked();
+    if (ticked.length > 1) return batchPlan({ ...this.tabContext(), targets: ticked });
     return newTabPlan({ ...this.tabContext(), ...this.selection() });
   }
 
   inputPlan() {
+    if (this.ticked().length > 1) return { kind: "none", reason: "輸入框一次只能放一個。勾兩個以上請開新分頁" };
     const f = focused();
     return placePlan({
       skill: this.skill().skill,
@@ -142,18 +150,16 @@ export default class SkillPicker {
     });
   }
 
-  // Enter 做的事。
-  plan() {
-    return this.newTab ? this.tabPlan() : this.inputPlan();
+  putInInput(cx) {
+    this.submit(this.inputPlan(), cx);
   }
 
-  // 不管有沒有勾選，⌘Enter 和旁邊那顆鈕都是開新分頁。
   startTabs(cx) {
-    this.submit(cx, this.tabPlan());
+    this.submit(this.tabPlan(), cx);
   }
 
   // 做完才關跳窗：關掉就收不到失敗的訊息了。
-  submit(cx, plan = this.plan()) {
+  submit(plan, cx) {
     if (this.sending || plan.kind === "none") return;
     this.sending = true;
     this.error = null;
@@ -201,23 +207,13 @@ export default class SkillPicker {
     if (close) closeOverlay(props().overlay);
   }
 
-  toggleNewTab(cx) {
-    this.newTab = !this.newTab;
-    this.error = null;
-    this.focusKeys();
-    cx.notify();
-  }
-
   moveSkill(step) {
     this.at = (this.at + step + PICKER_SKILLS.length) % PICKER_SKILLS.length;
     this.focusKeys();
   }
 
-  // 複選時沒有「不指定」這一列。
   moveTarget(step) {
-    const names = this.targets().map((t) => t.name);
-    if (!this.multi()) names.unshift(null);
-    if (names.length === 0) return;
+    const names = [null, ...this.targets().map((t) => t.name)];
     const at = Math.max(names.indexOf(this.target), 0);
     this.target = names[(at + step + names.length) % names.length];
   }
@@ -280,18 +276,35 @@ export default class SkillPicker {
     return v_flex().id("skill-list").w(190).flex_none().h_full().p(6).gap(1).overflow_y_scrollbar().children(rows);
   }
 
-  checkBox(on, t) {
+  // 框有自己的點擊：點框是勾選，點那一列是選它。
+  tickBox(x, t) {
+    const on = this.checked.has(x.name);
     return div()
-      .size(14)
+      .id(`tick-${x.name}`)
+      .size(TICK_SIZE)
       .flex()
       .flex_none()
       .items_center()
       .justify_center()
-      .rounded(3)
-      .border_1()
-      .border_color(on ? t.accent : t.border)
-      .bg(on ? t.accent : t.background)
-      .when(on, (el) => el.child(svg("mods/speclink/icons/check.svg").size(11).text_color(t.background)));
+      .cursor_pointer()
+      .on_click((_e, cx) => {
+        cx.stop_propagation();
+        this.toggleChecked(x);
+        this.focusKeys();
+        cx.notify();
+      })
+      .child(
+        div()
+          .size(14)
+          .flex()
+          .items_center()
+          .justify_center()
+          .rounded(3)
+          .border_1()
+          .border_color(on ? t.accent : t.border)
+          .bg(on ? t.accent : t.background)
+          .when(on, (el) => el.child(svg("mods/speclink/icons/check.svg").size(11).text_color(t.background))),
+      );
   }
 
   targetRow({ id, name, side, topic, current, box, muted, click }, t) {
@@ -332,9 +345,6 @@ export default class SkillPicker {
       return this.targetRow({ id: x.name, name: x.name, topic: x.topic, current: selected === x.name, click: select }, t);
     }
     const progress = `${STAGE_LABEL[x.row.stage]} ${x.row.completed}/${x.row.total}`;
-    if (!this.multi()) {
-      return this.targetRow({ id: x.name, name: x.name, side: progress, current: selected === x.name, click: select }, t);
-    }
     const reason = this.blockedReason(x);
     return this.targetRow(
       {
@@ -343,12 +353,8 @@ export default class SkillPicker {
         side: reason ?? progress,
         current: selected === x.name,
         muted: Boolean(reason),
-        // 不能勾的列留一個空位，名稱才對得齊。
-        box: reason ? div().size(14).flex_none() : this.checkBox(this.checked.has(x.name), t),
-        click: () => {
-          select();
-          this.toggleChecked(x);
-        },
+        box: reason ? div().size(TICK_SIZE).flex_none() : this.tickBox(x, t),
+        click: select,
       },
       t,
     );
@@ -357,9 +363,8 @@ export default class SkillPicker {
   targetList(t) {
     const w = this.skill();
     const targets = this.targets();
-    const multi = this.multi();
-    // 複選時游標預設在第一列，單選時預設在「不指定」。
-    const selected = targets.find((x) => x.name === this.target)?.name ?? (multi ? targets[0]?.name : null);
+    const tickable = this.canTick();
+    const selected = targets.find((x) => x.name === this.target)?.name ?? null;
     const label = (text) => div().flex_none().mx(8).text_size(10.5).text_color(t.dim).child(text);
     return v_flex()
       .id("skill-targets")
@@ -402,7 +407,7 @@ export default class SkillPicker {
               .mr(8)
               .items_center()
               .child(div().flex_1().child(label(`搭配的${w.pair}`)))
-              .when(multi, (row) =>
+              .when(tickable, (row) =>
                 row.child(
                   div()
                     .id("check-all")
@@ -418,32 +423,20 @@ export default class SkillPicker {
                 ),
               ),
           )
-          .when(!multi, (list) =>
-            list.child(
-              this.targetRow({ id: "none", name: "不指定", current: selected === null, click: () => (this.target = null) }, t),
+          .child(
+            this.targetRow(
+              {
+                id: "none",
+                name: "不指定",
+                current: selected === null,
+                box: tickable ? div().size(TICK_SIZE).flex_none() : undefined,
+                click: () => (this.target = null),
+              },
+              t,
             ),
           )
           .children(targets.map((x) => this.rowFor(x, selected, t))),
       );
-  }
-
-  newTabBox(t) {
-    return h_flex()
-      .id("new-tab")
-      .flex_none()
-      .gap(6)
-      .items_center()
-      .cursor_pointer()
-      .on_click((_e, cx) => this.toggleNewTab(cx))
-      .child(this.checkBox(this.newTab, t))
-      .child("開新分頁")
-      .child(div().text_size(11).text_color(t.dim).child("⌘O"));
-  }
-
-  goLabel(plan) {
-    if (this.sending) return "處理中…";
-    if (plan.plans?.length > 1) return `開 ${plan.plans.length} 個分頁並開工 ⏎`;
-    return this.newTab ? "開新分頁並開工 ⏎" : "放到輸入框 ⏎";
   }
 
   goButton({ id, label, ready, strong, tip, click }, t) {
@@ -463,10 +456,13 @@ export default class SkillPicker {
   }
 
   footer(t) {
-    const plan = this.plan();
-    const ready = plan.kind !== "none" && !this.sending;
-    const message = this.error ?? (plan.kind === "none" ? plan.reason : plan.text);
-    const tabs = this.newTab ? null : this.tabPlan();
+    const count = this.ticked().length;
+    const many = count > 1;
+    const tabs = this.tabPlan();
+    const input = this.inputPlan();
+    // 勾兩個以上時只有開新分頁能用，所以寫它會開什麼。
+    const shown = many ? tabs : input;
+    const message = this.sending ? "處理中…" : this.error ?? (shown.kind === "none" ? shown.reason : shown.text);
     return v_flex()
       .flex_none()
       .px(12)
@@ -478,32 +474,39 @@ export default class SkillPicker {
         div()
           .truncate()
           .text_size(11.5)
-          .text_color(this.error ? t.blocked : plan.kind === "none" ? t.muted : t.foreground)
+          .text_color(this.error ? t.blocked : shown.kind === "none" ? t.muted : t.foreground)
           .child(message),
       )
       .child(
         h_flex()
           .gap(10)
           .items_center()
-          .child(this.newTabBox(t))
           .child(div().flex_1())
-          // 有勾選時 Enter 就是開新分頁，不用第二顆鈕。
-          .when(!this.newTab, (el) =>
-            el.child(
-              this.goButton(
-                {
-                  id: "skill-go-tab",
-                  label: "開新分頁並開工 ⌘⏎",
-                  ready: tabs.kind !== "none" && !this.sending,
-                  tip: tabs.kind === "none" ? tabs.reason : `在目前的 space 開新分頁並執行：${tabs.text}`,
-                  click: (cx) => this.startTabs(cx),
-                },
-                t,
-              ),
+          .child(
+            this.goButton(
+              {
+                id: "skill-go-tab",
+                label: many ? `開 ${count} 個分頁並開工 ⌘⏎` : "開新分頁並開工 ⌘⏎",
+                ready: tabs.kind !== "none" && !this.sending,
+                strong: many,
+                tip: tabs.kind === "none" ? tabs.reason : `在目前的 space 開新分頁並執行：${tabs.text}`,
+                click: (cx) => this.startTabs(cx),
+              },
+              t,
             ),
           )
           .child(
-            this.goButton({ id: "skill-go", label: this.goLabel(plan), ready, strong: true, click: (cx) => this.submit(cx) }, t),
+            this.goButton(
+              {
+                id: "skill-go",
+                label: "放到輸入框 ⏎",
+                ready: input.kind !== "none" && !this.sending,
+                strong: !many,
+                tip: input.kind === "none" ? input.reason : null,
+                click: (cx) => this.putInInput(cx),
+              },
+              t,
+            ),
           ),
       );
   }
@@ -511,21 +514,19 @@ export default class SkillPicker {
   onKey(e, cx) {
     if (e.key === "escape") return closeOverlay(props().overlay);
     if (this.uninitialized) return;
-    if (e.keystroke === "cmd-o") return this.toggleNewTab(cx);
     if (e.keystroke === "cmd-enter") return this.startTabs(cx);
     // 有輸入框時 Enter 由輸入框的 submit 處理。
-    if (e.key === "enter" && !this.hasNote()) return this.submit(cx);
+    if (e.key === "enter" && !this.hasNote()) return this.putInInput(cx);
     // 輸入框有字時，左右鍵留給輸入框移動游標。
     const typing = this.hasNote() && this.note.value();
     if (e.key === "down") this.moveSkill(1);
     else if (e.key === "up") this.moveSkill(-1);
     else if (e.key === "right" && !typing) this.moveTarget(1);
     else if (e.key === "left" && !typing) this.moveTarget(-1);
-    else if (e.key === "space" && this.multi()) {
-      const targets = this.targets();
-      const row = targets.find((x) => x.name === this.target) ?? targets[0];
+    else if (e.key === "space" && this.canTick()) {
+      const row = this.targets().find((x) => x.name === this.target);
       if (row) this.toggleChecked(row);
-    } else if (e.keystroke === "cmd-a" && this.multi()) this.checkAll();
+    } else if (e.keystroke === "cmd-a" && this.canTick()) this.checkAll();
     else return;
     cx.stop_propagation();
     cx.notify();
@@ -556,7 +557,7 @@ export default class SkillPicker {
               div()
                 .text_size(11)
                 .text_color(t.dim)
-                .child(this.multi() ? "↑↓ 技能　←→ 移動　Space 勾選" : "↑↓ 技能　←→ 搭配"),
+                .child(this.canTick() ? "↑↓ 技能　←→ 搭配　Space 勾選" : "↑↓ 技能　←→ 搭配"),
             ),
           )
           .child(div().text_size(11).text_color(t.dim).child("Esc")),
