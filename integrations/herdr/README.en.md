@@ -24,6 +24,14 @@ What the panel contains:
 
 Each card can collapse. More than 5 rows fold into "N more…". Each row has a copy button.
 
+### When the space is not a Speclink project
+
+If the current space is not a Speclink project, the panel shows a hint card with the project folder and an initialize button (初始化). The Roadmap and New work buttons are not there, because they do not work here yet.
+
+The initialize button opens a new tab and runs `speclink init` in the project folder. The command asks, one question at a time, which agents to generate files for. It writes files only after your answers. To stop, close that tab. After the command completes, the panel shows the change list within 10 seconds.
+
+Only a project that is not initialized shows this card. Other problems, such as a missing `speclink` or a broken config file, still show red text.
+
 ### Skills per stage
 
 | State | Skill buttons (bold is the suggested next step) |
@@ -72,7 +80,7 @@ The panel uses `open` to send a `speclink://` URL. The desktop app goes to this 
 
 - Herdr 0.1.12 or later (tested with this version).
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads only the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list` and `speclink workflow-config show`.
-- A project with `speclink init` done.
+- A project with `speclink init` done. If it is not done, the panel gives an initialize button.
 - To open pages in Speclink, a desktop app that knows `speclink://` URLs (a version after v0.11.0).
 - To dock the panel, Node.js, which runs the script that clones the layout.
 
