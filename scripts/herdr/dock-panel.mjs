@@ -22,6 +22,9 @@ const PANEL = {
   content: { mod: 'speclink' },
 };
 
+// 不畫東西的浮動區塊，負責讓那一欄每個 space 各自記住開關（見 column-sync.js）。
+const COLUMN_SYNC = { id: 'speclink-column-sync', content: { mod: 'speclink', props: { view: 'column-sync' } } };
+
 const home = process.env.HERDR_APP_HOME ?? path.join(homedir(), '.config/herdr-app');
 const file = path.join(home, 'layouts', `${NAME}.json`);
 const herdr = (command, args) => execFileSync('herdr-app', ['do', command, JSON.stringify(args)], { stdio: 'pipe' });
@@ -38,5 +41,6 @@ if (layout.type !== 'row') {
   throw new Error(`main 版面的最外層不再是 row（現在是 ${layout.type}），這支腳本要跟著改`);
 }
 layout.children.push(PANEL);
+layout.floating = [...(layout.floating ?? []), COLUMN_SYNC];
 writeFileSync(file, `${JSON.stringify(layout, null, 2)}\n`);
 console.log(`已停靠：${file}`);
