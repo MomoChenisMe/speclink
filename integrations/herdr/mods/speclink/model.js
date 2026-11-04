@@ -149,9 +149,20 @@ export function groupedOrder(list, spaces, rankOf, since) {
   return [...list].sort((x, y) => key(x) - key(y) || rankOf(y) - rankOf(x) || since(y) - since(x) || y.seq - x.seq);
 }
 
-// 一組 agent 裡各狀態有幾個，最急的在前面，沒有的不列。
+// 一組 agent 裡各狀態有幾個，最急的在前面，沒有的不列。收起的 space 標題用它。
 export function statusCounts(members) {
   return STATUS_ORDER.map((status) => [status, members.filter((a) => a.status === status).length]).filter(([, n]) => n > 0);
+}
+
+// 把一個 space 的 agent 依狀態分段。members 已經排好，狀態相同的會相鄰。
+export function statusSections(members, rankOf) {
+  const sections = [];
+  for (const a of members) {
+    const rank = rankOf(a);
+    if (sections.at(-1)?.rank === rank) sections.at(-1).members.push(a);
+    else sections.push({ rank, members: [a] });
+  }
+  return sections;
 }
 
 export function joinAgents(agents, terminals, panes) {
