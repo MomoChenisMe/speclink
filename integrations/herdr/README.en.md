@@ -16,7 +16,7 @@ What the panel contains:
 - **Top**: the project name. The line below it says "目前的 space · <branch>" (the current space and its branch).
 - **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
-- **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
+- **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
 - **Skill buttons**: only the skills that apply to the stage. The suggested next step has a heavy border.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
 - **+ New work**: the skills that take no change name. For discuss, you can type the topic directly.
