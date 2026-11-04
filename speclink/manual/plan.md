@@ -2,14 +2,14 @@
 title: 執行順序：plan 與依賴
 section: SDD 工作流
 order: 125
-keywords: [plan, 執行順序, 波次, 依賴, 前置, depends, 阻擋, 並行, 依賴成環, change depends, 封存順序, 同名重疊, 衝突, change rank, 插隊, strict-overlap]
-sources: [change-plan]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [plan, 執行順序, 波次, 依賴, 前置, depends, 阻擋, 並行, 依賴成環, change depends, 封存順序, 同名重疊, 衝突, change rank, 插隊, strict-overlap, 尚未轉出, 分刀, Unpromoted cuts]
+sources: [change-plan, "desktop-roadmap#路線圖列出尚未轉出的刀", "desktop-app#討論結論以欄位標籤呈現"]
+generated: 2026-11-04T17:13:07+08:00
 ---
 
 # 執行順序：plan 與依賴
 
-手上同時有好幾個變更時，先做哪一個？哪些可以同時做？封存時誰要等誰？`speclink plan` 替你算出來：它把所有還沒封存的變更排成一個順序，分成一波一波（同一波可以並行），列出每個變更現在被哪些前置擋住，也列出兩個變更動到同一個 requirement 時，封存要照什麼順序。apply、archive、commit 與 worktree 技能都會先看這份結果，桌面看板與系統匣也照它排。
+手上同時有好幾個變更時，先做哪一個？哪些可以同時做？封存時誰要等誰？`speclink plan` 替你算出來：它把所有還沒封存的變更排成一個順序，分成一波一波（同一波可以並行），列出每個變更現在被哪些前置擋住，也列出兩個變更動到同一個 requirement 時，封存要照什麼順序，以及討論結論裡還沒轉成變更的刀。apply、archive、commit 與 worktree 技能都會先看這份結果，桌面看板與系統匣也照它排。
 
 ## 順序怎麼算
 
@@ -106,15 +106,15 @@ plan 只讀不寫。人眼輸出逐波印 `Wave N` 標題（同一波有兩個�
 2. 封存要等別人時：`archive after: …`
 3. 有衝突時：`conflicts with: …`
 
-沒有的就不印。最後一行是 `next: <變更名>` 或 `next: none`。加 `--no-color` 就沒有顏色碼。例如 e 宣告了前置 a、與 b 修改同一個 requirement、與 c 新增同名 requirement，那一行長這樣：
+沒有的就不印。有尚未轉出的刀時，最後一行之前多一段 `Unpromoted cuts`，見下面的「討論結論裡尚未轉出的刀」。最後一行是 `next: <變更名>` 或 `next: none`。加 `--no-color` 就沒有顏色碼。例如 e 宣告了前置 a、與 b 修改同一個 requirement、與 c 新增同名 requirement，那一行長這樣：
 
 ```
 • e [proposed] — blocked by: a — archive after: b — conflicts with: c
 ```
 
-`--json` 輸出同樣的內容給程式讀：各波的變更；每個變更的波次、階段、宣告前置、目錄級的重疊夥伴（delta 動到同一個 capability 的變更，原樣保留）、阻擋清單、是否就緒、同名 requirement 重疊（對方、capability、requirement 名、雙方各自的操作、是否衝突），以及封存要等的變更；下一個可開工；被略過的變更與原因。
+`--json` 輸出同樣的內容給程式讀：各波的變更；每個變更的波次、階段、宣告前置、目錄級的重疊夥伴（delta 動到同一個 capability 的變更，原樣保留）、阻擋清單、是否就緒、同名 requirement 重疊（對方、capability、requirement 名、雙方各自的操作、是否衝突），以及封存要等的變更；下一個可開工；被略過的變更與原因；尚未轉出的刀（討論、刀的識別、範圍句、這一刀的變更名、還沒轉出的變更名）。
 
-沒有作用中變更時，波次與變更都是空的，沒有下一個可開工。
+沒有作用中變更時，波次與變更都是空的，沒有下一個可開工；尚未轉出的刀照常列出。
 
 在主 checkout、worktree 政策開啟時，plan 判階段會讀各 worktree 裡的開工章與任務進度，與 `speclink list` 同一套聚合。
 
@@ -135,6 +135,62 @@ speclink plan --strict-overlap
 | 提案中的 a（12 個任務、09-01 建立）與 b（5 個任務、09-02 建立），都沒有順序鍵，都動到 desktop-app | b 排在 a 前、同為第 1 波 | a 第 1 波、b 第 2 波，b 被 a 擋住 |
 
 這個旗標只能在本機模式用，見下面的「remote 模式」。
+
+## 討論結論裡尚未轉出的刀
+
+討論結論可以把工作切成好幾刀（見[討論](discuss.md)的「分期轉出」）。一刀還沒轉成變更時，它不在任何變更清單裡，很容易被忘掉。plan 會讀每份未封存討論的結論，把這些刀列出來。
+
+**什麼算一把刀**：結論的 Decision 欄位（從 `**Decision**:` 那一行，到下一個 Rationale、Rejected alternatives、Deferred、Capture to 或 Next 標籤行之前）裡，行首是 `- ` 的頂層列點，首行以成對的粗體開頭，而且粗體內去掉反引號片段、壓縮空白後，以下列寫法之一起頭：
+
+- `cut` 加以數字起頭的編號，不分大小寫，例如 `cut 2`、`cut 3a`（`cutover` 不算）。
+- `第 <編號> 刀`。
+- `刀` 加編號，例如 `刀二`。
+
+**從列點取出什麼**：
+
+- 刀的識別：上面那段起頭的原文。
+- 變更名：粗體內不含空白的反引號片段，依出現順序去重。
+- 範圍句：粗體內編號之後還有文字時取該文字（去掉前導空白與 `:：、—–-`）；否則取粗體之後去掉前導冒號的文字，遇到第一個「——」就截斷。
+
+| Decision 內的頂層列點首行 | 刀的識別 | 變更名 | 範圍句 |
+| --- | --- | --- | --- |
+| ``**cut 2 `plan-unpromoted-cuts`**: 引擎解析討論結論的分刀列`` | cut 2 | plan-unpromoted-cuts | 引擎解析討論結論的分刀列 |
+| ``**Cut 3a `add-x`**: 範圍——補充說明`` | Cut 3a | add-x | 範圍 |
+| ``**第 2 刀 `add-y`**`` | 第 2 刀 | add-y | （空） |
+| ``**刀二 收尾 `add-z`**`` | 刀二 | add-z | 收尾 |
+| ``**cut 1 `speclink plan` `add-w`**: 說明`` | cut 1 | add-w | 說明 |
+| ``**cutover `add-v`**: 說明`` | 不是刀 | — | — |
+| ``**cut 2 外殼**（`add-x`）`` | 是刀，但粗體內沒有變更名，不列出 | — | — |
+| `` `add-u` 不以粗體開頭`` | 不是刀 | — | — |
+
+**什麼時候列出**：一把刀至少有一個變更名不在該討論的已轉出清單裡，就會列出，而且只列還沒轉出的那些變更名。以下情況不列：
+
+- 粗體內沒有任何變更名的刀：無從判定有沒有轉出。
+- 已封存的討論，或沒有結論、沒有 Decision 欄位的討論。
+
+一份討論的結論讀不到時，plan 略過那份討論，不會失敗。列出順序依 `speclink discuss list` 的討論順序，同一份討論依結論裡的刀序。plan 不推算刀與刀之間的依賴，也不改寫任何討論檔。
+
+| 情況 | 結果 |
+| --- | --- |
+| 討論 talk-a 有 ``**cut 1 `add-a`**: 第一刀``、``**cut 2 `add-b`**: 第二刀``，已轉出 add-a | 列出 talk-a 的 cut 2，尚未轉出 add-b，範圍句「第二刀」 |
+| 同上，add-a、add-b 都已轉出 | 不列 |
+| ``**cut 1 `add-a` `add-c`**: 兩個變更``，已轉出 add-a | 這一刀列出，尚未轉出的只有 add-c |
+| 只有 ``**cut 2 外殼**（`add-x`、`add-y`）``，沒有轉出任何變更 | 不列 |
+| 只有已封存的討論含未轉出的刀 | 不列 |
+
+人眼輸出在 `next:` 行之前多一段粗體標題 `Unpromoted cuts`，每把刀一行；範圍句是空的就不接「 — 」那段：
+
+```
+Wave 1
+  • add-a [proposed]
+Unpromoted cuts
+  • talk-a cut 2: add-b — 第二刀
+next: add-a
+```
+
+沒有尚未轉出的刀時不印這一段，其餘輸出與這個功能加入之前逐位元相同。
+
+要把一刀轉成變更，用 `/speclink-propose --from-discussion <slug>`。桌面也看得到同一份結果：[路線圖](desktop-roadmap.md)把這些刀列在表的最右欄，[討論詳情頁](desktop-browse.md)用同一套規則畫分刀卡。
 
 ## 宣告依賴：speclink change depends
 
@@ -231,7 +287,7 @@ speclink change rank <變更名> --after <另一個變更> --force
 
 ## remote 模式
 
-remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 speclink 資料夾。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
+remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 speclink 資料夾。尚未轉出的刀由 server 用同一份引擎實作算好。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
 
 有兩件事只能在本機模式做。remote 模式下它們以錯誤結束，而且不向 server 發出任何請求：
 
@@ -240,4 +296,4 @@ remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` �
 
 remote 看板拖排也做同一套依賴檢查，只計涉及被拖卡的配對；違反時不送出寫回，畫面顯示與本地相同的一行錯誤。server 沒有 plan（舊 server、成環或請求失敗）時略過檢查。
 
-**出處**：`change-plan`
+**出處**：`change-plan`、`desktop-roadmap`、`desktop-app`
