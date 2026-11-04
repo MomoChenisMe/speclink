@@ -19,7 +19,7 @@ What the panel contains:
 - **The agent on this change**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. The panel matches the `speclink.change` label, then the worktree path, then the terminal title that the Claude Code mod sets.
 - **Skill buttons**: only the skills that apply to the stage. The suggested next step has a heavy border.
 - **Start**: a button on a change row that starts a new agent for this change only. See "Start" below.
-- **+ New work**: the skills that take no change name. For discuss, you can type the topic directly.
+- **+ New work**: the button at the top or `⌘⇧N` opens a pop-up with the skills that take no change name. See "New work" below.
 - **Open in Speclink**: click a change row or a discussion row to open its detail page. Click the wave number at the start of a row, or the Roadmap button at the top, to open the roadmap.
 
 Each card can collapse. More than 5 rows fold into "N more…". Each row has a copy button.
@@ -72,6 +72,16 @@ A change has the Start button only if it is not blocked, has unfinished tasks an
 
 **Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them, with no second question. The waves come from `speclink plan`.
 
+### New work
+
+Press the "+ New work" button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
+
+- **Left**: the skills that take no change name. Select one with the arrow keys or the mouse.
+- **Right**: for discuss, type a topic, or click a discussion under "或接續一場討論" (continue a discussion). Other skills accept an optional note.
+- **Bottom**: what Enter sends and to which agent. The rules are the same as for skill buttons. If the agent in the current tab is busy, nothing is sent and this line gives the reason.
+
+After the send, the pop-up closes and the view goes to that agent.
+
 ### Open in Speclink
 
 The panel uses `open` to send a `speclink://` URL. The desktop app goes to this project and then opens the page. If the app is not running, it starts. The URL can only open and show things. It writes no files.
@@ -91,13 +101,14 @@ Work from the repo root, with Herdr open:
 1. Copy the mod. Herdr loads it automatically.
 
    ```bash
-   cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
+   cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/
    ```
 
-2. In `~/.config/herdr-app/keys.json`, add the first line to `global`. Then add the `layout:speclink` section ([keys.json](keys.json) has the same content). In the `speclink` layout, `⌘⇧S` opens or closes the right column. In other layouts, `⌘⇧S` pops up the floating window.
+2. In `~/.config/herdr-app/keys.json`, add the first two lines to `global`. Then add the `layout:speclink` section ([keys.json](keys.json) has the same content). `⌘⇧N` opens New work. In the `speclink` layout, `⌘⇧S` opens or closes the right column. In other layouts, `⌘⇧S` pops up the floating window.
 
    ```json
-   "cmd-shift-s": "mod.open:speclink"
+   "cmd-shift-s": "mod.open:speclink",
+   "cmd-shift-n": "mod.open:speclink-new"
    ```
 
    ```json
@@ -133,8 +144,8 @@ After this, the panel column has its default width, and the other column widths 
 ### Remove
 
 1. Press `⌘⇧L` to switch to `main`.
-2. Delete `~/.config/herdr-app/layouts/speclink.json` and `~/.config/herdr-app/mods/speclink`.
-3. Remove the two additions from `keys.json`.
+2. Delete `~/.config/herdr-app/layouts/speclink.json`, `~/.config/herdr-app/mods/speclink` and `~/.config/herdr-app/mods/speclink-new`.
+3. Remove the additions from `keys.json`.
 
 ### Why a cloned layout
 
@@ -161,6 +172,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 ```bash
 node --test scripts/herdr/panel-model.test.mjs
 herdr-app check ~/.config/herdr-app/mods/speclink
+herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the view and the Herdr API calls. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.
+`model.js` holds the pure logic: data merge, skill table and delivery decisions. The tests run it directly. `main.js` holds the panel view and the Herdr API calls. `new-work.js` holds the New work pop-up. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.

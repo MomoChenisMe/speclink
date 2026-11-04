@@ -1,7 +1,7 @@
 // Speclink 面板：目前 space 的專案有哪些變更與討論、各自做到哪裡，以及按一下把技能交給對的
 // agent。資料只來自 speclink CLI 的 --json；判斷邏輯都在 model.js。
 import { View, div, image, svg } from "gpui-kit";
-import { h_flex, v_flex, InputState, Input } from "gpui-base";
+import { h_flex, v_flex } from "gpui-base";
 import {
   agents,
   closeOverlay,
@@ -24,15 +24,14 @@ import {
   changeAgents,
   deliveryHint,
   discussionActions,
-  inside,
   isUninitialized,
   joinAgents,
-  newWorkActions,
-  planDelivery,
   speclinkUrl,
   startAction,
   waveToStart,
 } from "./model.js";
+import NewWork from "./new-work.js";
+import { firstLine, location, projectRoot, sendError, spaceFor } from "./shared.js";
 
 const ICONS = "mods/speclink/icons";
 // 溢出摺疊的門檻與桌面 app 的系統匣面板相同。
@@ -46,7 +45,6 @@ const AGENT_STATE = { working: "做事中", blocked: "在等你回答", done: "�
 
 const icon = (name, size, color) => svg(`${ICONS}/${name}.svg`).size(size).flex_none().text_color(color);
 const baseName = (path) => path.split("/").filter(Boolean).pop() ?? path;
-const firstLine = (text) => text.trim().split("\n")[0];
 
 // program.icon 是相對於 Herdr 設定資料夾的路徑：tint 表示單色圖示，其餘是圖片。
 function programIcon(program, size, color) {
@@ -56,46 +54,14 @@ function programIcon(program, size, color) {
     : image(program.icon).w(size).h(size).flex_none();
 }
 
-// 目前 space 所在的資料夾：焦點所在的終端機，否則該 space 第一個終端機。spaces() 的 folder
-// 只是開新終端機的起點，不一定是它現在的位置。
-function location() {
-  const space = spaces().find((s) => s.active);
-  const f = focused();
-  const ps = panes();
-  const pane = f?.pane ? ps.find((p) => p.pane === f.pane) : null;
-  const tabs = new Set(space?.tabs.map((t) => t.id));
-  const first = ps.find((p) => tabs.has(p.tab) && p.cwd)?.cwd;
-  return {
-    cwd: pane?.cwd || f?.cwd || first || space?.folder || null,
-    on: space?.machine ?? null,
-    branch: pane?.branch ?? space?.branch ?? null,
-  };
-}
-
-// 主資料夾：在 worktree 裡也要回到主 checkout，變更清單才完整。
-async function projectRoot(cwd, on) {
-  const r = await exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], { cwd, on });
-  return r.code === 0 ? r.stdout.trim().replace(/\/\.git\/?$/, "") : cwd;
-}
-
-// 新分頁開在已經待在這個資料夾的 space，目前的 space 優先。
-function spaceFor(folder) {
-  const all = spaces();
-  const ps = panes();
-  const holds = (s) => ps.some((p) => s.tabs.some((t) => t.id === p.tab) && inside(p.cwd, folder));
-  return all.find((s) => s.active && holds(s)) ?? all.find(holds);
-}
-
-function sendError(result) {
-  try {
-    return JSON.parse(result.stderr).error.message;
-  } catch {
-    return firstLine(result.stderr) || `hc 結束碼 ${result.code}`;
-  }
-}
-
 export default class SpeclinkPanel extends View {
   init(_props, cx) {
+    // speclink-new 開的跳窗也是這個 mod 的一份，畫面交給 new-work.js。
+    if (props()?.view === "new-work") {
+      this.newWork = new NewWork();
+      this.newWork.init(cx);
+      return;
+    }
     this.place = location();
     this.root = null;
     this.board = null;
@@ -103,16 +69,12 @@ export default class SpeclinkPanel extends View {
     this.uninitialized = false;
     this.known = null;
     this.copied = null;
-    this.newWork = false;
-    this.topicOpen = false;
     this.more = new Set();
     this.sending = new Set();
     this.starting = new Set();
     this.worktreePolicy = false;
     this.collapsed = new Set(JSON.parse(localStorage.getItem("collapsed") ?? "[]"));
     this.promotedOpen = localStorage.getItem("promotedOpen") === "true";
-    this.topic = InputState.new({ placeholder: "要討論的主題，按 Enter 送出" });
-    this.topic.on("submit", (_e, cx) => this.submitTopic(cx));
     this.reload(cx);
     this.loadKnown(cx);
     // worktree 裡的任務進度不在主資料夾的監看範圍內，要靠計時重抓。
@@ -278,26 +240,6 @@ export default class SpeclinkPanel extends View {
     });
   }
 
-  submitTopic(cx) {
-    const topic = this.topic.value().trim();
-    if (!topic) return;
-    const delivery = planDelivery({ ...this.context(), skill: "discuss", args: topic });
-    if (delivery.kind !== "send" && delivery.kind !== "new") {
-      notify({ title: "技能沒有送出", body: deliveryHint(delivery), level: "warning" });
-      return;
-    }
-    this.deliver(delivery, cx);
-    this.topic.set_value("");
-    this.topicOpen = false;
-    cx.notify();
-  }
-
-  toggleTopic(cx) {
-    this.topicOpen = !this.topicOpen;
-    if (this.topicOpen) this.topic.focus();
-    cx.notify();
-  }
-
   copy(text, cx) {
     cx.write_to_clipboard(text);
     this.copied = text;
@@ -336,8 +278,7 @@ export default class SpeclinkPanel extends View {
       .child(icon(this.copied === text ? "check" : "copy", 12, t.muted));
   }
 
-  // onClick：不直接送出的鈕（discuss 要先輸入主題）。
-  skillButton(id, action, t, onClick) {
+  skillButton(id, action, t) {
     const d = action.delivery;
     const ready = d && (d.kind === "send" || d.kind === "new" || d.kind === "space");
     const tip = action.waitingFor
@@ -359,7 +300,7 @@ export default class SpeclinkPanel extends View {
       // 灰掉的鈕也要擋下點擊，否則會變成點到列本身。
       .on_click((_e, cx) => {
         cx.stop_propagation();
-        if (ready) onClick ? onClick(cx) : this.deliver(d, cx);
+        if (ready) this.deliver(d, cx);
       })
       .tooltip(tip)
       .child(action.skill);
@@ -652,40 +593,6 @@ export default class SpeclinkPanel extends View {
       );
   }
 
-  newWorkPanel(ctx, t) {
-    const actions = newWorkActions(ctx);
-    const discuss = actions.find((a) => a.skill === "discuss");
-    return v_flex()
-      .flex_none()
-      .px(10)
-      .pb(8)
-      .gap(6)
-      .child(
-        h_flex()
-          .flex_wrap()
-          .gap(4)
-          .children(
-            actions.map((a) =>
-              this.skillButton("new", a, t, a.skill === "discuss" ? (cx) => this.toggleTopic(cx) : undefined),
-            ),
-          ),
-      )
-      .when(this.topicOpen, (el) =>
-        el.child(
-          Input.new(this.topic)
-            .h(28)
-            .px(8)
-            .rounded(6)
-            .border_1()
-            .border_color(t.input)
-            .bg(t.background)
-            .text_size(12)
-            .text_color(t.foreground),
-        ),
-      )
-      .child(div().text_size(11).text_color(t.dim).child(deliveryHint(discuss.delivery)));
-  }
-
   body(ctx, t) {
     const { stages, discussions, promoted, skipped } = this.board;
     const wave = waveToStart(stages, ctx);
@@ -763,6 +670,7 @@ export default class SpeclinkPanel extends View {
   }
 
   render(cx) {
+    if (this.newWork) return this.newWork.render(cx);
     const t = theme();
     this.follow(cx);
     const ctx = this.context();
@@ -805,10 +713,7 @@ export default class SpeclinkPanel extends View {
           // 還沒初始化時，這些技能在這個專案還不存在。
           .when(!this.uninitialized, (el) =>
             el.child(
-              this.headerButton("new-work", "plus", "新工作", t, (cx) => {
-                this.newWork = !this.newWork;
-                cx.notify();
-              }),
+              this.headerButton("new-work", "plus", "新工作", t, () => run("mod.open", { name: "speclink-new" })),
             ),
           )
           .when(Boolean(overlay), (el) =>
@@ -824,9 +729,6 @@ export default class SpeclinkPanel extends View {
                 .child(icon("x", 13, t.muted)),
             ),
           ),
-      )
-      .when(this.newWork && Boolean(this.root) && !this.uninitialized, (el) =>
-        el.child(div().flex_none().on_mouse_down("left", (_e, cx) => cx.stop_propagation()).child(this.newWorkPanel(ctx, t))),
       )
       .child(
         v_flex()

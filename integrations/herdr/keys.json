@@ -1,6 +1,7 @@
 {
   "global": {
-    "cmd-shift-s": "mod.open:speclink"
+    "cmd-shift-s": "mod.open:speclink",
+    "cmd-shift-n": "mod.open:speclink-new"
   },
   "layout:speclink": {
     "cmd-shift-s": "layout.toggle:speclink"

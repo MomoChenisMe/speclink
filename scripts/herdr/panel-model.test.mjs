@@ -15,6 +15,7 @@ import {
   commandText,
   deliveryHint,
   discussionActions,
+  enterHint,
   discussionSkills,
   inside,
   isUninitialized,
@@ -441,6 +442,15 @@ test('newWorkActions：列出不帶變更名稱的技能', () => {
   const actions = newWorkActions(ctx());
   assert.deepEqual(names(actions), ['discuss', 'propose', 'improve', 'config', 'audit', 'trace', 'manual', 'baseline']);
   assert.ok(actions.every((a) => a.delivery.kind === 'new'));
+  assert.deepEqual([...new Set(actions.map((a) => a.group))], ['規劃', '其他']);
+  assert.ok(actions.every((a) => a.about));
+});
+
+test('enterHint：寫出按 Enter 會送給哪個 agent，忙碌時寫原因', () => {
+  const claude = { program: { name: 'Claude Code' } };
+  assert.equal(enterHint(deliver({ agents: [agent(claude)] })), 'Enter 送給目前分頁的 Claude Code');
+  assert.equal(enterHint(deliver({})), 'Enter 開新分頁');
+  assert.equal(enterHint(deliver({ agents: [agent({ status: 'working' })] })), '目前分頁的 agent 正在做事');
 });
 
 // ---- 叫 Speclink 開頁面 ----

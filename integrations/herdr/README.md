@@ -19,7 +19,7 @@
 - **做這個變更的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛設的終端機標題。
 - **技能鈕**：只列這個階段用得到的技能，建議的下一步加粗外框。
 - **開工**：變更列上的鈕，為這個變更開一個專用的新 agent。見下面的「開工」。
-- **＋ 新工作**：不帶變更名稱的技能。選 discuss 可以直接輸入主題。
+- **＋ 新工作**：頂端的鈕或 `⌘⇧N` 開跳窗，選不帶變更名稱的技能。見下面的「新工作」。
 - **叫 Speclink 開頁面**：點變更列或討論列開它的詳情頁，點列首的波次數字或頂端的「路線圖」開路線圖。
 
 每張卡可以收合，超過 5 列會摺疊成「還有 N 個…」，每一列都有複製鈕。
@@ -72,6 +72,16 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 **整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問。波次取自 `speclink plan`。
 
+### 新工作
+
+按頂端的「＋ 新工作」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
+
+- **左邊**：不帶變更名稱的技能。用方向鍵或滑鼠選。
+- **右邊**：選 discuss 時打一句主題，或點「或接續一場討論」裡的討論。其他技能可以補充說明，也可以留空。
+- **底部**：寫出按 Enter 會送給誰，規則和技能鈕相同。目前分頁的 agent 在忙時不送，這裡會寫出原因。
+
+送出後跳窗關閉，畫面切到那個 agent。
+
 ### 叫 Speclink 開頁面
 
 面板用 `open` 送出 `speclink://` 網址，桌面 app 會切到這個專案再開頁面。app 沒開時會自動啟動。網址只能開啟與檢視，不會寫入任何檔案。
@@ -91,13 +101,14 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 1. 複製 mod。Herdr 會自動載入。
 
    ```bash
-   cp -R integrations/herdr/mods/speclink ~/.config/herdr-app/mods/
+   cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/
    ```
 
-2. 在 `~/.config/herdr-app/keys.json` 的 `global` 加上第一行，再加上 `layout:speclink` 這一段（內容和 [keys.json](keys.json) 相同）。在 `speclink` 版面，`⌘⇧S` 開關右邊那一欄；在其他版面，`⌘⇧S` 彈出浮動視窗。
+2. 在 `~/.config/herdr-app/keys.json` 的 `global` 加上前兩行，再加上 `layout:speclink` 這一段（內容和 [keys.json](keys.json) 相同）。`⌘⇧N` 開新工作。在 `speclink` 版面，`⌘⇧S` 開關右邊那一欄；在其他版面，`⌘⇧S` 彈出浮動視窗。
 
    ```json
-   "cmd-shift-s": "mod.open:speclink"
+   "cmd-shift-s": "mod.open:speclink",
+   "cmd-shift-n": "mod.open:speclink-new"
    ```
 
    ```json
@@ -133,8 +144,8 @@ node scripts/herdr/dock-panel.mjs
 ### 移除
 
 1. 用 `⌘⇧L` 切回 `main`。
-2. 刪掉 `~/.config/herdr-app/layouts/speclink.json` 和 `~/.config/herdr-app/mods/speclink`。
-3. 刪掉 `keys.json` 裡加的那兩處。
+2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`、`~/.config/herdr-app/mods/speclink` 和 `~/.config/herdr-app/mods/speclink-new`。
+3. 刪掉 `keys.json` 裡加的那幾行。
 
 ### 為什麼用複製的版面
 
@@ -161,6 +172,7 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 ```bash
 node --test scripts/herdr/panel-model.test.mjs
 herdr-app check ~/.config/herdr-app/mods/speclink
+herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是畫面與 Herdr API。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
+`model.js` 是純邏輯：資料合併、技能表、送達決策，測試直接跑它。`main.js` 是面板畫面與 Herdr API，`new-work.js` 是新工作跳窗。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。

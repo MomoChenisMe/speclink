@@ -18,10 +18,24 @@ const STAGE_SKILLS = {
   ready: ["quality", "review", "verify", "archive", "commit"],
   "ready-worktree": ["quality", "review", "verify", "commit", "worktree-merge"],
 };
-const NEW_WORK = ["discuss", "propose", "improve", "config", "audit", "trace", "manual", "baseline"];
+// 新工作跳窗的技能。分組與前四條說明取自討論 herdr-speclink-panel 的定案。
+const NEW_WORK = [
+  { skill: "discuss", group: "規劃", about: "把模糊的需求談清楚" },
+  { skill: "propose", group: "規劃", about: "建立變更與文件" },
+  { skill: "improve", group: "規劃", about: "掃描程式碼找改善點" },
+  { skill: "config", group: "其他", about: "整理專案說明與產出規則" },
+  { skill: "audit", group: "其他", about: "找出程式碼的安全問題" },
+  { skill: "trace", group: "其他", about: "查一項能力的來龍去脈" },
+  { skill: "manual", group: "其他", about: "從規格產生操作手冊" },
+  { skill: "baseline", group: "其他", about: "從現有程式碼產生初始規格" },
+];
 
 // 全部技能都要有放處。apply-with-worktree 沒有自己的鈕：apply 鈕接續 worktree 時才送它。
-export const ALL_SKILLS = new Set([...Object.values(STAGE_SKILLS).flat(), ...NEW_WORK, "apply-with-worktree"]);
+export const ALL_SKILLS = new Set([
+  ...Object.values(STAGE_SKILLS).flat(),
+  ...NEW_WORK.map((w) => w.skill),
+  "apply-with-worktree",
+]);
 
 export function buildBoard(list, plan, discussions) {
   const listed = new Map(list.changes.map((c) => [c.name, c]));
@@ -234,7 +248,7 @@ export function discussionActions(d, ctx) {
 }
 
 export function newWorkActions(ctx) {
-  return NEW_WORK.map((skill) => ({ skill, primary: false, delivery: planDelivery({ ...ctx, skill }) }));
+  return NEW_WORK.map((w) => ({ ...w, delivery: planDelivery({ ...ctx, skill: w.skill }) }));
 }
 
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
@@ -244,4 +258,11 @@ export function deliveryHint(delivery) {
   if (delivery.kind === "new") return "開新分頁";
   if (delivery.kind === "space") return "開新 space";
   return delivery.where === "change" ? "送給這個變更的 agent" : "送給目前分頁的 agent";
+}
+
+// 新工作跳窗底部的說明：按 Enter 會發生什麼。
+export function enterHint(delivery) {
+  if (delivery.kind === "send") return `Enter 送給目前分頁的 ${delivery.agent.program?.name ?? "agent"}`;
+  if (delivery.kind === "new") return "Enter 開新分頁";
+  return deliveryHint(delivery);
 }
