@@ -1,0 +1,5 @@
+{
+  "place": "none",
+  "title": "Speclink",
+  "overlay": { "kind": "window", "key": "speclink", "width": 400, "height": 0.85 }
+}

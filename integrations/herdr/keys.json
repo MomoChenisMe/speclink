@@ -1,0 +1,5 @@
+{
+  "global": {
+    "cmd-shift-s": "mod.open:speclink"
+  }
+}
