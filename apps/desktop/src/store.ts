@@ -327,6 +327,9 @@ export interface AppState {
   refreshManual: () => Promise<void>;
   setBoardView: (v: BoardView) => void;
   setBoardMode: (mode: BoardMode) => void;
+  /** 開路線圖（speclink://roadmap 網址）：切回看板頁、離開詳情頁並顯示路線圖，與 openDetail 一樣收掉
+   * 可取消浮層；不可取消浮層開啟中不改任何狀態。 */
+  openRoadmap: () => void;
   /** 離開設定模式，回到 settingsReturnView。 */
   leaveSettings: () => void;
   setSettingsSection: (section: SettingsSection) => void;
@@ -1396,8 +1399,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         const snapshot: WorkspaceSnapshot = {
           changes,
           planError,
-          planNext: next ?? null,
-          unpromotedCuts: unpromotedCuts ?? [],
+          planNext: next,
+          unpromotedCuts,
           specs,
           archived,
           discussions,
@@ -1476,6 +1479,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     setBoardMode(boardMode) {
       set({ boardMode });
+    },
+
+    openRoadmap() {
+      if (uncancelableOverlayOpen(get())) return;
+      get().setBoardView("board");
+      set({ boardMode: "roadmap", ...cancelableOverlaysCleared() });
     },
 
     leaveSettings() {

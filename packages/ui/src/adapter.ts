@@ -409,10 +409,11 @@ export function toRevertError(raw: unknown): Error {
 export interface ChangeListPayload {
   changes: ChangeItem[];
   planError: string | null;
-  /** 引擎 plan 的 next（第一個沒被擋的提案中變更）；成環、plan 不可得或缺鍵時讀作 null。 */
-  next?: string | null;
-  /** 討論結論中尚未轉出的刀（與 plan 的 unpromotedCuts 同形同序）；缺鍵讀作空陣列。 */
-  unpromotedCuts?: UnpromotedCutItem[];
+  /** 引擎 plan 的 next（第一個沒被擋的提案中變更）；成環或 plan 不可得時為 null。 */
+  next: string | null;
+  /** 討論結論中尚未轉出的刀（與 plan 的 unpromotedCuts 同形同序）；成環或 plan 不可得時為空陣列
+   * （舊 server 的 plan 回應缺這個鍵時，Tauri 殼已讀作空陣列）。 */
+  unpromotedCuts: UnpromotedCutItem[];
 }
 
 /** 討論結論中尚未全部轉出的一刀：`changes` 為刀粗體內的全部變更名，`unpromoted` 為其中

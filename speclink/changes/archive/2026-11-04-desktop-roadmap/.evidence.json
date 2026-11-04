@@ -92,6 +92,37 @@
       "files": [
         "apps/desktop/src/__tests__/remoteDataSource.test.ts"
       ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.2 （Green）在 packages/ui/src/components/RoadmapView.tsx 實作版面：依設計「站的外觀表示階段，next 標示下一個」畫波次欄與站（進行中的任務進度圓圈以 SVG 圓弧繪製），依設計「尚未轉出的刀放在最右一欄」畫尚未轉出欄（`border-dashed` 加 `SEMANTIC_SURFACE.manual`、`StatusPill tone=\"manual\"`、`CommandChip`），依設計「成環與空狀態」處理 planError、空狀態與載入中；依設計「文字走 @speclink/ui 的 i18n」把新文字加進 packages/ui/src/i18n.tsx 的 tw 與 en，並自 packages/ui/src/index.ts 匯出 `RoadmapView`。驗證：`npm test -w packages/ui -- roadmapView` 中版面相關的測試通過",
+      "files": [
+        "packages/ui/src/components/DocParts.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首最右端（搜尋列與篩選鈕之後）；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "files": [
+        "apps/desktop/src/__tests__/helpers/changeList.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首最右端（搜尋列與篩選鈕之後）；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "files": [
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）依設計「清單回應頂層增列 next 與 unpromotedCuts，不另開 plan 查詢」，在 apps/desktop/core/src/query.rs 的 `list_changes_at` 自同一次 plan 計算取 `next` 與 `unpromoted_cuts` 寫進回應頂層，成環時寫 null 與空陣列。驗證：`cargo test -p speclink-desktop-core` 全部通過",
+      "files": [
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts"
+      ]
     }
   ],
   "entries": [
@@ -233,6 +264,53 @@
         "apps/desktop/src/__tests__/remoteDataSource.test.ts"
       ],
       "recordedAt": "2026-11-03T09:46:28Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7Y4AQ6YYH05HP6F83B",
+      "taskDesc": "3.2 （Green）在 packages/ui/src/components/RoadmapView.tsx 實作版面：依設計「站的外觀表示階段，next 標示下一個」畫波次欄與站（進行中的任務進度圓圈以 SVG 圓弧繪製），依設計「尚未轉出的刀放在最右一欄」畫尚未轉出欄（`border-dashed` 加 `SEMANTIC_SURFACE.manual`、`StatusPill tone=\"manual\"`、`CommandChip`），依設計「成環與空狀態」處理 planError、空狀態與載入中；依設計「文字走 @speclink/ui 的 i18n」把新文字加進 packages/ui/src/i18n.tsx 的 tw 與 en，並自 packages/ui/src/index.ts 匯出 `RoadmapView`。驗證：`npm test -w packages/ui -- roadmapView` 中版面相關的測試通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7ab4a8568cb42dfda490c44fad531f5c749a3c4",
+      "touchedFiles": [
+        "packages/ui/src/components/DocParts.tsx"
+      ],
+      "recordedAt": "2026-11-03T13:57:26Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YAYJA8A0GQ2GB8564",
+      "taskDesc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首最右端（搜尋列與篩選鈕之後）；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7ab4a8568cb42dfda490c44fad531f5c749a3c4",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/helpers/changeList.ts",
+        "apps/desktop/src/i18n/messages.ts",
+        "packages/ui/src/__tests__/boardSearchBar.test.tsx",
+        "packages/ui/src/components/BoardSearchBar.tsx"
+      ],
+      "recordedAt": "2026-11-03T15:17:25Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YAYJA8A0GQ2GB8564",
+      "taskDesc": "4.2 （Green）依設計「路線圖是看板頁的一種檢視」：apps/desktop/src/store.ts 增 `boardMode` 與 `setBoardMode`；packages/ui 新增 `BoardViewSwitch`（沿用 `Tabs` 的 segmented 變體，放在 RoadmapView.tsx 並自 index.ts 匯出），`KanbanBoard` 增 `viewSwitch` prop 放在頁首最右端（搜尋列與篩選鈕之後）；apps/desktop/src/App.tsx 在 `boardView` 為 \"board\" 時同時掛載 `KanbanBoard` 與 `RoadmapView`，只顯示 `boardMode` 指定的一個、另一個不可見且不可互動（`hidden` 加 `inert`），兩者頁首放同一個切換，`RoadmapView` 的 `onOpenChange`、`onOpenDiscussion` 接 `openDetail`、`openDiscussion`。驗證：`npm test -w apps/desktop` 與 `npm test -w packages/ui` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7ab4a8568cb42dfda490c44fad531f5c749a3c4",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx"
+      ],
+      "recordedAt": "2026-11-03T15:18:49Z"
+    },
+    {
+      "taskId": "tsk_01M6G9AM7YT9CY3CGVYV3B0KY9",
+      "taskDesc": "1.2 （Green）依設計「清單回應頂層增列 next 與 unpromotedCuts，不另開 plan 查詢」，在 apps/desktop/core/src/query.rs 的 `list_changes_at` 自同一次 plan 計算取 `next` 與 `unpromoted_cuts` 寫進回應頂層，成環時寫 null 與空陣列。驗證：`cargo test -p speclink-desktop-core` 全部通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f7ab4a8568cb42dfda490c44fad531f5c749a3c4",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/tauriDataSource.test.ts"
+      ],
+      "recordedAt": "2026-11-04T00:30:33Z"
     }
   ]
 }

@@ -25,6 +25,8 @@ function fakeInvoke() {
     remote_list_changes: {
       changes: [{ name: "chg", status: "in-progress", completedTasks: 1, totalTasks: 2, summary: "s", claimedBy: "Alice <a@example.com>" }],
       planError: null,
+      next: null,
+      unpromotedCuts: [],
     },
     remote_list_specs: { specs: [{ id: "auth", path: "specs/auth/spec.md" }] },
     remote_list_archived: {

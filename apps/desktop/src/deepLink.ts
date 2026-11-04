@@ -51,24 +51,28 @@ export function parseSpeclinkUrl(raw: string): ParsedSpeclinkUrl {
   if (url.protocol !== "speclink:") return { ok: false, reason: "scheme" };
   if (!KINDS.includes(url.host)) return { ok: false, reason: "kind" };
   const segment = url.pathname.replace(/^\//, "");
-  let name: string | null;
   if (url.host === "roadmap") {
     // 路線圖不帶名稱：path 只能為空或單一 /。
-    name = segment === "" ? "" : null;
-  } else {
-    name = segment === "" || segment.includes("/") ? null : decodeStrict(segment);
+    if (segment !== "") return { ok: false, reason: "name" };
+    const project = projectParam(url);
+    return project === null ? { ok: false, reason: "project" } : { ok: true, link: { kind: "roadmap", project } };
   }
+  const name = segment === "" || segment.includes("/") ? null : decodeStrict(segment);
   if (name === null) return { ok: false, reason: "name" };
-  // 恰好一個 project 參數；重複時有歧義，不挑一個用。
+  const project = projectParam(url);
+  if (project === null) return { ok: false, reason: "project" };
+  return { ok: true, link: { kind: url.host as SpeclinkLinkKind, name, project } };
+}
+
+/** 網址的 project 參數：恰好一個（重複時有歧義，不挑一個用）、解碼後為絕對路徑；否則 null。 */
+function projectParam(url: URL): string | null {
   const values = url.search
     .slice(1)
     .split("&")
     .filter((pair) => pair.startsWith("project="))
     .map((pair) => pair.slice("project=".length));
   const project = values.length === 1 ? decodeStrict(values[0]) : null;
-  if (project === null || !ABSOLUTE_PATH.test(project)) return { ok: false, reason: "project" };
-  if (url.host === "roadmap") return { ok: true, link: { kind: "roadmap", project } };
-  return { ok: true, link: { kind: url.host as SpeclinkLinkKind, name, project } };
+  return project !== null && ABSOLUTE_PATH.test(project) ? project : null;
 }
 
 /** 派送所需的最小 store 介面（Zustand bound store 相容——AppState 的結構子集）。 */
@@ -84,7 +88,7 @@ export interface DeepLinkStore {
     | "openDetail"
     | "openDiscussion"
     | "setBoardView"
-    | "setBoardMode"
+    | "openRoadmap"
   >;
 }
 
@@ -145,9 +149,8 @@ async function openLink(store: DeepLinkStore, url: string): Promise<void> {
   if (key === null) return;
   const s = store.getState();
   if (link.kind === "roadmap") {
-    // 切回看板頁即關閉開著的詳情頁；路線圖沒有找不到目標的情形。
-    s.setBoardView("board");
-    s.setBoardMode("roadmap");
+    // 路線圖沒有找不到目標的情形。
+    s.openRoadmap();
     return;
   }
   const { kind, name, project } = link;

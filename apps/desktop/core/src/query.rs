@@ -17,10 +17,11 @@ use crate::init_core_context;
 pub const PLAN_FIELDS: &[&str] =
     &["wave", "blockedBy", "dependsOn", "overlaps", "requirementOverlap", "archiveAfter"];
 
-/// 對應 `speclink list --json`：`{ "changes": [ … ] }`。非專案回傳 `{ "changes": [] }`。
+/// 對應 `speclink list --json`：`{ "changes": [ … ] }` 加頂層 `planError`、`next`、`unpromotedCuts`。
+/// 非專案回傳同形的空清單：前端的 ChangeListPayload 四鍵都是必填。
 pub fn list_changes_at(root: &Path) -> Value {
     let Some(ctx) = init_core_context(root) else {
-        return json!({ "changes": [] });
+        return json!({ "changes": [], "planError": null, "next": null, "unpromotedCuts": [] });
     };
     // Worktree 觀察面：與 CLI list 同一組閘門與 payload 落點（design D6）。
     // 政策關、非主 checkout、git 不可用 → facts 為空，讀寫與 payload 與此功能
@@ -1978,7 +1979,11 @@ mod tests {
     #[test]
     fn non_project_yields_empty_state_not_panic() {
         let root = crate::testfixture::fresh_non_project_dir("query");
-        assert_eq!(list_changes_at(&root), json!({ "changes": [] }));
+        // 清單回應的頂層四鍵在非專案時照樣齊全：前端的 ChangeListPayload 四鍵都是必填。
+        assert_eq!(
+            list_changes_at(&root),
+            json!({ "changes": [], "planError": null, "next": null, "unpromotedCuts": [] })
+        );
         assert_eq!(list_specs_at(&root), json!({ "specs": [] }));
         assert!(status_at(&root, "anything").is_err());
         assert!(document_at(&root, "anything", "proposal").is_none());

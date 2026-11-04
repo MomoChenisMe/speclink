@@ -916,7 +916,7 @@ describe("board search wiring（看板搜尋接線）", () => {
     await screen.findByText("desktop-shell-and-browser");
     const heading = screen.getByRole("heading", { level: 2, name: "變更" });
     const header = heading.closest("[data-page-header]") as HTMLElement;
-    expect(header.textContent).toContain("依生命週期分欄；拖曳卡片調整順序，點卡片開詳情頁。");
+    expect(header.textContent).toContain("依生命週期分欄；拖曳排序，點卡片開詳情。");
     expect(within(header).getByPlaceholderText("搜尋看板卡片…")).toBeTruthy();
   });
 
@@ -3534,6 +3534,78 @@ describe("看板頁的路線圖檢視（desktop-roadmap）", () => {
     expect(cards.hidden).toBe(false);
     expect(roadmap.hidden).toBe(true);
     expect((within(cards).getByPlaceholderText("搜尋看板卡片…") as HTMLInputElement).value).toBe("add");
+    // 捲動位置與篩選靠「卡片檢視一直掛著、不重新掛載」保留：切回後仍是同一個節點。jsdom 沒有
+    // 版面、量不到捲動，捲動位置由 [M] 6.1 在桌面視窗驗收。
+    expect(screen.getByTestId("board-cards")).toBe(cards);
+  });
+
+  it("自路線圖開詳情頁時 ‹ n／m › 依看板卡片的順序，不依路線圖的列序", async () => {
+    // add-a 已開工（進行中欄）、add-b 提案中（提案中欄在前）：卡片順序 add-b、add-a，
+    // 路線圖的列序 add-a、add-b。
+    const ds = fakeDataSource({
+      listChanges: vi.fn().mockResolvedValue({
+        ...changeList([
+          { name: "add-a", status: "in-progress", totalTasks: 4, completedTasks: 1, wave: 1, blockedBy: [], dependsOn: [] },
+          {
+            name: "add-b",
+            status: "in-progress",
+            totalTasks: 3,
+            completedTasks: 0,
+            wave: 2,
+            blockedBy: ["add-a"],
+            dependsOn: ["add-a"],
+          },
+        ]),
+        next: null,
+      }),
+    });
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp(ds);
+    const cards = await screen.findByTestId("board-cards");
+    await within(cards).findByText("add-b");
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    const roadmap = screen.getByTestId("board-roadmap");
+    expect([...roadmap.querySelectorAll("[data-station]")].map((el) => el.getAttribute("data-station"))).toEqual([
+      "add-a",
+      "add-b",
+    ]);
+    fireEvent.click(roadmap.querySelector('[data-station="add-b"]') as HTMLElement);
+    await screen.findByTestId("detail-page");
+    expect(screen.getByText("1 / 2")).toBeTruthy();
+  });
+
+  it("路線圖顯示中按 ⌘F 或選單「搜尋看板」：先切回卡片再聚焦看板搜尋", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    renderApp(planned());
+    const cards = await screen.findByTestId("board-cards");
+    await within(cards).findByText("add-b");
+    const input = within(cards).getByPlaceholderText("搜尋看板卡片…");
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    act(() => {
+      fireEvent.keyDown(window, { key: "f", metaKey: true });
+    });
+    await waitFor(() => expect(cards.hidden).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(input));
+
+    await user.click(within(cards).getByRole("tab", { name: "路線圖" }));
+    expect(cards.hidden).toBe(true);
+    act(() => appMenuSpy.deps[appMenuSpy.deps.length - 1].dispatch("focusSearch"));
+    await waitFor(() => expect(cards.hidden).toBe(false));
+    await waitFor(() => expect(document.activeElement).toBe(input));
+  });
+
+  it("以方向鍵切換檢視後，焦點落在新顯示那一頁的切換上", async () => {
+    renderApp(planned());
+    const cards = await screen.findByTestId("board-cards");
+    await within(cards).findByText("add-b");
+    const roadmap = screen.getByTestId("board-roadmap");
+    act(() => within(cards).getByRole("tab", { name: "看板" }).focus());
+    await userEvent.keyboard("{ArrowRight}");
+    await waitFor(() => expect(roadmap.hidden).toBe(false));
+    expect(document.activeElement).toBe(within(roadmap).getByRole("tab", { name: "路線圖" }));
+    await userEvent.keyboard("{ArrowLeft}");
+    await waitFor(() => expect(cards.hidden).toBe(false));
+    expect(document.activeElement).toBe(within(cards).getByRole("tab", { name: "看板" }));
   });
 
   it("自路線圖開詳情頁，按 Esc 回到路線圖（Scenario「自路線圖開詳情頁後回到路線圖」）", async () => {

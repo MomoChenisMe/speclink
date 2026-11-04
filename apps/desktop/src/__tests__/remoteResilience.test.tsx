@@ -73,7 +73,7 @@ function remoteInvoke() {
     if (!reachable) throw new Error("server unreachable");
     switch (command) {
       case "remote_list_changes":
-        return { changes };
+        return { changes, planError: null, next: null, unpromotedCuts: [] };
       case "remote_list_specs":
         return { specs: [{ id: "auth" }] };
       case "remote_list_archived":
@@ -335,6 +335,9 @@ describe("remote offline stale snapshot", () => {
                 completedTasks: 0,
               },
             ],
+            planError: null,
+            next: null,
+            unpromotedCuts: [],
           };
         case "remote_list_specs":
           return { specs: [] };
@@ -460,7 +463,12 @@ describe("remote offline stale snapshot", () => {
     const invoke = vi.fn(async (command: string) => {
       switch (command) {
         case "remote_list_changes":
-          return { changes: [{ name: "backend-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }] };
+          return {
+            changes: [{ name: "backend-change", status: "in-progress", totalTasks: 1, completedTasks: 0 }],
+            planError: null,
+            next: null,
+            unpromotedCuts: [],
+          };
         case "remote_list_specs":
           return { specs: [] };
         case "remote_list_archived":
