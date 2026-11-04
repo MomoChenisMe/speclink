@@ -132,6 +132,28 @@ export function titleChange(title) {
 export const inside = (path, folder) => Boolean(path) && (path === folder || path.startsWith(`${folder}/`));
 
 // agents() 的 done 看過就變 idle，送達要看 core 的原始狀態（terminals()）。
+// 這個 agent 在做 board 裡的哪個變更，比對規則和面板的 changeAgents 相同。查不到時是 null。
+export function agentChange(agent, board) {
+  return Object.values(board.stages).flat().find((row) => changeAgents(row, [agent]).length > 0) ?? null;
+}
+
+// 內建 agents mod 的 RANK：等你回答的最急。
+const NEEDS_YOU = 4;
+const STATUS_ORDER = ["blocked", "done", "working", "idle"];
+
+// Agents 清單的順序：等你回答的不分 space 放最前面，其他照 Spaces 清單的順序。
+// 同一個 space 裡，急的在前面，再來是最近變動的。
+export function groupedOrder(list, spaces, rankOf, since) {
+  const at = new Map(spaces.map((s, i) => [s.id, i]));
+  const key = (a) => (rankOf(a) === NEEDS_YOU ? -1 : at.get(a.space) ?? spaces.length);
+  return [...list].sort((x, y) => key(x) - key(y) || rankOf(y) - rankOf(x) || since(y) - since(x) || y.seq - x.seq);
+}
+
+// 一組 agent 裡各狀態有幾個，最急的在前面，沒有的不列。
+export function statusCounts(members) {
+  return STATUS_ORDER.map((status) => [status, members.filter((a) => a.status === status).length]).filter(([, n]) => n > 0);
+}
+
 export function joinAgents(agents, terminals, panes) {
   const byAddress = new Map(terminals.map((t) => [t.address, t]));
   const byPane = new Map(panes.map((p) => [p.pane, p]));
