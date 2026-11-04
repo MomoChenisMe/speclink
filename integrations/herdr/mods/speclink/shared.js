@@ -42,6 +42,19 @@ export async function speclinkJson(verb, cwd, on) {
   return JSON.parse(r.stdout);
 }
 
+// 進行中的變更還剩幾個程式任務，手動任務（[M]）不算。list 和 plan 沒有這個數字，要問 instructions。
+// 有 worktree 的要到 worktree 裡問，主資料夾的副本不會更新。查不到的不放進結果。
+export async function codeRemaining(list, plan, root, on) {
+  const folders = new Map(list.changes.map((c) => [c.name, c.worktree?.path ?? root]));
+  const names = plan.changes.filter((c) => c.stage === "in-progress").map((c) => c.name);
+  const answers = await Promise.all(
+    names.map((name) =>
+      speclinkJson(["instructions", "apply", "--change", name], folders.get(name) ?? root, on).catch(() => null),
+    ),
+  );
+  return Object.fromEntries(names.flatMap((name, i) => (answers[i]?.progress ? [[name, answers[i].progress.codeRemaining]] : [])));
+}
+
 // hc run 回來時分頁可能還沒出現，等它出現才能改名。
 const nameTabs = (waiting, cx, tries = 20) =>
   new Promise((done) => {

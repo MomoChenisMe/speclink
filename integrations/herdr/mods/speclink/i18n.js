@@ -167,6 +167,7 @@ export const TO_EN = {
   "{0} 只有 Claude Code 能用": "{0} works only in Claude Code",
   "已經有 agent 在做": "An agent already works on it",
   "要等 {0} 落地": "Waiting for {0} to land",
+  "還有 {0} 個程式任務沒做完": "{0} code tasks are not done",
   "這個專案沒開 worktree 流程": "This project has no worktree flow",
   "{0} 的 apply 還沒做完": "The apply of {0} is not finished",
   勾選要開工的變更: "Check the changes to start",

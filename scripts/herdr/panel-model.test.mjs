@@ -107,6 +107,7 @@ test('buildBoard：階段、波次、順序取自 plan，任務數與 worktree �
       blockedBy: [],
       completed: 0,
       total: 3,
+      codeRemaining: null,
       worktree: { path: TREE, branch: 'speclink/add-a' },
       restale: true,
     },
@@ -164,6 +165,23 @@ test('buildBoard：討論依 status 分流，還有刀沒轉出的已轉出討�
 const names = (skills) => skills.map((s) => s.skill);
 const primary = (skills) => skills.filter((s) => s.primary).map((s) => s.skill);
 
+test('buildBoard：程式任務數取自 instructions，已就緒一定是 0，查不到是 null', () => {
+  const board = buildBoard(
+    { changes: [] },
+    {
+      changes: [
+        { name: 'add-a', wave: 1, stage: 'in-progress', blockedBy: [] },
+        { name: 'add-b', wave: 1, stage: 'in-progress', blockedBy: [] },
+        { name: 'add-c', wave: 1, stage: 'ready', blockedBy: [] },
+      ],
+    },
+    { discussions: [] },
+    { 'add-a': 2 },
+  );
+  assert.deepEqual(board.stages['in-progress'].map((r) => r.codeRemaining), [2, null]);
+  assert.equal(board.stages.ready[0].codeRemaining, 0);
+});
+
 test('changeSkills：提案中且沒被擋，建議 apply', () => {
   const skills = changeSkills(row({ stage: 'proposed' }));
   assert.deepEqual(names(skills), ['apply', 'analyze', 'ingest']);
@@ -178,8 +196,58 @@ test('changeSkills：被擋時 apply 要等前一個變更，也不算建議', (
 
 test('changeSkills：進行中建議 apply', () => {
   const skills = changeSkills(row());
-  assert.deepEqual(names(skills), ['apply', 'ingest', 'drift', 'verify']);
+  assert.deepEqual(names(skills), ['apply', 'ingest', 'drift', 'verify', 'quality', 'review', 'commit']);
   assert.deepEqual(primary(skills), ['apply']);
+});
+
+test('changeSkills：程式任務都做完、只剩手動任務時，建議 quality', () => {
+  assert.deepEqual(primary(changeSkills(row({ codeRemaining: 0 }))), ['quality']);
+  assert.deepEqual(primary(changeSkills(row({ codeRemaining: 1 }))), ['apply']);
+});
+
+test('changeSkills：有 worktree 時每個階段都能合併，也都不能封存', () => {
+  const worktree = { path: TREE, branch: 'b' };
+  for (const stage of ['proposed', 'in-progress', 'ready']) {
+    const skills = names(changeSkills(row({ stage, worktree })));
+    assert.ok(skills.includes('worktree-merge'), stage);
+    assert.ok(!skills.includes('archive'), stage);
+  }
+  assert.ok(!names(changeSkills(row({ stage: 'ready' }))).includes('worktree-merge'), '沒有 worktree 就不能合併');
+});
+
+test('skillTargets：worktree-merge 列出有 worktree 的變更；quality、review 也列出進行中的變更', () => {
+  const board = {
+    stages: {
+      proposed: [row({ name: 'add-new', stage: 'proposed' })],
+      'in-progress': [row({ name: 'add-half', codeRemaining: 1 }), row({ name: 'add-tree', worktree: { path: TREE, branch: 'b' } })],
+      ready: [row({ name: 'add-done', stage: 'ready' })],
+    },
+    discussions: [],
+  };
+  const targetNames = (skill) => skillTargets(skill, board).map((t) => t.name);
+  assert.deepEqual(targetNames('worktree-merge'), ['add-tree']);
+  assert.deepEqual(targetNames('quality'), ['add-half', 'add-tree', 'add-done']);
+  assert.deepEqual(targetNames('review'), ['add-half', 'add-tree', 'add-done']);
+});
+
+test('quality、review：程式任務沒做完時不能開也不能放，手動任務不算', () => {
+  const left = { kind: 'change', name: 'add-a', args: 'add-a', row: row({ codeRemaining: 2 }) };
+  const done = { kind: 'change', name: 'add-a', args: 'add-a', row: row({ codeRemaining: 0 }) };
+  const here = { address: 't1', tab: 'tb1' };
+  const agents = [agent({ tab: 'tb1', address: 't1', key: 'claude', status: 'idle' })];
+  for (const skill of ['quality', 'review']) {
+    assert.equal(newTabPlan({ ...TAB, skill, target: left }).reason, '還有 2 個程式任務沒做完');
+    assert.equal(newTabPlan({ ...TAB, skill, target: done }).kind, 'tab');
+    assert.equal(placePlan({ skill, target: left, note: '', agents, focus: { tab: here.tab, terminal: here.address } }).reason, '還有 2 個程式任務沒做完');
+    assert.equal(placePlan({ skill, target: done, note: '', agents, focus: { tab: here.tab, terminal: here.address } }).kind, 'place');
+  }
+  assert.equal(newTabPlan({ ...TAB, skill: 'verify', target: left }).kind, 'tab', 'verify 可以中途跑');
+  assert.equal(newTabPlan({ ...TAB, skill: 'worktree-merge', target: left }).kind, 'tab', '合併不看任務');
+});
+
+test('開工：只剩手動任務時沒有開工鈕，因為沒有程式要寫', () => {
+  assert.equal(startChoices(row({ codeRemaining: 0 }), ctx({ worktreePolicy: true })), null);
+  assert.ok(startChoices(row({ codeRemaining: 1 }), ctx({ worktreePolicy: true })));
 });
 
 test('changeSkills：已就緒且沒有 worktree 可封存，建議 quality', () => {

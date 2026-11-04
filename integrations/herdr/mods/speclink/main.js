@@ -35,7 +35,7 @@ import {
 import ColumnSync from "./column-sync.js";
 import { tr, watchLang } from "./i18n.js";
 import SkillPicker from "./skill-picker.js";
-import { firstLine, location, openTabs, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
+import { codeRemaining, firstLine, location, openTabs, placeInInput, projectRoot, sendError, spaceFor, speclinkJson } from "./shared.js";
 
 // 這個 mod 的其他畫面。speclink-new 開跳窗、dock-panel.mjs 放浮動區塊時，用 props 的 view 指定。
 const VIEWS = { "skill-picker": SkillPicker, "column-sync": ColumnSync };
@@ -135,7 +135,7 @@ export default class SpeclinkPanel extends View {
           read("discuss", "list"),
           read("workflow-config", "show"),
         ]);
-        this.board = buildBoard(list, plan, discussions);
+        this.board = buildBoard(list, plan, discussions, await codeRemaining(list, plan, root, on));
         this.worktreePolicy = config.worktree === true;
         this.error = null;
         this.uninitialized = false;
