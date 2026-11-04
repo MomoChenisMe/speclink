@@ -16,7 +16,7 @@ The panel has two placements. Neither takes the keyboard. In both, the project f
 What the panel contains:
 
 - **Top**: the project name. The line below it says "目前的 space · <branch>" (the current space and its branch).
-- **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
+- **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, the review and verify stamps, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
 - **The agent on this change or discussion**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. For a change, the panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. For a discussion, it matches only the `speclink.discussion` label. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For what you type directly in Claude Code, the panel needs the hooks.
 - **Skill buttons**: each row keeps only the suggested next step. `⋯` opens the Skills pop-up with this skill and this row already selected. A tooltip on the button tells where it goes.
@@ -46,11 +46,28 @@ Only a project that is not initialized shows this card. Other problems, such as 
 | Proposed, blocked | apply is disabled, analyze, ingest, drift, commit |
 | In progress | **apply**, ingest, drift, verify, quality, review, analyze, commit |
 | In progress, only manual tasks left | the same, but the suggestion changes to **quality**, and there is no Start button |
-| Ready | **quality**, review, verify, archive, ingest, drift, commit |
-| Any stage, with a worktree | adds worktree-merge and removes archive (merge before you archive) |
+| In progress, only manual tasks left, both stations stamped | the same, and the suggestion stays on **apply**, which handles the manual tasks. You do not need to run quality again |
+| Ready | **quality**, review, verify, archive, archive+commit, ingest, drift, commit |
+| Ready, both stations stamped and the stamps hold | the same, but the suggestion changes to **archive+commit** |
+| Any stage, with a worktree | adds worktree-merge and removes archive and archive+commit (merge before you archive). When the change is ready and both stations are stamped, the suggestion is **worktree-merge** |
 | Discussion concluded again, change not updated | the suggestion changes to **ingest** |
 | Open discussion | **discuss** |
 | Concluded, or cuts left to promote | **propose --from-discussion**, discuss |
+
+`archive+commit` sends the same command as the Claude Code mod: `/speclink-archive + /speclink-commit <change>`. Claude Code treats only the first slash command as a command. The rest becomes its arguments, so the model commits after the archive. In the skill pop-up it is in the 收尾 (ship) group. You can open only one at a time, because commits at the same time affect each other.
+
+### Stamp icons
+
+The change row shows the review and verify stamps next to the name, with the same icons as the board cards in the desktop app. The shape shows the station and the color shows the state. A station that has not started shows nothing.
+
+| State | review | verify | Color |
+| --- | --- | --- | --- |
+| Stamped, and the stamp holds | badge with a check | shield with a check | purple |
+| Stamped, changed since (run it again) | badge with an exclamation mark | shield with an exclamation mark | amber |
+| Ticket open | stamp | shield | blue |
+| An agent is running it | stamp | shield | blue, pulsing |
+
+The panel decides in the same way as `speclink archive`. A station with an open ticket ignores its stamp. A stamp holds when the task count is the same, all code tasks are done, and the files in its scope have the same content. `quality` shows both stations as running, also before a ticket exists. A stamped station keeps its stamped look.
 
 ### Track what you type directly (optional)
 
@@ -212,7 +229,8 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 ## Known limits
 
 - **A clone does not follow Herdr updates**: the `speclink` layout stays as `main` was at the time of the clone, and the Spaces and Agents lists stay as `spaces` and `agents` were. Dock again after a Herdr update. See "Dock again after a Herdr update".
-- **No review or verify stamps**: the CLI output has no stamp state. After you stamp a ready change, the suggestion stays on quality, and you click archive yourself.
+- **The panel reads the stamps itself**: `list --json` leaves the stamps out on purpose, so the panel reads `.meta.yaml` in the change folder and uses `perl` to get the file fingerprints. A change with a worktree uses the copy in the worktree. On a machine with no `perl` or no `Digest::SHA`, the panel checks only the task count. `speclink archive` still decides, and it refuses a stale stamp.
+- **A changed file in the scope takes up to 10 seconds to change the color**: the panel does not watch those files, so it waits for the timer.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
 - **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.
 - **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.
