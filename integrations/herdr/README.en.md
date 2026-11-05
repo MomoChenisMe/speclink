@@ -28,9 +28,10 @@ The panel has two placements. Neither takes the keyboard. In both, the project f
 What the panel contains:
 
 - **Top**: the logo and the project name. The line below it says "Current space · <branch>". The Roadmap and Skills buttons are at the right.
+- **Current tab**: when the agent in the current tab works on a change or discussion, that row has a blue bar on the left and a pale blue background, and its agent line says "Current tab". You cannot see this mark when the row is scrolled away or its card is closed. Scroll to the row or open the card.
 - **Changes**: three permanent cards for proposed, in progress and ready. Each card title has a dot in the stage color and a count. Each row shows the wave, the name, the review and verify stamps, a worktree mark and the task progress. A blocked row is dimmed and names what it waits for.
 - **Discussions**: a discussions card and a promoted card. A promoted discussion that still has unpromoted cuts stays on the discussions card, because its next step is propose.
-- **The agent on this change or discussion**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. For a change, the panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. For a discussion, it matches only the `speclink.discussion` label. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For what you type directly in Claude Code, the panel needs the hooks.
+- **The agent on this change or discussion**: the row shows the location and status of the agent. Click it to go there. The status looks the same as in the Agents list on the left: a turning arc for working, an empty ring for idle, a solid dot for done, and a pill when it waits for your answer. For a change, the panel matches the `speclink.change` label, then the worktree path, then the `speclink.focus` label that the Claude Code plugin reports. For a discussion, it matches only the `speclink.discussion` label. Start, the skill buttons, the Skills pop-up and the hook below set the labels. For what you type directly in an agent, the panel needs the hooks.
 - **Skill buttons**: each row shows the suggested next step. See "Skills per stage" for how the panel selects it. `⋯` shows the other skills for this row. One click sends the skill, with the same rules as the suggested button. See "Where a skill goes". A row with no other skills has no `⋯`. A tooltip on the button tells where it goes.
 - **Start**: a button on a change row that starts a new agent for this change only, in the current space. See "Start" below.
 - **Skills**: the button at the top or `⌘⇧N` opens a pop-up where you select a skill and a change or discussion for it. Use it to open a new tab, use the input box, or check many changes. See "Skills pop-up" below.
@@ -56,7 +57,7 @@ Herdr's own screens do not need clones. All mods share one JS environment, so wh
 
 ### When the space is not a Speclink project
 
-If the current space is not a Speclink project, the panel shows a hint card with the project folder and an Initialize button. The Roadmap and Skills buttons are not there, because they do not work here yet.
+If the current space is not a Speclink project, the panel shows a hint card with the project folder and an Initialize button. The Roadmap button is not there. The Skills button opens the pop-up on the My skills page, because your own skills work without Speclink.
 
 The initialize button opens a new tab and runs `speclink init` in the project folder. The command asks, one question at a time, which agents to generate files for. It writes files only after your answers. To stop, close that tab. After the command completes, the panel shows the change list within 10 seconds.
 
@@ -78,7 +79,7 @@ Only a project that is not initialized shows this card. Other problems, such as 
 | Open discussion | **discuss** |
 | Concluded, or cuts left to promote | **propose --from-discussion**, discuss |
 
-`archive+commit` sends the same command as the Claude Code mod: `/speclink-archive + /speclink-commit <change>`. Claude Code treats only the first slash command as a command. The rest becomes its arguments, so the model commits after the archive. In the Skills pop-up it is in the Finish group. You can open only one at a time, because commits at the same time affect each other.
+`archive+commit` sends the same command as the Claude Code mod: `/speclink-archive + /speclink-commit <change>`. Claude Code treats only the first slash command as a command. The rest becomes its arguments, so the model commits after the archive. In the Skills pop-up it is a method of `archive`. You can open only one at a time, because commits at the same time affect each other.
 
 ### Stamp icons
 
@@ -95,9 +96,9 @@ The panel decides in the same way as `speclink archive`. A station with an open 
 
 ### Track what you type directly (optional)
 
-The panel knows about work that starts from the panel or the Skills pop-up. For what you type directly in Claude Code, the panel needs hooks. Without them, that row shows no agent and still has the Start button.
+The panel knows about work that starts from the panel or the Skills pop-up. For what you type directly in an agent, the panel needs hooks. Without them, that row shows no agent and still has the Start button.
 
-Add this to `~/.claude/settings.json`. New Claude Code sessions then use it:
+**Claude Code:** add this to `~/.claude/settings.json`. New sessions then use it:
 
 ```json
 "hooks": {
@@ -113,7 +114,23 @@ Each hook has one job:
 - **`PostToolUse`**: when the model calls a skill, it records the skill and the arguments. When the agent runs a speclink command that changes a change or discussion, it records the name. So the panel also finds a command with no name, a request in plain words, a change that propose creates, and a slug that discuss creates. Queries such as `show` and `status` do not count, because they can be only a mention. This hook runs in the background and does not slow the command.
 - **`SessionStart`**: `/clear` and `/resume` change the conversation, so it removes the old labels.
 
-The hooks write no output and do not stop the message. Outside Herdr they do nothing. They work only with Claude Code, and a conversation that `--resume` brings back shows up only after its next command.
+The hooks write no output and do not stop the message. Outside Herdr they do nothing. A conversation that `--resume` brings back shows up only after its next command.
+
+**Codex:** add this to `~/.codex/hooks.json` and change the path to your absolute path. When Codex starts, it asks if you trust this hook. The hook works only after you trust it. It recognizes `$speclink-…` at the start of a message.
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node /Users/you/.config/herdr-app/mods/speclink/label-skill.mjs", "timeout": 5 }] }]
+  }
+}
+```
+
+**Pi:** add this to `~/.pi/agent/settings.json` and change the path to your absolute path. It recognizes `/skill:speclink-…` at the start of a message and the speclink commands that Pi runs. A new or resumed conversation clears the old labels.
+
+```json
+{ "extensions": ["/Users/you/.config/herdr-app/mods/speclink/pi-labels.ts"] }
+```
 
 ### Where a skill goes
 
@@ -121,7 +138,7 @@ The panel tries these in order and stops at the first match:
 
 1. The agent that works on this change.
 2. The agent in the current tab.
-3. A new tab with the most used installed agent.
+3. A new tab with the agent that you last selected in the Skills pop-up. If you never selected one, the most used installed agent.
 
 Each step checks the folder of the agent. Skills for a change with a worktree run in the worktree. archive, worktree-merge and apply-with-worktree run in the main checkout. An agent in another folder does not match. When a change has a worktree with no agent in it, the apply button sends apply-with-worktree, which continues in the existing worktree.
 
@@ -129,7 +146,7 @@ The panel does not send to an agent that works, waits for your answer or shows a
 
 The buttons on the row always follow this order. If the change has a stopped agent and you want a new tab, use the Skills button at the top.
 
-Claude Code and GitHub Copilot get `/speclink-<skill>`. Codex gets `$speclink-<skill>`. Only Claude Code has analyze, so the button does not show for other agents. Other agents have no speclink skills, so the panel does not send to them.
+Claude Code and GitHub Copilot get `/speclink-<skill>`. Codex gets `$speclink-<skill>`. Pi gets `/skill:speclink-<skill>`. Pi reads `.agents/skills`, so it uses the same files as Codex, from `speclink init --tools codex`. Only Claude Code has analyze, so the button does not show for other agents. Other agents have no speclink skills, so the panel does not send to them.
 
 ### Start
 
@@ -153,7 +170,12 @@ A change has the Start button only if it is not blocked, has unfinished tasks an
 
 Press the Skills button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
 
-- **Left**: all skills in five groups: Plan, Build, Quality, Finish and Project. Select one with `↑` `↓` or the mouse. The number at the right is how many changes or discussions the skill can use now. A skill that uses a change shows dim when the number is zero. The project group works on the whole project and has no number.
+The pop-up has two pages: **Speclink** and **My skills**. Click a page name or press `Tab` to switch. If you installed two or more agents, select the agent at the top right.
+
+**Speclink page:**
+
+- **Left**: skills in five groups: Plan, Build, Quality, Finish and Project. Each group lists only what you can do now. A skill with no change to pair is hidden, and a group with nothing to do is closed. The Project group is closed by default. Click a group name to open all of it or to close it. Select a skill with `↑` `↓` or the mouse. A closed group opens when you move into it. The number at the right is how many changes or discussions the skill can use now. The Project group works on the whole project and has no number.
+- **Method**: different ways to do the same thing share one row. Select the method at the right, or press `⇧←` `⇧→`. `apply` has Main folder or worktree. `quality` has Both stations, Review only or Verify only. `archive` has Archive only or Archive, then commit.
 - **Right**: the changes or discussions that this skill can use. The rules are the same as for skill buttons. Select one with `←` `→` or the mouse. You can also select None. The pop-up does not open with a change selected. Skills that do not use a change (discuss, propose and the project group) have an input box for a topic or a note.
 - **Bottom**: the command that goes in, or the reason why it cannot be used now.
 
@@ -170,6 +192,16 @@ When the skill uses a change, each row has a checkbox, so you can open many tabs
 
 These rows have no checkbox and show the reason: an agent is busy on the change (an agent that finished and stopped does not count, so you can open a new tab for worktree-merge after apply), another change blocks it (apply), an apply in the main folder is not finished, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree. You can check only one row for `archive+commit`.
 
+**My skills page:** the skills that you installed yourself. The selected row shows the full description. These skills do not pair with a change, so there is only a note, which goes after the command.
+
+- **What it lists**: for Claude Code, the project `.claude/skills`, `~/.claude/skills` and the skills of enabled plugins. For Codex, the project `.agents/skills`, `~/.agents/skills` and `~/.codex/skills`. For Pi, the project `.pi/skills` and `.agents/skills`, `~/.pi/agent/skills` and `~/.agents/skills`.
+- **What it does not list**: `speclink-*` (on the other page), skills built into the agent, `~/.claude/skills/synced` from Anthropic, `~/.codex/skills/.system`, and skills with `user-invocable: false`.
+- **Groups**: the name tells the use: Development, Design, Commit and release, Video, Animation, 3D, Content, Tools or Other. Each group has its own color. Each row shows its source at the right (Project, Personal or Plugin).
+- **Families**: three or more skills in a group with the same start share one row, for example `gsap`. Click it to list them. A group with more than 12 rows is closed by default.
+- **Search**: the search box matches names and descriptions. When it has text, all rows open. `→` moves to the note and `←` moves back.
+
+**Which agent:** the pop-up starts with the agent in the current tab, then the agent you last selected, then the most used agent. The panel row buttons also use the agent you selected when they open a new tab. "Put in input box" works only for the agent in the current tab. If you select another agent, this button does not work, because the command form and the skills do not match. If the project has no Speclink skills for this agent, the Speclink page shows the command to run. Only Claude Code can use analyze, so it shows dim for other agents.
+
 ### Open in Speclink
 
 The panel uses `open` to send a `speclink://` URL. The desktop app goes to this project and then opens the page. If the app is not running, it starts. The URL can only open and show things. It writes no files.
@@ -183,7 +215,8 @@ The logo sends a `speclink://project` URL. The desktop app goes to the project o
 - A project with `speclink init` done. If it is not done, the panel gives an initialize button.
 - To open pages in Speclink, or to go to a project with the logo, a desktop app that knows `speclink://` URLs (a version after v0.11.0). Releases up to and including v0.11.0 do not have these URLs, so the logo only brings up the app. A version that you built yourself after 2026-11-03 may not know `speclink://project` yet. In that version the logo brings the app to the front, the project does not change, and the app shows "Can't open this speclink link". The message goes away after you update the app.
 - To dock the panel or use the hooks, Node.js, which runs the script that clones the layout and the hooks.
-- To check whether a stamp is stale, `perl`. macOS includes it.
+- To check whether a stamp is stale and to read My skills, `perl`. macOS includes it.
+- To use Codex or Pi, `codex` and `pi` on PATH, so Herdr can select them. The project needs `.agents/skills` (`speclink init --tools codex`). Pi needs a trusted project and a model login. If Codex is inside the ChatGPT app, add a link on PATH: `ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`. Install Pi with `npm i -g @earendil-works/pi-coding-agent`.
 
 ## Install
 
@@ -278,11 +311,13 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **The panel reads the stamps itself**: `list --json` leaves the stamps out on purpose, so the panel reads `.meta.yaml` in the change folder and uses `perl` to get the file fingerprints. A change with a worktree uses the copy in the worktree. On a machine with no `perl` or no `Digest::SHA`, the panel checks only the task count. `speclink archive` still decides, and it refuses a stale stamp.
 - **A changed file in the scope takes up to 10 seconds to change the color**: the panel does not watch those files, so it waits for the timer.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
-- **Codex is checked on paper only**: the command form comes from the speclink docs and skill output. No send to a real Codex was tested.
+- **What was tested with Codex and Pi**: status reports, paste into the input box, start and labels, with the real programs in an isolated Herdr window. Codex ran one turn and was stopped. Pi had no model login, so the test only shows that the command was sent. Neither finished a whole change. For Codex, only the `UserPromptSubmit` hook was tested.
 - **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.
 - **The button and the folder have different names**: the button is "Skills" and the folder is still `speclink-new`, so `keys.json` does not change.
 - **Pasting into the input box works only on macOS and takes about 0.7 seconds**: Herdr has no command that pastes without Enter, so the panel uses `script` to run a hidden `hc attach`, sends the paste, and leaves. It is one paste, not typing. It does not touch the clipboard or change the terminal size. The attach button shows a turning arc while it pastes and a check mark when it finishes. `script` works differently on other systems, so the paste fails with a notice. In this case, use the button that opens a new tab.
-- **Skill buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`.
+- **Row buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`. The Skills pop-up checks, and it shows how to install them.
+- **My skills guesses the use from the name**: it matches `SKILL_USES` in `model.js`. A name with no match goes to Other. The description is the original text in `SKILL.md`, with no translation.
+- **Plugins only for Claude Code**: skills in Codex plugins are not listed.
 - **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, but it only brings up the app on this computer and does not change the project.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still asks. If you choose a worktree, the skill stops and explains why.
 - **A worktree does not show on the left by itself**: the agent's terminal stays in the main folder and only each command goes into the worktree, so Herdr shows no row for the worktree. To open a shell or run tests in the worktree, use Herdr's built-in Open worktree.
@@ -302,4 +337,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` holds the pure logic: data merge, skill table, stamp states and delivery decisions. The tests run it directly. `i18n.js` holds the interface text. `shared.js` holds small helpers that the panel and the pop-up share and that use the Herdr API, including the code that reads the stamps. `label-skill.mjs` is the hook that tracks commands. `main.js` holds the panel view and the Herdr API calls. `skill-picker.js` holds the Skills pop-up view. The rules for the input box and the new tab are in `model.js`. `column-sync.js` makes each space remember the state of the right column. It runs in the invisible floating block that `dock-panel.mjs` adds, because the panel does not redraw while its column is closed. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.
+`model.js` holds the pure logic: data merge, skill table, stamp states and delivery decisions. The tests run it directly. `i18n.js` holds the interface text. `shared.js` holds small helpers that the panel and the pop-up share and that use the Herdr API, including the code that reads the stamps. `label-skill.mjs` is the hook that tracks commands. `main.js` holds the panel view and the Herdr API calls. `my-skills.js` is the My skills page of the pop-up. `pi-labels.ts` is the Pi extension that tracks labels. `skill-picker.js` holds the Skills pop-up view. The rules for the input box and the new tab are in `model.js`. `column-sync.js` makes each space remember the state of the right column. It runs in the invisible floating block that `dock-panel.mjs` adds, because the panel does not redraw while its column is closed. `speclink-new` holds only settings: a mod can set only one overlay, and Herdr does not let a mod import code from another folder, so this folder opens the pop-up view of the `speclink` mod. `scripts/herdr/panel-model.test.mjs` also compares the skill table with `.claude/skills/speclink-*`, so it fails when speclink adds or removes a skill.

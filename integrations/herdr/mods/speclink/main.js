@@ -13,6 +13,7 @@ import {
   panes,
   props,
   run,
+  shared,
   spaces,
   terminals,
   theme,
@@ -207,6 +208,7 @@ export default class SpeclinkPanel extends View {
       on: this.place.on,
       board: this.board,
       known: this.known,
+      preferred: shared("speclink.agent") ?? null,
       worktreePolicy: this.worktreePolicy,
       starting: this.starting,
     };
@@ -536,7 +538,12 @@ export default class SpeclinkPanel extends View {
     return div().size(7).mx(3).flex_none().rounded(4).bg(t[view] ?? t.dim);
   }
 
-  agentChip(id, a, t) {
+  // 目前分頁對應的那一列：左邊一條色帶和淡淡的底色。
+  markCurrent(el, t) {
+    return el.pl(7).border_l(3).border_color(t.accent).bg(`${t.accent}12`);
+  }
+
+  agentChip(id, a, here, t) {
     return h_flex()
       .id(`agent-${id}-${a.address}`)
       .gap(5)
@@ -553,7 +560,10 @@ export default class SpeclinkPanel extends View {
         run("agent.focus", { terminal: a.address });
       })
       .child(programIcon(a.program, 12, t.muted))
-      .child(div().flex_1().min_w_0().truncate().text_color(t.muted).child(`${a.space_name} / ${a.tab_name}`))
+      .child(div().flex_1().min_w_0().truncate().text_color(here ? t.foreground : t.muted).child(`${a.space_name} / ${a.tab_name}`))
+      .when(here, (el) =>
+        el.child(div().flex_none().px(5).rounded(4).bg(`${t.accent}26`).text_size(10).text_color(t.accent).child(tr("目前分頁"))),
+      )
       .child(this.agentStatus(a.view, t));
   }
 
@@ -606,11 +616,13 @@ export default class SpeclinkPanel extends View {
     const blocked = row.blockedBy.length > 0;
     const hint = blocked ? tr("等 {0}", row.blockedBy.join(tr("、"))) : "";
     const percent = row.total > 0 ? Math.round((row.completed / row.total) * 100) : 0;
+    const working = changeAgents(row, ctx.agents);
     const el = v_flex()
       .id(`change-${row.name}`)
       .px(10)
       .py(8)
       .gap(5)
+      .when(working.some((a) => a.tab === ctx.focus.tab), (el) => this.markCurrent(el, t))
       .child(
         h_flex()
           .gap(6)
@@ -645,7 +657,7 @@ export default class SpeclinkPanel extends View {
             .child(div().h_full().rounded(2).w(`${percent}%`).bg(t[stage.tone])),
         ),
       )
-      .children(changeAgents(row, ctx.agents).map((a) => this.agentChip(`change-${row.name}`, a, t)))
+      .children(working.map((a) => this.agentChip(`change-${row.name}`, a, a.tab === ctx.focus.tab, t)))
       .child(this.skillRow({ id: `change-${row.name}`, actions, start, target: row.name, hint }, t));
     return this.openOnClick(el, speclinkUrl("change", this.root, row.name), t);
   }
@@ -653,11 +665,13 @@ export default class SpeclinkPanel extends View {
   discussionRow(d, ctx, t) {
     const actions = discussionActions(d, ctx);
     const hint = d.cuts.length > 0 ? tr("還有 {0} 刀沒轉出", d.cuts.length) : "";
+    const working = discussionAgents(d, ctx.agents);
     const el = v_flex()
       .id(`discussion-${d.slug}`)
       .px(10)
       .py(8)
       .gap(5)
+      .when(working.some((a) => a.tab === ctx.focus.tab), (el) => this.markCurrent(el, t))
       .child(
         h_flex()
           .gap(6)
@@ -672,7 +686,7 @@ export default class SpeclinkPanel extends View {
           .child(this.attachButton(`discussion-${d.slug}`, d.slug, ctx, t))
           .child(this.copyButton(`discussion-${d.slug}`, d.slug, tr("複製 slug"), t)),
       )
-      .children(discussionAgents(d, ctx.agents).map((a) => this.agentChip(`discussion-${d.slug}`, a, t)))
+      .children(working.map((a) => this.agentChip(`discussion-${d.slug}`, a, a.tab === ctx.focus.tab, t)))
       .child(this.skillRow({ id: `discussion-${d.slug}`, actions, target: d.slug, hint }, t));
     return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
   }
@@ -938,12 +952,8 @@ export default class SpeclinkPanel extends View {
               ),
             ),
           )
-          // 還沒初始化時，這些技能在這個專案還不存在。
-          .when(!this.uninitialized, (el) =>
-            el.child(
-              this.headerButton("skills", "zap", tr("技能"), t, () => run("mod.open", { name: "speclink-new" })),
-            ),
-          )
+          // 還沒初始化時，自己裝的技能還是能用。
+          .child(this.headerButton("skills", "zap", tr("技能"), t, () => run("mod.open", { name: "speclink-new" })))
           .when(Boolean(overlay), (el) =>
             el.child(
               div()

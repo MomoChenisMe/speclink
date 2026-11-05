@@ -5,8 +5,11 @@
 
 import { tr } from "./i18n.js";
 
-// 有 speclink 技能的 agent（program.key）與叫用技能的前綴。
-const PREFIX = { claude: "/speclink-", copilot: "/speclink-", codex: "$speclink-" };
+// 有 speclink 技能的 agent（program.key）與叫用技能的前綴。Pi 讀 .agents/skills，和 Codex 共用技能檔。
+const SKILL_PREFIX = { claude: "/", copilot: "/", codex: "$", pi: "/skill:" };
+const PREFIX = Object.fromEntries(Object.entries(SKILL_PREFIX).map(([key, prefix]) => [key, `${prefix}speclink-`]));
+// speclink init --tools 的名稱。
+const SPECLINK_TOOL = { claude: "claude", copilot: "copilot", codex: "codex", pi: "codex" };
 // sending：hc send 要等 agent 開工才回來（約兩秒），這段時間再按一次會重複送出。
 const BUSY = { working: "正在做事", blocked: "在等你回答", error: "出錯了", sending: "正在收指令" };
 
@@ -48,6 +51,48 @@ export const PICKER_SKILLS = [
 
 // 真正存在的技能。疊加的 archive+commit 是兩個技能。
 export const ALL_SKILLS = new Set(PICKER_SKILLS.map((w) => w.skill).filter((skill) => !skill.includes("+")));
+
+// 跳窗清單裡合成一列的技能：同一件事的不同做法，選中後在右邊挑。第一個是預設，也是那一列的名字。
+export const PICKER_VARIANTS = {
+  apply: [
+    { label: "主資料夾", skill: "apply" },
+    { label: "worktree", skill: "apply-with-worktree" },
+  ],
+  quality: [
+    { label: "兩站都跑", skill: "quality" },
+    { label: "只 review", skill: "review" },
+    { label: "只 verify", skill: "verify" },
+  ],
+  archive: [
+    { label: "只封存", skill: "archive" },
+    { label: "封存後提交", skill: "archive+commit" },
+  ],
+};
+const MERGED = new Set(Object.values(PICKER_VARIANTS).flatMap((list) => list.slice(1).map((v) => v.skill)));
+export const PICKER_ROWS = PICKER_SKILLS.filter((w) => !MERGED.has(w.skill));
+const PICKER_GROUPS = [...new Set(PICKER_ROWS.map((w) => w.group))];
+
+// 左邊清單每一組怎麼顯示：closed 收合，open 只列現在能做的，all 全列。choices 是使用者點過的。
+// 沒有變更可以搭配的技能現在做不了，所以藏起來；discuss、propose 沒有討論也能打字開工；「專案」不常用，預設收合。
+export function pickerGroups(countOf, choices = {}) {
+  const canDo = (w) => w.pair === "討論" || (w.pair === "變更" && countOf(w.skill) > 0);
+  return PICKER_GROUPS.map((group) => {
+    const items = PICKER_ROWS.filter((w) => w.group === group);
+    const state = choices[group] ?? (items.some(canDo) ? "open" : "closed");
+    return { group, items, state, rows: state === "closed" ? [] : state === "all" ? items : items.filter(canDo) };
+  });
+}
+
+// ↑↓ 的下一列。收合的組也走得到，走進去就展開（open 是要展開的組），這樣用鍵盤也摸得到每個技能。
+export function pickerStep(groups, skill, step) {
+  const path = groups.flatMap((g) => {
+    if (g.state !== "closed") return g.rows.map((w) => ({ skill: w.skill, open: null }));
+    return [{ skill: g.items[step > 0 ? 0 : g.items.length - 1].skill, open: g.group }];
+  });
+  const at = path.findIndex((x) => x.skill === skill);
+  const from = at === -1 && step < 0 ? 0 : at;
+  return path[(from + step + path.length) % path.length];
+}
 
 // 品質關卡的兩站，值是 .meta.yaml 裡欄位的開頭。
 const STATIONS = { review: "reviewed", verify: "verified" };
@@ -181,7 +226,7 @@ export function skillLabels(skill, name) {
 // hook 用：送出的訊息是 speclink 技能指令時，回傳要貼的標籤，其他訊息回傳 null。名稱只認第一個參數。
 // 變更名稱只有英數，所以中文不算；討論的 slug 可能有中文。疊加的指令（/speclink-archive + /speclink-commit x）算第一個技能。
 export function promptLabels(prompt) {
-  const match = prompt.trimStart().match(/^\/speclink-([a-z-]+)(?:\s+\+\s+\/speclink-[a-z-]+)?(?:\s+(?:--from-discussion\s+)?(\S+))?/);
+  const match = prompt.trimStart().match(/^(?:\/skill:|\/|\$)speclink-([a-z-]+)(?:\s+\+\s+(?:\/skill:|\/|\$)speclink-[a-z-]+)?(?:\s+(?:--from-discussion\s+)?(\S+))?/);
   if (!match || !ALL_SKILLS.has(match[1])) return null;
   const [, skill, name] = match;
   const isChange = PICKER_SKILLS.find((w) => w.skill === skill).pair === "變更";
@@ -389,7 +434,7 @@ function pickAgent({ change, discussion, folder, root, agents, focus }) {
   return current ? { agent: current, where: "tab" } : null;
 }
 
-export function planDelivery({ skill, change = null, discussion = null, args, root, agents, focus, known }) {
+export function planDelivery({ skill, change = null, discussion = null, args, root, agents, focus, known, preferred }) {
   let name = skill;
   let folder = change?.worktree && !MAIN_FOLDER.has(skill) ? change.worktree.path : root;
   let target = pickAgent({ change, discussion, folder, root, agents, focus });
@@ -405,21 +450,33 @@ export function planDelivery({ skill, change = null, discussion = null, args, ro
     const text = commandText(agent.key, name, args);
     return { kind: "send", where, agent, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name ?? discussion?.slug) };
   }
-  return newAgent({ name, args, folder, change, discussion, known });
+  return newAgent({ name, args, folder, change, discussion, known, preferred });
 }
 
-// 新開一個 agent：選最常用且已安裝、有 speclink 技能的那一個。
-function newAgent({ name, args, folder, change, discussion, known }) {
+// 已安裝、有 speclink 技能的 agent，Herdr 依最常用排序。
+export const usableAgents = (known) => (known ?? []).filter((a) => a.installed && Object.hasOwn(PREFIX, a.key));
+
+// 跳窗一開啟要給哪個 agent：目前分頁的 agent，再來是上次選的，最後是最常用的。
+export function defaultAgent({ known, agents, focus, preferred }) {
+  const keys = usableAgents(known).map((a) => a.key);
+  return [inputAgent(agents, focus)?.key, preferred].find((key) => keys.includes(key)) ?? keys[0] ?? null;
+}
+
+// hc --skill：Codex 要帶 --no-daemon，否則它的指令跑在 hc 之外。
+const agentArgv = (pick) => (pick.key === "codex" ? [...pick.run, "--no-daemon"] : pick.run);
+
+// 新開一個 agent：選使用者選的那一個，沒有就選最常用的。
+function newAgent({ name, args, folder, change, discussion, known, preferred }) {
   if (!known) return { kind: "none", where: "none", reason: tr("還在確認可用的 agent") };
-  const pick = known.find((a) => a.installed && Object.hasOwn(PREFIX, a.key));
+  const usable = usableAgents(known);
+  const pick = usable.find((a) => a.key === preferred) ?? usable[0];
   if (!pick) return { kind: "none", where: "none", reason: tr("找不到有 speclink 技能的 agent") };
   return {
     kind: "new",
     where: "new",
     key: pick.key,
     folder,
-    // hc --skill：Codex 要帶 --no-daemon，否則它的指令跑在 hc 之外。
-    argv: pick.key === "codex" ? [...pick.run, "--no-daemon"] : pick.run,
+    argv: agentArgv(pick),
     text: commandText(pick.key, name, args),
     tabName: change || discussion ? `${name} · ${change?.name ?? discussion.slug}` : name,
     change: change?.name ?? null,
@@ -495,7 +552,7 @@ export function skillTargets(skill, board) {
 }
 
 const none = (reason, ...args) => ({ kind: "none", reason: tr(reason, ...args) });
-const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
+export const onlyClaude = (skill, key) => CLAUDE_ONLY.has(skill) && key !== "claude";
 const joinArgs = (target, note) => [target?.args, note].filter(Boolean).join(" ");
 // 控制字元會被終端機當成按鍵（換行就送出了），一律換成空白。
 const pasteable = (text) => text.replace(/[\u0000-\u001f\u007f]/g, " ");
@@ -511,12 +568,11 @@ function inputAgent(agents, focus) {
 const WAITING = "目前分頁的 agent 在等你回答";
 
 // 技能跳窗：把指令放到輸入框。
-export function placePlan({ skill, target, note, agents, focus }) {
+export function placePlan({ skill, target, note, agents, focus, agentKey }) {
   const left = codeLeft(skill, target?.row);
   if (left) return none("還有 {0} 個程式任務沒做完", left);
-  const agent = inputAgent(agents, focus);
-  if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
-  if (agent.status === "blocked") return none(WAITING);
+  const agent = placeTarget(agents, focus, agentKey);
+  if (agent.kind === "none") return agent;
   if (onlyClaude(skill, agent.key)) return none("{0} 只有 Claude Code 能用", skill);
   return {
     kind: "place",
@@ -524,6 +580,15 @@ export function placePlan({ skill, target, note, agents, focus }) {
     text: pasteable(`${commandText(agent.key, skill, joinArgs(target, note))} `),
     labels: skillLabels(skill, target?.name),
   };
+}
+
+// 能放進輸入框的 agent。跳窗選了別的 agent 時不放：指令的寫法和技能都對不上。
+function placeTarget(agents, focus, agentKey) {
+  const agent = inputAgent(agents, focus);
+  if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
+  if (agent.status === "blocked") return none(WAITING);
+  if (agentKey && agent.key !== agentKey) return none("目前分頁是 {0}，要放到輸入框請選它", agent.program?.name ?? agent.key);
+  return agent;
 }
 
 // 面板的附加鈕：把變更或討論的名稱接在輸入框現有的文字後面。讀不到輸入框，所以前後都留空白。
@@ -543,7 +608,7 @@ function unfinishedApply(agents, board) {
 }
 
 // 開新分頁：做法和檢查都跟 herdr-dispatch 技能相同。分頁開在目前的 space，畫面留在原地。
-export function newTabPlan({ skill, target, note, root, agents, known, worktreePolicy, space, on, board }) {
+export function newTabPlan({ skill, target, note, root, agents, known, preferred, worktreePolicy, space, on, board }) {
   const change = target?.kind === "change" ? target.row : null;
   const applying = skill === "apply" || skill === "apply-with-worktree";
   // 只擋正在忙的 agent。標籤在分頁關掉前都留著，做完停著的不算，例如 apply 做完後開新分頁 merge。
@@ -560,7 +625,7 @@ export function newTabPlan({ skill, target, note, root, agents, known, worktreeP
   if (unfinished) return none("{0} 的 apply 還沒做完", unfinished);
   const folder = change?.worktree && !MAIN_FOLDER.has(name) ? change.worktree.path : root;
   const discussion = target?.kind === "discussion" ? { slug: target.name } : null;
-  const d = newAgent({ name, args: joinArgs(target, note), folder, change, discussion, known });
+  const d = newAgent({ name, args: joinArgs(target, note), folder, change, discussion, known, preferred });
   if (d.kind === "none") return d;
   if (onlyClaude(skill, d.key)) return none("{0} 只有 Claude Code 能用", skill);
   return {
@@ -604,4 +669,158 @@ export function batchPlan({ skill, targets, ...context }) {
     return none("一次只能跑一個 archive+commit，同時提交會互相影響");
   }
   return { kind: "tabs", plans, text: plans.map((p) => p.text).join("　") };
+}
+
+// 這個專案沒有這個 agent 用的 Speclink 技能時，技能鈕送出去也沒有用。
+export const missingSkillsPlan = (agentName, key) =>
+  none("這個專案沒有 {0} 的 Speclink 技能。先執行 speclink init --tools {1}", agentName, SPECLINK_TOOL[key]);
+
+// 我的技能：使用者自己裝的技能。Speclink 的在另一頁；內建的不是檔案，也不會掃到。
+
+// 每個 agent 讀哪些資料夾，取自各自的文件。外掛另外算，見 pluginFolders。
+const SKILL_FOLDERS = {
+  claude: [
+    ["project", ".claude/skills"],
+    ["personal", "~/.claude/skills"],
+  ],
+  copilot: [["project", ".github/skills"]],
+  codex: [
+    ["project", ".agents/skills"],
+    ["personal", "~/.agents/skills"],
+    ["personal", "~/.codex/skills"],
+  ],
+  pi: [
+    ["project", ".pi/skills"],
+    ["project", ".agents/skills"],
+    ["personal", "~/.pi/agent/skills"],
+    ["personal", "~/.agents/skills"],
+  ],
+};
+export const skillFolders = (key) => (SKILL_FOLDERS[key] ?? []).map(([source, dir]) => ({ source, prefix: "", dir }));
+
+// Claude Code 外掛的技能資料夾。快取裡有舊版本，所以照安裝紀錄和啟用設定找，不能掃快取。
+// settings 由低到高：使用者、專案、本機。專案範圍的外掛只算這個專案。
+export function pluginFolders(installed, settings, root) {
+  const enabled = Object.assign({}, ...settings.map((s) => s?.enabledPlugins ?? {}));
+  return Object.entries(installed?.plugins ?? {}).flatMap(([key, entries]) => {
+    if (!enabled[key]) return [];
+    const entry = entries.find((e) => e.scope === "user" || e.projectPath === root);
+    return entry ? [{ source: "plugin", prefix: `${key.split("@")[0]}:`, dir: `${entry.installPath}/skills` }] : [];
+  });
+}
+
+// 依名稱猜用途，畫面用來分組。比對順序照這張表（remotion 含 motion，影片要排在動畫前面），對不到的是「其他」。
+const SKILL_USES = [
+  ["3d", /three|webgl/],
+  ["video", /remotion|video|film|youtube|shotcraft/],
+  ["anim", /gsap|motion|cinematic|cinetic|anim/],
+  ["content", /social|publish|writing|article|blog/],
+  ["design", /design|\bui\b|\bux\b|theme|style|shadcn|image/],
+  ["ship", /commit|release|changelog/],
+  ["dev", /tdd|test|debug|refactor|lint/],
+  ["tool", /skill-creator|dispatch|mcp|automation/],
+];
+export const skillUse = (name) => SKILL_USES.find(([, pattern]) => pattern.test(name))?.[0] ?? "other";
+export const SKILL_GROUPS = [
+  { id: "dev", label: "開發", tone: "ansi4" },
+  { id: "design", label: "設計", tone: "ansi5" },
+  { id: "ship", label: "提交與發版", tone: "ansi2" },
+  { id: "video", label: "影片", tone: "ansi1" },
+  { id: "anim", label: "動畫", tone: "ansi3" },
+  { id: "3d", label: "3D", tone: "ansi6" },
+  { id: "content", label: "內容", tone: "foreground" },
+  { id: "tool", label: "工具", tone: "dim" },
+  { id: "other", label: "其他", tone: "dim" },
+];
+
+const SKILL_ABOUT_LIMIT = 200;
+const isSpeclinkSkill = (name) => name.startsWith("speclink-");
+
+// 掃到的 SKILL.md 變成清單。不列 Speclink 的和不能手動叫用的，同名的只留第一個。
+export function skillEntries(found) {
+  const seen = new Set();
+  const skills = [];
+  for (const x of found) {
+    if (isSpeclinkSkill(x.name) || x.invocable === "false" || seen.has(x.name)) continue;
+    seen.add(x.name);
+    const about = (x.description ?? "").replace(/^[>|][-+]?\s*/, "").replace(/^["']|["']$/g, "").trim();
+    skills.push({
+      name: x.name,
+      source: x.source,
+      path: x.source === "plugin" ? x.name.split(":")[0] : x.path,
+      about: about.length > SKILL_ABOUT_LIMIT ? `${about.slice(0, SKILL_ABOUT_LIMIT).trimEnd()}…` : about,
+      use: skillUse(x.name),
+    });
+  }
+  return skills.sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+export const hasSpeclinkSkills = (found) => found.some((x) => isSpeclinkSkill(x.name));
+
+// 同一組裡三個以上開頭相同的技能收成一列（系列）。整組都同一系列時不用多一層，但整組太長就預設收合。
+const FAMILY_MIN = 3;
+const GROUP_OPEN_LIMIT = 12;
+const skillStem = (name) => name.split(/[-:]/)[0];
+
+function familiesIn(items) {
+  const count = new Map();
+  for (const x of items) count.set(skillStem(x.name), (count.get(skillStem(x.name)) ?? 0) + 1);
+  return new Set([...count].filter(([, n]) => n >= FAMILY_MIN && n < items.length).map(([stem]) => stem));
+}
+
+// 我的技能頁的列。有搜尋字時全部攤開，不分系列。
+export function skillRows({ skills, query = "", groupOpen = {}, familyOpen = {} }) {
+  const words = query.trim().toLowerCase();
+  const matched = words ? skills.filter((x) => `${x.name} ${x.about}`.toLowerCase().includes(words)) : skills;
+  const rows = [];
+  const skillRow = (skill, nested) => ({ kind: "skill", key: `s:${skill.name}`, skill, nested });
+  for (const group of SKILL_GROUPS) {
+    const items = matched.filter((x) => x.use === group.id);
+    if (items.length === 0) continue;
+    const families = words ? new Set() : familiesIn(items);
+    const inFamily = (x) => families.has(skillStem(x.name));
+    const lines = items.filter((x) => !inFamily(x)).length + families.size;
+    const open = words ? true : groupOpen[group.id] ?? lines <= GROUP_OPEN_LIMIT;
+    rows.push({ kind: "group", key: `g:${group.id}`, id: group.id, group, count: items.length, open });
+    if (!open) continue;
+    const done = new Set();
+    for (const x of items) {
+      if (!inFamily(x)) {
+        rows.push(skillRow(x, false));
+        continue;
+      }
+      const stem = skillStem(x.name);
+      if (done.has(stem)) continue;
+      done.add(stem);
+      const members = items.filter((y) => skillStem(y.name) === stem);
+      const id = `${group.id}/${stem}`;
+      const hint = members.slice(0, 4).map((y) => y.name.slice(stem.length + 1)).join(tr("、"));
+      rows.push({ kind: "family", key: `f:${id}`, id, name: stem, count: members.length, open: Boolean(familyOpen[id]), hint: members.length > 4 ? `${hint}…` : hint });
+      if (familyOpen[id]) rows.push(...members.map((y) => skillRow(y, true)));
+    }
+  }
+  return rows;
+}
+
+const customCommand = (key, name, note) => `${SKILL_PREFIX[key]}${name}${note ? ` ${note}` : ""}`;
+
+export function customPlacePlan({ name, note, agents, focus, agentKey }) {
+  const agent = placeTarget(agents, focus, agentKey);
+  if (agent.kind === "none") return agent;
+  return { kind: "place", agent, text: pasteable(`${customCommand(agent.key, name, note)} `) };
+}
+
+export function customTabPlan({ name, note, root, known, agentKey, space, on }) {
+  if (!known || !root) return none("還在確認可用的 agent");
+  const usable = usableAgents(known);
+  const pick = usable.find((a) => a.key === agentKey) ?? usable[0];
+  if (!pick) return none("找不到有 speclink 技能的 agent");
+  const text = customCommand(pick.key, name, note);
+  return {
+    kind: "tab",
+    key: pick.key,
+    text,
+    tabName: name,
+    hc: ["run", "--bg", "--json", "--no-parent", ...(on ? ["--on", on] : []), "--cwd", root, "--label", `herdr.space=${space}`, ...agentArgv(pick), text],
+  };
 }
