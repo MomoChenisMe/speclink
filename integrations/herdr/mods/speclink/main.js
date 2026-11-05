@@ -739,7 +739,12 @@ export default class SpeclinkPanel extends View {
           .child(div().flex_1())
           .child(icon(open ? "chevron-down" : "chevron-right", 13, t.muted)),
       )
-      .when(open, (el) => el.children(this.overflow(id, rows, t)));
+      .when(open, (el) => el.children(this.roundLast(this.overflow(id, rows, t))));
+  }
+
+  // 卡片的 overflow_hidden 只裁矩形。最後一列要自己圓角，底色才不會從卡片的圓角露出來。
+  roundLast(rows) {
+    return rows.map((row, i) => (i === rows.length - 1 ? row.rounded_b(9) : row));
   }
 
   // 整波開工不再多問一次：同一列已經寫出會開哪些變更。
