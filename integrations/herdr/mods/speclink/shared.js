@@ -1,7 +1,7 @@
 // 面板和技能跳窗共用的 Herdr 小工具。
 import { exec, focused, hc, panes, run, spaces } from "herdr";
 import { tr } from "./i18n.js";
-import { inside, parseStations, stampedPaths } from "./model.js";
+import { hasSpeclinkSkills, inside, parseStations, pluginFolders, skillEntries, skillFolders, stampedPaths } from "./model.js";
 
 export const firstLine = (text) => text.trim().split("\n")[0];
 
@@ -145,4 +145,53 @@ export function sendError(result) {
   } catch {
     return firstLine(result.stderr) || tr("hc 結束碼 {0}", result.code);
   }
+}
+
+// 讀資料夾裡每個技能 SKILL.md 開頭的欄位。多行的值接在同一欄後面。位元組原樣輸出，JSON 還是 UTF-8。
+// 參數一個資料夾一個：來源、名稱前綴、資料夾，用 tab 隔開。
+const READ_SKILLS = String.raw`
+my @out;
+for my $spec (@ARGV) {
+  my ($source, $prefix, $dir) = split /\t/, $spec, 3;
+  (my $abs = $dir) =~ s{^~(?=/)}{$ENV{HOME}};
+  for my $file (sort glob(qq{"$abs"/*/SKILL.md})) {
+    open(my $fh, "<", $file) or next;
+    my $first = <$fh>;
+    next unless defined $first && $first =~ /^---\s*$/;
+    my (%f, $key);
+    while (my $line = <$fh>) {
+      last if $line =~ /^---\s*$/;
+      if ($line =~ /^([A-Za-z-]+):\s*(.*?)\s*$/) { $key = $1; $f{$key} = $2; }
+      elsif (defined $key && $line =~ /^\s+(\S.*?)\s*$/) { $f{$key} .= " $1"; }
+    }
+    my ($base) = $file =~ m{([^/]+)/SKILL\.md$};
+    push @out, { source => $source, name => $prefix . ($f{name} // $base), description => $f{description} // "", invocable => $f{"user-invocable"} // "", path => "$dir/$base" };
+  }
+}
+print JSON::PP->new->encode(\@out);
+`;
+
+async function readJson(path, options) {
+  const r = await exec("sh", ["-c", `cat "${path}"`], options).catch(() => null);
+  try {
+    return JSON.parse(r?.stdout ?? "");
+  } catch {
+    return null;
+  }
+}
+
+// 這個 agent 的技能：我的技能頁的清單，和這個專案有沒有它用的 Speclink 技能。
+export async function readSkills(key, root, on) {
+  const options = { cwd: root, on };
+  const folders = skillFolders(key);
+  if (key === "claude") {
+    const paths = ["$HOME/.claude/settings.json", ".claude/settings.json", ".claude/settings.local.json"];
+    const [installed, ...settings] = await Promise.all(["$HOME/.claude/plugins/installed_plugins.json", ...paths].map((path) => readJson(path, options)));
+    folders.push(...pluginFolders(installed, settings, root));
+  }
+  const specs = folders.map(({ source, prefix, dir }) => `${source}\t${prefix}\t${dir}`);
+  const r = await exec("perl", ["-MJSON::PP", "-e", READ_SKILLS, "--", ...specs], options);
+  if (r.code !== 0) throw new Error(firstLine(r.stderr) || tr("perl 結束碼 {0}", r.code));
+  const found = JSON.parse(r.stdout);
+  return { skills: skillEntries(found), hasSpeclink: hasSpeclinkSkills(found) };
 }

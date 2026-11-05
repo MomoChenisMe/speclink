@@ -9,7 +9,24 @@ import { fileURLToPath } from 'node:url';
 import {
   ALL_SKILLS,
   APP_ID,
+  PICKER_ROWS,
   PICKER_SKILLS,
+  PICKER_VARIANTS,
+  SKILL_GROUPS,
+  customPlacePlan,
+  customTabPlan,
+  defaultAgent,
+  hasSpeclinkSkills,
+  missingSkillsPlan,
+  onlyClaude,
+  pickerGroups,
+  pickerStep,
+  pluginFolders,
+  skillEntries,
+  skillFolders,
+  skillRows,
+  skillUse,
+  usableAgents,
   attachPlan,
   agentChange,
   batchPlan,
@@ -548,7 +565,7 @@ test('送達第三順位：都沒有就開新分頁，開在該去的資料夾',
 
 test('新分頁選最常用且已安裝的 agent；Codex 要帶 --no-daemon', () => {
   const known = [
-    { key: 'pi', run: ['pi'], installed: true },
+    { key: 'opencode', run: ['opencode'], installed: true },
     { key: 'codex', run: ['codex'], installed: true },
     { key: 'claude', run: ['claude'], installed: true },
   ];
@@ -558,7 +575,7 @@ test('新分頁選最常用且已安裝的 agent；Codex 要帶 --no-daemon', ()
 });
 
 test('沒有可用的 agent 時不開分頁並說明原因', () => {
-  assert.equal(deliver({ known: [{ key: 'pi', run: ['pi'], installed: true }] }).kind, 'none');
+  assert.equal(deliver({ known: [{ key: 'opencode', run: ['opencode'], installed: true }] }).kind, 'none');
   assert.equal(deliver({ known: null }).kind, 'none');
 });
 
@@ -580,7 +597,7 @@ test('同一個變更有多個 agent 時，先送給有空的', () => {
 });
 
 test('沒有 speclink 技能的 agent 不當送達對象', () => {
-  const d = deliver({ agents: [agent({ key: 'pi' })] });
+  const d = deliver({ agents: [agent({ key: 'opencode' })] });
   assert.equal(d.kind, 'new');
 });
 
@@ -1548,7 +1565,7 @@ const code = (file) =>
     .join('\n');
 
 test('語系守門：顯示的中文都有英文，也不用樣板字串繞過 tr', () => {
-  const files = ['mods/speclink/main.js', 'mods/speclink/skill-picker.js', 'mods/speclink/shared.js', 'mods/speclink/model.js', 'spaces-badge/stage-badge.js', 'agents-list/speclink-rows.js'];
+  const files = ['mods/speclink/main.js', 'mods/speclink/skill-picker.js', 'mods/speclink/my-skills.js', 'mods/speclink/shared.js', 'mods/speclink/model.js', 'spaces-badge/stage-badge.js', 'agents-list/speclink-rows.js'];
   for (const file of files) {
     const source = code(file).replace(/\s\/\/.*$/gm, '');
     for (const line of source.split('\n')) {
@@ -1568,4 +1585,237 @@ test('語系守門：dock-panel 翻譯的英文都有中文', () => {
   const keys = [...source.matchAll(/tr\([^"()]*"([^"]+)"(?: : "([^"]+)")?/g)].flatMap((m) => m.slice(1)).filter(Boolean);
   assert.ok(keys.length > 10);
   for (const key of keys) assert.ok(Object.hasOwn(TO_ZH, key), `「${key}」沒有中文`);
+});
+
+// ---- Codex 和 Pi ----
+
+const ALL_AGENTS = [
+  { key: 'claude', name: 'Claude Code', run: ['claude'], installed: true },
+  { key: 'codex', name: 'Codex', run: ['codex'], installed: true },
+  { key: 'pi', name: 'Pi', run: ['pi'], installed: true },
+  { key: 'opencode', name: 'OpenCode', run: ['opencode'], installed: true },
+  { key: 'copilot', name: 'Copilot', run: ['copilot'], installed: false },
+];
+
+test('叫用寫法：每個 agent 用自己的前綴，疊加的技能也一樣', () => {
+  assert.equal(commandText('claude', 'apply', 'a'), '/speclink-apply a');
+  assert.equal(commandText('codex', 'apply', 'a'), '$speclink-apply a');
+  assert.equal(commandText('pi', 'apply', 'a'), '/skill:speclink-apply a');
+  assert.equal(commandText('pi', 'archive+commit', 'a'), '/skill:speclink-archive + /skill:speclink-commit a');
+});
+
+test('Pi 是送達對象；開新分頁時直接帶指令', () => {
+  const d = planDelivery({ ...ctx({ agents: [agent({ key: 'pi' })] }), skill: 'apply', args: 'add-a' });
+  assert.equal(d.kind, 'send');
+  assert.equal(d.text, '/skill:speclink-apply add-a');
+  const fresh = planDelivery({ ...ctx({ known: ALL_AGENTS, preferred: 'pi' }), skill: 'apply', args: 'add-a' });
+  assert.equal(fresh.kind, 'new');
+  assert.deepEqual(fresh.argv, ['pi']);
+  assert.equal(fresh.text, '/skill:speclink-apply add-a');
+});
+
+test('可以選的 agent：要裝好、要有 speclink 技能', () => {
+  assert.deepEqual(usableAgents(ALL_AGENTS).map((a) => a.key), ['claude', 'codex', 'pi']);
+  assert.deepEqual(usableAgents(null), []);
+});
+
+test('開新分頁用選的 agent；選的沒裝就用最常用的', () => {
+  const plan = (preferred) => newTabPlan({ ...ctx({ known: ALL_AGENTS, preferred, space: 's1' }), skill: 'discuss', target: null, note: 'x' });
+  assert.deepEqual(plan('codex').hc.slice(-3), ['codex', '--no-daemon', '$speclink-discuss x']);
+  assert.deepEqual(plan('pi').hc.slice(-2), ['pi', '/skill:speclink-discuss x']);
+  assert.deepEqual(plan('copilot').hc.slice(-2), ['claude', '/speclink-discuss x']);
+});
+
+test('跳窗預設給目前分頁的 agent，再來是上次選的，最後是最常用的', () => {
+  const pick = (over) => defaultAgent({ known: ALL_AGENTS, agents: [], focus: { tab: 'tab1', terminal: null }, preferred: null, ...over });
+  assert.equal(pick({}), 'claude');
+  assert.equal(pick({ preferred: 'pi' }), 'pi');
+  assert.equal(pick({ preferred: 'pi', agents: [agent({ key: 'codex' })] }), 'codex');
+  assert.equal(pick({ preferred: 'copilot' }), 'claude', '選的已經沒裝');
+  assert.equal(defaultAgent({ known: [], agents: [], focus: {}, preferred: 'pi' }), null);
+});
+
+test('放到輸入框：選的 agent 和目前分頁不同時不放', () => {
+  const base = { skill: 'discuss', target: null, note: '', agents: [agent({ program: { name: 'Claude Code' } })], focus: { tab: 'tab1', terminal: 't1' } };
+  assert.equal(placePlan({ ...base, agentKey: 'claude' }).kind, 'place');
+  assert.equal(placePlan(base).kind, 'place', '沒有選時照舊');
+  const other = placePlan({ ...base, agentKey: 'pi' });
+  assert.equal(other.kind, 'none');
+  assert.match(other.reason, /Claude Code/);
+});
+
+test('analyze 只有 Claude Code 有', () => {
+  assert.equal(onlyClaude('analyze', 'claude'), false);
+  assert.equal(onlyClaude('analyze', 'pi'), true);
+  assert.equal(onlyClaude('apply', 'pi'), false);
+});
+
+test('專案沒有這個 agent 的技能時，說明要怎麼裝；Pi 和 Codex 共用同一份', () => {
+  assert.equal(missingSkillsPlan('Pi', 'pi').kind, 'none');
+  assert.match(missingSkillsPlan('Pi', 'pi').reason, /Pi.*--tools codex/);
+  assert.match(missingSkillsPlan('Claude Code', 'claude').reason, /--tools claude/);
+});
+
+test('hook：認得三種叫用寫法', () => {
+  for (const prefix of ['/', '$', '/skill:']) {
+    assert.deepEqual(promptLabels(`${prefix}speclink-apply add-a`), skillLabels('apply', 'add-a'), prefix);
+    assert.deepEqual(promptLabels(`${prefix}speclink-archive + ${prefix}speclink-commit add-a`), skillLabels('archive', 'add-a'), prefix);
+    assert.deepEqual(promptLabels(`${prefix}speclink-propose --from-discussion d`), skillLabels('propose', 'd'), prefix);
+  }
+  assert.equal(promptLabels('$other add-a'), null);
+  assert.equal(promptLabels('/skill:other add-a'), null);
+});
+
+// ---- 跳窗的 Speclink 頁 ----
+
+test('合成一列：每個做法都是真的技能，清單少掉其他做法', () => {
+  const names = new Set(PICKER_SKILLS.map((w) => w.skill));
+  for (const [row, choices] of Object.entries(PICKER_VARIANTS)) {
+    assert.equal(choices[0].skill, row, '第一個是預設，也是那一列的名字');
+    for (const { skill } of choices) assert.ok(names.has(skill), skill);
+  }
+  assert.equal(PICKER_ROWS.length, 16);
+  for (const hidden of ['apply-with-worktree', 'review', 'verify', 'archive+commit']) {
+    assert.ok(!PICKER_ROWS.some((w) => w.skill === hidden), hidden);
+  }
+});
+
+test('清單只列現在能做的：沒有變更時只剩規劃；有變更時藏掉沒得搭配的；專案預設收合', () => {
+  const empty = pickerGroups(() => 0);
+  assert.deepEqual(empty.map((g) => [g.group, g.state]), [['規劃', 'open'], ['實作', 'closed'], ['品質', 'closed'], ['收尾', 'closed'], ['專案', 'closed']]);
+  assert.deepEqual(empty[0].rows.map((w) => w.skill), ['discuss', 'propose']);
+  const counts = { ingest: 5, apply: 5, analyze: 5, drift: 5, quality: 3, 'worktree-merge': 3, commit: 5 };
+  const busy = pickerGroups((skill) => counts[skill] ?? 0);
+  assert.deepEqual(busy.flatMap((g) => g.rows.map((w) => w.skill)), ['discuss', 'propose', 'ingest', 'apply', 'analyze', 'drift', 'quality', 'worktree-merge', 'commit']);
+  assert.equal(busy.find((g) => g.group === '專案').state, 'closed');
+});
+
+test('點過的組照使用者的：all 全列，closed 收起來', () => {
+  const groups = pickerGroups(() => 0, { 專案: 'all', 規劃: 'closed' });
+  assert.equal(groups.find((g) => g.group === '專案').rows.length, 6);
+  assert.equal(groups.find((g) => g.group === '規劃').rows.length, 0);
+});
+
+test('↑↓ 走得到收合的組，走進去就展開；頭尾相接', () => {
+  const groups = pickerGroups(() => 0);
+  assert.deepEqual(pickerStep(groups, 'discuss', 1), { skill: 'propose', open: null });
+  assert.deepEqual(pickerStep(groups, 'propose', 1), { skill: 'apply', open: '實作' });
+  assert.deepEqual(pickerStep(groups, 'discuss', -1), { skill: 'config', open: '專案' });
+  assert.deepEqual(pickerStep(groups, 'not-shown', 1), { skill: 'discuss', open: null });
+});
+
+// ---- 我的技能 ----
+
+const skill = (name, source = 'project', about = `${name} 的說明`) => ({ name, source, path: `.claude/skills/${name}`, about, use: skillUse(name) });
+
+test('用途：實際的技能名稱都分得對，對不到的是其他', () => {
+  const expected = {
+    'remotion-render': 'video',
+    'motion-graphics': 'anim',
+    'gsap-core': 'anim',
+    'threejs-shaders': '3d',
+    'momo-social-publish': 'content',
+    'momo-short-video-publish': 'video',
+    'frontend-design:frontend-design': 'design',
+    'ui-ux-pro-max': 'design',
+    'conventional-commit': 'ship',
+    release: 'ship',
+    'tdd-workflow': 'dev',
+    'herdr-dispatch': 'tool',
+    'skill-creator:skill-creator': 'tool',
+    'terminal-inserts': 'other',
+  };
+  for (const [name, use] of Object.entries(expected)) assert.equal(skillUse(name), use, name);
+  const ids = new Set(SKILL_GROUPS.map((g) => g.id));
+  for (const use of Object.values(expected)) assert.ok(ids.has(use), use);
+});
+
+test('每個 agent 讀自己的資料夾', () => {
+  const dirs = (key) => skillFolders(key).map((f) => f.dir);
+  assert.deepEqual(dirs('claude'), ['.claude/skills', '~/.claude/skills']);
+  assert.ok(dirs('codex').includes('~/.codex/skills'));
+  assert.ok(dirs('pi').includes('.agents/skills') && dirs('pi').includes('~/.pi/agent/skills'));
+  assert.deepEqual(dirs('opencode'), []);
+});
+
+test('外掛：只算已啟用的；專案範圍只算這個專案；不掃快取裡的舊版', () => {
+  const installed = {
+    plugins: {
+      'a@m': [{ scope: 'user', installPath: '/c/a/2' }],
+      'b@m': [{ scope: 'project', projectPath: '/work/repo', installPath: '/c/b/1' }],
+      'c@m': [{ scope: 'project', projectPath: '/work/other', installPath: '/c/c/1' }],
+      'd@m': [{ scope: 'user', installPath: '/c/d/1' }],
+    },
+  };
+  const settings = [{ enabledPlugins: { 'a@m': true, 'c@m': true, 'd@m': true } }, { enabledPlugins: { 'b@m': true, 'd@m': false } }, null];
+  assert.deepEqual(pluginFolders(installed, settings, '/work/repo'), [
+    { source: 'plugin', prefix: 'a:', dir: '/c/a/2/skills' },
+    { source: 'plugin', prefix: 'b:', dir: '/c/b/1/skills' },
+  ]);
+  assert.deepEqual(pluginFolders(null, [null], '/work/repo'), []);
+});
+
+test('清單：不列 Speclink 和不能手動叫用的，同名只留第一個，說明整理過', () => {
+  const found = [
+    { source: 'project', name: 'speclink-apply', description: 'x', invocable: '', path: 'p' },
+    { source: 'project', name: 'shadcn', description: 'x', invocable: 'false', path: 'p' },
+    { source: 'project', name: 'release', description: '"引號"', invocable: '', path: '.claude/skills/release' },
+    { source: 'personal', name: 'release', description: '同名', invocable: '', path: '~/.claude/skills/release' },
+    { source: 'plugin', name: 'frontend-design:frontend-design', description: '> 摺疊 的值', invocable: '', path: '/c/x' },
+    { source: 'personal', name: 'long', description: 'a'.repeat(300), invocable: '', path: 'p' },
+  ];
+  const list = skillEntries(found);
+  assert.deepEqual(list.map((x) => x.name), ['frontend-design:frontend-design', 'long', 'release']);
+  assert.equal(list[2].about, '引號');
+  assert.equal(list[2].source, 'project');
+  assert.equal(list[0].about, '摺疊 的值');
+  assert.equal(list[0].path, 'frontend-design', '外掛顯示外掛的名稱');
+  assert.equal(list[1].about.length, 201);
+  assert.equal(hasSpeclinkSkills(found), true);
+  assert.equal(hasSpeclinkSkills(found.slice(1)), false);
+});
+
+test('列：依用途分組；三個以上同開頭收成系列；整組同系列時不多一層', () => {
+  const skills = ['gsap-a', 'gsap-b', 'gsap-c', 'motion-graphics', 'threejs-a', 'threejs-b', 'threejs-c', 'release'].map((n) => skill(n));
+  const rows = skillRows({ skills });
+  assert.deepEqual(rows.map((r) => r.key), ['g:ship', 's:release', 'g:anim', 'f:anim/gsap', 's:motion-graphics', 'g:3d', 's:threejs-a', 's:threejs-b', 's:threejs-c']);
+  assert.deepEqual(rows.find((r) => r.kind === 'family'), { kind: 'family', key: 'f:anim/gsap', id: 'anim/gsap', name: 'gsap', count: 3, open: false, hint: 'a、b、c' });
+  const opened = skillRows({ skills, familyOpen: { 'anim/gsap': true } });
+  assert.ok(opened.find((r) => r.key === 's:gsap-a').nested);
+  assert.equal(skillRows({ skills, groupOpen: { ship: false } }).some((r) => r.key === 's:release'), false);
+});
+
+test('列：一組太長就預設收合，點過就照使用者的', () => {
+  const skills = Array.from({ length: 13 }, (_, i) => skill(`threejs-${i}`));
+  assert.deepEqual(skillRows({ skills }).map((r) => r.key), ['g:3d']);
+  assert.equal(skillRows({ skills, groupOpen: { '3d': true } }).length, 14);
+});
+
+test('列：有搜尋字時全部攤開，名稱和說明都比對', () => {
+  const skills = [...['gsap-a', 'gsap-b', 'gsap-c', 'motion-graphics'].map((n) => skill(n)), skill('release', 'project', '發版流程')];
+  assert.deepEqual(skillRows({ skills, query: 'gsap-B' }).map((r) => r.key), ['g:anim', 's:gsap-b']);
+  assert.deepEqual(skillRows({ skills, query: '發版' }).map((r) => r.key), ['g:ship', 's:release']);
+  assert.deepEqual(skillRows({ skills, query: 'zzz' }), []);
+});
+
+test('我的技能放到輸入框：用目前分頁的 agent 的寫法，不送出，也不貼 speclink 標籤', () => {
+  const base = { name: 'release', note: '', focus: { tab: 'tab1', terminal: 't1' } };
+  const plan = customPlacePlan({ ...base, agents: [agent({ key: 'pi' })], agentKey: 'pi' });
+  assert.equal(plan.text, '/skill:release ');
+  assert.equal(plan.labels, undefined);
+  assert.equal(customPlacePlan({ ...base, agents: [agent({ key: 'codex' })], agentKey: 'codex', note: 'x\ny' }).text, '$release x y ');
+  assert.equal(customPlacePlan({ ...base, agents: [], agentKey: 'claude' }).kind, 'none');
+  assert.equal(customPlacePlan({ ...base, agents: [agent()], agentKey: 'pi' }).kind, 'none');
+});
+
+test('我的技能開新分頁：用選的 agent，分頁取技能的名字', () => {
+  const base = { name: 'release', note: 'v1', root: REPO, known: ALL_AGENTS, space: 's1', on: null };
+  const claude = customTabPlan({ ...base, agentKey: 'claude' });
+  assert.equal(claude.kind, 'tab');
+  assert.equal(claude.tabName, 'release');
+  assert.deepEqual(claude.hc, ['run', '--bg', '--json', '--no-parent', '--cwd', REPO, '--label', 'herdr.space=s1', 'claude', '/release v1']);
+  assert.deepEqual(customTabPlan({ ...base, agentKey: 'codex' }).hc.slice(-3), ['codex', '--no-daemon', '$release v1']);
+  assert.deepEqual(customTabPlan({ ...base, agentKey: 'pi', on: 'vps' }).hc.slice(4, 6), ['--on', 'vps']);
+  assert.equal(customTabPlan({ ...base, known: null, agentKey: 'claude' }).kind, 'none');
+  assert.equal(customTabPlan({ ...base, known: [], agentKey: 'claude' }).kind, 'none');
 });

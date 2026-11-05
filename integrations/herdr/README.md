@@ -28,9 +28,10 @@
 面板的內容：
 
 - **頂端**：Logo 和專案名稱，下面一行寫「目前的工作區 · 分支」。右邊是「路線圖」和「技能」兩顆鈕。
+- **目前分頁**：目前分頁的 agent 在做某個變更或討論時，那一列左邊有藍色色帶和淡藍的底，agent 那一行標「目前分頁」。那一列捲到畫面外或卡片收起來時看不到標示，要捲動或打開卡片。
 - **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、review 和 verify 的章、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
-- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 Claude Code 裡直接打字時，要裝 hook 面板才知道。
+- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 agent 裡直接打字時，要裝 hook 面板才知道。
 - **技能鈕**：每列放建議的下一步，建議怎麼決定見「各階段的技能」。`⋯` 在列上展開這一列其他能用的技能，按一下就送出，規則和建議的那一顆相同，見「技能會送給誰」。沒有其他技能的列沒有 `⋯`。滑鼠停在鈕上會寫出會送給誰。
 - **開工**：變更列上的鈕，在目前的工作區為這個變更開一個專用的新 agent。見下面的「開工」。
 - **技能**：頂端的鈕或 `⌘⇧N` 開跳窗，選技能和搭配的變更或討論。要開新分頁、放到輸入框或勾多個變更時用它。見下面的「技能跳窗」。
@@ -56,7 +57,7 @@
 
 ### 不是 Speclink 專案時
 
-目前的 space 不是 Speclink 專案時，面板顯示一張提示卡，寫出專案資料夾和「初始化」鈕。沒有「路線圖」和「技能」，因為這些功能在這裡還用不了。
+目前的 space 不是 Speclink 專案時，面板顯示一張提示卡，寫出專案資料夾和「初始化」鈕。沒有「路線圖」。「技能」還在，跳窗會直接開「我的技能」頁，因為自己裝的技能不用初始化也能用。
 
 按「初始化」會開一個新分頁，在專案資料夾執行 `speclink init`。它會逐題問要產生哪些 agent 的檔案，答完才寫入。不想初始化就關掉那個分頁。初始化完成後，面板在 10 秒內換成變更清單。
 
@@ -78,7 +79,7 @@
 | 討論中 | **discuss** |
 | 已定案，或還有刀沒轉出 | **propose --from-discussion**、discuss |
 
-`archive+commit` 送出的指令和 Claude Code mod 相同：`/speclink-archive + /speclink-commit <變更>`。Claude Code 只把第一個斜線指令當成指令，後面的是它的參數，模型封存後會接著提交。技能跳窗裡它在「收尾」那一組，一次只能開一個，因為同時提交會互相影響。
+`archive+commit` 送出的指令和 Claude Code mod 相同：`/speclink-archive + /speclink-commit <變更>`。Claude Code 只把第一個斜線指令當成指令，後面的是它的參數，模型封存後會接著提交。技能跳窗裡它是 `archive` 的一個做法，一次只能開一個，因為同時提交會互相影響。
 
 ### 章的圖示
 
@@ -95,9 +96,9 @@
 
 ### 追蹤直接打的指令（選用）
 
-從面板和技能跳窗開始的工作，面板都知道。在 Claude Code 裡直接打字時，面板要靠 hook 才知道，否則那一列看不到 agent，開工鈕也還在。
+從面板和技能跳窗開始的工作，面板都知道。在 agent 裡直接打字時，面板要靠 hook 才知道，否則那一列看不到 agent，開工鈕也還在。
 
-在 `~/.claude/settings.json` 加上這段，新開的 Claude Code session 就會生效：
+**Claude Code：** 在 `~/.claude/settings.json` 加上這段，新開的 session 就會生效：
 
 ```json
 "hooks": {
@@ -113,7 +114,23 @@
 - **`PostToolUse`**：模型自己叫用技能時，記下技能和參數。agent 跑了會動到變更或討論的 speclink 指令時，記下名稱。所以指令沒帶名稱、用一般句子下指令、提案新建的變更、討論新建的 slug 都認得出來。`show`、`status` 這類查詢不算，可能只是提到。它在背景跑，不會拖慢指令。
 - **`SessionStart`**：`/clear` 和 `/resume` 換了對話，清掉舊的標籤。
 
-它們不會輸出任何東西，也不會擋住訊息。不在 Herdr 裡時什麼都不做。只支援 Claude Code，而且 `--resume` 接回的對話要等下一個指令才認得出來。
+它們不會輸出任何東西，也不會擋住訊息。不在 Herdr 裡時什麼都不做。`--resume` 接回的對話要等下一個指令才認得出來。
+
+**Codex：** 在 `~/.codex/hooks.json` 加上這段，路徑換成你的絕對路徑。開 Codex 時它會問要不要信任這個 hook，選信任才會生效。它認得訊息開頭的 `$speclink-…`。
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [{ "hooks": [{ "type": "command", "command": "node /Users/you/.config/herdr-app/mods/speclink/label-skill.mjs", "timeout": 5 }] }]
+  }
+}
+```
+
+**Pi：** 在 `~/.pi/agent/settings.json` 加上這段，路徑換成你的絕對路徑。它認得訊息開頭的 `/skill:speclink-…` 和 Pi 跑的 speclink 指令，新對話和接回的對話會清掉舊的標籤。
+
+```json
+{ "extensions": ["/Users/you/.config/herdr-app/mods/speclink/pi-labels.ts"] }
+```
 
 ### 技能會送給誰
 
@@ -121,7 +138,7 @@
 
 1. 正在做這個變更的 agent。
 2. 目前分頁的 agent。
-3. 都沒有就開新分頁，跑最常用且已安裝的 agent。
+3. 都沒有就開新分頁，跑技能跳窗上次選的 agent。沒選過就跑最常用且已安裝的 agent。
 
 每一步都會檢查 agent 所在的資料夾。有 worktree 的變更要在 worktree 裡跑技能；archive、worktree-merge、apply-with-worktree 要在主資料夾跑。agent 在別的資料夾就換下一步。有 worktree 但裡面沒有 agent 時，apply 鈕會改送 apply-with-worktree，接續原本的 worktree。
 
@@ -129,7 +146,7 @@ agent 在做事、在等你回答或出錯時不送，按鈕變灰，滑鼠停�
 
 列上的鈕一定照這個順序。變更有停著的 agent 時，要讓它在新分頁跑，請用頂端的「技能」鈕。
 
-Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
+Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`，Pi 送 `/skill:speclink-<技能>`。Pi 讀 `.agents/skills`，所以和 Codex 共用 `speclink init --tools codex` 產生的檔案。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
 
 ### 開工
 
@@ -153,7 +170,12 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 按頂端的「技能」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
 
-- **左邊**：所有技能，分成規劃、實作、品質、收尾、專案五組。用 `↑` `↓` 或滑鼠選。右邊的數字是現在有幾個變更或討論可以搭配，沒有變更可搭配的技能會變淡。「專案」組用在整個專案，不搭配東西，所以沒有數字。
+跳窗有兩頁，點頁名或按 `Tab` 切換：**Speclink** 和**我的技能**。裝了兩個以上的 agent 時，右上角可以選要給哪一個。
+
+**Speclink 頁：**
+
+- **左邊**：技能分成規劃、實作、品質、收尾、專案五組，每組只列現在能做的。沒有變更可搭配的技能先藏起來，整組都沒有就收合；「專案」組預設收合。點組名可以展開全部或收合。用 `↑` `↓` 或滑鼠選，走到收合的組會自動展開。右邊的數字是現在有幾個變更或討論可以搭配。「專案」組用在整個專案，不搭配東西，所以沒有數字。
+- **做法**：同一件事的不同做法合成一列，選中後在右邊挑，或按 `⇧←` `⇧→`。`apply` 選主資料夾或 worktree；`quality` 選兩站都跑、只 review 或只 verify；`archive` 選只封存或封存後提交。
 - **右邊**：這個技能能搭配的變更或討論，規則和技能鈕相同。用 `←` `→` 或滑鼠選，也可以不指定。打開時不會先選好變更。不搭配變更的技能（discuss、propose 和專案組）有輸入框，可以打主題或補充說明。
 - **底部**：寫出會打進去的指令，或為什麼現在不能用。
 
@@ -170,6 +192,16 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 這些變更沒有勾選框，那一列會寫原因：已經有 agent 正在忙（做完停著的不算，所以 apply 做完後可以開新分頁跑 worktree-merge）、被別的變更擋住（apply）、主資料夾有 apply 還沒做完、專案沒開 worktree 流程（apply-with-worktree）。同時勾兩個都要在主資料夾跑的 apply 時，底部會請你改選 apply-with-worktree。`archive+commit` 一次只能勾一個。
 
+**我的技能頁：** 列出你自己裝的技能，選中的列展開完整說明。這些技能不搭配變更，所以只有一個「補充說明」，會接在指令後面。
+
+- **列哪些**：Claude Code 是專案的 `.claude/skills`、`~/.claude/skills` 和已啟用外掛的技能；Codex 是專案的 `.agents/skills`、`~/.agents/skills`、`~/.codex/skills`；Pi 是專案的 `.pi/skills`、`.agents/skills`、`~/.pi/agent/skills`、`~/.agents/skills`。
+- **不列哪些**：`speclink-*`（在另一頁）、agent 內建的技能、Anthropic 同步來的 `~/.claude/skills/synced`、`~/.codex/skills/.system`、標記 `user-invocable: false` 的技能。
+- **分組**：依名稱猜用途，分成開發、設計、提交與發版、影片、動畫、3D、內容、工具、其他，每組有自己的顏色。每一列右邊標來源（專案、個人、外掛）。
+- **系列**：同一組裡三個以上開頭相同的技能收成一列，例如 `gsap`，點開才列出來。一組超過 12 列時，整組預設收合。
+- **搜尋**：上面的搜尋框比對名稱和說明，有字時全部攤開。`→` 移到補充說明，`←` 移回來。
+
+**給哪個 agent：** 跳窗打開時預設目前分頁的 agent，再來是上次選的，最後是最常用的。你選的 agent 也會用在面板列上的鈕要開新分頁時。「放到輸入框」只能給目前分頁的 agent，選了別的 agent 時這顆鈕不能用，因為指令的寫法和技能都對不上。專案沒有這個 agent 用的 Speclink 技能時，Speclink 頁會寫要執行哪一行。analyze 只有 Claude Code 能用，選別的 agent 時會變淡。
+
 ### 叫 Speclink 開頁面
 
 面板用 `open` 送出 `speclink://` 網址，桌面 app 會切到這個專案再開頁面。app 沒開時會自動啟動。網址只能開啟與檢視，不會寫入任何檔案。
@@ -183,7 +215,8 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
 - 要停靠或裝 hook 時需要 Node.js，用來執行複製版面的腳本和 hook。
-- 要判斷章有沒有過期時需要 `perl`。macOS 內建。
+- 要判斷章有沒有過期、讀「我的技能」時需要 `perl`。macOS 內建。
+- 要用 Codex 或 Pi 時，`codex`、`pi` 要在 PATH 上，Herdr 才選得到。專案要有 `.agents/skills`（`speclink init --tools codex`）。Pi 要先信任專案、登入模型。Codex 內建在 ChatGPT app 裡時，連一個到 PATH：`ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`。Pi 用 `npm i -g @earendil-works/pi-coding-agent` 安裝。
 
 ## 安裝
 
@@ -278,11 +311,13 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **章是面板自己讀的**：CLI 的 `list --json` 刻意不帶章，所以面板讀變更資料夾的 `.meta.yaml`，再用 `perl` 算檔案指紋。有 worktree 的變更讀 worktree 裡的那份。機器上沒有 `perl` 或它的 `Digest::SHA` 時只看任務數。最後的判斷還是在 `speclink archive`，章過期時它會拒絕。
 - **範圍內的檔案改了，最多 10 秒才會變色**：那些檔案不在面板監看的資料夾裡，要等計時更新。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
-- **Codex 只查證了寫法**：叫用寫法取自 speclink 的文件與技能輸出，還沒有實際送給 Codex 測過。
+- **Codex 和 Pi 測到哪裡**：在隔離的 Herdr 視窗用真的程式測過狀態回報、貼進輸入框、開工和貼標籤。Codex 只跑一輪就中斷，Pi 沒有登入模型，只看到指令送出。沒有讓它們做完一整個變更。Codex 的 hook 只測過 `UserPromptSubmit`。
 - **一次開多個分頁可能撞 git 鎖**：和整波開工相同，撞到時那個 agent 會停下來回報。
 - **按鈕和資料夾的名稱不一樣**：按鈕叫「技能」，資料夾還是 `speclink-new`，這樣 `keys.json` 不用改。
 - **貼進輸入框只有 macOS，要約 0.7 秒**：Herdr 沒有「只貼上不按 Enter」的指令，所以面板用 `script` 開一個看不見的 `hc attach`，送出貼上的資料後離開。它是一次貼上，不是打字，不碰剪貼簿，也不會改變終端機大小。附加鈕在貼上時顯示轉動的圓弧，貼完顯示勾勾。其他系統的 `script` 用法不同，會失敗並跳通知，這時請改用「開新分頁並開工」。
-- **技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。
+- **列上的技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。技能跳窗會看，沒有時會寫要怎麼裝。
+- **我的技能的用途是用名稱猜的**：比對 `model.js` 的 `SKILL_USES`，對不到的放「其他」。說明是 `SKILL.md` 的原文，不翻譯。
+- **外掛只算 Claude Code**：Codex 外掛的技能不列。
 - **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，但只叫出這台電腦的 app，不切專案。
 - **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣會問。選「用 worktree」的話，技能會自己停下來並說明。
 - **worktree 不會自動出現在左邊**：agent 的終端機留在主資料夾，只在每個指令切到 worktree，所以 Herdr 不會多一列 worktree。要在 worktree 開 shell 或跑測試時，用 Herdr 內建的 Open worktree。
@@ -302,4 +337,4 @@ herdr-app check ~/.config/herdr-app/mods/speclink
 herdr-app check ~/.config/herdr-app/mods/speclink-new
 ```
 
-`model.js` 是純邏輯：資料合併、技能表、章的判斷、送達決策，測試直接跑它。`i18n.js` 是介面文字的對照表。`shared.js` 放面板和跳窗共用、會碰 Herdr API 的小工具，包括讀章。`label-skill.mjs` 是追蹤指令的 hook。`main.js` 是面板畫面與 Herdr API，`skill-picker.js` 是技能跳窗（選擇的畫面，放到輸入框和開新分頁的規則在 `model.js`），`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
+`model.js` 是純邏輯：資料合併、技能表、章的判斷、送達決策，測試直接跑它。`i18n.js` 是介面文字的對照表。`shared.js` 放面板和跳窗共用、會碰 Herdr API 的小工具，包括讀章。`label-skill.mjs` 是追蹤指令的 hook。`main.js` 是面板畫面與 Herdr API，`my-skills.js` 是跳窗的「我的技能」頁，`pi-labels.ts` 是 Pi 用的追蹤標籤 extension。`skill-picker.js` 是技能跳窗（選擇的畫面，放到輸入框和開新分頁的規則在 `model.js`），`column-sync.js` 讓右邊那一欄每個 space 各自記住開關。它放在 `dock-panel.mjs` 加的隱形浮動區塊裡，因為那一欄收起來後面板不會重畫。`speclink-new` 只有設定：一個 mod 只能設定一種 overlay，Herdr 也不讓 mod 引用別的資料夾的程式，所以用它開出 `speclink` mod 的跳窗畫面。`scripts/herdr/panel-model.test.mjs` 也拿技能表對照 `.claude/skills/speclink-*`：speclink 新增或移除技能時，這個測試會提醒你同步。
