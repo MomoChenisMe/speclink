@@ -181,14 +181,14 @@ The pop-up has two pages: **Speclink** and **My skills**. Click a page name or p
 
 The bottom has two buttons, one for each result:
 
-- **Put in input box (Enter).** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
-- **Open a new tab and start (`⌘Enter`).** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
+- **Put in input (Enter).** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
+- **Start new tab (`⌘Enter`).** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
 
 When the skill uses a change, each row has a checkbox, so you can open many tabs at once, one tab for each change. Click the box or press `Space` to check a row. Use `⌘A` or "All" to check all rows. A click on the row only selects it and does not check it.
 
 - No check: both buttons use the selected row.
 - One check: both buttons use the checked row.
-- Two or more checks: the left button changes to "Open N tabs and start". "Put in input box" does not work, because the input box takes one command at a time.
+- Two or more checks: the left button changes to "Start N tabs". "Put in input" does not work, because the input box takes one command at a time.
 
 These rows have no checkbox and show the reason: an agent is busy on the change (an agent that finished and stopped does not count, so you can open a new tab for worktree-merge after apply), another change blocks it (apply), an apply in the main folder is not finished, or the project has no worktree flow (apply-with-worktree). If you check two applies that both need the main folder, the bottom line asks you to use apply-with-worktree. You can check only one row for `archive+commit`.
 
@@ -200,7 +200,7 @@ These rows have no checkbox and show the reason: an agent is busy on the change 
 - **Families**: three or more skills in a group with the same start share one row, for example `gsap`. Click it to list them. A group with more than 12 rows is closed by default.
 - **Search**: the search box matches names and descriptions. When it has text, all rows open. `→` moves to the note and `←` moves back.
 
-**Which agent:** the pop-up starts with the agent in the current tab, then the agent you last selected, then the most used agent. The panel row buttons also use the agent you selected when they open a new tab. "Put in input box" works only for the agent in the current tab. If you select another agent, this button does not work, because the command form and the skills do not match. If the project has no Speclink skills for this agent, the Speclink page shows the command to run. Only Claude Code can use analyze, so it shows dim for other agents.
+**Which agent:** the pop-up starts with the agent in the current tab, then the agent you last selected, then the most used agent. The panel row buttons also use the agent you selected when they open a new tab. "Put in input" works only for the agent in the current tab. If you select another agent, this button does not work, because the command form and the skills do not match. If the project has no Speclink skills for this agent, the Speclink page shows the command to run. Only Claude Code can use analyze, so it shows dim for other agents.
 
 ### Open in Speclink
 
