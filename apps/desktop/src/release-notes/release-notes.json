@@ -1,5 +1,73 @@
 [
   {
+    "version": "0.12.0",
+    "date": "2026-11-05",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "`speclink plan` now lists the cuts in discussion conclusions that have no change yet. `plan --json` shows them in a new `unpromotedCuts` key.",
+            "zh-TW": "`speclink plan` 會列出討論結論中尚未轉出的刀，`plan --json` 也多了 `unpromotedCuts` 欄位。"
+          },
+          {
+            "en": "The desktop app now opens `speclink://` links. Another program can send a link to open the detail page of a change or discussion in its project, and the link starts the app if it is not running. On Windows and Linux, a second start of the app now brings the open window to the front.",
+            "zh-TW": "桌面 app 支援 `speclink://` 網址：其他程式可直接打開某專案的變更或討論詳情頁，app 沒在執行時會自動啟動；Windows、Linux 再次啟動 app 時，改為把已開的視窗帶到前景。"
+          },
+          {
+            "en": "The board page now has a roadmap view. It shows each wave as a column, draws the dependencies between changes, and lists the cuts that have no change yet with a button that copies the promote command. The `speclink://roadmap` link opens this view.",
+            "zh-TW": "看板頁新增路線圖檢視：每一波一欄、畫出變更之間的依賴，並列出尚未轉出的刀與複製轉出指令的鈕，也能用 `speclink://roadmap` 網址直接打開。"
+          },
+          {
+            "en": "The new `speclink://project` link switches the desktop app to a project and shows its board. The Logo in the Herdr panel uses this link to open the project of the current space.",
+            "zh-TW": "新增 `speclink://project` 網址：桌面 app 會切到該專案並顯示看板，Herdr 面板的 Logo 用它切到目前 space 的專案。"
+          },
+          {
+            "en": "A new Herdr mod in `integrations/herdr/` shows the changes and discussions of the current project in a panel. You can dock the panel as a right column or open it as a floating window, and it follows the project of the focused terminal. It needs Herdr 0.1.13 or later.",
+            "zh-TW": "新增 Herdr mod（`integrations/herdr/`）：用面板顯示目前專案的變更與討論，可停靠在視窗右邊一欄或開成浮動視窗，並跟著焦點所在的終端機切換專案，需要 Herdr 0.1.13 以上。"
+          },
+          {
+            "en": "Each panel row suggests the next skill from the stage and stamps of the change, and one click sends it to the correct agent. The `⋯` button shows the other skills that the row can use. The row also shows the review and verify stamps, and it suggests `worktree-merge` or `archive+commit` when they come next.",
+            "zh-TW": "面板每一列依階段和章建議下一個技能，按一下就送給對的 agent，`⋯` 可展開這一列其他能用的技能，列上也會顯示審查與驗證的章，並在該收尾時建議 `worktree-merge` 或 `archive+commit`。"
+          },
+          {
+            "en": "The start button opens a new agent in the current space. If the project uses the worktree flow, it first asks whether to use a worktree or run apply directly. The skill dialog (`⌘⇧N`) lets you pick a skill and its changes, then open new tabs or put the command in the input box. A button on each row adds the name to the input box of the current tab.",
+            "zh-TW": "開工鈕會在目前的 space 開新 agent，有開 worktree 流程時先問要用 worktree 還是直接 apply；技能跳窗（`⌘⇧N`）可選技能與搭配的變更，再開新分頁或放到輸入框；列上的附加鈕會把名稱接到目前分頁的輸入框。"
+          },
+          {
+            "en": "Panel rows show the agent that works on each change or discussion, with its state, and one click jumps to it. An optional Claude Code hook also tracks the commands that you type by hand.",
+            "zh-TW": "面板列上會顯示正在做該變更或討論的 agent 與狀態，點了就切過去，另有選用的 Claude Code hook 可追蹤手打的指令。"
+          },
+          {
+            "en": "The Claude Code `speclink-skills` plugin now reports the current change to Herdr as soon as it knows the change, so the panel stays in sync.",
+            "zh-TW": "Claude Code 的 `speclink-skills` 外掛會即時把目前的變更回報給 Herdr，面板就能保持同步。"
+          },
+          {
+            "en": "The docked layout also connects the left sidebar to Speclink. Project rows in Spaces show the number of changes in each stage. The Agents list groups agents by space and state, and shows the stage and task progress.",
+            "zh-TW": "停靠版面的左側欄也接上 Speclink：Spaces 清單依階段顯示變更數量，Agents 清單依 space 和狀態分組，並顯示階段與任務進度。"
+          },
+          {
+            "en": "The panel, the skill dialog, and the built-in Herdr screens follow the system language: Chinese on a Chinese system, and English on other systems.",
+            "zh-TW": "面板、技能跳窗與 Herdr 內建畫面都跟隨系統語言：中文系統用中文，其他系統用英文。"
+          },
+          {
+            "en": "When the current space is not a Speclink project, the panel shows a card with an init button that runs `speclink init` in a new tab.",
+            "zh-TW": "目前的 space 不是 Speclink 專案時，面板會顯示提示卡，按「初始化」就在新分頁執行 `speclink init`。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "The discussion detail page, `speclink plan`, and the roadmap now use one rule to find cuts. Bullets that start with `*`, `+`, or a number, and bold text outside a bullet, are no longer cuts and stay in the decision details. With an older server, the page shows no cut section.",
+            "zh-TW": "討論詳情頁、`speclink plan` 與路線圖改用同一套方式判定分刀：以 `*`、`+`、編號起頭的列點與列點外的粗體段落不再算刀、會留在定案細節，連到舊版 server 時則不顯示分刀區段。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.11.0",
     "date": "2026-10-27",
     "sections": [

@@ -1,6 +1,27 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.12.0 (2026-11-05)
+
+### New features
+
+- `speclink plan` now lists the cuts in discussion conclusions that have no change yet. `plan --json` shows them in a new `unpromotedCuts` key.
+- The desktop app now opens `speclink://` links. Another program can send a link to open the detail page of a change or discussion in its project, and the link starts the app if it is not running. On Windows and Linux, a second start of the app now brings the open window to the front.
+- The board page now has a roadmap view. It shows each wave as a column, draws the dependencies between changes, and lists the cuts that have no change yet with a button that copies the promote command. The `speclink://roadmap` link opens this view.
+- The new `speclink://project` link switches the desktop app to a project and shows its board. The Logo in the Herdr panel uses this link to open the project of the current space.
+- A new Herdr mod in `integrations/herdr/` shows the changes and discussions of the current project in a panel. You can dock the panel as a right column or open it as a floating window, and it follows the project of the focused terminal. It needs Herdr 0.1.13 or later.
+- Each panel row suggests the next skill from the stage and stamps of the change, and one click sends it to the correct agent. The `⋯` button shows the other skills that the row can use. The row also shows the review and verify stamps, and it suggests `worktree-merge` or `archive+commit` when they come next.
+- The start button opens a new agent in the current space. If the project uses the worktree flow, it first asks whether to use a worktree or run apply directly. The skill dialog (`⌘⇧N`) lets you pick a skill and its changes, then open new tabs or put the command in the input box. A button on each row adds the name to the input box of the current tab.
+- Panel rows show the agent that works on each change or discussion, with its state, and one click jumps to it. An optional Claude Code hook also tracks the commands that you type by hand.
+- The Claude Code `speclink-skills` plugin now reports the current change to Herdr as soon as it knows the change, so the panel stays in sync.
+- The docked layout also connects the left sidebar to Speclink. Project rows in Spaces show the number of changes in each stage. The Agents list groups agents by space and state, and shows the stage and task progress.
+- The panel, the skill dialog, and the built-in Herdr screens follow the system language: Chinese on a Chinese system, and English on other systems.
+- When the current space is not a Speclink project, the panel shows a card with an init button that runs `speclink init` in a new tab.
+
+### Improvements
+
+- The discussion detail page, `speclink plan`, and the roadmap now use one rule to find cuts. Bullets that start with `*`, `+`, or a number, and bold text outside a bullet, are no longer cuts and stay in the decision details. With an older server, the page shows no cut section.
+
 ## 0.11.0 (2026-10-27)
 
 ### New features
