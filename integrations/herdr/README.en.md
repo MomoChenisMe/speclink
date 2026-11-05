@@ -68,6 +68,7 @@ Only a project that is not initialized shows this card. Other problems, such as 
 | State | Available skills (bold is the suggested next step, the one the row shows) |
 | --- | --- |
 | Proposed, not blocked | **apply**, analyze, ingest, drift, commit |
+| Proposed, not blocked, code tasks left, `worktree` on, no worktree yet | the same, plus apply-with-worktree next to apply. When the row has the Start button, apply-with-worktree is under ⋯, because Start already offers a worktree |
 | Proposed, blocked | apply is disabled, analyze, ingest, drift, commit |
 | In progress | **apply**, ingest, drift, verify, quality, review, analyze, commit |
 | In progress, only manual tasks left | the same, but the suggestion changes to **quality**, and there is no Start button |
@@ -160,7 +161,7 @@ Start is different from a skill button. A skill button first tries an existing a
 
 The main folder runs one apply at a time. If an apply there is not finished, the apply-directly button does not work, and its tooltip names the change. The button works again when the tasks of that change are done or the change is archived, even if its tab is still open.
 
-A change has the Start button only if it is not blocked, has unfinished tasks and has no agent on it. A change whose discussion was concluded again needs ingest first, so it has no Start button.
+A change has the Start button only if it is not blocked, has unfinished tasks and has no agent on it. When a proposed change already has an agent (for example, the session that wrote the proposal), the row shows both `apply` and `apply-with-worktree`, so you can still choose. A change whose discussion was concluded again needs ingest first, so it has no Start button.
 
 **Start the whole wave**: when `worktree` is on and the earliest wave has two or more changes that can start, a bar shows at the top of the panel and names those changes. One click starts all of them with no more questions, always with a worktree. The waves come from `speclink plan`.
 

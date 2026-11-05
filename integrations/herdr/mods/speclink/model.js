@@ -287,11 +287,18 @@ function suggestedSkill(row, skills) {
   return skills[0];
 }
 
-export function changeSkills(row) {
+// 沒被擋、還有程式任務、討論也沒有重新定案，才能開始做。
+const canStart = (row) => row.stage !== "ready" && row.codeRemaining !== 0 && row.blockedBy.length === 0 && !row.restale;
+
+// 還沒開始做的變更，可以選在主資料夾或 worktree 做。已有 worktree 時，apply 鈕會接續它。
+const choosesWorktree = (row, worktreePolicy) => worktreePolicy && row.stage === "proposed" && !row.worktree && canStart(row);
+
+export function changeSkills(row, worktreePolicy = false) {
   // 有 worktree 就要先合併才能封存。合併不看任務做到哪裡，所以每個階段都能選。
-  const skills = row.worktree
+  const stageSkills = row.worktree
     ? [...STAGE_SKILLS[row.stage].filter((skill) => !skill.startsWith("archive")), "worktree-merge"]
     : STAGE_SKILLS[row.stage];
+  const skills = choosesWorktree(row, worktreePolicy) ? [stageSkills[0], "apply-with-worktree", ...stageSkills.slice(1)] : stageSkills;
   const suggested = suggestedSkill(row, skills);
   return skills.map((skill) => {
     const waiting = skill === "apply" && row.blockedBy.length > 0;
@@ -305,9 +312,11 @@ export function changeSkills(row) {
 }
 
 // 列上放建議的那一顆，其他的按 ⋯ 才展開。apply 被擋時沒有建議，放第一顆。
-export function rowChoices(actions) {
+// apply-with-worktree 是 apply 的另一種做法，也放列上。有開工鈕時不放，因為開工已經能選 worktree。
+export function rowChoices(actions, start = null) {
   const next = actions.find((a) => a.primary) ?? actions[0];
-  return { next, others: actions.filter((a) => a !== next) };
+  const beside = start ? [] : actions.filter((a) => a.skill === "apply-with-worktree");
+  return { next, beside, others: actions.filter((a) => a !== next && !beside.includes(a)) };
 }
 
 export function discussionSkills(d) {
@@ -497,8 +506,7 @@ function newAgent({ name, args, folder, change, discussion, known, preferred }) 
 // 討論重新定案的變更要先 ingest，不直接開工。回傳可以選的做法，沒有鈕時是 null。
 // 已有 worktree 就接續，沒開 worktree 流程就只能直接 apply，這兩種不用問；其他情況要問用 worktree 還是直接 apply。
 export function startChoices(row, ctx) {
-  const open = row.stage !== "ready" && row.codeRemaining !== 0 && row.blockedBy.length === 0 && !row.restale;
-  if (!open || ctx.starting?.has(row.name) || changeAgents(row, ctx.agents).length > 0) return null;
+  if (!canStart(row) || ctx.starting?.has(row.name) || changeAgents(row, ctx.agents).length > 0) return null;
   const target = { kind: "change", name: row.name, args: row.name, row };
   const choice = (label, skill) => ({ label, plan: newTabPlan({ ...ctx, skill, target, note: "" }) });
   if (row.worktree) return [choice("開工", "apply-with-worktree")];
@@ -521,7 +529,7 @@ export function waveToStart(stages, ctx) {
 const deliveryKey = (d) => d?.agent?.key ?? d?.key;
 
 export function changeActions(row, ctx) {
-  return changeSkills(row)
+  return changeSkills(row, ctx.worktreePolicy)
     .map((s) => ({
       ...s,
       delivery: s.waitingFor ? null : planDelivery({ ...ctx, skill: s.skill, change: row, args: s.args }),

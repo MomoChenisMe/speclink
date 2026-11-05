@@ -225,6 +225,24 @@ test('changeSkills：被擋時 apply 要等前一個變更，也不算建議', (
   assert.deepEqual(primary(skills), []);
 });
 
+test('changeSkills：提案中可以選 worktree，建議仍是 apply', () => {
+  const skills = changeSkills(row({ stage: 'proposed' }), true);
+  assert.deepEqual(names(skills), ['apply', 'apply-with-worktree', 'analyze', 'ingest', 'drift', 'commit']);
+  assert.deepEqual(primary(skills), ['apply']);
+});
+
+test('changeSkills：不能選 worktree 的情況不多這一顆', () => {
+  const absent = (over, policy = true) =>
+    assert.ok(!names(changeSkills(row({ stage: 'proposed', ...over }), policy)).includes('apply-with-worktree'), JSON.stringify(over));
+  absent({}, false); // 工作流設定沒開
+  absent({ worktree: { path: TREE, branch: 'b' } }); // 已有 worktree，apply 鈕會接續它
+  absent({ blockedBy: ['add-z'] }); // 被擋住
+  absent({ restale: true }); // 討論重新定案，要先 ingest
+  absent({ codeRemaining: 0 }); // 只剩手動任務
+  absent({ stage: 'in-progress' }); // 已經開始做，地方已經決定了
+  absent({ stage: 'ready' });
+});
+
 test('changeSkills：進行中建議 apply', () => {
   const skills = changeSkills(row());
   assert.deepEqual(names(skills), ['apply', 'ingest', 'drift', 'verify', 'quality', 'review', 'analyze', 'commit']);
@@ -688,6 +706,21 @@ test('changeActions：被擋的 apply 不算送達，analyze 只在 Claude Code 
   assert.deepEqual(names(codex), ['apply', 'ingest', 'drift', 'commit']);
   const claude = changeActions(row({ stage: 'proposed' }), ctx({ agents: [agent()] }));
   assert.deepEqual(names(claude), ['apply', 'analyze', 'ingest', 'drift', 'commit']);
+});
+
+test('changeActions：提案時的 agent 停著時，apply-with-worktree 送給它', () => {
+  const proposing = agent({ address: 't7', labels: { 'speclink.change': 'add-a' } });
+  const actions = changeActions(row({ stage: 'proposed' }), ctx({ worktreePolicy: true, agents: [proposing] }));
+  const { delivery } = actions.find((a) => a.skill === 'apply-with-worktree');
+  assert.equal(delivery.kind, 'send');
+  assert.equal(delivery.agent.address, 't7');
+  assert.equal(delivery.text, '/speclink-apply-with-worktree add-a');
+  // agent 還在忙時，和 apply 一樣不能按
+  const busy = changeActions(row({ stage: 'proposed' }), ctx({ worktreePolicy: true, agents: [{ ...proposing, status: 'working' }] }));
+  assert.equal(busy.find((a) => a.skill === 'apply-with-worktree').delivery.kind, 'busy');
+  // 工作流設定沒開時沒有這一顆
+  const off = changeActions(row({ stage: 'proposed' }), ctx({ agents: [proposing] }));
+  assert.ok(!names(off).includes('apply-with-worktree'));
 });
 
 test('discussionActions：帶討論 slug 送達', () => {
@@ -1413,11 +1446,20 @@ test('rowChoices：建議的那一顆放外面，其他的按 ⋯ 才展開', ()
   const quality = { skill: 'quality', primary: true };
   const review = { skill: 'review', primary: false };
   const merge = { skill: 'worktree-merge', primary: false };
-  assert.deepEqual(rowChoices([review, quality, merge]), { next: quality, others: [review, merge] });
+  assert.deepEqual(rowChoices([review, quality, merge]), { next: quality, beside: [], others: [review, merge] });
   // apply 被擋時沒有建議，列上放第一顆
-  assert.deepEqual(rowChoices([review, merge]), { next: review, others: [merge] });
+  assert.deepEqual(rowChoices([review, merge]), { next: review, beside: [], others: [merge] });
   // 討論中只有一個技能，沒有東西可以展開
-  assert.deepEqual(rowChoices([quality]), { next: quality, others: [] });
+  assert.deepEqual(rowChoices([quality]), { next: quality, beside: [], others: [] });
+});
+
+test('rowChoices：apply-with-worktree 放 apply 旁邊，有開工鈕時收進 ⋯', () => {
+  const apply = { skill: 'apply', primary: true };
+  const tree = { skill: 'apply-with-worktree', primary: false };
+  const drift = { skill: 'drift', primary: false };
+  assert.deepEqual(rowChoices([apply, tree, drift]), { next: apply, beside: [tree], others: [drift] });
+  // 開工已經能選 worktree，列上不用重複
+  assert.deepEqual(rowChoices([apply, tree, drift], [{ label: '用 worktree' }]), { next: apply, beside: [], others: [tree, drift] });
 });
 
 test('rowChoices：做完 apply 的 worktree 變更，建議合併，展開後還能跑 quality', () => {

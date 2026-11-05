@@ -498,7 +498,7 @@ export default class SpeclinkPanel extends View {
           ),
         );
     }
-    const { next, others } = rowChoices(actions);
+    const { next, beside, others } = rowChoices(actions, start);
     return v_flex()
       .gap(4)
       .child(
@@ -507,6 +507,7 @@ export default class SpeclinkPanel extends View {
           .items_center()
           .when(Boolean(start), (el) => el.child(this.startButton(id, target, start, t)))
           .child(this.skillButton(id, next, t))
+          .children(beside.map((action) => this.skillButton(id, action, t)))
           .when(others.length > 0, (el) => el.child(this.moreButton(id, target, t)))
           .when(Boolean(hint), (el) =>
             el.child(div().flex_1().min_w_0().truncate().text_size(11).text_color(t.dim).child(hint)),
