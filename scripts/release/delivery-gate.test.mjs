@@ -420,10 +420,10 @@ test('npm-publish.yml（workflow_call）：NPM_TOKEN 閘門、物化＋pack 或�
   const main = requireIndex(publish, 'publish_one "$main_tgz"', 'npm-publish.yml 主套件發布');
   assert.ok(loop < main, '平台子套件必須先於主套件發布');
   assert.match(publish, /npm view "\$MAIN@\$EXPECTED"/, '收尾須以輪詢確認主套件在 registry 可見');
-  // 校驗清單算在 registry 取回的 tarball 上（npm pack <name>@<version> 抓回的是 registry 原 bytes），
+  // 校驗清單算在 registry 取回的 tarball 上（直接抓 formula 指向的同一個 tarball 網址），
   // 且在主套件可見之後、published=true 之前——formula 的 sha256 永遠等於 registry 那份。
   const iVisible = requireIndex(publish, 'npm view "$MAIN@$EXPECTED"', 'npm-publish.yml 可見性輪詢');
-  const iFetch = requireIndex(publish, 'npm pack "$name@$EXPECTED"', 'npm-publish.yml 自 registry 取回 tarball');
+  const iFetch = requireIndex(publish, 'curl -fsSL --max-time 120 "$url"', 'npm-publish.yml 自 registry 取回 tarball');
   const iSums = requireIndex(publish, 'sha256sum *.tgz', 'npm-publish.yml 校驗清單');
   const iPublished = requireIndex(publish, 'published=true', 'npm-publish.yml published 輸出');
   assert.ok(iVisible < iFetch && iFetch < iSums && iSums < iPublished, '順序須為：等可見 → 自 registry 取回 → 算 sha256 → published=true');
