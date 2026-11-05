@@ -53,8 +53,9 @@ function sandbox(t, { withPlatformPackage = true, platform = process.platform, a
   // realpath：macOS 的 os.tmpdir() 經 /var → /private/var symlink，require.resolve 回的是真實路徑。
   const dir = realpathSync(mkdtempSync(path.join(os.tmpdir(), 'speclink-cli-npm-')));
   // maxRetries：Windows 上剛複製出來、剛執行完的假 speclink.exe 會短暫被占用（防毒掃描），
-  // 立刻刪會 EBUSY；rmSync 遇 EBUSY／EPERM 會依 retryDelay 重試。
-  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 }));
+  // 立刻刪會 EBUSY 或 ENOTEMPTY；rmSync 遇到這些錯誤會重試，第 i 次重試前等 i × retryDelay，
+  // 這組數值最多共等 11 秒（只在真的被占用時才等）。原本 5／100 只等 1.5 秒，CI 上還是不夠。
+  t.after(() => rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 }));
   const mainDir = path.join(dir, 'node_modules/@speclink/cli');
   mkdirSync(path.join(mainDir, 'bin'), { recursive: true });
   for (const file of ['package.json', 'bin/speclink', 'postinstall.mjs', 'platform.mjs']) {
