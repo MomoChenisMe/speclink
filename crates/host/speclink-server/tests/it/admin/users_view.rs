@@ -68,7 +68,7 @@ fn revoke_invitation(base: &str, cookie: &str, id: &str) -> u16 {
         ))
         .set("Origin", "http://127.0.0.1")
         .set("Cookie", &format!("speclink_session={cookie}"))
-        .send_json(json!({}))
+        .call()
         .map(|r| r.status())
         .unwrap_or_else(|e| match e {
             ureq::Error::Status(code, _) => code,

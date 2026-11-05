@@ -186,7 +186,7 @@ fn device_flow_end_to_end_over_a_real_sqlite_server() {
     let revoke = agent()
         .post(&format!("{base}/api/speclink/v1/web/account/devices/{}/revoke", fam_b.id))
         .set("Cookie", &cookie)
-        .send_json(serde_json::json!({}))
+        .call()
         .expect("revoke family B over the account API");
     assert_eq!(revoke.status(), 200, "the account revoke succeeds");
     assert!(!binds(&base, &access_b), "the account-page revoke kills family B");

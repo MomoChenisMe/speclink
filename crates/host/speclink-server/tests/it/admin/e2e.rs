@@ -185,10 +185,10 @@ fn login(base: &str, email: &str, password: &str) -> String {
 
 /// POST JSON to a browser admin path with the admin session cookie; returns the response.
 fn post_admin(base: &str, path: &str, session: &str, body: Value) -> ureq::Response {
-    agent()
+    let req = agent()
         .post(&format!("{base}{path}"))
-        .set("Cookie", &format!("speclink_session={session}"))
-        .send_json(body)
+        .set("Cookie", &format!("speclink_session={session}"));
+    crate::common::send_json_or_empty(req, body)
         .unwrap_or_else(|e| match e {
             ureq::Error::Status(_, resp) => resp,
             e => panic!("transport error posting {path}: {e}"),
@@ -301,7 +301,7 @@ fn the_admin_manages_a_team_end_to_end_over_the_real_binaries() {
         .expect("a PAT id")
         .to_string();
     assert_eq!(
-        post_admin(&base, &format!("/api/speclink/v1/web/admin/credentials/tokens/{pat_id}/revoke"), &admin, json!({})).status(),
+        post_admin(&base, &format!("/api/speclink/v1/web/admin/credentials/tokens/{pat_id}/revoke"), &admin, Value::Null).status(),
         200
     );
 

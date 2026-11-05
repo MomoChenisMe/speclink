@@ -208,7 +208,7 @@ fn carry_verify_rides_the_wire_so_remote_keeps_all_three_disposals() {
     c.station_add_round("verify", "demo-change", ROUND_WITH_FINDING).expect("round");
 
     let (status, error) = protocol_error(
-        raw("POST", &f, "changes/demo-change/archive").send_json(serde_json::json!({})),
+        raw("POST", &f, "changes/demo-change/archive").call(),
     );
     assert_eq!(status, 409);
     assert_eq!(error.reason, ErrorReason::Refused);

@@ -29,6 +29,20 @@ pub fn acquire_process_gate() -> MutexGuard<'static, ()> {
     PROCESS_GATE.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+/// Sends `body`, or no body when `body` is null. Pass null to a route that never reads the
+/// body: the server can answer and close before a late body arrives, and the reset loses the
+/// response (macOS: EINVAL from `set_read_timeout`; Windows: connection aborted).
+pub fn send_json_or_empty(
+    req: ureq::Request,
+    body: serde_json::Value,
+) -> Result<ureq::Response, ureq::Error> {
+    if body.is_null() {
+        req.call()
+    } else {
+        req.send_json(body)
+    }
+}
+
 /// The display identity the seeded test user authenticates as.
 pub const SEED_DISPLAY: &str = "Tester <tester@example.com>";
 

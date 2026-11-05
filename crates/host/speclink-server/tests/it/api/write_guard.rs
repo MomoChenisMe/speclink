@@ -150,7 +150,7 @@ fn every_write_route_refuses_a_reader_before_the_handler_runs() {
     let f = fixture();
     let before = revision(&f);
     for (method, tail) in WRITE_ROUTES {
-        let result = request(&f, method, Some(&f.reader_pat), tail).send_json(json!({}));
+        let result = request(&f, method, Some(&f.reader_pat), tail).call();
         let (status, error) = protocol_error(result);
         assert_eq!(status, 403, "{method} {tail}");
         assert_eq!(error.reason, ErrorReason::PermissionDenied, "{method} {tail}");
