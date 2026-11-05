@@ -72,7 +72,7 @@ fn post(
     if let Some(c) = cookie {
         req = req.set("Cookie", &format!("speclink_session={c}"));
     }
-    req.send_json(body)
+    common::send_json_or_empty(req, body)
 }
 
 fn get(base: &str, path: &str, cookie: Option<&str>) -> Result<ureq::Response, ureq::Error> {
@@ -322,7 +322,7 @@ fn logout_revokes_the_session_server_side() {
     let (logout_status, _lb) = json_of(post(
         &base,
         "/api/speclink/v1/web/logout",
-        json!({}),
+        Value::Null,
         Some(SAME_ORIGIN),
         Some(&cookie),
     ));

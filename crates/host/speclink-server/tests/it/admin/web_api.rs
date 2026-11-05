@@ -104,7 +104,7 @@ fn post(
     if let Some(c) = cookie {
         req = req.set("Cookie", &format!("speclink_session={c}"));
     }
-    req.send_json(body)
+    common::send_json_or_empty(req, body)
 }
 
 fn json_of(result: Result<ureq::Response, ureq::Error>) -> (u16, Value) {
@@ -144,16 +144,13 @@ fn admin_views_require_an_admin_session() {
 fn a_cross_origin_admin_mutation_is_refused_before_the_permission_decision() {
     let (base, identity, _a, member_id) = start_healthy();
     let admin = login(&base, "admin@example.com");
-    // Send no request body. Suspend never reads one, so the server can refuse and close
-    // before a body arrives. The late body then resets the connection, and on macOS
-    // ureq's `set_read_timeout` fails with EINVAL, which loses the response body.
-    let (status, body) = json_of(
-        agent()
-            .post(&format!("{base}/api/speclink/v1/web/admin/users/{member_id}/suspend"))
-            .set("Origin", "http://evil.example")
-            .set("Cookie", &format!("speclink_session={admin}"))
-            .call(),
-    );
+    let (status, body) = json_of(post(
+        &base,
+        &format!("/api/speclink/v1/web/admin/users/{member_id}/suspend"),
+        Value::Null,
+        Some("http://evil.example"),
+        Some(&admin),
+    ));
     assert_eq!(status, 403, "a foreign-origin admin mutation is refused");
     assert_eq!(body["error"]["code"], json!("same_origin_required"));
     assert!(
@@ -221,7 +218,7 @@ fn suspending_the_last_active_admin_is_refused() {
     let (status, _b) = json_of(post(
         &base,
         &format!("/api/speclink/v1/web/admin/users/{admin_id}/suspend"),
-        json!({}),
+        Value::Null,
         Some(SAME_ORIGIN),
         Some(&admin),
     ));
@@ -236,7 +233,7 @@ fn suspending_a_member_via_the_browser_api_records_the_web_source() {
     let (status, _b) = json_of(post(
         &base,
         &format!("/api/speclink/v1/web/admin/users/{member_id}/suspend"),
-        json!({}),
+        Value::Null,
         Some(SAME_ORIGIN),
         Some(&admin),
     ));

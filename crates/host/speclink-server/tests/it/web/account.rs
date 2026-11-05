@@ -154,7 +154,7 @@ fn post_json(
     if let Some(c) = cookie {
         req = req.set("Cookie", &format!("speclink_session={c}"));
     }
-    req.send_json(body)
+    common::send_json_or_empty(req, body)
 }
 
 fn json_of(result: Result<ureq::Response, ureq::Error>) -> (u16, Value) {
@@ -253,7 +253,7 @@ fn revoking_a_pat_via_the_browser_api_is_immediate() {
     let (status, _b) = json_of(post_json(
         &base,
         &format!("/api/speclink/v1/web/account/tokens/{pat_id}/revoke"),
-        json!({}),
+        Value::Null,
         Some(SAME_ORIGIN),
         Some(&cookie),
     ));
@@ -275,7 +275,7 @@ fn revoking_a_device_family_via_the_browser_api_is_immediate() {
     let (status, _b) = json_of(post_json(
         &base,
         &format!("/api/speclink/v1/web/account/devices/{family_id}/revoke"),
-        json!({}),
+        Value::Null,
         Some(SAME_ORIGIN),
         Some(&cookie),
     ));

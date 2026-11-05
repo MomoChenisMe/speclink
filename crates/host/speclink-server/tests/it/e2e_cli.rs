@@ -284,7 +284,7 @@ fn revoke_pat(base: &str, session: &str) {
     let resp = http
         .post(&format!("{base}/api/speclink/v1/web/account/tokens/{pat_id}/revoke"))
         .set("Cookie", &cookie)
-        .send_json(serde_json::json!({}))
+        .call()
         .expect("revoke PAT");
     assert_eq!(resp.status(), 200, "revoke succeeds");
 }

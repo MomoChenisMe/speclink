@@ -296,7 +296,7 @@ fn archive_with_an_open_ticket_refuses_over_http() {
     c.station_add_round("review", "demo-change", CLEAN_ROUND).expect("round");
 
     let (status, error) =
-        protocol_error(raw("POST", &f, "changes/demo-change/archive").send_json(serde_json::json!({})));
+        protocol_error(raw("POST", &f, "changes/demo-change/archive").call());
     assert_eq!(status, 409);
     assert_eq!(error.reason, ErrorReason::Refused);
     assert!(error.message.contains("review stamp"), "lists the disposals: {}", error.message);
