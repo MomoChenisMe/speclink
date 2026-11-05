@@ -682,6 +682,18 @@ test('discussionActions：帶討論 slug 送達', () => {
   assert.equal(propose.delivery.text, '/speclink-propose --from-discussion talk');
 });
 
+test('目前分頁：英文的標籤大寫開頭，接在句子裡時另有一句', () => {
+  const busy = { kind: 'busy', reason: '正在做事' };
+  assert.equal(deliveryHint(busy), '目前分頁的 agent 正在做事');
+  setLang('en');
+  try {
+    assert.equal(tr('目前分頁'), 'Current tab');
+    assert.match(deliveryHint(busy), /^Agent on the current tab: /);
+  } finally {
+    setLang('zh');
+  }
+});
+
 test('deliveryHint：說明會送去哪裡，或為什麼不能送', () => {
   assert.equal(deliveryHint(deliver({ agents: [agent({ labels: { 'speclink.change': 'add-a' } })] })), '送給這個變更的 agent');
   assert.equal(deliveryHint(deliver({ agents: [agent()] })), '送給目前分頁的 agent');

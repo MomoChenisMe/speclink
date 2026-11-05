@@ -530,7 +530,10 @@ const SEND_TO = { change: "送給這個變更的 agent", discussion: "送給這�
 
 // 技能鈕旁邊的說明：會送去哪裡，或為什麼不能送。
 export function deliveryHint(delivery) {
-  if (delivery.kind === "busy") return tr("{0}的 agent {1}", tr(WHERE[delivery.where] ?? "目前分頁"), tr(delivery.reason));
+  if (delivery.kind === "busy") {
+    const where = WHERE[delivery.where];
+    return where ? tr("{0}的 agent {1}", tr(where), tr(delivery.reason)) : tr("目前分頁的 agent {0}", tr(delivery.reason));
+  }
   if (delivery.kind === "none") return delivery.reason;
   if (delivery.kind === "new") return tr("開新分頁");
   return tr(SEND_TO[delivery.where] ?? "送給目前分頁的 agent");
