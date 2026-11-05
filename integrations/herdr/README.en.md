@@ -242,8 +242,8 @@ node scripts/herdr/dock-panel.mjs
 The script does these steps:
 
 1. It switches to `main`.
-2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents`, `mods/speclink-files` and `mods/speclink-changes`.
-3. It clones the new `spaces`, `agents`, `files` and `changes` and connects them. If Herdr changed the lines that the script edits in `spaces` or `agents`, the script stops before it changes anything. If it cannot edit `files` or `changes`, it warns, uses the built-in mod, and continues.
+2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents`, `mods/speclink-files`, `mods/speclink-changes` and `mods/speclink-tabs`.
+3. It clones the new `spaces`, `agents`, `files`, `changes` and `tabs` and connects them. If Herdr changed the lines that the script edits in `spaces` or `agents`, the script stops before it changes anything. If it cannot edit `files`, `changes` or `tabs`, it warns, uses the built-in mod, and continues.
 4. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
 
 If you edited `keys.json`, a Herdr update does not add new shortcuts, so add them yourself. For example, for terminal search in 0.1.13, add `"cmd-f": "terminal.search"` to the `terminal` section.
@@ -253,7 +253,7 @@ After this, the panel column has its default width, and the other column widths 
 ### Remove
 
 1. Press `⌘⇧L` to switch to `main`.
-2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces`, `speclink-agents`, `speclink-files` and `speclink-changes` in `~/.config/herdr-app/mods/`.
+2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces`, `speclink-agents`, `speclink-files`, `speclink-changes` and `speclink-tabs` in `~/.config/herdr-app/mods/`.
 3. Remove the additions from `keys.json`.
 
 ### Why a cloned layout
@@ -267,6 +267,8 @@ The conclusion first said that Start opens a new space, on the assumption that i
 The Agents list works the same way. The built-in agents mod has no extension point, so the script clones it, adds `integrations/herdr/agents-list/speclink-rows.js` and the panel's `model.js` and `shared.js`, and changes about fifteen lines. The list and the panel then use the same rules to find the change that an agent works on.
 
 The script also clones the Files and Changes panels and edits two or three lines, so file names and diff lines do not get translated. Herdr's other screens do not need clones. See "Language". The translations for all the clones are in the panel's `i18n.js`.
+
+The script also clones the tab bar and removes one line. In Herdr's own tab bar, a scroll switches the tab, so one trackpad swipe switches several tabs and the window flashes. After the edit, a scroll only moves the tab bar. To switch tabs, click a tab or press `⌃Tab`, `⌘⇧]` or `⌘⇧[`.
 
 Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` has no effect, and `layout.set` on `main` is refused.
 

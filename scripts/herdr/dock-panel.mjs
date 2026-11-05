@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板。
-// 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉。
+// 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉；複製 tabs 讓捲動不會切換頁籤。
 // 內建版面不能停靠，複製版又不會跟著 Herdr 更新，所以 Herdr 更新後要重跑這支。
 // 舊的版面會留在 layouts/speclink.json.old-<時間>，和 Herdr 的 layout.reset 同樣做法；
 // 舊的 mod 複製版直接刪掉，那些資料夾沒有使用者的資料。
@@ -129,9 +129,13 @@ const CHANGES_EDITS = [
   ['.child(div().flex_1().min_w(0).truncate().child(text));', '.child(div().flex_1().min_w(0).truncate().child(`${text}\u2060`));'],
 ];
 
+// 內建的頁籤列一捲動就切換頁籤，觸控板滑一次會連切好幾個，畫面一直閃。拿掉後捲動只移動頁籤列。
+const TABS_EDITS = [['      .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })\n', '']];
+
 const integration = (file) => fileURLToPath(new URL(`../../integrations/herdr/${file}`, import.meta.url));
 // 版面裡的區塊換成哪個複製版。files 是複製版裡的檔名對應 repo 裡的檔案。
 const I18N = { 'i18n.js': 'mods/speclink/i18n.js' };
+const UNPROTECTED = '名稱剛好和介面文字相同時會被翻。';
 const CLONES = [
   {
     mod: 'spaces',
@@ -147,9 +151,10 @@ const CLONES = [
     edits: AGENTS_EDITS,
     files: { ...I18N, 'speclink-rows.js': 'agents-list/speclink-rows.js', 'model.js': 'mods/speclink/model.js', 'shared.js': 'mods/speclink/shared.js' },
   },
-  // 只是保護，Herdr 改了這幾行就用內建的，不擋停靠。
-  { mod: 'files', blocks: ['files'], as: 'speclink-files', edits: FILES_EDITS, files: {}, optional: true },
-  { mod: 'changes', blocks: ['changes'], as: 'speclink-changes', edits: CHANGES_EDITS, files: {}, optional: true },
+  // 這幾個 Herdr 改了就用內建的，不擋停靠。optional 寫的是改用內建後會怎樣。
+  { mod: 'files', blocks: ['files'], as: 'speclink-files', edits: FILES_EDITS, files: {}, optional: UNPROTECTED },
+  { mod: 'changes', blocks: ['changes'], as: 'speclink-changes', edits: CHANGES_EDITS, files: {}, optional: UNPROTECTED },
+  { mod: 'tabs', blocks: ['tabs'], as: 'speclink-tabs', edits: TABS_EDITS, files: {}, optional: '捲動頁籤列時會切換頁籤。' },
 ];
 
 const home = process.env.HERDR_APP_HOME ?? path.join(homedir(), '.config/herdr-app');
@@ -162,7 +167,7 @@ for (const clone of CLONES) {
   for (const [from, to] of clone.edits) {
     if (clone.source.split(from).length !== 2) {
       if (!clone.optional) throw new Error(`Herdr 的 ${clone.mod} mod 改了，找不到這一行，這支腳本要跟著改：${from}`);
-      console.warn(`Herdr 的 ${clone.mod} mod 改了，改用內建的。名稱剛好和介面文字相同時會被翻。找不到：${from}`);
+      console.warn(`Herdr 的 ${clone.mod} mod 改了，改用內建的。${clone.optional}找不到：${from}`);
       clone.skip = true;
       break;
     }
