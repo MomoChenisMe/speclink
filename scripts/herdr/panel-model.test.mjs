@@ -315,6 +315,20 @@ test('commandLabels：只認會動到變更或討論的 speclink 指令，名稱
   assert.deepEqual(commandLabels('speclink discuss conclude talk-a --stdin'), talk('talk-a'));
 });
 
+test('commandLabels：speclink 帶路徑或先存進變數也認得', () => {
+  const talk = (slug) => ['speclink.change=', `speclink.discussion=${slug}`];
+  const change = (name) => [`speclink.change=${name}`, 'speclink.discussion='];
+  assert.deepEqual(commandLabels("cd /x; ~/.local/bin/speclink discuss add-round talk-a --mode assumptions --stdin <<'EOF'"), talk('talk-a'));
+  assert.deepEqual(commandLabels('"$HOME/.local/bin/speclink" archive add-a -y'), change('add-a'));
+  assert.deepEqual(commandLabels('./target/debug/speclink task done --change add-a tsk_1'), change('add-a'));
+  assert.deepEqual(commandLabels('S=~/.local/bin/speclink; $S discuss new "要不要改" --slug talk-a 2>&1 | tail -3'), talk('talk-a'));
+  assert.deepEqual(commandLabels('cd /x && S=~/.local/bin/speclink; ${S} discuss conclude talk-a --stdin'), talk('talk-a'));
+  // 變數不是 speclink、或 speclink 只是別的指令的參數時不算。
+  assert.equal(commandLabels('T=/usr/bin/tar; $T archive add-a'), null);
+  assert.equal(commandLabels('cat ~/.local/bin/speclink archive add-a'), null);
+  assert.equal(commandLabels('S=~/.local/bin/speclink; echo $S discuss conclude talk-a'), null);
+});
+
 test('commandLabels：查詢、提到和參數不是名稱時都不算', () => {
   for (const command of [
     'speclink show add-a',

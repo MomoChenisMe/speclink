@@ -111,7 +111,7 @@ The panel knows about work that starts from the panel or the Skills pop-up. For 
 Each hook has one job:
 
 - **`UserPromptSubmit`**: when a message starts with `/speclink-…`, it records the skill and the first argument (the slug after `--from-discussion` also counts).
-- **`PostToolUse`**: when the model calls a skill, it records the skill and the arguments. When the agent runs a speclink command that changes a change or discussion, it records the name. So the panel also finds a command with no name, a request in plain words, a change that propose creates, and a slug that discuss creates. Queries such as `show` and `status` do not count, because they can be only a mention. This hook runs in the background and does not slow the command.
+- **`PostToolUse`**: when the model calls a skill, it records the skill and the arguments. When the agent runs a speclink command that changes a change or discussion, it records the name. So the panel also finds a command with no name, a request in plain words, a change that propose creates, and a slug that discuss creates. It also finds a command with a path (`~/.local/bin/speclink`) or in a variable (`S=…; $S discuss …`). Queries such as `show` and `status` do not count, because they can be only a mention. This hook runs in the background and does not slow the command.
 - **`SessionStart`**: `/clear` and `/resume` change the conversation, so it removes the old labels.
 
 The hooks write no output and do not stop the message. Outside Herdr they do nothing. A conversation that `--resume` brings back shows up only after its next command.
