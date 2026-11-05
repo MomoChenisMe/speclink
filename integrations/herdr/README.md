@@ -111,7 +111,7 @@
 三個 hook 各管一件事：
 
 - **`UserPromptSubmit`**：訊息開頭是 `/speclink-…` 時記下技能和第一個參數（`--from-discussion` 後面的 slug 也算）。
-- **`PostToolUse`**：模型自己叫用技能時，記下技能和參數。agent 跑了會動到變更或討論的 speclink 指令時，記下名稱。所以指令沒帶名稱、用一般句子下指令、提案新建的變更、討論新建的 slug 都認得出來。`show`、`status` 這類查詢不算，可能只是提到。它在背景跑，不會拖慢指令。
+- **`PostToolUse`**：模型自己叫用技能時，記下技能和參數。agent 跑了會動到變更或討論的 speclink 指令時，記下名稱。所以指令沒帶名稱、用一般句子下指令、提案新建的變更、討論新建的 slug 都認得出來。指令帶路徑（`~/.local/bin/speclink`）或先存進變數（`S=…; $S discuss …`）也認得。`show`、`status` 這類查詢不算，可能只是提到。它在背景跑，不會拖慢指令。
 - **`SessionStart`**：`/clear` 和 `/resume` 換了對話，清掉舊的標籤。
 
 它們不會輸出任何東西，也不會擋住訊息。不在 Herdr 裡時什麼都不做。`--resume` 接回的對話要等下一個指令才認得出來。

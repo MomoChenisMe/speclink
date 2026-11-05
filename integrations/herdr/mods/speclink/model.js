@@ -236,7 +236,9 @@ export function promptLabels(prompt) {
 // 從 speclink 指令看出 agent 在做哪個變更或討論。只認會動到它的指令，show、status 這類可能只是查一下。
 // 指令要在開頭，或接在 ; & | ( 後面，所以 commit 訊息裡提到的不算；heredoc 的內文也不看。
 const NAME = String.raw`"?([A-Za-z0-9][^\s"';&|]*)"?`;
-const speclinkAt = (verb) => new RegExp(String.raw`(?:^|[;&|(]\s*)(?:\w+=\S*\s+)*speclink\s+${verb}\s+${NAME}`, "m");
+// speclink 可能帶路徑（~/.local/bin/speclink）。
+const BIN = String.raw`["']?(?:[^\s;&|()"']*/)?speclink["']?`;
+const speclinkAt = (verb) => new RegExp(String.raw`(?:^|[;&|(]\s*)(?:\w+=\S*\s+)*${BIN}\s+${verb}\s+${NAME}`, "m");
 const CHANGE_COMMANDS = [
   "new\\s+change",
   "instructions\\s+apply\\s+--change",
@@ -247,8 +249,14 @@ const CHANGE_COMMANDS = [
 ].map(speclinkAt);
 const DISCUSSION_COMMANDS = ["discuss\\s+new\\s+.*--slug", "discuss\\s+(?:context|add-round|conclude)"].map(speclinkAt);
 
+// 也可能先存進變數：S=~/.local/bin/speclink; $S discuss …
+function expandAlias(text) {
+  const alias = text.match(new RegExp(String.raw`(?:^|[;&|(\s])(\w+)=${BIN}(?=[\s;&|)]|$)`, "m"))?.[1];
+  return alias ? text.replace(new RegExp(String.raw`["']?\$\{?${alias}\}?["']?(?=\s)`, "g"), "speclink") : text;
+}
+
 export function commandLabels(command) {
-  const text = command.split("<<")[0];
+  const text = expandAlias(command.split("<<")[0]);
   const change = CHANGE_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
   if (change) return [`speclink.change=${change}`, "speclink.discussion="];
   const discussion = DISCUSSION_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
