@@ -1530,8 +1530,14 @@ test('translateHerdr：畫面上的字串都查對照表，其他東西原樣傳
 
 test('dock-panel：檔案樹的名稱不會被翻，改不到時不擋停靠', () => {
   const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
-  assert.match(source, /as: 'speclink-files'.*optional: true/);
-  for (const name of ['speclink-tabs', 'speclink-status', 'speclink-chrome']) assert.ok(!source.includes(name), name);
+  assert.match(source, /as: 'speclink-files'.*optional: UNPROTECTED/);
+  for (const name of ['speclink-status', 'speclink-chrome']) assert.ok(!source.includes(name), name);
+});
+
+test('dock-panel：捲動頁籤列不切換頁籤，改不到時不擋停靠', () => {
+  const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
+  assert.match(source, /const TABS_EDITS = \[\['[^']*on_scroll_wheel[^']*tab\.prev[^']*', ''\]\];/);
+  assert.match(source, /as: 'speclink-tabs', edits: TABS_EDITS.*optional: '/);
 });
 
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));
