@@ -57,6 +57,7 @@ jobs:
           node-version: 20
 
       - name: Install npm dependencies (root workspaces)
+        id: npm-ci
         run: npm ci
 
       # scripts/ 的測試面守的是「設定本身」的契約——workflow 步驟順序、release
@@ -69,13 +70,18 @@ jobs:
         shell: bash
         run: node --test scripts/*.test.mjs scripts/*/*.test.mjs
 
+      # 前一個測試面紅了，後面的照跑：一輪就看到全部失敗，不用修一個、重跑一輪才看到下一個。
+      # 只有依賴沒裝成（或更早的建置失敗讓它被跳過）才不跑，那時跑了只會多出噪音。
       - name: Test (UI)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: npm test -w packages/ui
 
       - name: Test (Desktop)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: npm test -w apps/desktop
 
       - name: Test (Server Web)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: npm test -w apps/server-web
 
       # 兩個前端 production build 都必須在 cargo test 之前完成：desktop 供
@@ -83,9 +89,11 @@ jobs:
       # speclink-server 的 compile-time asset embedding。Rust 的 embedded asset／
       # route 測試才會驗到當次 source 產出的 index 與 manifest，而非過期產物。
       - name: Build desktop frontend (vite → dist)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: npm run build -w apps/desktop
 
       - name: Build server-web frontend (vite → dist)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: npm run build -w apps/server-web
 
       # speclink-desktop 的 build script 於編譯期檢查 tauri.conf.json 的 externalBin
@@ -93,9 +101,11 @@ jobs:
       # build script（不是測試紅字，是整個 crate 編不動）。CLI 上面已建過 release，
       # 這一步只是重用產物再複製到 target-triple 命名位置。
       - name: Stage CLI sidecar (desktop externalBin)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: node scripts/desktop/desktop-sidecar.mjs
 
       - name: Test (Rust workspace)
+        if: ${{ !cancelled() && steps.npm-ci.outcome == 'success' }}
         run: cargo test --workspace --locked
 
   # Phase 3 收官劇本獨立計時、獨立失敗現場；不藏在 workspace 單元測試裡。
