@@ -144,13 +144,16 @@ fn admin_views_require_an_admin_session() {
 fn a_cross_origin_admin_mutation_is_refused_before_the_permission_decision() {
     let (base, identity, _a, member_id) = start_healthy();
     let admin = login(&base, "admin@example.com");
-    let (status, body) = json_of(post(
-        &base,
-        &format!("/api/speclink/v1/web/admin/users/{member_id}/suspend"),
-        json!({}),
-        Some("http://evil.example"),
-        Some(&admin),
-    ));
+    // Send no request body. Suspend never reads one, so the server can refuse and close
+    // before a body arrives. The late body then resets the connection, and on macOS
+    // ureq's `set_read_timeout` fails with EINVAL, which loses the response body.
+    let (status, body) = json_of(
+        agent()
+            .post(&format!("{base}/api/speclink/v1/web/admin/users/{member_id}/suspend"))
+            .set("Origin", "http://evil.example")
+            .set("Cookie", &format!("speclink_session={admin}"))
+            .call(),
+    );
     assert_eq!(status, 403, "a foreign-origin admin mutation is refused");
     assert_eq!(body["error"]["code"], json!("same_origin_required"));
     assert!(
