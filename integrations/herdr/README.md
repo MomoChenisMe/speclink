@@ -68,6 +68,7 @@
 | 狀態 | 能用的技能（粗體是建議的下一步，也是列上顯示的那一顆） |
 | --- | --- |
 | 提案中，沒被擋 | **apply**、analyze、ingest、drift、commit |
+| 提案中，沒被擋，還有程式任務，`worktree` 開啟，還沒有 worktree | 同上，再多一個 apply-with-worktree，放在 apply 旁邊。列上有開工鈕時它收在 ⋯ 裡，因為開工已經能選 worktree |
 | 提案中，被擋 | apply（灰掉，列上顯示這一顆）、analyze、ingest、drift、commit |
 | 進行中 | **apply**、ingest、drift、verify、quality、review、analyze、commit |
 | 進行中，只剩手動任務 | 同上，但建議改成 **quality**，也沒有開工鈕 |
@@ -160,7 +161,7 @@ Claude Code 與 GitHub Copilot 送 `/speclink-<技能>`，Codex 送 `$speclink-<
 
 主資料夾一次只能跑一個 apply。有 apply 還沒做完時，「直接 apply」不能按，游標移上去會寫是哪個變更。那個變更的任務做完或封存後就能按，分頁開著也沒關係。
 
-沒被擋、任務還沒做完、也沒有 agent 的變更才有開工鈕。已經有 agent 時，列上的技能鈕會送給它。討論重新定案的變更要先 ingest，所以也沒有開工鈕。
+沒被擋、任務還沒做完、也沒有 agent 的變更才有開工鈕。已經有 agent 時，列上的技能鈕會送給它。提案中的變更已經有 agent 時（例如剛跑完提案的 session），列上有 `apply` 和 `apply-with-worktree` 兩顆，一樣可以選。討論重新定案的變更要先 ingest，所以也沒有開工鈕。
 
 **整波開工**：`worktree` 開啟，而且最前面那一波有兩個以上能開工的變更時，面板頂端會多一列，寫出會開哪些變更。按一次就全部開工，不再多問，一律用 worktree。波次取自 `speclink plan`。
 
