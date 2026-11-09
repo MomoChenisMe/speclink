@@ -479,9 +479,10 @@ export function planDelivery({ skill, change = null, discussion = null, args, ro
   }
   if (target) {
     const { agent, where } = target;
-    if (!sendable(agent)) return { kind: "busy", where, agent, reason: BUSY[agent.status] ?? agent.status };
+    // skill 是實際送出的技能，按鈕寫它：有 worktree 時 apply 可能換成 apply-with-worktree。
+    if (!sendable(agent)) return { kind: "busy", where, agent, skill: name, reason: BUSY[agent.status] ?? agent.status };
     const text = commandText(agent.key, name, args);
-    return { kind: "send", where, agent, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name ?? discussion?.slug) };
+    return { kind: "send", where, agent, skill: name, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name ?? discussion?.slug) };
   }
   return newAgent({ name, args, folder, change, discussion, known, preferred });
 }

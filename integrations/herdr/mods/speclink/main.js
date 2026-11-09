@@ -365,7 +365,8 @@ export default class SpeclinkPanel extends View {
     return this.chip(
       {
         id: `skill-${id}-${action.skill}`,
-        label: tr(action.skill),
+        // 寫實際會送出的技能。有 worktree 時 apply 會換成 apply-with-worktree。
+        label: tr(d?.skill ?? action.skill),
         ready: d && (d.kind === "send" || d.kind === "new"),
         primary: action.primary,
         tip,

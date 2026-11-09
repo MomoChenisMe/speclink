@@ -707,6 +707,11 @@ test('apply：標籤標明但資料夾在主資料夾的 agent，用 apply-with-
   const d = treeCase({ agents: [labelled] }, 'apply');
   assert.equal(d.where, 'change');
   assert.equal(d.text, '/speclink-apply-with-worktree add-a');
+  // 按鈕要寫實際送出的技能，不是原本的 apply
+  assert.equal(d.skill, 'apply-with-worktree');
+  assert.equal(treeCase({ agents: [{ ...labelled, status: 'working' }] }, 'apply').skill, 'apply-with-worktree');
+  // agent 已經在 worktree 裡，就照原本的 apply
+  assert.equal(treeCase({ agents: [{ ...labelled, cwd: TREE }] }, 'apply').skill, 'apply');
 });
 
 test('不帶變更的技能：送給目前分頁，沒有就開新分頁', () => {
