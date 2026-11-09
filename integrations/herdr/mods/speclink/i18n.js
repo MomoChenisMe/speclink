@@ -164,6 +164,7 @@ export const TO_ZH = {
   Spaces: "工作區",
   "This computer": "這台電腦",
   "New space there": "在這裡新增工作區",
+  "New space on this computer": "在這台電腦新增工作區",
   "Loading…": "載入中…",
   Connect: "連線",
   "Connecting…": "連線中…",
@@ -366,6 +367,8 @@ const ZH_PATTERNS = [
   [/^Remove (.+)\? Its terminals keep running there\.$/, "要移除 {0} 嗎？它的終端機會在那台機器上繼續執行。"],
   [/^Connected · (.+)$/, "已連線 · {0}"],
   [/^Up to date\. Checked at (.+)\.$/, "已是最新版本。檢查時間 {0}。"],
+  // 側欄收起時，機器那一格的提示。
+  [/^New space on (.+)$/, "在 {0} 新增工作區"],
   [/^(.+) is ready\. Restart to switch now; it also switches when you quit\.$/, "{0} 已經準備好。重新啟動就會切換，結束 Herdr 時也會切換。"],
   [/^(.+) is ready\. Your terminals keep running through it\.$/, "{0} 已經準備好。更新時你的終端機會繼續執行。"],
   [/^Managed by (.+): update it there\.$/, "由 {0} 管理，請在那裡更新。"],
