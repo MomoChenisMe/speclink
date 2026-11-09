@@ -142,7 +142,7 @@ The panel tries these in order and stops at the first match:
 2. The agent in the current tab.
 3. A new tab with the agent that you last selected in the Skills pop-up. If you never selected one, the most used installed agent.
 
-Each step checks the folder of the agent. Skills for a change with a worktree run in the worktree. archive, worktree-merge and apply-with-worktree run in the main checkout. An agent in another folder does not match. When a change has a worktree with no agent in it, the apply button sends apply-with-worktree, which continues in the existing worktree.
+Each step checks the folder of the agent. Skills for a change with a worktree run in the worktree. archive, worktree-merge and apply-with-worktree run in the main checkout. An agent in another folder does not match. When a change has a worktree with no agent in it, the apply button sends apply-with-worktree, which continues in the existing worktree. The button then shows apply-with-worktree.
 
 The panel does not send to an agent that works, waits for your answer or shows an error. The button is disabled, and the tooltip on the button gives the reason. After a send, the window moves to that agent, and the skills that `⋯` opened close.
 
