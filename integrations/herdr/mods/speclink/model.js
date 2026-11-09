@@ -402,6 +402,15 @@ export function joinAgents(agents, terminals, panes) {
 // 正在做這場討論的 agent。討論沒有 worktree，只看標籤。
 export const discussionAgents = (d, agents) => agents.filter((a) => a.labels["speclink.discussion"] === d.slug);
 
+// 在討論、但討論還沒記錄的 agent：discuss 技能先查資料、問完問題才建立記錄，這段期間沒有那一列可以放它。
+// 標籤上的名稱對不到任何一場討論就算，只看這個專案資料夾裡的 agent。
+export function unrecordedDiscussions(board, agents, root) {
+  const slugs = new Set([...board.discussions, ...board.promoted].map((d) => d.slug));
+  return agents.filter(
+    (a) => a.labels["speclink.skill"] === "speclink-discuss" && inside(a.cwd, root) && !slugs.has(a.labels["speclink.discussion"]),
+  );
+}
+
 export function changeAgents(row, agents) {
   const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name);
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];

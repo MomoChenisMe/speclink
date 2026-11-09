@@ -334,6 +334,7 @@ export const TO_EN = {
   這場討論: "this discussion",
   "送給這場討論的 agent": "Send to the agent on this discussion",
   "目前分頁的 agent {0}": "Agent on the current tab: {0}",
+  "討論中，還沒記錄": "Discussing, not recorded yet",
   "{0}的 agent {1}": "Agent on {0}: {1}",
   開新分頁: "Open a new tab",
   "送給這個變更的 agent": "Send to the agent on this change",

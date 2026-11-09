@@ -28,6 +28,7 @@ import {
   deliveryHint,
   discussionActions,
   discussionAgents,
+  unrecordedDiscussions,
   isUninitialized,
   joinAgents,
   lastOpenError,
@@ -692,6 +693,24 @@ export default class SpeclinkPanel extends View {
     return this.openOnClick(el, speclinkUrl("discussion", this.root, d.slug), t);
   }
 
+  // 還沒記錄的討論。名稱用 agent 的標題；記錄建立後，agent 會移到正式的那一列。
+  unrecordedRow(a, ctx, t) {
+    const here = a.tab === ctx.focus.tab;
+    return v_flex()
+      .id(`discussion-unrecorded-${a.address}`)
+      .px(10)
+      .py(8)
+      .gap(5)
+      .when(here, (el) => this.markCurrent(el, t))
+      .child(
+        v_flex()
+          .min_w_0()
+          .child(div().truncate().child(a.title || a.tab_name))
+          .child(div().truncate().text_size(11).text_color(t.muted).child(tr("討論中，還沒記錄"))),
+      )
+      .child(this.agentChip(`discussion-unrecorded-${a.address}`, a, here, t));
+  }
+
   // 超過門檻的列收進「還有 N 個…」。
   overflow(id, rows, t) {
     if (rows.length <= OVERFLOW_LIMIT) return rows;
@@ -846,7 +865,10 @@ export default class SpeclinkPanel extends View {
           id: "discussions",
           tone: t.ansi5,
           label: "討論",
-          rows: discussions.map((d) => this.discussionRow(d, ctx, t)),
+          rows: [
+            ...unrecordedDiscussions(this.board, ctx.agents, ctx.root).map((a) => this.unrecordedRow(a, ctx, t)),
+            ...discussions.map((d) => this.discussionRow(d, ctx, t)),
+          ],
           open: !this.collapsed.has("discussions"),
         },
         t,
