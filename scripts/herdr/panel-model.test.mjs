@@ -1573,6 +1573,9 @@ test('autoTr：帶變數的句子要整句符合才翻', () => {
   assert.equal(autoTr('Theme: graphite'), '主題：graphite');
   assert.equal(autoTr('Default (Geist)'), '預設（Geist）');
   assert.equal(autoTr('Up to date. Checked at 09:30.'), '已是最新版本。檢查時間 09:30。');
+  // Herdr 0.1.14 側欄收起時的提示
+  assert.equal(autoTr('New space on this computer'), '在這台電腦新增工作區');
+  assert.equal(autoTr('New space on vps'), '在 vps 新增工作區');
   assert.equal(autoTr('0.1.13 is ready. Restart to switch now; it also switches when you quit.'), '0.1.13 已經準備好。重新啟動就會切換，結束 Herdr 時也會切換。');
   // 使用者取的名稱不算
   for (const name of ['two agents', 'speclink', 'add-team-invites', 'my files', 'main']) assert.equal(autoTr(name), name);
@@ -1646,6 +1649,16 @@ test('語系守門：顯示的中文都有英文，也不用樣板字串繞過 t
   for (const { group, about } of PICKER_SKILLS) {
     assert.ok(Object.hasOwn(TO_EN, group) && Object.hasOwn(TO_EN, about), `${group}／${about} 沒有英文`);
   }
+});
+
+test('dock-panel：「New space there」的改法對 Herdr 0.1.13 和 0.1.14 的寫法都找得到', () => {
+  const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
+  const [, from] = source.match(/\['([^']*New space there[^']*)', '[^']*'\]/);
+  const versions = [
+    '.child(svg("mods/workspace-chrome/plus.svg").size(12)).when(!collapsed, el => el.child("New space there"));',
+    '.when(!collapsed, el => el.child(svg("mods/workspace-chrome/plus.svg").size(12)).child("New space there"));',
+  ];
+  for (const line of versions) assert.equal(line.split(from).length, 2, line);
 });
 
 test('語系守門：dock-panel 翻譯的英文都有中文', () => {

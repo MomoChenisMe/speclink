@@ -42,7 +42,7 @@ const SPACES_EDITS = [
   ['repair?.error || "rebuilt ·"', 'repair?.error || tr("rebuilt ·")'],
   ['.tooltip(repair?.error || "This machine was rebuilt or replaced. Click to connect to the new one.")', '.tooltip(repair?.error || tr("This machine was rebuilt or replaced. Click to connect to the new one."))'],
   ['.child(repair?.busy ? "Connecting…" : "Connect")', '.child(tr(repair?.busy ? "Connecting…" : "Connect"))'],
-  ['el.child("New space there")', 'el.child(tr("New space there"))'],
+  ['.child("New space there")', '.child(tr("New space there"))'],
   ['el.child("Spaces")', 'el.child(tr("Spaces"))'],
   // 徽章會佔掉寬度。git 的箭頭搬到 rowEnd，和徽章一起固定在右邊；放不下時讓 space 名字變短，才不會疊在一起。
   [
