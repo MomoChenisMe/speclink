@@ -255,10 +255,13 @@ function expandAlias(text) {
   return alias ? text.replace(new RegExp(String.raw`["']?\$\{?${alias}\}?["']?(?=\s)`, "g"), "speclink") : text;
 }
 
+// 從討論建立變更：寫提案的 agent 還屬於那場討論，討論標籤要留著。同一段指令（到 ; & | 為止）裡的才算。
+const FROM_DISCUSSION = new RegExp(String.raw`${BIN}\s+new\s+change\s+[^;&|\n]*--from-discussion[\s=]+${NAME}`);
+
 export function commandLabels(command) {
   const text = expandAlias(command.split("<<")[0]);
   const change = CHANGE_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
-  if (change) return [`speclink.change=${change}`, "speclink.discussion="];
+  if (change) return [`speclink.change=${change}`, `speclink.discussion=${text.match(FROM_DISCUSSION)?.[1] ?? ""}`];
   const discussion = DISCUSSION_COMMANDS.map((pattern) => text.match(pattern)?.[1]).find(Boolean);
   return discussion ? ["speclink.change=", `speclink.discussion=${discussion}`] : null;
 }
@@ -411,8 +414,12 @@ export function unrecordedDiscussions(board, agents, root) {
   );
 }
 
+// 寫完提案停下來的 agent 不算在做這個變更：它屬於提案來源的討論，實作要另外開工。
+// 還在寫或在等回答時才算，文件寫到一半時才不會出現開工鈕。
+const doneProposing = (a) => a.labels["speclink.skill"] === "speclink-propose" && sendable(a);
+
 export function changeAgents(row, agents) {
-  const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name);
+  const byLabel = agents.filter((a) => a.labels["speclink.change"] === row.name && !doneProposing(a));
   const byPath = row.worktree ? agents.filter((a) => inside(a.cwd, row.worktree.path)) : [];
   const byFocus = agents.filter((a) => !a.labels["speclink.change"] && a.labels["speclink.focus"] === row.name);
   return [...new Set([...byLabel, ...byPath, ...byFocus])];
