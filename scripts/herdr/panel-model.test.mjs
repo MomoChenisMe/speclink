@@ -323,7 +323,7 @@ test('commandLabels：只認會動到變更或討論的 speclink 指令，名稱
   assert.deepEqual(commandLabels('speclink instructions apply --change "add-a" --json'), change('add-a'));
   assert.deepEqual(commandLabels('cd /x && speclink instructions apply --change add-a --json'), change('add-a'));
   assert.deepEqual(commandLabels('SPECLINK_WORKTREE=true speclink in-progress add add-a'), change('add-a'));
-  assert.deepEqual(commandLabels('speclink new change "add-a" --schema spec-driven --agent claude --from-discussion talk'), change('add-a'));
+  assert.deepEqual(commandLabels('speclink new change "add-a" --schema spec-driven --agent claude'), change('add-a'));
   assert.deepEqual(commandLabels('speclink task done --change add-a tsk_1'), change('add-a'));
   assert.deepEqual(commandLabels('speclink review prepare "add-a" --base abc'), change('add-a'));
   assert.deepEqual(commandLabels('speclink verify prepare add-a'), change('add-a'));
@@ -443,6 +443,26 @@ test('changeAgents：依標籤、worktree 路徑、外掛回報的焦點的順�
     found.map((a) => a.address),
     ['t1', 't2', 't3'],
   );
+});
+
+test('commandLabels：從討論建立變更時，討論標籤留著', () => {
+  const both = (name, slug) => [`speclink.change=${name}`, `speclink.discussion=${slug}`];
+  assert.deepEqual(commandLabels('speclink new change "add-a" --schema spec-driven --agent claude --from-discussion talk'), both('add-a', 'talk'));
+  assert.deepEqual(commandLabels('S=~/.local/bin/speclink; $S new change add-a --from-discussion "talk" --last'), both('add-a', 'talk'));
+  // 同一行的別的指令提到 --from-discussion 不算
+  assert.deepEqual(commandLabels('speclink new change add-a --agent claude; echo --from-discussion talk'), ['speclink.change=add-a', 'speclink.discussion=']);
+});
+
+test('changeAgents：寫完提案停下來的 agent 不算在做這個變更，還在寫或在等回答時才算', () => {
+  const proposer = (status) => agent({ address: `t-${status}`, status, labels: { 'speclink.skill': 'speclink-propose', 'speclink.change': 'add-a' } });
+  const found = changeAgents(row(), ['done', 'idle', 'working', 'blocked'].map(proposer)).map((a) => a.address);
+  assert.deepEqual(found, ['t-working', 't-blocked']);
+  // 同一個 session 之後自己跑 apply，就算回來
+  const applying = agent({ labels: { 'speclink.skill': 'speclink-apply', 'speclink.change': 'add-a' } });
+  assert.equal(changeAgents(row(), [applying]).length, 1);
+  // 側欄的進度也跟著：寫完的提案 agent 不對應任何變更
+  const board = { stages: { proposed: [row({ stage: 'proposed' })], 'in-progress': [], ready: [] } };
+  assert.equal(agentChange(proposer('done'), board), null);
 });
 
 test('changeAgents：不看終端機標題，標題可能過時或只是提到變更', () => {
