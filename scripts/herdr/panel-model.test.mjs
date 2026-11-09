@@ -38,6 +38,7 @@ import {
   commandText,
   deliveryHint,
   discussionActions,
+  unrecordedDiscussions,
   discussionAgents,
   discussionSkills,
   inside,
@@ -721,6 +722,19 @@ test('changeActions：提案時的 agent 停著時，apply-with-worktree 送給�
   // 工作流設定沒開時沒有這一顆
   const off = changeActions(row({ stage: 'proposed' }), ctx({ agents: [proposing] }));
   assert.ok(!names(off).includes('apply-with-worktree'));
+});
+
+test('unrecordedDiscussions：在討論、但討論還沒記錄的 agent', () => {
+  const board = { discussions: [{ slug: 'talk' }], promoted: [{ slug: 'done-talk' }] };
+  const discuss = (over = {}) => agent({ labels: { 'speclink.skill': 'speclink-discuss', 'speclink.discussion': 'Copilot' }, ...over });
+  const asking = discuss({ address: 't1' });
+  const recorded = discuss({ address: 't2', labels: { 'speclink.skill': 'speclink-discuss', 'speclink.discussion': 'talk' } });
+  const promoted = discuss({ address: 't3', labels: { 'speclink.skill': 'speclink-discuss', 'speclink.discussion': 'done-talk' } });
+  const noTopic = discuss({ address: 't4', labels: { 'speclink.skill': 'speclink-discuss', 'speclink.discussion': '' } });
+  const otherProject = discuss({ address: 't5', cwd: '/work/other' });
+  const applying = agent({ address: 't6', labels: { 'speclink.skill': 'speclink-apply', 'speclink.change': 'add-a' } });
+  const found = unrecordedDiscussions(board, [asking, recorded, promoted, noTopic, otherProject, applying], REPO);
+  assert.deepEqual(found.map((a) => a.address), ['t1', 't4']);
 });
 
 test('discussionActions：帶討論 slug 送達', () => {
