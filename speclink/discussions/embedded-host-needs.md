@@ -1,10 +1,11 @@
 ---
 topic: 內嵌宿主、遠端能力與「規格不在 checkout 裡」的形態：需求清單
 slug: embedded-host-needs
-status: concluded
+status: promoted
 created: 2026-11-10
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
+promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands
 ---
 
 # Discussion: 內嵌宿主、遠端能力與「規格不在 checkout 裡」的形態：需求清單
@@ -403,19 +404,32 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
 **Ruled out**: 用截圖（PNG） — 兩個語言版本都要重新繪製再截圖，而且圖檔的差異無法比對
 **Open**: 無
 
+### Round 28 — interview (2026-11-10)
+
+**Focus**: shared-verb-parsing 轉出前的查證結果，以及它要怎麼切
+**Position**: 拆成三個變更，使用者確認；變更的總數從十四個變成十六個。
+- 查證結果（結論列為未驗證的那一項）：CLI 是只有執行檔的 crate，clap 的型別都不公開；解析和開啟儲存、讀 stdin、印出結果寫在同一批 cmd 函式裡
+- CLI 有 82 個末端動詞，其中建出引擎命令的涵蓋 43 種命令裡的 33 種；審查與驗證的八種、認領、搬移任務這十種 CLI 從不建立
+- 「把結果轉成輸出」也在 CLI 裡：約 30 個 render 函式、約 300 處直接印出；Node SDK 的 9 個動詞各自另外組一次 --json 的內容。SDK 要涵蓋全部動詞，解析與輸出都要共用，牽動約 4500 行
+- 流程設定的 11 個末端動詞今天完全不經命令層；正式規格 workflow-config 明寫 show 不進入命令執行層，那一句要跟著改
+- 三個變更：shared-verb-parsing（共用的解析；CLI 改用它；SDK 的 9 個動詞改用它，能用的動詞數不變）、shared-verb-output（輸出改成共用的純函式；SDK 涵蓋全部引擎命令）、workflow-config-commands（流程設定的讀寫新增為引擎命令）
+- 順序：三個依序做；第一個仍然和 store-port-contract、engine-on-store-port 無相依
+**Ruled out**: shared-verb-parsing 維持一個變更 — 任務會超過 25 項，審查與驗證的範圍太大，中途出問題難定位；解析與輸出合成一個、流程設定另一個 — 第一個仍有約 20 項任務
+**Open**: 無
+
 ## Conclusion
 
-**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分十四個變更依序實作，全部完成才發版。
+**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分十六個變更依序實作，全部完成才發版。
 - 形態：規格存在哪、引擎在哪執行、程式碼在哪是三個獨立的選擇；本系列服務「規格由一台 Server 持有」的形態，Server 可以是內嵌了引擎的宿主，也可以是官方的示範 server
 - 分工：儲存媒介、連線、遷移、歷史保存、帳號、登入、權限都由宿主負責；speclink 負責引擎、宿主套件、儲存契約與合格測試、用戶端（CLI 與 Speclink Desktop）、技能
 - 官方 server 的定位：示範與試用用，正式使用請把引擎內嵌進自己的系統；它改成用同一套宿主套件組出來
 - 擴充規則：掛鉤可以拒絕或旁觀，不能改內容；宿主不加新動詞；宿主只能選擇提供哪幾支技能，不能改技能文字
-- 發版：十四個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
+- 發版：十六個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
 - 流程設定：兩條規則已寫入 speclink/config.yaml——rules.proposal 新增「三種形態（本機 repo、連到遠端的 checkout、沒有本機規格檔的內嵌宿主）逐一寫明結果：可用、不適用並寫理由、或這次不做並寫成已知缺口」；rules.design 第二條加入內嵌宿主與 Node SDK，並補上「新增的引擎功能若需要本機事實，由呼叫端收集後當成輸入」
 - 用詞：使用者看到的是本機專案、遠端專案、Server；整合者看到的是宿主、內嵌、SDK、宿主套件、儲存接口、入口；講規格在哪裡用「本機」「遠端」，講怎麼蓋出 Server 用「SDK」「內嵌」「宿主」；不再用「SDK」統稱整塊遠端功能，不再用「Remote Store」「團隊模式」「主機套件」
 - 延後的項目必須在之後建立的文件裡明確寫成缺口
 - 開啟中的討論 agent-tool-sdk-layering 已寫結論並封存，它的主要問題由本討論定案
-- 未驗證、留給對應變更查的事：三個函式是否足以供應引擎全部的讀取（cut 2）；把 CLI 的動詞解析抽出來的工作量（cut 3）；舊版用戶端遇到新欄位是否照常運作（cut 10）；trace 能否直接跑在三個函式上（cut 8）
+- 未驗證、留給對應變更查的事：三個函式是否足以供應引擎全部的讀取（cut 2）；舊版用戶端遇到新欄位是否照常運作（cut 12）；trace 能否直接跑在三個函式上（cut 10）
 - **cut 1 `store-port-contract`**: 三個函式的儲存契約、合格測試與記憶體版參考實作；純新增，不接線
   - Rust 的定義是正典，Node 的三個函式是它的對映
   - 列出：依鍵的前綴列出文件；讀取：一次收多個鍵，回傳內容、文件版本、最後修改時間；提交：一次帶全部寫入與刪除、每份文件的預期版本（或「必須不存在」）、事件
@@ -430,12 +444,21 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - 用真實大小的資料量測一次（參考量 165 個已封存變更、31 MB）；量出來慢才加依範圍版本號的快取
   - 純讀取動詞可能短暫看到新舊混合的內容，第一版接受；寫入類動詞由提交時的版本比對把關
   - 示範用的 server 先透過轉接沿用現有的 driver
+- 已查證（原列為未驗證）：CLI 的解析與輸出都寫在只有執行檔的 crate 裡，牽動約 4500 行，所以原本的 shared-verb-parsing 拆成 cut 3、cut 4、cut 5 三個變更
 - **cut 3 `shared-verb-parsing`**: 把「動詞文字轉成引擎命令」收成 CLI 與 SDK 共用的一份
-  - Node SDK 手寫的 9 個動詞解析由共用的那一份取代，SDK 一次得到全部引擎命令
-  - 流程設定的讀寫新增為引擎命令
+  - 共用的解析涵蓋會建出引擎命令的全部動詞；CLI 改用它
+  - Node SDK 手寫的 9 個動詞解析由共用的那一份取代；這個變更裡 SDK 能用的動詞仍是 9 個
   - 需要本機程式碼的資訊（改了哪些檔、檔案指紋、commit）由呼叫端收集後當成動詞的輸入
   - 和 cut 1、cut 2 無相依，可以並行
-- **cut 4 `host-kit-agent-door`**: 宿主套件與給宿主 Agent 工具的門
+- **cut 4 `shared-verb-output`**: 把「引擎的結果轉成輸出」收成共用的純函式
+  - 人眼輸出與 --json 都由共用的函式產生，CLI 只負責印出；既有輸出逐位元不變
+  - Node SDK 的 dispatch 涵蓋全部引擎命令，各動詞不再另外組一次 --json 的內容
+  - 排在 cut 3 之後
+- **cut 5 `workflow-config-commands`**: 流程設定的讀寫新增為引擎命令
+  - 本機、示範用的 server 與 SDK 走同一條處理路徑，之後的執行前檢查才看得到改了哪些鍵
+  - 正式規格 workflow-config「show 不進入命令執行層」那一句跟著改
+  - 排在 cut 4 之後
+- **cut 6 `host-kit-agent-door`**: 宿主套件與給宿主 Agent 工具的門
   - 建立時給一次：儲存（三個函式）、掛鉤（選填）、列出「這個人可以用哪些範圍」的函式、上限設定、登入方式的設定
   - 每次呼叫給：身分（唯一且改名後不變的識別，加顯示名稱）、範圍、這個人的能力開關
   - 身分由宿主的程式在呼叫時給，不放在動詞參數裡、不經過模型；儲存物件由全部呼叫共用
@@ -446,7 +469,7 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - 工具的名稱、說明與輸入格式做成現成的匯出，宿主不用自己寫給模型看的工具說明
   - 既有的 31 方法 JS 儲存在文件標示為即將移除
   - 排在進行中的變更 add-pi-cursor-tools 之後，因為它會改 Node SDK 的技能渲染
-- **cut 5 `host-kit-client-door`**: 給 CLI 與 Speclink Desktop 的門
+- **cut 7 `host-kit-client-door`**: 給 CLI 與 Speclink Desktop 的門
   - 把請求轉命令、結果轉線上格式、錯誤對應、握手、「這個範圍有沒有變」的輪詢，從官方 server 搬到宿主套件
   - 宿主只寫一條路由；對每個請求都呼叫入口，驗得出身分就帶身分、驗不出就帶空值；哪些路徑免登入由入口決定
   - 入口回答一個不用登入的路徑：支援哪些登入方式（存取金鑰、裝置登入、瀏覽器登入）與瀏覽器登入的發行者網址，內容來自宿主建立入口時給的設定
@@ -455,19 +478,19 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - 宿主套件放一張涵蓋全部引擎命令的對照，每個命令必須選一個：有線上格式，或明寫不上線與理由；引擎新增命令而沒處理時編譯不過
   - 示範用的 server 改用宿主套件
   - 入口不做登入端點、帳號與成員、管理介面、備份
-- **cut 6 `client-browser-login`**: 用戶端的瀏覽器登入與共用的登入程式
+- **cut 8 `client-browser-login`**: 用戶端的瀏覽器登入與共用的登入程式
   - 用戶端做標準流程的用戶端那一半：開瀏覽器、PKCE、回到本機的隨機埠、保存 token、token 過期時換新
   - 授權網址與換 token 的網址沿用 RFC 8414 的文件格式，由宿主的登入服務提供
   - 預設順序是瀏覽器登入、裝置登入、存取金鑰；宿主沒有宣告時維持現有行為
   - 登入程式收成一份，CLI 與 Speclink Desktop 共用；存取金鑰的存放位置統一
   - Speclink Desktop「新增專案」的 Server 步驟跟著調整
   - 設計時確認 RFC 8252 對本機回呼位址帶任意埠的條文
-  - 可以和 cut 5 並行
-- **cut 7 `skills-verbs-first-wave`**: discuss、propose、ingest 改成全部經過動詞
+  - 可以和 cut 7 並行
+- **cut 9 `skills-verbs-first-wave`**: discuss、propose、ingest 改成全部經過動詞
   - discuss 讀正式規格改用既有的 show 動詞，不用清單回傳的路徑
   - change rank 在遠端可用；寫到哪裡在設計時定
-  - 可以和 cut 4 並行
-- **cut 8 `skills-verbs-second-wave`**: 其餘技能改成全部經過動詞，守門加嚴
+  - 可以和 cut 6 並行
+- **cut 10 `skills-verbs-second-wave`**: 其餘技能改成全部經過動詞，守門加嚴
   - archive、commit、worktree 開工前與收尾、apply、improve
   - 新增讀 evidence 的動詞，進行中的變更與已封存的變更都能讀
   - apply 判斷變更是否閒置太久，改用變更的建立時間與最後修改時間
@@ -475,7 +498,7 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - trace 與 plan --strict-overlap 在遠端可用
   - 守門涵蓋 compare against、cat、Check for、git add、git log、直接改寫，以及用清單回傳的路徑讀檔
   - 修正 tool-call 形式把交棒給其他技能的句子渲染成像動詞的寫法
-- **cut 9 `remote-skill-delivery`**: 遠端專案的技能由遠端提供
+- **cut 11 `remote-skill-delivery`**: 遠端專案的技能由遠端提供
   - 入口用引擎內建的範本渲染；產生哪些技能跟著該範圍的流程設定，含 worktree 的兩支
   - 用戶端的安裝與更新改從遠端取得；安裝後仍是 checkout 裡的檔案
   - 降級守門調整：遠端專案的技能版本跟著遠端，比本機 CLI 新時照裝並提醒
@@ -483,24 +506,24 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - Speclink Desktop 對遠端專案啟用技能檔探測，基準是遠端提供的版本：專案裡的技能檔較舊顯示「更新技能檔」、沒有技能檔顯示「安裝技能檔」、本機的 Speclink 較舊顯示「更新 Speclink」；確認框多一列「Server 提供的技能版本」
   - 握手送的是套件版本、技能帶的是另一個版號，比對哪一個在設計時定
   - 文件寫明：連到一台 Server 等於信任它提供的技能
-- **cut 10 `station-status-and-landing`**: 關卡狀態上線與程式碼落地的回報
+- **cut 12 `station-status-and-landing`**: 關卡狀態上線與程式碼落地的回報
   - 變更的清單與單筆回應加選填欄位：審查與驗證各自的狀態（未開始、進行中、已通過）、誰蓋的章、何時、幾輪
   - 「蓋章後檔案又改過」維持由有 checkout 的一端判斷
   - 引擎發出的六種審查與驗證事件改為歸到該變更，用戶端據此重新讀取
   - 蓋章的請求多帶 commit；變更記下分支名稱；新增回報落地 commit 的動詞；引擎只存，不附帶任何規則
-- **cut 11 `host-free-fields`**: 變更與討論上的自由欄位
+- **cut 13 `host-free-fields`**: 變更與討論上的自由欄位
   - 宿主自訂的鍵值，引擎只存不解讀
   - 通用的寫入與移除動詞，原版 CLI 也能用；清單與單筆回應會帶出來
   - 宿主的程式可以在呼叫入口時附上，和建立變更或討論在同一次寫入，不經過模型
   - 存在既有 metadata 文字裡的專屬區塊；鍵名規則、數量與大小上限在設計時定
-- **cut 12 `import-export-on-port`**: 匯入匯出建在儲存契約上
+- **cut 14 `import-export-on-port`**: 匯入匯出建在儲存契約上
   - 兩個門都能用；大小上限由宿主在建立入口時設定；不做壓縮；匯入維持只能進空的範圍
-- **cut 13 `retire-teamstore-and-drivers`**: 移除舊的儲存層
+- **cut 15 `retire-teamstore-and-drivers`**: 移除舊的儲存層
   - SQLite、Postgres、serverfs 改寫成儲存契約的範例，供使用者參考
   - 移除 TeamStore 與既有的 31 方法 JS 儲存
   - 流程設定 context 的專案說明同步更新
-- **cut 14 `docs-embedded-host`**: README 與使用者文件一次更新
-  - 前十三個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
+- **cut 16 `docs-embedded-host`**: README 與使用者文件一次更新
+  - 前十五個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
   - README 開頭改用本機專案與遠端專案；「自架 server」拆成「把 Speclink 內嵌進你的系統」與「試用官方 server」兩節，前者在前並列出宿主要做的四件事（實作三個函式並通過合格測試、掛一條路由、驗不出身分時傳空值、要支援瀏覽器登入時讓自己的登入服務提供標準文件並接受本機回呼）
   - 官方 server 的定位句：「官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。」；正式規格 user-documentation 的對應需求跟著改
   - 「目前狀態」改寫；延後的項目在專案能力狀態與路線圖逐項列為已知缺口，README 用一行連過去
@@ -536,6 +559,7 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
 - 每個階段結束就發版 — 使用者決定全部完成才發版
 - 先移除舊的再做新的 — 中間會有一段時間示範用的 server 與測試不能跑
 - 用「SDK」統稱整塊遠端功能 — SDK 是工具的名字，連到官方 server 的遠端專案沒有用到它
+- shared-verb-parsing 維持一個變更 — 查證後任務會超過 25 項，審查與驗證的範圍太大
 **Deferred**:
 - 規格放在 checkout 之外的本機位置（spec_dir 的路徑規則與固定的決定順序） — 內嵌宿主用不到；spec_dir 今天沒有檢查，絕對路徑與 ../ 被接受是未定義的行為，文件要寫明
 - 唯讀引用另一套規格 — 目前沒有需求
