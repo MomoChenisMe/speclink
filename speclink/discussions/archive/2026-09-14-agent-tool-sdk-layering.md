@@ -1,7 +1,7 @@
 ---
 topic: core 引擎、npm SDK 與 agent 工具層的分層——讓 pi、Copilot SDK 等 runtime 把 speclink 掛成工具
 slug: agent-tool-sdk-layering
-status: open
+status: concluded
 created: 2026-09-14
 created_by: MomoChen <momochenisme@gmail.com>
 ---
@@ -82,5 +82,26 @@ Prior discussions: node-sdk-completion-and-doc-alignment（Deferred 的 MCP／Co
 
 ## Conclusion
 
-<!-- Written by `speclink discuss conclude`:
-**Decision** / **Rationale** / **Rejected alternatives** / **Deferred** / **Capture to** / **Next** -->
+**Decision**: 這場討論不另外轉出變更；它的主要問題已由討論 embedded-host-needs 定案，在此關閉。
+- 分層：引擎與 Node SDK 兩層維持不變，不新增「Agent 工具層」這一層，也不新增套件
+- 工具粒度：一顆收動詞文字與輸入內容的工具；它對應 embedded-host-needs 定的宿主套件第二個門（給宿主自己的 Agent 工具，不經 HTTP）
+- 工具的處理函式：接同程序的宿主套件；身分由宿主的程式在呼叫時給，不經過模型
+- 動詞涵蓋：由 CLI 與 SDK 共用的動詞轉譯提供全部引擎命令，不在 SDK 另外手寫
+- 工具的名稱、說明與輸入格式做成現成的匯出：併入 embedded-host-needs 的變更 host-kit-agent-door
+- 型別化的 JS 方法（每個動詞一個函式）：不做
+- 嵌入式 agent 不需要 init、綁定寫在建立引擎的那一行、技能以渲染後的文字投遞：第三輪的結論維持
+**Rationale**: 這場討論在 2026-09 開啟時，Node SDK 只有 9 個動詞、自訂儲存沒有交易與版本比對，所以「把引擎掛成工具」能做的範圍很小。embedded-host-needs 從內嵌宿主的完整需求重新設計了儲存接口、入口與動詞轉譯，工具只是那個入口的一個門；繼續在這裡單獨定工具的形狀，會讓同一個決定有兩個出處。
+**Rejected alternatives**:
+- 再拆核心 — 已是單一引擎，再拆只多一層轉發
+- 每個 runtime 一個獨立套件 — 殼只有轉發，刪掉沒有東西壞
+- 為嵌入式 agent 新增 init 動詞或 SDK 端的 init API — 引擎首次寫入會自建結構
+- 把全部技能塞進 system prompt — 體積過大，按需載入是既有做法
+- 另造一套技能格式或注入協定 — Agent Skills 標準已被廣泛採用且現有輸出相容
+- 這場討論另外轉出變更 — 主要問題已在 embedded-host-needs 定案
+**Deferred**:
+- 按需回傳技能本文的第二顆工具 — 技能改由遠端提供後用途變小，目前沒有需求
+- pi 的套件（預先渲染的技能加上註冊工具的 extension） — pi 已由變更 add-pi-cursor-tools 以內建工具支援
+- Copilot SDK 的技能目錄細節 — 目前沒有需求，未查證
+- 經 HTTP 連到 server 的 JS 用戶端 — 內嵌宿主走同程序，沒有需求
+**Capture to**: proposal
+**Next**: speclink discuss archive agent-tool-sdk-layering；後續見 embedded-host-needs
