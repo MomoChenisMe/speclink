@@ -1,14 +1,16 @@
 //! The conformance suite: one entry point that runs the same checks
 //! against any [`StorePort`] implementation and returns a report.
 
+use std::any::Any;
+use std::panic::{self, AssertUnwindSafe};
 use std::slice;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Barrier;
 use std::thread;
 
 use crate::{
-    Actor, Commit, DocKey, Document, Event, Expected, InvalidValue, KeyPrefix, Listing, Op,
-    PortError, RecordedEvent, ScopeId, StorePort, Timestamp, Version,
+    Actor, Commit, DocKey, Document, Event, Expected, KeyPrefix, Listing, Op, PortError,
+    RecordedEvent, ScopeId, StorePort, Timestamp, Version,
 };
 
 /// What the implementer of a store plugs into the suite.
@@ -93,22 +95,38 @@ const CHECKS: [(&str, CheckFn); 16] = [
     ("content-roundtrip", content_roundtrip),
 ];
 
-/// Run every check against the harness's store. A check that fails does
-/// not stop the others: the report always lists all sixteen.
+/// Run every check against the harness's store. A check that fails or
+/// panics does not stop the others: the report always lists all sixteen.
 #[must_use]
 pub fn run(harness: &dyn PortHarness) -> ConformanceReport {
     let checks = CHECKS
         .iter()
-        .map(|(name, check)| CheckResult {
-            name,
-            outcome: match check(harness) {
-                Ok(()) => CheckOutcome::Passed,
-                Err(Stop::Fail(detail)) => CheckOutcome::Failed(detail),
-                Err(Stop::Skip(reason)) => CheckOutcome::Skipped(reason),
-            },
+        .map(|(name, check)| {
+            // Each check works in its own new scope, so a panic leaves
+            // nothing that the next check reads.
+            let outcome = match panic::catch_unwind(AssertUnwindSafe(|| check(harness))) {
+                Ok(Ok(())) => CheckOutcome::Passed,
+                Ok(Err(Stop::Fail(detail))) => CheckOutcome::Failed(detail),
+                Ok(Err(Stop::Skip(reason))) => CheckOutcome::Skipped(reason),
+                Err(payload) => CheckOutcome::Failed(format!(
+                    "the check panicked: {}",
+                    panic_message(payload.as_ref())
+                )),
+            };
+            CheckResult { name, outcome }
         })
         .collect();
     ConformanceReport { checks }
+}
+
+fn panic_message(payload: &(dyn Any + Send)) -> &str {
+    if let Some(text) = payload.downcast_ref::<&str>() {
+        text
+    } else if let Some(text) = payload.downcast_ref::<String>() {
+        text
+    } else {
+        "a panic with no message"
+    }
 }
 
 /// Why a check ended early.
@@ -120,12 +138,6 @@ enum Stop {
 impl From<String> for Stop {
     fn from(detail: String) -> Self {
         Stop::Fail(detail)
-    }
-}
-
-impl From<InvalidValue> for Stop {
-    fn from(err: InvalidValue) -> Self {
-        Stop::Fail(format!("the suite built an invalid value: {err}"))
     }
 }
 
@@ -144,8 +156,14 @@ const T1: u64 = 1_700_000_000_000;
 const T2: u64 = T1 + 1_000;
 const T3: u64 = T1 + 2_000;
 
-fn key(text: &str) -> Result<DocKey, Stop> {
-    Ok(DocKey::new(text)?)
+// The suite's own fixed values are always valid, so building them uses
+// `expect`, the same as `keys::fixed`.
+fn key(text: &str) -> DocKey {
+    DocKey::new(text).expect("the suite's fixed keys follow the key format")
+}
+
+fn event(name: &str, payload: serde_json::Value) -> Event {
+    Event::new(name, payload).expect("the suite's event names are not empty")
 }
 
 fn put(key: &DocKey, content: &str, expected: Expected) -> Op {
@@ -163,14 +181,15 @@ fn delete(key: &DocKey, expected: Version) -> Op {
     }
 }
 
-fn commit_at(at: u64, ops: Vec<Op>, events: Vec<Event>) -> Result<Commit, Stop> {
-    Ok(Commit::new(
-        Actor::new("conformance", "Conformance suite")?,
+fn commit_at(at: u64, ops: Vec<Op>, events: Vec<Event>) -> Commit {
+    Commit::new(
+        Actor::new("conformance", "Conformance suite").expect("a fixed actor id"),
         "conformance",
-        Timestamp::new(at)?,
+        Timestamp::new(at).expect("the suite's times are within the range"),
         ops,
         events,
-    )?)
+    )
+    .expect("the suite's commits have no repeated key and are not empty")
 }
 
 /// One scope of the store under test.
@@ -192,7 +211,7 @@ impl<'a> Ctx<'a> {
     }
 
     fn list(&self, prefix: &str) -> Result<Listing, Stop> {
-        let prefix = KeyPrefix::new(prefix)?;
+        let prefix = KeyPrefix::new(prefix).expect("the suite's prefixes follow the prefix format");
         Ok(self
             .store()
             .list(&self.scope, &prefix)
@@ -213,6 +232,11 @@ impl<'a> Ctx<'a> {
             )
         })?;
         Ok(found)
+    }
+
+    /// A read of one key.
+    fn read_one(&self, key: &DocKey) -> Result<Option<Document>, Stop> {
+        Ok(self.read(slice::from_ref(key))?.remove(0))
     }
 
     /// The events the store kept in this scope, or `None` when it keeps
@@ -278,6 +302,15 @@ fn expect_doc(
     })
 }
 
+fn expect_version(listing: &Listing, want: Version) -> Check {
+    ensure(listing.version == want, || {
+        format!(
+            "the scope lists version {}, expected {want}",
+            listing.version
+        )
+    })
+}
+
 /// The listing holds exactly `expected` (key, version, time), in order.
 fn expect_entries(listing: &Listing, expected: &[(&DocKey, Version, u64)]) -> Check {
     let found: Vec<(&str, u64, u64)> = listing
@@ -303,11 +336,9 @@ fn expect_entries(listing: &Listing, expected: &[(&DocKey, Version, u64)]) -> Ch
 fn empty_scope(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
     let listing = cx.list("")?;
-    ensure(listing.version == Version::ZERO, || {
-        format!("a new scope lists version {}, expected 0", listing.version)
-    })?;
+    expect_version(&listing, Version::ZERO)?;
     expect_entries(&listing, &[])?;
-    let found = cx.read(&[key("config.yaml")?, key("specs/auth/spec.md")?])?;
+    let found = cx.read(&[key("config.yaml"), key("specs/auth/spec.md")])?;
     ensure(found.iter().all(Option::is_none), || {
         "a read in a new scope found a document".into()
     })
@@ -315,8 +346,8 @@ fn empty_scope(harness: &dyn PortHarness) -> Check {
 
 fn put_then_read(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let spec = key("specs/auth/spec.md")?;
-    let config = key("config.yaml")?;
+    let spec = key("specs/auth/spec.md");
+    let config = key("config.yaml");
     let v = cx.commit(&commit_at(
         T1,
         vec![
@@ -324,7 +355,7 @@ fn put_then_read(harness: &dyn PortHarness) -> Check {
             put(&config, "config", Expected::Absent),
         ],
         Vec::new(),
-    )?)?;
+    ))?;
     ensure(v > Version::ZERO, || {
         "the first commit of a scope returned version 0".into()
     })?;
@@ -332,37 +363,27 @@ fn put_then_read(harness: &dyn PortHarness) -> Check {
     expect_doc(&found[0], &spec, "spec", v, T1)?;
     expect_doc(&found[1], &config, "config", v, T1)?;
     let listing = cx.list("")?;
-    ensure(listing.version == v, || {
-        format!(
-            "the listing has version {}, the commit returned {v}",
-            listing.version
-        )
-    })?;
+    expect_version(&listing, v)?;
     expect_entries(&listing, &[(&config, v, T1), (&spec, v, T1)])
 }
 
 fn list_prefix_order(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let spec = key("specs/auth/spec.md")?;
-    let addendum = key("changes/addendum/tasks.md")?;
-    let language = key("LANGUAGE.md")?;
-    let add_x = key("changes/add-x/proposal.md")?;
-    let config = key("config.yaml")?;
+    let spec = key("specs/auth/spec.md");
+    let addendum = key("changes/addendum/tasks.md");
+    let language = key("LANGUAGE.md");
+    let add_x = key("changes/add-x/proposal.md");
+    let config = key("config.yaml");
     // The operations are out of order on purpose.
     let ops = [&spec, &addendum, &language, &add_x, &config]
         .into_iter()
         .map(|key| put(key, "x", Expected::Absent))
         .collect();
-    let v = cx.commit(&commit_at(T1, ops, Vec::new())?)?;
+    let v = cx.commit(&commit_at(T1, ops, Vec::new()))?;
 
     // A prefix matches bytes, not segments.
     let listing = cx.list("changes/add")?;
-    ensure(listing.version == v, || {
-        format!(
-            "the listing has version {}, the commit returned {v}",
-            listing.version
-        )
-    })?;
+    expect_version(&listing, v)?;
     expect_entries(&listing, &[(&add_x, v, T1), (&addendum, v, T1)])?;
     expect_entries(&cx.list("changes/add-x/")?, &[(&add_x, v, T1)])?;
     // Byte order puts upper case before lower case.
@@ -377,24 +398,19 @@ fn list_prefix_order(harness: &dyn PortHarness) -> Check {
         ],
     )?;
     let none = cx.list("discussions/")?;
-    ensure(none.version == v, || {
-        format!(
-            "a listing with no match has version {}, expected {v}",
-            none.version
-        )
-    })?;
+    expect_version(&none, v)?;
     expect_entries(&none, &[])
 }
 
 fn read_alignment(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let config = key("config.yaml")?;
-    let language = key("LANGUAGE.md")?;
+    let config = key("config.yaml");
+    let language = key("LANGUAGE.md");
     let v = cx.commit(&commit_at(
         T1,
         vec![put(&config, "a", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     let found = cx.read(&[config.clone(), language.clone(), config.clone()])?;
     expect_doc(&found[0], &config, "a", v, T1)?;
     ensure(found[1].is_none(), || {
@@ -410,8 +426,8 @@ fn read_alignment(harness: &dyn PortHarness) -> Check {
 
 fn update_advances_version(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let edited = key("specs/auth/spec.md")?;
-    let untouched = key("config.yaml")?;
+    let edited = key("specs/auth/spec.md");
+    let untouched = key("config.yaml");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![
@@ -419,12 +435,12 @@ fn update_advances_version(harness: &dyn PortHarness) -> Check {
             put(&untouched, "kept", Expected::Absent),
         ],
         Vec::new(),
-    )?)?;
+    ))?;
     let v2 = cx.commit(&commit_at(
         T2,
         vec![put(&edited, "second", Expected::At(v1))],
         Vec::new(),
-    )?)?;
+    ))?;
     ensure(v2 > v1, || {
         format!("a commit after version {v1} returned version {v2}")
     })?;
@@ -432,47 +448,38 @@ fn update_advances_version(harness: &dyn PortHarness) -> Check {
     expect_doc(&found[0], &edited, "second", v2, T2)?;
     expect_doc(&found[1], &untouched, "kept", v1, T1)?;
     let listing = cx.list("")?;
-    ensure(listing.version == v2, || {
-        format!(
-            "the listing has version {}, the last commit returned {v2}",
-            listing.version
-        )
-    })?;
+    expect_version(&listing, v2)?;
     expect_entries(&listing, &[(&untouched, v1, T1), (&edited, v2, T2)])
 }
 
 fn delete_then_recreate(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let doc = key("discussions/board-search.md")?;
+    let doc = key("discussions/board-search.md");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "first", Expected::Absent)],
         Vec::new(),
-    )?)?;
-    let v2 = cx.commit(&commit_at(T2, vec![delete(&doc, v1)], Vec::new())?)?;
+    ))?;
+    let v2 = cx.commit(&commit_at(T2, vec![delete(&doc, v1)], Vec::new()))?;
     ensure(v2 > v1, || {
         format!("a delete after version {v1} returned version {v2}")
     })?;
-    ensure(cx.read(slice::from_ref(&doc))?[0].is_none(), || {
+    ensure(cx.read_one(&doc)?.is_none(), || {
         "a read after the delete still found the document".into()
     })?;
     let listing = cx.list("")?;
-    ensure(listing.version == v2, || {
-        format!(
-            "the listing has version {}, the delete returned {v2}",
-            listing.version
-        )
-    })?;
+    expect_version(&listing, v2)?;
     expect_entries(&listing, &[])?;
     let v3 = cx.commit(&commit_at(
         T3,
         vec![put(&doc, "again", Expected::Absent)],
         Vec::new(),
-    )?)?;
-    ensure(v3 > v1, || {
-        format!("the recreated document has version {v3}, not more than {v1}")
+    ))?;
+    ensure(v3 > v2, || {
+        format!("the commit that recreated the document returned version {v3}, not more than {v2}")
     })?;
-    expect_doc(&cx.read(slice::from_ref(&doc))?[0], &doc, "again", v3, T3)
+    expect_version(&cx.list("")?, v3)?;
+    expect_doc(&cx.read_one(&doc)?, &doc, "again", v3, T3)
 }
 
 /// The commit must fail with exactly this conflict.
@@ -502,90 +509,79 @@ fn expect_conflict(
     }
 }
 
-/// The scope still lists `version`.
-fn expect_scope_version(cx: &Ctx, version: Version) -> Check {
-    let listing = cx.list("")?;
-    ensure(listing.version == version, || {
-        format!(
-            "a rejected commit moved the scope from version {version} to {}",
-            listing.version
-        )
-    })
-}
-
 fn conflict_stale_version(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let doc = key("specs/auth/spec.md")?;
+    let doc = key("specs/auth/spec.md");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "first", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     let v2 = cx.commit(&commit_at(
         T2,
         vec![put(&doc, "second", Expected::At(v1))],
         Vec::new(),
-    )?)?;
+    ))?;
     // v1 is stale now.
     expect_conflict(
         &cx,
-        &commit_at(T3, vec![put(&doc, "stale", Expected::At(v1))], Vec::new())?,
+        &commit_at(T3, vec![put(&doc, "stale", Expected::At(v1))], Vec::new()),
         &doc,
         Expected::At(v1),
         Some(v2),
     )?;
     expect_conflict(
         &cx,
-        &commit_at(T3, vec![delete(&doc, v1)], Vec::new())?,
+        &commit_at(T3, vec![delete(&doc, v1)], Vec::new()),
         &doc,
         Expected::At(v1),
         Some(v2),
     )?;
-    expect_scope_version(&cx, v2)?;
-    expect_doc(&cx.read(slice::from_ref(&doc))?[0], &doc, "second", v2, T2)
+    expect_version(&cx.list("")?, v2)?;
+    expect_doc(&cx.read_one(&doc)?, &doc, "second", v2, T2)
 }
 
 fn conflict_absent_but_exists(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let doc = key("config.yaml")?;
+    let doc = key("config.yaml");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "first", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     expect_conflict(
         &cx,
-        &commit_at(T2, vec![put(&doc, "again", Expected::Absent)], Vec::new())?,
+        &commit_at(T2, vec![put(&doc, "again", Expected::Absent)], Vec::new()),
         &doc,
         Expected::Absent,
         Some(v1),
     )?;
-    expect_scope_version(&cx, v1)?;
-    expect_doc(&cx.read(slice::from_ref(&doc))?[0], &doc, "first", v1, T1)
+    expect_version(&cx.list("")?, v1)?;
+    expect_doc(&cx.read_one(&doc)?, &doc, "first", v1, T1)
 }
 
 fn conflict_missing_document(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let never = key("specs/missing/spec.md")?;
-    let gone = key("discussions/gone.md")?;
+    let never = key("specs/missing/spec.md");
+    let gone = key("discussions/gone.md");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&gone, "first", Expected::Absent)],
         Vec::new(),
-    )?)?;
-    let v2 = cx.commit(&commit_at(T2, vec![delete(&gone, v1)], Vec::new())?)?;
-    let five = Version::new(5)?;
+    ))?;
+    let v2 = cx.commit(&commit_at(T2, vec![delete(&gone, v1)], Vec::new()))?;
+    let five = Version::new(5).expect("5 is within the version range");
     // A key that never had a document.
     expect_conflict(
         &cx,
-        &commit_at(T3, vec![put(&never, "x", Expected::At(five))], Vec::new())?,
+        &commit_at(T3, vec![put(&never, "x", Expected::At(five))], Vec::new()),
         &never,
         Expected::At(five),
         None,
     )?;
     expect_conflict(
         &cx,
-        &commit_at(T3, vec![delete(&never, five)], Vec::new())?,
+        &commit_at(T3, vec![delete(&never, five)], Vec::new()),
         &never,
         Expected::At(five),
         None,
@@ -593,12 +589,12 @@ fn conflict_missing_document(harness: &dyn PortHarness) -> Check {
     // A key whose document was deleted.
     expect_conflict(
         &cx,
-        &commit_at(T3, vec![put(&gone, "x", Expected::At(v1))], Vec::new())?,
+        &commit_at(T3, vec![put(&gone, "x", Expected::At(v1))], Vec::new()),
         &gone,
         Expected::At(v1),
         None,
     )?;
-    expect_scope_version(&cx, v2)?;
+    expect_version(&cx.list("")?, v2)?;
     ensure(
         cx.read(&[never.clone(), gone.clone()])?
             .iter()
@@ -609,19 +605,19 @@ fn conflict_missing_document(harness: &dyn PortHarness) -> Check {
 
 fn conflict_rejects_whole_commit(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let target = key("config.yaml")?;
-    let first = key("changes/add-x/proposal.md")?;
-    let second = key("changes/add-x/tasks.md")?;
+    let target = key("config.yaml");
+    let first = key("changes/add-x/proposal.md");
+    let second = key("changes/add-x/tasks.md");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&target, "first", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     let v2 = cx.commit(&commit_at(
         T2,
         vec![put(&target, "second", Expected::At(v1))],
         Vec::new(),
-    )?)?;
+    ))?;
     // Two operations that hold, then one that does not.
     let rejected = commit_at(
         T3,
@@ -630,8 +626,8 @@ fn conflict_rejects_whole_commit(harness: &dyn PortHarness) -> Check {
             put(&second, "tasks", Expected::Absent),
             put(&target, "third", Expected::At(v1)),
         ],
-        vec![Event::new("whole.rejected", serde_json::Value::Null)?],
-    )?;
+        vec![event("whole.rejected", serde_json::Value::Null)],
+    );
     expect_conflict(&cx, &rejected, &target, Expected::At(v1), Some(v2))?;
     ensure(
         cx.read(&[first.clone(), second.clone()])?
@@ -639,14 +635,8 @@ fn conflict_rejects_whole_commit(harness: &dyn PortHarness) -> Check {
             .all(Option::is_none),
         || "a rejected commit wrote the operations before the conflict".into(),
     )?;
-    expect_scope_version(&cx, v2)?;
-    expect_doc(
-        &cx.read(slice::from_ref(&target))?[0],
-        &target,
-        "second",
-        v2,
-        T2,
-    )?;
+    expect_version(&cx.list("")?, v2)?;
+    expect_doc(&cx.read_one(&target)?, &target, "second", v2, T2)?;
     if let Some(events) = cx.events()? {
         ensure(
             events.iter().all(|event| event.name != "whole.rejected"),
@@ -674,14 +664,14 @@ fn events_with_commit(harness: &dyn PortHarness) -> Check {
     ensure(before.is_empty(), || {
         format!("a new scope already kept {:?}", event_list(&before))
     })?;
-    let doc = key("changes/add-x/tasks.md")?;
-    let first = Event::new("task.done", serde_json::json!({ "task": 1 }))?;
-    let second = Event::new("change.updated", serde_json::json!({ "name": "add-x" }))?;
+    let doc = key("changes/add-x/tasks.md");
+    let first = event("task.done", serde_json::json!({ "task": 1 }));
+    let second = event("change.updated", serde_json::json!({ "name": "add-x" }));
     let v = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "tasks", Expected::Absent)],
         vec![first.clone(), second.clone()],
-    )?)?;
+    ))?;
     let want: Vec<RecordedEvent> = [first, second]
         .into_iter()
         .map(|event| RecordedEvent {
@@ -704,8 +694,8 @@ fn events_with_commit(harness: &dyn PortHarness) -> Check {
         &commit_at(
             T2,
             vec![put(&doc, "again", Expected::Absent)],
-            vec![Event::new("task.rejected", serde_json::Value::Null)?],
-        )?,
+            vec![event("task.rejected", serde_json::Value::Null)],
+        ),
         &doc,
         Expected::Absent,
         Some(v),
@@ -722,28 +712,23 @@ fn events_with_commit(harness: &dyn PortHarness) -> Check {
 
 fn events_only_commit(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let doc = key("board/order")?;
+    let doc = key("board/order");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "add-x", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     let v2 = cx.commit(&commit_at(
         T2,
         Vec::new(),
-        vec![Event::new("board.viewed", serde_json::Value::Null)?],
-    )?)?;
+        vec![event("board.viewed", serde_json::Value::Null)],
+    ))?;
     ensure(v2 > v1, || {
         format!("a commit with only events after version {v1} returned version {v2}")
     })?;
-    expect_doc(&cx.read(slice::from_ref(&doc))?[0], &doc, "add-x", v1, T1)?;
+    expect_doc(&cx.read_one(&doc)?, &doc, "add-x", v1, T1)?;
     let listing = cx.list("")?;
-    ensure(listing.version == v2, || {
-        format!(
-            "the listing has version {}, the commit returned {v2}",
-            listing.version
-        )
-    })?;
+    expect_version(&listing, v2)?;
     expect_entries(&listing, &[(&doc, v1, T1)])?;
     if let Some(events) = cx.events()? {
         ensure(
@@ -767,12 +752,12 @@ fn scope_isolation(harness: &dyn PortHarness) -> Check {
     ensure(first.scope != second.scope, || {
         format!("the harness gave the scope {} twice", first.scope.as_str())
     })?;
-    let config = key("config.yaml")?;
+    let config = key("config.yaml");
     let v1 = first.commit(&commit_at(
         T1,
         vec![put(&config, "first", Expected::Absent)],
-        vec![Event::new("isolation.first", serde_json::Value::Null)?],
-    )?)?;
+        vec![event("isolation.first", serde_json::Value::Null)],
+    ))?;
 
     let listing = second.list("")?;
     ensure(listing.version == Version::ZERO, || {
@@ -782,7 +767,7 @@ fn scope_isolation(harness: &dyn PortHarness) -> Check {
         )
     })?;
     expect_entries(&listing, &[])?;
-    ensure(second.read(slice::from_ref(&config))?[0].is_none(), || {
+    ensure(second.read_one(&config)?.is_none(), || {
         "a read found a document another scope wrote".into()
     })?;
 
@@ -790,7 +775,7 @@ fn scope_isolation(harness: &dyn PortHarness) -> Check {
         T2,
         vec![put(&config, "second", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     ensure(w1 > Version::ZERO, || {
         "the first commit of a scope returned version 0".into()
     })?;
@@ -801,20 +786,8 @@ fn scope_isolation(harness: &dyn PortHarness) -> Check {
             listing.version
         )
     })?;
-    expect_doc(
-        &first.read(slice::from_ref(&config))?[0],
-        &config,
-        "first",
-        v1,
-        T1,
-    )?;
-    expect_doc(
-        &second.read(slice::from_ref(&config))?[0],
-        &config,
-        "second",
-        w1,
-        T2,
-    )?;
+    expect_doc(&first.read_one(&config)?, &config, "first", v1, T1)?;
+    expect_doc(&second.read_one(&config)?, &config, "second", w1, T2)?;
 
     if let Some(events) = second.events()? {
         ensure(
@@ -833,12 +806,12 @@ const ROUNDS: u64 = 200;
 
 fn concurrent_single_winner(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
-    let doc = key("specs/auth/spec.md")?;
+    let doc = key("specs/auth/spec.md");
     let v1 = cx.commit(&commit_at(
         T1,
         vec![put(&doc, "start", Expected::Absent)],
         Vec::new(),
-    )?)?;
+    ))?;
     let commits = (0..WRITERS)
         .map(|writer| {
             commit_at(
@@ -847,7 +820,7 @@ fn concurrent_single_winner(harness: &dyn PortHarness) -> Check {
                 Vec::new(),
             )
         })
-        .collect::<Result<Vec<_>, _>>()?;
+        .collect::<Vec<_>>();
 
     let store = cx.store();
     let scope = &cx.scope;
@@ -880,7 +853,7 @@ fn concurrent_single_winner(harness: &dyn PortHarness) -> Check {
             Err(PortError::Conflict { key: k, .. }) if k == doc => {}
             Err(err) => {
                 return Err(Stop::Fail(format!(
-                    "writer {writer} got \"{err}\" instead of a success or a conflict on {}",
+                    "writer {writer} got \"{err}\". The contract requires every writer that loses to report a conflict on {}: a host that sees a busy or serialization error must retry inside its own transaction, then report the conflict",
                     doc.as_str()
                 )))
             }
@@ -893,7 +866,7 @@ fn concurrent_single_winner(harness: &dyn PortHarness) -> Check {
         )));
     };
     expect_doc(
-        &cx.read(slice::from_ref(&doc))?[0],
+        &cx.read_one(&doc)?,
         &doc,
         &format!("writer {writer}"),
         version,
@@ -927,11 +900,21 @@ fn same_commit(
     Ok((first.version, first.content.clone()))
 }
 
+/// Sets the flag when it is dropped, so the reader of `batch-read-atomic`
+/// stops even when the writer panics.
+struct SetOnDrop<'a>(&'a AtomicBool);
+
+impl Drop for SetOnDrop<'_> {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+}
+
 fn batch_read_atomic(harness: &dyn PortHarness) -> Check {
     let cx = Ctx::new(harness)?;
     let keys = [
-        key("changes/add-x/proposal.md")?,
-        key("changes/add-x/tasks.md")?,
+        key("changes/add-x/proposal.md"),
+        key("changes/add-x/tasks.md"),
     ];
     let start = cx.commit(&commit_at(
         T1,
@@ -939,7 +922,7 @@ fn batch_read_atomic(harness: &dyn PortHarness) -> Check {
             .map(|key| put(key, "0", Expected::Absent))
             .collect(),
         Vec::new(),
-    )?)?;
+    ))?;
 
     let store = cx.store();
     let scope = &cx.scope;
@@ -947,28 +930,22 @@ fn batch_read_atomic(harness: &dyn PortHarness) -> Check {
     let done = AtomicBool::new(false);
     let (written, reads) = thread::scope(|threads| {
         let writer = threads.spawn(|| {
-            let written = (|| {
-                let mut version = start;
-                for round in 1..=ROUNDS {
-                    let content = round.to_string();
-                    let commit = commit_at(
-                        T1 + round,
-                        keys.iter()
-                            .map(|key| put(key, &content, Expected::At(version)))
-                            .collect(),
-                        Vec::new(),
-                    )
-                    .map_err(|stop| match stop {
-                        Stop::Fail(detail) | Stop::Skip(detail) => detail,
-                    })?;
-                    version = store
-                        .commit(scope, &commit)
-                        .map_err(|err| format!("commit {round} of the writer failed: {err}"))?;
-                }
-                Ok::<Version, String>(version)
-            })();
-            done.store(true, Ordering::SeqCst);
-            written
+            let _done = SetOnDrop(&done);
+            let mut version = start;
+            for round in 1..=ROUNDS {
+                let content = round.to_string();
+                let commit = commit_at(
+                    T1 + round,
+                    keys.iter()
+                        .map(|key| put(key, &content, Expected::At(version)))
+                        .collect(),
+                    Vec::new(),
+                );
+                version = store
+                    .commit(scope, &commit)
+                    .map_err(|err| format!("commit {round} of the writer failed: {err}"))?;
+            }
+            Ok::<Version, String>(version)
         });
         let reader = threads.spawn(|| {
             loop {
@@ -1012,16 +989,13 @@ fn content_roundtrip(harness: &dyn PortHarness) -> Check {
         ("roundtrip/crlf", "line one\r\nline two\r\n"),
         ("roundtrip/one-mebibyte", large.as_str()),
     ];
-    let keys = contents
-        .iter()
-        .map(|(text, _)| key(text))
-        .collect::<Result<Vec<_>, _>>()?;
+    let keys: Vec<DocKey> = contents.iter().map(|(text, _)| key(text)).collect();
     let ops = keys
         .iter()
         .zip(contents)
         .map(|(key, (_, content))| put(key, content, Expected::Absent))
         .collect();
-    let v = cx.commit(&commit_at(T1, ops, Vec::new())?)?;
+    let v = cx.commit(&commit_at(T1, ops, Vec::new()))?;
     let found = cx.read(&keys)?;
     for ((key, (_, content)), found) in keys.iter().zip(contents).zip(&found) {
         expect_doc(found, key, content, v, T1)?;
@@ -1031,11 +1005,13 @@ fn content_roundtrip(harness: &dyn PortHarness) -> Check {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU64, Ordering};
-    use std::sync::Arc;
+    use std::collections::HashMap;
+    use std::sync::atomic::AtomicU64;
+    use std::sync::{mpsc, Arc, Mutex};
+    use std::time::Duration;
 
     use super::*;
-    use crate::MemoryStorePort;
+    use crate::{InvalidValue, MemoryStorePort};
 
     const NAMES: [&str; 16] = [
         "empty-scope",
@@ -1059,14 +1035,14 @@ mod tests {
     /// A harness over any store. `memory` is the in-memory store whose
     /// events the harness reports; `None` makes `recorded_events` fail.
     struct Harness {
-        store: Box<dyn StorePort>,
+        store: Arc<dyn StorePort>,
         memory: Option<Arc<MemoryStorePort>>,
         keeps_events: bool,
         next: AtomicU64,
     }
 
     impl Harness {
-        fn new(store: Box<dyn StorePort>, memory: Option<Arc<MemoryStorePort>>) -> Self {
+        fn new(store: Arc<dyn StorePort>, memory: Option<Arc<MemoryStorePort>>) -> Self {
             Self {
                 store,
                 memory,
@@ -1102,30 +1078,9 @@ mod tests {
         }
     }
 
-    /// The in-memory store, shared with the harness for its events.
-    struct Shared(Arc<MemoryStorePort>);
-
-    impl StorePort for Shared {
-        fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-            self.0.list(scope, prefix)
-        }
-
-        fn read(
-            &self,
-            scope: &ScopeId,
-            keys: &[DocKey],
-        ) -> Result<Vec<Option<Document>>, PortError> {
-            self.0.read(scope, keys)
-        }
-
-        fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-            self.0.commit(scope, commit)
-        }
-    }
-
     fn memory_harness() -> Harness {
         let memory = Arc::new(MemoryStorePort::new());
-        Harness::new(Box::new(Shared(memory.clone())), Some(memory))
+        Harness::new(memory.clone(), Some(memory))
     }
 
     fn names(report: &ConformanceReport) -> Vec<&'static str> {
@@ -1166,6 +1121,23 @@ mod tests {
         }
     }
 
+    /// A store whose three operations panic.
+    struct Panics;
+
+    impl StorePort for Panics {
+        fn list(&self, _: &ScopeId, _: &KeyPrefix) -> Result<Listing, PortError> {
+            panic!("the store crashed")
+        }
+
+        fn read(&self, _: &ScopeId, _: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+            panic!("the store crashed")
+        }
+
+        fn commit(&self, _: &ScopeId, _: &Commit) -> Result<Version, PortError> {
+            panic!("the store crashed")
+        }
+    }
+
     fn backend(err: InvalidValue) -> PortError {
         PortError::Backend {
             message: err.to_string(),
@@ -1183,13 +1155,17 @@ mod tests {
         .map_err(backend)
     }
 
-    /// Wrong on purpose: checks one operation, writes it at once, then
-    /// checks the next one. A late conflict leaves the earlier writes.
-    struct WritesWhileChecking(Arc<MemoryStorePort>);
+    type CommitFn = fn(&MemoryStorePort, &ScopeId, &Commit) -> Result<Version, PortError>;
 
-    impl StorePort for WritesWhileChecking {
+    /// Lists and reads through the memory store, but commits its own way.
+    struct CommitWith {
+        inner: Arc<MemoryStorePort>,
+        commit: CommitFn,
+    }
+
+    impl StorePort for CommitWith {
         fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-            self.0.list(scope, prefix)
+            self.inner.list(scope, prefix)
         }
 
         fn read(
@@ -1197,73 +1173,98 @@ mod tests {
             scope: &ScopeId,
             keys: &[DocKey],
         ) -> Result<Vec<Option<Document>>, PortError> {
-            self.0.read(scope, keys)
+            self.inner.read(scope, keys)
         }
 
         fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-            let mut version = None;
-            for op in commit.ops() {
-                version = Some(
-                    self.0
-                        .commit(scope, &rebuilt(commit, vec![op.clone()], Vec::new())?)?,
-                );
-            }
-            if !commit.events().is_empty() {
-                version = Some(self.0.commit(
-                    scope,
-                    &rebuilt(commit, Vec::new(), commit.events().to_vec())?,
-                )?);
-            }
-            Ok(version.expect("a valid commit has an operation or an event"))
+            (self.commit)(&self.inner, scope, commit)
         }
+    }
+
+    fn commit_with(commit: CommitFn) -> impl FnOnce(Arc<MemoryStorePort>) -> Arc<dyn StorePort> {
+        move |inner| Arc::new(CommitWith { inner, commit })
+    }
+
+    /// Wrong on purpose: checks one operation, writes it at once, then
+    /// checks the next one. A late conflict leaves the earlier writes.
+    fn writes_while_checking(
+        inner: &MemoryStorePort,
+        scope: &ScopeId,
+        commit: &Commit,
+    ) -> Result<Version, PortError> {
+        let mut version = None;
+        for op in commit.ops() {
+            version = Some(inner.commit(scope, &rebuilt(commit, vec![op.clone()], Vec::new())?)?);
+        }
+        if !commit.events().is_empty() {
+            version = Some(inner.commit(
+                scope,
+                &rebuilt(commit, Vec::new(), commit.events().to_vec())?,
+            )?);
+        }
+        Ok(version.expect("a valid commit has an operation or an event"))
     }
 
     /// Wrong on purpose: replaces every expectation with the document's
     /// current state, so every write goes through.
-    struct IgnoresExpected(Arc<MemoryStorePort>);
-
-    impl StorePort for IgnoresExpected {
-        fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-            self.0.list(scope, prefix)
-        }
-
-        fn read(
-            &self,
-            scope: &ScopeId,
-            keys: &[DocKey],
-        ) -> Result<Vec<Option<Document>>, PortError> {
-            self.0.read(scope, keys)
-        }
-
-        fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-            let mut ops = Vec::new();
-            for op in commit.ops() {
-                let current = self
-                    .0
-                    .read(scope, std::slice::from_ref(op.key()))?
-                    .remove(0);
-                match (op, current) {
-                    (Op::Put { key, content, .. }, current) => ops.push(Op::Put {
-                        key: key.clone(),
-                        content: content.clone(),
-                        expected: current.map_or(Expected::Absent, |doc| Expected::At(doc.version)),
-                    }),
-                    (Op::Delete { key, .. }, Some(doc)) => ops.push(Op::Delete {
-                        key: key.clone(),
-                        expected: doc.version,
-                    }),
-                    (Op::Delete { .. }, None) => {}
-                }
+    fn ignores_expected(
+        inner: &MemoryStorePort,
+        scope: &ScopeId,
+        commit: &Commit,
+    ) -> Result<Version, PortError> {
+        let mut ops = Vec::new();
+        for op in commit.ops() {
+            let current = inner.read(scope, slice::from_ref(op.key()))?.remove(0);
+            match (op, current) {
+                (Op::Put { key, content, .. }, current) => ops.push(Op::Put {
+                    key: key.clone(),
+                    content: content.clone(),
+                    expected: current.map_or(Expected::Absent, |doc| Expected::At(doc.version)),
+                }),
+                (Op::Delete { key, .. }, Some(doc)) => ops.push(Op::Delete {
+                    key: key.clone(),
+                    expected: doc.version,
+                }),
+                (Op::Delete { .. }, None) => {}
             }
-            if ops.is_empty() && commit.events().is_empty() {
-                return Ok(self
-                    .0
-                    .list(scope, &KeyPrefix::new("").map_err(backend)?)?
-                    .version);
-            }
-            self.0
-                .commit(scope, &rebuilt(commit, ops, commit.events().to_vec())?)
         }
+        if ops.is_empty() && commit.events().is_empty() {
+            return Ok(inner
+                .list(scope, &KeyPrefix::new("").map_err(backend)?)?
+                .version);
+        }
+        inner.commit(scope, &rebuilt(commit, ops, commit.events().to_vec())?)
+    }
+
+    /// Wrong on purpose: reports a busy database instead of a conflict.
+    fn busy_instead_of_conflict(
+        inner: &MemoryStorePort,
+        scope: &ScopeId,
+        commit: &Commit,
+    ) -> Result<Version, PortError> {
+        inner.commit(scope, commit).map_err(|err| match err {
+            PortError::Conflict { .. } => PortError::Unavailable {
+                message: "database is busy".into(),
+            },
+            other => other,
+        })
+    }
+
+    /// Wrong on purpose: crashes on the first commit of the batch-read-atomic
+    /// writer, the only commit in the suite that writes the content "1".
+    fn panics_on_round_one(
+        inner: &MemoryStorePort,
+        scope: &ScopeId,
+        commit: &Commit,
+    ) -> Result<Version, PortError> {
+        let round_one = commit
+            .ops()
+            .iter()
+            .any(|op| matches!(op, Op::Put { content, .. } if content == "1"));
+        if round_one {
+            panic!("the store crashed");
+        }
+        inner.commit(scope, commit)
     }
 
     /// Wrong on purpose: writes the events to its event log before it
@@ -1298,11 +1299,11 @@ mod tests {
         }
     }
 
-    /// Wrong on purpose: in a read of two or more keys, the second document
-    /// comes from the commit before the one that last wrote it.
+    /// Wrong on purpose: in a read of two or more keys, an existing second
+    /// document comes from the commit before the one that last wrote it.
     struct StaleSecondRead {
         inner: Arc<MemoryStorePort>,
-        previous: std::sync::Mutex<std::collections::HashMap<(ScopeId, DocKey), Document>>,
+        previous: Mutex<HashMap<(ScopeId, DocKey), Document>>,
     }
 
     impl StorePort for StaleSecondRead {
@@ -1316,7 +1317,7 @@ mod tests {
             keys: &[DocKey],
         ) -> Result<Vec<Option<Document>>, PortError> {
             let mut found = self.inner.read(scope, keys)?;
-            if keys.len() >= 2 {
+            if keys.len() >= 2 && found[1].is_some() {
                 let previous = self.previous.lock().unwrap();
                 if let Some(doc) = previous.get(&(scope.clone(), keys[1].clone())) {
                     found[1] = Some(doc.clone());
@@ -1344,12 +1345,13 @@ mod tests {
     /// so the check really tells the two apart. The wrong store gets the
     /// memory store that the harness reads the kept events from.
     fn assert_catches(
-        wrong: impl FnOnce(Arc<MemoryStorePort>) -> Box<dyn StorePort>,
+        wrong: impl FnOnce(Arc<MemoryStorePort>) -> Arc<dyn StorePort>,
         checks: &[&str],
     ) -> ConformanceReport {
         let memory = Arc::new(MemoryStorePort::new());
         let report = run(&Harness::new(wrong(memory.clone()), Some(memory)));
         let reference = run(&memory_harness());
+        assert_eq!(names(&report), NAMES);
         assert!(!report.passed());
         for name in checks {
             assert!(
@@ -1369,7 +1371,7 @@ mod tests {
     #[test]
     fn a_store_that_writes_while_it_checks_is_caught() {
         assert_catches(
-            |memory| Box::new(WritesWhileChecking(memory)),
+            commit_with(writes_while_checking),
             &["conflict-rejects-whole-commit"],
         );
     }
@@ -1377,7 +1379,7 @@ mod tests {
     #[test]
     fn a_store_that_ignores_expectations_is_caught() {
         assert_catches(
-            |memory| Box::new(IgnoresExpected(memory)),
+            commit_with(ignores_expected),
             &[
                 "conflict-stale-version",
                 "conflict-absent-but-exists",
@@ -1390,7 +1392,7 @@ mod tests {
     fn a_store_that_keeps_events_before_the_check_is_caught() {
         let report = assert_catches(
             |log| {
-                Box::new(EventsBeforeCheck {
+                Arc::new(EventsBeforeCheck {
                     docs: MemoryStorePort::new(),
                     log,
                 })
@@ -1409,14 +1411,35 @@ mod tests {
 
     #[test]
     fn a_store_whose_batch_read_mixes_commits_is_caught() {
-        assert_catches(
+        let report = assert_catches(
             |memory| {
-                Box::new(StaleSecondRead {
+                Arc::new(StaleSecondRead {
                     inner: memory,
                     previous: Default::default(),
                 })
             },
             &["batch-read-atomic"],
+        );
+        // 「一項失敗不影響其他檢查」：其餘十五項照各自的實際行為記為通過。
+        for check in &report.checks {
+            if check.name != "batch-read-atomic" {
+                assert_eq!(check.outcome, CheckOutcome::Passed, "{}", check.name);
+            }
+        }
+    }
+
+    #[test]
+    fn a_store_that_reports_busy_instead_of_a_conflict_is_told_what_to_do() {
+        let report = assert_catches(
+            commit_with(busy_instead_of_conflict),
+            &["concurrent-single-winner"],
+        );
+        let Some(CheckOutcome::Failed(detail)) = report.outcome("concurrent-single-winner") else {
+            panic!("concurrent-single-winner did not fail");
+        };
+        assert!(
+            detail.contains("must retry inside its own transaction"),
+            "{detail}"
         );
     }
 
@@ -1449,7 +1472,7 @@ mod tests {
 
     #[test]
     fn a_store_that_always_fails_still_gets_all_sixteen_results() {
-        let report = run(&Harness::new(Box::new(Broken), None));
+        let report = run(&Harness::new(Arc::new(Broken), None));
         assert_eq!(names(&report), NAMES);
         assert!(!report.passed());
         for check in &report.checks {
@@ -1459,5 +1482,42 @@ mod tests {
                 check.name
             );
         }
+    }
+
+    #[test]
+    fn a_store_that_panics_still_gets_all_sixteen_results() {
+        let report = run(&Harness::new(Arc::new(Panics), None));
+        assert_eq!(names(&report), NAMES);
+        for check in &report.checks {
+            assert!(
+                matches!(check.outcome, CheckOutcome::Failed(_)),
+                "{} did not fail",
+                check.name
+            );
+        }
+        assert_eq!(
+            report.outcome("empty-scope"),
+            Some(&CheckOutcome::Failed(
+                "the check panicked: the store crashed".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn a_writer_that_panics_does_not_hang_batch_read_atomic() {
+        let memory = Arc::new(MemoryStorePort::new());
+        let harness = Harness::new(
+            commit_with(panics_on_round_one)(memory.clone()),
+            Some(memory),
+        );
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || sender.send(run(&harness)));
+        let report = receiver
+            .recv_timeout(Duration::from_secs(60))
+            .expect("the suite hangs when the writer panics");
+        assert_eq!(
+            report.outcome("batch-read-atomic"),
+            Some(&CheckOutcome::Failed("the writer thread panicked".into()))
+        );
     }
 }

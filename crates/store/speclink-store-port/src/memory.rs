@@ -273,4 +273,70 @@ mod tests {
             crate::MAX_VERSION
         );
     }
+
+    #[test]
+    fn conflicts_report_the_current_version_from_the_spec_table() {
+        // 規格範例「衝突的對照」：文件在版本 7，或不存在。
+        let store = MemoryStorePort::new();
+        let scope = ScopeId::new("s").unwrap();
+        let doc = DocKey::new("config.yaml").unwrap();
+        let missing = DocKey::new("LANGUAGE.md").unwrap();
+        let mut version = Version::ZERO;
+        for round in 1..=7 {
+            let expected = if round == 1 {
+                Expected::Absent
+            } else {
+                Expected::At(version)
+            };
+            let put = Op::Put {
+                key: doc.clone(),
+                content: round.to_string(),
+                expected,
+            };
+            version = store
+                .commit(&scope, &commit(vec![put], Vec::new()))
+                .unwrap();
+        }
+        let seven = Version::new(7).unwrap();
+        let five = Version::new(5).unwrap();
+        assert_eq!(version, seven);
+        let put = |key: &DocKey, expected| Op::Put {
+            key: key.clone(),
+            content: "x".into(),
+            expected,
+        };
+        let delete = |key: &DocKey| Op::Delete {
+            key: key.clone(),
+            expected: five,
+        };
+        let rows = [
+            (
+                put(&doc, Expected::At(five)),
+                Expected::At(five),
+                Some(seven),
+            ),
+            (delete(&doc), Expected::At(five), Some(seven)),
+            (put(&doc, Expected::Absent), Expected::Absent, Some(seven)),
+            (put(&missing, Expected::At(five)), Expected::At(five), None),
+            (delete(&missing), Expected::At(five), None),
+        ];
+        for (op, expected, actual) in rows {
+            let key = op.key().clone();
+            assert_eq!(
+                store.commit(&scope, &commit(vec![op], Vec::new())),
+                Err(PortError::Conflict {
+                    key,
+                    expected,
+                    actual
+                })
+            );
+        }
+        assert_eq!(
+            store
+                .list(&scope, &KeyPrefix::new("").unwrap())
+                .unwrap()
+                .version,
+            seven
+        );
+    }
 }

@@ -5,25 +5,27 @@ use crate::types::{DocKey, Expected, Version};
 /// A value that breaks one of the contract's format rules. Constructors
 /// return it, so a store implementation never sees a malformed value.
 ///
-/// The error names the kind of value and the rule. It never carries the
-/// rejected input itself.
+/// The error names the kind of value and the rule. It never repeats the
+/// rejected text and never carries document content. The one exception is
+/// a commit with a repeated key: the rule names that key, which is an
+/// address, not content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InvalidValue {
-    value: &'static str,
+    kind: &'static str,
     rule: String,
 }
 
 impl InvalidValue {
-    pub(crate) fn new(value: &'static str, rule: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: &'static str, rule: impl Into<String>) -> Self {
         Self {
-            value,
+            kind,
             rule: rule.into(),
         }
     }
 
     /// Which kind of value was rejected, for example `document key`.
-    pub fn value(&self) -> &'static str {
-        self.value
+    pub fn kind(&self) -> &'static str {
+        self.kind
     }
 
     /// The rule the value breaks, for example `must not start with '/'`.
@@ -34,7 +36,7 @@ impl InvalidValue {
 
 impl fmt::Display for InvalidValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "invalid {}: {}", self.value, self.rule)
+        write!(f, "invalid {}: {}", self.kind, self.rule)
     }
 }
 

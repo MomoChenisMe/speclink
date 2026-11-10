@@ -12,17 +12,17 @@ pub const MAX_KEY_BYTES: usize = 512;
 /// The longest scope id, in UTF-8 bytes.
 pub const MAX_SCOPE_BYTES: usize = 256;
 
-fn non_empty(value: &'static str, text: &str) -> Result<(), InvalidValue> {
+fn non_empty(kind: &'static str, text: &str) -> Result<(), InvalidValue> {
     if text.is_empty() {
-        return Err(InvalidValue::new(value, "must not be empty"));
+        return Err(InvalidValue::new(kind, "must not be empty"));
     }
     Ok(())
 }
 
-fn at_most(value: &'static str, text: &str, max_bytes: usize) -> Result<(), InvalidValue> {
+fn at_most(kind: &'static str, text: &str, max_bytes: usize) -> Result<(), InvalidValue> {
     if text.len() > max_bytes {
         return Err(InvalidValue::new(
-            value,
+            kind,
             format!("must be at most {max_bytes} bytes"),
         ));
     }
@@ -31,27 +31,27 @@ fn at_most(value: &'static str, text: &str, max_bytes: usize) -> Result<(), Inva
 
 /// U+0000 to U+001F and U+007F. Every byte of a multi-byte UTF-8 sequence
 /// is 0x80 or more, so a byte scan finds exactly these characters.
-fn no_control(value: &'static str, text: &str) -> Result<(), InvalidValue> {
+fn no_control(kind: &'static str, text: &str) -> Result<(), InvalidValue> {
     if text.bytes().any(|b| b < 0x20 || b == 0x7f) {
         return Err(InvalidValue::new(
-            value,
+            kind,
             "must not contain control characters",
         ));
     }
     Ok(())
 }
 
-fn no_backslash(value: &'static str, text: &str) -> Result<(), InvalidValue> {
+fn no_backslash(kind: &'static str, text: &str) -> Result<(), InvalidValue> {
     if text.contains('\\') {
-        return Err(InvalidValue::new(value, "must not contain a backslash"));
+        return Err(InvalidValue::new(kind, "must not contain a backslash"));
     }
     Ok(())
 }
 
-fn within_max(value: &'static str, n: u64) -> Result<(), InvalidValue> {
+fn within_max(kind: &'static str, n: u64) -> Result<(), InvalidValue> {
     if n > MAX_VERSION {
         return Err(InvalidValue::new(
-            value,
+            kind,
             format!("must not exceed {MAX_VERSION}"),
         ));
     }
@@ -65,11 +65,11 @@ pub struct ScopeId(String);
 
 impl ScopeId {
     pub fn new(id: impl Into<String>) -> Result<Self, InvalidValue> {
-        const VALUE: &str = "scope id";
+        const KIND: &str = "scope id";
         let id = id.into();
-        non_empty(VALUE, &id)?;
-        at_most(VALUE, &id, MAX_SCOPE_BYTES)?;
-        no_control(VALUE, &id)?;
+        non_empty(KIND, &id)?;
+        at_most(KIND, &id, MAX_SCOPE_BYTES)?;
+        no_control(KIND, &id)?;
         Ok(Self(id))
     }
 
@@ -99,28 +99,25 @@ pub struct DocKey(String);
 
 impl DocKey {
     pub fn new(key: impl Into<String>) -> Result<Self, InvalidValue> {
-        const VALUE: &str = "document key";
+        const KIND: &str = "document key";
         let key = key.into();
-        non_empty(VALUE, &key)?;
-        at_most(VALUE, &key, MAX_KEY_BYTES)?;
-        no_control(VALUE, &key)?;
-        no_backslash(VALUE, &key)?;
+        non_empty(KIND, &key)?;
+        at_most(KIND, &key, MAX_KEY_BYTES)?;
+        no_control(KIND, &key)?;
+        no_backslash(KIND, &key)?;
         if key.starts_with('/') {
-            return Err(InvalidValue::new(VALUE, "must not start with '/'"));
+            return Err(InvalidValue::new(KIND, "must not start with '/'"));
         }
         if key.ends_with('/') {
-            return Err(InvalidValue::new(VALUE, "must not end with '/'"));
+            return Err(InvalidValue::new(KIND, "must not end with '/'"));
         }
         for segment in key.split('/') {
             if segment.is_empty() {
-                return Err(InvalidValue::new(
-                    VALUE,
-                    "must not contain an empty segment",
-                ));
+                return Err(InvalidValue::new(KIND, "must not contain an empty segment"));
             }
             if segment == "." || segment == ".." {
                 return Err(InvalidValue::new(
-                    VALUE,
+                    KIND,
                     "must not contain a '.' or '..' segment",
                 ));
             }
@@ -142,11 +139,11 @@ pub struct KeyPrefix(String);
 
 impl KeyPrefix {
     pub fn new(prefix: impl Into<String>) -> Result<Self, InvalidValue> {
-        const VALUE: &str = "key prefix";
+        const KIND: &str = "key prefix";
         let prefix = prefix.into();
-        at_most(VALUE, &prefix, MAX_KEY_BYTES)?;
-        no_control(VALUE, &prefix)?;
-        no_backslash(VALUE, &prefix)?;
+        at_most(KIND, &prefix, MAX_KEY_BYTES)?;
+        no_control(KIND, &prefix)?;
+        no_backslash(KIND, &prefix)?;
         Ok(Self(prefix))
     }
 
@@ -404,7 +401,7 @@ mod tests {
 
     fn rejected_key(input: &str) -> (&'static str, String) {
         let err = DocKey::new(input).expect_err("the key must be rejected");
-        (err.value(), err.rule().to_string())
+        (err.kind(), err.rule().to_string())
     }
 
     #[test]
@@ -499,15 +496,15 @@ mod tests {
         assert!(ScopeId::new("org/repo\\x").is_ok());
 
         let err = ScopeId::new("").unwrap_err();
-        assert_eq!((err.value(), err.rule()), ("scope id", "must not be empty"));
+        assert_eq!((err.kind(), err.rule()), ("scope id", "must not be empty"));
         let err = ScopeId::new("s".repeat(257)).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("scope id", "must be at most 256 bytes")
         );
         let err = ScopeId::new("a\nb").unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("scope id", "must not contain control characters")
         );
     }
@@ -526,17 +523,17 @@ mod tests {
         assert!(KeyPrefix::new("a".repeat(512)).is_ok());
         let err = KeyPrefix::new("a".repeat(513)).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("key prefix", "must be at most 512 bytes")
         );
         let err = KeyPrefix::new("changes\\").unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("key prefix", "must not contain a backslash")
         );
         let err = KeyPrefix::new("changes\t").unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("key prefix", "must not contain control characters")
         );
     }
@@ -554,7 +551,7 @@ mod tests {
         // 「超出範圍的版本號被拒絕」：9007199254740992。
         let err = Version::new(9_007_199_254_740_992).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("version", "must not exceed 9007199254740991")
         );
     }
@@ -565,7 +562,7 @@ mod tests {
         assert_eq!(Timestamp::new(MAX_VERSION).unwrap().get(), MAX_VERSION);
         let err = Timestamp::new(MAX_VERSION + 1).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("timestamp", "must not exceed 9007199254740991")
         );
     }
@@ -575,7 +572,7 @@ mod tests {
         let actor = Actor::new("u-1", "Momo").unwrap();
         assert_eq!((actor.id(), actor.display_name()), ("u-1", "Momo"));
         let err = Actor::new("", "Momo").unwrap_err();
-        assert_eq!((err.value(), err.rule()), ("actor id", "must not be empty"));
+        assert_eq!((err.kind(), err.rule()), ("actor id", "must not be empty"));
     }
 
     fn key(text: &str) -> DocKey {
@@ -609,7 +606,7 @@ mod tests {
         ];
         let err = Commit::new(actor(), "archive", at(), ops, Vec::new()).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("commit", "key config.yaml appears in two operations")
         );
     }
@@ -618,7 +615,7 @@ mod tests {
     fn commit_rejects_no_operations_and_no_events() {
         let err = Commit::new(actor(), "archive", at(), Vec::new(), Vec::new()).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("commit", "must contain at least one operation or event")
         );
     }
@@ -626,7 +623,7 @@ mod tests {
     #[test]
     fn commit_rejects_an_empty_command() {
         let err = Commit::new(actor(), "", at(), vec![put("config.yaml")], Vec::new()).unwrap_err();
-        assert_eq!((err.value(), err.rule()), ("command", "must not be empty"));
+        assert_eq!((err.kind(), err.rule()), ("command", "must not be empty"));
     }
 
     #[test]
@@ -658,7 +655,7 @@ mod tests {
         );
         let err = Event::new("", serde_json::Value::Null).unwrap_err();
         assert_eq!(
-            (err.value(), err.rule()),
+            (err.kind(), err.rule()),
             ("event name", "must not be empty")
         );
     }
