@@ -9,39 +9,27 @@ mod verbs;
 use common::{warn_leftover_remote_file, warn_spec_layout};
 use remote_base::{remote_ctx, RemoteCtx};
 use std::process::ExitCode;
+use speclink_verbs::{GlobalArgs, SpecVerb};
 use verbs::checks::{
-    cmd_analyze, cmd_drift, cmd_validate, remote_analyze, remote_drift, remote_validate, ChangeArg,
-    ValidateArgs,
+    cmd_analyze, cmd_drift, cmd_validate, remote_analyze, remote_drift, remote_validate,
 };
 use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs, WorkflowConfigArgs};
 use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
-use verbs::discuss::{cmd_discuss, remote_discuss, DiscussArgs};
-use verbs::documents::{
-    cmd_artifact, cmd_language, remote_artifact, remote_language, ArtifactArgs, LanguageArgs,
-};
+use verbs::discuss::{cmd_discuss, remote_discuss};
+use verbs::documents::{cmd_artifact, cmd_language, remote_artifact, remote_language};
 use verbs::init::{cmd_init, cmd_update, InitArgs, UpdateArgs};
-use verbs::instructions::{
-    cmd_instructions, cmd_instructions_skill, remote_instructions, InstructionsArgs,
-};
-use verbs::lifecycle::{
-    cmd_archive, cmd_discard, remote_archive, remote_claim, remote_discard, ArchiveArgs, ClaimArgs,
-    DiscardArgs,
-};
-use verbs::new::{cmd_new, remote_new, NewArgs};
-use verbs::plan::{cmd_change, cmd_plan, remote_change, remote_plan, ChangeVerbArgs, PlanArgs};
-use verbs::progress::{
-    cmd_in_progress, cmd_task, remote_in_progress, remote_task, InProgressArgs, TaskArgs,
-};
-use verbs::query::{
-    cmd_list, cmd_show, cmd_status, remote_list, remote_show, remote_status, ListArgs, ShowArgs,
-    StatusArgs,
-};
-use verbs::station::{cmd_review, cmd_verify, ReviewArgs, VerifyArgs};
+use verbs::instructions::{cmd_instructions, cmd_instructions_skill, remote_instructions};
+use verbs::lifecycle::{cmd_archive, cmd_discard, remote_archive, remote_claim, remote_discard};
+use verbs::new::{cmd_new, remote_new};
+use verbs::plan::{cmd_change, cmd_plan, remote_change, remote_plan};
+use verbs::progress::{cmd_in_progress, cmd_task, remote_in_progress, remote_task};
+use verbs::query::{cmd_list, cmd_show, cmd_status, remote_list, remote_show, remote_status};
+use verbs::station::{cmd_review, cmd_verify};
 use verbs::toolchain::{
     cmd_completion, cmd_demo, cmd_feedback, cmd_schema, cmd_schemas, cmd_templates, CompletionArgs,
     FeedbackArgs, JsonFlag, SchemaArgs, TemplatesArgs,
 };
-use verbs::trace::{cmd_trace, TraceArgs};
+use verbs::trace::cmd_trace;
 
 /// The frozen architecture suffix, absent on architectures we do not ship.
 const ARCH: Option<&str> = {
@@ -76,90 +64,64 @@ static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
 #[derive(Parser)]
 #[command(name = "speclink", version = VERSION.as_str(), about = "Speclink — spec management CLI", disable_help_subcommand = false)]
 struct Cli {
-    /// Disable colored output
-    #[arg(long, global = true)]
-    no_color: bool,
+    #[command(flatten)]
+    global: GlobalArgs,
     #[command(subcommand)]
     command: Commands,
 }
 
+/// The CLI's top-level commands: the shared spec verbs (`SpecVerb`, defined
+/// in speclink-verbs) plus the CLI's own families. Every variant names its
+/// place in `--help` with `display_order`, because the flattened spec verbs
+/// sit between the CLI's own commands there.
 #[derive(Subcommand)]
 enum Commands {
     /// Initialize Speclink in a project
+    #[command(display_order = 0)]
     Init(InitArgs),
     /// Update instruction files
+    #[command(display_order = 1)]
     Update(UpdateArgs),
-    /// List changes or specs
-    List(ListArgs),
-    /// Show change or spec content
-    Show(ShowArgs),
-    /// Validate changes and specs
-    Validate(ValidateArgs),
-    /// Analyze change artifacts for consistency and gaps
-    Analyze(ChangeArg),
-    /// Detect drift between a change and the current codebase state
-    Drift(ChangeArg),
-    /// Trace a capability's provenance chain (archived changes, discussions, evidence)
-    Trace(TraceArgs),
-    /// Show the execution order of active changes (waves, blockers, next)
-    Plan(PlanArgs),
-    /// Change metadata operations (declared prerequisites)
-    Change(ChangeVerbArgs),
-    /// Archive a completed change
-    Archive(ArchiveArgs),
-    /// Discard a change (delete it; --force required once work has started)
-    Discard(DiscardArgs),
-    /// Claim a change for implementation (remote mode)
-    Claim(ClaimArgs),
+    #[command(flatten)]
+    Spec(SpecVerb),
     /// Connect this repo to a remote spec store
+    #[command(display_order = 13)]
     Link(LinkArgs),
     /// Remove the remote store connection
+    #[command(display_order = 14)]
     Unlink,
     /// Authentication against the remote store
+    #[command(display_order = 15)]
     Auth(AuthArgs),
-    /// Read store documents (artifact contents)
-    Artifact(ArtifactArgs),
-    /// Shared vocabulary document
-    Language(LanguageArgs),
-    /// Show artifact DAG status
-    Status(StatusArgs),
-    /// Get instructions for an artifact
-    Instructions(InstructionsArgs),
-    /// Create a new change or resource
-    New(NewArgs),
     /// List available workflow schemas
+    #[command(display_order = 21)]
     Schemas(JsonFlag),
     /// Show template paths
+    #[command(display_order = 22)]
     Templates(TemplatesArgs),
     /// Submit feedback
+    #[command(display_order = 23)]
     Feedback(FeedbackArgs),
     /// Schema management commands
+    #[command(display_order = 24)]
     Schema(SchemaArgs),
     /// Config management commands
+    #[command(display_order = 25)]
     Config(ConfigArgs),
     /// Workflow config commands (<spec dir>/config.yaml)
-    #[command(name = "workflow-config")]
+    #[command(name = "workflow-config", display_order = 26)]
     WorkflowConfig(WorkflowConfigArgs),
     /// Shell completion commands
+    #[command(display_order = 27)]
     Completion(CompletionArgs),
-    /// Task operations
-    Task(TaskArgs),
-    /// Manage in-progress markers
-    #[command(name = "in-progress")]
-    InProgress(InProgressArgs),
     /// Generate a demo change with sample data
+    #[command(display_order = 30)]
     Demo,
-    /// Discussion documents (record and evolve a discussion)
-    Discuss(DiscussArgs),
-    /// Review quality station (ticket rounds, stamping)
-    Review(ReviewArgs),
-    /// Verify quality station (ticket rounds, stamping)
-    Verify(VerifyArgs),
 }
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
-    color::init(cli.no_color);
+    color::init(cli.global.no_color);
     match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
@@ -190,18 +152,50 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Schema(a) => cmd_schema(a),
         Commands::Config(a) => cmd_config(a),
         Commands::Completion(a) => cmd_completion(a),
+        Commands::Spec(verb) => spec_dispatch(verb),
         // --- Dual：本機臂與 remote 臂皆為必填參數 ---
-        Commands::List(a) => dual(a, cmd_list, |ctx, a| remote_list(ctx, &a)),
-        Commands::Show(a) => dual(a, cmd_show, remote_show),
-        Commands::Validate(a) => dual(a, cmd_validate, |ctx, a| remote_validate(ctx, &a)),
-        Commands::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
-        Commands::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
-        Commands::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
-        Commands::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),
-        Commands::Artifact(a) => dual(a, cmd_artifact, remote_artifact),
-        Commands::Language(a) => dual(a, cmd_language, remote_language),
-        Commands::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
-        Commands::Instructions(a) => {
+        Commands::WorkflowConfig(a) => cmd_workflow_config(a), // Dual（宣告於 cmd_workflow_config）
+        // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
+        Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
+    }
+}
+
+/// The shared spec verbs' mode shapes — the same declaration layer as
+/// `dispatch`, one arm per top-level verb.
+fn spec_dispatch(verb: SpecVerb) -> Result<()> {
+    match verb {
+        // --- Dual ---
+        SpecVerb::List(a) => dual(a, cmd_list, |ctx, a| remote_list(ctx, &a)),
+        SpecVerb::Show(a) => dual(a, cmd_show, remote_show),
+        SpecVerb::Validate(a) => dual(a, cmd_validate, |ctx, a| remote_validate(ctx, &a)),
+        SpecVerb::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
+        SpecVerb::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
+        SpecVerb::Artifact(a) => dual(a, cmd_artifact, remote_artifact),
+        SpecVerb::Language(a) => dual(a, cmd_language, remote_language),
+        SpecVerb::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
+        SpecVerb::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
+        SpecVerb::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),
+        SpecVerb::New(a) => dual(a, cmd_new, remote_new),
+        SpecVerb::Task(a) => dual(a, cmd_task, remote_task),
+        SpecVerb::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
+        // `plan --strict-overlap` 同理只限本機：server 沒有目錄級開關（verb-contract
+        // 明文分歧第 6 項）——只解析模式、不握手即拒。
+        SpecVerb::Plan(a) if a.strict_overlap => {
+            fs_only(PLAN_STRICT_REMOTE_REFUSAL, || cmd_plan(a))
+        }
+        SpecVerb::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
+        // `change rank` 在 Dual 家族裡是 FsOnly：它寫卡片 meta 的 board_rank，remote
+        // 的順序真相在 board resource——只解析模式、不握手即拒。
+        SpecVerb::Change(a) if a.is_rank() => {
+            fs_only(CHANGE_RANK_REMOTE_REFUSAL, || cmd_change(a))
+        }
+        SpecVerb::Change(a) => dual(a, cmd_change, remote_change),
+        SpecVerb::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
+        // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
+        // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
+        SpecVerb::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
+        SpecVerb::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
+        SpecVerb::Instructions(a) => {
             // `--skill` 印常數技能文本、不消費 store——檢查先於模式解析（凍結行為）。
             if let Some(skill) = a.skill.clone() {
                 cmd_instructions_skill(&skill)
@@ -209,32 +203,10 @@ fn dispatch(cli: Cli) -> Result<()> {
                 dual(a, cmd_instructions, |ctx, a| remote_instructions(ctx, &a))
             }
         }
-        Commands::New(a) => dual(a, cmd_new, remote_new),
-        Commands::WorkflowConfig(a) => cmd_workflow_config(a), // Dual（宣告於 cmd_workflow_config）
-        Commands::Task(a) => dual(a, cmd_task, remote_task),
-        Commands::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
-        Commands::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
-        // `plan --strict-overlap` 同理只限本機：server 沒有目錄級開關（verb-contract
-        // 明文分歧第 6 項）——只解析模式、不握手即拒。
-        Commands::Plan(a) if a.strict_overlap => {
-            fs_only(PLAN_STRICT_REMOTE_REFUSAL, || cmd_plan(a))
-        }
-        Commands::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
-        // `change rank` 在 Dual 家族裡是 FsOnly：它寫卡片 meta 的 board_rank，remote
-        // 的順序真相在 board resource——只解析模式、不握手即拒。
-        Commands::Change(a) if a.is_rank() => {
-            fs_only(CHANGE_RANK_REMOTE_REFUSAL, || cmd_change(a))
-        }
-        Commands::Change(a) => dual(a, cmd_change, remote_change),
-        // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
-        // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
-        Commands::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
-        Commands::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
-        // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
-        Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
-        Commands::Trace(a) => fs_only(TRACE_REMOTE_REFUSAL, || cmd_trace(a)),
+        // --- FsOnly ---
+        SpecVerb::Trace(a) => fs_only(TRACE_REMOTE_REFUSAL, || cmd_trace(a)),
         // --- RemoteOnly：fs 明寫拒絕 ---
-        Commands::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
+        SpecVerb::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
     }
 }
 

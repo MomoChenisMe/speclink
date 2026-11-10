@@ -1,7 +1,7 @@
 // dispatch 的輸入輸出契約（spec: 壞工作流設定經 dispatch 拒絕 / CLI 與 dispatch
 // 的錯誤分類一致）：錯誤碼出自引擎命令層的封閉註冊表，message 與 CLI 訊息相同。
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -123,5 +123,77 @@ describe('fs form honors an explicit spec_dir in .speclink.yaml', () => {
     } finally {
       rmSync(root, { recursive: true, force: true })
     }
+  })
+})
+
+// dispatch 的 argv 由與 CLI 共用的動詞解析處理（spec node-sdk「dispatch 的輸入輸出
+// 契約」）：接受與拒絕和 CLI 相同，錯誤文字取自 CLI 的 stderr（不含 ANSI 色碼）。
+describe('dispatch argv goes through the parsing the CLI uses', () => {
+  /** Run the CLI in `cwd`; return its exit code, stdout and stderr. */
+  function cli(cwd: string, args: string[]): { code: number; stdout: string; stderr: string } {
+    try {
+      const stdout = execFileSync(cliBin, args, { cwd, encoding: 'utf8', stdio: 'pipe' })
+      return { code: 0, stdout, stderr: '' }
+    } catch (e) {
+      const err = e as { status?: number; stdout?: string; stderr?: string }
+      return { code: err.status ?? -1, stdout: err.stdout ?? '', stderr: err.stderr ?? '' }
+    }
+  }
+
+  it('an unknown flag rejects with invalid_argv and the CLI error text', async () => {
+    const root = makeFsFixture()
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const err = await rejection(engine.dispatch(['list', '--no-such-flag']))
+    expect(err.code).toBe('invalid_argv')
+    const run = cli(root, ['list', '--no-such-flag'])
+    expect(run.code).not.toBe(0)
+    expect(err.message).toBe(run.stderr.trimEnd())
+    expect(err.message).not.toContain('\u001b')
+  })
+
+  it('extra positionals reject with invalid_argv, as in the CLI', async () => {
+    const root = makeFsFixture()
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const err = await rejection(engine.dispatch(['status', 'extra-one', 'extra-two']))
+    expect(err.code).toBe('invalid_argv')
+    const run = cli(root, ['status', 'extra-one', 'extra-two'])
+    expect(run.code).not.toBe(0)
+    expect(err.message).toBe(run.stderr.trimEnd())
+  })
+
+  it('--sort=name reads the same as --sort name', async () => {
+    const root = makeFsFixture()
+    // beta is the newest change, so the default (modified) order differs from name order.
+    const later = new Date(Date.now() + 60_000)
+    for (const f of ['.meta.yaml', 'proposal.md', 'tasks.md']) {
+      utimesSync(join(root, 'speclink', 'changes', 'beta', f), later, later)
+    }
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const names = (v: unknown) => (v as { changes: Array<{ name: string }> }).changes.map((c) => c.name)
+    expect(names(await engine.dispatch(['list']))).toEqual(['beta', 'alpha'])
+    const spaced = await engine.dispatch(['list', '--sort', 'name'])
+    expect(names(spaced)).toEqual(['alpha', 'beta'])
+    expect(await engine.dispatch(['list', '--sort=name'])).toEqual(spaced)
+  })
+
+  it('--json does not change the returned shape', async () => {
+    const engine = createEngine({ store: { type: 'fs', root: makeFsFixture() } })
+    expect(await engine.dispatch(['list', '--json'])).toEqual(await engine.dispatch(['list']))
+  })
+
+  it('--help rejects with invalid_argv and the verb help text', async () => {
+    const root = makeFsFixture()
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const err = await rejection(engine.dispatch(['list', '--help']))
+    expect(err.code).toBe('invalid_argv')
+    expect(err.message).toBe(cli(root, ['list', '--help']).stdout.trimEnd())
+  })
+
+  it('a verb that needs a checkout says so', async () => {
+    const engine = createEngine({ store: memoryStore(fixtureProject()) })
+    const err = await rejection(engine.dispatch(['drift', 'add-x']))
+    expect(err.code).toBe('invalid_argv')
+    expect(err.message).toMatch(/drift/)
+    expect(err.message).toMatch(/checkout/)
   })
 })

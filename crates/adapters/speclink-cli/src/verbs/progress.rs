@@ -4,98 +4,33 @@
 //! `--json` shape are written once and reused by the remote arm.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, run};
+use crate::common::{engine_command, open_project, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
+use speclink_verbs::families::progress::{
+    InProgressArgs, InProgressCommands, TaskArgs, TaskCommands,
+};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct TaskArgs {
-    #[command(subcommand)]
-    command: TaskCommands,
-}
-#[derive(Subcommand)]
-enum TaskCommands {
-    /// Mark a task as done and record touched files
-    Done {
-        /// Task ID (1-based sequential index)
-        task_id: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Mark a task as not done (pure state flip, no side effects)
-    Undone {
-        /// Task ID (1-based sequential index)
-        task_id: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-}
-#[derive(Args)]
-pub(crate) struct InProgressArgs {
-    #[command(subcommand)]
-    command: InProgressCommands,
-}
-#[derive(Subcommand)]
-enum InProgressCommands {
-    /// Mark a change as in-progress
-    Add {
-        /// Change name
-        name: String,
-    },
-    /// Remove the in-progress marker — only when the change carries no work
-    /// traces (no checked tasks, no touched records); unknown names error
-    Remove {
-        /// Change name
-        name: String,
-    },
-}
 pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
-    match a.command {
-        TaskCommands::Done { task_id, change, json } => {
-            let (ws, store) = open_project()?;
-            let o: core::command::TaskFlipOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::TaskDone { task_id: task_id.clone(), change, touched_files: None, head_commit: None },
-            )?;
-            render_task_flip(
-                TaskFlip::Done,
-                &o.change,
-                TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
-                &o.description,
-                o.already,
-                json,
-            )?;
-        }
-        TaskCommands::Undone { task_id, change, json } => {
-            let (ws, store) = open_project()?;
-            let o: core::command::TaskFlipOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::TaskUndone { task_id: task_id.clone(), change },
-            )?;
-            render_task_flip(
-                TaskFlip::Undone,
-                &o.change,
-                TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
-                &o.description,
-                o.already,
-                json,
-            )?;
-        }
-    }
-    Ok(())
+    let (flip, json) = match a.command {
+        TaskCommands::Done { json, .. } => (TaskFlip::Done, json),
+        TaskCommands::Undone { json, .. } => (TaskFlip::Undone, json),
+    };
+    let (ws, store) = open_project()?;
+    // fs mode gives no touched files: the engine probes this workspace itself.
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let o: core::command::TaskFlipOutcome = run(&store, Some(&ws), cmd)?;
+    render_task_flip(
+        flip,
+        &o.change,
+        TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
+        &o.description,
+        o.already,
+        json,
+    )
 }
 /// `task done` 與 `task undone` 的輸出只差狀態字與動詞片語，共用一支渲染。
 #[derive(Clone, Copy)]
@@ -160,16 +95,14 @@ fn render_in_progress_remove(name: &str, removed: bool) {
     }
 }
 pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
+    let (ws, store) = open_project()?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
     match a.command {
-        InProgressCommands::Add { name } => {
-            let (ws, store) = open_project()?;
-            let _: core::command::InProgressOutcome =
-                run(&store, Some(&ws), core::command::Command::InProgressAdd { name })?;
+        InProgressCommands::Add { .. } => {
+            let _: core::command::InProgressOutcome = run(&store, Some(&ws), cmd)?;
         }
-        InProgressCommands::Remove { name } => {
-            let (ws, store) = open_project()?;
-            let o: core::command::InProgressRemoveOutcome =
-                run(&store, Some(&ws), core::command::Command::InProgressRemove { name })?;
+        InProgressCommands::Remove { .. } => {
+            let o: core::command::InProgressRemoveOutcome = run(&store, Some(&ws), cmd)?;
             render_in_progress_remove(&o.name, o.removed);
         }
     }

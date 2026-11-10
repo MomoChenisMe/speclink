@@ -4,70 +4,15 @@
 //! nothing to a local caller — so the two modes differ there on purpose.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
 use speclink_core as core;
 use speclink_protocol::command::CreateChangeRequest;
 
 use crate::color;
-use crate::common::{open_project, read_stdin, run};
+use crate::common::{engine_command, open_project, read_stdin, run, stdin_for};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
+use speclink_verbs::families::new::{NewArgs, NewArtifactArgs, NewChangeArgs, NewCommands};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct NewArgs {
-    #[command(subcommand)]
-    command: NewCommands,
-}
-#[derive(Subcommand)]
-enum NewCommands {
-    /// Create a new change
-    Change(NewChangeArgs),
-    /// Create a new artifact file for a change
-    Artifact(NewArtifactArgs),
-}
-#[derive(Args)]
-struct NewChangeArgs {
-    /// Change name (kebab-case)
-    name: String,
-    /// Description
-    #[arg(long)]
-    description: Option<String>,
-    /// Workflow schema to use
-    #[arg(long)]
-    schema: Option<String>,
-    /// AI agent that created this change (e.g., claude, codex, gemini)
-    #[arg(long)]
-    agent: Option<String>,
-    /// Link this change to a discussion document (writes from_discussion metadata)
-    #[arg(long = "from-discussion")]
-    from_discussion: Option<String>,
-    /// This change is the last cut the discussion's conclusion planned: release the
-    /// record's hold so the final archive co-archives the discussion
-    #[arg(long, requires = "from_discussion")]
-    last: bool,
-}
-#[derive(Args)]
-struct NewArtifactArgs {
-    /// Artifact type: proposal, design, tasks, spec
-    #[arg(name = "TYPE")]
-    artifact_type: String,
-    /// Capability name (required for spec type)
-    capability: Option<String>,
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Read content from stdin instead of using empty template
-    #[arg(long)]
-    stdin: bool,
-    /// Overwrite existing artifact
-    #[arg(long)]
-    force: bool,
-    /// Declare a new capability (required when the spec capability is not in the canonical specs)
-    #[arg(long)]
-    new: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
 pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
     match a.command {
         NewCommands::Change(c) => cmd_new_change(c),
@@ -76,18 +21,8 @@ pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
 }
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let o: core::command::NewChangeOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::NewChange {
-            name: a.name.clone(),
-            description: a.description.clone(),
-            schema: a.schema.clone(),
-            agent: a.agent.clone(),
-            from_discussion: a.from_discussion.clone(),
-            last: a.last,
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let o: core::command::NewChangeOutcome = run(&store, Some(&ws), cmd)?;
     render_new_change(
         &o.name,
         NewChangeLines {
@@ -120,23 +55,9 @@ fn render_new_change(name: &str, lines: NewChangeLines<'_>) {
 }
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let content = if a.stdin {
-        Some(read_stdin())
-    } else {
-        None
-    };
-    let o: core::command::NewArtifactOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::NewArtifact {
-            kind: a.artifact_type.clone(),
-            capability: a.capability.clone(),
-            change: a.change.clone(),
-            content,
-            force: a.force,
-            new_capability: a.new,
-        },
-    )?;
+    let stdin = stdin_for(a.stdin_policy());
+    let cmd = engine_command(a.to_command(VerbInputs { stdin, ..Default::default() }))?;
+    let o: core::command::NewArtifactOutcome = run(&store, Some(&ws), cmd)?;
     if a.json {
         // Compact single-line JSON, frozen shape ("artifact" echoes the
         // input token, not the schema artifact id).

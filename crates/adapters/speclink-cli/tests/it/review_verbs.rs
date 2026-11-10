@@ -346,6 +346,47 @@ fn stamp_clean_round_writes_the_anchors_and_deletes_the_ticket() {
     assert!(meta.contains("    hash: "), "{meta}");
 }
 
+#[test]
+fn stamp_refuses_the_hidden_stdin_flag_and_writes_nothing() {
+    // Scenario CLI 拒絕蓋章的 --stdin：共用定義給沒有 checkout 的宿主帶蓋章 JSON；
+    // CLI 自己算範圍，所以兩站都在任何動作之前拒絕，說明文字裡也看不到它。
+    let p = TempProject::with_change("stamp-stdin", TASKS_DONE);
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
+    let meta_before = p.meta();
+    for station in ["review", "verify"] {
+        let out = p.run_stdin(&[station, "stamp", "demo", "--stdin"], "{}");
+        assert_eq!(out.status.code(), Some(1), "{station}: {}", stderr_of(&out));
+        assert!(stdout_of(&out).is_empty(), "{station}");
+        assert_eq!(
+            stderr_of(&out),
+            format!(
+                "Error: {station} stamp --stdin is for hosts without a checkout — the CLI computes the stamp scope from this checkout\n"
+            )
+        );
+        let help = p.run(&[station, "stamp", "--help"]);
+        assert!(!stdout_of(&help).contains("--stdin"), "{station}: {}", stdout_of(&help));
+    }
+    assert!(p.ticket_path().exists(), "the review ticket stays");
+    assert_eq!(p.meta(), meta_before, "no stamp was written");
+}
+
+#[test]
+fn completion_leaves_out_the_stamps_hidden_stdin() {
+    // 隱藏的 --stdin 只給沒有 checkout 的宿主；CLI 會拒絕它，所以補全也不列出。
+    let p = TempProject::with_change("completion-stamp", TASKS_DONE);
+    let bash = stdout_of(&p.run(&["completion", "generate", "bash"]));
+    for station in ["review", "verify"] {
+        let block = format!("speclink__subcmd__{station}__subcmd__stamp)");
+        let opts = bash.lines().skip_while(|l| l.trim() != block).nth(1).expect("stamp block");
+        assert_eq!(opts.trim(), r#"opts="-h --accept --agent --no-color --help <CHANGE>""#);
+    }
+    let fish = stdout_of(&p.run(&["completion", "generate", "fish"]));
+    assert!(
+        !fish.lines().any(|l| l.contains("seen_subcommand_from stamp") && l.contains("-l stdin")),
+        "fish completion offers the stamps' --stdin"
+    );
+}
+
 // --- review discard ---
 
 #[test]

@@ -1,0 +1,226 @@
+{
+  "version": 2,
+  "change": "shared-verb-parsing",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "1.2 依 D1 新增函式庫套件 speclink-verbs 並加入 workspace；speclink-cli 與 speclink-node 新增對它的依賴。完成後 workspace 能建置，行為不變。涉及 Cargo.toml、Cargo.lock、crates/adapters/speclink-verbs/Cargo.toml、crates/adapters/speclink-verbs/src/lib.rs、crates/adapters/speclink-cli/Cargo.toml、crates/adapters/speclink-node/Cargo.toml。驗證：`cargo build -p speclink-verbs -p speclink-cli` 通過；`cargo tree -p speclink-verbs` 不含 speclink-cli、speclink-host、speclink-remote。",
+      "files": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-node/Cargo.toml",
+        "crates/adapters/speclink-verbs/Cargo.toml",
+        "crates/adapters/speclink-verbs/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red→Green）依 D3、D5、D6 建立解析的外殼：`parse`、`ParsedVerb`、`ParseError`、`VerbInputs`、`StdinPolicy`、`CommandTarget`，以及還沒有任何家族的 `SpecVerb`。先寫失敗的測試：空的 argv、不認得的子指令、`--help` 都回傳 `ParseError` 而不 panic、不結束程序、不寫 stdout 與 stderr；訊息不含 ANSI 色碼。再實作到通過。這是「動詞文字的解析只有一份」的入口。涉及 crates/adapters/speclink-verbs/src/lib.rs、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/inputs.rs、crates/adapters/speclink-verbs/src/families/mod.rs。驗證：`cargo test -p speclink-verbs parse::` 通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/parse.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 （Red）為 query、checks、documents、trace、instructions 五個家族寫表格測試：每個末端動詞給一到三組 argv 與輸入，斷言 D4 的 `into_command` 得到預期的命令（`List` 含呼叫端給的 worktrees、`Show`、`Status`、`Validate`、`Analyze`、`ArtifactCat`、`LanguageShow`、`Trace`、`Instructions`）或 `LocalOnly`（`drift`、帶 `--skill` 的 instructions），以及 D6 的 stdin 規則都是不讀。涉及 crates/adapters/speclink-verbs/src/families/query.rs、crates/adapters/speclink-verbs/src/families/checks.rs、crates/adapters/speclink-verbs/src/families/documents.rs、crates/adapters/speclink-verbs/src/families/trace.rs、crates/adapters/speclink-verbs/src/families/instructions.rs。驗證：`cargo test -p speclink-verbs` 的新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/checks.rs",
+        "crates/adapters/speclink-verbs/src/families/documents.rs",
+        "crates/adapters/speclink-verbs/src/families/instructions.rs",
+        "crates/adapters/speclink-verbs/src/families/query.rs",
+        "crates/adapters/speclink-verbs/src/families/trace.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 （Green）依 D2 把這五個家族的 clap 型別從 speclink-cli 原樣搬進 speclink-verbs 並公開，加入 `SpecVerb`，實作它們的 `into_command` 分支；CLI 的 `Commands` 以 flatten 併入 `SpecVerb`，這五個家族的 `cmd_*` 改用公開的型別，就地建立命令的地方改成呼叫 `into_command`。涉及 crates/adapters/speclink-verbs/src/families（上列五個檔）、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/query.rs、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/src/verbs/documents.rs、crates/adapters/speclink-cli/src/verbs/trace.rs、crates/adapters/speclink-cli/src/verbs/instructions.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：2.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這五個家族與頂層回報說明文字全部相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/src/verbs/instructions.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-verbs/src/families/lifecycle.rs",
+        "crates/adapters/speclink-verbs/src/families/new.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/families/progress.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 （Green）搬移這四個家族的 clap 型別、實作 `into_command` 分支、CLI 改用（同 2.2 的做法）。封存的批次迴圈與 `claim` 在本機模式的拒絕留在 CLI。涉及 crates/adapters/speclink-verbs/src/families（上列四個檔）、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/progress.rs、crates/adapters/speclink-cli/src/verbs/lifecycle.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：3.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這四個家族回報全部相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/progress.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 （Red）為 discuss 與 station 兩個家族寫表格測試：discuss 的十二個末端各得到對應的命令，context、add-round、conclude 的 stdin 規則是「帶 `--stdin` 或 stdin 不是終端機時讀」；review 與 verify 的 add-round、show、stamp、discard 各得到對應的命令，stamp 的 scope 與 missing 由 stdin 的 JSON 帶入（兩欄缺席讀作空清單、多出不認得的欄位回報 invalid_argv）；`review prepare`、`review scope`、`verify scope` 是 `LocalOnly`。涉及 crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/families/station.rs。驗證：`cargo test -p speclink-verbs` 的新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/station.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 （Green）搬移這兩個家族的 clap 型別與說明文字用的靜態字串、實作 `into_command` 分支、CLI 改用。CLI 本機模式的審查與驗證動詞維持走原本的 `station_fs`，只把參數型別換成公開的。`into_command` 的 `match` 不帶萬用分支。蓋章的隱藏 `--stdin` 在 CLI 以錯誤拒絕（本機與遠端模式都在動作之前），補全腳本也不列出它（crates/adapters/speclink-cli/src/verbs/toolchain.rs），並在 crates/adapters/speclink-cli/tests/it/review_verbs.rs 補測試。涉及 crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/families/station.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/station.rs、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 通過（含 remote_verb_parity、mode_dispatch、no_raw_wire_json）；1.1 的腳本對全部家族與頂層回報說明文字逐位元相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/src/verbs/toolchain.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.1 （Red）在 Node 的測試加入「dispatch 的輸入輸出契約」新增的四個情境：不認得的旗標被拒絕且訊息與 CLI 的錯誤文字相同（用既有的 helper 執行 CLI 取得對照）、多出來的位置參數被拒絕、`--sort=name` 與 `--sort name` 結果相同、帶 `--json` 時回傳形狀不變；再加一個 `drift` 回報「只能在有 checkout 的一端執行」的案例。涉及 crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.2 （Green）依 D7 把 `run_dispatch` 改成「共用的 `parse` → 9 個動詞的允許清單 → `into_command` → 原本的執行與組結果」，移除 `parse_argv` 與 `Argv`；`review`／`verify` 不支援的子動詞維持原本的訊息；`claim` 與 `status` 的 Node 專屬邏輯不動。涉及 crates/adapters/speclink-node/src/lib.rs。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 全部通過；在 crates/adapters/speclink-node/src 搜尋不到 `parse_argv`。",
+      "files": [
+        "crates/adapters/speclink-node/src/lib.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72VE86RPNMVN73QBW8HGFH7",
+      "taskDesc": "1.2 依 D1 新增函式庫套件 speclink-verbs 並加入 workspace；speclink-cli 與 speclink-node 新增對它的依賴。完成後 workspace 能建置，行為不變。涉及 Cargo.toml、Cargo.lock、crates/adapters/speclink-verbs/Cargo.toml、crates/adapters/speclink-verbs/src/lib.rs、crates/adapters/speclink-cli/Cargo.toml、crates/adapters/speclink-node/Cargo.toml。驗證：`cargo build -p speclink-verbs -p speclink-cli` 通過；`cargo tree -p speclink-verbs` 不含 speclink-cli、speclink-host、speclink-remote。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-node/Cargo.toml",
+        "crates/adapters/speclink-verbs/Cargo.toml",
+        "crates/adapters/speclink-verbs/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-10T14:09:18Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86RS5MYW8VVPMC91JRG",
+      "taskDesc": "1.3 （Red→Green）依 D3、D5、D6 建立解析的外殼：`parse`、`ParsedVerb`、`ParseError`、`VerbInputs`、`StdinPolicy`、`CommandTarget`，以及還沒有任何家族的 `SpecVerb`。先寫失敗的測試：空的 argv、不認得的子指令、`--help` 都回傳 `ParseError` 而不 panic、不結束程序、不寫 stdout 與 stderr；訊息不含 ANSI 色碼。再實作到通過。這是「動詞文字的解析只有一份」的入口。涉及 crates/adapters/speclink-verbs/src/lib.rs、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/inputs.rs、crates/adapters/speclink-verbs/src/families/mod.rs。驗證：`cargo test -p speclink-verbs parse::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/parse.rs"
+      ],
+      "recordedAt": "2026-11-10T14:11:36Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86RAADB736A6SRV775F",
+      "taskDesc": "2.1 （Red）為 query、checks、documents、trace、instructions 五個家族寫表格測試：每個末端動詞給一到三組 argv 與輸入，斷言 D4 的 `into_command` 得到預期的命令（`List` 含呼叫端給的 worktrees、`Show`、`Status`、`Validate`、`Analyze`、`ArtifactCat`、`LanguageShow`、`Trace`、`Instructions`）或 `LocalOnly`（`drift`、帶 `--skill` 的 instructions），以及 D6 的 stdin 規則都是不讀。涉及 crates/adapters/speclink-verbs/src/families/query.rs、crates/adapters/speclink-verbs/src/families/checks.rs、crates/adapters/speclink-verbs/src/families/documents.rs、crates/adapters/speclink-verbs/src/families/trace.rs、crates/adapters/speclink-verbs/src/families/instructions.rs。驗證：`cargo test -p speclink-verbs` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/checks.rs",
+        "crates/adapters/speclink-verbs/src/families/documents.rs",
+        "crates/adapters/speclink-verbs/src/families/instructions.rs",
+        "crates/adapters/speclink-verbs/src/families/query.rs",
+        "crates/adapters/speclink-verbs/src/families/trace.rs"
+      ],
+      "recordedAt": "2026-11-10T14:14:05Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86R7MRCDZFM4NN57JMV",
+      "taskDesc": "2.2 （Green）依 D2 把這五個家族的 clap 型別從 speclink-cli 原樣搬進 speclink-verbs 並公開，加入 `SpecVerb`，實作它們的 `into_command` 分支；CLI 的 `Commands` 以 flatten 併入 `SpecVerb`，這五個家族的 `cmd_*` 改用公開的型別，就地建立命令的地方改成呼叫 `into_command`。涉及 crates/adapters/speclink-verbs/src/families（上列五個檔）、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/query.rs、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/src/verbs/documents.rs、crates/adapters/speclink-cli/src/verbs/trace.rs、crates/adapters/speclink-cli/src/verbs/instructions.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：2.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這五個家族與頂層回報說明文字全部相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/src/verbs/instructions.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-verbs/src/families/lifecycle.rs",
+        "crates/adapters/speclink-verbs/src/families/new.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/families/progress.rs"
+      ],
+      "recordedAt": "2026-11-10T14:17:52Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86R8D9PX7VXN54HXKMK",
+      "taskDesc": "3.2 （Green）搬移這四個家族的 clap 型別、實作 `into_command` 分支、CLI 改用（同 2.2 的做法）。封存的批次迴圈與 `claim` 在本機模式的拒絕留在 CLI。涉及 crates/adapters/speclink-verbs/src/families（上列四個檔）、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/progress.rs、crates/adapters/speclink-cli/src/verbs/lifecycle.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：3.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這四個家族回報全部相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/progress.rs"
+      ],
+      "recordedAt": "2026-11-10T14:21:01Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86R04HVF6A6KF7R7T23",
+      "taskDesc": "4.1 （Red）為 discuss 與 station 兩個家族寫表格測試：discuss 的十二個末端各得到對應的命令，context、add-round、conclude 的 stdin 規則是「帶 `--stdin` 或 stdin 不是終端機時讀」；review 與 verify 的 add-round、show、stamp、discard 各得到對應的命令，stamp 的 scope 與 missing 由 stdin 的 JSON 帶入（兩欄缺席讀作空清單、多出不認得的欄位回報 invalid_argv）；`review prepare`、`review scope`、`verify scope` 是 `LocalOnly`。涉及 crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/families/station.rs。驗證：`cargo test -p speclink-verbs` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/station.rs"
+      ],
+      "recordedAt": "2026-11-10T14:22:15Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86RMR4KTFV1X8GWQDVV",
+      "taskDesc": "4.2 （Green）搬移這兩個家族的 clap 型別與說明文字用的靜態字串、實作 `into_command` 分支、CLI 改用。CLI 本機模式的審查與驗證動詞維持走原本的 `station_fs`，只把參數型別換成公開的。`into_command` 的 `match` 不帶萬用分支。蓋章的隱藏 `--stdin` 在 CLI 以錯誤拒絕（本機與遠端模式都在動作之前），補全腳本也不列出它（crates/adapters/speclink-cli/src/verbs/toolchain.rs），並在 crates/adapters/speclink-cli/tests/it/review_verbs.rs 補測試。涉及 crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/families/station.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/station.rs、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 通過（含 remote_verb_parity、mode_dispatch、no_raw_wire_json）；1.1 的腳本對全部家族與頂層回報說明文字逐位元相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-cli/src/verbs/toolchain.rs",
+        "crates/adapters/speclink-cli/tests/it/review_verbs.rs"
+      ],
+      "recordedAt": "2026-11-10T14:35:53Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86RW2YK3NDDWBSZ2V9N",
+      "taskDesc": "5.1 （Red）在 Node 的測試加入「dispatch 的輸入輸出契約」新增的四個情境：不認得的旗標被拒絕且訊息與 CLI 的錯誤文字相同（用既有的 helper 執行 CLI 取得對照）、多出來的位置參數被拒絕、`--sort=name` 與 `--sort name` 結果相同、帶 `--json` 時回傳形狀不變；再加一個 `drift` 回報「只能在有 checkout 的一端執行」的案例。涉及 crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts"
+      ],
+      "recordedAt": "2026-11-10T14:37:43Z"
+    },
+    {
+      "taskId": "tsk_01M72VE86RPDMHR2GPN85D27VF",
+      "taskDesc": "5.2 （Green）依 D7 把 `run_dispatch` 改成「共用的 `parse` → 9 個動詞的允許清單 → `into_command` → 原本的執行與組結果」，移除 `parse_argv` 與 `Argv`；`review`／`verify` 不支援的子動詞維持原本的訊息；`claim` 與 `status` 的 Node 專屬邏輯不動。涉及 crates/adapters/speclink-node/src/lib.rs。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 全部通過；在 crates/adapters/speclink-node/src 搜尋不到 `parse_argv`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-10T14:38:39Z"
+    }
+  ]
+}

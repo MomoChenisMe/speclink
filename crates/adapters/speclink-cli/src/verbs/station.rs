@@ -5,7 +5,6 @@
 //! a single ticket flow instead of duplicating it.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
 use speclink_core as core;
 
 use crate::color;
@@ -13,115 +12,8 @@ use crate::common::{open_project, print_json, read_stdin_content};
 use crate::dual;
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
+use speclink_verbs::families::station::{ReviewArgs, ReviewCommands, VerifyArgs, VerifyCommands};
 
-#[derive(Args)]
-pub(crate) struct ReviewArgs {
-    #[command(subcommand)]
-    command: ReviewCommands,
-}
-#[derive(Subcommand)]
-enum ReviewCommands {
-    /// Capture the Apply baseline sidecar before the change is marked in-progress
-    Prepare {
-        change: String,
-        /// Reset the baseline to this trusted commit (an ancestor of HEAD)
-        #[arg(long)]
-        base: Option<String>,
-        /// Carry both stations' snapshots over from this worktree (requires --base)
-        #[arg(long, requires = "base")]
-        from: Option<std::path::PathBuf>,
-    },
-    /// Resolve and freeze the review scope (--json for the structured payload)
-    Scope {
-        change: String,
-        #[arg(long)]
-        json: bool,
-        /// Trusted fixed point overriding the Apply baseline
-        #[arg(long)]
-        base: Option<String>,
-        /// Candidate identity a hash-pinned hunk selection is anchored to
-        #[arg(long = "candidate-hash")]
-        candidate_hash: Option<String>,
-        /// Hunk id to include (repeatable; requires --candidate-hash)
-        #[arg(long = "include-hunk")]
-        include_hunk: Vec<String>,
-    },
-    /// Append a review round to the change's ticket (content from stdin; creates the ticket on the first round)
-    #[command(name = "add-round")]
-    AddRound {
-        change: String,
-        #[arg(long)]
-        stdin: bool,
-    },
-    /// Print the review ticket (--json for the structured payload)
-    Show {
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stamp the review: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
-    Stamp {
-        change: String,
-        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
-        #[arg(long)]
-        accept: bool,
-        /// Tool identity recorded as reviewed_with (mirrors `new change --agent`)
-        #[arg(long)]
-        agent: Option<String>,
-    },
-    /// Discard the review ticket without stamping
-    Discard { change: String },
-}
-#[derive(Args)]
-pub(crate) struct VerifyArgs {
-    #[command(subcommand)]
-    command: VerifyCommands,
-}
-/// 驗證站沒有 `prepare`：Apply baseline 由 apply 流程一次錄下、兩站共用
-/// （design D8），第二個 prepare 只會覆蓋同一份 sidecar。
-#[derive(Subcommand)]
-enum VerifyCommands {
-    /// Resolve and freeze the verify scope (--json for the structured payload)
-    Scope {
-        change: String,
-        #[arg(long)]
-        json: bool,
-        /// Trusted fixed point overriding the Apply baseline
-        #[arg(long)]
-        base: Option<String>,
-        /// Candidate identity a hash-pinned hunk selection is anchored to
-        #[arg(long = "candidate-hash")]
-        candidate_hash: Option<String>,
-        /// Hunk id to include (repeatable; requires --candidate-hash)
-        #[arg(long = "include-hunk")]
-        include_hunk: Vec<String>,
-    },
-    /// Append a verify round to the change's ticket (content from stdin; requires every task done)
-    #[command(name = "add-round")]
-    AddRound {
-        change: String,
-        #[arg(long)]
-        stdin: bool,
-    },
-    /// Print the verify ticket (--json for the structured payload)
-    Show {
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Stamp the verification: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
-    Stamp {
-        change: String,
-        /// Stamp despite outstanding must-fix (CRITICAL/WARNING) findings in the last round
-        #[arg(long)]
-        accept: bool,
-        /// Tool identity recorded as verified_with (mirrors `new change --agent`)
-        #[arg(long)]
-        agent: Option<String>,
-    },
-    /// Discard the verify ticket without stamping
-    Discard { change: String },
-}
 /// 兩個品質站共用的動詞形狀（design D1 的 CLI 面）：clap 的兩個子命令 enum
 /// 各自保留自己的說明文字與旗標可用性（verify 無 `prepare`），在此正規化為
 /// 同一組動詞，往下只有一份實作。
@@ -164,6 +56,18 @@ const VERIFY_CLI: StationCli = StationCli {
     station: &core::station::VERIFY,
     ns: speclink_host::change_diff::StationNs::Verify,
 };
+/// The stamp's hidden `--stdin` carries a host's precomputed scope; the CLI
+/// computes the scope from this checkout, so it refuses the flag before any
+/// mode resolution or write.
+fn refuse_stamp_stdin(st: &core::station::Station, stdin: bool) -> Result<()> {
+    if stdin {
+        bail!(
+            "{} stamp --stdin is for hosts without a checkout — the CLI computes the stamp scope from this checkout",
+            st.noun
+        );
+    }
+    Ok(())
+}
 pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
     let verb = match a.command {
         // prepare：Apply baseline 的兩站共用入口（verify 無此子指令），自成雙臂。
@@ -176,7 +80,8 @@ pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
         }
         ReviewCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
         ReviewCommands::Show { change, json } => StationVerb::Show { change, json },
-        ReviewCommands::Stamp { change, accept, agent } => {
+        ReviewCommands::Stamp { change, accept, agent, stdin } => {
+            refuse_stamp_stdin(REVIEW_CLI.station, stdin)?;
             StationVerb::Stamp { change, accept, agent }
         }
         ReviewCommands::Discard { change } => StationVerb::Discard { change },
@@ -190,7 +95,8 @@ pub(crate) fn cmd_verify(a: VerifyArgs) -> Result<()> {
         }
         VerifyCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
         VerifyCommands::Show { change, json } => StationVerb::Show { change, json },
-        VerifyCommands::Stamp { change, accept, agent } => {
+        VerifyCommands::Stamp { change, accept, agent, stdin } => {
+            refuse_stamp_stdin(VERIFY_CLI.station, stdin)?;
             StationVerb::Stamp { change, accept, agent }
         }
         VerifyCommands::Discard { change } => StationVerb::Discard { change },

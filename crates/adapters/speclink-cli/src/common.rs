@@ -85,6 +85,20 @@ where
     Ok(T::try_from(outcome)?)
 }
 
+/// The engine command a shared verb converts to. The CLI routes every
+/// LocalOnly verb (drift, `instructions --skill`, …) before it reaches an fs
+/// arm, so only a command arrives here.
+pub(crate) fn engine_command(
+    target: Result<speclink_verbs::CommandTarget, core::command::CommandError>,
+) -> Result<core::command::Command> {
+    match target? {
+        speclink_verbs::CommandTarget::Command(cmd) => Ok(cmd),
+        speclink_verbs::CommandTarget::LocalOnly { verb } => {
+            unreachable!("{verb} is routed before its fs arm")
+        }
+    }
+}
+
 /// For read/analysis commands: when no change name is given and no changes exist, print the
 /// informational message and signal exit-0 (returns true = handled).
 pub(crate) fn info_if_no_changes(store: &dyn Store, name: Option<&str>) -> bool {
@@ -102,17 +116,19 @@ pub(crate) fn read_stdin() -> String {
     buf
 }
 
-/// Read stdin for a content-taking discuss verb. Reads when the caller passed `--stdin`
+/// Read stdin when a shared verb's policy says so; "piped" here means stdin is
+/// not an interactive terminal.
+pub(crate) fn stdin_for(policy: speclink_verbs::StdinPolicy) -> Option<String> {
+    policy.reads(!std::io::stdin().is_terminal()).then(read_stdin)
+}
+
+/// Read stdin for a content-taking verb. Reads when the caller passed `--stdin`
 /// OR stdin is piped/redirected (not an interactive terminal) — so a forgotten `--stdin`
 /// with piped content still lands instead of silently becoming empty. An interactive
 /// terminal with no pipe yields an empty string, which the core content guard rejects
 /// with a helpful message. `--stdin` is kept for back-compat but is no longer required.
 pub(crate) fn read_stdin_content(flag: bool) -> String {
-    if flag || !std::io::stdin().is_terminal() {
-        read_stdin()
-    } else {
-        String::new()
-    }
+    stdin_for(speclink_verbs::StdinPolicy::FlagOrPiped { flagged: flag }).unwrap_or_default()
 }
 
 pub(crate) fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {

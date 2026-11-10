@@ -1,0 +1,13 @@
+[package]
+name = "speclink-verbs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+speclink-core = { path = "../../engine/speclink-core" }
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
