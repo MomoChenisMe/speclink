@@ -4,8 +4,7 @@ slug: station-subagent-model
 status: promoted
 created: 2026-11-10
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: station-subagent-model
+promoted_to: station-subagent-model, desktop-subagent-model-page
 ---
 
 # Discussion: 我想為review、quality、verify新增設定，可以選擇指定subagent的模型
