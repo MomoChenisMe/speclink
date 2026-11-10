@@ -18,7 +18,8 @@ import {
 
 import { CodeEditor } from "../../components/CodeEditor";
 import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
-import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
+import { textToEntries } from "./lines";
+import type { ProjectSettingsState } from "./useProjectSettings";
 
 const BASELINES: ReviewBaseline[] = ["extend", "replace"];
 

@@ -7,10 +7,20 @@ import { REVIEW_LISTS, useI18n, type ReviewBaseline, type ReviewList, type Revie
 import type {
   SchemaEntry,
   SettingsSnapshot,
+  SubagentModelConfig,
   WorkflowFields,
 } from "../../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../../session";
 import { workflowConfigFile } from "../../settingsCatalog";
+import { entriesToText, keepUnedited } from "./lines";
+import {
+  EMPTY_SUBAGENT_MODEL,
+  SUBAGENT_STATIONS,
+  fromDraft,
+  sameSubagentModel,
+  toDraft,
+  type SubagentDraft,
+} from "./subagentModel";
 
 /** locale／spec_locale 的「未設定」在 config 裡是空字串，Radix Select 的 item 不接受空字串。 */
 export const LOCALE_UNSET = "__unset__";
@@ -24,6 +34,7 @@ type PendingRemoteWrite =
   | { kind: "context"; context: string }
   | { kind: "rules"; rules: Array<[string, string[]]> }
   | { kind: "review"; review: ReviewRules }
+  | { kind: "subagentModel"; config: SubagentModelConfig }
   | { kind: "schema"; name: string };
 
 interface ConflictRow {
@@ -61,18 +72,6 @@ export function errorMessage(error: unknown): string {
   }
   return String(error);
 }
-
-/** 行↔條目轉換（design D2）：一行一條規則——儲存時逐行修剪頭尾空白、空行滌除，行序即寫入順序。 */
-const entriesToText = (entries: string[]) => entries.join("\n");
-export const textToEntries = (text: string) =>
-  text
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-/** 草稿文字→條目，沒編輯的節原樣沿用現值（review R3）：檔案裡手寫的多行規則顯示成多行，
- * 重新拆行會變成多條——只有使用者改過的節才照「一行一條」重切。 */
-const keepUnedited = (text: string, entries: string[]) =>
-  text === entriesToText(entries) ? entries : textToEntries(text);
 
 /** 審查規則編輯草稿：預設清單模式＋三節各一份「一行一條」文字。 */
 export type ReviewDraft = { baseline: ReviewBaseline } & Record<ReviewList, string>;
@@ -123,12 +122,18 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const [reviewEditing, setReviewEditing] = useState(false);
   const [draftReview, setDraftReview] = useState<ReviewDraft>(reviewToDraft(EMPTY_REVIEW));
   const [reviewMsg, setReviewMsg] = useState<string | null>(null);
+  // 子代理模型頁：同一套獨立編輯態；草稿見 subagentModel.ts。
+  const [subagentModel, setSubagentModel] = useState<SubagentModelConfig>(EMPTY_SUBAGENT_MODEL);
+  const [subagentEditing, setSubagentEditing] = useState(false);
+  const [draftSubagent, setDraftSubagent] = useState<SubagentDraft>(() => toDraft(EMPTY_SUBAGENT_MODEL, {}));
+  const [subagentMsg, setSubagentMsg] = useState<string | null>(null);
   // 寫入中（desktop-settings-editors design D2）：state 驅動按鈕停用與編輯器唯讀，ref 擋同一輪
   // 事件內的重送；放在四頁共用的狀態裡，儲存中切頁再切回也不重送。
   const [ctxSaving, setCtxSaving] = useState(false);
   const [rulesSaving, setRulesSaving] = useState(false);
   const [reviewSaving, setReviewSaving] = useState(false);
-  const writing = useRef({ context: false, rules: false, review: false });
+  const [subagentSaving, setSubagentSaving] = useState(false);
+  const writing = useRef({ context: false, rules: false, review: false, subagentModel: false });
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
   const [conflict, setConflictState] = useState<PolicyConflict | null>(null);
@@ -174,9 +179,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     );
     setReview(next.workflow.review);
     setDraftReview(reviewToDraft(next.workflow.review));
+    setSubagentModel(next.workflow.subagentModel);
+    setDraftSubagent(toDraft(next.workflow.subagentModel, next.workflow.builtinSubagentModels));
     setCtxEditing(false);
     setRulesEditing(false);
     setReviewEditing(false);
+    setSubagentEditing(false);
   };
 
   useEffect(() => {
@@ -234,6 +242,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setRules(Object.fromEntries(w.schemaArtifacts.map((id) => [id, w.rules[id] ?? []])));
     }
     if (written !== "review" && !reviewEditing) setReview(w.review);
+    if (written !== "subagentModel" && !subagentEditing) setSubagentModel(w.subagentModel);
   };
 
   const adoptRevision = (next: number | void) => {
@@ -293,6 +302,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     const pendingRules = pending.kind === "rules" ? Object.fromEntries(pending.rules) : null;
     const mineReview =
       pending.kind === "review" ? pending.review : reviewEditing ? draftToReview(draftReview, review) : review;
+    const mineSubagent =
+      pending.kind === "subagentModel"
+        ? pending.config
+        : subagentEditing
+          ? fromDraft(draftSubagent, subagentModel)
+          : subagentModel;
     const show = (value: string | null | undefined) => value || "—";
     const rows: ConflictRow[] = [
       {
@@ -361,7 +376,36 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         mine: show(entriesToText(mineReview[list])),
       });
     }
+    // 子代理模型：各站與各清單取兩邊出現過的工具名稱聯集，一個工具一列。
+    const serverSubagent = latest.workflow.subagentModel;
+    const toolsOf = (a: Record<string, unknown>, b: Record<string, unknown>) =>
+      Array.from(new Set([...Object.keys(a), ...Object.keys(b)])).sort();
+    for (const station of SUBAGENT_STATIONS) {
+      for (const tool of toolsOf(serverSubagent[station], mineSubagent[station])) {
+        const key = `subagent_model.${station}.${tool}`;
+        rows.push({ key, label: key, server: show(serverSubagent[station][tool]), mine: show(mineSubagent[station][tool]) });
+      }
+    }
+    for (const tool of toolsOf(serverSubagent.choices, mineSubagent.choices)) {
+      const key = `subagent_model.choices.${tool}`;
+      rows.push({
+        key,
+        label: key,
+        server: show(entriesToText(serverSubagent.choices[tool] ?? [])),
+        mine: show(entriesToText(mineSubagent.choices[tool] ?? [])),
+      });
+    }
     return rows;
+  };
+
+  /** 各種寫入的訊息落點（衝突重讀失敗、重送失敗時共用）。 */
+  const MSG_SETTERS: Record<PendingRemoteWrite["kind"], (message: string | null) => void> = {
+    policy: setWfMsg,
+    context: setCtxMsg,
+    rules: setRulesMsg,
+    review: setReviewMsg,
+    subagentModel: setSubagentMsg,
+    schema: setSchemaMsg,
   };
 
   const handleWriteError = async (
@@ -373,12 +417,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       const latest = await settings.readSettings();
       setConflict({ latest, pending, rows: buildConflictRows(latest, pending) });
     } catch (readError) {
-      const message = errorMessage(readError);
-      if (pending.kind === "policy") setWfMsg(message);
-      else if (pending.kind === "context") setCtxMsg(message);
-      else if (pending.kind === "schema") setSchemaMsg(message);
-      else if (pending.kind === "review") setReviewMsg(message);
-      else setRulesMsg(message);
+      MSG_SETTERS[pending.kind](errorMessage(readError));
     }
     return true;
   };
@@ -430,7 +469,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
    * 不送——衝突對照中 adapter 已採用最新 revision，再送會繞過對照卡蓋掉 server 版；
    * 同一份寫入進行中也不重送。 */
   const guardWrite = async (
-    kind: "context" | "rules" | "review",
+    kind: "context" | "rules" | "review" | "subagentModel",
     setSaving: (saving: boolean) => void,
     write: () => Promise<void>,
   ) => {
@@ -517,6 +556,32 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     } catch (e) {
       if (await handleWriteError(e, { kind: "review", review: nextReview })) setReviewMsg(null);
       else setReviewMsg(errorMessage(e));
+    }
+  });
+
+  const beginSubagentEdit = () => {
+    setDraftSubagent(toDraft(subagentModel, snap.workflow.builtinSubagentModels));
+    setSubagentMsg(null);
+    setSubagentEditing(true);
+  };
+
+  const saveSubagentModel = () => guardWrite("subagentModel", setSubagentSaving, async () => {
+    // 整塊代換、只寫 subagent_model 鍵；內容與現值相同時不寫檔——整塊代換會丟掉區塊內的註解。
+    const nextModel = fromDraft(draftSubagent, subagentModel);
+    if (sameSubagentModel(nextModel, subagentModel)) {
+      setSubagentEditing(false);
+      setSubagentMsg(null);
+      return;
+    }
+    try {
+      const next = await settings.writeWorkflowSubagentModel(nextModel);
+      adoptRevision(next);
+      setSubagentModel(nextModel);
+      setSubagentEditing(false);
+      setSubagentMsg(t("settings.saved"));
+    } catch (e) {
+      if (await handleWriteError(e, { kind: "subagentModel", config: nextModel })) setSubagentMsg(null);
+      else setSubagentMsg(errorMessage(e));
     }
   });
 
@@ -615,6 +680,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setCtxMsg(null);
     setRulesMsg(null);
     setReviewMsg(null);
+    setSubagentMsg(null);
     setWfMsg(null);
   };
 
@@ -637,7 +703,9 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
             ? await settings.writeWorkflowContext(pending.context)
             : pending.kind === "review"
               ? await settings.writeWorkflowReview(pending.review)
-              : await settings.writeWorkflowRules(pending.rules);
+              : pending.kind === "subagentModel"
+                ? await settings.writeWorkflowSubagentModel(pending.config)
+                : await settings.writeWorkflowRules(pending.rules);
       // 以最新 revision 重送成功：快照換成 server 最新版，其他區一併採納（review R8）。
       setSnap(latest);
       adoptFresh(latest, pending.kind);
@@ -652,6 +720,10 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
         setReview(pending.review);
         setReviewEditing(false);
         setReviewMsg(t("settings.saved"));
+      } else if (pending.kind === "subagentModel") {
+        setSubagentModel(pending.config);
+        setSubagentEditing(false);
+        setSubagentMsg(t("settings.saved"));
       } else {
         setRules(Object.fromEntries(pending.rules));
         setRulesEditing(false);
@@ -660,14 +732,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       adoptRevision(next);
       setConflict(null);
     } catch (error) {
-      if (!(await handleWriteError(error, pending))) {
-        const message = errorMessage(error);
-        if (pending.kind === "policy") setWfMsg(message);
-        else if (pending.kind === "context") setCtxMsg(message);
-        else if (pending.kind === "schema") setSchemaMsg(message);
-        else if (pending.kind === "review") setReviewMsg(message);
-        else setRulesMsg(message);
-      }
+      if (!(await handleWriteError(error, pending))) MSG_SETTERS[pending.kind](errorMessage(error));
     }
   };
 
@@ -678,7 +743,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     policyDirty ||
     (ctxEditing && draftContext !== contextText) ||
     (rulesEditing && editingRuleKeys.some((id) => (draftRules[id] ?? "") !== entriesToText(rules[id] ?? []))) ||
-    (reviewEditing && !sameReview(draftToReview(draftReview, review), review));
+    (reviewEditing && !sameReview(draftToReview(draftReview, review), review)) ||
+    (subagentEditing && !sameSubagentModel(fromDraft(draftSubagent, subagentModel), subagentModel));
   // 頁標題下的 remote 註記：policy revision 與檢視者說明（local 為 null，改顯示檔案鍵）。
   const remoteNote = isRemote
     ? { revision: snap.workflow.revision ?? null, reader: !settings.policyWrite }
@@ -708,6 +774,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     beginRulesEdit, saveRules, rulesSaving, populatedRuleKeys,
     review, reviewEditing, setReviewEditing, draftReview, setDraftReview, reviewMsg,
     beginReviewEdit, saveReview, reviewSaving, reviewReplaceEmpty,
+    subagentModel, subagentEditing, setSubagentEditing, draftSubagent, setDraftSubagent, subagentMsg,
+    beginSubagentEdit, saveSubagentModel, subagentSaving,
     conflict, reloadServerVersion, retryConflict,
     schemas, expandedSchema, setExpandedSchema, schemaMsg, setSchemaMsg, createName, setCreateName,
     pendingDeleteSchema, setPendingDeleteSchema, schemaSourceLabel, isResolutionHit, switchSchema,

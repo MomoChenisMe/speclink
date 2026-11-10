@@ -96,13 +96,13 @@ describe("SettingsColumn", () => {
 
 describe("ProjectSettingsColumn", () => {
   // spec「設定頁圖形化讀寫兩層設定」：組名與分類名一律用概念名，與應用程式設定的分類欄相同。
-  it("local：「工作流程」組四項與「專案」組 AI 工具，分類欄內不出現設定檔檔名", () => {
+  it("local：「工作流程」組（品質關卡下有兩個子項）與「專案」組 AI 工具，分類欄內不出現設定檔檔名", () => {
     const onSelect = vi.fn();
     render(<ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />);
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
     const headers = [within(nav).getByText("工作流程"), within(nav).getByText("專案")];
     expect(headers[0].compareDocumentPosition(headers[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", "AI 工具"]);
+    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "品質關卡", "審查規則", "子代理模型", "產出流程", "AI 工具"]);
     expect(nav.textContent).not.toContain("config.yaml");
     expect(nav.textContent).not.toContain(".speclink.yaml");
     expect(within(nav).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
@@ -121,25 +121,45 @@ describe("ProjectSettingsColumn", () => {
     expect(navItems(nav).slice(-1)).toEqual(["AI tools"]);
   });
 
-  it("remote：只有「工作流程」組四項，無「專案」組與 AI 工具", () => {
+  it("remote：只有「工作流程」組，兩個子項仍在，無「專案」組與 AI 工具", () => {
     render(<ProjectSettingsColumn section="context" remote configParseError={false} speclinkParseError={false} onSelect={() => {}} />);
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
-    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
+    expect(navItems(nav)).toEqual(["專案說明", "產出規則", "品質關卡", "審查規則", "子代理模型", "產出流程"]);
     expect(within(nav).getByText("工作流程")).toBeTruthy();
     expect(within(nav).queryByText("專案")).toBeNull();
   });
 
-  it("config.yaml 解析失敗時前四項帶警示點；.speclink.yaml 解析失敗時 AI 工具帶警示點", () => {
+  it("config.yaml 解析失敗時兩個子項與其他 config 分類項帶警示點、品質關卡不帶；.speclink.yaml 解析失敗時 AI 工具帶警示點", () => {
     const { rerender } = render(
       <ProjectSettingsColumn section="context" remote={false} configParseError speclinkParseError={false} onSelect={() => {}} />,
     );
     const warned = () =>
       screen.getAllByTestId("tab-warning").map((dot) => dot.closest("button")?.getAttribute("aria-label") ?? dot.closest("button")?.textContent);
-    expect(warned()).toEqual(["專案說明", "產出規則", "審查規則", "產出流程"]);
+    expect(warned()).toEqual(["專案說明", "產出規則", "審查規則", "子代理模型", "產出流程"]);
     rerender(
       <ProjectSettingsColumn section="context" remote={false} configParseError={false} speclinkParseError onSelect={() => {}} />,
     );
     expect(warned()).toEqual(["AI 工具"]);
+  });
+
+  // desktop-subagent-model-page design「分類欄渲染兩層與警示點」。
+  it("上層分類「品質關卡」帶圖示、點擊開審查規則頁且自身不帶選中；兩個子項無圖示、與它包在同一個群組", () => {
+    const onSelect = vi.fn();
+    render(<ProjectSettingsColumn section="review" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />);
+    const nav = screen.getByRole("navigation", { name: "專案設定分類" });
+    const group = within(nav).getByRole("group", { name: "品質關卡" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["品質關卡", "審查規則", "子代理模型"]);
+    const parent = within(group).getByRole("button", { name: "品質關卡" });
+    expect(parent.querySelector("svg")).not.toBeNull();
+    expect(parent.getAttribute("aria-current")).toBeNull();
+    for (const name of ["審查規則", "子代理模型"]) {
+      expect(within(group).getByRole("button", { name }).querySelector("svg")).toBeNull();
+    }
+    expect(within(group).getByRole("button", { name: "審查規則" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(parent);
+    expect(onSelect).toHaveBeenLastCalledWith("review");
+    fireEvent.click(within(group).getByRole("button", { name: "子代理模型" }));
+    expect(onSelect).toHaveBeenLastCalledWith("subagent");
   });
 
   it("底部 notice 槽渲染提示卡", () => {

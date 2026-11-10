@@ -117,6 +117,7 @@ export function fakeRemoteSession(ds: SpeclinkDataSource): WorkspaceSession {
       writeWorkflowContext: vi.fn(),
       writeWorkflowRules: vi.fn(),
       writeWorkflowReview: vi.fn(),
+      writeWorkflowSubagentModel: vi.fn(),
       readSchemas: vi.fn(),
       writeWorkflowSchema: vi.fn(),
       forkSchema: vi.fn(),

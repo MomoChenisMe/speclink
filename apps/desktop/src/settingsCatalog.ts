@@ -26,14 +26,27 @@ export interface AppSettingsCategory {
 }
 
 export interface ProjectSettingsCategory {
-  id: "context" | "rules" | "review" | "workflow" | "speclink";
+  id: "context" | "rules" | "review" | "subagent" | "workflow" | "speclink";
   labelKey: string;
-  icon: LucideIcon;
+  /** 子項（帶 parent）不渲染圖示，不給。 */
+  icon?: LucideIcon;
   /** config＝「工作流程」組（規格資料夾的 config.yaml）；project＝「專案」組（.speclink.yaml）。 */
   group: "config" | "project";
   /** 遠端專案是否呈現（.speclink.yaml 屬本機 checkout，遠端無此分類）。 */
   remote: boolean;
+  /** 上層分類（見 PROJECT_SETTINGS_PARENTS）：同一個上層分類的子項在目錄裡相鄰。 */
+  parent?: ProjectSettingsParentId;
 }
+
+export type ProjectSettingsParentId = "quality";
+
+/** 上層分類：沒有自己的頁，點了開 `opens` 那頁。 */
+export const PROJECT_SETTINGS_PARENTS: Record<
+  ProjectSettingsParentId,
+  { labelKey: string; icon: LucideIcon; opens: ProjectSettingsCategory["id"] }
+> = {
+  quality: { labelKey: "settings.projectSection.quality", icon: ShieldCheck, opens: "review" },
+};
 
 /** 工作流設定檔的專案根相對路徑（desktop-spec-dir-migration D4）：專案設定各頁的檔案註記由它
  * 組成；快照沒帶規格資料夾（遠端、尚未載入）時用預設 speclink。 */
@@ -104,10 +117,20 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
 export const PROJECT_SETTINGS_CATEGORIES: ProjectSettingsCategory[] = [
   { id: "context", labelKey: "settings.projectSection.context", icon: FileText, group: "config", remote: true },
   { id: "rules", labelKey: "settings.projectSection.rules", icon: ListChecks, group: "config", remote: true },
-  { id: "review", labelKey: "settings.projectSection.review", icon: ShieldCheck, group: "config", remote: true },
+  { id: "review", labelKey: "settings.projectSection.review", group: "config", remote: true, parent: "quality" },
+  { id: "subagent", labelKey: "settings.projectSection.subagent", group: "config", remote: true, parent: "quality" },
   { id: "workflow", labelKey: "settings.projectSection.workflow", icon: Workflow, group: "config", remote: true },
   { id: "speclink", labelKey: "settings.projectSection.speclink", icon: Bot, group: "project", remote: false },
 ];
+
+/** 麵包屑在「專案設定」之後的段：子項的頁為 [上層分類（點了開 `opens`）, 頁名]，其他頁為 [頁名]。 */
+export function projectSettingsTrail(
+  section: ProjectSettingsSection,
+): Array<{ labelKey: string; opens?: ProjectSettingsSection }> {
+  const category = PROJECT_SETTINGS_CATEGORIES.find((c) => c.id === section)!;
+  const page = { labelKey: category.labelKey };
+  return category.parent ? [PROJECT_SETTINGS_PARENTS[category.parent], page] : [page];
+}
 
 /** 分類欄搜尋：分類名或任一列標籤含查詢字串（大小寫不敏感）；空查詢全數保留。 */
 export function matchAppSettings(

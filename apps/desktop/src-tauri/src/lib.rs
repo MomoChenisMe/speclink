@@ -778,37 +778,42 @@ async fn open_path(app: tauri::AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
-/// 寫入 config.yaml 的「專案說明」「產出規則」與「審查規則」。`context: None`＝不動、
-/// `Some(文字)`＝設值（空白即移除鍵，core 落實）；`rules: None`＝不動、
-/// `Some(節序清單)`＝整份代換；`review` 同理（`Some` 整塊代換）。政策欄位不受本
-/// command 波及。
+/// 寫入 config.yaml 的「專案說明」「產出規則」「審查規則」與「子代理模型」。
+/// `context: None`＝不動、`Some(文字)`＝設值（空白即移除鍵，core 落實）；
+/// `rules: None`＝不動、`Some(節序清單)`＝整份代換；`review`、`subagent_model`
+/// 同理（`Some` 整塊代換）。政策欄位不受本 command 波及。
 #[tauri::command]
 async fn write_workflow_content(
     root: PathBuf,
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
     review: Option<speclink_desktop_core::settings::ReviewConfig>,
+    subagent_model: Option<speclink_desktop_core::settings::SubagentModelConfig>,
 ) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || {
-        speclink_desktop_core::settings::write_workflow_content_at(&root, &content_edit(context, &rules, &review))
+        speclink_desktop_core::settings::write_workflow_content_at(
+            &root,
+            &content_edit(context, &rules, &review, &subagent_model),
+        )
     })
     .await
     .map_err(|e| format!("write_workflow_content worker failed: {e}"))?
 }
 
 /// 兩個內容寫入指令共用的參數轉換：context 為 null 不動、有值即設值（空白＝移除，
-/// core 落實）；rules 與 review 為 null 不動。
+/// core 落實）；rules、review 與 subagent_model 為 null 不動。
 fn content_edit<'a>(
     context: Option<String>,
     rules: &'a Option<Vec<(String, Vec<String>)>>,
     review: &'a Option<speclink_desktop_core::settings::ReviewConfig>,
+    subagent_model: &'a Option<speclink_desktop_core::settings::SubagentModelConfig>,
 ) -> speclink_desktop_core::settings::ContentEdit<'a> {
     use speclink_desktop_core::settings::{ContentEdit, ContextEdit};
     ContentEdit {
         context: context.map_or(ContextEdit::Keep, ContextEdit::Set),
         rules: rules.as_deref(),
         review: review.as_ref(),
-        ..Default::default()
+        subagent_model: subagent_model.as_ref(),
     }
 }
 
@@ -1247,10 +1252,15 @@ async fn remote_write_workflow_content(
     context: Option<String>,
     rules: Option<Vec<(String, Vec<String>)>>,
     review: Option<speclink_desktop_core::settings::ReviewConfig>,
+    subagent_model: Option<speclink_desktop_core::settings::SubagentModelConfig>,
     expected_revision: u64,
 ) -> Result<u64, remote::RemoteSettingsError> {
     with_remote_settings(app, connection_id, project, repo, move |ws, credentials| {
-        ws.write_workflow_content(credentials, &content_edit(context, &rules, &review), expected_revision)
+        ws.write_workflow_content(
+            credentials,
+            &content_edit(context, &rules, &review, &subagent_model),
+            expected_revision,
+        )
     })
     .await
 }

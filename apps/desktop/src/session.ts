@@ -13,6 +13,7 @@ import {
   createWorkspaceSettings,
   type SchemaEntry,
   type SettingsSnapshot,
+  type SubagentModelConfig,
   type WorkflowFields,
 } from "./adapter/workspace";
 
@@ -56,6 +57,8 @@ export interface WorkspaceSettingsProvider {
   writeWorkflowRules(rules: Array<[string, string[]]>): Promise<number | void>;
   /** 審查規則整塊代換（只寫 review 鍵）；remote 成功回新 revision、local 維持 void。 */
   writeWorkflowReview(review: ReviewRules): Promise<number | void>;
+  /** 子代理模型整塊代換（只寫 subagent_model 鍵）；remote 成功回新 revision、local 維持 void。 */
+  writeWorkflowSubagentModel(config: SubagentModelConfig): Promise<number | void>;
   /** 產出流程清單（desktop-schema-panel D2）：local 三層、remote 僅內嵌內建。 */
   readSchemas(): Promise<SchemaEntry[]>;
   /** 切換專案 schema；remote 成功回新 revision、local 維持 void。 */

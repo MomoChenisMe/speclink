@@ -188,4 +188,49 @@ describe("SettingsChoice", () => {
     expect(trigger.disabled).toBe(true);
     expect(trigger.textContent).toContain("繁體中文（無效）");
   });
+
+  // desktop-subagent-model-page design「SettingsChoice 的分組」。
+  const separators = () => document.querySelectorAll('[data-slot="select-separator"]');
+
+  it("分組項渲染分組標籤，組與組、組與單項之間有分隔線；選分組內的項目回傳其值", async () => {
+    const onChange = vi.fn();
+    const user = userEvent.setup();
+    render(
+      <SettingsChoice
+        value="__inherit__"
+        options={[
+          { value: "__inherit__", label: "沿用主對話" },
+          { label: "內建", options: [{ value: "sonnet", label: "sonnet" }, { value: "opus", label: "opus" }] },
+          { label: "自訂清單", options: [{ value: "claude-x", label: "claude-x" }] },
+          { value: "__custom__", label: "自行輸入…" },
+        ]}
+        onChange={onChange}
+        ariaLabel="審查"
+      />,
+    );
+    await user.click(screen.getByRole("combobox", { name: "審查" }));
+    const builtin = await screen.findByRole("group", { name: "內建" });
+    expect(within(builtin).getAllByRole("option").map((o) => o.textContent)).toEqual(["sonnet", "opus"]);
+    const custom = screen.getByRole("group", { name: "自訂清單" });
+    expect(within(custom).getAllByRole("option").map((o) => o.textContent)).toEqual(["claude-x"]);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "沿用主對話",
+      "sonnet",
+      "opus",
+      "claude-x",
+      "自行輸入…",
+    ]);
+    expect(separators()).toHaveLength(3);
+    await user.click(within(builtin).getByRole("option", { name: "opus" }));
+    expect(onChange).toHaveBeenCalledWith("opus");
+  });
+
+  it("只放單項時不出現分組標籤與分隔線", async () => {
+    const user = userEvent.setup();
+    render(<SettingsChoice value="system" options={OPTIONS} onChange={() => {}} ariaLabel="外觀" />);
+    await user.click(screen.getByRole("combobox", { name: "外觀" }));
+    await screen.findByRole("option", { name: "深色" });
+    expect(screen.queryByRole("group")).toBeNull();
+    expect(separators()).toHaveLength(0);
+  });
 });
