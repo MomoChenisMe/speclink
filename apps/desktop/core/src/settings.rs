@@ -1018,6 +1018,29 @@ mod tests {
     }
 
     #[test]
+    fn write_tools_adds_then_prunes_pi_skills() {
+        // spec Scenario「加選與取消 pi 後技能同步」：tools 為 [codex] 時加選 pi 生成
+        // .pi/skills/，取消後 speclink- 目錄全數移除，.agents/skills/ 的 Codex 技能仍在。
+        let fx = FixtureRoot::new("tools-write-pi");
+        std::fs::remove_dir_all(fx.root().join("speclink")).unwrap();
+        crate::project::init_project_at(fx.root(), &["codex".into()]).expect("init ok");
+        let pi_skills = fx.root().join(".pi").join("skills");
+        let codex_propose = fx.root().join(".agents").join("skills").join("speclink-propose").join("SKILL.md");
+        let codex_before = read(&codex_propose);
+
+        write_tools_at(fx.root(), &["codex".into(), "pi".into()]).expect("add ok");
+        let app = read(&fx.root().join(".speclink.yaml"));
+        assert!(app.contains("- codex\n- pi"), "tools recorded: {app}");
+        assert!(pi_skills.join("speclink-propose").join("SKILL.md").is_file());
+
+        write_tools_at(fx.root(), &["codex".into()]).expect("remove ok");
+        let app = read(&fx.root().join(".speclink.yaml"));
+        assert!(app.contains("- codex") && !app.contains("- pi"), "tools recorded: {app}");
+        assert!(!pi_skills.exists(), ".pi/skills/ 下的 speclink- 目錄須全數移除");
+        assert_eq!(read(&codex_propose), codex_before, ".agents/skills/ 不得變動");
+    }
+
+    #[test]
     fn write_tools_strips_a_legacy_instruction_marker() {
         // spec Scenario「tools 變更後技能同步」的遺留面（design D2）：同步時把舊版
         // 引擎注入的區塊剝掉，使用者自己的段落原樣保留。

@@ -124,10 +124,10 @@ fn init_with_tools_records_selection_without_policy_keys() {
 // 「Core and configuration contract」。
 
 const CUSTOM_DESCRIPTOR: &str = "  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n";
-/// 第二份描述子夾具：規格「技能檔過期探測」Example 的字面值（name cursor、
-/// skills_dir .cursor/skills），且不帶已棄用的 instructions_file——探測測試要的是
+/// 第二份描述子夾具：規格「技能檔過期探測」Example 的字面值（name my-harness、
+/// skills_dir .my-harness/skills），且不帶已棄用的 instructions_file——探測測試要的是
 /// 乾淨的描述子，不是剝除路徑。
-const CURSOR_DESCRIPTOR: &str = "  - name: cursor\n    skills_dir: .cursor/skills\n";
+const MY_HARNESS_DESCRIPTOR: &str = "  - name: my-harness\n    skills_dir: .my-harness/skills\n";
 const REMOTE_URL: &str = "https://team.example.test/api/speclink/v1/projects/acme";
 const CLAUDE_USER_TEXT: &str = "使用者寫在 CLAUDE.md 的段落";
 const CODEX_USER_TEXT: &str = "使用者寫在 AGENTS.md 的段落";
@@ -140,7 +140,7 @@ fn user_text(tool: Tool) -> &'static str {
     match tool {
         Tool::Claude => CLAUDE_USER_TEXT,
         Tool::Codex => CODEX_USER_TEXT,
-        Tool::Copilot => unreachable!("copilot 沒有指令檔"),
+        Tool::Copilot | Tool::Pi | Tool::Cursor => unreachable!("{} 沒有指令檔", tool.name()),
     }
 }
 
@@ -196,7 +196,11 @@ fn walk_snapshot(root: &TempRoot, skip_git: bool) -> Vec<(String, Vec<u8>)> {
                 continue;
             }
             let rel = if prefix.is_empty() { name } else { format!("{prefix}/{name}") };
-            if entry.path().is_dir() {
+            // symlink 記錄它指向哪裡、不跟進去：懸空連結讀不到內容，指向目錄的連結也不該
+            // 把同一批檔案記兩次。
+            if let Ok(target) = std::fs::read_link(entry.path()) {
+                out.push((format!("{rel}@"), target.to_string_lossy().as_bytes().to_vec()));
+            } else if entry.path().is_dir() {
                 out.push((format!("{rel}/"), Vec::new()));
                 walk(&entry.path(), &rel, skip_git, out);
             } else {
@@ -213,13 +217,17 @@ fn walk_snapshot(root: &TempRoot, skip_git: bool) -> Vec<(String, Vec<u8>)> {
 /// custom descriptor／未知頂層鍵／remote 原值保留，marker 不重複，使用者文字不動。
 #[test]
 fn reconcile_converts_builtin_selection_row_by_row() {
-    let rows: [(&[Tool], &[Tool]); 6] = [
+    let rows: [(&[Tool], &[Tool]); 10] = [
         (&[Tool::Claude], &[Tool::Codex]),
         (&[Tool::Claude, Tool::Codex], &[Tool::Claude]),
         (&[Tool::Codex], &[Tool::Claude, Tool::Codex]),
         (&[Tool::Claude], &[Tool::Claude, Tool::Copilot]),
         (&[Tool::Claude, Tool::Copilot], &[Tool::Claude]),
         (&[Tool::Codex], &[Tool::Copilot]),
+        (&[Tool::Codex], &[Tool::Codex, Tool::Pi]),
+        (&[Tool::Codex, Tool::Pi], &[Tool::Codex]),
+        (&[Tool::Claude], &[Tool::Claude, Tool::Cursor]),
+        (&[Tool::Claude, Tool::Cursor], &[Tool::Claude]),
     ];
     for (i, (from, to)) in rows.iter().enumerate() {
         let root = TempRoot::new(&format!("reconcile-row-{i}"));
@@ -1192,7 +1200,7 @@ fn probe_ignores_line_ending_differences() {
 fn workspace_with_descriptor(tag: &str) -> TempRoot {
     let root = TempRoot::new(tag);
     init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-    root.write(".speclink.yaml", &format!("tools:\n  - claude\n{CURSOR_DESCRIPTOR}"));
+    root.write(".speclink.yaml", &format!("tools:\n  - claude\n{MY_HARNESS_DESCRIPTOR}"));
     update(&root.dir, false).expect("先把兩邊的受管檔生成到現版");
     root
 }
@@ -1202,17 +1210,17 @@ fn probe_reports_missing_for_a_descriptor_without_skills() {
     // Scenario「描述子技能檔缺失判缺失」：描述子的技能檔與內建技能檔同為受管檔，
     // 整組不在即缺失，差異清單以描述子的 skills_dir 起頭。
     let root = workspace_with_descriptor("probe-descriptor-missing");
-    std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+    std::fs::remove_dir_all(root.at(".my-harness/skills")).unwrap();
 
     let probe = probe_assets(&root.dir);
     assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
-    let cursor = probe
+    let harness = probe
         .tools
         .iter()
-        .find(|t| t.tool == "cursor")
+        .find(|t| t.tool == "my-harness")
         .expect("逐工具資訊須含描述子的 name");
-    assert!(cursor.missing, "{cursor:?}");
-    assert_eq!(cursor.workspace_version, None, "{cursor:?}");
+    assert!(harness.missing, "{harness:?}");
+    assert_eq!(harness.workspace_version, None, "{harness:?}");
     let claude = probe.tools.iter().find(|t| t.tool == "claude").unwrap();
     assert!(!claude.missing && !claude.stale && !claude.newer, "{claude:?}");
     assert!(
@@ -1221,7 +1229,7 @@ fn probe_reports_missing_for_a_descriptor_without_skills() {
     );
     for path in &probe.differing_files {
         assert!(
-            path.starts_with(".cursor/skills/speclink-") && path.ends_with("/SKILL.md"),
+            path.starts_with(".my-harness/skills/speclink-") && path.ends_with("/SKILL.md"),
             "差異清單只該含描述子技能檔：{path}"
         );
     }
@@ -1242,18 +1250,18 @@ fn probe_lists_descriptor_paths_in_differing_files() {
     let root = workspace_with_descriptor("probe-descriptor-both");
     for skill in [
         ".claude/skills/speclink-propose/SKILL.md",
-        ".cursor/skills/speclink-propose/SKILL.md",
+        ".my-harness/skills/speclink-propose/SKILL.md",
     ] {
         root.write(skill, &root.read(skill).replace(ASSET_VERSION, "v0.9.0"));
     }
 
     let probe = probe_assets(&root.dir);
     assert_eq!(probe.status, AssetStatus::Stale, "{probe:?}");
-    let cursor = probe.tools.iter().find(|t| t.tool == "cursor").unwrap();
-    assert!(cursor.stale && !cursor.newer && !cursor.missing, "{cursor:?}");
+    let harness = probe.tools.iter().find(|t| t.tool == "my-harness").unwrap();
+    assert!(harness.stale && !harness.newer && !harness.missing, "{harness:?}");
     for expected in [
         ".claude/skills/speclink-propose/SKILL.md",
-        ".cursor/skills/speclink-propose/SKILL.md",
+        ".my-harness/skills/speclink-propose/SKILL.md",
     ] {
         assert!(
             probe.differing_files.iter().any(|p| p == expected),
@@ -1287,14 +1295,14 @@ fn probe_still_covers_a_valid_descriptor_after_an_invalid_one() {
     let root = workspace_with_descriptor("probe-descriptor-after-invalid");
     root.write(
         ".speclink.yaml",
-        &format!("tools:\n  - claude\n  - name: broken-harness\n{CURSOR_DESCRIPTOR}"),
+        &format!("tools:\n  - claude\n  - name: broken-harness\n{MY_HARNESS_DESCRIPTOR}"),
     );
-    std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+    std::fs::remove_dir_all(root.at(".my-harness/skills")).unwrap();
 
     let probe = probe_assets(&root.dir);
     assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
-    let cursor = probe.tools.iter().find(|t| t.tool == "cursor").expect("cursor 仍在判定面");
-    assert!(cursor.missing, "{cursor:?}");
+    let harness = probe.tools.iter().find(|t| t.tool == "my-harness").expect("my-harness 仍在判定面");
+    assert!(harness.missing, "{harness:?}");
 }
 
 #[test]
@@ -1304,17 +1312,17 @@ fn probe_normalizes_a_descriptor_skills_dir_with_a_trailing_slash() {
     init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
     root.write(
         ".speclink.yaml",
-        "tools:\n  - claude\n  - name: cursor\n    skills_dir: .cursor/skills/\n",
+        "tools:\n  - claude\n  - name: my-harness\n    skills_dir: .my-harness/skills/\n",
     );
     update(&root.dir, false).expect("結尾斜線的 skills_dir 合法，先生成到現版");
-    std::fs::remove_dir_all(root.at(".cursor/skills")).unwrap();
+    std::fs::remove_dir_all(root.at(".my-harness/skills")).unwrap();
 
     let probe = probe_assets(&root.dir);
     assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
     assert!(!probe.differing_files.is_empty());
     for path in &probe.differing_files {
         assert!(
-            path.starts_with(".cursor/skills/speclink-") && !path.contains("//"),
+            path.starts_with(".my-harness/skills/speclink-") && !path.contains("//"),
             "路徑須正規化：{path}"
         );
     }
@@ -1326,7 +1334,7 @@ fn probe_ignores_an_invalid_descriptor() {
     // 「設定裡有個壞描述子」由 update 的錯誤告知，不得讓探測轉為無法判定。
     let root = TempRoot::new("probe-descriptor-invalid");
     init(&root.dir, &[Tool::Claude], false, "openspec").unwrap();
-    root.write(".speclink.yaml", "tools:\n  - claude\n  - name: cursor\n");
+    root.write(".speclink.yaml", "tools:\n  - claude\n  - name: my-harness\n");
 
     let probe = probe_assets(&root.dir);
     assert_eq!(probe.status, AssetStatus::Current, "{probe:?}");
@@ -1702,12 +1710,12 @@ fn tool_selection_falls_back_to_the_claude_footprint_for_an_empty_list() {
 #[test]
 fn tool_selection_notes_an_unknown_builtin_name() {
     let root = TempRoot::new("tool-selection-unknown");
-    let sel = ToolSelection::resolve(&root.dir, &app_config("tools: [claude, cursor]\n"));
+    let sel = ToolSelection::resolve(&root.dir, &app_config("tools: [claude, windsurf]\n"));
     assert_eq!(sel.builtins, vec![Tool::Claude]);
     assert_eq!(
         sel.notes,
         vec![
-            "unknown tool 'cursor' in .speclink.yaml tools list (supported: claude, codex, copilot)"
+            "unknown tool 'windsurf' in .speclink.yaml tools list (supported: claude, codex, copilot, pi, cursor)"
                 .to_string()
         ]
     );
@@ -1810,7 +1818,10 @@ fn sync_plan_builds_one_target_per_selected_tool() {
     assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
     assert_eq!(plan.targets[0].label, "codex");
     assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Claude, Tool::Copilot]);
+    assert_eq!(
+        plan.deselected_builtins,
+        vec![Tool::Claude, Tool::Copilot, Tool::Pi, Tool::Cursor]
+    );
 }
 
 /// legacy 回退（沒有 tools 清單）不下架任何內建工具。
@@ -1838,7 +1849,10 @@ fn sync_plan_adds_a_target_for_each_descriptor() {
     assert_eq!(plan.targets[0].label, "claude");
     assert_eq!(plan.targets[1].label, "wad-harness");
     assert_eq!(plan.targets[1].skills_root, root.at(".wad/skills"));
-    assert_eq!(plan.deselected_builtins, vec![Tool::Codex, Tool::Copilot]);
+    assert_eq!(
+        plan.deselected_builtins,
+        vec![Tool::Codex, Tool::Copilot, Tool::Pi, Tool::Cursor]
+    );
 }
 
 /// 守門的檢查面就是 targets 的 skills_root 集合：只有描述子目錄領先版本時
@@ -1944,26 +1958,11 @@ fn copilot_skill_has_neutral_frontmatter_and_slash_references() {
     init(&root.dir, &[Tool::Copilot], false, "openspec").unwrap();
 
     let propose = root.read(&propose_skill(Tool::Copilot));
-    let frontmatter = propose.split("---\n").nth(1).expect("frontmatter block");
-    let keys: Vec<&str> = frontmatter
-        .lines()
-        .filter(|l| !l.starts_with(' '))
-        .filter_map(|l| l.split(':').next())
-        .collect();
     assert_eq!(
-        keys,
-        [
-            "name",
-            "description",
-            "license",
-            "compatibility",
-            "metadata"
-        ]
+        frontmatter_keys(&propose),
+        ["name", "description", "license", "compatibility", "metadata"]
     );
-    assert!(
-        frontmatter.contains("name: speclink-propose\n"),
-        "{frontmatter}"
-    );
+    assert!(propose.contains("name: speclink-propose\n"), "{propose}");
     assert!(
         propose.contains("/speclink-apply"),
         "技能引用須寫成 /speclink-<name>"
@@ -1994,19 +1993,36 @@ fn copilot_skill_has_neutral_frontmatter_and_slash_references() {
     }
 }
 
-/// codex 版內文換成 copilot 版：叫用前綴，加上 `{{TOOL}}` 代換值出現的每個位置——
-/// `--agent` 的值、子代理模型的格子路徑與寫入指令範例。只換這些位置，其他差異照樣失敗
-/// （例如 `~/.codex/config.toml` 這類寫死的路徑不能跟著換）。
-fn codex_render_as_copilot(codex: &str) -> String {
-    let mut out = codex
-        .replace("$speclink-", "/speclink-")
-        .replace("--agent codex", "--agent copilot");
+/// 各內建工具的技能叫用前綴（規格「內建工具的渲染差異」表的「技能引用寫法」欄）。
+/// 測試自帶一份：拿來比對的期望值不從被測的程式取。
+fn invocation_prefix(tool: Tool) -> &'static str {
+    match tool {
+        Tool::Claude | Tool::Copilot | Tool::Cursor => "/speclink-",
+        Tool::Codex => "$speclink-",
+        Tool::Pi => "/skill:speclink-",
+    }
+}
+
+/// 把一個內建工具的技能內文換成另一個工具的：叫用前綴，加上 `{{TOOL}}` 代換值出現的
+/// 每個位置——`--agent` 的值、子代理模型的格子路徑與寫入指令範例。只換這些位置，其他
+/// 差異照樣失敗（例如 `~/.codex/config.toml` 這類寫死的路徑不能跟著換）。
+fn swap_tool(text: &str, from: Tool, to: Tool) -> String {
+    let (from_tool, to_tool) = (from.name(), to.name());
+    let mut out = text
+        .replace(invocation_prefix(from), invocation_prefix(to))
+        .replace(&format!("--agent {from_tool}"), &format!("--agent {to_tool}"));
     for prefix in ["subagentModel", "subagent_model"] {
         for station in ["<station>", "review", "verify"] {
-            out = out.replace(&format!("{prefix}.{station}.codex"), &format!("{prefix}.{station}.copilot"));
+            out = out.replace(
+                &format!("{prefix}.{station}.{from_tool}"),
+                &format!("{prefix}.{station}.{to_tool}"),
+            );
         }
     }
-    out.replace("subagent-model <station> codex", "subagent-model <station> copilot")
+    out.replace(
+        &format!("subagent-model <station> {from_tool}"),
+        &format!("subagent-model <station> {to_tool}"),
+    )
 }
 
 #[test]
@@ -2018,7 +2034,7 @@ fn copilot_skills_differ_from_codex_only_by_prefix_and_agent_name() {
     for dir in expected_dirs(Tool::Codex) {
         let codex = root.read(&format!(".agents/skills/{dir}/SKILL.md"));
         let copilot = root.read(&format!(".github/skills/{dir}/SKILL.md"));
-        assert_eq!(copilot, codex_render_as_copilot(&codex), "{dir}");
+        assert_eq!(copilot, swap_tool(&codex, Tool::Codex, Tool::Copilot), "{dir}");
     }
 }
 
@@ -2210,4 +2226,465 @@ fn skill_probe_reports_stale_copilot_skills() {
     assert!(probe
         .differing_files
         .contains(&propose_skill(Tool::Copilot)));
+}
+
+// --- 內建 pi 與 cursor（change: add-pi-cursor-tools）---
+// Spec requirement「Pi 渲染目標」「Cursor 渲染目標」與「worktree 技能的政策條件式生成」
+// 的 pi、cursor 分支：技能落在 .pi/skills、.cursor/skills，子集與內容沿用 codex，
+// 只有叫用前綴與 agent 名不同。
+
+/// 這次新增的兩個內建工具。
+const PI_AND_CURSOR: [Tool; 2] = [Tool::Pi, Tool::Cursor];
+
+/// 一個專案根相對目錄下的項目名（排序後）。
+fn entry_names(root: &TempRoot, rel: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root.at(rel))
+        .unwrap()
+        .flatten()
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .collect();
+    names.sort();
+    names
+}
+
+/// frontmatter 的頂層鍵（依出現順序）。
+fn frontmatter_keys(skill_file: &str) -> Vec<String> {
+    skill_file
+        .split("---\n")
+        .nth(1)
+        .expect("frontmatter block")
+        .lines()
+        .filter(|l| !l.starts_with(' '))
+        .filter_map(|l| l.split(':').next())
+        .map(str::to_string)
+        .collect()
+}
+
+#[test]
+fn pi_and_cursor_generate_the_codex_subset_under_their_own_skills_dir() {
+    // Scenario「Pi 與 Codex 並存時各寫各的目錄」「Cursor 與 Codex 生成集合相同」的
+    // 集合面：非 Claude 子集，政策關閉時不含兩顆 worktree 技能。
+    assert_eq!(Tool::Pi.skills_dir(), ".pi/skills");
+    assert_eq!(Tool::Cursor.skills_dir(), ".cursor/skills");
+    for tool in PI_AND_CURSOR {
+        let root = TempRoot::new(&format!("{}-subset", tool.name()));
+        init(&root.dir, &[tool], false, "openspec").unwrap();
+
+        let generated = skill_dirs(&root, tool.skills_dir());
+        assert_eq!(generated, expected_dirs(Tool::Codex), "{tool:?} 的生成集合須等於 codex 的");
+        assert!(!generated.contains(&"speclink-analyze".to_string()), "analyze 只給 claude");
+        for dir in worktree_skill_dirs(tool) {
+            assert!(!root.exists(&dir), "政策關閉時不得生成 {dir}");
+        }
+    }
+}
+
+#[test]
+fn pi_and_cursor_follow_the_worktree_policy_like_the_other_targets() {
+    // Requirement「worktree 技能的政策條件式生成」對 pi、cursor 一視同仁。
+    for tool in PI_AND_CURSOR {
+        let root = TempRoot::new(&format!("{}-worktree", tool.name()));
+        init(&root.dir, &[tool], false, "openspec").unwrap();
+
+        set_worktree_policy(&root, true);
+        update(&root.dir, false).unwrap();
+        for dir in worktree_skill_dirs(tool) {
+            assert!(root.exists(&format!("{dir}/SKILL.md")), "政策開啟時須生成 {dir}");
+        }
+
+        set_worktree_policy(&root, false);
+        update(&root.dir, false).unwrap();
+        for dir in worktree_skill_dirs(tool) {
+            assert!(!root.exists(&dir), "政策改回關閉後須清除 {dir}");
+        }
+    }
+}
+
+#[test]
+fn pi_and_cursor_skills_have_neutral_frontmatter_and_their_own_references() {
+    // Scenario「選取 Pi 生成正確的技能檔」「選取 Cursor 生成正確的技能檔」：name 與目錄名
+    // 相同；pi 的技能檔連斜線形式的引用都不得有（`/skill:speclink-` 不含 `/speclink-`）。
+    let rows: [(Tool, &str, &[&str]); 2] = [
+        (Tool::Pi, "/skill:speclink-apply", &["/speclink-"]),
+        (Tool::Cursor, "/speclink-apply", &[]),
+    ];
+    for (tool, reference, extra_forbidden) in rows {
+        let root = TempRoot::new(&format!("{}-render", tool.name()));
+        init(&root.dir, &[tool], false, "openspec").unwrap();
+
+        let propose = root.read(&propose_skill(tool));
+        assert_eq!(
+            frontmatter_keys(&propose),
+            ["name", "description", "license", "compatibility", "metadata"],
+            "{tool:?}"
+        );
+        assert!(propose.contains("name: speclink-propose\n"), "{tool:?}: {propose}");
+        assert!(propose.contains(reference), "{tool:?}: 技能引用須寫成 {reference}");
+        assert!(
+            propose.contains(&format!("--agent {}", tool.name())),
+            "{tool:?}: 建立變更須記錄 agent 為 {}",
+            tool.name()
+        );
+
+        let forbidden = ["$speclink-", "## Claude fork context", "context: fork", "agent: Explore", "disallowedTools"];
+        for dir in expected_dirs(tool) {
+            let text = root.read(&format!("{}/{dir}/SKILL.md", tool.skills_dir()));
+            for needle in forbidden.iter().chain(extra_forbidden) {
+                assert!(!text.contains(needle), "{tool:?} {dir} 不得含 {needle}");
+            }
+        }
+    }
+}
+
+#[test]
+fn pi_and_cursor_skills_differ_from_codex_only_by_prefix_and_tool_name() {
+    // Requirement「Pi 渲染目標」「Cursor 渲染目標」：除叫用前綴與 {{TOOL}} 代換值以外，
+    // 與同一技能的 codex 內容逐字相同；同時選取時各寫各的目錄、不合併。
+    for tool in PI_AND_CURSOR {
+        let root = TempRoot::new(&format!("{}-vs-codex", tool.name()));
+        init(&root.dir, &[Tool::Codex, tool], false, "openspec").unwrap();
+
+        assert_eq!(
+            skill_dirs(&root, tool.skills_dir()),
+            skill_dirs(&root, ".agents/skills"),
+            "{tool:?} 與 codex 的目錄名集合須相同"
+        );
+        for dir in expected_dirs(Tool::Codex) {
+            let codex = root.read(&format!(".agents/skills/{dir}/SKILL.md"));
+            let own = root.read(&format!("{}/{dir}/SKILL.md", tool.skills_dir()));
+            assert_eq!(swap_tool(&own, tool, Tool::Codex), codex, "{tool:?} {dir}");
+        }
+    }
+}
+
+#[test]
+fn builtin_render_differences_match_the_spec_table() {
+    // Example「內建工具的渲染差異」逐列：skills 目錄、技能引用寫法、--agent 值、
+    // Claude 專用 frontmatter、是否含 analyze。
+    let rows: [(Tool, &str, &str, &str, bool); 5] = [
+        (Tool::Claude, ".claude/skills", "/speclink-apply", "claude", true),
+        (Tool::Codex, ".agents/skills", "$speclink-apply", "codex", false),
+        (Tool::Copilot, ".github/skills", "/speclink-apply", "copilot", false),
+        (Tool::Pi, ".pi/skills", "/skill:speclink-apply", "pi", false),
+        (Tool::Cursor, ".cursor/skills", "/speclink-apply", "cursor", false),
+    ];
+    assert_eq!(Tool::ALL.to_vec(), rows.map(|r| r.0).to_vec(), "內建工具的固定順序");
+    for (tool, dir, reference, agent, claude) in rows {
+        let root = TempRoot::new(&format!("render-table-{agent}"));
+        init(&root.dir, &[tool], false, "openspec").unwrap();
+
+        assert_eq!(tool.skills_dir(), dir);
+        let propose = root.read(&format!("{dir}/speclink-propose/SKILL.md"));
+        assert!(propose.contains(reference), "{agent}: 技能引用須寫成 {reference}");
+        assert!(propose.contains(&format!("--agent {agent}")), "{agent}: --agent 值");
+        assert_eq!(root.exists(&format!("{dir}/speclink-analyze")), claude, "{agent}: analyze");
+        let drift = root.read(&format!("{dir}/speclink-drift/SKILL.md"));
+        assert_eq!(drift.contains("context: fork\nagent: Explore\n"), claude, "{agent}: fork 欄位");
+        assert_eq!(drift.contains("disallowedTools"), claude, "{agent}: 唯讀欄位");
+    }
+}
+
+#[test]
+fn pi_and_cursor_write_no_instruction_file_and_nothing_beside_skills() {
+    // Requirement「Pi 渲染目標」「Cursor 渲染目標」：不產生指令檔，`.pi/`、`.cursor/`
+    // 下只有 skills/（沒有 .cursor/rules/、.cursor/agents/）。
+    for tool in PI_AND_CURSOR {
+        let root = TempRoot::new(&format!("{}-no-instructions", tool.name()));
+        init(&root.dir, &[tool], false, "openspec").unwrap();
+
+        for file in ["AGENTS.md", "CLAUDE.md"] {
+            assert!(!root.exists(file), "{tool:?}: {file} 不得生成");
+        }
+        let own_dir = tool.skills_dir().trim_end_matches("/skills");
+        assert_eq!(entry_names(&root, own_dir), ["skills"], "{own_dir}/ 下只能有 skills/");
+        assert_eq!(instructions_path(tool), None, "{tool:?} 沒有指令檔");
+    }
+}
+
+#[test]
+fn footprint_detection_never_infers_pi_or_cursor() {
+    // Scenario「footprint 偵測不推斷 Pi」「footprint 偵測不推斷 Cursor」：`.pi/`、
+    // `.cursor/` 存在不代表使用者要這個工具；legacy 回退的 update 只依 .claude/ 再生。
+    for (tool, user_file, content) in [
+        (Tool::Pi, ".pi/settings.json", "{\"theme\": \"dark\"}\n"),
+        (Tool::Cursor, ".cursor/rules/style.mdc", "---\nalwaysApply: true\n---\n"),
+    ] {
+        let root = TempRoot::new(&format!("{}-footprint", tool.name()));
+        root.write(user_file, content);
+        // skills 目錄本身存在（放著使用者自己的技能）也不算 footprint。
+        let user_skill = format!("{}/my-skill/SKILL.md", tool.skills_dir());
+        root.write(&user_skill, "---\nname: my-skill\n---\n");
+        std::fs::create_dir_all(root.at(".claude")).unwrap();
+
+        assert_eq!(detect_footprint_tools(&root.dir), vec![Tool::Claude]);
+
+        root.write(".speclink.yaml", "# Speclink application config\n");
+        update(&root.dir, false).expect("legacy update");
+        assert!(root.exists(&propose_skill(Tool::Claude)), "claude 技能照常再生");
+        assert!(
+            skill_dirs(&root, tool.skills_dir()).is_empty(),
+            "{} 下不得生成 speclink 技能",
+            tool.skills_dir()
+        );
+        assert_eq!(root.read(user_file), content, "{user_file} 須位元級不變");
+        assert_eq!(root.read(&user_skill), "---\nname: my-skill\n---\n", "{user_skill} 須位元級不變");
+    }
+}
+
+#[test]
+fn deselecting_cursor_removes_only_speclink_skill_dirs() {
+    // Scenario「取消 Cursor 只移除 speclink 技能目錄」（built-in tools 權威收斂）。
+    let root = TempRoot::new("cursor-deselect");
+    init(&root.dir, &[Tool::Claude, Tool::Cursor], false, "openspec").unwrap();
+    root.write(".cursor/skills/my-skill/SKILL.md", "---\nname: my-skill\n---\n");
+    root.write(".cursor/rules/style.mdc", "---\nalwaysApply: true\n---\n");
+
+    reconcile_builtin_tools(&root.dir, &[Tool::Claude]).expect("reconcile succeeds");
+
+    assert!(skill_dirs(&root, ".cursor/skills").is_empty(), "speclink- 目錄須全數移除");
+    assert_eq!(root.read(".cursor/skills/my-skill/SKILL.md"), "---\nname: my-skill\n---\n");
+    assert_eq!(root.read(".cursor/rules/style.mdc"), "---\nalwaysApply: true\n---\n");
+    assert_eq!(entry_names(&root, ".cursor"), ["rules", "skills"], ".cursor/ 下不得多出別的項目");
+    assert!(root.exists(&propose_skill(Tool::Claude)), "claude 技能照常更新");
+    assert_eq!(builtin_names(&root), ["claude"]);
+}
+
+#[test]
+fn deselecting_pi_drops_the_emptied_skills_dir_and_its_parent() {
+    // Scenario「取消 Pi 後變空的目錄一併移除」：`.pi/` 下只有生成物時整個收掉。
+    let root = TempRoot::new("pi-deselect-empty");
+    init(&root.dir, &[Tool::Codex, Tool::Pi], false, "openspec").unwrap();
+    assert!(root.exists(&propose_skill(Tool::Pi)), "前置：pi 技能已生成");
+
+    reconcile_builtin_tools(&root.dir, &[Tool::Codex]).expect("reconcile succeeds");
+
+    assert!(!root.exists(".pi/skills"), "變空的 .pi/skills/ 須移除");
+    assert!(!root.exists(".pi"), "變空的 .pi/ 須移除");
+    assert_eq!(skill_dirs(&root, ".agents/skills"), expected_dirs(Tool::Codex), "codex 技能照常更新");
+    assert_eq!(builtin_names(&root), ["codex"]);
+}
+
+#[test]
+fn deselecting_pi_keeps_the_users_own_files_under_pi() {
+    // Implementation Contract：取消勾選不動 `.pi/` 下其他內容（pi 的 settings.json）。
+    let root = TempRoot::new("pi-deselect-settings");
+    init(&root.dir, &[Tool::Codex, Tool::Pi], false, "openspec").unwrap();
+    root.write(".pi/settings.json", "{\"theme\": \"dark\"}\n");
+
+    reconcile_builtin_tools(&root.dir, &[Tool::Codex]).expect("reconcile succeeds");
+
+    assert!(!root.exists(".pi/skills"), "變空的 .pi/skills/ 須移除");
+    assert_eq!(root.read(".pi/settings.json"), "{\"theme\": \"dark\"}\n");
+}
+
+#[test]
+fn update_prunes_an_orphan_skill_dir_under_pi_skills() {
+    // Requirement「update 清除孤兒技能目錄」：pi 與 codex 同為非 Claude 子集。
+    let root = TempRoot::new("pi-orphan");
+    init(&root.dir, &[Tool::Pi], false, "openspec").unwrap();
+    root.write(".pi/skills/speclink-onboard/SKILL.md", "old\n");
+
+    update(&root.dir, false).expect("update succeeds");
+
+    assert!(!root.exists(".pi/skills/speclink-onboard"), "舊目錄須被清除");
+    assert!(root.exists(".pi/skills/speclink-baseline/SKILL.md"));
+}
+
+#[test]
+fn skill_probe_reports_missing_pi_skills() {
+    // Scenario「Pi 技能目錄缺少判缺失」：差異清單只落在 .pi/skills/ 底下。
+    let root = TempRoot::new("pi-probe-missing");
+    init(&root.dir, &[Tool::Codex, Tool::Pi], false, "openspec").unwrap();
+    std::fs::remove_dir_all(root.at(".pi/skills")).unwrap();
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Missing, "{probe:?}");
+    let pi = probe.tools.iter().find(|t| t.tool == "pi").expect("pi 在列");
+    assert!(pi.missing && pi.workspace_version.is_none(), "{pi:?}");
+    assert!(!probe.differing_files.is_empty());
+    for file in &probe.differing_files {
+        assert!(file.starts_with(".pi/skills/speclink-"), "{file}");
+        assert!(file.ends_with("/SKILL.md"), "{file}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn update_never_prunes_through_a_symlinked_cursor_or_pi_skills_dir() {
+    // Requirement「built-in tools 權威收斂」：未選取 built-in 的 skills 目錄是 symlink 時
+    // 不得穿過去清，否則會刪掉另一個工具剛寫好的技能。這裡只鎖定「不穿過連結清理」；
+    // 已勾選工具共用目錄的連結在同步前就被拒（見下方的 shared-dir 測試）。
+    for (tool, own_dir, selected) in [
+        (Tool::Cursor, ".cursor", Tool::Claude),
+        (Tool::Pi, ".pi", Tool::Codex),
+    ] {
+        let root = TempRoot::new(&format!("{}-symlink", tool.name()));
+        init(&root.dir, &[selected], false, "openspec").unwrap();
+        std::fs::create_dir_all(root.at(own_dir)).unwrap();
+        let target = format!("../{}", selected.skills_dir());
+        std::os::unix::fs::symlink(&target, root.at(tool.skills_dir())).unwrap();
+
+        let outcome = update(&root.dir, false).expect("update succeeds");
+
+        assert!(root.exists(&propose_skill(selected)), "{selected:?} 技能不得被刪");
+        let link = std::fs::symlink_metadata(root.at(tool.skills_dir())).unwrap();
+        assert!(link.file_type().is_symlink(), "symlink 本身留著");
+        assert!(
+            !outcome.pruned.iter().any(|p| p == tool.name()),
+            "沒有清掉任何東西就不回報 {}：{:?}",
+            tool.name(),
+            outcome.pruned
+        );
+    }
+}
+
+// --- 經 symlink 共用的 skills 目錄（品質關卡第 1 輪；決策「同步前拒絕經 symlink 共用的
+// skills 目錄」）。Requirement「built-in tools 權威收斂」的四個 symlink 情境。
+
+#[cfg(unix)]
+fn link(root: &TempRoot, target: impl AsRef<Path>, at: &str) {
+    let path = root.at(at);
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::os::unix::fs::symlink(target, path).unwrap();
+}
+
+/// 拒絕的訊息是一行，且點名兩個目錄與兩個工具。
+#[cfg(unix)]
+fn assert_shared_dir_refusal(err: anyhow::Error, dirs: [&str; 2], tools: [&str; 2]) {
+    let message = err.to_string();
+    assert_eq!(message.lines().count(), 1, "一行錯誤：{message}");
+    for needle in dirs.iter().chain(tools.iter()) {
+        assert!(message.contains(needle), "訊息須含 {needle}：{message}");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_refuses_a_selected_skills_dir_that_resolves_to_another_selected_tools_dir() {
+    // Scenario「已勾選工具的 skills 目錄經 symlink 指到另一個工具的目錄時拒絕」：
+    // --allow-downgrade 也不能越過。
+    for (allow_downgrade, tag) in [(false, "plain"), (true, "allow-downgrade")] {
+        let root = TempRoot::new(&format!("shared-dir-cursor-{tag}"));
+        init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+        link(&root, "../.claude/skills", ".cursor/skills");
+        root.write(".speclink.yaml", "tools: [claude, cursor]\n");
+        let before = snapshot(&root);
+
+        let err = update(&root.dir, allow_downgrade).expect_err("共用目錄必須被拒");
+
+        assert_shared_dir_refusal(err, [".cursor/skills", ".claude/skills"], ["cursor", "claude"]);
+        assert_eq!(snapshot(&root), before, "{tag}: 拒絕＝零寫入");
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_refuses_a_pi_skills_dir_linked_to_the_codex_dir() {
+    // 同一條規則套在 pi 連到 .agents/skills。
+    let root = TempRoot::new("shared-dir-pi");
+    init(&root.dir, &[Tool::Codex], false, DEFAULT_SPEC_DIR).unwrap();
+    link(&root, "../.agents/skills", ".pi/skills");
+    root.write(".speclink.yaml", "tools: [codex, pi]\n");
+    let before = snapshot(&root);
+
+    let err = update(&root.dir, false).expect_err("共用目錄必須被拒");
+
+    assert_shared_dir_refusal(err, [".pi/skills", ".agents/skills"], ["pi", "codex"]);
+    assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+}
+
+#[cfg(unix)]
+#[test]
+fn reconcile_refuses_a_link_into_a_deselected_tools_dir() {
+    // Scenario「指到未選取工具目錄的 symlink 同樣被拒」：不會先寫入 Cursor 版、再把它當成
+    // 未選取的 claude 清掉；.speclink.yaml 也不得先被改寫。
+    let root = TempRoot::new("shared-dir-deselected");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    link(&root, "../.claude/skills", ".cursor/skills");
+    let before = snapshot(&root);
+
+    let err = reconcile_builtin_tools(&root.dir, &[Tool::Cursor]).expect_err("必須被拒");
+
+    assert_shared_dir_refusal(err, [".cursor/skills", ".claude/skills"], ["cursor", "claude"]);
+    assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_link_to_a_folder_outside_the_project_still_syncs() {
+    // Scenario「指到其他位置的 symlink 照常同步」：只擋兩個工具共用同一個目錄。
+    let shared = TempRoot::new("shared-dir-outside-target");
+    let root = TempRoot::new("shared-dir-outside");
+    link(&root, &shared.dir, ".claude");
+
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).expect("init 照常成功");
+    update(&root.dir, false).expect("update 照常成功");
+
+    assert!(shared.exists("skills/speclink-propose/SKILL.md"), "技能寫進共用資料夾");
+}
+
+#[cfg(unix)]
+#[test]
+fn update_never_prunes_through_a_symlinked_parent_of_a_deselected_skills_dir() {
+    // Scenario「取消勾選工具的上層目錄是 symlink 時不清理」：.cursor 連到 .claude，
+    // .cursor/skills 就是 .claude/skills；清理 cursor 不得刪掉剛寫好的 Claude 技能。
+    let root = TempRoot::new("shared-dir-parent");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    link(&root, ".claude", ".cursor");
+
+    let outcome = update(&root.dir, false).expect("update succeeds");
+
+    assert_eq!(skill_dirs(&root, ".claude/skills"), expected_dirs(Tool::Claude), "Claude 技能全在");
+    let meta = std::fs::symlink_metadata(root.at(".cursor")).unwrap();
+    assert!(meta.file_type().is_symlink(), ".cursor symlink 本身保留");
+    assert!(!outcome.pruned.iter().any(|p| p == "cursor"), "{:?}", outcome.pruned);
+}
+
+#[cfg(unix)]
+#[test]
+fn sync_refuses_a_link_whose_target_does_not_exist_yet() {
+    // 連結目標還不存在（先建好連結再同步，或刪掉 .claude/skills 想重新產生）：同步會先建出
+    // .claude/skills、連結隨即生效，所以解析時要順著懸空連結走，照樣在寫入前拒絕。
+    let root = TempRoot::new("shared-dir-dangling");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    std::fs::remove_dir_all(root.at(".claude")).unwrap();
+    link(&root, "../.claude/skills", ".cursor/skills");
+    root.write(".speclink.yaml", "tools: [claude, cursor]\n");
+    let before = snapshot(&root);
+
+    let err = update(&root.dir, false).expect_err("懸空連結也必須被拒");
+
+    assert_shared_dir_refusal(err, [".cursor/skills", ".claude/skills"], ["cursor", "claude"]);
+    assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+}
+
+#[cfg(unix)]
+#[test]
+fn reconcile_refuses_a_dangling_link_into_a_deselected_tools_dir_without_writing() {
+    // 只勾 cursor、連結指向還不存在的 .claude/skills：.speclink.yaml 也不得先被改寫。
+    let root = TempRoot::new("shared-dir-dangling-deselected");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    std::fs::remove_dir_all(root.at(".claude")).unwrap();
+    link(&root, "../.claude/skills", ".cursor/skills");
+    let before = snapshot(&root);
+
+    let err = reconcile_builtin_tools(&root.dir, &[Tool::Cursor]).expect_err("必須被拒");
+
+    assert_shared_dir_refusal(err, [".cursor/skills", ".claude/skills"], ["cursor", "claude"]);
+    assert_eq!(snapshot(&root), before, "拒絕＝零寫入");
+}
+
+#[cfg(unix)]
+#[test]
+fn a_loop_of_links_does_not_hang_the_sync() {
+    // 連結迴圈（a→b、b→a）：解析有層數上限，同步不會卡住；兩個目錄不是同一個工具的目錄，
+    // 檢查放行，寫入時才由檔案系統回報錯誤。
+    let root = TempRoot::new("shared-dir-loop");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    link(&root, "b", ".cursor/a");
+    link(&root, "a", ".cursor/b");
+    link(&root, "a", ".cursor/skills");
+    root.write(".speclink.yaml", "tools: [claude, cursor]\n");
+
+    assert!(update(&root.dir, false).is_err(), "寫進連結迴圈必須失敗，而不是卡住");
 }

@@ -45,16 +45,18 @@ crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下
 
 #### Scenario: 技能引用依工具渲染
 
-- **WHEN** 原稿寫著 `/speclink:ingest`，分別以 claude、codex、copilot 與自訂描述子渲染
-- **THEN** 四份技能檔中的引用依序為 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`speclink ingest`；Codex 渲染的技能檔不含 `/speclink-` 形式的技能引用
+- **WHEN** 原稿寫著 `/speclink:ingest`，分別以 claude、codex、copilot、pi、cursor 與自訂描述子渲染
+- **THEN** 六份技能檔中的引用依序為 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`、`speclink ingest`；Codex 與 pi 渲染的技能檔不含 `/speclink-` 形式的技能引用
 
-##### Example: 同一個引用在四種渲染目標
+##### Example: 同一個引用在六種渲染目標
 
 | 渲染目標 | 原稿 `/speclink:ingest` 的渲染結果 |
 | --- | --- |
 | claude | `/speclink-ingest` |
 | codex | `$speclink-ingest` |
 | copilot | `/speclink-ingest` |
+| pi | `/skill:speclink-ingest` |
+| cursor | `/speclink-ingest` |
 | 自訂描述子 | `speclink ingest` |
 
 #### Scenario: 判斷標準不濃縮
@@ -64,8 +66,8 @@ crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下
 
 
 <!-- @trace
-source: optimize-skill-prompts
-updated: 2026-10-08T16:45:46+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->
 
 ---
@@ -77,7 +79,7 @@ speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 
 2. **強調字上限**：以大小寫敏感、字詞邊界比對 MUST、NEVER、SHALL、ALWAYS、IMPORTANT、CRITICAL、STOP、NOT 的出現次數，次數 SHALL NOT 超過測試內登記表為該原稿登記的上限。登記表 SHALL 涵蓋 assets/skills/ 下每一份原稿；出現未登記的原稿時測試 SHALL 失敗，並要求登記上限。上限只在修改登記表時改變。
 3. **不寫歷史**：移除 fenced code block 與行內程式碼之後，原稿 SHALL NOT 含 `YYYY-MM-DD` 形式的日期（前後不接數字即算，緊貼中文或後接時間的日期也算）；原稿全文 SHALL NOT 含 `design D` 加數字的決策編號，也 SHALL NOT 含「design 決策」字樣。
 4. **工具退路**：原稿含 `AskUserQuestion` 時，SHALL 含 `plain text`（不分大小寫）；原稿含 `sub-agent`、`subagent` 或 `Agent tool` 時，SHALL 含 `cannot spawn` 或 `can't spawn`（不分大小寫）。單獨的 `inline` 不算退路：無關的句子也常含這個字。
-5. **渲染記號**：原稿 SHALL NOT 含寫死的技能引用——前一個字元不是英數字、底線、`.`、`/` 或 `:` 的 `/speclink-` 加小寫字母（`.claude/skills/speclink-apply` 這類路徑不算）；原稿 SHALL NOT 含 `$speclink-`，也 SHALL NOT 含 `--agent claude`、`--agent codex` 或 `--agent copilot`。
+5. **渲染記號**：原稿 SHALL NOT 含寫死的技能引用——前一個字元不是英數字、底線、`.`、`/` 或 `:` 的 `/speclink-` 加小寫字母（`.claude/skills/speclink-apply` 這類路徑不算）；原稿 SHALL NOT 含 `$speclink-`，也 SHALL NOT 含 `--agent claude`、`--agent codex`、`--agent copilot`、`--agent pi` 或 `--agent cursor`。
 
 #### Scenario: 強調字超過登記上限
 
@@ -123,6 +125,11 @@ speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 
 - **WHEN** 某份原稿寫著「run `/speclink-apply <name>`」
 - **THEN** 測試失敗，訊息含該原稿檔名、「渲染記號」與命中的 `/speclink-apply`
 
+#### Scenario: 寫死的 pi 或 cursor agent 值
+
+- **WHEN** 某份原稿寫著「speclink review stamp x --agent cursor」或「--agent pi」
+- **THEN** 測試失敗，訊息含該原稿檔名、「渲染記號」與命中的 `--agent cursor` 或 `--agent pi`
+
 #### Scenario: 技能目錄路徑不誤判
 
 - **WHEN** 某份原稿寫著 `.claude/skills/speclink-propose/SKILL.md`，沒有其他寫死的引用
@@ -135,8 +142,8 @@ speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 
 
 
 <!-- @trace
-source: optimize-skill-prompts
-updated: 2026-10-08T16:45:46+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->
 
 ---
@@ -207,7 +214,7 @@ updated: 2026-10-08T16:45:46+08:00
 ---
 ### Requirement: 技能共用的對話語言段落
 
-speclink 渲染的每一份產品技能檔（registry 中的全部技能；claude、codex、copilot 三個內建工具與自訂描述子皆同）SHALL 在 frontmatter 與 fork 前言或 invocation 說明（若有）之後、技能內文之前，恰好含一次共用的對話語言段落，段落以 `**Conversation language**:` 開頭。段落的來源 SHALL 為單一原稿 crates/engine/speclink-core/assets/skills/conversation-language.md，SHALL NOT 在各技能原稿各存一份複本。
+speclink 渲染的每一份產品技能檔（registry 中的全部技能；claude、codex、copilot、pi、cursor 五個內建工具與自訂描述子皆同）SHALL 在 frontmatter 與 fork 前言或 invocation 說明（若有）之後、技能內文之前，恰好含一次共用的對話語言段落，段落以 `**Conversation language**:` 開頭。段落的來源 SHALL 為單一原稿 crates/engine/speclink-core/assets/skills/conversation-language.md，SHALL NOT 在各技能原稿各存一份複本。
 
 段落 SHALL 依序規定五件事：
 
@@ -257,6 +264,6 @@ speclink 渲染的每一份產品技能檔（registry 中的全部技能；claud
 
 
 <!-- @trace
-source: spec-dir-path-rewrite
-updated: 2026-10-25T21:44:20+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->

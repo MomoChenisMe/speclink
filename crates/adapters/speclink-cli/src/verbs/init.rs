@@ -16,7 +16,7 @@ use crate::remote_base::validate_or_defer;
 pub(crate) struct InitArgs {
     /// Project path (defaults to current directory)
     path: Option<String>,
-    /// AI tools to generate files for (e.g., claude, codex, copilot)
+    /// AI tools to generate files for (e.g., claude, codex, copilot, pi, cursor)
     #[arg(long)]
     tools: Option<String>,
     /// Overwrite existing files
@@ -102,7 +102,7 @@ pub(crate) fn cmd_init(a: InitArgs) -> Result<()> {
 /// The single line every missing/empty selection ends on — it names the flag and every
 /// valid tool, so a failed non-interactive run is self-correcting.
 const TOOLS_HINT: &str = "no AI tool selected — pass --tools with one or more of claude, \
-codex, copilot (comma-separated, e.g. --tools claude,copilot)";
+codex, copilot, pi, cursor (comma-separated, e.g. --tools claude,cursor)";
 /// Resolve init's built-in tool selection. An explicit `--tools` is validated and used
 /// as-is (no prompt). Without the flag an interactive terminal is asked question by
 /// question — prompts go to `out` (stderr in production) so stdout stays the machine
@@ -126,8 +126,8 @@ fn resolve_init_tools(
         None => bail!("{TOOLS_HINT}"),
     }
 }
-/// Ask for Claude, Codex and Copilot in turn, repeating the round until at least one
-/// is picked — an empty selection is not an answer. Plain text only: nothing here is
+/// Ask for Claude, Codex, Copilot, Pi and Cursor in turn, repeating the round until at
+/// least one is picked — an empty selection is not an answer. Plain text only: nothing here is
 /// styled, so `--no-color` changes nothing about the prompts.
 fn prompt_for_tools(
     input: &mut impl BufRead,
@@ -140,6 +140,8 @@ fn prompt_for_tools(
             (Tool::Claude, "Claude"),
             (Tool::Codex, "Codex"),
             (Tool::Copilot, "Copilot"),
+            (Tool::Pi, "Pi"),
+            (Tool::Cursor, "Cursor"),
         ] {
             if ask_yes_no(input, out, label)? {
                 picked.push(tool);
@@ -150,7 +152,7 @@ fn prompt_for_tools(
         }
         writeln!(
             out,
-            "Pick at least one tool: claude, codex, copilot, or any combination."
+            "Pick at least one tool: claude, codex, copilot, pi, cursor, or any combination."
         )?;
     }
 }
@@ -294,6 +296,9 @@ mod init_tools_tests {
         (got, String::from_utf8(out).expect("prompts are utf-8"))
     }
 
+    /// 缺選集的單行訊息：`pi` 是 `copilot` 的子字串，逐 token 比對測不到漏列，故比全文。
+    const FIVE_TOOLS_HINT: &str = "no AI tool selected — pass --tools with one or more of claude, codex, copilot, pi, cursor (comma-separated, e.g. --tools claude,cursor)";
+
     fn single_line_error(got: Result<Vec<Tool>>) -> String {
         let message = got.expect_err("must fail").to_string();
         assert_eq!(message.lines().count(), 1, "must be a single line: {message}");
@@ -316,10 +321,7 @@ mod init_tools_tests {
     #[test]
     fn explicit_empty_selection_is_rejected_naming_the_flag_and_values() {
         let (got, _) = without_stdin(Some("  ,  "), true);
-        let message = single_line_error(got);
-        for token in ["--tools", "claude", "codex", "copilot"] {
-            assert!(message.contains(token), "must mention {token}: {message}");
-        }
+        assert_eq!(single_line_error(got), FIVE_TOOLS_HINT);
     }
 
     #[test]
@@ -349,78 +351,97 @@ mod init_tools_tests {
     }
 
     #[test]
+    fn explicit_tools_accept_pi_and_cursor_in_any_case_and_combination() {
+        // Example「--tools 值的解析」的 pi、cursor 接受列，加上五個工具全選。
+        let cases: [(&str, &[Tool]); 7] = [
+            ("pi", &[Tool::Pi]),
+            ("Pi", &[Tool::Pi]),
+            ("Cursor", &[Tool::Cursor]),
+            ("CURSOR", &[Tool::Cursor]),
+            ("cursor,cursor", &[Tool::Cursor]),
+            ("codex,pi", &[Tool::Codex, Tool::Pi]),
+            (
+                "claude,codex,copilot,pi,cursor",
+                &[Tool::Claude, Tool::Codex, Tool::Copilot, Tool::Pi, Tool::Cursor],
+            ),
+        ];
+        for (spec, want) in cases {
+            let (got, prompts) = without_stdin(Some(spec), true);
+            assert_eq!(got.expect(spec), want, "--tools {spec}");
+            assert!(prompts.is_empty(), "顯式 --tools 不得詢問: {prompts}");
+        }
+    }
+
+    #[test]
     fn explicit_unknown_tool_lists_the_supported_set() {
-        // Example「--tools 值的解析」的拒絕列：gh skill 的 agent id 不是別名。
-        let (got, _) = without_stdin(Some("github-copilot"), true);
-        let message = single_line_error(got);
-        // 輸入本身就含 copilot：要比對完整的支援清單，單看 token 測不到漏列。
-        for token in ["github-copilot", "supported: claude, codex, copilot"] {
-            assert!(message.contains(token), "must mention {token}: {message}");
+        // Example「--tools 值的解析」的拒絕列：gh skill 的 agent id、Cursor CLI 的程式名
+        // 都不是別名。輸入本身就含工具名：要比對完整的支援清單，單看 token 測不到漏列。
+        for unknown in ["github-copilot", "cursor-agent", "pi-coding-agent"] {
+            let (got, _) = without_stdin(Some(unknown), true);
+            assert_eq!(
+                single_line_error(got),
+                format!("unknown tool: {unknown} (supported: claude, codex, copilot, pi, cursor)")
+            );
         }
     }
 
     #[test]
     fn non_interactive_without_tools_fails_without_reading_stdin() {
         let (got, prompts) = without_stdin(None, false);
-        let message = single_line_error(got);
-        for token in ["--tools", "claude", "codex", "copilot"] {
-            assert!(message.contains(token), "must mention {token}: {message}");
-        }
+        assert_eq!(single_line_error(got), FIVE_TOOLS_HINT);
         assert!(prompts.is_empty(), "非互動終端不得詢問: {prompts}");
     }
 
     #[test]
     fn interactive_yes_yes_selects_both() {
-        // Scenario「互動終端選擇 Claude 與 Codex」：三題依 Claude、Codex、Copilot 順序問。
-        let (got, prompts) = with_answers(None, true, "y\ny\nn\n");
+        // Scenario「互動終端選擇 Claude 與 Codex」：五題依 Claude、Codex、Copilot、Pi、
+        // Cursor 順序問。
+        let (got, prompts) = with_answers(None, true, "y\ny\nn\nn\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Claude, Tool::Codex]);
-        let at = |label: &str| {
-            prompts
-                .find(label)
-                .unwrap_or_else(|| panic!("{label}: {prompts}"))
-        };
-        assert!(
-            at("Claude") < at("Codex") && at("Codex") < at("Copilot"),
+        let questions: Vec<&str> = prompts.split("Generate Speclink files for ").skip(1).collect();
+        assert_eq!(
+            questions,
+            ["Claude", "Codex", "Copilot", "Pi", "Cursor"].map(|label| format!("{label}? (y/n): ")),
             "{prompts}"
         );
     }
 
     #[test]
-    fn interactive_copilot_only() {
-        let (got, _) = with_answers(None, true, "n\nn\ny\n");
-        assert_eq!(got.expect("selection"), vec![Tool::Copilot]);
-    }
-
-    #[test]
-    fn interactive_yes_no_selects_claude_only() {
-        let (got, _) = with_answers(None, true, "y\nn\nn\n");
-        assert_eq!(got.expect("selection"), vec![Tool::Claude]);
-    }
-
-    #[test]
-    fn interactive_no_yes_selects_codex_only() {
-        let (got, _) = with_answers(None, true, "n\ny\nn\n");
-        assert_eq!(got.expect("selection"), vec![Tool::Codex]);
+    fn interactive_single_selections_follow_the_question_order() {
+        let cases: [(&str, Tool); 5] = [
+            ("y\nn\nn\nn\nn\n", Tool::Claude),
+            ("n\ny\nn\nn\nn\n", Tool::Codex),
+            ("n\nn\ny\nn\nn\n", Tool::Copilot),
+            ("n\nn\nn\ny\nn\n", Tool::Pi),
+            ("n\nn\nn\nn\ny\n", Tool::Cursor),
+        ];
+        for (answers, want) in cases {
+            let (got, _) = with_answers(None, true, answers);
+            assert_eq!(got.expect("selection"), vec![want], "{answers:?}");
+        }
     }
 
     #[test]
     fn interactive_all_no_reasks_until_a_tool_is_picked() {
-        // Scenario「互動終端不得提交空選集」：三題皆否就印一行提示、從 Claude 重問。
-        let (got, prompts) = with_answers(None, true, "n\nn\nn\nn\ny\nn\n");
+        // Scenario「互動終端不得提交空選集」：五題皆否就印一行提示、從 Claude 重問。
+        let (got, prompts) = with_answers(None, true, "n\nn\nn\nn\nn\nn\ny\nn\nn\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Codex]);
-        assert!(
-            prompts.matches("Claude").count() >= 2,
-            "三題皆否必須重新詢問: {prompts}"
+        assert_eq!(
+            prompts.matches("for Claude?").count(),
+            2,
+            "五題皆否必須從 Claude 重新詢問: {prompts}"
         );
         assert!(
-            prompts.contains("Pick at least one tool: claude, codex, copilot, or any combination."),
+            prompts.contains(
+                "(y/n): Pick at least one tool: claude, codex, copilot, pi, cursor, or any combination.\n"
+            ),
             "{prompts}"
         );
     }
 
     #[test]
     fn interactive_invalid_answer_reasks_the_same_question() {
-        let (got, prompts) = with_answers(None, true, "maybe\ny\nn\nn\n");
+        let (got, prompts) = with_answers(None, true, "maybe\ny\nn\nn\nn\nn\n");
         assert_eq!(got.expect("selection"), vec![Tool::Claude]);
         assert!(
             prompts.matches("Claude").count() >= 2,
@@ -436,7 +457,7 @@ mod init_tools_tests {
 
     #[test]
     fn prompts_carry_no_ansi_escape() {
-        let (_, prompts) = with_answers(None, true, "y\nn\n");
+        let (_, prompts) = with_answers(None, true, "y\nn\nn\nn\nn\n");
         assert!(!prompts.contains('\x1b'), "prompt 不得含 ANSI: {prompts:?}");
     }
 }

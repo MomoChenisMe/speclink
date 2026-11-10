@@ -3,7 +3,8 @@
 use crate::config::{CustomTool, Invocation};
 use crate::init::ASSET_VERSION;
 
-/// The render targets: a built-in tool (claude, codex, copilot) or a custom descriptor.
+/// The render targets: a built-in tool (claude, codex, copilot, pi, cursor) or a custom
+/// descriptor.
 /// Descriptors render the NEUTRAL body: no tool-specific slash prefix, no plan-mode
 /// references, verb wording decided by the descriptor's `invocation`.
 #[derive(Clone, Copy)]
@@ -13,12 +14,14 @@ pub enum RenderTarget<'a> {
 }
 
 /// A tool target for generated skills. Speclink deliberately scopes the tool matrix to
-/// claude, codex and copilot.
+/// claude, codex, copilot, pi and cursor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Tool {
     Claude,
     Codex,
     Copilot,
+    Pi,
+    Cursor,
 }
 
 impl Tool {
@@ -26,9 +29,9 @@ impl Tool {
     /// walks it for generation, deselection, the reserved descriptor names and
     /// directories, the asset lock and its error messages; the adapters (CLI hint, Node
     /// SDK, desktop) spell the set out in their own wording, pinned by their tests.
-    pub const ALL: [Tool; 3] = [Tool::Claude, Tool::Codex, Tool::Copilot];
+    pub const ALL: [Tool; 5] = [Tool::Claude, Tool::Codex, Tool::Copilot, Tool::Pi, Tool::Cursor];
 
-    /// The built-in names as error messages list them: `claude, codex, copilot`.
+    /// The built-in names as error messages list them: `claude, codex, copilot, pi, cursor`.
     pub fn supported_names() -> String {
         Tool::ALL.map(|t| t.name()).join(", ")
     }
@@ -38,6 +41,8 @@ impl Tool {
             "claude" => Some(Tool::Claude),
             "codex" | "agents" => Some(Tool::Codex),
             "copilot" => Some(Tool::Copilot),
+            "pi" => Some(Tool::Pi),
+            "cursor" => Some(Tool::Cursor),
             _ => None,
         }
     }
@@ -46,6 +51,8 @@ impl Tool {
             Tool::Claude => "claude",
             Tool::Codex => "codex",
             Tool::Copilot => "copilot",
+            Tool::Pi => "pi",
+            Tool::Cursor => "cursor",
         }
     }
     /// Directory (relative to project root) that holds generated skill files.
@@ -54,20 +61,23 @@ impl Tool {
             Tool::Claude => ".claude/skills",
             Tool::Codex => ".agents/skills",
             Tool::Copilot => ".github/skills",
+            Tool::Pi => ".pi/skills",
+            Tool::Cursor => ".cursor/skills",
         }
     }
     /// Where the tool keeps plan-mode files ({{PLAN_DIR}}); empty when the tool has none.
     fn plan_dir(&self) -> &'static str {
         match self {
             Tool::Claude => "~/.claude/plans/",
-            Tool::Codex | Tool::Copilot => "",
+            Tool::Codex | Tool::Copilot | Tool::Pi | Tool::Cursor => "",
         }
     }
     /// The prefix that `/speclink:` becomes for this tool.
     fn slash_replacement(&self) -> &'static str {
         match self {
-            Tool::Claude | Tool::Copilot => "/speclink-",
+            Tool::Claude | Tool::Copilot | Tool::Cursor => "/speclink-",
             Tool::Codex => "$speclink-",
+            Tool::Pi => "/skill:speclink-",
         }
     }
 }
@@ -80,8 +90,8 @@ pub struct Skill {
     pub fork: bool,
     /// Whether to add `disallowedTools: [Edit, Write]` — Claude frontmatter only.
     pub disallow_edit: bool,
-    /// Generated for Claude only. Every other target (codex, copilot and custom
-    /// descriptors) gets the rest of the registry.
+    /// Generated for Claude only. Every other target (codex, copilot, pi, cursor and
+    /// custom descriptors) gets the rest of the registry.
     pub claude_only: bool,
     /// Generated only when the workflow config's `worktree` policy is on. The registry
     /// itself stays complete regardless — the gate applies to the GENERATION set, so
@@ -472,6 +482,23 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// spec skill-authoring「技能原稿的跨模型寫法規範」Example「同一個引用在六種渲染
+    /// 目標」的內建五列：原稿的 `/speclink:<名稱>` 依工具換成各自的叫用寫法。
+    #[test]
+    fn a_skill_reference_renders_per_builtin_tool() {
+        let rendered = Tool::ALL.map(|tool| substitute("/speclink:ingest", tool, "speclink"));
+        assert_eq!(
+            rendered,
+            [
+                "/speclink-ingest",
+                "$speclink-ingest",
+                "/speclink-ingest",
+                "/skill:speclink-ingest",
+                "/speclink-ingest",
+            ]
+        );
     }
 
     /// `skill_body` 是 registry 的查表加三個內部技能（tdd、clarify、sync）：每個對外

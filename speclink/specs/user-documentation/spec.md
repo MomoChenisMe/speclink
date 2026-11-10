@@ -105,7 +105,7 @@ code:
 ---
 ### Requirement: Getting Started 僅使用已驗證入口
 
-中英文 getting-started SHALL 提供一條可複製的 Local Repo 最短成功路徑；文件中的 CLI 子指令與旗標 SHALL 可由目前 `speclink --help` 或對應子指令 help 觀察，Agent skill 名 SHALL 存在於相應生成 surface。文件 SHALL 分別說明 Claude slash command、Codex `$skill`、Copilot slash command 與直接 CLI 的差異，並 SHALL 載明三個工具各自的技能目錄（`.claude/skills/`、`.agents/skills/`、`.github/skills/`）；SHALL NOT 將 optional artifact 寫成固定必產，SHALL NOT 將不存在的 skill 寫成可呼叫入口。結構檢查 SHALL 使用目前存在的 validate／analyze，實作驗證或 evidence 若無公開 skill 入口 SHALL 以目前限制標示並導向 product-status。
+中英文 getting-started SHALL 提供一條可複製的 Local Repo 最短成功路徑；文件中的 CLI 子指令與旗標 SHALL 可由目前 `speclink --help` 或對應子指令 help 觀察，Agent skill 名 SHALL 存在於相應生成 surface。文件 SHALL 分別說明 Claude slash command、Codex `$skill`、Copilot slash command、pi `/skill:` 指令、Cursor slash command 與直接 CLI 的差異，並 SHALL 載明五個工具各自的技能目錄（`.claude/skills/`、`.agents/skills/`、`.github/skills/`、`.pi/skills/`、`.cursor/skills/`）；pi 的說明 SHALL 寫明 pi 要先信任專案才讀專案技能，以及同時選 codex 時 pi 會對同名技能顯示警告、使用的仍是 pi 版；SHALL NOT 將 optional artifact 寫成固定必產，SHALL NOT 將不存在的 skill 寫成可呼叫入口。結構檢查 SHALL 使用目前存在的 validate／analyze，實作驗證或 evidence 若無公開 skill 入口 SHALL 以目前限制標示並導向 product-status。
 
 #### Scenario: Codex 使用者照入門文件操作
 
@@ -127,10 +127,20 @@ code:
 - **WHEN** GitHub Copilot 使用者依 getting-started 以 `speclink init --tools copilot` 初始化並完成範例 change
 - **THEN** 文件使用 `/speclink-*` skill 語法並說明技能位於 `.github/skills/`，底層 CLI 命令與旗標皆存在，不要求呼叫 Copilot 未生成的 `/speclink-analyze`，且與 Claude、Codex 版本產生相同 Speclink artifacts 與生命週期結果
 
+#### Scenario: pi 使用者照入門文件操作
+
+- **WHEN** pi 使用者依 getting-started 以 `speclink init --tools pi` 初始化並完成範例 change
+- **THEN** 文件使用 `/skill:speclink-*` 語法並說明技能位於 `.pi/skills/`、要先信任專案，底層 CLI 命令與旗標皆存在，不要求呼叫 pi 未生成的 `/skill:speclink-analyze`，且與 Claude、Codex 版本產生相同 Speclink artifacts 與生命週期結果
+
+#### Scenario: Cursor 使用者照入門文件操作
+
+- **WHEN** Cursor 使用者依 getting-started 以 `speclink init --tools cursor` 初始化並完成範例 change
+- **THEN** 文件使用 `/speclink-*` skill 語法並說明技能位於 `.cursor/skills/`，底層 CLI 命令與旗標皆存在，不要求呼叫 Cursor 未生成的 `/speclink-analyze`，且與 Claude、Codex 版本產生相同 Speclink artifacts 與生命週期結果
+
 
 <!-- @trace
-source: add-copilot-tool
-updated: 2026-10-08T11:52:22+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->
 
 ---

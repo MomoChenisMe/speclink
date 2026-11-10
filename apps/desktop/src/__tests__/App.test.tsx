@@ -17,6 +17,7 @@ import { STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
+import { expectToolCheckboxes } from "./helpers/toolCheckboxes";
 import { gesture, gestureHandlers } from "./helpers/trackpadGesture";
 import { dictionaryProblems, type SpeclinkDataSource, type StatusReport } from "@speclink/ui";
 
@@ -729,6 +730,8 @@ describe("App (kanban primary + rich detail)", () => {
     expect(claude.getAttribute("aria-checked")).toBe("true");
     expect(codex.getAttribute("aria-checked")).toBe("false");
     expect(copilot.getAttribute("aria-checked")).toBe("false");
+    // 五個勾選依 claude、codex、copilot、pi、cursor 順序出現，預設只勾 claude。
+    expectToolCheckboxes(dialog, ["claude"]);
     // 可獨立切換：勾 codex 不影響 claude；取消 claude 不影響 codex。
     fireEvent.click(codex);
     expect(codex.getAttribute("aria-checked")).toBe("true");
@@ -768,6 +771,8 @@ describe("App (kanban primary + rich detail)", () => {
     // 多選含 copilot、預設未勾。
     const copilot = within(dialog).getByRole("checkbox", { name: "copilot" });
     expect(copilot.getAttribute("aria-checked")).toBe("false");
+    // 五個勾選依 claude、codex、copilot、pi、cursor 順序出現，預設只勾 claude。
+    expectToolCheckboxes(dialog, ["claude"]);
     // 確認 → 以所選工具呼叫 adopt（而非 init）。
     fireEvent.click(within(dialog).getByRole("button", { name: "啟用" }));
     await waitFor(() => expect(ws.adoptProject).toHaveBeenCalledWith("D:/migrated", ["claude"]));
@@ -1185,11 +1190,14 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       within(column)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", ".speclink.yaml"]);
+    ).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", "AI 工具"]);
     expect(within(column).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
     expect(crumbText()).toBe("proj-a/專案設定/專案說明");
     fireEvent.click(within(column).getByRole("button", { name: "產出流程" }));
     expect(crumbText()).toBe("proj-a/專案設定/產出流程");
+    fireEvent.click(within(column).getByRole("button", { name: "AI 工具" }));
+    // crumbText 會去掉所有空白，「AI 工具」比對成「AI工具」。
+    expect(crumbText()).toBe("proj-a/專案設定/AI工具");
     // 「專案設定」段點回專案說明頁。
     fireEvent.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "專案設定" }));
     expect(crumbText()).toBe("proj-a/專案設定/專案說明");
@@ -1202,7 +1210,20 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     expect(crumbText()).toBe("proj-a/變更");
   });
 
-  it("專案設定停在 .speclink.yaml 時切到 remote 專案：退回專案說明（remote 沒有該頁）", async () => {
+  it("舊佈局專案的專案設定分類欄組名仍是「工作流程」，規格資料夾只出現在頁標題下的註記（spec「畫面依實際規格資料夾與資料檔名顯示」）", async () => {
+    const settings = fakeSettings();
+    const snap = await settings.readSettings();
+    settings.readSettings.mockResolvedValue({ ...snap, specDir: "openspec" });
+    renderApp(fakeDataSource(), { settings });
+    await screen.findByText("desktop-shell-and-browser");
+    fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
+    await waitFor(() => expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · context"));
+    const column = projectSettingsColumn();
+    expect(within(column).getByText("工作流程")).toBeTruthy();
+    expect(column.textContent).not.toContain("config.yaml");
+  });
+
+  it("專案設定停在 AI 工具時切到 remote 專案：退回專案說明（remote 沒有該頁）", async () => {
     localStorage.setItem(
       "speclink.projectTabs",
       JSON.stringify({
@@ -1235,8 +1256,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(document.querySelector('[data-tab="local:A"]') as HTMLElement);
     await screen.findByText("desktop-shell-and-browser");
     fireEvent.click(within(projectColumn()).getByRole("button", { name: "專案設定" }));
-    fireEvent.click(within(await waitFor(() => projectSettingsColumn())).getByRole("button", { name: ".speclink.yaml" }));
-    expect(crumbText()).toBe("proj-a/專案設定/.speclink.yaml");
+    fireEvent.click(within(await waitFor(() => projectSettingsColumn())).getByRole("button", { name: "AI 工具" }));
+    // crumbText 會去掉所有空白，「AI 工具」比對成「AI工具」。
+    expect(crumbText()).toBe("proj-a/專案設定/AI工具");
 
     fireEvent.click(document.querySelector(`[data-tab="${REMOTE_KEY}"]`) as HTMLElement);
     await screen.findByTestId("context-page");

@@ -10,16 +10,18 @@
 
 範例需求是「新增 CSV 匯出」，而且需求已經清楚。如果你還在比較做法、需要做決定，先跑 `discuss`（見[工作流](workflow.zh-TW.md#discuss)）。
 
-你可以用四種方式操作，效果相同：
+你可以用六種方式操作，效果相同：
 
 | 方式 | 寫法 | 說明 |
 | --- | --- | --- |
 | Claude Code | `/speclink-propose add-csv-export` | 斜線指令 |
 | Codex | `$speclink-propose add-csv-export` | `$` 加技能名；也可以輸入 `/skills` 從清單挑 |
 | GitHub Copilot | `/speclink-propose add-csv-export` | 斜線指令，寫法和 Claude Code 相同 |
+| pi | `/skill:speclink-propose add-csv-export` | `/skill:` 加技能名 |
+| Cursor | `/speclink-propose add-csv-export` | 斜線指令，寫法和 Claude Code 相同 |
 | 直接用 CLI | `speclink new change add-csv-export` | 不經 Agent，自己寫每份文件 |
 
-技能（skill）是寫給 Agent 讀的流程說明：什麼時候讀什麼、怎麼產生文件、什麼時候停下來。真正執行動作的是 `speclink` CLI。一般使用者用技能就好。
+技能（skill）是寫給 Agent 讀的流程說明：什麼時候讀什麼、怎麼產生文件、什麼時候停下來。真正執行動作的是 `speclink` CLI。一般使用者用技能就好。`/speclink-analyze` 只有 Claude Code 有；Codex、GitHub Copilot、pi 與 Cursor 直接用 CLI 的 `speclink analyze`。
 
 ## <a id="install"></a>1. 安裝
 
@@ -89,15 +91,15 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-`--tools` 選要產生技能的 Agent 工具：`claude`、`codex`、`copilot`，用逗號任意組合。只用 GitHub Copilot 就寫 `--tools copilot`。
+`--tools` 選要產生技能的 Agent 工具：`claude`、`codex`、`copilot`、`pi`、`cursor`，用逗號任意組合。只用 GitHub Copilot 就寫 `--tools copilot`。
 
 這一步會：
 
 - 建立 `speclink/` 與 `.speclink.yaml`。
-- 產生所選工具的技能檔：Claude 在 `.claude/skills/`，Codex 在 `.agents/skills/`，GitHub Copilot 在 `.github/skills/`。
+- 產生所選工具的技能檔：Claude 在 `.claude/skills/`，Codex 在 `.agents/skills/`，GitHub Copilot 在 `.github/skills/`，pi 在 `.pi/skills/`，Cursor 在 `.cursor/skills/`。
 - 把 `.speclink/`（本機工作資料）加進 `.gitignore`。
 
-它不會改你的 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`。Agent 靠技能檔自己的說明判斷什麼時候用哪個技能。
+它不會改你的 `CLAUDE.md`、`AGENTS.md` 或 `.github/copilot-instructions.md`，也不會建立 `.cursor/rules/`。Agent 靠技能檔自己的說明判斷什麼時候用哪個技能。用 pi 時要先信任這個專案，pi 才會讀專案裡的技能。同時選了 `codex` 與 `pi` 時，pi 啟動會對每個同名技能顯示一則警告；pi 用的是 `.pi/skills/` 的 pi 版，功能不受影響。
 
 `speclink/` 的目錄結構：
 
@@ -123,11 +125,11 @@ speclink validate --specs --all --strict
 
 **預期輸出**：`list` 印出 `No active changes.`。`validate` 在還沒有任何正式規格時不印任何東西，並以 0 結束。沒有輸出就是通過。
 
-如果 repo 已經有很多程式碼卻沒有規格，先跑 `/speclink-baseline`（Codex 為 `$speclink-baseline`），依現在的行為建立規格，再開新變更。
+如果 repo 已經有很多程式碼卻沒有規格，先跑 `/speclink-baseline`（Codex 為 `$speclink-baseline`，pi 為 `/skill:speclink-baseline`），依現在的行為建立規格，再開新變更。
 
 ## <a id="propose"></a>3. 提案
 
-請 Agent 建立變更。在 Claude Code 或 GitHub Copilot：
+請 Agent 建立變更。在 Claude Code、GitHub Copilot 或 Cursor：
 
 ```text
 /speclink-propose add-csv-export
@@ -137,6 +139,12 @@ speclink validate --specs --all --strict
 
 ```text
 $speclink-propose add-csv-export
+```
+
+在 pi：
+
+```text
+/skill:speclink-propose add-csv-export
 ```
 
 Agent 會建立變更，並寫出開工前需要的文件：
@@ -198,7 +206,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ## <a id="apply"></a>4. 實作
 
-文件完成後，請 Agent 開始實作。在 Claude Code 或 GitHub Copilot：
+文件完成後，請 Agent 開始實作。在 Claude Code、GitHub Copilot 或 Cursor：
 
 ```text
 /speclink-apply add-csv-export
@@ -208,6 +216,12 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ```text
 $speclink-apply add-csv-export
+```
+
+在 pi：
+
+```text
+/skill:speclink-apply add-csv-export
 ```
 
 Agent 會先跑 `speclink plan` 確認這個變更沒有被其他變更擋住，再讀提案、規格、設計（如果有）與任務，一項一項實作。每完成一項，它用 `speclink task done` 勾掉：
@@ -265,7 +279,7 @@ Change: add-csv-export
 
 ## <a id="archive"></a>6. 封存
 
-任務全部完成、文件檢查通過、選擇要跑的品質關卡也結束之後，請 Agent 封存。在 Claude Code 或 GitHub Copilot：
+任務全部完成、文件檢查通過、選擇要跑的品質關卡也結束之後，請 Agent 封存。在 Claude Code、GitHub Copilot 或 Cursor：
 
 ```text
 /speclink-archive add-csv-export
@@ -275,6 +289,12 @@ Change: add-csv-export
 
 ```text
 $speclink-archive add-csv-export
+```
+
+在 pi：
+
+```text
+/skill:speclink-archive add-csv-export
 ```
 
 或直接執行：

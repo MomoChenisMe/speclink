@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.54.0";
+pub const ASSET_VERSION: &str = "v1.55.0";
 
 const APP_CONFIG_TEMPLATE: &str = concat!(
     "# Speclink application config
@@ -352,7 +352,7 @@ pub(crate) struct SyncTarget {
 /// - `guard` has exactly one bypass, `update`'s explicit `--allow-downgrade`; every other
 ///   regeneration path calls it.
 pub(crate) struct SyncPlan {
-    /// Ordered claude, codex, copilot, then descriptors in list order.
+    /// Ordered claude, codex, copilot, pi, cursor, then descriptors in list order.
     pub(crate) targets: Vec<SyncTarget>,
     /// Built-ins that are NOT selected and lose their footprint. Empty on the legacy
     /// fallback: without a tools list, nothing was ever "deselected".
@@ -361,6 +361,9 @@ pub(crate) struct SyncPlan {
     /// strip a legacy marker from, and the deprecation notice to report.
     pub(crate) custom_strip_targets: Vec<(String, String)>,
     pub(crate) selection: ToolSelection,
+    /// The project root the targets hang off — the shared-directory check compares
+    /// paths below it.
+    pub(crate) root: PathBuf,
 }
 
 impl SyncPlan {
@@ -419,14 +422,54 @@ impl SyncPlan {
             deselected_builtins,
             custom_strip_targets,
             selection,
+            root: root.to_path_buf(),
         }
     }
 
-    /// Downgrade guard: refuse when any target's skills directory leads this engine.
-    /// The checked set IS the write set.
+    /// The pre-write guard: the shared-directory check, then the downgrade guard (refuse
+    /// when any target's skills directory leads this engine). The checked set IS the write
+    /// set.
     pub(crate) fn guard(&self) -> Result<()> {
+        self.refuse_shared_skill_dirs()?;
         let dirs: Vec<PathBuf> = self.targets.iter().map(|t| t.skills_root.clone()).collect();
         refuse_downgrade(&dirs)
+    }
+
+    /// Refuse a sync whose skills directories are shared through a symlink (decision 「同步
+    /// 前拒絕經 symlink 共用的 skills 目錄」): a selected target that resolves to the same
+    /// directory as another selected target, or as a deselected built-in this sync would
+    /// prune, would have one tool's write overwrite or delete the other's. A link that
+    /// resolves anywhere else (a shared folder outside the project) is fine.
+    /// `--allow-downgrade` skips the downgrade guard, never this check.
+    pub(crate) fn refuse_shared_skill_dirs(&self) -> Result<()> {
+        let entry = |rel: &str, label: &str| SharedDirEntry {
+            resolved: resolved_dir(&self.root.join(rel)),
+            linked: passes_through_symlink(&self.root, rel),
+            rel: rel.to_string(),
+            label: label.to_string(),
+        };
+        let written: Vec<SharedDirEntry> =
+            self.targets.iter().map(|t| entry(&t.skills_dir, &t.label)).collect();
+        // A deselected built-in behind a link is never pruned (prune_tool), so it cannot
+        // take a selected tool's files with it.
+        let pruned: Vec<SharedDirEntry> = self
+            .deselected_builtins
+            .iter()
+            .map(|t| entry(t.skills_dir(), t.name()))
+            .filter(|e| !e.linked)
+            .collect();
+        for (i, a) in written.iter().enumerate() {
+            let Some(b) = written[i + 1..].iter().chain(&pruned).find(|b| b.resolved == a.resolved) else {
+                continue;
+            };
+            // Name the linked directory first: that is the one the user set up.
+            let (a, b) = if b.linked && !a.linked { (b, a) } else { (a, b) };
+            bail!(
+                "skills directory {} ({}) resolves to the same directory as {} ({}) — remove the symlink or deselect one of them",
+                a.rel, a.label, b.rel, b.label
+            );
+        }
+        Ok(())
     }
 
     /// Every target's managed files that are absent or differ from the current render
@@ -459,8 +502,8 @@ impl SyncPlan {
     ///    BEFORE generation on purpose: a descriptor that only changed its NAME keeps
     ///    the same `skills_dir`, and deleting after writing would take the fresh files
     ///    with it. Reporting stays late so `pruned` keeps its built-ins-first order.
-    /// 3. Per target (claude, codex, copilot, then descriptors): write every managed file and
-    ///    remove the `speclink-` directories that are not in the set.
+    /// 3. Per target (claude, codex, copilot, pi, cursor, then descriptors): write every
+    ///    managed file and remove the `speclink-` directories that are not in the set.
     /// 4. Prune the deselected built-ins.
     /// 5. Record the current descriptors as the footprint for the next sync.
     pub(crate) fn apply(&self, root: &Path) -> Result<UpdateOutcome> {
@@ -579,7 +622,9 @@ fn sync(
         bail!("{message}");
     }
     let plan = SyncPlan::resolve(root, selection, &spec_dir);
-    if !allow_downgrade {
+    if allow_downgrade {
+        plan.refuse_shared_skill_dirs()?;
+    } else {
         plan.guard()?;
     }
     let migration = plan_migration(root, &app);
@@ -650,6 +695,10 @@ pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     }
     if crate::migrate::needs_import(root) {
         import_openspec(root, tools)?;
+    } else {
+        // 與匯入路徑相同：守門在骨架與 .gitignore 寫入之前，拒絕＝零寫入。
+        let spec_dir = resolve_spec_dir(root, None).0;
+        SyncPlan::resolve(root, ToolSelection::builtins_only(tools), &spec_dir).guard()?;
     }
     store_init(&root.join(resolve_spec_dir(root, None).0), false)?;
     ensure_gitignore(&root.join(".gitignore"))?;
@@ -739,7 +788,8 @@ fn prune_custom(root: &Path, fp: &CustomFootprint, notes: &mut Vec<String>) -> R
         return Ok(false);
     }
     prune_footprint(
-        &root.join(&fp.skills_dir),
+        root,
+        &fp.skills_dir,
         fp.instructions_file.as_ref().map(|f| root.join(f)).as_deref(),
     )
 }
@@ -767,18 +817,19 @@ fn prune_orphan_skills(skills_root: &Path, expected: &[String]) -> Result<()> {
 fn prune_tool(root: &Path, tool: Tool) -> Result<bool> {
     // 指令檔的遺留剝除已由 update() 對有指令檔的內建工具無條件跑過（選取與否都剝），
     // 這裡只清技能足跡——同一檔案不需要第二個剝除點。
-    prune_footprint(&root.join(tool.skills_dir()), None)
+    prune_footprint(root, tool.skills_dir(), None)
 }
 
 /// Remove a generated footprint: speclink-* skill directories and any legacy SPECLINK
 /// marker block left in the instruction file. Returns whether anything was removed.
-fn prune_footprint(skills_root: &Path, md: Option<&Path>) -> Result<bool> {
+fn prune_footprint(root: &Path, skills_dir: &str, md: Option<&Path>) -> Result<bool> {
     let mut removed = false;
-    // A symlinked skills dir points at another tool's files (e.g. `.github/skills` →
-    // `.claude/skills`): pruning through it would delete what that tool just wrote.
-    let symlinked =
-        std::fs::symlink_metadata(skills_root).is_ok_and(|m| m.file_type().is_symlink());
-    if !symlinked {
+    let skills_root = root.join(skills_dir);
+    let skills_root = skills_root.as_path();
+    // A skills dir reached through a link — the dir itself (`.github/skills` →
+    // `.claude/skills`) or a parent (`.cursor` → `.claude`) — points at another tool's
+    // files: pruning through it would delete what that tool just wrote.
+    if !passes_through_symlink(root, skills_dir) {
         if let Ok(entries) = std::fs::read_dir(skills_root) {
             for entry in entries.flatten() {
                 let name = entry.file_name().to_string_lossy().to_string();
@@ -804,6 +855,63 @@ fn prune_footprint(skills_root: &Path, md: Option<&Path>) -> Result<bool> {
         }
     }
     Ok(removed)
+}
+
+/// One skills directory as the shared-directory check sees it.
+struct SharedDirEntry {
+    /// Where the directory really is, links followed.
+    resolved: PathBuf,
+    /// Whether any part of the path below the project root is a symlink.
+    linked: bool,
+    /// Project-root-relative path, as the error message names it.
+    rel: String,
+    label: String,
+}
+
+/// How many links [`resolved_dir`] follows by hand before it gives up — a loop of links
+/// must not hang the sync.
+const MAX_LINK_HOPS: usize = 40;
+
+/// `path` with every symlink followed: the deepest part that exists is canonicalized and
+/// the parts that do not exist yet are appended as they are, so a skills directory that
+/// sync has not created yet still compares correctly. A link whose target does not exist
+/// yet is followed by hand (`read_link`): sync would create the target, not the link.
+fn resolved_dir(path: &Path) -> PathBuf {
+    resolve_following_links(path, 0)
+}
+
+fn resolve_following_links(path: &Path, hops: usize) -> PathBuf {
+    let mut existing = path;
+    let mut missing = Vec::new();
+    loop {
+        if let Ok(real) = existing.canonicalize() {
+            return missing.iter().rev().fold(real, |acc, part| acc.join(part));
+        }
+        if hops < MAX_LINK_HOPS {
+            if let Ok(target) = std::fs::read_link(existing) {
+                let base = existing.parent().unwrap_or(Path::new(""));
+                let followed = resolve_following_links(&base.join(target), hops + 1);
+                return missing.iter().rev().fold(followed, |acc, part| acc.join(part));
+            }
+        }
+        match (existing.parent(), existing.file_name()) {
+            (Some(parent), Some(name)) => {
+                missing.push(name.to_os_string());
+                existing = parent;
+            }
+            _ => return path.to_path_buf(),
+        }
+    }
+}
+
+/// Whether any part of `rel` below `root` is a symlink. The root itself and the folders
+/// above it do not count (macOS puts temp folders behind `/var` → `/private/var`).
+fn passes_through_symlink(root: &Path, rel: &str) -> bool {
+    let mut path = root.to_path_buf();
+    Path::new(rel).components().any(|part| {
+        path.push(part);
+        std::fs::symlink_metadata(&path).is_ok_and(|m| m.file_type().is_symlink())
+    })
 }
 
 /// Strip a legacy `SPECLINK:START..END` block from an instruction file (design D2):
@@ -1166,18 +1274,18 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     }
 }
 
-/// 內建工具曾被注入 marker 的指令檔路徑（專案根相對）。copilot 從未有指令檔，
-/// 沒有遺留區塊要剝除。
+/// 內建工具曾被注入 marker 的指令檔路徑（專案根相對）。copilot、pi、cursor 從未有
+/// 指令檔，沒有遺留區塊要剝除。
 fn instructions_path(tool: Tool) -> Option<&'static str> {
     match tool {
         Tool::Claude => Some("CLAUDE.md"),
         Tool::Codex => Some("AGENTS.md"),
-        Tool::Copilot => None,
+        Tool::Copilot | Tool::Pi | Tool::Cursor => None,
     }
 }
 
 /// Validate a comma-separated `--tools` value into a tool list. Speclink deliberately scopes
-/// the supported tools to claude, codex and copilot.
+/// the supported tools to claude, codex, copilot, pi and cursor.
 pub fn parse_tools(spec: &str) -> Result<Vec<Tool>> {
     parse_tool_names(&spec.split(',').collect::<Vec<&str>>())
 }

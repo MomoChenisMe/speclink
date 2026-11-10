@@ -1,0 +1,388 @@
+{
+  "version": 2,
+  "change": "add-pi-cursor-tools",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先做「測試夾具與規格範例的描述子改名」，讓 `cursor` 不再被當成自訂描述子或未知工具：crates/engine/speclink-core/src/workspace/init/tests.rs 的 `CURSOR_DESCRIPTOR` 夾具改為 name `my-harness`、skills_dir `.my-harness/skills`（常數改名為 `MY_HARNESS_DESCRIPTOR`，引用它的探測測試裡 `.cursor/skills` 與 `tool == \"cursor\"` 的字面值一併改），帶結尾 `/` 的描述子測試同步改名；`tool_selection_notes_an_unknown_builtin_name` 的未知工具改為 `windsurf`；只換字面值，判定邏輯不變（對應規格「技能檔過期探測」的描述子情境與 Example）；驗證：`cargo test -p speclink-core --lib workspace_group::init` 全過，且 `grep -n \"cursor\" crates/engine/speclink-core/src/workspace/init/tests.rs` 不再命中描述子或未知工具的用法",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 讓 1.2 轉綠（決策「內建工具列舉加入 Pi 與 Cursor」「Pi 與 Cursor 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 pi 與 cursor」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Pi`（name `pi`、skills_dir `.pi/skills`、plan_dir 空字串、前綴 `/skill:speclink-`）與 `Cursor`（name `cursor`、skills_dir `.cursor/skills`、plan_dir 空字串、前綴 `/speclink-`）變體，`Tool::parse` 認 `pi`、`cursor`、不認別名，`Tool::ALL` 改為依 claude、codex、copilot、pi、cursor 排序的五元素陣列；crates/engine/speclink-core/src/workspace/init.rs 的 `instructions_path` 對 Pi、Cursor 回傳 None，`detect_footprint_tools` 不加分支；改寫兩個檔案裡「claude, codex and copilot」的註解；在 skills.rs 的單元測試新增「技能原稿的跨模型寫法規範」的引用渲染測試：`substitute(\"/speclink:ingest\", tool, \"speclink\")` 對五個內建工具依序得 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.2 的測試轉綠",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 為取消勾選、孤兒清理、過期探測與描述子驗證補 pi、cursor 情境測試（built-in tools 權威收斂、update 清除孤兒技能目錄、技能檔過期探測、tools 自訂描述子的接受與驗證；決策「描述子驗證保留 pi、cursor 名稱與目錄」）：crates/engine/speclink-core/src/workspace/init/tests.rs 新增——選集 `[claude, cursor]` 收斂到 `[claude]` 時只移除 `.cursor/skills/` 下 `speclink-` 前綴目錄，使用者的 `.cursor/skills/my-skill/SKILL.md` 與 `.cursor/rules/style.mdc` 位元級不變；選集 `[codex, pi]` 收斂到 `[codex]` 且 `.pi/` 只有生成物時 `.pi/skills/` 與 `.pi/` 都被移除；`.pi/skills/speclink-onboard/` 舊目錄在 update 後被清除；tools 為 `[codex, pi]` 且 `.pi/skills/` 缺席時探測回報 missing、逐工具資訊含 `tool: \"pi\"` 且 `missing: true`、差異清單每項以 `.pi/skills/speclink-` 起頭；`ToolSelection` 對 `tools: [claude, windsurf]` 的 note 列出 `claude, codex, copilot, pi, cursor`；crates/engine/speclink-core/src/workspace/config/tests.rs 新增——描述子 name `pi`、`cursor` 被拒且訊息列出五個工具，skills_dir 為 `.pi/skills`、`.wad/../.pi/skills`、`.cursor/skills`、`.cursor//skills`、`.Cursor/skills` 一律被拒且訊息指明屬內建 pi 或 cursor 目錄，`.pi/agent` 與 `.cursor/rules` 被接受；這些行為由 `Tool::ALL` 自動帶出，預期在 1.3 後即通過，沒通過就修 1.3 的接線；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 先寫失敗測試（中性渲染目標、技能共用的對話語言段落）：crates/engine/speclink-core/tests/it/render_golden.rs 新增 `pi_rendering_is_bit_identical_to_golden`（以 `[Tool::Pi]` init 後快照 `.pi/skills`，比對 `pi.snapshot.md`）與 `cursor_rendering_is_bit_identical_to_golden`（以 `[Tool::Cursor]` 快照 `.cursor/skills`，比對 `cursor.snapshot.md`）；`every_product_skill_carries_conversation_language_once` 的工具迴圈改走 `Tool::ALL` 並以 `skills_dir()` 取目錄，涵蓋五個內建工具；assets.lock 的指紋輸入已走 `Tool::ALL`，更新檔頭對渲染目標的說明；驗證：`cargo test -p speclink-core --test it render_golden` 失敗在缺 pi、cursor golden 與版號鎖定測試（指紋變了但版號沒變）",
+      "files": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.2 讓 2.1 轉綠（決策「產物層版號遞增與 golden 再生」）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 `v1.54.0` 改為 `v1.55.0`；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 生成 pi、cursor golden 並重生既有六份 golden，再於乾淨樹以 `UPDATE_ASSETS_LOCK=1` 重生 crates/engine/speclink-core/tests/golden/assets.lock；驗證：`git diff -U0 crates/engine/speclink-core/tests/golden/*.snapshot.md` 對既有六份只有 `version: \"v1.54.0\"` → `version: \"v1.55.0\"` 的行；pi.snapshot.md 在 `=== ` 檔名標題行以外不含 `$speclink-`、`/speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `/skill:speclink-` 與 `--agent pi`；cursor.snapshot.md 不含 `$speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `/speclink-` 與 `--agent cursor`；`cargo test -p speclink-core --test it render_golden` 全過",
+      "files": [
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 先寫失敗測試（寫法規範的機械守門；決策「技能原稿守門加入 pi 與 cursor 的 --agent 值」）：crates/engine/speclink-core/tests/it/skill_authoring.rs 的 `hardcoded_references_are_found_but_skill_paths_are_not` 新增斷言——`hardcoded_references(\"speclink review stamp x --agent cursor\")` 回傳 `[\"--agent cursor\"]`、`hardcoded_references(\"speclink new change a --agent pi\")` 回傳 `[\"--agent pi\"]`、`--agent {{TOOL}}` 仍不命中；驗證：`cargo test -p speclink-core --test it skill_authoring` 這兩條新斷言失敗",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 先寫失敗測試（init 內建 Agent 工具選擇；決策「CLI init 五題與五工具錯誤訊息」）：crates/adapters/speclink-cli/src/verbs/init.rs 的單元測試與 crates/adapters/speclink-cli/tests/it/init_tools.rs 新增——`--tools pi` 只生成 `.pi/skills/`、`--tools cursor` 只生成 `.cursor/skills/`，stdout 的 `Generated files for:` 行含該工具名；`--tools claude,codex,copilot,pi,cursor` 依序記錄五個工具並生成五組技能；`Pi`、`CURSOR`、`cursor,cursor` 被接受；`cursor-agent` 被拒、exit code 非 0、stderr 單行列出 claude、codex、copilot、pi、cursor、零寫入；互動終端依 Claude、Codex、Copilot、Pi、Cursor 順序詢問五題，答 y、y、n、n、n 選出 claude 與 codex，答 n、n、n、y、n 選出 pi，五題都答 n 時 stderr 印出 `Pick at least one tool: claude, codex, copilot, pi, cursor, or any combination.` 後從 Claude 重問；非互動缺 `--tools` 時 stdout 空、stderr 單行含 `--tools` 與五個工具名；既有以三題答案餵入的測試改成五題；驗證：`cargo test -p speclink-cli verbs::init` 與 `cargo test -p speclink-cli --test it init_tools` 新測試失敗",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 先寫失敗測試（渲染 API；決策「Node SDK target 加入 pi 與 cursor」）：crates/adapters/speclink-node/__test__/render.spec.ts 新增——`skills.render('apply', { target: 'pi' })` 與在暫存目錄以 CLI `init --tools pi,cursor` 生成的 `.pi/skills/speclink-apply/SKILL.md` 逐字相同且含 `/skill:speclink-`，`{ target: 'cursor' }` 與 `.cursor/skills/speclink-apply/SKILL.md` 逐字相同且含 `/speclink-`，兩者都不含 `$speclink-`；`{ target: 'github-copilot' }` 拋出的錯誤訊息含 `github-copilot` 與 claude、codex、copilot、pi、cursor、neutral；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 中未知 target 訊息的測試失敗",
+      "files": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.2 讓 5.1 轉綠：crates/adapters/speclink-node/src/render.rs 的 target 錯誤訊息改為 `target '<x>' must be 'claude', 'codex', 'copilot', 'pi', 'cursor', or 'neutral'`、模組註解的 target 列舉加 pi、cursor，crates/adapters/speclink-node/index.d.ts 的 `target` 聯集加 `'pi' | 'cursor'`；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全過",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/render.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.1 先寫失敗測試（未初始化目錄經確認後自動初始化、未啟用資料夾經確認後補齊啟用、設定頁圖形化讀寫兩層設定、checkout 綁定驗證與 marker 寫入、remote marker 資料夾的探測分流）：apps/desktop/src/__tests__ 的 App.test.tsx、workspaceChooser.test.tsx、projectSettingsView.test.tsx 新增「初始化確認、啟用確認、checkout 步驟、設定頁 AI 工具卡都依 claude、codex、copilot、pi、cursor 順序出現五個勾選，初始化與啟用預設只勾 claude」；apps/desktop/core/src/settings.rs 新增「tools 為 `[codex]` 時加選 pi 生成 `.pi/skills/`、再取消後 `.pi/skills/` 下 `speclink-` 目錄全數移除且 `.agents/skills/` 不變」；apps/desktop/core/src/project.rs 新增「`init_project_at` 選 claude、pi、cursor 時生成三組技能且不生成 `.cursor/agents/`、`.cursor/rules/`、AGENTS.md」「`adopt_project_at` 只選 cursor 時 `.cursor/rules/` 下既有檔案位元級不變」；apps/desktop/src-tauri/src/connections.rs 新增「marker 的 tools 為 `[pi]` 時 inspect 回報 `[\"pi\"]`」「無 tools 清單、含 `.cursor/rules/` 與 `.pi/` 的 checkout 不預選 cursor 與 pi」「bind `[claude, cursor]` 生成兩組技能」「空選集錯誤訊息列出 claude、codex、copilot、pi、cursor」；驗證：`npm test -w @speclink/desktop` 的新測試失敗，`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop --lib connections` 的新測試失敗（只依賴 1.3 的 desktop-core 測試若已綠屬預期，記在完成說明）",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "6.2 讓 6.1 轉綠（決策「desktop 勾選清單加入 pi 與 cursor」）：apps/desktop/src/builtinTools.ts 的 `BUILTIN_TOOLS` 改為 `[\"claude\", \"codex\", \"copilot\", \"pi\", \"cursor\"] as const`（四處勾選都讀它，沿用既有勾選元件、不新增 @speclink/ui 元件）；apps/desktop/src-tauri/src/connections.rs 的空選集訊息改為「請至少選擇一個內建工具：claude、codex、copilot、pi、cursor」並更新 `preselected_tools` 註解，apps/desktop/src/adapter/connections.ts 的 `CheckoutInspection` 註解改列五個工具；驗證：`npm test -w @speclink/desktop`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib connections` 全過",
+      "files": [
+        "apps/desktop/src/adapter/connections.ts",
+        "apps/desktop/src/builtinTools.ts"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "7.1 先寫失敗測試（決策「Herdr 面板對到 pi 與 cursor 工具」）：scripts/herdr/panel-model.test.mjs 改寫與新增——`missingSkillsPlan('Pi', 'pi').reason` 符合 `/Pi.*--tools pi/`；`commandText('cursor', 'apply', 'a')` 為 `/speclink-apply a`；`usableAgents` 對已安裝的 claude、codex、pi、cursor 都回傳；`skillFolders('cursor')` 含 `.cursor/skills`、`.agents/skills`、`.claude/skills`、`.codex/skills` 與對應的四個家目錄路徑；`missingSkillsPlan('Cursor', 'cursor').reason` 含 `--tools cursor`；`onlyClaude('analyze', 'cursor')` 為真；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 中這些新斷言失敗",
+      "files": [
+        "scripts/herdr/panel-model.test.mjs"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "7.2 讓 7.1 轉綠：integrations/herdr/mods/speclink/model.js 的 `SPECLINK_TOOL.pi` 改為 `pi`、新增 `SPECLINK_TOOL.cursor`、`SKILL_PREFIX.cursor = \"/\"`、`SKILL_FOLDERS.cursor`，檔頭註解改為 pi 有自己的 `.pi/skills`；integrations/herdr/README.md 與 README.en.md 的叫用前綴段落加 Cursor `/speclink-<技能>`、pi 改為用 `speclink init --tools pi` 產生的 `.pi/skills`、「列哪些」段落加 Cursor 的目錄、PATH 段落加 `cursor-agent`，並寫明面板不為 Cursor 追蹤標籤；中英兩版對等；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "files": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md",
+        "integrations/herdr/mods/speclink/model.js"
+      ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "8.4 文件同步並符合 Getting Started 僅使用已驗證入口（決策「文件同步」）：README.md 與 README.zh-TW.md 的 `--tools` 說明列五個工具，並說明 pi 輸入 `/skill:speclink-propose <變更名稱>`、Cursor 輸入 `/speclink-propose <變更名稱>`；docs/getting-started.zh-TW.md 與 docs/getting-started.md 的入口表加 pi 與 Cursor 兩列、init 產物說明加 `.pi/skills/` 與 `.cursor/skills/`、「在 Codex：」分支說明 pi 用 `/skill:` 前綴、Cursor 與 Claude 寫法相同且兩者都沒有 `/speclink-analyze`，並寫明 pi 要先信任專案、同時勾 codex 時 pi 會顯示同名警告但用的是 pi 版；docs/configuration.zh-TW.md 與 docs/configuration.md 的內建工具表加 `pi` → `.pi/skills/`、`cursor` → `.cursor/skills/`，描述子 name 不得為 `claude`、`codex`、`agents`、`copilot`、`pi`、`cursor` 並寫明舊 pi／cursor 描述子的遷移方式，tools 欄位與「內建工具不受影響」句列五個工具；docs/workflow.zh-TW.md 與 docs/workflow.md 說明 pi 用 `/skill:`、Cursor 與 Claude 同用 `/`、analyze 只有 Claude 有；docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的 target 值域加 `pi`、`cursor`；docs/product-status.zh-TW.md 與 docs/product-status.md 的 Agent 技能列加 pi 與 Cursor；中英兩版結構與事實對等；驗證：`speclink validate add-pi-cursor-tools` 通過，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "files": [
+        "README.md",
+        "README.zh-TW.md",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "21",
+      "task_desc": "9.1 先寫失敗測試（設定頁圖形化讀寫兩層設定、側欄導覽結構、畫面依實際規格資料夾與資料檔名顯示；決策「專案設定分類欄統一用概念名」）：apps/desktop/src/__tests__/settingsColumn.test.tsx 改寫——本地專案的組名依序為「工作流程」「專案」、項目依序為專案說明、產出規則、審查規則、產出流程、AI 工具，分類欄內不含 `config.yaml` 與 `.speclink.yaml` 字樣；原「舊佈局專案：群組名為 openspec/config.yaml」測試改為組名同樣是「工作流程」；遠端專案只有「工作流程」組四項；`.speclink.yaml` 解析失敗時帶警示點的是「AI 工具」；英文介面組名為 Spec workflow、Project，項目最後一項為 AI tools。apps/desktop/src/__tests__/App.test.tsx 的專案設定分類欄項目清單改為以「AI 工具」結尾，點「AI 工具」後麵包屑為「專案名 / 專案設定 / AI 工具」。apps/desktop/src/__tests__/projectSettingsView.test.tsx 的 AI 工具頁頁標題為「AI 工具」、`file-note-speclink` 為 `.speclink.yaml · tools`、不存在 `speclink-file-path` 與「設定檔」卡；驗證：`npm test -w @speclink/desktop` 中這些新斷言失敗",
+      "files": [
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx"
+      ]
+    },
+    {
+      "task_id": "22",
+      "task_desc": "9.2 讓 9.1 轉綠：apps/desktop/src/settingsCatalog.ts 的 speclink 分類圖示改為 lucide-react 的 `Bot`，分類 id 不變；apps/desktop/src/components/ProjectSettingsColumn.tsx 的兩組組名改讀 `settings.group.workflow` 與 `settings.group.project`，移除 `configFile` 屬性；apps/desktop/src/App.tsx 移除 `projectConfigFile` 狀態，apps/desktop/src/views/ProjectSettingsView.tsx 移除 `onConfigFile` 回呼；apps/desktop/src/views/project-settings/SpeclinkPage.tsx 的頁標題改讀 `settings.projectSection.speclink`，移除「設定檔」卡；apps/desktop/src/i18n/messages.ts 新增 `settings.group.workflow`（工作流程／Spec workflow），`settings.projectSection.speclink` 改為 AI 工具／AI tools，刪除 `settings.fileCard` 與 `settings.fileRow`；驗證：`npm test -w @speclink/desktop` 全過，且 `grep -rn \"fileCard\\|fileRow\\|onConfigFile\\|projectConfigFile\" apps/desktop/src` 無命中",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectSettingsColumn.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx"
+      ]
+    },
+    {
+      "task_id": "28",
+      "task_desc": "10.4 測試與註解整理（審查 R1–R4、驗證 V2–V4）：init/tests.rs 的 `swap_tool` 改收 `Tool`，前綴由測試內一張「工具→叫用前綴」對照表查，`PI_AND_CURSOR` 改成只列 `Tool`；pi、cursor 兩個 frontmatter 測試併成一個依工具表跑的測試，copilot 的 frontmatter 測試改用 `frontmatter_keys`；`footprint_detection_never_infers_pi_or_cursor` 另外放 `.pi/skills/my-skill/SKILL.md` 與 `.cursor/skills/my-skill/SKILL.md`，apps/desktop/src-tauri/src/connections.rs 的 `inspect_without_a_tools_list_never_preselects_pi_or_cursor` 同樣加入兩個 skills 目錄；crates/adapters/speclink-cli/tests/it/init_tools.rs 刪掉與五工具迴圈重複的三段技能檔斷言並更新開頭註解；新增 apps/desktop/src/__tests__/helpers/toolCheckboxes.ts 收「五個勾選依序出現與勾選狀態」的斷言，App.test.tsx 兩處與 workspaceChooser.test.tsx 一處改用它；apps/desktop/src/components/ProjectSettingsColumn.tsx 的 `speclinkParseError` 註解改成「AI 工具項帶警示點」；projectSettingsView.test.tsx 的測試標題拿掉「並回報給分類欄」；驗證：`cargo test -p speclink-core --lib workspace_group::`、`cargo test -p speclink-cli --test it init_tools`、`cargo test -p speclink-desktop --lib connections`、`npm test -w @speclink/desktop` 全過",
+      "files": [
+        "apps/desktop/src/__tests__/helpers/toolCheckboxes.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72123ZAK5W1K9SDEQGS738P",
+      "taskDesc": "1.1 先做「測試夾具與規格範例的描述子改名」，讓 `cursor` 不再被當成自訂描述子或未知工具：crates/engine/speclink-core/src/workspace/init/tests.rs 的 `CURSOR_DESCRIPTOR` 夾具改為 name `my-harness`、skills_dir `.my-harness/skills`（常數改名為 `MY_HARNESS_DESCRIPTOR`，引用它的探測測試裡 `.cursor/skills` 與 `tool == \"cursor\"` 的字面值一併改），帶結尾 `/` 的描述子測試同步改名；`tool_selection_notes_an_unknown_builtin_name` 的未知工具改為 `windsurf`；只換字面值，判定邏輯不變（對應規格「技能檔過期探測」的描述子情境與 Example）；驗證：`cargo test -p speclink-core --lib workspace_group::init` 全過，且 `grep -n \"cursor\" crates/engine/speclink-core/src/workspace/init/tests.rs` 不再命中描述子或未知工具的用法",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init/tests.rs"
+      ],
+      "recordedAt": "2026-11-10T08:53:47Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZA73BBJBZDFS8PZ193",
+      "taskDesc": "1.3 讓 1.2 轉綠（決策「內建工具列舉加入 Pi 與 Cursor」「Pi 與 Cursor 渲染沿用 codex 路徑只換前綴」「footprint 偵測不推斷 pi 與 cursor」）：crates/engine/speclink-core/src/workspace/skills.rs 的 `Tool` 加 `Pi`（name `pi`、skills_dir `.pi/skills`、plan_dir 空字串、前綴 `/skill:speclink-`）與 `Cursor`（name `cursor`、skills_dir `.cursor/skills`、plan_dir 空字串、前綴 `/speclink-`）變體，`Tool::parse` 認 `pi`、`cursor`、不認別名，`Tool::ALL` 改為依 claude、codex、copilot、pi、cursor 排序的五元素陣列；crates/engine/speclink-core/src/workspace/init.rs 的 `instructions_path` 對 Pi、Cursor 回傳 None，`detect_footprint_tools` 不加分支；改寫兩個檔案裡「claude, codex and copilot」的註解；在 skills.rs 的單元測試新增「技能原稿的跨模型寫法規範」的引用渲染測試：`substitute(\"/speclink:ingest\", tool, \"speclink\")` 對五個內建工具依序得 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過，1.2 的測試轉綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config.rs",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ],
+      "recordedAt": "2026-11-10T08:55:29Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZA82T60EHDGAN7DK88",
+      "taskDesc": "1.4 為取消勾選、孤兒清理、過期探測與描述子驗證補 pi、cursor 情境測試（built-in tools 權威收斂、update 清除孤兒技能目錄、技能檔過期探測、tools 自訂描述子的接受與驗證；決策「描述子驗證保留 pi、cursor 名稱與目錄」）：crates/engine/speclink-core/src/workspace/init/tests.rs 新增——選集 `[claude, cursor]` 收斂到 `[claude]` 時只移除 `.cursor/skills/` 下 `speclink-` 前綴目錄，使用者的 `.cursor/skills/my-skill/SKILL.md` 與 `.cursor/rules/style.mdc` 位元級不變；選集 `[codex, pi]` 收斂到 `[codex]` 且 `.pi/` 只有生成物時 `.pi/skills/` 與 `.pi/` 都被移除；`.pi/skills/speclink-onboard/` 舊目錄在 update 後被清除；tools 為 `[codex, pi]` 且 `.pi/skills/` 缺席時探測回報 missing、逐工具資訊含 `tool: \"pi\"` 且 `missing: true`、差異清單每項以 `.pi/skills/speclink-` 起頭；`ToolSelection` 對 `tools: [claude, windsurf]` 的 note 列出 `claude, codex, copilot, pi, cursor`；crates/engine/speclink-core/src/workspace/config/tests.rs 新增——描述子 name `pi`、`cursor` 被拒且訊息列出五個工具，skills_dir 為 `.pi/skills`、`.wad/../.pi/skills`、`.cursor/skills`、`.cursor//skills`、`.Cursor/skills` 一律被拒且訊息指明屬內建 pi 或 cursor 目錄，`.pi/agent` 與 `.cursor/rules` 被接受；這些行為由 `Tool::ALL` 自動帶出，預期在 1.3 後即通過，沒通過就修 1.3 的接線；驗證：`cargo test -p speclink-core --lib workspace_group::` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ],
+      "recordedAt": "2026-11-10T08:56:27Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZA6KJDH6XRSZJK4B18",
+      "taskDesc": "2.1 先寫失敗測試（中性渲染目標、技能共用的對話語言段落）：crates/engine/speclink-core/tests/it/render_golden.rs 新增 `pi_rendering_is_bit_identical_to_golden`（以 `[Tool::Pi]` init 後快照 `.pi/skills`，比對 `pi.snapshot.md`）與 `cursor_rendering_is_bit_identical_to_golden`（以 `[Tool::Cursor]` 快照 `.cursor/skills`，比對 `cursor.snapshot.md`）；`every_product_skill_carries_conversation_language_once` 的工具迴圈改走 `Tool::ALL` 並以 `skills_dir()` 取目錄，涵蓋五個內建工具；assets.lock 的指紋輸入已走 `Tool::ALL`，更新檔頭對渲染目標的說明；驗證：`cargo test -p speclink-core --test it render_golden` 失敗在缺 pi、cursor golden 與版號鎖定測試（指紋變了但版號沒變）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/render_golden.rs"
+      ],
+      "recordedAt": "2026-11-10T08:56:45Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZA92NGRVWJQTWTVCXY",
+      "taskDesc": "2.2 讓 2.1 轉綠（決策「產物層版號遞增與 golden 再生」）：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 從 `v1.54.0` 改為 `v1.55.0`；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 生成 pi、cursor golden 並重生既有六份 golden，再於乾淨樹以 `UPDATE_ASSETS_LOCK=1` 重生 crates/engine/speclink-core/tests/golden/assets.lock；驗證：`git diff -U0 crates/engine/speclink-core/tests/golden/*.snapshot.md` 對既有六份只有 `version: \"v1.54.0\"` → `version: \"v1.55.0\"` 的行；pi.snapshot.md 在 `=== ` 檔名標題行以外不含 `$speclink-`、`/speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `/skill:speclink-` 與 `--agent pi`；cursor.snapshot.md 不含 `$speclink-`、`agent: Explore`、`disallowedTools`、`speclink-analyze`，含 `/speclink-` 與 `--agent cursor`；`cargo test -p speclink-core --test it render_golden` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ],
+      "recordedAt": "2026-11-10T08:57:07Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZAF1Z25E28QRKK6E3V",
+      "taskDesc": "3.1 先寫失敗測試（寫法規範的機械守門；決策「技能原稿守門加入 pi 與 cursor 的 --agent 值」）：crates/engine/speclink-core/tests/it/skill_authoring.rs 的 `hardcoded_references_are_found_but_skill_paths_are_not` 新增斷言——`hardcoded_references(\"speclink review stamp x --agent cursor\")` 回傳 `[\"--agent cursor\"]`、`hardcoded_references(\"speclink new change a --agent pi\")` 回傳 `[\"--agent pi\"]`、`--agent {{TOOL}}` 仍不命中；驗證：`cargo test -p speclink-core --test it skill_authoring` 這兩條新斷言失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs"
+      ],
+      "recordedAt": "2026-11-10T08:57:24Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZARKNHV9GX8C4PC7CN",
+      "taskDesc": "4.1 先寫失敗測試（init 內建 Agent 工具選擇；決策「CLI init 五題與五工具錯誤訊息」）：crates/adapters/speclink-cli/src/verbs/init.rs 的單元測試與 crates/adapters/speclink-cli/tests/it/init_tools.rs 新增——`--tools pi` 只生成 `.pi/skills/`、`--tools cursor` 只生成 `.cursor/skills/`，stdout 的 `Generated files for:` 行含該工具名；`--tools claude,codex,copilot,pi,cursor` 依序記錄五個工具並生成五組技能；`Pi`、`CURSOR`、`cursor,cursor` 被接受；`cursor-agent` 被拒、exit code 非 0、stderr 單行列出 claude、codex、copilot、pi、cursor、零寫入；互動終端依 Claude、Codex、Copilot、Pi、Cursor 順序詢問五題，答 y、y、n、n、n 選出 claude 與 codex，答 n、n、n、y、n 選出 pi，五題都答 n 時 stderr 印出 `Pick at least one tool: claude, codex, copilot, pi, cursor, or any combination.` 後從 Claude 重問；非互動缺 `--tools` 時 stdout 空、stderr 單行含 `--tools` 與五個工具名；既有以三題答案餵入的測試改成五題；驗證：`cargo test -p speclink-cli verbs::init` 與 `cargo test -p speclink-cli --test it init_tools` 新測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/init.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs"
+      ],
+      "recordedAt": "2026-11-10T08:58:47Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZA7TN7ZT86QZ9R56ZW",
+      "taskDesc": "5.1 先寫失敗測試（渲染 API；決策「Node SDK target 加入 pi 與 cursor」）：crates/adapters/speclink-node/__test__/render.spec.ts 新增——`skills.render('apply', { target: 'pi' })` 與在暫存目錄以 CLI `init --tools pi,cursor` 生成的 `.pi/skills/speclink-apply/SKILL.md` 逐字相同且含 `/skill:speclink-`，`{ target: 'cursor' }` 與 `.cursor/skills/speclink-apply/SKILL.md` 逐字相同且含 `/speclink-`，兩者都不含 `$speclink-`；`{ target: 'github-copilot' }` 拋出的錯誤訊息含 `github-copilot` 與 claude、codex、copilot、pi、cursor、neutral；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 中未知 target 訊息的測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ],
+      "recordedAt": "2026-11-10T08:59:34Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZAKGFB3KHS57A3FGBC",
+      "taskDesc": "5.2 讓 5.1 轉綠：crates/adapters/speclink-node/src/render.rs 的 target 錯誤訊息改為 `target '<x>' must be 'claude', 'codex', 'copilot', 'pi', 'cursor', or 'neutral'`、模組註解的 target 列舉加 pi、cursor，crates/adapters/speclink-node/index.d.ts 的 `target` 聯集加 `'pi' | 'cursor'`；驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/render.rs"
+      ],
+      "recordedAt": "2026-11-10T08:59:45Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZAM1767MHYQR9DD765",
+      "taskDesc": "6.1 先寫失敗測試（未初始化目錄經確認後自動初始化、未啟用資料夾經確認後補齊啟用、設定頁圖形化讀寫兩層設定、checkout 綁定驗證與 marker 寫入、remote marker 資料夾的探測分流）：apps/desktop/src/__tests__ 的 App.test.tsx、workspaceChooser.test.tsx、projectSettingsView.test.tsx 新增「初始化確認、啟用確認、checkout 步驟、設定頁 AI 工具卡都依 claude、codex、copilot、pi、cursor 順序出現五個勾選，初始化與啟用預設只勾 claude」；apps/desktop/core/src/settings.rs 新增「tools 為 `[codex]` 時加選 pi 生成 `.pi/skills/`、再取消後 `.pi/skills/` 下 `speclink-` 目錄全數移除且 `.agents/skills/` 不變」；apps/desktop/core/src/project.rs 新增「`init_project_at` 選 claude、pi、cursor 時生成三組技能且不生成 `.cursor/agents/`、`.cursor/rules/`、AGENTS.md」「`adopt_project_at` 只選 cursor 時 `.cursor/rules/` 下既有檔案位元級不變」；apps/desktop/src-tauri/src/connections.rs 新增「marker 的 tools 為 `[pi]` 時 inspect 回報 `[\"pi\"]`」「無 tools 清單、含 `.cursor/rules/` 與 `.pi/` 的 checkout 不預選 cursor 與 pi」「bind `[claude, cursor]` 生成兩組技能」「空選集錯誤訊息列出 claude、codex、copilot、pi、cursor」；驗證：`npm test -w @speclink/desktop` 的新測試失敗，`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop --lib connections` 的新測試失敗（只依賴 1.3 的 desktop-core 測試若已綠屬預期，記在完成說明）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "apps/desktop/core/src/settings.rs",
+        "apps/desktop/src-tauri/src/connections.rs",
+        "apps/desktop/src/__tests__/App.test.tsx",
+        "apps/desktop/src/__tests__/projectSettingsView.test.tsx",
+        "apps/desktop/src/__tests__/workspaceChooser.test.tsx"
+      ],
+      "recordedAt": "2026-11-10T09:02:00Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZASK41E5RPPWT3EWH2",
+      "taskDesc": "6.2 讓 6.1 轉綠（決策「desktop 勾選清單加入 pi 與 cursor」）：apps/desktop/src/builtinTools.ts 的 `BUILTIN_TOOLS` 改為 `[\"claude\", \"codex\", \"copilot\", \"pi\", \"cursor\"] as const`（四處勾選都讀它，沿用既有勾選元件、不新增 @speclink/ui 元件）；apps/desktop/src-tauri/src/connections.rs 的空選集訊息改為「請至少選擇一個內建工具：claude、codex、copilot、pi、cursor」並更新 `preselected_tools` 註解，apps/desktop/src/adapter/connections.ts 的 `CheckoutInspection` 註解改列五個工具；驗證：`npm test -w @speclink/desktop`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --lib connections` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "apps/desktop/src/adapter/connections.ts",
+        "apps/desktop/src/builtinTools.ts"
+      ],
+      "recordedAt": "2026-11-10T09:02:35Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZACCEE692F8J1VQWBP",
+      "taskDesc": "7.1 先寫失敗測試（決策「Herdr 面板對到 pi 與 cursor 工具」）：scripts/herdr/panel-model.test.mjs 改寫與新增——`missingSkillsPlan('Pi', 'pi').reason` 符合 `/Pi.*--tools pi/`；`commandText('cursor', 'apply', 'a')` 為 `/speclink-apply a`；`usableAgents` 對已安裝的 claude、codex、pi、cursor 都回傳；`skillFolders('cursor')` 含 `.cursor/skills`、`.agents/skills`、`.claude/skills`、`.codex/skills` 與對應的四個家目錄路徑；`missingSkillsPlan('Cursor', 'cursor').reason` 含 `--tools cursor`；`onlyClaude('analyze', 'cursor')` 為真；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 中這些新斷言失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "scripts/herdr/panel-model.test.mjs"
+      ],
+      "recordedAt": "2026-11-10T09:03:08Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZAZY4ACY2BEF2D8PX7",
+      "taskDesc": "7.2 讓 7.1 轉綠：integrations/herdr/mods/speclink/model.js 的 `SPECLINK_TOOL.pi` 改為 `pi`、新增 `SPECLINK_TOOL.cursor`、`SKILL_PREFIX.cursor = \"/\"`、`SKILL_FOLDERS.cursor`，檔頭註解改為 pi 有自己的 `.pi/skills`；integrations/herdr/README.md 與 README.en.md 的叫用前綴段落加 Cursor `/speclink-<技能>`、pi 改為用 `speclink init --tools pi` 產生的 `.pi/skills`、「列哪些」段落加 Cursor 的目錄、PATH 段落加 `cursor-agent`，並寫明面板不為 Cursor 追蹤標籤；中英兩版對等；驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md",
+        "integrations/herdr/mods/speclink/model.js"
+      ],
+      "recordedAt": "2026-11-10T09:04:24Z"
+    },
+    {
+      "taskId": "tsk_01M72123ZAS10TDSNH4HQSRCS1",
+      "taskDesc": "8.4 文件同步並符合 Getting Started 僅使用已驗證入口（決策「文件同步」）：README.md 與 README.zh-TW.md 的 `--tools` 說明列五個工具，並說明 pi 輸入 `/skill:speclink-propose <變更名稱>`、Cursor 輸入 `/speclink-propose <變更名稱>`；docs/getting-started.zh-TW.md 與 docs/getting-started.md 的入口表加 pi 與 Cursor 兩列、init 產物說明加 `.pi/skills/` 與 `.cursor/skills/`、「在 Codex：」分支說明 pi 用 `/skill:` 前綴、Cursor 與 Claude 寫法相同且兩者都沒有 `/speclink-analyze`，並寫明 pi 要先信任專案、同時勾 codex 時 pi 會顯示同名警告但用的是 pi 版；docs/configuration.zh-TW.md 與 docs/configuration.md 的內建工具表加 `pi` → `.pi/skills/`、`cursor` → `.cursor/skills/`，描述子 name 不得為 `claude`、`codex`、`agents`、`copilot`、`pi`、`cursor` 並寫明舊 pi／cursor 描述子的遷移方式，tools 欄位與「內建工具不受影響」句列五個工具；docs/workflow.zh-TW.md 與 docs/workflow.md 說明 pi 用 `/skill:`、Cursor 與 Claude 同用 `/`、analyze 只有 Claude 有；docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的 target 值域加 `pi`、`cursor`；docs/product-status.zh-TW.md 與 docs/product-status.md 的 Agent 技能列加 pi 與 Cursor；中英兩版結構與事實對等；驗證：`speclink validate add-pi-cursor-tools` 通過，`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "README.md",
+        "README.zh-TW.md",
+        "apps/desktop/src/components/WorkspaceChooser.tsx",
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md",
+        "docs/getting-started.md",
+        "docs/getting-started.zh-TW.md",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/workflow.md",
+        "docs/workflow.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-10T09:09:00Z"
+    },
+    {
+      "taskId": "tsk_01M72CJ44KRH24B434SPGRRWXJ",
+      "taskDesc": "9.1 先寫失敗測試（設定頁圖形化讀寫兩層設定、側欄導覽結構、畫面依實際規格資料夾與資料檔名顯示；決策「專案設定分類欄統一用概念名」）：apps/desktop/src/__tests__/settingsColumn.test.tsx 改寫——本地專案的組名依序為「工作流程」「專案」、項目依序為專案說明、產出規則、審查規則、產出流程、AI 工具，分類欄內不含 `config.yaml` 與 `.speclink.yaml` 字樣；原「舊佈局專案：群組名為 openspec/config.yaml」測試改為組名同樣是「工作流程」；遠端專案只有「工作流程」組四項；`.speclink.yaml` 解析失敗時帶警示點的是「AI 工具」；英文介面組名為 Spec workflow、Project，項目最後一項為 AI tools。apps/desktop/src/__tests__/App.test.tsx 的專案設定分類欄項目清單改為以「AI 工具」結尾，點「AI 工具」後麵包屑為「專案名 / 專案設定 / AI 工具」。apps/desktop/src/__tests__/projectSettingsView.test.tsx 的 AI 工具頁頁標題為「AI 工具」、`file-note-speclink` 為 `.speclink.yaml · tools`、不存在 `speclink-file-path` 與「設定檔」卡；驗證：`npm test -w @speclink/desktop` 中這些新斷言失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/settingsColumn.test.tsx"
+      ],
+      "recordedAt": "2026-11-10T09:31:56Z"
+    },
+    {
+      "taskId": "tsk_01M72CJ44MCCY011PKZEDM6WAY",
+      "taskDesc": "9.2 讓 9.1 轉綠：apps/desktop/src/settingsCatalog.ts 的 speclink 分類圖示改為 lucide-react 的 `Bot`，分類 id 不變；apps/desktop/src/components/ProjectSettingsColumn.tsx 的兩組組名改讀 `settings.group.workflow` 與 `settings.group.project`，移除 `configFile` 屬性；apps/desktop/src/App.tsx 移除 `projectConfigFile` 狀態，apps/desktop/src/views/ProjectSettingsView.tsx 移除 `onConfigFile` 回呼；apps/desktop/src/views/project-settings/SpeclinkPage.tsx 的頁標題改讀 `settings.projectSection.speclink`，移除「設定檔」卡；apps/desktop/src/i18n/messages.ts 新增 `settings.group.workflow`（工作流程／Spec workflow），`settings.projectSection.speclink` 改為 AI 工具／AI tools，刪除 `settings.fileCard` 與 `settings.fileRow`；驗證：`npm test -w @speclink/desktop` 全過，且 `grep -rn \"fileCard\\|fileRow\\|onConfigFile\\|projectConfigFile\" apps/desktop/src` 無命中",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectSettingsColumn.tsx",
+        "apps/desktop/src/i18n/messages.ts",
+        "apps/desktop/src/settingsCatalog.ts",
+        "apps/desktop/src/views/ProjectSettingsView.tsx",
+        "apps/desktop/src/views/project-settings/SpeclinkPage.tsx"
+      ],
+      "recordedAt": "2026-11-10T09:33:43Z"
+    },
+    {
+      "taskId": "tsk_01M72MVC8ABGNC7HQ6SW4P647E",
+      "taskDesc": "10.4 測試與註解整理（審查 R1–R4、驗證 V2–V4）：init/tests.rs 的 `swap_tool` 改收 `Tool`，前綴由測試內一張「工具→叫用前綴」對照表查，`PI_AND_CURSOR` 改成只列 `Tool`；pi、cursor 兩個 frontmatter 測試併成一個依工具表跑的測試，copilot 的 frontmatter 測試改用 `frontmatter_keys`；`footprint_detection_never_infers_pi_or_cursor` 另外放 `.pi/skills/my-skill/SKILL.md` 與 `.cursor/skills/my-skill/SKILL.md`，apps/desktop/src-tauri/src/connections.rs 的 `inspect_without_a_tools_list_never_preselects_pi_or_cursor` 同樣加入兩個 skills 目錄；crates/adapters/speclink-cli/tests/it/init_tools.rs 刪掉與五工具迴圈重複的三段技能檔斷言並更新開頭註解；新增 apps/desktop/src/__tests__/helpers/toolCheckboxes.ts 收「五個勾選依序出現與勾選狀態」的斷言，App.test.tsx 兩處與 workspaceChooser.test.tsx 一處改用它；apps/desktop/src/components/ProjectSettingsColumn.tsx 的 `speclinkParseError` 註解改成「AI 工具項帶警示點」；projectSettingsView.test.tsx 的測試標題拿掉「並回報給分類欄」；驗證：`cargo test -p speclink-core --lib workspace_group::`、`cargo test -p speclink-cli --test it init_tools`、`cargo test -p speclink-desktop --lib connections`、`npm test -w @speclink/desktop` 全過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a29ace2a507c034be72940f4b6f73a4111cdb63a",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/helpers/toolCheckboxes.ts"
+      ],
+      "recordedAt": "2026-11-10T11:58:37Z"
+    }
+  ]
+}

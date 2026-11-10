@@ -99,7 +99,7 @@ fn hardcoded_references(text: &str) -> Vec<String> {
     let slash = crate::slash_skill_reference();
     // `$speclink-` 在原稿裡沒有正當用途，後面接什麼都算（含 `$speclink-<名稱>`）。
     let dollar = Regex::new(r"\$speclink-[^\s`]*").unwrap();
-    let agent_value = Regex::new(r"--agent (?:claude|codex|copilot)\b").unwrap();
+    let agent_value = Regex::new(r"--agent (?:claude|codex|copilot|pi|cursor)\b").unwrap();
     let mut hits: Vec<String> = Vec::new();
     for line in text.lines() {
         hits.extend(slash.captures_iter(line).map(|caps| caps[1].to_string()));
@@ -291,6 +291,15 @@ fn hardcoded_references_are_found_but_skill_paths_are_not() {
     assert_eq!(
         hardcoded_references("speclink review stamp x --agent codex"),
         vec!["--agent codex".to_string()]
+    );
+    // Scenario「寫死的 pi 或 cursor agent 值」。
+    assert_eq!(
+        hardcoded_references("speclink review stamp x --agent cursor"),
+        vec!["--agent cursor".to_string()]
+    );
+    assert_eq!(
+        hardcoded_references("speclink new change a --agent pi"),
+        vec!["--agent pi".to_string()]
     );
     assert!(hardcoded_references("see .claude/skills/speclink-propose/SKILL.md").is_empty());
     assert!(hardcoded_references("run `/speclink:apply <name>` with --agent {{TOOL}}").is_empty());

@@ -127,11 +127,17 @@ The `tools` list in `.speclink.yaml` decides which AI tools get skill files:
 | `claude` | `.claude/skills/` |
 | `codex` (`agents` is an alias) | `.agents/skills/` |
 | `copilot` | `.github/skills/` |
+| `pi` | `.pi/skills/` |
+| `cursor` | `.cursor/skills/` |
 | A custom tool descriptor | The `skills_dir` of the descriptor |
 
-GitHub Copilot also reads `.claude/skills/` and `.agents/skills/`, but it reads `.github/skills/` first. Thus, when you select `copilot`, Copilot uses the skills that Speclink writes for it.
+GitHub Copilot also reads `.claude/skills/` and `.agents/skills/`, but it reads `.github/skills/` first. Thus, when you select `copilot`, Copilot uses the skills that Speclink writes for it. pi also reads `.agents/skills/`, but it reads `.pi/skills/` first and keeps the first skill that it finds for each name. Thus, if you select both `codex` and `pi`, pi shows one warning for each skill with the same name when it starts, and it uses the pi version. pi reads project skills only in a trusted project. Cursor also reads `.agents/skills/`, `.claude/skills/`, and `.codex/skills/`.
 
-After you change `tools`, run `speclink update`. A new tool gets its skill files. For a tool that you remove, Speclink deletes its `speclink-*` skill directories and any directory that becomes empty. When you select built-in tools on the `.speclink.yaml` page of **Project Settings** in the desktop app, the app does the same sync.
+After you change `tools`, run `speclink update`. A new tool gets its skill files. For a tool that you remove, Speclink deletes its `speclink-*` skill directories and any directory that becomes empty. When you select built-in tools on the **AI tools** page of **Project Settings** in the desktop app, the app does the same sync.
+
+After you upgrade to a version that supports pi and Cursor, if `tools` does not list `pi` or `cursor`, the first sync deletes the directories whose names start with `speclink-` under `.pi/skills/` and `.cursor/skills/`, as it does for any tool that you remove. This includes directories that you put there by hand. To keep them, add `pi` or `cursor` to `tools`.
+
+The skills directory of a selected tool cannot share one directory with another tool through a symlink (for example, `.cursor/skills` linked to `.claude/skills`). The two tools would overwrite or delete each other's skills, so the sync stops with a one-line error before it writes any file. Remove the link, or deselect one of the tools. A symlink to a shared folder outside the project is not affected.
 
 Use a descriptor to connect any other AI tool:
 
@@ -145,14 +151,14 @@ tools:
 
 | Field | Required | Rules |
 | --- | --- | --- |
-| `name` | Yes | kebab-case, 2–50 characters of `a-z`, `0-9`, `-`. It cannot be `claude`, `codex`, `agents`, or `copilot` |
-| `skills_dir` | Yes | A relative path inside the project root. It cannot leave the project, cannot be the project root itself, and cannot be `.claude/skills`, `.agents/skills`, or `.github/skills` (in any letter case) |
+| `name` | Yes | kebab-case, 2–50 characters of `a-z`, `0-9`, `-`. It cannot be `claude`, `codex`, `agents`, `copilot`, `pi`, or `cursor` |
+| `skills_dir` | Yes | A relative path inside the project root. It cannot leave the project, cannot be the project root itself, and cannot be `.claude/skills`, `.agents/skills`, `.github/skills`, `.pi/skills`, or `.cursor/skills` (in any letter case) |
 | `invocation` | No | `cli` (default): skills say "run `speclink <verb>`". `tool-call`: skills say "call the speclink tool with an argv array" |
 | `instructions_file` | No, deprecated | Speclink writes nothing to it. `speclink update` uses it only to remove an old `SPECLINK` block. If you keep it, stderr shows a one-line deprecation notice |
 
-If a field is not valid, the command prints one error line that names the field and exits non-zero. Skills for a descriptor have no `/speclink-` slash commands and do not mention plan mode. The built-in claude, codex, and copilot output does not change.
+If a field is not valid, the command prints one error line that names the field and exits non-zero. Skills for a descriptor have no `/speclink-` slash commands and do not mention plan mode. The built-in claude, codex, copilot, pi, and cursor output does not change.
 
-Old versions accepted a descriptor named `copilot`, or a descriptor with `skills_dir` set to `.github/skills`. After you upgrade, `speclink update` rejects such a descriptor and exits non-zero. Remove the descriptor and add `copilot` to `tools`.
+Old versions accepted a descriptor named `copilot`, or a descriptor with `skills_dir` set to `.github/skills`. After you upgrade, `speclink update` rejects such a descriptor and exits non-zero. Remove the descriptor and add `copilot` to `tools`. The same applies to a descriptor named `pi` or `cursor`, or a descriptor with `skills_dir` set to `.pi/skills` or `.cursor/skills`: remove the descriptor and add `pi` or `cursor` to `tools`.
 
 ## <a id="remote"></a>Remote mode
 
@@ -191,7 +197,7 @@ Speclink ignores other keys.
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
 | `spec_dir` | A relative path | `speclink` | The spec directory, relative to the project root. Without it, a project that an older version created with only `openspec/` keeps reading `openspec/` until `speclink update` moves it to `speclink/`. The move and the OpenSpec import never write this key. A project that sets this key is never moved automatically |
-| `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, `copilot`, or custom tool descriptors |
+| `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, `copilot`, `pi`, `cursor`, or custom tool descriptors |
 | `remote.url` | A URL | None | The connection URL of the remote project (project-scoped URL) |
 | `remote.repo` | A name | None | The registered name of this repo in the remote project. A project with one repo can leave it out |
 

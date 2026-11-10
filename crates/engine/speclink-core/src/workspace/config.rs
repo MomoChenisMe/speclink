@@ -88,8 +88,8 @@ where
     Ok(Some(v.unwrap_or_default()))
 }
 
-/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot) or a
-/// custom harness descriptor object.
+/// One entry of the `tools:` list — a built-in tool name string (claude, codex, copilot, pi,
+/// cursor) or a custom harness descriptor object.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(untagged)]
 pub enum ToolEntry {

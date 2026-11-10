@@ -1,6 +1,6 @@
 //! Golden tests for skill rendering.
 //!
-//! Render targets: the built-in tools (claude, codex, copilot) and custom descriptors
+//! Render targets: the built-in tools (claude, codex, copilot, pi, cursor) and custom descriptors
 //! (neutral body, wording decided by `invocation`). The built-in snapshots lock their
 //! output BIT-FOR-BIT — the neutral work must not drift them. The neutral snapshots pin
 //! the cli and tool-call wordings. Instruction files are not part
@@ -115,6 +115,20 @@ fn copilot_rendering_is_bit_identical_to_golden() {
         "copilot.snapshot.md",
         &snapshot(&root.dir, ".github/skills"),
     );
+}
+
+#[test]
+fn pi_rendering_is_bit_identical_to_golden() {
+    let root = TempRoot::new("pi");
+    init::init(&root.dir, &[Tool::Pi], true, "speclink").unwrap();
+    assert_matches_golden("pi.snapshot.md", &snapshot(&root.dir, ".pi/skills"));
+}
+
+#[test]
+fn cursor_rendering_is_bit_identical_to_golden() {
+    let root = TempRoot::new("cursor");
+    init::init(&root.dir, &[Tool::Cursor], true, "speclink").unwrap();
+    assert_matches_golden("cursor.snapshot.md", &snapshot(&root.dir, ".cursor/skills"));
 }
 
 /// The second policy dimension. The snapshots above lock the DEFAULT generation set
@@ -538,7 +552,8 @@ fn every_product_skill_carries_conversation_language_once() {
         ("en", "locale: en\n"),
         ("unset", ""),
     ] {
-        for (tool, skills_dir) in [(Tool::Claude, ".claude/skills"), (Tool::Codex, ".agents/skills")] {
+        for tool in Tool::ALL {
+            let skills_dir = tool.skills_dir();
             // The worktree-gated skills render only with the policy on.
             let config = format!("schema: spec-driven\nworktree: true\n{locale_line}");
             let tag = format!("conversation-{locale}-{}", tool.name());

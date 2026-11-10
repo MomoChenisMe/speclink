@@ -15,9 +15,9 @@ pub struct SkillInfo {
 }
 
 /// Options of `skills.render` — the render matrix: target (claude | codex |
-/// copilot | neutral) and invocation (cli | tool-call, default cli), plus the spec
-/// directory name and the neutral target's tool name ({{TOOL}} substitution,
-/// default "speclink").
+/// copilot | pi | cursor | neutral) and invocation (cli | tool-call, default
+/// cli), plus the spec directory name and the neutral target's tool name
+/// ({{TOOL}} substitution, default "speclink").
 #[napi(object)]
 pub struct RenderOptions {
     pub target: String,
@@ -60,7 +60,7 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
             Some(t) => TargetKind::Builtin(t),
             None => {
                 return Err(Error::from_reason(format!(
-                    "target '{other}' must be 'claude', 'codex', 'copilot', or 'neutral'"
+                    "target '{other}' must be 'claude', 'codex', 'copilot', 'pi', 'cursor', or 'neutral'"
                 )))
             }
         },

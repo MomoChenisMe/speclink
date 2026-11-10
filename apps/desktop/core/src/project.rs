@@ -942,6 +942,47 @@ mod tests {
     }
 
     #[test]
+    fn init_project_at_with_claude_pi_and_cursor_adds_three_skill_sets() {
+        // spec Scenario「勾選 pi 與 cursor 時生成對應工具檔」。
+        let plain = PlainDir::new("init-claude-pi-cursor");
+        init_project_at(plain.path(), &["claude".into(), "pi".into(), "cursor".into()]).expect("init ok");
+        let p = plain.path();
+        for skills in [".claude", ".pi", ".cursor"] {
+            let propose = p.join(skills).join("skills").join("speclink-propose");
+            assert!(propose.join("SKILL.md").is_file(), "{skills} 技能須生成");
+        }
+        for absent in [".cursor/agents", ".cursor/rules", "AGENTS.md"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+        let app = read(&p.join(".speclink.yaml"));
+        assert!(app.contains("tools: [claude, pi, cursor]"), "tools 依 claude、pi、cursor 記錄: {app}");
+    }
+
+    #[test]
+    fn adopt_project_at_with_cursor_only_keeps_the_existing_cursor_rules() {
+        // spec Scenario「啟用時勾選 cursor」：.cursor/rules/ 下既有檔案位元級不變。
+        let fx = FixtureRoot::legacy("adopt-cursor");
+        fx.write("openspec/specs/auth/spec.md", "## Purpose\n既有規格。\n");
+        fx.write(".cursor/rules/style.mdc", "---\nalwaysApply: true\n---\n");
+        adopt_project_at(fx.root(), &["cursor".into()]).expect("adopt ok");
+        let p = fx.root();
+        assert!(read(&p.join(".speclink.yaml")).contains("cursor"));
+        assert!(p
+            .join(".cursor")
+            .join("skills")
+            .join("speclink-propose")
+            .join("SKILL.md")
+            .is_file());
+        assert_eq!(
+            read(&p.join(".cursor").join("rules").join("style.mdc")),
+            "---\nalwaysApply: true\n---\n"
+        );
+        for absent in ["CLAUDE.md", "AGENTS.md", ".claude", ".agents"] {
+            assert!(!p.join(absent).exists(), "{absent} 不得生成");
+        }
+    }
+
+    #[test]
     fn adopt_project_at_unknown_tool_is_rejected_with_zero_writes() {
         let fx = FixtureRoot::new("adopt-badtool");
         let before = entries(fx.root());

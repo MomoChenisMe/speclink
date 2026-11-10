@@ -50,7 +50,7 @@ code:
 ---
 ### Requirement: checkout 綁定驗證與 marker 寫入
 
-選擇連接 checkout 時 SHALL 先以零寫入檢查資料夾狀態：含 remote marker（`.speclink.yaml` 的 remote section）時，其 URL origin 與 repo SHALL 與所選 scope 一致；不一致 SHALL 以繁中訊息拒絕並指出 marker 指向。無 marker 時資料夾 SHALL 為 Git repository 方可繼續，非 Git repository SHALL 拒絕。檢查成功後，checkout 步驟 SHALL 顯示 Claude／Codex／Copilot checkbox 及資料夾路徑；既有 `.speclink.yaml` 的 built-in tools SHALL 成為選取值，缺少 tools 清單時 SHALL 只依實際工具 footprint 預選且 SHALL NOT 默認 Claude；`.github/` 的存在 SHALL NOT 使 Copilot 被預選。至少一個 built-in 工具與 checkout 路徑齊備前，「開啟 Workspace」SHALL disabled。
+選擇連接 checkout 時 SHALL 先以零寫入檢查資料夾狀態：含 remote marker（`.speclink.yaml` 的 remote section）時，其 URL origin 與 repo SHALL 與所選 scope 一致；不一致 SHALL 以繁中訊息拒絕並指出 marker 指向。無 marker 時資料夾 SHALL 為 Git repository 方可繼續，非 Git repository SHALL 拒絕。檢查成功後，checkout 步驟 SHALL 顯示 Claude／Codex／Copilot／Pi／Cursor checkbox 及資料夾路徑；既有 `.speclink.yaml` 的 built-in tools SHALL 成為選取值，缺少 tools 清單時 SHALL 只依實際工具 footprint 預選且 SHALL NOT 默認 Claude；`.github/` 的存在 SHALL NOT 使 Copilot 被預選，`.pi/`、`.cursor/` 的存在 SHALL NOT 使 Pi、Cursor 被預選。至少一個 built-in 工具與 checkout 路徑齊備前，「開啟 Workspace」SHALL disabled。
 
 提交後 Desktop SHALL 重做 marker 邊界驗證，將 built-in 選集同步至 `.speclink.yaml`，生成或更新所選工具的 Skills、剝除 `AGENTS.md`／`CLAUDE.md` 的遺留 Speclink 區塊（不生成任何指令檔），並清理未選工具的 Speclink 受管產物；custom descriptor、unknown entry、remote／spec_dir／其他設定及指令區塊外的使用者內容 SHALL 保留。無 marker checkout SHALL 寫入與 CLI Remote init 同構的 remote section，既有相符 marker checkout SHALL 仍執行同步，不得提前成功。全部同步成功後 remote locator 的 checkoutRoot SHALL 記錄該資料夾並隨分頁持久化；同步失敗時 SHALL 保持 chooser、路徑與選集供重試，SHALL NOT 建立 remote tab／session 或開始 handshake。分頁 SHALL 以最小面（tooltip）呈現已連接的 checkout 路徑。checkout 綁定 SHALL NOT 改變本階段 capability 可用性。
 
@@ -66,7 +66,7 @@ code:
 
 #### Scenario: checkout 不允許空工具選集
 
-- **WHEN** checkout 路徑已檢查成功但 Claude、Codex 與 Copilot 均未選取
+- **WHEN** checkout 路徑已檢查成功但 Claude、Codex、Copilot、Pi 與 Cursor 均未選取
 - **THEN** 「開啟 Workspace」維持 disabled，資料夾內容不變且沒有 tab／session 建立
 
 #### Scenario: 既有相符 marker 缺少 Skills 時補齊
@@ -89,16 +89,21 @@ code:
 - **WHEN** 使用者選取無 marker 的 Git repository（含 `.github/workflows/ci.yml`），檢查完成後 Copilot 未被預選，使用者勾選 Claude 與 Copilot 並按下「開啟 Workspace」
 - **THEN** `.speclink.yaml` 的 built-in tools 為 claude 與 copilot，`.claude/skills/` 與 `.github/skills/` 兩組 Skills 存在，`.github/workflows/ci.yml` 位元級不變，不生成 `.github/copilot-instructions.md`、`AGENTS.md`、`CLAUDE.md`
 
+#### Scenario: 勾選 Cursor 綁定 checkout
+
+- **WHEN** 使用者選取無 marker 的 Git repository（含 `.cursor/rules/style.mdc`），檢查完成後 Cursor 未被預選，使用者勾選 Claude 與 Cursor 並按下「開啟 Workspace」
+- **THEN** `.speclink.yaml` 的 built-in tools 為 claude 與 cursor，`.claude/skills/` 與 `.cursor/skills/` 兩組 Skills 存在，`.cursor/rules/style.mdc` 位元級不變，不生成 `.cursor/agents/`、`AGENTS.md`、`CLAUDE.md`
+
 
 <!-- @trace
-source: spec-dir-path-rewrite
-updated: 2026-10-25T21:44:20+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->
 
 ---
 ### Requirement: remote marker 資料夾的探測分流
 
-專案探測 SHALL 辨識 remote marker。資料夾僅含 marker 且對應 connection 已登入時，若 `.speclink.yaml` 有至少一個有效 built-in tool，Desktop SHALL 先依該選集 reconciliation，成功後才 handshake 開啟 remote tab並以呼叫端原始 path 作為 checkoutRoot；同步失敗 SHALL 顯示錯誤且不建立 session。marker 缺少有效 built-in tool 選集時 SHALL 導向 chooser 的 checkout 步驟、預填 server／scope／path 並要求明示選擇 Claude／Codex／Copilot，不得直接開啟。無對應 connection 或未登入 SHALL 引導至 chooser 的 server 步驟並預填 server 位址。
+專案探測 SHALL 辨識 remote marker。資料夾僅含 marker 且對應 connection 已登入時，若 `.speclink.yaml` 有至少一個有效 built-in tool，Desktop SHALL 先依該選集 reconciliation，成功後才 handshake 開啟 remote tab並以呼叫端原始 path 作為 checkoutRoot；同步失敗 SHALL 顯示錯誤且不建立 session。marker 缺少有效 built-in tool 選集時 SHALL 導向 chooser 的 checkout 步驟、預填 server／scope／path 並要求明示選擇 Claude／Codex／Copilot／Pi／Cursor，不得直接開啟。無對應 connection 或未登入 SHALL 引導至 chooser 的 server 步驟並預填 server 位址。
 
 marker 與本地 `speclink/` 並存時 SHALL 停下強制選擇，提供三個出口且皆無靜默覆蓋：「繼續本地」（本次以本地開啟、marker 不動）；「以 server 為準」（本地 `speclink/` 改名為帶日期備份後，資料夾轉為 checkout，完成工具 reconciliation 後開啟 remote tab，不上傳本地內容、不改動 server）；「遷移本地內容」（進入 workspace-migration 的遷移流程、目標為空 scope）。對話文案 SHALL 明說「以 server 為準」為備份後棄用本地、非合併。marker YAML 損壞 SHALL 沿 `.speclink.yaml` 既有 fail-closed 語意呈現錯誤。
 
@@ -109,7 +114,7 @@ marker 與本地 `speclink/` 並存時 SHALL 停下強制選擇，提供三個�
 
 #### Scenario: 缺少工具選集時導向 checkout 選擇
 
-- **WHEN** 開啟僅含 remote marker 的資料夾、tools 缺席或不含任何內建工具（claude、codex、copilot），且對應 server 已登入
+- **WHEN** 開啟僅含 remote marker 的資料夾、tools 缺席或不含任何內建工具（claude、codex、copilot、pi、cursor），且對應 server 已登入
 - **THEN** Desktop 導向 chooser checkout 步驟並預填原 path 與 scope，內建工具選集需由使用者確認，且提交成功前不建立 remote tab／session
 
 #### Scenario: 自動補齊失敗不 handshake
@@ -132,10 +137,15 @@ marker 與本地 `speclink/` 並存時 SHALL 停下強制選擇，提供三個�
 - **WHEN** 開啟僅含 remote marker 的資料夾、built-in tools 為 `[copilot]` 且對應 server 已登入
 - **THEN** Desktop 先補齊或更新 `.github/skills/` 下的 Copilot 受管產物，成功後不經 chooser 完成 handshake，remote tab 開啟且 checkoutRoot 為該資料夾
 
+#### Scenario: 只選 Pi 的 checkout 直達 remote tab
+
+- **WHEN** 開啟僅含 remote marker 的資料夾、built-in tools 為 `[pi]` 且對應 server 已登入
+- **THEN** Desktop 先補齊或更新 `.pi/skills/` 下的 Pi 受管產物，成功後不經 chooser 完成 handshake，remote tab 開啟且 checkoutRoot 為該資料夾
+
 
 <!-- @trace
-source: spec-dir-path-rewrite
-updated: 2026-10-25T21:44:20+08:00
+source: add-pi-cursor-tools
+updated: 2026-11-10T21:23:31+08:00
 -->
 
 ---
