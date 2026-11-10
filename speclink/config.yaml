@@ -51,9 +51,10 @@ rules:
   - 若改動既有指令的輸出或行為，必須列「相容性影響」：人眼與 `--json` 哪些會變、是否破壞回歸對照、既有使用者如何遷移
   - 若涉及設定欄位（speclink/config.yaml / .speclink.yaml），必須說明新增或變更的欄位與預設值
   - 若涉及生成的技能或 Agent 指令，必須說明影響哪些技能與哪些工具（claude / codex）
+  - 新增或變更引擎命令、動詞、文件種類或技能步驟時，必須逐一寫明三種形態下的結果——本機 repo、連到遠端的 checkout、沒有本機規格檔的內嵌宿主：可用、不適用（寫理由）、或這次不做（寫成已知缺口）
   design:
   - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
-  - 同一對外契約同時落 local 與 remote（CLI／server／desktop）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs）
+  - 同一對外契約同時落本機、遠端連線與內嵌宿主（CLI／server／desktop／Node SDK）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs）；新增的引擎功能若需要本機事實（改了哪些檔、檔案指紋、commit），由呼叫端收集後當成輸入，不在引擎內直接讀 checkout 或呼叫 git，文件讀寫一律經儲存介面
   - 以文字手術改寫 YAML（.meta.yaml、speclink/config.yaml）的設計，純量寫出必須走 crates/engine/speclink-core/src/util.rs 的 yaml_scalar 跳脫，不得手拼未跳脫純量
   - 動詞觸發多筆寫入或刪除時，必須敘明寫入順序與任一步失敗後的可觀察狀態（不得留下半套狀態，或明確記載接受哪種半套及其理由）
   - 桌面的邏輯與測試歸 speclink-desktop-core（不依賴 Tauri、可獨立 cargo test）；Tauri 殼的每個 command 只做單行委派
