@@ -98,6 +98,16 @@
         "apps/desktop/src/__tests__/helpers/remoteFixtures.ts",
         "apps/desktop/src/__tests__/workspace.test.ts"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.4 收尾全量跑受影響面的測試，確認沒有回歸：`cargo test -p speclink-desktop-core`、`cargo build -p speclink-desktop`、`npm test -w packages/ui`、`npm test -w apps/desktop`。驗證：以上全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "files": [
+        "packages/ui/src/__tests__/table.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/badge.tsx",
+        "packages/ui/src/components/ui/table.tsx"
+      ]
     }
   ],
   "entries": [
@@ -241,6 +251,20 @@
         "apps/desktop/src/__tests__/workspace.test.ts"
       ],
       "recordedAt": "2026-11-10T14:24:44Z"
+    },
+    {
+      "taskId": "tsk_01M72V9V4DNZVZAWDGGHWA9359",
+      "taskDesc": "5.4 收尾全量跑受影響面的測試，確認沒有回歸：`cargo test -p speclink-desktop-core`、`cargo build -p speclink-desktop`、`npm test -w packages/ui`、`npm test -w apps/desktop`。驗證：以上全綠，且 `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "601e12d098906f54df39a6699e127bd2f8872e7e",
+      "touchedFiles": [
+        "packages/ui/src/__tests__/table.test.tsx",
+        "packages/ui/src/__tests__/ui.test.tsx",
+        "packages/ui/src/components/ui/badge.tsx",
+        "packages/ui/src/components/ui/table.tsx"
+      ],
+      "recordedAt": "2026-11-10T14:57:40Z"
     }
   ]
 }

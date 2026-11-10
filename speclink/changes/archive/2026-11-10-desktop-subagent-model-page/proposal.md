@@ -19,7 +19,7 @@
   - 「自訂清單」卡：每個工具一個純文字編輯區，一行一個名稱、空白行略過；claude 的四個內建名稱唯讀顯示在旁。從清單刪掉已被選用的名稱時，格子保留原值、改顯示為「自行輸入」。
   - 單一頁級編輯鈕（編輯／取消／儲存 ⌘S）。儲存只寫 `subagent_model` 鍵，其他鍵逐字元不變；頁面沒顯示的 AI 工具名稱（手改 config.yaml 寫進去的）原樣保留；內容與現值相同時不寫檔。遠端專案儲存帶 expected revision，衝突與檢視者唯讀的處理與其他頁相同。
   - 頁尾說明：模型名稱不預先檢查，名稱有誤時品質關卡在派子代理那一步停下並回報工具的錯誤原文。
-- `@speclink/ui` 的 NavItem 新增「子項」變體；SettingsChoice 下拉新增可選的分組（分組標籤加分隔線，Select 原語補一個分隔線元件），既有呼叫端不受影響。
+- `@speclink/ui` 的 NavItem 新增「子項」變體；SettingsChoice 下拉新增可選的分組（分組標籤加分隔線，Select 原語補一個分隔線元件）；TableRow 可關掉滑過底色；Badge 新增灰字變體。既有呼叫端不受影響。
 - desktop 的設定快照新增 `subagentModel` 與 `builtinSubagentModels` 兩個欄位（取自第一刀的引擎型別與常數 `BUILTIN_SUBAGENT_MODELS`）；本機與遠端的內容寫入指令新增 `subagentModel` 參數，經第一刀的同一個寫入落點（`ContentEdit` 的 `subagent_model`）改寫，不另寫一套。
 - `speclink/LANGUAGE.md`：「品質關卡」詞條補上「專案設定分類欄的上層分類」用法，「審查規則」改為「品質關卡」底下的頁名。
 - docs/configuration（中英兩份）補一句：桌面 app 的「專案設定 › 品質關卡 › 子代理模型」頁改的是同一個 `subagent_model` 區塊。
@@ -73,11 +73,17 @@
     - apps/desktop/src/__tests__/App.test.tsx
     - apps/desktop/src/__tests__/settingsColumn.test.tsx
     - apps/desktop/src/__tests__/session.test.ts
+    - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    - apps/desktop/src/__tests__/workspace.test.ts
     - packages/ui/src/components/NavItem.tsx
     - packages/ui/src/components/ui/settings.tsx
     - packages/ui/src/components/ui/select.tsx
+    - packages/ui/src/components/ui/table.tsx
+    - packages/ui/src/components/ui/badge.tsx
     - packages/ui/src/__tests__/navItem.test.tsx
     - packages/ui/src/__tests__/settingsParts.test.tsx
+    - packages/ui/src/__tests__/table.test.tsx
+    - packages/ui/src/__tests__/ui.test.tsx
     - docs/configuration.md
     - docs/configuration.zh-TW.md
     - speclink/LANGUAGE.md

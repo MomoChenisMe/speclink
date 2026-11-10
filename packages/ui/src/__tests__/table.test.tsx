@@ -110,4 +110,24 @@ describe("Table 原語", () => {
     expect(table.className).toContain("custom-table");
     expect(table.className).toContain("w-full");
   });
+
+  // desktop-subagent-model-page：列裡放控制項的表格（設定頁）不要滑過底色，由元件提供開關、呼叫端不蓋 className。
+  it("TableRow hoverable={false} 不帶滑過底色；未給時照常有", () => {
+    render(
+      <Table>
+        <TableBody>
+          <TableRow data-testid="plain" hoverable={false}>
+            <TableCell>a</TableCell>
+          </TableRow>
+          <TableRow data-testid="hover">
+            <TableCell>b</TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>,
+    );
+    const hoverClasses = (id: string) => screen.getByTestId(id).className.split(/\s+/).filter((c) => c.startsWith("hover:"));
+    expect(hoverClasses("plain")).toEqual([]);
+    expect(hoverClasses("hover")).toEqual(["hover:bg-muted/50"]);
+    expect(screen.getByTestId("plain").className).toContain("border-b");
+  });
 });

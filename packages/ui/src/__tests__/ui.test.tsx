@@ -169,6 +169,14 @@ describe("原語扁平化：button／card／badge／tabs", () => {
     expect(cls).toContain("text-[11px]");
   });
 
+  // desktop-subagent-model-page：次要資訊的小籤（「未啟用」、名稱清單）用灰字變體，呼叫端不蓋字色。
+  it("Badge muted 變體為灰底灰字", () => {
+    render(<Badge variant="muted">m</Badge>);
+    const cls = classes(screen.getByText("m"));
+    expect(cls).toEqual(expect.arrayContaining(["rounded-full", "bg-muted", "text-muted-foreground"]));
+    expect(cls).not.toContain("text-foreground");
+  });
+
   const renderTabs = (variant?: "underline" | "card" | "segmented") =>
     render(
       <Tabs defaultValue="a">

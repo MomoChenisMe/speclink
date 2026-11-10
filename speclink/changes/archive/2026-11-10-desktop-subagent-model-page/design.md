@@ -33,7 +33,7 @@
 
 ### 設定目錄的父子關係與子項 id
 
-`ProjectSettingsCategory` 新增可選欄位 `parent?: "quality"`；`review` 與新的 `subagent` 兩項帶 `parent: "quality"`，兩者都 `remote: true`、都屬 `config` 組，且在目錄裡相鄰（審查規則在前）。子項不渲染圖示，所以 `icon` 改為可選、兩個子項不帶。另以常數 `PROJECT_SETTINGS_PARENTS` 定義上層分類：`quality` 的標籤鍵 `settings.projectSection.quality`、圖示沿用審查規則原本的 `ShieldCheck`、點擊開 `review`。上層分類不是一個 section（沒有自己的頁），所以 `ProjectSettingsSection` 只多 `"subagent"`，store 的 `projectSettingsSection` 與「記住上次所在分類」不必改。
+`ProjectSettingsCategory` 新增可選欄位 `parent?: "quality"`；`review` 與新的 `subagent` 兩項帶 `parent: "quality"`，兩者都 `remote: true`、都屬 `config` 組，且在目錄裡相鄰（審查規則在前）。子項不渲染圖示，所以 `icon` 改為可選、兩個子項不帶。另以常數 `QUALITY_PARENT` 定義上層分類「品質關卡」（目前唯一的上層分類，不另做對照表）：標籤鍵 `settings.projectSection.quality`、圖示沿用審查規則原本的 `ShieldCheck`、點擊開 `review`。上層分類不是一個 section（沒有自己的頁），所以 `ProjectSettingsSection` 只多 `"subagent"`，store 的 `projectSettingsSection` 與「記住上次所在分類」不必改。
 
 - 替代方案：讓「品質關卡」成為有自己頁面的 section——否決，討論定案點了開審查規則，沒有總覽頁。
 - 替代方案：目錄改成巢狀樹——否決，只有一個上層分類、兩個子項，平的清單加 `parent` 欄位就夠，搜尋與遠端過濾的既有寫法不必改。
@@ -71,6 +71,8 @@ Tauri 殼的 `write_workflow_content` 與 `remote_write_workflow_content` 各加
 
 `WorkspaceSettingsProvider` 新增 `writeWorkflowSubagentModel(config)`：本機呼叫 `write_workflow_content`（context、rules、review 皆 null），遠端呼叫 `remote_write_workflow_content` 並帶 `expectedRevision`，成功回新 revision。`useProjectSettings` 的 `PendingRemoteWrite` 新增 `{ kind: "subagentModel" }`，`guardWrite`、`handleWriteError`、`adoptFresh`、`retryConflict`、`reloadServerVersion` 與 `dirty` 都納入這一種。衝突對照的列為 `subagent_model.review.<tool>`、`subagent_model.verify.<tool>`、`subagent_model.choices.<tool>`，工具取 server 現值與我的輸入兩邊出現過的名稱聯集，沒值顯示「—」。
 
+編輯中的卡不採納新現值、草稿保留；但別的寫入以最新 revision 採納 server 版之後（`adoptFresh`，例如另一頁撞 409 後重送成功），adapter 已帶著新 revision，這張卡再儲存不會撞 409，會靜默蓋掉別人的修改。所以 `adoptFresh` 對編輯中的卡比對 server 值：已與開編輯時不同就記為 stale；stale 的卡按儲存時不直接寫入，改為比照 409 重讀並浮出逐欄位對照，只留「以 server 版重載」與「以最新 revision 重新提交」兩個出口。專案說明、產出規則、審查規則、子代理模型四張卡用同一套；只在遠端專案作用（本機沒有 revision）。
+
 ### 子代理模型的草稿與儲存
 
 純函式放在 project-settings 目錄新增的 `subagentModel.ts`，頁面與 hook 共用、可單獨測試：
@@ -85,8 +87,9 @@ Tauri 殼的 `write_workflow_content` 與 `remote_write_workflow_content` 各加
 
 頁面元件 `SubagentModelPage` 沿用既有零件：`SettingsPageHeader`、`SettingsCard`、`PageAlerts`、`PageNote`、`CardEditControls`、`FieldHelp`、`useSaveShortcut`（project-settings 的共用零件）、`@speclink/ui` 的 `Table` 系列與 `Input`，自訂清單的編輯區沿用 desktop 的 `CodeEditor` 純文字模式（與審查規則頁相同）。
 
-- 表格「各站使用的模型」：每列一個 `BUILTIN_TOOLS` 工具；工具欄顯示工具的顯示名（claude → Claude Code、codex → Codex、copilot → Copilot、pi → pi、cursor → Cursor）與等寬的工具名。顯示名放在 `builtinTools` 旁的對照表，依討論定案的畫面稿；產品名不翻譯。
-- 「未啟用」只在本機專案、且工具不在快照的 `app.tools` 時顯示。
+- 表格「各站使用的模型」：每列一個 `BUILTIN_TOOLS` 工具；工具欄顯示工具的顯示名（claude → Claude Code、codex → Codex、copilot → Copilot、pi → pi、cursor → Cursor）與等寬的工具名。顯示名放在 `builtinTools` 旁的對照表，依討論定案的畫面稿；產品名不翻譯。列裡放下拉與輸入框，所以用 `TableRow` 的 `hoverable={false}` 關掉滑過底色（呼叫端不以 className 覆蓋）。
+- 「未啟用」只在本機專案、`.speclink.yaml` 可解析、且工具不在快照的 `app.tools` 時顯示（解析失敗時不知道勾了哪些工具，不標）；以 `Badge` 的 `muted` 變體呈現，自訂清單的名稱小籤也用 `Badge`。
+- 選「自行輸入…」時，輸入框下方附說明「輸入的名稱不會加進自訂清單」。
 - 下拉用 `SettingsChoice`。值的哨兵：`__inherit__`（沿用主對話）、`__custom__`（自行輸入…）；同一個名稱同時在內建與自訂清單時只出現在內建那組（Radix Select 的值不得重複）。
 - 頁尾說明在檢視與編輯時都顯示；檢視時另加一句說明「未啟用」的意思。
 
@@ -112,8 +115,8 @@ Tauri 殼的 `write_workflow_content` 與 `remote_write_workflow_content` 各加
 - 設定快照 `workflow` 新欄位：`"subagentModel":{"review":{"claude":"opus"},"verify":{},"choices":{"codex":["gpt-6.1-sol"]}}`（三個鍵恆在）、`"builtinSubagentModels":{"claude":["sonnet","opus","haiku","fable"]}`。
 - Tauri command：`write_workflow_content` 多收 `subagentModel`（可為 null）；`remote_write_workflow_content` 同。null 表示不動 `subagent_model`。
 - 前端：`SettingsSnapshot.workflow.subagentModel: SubagentModelConfig`、`builtinSubagentModels: Record<string, string[]>`；`SubagentModelConfig = { review: Record<string, string>; verify: Record<string, string>; choices: Record<string, string[]> }`；`WorkspaceSettingsProvider.writeWorkflowSubagentModel(config): Promise<number | void>`。
-- 目錄：`ProjectSettingsSection` 多 `"subagent"`；`ProjectSettingsCategory.parent?: "quality"`；`PROJECT_SETTINGS_PARENTS`；`projectSettingsTrail(section)`。
-- `@speclink/ui`：`NavItem` 的 `variant?: "default" | "sub"`、`icon` 改可選；`SettingsChoice` 的分組項；`SelectSeparator`。
+- 目錄：`ProjectSettingsSection` 多 `"subagent"`；`ProjectSettingsCategory.parent?: "quality"`；`QUALITY_PARENT`；`projectSettingsTrail(section)`。
+- `@speclink/ui`：`NavItem` 的 `variant?: "default" | "sub"`、`icon` 改可選；`SettingsChoice` 的分組項與 `isSettingsChoiceGroup`；`SelectSeparator`；`TableRow` 的 `hoverable?: boolean`（預設 true）；`Badge` 的 `muted` 變體（灰底灰字）。
 - i18n 新鍵（zh-TW、en 各一份）：上層分類「品質關卡／Quality gates」、子項「子代理模型／Sub-agent models」、頁說明、表格標題與欄名、「沿用主對話」、三種來源標籤、「自行輸入…」、輸入框標籤與說明、「未啟用」、pi 說明、自訂清單卡標題與說明、「自訂 N 個」計數（英文單複數兩形）、頁尾說明。
 
 **失敗模式**

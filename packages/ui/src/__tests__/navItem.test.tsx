@@ -56,8 +56,9 @@ describe("NavItem", () => {
 
   // desktop-subagent-model-page design「NavItem 的子項變體」：設定分類欄上層分類底下的子項。
   it("子項變體：不渲染圖示、28px 高、文字左緣對齊預設變體的文字；選中帶 aria-current", () => {
-    render(<NavItem variant="sub" label="審查規則" active onClick={() => {}} />);
+    render(<NavItem variant="sub" icon={<Archive data-testid="icon" />} label="審查規則" active onClick={() => {}} />);
     const item = screen.getByRole("button", { name: "審查規則" });
+    expect(screen.queryByTestId("icon")).toBeNull();
     expect(item.querySelector("svg")).toBeNull();
     expect(classes(item)).toEqual(expect.arrayContaining(["h-7", "pl-[34px]", "bg-primary/12", "text-primary"]));
     expect(classes(item)).not.toContain("h-8");

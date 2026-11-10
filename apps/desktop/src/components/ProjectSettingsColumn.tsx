@@ -8,7 +8,7 @@ import { NavItem, SEMANTIC_TONE, SettingsGroupHeader, cn, useI18n } from "@specl
 
 import {
   PROJECT_SETTINGS_CATEGORIES,
-  PROJECT_SETTINGS_PARENTS,
+  QUALITY_PARENT,
   type ProjectSettingsCategory,
   type ProjectSettingsSection,
 } from "../settingsCatalog";
@@ -72,11 +72,10 @@ export function ProjectSettingsColumn({
               if (!category.parent) return item(category);
               // 子項在目錄裡相鄰：第一個子項帶出上層分類與整組子項，其餘略過。
               if (items[index - 1]?.parent === category.parent) return null;
-              const parent = PROJECT_SETTINGS_PARENTS[category.parent];
-              const parentLabel = t(parent.labelKey);
+              const parentLabel = t(QUALITY_PARENT.labelKey);
               return (
                 <div key={category.parent} role="group" aria-label={parentLabel} className="flex flex-col gap-0.5">
-                  <NavItem icon={<parent.icon />} label={parentLabel} onClick={() => onSelect(parent.opens)} />
+                  <NavItem icon={<QUALITY_PARENT.icon />} label={parentLabel} onClick={() => onSelect(QUALITY_PARENT.opens)} />
                   {items.filter((c) => c.parent === category.parent).map(item)}
                 </div>
               );

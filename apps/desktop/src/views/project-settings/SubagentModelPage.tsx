@@ -2,6 +2,7 @@
 // 審查與驗證兩欄）與「自訂清單」卡。編輯沿用審查規則頁的頁標題右側編輯／取消／儲存 ⌘S；每格是
 // 共用下拉（與產出流程頁 locale 同一元件），清單是純文字 CodeEditor。內建清單取自快照（引擎提供）。
 import {
+  Badge,
   Input,
   SettingsCard,
   SettingsChoice,
@@ -16,7 +17,7 @@ import {
   useI18n,
 } from "@speclink/ui";
 
-import { BUILTIN_TOOLS, BUILTIN_TOOL_NAMES } from "../../builtinTools";
+import { BUILTIN_TOOLS, BUILTIN_TOOL_NAMES, type BuiltinTool } from "../../builtinTools";
 import { CodeEditor } from "../../components/CodeEditor";
 import { textToEntries } from "./lines";
 import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
@@ -25,6 +26,7 @@ import {
   SUBAGENT_INHERIT,
   SUBAGENT_STATIONS,
   cellChoice,
+  cellValue,
   choiceOptions,
   modelSource,
   type SubagentCell,
@@ -32,11 +34,9 @@ import {
 } from "./subagentModel";
 import type { ProjectSettingsState } from "./useProjectSettings";
 
-type BuiltinTool = (typeof BUILTIN_TOOLS)[number];
-
-/** 名稱的小籤（自訂清單與內建名稱）。 */
+/** 名稱的小籤（自訂清單與內建名稱）：共用 Badge，名稱用等寬字。 */
 function NameChip({ name }: { name: string }) {
-  return <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">{name}</span>;
+  return <Badge className="font-mono">{name}</Badge>;
 }
 
 export function SubagentModelPage({ ps }: { ps: ProjectSettingsState }) {
@@ -56,7 +56,7 @@ export function SubagentModelPage({ ps }: { ps: ProjectSettingsState }) {
   };
   const cellName = (tool: BuiltinTool, station: SubagentStation) =>
     `${BUILTIN_TOOL_NAMES[tool]} · ${t(`settings.subagentStation.${station}`)}`;
-  const setCell = (station: SubagentStation, tool: string, cell: SubagentCell) =>
+  const setCell = (station: SubagentStation, tool: BuiltinTool, cell: SubagentCell) =>
     ps.setDraftSubagent((prev) => ({
       ...prev,
       cells: { ...prev.cells, [station]: { ...prev.cells[station], [tool]: cell } },
@@ -84,22 +84,25 @@ export function SubagentModelPage({ ps }: { ps: ProjectSettingsState }) {
         station,
         tool,
         value === SUBAGENT_INHERIT
-          ? { mode: "inherit", value: "" }
+          ? { mode: "inherit" }
           : value === SUBAGENT_CUSTOM
-            ? { mode: "custom", value: cell.mode === "inherit" ? "" : cell.value }
+            ? { mode: "custom", value: cellValue(cell) }
             : { mode: "pick", value },
       );
     return (
       <div className="flex flex-col gap-1.5">
         <SettingsChoice value={choice} options={options} ariaLabel={name} disabled={disabled} onChange={onChange} />
         {choice === SUBAGENT_CUSTOM && (
-          <Input
-            aria-label={`${name} · ${t("settings.subagentCustomInput")}`}
-            value={cell.value}
-            disabled={disabled}
-            className="font-mono text-[13px]"
-            onChange={(e) => setCell(station, tool, { mode: "custom", value: e.target.value })}
-          />
+          <>
+            <Input
+              aria-label={`${name} · ${t("settings.subagentCustomInput")}`}
+              value={cellValue(cell)}
+              disabled={disabled}
+              className="font-mono text-[13px]"
+              onChange={(e) => setCell(station, tool, { mode: "custom", value: e.target.value })}
+            />
+            <FieldHelp>{t("settings.subagentCustomHelp")}</FieldHelp>
+          </>
         )}
       </div>
     );
@@ -137,7 +140,7 @@ export function SubagentModelPage({ ps }: { ps: ProjectSettingsState }) {
       <SettingsCard title={t("settings.subagentTableCard")}>
         <Table>
           <TableHeader>
-            <TableRow className="hover:bg-transparent">
+            <TableRow hoverable={false}>
               <TableHead className="w-[40%]">{t("settings.subagentToolColumn")}</TableHead>
               <TableHead>
                 {t("settings.subagentStation.review")}
@@ -150,15 +153,14 @@ export function SubagentModelPage({ ps }: { ps: ProjectSettingsState }) {
           </TableHeader>
           <TableBody>
             {BUILTIN_TOOLS.map((tool) => (
-              <TableRow key={tool} data-testid={`subagent-row-${tool}`} className="hover:bg-transparent">
+              <TableRow key={tool} data-testid={`subagent-row-${tool}`} hoverable={false}>
                 <TableCell className="align-top">
                   <div className="flex flex-col gap-1">
                     <span className="flex flex-wrap items-center gap-1.5">
                       {toolLabel(tool)}
-                      {!ps.isRemote && !ps.snap.app.tools.includes(tool) && (
-                        <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground">
-                          {t("settings.subagentNotEnabled")}
-                        </span>
+                      {/* 遠端沒有 .speclink.yaml；它解析失敗時不知道勾了哪些工具，都不標。 */}
+                      {!ps.isRemote && ps.snap.app.parseError === null && !ps.snap.app.tools.includes(tool) && (
+                        <Badge variant="muted">{t("settings.subagentNotEnabled")}</Badge>
                       )}
                     </span>
                     {tool === "pi" && <p className="m-0 text-xs text-muted-foreground">{t("settings.subagentPiNote")}</p>}

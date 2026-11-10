@@ -32,13 +32,14 @@ export const TableBody = React.forwardRef<
 ));
 TableBody.displayName = "TableBody";
 
+/** `hoverable={false}`：滑過不加底色（列裡放下拉、輸入框等控制項的表格，底色會干擾操作）。 */
 export const TableRow = React.forwardRef<
   HTMLTableRowElement,
-  React.HTMLAttributes<HTMLTableRowElement>
->(({ className, ...props }, ref) => (
+  React.HTMLAttributes<HTMLTableRowElement> & { hoverable?: boolean }
+>(({ className, hoverable = true, ...props }, ref) => (
   <tr
     ref={ref}
-    className={cn("border-b border-border transition-colors hover:bg-muted/50", className)}
+    className={cn("border-b border-border transition-colors", hoverable && "hover:bg-muted/50", className)}
     {...props}
   />
 ));

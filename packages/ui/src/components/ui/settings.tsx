@@ -189,8 +189,9 @@ export interface SettingsChoiceGroup {
   options: SettingsChoiceOption[];
 }
 
-const isGroup = (entry: SettingsChoiceOption | SettingsChoiceGroup): entry is SettingsChoiceGroup =>
-  "options" in entry;
+export const isSettingsChoiceGroup = (
+  entry: SettingsChoiceOption | SettingsChoiceGroup,
+): entry is SettingsChoiceGroup => "options" in entry;
 
 function ChoiceItem({ option }: { option: SettingsChoiceOption }) {
   return (
@@ -225,11 +226,11 @@ export function SettingsChoice({
       </SelectTrigger>
       <SelectContent>
         {options.map((entry, index) => {
-          const separated = index > 0 && (isGroup(entry) || isGroup(options[index - 1]));
+          const separated = index > 0 && (isSettingsChoiceGroup(entry) || isSettingsChoiceGroup(options[index - 1]));
           return (
-            <Fragment key={isGroup(entry) ? `group:${entry.label}` : entry.value}>
+            <Fragment key={isSettingsChoiceGroup(entry) ? `group:${entry.label}` : entry.value}>
               {separated && <SelectSeparator />}
-              {isGroup(entry) ? (
+              {isSettingsChoiceGroup(entry) ? (
                 <SelectGroup>
                   <SelectLabel>{entry.label}</SelectLabel>
                   {entry.options.map((option) => (

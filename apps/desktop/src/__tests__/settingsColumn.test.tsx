@@ -117,6 +117,8 @@ describe("ProjectSettingsColumn", () => {
     );
     const nav = screen.getByRole("navigation", { name: "Project settings categories" });
     expect(within(nav).getByText("Spec workflow")).toBeTruthy();
+    const group = within(nav).getByRole("group", { name: "Quality gates" });
+    expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["Quality gates", "Review rules", "Sub-agent models"]);
     expect(within(nav).getByText("Project")).toBeTruthy();
     expect(navItems(nav).slice(-1)).toEqual(["AI tools"]);
   });
@@ -145,7 +147,7 @@ describe("ProjectSettingsColumn", () => {
   // desktop-subagent-model-page design「分類欄渲染兩層與警示點」。
   it("上層分類「品質關卡」帶圖示、點擊開審查規則頁且自身不帶選中；兩個子項無圖示、與它包在同一個群組", () => {
     const onSelect = vi.fn();
-    render(<ProjectSettingsColumn section="review" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />);
+    const { rerender } = render(<ProjectSettingsColumn section="review" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />);
     const nav = screen.getByRole("navigation", { name: "專案設定分類" });
     const group = within(nav).getByRole("group", { name: "品質關卡" });
     expect(within(group).getAllByRole("button").map((b) => b.textContent)).toEqual(["品質關卡", "審查規則", "子代理模型"]);
@@ -160,6 +162,10 @@ describe("ProjectSettingsColumn", () => {
     expect(onSelect).toHaveBeenLastCalledWith("review");
     fireEvent.click(within(group).getByRole("button", { name: "子代理模型" }));
     expect(onSelect).toHaveBeenLastCalledWith("subagent");
+    rerender(<ProjectSettingsColumn section="subagent" remote={false} configParseError={false} speclinkParseError={false} onSelect={onSelect} />);
+    expect(within(group).getByRole("button", { name: "子代理模型" }).getAttribute("aria-current")).toBe("page");
+    expect(within(group).getByRole("button", { name: "審查規則" }).getAttribute("aria-current")).toBeNull();
+    expect(parent.getAttribute("aria-current")).toBeNull();
   });
 
   it("底部 notice 槽渲染提示卡", () => {
