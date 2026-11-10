@@ -79,6 +79,24 @@ fn bad_workflow_config_fails_instructions_naming_file_and_reason() {
 }
 
 #[test]
+fn a_subagent_model_typo_fails_instructions_apply_naming_the_key() {
+    // Spec workflow-config scenario 其他指令同樣 fail-closed（subagent_model 區塊）。
+    let p = TempProject::new(
+        "subagent-typo",
+        "tools:\n  - claude\n",
+        Some("schema: spec-driven\nsubagent_model:\n  model: opus\n"),
+    );
+    let out = p.run(&["instructions", "apply", "--change", "demo-change", "--json"], &[]);
+    assert!(!out.status.success(), "must exit non-zero on a subagent_model typo");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        err.contains("speclink/config.yaml") && err.contains("unknown field `model`"),
+        "stderr names the file and the key: {err}"
+    );
+    assert!(String::from_utf8_lossy(&out.stdout).trim().is_empty(), "no default payload on stdout");
+}
+
+#[test]
 fn env_var_does_not_bypass_a_broken_workflow_config() {
     // Spec scenario 環境變數不得繞過壞檔: SPECLINK_TDD=true never makes the
     // command ignore the unparseable file.

@@ -8,7 +8,7 @@ Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟
 
 | 位置 | 放什麼 | 誰會讀 | 進版本控制 |
 | --- | --- | --- | --- |
-| `speclink/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
+| `speclink/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review`、`subagent_model` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
 | `.speclink.yaml` | 這個 checkout 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
 | `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
 | 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
@@ -68,6 +68,8 @@ Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟
 | `rules <artifact> --stdin` | 用 stdin 整段取代一個 artifact 的規則，一行一條，空行略過。stdin 為空時移除這一節。`<artifact>` 必須是目前 schema 的 artifact id |
 | `review <list> --stdin` | 用 stdin 整段取代一個審查規則清單，一行一條，空行略過。stdin 為空時移除這個清單。`<list>` 是 `critical`、`warning` 或 `suggestion` |
 | `review baseline <mode>` | 設定審查關卡要不要檢查內建的 12 條 code smell。`<mode>` 是 `extend`（預設，寫入時移除這個鍵）或 `replace` |
+| `subagent-model <station> <tool> <model>` | 設定一個品質關卡在一個 AI 工具裡派出的子代理用哪個模型。`<station>` 是 `review` 或 `verify`；`<tool>` 是 kebab-case 的工具名稱，例如 `claude`、`codex`。`<model>` 給空字串（`""`）時移除這個設定，子代理回到沿用主對話的模型 |
+| `subagent-model choices <tool> --stdin` | 用 stdin 整段取代一個 AI 工具的自訂模型清單，一行一個名稱，空行略過。stdin 為空時移除這個清單 |
 
 寫入規則：
 
@@ -75,8 +77,10 @@ Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟
 - `tdd`、`audit`、`worktree` 只收 `true`／`false`。設成 `false`（或把 `locale` 設成空字串）會刪掉那一行，回到預設值。
 - 所有寫入子指令都有 `--dry-run`：只印出差異，不寫檔。差異逐行比對新舊內容：只有被刪除、新增或移動位置的行會標 `-`／`+`；改動範圍內其餘沒改的行以前後文呈現，夾在兩處改動之間的也一樣。範圍前後另外最多各帶三行沒改的內容。
 - `review` 的寫入會整塊取代 `review` 區塊：`extend` 不寫 `baseline` 鍵、清單清空就移除該鍵、整塊沒有內容時移除 `review` 鍵。`review` 區塊內的註解不會保留。
-- `review` 寫入後，指令會檢查本機專案的技能檔。技能檔比引擎舊時，寫入照樣成功，但 stderr 會多一行警告，提示執行 `speclink update`——舊版審查技能可能不套用審查規則。
+- `review` 或 `subagent-model` 寫入後，指令會檢查本機專案的技能檔。技能檔比引擎舊時，寫入照樣成功，但 stderr 會多一行警告，提示執行 `speclink update`——舊版技能可能不套用審查規則或子代理模型。
 - `review` 區塊採嚴格解析：出現不認得的鍵（例如打錯成 `critcal`）、`baseline` 不是 `extend` 或 `replace`、或清單裡有不是字串的條目時，整份檔案視為無法解析。讀這份檔案的指令都會失敗並點名出錯的鍵，直到你改正。
+- `subagent-model` 的寫入會整塊取代 `subagent_model` 區塊：某一站或某個清單清空就移除該鍵，整塊沒有內容時移除 `subagent_model` 鍵。工具名稱依字母序寫出，區塊內的註解不會保留。寫入結果和原本相同時（例如移除一個本來就沒有的設定），檔案保持原樣，並印出 `unchanged`。
+- `subagent_model` 區塊同樣採嚴格解析：出現不認得的鍵（例如打錯成 `reveiw`）、工具名稱不是 kebab-case 或在同一個 map 裡重複、或值不是字串時，整份檔案視為無法解析。模型名稱不檢查：工具不認得某個名稱時，品質關卡會停在派出子代理的那一步，並顯示工具的錯誤。
 - 只改目標那幾行，其他內容與註解原樣保留。檔案無法解析時讀寫都會拒絕，不會蓋掉你的內容。
 - 本機模式下改 `worktree` 會同時產生或移除兩個 worktree 技能。還有 worktree 沒收尾時，不能從 `true` 改成 `false`；指令會列出那些 worktree，請先用 `speclink-worktree-merge` 收掉。
 - 遠端模式下，如果別人剛好同時寫入，指令會失敗並請你重跑，不會蓋掉別人的修改。離線或憑證失效也會直接失敗，不會排隊。
@@ -111,6 +115,8 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 桌面 app 的「專案設定」改的是同一份檔案，規則也相同。內建技能 `speclink-config` 會從程式碼整理出 `context` 與 `rules`，先給你看差異，你同意後才寫入。政策欄位（含 `worktree`）它會用一張表列出現值，只問你要不要改。審查規則是選用的：可以不設定、附加在內建檢查之後（`extend`），或取代內建檢查（`replace`）。你可以交給它一份提醒清單（貼上或給檔案路徑），它會逐條判斷要放進審查規則、某個 artifact 的產出規則（`rules`），還是不收，並說明理由。審查規則只收你給的，不從程式碼推導。
 
 審查關卡要套用 `review` 區塊，需要這個版本以後的 CLI 與技能檔；升級後請執行 `speclink update`。舊版 CLI 會略過這個區塊。
+
+審查與驗證兩站在執行時透過 `speclink workflow-config show --json` 讀取 `subagent_model`，改了設定不必跑 `speclink update` 就生效；但舊版的技能檔不會讀它，升級後請執行 `speclink update`。工具沒辦法替子代理指定模型時，該站沿用主對話的模型並寫明這一點。Codex 要在 `~/.codex/config.toml` 設 `expose_spawn_agent_model_overrides = true` 才能指定。
 
 ## <a id="tools"></a>AI 工具與自訂工具
 
@@ -175,6 +181,8 @@ tools:
 | `rules` | artifact id → 規則清單 | 無 | 各 artifact 的撰寫規則 |
 | `review.baseline` | `extend`、`replace` | `extend` | 審查關卡檢查內建 12 條 code smell 再加上專案規則（`extend`），或只用專案規則（`replace`） |
 | `review.critical`、`review.warning`、`review.suggestion` | 規則清單 | 無 | 審查關卡 Standards 軸的專案審查規則。規則放在哪個清單，違反時就記成那個嚴重度 |
+| `subagent_model.review.<tool>`、`subagent_model.verify.<tool>` | 模型名稱 | 無（沿用主對話的模型） | 在該 AI 工具裡跑審查關卡時兩個子代理用的模型，或跑驗證關卡時子代理用的模型。`/speclink-quality` 沿用這兩個值。Claude Code 收 `sonnet`、`opus`、`haiku`、`fable` |
+| `subagent_model.choices.<tool>` | 模型名稱清單 | 無 | 專案共用的某個 AI 工具的自訂模型清單。`speclink workflow-config show --json` 會連同內建清單一起帶出 |
 
 其他鍵會被忽略。
 

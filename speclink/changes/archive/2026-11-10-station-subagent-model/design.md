@@ -23,7 +23,6 @@
 
 - desktop 的「品質關卡 › 子代理模型」頁與分類欄改兩層——屬 cut 2；本刀只讓 desktop 跟上 `ContentEdit` 新欄位而能編譯，行為不變。
 - `workflow-config show` 的人眼輸出不加 `subagent_model` 行：討論只要求 `--json`；兩個消費者（技能、desktop）都讀機器輸出；標籤欄寬 13 放不下 `subagent_model`（14 字元），加寬會改動每一行並破壞 golden 對照。
-- `subagent-model` 寫入後不做技能檔過期提示：討論沒有要求；文件寫明升級後要跑 `speclink update`。
 - 推理強度（effort）不納入；不加環境變數覆寫；不讀 `.speclink.yaml`。
 - 不檢查模型名稱、不從各工具的 provider 取得清單（討論 Deferred）。
 - pi、cursor 加成內建工具屬討論 pi-cursor-tool-support。
@@ -34,15 +33,16 @@
 
 在 workflow 設定模組新增 `SubagentModelConfig`，掛在 `WorkflowConfig` 的 `subagent_model: Option<SubagentModelConfig>` 欄位（`#[serde(default)]`，缺席或 null 讀作預設）：
 
-- 結構 `deny_unknown_fields`，欄位 `review`、`verify` 為 `BTreeMap<String, String>`（AI 工具名稱 → 模型名稱），`choices` 為 `BTreeMap<String, Vec<String>>`（AI 工具名稱 → 自訂清單）。三個欄位都 `#[serde(default)]`。
-- AI 工具名稱以既有的 kebab-case 規則檢查（自訂工具描述子同一個 `is_kebab_case`：2 到 50 字元、小寫字母數字與連字號、頭尾與連續連字號不可），違者整份 config 無法解析，原因點名該名稱。
-- 模型名稱與清單條目只收 YAML 字串（同 `RuleEntry` 的作法，不讓 serde_yaml 把 `1`、`true` 轉成文字）；讀取時去頭尾空白。空白或 null 的模型值讀作「沒設定」（該格不出現在 map 裡）；清單比照審查規則清單：空條目丟棄、null 清單讀作空清單。
+- 結構 `deny_unknown_fields`，欄位 `review`、`verify` 為 `BTreeMap<ToolName, String>`（AI 工具名稱 → 模型名稱），`choices` 為 `BTreeMap<ToolName, Vec<String>>`（AI 工具名稱 → 自訂清單）。三個欄位都 `#[serde(default)]`。
+- AI 工具名稱是公開型別 `ToolName`，只能經 `ToolName::parse` 建立，以既有的 kebab-case 規則檢查（自訂工具描述子同一個 `is_kebab_case`：2 到 50 字元、小寫字母數字與連字號、頭尾與連續連字號不可）。讀檔、CLI 寫入與 cut 2 的 desktop 都拿這個型別當鍵，檢查只寫在一處；違者整份 config 無法解析，原因點名該名稱。
+- 三張 map 以自訂的 map 讀取逐項收鍵：同一張 map 裡同一個工具名出現兩次即拒收並點名該名稱。serde 內建的 `BTreeMap` 會靜默留下後一個值，而寫入端的未定型解析會拒收重複鍵，讀寫兩邊因此一致。
+- 模型名稱與清單條目只收 YAML 字串，和審查規則清單共用同一個只收字串的型別 `StrictString`（不讓 serde_yaml 把 `1`、`true` 轉成文字）；去頭尾空白、丟空值的清理也是兩邊共用的函式；讀取時去頭尾空白。空白或 null 的模型值讀作「沒設定」（該格不出現在 map 裡）；清單比照審查規則清單：空條目丟棄、null 清單讀作空清單。
 - 用 `BTreeMap` 而不是保留檔案順序：寫入本來就整塊代換、區塊內註解不保留（比照 `review`），排序後寫出的結果可預期；desktop 的列序由 Tool::ALL 決定，與檔案順序無關。
 - 替代方案：頂層 `review` 區塊底下加 `model` 子鍵——否決，驗證站的設定掛在審查區塊下會誤導，討論已定案頂層區塊。
 
 ### ContentEdit 新增 subagent_model 作為唯一寫入落點
 
-`ContentEdit` 新增 `subagent_model: Option<&SubagentModelConfig>`：`None` 不動，`Some` 整塊代換。代換在 `update_workflow_config_text` 內與 `rules`、`review` 走同一條路徑——先清理（條目去空白、空條目與空清單丟棄、空白模型值丟棄），再以 serde_yaml 序列化成頂層區塊（純量跳脫由 serde_yaml 負責，不手拼純量），三個欄位都空時移除整個 `subagent_model` 鍵；寫完照既有流程解析回來比對目標狀態。CLI 本機臂、CLI remote 臂與 cut 2 的 desktop 都只透過它寫，不另寫一套。
+`ContentEdit` 新增 `subagent_model: Option<&SubagentModelConfig>`：`None` 不動，`Some` 整塊代換。代換在 `update_workflow_config_text` 內與 `rules`、`review` 走同一條路徑——先清理（條目去空白、空條目與空清單丟棄、空白模型值丟棄），再以 serde_yaml 序列化成頂層區塊（純量跳脫由 serde_yaml 負責，不手拼純量），三個欄位都空時移除整個 `subagent_model` 鍵；工具名稱是 `ToolName`，寫出的鍵必定合乎讀取規則；寫完照既有流程解析回來比對目標狀態。CLI 本機臂、CLI remote 臂與 cut 2 的 desktop 都只透過它寫，不另寫一套。
 
 - desktop 在本刀只調整兩處以通過編譯：desktop core 的內容改寫函式解構 `ContentEdit` 時忽略新欄位，Tauri 殼的 `content_edit` 建構時補預設值。desktop 不寫 `subagent_model`，文字手術讓既有的 `subagent_model` 區塊逐位元保留。
 - server 不改程式：`PUT /config` 已用 `WorkflowConfig::from_text` 解析，新區塊的嚴格解析自動生效。
@@ -68,7 +68,10 @@
 - `speclink workflow-config subagent-model verify <tool> <model>`
 - `speclink workflow-config subagent-model choices <tool> --stdin`
 
-每個形式都支援 `--dry-run` 與 `--no-color`。`<model>` 為空字串（或只有空白）時移除該格，比照 `set` 以空字串移除 `locale`。`choices` 以 stdin 整段代換該工具的清單（沿用 `stdin_entries`：一行一條、去空白、略過空行），空 stdin 移除該工具的清單。CLI 先以同一條 kebab-case 規則檢查 `<tool>`，違者在讀檔前以非零 exit code 拒絕。解析後成為新的 `WorkflowConfigWrite` 變體，交給既有的 `plan_workflow_config_edit`，本機臂與 remote 臂、`--dry-run` 的差異輸出、remote 版本衝突訊息、壞檔 fail-closed 全部沿用。
+每個形式都支援 `--dry-run` 與 `--no-color`。`<model>` 為空字串（或只有空白）時移除該格，比照 `set` 以空字串移除 `locale`。`choices` 以 stdin 整段代換該工具的清單（沿用 `stdin_entries`：一行一條、去空白、略過空行），空 stdin 移除該工具的清單。CLI 先以 `ToolName::parse` 檢查 `<tool>`，違者在讀檔前以非零 exit code 拒絕。解析後成為新的 `WorkflowConfigWrite` 變體，交給既有的 `plan_workflow_config_edit`，本機臂與 remote 臂、`--dry-run` 的差異輸出、remote 版本衝突訊息、壞檔 fail-closed 全部沿用。
+
+- 寫入結果與現有區塊相同時（移除沒設定的格子、設成現值、空 stdin 移除不存在的清單）不交出 `subagent_model` 編輯，區塊內的註解與手寫格式原樣保留，成功訊息改為 `<鍵路徑> unchanged`。
+- 寫入成功後（`--dry-run` 除外）沿用審查規則寫入後的技能檔過期探測：舊版技能檔不讀 `subagentModel`，設定會悄悄不生效，所以本機技能檔過期時 stderr 提示執行 `speclink update`。探測與判定條件和審查規則相同，只有提示的後半句改為子代理模型的說法。
 
 - 替代方案：把 `set` 擴成 `set subagent_model.review.claude opus` 的點號鍵——否決，`set` 只管有環境變數覆寫語意的政策欄位，混進來會讓 `set --help` 的鍵清單與值域規則失真。
 - 替代方案：站上的值也用 `--stdin`——否決，一格只有一個值，argv 最直接。
@@ -128,12 +131,15 @@
   | subagent-model verify codex "" | ✓ subagent_model.verify.codex removed |
   | subagent-model choices codex --stdin（兩行） | ✓ subagent_model.choices.codex = 2 entries |
   | subagent-model choices codex --stdin（空） | ✓ subagent_model.choices.codex removed |
+  | subagent-model review claude opus（已是 opus） | ✓ subagent_model.review.claude unchanged |
 
-- 核心型別：`SubagentModelConfig { review, verify, choices }`、`WorkflowConfig::subagent_model()`（缺席時回預設）、`ContentEdit::subagent_model`、常數 `BUILTIN_SUBAGENT_MODELS`。
+- 技能檔過期時的 stderr 提示：`speclink: warning: skill files are older than this engine (claude v1.44.0; engine v1.54.0) — an older quality-station skill may not apply this sub-agent model; run `speclink update``。
+
+- 核心型別：`SubagentModelConfig { review, verify, choices }`、`ToolName`（`ToolName::parse`）、`WorkflowConfig::subagent_model()`（缺席時回預設）、`ContentEdit::subagent_model`、常數 `BUILTIN_SUBAGENT_MODELS`。
 
 **失敗模式**
 
-- 區塊內未知子鍵、非 kebab-case 的工具名稱、模型值或清單條目不是字串、`review`／`verify` 不是 mapping、`choices` 的值不是清單 → 整份 config 無法解析；所有讀 config 的指令以非零 exit code 結束，stderr 指出 `speclink/config.yaml` 並點名出錯的鍵或值；remote `PUT /config` 回應 `invalid_config`，store 不變。
+- 區塊內未知子鍵、非 kebab-case 或在同一張 map 重複的工具名稱、模型值或清單條目不是字串、`review`／`verify` 不是 mapping、`choices` 的值不是清單 → 整份 config 無法解析；所有讀 config 的指令以非零 exit code 結束，stderr 指出 `speclink/config.yaml` 並點名出錯的鍵或值；remote `PUT /config` 回應 `invalid_config`，store 不變。
 - 子指令的 `<tool>` 不是 kebab-case、第一個參數不認得、`choices` 沒帶 `--stdin` → 非零 exit code、stderr 說明，config 逐位元不變。
 - remote 讀到寫之間被他人改寫 → 沿用既有的版本衝突訊息，提示重跑。
 - 技能：模型名稱被工具拒絕 → 該站停在派子代理那一步並原文回報；這是唯一會擋下品質關卡的情況。
@@ -150,17 +156,26 @@
 **範圍**
 
 - 在範圍內：speclink-core 的設定模型、改寫函式與四份技能原稿；speclink-cli 的 `show --json` 與 `subagent-model` 子指令；desktop 兩處編譯調整；docs/configuration 中英兩份；LANGUAGE.md 詞條；ASSET_VERSION、golden、assets.lock 與 `speclink update` 再生的技能檔。
-- 不在範圍內：desktop 設定頁與分類欄、settings 快照新增欄位（cut 2）；`show` 人眼輸出；寫入後的技能檔過期提示；server 程式。
+- 不在範圍內：desktop 設定頁與分類欄、settings 快照新增欄位（cut 2）；`show` 人眼輸出；server 程式。
 
 ## Risks / Trade-offs
 
 - [嚴格解析讓拼錯的子鍵擋下所有指令] → 與 `review` 區塊相同的取捨（拼錯不能默默丟掉設定）；錯誤訊息點名該鍵，文件寫明。
 - [golden 與 assets.lock 回歸對照] → 技能原稿改動是刻意的；同批以 UPDATE_GOLDEN、UPDATE_ASSETS_LOCK 重生並逐份檢查差異只落在新段落與指向句。`show --json` 加欄位屬刻意變更，人眼輸出逐位元不變，由既有 CLI 測試守住。
 - [跨平台] → 改寫沿用既有行尾跟隨（CRLF 檔的代換區塊用 CRLF）；新增的單元測試含一份 CRLF 文件；CLI 測試用 tempdir、不依賴路徑分隔字元。
-- [舊技能檔不讀設定] → 升級後要跑 `speclink update`；文件寫明。不做寫入後過期提示（Non-Goals），代價是使用者可能以為設定已生效。
+- [舊技能檔不讀設定] → 升級後要跑 `speclink update`；文件寫明。`subagent-model` 寫入後本機技能檔過期時，stderr 提示執行 `speclink update`；手改 config.yaml 的人看不到這個提示。
 - [Codex 預設不露出 model 欄位] → 技能照常派子代理並寫出開法，不擋品質關卡。
 - [工具拒絕名稱的判讀依賴 agent] → 技能把「沒有 model 參數」與「名稱被拒」分成兩種固定文字的情況；Claude Code 的四個簡稱由內建清單提供，desktop（cut 2）下拉減少手打錯字。
 - [本 repo 再生的技能檔數量多] → 依記憶的收尾程序，以 git status 盤點 `speclink update` 再生的檔案一併提交。
+
+**Audit 判定**（任務 3.6，依 audit 紀律的三角色檢查）：
+
+- 危險預設：區塊缺席與空白格子都讀作「沿用主對話」，等同本變更之前的行為，沒有變得更寬鬆的預設。
+- 型別混淆：模型值與清單條目只收 YAML 字串，`3`、`true`、清單、mapping 都拒收、不轉成文字；工具名稱是只能經 `ToolName::parse` 建立的型別，寫出的鍵不會是讀取端拒收的；同一張 map 裡重複的工具名也拒收，不會靜默留下後一個值。
+- 靜默失敗：拼錯子鍵整份 fail-closed 並點名該鍵；名稱被工具拒絕時技能停下、不退回主對話的模型；工具沒有 model 參數時在呈現寫明，不默默略過。
+- 字元面：工具名稱的 kebab-case 規則擋掉路徑字元、空白與大寫；模型名稱經 serde_yaml 序列化，保留字元與 `a: b` 這類值都加引號並逐字元讀回。
+- 注入：模型值來自專案共用的 config.yaml（remote 為 server 的設定），信任等級與既有的 context、rules 相同；技能原稿寫明這個值只當模型名稱原樣傳給子代理呼叫，不當成指示。
+- 參數對調（接受的代價）：`subagent-model review opus claude` 會寫出 `review.opus: claude` 而不報錯，因為工具名稱刻意不限於內建工具；成功訊息會印出 `subagent_model.review.opus = claude`，讓使用者看得到；cut 2 的設定頁只列內建工具的列，這一格不影響任何站。
 
 ## Migration Plan
 

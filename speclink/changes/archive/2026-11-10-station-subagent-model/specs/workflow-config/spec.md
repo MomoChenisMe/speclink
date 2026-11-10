@@ -4,11 +4,11 @@
 
 speclink/config.yaml SHALL 支援頂層鍵 subagent_model，供品質關卡指定子代理模型。子鍵限三個：review 與 verify（各為 AI 工具名稱對模型名稱的 mapping；省略為空）、choices（AI 工具名稱對模型名稱清單的 mapping，即各 AI 工具的自訂清單；省略為空）。subagent_model 鍵缺席或為 null 時 SHALL 等同三個子鍵皆空——每一站、每一個 AI 工具都沿用主對話的模型。
 
-- AI 工具名稱 SHALL 為 kebab-case：2 到 50 個字元，只含小寫英文字母、數字與連字號，不以連字號開頭或結尾，不含連續連字號。名稱 SHALL NOT 限於本 checkout .speclink.yaml 啟用的工具，也 SHALL NOT 限於內建工具。
+- AI 工具名稱 SHALL 為 kebab-case：2 到 50 個字元，只含小寫英文字母、數字與連字號，不以連字號開頭或結尾，不含連續連字號。同一個 mapping（review、verify 或 choices）裡，同一個 AI 工具名稱 SHALL 只出現一次。名稱 SHALL NOT 限於本 checkout .speclink.yaml 啟用的工具，也 SHALL NOT 限於內建工具。
 - 模型名稱與清單條目 SHALL 為 YAML 字串，讀取時去除頭尾空白；引擎 SHALL NOT 檢查模型名稱是否存在。review 或 verify 的某格值為 null 或只有空白時，SHALL 讀作該格沒設定；清單中的空白條目 SHALL 被略過，null 清單 SHALL 讀作空清單。站上的值 SHALL NOT 被要求出現在 choices。
 - subagent_model 不屬政策欄位：SHALL NOT 有環境變數覆寫，SHALL NOT 讀取 .speclink.yaml 的同名鍵。
 
-subagent_model 區塊出現未知子鍵、AI 工具名稱不是 kebab-case、review 或 verify 不是 mapping、某格值不是字串或 null、choices 的值不是字串清單時，引擎 SHALL 將整份 config 視為無法解析並沿用既有 fail-closed：讀取 config 的指令（含 workflow-config show、instructions）以非零 exit code 結束，stderr 指出 speclink/config.yaml 與解析原因，原因 SHALL 點名出錯的鍵或值；SHALL NOT 退回預設值。config.yaml 的頂層 SHALL 維持寬鬆：不認得 subagent_model 的舊版 CLI 讀到它時略過整個區塊。remote 寫入時 server SHALL 以同一引擎解析拒收，回應 invalid_config，store 中文件與 revision 皆不變。
+subagent_model 區塊出現未知子鍵、AI 工具名稱不是 kebab-case 或在同一個 mapping 重複出現、review 或 verify 不是 mapping、某格值不是字串或 null、choices 的值不是字串清單時，引擎 SHALL 將整份 config 視為無法解析並沿用既有 fail-closed：讀取 config 的指令（含 workflow-config show、instructions）以非零 exit code 結束，stderr 指出 speclink/config.yaml 與解析原因，原因 SHALL 點名出錯的鍵或值；SHALL NOT 退回預設值。config.yaml 的頂層 SHALL 維持寬鬆：不認得 subagent_model 的舊版 CLI 讀到它時略過整個區塊。remote 寫入時 server SHALL 以同一引擎解析拒收，回應 invalid_config，store 中文件與 revision 皆不變。
 
 #### Scenario: 未寫 subagent_model 時為預設
 
@@ -29,6 +29,7 @@ subagent_model 區塊出現未知子鍵、AI 工具名稱不是 kebab-case、rev
 | review: {claude: 3} | 拒收，原因指出 claude 的值不是字串 |
 | review: [claude] | 拒收，原因指出 review 不是 mapping |
 | choices: {codex: gpt-6.1-sol} | 拒收，原因指出 codex 的值不是清單 |
+| review 底下 claude: opus 與 claude: sonnet 兩行 | 拒收，原因點名重複的 claude |
 | review: {claude: opus, my-agent: some-model} | 正常讀取，my-agent 為合法名稱 |
 | review: {claude: "  "} | 正常讀取，claude 該格讀作沒設定 |
 | review: {claude: not-a-real-model} | 正常讀取，模型名稱不檢查 |
@@ -56,7 +57,11 @@ CLI SHALL 提供 speclink workflow-config subagent-model 的三個寫入形式�
 - speclink workflow-config subagent-model review <tool> <model> 與 speclink workflow-config subagent-model verify <tool> <model>：把該站該 AI 工具的模型設為 <model>（去除頭尾空白）；<model> 為空字串或只有空白時 SHALL 移除該格（回到沿用主對話）。這兩個形式沒有 stdin。
 - speclink workflow-config subagent-model choices <tool> --stdin：以 stdin 整段代換該 AI 工具的自訂清單——一行一條、頭尾空白去除、空行略過；stdin 為空或只有空白時 SHALL 移除該 AI 工具的清單。未帶 --stdin 時 SHALL 以非零 exit code 於 stderr 說明用法，且無檔案效果。
 
-寫入後 review、verify、choices 皆空時，SHALL 移除整個 subagent_model 鍵。第一個參數不是 review、verify、choices 之一，或 <tool> 不是 kebab-case（規則同 subagent_model 區塊的 AI 工具名稱）時，SHALL 以非零 exit code 拒絕，stderr 列出合法值或名稱規則，且無檔案效果。寫入 SHALL 僅代換 subagent_model 區塊——config.yaml 的其他鍵、註解與空行逐位元保留；區塊內的註解不保留，AI 工具名稱依字母序寫出；以 YAML 保留字元開頭的模型名稱 SHALL 自動加引號，讀回時逐字元一致。--dry-run 行為、remote 模式的讀-改-寫與版本衝突處理、離線與認證失效、壞檔 fail-closed SHALL 與 workflow-config set 政策欄位寫入一致。成功 exit code 0、stdout 單行成功訊息；--no-color 下無 ANSI 色彩。寫入成功後 SHALL NOT 輸出技能檔過期提示。
+寫入後 review、verify、choices 皆空時，SHALL 移除整個 subagent_model 鍵。第一個參數不是 review、verify、choices 之一，或 <tool> 不是 kebab-case（規則同 subagent_model 區塊的 AI 工具名稱）時，SHALL 以非零 exit code 拒絕，stderr 列出合法值或名稱規則，且無檔案效果。寫入 SHALL 僅代換 subagent_model 區塊——config.yaml 的其他鍵、註解與空行逐位元保留；區塊內的註解不保留，AI 工具名稱依字母序寫出；以 YAML 保留字元開頭的模型名稱 SHALL 自動加引號，讀回時逐字元一致。--dry-run 行為、remote 模式的讀-改-寫與版本衝突處理、離線與認證失效、壞檔 fail-closed SHALL 與 workflow-config set 政策欄位寫入一致。成功 exit code 0、stdout 單行成功訊息；--no-color 下無 ANSI 色彩。
+
+寫入結果與寫入前的 subagent_model 區塊相同時（例如移除一個沒設定的格子、設成現有的值，或以空 stdin 移除一份不存在的清單），SHALL NOT 改寫區塊：speclink/config.yaml 逐位元不變，stdout 的成功訊息為 `✓ <鍵路徑> unchanged`。
+
+寫入成功後（帶 --dry-run 時除外），CLI SHALL 以「審查規則寫入後的技能檔過期提示」相同的探測與判定條件檢查本機工作區的技能檔，只有提示內容不同：stderr 恰一行以 `speclink: warning: ` 開頭、不帶 ANSI 色彩，列出每個過期工具的名稱與其技能版號、引擎現版號，說明舊版品質關卡技能可能不套用這個子代理模型，並指示執行 speclink update。stdout 與 exit code 不受提示影響；remote 模式以本機工作區判定。
 
 #### Scenario: 設定一格保留其他內容
 
@@ -99,11 +104,23 @@ CLI SHALL 提供 speclink workflow-config subagent-model 的三個寫入形式�
 - **WHEN** speclink/config.yaml 含 YAML 語法錯誤，執行 speclink workflow-config subagent-model review claude opus
 - **THEN** exit code 非 0，stderr 指出該檔與解析原因並說明拒寫；檔案逐位元不變
 
-#### Scenario: 寫入後不提示技能檔過期
+#### Scenario: 技能檔過期時寫入後提示
 
-- **GIVEN** 工作區技能檔版號舊於引擎現版
+- **GIVEN** .speclink.yaml 的 tools 為 claude，.claude/skills/ 下技能檔的 frontmatter 版號舊於引擎現版
 - **WHEN** 執行 speclink workflow-config subagent-model review claude opus
-- **THEN** exit code 0；stderr 不含 `speclink: warning: skill files are older` 提示
+- **THEN** exit code 0；stdout 恰為 `✓ subagent_model.review.claude = opus`；stderr 恰有一行過期提示；帶 --dry-run 執行時 stderr 不含提示
+
+##### Example: 提示行
+
+| 工作區技能檔 | 引擎現版 | stderr 提示行 |
+| ------------ | -------- | ------------- |
+| claude v1.44.0 | v1.54.0 | speclink: warning: skill files are older than this engine (claude v1.44.0; engine v1.54.0) — an older quality-station skill may not apply this sub-agent model; run `speclink update` |
+
+#### Scenario: 不改變內容的寫入不動檔案
+
+- **GIVEN** speclink/config.yaml 的 subagent_model 區塊含註解與手寫的行內寫法，review 的 claude 為 opus，verify 沒有 claude
+- **WHEN** 分別執行 speclink workflow-config subagent-model verify claude ""、speclink workflow-config subagent-model review claude opus
+- **THEN** 兩者 exit code 0，stdout 分別為 `✓ subagent_model.verify.claude unchanged` 與 `✓ subagent_model.review.claude unchanged`；speclink/config.yaml 逐位元不變
 
 #### Scenario: remote 寫入經版本檢查
 

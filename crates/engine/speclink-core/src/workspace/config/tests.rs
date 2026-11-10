@@ -1718,3 +1718,229 @@ fn every_block_write_on_a_crlf_document_keeps_crlf_line_endings() {
     let out = update_workflow_config_text(doc, &wf_fields_of(doc), &edit).expect("rewrite ok");
     assert_eq!(wf(&out).context.as_deref(), Some("line one\nline two\n"), "CRLF in a block scalar reads back as LF");
 }
+
+// --- subagent_model 區塊：typed 結構與嚴格解析（station-subagent-model） ---
+
+fn tool(name: &str) -> ToolName {
+    ToolName::parse(name).expect("valid tool name")
+}
+
+fn model_map(pairs: &[(&str, &str)]) -> BTreeMap<ToolName, String> {
+    pairs.iter().map(|(k, v)| (tool(k), v.to_string())).collect()
+}
+
+#[test]
+fn subagent_model_absent_or_null_reads_as_three_empty_maps() {
+    // spec Scenario 未寫 subagent_model 時為預設：缺席或 null 等同三個子鍵皆空。
+    for doc in ["schema: spec-driven\n", "schema: spec-driven\nsubagent_model:\n"] {
+        let w = WorkflowConfig::from_text(Some(doc)).expect("parses");
+        assert_eq!(w.subagent_model(), SubagentModelConfig::default(), "for {doc:?}");
+    }
+    let s = SubagentModelConfig::default();
+    assert!(s.review.is_empty() && s.verify.is_empty() && s.choices.is_empty());
+}
+
+#[test]
+fn subagent_model_full_block_parses() {
+    // spec Scenario --json 帶出子代理模型設定的同一份區塊。
+    let doc = "subagent_model:\n  review:\n    claude: opus\n    codex: gpt-6.1-sol\n  verify:\n    claude: sonnet\n  choices:\n    codex:\n      - gpt-6.1-sol\n      - gpt-6-astra\n";
+    let s = WorkflowConfig::from_text(Some(doc)).expect("parses").subagent_model();
+    assert_eq!(s.review, model_map(&[("claude", "opus"), ("codex", "gpt-6.1-sol")]));
+    assert_eq!(s.verify, model_map(&[("claude", "sonnet")]));
+    assert_eq!(
+        s.choices.get("codex"),
+        Some(&vec!["gpt-6.1-sol".to_string(), "gpt-6-astra".to_string()])
+    );
+    assert_eq!(s.choices.len(), 1);
+}
+
+#[test]
+fn subagent_model_strict_parse_rejects_and_names_the_offending_key_or_value() {
+    // spec Example 嚴格解析的判定：拒收的五列，外加清單條目與 verify 值不是字串。
+    for (doc, needle) in [
+        ("subagent_model:\n  reveiw: {claude: opus}\n", "reveiw"),
+        ("subagent_model:\n  review: {Claude: opus}\n", "Claude"),
+        ("subagent_model:\n  review: {claude: 3}\n", "claude"),
+        ("subagent_model:\n  review: [claude]\n", "review"),
+        ("subagent_model:\n  choices: {codex: gpt-6.1-sol}\n", "codex"),
+        ("subagent_model:\n  choices: {codex: [1]}\n", "codex"),
+        ("subagent_model:\n  verify: {claude: true}\n", "claude"),
+        ("subagent_model:\n  verify: {claude_code: opus}\n", "claude_code"),
+    ] {
+        let err = WorkflowConfig::from_text(Some(doc))
+            .expect_err(&format!("{doc:?} must be a config error"));
+        assert_eq!(err.file, "speclink/config.yaml", "for {doc:?}");
+        assert!(err.reason.contains(needle), "reason must name {needle:?}, got: {}", err.reason);
+    }
+}
+
+#[test]
+fn subagent_model_accepts_any_kebab_case_tool_and_unchecked_model_names() {
+    // spec Example 嚴格解析的判定：正常讀取的三列。
+    let s = WorkflowConfig::from_text(Some(
+        "subagent_model:\n  review: {claude: opus, my-agent: some-model}\n",
+    ))
+    .expect("parses")
+    .subagent_model();
+    assert_eq!(s.review, model_map(&[("claude", "opus"), ("my-agent", "some-model")]));
+    let s = WorkflowConfig::from_text(Some("subagent_model:\n  review: {claude: not-a-real-model}\n"))
+        .expect("model names are not checked")
+        .subagent_model();
+    assert_eq!(s.review, model_map(&[("claude", "not-a-real-model")]));
+}
+
+#[test]
+fn subagent_model_blank_values_read_as_not_set_and_entries_are_trimmed() {
+    // 空白或 null 的格子讀作沒設定；值去頭尾空白；清單空白條目略過、null 清單讀作空。
+    let doc = "subagent_model:\n  review:\n    claude: \"  \"\n    codex:\n    copilot: \"  opus  \"\n  choices:\n    codex:\n      - \"  a  \"\n      - \"\"\n      - b\n    pi:\n";
+    let s = WorkflowConfig::from_text(Some(doc)).expect("parses").subagent_model();
+    assert_eq!(s.review, model_map(&[("copilot", "opus")]));
+    assert_eq!(s.choices.get("codex"), Some(&vec!["a".to_string(), "b".to_string()]));
+    assert!(!s.choices.contains_key("pi"), "an empty list is no custom list: {:?}", s.choices);
+}
+
+#[test]
+fn subagent_model_unknown_top_level_keys_stay_ignored() {
+    let w = WorkflowConfig::from_text(Some("future_key: x\nsubagent_model:\n  verify: {claude: sonnet}\n"))
+        .expect("unknown top-level keys are ignored");
+    assert_eq!(w.subagent_model().verify, model_map(&[("claude", "sonnet")]));
+}
+
+#[test]
+fn builtin_subagent_models_list_only_the_claude_short_names() {
+    assert_eq!(BUILTIN_SUBAGENT_MODELS, &[("claude", &["sonnet", "opus", "haiku", "fable"][..])]);
+}
+
+#[test]
+fn tool_name_parse_follows_the_descriptor_kebab_case_rule() {
+    for ok in ["claude", "codex", "my-agent", "a1"] {
+        assert_eq!(ToolName::parse(ok).map(|t| t.to_string()), Ok(ok.to_string()), "{ok:?} is a valid tool name");
+    }
+    for bad in ["Claude", "a", "-x", "x-", "a--b", "claude_code", "", "my agent"] {
+        let err = ToolName::parse(bad).expect_err(&format!("{bad:?} must be rejected"));
+        assert!(err.contains("kebab-case"), "message names the rule, got: {err}");
+    }
+}
+
+// --- update_workflow_config_text：subagent_model 區塊整塊代換（station-subagent-model） ---
+
+fn subagent_cfg(review: &[(&str, &str)], verify: &[(&str, &str)], choices: &[(&str, &[&str])]) -> SubagentModelConfig {
+    SubagentModelConfig {
+        review: model_map(review),
+        verify: model_map(verify),
+        choices: choices
+            .iter()
+            .map(|(k, v)| (tool(k), v.iter().map(|s| s.to_string()).collect()))
+            .collect(),
+    }
+}
+
+/// 政策欄位回填現值、其他區塊不動，只交 subagent_model 變更集。
+fn rewrite_subagent(doc: &str, s: &SubagentModelConfig) -> anyhow::Result<String> {
+    update_workflow_config_text(doc, &wf_fields_of(doc), &ContentEdit { subagent_model: Some(s), ..Default::default() })
+}
+
+#[test]
+fn subagent_model_some_replaces_the_whole_block() {
+    let doc = "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus\n  verify:\n    codex: old\n";
+    let want = subagent_cfg(&[("claude", "sonnet")], &[], &[("codex", &["gpt-6.1-sol", "gpt-6-astra"])]);
+    let out = rewrite_subagent(doc, &want).expect("rewrite ok");
+    assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("parses").subagent_model(), want);
+}
+
+#[test]
+fn subagent_model_cleans_blank_values_and_empty_lists() {
+    let want = subagent_cfg(&[("claude", "  opus  "), ("codex", "   ")], &[], &[("codex", &["  a  ", "", " "]), ("pi", &[])]);
+    let out = rewrite_subagent("schema: spec-driven\n", &want).expect("rewrite ok");
+    let raw: serde_yaml::Mapping = serde_yaml::from_str(&out).expect("mapping");
+    let block = raw.get("subagent_model").and_then(|v| v.as_mapping()).expect("block written");
+    let review = block.get("review").and_then(|v| v.as_mapping()).expect("review written");
+    assert_eq!(review.len(), 1, "the blank codex cell is not written: {out}");
+    assert!(!block.contains_key("verify"), "an empty station is not written: {out}");
+    let s = WorkflowConfig::from_text(Some(&out)).expect("parses").subagent_model();
+    assert_eq!(s, subagent_cfg(&[("claude", "opus")], &[], &[("codex", &["a"])]));
+}
+
+#[test]
+fn subagent_model_all_empty_removes_the_key() {
+    let doc = "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus\n";
+    let out = rewrite_subagent(doc, &SubagentModelConfig::default()).expect("rewrite ok");
+    assert_eq!(out, "schema: spec-driven\n");
+    let doc = "schema: spec-driven\nlocale: tw\n";
+    assert_eq!(rewrite_subagent(doc, &SubagentModelConfig::default()).unwrap(), doc, "absent stays absent");
+}
+
+#[test]
+fn subagent_model_tools_are_written_in_alphabetical_order() {
+    let want = subagent_cfg(&[("codex", "b"), ("claude", "a"), ("my-agent", "c")], &[], &[]);
+    let out = rewrite_subagent("schema: spec-driven\n", &want).expect("rewrite ok");
+    let (claude, codex, mine) = (out.find("claude:").unwrap(), out.find("codex:").unwrap(), out.find("my-agent:").unwrap());
+    assert!(claude < codex && codex < mine, "alphabetical order, got:\n{out}");
+}
+
+#[test]
+fn subagent_model_reserved_char_names_round_trip_verbatim() {
+    for evil in ["@model", "`x`", "*star", "- dash", "1", "true", "null", "~", "a: b"] {
+        let want = subagent_cfg(&[("claude", evil)], &[], &[("codex", &[evil])]);
+        let out = rewrite_subagent("schema: spec-driven\n", &want).expect("rewrite ok");
+        let s = WorkflowConfig::from_text(Some(&out))
+            .unwrap_or_else(|e| panic!("{evil:?} must stay parseable: {e}"))
+            .subagent_model();
+        assert_eq!(s, want, "round-trip for {evil:?}");
+    }
+}
+
+#[test]
+fn subagent_model_write_preserves_every_other_line_byte_for_byte() {
+    let prefix = "# lead comment\nschema: spec-driven\n\nlocale: tw\ntdd: true\ncontext: |\n  line one\n\nreview:\n  critical:\n    - keep me # stays\n\n";
+    let doc = format!("{prefix}subagent_model:\n  review:\n    claude: opus # inline comment is not kept\n");
+    let want = subagent_cfg(&[("claude", "sonnet")], &[("codex", "gpt-6.1-sol")], &[]);
+    let out = rewrite_subagent(&doc, &want).expect("rewrite ok");
+    assert!(out.starts_with(prefix), "lines outside subagent_model are byte-identical, got:\n{out}");
+    assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("parses").subagent_model(), want);
+    // 區塊在中段時，其後的鍵也逐位元保留。
+    let doc = "schema: spec-driven\nsubagent_model:\n  verify:\n    claude: old\nfuture_key: keep # tail\n";
+    let out = rewrite_subagent(doc, &want).expect("rewrite ok");
+    assert!(out.ends_with("\nfuture_key: keep # tail\n"), "got:\n{out}");
+}
+
+#[test]
+fn subagent_model_write_on_a_crlf_document_keeps_crlf_line_endings() {
+    let want = subagent_cfg(&[("claude", "opus")], &[], &[("codex", &["a", "b"])]);
+    for doc in [
+        "schema: spec-driven\r\nlocale: tw\r\n",
+        "schema: spec-driven\r\nsubagent_model:\r\n  review:\r\n    claude: old\r\nlocale: tw\r\n",
+    ] {
+        let out = rewrite_subagent(doc, &want).expect("rewrite ok");
+        assert_all_crlf(&out);
+        assert_eq!(WorkflowConfig::from_text(Some(&out)).expect("parses").subagent_model(), want);
+    }
+}
+
+#[test]
+fn subagent_model_none_leaves_the_block_untouched() {
+    let block = "subagent_model:\n  review:\n    claude: opus # keep this comment\n";
+    let doc = format!("schema: spec-driven\ncontext: old\n{block}");
+    let out = update_workflow_config_text(
+        &doc,
+        &wf_fields_of(&doc),
+        &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() },
+    )
+    .expect("rewrite ok");
+    assert!(out.ends_with(block), "subagent_model block verbatim, got:\n{out}");
+}
+
+#[test]
+fn subagent_model_duplicate_tool_names_fail_closed() {
+    // review R1-W2：serde 的 BTreeMap 遇到重複鍵會留最後一個；讀取端要和寫入端一樣拒收，
+    // 不能讓手改出的兩行 claude 靜默只剩一行。
+    for (doc, needle) in [
+        ("subagent_model:\n  review:\n    claude: opus\n    claude: sonnet\n", "claude"),
+        ("subagent_model:\n  verify:\n    codex: a\n    codex: b\n", "codex"),
+        ("subagent_model:\n  choices:\n    pi: [a]\n    pi: [b]\n", "pi"),
+    ] {
+        let err = WorkflowConfig::from_text(Some(doc))
+            .expect_err(&format!("{doc:?} must be a config error"));
+        assert!(err.reason.contains("duplicate") && err.reason.contains(needle), "reason names the tool, got: {}", err.reason);
+    }
+}

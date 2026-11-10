@@ -808,6 +808,7 @@ fn content_edit<'a>(
         context: context.map_or(ContextEdit::Keep, ContextEdit::Set),
         rules: rules.as_deref(),
         review: review.as_ref(),
+        ..Default::default()
     }
 }
 

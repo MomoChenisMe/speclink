@@ -116,6 +116,63 @@ enum WorkflowConfigCommands {
         #[command(subcommand)]
         command: ReviewCommands,
     },
+    /// Set the model the quality stations' sub-agents use, per station and AI tool
+    #[command(subcommand_value_name = SUBAGENT_MODEL_COMMANDS.as_str())]
+    SubagentModel {
+        #[command(subcommand)]
+        command: SubagentModelCommands,
+    },
+}
+#[derive(Subcommand)]
+enum SubagentModelCommands {
+    /// Set the review station's sub-agent model for one AI tool (an empty model removes it)
+    Review(StationModelArgs),
+    /// Set the verify station's sub-agent model for one AI tool (an empty model removes it)
+    Verify(StationModelArgs),
+    /// Replace one AI tool's custom model list from stdin (empty input removes it)
+    Choices {
+        /// AI tool name in kebab-case (claude, codex, ...)
+        tool: String,
+        /// Read the model names from stdin (one per line)
+        #[arg(long)]
+        stdin: bool,
+        /// Print the unified diff instead of writing
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
+}
+#[derive(Args)]
+struct StationModelArgs {
+    /// AI tool name in kebab-case (claude, codex, ...)
+    tool: String,
+    /// Model name; an empty string removes the setting (the sub-agents follow the main conversation)
+    model: String,
+    /// Print the unified diff instead of writing
+    #[arg(long = "dry-run")]
+    dry_run: bool,
+}
+/// The two stations of the `subagent_model` block.
+#[derive(Clone, Copy)]
+enum SubagentStation {
+    Review,
+    Verify,
+}
+impl SubagentStation {
+    fn key(self) -> &'static str {
+        match self {
+            SubagentStation::Review => "review",
+            SubagentStation::Verify => "verify",
+        }
+    }
+    fn cells(
+        self,
+        block: &mut core::config::SubagentModelConfig,
+    ) -> &mut std::collections::BTreeMap<core::config::ToolName, String> {
+        match self {
+            SubagentStation::Review => &mut block.review,
+            SubagentStation::Verify => &mut block.verify,
+        }
+    }
 }
 #[derive(Subcommand)]
 enum ReviewCommands {
@@ -283,12 +340,16 @@ static SET_ABOUT: std::sync::LazyLock<String> =
 /// usage line, so the legal names must live there — grown from the subcommand
 /// definitions, so the usage can never name a different set.
 static REVIEW_COMMANDS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
-    ReviewCommands::augment_subcommands(clap::Command::new("review"))
-        .get_subcommands()
-        .map(|c| c.get_name().to_string())
-        .collect::<Vec<_>>()
-        .join("|")
+    subcommand_names(ReviewCommands::augment_subcommands(clap::Command::new("review")))
 });
+/// `subagent-model`'s usage placeholder, for the same reason as [`REVIEW_COMMANDS`].
+static SUBAGENT_MODEL_COMMANDS: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
+    subcommand_names(SubagentModelCommands::augment_subcommands(clap::Command::new("subagent-model")))
+});
+/// A subcommand group's names as one `a|b|c` usage placeholder.
+fn subcommand_names(group: clap::Command) -> String {
+    group.get_subcommands().map(|c| c.get_name().to_string()).collect::<Vec<_>>().join("|")
+}
 /// `workflow-config show --json` payload. camelCase field names are the contract;
 /// the values are CANONICAL (what the document says), never the three-layer
 /// resolution — effective policy is the instructions payload's job.
@@ -304,6 +365,8 @@ struct WorkflowConfigJson {
     context: Option<String>,
     rules: std::collections::BTreeMap<String, Vec<String>>,
     review: core::config::ReviewConfig,
+    subagent_model: core::config::SubagentModelConfig,
+    builtin_subagent_models: std::collections::BTreeMap<&'static str, &'static [&'static str]>,
 }
 /// A write subcommand once argv and stdin are resolved — the shape both the fs
 /// and the remote branch hand to the shared rewrite.
@@ -313,6 +376,8 @@ enum WorkflowConfigWrite {
     Rules { artifact: String, body: String },
     ReviewList { list: ReviewList, body: String },
     ReviewBaseline(core::config::ReviewBaseline),
+    SubagentCell { station: SubagentStation, tool: core::config::ToolName, model: String },
+    SubagentChoices { tool: core::config::ToolName, body: String },
 }
 /// The rewrite a write subcommand produces: the complete new document plus the
 /// line printed on a successful write.
@@ -355,7 +420,7 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
     core::util::write_file(&path, &edit.new_text)
         .map_err(|e| anyhow::anyhow!("{label}: write failed: {e}"))?;
     println!("{} {}", color::green("✓"), edit.summary);
-    warn_if_review_skills_stale(&ws.root, &write);
+    warn_if_station_skills_stale(&ws.root, &write);
     // 只同步技能檔：規格資料夾的遷移只走 `speclink update`（desktop-spec-dir-migration D6）。
     if worktree_target.is_some() {
         let outcome = core::init::sync_skills(&ws.root).map_err(|e| {
@@ -369,15 +434,21 @@ fn workflow_config_fs(plan: WorkflowConfigPlan) -> Result<()> {
     }
     Ok(())
 }
-/// Review rules reach the review station only through its skill file (every
-/// other field is injected by the CLI), so after a review write the local skill
-/// files are probed and a stale tool earns a stderr hint. No hint when the
-/// workspace is newer (update would downgrade) or the probe cannot tell; a tool
-/// whose skills are missing altogether is not stale.
-fn warn_if_review_skills_stale(root: &std::path::Path, write: &WorkflowConfigWrite) {
-    if !matches!(write, WorkflowConfigWrite::ReviewList { .. } | WorkflowConfigWrite::ReviewBaseline(_)) {
-        return;
-    }
+/// Review rules and sub-agent models reach the quality stations only through
+/// their skill files (every other field is injected by the CLI), so after such a
+/// write the local skill files are probed and a stale tool earns a stderr hint.
+/// No hint when the workspace is newer (update would downgrade) or the probe
+/// cannot tell; a tool whose skills are missing altogether is not stale.
+fn warn_if_station_skills_stale(root: &std::path::Path, write: &WorkflowConfigWrite) {
+    let consequence = match write {
+        WorkflowConfigWrite::ReviewList { .. } | WorkflowConfigWrite::ReviewBaseline(_) => {
+            "an older review skill may not apply these rules"
+        }
+        WorkflowConfigWrite::SubagentCell { .. } | WorkflowConfigWrite::SubagentChoices { .. } => {
+            "an older quality-station skill may not apply this sub-agent model"
+        }
+        _ => return,
+    };
     let probe = core::init::probe_assets(root);
     if matches!(probe.status, core::init::AssetStatus::Newer | core::init::AssetStatus::Unknown) {
         return;
@@ -392,7 +463,7 @@ fn warn_if_review_skills_stale(root: &std::path::Path, write: &WorkflowConfigWri
         return;
     }
     eprintln!(
-        "speclink: warning: skill files are older than this engine ({}; engine {}) — an older review skill may not apply these rules; run `speclink update`",
+        "speclink: warning: skill files are older than this engine ({}; engine {}) — {consequence}; run `speclink update`",
         stale.join(", "),
         probe.current_version
     );
@@ -449,7 +520,25 @@ fn workflow_config_write(
             ))
         }
         WorkflowConfigCommands::Review { command } => Some(review_write(command)?),
+        WorkflowConfigCommands::SubagentModel { command } => Some(subagent_model_write(command)?),
     })
+}
+/// `subagent-model <review|verify> <tool> <model>` and `subagent-model choices
+/// <tool> --stdin` resolved into a write. The tool name is checked here, before
+/// any file is read, with the same rule the config parser applies.
+fn subagent_model_write(cmd: &SubagentModelCommands) -> Result<(WorkflowConfigWrite, bool)> {
+    let parse = |tool: &str| core::config::ToolName::parse(tool).map_err(|e| anyhow::anyhow!("{e}"));
+    let (station, args) = match cmd {
+        SubagentModelCommands::Review(args) => (SubagentStation::Review, args),
+        SubagentModelCommands::Verify(args) => (SubagentStation::Verify, args),
+        SubagentModelCommands::Choices { tool, stdin, dry_run } => {
+            let tool = parse(tool)?;
+            require_stdin_flag(*stdin, &format!("subagent-model choices {tool} --stdin"))?;
+            return Ok((WorkflowConfigWrite::SubagentChoices { tool, body: read_stdin() }, *dry_run));
+        }
+    };
+    let write = WorkflowConfigWrite::SubagentCell { station, tool: parse(&args.tool)?, model: args.model.clone() };
+    Ok((write, args.dry_run))
 }
 /// `review <list> --stdin` and `review baseline <mode>` resolved into a write.
 fn review_write(cmd: &ReviewCommands) -> Result<(WorkflowConfigWrite, bool)> {
@@ -491,6 +580,8 @@ fn print_workflow_config(original: &str, label: &str, json: bool) -> Result<()> 
             context: cfg.context_text(),
             rules: cfg.rules.clone(),
             review: cfg.review(),
+            subagent_model: cfg.subagent_model(),
+            builtin_subagent_models: core::config::BUILTIN_SUBAGENT_MODELS.iter().copied().collect(),
         });
     }
     println!("{} {label}", color::bold("Workflow config:"));
@@ -574,6 +665,8 @@ fn plan_workflow_config_edit(
     let mut rules: Option<Vec<(String, Vec<String>)>> = None;
     // review is handed over whole: the current block with only the edited key moved.
     let mut review: Option<core::config::ReviewConfig> = None;
+    // subagent_model likewise: the current block with only the edited cell or list moved.
+    let mut subagent_model: Option<core::config::SubagentModelConfig> = None;
     let summary = match write {
         WorkflowConfigWrite::Policy { key, value } => {
             set_policy_field(&mut fields, key, value)?;
@@ -620,13 +713,60 @@ fn plan_workflow_config_edit(
             let default = if *baseline == core::config::ReviewBaseline::default() { " (default)" } else { "" };
             format!("review.baseline = {}{default}", baseline.as_str())
         }
+        WorkflowConfigWrite::SubagentCell { station, tool, model } => {
+            let key = format!("subagent_model.{}.{tool}", station.key());
+            let mut target = current.subagent_model();
+            let model = model.trim();
+            let summary = if model.is_empty() {
+                station.cells(&mut target).remove(tool.as_str());
+                format!("{key} removed")
+            } else {
+                station.cells(&mut target).insert(tool.clone(), model.to_string());
+                format!("{key} = {model}")
+            };
+            changed_subagent_model(&mut subagent_model, &current, target, key, summary)
+        }
+        WorkflowConfigWrite::SubagentChoices { tool, body } => {
+            let key = format!("subagent_model.choices.{tool}");
+            let entries = stdin_entries(body);
+            let summary = list_summary(&key, entries.len());
+            let mut target = current.subagent_model();
+            if entries.is_empty() {
+                target.choices.remove(tool.as_str());
+            } else {
+                target.choices.insert(tool.clone(), entries);
+            }
+            changed_subagent_model(&mut subagent_model, &current, target, key, summary)
+        }
     };
     let new_text = core::config::update_workflow_config_text(
         original,
         &fields,
-        &core::config::ContentEdit { context, rules: rules.as_deref(), review: review.as_ref() },
+        &core::config::ContentEdit {
+            context,
+            rules: rules.as_deref(),
+            review: review.as_ref(),
+            subagent_model: subagent_model.as_ref(),
+        },
     )?;
     Ok(WorkflowConfigEdit { new_text, summary })
+}
+/// Hand a `subagent_model` edit to the rewrite only when it moves something: a
+/// write that leaves the block as it is (a cell removed that was not set, the
+/// same model again) keeps the block untouched, comments and hand-written
+/// layout included, and says `<key> unchanged`.
+fn changed_subagent_model(
+    edit: &mut Option<core::config::SubagentModelConfig>,
+    current: &core::config::WorkflowConfig,
+    target: core::config::SubagentModelConfig,
+    key: String,
+    summary: String,
+) -> String {
+    if target == current.subagent_model() {
+        return format!("{key} unchanged");
+    }
+    *edit = Some(target);
+    summary
 }
 /// stdin as list entries: one per line, trimmed, blank lines skipped.
 fn stdin_entries(body: &str) -> Vec<String> {
@@ -823,7 +963,7 @@ fn remote_workflow_config(
         .map_err(remote_config_write_error)?;
     println!("{} {}", color::green("✓"), edit.summary);
     // 技能檔永遠在本機 checkout：remote 只把 config 存到 server。
-    warn_if_review_skills_stale(&ctx.ws.root, &write);
+    warn_if_station_skills_stale(&ctx.ws.root, &write);
     Ok(())
 }
 /// The CAS refusal restated in this verb's own terms — the generic
