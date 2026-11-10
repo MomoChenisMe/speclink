@@ -1,0 +1,9 @@
+[package]
+name = "speclink-store-port"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Store port contract implemented by the host: list, read and commit over string keys, the conformance suite, and an in-memory reference implementation"
+
+[dependencies]
+serde_json = { workspace = true }

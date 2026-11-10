@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "change": "store-port-contract",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 依 D1 新增套件 speclink-store-port 並加入 workspace 成員：完成後 workspace 多一個能建置的空 crate，且它不依賴引擎與既有的儲存層。涉及 Cargo.toml、Cargo.lock、crates/store/speclink-store-port/Cargo.toml、crates/store/speclink-store-port/src/lib.rs。驗證：`cargo build -p speclink-store-port` 通過；`cargo tree -p speclink-store-port` 的輸出不含 speclink-core 與 speclink-store。",
+      "files": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/store/speclink-store-port/Cargo.toml",
+        "crates/store/speclink-store-port/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 （Red）為 D3、D4、D5 的值型別寫邊界測試，涵蓋「文件鍵的格式」的九列對照（合法鍵、空字串、513 個位元組、以 `/` 開頭或結尾、空的段、`..` 的段、反斜線、控制字元）、範圍識別的 1 到 256 個位元組、前綴允許空字串、「版本號的型別與遞增」的上限 9007199254740991 與超出一個值被拒絕、時間的同一個上限。涉及 crates/store/speclink-store-port/src/types.rs。驗證：`cargo test -p speclink-store-port types::` 因型別還不存在而失敗。",
+      "files": [
+        "crates/store/speclink-store-port/src/types.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.2 （Green）實作 `ScopeId`、`DocKey`、`KeyPrefix`、`Version`、`Timestamp`、`Actor`、`InvalidValue` 與常數 `MAX_VERSION`、`MAX_KEY_BYTES`、`MAX_SCOPE_BYTES`：每個值只能經建構函式取得，不合格式時回傳的 `InvalidValue` 指出是哪個值違反哪一條規則。涉及 crates/store/speclink-store-port/src/types.rs、crates/store/speclink-store-port/src/error.rs。驗證：`cargo test -p speclink-store-port types::` 全部通過。",
+      "files": [
+        "crates/store/speclink-store-port/src/error.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 （Red）為 D9 的 `keys` 模組寫對照表測試：「鍵的命名規則」的十列（變更的 metadata、artifact、evidence、已封存變更的文件、正式規格、討論、已封存的討論、流程設定、詞彙表、看板順序）各自得到規格列出的鍵；空字串或含 `/` 的變更名稱、capability 名稱、slug 被拒絕；`changes/` 前綴常數不是任何已封存鍵的開頭。涉及 crates/store/speclink-store-port/src/keys.rs。驗證：`cargo test -p speclink-store-port keys::` 失敗。",
+      "files": [
+        "crates/store/speclink-store-port/src/keys.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 （Red）依 D11 建立 `conformance` 模組的骨架：`PortHarness`、`ConformanceReport`、`CheckResult`、`CheckOutcome`、入口 `run`，以及十六項檢查的穩定名稱。先寫兩個測試：`MemoryStorePort` 經 `run` 得到通過的報告且沒有略過；對一個三個操作一律回傳後端錯誤的儲存，報告仍列出全部十六項、不 panic（對應「合格測試對任何實作跑同一組檢查」的不中止）。涉及 crates/store/speclink-store-port/src/conformance/mod.rs、crates/store/speclink-store-port/src/memory.rs。驗證：`cargo test -p speclink-store-port` 的這兩個測試失敗。",
+      "files": [
+        "crates/store/speclink-store-port/src/conformance/mod.rs",
+        "crates/store/speclink-store-port/src/memory.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72T9VH52SSK2PXK18FSJFKK",
+      "taskDesc": "1.1 依 D1 新增套件 speclink-store-port 並加入 workspace 成員：完成後 workspace 多一個能建置的空 crate，且它不依賴引擎與既有的儲存層。涉及 Cargo.toml、Cargo.lock、crates/store/speclink-store-port/Cargo.toml、crates/store/speclink-store-port/src/lib.rs。驗證：`cargo build -p speclink-store-port` 通過；`cargo tree -p speclink-store-port` 的輸出不含 speclink-core 與 speclink-store。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "Cargo.lock",
+        "Cargo.toml",
+        "crates/store/speclink-store-port/Cargo.toml",
+        "crates/store/speclink-store-port/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-10T14:05:26Z"
+    },
+    {
+      "taskId": "tsk_01M72T9VH5A8VEY7DTJPGXB6S5",
+      "taskDesc": "2.1 （Red）為 D3、D4、D5 的值型別寫邊界測試，涵蓋「文件鍵的格式」的九列對照（合法鍵、空字串、513 個位元組、以 `/` 開頭或結尾、空的段、`..` 的段、反斜線、控制字元）、範圍識別的 1 到 256 個位元組、前綴允許空字串、「版本號的型別與遞增」的上限 9007199254740991 與超出一個值被拒絕、時間的同一個上限。涉及 crates/store/speclink-store-port/src/types.rs。驗證：`cargo test -p speclink-store-port types::` 因型別還不存在而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/store/speclink-store-port/src/types.rs"
+      ],
+      "recordedAt": "2026-11-10T14:06:04Z"
+    },
+    {
+      "taskId": "tsk_01M72T9VH5PTFA0DQ2B1A1PHKA",
+      "taskDesc": "2.2 （Green）實作 `ScopeId`、`DocKey`、`KeyPrefix`、`Version`、`Timestamp`、`Actor`、`InvalidValue` 與常數 `MAX_VERSION`、`MAX_KEY_BYTES`、`MAX_SCOPE_BYTES`：每個值只能經建構函式取得，不合格式時回傳的 `InvalidValue` 指出是哪個值違反哪一條規則。涉及 crates/store/speclink-store-port/src/types.rs、crates/store/speclink-store-port/src/error.rs。驗證：`cargo test -p speclink-store-port types::` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/store/speclink-store-port/src/error.rs"
+      ],
+      "recordedAt": "2026-11-10T14:06:57Z"
+    },
+    {
+      "taskId": "tsk_01M72T9VH53G841H1VNSZCCAZ1",
+      "taskDesc": "3.1 （Red）為 D9 的 `keys` 模組寫對照表測試：「鍵的命名規則」的十列（變更的 metadata、artifact、evidence、已封存變更的文件、正式規格、討論、已封存的討論、流程設定、詞彙表、看板順序）各自得到規格列出的鍵；空字串或含 `/` 的變更名稱、capability 名稱、slug 被拒絕；`changes/` 前綴常數不是任何已封存鍵的開頭。涉及 crates/store/speclink-store-port/src/keys.rs。驗證：`cargo test -p speclink-store-port keys::` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/store/speclink-store-port/src/keys.rs"
+      ],
+      "recordedAt": "2026-11-10T14:08:49Z"
+    },
+    {
+      "taskId": "tsk_01M72T9VH50A5PZMXPT2FZTH9D",
+      "taskDesc": "4.1 （Red）依 D11 建立 `conformance` 模組的骨架：`PortHarness`、`ConformanceReport`、`CheckResult`、`CheckOutcome`、入口 `run`，以及十六項檢查的穩定名稱。先寫兩個測試：`MemoryStorePort` 經 `run` 得到通過的報告且沒有略過；對一個三個操作一律回傳後端錯誤的儲存，報告仍列出全部十六項、不 panic（對應「合格測試對任何實作跑同一組檢查」的不中止）。涉及 crates/store/speclink-store-port/src/conformance/mod.rs、crates/store/speclink-store-port/src/memory.rs。驗證：`cargo test -p speclink-store-port` 的這兩個測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9d781c0670442ecd93a8c5ecd69ca389ca2474e4",
+      "touchedFiles": [
+        "crates/store/speclink-store-port/src/conformance/mod.rs",
+        "crates/store/speclink-store-port/src/memory.rs"
+      ],
+      "recordedAt": "2026-11-10T14:10:17Z"
+    }
+  ]
+}
