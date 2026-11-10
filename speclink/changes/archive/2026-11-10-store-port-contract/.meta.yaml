@@ -1,0 +1,57 @@
+schema: spec-driven
+created: 2026-11-10T21:22:55+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs
+started_at: 2026-11-10T22:02:01+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-10T23:49:44+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 15
+reviewed_rounds: 2
+reviewed_scope:
+  - path: Cargo.lock
+    hash: 231d56c589f1bfce5599e82ce3084afc0ffdddcfc4b02e7831d9d830b2c382e8
+  - path: Cargo.toml
+    hash: d7e22e8d0f25270e9aff54e7e13acb426cd308eb704ad9ce0621fabe1933c654
+  - path: crates/store/speclink-store-port/Cargo.toml
+    hash: 4e7968d7d8922c992dc14a81b9ebc17f5a18946b1c6f88db9f60137e608451d6
+  - path: crates/store/speclink-store-port/src/conformance/mod.rs
+    hash: ce41563ab46049fb0b130d28674bb5c1a51710afcea334e5c8bd1f0a032f6f1d
+  - path: crates/store/speclink-store-port/src/error.rs
+    hash: f5922d735cc3ea30ce882cbc3859faacef6a03890583eb568417f4e943487c15
+  - path: crates/store/speclink-store-port/src/keys.rs
+    hash: 5fd458241f9ac5724ce34380b46da8af3ebdde362b0db67ec7fe830bbfb1071b
+  - path: crates/store/speclink-store-port/src/lib.rs
+    hash: 8a9dd19a371fb9be83c99fe6616c27c936d655911a8b86b4224ae843088f3c31
+  - path: crates/store/speclink-store-port/src/memory.rs
+    hash: ef988dc8d68bb72db70375d46b3c48bfc8363d481eb81beb1aac0ab85688beea
+  - path: crates/store/speclink-store-port/src/types.rs
+    hash: 681d61c0d81d9a30e9477db8194451af48116e6e46eb96f32703d4b7d0e322ff
+verified_at: 2026-11-10T23:49:54+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 15
+verified_rounds: 2
+verified_scope:
+  - path: Cargo.lock
+    hash: 231d56c589f1bfce5599e82ce3084afc0ffdddcfc4b02e7831d9d830b2c382e8
+  - path: Cargo.toml
+    hash: d7e22e8d0f25270e9aff54e7e13acb426cd308eb704ad9ce0621fabe1933c654
+  - path: crates/store/speclink-store-port/Cargo.toml
+    hash: 4e7968d7d8922c992dc14a81b9ebc17f5a18946b1c6f88db9f60137e608451d6
+  - path: crates/store/speclink-store-port/src/conformance/mod.rs
+    hash: ce41563ab46049fb0b130d28674bb5c1a51710afcea334e5c8bd1f0a032f6f1d
+  - path: crates/store/speclink-store-port/src/error.rs
+    hash: f5922d735cc3ea30ce882cbc3859faacef6a03890583eb568417f4e943487c15
+  - path: crates/store/speclink-store-port/src/keys.rs
+    hash: 5fd458241f9ac5724ce34380b46da8af3ebdde362b0db67ec7fe830bbfb1071b
+  - path: crates/store/speclink-store-port/src/lib.rs
+    hash: 8a9dd19a371fb9be83c99fe6616c27c936d655911a8b86b4224ae843088f3c31
+  - path: crates/store/speclink-store-port/src/memory.rs
+    hash: ef988dc8d68bb72db70375d46b3c48bfc8363d481eb81beb1aac0ab85688beea
+  - path: crates/store/speclink-store-port/src/types.rs
+    hash: 681d61c0d81d9a30e9477db8194451af48116e6e46eb96f32703d4b7d0e322ff
+archived_at: 2026-11-10T23:52:03+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

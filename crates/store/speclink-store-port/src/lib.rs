@@ -105,39 +105,18 @@ pub trait StorePort: Send + Sync {
 mod tests {
     use super::*;
 
-    struct Unreachable;
-
-    impl StorePort for Unreachable {
-        fn list(&self, _: &ScopeId, _: &KeyPrefix) -> Result<Listing, PortError> {
-            Err(PortError::Unavailable {
-                message: "offline".into(),
-            })
-        }
-
-        fn read(&self, _: &ScopeId, _: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-            Err(PortError::Unavailable {
-                message: "offline".into(),
-            })
-        }
-
-        fn commit(&self, _: &ScopeId, _: &Commit) -> Result<Version, PortError> {
-            Err(PortError::Unavailable {
-                message: "offline".into(),
-            })
-        }
-    }
-
     #[test]
     fn a_store_object_is_shared_across_threads() {
-        let store: &dyn StorePort = &Unreachable;
+        let store: &dyn StorePort = &MemoryStorePort::new();
         let scope = ScopeId::new("s").unwrap();
         let prefix = KeyPrefix::new("").unwrap();
-        let result = std::thread::scope(|threads| {
+        let listing = std::thread::scope(|threads| {
             threads
                 .spawn(|| store.list(&scope, &prefix))
                 .join()
                 .unwrap()
-        });
-        assert!(matches!(result, Err(PortError::Unavailable { .. })));
+        })
+        .unwrap();
+        assert_eq!(listing.version, Version::ZERO);
     }
 }

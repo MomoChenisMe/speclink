@@ -21,12 +21,12 @@ pub const DISCUSSIONS: &str = "discussions/";
 pub const ARCHIVED_DISCUSSIONS: &str = "archive/discussions/";
 
 /// A name that becomes exactly one key segment.
-fn segment<'a>(value: &'static str, name: &'a str) -> Result<&'a str, InvalidValue> {
+fn segment<'a>(kind: &'static str, name: &'a str) -> Result<&'a str, InvalidValue> {
     if name.is_empty() {
-        return Err(InvalidValue::new(value, "must not be empty"));
+        return Err(InvalidValue::new(kind, "must not be empty"));
     }
     if name.contains('/') {
-        return Err(InvalidValue::new(value, "must not contain '/'"));
+        return Err(InvalidValue::new(kind, "must not contain '/'"));
     }
     Ok(name)
 }
@@ -40,8 +40,18 @@ fn is_date(text: &[u8]) -> bool {
         })
 }
 
+/// A change name is one segment, and not `archive`: a local project keeps
+/// its archived changes in `changes/archive/`.
 fn change_name(name: &str) -> Result<&str, InvalidValue> {
-    segment("change name", name)
+    const KIND: &str = "change name";
+    let name = segment(KIND, name)?;
+    if name == "archive" {
+        return Err(InvalidValue::new(
+            KIND,
+            "must not be 'archive', the local folder of archived changes",
+        ));
+    }
+    Ok(name)
 }
 
 /// `changes/<name>/.meta.yaml`
@@ -64,12 +74,12 @@ pub fn change_evidence(name: &str) -> Result<DocKey, InvalidValue> {
 /// date, a `-` and the change name (`2026-11-10-add-x`). The document path
 /// can have several segments.
 pub fn archived_change_doc(dated_name: &str, doc: &str) -> Result<DocKey, InvalidValue> {
-    const VALUE: &str = "archived change name";
-    let dated_name = segment(VALUE, dated_name)?;
+    const KIND: &str = "archived change name";
+    let dated_name = segment(KIND, dated_name)?;
     let bytes = dated_name.as_bytes();
     if bytes.len() < 12 || !is_date(&bytes[..10]) || bytes[10] != b'-' {
         return Err(InvalidValue::new(
-            VALUE,
+            KIND,
             "must be a date in the form YYYY-MM-DD, a '-' and the change name",
         ));
     }
@@ -91,11 +101,11 @@ pub fn discussion(slug: &str) -> Result<DocKey, InvalidValue> {
 /// `archive/discussions/<created>-<slug>.md`, where `created` is the
 /// discussion's creation date (`2026-11-10`).
 pub fn archived_discussion(created: &str, slug: &str) -> Result<DocKey, InvalidValue> {
-    const VALUE: &str = "creation date";
-    let created = segment(VALUE, created)?;
+    const KIND: &str = "creation date";
+    let created = segment(KIND, created)?;
     if !is_date(created.as_bytes()) {
         return Err(InvalidValue::new(
-            VALUE,
+            KIND,
             "must be a date in the form YYYY-MM-DD",
         ));
     }
@@ -128,7 +138,7 @@ mod tests {
     use crate::KeyPrefix;
 
     fn rule(err: InvalidValue) -> (&'static str, String) {
-        (err.value(), err.rule().to_string())
+        (err.kind(), err.rule().to_string())
     }
 
     #[test]
@@ -208,6 +218,25 @@ mod tests {
             rule(archived_change_doc("", "proposal.md").unwrap_err()),
             ("archived change name", "must not be empty".to_string())
         );
+    }
+
+    #[test]
+    fn a_change_cannot_be_named_after_the_archive_folder() {
+        // 本機的 changes/archive/ 是封存資料夾，變更叫 archive 會撞名。
+        for err in [
+            change_meta("archive").unwrap_err(),
+            change_artifact("archive", "proposal.md").unwrap_err(),
+            change_evidence("archive").unwrap_err(),
+        ] {
+            assert_eq!(
+                rule(err),
+                (
+                    "change name",
+                    "must not be 'archive', the local folder of archived changes".to_string()
+                )
+            );
+        }
+        assert!(change_meta("archive-old").is_ok());
     }
 
     #[test]
