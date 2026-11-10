@@ -4,8 +4,12 @@ import { Slot, Slottable } from "@radix-ui/react-slot";
 import { cn } from "../lib/utils";
 
 export interface NavItemProps {
-  icon: ReactNode;
+  /** 子項變體不傳。 */
+  icon?: ReactNode;
   label: string;
+  /** `sub`：上層分類底下的子項——無圖示、28px 高、文字左緣與預設變體的文字對齊
+   *  （左內距 10px＋圖示 16px＋間距 8px＝34px）。 */
+  variant?: "default" | "sub";
   active?: boolean;
   /** 右端計數徽章（如已封存數）；未給即不渲染。 */
   count?: number;
@@ -25,6 +29,7 @@ export interface NavItemProps {
 export function NavItem({
   icon,
   label,
+  variant = "default",
   active,
   count,
   badge,
@@ -42,12 +47,13 @@ export function NavItem({
       aria-current={active ? "page" : undefined}
       onClick={onClick}
       className={cn(
-        "flex h-8 w-full items-center gap-2 rounded-lg px-2.5 text-[13px] transition-colors [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        "flex w-full items-center gap-2 rounded-lg text-[13px] transition-colors [&_svg]:h-4 [&_svg]:w-4 [&_svg]:shrink-0",
+        variant === "sub" ? "h-7 pl-[34px] pr-2.5" : "h-8 px-2.5",
         active ? "bg-primary/12 font-medium text-primary" : "text-foreground hover:bg-foreground/5",
         className,
       )}
     >
-      {icon}
+      {variant === "default" && icon}
       {asChild && <Slottable>{children}</Slottable>}
       <span className="truncate">{label}</span>
       {badge}

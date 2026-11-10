@@ -140,6 +140,19 @@ describe("createLocalSession（spec「每個 session 自帶 dataSource 且 Rust 
     ]);
   });
 
+  it("子代理模型寫入只帶 subagentModel：context、rules、review 為 null（desktop-subagent-model-page）", async () => {
+    const { calls, invoke } = fakeInvoke();
+    const settings = createLocalSession(ROOT, { invoke }).settings;
+    const subagentModel = { review: { claude: "opus" }, verify: {}, choices: { codex: ["gpt-6.1-sol"] } };
+    await settings.writeWorkflowSubagentModel(subagentModel);
+    expect(calls).toEqual([
+      {
+        cmd: "write_workflow_content",
+        args: { root: ROOT, context: null, rules: null, review: null, subagentModel },
+      },
+    ]);
+  });
+
   it("產出流程五方法各自呼叫對應 command（desktop-schema-panel D2/D5/D6）", async () => {
     const { calls, invoke } = fakeInvoke();
     const settings = createLocalSession(ROOT, { invoke }).settings;
@@ -291,5 +304,40 @@ describe("upsertTab 以 locator key 去重（spec「同一專案重複開啟仍�
     });
     expect(tabs).toHaveLength(1);
     expect(tabs[0].locator).toEqual(newLocator);
+  });
+});
+
+describe("createRemoteSession 子代理模型寫入（desktop-subagent-model-page）", () => {
+  it("送 remote_write_workflow_content、只帶 subagentModel，並附讀得的 expectedRevision；成功回新 revision", async () => {
+    const calls: Array<{ cmd: string; args?: Record<string, unknown> }> = [];
+    const invoke = async <T,>(cmd: string, args?: Record<string, unknown>): Promise<T> => {
+      calls.push({ cmd, args });
+      const results: Record<string, unknown> = {
+        remote_read_settings: { app: { tools: [], customTools: [], parseError: null }, workflow: { revision: 7 } },
+        remote_write_workflow_content: 8,
+      };
+      return results[cmd] as T;
+    };
+    const info: RemoteOpenInfo = {
+      projectKey: "demo",
+      projectName: "Demo",
+      repoKey: "backend",
+      repoName: "Backend",
+      capabilities: REMOTE_CAPS,
+    };
+    const settings = createRemoteSession("c1", info, undefined, { invoke }).settings;
+    await settings.readSettings();
+    const subagentModel = { review: { claude: "opus" }, verify: {}, choices: {} };
+    await expect(settings.writeWorkflowSubagentModel(subagentModel)).resolves.toBe(8);
+    expect(calls.find((call) => call.cmd === "remote_write_workflow_content")?.args).toEqual({
+      connectionId: "c1",
+      project: "demo",
+      repo: "backend",
+      context: null,
+      rules: null,
+      review: null,
+      subagentModel,
+      expectedRevision: 7,
+    });
   });
 });

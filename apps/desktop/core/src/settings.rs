@@ -11,7 +11,9 @@ use speclink_core::skills::Tool;
 use speclink_core::workspace::Workspace;
 
 // Tauri 殼經本 crate 取用政策欄位與 context 三態型別，不直接依賴 speclink-core。
-pub use speclink_core::config::{ContentEdit, ContextEdit, ReviewConfig, WorkflowPolicyFields};
+pub use speclink_core::config::{
+    ContentEdit, ContextEdit, ReviewConfig, SubagentModelConfig, WorkflowPolicyFields,
+};
 
 /// 設定頁載入快照：兩檔各自的欄位現值與可選的解析錯誤。
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -53,6 +55,10 @@ pub struct WorkflowSettings {
     pub review: ReviewConfig,
     /// 審查技能 smell baseline 的 12 個名稱，由引擎單一提供——前端只顯示、不另存。
     pub review_baseline_smells: Vec<String>,
+    /// 「子代理模型」頁的現值；未寫 subagent_model 時為三個空 map。
+    pub subagent_model: SubagentModelConfig,
+    /// 引擎的內建子代理模型清單（工具名稱 → 名稱），由引擎單一提供——前端只顯示、不另存。
+    pub builtin_subagent_models: BTreeMap<String, Vec<String>>,
     pub schema_artifacts: Vec<String>,
     /// 活躍 schema 名稱（config 的 schema 鍵；缺席時預設 spec-driven）——
     /// 產出流程節下拉的現值。壞檔時給空字串（不呈現猜測值）。
@@ -144,6 +150,8 @@ fn workflow_settings_from_text(
                 rules: cfg.rules.clone(),
                 review: cfg.review(),
                 review_baseline_smells: review_baseline_smells(),
+                subagent_model: cfg.subagent_model(),
+                builtin_subagent_models: builtin_subagent_models(),
                 schema_artifacts,
                 schema_name: cfg.schema_name(),
                 schema_known,
@@ -160,6 +168,8 @@ fn workflow_settings_from_text(
             rules: Default::default(),
             review: ReviewConfig::default(),
             review_baseline_smells: review_baseline_smells(),
+            subagent_model: SubagentModelConfig::default(),
+            builtin_subagent_models: builtin_subagent_models(),
             // 壞檔無從得知活躍 schema——不呈現猜測的分節（表單一併停用）。
             schema_artifacts: Vec::new(),
             schema_name: String::new(),
@@ -171,6 +181,13 @@ fn workflow_settings_from_text(
 
 fn review_baseline_smells() -> Vec<String> {
     speclink_core::skills::REVIEW_BASELINE_SMELLS.iter().map(|name| name.to_string()).collect()
+}
+
+fn builtin_subagent_models() -> BTreeMap<String, Vec<String>> {
+    speclink_core::config::BUILTIN_SUBAGENT_MODELS
+        .iter()
+        .map(|(tool, names)| (tool.to_string(), names.iter().map(|name| name.to_string()).collect()))
+        .collect()
 }
 
 /// 活躍 schema 的解析結果：artifact id 圖（引擎顯示序＝`status::display_order`
@@ -483,13 +500,14 @@ pub fn write_workflow_content_at(root: &Path, edit: &ContentEdit) -> Result<(), 
         &expected.context,
         &expected.rules,
         &expected.review(),
+        &expected.subagent_model(),
         &fields,
         &file,
         "verify after write",
     )
 }
 
-/// 純文字 context/rules/review targeted-key 改寫 seam。政策欄位從原文讀出再原樣
+/// 純文字 context/rules/review/subagent_model targeted-key 改寫 seam。政策欄位從原文讀出再原樣
 /// 回填，讓 remote 與 local 共用同一份未觸及鍵與清空移除語意。
 pub fn rewrite_workflow_content_text(original: &str, edit: &ContentEdit) -> Result<String, String> {
     rewrite_workflow_content_text_for(original, edit, "config.yaml")
@@ -500,8 +518,7 @@ fn rewrite_workflow_content_text_for(
     edit: &ContentEdit,
     file: &str,
 ) -> Result<String, String> {
-    // subagent_model 由子代理模型頁寫入（屬第二刀）；這裡沒有它的期望值，文字手術讓它原樣保留。
-    let ContentEdit { context, rules, review, .. } = edit;
+    let ContentEdit { context, rules, review, subagent_model } = edit;
     let current = WorkflowConfig::from_text(Some(original)).map_err(|e| {
         format!("{file}: rewrite verification failed: {}", single_line(&e.reason))
     })?;
@@ -530,6 +547,10 @@ fn rewrite_workflow_content_text_for(
             suggestion: cleaned_entries(&r.suggestion),
         },
     };
+    let want_subagent_model = match subagent_model {
+        None => current.subagent_model(),
+        Some(s) => cleaned_subagent_model(s),
+    };
     let new_text =
         speclink_core::config::update_workflow_config_text(original, &fields, edit)
             .map_err(|e| single_line(&e.to_string()))?;
@@ -538,6 +559,7 @@ fn rewrite_workflow_content_text_for(
         &want_context,
         &want_rules,
         &want_review,
+        &want_subagent_model,
         &fields,
         file,
         "rewrite verification",
@@ -554,6 +576,31 @@ fn cleaned_entries(entries: &[String]) -> Vec<String> {
         .collect()
 }
 
+/// 模型值去頭尾空白、空值丟棄；清單條目同 `cleaned_entries`、空清單丟棄——
+/// 與 core 寫入接縫相同的清理，作為驗證的期望值。
+fn cleaned_subagent_model(s: &SubagentModelConfig) -> SubagentModelConfig {
+    let cells = |map: &BTreeMap<speclink_core::config::ToolName, String>| {
+        map.iter()
+            .filter_map(|(tool, model)| {
+                let model = model.trim();
+                (!model.is_empty()).then(|| (tool.clone(), model.to_string()))
+            })
+            .collect()
+    };
+    SubagentModelConfig {
+        review: cells(&s.review),
+        verify: cells(&s.verify),
+        choices: s
+            .choices
+            .iter()
+            .filter_map(|(tool, entries)| {
+                let entries = cleaned_entries(entries);
+                (!entries.is_empty()).then(|| (tool.clone(), entries))
+            })
+            .collect(),
+    }
+}
+
 fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
     WorkflowPolicyFields {
         locale: config.locale.clone(),
@@ -566,12 +613,14 @@ fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
     }
 }
 
-/// 驗證一份 config.yaml 文字可解析，且 context／rules／review 與政策欄位皆為期望值。
+/// 驗證一份 config.yaml 文字可解析，且 context／rules／review／subagent_model 與政策欄位皆為期望值。
+#[allow(clippy::too_many_arguments)]
 fn verify_workflow_content_text(
     text: &str,
     want_context: &Option<String>,
     want_rules: &BTreeMap<String, Vec<String>>,
     want_review: &ReviewConfig,
+    want_subagent_model: &SubagentModelConfig,
     fields: &WorkflowPolicyFields,
     file: &str,
     stage: &str,
@@ -581,6 +630,7 @@ fn verify_workflow_content_text(
     if cfg.context == *want_context
         && cfg.rules == *want_rules
         && cfg.review() == *want_review
+        && cfg.subagent_model() == *want_subagent_model
         && cfg.locale == fields.locale
         && cfg.spec_locale == fields.spec_locale
         && cfg.tdd.unwrap_or(false) == fields.tdd
@@ -1705,5 +1755,140 @@ mod tests {
         let output = rewrite_workflow_content_text(original, &ContentEdit { context: ContextEdit::Set("new".into()), ..Default::default() })
             .expect("rewrite");
         assert!(output.ends_with("review:\n  baseline: replace # kept\n"), "{output}");
+    }
+
+    // --- 子代理模型（desktop-subagent-model-page）：快照帶出 subagent_model 與內建清單、只寫 subagent_model ---
+
+    use speclink_core::config::ToolName;
+
+    fn subagent_of(
+        review: &[(&str, &str)],
+        verify: &[(&str, &str)],
+        choices: &[(&str, &[&str])],
+    ) -> SubagentModelConfig {
+        let cells = |pairs: &[(&str, &str)]| {
+            pairs.iter().map(|(tool, model)| (ToolName::parse(tool).unwrap(), model.to_string())).collect()
+        };
+        SubagentModelConfig {
+            review: cells(review),
+            verify: cells(verify),
+            choices: choices
+                .iter()
+                .map(|(tool, names)| (ToolName::parse(tool).unwrap(), names.iter().map(|n| n.to_string()).collect()))
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn read_settings_carries_subagent_model_and_the_engine_builtin_lists() {
+        // spec Scenario「唯讀呈現」的 config；JSON 形狀見設計「快照帶出子代理模型與內建清單」。
+        let fx = FixtureRoot::new("settings-subagent");
+        fx.write(
+            "speclink/config.yaml",
+            "subagent_model:\n  review:\n    claude: opus\n    codex: gpt-6.1-sol\n  verify:\n    claude: sonnet\n  choices:\n    codex: [gpt-6.1-sol, gpt-6-astra]\n",
+        );
+        let s = read_settings_at(fx.root()).expect("read ok");
+        assert_eq!(
+            s.workflow.subagent_model,
+            subagent_of(
+                &[("claude", "opus"), ("codex", "gpt-6.1-sol")],
+                &[("claude", "sonnet")],
+                &[("codex", &["gpt-6.1-sol", "gpt-6-astra"])],
+            )
+        );
+        let json = serde_json::to_value(&s.workflow).expect("serializes");
+        assert_eq!(
+            json["subagentModel"],
+            serde_json::json!({
+                "review": {"claude": "opus", "codex": "gpt-6.1-sol"},
+                "verify": {"claude": "sonnet"},
+                "choices": {"codex": ["gpt-6.1-sol", "gpt-6-astra"]},
+            })
+        );
+        assert_eq!(
+            json["builtinSubagentModels"],
+            serde_json::json!({"claude": ["sonnet", "opus", "haiku", "fable"]})
+        );
+        // 缺席（含遠端的 from-text 入口）＝三個鍵恆在、各為空物件，內建清單照樣帶出。
+        let absent = serde_json::to_value(read_workflow_settings_from_text(Some("schema: spec-driven\n")))
+            .expect("serializes");
+        assert_eq!(absent["subagentModel"], serde_json::json!({"review": {}, "verify": {}, "choices": {}}));
+        assert_eq!(absent["builtinSubagentModels"], json["builtinSubagentModels"]);
+    }
+
+    #[test]
+    fn read_settings_subagent_model_typo_surfaces_a_parse_error_naming_the_key() {
+        // spec Scenario「解析失敗時停用編輯」：解析說明含 reveiw。
+        let fx = FixtureRoot::new("settings-subagent-typo");
+        fx.write("speclink/config.yaml", "subagent_model:\n  reveiw:\n    claude: opus\n");
+        let s = read_settings_at(fx.root()).expect("read ok");
+        let msg = s.workflow.parse_error.expect("parse error surfaced");
+        assert!(msg.contains("reveiw") && !msg.contains('\n'), "single line naming the key: {msg:?}");
+        assert_eq!(s.workflow.subagent_model, SubagentModelConfig::default(), "no guessed values on a broken file");
+        assert_eq!(s.workflow.builtin_subagent_models.len(), 1, "the engine lists do not depend on the file");
+    }
+
+    #[test]
+    fn write_workflow_content_writes_only_subagent_model_and_keeps_every_other_key() {
+        // spec Scenario「編輯並儲存僅寫 subagent_model」：context、rules、review 與政策欄位逐字元不變。
+        let fx = FixtureRoot::new("wf-subagent-write");
+        let prefix = "schema: spec-driven\nlocale: tw\ntdd: true\ncontext: |\n  說明\nrules:\n  tasks:\n    - t1\nreview:\n  warning:\n    - 舊規則\n";
+        fx.write("speclink/config.yaml", &format!("{prefix}subagent_model:\n  verify:\n    claude: sonnet\n"));
+        let want = subagent_of(&[], &[("claude", "sonnet"), ("codex", "gpt-6-astra")], &[]);
+        write_workflow_content_at(fx.root(), &ContentEdit { subagent_model: Some(&want), ..Default::default() })
+            .expect("write ok");
+        let text = read(&fx.root().join("speclink/config.yaml"));
+        assert!(text.starts_with(prefix), "everything outside subagent_model is byte-identical: {text}");
+        let cfg = WorkflowConfig::from_text(Some(&text)).expect("output parses");
+        assert_eq!(cfg.subagent_model(), want);
+    }
+
+    #[test]
+    fn content_text_rewrite_with_no_subagent_edit_leaves_the_block_and_its_comments() {
+        let original = "schema: spec-driven\ncontext: old\nsubagent_model:\n  review:\n    claude: opus # kept\n";
+        let output = rewrite_workflow_content_text(
+            original,
+            &ContentEdit { context: ContextEdit::Set("new".into()), subagent_model: None, ..Default::default() },
+        )
+        .expect("rewrite");
+        assert!(output.ends_with("subagent_model:\n  review:\n    claude: opus # kept\n"), "{output}");
+    }
+
+    #[test]
+    fn subagent_model_payload_from_the_frontend_takes_the_strict_parse() {
+        // Tauri 殼的 subagentModel 參數走同一個反序列化：非 kebab-case 的工具名稱、拼錯的子鍵與
+        // 非字串的值在進入 desktop core 之前就被拒收（audit：型別混淆、注入路徑）。
+        let parse = |value: serde_json::Value| serde_json::from_value::<SubagentModelConfig>(value);
+        let ok = parse(serde_json::json!({"review": {"claude": "opus"}, "verify": {}, "choices": {"my-agent": ["a"]}}))
+            .expect("a valid payload parses");
+        assert_eq!(ok, subagent_of(&[("claude", "opus")], &[], &[("my-agent", &["a"])]));
+        for bad in [
+            serde_json::json!({"review": {"Claude Code": "opus"}}),
+            serde_json::json!({"review": {"../x": "opus"}}),
+            serde_json::json!({"reveiw": {}}),
+            serde_json::json!({"review": {"claude": 1}}),
+            serde_json::json!({"choices": {"codex": "gpt-6.1-sol"}}),
+        ] {
+            assert!(parse(bad.clone()).is_err(), "must be refused: {bad}");
+        }
+    }
+
+    #[test]
+    fn content_text_rewrite_with_a_subagent_edit_writes_the_cleaned_block() {
+        // 遠端與本機共用的純文字改寫：模型值去空白、空值丟棄，清單去空白與空條目、空清單丟棄。
+        let original = "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus # gone\n";
+        let edit = subagent_of(
+            &[("claude", " haiku "), ("codex", "  ")],
+            &[("copilot", "gpt-5.6")],
+            &[("codex", &[" gpt-6.1-sol ", "", "  "]), ("cursor", &["  "])],
+        );
+        let output = rewrite_workflow_content_text(original, &ContentEdit { subagent_model: Some(&edit), ..Default::default() })
+            .expect("rewrite");
+        let cfg = WorkflowConfig::from_text(Some(&output)).expect("output parses");
+        assert_eq!(
+            cfg.subagent_model(),
+            subagent_of(&[("claude", "haiku")], &[("copilot", "gpt-5.6")], &[("codex", &["gpt-6.1-sol"])])
+        );
+        assert!(!output.contains("# gone"), "the whole block is replaced: {output}");
     }
 }

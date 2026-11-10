@@ -83,7 +83,7 @@
 
 ### 審查規則
 
-- **definition**: `speclink/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定的分類名）。
+- **definition**: `speclink/config.yaml` 的 `review` 區塊——審查關卡 Standards 軸的預設清單模式（`extend` 沿用並追加、`replace` 整份換掉）與依嚴重度（critical、warning、suggestion）分組的專案規則（專案設定「品質關卡」底下的頁名）。
 - **avoid**: review rules（中文散文中）、自訂規則（指此概念時）
 - **why**: 與「產出規則」同族，字面即可推出用途——一個管產出、一個管審查。2026-10-14 討論「custom-review-rules」定案。
 
@@ -197,13 +197,13 @@
 
 ### 品質關卡
 
-- **definition**: 封存前的兩道可選實作品質檢查——「審查」（工藝品質）與「驗證」（spec 合規），兩者並行、由使用者判斷是否執行。對應 skill `/speclink-review`、`/speclink-verify` 與兩站合跑的 `/speclink-quality`。
+- **definition**: 封存前的兩道可選實作品質檢查——「審查」（工藝品質）與「驗證」（spec 合規），兩者並行、由使用者判斷是否執行。對應 skill `/speclink-review`、`/speclink-verify` 與兩站合跑的 `/speclink-quality`。也是桌面 app 專案設定分類欄的上層分類，底下有審查規則、子代理模型兩頁。
 - **avoid**: 品質站
 - **why**: 「站」在繁中讀起來像停靠的地點，「關卡」才有「要過得了才放行」的語感，與這兩道檢查擋在封存之前的實際作用相符。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。
 
 ### 子代理模型
 
-- **definition**: 品質關卡派出子代理時用的模型，依站（審查、驗證）與 AI 工具設定（`speclink/config.yaml` 的 `subagent_model`），沒設定時沿用主對話的模型。
+- **definition**: 品質關卡派出子代理時用的模型，依站（審查、驗證）與 AI 工具設定（`speclink/config.yaml` 的 `subagent_model`），沒設定時沿用主對話的模型（專案設定「品質關卡」底下的頁名）。
 - **avoid**: subagent model（中文散文中）
 - **why**: 「子代理」與技能說明的 sub-agent 對應，「模型」直說設定的是什麼；不叫「審查模型」，因為驗證站也用同一個設定。2026-11-10 討論「station-subagent-model」定案。
 

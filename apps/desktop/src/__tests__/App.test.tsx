@@ -199,6 +199,8 @@ function fakeSettings() {
         rules: {},
         review: { baseline: "extend", critical: [], warning: [], suggestion: [] },
         reviewBaselineSmells: [],
+        subagentModel: { review: {}, verify: {}, choices: {} },
+        builtinSubagentModels: { claude: ["sonnet", "opus", "haiku", "fable"] },
         schemaArtifacts: ["proposal", "design", "specs", "tasks"],
         schemaName: "spec-driven",
         schemaKnown: true,
@@ -210,6 +212,7 @@ function fakeSettings() {
     writeWorkflowContext: vi.fn(),
     writeWorkflowRules: vi.fn(),
     writeWorkflowReview: vi.fn(),
+    writeWorkflowSubagentModel: vi.fn(),
     readSchemas: vi.fn().mockResolvedValue([]),
     writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
     forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
@@ -1190,9 +1193,17 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
       within(column)
         .getAllByRole("button")
         .map((b) => b.textContent),
-    ).toEqual(["專案說明", "產出規則", "審查規則", "產出流程", "AI 工具"]);
+    ).toEqual(["專案說明", "產出規則", "品質關卡", "審查規則", "子代理模型", "產出流程", "AI 工具"]);
     expect(within(column).getByRole("button", { name: "專案說明" }).getAttribute("aria-current")).toBe("page");
     expect(crumbText()).toBe("proj-a/專案設定/專案說明");
+    // 兩個子項的頁在「專案設定」與頁名之間多一段「品質關卡」，點了開審查規則頁。
+    fireEvent.click(within(column).getByRole("button", { name: "子代理模型" }));
+    expect(crumbText()).toBe("proj-a/專案設定/品質關卡/子代理模型");
+    fireEvent.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "品質關卡" }));
+    expect(crumbText()).toBe("proj-a/專案設定/品質關卡/審查規則");
+    expect(within(column).getByRole("button", { name: "審查規則" }).getAttribute("aria-current")).toBe("page");
+    fireEvent.click(within(column).getByRole("button", { name: "品質關卡" }));
+    expect(crumbText()).toBe("proj-a/專案設定/品質關卡/審查規則");
     fireEvent.click(within(column).getByRole("button", { name: "產出流程" }));
     expect(crumbText()).toBe("proj-a/專案設定/產出流程");
     fireEvent.click(within(column).getByRole("button", { name: "AI 工具" }));

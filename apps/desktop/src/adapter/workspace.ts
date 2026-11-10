@@ -46,6 +46,13 @@ export interface SchemaArtifactDetail {
   template: string | null;
 }
 
+/** config.yaml 的 subagent_model 區塊：兩站各工具的模型與各工具的自訂清單（鍵為工具名稱）。 */
+export interface SubagentModelConfig {
+  review: Record<string, string>;
+  verify: Record<string, string>;
+  choices: Record<string, string[]>;
+}
+
 /** read_settings 的快照 payload（欄位值＋各檔可選的 parseError）。 */
 export interface SettingsSnapshot {
   /** 規格資料夾的專案根相對路徑（speclink、舊佈局 openspec 或明寫的 spec_dir）；遠端快照不帶。 */
@@ -66,6 +73,10 @@ export interface SettingsSnapshot {
     review: ReviewRules;
     /** 預設清單的 12 個 smell 名稱——引擎單一提供，前端只顯示、不另存。 */
     reviewBaselineSmells: string[];
+    /** 子代理模型現值（config.yaml 的 subagent_model；缺席時三個空物件）。 */
+    subagentModel: SubagentModelConfig;
+    /** 引擎的內建子代理模型清單（工具名稱 → 名稱；只有 claude）——前端只顯示、不另存。 */
+    builtinSubagentModels: Record<string, string[]>;
     /** 活躍 schema 的 artifact id（引擎顯示序）——產出規則分節的固定鍵。 */
     schemaArtifacts: string[];
     /** 活躍 schema 名稱（config 的 schema 鍵；缺席預設 spec-driven、壞檔空字串）。 */
@@ -188,6 +199,8 @@ export function createWorkspaceSettings(
     writeWorkflowRules: (rules) => invoke("write_workflow_content", { root, context: null, rules }),
     writeWorkflowReview: (review) =>
       invoke("write_workflow_content", { root, context: null, rules: null, review }),
+    writeWorkflowSubagentModel: (subagentModel) =>
+      invoke("write_workflow_content", { root, context: null, rules: null, review: null, subagentModel }),
     readSchemas: () => invoke("read_schemas", { root }),
     writeWorkflowSchema: (name) => invoke("write_workflow_schema", { root, name }),
     forkSchema: (source) => invoke("fork_schema", { root, source }),
@@ -269,6 +282,17 @@ export function createRemoteSettings(
           context: null,
           rules: null,
           review,
+          expectedRevision: expectedRevision(),
+        }),
+      ),
+    writeWorkflowSubagentModel: (subagentModel) =>
+      adoptRevision(
+        invoke<number>("remote_write_workflow_content", {
+          ...scope,
+          context: null,
+          rules: null,
+          review: null,
+          subagentModel,
           expectedRevision: expectedRevision(),
         }),
       ),

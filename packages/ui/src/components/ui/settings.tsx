@@ -1,14 +1,23 @@
 // 設定頁的五個零件（desktop-settings-mode design D3）：應用程式設定與專案設定的每一頁都以
 // 頁標題、卡、列、列右側下拉排版；群組標題由分類欄群組與卡的小標共用。另有外開連結列
 // （desktop-about-page design D2），版面同列但整列可點。
-import { useId, type ReactNode } from "react";
+import { Fragment, useId, type ReactNode } from "react";
 import { ExternalLink } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 import { SEMANTIC_TONE } from "../../tone";
 import { Card } from "./card";
 import { PageHeader } from "./page-header";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./select";
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from "./select";
 
 /** 頁標題：包 PageHeader；`note` 為其下一行 12px 灰字（本機頁的「僅存於此裝置」、
  *  專案設定的等寬檔案鍵或 policy revision）。 */
@@ -174,8 +183,26 @@ export interface SettingsChoiceOption {
   disabled?: boolean;
 }
 
+/** 下拉的分組項：分組標籤＋組內選項。 */
+export interface SettingsChoiceGroup {
+  label: string;
+  options: SettingsChoiceOption[];
+}
+
+const isGroup = (entry: SettingsChoiceOption | SettingsChoiceGroup): entry is SettingsChoiceGroup =>
+  "options" in entry;
+
+function ChoiceItem({ option }: { option: SettingsChoiceOption }) {
+  return (
+    <SelectItem value={option.value} disabled={option.disabled}>
+      {option.label}
+    </SelectItem>
+  );
+}
+
 /** 列右側下拉：包 Select，觸發鈕 h-8、13px 字。值不得為空字串（Radix 限制），
- *  「未設定」之類的狀態由呼叫端映射成哨兵值。 */
+ *  「未設定」之類的狀態由呼叫端映射成哨兵值。`options` 可放分組項：每組渲染分組標籤，
+ *  組與組、組與單項之間以分隔線隔開；值在所有項目間不得重複。 */
 export function SettingsChoice({
   value,
   options,
@@ -185,7 +212,7 @@ export function SettingsChoice({
   id,
 }: {
   value: string;
-  options: SettingsChoiceOption[];
+  options: (SettingsChoiceOption | SettingsChoiceGroup)[];
   onChange: (value: string) => void;
   ariaLabel?: string;
   disabled?: boolean;
@@ -197,11 +224,24 @@ export function SettingsChoice({
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value} disabled={option.disabled}>
-            {option.label}
-          </SelectItem>
-        ))}
+        {options.map((entry, index) => {
+          const separated = index > 0 && (isGroup(entry) || isGroup(options[index - 1]));
+          return (
+            <Fragment key={isGroup(entry) ? `group:${entry.label}` : entry.value}>
+              {separated && <SelectSeparator />}
+              {isGroup(entry) ? (
+                <SelectGroup>
+                  <SelectLabel>{entry.label}</SelectLabel>
+                  {entry.options.map((option) => (
+                    <ChoiceItem key={option.value} option={option} />
+                  ))}
+                </SelectGroup>
+              ) : (
+                <ChoiceItem option={entry} />
+              )}
+            </Fragment>
+          );
+        })}
       </SelectContent>
     </Select>
   );

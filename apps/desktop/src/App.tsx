@@ -59,7 +59,7 @@ import { ProjectRail, tabPathHint } from "./components/ProjectRail";
 import { ProjectColumn } from "./components/ProjectColumn";
 import { SettingsColumn } from "./components/SettingsColumn";
 import { ProjectSettingsColumn } from "./components/ProjectSettingsColumn";
-import { APP_SETTINGS_CATEGORIES, PROJECT_SETTINGS_CATEGORIES } from "./settingsCatalog";
+import { APP_SETTINGS_CATEGORIES, projectSettingsTrail } from "./settingsCatalog";
 import { EmptyWorkspace } from "./components/EmptyWorkspace";
 import { ProjectActionItems, type ProjectActions } from "./components/ProjectActionsMenu";
 import { LeftTitleBar, MainTitleBar } from "./components/TitleBar";
@@ -865,7 +865,11 @@ function AppInner({
         ? [
             { label: projectTab.name, onClick: () => s.setBoardView("board") },
             { label: t("app.navProjectSettings"), onClick: () => s.setProjectSettingsSection("context") },
-            { label: t(PROJECT_SETTINGS_CATEGORIES.find((c) => c.id === projectSettingsSection)!.labelKey) },
+            // 子項的頁多一段上層分類，點了開它指定的頁（品質關卡 → 審查規則）；最後一段不可點。
+            ...projectSettingsTrail(projectSettingsSection).map(({ labelKey, opens }) => ({
+              label: t(labelKey),
+              onClick: opens && (() => s.setProjectSettingsSection(opens)),
+            })),
           ]
       : projectTab && detail
         ? [

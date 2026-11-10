@@ -6,7 +6,8 @@ import { Card, SettingsPageHeader, useI18n } from "@speclink/ui";
 
 import { CodeEditor } from "../../components/CodeEditor";
 import { CardEditControls, FieldHelp, PageAlerts, PageNote, useSaveShortcut } from "./parts";
-import { textToEntries, type ProjectSettingsState } from "./useProjectSettings";
+import { textToEntries } from "./lines";
+import type { ProjectSettingsState } from "./useProjectSettings";
 
 export function RulesPage({ ps }: { ps: ProjectSettingsState }) {
   const { t, tn } = useI18n();

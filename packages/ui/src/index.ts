@@ -172,6 +172,7 @@ export {
   SelectContent,
   SelectLabel,
   SelectItem,
+  SelectSeparator,
 } from "./components/ui/select";
 export { Checkbox, type CheckboxProps } from "./components/ui/checkbox";
 export { Switch, type SwitchProps } from "./components/ui/switch";
@@ -183,6 +184,7 @@ export {
   SettingsChoice,
   SettingsGroupHeader,
   type SettingsChoiceOption,
+  type SettingsChoiceGroup,
 } from "./components/ui/settings";
 export {
   DropdownMenu,

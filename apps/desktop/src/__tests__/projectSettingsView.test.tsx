@@ -9,7 +9,7 @@ import { I18nProvider, type ReviewRules } from "@speclink/ui";
 
 import { ProjectSettingsView } from "../views/ProjectSettingsView";
 import { APP_MESSAGES } from "../i18n/messages";
-import type { SchemaEntry, SettingsSnapshot } from "../adapter/workspace";
+import type { SchemaEntry, SettingsSnapshot, SubagentModelConfig } from "../adapter/workspace";
 import type { WorkspaceSettingsProvider } from "../session";
 import type { ProjectSettingsSection } from "../settingsCatalog";
 import { editorText, editorView, pressSave, typeInEditor } from "./helpers/codemirror";
@@ -40,6 +40,8 @@ function snapshot(over: Partial<SettingsSnapshot> = {}): SettingsSnapshot {
       rules: {},
       review: { baseline: "extend", critical: [], warning: [], suggestion: [] },
       reviewBaselineSmells: SMELLS,
+      subagentModel: { review: {}, verify: {}, choices: {} },
+      builtinSubagentModels: { claude: ["sonnet", "opus", "haiku", "fable"] },
       schemaArtifacts: ["proposal", "design", "specs", "tasks"],
       schemaName: "spec-driven",
       schemaKnown: true,
@@ -60,6 +62,7 @@ function fakeSettings(snap: SettingsSnapshot): WorkspaceSettingsProvider {
     writeWorkflowContext: vi.fn().mockResolvedValue(undefined),
     writeWorkflowRules: vi.fn().mockResolvedValue(undefined),
     writeWorkflowReview: vi.fn().mockResolvedValue(undefined),
+    writeWorkflowSubagentModel: vi.fn().mockResolvedValue(undefined),
     readSchemas: vi.fn().mockResolvedValue([]),
     writeWorkflowSchema: vi.fn().mockResolvedValue(undefined),
     forkSchema: vi.fn().mockResolvedValue("spec-driven-custom"),
@@ -1900,5 +1903,254 @@ describe("審查規則頁（spec 需求「設定頁編輯審查規則」）", ()
     await waitFor(() =>
       expect(ws.writeWorkflowReview).toHaveBeenCalledWith({ ...serverReview, suggestion: ["我的 SUGGESTION"] }),
     );
+  });
+});
+
+describe("子代理模型頁（spec 需求「設定頁編輯子代理模型」）", () => {
+  /** spec Scenario「唯讀呈現」的 config。 */
+  const MODEL: SubagentModelConfig = {
+    review: { claude: "opus", codex: "gpt-6.1-sol" },
+    verify: { claude: "sonnet" },
+    choices: { codex: ["gpt-6.1-sol", "gpt-6-astra"] },
+  };
+  const modelSnap = (subagentModel = MODEL, workflow: Partial<SettingsSnapshot["workflow"]> = {}) =>
+    snapshot({
+      app: { tools: ["claude", "codex"], customTools: [], parseError: null },
+      workflow: { subagentModel, ...workflow } as SettingsSnapshot["workflow"],
+    });
+  const user = () => userEvent.setup({ pointerEventsCheck: 0 });
+  /** 從某格的下拉選一個選項（Radix Select，與產出流程頁 locale 同一元件）。 */
+  async function choose(cell: string, option: string) {
+    await user().click(screen.getByRole("combobox", { name: cell }));
+    await user().click(await screen.findByRole("option", { name: option }));
+  }
+  async function openOptions(cell: string) {
+    await user().click(screen.getByRole("combobox", { name: cell }));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    await user().keyboard("{Escape}");
+    return options;
+  }
+  async function openPage(ws: WorkspaceSettingsProvider) {
+    render(<Harness settings={ws} initial="subagent" />);
+    return screen.findByTestId("subagent-page");
+  }
+  const cellText = (station: string, tool: string) => screen.getByTestId(`subagent-cell-${station}-${tool}`).textContent;
+  const written = (ws: WorkspaceSettingsProvider) =>
+    (ws.writeWorkflowSubagentModel as ReturnType<typeof vi.fn>).mock.calls;
+
+  it("唯讀呈現：五列、來源小字、未啟用、pi 說明、自訂清單計數與檔案註記（spec Scenario「唯讀呈現」）", async () => {
+    const page = await openPage(fakeSettings(modelSnap()));
+    expect(within(page).getByRole("heading", { level: 2, name: "子代理模型" })).toBeTruthy();
+    expect(screen.getByTestId("file-note-config").textContent).toBe("speclink/config.yaml · subagent_model");
+    const rows = within(page).getAllByTestId(/^subagent-row-/);
+    expect(rows.map((row) => row.getAttribute("data-testid"))).toEqual(
+      ["claude", "codex", "copilot", "pi", "cursor"].map((tool) => `subagent-row-${tool}`),
+    );
+    expect(rows.map((row) => within(row).getByTestId("subagent-tool-name").textContent)).toEqual([
+      "Claude Code",
+      "Codex",
+      "Copilot",
+      "pi",
+      "Cursor",
+    ]);
+    expect(cellText("review", "claude")).toBe("opus內建");
+    expect(cellText("verify", "claude")).toBe("sonnet內建");
+    expect(cellText("review", "codex")).toBe("gpt-6.1-sol自訂清單");
+    expect(cellText("verify", "codex")).toBe("沿用主對話");
+    for (const tool of ["copilot", "pi", "cursor"]) {
+      const row = within(page).getByTestId(`subagent-row-${tool}`);
+      expect(within(row).getByText("未啟用")).toBeTruthy();
+      expect(cellText("review", tool)).toBe("沿用主對話");
+      expect(cellText("verify", tool)).toBe("沿用主對話");
+    }
+    for (const tool of ["claude", "codex"]) {
+      expect(within(within(page).getByTestId(`subagent-row-${tool}`)).queryByText("未啟用")).toBeNull();
+    }
+    expect(within(within(page).getByTestId("subagent-row-pi")).getByText(/pi 本身不派子代理/)).toBeTruthy();
+    const codexList = within(page).getByTestId("subagent-list-codex");
+    expect(within(codexList).getByText("gpt-6.1-sol")).toBeTruthy();
+    expect(within(codexList).getByText("gpt-6-astra")).toBeTruthy();
+    expect(within(codexList).getByText("自訂 2 個")).toBeTruthy();
+    expect(within(within(page).getByTestId("subagent-list-copilot")).getByText("沒有自訂名稱")).toBeTruthy();
+    const claudeList = within(page).getByTestId("subagent-list-claude");
+    for (const name of ["sonnet", "opus", "haiku", "fable"]) expect(within(claudeList).getByText(name)).toBeTruthy();
+    expect(within(page).getByText(/模型名稱不預先檢查/)).toBeTruthy();
+    expect(within(page).queryAllByRole("combobox")).toHaveLength(0);
+  });
+
+  it("各工具的下拉選項依內建清單與編輯中的自訂清單組成（spec Example「各工具的下拉選項」）", async () => {
+    const page = await openPage(fakeSettings(modelSnap()));
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    expect(await openOptions("Claude Code · 審查")).toEqual(["沿用主對話", "sonnet", "opus", "haiku", "fable", "自行輸入…"]);
+    expect(await openOptions("Codex · 審查")).toEqual(["沿用主對話", "gpt-6.1-sol", "gpt-6-astra", "自行輸入…"]);
+    expect(await openOptions("Copilot · 審查")).toEqual(["沿用主對話", "自行輸入…"]);
+    typeInEditor(within(page).getByTestId("subagent-list-input-claude"), "opus\nclaude-x");
+    expect(await openOptions("Claude Code · 審查")).toEqual([
+      "沿用主對話",
+      "sonnet",
+      "opus",
+      "haiku",
+      "fable",
+      "claude-x",
+      "自行輸入…",
+    ]);
+    await user().click(screen.getByRole("combobox", { name: "Claude Code · 審查" }));
+    expect(screen.getByRole("group", { name: "內建" })).toBeTruthy();
+    expect(within(screen.getByRole("group", { name: "自訂清單" })).getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "claude-x",
+    ]);
+  });
+
+  it("自行輸入的模型名稱去頭尾空白、不加進清單；回唯讀顯示「自行輸入」（spec Scenario「自行輸入的模型名稱」）", async () => {
+    const ws = fakeSettings(modelSnap());
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    expect(screen.queryByLabelText("Copilot · 驗證 · 模型名稱")).toBeNull();
+    await choose("Copilot · 驗證", "自行輸入…");
+    const input = screen.getByLabelText("Copilot · 驗證 · 模型名稱");
+    fireEvent.change(input, { target: { value: " gpt-5.6 " } });
+    fireEvent.keyDown(input, { key: "s", ctrlKey: true });
+    await waitFor(() => expect(written(ws)).toHaveLength(1));
+    expect(written(ws)[0][0]).toEqual({ ...MODEL, verify: { claude: "sonnet", copilot: "gpt-5.6" } });
+    await waitFor(() => expect(within(page).queryAllByRole("combobox")).toHaveLength(0));
+    expect(cellText("verify", "copilot")).toBe("gpt-5.6自行輸入");
+  });
+
+  it("編輯並儲存僅寫 subagent_model（spec Scenario「編輯並儲存僅寫 subagent_model」）", async () => {
+    const ws = fakeSettings(modelSnap());
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Codex · 驗證", "gpt-6-astra");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    await waitFor(() => expect(written(ws)).toHaveLength(1));
+    expect(written(ws)[0][0]).toEqual({ ...MODEL, verify: { claude: "sonnet", codex: "gpt-6-astra" } });
+    expect(ws.writeWorkflowReview).not.toHaveBeenCalled();
+    expect(ws.writeWorkflowContext).not.toHaveBeenCalled();
+    expect(ws.writeWorkflowRules).not.toHaveBeenCalled();
+    expect(ws.writeWorkflowConfig).not.toHaveBeenCalled();
+    await waitFor(() => expect(cellText("verify", "codex")).toBe("gpt-6-astra自訂清單"));
+  });
+
+  it("選回沿用主對話、清空自訂清單：payload 移除該格與該清單（spec Scenario「清空即移除鍵」）", async () => {
+    const ws = fakeSettings(modelSnap());
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Claude Code · 驗證", "沿用主對話");
+    typeInEditor(within(page).getByTestId("subagent-list-input-codex"), "");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    await waitFor(() => expect(written(ws)).toHaveLength(1));
+    expect(written(ws)[0][0]).toEqual({ review: MODEL.review, verify: {}, choices: {} });
+  });
+
+  it("刪掉已選用的名稱：該格改顯示自行輸入並保留原值（spec Scenario「刪掉已選用的名稱改顯示為自行輸入」）", async () => {
+    const ws = fakeSettings(modelSnap());
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    typeInEditor(within(page).getByTestId("subagent-list-input-codex"), "gpt-6-astra");
+    expect(screen.getByRole("combobox", { name: "Codex · 審查" }).textContent).toContain("自行輸入…");
+    expect((screen.getByLabelText("Codex · 審查 · 模型名稱") as HTMLInputElement).value).toBe("gpt-6.1-sol");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    await waitFor(() => expect(written(ws)).toHaveLength(1));
+    expect(written(ws)[0][0]).toEqual({ ...MODEL, choices: { codex: ["gpt-6-astra"] } });
+    await waitFor(() => expect(cellText("review", "codex")).toBe("gpt-6.1-sol自行輸入"));
+  });
+
+  it("內建工具以外的工具名稱不列出、儲存時原樣保留（spec Scenario「內建工具以外的工具名稱原樣保留」）", async () => {
+    const withAgent: SubagentModelConfig = {
+      review: { "my-agent": "model-a" },
+      verify: {},
+      choices: { "my-agent": ["model-a"] },
+    };
+    const ws = fakeSettings(modelSnap(withAgent));
+    const page = await openPage(ws);
+    expect(within(page).queryByText("my-agent")).toBeNull();
+    expect(within(page).queryByTestId("subagent-row-my-agent")).toBeNull();
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Claude Code · 審查", "opus");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    await waitFor(() => expect(written(ws)).toHaveLength(1));
+    expect(written(ws)[0][0]).toEqual({ ...withAgent, review: { "my-agent": "model-a", claude: "opus" } });
+  });
+
+  it("內容未變時不呼叫寫入、直接回唯讀（spec Scenario「內容未變時不寫入」）", async () => {
+    const ws = fakeSettings(modelSnap());
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    await waitFor(() => expect(within(page).queryAllByRole("combobox")).toHaveLength(0));
+    expect(ws.writeWorkflowSubagentModel).not.toHaveBeenCalled();
+  });
+
+  it("取消：回唯讀顯示原值且不寫入；未存修改回報隨草稿起落（spec Scenario「取消不寫入」）", async () => {
+    const onDirtyChange = vi.fn();
+    const ws = fakeSettings(modelSnap());
+    render(<Harness settings={ws} initial="subagent" onDirtyChange={onDirtyChange} />);
+    const page = await screen.findByTestId("subagent-page");
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    expect(onDirtyChange).toHaveBeenLastCalledWith(false);
+    await choose("Claude Code · 審查", "haiku");
+    await choose("Cursor · 驗證", "自行輸入…");
+    typeInEditor(within(page).getByTestId("subagent-list-input-copilot"), "gpt-5.6");
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(true));
+    fireEvent.click(within(page).getByTestId("subagent-cancel"));
+    await waitFor(() => expect(onDirtyChange).toHaveBeenLastCalledWith(false));
+    expect(ws.writeWorkflowSubagentModel).not.toHaveBeenCalled();
+    expect(cellText("review", "claude")).toBe("opus內建");
+    expect(within(within(page).getByTestId("subagent-list-copilot")).getByText("沒有自訂名稱")).toBeTruthy();
+  });
+
+  it("子代理模型頁編輯中，審查規則頁照常唯讀可用（一頁進入編輯不影響其他頁）", async () => {
+    const page = await openPage(fakeSettings(modelSnap()));
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    goto("review");
+    const reviewPage = screen.getByTestId("review-page");
+    expect((within(reviewPage).getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("config.yaml 解析失敗：頁內浮出解析原因、編輯鈕停用（spec Scenario「解析失敗時停用編輯」）", async () => {
+    const ws = fakeSettings(
+      modelSnap({ review: {}, verify: {}, choices: {} }, { parseError: "subagent_model: unknown field `reveiw`" }),
+    );
+    const page = await openPage(ws);
+    expect(within(page).getByText(/reveiw/)).toBeTruthy();
+    expect((within(page).getByTestId("subagent-edit") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("遠端專案：不顯示未啟用；儲存帶 revision，409 時輸入保留並浮出 subagent_model 對照（spec Scenario「遠端專案儲存帶 revision」）", async () => {
+    const remoteSnap = (subagentModel: SubagentModelConfig, revision: number) =>
+      snapshot({
+        app: { tools: [], customTools: [], parseError: null },
+        workflow: { subagentModel, revision } as SettingsSnapshot["workflow"],
+      });
+    const initial = remoteSnap({ review: {}, verify: {}, choices: {} }, 41);
+    const latest = remoteSnap({ review: { claude: "haiku" }, verify: {}, choices: {} }, 42);
+    const ws = {
+      ...fakeSettings(initial),
+      kind: "remote",
+      writeWorkflowSubagentModel: vi
+        .fn()
+        .mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 })
+        .mockResolvedValueOnce(43),
+    } as unknown as WorkspaceSettingsProvider;
+    (ws.readSettings as ReturnType<typeof vi.fn>).mockReset().mockResolvedValueOnce(initial).mockResolvedValueOnce(latest);
+    const page = await openPage(ws);
+    expect(screen.getByTestId("policy-revision").textContent).toContain("41");
+    expect(within(page).queryByText("未啟用")).toBeNull();
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Claude Code · 審查", "opus");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    const row = within(panel).getByTestId("conflict-row-subagent_model.review.claude");
+    expect(within(row).getByText("subagent_model.review.claude")).toBeTruthy();
+    expect(within(row).getByTestId("conflict-server").textContent).toBe("haiku");
+    expect(within(row).getByTestId("conflict-mine").textContent).toBe("opus");
+    expect(screen.getByRole("combobox", { name: "Claude Code · 審查" }).textContent).toContain("opus");
+
+    fireEvent.click(within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+    expect(ws.writeWorkflowSubagentModel).toHaveBeenCalledTimes(2);
+    expect(screen.getByTestId("policy-revision").textContent).toContain("43");
+    expect(cellText("review", "claude")).toBe("opus內建");
   });
 });

@@ -33,7 +33,7 @@
 
 ### 設定目錄的父子關係與子項 id
 
-`ProjectSettingsCategory` 新增可選欄位 `parent?: "quality"`；`review` 與新的 `subagent` 兩項帶 `parent: "quality"`，兩者都 `remote: true`、都屬 `config` 組，且在目錄裡相鄰（審查規則在前）。另以常數 `PROJECT_SETTINGS_PARENTS` 定義上層分類：`quality` 的標籤鍵 `settings.projectSection.quality`、圖示沿用審查規則原本的 `ShieldCheck`、點擊開 `review`。上層分類不是一個 section（沒有自己的頁），所以 `ProjectSettingsSection` 只多 `"subagent"`，store 的 `projectSettingsSection` 與「記住上次所在分類」不必改。
+`ProjectSettingsCategory` 新增可選欄位 `parent?: "quality"`；`review` 與新的 `subagent` 兩項帶 `parent: "quality"`，兩者都 `remote: true`、都屬 `config` 組，且在目錄裡相鄰（審查規則在前）。子項不渲染圖示，所以 `icon` 改為可選、兩個子項不帶。另以常數 `PROJECT_SETTINGS_PARENTS` 定義上層分類：`quality` 的標籤鍵 `settings.projectSection.quality`、圖示沿用審查規則原本的 `ShieldCheck`、點擊開 `review`。上層分類不是一個 section（沒有自己的頁），所以 `ProjectSettingsSection` 只多 `"subagent"`，store 的 `projectSettingsSection` 與「記住上次所在分類」不必改。
 
 - 替代方案：讓「品質關卡」成為有自己頁面的 section——否決，討論定案點了開審查規則，沒有總覽頁。
 - 替代方案：目錄改成巢狀樹——否決，只有一個上層分類、兩個子項，平的清單加 `parent` 欄位就夠，搜尋與遠端過濾的既有寫法不必改。
@@ -48,7 +48,7 @@
 
 ### 麵包屑帶上層分類
 
-`settingsCatalog` 新增 `projectSettingsTrail(section)`，回傳該頁麵包屑要顯示的標籤鍵：有 `parent` 的頁為 `[上層分類, 頁名]`，其他頁為 `[頁名]`。`App` 的麵包屑在「專案設定」之後接這些段：上層分類那段點了開審查規則頁，最後一段不可點。
+`settingsCatalog` 新增 `projectSettingsTrail(section)`，回傳該頁麵包屑在「專案設定」之後的段（標籤鍵，上層分類那段另帶點了要開的頁）：有 `parent` 的頁為 `[上層分類, 頁名]`，其他頁為 `[頁名]`。`App` 的麵包屑在「專案設定」之後接這些段：上層分類那段點了開審查規則頁，最後一段不可點。
 
 ### 快照帶出子代理模型與內建清單
 
@@ -79,6 +79,7 @@ Tauri 殼的 `write_workflow_content` 與 `remote_write_workflow_content` 各加
 - 來源判定：值在內建清單 → 內建；否則在自訂清單（編輯中以草稿清單為準）→ 自訂清單；否則 → 自行輸入。所以從清單刪掉已選用的名稱時，格子保留原值、改顯示為「自行輸入」。
 - 存回：以快照的 `subagent_model` 為底，只覆寫 `BUILTIN_TOOLS` 各工具的兩格與清單——inherit 移除該格、pick 寫選的名稱、custom 寫去頭尾空白後的輸入（空白即移除）；清單以「一行一條、去空白、略過空行」轉回，沒改過的清單原樣沿用現值（與審查規則頁同一個做法）。不在 `BUILTIN_TOOLS` 的工具名稱的格子與清單原樣帶回。
 - 存回結果與現值相同時不呼叫寫入，直接回唯讀：整塊代換會丟掉區塊內的註解，沒改內容就不該動檔案（與 CLI 的 `unchanged` 一致）。
+- 「一行一條」的轉換（`entriesToText`、`textToEntries`、`keepUnedited`）從 `useProjectSettings` 移到同目錄新增的 `lines.ts`，產出規則、審查規則與本頁共用：`subagentModel.ts` 要用它們，而 hook 又要用 `subagentModel.ts`，放在 hook 裡會變成兩個模組互相引用。
 
 ### 子代理模型頁的版面
 
@@ -144,6 +145,12 @@ Tauri 殼的 `write_workflow_content` 與 `remote_write_workflow_content` 各加
 - [Radix Select 的值不得為空字串、不得重複] → 沿用 `SettingsChoice` 的哨兵慣例；同名項只放內建組。
 - [回歸對照] → 不碰技能原稿、golden、assets.lock 與 CLI 輸出；desktop 快照多兩個欄位屬刻意變更，既有前端測試的快照 fixture 補上欄位。
 - [跨平台] → 改動在前端與 desktop core 的純文字改寫，沿用既有行尾跟隨（CRLF 檔的代換區塊用 CRLF）；WKWebView 的焦點差異不影響本頁（沒有靠失焦判斷的互動，自行輸入在儲存時才讀）。
+
+**Audit 判定**（apply 期依 `speclink instructions --skill audit` 的三個角色檢查；沒有找到要修的問題，補了一條邊界測試）
+
+- 壞蛋（注入與繞過）：Tauri 的 `subagentModel` 參數經 `SubagentModelConfig` 的嚴格反序列化，工具名稱只收 kebab-case（`ToolName::parse`，`../x` 這類鍵進不來），拼錯的子鍵與非字串的值整份拒收，由 desktop core 測試 `subagent_model_payload_from_the_frontend_takes_the_strict_parse` 釘住；模型名稱依 spec 不檢查，寫入由 serde_yaml 序列化並經寫前、寫後兩次解析比對，名稱裡的 YAML 特殊字元改不到其他鍵；與下拉哨兵值（`__inherit__`、`__custom__`）同名的清單名稱不進選項，選不到「看起來是名稱、實際被當成沿用或自行輸入」的項目。
+- 懶惰的開發者（危險預設）：缺席與空值都等於「沿用主對話」；自行輸入留空與清單空行一律丟棄，不會寫出空字串的模型；只按儲存、內容沒變時不寫檔，不會順手洗掉區塊內的註解。
+- 搞混的開發者（型別混淆、靜默失敗）：其他三種內容寫入不帶 `subagentModel`，Tauri 收到 `None`＝不動，本頁的寫入明確送 `review: null`，兩頁不會互相覆寫；頁面沒列出的工具名稱以快照為底原樣帶回，不會因為只列內建工具而被靜默刪掉；遠端衝突對照列出兩邊出現過的所有工具名稱（含頁面沒列出的），重送前看得到差異。
 
 ## Migration Plan
 

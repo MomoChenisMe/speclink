@@ -53,6 +53,7 @@
   - New:
     - apps/desktop/src/views/project-settings/SubagentModelPage.tsx
     - apps/desktop/src/views/project-settings/subagentModel.ts
+    - apps/desktop/src/views/project-settings/lines.ts
     - apps/desktop/src/__tests__/subagentModel.test.ts
   - Modified:
     - apps/desktop/core/src/settings.rs
@@ -64,6 +65,8 @@
     - apps/desktop/src/components/ProjectSettingsColumn.tsx
     - apps/desktop/src/views/ProjectSettingsView.tsx
     - apps/desktop/src/views/project-settings/useProjectSettings.ts
+    - apps/desktop/src/views/project-settings/RulesPage.tsx
+    - apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
     - apps/desktop/src/App.tsx
     - apps/desktop/src/i18n/messages.ts
     - apps/desktop/src/__tests__/projectSettingsView.test.tsx
