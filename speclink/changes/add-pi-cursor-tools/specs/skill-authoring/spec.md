@@ -1,0 +1,179 @@
+## MODIFIED Requirements
+
+### Requirement: 寫法規範的機械守門
+
+speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 列出 crates/engine/speclink-core/assets/skills/ 下全部 `.md` 原稿，逐份檢查下列五項；任一項不符時測試 SHALL 失敗（非零 exit code），失敗訊息 SHALL 指名原稿檔名、違反的項目，以及規範出處「skill-authoring 規格『技能原稿的跨模型寫法規範』」：
+
+1. **行數**：原稿行數 SHALL NOT 超過 500。行數以行為單位計算，LF 與 CRLF 結尾 SHALL 得到相同結果。
+2. **強調字上限**：以大小寫敏感、字詞邊界比對 MUST、NEVER、SHALL、ALWAYS、IMPORTANT、CRITICAL、STOP、NOT 的出現次數，次數 SHALL NOT 超過測試內登記表為該原稿登記的上限。登記表 SHALL 涵蓋 assets/skills/ 下每一份原稿；出現未登記的原稿時測試 SHALL 失敗，並要求登記上限。上限只在修改登記表時改變。
+3. **不寫歷史**：移除 fenced code block 與行內程式碼之後，原稿 SHALL NOT 含 `YYYY-MM-DD` 形式的日期（前後不接數字即算，緊貼中文或後接時間的日期也算）；原稿全文 SHALL NOT 含 `design D` 加數字的決策編號，也 SHALL NOT 含「design 決策」字樣。
+4. **工具退路**：原稿含 `AskUserQuestion` 時，SHALL 含 `plain text`（不分大小寫）；原稿含 `sub-agent`、`subagent` 或 `Agent tool` 時，SHALL 含 `cannot spawn` 或 `can't spawn`（不分大小寫）。單獨的 `inline` 不算退路：無關的句子也常含這個字。
+5. **渲染記號**：原稿 SHALL NOT 含寫死的技能引用——前一個字元不是英數字、底線、`.`、`/` 或 `:` 的 `/speclink-` 加小寫字母（`.claude/skills/speclink-apply` 這類路徑不算）；原稿 SHALL NOT 含 `$speclink-`，也 SHALL NOT 含 `--agent claude`、`--agent codex`、`--agent copilot`、`--agent pi` 或 `--agent cursor`。
+
+#### Scenario: 強調字超過登記上限
+
+- **WHEN** 在 review.md 多加一個 MUST，使 review.md 的強調字次數比登記上限多 1，再執行 `cargo test -p speclink-core --test it`
+- **THEN** 測試失敗，訊息含 review.md、「強調字上限」、登記上限與實際次數，以及規範出處
+
+#### Scenario: 強調字減少時通過
+
+- **WHEN** 從 review.md 刪掉一個 NEVER，登記表不變
+- **THEN** 測試通過
+
+##### Example: 強調字的計次
+
+| 原稿片段 | 計入次數 | 理由 |
+| --- | --- | --- |
+| `Do NOT stop here` | 1 | NOT 為全大寫的獨立字詞 |
+| `This is not optional` | 0 | 小寫不計 |
+| `See the NOTE below` | 0 | NOTE 不是 NOT（字詞邊界） |
+| `STOP and ask. NEVER guess.` | 2 | STOP 與 NEVER 各 1 |
+
+#### Scenario: 原稿超過 500 行
+
+- **WHEN** 某份原稿有 501 行
+- **THEN** 測試失敗，訊息含該原稿檔名、「行數」與實際行數 501
+
+#### Scenario: 程式碼內的時間戳不誤判
+
+- **WHEN** manual.md 的 fenced code block 中有 `generated: 2026-09-05T23:31:00+08:00`，散文中沒有日期
+- **THEN** 不寫歷史的檢查通過
+
+#### Scenario: 散文中的日期失敗
+
+- **WHEN** 某份原稿的散文寫著「此規則於 2026-08-10 加入」
+- **THEN** 測試失敗，訊息含該原稿檔名、「不寫歷史」與命中的日期
+
+#### Scenario: 缺少工具退路
+
+- **WHEN** 某份原稿含 `AskUserQuestion` 但全文不含 `plain text`
+- **THEN** 測試失敗，訊息含該原稿檔名與「工具退路」
+
+#### Scenario: 寫死的技能引用
+
+- **WHEN** 某份原稿寫著「run `/speclink-apply <name>`」
+- **THEN** 測試失敗，訊息含該原稿檔名、「渲染記號」與命中的 `/speclink-apply`
+
+#### Scenario: 寫死的 pi 或 cursor agent 值
+
+- **WHEN** 某份原稿寫著「speclink review stamp x --agent cursor」或「--agent pi」
+- **THEN** 測試失敗，訊息含該原稿檔名、「渲染記號」與命中的 `--agent cursor` 或 `--agent pi`
+
+#### Scenario: 技能目錄路徑不誤判
+
+- **WHEN** 某份原稿寫著 `.claude/skills/speclink-propose/SKILL.md`，沒有其他寫死的引用
+- **THEN** 渲染記號的檢查通過
+
+#### Scenario: 新原稿未登記上限
+
+- **WHEN** assets/skills/ 新增一份 `example.md`，登記表沒有它
+- **THEN** 測試失敗，訊息含 `example.md` 並要求在登記表登記強調字上限
+
+### Requirement: 技能共用的對話語言段落
+
+speclink 渲染的每一份產品技能檔（registry 中的全部技能；claude、codex、copilot、pi、cursor 五個內建工具與自訂描述子皆同）SHALL 在 frontmatter 與 fork 前言或 invocation 說明（若有）之後、技能內文之前，恰好含一次共用的對話語言段落，段落以 `**Conversation language**:` 開頭。段落的來源 SHALL 為單一原稿 crates/engine/speclink-core/assets/skills/conversation-language.md，SHALL NOT 在各技能原稿各存一份複本。
+
+段落 SHALL 依序規定五件事：
+
+1. 對使用者說的話（進度、提問、摘要）以使用者跟 Agent 講話的語言撰寫。
+2. 技能以英文撰寫、回報範例只示範格式：範例的散文要翻譯，指令、檔案路徑、程式碼與固定 token（嚴重度標籤、狀態詞）維持原樣。
+3. 步驟規定其自身產出的語言（文件、報告，或呈現結果與提問的方式，例如經 `locale`）時，該產出以該步驟為準，優先於第 1 件。
+4. 修改既有文件且沒有步驟規定語言時，沿用該文件原本的語言。
+5. 在 fork 情境中執行、看不到對話時，使用收到的請求所用的語言。
+
+段落 SHALL NOT 含全大寫強調字，其原稿在強調字守門的上限表登記為 0。段落本身 SHALL NOT 讓 `locale` 決定對話語言，只有步驟明文綁定的產出依 `locale`（例如 review 的回合呈現與提問）；`locale` 為 tw、ja、en 或未設定時，段落內容逐字相同。`speclink instructions --skill <name>` 輸出的原稿 SHALL NOT 含此段落；內部技能（tdd、clarify、sync）不渲染為技能檔，不在本條範圍。
+
+此為刻意變更：所有產品技能檔在內文前多出此段落，段落之外的技能內容維持既有位元級輸出（另行變更的技能除外）。
+
+#### Scenario: 每份產品技能檔恰含一次段落
+
+- **WHEN** 在空目錄執行 speclink init 並選 claude 與 codex 兩個工具
+- **THEN** .claude/skills 與 .agents/skills 下每一份 speclink-* 技能的 SKILL.md 都恰好含一次 `**Conversation language**:`，位置在 frontmatter 結尾 `---` 之後、該技能內文第一行之前；exit code 為 0
+
+#### Scenario: fork 技能的前言在段落之前
+
+- **WHEN** 渲染 claude 工具的 speclink-drift 技能檔（fork 技能，帶 fork 前言）
+- **THEN** 技能檔依序為 frontmatter、fork 前言、對話語言段落、drift 技能內文
+
+#### Scenario: 自訂描述子的技能檔同樣帶段落
+
+- **WHEN** .speclink.yaml 宣告一個自訂描述子後執行 speclink update
+- **THEN** 該描述子技能目錄下每一份 speclink-* 技能檔都在 invocation 說明之後、技能內文之前恰好含一次段落
+
+#### Scenario: instructions --skill 的原稿不含段落
+
+- **WHEN** 執行 speclink instructions --skill audit
+- **THEN** stdout 為 audit 技能原稿，不含 `**Conversation language**:`；exit code 為 0
+
+#### Scenario: 段落用了大寫強調字時守門失敗
+
+- **WHEN** 對話語言段落的原稿含 `NOT` 這類全大寫強調字，執行 cargo test -p speclink-core
+- **THEN** 技能原稿守門測試失敗，訊息點名 conversation-language.md 的強調字上限 0 與實際數量
+
+##### Example: 段落與 locale 無關
+
+| speclink/config.yaml 的 locale | 技能檔中的段落 |
+| ------------------------------ | -------------- |
+| tw | 與原稿逐字相同的英文段落 |
+| ja | 與原稿逐字相同的英文段落 |
+| en | 與原稿逐字相同的英文段落 |
+| 未設定 | 與原稿逐字相同的英文段落 |
+
+### Requirement: 技能原稿的跨模型寫法規範
+
+crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下列十條撰寫：
+
+1. 每條規則在同一份技能中 SHALL 只完整陳述一次，寫在模型執行該動作的步驟裡；其他位置需要提及時 SHALL 只用一句話指向該處。
+2. 規則之間 SHALL NOT 互相矛盾；一條規則有例外時，SHALL 寫明哪一條優先。
+3. 全大寫強調字（MUST、NEVER、SHALL、ALWAYS、IMPORTANT、CRITICAL、STOP、NOT）SHALL 只用於鐵律：做錯會毀損資料、無法還原、必須停下等使用者，或引擎會靜默誤讀的固定格式。
+4. 同一概念 SHALL 只用一個詞。
+5. 依工具而不同的能力 SHALL 附退路：指示使用 AskUserQuestion 時，SHALL 寫明工具不可用時以純文字詢問並等待回覆；指示開子代理時，SHALL 寫明不能開子代理時由主執行緒自己執行。
+6. 多步驟流程 SHALL 以編號步驟呈現；判斷點 SHALL 寫成「條件 → 動作」；固定格式的產出 SHALL 附樣板；技能結尾 SHALL 附產出的自我檢查清單。
+7. 技能 SHALL NOT 含歷史資訊：design 決策編號、日期、某條規則由哪個變更加入。示範格式用的時間戳放在程式碼區塊或行內程式碼中，不算歷史資訊。
+8. 單一原稿檔 SHALL NOT 超過 500 行。由多份原稿組成的技能（apply-with-worktree）以各份原稿分別計算。
+9. 判斷標準的原文 SHALL NOT 為了縮短篇幅而濃縮；縮短只能來自刪除重複陳述、刪除歷史資訊與重整結構。
+10. 技能之間的引用 SHALL 寫成 `/speclink:<名稱>`，指令中 `--agent` 的值 SHALL 寫成 `{{TOOL}}`，由渲染依工具換成各自的寫法；提到 plan mode 的內容 SHALL 獨立成一行，因為自訂描述子的渲染會整行刪除提到 plan mode 的行。
+
+本規範約束技能文字的寫法，SHALL NOT 改變技能所描述的流程行為；逐技能規格要求技能寫到的內容 SHALL 全部保留。
+
+#### Scenario: 同一規則只完整陳述一次
+
+- **WHEN** 檢視任一份技能原稿中的任一條規則
+- **THEN** 該規則的全文在原稿中只出現一次，位於模型執行該動作的步驟；其他提及處只有一句指向該步驟的話
+
+#### Scenario: 有例外的規則寫明優先序
+
+- **WHEN** 一份技能同時要求「持續做完全部任務」與「遇到手動任務時停下」
+- **THEN** 技能寫明遇到手動任務時，停下的規則優先
+
+#### Scenario: 工具相依的能力附退路
+
+- **WHEN** 一份技能指示用 AskUserQuestion 詢問使用者
+- **THEN** 同一份技能寫明 AskUserQuestion 不可用時，以純文字提出同樣的問題並等待使用者回覆
+
+#### Scenario: 示範用的時間戳不算歷史
+
+- **WHEN** 一份技能需要示範 RFC 3339 時間戳的格式
+- **THEN** 時間戳放在程式碼區塊或行內程式碼中；技能的散文不含 design 決策編號，也不含「某條規則由哪個變更加入」的說明
+
+#### Scenario: 技能引用依工具渲染
+
+- **WHEN** 原稿寫著 `/speclink:ingest`，分別以 claude、codex、copilot、pi、cursor 與自訂描述子渲染
+- **THEN** 六份技能檔中的引用依序為 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`、`speclink ingest`；Codex 與 pi 渲染的技能檔不含 `/speclink-` 形式的技能引用
+
+##### Example: 同一個引用在六種渲染目標
+
+| 渲染目標 | 原稿 `/speclink:ingest` 的渲染結果 |
+| --- | --- |
+| claude | `/speclink-ingest` |
+| codex | `$speclink-ingest` |
+| copilot | `/speclink-ingest` |
+| pi | `/skill:speclink-ingest` |
+| cursor | `/speclink-ingest` |
+| 自訂描述子 | `speclink ingest` |
+
+#### Scenario: 判斷標準不濃縮
+
+- **WHEN** 改寫一份含判斷標準清單的技能（例如 improve 的摩擦訊號與刪除測試）
+- **THEN** 判斷標準的原文保留；篇幅的減少只來自刪除重複陳述、刪除歷史資訊與重整結構
+
