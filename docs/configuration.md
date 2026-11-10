@@ -8,7 +8,7 @@ Speclink keeps settings in three layers. Workflow policy lives in `speclink/conf
 
 | Location | Contents | Read by | In version control |
 | --- | --- | --- | --- |
-| `speclink/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
+| `speclink/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review`, `subagent_model` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
 | `.speclink.yaml` | The binding of this checkout: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
 | `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of remote mode | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
 | User config directory | `credentials.yaml` (the credential that the CLI stores for an access-token login), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
@@ -68,6 +68,8 @@ Use `speclink workflow-config`. In local mode it changes `speclink/config.yaml`.
 | `rules <artifact> --stdin` | Replaces the rules of one artifact with stdin, one rule per line. Blank lines are skipped. Empty input removes the section. `<artifact>` must be an artifact id of the current schema |
 | `review <list> --stdin` | Replaces one list of project review rules with stdin, one rule per line. Blank lines are skipped. Empty input removes the list. `<list>` is `critical`, `warning`, or `suggestion` |
 | `review baseline <mode>` | Sets whether the review station also checks its 12 built-in code smells. `<mode>` is `extend` (the default, which removes the key) or `replace` |
+| `subagent-model <station> <tool> <model>` | Sets the model that the sub-agents of one quality station use in one AI tool. `<station>` is `review` or `verify`. `<tool>` is a kebab-case tool name, such as `claude` or `codex`. An empty `<model>` (`""`) removes the setting, and the sub-agents use the main conversation's model again |
+| `subagent-model choices <tool> --stdin` | Replaces the custom model list of one AI tool with stdin, one name per line. Blank lines are skipped. Empty input removes the list |
 
 Write rules:
 
@@ -75,8 +77,10 @@ Write rules:
 - `tdd`, `audit`, and `worktree` accept only `true` / `false`. A `false` value (or an empty `locale`) removes the line, so the default applies again.
 - All write subcommands accept `--dry-run`. It prints the diff and writes nothing. The diff compares the old and new text line by line. Only the lines that are removed, added, or moved get `-` or `+`. The other lines in the changed range show as context, also when they are between two changes. Up to three unchanged lines before and after that range are also shown.
 - A `review` write replaces the whole `review` block. `extend` writes no `baseline` key, an empty list removes its key, and a block with nothing left is removed. Comments inside the `review` block are not kept.
-- After a `review` write, the command checks the skill files in your local project. If they are older than the engine, the write still succeeds, but stderr shows a warning that tells you to run `speclink update`. An older review skill may not apply the review rules.
+- After a `review` or `subagent-model` write, the command checks the skill files in your local project. If they are older than the engine, the write still succeeds, but stderr shows a warning that tells you to run `speclink update`. An older skill may not apply the review rules or the sub-agent model.
 - The `review` block is strict. An unknown key (a typo such as `critcal`), a `baseline` other than `extend` or `replace`, or a list entry that is not a string makes the file unparseable. Every command that reads the file then fails and names the key, until you correct it.
+- A `subagent-model` write replaces the whole `subagent_model` block. A station or a list with nothing left is removed, and a block with nothing left is removed. Tool names are written in alphabetical order. Comments inside the block are not kept. A write that changes nothing (for example, removing a setting that is not there) leaves the file as it is and prints `unchanged`.
+- The `subagent_model` block is strict in the same way. An unknown key (a typo such as `reveiw`), a tool name that is not kebab-case or that appears twice in one map, or a value that is not a string makes the file unparseable. Model names are not checked: when a tool does not know a name, the quality station stops at the step that sends its sub-agents and shows the tool's error.
 - A write changes only the target lines. All other content and comments stay as they are. If the file cannot be parsed, reads and writes both fail, so your content stays safe.
 - In local mode, a `worktree` change also adds or removes the two worktree skills. You cannot change `worktree` from `true` to `false` while a worktree is still open. The command lists those worktrees. Close them with `speclink-worktree-merge` first.
 - In remote mode, a write fails if another person writes at the same time. Run the command again; it never overwrites the other write. The command also fails when you are offline or your credential is not valid. Nothing is queued.
@@ -111,6 +115,8 @@ Run the first line in a project right after `speclink init`. **Expected output**
 **Project Settings** in the desktop app changes the same file with the same rules. The built-in `speclink-config` skill collects `context` and `rules` from your code. It shows you the diff and writes only after you approve. It shows all policy fields, `worktree` included, in one table with their current values, and asks only whether you want to change any of them. Review rules are optional: you can leave them not set, add them to the built-in checks (`extend`), or use them in place of the built-in checks (`replace`). You can give the skill a list of reminders, pasted or as a file path. For each reminder, it decides whether it goes into a review rule, a rule for one artifact (`rules`), or neither, and tells you why. It takes review rules only from you, never from your code.
 
 The review station applies the `review` block only with a CLI and skill files of this version or later. Run `speclink update` after you upgrade. An older CLI skips the block.
+
+The review and verify stations read `subagent_model` when they run, through `speclink workflow-config show --json`. A change to it takes effect without `speclink update`, but skill files from an older version do not read it: run `speclink update` after you upgrade. When a tool cannot give its sub-agents a model, the station uses the main conversation's model and says so. Codex can do it only when `expose_spawn_agent_model_overrides = true` is set in `~/.codex/config.toml`.
 
 ## <a id="tools"></a>AI tools and custom tools
 
@@ -175,6 +181,8 @@ When you connect to a remote, each setting keeps its layer. Only the location of
 | `rules` | Artifact id → list of rules | None | Writing rules for each artifact |
 | `review.baseline` | `extend`, `replace` | `extend` | Whether the review station checks its 12 built-in code smells plus the project rules (`extend`), or the project rules only (`replace`) |
 | `review.critical`, `review.warning`, `review.suggestion` | Lists of rules | None | Project review rules for the Standards axis of the review station. The list a rule is in sets the severity of a violation |
+| `subagent_model.review.<tool>`, `subagent_model.verify.<tool>` | A model name | None (the main conversation's model) | The model of the review station's two sub-agents, or of the verify station's sub-agent, when the station runs in that AI tool. `/speclink-quality` uses the same two values. Claude Code takes `sonnet`, `opus`, `haiku`, and `fable` |
+| `subagent_model.choices.<tool>` | A list of model names | None | The project's custom model list for one AI tool. `speclink workflow-config show --json` returns it together with the built-in list |
 
 Speclink ignores other keys.
 

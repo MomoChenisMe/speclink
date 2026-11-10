@@ -15,6 +15,7 @@
   - `subagent-model review <tool> <model>`、`subagent-model verify <tool> <model>`：設定一格；`<model>` 為空字串時移除該格（回到沿用主對話）。
   - `subagent-model choices <tool> --stdin`：以 stdin 整段代換該 AI 工具的自訂清單（一行一個、頭尾空白去除、空行略過；空 stdin 移除該清單）；未帶 `--stdin` 時以非零 exit code 說明用法。
   - `<tool>` 不是 kebab-case、或第一個參數不是 `review`、`verify`、`choices` 時，以非零 exit code 拒絕且無檔案效果。成功 exit code 0、stdout 單行成功訊息。
+  - 寫入結果與現有區塊相同時不改寫檔案，成功訊息為 `unchanged`；寫入後本機技能檔過期時，stderr 提示執行 `speclink update`（比照審查規則寫入）。
   - 寫入只代換 `subagent_model` 區塊，其他鍵、註解與空行逐位元保留；remote 模式走與其他寫入子指令相同的讀-改-寫與版本衝突檢查；壞檔 fail-closed。
 - `/speclink-review`、`/speclink-verify` 技能派子代理前以 `speclink workflow-config show --json` 讀 `subagentModel.<站>.<{{TOOL}}>`：有值才帶 model、沒值不帶；技能檔不寫模型值本身，只靠既有的渲染變數 `{{TOOL}}`，改設定不必重新生成技能檔。
   - 結果呈現開頭一行寫明本輪子代理用的模型；`/speclink-quality` 的合併摘要保留這一行。
@@ -54,6 +55,7 @@
     - crates/engine/speclink-core/src/workspace/config.rs
     - crates/engine/speclink-core/src/workspace/config/tests.rs
     - crates/engine/speclink-core/src/workspace/init.rs
+    - crates/engine/speclink-core/src/workspace/init/tests.rs
     - crates/engine/speclink-core/assets/skills/station-shared.md
     - crates/engine/speclink-core/assets/skills/review.md
     - crates/engine/speclink-core/assets/skills/verify.md

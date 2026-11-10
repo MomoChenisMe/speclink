@@ -1994,6 +1994,21 @@ fn copilot_skill_has_neutral_frontmatter_and_slash_references() {
     }
 }
 
+/// codex 版內文換成 copilot 版：叫用前綴，加上 `{{TOOL}}` 代換值出現的每個位置——
+/// `--agent` 的值、子代理模型的格子路徑與寫入指令範例。只換這些位置，其他差異照樣失敗
+/// （例如 `~/.codex/config.toml` 這類寫死的路徑不能跟著換）。
+fn codex_render_as_copilot(codex: &str) -> String {
+    let mut out = codex
+        .replace("$speclink-", "/speclink-")
+        .replace("--agent codex", "--agent copilot");
+    for prefix in ["subagentModel", "subagent_model"] {
+        for station in ["<station>", "review", "verify"] {
+            out = out.replace(&format!("{prefix}.{station}.codex"), &format!("{prefix}.{station}.copilot"));
+        }
+    }
+    out.replace("subagent-model <station> codex", "subagent-model <station> copilot")
+}
+
 #[test]
 fn copilot_skills_differ_from_codex_only_by_prefix_and_agent_name() {
     // Requirement「Copilot 渲染目標」：除叫用前綴與 {{TOOL}} 代換值以外逐字相同。
@@ -2003,10 +2018,7 @@ fn copilot_skills_differ_from_codex_only_by_prefix_and_agent_name() {
     for dir in expected_dirs(Tool::Codex) {
         let codex = root.read(&format!(".agents/skills/{dir}/SKILL.md"));
         let copilot = root.read(&format!(".github/skills/{dir}/SKILL.md"));
-        let mapped = codex
-            .replace("$speclink-", "/speclink-")
-            .replace("--agent codex", "--agent copilot");
-        assert_eq!(copilot, mapped, "{dir}");
+        assert_eq!(copilot, codex_render_as_copilot(&codex), "{dir}");
     }
 }
 

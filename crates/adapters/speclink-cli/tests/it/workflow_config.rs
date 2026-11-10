@@ -886,6 +886,329 @@ fn a_review_typo_fails_show_and_instructions_closed() {
     assert!(stdout_of(&out).trim().is_empty(), "no default payload: {}", stdout_of(&out));
 }
 
+// --- subagent_model: show (fs) ---
+
+/// The spec scenario's block: two review cells, one verify cell, one custom list.
+const SUBAGENT_YAML: &str = "\
+subagent_model:
+  review:
+    claude: opus
+    codex: gpt-6.1-sol
+  verify:
+    claude: sonnet
+  choices:
+    codex:
+      - gpt-6.1-sol
+      - gpt-6-astra
+";
+
+fn show_json_of(p: &TempProject) -> serde_json::Value {
+    let out = p.run(&["workflow-config", "show", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    json_of(&out)
+}
+
+#[test]
+fn show_json_carries_empty_subagent_model_and_the_builtin_list_by_default() {
+    // Spec scenario --json payload 形狀＋未寫 subagent_model 時為預設：兩個欄位恆存在。
+    let payload = show_json_of(&TempProject::new("show-subagent-default", WF_YAML));
+    assert_eq!(payload["subagentModel"], serde_json::json!({"review": {}, "verify": {}, "choices": {}}));
+    assert_eq!(
+        payload["builtinSubagentModels"],
+        serde_json::json!({"claude": ["sonnet", "opus", "haiku", "fable"]})
+    );
+    let keys: Vec<&str> = payload.as_object().unwrap().keys().map(|k| k.as_str()).collect();
+    assert!(!keys.contains(&"subagent_model"), "no snake_case keys: {keys:?}");
+}
+
+#[test]
+fn show_json_carries_the_subagent_model_block() {
+    // Spec scenario --json 帶出子代理模型設定。
+    let p = TempProject::new("show-subagent", &format!("{WF_YAML}{SUBAGENT_YAML}"));
+    let payload = show_json_of(&p);
+    let block = &payload["subagentModel"];
+    assert_eq!(
+        *block,
+        serde_json::json!({
+            "review": {"claude": "opus", "codex": "gpt-6.1-sol"},
+            "verify": {"claude": "sonnet"},
+            "choices": {"codex": ["gpt-6.1-sol", "gpt-6-astra"]}
+        })
+    );
+    assert!(block["review"]["claude"].is_string() && block["choices"]["codex"].is_array());
+    assert_eq!(payload["builtinSubagentModels"]["claude"].as_array().map(Vec::len), Some(4));
+}
+
+#[test]
+fn show_human_output_does_not_show_the_subagent_model_block() {
+    // Spec scenario 人眼輸出不顯示子代理模型設定：與刪掉區塊後的輸出逐位元一致。
+    let with = TempProject::new("show-subagent-human", &format!("{WF_YAML}{SUBAGENT_YAML}"));
+    let without = TempProject::new("show-subagent-human-none", WF_YAML);
+    let (a, b) = (with.run(&["workflow-config", "show", "--no-color"]), without.run(&["workflow-config", "show", "--no-color"]));
+    assert!(a.status.success() && b.status.success(), "stderr: {} / {}", stderr_of(&a), stderr_of(&b));
+    assert_eq!(stdout_of(&a), stdout_of(&b));
+}
+
+#[test]
+fn subagent_model_is_read_only_from_the_spec_dir_config() {
+    // Spec scenario 環境變數與 .speclink.yaml 不影響子代理模型。
+    let p = TempProject::new("subagent-app-yaml", WF_YAML);
+    std::fs::write(
+        p.dir.join(".speclink.yaml"),
+        "tools:\n  - claude\nsubagent_model:\n  review:\n    claude: opus\n",
+    )
+    .unwrap();
+    let payload = show_json_of(&p);
+    assert_eq!(payload["subagentModel"], serde_json::json!({"review": {}, "verify": {}, "choices": {}}));
+}
+
+// --- subagent_model: subagent-model 寫入 (fs) ---
+
+/// The `subagent_model` mapping of the config on disk, or None when the key is absent.
+fn raw_subagent(p: &TempProject) -> Option<serde_yaml::Mapping> {
+    let doc: serde_yaml::Mapping = serde_yaml::from_str(&p.config_text()).expect("config parses");
+    doc.get("subagent_model").map(|v| v.as_mapping().expect("subagent_model is a mapping").clone())
+}
+
+#[test]
+fn subagent_model_writes_match_the_spec_example_table() {
+    // Spec Example 寫入效果與成功訊息——逐列對應。
+    let rows: [(&str, &[&str], &str, &str, serde_json::Value); 6] = [
+        (
+            "schema: spec-driven\n",
+            &["review", "claude", "opus"],
+            "",
+            "✓ subagent_model.review.claude = opus\n",
+            serde_json::json!({"review": {"claude": "opus"}, "verify": {}, "choices": {}}),
+        ),
+        (
+            "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus\n",
+            &["review", "claude", "sonnet"],
+            "",
+            "✓ subagent_model.review.claude = sonnet\n",
+            serde_json::json!({"review": {"claude": "sonnet"}, "verify": {}, "choices": {}}),
+        ),
+        (
+            "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus\n  verify:\n    codex: gpt-6.1-sol\n",
+            &["verify", "codex", ""],
+            "",
+            "✓ subagent_model.verify.codex removed\n",
+            serde_json::json!({"review": {"claude": "opus"}, "verify": {}, "choices": {}}),
+        ),
+        (
+            "schema: spec-driven\nsubagent_model:\n  review:\n    claude: opus\n",
+            &["review", "claude", ""],
+            "",
+            "✓ subagent_model.review.claude removed\n",
+            serde_json::json!({"review": {}, "verify": {}, "choices": {}}),
+        ),
+        (
+            "schema: spec-driven\n",
+            &["choices", "codex", "--stdin"],
+            "  gpt-6.1-sol  \n\ngpt-6-astra\n",
+            "✓ subagent_model.choices.codex = 2 entries\n",
+            serde_json::json!({"review": {}, "verify": {}, "choices": {"codex": ["gpt-6.1-sol", "gpt-6-astra"]}}),
+        ),
+        (
+            "schema: spec-driven\nsubagent_model:\n  choices:\n    codex:\n      - a\n      - b\n",
+            &["choices", "codex", "--stdin"],
+            "",
+            "✓ subagent_model.choices.codex removed\n",
+            serde_json::json!({"review": {}, "verify": {}, "choices": {}}),
+        ),
+    ];
+    for (i, (before, args, stdin, stdout, want)) in rows.iter().enumerate() {
+        let p = TempProject::new(&format!("subagent-table-{i}"), before);
+        let mut argv = vec!["workflow-config", "subagent-model"];
+        argv.extend_from_slice(args);
+        let out = p.run_stdin(&argv, stdin);
+        assert!(out.status.success(), "row {i} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), *stdout, "row {i}");
+        assert_eq!(show_json_of(&p)["subagentModel"], *want, "row {i}");
+    }
+    // 第 4、6 列寫完全空：整個 subagent_model 鍵被移除。
+    for (i, before, args, stdin) in [
+        (3, rows[3].0, rows[3].1, ""),
+        (5, rows[5].0, rows[5].1, ""),
+    ] {
+        let p = TempProject::new(&format!("subagent-table-removed-{i}"), before);
+        let mut argv = vec!["workflow-config", "subagent-model"];
+        argv.extend_from_slice(args);
+        assert!(p.run_stdin(&argv, stdin).status.success(), "row {i}");
+        assert!(raw_subagent(&p).is_none(), "row {i}: the key is removed: {}", p.config_text());
+    }
+}
+
+#[test]
+fn subagent_model_write_keeps_the_other_cells_and_keys() {
+    // Spec scenario 設定一格保留其他內容。
+    let prefix = "schema: spec-driven\nlocale: tw\n";
+    let p = TempProject::new("subagent-keep", &format!("{prefix}subagent_model:\n  verify:\n    claude: sonnet\n"));
+    let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ subagent_model.review.claude = opus\n");
+    assert_eq!(
+        show_json_of(&p)["subagentModel"],
+        serde_json::json!({"review": {"claude": "opus"}, "verify": {"claude": "sonnet"}, "choices": {}})
+    );
+    assert!(p.config_text().starts_with(prefix), "other keys untouched: {}", p.config_text());
+}
+
+#[test]
+fn subagent_model_accepts_any_kebab_case_tool() {
+    // Spec scenario 寫入的名稱可以是任何 kebab-case 工具（.speclink.yaml 只啟用 claude）。
+    let p = TempProject::new("subagent-any-tool", WF_YAML);
+    let out = p.run(&["workflow-config", "subagent-model", "review", "my-agent", "some-model"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(show_json_of(&p)["subagentModel"]["review"]["my-agent"], "some-model");
+}
+
+#[test]
+fn subagent_model_rejects_an_unknown_form_or_a_non_kebab_tool() {
+    // Spec scenario 不認得的形式或工具名稱。
+    let p = TempProject::new("subagent-unknown", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "subagent-model", "audit", "claude", "opus"]);
+    assert!(!out.status.success(), "unknown form must exit non-zero");
+    let err = stderr_of(&out);
+    for legal in ["review", "verify", "choices"] {
+        assert!(err.contains(legal), "stderr lists {legal}: {err}");
+    }
+    let out = p.run(&["workflow-config", "subagent-model", "review", "Claude", "opus"]);
+    assert!(!out.status.success(), "a non-kebab tool must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("Claude") && err.contains("kebab-case"), "stderr names the rule: {err}");
+    let out = p.run_stdin(&["workflow-config", "subagent-model", "choices", "Claude", "--stdin"], "a\n");
+    assert!(!out.status.success(), "choices checks the tool name too: {}", stderr_of(&out));
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn subagent_model_choices_without_the_stdin_flag_fails_with_usage() {
+    // Spec scenario choices 未帶 --stdin 說明用法。
+    let p = TempProject::new("subagent-no-stdin", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run_stdin(&["workflow-config", "subagent-model", "choices", "codex"], "ignored\n");
+    assert!(!out.status.success(), "missing --stdin must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("subagent-model choices codex --stdin"), "stderr states the usage: {err}");
+    assert_eq!(p.config_bytes(), before, "no file effect");
+}
+
+#[test]
+fn subagent_model_dry_run_prints_a_unified_diff_and_writes_nothing() {
+    // Spec scenario dry-run 印 diff：只顯示 subagent_model 區塊的變更。
+    let p = TempProject::new("subagent-dry-run", WF_YAML);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "subagent-model", "verify", "claude", "sonnet", "--dry-run"]);
+    assert!(out.status.success(), "dry-run exits 0: {}", stderr_of(&out));
+    let diff = stdout_of(&out);
+    assert!(diff.contains("--- a/speclink/config.yaml"), "unified diff header: {diff}");
+    let changed: Vec<&str> = diff
+        .lines()
+        .filter(|l| (l.starts_with('-') || l.starts_with('+')) && !l.starts_with("---") && !l.starts_with("+++"))
+        .collect();
+    assert_eq!(
+        changed,
+        ["+", "+subagent_model:", "+  verify:", "+    claude: sonnet"],
+        "only the subagent_model block is added: {diff}"
+    );
+    assert_eq!(p.config_bytes(), before, "config.yaml is byte-for-byte unchanged");
+}
+
+#[test]
+fn subagent_model_reserved_char_model_round_trips_verbatim() {
+    // Spec：以 YAML 保留字元開頭的模型名稱自動加引號，讀回逐字元一致。
+    let p = TempProject::new("subagent-reserved", WF_YAML);
+    let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "@model"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(show_json_of(&p)["subagentModel"]["review"]["claude"], "@model");
+}
+
+#[test]
+fn subagent_model_refuses_to_rewrite_an_unparseable_config() {
+    // Spec scenario 壞檔拒寫：YAML 語法錯誤與 subagent_model 子鍵打錯皆拒寫。
+    for (tag, yaml) in [("syntax", BAD_YAML), ("typo", "subagent_model:\n  reveiw:\n    claude: opus\n")] {
+        let p = TempProject::new(&format!("subagent-bad-{tag}"), yaml);
+        let before = p.config_bytes();
+        let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+        assert!(!out.status.success(), "{tag}: must exit non-zero");
+        let err = stderr_of(&out);
+        assert!(err.contains("speclink/config.yaml"), "{tag}: stderr names the file: {err}");
+        assert!(err.contains("write refused"), "{tag}: stderr says the write is refused: {err}");
+        assert_eq!(p.config_bytes(), before, "{tag}: no file effect");
+    }
+}
+
+/// The exact stderr of a sub-agent model write's stale hint naming `tools`.
+fn subagent_stale_hint(tools: &str) -> String {
+    format!(
+        "speclink: warning: skill files are older than this engine ({tools}; engine {ASSET_VERSION}) — an older quality-station skill may not apply this sub-agent model; run `speclink update`\n"
+    )
+}
+
+#[test]
+fn subagent_model_write_warns_when_skill_files_are_older_than_the_engine() {
+    // Spec scenario 技能檔過期時寫入後提示（subagent-model 寫入）。
+    let p = TempProject::new("subagent-hint", WF_YAML);
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
+    let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ subagent_model.review.claude = opus\n");
+    assert_eq!(stderr_of(&out), subagent_stale_hint(&format!("claude {OLD_SKILLS}")));
+    let out = p.run_stdin(&["workflow-config", "subagent-model", "choices", "codex", "--stdin"], "a\n");
+    assert_eq!(stderr_of(&out), subagent_stale_hint(&format!("claude {OLD_SKILLS}")), "choices writes warn too");
+    // dry-run 不寫入、不探測；技能檔為現版時不提示。
+    let out = p.run(&["workflow-config", "subagent-model", "verify", "claude", "sonnet", "--dry-run"]);
+    assert!(!stderr_of(&out).contains(STALE_HINT), "no hint on dry-run: {}", stderr_of(&out));
+    let current = TempProject::new("subagent-hint-current", WF_YAML);
+    generate_skills(&current, &[]);
+    let out = current.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+    assert!(out.status.success() && !stderr_of(&out).contains(STALE_HINT), "current skills: {}", stderr_of(&out));
+}
+
+#[test]
+fn subagent_model_write_that_changes_nothing_leaves_the_file_alone() {
+    // Spec scenario 不改變內容的寫入不動檔案：區塊內的註解與手寫格式保留。
+    let doc = "schema: spec-driven\nsubagent_model:\n  # team default\n  review: { claude: opus }   # hand-written\n";
+    for (args, stdin, stdout) in [
+        (&["subagent-model", "verify", "claude", ""][..], "", "✓ subagent_model.verify.claude unchanged\n"),
+        (&["subagent-model", "review", "claude", "opus"][..], "", "✓ subagent_model.review.claude unchanged\n"),
+        (&["subagent-model", "choices", "codex", "--stdin"][..], "", "✓ subagent_model.choices.codex unchanged\n"),
+    ] {
+        let p = TempProject::new("subagent-noop", doc);
+        let before = p.config_bytes();
+        let mut argv = vec!["workflow-config"];
+        argv.extend_from_slice(args);
+        let out = p.run_stdin(&argv, stdin);
+        assert!(out.status.success(), "{args:?}: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), stdout, "{args:?}");
+        assert_eq!(p.config_bytes(), before, "{args:?}: config.yaml is byte-for-byte unchanged");
+    }
+}
+
+#[test]
+fn a_subagent_model_typo_fails_show_closed() {
+    // Spec scenario 子鍵打錯即 fail-closed（以 workflow-config show 執行）。
+    let p = TempProject::new("subagent-typo-show", "subagent_model:\n  reveiw:\n    claude: opus\n");
+    let out = p.run(&["workflow-config", "show"]);
+    assert!(!out.status.success(), "show must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("speclink/config.yaml") && err.contains("reveiw"), "{err}");
+    assert!(stdout_of(&out).trim().is_empty(), "no stdout: {}", stdout_of(&out));
+}
+
+#[test]
+fn subagent_model_help_lists_the_three_forms() {
+    let p = TempProject::new("subagent-help", WF_YAML);
+    let out = p.run(&["workflow-config", "subagent-model", "--help"]);
+    assert!(out.status.success(), "help exits zero: {}", stderr_of(&out));
+    let text = stdout_of(&out);
+    for form in ["review", "verify", "choices"] {
+        assert!(!table_row(&text, form).is_empty(), "help lists {form}: {text}");
+    }
+}
+
 // --- help parity ---
 
 /// The comma-separated list a "…: a, b, c" sentence ends with. Both the help
@@ -1393,6 +1716,83 @@ fn remote_review_write_warns_from_the_local_skill_files() {
     assert_eq!(stdout_of(&out), "✓ review.critical = 1 entries\n");
     assert!(
         stderr_of(&out).contains(&stale_hint(&format!("claude {OLD_SKILLS}"))),
+        "stderr carries the hint naming claude: {}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_subagent_model_write_reads_then_writes_back_with_the_read_revision() {
+    // Spec scenario remote 寫入經版本檢查。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = RemoteProject::new("subagent", &mock.base);
+    let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ subagent_model.review.claude = opus\n");
+    let put = mock.find("PUT", "/config");
+    let body: serde_json::Value = serde_json::from_str(&put.body).expect("PUT body is JSON");
+    assert_eq!(body["expectedRevision"], 7, "the read revision guards the write");
+    let content = body["content"].as_str().expect("content string");
+    let doc: serde_yaml::Value = serde_yaml::from_str(content).expect("content parses");
+    assert_eq!(doc["subagent_model"]["review"]["claude"], serde_yaml::Value::from("opus"), "{content}");
+    assert!(content.contains("locale: tw"), "other keys preserved: {content}");
+    // 後續 show --json 讀回同一內容：server 端此後回傳剛寫入的文件。
+    let after = mock_server(vec![(
+        "GET",
+        "/config",
+        200,
+        serde_json::json!({"schema": "spec-driven", "content": content, "revision": 8}).to_string(),
+    )]);
+    let reader = RemoteProject::new("subagent-readback", &after.base);
+    let out = reader.run(&["workflow-config", "show", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        json_of(&out)["subagentModel"],
+        serde_json::json!({"review": {"claude": "opus"}, "verify": {}, "choices": {}})
+    );
+}
+
+#[test]
+fn remote_subagent_model_conflict_asks_for_a_rerun() {
+    // Spec scenario remote 版本衝突。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        (
+            "PUT",
+            "/config",
+            409,
+            r#"{"status":409,"reason":"revision_conflict","message":"stale write"}"#.into(),
+        ),
+    ]);
+    let p = RemoteProject::new("subagent-conflict", &mock.base);
+    let out = p.run_stdin(&["workflow-config", "subagent-model", "choices", "codex", "--stdin"], "gpt-6.1-sol\n");
+    assert!(!out.status.success(), "a CAS refusal must exit non-zero");
+    let err = stderr_of(&out);
+    assert!(err.contains("updated by someone else") && err.contains("re-run"), "stderr explains the conflict: {err}");
+}
+
+#[test]
+fn remote_subagent_model_write_warns_from_the_local_skill_files() {
+    // Spec：subagent-model 寫入的過期提示在 remote 模式同樣以本機工作區判定。
+    let mock = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.into()),
+    ]);
+    let p = RemoteProject::new("subagent-stale-hint", &mock.base);
+    let yaml = p.dir.join(".speclink.yaml");
+    let declared = std::fs::read_to_string(&yaml).unwrap() + "tools:\n  - claude\n";
+    std::fs::write(&yaml, declared).unwrap();
+    write_skill_file(&p.dir.join(CLAUDE).join("skills"), "speclink-review", OLD_SKILLS);
+
+    let out = p.run(&["workflow-config", "subagent-model", "review", "claude", "opus"]);
+
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ subagent_model.review.claude = opus\n");
+    assert!(
+        stderr_of(&out).contains(&subagent_stale_hint(&format!("claude {OLD_SKILLS}"))),
         "stderr carries the hint naming claude: {}",
         stderr_of(&out)
     );

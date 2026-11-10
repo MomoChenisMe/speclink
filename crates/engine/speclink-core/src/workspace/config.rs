@@ -356,6 +356,154 @@ pub struct WorkflowConfig {
     /// or null) reads as the defaults via [`WorkflowConfig::review`].
     #[serde(default)]
     pub review: Option<ReviewConfig>,
+    /// Sub-agent model per quality station and AI tool. Not a policy field, like
+    /// `review`. `None` (key absent or null) reads as the defaults via
+    /// [`WorkflowConfig::subagent_model`]: every cell follows the main conversation.
+    #[serde(default)]
+    pub subagent_model: Option<SubagentModelConfig>,
+}
+
+/// `subagent_model:` block of `speclink/config.yaml`. Strict like [`ReviewConfig`]:
+/// an unknown sub-key, a tool name that is not kebab-case or appears twice in one
+/// map, or a value that is not a string fails the whole document. Model names are
+/// never checked — the tool that receives one is the judge. Blank values read as
+/// "not set" and empty lists as "no custom list", so the maps only hold cells that
+/// carry a value.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct SubagentModelConfig {
+    /// AI tool name → model for the review station's two sub-agents.
+    #[serde(default, deserialize_with = "de_model_map")]
+    pub review: BTreeMap<ToolName, String>,
+    /// AI tool name → model for the verify station's sub-agent.
+    #[serde(default, deserialize_with = "de_model_map")]
+    pub verify: BTreeMap<ToolName, String>,
+    /// AI tool name → the project's custom model list (the settings page's choices).
+    #[serde(default, deserialize_with = "de_choice_map")]
+    pub choices: BTreeMap<ToolName, Vec<String>>,
+}
+
+/// The engine's built-in sub-agent model lists. Only Claude Code has one: its
+/// Agent tool takes these four short names, which carry no version and never go
+/// stale. Every other tool's names carry versions, so they live in `choices`.
+pub const BUILTIN_SUBAGENT_MODELS: &[(&str, &[&str])] = &[("claude", &["sonnet", "opus", "haiku", "fable"])];
+
+/// An AI tool name in `subagent_model`: kebab-case, the tool descriptor's rule.
+/// [`ToolName::parse`] is the only way to build one, so every key the block holds —
+/// read from the file or handed to a write — has passed that one check.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ToolName(String);
+
+impl ToolName {
+    pub fn parse(name: &str) -> Result<ToolName, String> {
+        if is_kebab_case(name) {
+            Ok(ToolName(name.to_string()))
+        } else {
+            Err(format!(
+                "tool name '{name}' is not kebab-case (2-50 lowercase letters, digits or hyphens; no leading, trailing or doubled hyphen)"
+            ))
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl std::fmt::Display for ToolName {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+/// Lets a map keyed by tool name be looked up with a plain `&str`.
+impl std::borrow::Borrow<str> for ToolName {
+    fn borrow(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Serialize for ToolName {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.serialize_str(&self.0)
+    }
+}
+
+impl<'de> Deserialize<'de> for ToolName {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<ToolName, D::Error> {
+        ToolName::parse(&String::deserialize(d)?).map_err(serde::de::Error::custom)
+    }
+}
+
+/// A map keyed by tool name, each name at most once. serde's own `BTreeMap` keeps
+/// the last of two equal keys, while the write side's untyped parse refuses them;
+/// refusing here too keeps reads and writes in agreement. A null map reads as empty.
+fn de_tool_map<'de, D, V>(d: D) -> Result<BTreeMap<ToolName, V>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    V: Deserialize<'de>,
+{
+    struct ToolMap<V>(std::marker::PhantomData<V>);
+    impl<'de, V: Deserialize<'de>> serde::de::Visitor<'de> for ToolMap<V> {
+        type Value = BTreeMap<ToolName, V>;
+        fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("a map of AI tool names")
+        }
+        fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+            Ok(BTreeMap::new())
+        }
+        fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+            let mut out = BTreeMap::new();
+            while let Some(tool) = map.next_key::<ToolName>()? {
+                if out.contains_key(&tool) {
+                    return Err(serde::de::Error::custom(format!("duplicate tool name '{tool}'")));
+                }
+                let value = map.next_value::<V>()?;
+                out.insert(tool, value);
+            }
+            Ok(out)
+        }
+    }
+    d.deserialize_any(ToolMap(std::marker::PhantomData))
+}
+
+/// A station's cells: values trimmed, blank or null values dropped (not set).
+fn de_model_map<'de, D>(d: D) -> Result<BTreeMap<ToolName, String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = de_tool_map::<D, Option<StrictString>>(d)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(tool, model)| Some((tool, trimmed(&model?.0)?.to_string())))
+        .collect())
+}
+
+/// The custom lists: entries cleaned like the review rule lists, empty or null lists dropped.
+fn de_choice_map<'de, D>(d: D) -> Result<BTreeMap<ToolName, Vec<String>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let raw = de_tool_map::<D, Option<Vec<StrictString>>>(d)?;
+    Ok(raw
+        .into_iter()
+        .filter_map(|(tool, entries)| {
+            let entries = cleaned(entries?.iter().map(|e| e.0.as_str()));
+            (!entries.is_empty()).then_some((tool, entries))
+        })
+        .collect())
+}
+
+/// The text without surrounding whitespace, or `None` when nothing is left — the
+/// cleanup every read and write of a rule, model name or list entry applies.
+fn trimmed(text: &str) -> Option<&str> {
+    let text = text.trim();
+    (!text.is_empty()).then_some(text)
+}
+
+/// List entries trimmed, blank ones dropped.
+fn cleaned<'a>(entries: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    entries.into_iter().filter_map(trimmed).map(str::to_string).collect()
 }
 
 /// `review:` block of `openspec/config.yaml`. Strict on purpose: an unknown
@@ -376,7 +524,7 @@ pub struct ReviewConfig {
     pub suggestion: Vec<String>,
 }
 
-/// A rule list whose entries must be YAML strings (see [`RuleEntry`]). A null
+/// A rule list whose entries must be YAML strings (see [`StrictString`]). A null
 /// list (`critical:` with nothing after it) reads as an empty one. Entries are
 /// trimmed and blank ones dropped on read — the same cleanup every write applies —
 /// so a hand-written blank never reaches the review, and rewriting a list the
@@ -385,30 +533,27 @@ fn de_rule_list<'de, D>(d: D) -> Result<Vec<String>, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
-    let entries = Option::<Vec<RuleEntry>>::deserialize(d)?.unwrap_or_default();
-    Ok(entries
-        .into_iter()
-        .map(|e| e.0.trim().to_string())
-        .filter(|e| !e.is_empty())
-        .collect())
+    let entries = Option::<Vec<StrictString>>::deserialize(d)?.unwrap_or_default();
+    Ok(cleaned(entries.iter().map(|e| e.0.as_str())))
 }
 
-/// One review rule: a YAML string only. `Vec<String>` would let serde_yaml coerce
-/// `1`, `true` or an empty item (null) into the text "1"/"true"/"null" and hand
-/// it to the review as a rule; `deserialize_any` sees the real scalar type, and
-/// the error rises at the entry, so it names `review.<list>[i]`.
-struct RuleEntry(String);
+/// A YAML string only — a review rule, a model name or a list entry. `String` would
+/// let serde_yaml coerce `1`, `true` or an empty item (null) into the text
+/// "1"/"true"/"null" and hand it on as a rule or a model; `deserialize_any` sees the
+/// real scalar type, and the error rises at the entry, so it names the entry's path
+/// (`review.<list>[i]`, `subagent_model.review.<tool>`).
+struct StrictString(String);
 
-impl<'de> Deserialize<'de> for RuleEntry {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<RuleEntry, D::Error> {
+impl<'de> Deserialize<'de> for StrictString {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<StrictString, D::Error> {
         struct StringOnly;
         impl serde::de::Visitor<'_> for StringOnly {
-            type Value = RuleEntry;
+            type Value = StrictString;
             fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                f.write_str("a rule string")
+                f.write_str("a string")
             }
-            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<RuleEntry, E> {
-                Ok(RuleEntry(v.to_string()))
+            fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<StrictString, E> {
+                Ok(StrictString(v.to_string()))
             }
         }
         d.deserialize_any(StringOnly)
@@ -618,6 +763,11 @@ impl WorkflowConfig {
     pub fn review(&self) -> ReviewConfig {
         self.review.clone().unwrap_or_default()
     }
+
+    /// The sub-agent model block, with an absent key read as three empty maps.
+    pub fn subagent_model(&self) -> SubagentModelConfig {
+        self.subagent_model.clone().unwrap_or_default()
+    }
 }
 
 /// Target state of the workflow-policy fields for a settings-page write.
@@ -664,11 +814,18 @@ pub enum ContextEdit {
 ///   no `baseline` key, an empty list drops its key, and nothing left (extend
 ///   with three empty lists) drops the `review` key itself. Comments inside the
 ///   old block do not survive.
+/// - `subagent_model` is `None` to leave the key untouched, or `Some` for a
+///   wholesale replacement of the block: model names are trimmed and blank cells
+///   dropped, list entries are cleaned like `rules`, a station or list left empty
+///   drops its key, and nothing left drops the `subagent_model` key itself. Tool
+///   names ([`ToolName`], so kebab-case by construction) go out in alphabetical
+///   order. Comments inside the old block do not survive.
 #[derive(Debug, Clone, Default)]
 pub struct ContentEdit<'a> {
     pub context: ContextEdit,
     pub rules: Option<&'a [(String, Vec<String>)]>,
     pub review: Option<&'a ReviewConfig>,
+    pub subagent_model: Option<&'a SubagentModelConfig>,
 }
 
 /// Rewrite the workflow-config document (`openspec/config.yaml`) with the given
@@ -695,7 +852,7 @@ pub fn update_workflow_config_text(
     fields: &WorkflowPolicyFields,
     edit: &ContentEdit,
 ) -> anyhow::Result<String> {
-    let ContentEdit { context, rules, review } = edit;
+    let ContentEdit { context, rules, review, subagent_model } = edit;
     validate_policy_locales(fields)?;
     // Pure-syntax empty documents carry no user content to preserve; normalize so
     // surgery starts from a blank page instead of appending after a `{}` line.
@@ -723,6 +880,7 @@ pub fn update_workflow_config_text(
         insert_cleaned_list(&mut map, "suggestion", &r.suggestion);
         map
     });
+    let subagent_value = subagent_model.map(subagent_model_mapping);
 
     // Target state: the mapping-level edit the old rewrite used to serialize,
     // now demoted to the verification oracle for the text surgery.
@@ -740,30 +898,49 @@ pub fn update_workflow_config_text(
         // Set(blank) 與 Remove 同義：清空即移除鍵。
         ContextEdit::Set(_) | ContextEdit::Remove => set_or_remove(&mut target, "context", None),
     }
-    for (key, edit) in [("rules", &rules_value), ("review", &review_value)] {
+    let blocks = [("rules", rules_value), ("review", review_value), ("subagent_model", subagent_value)];
+    for (key, edit) in &blocks {
         if let Some(map) = edit {
             let value = (!map.is_empty()).then(|| serde_yaml::Value::Mapping(map.clone()));
             set_or_remove(&mut target, key, value);
         }
     }
 
-    let output =
-        surgical_rewrite(base, fields, context, rules_value.as_ref(), review_value.as_ref())?;
+    let output = surgical_rewrite(base, fields, context, &blocks)?;
     verify_rewritten_config(&output, &target)?;
     Ok(output)
+}
+
+/// The cleaned `subagent_model` block: blank cells, empty lists and empty
+/// stations dropped, tool names in alphabetical order (the maps are sorted).
+fn subagent_model_mapping(s: &SubagentModelConfig) -> serde_yaml::Mapping {
+    let mut map = serde_yaml::Mapping::new();
+    for (key, cells) in [("review", &s.review), ("verify", &s.verify)] {
+        let cleaned: serde_yaml::Mapping = cells
+            .iter()
+            .filter_map(|(tool, model)| Some((tool.as_str().into(), trimmed(model)?.into())))
+            .collect();
+        if !cleaned.is_empty() {
+            map.insert(key.into(), serde_yaml::Value::Mapping(cleaned));
+        }
+    }
+    let mut choices = serde_yaml::Mapping::new();
+    for (tool, entries) in &s.choices {
+        insert_cleaned_list(&mut choices, tool.as_str(), entries);
+    }
+    if !choices.is_empty() {
+        map.insert("choices".into(), serde_yaml::Value::Mapping(choices));
+    }
+    map
 }
 
 /// Insert `key: [entries]` with entries trimmed and blank ones dropped; a list
 /// left empty is not inserted (an emptied list drops its key).
 fn insert_cleaned_list(map: &mut serde_yaml::Mapping, key: &str, entries: &[String]) {
-    let cleaned: Vec<serde_yaml::Value> = entries
-        .iter()
-        .map(|e| e.trim())
-        .filter(|e| !e.is_empty())
-        .map(Into::into)
-        .collect();
-    if !cleaned.is_empty() {
-        map.insert(key.into(), serde_yaml::Value::Sequence(cleaned));
+    let entries: Vec<serde_yaml::Value> =
+        cleaned(entries.iter().map(String::as_str)).into_iter().map(Into::into).collect();
+    if !entries.is_empty() {
+        map.insert(key.into(), serde_yaml::Value::Sequence(entries));
     }
 }
 
@@ -893,8 +1070,7 @@ fn surgical_rewrite(
     original: &str,
     fields: &WorkflowPolicyFields,
     context: &ContextEdit,
-    rules: Option<&serde_yaml::Mapping>,
-    review: Option<&serde_yaml::Mapping>,
+    content_blocks: &[(&str, Option<serde_yaml::Mapping>)],
 ) -> anyhow::Result<String> {
     let eol = if original.contains("\r\n") { "\r\n" } else { "\n" };
     let lines: Vec<&str> = original.split_inclusive('\n').collect();
@@ -941,7 +1117,7 @@ fn surgical_rewrite(
             }
         }
     }
-    for (key, edit) in [("rules", rules), ("review", review)] {
+    for (key, edit) in content_blocks {
         if let Some(map) = edit {
             let block = mapping_block(key, map)?.map(follow_eol);
             swap_block(&mut ops, &mut appends, block_of(key), block);

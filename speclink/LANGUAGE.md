@@ -201,6 +201,12 @@
 - **avoid**: 品質站
 - **why**: 「站」在繁中讀起來像停靠的地點，「關卡」才有「要過得了才放行」的語感，與這兩道檢查擋在封存之前的實際作用相符。2026-08-14 變更「zh-tw-vocabulary-drawer-and-quality-station」定案。
 
+### 子代理模型
+
+- **definition**: 品質關卡派出子代理時用的模型，依站（審查、驗證）與 AI 工具設定（`speclink/config.yaml` 的 `subagent_model`），沒設定時沿用主對話的模型。
+- **avoid**: subagent model（中文散文中）
+- **why**: 「子代理」與技能說明的 sub-agent 對應，「模型」直說設定的是什麼；不叫「審查模型」，因為驗證站也用同一個設定。2026-11-10 討論「station-subagent-model」定案。
+
 ### 溯源
 
 - **definition**: 沿「規格 → 變更 → 討論 → 程式碼」的鏈回答某功能怎麼來的、為什麼這樣設計——列出動過該 capability 的封存變更、來源討論與其扇出、逐任務觸及檔案，最後以現行程式碼確認現況。對應引擎動詞 `trace` 與 skill `/speclink-trace`。

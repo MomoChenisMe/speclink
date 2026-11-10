@@ -500,7 +500,8 @@ fn rewrite_workflow_content_text_for(
     edit: &ContentEdit,
     file: &str,
 ) -> Result<String, String> {
-    let ContentEdit { context, rules, review } = edit;
+    // subagent_model 由子代理模型頁寫入（屬第二刀）；這裡沒有它的期望值，文字手術讓它原樣保留。
+    let ContentEdit { context, rules, review, .. } = edit;
     let current = WorkflowConfig::from_text(Some(original)).map_err(|e| {
         format!("{file}: rewrite verification failed: {}", single_line(&e.reason))
     })?;

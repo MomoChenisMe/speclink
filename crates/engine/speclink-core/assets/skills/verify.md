@@ -32,6 +32,14 @@
 
    The payload also carries `locale` — the resolved language for AI output (e.g., "Traditional Chinese (繁體中文)"). Remember it: the verification report is written in this language (see Output Format).
 
+   Then read the sub-agent model:
+
+   ```bash
+   speclink workflow-config show --json
+   ```
+
+   Keep its `subagentModel.verify.{{TOOL}}` cell: it sets the model of the checking sub-agent, by the **Sub-agent model** rules above the steps. Always read the workflow config through this command, never from the config file — in remote mode the same command returns the server's config. If the command fails (for example, the config does not parse), report its error verbatim and stop: do not send the sub-agent and do not write the ticket.
+
 4. **Branch on the call: mid-flight check-in, closing stamp re-entry, or finished-work verification**
 
    **Not every code task is done (`codeRemaining > 0`) → mid-flight progress check-in.** Run the three dimensions as a conversation report only (steps 6–9 below, reading whatever artifacts and code you need). Do not run `speclink verify scope`, do not run `speclink verify add-round`, and do NOT stamp. The verify ticket records the verification of finished work — a check-in round landing in it would make "open ticket" stop meaning "the product's verification is unfinished" and would trip the archive gate for nothing. Report and STOP after step 9.
@@ -54,7 +62,7 @@
 
 6. **Branch on `phase`**
 
-   Run the checking pass (steps 7–10) in ONE read-only sub-agent call (e.g. the Agent tool with a read-only agent) so its exploration stays out of the main thread's context. The sub-agent MUST NOT modify any file. If your harness cannot spawn sub-agents, run the checking pass yourself and keep its report separate from the triage that follows. The brief carries the resolved `locale` (step 3): finding descriptions are written in that language; severity labels, dimension prefixes, file paths, and command lines stay in English. It also carries step 2's `schemaName`, so the checking pass knows whether step 8's behavior check applies. When accepted findings exist in the ticket's last round (the `(accepted)` token), the brief also carries that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
+   Run the checking pass (steps 7–10) in ONE read-only sub-agent call (e.g. the Agent tool with a read-only agent) so its exploration stays out of the main thread's context. The call carries the model step 3's `subagentModel.verify.{{TOOL}}` cell names (the **Sub-agent model** rules). The report that follows — the step 10 report, or the conversation report of a mid-flight check-in — opens with the **Sub-agent model** line for this cell, right under its title, written in the `locale` language; in English it reads, for example, `Sub-agent model: sonnet (subagent_model.verify.{{TOOL}})`. The sub-agent MUST NOT modify any file. If your harness cannot spawn sub-agents, run the checking pass yourself and keep its report separate from the triage that follows. The brief carries the resolved `locale` (step 3): finding descriptions are written in that language; severity labels, dimension prefixes, file paths, and command lines stay in English. It also carries step 2's `schemaName`, so the checking pass knows whether step 8's behavior check applies. When accepted findings exist in the ticket's last round (the `(accepted)` token), the brief also carries that list with a hard instruction: do NOT re-report these items or near-variants of them — they are already adjudicated.
 
    Inside the `/speclink:quality` timeline, compose the brief exactly as this step says; `/speclink:quality` sends it in one message together with the review station's two briefs, so three sub-agents run at once. Continue with step 10 once it reports.
 
@@ -147,6 +155,7 @@
 
     ```
     ## Verification Report: <change-name>
+    <the Sub-agent model line from step 6>
 
     ### Summary
     | Dimension    | Status           |
@@ -270,6 +279,7 @@ Check these before you report:
 - [ ] The frozen patch from `speclink verify scope` is the code evidence; touched file lists and worktree state never substitute for it
 - [ ] needsInput and scope failures wait for an explicit disposal (trusted `--base`, hash-pinned selection, isolated worktree, or discard) — never guess past them
 - [ ] The checking pass is read-only; every fix returns to the main thread
+- [ ] The sub-agent model comes from `subagentModel.verify.{{TOOL}}` of `speclink workflow-config show --json`; a refused model name ends the station before a round is recorded
 - [ ] The ticket is verb-owned: create, append, and close it only through `speclink verify` verbs
 - [ ] Unresolved findings travel verbatim between rounds — rewording fakes progress
 - [ ] The verification gate is hard: no next round starts on a failing build or affected tests, and the report names what ran and what CI guards
