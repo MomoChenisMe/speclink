@@ -495,16 +495,7 @@ pub fn write_workflow_content_at(root: &Path, edit: &ContentEdit) -> Result<(), 
         .map_err(|e| format!("{file}: write failed: {e}"))?;
     let reread = read_opt(&path)
         .ok_or_else(|| format!("{file}: verify after write failed: file unreadable"))?;
-    verify_workflow_content_text(
-        &reread,
-        &expected.context,
-        &expected.rules,
-        &expected.review(),
-        &expected.subagent_model(),
-        &fields,
-        &file,
-        "verify after write",
-    )
+    verify_workflow_content_text(&reread, &ContentExpectation::of(&expected), &fields, &file, "verify after write")
 }
 
 /// 純文字 context/rules/review/subagent_model targeted-key 改寫 seam。政策欄位從原文讀出再原樣
@@ -523,48 +514,61 @@ fn rewrite_workflow_content_text_for(
         format!("{file}: rewrite verification failed: {}", single_line(&e.reason))
     })?;
     let fields = workflow_policy_fields(&current);
-    let want_context = match context {
-        ContextEdit::Keep => current.context.clone(),
-        ContextEdit::Set(value) if !value.trim().is_empty() => Some(value.clone()),
-        ContextEdit::Set(_) | ContextEdit::Remove => None,
-    };
-    let want_rules: BTreeMap<String, Vec<String>> = match rules {
-        None => current.rules.clone(),
-        Some(sections) => sections
-            .iter()
-            .filter_map(|(key, entries)| {
-                let cleaned = cleaned_entries(entries);
-                (!cleaned.is_empty()).then(|| (key.clone(), cleaned))
-            })
-            .collect(),
-    };
-    let want_review = match review {
-        None => current.review(),
-        Some(r) => ReviewConfig {
-            baseline: r.baseline,
-            critical: cleaned_entries(&r.critical),
-            warning: cleaned_entries(&r.warning),
-            suggestion: cleaned_entries(&r.suggestion),
+    let want = ContentExpectation {
+        context: match context {
+            ContextEdit::Keep => current.context.clone(),
+            ContextEdit::Set(value) if !value.trim().is_empty() => Some(value.clone()),
+            ContextEdit::Set(_) | ContextEdit::Remove => None,
         },
-    };
-    let want_subagent_model = match subagent_model {
-        None => current.subagent_model(),
-        Some(s) => cleaned_subagent_model(s),
+        rules: match rules {
+            None => current.rules.clone(),
+            Some(sections) => sections
+                .iter()
+                .filter_map(|(key, entries)| {
+                    let cleaned = cleaned_entries(entries);
+                    (!cleaned.is_empty()).then(|| (key.clone(), cleaned))
+                })
+                .collect(),
+        },
+        review: match review {
+            None => current.review(),
+            Some(r) => ReviewConfig {
+                baseline: r.baseline,
+                critical: cleaned_entries(&r.critical),
+                warning: cleaned_entries(&r.warning),
+                suggestion: cleaned_entries(&r.suggestion),
+            },
+        },
+        subagent_model: match subagent_model {
+            None => current.subagent_model(),
+            Some(s) => cleaned_subagent_model(s),
+        },
     };
     let new_text =
         speclink_core::config::update_workflow_config_text(original, &fields, edit)
             .map_err(|e| single_line(&e.to_string()))?;
-    verify_workflow_content_text(
-        &new_text,
-        &want_context,
-        &want_rules,
-        &want_review,
-        &want_subagent_model,
-        &fields,
-        file,
-        "rewrite verification",
-    )?;
+    verify_workflow_content_text(&new_text, &want, &fields, file, "rewrite verification")?;
     Ok(new_text)
+}
+
+/// 一次內容寫入後四塊內容的期望值（政策欄位另由 `WorkflowPolicyFields` 帶）。
+struct ContentExpectation {
+    context: Option<String>,
+    rules: BTreeMap<String, Vec<String>>,
+    review: ReviewConfig,
+    subagent_model: SubagentModelConfig,
+}
+
+impl ContentExpectation {
+    /// 一份已解析的設定裡的四塊內容（寫後回讀以寫前解析出的這份為準）。
+    fn of(cfg: &WorkflowConfig) -> ContentExpectation {
+        ContentExpectation {
+            context: cfg.context.clone(),
+            rules: cfg.rules.clone(),
+            review: cfg.review(),
+            subagent_model: cfg.subagent_model(),
+        }
+    }
 }
 
 /// 條目 trim、空條目滌除——與 core 寫入接縫相同的清理，作為驗證的期望值。
@@ -576,29 +580,12 @@ fn cleaned_entries(entries: &[String]) -> Vec<String> {
         .collect()
 }
 
-/// 模型值去頭尾空白、空值丟棄；清單條目同 `cleaned_entries`、空清單丟棄——
-/// 與 core 寫入接縫相同的清理，作為驗證的期望值。
+/// 驗證的期望值：讓 `SubagentModelConfig` 自己的嚴格解析做清理（模型值去頭尾空白、空值與空
+/// 清單丟棄、清單條目去空白）——讀回檔案時走的也是這套規則，本層不另寫一份。
 fn cleaned_subagent_model(s: &SubagentModelConfig) -> SubagentModelConfig {
-    let cells = |map: &BTreeMap<speclink_core::config::ToolName, String>| {
-        map.iter()
-            .filter_map(|(tool, model)| {
-                let model = model.trim();
-                (!model.is_empty()).then(|| (tool.clone(), model.to_string()))
-            })
-            .collect()
-    };
-    SubagentModelConfig {
-        review: cells(&s.review),
-        verify: cells(&s.verify),
-        choices: s
-            .choices
-            .iter()
-            .filter_map(|(tool, entries)| {
-                let entries = cleaned_entries(entries);
-                (!entries.is_empty()).then(|| (tool.clone(), entries))
-            })
-            .collect(),
-    }
+    serde_json::to_value(s)
+        .and_then(serde_json::from_value)
+        .expect("a SubagentModelConfig round-trips through its own parse")
 }
 
 fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
@@ -613,24 +600,20 @@ fn workflow_policy_fields(config: &WorkflowConfig) -> WorkflowPolicyFields {
     }
 }
 
-/// 驗證一份 config.yaml 文字可解析，且 context／rules／review／subagent_model 與政策欄位皆為期望值。
-#[allow(clippy::too_many_arguments)]
+/// 驗證一份 config.yaml 文字可解析，且四塊內容與政策欄位皆為期望值。
 fn verify_workflow_content_text(
     text: &str,
-    want_context: &Option<String>,
-    want_rules: &BTreeMap<String, Vec<String>>,
-    want_review: &ReviewConfig,
-    want_subagent_model: &SubagentModelConfig,
+    want: &ContentExpectation,
     fields: &WorkflowPolicyFields,
     file: &str,
     stage: &str,
 ) -> Result<(), String> {
     let cfg: WorkflowConfig = serde_yaml::from_str(text)
         .map_err(|e| format!("{file}: {stage} failed: {}", single_line(&e.to_string())))?;
-    if cfg.context == *want_context
-        && cfg.rules == *want_rules
-        && cfg.review() == *want_review
-        && cfg.subagent_model() == *want_subagent_model
+    if cfg.context == want.context
+        && cfg.rules == want.rules
+        && cfg.review() == want.review
+        && cfg.subagent_model() == want.subagent_model
         && cfg.locale == fields.locale
         && cfg.spec_locale == fields.spec_locale
         && cfg.tdd.unwrap_or(false) == fields.tdd

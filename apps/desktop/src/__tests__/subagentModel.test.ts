@@ -30,9 +30,9 @@ describe("toDraft", () => {
     expect(draft.cells.review.claude).toEqual({ mode: "pick", value: "opus" });
     expect(draft.cells.review.codex).toEqual({ mode: "pick", value: "gpt-6.1-sol" });
     expect(draft.cells.review.copilot).toEqual({ mode: "custom", value: "gpt-5.6" });
-    expect(draft.cells.review.pi).toEqual({ mode: "inherit", value: "" });
+    expect(draft.cells.review.pi).toEqual({ mode: "inherit" });
     expect(draft.cells.verify.claude).toEqual({ mode: "pick", value: "sonnet" });
-    expect(draft.cells.verify.codex).toEqual({ mode: "inherit", value: "" });
+    expect(draft.cells.verify.codex).toEqual({ mode: "inherit" });
     expect(draft.lists).toEqual({ claude: "", codex: "gpt-6.1-sol\ngpt-6-astra", copilot: "", pi: "", cursor: "" });
   });
 });
@@ -48,7 +48,7 @@ describe("modelSource", () => {
 describe("cellChoice", () => {
   it("下拉的值：inherit 與 custom 各為哨兵、pick 為名稱", () => {
     const options = choiceOptions(BUILTIN.claude, [], LABELS);
-    expect(cellChoice({ mode: "inherit", value: "" }, options)).toBe(SUBAGENT_INHERIT);
+    expect(cellChoice({ mode: "inherit" }, options)).toBe(SUBAGENT_INHERIT);
     expect(cellChoice({ mode: "pick", value: "opus" }, options)).toBe("opus");
     expect(cellChoice({ mode: "custom", value: "opus" }, options)).toBe(SUBAGENT_CUSTOM);
   });
@@ -68,7 +68,7 @@ describe("fromDraft", () => {
 
   it("inherit 與留空的 custom 移除該格；custom 去頭尾空白；pick 寫名稱", () => {
     const draft = toDraft(CURRENT, BUILTIN);
-    draft.cells.verify.claude = { mode: "inherit", value: "" };
+    draft.cells.verify.claude = { mode: "inherit" };
     draft.cells.review.copilot = { mode: "custom", value: "   " };
     draft.cells.verify.copilot = { mode: "custom", value: " gpt-5.6 " };
     draft.cells.verify.codex = { mode: "pick", value: "gpt-6-astra" };

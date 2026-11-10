@@ -943,7 +943,7 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     expect(screen.getByLabelText("audit")).toBeTruthy();
   });
 
-  it("reader 看得到四頁現值但全唯讀，存檔停用並附繁中角色說明", async () => {
+  it("reader 看得到五頁現值但全唯讀，存檔停用並附繁中角色說明", async () => {
     const ws = remoteSettings(
       projectSnap({ revision: 9 } as Partial<SettingsSnapshot["workflow"]>),
       false,
@@ -959,6 +959,9 @@ describe("remote Workflow 設定（remote-workflow-policy 決策 5/6）", () => 
     goto("review");
     expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByTestId("review-edit") as HTMLButtonElement).disabled).toBe(true);
+    goto("subagent");
+    expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
+    expect((screen.getByTestId("subagent-edit") as HTMLButtonElement).disabled).toBe(true);
     goto("workflow");
     expect(screen.getByTestId("policy-reader-note")).toBeTruthy();
     expect((screen.getByLabelText("locale") as HTMLButtonElement).disabled).toBe(true);
@@ -2008,6 +2011,7 @@ describe("子代理模型頁（spec 需求「設定頁編輯子代理模型」�
     expect(screen.queryByLabelText("Copilot · 驗證 · 模型名稱")).toBeNull();
     await choose("Copilot · 驗證", "自行輸入…");
     const input = screen.getByLabelText("Copilot · 驗證 · 模型名稱");
+    expect(within(screen.getByTestId("subagent-cell-verify-copilot")).getByText("輸入的名稱不會加進自訂清單")).toBeTruthy();
     fireEvent.change(input, { target: { value: " gpt-5.6 " } });
     fireEvent.keyDown(input, { key: "s", ctrlKey: true });
     await waitFor(() => expect(written(ws)).toHaveLength(1));
@@ -2031,15 +2035,37 @@ describe("子代理模型頁（spec 需求「設定頁編輯子代理模型」�
     await waitFor(() => expect(cellText("verify", "codex")).toBe("gpt-6-astra自訂清單"));
   });
 
-  it("選回沿用主對話、清空自訂清單：payload 移除該格與該清單（spec Scenario「清空即移除鍵」）", async () => {
-    const ws = fakeSettings(modelSnap());
+  // spec Example「移除語意」——逐列對應：起始區塊與操作照表，斷言送出的 payload（檔案效果由引擎落實）。
+  it.each<{ row: string; before: SubagentModelConfig; act: () => Promise<void>; after: SubagentModelConfig }>([
+    {
+      row: "claude 的驗證格選「沿用主對話」",
+      before: { review: { claude: "opus" }, verify: { claude: "sonnet" }, choices: {} },
+      act: () => choose("Claude Code · 驗證", "沿用主對話"),
+      after: { review: { claude: "opus" }, verify: {}, choices: {} },
+    },
+    {
+      row: "清空 Codex 的自訂清單",
+      before: { review: { claude: "opus" }, verify: {}, choices: { codex: ["gpt-6.1-sol", "gpt-6-astra"] } },
+      act: async () => typeInEditor(screen.getByTestId("subagent-list-input-codex"), ""),
+      after: { review: { claude: "opus" }, verify: {}, choices: {} },
+    },
+    {
+      row: "該格選「自行輸入…」並清空輸入框",
+      before: { review: { claude: "opus" }, verify: {}, choices: {} },
+      act: async () => {
+        await choose("Claude Code · 審查", "自行輸入…");
+        fireEvent.change(screen.getByLabelText("Claude Code · 審查 · 模型名稱"), { target: { value: "" } });
+      },
+      after: { review: {}, verify: {}, choices: {} },
+    },
+  ])("清空即移除鍵：$row（spec Scenario「清空即移除鍵」）", async ({ before, act, after }) => {
+    const ws = fakeSettings(modelSnap(before));
     const page = await openPage(ws);
     fireEvent.click(within(page).getByTestId("subagent-edit"));
-    await choose("Claude Code · 驗證", "沿用主對話");
-    typeInEditor(within(page).getByTestId("subagent-list-input-codex"), "");
+    await act();
     fireEvent.click(within(page).getByTestId("subagent-save"));
     await waitFor(() => expect(written(ws)).toHaveLength(1));
-    expect(written(ws)[0][0]).toEqual({ review: MODEL.review, verify: {}, choices: {} });
+    expect(written(ws)[0][0]).toEqual(after);
   });
 
   it("刪掉已選用的名稱：該格改顯示自行輸入並保留原值（spec Scenario「刪掉已選用的名稱改顯示為自行輸入」）", async () => {
@@ -2099,6 +2125,52 @@ describe("子代理模型頁（spec 需求「設定頁編輯子代理模型」�
     expect(within(within(page).getByTestId("subagent-list-copilot")).getByText("沒有自訂名稱")).toBeTruthy();
   });
 
+  it(".speclink.yaml 解析失敗時不標「未啟用」（不知道勾了哪些工具，review R8）", async () => {
+    const page = await openPage(
+      fakeSettings(snapshot({ app: { tools: [], customTools: [], parseError: "tools: invalid" }, workflow: { subagentModel: MODEL } as SettingsSnapshot["workflow"] })),
+    );
+    expect(within(page).queryByText("未啟用")).toBeNull();
+  });
+
+  it("本機寫入失敗：單行錯誤、停在編輯態、輸入保留（設計失敗模式「本機寫入失敗」）", async () => {
+    const ws = {
+      ...fakeSettings(modelSnap()),
+      writeWorkflowSubagentModel: vi.fn().mockRejectedValue("speclink/config.yaml: write failed: permission denied"),
+    } as unknown as WorkspaceSettingsProvider;
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Claude Code · 審查", "haiku");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    expect(await within(page).findByText("speclink/config.yaml: write failed: permission denied")).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "Claude Code · 審查" }).textContent).toContain("haiku");
+  });
+
+  it("衝突對照遇到 constructor 這類與物件內建屬性同名的工具名稱照常列出（review R9）", async () => {
+    const remoteSnap = (subagentModel: SubagentModelConfig, revision: number) =>
+      snapshot({
+        app: { tools: [], customTools: [], parseError: null },
+        workflow: { subagentModel, revision } as SettingsSnapshot["workflow"],
+      });
+    const initial = remoteSnap({ review: {}, verify: {}, choices: {} }, 41);
+    const latest = remoteSnap({ review: { constructor: "model-x" }, verify: {}, choices: { constructor: ["model-x"] } }, 42);
+    const ws = {
+      ...fakeSettings(initial),
+      kind: "remote",
+      writeWorkflowSubagentModel: vi.fn().mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 }),
+    } as unknown as WorkspaceSettingsProvider;
+    (ws.readSettings as ReturnType<typeof vi.fn>).mockReset().mockResolvedValueOnce(initial).mockResolvedValueOnce(latest);
+    const page = await openPage(ws);
+    fireEvent.click(within(page).getByTestId("subagent-edit"));
+    await choose("Claude Code · 審查", "opus");
+    fireEvent.click(within(page).getByTestId("subagent-save"));
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    for (const key of ["subagent_model.review.constructor", "subagent_model.choices.constructor"]) {
+      const row = within(panel).getByTestId(`conflict-row-${key}`);
+      expect(within(row).getByTestId("conflict-server").textContent).toBe("model-x");
+      expect(within(row).getByTestId("conflict-mine").textContent).toBe("—");
+    }
+  });
+
   it("子代理模型頁編輯中，審查規則頁照常唯讀可用（一頁進入編輯不影響其他頁）", async () => {
     const page = await openPage(fakeSettings(modelSnap()));
     fireEvent.click(within(page).getByTestId("subagent-edit"));
@@ -2152,5 +2224,118 @@ describe("子代理模型頁（spec 需求「設定頁編輯子代理模型」�
     expect(ws.writeWorkflowSubagentModel).toHaveBeenCalledTimes(2);
     expect(screen.getByTestId("policy-revision").textContent).toContain("43");
     expect(cellText("review", "claude")).toBe("opus內建");
+  });
+});
+
+describe("編輯中被別的寫入帶到較新的 revision（review R3）", () => {
+  const RULES0: ReviewRules = { baseline: "extend", critical: [], warning: ["舊的 WARNING"], suggestion: [] };
+  const initial = projectSnap({
+    revision: 41,
+    review: RULES0,
+    subagentModel: { review: { "my-agent": "model-a" }, verify: {}, choices: {} },
+  } as Partial<SettingsSnapshot["workflow"]>);
+  // server 上四塊內容都被別人改過。
+  const latest = projectSnap({
+    revision: 42,
+    context: "server 較新的說明",
+    rules: { proposal: ["提案必須列出影響的 crates"], tasks: ["別人改的任務規則"] },
+    review: { ...RULES0, warning: ["別人加的 WARNING"] },
+    subagentModel: { review: { "my-agent": "model-b" }, verify: {}, choices: {} },
+  } as Partial<SettingsSnapshot["workflow"]>);
+  const user = () => userEvent.setup({ pointerEventsCheck: 0 });
+
+  type Card = {
+    section: ProjectSettingsSection;
+    edit: () => Promise<void>;
+    save: string;
+    writer: keyof WorkspaceSettingsProvider;
+    row: string;
+  };
+  const CARDS: Record<string, Card> = {
+    subagent: {
+      section: "subagent",
+      edit: async () => {
+        fireEvent.click(screen.getByTestId("subagent-edit"));
+        await user().click(screen.getByRole("combobox", { name: "Claude Code · 審查" }));
+        await user().click(await screen.findByRole("option", { name: "opus" }));
+      },
+      save: "subagent-save",
+      writer: "writeWorkflowSubagentModel",
+      row: "subagent_model.review.my-agent",
+    },
+    review: {
+      section: "review",
+      edit: async () => {
+        fireEvent.click(screen.getByTestId("review-edit"));
+        typeInEditor(screen.getByTestId("review-input-critical"), "我的 CRITICAL 規則");
+      },
+      save: "review-save",
+      writer: "writeWorkflowReview",
+      row: "review-warning",
+    },
+    rules: {
+      section: "rules",
+      edit: async () => {
+        fireEvent.click(screen.getByTestId("rules-edit"));
+        typeInEditor(screen.getByTestId("rules-input-proposal"), "我的提案規則");
+      },
+      save: "rules-save",
+      writer: "writeWorkflowRules",
+      row: "rules-tasks",
+    },
+    context: {
+      section: "context",
+      edit: async () => {
+        fireEvent.click(screen.getByTestId("context-edit"));
+        typeInEditor(screen.getByTestId("context-input"), "我的說明");
+      },
+      save: "context-save",
+      writer: "writeWorkflowContext",
+      row: "context",
+    },
+  };
+
+  it.each([
+    ["subagent", "context"],
+    ["review", "context"],
+    ["rules", "context"],
+    ["context", "review"],
+  ])("%s 頁編輯中、%s 頁撞 409 後重送成功：儲存先浮出對照、不直接寫入", async (editing, other) => {
+    const card = CARDS[editing];
+    const otherCard = CARDS[other];
+    const ws = {
+      ...fakeSettings(initial),
+      kind: "remote",
+      writeWorkflowContext: vi.fn().mockResolvedValue(50),
+      writeWorkflowRules: vi.fn().mockResolvedValue(50),
+      writeWorkflowReview: vi.fn().mockResolvedValue(50),
+      writeWorkflowSubagentModel: vi.fn().mockResolvedValue(50),
+    } as unknown as WorkspaceSettingsProvider;
+    (ws[otherCard.writer] as ReturnType<typeof vi.fn>)
+      .mockReset()
+      .mockRejectedValueOnce({ message: "conflict", reason: "revision_conflict", status: 409 })
+      .mockResolvedValueOnce(43);
+    (ws.readSettings as ReturnType<typeof vi.fn>).mockReset().mockResolvedValueOnce(initial).mockResolvedValue(latest);
+    render(<Harness settings={ws} initial={card.section} />);
+    await screen.findByTestId(`${card.save.replace("-save", "")}-edit`);
+    await card.edit();
+
+    goto(otherCard.section);
+    await otherCard.edit();
+    fireEvent.click(screen.getByTestId(otherCard.save));
+    const first = await screen.findByTestId("policy-conflict-panel");
+    fireEvent.click(within(first).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
+
+    goto(card.section);
+    fireEvent.click(screen.getByTestId(card.save));
+    const panel = await screen.findByTestId("policy-conflict-panel");
+    expect(ws[card.writer]).not.toHaveBeenCalled();
+    const row = within(panel).getByTestId(`conflict-row-${card.row}`);
+    expect(within(row).getByTestId("conflict-server").textContent).not.toBe(within(row).getByTestId("conflict-mine").textContent);
+
+    fireEvent.click(within(panel).getByRole("button", { name: "檢視後以最新 revision 重新提交" }));
+    await waitFor(() => expect(ws[card.writer]).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.queryByTestId("policy-conflict-panel")).toBeNull());
   });
 });

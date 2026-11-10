@@ -10,6 +10,8 @@ const badgeVariants = cva(
       variant: {
         default: "border-transparent bg-primary text-primary-foreground",
         secondary: "border-transparent bg-muted text-foreground",
+        /** 次要資訊（「未啟用」之類的狀態註記）：灰底灰字。 */
+        muted: "border-transparent bg-muted text-muted-foreground",
         outline: "text-foreground",
       },
     },

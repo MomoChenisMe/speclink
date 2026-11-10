@@ -34,18 +34,15 @@ export interface ProjectSettingsCategory {
   group: "config" | "project";
   /** 遠端專案是否呈現（.speclink.yaml 屬本機 checkout，遠端無此分類）。 */
   remote: boolean;
-  /** 上層分類（見 PROJECT_SETTINGS_PARENTS）：同一個上層分類的子項在目錄裡相鄰。 */
-  parent?: ProjectSettingsParentId;
+  /** 屬於上層分類「品質關卡」（QUALITY_PARENT）的子項；子項在目錄裡相鄰。 */
+  parent?: "quality";
 }
 
-export type ProjectSettingsParentId = "quality";
-
-/** 上層分類：沒有自己的頁，點了開 `opens` 那頁。 */
-export const PROJECT_SETTINGS_PARENTS: Record<
-  ProjectSettingsParentId,
-  { labelKey: string; icon: LucideIcon; opens: ProjectSettingsCategory["id"] }
-> = {
-  quality: { labelKey: "settings.projectSection.quality", icon: ShieldCheck, opens: "review" },
+/** 上層分類「品質關卡」（目前唯一的上層分類）：沒有自己的頁，點了開 `opens` 那頁。 */
+export const QUALITY_PARENT: { labelKey: string; icon: LucideIcon; opens: ProjectSettingsCategory["id"] } = {
+  labelKey: "settings.projectSection.quality",
+  icon: ShieldCheck,
+  opens: "review",
 };
 
 /** 工作流設定檔的專案根相對路徑（desktop-spec-dir-migration D4）：專案設定各頁的檔案註記由它
@@ -129,7 +126,7 @@ export function projectSettingsTrail(
 ): Array<{ labelKey: string; opens?: ProjectSettingsSection }> {
   const category = PROJECT_SETTINGS_CATEGORIES.find((c) => c.id === section)!;
   const page = { labelKey: category.labelKey };
-  return category.parent ? [PROJECT_SETTINGS_PARENTS[category.parent], page] : [page];
+  return category.parent ? [QUALITY_PARENT, page] : [page];
 }
 
 /** 分類欄搜尋：分類名或任一列標籤含查詢字串（大小寫不敏感）；空查詢全數保留。 */

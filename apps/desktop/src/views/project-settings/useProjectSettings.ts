@@ -37,6 +37,13 @@ type PendingRemoteWrite =
   | { kind: "subagentModel"; config: SubagentModelConfig }
   | { kind: "schema"; name: string };
 
+/** 有自己編輯態的四張內容卡。 */
+type CardKind = "context" | "rules" | "review" | "subagentModel";
+
+/** 只取物件自己的鍵：工具名稱 `constructor` 之類與物件內建屬性同名時，不會取到原型上的值。 */
+const own = <T,>(map: Record<string, T>, key: string): T | undefined =>
+  Object.prototype.hasOwnProperty.call(map, key) ? map[key] : undefined;
+
 interface ConflictRow {
   key: string;
   label: string;
@@ -134,6 +141,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
   const [reviewSaving, setReviewSaving] = useState(false);
   const [subagentSaving, setSubagentSaving] = useState(false);
   const writing = useRef({ context: false, rules: false, review: false, subagentModel: false });
+  /** 編輯期間被別的寫入帶到較新的 revision、且 server 值已與開編輯時不同的卡（review R3）。 */
+  const [staleCards, setStaleCards] = useState<ReadonlySet<CardKind>>(() => new Set());
   const [appMsg, setAppMsg] = useState<string | null>(null);
   const [wfMsg, setWfMsg] = useState<string | null>(null);
   const [conflict, setConflictState] = useState<PolicyConflict | null>(null);
@@ -185,6 +194,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setRulesEditing(false);
     setReviewEditing(false);
     setSubagentEditing(false);
+    setStaleCards(new Set());
   };
 
   useEffect(() => {
@@ -227,7 +237,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
 
   /** 採納最新快照裡「不是這次寫入、也不在編輯中」各區的現值（review R8）：remote 的
    * readSettings 會靜默換上最新 revision，留著舊現值再起草儲存，就會不經 409 蓋掉別人的修改。
-   * 編輯中的卡保留草稿；政策欄位只在表單沒有未存修改時採納。 */
+   * 編輯中的卡保留草稿；它的 server 值若已變，記為 stale，儲存時先浮出對照（isStale）。
+   * 政策欄位只在表單沒有未存修改時採納。 */
   const adoptFresh = (fresh: SettingsSnapshot, written: PendingRemoteWrite["kind"]) => {
     const w = fresh.workflow;
     if (written !== "policy" && !policyDirty) {
@@ -243,6 +254,20 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     }
     if (written !== "review" && !reviewEditing) setReview(w.review);
     if (written !== "subagentModel" && !subagentEditing) setSubagentModel(w.subagentModel);
+    const stale: CardKind[] = [];
+    if (written !== "context" && ctxEditing && (w.context ?? "") !== contextText) stale.push("context");
+    if (
+      written !== "rules" &&
+      rulesEditing &&
+      editingRuleKeys.some((id) => entriesToText(w.rules[id] ?? []) !== entriesToText(rules[id] ?? []))
+    ) {
+      stale.push("rules");
+    }
+    if (written !== "review" && reviewEditing && !sameReview(w.review, review)) stale.push("review");
+    if (written !== "subagentModel" && subagentEditing && !sameSubagentModel(w.subagentModel, subagentModel)) {
+      stale.push("subagentModel");
+    }
+    if (stale.length > 0) setStaleCards((prev) => new Set([...prev, ...stale]));
   };
 
   const adoptRevision = (next: number | void) => {
@@ -383,7 +408,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     for (const station of SUBAGENT_STATIONS) {
       for (const tool of toolsOf(serverSubagent[station], mineSubagent[station])) {
         const key = `subagent_model.${station}.${tool}`;
-        rows.push({ key, label: key, server: show(serverSubagent[station][tool]), mine: show(mineSubagent[station][tool]) });
+        rows.push({
+          key,
+          label: key,
+          server: show(own(serverSubagent[station], tool)),
+          mine: show(own(mineSubagent[station], tool)),
+        });
       }
     }
     for (const tool of toolsOf(serverSubagent.choices, mineSubagent.choices)) {
@@ -391,8 +421,8 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       rows.push({
         key,
         label: key,
-        server: show(entriesToText(serverSubagent.choices[tool] ?? [])),
-        mine: show(entriesToText(mineSubagent.choices[tool] ?? [])),
+        server: show(entriesToText(own(serverSubagent.choices, tool) ?? [])),
+        mine: show(entriesToText(own(mineSubagent.choices, tool) ?? [])),
       });
     }
     return rows;
@@ -408,19 +438,28 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     schema: setSchemaMsg,
   };
 
-  const handleWriteError = async (
-    error: unknown,
-    pending: PendingRemoteWrite,
-  ): Promise<boolean> => {
-    if (!isRemote || remoteErrorReason(error) !== "revision_conflict") return false;
+  /** 重讀 server 最新版並浮出逐欄位對照；重讀失敗時把原因寫到該卡的訊息。 */
+  const openConflict = async (pending: PendingRemoteWrite) => {
     try {
       const latest = await settings.readSettings();
       setConflict({ latest, pending, rows: buildConflictRows(latest, pending) });
     } catch (readError) {
       MSG_SETTERS[pending.kind](errorMessage(readError));
     }
+  };
+
+  const handleWriteError = async (
+    error: unknown,
+    pending: PendingRemoteWrite,
+  ): Promise<boolean> => {
+    if (!isRemote || remoteErrorReason(error) !== "revision_conflict") return false;
+    await openConflict(pending);
     return true;
   };
+
+  /** stale 的卡（見 adoptFresh）不直接寫入：adapter 已帶著新 revision，寫入不會再 409，會蓋掉
+   * 別人的修改——儲存改為比照 409 浮出對照（openConflict），看過差異再選重載或重送。 */
+  const isStale = (kind: CardKind) => isRemote && staleCards.has(kind);
 
   const saveWorkflow = async () => {
     const fields: WorkflowFields = {
@@ -486,6 +525,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
 
   const saveContext = () => guardWrite("context", setCtxSaving, async () => {
     // 僅寫 context 鍵（清空＝移除鍵）；產出規則卡對應的 rules 鍵不觸碰。
+    const pending = { kind: "context", context: draftContext } as const;
+    if (isStale(pending.kind)) {
+      setCtxMsg(null);
+      await openConflict(pending);
+      return;
+    }
     try {
       const next = await settings.writeWorkflowContext(draftContext);
       adoptRevision(next);
@@ -494,7 +539,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setCtxMsg(t("settings.saved"));
     } catch (e) {
       // 寫入失敗：單行錯誤，維持編輯態不遺失輸入。
-      if (await handleWriteError(e, { kind: "context", context: draftContext })) setCtxMsg(null);
+      if (await handleWriteError(e, pending)) setCtxMsg(null);
       else setCtxMsg(errorMessage(e));
     }
   });
@@ -525,6 +570,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     for (const [key, entries] of Object.entries(snap.workflow.rules)) {
       if (!editingRuleKeys.includes(key)) nextRules.push([key, entries]);
     }
+    const pending = { kind: "rules", rules: nextRules } as const;
+    if (isStale(pending.kind)) {
+      setRulesMsg(null);
+      await openConflict(pending);
+      return;
+    }
     try {
       const next = await settings.writeWorkflowRules(nextRules);
       adoptRevision(next);
@@ -532,7 +583,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setRulesEditing(false);
       setRulesMsg(t("settings.saved"));
     } catch (e) {
-      if (await handleWriteError(e, { kind: "rules", rules: nextRules })) setRulesMsg(null);
+      if (await handleWriteError(e, pending)) setRulesMsg(null);
       else setRulesMsg(errorMessage(e));
     }
   });
@@ -547,6 +598,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     // 整塊代換、只寫 review 鍵：逐行修剪、空行不寫；移除語意（extend 不寫 baseline、空節移除、
     // 全空移除 review）在 core 落實。
     const nextReview = draftToReview(draftReview, review);
+    const pending = { kind: "review", review: nextReview } as const;
+    if (isStale(pending.kind)) {
+      setReviewMsg(null);
+      await openConflict(pending);
+      return;
+    }
     try {
       const next = await settings.writeWorkflowReview(nextReview);
       adoptRevision(next);
@@ -554,7 +611,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setReviewEditing(false);
       setReviewMsg(t("settings.saved"));
     } catch (e) {
-      if (await handleWriteError(e, { kind: "review", review: nextReview })) setReviewMsg(null);
+      if (await handleWriteError(e, pending)) setReviewMsg(null);
       else setReviewMsg(errorMessage(e));
     }
   });
@@ -573,6 +630,12 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setSubagentMsg(null);
       return;
     }
+    const pending = { kind: "subagentModel", config: nextModel } as const;
+    if (isStale(pending.kind)) {
+      setSubagentMsg(null);
+      await openConflict(pending);
+      return;
+    }
     try {
       const next = await settings.writeWorkflowSubagentModel(nextModel);
       adoptRevision(next);
@@ -580,7 +643,7 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
       setSubagentEditing(false);
       setSubagentMsg(t("settings.saved"));
     } catch (e) {
-      if (await handleWriteError(e, { kind: "subagentModel", config: nextModel })) setSubagentMsg(null);
+      if (await handleWriteError(e, pending)) setSubagentMsg(null);
       else setSubagentMsg(errorMessage(e));
     }
   });
@@ -684,51 +747,65 @@ export function useProjectSettings(settings: WorkspaceSettingsProvider) {
     setWfMsg(null);
   };
 
+  /** 以最新 revision 重送一筆被擋下的寫入：每種寫入的送出與成功後的採納寫在同一處。 */
+  const resend = async (pending: PendingRemoteWrite): Promise<[number | void, () => void]> => {
+    switch (pending.kind) {
+      case "policy":
+        return [await settings.writeWorkflowConfig(pending.fields), () => adoptPolicy(pending.fields)];
+      case "context":
+        return [
+          await settings.writeWorkflowContext(pending.context),
+          () => {
+            setContextText(pending.context);
+            setCtxEditing(false);
+          },
+        ];
+      case "rules":
+        return [
+          await settings.writeWorkflowRules(pending.rules),
+          () => {
+            setRules(Object.fromEntries(pending.rules));
+            setRulesEditing(false);
+          },
+        ];
+      case "review":
+        return [
+          await settings.writeWorkflowReview(pending.review),
+          () => {
+            setReview(pending.review);
+            setReviewEditing(false);
+          },
+        ];
+      case "subagentModel":
+        return [
+          await settings.writeWorkflowSubagentModel(pending.config),
+          () => {
+            setSubagentModel(pending.config);
+            setSubagentEditing(false);
+          },
+        ];
+      case "schema":
+        return [await settings.writeWorkflowSchema(pending.name), () => {}];
+    }
+  };
+
   const retryConflict = async () => {
     if (conflict === null) return;
     const { latest, pending } = conflict;
     try {
+      const [next, adoptSaved] = await resend(pending);
+      MSG_SETTERS[pending.kind](t("settings.saved"));
       if (pending.kind === "schema") {
-        const next = await settings.writeWorkflowSchema(pending.name);
-        setSchemaMsg(t("settings.saved"));
         adoptRevision(next);
         setConflict(null);
         await refreshSchemaFacts();
         return;
       }
-      const next =
-        pending.kind === "policy"
-          ? await settings.writeWorkflowConfig(pending.fields)
-          : pending.kind === "context"
-            ? await settings.writeWorkflowContext(pending.context)
-            : pending.kind === "review"
-              ? await settings.writeWorkflowReview(pending.review)
-              : pending.kind === "subagentModel"
-                ? await settings.writeWorkflowSubagentModel(pending.config)
-                : await settings.writeWorkflowRules(pending.rules);
       // 以最新 revision 重送成功：快照換成 server 最新版，其他區一併採納（review R8）。
       setSnap(latest);
       adoptFresh(latest, pending.kind);
-      if (pending.kind === "policy") {
-        adoptPolicy(pending.fields);
-        setWfMsg(t("settings.saved"));
-      } else if (pending.kind === "context") {
-        setContextText(pending.context);
-        setCtxEditing(false);
-        setCtxMsg(t("settings.saved"));
-      } else if (pending.kind === "review") {
-        setReview(pending.review);
-        setReviewEditing(false);
-        setReviewMsg(t("settings.saved"));
-      } else if (pending.kind === "subagentModel") {
-        setSubagentModel(pending.config);
-        setSubagentEditing(false);
-        setSubagentMsg(t("settings.saved"));
-      } else {
-        setRules(Object.fromEntries(pending.rules));
-        setRulesEditing(false);
-        setRulesMsg(t("settings.saved"));
-      }
+      adoptSaved();
+      setStaleCards((prev) => new Set([...prev].filter((kind) => kind !== pending.kind)));
       adoptRevision(next);
       setConflict(null);
     } catch (error) {

@@ -246,6 +246,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.subagentSource.custom": "自行輸入",
     "settings.subagentCustomOption": "自行輸入…",
     "settings.subagentCustomInput": "模型名稱",
+    "settings.subagentCustomHelp": "輸入的名稱不會加進自訂清單",
     "settings.subagentNotEnabled": "未啟用",
     "settings.subagentNotEnabledNote":
       "「未啟用」表示這個專案的 AI 工具頁沒有勾選該工具；設定照樣保存，勾選之後就會用上。",
@@ -828,6 +829,7 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "settings.subagentSource.custom": "Entered by hand",
     "settings.subagentCustomOption": "Enter a name…",
     "settings.subagentCustomInput": "Model name",
+    "settings.subagentCustomHelp": "The name is not added to the custom list",
     "settings.subagentNotEnabled": "Not enabled",
     "settings.subagentNotEnabledNote":
       "“Not enabled” means this project's AI tools page does not select the tool; the setting is kept and applies once the tool is selected.",

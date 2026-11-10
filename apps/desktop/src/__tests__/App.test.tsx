@@ -1202,6 +1202,9 @@ describe("sidebar navigation structure（側欄導覽結構）", () => {
     fireEvent.click(within(screen.getByTestId("main-titlebar")).getByRole("button", { name: "品質關卡" }));
     expect(crumbText()).toBe("proj-a/專案設定/品質關卡/審查規則");
     expect(within(column).getByRole("button", { name: "審查規則" }).getAttribute("aria-current")).toBe("page");
+    // 先離開審查規則頁，點分類欄的「品質關卡」才分得出它有沒有開審查規則頁。
+    fireEvent.click(within(column).getByRole("button", { name: "專案說明" }));
+    expect(crumbText()).toBe("proj-a/專案設定/專案說明");
     fireEvent.click(within(column).getByRole("button", { name: "品質關卡" }));
     expect(crumbText()).toBe("proj-a/專案設定/品質關卡/審查規則");
     fireEvent.click(within(column).getByRole("button", { name: "產出流程" }));

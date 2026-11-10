@@ -185,6 +185,7 @@ export {
   SettingsGroupHeader,
   type SettingsChoiceOption,
   type SettingsChoiceGroup,
+  isSettingsChoiceGroup,
 } from "./components/ui/settings";
 export {
   DropdownMenu,

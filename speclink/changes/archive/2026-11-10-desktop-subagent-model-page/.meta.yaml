@@ -1,0 +1,161 @@
+schema: spec-driven
+created: 2026-11-10T21:37:27+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: station-subagent-model
+started_at: 2026-11-10T22:02:09+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-10T23:02:59+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 15
+reviewed_rounds: 2
+reviewed_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: 673724eb3d2bb62c91562c65b7a40158ebcbaaa7cc9c3cec3ef691b120558a03
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: e6d49b2cc50c7b3363466b1bed0cc817d8e1dfd6d08da861fd617ded720996ff
+  - path: apps/desktop/src/App.tsx
+    hash: fd19b62f6cc5f2a3200b5e49320b4a11978207732da9f59263e1e0c19633f005
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: f3d09789ba2f994f55a90237d8b620a66f75ae05340a8f1f914bbb077c8f780f
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 524af943104e3a9f52d8404c03e7bf38fb9a2842db69a6e6df38c5e3567c295f
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 81d68746a715a9c12ad8be0971d8873372663ed9fa0cbfc768464e0e5db69007
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 3cb1c68c89e40d7adbcb54b3ce25bafd7eff2aad5b4bfb2bd39ee66bb7c50553
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: d12f7a39263afec909b53a455a2c060cf984e5402b8ce1c0689f8d2bc1939428
+  - path: apps/desktop/src/__tests__/subagentModel.test.ts
+    hash: 5e8ebad5bd8a78b38a308f1b590dc817f277b8ed2c68910fa60f1d348a8ee5c8
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 0e9a893706b8cf2628c8b4c892c5ad059cb91c9282f8b287c56bc757b76c497f
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 763ae19ed0ec5580371a9012423b5adec8557d7c4c7994d0174fee8d4036f261
+  - path: apps/desktop/src/builtinTools.ts
+    hash: 8511018a9a1c483d3df616e98a9f91d9ca2dc28dcfac561eb0f2275e73ce92ee
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: 5178004cf14801331cc8fd237751d646c715f2b2b8e54956b1aeb18b26c348fe
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 6ed2f069feb6bcef32dccc7e987c7b565cb5a6709a1a4e307e2fd7fe23a6956c
+  - path: apps/desktop/src/session.ts
+    hash: 707114b798514b67acd63289d563ded76bb2bcb965e1609ff622c42676e6b69c
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: b17a870782971d751911de4237381107fa79c0ef7e72a570fc4fa11a8ab1b2cc
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 9c9b016c2b94e932969b7fcd40563bc8acf8b3ad93acea238cad41190a7d5bb4
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: 425a828c70abbafd1d2d0e8309002e9f88095be37abe15970f14c50fce026ad3
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: 817cc1cfa78f37a796226440276b512dedf189f578260bc880ec9911dcd26049
+  - path: apps/desktop/src/views/project-settings/SubagentModelPage.tsx
+    hash: de67ad60ddc6b2d3037f3f9351f722f2d4928628196c3b0b627b9d4b21f65917
+  - path: apps/desktop/src/views/project-settings/lines.ts
+    hash: 6287a6d1f281f0d97dffebaa849ce9847351f6137597ea8ffc04c3ea327d4ac2
+  - path: apps/desktop/src/views/project-settings/subagentModel.ts
+    hash: 4c0f027b408acbfb5cde35984fb90d454301b00709e749e1abff5f248a48e927
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 6a83144a68fc5cd1aa4268bf3aaa9dce751ca28669010672f994583392e7baf6
+  - path: docs/configuration.md
+    hash: 3a9a45e974612ddee585add75cf521b1f3fea7029a6535339ecd8b720cf5f474
+  - path: docs/configuration.zh-TW.md
+    hash: 181b77218a35c513e06956f644fa71d4889ed5a0442759def36eaa71b426efb2
+  - path: packages/ui/src/__tests__/navItem.test.tsx
+    hash: 2c75a812ad9d12508c8d14111daf9884e9cceec56f6eeb1a8cbcc54d5b10314d
+  - path: packages/ui/src/__tests__/settingsParts.test.tsx
+    hash: d5359ab8990d5c22da812d8af71b0c801922b796a0c04408320407a3abf6c7e5
+  - path: packages/ui/src/__tests__/table.test.tsx
+    hash: 98dc8d329a38e910ca04f969008d7f608b894634c3382dd08a01b2921c977e73
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 4e1a783261583bee5bab0d6f636a8c67c3810263cb56c225f08d344cd04df843
+  - path: packages/ui/src/components/NavItem.tsx
+    hash: 15e7e72954f00bdaf8cd283a3dabbdca256bd283dacc2efb0cd84c16dbe48194
+  - path: packages/ui/src/components/ui/badge.tsx
+    hash: af160646c3fcc9db0c2150cc3a80dd9b5382f4aaf3308c12f739246bdc7f6b49
+  - path: packages/ui/src/components/ui/select.tsx
+    hash: b39c0004b3d88372655030e4ddae28c01cf060e59ce2ce8c2796bbb743c6a175
+  - path: packages/ui/src/components/ui/settings.tsx
+    hash: 2efbc6345606401a32c87cc24ee56312b7664dac45ebdff1b7a274e4c3a20f12
+  - path: packages/ui/src/components/ui/table.tsx
+    hash: 770734d69ab3c6d1175701b909dbea43c5102caf7353b59023beb10a7214ce67
+  - path: packages/ui/src/index.ts
+    hash: cee40208a5bfd38d719d944ad2ca77943d8cb5831391d6964d531380984440e2
+verified_at: 2026-11-10T23:02:59+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 15
+verified_rounds: 2
+verified_scope:
+  - path: apps/desktop/core/src/settings.rs
+    hash: 673724eb3d2bb62c91562c65b7a40158ebcbaaa7cc9c3cec3ef691b120558a03
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: e6d49b2cc50c7b3363466b1bed0cc817d8e1dfd6d08da861fd617ded720996ff
+  - path: apps/desktop/src/App.tsx
+    hash: fd19b62f6cc5f2a3200b5e49320b4a11978207732da9f59263e1e0c19633f005
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: f3d09789ba2f994f55a90237d8b620a66f75ae05340a8f1f914bbb077c8f780f
+  - path: apps/desktop/src/__tests__/helpers/remoteFixtures.ts
+    hash: 524af943104e3a9f52d8404c03e7bf38fb9a2842db69a6e6df38c5e3567c295f
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 81d68746a715a9c12ad8be0971d8873372663ed9fa0cbfc768464e0e5db69007
+  - path: apps/desktop/src/__tests__/session.test.ts
+    hash: 3cb1c68c89e40d7adbcb54b3ce25bafd7eff2aad5b4bfb2bd39ee66bb7c50553
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: d12f7a39263afec909b53a455a2c060cf984e5402b8ce1c0689f8d2bc1939428
+  - path: apps/desktop/src/__tests__/subagentModel.test.ts
+    hash: 5e8ebad5bd8a78b38a308f1b590dc817f277b8ed2c68910fa60f1d348a8ee5c8
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: 0e9a893706b8cf2628c8b4c892c5ad059cb91c9282f8b287c56bc757b76c497f
+  - path: apps/desktop/src/adapter/workspace.ts
+    hash: 763ae19ed0ec5580371a9012423b5adec8557d7c4c7994d0174fee8d4036f261
+  - path: apps/desktop/src/builtinTools.ts
+    hash: 8511018a9a1c483d3df616e98a9f91d9ca2dc28dcfac561eb0f2275e73ce92ee
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: 5178004cf14801331cc8fd237751d646c715f2b2b8e54956b1aeb18b26c348fe
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 6ed2f069feb6bcef32dccc7e987c7b565cb5a6709a1a4e307e2fd7fe23a6956c
+  - path: apps/desktop/src/session.ts
+    hash: 707114b798514b67acd63289d563ded76bb2bcb965e1609ff622c42676e6b69c
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: b17a870782971d751911de4237381107fa79c0ef7e72a570fc4fa11a8ab1b2cc
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: 9c9b016c2b94e932969b7fcd40563bc8acf8b3ad93acea238cad41190a7d5bb4
+  - path: apps/desktop/src/views/project-settings/ReviewRulesPage.tsx
+    hash: 425a828c70abbafd1d2d0e8309002e9f88095be37abe15970f14c50fce026ad3
+  - path: apps/desktop/src/views/project-settings/RulesPage.tsx
+    hash: 817cc1cfa78f37a796226440276b512dedf189f578260bc880ec9911dcd26049
+  - path: apps/desktop/src/views/project-settings/SubagentModelPage.tsx
+    hash: de67ad60ddc6b2d3037f3f9351f722f2d4928628196c3b0b627b9d4b21f65917
+  - path: apps/desktop/src/views/project-settings/lines.ts
+    hash: 6287a6d1f281f0d97dffebaa849ce9847351f6137597ea8ffc04c3ea327d4ac2
+  - path: apps/desktop/src/views/project-settings/subagentModel.ts
+    hash: 4c0f027b408acbfb5cde35984fb90d454301b00709e749e1abff5f248a48e927
+  - path: apps/desktop/src/views/project-settings/useProjectSettings.ts
+    hash: 6a83144a68fc5cd1aa4268bf3aaa9dce751ca28669010672f994583392e7baf6
+  - path: docs/configuration.md
+    hash: 3a9a45e974612ddee585add75cf521b1f3fea7029a6535339ecd8b720cf5f474
+  - path: docs/configuration.zh-TW.md
+    hash: 181b77218a35c513e06956f644fa71d4889ed5a0442759def36eaa71b426efb2
+  - path: packages/ui/src/__tests__/navItem.test.tsx
+    hash: 2c75a812ad9d12508c8d14111daf9884e9cceec56f6eeb1a8cbcc54d5b10314d
+  - path: packages/ui/src/__tests__/settingsParts.test.tsx
+    hash: d5359ab8990d5c22da812d8af71b0c801922b796a0c04408320407a3abf6c7e5
+  - path: packages/ui/src/__tests__/table.test.tsx
+    hash: 98dc8d329a38e910ca04f969008d7f608b894634c3382dd08a01b2921c977e73
+  - path: packages/ui/src/__tests__/ui.test.tsx
+    hash: 4e1a783261583bee5bab0d6f636a8c67c3810263cb56c225f08d344cd04df843
+  - path: packages/ui/src/components/NavItem.tsx
+    hash: 15e7e72954f00bdaf8cd283a3dabbdca256bd283dacc2efb0cd84c16dbe48194
+  - path: packages/ui/src/components/ui/badge.tsx
+    hash: af160646c3fcc9db0c2150cc3a80dd9b5382f4aaf3308c12f739246bdc7f6b49
+  - path: packages/ui/src/components/ui/select.tsx
+    hash: b39c0004b3d88372655030e4ddae28c01cf060e59ce2ce8c2796bbb743c6a175
+  - path: packages/ui/src/components/ui/settings.tsx
+    hash: 2efbc6345606401a32c87cc24ee56312b7664dac45ebdff1b7a274e4c3a20f12
+  - path: packages/ui/src/components/ui/table.tsx
+    hash: 770734d69ab3c6d1175701b909dbea43c5102caf7353b59023beb10a7214ce67
+  - path: packages/ui/src/index.ts
+    hash: cee40208a5bfd38d719d944ad2ca77943d8cb5831391d6964d531380984440e2
+archived_at: 2026-11-10T23:06:26+08:00
+archived_by: MomoChen <momochenisme@gmail.com>
