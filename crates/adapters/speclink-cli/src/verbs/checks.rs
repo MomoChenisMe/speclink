@@ -5,54 +5,18 @@
 //! the fs arm does, so stdout stays byte-identical across modes.
 
 use anyhow::{bail, Result};
-use clap::Args;
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run};
+use crate::common::{engine_command, info_if_no_changes, open_project, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
+use speclink_verbs::families::checks::{ChangeArg, ValidateArgs};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct ValidateArgs {
-    /// Item to validate
-    item: Option<String>,
-    /// Validate all items
-    #[arg(long)]
-    all: bool,
-    /// Validate only changes
-    #[arg(long)]
-    changes: bool,
-    /// Validate only specs
-    #[arg(long)]
-    specs: bool,
-    /// Strict mode
-    #[arg(long)]
-    strict: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-#[derive(Args)]
-pub(crate) struct ChangeArg {
-    /// Change name (auto-detects if only one exists)
-    change: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
 pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let v: core::command::ValidateOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Validate {
-            item: a.item.clone(),
-            all: a.all,
-            changes: a.changes,
-            specs: a.specs,
-            strict: a.strict,
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let v: core::command::ValidateOutcome = run(&store, Some(&ws), cmd)?;
     render_validate_results(&v.results, a.json)
 }
 /// fs 與 remote 共用的 validate 渲染：--json 印完整結果陣列、人眼逐 change
@@ -89,11 +53,8 @@ pub(crate) fn cmd_analyze(a: ChangeArg) -> Result<()> {
     if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let report: core::analyzer::AnalyzeReport = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Analyze { change: a.change.clone() },
-    )?;
+    let cmd = engine_command(a.analyze_command(VerbInputs::default()))?;
+    let report: core::analyzer::AnalyzeReport = run(&store, Some(&ws), cmd)?;
     if a.json {
         return print_json(&report);
     }

@@ -2,7 +2,7 @@
 
 ### Requirement: 動詞文字的解析只有一份
 
-把動詞文字（argv）轉成引擎命令的解析 SHALL 只有一份定義，CLI 與 Node SDK dispatch SHALL 共用它：同一串 argv 在兩個入口 SHALL 得到相同的接受或拒絕，被拒絕時的錯誤文字 SHALL 相同。這份解析 SHALL NOT 結束程序、SHALL NOT 印出任何內容、SHALL NOT 讀取 stdin、檔案、環境變數或呼叫 git。命令需要而 argv 帶不了的資料——stdin 的內容、worktree 的事實、改了哪些檔與 HEAD commit、看板的順序——SHALL 由呼叫端收集後當成輸入交給解析。沒有對應引擎命令的動詞（drift、change rank、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 被明確回報為「只能在有 checkout 的一端執行」，SHALL NOT 回報成不認得的動詞。每個動詞要不要讀 stdin SHALL 由解析結果回報，分三種：不讀、帶 --stdin 才讀、帶 --stdin 或 stdin 不是終端機時讀。CLI 既有的指令、旗標、--help 文字、人眼輸出、--json 與 exit code SHALL 維持位元級一致。
+把動詞文字（argv）轉成引擎命令的解析 SHALL 只有一份定義，CLI 與 Node SDK dispatch SHALL 共用它：同一串 argv 在兩個入口 SHALL 得到相同的接受或拒絕，被拒絕時的錯誤文字 SHALL 相同。這份解析 SHALL NOT 結束程序、SHALL NOT 印出任何內容、SHALL NOT 讀取 stdin、檔案、環境變數或呼叫 git。命令需要而 argv 帶不了的資料——stdin 的內容、worktree 的事實、改了哪些檔與 HEAD commit、看板的順序——SHALL 由呼叫端收集後當成輸入交給解析。沒有對應引擎命令的動詞（drift、change rank、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 被明確回報為「只能在有 checkout 的一端執行」，SHALL NOT 回報成不認得的動詞。每個動詞要不要讀 stdin SHALL 由解析結果回報，分三種：不讀、帶 --stdin 才讀、帶 --stdin 或 stdin 不是終端機時讀。CLI 既有的指令、旗標、--help 文字、人眼輸出、--json 與 exit code SHALL 維持位元級一致，只有兩個例外：completion 產出的腳本中子指令的排列順序可以改變（補全的功能不變）；review stamp 與 verify stamp 接受一個不顯示在說明文字與補全腳本裡的 --stdin，CLI 收到它時 SHALL 以非零 exit code 拒絕，並說明 CLI 自己從 checkout 算蓋章範圍。
 
 #### Scenario: 兩個入口對同一串 argv 的結果相同
 
@@ -38,6 +38,11 @@
 | review stamp demo --stdin | 帶 --stdin 才讀 |
 | discuss add-round demo | 帶 --stdin 或 stdin 不是終端機時讀 |
 | discuss conclude demo | 帶 --stdin 或 stdin 不是終端機時讀 |
+
+#### Scenario: CLI 拒絕蓋章的 --stdin
+
+- **WHEN** 在本機 repo 執行 speclink review stamp demo --stdin
+- **THEN** CLI 以非零 exit code 結束、沒有寫入，stderr 說明 CLI 自己從 checkout 算蓋章範圍；speclink review stamp --help 的說明文字與 speclink completion generate 的補全腳本都沒有列出 stamp 的 --stdin
 
 #### Scenario: CLI 的說明文字不變
 

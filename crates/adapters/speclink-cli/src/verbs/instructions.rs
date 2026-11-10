@@ -4,32 +4,16 @@
 //! never touches the store, so dispatch checks it before resolving the mode.
 
 use anyhow::{bail, Result};
-use clap::Args;
 use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 use speclink_remote::client::ContextSnapshotOutcome;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run};
+use crate::common::{engine_command, info_if_no_changes, open_project, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
+use speclink_verbs::families::instructions::InstructionsArgs;
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct InstructionsArgs {
-    /// Artifact ID or "apply"
-    artifact: Option<String>,
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Schema name
-    #[arg(long)]
-    schema: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-    /// Embedded skill name (outputs skill body directly)
-    #[arg(long)]
-    pub(crate) skill: Option<String>,
-}
 /// `instructions --skill` 的 ModeFree 路徑：常數技能文本，dispatch 已分流。
 pub(crate) fn cmd_instructions_skill(skill: &str) -> Result<()> {
     let body = core::skills::skill_body(skill)
@@ -42,15 +26,8 @@ pub(crate) fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let instr: core::command::InstructionsOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Instructions {
-            artifact: a.artifact.clone(),
-            change: a.change.clone(),
-            schema: a.schema.clone(),
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let instr: core::command::InstructionsOutcome = run(&store, Some(&ws), cmd)?;
     match instr {
         core::command::InstructionsOutcome::Apply(payload) => {
             if a.json {

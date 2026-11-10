@@ -5,75 +5,30 @@
 //! the same bytes.
 
 use anyhow::{bail, Result};
-use clap::Args;
 use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
 use crate::color;
-use crate::common::{info_if_no_changes, open_project, print_json, run, worktree_overlay};
+use crate::common::{
+    engine_command, info_if_no_changes, open_project, print_json, run, worktree_overlay,
+};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use core::listing::ListChangeJson;
+use speclink_verbs::families::query::{ListArgs, ShowArgs, StatusArgs};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct ListArgs {
-    /// Show only specs
-    #[arg(long)]
-    specs: bool,
-    /// Show only changes
-    #[arg(long)]
-    changes: bool,
-    /// Sort by: name, modified, created
-    #[arg(long, default_value = "modified")]
-    sort: String,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-#[derive(Args)]
-pub(crate) struct ShowArgs {
-    /// Item to show (change or spec name)
-    item: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-    /// Item type: change, spec
-    #[arg(long = "item-type", value_name = "type")]
-    item_type: Option<String>,
-    /// Show only delta specs
-    #[arg(long = "deltas-only")]
-    deltas_only: bool,
-    /// Show requirements
-    #[arg(short = 'r', long)]
-    requirements: bool,
-}
-#[derive(Args)]
-pub(crate) struct StatusArgs {
-    /// Change name
-    #[arg(long)]
-    change: Option<String>,
-    /// Schema name
-    #[arg(long)]
-    schema: Option<String>,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
 pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
     let (ws, fs_store) = open_project()?;
     // Worktree overlay (D3): only a local MAIN checkout with the policy on gets
     // here — everywhere else `facts` is empty, git is never spawned, and both
     // the store and the payload are exactly what they were before this feature.
     let (facts, overlaid) = worktree_overlay(&ws, &fs_store);
-    let list: core::command::ListOutcome = run(
-        if facts.is_empty() { &fs_store } else { &overlaid },
-        Some(&ws),
-        core::command::Command::List {
-            sort: a.sort.clone(),
-            specs: a.specs,
-            changes: a.changes,
-            worktrees: speclink_host::worktree::payload_objects(&facts),
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs {
+        worktrees: speclink_host::worktree::payload_objects(&facts),
+        ..Default::default()
+    }))?;
+    let list: core::command::ListOutcome =
+        run(if facts.is_empty() { &fs_store } else { &overlaid }, Some(&ws), cmd)?;
     render_list(&list, a.json)
 }
 /// fs 與 remote 共用的 list 渲染：兩模式各自組出同一個 ListOutcome，輸出逐位元
@@ -166,14 +121,8 @@ fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
 }
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let show: core::command::ShowOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Show {
-            item: a.item.clone(),
-            item_type: a.item_type.clone(),
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let show: core::command::ShowOutcome = run(&store, Some(&ws), cmd)?;
     render_show(show, a.json)
 }
 /// fs 與 remote 共用的 show 渲染：兩模式餵進同一個 ShowOutcome，輸出逐位元一致。
@@ -253,14 +202,8 @@ pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let report: core::status::StatusReport = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Status {
-            change: a.change.clone(),
-            schema: a.schema.clone(),
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let report: core::status::StatusReport = run(&store, Some(&ws), cmd)?;
     if a.json {
         return print_json(&report);
     }

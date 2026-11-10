@@ -4,91 +4,24 @@
 //! ownership concept, so dispatch refuses it before this file is reached).
 
 use anyhow::{bail, Result};
-use clap::Args;
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, print_json, run};
+use crate::common::{engine_command, open_project, print_json, run};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
+use speclink_verbs::families::lifecycle::{ArchiveArgs, DiscardArgs};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct ArchiveArgs {
-    /// Changes to archive (several allowed; auto-detects when omitted and only one exists)
-    #[arg(value_name = "CHANGE")]
-    changes: Vec<String>,
-    /// Archive every ready change (tasks complete, valid, nothing the merge gate refuses)
-    #[arg(long)]
-    all: bool,
-    /// Skip confirmation
-    #[arg(short = 'y', long)]
-    yes: bool,
-    /// Skip spec updates
-    #[arg(long = "skip-specs")]
-    skip_specs: bool,
-    /// Skip validation before archiving
-    #[arg(long = "no-validate")]
-    no_validate: bool,
-    /// Mark all incomplete tasks as complete before archiving
-    #[arg(long = "mark-tasks-complete")]
-    mark_tasks_complete: bool,
-    /// Archive despite an open review ticket (the ticket travels with the
-    /// change and is permanently shown as reviewed-not-passed)
-    #[arg(long = "carry-review")]
-    carry_review: bool,
-    /// Archive despite an open verify ticket (the ticket travels with the
-    /// change and is permanently shown as verified-not-passed)
-    #[arg(long = "carry-verify")]
-    carry_verify: bool,
-}
-/// bulk 預檢與 `Command::Archive` 都從同一份旗標出發——只在這裡抄一次。
-impl From<&ArchiveArgs> for core::archive::ArchiveOptions {
-    fn from(a: &ArchiveArgs) -> Self {
-        Self {
-            skip_specs: a.skip_specs,
-            no_validate: a.no_validate,
-            mark_tasks_complete: a.mark_tasks_complete,
-            carry_review: a.carry_review,
-            carry_verify: a.carry_verify,
-        }
-    }
-}
-
-#[derive(Args)]
-pub(crate) struct DiscardArgs {
-    /// Change to discard
-    change: String,
-    /// Discard even when the change has started work (started_at or checked tasks)
-    #[arg(long)]
-    force: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-#[derive(Args)]
-pub(crate) struct ClaimArgs {
-    /// Change name
-    pub(crate) name: String,
-}
 pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     if a.all || a.changes.len() > 1 {
         return cmd_archive_bulk(&ws, &store, &a);
     }
     // mark-tasks-complete 與封存語意（含 in-progress 標記不動）單點在 runtime。
-    let outcome: core::archive::ArchiveOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Archive {
-            change: a.changes.first().cloned(),
-            skip_specs: a.skip_specs,
-            no_validate: a.no_validate,
-            mark_tasks_complete: a.mark_tasks_complete,
-            carry_review: a.carry_review,
-            carry_verify: a.carry_verify,
-        },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let outcome: core::archive::ArchiveOutcome = run(&store, Some(&ws), cmd)?;
     print_archive_outcome(&outcome);
     Ok(())
 }
@@ -186,14 +119,7 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
             skipped.push((change.name.clone(), why));
             continue;
         }
-        let archive_cmd = core::command::Command::Archive {
-            change: Some(change.name.clone()),
-            skip_specs: opts.skip_specs,
-            no_validate: opts.no_validate,
-            mark_tasks_complete: opts.mark_tasks_complete,
-            carry_review: opts.carry_review,
-            carry_verify: opts.carry_verify,
-        };
+        let archive_cmd = a.archive_command(Some(change.name.clone()));
         match run::<core::archive::ArchiveOutcome>(store, Some(ws), archive_cmd) {
             Ok(outcome) => {
                 print_archive_outcome(&outcome);
@@ -229,11 +155,8 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
 }
 pub(crate) fn cmd_discard(a: DiscardArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let outcome: core::discard::DiscardOutcome = run(
-        &store,
-        Some(&ws),
-        core::command::Command::Discard { change: a.change.clone(), force: a.force },
-    )?;
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let outcome: core::discard::DiscardOutcome = run(&store, Some(&ws), cmd)?;
     render_discard(&outcome.change_name, &outcome.unlinked_discussions, a.json)
 }
 /// fs 與 remote 共用的 discard 渲染：--json 為 change＋unlinkedDiscussions、

@@ -53,6 +53,8 @@ CLI 有些動詞不建立命令：`drift`、`change rank`、`review prepare`、`
 
 `speclink-verbs` 另外定義 `SpecVerb`：一個 clap 的 `Subcommand` 列舉，每個變體是一個家族的頂層子指令。CLI 的 `Commands` 用 `#[command(flatten)]` 把 `SpecVerb` 併進去，其餘的頂層子指令（init、update、link、unlink、auth、schemas、templates、feedback、schema、config、workflow-config、completion、demo）照舊留在 CLI 自己的變體。
 
+flatten 會把 `SpecVerb` 的子指令排在一起，原本它們和 CLI 自己的子指令交錯。`--help` 的順序用每個頂層子指令的 `display_order` 還原：`SpecVerb` 的變體與 CLI 在 flatten 之後的變體都標上原本的位置號碼。補全腳本依子指令加入的順序產生，這個順序 display_order 改不到，所以 `completion generate` 的腳本內部順序會變；補全的功能不變（apply 期定案，記在 proposal 的相容性影響）。
+
 家族整個搬，不依「有沒有引擎命令」拆開。理由：`review` 底下同時有建立命令的末端（add-round）與不建立的（prepare），clap 的樹拆不開；而且詞彙只該有一份。
 
 ### D3: 解析入口 parse 不結束程序
@@ -102,6 +104,8 @@ CLI 的 `cmd_*` 裡原本就地寫的 `Command::… { … }` 全部改成呼叫�
 
 - `Never`：這個動詞不讀 stdin。
 - `WhenFlagged`：帶 `--stdin` 才讀（new artifact、蓋章）。
+
+CLI 的蓋章原本沒有 `--stdin`（CLI 自己從 checkout 算範圍），SDK 的蓋章要它帶 JSON。共用的定義給 `review stamp`／`verify stamp` 加一個隱藏的 `--stdin`：`--help` 不變，SDK 照舊；CLI 收到它時以錯誤拒絕，說明 CLI 自己算蓋章範圍。clap_complete 會列出隱藏的旗標，所以 CLI 產生補全腳本前，把兩個 stamp 重建成不含 `--stdin` 的版本（`mut_subcommands`，不改子指令順序）（apply 期定案）。
 - `FlagOrPiped`：帶 `--stdin`，或 stdin 不是終端機時讀（discuss 的 context、add-round、conclude，以及審查與驗證的 add-round）。
 
 CLI 依這個結果決定要不要讀 stdin，再把內容放進 `VerbInputs`。「是不是終端機」由 CLI 判斷，不在共用的 crate 裡。SDK 沒有終端機：呼叫端有給 `stdin` 就放進去，`WhenFlagged` 的動詞沒帶 `--stdin` 時忽略它（和今天相同）。

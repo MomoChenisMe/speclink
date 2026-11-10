@@ -268,47 +268,22 @@ pub fn engine_from_store(
 
 // --- argv router ---
 
-/// Minimal argv scanner: collects positionals and `--flag [value]` options for
-/// one verb invocation. Option names that take a value are declared by the verb.
-struct Argv<'a> {
-    positionals: Vec<&'a str>,
-    options: std::collections::HashMap<&'a str, &'a str>,
-    flags: std::collections::HashSet<&'a str>,
-}
+/// The verbs dispatch serves, by their stable names from the shared parsing.
+const DISPATCH_VERBS: &[&str] = &[
+    "list",
+    "status",
+    "new change",
+    "new artifact",
+    "claim",
+    "review add-round",
+    "review stamp",
+    "verify add-round",
+    "verify stamp",
+];
 
-fn parse_argv<'a>(
-    args: &'a [String],
-    value_options: &[&str],
-) -> std::result::Result<Argv<'a>, DispatchError> {
-    let mut out = Argv {
-        positionals: Vec::new(),
-        options: std::collections::HashMap::new(),
-        flags: std::collections::HashSet::new(),
-    };
-    let mut i = 0;
-    while i < args.len() {
-        let a = args[i].as_str();
-        if let Some(name) = a.strip_prefix("--") {
-            if value_options.contains(&name) {
-                let Some(v) = args.get(i + 1) else {
-                    return Err(DispatchError::new(
-                        "invalid_argv",
-                        format!("option '--{name}' requires a value"),
-                    ));
-                };
-                out.options.insert(name, v.as_str());
-                i += 2;
-                continue;
-            }
-            out.flags.insert(name);
-        } else {
-            out.positionals.push(a);
-        }
-        i += 1;
-    }
-    Ok(out)
-}
-
+/// argv → the parsing the CLI uses → the engine command → the envelope value.
+/// A verb with no engine command reports that it needs a checkout before the
+/// allowlist turns other verbs away.
 fn run_dispatch(
     backend: &Backend,
     actor: Option<&str>,
@@ -316,43 +291,122 @@ fn run_dispatch(
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
-    let Some(verb) = argv.first().map(|s| s.as_str()) else {
+    let parsed = speclink_verbs::parse(argv)
+        .map_err(|e| DispatchError::new("invalid_argv", e.message))?;
+    let name = parsed.name();
+    // A host has no terminal: stdin content it passed counts as piped.
+    let read = parsed.stdin_policy().reads(stdin.is_some());
+    let inputs = speclink_verbs::VerbInputs {
+        stdin: if read { stdin.map(str::to_string) } else { None },
+        ..Default::default()
+    };
+    let target = parsed.into_command(inputs);
+    if let Ok(speclink_verbs::CommandTarget::LocalOnly { verb }) = &target {
         return Err(DispatchError::new(
             "invalid_argv",
-            "dispatch requires at least a verb (e.g. ['list', '--json'])",
+            format!("'{verb}' only runs where a checkout exists — dispatch has none"),
         ));
-    };
-    let rest = &argv[1..];
-    match verb {
-        "list" => verb_list(backend, actor, rest),
-        "status" => verb_status(backend, actor, rest),
-        "new" => verb_new(backend, actor, rest, stdin),
-        "claim" => verb_claim(backend, actor, rest),
-        "review" => verb_station(backend, actor, stamp_lock, StationKind::Review, rest, stdin),
-        "verify" => verb_station(backend, actor, stamp_lock, StationKind::Verify, rest, stdin),
-        _ => Err(DispatchError::new(
-            "invalid_argv",
-            format!("Unknown or unsupported verb '{verb}'"),
-        )),
+    }
+    if !DISPATCH_VERBS.contains(&name) {
+        return Err(unsupported_verb(name));
+    }
+    match target? {
+        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, cmd),
+        speclink_verbs::CommandTarget::LocalOnly { .. } => unreachable!("handled above"),
     }
 }
 
-/// `list [--specs] [--changes] [--sort <key>]` — always the `--json` shape.
-fn verb_list(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
-    let a = parse_argv(args, &["sort"])?;
-    let outcome = run_engine(
-        backend,
-        actor,
-        core::command::Command::List {
-            sort: a.options.get("sort").copied().unwrap_or("modified").to_string(),
-            specs: a.flags.contains("specs"),
-            changes: a.flags.contains("changes"),
-            worktrees: Default::default(),
-        },
-    )?;
-    let core::command::CommandOutcome::List(list) = outcome else {
-        unreachable!("list command yields a list outcome");
+/// The station families keep their frozen hint (spec and tests pin it).
+fn unsupported_verb(name: &str) -> DispatchError {
+    let message = match name.split_once(' ') {
+        Some((noun @ ("review" | "verify"), _)) => {
+            format!("{noun} requires a subcommand: 'add-round' or 'stamp'")
+        }
+        _ => format!("Unknown or unsupported verb '{name}'"),
     };
+    DispatchError::new("invalid_argv", message)
+}
+
+/// Run one of the dispatch verbs and shape its envelope value.
+fn run_verb(
+    backend: &Backend,
+    actor: Option<&str>,
+    stamp_lock: &std::sync::Mutex<()>,
+    cmd: core::command::Command,
+) -> DispatchResult {
+    use core::command::{Command, CommandOutcome};
+    match &cmd {
+        Command::List { .. } => {
+            let CommandOutcome::List(list) = run_engine(backend, actor, cmd)? else {
+                unreachable!("list command yields a list outcome");
+            };
+            list_value(list)
+        }
+        Command::Status { change, .. } => {
+            // CLI parity: with no name and no changes at all, status is informational,
+            // not an error (envelope-level presentation, same as the CLI's exit-0 line).
+            if change.is_none() && core::model::list_changes(backend.store().as_ref()).is_empty() {
+                return Ok(serde_json::json!({
+                    "output": "No active changes. Create one with: speclink new change <name>"
+                }));
+            }
+            let CommandOutcome::Status(report) = run_engine(backend, actor, cmd)? else {
+                unreachable!("status command yields a status outcome");
+            };
+            serde_json::to_value(&report).map_err(|e| DispatchError::new("error", format!("{e}")))
+        }
+        Command::NewChange { from_discussion, .. } => {
+            let from_discussion = from_discussion.clone();
+            // Default-schema fail-closed, from_discussion guard, and mark_promoted all
+            // live in the runtime — this layer only shapes the envelope.
+            let CommandOutcome::NewChange(o) = run_engine(backend, actor, cmd)? else {
+                unreachable!("new change yields a new-change outcome");
+            };
+            let mut output = format!(
+                "✓ Created change: {}\n  Path: {}\n  Schema: {}",
+                o.name,
+                o.dir.to_string_lossy(),
+                o.schema
+            );
+            if let Some(slug) = from_discussion {
+                output.push_str(&format!("\n  From discussion: {slug}"));
+            }
+            // `new change` has no --json form in the CLI → the {output} shape.
+            Ok(serde_json::json!({ "output": output }))
+        }
+        Command::NewArtifact { kind, .. } => {
+            let kind = kind.clone();
+            let CommandOutcome::NewArtifact(o) = run_engine(backend, actor, cmd)? else {
+                unreachable!("new artifact yields a new-artifact outcome");
+            };
+            Ok(serde_json::json!({
+                "artifact": kind,
+                "change": o.change,
+                "path": o.path.to_string_lossy(),
+                "status": "created",
+                "validated": o.had_content,
+                "warnings": [],
+            }))
+        }
+        Command::Claim { name } => claim(backend, actor, name),
+        Command::ReviewAddRound { .. } | Command::VerifyAddRound { .. } => {
+            let (CommandOutcome::ReviewAddRound(o) | CommandOutcome::VerifyAddRound(o)) =
+                run_engine(backend, actor, cmd)?
+            else {
+                unreachable!("add-round yields a round outcome");
+            };
+            Ok(serde_json::json!({ "change": o.change, "round": o.round }))
+        }
+        Command::ReviewStamp { .. } | Command::VerifyStamp { .. } => {
+            let noun = if matches!(cmd, Command::ReviewStamp { .. }) { "review" } else { "verify" };
+            stamp(backend, actor, stamp_lock, noun, cmd)
+        }
+        other => unreachable!("DISPATCH_VERBS admits no other command: {other:?}"),
+    }
+}
+
+/// `list` — always the `--json` shape.
+fn list_value(list: core::command::ListOutcome) -> DispatchResult {
     let err = |e: serde_json::Error| DispatchError::new("error", format!("{e}"));
     match (list.changes, list.specs) {
         (None, Some(specs)) => Ok(serde_json::json!({ "specs": specs })),
@@ -367,119 +421,10 @@ fn verb_list(backend: &Backend, actor: Option<&str>, args: &[String]) -> Dispatc
     }
 }
 
-/// `new change <name> …` / `new artifact <type> [capability] …` — stdin comes
-/// from dispatch's second parameter (the CLI's `--stdin` content).
-fn verb_new(
-    backend: &Backend,
-    actor: Option<&str>,
-    args: &[String],
-    stdin: Option<&str>,
-) -> DispatchResult {
-    match args.first().map(|s| s.as_str()) {
-        Some("artifact") => verb_new_artifact(backend, actor, &args[1..], stdin),
-        Some("change") => verb_new_change(backend, actor, &args[1..]),
-        _ => Err(DispatchError::new(
-            "invalid_argv",
-            "new requires a subcommand: 'change' or 'artifact'",
-        )),
-    }
-}
-
-fn verb_new_artifact(
-    backend: &Backend,
-    actor: Option<&str>,
-    args: &[String],
-    stdin: Option<&str>,
-) -> DispatchResult {
-    let a = parse_argv(args, &["change"])?;
-    let Some(kind) = a.positionals.first().copied() else {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            "new artifact requires a type: proposal, design, tasks, spec",
-        ));
-    };
-    // The CLI's `--stdin` content arrives as dispatch's second parameter.
-    let content = if a.flags.contains("stdin") {
-        Some(stdin.unwrap_or_default().to_string())
-    } else {
-        None
-    };
-    let outcome = run_engine(
-        backend,
-        actor,
-        core::command::Command::NewArtifact {
-            kind: kind.to_string(),
-            capability: a.positionals.get(1).map(|s| s.to_string()),
-            change: a.options.get("change").map(|s| s.to_string()),
-            content,
-            force: a.flags.contains("force"),
-            new_capability: a.flags.contains("new"),
-        },
-    )?;
-    let core::command::CommandOutcome::NewArtifact(o) = outcome else {
-        unreachable!("new artifact yields a new-artifact outcome");
-    };
-    Ok(serde_json::json!({
-        "artifact": kind,
-        "change": o.change,
-        "path": o.path.to_string_lossy(),
-        "status": "created",
-        "validated": o.had_content,
-        "warnings": [],
-    }))
-}
-
-fn verb_new_change(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
-    let a = parse_argv(args, &["description", "schema", "agent", "from-discussion"])?;
-    let Some(name) = a.positionals.first().copied() else {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            "new change requires a name (kebab-case)",
-        ));
-    };
-    // Default-schema fail-closed, from_discussion guard, and mark_promoted all
-    // live in the runtime — this layer only shapes the envelope.
-    let outcome = run_engine(
-        backend,
-        actor,
-        core::command::Command::NewChange {
-            name: name.to_string(),
-            description: a.options.get("description").map(|s| s.to_string()),
-            schema: a.options.get("schema").map(|s| s.to_string()),
-            agent: a.options.get("agent").map(|s| s.to_string()),
-            from_discussion: a.options.get("from-discussion").map(|s| s.to_string()),
-            // `--last` mirrors the CLI flag (last cut of a staged discussion); the
-            // engine only reads it alongside from_discussion.
-            last: a.flags.contains("last"),
-        },
-    )?;
-    let core::command::CommandOutcome::NewChange(o) = outcome else {
-        unreachable!("new change yields a new-change outcome");
-    };
-    let mut output = format!(
-        "✓ Created change: {}\n  Path: {}\n  Schema: {}",
-        o.name,
-        o.dir.to_string_lossy(),
-        o.schema
-    );
-    if let Some(slug) = a.options.get("from-discussion") {
-        output.push_str(&format!("\n  From discussion: {slug}"));
-    }
-    // `new change` has no --json form in the CLI → the {output} shape.
-    Ok(serde_json::json!({ "output": output }))
-}
-
 /// `claim <name>` — ownership is a team-system concept: the fs store fails
 /// loud like the CLI; a host store may implement the optional `claim` method
 /// and adjudicate (conflicts reject with their semantic message and code).
-fn verb_claim(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
-    let a = parse_argv(args, &[])?;
-    let Some(name) = a.positionals.first().copied() else {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            "claim requires a change name",
-        ));
-    };
+fn claim(backend: &Backend, actor: Option<&str>, name: &str) -> DispatchResult {
     match backend {
         // The plain-store refusal comes from the runtime's Claim branch (the
         // frozen text shared with the CLI).
@@ -500,143 +445,17 @@ fn verb_claim(backend: &Backend, actor: Option<&str>, args: &[String]) -> Dispat
     }
 }
 
-/// `status [--change <name>] [--schema <name>]` — the `--json` report.
-fn verb_status(backend: &Backend, actor: Option<&str>, args: &[String]) -> DispatchResult {
-    let a = parse_argv(args, &["change", "schema"])?;
-    // CLI parity: with no name and no changes at all, status is informational,
-    // not an error (envelope-level presentation, same as the CLI's exit-0 line).
-    if !a.options.contains_key("change") {
-        let store = backend.store();
-        if core::model::list_changes(store.as_ref()).is_empty() {
-            return Ok(serde_json::json!({
-                "output": "No active changes. Create one with: speclink new change <name>"
-            }));
-        }
-    }
-    let outcome = run_engine(
-        backend,
-        actor,
-        core::command::Command::Status {
-            change: a.options.get("change").map(|s| s.to_string()),
-            schema: a.options.get("schema").map(|s| s.to_string()),
-        },
-    )?;
-    let core::command::CommandOutcome::Status(report) = outcome else {
-        unreachable!("status command yields a status outcome");
-    };
-    serde_json::to_value(&report).map_err(|e| DispatchError::new("error", format!("{e}")))
-}
-
-// --- quality stations ---
-
-/// Which stamping station a `review …` / `verify …` argv addresses. The two
-/// stations share one argv grammar and one payload shape; only the Command
-/// variants differ.
-#[derive(Clone, Copy)]
-enum StationKind {
-    Review,
-    Verify,
-}
-
-impl StationKind {
-    fn noun(self) -> &'static str {
-        match self {
-            StationKind::Review => "review",
-            StationKind::Verify => "verify",
-        }
-    }
-}
-
-/// `review stamp` / `verify stamp` payload, carried by dispatch's stdin
-/// parameter because argv cannot hold a fingerprint list. The scope/missing
-/// SUBSET of the server's stamp request body — accept and agent stay argv
-/// flags here, and unknown fields are rejected rather than ignored. The
-/// work-tree holder pre-computes `(path, hash)` and declares which union
-/// paths are gone. Both fields default to empty, so a host with an empty
-/// ticket scope can omit stdin.
-#[derive(serde::Deserialize, Default)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct StampPayload {
-    #[serde(default)]
-    scope: Vec<StampScopeEntry>,
-    #[serde(default)]
-    missing: Vec<String>,
-}
-
-#[derive(serde::Deserialize)]
-struct StampScopeEntry {
-    path: String,
-    hash: String,
-}
-
-/// `<station> add-round <change> --stdin` and
-/// `<station> stamp <change> [--accept] [--agent <tool>] [--stdin]`.
-/// These are the identity-bearing verbs: the `_by` field of the stamp is the
-/// engine's construction-time actor, resolved the same way `created_by` is.
-fn verb_station(
+/// `<station> stamp` — the identity-bearing verb: the `_by` field of the stamp
+/// is the engine's construction-time actor, resolved the same way
+/// `created_by` is. The scope and missing lists come from the stdin JSON
+/// (`--stdin`), parsed by the shared conversion.
+fn stamp(
     backend: &Backend,
     actor: Option<&str>,
     stamp_lock: &std::sync::Mutex<()>,
-    station: StationKind,
-    args: &[String],
-    stdin: Option<&str>,
+    noun: &str,
+    cmd: core::command::Command,
 ) -> DispatchResult {
-    let noun = station.noun();
-    match args.first().map(|s| s.as_str()) {
-        Some("add-round") => verb_station_add_round(backend, actor, station, &args[1..], stdin),
-        Some("stamp") => verb_station_stamp(backend, actor, stamp_lock, station, &args[1..], stdin),
-        _ => Err(DispatchError::new(
-            "invalid_argv",
-            format!("{noun} requires a subcommand: 'add-round' or 'stamp'"),
-        )),
-    }
-}
-
-fn verb_station_add_round(
-    backend: &Backend,
-    actor: Option<&str>,
-    station: StationKind,
-    args: &[String],
-    stdin: Option<&str>,
-) -> DispatchResult {
-    let noun = station.noun();
-    let a = parse_argv(args, &[])?;
-    let Some(change) = a.positionals.first().copied() else {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            format!("{noun} add-round requires a change name"),
-        ));
-    };
-    if !a.flags.contains("stdin") {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            format!("{noun} add-round requires --stdin — the round content comes from stdin"),
-        ));
-    }
-    let content = stdin.unwrap_or_default().to_string();
-    let change = change.to_string();
-    let cmd = match station {
-        StationKind::Review => core::command::Command::ReviewAddRound { change, content },
-        StationKind::Verify => core::command::Command::VerifyAddRound { change, content },
-    };
-    let outcome = run_engine(backend, actor, cmd)?;
-    let (core::command::CommandOutcome::ReviewAddRound(o)
-    | core::command::CommandOutcome::VerifyAddRound(o)) = outcome
-    else {
-        unreachable!("add-round yields a round outcome");
-    };
-    Ok(serde_json::json!({ "change": o.change, "round": o.round }))
-}
-
-fn verb_station_stamp(
-    backend: &Backend,
-    actor: Option<&str>,
-    stamp_lock: &std::sync::Mutex<()>,
-    station: StationKind,
-    args: &[String],
-    stdin: Option<&str>,
-) -> DispatchResult {
-    let noun = station.noun();
     // Fail BEFORE anything destructive: the engine deletes the ticket before
     // it rewrites the metadata, so a store that cannot finish the stamp must
     // be refused up front — never mid-way with the ticket already gone.
@@ -652,42 +471,6 @@ fn verb_station_stamp(
             ));
         }
     }
-    let a = parse_argv(args, &["agent"])?;
-    let Some(change) = a.positionals.first().copied() else {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            format!("{noun} stamp requires a change name"),
-        ));
-    };
-    let payload: StampPayload = if a.flags.contains("stdin") {
-        serde_json::from_str(stdin.unwrap_or_default()).map_err(|e| {
-            DispatchError::new(
-                "invalid_argv",
-                format!(
-                    "{noun} stamp --stdin expects {{\"scope\": [{{\"path\", \"hash\"}}], \"missing\": []}}: {e}"
-                ),
-            )
-        })?
-    } else {
-        StampPayload::default()
-    };
-    let scope = payload
-        .scope
-        .into_iter()
-        .map(|e| core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
-        .collect();
-    let change = change.to_string();
-    let accept = a.flags.contains("accept");
-    let tool = a.options.get("agent").map(|s| s.to_string());
-    let missing = payload.missing;
-    let cmd = match station {
-        StationKind::Review => {
-            core::command::Command::ReviewStamp { change, accept, tool, scope, missing }
-        }
-        StationKind::Verify => {
-            core::command::Command::VerifyStamp { change, accept, tool, scope, missing }
-        }
-    };
     // Serialize stamps within this instance — the metadata write has no CAS.
     // A poisoned lock only means another stamp panicked; the metadata itself
     // is no more suspect than after any failed dispatch, so proceed.

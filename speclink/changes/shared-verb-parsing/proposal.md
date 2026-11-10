@@ -24,6 +24,9 @@
   - `--name=value` 與 CLI 有的短旗標現在被接受。
   - 9 個動詞成功時的回傳形狀不變。argv 帶 `--json` 時結果相同。
   - 遷移：傳了 CLI 沒有的旗標的宿主，要把那些旗標拿掉。
+- **相容性影響（CLI，apply 期定案）**：
+  - `speclink completion generate <shell>` 產出的腳本裡，子指令的排列順序改變（共用的動詞以 flatten 併入頂層，排在一起）。補全的功能不變；`--help` 的順序用 display_order 還原，逐位元相同。
+  - `review stamp`／`verify stamp` 的共用定義多一個隱藏的 `--stdin`（給沒有 checkout 的宿主帶蓋章 JSON）。`--help` 不變；補全腳本產生前把它從兩個 stamp 拿掉，所以補全也不列出它。CLI 收到它時以錯誤拒絕：原本是 clap 的解析錯誤（exit 2），改成說明 CLI 自己從 checkout 算蓋章範圍的錯誤（exit 1）。
 - 沒有新的 CLI 指令、設定欄位或技能變動。
 
 ## Capabilities
@@ -76,7 +79,9 @@
     - crates/adapters/speclink-cli/src/verbs/plan.rs
     - crates/adapters/speclink-cli/src/verbs/discuss.rs
     - crates/adapters/speclink-cli/src/verbs/station.rs
+    - crates/adapters/speclink-cli/src/verbs/toolchain.rs
     - crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs
+    - crates/adapters/speclink-cli/tests/it/review_verbs.rs
     - crates/adapters/speclink-node/Cargo.toml
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts

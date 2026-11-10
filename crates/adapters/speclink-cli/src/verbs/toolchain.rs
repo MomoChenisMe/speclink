@@ -367,6 +367,25 @@ fn completion_shell(shell: Option<&str>) -> Result<&'static str> {
         other => bail!("Unsupported shell: {other}. Use bash, zsh, fish, or powershell."),
     }
 }
+/// The stamps' hidden `--stdin` serves hosts without a checkout and the CLI
+/// refuses it, but clap_complete lists hidden flags anyway — so completion
+/// gets each stamp rebuilt without that one flag. `mut_subcommands` keeps
+/// the subcommand order (`mut_subcommand` would move the changed one last).
+fn without_stamp_stdin(cmd: clap::Command) -> clap::Command {
+    cmd.mut_subcommands(|station| match station.get_name() {
+        "review" | "verify" => station.mut_subcommands(|sub| {
+            if sub.get_name() != "stamp" {
+                return sub;
+            }
+            let mut rebuilt = clap::Command::new("stamp");
+            if let Some(about) = sub.get_about() {
+                rebuilt = rebuilt.about(about.clone());
+            }
+            rebuilt.args(sub.get_arguments().filter(|a| a.get_id() != "stdin").cloned())
+        }),
+        _ => station,
+    })
+}
 pub(crate) fn cmd_completion(a: CompletionArgs) -> Result<()> {
     match a.command {
         CompletionCommands::Generate { shell } => {
@@ -378,7 +397,7 @@ pub(crate) fn cmd_completion(a: CompletionArgs) -> Result<()> {
                 "Elvish" => clap_complete::Shell::Elvish,
                 _ => clap_complete::Shell::Bash,
             };
-            let mut cmd = Cli::command();
+            let mut cmd = without_stamp_stdin(Cli::command());
             if sh == clap_complete::Shell::Bash {
                 // The frozen bash script (from an older clap_complete) offers positional
                 // value names as completion candidates ("[CHANGE]", "<KEY>"); newer

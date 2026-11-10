@@ -4,38 +4,14 @@
 //! same document off the wire, and the id shape is validated locally either way.
 
 use anyhow::{bail, Result};
-use clap::{Args, Subcommand};
-use speclink_core as core;
 
-use crate::common::{open_project, run};
+use crate::common::{engine_command, open_project, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
+use speclink_verbs::families::documents::{
+    ArtifactArgs, ArtifactCommands, LanguageArgs, LanguageCommands,
+};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct ArtifactArgs {
-    #[command(subcommand)]
-    command: ArtifactCommands,
-}
-#[derive(Subcommand)]
-enum ArtifactCommands {
-    /// Print an artifact's content (proposal | design | tasks | specs/<capability>)
-    Cat {
-        /// Artifact id
-        artifact: String,
-        /// Change name
-        #[arg(long)]
-        change: Option<String>,
-    },
-}
-#[derive(Args)]
-pub(crate) struct LanguageArgs {
-    #[command(subcommand)]
-    command: LanguageCommands,
-}
-#[derive(Subcommand)]
-enum LanguageCommands {
-    /// Print the project's shared vocabulary (LANGUAGE document)
-    Show,
-}
 /// Map a `speclink artifact cat` id onto the store's artifact file path
 /// (`specs/<capability>` addresses a delta spec).
 fn artifact_rel_path(artifact: &str) -> Result<String> {
@@ -54,28 +30,18 @@ fn artifact_rel_path(artifact: &str) -> Result<String> {
     }
 }
 pub(crate) fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
-    match a.command {
-        ArtifactCommands::Cat { artifact, change } => {
-            let (ws, store) = open_project()?;
-            let content: String = run(
-                &store,
-                Some(&ws),
-                core::command::Command::ArtifactCat { artifact, change },
-            )?;
-            print!("{content}");
-            Ok(())
-        }
-    }
+    let (ws, store) = open_project()?;
+    let content: String =
+        run(&store, Some(&ws), engine_command(a.to_command(VerbInputs::default()))?)?;
+    print!("{content}");
+    Ok(())
 }
 pub(crate) fn cmd_language(a: LanguageArgs) -> Result<()> {
-    match a.command {
-        LanguageCommands::Show => {
-            let (ws, store) = open_project()?;
-            let content: String = run(&store, Some(&ws), core::command::Command::LanguageShow)?;
-            print!("{content}");
-            Ok(())
-        }
-    }
+    let (ws, store) = open_project()?;
+    let content: String =
+        run(&store, Some(&ws), engine_command(a.to_command(VerbInputs::default()))?)?;
+    print!("{content}");
+    Ok(())
 }
 /// artifact 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all——新增
 /// 子指令時本機與 remote 兩臂皆編譯不過。

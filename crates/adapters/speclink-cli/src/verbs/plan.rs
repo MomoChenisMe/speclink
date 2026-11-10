@@ -9,86 +9,20 @@
 //! board rank, and a remote scope keeps its order in the board resource.
 
 use anyhow::Result;
-use clap::{Args, Subcommand};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, print_json, run, worktree_facts, worktree_overlay};
+use crate::common::{
+    engine_command, open_project, print_json, run, worktree_facts, worktree_overlay,
+};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
-
-#[derive(Args)]
-pub(crate) struct PlanArgs {
-    /// Let a delta capability shared with an earlier change push the wave and block it again (the rule before requirement-level overlap)
-    #[arg(long)]
-    pub(crate) strict_overlap: bool,
-    /// Output as JSON
-    #[arg(long)]
-    json: bool,
-}
-
-#[derive(Args)]
-pub(crate) struct ChangeVerbArgs {
-    #[command(subcommand)]
-    command: ChangeCommands,
-}
-
-impl ChangeVerbArgs {
-    /// `change rank` — the one FsOnly member of the Dual `change` family.
-    pub(crate) fn is_rank(&self) -> bool {
-        matches!(self.command, ChangeCommands::Rank { .. })
-    }
-}
-
-#[derive(Subcommand)]
-enum ChangeCommands {
-    /// Declare (or with --remove, drop) prerequisite changes in a change's metadata
-    Depends {
-        /// Change name
-        name: String,
-        /// Prerequisite change name(s)
-        #[arg(long, num_args = 1.., required = true, value_name = "OTHER")]
-        on: Vec<String>,
-        /// Remove the given prerequisites instead of adding them
-        #[arg(long)]
-        remove: bool,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Switch a change's workflow schema in its metadata
-    Schema {
-        /// Change name
-        name: String,
-        /// Schema name to switch to
-        schema: String,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-    /// Move a change right before or after another change of its stage by rewriting its board rank
-    #[command(group(clap::ArgGroup::new("side").required(true).args(["before", "after"])))]
-    Rank {
-        /// Change name
-        name: String,
-        /// Place it right before this change
-        #[arg(long, value_name = "OTHER")]
-        before: Option<String>,
-        /// Place it right after this change
-        #[arg(long, value_name = "OTHER")]
-        after: Option<String>,
-        /// Move it even when it already has a board rank (someone ordered it by hand)
-        #[arg(long)]
-        force: bool,
-        /// Output as JSON
-        #[arg(long)]
-        json: bool,
-    },
-}
+use speclink_verbs::families::plan::{ChangeCommands, ChangeVerbArgs, PlanArgs};
+use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
-    match a.command {
+    match &a.command {
         ChangeCommands::Depends {
             name,
             on,
@@ -102,28 +36,21 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             // a write through the overlay would land on the main copy and
             // silently split the change's read and write.
             let (ws, fs_store) = open_project()?;
-            let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), &name);
-            let o: core::command::DependsOutcome = run(
-                &home,
-                Some(&ws),
-                core::command::Command::ChangeDepends {
-                    name,
-                    on: on.clone(),
-                    remove,
-                },
-            )?;
-            render_depends(&o.change, &o.depends_on, &on, remove, json)
+            let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), name);
+            let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+            let o: core::command::DependsOutcome = run(&home, Some(&ws), cmd)?;
+            render_depends(&o.change, &o.depends_on, on, *remove, *json)
         }
-        ChangeCommands::Schema { name, schema, json } => {
+        ChangeCommands::Schema { name, json, .. } => {
             // Routed like `change depends`: a mapped change switches in its
             // worktree copy, the one `list` and `plan` read — and a
             // project-layer schema resolves from that same copy.
             let (ws, fs_store) = open_project()?;
-            let home = home_workspace_for(&ws, &worktree_facts(&ws, &fs_store), &name);
+            let home = home_workspace_for(&ws, &worktree_facts(&ws, &fs_store), name);
             let store = speclink_fs::FsStore::new(&home.root, &home.spec_dir_name);
-            let o: core::command::SchemaOutcome =
-                run(&store, Some(&home), core::command::Command::ChangeSchema { name, schema })?;
-            render_schema(&o, json)
+            let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+            let o: core::command::SchemaOutcome = run(&store, Some(&home), cmd)?;
+            render_schema(&o, *json)
         }
         ChangeCommands::Rank {
             name,
@@ -133,8 +60,11 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             json,
         } => {
             let (anchor, side) = match before {
-                Some(anchor) => (anchor, core::plan::Side::Before),
-                None => (after.expect("clap requires --before or --after"), core::plan::Side::After),
+                Some(anchor) => (anchor.clone(), core::plan::Side::Before),
+                None => (
+                    after.clone().expect("clap requires --before or --after"),
+                    core::plan::Side::After,
+                ),
             };
             // The column is read as `plan` orders it — the main roster with each
             // mapped change's worktree copy — and each rank is written into its
@@ -145,8 +75,8 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             let write = |change: &str, key: &str| {
                 core::model::set_board_rank(&home_store_for(&ws, &facts, change), change, key)
             };
-            core::plan::set_rank(&overlaid, &write, &name, &anchor, side, force)?;
-            render_rank(&name, &anchor, side, json)
+            core::plan::set_rank(&overlaid, &write, name, &anchor, side, *force)?;
+            render_rank(name, &anchor, side, *json)
         }
     }
 }
@@ -290,19 +220,10 @@ pub(crate) fn cmd_plan(a: PlanArgs) -> Result<()> {
     // the worktree policy on, a worktree's checked tasks and started stamp feed
     // the stage derivation; everywhere else the plain store is read.
     let (facts, overlaid) = worktree_overlay(&ws, &fs_store);
-    let plan: core::command::PlanReport = run(
-        if facts.is_empty() {
-            &fs_store
-        } else {
-            &overlaid
-        },
-        Some(&ws),
-        if a.strict_overlap {
-            core::command::Command::PlanStrict
-        } else {
-            core::command::Command::Plan { ranks: None }
-        },
-    )?;
+    // fs mode gives no rank table: each change's own board rank orders it.
+    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let plan: core::command::PlanReport =
+        run(if facts.is_empty() { &fs_store } else { &overlaid }, Some(&ws), cmd)?;
     render_plan(&plan, a.json)
 }
 

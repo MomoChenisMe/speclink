@@ -5,121 +5,22 @@
 //! modes answer for it.
 
 use anyhow::Result;
-use clap::{Args, Subcommand};
 use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
 use crate::color;
-use crate::common::{open_project, print_json, read_stdin_content, run};
+use crate::common::{engine_command, open_project, print_json, read_stdin_content, run, stdin_for};
 use crate::remote_base::RemoteCtx;
+use speclink_verbs::families::discuss::{DiscussArgs, DiscussCommands};
+use speclink_verbs::VerbInputs;
 
-#[derive(Args)]
-pub(crate) struct DiscussArgs {
-    #[command(subcommand)]
-    command: DiscussCommands,
-}
-#[derive(Subcommand)]
-enum DiscussCommands {
-    /// Create a new discussion document
-    New {
-        topic: String,
-        /// Override the record slug (ASCII kebab-case); the topic stays verbatim
-        #[arg(long)]
-        slug: Option<String>,
-        /// Mark the record's type (only: improve)
-        #[arg(long)]
-        kind: Option<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    /// List discussions
-    List {
-        /// Show archived discussions instead of live ones
-        #[arg(long)]
-        archived: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Show a discussion document
-    Show { slug: String, #[arg(long)] json: bool },
-    /// Search live and archived discussions by keyword (topic, slug and decision lines)
-    Search {
-        /// Keywords (space-split); any one matching counts, case-insensitive
-        #[arg(required = true, value_name = "KEYWORD")]
-        terms: Vec<String>,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Set the discussion's Context section (content from stdin)
-    Context { slug: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
-    /// Append a round to a discussion (content from stdin)
-    #[command(name = "add-round")]
-    AddRound { slug: String, #[arg(long, default_value = "interview")] mode: String, #[arg(long)] stdin: bool, #[arg(long)] json: bool },
-    /// Conclude a discussion (content from stdin)
-    Conclude {
-        slug: String,
-        #[arg(long)]
-        stdin: bool,
-        /// Keep the record live: its conclusion plans a further change to spin out later
-        #[arg(long)]
-        hold: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
-    Archive { slug: String, #[arg(long)] json: bool },
-    /// Discard a live discussion (delete the file; --force required once rounds exist)
-    Discard {
-        slug: String,
-        /// Delete even when the discussion has recorded rounds
-        #[arg(long)]
-        force: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Promote a discussion into a change scaffold (proposal prefilled from the conclusion)
-    Promote {
-        slug: String,
-        /// Change name (defaults to the discussion slug)
-        #[arg(long)]
-        name: Option<String>,
-        /// This is the last cut the conclusion planned: release the record's hold so the
-        /// final archive co-archives the discussion
-        #[arg(long)]
-        last: bool,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Link a discussion to an existing change (forges the from_discussion chain)
-    Link {
-        slug: String,
-        /// Existing change name to link the discussion to
-        change: String,
-        #[arg(long)]
-        json: bool,
-    },
-    /// Seal a discussion→change reflection: mark the discussion promoted once content has landed
-    Seal {
-        slug: String,
-        /// Change whose from_discussion already includes this discussion
-        change: String,
-        /// This is the last cut the conclusion planned: release the record's hold so the
-        /// final archive co-archives the discussion
-        #[arg(long)]
-        last: bool,
-        #[arg(long)]
-        json: bool,
-    },
-}
 pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let (ws, store) = open_project()?;
+    let stdin = stdin_for(a.stdin_policy());
+    let cmd = engine_command(a.to_command(VerbInputs { stdin, ..Default::default() }))?;
     match a.command {
-        DiscussCommands::New { topic, slug, kind, json } => {
-            let info: core::discuss::DiscussionInfo = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussNew { topic, slug, kind },
-            )?;
+        DiscussCommands::New { json, .. } => {
+            let info: core::discuss::DiscussionInfo = run(&store, Some(&ws), cmd)?;
             if json {
                 return print_json(&info);
             }
@@ -130,48 +31,27 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             });
         }
         DiscussCommands::List { archived, json } => {
-            let items: Vec<core::discuss::DiscussionInfo> =
-                run(&store, Some(&ws), core::command::Command::DiscussList { archived })?;
+            let items: Vec<core::discuss::DiscussionInfo> = run(&store, Some(&ws), cmd)?;
             render_discuss_list(&items, archived, json)?;
         }
-        DiscussCommands::Show { slug, json } => {
-            let show: core::command::DiscussShowOutcome =
-                run(&store, Some(&ws), core::command::Command::DiscussShow { slug })?;
+        DiscussCommands::Show { json, .. } => {
+            let show: core::command::DiscussShowOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_show(&show, json)?;
         }
         DiscussCommands::Search { terms, json } => {
-            let hits: Vec<core::discuss::DiscussionHit> = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussSearch { terms: terms.clone() },
-            )?;
+            let hits: Vec<core::discuss::DiscussionHit> = run(&store, Some(&ws), cmd)?;
             render_discuss_search(&terms, &hits, json)?;
         }
-        DiscussCommands::Context { slug, stdin, json } => {
-            let content = read_stdin_content(stdin);
-            let o: core::command::DiscussSubjectOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussContext { slug, content },
-            )?;
+        DiscussCommands::Context { json, .. } => {
+            let o: core::command::DiscussSubjectOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_context(&o.slug, json)?;
         }
-        DiscussCommands::AddRound { slug, mode, stdin, json } => {
-            let content = read_stdin_content(stdin);
-            let o: core::command::DiscussRoundOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussAddRound { slug, mode, content },
-            )?;
+        DiscussCommands::AddRound { json, .. } => {
+            let o: core::command::DiscussRoundOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_add_round(&o.slug, o.round, &o.mode, json)?;
         }
-        DiscussCommands::Conclude { slug, stdin, hold, json } => {
-            let content = read_stdin_content(stdin);
-            let o: core::command::DiscussConcludeOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussConclude { slug, content, hold },
-            )?;
+        DiscussCommands::Conclude { json, .. } => {
+            let o: core::command::DiscussConcludeOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_conclude(&o.slug, &o.restale_flagged, o.auto_archived, o.held, json)?;
             // 閉環封存步失敗：結論與 restale 已落盤（上面照常呈現），這裡以非零
             // exit code 收場、stderr 說明原因；重跑 discuss archive 即可收尾。
@@ -179,29 +59,20 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 anyhow::bail!("conclude closing step failed to archive the record: {reason}");
             }
         }
-        DiscussCommands::Archive { slug, json } => {
-            let o: core::command::DiscussArchiveOutcome =
-                run(&store, Some(&ws), core::command::Command::DiscussArchive { slug })?;
+        DiscussCommands::Archive { json, .. } => {
+            let o: core::command::DiscussArchiveOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_archive(
                 &o.slug,
                 &format!("discussions/archive/{}", o.archived_file),
                 json,
             )?;
         }
-        DiscussCommands::Discard { slug, force, json } => {
-            let o: core::command::DiscussSubjectOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussDiscard { slug, force },
-            )?;
+        DiscussCommands::Discard { json, .. } => {
+            let o: core::command::DiscussSubjectOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_discard(&o.slug, json)?;
         }
-        DiscussCommands::Promote { slug, name, last, json } => {
-            let o: core::command::DiscussPromoteOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussPromote { slug, name, last },
-            )?;
+        DiscussCommands::Promote { json, .. } => {
+            let o: core::command::DiscussPromoteOutcome = run(&store, Some(&ws), cmd)?;
             let shown = o.path.to_string_lossy();
             let wire = core::util::to_slash(&o.path);
             render_discuss_promote(
@@ -211,20 +82,12 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
                 json,
             )?;
         }
-        DiscussCommands::Link { slug, change, json } => {
-            let o: core::command::DiscussBindOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussLink { slug, change },
-            )?;
+        DiscussCommands::Link { json, .. } => {
+            let o: core::command::DiscussBindOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Link, json)?;
         }
-        DiscussCommands::Seal { slug, change, last, json } => {
-            let o: core::command::DiscussBindOutcome = run(
-                &store,
-                Some(&ws),
-                core::command::Command::DiscussSeal { slug, change, last },
-            )?;
+        DiscussCommands::Seal { json, .. } => {
+            let o: core::command::DiscussBindOutcome = run(&store, Some(&ws), cmd)?;
             render_discuss_bind(&o.slug, &o.change, DiscussBind::Seal, json)?;
         }
     }

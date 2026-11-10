@@ -4546,6 +4546,7 @@ dependencies = [
  "speclink-host",
  "speclink-protocol",
  "speclink-remote",
+ "speclink-verbs",
  "tiny_http",
 ]
 
@@ -4652,6 +4653,7 @@ dependencies = [
  "speclink-core",
  "speclink-fs",
  "speclink-host",
+ "speclink-verbs",
 ]
 
 [[package]]
@@ -4769,6 +4771,16 @@ dependencies = [
  "serde_json",
  "speclink-store",
  "tempfile",
+]
+
+[[package]]
+name = "speclink-verbs"
+version = "0.12.0"
+dependencies = [
+ "clap",
+ "serde",
+ "serde_json",
+ "speclink-core",
 ]
 
 [[package]]
