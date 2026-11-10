@@ -127,11 +127,17 @@ cat CONTEXT.md | speclink workflow-config context --stdin
 | `claude` | `.claude/skills/` |
 | `codex`（`agents` 是它的別名） | `.agents/skills/` |
 | `copilot` | `.github/skills/` |
+| `pi` | `.pi/skills/` |
+| `cursor` | `.cursor/skills/` |
 | 自訂工具描述子 | 描述子的 `skills_dir` |
 
-GitHub Copilot 也會讀 `.claude/skills/` 與 `.agents/skills/`，但它先讀 `.github/skills/`。所以選了 `copilot`，Copilot 用的就是寫給它的那一份。
+GitHub Copilot 也會讀 `.claude/skills/` 與 `.agents/skills/`，但它先讀 `.github/skills/`。所以選了 `copilot`，Copilot 用的就是寫給它的那一份。pi 也會讀 `.agents/skills/`，但它先讀 `.pi/skills/`，同名技能用先讀到的那一份；所以同時選 `codex` 與 `pi` 時，pi 啟動會對每個同名技能顯示一則警告，用的仍是 pi 版。pi 要先信任專案才讀專案裡的技能。Cursor 也會讀 `.agents/skills/`、`.claude/skills/` 與 `.codex/skills/`。
 
-改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。在桌面 app「專案設定」的 `.speclink.yaml` 頁勾選內建工具時，會自動做同樣的同步。
+改完 `tools` 後執行 `speclink update`。新加的工具會產生技能檔；從清單拿掉的工具，它的 `speclink-*` 技能目錄會被刪除，因此變空的目錄也一併移除。在桌面 app「專案設定」的「AI 工具」頁勾選內建工具時，會自動做同樣的同步。
+
+升級到支援 pi 與 Cursor 的版本後，如果 `tools` 沒有列 `pi` 或 `cursor`，第一次同步會把 `.pi/skills/`、`.cursor/skills/` 下名稱以 `speclink-` 開頭的目錄當成取消勾選的工具刪除，即使那是你以前手動放的。要保留，請在 `tools` 加上 `pi` 或 `cursor`。
+
+已勾選工具的 skills 目錄不能經 symlink 和另一個工具共用同一個目錄（例如把 `.cursor/skills` 連到 `.claude/skills`）：兩個工具會互相覆寫或刪掉對方的技能，所以同步會在寫入任何檔案前以一行錯誤拒絕。請拿掉連結，或取消勾選其中一個工具。連到專案外共用資料夾的 symlink 不受影響。
 
 其他 AI 工具用描述子接上：
 
@@ -145,14 +151,14 @@ tools:
 
 | 欄位 | 必填 | 規則 |
 | --- | --- | --- |
-| `name` | 是 | kebab-case，2–50 個字元，只能用 `a-z`、`0-9`、`-`。不能是 `claude`、`codex`、`agents`、`copilot` |
-| `skills_dir` | 是 | 專案根目錄下的相對路徑。不能跑出專案、不能是專案根目錄本身，也不能是 `.claude/skills`、`.agents/skills` 或 `.github/skills`（不分大小寫） |
+| `name` | 是 | kebab-case，2–50 個字元，只能用 `a-z`、`0-9`、`-`。不能是 `claude`、`codex`、`agents`、`copilot`、`pi`、`cursor` |
+| `skills_dir` | 是 | 專案根目錄下的相對路徑。不能跑出專案、不能是專案根目錄本身，也不能是 `.claude/skills`、`.agents/skills`、`.github/skills`、`.pi/skills` 或 `.cursor/skills`（不分大小寫） |
 | `invocation` | 否 | `cli`（預設）：技能寫「執行 `speclink <動詞>`」。`tool-call`：技能寫「呼叫 speclink 工具，參數是 argv 陣列」 |
 | `instructions_file` | 否，已棄用 | 不再產生任何內容，只用來讓 `speclink update` 清掉舊版留下的 `SPECLINK` 區塊。留著會在 stderr 印一行棄用提示 |
 
-欄位不合法時，指令印出一行指出欄位的錯誤，並以非零結束。描述子產生的技能沒有 `/speclink-` 斜線指令，也不提 plan mode；內建的 claude、codex、copilot 不受影響。
+欄位不合法時，指令印出一行指出欄位的錯誤，並以非零結束。描述子產生的技能沒有 `/speclink-` 斜線指令，也不提 plan mode；內建的 claude、codex、copilot、pi、cursor 不受影響。
 
-舊版允許名為 `copilot`、或 `skills_dir` 是 `.github/skills` 的描述子。升級後 `speclink update` 會拒絕它並以非零結束。刪掉這個描述子，改在 `tools` 寫 `copilot` 即可。
+舊版允許名為 `copilot`、或 `skills_dir` 是 `.github/skills` 的描述子。升級後 `speclink update` 會拒絕它並以非零結束。刪掉這個描述子，改在 `tools` 寫 `copilot` 即可。名為 `pi` 或 `cursor`、或 `skills_dir` 是 `.pi/skills`、`.cursor/skills` 的描述子也一樣：刪掉描述子，改在 `tools` 寫 `pi` 或 `cursor`。
 
 ## <a id="remote"></a>遠端模式
 
@@ -191,7 +197,7 @@ tools:
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
 | `spec_dir` | 相對路徑 | `speclink` | 規格目錄的位置，相對於專案根目錄。沒寫時，舊版建立、只有 `openspec/` 的專案照常讀 `openspec/`，直到 `speclink update` 把它搬到 `speclink/`；搬移與 OpenSpec 匯入都不會寫入這個鍵。寫明這個鍵的專案不會自動搬移 |
-| `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot` 或自訂工具描述子 |
+| `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot`、`pi`、`cursor` 或自訂工具描述子 |
 | `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
 | `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |
 

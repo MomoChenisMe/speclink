@@ -1,7 +1,7 @@
 // 設定分類目錄（desktop-settings-mode design D1）：應用程式設定與專案設定兩種分類欄的單一來源。
 // 應用程式分類帶各頁列標籤的 i18n 鍵——分類欄搜尋以分類名與這些列標籤做大小寫不敏感比對。
 import {
-  FileCog,
+  Bot,
   FileText,
   Info,
   ListChecks,
@@ -29,14 +29,14 @@ export interface ProjectSettingsCategory {
   id: "context" | "rules" | "review" | "workflow" | "speclink";
   labelKey: string;
   icon: LucideIcon;
-  /** config＝規格資料夾的 config.yaml 組；project＝「專案」組（.speclink.yaml）。 */
+  /** config＝「工作流程」組（規格資料夾的 config.yaml）；project＝「專案」組（.speclink.yaml）。 */
   group: "config" | "project";
   /** 遠端專案是否呈現（.speclink.yaml 屬本機 checkout，遠端無此分類）。 */
   remote: boolean;
 }
 
-/** 工作流設定檔的專案根相對路徑（desktop-spec-dir-migration D4）：專案設定各頁的檔案註記與
- * 分類欄組名由它組成；快照沒帶規格資料夾（遠端、尚未載入）時用預設 speclink。 */
+/** 工作流設定檔的專案根相對路徑（desktop-spec-dir-migration D4）：專案設定各頁的檔案註記由它
+ * 組成；快照沒帶規格資料夾（遠端、尚未載入）時用預設 speclink。 */
 export function workflowConfigFile(specDir: string | undefined): string {
   return `${specDir ?? DEFAULT_SPEC_DIR}/config.yaml`;
 }
@@ -106,7 +106,7 @@ export const PROJECT_SETTINGS_CATEGORIES: ProjectSettingsCategory[] = [
   { id: "rules", labelKey: "settings.projectSection.rules", icon: ListChecks, group: "config", remote: true },
   { id: "review", labelKey: "settings.projectSection.review", icon: ShieldCheck, group: "config", remote: true },
   { id: "workflow", labelKey: "settings.projectSection.workflow", icon: Workflow, group: "config", remote: true },
-  { id: "speclink", labelKey: "settings.projectSection.speclink", icon: FileCog, group: "project", remote: false },
+  { id: "speclink", labelKey: "settings.projectSection.speclink", icon: Bot, group: "project", remote: false },
 ];
 
 /** 分類欄搜尋：分類名或任一列標籤含查詢字串（大小寫不敏感）；空查詢全數保留。 */

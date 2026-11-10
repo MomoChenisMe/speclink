@@ -79,12 +79,12 @@
 
 設定 SHALL 拆分為兩種模式：**專案設定**（跟隨 active 專案，自專案欄底部「專案設定」進入）與**應用程式設定**（與任何專案無關，自圖示列齒輪進入）。兩種模式 SHALL 以左側分類欄取代頁簽：點分類即切換主區為該分類的單一頁，分類欄 SHALL 記住上次所在分類；每頁 SHALL 以共用設定零件排版——24px 頁標題＋灰字說明＋右側頁級動作、14px 小標＋16px 圓角卡、卡內一列一筆細線分隔（左標籤與說明、右控制項）、列右側下拉。
 
-專案設定的分類欄 SHALL 分兩組：「speclink/config.yaml」組依序為專案說明、產出規則、審查規則、產出流程；「專案」組為 .speclink.yaml；預設落在專案說明。
+專案設定的分類欄 SHALL 分兩組，組名與分類名一律用概念名、SHALL NOT 用設定檔檔名（與應用程式設定的分類欄相同）：「工作流程」組依序為專案說明、產出規則、審查規則、產出流程；「專案」組為 AI 工具；預設落在專案說明。設定檔的路徑只出現在各頁頁標題下的等寬註記。
 
 - **專案說明**頁 SHALL 含專案說明卡、**產出規則**頁 SHALL 含產出規則卡（行為見需求「設定頁編輯專案說明與產出規則」）。
 - **審查規則**頁 SHALL 含預設清單卡與專案規則卡（行為見需求「設定頁編輯審查規則」）。
 - **產出流程**頁 SHALL 含「產出政策」卡——locale、spec_locale（列右側下拉）與 tdd、audit、worktree（列右側開關）——與「產出流程」卡（行為見需求「產出流程頁」）。
-- **.speclink.yaml** 頁 SHALL 含「檔案」列（等寬路徑，唯讀）與「AI 工具」卡——內建工具 claude／codex／copilot／pi／cursor 每個一列附開關，自訂工具描述子原樣呈現為不可編輯列。
+- **AI 工具**頁（頁標題「AI 工具」，頁標題下等寬註記 `.speclink.yaml · tools`）SHALL 含「AI 工具」卡——內建工具 claude／codex／copilot／pi／cursor 每個一列附開關，自訂工具描述子原樣呈現為不可編輯列；SHALL NOT 含「設定檔」卡或「檔案」列。
 
 應用程式設定的分類欄 SHALL 為「應用程式」組：一般、更新、CLI、伺服器，其後為「關於」組：關於 Speclink（行為見 desktop-app 需求「關於頁」）；預設落在一般；零專案時 SHALL 照常可進入且分類欄照常呈現。
 
@@ -95,14 +95,14 @@
 
 應用程式設定的同一個設定列 SHALL 只出現在一個分類頁，SHALL NOT 在其他分類頁重複。
 
-專案設定每頁的頁標題下 SHALL 以等寬字註記對應檔案路徑與鍵（如 `speclink/config.yaml · context`）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 寫入後保留。任一層設定檔解析失敗時，分類欄中掛該檔的分類項（config.yaml 掛專案說明、產出規則、審查規則、產出流程；.speclink.yaml 掛 .speclink.yaml）SHALL 帶警示點、頁內 SHALL 浮出解析失敗說明且該頁表單 SHALL 停用；應用程式設定 SHALL NOT 受任何專案設定檔解析失敗影響。
+專案設定每頁的頁標題下 SHALL 以等寬字註記對應檔案路徑與鍵（如 `speclink/config.yaml · context`）。讀取時未設定的欄位 SHALL 呈現為預設值狀態；寫入時 SHALL 僅代換目標鍵——未觸及的鍵（remote、spec_dir、自訂工具描述子等）SHALL 原樣保留；政策欄位設回預設值時 SHALL 移除該鍵而非寫入明值。tools 寫入成功後 app SHALL 同步技能檔（新選工具生成、取消工具清理殘留）。自訂工具描述子 SHALL 寫入後保留。任一層設定檔解析失敗時，分類欄中掛該檔的分類項（config.yaml 掛專案說明、產出規則、審查規則、產出流程；.speclink.yaml 掛 AI 工具）SHALL 帶警示點、頁內 SHALL 浮出解析失敗說明且該頁表單 SHALL 停用；應用程式設定 SHALL NOT 受任何專案設定檔解析失敗影響。
 
-遠端 workspace 為 active 專案時，專案設定的分類欄 SHALL 只有「speclink/config.yaml」組的四項（無 .speclink.yaml——tools 屬本機 checkout 概念），四頁內容來自 server 的 policy 文件，頁標題下的註記 SHALL 以等寬字顯示 policy revision；鍵保留語意與本地一致（未觸及鍵原樣保留、設回預設移除鍵）。儲存 SHALL 帶 expected revision；收到 revision 衝突時 SHALL 原樣保留使用者輸入並於頁頂浮出逐欄位對照（server 現值｜我的輸入），僅提供「以 server 版重載」與「檢視後以最新 revision 重新提交」兩出口——SHALL NOT 提供未經對照的強制覆寫。policy 寫入權為假（reader）時四頁 SHALL 唯讀、儲存停用附繁中角色說明。應用程式設定不受 active 專案種類影響。
+遠端 workspace 為 active 專案時，專案設定的分類欄 SHALL 只有「工作流程」組的四項（無「專案」組與 AI 工具——tools 屬本機 checkout 概念），四頁內容來自 server 的 policy 文件，頁標題下的註記 SHALL 以等寬字顯示 policy revision；鍵保留語意與本地一致（未觸及鍵原樣保留、設回預設移除鍵）。儲存 SHALL 帶 expected revision；收到 revision 衝突時 SHALL 原樣保留使用者輸入並於頁頂浮出逐欄位對照（server 現值｜我的輸入），僅提供「以 server 版重載」與「檢視後以最新 revision 重新提交」兩出口——SHALL NOT 提供未經對照的強制覆寫。policy 寫入權為假（reader）時四頁 SHALL 唯讀、儲存停用附繁中角色說明。應用程式設定不受 active 專案種類影響。
 
 #### Scenario: 兩種設定模式與預設分類
 
 - **WHEN** 使用者於 local 專案分別點專案欄「專案設定」與圖示列齒輪
-- **THEN** 專案設定的分類欄為「speclink/config.yaml」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（.speclink.yaml），預設在專案說明頁（頁標題下等寬註記 `speclink/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 .speclink.yaml 頁見檔案列與 AI 工具卡；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
+- **THEN** 專案設定的分類欄為「工作流程」組（專案說明、產出規則、審查規則、產出流程）與「專案」組（AI 工具），組名與分類名都不含檔名，預設在專案說明頁（頁標題下等寬註記 `speclink/config.yaml · context`）；切到產出流程頁見產出政策卡與產出流程卡、切到 AI 工具頁見頁標題「AI 工具」、等寬註記 `.speclink.yaml · tools` 與 AI 工具卡，沒有檔案列；應用程式設定的分類欄為「應用程式」組（一般、更新、CLI、伺服器）與「關於」組（關於 Speclink），預設在一般頁（含語言與外觀、鍵盤快捷鍵兩卡與「僅存於此裝置」註記，無軟體更新卡與 CLI 指令卡）
 
 #### Scenario: 遠端專案的專案設定分類
 
@@ -139,7 +139,7 @@
 
 #### Scenario: tools 變更後技能同步
 
-- **WHEN** .speclink.yaml 原 tools 僅 claude，使用者於 .speclink.yaml 頁開啟 codex 的開關並儲存
+- **WHEN** .speclink.yaml 原 tools 僅 claude，使用者於 AI 工具頁開啟 codex 的開關並儲存
 - **THEN** .speclink.yaml 的 tools 記錄 claude 與 codex，且專案根新增 .agents/skills/ 技能檔而無 AGENTS.md
 
 #### Scenario: 加選與取消 copilot 後技能同步
@@ -154,7 +154,7 @@
 
 #### Scenario: 自訂工具描述子原樣保留
 
-- **WHEN** .speclink.yaml 的 tools 含一個自訂描述子物件，使用者於 .speclink.yaml 頁變更內建工具開關並儲存
+- **WHEN** .speclink.yaml 的 tools 含一個自訂描述子物件，使用者於 AI 工具頁變更內建工具開關並儲存
 - **THEN** 寫入後的 tools 清單仍含該描述子且欄位內容不變，頁內將其呈現為不可編輯列
 
 #### Scenario: 解析失敗分類級警示
@@ -162,3 +162,26 @@
 - **WHEN** config.yaml 被外部改壞為無法解析，使用者開啟專案設定
 - **THEN** 分類欄的專案說明、產出規則、審查規則、產出流程四項帶警示點；進入任一頁可見解析失敗說明，產出政策卡表單與專案說明、產出規則、審查規則三頁的編輯鈕停用；應用程式設定的顯示語言列仍可正常使用
 
+### Requirement: 畫面依實際規格資料夾與資料檔名顯示
+
+桌面 app 畫面上提到規格資料夾或變更資料檔的地方 SHALL 依專案實際使用的資料夾與檔名顯示，SHALL NOT 寫死 `openspec/` 或 `.openspec.yaml`：專案設定各頁標題下的檔案註記（例如 `speclink/config.yaml · context`；舊佈局專案為 `openspec/config.yaml · context`；明寫 `spec_dir` 時為該路徑）、討論詳情顯示的記錄路徑。專案設定分類欄的組名是概念名（「工作流程」），不帶規格資料夾路徑。遷移到遠端與來源選擇對話框 SHALL 以「本機規格資料夾」稱呼本機的規格資料夾。變更資料檔解析失敗的卡片提示 SHALL 以「變更資料檔」稱呼，不帶寫死的檔名。新專案的說明文字（初始化對話框、空狀態與來源選擇）SHALL 寫 `speclink/`。文案 SHALL 跟隨 UI 語言。
+
+#### Scenario: 新佈局專案的檔案註記
+
+- **WHEN** 使用者在規格資料夾為 speclink/ 的專案打開專案設定的專案說明頁
+- **THEN** 頁標題下的註記為 `speclink/config.yaml · context`，分類欄組名為「工作流程」
+
+#### Scenario: 暫緩遷移的舊佈局專案
+
+- **WHEN** 使用者在仍是 openspec/ 的專案打開專案設定的產出規則頁
+- **THEN** 頁標題下的註記為 `openspec/config.yaml · rules`
+
+#### Scenario: 討論詳情的記錄路徑
+
+- **WHEN** 使用者在 speclink/ 專案打開討論 board-search-bar 的詳情
+- **THEN** 顯示的記錄路徑為 `speclink/discussions/board-search-bar.md`
+
+#### Scenario: 資料檔解析失敗的提示
+
+- **WHEN** 某變更的資料檔無法解析，使用者在看板看到該卡片
+- **THEN** 卡片提示以「變更資料檔」稱呼並附解析原因，不出現 `.openspec.yaml` 字樣

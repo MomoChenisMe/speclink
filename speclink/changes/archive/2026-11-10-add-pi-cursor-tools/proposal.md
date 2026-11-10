@@ -9,6 +9,8 @@ pi 與 Cursor 讀的是同一份 SKILL.md 格式（Agent Skills 開放標準）�
 
 這個變更作用在 init（建立工作區）與 update（技能同步）兩個階段，影響所有在 init、`.speclink.yaml` 或 desktop 選工具的使用者。
 
+實作後在 desktop 的專案設定頁實測五個工具時，發現分類欄混用兩種命名：第一組用檔名當組名（`speclink/config.yaml`）、項目卻是概念名（專案說明…）；第二組用概念名當組名（專案）、項目卻是檔名（`.speclink.yaml`），該頁標題也是檔名，還多一張其他頁沒有的「設定檔／檔案」卡。應用程式設定的分類欄組名與項目都是概念名。使用者決定專案設定改成同一種寫法，併在本變更處理，因為工具勾選所在的需求「設定頁圖形化讀寫兩層設定」本來就由本變更改寫。
+
 ## What Changes
 
 - 新增兩個內建 Agent 工具，內建工具的順序固定為 claude、codex、copilot、pi、cursor：
@@ -17,15 +19,24 @@ pi 與 Cursor 讀的是同一份 SKILL.md 格式（Agent Skills 開放標準）�
   - 兩者的內容都照 codex 版產生：同一個技能子集（除 analyze 以外的技能；worktree 政策關閉時不含兩顆 worktree 技能）、同一份中性 frontmatter（name、description、license、compatibility、metadata），沒有 plan 目錄，不帶 Claude 專用的 `context`、`agent`、`disallowedTools` 與 fork 前言。
   - 不產生任何指令檔（`AGENTS.md`、`CLAUDE.md`、`.cursor/rules/` 都不寫），也不產生 `.cursor/agents/` 子代理檔。
   - 工作區 footprint 偵測不因 `.pi/`、`.cursor/` 存在而推斷新工具：很多 repo 有 `.cursor/` 只是為了放 rules。
+- 技能同步不再穿過 symlink 弄壞別的工具的技能（品質關卡第 1 輪的發現，使用者選定修法）：
+  - 已勾選工具的 skills 目錄順著 symlink 解析後，若和另一個會被寫入或清理的工具 skills 目錄是同一個目錄（例如 `.cursor/skills` 連到 `.claude/skills`），同步在任何寫入之前以一行錯誤拒絕，`--allow-downgrade` 也不能越過。連到專案外共用資料夾的 symlink 照常同步。
+  - 取消勾選的工具，skills 目錄路徑上任何一層是 symlink 都不清理（原本只看 skills 目錄本身）。
 - CLI `speclink init`（speclink-cli）：
   - `--tools` 接受 `pi`、`cursor`，可與其他工具用逗號任意組合；未知名稱的錯誤訊息列出五個工具。
   - 互動終端依序問 Claude、Codex、Copilot、Pi、Cursor 五題，五題都答 no 時重問。
   - 非互動終端缺 `--tools` 的單行錯誤改列五個工具名；`--tools` 的 help 範例同步。旗標、stdin 與 exit code 規則不變。
 - `.speclink.yaml` 的 `tools` 清單接受 `pi`、`cursor` 字串，沒有新欄位、沒有預設值改變。
-- desktop（apps/desktop）：初始化確認、啟用確認、checkout 綁定、設定頁 `.speclink.yaml` 頁的「AI 工具」卡四處勾選加上 pi、cursor；checkout 綁定的空選集錯誤訊息列出五個工具。
+- desktop（apps/desktop）：初始化確認、啟用確認、checkout 綁定、專案設定 AI 工具頁的「AI 工具」卡四處勾選加上 pi、cursor；checkout 綁定的空選集錯誤訊息列出五個工具。
+- desktop 專案設定分類欄統一用概念名，與應用程式設定相同：
+  - 第一組組名由 `<規格資料夾>/config.yaml` 改為「工作流程」（英文 Spec workflow），項目不變。
+  - 第二組組名維持「專案」，項目由 `.speclink.yaml` 改為「AI 工具」（英文 AI tools），該頁標題改為「AI 工具」，麵包屑第三段隨之變成「AI 工具」。
+  - AI 工具頁拿掉「設定檔／檔案」卡；設定檔路徑只留在各頁標題下的等寬註記（`.speclink.yaml · tools`、`speclink/config.yaml · context` 等）。
+  - 遠端專案只有「工作流程」組，與今天相同只少了組名的檔名。
+  - speclink/LANGUAGE.md「設定檔檔名得直出作為設定頁的頁簽標籤」的明文例外退場，改記為檔名只出現在頁標題下的等寬註記。
 - Node SDK（speclink-node）：`skills.render` 的 target 接受 `'pi'`、`'cursor'`，TypeScript 型別同步。
 - Herdr 面板（integrations/herdr）：pi 改對到 `pi` 工具（缺技能提示改為 `--tools pi`）；新增 cursor 的叫用前綴 `/` 與技能目錄，面板可以把技能送給 Cursor。
-- 產物層版號從 v1.53.0 遞增為 v1.54.0：assets.lock 的指紋涵蓋全部內建工具的渲染輸出，加入兩個工具後指紋改變。
+- 產物層版號從 v1.54.0 遞增為 v1.55.0：assets.lock 的指紋涵蓋全部內建工具的渲染輸出，加入兩個工具後指紋改變。
 - 規格與測試的範例改名：規格「技能檔過期探測」與 speclink-core 測試用一個名為 `cursor`、目錄為 `.cursor/skills` 的自訂描述子當範例，`tools: [claude, cursor]` 也被當成「未知工具」的範例。`cursor` 成為內建工具後這些範例不再成立，改用 `my-harness` 與 `windsurf`。
 - 技能原稿守門：原稿 SHALL NOT 寫死的 `--agent` 值加上 `pi`、`cursor`。
 - 文件：README 與 getting-started、configuration、workflow、sdk-node、product-status 的中英文版，以及 Herdr 面板說明，補上 pi、Cursor 的目錄與叫用方式，並寫明 pi 的同名警告與「pi 要先信任專案才讀專案技能」。
@@ -33,12 +44,15 @@ pi 與 Cursor 讀的是同一份 SKILL.md 格式（Agent Skills 開放標準）�
 相容性影響：
 
 - **BREAKING**：`.speclink.yaml` 裡名為 `pi` 或 `cursor` 的自訂描述子，或 skills_dir 正規化後等於 `.pi/skills`、`.cursor/skills` 的描述子，升級後會因為「與內建工具衝突」被拒，update 以非零結束。規格原本的範例就是名為 `cursor`、目錄 `.cursor/skills` 的描述子，照範例設定的專案會中這一條。遷移方式：刪掉該描述子，改在 tools 寫 `pi` 或 `cursor`。
+- desktop 畫面：專案設定分類欄的第一組組名由檔名變成「工作流程」，第二組的項目、該頁標題與麵包屑由 `.speclink.yaml` 變成「AI 工具」，「設定檔／檔案」卡消失；分類欄記住的上次分類照舊（分類 id 不變）。
 - 人眼輸出：`speclink init` 的互動詢問由三題變五題；缺 `--tools`、未知工具、未知工具 note 的錯誤訊息文字改變。`Generated files for:` 行在選了 pi 或 cursor 時多列該工具。
 - `--json`：技能檔過期探測的逐工具資訊在選了 pi 或 cursor 時多一項 `tool: "pi"` 或 `tool: "cursor"`，欄位形狀不變。
-- 回歸對照：既有六份 golden（claude、claude-worktree、codex、copilot、neutral-cli、neutral-tool-call）只有 frontmatter 版號行從 v1.53.0 變成 v1.54.0，內容逐位元不變；新增 pi、cursor 兩份 golden。
+- 回歸對照：既有六份 golden（claude、claude-worktree、codex、copilot、neutral-cli、neutral-tool-call）只有 frontmatter 版號行從 v1.54.0 變成 v1.55.0，內容逐位元不變；新增 pi、cursor 兩份 golden。
 - 既有工作區：版號遞增後，所有已安裝的技能檔都會被探測為過期，desktop 會提示更新；`speclink update` 對既有工具的技能只改寫版號行。
 - 舊版引擎讀到含 `pi` 或 `cursor` 的 `.speclink.yaml`：沿既有行為記一行 unknown tool note 並略過，不刪 `.pi/skills/`、`.cursor/skills/`。
 - 同時勾 codex 與 pi：pi 每次啟動會對 18 份同名技能各顯示一則警告，pi 用的是 pi 版，功能不受影響。
+- 已勾選工具的 skills 目錄經 symlink 和另一個工具共用同一個目錄的專案：升級前同步會互相覆寫或刪掉對方的技能，升級後改為以一行錯誤拒絕，要拿掉連結或取消勾選其中一個工具。
+- 升級前手動放在 `.pi/skills/`、`.cursor/skills/` 下的 `speclink-*` 目錄：tools 清單沒列 pi 或 cursor 時，升級後第一次同步會把它們當成取消勾選的工具刪除（`speclink-` 前綴即所有權），文件寫明這一點。
 
 ## Capabilities
 
@@ -51,13 +65,14 @@ pi 與 Cursor 讀的是同一份 SKILL.md 格式（Agent Skills 開放標準）�
 - `workspace-tools`: 內建工具集合擴為 claude、codex、copilot、pi、cursor，新增 Pi 與 Cursor 渲染目標的需求，Copilot 渲染目標的差異表擴成五列；描述子驗證保留 `pi`、`cursor` 名稱與 `.pi/skills`、`.cursor/skills` 目錄；init 工具選擇、built-in tools 權威收斂、中性渲染目標的 golden、過期探測、孤兒清理、worktree 政策過濾的列舉同步改寫；過期探測的描述子範例改名為 `my-harness`。
 - `node-sdk`: 渲染 API 的 target 值域加入 pi、cursor。
 - `workspace-chooser`: checkout 綁定與 remote marker 探測分流的工具勾選擴為五個。
-- `desktop-config`: 初始化確認、啟用確認與設定頁的 AI 工具多選加入 pi、cursor。
+- `desktop-config`: 初始化確認、啟用確認與設定頁的 AI 工具多選加入 pi、cursor；專案設定分類欄的組名與項目改用概念名（「工作流程」組、「專案」組的 AI 工具），AI 工具頁拿掉「檔案」列；「畫面依實際規格資料夾與資料檔名顯示」不再把分類欄組名算進依規格資料夾顯示的地方。
+- `desktop-app`: 側欄導覽結構裡專案設定分類欄的群組與項目名稱同步改為「工作流程」組與「專案」組的 AI 工具。
 - `user-documentation`: getting-started 的入口說明加入 pi 的 `/skill:speclink-*` 與 Cursor 的 `/speclink-*` 叫用語法。
 - `skill-authoring`: 技能引用依工具渲染的範例加入 pi、cursor；原稿守門禁止寫死的 `--agent` 值加入 `pi`、`cursor`；對話語言段落的適用範圍改為全部內建工具。
 
 ## Impact
 
-- Affected specs: workspace-tools, node-sdk, workspace-chooser, desktop-config, user-documentation, skill-authoring
+- Affected specs: workspace-tools, node-sdk, workspace-chooser, desktop-config, desktop-app, user-documentation, skill-authoring
 - 規格掃描結果：相關的正式規格是上面六份；沒有任何正式規格已經涵蓋 pi 或 Cursor，所以全部以修改既有需求處理，不新增 capability。review-skill「首輪工單記錄套用的規則」的情境寫「三種工具（claude、codex、copilot）生成」，對這三個工具仍然成立，本變更不改寫。
 - 影響的技能：pi 版與 Cursor 版為非 Claude 子集的全部技能（18 份）；claude、codex、copilot 版只有版號行改變。影響的工具：新增 pi、cursor，claude、codex、copilot 的內容不變。
 - 影響的 crate 與 app：speclink-core、speclink-cli、speclink-node、apps/desktop（前端、desktop-core、Tauri 殼）、integrations/herdr。
@@ -84,6 +99,16 @@ pi 與 Cursor 讀的是同一份 SKILL.md 格式（Agent Skills 開放標準）�
   - Modified: crates/adapters/speclink-node/__test__/render.spec.ts
   - Modified: apps/desktop/src/builtinTools.ts
   - Modified: apps/desktop/src/adapter/connections.ts
+  - Modified: apps/desktop/src/components/WorkspaceChooser.tsx
+  - Modified: apps/desktop/src/settingsCatalog.ts
+  - Modified: apps/desktop/src/components/ProjectSettingsColumn.tsx
+  - Modified: apps/desktop/src/views/project-settings/SpeclinkPage.tsx
+  - Modified: apps/desktop/src/views/ProjectSettingsView.tsx
+  - Modified: apps/desktop/src/App.tsx
+  - Modified: apps/desktop/src/i18n/messages.ts
+  - Modified: apps/desktop/src/__tests__/settingsColumn.test.tsx
+  - New: apps/desktop/src/__tests__/helpers/toolCheckboxes.ts
+  - Modified: speclink/LANGUAGE.md
   - Modified: apps/desktop/src-tauri/src/connections.rs
   - Modified: apps/desktop/core/src/settings.rs
   - Modified: apps/desktop/core/src/project.rs

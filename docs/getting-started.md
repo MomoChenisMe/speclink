@@ -10,16 +10,18 @@ Each step shows the expected output. If your output is different, stop and find 
 
 The example requirement is "add CSV export", and the requirement is clear. If you still compare approaches or need a decision, run `discuss` first (see the [workflow](workflow.md#discuss)).
 
-You can work in four ways. All four give the same result:
+You can work in six ways. All six give the same result:
 
 | Way | Syntax | Note |
 | --- | --- | --- |
 | Claude Code | `/speclink-propose add-csv-export` | A slash command |
 | Codex | `$speclink-propose add-csv-export` | `$` and the skill name; you can also enter `/skills` and pick from the list |
 | GitHub Copilot | `/speclink-propose add-csv-export` | A slash command, the same as in Claude Code |
+| pi | `/skill:speclink-propose add-csv-export` | `/skill:` and the skill name |
+| Cursor | `/speclink-propose add-csv-export` | A slash command, the same as in Claude Code |
 | CLI only | `speclink new change add-csv-export` | No agent; you write each document yourself |
 
-A skill is a workflow guide for the agent: what to read, how to write the documents, and when to stop and ask you. The `speclink` CLI does the actual work. Most users only need the skills.
+A skill is a workflow guide for the agent: what to read, how to write the documents, and when to stop and ask you. The `speclink` CLI does the actual work. Most users only need the skills. Only Claude Code has `/speclink-analyze`. In Codex, GitHub Copilot, pi, and Cursor, use the `speclink analyze` CLI command.
 
 ## <a id="install"></a>1. Install
 
@@ -89,15 +91,15 @@ speclink init --tools claude,codex
 Generated files for: claude, codex
 ```
 
-`--tools` selects the agent tools that get skills: `claude`, `codex`, and `copilot`, in any comma-separated combination. If you use only GitHub Copilot, write `--tools copilot`.
+`--tools` selects the agent tools that get skills: `claude`, `codex`, `copilot`, `pi`, and `cursor`, in any comma-separated combination. If you use only GitHub Copilot, write `--tools copilot`.
 
 This step does three things:
 
 - It creates `speclink/` and `.speclink.yaml`.
-- It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, and `.github/skills/` for GitHub Copilot.
+- It writes skill files for the tools that you select: `.claude/skills/` for Claude, `.agents/skills/` for Codex, `.github/skills/` for GitHub Copilot, `.pi/skills/` for pi, and `.cursor/skills/` for Cursor.
 - It adds `.speclink/` (local work data) to `.gitignore`.
 
-It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`. The agent reads the description in each skill file to choose the right skill.
+It does not change your `CLAUDE.md`, `AGENTS.md`, or `.github/copilot-instructions.md`, and it does not create `.cursor/rules/`. The agent reads the description in each skill file to choose the right skill. In pi, trust the project first, because pi reads project skills only in a trusted project. If you select both `codex` and `pi`, pi shows one warning for each skill with the same name when it starts. pi uses the pi version in `.pi/skills/`, and the skills work as usual.
 
 `speclink/` has this folder layout:
 
@@ -123,11 +125,11 @@ speclink validate --specs --all --strict
 
 **Expected output**: `list` prints `No active changes.`. When no specs exist yet, `validate` prints nothing and exits with 0. No output means a pass.
 
-If your repo has a lot of code but no specs, run `/speclink-baseline` first (`$speclink-baseline` in Codex). It writes specs from the current behavior. Then start a new change.
+If your repo has a lot of code but no specs, run `/speclink-baseline` first (`$speclink-baseline` in Codex, `/skill:speclink-baseline` in pi). It writes specs from the current behavior. Then start a new change.
 
 ## <a id="propose"></a>3. Propose
 
-Ask the agent to create the change. In Claude Code or GitHub Copilot:
+Ask the agent to create the change. In Claude Code, GitHub Copilot, or Cursor:
 
 ```text
 /speclink-propose add-csv-export
@@ -137,6 +139,12 @@ In Codex:
 
 ```text
 $speclink-propose add-csv-export
+```
+
+In pi:
+
+```text
+/skill:speclink-propose add-csv-export
 ```
 
 The agent creates the change and writes the documents that the work needs:
@@ -198,7 +206,7 @@ speclink new artifact tasks --change add-csv-export --stdin < tasks.md
 
 ## <a id="apply"></a>4. Apply
 
-When the documents are complete, ask the agent to start the work. In Claude Code or GitHub Copilot:
+When the documents are complete, ask the agent to start the work. In Claude Code, GitHub Copilot, or Cursor:
 
 ```text
 /speclink-apply add-csv-export
@@ -208,6 +216,12 @@ In Codex:
 
 ```text
 $speclink-apply add-csv-export
+```
+
+In pi:
+
+```text
+/skill:speclink-apply add-csv-export
 ```
 
 First, the agent runs `speclink plan` to make sure that no other change blocks this one. Then it reads the proposal, the specs, the design (if one exists), and the tasks, and it does the tasks one by one. After each task, it runs `speclink task done`:
@@ -265,7 +279,7 @@ Two optional quality stations check the code. `/speclink-review` checks code cra
 
 ## <a id="archive"></a>6. Archive
 
-When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code or GitHub Copilot:
+When all tasks are done, the checks pass, and the quality stations that you chose are complete, ask the agent to archive. In Claude Code, GitHub Copilot, or Cursor:
 
 ```text
 /speclink-archive add-csv-export
@@ -275,6 +289,12 @@ In Codex:
 
 ```text
 $speclink-archive add-csv-export
+```
+
+In pi:
+
+```text
+/skill:speclink-archive add-csv-export
 ```
 
 Or run the CLI:

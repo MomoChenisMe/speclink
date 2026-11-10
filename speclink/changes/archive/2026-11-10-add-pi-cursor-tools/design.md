@@ -21,6 +21,7 @@ speclink 目前有三個內建 Agent 工具：claude（`.claude/skills/`，叫�
 - `pi`、`cursor` 成為第四、第五個內建工具，在 CLI init、`.speclink.yaml`、update、工具選集收斂、工作區補齊、desktop 四處勾選、Node SDK render 與 Herdr 面板都可選。
 - pi 與 Cursor 拿到的技能內容正確：叫用前綴分別為 `/skill:speclink-`、`/speclink-`，agent 分別記為 `pi`、`cursor`，沒有 Claude 專用欄位。
 - claude、codex、copilot 的技能內容逐位元不變（只有產物層版號行因遞增而改變）。
+- desktop 專案設定分類欄的組名與項目改用概念名，與應用程式設定的分類欄同一種寫法。
 
 **Non-Goals:**
 
@@ -32,7 +33,9 @@ speclink 目前有三個內建 Agent 工具：claude（`.claude/skills/`，叫�
 - 不接受 `cursor-agent`、`pi-coding-agent` 等工具名別名。
 - 不處理把 speclink 嵌進 pi 當 extension 或工具，那是討論 agent-tool-sdk-layering 的範圍。
 - Herdr 面板不為 Cursor 分頁追蹤標籤（Claude、Codex 靠 hook，pi 靠 extension，Cursor 沒有接上的機制），只做「把技能送給 Cursor」。
+- 不擋指到其他位置的 symlink：skills 目錄或其上層連到專案外的共用資料夾照常同步，只擋兩個工具共用同一個目錄。
 - 不在本 repo 自己的 `.speclink.yaml` 加 pi 或 cursor。
+- 不改應用程式設定的分類欄、不改專案設定的分類 id（`speclink` 等）、不改各頁標題下等寬註記的格式；`speclink/manual/` 的手冊頁不手改，由下次 `/speclink-manual` 依規格重生。
 - 不改寫 review-skill「首輪工單記錄套用的規則」裡「三種工具（claude、codex、copilot）生成」的情境：它對這三個工具仍然成立。
 
 ## Decisions
@@ -78,7 +81,7 @@ speclink-cli 的 `prompt_for_tools` 依序問 Claude、Codex、Copilot、Pi、Cu
 
 ### desktop 勾選清單加入 pi 與 cursor
 
-前端 `BUILTIN_TOOLS` 改為 `["claude", "codex", "copilot", "pi", "cursor"] as const`。初始化確認、啟用確認、checkout 綁定、設定頁 `.speclink.yaml` 頁的「AI 工具」卡都讀這個常數，所以四處自動多兩列；標籤照舊顯示原始工具名。預設勾選不變：初始化與啟用預設只勾 claude；checkout 依既有選集或 footprint 預選。沿用既有的勾選元件，不新增 @speclink/ui 元件或變體。
+前端 `BUILTIN_TOOLS` 改為 `["claude", "codex", "copilot", "pi", "cursor"] as const`。初始化確認、啟用確認、checkout 綁定、專案設定 AI 工具頁的「AI 工具」卡都讀這個常數，所以四處自動多兩列；標籤照舊顯示原始工具名。預設勾選不變：初始化與啟用預設只勾 claude；checkout 依既有選集或 footprint 預選。沿用既有的勾選元件，不新增 @speclink/ui 元件或變體。
 
 Tauri 殼 checkout 綁定的空選集訊息改成「請至少選擇一個內建工具：claude、codex、copilot、pi、cursor」，`preselected_tools` 與 `CheckoutInspection.tools` 的註解改成五個工具。desktop-core 透過 `parse_tool_names` 自動接受 pi、cursor，不需改邏輯，只補測試。
 
@@ -95,7 +98,7 @@ integrations/herdr/mods/speclink/model.js 的三張對照表：
 - `SKILL_FOLDERS` 新增 cursor：專案 `.cursor/skills`、`.agents/skills`、`.claude/skills`、`.codex/skills`，個人 `~/.cursor/skills`、`~/.agents/skills`、`~/.claude/skills`、`~/.codex/skills`。pi 的四個目錄不變。
 - 檔頭註解「Pi 讀 .agents/skills，和 Codex 共用技能檔」改為 pi 有自己的 `.pi/skills`。
 
-只有 codex 技能、沒有 pi 技能的專案：pi 仍讀得到 `.agents/skills` 的 codex 版，面板的「有沒有 speclink 技能」判定照樣命中，不跳缺技能提示；這種專案的 pi 用的是 `$` 前綴的內容，屬既有狀況，文件建議改勾 pi。integrations/herdr/README.md 與 README.en.md 的叫用前綴、技能目錄、PATH 段落同步。本變更不把改好的 mod 套用到使用者本機的 Herdr。
+只有 claude 或 codex 技能、沒有 cursor 技能的專案也一樣：Cursor 讀得到 `.claude/skills`、`.agents/skills`，面板照樣判定有技能、不提示 `--tools cursor`，Cursor 用的是 claude 或 codex 版的內容（`--agent claude`、`$speclink-`）；README 寫明並建議改勾 cursor。只有 codex 技能、沒有 pi 技能的專案：pi 仍讀得到 `.agents/skills` 的 codex 版，面板的「有沒有 speclink 技能」判定照樣命中，不跳缺技能提示；這種專案的 pi 用的是 `$` 前綴的內容，屬既有狀況，文件建議改勾 pi。integrations/herdr/README.md 與 README.en.md 的叫用前綴、技能目錄、PATH 段落同步。本變更不把改好的 mod 套用到使用者本機的 Herdr。
 
 ### 技能原稿守門加入 pi 與 cursor 的 --agent 值
 
@@ -103,11 +106,11 @@ crates/engine/speclink-core/tests/it/skill_authoring.rs 的寫死引用偵測，
 
 ### 產物層版號遞增與 golden 再生
 
-assets.lock 的指紋輸入走 `Tool::ALL`，加入兩個工具後指紋必然改變。依「內嵌資產版本鎖定紀律」，`ASSET_VERSION` 從 v1.53.0 遞增為 v1.54.0，再於乾淨樹用 `UPDATE_ASSETS_LOCK=1` 重生 assets.lock。
+assets.lock 的指紋輸入走 `Tool::ALL`，加入兩個工具後指紋必然改變。依「內嵌資產版本鎖定紀律」，`ASSET_VERSION` 從 v1.54.0 遞增為 v1.55.0，再於乾淨樹用 `UPDATE_ASSETS_LOCK=1` 重生 assets.lock。
 
-render golden 新增 `pi_rendering_is_bit_identical_to_golden` 與 `cursor_rendering_is_bit_identical_to_golden`：以 `[Tool::Pi]`、`[Tool::Cursor]` init 後分別快照 `.pi/skills`、`.cursor/skills`，存成 `pi.snapshot.md`、`cursor.snapshot.md`。既有六份 golden 用 `UPDATE_GOLDEN=1` 重生，diff 必須只有 frontmatter 的 `version: "v1.53.0"` → `version: "v1.54.0"`；出現任何其他差異就代表既有渲染被誤改，停下來查。
+render golden 新增 `pi_rendering_is_bit_identical_to_golden` 與 `cursor_rendering_is_bit_identical_to_golden`：以 `[Tool::Pi]`、`[Tool::Cursor]` init 後分別快照 `.pi/skills`、`.cursor/skills`，存成 `pi.snapshot.md`、`cursor.snapshot.md`。既有六份 golden 用 `UPDATE_GOLDEN=1` 重生，diff 必須只有 frontmatter 的 `version: "v1.54.0"` → `version: "v1.55.0"`；出現任何其他差異就代表既有渲染被誤改，停下來查。
 
-版號遞增後先 `cargo build -p speclink-cli`，確認 `./target/debug/speclink --version` 顯示 `engine v1.54.0`，再用新 binary 跑 `speclink update`，讓本 repo 的 `.claude/skills/` 與 `.agents/skills/` 技能檔只改版號行。
+版號遞增後先 `cargo build -p speclink-cli`，確認 `./target/debug/speclink --version` 顯示 `engine v1.55.0`，再用新 binary 跑 `speclink update`，讓本 repo 的 `.claude/skills/` 與 `.agents/skills/` 技能檔只改版號行。
 
 ### 文件同步
 
@@ -120,6 +123,40 @@ render golden 新增 `pi_rendering_is_bit_identical_to_golden` 與 `cursor_rende
 - sdk-node：target 值域加 `pi`、`cursor`。
 - product-status：Agent 技能列加 pi `/skill:speclink-*` 與 Cursor `/speclink-*`。
 
+### 專案設定分類欄統一用概念名
+
+實作後實測專案設定頁時，發現分類欄混用兩種命名：第一組組名是檔名、項目是概念名，第二組組名是概念名、項目是檔名，`.speclink.yaml` 頁標題也是檔名，還多一張其他頁沒有的「設定檔／檔案」卡。使用者選定與應用程式設定相同的寫法：組名與項目一律用概念名，檔名只出現在頁標題下的等寬註記。
+
+| 位置 | 改前 | 改後（zh-TW／en） |
+| --- | --- | --- |
+| 第一組組名 | `<規格資料夾>/config.yaml` | 工作流程／Spec workflow |
+| 第二組組名 | 專案／Project | 不變 |
+| 第二組項目、頁標題、麵包屑第三段 | `.speclink.yaml` | AI 工具／AI tools |
+| AI 工具頁的「設定檔／檔案」卡 | 有 | 拿掉 |
+| 頁標題下的等寬註記 | `.speclink.yaml · tools`、`<規格資料夾>/config.yaml · <鍵>` | 不變 |
+| 分類項圖示 | FileCog | Bot（lucide-react） |
+
+- 英文組名用 Spec workflow，不用 Workflow：產出流程項目的英文已經是 Workflow，同名的組與項目會混淆。
+- 分類 id 維持 `speclink`，i18n 鍵 `settings.projectSection.speclink` 只換值：分類欄記住的上次分類照舊有效。新增 `settings.group.workflow`。
+- 因本次改動而沒有人用的程式一併移除：`ProjectSettingsColumn` 的 `configFile` 屬性、`App` 的 `projectConfigFile` 狀態、`ProjectSettingsView` 的 `onConfigFile` 回呼（只為了分類欄組名而存在），以及 `settings.fileCard`、`settings.fileRow` 兩個 i18n 鍵。頁標題下的註記仍由 `useProjectSettings` 的 `configFile` 組成，不受影響。
+- 遠端專案只有「工作流程」組，四項不變。
+- speclink/LANGUAGE.md 原則段「設定檔檔名得直出作為設定頁的頁簽標籤」的明文例外（2026-07-08 由使用者裁定）退場：分類欄的組名與分類名一律用概念名，設定檔檔名只出現在頁標題下的等寬註記。寫法比照「產出流程」詞條的「明文例外（已退場）」。
+- 文件：docs/configuration 中英文「在桌面 app『專案設定』的 `.speclink.yaml` 頁勾選內建工具」改成 AI 工具頁。
+
+替代方案：組名用檔名、項目用概念名（第二組改叫 `.speclink.yaml` 組、項目叫 AI 工具），保留組名顯示實際規格資料夾的設計。使用者選了概念名，與應用程式設定一致。
+
+### 同步前拒絕經 symlink 共用的 skills 目錄
+
+品質關卡第 1 輪發現：symlink 防護只在取消勾選的清理路徑。`.cursor/skills` 連到 `.claude/skills` 而 claude、cursor 都勾時，同步會順著連結把 Cursor 版寫進 `.claude/skills`、蓋掉 Claude 版，孤兒清理還會刪掉 `speclink-analyze`，之後每次同步兩邊來回覆寫；pi 連到 `.agents/skills` 也一樣。這個缺口 copilot 原本就有，pi、cursor 讓它更容易發生。使用者選定「同步前拒絕」，並把觸發條件限定在「兩個工具共用同一個目錄」。
+
+- 判定：每個已選取工具（內建與描述子）的 skills 目錄順著 symlink 解析，和另一個已選取工具解析後的目錄相同，或和一個未選取、路徑上沒有 symlink 的內建工具 skills 目錄相同（同步會清理它）→ 拒絕。解析方式：把路徑上最深的已存在目錄 canonicalize，再接上還不存在的部分；路徑上遇到目標還不存在的 symlink（懸空連結）時，用 `read_link` 自己展開再繼續解析，最多展開 40 次以免連結迴圈卡住——同步會建立的是連結的目標，不是連結本身。專案根也用同一種方式解析。
+- 位置：`SyncPlan` 的寫入前守門（`guard`），所有入口（init、init remote、匯入、update、reconcile、adopt）都在任何寫入前呼叫；`update --allow-downgrade` 跳過降版守門時仍跑這項檢查。
+- 錯誤訊息一行：`skills directory <a> (<tool>) resolves to the same directory as <b> (<tool>) — remove the symlink or deselect one of them`。
+- 取消勾選的清理（`prune_footprint`）改成檢查 skills 目錄在專案內的每一層：任何一層是 symlink 就不清理，涵蓋上層連結（`.cursor` 連到 `.claude`）。只檢查專案根以下的路徑，專案根本身或它上層的連結（例如 macOS 的 `/var`）不算。
+- 測試註解改正：`.cursor/skills`、`.pi/skills` 連到別的工具目錄不是建議用法，測試只鎖定「不穿過連結清理」。
+
+替代方案：只要已勾選工具的 skills 目錄是 symlink 就拒絕。否決理由：會擋到把 `.claude` 或 `.agents` 連到共用資料夾的既有專案，升級後同步直接失敗。另一個替代方案是跳過該工具並提示，使用者選了拒絕。
+
 ### 同名技能的手動實測
 
 Cursor 對 `.cursor/skills` 與 `.agents/skills`、`.claude/skills` 同名技能的先後沒有文件，也不確定 Cursor 是否接受 license、compatibility 欄位，pi 的同名警告也要親眼確認不影響叫用，所以列為 [M] 手動任務。Cursor 若用到別的版本，不改程式，在 getting-started 的 Cursor 段落寫明「同時勾 claude 或 codex 時 Cursor 可能讀到其他版本，Cursor 使用者建議只勾 cursor」。
@@ -130,11 +167,13 @@ Cursor 對 `.cursor/skills` 與 `.agents/skills`、`.claude/skills` 同名技能
 
 - `speclink init --tools pi`（filesystem 或 Remote Store）：exit 0，stdout 的 `Generated files for:` 行含 `pi`，`.speclink.yaml` 的 tools 為 `[pi]`，`.pi/skills/speclink-<name>/SKILL.md` 依非 Claude 子集生成；不產生 `.claude/`、`.agents/`、`.github/`、`.cursor/`、`AGENTS.md`、`CLAUDE.md`。`--tools cursor` 同理，只生成 `.cursor/skills/`，不產生 `.cursor/agents/`、`.cursor/rules/`。
 - 生成的 pi 與 Cursor 技能 frontmatter 只有 `name`、`description`、`license`、`compatibility`、`metadata`（`author`、`version`、`generatedBy`）；pi 內文的技能引用寫 `/skill:speclink-<name>`，Cursor 寫 `/speclink-<name>`，兩者都沒有 `$speclink-` 與 `## Claude fork context`；propose 技能建立變更的指令分別帶 `--agent pi`、`--agent cursor`。
-- 同一技能的 pi 內容把 `/skill:speclink-` 換成 `$speclink-`、`--agent pi` 換成 `--agent codex`，Cursor 內容把 `/speclink-` 換成 `$speclink-`、`--agent cursor` 換成 `--agent codex` 之後，與 codex 內容逐字相同。
+- 同一技能的 pi 內容把 `/skill:speclink-` 換成 `$speclink-`、`--agent pi` 換成 `--agent codex`，Cursor 內容把 `/speclink-` 換成 `$speclink-`、`--agent cursor` 換成 `--agent codex` 之後，與 codex 內容逐字相同（`{{TOOL}}` 代換值出現的其他位置——子代理模型的格子路徑與寫入指令範例——同樣換回 `codex` 後比對）。
+- 取消勾選的清理在 skills 目錄路徑上任何一層是 symlink 時跳過，symlink 保留。
 - 取消勾選 pi 或 cursor（update、工具選集收斂、init --force、desktop 設定頁）：只移除該目錄下 `speclink-` 前綴的目錄，因而變空的 skills 目錄與其父目錄一併移除，同步前就是空的目錄保留；`.pi/` 或 `.cursor/` 下其他內容（`.cursor/rules/`、使用者自己的技能、pi 的 settings.json）不動。
 - `.speclink.yaml` 無 tools 清單的遺留回退與 desktop checkout 預選，不會因 `.pi/` 或 `.cursor/` 存在而選 pi 或 cursor。
 - 技能檔過期探測：tools 含 pi 或 cursor 時逐工具資訊多一項，判定規則與 codex 相同。
 - `skills.render('apply', { target: 'pi' })` 與 `{ target: 'cursor' }` 回傳與 CLI 生成的對應 SKILL.md 相同的字串。
+- desktop 專案設定分類欄（本地專案）：組名依序為「工作流程」「專案」，項目依序為專案說明、產出規則、審查規則、產出流程、AI 工具；分類欄內不出現 `config.yaml` 與 `.speclink.yaml` 字樣（舊佈局與明寫 `spec_dir` 的專案也一樣）。點 AI 工具後頁標題為「AI 工具」、註記為 `.speclink.yaml · tools`、麵包屑為「專案名 / 專案設定 / AI 工具」，頁內沒有「設定檔」卡與「檔案」列；`.speclink.yaml` 解析失敗時 AI 工具項帶警示點。遠端專案只有「工作流程」組的四項。英文介面組名為 Spec workflow、Project，項目為 AI tools。
 - Herdr 面板：`commandText('cursor', 'apply', 'a')` 為 `/speclink-apply a`；`missingSkillsPlan('Pi', 'pi')` 的提示含 `--tools pi`；`usableAgents` 對已安裝的 claude、codex、pi、cursor 都回傳。
 
 **介面與資料形狀**
@@ -145,6 +184,8 @@ Cursor 對 `.cursor/skills` 與 `.agents/skills`、`.claude/skills` 同名技能
 - 過期探測 `--json`／IPC：工具名多 `pi`、`cursor` 兩個值，欄位不變。
 
 **失敗模式**
+
+- 已勾選工具的 skills 目錄經 symlink 和另一個會被寫入或清理的工具目錄是同一個目錄：非零結束、一行錯誤指出兩個目錄與工具，零寫入；`--allow-downgrade` 不能越過。
 
 - `--tools` 含未知名稱（例如 `cursor-agent`）：非零結束，stderr 單行 `unknown tool: <name> (supported: claude, codex, copilot, pi, cursor)`，零寫入。
 - 非互動缺 `--tools`：非零結束、stdout 空、stderr 為新的 `TOOLS_HINT`，零寫入。
@@ -157,14 +198,17 @@ Cursor 對 `.cursor/skills` 與 `.agents/skills`、`.claude/skills` 同名技能
 - `cargo test -p speclink-cli verbs::init` 與 `cargo test -p speclink-cli --test it init_tools`：`--tools pi`、`--tools cursor`、`--tools claude,codex,copilot,pi,cursor`、互動五題、五題皆 no 重問、新錯誤訊息全過。
 - speclink-node 的 render 測試：target pi、cursor 與 CLI 生成逐字相同、未知 target 錯誤訊息含 pi、cursor。
 - `cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop --lib connections`：設定頁加選 pi、cursor 生成對應目錄、取消勾選清掉、checkout 預選與空選集訊息。
-- desktop vitest：四處勾選都出現 pi 與 cursor。
+- symlink 防護：`cargo test -p speclink-core --lib workspace_group::init` 的 symlink 測試（已勾選工具共用目錄被拒且零寫入、連結目標還不存在時同樣被拒且零寫入、指到未選取工具目錄被拒、`--allow-downgrade` 不越過、指到專案外的連結照常同步、上層連結不清理、連結迴圈不會卡住）。
+- desktop vitest：四處勾選都出現 pi 與 cursor；專案設定分類欄的組名、項目、AI 工具頁標題與麵包屑如上，沒有檔案列。
+- 詞彙與文件守門：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過（LANGUAGE.md 改寫後詞彙守門、中英對等仍綠）。
+- [M] 在桌面 app 打開專案設定，目視確認分類欄與 AI 工具頁。
 - `node --test scripts/herdr/panel-model.test.mjs`：pi 與 cursor 的前綴、目錄、缺技能提示。
 - 文件守門：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全過（中英對等、連結、CLI help 一致）。
 - [M] Cursor 與 pi 的同名技能實測。
 
 **範圍**
 
-- In scope：上述 speclink-core workspace 模組、speclink-cli init、speclink-node render、desktop 四處勾選與 checkout 錯誤訊息、Herdr 面板的對照表與說明、golden 與 assets.lock、skill_authoring 守門、中英文件、本 repo 技能檔的版號再生。
+- In scope：上述 speclink-core workspace 模組（含技能同步的 symlink 防護：同步前拒絕共用目錄、取消勾選的清理不穿過連結）、speclink-cli init、speclink-node render、desktop 四處勾選與 checkout 錯誤訊息、desktop 專案設定分類欄與 AI 工具頁的命名、speclink/LANGUAGE.md 的明文例外、Herdr 面板的對照表與說明、golden 與 assets.lock、skill_authoring 守門、中英文件、本 repo 技能檔的版號再生。
 - Out of scope：Goals / Non-Goals 列出的全部項目；claude、codex、copilot 的渲染內容；子代理模型設定；Herdr 面板的 Cursor 標籤追蹤。
 
 ## Risks / Trade-offs
@@ -179,4 +223,9 @@ Cursor 對 `.cursor/skills` 與 `.agents/skills`、`.claude/skills` 同名技能
 - [pi 信任] pi 未信任專案時不讀專案技能，使用者會以為技能沒產生 → 文件寫明要先信任專案。
 - [BREAKING 描述子] 照舊規格範例設了 `cursor` 描述子的專案升級後 update 失敗 → 錯誤訊息直接指出衝突；configuration 文件寫明遷移方式。
 - [舊版混用] 團隊裡舊版 speclink 會把 `pi`、`cursor` 當未知工具略過 → 可接受：只是少生成，不會損壞檔案；新版 update 會補齊。
+- [推翻先前裁定] 2026-07-08 使用者裁定設定檔檔名直出當頁簽標籤（LANGUAGE.md 明文例外）；這次使用者改選概念名 → 例外標成退場並寫明日期與原因，舊裁定留在原文可追溯。
+- [英文撞名] 組名若直譯 Workflow 會和產出流程項目的 Workflow 同名 → 組名用 Spec workflow。
+- [新的失敗] 已勾選工具的 skills 目錄經 symlink 共用的專案，升級後同步會失敗 → 錯誤訊息寫明兩個目錄與解法；以前這種設定會靜默互相覆寫，失敗比靜默損壞好。
+- [升級清理] 以前手動放在 `.pi/skills`、`.cursor/skills` 的 `speclink-*` 目錄，tools 沒列 pi、cursor 時會被刪除 → docs/configuration 寫明。
+- [手冊過期] speclink/manual/desktop-projects.md 仍寫 `.speclink.yaml` 頁與檔案列 → 不手改，封存後由 `/speclink-manual` 依新規格重生。
 - [儲存解耦] 本變更只動工作區生成（Local Repo 的技能檔），不碰規格儲存或流程抽象，與 storage 解耦的方向無關。

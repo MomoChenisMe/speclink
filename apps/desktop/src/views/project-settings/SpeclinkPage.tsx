@@ -1,6 +1,6 @@
-// .speclink.yaml 頁（desktop-settings-mode design D8；spec「設定頁圖形化讀寫兩層設定」）：「檔案」列
-// （等寬路徑，唯讀）與「AI 工具」卡——內建工具每個一列附開關，自訂工具描述子為不可編輯列。
-// remote 專案沒有這一頁（tools 屬本機 checkout 概念）。
+// AI 工具頁（desktop-settings-mode design D8；spec「設定頁圖形化讀寫兩層設定」）：讀寫 .speclink.yaml
+// 的 tools——「AI 工具」卡裡內建工具每個一列附開關，自訂工具描述子為不可編輯列。檔名只在頁標題下
+// 的等寬註記。remote 專案沒有這一頁（tools 屬本機 checkout 概念）。
 import {
   Button,
   SettingsCard,
@@ -19,7 +19,7 @@ export function SpeclinkPage({ ps }: { ps: ProjectSettingsState }) {
   return (
     <>
       <SettingsPageHeader
-        title=".speclink.yaml"
+        title={t("settings.projectSection.speclink")}
         description={t("settings.speclinkPageDesc")}
         note={
           <span data-testid="file-note-speclink" className="font-mono">
@@ -28,16 +28,6 @@ export function SpeclinkPage({ ps }: { ps: ProjectSettingsState }) {
         }
       />
       <PageAlerts ps={ps} parseError={ps.snap.app.parseError} />
-      <SettingsCard title={t("settings.fileCard")}>
-        <SettingsRow
-          label={t("settings.fileRow")}
-          control={
-            <span data-testid="speclink-file-path" className="font-mono text-xs text-muted-foreground">
-              .speclink.yaml
-            </span>
-          }
-        />
-      </SettingsCard>
       <div data-testid="tools-card">
         <SettingsCard title={t("settings.toolsLabel")}>
           {BUILTIN_TOOLS.map((tool) => (

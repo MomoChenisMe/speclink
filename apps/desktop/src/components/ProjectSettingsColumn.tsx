@@ -1,6 +1,7 @@
-// 專案設定分類欄（desktop-settings-mode design D2）：專案設定模式下取代專案欄——群組
-// 「<規格資料夾>/config.yaml」四項與「專案」組 .speclink.yaml（遠端專案無此組）；解析失敗的檔
-// 所掛分類項帶警示點。底部 notice 槽放技能檔提示卡（提示跨頁常駐，專案設定頁也在）。
+// 專案設定分類欄（desktop-settings-mode design D2）：專案設定模式下取代專案欄——「工作流程」組
+// 四項與「專案」組 AI 工具（遠端專案無此組）。組名與分類名一律是概念名，與應用程式設定相同；
+// 設定檔路徑只在各頁標題下的註記。解析失敗的檔所掛分類項帶警示點。底部 notice 槽放技能檔提示卡
+// （提示跨頁常駐，專案設定頁也在）。
 import type { ReactNode } from "react";
 import { NavItem, SEMANTIC_TONE, SettingsGroupHeader, cn, useI18n } from "@speclink/ui";
 
@@ -20,7 +21,6 @@ function WarningDot() {
 export function ProjectSettingsColumn({
   section,
   remote,
-  configFile,
   configParseError,
   speclinkParseError,
   onSelect,
@@ -28,12 +28,9 @@ export function ProjectSettingsColumn({
 }: {
   section: ProjectSettingsSection;
   remote: boolean;
-  /** 工作流設定檔的相對路徑（第一組的組名；desktop-spec-dir-migration D4）；設定還沒載入時為
-   * null，先不顯示組名，免得舊佈局專案閃一下預設名稱。 */
-  configFile: string | null;
   /** 工作流設定檔解析失敗：專案說明、產出規則、審查規則、產出流程四項帶警示點。 */
   configParseError: boolean;
-  /** .speclink.yaml 解析失敗：.speclink.yaml 項帶警示點。 */
+  /** .speclink.yaml 解析失敗：AI 工具項帶警示點。 */
   speclinkParseError: boolean;
   onSelect: (section: ProjectSettingsSection) => void;
   /** 底部提示卡（null＝無）。 */
@@ -41,7 +38,7 @@ export function ProjectSettingsColumn({
 }) {
   const { t } = useI18n();
   const groups = [
-    { group: "config", label: configFile, parseError: configParseError },
+    { group: "config", label: t("settings.group.workflow"), parseError: configParseError },
     { group: "project", label: t("settings.group.project"), parseError: speclinkParseError },
   ] as const;
   return (
@@ -52,8 +49,7 @@ export function ProjectSettingsColumn({
         return (
           <div key={group} className="flex flex-col gap-0.5 pb-2">
             <div className="pb-1 pt-1">
-              {/* 組名未載入時以不換行空白佔位，載入後版面不跳動。 */}
-              <SettingsGroupHeader label={label ?? "\u00a0"} />
+              <SettingsGroupHeader label={label} />
             </div>
             {items.map(({ id, labelKey: itemLabel, icon: Icon }) => (
               <NavItem

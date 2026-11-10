@@ -127,13 +127,23 @@ fn assert_rejected_with_zero_writes(env: &TempEnv, out: &Output, before: &[(Stri
 
 #[test]
 fn fs_init_explicit_tools_generate_exactly_the_selection() {
-    // 三種顯式選法逐一：只有被選取的工具留下 Skills；指令檔一律不生成。
-    let cases: [(&str, &[&str]); 5] = [
+    // 每種顯式選法逐一：只有被選取的工具留下 Skills（沒選的工具連目錄都不留）；指令檔一律
+    // 不生成；Generated files 行依記錄順序列出選集。
+    let cases: [(&str, &[&str]); 11] = [
         ("claude", &["claude"]),
         ("codex", &["codex"]),
         ("claude,codex", &["claude", "codex"]),
         ("copilot", &["copilot"]),
         ("claude,codex,copilot", &["claude", "codex", "copilot"]),
+        ("pi", &["pi"]),
+        ("Pi", &["pi"]),
+        ("cursor", &["cursor"]),
+        ("CURSOR", &["cursor"]),
+        ("cursor,cursor", &["cursor"]),
+        (
+            "claude,codex,copilot,pi,cursor",
+            &["claude", "codex", "copilot", "pi", "cursor"],
+        ),
     ];
     for (spec, want) in cases {
         let env = TempEnv::new(&format!("fs-explicit-{}", spec.replace(',', "-")));
@@ -145,42 +155,40 @@ fn fs_init_explicit_tools_generate_exactly_the_selection() {
         assert!(stdout.contains("Generated files for:"), "--tools {spec} stdout: {stdout}");
         assert_eq!(env.builtins(), want, "--tools {spec}: recorded selection");
 
-        let claude = want.contains(&"claude");
-        assert_eq!(
-            env.exists(".claude/skills/speclink-propose/SKILL.md"),
-            claude,
-            "--tools {spec}: Claude skills"
-        );
-        let codex = want.contains(&"codex");
-        // spec Scenario「指令檔零受管區塊」：受管集合只剩技能檔。
-        assert!(!env.exists("CLAUDE.md"), "--tools {spec}: CLAUDE.md 不得生成");
-        assert!(!env.exists("AGENTS.md"), "--tools {spec}: AGENTS.md 不得生成");
-        assert_eq!(
-            env.exists(".agents/skills/speclink-propose/SKILL.md"),
-            codex,
-            "--tools {spec}: Codex skills"
-        );
-        // spec Scenario「filesystem init 顯式選擇 Copilot」：技能在 .github/skills/，
-        // 不寫 Copilot 的指令檔。
-        let copilot = want.contains(&"copilot");
-        assert_eq!(
-            env.exists(".github/skills/speclink-propose/SKILL.md"),
-            copilot,
-            "--tools {spec}: Copilot skills"
-        );
-        assert!(
-            !env.exists(".github/copilot-instructions.md"),
-            "--tools {spec}: copilot-instructions.md 不得生成"
-        );
+        // spec Scenario「指令檔零受管區塊」：受管集合只剩技能檔；Copilot 也不寫指令檔。
+        for file in ["CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md"] {
+            assert!(!env.exists(file), "--tools {spec}: {file} 不得生成");
+        }
         let generated = stdout
             .lines()
             .find(|l| l.starts_with("Generated files for:"))
             .unwrap();
         assert_eq!(
-            generated.contains("copilot"),
-            copilot,
-            "--tools {spec}: {generated}"
+            generated,
+            format!("Generated files for: {}", want.join(", ")),
+            "--tools {spec}"
         );
+        // spec Scenario「filesystem init 顯式選擇 Copilot／Pi／Cursor」：每個工具的技能在自己
+        // 的 skills 目錄，沒選的工具連目錄都不留。
+        for (tool, top, skill) in [
+            ("claude", ".claude", ".claude/skills/speclink-propose/SKILL.md"),
+            ("codex", ".agents", ".agents/skills/speclink-propose/SKILL.md"),
+            ("copilot", ".github", ".github/skills/speclink-propose/SKILL.md"),
+            ("pi", ".pi", ".pi/skills/speclink-propose/SKILL.md"),
+            ("cursor", ".cursor", ".cursor/skills/speclink-propose/SKILL.md"),
+        ] {
+            let selected = want.contains(&tool);
+            assert_eq!(env.exists(skill), selected, "--tools {spec}: {skill}");
+            assert_eq!(env.exists(top), selected, "--tools {spec}: {top}/");
+            if selected {
+                let entries: Vec<String> = std::fs::read_dir(env.dir.join(top))
+                    .unwrap()
+                    .flatten()
+                    .map(|e| e.file_name().to_string_lossy().to_string())
+                    .collect();
+                assert_eq!(entries, ["skills"], "--tools {spec}: {top}/ 下只能有 skills/");
+            }
+        }
         assert!(env.exists("speclink/specs"), "--tools {spec}: filesystem spec tree");
     }
 }
@@ -255,6 +263,9 @@ fn init_workflow_config_template_documents_every_policy_key() {
 
 // --- 非互動缺少 --tools（spec Scenario「非互動 init 缺少 tools 零寫入失敗」） ---
 
+/// 缺選集的單行訊息：`pi` 是 `copilot` 的子字串，逐 token 比對測不到漏列，故比全文。
+const FIVE_TOOLS_HINT: &str = "no AI tool selected — pass --tools with one or more of claude, codex, copilot, pi, cursor (comma-separated, e.g. --tools claude,cursor)";
+
 #[test]
 fn fs_init_without_tools_on_a_pipe_fails_with_zero_writes() {
     let env = TempEnv::new("fs-missing-tools");
@@ -263,10 +274,7 @@ fn fs_init_without_tools_on_a_pipe_fails_with_zero_writes() {
     let out = env.run(&["init"]);
 
     assert_rejected_with_zero_writes(&env, &out, &before);
-    let stderr = stderr_of(&out);
-    for token in ["--tools", "claude", "codex", "copilot"] {
-        assert!(stderr.contains(token), "stderr must mention {token}: {stderr}");
-    }
+    assert_eq!(stderr_of(&out).trim_end(), format!("Error: {FIVE_TOOLS_HINT}"));
 }
 
 /// spec Scenario「Remote init 非互動缺少 tools 被拒」。
@@ -278,10 +286,7 @@ fn remote_init_without_tools_on_a_pipe_fails_with_zero_writes() {
     let out = env.run(&["init", "--store", "remote", "--url", URL, "--repo", "backend"]);
 
     assert_rejected_with_zero_writes(&env, &out, &before);
-    let stderr = stderr_of(&out);
-    for token in ["--tools", "claude", "codex", "copilot"] {
-        assert!(stderr.contains(token), "stderr must mention {token}: {stderr}");
-    }
+    assert_eq!(stderr_of(&out).trim_end(), format!("Error: {FIVE_TOOLS_HINT}"));
 }
 
 // --- 空／未知的顯式值（spec Scenario「空或未知的顯式 tools 被拒」） ---
@@ -312,19 +317,19 @@ fn explicit_unknown_tool_is_rejected_with_zero_writes() {
 }
 
 #[test]
-fn explicit_github_copilot_is_rejected_listing_the_supported_tools() {
-    let env = TempEnv::new("unknown-github-copilot");
-    let before = env.snapshot();
+fn explicit_tool_aliases_are_rejected_listing_the_supported_tools() {
+    // Example「--tools 值的解析」的拒絕列：不收別名。輸入本身就含工具名，要比對完整
+    // 的支援清單，單看 token 測不到漏列。
+    for unknown in ["github-copilot", "cursor-agent"] {
+        let env = TempEnv::new(&format!("unknown-{unknown}"));
+        let before = env.snapshot();
 
-    let out = env.run(&["init", "--tools", "github-copilot"]);
+        let out = env.run(&["init", "--tools", unknown]);
 
-    assert_rejected_with_zero_writes(&env, &out, &before);
-    let stderr = stderr_of(&out);
-    // 輸入本身就含 copilot：要比對完整的支援清單，單看 token 測不到漏列。
-    for token in ["github-copilot", "supported: claude, codex, copilot"] {
-        assert!(
-            stderr.contains(token),
-            "stderr must mention {token}: {stderr}"
+        assert_rejected_with_zero_writes(&env, &out, &before);
+        assert_eq!(
+            stderr_of(&out).trim_end(),
+            format!("Error: unknown tool: {unknown} (supported: claude, codex, copilot, pi, cursor)")
         );
     }
 }
@@ -384,6 +389,8 @@ fn update_rejects_a_descriptor_skills_dir_at_the_root_or_a_builtin_directory() {
         ("root", "/", "project root"),
         ("builtin", ".claude/skills", "built-in"),
         ("copilot", ".github/skills", "built-in copilot"),
+        ("pi", ".pi/skills", "built-in pi"),
+        ("cursor", ".Cursor/skills", "built-in cursor"),
     ] {
         let env = TempEnv::new(&format!("descriptor-bad-dir-{tag}"));
         assert!(env.run(&["init", "--tools", "claude"]).status.success());

@@ -208,7 +208,7 @@
 
 ### Requirement: built-in tools 權威收斂
 
-Workspace 工具同步 SHALL 將請求中的 Claude／Codex／Copilot／Pi／Cursor 集合視為 built-in tools 的完整期望狀態。被選取的 built-in SHALL 生成或更新其 `speclink-*` Skills；未選取的 built-in SHALL 移除 Speclink 產生的 Skills。未選取的 copilot、pi、cursor 其移除範圍 SHALL 僅限各自 skills 目錄（`.github/skills/`、`.pi/skills/`、`.cursor/skills/`）下名稱以 `speclink-` 為前綴的目錄（因而變空的 skills 目錄與其所在的 `.github/`、`.pi/`、`.cursor/` 一併移除；同步前就是空的目錄 SHALL 保留）；`.github/`、`.pi/`、`.cursor/` 下其他內容 SHALL 位元級不變。任一未選取 built-in 的 skills 目錄本身是 symlink 時，同步 SHALL NOT 透過它移除任何目錄，symlink 本身保留。無論選取與否，同步 SHALL 剝除 claude 與 codex 指令檔（`CLAUDE.md`、`AGENTS.md`）中遺留的 `SPECLINK:START..END` 區塊——SHALL 保留區塊外的使用者內容，且指令檔在剝除後全空時才刪除；不含區塊的指令檔 SHALL 位元級不變。copilot、pi、cursor 沒有指令檔：同步 SHALL NOT 建立、改寫或刪除 `.github/copilot-instructions.md`，也 SHALL NOT 建立 `.cursor/rules/` 或 `.cursor/agents/`。同步 SHALL 保留 `.speclink.yaml` 內的 custom descriptor、unknown tool entry、remote、spec_dir 與其他頂層鍵。相同期望狀態重試 SHALL 收斂到相同檔案結果，不破壞使用者內容。
+Workspace 工具同步 SHALL 將請求中的 Claude／Codex／Copilot／Pi／Cursor 集合視為 built-in tools 的完整期望狀態。被選取的 built-in SHALL 生成或更新其 `speclink-*` Skills；未選取的 built-in SHALL 移除 Speclink 產生的 Skills。未選取的 copilot、pi、cursor 其移除範圍 SHALL 僅限各自 skills 目錄（`.github/skills/`、`.pi/skills/`、`.cursor/skills/`）下名稱以 `speclink-` 為前綴的目錄（因而變空的 skills 目錄與其所在的 `.github/`、`.pi/`、`.cursor/` 一併移除；同步前就是空的目錄 SHALL 保留）；`.github/`、`.pi/`、`.cursor/` 下其他內容 SHALL 位元級不變。任一未選取 built-in 的 skills 目錄路徑上任何一層是 symlink 時（skills 目錄本身，或其上層目錄，例如 `.cursor` 連到 `.claude`），同步 SHALL NOT 透過它移除任何目錄，symlink 本身保留。同步 SHALL 在任何寫入之前（含 `.speclink.yaml` 的改寫）檢查 skills 目錄有沒有經 symlink 共用：每個已選取工具（內建工具與自訂描述子）的 skills 目錄順著 symlink 解析後，若和另一個已選取工具的 skills 目錄解析後是同一個目錄，或和一個未選取、路徑上沒有 symlink 的內建工具 skills 目錄（同步會清理它）是同一個目錄，同步 SHALL 以非零 exit code 失敗，輸出一行錯誤指出兩個目錄與所屬工具，且 SHALL NOT 寫入任何檔案；`speclink update --allow-downgrade` SHALL NOT 越過這項檢查。解析後指到其他位置（例如專案外的共用資料夾）的 symlink 不受影響，照常同步。無論選取與否，同步 SHALL 剝除 claude 與 codex 指令檔（`CLAUDE.md`、`AGENTS.md`）中遺留的 `SPECLINK:START..END` 區塊——SHALL 保留區塊外的使用者內容，且指令檔在剝除後全空時才刪除；不含區塊的指令檔 SHALL 位元級不變。copilot、pi、cursor 沒有指令檔：同步 SHALL NOT 建立、改寫或刪除 `.github/copilot-instructions.md`，也 SHALL NOT 建立 `.cursor/rules/` 或 `.cursor/agents/`。同步 SHALL 保留 `.speclink.yaml` 內的 custom descriptor、unknown tool entry、remote、spec_dir 與其他頂層鍵。相同期望狀態重試 SHALL 收斂到相同檔案結果，不破壞使用者內容。
 
 #### Scenario: Claude 切換為 Codex並保留自訂工具
 
@@ -269,6 +269,26 @@ Workspace 工具同步 SHALL 將請求中的 Claude／Codex／Copilot／Pi／Cur
 
 - **WHEN** `.speclink.yaml` 的 built-in tools 為 `[codex, pi]`，`.pi/` 下只有 speclink 生成的 `skills/speclink-*` 目錄，然後同步 built-in 選集 `[codex]`
 - **THEN** `.pi/skills/` 與 `.pi/` 都不存在，`.agents/skills/` 下的 Codex Skills 被更新
+
+#### Scenario: 已勾選工具的 skills 目錄經 symlink 指到另一個工具的目錄時拒絕
+
+- **WHEN** `.speclink.yaml` 的 built-in tools 為 `[claude, cursor]`，`.cursor/skills` 是指向 `../.claude/skills` 的 symlink，執行 speclink update，或執行 `speclink update --allow-downgrade`
+- **THEN** exit code 非 0，stderr 為一行錯誤，指出 `.cursor/skills`（cursor）與 `.claude/skills`（claude）是同一個目錄；`.claude/skills/` 下的檔案、`.speclink.yaml` 與 symlink 位元級不變
+
+#### Scenario: 指到未選取工具目錄的 symlink 同樣被拒
+
+- **WHEN** `.claude/skills/` 下有 Claude Skills，`.cursor/skills` 是指向 `../.claude/skills` 的 symlink，同步 built-in 選集 `[cursor]`
+- **THEN** 同步以一行錯誤失敗，`.claude/skills/` 下的檔案與 `.speclink.yaml` 位元級不變——不會先寫入 Cursor 版、再把它當成未選取的 claude 清掉
+
+#### Scenario: 指到其他位置的 symlink 照常同步
+
+- **WHEN** `.speclink.yaml` 的 built-in tools 為 `[claude]`，`.claude` 是指向專案外共用資料夾的 symlink，執行 speclink update
+- **THEN** exit code 為 0，Claude Skills 寫入該共用資料夾下的 `skills/`
+
+#### Scenario: 取消勾選工具的上層目錄是 symlink 時不清理
+
+- **WHEN** `.speclink.yaml` 的 built-in tools 為 `[claude]`，`.cursor` 是指向 `.claude` 的 symlink（所以 `.cursor/skills` 就是 `.claude/skills`），執行 speclink update
+- **THEN** exit code 為 0，`.claude/skills/` 下的 Claude Skills 全數保留，`.cursor` symlink 本身保留，清除摘要不列 cursor
 
 ### Requirement: worktree 技能的政策條件式生成
 

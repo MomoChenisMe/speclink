@@ -845,8 +845,6 @@ function AppInner({
   const projectSettingsMode = inSettingsMode(s) && !settingsMode;
   // 專案設定分類欄的解析失敗警示點：由專案設定頁讀到設定快照後回報。
   const [projectParseErrors, setProjectParseErrors] = useState({ config: false, speclink: false });
-  // 專案設定分類欄的組名（工作流設定檔的相對路徑）；設定頁載入前不顯示。
-  const [projectConfigFile, setProjectConfigFile] = useState<string | null>(null);
   const connectionNames = Object.fromEntries(s.connections.map((c) => [c.id, c.name]));
   const PAGE_LABEL_KEY: Record<Exclude<typeof s.boardView, "settings">, string> = {
     board: "app.navChanges",
@@ -1145,7 +1143,6 @@ function AppInner({
             <ProjectSettingsColumn
               section={projectSettingsSection}
               remote={remoteProject}
-              configFile={projectConfigFile}
               configParseError={projectParseErrors.config}
               speclinkParseError={projectParseErrors.speclink}
               onSelect={s.setProjectSettingsSection}
@@ -1312,7 +1309,6 @@ function AppInner({
                 settings={activeSession.settings}
                 section={projectSettingsSection}
                 onParseErrors={setProjectParseErrors}
-                onConfigFile={setProjectConfigFile}
                 onDirtyChange={onProjectSettingsDirty}
               />
             ) : s.boardView === "manual" ? (

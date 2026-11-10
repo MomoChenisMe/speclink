@@ -12,6 +12,7 @@ const normalize = (s: string) => s.replace(/\r\n/g, '\n')
 
 let initedProject: string
 let copilotProject: string
+let piCursorProject: string
 
 beforeAll(() => {
   if (!existsSync(cliBin)) {
@@ -21,11 +22,14 @@ beforeAll(() => {
   execFileSync(cliBin, ['init', '.', '--tools', 'claude'], { cwd: initedProject })
   copilotProject = mkdtempSync(join(tmpdir(), 'speclink-node-init-copilot-'))
   execFileSync(cliBin, ['init', '.', '--tools', 'copilot'], { cwd: copilotProject })
+  piCursorProject = mkdtempSync(join(tmpdir(), 'speclink-node-init-pi-cursor-'))
+  execFileSync(cliBin, ['init', '.', '--tools', 'pi,cursor'], { cwd: piCursorProject })
 }, 600_000)
 
 afterAll(() => {
   if (initedProject) rmSync(initedProject, { recursive: true, force: true })
   if (copilotProject) rmSync(copilotProject, { recursive: true, force: true })
+  if (piCursorProject) rmSync(piCursorProject, { recursive: true, force: true })
 })
 
 describe('skills.list', () => {
@@ -76,9 +80,31 @@ describe('skills.render — render matrix', () => {
     expect(rendered).not.toContain('$speclink-')
   })
 
+  it('pi × cli matches the SKILL.md the CLI init generates under .pi/skills', () => {
+    const generated = readFileSync(
+      join(piCursorProject, '.pi', 'skills', 'speclink-apply', 'SKILL.md'),
+      'utf8',
+    )
+    const rendered = skills.render('apply', { target: 'pi' })
+    expect(normalize(rendered)).toBe(normalize(generated))
+    expect(rendered).toContain('/skill:speclink-')
+    expect(rendered).not.toContain('$speclink-')
+  })
+
+  it('cursor × cli matches the SKILL.md the CLI init generates under .cursor/skills', () => {
+    const generated = readFileSync(
+      join(piCursorProject, '.cursor', 'skills', 'speclink-apply', 'SKILL.md'),
+      'utf8',
+    )
+    const rendered = skills.render('apply', { target: 'cursor' })
+    expect(normalize(rendered)).toBe(normalize(generated))
+    expect(rendered).toContain('/speclink-')
+    expect(rendered).not.toContain('$speclink-')
+  })
+
   it('unknown target fails loud, listing every valid target', () => {
     expect(() => skills.render('apply', { target: 'github-copilot' as never })).toThrow(
-      /'github-copilot' must be 'claude', 'codex', 'copilot', or 'neutral'/,
+      /'github-copilot' must be 'claude', 'codex', 'copilot', 'pi', 'cursor', or 'neutral'/,
     )
   })
 

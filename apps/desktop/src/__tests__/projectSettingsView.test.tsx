@@ -76,13 +76,11 @@ function Harness({
   initial = "context",
   onParseErrors,
   onDirtyChange,
-  onConfigFile,
 }: {
   settings: WorkspaceSettingsProvider;
   initial?: ProjectSettingsSection;
   onParseErrors?: (errors: { config: boolean; speclink: boolean }) => void;
   onDirtyChange?: (dirty: boolean) => void;
-  onConfigFile?: (file: string | null) => void;
 }) {
   const [section, setSection] = useState<ProjectSettingsSection>(initial);
   nav.goto = setSection;
@@ -92,7 +90,6 @@ function Harness({
       section={section}
       onParseErrors={onParseErrors}
       onDirtyChange={onDirtyChange}
-      onConfigFile={onConfigFile}
     />
   );
 }
@@ -137,6 +134,15 @@ describe("ProjectSettingsView 載入", () => {
     expect(screen.getByLabelText("claude").getAttribute("aria-checked")).toBe("true");
     expect(screen.getByLabelText("codex").getAttribute("aria-checked")).toBe("false");
     expect(screen.getByLabelText("copilot").getAttribute("aria-checked")).toBe("false");
+    // AI 工具卡的五個開關依 claude、codex、copilot、pi、cursor 順序出現。
+    const tools = ["claude", "codex", "copilot", "pi", "cursor"].map((name) => screen.getByLabelText(name));
+    expect(tools.map((el) => el.getAttribute("aria-checked"))).toEqual(["true", "false", "false", "false", "false"]);
+    for (let i = 1; i < tools.length; i += 1) {
+      expect(
+        tools[i - 1].compareDocumentPosition(tools[i]) & Node.DOCUMENT_POSITION_FOLLOWING,
+        `${tools[i].getAttribute("aria-label") ?? i} 排在前一個工具之後`,
+      ).toBeTruthy();
+    }
   });
 
   it("自訂工具描述子呈現為不可編輯項", async () => {
@@ -191,6 +197,15 @@ describe("ProjectSettingsView 寫入", () => {
     fireEvent.click(await screen.findByLabelText("copilot"));
     fireEvent.click(screen.getByTestId("save-app"));
     await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "copilot"]));
+  });
+
+  it("tools 加選 pi 與 cursor 後儲存 → writeAppTools 收到完整選集", async () => {
+    // spec「設定頁圖形化讀寫兩層設定」：AI 工具卡多選含 pi、cursor。
+    const ws = renderView(snapshot(), "speclink");
+    fireEvent.click(await screen.findByLabelText("pi"));
+    fireEvent.click(screen.getByLabelText("cursor"));
+    fireEvent.click(screen.getByTestId("save-app"));
+    await waitFor(() => expect(ws.writeAppTools).toHaveBeenCalledWith(["claude", "pi", "cursor"]));
   });
 
   it("audit 切開後儲存 → writeWorkflowConfig 收到完整目標狀態（含讀入現值）", async () => {
@@ -329,13 +344,11 @@ describe("ProjectSettingsView 寫入", () => {
 // ---- 分類頁組織（spec 需求「設定頁圖形化讀寫兩層設定」；desktop-settings-mode design D8）----
 
 describe("檔案註記依實際規格資料夾（spec「畫面依實際規格資料夾與資料檔名顯示」）", () => {
-  it("暫緩遷移的舊佈局專案：產出規則頁註記為 openspec/config.yaml · rules，並回報給分類欄", async () => {
-    const onConfigFile = vi.fn();
+  it("暫緩遷移的舊佈局專案：產出規則頁註記為 openspec/config.yaml · rules", async () => {
     const ws = fakeSettings({ ...projectSnap(), specDir: "openspec" });
-    render(<Harness settings={ws} initial="rules" onConfigFile={onConfigFile} />);
+    render(<Harness settings={ws} initial="rules" />);
     await screen.findByTestId("rules-page");
     expect(screen.getByTestId("file-note-config").textContent).toBe("openspec/config.yaml · rules");
-    await waitFor(() => expect(onConfigFile).toHaveBeenLastCalledWith("openspec/config.yaml"));
   });
 
   it("明寫 spec_dir：註記為該路徑", async () => {
@@ -374,13 +387,14 @@ describe("專案設定分類頁（spec Scenario「兩種設定模式與預設分
     expect(screen.getByTestId("file-note-speclink").className).toContain("font-mono");
   });
 
-  it(".speclink.yaml 頁的檔案列為等寬唯讀路徑", async () => {
+  it("AI 工具頁：頁標題「AI 工具」、註記 .speclink.yaml · tools，沒有「設定檔」卡與「檔案」列", async () => {
+    // spec「設定頁圖形化讀寫兩層設定」：設定檔路徑只留在頁標題下的等寬註記。
     renderView(projectSnap(), "speclink");
-    const row = await screen.findByRole("group", { name: "檔案" });
-    const path = within(row).getByTestId("speclink-file-path");
-    expect(path.textContent).toBe(".speclink.yaml");
-    expect(path.className).toContain("font-mono");
-    expect(within(row).queryByRole("textbox")).toBeNull();
+    expect(await screen.findByRole("heading", { level: 2, name: "AI 工具" })).toBeTruthy();
+    expect(screen.getByTestId("file-note-speclink").textContent).toBe(".speclink.yaml · tools");
+    expect(screen.getAllByRole("region").map((r) => r.getAttribute("aria-label"))).toEqual(["AI 工具"]);
+    expect(screen.queryByTestId("speclink-file-path")).toBeNull();
+    expect(screen.queryByRole("group", { name: "檔案" })).toBeNull();
   });
 
   it("tdd 以開關呈現，切換後存檔寫回 true", async () => {

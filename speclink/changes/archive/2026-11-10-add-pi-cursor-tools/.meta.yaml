@@ -1,0 +1,238 @@
+schema: spec-driven
+created: 2026-11-10T13:57:14+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: pi-cursor-tool-support
+depends_on: station-subagent-model
+started_at: 2026-11-10T16:51:45+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-10T21:20:05+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 28
+reviewed_rounds: 3
+reviewed_scope:
+  - path: README.md
+    hash: 6ce401b740fa3e0dbf0a05afce19d320830eee44e95682286d55c746226eabf5
+  - path: README.zh-TW.md
+    hash: 17c9215317cae64e24d2395470df91a2b52f908240407229b499631ad700a751
+  - path: apps/desktop/core/src/project.rs
+    hash: eb080637b266ee9f73bf033e9a677ff7da1cf346ba8043c77ac0a712af697629
+  - path: apps/desktop/core/src/settings.rs
+    hash: 28b62dca25e679b96aa816c4ba2cdf8e7739f70c9aa5dda4aba93fe19413e368
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: e9e1bc517963857cc18cb343304d71fc3c7017db5076c3a8c62907a72caf2b53
+  - path: apps/desktop/src/App.tsx
+    hash: 544ef743901ee0d0aaa5f4dc5f9925daa6aa03369891d2e5fd9d9973bd348cca
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 78972eacf8fe1447859de4bd046167e61bc0f3b8e21020efa92f4df5457b4812
+  - path: apps/desktop/src/__tests__/helpers/toolCheckboxes.ts
+    hash: 6c1cccfe670e59a47a4b700453bf969557872ef39fd023dab7efbc1c5fa82d9e
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 3945a4f6b4d66b476f40fe39c5105631c5efb800188ad671d470b3e9053d0d91
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: db054f4f3f36600f442445fc53d1b4f9b483b9575c358a61fb4af1b3eae93b2a
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: d2235233c647ac10e80b4a94f2208407268c00aa36bed7fb80e73e8b4276f8f1
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: b741b1c3c0f4b53d2de337b43004626d4c07fd681df7486e827e0a67abbf289a
+  - path: apps/desktop/src/builtinTools.ts
+    hash: c371aff0a6cad60514e781b212449d54b1df6f49e12122e7562d600e38291755
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: 77af1eebf166b0abc6ee553d1f9344bbd70c7d527636cfd93409cd3ea104db08
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: cb1c93e62db0cf3a320660fe2a9d509db090126f60b59440990e1271f7b53111
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 436e5adbc7eb1ed8434ac438363fb9e6c0d4c7891a78b6f8200fb84ea1c861be
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 076dc207ccb76cd1a09d7bd46b0a2e71a4b3937e6fa63c530102f7cf6025045d
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: db1d282019dacaf72e2c28039f70a0b55cedf8c521991471ae6fbfe39107fb84
+  - path: apps/desktop/src/views/project-settings/SpeclinkPage.tsx
+    hash: 0e30c4f557923d06a1beb26c898eed7837e8a4618fd453800d56f60536231d2a
+  - path: crates/adapters/speclink-cli/src/verbs/init.rs
+    hash: 5f788a3067205c54136b148674f93271f48762668c78f4e6f9dc2e2d77536d42
+  - path: crates/adapters/speclink-cli/tests/it/init_tools.rs
+    hash: 50c20c306c3923ed9e6d00469aeb426335f51779d3d3f7ed872f33911fd933a2
+  - path: crates/adapters/speclink-node/__test__/render.spec.ts
+    hash: 8486b3dd910a6230d792cde1f98e71e9f1309cfba10a3f40a1b0e22d170a05a0
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: a9f425e6d7cf8ff4871229c810930e8e8469e1f8f4f512c632e5ff4e4524aabe
+  - path: crates/adapters/speclink-node/src/render.rs
+    hash: b70162c4d8f86102bbeb454a62367ce1572c424232bcb2d917a7a00ea13e1613
+  - path: crates/engine/speclink-core/src/workspace/config.rs
+    hash: 607974d3aa496ab30988dbb6b1fdb323cfbef04e48829f14de2855fc18992995
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 959a95b259d82f6082e266ac10f264f42d6dee3db1cdc53f49efd3f401756b06
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: cb002c78e15dac2b2151bedba75cce0db6bc72d3144cd5ffdd81468a4846725a
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: b2e6d5fcf039c58bcaec3b866d98789c15cc339d5821dcbe53d931b95b0104d5
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: 1f50ae93b13609560f4fab718ab2a72c80cd241e41450dc491734780c204077b
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: ee15b39911eca4f42fb3170332dabf2bc7f32998b7a293c3a1f659e47574eacd
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: c2be1a4ffee6488234bf94de299e791769516c18bb63d9469c96321c1793e114
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 532cbfd2bf5d2a2282de8a4fb51c298c16eb56587b52a02989f2b3d08ffaba68
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 5e5b5b20f3c47a1c3500922ee4e3b612afb23d6273e90177ca82d4928f122afd
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 6c29de954b9c0ef89900400c21ddbfe2750e0a8bf3aaa8fd11d854b9572d6ef5
+  - path: crates/engine/speclink-core/tests/golden/cursor.snapshot.md
+    hash: 6d35dbad5b5316397bda09f7e330bae794add302574b207670af69b8ebd948de
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 4bac1dc1408de2341f66a7c14d1f791ef8c2ea02b1402175c3eb96633d24bab5
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: cf1953b25d6a5282cfa02d8a884bd2cea378bbd827a04951c88c32e7d85b233a
+  - path: crates/engine/speclink-core/tests/golden/pi.snapshot.md
+    hash: 6fe8307c674c6b4359ef5e7bb86aa9e0c075065bf1d2d1da35e91bd32114fcc9
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 8d8c18f0d8d59cbd0c4bed528da11e243d48696bc179f4fe8171628b727ca29a
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 70737291a0ac66f39c330306a696bdd46ff1fd41a17985381805000949be09d7
+  - path: docs/configuration.md
+    hash: 88537915d9d161d2cf953af0f2a5c78c7120490820811f60b12f65db2a8c2061
+  - path: docs/configuration.zh-TW.md
+    hash: 28fc2317b3e4426c312239c523508bbee7b56182b6ebcc7ef063ffff095df7f1
+  - path: docs/getting-started.md
+    hash: 25cdc7a7038f9767cc5948364e11ab43cfea67e4591439ad9bc27e27a38fa5e0
+  - path: docs/getting-started.zh-TW.md
+    hash: 96a4eb11e5f35726980fdc90635837f0ef6f56ce7e30e5b1bbfc23fae1a15fc0
+  - path: docs/product-status.md
+    hash: 2f3e84ba78cf6116803bf16036fe57d708081ebda83b47c00fa68a500b00268b
+  - path: docs/product-status.zh-TW.md
+    hash: b7ebb2b931716e5c1b12b120f023c74b4bef831d241ed9db63564de65ed52bff
+  - path: docs/sdk-node.md
+    hash: b36ab0616d275a75177a275364684373e4feeb17963e2dc2770a39b94bc14577
+  - path: docs/sdk-node.zh-TW.md
+    hash: 0ff28e891ed77964ae7e78db629ca454f9010693f1dd13687048d3df579f571f
+  - path: docs/workflow.md
+    hash: e7460d48c313ae0884bee1f1fb43e5fff1c506173985b7ecf4f70c6db17c1c3b
+  - path: docs/workflow.zh-TW.md
+    hash: b81ed8d05fe074ddb3b8f236ec1b49a9c0502c0f03f85eafc6cee48bea0383c9
+  - path: integrations/herdr/README.en.md
+    hash: 58feccc20246f1355e48994cef9dae81a1e80f05293d7b99b5e4607bfd8e3a55
+  - path: integrations/herdr/README.md
+    hash: 9cbaae6948f415bf2fc8b554d4b019dd0e4621b152c6aacc6aae32e313c28a97
+  - path: integrations/herdr/mods/speclink/model.js
+    hash: 656c96fb00bc11c9f384e3758e10d9a6c33c6891fa97655a9e080a1a1a8f95e0
+  - path: scripts/herdr/panel-model.test.mjs
+    hash: 3ffe90ae444fc01d1b35fa4c1751d0b6b53e90d8c9bb816f116f3622c14f932c
+verified_at: 2026-11-10T21:20:14+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 28
+verified_rounds: 3
+verified_scope:
+  - path: README.md
+    hash: 6ce401b740fa3e0dbf0a05afce19d320830eee44e95682286d55c746226eabf5
+  - path: README.zh-TW.md
+    hash: 17c9215317cae64e24d2395470df91a2b52f908240407229b499631ad700a751
+  - path: apps/desktop/core/src/project.rs
+    hash: eb080637b266ee9f73bf033e9a677ff7da1cf346ba8043c77ac0a712af697629
+  - path: apps/desktop/core/src/settings.rs
+    hash: 28b62dca25e679b96aa816c4ba2cdf8e7739f70c9aa5dda4aba93fe19413e368
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: e9e1bc517963857cc18cb343304d71fc3c7017db5076c3a8c62907a72caf2b53
+  - path: apps/desktop/src/App.tsx
+    hash: 544ef743901ee0d0aaa5f4dc5f9925daa6aa03369891d2e5fd9d9973bd348cca
+  - path: apps/desktop/src/__tests__/App.test.tsx
+    hash: 78972eacf8fe1447859de4bd046167e61bc0f3b8e21020efa92f4df5457b4812
+  - path: apps/desktop/src/__tests__/helpers/toolCheckboxes.ts
+    hash: 6c1cccfe670e59a47a4b700453bf969557872ef39fd023dab7efbc1c5fa82d9e
+  - path: apps/desktop/src/__tests__/projectSettingsView.test.tsx
+    hash: 3945a4f6b4d66b476f40fe39c5105631c5efb800188ad671d470b3e9053d0d91
+  - path: apps/desktop/src/__tests__/settingsColumn.test.tsx
+    hash: db054f4f3f36600f442445fc53d1b4f9b483b9575c358a61fb4af1b3eae93b2a
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: d2235233c647ac10e80b4a94f2208407268c00aa36bed7fb80e73e8b4276f8f1
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: b741b1c3c0f4b53d2de337b43004626d4c07fd681df7486e827e0a67abbf289a
+  - path: apps/desktop/src/builtinTools.ts
+    hash: c371aff0a6cad60514e781b212449d54b1df6f49e12122e7562d600e38291755
+  - path: apps/desktop/src/components/ProjectSettingsColumn.tsx
+    hash: 77af1eebf166b0abc6ee553d1f9344bbd70c7d527636cfd93409cd3ea104db08
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: cb1c93e62db0cf3a320660fe2a9d509db090126f60b59440990e1271f7b53111
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 436e5adbc7eb1ed8434ac438363fb9e6c0d4c7891a78b6f8200fb84ea1c861be
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: 076dc207ccb76cd1a09d7bd46b0a2e71a4b3937e6fa63c530102f7cf6025045d
+  - path: apps/desktop/src/views/ProjectSettingsView.tsx
+    hash: db1d282019dacaf72e2c28039f70a0b55cedf8c521991471ae6fbfe39107fb84
+  - path: apps/desktop/src/views/project-settings/SpeclinkPage.tsx
+    hash: 0e30c4f557923d06a1beb26c898eed7837e8a4618fd453800d56f60536231d2a
+  - path: crates/adapters/speclink-cli/src/verbs/init.rs
+    hash: 5f788a3067205c54136b148674f93271f48762668c78f4e6f9dc2e2d77536d42
+  - path: crates/adapters/speclink-cli/tests/it/init_tools.rs
+    hash: 50c20c306c3923ed9e6d00469aeb426335f51779d3d3f7ed872f33911fd933a2
+  - path: crates/adapters/speclink-node/__test__/render.spec.ts
+    hash: 8486b3dd910a6230d792cde1f98e71e9f1309cfba10a3f40a1b0e22d170a05a0
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: a9f425e6d7cf8ff4871229c810930e8e8469e1f8f4f512c632e5ff4e4524aabe
+  - path: crates/adapters/speclink-node/src/render.rs
+    hash: b70162c4d8f86102bbeb454a62367ce1572c424232bcb2d917a7a00ea13e1613
+  - path: crates/engine/speclink-core/src/workspace/config.rs
+    hash: 607974d3aa496ab30988dbb6b1fdb323cfbef04e48829f14de2855fc18992995
+  - path: crates/engine/speclink-core/src/workspace/config/tests.rs
+    hash: 959a95b259d82f6082e266ac10f264f42d6dee3db1cdc53f49efd3f401756b06
+  - path: crates/engine/speclink-core/src/workspace/init.rs
+    hash: cb002c78e15dac2b2151bedba75cce0db6bc72d3144cd5ffdd81468a4846725a
+  - path: crates/engine/speclink-core/src/workspace/init/tests.rs
+    hash: b2e6d5fcf039c58bcaec3b866d98789c15cc339d5821dcbe53d931b95b0104d5
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: 1f50ae93b13609560f4fab718ab2a72c80cd241e41450dc491734780c204077b
+  - path: crates/engine/speclink-core/tests/golden/assets.lock
+    hash: ee15b39911eca4f42fb3170332dabf2bc7f32998b7a293c3a1f659e47574eacd
+  - path: crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md
+    hash: c2be1a4ffee6488234bf94de299e791769516c18bb63d9469c96321c1793e114
+  - path: crates/engine/speclink-core/tests/golden/claude.snapshot.md
+    hash: 532cbfd2bf5d2a2282de8a4fb51c298c16eb56587b52a02989f2b3d08ffaba68
+  - path: crates/engine/speclink-core/tests/golden/codex.snapshot.md
+    hash: 5e5b5b20f3c47a1c3500922ee4e3b612afb23d6273e90177ca82d4928f122afd
+  - path: crates/engine/speclink-core/tests/golden/copilot.snapshot.md
+    hash: 6c29de954b9c0ef89900400c21ddbfe2750e0a8bf3aaa8fd11d854b9572d6ef5
+  - path: crates/engine/speclink-core/tests/golden/cursor.snapshot.md
+    hash: 6d35dbad5b5316397bda09f7e330bae794add302574b207670af69b8ebd948de
+  - path: crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md
+    hash: 4bac1dc1408de2341f66a7c14d1f791ef8c2ea02b1402175c3eb96633d24bab5
+  - path: crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md
+    hash: cf1953b25d6a5282cfa02d8a884bd2cea378bbd827a04951c88c32e7d85b233a
+  - path: crates/engine/speclink-core/tests/golden/pi.snapshot.md
+    hash: 6fe8307c674c6b4359ef5e7bb86aa9e0c075065bf1d2d1da35e91bd32114fcc9
+  - path: crates/engine/speclink-core/tests/it/render_golden.rs
+    hash: 8d8c18f0d8d59cbd0c4bed528da11e243d48696bc179f4fe8171628b727ca29a
+  - path: crates/engine/speclink-core/tests/it/skill_authoring.rs
+    hash: 70737291a0ac66f39c330306a696bdd46ff1fd41a17985381805000949be09d7
+  - path: docs/configuration.md
+    hash: 88537915d9d161d2cf953af0f2a5c78c7120490820811f60b12f65db2a8c2061
+  - path: docs/configuration.zh-TW.md
+    hash: 28fc2317b3e4426c312239c523508bbee7b56182b6ebcc7ef063ffff095df7f1
+  - path: docs/getting-started.md
+    hash: 25cdc7a7038f9767cc5948364e11ab43cfea67e4591439ad9bc27e27a38fa5e0
+  - path: docs/getting-started.zh-TW.md
+    hash: 96a4eb11e5f35726980fdc90635837f0ef6f56ce7e30e5b1bbfc23fae1a15fc0
+  - path: docs/product-status.md
+    hash: 2f3e84ba78cf6116803bf16036fe57d708081ebda83b47c00fa68a500b00268b
+  - path: docs/product-status.zh-TW.md
+    hash: b7ebb2b931716e5c1b12b120f023c74b4bef831d241ed9db63564de65ed52bff
+  - path: docs/sdk-node.md
+    hash: b36ab0616d275a75177a275364684373e4feeb17963e2dc2770a39b94bc14577
+  - path: docs/sdk-node.zh-TW.md
+    hash: 0ff28e891ed77964ae7e78db629ca454f9010693f1dd13687048d3df579f571f
+  - path: docs/workflow.md
+    hash: e7460d48c313ae0884bee1f1fb43e5fff1c506173985b7ecf4f70c6db17c1c3b
+  - path: docs/workflow.zh-TW.md
+    hash: b81ed8d05fe074ddb3b8f236ec1b49a9c0502c0f03f85eafc6cee48bea0383c9
+  - path: integrations/herdr/README.en.md
+    hash: 58feccc20246f1355e48994cef9dae81a1e80f05293d7b99b5e4607bfd8e3a55
+  - path: integrations/herdr/README.md
+    hash: 9cbaae6948f415bf2fc8b554d4b019dd0e4621b152c6aacc6aae32e313c28a97
+  - path: integrations/herdr/mods/speclink/model.js
+    hash: 656c96fb00bc11c9f384e3758e10d9a6c33c6891fa97655a9e080a1a1a8f95e0
+  - path: scripts/herdr/panel-model.test.mjs
+    hash: 3ffe90ae444fc01d1b35fa4c1751d0b6b53e90d8c9bb816f116f3622c14f932c
+archived_at: 2026-11-10T21:23:31+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

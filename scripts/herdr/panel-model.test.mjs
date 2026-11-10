@@ -1707,12 +1707,13 @@ test('語系守門：dock-panel 翻譯的英文都有中文', () => {
   for (const key of keys) assert.ok(Object.hasOwn(TO_ZH, key), `「${key}」沒有中文`);
 });
 
-// ---- Codex 和 Pi ----
+// ---- Codex、Pi 和 Cursor ----
 
 const ALL_AGENTS = [
   { key: 'claude', name: 'Claude Code', run: ['claude'], installed: true },
   { key: 'codex', name: 'Codex', run: ['codex'], installed: true },
   { key: 'pi', name: 'Pi', run: ['pi'], installed: true },
+  { key: 'cursor', name: 'Cursor', run: ['cursor-agent'], installed: true },
   { key: 'opencode', name: 'OpenCode', run: ['opencode'], installed: true },
   { key: 'copilot', name: 'Copilot', run: ['copilot'], installed: false },
 ];
@@ -1722,6 +1723,7 @@ test('叫用寫法：每個 agent 用自己的前綴，疊加的技能也一樣'
   assert.equal(commandText('codex', 'apply', 'a'), '$speclink-apply a');
   assert.equal(commandText('pi', 'apply', 'a'), '/skill:speclink-apply a');
   assert.equal(commandText('pi', 'archive+commit', 'a'), '/skill:speclink-archive + /skill:speclink-commit a');
+  assert.equal(commandText('cursor', 'apply', 'a'), '/speclink-apply a');
 });
 
 test('Pi 是送達對象；開新分頁時直接帶指令', () => {
@@ -1735,7 +1737,7 @@ test('Pi 是送達對象；開新分頁時直接帶指令', () => {
 });
 
 test('可以選的 agent：要裝好、要有 speclink 技能', () => {
-  assert.deepEqual(usableAgents(ALL_AGENTS).map((a) => a.key), ['claude', 'codex', 'pi']);
+  assert.deepEqual(usableAgents(ALL_AGENTS).map((a) => a.key), ['claude', 'codex', 'pi', 'cursor']);
   assert.deepEqual(usableAgents(null), []);
 });
 
@@ -1768,11 +1770,13 @@ test('analyze 只有 Claude Code 有', () => {
   assert.equal(onlyClaude('analyze', 'claude'), false);
   assert.equal(onlyClaude('analyze', 'pi'), true);
   assert.equal(onlyClaude('apply', 'pi'), false);
+  assert.equal(onlyClaude('analyze', 'cursor'), true);
 });
 
-test('專案沒有這個 agent 的技能時，說明要怎麼裝；Pi 和 Codex 共用同一份', () => {
+test('專案沒有這個 agent 的技能時，說明要怎麼裝；Pi 和 Cursor 各有自己的工具名', () => {
   assert.equal(missingSkillsPlan('Pi', 'pi').kind, 'none');
-  assert.match(missingSkillsPlan('Pi', 'pi').reason, /Pi.*--tools codex/);
+  assert.match(missingSkillsPlan('Pi', 'pi').reason, /Pi.*--tools pi/);
+  assert.match(missingSkillsPlan('Cursor', 'cursor').reason, /Cursor.*--tools cursor/);
   assert.match(missingSkillsPlan('Claude Code', 'claude').reason, /--tools claude/);
 });
 
@@ -1855,6 +1859,17 @@ test('每個 agent 讀自己的資料夾', () => {
   assert.deepEqual(dirs('claude'), ['.claude/skills', '~/.claude/skills']);
   assert.ok(dirs('codex').includes('~/.codex/skills'));
   assert.ok(dirs('pi').includes('.agents/skills') && dirs('pi').includes('~/.pi/agent/skills'));
+  assert.deepEqual(dirs('pi'), ['.pi/skills', '.agents/skills', '~/.pi/agent/skills', '~/.agents/skills']);
+  assert.deepEqual(dirs('cursor'), [
+    '.cursor/skills',
+    '.agents/skills',
+    '.claude/skills',
+    '.codex/skills',
+    '~/.cursor/skills',
+    '~/.agents/skills',
+    '~/.claude/skills',
+    '~/.codex/skills',
+  ]);
   assert.deepEqual(dirs('opencode'), []);
 });
 

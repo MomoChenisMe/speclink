@@ -5,11 +5,11 @@
 
 import { tr } from "./i18n.js";
 
-// 有 speclink 技能的 agent（program.key）與叫用技能的前綴。Pi 讀 .agents/skills，和 Codex 共用技能檔。
-const SKILL_PREFIX = { claude: "/", copilot: "/", codex: "$", pi: "/skill:" };
+// 有 speclink 技能的 agent（program.key）與叫用技能的前綴。Pi 有自己的 .pi/skills，Cursor 有自己的 .cursor/skills。
+const SKILL_PREFIX = { claude: "/", copilot: "/", codex: "$", pi: "/skill:", cursor: "/" };
 const PREFIX = Object.fromEntries(Object.entries(SKILL_PREFIX).map(([key, prefix]) => [key, `${prefix}speclink-`]));
 // speclink init --tools 的名稱。
-const SPECLINK_TOOL = { claude: "claude", copilot: "copilot", codex: "codex", pi: "codex" };
+const SPECLINK_TOOL = { claude: "claude", copilot: "copilot", codex: "codex", pi: "pi", cursor: "cursor" };
 // sending：hc send 要等 agent 開工才回來（約兩秒），這段時間再按一次會重複送出。
 const BUSY = { working: "正在做事", blocked: "在等你回答", error: "出錯了", sending: "正在收指令" };
 
@@ -730,6 +730,16 @@ const SKILL_FOLDERS = {
     ["project", ".agents/skills"],
     ["personal", "~/.pi/agent/skills"],
     ["personal", "~/.agents/skills"],
+  ],
+  cursor: [
+    ["project", ".cursor/skills"],
+    ["project", ".agents/skills"],
+    ["project", ".claude/skills"],
+    ["project", ".codex/skills"],
+    ["personal", "~/.cursor/skills"],
+    ["personal", "~/.agents/skills"],
+    ["personal", "~/.claude/skills"],
+    ["personal", "~/.codex/skills"],
   ],
 };
 export const skillFolders = (key) => (SKILL_FOLDERS[key] ?? []).map(([source, dir]) => ({ source, prefix: "", dir }));

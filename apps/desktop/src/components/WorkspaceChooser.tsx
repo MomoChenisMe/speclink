@@ -316,7 +316,7 @@ export function WorkspaceChooser({
   }
 
   // 既有 marker 缺工具選集的入口：載入 scopes、依 key 預選 scope、直達 checkout
-  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex／Copilot。
+  // 步驟並以預填 path inspect（顯示既有選集），讓使用者明示選擇 Claude／Codex／Copilot／Pi／Cursor。
   async function startAtCheckout(
     selected: ConnectionView,
     scopeKeys: { projectKey: string; repoKey: string },
