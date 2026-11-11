@@ -127,9 +127,12 @@ export default class SpeclinkPanel extends View {
     this.reload(cx);
   }
 
+  // 檢查失敗時 knownAgents 會丟錯，Herdr 也不記住這次結果，所以過 10 秒再查；查到之前面板顯示「還在確認」。
   loadKnown(cx) {
+    this.retryKnown?.cancel();
     cx.spawn(async (cx) => {
-      this.known = await knownAgents({ on: this.place.on }).catch(() => []);
+      this.known = await knownAgents({ on: this.place.on }).catch(() => null);
+      if (!this.known) this.retryKnown = cx.timer.after(10000, (cx) => this.loadKnown(cx));
       cx.notify();
     });
   }

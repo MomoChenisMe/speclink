@@ -1615,6 +1615,13 @@ test('autoTr：帶變數的句子要整句符合才翻', () => {
   // Herdr 0.1.14 側欄收起時的提示
   assert.equal(autoTr('New space on this computer'), '在這台電腦新增工作區');
   assert.equal(autoTr('New space on vps'), '在 vps 新增工作區');
+  // Herdr 0.1.15 機器需要登入時的提示
+  assert.equal(autoTr('vps needs a login: run hc machine login vps. Click for Copy.'), 'vps 需要登入，請執行 hc machine login vps。按一下到設定複製指令。');
+  assert.equal(autoTr('vps needs a login: run'), 'vps 需要登入，請執行');
+  assert.equal(autoTr('needs a login: run'), '需要登入，請執行');
+  assert.equal(autoTr('Copy'), '複製');
+  assert.equal(autoTr('Copied'), '已複製');
+  assert.equal(autoTr('Could not check installed agents'), '檢查不了已安裝的 agent');
   assert.equal(autoTr('0.1.13 is ready. Restart to switch now; it also switches when you quit.'), '0.1.13 已經準備好。重新啟動就會切換，結束 Herdr 時也會切換。');
   // 使用者取的名稱不算
   for (const name of ['two agents', 'speclink', 'add-team-invites', 'my files', 'main']) assert.equal(autoTr(name), name);
