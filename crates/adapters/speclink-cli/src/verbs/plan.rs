@@ -38,10 +38,7 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), name);
             let cmd = plain_command(&a)?;
             let o: core::command::DependsOutcome = run(&home, Some(&ws), cmd)?;
-            emit(render::depends(
-                &Depends { change: &o.change, depends_on: &o.depends_on, on, remove: *remove },
-                render_options(*json),
-            ));
+            emit(render::depends_declared(&o, on, *remove, render_options(*json)));
         }
         ChangeCommands::Schema { name, json, .. } => {
             // Routed like `change depends`: a mapped change switches in its

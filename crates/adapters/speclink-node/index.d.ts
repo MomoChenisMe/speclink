@@ -210,9 +210,15 @@ export interface Engine {
    *
    * Resolves to the same structured object the CLI prints with `--json`
    * (camelCase); verbs without a `--json` form resolve to `{ output: string }`,
-   * where `output` is the CLI's stdout text with no color codes. Both come
-   * from the output definition the CLI uses. The verb surface and payload
-   * contract are described in docs/verb-contract.md.
+   * where `output` is the CLI's stdout text with no color codes. When such a
+   * verb also prints a note to stderr in the CLI (for example `archive` on a
+   * change with no task evidence), the object carries it as `stderr`. Both
+   * come from the output definition the CLI uses. The verb surface and
+   * payload contract are described in docs/verb-contract.md.
+   *
+   * `discuss conclude` resolves even when its closing step could not archive
+   * the record: the conclusion is written, and the object carries the reason
+   * as `closingError`. Do not conclude again; run `discuss archive`.
    *
    * Rejects with an `Error` whose `message` is the CLI's semantic message and
    * whose `code` property classifies the failure (`error`, `not_found`,

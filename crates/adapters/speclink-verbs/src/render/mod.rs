@@ -14,7 +14,10 @@ use serde::Serialize;
 use serde_json::Value;
 use speclink_core::command::{CommandError, CommandOutcome};
 
-use crate::ParsedVerb;
+use crate::families::discuss::DiscussCommands;
+use crate::families::new::NewCommands;
+use crate::families::plan::ChangeCommands;
+use crate::{ParsedVerb, SpecVerb};
 
 // The three writers every human-output function uses. They append to a
 // `Text`; nothing reaches the process's own streams.
@@ -144,6 +147,15 @@ pub(crate) fn value_of<T: Serialize + ?Sized>(source: &T) -> Value {
     serde_json::to_value(source).expect(SERIALIZES)
 }
 
+/// The notice a verb gives in place of its output when it was given no
+/// change name and the project has no change at all. Both entry points use
+/// this one text.
+pub fn no_active_changes() -> Rendered {
+    let mut t = Text::default();
+    outln!(t, "No active changes. Create one with: speclink new change <name>");
+    Rendered { stdout: t.stdout, stderr: t.stderr, json: None }
+}
+
 /// The single exit: one verb's result as its whole output.
 ///
 /// `verb` gives the facts only argv holds (the `--on` names of
@@ -151,18 +163,14 @@ pub(crate) fn value_of<T: Serialize + ?Sized>(source: &T) -> Value {
 /// result has no wildcard arm: a new result type does not compile until it
 /// has an output here.
 ///
-/// The error case is a result that both entry points report as a failure: a
-/// task already in the asked state, and a conclusion whose closing step could
-/// not archive the record.
+/// The error case is a result that both entry points report as a failure
+/// with no output: a task already in the asked state.
 pub fn render(
     verb: &ParsedVerb,
     outcome: &CommandOutcome,
     options: RenderOptions,
 ) -> Result<Rendered, CommandError> {
-    use crate::families::discuss::DiscussCommands;
-    use crate::families::new::NewCommands;
-    use crate::families::plan::ChangeCommands;
-    use crate::SpecVerb;
+    use progress::TaskFlip;
     use speclink_core::station::{REVIEW, VERIFY};
     use station::StationAction;
     use CommandOutcome as O;
@@ -178,62 +186,35 @@ pub fn render(
         O::Plan(o) => plan::plan(o, options),
         O::ArtifactCat(content) | O::Language(content) => documents::document(content, options),
         O::DiscussList(items) => {
-            let archived = matches!(
-                verb.spec(),
-                SpecVerb::Discuss(a) if matches!(a.command, DiscussCommands::List { archived: true, .. })
-            );
+            let archived =
+                matches!(discuss_command(verb), Some(DiscussCommands::List { archived: true, .. }));
             discuss::list(items, archived, options)
         }
         O::DiscussShow(o) => discuss::show(o, options),
         O::DiscussSearch(hits) => {
-            let terms: &[String] = match verb.spec() {
-                SpecVerb::Discuss(a) => match &a.command {
-                    DiscussCommands::Search { terms, .. } => terms,
-                    _ => &[],
-                },
+            let terms: &[String] = match discuss_command(verb) {
+                Some(DiscussCommands::Search { terms, .. }) => terms,
                 _ => &[],
             };
             discuss::search(terms, hits, options)
         }
         O::NewChange(o) => {
-            let from_discussion = match verb.spec() {
-                SpecVerb::New(a) => match &a.command {
-                    NewCommands::Change(c) => c.from_discussion.as_deref(),
-                    NewCommands::Artifact(_) => None,
-                },
+            let from_discussion = match new_command(verb) {
+                Some(NewCommands::Change(c)) => c.from_discussion.as_deref(),
                 _ => None,
             };
-            new::new_change(
-                &o.name,
-                new::NewChangeLines {
-                    path: Some(&o.dir.to_string_lossy()),
-                    schema: Some(&o.schema),
-                    from_discussion,
-                },
-                options,
-            )
+            new::change_created(o, from_discussion, options)
         }
         O::NewArtifact(o) => {
             // The output names the artifact with the word the caller gave.
-            let artifact_type = match verb.spec() {
-                SpecVerb::New(a) => match &a.command {
-                    NewCommands::Artifact(c) => c.artifact_type.as_str(),
-                    NewCommands::Change(_) => o.artifact.as_str(),
-                },
+            let artifact_type = match new_command(verb) {
+                Some(NewCommands::Artifact(c)) => c.artifact_type.as_str(),
                 _ => o.artifact.as_str(),
             };
-            new::new_artifact(
-                &new::NewArtifact {
-                    artifact_type,
-                    change: &o.change,
-                    path: &o.path.to_string_lossy(),
-                    validated: o.had_content,
-                },
-                options,
-            )
+            new::artifact_created(o, artifact_type, options)
         }
-        O::TaskDone(o) => task_flip(progress::TaskFlip::Done, o, options)?,
-        O::TaskUndone(o) => task_flip(progress::TaskFlip::Undone, o, options)?,
+        O::TaskDone(o) => progress::task_flipped(TaskFlip::Done, o, options)?,
+        O::TaskUndone(o) => progress::task_flipped(TaskFlip::Undone, o, options)?,
         // No verb text reaches a task move, and it has no output.
         O::TaskMove(_) => Rendered::default(),
         O::Claim(o) => lifecycle::claim(&o.name, options),
@@ -241,58 +222,32 @@ pub fn render(
         O::InProgressAdd(_) => Rendered::default(),
         O::InProgressRemove(o) => progress::in_progress_remove(&o.name, o.removed, options),
         O::ChangeDepends(o) => {
-            let (on, remove): (&[String], bool) = match verb.spec() {
-                SpecVerb::Change(a) => match &a.command {
-                    ChangeCommands::Depends { on, remove, .. } => (on, *remove),
-                    _ => (&[], false),
-                },
+            let (on, remove): (&[String], bool) = match change_command(verb) {
+                Some(ChangeCommands::Depends { on, remove, .. }) => (on, *remove),
                 _ => (&[], false),
             };
-            plan::depends(
-                &plan::Depends { change: &o.change, depends_on: &o.depends_on, on, remove },
-                options,
-            )
+            plan::depends_declared(o, on, remove, options)
         }
         O::ChangeSchema(o) => plan::schema(o, options),
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
         O::DiscussNew(info) => discuss::new(info, options),
         O::DiscussContext(o) => discuss::context(&o.slug, options),
-        O::DiscussAddRound(o) => discuss::add_round(
-            &discuss::RecordedRound { slug: &o.slug, round: o.round, mode: &o.mode },
+        O::DiscussAddRound(o) => discuss::round_recorded(o, options),
+        // The conclusion landed even when the closing step failed, so this is
+        // an output: the value carries the reason. An error would read as
+        // "nothing was written", and a retry would conclude a second time.
+        O::DiscussConclude(o) => discuss::conclude(
+            &discuss::Concluded {
+                closing_error: o.closing_error.as_deref(),
+                ..discuss::Concluded::from(o)
+            },
             options,
         ),
-        O::DiscussConclude(o) => {
-            if let Some(reason) = &o.closing_error {
-                return Err(general_error(discuss::closing_error_message(reason)));
-            }
-            discuss::conclude(
-                &discuss::Concluded {
-                    slug: &o.slug,
-                    restale_flagged: &o.restale_flagged,
-                    auto_archived: o.auto_archived,
-                    held: o.held,
-                },
-                options,
-            )
-        }
-        O::DiscussPromote(o) => {
-            let shown = o.path.to_string_lossy();
-            let wire = speclink_core::util::to_slash(&o.path);
-            discuss::promote(
-                &discuss::Promoted {
-                    slug: &o.slug,
-                    change: &o.change,
-                    path: Some(discuss::PromotedPath { shown: &shown, wire: &wire }),
-                },
-                options,
-            )
-        }
+        O::DiscussPromote(o) => discuss::promoted(o, options),
         O::DiscussLink(o) => discuss::bind(discuss::DiscussBind::Link, &o.slug, &o.change, options),
         O::DiscussSeal(o) => discuss::bind(discuss::DiscussBind::Seal, &o.slug, &o.change, options),
-        O::DiscussArchive(o) => {
-            discuss::archive(&o.slug, &discuss::archived_to(&o.archived_file), options)
-        }
+        O::DiscussArchive(o) => discuss::archived(o, options),
         O::DiscussDiscard(o) => discuss::discard(&o.slug, options),
         O::ReviewAddRound(o) => {
             station::action(&REVIEW, StationAction::AddRound(o.round), &o.change, options)
@@ -309,29 +264,28 @@ pub fn render(
     })
 }
 
-fn general_error(message: String) -> CommandError {
-    CommandError::new(speclink_core::command::ErrorCode::Error, message)
+// The subcommand a verb parsed to, for the three families whose output needs
+// a fact from argv. A verb of another family has none.
+
+fn discuss_command(verb: &ParsedVerb) -> Option<&DiscussCommands> {
+    match verb.spec() {
+        SpecVerb::Discuss(a) => Some(&a.command),
+        _ => None,
+    }
 }
 
-/// A task flip, or the error for a task already in the asked state (named by
-/// the index the engine resolved, as the CLI names it).
-fn task_flip(
-    flip: progress::TaskFlip,
-    o: &speclink_core::command::TaskFlipOutcome,
-    options: RenderOptions,
-) -> Result<Rendered, CommandError> {
-    if o.already {
-        return Err(general_error(progress::already_message(flip, &o.task_id.to_string())));
+fn new_command(verb: &ParsedVerb) -> Option<&NewCommands> {
+    match verb.spec() {
+        SpecVerb::New(a) => Some(&a.command),
+        _ => None,
     }
-    Ok(progress::task_flip(
-        flip,
-        &progress::FlippedTask {
-            change: &o.change,
-            task_id: &o.task_id_arg,
-            description: &o.description,
-        },
-        options,
-    ))
+}
+
+fn change_command(verb: &ParsedVerb) -> Option<&ChangeCommands> {
+    match verb.spec() {
+        SpecVerb::Change(a) => Some(&a.command),
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -796,12 +750,26 @@ mod tests {
         }
     }
 
+    // The conclusion landed, so this is an output: the value says why the
+    // record was not archived. An error would read as "nothing was written".
     #[test]
-    fn a_conclusion_whose_closing_step_failed_is_an_error() {
+    fn a_conclusion_whose_closing_step_failed_is_an_output_that_says_so() {
         let outcome = CommandOutcome::DiscussConclude(concluded(Some("the file is locked")));
-        let err = render(&parsed(&["discuss", "conclude", "t"]), &outcome, HUMAN).expect_err("an error");
-        assert_eq!(err.message, "conclude closing step failed to archive the record: the file is locked");
-        assert_eq!(err.code, ErrorCode::Error);
+        let out = render(&parsed(&["discuss", "conclude", "t"]), &outcome, HUMAN)
+            .expect("an output, not an error");
+        assert_eq!(
+            out.json,
+            Some(json!({ "slug": "t", "status": "concluded", "closingError": "the file is locked" }))
+        );
+        assert_eq!(out.stdout, "✓ Concluded discussion 't'\n");
+    }
+
+    #[test]
+    fn the_no_change_notice_is_one_line_with_no_json_form() {
+        let notice = no_active_changes();
+        assert_eq!(notice.stdout, "No active changes. Create one with: speclink new change <name>\n");
+        assert_eq!(notice.stderr, "");
+        assert_eq!(notice.json, None);
     }
 
     #[test]

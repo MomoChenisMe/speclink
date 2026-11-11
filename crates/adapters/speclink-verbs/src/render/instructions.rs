@@ -1,18 +1,9 @@
 //! Output of `instructions`: one artifact's guidance, or the apply payload.
 
-use serde_json::Value;
 use speclink_core::command::InstructionsOutcome;
 use speclink_core::instructions::{ApplyInstructions, ArtifactInstructions};
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
-
-/// `instructions --json`: the payload as the engine serializes it.
-pub fn instructions_json(outcome: &InstructionsOutcome) -> Value {
-    match outcome {
-        InstructionsOutcome::Apply(p) => value_of(p),
-        InstructionsOutcome::Artifact(p) => value_of(p),
-    }
-}
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `instructions`: the artifact form or the apply form, as the outcome says.
 pub fn instructions_human(outcome: &InstructionsOutcome, paint: &Paint) -> Text {
@@ -22,6 +13,7 @@ pub fn instructions_human(outcome: &InstructionsOutcome, paint: &Paint) -> Text 
     }
 }
 
+/// `instructions --json` is the payload as the engine serializes it.
 pub fn instructions(outcome: &InstructionsOutcome, options: RenderOptions) -> Rendered {
     let json = match outcome {
         InstructionsOutcome::Apply(p) => JsonForm::pretty(p),
@@ -221,7 +213,7 @@ mod tests {
 
     #[test]
     fn instructions_json_is_the_payload_and_its_text_keeps_the_field_order() {
-        let value = instructions_json(&InstructionsOutcome::Apply(apply(None)));
+        let value = instructions(&InstructionsOutcome::Apply(apply(None)), RenderOptions::default()).json.unwrap();
         assert_eq!(value["changeName"], "alpha");
         assert_eq!(
             value["progress"],
@@ -230,7 +222,7 @@ mod tests {
         assert_eq!(value["tasks"][1], json!({ "id": "2", "description": "1.2 Deliver behavior 2; verify with the unit test", "done": false, "manual": false }));
         assert!(value.get("missingArtifacts").is_none() && value.get("preflight").is_none(), "{value}");
 
-        let value = instructions_json(&InstructionsOutcome::Artifact(artifact()));
+        let value = instructions(&InstructionsOutcome::Artifact(artifact()), RenderOptions::default()).json.unwrap();
         assert_eq!(value["artifactId"], "design");
         assert_eq!(value["dependencies"][0], json!({ "id": "proposal", "done": true, "path": "proposal.md", "description": "Why" }));
         assert!(value.get("context").is_none() && value.get("rules").is_none(), "{value}");

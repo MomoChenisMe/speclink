@@ -81,16 +81,16 @@ await engine.dispatch(
 ```
 
 - **輸入**：字串陣列，和 CLI 的寫法一樣，只是去掉程式名。CLI 從 stdin 讀內容的動詞，改用第二個參數 `{ stdin }` 傳入。
-- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output: string }`。TypeScript 型別是 `Promise<unknown>`，欄位形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
+- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output: string }`，`output` 是 CLI 印到 stdout 的文字，不帶色碼。CLI 另有提示印到 stderr 時（例如封存沒有任務證據的變更），物件另帶 `stderr`。`discuss conclude` 收尾的封存失敗時不算錯誤：結論已經寫入，物件另帶 `closingError` 說明原因。這時不要再執行一次 `discuss conclude`，改執行 `discuss archive`。TypeScript 型別是 `Promise<unknown>`，欄位形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
 - **不會卡住事件迴圈**：每次 dispatch 都在背景執行緒執行，可以同時發出多個。
 
-目前接上的動詞：`list`、`status`、`new change`、`new artifact`、`claim`、`review add-round`、`review stamp`、`verify add-round`、`verify stamp`。其他動詞會以 `invalid_argv` 拒絕。
+有引擎命令的動詞全部能用。需要 checkout 的動詞會以 `invalid_argv` 拒絕：`drift`、`change rank`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更：給多個名稱或 `--all` 會以 `invalid_argv` 拒絕。
 
 失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 agent；`code` 是分類：
 
 | `code` | 意思 |
 | --- | --- |
-| `invalid_argv` | 參數有誤、這個動詞還沒接上 SDK，或寫入的內容格式不對（例如 tasks 沒有 `- [ ]`、審查輪缺 `**Scope**:` 行） |
+| `invalid_argv` | 參數有誤、這個動詞需要 checkout，或寫入的內容格式不對（例如 tasks 沒有 `- [ ]`、審查輪缺 `**Scope**:` 行） |
 | `not_found` | 找不到 change 或討論 |
 | `invalid_config` | 設定檔存在但無法解析（不會改用預設值） |
 | `refused` | 前置條件不成立 |
@@ -270,7 +270,7 @@ async function startSession() {
 
 ## <a id="limits"></a>目前的限制
 
-- 只接上九個動詞（見[執行動詞](#dispatch)）；`archive`、`task`、`discuss` 等其他動詞還不能透過 SDK 執行。
+- 需要 checkout 的動詞不能透過 SDK 執行（見[執行動詞](#dispatch)）。
 - 自己的 Store 只能用內建 schema。
 - 沒有 musl Linux 的預編譯套件。
 - Store 方法拋錯時，stderr 可能會多印一行 Rust 的 panic 訊息；Promise 仍會照上面的規則拒絕。

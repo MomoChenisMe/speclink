@@ -25,15 +25,7 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let o: core::command::NewChangeOutcome = run(&store, Some(&ws), cmd)?;
-    emit(render::new_change(
-        &o.name,
-        NewChangeLines {
-            path: Some(&o.dir.to_string_lossy()),
-            schema: Some(&o.schema),
-            from_discussion: a.from_discussion.as_deref(),
-        },
-        render_options(false),
-    ));
+    emit(render::change_created(&o, a.from_discussion.as_deref(), render_options(false)));
     Ok(())
 }
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
@@ -41,15 +33,7 @@ fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {
     let stdin = stdin_for(a.stdin_policy());
     let cmd = engine_command(a.to_command(VerbInputs { stdin, ..Default::default() }))?;
     let o: core::command::NewArtifactOutcome = run(&store, Some(&ws), cmd)?;
-    emit(render::new_artifact(
-        &NewArtifact {
-            artifact_type: &a.artifact_type,
-            change: &o.change,
-            path: &o.path.to_string_lossy(),
-            validated: o.had_content,
-        },
-        render_options(a.json),
-    ));
+    emit(render::artifact_created(&o, &a.artifact_type, render_options(a.json)));
     Ok(())
 }
 /// new 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all。

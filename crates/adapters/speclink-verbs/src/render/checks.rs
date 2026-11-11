@@ -1,16 +1,10 @@
 //! Output of the check verbs: validate, analyze, drift.
 
-use serde_json::Value;
 use speclink_core::analyzer::AnalyzeReport;
 use speclink_core::drift::{CombinedDriftReport, DriftReport};
 use speclink_core::validate::ValidationResult;
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
-
-/// `validate --json`: the result array.
-pub fn validate_json(results: &[ValidationResult]) -> Value {
-    value_of(results)
-}
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `validate`: one line per item, its errors and its warnings under it.
 /// Whether an invalid item fails the run is the caller's decision.
@@ -32,13 +26,9 @@ pub fn validate_human(results: &[ValidationResult], paint: &Paint) -> Text {
     t
 }
 
+/// `validate --json` is the result array.
 pub fn validate(results: &[ValidationResult], options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(results)), |paint| validate_human(results, paint))
-}
-
-/// `analyze --json`: the report as the engine serializes it.
-pub fn analyze_json(report: &AnalyzeReport) -> Value {
-    value_of(report)
 }
 
 /// `analyze`: the dimension table, then the findings.
@@ -88,13 +78,9 @@ pub fn analyze_human(report: &AnalyzeReport, paint: &Paint) -> Text {
     t
 }
 
+/// `analyze --json` is the report as the engine serializes it.
 pub fn analyze(report: &AnalyzeReport, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(report)), |paint| analyze_human(report, paint))
-}
-
-/// `drift --json`: the merged report as the engine serializes it.
-pub fn drift_json(report: &CombinedDriftReport) -> Value {
-    value_of(report)
 }
 
 /// `drift`: the dimension table, the detail sections, then the severity.
@@ -165,6 +151,7 @@ pub fn drift_human(report: &DriftReport, paint: &Paint) -> Text {
     t
 }
 
+/// `drift --json` is the merged report as the engine serializes it.
 pub fn drift(report: &CombinedDriftReport, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(report)), |paint| drift_human(&report.report, paint))
 }
@@ -172,7 +159,7 @@ pub fn drift(report: &CombinedDriftReport, options: RenderOptions) -> Rendered {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::json;
+    use serde_json::{json, Value};
     use speclink_core::analyzer::{DimensionStatus, Finding, Msg};
     use speclink_core::drift::{BrokenAnchor, Coverage, DriftDimension, SpecAssumption};
 
@@ -214,7 +201,7 @@ mod tests {
     fn validate_json_is_the_result_array() {
         let one = &results()[1..];
         assert_eq!(
-            validate_json(one),
+            validate(one, RenderOptions::default()).json.unwrap(),
             json!([{ "change": "started", "errors": [], "valid": true, "warnings": ["No delta specs found"] }])
         );
         assert_eq!(
@@ -290,7 +277,7 @@ mod tests {
 
     #[test]
     fn analyze_json_is_the_report() {
-        let value = analyze_json(&analyzed(vec![finding("Warning", "No tasks")]));
+        let value = analyze(&analyzed(vec![finding("Warning", "No tasks")]), RenderOptions::default()).json.unwrap();
         assert_eq!(value["change_id"], "alpha");
         assert_eq!(value["dimensions"][0], json!({ "dimension": "Coverage", "status": "1 issue(s) found", "finding_count": 1 }));
         assert_eq!(value["findings"][0]["summary_msg"], json!({ "key": "k.summary", "params": {} }));
@@ -372,7 +359,7 @@ mod tests {
 
     #[test]
     fn drift_json_is_the_merged_report_without_the_absent_markers() {
-        let value = drift_json(&drifted());
+        let value = drift(&drifted(), RenderOptions::default()).json.unwrap();
         assert_eq!(value["change_id"], "alpha");
         assert_eq!(value["last_commit"], Value::Null);
         assert_eq!(

@@ -2,15 +2,10 @@
 //! `change schema` and `change rank`.
 
 use serde_json::{json, Value};
-use speclink_core::command::{PlanReport, SchemaOutcome};
+use speclink_core::command::{DependsOutcome, PlanReport, SchemaOutcome};
 use speclink_core::plan::Side;
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
-
-/// `plan --json`: the report as the engine serializes it.
-pub fn plan_json(plan: &PlanReport) -> Value {
-    value_of(plan)
-}
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `plan`: one `Wave N` heading per wave (`(parallel)` when it holds more
 /// than one change), one line per change with its stage and up to three notes
@@ -84,6 +79,7 @@ pub fn plan_human(plan: &PlanReport, paint: &Paint) -> Text {
     t
 }
 
+/// `plan --json` is the report as the engine serializes it.
 pub fn plan(plan: &PlanReport, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(plan)), |paint| plan_human(plan, paint))
 }
@@ -122,6 +118,17 @@ pub fn depends_human(d: &Depends<'_>, paint: &Paint) -> Text {
 
 pub fn depends(d: &Depends<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&depends_json(d))), |paint| depends_human(d, paint))
+}
+
+/// `change depends`, from the engine's result and the `--on` names and
+/// `--remove` flag of the call.
+pub fn depends_declared(
+    o: &DependsOutcome,
+    on: &[String],
+    remove: bool,
+    options: RenderOptions,
+) -> Rendered {
+    depends(&Depends { change: &o.change, depends_on: &o.depends_on, on, remove }, options)
 }
 
 /// `change schema --json`: the four facts (the stamp-cleared line is human
@@ -287,7 +294,7 @@ mod tests {
 
     #[test]
     fn plan_json_is_the_report() {
-        let value = plan_json(&report());
+        let value = plan(&report(), RenderOptions::default()).json.unwrap();
         assert_eq!(value["waves"][0], json!({ "index": 1, "changes": ["ready", "alpha"] }));
         assert_eq!(value["changes"][2]["blockedBy"], json!(["alpha"]));
         assert_eq!(value["changes"][2]["stage"], "proposed");

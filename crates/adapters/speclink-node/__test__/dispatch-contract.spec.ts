@@ -1,6 +1,6 @@
 // dispatch 的輸入輸出契約（spec: 壞工作流設定經 dispatch 拒絕 / CLI 與 dispatch
 // 的錯誤分類一致）：錯誤碼出自引擎命令層的封閉註冊表，message 與 CLI 訊息相同。
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -270,14 +270,14 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
 // dispatch 涵蓋全部有引擎命令的動詞（spec node-sdk「dispatch 的輸入輸出契約」、
 // command-runtime「動詞的輸出只有一份」）：回傳內容和 CLI 出自同一份輸出定義。
 describe('dispatch covers every verb that has an engine command', () => {
-  /** Run the CLI in `cwd`; stdout comes back whatever the exit code is. */
-  function cliRun(cwd: string, args: string[]): { code: number; stdout: string } {
-    try {
-      return { code: 0, stdout: execFileSync(cliBin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }) }
-    } catch (e) {
-      const err = e as { status?: number; stdout?: string }
-      return { code: err.status ?? -1, stdout: err.stdout ?? '' }
-    }
+  /** Run the CLI in `cwd`; stdout and stderr come back whatever the exit code is. */
+  function cliRun(
+    cwd: string,
+    args: string[],
+    input = '',
+  ): { code: number; stdout: string; stderr: string } {
+    const run = spawnSync(cliBin, args, { cwd, encoding: 'utf8', input })
+    return { code: run.status ?? -1, stdout: run.stdout, stderr: run.stderr }
   }
 
   /** The fs fixture plus a change named `demo`, the name the spec scenarios use. */
@@ -295,9 +295,17 @@ describe('dispatch covers every verb that has an engine command', () => {
     return root
   }
 
-  /** A value with every mention of the fixture root replaced, so two roots compare. */
-  const rootless = (value: unknown, root: string): unknown =>
-    JSON.parse(JSON.stringify(value).split(root).join('<root>'))
+  /**
+   * A value two runs can compare: every mention of the fixture root is
+   * replaced, and so is every date (a run across midnight writes two days).
+   */
+  const portable = (value: unknown, root: string): unknown =>
+    JSON.parse(
+      JSON.stringify(value)
+        .split(root)
+        .join('<root>')
+        .replace(/\d{4}-\d{2}-\d{2}/g, '<date>'),
+    )
 
   const fsEngine = (root: string) => createEngine({ store: { type: 'fs', root } })
 
@@ -350,14 +358,67 @@ describe('dispatch covers every verb that has an engine command', () => {
     expect(err.code).toBe('error')
   })
 
-  it('archive resolves to { output } with the CLI stdout', async () => {
+  // spec「stderr 的提示經 stderr 欄位回傳」：beta 的任務全完成、沒有任務證據。
+  it('archive resolves to { output, stderr } with the CLI stdout and stderr', async () => {
     const [sdkRoot, cliRoot] = [demoFixture(), demoFixture()]
-    const sdk = (await fsEngine(sdkRoot).dispatch(['archive', 'beta', '-y'])) as { output: string }
+    const sdk = (await fsEngine(sdkRoot).dispatch(['archive', 'beta', '-y'])) as {
+      output: string
+      stderr: string
+    }
     const run = cliRun(cliRoot, ['archive', 'beta', '-y', '--no-color'])
     expect(run.code).toBe(0)
-    expect(sdk).toEqual({ output: run.stdout })
+    expect(portable(sdk, sdkRoot)).toEqual(portable({ output: run.stdout, stderr: run.stderr }, cliRoot))
     expect(sdk.output).toMatch(/^✓ Archived: beta → \d{4}-\d{2}-\d{2}-beta\n/)
-    expect(sdk.output).not.toContain('\u001b')
+    expect(sdk.stderr).toBe(
+      "note: no task evidence recorded for change 'beta' — fine for spec-only changes; otherwise check that tasks went through apply\n",
+    )
+    expect(sdk.output + sdk.stderr).not.toContain('\u001b')
+  })
+
+  // spec「沒有 stderr 文字時不帶 stderr 欄位」
+  it('a verb with no stderr text resolves to an object with output only', async () => {
+    const created = await createEngine({ store: memoryStore(fixtureProject()) }).dispatch(['new', 'change', 'demo'])
+    expect(Object.keys(created as object)).toEqual(['output'])
+  })
+
+  // spec「結論已寫入但收尾封存失敗」：記錄已轉出的變更不在進行中，封存資料夾寫不進去。
+  it('conclude resolves with closingError when the closing step cannot archive the record', async () => {
+    const closingFixture = () => {
+      const root = makeFsFixture()
+      const discussions = join(root, 'speclink', 'discussions')
+      mkdirSync(discussions, { recursive: true })
+      writeFileSync(
+        join(discussions, 'demo-topic.md'),
+        '---\ntopic: Demo topic\nslug: demo-topic\nstatus: promoted\ncreated: 2026-07-01\npromoted_to: gone-change\n---\n\n# Discussion: Demo topic\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n',
+      )
+      // The archive folder's place is taken by a file, so the record cannot move there.
+      writeFileSync(join(discussions, 'archive'), 'not a directory\n')
+      return root
+    }
+    const [sdkRoot, cliRoot] = [closingFixture(), closingFixture()]
+    const conclusion = '**Decision**: do A\n'
+    const argv = ['discuss', 'conclude', 'demo-topic', '--stdin']
+
+    const sdk = (await fsEngine(sdkRoot).dispatch(argv, { stdin: conclusion })) as {
+      slug: string
+      status: string
+      closingError: string
+    }
+    const run = cliRun(cliRoot, [...argv, '--json'], conclusion)
+    expect(run.code).not.toBe(0)
+
+    // The CLI says the same two things: the result on stdout, the reason in its error line.
+    const { closingError, ...value } = sdk
+    expect(value).toEqual(JSON.parse(run.stdout))
+    expect(value).toEqual({ slug: 'demo-topic', status: 'concluded' })
+    expect(closingError.length).toBeGreaterThan(0)
+    expect(run.stderr.trim()).toBe(
+      `Error: conclude closing step failed to archive the record: ${closingError}`,
+    )
+    // The conclusion landed and the record is still live.
+    expect(readFileSync(join(sdkRoot, 'speclink', 'discussions', 'demo-topic.md'), 'utf8')).toContain(
+      '**Decision**: do A',
+    )
   })
 
   it('the discuss verbs resolve to what the CLI prints with --json', async () => {
@@ -376,7 +437,7 @@ describe('dispatch covers every verb that has an engine command', () => {
     for (const { argv, stdin } of steps) {
       const sdk = await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
       const out = execFileSync(cliBin, [...argv, '--json'], { cwd: cliRoot, encoding: 'utf8', input: stdin ?? '' })
-      expect(rootless(sdk, sdkRoot), argv.join(' ')).toEqual(rootless(JSON.parse(out), cliRoot))
+      expect(portable(sdk, sdkRoot), argv.join(' ')).toEqual(portable(JSON.parse(out), cliRoot))
     }
     expect(await engine.dispatch(['discuss', 'list'])).toMatchObject({
       discussions: [{ slug: 'rate-limits', status: 'concluded', rounds: 1 }],
@@ -507,13 +568,24 @@ describe('the nine verbs dispatch served before keep their return values', () =>
     `)
   })
 
+  // 沒有任何變更時 status 和 CLI 一樣只印提示：同一句、同一個尾端換行。
   it('status with no change at all', async () => {
     const empty = createEngine({ store: memoryStore({ changes: {}, specs: {} }) })
-    expect(await empty.dispatch(['status'])).toMatchInlineSnapshot(`
-      {
-        "output": "No active changes. Create one with: speclink new change <name>",
-      }
-    `)
+    expect(await empty.dispatch(['status'])).toEqual({
+      output: 'No active changes. Create one with: speclink new change <name>\n',
+    })
+  })
+
+  it('status with no change at all matches the CLI stdout', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'speclink-node-empty-'))
+    try {
+      mkdirSync(join(root, 'speclink', 'changes'), { recursive: true })
+      const sdk = await createEngine({ store: { type: 'fs', root } }).dispatch(['status'])
+      const cli = execFileSync(cliBin, ['status', '--no-color'], { cwd: root, encoding: 'utf8' })
+      expect(sdk).toEqual({ output: cli })
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
   })
 
   it('new change', async () => {

@@ -1,6 +1,7 @@
 //! Output of the creation verbs: `new change` and `new artifact`.
 
 use serde_json::{json, Value};
+use speclink_core::command::{NewArtifactOutcome, NewChangeOutcome};
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
@@ -33,6 +34,20 @@ pub fn new_change_human(name: &str, lines: NewChangeLines<'_>, paint: &Paint) ->
 /// `new change` has no JSON form.
 pub fn new_change(name: &str, lines: NewChangeLines<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, None, |paint| new_change_human(name, lines, paint))
+}
+
+/// `new change`, from the engine's result. The discussion's name is not in
+/// the result: it comes from the call.
+pub fn change_created(
+    o: &NewChangeOutcome,
+    from_discussion: Option<&str>,
+    options: RenderOptions,
+) -> Rendered {
+    new_change(
+        &o.name,
+        NewChangeLines { path: Some(&o.dir.to_string_lossy()), schema: Some(&o.schema), from_discussion },
+        options,
+    )
 }
 
 /// What `new artifact` reports. `artifact_type` is the word the caller gave
@@ -73,6 +88,24 @@ pub fn new_artifact(a: &NewArtifact<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::compact(&new_artifact_json(a))), |paint| {
         new_artifact_human(a, paint)
     })
+}
+
+/// `new artifact`, from the engine's result. `artifact_type` is the word the
+/// caller gave.
+pub fn artifact_created(
+    o: &NewArtifactOutcome,
+    artifact_type: &str,
+    options: RenderOptions,
+) -> Rendered {
+    new_artifact(
+        &NewArtifact {
+            artifact_type,
+            change: &o.change,
+            path: &o.path.to_string_lossy(),
+            validated: o.had_content,
+        },
+        options,
+    )
 }
 
 #[cfg(test)]

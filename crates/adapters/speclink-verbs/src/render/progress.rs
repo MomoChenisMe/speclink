@@ -2,6 +2,7 @@
 //! marker.
 
 use serde_json::{json, Value};
+use speclink_core::command::{CommandError, ErrorCode, TaskFlipOutcome};
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
@@ -35,14 +36,16 @@ pub struct FlippedTask<'a> {
 /// The error text for a task that already is in the asked state. Both entry
 /// points fail with it and print nothing else.
 pub fn already_message(flip: TaskFlip, task_id: &str) -> String {
-    format!("Task {task_id} {}", flip.parts().1)
+    let (_, already_phrase, _) = flip.parts();
+    format!("Task {task_id} {already_phrase}")
 }
 
 /// `task done --json` and `task undone --json`.
 pub fn task_flip_json(flip: TaskFlip, task: &FlippedTask<'_>) -> Value {
+    let (status, _, _) = flip.parts();
     json!({
         "change": task.change,
-        "status": flip.parts().0,
+        "status": status,
         "task_desc": task.description,
         "task_id": task.task_id,
     })
@@ -51,7 +54,7 @@ pub fn task_flip_json(flip: TaskFlip, task: &FlippedTask<'_>) -> Value {
 /// `task done` and `task undone`: one success line.
 pub fn task_flip_human(flip: TaskFlip, task: &FlippedTask<'_>, paint: &Paint) -> Text {
     let mut t = Text::default();
-    let verb_phrase = flip.parts().2;
+    let (_, _, verb_phrase) = flip.parts();
     outln!(t, "{} Task {} {verb_phrase}: {}", paint.green("✓"), task.task_id, task.description);
     t
 }
@@ -61,6 +64,24 @@ pub fn task_flip(flip: TaskFlip, task: &FlippedTask<'_>, options: RenderOptions)
     Rendered::of(options, Some(JsonForm::compact(&task_flip_json(flip, task))), |paint| {
         task_flip_human(flip, task, paint)
     })
+}
+
+/// A task flip from the engine's result — or, for a task already in the
+/// asked state, the error both entry points fail with (it names the task by
+/// the index the engine resolved).
+pub fn task_flipped(
+    flip: TaskFlip,
+    o: &TaskFlipOutcome,
+    options: RenderOptions,
+) -> Result<Rendered, CommandError> {
+    if o.already {
+        return Err(CommandError::new(ErrorCode::Error, already_message(flip, &o.task_id.to_string())));
+    }
+    Ok(task_flip(
+        flip,
+        &FlippedTask { change: &o.change, task_id: &o.task_id_arg, description: &o.description },
+        options,
+    ))
 }
 
 /// `in-progress remove`: a removed marker and "there was none" read
