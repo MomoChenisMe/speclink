@@ -3,7 +3,7 @@
 ### Requirement: 動詞覆蓋與跨入口一致性
 <!-- BEFORE: 覆蓋表不含 workflow-config；它的讀寫由各入口自行處理 -->
 
-引擎 SHALL 提供唯一的命令執行層，覆蓋讀寫規格儲存的領域動詞——查詢：list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list、discuss show 與 discuss search；變更：new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard。CLI 與 Node SDK dispatch SHALL 經此層執行覆蓋表動詞；對相同 workspace 狀態執行同一動詞，各入口 SHALL 得到相同的語意結果與錯誤分類，且既有人眼輸出與 --json 形狀 SHALL 維持位元級一致（既有輸出基線不變）。discuss search 為唯讀查詢動詞，SHALL NOT 發出領域事件。workspace bootstrap 與周邊工具動詞（init、update、config、schema、completion、templates、feedback、demo）及 remote 連線管理動詞（link、unlink、auth）SHALL NOT 進入命令層。workflow-config 的 show 與全部寫入動詞（set、context、rules、review、subagent-model）SHALL 同樣經此層執行。
+引擎 SHALL 提供唯一的命令執行層，覆蓋讀寫規格儲存的領域動詞——查詢：list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list、discuss show 與 discuss search；變更：new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard。CLI 與 Node SDK dispatch SHALL 經此層執行覆蓋表動詞；對相同 workspace 狀態執行同一動詞，各入口 SHALL 得到相同的語意結果與錯誤分類，且既有人眼輸出與 --json 形狀 SHALL 維持位元級一致（既有輸出基線不變）。discuss search 為唯讀查詢動詞，SHALL NOT 發出領域事件。workspace bootstrap 與周邊工具動詞（init、update、config、schema、completion、templates、feedback、demo）及 remote 連線管理動詞（link、unlink、auth）SHALL NOT 進入命令層。workflow-config 的 show 與全部寫入動詞（set、context、rules、review、subagent-model）在本機模式與 SDK 的 dispatch SHALL 同樣經此層執行；CLI 的 remote 模式經連線讀寫 server 的文件，server 端的整份寫入 SHALL 經此層執行。
 
 #### Scenario: CLI 與 dispatch 的成功結果語意一致
 

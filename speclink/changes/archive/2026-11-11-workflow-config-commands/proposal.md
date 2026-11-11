@@ -24,9 +24,12 @@
 - 示範用 server 的整份寫入路由改成執行「整份取代」命令。角色檢查、解析失敗先於版本衝突的順序、回應的形狀都不變。
 - `speclink-node`：dispatch 能用 `workflow-config` 的全部動詞。宿主的 JS 儲存新增一個選填方法 `writeWorkflowConfig(content)`；沒有提供時，寫入動詞在動手前拒絕。
 - **相容性影響**：
-  - CLI 的指令、旗標、`--help`、人眼輸出、`--json`、`--dry-run` 的差異、exit code 都不變。
+  - CLI 的指令、旗標、`--help`、人眼輸出、`--json`、`--dry-run` 的差異、exit code 都不變，只有一種例外：值沒有變的寫入不再有後續動作。變更前，`set worktree <值>` 在值沒有變時仍會重新同步技能檔，`review …` 與 `subagent-model …` 仍會印技能檔過期提示，專案沒有 config.yaml 時還會建一個空檔；變更後這三件事都不發生，確認訊息照常輸出。
+  - shell 補全腳本裡 workflow-config 在子指令清單的位置改變，內容不變。
+  - 示範用 server：內容與現有流程設定相同的整份寫入不再讓版本前進。
+  - CLI 的 remote 模式：過期提示和本機模式用同一條規則，值沒有變時不提示（變更前會提示）。寫入照常送出。
   - 線上協定不變。
-  - Node SDK：`workflow-config` 開頭的 argv 原本回傳 `invalid_argv`，現在會執行。
+  - Node SDK：`workflow-config` 開頭的 argv 原本回傳 `invalid_argv`，現在會執行。argv 帶 `--stdin` 而沒有傳 stdin 內容時以 `invalid_argv` 拒絕（空字串照常執行）。
   - 沒有設定欄位的新增或變更；`config.yaml` 的格式不變，既有檔案照常讀取。
 - 影響的技能：`/speclink-config` 的文字不變（它呼叫的動詞沒有改）。claude 與 codex 兩種工具都不用重新產生技能檔。
 
@@ -59,24 +62,34 @@
     - crates/engine/speclink-core/src/store.rs
     - crates/engine/speclink-core/src/teststore.rs
     - crates/engine/speclink-core/src/workspace/config.rs
+    - crates/engine/speclink-core/src/workspace/config/tests.rs
     - crates/engine/speclink-fs/src/lib.rs
+    - crates/engine/speclink-fs/tests/store_fs.rs
     - crates/host/speclink-host/src/port_view.rs
+    - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/src/bridge.rs
+    - crates/host/speclink-host/tests/bridge_dual_path.rs
     - crates/host/speclink-server/src/api/routes.rs
+    - crates/host/speclink-server/tests/it/api/policy_write.rs
+    - crates/host/speclink-server/tests/it/api/command_routes.rs
+    - crates/host/speclink-server/tests/it/common/mod.rs
     - crates/adapters/speclink-verbs/src/families/mod.rs
-    - crates/adapters/speclink-verbs/src/parse.rs
+    - crates/adapters/speclink-verbs/src/inputs.rs
     - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/adapters/speclink-cli/src/main.rs
+    - crates/adapters/speclink-cli/src/color.rs
     - crates/adapters/speclink-cli/src/verbs/config.rs
-    - crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs
+    - crates/adapters/speclink-cli/tests/it/workflow_config.rs
+    - crates/adapters/speclink-cli/tests/it/init_tools.rs
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/src/store_bridge.rs
     - crates/adapters/speclink-node/index.d.ts
-    - crates/adapters/speclink-node/index.js
+    - crates/adapters/speclink-node/__test__/helpers.ts
+    - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts
   - Removed: (none)
 - 三種形態下的結果：
   - 本機 repo：可用。CLI 的 `workflow-config` 改經引擎命令，行為與輸出不變。
   - 連到遠端的 checkout：可用。CLI 送出的請求不變；示範用 server 收到整份寫入後改經引擎命令。
-  - 沒有本機規格檔的內嵌宿主：可用，有一項已知缺口。SDK 的 dispatch 能讀寫流程設定，結果帶變動的鍵；worktree 欄位變動後的技能同步與技能檔過期提示不適用（宿主沒有 checkout，技能之後由遠端提供）。執行前檢查本身還沒有，由變更 host-kit-agent-door 補上。
+  - 沒有本機規格檔的內嵌宿主：可用，有一項已知缺口。SDK 的 dispatch 能讀寫流程設定；變動的鍵在引擎命令的結果裡，dispatch 回傳給 JS 的只有確認訊息；worktree 欄位變動後的技能同步與技能檔過期提示不適用（宿主沒有 checkout，技能之後由遠端提供）。執行前檢查本身還沒有，由變更 host-kit-agent-door 補上。
 - 桌面 app 的本機寫入（apps/desktop/core/src/settings.rs）仍直接寫檔，這次不改：它只發生在本機專案，沒有宿主的檢查要經過；編輯的邏輯本來就和 CLI 共用引擎的同一個函式。
 - 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 要補上流程設定的動詞與選填的儲存方法。
