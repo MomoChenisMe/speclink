@@ -205,4 +205,40 @@
 ## Open Questions
 
 - `new artifact … --force` 實際會在哪些情況拒絕覆寫（已知：任務全部完成的清單）。實作時用測試確認後，把技能裡的那一句寫成和實際相符。
+
+  **已確認**（任務 1.2，測試在 `speclink-core` 的 `lifecycle::newcmd::tests::force_write_back_*`）：
+
+  | 情況 | 結果 |
+  |---|---|
+  | 覆寫既有的提案與設計 | 成功，內容整份換成新的 |
+  | 覆寫部分任務已勾選的任務清單 | 成功；既有任務行（勾選狀態與行尾識別註解）逐字不變，只有新加的任務行拿到新的識別註解 |
+  | 覆寫任務全部勾選的任務清單 | 拒絕，什麼都沒寫；訊息是 `Tasks must contain at least one checkbox (- [ ])`，錯誤碼 `invalid_argv` |
+  | 覆寫已開工變更的 delta spec | 成功；引擎不看變更是否已開工 |
+
+  其餘既有的拒絕不是「整份寫回」特有的：內容缺必要區段（提案沒有 `## Why`、設計沒有 `## Context`、delta 沒有操作區塊）、metadata 壞掉、capability 不在正典又沒帶 `--new`。技能的那一句因此寫成：「`new artifact` 以錯誤拒絕寫回時（例如任務已全部勾選的清單），停下來把訊息告訴使用者，不要改成直接編輯檔案」。
 - 既有規格裡「以新順序重跑依賴檢查」在儲存接口上讀的是哪一份順序：預期是看板順序文件。實作時用測試確認 `set_rank` 內部每一處讀順序鍵的地方都改成問儲存，沒有遺漏直接讀 metadata 的地方。
+
+  **已確認**（任務 2.2、2.3）：`set_rank` 的路徑上只有 `move_start` 一處讀順序鍵，已改成 `store.board_ranks()`；之後的欄序、補章與依賴檢查都用這張表推算，不再讀 metadata。`speclink-host` 的 `port_rank` 測試確認：經儲存接口執行時，順序鍵只寫進 `board/order`，任何變更的 metadata 都沒有被寫入。`plan`、`change depends` 與 `board_order` 等其他讀法維持讀 metadata，不在這個變更的範圍內。
+
+  實作上的兩個細節：
+  - 引擎命令讓 `set_rank` 照原樣執行，只把它的寫入先收集起來，最後一次交給 `Store::write_board_ranks`。`set_rank` 本來就在第一筆寫入之前做完全部檢查，所以結果相同。
+  - `Store` 多了一個父 trait `AsDynStore`（每個有固定大小的實作都自動取得），讓 `write_board_ranks` 的預設實作能把自己交給吃 `&dyn Store` 的 `set_board_rank`。實作者不必改任何程式。
+
+## 稽核結論
+
+任務 4.1 以 sharp-edges 清單（`speclink instructions --skill audit` 的 Discipline Mode）檢查新增的介面。結論：沒有需要修正的問題；下列每一項都有測試釘住。
+
+| 檢查項目 | 結論 | 釘住它的測試 |
+|---|---|---|
+| 遠端的排序請求不能繞過編輯者檢查 | 新路由掛在專案路由上，由既有的寫入守門統一擋下 reader（403），處理函式不會執行 | `speclink-server` 的 `api::plan_api::a_reader_cannot_rank`；`api::write_guard` 的路由清單已加上 `POST changes/demo/rank` |
+| 名稱與錨點不能帶出範圍以外的鍵 | `set_rank` 只接受作用中的變更名稱（帶 `/`、`..` 的名稱讀作不存在）；儲存接口上只寫 `board/order` 一個固定的鍵，變更名稱只是文件裡的 JSON 鍵，由 serde 跳脫 | `speclink-host` 的 `port_rank::a_name_that_leaves_the_changes_folder_writes_nothing`；`speclink-core` 既有的 `rank_refuses_unknown_archived_or_corrupt_names` |
+| 看板順序文件無法解析時不 panic、不清空討論的順序 | 變更那張表沿用 `BoardOrderDoc::from_content` 的寬鬆讀法（壞內容讀成沒有順序鍵）；討論那張表另外讀，只要它本身是合法的表就原樣寫回，即使變更那張表的型別是錯的 | `port_rank::unusable_board_content_reads_as_no_ranks_and_is_rewritten`、`port_rank::the_discussion_table_is_kept` |
+| 寫進 metadata 的預設實作經過純量跳脫 | 預設實作呼叫既有的 `set_board_rank`：順序鍵必須全是小寫字母、名稱必須是單一路徑段，比跳脫更嚴格；其餘位元組逐字保留 | `speclink-core` 的 `command::change_rank::tests::write_board_ranks_refuses_a_key_that_is_not_a_plain_scalar`、`write_board_ranks_defaults_to_meta_writes_in_order` |
+| 守門失敗的每一條路徑都沒有寫入 | 不存在的變更在 `set_rank` 之前就以 `not_found` 結束；其餘守門都在 `set_rank` 的第一筆寫入之前；命令只在 `set_rank` 成功後才把收集到的寫入交給儲存；儲存接口上命令失敗時暫存的寫入整批丟棄 | `change_rank::tests` 的各個拒絕情境（寫入次數為 0）、`port_rank::a_refused_move_commits_nothing`、`plan_api::an_absent_force_reads_as_false` |
+| 技能的新文字不會讓 agent 在沒有檔案的環境改用直接編輯 | 新句子只指向動詞；整份寫回被拒絕時明寫「停下來告訴使用者，不要改成直接編輯檔案」；搬回封存記錄的步驟限定規格資料夾在這個 checkout 時才做 | `speclink-core` 的 `skill_verbization::first_wave_skills_read_and_write_through_verbs` |
+
+其他觀察（不改）：
+
+- 線上的 `position` 是字串，server 只接受 `before`／`after`，其他值回 400 `invalid_argument`；CLI 收到不認得的值時報錯，不猜測。用字串而不是列舉，是為了讓錯誤經過 server 既有的 `invalid_argument` 回應，而不是 JSON 解析失敗的通用錯誤。
+- `force` 缺席讀作 false，預設不覆寫既有的順序鍵。
+- 遠端用戶端把變更名稱直接放進路徑，與既有的 `set_depends`、`set_schema` 相同；server 端的名稱檢查會擋下不合法的名稱。

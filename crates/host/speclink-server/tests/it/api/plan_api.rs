@@ -9,6 +9,7 @@ use crate::common;
 
 use serde_json::{json, Value};
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
+use speclink_protocol::query::BoardOrderDoc;
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
 use speclink_store::memory::MemoryStore;
@@ -570,4 +571,93 @@ fn switching_to_the_current_schema_is_an_idempotent_200() {
     assert_eq!(body["changed"], json!(false));
     assert_eq!(revision(&f), before, "an idempotent pass commits nothing");
     assert_eq!(outbox_names(&f), events, "an idempotent pass publishes no event");
+}
+
+// --- 規格「排序請求與回應」（skills-verbs-first-wave）---
+
+fn post_rank(f: &Fixture, pat: &str, change: &str, body: Value) -> Result<ureq::Response, ureq::Error> {
+    request("POST", f, pat, &format!("changes/{change}/rank")).send_json(body)
+}
+
+/// add-a ranked `n` on the board, add-c unranked: both proposed.
+fn rank_fixture(board: &str) -> Fixture {
+    let f = fixture(&[("add-a", meta("2026-09-01", None)), ("add-c", meta("2026-09-02", None))]);
+    seed(&f.store, &[(DocumentId::BoardOrder, board.to_string())]);
+    f
+}
+
+#[test]
+fn an_editor_ranks_a_change_on_the_board_resource() {
+    // Scenario「排序成功」：200、三個欄位（camelCase、字串）、新的範圍版本；順序鍵
+    // 只寫進 board resource，metadata 逐位元不變，推送分類歸到該變更。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
+    let metas = (stored(&f, &change_meta("add-a")), stored(&f, &change_meta("add-c")));
+    let before = revision(&f);
+    let response = post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "before" }))
+        .expect("editor POST succeeds");
+    assert_eq!(response.status(), 200);
+    let etag = response.header("ETag").expect("ETag present").to_string();
+    let body = response.into_json::<Value>().expect("JSON body");
+    assert_eq!(body, json!({ "change": "add-c", "anchor": "add-a", "position": "before" }));
+
+    let after = revision(&f);
+    assert_eq!(after, before + 1, "one commit");
+    assert_eq!(etag, format!("\"{after}\""), "the response carries the post-commit ETag");
+    let (board, _) = stored(&f, &DocumentId::BoardOrder).expect("board present");
+    let ranks = BoardOrderDoc::from_content(Some(&board)).changes;
+    assert_eq!(ranks["add-a"], "n");
+    assert!(ranks["add-c"].as_str() < "n", "{ranks:?}");
+    assert_eq!((stored(&f, &change_meta("add-a")), stored(&f, &change_meta("add-c"))), metas);
+    assert_eq!(outbox_names(&f).last().map(String::as_str), Some("change-ranked"));
+    let (plan, _) = get_plan(&f, &f.reader_pat);
+    assert_eq!(order(&plan), ["add-c", "add-a"]);
+}
+
+#[test]
+fn an_absent_force_reads_as_false() {
+    // Scenario「force 缺席讀作 false」。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n","add-c":"t"},"discussions":{}}"#);
+    let board = stored(&f, &DocumentId::BoardOrder);
+    let (status, error) =
+        protocol_error(post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "after" })));
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::Refused);
+    assert!(error.message.contains("already has a board rank"), "{}", error.message);
+    assert_eq!(stored(&f, &DocumentId::BoardOrder), board, "a refusal writes nothing");
+}
+
+#[test]
+fn a_position_other_than_before_or_after_is_an_invalid_argument() {
+    // Scenario「不合法的 position」。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
+    let board = stored(&f, &DocumentId::BoardOrder);
+    let before = revision(&f);
+    let (status, error) =
+        protocol_error(post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "first" })));
+    assert_eq!(status, 400);
+    assert_eq!(error.reason, ErrorReason::InvalidArgument);
+    assert_eq!(stored(&f, &DocumentId::BoardOrder), board);
+    assert_eq!(revision(&f), before);
+}
+
+#[test]
+fn a_reader_cannot_rank() {
+    // Scenario「沒有編輯權限」。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
+    let board = stored(&f, &DocumentId::BoardOrder);
+    let (status, error) =
+        protocol_error(post_rank(&f, &f.reader_pat, "add-c", json!({ "anchor": "add-a", "position": "before" })));
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+    assert_eq!(stored(&f, &DocumentId::BoardOrder), board);
+}
+
+#[test]
+fn ranking_an_unknown_change_is_a_404() {
+    // Scenario「變更不存在」。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
+    let (status, error) =
+        protocol_error(post_rank(&f, &f.editor_pat, "ghost", json!({ "anchor": "add-a", "position": "before" })));
+    assert_eq!(status, 404);
+    assert_eq!(error.reason, ErrorReason::NotFound);
 }

@@ -29,6 +29,7 @@ mod reconclude_restale;
 mod remote_connect;
 mod remote_drift;
 mod remote_handshake_gate;
+mod remote_change_rank;
 mod remote_plan;
 mod remote_read_path;
 mod remote_section;

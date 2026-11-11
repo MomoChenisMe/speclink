@@ -2,8 +2,9 @@
 
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
+use speclink_core::plan::Side;
 
-use crate::{CommandTarget, LocalOnlyReason, ToCommand, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct PlanArgs {
@@ -79,12 +80,17 @@ impl ToCommand for PlanArgs {
     }
 }
 
-impl ChangeVerbArgs {
-    /// `change rank` — the one member of the family without an engine command.
-    pub fn is_rank(&self) -> bool {
-        matches!(self.command, ChangeCommands::Rank { .. })
+/// The anchor of `change rank` and the side it names. clap makes exactly one
+/// of `--before` and `--after` present.
+pub fn rank_anchor(before: &Option<String>, after: &Option<String>) -> (String, Side) {
+    match (before, after) {
+        (Some(anchor), _) => (anchor.clone(), Side::Before),
+        (None, Some(anchor)) => (anchor.clone(), Side::After),
+        (None, None) => unreachable!("clap requires --before or --after"),
     }
+}
 
+impl ChangeVerbArgs {
     pub fn name(&self) -> &'static str {
         match self.command {
             ChangeCommands::Depends { .. } => "change depends",
@@ -95,8 +101,6 @@ impl ChangeVerbArgs {
 }
 
 impl ToCommand for ChangeVerbArgs {
-    /// `change rank` rewrites board ranks across the checkout's worktree
-    /// copies, so it has no engine command.
     fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(match &self.command {
             ChangeCommands::Depends { name, on, remove, .. } => {
@@ -109,8 +113,9 @@ impl ToCommand for ChangeVerbArgs {
             ChangeCommands::Schema { name, schema, .. } => {
                 CommandTarget::Command(Command::ChangeSchema { name: name.clone(), schema: schema.clone() })
             }
-            ChangeCommands::Rank { .. } => {
-                CommandTarget::LocalOnly { verb: self.name(), reason: LocalOnlyReason::NeedsCheckout }
+            ChangeCommands::Rank { name, before, after, force, .. } => {
+                let (anchor, side) = rank_anchor(before, after);
+                CommandTarget::Command(Command::ChangeRank { name: name.clone(), anchor, side, force: *force })
             }
         })
     }
@@ -118,9 +123,10 @@ impl ToCommand for ChangeVerbArgs {
 
 #[cfg(test)]
 mod tests {
-    use crate::families::test_support::{command_of, local_only_of, name_of, policy_of};
+    use crate::families::test_support::{command_of, name_of, policy_of};
     use crate::{StdinPolicy, VerbInputs};
     use speclink_core::command::Command;
+    use speclink_core::plan::Side;
     use std::collections::BTreeMap;
 
     #[test]
@@ -149,15 +155,18 @@ mod tests {
                 &["change", "schema", "demo", "spec-driven"],
                 Command::ChangeSchema { name: "demo".into(), schema: "spec-driven".into() },
             ),
+            (
+                &["change", "rank", "demo", "--before", "other"],
+                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), side: Side::Before, force: false },
+            ),
+            (
+                &["change", "rank", "demo", "--after=other", "--force", "--json"],
+                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), side: Side::After, force: true },
+            ),
         ];
         for (argv, want) in cases {
             assert_eq!(&command_of(argv, VerbInputs::default()), want, "{argv:?}");
         }
-    }
-
-    #[test]
-    fn change_rank_is_local_only() {
-        assert_eq!(local_only_of(&["change", "rank", "demo", "--before", "other"]), Some("change rank"));
     }
 
     #[test]

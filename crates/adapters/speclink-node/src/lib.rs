@@ -117,7 +117,8 @@ enum Backend {
     /// needs (deleteArtifact / readChangeMeta / writeChangeMeta) that the
     /// store did not implement — captured at construction so the stamp verbs
     /// can refuse BEFORE any destructive step (the engine deletes the ticket
-    /// before it rewrites the metadata). `writes_workflow_config` records
+    /// before it rewrites the metadata). `change rank` needs the last two of
+    /// them and refuses the same way. `writes_workflow_config` records
     /// whether the store has the optional `writeWorkflowConfig`, for the same
     /// reason: a workflow-config write verb refuses before it runs.
     Js {
@@ -317,6 +318,7 @@ fn run_dispatch(
             let flagged_without_stdin = stdin.is_none()
                 && matches!(policy, speclink_verbs::StdinPolicy::WhenFlagged { flagged: true });
             refuse_workflow_config(backend, name, &cmd, flagged_without_stdin)?;
+            refuse_unrankable(backend, name, &cmd)?;
             run_verb(backend, actor, rewrite_lock, &parsed, cmd)
         }
         speclink_verbs::CommandTarget::LocalOnly { verb, reason } => Err(local_only(verb, reason)),
@@ -353,6 +355,35 @@ fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Resu
         }
     }
     Ok(())
+}
+
+/// `change rank` on a JS store writes each board rank into change metadata
+/// (the store's default) through the optional raw pair. A store without it
+/// is refused before anything runs, the way a stamp is.
+fn refuse_unrankable(
+    backend: &Backend,
+    name: &str,
+    cmd: &core::command::Command,
+) -> std::result::Result<(), DispatchError> {
+    let Backend::Js { missing_stamp_methods, .. } = backend else {
+        return Ok(());
+    };
+    let missing: Vec<&str> = missing_stamp_methods
+        .iter()
+        .copied()
+        .filter(|method| *method != "deleteArtifact")
+        .collect();
+    if !matches!(cmd, core::command::Command::ChangeRank { .. }) || missing.is_empty() {
+        return Ok(());
+    }
+    Err(DispatchError::new(
+        "refused",
+        format!(
+            "{name} requires store methods this store does not implement: {} — \
+             ranking rewrites the change metadata",
+            missing.join(", ")
+        ),
+    ))
 }
 
 /// Whether `cmd` writes the workflow config document: an edit that is not a

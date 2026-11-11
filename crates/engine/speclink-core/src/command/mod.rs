@@ -9,8 +9,10 @@
 //! tools, completion, templates, feedback, demo) and remote connection
 //! management (link, unlink, auth) intentionally do NOT appear in [`Command`].
 
+mod change_rank;
 mod typed;
 mod workflow_config;
+pub use change_rank::ChangeRankOutcome;
 pub use typed::WrongOutcome;
 pub use workflow_config::{
     plan_workflow_config_edit, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
@@ -220,6 +222,8 @@ pub enum DomainEvent {
     },
     /// `change schema` actually switched the schema; `schema` is the new value.
     ChangeSchemaChanged { change: String, schema: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `change rank` wrote a board rank; `change` is the change it moved.
+    ChangeRanked { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -253,6 +257,7 @@ impl DomainEvent {
             DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
             DomainEvent::ChangeDependsChanged { .. } => "change-depends-changed",
             DomainEvent::ChangeSchemaChanged { .. } => "change-schema-changed",
+            DomainEvent::ChangeRanked { .. } => "change-ranked",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
@@ -406,6 +411,11 @@ pub enum Command {
     /// `change schema <name> <schema>` — switch the change's schema in its meta
     /// (change-schema-verb design D1); every guard refuses with zero writes.
     ChangeSchema { name: String, schema: String },
+    /// `change rank <name> (--before | --after) <anchor> [--force]` — move a
+    /// change within its stage's column by rewriting board ranks where the
+    /// store keeps them (skills-verbs-first-wave D3); every guard refuses
+    /// with zero writes.
+    ChangeRank { name: String, anchor: String, side: crate::plan::Side, force: bool },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -737,6 +747,7 @@ pub enum CommandOutcome {
     InProgressRemove(InProgressRemoveOutcome),
     ChangeDepends(DependsOutcome),
     ChangeSchema(SchemaOutcome),
+    ChangeRank(ChangeRankOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -871,6 +882,7 @@ pub fn execute(
         Command::ChangeSchema { name, schema } => {
             run_change_schema(store, ws, ctx.user_config_dir.as_deref(), &name, &schema)
         }
+        Command::ChangeRank { name, anchor, side, force } => change_rank::run(store, name, anchor, side, force),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -1068,6 +1080,10 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         CommandOutcome::ChangeSchema(o) => vec![DomainEvent::ChangeSchemaChanged {
             change: o.change.clone(),
             schema: o.schema.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ChangeRank(o) => vec![DomainEvent::ChangeRanked {
+            change: o.change.clone(),
             occurred_at: at,
         }],
         CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {

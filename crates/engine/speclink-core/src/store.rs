@@ -16,6 +16,7 @@
 
 use crate::model::Change;
 use anyhow::Result;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 /// A discussion document as stored: raw text plus its identity and location.
@@ -33,13 +34,25 @@ pub struct DiscussionDoc {
     pub archived: bool,
 }
 
+/// `&self` as `&dyn Store`, for a default method that hands the store to an
+/// engine function taking `&dyn Store`. Every sized [`Store`] has it.
+pub trait AsDynStore {
+    fn as_dyn_store(&self) -> &dyn Store;
+}
+
+impl<T: Store> AsDynStore for T {
+    fn as_dyn_store(&self) -> &dyn Store {
+        self
+    }
+}
+
 /// Storage interface for spec documents.
 ///
 /// Artifact identifiers (`artifact` parameters) are the schema-defined output
 /// paths relative to a change — e.g. `proposal.md`, `specs/<cap>/spec.md`.
 /// They are domain vocabulary (every schema names its artifacts this way),
 /// not storage layout.
-pub trait Store {
+pub trait Store: AsDynStore {
     /// Workspace-relative name of the spec directory, for the paths messages
     /// render (`<spec dir>/changes/<name>/.meta.yaml`). Backends without a
     /// local spec directory keep the default folder name.
@@ -218,4 +231,27 @@ pub trait Store {
     /// The project's LANGUAGE document (shared vocabulary), or None when the
     /// project has none — a missing vocabulary is a normal state, not an error.
     fn read_language(&self) -> Option<String>;
+
+    // --- board order ---
+
+    /// Every active change's board rank, keyed by change name; an unranked
+    /// change is absent. `change rank` reads the order here. The default is
+    /// each change's own metadata. A backend that keeps the order in one
+    /// document (the remote board resource) overrides this method and
+    /// [`Store::write_board_ranks`] together.
+    fn board_ranks(&self) -> BTreeMap<String, String> {
+        crate::plan::meta_ranks(&self.list_changes())
+    }
+
+    /// Write a batch of board ranks — all the ranks one `change rank` writes.
+    /// The default writes each into its change's metadata, in the given
+    /// order, by the same text surgery as `change depends` (the other bytes
+    /// kept, the key checked to be lowercase letters). It stops at the first
+    /// failure and keeps what it already wrote.
+    fn write_board_ranks(&self, ranks: &[(String, String)]) -> Result<()> {
+        for (change, key) in ranks {
+            crate::model::set_board_rank(self.as_dyn_store(), change, key)?;
+        }
+        Ok(())
+    }
 }

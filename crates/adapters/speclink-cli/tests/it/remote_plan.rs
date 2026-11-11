@@ -17,15 +17,15 @@ struct Captured {
     body: String,
 }
 
-struct MockServer {
+pub(crate) struct MockServer {
     server: Arc<tiny_http::Server>,
-    base: String,
+    pub(crate) base: String,
     captured: Arc<Mutex<Vec<Captured>>>,
 }
 
 const BINDING_BODY: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
 
-fn mock_server(mut routes: Vec<(&'static str, String, u16, String)>) -> MockServer {
+pub(crate) fn mock_server(mut routes: Vec<(&'static str, String, u16, String)>) -> MockServer {
     routes.push(("GET", "/binding".to_string(), 200, BINDING_BODY.to_string()));
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind mock server"));
     let port = server.server_addr().to_ip().expect("ip").port();
@@ -65,7 +65,7 @@ fn mock_server(mut routes: Vec<(&'static str, String, u16, String)>) -> MockServ
 
 impl MockServer {
     /// Every captured request except the handshake, as `METHOD suffix`.
-    fn verb_calls(&self) -> Vec<String> {
+    pub(crate) fn verb_calls(&self) -> Vec<String> {
         let prefix = "/api/speclink/v1/projects/demo";
         self.captured
             .lock()
@@ -76,7 +76,7 @@ impl MockServer {
             .collect()
     }
 
-    fn body_of(&self, method: &str, suffix: &str) -> String {
+    pub(crate) fn body_of(&self, method: &str, suffix: &str) -> String {
         let path = format!("/api/speclink/v1/projects/demo{suffix}");
         let caps = self.captured.lock().unwrap();
         caps.iter()
@@ -93,8 +93,8 @@ impl Drop for MockServer {
     }
 }
 
-struct TempProject {
-    dir: PathBuf,
+pub(crate) struct TempProject {
+    pub(crate) dir: PathBuf,
 }
 
 impl TempProject {
@@ -109,14 +109,14 @@ impl TempProject {
     }
 
     /// fs 專案：只有 speclink/changes/，change 由測試逐一放入。
-    fn at(tag: &str) -> TempProject {
+    pub(crate) fn at(tag: &str) -> TempProject {
         let p = TempProject::bare(tag);
         std::fs::create_dir_all(p.dir.join("speclink").join("changes")).unwrap();
         p
     }
 
     /// remote 專案：只有指向 mock 的連線設定。
-    fn remote(tag: &str, url: &str) -> TempProject {
+    pub(crate) fn remote(tag: &str, url: &str) -> TempProject {
         let p = TempProject::bare(tag);
         std::fs::write(
             p.dir.join(".speclink.yaml"),
@@ -126,7 +126,7 @@ impl TempProject {
         p
     }
 
-    fn put_change(&self, name: &str, meta: &str) {
+    pub(crate) fn put_change(&self, name: &str, meta: &str) {
         let dir = self.dir.join("speclink").join("changes").join(name);
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join(".meta.yaml"), meta).unwrap();
@@ -157,7 +157,7 @@ impl TempProject {
         std::fs::write(dir.join(format!("{slug}.md")), doc).unwrap();
     }
 
-    fn run(&self, args: &[&str]) -> Output {
+    pub(crate) fn run(&self, args: &[&str]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
         cmd.args(args).current_dir(&self.dir);
         for key in [
@@ -182,11 +182,11 @@ impl Drop for TempProject {
     }
 }
 
-fn stdout_of(out: &Output) -> String {
+pub(crate) fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 
-fn stderr_of(out: &Output) -> String {
+pub(crate) fn stderr_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).to_string()
 }
 

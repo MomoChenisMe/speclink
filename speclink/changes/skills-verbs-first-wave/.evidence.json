@@ -1,0 +1,240 @@
+{
+  "version": 2,
+  "change": "skills-verbs-first-wave",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）依 D2 在守門測試新增一個只掃 discuss、propose、ingest 的測試，掃 Claude 與自訂工具 tool-call 兩種渲染結果：不得有 `path` 與 `spec.md` 同一行的句子；propose 與 ingest 不得出現 `config.yaml`；三支都要出現 `speclink artifact cat`；propose 與 ingest 要出現 `--stdin --force`；discuss 要出現 `speclink show`；含「Move the record file」的那一行要同時含 checkout。對應規格「store 文件讀取動詞」新增的情境，以及三支技能各自新增的需求：「正式規格與變更文件一律經動詞讀取」「artifact 的讀取與改寫一律經動詞」「既有 artifact 的更新經動詞整份寫回」。涉及 crates/engine/speclink-core/tests/it/skill_verbization.rs。驗證：`cargo test -p speclink-core --test it skill_verbization::` 中新增的測試失敗，且列出的測試數不是 0。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 確認「整份寫回」實際會被引擎拒絕的情況：用測試對 `new artifact` 帶 `--force` 逐一嘗試——覆寫提案與設計、覆寫部分任務已勾選的任務清單（寫回後既有任務行的勾選狀態與行尾識別註解不變）、覆寫任務全部勾選的任務清單、覆寫已開工變更的 delta spec——記下哪些成功、哪些被拒絕與錯誤訊息。把結果寫進 design.md 的 Open Questions。涉及 crates/engine/speclink-core/src/lifecycle/newcmd.rs（只在既有的測試模組加測試）、speclink/changes/skills-verbs-first-wave/design.md。驗證：`cargo test -p speclink-core newcmd` 通過；design.md 列出每種情況的結果。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Green）依 D1 的三張表改寫 discuss、propose、ingest 的原稿：discuss 讀 Purpose 改用 `speclink show <capability>` 並寫明清單的 `path` 不拿來開檔；沒說方法的讀取補上 `speclink artifact cat`、`speclink show <name> --json`、`speclink discuss show <slug> --json` 的 `content`；修正與更新改成「讀出全文、整份寫回」，每支技能只說明一次、其他步驟引用它；ingest 寫明既有任務行原樣保留；spec 語言指向 `speclink workflow-config show --json` 的 `specLocale`；`outputPath` 改成僅供顯示；搬回記錄的步驟加上條件；整份寫回被拒絕時停下來的那一句照 1.2 的結果寫。不增加強調字，三個檔都在 500 行以內。涉及 crates/engine/speclink-core/assets/skills/discuss.md、crates/engine/speclink-core/assets/skills/propose.md、crates/engine/speclink-core/assets/skills/ingest.md。驗證：1.1 的測試通過；`cargo test -p speclink-core --test it skill_authoring::` 通過（強調字的上限表沒有調高；若必須調整，在完成說明寫明原因）。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 前進技能資產的版號，重新產生 golden 快照與 lock 檔，並用 `speclink update` 重新產生本 repo 的技能檔。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/tests/golden/assets.lock、crates/engine/speclink-core/tests/golden 底下的技能快照、本 repo 的 .claude/skills 與 .agents/skills。驗證：先 `cargo build -p speclink-cli` 再執行 `speclink update`（用 target/debug 的執行檔）；`cargo test -p speclink-core` 全部通過；用 `git diff --stat` 確認快照的差異只在 discuss、propose、ingest 三支與版號行；`speclink --version` 顯示新的資產版號。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 （Red）為 D3、D4 寫引擎的測試，用測試儲存：`ChangeRank` 對 change-plan 既有情境裡不涉及 worktree 的每一個（無順序鍵排到另一個之前、已有順序鍵未強制被拒、強制覆寫、跨宣告依賴被拒、缺順序鍵的欄先整欄補上、不同階段被拒）得到和直接呼叫 `set_rank` 相同的寫入與錯誤訊息；成功時回報一筆 `change-ranked` 事件，主體是被移動的變更；結果的三個欄位是 `change`、`anchor`、`position`；`Store::board_ranks` 的預設實作回傳各變更 metadata 的順序鍵，`write_board_ranks` 的預設實作依序寫入且純量經跳脫。更新列舉全部命令變體與全部事件的既有測試。涉及 crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/mod.rs。驗證：`cargo test -p speclink-core change_rank` 編譯失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/change_rank.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.2 （Green）實作 `Command::ChangeRank`、`ChangeRankOutcome`、`DomainEvent::ChangeRanked`、`Store::board_ranks` 與 `Store::write_board_ranks`；把 `set_rank` 與它呼叫的函式裡每一處讀順序鍵的地方改成問儲存。本機 CLI 直接呼叫 `set_rank` 的路徑維持可用。涉及 crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/lifecycle/plan.rs、crates/host/speclink-host/src/commit.rs。驗證：2.1 的測試通過；`cargo test -p speclink-core` 與 `cargo test -p speclink-host` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/tests/port_rank.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.2 （Red）寫 CLI 遠端的整合測試，對應規格「change rank 動詞寫入看板順序鍵」新增的 remote 情境與「模式分岔的單點宣告」新增的情境：寫入 board resource 且 metadata 逐位元不變、`--json` 的形狀與本機相同、缺順序鍵的欄一次提交補上、守門失敗零寫入且訊息含 `already has a board rank` 與 `--force`、board resource 被同時改寫時回報版本衝突、remote 模式對 server 發出 POST 而不碰本機 store。把既有「remote 模式拒絕 change rank」的測試改寫成「`plan --strict-overlap` 仍然零請求拒絕」。涉及 crates/adapters/speclink-cli/tests/it/remote_change_rank.rs、crates/adapters/speclink-cli/tests/it/plan_verbs.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it remote_change_rank::` 失敗。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/host/speclink-server/tests/it/api/plan_api.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_change_rank.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "3.3 （Green）依 D3、D5、D6 接上各入口：`speclink-verbs` 的 `change rank` 轉成 `ChangeRank`，輸出搬進共用的輸出函式（先存下今天本機的 stdout 與 `--json`，搬完逐位元比對）；`speclink-remote` 新增 `rank_change`；CLI 的 dispatch 宣告把 `change rank` 改成兩種模式都有，遠端分支呼叫 `rank_change`，本機分支不改。涉及 crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/render/plan.rs、crates/protocol/speclink-remote/src/client.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/plan.rs。驗證：3.2 的測試通過；`cargo test -p speclink-cli --test it plan_verbs::` 既有的本機測試不改斷言就通過；`cargo test -p speclink-verbs` 與 `cargo test -p speclink-remote` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/protocol/speclink-remote/src/client.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.1 （Red→Green）新增排序的線上型別與示範用 server 的路由，對應規格「排序請求與回應」的五個情境：先寫 server 的測試——排序成功回 200 與三個欄位（斷言 camelCase 與型別）並帶新的範圍版本；`force` 缺席讀作 false；不合法的 `position` 回 invalid_argument；只有讀取權限的成員被拒；變更不存在回 not_found；`change-ranked` 在推送的分類裡歸到該變更。再實作。涉及 crates/protocol/speclink-protocol/src/command.rs、crates/host/speclink-server/src/app.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/src/api/events.rs。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M74NYT4AVMYVFDXXPR1J4D8N",
+      "taskDesc": "1.1 （Red）依 D2 在守門測試新增一個只掃 discuss、propose、ingest 的測試，掃 Claude 與自訂工具 tool-call 兩種渲染結果：不得有 `path` 與 `spec.md` 同一行的句子；propose 與 ingest 不得出現 `config.yaml`；三支都要出現 `speclink artifact cat`；propose 與 ingest 要出現 `--stdin --force`；discuss 要出現 `speclink show`；含「Move the record file」的那一行要同時含 checkout。對應規格「store 文件讀取動詞」新增的情境，以及三支技能各自新增的需求：「正式規格與變更文件一律經動詞讀取」「artifact 的讀取與改寫一律經動詞」「既有 artifact 的更新經動詞整份寫回」。涉及 crates/engine/speclink-core/tests/it/skill_verbization.rs。驗證：`cargo test -p speclink-core --test it skill_verbization::` 中新增的測試失敗，且列出的測試數不是 0。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ],
+      "recordedAt": "2026-11-11T07:39:45Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4AWAZW9FRBPCZ72FSS",
+      "taskDesc": "1.2 確認「整份寫回」實際會被引擎拒絕的情況：用測試對 `new artifact` 帶 `--force` 逐一嘗試——覆寫提案與設計、覆寫部分任務已勾選的任務清單（寫回後既有任務行的勾選狀態與行尾識別註解不變）、覆寫任務全部勾選的任務清單、覆寫已開工變更的 delta spec——記下哪些成功、哪些被拒絕與錯誤訊息。把結果寫進 design.md 的 Open Questions。涉及 crates/engine/speclink-core/src/lifecycle/newcmd.rs（只在既有的測試模組加測試）、speclink/changes/skills-verbs-first-wave/design.md。驗證：`cargo test -p speclink-core newcmd` 通過；design.md 列出每種情況的結果。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs"
+      ],
+      "recordedAt": "2026-11-11T07:41:53Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4AS4MP6XXCYFGZAV8M",
+      "taskDesc": "1.3 （Green）依 D1 的三張表改寫 discuss、propose、ingest 的原稿：discuss 讀 Purpose 改用 `speclink show <capability>` 並寫明清單的 `path` 不拿來開檔；沒說方法的讀取補上 `speclink artifact cat`、`speclink show <name> --json`、`speclink discuss show <slug> --json` 的 `content`；修正與更新改成「讀出全文、整份寫回」，每支技能只說明一次、其他步驟引用它；ingest 寫明既有任務行原樣保留；spec 語言指向 `speclink workflow-config show --json` 的 `specLocale`；`outputPath` 改成僅供顯示；搬回記錄的步驟加上條件；整份寫回被拒絕時停下來的那一句照 1.2 的結果寫。不增加強調字，三個檔都在 500 行以內。涉及 crates/engine/speclink-core/assets/skills/discuss.md、crates/engine/speclink-core/assets/skills/propose.md、crates/engine/speclink-core/assets/skills/ingest.md。驗證：1.1 的測試通過；`cargo test -p speclink-core --test it skill_authoring::` 通過（強調字的上限表沒有調高；若必須調整，在完成說明寫明原因）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md"
+      ],
+      "recordedAt": "2026-11-11T07:44:31Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4ASS96100H9967SKG2",
+      "taskDesc": "1.4 前進技能資產的版號，重新產生 golden 快照與 lock 檔，並用 `speclink update` 重新產生本 repo 的技能檔。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/tests/golden/assets.lock、crates/engine/speclink-core/tests/golden 底下的技能快照、本 repo 的 .claude/skills 與 .agents/skills。驗證：先 `cargo build -p speclink-cli` 再執行 `speclink update`（用 target/debug 的執行檔）；`cargo test -p speclink-core` 全部通過；用 `git diff --stat` 確認快照的差異只在 discuss、propose、ingest 三支與版號行；`speclink --version` 顯示新的資產版號。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ],
+      "recordedAt": "2026-11-11T07:46:09Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4A6ZSFCE7VCXAFEFHD",
+      "taskDesc": "2.1 （Red）為 D3、D4 寫引擎的測試，用測試儲存：`ChangeRank` 對 change-plan 既有情境裡不涉及 worktree 的每一個（無順序鍵排到另一個之前、已有順序鍵未強制被拒、強制覆寫、跨宣告依賴被拒、缺順序鍵的欄先整欄補上、不同階段被拒）得到和直接呼叫 `set_rank` 相同的寫入與錯誤訊息；成功時回報一筆 `change-ranked` 事件，主體是被移動的變更；結果的三個欄位是 `change`、`anchor`、`position`；`Store::board_ranks` 的預設實作回傳各變更 metadata 的順序鍵，`write_board_ranks` 的預設實作依序寫入且純量經跳脫。更新列舉全部命令變體與全部事件的既有測試。涉及 crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/mod.rs。驗證：`cargo test -p speclink-core change_rank` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/change_rank.rs"
+      ],
+      "recordedAt": "2026-11-11T07:50:05Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4AEYWNSW459FX2099R",
+      "taskDesc": "2.2 （Green）實作 `Command::ChangeRank`、`ChangeRankOutcome`、`DomainEvent::ChangeRanked`、`Store::board_ranks` 與 `Store::write_board_ranks`；把 `set_rank` 與它呼叫的函式裡每一處讀順序鍵的地方改成問儲存。本機 CLI 直接呼叫 `set_rank` 的路徑維持可用。涉及 crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/lifecycle/plan.rs、crates/host/speclink-host/src/commit.rs。驗證：2.1 的測試通過；`cargo test -p speclink-core` 與 `cargo test -p speclink-host` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/plan.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/tests/port_rank.rs"
+      ],
+      "recordedAt": "2026-11-11T07:54:38Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4AMEVMR534ZZJ31PGW",
+      "taskDesc": "3.2 （Red）寫 CLI 遠端的整合測試，對應規格「change rank 動詞寫入看板順序鍵」新增的 remote 情境與「模式分岔的單點宣告」新增的情境：寫入 board resource 且 metadata 逐位元不變、`--json` 的形狀與本機相同、缺順序鍵的欄一次提交補上、守門失敗零寫入且訊息含 `already has a board rank` 與 `--force`、board resource 被同時改寫時回報版本衝突、remote 模式對 server 發出 POST 而不碰本機 store。把既有「remote 模式拒絕 change rank」的測試改寫成「`plan --strict-overlap` 仍然零請求拒絕」。涉及 crates/adapters/speclink-cli/tests/it/remote_change_rank.rs、crates/adapters/speclink-cli/tests/it/plan_verbs.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it remote_change_rank::` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/host/speclink-server/tests/it/api/plan_api.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_change_rank.rs"
+      ],
+      "recordedAt": "2026-11-11T08:00:51Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4AFTMQKNCQPEQVJXMM",
+      "taskDesc": "3.3 （Green）依 D3、D5、D6 接上各入口：`speclink-verbs` 的 `change rank` 轉成 `ChangeRank`，輸出搬進共用的輸出函式（先存下今天本機的 stdout 與 `--json`，搬完逐位元比對）；`speclink-remote` 新增 `rank_change`；CLI 的 dispatch 宣告把 `change rank` 改成兩種模式都有，遠端分支呼叫 `rank_change`，本機分支不改。涉及 crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/render/plan.rs、crates/protocol/speclink-remote/src/client.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/plan.rs。驗證：3.2 的測試通過；`cargo test -p speclink-cli --test it plan_verbs::` 既有的本機測試不改斷言就通過；`cargo test -p speclink-verbs` 與 `cargo test -p speclink-remote` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/protocol/speclink-remote/src/client.rs"
+      ],
+      "recordedAt": "2026-11-11T08:03:00Z"
+    },
+    {
+      "taskId": "tsk_01M74NYT4A2Q5B2H7G32DF303T",
+      "taskDesc": "3.1 （Red→Green）新增排序的線上型別與示範用 server 的路由，對應規格「排序請求與回應」的五個情境：先寫 server 的測試——排序成功回 200 與三個欄位（斷言 camelCase 與型別）並帶新的範圍版本；`force` 缺席讀作 false；不合法的 `position` 回 invalid_argument；只有讀取權限的成員被拒；變更不存在回 not_found；`change-ranked` 在推送的分類裡歸到該變更。再實作。涉及 crates/protocol/speclink-protocol/src/command.rs、crates/host/speclink-server/src/app.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/src/api/events.rs。驗證：`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "24d9332c81215546065c919aedaebf38365666fe",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-11T08:04:31Z"
+    }
+  ]
+}

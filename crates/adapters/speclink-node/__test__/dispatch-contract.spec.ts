@@ -1,7 +1,7 @@
 // dispatch 的輸入輸出契約（spec: 壞工作流設定經 dispatch 拒絕 / CLI 與 dispatch
 // 的錯誤分類一致）：錯誤碼出自引擎命令層的封閉註冊表，message 與 CLI 訊息相同。
 import { execFileSync, spawnSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -433,11 +433,44 @@ describe('dispatch covers every verb that has an engine command', () => {
     })
   })
 
+  // spec node-sdk「dispatch 執行 change rank」：fs 形式寫各變更的 metadata，plan 跟著改順序。
+  it('change rank runs and the plan follows it', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-node-rank-')))
+    for (const [name, meta] of [
+      ['a', 'schema: spec-driven\ncreated: 2026-09-01\nboard_rank: n\n'],
+      ['c', 'schema: spec-driven\ncreated: 2026-09-02\n'],
+    ]) {
+      mkdirSync(join(root, 'speclink', 'changes', name), { recursive: true })
+      writeFileSync(join(root, 'speclink', 'changes', name, '.meta.yaml'), meta)
+    }
+    try {
+      const engine = createEngine({ store: { type: 'fs', root } })
+      expect(await engine.dispatch(['change', 'rank', 'c', '--before', 'a', '--json'])).toEqual({
+        change: 'c',
+        anchor: 'a',
+        position: 'before',
+      })
+      const plan = (await engine.dispatch(['plan', '--json'])) as { changes: { name: string }[] }
+      expect(plan.changes.map((c) => c.name)).toEqual(['c', 'a'])
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  })
+
+  it('change rank on a store without the change-metadata pair is refused before it runs', async () => {
+    const store = memoryStore(fixtureProject()) as Record<string, unknown>
+    delete store.readChangeMeta
+    delete store.writeChangeMeta
+    const engine = createEngine({ store: store as never })
+    const err = await rejection(engine.dispatch(['change', 'rank', 'beta', '--before', 'alpha']))
+    expect(err.code).toBe('refused')
+    expect(err.message).toMatch(/readChangeMeta, writeChangeMeta/)
+  })
+
   it('the verbs that need a checkout still reject with invalid_argv', async () => {
     const engine = createEngine({ store: memoryStore(fixtureProject()) })
     for (const argv of [
       ['drift', 'alpha'],
-      ['change', 'rank', 'demo', '--before', 'other'],
       ['review', 'prepare', 'beta'],
       ['review', 'scope', 'beta'],
       ['verify', 'scope', 'beta'],

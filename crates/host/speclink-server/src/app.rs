@@ -80,6 +80,7 @@ pub fn router(state: AppState) -> Router {
         .route("/changes/{name}/claim", post(routes::claim))
         .route("/changes/{name}/depends", post(routes::change_depends))
         .route("/changes/{name}/schema", post(routes::change_schema))
+        .route("/changes/{name}/rank", post(routes::change_rank))
         .route(
             "/changes/{name}/in-progress",
             post(routes::in_progress).delete(routes::in_progress_remove),

@@ -1996,6 +1996,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             DomainEvent::ChangeSchemaChanged { change: s("c"), schema: s("no-spec-change"), occurred_at: at },
             "change-schema-changed",
         ),
+        (DomainEvent::ChangeRanked { change: s("c"), occurred_at: at }, "change-ranked"),
         (
             DomainEvent::ChangeArchived { change: s("c"), dated_name: s("2026-07-12-c"), occurred_at: at },
             "change-archived",
@@ -2044,7 +2045,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         (DomainEvent::VerifyStamped { change: s("c"), occurred_at: at }, "verify-stamped"),
         (DomainEvent::VerifyDiscarded { change: s("c"), occurred_at: at }, "verify-discarded"),
     ];
-    assert_eq!(table.len(), 26, "the coverage table has 26 mutating verbs");
+    assert_eq!(table.len(), 27, "the coverage table has 27 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2090,6 +2091,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::InProgressRemove { name: _ } => {}
         Command::ChangeDepends { name: _, on: _, remove: _ } => {}
         Command::ChangeSchema { name: _, schema: _ } => {}
+        Command::ChangeRank { name: _, anchor: _, side: _, force: _ } => {}
         Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
         Command::Discard { change: _, force: _ } => {}
         Command::DiscussNew { topic: _, slug: _, kind: _ } => {}

@@ -34,6 +34,7 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::ChangeInProgressRemoved { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeDependsChanged { change, depends_on, .. } => json!({ "change": change, "dependsOn": depends_on }),
         DomainEvent::ChangeSchemaChanged { change, schema, .. } => json!({ "change": change, "schema": schema }),
+        DomainEvent::ChangeRanked { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeArchived { change, dated_name, .. } => json!({ "change": change, "datedName": dated_name }),
         DomainEvent::ChangeDiscarded { change, .. } => json!({ "change": change }),
         DomainEvent::DiscussionCreated { slug, .. } => json!({ "slug": slug }),

@@ -923,12 +923,13 @@ fn change_rank_needs_exactly_one_side() {
 }
 
 #[test]
-fn change_rank_remote_mode_refuses_without_request() {
-    // Scenario remote 模式拒絕：只解析模式、不握手。listener 在線但從不回話——
-    // 若發出任何請求，連線會躺在 backlog 裡被 accept() 撿到。
+fn plan_strict_overlap_remote_mode_still_refuses_without_request() {
+    // Scenario「Dual 家族內的 FsOnly 子情形零請求拒絕」：change rank 在 remote 模式改走
+    // server 之後，只剩 plan --strict-overlap 只限本機——只解析模式、不握手。listener
+    // 在線但從不回話：若發出任何請求，連線會躺在 backlog 裡被 accept() 撿到。
     let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
     let port = listener.local_addr().unwrap().port();
-    let p = TempProject::new("rank-remote");
+    let p = TempProject::new("strict-remote");
     p.put_change("a", PROPOSED, &[]);
     p.put_change("c", PROPOSED, &[]);
     std::fs::write(
@@ -936,12 +937,11 @@ fn change_rank_remote_mode_refuses_without_request() {
         format!("remote:\n  url: http://127.0.0.1:{port}/api/speclink/v1/projects/demo\n"),
     )
     .unwrap();
-    let out = p.run(&["change", "rank", "c", "--before", "a"]);
-    assert!(!out.status.success(), "remote mode refuses the verb");
+    let out = p.run(&["plan", "--strict-overlap"]);
+    assert!(!out.status.success(), "remote mode refuses the flag");
     let err = stderr_of(&out);
     assert!(
-        err.contains("change rank is not available in remote mode")
-            && err.contains("the board order lives in the board resource"),
+        err.contains("plan --strict-overlap is not available in remote mode"),
         "stderr: {err}"
     );
     assert!(out.stdout.is_empty());

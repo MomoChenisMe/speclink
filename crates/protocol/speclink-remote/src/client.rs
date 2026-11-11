@@ -18,7 +18,8 @@ use speclink_protocol::command::{
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    PutArtifactRequest, PutArtifactResponse, ReviewScopeEntryDto, ReviewTicketResponse,
+    PutArtifactRequest, PutArtifactResponse, RankChangeRequest, RankChangeResponse,
+    ReviewScopeEntryDto, ReviewTicketResponse,
     SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest, SetSchemaRequest,
     SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
     TaskUndoneResponse,
@@ -463,6 +464,23 @@ impl Client {
         self.post(
             &format!("/changes/{name}/depends"),
             &SetDependsRequest { on: on.to_vec(), remove },
+        )
+    }
+
+    /// `POST /changes/{name}/rank` — move the change right `position`
+    /// (`before` or `after`) of `anchor` in its stage's column; the server
+    /// writes the scope's board resource. Guard refusals come back as
+    /// `refused` 409s carrying the engine's line verbatim.
+    pub fn rank_change(
+        &self,
+        name: &str,
+        anchor: &str,
+        position: &str,
+        force: bool,
+    ) -> Result<RankChangeResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/rank"),
+            &RankChangeRequest { anchor: anchor.to_string(), position: position.to_string(), force },
         )
     }
 

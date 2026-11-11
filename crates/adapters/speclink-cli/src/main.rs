@@ -188,11 +188,6 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
             fs_only(PLAN_STRICT_REMOTE_REFUSAL, || cmd_plan(a))
         }
         SpecVerb::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
-        // `change rank` 在 Dual 家族裡是 FsOnly：它寫卡片 meta 的 board_rank，remote
-        // 的順序真相在 board resource——只解析模式、不握手即拒。
-        SpecVerb::Change(a) if a.is_rank() => {
-            fs_only(CHANGE_RANK_REMOTE_REFUSAL, || cmd_change(a))
-        }
         SpecVerb::Change(a) => dual(a, cmd_change, remote_change),
         SpecVerb::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
         // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
@@ -279,9 +274,7 @@ const DEMO_REMOTE_REFUSAL: &str =
 const TRACE_REMOTE_REFUSAL: &str =
     "trace is not available in remote mode — it assembles the provenance chain from the local spec directory";
 
-// Dual 家族裡只限本機的兩個子情形（理由見 dispatch 的對應分支）。
-const CHANGE_RANK_REMOTE_REFUSAL: &str =
-    "change rank is not available in remote mode: the board order lives in the board resource";
+// Dual 家族裡只限本機的子情形（理由見 dispatch 的對應分支）。
 const PLAN_STRICT_REMOTE_REFUSAL: &str =
     "plan --strict-overlap is not available in remote mode: the server plans with requirement-level overlap only";
 
