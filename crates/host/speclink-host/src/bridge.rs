@@ -6,7 +6,7 @@
 //! reads, the single commit and the events all go through that one path.
 
 use crate::context::SpeclinkExecutionContext;
-use crate::port_exec::{self, ExecError, PortExecution};
+use crate::port_exec::{self, ExecError};
 use crate::teamstore_port::{scope_id, TeamStorePort};
 use speclink_core::command::{Command, CommandOutcome, DomainEvent};
 use speclink_store::{Revision, Scope, TeamStore};
@@ -28,16 +28,6 @@ pub struct BridgeExecution {
     pub revision: Option<Revision>,
 }
 
-impl From<PortExecution> for BridgeExecution {
-    fn from(done: PortExecution) -> Self {
-        BridgeExecution {
-            outcome: done.outcome,
-            events: done.events,
-            revision: done.scope_version.map(|version| Revision(version.get())),
-        }
-    }
-}
-
 /// Run one Engine command over `store`'s scope (resolved from `ctx`). A
 /// mutating verb's writes commit atomically with its domain events, in one
 /// unit of work. Queries never open a unit of work.
@@ -48,5 +38,12 @@ pub fn execute(
 ) -> Result<BridgeExecution, BridgeError> {
     let scope = scope_id(&Scope::new(ctx.project.clone(), ctx.repo.clone()))
         .map_err(BridgeError::Store)?;
-    port_exec::execute(&TeamStorePort::new(store), &scope, ctx, cmd).map(BridgeExecution::from)
+    // One command reads one fixed point of the scope, as it always has.
+    let port = TeamStorePort::new(store);
+    let done = port_exec::execute(&port.pinned(&scope), &scope, ctx, cmd)?;
+    Ok(BridgeExecution {
+        outcome: done.outcome,
+        events: done.events,
+        revision: done.scope_version.map(|version| Revision(version.get())),
+    })
 }

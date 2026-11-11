@@ -80,7 +80,11 @@ pub fn discard(
     }
 
     // Remove the workspace touched record (present only after `task done`; ignore absence).
-    let _ = crate::util::remove_file(&ws.touched_dir().join(format!("{change_name}.json")));
+    // A run with no workspace has no local record: an empty root would point
+    // into the process's working directory.
+    if ws.is_local() {
+        let _ = crate::util::remove_file(&ws.legacy_touched_file(change_name));
+    }
 
     Ok(DiscardOutcome {
         change_name: change_name.to_string(),

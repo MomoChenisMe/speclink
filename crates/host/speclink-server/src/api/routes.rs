@@ -58,7 +58,7 @@ use speclink_store::{
     content_digest, Bundle, BundleDoc, DocumentId, ImportMode, ImportOutcome, Revision,
     StoreError, BUNDLE_FORMAT_VERSION,
 };
-use speclink_store_port::{Actor as PortActor, Timestamp};
+use speclink_store_port::Actor as PortActor;
 use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
 
@@ -104,11 +104,9 @@ pub async fn list_changes(
     // 欄位（fs `list --json` parity pin），wire 的 startedAt／createdBy／
     // created／fromDiscussions 由這裡讀各 change meta 沿同一條路徑組裝。
     // 壞 meta 已由 metaError 診斷，這裡對解析失敗維持缺席、清單不失敗。
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
     let metas =
-        verb::blocking(move || Ok(documents::change_extras(port.as_ref(), &scope, &names)?)).await?;
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::change_extras(port, scope, &names)?)).await?;
     let dto = ListChangesResponse {
         changes: changes
             .into_iter()
@@ -181,12 +179,10 @@ pub async fn get_change(
     // 這個變更的 delta 規格前綴；歸屬四欄 createdBy/createdWith/startedAt/
     // startedBy 亦自同一份 parsed meta 補上（remote-read-parity「單 change 讀
     // 取回應攜帶 show 組合欄位」擴充）。
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let (meta, delta_capabilities) = verb::blocking(move || {
-        let port = port.as_ref();
-        let meta = documents::change_extras(port, &scope, std::slice::from_ref(&name))?.remove(&name);
-        let capabilities = documents::change_delta_capabilities(port, &scope, &name)?;
+    let (meta, delta_capabilities) = verb::on_port(&state, &binding, move |port, scope| {
+        let port = port;
+        let meta = documents::change_extras(port, scope, std::slice::from_ref(&name))?.remove(&name);
+        let capabilities = documents::change_delta_capabilities(port, scope, &name)?;
         Ok((meta, capabilities))
     })
     .await?;
@@ -216,13 +212,12 @@ pub async fn drift(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    // The report and the ETag are read in the same blocking hop, as a verb's are.
-    let (payload, etag) = verb::blocking(move || -> Result<(SpecDriftResponse, String), ApiError> {
-        let view = host_drift::spec_drift(port.as_ref(), &scope, &name)?;
-        let etag = documents::etag(documents::scope_version(port.as_ref(), &scope)?);
-        Ok((host_drift::spec_drift_view_to_wire(&view), etag))
+    // The ETag and the report come from the request's one view of the scope;
+    // the version is taken first, so it is never newer than the report (D2).
+    let (payload, etag) = verb::on_port(&state, &binding, move |port, scope| {
+        let etag = verb::etag_now(port, scope)?;
+        let view = host_drift::spec_drift(port, scope, &name)?;
+        Ok::<(SpecDriftResponse, String), ApiError>((host_drift::spec_drift_view_to_wire(&view), etag))
     })
     .await?;
     Ok(ok(payload, &etag))
@@ -288,9 +283,9 @@ pub async fn analyze_change(
 /// as a `refused` 409 carrying the engine's line (the error mapping point). A
 /// derived query: no commit, no event.
 pub async fn plan(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let board = verb::blocking(move || Ok(documents::board_order(port.as_ref(), &scope)?)).await?;
+    let (board, _) =
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::board_order(port, scope)?))
+            .await?;
     let ranks = BoardOrderDoc::from_content(board.content.as_deref()).changes;
     let result = verb::run(&state, &binding, Command::Plan { ranks: Some(ranks) }).await?;
     let plan = match result.execution.outcome {
@@ -579,9 +574,7 @@ pub async fn get_artifact(
     // Stamp the version so a later If-Match write can CAS against it.
     let version = match artifact_rel_path(&artifact) {
         Some(rel) => {
-            let port = state.port.clone();
-            let scope = verb::scope_id_of(&binding)?;
-            verb::blocking(move || Ok(documents::document_version(port.as_ref(), &scope, &name, &rel)?))
+            verb::on_port(&state, &binding, move |port, scope| Ok(documents::document_version(port, scope, &name, &rel)?))
                 .await?
                 .map_or(0, |version| version.get())
         }
@@ -636,11 +629,10 @@ pub async fn language(
 /// `GET /config` — the workflow policy source and its scope revision. The
 /// revision is taken first and is exactly the ETag value.
 pub async fn config(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let dto = verb::blocking(move || Ok(documents::config_document(port.as_ref(), &scope)?)).await?;
-    let etag = format!("\"{}\"", dto.revision);
-    Ok(ok(dto, &etag))
+    let (dto, version) =
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::config_document(port, scope)?))
+            .await?;
+    Ok(ok(dto, &documents::etag(version)))
 }
 
 /// `PUT /config` — server-authoritative workflow policy write. Authorization
@@ -665,32 +657,23 @@ pub async fn put_config(
     })
     .map_err(|e| ApiError::invalid_config(e.to_string()))?;
 
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     let ctx = binding.execution_context();
     let expected_revision = req.expected_revision;
     let cmd = Command::WorkflowConfigReplace { content: req.content };
-    let result = verb::blocking(move || -> Result<(u64, String), ApiError> {
+    let result = verb::on_port(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
         // The wire's expected revision is the SCOPE revision (what `GET /config`
         // returns), not the config document's own version. The command commits
         // only while the scope stays at it.
-        let execution = match port_exec::execute_at_version(
-            port.as_ref(),
-            &scope,
-            &ctx,
-            cmd,
-            expected_revision,
-        )? {
+        let expected = verb::expected_version(port, scope, expected_revision)?;
+        let execution = match port_exec::execute_at_version(port, scope, &ctx, cmd, expected)? {
             AtVersion::Done(execution) => execution,
             AtVersion::Moved { actual } => {
-                return Err(ApiError::revision_conflict(format!(
-                    "expected scope revision {expected_revision}, actual {actual}"
-                )))
+                return Err(DocumentsError::ScopeMoved { expected, actual }.into())
             }
         };
         // Content that did not change commits nothing: the revision stays.
-        let revision = execution.scope_version.map_or(expected_revision, |v| v.get());
-        Ok((revision, format!("\"{revision}\"")))
+        let version = execution.scope_version.unwrap_or(expected);
+        Ok((version.get(), documents::etag(version)))
     })
     .await;
 
@@ -708,11 +691,10 @@ pub async fn board_order(
     State(state): State<AppState>,
     binding: Binding,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let dto = verb::blocking(move || Ok(documents::board_order(port.as_ref(), &scope)?)).await?;
-    let etag = format!("\"{}\"", dto.revision);
-    Ok(ok(dto, &etag))
+    let (dto, version) =
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::board_order(port, scope)?))
+            .await?;
+    Ok(ok(dto, &documents::etag(version)))
 }
 
 /// `GET /changes/{name}/evidence` — the change's recorded completion evidence.
@@ -724,10 +706,8 @@ pub async fn change_evidence(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     let (dto, version) =
-        verb::blocking(move || Ok(documents::change_evidence(port.as_ref(), &scope, &name)?)).await?;
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::change_evidence(port, scope, &name)?)).await?;
     Ok(ok(dto, &documents::etag(version)))
 }
 
@@ -759,17 +739,14 @@ pub async fn put_board_order(
             ApiError::invalid_argument("If-Match must carry the scope revision ETag")
         })?;
 
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     // The TeamStore records the actor's id, as it always has.
     let actor = PortActor::new(binding.actor.id.clone(), binding.actor.id.clone())
         .map_err(|e| ApiError::internal(e.to_string()))?;
-    let at = Timestamp::new(chrono::Utc::now().timestamp_millis().max(0) as u64)
-        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let at = port_exec::now()?;
     let content = req.content;
-    let result = verb::blocking(move || -> Result<(u64, String), ApiError> {
-        let version =
-            documents::put_board_order(port.as_ref(), &scope, &actor, content, expected_revision, at)?;
+    let result = verb::on_port(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
+        let expected = verb::expected_version(port, scope, expected_revision)?;
+        let version = documents::put_board_order(port, scope, &actor, content, expected, at)?;
         Ok((version.get(), documents::etag(version)))
     })
     .await;

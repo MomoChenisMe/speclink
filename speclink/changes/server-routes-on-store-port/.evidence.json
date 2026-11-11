@@ -100,6 +100,17 @@
         "crates/protocol/speclink-remote/tests/it/events_sse.rs",
         "crates/protocol/speclink-remote/tests/it/read_api.rs"
       ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "6.3 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/host/speclink-host、crates/host/speclink-server、crates/protocol/speclink-remote、apps/desktop/src-tauri。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate server-routes-on-store-port` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discard.rs",
+        "crates/engine/speclink-core/src/workspace/workspace.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs",
+        "crates/store/speclink-store/src/memory.rs"
+      ]
     }
   ],
   "entries": [
@@ -233,6 +244,21 @@
         "crates/protocol/speclink-remote/tests/it/read_api.rs"
       ],
       "recordedAt": "2026-11-11T08:13:51Z"
+    },
+    {
+      "taskId": "tsk_01M74PZK452W9GA9RR3KGRAPA4",
+      "taskDesc": "6.3 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/host/speclink-host、crates/host/speclink-server、crates/protocol/speclink-remote、apps/desktop/src-tauri。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate server-routes-on-store-port` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c3a423ddb55761542d4d378cce89a1166fcb2958",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discard.rs",
+        "crates/engine/speclink-core/src/workspace/workspace.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs",
+        "crates/store/speclink-store/src/memory.rs"
+      ],
+      "recordedAt": "2026-11-11T09:07:31Z"
     }
   ]
 }

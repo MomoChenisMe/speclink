@@ -12,16 +12,12 @@
 
 use speclink_core::command::Command;
 use speclink_host::port_exec;
-use speclink_store_port::{
-    Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort, Op, PortError,
-    ScopeId, StorePort, Version,
-};
+use speclink_store_port::{DocKey, Expected, MemoryStorePort, Op};
 
 mod common;
-use common::{host_ctx, scope, seed};
+use common::{host_ctx, scope, seed, Calls, Recorder};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 
 const CHANGE: &str = "cost-probe";
 const TALK: &str = "cost-probe-talk";
@@ -128,60 +124,6 @@ fn loaded_store() -> (MemoryStorePort, usize, usize) {
 
 // --- counting ---
 
-#[derive(Default)]
-struct Calls {
-    /// The prefix of every list call.
-    lists: Vec<String>,
-    /// Every read call: each key with the size of what came back.
-    reads: Vec<Vec<(String, Option<usize>)>>,
-    commits: Vec<Commit>,
-}
-
-/// A store port that records every call with what came back, for the
-/// numbers of the cost table.
-struct CallRecorder {
-    inner: MemoryStorePort,
-    calls: Mutex<Calls>,
-}
-
-impl CallRecorder {
-    fn take(&self) -> Calls {
-        std::mem::take(&mut *self.calls.lock().unwrap())
-    }
-}
-
-impl StorePort for CallRecorder {
-    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-        self.calls
-            .lock()
-            .unwrap()
-            .lists
-            .push(prefix.as_str().to_string());
-        self.inner.list(scope, prefix)
-    }
-
-    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-        let docs = self.inner.read(scope, keys)?;
-        let call = keys
-            .iter()
-            .zip(&docs)
-            .map(|(key, doc)| {
-                (
-                    key.as_str().to_string(),
-                    doc.as_ref().map(|d| d.content.len()),
-                )
-            })
-            .collect();
-        self.calls.lock().unwrap().reads.push(call);
-        Ok(docs)
-    }
-
-    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-        self.calls.lock().unwrap().commits.push(commit.clone());
-        self.inner.commit(scope, commit)
-    }
-}
-
 /// The numbers of one command.
 struct Row {
     name: &'static str,
@@ -222,7 +164,7 @@ impl Row {
     }
 }
 
-fn measure(store: &CallRecorder, name: &'static str, writes: bool, cmd: Command) -> Row {
+fn measure(store: &Recorder, name: &'static str, writes: bool, cmd: Command) -> Row {
     store.take();
     port_exec::execute(store, &scope(), &host_ctx(), cmd)
         .unwrap_or_else(|e| panic!("{name} failed: {e:?}"));
@@ -236,10 +178,7 @@ fn measure(store: &CallRecorder, name: &'static str, writes: bool, cmd: Command)
 #[test]
 fn commands_read_only_what_they_use() {
     let (inner, documents, bytes) = loaded_store();
-    let store = CallRecorder {
-        inner,
-        calls: Mutex::new(Calls::default()),
-    };
+    let store = Recorder::new(inner);
     let change = || Some(CHANGE.to_string());
 
     let rows = [
@@ -381,10 +320,7 @@ fn commands_read_only_what_they_use() {
 #[test]
 fn the_archived_list_is_one_list_and_one_read() {
     let (inner, _, _) = loaded_store();
-    let store = CallRecorder {
-        inner,
-        calls: Mutex::default(),
-    };
+    let store = Recorder::new(inner);
     let started = std::time::Instant::now();
     let (list, _) = speclink_host::documents::archived_list(&store, &scope()).expect("the archived list");
     let elapsed = started.elapsed();

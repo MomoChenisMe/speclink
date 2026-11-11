@@ -11,7 +11,7 @@ use speclink_host::documents;
 use speclink_host::port_exec::{self, PortExecution};
 use speclink_host::teamstore_port;
 use speclink_store::{ProjectId, RepoId, Scope};
-use speclink_store_port::ScopeId;
+use speclink_store_port::{ScopeId, StorePort, Version};
 
 /// The outcome of running a verb plus the scope's current ETag.
 pub struct VerbResult {
@@ -27,19 +27,51 @@ pub fn scope_of(binding: &Binding) -> Scope {
     )
 }
 
-/// The store-port scope id a binding addresses: `<project>/<repo>`. A
-/// binding that cannot make one is a server bug.
-pub fn scope_id_of(binding: &Binding) -> Result<ScopeId, ApiError> {
-    Ok(teamstore_port::scope_id(&scope_of(binding))?)
-}
-
-/// Run `work` on the blocking pool.
-pub async fn blocking<T: Send + 'static>(
-    work: impl FnOnce() -> Result<T, ApiError> + Send + 'static,
+/// Run `work` on the blocking pool over a view of the binding's scope pinned
+/// for this request: every list and read of the request comes from one load
+/// of the scope (design D6).
+pub async fn on_port<T: Send + 'static>(
+    state: &AppState,
+    binding: &Binding,
+    work: impl FnOnce(&dyn StorePort, &ScopeId) -> Result<T, ApiError> + Send + 'static,
 ) -> Result<T, ApiError> {
-    tokio::task::spawn_blocking(work)
+    let port = state.port.clone();
+    let scope = teamstore_port::scope_id(&scope_of(binding))?;
+    tokio::task::spawn_blocking(move || work(&port.pinned(&scope), &scope))
         .await
         .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
+}
+
+/// The scope's ETag: its version, which advances on every commit (design
+/// 決策五), so any change invalidates it.
+pub fn etag_now(port: &dyn StorePort, scope: &ScopeId) -> Result<String, ApiError> {
+    Ok(documents::etag(documents::scope_version(port, scope)?))
+}
+
+/// The ETag after a command: the version its commit landed at, or — when it
+/// committed nothing — the scope's version.
+fn etag_after(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    execution: &PortExecution,
+) -> Result<String, ApiError> {
+    match execution.scope_version {
+        Some(version) => Ok(documents::etag(version)),
+        None => etag_now(port, scope),
+    }
+}
+
+/// The scope version a client says it last saw. A number past the largest
+/// version names no version any scope can be at, so it is stale.
+pub fn expected_version(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    sent: u64,
+) -> Result<Version, ApiError> {
+    Version::new(sent).map_err(|_| match documents::scope_version(port, scope) {
+        Ok(actual) => ApiError::revision_conflict(documents::scope_moved(sent, actual)),
+        Err(e) => ApiError::from(e),
+    })
 }
 
 /// Run `cmd` over the binding's scope and read the resulting ETag, on the
@@ -50,12 +82,10 @@ pub async fn run(
     binding: &Binding,
     cmd: Command,
 ) -> Result<VerbResult, ApiError> {
-    let port = state.port.clone();
     let ctx = binding.execution_context();
-    let scope = scope_id_of(binding)?;
-    let result = blocking(move || {
-        let execution = port_exec::execute(port.as_ref(), &scope, &ctx, cmd)?;
-        let etag = documents::etag(documents::scope_version(port.as_ref(), &scope)?);
+    let result = on_port(state, binding, move |port, scope| {
+        let execution = port_exec::execute(port, scope, &ctx, cmd)?;
+        let etag = etag_after(port, scope, &execution)?;
         Ok(VerbResult { execution, etag })
     })
     .await;
@@ -66,12 +96,9 @@ pub async fn run(
 }
 
 /// The scope's ETag, read on the blocking pool. For query routes that do not
-/// run a verb but still declare the scope state token. The scope version
-/// changes on every commit (design 決策五), so any change invalidates it.
+/// run a verb but still declare the scope state token.
 pub async fn scope_etag(state: &AppState, binding: &Binding) -> Result<String, ApiError> {
-    let port = state.port.clone();
-    let scope = scope_id_of(binding)?;
-    blocking(move || Ok(documents::etag(documents::scope_version(port.as_ref(), &scope)?))).await
+    on_port(state, binding, etag_now).await
 }
 
 /// Run a write verb guarded by an `If-Match` precondition against one
@@ -88,20 +115,16 @@ pub async fn run_write_with_if_match(
     if_match: u64,
     cmd: Command,
 ) -> Result<(u64, String), ApiError> {
-    let port = state.port.clone();
     let ctx = binding.execution_context();
-    let scope = scope_id_of(binding)?;
-    let result = blocking(move || {
-        let port = port.as_ref();
+    let result = on_port(state, binding, move |port, scope| {
         let version = || {
-            documents::document_version(port, &scope, &change, &artifact)
+            documents::document_version(port, scope, &change, &artifact)
                 .map(|v| v.map(|v| v.get()))
         };
         check_if_match(if_match, version()?)?;
-        port_exec::execute(port, &scope, &ctx, cmd)?;
+        let execution = port_exec::execute(port, scope, &ctx, cmd)?;
         let written = version()?.unwrap_or(0);
-        let etag = documents::etag(documents::scope_version(port, &scope)?);
-        Ok((written, etag))
+        Ok((written, etag_after(port, scope, &execution)?))
     })
     .await;
     if result.is_ok() {

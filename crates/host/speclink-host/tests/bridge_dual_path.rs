@@ -16,6 +16,7 @@ use speclink_host::binding::local_default_binding;
 use speclink_host::bridge::{self, BridgeError};
 use speclink_host::port_exec::{self, AtVersion};
 use speclink_host::teamstore_port::{scope_id, TeamStorePort};
+use speclink_store_port::Version;
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_store::memory::MemoryStore;
@@ -300,14 +301,14 @@ fn execute_at_version_over_the_teamstore_runs_only_when_the_scope_is_at_that_ver
     let base = mem.snapshot(&scope).expect("snapshot").revision();
     let replace = |content: &str| Command::WorkflowConfigReplace { content: content.to_string() };
 
-    let stale = base.0 + 5;
+    let stale = Version::new(base.0 + 5).unwrap();
     match port_exec::execute_at_version(&port, &id, &host_ctx(), replace("locale: ja\n"), stale).expect("no failure") {
         AtVersion::Moved { actual } => assert_eq!(actual.get(), base.0),
         AtVersion::Done(_) => panic!("the scope is not at {stale}"),
     }
     assert_eq!(mem.snapshot(&scope).expect("snapshot").revision(), base, "nothing ran");
 
-    match port_exec::execute_at_version(&port, &id, &host_ctx(), replace("locale: ja\n"), base.0).expect("no failure") {
+    match port_exec::execute_at_version(&port, &id, &host_ctx(), replace("locale: ja\n"), Version::new(base.0).unwrap()).expect("no failure") {
         AtVersion::Done(done) => assert!(done.scope_version.is_some_and(|v| v.get() > base.0)),
         AtVersion::Moved { actual } => panic!("the scope is at {base:?}, got {actual:?}"),
     }

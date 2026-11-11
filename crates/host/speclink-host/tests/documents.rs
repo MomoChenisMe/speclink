@@ -8,133 +8,12 @@ use speclink_host::documents::{self, ContextOutcome, DocumentsError};
 use speclink_protocol::context::ContextSnapshotRequest;
 use speclink_store::content_digest;
 use speclink_store_port::{
-    Actor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort, Op, PortError,
-    ScopeId, StorePort, Timestamp, Version,
+    Actor, DocKey, Expected, MemoryStorePort, Op, PortError, StorePort, Timestamp, Version,
 };
 use std::sync::Mutex;
 
 mod common;
-use common::scope;
-
-// --- a store that records its calls ---
-
-#[derive(Debug, Clone)]
-enum Call {
-    List(String),
-    Read(Vec<String>),
-    Commit(Commit),
-}
-
-type Hook = Box<dyn FnOnce(&MemoryStorePort) + Send>;
-
-/// A memory store that records every call. `before_read` and
-/// `before_commit` each run once, just before the first read or commit
-/// reaches the store; `unavailable` makes every call fail as a temporary
-/// failure.
-#[derive(Default)]
-struct Counted {
-    inner: MemoryStorePort,
-    calls: Mutex<Vec<Call>>,
-    before_read: Mutex<Option<Hook>>,
-    before_commit: Mutex<Option<Hook>>,
-    unavailable: bool,
-}
-
-impl Counted {
-    fn new(inner: MemoryStorePort) -> Self {
-        Counted {
-            inner,
-            ..Default::default()
-        }
-    }
-
-    fn before_first_read(self, hook: impl FnOnce(&MemoryStorePort) + Send + 'static) -> Self {
-        *self.before_read.lock().unwrap() = Some(Box::new(hook));
-        self
-    }
-
-    fn before_first_commit(self, hook: impl FnOnce(&MemoryStorePort) + Send + 'static) -> Self {
-        *self.before_commit.lock().unwrap() = Some(Box::new(hook));
-        self
-    }
-
-    fn calls(&self) -> Vec<Call> {
-        self.calls.lock().unwrap().clone()
-    }
-
-    fn lists(&self) -> Vec<String> {
-        self.calls()
-            .into_iter()
-            .filter_map(|c| match c {
-                Call::List(prefix) => Some(prefix),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn reads(&self) -> Vec<Vec<String>> {
-        self.calls()
-            .into_iter()
-            .filter_map(|c| match c {
-                Call::Read(keys) => Some(keys),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn commits(&self) -> Vec<Commit> {
-        self.calls()
-            .into_iter()
-            .filter_map(|c| match c {
-                Call::Commit(commit) => Some(commit),
-                _ => None,
-            })
-            .collect()
-    }
-
-    fn fail(&self) -> Result<(), PortError> {
-        if self.unavailable {
-            return Err(PortError::Unavailable {
-                message: "connection reset".to_string(),
-            });
-        }
-        Ok(())
-    }
-}
-
-impl StorePort for Counted {
-    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push(Call::List(prefix.as_str().to_string()));
-        self.fail()?;
-        self.inner.list(scope, prefix)
-    }
-
-    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-        self.calls.lock().unwrap().push(Call::Read(
-            keys.iter().map(|k| k.as_str().to_string()).collect(),
-        ));
-        self.fail()?;
-        if let Some(hook) = self.before_read.lock().unwrap().take() {
-            hook(&self.inner);
-        }
-        self.inner.read(scope, keys)
-    }
-
-    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-        self.calls
-            .lock()
-            .unwrap()
-            .push(Call::Commit(commit.clone()));
-        self.fail()?;
-        if let Some(hook) = self.before_commit.lock().unwrap().take() {
-            hook(&self.inner);
-        }
-        self.inner.commit(scope, commit)
-    }
-}
+use common::{scope, scope_version, write, Recorder};
 
 // --- helpers ---
 
@@ -144,40 +23,6 @@ fn key(text: &str) -> DocKey {
 
 fn at() -> Timestamp {
     Timestamp::new(1_800_000_000_000).unwrap()
-}
-
-/// Write `docs` in one commit; each one may exist already.
-fn write(port: &dyn StorePort, docs: &[(&str, &str)]) -> Version {
-    let current = port
-        .read(
-            &scope(),
-            &docs.iter().map(|(k, _)| key(k)).collect::<Vec<_>>(),
-        )
-        .unwrap();
-    let ops = docs
-        .iter()
-        .zip(current)
-        .map(|((k, content), doc)| Op::Put {
-            key: key(k),
-            content: content.to_string(),
-            expected: doc.map_or(Expected::Absent, |d| Expected::At(d.version)),
-        })
-        .collect();
-    let commit = Commit::new(
-        Actor::new("seed", "seed").unwrap(),
-        "seed",
-        at(),
-        ops,
-        Vec::new(),
-    )
-    .unwrap();
-    port.commit(&scope(), &commit).unwrap()
-}
-
-fn version_of(port: &dyn StorePort) -> Version {
-    port.list(&scope(), &KeyPrefix::new("").unwrap())
-        .unwrap()
-        .version
 }
 
 fn doc_version(port: &dyn StorePort, k: &str) -> u64 {
@@ -194,12 +39,12 @@ const META: &str = "schema: spec-driven\ncreated: 2026-11-01\n";
 
 #[test]
 fn the_scope_version_is_one_narrow_list() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("changes/add-x/.meta.yaml", META)]);
     let version = documents::scope_version(&store, &scope()).unwrap();
-    assert_eq!(version, version_of(&store.inner));
-    assert_eq!(store.lists(), ["config.yaml"]);
-    assert!(store.reads().is_empty());
+    assert_eq!(version.get(), scope_version(&store.inner));
+    assert_eq!(store.calls().lists, ["config.yaml"]);
+    assert!(store.calls().read_keys().is_empty());
     assert_eq!(documents::etag(version), format!("\"{}\"", version.get()));
 }
 
@@ -208,7 +53,7 @@ fn the_scope_version_is_one_narrow_list() {
 #[test]
 fn reading_the_workflow_config_reads_one_document() {
     // 「流程設定的讀取只讀一份文件」：165 個已封存變更也不碰。
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     let archived: Vec<(String, String)> = (0..165)
         .map(|n| {
             (
@@ -227,7 +72,7 @@ fn reading_the_workflow_config_reads_one_document() {
         &[("config.yaml", "schema: spec-driven\nlocale: ja\n")],
     );
 
-    let config = documents::config_document(&store, &scope()).unwrap();
+    let (config, version) = documents::config_document(&store, &scope()).unwrap();
     assert_eq!(
         config.content.as_deref(),
         Some("schema: spec-driven\nlocale: ja\n")
@@ -235,22 +80,23 @@ fn reading_the_workflow_config_reads_one_document() {
     assert_eq!(config.schema, "spec-driven");
     assert_eq!(
         config.revision,
-        version_of(&store.inner).get(),
+        scope_version(&store.inner),
         "the revision is the scope version"
     );
-    assert_eq!(store.reads(), [["config.yaml"]]);
+    assert_eq!(version.get(), config.revision, "the ETag's version");
+    assert_eq!(store.calls().read_keys(), [["config.yaml"]]);
     assert!(
-        store.lists().iter().all(|p| !p.starts_with("archive/")),
+        store.calls().lists.iter().all(|p| !p.starts_with("archive/")),
         "{:?}",
-        store.lists()
+        store.calls().lists
     );
 }
 
 #[test]
 fn a_missing_workflow_config_reads_as_absent() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("changes/add-x/.meta.yaml", META)]);
-    let config = documents::config_document(&store, &scope()).unwrap();
+    let (config, _) = documents::config_document(&store, &scope()).unwrap();
     assert_eq!(config.content, None);
     assert_eq!(config.schema, "spec-driven", "the default schema");
     assert_eq!(config.revision, 1);
@@ -259,7 +105,7 @@ fn a_missing_workflow_config_reads_as_absent() {
 #[test]
 fn a_broken_workflow_config_is_an_invalid_config() {
     // 「壞的流程設定」
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("config.yaml", "schema: [unclosed\n")]);
     match documents::config_document(&store, &scope()) {
         Err(DocumentsError::InvalidConfig(message)) => assert!(!message.is_empty()),
@@ -270,9 +116,9 @@ fn a_broken_workflow_config_is_an_invalid_config() {
 #[test]
 fn the_version_is_taken_before_the_content() {
     // 「回報的版本不比內容新」：取得版本之後、讀取內容之前有人提交了新的流程設定。
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("config.yaml", "schema: spec-driven\n")]);
-    let old = version_of(&store.inner);
+    let old = scope_version(&store.inner);
     let store = store.before_first_read(|inner| {
         write(
             inner,
@@ -280,15 +126,15 @@ fn the_version_is_taken_before_the_content() {
         );
     });
 
-    let config = documents::config_document(&store, &scope()).unwrap();
+    let (config, version) = documents::config_document(&store, &scope()).unwrap();
     assert_eq!(
         config.content.as_deref(),
         Some("schema: spec-driven\nlocale: ja\n"),
         "the new content"
     );
-    assert_eq!(config.revision, old.get(), "the old version");
+    assert_eq!((config.revision, version.get()), (old, old), "the old version");
     assert!(
-        version_of(&store.inner) > old,
+        scope_version(&store.inner) > old,
         "polling with that version shows the scope moved"
     );
 }
@@ -296,10 +142,7 @@ fn the_version_is_taken_before_the_content() {
 #[test]
 fn an_unavailable_store_stays_unavailable() {
     // 「儲存暫時無法使用」
-    let store = Counted {
-        unavailable: true,
-        ..Default::default()
-    };
+    let store = Recorder::unavailable();
     match documents::config_document(&store, &scope()) {
         Err(DocumentsError::Store(PortError::Unavailable { .. })) => {}
         other => panic!("expected the store's temporary failure, got {other:?}"),
@@ -310,15 +153,19 @@ fn an_unavailable_store_stays_unavailable() {
 
 #[test]
 fn reading_the_board_order() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("changes/add-x/.meta.yaml", META)]);
-    let absent = documents::board_order(&store, &scope()).unwrap();
+    let (absent, _) = documents::board_order(&store, &scope()).unwrap();
     assert_eq!((absent.content, absent.revision), (None, 1));
 
     write(&store.inner, &[("board/order", "{\"changes\":{}}")]);
-    let present = documents::board_order(&store, &scope()).unwrap();
+    let (present, version) = documents::board_order(&store, &scope()).unwrap();
     assert_eq!(present.content.as_deref(), Some("{\"changes\":{}}"));
-    assert_eq!(present.revision, 2);
+    assert_eq!((present.revision, version.get()), (2, 2));
+}
+
+fn v(n: u64) -> Version {
+    Version::new(n).unwrap()
 }
 
 fn alice() -> Actor {
@@ -326,12 +173,12 @@ fn alice() -> Actor {
 }
 
 /// A scope at version `n`, with no board order.
-fn at_version(n: u64) -> Counted {
-    let store = Counted::new(MemoryStorePort::new());
+fn at_version(n: u64) -> Recorder {
+    let store = Recorder::new(MemoryStorePort::new());
     for i in 0..n {
         write(&store.inner, &[(&format!("changes/c{i}/.meta.yaml"), META)]);
     }
-    assert_eq!(version_of(&store.inner).get(), n);
+    assert_eq!(scope_version(&store.inner), n);
     store
 }
 
@@ -341,10 +188,10 @@ fn writing_the_board_order_is_one_commit_with_its_event() {
     let store = at_version(7);
     let content = "x".repeat(200);
     let version =
-        documents::put_board_order(&store, &scope(), &alice(), content.clone(), 7, at()).unwrap();
+        documents::put_board_order(&store, &scope(), &alice(), content.clone(), v(7), at()).unwrap();
     assert!(version.get() > 7);
 
-    let commits = store.commits();
+    let commits = store.calls().commits;
     assert_eq!(commits.len(), 1, "exactly one commit");
     let commit = &commits[0];
     match commit.ops() {
@@ -373,9 +220,9 @@ fn writing_over_an_existing_board_order_expects_its_version() {
     let store = at_version(3);
     write(&store.inner, &[("board/order", "{}")]);
     let doc = doc_version(&store.inner, "board/order");
-    documents::put_board_order(&store, &scope(), &alice(), "{\"a\":1}".to_string(), 4, at())
+    documents::put_board_order(&store, &scope(), &alice(), "{\"a\":1}".to_string(), v(4), at())
         .unwrap();
-    match store.commits()[0].ops() {
+    match store.calls().commits[0].ops() {
         [Op::Put { expected, .. }] => {
             assert_eq!(*expected, Expected::At(Version::new(doc).unwrap()))
         }
@@ -387,18 +234,13 @@ fn writing_over_an_existing_board_order_expects_its_version() {
 fn a_stale_board_order_write_commits_nothing() {
     // 「看板順序的預期版本過期」
     let store = at_version(8);
-    match documents::put_board_order(&store, &scope(), &alice(), "{}".to_string(), 7, at()) {
-        Err(
-            error @ DocumentsError::ScopeMoved {
-                expected: 7,
-                actual: 8,
-            },
-        ) => {
+    match documents::put_board_order(&store, &scope(), &alice(), "{}".to_string(), v(7), at()) {
+        Err(error @ DocumentsError::ScopeMoved { .. }) => {
             assert_eq!(error.to_string(), "expected scope revision 7, actual 8");
         }
         other => panic!("expected the scope to have moved, got {other:?}"),
     }
-    assert!(store.commits().is_empty());
+    assert!(store.calls().commits.is_empty());
 }
 
 #[test]
@@ -406,7 +248,7 @@ fn an_oversized_board_order_never_reaches_the_store() {
     // 「看板順序內容過大」
     let store = at_version(1);
     let content = "x".repeat(documents::BOARD_ORDER_LIMIT + 1);
-    match documents::put_board_order(&store, &scope(), &alice(), content, 1, at()) {
+    match documents::put_board_order(&store, &scope(), &alice(), content, v(1), at()) {
         Err(error @ DocumentsError::TooLarge { .. }) => {
             assert_eq!(
                 error.to_string(),
@@ -429,7 +271,7 @@ fn a_board_order_written_by_another_writer_meanwhile_is_a_conflict() {
         &scope(),
         &alice(),
         "{\"mine\":1}".to_string(),
-        2,
+        v(2),
         at(),
     ) {
         Err(DocumentsError::Store(PortError::Conflict {
@@ -446,7 +288,7 @@ fn a_board_order_written_by_another_writer_meanwhile_is_a_conflict() {
         .unwrap();
     assert_eq!(doc.content, "{\"theirs\":1}");
     assert_eq!(
-        version_of(&store.inner).get(),
+        scope_version(&store.inner),
         3,
         "only the other writer's commit landed"
     );
@@ -462,7 +304,7 @@ const EVIDENCE: &str = r#"{"version":2,"change":"add-x","touched":["src/a.rs"],"
 
 #[test]
 fn a_change_evidence_reads_its_entries() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -471,16 +313,16 @@ fn a_change_evidence_reads_its_entries() {
         ],
     );
     let (evidence, version) = documents::change_evidence(&store, &scope(), "add-x").unwrap();
-    assert_eq!(version, version_of(&store.inner));
+    assert_eq!(version.get(), scope_version(&store.inner));
     assert_eq!(evidence.entries.len(), 1);
     assert_eq!(evidence.entries[0].task_id, "1");
     assert_eq!(evidence.entries[0].touched_files, ["src/a.rs"]);
-    assert_eq!(store.reads(), [["changes/add-x/.evidence.json"]]);
+    assert_eq!(store.calls().read_keys(), [["changes/add-x/.evidence.json"]]);
 }
 
 #[test]
 fn a_missing_evidence_is_an_empty_set() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("changes/add-x/.meta.yaml", META)]);
     let (evidence, _) = documents::change_evidence(&store, &scope(), "nope").unwrap();
     assert!(evidence.entries.is_empty());
@@ -489,7 +331,7 @@ fn a_missing_evidence_is_an_empty_set() {
 #[test]
 fn a_broken_evidence_is_corrupt() {
     // 「壞的 evidence」
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[("changes/add-x/.evidence.json", "not json")],
@@ -509,7 +351,7 @@ fn a_broken_evidence_is_corrupt() {
 
 #[test]
 fn a_canonical_spec_reads_one_document() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -519,16 +361,16 @@ fn a_canonical_spec_reads_one_document() {
     );
     let (spec, version) = documents::spec_document(&store, &scope(), "auth").unwrap();
     assert_eq!(
-        (spec.content.as_str(), version),
-        ("# Auth\n", version_of(&store.inner))
+        (spec.content.as_str(), version.get()),
+        ("# Auth\n", scope_version(&store.inner))
     );
-    assert_eq!(store.reads(), [["specs/auth/spec.md"]]);
+    assert_eq!(store.calls().read_keys(), [["specs/auth/spec.md"]]);
 }
 
 #[test]
 fn a_missing_canonical_spec_is_not_found() {
     // 「不存在的正式規格」
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("specs/auth/spec.md", "# Auth\n")]);
     match documents::spec_document(&store, &scope(), "nope") {
         Err(DocumentsError::NotFound(message)) => assert_eq!(message, "Spec 'nope' not found."),
@@ -536,8 +378,8 @@ fn a_missing_canonical_spec_is_not_found() {
     }
 }
 
-fn archive() -> Counted {
-    let store = Counted::new(MemoryStorePort::new());
+fn archive() -> Recorder {
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -575,9 +417,9 @@ fn the_archived_list_is_one_list_and_one_read() {
     // 「已封存清單一次讀取」
     let store = archive();
     let (list, version) = documents::archived_list(&store, &scope()).unwrap();
-    assert_eq!(version, version_of(&store.inner));
-    assert_eq!(store.lists(), ["archive/changes/"]);
-    let reads = store.reads();
+    assert_eq!(version.get(), scope_version(&store.inner));
+    assert_eq!(store.calls().lists, ["archive/changes/"]);
+    let reads = store.calls().read_keys();
     assert_eq!(reads.len(), 1, "one read");
     let mut read = reads[0].clone();
     read.sort();
@@ -665,7 +507,7 @@ fn an_archived_document_and_its_capabilities() {
     let (capabilities, version) =
         documents::archived_capabilities(&store, &scope(), "2026-11-01-alpha").unwrap();
     assert_eq!(capabilities, ["auth", "billing"]);
-    assert_eq!(version, version_of(&store.inner));
+    assert_eq!(version.get(), scope_version(&store.inner));
 }
 
 #[test]
@@ -695,7 +537,7 @@ fn a_missing_archived_change_has_no_capabilities() {
 #[test]
 fn the_delta_capabilities_list_one_prefix_and_read_nothing() {
     // 「單筆變更的 delta capability 只列出該變更的前綴」
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -707,13 +549,13 @@ fn the_delta_capabilities_list_one_prefix_and_read_nothing() {
     );
     let capabilities = documents::change_delta_capabilities(&store, &scope(), "add-x").unwrap();
     assert_eq!(capabilities, ["auth", "billing"]);
-    assert_eq!(store.lists(), ["changes/add-x/specs/"]);
-    assert!(store.reads().is_empty());
+    assert_eq!(store.calls().lists, ["changes/add-x/specs/"]);
+    assert!(store.calls().read_keys().is_empty());
 }
 
 #[test]
 fn the_change_extras_are_one_read_of_the_metadata() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -726,7 +568,7 @@ fn the_change_extras_are_one_read_of_the_metadata() {
     );
     let names = ["add-x", "broken", "missing"].map(String::from);
     let extras = documents::change_extras(&store, &scope(), &names).unwrap();
-    assert_eq!(store.reads().len(), 1, "one read for every name");
+    assert_eq!(store.calls().read_keys().len(), 1, "one read for every name");
     assert_eq!(
         extras.len(),
         1,
@@ -737,7 +579,7 @@ fn the_change_extras_are_one_read_of_the_metadata() {
 
 #[test]
 fn a_document_version_is_one_read() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(&store.inner, &[("changes/add-x/tasks.md", "- [ ] 1.1 a\n")]);
     let version = documents::document_version(&store, &scope(), "add-x", "tasks.md").unwrap();
     assert_eq!(
@@ -748,14 +590,14 @@ fn a_document_version_is_one_read() {
         documents::document_version(&store, &scope(), "add-x", "design.md").unwrap(),
         None
     );
-    assert_eq!(store.reads().len(), 2);
-    assert!(store.lists().is_empty());
+    assert_eq!(store.calls().read_keys().len(), 2);
+    assert!(store.calls().lists.is_empty());
 }
 
 // --- 搜尋 ---
 
-fn searchable() -> Counted {
-    let store = Counted::new(MemoryStorePort::new());
+fn searchable() -> Recorder {
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -782,7 +624,7 @@ fn searchable() -> Counted {
 fn the_search_follows_the_fixed_order_and_one_hit_per_card() {
     let store = searchable();
     let (result, version) = documents::search(&store, &scope(), "magictoken").unwrap();
-    assert_eq!(version, version_of(&store.inner));
+    assert_eq!(version.get(), scope_version(&store.inner));
     let hits: Vec<(&str, &str, &str, &str)> = result
         .hits
         .iter()
@@ -813,11 +655,11 @@ fn the_search_follows_the_fixed_order_and_one_hit_per_card() {
             ("discussion", "talk", "talk.md", "we said MAGICTOKEN"),
         ]
     );
-    let mut lists = store.lists();
+    let mut lists = store.calls().lists;
     lists.sort();
     assert_eq!(lists, ["changes/", "discussions/"]);
     assert_eq!(
-        store.reads().len(),
+        store.calls().read_keys().len(),
         1,
         "one read for every document it scans"
     );
@@ -828,14 +670,14 @@ fn an_empty_query_has_no_hits() {
     let store = searchable();
     let (result, version) = documents::search(&store, &scope(), "   ").unwrap();
     assert!(result.hits.is_empty());
-    assert_eq!(version, version_of(&store.inner));
-    assert!(store.reads().is_empty());
+    assert_eq!(version.get(), scope_version(&store.inner));
+    assert!(store.calls().read_keys().is_empty());
 }
 
 // --- Context 快照 ---
 
-fn contextual() -> Counted {
-    let store = Counted::new(MemoryStorePort::new());
+fn contextual() -> Recorder {
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -900,7 +742,7 @@ fn the_full_context_selects_the_readable_mirror() {
     }
     assert_eq!(
         snapshot.snapshot_id,
-        documents::etag(version_of(&store.inner))
+        documents::etag(Version::new(scope_version(&store.inner)).unwrap())
     );
     assert_eq!(
         snapshot.policy_revision,
@@ -913,7 +755,7 @@ fn the_full_context_selects_the_readable_mirror() {
         .collect();
     assert_eq!(snapshot.digest, content_digest(&combined.join("\n")));
     assert_eq!(
-        store.reads().len(),
+        store.calls().read_keys().len(),
         1,
         "one read for every selected document"
     );
@@ -939,9 +781,9 @@ fn a_change_context_narrows_to_that_change() {
         ]
     );
     assert!(
-        !store.lists().iter().any(|p| p == "discussions/"),
+        !store.calls().lists.iter().any(|p| p == "discussions/"),
         "{:?}",
-        store.lists()
+        store.calls().lists
     );
 }
 
@@ -949,13 +791,13 @@ fn a_change_context_narrows_to_that_change() {
 fn an_unchanged_context_reads_nothing() {
     // 「Context 快照沒有變時不讀內容」
     let store = contextual();
-    let etag = documents::etag(version_of(&store.inner));
+    let etag = documents::etag(Version::new(scope_version(&store.inner)).unwrap());
     match documents::context_snapshot(&store, &scope(), &request(None), Some(&etag)).unwrap() {
         ContextOutcome::NotModified(version) => assert_eq!(documents::etag(version), etag),
         other => panic!("expected not modified, got {other:?}"),
     }
-    assert_eq!(store.lists().len(), 1, "one list");
-    assert!(store.reads().is_empty(), "no read");
+    assert_eq!(store.calls().lists.len(), 1, "one list");
+    assert!(store.calls().read_keys().is_empty(), "no read");
 }
 
 #[test]
@@ -997,7 +839,7 @@ fn archive_writes_no_local_files() {
     let _back = BackTo(std::env::current_dir().expect("working directory"));
     std::env::set_current_dir(folder.path()).expect("enter the temp folder");
 
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -1036,7 +878,7 @@ fn archive_writes_no_local_files() {
         left.is_empty(),
         "the working directory stays empty: {left:?}"
     );
-    assert_eq!(store.commits().len(), 1, "exactly one commit");
+    assert_eq!(store.calls().commits.len(), 1, "exactly one commit");
     let canonical = store
         .inner
         .read(&scope(), &[key("specs/auth/spec.md")])
@@ -1053,7 +895,7 @@ fn archive_writes_no_local_files() {
 
 #[test]
 fn request_names_cannot_reach_another_kind_of_document() {
-    let store = Counted::new(MemoryStorePort::new());
+    let store = Recorder::new(MemoryStorePort::new());
     write(
         &store.inner,
         &[
@@ -1122,11 +964,41 @@ fn request_names_cannot_reach_another_kind_of_document() {
             "{artifact}"
         );
     }
-    let reads: Vec<String> = store.reads().into_iter().flatten().collect();
+    let reads: Vec<String> = store.calls().read_keys().into_iter().flatten().collect();
     assert!(
         reads.iter().all(|k| k != "config.yaml"
             && !k.ends_with(".meta.yaml")
             && !k.ends_with(".evidence.json")),
         "{reads:?}"
     );
+}
+
+#[test]
+fn discard_removes_no_local_file() {
+    // 和封存同一類：沒有 workspace 時，discard 也不碰程序目錄裡的 touched 記錄。
+    let _serial = WORKING_DIRECTORY
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let folder = tempfile::tempdir().expect("temp folder");
+    let _back = BackTo(std::env::current_dir().expect("working directory"));
+    std::env::set_current_dir(folder.path()).expect("enter the temp folder");
+    let local = folder.path().join(".speclink").join("touched").join("demo.json");
+    std::fs::create_dir_all(local.parent().unwrap()).unwrap();
+    std::fs::write(&local, "{}").unwrap();
+
+    let store = Recorder::new(MemoryStorePort::new());
+    write(&store.inner, &[("changes/demo/.meta.yaml", META), ("changes/demo/proposal.md", "# demo\n")]);
+    speclink_host::port_exec::execute(
+        &store,
+        &scope(),
+        &common::host_ctx(),
+        speclink_core::command::Command::Discard {
+            change: "demo".to_string(),
+            force: true,
+        },
+    )
+    .expect("the discard succeeds");
+
+    assert!(local.is_file(), "a file in the working directory is not the change's");
+    assert!(common::keys_under(&store.inner, "changes/").is_empty(), "the change is gone");
 }

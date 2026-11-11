@@ -43,7 +43,7 @@ pub enum DocumentsError {
     /// The board order is larger than [`BOARD_ORDER_LIMIT`].
     TooLarge { limit: usize },
     /// The scope is not at the version the caller expected.
-    ScopeMoved { expected: u64, actual: u64 },
+    ScopeMoved { expected: Version, actual: Version },
     /// A stored record cannot be parsed.
     Corrupt(String),
     /// The store failed.
@@ -60,7 +60,7 @@ impl fmt::Display for DocumentsError {
                 write!(f, "board order content exceeds the {limit}-byte cap")
             }
             DocumentsError::ScopeMoved { expected, actual } => {
-                write!(f, "expected scope revision {expected}, actual {actual}")
+                f.write_str(&scope_moved(expected.get(), *actual))
             }
             DocumentsError::Store(e) => write!(f, "{e}"),
         }
@@ -68,6 +68,13 @@ impl fmt::Display for DocumentsError {
 }
 
 impl std::error::Error for DocumentsError {}
+
+/// The text of a scope that is not at the version the caller expected. The
+/// caller's number can be one no version reaches (past the largest), so it
+/// is a plain number here.
+pub fn scope_moved(expected: u64, actual: Version) -> String {
+    format!("expected scope revision {expected}, actual {actual}")
+}
 
 impl From<PortError> for DocumentsError {
     fn from(e: PortError) -> Self {
@@ -97,6 +104,17 @@ fn read_one(
     key: DocKey,
 ) -> Result<Option<Document>, PortError> {
     Ok(port.read(scope, &[key])?.into_iter().next().flatten())
+}
+
+/// The scope version, then one document: the version first, so it is never
+/// newer than the content (D2).
+fn versioned(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    key: DocKey,
+) -> Result<(Version, Option<Document>), PortError> {
+    let version = port.list(scope, &just(&key))?.version;
+    Ok((version, read_one(port, scope, key)?))
 }
 
 /// The documents of `keys`, by key, in one read. No read for no key.
@@ -143,10 +161,9 @@ fn archived_change_prefix(dated_name: &str) -> Option<KeyPrefix> {
 
 // --- the scope version ---
 
-/// The scope's current version (the ETag and the polling token).
-pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, DocumentsError> {
-    Ok(crate::port_exec::scope_version(port, scope)?)
-}
+/// The scope's current version (the ETag and the polling token): one list of
+/// the narrowest prefix there is.
+pub use crate::port_exec::scope_version;
 
 // --- the workflow config ---
 
@@ -155,17 +172,18 @@ pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, D
 pub fn config_document(
     port: &dyn StorePort,
     scope: &ScopeId,
-) -> Result<ConfigResponse, DocumentsError> {
-    let version = scope_version(port, scope)?;
-    let content = read_one(port, scope, keys::config())?.map(|doc| doc.content);
+) -> Result<(ConfigResponse, Version), DocumentsError> {
+    let (version, doc) = versioned(port, scope, keys::config())?;
+    let content = doc.map(|doc| doc.content);
     let schema = WorkflowConfig::from_text(content.as_deref())
         .map_err(|e| DocumentsError::InvalidConfig(e.to_string()))?
         .schema_name();
-    Ok(ConfigResponse {
+    let response = ConfigResponse {
         schema,
         content,
         revision: version.get(),
-    })
+    };
+    Ok((response, version))
 }
 
 // --- the board order ---
@@ -174,14 +192,13 @@ pub fn config_document(
 pub fn board_order(
     port: &dyn StorePort,
     scope: &ScopeId,
-) -> Result<BoardOrderResponse, DocumentsError> {
-    let key = keys::board_order();
-    let version = port.list(scope, &just(&key))?.version;
-    let content = read_one(port, scope, key)?.map(|doc| doc.content);
-    Ok(BoardOrderResponse {
-        content,
+) -> Result<(BoardOrderResponse, Version), DocumentsError> {
+    let (version, doc) = versioned(port, scope, keys::board_order())?;
+    let response = BoardOrderResponse {
+        content: doc.map(|doc| doc.content),
         revision: version.get(),
-    })
+    };
+    Ok((response, version))
 }
 
 /// Replace the board order (design D3) when the scope is at `expected`, and
@@ -197,7 +214,7 @@ pub fn put_board_order(
     scope: &ScopeId,
     actor: &Actor,
     content: String,
-    expected: u64,
+    expected: Version,
     at: Timestamp,
 ) -> Result<Version, DocumentsError> {
     if content.len() > BOARD_ORDER_LIMIT {
@@ -207,10 +224,10 @@ pub fn put_board_order(
     }
     let key = keys::board_order();
     let listing = port.list(scope, &just(&key))?;
-    if listing.version.get() != expected {
+    if listing.version != expected {
         return Err(DocumentsError::ScopeMoved {
             expected,
-            actual: listing.version.get(),
+            actual: listing.version,
         });
     }
     let current = listing
@@ -218,11 +235,7 @@ pub fn put_board_order(
         .iter()
         .find(|entry| entry.key == key)
         .map(|entry| entry.version);
-    let invalid = |e: speclink_store_port::InvalidValue| {
-        DocumentsError::Store(PortError::Backend {
-            message: e.to_string(),
-        })
-    };
+    let invalid = crate::port_exec::invalid_value;
     let event = Event::new("board-order-updated", serde_json::json!({})).map_err(invalid)?;
     let commit = Commit::new(
         actor.clone(),
@@ -273,8 +286,8 @@ pub fn change_evidence(
             version,
         ));
     };
-    let version = port.list(scope, &just(&key))?.version;
-    let entries = match read_one(port, scope, key)? {
+    let (version, doc) = versioned(port, scope, key)?;
+    let entries = match doc {
         Some(doc) => {
             serde_json::from_str::<StoredEvidence>(&doc.content)
                 .map_err(|e| {
@@ -297,8 +310,8 @@ pub fn spec_document(
 ) -> Result<(SpecDocumentResponse, Version), DocumentsError> {
     let not_found = || DocumentsError::NotFound(format!("Spec '{capability}' not found."));
     let key = keys::spec(capability).map_err(|_| not_found())?;
-    let version = port.list(scope, &just(&key))?.version;
-    let content = read_one(port, scope, key)?.ok_or_else(not_found)?.content;
+    let (version, doc) = versioned(port, scope, key)?;
+    let content = doc.ok_or_else(not_found)?.content;
     Ok((SpecDocumentResponse { content }, version))
 }
 
@@ -374,8 +387,8 @@ pub fn archived_artifact(
         ))
     };
     let key = archived_doc_key(dated_name, artifact).ok_or_else(not_found)?;
-    let version = port.list(scope, &just(&key))?.version;
-    let content = read_one(port, scope, key)?.ok_or_else(not_found)?.content;
+    let (version, doc) = versioned(port, scope, key)?;
+    let content = doc.ok_or_else(not_found)?.content;
     Ok((SpecDocumentResponse { content }, version))
 }
 
