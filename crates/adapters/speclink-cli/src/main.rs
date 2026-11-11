@@ -13,7 +13,7 @@ use speclink_verbs::{GlobalArgs, SpecVerb};
 use verbs::checks::{
     cmd_analyze, cmd_drift, cmd_validate, remote_analyze, remote_drift, remote_validate,
 };
-use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs, WorkflowConfigArgs};
+use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs};
 use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
 use verbs::discuss::{cmd_discuss, remote_discuss};
 use verbs::documents::{cmd_document, remote_artifact, remote_language};
@@ -98,9 +98,6 @@ enum Commands {
     Schema(SchemaArgs),
     /// Config management commands
     Config(ConfigArgs),
-    /// Workflow config commands (<spec dir>/config.yaml)
-    #[command(name = "workflow-config")]
-    WorkflowConfig(WorkflowConfigArgs),
     /// Shell completion commands
     Completion(CompletionArgs),
     /// Generate a demo change with sample data
@@ -162,8 +159,6 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Config(a) => cmd_config(a),
         Commands::Completion(a) => cmd_completion(a),
         Commands::Spec(verb) => spec_dispatch(verb),
-        // --- Dual：本機臂與 remote 臂皆為必填參數 ---
-        Commands::WorkflowConfig(a) => cmd_workflow_config(a), // Dual（宣告於 cmd_workflow_config）
         // --- FsOnly：只解析模式、不握手，remote 明寫拒絕 ---
         Commands::Demo => fs_only(DEMO_REMOTE_REFUSAL, cmd_demo),
     }
@@ -204,6 +199,7 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
         // 宣告在家族函式尾端（station_dual；review 的 prepare 自成雙臂）。
         SpecVerb::Review(a) => cmd_review(a), // Dual（宣告於 station_dual）
         SpecVerb::Verify(a) => cmd_verify(a), // Dual（宣告於 station_dual）
+        SpecVerb::WorkflowConfig(a) => cmd_workflow_config(a), // Dual（宣告於 cmd_workflow_config）
         SpecVerb::Instructions(a) => {
             // `--skill` 印常數技能文本、不消費 store——檢查先於模式解析（凍結行為）。
             if let Some(skill) = a.skill.clone() {

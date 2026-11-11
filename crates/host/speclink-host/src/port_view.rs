@@ -842,6 +842,11 @@ impl Store for PortView<'_> {
         self.content(&keys::config())
     }
 
+    fn write_workflow_config(&self, content: &str) -> anyhow::Result<()> {
+        self.put(keys::config(), content.to_string());
+        Ok(())
+    }
+
     fn read_language(&self) -> Option<String> {
         self.content(&keys::language())
     }
@@ -1682,8 +1687,24 @@ mod tests {
         );
     }
 
+    fn write_workflow_config() {
+        // An existing document is written at the version first seen.
+        let port = fixture();
+        let view = PortView::new(&port, scope());
+        assert_eq!(view.read_workflow_config().as_deref(), Some("schema: spec-driven\n"));
+        view.write_workflow_config("schema: my-flow\n").unwrap();
+        assert_eq!(view.read_workflow_config().as_deref(), Some("schema: my-flow\n"));
+        assert_eq!(staged(view), ["put config.yaml at 1 \"schema: my-flow\\n\""]);
+        // A missing document is created.
+        let empty = MemoryStorePort::new();
+        let view = PortView::new(&empty, scope());
+        view.write_workflow_config("tdd: true\n").unwrap();
+        assert_eq!(staged(view), ["put config.yaml new \"tdd: true\\n\""]);
+    }
+
     /// One row per method of `speclink_core::store::Store`.
     const COVERAGE: &[(&str, fn())] = &[
+        ("write_workflow_config", write_workflow_config),
         ("create_change", create_change),
         ("write_change_meta", write_change_meta),
         ("delete_change", delete_change),

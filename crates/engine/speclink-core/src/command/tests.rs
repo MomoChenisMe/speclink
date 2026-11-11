@@ -2117,6 +2117,9 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
             missing: _,
         } => {}
         Command::VerifyDiscard { change: _ } => {}
+        Command::WorkflowConfigShow => {}
+        Command::WorkflowConfigEdit { edit: _, dry_run: _ } => {}
+        Command::WorkflowConfigReplace { content: _ } => {}
     }
 }
 

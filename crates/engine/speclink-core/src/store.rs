@@ -201,6 +201,17 @@ pub trait Store {
 
     /// Raw workflow configuration document, or None when absent.
     fn read_workflow_config(&self) -> Option<String>;
+    /// Write (create or overwrite) the workflow configuration document. The
+    /// workflow-config commands validate the content first; nothing else
+    /// calls this. A backend that cannot write the document keeps this
+    /// default, which refuses and names the backend.
+    fn write_workflow_config(&self, content: &str) -> Result<()> {
+        let _ = content;
+        anyhow::bail!(
+            "this store backend ({}) does not support writing the workflow config",
+            std::any::type_name::<Self>()
+        )
+    }
 
     // --- shared vocabulary ---
 

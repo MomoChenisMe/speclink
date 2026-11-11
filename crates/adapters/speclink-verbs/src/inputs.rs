@@ -9,7 +9,7 @@ use speclink_core::listing::ListWorktreeJson;
 /// this crate never reads them itself. Every field defaults to "not given".
 ///
 /// Where each command field comes from (checked against the CLI's `cmd_*`):
-/// every field of the 42 commands the conversion returns comes from argv,
+/// every field of the 44 commands the conversion returns comes from argv,
 /// except these.
 ///
 /// | Command field | Input | What the CLI passes |
@@ -21,6 +21,7 @@ use speclink_core::listing::ListWorktreeJson;
 /// | `DiscussContext`／`DiscussAddRound`／`DiscussConclude` `.content` | `stdin` (empty when unread) | `common::stdin_for` |
 /// | `ReviewAddRound`／`VerifyAddRound` `.content` | `stdin` (empty when unread) | — (the CLI's stations run `station_fs`) |
 /// | `ReviewStamp`／`VerifyStamp` `.scope`, `.missing` | `stdin` JSON (with `--stdin`) | — (the CLI computes the scope and refuses `--stdin`) |
+/// | `WorkflowConfigEdit.edit` of `context`／`rules`／`review <list>`／`subagent-model choices` | `stdin` (with `--stdin`; empty when unread) | `common::stdin_for` |
 ///
 /// The execution context (actor, repo, policy overrides) is not part of a
 /// command and does not come through here.
@@ -90,10 +91,11 @@ mod tests {
     use crate::families::test_support::target_of;
     use crate::{CommandTarget, VerbInputs};
 
-    /// One argv per command the conversion returns: 42 distinct commands, so
-    /// the table above speaks for every one of them (TaskMove has no argv).
+    /// One argv per command the conversion returns: 44 distinct commands, so
+    /// the table above speaks for every one of them (TaskMove and
+    /// WorkflowConfigReplace have no argv).
     #[test]
-    fn the_conversion_reaches_42_commands() {
+    fn the_conversion_reaches_44_commands() {
         let argvs: &[&[&str]] = &[
             &["list"], &["show", "x"], &["status"], &["validate"], &["analyze"],
             &["artifact", "cat", "tasks"], &["language", "show"], &["trace", "x"], &["instructions"],
@@ -111,6 +113,7 @@ mod tests {
             &["review", "discard", "c"],
             &["verify", "add-round", "c"], &["verify", "show", "c"], &["verify", "stamp", "c"],
             &["verify", "discard", "c"],
+            &["workflow-config", "show"], &["workflow-config", "set", "tdd", "true"],
         ];
         let kinds: std::collections::HashSet<_> = argvs
             .iter()
@@ -119,6 +122,6 @@ mod tests {
                 other => panic!("{argv:?} must convert to a command, got {other:?}"),
             })
             .collect();
-        assert_eq!(kinds.len(), 42);
+        assert_eq!(kinds.len(), 44);
     }
 }

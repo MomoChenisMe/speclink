@@ -117,8 +117,14 @@ enum Backend {
     /// needs (deleteArtifact / readChangeMeta / writeChangeMeta) that the
     /// store did not implement — captured at construction so the stamp verbs
     /// can refuse BEFORE any destructive step (the engine deletes the ticket
-    /// before it rewrites the metadata).
-    Js { bridge: JsStoreBridge, missing_stamp_methods: Vec<&'static str> },
+    /// before it rewrites the metadata). `writes_workflow_config` records
+    /// whether the store has the optional `writeWorkflowConfig`, for the same
+    /// reason: a workflow-config write verb refuses before it runs.
+    Js {
+        bridge: JsStoreBridge,
+        missing_stamp_methods: Vec<&'static str>,
+        writes_workflow_config: bool,
+    },
 }
 
 impl Backend {
@@ -151,11 +157,12 @@ pub struct Engine {
     /// request (or per identity); dispatch carries no identity parameter, so
     /// call-time forgery has no surface.
     actor: Option<Arc<str>>,
-    /// Stamping rewrites the whole change metadata (read-modify-write) with
-    /// no CAS in the Store contract — concurrent stamps on one instance would
-    /// clobber each other's stamp, so they serialize here. Coordination
-    /// ACROSS engine instances (or processes) belongs to the host store.
-    stamp_lock: Arc<std::sync::Mutex<()>>,
+    /// A stamp rewrites the whole change metadata, and a workflow-config write
+    /// rewrites the whole config document: both are read-modify-write with no
+    /// CAS in the Store contract. Two of them at once on one instance would
+    /// clobber each other, so they serialize here. Coordination ACROSS engine
+    /// instances (or processes) belongs to the host store.
+    rewrite_lock: Arc<std::sync::Mutex<()>>,
 }
 
 /// Construction-time normalization: a blank actor reads as "not given".
@@ -177,11 +184,11 @@ impl Engine {
     pub fn dispatch(&self, env: Env, argv: Vec<String>, stdin: Option<String>) -> Result<JsObject> {
         let backend = self.backend.clone();
         let actor = self.actor.clone();
-        let stamp_lock = self.stamp_lock.clone();
+        let rewrite_lock = self.rewrite_lock.clone();
         let (deferred, promise) = env.create_deferred()?;
         std::thread::spawn(move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_dispatch(&backend, actor.as_deref(), &stamp_lock, &argv, stdin.as_deref())
+                run_dispatch(&backend, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref())
             }));
             let envelope = match outcome {
                 Ok(Ok(value)) => serde_json::json!({ "ok": true, "value": value }),
@@ -245,7 +252,7 @@ pub fn engine_from_fs(
     Ok(Engine {
         backend: Arc::new(Backend::Fs { root, spec_dir }),
         actor: normalize_actor(actor),
-        stamp_lock: Arc::new(std::sync::Mutex::new(())),
+        rewrite_lock: Arc::new(std::sync::Mutex::new(())),
     })
 }
 
@@ -261,11 +268,12 @@ pub fn engine_from_store(
 ) -> Result<Engine> {
     store_bridge::validate_store_methods(&store)?;
     let missing_stamp_methods = store_bridge::missing_stamp_methods(&store);
+    let writes_workflow_config = store_bridge::has_workflow_config_write(&store);
     let bridge = store_bridge::create_bridge(env, invoker)?;
     Ok(Engine {
-        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods }),
+        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods, writes_workflow_config }),
         actor: normalize_actor(actor),
-        stamp_lock: Arc::new(std::sync::Mutex::new(())),
+        rewrite_lock: Arc::new(std::sync::Mutex::new(())),
     })
 }
 
@@ -277,7 +285,7 @@ pub fn engine_from_store(
 fn run_dispatch(
     backend: &Backend,
     actor: Option<&str>,
-    stamp_lock: &std::sync::Mutex<()>,
+    rewrite_lock: &std::sync::Mutex<()>,
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
@@ -305,7 +313,12 @@ fn run_dispatch(
         ..Default::default()
     };
     match parsed.to_command(inputs)? {
-        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, &parsed, cmd),
+        speclink_verbs::CommandTarget::Command(cmd) => {
+            let flagged_without_stdin = stdin.is_none()
+                && matches!(policy, speclink_verbs::StdinPolicy::WhenFlagged { flagged: true });
+            refuse_workflow_config(backend, name, &cmd, flagged_without_stdin)?;
+            run_verb(backend, actor, rewrite_lock, &parsed, cmd)
+        }
         speclink_verbs::CommandTarget::LocalOnly { verb, reason } => Err(local_only(verb, reason)),
     }
 }
@@ -342,6 +355,52 @@ fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Resu
     Ok(())
 }
 
+/// Whether `cmd` writes the workflow config document: an edit that is not a
+/// dry run, or a whole-document replace.
+fn writes_workflow_config(cmd: &core::command::Command) -> bool {
+    use core::command::Command;
+    matches!(
+        cmd,
+        Command::WorkflowConfigEdit { dry_run: false, .. } | Command::WorkflowConfigReplace { .. }
+    )
+}
+
+/// The two refusals a workflow-config verb can meet before its command runs,
+/// so no store method is called:
+/// - `--stdin` in argv but no stdin content from the host: the body would read
+///   as empty and clear the value, so a forgotten `options.stdin` is an argv
+///   error (an empty string is the way to clear on purpose);
+/// - a verb that writes, on a host store without the optional
+///   `writeWorkflowConfig`. `show` and `--dry-run` write nothing and pass.
+fn refuse_workflow_config(
+    backend: &Backend,
+    name: &str,
+    cmd: &core::command::Command,
+    flagged_without_stdin: bool,
+) -> std::result::Result<(), DispatchError> {
+    if flagged_without_stdin && matches!(cmd, core::command::Command::WorkflowConfigEdit { .. }) {
+        return Err(DispatchError::new(
+            "invalid_argv",
+            format!(
+                "'{name}' was given --stdin but no stdin content — pass options.stdin \
+                 (an empty string clears the value)"
+            ),
+        ));
+    }
+    if let (true, Backend::Js { writes_workflow_config: false, .. }) =
+        (writes_workflow_config(cmd), backend)
+    {
+        return Err(DispatchError::new(
+            "refused",
+            format!(
+                "{name} requires a store method this store does not implement: writeWorkflowConfig — \
+                 it writes the workflow config document"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 /// Run one verb's command and shape its envelope value: the verb's
 /// structured value when it has one, else `{ output }` with its stdout text
 /// (no color), plus `stderr` when the verb also has stderr text. Two cases are answered in front of the engine: `claim` (the
@@ -350,7 +409,7 @@ fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Resu
 fn run_verb(
     backend: &Backend,
     actor: Option<&str>,
-    stamp_lock: &std::sync::Mutex<()>,
+    rewrite_lock: &std::sync::Mutex<()>,
     parsed: &speclink_verbs::ParsedVerb,
     cmd: core::command::Command,
 ) -> DispatchResult {
@@ -369,12 +428,12 @@ fn run_verb(
         }
         _ => {}
     }
-    // Stamping rewrites the whole metadata with no CAS, so stamps serialize
-    // within this instance. A poisoned lock only means another stamp
-    // panicked; the metadata itself is no more suspect than after any failed
-    // dispatch, so proceed.
-    let _stamp_guard =
-        parsed.is_stamp().then(|| stamp_lock.lock().unwrap_or_else(|e| e.into_inner()));
+    // A stamp and a workflow-config write each rewrite one whole document
+    // with no CAS, so they serialize within this instance. A poisoned lock
+    // only means another one panicked; the document itself is no more suspect
+    // than after any failed dispatch, so proceed.
+    let rewrites = parsed.is_stamp() || writes_workflow_config(&cmd);
+    let _rewrite_guard = rewrites.then(|| rewrite_lock.lock().unwrap_or_else(|e| e.into_inner()));
     let outcome = run_engine(backend, actor, cmd)?;
     let rendered = render(parsed, &outcome, RenderOptions { json: false, color: false })?;
     Ok(match rendered.json {

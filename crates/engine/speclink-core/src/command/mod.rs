@@ -10,7 +10,11 @@
 //! management (link, unlink, auth) intentionally do NOT appear in [`Command`].
 
 mod typed;
+mod workflow_config;
 pub use typed::WrongOutcome;
+pub use workflow_config::{
+    plan_workflow_config_edit, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
+};
 
 use crate::config::ConfigError;
 use crate::model::Change;
@@ -468,6 +472,16 @@ pub enum Command {
     },
     /// `verify discard <change>`
     VerifyDiscard { change: String },
+    // --- 流程設定 ---
+    /// `workflow-config show`（查詢——不產生事件）
+    WorkflowConfigShow,
+    /// The `workflow-config` write verbs (`set`, `context`, `rules`, `review …`,
+    /// `subagent-model …`): read the document, apply one edit, validate, write
+    /// back. `dry_run` computes the result and writes nothing.
+    WorkflowConfigEdit { edit: crate::config::WorkflowConfigEdit, dry_run: bool },
+    /// Replace the whole workflow config document (no argv form; the server's
+    /// full-document write).
+    WorkflowConfigReplace { content: String },
 }
 
 /// `plan` outcome — the engine's plan payload as computed (design D3).
@@ -744,6 +758,10 @@ pub enum CommandOutcome {
     VerifyShow(ReviewShowOutcome),
     VerifyStamp(ReviewSubjectOutcome),
     VerifyDiscard(ReviewSubjectOutcome),
+    WorkflowConfigShow(WorkflowConfigShowOutcome),
+    /// 兩種寫入共用同一個結果型別。
+    WorkflowConfigEdit(WorkflowConfigWriteOutcome),
+    WorkflowConfigReplace(WorkflowConfigWriteOutcome),
 }
 
 /// The Host-resolved engine-side execution context — resolved once at the
@@ -961,6 +979,15 @@ pub fn execute(
         Command::VerifyDiscard { change } => {
             Ok(CommandOutcome::VerifyDiscard(station_discard(&VERIFY, store, change)?))
         }
+        Command::WorkflowConfigShow => {
+            workflow_config::show(store).map(CommandOutcome::WorkflowConfigShow)
+        }
+        Command::WorkflowConfigEdit { edit, dry_run } => {
+            workflow_config::edit(store, ctx, &edit, dry_run).map(CommandOutcome::WorkflowConfigEdit)
+        }
+        Command::WorkflowConfigReplace { content } => {
+            workflow_config::replace(store, content).map(CommandOutcome::WorkflowConfigReplace)
+        }
     }?;
     let events = events_of(&outcome);
     Ok((outcome, events))
@@ -986,6 +1013,10 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::DiscussList(_)
         | CommandOutcome::DiscussShow(_)
         | CommandOutcome::DiscussSearch(_) => Vec::new(),
+        // 流程設定的寫入不產生領域事件（workflow-config-commands 的 Non-Goal）。
+        CommandOutcome::WorkflowConfigShow(_)
+        | CommandOutcome::WorkflowConfigEdit(_)
+        | CommandOutcome::WorkflowConfigReplace(_) => Vec::new(),
         CommandOutcome::NewChange(o) => vec![DomainEvent::ChangeCreated {
             change: o.name.clone(),
             occurred_at: at,

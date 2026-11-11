@@ -39,9 +39,6 @@ pub fn paint() -> Paint {
     Paint::new(on())
 }
 
-pub fn bold(s: &str) -> String {
-    paint().bold(s)
-}
 pub fn red(s: &str) -> String {
     paint().red(s)
 }

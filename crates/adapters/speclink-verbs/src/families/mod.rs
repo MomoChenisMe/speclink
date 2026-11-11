@@ -23,6 +23,7 @@ pub mod progress;
 pub mod query;
 pub mod station;
 pub mod trace;
+pub mod workflow_config;
 
 // Every top-level spec verb; the CLI flattens this into its own command list
 // and sets the `--help` order there. No doc comments on clap-derived types:
@@ -72,6 +73,9 @@ pub enum SpecVerb {
     Review(station::ReviewArgs),
     /// Verify quality station (ticket rounds, stamping)
     Verify(station::VerifyArgs),
+    /// Workflow config commands (<spec dir>/config.yaml)
+    #[command(name = "workflow-config")]
+    WorkflowConfig(workflow_config::WorkflowConfigArgs),
 }
 
 impl SpecVerb {
@@ -99,6 +103,7 @@ impl SpecVerb {
             SpecVerb::Discuss(a) => a.name(),
             SpecVerb::Review(a) => a.name(),
             SpecVerb::Verify(a) => a.name(),
+            SpecVerb::WorkflowConfig(a) => a.name(),
         }
     }
 
@@ -126,6 +131,7 @@ impl SpecVerb {
             SpecVerb::Discuss(a) => a.stdin_policy(),
             SpecVerb::Review(a) => a.stdin_policy(),
             SpecVerb::Verify(a) => a.stdin_policy(),
+            SpecVerb::WorkflowConfig(a) => a.stdin_policy(),
         }
     }
 }
@@ -159,6 +165,7 @@ impl ToCommand for SpecVerb {
             SpecVerb::Discuss(a) => a.to_command(inputs),
             SpecVerb::Review(a) => a.to_command(inputs),
             SpecVerb::Verify(a) => a.to_command(inputs),
+            SpecVerb::WorkflowConfig(a) => a.to_command(inputs),
         }
     }
 }

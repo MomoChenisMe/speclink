@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { expect } from 'vitest'
 
 export const repoRoot = join(__dirname, '..', '..', '..', '..')
 // 本機 cargo test 產 debug CLI；CI 的 Node SDK workflow 只建 release——擇一存在者。
@@ -17,6 +18,18 @@ export const cliBin = existsSync(debugBin) ? debugBin : join(repoRoot, 'target',
 export function cliJson(cwd: string, args: string[]): unknown {
   const out = execFileSync(cliBin, args, { cwd, encoding: 'utf8' })
   return JSON.parse(out)
+}
+
+/** The Error a promise rejects with; fails the test when it resolves. */
+export async function rejection(promise: Promise<unknown>): Promise<Error & { code?: string }> {
+  let thrown: (Error & { code?: string }) | undefined
+  try {
+    await promise
+  } catch (e) {
+    thrown = e as Error & { code?: string }
+  }
+  expect(thrown).toBeInstanceOf(Error)
+  return thrown!
 }
 
 export const PROPOSAL_ALPHA =

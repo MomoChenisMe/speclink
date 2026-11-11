@@ -1984,3 +1984,128 @@ fn subagent_model_duplicate_tool_names_fail_closed() {
         assert!(err.reason.contains("duplicate") && err.reason.contains(needle), "reason names the tool, got: {}", err.reason);
     }
 }
+
+// --- changed_keys：寫入前後解析結果的差異鍵（workflow-config-commands D2）---
+
+/// `before` 為 None 代表檔案原本不存在。
+fn keys_between(before: Option<&str>, after: &str) -> Vec<String> {
+    let before = WorkflowConfig::from_text(before).expect("before parses");
+    let after = WorkflowConfig::from_text(Some(after)).expect("after parses");
+    changed_keys(&before, &after).iter().map(ToString::to_string).collect()
+}
+
+#[test]
+fn policy_keys_parse_back_from_their_names_and_nothing_else() {
+    for key in PolicyKey::ALL {
+        assert_eq!(PolicyKey::parse(key.as_str()), Some(key));
+    }
+    assert_eq!(PolicyKey::list(), "locale, spec_locale, tdd, audit, worktree");
+    for word in ["schema", "TDD", " tdd", ""] {
+        assert_eq!(PolicyKey::parse(word), None, "{word:?}");
+    }
+}
+
+const KEYS_BASE: &str = "schema: spec-driven\nlocale: tw\ntdd: false\n";
+
+#[test]
+fn changed_keys_match_the_spec_example_table() {
+    // Spec workflow-config「流程設定的寫入經命令執行層」Example「各種編輯的變動鍵」（逐列）。
+    let rows: [(&str, String, &str); 6] = [
+        ("set locale ja", "schema: spec-driven\nlocale: ja\ntdd: false\n".to_string(), "locale"),
+        ("context 取代成新的文字", format!("{KEYS_BASE}context: |\n  new text\n"), "context"),
+        (
+            "rules proposal 取代成兩條規則",
+            format!("{KEYS_BASE}rules:\n  proposal:\n  - one\n  - two\n"),
+            "rules.proposal",
+        ),
+        (
+            "review critical 取代成一條規則",
+            format!("{KEYS_BASE}review:\n  critical:\n  - one\n"),
+            "review.critical",
+        ),
+        ("review baseline replace", format!("{KEYS_BASE}review:\n  baseline: replace\n"), "review.baseline"),
+        (
+            "subagent-model review claude opus",
+            format!("{KEYS_BASE}subagent_model:\n  review:\n    claude: opus\n"),
+            "subagent_model.review",
+        ),
+    ];
+    for (edit, after, key) in rows {
+        assert_eq!(keys_between(Some(KEYS_BASE), &after), [key], "{edit}");
+    }
+}
+
+#[test]
+fn changed_keys_reports_a_toggle_that_moved() {
+    // Spec scenario「set 回報變動的鍵」：tdd false → true。
+    assert_eq!(keys_between(Some("tdd: false\n"), "tdd: true\n"), ["tdd"]);
+    // false 不落鍵：缺席與 false 是同一個狀態，不算變動。
+    assert_eq!(keys_between(Some("schema: spec-driven\n"), "schema: spec-driven\ntdd: false\n"), [""; 0]);
+}
+
+#[test]
+fn changed_keys_is_empty_when_only_layout_or_comments_changed() {
+    let before = "schema: spec-driven\nlocale: tw\nrules:\n  tasks:\n  - one\n";
+    let after = "# a new comment\nschema:   spec-driven\n\nlocale: \"tw\"   # trailing\nrules:\n  tasks: [one]\n";
+    assert_eq!(keys_between(Some(before), after), [""; 0]);
+}
+
+#[test]
+fn changed_keys_lists_every_set_key_when_the_file_did_not_exist() {
+    let after = "schema: my-flow\nlocale: ja\naudit: true\ncontext: hi\nrules:\n  tasks:\n  - one\nreview:\n  warning:\n  - w\n";
+    assert_eq!(
+        keys_between(None, after),
+        ["schema", "locale", "audit", "context", "rules.tasks", "review.warning"]
+    );
+}
+
+#[test]
+fn changed_keys_come_back_in_the_fixed_order() {
+    let before = "rules:\n  tasks:\n  - gone\n";
+    let after = "\
+subagent_model:
+  choices:
+    codex: [a]
+  verify:
+    claude: sonnet
+  review:
+    claude: opus
+review:
+  suggestion: [s]
+  warning: [w]
+  critical: [c]
+  baseline: replace
+rules:
+  specs: [r]
+  design: [r]
+context: text
+worktree: true
+audit: true
+tdd: true
+spec_locale: auto
+locale: ja
+schema: my-flow
+";
+    assert_eq!(
+        keys_between(Some(before), after),
+        [
+            "schema",
+            "locale",
+            "spec_locale",
+            "tdd",
+            "audit",
+            "worktree",
+            "context",
+            "rules.design",
+            "rules.specs",
+            "rules.tasks",
+            "review.baseline",
+            "review.critical",
+            "review.warning",
+            "review.suggestion",
+            "subagent_model.review",
+            "subagent_model.verify",
+            "subagent_model.choices",
+        ]
+    );
+}
