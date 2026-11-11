@@ -66,10 +66,8 @@ pub(crate) fn parse_key(key: &str) -> Option<KeyKind<'_>> {
             artifact => KeyKind::ChangeArtifact { change, artifact },
         });
     }
-    if let Some(rest) = key.strip_prefix(keys::SPECS) {
-        let capability = rest.strip_suffix("/spec.md")?;
-        return (!capability.is_empty() && !capability.contains('/'))
-            .then_some(KeyKind::Spec { capability });
+    if key.starts_with(keys::SPECS) {
+        return spec_capability(key).map(|capability| KeyKind::Spec { capability });
     }
     if let Some(rest) = key.strip_prefix(keys::DISCUSSIONS) {
         return md_name(rest).map(|slug| KeyKind::Discussion { slug });
@@ -85,14 +83,39 @@ pub(crate) fn parse_key(key: &str) -> Option<KeyKind<'_>> {
 /// Split the stored name of an archived discussion into its creation date
 /// and the rest. `None` when the name does not start with `YYYY-MM-DD-`.
 pub(crate) fn split_archived_stem(stem: &str) -> Option<(&str, &str)> {
-    let b = stem.as_bytes();
-    let dated = b.len() > 11
-        && b[10] == b'-'
-        && b[..10].iter().enumerate().all(|(i, c)| match i {
-            4 | 7 => *c == b'-',
-            _ => c.is_ascii_digit(),
-        });
-    dated.then(|| (&stem[..10], &stem[11..]))
+    let date = stem.get(..10)?;
+    let rest = stem.get(10..)?.strip_prefix('-')?;
+    // The contract owns the date rule: its builder takes exactly a
+    // `YYYY-MM-DD` creation date.
+    (!rest.is_empty() && keys::archived_discussion(date, "x").is_ok()).then_some((date, rest))
+}
+
+/// The key of a document of an archived change that is already in the store.
+/// It is read whatever the change is called: a store can hold older archived
+/// changes without a date in their name. A new archived document goes through
+/// the contract's builder, which takes dated names only.
+fn archived_doc_key(name: &str, doc: &str) -> Option<DocKey> {
+    let key = DocKey::new(format!("{}{name}/{doc}", keys::ARCHIVED_CHANGES)).ok()?;
+    let same = matches!(
+        parse_key(key.as_str()),
+        Some(KeyKind::ArchivedChangeDoc { dated_name, doc: path }) if dated_name == name && path == doc
+    );
+    same.then_some(key)
+}
+
+/// `archive/discussions/<created>-<name>.md` for a creation date that does not
+/// start with a date. The contract's builder takes a `YYYY-MM-DD` date only;
+/// the fs store takes any text there, and this keeps its stored name. Both
+/// parts must still be one path segment.
+fn archived_discussion_key(created: &str, name: &str) -> anyhow::Result<DocKey> {
+    let stem = format!("{created}-{name}");
+    let key = DocKey::new(format!("{}{stem}.md", keys::ARCHIVED_DISCUSSIONS))?;
+    match parse_key(key.as_str()) {
+        Some(KeyKind::ArchivedDiscussion { stem: parsed }) if parsed == stem => Ok(key),
+        _ => anyhow::bail!(
+            "the creation date and the slug of a discussion must each be one path segment"
+        ),
+    }
 }
 
 /// The capability of a `specs/<cap>/spec.md` path, exactly one level deep.
@@ -371,17 +394,18 @@ impl<'a> PortView<'a> {
         }
     }
 
-    fn put_at(&self, key: Result<DocKey, InvalidValue>, content: &str) -> anyhow::Result<()> {
+    fn put_named(&self, key: Result<DocKey, InvalidValue>, content: &str) -> anyhow::Result<()> {
         self.put(key?, content.to_string());
         Ok(())
     }
 
-    fn read_at(&self, key: Result<DocKey, InvalidValue>) -> Option<String> {
-        // A name that cannot make a key names no document.
+    /// Read the document a key builder named. A name that cannot make a key
+    /// names no document.
+    fn read_named(&self, key: Result<DocKey, InvalidValue>) -> Option<String> {
         self.content(&key.ok()?)
     }
 
-    fn exists_at(&self, key: Result<DocKey, InvalidValue>) -> bool {
+    fn exists_named(&self, key: Result<DocKey, InvalidValue>) -> bool {
         key.is_ok_and(|key| self.exists(&key))
     }
 
@@ -391,24 +415,17 @@ impl<'a> PortView<'a> {
         Ok(format!("{}{name}/", keys::CHANGES))
     }
 
-    /// `archive/changes/<dated_name>/`, when the name has the dated form.
-    fn archived_change_prefix(dated_name: &str) -> Result<String, InvalidValue> {
-        keys::archived_change_doc(dated_name, META_FILE)?;
-        Ok(format!("{}{dated_name}/", keys::ARCHIVED_CHANGES))
+    /// `archive/changes/<name>/`, when `name` is one key segment.
+    fn archived_change_prefix(name: &str) -> Option<String> {
+        archived_doc_key(name, META_FILE)?;
+        Some(format!("{}{name}/", keys::ARCHIVED_CHANGES))
     }
 
     /// The delta capabilities of one change: the keys under `fixed` that
     /// start with `sub` and continue with `specs/<cap>/spec.md`.
-    fn capabilities_under(
-        &self,
-        fixed: &'static str,
-        sub: Result<String, InvalidValue>,
-    ) -> Vec<String> {
-        let Ok(sub) = sub else {
-            return Vec::new();
-        };
+    fn capabilities_under(&self, fixed: &'static str, sub: &str) -> Vec<String> {
         let mut caps: Vec<String> = self
-            .keys_under(fixed, &sub)
+            .keys_under(fixed, sub)
             .iter()
             .filter_map(|key| spec_capability(&key.as_str()[sub.len()..]))
             .map(str::to_string)
@@ -426,16 +443,18 @@ impl<'a> PortView<'a> {
             let Some(KeyKind::ArchivedDiscussion { stem }) = parse_key(key.as_str()) else {
                 continue;
             };
-            let (date, rest) = split_archived_stem(stem).unwrap_or(("", stem));
-            let seq = if rest == slug {
-                Some(1)
-            } else {
-                rest.strip_prefix(slug)
+            let ranked = match split_archived_stem(stem) {
+                // An older record without a date: its whole name is the slug.
+                None => (stem == slug).then_some(("", 1)),
+                Some((date, rest)) if rest == slug => Some((date, 1)),
+                Some((date, rest)) => rest
+                    .strip_prefix(slug)
                     .and_then(|suffix| suffix.strip_prefix('-'))
                     .filter(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
                     .and_then(|n| n.parse::<u64>().ok())
+                    .map(|n| (date, n)),
             };
-            let Some(seq) = seq else { continue };
+            let Some((date, seq)) = ranked else { continue };
             let candidate = (date.to_string(), seq, key.clone());
             if newest.as_ref().is_none_or(|best| candidate > *best) {
                 newest = Some(candidate);
@@ -485,7 +504,14 @@ impl Store for PortView<'_> {
         let metas: Vec<DocKey> = self
             .keys_under(keys::CHANGES, keys::CHANGES)
             .into_iter()
-            .filter(|key| matches!(parse_key(key.as_str()), Some(KeyKind::ChangeMeta { .. })))
+            .filter(|key| {
+                // Only a name `find_change` can find: the key naming rules
+                // keep `archive` for the archive folder.
+                matches!(
+                    parse_key(key.as_str()),
+                    Some(KeyKind::ChangeMeta { change }) if keys::change_meta(change).is_ok()
+                )
+            })
             .collect();
         self.fetch(&metas);
         let mut out: Vec<Change> = metas
@@ -507,11 +533,11 @@ impl Store for PortView<'_> {
     }
 
     fn change_exists(&self, name: &str) -> bool {
-        self.exists_at(keys::change_meta(name))
+        self.exists_named(keys::change_meta(name))
     }
 
     fn create_change(&self, name: &str, meta_text: &str) -> anyhow::Result<PathBuf> {
-        self.put_at(keys::change_meta(name), meta_text)?;
+        self.put_named(keys::change_meta(name), meta_text)?;
         Ok(change_dir(name))
     }
 
@@ -531,11 +557,11 @@ impl Store for PortView<'_> {
     }
 
     fn read_change_meta(&self, name: &str) -> Option<String> {
-        self.read_at(keys::change_meta(name))
+        self.read_named(keys::change_meta(name))
     }
 
     fn write_change_meta(&self, name: &str, content: &str) -> anyhow::Result<()> {
-        self.put_at(keys::change_meta(name), content)
+        self.put_named(keys::change_meta(name), content)
     }
 
     fn delete_change(&self, name: &str) -> anyhow::Result<()> {
@@ -549,7 +575,7 @@ impl Store for PortView<'_> {
     // --- artifacts ---
 
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {
-        self.read_at(keys::change_artifact(change, artifact))
+        self.read_named(keys::change_artifact(change, artifact))
     }
 
     fn write_artifact(
@@ -558,12 +584,15 @@ impl Store for PortView<'_> {
         artifact: &str,
         content: &str,
     ) -> anyhow::Result<PathBuf> {
-        self.put_at(keys::change_artifact(change, artifact), content)?;
-        Ok(change_dir(change).join(artifact))
+        self.put_named(keys::change_artifact(change, artifact), content)?;
+        // One string, so the separators are `/` on every platform.
+        Ok(PathBuf::from(format!(
+            "{DEFAULT_SPEC_DIR}/changes/{change}/{artifact}"
+        )))
     }
 
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {
-        self.exists_at(keys::change_artifact(change, artifact))
+        self.exists_named(keys::change_artifact(change, artifact))
     }
 
     fn delete_artifact(&self, change: &str, artifact: &str) -> anyhow::Result<()> {
@@ -576,19 +605,21 @@ impl Store for PortView<'_> {
     // --- completion evidence ---
 
     fn read_evidence(&self, change: &str) -> Option<String> {
-        self.read_at(keys::change_evidence(change))
+        self.read_named(keys::change_evidence(change))
     }
 
     fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
         // Staged like every write: the record commits with the task checkbox
         // and the task-completed event, never without them.
-        self.put_at(keys::change_evidence(change), content)
+        self.put_named(keys::change_evidence(change), content)
     }
 
     // --- delta specs ---
 
     fn delta_capabilities(&self, change: &str) -> Vec<String> {
-        self.capabilities_under(keys::CHANGES, Self::change_prefix(change))
+        Self::change_prefix(change)
+            .map(|prefix| self.capabilities_under(keys::CHANGES, &prefix))
+            .unwrap_or_default()
     }
 
     fn has_capability_dirs(&self, change: &str) -> bool {
@@ -615,15 +646,15 @@ impl Store for PortView<'_> {
     }
 
     fn canonical_spec_exists(&self, cap: &str) -> bool {
-        self.exists_at(keys::spec(cap))
+        self.exists_named(keys::spec(cap))
     }
 
     fn read_canonical_spec(&self, cap: &str) -> Option<String> {
-        self.read_at(keys::spec(cap))
+        self.read_named(keys::spec(cap))
     }
 
     fn write_canonical_spec(&self, cap: &str, content: &str) -> anyhow::Result<()> {
-        self.put_at(keys::spec(cap), content)
+        self.put_named(keys::spec(cap), content)
     }
 
     fn canonical_spec_path(&self, cap: &str) -> PathBuf {
@@ -647,7 +678,7 @@ impl Store for PortView<'_> {
     }
 
     fn archived_change_exists(&self, dated_name: &str) -> bool {
-        let Ok(prefix) = Self::archived_change_prefix(dated_name) else {
+        let Some(prefix) = Self::archived_change_prefix(dated_name) else {
             return false;
         };
         let listed = self.state.borrow().listed.contains(keys::ARCHIVED_CHANGES);
@@ -696,31 +727,30 @@ impl Store for PortView<'_> {
         // New name first, legacy name as the fallback, both in one read.
         let candidates: Vec<DocKey> = META_READ_ORDER
             .into_iter()
-            .filter_map(|file| keys::archived_change_doc(dated_name, file).ok())
+            .filter_map(|file| archived_doc_key(dated_name, file))
             .collect();
         self.fetch(&candidates);
         candidates.iter().find_map(|key| self.content(key))
     }
 
     fn write_archived_meta(&self, dated_name: &str, content: &str) -> anyhow::Result<()> {
-        self.put_at(keys::archived_change_doc(dated_name, META_FILE), content)
+        self.put_named(keys::archived_change_doc(dated_name, META_FILE), content)
     }
 
     fn read_archived_artifact(&self, dated_name: &str, artifact: &str) -> Option<String> {
-        self.read_at(keys::archived_change_doc(dated_name, artifact))
+        self.content(&archived_doc_key(dated_name, artifact)?)
     }
 
     fn archived_delta_capabilities(&self, dated_name: &str) -> Vec<String> {
-        self.capabilities_under(
-            keys::ARCHIVED_CHANGES,
-            Self::archived_change_prefix(dated_name),
-        )
+        Self::archived_change_prefix(dated_name)
+            .map(|prefix| self.capabilities_under(keys::ARCHIVED_CHANGES, &prefix))
+            .unwrap_or_default()
     }
 
     // --- discussions ---
 
     fn live_discussion_exists(&self, slug: &str) -> bool {
-        self.exists_at(keys::discussion(slug))
+        self.exists_named(keys::discussion(slug))
     }
 
     fn archived_discussion_exists(&self, slug: &str) -> bool {
@@ -732,11 +762,11 @@ impl Store for PortView<'_> {
     }
 
     fn read_live_discussion(&self, slug: &str) -> Option<String> {
-        self.read_at(keys::discussion(slug))
+        self.read_named(keys::discussion(slug))
     }
 
     fn write_live_discussion(&self, slug: &str, content: &str) -> anyhow::Result<PathBuf> {
-        self.put_at(keys::discussion(slug), content)?;
+        self.put_named(keys::discussion(slug), content)?;
         Ok(self.live_discussion_path(slug))
     }
 
@@ -781,10 +811,19 @@ impl Store for PortView<'_> {
         // A stored name already in use gets a `-N` suffix, so archiving a
         // reused slug on the same day never fails.
         let taken = self.keys_under(keys::ARCHIVED_DISCUSSIONS, keys::ARCHIVED_DISCUSSIONS);
+        // The creation date comes from a document a person can edit. When it
+        // starts with a date (a date and a time, for one), the stored name
+        // takes that date: only a dated name is found by its slug later.
+        let date = created
+            .get(..10)
+            .filter(|date| keys::archived_discussion(date, "x").is_ok());
         let mut name = slug.to_string();
         let mut n = 2;
         let target = loop {
-            let candidate = keys::archived_discussion(created, &name)?;
+            let candidate = match date {
+                Some(date) => keys::archived_discussion(date, &name)?,
+                None => archived_discussion_key(created, &name)?,
+            };
             if !taken.contains(&candidate) {
                 break candidate;
             }
@@ -811,15 +850,45 @@ impl Store for PortView<'_> {
 /// Test doubles shared by this crate's unit tests.
 #[cfg(test)]
 pub(crate) mod testing {
+    use crate::binding::local_default_binding;
+    use crate::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
+    use crate::policy::EffectiveWorkflowPolicy;
+    use speclink_core::config::ResolvedPolicy;
     use speclink_store_port::{
-        Actor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort, Op,
-        PortError, ScopeId, StorePort, Timestamp, Version,
+        Actor as PortActor, Commit, DocKey, Document, Expected, KeyPrefix, Listing,
+        MemoryStorePort, Op, PortError, ScopeId, StorePort, Timestamp, Version,
     };
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Mutex;
 
     pub(crate) fn scope() -> ScopeId {
         ScopeId::new("default/main").unwrap()
+    }
+
+    pub(crate) const ACTOR: &str = "Alice <alice@example.com>";
+
+    /// The Host context of an identified actor on the default binding.
+    pub(crate) fn host_ctx() -> SpeclinkExecutionContext {
+        let binding = local_default_binding();
+        SpeclinkExecutionContext {
+            actor: Actor::Identified {
+                display: ACTOR.to_string(),
+                source: ActorSource::Explicit,
+            },
+            project: binding.project,
+            repo: binding.repo,
+            mode: ExecutionMode::SharedStore,
+            policy: EffectiveWorkflowPolicy::new(
+                ResolvedPolicy {
+                    locale: "English".to_string(),
+                    spec_locale: None,
+                    tdd: false,
+                    audit: false,
+                    worktree: false,
+                },
+                "",
+            ),
+        }
     }
 
     pub(crate) fn key(text: &str) -> DocKey {
@@ -838,7 +907,7 @@ pub(crate) mod testing {
             })
             .collect();
         let commit = Commit::new(
-            Actor::new("seed", "seed").unwrap(),
+            PortActor::new("seed", "seed").unwrap(),
             "seed",
             Timestamp::new(at_millis).unwrap(),
             ops,
@@ -854,7 +923,7 @@ pub(crate) mod testing {
             .clone()
             .expect("the document exists");
         let commit = Commit::new(
-            Actor::new("other", "other").unwrap(),
+            PortActor::new("other", "other").unwrap(),
             "other",
             Timestamp::new(at_millis).unwrap(),
             vec![Op::Put {
@@ -1412,7 +1481,21 @@ mod tests {
         assert_eq!(view.read_artifact("add-x", "design.md").as_deref(), Some("# D\n"));
         assert!(view.artifact_exists("add-x", "design.md"));
         assert!(view.write_artifact("add-x", "../x.md", "x").is_err());
-        assert_eq!(staged(view), ["put changes/add-x/design.md new \"# D\\n\""]);
+        // The display location uses `/` on every platform, also for a nested
+        // artifact: compare the text, not the `PathBuf`.
+        assert_eq!(
+            view.write_artifact("add-x", "specs/board/spec.md", "## ADDED\n")
+                .unwrap()
+                .to_string_lossy(),
+            "speclink/changes/add-x/specs/board/spec.md"
+        );
+        assert_eq!(
+            staged(view),
+            [
+                "put changes/add-x/design.md new \"# D\\n\"",
+                "put changes/add-x/specs/board/spec.md new \"## ADDED\\n\"",
+            ]
+        );
     }
 
     fn delete_artifact() {
@@ -1560,13 +1643,41 @@ mod tests {
             view.archive_discussion("old-talk", "2026-11-01").unwrap().as_deref(),
             Some("2026-11-01-old-talk-3.md")
         );
-        assert!(view.archive_discussion("board-search", "not-a-date").unwrap().is_none());
+        // The creation date comes from a document a person can edit. A date
+        // with more text after it (a time, for one) still gives a dated name,
+        // so the record is found by its slug afterwards.
+        view.write_live_discussion("odd", "odd text").unwrap();
+        assert_eq!(
+            view.archive_discussion("odd", "2026-11-10T08:00").unwrap().as_deref(),
+            Some("2026-11-10-odd.md")
+        );
+        assert!(!view.live_discussion_exists("odd"));
+        assert!(view.archived_discussion_exists("odd"));
+        let odd = view.read_discussion("odd").expect("found by its slug");
+        assert_eq!((odd.text.as_str(), odd.archived), ("odd text", true));
+        // Text with no date keeps the fs store's name: the whole text, then
+        // the slug. A listing shows the record; its slug alone does not find it.
+        view.write_live_discussion("undated", "u").unwrap();
+        assert_eq!(
+            view.archive_discussion("undated", "someday").unwrap().as_deref(),
+            Some("someday-undated.md")
+        );
+        assert!(!view.archived_discussion_exists("undated"));
+        assert!(view
+            .list_archived_discussions()
+            .iter()
+            .any(|d| d.slug == "someday-undated" && d.text == "u"));
+        view.write_live_discussion("worse", "x").unwrap();
+        assert!(view.archive_discussion("worse", "2026/11/10").is_err(), "not one segment");
         assert_eq!(
             staged(view),
             [
                 "put archive/discussions/2026-11-01-old-talk-3.md new \"third\"",
                 "put archive/discussions/2026-11-10-board-search.md new \"live text\"",
+                "put archive/discussions/2026-11-10-odd.md new \"odd text\"",
+                "put archive/discussions/someday-undated.md new \"u\"",
                 "delete discussions/board-search.md at 1",
+                "put discussions/worse.md new \"x\"",
             ]
         );
     }
@@ -1756,6 +1867,65 @@ mod tests {
             view.into_ops(),
             Err(PortError::Unavailable { message: "probe failure".into() })
         );
+    }
+
+    // --- 既有文件的名稱不照規則時 ---
+
+    #[test]
+    fn an_archived_change_without_a_dated_name_is_still_readable() {
+        // A store can hold older archived changes whose names carry no date.
+        // What a listing shows, a read must find.
+        let port = fixture();
+        seed(
+            &port,
+            6_000,
+            &[
+                ("archive/changes/legacy-name/.meta.yaml", "created: old\n"),
+                ("archive/changes/legacy-name/specs/auth/spec.md", "## ADDED\n"),
+            ],
+        );
+        for listed_first in [false, true] {
+            let view = PortView::new(&port, scope());
+            if listed_first {
+                assert!(view.list_archived_changes().contains(&"legacy-name".to_string()));
+            }
+            assert!(view.archived_change_exists("legacy-name"));
+            assert_eq!(view.read_archived_meta("legacy-name").as_deref(), Some("created: old\n"));
+            assert_eq!(
+                view.read_archived_artifact("legacy-name", "specs/auth/spec.md").as_deref(),
+                Some("## ADDED\n")
+            );
+            assert_eq!(view.archived_delta_capabilities("legacy-name"), ["auth"]);
+            // A new archived document must have a dated name.
+            assert!(view.write_archived_meta("legacy-name", "x").is_err());
+        }
+    }
+
+    #[test]
+    fn a_change_named_like_the_archive_folder_is_not_a_change() {
+        // `archive` cannot be a change name (the key naming rules). A listing
+        // must not show what `find_change` cannot find.
+        let port = fixture();
+        seed(&port, 6_000, &[("changes/archive/.meta.yaml", META_Y)]);
+        let view = PortView::new(&port, scope());
+        let names: Vec<String> = view.list_changes().into_iter().map(|c| c.name).collect();
+        assert_eq!(names, ["add-x", "add-y"]);
+        assert!(view.find_change("archive").is_none());
+        assert!(!view.change_exists("archive"));
+    }
+
+    #[test]
+    fn an_undated_archived_record_matches_its_whole_name_only() {
+        // An older record `plan-2` is the discussion `plan-2`, not the second
+        // archive of `plan`: the `-N` suffix belongs to dated names.
+        let port = fixture();
+        seed(&port, 6_000, &[("archive/discussions/plan-2.md", "old plan 2")]);
+        let view = PortView::new(&port, scope());
+        assert!(!view.archived_discussion_exists("plan"));
+        assert!(view.read_discussion("plan").is_none());
+        assert!(view.archived_discussion_exists("plan-2"));
+        let record = view.read_discussion("plan-2").expect("the older record");
+        assert_eq!((record.text.as_str(), record.archived), ("old plan 2", true));
     }
 
     // --- 經儲存接口執行時只讀取用到的文件 ---

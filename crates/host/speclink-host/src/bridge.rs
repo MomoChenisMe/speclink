@@ -8,30 +8,14 @@
 use crate::context::SpeclinkExecutionContext;
 use crate::port_exec::{self, ExecError};
 use crate::teamstore_port::TeamStorePort;
-use speclink_core::command::{Command, CommandError, CommandOutcome, DomainEvent};
+use speclink_core::command::{Command, CommandOutcome, DomainEvent};
 use speclink_store::{Revision, Scope, TeamStore};
-use speclink_store_port::PortError;
 
-/// A bridge execution failure, keeping the two error vocabularies distinct so
-/// the server maps each at exactly one place: the Engine command layer's five
-/// typed codes, or the store's failures — a conflict keeps its key and its
-/// expected and actual versions.
-#[derive(Debug)]
-pub enum BridgeError {
-    /// The Engine command layer refused before or during the flow.
-    Command(CommandError),
-    /// The store failed during a read, or rejected the commit.
-    Store(PortError),
-}
-
-impl From<ExecError> for BridgeError {
-    fn from(e: ExecError) -> BridgeError {
-        match e {
-            ExecError::Command(c) => BridgeError::Command(c),
-            ExecError::Store(s) => BridgeError::Store(s),
-        }
-    }
-}
+/// A bridge execution failure. It is the failure of the store-port entry the
+/// bridge runs on, under the name the server already uses: the Engine command
+/// layer's typed codes, or the store's failures — a conflict keeps its key and
+/// its expected and actual versions.
+pub type BridgeError = ExecError;
 
 /// The result of running one command over a TeamStore scope: the typed
 /// outcome, the domain events the execution produced (empty for queries), and

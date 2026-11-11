@@ -7,23 +7,18 @@
 use speclink_core::command::{
     execute as engine_execute, Command, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext,
 };
-use speclink_core::config::ResolvedPolicy;
 use speclink_core::store::Store;
 use speclink_core::workspace::{Workspace, DEFAULT_SPEC_DIR};
 use speclink_fs::FsStore;
-use speclink_host::binding::local_default_binding;
-use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
-use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_host::port_exec::{self, ExecError, PortExecution};
-use speclink_store_port::{
-    keys, Actor as PortActor, Commit, DocKey, Expected, KeyPrefix, MemoryStorePort, Op, ScopeId,
-    StorePort, Timestamp,
-};
+use speclink_store_port::{keys, DocKey, MemoryStorePort, StorePort};
+
+mod common;
+use common::{host_ctx, keys_under, scope, scope_version, seed, ACTOR};
 
 const CHANGE: &str = "demo";
 const META: &str = "schema: spec-driven\n";
 const TASKS: &str = "## 1. Section\n\n- [ ] 1.1 first task\n- [ ] 1.2 second task\n";
-const ACTOR: &str = "Alice <alice@example.com>";
 const TALK: &str = "---\ntopic: Board search\nslug: board-search\nstatus: open\ncreated: 2026-11-10\n---\n\n## Round 1\n\nFirst round.\n";
 const LANGUAGE: &str = "# Shared Vocabulary\n\n- Change: a proposed edit.\n";
 const DELTA: &str = "## Purpose\n\n本 capability 負責身分驗證的簽發與撤銷，涵蓋權杖生命週期各階段的可觀察行為、失敗處置與稽核紀錄。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
@@ -33,29 +28,6 @@ fn fs_engine_ctx() -> ExecutionContext {
         actor: Some(ACTOR.to_string()),
         repo: Some("main".to_string()),
         ..Default::default()
-    }
-}
-
-fn host_ctx() -> SpeclinkExecutionContext {
-    let binding = local_default_binding();
-    SpeclinkExecutionContext {
-        actor: Actor::Identified {
-            display: ACTOR.to_string(),
-            source: ActorSource::Explicit,
-        },
-        project: binding.project,
-        repo: binding.repo,
-        mode: ExecutionMode::SharedStore,
-        policy: EffectiveWorkflowPolicy::new(
-            ResolvedPolicy {
-                locale: "English".to_string(),
-                spec_locale: None,
-                tdd: false,
-                audit: false,
-                worktree: false,
-            },
-            "",
-        ),
     }
 }
 
@@ -97,38 +69,15 @@ fn seed_fs() -> (tempfile::TempDir, FsStore) {
     (dir, store)
 }
 
-fn scope() -> ScopeId {
-    ScopeId::new("default/main").unwrap()
-}
-
 /// A `MemoryStorePort` with the seed documents, written in one commit.
 fn seed_port() -> MemoryStorePort {
     let port = MemoryStorePort::new();
-    let ops = seed_docs()
+    let docs = seed_docs()
         .into_iter()
-        .map(|(key, content)| Op::Put {
-            key,
-            content: content.to_string(),
-            expected: Expected::Absent,
-        })
+        .map(|(key, content)| (key, content.to_string()))
         .collect();
-    let commit = Commit::new(
-        PortActor::new("seed", "seed").unwrap(),
-        "seed",
-        Timestamp::new(1).unwrap(),
-        ops,
-        Vec::new(),
-    )
-    .unwrap();
-    port.commit(&scope(), &commit).expect("seed commit");
+    seed(&port, docs);
     port
-}
-
-fn scope_version(port: &MemoryStorePort) -> u64 {
-    port.list(&scope(), &KeyPrefix::new("").unwrap())
-        .expect("list")
-        .version
-        .get()
 }
 
 fn on_port(port: &MemoryStorePort, cmd: Command) -> Result<PortExecution, ExecError> {
@@ -268,15 +217,6 @@ fn event_kinds(events: &[DomainEvent]) -> Vec<&'static str> {
     events.iter().map(DomainEvent::kind).collect()
 }
 
-fn port_keys(port: &MemoryStorePort, prefix: &str) -> Vec<String> {
-    port.list(&scope(), &KeyPrefix::new(prefix).unwrap())
-        .expect("list")
-        .entries
-        .into_iter()
-        .map(|entry| entry.key.as_str().to_string())
-        .collect()
-}
-
 fn port_content(port: &MemoryStorePort, key: &str) -> Option<String> {
     port.read(&scope(), &[DocKey::new(key).unwrap()])
         .expect("read")
@@ -342,7 +282,7 @@ fn discarding_a_change_matches_and_removes_every_document() {
     assert_eq!(event_kinds(&fs_events), event_kinds(&ported.events));
     assert_eq!(event_kinds(&ported.events), ["change-discarded"]);
     assert!(!fs.change_exists(CHANGE));
-    assert_eq!(port_keys(&port, "changes/"), Vec::<String>::new());
+    assert_eq!(keys_under(&port, "changes/"), Vec::<String>::new());
 }
 
 #[test]
@@ -370,7 +310,7 @@ fn archiving_a_change_matches_and_moves_every_document() {
 
     // The same documents at the same places, with the same content.
     assert!(!fs.change_exists(CHANGE));
-    assert_eq!(port_keys(&port, "changes/"), Vec::<String>::new());
+    assert_eq!(keys_under(&port, "changes/"), Vec::<String>::new());
     assert_eq!(
         fs.read_canonical_spec("auth"),
         port_content(&port, "specs/auth/spec.md")
@@ -400,9 +340,9 @@ fn archiving_a_discussion_matches_and_moves_the_record() {
     assert_eq!(event_kinds(&ported.events), ["discussion-archived"]);
     assert!(!fs.live_discussion_exists("board-search"));
     assert!(fs.archived_discussion_exists("board-search"));
-    assert_eq!(port_keys(&port, "discussions/"), Vec::<String>::new());
+    assert_eq!(keys_under(&port, "discussions/"), Vec::<String>::new());
     assert_eq!(
-        port_keys(&port, "archive/discussions/"),
+        keys_under(&port, "archive/discussions/"),
         ["archive/discussions/2026-11-10-board-search.md"]
     );
     assert_eq!(

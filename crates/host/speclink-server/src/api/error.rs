@@ -168,6 +168,10 @@ impl From<CommandError> for ApiError {
     }
 }
 
+/// What a client is told when the store cannot serve right now, whichever
+/// store vocabulary reported it.
+const STORE_UNAVAILABLE: &str = "the store backend is temporarily unavailable";
+
 /// The store's six failure classes → wire reason + status. A `revision_conflict`
 /// carries its expected/actual detail in the message (the envelope has no detail
 /// fields); a store-layer permission denial is 403, distinct from the 401 the
@@ -189,9 +193,7 @@ impl From<StoreError> for ApiError {
                 "{:?}: expected {:?}, actual {:?}",
                 doc.doc, expected, actual
             )),
-            StoreError::Unavailable => {
-                ApiError::unavailable("the store backend is temporarily unavailable")
-            }
+            StoreError::Unavailable => ApiError::unavailable(STORE_UNAVAILABLE),
             StoreError::Corrupt { reason } => ApiError::internal(format!("corrupt: {reason}")),
             StoreError::Backend { source } => ApiError::internal(format!("backend: {source}")),
         }
@@ -238,9 +240,9 @@ impl From<PortError> for ApiError {
                     key.as_str()
                 ))
             }
-            PortError::Unavailable { .. } => {
-                ApiError::unavailable("the store backend is temporarily unavailable")
-            }
+            // The store's own text is not sent out: it can name
+            // infrastructure. Every client sees the one fixed message.
+            PortError::Unavailable { .. } => ApiError::unavailable(STORE_UNAVAILABLE),
             backend @ PortError::Backend { .. } => ApiError::internal(backend.to_string()),
         }
     }
@@ -434,7 +436,12 @@ mod tests {
         let unavailable = ApiError::from(PortError::Unavailable { message: "timeout".into() });
         assert_eq!(unavailable.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(unavailable.reason, ErrorReason::Unavailable);
-        assert_eq!(unavailable.message, "the store backend is temporarily unavailable");
+        assert_eq!(unavailable.message, STORE_UNAVAILABLE);
+        assert_eq!(
+            ApiError::from(StoreError::Unavailable).message,
+            unavailable.message,
+            "one message for both store vocabularies"
+        );
 
         let backend = ApiError::from(PortError::Backend { message: "disk full".into() });
         assert_eq!(backend.status, StatusCode::INTERNAL_SERVER_ERROR);

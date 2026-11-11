@@ -11,48 +11,20 @@
 //! see the table.
 
 use speclink_core::command::Command;
-use speclink_core::config::ResolvedPolicy;
-use speclink_host::binding::local_default_binding;
-use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
-use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_host::port_exec;
 use speclink_store_port::{
-    Actor as PortActor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort,
-    Op, PortError, ScopeId, StorePort, Timestamp, Version,
+    Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort, Op, PortError,
+    ScopeId, StorePort, Version,
 };
+
+mod common;
+use common::{host_ctx, scope, seed};
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 const CHANGE: &str = "cost-probe";
 const TALK: &str = "cost-probe-talk";
-
-fn scope() -> ScopeId {
-    ScopeId::new("default/main").unwrap()
-}
-
-fn ctx() -> SpeclinkExecutionContext {
-    let binding = local_default_binding();
-    SpeclinkExecutionContext {
-        actor: Actor::Identified {
-            display: "Cost Probe <probe@example.com>".to_string(),
-            source: ActorSource::Explicit,
-        },
-        project: binding.project,
-        repo: binding.repo,
-        mode: ExecutionMode::SharedStore,
-        policy: EffectiveWorkflowPolicy::new(
-            ResolvedPolicy {
-                locale: "English".to_string(),
-                spec_locale: None,
-                tdd: false,
-                audit: false,
-                worktree: false,
-            },
-            "",
-        ),
-    }
-}
 
 // --- loading the folder ---
 
@@ -92,24 +64,8 @@ fn walk(dir: &Path, segments: &mut Vec<String>, out: &mut Vec<(Vec<String>, Path
     }
 }
 
-fn put(key: &str, content: &str) -> Op {
-    Op::Put {
-        key: DocKey::new(key).unwrap(),
-        content: content.to_string(),
-        expected: Expected::Absent,
-    }
-}
-
-fn seed(port: &MemoryStorePort, ops: Vec<Op>) {
-    let commit = Commit::new(
-        PortActor::new("seed", "seed").unwrap(),
-        "seed",
-        Timestamp::new(1_700_000_000_000).unwrap(),
-        ops,
-        Vec::new(),
-    )
-    .unwrap();
-    port.commit(&scope(), &commit).expect("seed commit");
+fn doc(key: &str, content: &str) -> (DocKey, String) {
+    (DocKey::new(key).unwrap(), content.to_string())
 }
 
 /// This project's spec folder as a store, plus the documents the measured
@@ -122,7 +78,7 @@ fn loaded_store() -> (MemoryStorePort, usize, usize) {
         .join("speclink");
     let mut files = Vec::new();
     walk(&root, &mut Vec::new(), &mut files);
-    let mut ops = Vec::new();
+    let mut docs = Vec::new();
     let mut bytes = 0;
     for (segments, path) in files {
         let Some(key) = key_of(&segments) else {
@@ -134,38 +90,34 @@ fn loaded_store() -> (MemoryStorePort, usize, usize) {
             continue;
         };
         bytes += content.len();
-        ops.push(Op::Put {
-            key,
-            content,
-            expected: Expected::Absent,
-        });
+        docs.push((key, content));
     }
-    let documents = ops.len();
+    let documents = docs.len();
     assert!(documents > 100, "the spec folder was found at {}", root.display());
     let port = MemoryStorePort::new();
-    seed(&port, ops);
+    seed(&port, docs);
     // The commands that need one change or one discussion use these, so the
     // test does not depend on which changes are active in the repo today.
     seed(
         &port,
         vec![
-            put(
+            doc(
                 &format!("changes/{CHANGE}/.meta.yaml"),
                 "schema: spec-driven\ncreated: 2026-11-11\n",
             ),
-            put(
+            doc(
                 &format!("changes/{CHANGE}/proposal.md"),
                 "## Why\n\nMeasure what a command costs a store.\n",
             ),
-            put(
+            doc(
                 &format!("changes/{CHANGE}/tasks.md"),
                 "## 1. Section\n\n- [ ] 1.1 first task\n- [ ] 1.2 second task\n",
             ),
-            put(
+            doc(
                 &format!("changes/{CHANGE}/specs/cost-probe-cap/spec.md"),
                 "## Purpose\n\n本 capability 只存在於量測測試裡，用來讓封存有一份新的正式規格可以寫入，內容沒有其他用途。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
             ),
-            put(
+            doc(
                 &format!("discussions/{TALK}.md"),
                 "---\ntopic: Cost probe\nslug: cost-probe-talk\nstatus: open\ncreated: 2026-11-11\n---\n\n## Round 1\n\nThe cost-probe keyword.\n",
             ),
@@ -185,18 +137,20 @@ struct Calls {
     commits: Vec<Commit>,
 }
 
-struct Counting {
+/// A store port that records every call with what came back, for the
+/// numbers of the cost table.
+struct CallRecorder {
     inner: MemoryStorePort,
     calls: Mutex<Calls>,
 }
 
-impl Counting {
+impl CallRecorder {
     fn take(&self) -> Calls {
         std::mem::take(&mut *self.calls.lock().unwrap())
     }
 }
 
-impl StorePort for Counting {
+impl StorePort for CallRecorder {
     fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
         self.calls
             .lock()
@@ -268,9 +222,9 @@ impl Row {
     }
 }
 
-fn measure(store: &Counting, name: &'static str, writes: bool, cmd: Command) -> Row {
+fn measure(store: &CallRecorder, name: &'static str, writes: bool, cmd: Command) -> Row {
     store.take();
-    port_exec::execute(store, &scope(), &ctx(), cmd)
+    port_exec::execute(store, &scope(), &host_ctx(), cmd)
         .unwrap_or_else(|e| panic!("{name} failed: {e:?}"));
     Row {
         name,
@@ -282,7 +236,7 @@ fn measure(store: &Counting, name: &'static str, writes: bool, cmd: Command) -> 
 #[test]
 fn commands_read_only_what_they_use() {
     let (inner, documents, bytes) = loaded_store();
-    let store = Counting {
+    let store = CallRecorder {
         inner,
         calls: Mutex::new(Calls::default()),
     };

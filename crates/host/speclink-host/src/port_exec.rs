@@ -42,7 +42,7 @@ pub struct PortExecution {
 /// from the Host; there is no local workspace or user schema directory in
 /// this mode (built-in schemas resolve without one), and env overrides do
 /// not apply: the Host already resolved the policy.
-pub(crate) fn engine_context(ctx: &SpeclinkExecutionContext) -> ExecutionContext {
+fn engine_context(ctx: &SpeclinkExecutionContext) -> ExecutionContext {
     ExecutionContext {
         actor: ctx.actor.display().map(str::to_string),
         repo: Some(ctx.repo.as_str().to_string()),
@@ -52,7 +52,7 @@ pub(crate) fn engine_context(ctx: &SpeclinkExecutionContext) -> ExecutionContext
 
 /// A short, stable command label for the commit's audit record. Derived from
 /// the outcome, so it names the verb that produced the writes.
-pub(crate) fn command_label(outcome: &CommandOutcome) -> String {
+fn command_label(outcome: &CommandOutcome) -> String {
     match outcome {
         CommandOutcome::NewChange(_) => "new-change",
         CommandOutcome::NewArtifact(_) => "new-artifact",
@@ -172,42 +172,15 @@ fn invalid(e: InvalidValue) -> ExecError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::binding::local_default_binding;
-    use crate::context::{Actor, ActorSource, ExecutionMode};
-    use crate::policy::EffectiveWorkflowPolicy;
-    use crate::port_view::testing::{key, overwrite, scope, seed, Probe};
+    use crate::context::Actor;
+    use crate::port_view::testing::{host_ctx as ctx, key, overwrite, scope, seed, Probe, ACTOR};
     use speclink_core::command::ErrorCode;
-    use speclink_core::config::ResolvedPolicy;
     use speclink_store_port::{Expected, KeyPrefix, MemoryStorePort, Op, Timestamp};
 
-    const ACTOR: &str = "Alice <alice@example.com>";
     const AT: u64 = 1_800_000_000_000;
     const META: &str = "schema: spec-driven\n";
     const TASKS: &str = "## 1. Section\n\n- [ ] 1.1 first task\n- [ ] 1.2 second task\n";
     const DELTA: &str = "## Purpose\n\n本 capability 負責身分驗證的簽發與撤銷，涵蓋權杖生命週期各階段的可觀察行為、失敗處置與稽核紀錄。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
-
-    fn ctx() -> SpeclinkExecutionContext {
-        let binding = local_default_binding();
-        SpeclinkExecutionContext {
-            actor: Actor::Identified {
-                display: ACTOR.to_string(),
-                source: ActorSource::Explicit,
-            },
-            project: binding.project,
-            repo: binding.repo,
-            mode: ExecutionMode::SharedStore,
-            policy: EffectiveWorkflowPolicy::new(
-                ResolvedPolicy {
-                    locale: "English".to_string(),
-                    spec_locale: None,
-                    tdd: false,
-                    audit: false,
-                    worktree: false,
-                },
-                "",
-            ),
-        }
-    }
 
     /// One change that can be worked on and archived.
     fn seeded() -> MemoryStorePort {

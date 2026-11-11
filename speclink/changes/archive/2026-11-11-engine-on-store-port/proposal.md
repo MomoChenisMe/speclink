@@ -46,13 +46,13 @@
     - crates/host/speclink-host/src/teamstore_port.rs
     - crates/host/speclink-host/tests/port_dual_path.rs
     - crates/host/speclink-host/tests/port_cost.rs
+    - crates/host/speclink-host/tests/common/mod.rs
   - Modified:
     - crates/host/speclink-host/Cargo.toml
     - crates/host/speclink-host/src/lib.rs
     - crates/host/speclink-host/src/bridge.rs
     - crates/host/speclink-host/src/commit.rs
     - crates/host/speclink-host/src/drift.rs
-    - crates/host/speclink-host/tests/bridge_dual_path.rs
     - crates/host/speclink-server/Cargo.toml
     - crates/host/speclink-server/src/api/error.rs
     - crates/host/speclink-server/tests/it/api/command_routes.rs

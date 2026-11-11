@@ -15,8 +15,8 @@ use speclink_store::{
     TeamStore,
 };
 use speclink_store_port::{
-    Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError, ScopeId,
-    StorePort, Timestamp, Version,
+    keys, Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError,
+    ScopeId, StorePort, Timestamp, Version,
 };
 use std::collections::BTreeMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -61,25 +61,30 @@ fn doc_of(key: &DocKey) -> Option<DocumentId> {
 /// The key of a TeamStore document, or `None` when its names cannot make a
 /// key that reads back as the same document (a name with a `/`, for one).
 fn key_of(doc: &DocumentId) -> Option<DocKey> {
-    let text = match doc {
-        DocumentId::ChangeMeta { change } => format!("changes/{change}/.meta.yaml"),
-        DocumentId::ChangeEvidence { change } => format!("changes/{change}/.evidence.json"),
-        DocumentId::ChangeArtifact { change, artifact } => format!("changes/{change}/{artifact}"),
-        DocumentId::ArchivedChange { change, doc } => format!("archive/changes/{change}/{doc}"),
-        DocumentId::CanonicalSpec { capability } => format!("specs/{capability}/spec.md"),
+    let key = match doc {
+        DocumentId::ChangeMeta { change } => keys::change_meta(change),
+        DocumentId::ChangeEvidence { change } => keys::change_evidence(change),
+        DocumentId::ChangeArtifact { change, artifact } => keys::change_artifact(change, artifact),
+        DocumentId::CanonicalSpec { capability } => keys::spec(capability),
         DocumentId::Discussion {
             slug,
             archived: false,
-        } => format!("discussions/{slug}.md"),
+        } => keys::discussion(slug),
+        // The contract's builders for the two archived kinds take dated names
+        // only. A TeamStore holds older records without a date, so these keep
+        // the stored name as it is.
+        DocumentId::ArchivedChange { change, doc } => {
+            DocKey::new(format!("{}{change}/{doc}", keys::ARCHIVED_CHANGES))
+        }
         DocumentId::Discussion {
             slug,
             archived: true,
-        } => format!("archive/discussions/{slug}.md"),
-        DocumentId::WorkflowConfig => "config.yaml".to_string(),
-        DocumentId::Language => "LANGUAGE.md".to_string(),
-        DocumentId::BoardOrder => "board/order".to_string(),
-    };
-    let key = DocKey::new(text).ok()?;
+        } => DocKey::new(format!("{}{slug}.md", keys::ARCHIVED_DISCUSSIONS)),
+        DocumentId::WorkflowConfig => Ok(keys::config()),
+        DocumentId::Language => Ok(keys::language()),
+        DocumentId::BoardOrder => Ok(keys::board_order()),
+    }
+    .ok()?;
     (doc_of(&key).as_ref() == Some(doc)).then_some(key)
 }
 
@@ -124,7 +129,7 @@ fn port_error(e: StoreError) -> PortError {
             }
         }
         StoreError::Unavailable => PortError::Unavailable {
-            message: "the store backend is temporarily unavailable".to_string(),
+            message: "the TeamStore is temporarily unavailable".to_string(),
         },
         other => backend(other.to_string()),
     }
@@ -354,13 +359,13 @@ mod tests {
 
     /// A TeamStore that counts its exports and snapshots.
     #[derive(Default)]
-    struct Counting {
+    struct ExportCounter {
         inner: MemoryStore,
         exports: AtomicUsize,
         snapshots: AtomicUsize,
     }
 
-    impl TeamStore for Counting {
+    impl TeamStore for ExportCounter {
         fn manifest(&self) -> Manifest {
             self.inner.manifest()
         }
@@ -516,6 +521,8 @@ mod tests {
         // `a/b` as a change name would read back as change `a`.
         assert_eq!(key_of(&change_meta("a/b")), None);
         assert_eq!(key_of(&change_meta("")), None);
+        // The key naming rules keep `archive` for the archive folder.
+        assert_eq!(key_of(&change_meta("archive")), None);
         assert_eq!(
             key_of(&DocumentId::CanonicalSpec { capability: "a/b".to_string() }),
             None
@@ -524,8 +531,8 @@ mod tests {
 
     // --- 列出與讀取 ---
 
-    fn seeded() -> Counting {
-        let store = Counting::default();
+    fn seeded() -> ExportCounter {
+        let store = ExportCounter::default();
         seed(
             &store,
             &scope(),
@@ -638,7 +645,7 @@ mod tests {
     #[test]
     fn a_commit_lands_the_document_and_its_event_together() {
         // 「commit 後 outbox 含對應事件」
-        let store = Counting::default();
+        let store = ExportCounter::default();
         let port = TeamStorePort::new(&store, scope()).unwrap();
         let event = Event::new("change-created", serde_json::json!({ "change": "add-auth" })).unwrap();
 
@@ -666,6 +673,43 @@ mod tests {
         assert_eq!(doc.revision.0, version.get(), "document and event share the commit revision");
         let history = snapshot.history(&change_meta("add-auth")).expect("history");
         assert_eq!((history[0].command.as_str(), history[0].actor.as_str()), ("new-change", "Alice <alice@example.com>"));
+    }
+
+    #[test]
+    fn a_commit_with_events_only_lands_the_events() {
+        // The store contract allows a commit with no operation. It becomes a
+        // unit of work with no staged write.
+        let store = seeded();
+        let port = TeamStorePort::new(&store, scope()).unwrap();
+        let before = store.inner.snapshot(&scope()).unwrap().revision().0;
+        let event = Event::new("task-moved", serde_json::json!({ "change": "add-x" })).unwrap();
+        let version = port
+            .commit(port.scope_id(), &commit_of(Vec::new(), vec![event]))
+            .expect("an events-only commit");
+        assert_eq!(version.get(), before + 1);
+        let entries = store.inner.read_outbox(&scope(), OutboxCursor(0)).expect("outbox");
+        assert_eq!(entries.len(), 1);
+        assert_eq!((entries[0].record.name.as_str(), entries[0].revision.0), ("task-moved", before + 1));
+    }
+
+    #[test]
+    fn a_verb_run_through_the_bridge_exports_the_scope_once() {
+        // 「一次執行只匯出一次」，經橋接執行一個會寫入的動詞。
+        let store = seeded();
+        let done = crate::bridge::execute(
+            &store,
+            &crate::port_view::testing::host_ctx(),
+            speclink_core::command::Command::TaskDone {
+                task_id: "1".to_string(),
+                change: Some("add-x".to_string()),
+                touched_files: Some(vec!["src/app.rs".to_string()]),
+                head_commit: None,
+            },
+        )
+        .expect("task done through the bridge");
+        assert!(done.revision.is_some(), "the verb committed");
+        assert_eq!(store.exports.load(Ordering::SeqCst), 1);
+        assert_eq!(store.snapshots.load(Ordering::SeqCst), 1);
     }
 
     #[test]
@@ -700,7 +744,7 @@ mod tests {
     #[test]
     fn the_loser_of_two_commits_on_one_document_gets_the_conflict() {
         // 「CAS 衝突原樣傳遞」
-        let store = Counting::default();
+        let store = ExportCounter::default();
         let base = seed(&store, &scope(), &[(change_meta("contested"), "v1")]);
         let port = TeamStorePort::new(&store, scope()).unwrap();
         let write = |content: &str| {
