@@ -230,6 +230,9 @@ pub fn render(
             plan::depends_declared(o, on, remove, options)
         }
         O::ChangeSchema(o) => plan::schema(o, options),
+        O::ChangeRank(o) => {
+            plan::rank(&plan::Ranked { change: &o.change, anchor: &o.anchor, side: o.position }, options)
+        }
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
         O::DiscussNew(info) => discuss::new(info, options),
@@ -357,9 +360,10 @@ mod tests {
             CommandOutcome::WorkflowConfigShow(_) => 42,
             CommandOutcome::WorkflowConfigEdit(_) => 43,
             CommandOutcome::WorkflowConfigReplace(_) => 44,
+            CommandOutcome::ChangeRank(_) => 45,
         }
     }
-    const RESULT_TYPES: usize = 45;
+    const RESULT_TYPES: usize = 46;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -701,6 +705,16 @@ mod tests {
             ),
             // No verb text reaches a whole-document replace.
             (&["list"], O::WorkflowConfigReplace(config_written()), false, ""),
+            (
+                &["change", "rank", "c", "--before", "a"],
+                O::ChangeRank(cmd::ChangeRankOutcome {
+                    change: s("c"),
+                    anchor: s("a"),
+                    position: speclink_core::plan::Side::Before,
+                }),
+                true,
+                "✓ c ranked before a\n",
+            ),
         ]
     }
 

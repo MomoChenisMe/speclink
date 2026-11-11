@@ -477,4 +477,65 @@ mod tests {
         assert!(!msg.contains("auth"), "無近似不列建議: {msg}");
         assert!(msg.contains("--new") && msg.contains("exact name"), "兩條指引仍在: {msg}");
     }
+
+    // --- 整份寫回（skills-verbs-first-wave 1.2）：`new artifact --force` 何時被拒 ---
+
+    const STARTED_META: &str =
+        "schema: spec-driven\ncreated: 2026-11-01\nstarted_at: 2026-11-02T09:00:00+08:00\n";
+
+    fn force_write(store: &TestStore, kind: &str, cap: Option<&str>, body: &str) -> Result<(String, PathBuf)> {
+        let change = model::find_change(store, "demo").expect("change resolves");
+        new_artifact(store, &change, Some(&crate::schema::spec_driven()), kind, cap, Some(body), true, false)
+    }
+
+    #[test]
+    fn force_write_back_replaces_an_existing_proposal_and_design() {
+        let store = store_with_change("demo");
+        store.put_artifact("demo", "proposal.md", "## Why\n\nold.\n");
+        store.put_artifact("demo", "design.md", "## Context\n\nold.\n");
+        force_write(&store, "proposal", None, "## Why\n\nnew.\n").expect("proposal write-back succeeds");
+        force_write(&store, "design", None, "## Context\n\nnew.\n").expect("design write-back succeeds");
+        assert_eq!(store.read_artifact("demo", "proposal.md").as_deref(), Some("## Why\n\nnew.\n"));
+        assert_eq!(store.read_artifact("demo", "design.md").as_deref(), Some("## Context\n\nnew.\n"));
+    }
+
+    #[test]
+    fn force_write_back_keeps_checked_task_lines_and_their_ids() {
+        let store = TestStore::with_meta("demo", STARTED_META);
+        let done = "- [x] 1.1 done <!-- speclink-task:tsk_01AAAAAAAAAAAAAAAAAAAAAAAA -->";
+        let open = "- [ ] 1.2 open <!-- speclink-task:tsk_01BBBBBBBBBBBBBBBBBBBBBBBB -->";
+        store.put_artifact("demo", "tasks.md", &format!("## 1. Work\n\n{done}\n{open}\n"));
+        let written = format!("## 1. Work\n\n{done}\n{open}\n- [ ] 1.3 new\n");
+        force_write(&store, "tasks", None, &written).expect("a partly checked list writes back");
+        let after = store.read_artifact("demo", "tasks.md").expect("tasks written");
+        let lines: Vec<&str> = after.lines().collect();
+        assert_eq!(lines[2], done, "the checked line and its ID pass through unchanged");
+        assert_eq!(lines[3], open, "the open line and its ID pass through unchanged");
+        assert!(
+            lines[4].starts_with("- [ ] 1.3 new <!-- speclink-task:tsk_"),
+            "only the new line gets a fresh ID: {}",
+            lines[4]
+        );
+    }
+
+    #[test]
+    fn force_write_back_refuses_a_fully_checked_task_list() {
+        let store = TestStore::with_meta("demo", STARTED_META);
+        let before = "## 1. Work\n\n- [x] 1.1 done <!-- speclink-task:tsk_01AAAAAAAAAAAAAAAAAAAAAAAA -->\n";
+        store.put_artifact("demo", "tasks.md", before);
+        let err = force_write(&store, "tasks", None, before).expect_err("a list with no open box is refused");
+        assert!(err.downcast_ref::<InvalidContent>().is_some(), "classified as invalid content: {err}");
+        assert_eq!(err.to_string(), "Tasks must contain at least one checkbox (- [ ])");
+        assert_eq!(store.read_artifact("demo", "tasks.md").as_deref(), Some(before), "nothing written");
+    }
+
+    #[test]
+    fn force_write_back_replaces_a_delta_of_a_started_change() {
+        let store = TestStore::with_meta("demo", STARTED_META);
+        store.canonical.borrow_mut().insert("auth".into(), CANON_AUTH.into());
+        store.put_artifact("demo", "specs/auth/spec.md", DELTA);
+        let revised = format!("{DELTA}\n### Requirement: R2\n\nIt SHALL also work.\n");
+        force_write(&store, "spec", Some("auth"), &revised).expect("a started change's delta writes back");
+        assert_eq!(store.read_artifact("demo", "specs/auth/spec.md").as_deref(), Some(revised.as_str()));
+    }
 }

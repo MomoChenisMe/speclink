@@ -10,6 +10,7 @@
 use speclink_core::model::{Change, ChangeMeta, META_FILE, META_READ_ORDER};
 use speclink_core::store::{DiscussionDoc, Store};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
+use speclink_protocol::query::BoardOrderDoc;
 use speclink_store_port::{
     keys, DocKey, Expected, InvalidValue, KeyPrefix, Op, PortError, ScopeId, StorePort, Timestamp,
     Version,
@@ -849,6 +850,35 @@ impl Store for PortView<'_> {
 
     fn read_language(&self) -> Option<String> {
         self.content(&keys::language())
+    }
+
+    // --- board order: the scope's board-order document (skills-verbs-first-wave D4) ---
+
+    /// The change table of `board/order`, read by the one lenient rule every
+    /// reader of the document uses: no document, or one that is not the
+    /// expected shape, has no ranks.
+    fn board_ranks(&self) -> BTreeMap<String, String> {
+        BoardOrderDoc::from_content(self.content(&keys::board_order()).as_deref()).changes
+    }
+
+    /// Stage the whole `board/order` document with `ranks` put into its change
+    /// table: one write, whatever the batch size, committed with the
+    /// command's events. The discussion table goes back as it was when it is
+    /// a usable table, also when the change table was not; fields the format
+    /// does not define are not kept.
+    fn write_board_ranks(&self, ranks: &[(String, String)]) -> anyhow::Result<()> {
+        let key = keys::board_order();
+        let current = self.content(&key);
+        let mut changes = BoardOrderDoc::from_content(current.as_deref()).changes;
+        changes.extend(ranks.iter().cloned());
+        let discussions = current
+            .as_deref()
+            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
+            .and_then(|mut doc| serde_json::from_value(doc.get_mut("discussions")?.take()).ok())
+            .unwrap_or_default();
+        let doc = BoardOrderDoc { changes, discussions };
+        self.put(key, serde_json::to_string(&doc)?);
+        Ok(())
     }
 }
 
@@ -1702,6 +1732,25 @@ mod tests {
         assert_eq!(staged(view), ["put config.yaml new \"tdd: true\\n\""]);
     }
 
+    fn board_ranks() {
+        let port = fixture();
+        assert!(PortView::new(&port, scope()).board_ranks().is_empty(), "no document, no ranks");
+        seed(&port, 10_000, &[("board/order", r#"{"changes":{"add-x":"n"},"discussions":{"t":"f"}}"#)]);
+        let ranks = PortView::new(&port, scope()).board_ranks();
+        assert_eq!(ranks, BTreeMap::from([("add-x".to_string(), "n".to_string())]));
+    }
+
+    fn write_board_ranks() {
+        let port = fixture();
+        let view = PortView::new(&port, scope());
+        let pair = |c: &str, k: &str| (c.to_string(), k.to_string());
+        view.write_board_ranks(&[pair("add-y", "f"), pair("add-x", "n")]).unwrap();
+        view.write_board_ranks(&[pair("add-y", "g")]).unwrap();
+        assert_eq!(view.board_ranks()["add-y"], "g", "a command sees its own writes");
+        let doc = r#"{"changes":{"add-x":"n","add-y":"g"},"discussions":{}}"#;
+        assert_eq!(staged(view), [format!("put board/order new {doc:?}")], "one write");
+    }
+
     /// One row per method of `speclink_core::store::Store`.
     const COVERAGE: &[(&str, fn())] = &[
         ("write_workflow_config", write_workflow_config),
@@ -1748,6 +1797,8 @@ mod tests {
         ("list_archived_discussions", list_archived_discussions),
         ("read_workflow_config", read_workflow_config),
         ("read_language", read_language),
+        ("board_ranks", board_ranks),
+        ("write_board_ranks", write_board_ranks),
     ];
 
     #[test]
@@ -1763,7 +1814,7 @@ mod tests {
         // 「三個操作足以供應全部方法」的證明要涵蓋整個介面：介面多一個方法而
         // 表沒有跟上時，這個測試失敗。
         let source = include_str!("../../../engine/speclink-core/src/store.rs");
-        let (_, body) = source.split_once("pub trait Store {").expect("the Store trait");
+        let (_, body) = source.split_once("pub trait Store").expect("the Store trait");
         let mut declared: Vec<&str> = body
             .lines()
             .filter_map(|line| line.trim_start().strip_prefix("fn "))

@@ -181,7 +181,7 @@ pub fn check_cycle(store: &dyn Store) -> Result<(), PlanError> {
 }
 
 /// Each change's own `board_rank`, keyed by name; unranked changes are absent.
-fn meta_ranks(changes: &[Change]) -> BTreeMap<String, String> {
+pub(crate) fn meta_ranks(changes: &[Change]) -> BTreeMap<String, String> {
     changes
         .iter()
         .filter_map(|c| c.meta.board_rank.clone().map(|r| (c.name.clone(), r)))
@@ -991,8 +991,8 @@ pub fn move_rank(
     write_between(store, write, &ranks, &column, name, prev, next)
 }
 
-/// Where a move of `name` starts: the rank table the metas hold and the
-/// placeable entries in basis order. `name` must be an active change with
+/// Where a move of `name` starts: the rank table the store holds
+/// ([`Store::board_ranks`]) and the placeable entries in basis order. `name` must be an active change with
 /// parseable metadata.
 fn move_start(
     store: &dyn Store,
@@ -1003,7 +1003,7 @@ fn move_start(
         anyhow::bail!("Change '{name}' not found.");
     };
     model::require_valid_meta(store, moved)?;
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks();
     let (entries, _) = entries_of(store, changes, &ranks);
     Ok((ranks, entries))
 }

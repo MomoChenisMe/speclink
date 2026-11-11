@@ -372,6 +372,29 @@ pub struct SetDependsResponse {
     pub depends_on: Vec<String>,
 }
 
+/// `POST /changes/{name}/rank` request body: the anchor change, which side of
+/// it, and whether to move a change that already has a board rank.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RankChangeRequest {
+    pub anchor: String,
+    /// `before` or `after`; the server refuses any other value as
+    /// `invalid_argument`.
+    pub position: String,
+    #[serde(default)]
+    pub force: bool,
+}
+
+/// `POST /changes/{name}/rank` response: the CLI `change rank --json` shape.
+/// The rank value stays out — it is an internal order key.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct RankChangeResponse {
+    pub change: String,
+    pub anchor: String,
+    pub position: String,
+}
+
 /// `POST /changes/{name}/schema` request body: the schema to switch to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -964,6 +987,25 @@ mod tests {
         // 移除到空的回應：舊寫法省略陣列時讀作空清單。
         let emptied: SetDependsResponse = serde_json::from_str(r#"{"change":"add-b"}"#).unwrap();
         assert!(emptied.depends_on.is_empty());
+    }
+
+    #[test]
+    fn rank_change_request_and_response_travel_in_camel_case() {
+        // 規格「排序請求與回應」：請求三個欄位、force 缺席讀作 false；回應三個欄位、不含順序鍵。
+        let req = RankChangeRequest { anchor: "a".into(), position: "before".into(), force: true };
+        assert_eq!(
+            serde_json::to_value(&req).unwrap(),
+            serde_json::json!({ "anchor": "a", "position": "before", "force": true })
+        );
+        let bare: RankChangeRequest = serde_json::from_str(r#"{"anchor":"a","position":"after"}"#).unwrap();
+        assert!(!bare.force, "an absent force reads as false");
+        let resp = RankChangeResponse { change: "c".into(), anchor: "a".into(), position: "before".into() };
+        assert_eq!(
+            serde_json::to_value(&resp).unwrap(),
+            serde_json::json!({ "change": "c", "anchor": "a", "position": "before" })
+        );
+        let back: RankChangeResponse = serde_json::from_str(r#"{"change":"c","anchor":"a","position":"before"}"#).unwrap();
+        assert_eq!(back, resp);
     }
 
     #[test]

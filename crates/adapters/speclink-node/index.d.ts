@@ -213,8 +213,10 @@ export interface Engine {
    * (shell argv without the program name, e.g. `['list', '--json']`).
    *
    * Every verb that has an engine command runs. The verbs that need a
-   * checkout (`drift`, `change rank`, `review prepare`, `review scope`,
-   * `verify scope`, `instructions --skill`) reject with `invalid_argv`.
+   * checkout (`drift`, `review prepare`, `review scope`, `verify scope`,
+   * `instructions --skill`) reject with `invalid_argv`. `change rank` on a
+   * host store needs the optional `readChangeMeta` and `writeChangeMeta`;
+   * without them it rejects with `refused` before it runs.
    *
    * Resolves to the same structured object the CLI prints with `--json`
    * (camelCase); verbs without a `--json` form resolve to `{ output: string }`,

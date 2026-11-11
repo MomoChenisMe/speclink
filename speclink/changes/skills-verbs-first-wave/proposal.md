@@ -88,26 +88,36 @@ Source discussion: embedded-host-needs（cut 9）。
     - crates/engine/speclink-core/assets/skills/ingest.md
     - crates/engine/speclink-core/src/workspace/init.rs
     - crates/engine/speclink-core/tests/it/skill_verbization.rs
-    - crates/engine/speclink-core/tests/it/skill_authoring.rs
     - crates/engine/speclink-core/tests/golden/assets.lock
     - crates/engine/speclink-core/src/command/mod.rs
+    - crates/engine/speclink-core/src/command/typed.rs
+    - crates/engine/speclink-core/src/command/tests.rs
     - crates/engine/speclink-core/src/store.rs
     - crates/engine/speclink-core/src/lifecycle/plan.rs
+    - crates/engine/speclink-core/src/lifecycle/newcmd.rs
     - crates/host/speclink-host/src/port_view.rs
+    - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/src/commit.rs
     - crates/protocol/speclink-protocol/src/command.rs
     - crates/protocol/speclink-remote/src/client.rs
     - crates/host/speclink-server/src/app.rs
     - crates/host/speclink-server/src/api/routes.rs
     - crates/host/speclink-server/src/api/events.rs
+    - crates/host/speclink-server/tests/it/api/plan_api.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
     - crates/adapters/speclink-verbs/src/families/plan.rs
-    - crates/adapters/speclink-verbs/src/render/plan.rs
+    - crates/adapters/speclink-verbs/src/families/mod.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/adapters/speclink-cli/src/main.rs
     - crates/adapters/speclink-cli/src/verbs/plan.rs
     - crates/adapters/speclink-cli/tests/it/plan_verbs.rs
+    - crates/adapters/speclink-cli/tests/it/remote_plan.rs
     - crates/adapters/speclink-cli/tests/it/main.rs
     - crates/adapters/speclink-node/src/lib.rs
+    - crates/adapters/speclink-node/index.d.ts
+    - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts
   - Removed: (none)
+  - 實作後對照（apply 期更新）：`speclink-core` 的 skill_authoring.rs 不必改（強調字上限沒有調高）；`speclink-verbs` 的 render/plan.rs 不必改（`change rank` 的輸出函式本來就在那裡，只在 render/mod.rs 接上 `ChangeRank` 這一支）。
   - 另外會重新產生：crates/engine/speclink-core/tests/golden 底下的技能快照，以及本 repo 由 `speclink update` 產生的技能檔。
 - 相依：沒有硬性的先後。可以和 host-kit-agent-door 並行。排序的線上路由這次加在示範用 server；變更 host-kit-client-door 把路由搬進宿主套件時一起搬。
 - 三種形態下的結果：

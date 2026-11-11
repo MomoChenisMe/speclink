@@ -39,7 +39,7 @@ If no argument is provided, the workflow extracts requirements from conversation
      ```bash
      speclink discuss show <slug> --json
      ```
-   - If a candidate discussion exists, use the **AskUserQuestion tool** to confirm using it (Option 1: this discussion, Option 2: another source). When confirmed, extract from the discussion document (`discussions/<slug>.md`):
+   - If a candidate discussion exists, use the **AskUserQuestion tool** to confirm using it (Option 1: this discussion, Option 2: another source). When confirmed, extract from the record — the `content` field of the `speclink discuss show <slug> --json` output:
      - `## Conclusion` → **Decision** becomes the requirement description; **Rationale** becomes the proposal Why; **Capture to** routing guides which artifacts to emphasize.
      - The `## Context` section and the accumulated `### Round N` entries → context for What Changes, Capabilities, and Impact (the rounds' **Ruled out** lines name the alternatives already eliminated — don't re-propose them).
    - **Follow the `Source doc:` line.** If the discussion's `## Context` carries a line `Source doc: <path>`, read that original document as well — the record stores only the decision diff, so the underlying plan lives in that file. Synthesize the two with **overlay semantics**: the document is the base layer, the discussion is the winning layer.
@@ -123,7 +123,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    speclink new change "<name>" --schema <chosen> --agent {{TOOL}} --from-discussion <slug>
    ```
 
-   **Is this the last cut the conclusion planned? Then add `--last`.** A discussion whose conclusion stages several cuts (cut A now, cut B once A lands, …) was concluded with `--hold`, and the engine has no way to tell the final cut from a middle one — you do. Before running the command, read the record's `## Conclusion` **Decision** for the list of planned cuts (刀一／刀二／…, cut A／cut B, or any similar enumeration) and the frontmatter's `promoted_to` for the cuts already spun out, then decide:
+   **Is this the last cut the conclusion planned? Then add `--last`.** A discussion whose conclusion stages several cuts (cut A now, cut B once A lands, …) was concluded with `--hold`, and the engine has no way to tell the final cut from a middle one — you do. Before running the command, read the record's `## Conclusion` **Decision** for the list of planned cuts (刀一／刀二／…, cut A／cut B, or any similar enumeration) and the frontmatter's `promoted_to` for the cuts already spun out — both are in the `content` field of `speclink discuss show <slug> --json` — then decide:
 
    - The change you are creating is the **final cut the conclusion planned** → pass `--last`:
 
@@ -134,7 +134,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
    - The conclusion planned **no staged cuts** (a single change) → do not pass it. (The record carries no hold, so the flag would be a harmless no-op — but "not passed" is the rule.)
 
-   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `{{SPEC_DIR}}discussions/archive/` to `{{SPEC_DIR}}discussions/` (drop the `<date>-` prefix) — the engine's error message points at that path. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
+   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `{{SPEC_DIR}}discussions/archive/` to `{{SPEC_DIR}}discussions/` (drop the `<date>-` prefix), which works only when the spec folder is in this checkout — the engine's error message points at that path; when the specs are not in this checkout, stop and tell the user that the move has to be done on the Server that holds the specs. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
 6. **Write the proposal**
 
@@ -286,9 +286,9 @@ If no argument is provided, the workflow extracts requirements from conversation
      - `rules`: Artifact-specific rules (constraints for you - do not include in output)
      - `template`: The structure to use for your output file
      - `instruction`: Schema-specific guidance
-     - `outputPath`: Where to write the artifact
+     - `outputPath`: where the engine stores the artifact — for display only; every write goes through `speclink new artifact`
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless the project sets `spec_locale` in `{{SPEC_DIR}}config.yaml` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store)
    - Follow the `instruction` field and use `template` as the structure for your output file — fill in its sections
    - `context` and `rules` are constraints for you, not content for the file: apply them, but never copy `<context>`, `<rules>`, or `<project_context>` blocks into the artifact
@@ -323,6 +323,16 @@ If no argument is provided, the workflow extracts requirements from conversation
 
      If the command fails with a validation error, fix the content and retry.
 
+     **Write-back: changing an artifact that already exists.** Every later fix in this workflow — the self-review (step 9), the analyze loop (step 10), a failed validation (step 11) — changes an artifact the same way: read its full text with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability-name>`), make the fix on that full text, and write the whole result back with `--stdin --force`:
+
+     ```bash
+     speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+     <full corrected content>
+     ARTIFACT_EOF
+     ```
+
+     A delta spec is written back with `speclink new artifact spec <capability-name> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+
      **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command without `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
 
    - Show brief progress: "✓ Created <artifact-id>"
@@ -336,7 +346,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
 9. **Inline Self-Review** (before CLI analysis)
 
-   After creating all artifacts, scan them manually. Fix issues inline, then proceed to the CLI analyzer.
+   After creating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (step 8), then proceed to the CLI analyzer.
 
    **Check 1: No Placeholders**
 
@@ -372,7 +382,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
    - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
-   Fix every failure inline using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
+   Fix every failure with a write-back (step 8) using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
 
 10. **Analyze-Fix Loop** (max 2 iterations)
    1. Run `speclink analyze <change-name> --json`
@@ -380,7 +390,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    3. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
    4. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
-      b. Fix each finding in the affected artifact
+      b. Fix each finding in the affected artifact with a write-back (step 8)
       c. Re-run `speclink analyze <change-name> --json`
       d. Repeat up to 2 total iterations
    5. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
@@ -391,7 +401,7 @@ If no argument is provided, the workflow extracts requirements from conversation
     speclink validate "<name>"
     ```
 
-    If validation fails, fix errors and re-validate.
+    If validation fails, fix the errors with a write-back (step 8) and re-validate.
 
 12. **End the workflow**
 
@@ -429,7 +439,7 @@ Run this check after the summary, right before presenting the Next steps below.
 1. Run `speclink list --json` for the active change names and their task counts (`totalTasks`). The change just created counts.
 2. **Only one active change** (the one just created) → skip the rest of this check; the Next steps edges below already cover it.
 3. **Two or more** → judge the **soft dependencies of the change you just created only** — never re-judge the whole landscape:
-   - Read the Impact section of each other active change's proposal and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
+   - Read the Impact section of each other active change's proposal with `speclink artifact cat proposal --change <other>` — when that change's `speclink list --json` entry carries a `worktree` object, run it from its `worktree.path` — and decide whether the new change builds on that change's outcome, or edits the same code areas. Each such change is a prerequisite of the new one.
    - Record each prerequisite with its own call: `speclink change depends <change-name> --on <prerequisite>`. The verb writes all of its `--on` names or none, so one call per prerequisite keeps one refusal from dropping the others. This writes `depends_on` into the change's metadata, where `speclink plan` and every later session read it. A verbal note is not enough — if you found a prerequisite, the command must have run. An edge that already exists is left as it is. The verb refuses (with zero writes) a self-dependency, an unknown or archived name, and an edge that would form a cycle; report the refusal and move on to the next prerequisite — do not retry it, and do not edit another change's `depends_on`.
    - No prerequisite found → run nothing.
    - **Hard signal — requirement-level overlap** is the engine's job: `speclink plan` reads every delta. When two changes touch the same requirement of the same capability, the plan lists the one to archive first in the other's `archiveAfter`. It checks whether the canonical spec has that name now, and puts first the change whose archive leaves the name the way the other change needs it — for example, a change that ADDs a name the canonical spec lacks archives before one that MODIFIES it, and one that MODIFIES a name archives before one that REMOVES it. Two changes that both bring the same name in (ADD it, or rename a requirement to it), or both take it away (REMOVE it, or rename it away), are marked `conflict` in `requirementOverlap`. Overlap never delays a start. Do NOT judge overlap yourself. When the plan marks a `conflict` for this change, tell the user that one of the two sides has to change: whichever change archives second fails, on a duplicate name or on a name that is already gone.

@@ -223,7 +223,6 @@ mod tests {
         use LocalOnlyReason::{CliSkillText, NeedsCheckout};
         let rows: &[(&[&str], LocalOnlyReason)] = &[
             (&["drift", "demo"], NeedsCheckout),
-            (&["change", "rank", "demo", "--after", "other"], NeedsCheckout),
             (&["review", "prepare", "demo"], NeedsCheckout),
             (&["review", "scope", "demo"], NeedsCheckout),
             (&["verify", "scope", "demo"], NeedsCheckout),

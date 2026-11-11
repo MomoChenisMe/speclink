@@ -63,6 +63,7 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::InProgressRemove(_) => "in-progress-remove",
         CommandOutcome::ChangeDepends(_) => "change-depends",
         CommandOutcome::ChangeSchema(_) => "change-schema",
+        CommandOutcome::ChangeRank(_) => "change-rank",
         CommandOutcome::Archive(_) => "archive",
         CommandOutcome::Discard(_) => "discard",
         CommandOutcome::DiscussNew(_) => "discuss-new",

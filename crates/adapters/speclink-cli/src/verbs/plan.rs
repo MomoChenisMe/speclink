@@ -1,12 +1,12 @@
 //! Execution-order verbs: `plan` (read), `change depends`, `change schema` and
 //! `change rank` (writes).
 //!
-//! `plan`, `change depends` and `change schema` are Dual (add-change-plan-remote
-//! D4; change-schema-verb D5): the fs
-//! arms read and write the local openspec/ tree; the remote arms call the
-//! server endpoints and pass the response to the same output functions
-//! (speclink-verbs' `render::plan`), so both modes print alike. `change rank` is FsOnly: it writes the card metas'
-//! board rank, and a remote scope keeps its order in the board resource.
+//! All four are Dual (add-change-plan-remote D4; change-schema-verb D5;
+//! skills-verbs-first-wave D6): the fs arms read and write the local spec
+//! tree; the remote arms call the server endpoints and pass the response to
+//! the same output functions (speclink-verbs' `render::plan`), so both modes
+//! print alike. `change rank` writes the card metas' board rank locally; the
+//! server writes its scope's board resource.
 
 use anyhow::Result;
 use speclink_core as core;
@@ -17,7 +17,7 @@ use crate::common::{
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
-use speclink_verbs::families::plan::{ChangeCommands, ChangeVerbArgs, PlanArgs};
+use speclink_verbs::families::plan::{rank_anchor, ChangeCommands, ChangeVerbArgs, PlanArgs};
 use speclink_verbs::render::plan::{self as render, Depends, Ranked};
 
 pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
@@ -58,13 +58,7 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             force,
             json,
         } => {
-            let (anchor, side) = match before {
-                Some(anchor) => (anchor.clone(), core::plan::Side::Before),
-                None => (
-                    after.clone().expect("clap requires --before or --after"),
-                    core::plan::Side::After,
-                ),
-            };
+            let (anchor, side) = rank_anchor(before, after);
             // The column is read as `plan` orders it — the main roster with each
             // mapped change's worktree copy — and each rank is written into its
             // own change's copy, the one that view reads. The overlay itself
@@ -116,8 +110,17 @@ pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
             };
             emit(render::schema(&o, render_options(json)));
         }
-        ChangeCommands::Rank { .. } => {
-            unreachable!("dispatch refuses change rank in remote mode before the handshake")
+        ChangeCommands::Rank { name, before, after, force, json } => {
+            let (anchor, side) = rank_anchor(&before, &after);
+            let r = ctx.client.rank_change(&name, &anchor, side.as_str(), force)?;
+            let side = match r.position.as_str() {
+                "before" => core::plan::Side::Before,
+                "after" => core::plan::Side::After,
+                other => anyhow::bail!(
+                    "unexpected server response — update speclink or report a bug (position '{other}')"
+                ),
+            };
+            emit(render::rank(&Ranked { change: &r.change, anchor: &r.anchor, side }, render_options(json)));
         }
     }
     Ok(())

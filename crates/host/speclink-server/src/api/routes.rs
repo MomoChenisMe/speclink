@@ -30,7 +30,8 @@ use speclink_protocol::command::{
     CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
-    PutArtifactRequest, PutArtifactResponse, ReviewFindingDto, ReviewRoundDto, ReviewRulesDto,
+    PutArtifactRequest, PutArtifactResponse, RankChangeRequest, RankChangeResponse,
+    ReviewFindingDto, ReviewRoundDto, ReviewRulesDto,
     ReviewTicketResponse, SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest,
     SetSchemaRequest, SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest,
     TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
@@ -417,6 +418,38 @@ pub async fn change_depends(
             &result.etag,
         )),
         _ => Err(wrong_outcome("change depends")),
+    }
+}
+
+/// `POST /changes/{name}/rank` — Command::ChangeRank 直通（client-protocol「排序
+/// 請求與回應」）：editor 限定；不存在 404；`position` 不是 before／after 為 400
+/// invalid_argument；錨點不是作用中的變更、兩者相同、不同階段、已有順序鍵而未帶
+/// force、跨宣告依賴為引擎 Refused → 409 refused 附引擎原文、零寫入。順序鍵只寫進
+/// 範圍的 board resource，與 change-ranked 事件同一次提交；board resource 在讀取
+/// 之後被改寫時 409 revision_conflict。
+pub async fn change_rank(
+    State(state): State<AppState>,
+    binding: Binding,
+    Path((_key, name)): Path<(String, String)>,
+    Json(req): Json<RankChangeRequest>,
+) -> Result<Response, ApiError> {
+    let side = match req.position.as_str() {
+        "before" => speclink_core::plan::Side::Before,
+        "after" => speclink_core::plan::Side::After,
+        other => {
+            return Err(ApiError::invalid_argument(format!(
+                "position must be 'before' or 'after', got '{other}'"
+            )))
+        }
+    };
+    let cmd = Command::ChangeRank { name, anchor: req.anchor, side, force: req.force };
+    let result = verb::run(&state, &binding, cmd).await?;
+    match result.execution.outcome {
+        CommandOutcome::ChangeRank(o) => Ok(ok(
+            RankChangeResponse { change: o.change, anchor: o.anchor, position: o.position.as_str().to_string() },
+            &result.etag,
+        )),
+        _ => Err(wrong_outcome("change rank")),
     }
 }
 

@@ -92,3 +92,66 @@ fn generated_skills_contain_no_direct_spec_document_reads() {
         offenders.join("\n")
     );
 }
+
+/// The three skills a host's agent uses first (discuss, propose, ingest) must name a
+/// verb for every spec-document read or write, so the same text works with no spec
+/// files in the checkout (verb-contract「store 文件讀取動詞」; discuss-skill「正式規格
+/// 與變更文件一律經動詞讀取」; propose-skill「artifact 的讀取與改寫一律經動詞」;
+/// ingest-skill「既有 artifact 的更新經動詞整份寫回」). A regression check for those
+/// three only, scanned in the Claude rendering and the custom tool's tool-call form.
+#[test]
+fn first_wave_skills_read_and_write_through_verbs() {
+    let claude = TempRoot::new("first-wave-claude");
+    init::init(&claude.dir, &[Tool::Claude], true, "speclink").unwrap();
+
+    let tool_call = TempRoot::new("first-wave-tool-call");
+    std::fs::create_dir_all(tool_call.dir.join("speclink").join("changes")).unwrap();
+    std::fs::write(
+        tool_call.dir.join(".speclink.yaml"),
+        "tools:\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n    invocation: tool-call\n",
+    )
+    .unwrap();
+    init::update(&tool_call.dir, false).unwrap();
+
+    let path_word = Regex::new(r"\bpath\b").unwrap();
+    let renderings = [
+        ("claude", claude.dir.join(".claude").join("skills")),
+        ("tool-call", tool_call.dir.join(".wad").join("skills")),
+    ];
+    let mut problems: Vec<String> = Vec::new();
+    for (form, skills_dir) in &renderings {
+        for name in ["discuss", "propose", "ingest"] {
+            let file = skills_dir.join(format!("speclink-{name}")).join("SKILL.md");
+            let content = std::fs::read_to_string(&file)
+                .unwrap_or_else(|e| panic!("{form}: cannot read {}: {e}", file.display()));
+            let mut problem = |what: String| problems.push(format!("{form} speclink-{name}: {what}"));
+
+            for (i, line) in content.lines().enumerate() {
+                if path_word.is_match(line) && line.contains("spec.md") {
+                    problem(format!("line {} puts `path` and spec.md together: {}", i + 1, line.trim()));
+                }
+                if line.contains("Move the record file") && !line.contains("checkout") {
+                    problem(format!("line {} moves the record with no checkout condition", i + 1));
+                }
+            }
+            if !content.contains("speclink artifact cat") {
+                problem("never names `speclink artifact cat`".into());
+            }
+            if name != "discuss" {
+                if content.contains("config.yaml") {
+                    problem("mentions config.yaml".into());
+                }
+                if !content.contains("--stdin --force") {
+                    problem("never names the `--stdin --force` write-back".into());
+                }
+            } else if !content.contains("speclink show") {
+                problem("never names `speclink show`".into());
+            }
+        }
+    }
+    assert!(
+        problems.is_empty(),
+        "discuss, propose and ingest must read and write spec documents through verbs:\n{}",
+        problems.join("\n")
+    );
+}

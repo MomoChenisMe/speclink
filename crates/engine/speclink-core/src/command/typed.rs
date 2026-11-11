@@ -4,7 +4,7 @@
 //! 轉換失敗回 [`WrongOutcome`] 錯誤值，不 panic（design D2）。
 
 use super::{
-    CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
+    ChangeRankOutcome, CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
     DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
     DiscussSubjectOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
     ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
@@ -64,6 +64,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::InProgressRemove(_) => "InProgressRemove",
         CommandOutcome::ChangeDepends(_) => "ChangeDepends",
         CommandOutcome::ChangeSchema(_) => "ChangeSchema",
+        CommandOutcome::ChangeRank(_) => "ChangeRank",
         CommandOutcome::Archive(_) => "Archive",
         CommandOutcome::Discard(_) => "Discard",
         CommandOutcome::DiscussNew(_) => "DiscussNew",
@@ -128,6 +129,7 @@ typed_outcomes! {
     InProgressRemoveOutcome => [InProgressRemove],
     DependsOutcome => [ChangeDepends],
     SchemaOutcome => [ChangeSchema],
+    ChangeRankOutcome => [ChangeRank],
     ArchiveOutcome => [Archive],
     DiscardOutcome => [Discard],
     DiscussionInfo => [DiscussNew],
