@@ -84,7 +84,7 @@ fn guard_stale_stamps(ws: &Workspace, store: &dyn Store, change: &Change) -> Res
     // 的作法走 util 的通用檔案 helper，引擎流程模組本身不直接呼叫檔案 API。
     let read_file = |p: &str| util::read_bytes_opt(&ws.root.join(p));
     let read_file: crate::station::ScopeReader<'_> =
-        if ws.root.as_os_str().is_empty() { None } else { Some(&read_file) };
+        if ws.is_local() { Some(&read_file) } else { None };
 
     let blocks: Vec<String> = [&crate::station::REVIEW, &crate::station::VERIFY]
         .into_iter()
@@ -149,7 +149,7 @@ fn guard_linked_worktree(ws: &Workspace) -> Result<()> {
     // 無 host workspace 的派發（Node host store）拿到的是空 root 的合成
     // Workspace——沒有本地環境可判；空 root 接上 ".git" 會變成以行程 cwd
     // 判定，cwd 恰在任何 speclink worktree 內就會誤拒不相干 store 的封存。
-    if ws.root.as_os_str().is_empty() {
+    if !ws.is_local() {
         return Ok(());
     }
     if !ws.root.join(".git").is_file() {
@@ -768,7 +768,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // folder to back up into or clean up. There the store's one commit carries the
     // canonical specs and the move together, so a failure writes nothing and needs no
     // backup (host-runtime「沒有 workspace 時封存不寫入本機檔案」).
-    let local = !ws.root.as_os_str().is_empty();
+    let local = ws.is_local();
     let snapshot_dir = ws.snapshots_dir().join(&dated_name);
     let mut snapshot_created = false;
     if local {
@@ -798,16 +798,13 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
         }
     }
     // Where a failure says the backups are, when there are any.
-    let backups = if snapshot_created {
-        format!("pre-archive backups are under {}", snapshot_dir.display())
-    } else {
-        String::new()
-    };
+    let backups = snapshot_created
+        .then(|| format!("pre-archive backups are under {}", snapshot_dir.display()));
     for plan in &plans {
         // A mid-commit failure names the snapshot location (design risk table):
         // the pre-archive backups written above are the recovery path.
         store.write_canonical_spec(&plan.capability, &plan.content).map_err(|e| {
-            let backups = if backups.is_empty() { String::new() } else { format!(" — {backups}") };
+            let backups = backups.as_ref().map_or(String::new(), |b| format!(" — {b}"));
             anyhow::anyhow!("Failed to write canonical spec for '{}': {e}{backups}", plan.capability)
         })?;
     }
@@ -818,7 +815,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // retry's `set` replaces it in place, so the document keeps one line. When canonical
     // specs were already written, a failure names the snapshot location too.
     crate::model::edit_meta(store, &change.name, |m| m.set("archived_at", &stamp)).map_err(|e| {
-        let backups = if backups.is_empty() { String::new() } else { format!("; {backups}") };
+        let backups = backups.as_ref().map_or(String::new(), |b| format!("; {b}"));
         anyhow::anyhow!(
             "Failed to write archived_at for '{}': {e} — the change was not moved{backups}",
             change.name

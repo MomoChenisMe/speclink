@@ -5,7 +5,6 @@ use crate::events::EventHub;
 use crate::identity::IdentityStore;
 use speclink_host::teamstore_port::TeamStorePort;
 use speclink_store::TeamStore;
-use speclink_store_port::StorePort;
 use std::sync::Arc;
 
 /// The store backend, shared across async handlers. `Send + Sync` so a handler
@@ -13,8 +12,9 @@ use std::sync::Arc;
 pub type SharedStore = Arc<dyn TeamStore + Send + Sync>;
 
 /// The store backend as a store port: the one adapter every request shares,
-/// so a run of requests with no commit in between loads a scope once.
-pub type SharedPort = Arc<dyn StorePort>;
+/// so a run of requests with no commit in between loads a scope once. Each
+/// request reads through its own pinned view of it (`verb::on_port`).
+pub type SharedPort = Arc<TeamStorePort<SharedStore>>;
 
 /// The identity store, shared across handlers. The API auth precondition and the
 /// web entry both resolve identity through it.
@@ -45,7 +45,7 @@ impl AppState {
         config: Arc<ServerConfig>,
         events: Arc<EventHub>,
     ) -> AppState {
-        let port: SharedPort = Arc::new(TeamStorePort::new(store.clone()));
+        let port = Arc::new(TeamStorePort::new(store.clone()));
         AppState {
             store,
             port,

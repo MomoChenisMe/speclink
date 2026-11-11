@@ -322,6 +322,46 @@ fn archive_reports_the_full_engine_outcome_over_the_wire() {
 }
 
 #[test]
+fn a_remote_archive_reports_no_backup_and_writes_none_locally() {
+    // host-runtime「遠端封存的回應」：改寫既有正式規格的封存，回應的 snapshotCreated 是 false，
+    // 其餘欄位照舊；server 的程序目錄沒有出現備份。
+    let store = archive_ready_store();
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-canonical".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(
+        DocumentId::CanonicalSpec { capability: "user-auth".into() },
+        "# user-auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R0\n\nIt SHALL start.\n\n#### Scenario: start\n\n- **WHEN** used\n- **THEN** starts\n",
+    );
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let resp = client.archive("demo-archive", false, false).expect("archive over the wire");
+
+    assert_eq!(resp.snapshot_created, Some(false), "no local backup over a store port");
+    let dated = resp.dated_name.as_deref().expect("datedName");
+    assert!(dated.ends_with("-demo-archive"), "{dated}");
+    let spec = resp.specs.iter().find(|s| s.capability == "user-auth").expect("capability listed");
+    assert_eq!((spec.added, spec.modified, spec.removed, spec.renamed), (1, 0, 0, 0));
+    assert!(resp.archived_discussions.iter().any(|d| d.slug == "scope-talk"));
+    assert_eq!(resp.evidence_recorded, Some(false));
+    let canonical = client.spec_document("user-auth").expect("the canonical spec");
+    assert!(
+        canonical.content.contains("### Requirement: R0") && canonical.content.contains("### Requirement: R1"),
+        "the existing spec was rewritten: {}",
+        canonical.content
+    );
+    let local = std::path::Path::new(".speclink").join("snapshots").join(dated);
+    assert!(!local.exists(), "the server's working directory got no backup: {}", local.display());
+}
+
+#[test]
 fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let store = seeded_store();
     let state = common::state_with(store.clone());

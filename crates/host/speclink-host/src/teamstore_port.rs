@@ -137,29 +137,39 @@ fn port_error(e: StoreError) -> PortError {
     }
 }
 
-/// The store-port scope id of a TeamStore scope: the project and the repo
-/// joined by `/`. Fails when the names cannot make a scope id.
+/// The store-port scope id of a TeamStore scope: `<project>/<repo>`.
+///
+/// A project or repo name can hold a `/`, so the project is written with its
+/// `%` and `/` escaped (`%25`, `%2F`): the first `/` of an id always ends the
+/// project, and no two scopes share an id. Fails when the names cannot make
+/// a scope id (one longer than a scope id may be).
 pub fn scope_id(scope: &Scope) -> Result<ScopeId, PortError> {
-    ScopeId::new(format!(
-        "{}/{}",
-        scope.project.as_str(),
-        scope.repo.as_str()
-    ))
-    .map_err(|e| backend(e.to_string()))
+    let project = scope.project.as_str().replace('%', "%25").replace('/', "%2F");
+    ScopeId::new(format!("{project}/{}", scope.repo.as_str())).map_err(|e| backend(e.to_string()))
 }
 
-/// The TeamStore scope a scope id names. A scope id that is not
-/// `<project>/<repo>` is a backend error, before the TeamStore sees anything.
+/// The TeamStore scope a scope id names: the reverse of [`scope_id`]. An id
+/// that is not `<project>/<repo>`, or whose project has an escape other than
+/// `%25` and `%2F`, is a backend error before the TeamStore sees anything.
 fn teamstore_scope(scope: &ScopeId) -> Result<Scope, PortError> {
-    match scope.as_str().split_once('/') {
-        Some((project, repo)) if !project.is_empty() && !repo.is_empty() => {
-            Ok(Scope::new(ProjectId::new(project), RepoId::new(repo)))
-        }
-        _ => Err(backend(format!(
-            "the scope id {} is not <project>/<repo>",
-            scope.as_str()
-        ))),
+    let malformed = || backend(format!("the scope id {} is not <project>/<repo>", scope.as_str()));
+    let (project, repo) = scope.as_str().split_once('/').ok_or_else(malformed)?;
+    if project.is_empty() || repo.is_empty() {
+        return Err(malformed());
     }
+    let mut name = String::with_capacity(project.len());
+    let mut rest = project;
+    while let Some(at) = rest.find('%') {
+        name.push_str(&rest[..at]);
+        name.push(match rest.get(at..at + 3) {
+            Some("%25") => '%',
+            Some("%2F") => '/',
+            _ => return Err(malformed()),
+        });
+        rest = &rest[at + 3..];
+    }
+    name.push_str(rest);
+    Ok(Scope::new(ProjectId::new(name), RepoId::new(repo)))
 }
 
 /// A scope as one fixed point: the project revision and every document that
@@ -167,6 +177,56 @@ fn teamstore_scope(scope: &ScopeId) -> Result<Scope, PortError> {
 struct Loaded {
     revision: Revision,
     docs: BTreeMap<DocKey, (String, Revision)>,
+}
+
+/// Keep `loaded` as the load of `scope` unless the slot already holds a
+/// newer one: a slower load that started earlier must not win.
+fn keep_newer(slots: &mut BTreeMap<ScopeId, Arc<Loaded>>, scope: &ScopeId, loaded: Arc<Loaded>) {
+    match slots.get(scope) {
+        Some(current) if current.revision > loaded.revision => {}
+        _ => {
+            slots.insert(scope.clone(), loaded);
+        }
+    }
+}
+
+/// The documents of `loaded` whose keys start with `prefix`.
+fn listing(loaded: &Loaded, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+    let entries = loaded
+        .docs
+        .iter()
+        .filter(|(key, _)| prefix.matches(key))
+        .map(|(key, (_, revision))| {
+            Ok(ListEntry {
+                key: key.clone(),
+                version: version_of(*revision)?,
+                modified_at: no_time(),
+            })
+        })
+        .collect::<Result<Vec<ListEntry>, PortError>>()?;
+    Ok(Listing {
+        version: version_of(loaded.revision)?,
+        entries,
+    })
+}
+
+/// The documents of `loaded` for `keys`, in the same order.
+fn reading(loaded: &Loaded, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+    keys.iter()
+        .map(|key| {
+            loaded
+                .docs
+                .get(key)
+                .map(|(content, revision)| {
+                    Ok(Document {
+                        content: content.clone(),
+                        version: version_of(*revision)?,
+                        modified_at: no_time(),
+                    })
+                })
+                .transpose()
+        })
+        .collect()
 }
 
 /// A TeamStore as a store port, for any number of scopes.
@@ -178,7 +238,11 @@ struct Loaded {
 /// read for each exported document). So a run of calls with no commit in
 /// between exports once, and an answer is never older than the revision at
 /// the start of its call. The adapter's own commit drops the scope's load.
-/// Each scope keeps at most one load.
+/// Each scope keeps at most one load, the newest.
+///
+/// A TeamStore snapshot copies the whole scope, so one request — a command,
+/// or one document read — goes through [`TeamStorePort::pinned`]: one
+/// snapshot, and every list and read of the request from that one load.
 ///
 /// `S` is how the adapter holds its store: a reference for one command, or
 /// an `Arc` for an adapter that lives as long as the server.
@@ -234,8 +298,83 @@ where
             }
         }
         let loaded = Arc::new(Loaded { revision, docs });
-        self.slots().insert(scope_id.clone(), Arc::clone(&loaded));
+        keep_newer(&mut self.slots(), scope_id, Arc::clone(&loaded));
         Ok(loaded)
+    }
+
+    /// A view of `scope` for one request: its first list or read takes the
+    /// scope's current load (one snapshot, an export only when the revision
+    /// moved), and every later list and read of the view answers from that
+    /// same load — the fixed point one command reads from. A commit through
+    /// the view goes to the TeamStore and drops the view's load, so the view
+    /// then reads its own writes.
+    pub fn pinned(&self, scope: &ScopeId) -> Pinned<'_, S> {
+        Pinned {
+            port: self,
+            scope: scope.clone(),
+            loaded: Mutex::new(None),
+        }
+    }
+}
+
+/// One request's view of one scope of a [`TeamStorePort`]; see
+/// [`TeamStorePort::pinned`].
+pub struct Pinned<'p, S> {
+    port: &'p TeamStorePort<S>,
+    scope: ScopeId,
+    loaded: Mutex<Option<Arc<Loaded>>>,
+}
+
+impl<S> Pinned<'_, S>
+where
+    S: Deref,
+    S::Target: TeamStore,
+{
+    fn check(&self, scope: &ScopeId) -> Result<(), PortError> {
+        if scope == &self.scope {
+            return Ok(());
+        }
+        Err(backend(format!(
+            "this view serves the scope {} only",
+            self.scope.as_str()
+        )))
+    }
+
+    fn slot(&self) -> MutexGuard<'_, Option<Arc<Loaded>>> {
+        self.loaded.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    fn view(&self, scope: &ScopeId) -> Result<Arc<Loaded>, PortError> {
+        self.check(scope)?;
+        let mut slot = self.slot();
+        if let Some(loaded) = slot.as_ref() {
+            return Ok(Arc::clone(loaded));
+        }
+        let loaded = self.port.loaded(scope)?;
+        *slot = Some(Arc::clone(&loaded));
+        Ok(loaded)
+    }
+}
+
+impl<S> StorePort for Pinned<'_, S>
+where
+    S: Deref + Send + Sync,
+    S::Target: TeamStore,
+{
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        listing(&*self.view(scope)?, prefix)
+    }
+
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        reading(&*self.view(scope)?, keys)
+    }
+
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        self.check(scope)?;
+        let result = self.port.commit(scope, commit);
+        // Also after a failure: a conflict means another writer moved on.
+        *self.slot() = None;
+        result
     }
 }
 
@@ -250,42 +389,11 @@ where
     S::Target: TeamStore,
 {
     fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-        let loaded = self.loaded(scope)?;
-        let entries = loaded
-            .docs
-            .iter()
-            .filter(|(key, _)| prefix.matches(key))
-            .map(|(key, (_, revision))| {
-                Ok(ListEntry {
-                    key: key.clone(),
-                    version: version_of(*revision)?,
-                    modified_at: no_time(),
-                })
-            })
-            .collect::<Result<Vec<ListEntry>, PortError>>()?;
-        Ok(Listing {
-            version: version_of(loaded.revision)?,
-            entries,
-        })
+        listing(&*self.loaded(scope)?, prefix)
     }
 
     fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-        let loaded = self.loaded(scope)?;
-        keys.iter()
-            .map(|key| {
-                loaded
-                    .docs
-                    .get(key)
-                    .map(|(content, revision)| {
-                        Ok(Document {
-                            content: content.clone(),
-                            version: version_of(*revision)?,
-                            modified_at: no_time(),
-                        })
-                    })
-                    .transpose()
-            })
-            .collect()
+        reading(&*self.loaded(scope)?, keys)
     }
 
     fn commit(&self, scope_id: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
@@ -360,73 +468,12 @@ mod tests {
     use super::*;
     use crate::binding::local_default_binding;
     use speclink_store::memory::MemoryStore;
-    use speclink_store::{
-        Bundle, CommandContext, EventRecord, ImportMode, ImportReport, Manifest, OutboxCursor,
-        OutboxEntry, Snapshot, UnitOfWork,
-    };
+    use speclink_store::{CommandContext, OutboxCursor, ProjectId, RepoId};
     use speclink_store_port::{
         Actor, Commit, Event, Expected, KeyPrefix, Op, Timestamp, Version,
     };
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     const AT: u64 = 1_800_000_000_000;
-
-    /// A TeamStore that counts its exports and snapshots.
-    #[derive(Default)]
-    struct ExportCounter {
-        inner: MemoryStore,
-        exports: AtomicUsize,
-        snapshots: AtomicUsize,
-    }
-
-    impl TeamStore for ExportCounter {
-        fn manifest(&self) -> Manifest {
-            self.inner.manifest()
-        }
-        fn health(&self) -> Result<(), StoreError> {
-            self.inner.health()
-        }
-        fn migrate(&self, target_version: u32) -> Result<(), StoreError> {
-            self.inner.migrate(target_version)
-        }
-        fn snapshot<'a>(&'a self, scope: &Scope) -> Result<Box<dyn Snapshot + 'a>, StoreError> {
-            self.snapshots.fetch_add(1, Ordering::SeqCst);
-            self.inner.snapshot(scope)
-        }
-        fn begin_unit_of_work(
-            &self,
-            scope: &Scope,
-            ctx: CommandContext,
-        ) -> Result<UnitOfWork, StoreError> {
-            self.inner.begin_unit_of_work(scope, ctx)
-        }
-        fn commit(&self, uow: UnitOfWork, events: Vec<EventRecord>) -> Result<Revision, StoreError> {
-            self.inner.commit(uow, events)
-        }
-        fn rollback(&self, uow: UnitOfWork) -> Result<(), StoreError> {
-            self.inner.rollback(uow)
-        }
-        fn export(&self, scope: &Scope) -> Result<Bundle, StoreError> {
-            self.exports.fetch_add(1, Ordering::SeqCst);
-            self.inner.export(scope)
-        }
-        fn import(&self, bundle: Bundle, mode: ImportMode) -> Result<ImportReport, StoreError> {
-            self.inner.import(bundle, mode)
-        }
-        fn read_outbox(
-            &self,
-            scope: &Scope,
-            from: OutboxCursor,
-        ) -> Result<Vec<OutboxEntry>, StoreError> {
-            self.inner.read_outbox(scope, from)
-        }
-        fn ack_outbox(&self, scope: &Scope, up_to: OutboxCursor) -> Result<(), StoreError> {
-            self.inner.ack_outbox(scope, up_to)
-        }
-        fn outbox_acked(&self, scope: &Scope) -> Result<OutboxCursor, StoreError> {
-            self.inner.outbox_acked(scope)
-        }
-    }
 
     fn scope() -> Scope {
         let binding = local_default_binding();
@@ -434,7 +481,7 @@ mod tests {
     }
 
     fn other_scope() -> Scope {
-        Scope::new(scope().project, speclink_store::RepoId::new("other"))
+        Scope::new(scope().project, RepoId::new("other"))
     }
 
     /// Write `docs` into `scope` of `store` in one unit of work.
@@ -549,8 +596,8 @@ mod tests {
         scope_id(&scope()).unwrap()
     }
 
-    fn seeded() -> ExportCounter {
-        let store = ExportCounter::default();
+    fn seeded() -> MemoryStore {
+        let store = MemoryStore::new();
         seed(
             &store,
             &scope(),
@@ -571,8 +618,8 @@ mod tests {
         store
     }
 
-    fn exports(store: &ExportCounter) -> usize {
-        store.exports.load(Ordering::SeqCst)
+    fn exports(store: &MemoryStore) -> usize {
+        store.export_count()
     }
 
     #[test]
@@ -588,7 +635,7 @@ mod tests {
         let port = TeamStorePort::new(&store);
 
         let listing = port.list(&sid(), &prefix("changes/")).unwrap();
-        let project = store.inner.snapshot(&scope()).unwrap().revision().0;
+        let project = store.snapshot(&scope()).unwrap().revision().0;
         assert_eq!(listing.version, v(project), "the scope version is the project revision");
         let rows: Vec<(&str, u64, u64)> = listing
             .entries
@@ -626,9 +673,9 @@ mod tests {
     #[test]
     fn one_adapter_serves_two_scopes_without_mixing_them() {
         // 「一個轉接服務兩個範圍」
-        let store = ExportCounter::default();
-        let p1 = Scope::new(speclink_store::ProjectId::new("p1"), speclink_store::RepoId::new("main"));
-        let p2 = Scope::new(speclink_store::ProjectId::new("p2"), speclink_store::RepoId::new("main"));
+        let store = MemoryStore::new();
+        let p1 = Scope::new(ProjectId::new("p1"), RepoId::new("main"));
+        let p2 = Scope::new(ProjectId::new("p2"), RepoId::new("main"));
         seed(&store, &p1, &[(change_meta("only-in-p1"), "schema: spec-driven\n")]);
         seed(&store, &p2, &[(change_meta("only-in-p2"), "schema: spec-driven\n")]);
         let port = TeamStorePort::new(&store);
@@ -703,7 +750,7 @@ mod tests {
         // 「範圍識別的形式不合」
         let store = seeded();
         let (exports_before, snapshots_before) =
-            (exports(&store), store.snapshots.load(Ordering::SeqCst));
+            (exports(&store), store.snapshot_count());
         let port = TeamStorePort::new(&store);
         let bad = ScopeId::new("no-slash").unwrap();
         let backend = |result: Result<(), PortError>| match result {
@@ -717,7 +764,7 @@ mod tests {
                 .map(|_| ()),
         );
         assert_eq!(exports(&store), exports_before);
-        assert_eq!(store.snapshots.load(Ordering::SeqCst), snapshots_before, "no snapshot either");
+        assert_eq!(store.snapshot_count(), snapshots_before, "no snapshot either");
     }
 
     #[test]
@@ -727,6 +774,122 @@ mod tests {
         let all = port.list(&sid(), &prefix("")).unwrap();
         assert!(all.entries.iter().all(|e| !e.key.as_str().contains("elsewhere")));
         assert_eq!(all.entries.len(), 4);
+    }
+
+    #[test]
+    fn a_scope_id_names_exactly_one_teamstore_scope() {
+        // A `/` or a `%` in the project name is escaped, so no two scopes share an id.
+        let rows = [
+            ("default", "main", "default/main"),
+            ("team/alpha", "main", "team%2Falpha/main"),
+            ("team", "alpha/main", "team/alpha/main"),
+            ("100%", "r", "100%25/r"),
+        ];
+        for (project, repo, id) in rows {
+            let scope = Scope::new(ProjectId::new(project), RepoId::new(repo));
+            let sid = scope_id(&scope).unwrap();
+            assert_eq!(sid.as_str(), id, "{project} + {repo}");
+            assert_eq!(teamstore_scope(&sid).unwrap(), scope, "{id}");
+        }
+        for bad in ["no-slash", "/main", "team/", "a%2/main", "a%zz/main"] {
+            assert!(teamstore_scope(&ScopeId::new(bad).unwrap()).is_err(), "{bad}");
+        }
+    }
+
+    #[test]
+    fn two_scopes_that_join_to_the_same_text_stay_apart() {
+        let store = MemoryStore::new();
+        let slashed = Scope::new(ProjectId::new("team/alpha"), RepoId::new("main"));
+        let nested = Scope::new(ProjectId::new("team"), RepoId::new("alpha/main"));
+        seed(&store, &slashed, &[(change_meta("in-slashed"), "schema: spec-driven\n")]);
+        seed(&store, &nested, &[(change_meta("in-nested"), "schema: spec-driven\n")]);
+        let port = TeamStorePort::new(&store);
+        let changes = |scope: &Scope| -> Vec<String> {
+            port.list(&scope_id(scope).unwrap(), &prefix("changes/"))
+                .unwrap()
+                .entries
+                .into_iter()
+                .map(|e| e.key.as_str().to_string())
+                .collect()
+        };
+        assert_eq!(changes(&slashed), ["changes/in-slashed/.meta.yaml"]);
+        assert_eq!(changes(&nested), ["changes/in-nested/.meta.yaml"]);
+    }
+
+    #[test]
+    fn a_pinned_view_answers_one_request_from_one_load() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let view = port.pinned(&sid());
+        view.list(&sid(), &prefix("changes/")).unwrap();
+        view.list(&sid(), &prefix("discussions/")).unwrap();
+        view.read(&sid(), &[key("config.yaml")]).unwrap();
+        assert_eq!(store.snapshot_count(), 1, "one snapshot for the whole request");
+        assert_eq!(exports(&store), 1);
+    }
+
+    #[test]
+    fn a_pinned_view_keeps_its_fixed_point_while_another_writer_commits() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let view = port.pinned(&sid());
+        let before = view.read(&sid(), &[key("config.yaml")]).unwrap()[0].clone().unwrap();
+        let scope_version = view.list(&sid(), &prefix("config.yaml")).unwrap().version;
+
+        let mut uow = store
+            .begin_unit_of_work(
+                &scope(),
+                CommandContext { command: "edit".to_string(), actor: "someone".to_string() },
+            )
+            .unwrap();
+        uow.update(DocumentId::WorkflowConfig, "schema: other\n", Revision(before.version.get()));
+        store.commit(uow, Vec::new()).unwrap();
+
+        let again = view.read(&sid(), &[key("config.yaml")]).unwrap()[0].clone().unwrap();
+        assert_eq!(again, before, "the request keeps reading the load it started with");
+        assert_eq!(view.list(&sid(), &prefix("config.yaml")).unwrap().version, scope_version);
+        let fresh = port.pinned(&sid()).read(&sid(), &[key("config.yaml")]).unwrap()[0].clone().unwrap();
+        assert_eq!(fresh.content, "schema: other\n", "the next request reads the new content");
+    }
+
+    #[test]
+    fn a_pinned_view_reads_back_its_own_commit() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let view = port.pinned(&sid());
+        view.list(&sid(), &prefix("changes/")).unwrap();
+        let version = view
+            .commit(
+                &sid(),
+                &commit_of(vec![put("changes/add-y/.meta.yaml", "schema: spec-driven\n", Expected::Absent)], Vec::new()),
+            )
+            .unwrap();
+        let doc = view.read(&sid(), &[key("changes/add-y/.meta.yaml")]).unwrap()[0].clone();
+        assert_eq!(doc.map(|d| d.version), Some(version));
+    }
+
+    #[test]
+    fn a_pinned_view_serves_its_own_scope_only() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let view = port.pinned(&sid());
+        let elsewhere = scope_id(&other_scope()).unwrap();
+        match view.list(&elsewhere, &prefix("")) {
+            Err(PortError::Backend { message }) => assert!(message.contains("default/main"), "{message}"),
+            other => panic!("expected a backend error, got {other:?}"),
+        }
+        assert_eq!(store.snapshot_count(), 0, "the TeamStore was not called");
+    }
+
+    #[test]
+    fn an_older_load_never_replaces_a_newer_one() {
+        let loaded = |revision: u64| Arc::new(Loaded { revision: Revision(revision), docs: BTreeMap::new() });
+        let mut slots = BTreeMap::new();
+        keep_newer(&mut slots, &sid(), loaded(5));
+        keep_newer(&mut slots, &sid(), loaded(3));
+        assert_eq!(slots[&sid()].revision, Revision(5), "a slower, older load does not win");
+        keep_newer(&mut slots, &sid(), loaded(7));
+        assert_eq!(slots[&sid()].revision, Revision(7));
     }
 
     #[test]
@@ -744,7 +907,7 @@ mod tests {
     #[test]
     fn a_commit_lands_the_document_and_its_event_together() {
         // 「commit 後 outbox 含對應事件」
-        let store = ExportCounter::default();
+        let store = MemoryStore::new();
         let port = TeamStorePort::new(&store);
         let event = Event::new("change-created", serde_json::json!({ "change": "add-auth" })).unwrap();
 
@@ -758,7 +921,7 @@ mod tests {
             )
             .expect("commit succeeds");
 
-        let entries = store.inner.read_outbox(&scope(), OutboxCursor(0)).expect("outbox reads");
+        let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("outbox reads");
         assert_eq!(entries.len(), 1, "exactly one event record landed");
         let record = &entries[0].record;
         assert_eq!(record.name, "change-created");
@@ -767,7 +930,7 @@ mod tests {
         assert_eq!(record.at.timestamp_millis(), AT as i64, "the time of the commit");
         assert_eq!(entries[0].revision.0, version.get(), "the event rides its commit");
 
-        let snapshot = store.inner.snapshot(&scope()).expect("snapshot");
+        let snapshot = store.snapshot(&scope()).expect("snapshot");
         let doc = snapshot.read(&change_meta("add-auth")).expect("read").expect("visible");
         assert_eq!(doc.revision.0, version.get(), "document and event share the commit revision");
         let history = snapshot.history(&change_meta("add-auth")).expect("history");
@@ -780,13 +943,13 @@ mod tests {
         // unit of work with no staged write.
         let store = seeded();
         let port = TeamStorePort::new(&store);
-        let before = store.inner.snapshot(&scope()).unwrap().revision().0;
+        let before = store.snapshot(&scope()).unwrap().revision().0;
         let event = Event::new("task-moved", serde_json::json!({ "change": "add-x" })).unwrap();
         let version = port
             .commit(&sid(), &commit_of(Vec::new(), vec![event]))
             .expect("an events-only commit");
         assert_eq!(version.get(), before + 1);
-        let entries = store.inner.read_outbox(&scope(), OutboxCursor(0)).expect("outbox");
+        let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("outbox");
         assert_eq!(entries.len(), 1);
         assert_eq!((entries[0].record.name.as_str(), entries[0].revision.0), ("task-moved", before + 1));
     }
@@ -808,13 +971,14 @@ mod tests {
         .expect("task done through the bridge");
         assert!(done.revision.is_some(), "the verb committed");
         assert_eq!(exports(&store), 1);
+        assert_eq!(store.snapshot_count(), 1, "one command, one fixed point");
     }
 
     #[test]
     fn a_commit_is_one_unit_of_work_with_writes_and_deletes() {
         let store = seeded();
         let port = TeamStorePort::new(&store);
-        let before = store.inner.snapshot(&scope()).unwrap().revision().0;
+        let before = store.snapshot(&scope()).unwrap().revision().0;
         port.commit(
             &sid(),
             &commit_of(
@@ -827,7 +991,7 @@ mod tests {
             ),
         )
         .expect("commit");
-        let snapshot = store.inner.snapshot(&scope()).unwrap();
+        let snapshot = store.snapshot(&scope()).unwrap();
         assert_eq!(snapshot.revision().0, before + 1, "one commit, one revision");
         assert!(snapshot.read(&change_meta("add-x")).unwrap().is_none());
         assert!(snapshot
@@ -842,7 +1006,7 @@ mod tests {
     #[test]
     fn the_loser_of_two_commits_on_one_document_gets_the_conflict() {
         // 「CAS 衝突原樣傳遞」
-        let store = ExportCounter::default();
+        let store = MemoryStore::new();
         let base = seed(&store, &scope(), &[(change_meta("contested"), "v1")]);
         let port = TeamStorePort::new(&store);
         let write = |content: &str| {
@@ -864,7 +1028,7 @@ mod tests {
             })
         );
         assert_eq!(
-            store.inner.read_outbox(&scope(), OutboxCursor(0)).unwrap().len(),
+            store.read_outbox(&scope(), OutboxCursor(0)).unwrap().len(),
             1,
             "the loser's event did not land"
         );
@@ -875,7 +1039,7 @@ mod tests {
         // 「對不到文件種類的鍵」
         let store = seeded();
         let port = TeamStorePort::new(&store);
-        let before = store.inner.snapshot(&scope()).unwrap().revision();
+        let before = store.snapshot(&scope()).unwrap().revision();
 
         assert_eq!(port.read(&sid(), &[key("notes/today.md")]).unwrap(), [None]);
         let err = port
@@ -894,7 +1058,7 @@ mod tests {
             PortError::Backend { message } => assert!(message.contains("notes/today.md"), "{message}"),
             other => panic!("expected a backend error, got {other:?}"),
         }
-        let snapshot = store.inner.snapshot(&scope()).unwrap();
+        let snapshot = store.snapshot(&scope()).unwrap();
         assert_eq!(snapshot.revision(), before, "the TeamStore did not change");
         assert!(snapshot.read(&change_meta("add-y")).unwrap().is_none());
     }

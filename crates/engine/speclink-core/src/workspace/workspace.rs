@@ -127,6 +127,12 @@ impl Workspace {
     pub fn spec_dir(&self) -> PathBuf {
         self.root.join(&self.spec_dir_name)
     }
+    /// Whether this workspace is a real local folder. A Host that runs over a
+    /// store port has none and hands the Engine an empty root: there is then
+    /// no local file to read, write or remove.
+    pub fn is_local(&self) -> bool {
+        !self.root.as_os_str().is_empty()
+    }
     /// Work data directory (gitignored).
     pub fn work_dir(&self) -> PathBuf {
         self.root.join(".speclink")

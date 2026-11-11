@@ -75,10 +75,8 @@ pub async fn spec_document(
     binding: Binding,
     Path((_project, capability)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     let (dto, version) =
-        verb::blocking(move || Ok(documents::spec_document(port.as_ref(), &scope, &capability)?)).await?;
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::spec_document(port, scope, &capability)?)).await?;
     Ok(ok(dto, version))
 }
 
@@ -87,9 +85,7 @@ pub async fn archived_list(
     State(state): State<AppState>,
     binding: Binding,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let (dto, version) = verb::blocking(move || Ok(documents::archived_list(port.as_ref(), &scope)?)).await?;
+    let (dto, version) = verb::on_port(&state, &binding, move |port, scope| Ok(documents::archived_list(port, scope)?)).await?;
     Ok(ok(dto, version))
 }
 
@@ -99,10 +95,8 @@ pub async fn archived_artifact(
     binding: Binding,
     Path((_project, dated_name, artifact)): Path<(String, String, String)>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let (dto, version) = verb::blocking(move || {
-        Ok(documents::archived_artifact(port.as_ref(), &scope, &dated_name, &artifact)?)
+    let (dto, version) = verb::on_port(&state, &binding, move |port, scope| {
+        Ok(documents::archived_artifact(port, scope, &dated_name, &artifact)?)
     })
     .await?;
     Ok(ok(dto, version))
@@ -114,10 +108,8 @@ pub async fn archived_capabilities(
     binding: Binding,
     Path((_project, dated_name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let (capabilities, version) = verb::blocking(move || {
-        Ok(documents::archived_capabilities(port.as_ref(), &scope, &dated_name)?)
+    let (capabilities, version) = verb::on_port(&state, &binding, move |port, scope| {
+        Ok(documents::archived_capabilities(port, scope, &dated_name)?)
     })
     .await?;
     Ok(ok(capabilities, version))
@@ -130,9 +122,7 @@ pub(crate) async fn search(
     binding: Binding,
     Query(query): Query<SearchQuery>,
 ) -> Result<Response, ApiError> {
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
     let (dto, version) =
-        verb::blocking(move || Ok(documents::search(port.as_ref(), &scope, &query.q)?)).await?;
+        verb::on_port(&state, &binding, move |port, scope| Ok(documents::search(port, scope, &query.q)?)).await?;
     Ok(ok(dto, version))
 }

@@ -33,12 +33,10 @@ pub async fn snapshot(
         .get("if-none-match")
         .and_then(|v| v.to_str().ok())
         .map(str::to_string);
-    let port = state.port.clone();
-    let scope = verb::scope_id_of(&binding)?;
-    let outcome = verb::blocking(move || {
+    let outcome = verb::on_port(&state, &binding, move |port, scope| {
         Ok(documents::context_snapshot(
-            port.as_ref(),
-            &scope,
+            port,
+            scope,
             &request,
             if_none_match.as_deref(),
         )?)

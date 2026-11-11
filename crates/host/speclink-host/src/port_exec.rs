@@ -111,9 +111,13 @@ pub fn execute(
     cmd: Command,
 ) -> Result<PortExecution, ExecError> {
     // The Engine does not read the clock: the Host gives the commit time.
+    execute_at(port, scope, ctx, cmd, now().map_err(ExecError::Store)?)
+}
+
+/// The current time as a commit time.
+pub fn now() -> Result<Timestamp, PortError> {
     let millis = chrono::Utc::now().timestamp_millis().max(0) as u64;
-    let at = Timestamp::new(millis).map_err(invalid)?;
-    execute_at(port, scope, ctx, cmd, at)
+    Timestamp::new(millis).map_err(invalid_value)
 }
 
 /// [`execute`] with the commit time given by the caller.
@@ -178,10 +182,10 @@ pub fn execute_at_version(
     scope: &ScopeId,
     ctx: &SpeclinkExecutionContext,
     cmd: Command,
-    expected: u64,
+    expected: Version,
 ) -> Result<AtVersion, ExecError> {
     let actual = scope_version(port, scope).map_err(ExecError::Store)?;
-    if actual.get() != expected {
+    if actual != expected {
         return Ok(AtVersion::Moved { actual });
     }
     let guard = AtExpected {
@@ -196,7 +200,7 @@ pub fn execute_at_version(
     let done = result?;
     if done.scope_version.is_none() {
         let actual = scope_version(port, scope).map_err(ExecError::Store)?;
-        if actual.get() != expected {
+        if actual != expected {
             return Ok(AtVersion::Moved { actual });
         }
     }
@@ -206,7 +210,7 @@ pub fn execute_at_version(
 /// A store port that refuses to commit once the scope has left `expected`.
 struct AtExpected<'p> {
     port: &'p dyn StorePort,
-    expected: u64,
+    expected: Version,
     moved: Mutex<Option<Version>>,
 }
 
@@ -221,7 +225,7 @@ impl StorePort for AtExpected<'_> {
 
     fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
         let actual = scope_version(self.port, scope)?;
-        if actual.get() != self.expected {
+        if actual != self.expected {
             *self.moved.lock().unwrap_or_else(PoisonError::into_inner) = Some(actual);
             return Err(PortError::Backend {
                 message: format!(
@@ -257,9 +261,14 @@ fn commit_of(
 /// A value the store contract rejects never reaches the store; the caller
 /// sees a backend failure that names the rule.
 fn invalid(e: InvalidValue) -> ExecError {
-    ExecError::Store(PortError::Backend {
+    ExecError::Store(invalid_value(e))
+}
+
+/// [`invalid`] as the store's own failure.
+pub(crate) fn invalid_value(e: InvalidValue) -> PortError {
+    PortError::Backend {
         message: e.to_string(),
-    })
+    }
 }
 
 #[cfg(test)]
@@ -620,7 +629,7 @@ mod tests {
     #[test]
     fn execute_at_version_runs_the_command_while_the_scope_is_at_that_version() {
         let port = with_config();
-        let expected = version(&port);
+        let expected = Version::new(version(&port)).unwrap();
         match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
             Ok(AtVersion::Done(done)) => assert_eq!(done.scope_version.map(Version::get), Some(version(&port))),
             other => panic!("expected the command to run, got {other:?}"),
@@ -631,7 +640,7 @@ mod tests {
     #[test]
     fn execute_at_version_runs_nothing_on_a_stale_version() {
         let probe = Probe::new(with_config());
-        let expected = version(&probe.inner) - 1;
+        let expected = Version::new(version(&probe.inner) - 1).unwrap();
         match execute_at_version(&probe, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
             Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), version(&probe.inner)),
             other => panic!("expected moved, got {other:?}"),
@@ -649,7 +658,7 @@ mod tests {
             pending: std::sync::Mutex::new(Some("schema: spec-driven\nlocale: ja\n")),
         };
         let expected = version(&port.inner);
-        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: en\n"), expected) {
+        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: en\n"), Version::new(expected).unwrap()) {
             Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), expected + 1),
             other => panic!("expected moved, got {other:?}"),
         }
@@ -665,7 +674,7 @@ mod tests {
             pending: std::sync::Mutex::new(Some("locale: ja\n")),
         };
         let expected = version(&port.inner);
-        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
+        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: ja\n"), Version::new(expected).unwrap()) {
             Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), expected + 1),
             other => panic!("expected moved, got {other:?}"),
         }

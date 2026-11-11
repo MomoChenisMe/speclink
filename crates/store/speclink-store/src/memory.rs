@@ -13,6 +13,7 @@ use crate::types::{
 use crate::uow::{CommandContext, StagedOp, UnitOfWork};
 use crate::{Snapshot, TeamStore};
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 /// (project, repo) key of a scope.
@@ -196,6 +197,8 @@ impl Inner {
 #[derive(Debug, Default)]
 pub struct MemoryStore {
     inner: Mutex<Inner>,
+    snapshots: AtomicUsize,
+    exports: AtomicUsize,
 }
 
 impl MemoryStore {
@@ -205,6 +208,18 @@ impl MemoryStore {
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Inner> {
         self.inner.lock().expect("memory store mutex poisoned")
+    }
+
+    /// Test hook: how many snapshots this store has served — what a caller
+    /// that should take one snapshot per command is measured by.
+    pub fn snapshot_count(&self) -> usize {
+        self.snapshots.load(Ordering::SeqCst)
+    }
+
+    /// Test hook: how many exports this store has served — what a caller
+    /// that should not load a scope again is measured by.
+    pub fn export_count(&self) -> usize {
+        self.exports.load(Ordering::SeqCst)
     }
 
     /// Test hook: mark a persisted document as corrupt so reads surface a
@@ -250,6 +265,7 @@ impl MemoryStore {
         fresh.replay_journal();
         MemoryStore {
             inner: Mutex::new(fresh),
+            ..MemoryStore::default()
         }
     }
 }
@@ -361,6 +377,7 @@ impl TeamStore for MemoryStore {
     }
 
     fn snapshot<'a>(&'a self, scope: &Scope) -> Result<Box<dyn Snapshot + 'a>, StoreError> {
+        self.snapshots.fetch_add(1, Ordering::SeqCst);
         let inner = self.lock();
         inner.unavailable_if_crashed()?;
         let revision = Revision(
@@ -473,6 +490,7 @@ impl TeamStore for MemoryStore {
     }
 
     fn export(&self, scope: &Scope) -> Result<Bundle, StoreError> {
+        self.exports.fetch_add(1, Ordering::SeqCst);
         let inner = self.lock();
         inner.unavailable_if_crashed()?;
         let mut documents = Vec::new();
@@ -663,6 +681,16 @@ mod tests {
     /// project revision.
     fn seed(store: &MemoryStore, scope: &Scope, docs: &[(DocumentId, &str)]) -> Revision {
         create(store, scope, docs, vec![]).unwrap()
+    }
+
+    #[test]
+    fn the_store_counts_the_snapshots_and_exports_it_serves() {
+        let store = MemoryStore::new();
+        assert_eq!((store.snapshot_count(), store.export_count()), (0, 0));
+        store.snapshot(&scope("main")).unwrap();
+        store.snapshot(&scope("main")).unwrap();
+        store.export(&scope("main")).unwrap();
+        assert_eq!((store.snapshot_count(), store.export_count()), (2, 1));
     }
 
     #[test]
