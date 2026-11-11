@@ -78,7 +78,7 @@ Host SHALL 提供在任何儲存接口實作與一個範圍上執行一個 engin
 
 ### Requirement: 經儲存接口執行時只讀取用到的文件
 
-經儲存接口執行一個動詞時，Host SHALL 只向儲存要動詞實際用到的文件。同一次執行裡，同一個前綴 SHALL 最多列出一次，同一個鍵 SHALL 最多讀取一次。需要多份文件時 SHALL 以一次讀取取得，SHALL NOT 逐份讀取。列出變更、查詢單一變更的狀態、列出討論這三類動詞 SHALL NOT 讀取任何鍵在 `archive/` 底下的文件內容，也 SHALL NOT 列出 `archive/changes/` 前綴。動詞覆寫一份這次執行沒看過的文件時，Host SHALL 先讀取該鍵以取得預期版本。
+經儲存接口執行一個動詞時，Host SHALL 只向儲存要動詞實際用到的文件。同一次執行裡，同一個前綴 SHALL 最多列出一次，同一個鍵 SHALL 最多讀取一次。engine 儲存介面的單一操作需要多份文件時 SHALL 以一次讀取取得，SHALL NOT 逐份讀取。列出變更、查詢單一變更的狀態、列出進行中的討論（不帶封存旗標）這三類動詞 SHALL NOT 讀取任何鍵在 `archive/` 底下的文件內容，也 SHALL NOT 列出 `archive/changes/` 前綴。動詞覆寫一份這次執行沒看過的文件時，Host SHALL 先讀取該鍵以取得預期版本。
 
 #### Scenario: 列出變更不碰封存資料
 

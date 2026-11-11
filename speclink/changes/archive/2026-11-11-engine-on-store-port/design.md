@@ -65,6 +65,13 @@
 
 鍵一律用 `speclink_store_port::keys` 的建立函式產生。把鍵解析回名稱的函式放在 `port_view.rs` 裡（契約的 crate 沒有提供）；每一類鍵都有「建立再解析得到原值」的測試。
 
+品質關卡後補上兩個例外，都是因為既有資料的名稱不一定照規則：
+
+- **讀取已封存變更的文件**不經建立函式，名稱是一個鍵段就讀。儲存裡可能有名稱不帶日期的舊封存，列得到就要讀得到。新寫入的封存文件仍經建立函式，名稱一定帶日期。
+- **封存討論時的建立日**取自人可以手改的文件，不一定剛好是 `YYYY-MM-DD`。開頭是日期時（例如後面帶時間），取那個日期並經建立函式，存下來的名稱帶日期，之後用 slug 找得到；這種情況下檔名會和檔案實作不同（檔案實作把整段文字放進檔名）。完全沒有日期的文字才不經建立函式，照檔案實作的命名，建立日與 slug 仍各自必須是一個鍵段；這種記錄列得到，但單用 slug 找不到，和本機相同。沒有日期的舊記錄以整個名稱當 slug，`-N` 的重複序號只算在帶日期的名稱上。
+
+另外，列出變更只列建立函式收得下的名稱：`archive` 不能當變更名稱，列出來也找不到。
+
 引擎的儲存介面讀取時回傳 `Option`，沒有地方回傳儲存錯誤。`PortView` 把第一個儲存錯誤記在內部，該次讀取回傳「沒有」；執行入口在引擎回來後先檢查這個記錄，有錯誤就以儲存錯誤結束，不看引擎的結果，也不提交。
 
 - **否決：在引擎的儲存介面加上錯誤回傳** — 約四十個方法與全部呼叫端都要改，而且本機的檔案實作不需要。
@@ -99,7 +106,7 @@
 實作時的一處修正：`store` 的型別從 `&dyn TeamStore` 改成 `&(dyn TeamStore + Sync)`，`drift::spec_drift` 也一樣。原因是儲存接口要求實作是 `Send + Sync`，轉接握著 TeamStore 的參考，所以 TeamStore 必須能跨執行緒共用。server 傳進來的本來就是 `Arc<dyn TeamStore + Send + Sync>`，測試傳的是 `MemoryStore`，兩邊的呼叫點都沒有改。
 
 - `BridgeStore` 與 `materialize` 移除。同一件事不留兩套實作。
-- `BridgeError::Store` 的內容從 `StoreError` 改成 `PortError`。`BridgeExecution.revision` 的值取自提交回傳的範圍版本號。
+- `BridgeError::Store` 的內容從 `StoreError` 改成 `PortError`。`BridgeExecution.revision` 的值取自提交回傳的範圍版本號。品質關卡後，`BridgeError` 改成 `ExecError` 的別名：兩者的內容完全相同，不留兩個型別互轉。
 - `drift::spec_drift` 改用 `PortView`（經 `TeamStorePort`），結束時丟掉視圖，不提交。
 - `commit.rs` 的 `begin_unit_of_work` 與 `commit_with_events` 因為這次改動不再有呼叫端，移除；事件對映的函式保留並改成 D2 的共用形狀（`event_payload`）。原本回傳 TeamStore event record 的 `event_record_of` 只剩被移除的函式在用，一併移除，轉成 event record 的工作改在轉接的提交裡做。
 
@@ -117,7 +124,7 @@
 
 TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 driver 在 `snapshot`、`export`、`history`、`commit` 回傳 `NotFound` 與 `PermissionDenied` 的情況：沒有這種情況就對到 `Backend`；有的話，在轉接裡把訊息原樣帶出，並在 server 測試補上對應的案例。
 
-盤點的結論：`crates/store` 底下的 sqlite、fs、postgres 三個 driver 與記憶體版的參考實作，原始碼裡沒有任何一處建立 `StoreError::NotFound` 或 `StoreError::PermissionDenied`（fs driver 遇到作業系統的 NotFound、PermissionDenied 時回的是 `Backend`）。所以執行動詞的路徑上不會出現這兩類，轉接把它們和 `Corrupt`、`Backend` 一起對到 `PortError::Backend`，訊息用 TeamStore 自己的文字，不需要另外補 server 測試。搜尋 server 與 CLI 的測試，也沒有任何一處比對橋接路徑 409 的 `message` 全文，所以沒有測試要跟著改。
+盤點的結論：`crates/store` 底下的 sqlite、fs、postgres 三個 driver 與記憶體版的參考實作，原始碼裡沒有任何一處建立 `StoreError::NotFound` 或 `StoreError::PermissionDenied`（fs driver 遇到作業系統的 NotFound、PermissionDenied 時回的是 `Backend`）。所以執行動詞的路徑上不會出現這兩類，轉接把它們和 `Corrupt`、`Backend` 一起對到 `PortError::Backend`，訊息用 TeamStore 自己的文字，不需要另外補 server 測試。已知的取捨：將來若有 driver 開始回這兩類，經動詞路徑會是 500 而不是 404、403。儲存契約只有三類錯誤，要分開得改契約，這次不做。搜尋 server 與 CLI 的測試，也沒有任何一處比對橋接路徑 409 的 `message` 全文，所以沒有測試要跟著改。
 
 ### D5: TeamStore 的轉接 TeamStorePort
 
@@ -125,9 +132,10 @@ TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 dri
 
 - **範圍**：轉接綁定建立時給的 `Scope`。它提供對應的 `ScopeId`（專案與 repo 以 `/` 相接）；收到別的 `ScopeId` 時回傳 `Backend` 錯誤。
 - **鍵與文件種類**：鍵和 `DocumentId` 的九種雙向對應，依 store-port-contract 的鍵對照表。已封存討論的名稱段原樣對應。對不到任何一種的鍵：讀取回傳「沒有」、提交回傳 `Backend` 錯誤。
+- **新封存的討論在 TeamStore 裡的 slug 會帶建立日**（`<created>-<slug>`），舊的不帶。已查過直接讀 TeamStore 的程式：server 的讀取 API 與搜尋只讀進行中的討論，備份與匯入匯出是原樣對應，沒有任何一處用原 slug 去讀已封存的討論。經引擎讀取時兩種都認得。
 - **列出**：TeamStore 只有 `export` 能列舉。轉接在第一次列出或讀取時載入整個範圍一次，把結果留在自己身上，之後的列出與讀取都從它回答。轉接每次執行建立一個，所以一個動詞最多匯出一次。自己提交之後（成功或失敗都算），這份記憶作廢。
 - **載入的成本和今天相同**（實作時的修正；原本寫的是「不再逐份讀回」，做不到）：一次載入是一個快照、一次匯出，再把匯出列到的每份文件經快照讀回一次。讀回省不掉，原因有三：匯出的內容不帶每份文件的 revision，而寫入的預期版本需要它；文件的 revision 只有快照讀得到；快照不能跨執行緒共用，轉接沒辦法把它留著慢慢讀，而 sqlite 與 postgres 的快照本身就是整個範圍的複本，每次呼叫各取一個快照會比今天更貴。所以示範用 server 的讀取量在這個變更不會變少，要等 server 不再經這個轉接；用到才讀的效果只出現在直接實作儲存接口的儲存上（見「量測結果」）。
-- **名稱做不成鍵的文件**（例如名稱帶 `/`）在載入時略過。它們也寫不進去：提交會回報後端錯誤。
+- **名稱做不成鍵的文件**（例如名稱帶 `/`）在載入時略過。它們也寫不進去：提交會回報後端錯誤。已知的取捨：刪除或封存變更時，這種文件不會跟著走，會留在 TeamStore 裡。另一個做法是讓載入失敗，但那會讓一份怪文件擋住整個範圍的全部動詞，所以不採用。經引擎與 server 寫進去的文件，名稱都做得成鍵。
 - **版本**：文件版本是 TeamStore 的文件 revision；範圍版本號是快照的專案 revision。
 - **最後修改時間**：TeamStore 沒有便宜的方式取得，轉接一律回報 0。今天的橋接對變更的修改時間也是回報 0，行為不變。
 - **提交**：開一個 unit of work（帶 `command` 與 `actor` 的顯示名稱），放入全部的 `ops`，事件轉成 event record（時間用 `at`），`commit`。`RevisionConflict` 轉成 `PortError::Conflict`，鍵由 `DocumentId` 換回。
@@ -177,7 +185,7 @@ TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 dri
 - `speclink_host::port_exec::{execute, PortExecution, ExecError}`：公開。
 - `speclink_host::teamstore_port::TeamStorePort`：公開（server 的測試會用到）。
 - `speclink_host::port_view::PortView`：`pub(crate)`。
-- `speclink_host::bridge::{execute, BridgeExecution, BridgeError}`：保留；`BridgeError::Store` 的內容改成 `PortError`。
+- `speclink_host::bridge::{execute, BridgeExecution, BridgeError}`：保留；`BridgeError` 是 `ExecError` 的別名，`Store` 的內容是 `PortError`。
 - `speclink-host` 新增對 `speclink-store-port` 的依賴。
 
 **失敗的樣子**

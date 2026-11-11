@@ -1,0 +1,82 @@
+schema: spec-driven
+created: 2026-11-10T21:36:06+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs
+depends_on: store-port-contract
+started_at: 2026-11-11T11:22:01+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-11T12:42:55+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 15
+reviewed_rounds: 3
+reviewed_scope:
+  - path: Cargo.lock
+    hash: 09d69439f32f5feb652032101fadcb059f274ee49b64b3090588d3500df9a2e0
+  - path: crates/host/speclink-host/Cargo.toml
+    hash: 355060e84d8119c38a8a1967598d2e3188f6e0723210dc320f7e6c25a3856b22
+  - path: crates/host/speclink-host/src/bridge.rs
+    hash: 3ed86dd29496f6192501dd2c92e78c5e0fda9733ec9d4cc99ccb8bc0305a7d68
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: 2aff0bfc35de8f3b691be2578b6bbc192b8a01034b72c7018c94d93117297f3d
+  - path: crates/host/speclink-host/src/drift.rs
+    hash: 436b539ea700208d8096c8daf99c07c92fcabf6532c0fcad44a595c6f87d9c19
+  - path: crates/host/speclink-host/src/lib.rs
+    hash: 7269bfd6adf32c9d8ae497367d8db04ddb3eaf817e18f8e0cd5084e3dbbf5685
+  - path: crates/host/speclink-host/src/port_exec.rs
+    hash: db4232d88bbafa7b3e11a75a115745f280f4d6e2cc2d22bf2efde16345ac987b
+  - path: crates/host/speclink-host/src/port_view.rs
+    hash: 218e62fd223b5fb9490d13fc081ceb2b019152cf62b30526863215dbfb8bdcd8
+  - path: crates/host/speclink-host/src/teamstore_port.rs
+    hash: a4dd7f1922dfd1520a80c462ddb8bd0e8fc6f56095e13cda4a89fa4c58d5a455
+  - path: crates/host/speclink-host/tests/common/mod.rs
+    hash: 10e23c96a4b6636ac029c75df43258db3f0fb060c1e02cf46897fb6a75e0fde9
+  - path: crates/host/speclink-host/tests/port_cost.rs
+    hash: 1c0994fa18def96f4717cdafc8afa1e4c55a97e358771f0385a9f4754517496e
+  - path: crates/host/speclink-host/tests/port_dual_path.rs
+    hash: d6eb248961134866b55529933913a34dbb79a308a969f69d1126fbe7c6753e2c
+  - path: crates/host/speclink-server/Cargo.toml
+    hash: f7eec3150c55a299b022f23b89a4d1cdcef7782cb831ee562ea6100c8624de3b
+  - path: crates/host/speclink-server/src/api/error.rs
+    hash: a4f52f9ce61f2bd10894dee96601f2066fbde72e7dcba67da07c55ff52822022
+  - path: crates/host/speclink-server/tests/it/api/command_routes.rs
+    hash: 8a041ef298520c8719834b513d2341c1b558be20a1bd438d3995a507210bb275
+verified_at: 2026-11-11T12:43:00+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 15
+verified_rounds: 3
+verified_scope:
+  - path: Cargo.lock
+    hash: 09d69439f32f5feb652032101fadcb059f274ee49b64b3090588d3500df9a2e0
+  - path: crates/host/speclink-host/Cargo.toml
+    hash: 355060e84d8119c38a8a1967598d2e3188f6e0723210dc320f7e6c25a3856b22
+  - path: crates/host/speclink-host/src/bridge.rs
+    hash: 3ed86dd29496f6192501dd2c92e78c5e0fda9733ec9d4cc99ccb8bc0305a7d68
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: 2aff0bfc35de8f3b691be2578b6bbc192b8a01034b72c7018c94d93117297f3d
+  - path: crates/host/speclink-host/src/drift.rs
+    hash: 436b539ea700208d8096c8daf99c07c92fcabf6532c0fcad44a595c6f87d9c19
+  - path: crates/host/speclink-host/src/lib.rs
+    hash: 7269bfd6adf32c9d8ae497367d8db04ddb3eaf817e18f8e0cd5084e3dbbf5685
+  - path: crates/host/speclink-host/src/port_exec.rs
+    hash: db4232d88bbafa7b3e11a75a115745f280f4d6e2cc2d22bf2efde16345ac987b
+  - path: crates/host/speclink-host/src/port_view.rs
+    hash: 218e62fd223b5fb9490d13fc081ceb2b019152cf62b30526863215dbfb8bdcd8
+  - path: crates/host/speclink-host/src/teamstore_port.rs
+    hash: a4dd7f1922dfd1520a80c462ddb8bd0e8fc6f56095e13cda4a89fa4c58d5a455
+  - path: crates/host/speclink-host/tests/common/mod.rs
+    hash: 10e23c96a4b6636ac029c75df43258db3f0fb060c1e02cf46897fb6a75e0fde9
+  - path: crates/host/speclink-host/tests/port_cost.rs
+    hash: 1c0994fa18def96f4717cdafc8afa1e4c55a97e358771f0385a9f4754517496e
+  - path: crates/host/speclink-host/tests/port_dual_path.rs
+    hash: d6eb248961134866b55529933913a34dbb79a308a969f69d1126fbe7c6753e2c
+  - path: crates/host/speclink-server/Cargo.toml
+    hash: f7eec3150c55a299b022f23b89a4d1cdcef7782cb831ee562ea6100c8624de3b
+  - path: crates/host/speclink-server/src/api/error.rs
+    hash: a4f52f9ce61f2bd10894dee96601f2066fbde72e7dcba67da07c55ff52822022
+  - path: crates/host/speclink-server/tests/it/api/command_routes.rs
+    hash: 8a041ef298520c8719834b513d2341c1b558be20a1bd438d3995a507210bb275
+archived_at: 2026-11-11T12:52:06+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

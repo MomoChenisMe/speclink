@@ -51,6 +51,13 @@
         "crates/host/speclink-server/src/api/error.rs",
         "crates/host/speclink-server/tests/it/api/command_routes.rs"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "6.2 最後驗證 D1 到 D7 的驗收條件。涉及 crates/host/speclink-host、crates/host/speclink-server。驗證：`cargo test -p speclink-host` 通過；`cargo test -p speclink-server` 通過；`cargo build --workspace` 通過且沒有新的警告；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "crates/host/speclink-host/tests/common/mod.rs"
+      ]
     }
   ],
   "entries": [
@@ -127,6 +134,17 @@
         "crates/host/speclink-server/tests/it/api/command_routes.rs"
       ],
       "recordedAt": "2026-11-11T03:50:15Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM64Y9YQQWYSGJ574EHV",
+      "taskDesc": "6.2 最後驗證 D1 到 D7 的驗收條件。涉及 crates/host/speclink-host、crates/host/speclink-server。驗證：`cargo test -p speclink-host` 通過；`cargo test -p speclink-server` 通過；`cargo build --workspace` 通過且沒有新的警告；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "adae936396110cfaaa018ff4331861d7d60416b0",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/common/mod.rs"
+      ],
+      "recordedAt": "2026-11-11T04:22:42Z"
     }
   ]
 }
