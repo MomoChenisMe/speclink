@@ -8,7 +8,9 @@
 //! - `credentials`: the OS keyring store, keyed by origin and kind.
 //! - `auth`: credentials-file read/write and the resolution ladder.
 //! - `refresh`: bearer acquisition and rotation, serialized across processes.
-//! - `login`: driving a device authorization to a verdict.
+//! - `discovery`: asking a server which login methods it supports, and
+//!   choosing one.
+//! - `login`: the one login, logout and identity flow both front ends call.
 //! - the registry mapping below: every non-2xx response becomes a
 //!   single-line semantic message — a bare HTTP status code is never the
 //!   primary error output.
@@ -25,8 +27,11 @@ pub mod client;
 pub mod convert;
 pub mod credentials;
 pub mod device;
+pub mod discovery;
 pub mod events;
 pub mod login;
+mod loopback;
+mod oauth;
 pub mod refresh;
 
 /// A translated remote failure: one semantic line for the user/agent, plus

@@ -61,6 +61,38 @@ export function AwaitingApproval({
   );
 }
 
+/** 等待瀏覽器登入面（client-browser-login D9）：一句說明、可複製的授權網址、
+ * 倒數與取消——瀏覽器沒有自動開啟時，使用者複製網址自己開。版面同等待授權面；
+ * 授權網址只帶 state 與 challenge，不含任何 credential。 */
+export function AwaitingBrowser({
+  origin,
+  phase,
+  onCancel,
+}: {
+  origin: string;
+  phase: Extract<ConnectionPhase, { kind: "awaitingBrowser" }>;
+  onCancel?: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="flex flex-col gap-1.5" data-testid={`awaiting-browser-${origin}`}>
+      <div className="text-xs font-medium">{t("servers.awaitingBrowserTitle")}</div>
+      <p className="m-0 text-xs text-muted-foreground">{t("servers.awaitingBrowserHint")}</p>
+      <div className="flex items-center gap-1.5">
+        <span className="text-xs text-muted-foreground">{t("servers.authorizationUrl")}</span>
+        <span className="min-w-0 truncate font-mono text-xs">{phase.url}</span>
+        <CopyButton size="sm" label={t("servers.copyAuthorizationUrl")} value={phase.url} onCopy={writeText} />
+      </div>
+      <div className="flex items-center gap-3">
+        <Countdown expiresAt={phase.expiresAt} />
+        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
+          {t("servers.cancelLogin")}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 /** PAT 輸入（規格 PAT fallback）：草稿只存在提交前的元件狀態，提交即清空
  * ——單次過境，不留任何拷貝。 */
 export function PatLoginInput({

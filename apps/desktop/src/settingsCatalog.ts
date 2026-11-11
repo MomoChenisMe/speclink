@@ -91,6 +91,7 @@ export const APP_SETTINGS_CATEGORIES: AppSettingsCategory[] = [
       "servers.page.addConnection",
       "servers.page.connectionsCard",
       "servers.page.defaultForNew",
+      "servers.page.browserLogin",
       "servers.page.deviceLogin",
       "servers.page.pat",
     ],

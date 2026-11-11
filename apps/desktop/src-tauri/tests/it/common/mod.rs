@@ -369,7 +369,7 @@ impl Phase3Server {
             assert!(identity.approve_device(&code, &user_id).expect("approve"));
             Ok(())
         };
-        let access_token = device_login_two_segments(&self.origin, store, &self.registry, &opener)
+        let access_token = approved_device_login(&self.origin, store, &self.registry, &opener)
             .expect("phase3 device login");
         self.record("editor device login approved".to_string());
         access_token
@@ -748,8 +748,9 @@ pub fn seed_named_change(store: &dyn TeamStore, change: &str, tasks: &str) {
     store.commit(uow, Vec::new()).expect("seed commit");
 }
 
-/// 以 device flow（假瀏覽器直接核准）登入，讓 credential store 落下 refresh
-/// credential。
+/// 以 device flow（假瀏覽器直接核准）登入，讓 credential store 只留下 refresh
+/// credential——登入會連 access token 一起快取，這裡把快取清掉，模擬「重啟後
+/// 快取已過期」：下一個請求要靠 refresh credential 換發。
 pub fn device_login_approved(
     h: &Harness,
     store: &dyn speclink_remote::credentials::CredentialStore,
@@ -765,27 +766,28 @@ pub fn device_login_approved(
         assert!(identity.approve_device(&code, &user_id).expect("approve"));
         Ok(())
     };
-    device_login_two_segments(&h.origin, store, &h.registry, &opener).expect("device login");
+    approved_device_login(&h.origin, store, &h.registry, &opener).expect("device login");
+    speclink_remote::refresh::clear_cached_bearer(&h.origin, store);
 }
 
-/// 兩段編排（design 決策二）走完一次 device login：啟動段開「瀏覽器」（假開啟器
-/// 就地核准）後，做一次觀測即得終態——測試不需要真的排程輪詢。回傳 access token。
-fn device_login_two_segments(
+/// 走完一次 device login（假開啟器就地核准，等待迴圈在 Rust 這一份）。回傳
+/// 登入當下快取的 access token。
+fn approved_device_login(
     origin: &str,
     store: &dyn speclink_remote::credentials::CredentialStore,
     registry: &std::path::Path,
-    opener: &dyn Fn(&str) -> Result<(), String>,
+    opener: &(dyn Fn(&str) -> Result<(), String> + Sync),
 ) -> Result<String, String> {
-    use speclink_desktop_lib::connections::{
-        device_login_observe, device_login_start, DeviceLoginObservation, DeviceLoginStart,
+    use speclink_desktop_lib::connections::{connection_login, ConnectionLogin, DesktopLoginIo};
+    let cancel = std::sync::atomic::AtomicBool::new(false);
+    let io = DesktopLoginIo {
+        origin,
+        emit: &|_| {},
+        open_browser: opener,
+        cancel: &cancel,
     };
-    let auth = match device_login_start(origin, store, registry, opener)? {
-        DeviceLoginStart::LoggedIn { access_token, .. } => return Ok(access_token),
-        DeviceLoginStart::AwaitingApproval(auth) => auth,
-        other => return Err(format!("device login did not complete: {other:?}")),
-    };
-    match device_login_observe(origin, &auth.device_code, store, registry)? {
-        DeviceLoginObservation::LoggedIn { access_token, .. } => Ok(access_token),
+    match connection_login(origin, None, store, registry, &io)? {
+        ConnectionLogin::LoggedIn { access_token: Some(access), .. } => Ok(access),
         other => Err(format!("device login did not complete: {other:?}")),
     }
 }

@@ -21,7 +21,7 @@ import {
 
 import type { ConnectionView } from "../adapter/connections";
 import type { ConnectionPhase } from "../store";
-import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
+import { AwaitingApproval, AwaitingBrowser, PatLoginInput } from "./connectionLogin";
 
 export interface ServersPanelProps {
   connections: ConnectionView[];
@@ -30,7 +30,7 @@ export interface ServersPanelProps {
   /** 新增並隨即登入；無效輸入 reject、由表單就地呈現。 */
   onAdd: (baseUrl: string, name: string) => Promise<unknown>;
   onLogin: (origin: string) => void;
-  /** 取消等待授權：停止輪詢、回未登入。 */
+  /** 取消等待中的登入（等待授權或等待瀏覽器登入）：回未登入。 */
   onCancelLogin?: (origin: string) => void;
   /** PAT 單次過境：提交後本面即清空草稿。 */
   onSubmitPat: (origin: string, pat: string) => void;
@@ -52,7 +52,9 @@ export interface ServersPanelProps {
 /** 狀態籤：互動狀態優先於登入狀態。 */
 function statusPill(entry: ConnectionView, phase: ConnectionPhase, needsReauth: boolean): StatusPillLabel {
   if (phase.kind === "busy") return { key: "servers.busy", tone: "neutral" };
-  if (phase.kind === "awaitingApproval") return { key: "servers.page.pill.awaiting", tone: "progress" };
+  if (phase.kind === "awaitingApproval" || phase.kind === "awaitingBrowser") {
+    return { key: "servers.page.pill.awaiting", tone: "progress" };
+  }
   if (phase.kind === "error") return { key: "servers.page.pill.failed", tone: "destructive" };
   if (needsReauth) return { key: "servers.page.pill.expired", tone: "warning" };
   if (entry.loggedIn) return { key: "servers.loggedIn", tone: "success" };
@@ -240,7 +242,11 @@ export function ServersPanel({
                     </>
                   }
                 >
-                  {(phase.kind === "error" || phase.kind === "notice" || phase.kind === "awaitingApproval" || phase.kind === "patInput") && (
+                  {(phase.kind === "error" ||
+                    phase.kind === "notice" ||
+                    phase.kind === "awaitingApproval" ||
+                    phase.kind === "awaitingBrowser" ||
+                    phase.kind === "patInput") && (
                     <div className="flex flex-col gap-2">
                       {phase.kind === "error" && (
                         <span role="alert" className={`text-xs ${SEMANTIC_TONE.danger}`}>
@@ -250,6 +256,9 @@ export function ServersPanel({
                       {phase.kind === "notice" && <span className="text-xs text-muted-foreground">{phase.message}</span>}
                       {phase.kind === "awaitingApproval" && (
                         <AwaitingApproval origin={entry.origin} phase={phase} onCancel={() => onCancelLogin?.(entry.origin)} />
+                      )}
+                      {phase.kind === "awaitingBrowser" && (
+                        <AwaitingBrowser origin={entry.origin} phase={phase} onCancel={() => onCancelLogin?.(entry.origin)} />
                       )}
                       {phase.kind === "patInput" && (
                         <div data-testid={`pat-input-${entry.origin}`}>

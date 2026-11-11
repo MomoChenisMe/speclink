@@ -1,6 +1,7 @@
 mod archive_evidence_gate;
 mod archive_merge_gate;
 mod archive_readiness_gate;
+mod auth_login_methods;
 mod change_schema;
 mod config_fail_closed;
 mod discuss_conclude_auto_archive;

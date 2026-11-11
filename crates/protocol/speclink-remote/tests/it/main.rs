@@ -1,10 +1,12 @@
 mod auth_store;
+mod browser_login;
 mod client_errors;
 mod credential_ladder;
 mod device_flow;
 mod device_login_flow;
 mod events_sse;
 mod handshake;
+mod login_methods;
 mod read_api;
 mod reauth_retry;
 mod refresh_lock;

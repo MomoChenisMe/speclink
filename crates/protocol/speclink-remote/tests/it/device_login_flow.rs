@@ -13,7 +13,7 @@
 //! one generic failure.
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
-use speclink_remote::login::{self, DeviceLoginIo, DeviceLoginOutcome};
+use speclink_remote::login::{self, LoginIo, LoginOutcome, LoginPhase};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -26,12 +26,11 @@ struct RecordingIo {
     browser_fails: bool,
 }
 
-impl DeviceLoginIo for RecordingIo {
-    fn announce(&self, verification_uri: &str, user_code: &str) {
-        self.announced
-            .lock()
-            .unwrap()
-            .push((verification_uri.to_string(), user_code.to_string()));
+impl LoginIo for RecordingIo {
+    fn phase(&self, phase: LoginPhase) {
+        if let LoginPhase::AwaitingDevice { verification_uri, user_code, .. } = phase {
+            self.announced.lock().unwrap().push((verification_uri, user_code));
+        }
     }
     fn open_browser(&self, url: &str) -> bool {
         self.opened.lock().unwrap().push(url.to_string());
@@ -39,6 +38,9 @@ impl DeviceLoginIo for RecordingIo {
     }
     fn sleep_secs(&self, secs: u64) {
         self.slept.lock().unwrap().push(secs);
+    }
+    fn cancelled(&self) -> bool {
+        false
     }
 }
 
@@ -130,7 +132,7 @@ fn approval_stores_both_credentials_and_reports_the_identity() {
     let outcome = login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
 
     match outcome {
-        DeviceLoginOutcome::Approved { display } => {
+        LoginOutcome::LoggedIn { display, .. } => {
             assert_eq!(display, "Dev <dev@example.com>");
         }
         other => panic!("應為 Approved，得到 {other:?}"),
@@ -147,6 +149,20 @@ fn approval_stores_both_credentials_and_reports_the_identity() {
     let parsed: serde_json::Value = serde_json::from_str(&cached).unwrap();
     assert_eq!(parsed["token"], "access-1");
     assert!(parsed["expiresAt"].is_number());
+}
+
+/// An origin holds one kind of login at a time: approving a device replaces a
+/// keyring PAT (client-browser-login D4).
+#[test]
+fn approval_replaces_a_keyring_pat() {
+    let server = scripted_server(vec!["approved"], 1);
+    let dir = tempdir();
+    let store = MemoryCredentialStore::new();
+    store.set(&server.base, CredentialKind::Pat, "old-pat").unwrap();
+
+    login::device_login(&server.base, &store, dir.path(), &RecordingIo::default()).expect("登入不應失敗");
+
+    assert_eq!(store.get(&server.base, CredentialKind::Pat).unwrap(), None);
 }
 
 /// The URL and the code are printed whether or not a browser opened: approving
@@ -236,7 +252,7 @@ fn denial_and_expiry_are_distinct_verdicts() {
         &RecordingIo::default(),
     )
     .expect("被拒是結果不是錯誤");
-    assert!(matches!(outcome, DeviceLoginOutcome::Denied));
+    assert!(matches!(outcome, LoginOutcome::Denied));
 
     let expired = scripted_server(vec!["expired"], 1);
     let outcome = login::device_login(
@@ -246,7 +262,7 @@ fn denial_and_expiry_are_distinct_verdicts() {
         &RecordingIo::default(),
     )
     .expect("逾期是結果不是錯誤");
-    assert!(matches!(outcome, DeviceLoginOutcome::Expired));
+    assert!(matches!(outcome, LoginOutcome::Expired));
 }
 
 /// A server without the device flow is the explicit PAT fallback signal — not
@@ -262,7 +278,7 @@ fn a_server_without_the_device_flow_is_unsupported() {
     )
     .expect("不支援是結果不是錯誤");
 
-    assert!(matches!(outcome, DeviceLoginOutcome::Unsupported));
+    assert!(matches!(outcome, LoginOutcome::Unsupported));
 }
 
 /// Nothing is written when the user never approves.

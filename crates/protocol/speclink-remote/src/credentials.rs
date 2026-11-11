@@ -11,6 +11,7 @@
 //! tests and orchestration inject [`MemoryCredentialStore`]. Error strings
 //! never carry secret material.
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -37,6 +38,81 @@ impl CredentialKind {
             CredentialKind::Refresh => "refresh",
             CredentialKind::Pat => "pat",
             CredentialKind::Bearer => "bearer",
+        }
+    }
+}
+
+/// The value of a keyring `refresh:<origin>` entry (client-browser-login D4).
+/// A device login stores the bare refresh token, as it always has; a browser
+/// login stores [`OAuthRefresh`] as JSON in the same entry, so the resolution
+/// ladder, the rotation lock and logout cover both without a fifth layer.
+#[derive(Clone, PartialEq)]
+pub enum RefreshEntry {
+    Device(String),
+    OAuth(OAuthRefresh),
+}
+
+/// Printed without the token, so a `{:?}` in a log line cannot leak it.
+impl std::fmt::Debug for RefreshEntry {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RefreshEntry::Device(_) => f.write_str("Device(<redacted>)"),
+            RefreshEntry::OAuth(oauth) => f.debug_tuple("OAuth").field(oauth).finish(),
+        }
+    }
+}
+
+/// What a browser login needs to refresh and revoke: the login service's
+/// endpoints are kept beside the token, so a refresh never re-reads the
+/// service's metadata.
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OAuthRefresh {
+    /// `None` when the login service issued no refresh token: the login lasts
+    /// as long as its access token.
+    pub refresh_token: Option<String>,
+    pub token_endpoint: String,
+    pub client_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub revocation_endpoint: Option<String>,
+}
+
+/// Printed without the token, so a `{:?}` in a log line cannot leak it.
+impl std::fmt::Debug for OAuthRefresh {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OAuthRefresh")
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "<redacted>"))
+            .field("token_endpoint", &self.token_endpoint)
+            .field("client_id", &self.client_id)
+            .field("revocation_endpoint", &self.revocation_endpoint)
+            .finish()
+    }
+}
+
+/// The tagged JSON shape of a browser login's entry: `{"kind":"oauth", …}`.
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "lowercase")]
+enum StoredRefresh {
+    Oauth(OAuthRefresh),
+}
+
+impl RefreshEntry {
+    /// Read an entry. Anything that is not a `kind: oauth` object is a device
+    /// login's refresh token — which is every entry written before browser
+    /// login existed, so none of them needs migrating.
+    pub fn parse(raw: &str) -> RefreshEntry {
+        match serde_json::from_str::<StoredRefresh>(raw) {
+            Ok(StoredRefresh::Oauth(oauth)) => RefreshEntry::OAuth(oauth),
+            Err(_) => RefreshEntry::Device(raw.to_string()),
+        }
+    }
+
+    /// The entry's stored value.
+    pub fn encode(&self) -> String {
+        match self {
+            RefreshEntry::Device(token) => token.clone(),
+            RefreshEntry::OAuth(oauth) => serde_json::to_string(&StoredRefresh::Oauth(oauth.clone()))
+                .expect("a struct of strings always serializes"),
         }
     }
 }
@@ -93,7 +169,23 @@ impl CredentialStore for MemoryCredentialStore {
 /// `<kind>:<origin>`.
 pub struct KeyringCredentialStore;
 
+/// Whether this platform's keyring keeps what it is given. Where no native
+/// store is compiled in (everything but macOS and Windows here), the keyring
+/// crate falls back to an in-memory mock whose "successful" writes vanish with
+/// the entry — a login or PAT stored there would be lost on the spot. Such a
+/// keyring counts as unavailable, so callers fall back or refuse loudly.
+fn keyring_persists() -> bool {
+    use keyring::credential::CredentialPersistence;
+    matches!(
+        keyring::default::default_credential_builder().persistence(),
+        CredentialPersistence::UntilDelete | CredentialPersistence::UntilReboot
+    )
+}
+
 fn entry(origin: &str, kind: CredentialKind) -> Result<keyring::Entry, String> {
+    if !keyring_persists() {
+        return Err("此平台沒有系統 Keychain".to_string());
+    }
     keyring::Entry::new(SERVICE, &format!("{}:{origin}", kind.slug()))
         .map_err(|e| format!("無法存取系統 Keychain：{e}"))
 }
@@ -207,6 +299,64 @@ mod tests {
             store.get("https://a.example", CredentialKind::Refresh).unwrap(),
             Some("new".to_string())
         );
+    }
+
+    #[test]
+    fn a_bare_refresh_token_reads_as_a_device_login() {
+        assert_eq!(
+            RefreshEntry::parse("spk_rt_abc"),
+            RefreshEntry::Device("spk_rt_abc".to_string())
+        );
+    }
+
+    /// JSON that is not a `kind: oauth` object, or is broken, falls back to the
+    /// old format rather than failing.
+    #[test]
+    fn unrecognized_json_reads_as_a_device_login() {
+        for raw in [r#"{"kind":"other"}"#, r#"{"kind":"oauth""#, r#"{"refreshToken":"x"}"#, "null"] {
+            assert_eq!(RefreshEntry::parse(raw), RefreshEntry::Device(raw.to_string()), "{raw}");
+        }
+    }
+
+    /// An entry printed with `{:?}` must not carry its refresh token.
+    #[test]
+    fn a_refresh_entry_debug_print_hides_the_token() {
+        let device = format!("{:?}", RefreshEntry::Device("spk_rt_secret".into()));
+        let oauth = format!(
+            "{:?}",
+            RefreshEntry::OAuth(OAuthRefresh {
+                refresh_token: Some("rt-secret".into()),
+                token_endpoint: "https://id.example.com/token".into(),
+                client_id: "speclink".into(),
+                revocation_endpoint: None,
+            })
+        );
+        assert!(!device.contains("spk_rt_secret"), "{device}");
+        assert!(!oauth.contains("rt-secret"), "{oauth}");
+        assert!(oauth.contains("https://id.example.com/token"), "non-secret fields stay readable: {oauth}");
+    }
+
+    #[test]
+    fn an_oauth_entry_round_trips_in_the_d4_shape() {
+        let entry = RefreshEntry::OAuth(OAuthRefresh {
+            refresh_token: None,
+            token_endpoint: "https://id.example.com/token".into(),
+            client_id: "speclink".into(),
+            revocation_endpoint: None,
+        });
+        let raw = entry.encode();
+        assert_eq!(
+            raw,
+            r#"{"kind":"oauth","refreshToken":null,"tokenEndpoint":"https://id.example.com/token","clientId":"speclink"}"#
+        );
+        assert_eq!(RefreshEntry::parse(&raw), entry);
+    }
+
+    /// The native keyrings persist; anything else is the crate's in-memory
+    /// mock, which must read as "no keyring".
+    #[test]
+    fn only_a_native_keyring_counts_as_available() {
+        assert_eq!(keyring_persists(), cfg!(any(target_os = "macos", target_os = "windows")));
     }
 
     /// The account format is a compatibility contract: desktop logins written

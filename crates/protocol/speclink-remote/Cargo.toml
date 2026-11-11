@@ -19,6 +19,11 @@ ureq = { version = "2", features = ["json"] }
 keyring = { version = "3", features = ["apple-native", "windows-native"] }
 # 換發的跨行程序列化鎖：跨平台語意一致，勝過手寫 flock。
 fs2 = "0.4"
+# 瀏覽器登入的 PKCE（client-browser-login D3）：S256 challenge、base64url 編碼與
+# 作業系統的隨機來源。三者都已由其他 crate 帶進 lock 檔，不另引 OAuth 函式庫。
+sha2 = "0.10"
+base64 = "0.22"
+getrandom = "0.3"
 
 [dev-dependencies]
 tiny_http = "0.12"

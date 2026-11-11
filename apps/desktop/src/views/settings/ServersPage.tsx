@@ -1,5 +1,5 @@
 // 伺服器頁（desktop-settings-mode design D7；spec「伺服器管理最小面」）：頁標題右側「新增連線」
-// 切換頁頂新增卡；連線卡（ServersPanel）；預設卡（新增遠端專案時預設使用的連線）；登入方式卡。
+// 切換頁頂新增卡；連線卡（ServersPanel）；預設卡（新增遠端專案時預設使用的連線）；登入方式卡（三列說明）。
 import { useState } from "react";
 import { Plus } from "lucide-react";
 import {
@@ -61,10 +61,11 @@ export function ServersPage({ defaultConnectionId, onDefaultConnectionChange, ..
       </SettingsCard>
       <SettingsCard title={t("servers.page.loginCard")}>
         <SettingsRow
-          label={t("servers.page.deviceLogin")}
-          description={t("servers.page.deviceLoginHint")}
-          control={<span className="text-xs text-muted-foreground">{t("servers.page.isDefault")}</span>}
+          label={t("servers.page.browserLogin")}
+          description={t("servers.page.browserLoginHint")}
+          control={<span className="text-xs text-muted-foreground">{t("servers.page.isPreferred")}</span>}
         />
+        <SettingsRow label={t("servers.page.deviceLogin")} description={t("servers.page.deviceLoginHint")} control={null} />
         <SettingsRow label={t("servers.page.pat")} description={t("servers.page.patHint")} control={null} />
       </SettingsCard>
     </>

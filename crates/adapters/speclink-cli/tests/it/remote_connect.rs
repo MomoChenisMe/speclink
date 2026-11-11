@@ -25,7 +25,10 @@ fn whoami_server(status: u16, body: &'static str) -> MockServer {
     std::thread::spawn(move || {
         for req in looper.incoming_requests() {
             let path = req.url().split('?').next().unwrap_or_default();
-            let (code, text) = if path == "/api/speclink/v1/projects/demo/whoami" {
+            // `/auth/whoami` is where `auth login` checks a PAT (the server
+            // root's identity, as on the official server); the project route
+            // is where `link` and `auth status` check the repo.
+            let (code, text) = if path == "/api/speclink/v1/projects/demo/whoami" || path == "/auth/whoami" {
                 (status, body.to_string())
             } else {
                 (404, r#"{"reason":"not_found","message":"no route","resource":"route","name":"?"}"#.to_string())
@@ -304,7 +307,14 @@ fn unlink_removes_the_remote_section() {
 }
 
 // --- auth login / status ---
+//
+// A PAT goes to the OS keychain when there is one. The tests that store a PAT
+// through the real binary therefore run on Linux only, where this build has no
+// keychain and the PAT goes to the credentials file; on macOS and Windows they
+// would write the developer's real keychain. The keychain path is pinned at the
+// function level in `src/verbs/connection.rs`.
 
+#[cfg(target_os = "linux")]
 #[test]
 fn auth_login_stores_the_validated_token() {
     let mock = whoami_server(200, WHOAMI_TWO_REPOS);
@@ -390,6 +400,7 @@ fn auth_status_json_carries_the_credential_source() {
 }
 
 /// The credentials file is the last layer, and it reports itself as such.
+#[cfg(target_os = "linux")]
 #[test]
 fn auth_status_json_reports_the_credentials_file_layer() {
     let mock = whoami_server(200, WHOAMI_TWO_REPOS);
@@ -405,6 +416,7 @@ fn auth_status_json_reports_the_credentials_file_layer() {
 
 /// `--pat` is the paste-a-token track; it must land in the same place
 /// `--token-stdin` always did.
+#[cfg(target_os = "linux")]
 #[test]
 fn auth_login_pat_flag_stores_a_pasted_token() {
     let mock = whoami_server(200, WHOAMI_TWO_REPOS);
@@ -455,6 +467,7 @@ fn auth_logout_without_credentials_is_nonzero() {
 
 /// A PAT in the credentials file is a local credential like any other: logout
 /// clears it, and the next status call says "not logged in".
+#[cfg(target_os = "linux")]
 #[test]
 fn auth_logout_clears_the_credentials_file_entry() {
     let mock = whoami_server(200, WHOAMI_TWO_REPOS);

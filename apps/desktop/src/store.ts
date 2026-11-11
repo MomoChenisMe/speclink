@@ -136,14 +136,16 @@ export type BoardView = "board" | "specs" | "manual" | "archived" | "project-set
 type SettingsView = "project-settings" | "settings";
 export const isSettingsView = (v: BoardView): v is SettingsView => v === "settings" || v === "project-settings";
 
-/** 逐連線登入互動狀態（desktop-connections）：patInput＝device flow 明確
- * 不支援（404/405），就地收 PAT（規格 PAT fallback）；awaitingApproval＝device
- * 授權等待中，承載裝置碼、驗證網址與截止時刻（倒數由呈現層以截止時刻計算，
- * 不依賴輪詢節奏）；notice＝非錯誤提示（如 PAT 登出後的帳號頁撤銷提醒）。 */
+/** 逐連線登入互動狀態（desktop-connections；client-browser-login D9）：
+ * patInput＝server 只收存取金鑰或沒有 device flow，就地收 PAT（規格 PAT
+ * fallback）；awaitingApproval／awaitingBrowser＝等待裝置核准／等待瀏覽器登入，
+ * 由 Rust 經事件送來，承載裝置碼與驗證網址或授權網址，以及截止時刻（倒數由
+ * 呈現層以截止時刻計算）；notice＝非錯誤提示（如 PAT 登出後的帳號頁撤銷提醒）。 */
 export type ConnectionPhase =
   | { kind: "idle" }
   | { kind: "busy" }
   | { kind: "awaitingApproval"; userCode: string; verificationUri: string; expiresAt: number }
+  | { kind: "awaitingBrowser"; url: string; expiresAt: number }
   | { kind: "patInput"; error: string | null }
   | { kind: "notice"; message: string }
   | { kind: "error"; message: string };
@@ -569,14 +571,14 @@ export interface AppState {
   /** 重整連線清單。回傳讀取是否成功——失敗時清單保留現值，呼叫端據此區分
    * 「清單真的空」與「讀不到」（chooser 的最近開啟列靠它判定連線已移除）。 */
   refreshConnections: () => Promise<boolean>;
-  /** 新增（同 origin 即更新顯示名）並隨即進入登入流程（決策 7）；
-   * 無效輸入上拋、由表單就地呈現。回傳正規化 origin（決策三——供發起登入的
-   * 介面追蹤該連線的互動狀態）；無 adapter 時回 null。 */
+  /** 新增（同 origin 即更新顯示名）並隨即開始登入（決策 7）；登入不等到終態——
+   * 等待面要在登入進行中就地顯示。無效輸入上拋、由表單就地呈現。回傳正規化
+   * origin（決策三——供發起登入的介面追蹤該連線的互動狀態）；無 adapter 時回 null。 */
   addConnection: (baseUrl: string, name: string) => Promise<string | null>;
-  /** device 預設登入的啟動段；明確不支援時轉 patInput、連線錯誤浮為可讀狀態。
-   * 等待授權時進 awaitingApproval 並由本 store 排程單次觀測（design 決策二）。 */
+  /** 登入到終態：途中的等待階段原樣放進 connectionPhases；需要存取金鑰時轉
+   * patInput、連線錯誤浮為可讀狀態。 */
   loginConnection: (origin: string) => Promise<void>;
-  /** 取消等待授權：停止排程、回未登入；授權請求留給 server 自然逾期。 */
+  /** 取消等待中的登入：通知 Rust 結束等待、立即回未登入。 */
   cancelLogin: (origin: string) => void;
   /** PAT 單次過境提交；無效 PAT 留在輸入面並就地浮錯。 */
   submitPat: (origin: string, pat: string) => Promise<void>;
@@ -1035,62 +1037,13 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       set({ connectionPhases: { ...get().connectionPhases, [origin]: phase } });
     }
 
-    /** 等待授權中的輪詢排程（keyed by origin；design 決策二——節奏歸前端）：
-     * timer＝下一次單次觀測、deviceCode＝觀測把手、intervalMs＝目前間隔
-     * （slow_down 即加倍）、deadline＝授權截止時刻（以時刻判逾時，睡眠醒來
-     * 仍正確）。取消或終態即抹除該筆——Rust 側無長駐迴圈可中斷。 */
-    const pollSchedules = new Map<
-      string,
-      { timer: ReturnType<typeof setTimeout>; deviceCode: string; intervalMs: number; deadline: number }
-    >();
-
-    function stopPolling(origin: string) {
-      const schedule = pollSchedules.get(origin);
-      if (schedule) {
-        clearTimeout(schedule.timer);
-        pollSchedules.delete(origin);
-      }
-    }
-
-    /** 排下一次單次觀測；截止時刻已過即就地收為逾時（不再打 server）。 */
-    function scheduleObservation(origin: string, deviceCode: string, intervalMs: number, deadline: number) {
-      const timer = setTimeout(() => {
-        void observeOnce(origin);
-      }, intervalMs);
-      pollSchedules.set(origin, { timer, deviceCode, intervalMs, deadline });
-    }
-
-    async function observeOnce(origin: string) {
-      const schedule = pollSchedules.get(origin);
-      if (!schedule || !connectionsAdapter) return;
-      if (Date.now() >= schedule.deadline) {
-        stopPolling(origin);
-        setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
-        return;
-      }
-      try {
-        const result = await connectionsAdapter.deviceLoginObserve(origin, schedule.deviceCode);
-        // 觀測在途時使用者按了取消：結果一律作廢，不得復活等待面或登入。
-        if (pollSchedules.get(origin) !== schedule) return;
-        if (result.status === "loggedIn") {
-          stopPolling(origin);
-          await get().refreshConnections();
-          await recoverRemoteSessions(origin);
-          setConnectionPhase(origin, { kind: "idle" });
-        } else if (result.status === "denied") {
-          stopPolling(origin);
-          setConnectionPhase(origin, { kind: "error", message: appT("servers.denied") });
-        } else if (result.status === "expired") {
-          stopPolling(origin);
-          setConnectionPhase(origin, { kind: "error", message: appT("servers.expired") });
-        } else {
-          const intervalMs = result.slowDown ? schedule.intervalMs * 2 : schedule.intervalMs;
-          scheduleObservation(origin, schedule.deviceCode, intervalMs, schedule.deadline);
-        }
-      } catch (e) {
-        stopPolling(origin);
-        setConnectionPhase(origin, { kind: "error", message: String(e) });
-      }
+    /** 每個 origin 目前這一輪登入的編號：取消或重按登入就換新一輪，前一輪晚到的
+     * 階段與結果一律作廢，不得復活等待面或蓋掉新一輪的狀態。 */
+    const loginRuns = new Map<string, number>();
+    function nextLoginRun(origin: string): number {
+      const run = (loginRuns.get(origin) ?? 0) + 1;
+      loginRuns.set(origin, run);
+      return run;
     }
 
     /** 登入成功後原地復活同 connection 的全部已建立 remote sessions：逐一
@@ -2235,42 +2188,55 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     async addConnection(baseUrl, name) {
       if (!connectionsAdapter) return null;
       const entry = await connectionsAdapter.add(baseUrl, name);
-      // 規格「新增後清單即時反映」：條目先上清單、再進入登入流程。
+      // 規格「新增後清單即時反映」：條目先上清單、再進入登入流程。登入會一直
+      // 等到使用者完成或取消，呼叫端拿到 origin 後就地追蹤它的互動狀態。
       await get().refreshConnections();
-      await get().loginConnection(entry.origin);
+      void get().loginConnection(entry.origin);
       return entry.origin;
     },
     async loginConnection(origin) {
       if (!connectionsAdapter) return;
-      // 重按登入＝重來一次：先停掉上一輪的排程，避免兩份輪詢並行。
-      stopPolling(origin);
+      // 重按登入＝重來一次：Rust 端會取消前一輪，這裡讓它晚到的結果作廢。
+      const run = nextLoginRun(origin);
+      const current = () => loginRuns.get(origin) === run;
+      /** 最後一個等待階段是不是瀏覽器登入：拒絕與逾時的說法依它而定。 */
+      const waited = { inBrowser: false };
       setConnectionPhase(origin, { kind: "busy" });
       try {
-        const result = await connectionsAdapter.deviceLoginStart(origin);
+        const result = await connectionsAdapter.loginStart(origin, (phase) => {
+          if (!current()) return;
+          waited.inBrowser = phase.kind === "awaitingBrowser";
+          setConnectionPhase(origin, phase);
+        });
+        if (!current()) return;
+        const browser = waited.inBrowser;
         if (result.status === "loggedIn") {
           await get().refreshConnections();
           await recoverRemoteSessions(origin);
           setConnectionPhase(origin, { kind: "idle" });
-        } else if (result.status === "unsupported") {
+        } else if (result.status === "patRequired") {
           setConnectionPhase(origin, { kind: "patInput", error: null });
-        } else {
-          const auth = result.authorization;
-          const deadline = Date.now() + auth.expiresIn * 1000;
+        } else if (result.status === "denied") {
           setConnectionPhase(origin, {
-            kind: "awaitingApproval",
-            userCode: auth.userCode,
-            verificationUri: auth.verificationUri,
-            expiresAt: deadline,
+            kind: "error",
+            message: appT(browser ? "servers.browserDenied" : "servers.denied"),
           });
-          scheduleObservation(origin, auth.deviceCode, Math.max(auth.interval, 1) * 1000, deadline);
+        } else if (result.status === "expired") {
+          setConnectionPhase(origin, {
+            kind: "error",
+            message: appT(browser ? "servers.browserExpired" : "servers.expired"),
+          });
+        } else {
+          setConnectionPhase(origin, { kind: "idle" });
         }
       } catch (e) {
-        setConnectionPhase(origin, { kind: "error", message: String(e) });
+        if (current()) setConnectionPhase(origin, { kind: "error", message: String(e) });
       }
     },
     cancelLogin(origin) {
-      // 取消不通知 server——授權請求自然逾期，本機不留等待狀態與 credential。
-      stopPolling(origin);
+      // 立即回未登入；Rust 端結束等待、關掉回呼的埠，不留任何 credential。
+      nextLoginRun(origin);
+      void connectionsAdapter?.loginCancel(origin);
       setConnectionPhase(origin, { kind: "idle" });
     },
     async submitPat(origin, pat) {
@@ -2306,7 +2272,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       if (!connectionsAdapter) return;
       const origin = get().connections.find((c) => c.id === id)?.origin;
       if (origin) {
-        stopPolling(origin); // 條目要消失了，等待中的觀測不得再回填它的狀態
+        // 條目要消失了：等待中的登入不得再回填它的狀態（Rust 端同時取消它）。
+        nextLoginRun(origin);
         setConnectionPhase(origin, { kind: "busy" });
       }
       try {

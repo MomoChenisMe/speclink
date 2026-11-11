@@ -31,18 +31,32 @@ pub fn speclink_config_dir() -> PathBuf {
 
 /// The origin (`scheme://host[:port]`) of a connection URL — credentials are
 /// keyed by origin so one login covers every project on the same server.
+///
+/// The key is [`normalize_origin`]'s, the same one the desktop app files its
+/// keyring entries under. A URL it rejects keeps its trimmed text as the key:
+/// a request to such a URL fails on its own, with a clearer message.
 pub fn origin_of(url: &str) -> String {
-    match url.find("://") {
-        Some(scheme_end) => {
-            let host_start = scheme_end + 3;
-            let end = url[host_start..]
-                .find('/')
-                .map(|i| host_start + i)
-                .unwrap_or(url.len());
-            url[..end].to_string()
-        }
-        None => url.trim_end_matches('/').to_string(),
+    normalize_origin(url).unwrap_or_else(|_| url.trim().trim_end_matches('/').to_string())
+}
+
+/// Normalize a server address to an origin: `scheme://authority` with scheme
+/// and host lowercased, path, query and fragment dropped. Only http and https
+/// are accepted. Every keyring and credentials-file key goes through this, so
+/// `https://Team.Example.com/x` and `https://team.example.com` are one login.
+pub fn normalize_origin(base_url: &str) -> Result<String, String> {
+    let trimmed = base_url.trim();
+    let (scheme, rest) = trimmed
+        .split_once("://")
+        .ok_or_else(|| "伺服器位址需以 http:// 或 https:// 開頭".to_string())?;
+    let scheme = scheme.to_ascii_lowercase();
+    if scheme != "http" && scheme != "https" {
+        return Err(format!("不支援的協定「{scheme}」：僅接受 http 或 https"));
     }
+    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
+    if authority.is_empty() {
+        return Err("伺服器位址缺少主機名".to_string());
+    }
+    Ok(format!("{scheme}://{}", authority.to_ascii_lowercase()))
 }
 
 fn read_map(path: &Path) -> BTreeMap<String, String> {
