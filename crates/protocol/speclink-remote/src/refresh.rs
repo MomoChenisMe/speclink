@@ -14,8 +14,9 @@
 //! bearer, which is why the cache lives beside the credentials rather than in
 //! memory.
 
-use crate::credentials::{CredentialKind, CredentialStore};
+use crate::credentials::{CredentialKind, CredentialStore, OAuthRefresh, RefreshEntry};
 use crate::device;
+use crate::oauth;
 use fs2::FileExt;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -204,7 +205,8 @@ fn acquire(
 
 /// Rotate inside an already-held lock: re-read the refresh credential (a
 /// leader may have replaced it while we waited), spend it, write the new pair
-/// back.
+/// back. A device login's entry goes to the server; a browser login's goes to
+/// its login service's token endpoint (client-browser-login D5).
 fn rotate_held(
     origin: &str,
     credentials: &dyn CredentialStore,
@@ -217,7 +219,18 @@ fn rotate_held(
             "此連線沒有 refresh credential——請重新登入".to_string(),
         ));
     };
-    let rotated = device::refresh(origin, &current).map_err(|e| match e.reason.as_deref() {
+    match RefreshEntry::parse(&current) {
+        RefreshEntry::Device(token) => rotate_device(origin, credentials, &token),
+        RefreshEntry::OAuth(oauth) => rotate_oauth(origin, credentials, oauth),
+    }
+}
+
+fn rotate_device(
+    origin: &str,
+    credentials: &dyn CredentialStore,
+    current: &str,
+) -> Result<String, RefreshFailure> {
+    let rotated = device::refresh(origin, current).map_err(|e| match e.reason.as_deref() {
         Some("permission_denied") => RefreshFailure::Rejected(e.message),
         _ => RefreshFailure::Unavailable(e.message),
     })?;
@@ -226,6 +239,40 @@ fn rotate_held(
         .map_err(RefreshFailure::Unavailable)?;
     store_bearer(origin, credentials, &rotated.access_token, rotated.expires_in)?;
     Ok(rotated.access_token)
+}
+
+/// A browser login's refresh. A login service that answers without a new
+/// refresh token keeps the old one valid; one that never issued a refresh
+/// token leaves nothing to refresh with — the login ends with its access token.
+fn rotate_oauth(
+    origin: &str,
+    credentials: &dyn CredentialStore,
+    mut entry: OAuthRefresh,
+) -> Result<String, RefreshFailure> {
+    const RELOGIN: &str = " — run `speclink auth login`";
+    let Some(current) = entry.refresh_token.clone() else {
+        return Err(RefreshFailure::Rejected(format!(
+            "this login has expired and the login service issued nothing to renew it with{RELOGIN}"
+        )));
+    };
+    let tokens = oauth::refresh_grant(&entry.token_endpoint, &entry.client_id, &current)
+        .map_err(|failure| match failure {
+            oauth::GrantFailure::Rejected(m) => RefreshFailure::Rejected(format!("{m}{RELOGIN}")),
+            oauth::GrantFailure::Unavailable(m) => RefreshFailure::Unavailable(m),
+        })?;
+    if let Some(rotated) = tokens.refresh_token {
+        entry.refresh_token = Some(rotated);
+        credentials
+            .set(origin, CredentialKind::Refresh, &RefreshEntry::OAuth(entry).encode())
+            .map_err(RefreshFailure::Unavailable)?;
+    }
+    store_bearer(
+        origin,
+        credentials,
+        &tokens.access_token,
+        tokens.expires_in.unwrap_or(oauth::DEFAULT_ACCESS_TOKEN_SECS),
+    )?;
+    Ok(tokens.access_token)
 }
 
 /// Rotate the credential family, ignoring any cached access token. Use this

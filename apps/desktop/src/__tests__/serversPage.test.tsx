@@ -133,12 +133,26 @@ describe("ServersPage", () => {
     expect(trigger.textContent).toContain("不預選");
   });
 
-  it("登入方式卡：裝置登入（預設）與存取金鑰兩列、無按鈕", () => {
+  it("登入方式卡：依序是瀏覽器登入、裝置登入、存取金鑰三列，無按鈕", () => {
     render(page());
     const card = screen.getByRole("region", { name: "登入方式" });
-    expect(within(card).getAllByRole("group")).toHaveLength(2);
-    expect(within(card).getByRole("group", { name: "裝置登入" }).textContent).toContain("預設");
-    expect(within(card).getByRole("group", { name: "存取金鑰" })).toBeTruthy();
+    const rows = within(card).getAllByRole("group");
+    expect(rows).toEqual(["瀏覽器登入", "裝置登入", "存取金鑰"].map((name) => within(card).getByRole("group", { name })));
+    expect(rows[0].textContent).toContain("優先");
     expect(within(card).queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("登入方式卡在介面語言為 en 時以英文呈現三列", () => {
+    rtlRender(page(), {
+      wrapper: ({ children }: { children: ReactNode }) => (
+        <I18nProvider locale="en" messages={APP_MESSAGES}>
+          {children}
+        </I18nProvider>
+      ),
+    });
+    const card = screen.getByRole("region", { name: "Sign-in methods" });
+    expect(within(card).getAllByRole("group")).toEqual(
+      ["Browser login", "Device login", "Access key"].map((name) => within(card).getByRole("group", { name })),
+    );
   });
 });

@@ -26,7 +26,7 @@ import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
-import { AwaitingApproval, PatLoginInput } from "./connectionLogin";
+import { AwaitingApproval, AwaitingBrowser, PatLoginInput } from "./connectionLogin";
 import { RecentList, useRecentOpener, type OpenLocal } from "./RecentList";
 import { BUILTIN_TOOLS } from "../builtinTools";
 
@@ -657,6 +657,19 @@ export function WorkspaceChooser({
             {pendingOrigin && pendingPhase?.kind === "awaitingApproval" && (
               <div className="rounded-lg border border-border bg-muted/30 p-3">
                 <AwaitingApproval
+                  origin={pendingOrigin}
+                  phase={pendingPhase}
+                  onCancel={() => {
+                    onCancelLogin(pendingOrigin);
+                    setPendingOrigin(null);
+                    setNotice(null);
+                  }}
+                />
+              </div>
+            )}
+            {pendingOrigin && pendingPhase?.kind === "awaitingBrowser" && (
+              <div className="rounded-lg border border-border bg-muted/30 p-3">
+                <AwaitingBrowser
                   origin={pendingOrigin}
                   phase={pendingPhase}
                   onCancel={() => {

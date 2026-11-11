@@ -7,6 +7,7 @@
 //! the wire contract is the shared downstream of both client and server, and
 //! neither side's implementation details may leak in.
 
+pub mod auth;
 pub mod binding;
 pub mod command;
 pub mod context;

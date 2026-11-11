@@ -7,7 +7,7 @@ import { WorkspaceChooser } from "../components/WorkspaceChooser";
 import { RemoteConflictDialog } from "../components/RemoteConflictDialog";
 import { APP_MESSAGES } from "../i18n/messages";
 import { createAppStore, type AppState } from "../store";
-import type { ConnectionsAdapter, ConnectionView } from "../adapter/connections";
+import type { ConnectionsAdapter, ConnectionView, LoginPhase, LoginResult } from "../adapter/connections";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { WorkspaceSession } from "../session";
@@ -57,8 +57,8 @@ function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAda
     list: vi.fn().mockResolvedValue([CONNECTION]),
     add: vi.fn().mockResolvedValue(CONNECTION),
     remove: vi.fn().mockResolvedValue(undefined),
-    deviceLoginStart: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
-    deviceLoginObserve: vi.fn(),
+    loginStart: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
+    loginCancel: vi.fn().mockResolvedValue(undefined),
     patLogin: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Momo" }),
     logout: vi.fn().mockResolvedValue({ revokedOnServer: true, patNotice: false }),
     scopes: vi.fn().mockResolvedValue(SCOPES),
@@ -650,13 +650,31 @@ describe("remote marker 與本機 openspec 並存", () => {
 // ——新增並登入後，等待授權面／PAT 輸入就在選擇器的 server 步驟渲染。 ---
 
 describe("WorkspaceChooser 登入回饋", () => {
-  const AUTH = {
-    deviceCode: "dev-code-1",
+  const APPROVAL: LoginPhase = {
+    kind: "awaitingApproval",
     userCode: "ABCD-EFGH",
     verificationUri: "http://localhost:8080/activate",
-    expiresIn: 900,
-    interval: 1,
+    expiresAt: Date.now() + 900_000,
   };
+  const BROWSER: LoginPhase = {
+    kind: "awaitingBrowser",
+    url: "https://id.example.com/authorize?response_type=code&state=s1&code_challenge=c1&code_challenge_method=S256",
+    expiresAt: Date.now() + 300_000,
+  };
+
+  /** 停在等待面的登入：送出階段後一直等，直到 loginCancel 或測試代為完成。 */
+  function waitingLogin(phase: LoginPhase) {
+    let resolve: (result: LoginResult) => void = () => {};
+    const loginStart = vi.fn(
+      (_origin: string, onPhase: (p: LoginPhase) => void) =>
+        new Promise<LoginResult>((r) => {
+          resolve = r;
+          onPhase(phase);
+        }),
+    );
+    const loginCancel = vi.fn(async () => resolve({ status: "cancelled" }));
+    return { loginStart, loginCancel, finish: (result: LoginResult) => resolve(result) };
+  }
 
   /** 假 adapter：in-memory registry；啟動段行為由測試覆寫。 */
   function storeAdapter(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
@@ -671,8 +689,7 @@ describe("WorkspaceChooser 登入回饋", () => {
         return { ...entry, loggedIn: false };
       },
       remove: async () => {},
-      deviceLoginStart: async () => ({ status: "awaitingApproval", authorization: AUTH }),
-      deviceLoginObserve: async () => ({ status: "pending", slowDown: false }),
+      ...waitingLogin(APPROVAL),
       patLogin: async (origin) => {
         loggedIn.add(origin);
         const entry = entries.find((e) => e.origin === origin);
@@ -733,15 +750,15 @@ describe("WorkspaceChooser 登入回饋", () => {
     addAndLogin();
 
     const waiting = await screen.findByTestId("awaiting-approval-http://localhost:8080");
-    expect(waiting.textContent).toContain(AUTH.userCode);
-    expect(waiting.textContent).toContain(AUTH.verificationUri);
+    expect(waiting.textContent).toContain("ABCD-EFGH");
+    expect(waiting.textContent).toContain("http://localhost:8080/activate");
     expect(waiting.textContent).toMatch(/\d+:\d{2}/);
     expect(screen.getByRole("button", { name: "取消登入" })).toBeTruthy();
   });
 
-  it("取消即停止觀測、面消失且停留在 server 步驟", async () => {
-    const observe = vi.fn(async () => ({ status: "pending" as const, slowDown: false }));
-    renderWithStore(storeAdapter({ deviceLoginObserve: observe }));
+  it("取消即呼叫取消、面消失且停留在 server 步驟", async () => {
+    const login = waitingLogin(APPROVAL);
+    renderWithStore(storeAdapter(login));
     addAndLogin();
     await screen.findByTestId("awaiting-approval-http://localhost:8080");
 
@@ -749,16 +766,36 @@ describe("WorkspaceChooser 登入回饋", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("awaiting-approval-http://localhost:8080")).toBeNull(),
     );
+    expect(login.loginCancel).toHaveBeenCalledWith("http://localhost:8080");
     // 仍在 server 步驟（新增 server 的開關還在）。
     expect(screen.getByRole("button", { name: "新增 server" })).toBeTruthy();
-    observe.mockClear();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    expect(observe).not.toHaveBeenCalled();
   });
 
-  it("明確不支援時選擇器內就地現 PAT 輸入並可完成登入", async () => {
+  it("新增並登入宣告瀏覽器登入的 server 時就地顯示等待瀏覽器登入面，完成後出現在已登入清單", async () => {
+    const login = waitingLogin(BROWSER);
+    const adapter = storeAdapter(login);
+    let signedIn = false;
+    renderWithStore({
+      ...adapter,
+      list: async () =>
+        (await adapter.list()).map((entry) => ({ ...entry, loggedIn: signedIn, lastActorDisplay: signedIn ? "Momo" : null })),
+    });
+    addAndLogin();
+
+    const waiting = await screen.findByTestId("awaiting-browser-http://localhost:8080");
+    expect(waiting.textContent).toContain(BROWSER.kind === "awaitingBrowser" ? BROWSER.url : "");
+    expect(waiting.textContent).toMatch(/\d+:\d{2}/);
+    expect(screen.queryByTestId("awaiting-approval-http://localhost:8080")).toBeNull();
+
+    signedIn = true;
+    act(() => login.finish({ status: "loggedIn", display: "Momo" }));
+    await waitFor(() => expect(screen.queryByTestId("awaiting-browser-http://localhost:8080")).toBeNull());
+    await waitFor(() => expect(screen.getByText(/Momo/)).toBeTruthy());
+  });
+
+  it("需要存取金鑰時選擇器內就地現 PAT 輸入並可完成登入", async () => {
     renderWithStore(
-      storeAdapter({ deviceLoginStart: async () => ({ status: "unsupported" }) }),
+      storeAdapter({ loginStart: async () => ({ status: "patRequired" }) }),
     );
     addAndLogin();
 

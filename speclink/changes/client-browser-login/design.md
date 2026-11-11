@@ -141,8 +141,8 @@ API 根的 `whoami` 由變更 host-kit-client-door 的入口提供。在那之�
 - `discover(origin) -> Result<Discovery, RemoteError>`（D1）
 - `choose(&Discovery, Option<Method>) -> Result<Plan, ChooseError>`（D2）
 - `login(origin, plan, &dyn CredentialStore, config_dir, &dyn LoginIo) -> LoginOutcome`：依計畫跑瀏覽器登入、裝置登入，或回報「需要存取金鑰」。
-- `pat_login(origin, token, &dyn CredentialStore, config_dir) -> LoginOutcome`：驗證後存入金鑰圈；金鑰圈不能用時存入憑證檔。
-- `logout(origin, &dyn CredentialStore, config_dir) -> LogoutOutcome`：有裝置登入的 refresh 時呼叫 Server 的撤銷端點；有瀏覽器登入的 refresh 且條目帶撤銷網址時對它送 RFC 7009 的撤銷請求；兩者失敗都只回報警告。之後清掉 refresh、快取、存取金鑰三個條目與憑證檔的條目。
+- `pat_login(origin, token, &dyn CredentialStore, lock_dir, fallback_dir: Option<&Path>) -> LoginOutcome`：驗證後存入金鑰圈；金鑰圈不能用時存入 `fallback_dir` 的憑證檔。`fallback_dir` 是 `None` 時（Desktop 的憑證只在金鑰圈）回報「金鑰圈不能用」。
+- `logout(origin, &dyn CredentialStore, credentials_file_dir: Option<&Path>) -> Result<LogoutOutcome, String>`：有裝置登入的 refresh 時呼叫 Server 的撤銷端點；有瀏覽器登入的 refresh 且條目帶撤銷網址時對它送 RFC 7009 的撤銷請求；兩者失敗都只回報警告。之後清掉 refresh、快取、存取金鑰三個條目，有 `credentials_file_dir` 時（CLI）也清掉憑證檔的條目。這個位址沒有任何本機憑證時什麼都不動，回報「沒有登入」。
 - `normalize_origin(input) -> Result<String, String>`：從 Desktop 搬來的規則（scheme 與主機轉小寫、只接受 http 與 https、去掉路徑）。金鑰圈的鍵與憑證檔的鍵都用它的結果。
 
 `LoginIo` 取代既有的 `DeviceLoginIo`：
@@ -156,7 +156,7 @@ pub trait LoginIo {
 }
 ```
 
-`LoginOutcome` 的種類：成功（顯示名稱）、成功但查不到身分、被拒絕、逾時、取消、這台 Server 不支援、需要存取金鑰、金鑰圈不能用、錯誤（訊息）。
+`LoginOutcome` 的種類：成功（顯示名稱與 handle；CLI 用存取金鑰登入時印的是「名稱 (@handle)」）、成功但查不到身分、被拒絕、逾時、取消、這台 Server 不支援、需要存取金鑰、金鑰圈不能用、錯誤（訊息）。
 
 各端怎麼用：
 
@@ -231,7 +231,8 @@ stdout 的內容：瀏覽器登入印「Open this URL to sign in:」加授權網
 
 - `cargo test -p speclink-protocol`：新型別的 JSON 形狀（camelCase、`scopes` 省略時是空的）。
 - `cargo test -p speclink-remote --test it`：用假的 Server 與假的登入服務涵蓋 D1 到 D7；既有的 `device_login_flow`、`credential_ladder`、`refresh_lock`、`reauth_retry` 不改斷言就通過（只改呼叫的函式名稱）。
-- `cargo test -p speclink-cli --test it auth_login_methods::`：旗標的互斥、各旗標的路徑、對沒有 `auth-methods` 的 Server 輸出不變。
+- `cargo test -p speclink-cli --test it auth_login_methods::`：旗標的互斥，以及不會存憑證的各旗標錯誤路徑（binary 會碰到真的 OS 金鑰圈與瀏覽器，存憑證的情境不在這一層）。
+- `cargo test -p speclink-cli --bin speclink verbs::connection::`：用記憶體金鑰圈測各旗標的登入路徑、存取金鑰的存放位置、登出、對沒有 `auth-methods` 的 Server 輸出不變。
 - `cargo test -p speclink-desktop`：Tauri 端的委派與取消。
 - `npm test -w apps/desktop`：三種階段的畫面、取消、登入方式卡三列。
 
@@ -244,12 +245,38 @@ stdout 的內容：瀏覽器登入印「Open this URL to sign in:」加授權網
 
 - [回歸對照] 對官方 server 的登入不能變。→ 既有的 CLI 與 remote 整合測試不改斷言；新增一個測試明確斷言「`auth-methods` 回 404 時，裝置登入的 stdout 與今天逐位元相同」。
 - [跨平台] 本機監聽在 Windows 第一次綁定時防火牆不會跳出詢問，因為只綁 `127.0.0.1`；三個平台都用 0 號埠。開瀏覽器沿用既有的三套指令。→ 回呼監聽的測試在三個平台的 CI 都跑；逾時用可注入的時鐘，不讓測試真的等 300 秒。
-- [無桌面環境的 Linux] 沒有金鑰圈時瀏覽器登入與裝置登入都不能用，只有存取金鑰（存憑證檔）與 `SPECLINK_TOKEN`。→ 和今天相同，訊息沿用。
+- [無桌面環境的 Linux] 沒有金鑰圈時瀏覽器登入與裝置登入都不能用，只有存取金鑰（存憑證檔）與 `SPECLINK_TOKEN`。→ 和今天相同，訊息沿用。這個建置只在 macOS 與 Windows 編進原生金鑰圈；其他平台上 keyring crate 用的是不保存資料的 mock（寫入成功但資料隨即消失），`KeyringCredentialStore` 把它當成「金鑰圈不能用」，存取金鑰才會落到憑證檔。
 - [回呼被同機的其他程式搶先] 攻擊者要先知道隨機的 state 才能讓回呼被接受，而且拿不到 verifier。→ state 與 PKCE 都是必要的，不提供關閉的選項。
 - [新舊版本混用] 舊版把 JSON 當成 refresh token 去換新，被拒絕後清掉條目。→ 只在宿主啟用瀏覽器登入時發生；寫進相容性影響。
 - [位址正規化改變金鑰圈的鍵] 含大寫主機名稱的既有登入要重登一次。→ 寫進相容性影響；不做搬移。
 - [Desktop 的輪詢規則改變] 裝置登入收到 slow_down 時從「間隔加倍」變成「加 5 秒」。→ 兩者都符合 Server 的要求；既有測試若斷言加倍，同批更新並在任務裡列出。
 - [存取金鑰的驗證端點改變] 不是專案成員的人今天在 CLI 登入時就被擋下，之後是登入成功、執行動詞時才被擋。→ 寫進 D6；`auth status` 仍會顯示 repo 驗證的結果。
+
+## 稽核結論
+
+任務 5.1 對新增的介面套用 sharp-edges 清單（壞蛋、懶惰的開發者、搞混的開發者三個角度）。
+
+**確認沒有問題的項目：**
+
+- 回呼監聽只綁 `127.0.0.1` 的 0 號埠，只接受對 `/callback` 的 GET；其他路徑回 404 並繼續等。
+- state 不符（包括帶 `error` 的回呼）回 400 並繼續等，回應頁面是固定文字，不含預期的 state。state 的比較不在第一個不同的位元組就停。
+- verifier、授權碼、access token、refresh token 不出現在 CLI 的 stdout 與 stderr、Tauri 事件、回給瀏覽器的頁面。CLI 印出的授權網址只帶 state 與 challenge。登入服務回的錯誤只取 `error` 代碼（只留可列印的 ASCII，最多 64 個字元）。
+- 發行者、授權網址、token 網址、撤銷網址都要 https；只有主機是 `127.0.0.1`、`::1`、`localhost` 時允許 http。帶 userinfo（`user@host`）的網址一律拒絕；`localhost.example.com`、`127.0.0.1.example.com` 這類主機不算本機。
+- 標準文件的 `issuer` 檢查、端點的 https 檢查、S256 檢查都在任何端點被使用之前完成。對登入服務的請求不跟隨轉址。
+- 換 token 成功之前，任何失敗都不寫入任何憑證；被拒絕、逾時、取消、issuer 不符、只列 plain、金鑰圈不能用都有測試確認金鑰圈沒有新增條目。
+- verifier 與 state 各是 32 個來自作業系統的隨機位元組（getrandom）。
+- 金鑰圈 `refresh` 條目的 JSON 解析失敗時退回裝置登入的舊格式，不會 panic。
+- `pat_login` 與 `logout` 的退路參數是 `Option`，省略（`None`）時是比較安全的那一邊：只用金鑰圈、不碰憑證檔。
+
+**找到並修正的問題（都補了測試）：**
+
+- **Windows 的 CLI 開瀏覽器會被 `cmd.exe` 拆開網址。** 既有的做法是 `cmd /C start "" <網址>`，`cmd.exe` 把 `&` 當成指令分隔；授權網址一定含 `&`，所以瀏覽器只會收到前半段，後半段會被當成指令執行（惡意的標準文件可以藉此在使用者的電腦上執行指令）。改成 `rundll32 url.dll,FileProtocolHandler <網址>`，網址不經過任何 shell。測試確認網址原樣是最後一個參數、程式不是 `cmd`。
+- **帶 token 的型別用 derive 的 `Debug`。** `RefreshEntry`、`OAuthRefresh`、`TokenResponse` 與 Desktop 的 `ConnectionLogin` 被 `{:?}` 印出時會帶出 token。改成手寫的 `Debug`，token 欄位印成 `<redacted>`，其他欄位照常可讀。
+- **IPv6 主機的判斷太寬。** `http://[::1].example.com` 會被讀成主機 `::1`。改成 `]` 之後只能接 `:埠` 或結束。
+
+**沒有改、留給之後的項目：**
+
+- 裝置登入的驗證網址來自 Server、沒有 scheme 檢查就交給 `open`（macOS）。這是既有的行為，不在這個變更的範圍內。
 
 ## Migration Plan
 

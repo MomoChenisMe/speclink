@@ -11,7 +11,7 @@ import type {
 
 import { createAppStore, openTicketStation, selectAssetMigrated, selectAssetPrompt, type AppState } from "../store";
 import { assetPrompt } from "../assetPrompt";
-import type { ConnectionsAdapter } from "../adapter/connections";
+import type { ConnectionsAdapter, LoginPhase, LoginResult } from "../adapter/connections";
 import type { FsActionsAdapter } from "../adapter/fsActions";
 import { APP_MESSAGES } from "../i18n/messages";
 import fsActionsRs from "../../core/src/fs_actions.rs?raw";
@@ -1510,32 +1510,48 @@ describe("系統匣樣式由平台決定", () => {
   });
 });
 
-// --- device login 分段輪詢（規格「device login 預設與 PAT fallback」的等待授權面；
-// design 決策二：輪詢節奏歸前端 store） ---
+// --- 登入階段（client-browser-login D7、D9）：等待的迴圈在 Rust，store 只把送來
+// 的階段放進 ConnectionPhase、依終態收場；輪詢、間隔與逾時都不在前端。 ---
 
-describe("device login 分段輪詢", () => {
+describe("登入階段", () => {
   const ORIGIN = "http://localhost:8080";
-  const AUTH = {
-    deviceCode: "dev-code-1",
+  const APPROVAL: LoginPhase = {
+    kind: "awaitingApproval",
     userCode: "ABCD-EFGH",
     verificationUri: "http://localhost:8080/activate",
-    expiresIn: 900,
-    interval: 5,
+    expiresAt: Date.now() + 900_000,
+  };
+  const BROWSER: LoginPhase = {
+    kind: "awaitingBrowser",
+    url: "https://id.example.com/authorize?state=s1&code_challenge=c1&code_challenge_method=S256",
+    expiresAt: Date.now() + 300_000,
   };
 
-  /** 假 connections adapter：啟動段回等待授權，觀測段由測試逐次餵狀態。 */
+  /** 可控的登入：測試決定何時送階段、何時結束。 */
+  function controlledLogin() {
+    let onPhase: (phase: LoginPhase) => void = () => {};
+    let resolve: (result: LoginResult) => void = () => {};
+    const loginStart = vi.fn(
+      (_origin: string, listener: (phase: LoginPhase) => void) =>
+        new Promise<LoginResult>((r) => {
+          onPhase = listener;
+          resolve = r;
+        }),
+    );
+    return {
+      loginStart,
+      phase: (phase: LoginPhase) => onPhase(phase),
+      finish: (result: LoginResult) => resolve(result),
+    };
+  }
+
   function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
     return {
-      list: vi.fn().mockResolvedValue([
-        { id: "conn_1", origin: ORIGIN, name: "本地", loggedIn: false },
-      ]),
+      list: vi.fn().mockResolvedValue([{ id: "conn_1", origin: ORIGIN, name: "本地", loggedIn: false }]),
       add: vi.fn(),
       remove: vi.fn(),
-      deviceLoginStart: vi.fn().mockResolvedValue({
-        status: "awaitingApproval",
-        authorization: AUTH,
-      }),
-      deviceLoginObserve: vi.fn().mockResolvedValue({ status: "pending", slowDown: false }),
+      loginStart: vi.fn(),
+      loginCancel: vi.fn().mockResolvedValue(undefined),
       patLogin: vi.fn(),
       logout: vi.fn(),
       scopes: vi.fn().mockResolvedValue({ projects: [] }),
@@ -1552,121 +1568,105 @@ describe("device login 分段輪詢", () => {
     });
   }
 
-  it("啟動段回等待授權即進入等待授權狀態，並依 server 間隔排程單次觀測", async () => {
-    vi.useFakeTimers();
-    const adapter = fakeConnections();
-    const store = storeWithConnections(adapter);
-    await store.getState().loginConnection(ORIGIN);
+  it("收到的階段原樣成為連線的互動狀態", async () => {
+    const login = controlledLogin();
+    const store = storeWithConnections(fakeConnections({ loginStart: login.loginStart }));
+    const done = store.getState().loginConnection(ORIGIN);
 
-    const phase = store.getState().connectionPhases[ORIGIN];
-    expect(phase).toMatchObject({
-      kind: "awaitingApproval",
-      userCode: AUTH.userCode,
-      verificationUri: AUTH.verificationUri,
-    });
-    // 倒數以截止時刻為準（非累計計數）：睡眠後醒來仍判得出逾時。
-    expect(phase.kind === "awaitingApproval" && phase.expiresAt).toBeGreaterThan(Date.now());
-
-    // 排程尚未到點前不觀測；到點後恰觀測一次。
-    expect(adapter.deviceLoginObserve).not.toHaveBeenCalled();
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(1);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledWith(ORIGIN, AUTH.deviceCode);
-    vi.useRealTimers();
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "busy" });
+    login.phase(APPROVAL);
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual(APPROVAL);
+    login.phase(BROWSER);
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual(BROWSER);
+    login.finish({ status: "cancelled" });
+    await done;
   });
 
-  it("收到 slow_down 即加大間隔", async () => {
-    vi.useFakeTimers();
-    const adapter = fakeConnections({
-      deviceLoginObserve: vi
-        .fn()
-        .mockResolvedValueOnce({ status: "pending", slowDown: true })
-        .mockResolvedValue({ status: "pending", slowDown: false }),
-    });
+  it("登入成功即重整清單並回到 idle", async () => {
+    const login = controlledLogin();
+    const adapter = fakeConnections({ loginStart: login.loginStart });
     const store = storeWithConnections(adapter);
-    await store.getState().loginConnection(ORIGIN);
-
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(1);
-    // 加大後，原本的間隔到點時還不該觀測。
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(1);
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(2);
-    vi.useRealTimers();
-  });
-
-  it("觀測到核准即登入完成並停止排程", async () => {
-    vi.useFakeTimers();
-    const adapter = fakeConnections({
-      list: vi
-        .fn()
-        .mockResolvedValue([{ id: "conn_1", origin: ORIGIN, name: "本地", loggedIn: true }]),
-      deviceLoginObserve: vi.fn().mockResolvedValue({ status: "loggedIn", display: "Dev" }),
-    });
-    const store = storeWithConnections(adapter);
-    await store.getState().loginConnection(ORIGIN);
-    await vi.advanceTimersByTimeAsync(5000);
+    const done = store.getState().loginConnection(ORIGIN);
+    login.phase(BROWSER);
+    login.finish({ status: "loggedIn", display: "Dev" });
+    await done;
 
     expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(1);
-    vi.useRealTimers();
+    expect(adapter.list).toHaveBeenCalled();
   });
 
-  it("取消即停止排程並回未登入，不留等待狀態", async () => {
-    vi.useFakeTimers();
-    const adapter = fakeConnections();
-    const store = storeWithConnections(adapter);
+  it("需要存取金鑰即就地收 PAT", async () => {
+    const store = storeWithConnections(
+      fakeConnections({ loginStart: vi.fn().mockResolvedValue({ status: "patRequired" }) }),
+    );
     await store.getState().loginConnection(ORIGIN);
 
-    store.getState().cancelLogin(ORIGIN);
-    expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
-    await vi.advanceTimersByTimeAsync(30000);
-    expect(adapter.deviceLoginObserve).not.toHaveBeenCalled();
-    vi.useRealTimers();
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "patInput", error: null });
   });
 
-  it("觀測到拒絕與逾時各自浮為可讀狀態並停止排程", async () => {
-    for (const [status, message] of [
-      ["denied", "已在瀏覽器拒絕授權"],
-      ["expired", "授權逾時"],
+  it("拒絕與逾時各自浮為可讀狀態，瀏覽器登入與裝置核准的說法不同", async () => {
+    for (const [phase, status, message] of [
+      [APPROVAL, "denied", "已在瀏覽器拒絕授權"],
+      [APPROVAL, "expired", "授權逾時"],
+      [BROWSER, "denied", "已在登入服務拒絕登入"],
+      [BROWSER, "expired", "瀏覽器登入逾時"],
     ] as const) {
-      vi.useFakeTimers();
-      const adapter = fakeConnections({
-        deviceLoginObserve: vi.fn().mockResolvedValue({ status }),
-      });
-      const store = storeWithConnections(adapter);
-      await store.getState().loginConnection(ORIGIN);
-      await vi.advanceTimersByTimeAsync(5000);
+      const login = controlledLogin();
+      const store = storeWithConnections(fakeConnections({ loginStart: login.loginStart }));
+      const done = store.getState().loginConnection(ORIGIN);
+      login.phase(phase);
+      login.finish({ status });
+      await done;
 
-      const phase = store.getState().connectionPhases[ORIGIN];
-      expect(phase.kind).toBe("error");
-      expect(phase.kind === "error" && phase.message).toContain(message);
-      await vi.advanceTimersByTimeAsync(30000);
-      expect(adapter.deviceLoginObserve).toHaveBeenCalledTimes(1);
-      vi.useRealTimers();
+      const current = store.getState().connectionPhases[ORIGIN];
+      expect(current.kind).toBe("error");
+      expect(current.kind === "error" && current.message).toContain(message);
     }
   });
 
-  it("倒數歸零即以逾時收場，不再觀測", async () => {
-    vi.useFakeTimers();
-    const adapter = fakeConnections({
-      deviceLoginStart: vi.fn().mockResolvedValue({
-        status: "awaitingApproval",
-        // 有效期限比一個輪詢間隔還短：第一次到點時已過期。
-        authorization: { ...AUTH, expiresIn: 3 },
-      }),
-    });
-    const store = storeWithConnections(adapter);
+  it("連線錯誤浮為錯誤狀態，不進 PAT 輸入", async () => {
+    const store = storeWithConnections(
+      fakeConnections({ loginStart: vi.fn().mockRejectedValue("server unavailable — check the connection url") }),
+    );
     await store.getState().loginConnection(ORIGIN);
 
-    await vi.advanceTimersByTimeAsync(5000);
-    const phase = store.getState().connectionPhases[ORIGIN];
-    expect(phase.kind).toBe("error");
-    expect(phase.kind === "error" && phase.message).toContain("授權逾時");
-    expect(adapter.deviceLoginObserve).not.toHaveBeenCalled();
-    vi.useRealTimers();
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual({
+      kind: "error",
+      message: "server unavailable — check the connection url",
+    });
+  });
+
+  it("取消即呼叫取消並回未登入；之後送來的階段與結果都作廢", async () => {
+    const login = controlledLogin();
+    const adapter = fakeConnections({ loginStart: login.loginStart });
+    const store = storeWithConnections(adapter);
+    const done = store.getState().loginConnection(ORIGIN);
+    login.phase(BROWSER);
+
+    store.getState().cancelLogin(ORIGIN);
+    expect(adapter.loginCancel).toHaveBeenCalledWith(ORIGIN);
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
+
+    login.phase(APPROVAL);
+    login.finish({ status: "denied" });
+    await done;
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
+  });
+
+  it("重按登入＝重來一次：前一輪的結果不得蓋掉新一輪", async () => {
+    const first = controlledLogin();
+    const second = controlledLogin();
+    const loginStart = vi.fn().mockImplementationOnce(first.loginStart).mockImplementationOnce(second.loginStart);
+    const store = storeWithConnections(fakeConnections({ loginStart }));
+    const firstDone = store.getState().loginConnection(ORIGIN);
+    const secondDone = store.getState().loginConnection(ORIGIN);
+    second.phase(APPROVAL);
+
+    first.finish({ status: "cancelled" });
+    await firstDone;
+    expect(store.getState().connectionPhases[ORIGIN]).toEqual(APPROVAL);
+    second.finish({ status: "cancelled" });
+    await secondDone;
   });
 });
 

@@ -833,6 +833,8 @@ struct ConnectionsState {
     managers:
         std::sync::Mutex<std::collections::HashMap<String, std::sync::Arc<remote::TokenManager>>>,
     state_observer: std::sync::Arc<dyn Fn(remote::ConnectionStateEvent) + Send + Sync>,
+    /// 進行中的登入的取消旗標（connection_login_cancel 設定）。
+    logins: connections::LoginCancels,
 }
 
 impl ConnectionsState {
@@ -964,6 +966,8 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
         if let Some(origin) = connections::remove_connection(&path, &id, &*state.credentials)? {
+            // 條目要消失了：等待中的登入不得再寫回它的 credential。
+            state.logins.cancel(&origin);
             state.managers.lock().expect("manager lock").remove(&origin);
         }
         Ok(())
@@ -972,82 +976,68 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
     .map_err(|e| format!("connection_remove worker failed: {e}"))?
 }
 
-/// device login 啟動段（決策二）：網路在 blocking pool 執行；瀏覽器開啟走
-/// tauri-plugin-opener。回 TS 的只有狀態、顯示名與等待授權面所需的授權資訊——
-/// access token 存入記憶體持有、refresh credential 已由編排層寫入 Keychain。
+/// 登入（client-browser-login D7）：在 blocking pool 跑共用的登入程式直到終態；
+/// 途中的等待階段經 `connection-login-phase` 事件送往前端，瀏覽器開啟走
+/// tauri-plugin-opener，取消由 connection_login_cancel 設旗標。回 TS 的只有狀態
+/// 與顯示名——access token 交給記憶體持有、refresh credential 已寫入 Keychain。
 #[tauri::command]
-async fn device_login_start(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
+async fn connection_login_start(
+    app: tauri::AppHandle,
+    origin: String,
+    method: Option<String>,
+) -> Result<Value, String> {
+    let method = match method.as_deref() {
+        None => None,
+        Some("browser") => Some(speclink_remote::login::Method::Browser),
+        Some("device") => Some(speclink_remote::login::Method::Device),
+        Some(other) => return Err(format!("不支援的登入方式「{other}」")),
+    };
     let path = connections_path(&app)?;
     let state = app
         .state::<std::sync::Arc<ConnectionsState>>()
         .inner()
         .clone();
-    let opener_app = app.clone();
+    let cancel = state.logins.begin(&origin);
     tauri::async_runtime::spawn_blocking(move || {
+        let emitter = app.clone();
+        let emit = move |event: connections::LoginPhaseEvent| {
+            let _ = emitter.emit(connections::LOGIN_PHASE_EVENT, event);
+        };
         let opener = move |url: &str| -> Result<(), String> {
             use tauri_plugin_opener::OpenerExt;
-            opener_app
-                .opener()
+            app.opener()
                 .open_url(url.to_string(), None::<String>)
                 .map_err(|e| format!("無法開啟系統瀏覽器：{e}"))
         };
-        match connections::device_login_start(&origin, &*state.credentials, &path, &opener)? {
-            connections::DeviceLoginStart::LoggedIn {
-                display,
-                access_token,
-            } => {
-                state.manager_for(&origin).adopt_access_token(&access_token);
-                Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
+        let io = connections::DesktopLoginIo {
+            origin: &origin,
+            emit: &emit,
+            open_browser: &opener,
+            cancel: &cancel,
+        };
+        let outcome = connections::connection_login(&origin, method, &*state.credentials, &path, &io);
+        state.logins.end(&origin, &cancel);
+        Ok(match outcome? {
+            connections::ConnectionLogin::LoggedIn { display, access_token } => {
+                if let Some(access_token) = access_token {
+                    state.manager_for(&origin).adopt_access_token(&access_token);
+                }
+                serde_json::json!({ "status": "loggedIn", "display": display })
             }
-            connections::DeviceLoginStart::AwaitingApproval(auth) => Ok(serde_json::json!({
-                "status": "awaitingApproval",
-                "authorization": auth,
-            })),
-            connections::DeviceLoginStart::Unsupported => {
-                Ok(serde_json::json!({ "status": "unsupported" }))
-            }
-        }
+            connections::ConnectionLogin::PatRequired => serde_json::json!({ "status": "patRequired" }),
+            connections::ConnectionLogin::Denied => serde_json::json!({ "status": "denied" }),
+            connections::ConnectionLogin::Expired => serde_json::json!({ "status": "expired" }),
+            connections::ConnectionLogin::Cancelled => serde_json::json!({ "status": "cancelled" }),
+        })
     })
     .await
     .map_err(|e| format!("login worker failed: {e}"))?
 }
 
-/// device login 單次觀測段（決策二）：對授權請求輪詢一次。輪詢節奏與取消都歸
-/// TS 側排程——此命令是純請求-回應，不睡眠、不留跨呼叫狀態。
+/// 取消等待中的登入：設旗標，等待迴圈在下一個切片結束並回 cancelled。
 #[tauri::command]
-async fn device_login_observe(
-    app: tauri::AppHandle,
-    origin: String,
-    device_code: String,
-) -> Result<Value, String> {
-    let path = connections_path(&app)?;
-    let state = app
-        .state::<std::sync::Arc<ConnectionsState>>()
-        .inner()
-        .clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        match connections::device_login_observe(&origin, &device_code, &*state.credentials, &path)?
-        {
-            connections::DeviceLoginObservation::LoggedIn {
-                display,
-                access_token,
-            } => {
-                state.manager_for(&origin).adopt_access_token(&access_token);
-                Ok(serde_json::json!({ "status": "loggedIn", "display": display }))
-            }
-            connections::DeviceLoginObservation::Pending { slow_down } => {
-                Ok(serde_json::json!({ "status": "pending", "slowDown": slow_down }))
-            }
-            connections::DeviceLoginObservation::Denied => {
-                Ok(serde_json::json!({ "status": "denied" }))
-            }
-            connections::DeviceLoginObservation::Expired => {
-                Ok(serde_json::json!({ "status": "expired" }))
-            }
-        }
-    })
-    .await
-    .map_err(|e| format!("login worker failed: {e}"))?
+fn connection_login_cancel(app: tauri::AppHandle, origin: String) {
+    app.state::<std::sync::Arc<ConnectionsState>>().logins.cancel(&origin);
 }
 
 /// PAT 登入：PAT 僅單次過境此參數（不回讀、不入 log、不進 TS 狀態）。
@@ -1974,6 +1964,7 @@ pub fn run() {
                 state_observer: std::sync::Arc::new(move |event| {
                     let _ = state_emitter.emit(remote::REMOTE_CONNECTION_STATE_EVENT, event);
                 }),
+                logins: connections::LoginCancels::default(),
             }));
             // remote 事件中樞：invalidate → remote-workspace-changed（payload＝
             // locator key），前端 session 據此過濾重讀。
@@ -2066,8 +2057,8 @@ pub fn run() {
             inspect_checkout,
             bind_checkout,
             connection_remove,
-            device_login_start,
-            device_login_observe,
+            connection_login_start,
+            connection_login_cancel,
             pat_login,
             connection_state,
             connection_logout,

@@ -111,11 +111,26 @@ pub fn refresh(base_url: &str, refresh_token: &str) -> Result<RefreshResponse, R
 /// writes back to its registry right after logging in, and the validation
 /// call of a pasted PAT.
 pub fn whoami(base_url: &str, bearer: &str) -> Result<AuthWhoamiResponse, RemoteError> {
-    let url = format!("{}/auth/whoami", base_url.trim_end_matches('/'));
+    get_identity(&format!("{}/auth/whoami", base_url.trim_end_matches('/')), bearer)
+}
+
+/// The identity behind a bearer, asked the way every login asks it
+/// (client-browser-login D6): the API root's `whoami` first, the root-level
+/// `/auth/whoami` when the server has no such route (404/405). Both answer the
+/// same shape.
+pub fn identity(base_url: &str, bearer: &str) -> Result<AuthWhoamiResponse, RemoteError> {
+    let base = base_url.trim_end_matches('/');
+    match get_identity(&format!("{base}/api/speclink/v1/whoami"), bearer) {
+        Err(e) if matches!(e.status, Some(404 | 405)) => whoami(base, bearer),
+        other => other,
+    }
+}
+
+fn get_identity(url: &str, bearer: &str) -> Result<AuthWhoamiResponse, RemoteError> {
     let result = ureq::AgentBuilder::new()
         .timeout(std::time::Duration::from_secs(30))
         .build()
-        .get(&url)
+        .get(url)
         .set("Authorization", &format!("Bearer {bearer}"))
         .call();
     match result {

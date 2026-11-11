@@ -6,17 +6,23 @@
 //! 不含 secret 且跨重啟保留」）。一 origin 一條目，重複新增即更新顯示名。
 //! 壞 JSON 歸零清單（與分頁持久化同一寬容哲學）。
 //!
-//! 編排：device_login_start／device_login_observe／pat_login／logout／
-//! refresh_connection 收注入的 CredentialStore 與瀏覽器開啟器、無 tauri 型別
-//! ——tauri 接線在 lib.rs。secret 只在此層與 CredentialStore 之間流動，錯誤訊息
-//! 不夾帶 secret。device login 分兩段（決策二）：每段都是純請求-回應，不睡眠、
-//! 不留跨呼叫狀態——輪詢節奏與取消都歸呼叫端排程。
+//! 編排：connection_login／pat_login／logout／refresh_connection 收注入的
+//! CredentialStore 與 [`DesktopLoginIo`]、無 tauri 型別——tauri 接線在 lib.rs。
+//! 探索、選擇、三種登入與登出都委派給 speclink-remote 的同一份登入程式
+//! （client-browser-login D7），和 CLI 共用；等待瀏覽器或裝置核准的迴圈也在那邊，
+//! 這裡只把階段轉成送往前端的事件、把取消接到旗標。secret 只在此層與
+//! CredentialStore 之間流動，錯誤訊息與事件不夾帶 secret。
 
-use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::{Deserialize, Serialize};
-use speclink_protocol::device::DeviceTokenStatus;
-use speclink_remote::device::{self, InitiateOutcome};
+use speclink_remote::credentials::{CredentialKind, CredentialStore};
+use speclink_remote::device;
+use speclink_remote::login::{self as remote_login, LoginOutcome, LoginPhase, Method};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+
+pub use speclink_remote::login::normalize_origin;
 
 /// registry 的一個 saved server 條目。欄位全集即此——序列化測試釘死。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,24 +109,6 @@ pub fn write_registry(path: &Path, entries: &[ConnectionEntry]) -> Result<(), St
     let text =
         serde_json::to_string_pretty(entries).map_err(|e| format!("無法序列化連線清單：{e}"))?;
     std::fs::write(path, text).map_err(|e| format!("無法寫入連線清單：{e}"))
-}
-
-/// 把 baseUrl 正規化為 origin：scheme://authority，scheme 與 host 小寫、
-/// 去除路徑/查詢/片段。僅接受 http/https。
-pub fn normalize_origin(base_url: &str) -> Result<String, String> {
-    let trimmed = base_url.trim();
-    let (scheme, rest) = trimmed
-        .split_once("://")
-        .ok_or_else(|| "伺服器位址需以 http:// 或 https:// 開頭".to_string())?;
-    let scheme = scheme.to_ascii_lowercase();
-    if scheme != "http" && scheme != "https" {
-        return Err(format!("不支援的協定「{scheme}」：僅接受 http 或 https"));
-    }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
-    if authority.is_empty() {
-        return Err("伺服器位址缺少主機名".to_string());
-    }
-    Ok(format!("{scheme}://{}", authority.to_ascii_lowercase()))
 }
 
 /// 新增或更新連線：同 origin 已存在即更新顯示名（id 穩定），否則新增條目。
@@ -273,158 +261,230 @@ fn single_line(message: &str) -> String {
     message.split('\n').next().unwrap_or(message).trim().to_string()
 }
 
-// --- 登入／登出編排（決策 3、5、6） ---
+// --- 登入／登出編排（client-browser-login D7、D9） ---
 
-/// 等待授權面所需的授權資訊（決策二啟動段回傳）：裝置碼與驗證網址給使用者看、
-/// 有效期限給倒數、輪詢間隔給排程。`device_code` 是單次觀測段的把手——兩段之間
-/// 不留跨呼叫狀態，故由呼叫端持有並原樣帶回。
+/// 送往前端的登入階段事件名稱。
+pub const LOGIN_PHASE_EVENT: &str = "connection-login-phase";
+
+/// 送往前端的登入階段（事件 [`LOGIN_PHASE_EVENT`] 的內容）。`kind` 與欄位名和
+/// 前端的 `ConnectionPhase` 一致，前端收到即可直接顯示。只帶使用者要看的東西：
+/// 授權網址，或裝置碼與驗證網址，以及截止時刻（epoch 毫秒）——授權網址含
+/// state 與 PKCE challenge，不含授權碼、PKCE verifier 或任何 token。
 #[derive(Debug, Clone, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DeviceAuthorization {
-    pub device_code: String,
-    pub user_code: String,
-    pub verification_uri: String,
-    /// 授權請求的有效秒數（呼叫端據此換算截止時刻）。
-    pub expires_in: u64,
-    /// server 指示的最短輪詢間隔（秒）。
-    pub interval: u64,
+pub struct LoginPhaseEvent {
+    pub origin: String,
+    #[serde(flatten)]
+    pub phase: PhaseView,
 }
 
-/// 啟動段的可讀結果：LoggedIn＝靜默 refresh 快路徑成功（沒開瀏覽器）；
-/// Unsupported 是 PAT fallback 訊號（決策 3）；AwaitingApproval＝已開瀏覽器、
-/// 等待使用者核准。連線錯誤（5xx／不可達）走 Err、絕不進 fallback。
-/// access token 短效、只在 Rust 記憶體——由 lib.rs 的命令層持有，不落盤。
-#[derive(Debug)]
-pub enum DeviceLoginStart {
-    LoggedIn {
-        display: String,
-        access_token: String,
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PhaseView {
+    #[serde(rename_all = "camelCase")]
+    AwaitingBrowser { url: String, expires_at: u64 },
+    #[serde(rename_all = "camelCase")]
+    AwaitingApproval {
+        user_code: String,
+        verification_uri: String,
+        expires_at: u64,
     },
-    AwaitingApproval(DeviceAuthorization),
-    Unsupported,
 }
 
-/// 單次觀測段的可讀結果：Pending 尚未決定（slow_down＝server 要求加大間隔），
-/// denied／expired 是終態，逐一回報而非錯誤。
-#[derive(Debug)]
-pub enum DeviceLoginObservation {
+/// Desktop 的登入 IO：階段經 `emit` 送往前端、瀏覽器經 opener 外掛開啟、
+/// 取消讀 `cancel` 旗標（由 connection_login_cancel 設定）。
+pub struct DesktopLoginIo<'a> {
+    pub origin: &'a str,
+    pub emit: &'a (dyn Fn(LoginPhaseEvent) + Sync),
+    pub open_browser: &'a (dyn Fn(&str) -> Result<(), String> + Sync),
+    pub cancel: &'a AtomicBool,
+}
+
+/// 取消的反應時間：等待被切成這麼長的片段，每段之間看一次旗標。
+const CANCEL_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+
+fn expires_at_ms(expires_in: u64) -> u64 {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0);
+    now + expires_in * 1000
+}
+
+impl remote_login::LoginIo for DesktopLoginIo<'_> {
+    fn phase(&self, phase: LoginPhase) {
+        let phase = match phase {
+            LoginPhase::AwaitingBrowser { url, expires_in } => PhaseView::AwaitingBrowser {
+                url,
+                expires_at: expires_at_ms(expires_in),
+            },
+            LoginPhase::AwaitingDevice { verification_uri, user_code, expires_in } => {
+                PhaseView::AwaitingApproval {
+                    user_code,
+                    verification_uri,
+                    expires_at: expires_at_ms(expires_in),
+                }
+            }
+        };
+        (self.emit)(LoginPhaseEvent { origin: self.origin.to_string(), phase });
+    }
+
+    /// 開不了也繼續等：等待面有可複製的網址。
+    fn open_browser(&self, url: &str) -> bool {
+        (self.open_browser)(url).is_ok()
+    }
+
+    fn sleep_secs(&self, secs: u64) {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(secs);
+        while !self.cancelled() && std::time::Instant::now() < deadline {
+            std::thread::sleep(CANCEL_POLL);
+        }
+    }
+
+    fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::SeqCst)
+    }
+}
+
+/// 一次登入的可讀結果。連線錯誤走 Err、絕不進 PAT fallback。
+pub enum ConnectionLogin {
+    /// 已登入。`access_token` 是登入當下快取的短效 token，交給 TokenManager
+    /// 在記憶體持有；不落盤、不過境 TS。
     LoggedIn {
         display: String,
-        access_token: String,
+        access_token: Option<String>,
     },
-    Pending {
-        slow_down: bool,
-    },
+    /// server 沒有 device flow（沒有宣告時）或只收存取金鑰：就地改收 PAT。
+    PatRequired,
     Denied,
     Expired,
+    Cancelled,
 }
 
-/// device login 啟動段（決策二）：先以 Keychain 既有 refresh credential 靜默
-/// 換新（規格「rotation 後舊 credential 失效仍可用」——重啟後無需重新核准）；
-/// 沒有或已失效才走 device flow：initiate（兼探測，決策 3）→ 開瀏覽器至
-/// verification 頁（URL 帶 user_code 預填參數）→ 回等待授權資訊。輪詢節奏歸
-/// 呼叫端：此段是純請求-回應，不睡眠、不留狀態。
-pub fn device_login_start(
+/// 印出時不帶 access token，`{:?}` 進了 log 也不會洩漏。
+impl std::fmt::Debug for ConnectionLogin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionLogin::LoggedIn { display, access_token } => f
+                .debug_struct("LoggedIn")
+                .field("display", display)
+                .field("access_token", &access_token.as_ref().map(|_| "<redacted>"))
+                .finish(),
+            ConnectionLogin::PatRequired => f.write_str("PatRequired"),
+            ConnectionLogin::Denied => f.write_str("Denied"),
+            ConnectionLogin::Expired => f.write_str("Expired"),
+            ConnectionLogin::Cancelled => f.write_str("Cancelled"),
+        }
+    }
+}
+
+/// 登入（D7）：先以 Keychain 既有 refresh credential 靜默換新（規格「rotation 後
+/// 舊 credential 失效仍可用」——重啟後無需重新登入）；沒有或已失效才探索
+/// server 宣告的方式、依固定順序選擇並跑到終態。
+pub fn connection_login(
     origin: &str,
+    method: Option<Method>,
     credentials: &dyn CredentialStore,
     registry_path: &Path,
-    open_browser: &dyn Fn(&str) -> Result<(), String>,
-) -> Result<DeviceLoginStart, String> {
-    // 靜默快路徑：有 refresh credential 就先試 rotation，成功即免瀏覽器。
+    io: &DesktopLoginIo,
+) -> Result<ConnectionLogin, String> {
     if credentials.get(origin, CredentialKind::Refresh)?.is_some() {
         match refresh_connection(origin, credentials) {
             Ok(access) => {
                 let display = record_identity_from_server(origin, &access, registry_path)?;
-                return Ok(DeviceLoginStart::LoggedIn {
-                    display,
-                    access_token: access,
-                });
+                return Ok(ConnectionLogin::LoggedIn { display, access_token: Some(access) });
             }
-            // 明確被拒＝credential 已死：清掉殘骸、走完整 device flow 重新核准。
+            // 明確被拒＝credential 已死：清掉殘骸、走完整登入。
             Err(RefreshFailure::Rejected(_)) => {
-                credentials.delete(origin, CredentialKind::Refresh)?;
+                speclink_remote::auth::clear_keychain_login(origin, credentials);
             }
             // 生死未卜（5xx／不可達／Keychain 故障）：credential 原封不動，
-            // 回報連線錯誤（決策 3 同一原則——暫時性失敗不是語意訊號）。
+            // 回報連線錯誤——暫時性失敗不是語意訊號。
             Err(RefreshFailure::Unavailable(message)) => return Err(message),
         }
     }
 
-    let auth = match device::initiate(origin).map_err(|e| e.to_string())? {
-        InitiateOutcome::Supported(auth) => auth,
-        InitiateOutcome::Unsupported => return Ok(DeviceLoginStart::Unsupported),
-    };
-
-    let sep = if auth.verification_uri.contains('?') {
-        '&'
-    } else {
-        '?'
-    };
-    open_browser(&format!(
-        "{}{sep}user_code={}",
-        auth.verification_uri, auth.user_code
-    ))?;
-
-    Ok(DeviceLoginStart::AwaitingApproval(DeviceAuthorization {
-        device_code: auth.device_code,
-        user_code: auth.user_code,
-        verification_uri: auth.verification_uri,
-        expires_in: auth.expires_in,
-        interval: auth.interval,
-    }))
+    let discovery = remote_login::discover(origin).map_err(|e| e.message)?;
+    let plan = remote_login::choose(&discovery, method).map_err(|e| e.to_string())?;
+    let lock_dir = speclink_remote::auth::speclink_config_dir();
+    Ok(match remote_login::login(origin, &plan, credentials, &lock_dir, io) {
+        LoginOutcome::LoggedIn { display, .. } => {
+            record_identity(registry_path, origin, Some(&display))?;
+            ConnectionLogin::LoggedIn {
+                display,
+                access_token: speclink_remote::refresh::cached_bearer(origin, credentials),
+            }
+        }
+        // credential 已存好、只是查不到身分：照樣是已登入，身分欄留空。
+        LoginOutcome::LoggedInWithoutIdentity { .. } => ConnectionLogin::LoggedIn {
+            display: String::new(),
+            access_token: speclink_remote::refresh::cached_bearer(origin, credentials),
+        },
+        LoginOutcome::Denied => ConnectionLogin::Denied,
+        LoginOutcome::Expired => ConnectionLogin::Expired,
+        LoginOutcome::Cancelled => ConnectionLogin::Cancelled,
+        LoginOutcome::Unsupported | LoginOutcome::TokenRequired => ConnectionLogin::PatRequired,
+        LoginOutcome::KeychainUnavailable => {
+            return Err("無法安全儲存登入憑證：系統 Keychain 無法使用".to_string())
+        }
+        LoginOutcome::Failed(message) => return Err(message),
+    })
 }
 
-/// device login 單次觀測段（決策二）：對授權請求做一次輪詢並回報目前狀態。
-/// approved 時在此完成 credential 存入與身分寫回；其餘狀態不留任何痕跡。
-/// 取消＝呼叫端不再觀測，server 端的授權請求自然逾期——此段無取消旗標可設。
-pub fn device_login_observe(
-    origin: &str,
-    device_code: &str,
-    credentials: &dyn CredentialStore,
-    registry_path: &Path,
-) -> Result<DeviceLoginObservation, String> {
-    let poll = device::poll(origin, device_code).map_err(|e| e.to_string())?;
-    match poll.status {
-        DeviceTokenStatus::Approved => {
-            let access = poll
-                .access_token
-                .ok_or("server 未隨核准回傳 access token")?;
-            let refresh = poll
-                .refresh_token
-                .ok_or("server 未隨核准回傳 refresh credential")?;
-            credentials.set(origin, CredentialKind::Refresh, &refresh)?;
-            let display = record_identity_from_server(origin, &access, registry_path)?;
-            Ok(DeviceLoginObservation::LoggedIn {
-                display,
-                access_token: access,
-            })
+/// 進行中的登入的取消旗標（keyed by origin）。同一 origin 再按登入＝取消前一輪。
+#[derive(Default)]
+pub struct LoginCancels(Mutex<HashMap<String, Arc<AtomicBool>>>);
+
+impl LoginCancels {
+    /// 開始一輪登入，回傳它的取消旗標；同 origin 前一輪仍在跑就先取消它。
+    pub fn begin(&self, origin: &str) -> Arc<AtomicBool> {
+        let flag = Arc::new(AtomicBool::new(false));
+        let previous = self
+            .0
+            .lock()
+            .expect("login cancel lock")
+            .insert(origin.to_string(), flag.clone());
+        if let Some(previous) = previous {
+            previous.store(true, Ordering::SeqCst);
         }
-        DeviceTokenStatus::Denied => Ok(DeviceLoginObservation::Denied),
-        DeviceTokenStatus::Expired => Ok(DeviceLoginObservation::Expired),
-        DeviceTokenStatus::Pending => Ok(DeviceLoginObservation::Pending { slow_down: false }),
-        DeviceTokenStatus::SlowDown => Ok(DeviceLoginObservation::Pending { slow_down: true }),
+        flag
+    }
+
+    /// 取消該 origin 正在跑的那一輪（沒有就什麼都不做）。
+    pub fn cancel(&self, origin: &str) {
+        if let Some(flag) = self.0.lock().expect("login cancel lock").get(origin) {
+            flag.store(true, Ordering::SeqCst);
+        }
+    }
+
+    /// 一輪結束：只移除自己的旗標，不動之後開始的那一輪。
+    pub fn end(&self, origin: &str, flag: &Arc<AtomicBool>) {
+        let mut map = self.0.lock().expect("login cancel lock");
+        if map.get(origin).is_some_and(|current| Arc::ptr_eq(current, flag)) {
+            map.remove(origin);
+        }
     }
 }
 
 /// PAT 登入（規格「PAT 登入 SHALL 以身分查詢驗證有效後才存入 Keychain」）：
-/// 先打 /auth/whoami 驗證，通過才入 store 並寫回身分顯示名。PAT 僅單次過境
-/// 此參數，不回讀、不入 log。
+/// 委派共用的 pat_login，Desktop 不退到憑證檔（credential 只在 Keychain）。
+/// PAT 僅單次過境此參數，不回讀、不入 log。
 pub fn pat_login(
     origin: &str,
     pat: &str,
     credentials: &dyn CredentialStore,
     registry_path: &Path,
 ) -> Result<String, String> {
-    let display = match device::whoami(origin, pat) {
-        Ok(who) => who.user.name,
-        Err(e) if e.reason.as_deref() == Some("permission_denied") => {
-            return Err("PAT 無效或已被撤銷".to_string());
+    let lock_dir = speclink_remote::auth::speclink_config_dir();
+    match remote_login::pat_login(origin, pat, credentials, &lock_dir, None) {
+        LoginOutcome::LoggedIn { display, .. } => {
+            record_identity(registry_path, origin, Some(&display))?;
+            Ok(display)
         }
-        Err(e) => return Err(e.to_string()),
-    };
-    credentials.set(origin, CredentialKind::Pat, pat)?;
-    record_identity(registry_path, origin, Some(&display))?;
-    Ok(display)
+        LoginOutcome::Denied => Err("PAT 無效或已被撤銷".to_string()),
+        LoginOutcome::KeychainUnavailable => Err("無法存入系統 Keychain".to_string()),
+        LoginOutcome::Failed(message) => Err(message),
+        other => Err(format!("非預期的登入結果：{other:?}")),
+    }
 }
 
 /// 登出結果：撤銷是盡力語意（server 不可達不阻擋本機刪除）；PAT 無自助撤銷
@@ -435,27 +495,18 @@ pub struct LogoutOutcome {
     pub pat_notice: bool,
 }
 
-/// 登出（決策 6）：refresh credential 走 /auth/revoke 盡力撤銷 device family、
-/// PAT 僅刪本機 entry 並提示；兩者皆必刪 Keychain entry、清 registry 身分。
+/// 登出：委派共用的 logout（清掉的 Keychain 範圍與 CLI 相同：refresh、access
+/// token 快取、PAT），再清 registry 身分。
 pub fn logout(
     origin: &str,
     credentials: &dyn CredentialStore,
     registry_path: &Path,
 ) -> Result<LogoutOutcome, String> {
-    let mut revoked_on_server = false;
-    let mut pat_notice = false;
-    if let Some(refresh) = credentials.get(origin, CredentialKind::Refresh)? {
-        revoked_on_server = device::revoke(origin, &refresh).is_ok();
-        credentials.delete(origin, CredentialKind::Refresh)?;
-    }
-    if credentials.get(origin, CredentialKind::Pat)?.is_some() {
-        credentials.delete(origin, CredentialKind::Pat)?;
-        pat_notice = true;
-    }
+    let outcome = remote_login::logout(origin, credentials, None)?;
     record_identity(registry_path, origin, None)?;
     Ok(LogoutOutcome {
-        revoked_on_server,
-        pat_notice,
+        revoked_on_server: outcome.revoked,
+        pat_notice: outcome.removed_pat,
     })
 }
 
@@ -479,13 +530,13 @@ pub fn refresh_connection(
     )
 }
 
-/// 打 /auth/whoami 取身分顯示名並寫回 registry。
+/// 查身分（API 根的 whoami，沒有時退回 /auth/whoami）並把顯示名寫回 registry。
 fn record_identity_from_server(
     origin: &str,
     bearer: &str,
     registry_path: &Path,
 ) -> Result<String, String> {
-    let who = device::whoami(origin, bearer).map_err(|e| e.to_string())?;
+    let who = device::identity(origin, bearer).map_err(|e| e.to_string())?;
     record_identity(registry_path, origin, Some(&who.user.name))?;
     Ok(who.user.name)
 }
