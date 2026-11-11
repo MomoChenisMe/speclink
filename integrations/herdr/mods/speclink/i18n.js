@@ -158,6 +158,7 @@ export const TO_ZH = {
   "not installed": "未安裝",
   "Could not load agents": "載入不了 agent",
   "Checking installed agents…": "檢查已安裝的 agent…",
+  "Could not check installed agents": "檢查不了已安裝的 agent",
   "New worktree…": "新增 worktree…",
   "Open worktree…": "開啟 worktree…",
   // 複製版的側欄
@@ -165,6 +166,10 @@ export const TO_ZH = {
   "This computer": "這台電腦",
   "New space there": "在這裡新增工作區",
   "New space on this computer": "在這台電腦新增工作區",
+  // 機器需要登入時，側欄、通知和新增機器的對話框會附上指令和複製按鈕。
+  "needs a login: run": "需要登入，請執行",
+  Copy: "複製",
+  Copied: "已複製",
   "Loading…": "載入中…",
   Connect: "連線",
   "Connecting…": "連線中…",
@@ -370,6 +375,9 @@ const ZH_PATTERNS = [
   [/^Up to date\. Checked at (.+)\.$/, "已是最新版本。檢查時間 {0}。"],
   // 側欄收起時，機器那一格的提示。
   [/^New space on (.+)$/, "在 {0} 新增工作區"],
+  // 側欄收起時那一格的提示：按下去會開設定的機器頁，那裡有複製按鈕。
+  [/^(.+) needs a login: run (.+)\. Click for Copy\.$/, "{0} 需要登入，請執行 {1}。按一下到設定複製指令。"],
+  [/^(.+) needs a login: run$/, "{0} 需要登入，請執行"],
   [/^(.+) is ready\. Restart to switch now; it also switches when you quit\.$/, "{0} 已經準備好。重新啟動就會切換，結束 Herdr 時也會切換。"],
   [/^(.+) is ready\. Your terminals keep running through it\.$/, "{0} 已經準備好。更新時你的終端機會繼續執行。"],
   [/^Managed by (.+): update it there\.$/, "由 {0} 管理，請在那裡更新。"],
