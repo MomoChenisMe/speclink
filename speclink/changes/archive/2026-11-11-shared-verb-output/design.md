@@ -35,10 +35,13 @@ CLI 的本機分支與遠端分支今天已經共用 render 函式：兩邊各�
 
 `speclink-verbs` 新增 `src/render/`，檔案和 `src/families/` 一一對應。每個動詞提供：
 
-- `<verb>_json(&結果) -> serde_json::Value`：只有在 CLI 有 `--json` 形式的動詞才有。
+- `<verb>_json(&結果) -> serde_json::Value`：`--json` 的值要自己組出來的動詞才有（例如 list、show、discard）。`--json` 就是引擎的結果型別本身的動詞（status、validate、analyze、drift、trace、plan、instructions、discuss new）沒有這個函式：值從下面的 `<verb>` 回傳的 `json` 欄位取得，只包一層的函式不另外提供。
 - `<verb>_human(&結果, &Paint) -> Text`：人眼輸出。`Text` 帶 stdout 與 stderr 兩段文字。
+- `<verb>(&結果, RenderOptions) -> Rendered`：把上面兩者依呼叫端的選項合成一份輸出。
 
 函式的輸入沿用今天 render 函式收的型別（引擎的結果型別，或它的欄位）。CLI 的本機與遠端分支照舊各自組出同一種型別再呼叫，兩模式同形的保證不變。
+
+輸入是「欄位」的動詞（遠端分支只拿得到 wire 回應的欄位），另有一個直接收引擎結果的函式：`new::change_created`、`new::artifact_created`、`plan::depends_declared`、`progress::task_flipped`、`discuss::round_recorded`、`discuss::concluded`、`discuss::promoted`、`discuss::archived`。CLI 的本機分支與單一出口都呼叫它，「引擎結果對應到哪些欄位」因此只寫一次。
 
 唯一的實作落點是 `speclink-verbs`。CLI 不留任何一份這十一個家族的輸出。
 
@@ -58,7 +61,8 @@ exit code 不在 `Rendered` 裡。今天「有輸出又要以非零結束」的�
 
 - **`--json` 的文字由結果本身序列化，不由 `json` 的值序列化。** 引擎的結果型別照欄位宣告的順序輸出，而 `serde_json::Value` 會把鍵排序；`stdout` 要逐位元不變，所以兩者各自從同一個來源產生。
 - **兩個動詞的 `--json` 是單行，不縮排**：`new artifact` 與 `task done`／`task undone`。這是既有的凍結形狀，照原樣保留。
-- **`render` 回傳 `Result<Rendered, CommandError>`。** 有兩種引擎結果在 CLI 是「以錯誤結束」：任務已經是要求的狀態（`already`），以及結論已寫入但收尾的封存失敗（`closing_error`）。SDK 要用同一句訊息拒絕，所以單一出口對這兩種結果回傳一般錯誤；訊息文字各有一個共用函式（`progress::already_message`、`discuss::closing_error_message`），CLI 也用它。各動詞自己的 `_json`、`_human` 函式不回傳錯誤。validate 有錯誤時不屬於這一類：SDK 照常回傳結果陣列，由宿主讀 `valid`。
+- **`render` 回傳 `Result<Rendered, CommandError>`。** 有一種引擎結果在兩個入口都是「以錯誤結束、沒有輸出」：任務已經是要求的狀態（`already`）。單一出口對它回傳一般錯誤，訊息出自共用的 `progress::already_message`，CLI 也用它。各動詞自己的 `_json`、`_human` 函式不回傳錯誤。
+- **「有輸出、CLI 又以非零結束」的結果，單一出口照常回傳輸出。** validate 有錯誤時，SDK 回傳結果陣列，由宿主讀 `valid`。結論已寫入但收尾的封存失敗（`closing_error`）時，寫入已經發生，所以單一出口回傳 conclude 的值並另帶 `closingError`（失敗原因）：拒絕會讓宿主以為沒有寫入而重試，再 conclude 一次會重標在途的變更。CLI 維持原樣：印出結果後以 `discuss::closing_error_message` 的那一句非零結束，它的 `--json` 不帶 `closingError`。做法是 `discuss::Concluded` 多一個 `closing_error` 欄位：CLI 給「沒有」，單一出口給引擎回報的原因。
 
 ### D3: 顏色用 Paint 傳入
 
@@ -100,11 +104,14 @@ CLI 的 `color.rs` 保留 `init` 與開關的判斷，上色的函式改成呼�
 
 實作時的比對結果與決定：
 
-- 9 個動詞裡有 1 個不同：`new change` 的 `output` 尾端多一個換行（CLI 的 stdout 本來就有）。決定照規格，不留特例，列進 proposal 的相容性影響。其餘 8 個的快照沒有改動。
+- 9 個動詞裡有 2 處不同，都是 `output` 尾端多一個換行（CLI 的 stdout 本來就有）：`new change`，以及沒有任何變更時的 `status`。決定照規格，不留特例，列進 proposal 的相容性影響。其餘的快照沒有改動。
+- 沒有任何變更時的那一行提示改由共用的 `render::no_active_changes` 產生，CLI（本機與遠端）與 SDK 都用它。SDK 仍在引擎之前回答這個情況，但文字不再自己寫一份。
+- fs 形式的引擎把本機預設的 repo 綁定（和 CLI 相同）放進執行環境，`task done` 記下的 evidence 因此和 CLI 一樣帶 `repo` 欄位。宿主的 Store 形式沒有綁定，維持不帶。
 - 審查與驗證的 `add-round`、`stamp` 在 CLI 沒有 `--json` 旗標，但正式規格釘住它們在 SDK 的回傳值（`{ change, round }`、`{ change }`）。所以這兩個動詞在共用的輸出裡有結構化的值（`station::action_json`），CLI 不會用到它。`discard` 沒有被釘住，照通則回傳 `{ output }`。
 - `ParsedVerb` 的轉換改成 `ToCommand` 的實作（借用，不消耗），因為單一路徑在轉成命令之後還要把解析結果交給 `render`。
 - 多個變更或 `--all` 的 `archive` 在 SDK 以 `invalid_argv` 拒絕（批次迴圈是 CLI 的）。
-- `archive` 的零證據提示在 stderr，`{ output }` 只帶 stdout，所以 SDK 的呼叫端收不到這一行提示。
+- 沒有 `--json` 形式的動詞有 stderr 文字時（現在只有 `archive` 的零證據提示），SDK 回傳 `{ output, stderr }`；沒有 stderr 文字時只有 `output`。這一項與下一項是品質關卡第 1 輪之後加的：原本只回傳 stdout，宿主收不到那一行提示。
+- `discuss conclude` 收尾封存失敗時，SDK 回傳 conclude 的值加 `closingError`，不以 Error 拒絕（理由見 D2）。
 
 ### D8: 分三批搬移
 
@@ -120,7 +127,7 @@ CLI 的 `color.rs` 保留 `init` 與開關的判斷，上色的函式改成呼�
 
 **介面**
 
-- `speclink_verbs::render::{render, Rendered, RenderOptions, Paint, Text}`，以及各家族公開的 `_json`、`_human` 函式。
+- `speclink_verbs::render::{render, no_active_changes, Rendered, RenderOptions, Paint, Text}`，以及各家族公開的輸出函式（D1 的三種，加上直接收引擎結果的那幾個）。
 - `speclink-node` 的 JS 介面不變。
 
 **失敗的樣子**
@@ -162,4 +169,4 @@ CLI 的 `color.rs` 保留 `init` 與開關的判斷，上色的函式改成呼�
   - lifecycle：批次封存迴圈的彙總（沒有可封存的變更、中止的三段報告、略過的原因、最後的計數）。
   - station：`review prepare` 的兩種警告、`scope` 的結果與 needsInput 的說明（範圍由宿主的解析器算出，不是引擎的結果）、清除快照失敗的警告。
   - 預期清單裡的「技能檔過期的提醒」在現在的程式裡不存在。
-- `status` 在沒有任何變更時：CLI 印一行提示並加換行；SDK 回傳 `{ output }`，內容是同一句、尾端沒有換行。兩邊維持各自的行為，SDK 的值有快照釘住。analyze 與 instructions 在同一情況下，CLI 印同一行提示，SDK 則回報引擎的錯誤；這次不改。
+- `status` 在沒有任何變更時：CLI 印一行提示；SDK 回傳 `{ output }`，內容和 CLI 的 stdout 相同（同一個共用函式，含尾端換行）。analyze 與 instructions 在同一情況下，CLI 印同一行提示，SDK 則回報引擎的錯誤；這次不改。

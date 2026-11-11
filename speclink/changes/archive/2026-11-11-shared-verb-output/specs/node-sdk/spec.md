@@ -8,7 +8,9 @@ dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳�
 
 dispatch 的 argv SHALL 由與 CLI 共用的同一份動詞解析處理：CLI 接受的寫法（含 `--name=value` 與 CLI 有的短旗標）dispatch SHALL 同樣接受；CLI 不接受的旗標與多出來的位置參數，dispatch SHALL 以 Error 拒絕、code 為 invalid_argv、message 為與 CLI 相同的解析錯誤文字（不含 ANSI 色碼），SHALL NOT 靜默忽略。argv 帶 `--json` 時，回傳的結構化物件與不帶時相同。argv 是 `--help` 時 SHALL 以 Error 拒絕、code 為 invalid_argv、message 為該動詞的說明文字。
 
-dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的一端執行的動詞（drift、change rank、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 以 Error 拒絕、code 為 invalid_argv、message 說明原因。dispatch 的回傳內容 SHALL 由與 CLI 共用的同一份輸出定義產生：有 --json 形式的動詞回傳與 CLI --json 內容相同的結構化物件；沒有 --json 形式的動詞回傳 { output }，output 與 CLI 在 --no-color 下的 stdout 相同。
+dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的一端執行的動詞（drift、change rank、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 以 Error 拒絕、code 為 invalid_argv、message 說明原因。dispatch 的回傳內容 SHALL 由與 CLI 共用的同一份輸出定義產生：有 --json 形式的動詞回傳與 CLI --json 內容相同的結構化物件；沒有 --json 形式的動詞回傳 { output }，output 與 CLI 在 --no-color 下的 stdout 相同。有兩種情況不經引擎命令：claim 由宿主 Store 的 claim 方法裁決，成功時回傳該方法的回傳值；status 沒有給變更名稱、而且專案沒有任何變更時，與 CLI 一樣只有一行提示，回傳 { output }，output 與 CLI 的 stdout 相同。
+
+沒有 --json 形式的動詞，CLI 另有提示文字印到 stderr 時（例如 archive 在變更沒有任務證據時的提示），dispatch 回傳的物件 SHALL 另帶 stderr 欄位，內容與 CLI 為該動詞印到 stderr 的提示文字相同；沒有這種文字時 SHALL NOT 帶 stderr 欄位。discuss conclude 的結論已寫入、而收尾的封存步驟失敗時，dispatch SHALL 解析為 conclude 的結構化物件並另帶 closingError 欄位（失敗原因的文字），SHALL NOT 以 Error 拒絕：結論已經寫入，拒絕會讓呼叫端以為沒有寫入而重試。
 
 #### Scenario: 寫入動詞經 stdin 參數
 - **WHEN** 執行 await engine.dispatch(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin'], { stdin: 內容字串 })
@@ -70,6 +72,21 @@ dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的�
 
 - **WHEN** 執行 dispatch(['change', 'rank', 'demo', '--before', 'other'])
 - **THEN** Promise 以 Error 拒絕，code 為 invalid_argv，message 說明這個動詞只能在有 checkout 的一端執行
+
+#### Scenario: stderr 的提示經 stderr 欄位回傳
+
+- **WHEN** 對任務全完成、沒有任務證據的變更 beta 執行 dispatch(['archive', 'beta', '-y'])
+- **THEN** Promise 解析為 { output, stderr }，output 與 speclink archive beta -y --no-color 的 stdout 相同，stderr 與它的 stderr 相同（一行零證據提示）
+
+#### Scenario: 沒有 stderr 文字時不帶 stderr 欄位
+
+- **WHEN** 執行 dispatch(['new', 'change', 'demo'])
+- **THEN** Promise 解析的物件只有 output 一個欄位
+
+#### Scenario: 結論已寫入但收尾封存失敗
+
+- **WHEN** 一份討論記錄已轉出的變更都已不在進行中、而收尾的封存步驟會失敗，執行 dispatch(['discuss', 'conclude', 該記錄的 slug, '--stdin'], { stdin: 結論內容 })
+- **THEN** Promise 解析為含 slug、status 為 concluded 與 closingError 的物件，closingError 是失敗原因的文字；記錄的結論已寫入；Promise 不以 Error 拒絕
 
 ### Requirement: dispatch 的蓋章動詞
 <!-- BEFORE: dispatch 只認得 review 與 verify 的 add-round 與 stamp 四個動詞，其他子動詞以 invalid_argv 拒絕 -->
