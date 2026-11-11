@@ -4,17 +4,13 @@ use serde_json::{json, Value};
 use speclink_core::command::{ListOutcome, ShowChange, ShowOutcome};
 use speclink_core::status::StatusReport;
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
-
-// A list always carries at least one section; an outcome with neither reads
-// as an empty specs section.
-static NO_SPECS: Value = Value::Null;
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `list --json`: `{ changes }`, `{ specs }` or both, as the flags asked.
 pub fn list_json(list: &ListOutcome) -> Value {
     // `--specs` alone omits the changes section (`changes` is None).
     let Some(items) = &list.changes else {
-        return json!({ "specs": list.specs.as_ref().unwrap_or(&NO_SPECS) });
+        return json!({ "specs": list.specs });
     };
     match &list.specs {
         Some(specs) => json!({ "changes": items, "specs": specs }),
@@ -26,7 +22,9 @@ pub fn list_json(list: &ListOutcome) -> Value {
 pub fn list_human(list: &ListOutcome, paint: &Paint) -> Text {
     let mut t = Text::default();
     let Some(items) = &list.changes else {
-        specs_section(&mut t, list.specs.as_ref().unwrap_or(&NO_SPECS), paint);
+        if let Some(specs) = &list.specs {
+            specs_section(&mut t, specs, paint);
+        }
         return t;
     };
     if items.is_empty() {
@@ -173,11 +171,6 @@ pub fn show(show: &ShowOutcome, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&show_json(show))), |paint| show_human(show, paint))
 }
 
-/// `status --json`: the report as the engine serializes it.
-pub fn status_json(report: &StatusReport) -> Value {
-    value_of(report)
-}
-
 /// `status`: one line per artifact with its state.
 pub fn status_human(report: &StatusReport, paint: &Paint) -> Text {
     let mut t = Text::default();
@@ -202,6 +195,7 @@ pub fn status_human(report: &StatusReport, paint: &Paint) -> Text {
     t
 }
 
+/// `status --json` is the report as the engine serializes it.
 pub fn status(report: &StatusReport, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(report)), |paint| status_human(report, paint))
 }
@@ -427,7 +421,7 @@ mod tests {
         let mut done = report();
         done.artifacts.truncate(1);
         assert_eq!(
-            status_json(&done),
+            status(&done, RenderOptions::default()).json.unwrap(),
             json!({
                 "changeName": "empty", "schemaName": "spec-driven", "isComplete": false,
                 "applyRequires": ["tasks"],

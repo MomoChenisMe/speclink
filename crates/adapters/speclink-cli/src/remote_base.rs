@@ -83,7 +83,7 @@ pub(crate) fn remote_resolve_change(
         .collect();
     match names.len() {
         0 => {
-            println!("No active changes. Create one with: speclink new change <name>");
+            crate::common::emit(speclink_verbs::render::no_active_changes());
             Ok(None)
         }
         1 => Ok(Some(names.remove(0))),

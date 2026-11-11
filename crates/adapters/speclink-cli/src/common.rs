@@ -109,7 +109,7 @@ pub(crate) fn plain_command(verb: &impl speclink_verbs::ToCommand) -> Result<cor
 /// informational message and signal exit-0 (returns true = handled).
 pub(crate) fn info_if_no_changes(store: &dyn Store, name: Option<&str>) -> bool {
     if name.is_none() && core::model::list_changes(store).is_empty() {
-        println!("No active changes. Create one with: speclink new change <name>");
+        emit(speclink_verbs::render::no_active_changes());
         true
     } else {
         false

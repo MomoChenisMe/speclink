@@ -81,16 +81,16 @@ await engine.dispatch(
 ```
 
 - **Input**: an array of strings. Write it like the CLI arguments, without the program name. A verb that reads stdin in the CLI takes its content from the second parameter, `{ stdin }`.
-- **Output**: a Promise. The result is the same as the CLI `--json` output, with camelCase fields. A verb without a `--json` form (for example `new change`) returns `{ output: string }`. The TypeScript type is `Promise<unknown>`. For the field shapes, see [Verb and Flag Contract](verb-contract.md).
+- **Output**: a Promise. The result is the same as the CLI `--json` output, with camelCase fields. A verb without a `--json` form (for example `new change`) returns `{ output: string }`, where `output` is the text that the CLI prints to stdout, without color codes. When the CLI also prints a note to stderr (for example, `archive` of a change that has no task evidence), the object also has `stderr`. If the closing step of `discuss conclude` cannot archive the record, the result is not an error: the conclusion is written, and the object has `closingError` with the cause. Do not run `discuss conclude` again; run `discuss archive`. The TypeScript type is `Promise<unknown>`. For the field shapes, see [Verb and Flag Contract](verb-contract.md).
 - **No blocked event loop**: each dispatch runs on a background thread. You can run many at the same time.
 
-Supported verbs today: `list`, `status`, `new change`, `new artifact`, `claim`, `review add-round`, `review stamp`, `verify add-round`, `verify stamp`. Other verbs fail with `invalid_argv`.
+Every verb that has an engine command runs. The verbs that need a checkout fail with `invalid_argv`: `drift`, `change rank`, `review prepare`, `review scope`, `verify scope`, and `instructions --skill`. One `archive` call takes one change: more than one name, or `--all`, fails with `invalid_argv`.
 
 On failure, the Promise rejects with an `Error`. The `message` is the same text that the CLI prints, so you can show it to a user or an agent. The `code` gives the category:
 
 | `code` | Meaning |
 | --- | --- |
-| `invalid_argv` | The arguments are wrong, the SDK does not support the verb yet, or the written content has a bad format (for example, tasks with no `- [ ]`, or a review round without a `**Scope**:` line) |
+| `invalid_argv` | The arguments are wrong, the verb needs a checkout, or the written content has a bad format (for example, tasks with no `- [ ]`, or a review round without a `**Scope**:` line) |
 | `not_found` | The change or the discussion does not exist |
 | `invalid_config` | A config file exists but cannot be parsed (Speclink never uses defaults instead) |
 | `refused` | A precondition is not met |
@@ -270,7 +270,7 @@ The skills describe each verb as a tool call. The tool sends the call to the eng
 
 ## <a id="limits"></a>Current limits
 
-- The SDK supports nine verbs only (see [Run verbs](#dispatch)). You cannot run `archive`, `task`, `discuss`, or other verbs through the SDK yet.
+- The verbs that need a checkout do not run through the SDK (see [Run verbs](#dispatch)).
 - Your own Store can use only the built-in schema.
 - No prebuilt package exists for musl Linux.
 - When a Store method throws, stderr can show one extra Rust panic line. The Promise still rejects as described above.

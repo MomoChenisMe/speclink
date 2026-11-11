@@ -1,14 +1,8 @@
 //! Output of `trace`: one capability's provenance chain.
 
-use serde_json::Value;
 use speclink_core::trace::TraceReport;
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
-
-/// `trace --json`: the report as the engine serializes it.
-pub fn trace_json(report: &TraceReport) -> Value {
-    value_of(report)
-}
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `trace`: the archived changes, the discussions, then the requirements.
 pub fn trace_human(r: &TraceReport, paint: &Paint) -> Text {
@@ -67,6 +61,7 @@ pub fn trace_human(r: &TraceReport, paint: &Paint) -> Text {
     t
 }
 
+/// `trace --json` is the report as the engine serializes it.
 pub fn trace(report: &TraceReport, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(report)), |paint| trace_human(report, paint))
 }
@@ -157,7 +152,7 @@ mod tests {
     #[test]
     fn trace_json_is_the_report_and_its_text_keeps_the_field_order() {
         assert_eq!(
-            trace_json(&auth()),
+            trace(&auth(), RenderOptions::default()).json.unwrap(),
             json!({
                 "capability": "auth",
                 "requirements": [{ "name": "Session", "source": "gamma" }],

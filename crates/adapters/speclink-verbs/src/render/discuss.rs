@@ -2,10 +2,13 @@
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use speclink_core::command::DiscussShowOutcome;
+use speclink_core::command::{
+    DiscussArchiveOutcome, DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome,
+    DiscussShowOutcome,
+};
 use speclink_core::discuss::{DiscussionHit, DiscussionInfo};
 
-use super::{value_of, JsonForm, Paint, RenderOptions, Rendered, Text};
+use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// The three lines of `discuss new`, by name.
 #[derive(Debug, Clone, Copy)]
@@ -13,11 +16,6 @@ pub struct NewDiscussionLines<'a> {
     pub slug: &'a str,
     pub topic: &'a str,
     pub path: &'a str,
-}
-
-/// `discuss new --json`: the new record's info.
-pub fn new_json(info: &DiscussionInfo) -> Value {
-    value_of(info)
 }
 
 /// `discuss new`: the success line, the topic and the path.
@@ -29,6 +27,7 @@ pub fn new_human(lines: NewDiscussionLines<'_>, paint: &Paint) -> Text {
     t
 }
 
+/// `discuss new --json` is the new record's info.
 pub fn new(info: &DiscussionInfo, options: RenderOptions) -> Rendered {
     let lines = NewDiscussionLines { slug: &info.slug, topic: &info.topic, path: &info.path };
     new_from(info, lines, options)
@@ -159,6 +158,11 @@ pub fn add_round(r: &RecordedRound<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&add_round_json(r))), |paint| add_round_human(r, paint))
 }
 
+/// `discuss add-round`, from the engine's result.
+pub fn round_recorded(o: &DiscussRoundOutcome, options: RenderOptions) -> Rendered {
+    add_round(&RecordedRound { slug: &o.slug, round: o.round, mode: &o.mode }, options)
+}
+
 /// What `discuss conclude` reports.
 #[derive(Debug, Clone, Copy)]
 pub struct Concluded<'a> {
@@ -169,10 +173,14 @@ pub struct Concluded<'a> {
     pub auto_archived: bool,
     /// The record stays live for a later spin-out.
     pub held: bool,
+    /// Why the closing step could not archive the record, for a caller that
+    /// reports it inside the value. The CLI reports it as its exit error
+    /// (see [`closing_error_message`]) and gives `None` here.
+    pub closing_error: Option<&'a str>,
 }
 
-/// `discuss conclude --json`: `restaleFlagged`, `autoArchived` and `held`
-/// appear only when they carry something.
+/// `discuss conclude --json`: `restaleFlagged`, `autoArchived`, `held` and
+/// `closingError` appear only when they carry something.
 pub fn conclude_json(c: &Concluded<'_>) -> Value {
     let mut payload = json!({ "slug": c.slug, "status": "concluded" });
     if !c.restale_flagged.is_empty() {
@@ -183,6 +191,9 @@ pub fn conclude_json(c: &Concluded<'_>) -> Value {
     }
     if c.held {
         payload["held"] = json!(true);
+    }
+    if let Some(reason) = c.closing_error {
+        payload["closingError"] = json!(reason);
     }
     payload
 }
@@ -212,14 +223,35 @@ pub fn conclude(c: &Concluded<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&conclude_json(c))), |paint| conclude_human(c, paint))
 }
 
+impl<'a> From<&'a DiscussConcludeOutcome> for Concluded<'a> {
+    /// The engine's result without its closing error: where that goes is the
+    /// caller's decision.
+    fn from(o: &'a DiscussConcludeOutcome) -> Self {
+        Concluded {
+            slug: &o.slug,
+            restale_flagged: &o.restale_flagged,
+            auto_archived: o.auto_archived,
+            held: o.held,
+            closing_error: None,
+        }
+    }
+}
+
+/// `discuss conclude`, from the engine's result. A closing step that failed
+/// is not part of this output: the caller reports it with
+/// [`closing_error_message`].
+pub fn concluded(o: &DiscussConcludeOutcome, options: RenderOptions) -> Rendered {
+    conclude(&Concluded::from(o), options)
+}
+
 /// The error text when the conclusion landed but the closing step could not
-/// archive the record. Both entry points fail with it after the output.
+/// archive the record. The CLI fails with it after the output.
 pub fn closing_error_message(reason: &str) -> String {
     format!("conclude closing step failed to archive the record: {reason}")
 }
 
 /// Where an archived record is, as the output shows it.
-pub fn archived_to(file: &str) -> String {
+fn archived_to(file: &str) -> String {
     format!("discussions/archive/{file}")
 }
 
@@ -239,6 +271,11 @@ pub fn archive(slug: &str, archived_to: &str, options: RenderOptions) -> Rendere
     Rendered::of(options, Some(JsonForm::pretty(&archive_json(slug, archived_to))), |paint| {
         archive_human(slug, archived_to, paint)
     })
+}
+
+/// `discuss archive`, from the engine's result.
+pub fn archived(o: &DiscussArchiveOutcome, options: RenderOptions) -> Rendered {
+    archive(&o.slug, &archived_to(&o.archived_file), options)
 }
 
 /// `discuss discard --json`.
@@ -304,6 +341,21 @@ pub fn promote(p: &Promoted<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&promote_json(p))), |paint| promote_human(p, paint))
 }
 
+/// `discuss promote`, from the engine's result: a local store, so the new
+/// change's directory is shown.
+pub fn promoted(o: &DiscussPromoteOutcome, options: RenderOptions) -> Rendered {
+    let shown = o.path.to_string_lossy();
+    let wire = speclink_core::util::to_slash(&o.path);
+    promote(
+        &Promoted {
+            slug: &o.slug,
+            change: &o.change,
+            path: Some(PromotedPath { shown: &shown, wire: &wire }),
+        },
+        options,
+    )
+}
+
 /// `discuss link` or `discuss seal`: the two differ only in their verb and
 /// the closing note.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,10 +376,11 @@ impl DiscussBind {
 
 /// `discuss link --json` and `discuss seal --json`.
 pub fn bind_json(bind: DiscussBind, slug: &str, change: &str) -> Value {
+    let (status, _, _) = bind.parts();
     json!({
         "change": change,
         "slug": slug,
-        "status": bind.parts().0,
+        "status": status,
     })
 }
 
@@ -390,7 +443,7 @@ mod tests {
     fn new_json_is_the_info_and_its_text_keeps_the_field_order() {
         let fresh = info("fresh-topic", "Fresh topic", "open", 0, false);
         assert_eq!(
-            new_json(&fresh),
+            new(&fresh, RenderOptions::default()).json.unwrap(),
             json!({
                 "slug": "fresh-topic", "topic": "Fresh topic", "status": "open", "rounds": 0,
                 "created": "2026-11-11", "createdBy": "Base Line <base@example.com>",
@@ -545,12 +598,24 @@ mod tests {
 
     #[test]
     fn conclude_adds_a_line_and_a_field_for_each_fact_that_holds() {
-        let plain = Concluded { slug: "topic-live", restale_flagged: &[], auto_archived: false, held: false };
+        let plain = Concluded {
+            slug: "topic-live",
+            restale_flagged: &[],
+            auto_archived: false,
+            held: false,
+            closing_error: None,
+        };
         assert_eq!(conclude_human(&plain, &COLOR).stdout, "\x1b[32m✓\x1b[0m Concluded discussion 'topic-live'\n");
         assert_eq!(conclude_json(&plain), json!({ "slug": "topic-live", "status": "concluded" }));
 
         let flagged = vec!["beta".to_string(), "later-part".to_string()];
-        let full = Concluded { slug: "topic-held", restale_flagged: &flagged, auto_archived: true, held: true };
+        let full = Concluded {
+            slug: "topic-held",
+            restale_flagged: &flagged,
+            auto_archived: true,
+            held: true,
+            closing_error: None,
+        };
         assert_eq!(
             conclude_human(&full, &PLAIN).stdout,
             "✓ Concluded discussion 'topic-held'\n  Flagged 2 change(s) for re-ingest: beta, later-part\n  Auto-archived the record (all promoted changes are archived)\n  Held live (a later spin-out is planned)\n"
@@ -562,7 +627,8 @@ mod tests {
                 "restaleFlagged": ["beta", "later-part"], "autoArchived": true, "held": true,
             })
         );
-        let held = Concluded { slug: "topic-held", restale_flagged: &[], auto_archived: false, held: true };
+        let held = Concluded { closing_error: None, held: true, ..plain };
+        let held = Concluded { slug: "topic-held", ..held };
         assert_eq!(
             conclude(&held, JSON).stdout,
             "{\n  \"held\": true,\n  \"slug\": \"topic-held\",\n  \"status\": \"concluded\"\n}\n"
@@ -571,6 +637,25 @@ mod tests {
             closing_error_message("the file is locked"),
             "conclude closing step failed to archive the record: the file is locked"
         );
+    }
+
+    #[test]
+    fn conclude_json_carries_the_closing_error_only_when_the_caller_gives_one() {
+        let failed = Concluded {
+            slug: "topic-held",
+            restale_flagged: &[],
+            auto_archived: false,
+            held: false,
+            closing_error: Some("the file is locked"),
+        };
+        assert_eq!(
+            conclude_json(&failed),
+            json!({ "slug": "topic-held", "status": "concluded", "closingError": "the file is locked" })
+        );
+        // The human text is the same either way: the caller reports the failure.
+        assert_eq!(conclude_human(&failed, &PLAIN).stdout, "✓ Concluded discussion 'topic-held'\n");
+        let fine = Concluded { closing_error: None, ..failed };
+        assert_eq!(conclude_json(&fine), json!({ "slug": "topic-held", "status": "concluded" }));
     }
 
     // --- archive, discard, promote, link, seal ---

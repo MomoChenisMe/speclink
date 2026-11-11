@@ -705,6 +705,54 @@ fn remote_discuss_conclude_hold_matches_fs_output_byte_for_byte() {
     );
 }
 
+/// 兩份討論記錄（一份已結論、一份進行中）——fs 端寫成檔案，remote 端放進清單回應。
+fn discuss_list_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    p.write(
+        "speclink/discussions/auth-scope.md",
+        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: concluded\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n### Round 1 — interview (2026-07-01)\n\n**Focus**: scope\n\n## Conclusion\n\n**Decision**: ship it\n",
+    );
+    p.write(
+        "speclink/discussions/rate-limits.md",
+        "---\ntopic: Rate limits\nslug: rate-limits\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n",
+    );
+    p
+}
+
+#[test]
+fn remote_discuss_list_matches_fs_output_byte_for_byte() {
+    // command-runtime spec scenario「兩種模式同一份輸出」：語意相同的內容，
+    // speclink discuss list 在本機模式與遠端模式的 stdout 逐位元一致。
+    let fs = discuss_list_fs_project("discuss-list-fs");
+    let fs_json: serde_json::Value = {
+        let out = fs.run(&["discuss", "list", "--json"]);
+        assert!(out.status.success(), "fs stderr: {}", stderr_of(&out));
+        serde_json::from_str(&stdout_of(&out)).expect("fs discuss list --json is JSON")
+    };
+    let discussions = fs_json["discussions"].as_array().expect("a discussions array");
+    assert_eq!(discussions.len(), 2, "the fixture holds two live records: {fs_json}");
+
+    // The server answers with the same records the fs store holds.
+    let mock = mock_server(vec![("GET", "/discussions", 200, fs_json.to_string())]);
+    let remote = TempProject::remote("discuss-list-remote", &mock.base, "backend");
+
+    for args in [&["discuss", "list"][..], &["discuss", "list", "--no-color"]] {
+        let fs_out = fs.run(args);
+        assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+        let remote_out = remote.run(args);
+        assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+        assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "{args:?}");
+        assert_eq!(stderr_of(&remote_out), stderr_of(&fs_out), "{args:?}");
+    }
+    let human = stdout_of(&fs.run(&["discuss", "list"]));
+    assert!(human.starts_with("Discussions:\n  • "), "{human}");
+    assert!(human.contains("auth-scope [concluded]") && human.contains("rate-limits [open]"), "{human}");
+    assert!(
+        !remote.dir.join("speclink").exists(),
+        "the remote run never created or read a local store"
+    );
+}
+
 #[test]
 fn remote_discuss_new_json_prints_the_wire_response_verbatim() {
     // remote 的 --json 契約是 wire 回應原樣（slug／topic／path 三欄）——組 core

@@ -23,42 +23,34 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     // fs mode gives no touched files: the engine probes this workspace itself.
     let cmd = plain_command(&a)?;
     let o: core::command::TaskFlipOutcome = run(&store, Some(&ws), cmd)?;
-    emit_task_flip(
-        flip,
-        &o.change,
-        TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
-        &o.description,
-        o.already,
-        json,
-    )
+    // `already` 維持現行錯誤結束（引擎已保證零檔案效果）：共用函式回傳那一句錯誤。
+    emit(render::task_flipped(flip, &o, render_options(json))?);
+    Ok(())
 }
-/// 同一個任務的兩種識別，具名綁在一起——兩個相鄰同型 `&str` 位置參數
-/// 寫反不會被編譯器擋，具名欄位會。
-struct TaskIdentity<'a> {
-    /// 拒絕訊息用的識別：fs 給引擎解析出的序號，remote 只有 argv。
-    refused: &'a str,
-    /// 原始 argv——stdout 的人眼行與 `--json` 都用它。
-    arg: &'a str,
-}
-/// `already` 維持現行錯誤結束（引擎已保證零檔案效果）；其餘印出共用的輸出。
-/// remote 只有 argv 一種識別，兩個欄位都餵它。
-fn emit_task_flip(
+/// remote 的任務翻轉：remote 只有 argv 一種識別，拒絕訊息與 stdout 都用它。
+/// `already` 維持現行錯誤結束；其餘印出共用的輸出。
+fn emit_remote_task_flip(
     flip: TaskFlip,
     change: &str,
-    id: TaskIdentity<'_>,
-    description: &str,
+    task: RemoteTask<'_>,
     already: bool,
     json: bool,
 ) -> Result<()> {
     if already {
-        bail!("{}", render::already_message(flip, id.refused));
+        bail!("{}", render::already_message(flip, task.id));
     }
     emit(render::task_flip(
         flip,
-        &FlippedTask { change, task_id: id.arg, description },
+        &FlippedTask { change, task_id: task.id, description: task.description },
         render_options(json),
     ));
     Ok(())
+}
+/// remote 回應裡的一個任務：argv 給的識別與 server 回的描述，具名綁在一起——
+/// 兩個相鄰同型 `&str` 寫反不會被編譯器擋，具名欄位會。
+struct RemoteTask<'a> {
+    id: &'a str,
+    description: &'a str,
 }
 pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -90,12 +82,10 @@ fn remote_task_done(
     let touched = core::tasks::git_changed_files(&ctx.ws);
     let head = core::tasks::head_commit(&ctx.ws.root);
     let resp = ctx.client.task_done(&change, task_id, &touched, head.as_deref())?;
-    // remote 只有 argv 一種識別，拒絕訊息與 stdout 兩處都餵它。
-    emit_task_flip(
+    emit_remote_task_flip(
         TaskFlip::Done,
         &change,
-        TaskIdentity { refused: task_id, arg: task_id },
-        &resp.task_desc,
+        RemoteTask { id: task_id, description: &resp.task_desc },
         resp.already_done,
         json,
     )
@@ -110,11 +100,10 @@ fn remote_task_undone(
         return Ok(());
     };
     let resp = ctx.client.task_undone(&change, task_id)?;
-    emit_task_flip(
+    emit_remote_task_flip(
         TaskFlip::Undone,
         &change,
-        TaskIdentity { refused: task_id, arg: task_id },
-        &resp.task_desc,
+        RemoteTask { id: task_id, description: &resp.task_desc },
         resp.already_undone,
         json,
     )

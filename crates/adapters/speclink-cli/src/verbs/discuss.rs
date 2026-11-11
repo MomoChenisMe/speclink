@@ -14,7 +14,7 @@ use crate::common::{
 use crate::remote_base::RemoteCtx;
 use speclink_verbs::families::discuss::{DiscussArgs, DiscussCommands};
 use speclink_verbs::render::discuss::{
-    self as render, Concluded, DiscussBind, NewDiscussionLines, Promoted, PromotedPath, RecordedRound,
+    self as render, Concluded, DiscussBind, NewDiscussionLines, Promoted, RecordedRound,
 };
 use speclink_verbs::{ToCommand, VerbInputs};
 
@@ -45,22 +45,11 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::AddRound { json, .. } => {
             let o: core::command::DiscussRoundOutcome = run(&store, Some(&ws), cmd)?;
-            emit(render::add_round(
-                &RecordedRound { slug: &o.slug, round: o.round, mode: &o.mode },
-                render_options(json),
-            ));
+            emit(render::round_recorded(&o, render_options(json)));
         }
         DiscussCommands::Conclude { json, .. } => {
             let o: core::command::DiscussConcludeOutcome = run(&store, Some(&ws), cmd)?;
-            emit(render::conclude(
-                &Concluded {
-                    slug: &o.slug,
-                    restale_flagged: &o.restale_flagged,
-                    auto_archived: o.auto_archived,
-                    held: o.held,
-                },
-                render_options(json),
-            ));
+            emit(render::concluded(&o, render_options(json)));
             // 閉環封存步失敗：結論與 restale 已落盤（上面照常呈現），這裡以非零
             // exit code 收場、stderr 說明原因；重跑 discuss archive 即可收尾。
             if let Some(reason) = &o.closing_error {
@@ -69,11 +58,7 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Archive { json, .. } => {
             let o: core::command::DiscussArchiveOutcome = run(&store, Some(&ws), cmd)?;
-            emit(render::archive(
-                &o.slug,
-                &render::archived_to(&o.archived_file),
-                render_options(json),
-            ));
+            emit(render::archived(&o, render_options(json)));
         }
         DiscussCommands::Discard { json, .. } => {
             let o: core::command::DiscussSubjectOutcome = run(&store, Some(&ws), cmd)?;
@@ -81,16 +66,7 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Promote { json, .. } => {
             let o: core::command::DiscussPromoteOutcome = run(&store, Some(&ws), cmd)?;
-            let shown = o.path.to_string_lossy();
-            let wire = core::util::to_slash(&o.path);
-            emit(render::promote(
-                &Promoted {
-                    slug: &o.slug,
-                    change: &o.change,
-                    path: Some(PromotedPath { shown: &shown, wire: &wire }),
-                },
-                render_options(json),
-            ));
+            emit(render::promoted(&o, render_options(json)));
         }
         DiscussCommands::Link { json, .. } => {
             let o: core::command::DiscussBindOutcome = run(&store, Some(&ws), cmd)?;
@@ -182,6 +158,7 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
                     restale_flagged: &resp.restale_flagged,
                     auto_archived: resp.auto_archived,
                     held: resp.held,
+                    closing_error: None,
                 },
                 render_options(json),
             ));

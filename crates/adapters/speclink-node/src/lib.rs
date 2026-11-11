@@ -344,8 +344,9 @@ fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Resu
 
 /// Run one verb's command and shape its envelope value: the verb's
 /// structured value when it has one, else `{ output }` with its stdout text
-/// (no color). Two verbs keep an answer of their own in front of the engine:
-/// `claim`, and `status` when the project has no change at all.
+/// (no color), plus `stderr` when the verb also has stderr text. Two cases are answered in front of the engine: `claim` (the
+/// host store's own method), and `status` when the project has no change at
+/// all (the notice the CLI prints).
 fn run_verb(
     backend: &Backend,
     actor: Option<&str>,
@@ -358,12 +359,12 @@ fn run_verb(
     match &cmd {
         Command::Claim { name } => return claim(backend, actor, name),
         // CLI parity: with no name and no changes at all, status is informational,
-        // not an error (envelope-level presentation, same as the CLI's exit-0 line).
+        // not an error — the same notice as the CLI's exit-0 line.
         Command::Status { change: None, .. }
             if core::model::list_changes(backend.store().as_ref()).is_empty() =>
         {
             return Ok(serde_json::json!({
-                "output": "No active changes. Create one with: speclink new change <name>"
+                "output": speclink_verbs::render::no_active_changes().stdout
             }));
         }
         _ => {}
@@ -378,7 +379,9 @@ fn run_verb(
     let rendered = render(parsed, &outcome, RenderOptions { json: false, color: false })?;
     Ok(match rendered.json {
         Some(value) => value,
-        None => serde_json::json!({ "output": rendered.stdout }),
+        None if rendered.stderr.is_empty() => serde_json::json!({ "output": rendered.stdout }),
+        // A note the CLI prints to stderr (archive's zero-evidence note).
+        None => serde_json::json!({ "output": rendered.stdout, "stderr": rendered.stderr }),
     })
 }
 
