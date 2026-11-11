@@ -1,0 +1,252 @@
+{
+  "version": 2,
+  "change": "workflow-config-commands",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "2.1 （Red）為 D2 的 `changed_keys` 寫表格測試：規格「流程設定的寫入經命令執行層」的六列編輯各得到對應的鍵；只改排版或註解時是空的；檔案從不存在變成存在時回傳有設定值的每個鍵；回傳的順序固定。涉及 crates/engine/speclink-core/src/workspace/config.rs。驗證：`cargo test -p speclink-core changed_keys` 失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.2 （Green）實作純函式 `changed_keys`，並把 CLI 的中間型別搬進引擎成為公開的 `WorkflowConfigEdit`（設定政策欄位、context、rules、review 的清單與 baseline、子代理模型與模型清單）。涉及 crates/engine/speclink-core/src/workspace/config.rs。驗證：2.1 的測試通過。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.3 （Red）為 D1 的三種命令與 D3 的儲存方法寫測試，用引擎的測試儲存：`WorkflowConfigShow` 回傳解析後的設定、壞的 YAML 是 invalid_config；`WorkflowConfigEdit` 的每種編輯寫入一次且結果帶 before、after、changed_keys、written；值沒有變時不寫入；dry_run 不寫入但帶 changed_keys；`WorkflowConfigReplace` 對無法解析的內容與不合法的 locale 以 invalid_config 拒絕且儲存不變；沒有實作寫入方法的儲存回報不支援。更新列舉全部命令變體的既有測試。涉及 crates/engine/speclink-core/src/command/workflow_config.rs、crates/engine/speclink-core/src/command/tests.rs、crates/engine/speclink-core/src/teststore.rs。驗證：`cargo test -p speclink-core command::` 的新測試失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-core/src/command/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.4 （Green）實作三種命令、結果型別與 `Store::write_workflow_config`（預設拒絕），並在測試儲存實作它。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/typed.rs、crates/engine/speclink-core/src/command/workflow_config.rs、crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/teststore.rs。驗證：2.3 的測試通過；`cargo test -p speclink-core` 全部通過，含 golden（`--test it render_golden::`）沒有變動。",
+      "files": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/store.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.5 （Red→Green）在檔案實作與 Host 的儲存視圖實作寫入方法：先寫失敗的測試——檔案實作寫出 `<spec_dir>/config.yaml` 且內容逐位元等於給的文字；`PortView` 上執行編輯命令後，儲存收到正好一次提交，內含對鍵 `config.yaml` 的寫入，預期版本是讀到的版本；別人先改過時回報衝突。再實作。涉及 crates/engine/speclink-fs/src/lib.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/bridge.rs。驗證：`cargo test -p speclink-fs` 與 `cargo test -p speclink-host` 通過。",
+      "files": [
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 （Red）為 D4 寫 speclink-verbs 的測試：workflow-config 的 11 個末端各自由 `into_command` 得到 `WorkflowConfigShow` 或帶正確編輯的 `WorkflowConfigEdit`（含 `--dry-run`）；寫入動詞的 stdin 規則是帶 `--stdin` 才讀，需要 stdin 卻沒有時回報 invalid_argv；輸出函式對 show 的人眼與 `--json`、各寫入動詞的確認訊息、dry-run 的差異，stdout 全文等於 1.1 的基準。涉及 crates/adapters/speclink-verbs/src/families/workflow_config.rs、crates/adapters/speclink-verbs/src/render/workflow_config.rs。驗證：`cargo test -p speclink-verbs workflow_config` 失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/workflow_config.rs",
+        "crates/adapters/speclink-verbs/src/render/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 （Green）把 workflow-config 的 clap 型別、說明文字用的靜態字串、輸出與 `unified_diff` 從 CLI 搬進 speclink-verbs，加入 `SpecVerb` 與單一出口。涉及 crates/adapters/speclink-verbs/src/families/workflow_config.rs、crates/adapters/speclink-verbs/src/families/mod.rs、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/render/workflow_config.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/config.rs。驗證：3.1 的測試通過；no_direct_print 通過；1.1 的腳本對 `--help` 回報逐位元相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/color.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.3 （Red）新增 Node 的測試，對應「dispatch 的流程設定動詞」與「動詞覆蓋與跨入口一致性」新增的情境：`workflow-config show` 的結果和 CLI 的 `--json` 相同；宿主儲存有 `writeWorkflowConfig` 時 set 呼叫它正好一次；沒有時以 refused 拒絕且沒有任何寫入方法被呼叫；show 與 `--dry-run` 不需要它；壞的流程設定是 invalid_config；fs 形式直接寫入 config.yaml。涉及 crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗。",
+      "files": [
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/tests/it/api/policy_write.rs",
+        "crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 依 D7 把示範用 server 的整份寫入路由改成「角色 → 用引擎函式預先驗證 → `run_write_with_if_match` 執行 `WorkflowConfigReplace`」，移除路由裡自己開的 unit of work。先查 crates/host/speclink-server 與 crates/adapters/speclink-cli、apps/desktop 的測試有沒有依賴「內容相同的寫入也讓版本前進」：有的話停下來向使用者回報，不自行改斷言；沒有的話補一個「內容相同時版本不變」的測試。涉及 crates/host/speclink-server/src/api/routes.rs。驗證：`cargo test -p speclink-server` 通過（背景執行）；解析失敗與版本不符同時成立時回 invalid_config 的測試通過。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 依 D5 把 CLI 的本機分支改成「選儲存 → 前置檢查 → 執行命令 → 印出共用的輸出 → 後置處理」：關閉 worktree 前的檢查、worktree 變動後的技能同步、審查規則變動後的過期提示留在 CLI，後兩者改用命令回傳的 `changed_keys` 判斷；遠端分支不動，只把它用的中間型別換成引擎的 `WorkflowConfigEdit`。對應「workflow-config show 動詞」與「流程設定的寫入經命令執行層」。涉及 crates/adapters/speclink-cli/src/verbs/config.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：`cargo test -p speclink-cli` 通過（含 workflow_config 的測試與 remote_verb_parity 的 workflow-config 案例）；1.1 的腳本對全部動詞、全部形式與寫出的 config.yaml 回報逐位元相同；在 verbs/config.rs 的 workflow-config 部分搜尋不到直接寫檔的呼叫。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.2 最後驗證 D1 到 D7 的驗收條件。涉及 crates/engine/speclink-core、crates/engine/speclink-fs、crates/host/speclink-host、crates/host/speclink-server、crates/adapters/speclink-verbs、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-fs`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo test -p speclink-desktop-core` 通過（引擎的命令列舉有變動）；Node 的建置與測試通過；1.1 的腳本回報的差異只有規格列出的例外；`cargo build --workspace` 通過且沒有新的警告；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs",
+        "crates/host/speclink-server/tests/it/common/mod.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72VWPGF5N396JDRYSCXG3BR",
+      "taskDesc": "2.1 （Red）為 D2 的 `changed_keys` 寫表格測試：規格「流程設定的寫入經命令執行層」的六列編輯各得到對應的鍵；只改排版或註解時是空的；檔案從不存在變成存在時回傳有設定值的每個鍵；回傳的順序固定。涉及 crates/engine/speclink-core/src/workspace/config.rs。驗證：`cargo test -p speclink-core changed_keys` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config/tests.rs"
+      ],
+      "recordedAt": "2026-11-11T06:24:51Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFH740RR2B9E1V07G7",
+      "taskDesc": "2.2 （Green）實作純函式 `changed_keys`，並把 CLI 的中間型別搬進引擎成為公開的 `WorkflowConfigEdit`（設定政策欄位、context、rules、review 的清單與 baseline、子代理模型與模型清單）。涉及 crates/engine/speclink-core/src/workspace/config.rs。驗證：2.1 的測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/config.rs"
+      ],
+      "recordedAt": "2026-11-11T06:25:30Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGF7DGBAXFXBWEJTGF7",
+      "taskDesc": "2.3 （Red）為 D1 的三種命令與 D3 的儲存方法寫測試，用引擎的測試儲存：`WorkflowConfigShow` 回傳解析後的設定、壞的 YAML 是 invalid_config；`WorkflowConfigEdit` 的每種編輯寫入一次且結果帶 before、after、changed_keys、written；值沒有變時不寫入；dry_run 不寫入但帶 changed_keys；`WorkflowConfigReplace` 對無法解析的內容與不合法的 locale 以 invalid_config 拒絕且儲存不變；沒有實作寫入方法的儲存回報不支援。更新列舉全部命令變體的既有測試。涉及 crates/engine/speclink-core/src/command/workflow_config.rs、crates/engine/speclink-core/src/command/tests.rs、crates/engine/speclink-core/src/teststore.rs。驗證：`cargo test -p speclink-core command::` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-core/src/command/workflow_config.rs"
+      ],
+      "recordedAt": "2026-11-11T06:28:36Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFM7VHFHWG9VMBQC0X",
+      "taskDesc": "2.4 （Green）實作三種命令、結果型別與 `Store::write_workflow_config`（預設拒絕），並在測試儲存實作它。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/typed.rs、crates/engine/speclink-core/src/command/workflow_config.rs、crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/teststore.rs。驗證：2.3 的測試通過；`cargo test -p speclink-core` 全部通過，含 golden（`--test it render_golden::`）沒有變動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/store.rs"
+      ],
+      "recordedAt": "2026-11-11T06:28:58Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFYA7AGFQ1CTP4YGVV",
+      "taskDesc": "2.5 （Red→Green）在檔案實作與 Host 的儲存視圖實作寫入方法：先寫失敗的測試——檔案實作寫出 `<spec_dir>/config.yaml` 且內容逐位元等於給的文字；`PortView` 上執行編輯命令後，儲存收到正好一次提交，內含對鍵 `config.yaml` 的寫入，預期版本是讀到的版本；別人先改過時回報衝突。再實作。涉及 crates/engine/speclink-fs/src/lib.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/bridge.rs。驗證：`cargo test -p speclink-fs` 與 `cargo test -p speclink-host` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs"
+      ],
+      "recordedAt": "2026-11-11T06:31:13Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFH2JETQC5CRV4TF6N",
+      "taskDesc": "3.1 （Red）為 D4 寫 speclink-verbs 的測試：workflow-config 的 11 個末端各自由 `into_command` 得到 `WorkflowConfigShow` 或帶正確編輯的 `WorkflowConfigEdit`（含 `--dry-run`）；寫入動詞的 stdin 規則是帶 `--stdin` 才讀，需要 stdin 卻沒有時回報 invalid_argv；輸出函式對 show 的人眼與 `--json`、各寫入動詞的確認訊息、dry-run 的差異，stdout 全文等於 1.1 的基準。涉及 crates/adapters/speclink-verbs/src/families/workflow_config.rs、crates/adapters/speclink-verbs/src/render/workflow_config.rs。驗證：`cargo test -p speclink-verbs workflow_config` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/workflow_config.rs",
+        "crates/adapters/speclink-verbs/src/render/workflow_config.rs"
+      ],
+      "recordedAt": "2026-11-11T06:33:35Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFY49Y2TFP75RCMR62",
+      "taskDesc": "3.2 （Green）把 workflow-config 的 clap 型別、說明文字用的靜態字串、輸出與 `unified_diff` 從 CLI 搬進 speclink-verbs，加入 `SpecVerb` 與單一出口。涉及 crates/adapters/speclink-verbs/src/families/workflow_config.rs、crates/adapters/speclink-verbs/src/families/mod.rs、crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/render/workflow_config.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/config.rs。驗證：3.1 的測試通過；no_direct_print 通過；1.1 的腳本對 `--help` 回報逐位元相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/color.rs",
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/config.rs",
+        "crates/adapters/speclink-cli/tests/it/init_tools.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs"
+      ],
+      "recordedAt": "2026-11-11T06:38:25Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGFBSD0K5K3T44HV3CV",
+      "taskDesc": "4.3 （Red）新增 Node 的測試，對應「dispatch 的流程設定動詞」與「動詞覆蓋與跨入口一致性」新增的情境：`workflow-config show` 的結果和 CLI 的 `--json` 相同；宿主儲存有 `writeWorkflowConfig` 時 set 呼叫它正好一次；沒有時以 refused 拒絕且沒有任何寫入方法被呼叫；show 與 `--dry-run` 不需要它；壞的流程設定是 invalid_config；fs 形式直接寫入 config.yaml。涉及 crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/tests/it/api/policy_write.rs",
+        "crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts"
+      ],
+      "recordedAt": "2026-11-11T06:41:01Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGF308MREVEDQ5NWFMC",
+      "taskDesc": "4.2 依 D7 把示範用 server 的整份寫入路由改成「角色 → 用引擎函式預先驗證 → `run_write_with_if_match` 執行 `WorkflowConfigReplace`」，移除路由裡自己開的 unit of work。先查 crates/host/speclink-server 與 crates/adapters/speclink-cli、apps/desktop 的測試有沒有依賴「內容相同的寫入也讓版本前進」：有的話停下來向使用者回報，不自行改斷言；沒有的話補一個「內容相同時版本不變」的測試。涉及 crates/host/speclink-server/src/api/routes.rs。驗證：`cargo test -p speclink-server` 通過（背景執行）；解析失敗與版本不符同時成立時回 invalid_config 的測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ],
+      "recordedAt": "2026-11-11T06:41:07Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGF6P72D342KMP59TNV",
+      "taskDesc": "4.1 依 D5 把 CLI 的本機分支改成「選儲存 → 前置檢查 → 執行命令 → 印出共用的輸出 → 後置處理」：關閉 worktree 前的檢查、worktree 變動後的技能同步、審查規則變動後的過期提示留在 CLI，後兩者改用命令回傳的 `changed_keys` 判斷；遠端分支不動，只把它用的中間型別換成引擎的 `WorkflowConfigEdit`。對應「workflow-config show 動詞」與「流程設定的寫入經命令執行層」。涉及 crates/adapters/speclink-cli/src/verbs/config.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：`cargo test -p speclink-cli` 通過（含 workflow_config 的測試與 remote_verb_parity 的 workflow-config 案例）；1.1 的腳本對全部動詞、全部形式與寫出的 config.yaml 回報逐位元相同；在 verbs/config.rs 的 workflow-config 部分搜尋不到直接寫檔的呼叫。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs"
+      ],
+      "recordedAt": "2026-11-11T06:52:15Z"
+    },
+    {
+      "taskId": "tsk_01M72VWPGF2X0NHJ7VV9TKFHRH",
+      "taskDesc": "5.2 最後驗證 D1 到 D7 的驗收條件。涉及 crates/engine/speclink-core、crates/engine/speclink-fs、crates/host/speclink-host、crates/host/speclink-server、crates/adapters/speclink-verbs、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-fs`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo test -p speclink-desktop-core` 通過（引擎的命令列舉有變動）；Node 的建置與測試通過；1.1 的腳本回報的差異只有規格列出的例外；`cargo build --workspace` 通過且沒有新的警告；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "d22cb4222d4826bab74c5daa60b323a976fa25c1",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs",
+        "crates/host/speclink-server/tests/it/common/mod.rs"
+      ],
+      "recordedAt": "2026-11-11T07:18:22Z"
+    }
+  ]
+}
