@@ -43,6 +43,11 @@ export interface DiscussionDoc {
 }
 
 /**
+ * @deprecated This 31-method store is going away (change
+ * retire-teamstore-and-drivers). Use `createHost` with a `StorePort` of three
+ * functions (`list`, `read`, `commit`), which adds transactions, version
+ * checks and events. It still works the same until it is removed.
+ *
  * The storage interface the engine reads and writes spec documents through —
  * one-to-one with the Rust core's `Store` trait (camelCase). Artifact
  * identifiers are schema-defined output paths relative to a change (e.g.
@@ -182,6 +187,7 @@ export interface FsStoreOptions {
 }
 
 export interface CreateEngineOptions {
+  /** The fs form, or a `Store` object (deprecated: use `createHost` with a `StorePort`). */
   store: FsStoreOptions | Store
   /**
    * The operator identity every stamp this engine writes is attributed to
@@ -243,7 +249,232 @@ export interface Engine {
  * host-implemented Store object. A Store object missing required methods
  * throws synchronously, listing the missing method names.
  */
+export function createEngine(options: CreateEngineOptions & { store: FsStoreOptions }): Engine
+/**
+ * @deprecated The host `Store` object form is going away (change
+ * retire-teamstore-and-drivers): use `createHost` with a `StorePort`.
+ */
+export function createEngine(options: CreateEngineOptions & { store: Store }): Engine
 export function createEngine(options: CreateEngineOptions): Engine
+
+// --- the store port: three functions (createHost, runStoreConformance) ---
+
+/** A document of the store port. Versions and times are integers from 0 to 2^53 − 1 (`Number.MAX_SAFE_INTEGER`); times are milliseconds since the Unix epoch. */
+export interface PortDocument {
+  content: string
+  /** The scope version of the commit that last wrote this document. */
+  version: number
+  modifiedAt: number
+}
+
+export interface PortListEntry {
+  key: string
+  version: number
+  modifiedAt: number
+}
+
+/** The scope's current version and the matching documents, in byte order of their keys. */
+export interface PortListing {
+  version: number
+  entries: PortListEntry[]
+}
+
+/** One change in a commit. `expected: null` means the document must not exist; a number is the version it must have. */
+export type PortOp =
+  | { op: 'put'; key: string; content: string; expected: number | null }
+  | { op: 'delete'; key: string; expected: number }
+
+export interface PortEvent {
+  name: string
+  payload: unknown
+}
+
+/** Everything one command writes, in one commit. */
+export interface PortCommit {
+  actor: { id: string; displayName: string }
+  /** The command's stable name, e.g. `new-change`. */
+  command: string
+  at: number
+  ops: PortOp[]
+  /** The domain events of the command: the only way events reach the host. */
+  events: PortEvent[]
+}
+
+/**
+ * The storage contract a host implements: three functions, each on one scope
+ * (an opaque string). Each function may return its value or a Promise.
+ *
+ * - `commit` applies all of its operations or none: run it as one database
+ *   transaction, and check every `expected` before the first write. One
+ *   expectation that does not hold rejects the whole commit. Give the written
+ *   documents the new scope version as their version and `at` as their time,
+ *   and keep the events in the same transaction when you need them delivered.
+ * - `read` returns one result per key, in the same order (`null` for a
+ *   missing document), all from one completed commit. `list` returns the
+ *   documents whose key starts with `prefix`.
+ *
+ * Errors: throw an object whose `code` is `'conflict'` (with the `key` that
+ * does not match and its `actual` version, or null when it does not exist) or
+ * `'unavailable'` (a temporary failure). Anything else is another failure.
+ * `StoreConflictError` and `StoreUnavailableError` set these fields for you;
+ * the SDK reads only the fields, never `instanceof`.
+ *
+ * WARNING: do not wait for a `dispatch` of the same host inside these
+ * functions — the dispatch waits for them, so it would never finish.
+ */
+export interface StorePort {
+  list(scope: string, prefix: string): MaybePromise<PortListing>
+  read(scope: string, keys: string[]): MaybePromise<(PortDocument | null)[]>
+  commit(scope: string, commit: PortCommit): MaybePromise<number>
+}
+
+// --- the host kit: createHost ---
+
+/** Who acts: an id that stays when the user is renamed, and the name document stamps carry. Neither may be empty or only white space. */
+export interface HostIdentity {
+  id: string
+  displayName: string
+}
+
+export interface BeforeCommandInfo {
+  identity: HostIdentity
+  scope: string
+  /** The engine command's stable name, e.g. `archive` or `workflow-config-edit`. */
+  command: string
+  /** The command's params, camelCase (e.g. `{ change: 'demo', carryReview: true, … }`). Read them; changing them changes nothing. */
+  params: Record<string, unknown>
+  /** Only for the workflow-config writes: the keys the write changes, e.g. `['tdd']`. */
+  changedKeys?: string[]
+}
+
+/** `undefined` or `{ allow: true }` allows; `{ allow: false, reason }` refuses with that reason. */
+export type BeforeCommandAnswer = void | { allow: true } | { allow: false; reason: string }
+
+export interface AfterCommitInfo {
+  identity: HostIdentity
+  scope: string
+  command: string
+  /** The scope version the commit returned. */
+  scopeVersion: number
+  /** The events of the commit, the same the store's `commit` received. */
+  events: PortEvent[]
+}
+
+/**
+ * The host's two points to step in; both are optional. An unknown name is
+ * refused at `createHost`.
+ *
+ * WARNING: do not wait for a `dispatch` of the same host inside a hook —
+ * the dispatch waits for `beforeCommand`, so it would never finish.
+ */
+export interface HostHooks {
+  /**
+   * Asked exactly once per call, before anything is written. A refusal ends
+   * the call with code `refused` and your reason; for any command but the
+   * workflow-config writes it comes before the store sees a call. A throw, a
+   * rejected Promise or an answer of another shape does not allow: the call
+   * ends with code `internal`.
+   */
+  beforeCommand?(info: BeforeCommandInfo): MaybePromise<BeforeCommandAnswer>
+  /**
+   * Called after a successful commit; it only watches. The dispatch does not
+   * wait for it, and its throw or rejected Promise is swallowed. Delivery is
+   * not guaranteed: a host that needs every event handles them in the store's
+   * `commit`, in the same transaction as the writes.
+   */
+  afterCommit?(info: AfterCommitInfo): MaybePromise<void>
+}
+
+export interface CreateHostOptions {
+  store: StorePort
+  hooks?: HostHooks
+}
+
+export interface HostDispatchCall {
+  /** From your own code (your session), never from the model: argv and stdin cannot change it. */
+  identity: HostIdentity
+  scope: string
+  /** The verb text without the program name, as for `engine.dispatch`. */
+  argv: string[]
+  stdin?: string
+}
+
+export interface Host {
+  /**
+   * Run one verb for `identity` on `scope`. The verbs, the stdin rules, the
+   * result and the Error shape are those of `engine.dispatch`; the verbs that
+   * need a checkout reject with `invalid_argv`. An identity or scope that is
+   * empty rejects with `invalid_argv` before any store call. Store failures
+   * reject with `revision_conflict`, `unavailable` or `internal`; a refusal
+   * of `beforeCommand` with `refused`.
+   */
+  dispatch(call: HostDispatchCall): Promise<unknown>
+}
+
+/**
+ * Build one host kit for every user over a store port and optional hooks. A
+ * store without `list`, `read` or `commit` throws synchronously, naming the
+ * missing functions.
+ */
+export function createHost(options: CreateHostOptions): Host
+
+/**
+ * The `speclink` tool for a host's Agent framework. The model fills
+ * `inputSchema` (`argv`, optional `stdin`); the host adds the identity and
+ * scope from its own session and calls `host.dispatch`. The description lists
+ * every verb with an engine command, from the same definition the parser
+ * uses; the verbs that need a checkout are not in it.
+ */
+export const agentTool: {
+  readonly name: 'speclink'
+  readonly description: string
+  readonly inputSchema: Readonly<Record<string, unknown>>
+}
+
+/** A version conflict for a store port's `commit` to throw. */
+export class StoreConflictError extends Error {
+  readonly code: 'conflict'
+  readonly key: string
+  /** The document's current version, or null when it does not exist. */
+  readonly actual: number | null
+  constructor(key: string, actual: number | null)
+}
+
+/** A temporary failure for a store port's function to throw; the caller can retry. */
+export class StoreUnavailableError extends Error {
+  readonly code: 'unavailable'
+  constructor(message: string)
+}
+
+export interface ConformanceHarness {
+  /** The store port under test. */
+  store: StorePort
+  /** A new, unused scope on every call. */
+  newScope(): MaybePromise<string>
+  /** OPTIONAL: the events the store kept for `scope`, oldest first, each with its commit's version. Without it, `events-with-commit` is skipped. */
+  recordedEvents?(scope: string): MaybePromise<{ name: string; payload: unknown; version: number }[]>
+}
+
+export interface ConformanceCheck {
+  /** The check's stable name, the same as in the Rust suite (e.g. `conflict-stale-version`). */
+  name: string
+  outcome: 'passed' | 'failed' | 'skipped'
+  detail?: string
+}
+
+export interface ConformanceReport {
+  /** True when no check failed. */
+  passed: boolean
+  checks: ConformanceCheck[]
+}
+
+/**
+ * Run the store contract's conformance checks — the same sixteen checks the
+ * Rust implementations run — on a host's store port. Runs on a background
+ * thread; the two concurrent checks call the store from several threads at
+ * once, so they test the host's transactions.
+ */
+export function runStoreConformance(harness: ConformanceHarness): Promise<ConformanceReport>
 
 /** The render matrix: target × invocation. */
 export interface RenderOptions {

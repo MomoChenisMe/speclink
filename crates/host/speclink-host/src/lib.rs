@@ -17,6 +17,7 @@ pub mod context;
 pub mod documents;
 pub mod drift;
 pub mod gate;
+pub mod kit;
 pub mod policy;
 pub mod port_exec;
 pub(crate) mod port_view;

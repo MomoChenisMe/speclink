@@ -1,0 +1,325 @@
+//! The JS store port (design D7): a host's three JS functions — `list`, `read`,
+//! `commit` — as a Rust `StorePort`. The functions may return values or
+//! Promises; each call goes through the store bridge's threadsafe function and
+//! the calling worker thread waits for it to settle.
+//!
+//! The JS invoker (`makePortInvoker` in index.js) always settles with a value:
+//! `{ ok: true, value }` or `{ ok: false, error: { code, message, key, actual } }`,
+//! so the thrown object's fields reach this side whole. Everything the JS side
+//! returns is checked here before the engine sees it.
+
+use crate::store_bridge::JsStoreBridge;
+use speclink_store_port::conformance::{self, CheckOutcome, PortHarness};
+use speclink_store_port::{
+    Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError, RecordedEvent,
+    ScopeId, StorePort, Timestamp, Version, MAX_VERSION,
+};
+
+/// A JS object with `list`, `read` and `commit` (and, for a conformance run,
+/// `newScope` and `recordedEvents`), reached through the bridge.
+#[derive(Clone)]
+pub struct JsPort {
+    bridge: JsStoreBridge,
+}
+
+impl JsPort {
+    pub fn new(bridge: JsStoreBridge) -> JsPort {
+        JsPort { bridge }
+    }
+
+    fn call(&self, method: &'static str, args: serde_json::Value) -> Result<serde_json::Value, Thrown> {
+        settle_call(&self.bridge, method, args)
+    }
+}
+
+/// Call one JS function through a bridge built over `makePortInvoker`, and
+/// wait for it to settle; a thrown error comes back as its fields, its message
+/// prefixed with the function's name.
+pub(crate) fn settle_call(
+    bridge: &JsStoreBridge,
+    method: &'static str,
+    args: serde_json::Value,
+) -> Result<serde_json::Value, Thrown> {
+    let settled = bridge
+        .call(method, args)
+        .map_err(|f| Thrown::other(format!("{method}: {}", f.message)))?;
+    if settled.get("ok").and_then(|ok| ok.as_bool()) == Some(true) {
+        return Ok(settled.get("value").cloned().unwrap_or(serde_json::Value::Null));
+    }
+    let error = settled.get("error").cloned().unwrap_or_default();
+    let text = |field: &str| error.get(field).and_then(|v| v.as_str()).map(str::to_string);
+    Err(Thrown {
+        code: text("code"),
+        message: format!("{method}: {}", text("message").unwrap_or_else(|| "failed".to_string())),
+        key: text("key"),
+        actual: error.get("actual").cloned().unwrap_or_default(),
+    })
+}
+
+/// What a JS function threw.
+pub(crate) struct Thrown {
+    code: Option<String>,
+    pub(crate) message: String,
+    key: Option<String>,
+    actual: serde_json::Value,
+}
+
+impl Thrown {
+    fn other(message: String) -> Thrown {
+        Thrown { code: None, message, key: None, actual: serde_json::Value::Null }
+    }
+
+    /// `unavailable` is a temporary failure; every other throw outside a
+    /// commit's conflict is a backend failure.
+    fn into_port_error(self) -> PortError {
+        match self.code.as_deref() {
+            Some("unavailable") => PortError::Unavailable { message: self.message },
+            _ => PortError::Backend { message: self.message },
+        }
+    }
+}
+
+/// A returned value that breaks the contract: a backend failure that names
+/// the function and the field.
+fn malformed(method: &str, field: &str, rule: impl std::fmt::Display) -> PortError {
+    PortError::Backend { message: format!("{method}: {field} {rule}") }
+}
+
+/// An integer from 0 to 2^53 − 1. A JS number arrives as an integer or a
+/// float; a fraction, a negative number or a larger one is rejected, never
+/// rounded or cut.
+fn integer(method: &str, field: &str, value: Option<&serde_json::Value>) -> Result<u64, PortError> {
+    let rule = format!("must be an integer from 0 to {MAX_VERSION}");
+    let number = value.and_then(|v| v.as_number()).ok_or_else(|| malformed(method, field, &rule))?;
+    let n = match (number.as_u64(), number.as_f64()) {
+        (Some(n), _) => Some(n),
+        (None, Some(f)) if f.fract() == 0.0 && (0.0..=MAX_VERSION as f64).contains(&f) => Some(f as u64),
+        _ => None,
+    };
+    match n {
+        Some(n) if n <= MAX_VERSION => Ok(n),
+        _ => Err(malformed(method, field, format!("{rule}, got {number}"))),
+    }
+}
+
+fn version(method: &str, field: &str, value: Option<&serde_json::Value>) -> Result<Version, PortError> {
+    Version::new(integer(method, field, value)?).map_err(|e| malformed(method, field, e))
+}
+
+fn timestamp(method: &str, field: &str, value: Option<&serde_json::Value>) -> Result<Timestamp, PortError> {
+    Timestamp::new(integer(method, field, value)?).map_err(|e| malformed(method, field, e))
+}
+
+fn commit_json(commit: &Commit) -> serde_json::Value {
+    let ops: Vec<serde_json::Value> = commit
+        .ops()
+        .iter()
+        .map(|op| match op {
+            Op::Put { key, content, expected } => serde_json::json!({
+                "op": "put",
+                "key": key.as_str(),
+                "content": content,
+                "expected": match expected {
+                    Expected::Absent => serde_json::Value::Null,
+                    Expected::At(v) => serde_json::json!(v.get()),
+                },
+            }),
+            Op::Delete { key, expected } => {
+                serde_json::json!({ "op": "delete", "key": key.as_str(), "expected": expected.get() })
+            }
+        })
+        .collect();
+    let events: Vec<serde_json::Value> = commit
+        .events()
+        .iter()
+        .map(|e| serde_json::json!({ "name": e.name(), "payload": e.payload() }))
+        .collect();
+    serde_json::json!({
+        "actor": { "id": commit.actor().id(), "displayName": commit.actor().display_name() },
+        "command": commit.command(),
+        "at": commit.at().get(),
+        "ops": ops,
+        "events": events,
+    })
+}
+
+/// The expectation the commit's operation on `key` stated.
+fn expected_of(commit: &Commit, key: &DocKey) -> Option<Expected> {
+    commit.ops().iter().find(|op| op.key() == key).map(|op| match op {
+        Op::Put { expected, .. } => *expected,
+        Op::Delete { expected, .. } => Expected::At(*expected),
+    })
+}
+
+impl StorePort for JsPort {
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        const M: &str = "list";
+        let value = self
+            .call(M, serde_json::json!([scope.as_str(), prefix.as_str()]))
+            .map_err(Thrown::into_port_error)?;
+        let scope_version = version(M, "version", value.get("version"))?;
+        let entries = value
+            .get("entries")
+            .and_then(|e| e.as_array())
+            .ok_or_else(|| malformed(M, "entries", "must be an array"))?;
+        let entries = entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                let field = |name: &str| format!("entries[{i}].{name}");
+                let key = entry
+                    .get("key")
+                    .and_then(|k| k.as_str())
+                    .ok_or_else(|| malformed(M, &field("key"), "must be a string"))?;
+                Ok(ListEntry {
+                    key: DocKey::new(key).map_err(|e| malformed(M, &field("key"), e))?,
+                    version: version(M, &field("version"), entry.get("version"))?,
+                    modified_at: timestamp(M, &field("modifiedAt"), entry.get("modifiedAt"))?,
+                })
+            })
+            .collect::<Result<Vec<ListEntry>, PortError>>()?;
+        Ok(Listing { version: scope_version, entries })
+    }
+
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        const M: &str = "read";
+        let names: Vec<&str> = keys.iter().map(DocKey::as_str).collect();
+        let value = self
+            .call(M, serde_json::json!([scope.as_str(), names]))
+            .map_err(Thrown::into_port_error)?;
+        let docs = value.as_array().ok_or_else(|| malformed(M, "result", "must be an array"))?;
+        if docs.len() != keys.len() {
+            return Err(malformed(
+                M,
+                "result",
+                format!("array length must equal the number of keys ({}), got {}", keys.len(), docs.len()),
+            ));
+        }
+        docs.iter()
+            .enumerate()
+            .map(|(i, doc)| {
+                if doc.is_null() {
+                    return Ok(None);
+                }
+                let field = |name: &str| format!("[{i}].{name}");
+                let content = doc
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .ok_or_else(|| malformed(M, &field("content"), "must be a string"))?;
+                Ok(Some(Document {
+                    content: content.to_string(),
+                    version: version(M, &field("version"), doc.get("version"))?,
+                    modified_at: timestamp(M, &field("modifiedAt"), doc.get("modifiedAt"))?,
+                }))
+            })
+            .collect()
+    }
+
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        const M: &str = "commit";
+        match self.call(M, serde_json::json!([scope.as_str(), commit_json(commit)])) {
+            Ok(value) => version(M, "result", Some(&value)),
+            Err(thrown) if thrown.code.as_deref() == Some("conflict") => {
+                // A conflict names one key of this commit; any other key is not
+                // this commit's conflict, so it reads as a backend failure.
+                let named = thrown.key.as_deref().and_then(|k| DocKey::new(k).ok());
+                match named.and_then(|key| expected_of(commit, &key).map(|expected| (key, expected))) {
+                    Some((key, expected)) => Err(PortError::Conflict {
+                        key,
+                        expected,
+                        // `null` (or no `actual` at all) reads as "no document".
+                        actual: match &thrown.actual {
+                            serde_json::Value::Null => None,
+                            other => Some(version(M, "error.actual", Some(other))?),
+                        },
+                    }),
+                    None => Err(PortError::Backend {
+                        message: format!(
+                            "{} (a conflict on a key that is not in this commit: {})",
+                            thrown.message,
+                            thrown.key.as_deref().unwrap_or("none given")
+                        ),
+                    }),
+                }
+            }
+            Err(thrown) => Err(thrown.into_port_error()),
+        }
+    }
+}
+
+// --- the conformance run (design D8) ---
+
+struct JsHarness {
+    port: JsPort,
+    keeps_events: bool,
+}
+
+impl PortHarness for JsHarness {
+    fn store(&self) -> &dyn StorePort {
+        &self.port
+    }
+
+    fn new_scope(&self) -> Result<ScopeId, PortError> {
+        const M: &str = "newScope";
+        let value = self.port.call(M, serde_json::json!([])).map_err(Thrown::into_port_error)?;
+        let scope = value.as_str().ok_or_else(|| malformed(M, "result", "must be a string"))?;
+        ScopeId::new(scope).map_err(|e| malformed(M, "result", e))
+    }
+
+    fn recorded_events(&self, scope: &ScopeId) -> Result<Option<Vec<RecordedEvent>>, PortError> {
+        const M: &str = "recordedEvents";
+        if !self.keeps_events {
+            return Ok(None);
+        }
+        let value = self
+            .port
+            .call(M, serde_json::json!([scope.as_str()]))
+            .map_err(Thrown::into_port_error)?;
+        let events = value.as_array().ok_or_else(|| malformed(M, "result", "must be an array"))?;
+        events
+            .iter()
+            .enumerate()
+            .map(|(i, event)| {
+                let name = event
+                    .get("name")
+                    .and_then(|n| n.as_str())
+                    .ok_or_else(|| malformed(M, &format!("[{i}].name"), "must be a string"))?;
+                Ok(RecordedEvent {
+                    name: name.to_string(),
+                    payload: event.get("payload").cloned().unwrap_or_default(),
+                    version: version(M, &format!("[{i}].version"), event.get("version"))?,
+                })
+            })
+            .collect::<Result<Vec<_>, PortError>>()
+            .map(Some)
+    }
+}
+
+/// Run the store contract's checks on the JS functions behind `bridge` and
+/// shape the report for JS: `{ passed, checks: [{ name, outcome, detail? }] }`.
+pub fn run_conformance(bridge: JsStoreBridge, keeps_events: bool) -> serde_json::Value {
+    let harness = JsHarness { port: JsPort::new(bridge), keeps_events };
+    let report = conformance::run(&harness);
+    let checks: Vec<serde_json::Value> = report
+        .checks
+        .iter()
+        .map(|check| match &check.outcome {
+            CheckOutcome::Passed => serde_json::json!({ "name": check.name, "outcome": "passed" }),
+            CheckOutcome::Failed(detail) => {
+                serde_json::json!({ "name": check.name, "outcome": "failed", "detail": detail })
+            }
+            CheckOutcome::Skipped(reason) => {
+                // The suite's reason speaks of a harness; a JS host gave no
+                // recordedEvents function.
+                let detail = if keeps_events {
+                    reason.clone()
+                } else {
+                    "skipped: no recordedEvents function was given, so the events the store keeps cannot be read back"
+                        .to_string()
+                };
+                serde_json::json!({ "name": check.name, "outcome": "skipped", "detail": detail })
+            }
+        })
+        .collect();
+    serde_json::json!({ "passed": report.passed(), "checks": checks })
+}

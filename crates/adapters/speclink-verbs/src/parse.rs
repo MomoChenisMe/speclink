@@ -105,12 +105,17 @@ where
 {
     let line = std::iter::once(std::ffi::OsString::from("speclink"))
         .chain(argv.into_iter().map(Into::into));
-    // The CLI's tree plus the stamps' host-only `--stdin`.
-    let mut tree = station::with_stamp_stdin(VerbLine::command());
+    let mut tree = verb_tree();
     let matches = tree.try_get_matches_from_mut(line).map_err(parse_error)?;
     let VerbLine { verb, .. } =
         VerbLine::from_arg_matches(&matches).map_err(|e| parse_error(e.format(&mut tree)))?;
     Ok(ParsedVerb { verb, stamp_stdin: station::stamp_stdin_of(&matches) })
+}
+
+/// The clap tree `parse` reads: the CLI's tree plus the stamps' host-only
+/// `--stdin`.
+pub(crate) fn verb_tree() -> clap::Command {
+    station::with_stamp_stdin(VerbLine::command())
 }
 
 fn parse_error(e: clap::Error) -> ParseError {

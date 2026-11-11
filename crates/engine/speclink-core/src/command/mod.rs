@@ -10,6 +10,7 @@
 //! management (link, unlink, auth) intentionally do NOT appear in [`Command`].
 
 mod change_rank;
+mod describe;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
@@ -281,8 +282,10 @@ impl DomainEvent {
 
 /// The closed verb set of the command runtime, grouped per the 決策二 coverage
 /// table. Inputs mirror the CLI argv vocabulary one-to-one; rendering concerns
-/// (`--json`, color) stay in the entry points.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// (`--json`, color) stay in the entry points. `Serialize` backs
+/// [`Command::params`]: field names go out in camelCase.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all_fields = "camelCase")]
 pub enum Command {
     // --- 查詢群 ---
     /// `list [--specs] [--changes] [--sort <key>]`

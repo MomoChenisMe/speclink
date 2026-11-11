@@ -1,3 +1,4 @@
+mod command_describe;
 mod mode_resolution;
 mod no_direct_fs;
 mod no_process_env;

@@ -90,7 +90,7 @@ Node SDK SHALL 匯出 createHost，它接受一個實作儲存接口三個函式
 
 #### Scenario: 寫入的動詞只呼叫一次 commit 並帶事件
 
-- **WHEN** 經 host.dispatch 執行 `['task', 'done', '1.1', '--change', 'demo']` 成功
+- **WHEN** 經 host.dispatch 執行 `['task', 'done', '1', '--change', 'demo']` 成功
 - **THEN** 儲存的 commit 被呼叫正好一次；commit 物件的 command 是 `task-done`，ops 含 tasks 文件的 put，events 含一筆 name 為 task-completed 的事件
 
 #### Scenario: 新文件的 expected 是 null
@@ -130,7 +130,7 @@ Node SDK SHALL 匯出 createHost，它接受一個實作儲存接口三個函式
 
 ### Requirement: 合格測試隨套件提供
 
-Node SDK SHALL 匯出 runStoreConformance，讓宿主對自己的 JS 儲存執行儲存契約的合格測試。它接受一個物件：受測的 store、每次回傳一個沒用過的範圍的 newScope、選填的 recordedEvents（回傳某個範圍已經收到的事件，每筆含 name、payload 與所屬提交的 version）；回傳 Promise，解析為 `{ passed, checks }`，checks 的每一筆是 `{ name, outcome, detail }`，outcome 是 `passed`、`failed` 或 `skipped`。檢查的項目與名稱 SHALL 和 store-port-contract 規定的合格測試相同，同一份檢查 SHALL 同時用於 Rust 實作與 JS 實作。沒有提供 recordedEvents 時，檢查事件的項目 SHALL 是 `skipped` 並在 detail 說明原因。passed SHALL 在沒有任何一項是 `failed` 時為 true。runStoreConformance SHALL NOT 阻塞 JS 事件迴圈。
+Node SDK SHALL 匯出 runStoreConformance，讓宿主對自己的 JS 儲存執行儲存契約的合格測試。它接受一個物件：受測的 store、每次回傳一個沒用過的範圍的 newScope、選填的 recordedEvents（回傳某個範圍已經收到的事件，每筆含 name、payload 與所屬提交的 version）；回傳 Promise，解析為 `{ passed, checks }`，checks 的每一筆是 `{ name, outcome, detail }`，outcome 是 `passed`、`failed` 或 `skipped`。檢查的項目與名稱 SHALL 和 store-port-contract 規定的合格測試相同，同一份檢查 SHALL 同時用於 Rust 實作與 JS 實作。沒有提供 recordedEvents 時，只能靠讀回事件判定的檢查（`events-with-commit`）SHALL 是 `skipped` 並在 detail 說明原因；其餘檢查 SHALL 照常執行，和 store-port-contract 對不保存事件的實作的規定相同。passed SHALL 在沒有任何一項是 `failed` 時為 true。runStoreConformance SHALL NOT 阻塞 JS 事件迴圈。
 
 #### Scenario: 正確的 JS 儲存通過全部檢查
 
@@ -145,7 +145,7 @@ Node SDK SHALL 匯出 runStoreConformance，讓宿主對自己的 JS 儲存執�
 #### Scenario: 沒有 recordedEvents 時事件的檢查略過
 
 - **WHEN** 對一個正確的 JS 儲存執行 runStoreConformance，不提供 recordedEvents
-- **THEN** `events-with-commit` 與 `events-only-commit` 是 `skipped` 且 detail 說明沒有提供 recordedEvents；其餘是 `passed`；passed 是 true
+- **THEN** `events-with-commit` 是 `skipped` 且 detail 說明沒有提供 recordedEvents；其餘是 `passed`（`events-only-commit` 照樣檢查只有事件的提交會讓範圍版本前進）；passed 是 true
 
 #### Scenario: 非同步的儲存
 

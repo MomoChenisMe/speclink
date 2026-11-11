@@ -49,7 +49,7 @@ Source discussion: embedded-host-needs（cut 6）。
 - **每個動詞各一個掛鉤**：掛鉤收到命令名稱，由宿主自己分辨。
 - **保證送達的事件通道**：提交後掛鉤是盡力而為。保證由宿主在提交的交易裡自己做。
 - **Rust 的動詞文字入口**：Agent 工具的門做在 Node SDK，因為內嵌的宿主是 Node 程序。Rust 的宿主套件收的是引擎命令。
-- **需要 checkout 的動詞**（`drift`、`change rank`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`）：這個門照舊以 `invalid_argv` 拒絕。`change rank` 在變更 skills-verbs-first-wave 處理。
+- **需要 checkout 的動詞**（`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`）：這個門照舊以 `invalid_argv` 拒絕。`change rank` 已由變更 skills-verbs-first-wave 改成引擎命令，這個門可以執行它。
 - **匯入匯出、自由欄位、遠端提供技能**：各自有後面的變更。
 - **移除 31 方法的 JS 儲存**：這次只標示，不移除。
 - **使用者文件**：這個變更不動 README 與 docs。
@@ -85,22 +85,28 @@ Source discussion: embedded-host-needs（cut 6）。
     - crates/adapters/speclink-node/__test__/agent-tool.spec.ts
   - Modified:
     - crates/engine/speclink-core/src/command/mod.rs
+    - crates/engine/speclink-core/src/lifecycle/model.rs
+    - crates/engine/speclink-core/src/lifecycle/plan.rs
+    - crates/engine/speclink-core/src/workspace/config.rs
     - crates/engine/speclink-core/tests/it/main.rs
     - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/src/lib.rs
     - crates/adapters/speclink-verbs/src/lib.rs
+    - crates/adapters/speclink-verbs/src/parse.rs
     - crates/adapters/speclink-node/src/lib.rs
+    - crates/adapters/speclink-node/src/store_bridge.rs
     - crates/adapters/speclink-node/Cargo.toml
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
     - crates/adapters/speclink-node/binding.js
     - crates/adapters/speclink-node/binding.d.ts
+    - Cargo.lock
   - Removed: (none)
 - 相依：排在變更 workflow-config-commands 之後（流程設定的寫入要先成為引擎命令，執行前掛鉤才收得到變動的鍵）。
 - 三種形態下的結果：
   - 本機 repo：不適用。本機沒有宿主，CLI 直接對檔案執行；`createEngine` 的 fs 形式不變。
   - 連到遠端的 checkout：這次不做。CLI 與 Speclink Desktop 連的是 HTTP 的門，在變更 host-kit-client-door 做；在那之前示範用 server 的行為不變。
-  - 沒有本機規格檔的內嵌宿主：可用。宿主以 `createHost` 建立宿主套件，Agent 工具經 `host.dispatch` 執行全部有引擎命令的動詞。已知缺口：需要 checkout 的六個動詞不可用；`task done` 這類需要「改了哪些檔」的動詞，這個門不替宿主收集本機事實。
+  - 沒有本機規格檔的內嵌宿主：可用。宿主以 `createHost` 建立宿主套件，Agent 工具經 `host.dispatch` 執行全部有引擎命令的動詞。已知缺口：需要 checkout 的五個動詞不可用；`task done` 這類需要「改了哪些檔」的動詞，這個門不替宿主收集本機事實——沒有給檔案清單時任務照常勾選，但不記任何檔案，evidence 也不帶 repo 與 head commit。
 - 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：
   - docs/sdk-node.zh-TW.md 與 docs/sdk-node.md：新增宿主套件、兩個掛鉤、JS 版儲存接口、合格測試、Agent 工具定義；把 31 方法的 JS 儲存標成即將移除。
   - README.md 與 README.zh-TW.md：「把 Speclink 內嵌進你的系統」一節要引用 `createHost`。

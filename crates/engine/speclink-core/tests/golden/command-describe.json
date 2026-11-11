@@ -1,0 +1,374 @@
+[
+  {
+    "name": "list",
+    "params": {
+      "changes": true,
+      "sort": "name",
+      "specs": false,
+      "worktrees": {
+        "demo": {
+          "branch": "speclink/demo",
+          "path": "/work/repo.worktrees/demo"
+        }
+      }
+    }
+  },
+  {
+    "name": "show",
+    "params": {
+      "item": "demo",
+      "itemType": "change"
+    }
+  },
+  {
+    "name": "status",
+    "params": {
+      "change": "demo",
+      "schema": null
+    }
+  },
+  {
+    "name": "instructions",
+    "params": {
+      "artifact": "apply",
+      "change": "demo",
+      "schema": null
+    }
+  },
+  {
+    "name": "validate",
+    "params": {
+      "all": false,
+      "changes": false,
+      "item": "demo",
+      "specs": false,
+      "strict": true
+    }
+  },
+  {
+    "name": "analyze",
+    "params": {
+      "change": "demo"
+    }
+  },
+  {
+    "name": "trace",
+    "params": {
+      "capability": "host-kit"
+    }
+  },
+  {
+    "name": "plan",
+    "params": {
+      "ranks": {
+        "demo": "a0"
+      }
+    }
+  },
+  {
+    "name": "plan-strict",
+    "params": {}
+  },
+  {
+    "name": "artifact-cat",
+    "params": {
+      "artifact": "proposal",
+      "change": "demo"
+    }
+  },
+  {
+    "name": "language-show",
+    "params": {}
+  },
+  {
+    "name": "discuss-list",
+    "params": {
+      "archived": true
+    }
+  },
+  {
+    "name": "discuss-show",
+    "params": {
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-search",
+    "params": {
+      "terms": [
+        "host",
+        "kit"
+      ]
+    }
+  },
+  {
+    "name": "new-change",
+    "params": {
+      "agent": "claude",
+      "description": "A demo change",
+      "fromDiscussion": "topic",
+      "last": true,
+      "name": "demo",
+      "schema": "spec-driven"
+    }
+  },
+  {
+    "name": "new-artifact",
+    "params": {
+      "capability": "host-kit",
+      "change": "demo",
+      "content": "## ADDED Requirements\n",
+      "force": false,
+      "kind": "specs",
+      "newCapability": true
+    }
+  },
+  {
+    "name": "task-done",
+    "params": {
+      "change": "demo",
+      "headCommit": "abc123",
+      "taskId": "1.1",
+      "touchedFiles": [
+        "src/lib.rs"
+      ]
+    }
+  },
+  {
+    "name": "task-undone",
+    "params": {
+      "change": "demo",
+      "taskId": "1.1"
+    }
+  },
+  {
+    "name": "task-move",
+    "params": {
+      "before": true,
+      "change": "demo",
+      "from": 1,
+      "to": 3
+    }
+  },
+  {
+    "name": "claim",
+    "params": {
+      "name": "demo"
+    }
+  },
+  {
+    "name": "in-progress-add",
+    "params": {
+      "name": "demo"
+    }
+  },
+  {
+    "name": "in-progress-remove",
+    "params": {
+      "name": "demo"
+    }
+  },
+  {
+    "name": "change-depends",
+    "params": {
+      "name": "demo",
+      "on": [
+        "base"
+      ],
+      "remove": false
+    }
+  },
+  {
+    "name": "change-schema",
+    "params": {
+      "name": "demo",
+      "schema": "spec-driven"
+    }
+  },
+  {
+    "name": "change-rank",
+    "params": {
+      "anchor": "base",
+      "force": false,
+      "name": "demo",
+      "position": "after"
+    }
+  },
+  {
+    "name": "archive",
+    "params": {
+      "carryReview": true,
+      "carryVerify": false,
+      "change": "demo",
+      "markTasksComplete": false,
+      "noValidate": false,
+      "skipSpecs": false
+    }
+  },
+  {
+    "name": "discard",
+    "params": {
+      "change": "demo",
+      "force": true
+    }
+  },
+  {
+    "name": "discuss-new",
+    "params": {
+      "kind": "feature",
+      "slug": "host-kit",
+      "topic": "Host kit"
+    }
+  },
+  {
+    "name": "discuss-context",
+    "params": {
+      "content": "context text",
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-add-round",
+    "params": {
+      "content": "round text",
+      "mode": "explore",
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-conclude",
+    "params": {
+      "content": "conclusion",
+      "hold": false,
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-promote",
+    "params": {
+      "last": false,
+      "name": "demo",
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-link",
+    "params": {
+      "change": "demo",
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-seal",
+    "params": {
+      "change": "demo",
+      "last": true,
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-archive",
+    "params": {
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "discuss-discard",
+    "params": {
+      "force": false,
+      "slug": "topic"
+    }
+  },
+  {
+    "name": "review-add-round",
+    "params": {
+      "change": "demo",
+      "content": "{\"findings\":[]}"
+    }
+  },
+  {
+    "name": "review-show",
+    "params": {
+      "change": "demo"
+    }
+  },
+  {
+    "name": "review-stamp",
+    "params": {
+      "accept": false,
+      "change": "demo",
+      "missing": [
+        "src/gone.rs"
+      ],
+      "scope": [
+        {
+          "hash": "ab12",
+          "path": "src/lib.rs"
+        }
+      ],
+      "tool": "claude"
+    }
+  },
+  {
+    "name": "review-discard",
+    "params": {
+      "change": "demo"
+    }
+  },
+  {
+    "name": "verify-add-round",
+    "params": {
+      "change": "demo",
+      "content": "{\"findings\":[]}"
+    }
+  },
+  {
+    "name": "verify-show",
+    "params": {
+      "change": "demo"
+    }
+  },
+  {
+    "name": "verify-stamp",
+    "params": {
+      "accept": true,
+      "change": "demo",
+      "missing": [],
+      "scope": [
+        {
+          "hash": "ab12",
+          "path": "src/lib.rs"
+        }
+      ],
+      "tool": null
+    }
+  },
+  {
+    "name": "verify-discard",
+    "params": {
+      "change": "demo"
+    }
+  },
+  {
+    "name": "workflow-config-show",
+    "params": {}
+  },
+  {
+    "name": "workflow-config-edit",
+    "params": {
+      "dryRun": false,
+      "edit": {
+        "policy": {
+          "key": "tdd",
+          "value": "true"
+        }
+      }
+    }
+  },
+  {
+    "name": "workflow-config-replace",
+    "params": {
+      "content": "schema: spec-driven\n"
+    }
+  }
+]

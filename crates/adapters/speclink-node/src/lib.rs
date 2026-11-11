@@ -7,6 +7,8 @@
 //! `Error` — this keeps error shaping (the `code` property) in JS, where it
 //! is idiomatic, while the semantic message and code are produced here.
 
+mod host;
+mod port_bridge;
 pub mod render;
 mod store_bridge;
 
@@ -21,13 +23,13 @@ use store_bridge::{BridgeFailure, JsStoreBridge};
 
 /// A dispatch failure: `message` is the same semantic text the CLI prints,
 /// `code` classifies it (exit-code / 409-reason category — see docs/sdk-node.md).
-struct DispatchError {
+pub(crate) struct DispatchError {
     code: String,
     message: String,
 }
 
 impl DispatchError {
-    fn new(code: &str, message: impl Into<String>) -> DispatchError {
+    pub(crate) fn new(code: &str, message: impl Into<String>) -> DispatchError {
         DispatchError {
             code: code.to_string(),
             message: message.into(),
@@ -69,7 +71,15 @@ impl From<core::command::CommandError> for DispatchError {
     }
 }
 
-type DispatchResult = std::result::Result<serde_json::Value, DispatchError>;
+pub(crate) type DispatchResult = std::result::Result<serde_json::Value, DispatchError>;
+
+/// The envelope a dispatch Promise resolves to; index.js unwraps it.
+pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
+    match result {
+        Ok(value) => serde_json::json!({ "ok": true, "value": value }),
+        Err(e) => serde_json::json!({ "ok": false, "code": e.code, "message": e.message }),
+    }
+}
 
 /// Route a typed command through the engine runtime against this backend.
 /// Events are not surfaced through dispatch (yet) — the envelope shape is
@@ -280,6 +290,21 @@ pub fn engine_from_store(
     })
 }
 
+/// Run the store contract's conformance checks on a host's JS store port, on
+/// a background thread. `invoker` is index.js's port invoker over the store's
+/// three functions plus the harness's `newScope` and `recordedEvents`;
+/// `keeps_events` says whether `recordedEvents` was given.
+#[napi(js_name = "runStoreConformance", ts_return_type = "Promise<unknown>")]
+pub fn run_store_conformance(env: Env, invoker: JsFunction, keeps_events: bool) -> Result<JsObject> {
+    let bridge = store_bridge::create_bridge(env, invoker)?;
+    let (deferred, promise) = env.create_deferred()?;
+    std::thread::spawn(move || {
+        let report = port_bridge::run_conformance(bridge, keeps_events);
+        deferred.resolve(move |_| Ok(report));
+    });
+    Ok(promise)
+}
+
 // --- argv router ---
 
 /// argv → the parsing the CLI uses → the engine command → the output
@@ -292,15 +317,32 @@ fn run_dispatch(
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
-    use speclink_verbs::ToCommand;
-    let parsed = speclink_verbs::parse(argv)
-        .map_err(|e| DispatchError::new("invalid_argv", e.message))?;
-    let name = parsed.name();
+    let parsed = parse_verb(argv)?;
     // Before the stdin JSON is read: a store that cannot finish a stamp is
     // the first thing to report.
     if parsed.is_stamp() {
-        refuse_unfinishable_stamp(backend, name)?;
+        refuse_unfinishable_stamp(backend, parsed.name())?;
     }
+    let cmd = command_of(&parsed, stdin)?;
+    refuse_workflow_config_write(backend, parsed.name(), &cmd)?;
+    refuse_unrankable(backend, parsed.name(), &cmd)?;
+    run_verb(backend, actor, rewrite_lock, &parsed, cmd)
+}
+
+/// Parse one verb's argv with the CLI's vocabulary. A usage or help text is
+/// an `invalid_argv` failure carrying clap's text.
+pub(crate) fn parse_verb(argv: &[String]) -> std::result::Result<speclink_verbs::ParsedVerb, DispatchError> {
+    speclink_verbs::parse(argv).map_err(|e| DispatchError::new("invalid_argv", e.message))
+}
+
+/// The engine command of a parsed verb, under the stdin rules every door
+/// shares. A verb with no engine command is refused with `invalid_argv`.
+pub(crate) fn command_of(
+    parsed: &speclink_verbs::ParsedVerb,
+    stdin: Option<&str>,
+) -> std::result::Result<core::command::Command, DispatchError> {
+    use speclink_verbs::ToCommand;
+    let name = parsed.name();
     let policy = parsed.stdin_policy();
     // Content passed without --stdin to a verb that reads stdin only with the
     // flag is refused: a forgotten flag must not drop the content silently.
@@ -319,9 +361,19 @@ fn run_dispatch(
         speclink_verbs::CommandTarget::Command(cmd) => {
             let flagged_without_stdin = stdin.is_none()
                 && matches!(policy, speclink_verbs::StdinPolicy::WhenFlagged { flagged: true });
-            refuse_workflow_config(backend, name, &cmd, flagged_without_stdin)?;
-            refuse_unrankable(backend, name, &cmd)?;
-            run_verb(backend, actor, rewrite_lock, &parsed, cmd)
+            // `--stdin` in argv but no stdin content: the body would read as
+            // empty and clear the value, so a forgotten `options.stdin` is an
+            // argv error (an empty string is the way to clear on purpose).
+            if flagged_without_stdin && matches!(cmd, core::command::Command::WorkflowConfigEdit { .. }) {
+                return Err(DispatchError::new(
+                    "invalid_argv",
+                    format!(
+                        "'{name}' was given --stdin but no stdin content — pass options.stdin \
+                         (an empty string clears the value)"
+                    ),
+                ));
+            }
+            Ok(cmd)
         }
         speclink_verbs::CommandTarget::LocalOnly { verb, reason } => Err(local_only(verb, reason)),
     }
@@ -393,28 +445,14 @@ fn writes_workflow_config(cmd: &core::command::Command) -> bool {
     )
 }
 
-/// The two refusals a workflow-config verb can meet before its command runs,
-/// so no store method is called:
-/// - `--stdin` in argv but no stdin content from the host: the body would read
-///   as empty and clear the value, so a forgotten `options.stdin` is an argv
-///   error (an empty string is the way to clear on purpose);
-/// - a verb that writes, on a host store without the optional
-///   `writeWorkflowConfig`. `show` and `--dry-run` write nothing and pass.
-fn refuse_workflow_config(
+/// A workflow-config verb that writes, on a host store without the optional
+/// `writeWorkflowConfig`, is refused before its command runs, so no store
+/// method is called. `show` and `--dry-run` write nothing and pass.
+fn refuse_workflow_config_write(
     backend: &Backend,
     name: &str,
     cmd: &core::command::Command,
-    flagged_without_stdin: bool,
 ) -> std::result::Result<(), DispatchError> {
-    if flagged_without_stdin && matches!(cmd, core::command::Command::WorkflowConfigEdit { .. }) {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            format!(
-                "'{name}' was given --stdin but no stdin content — pass options.stdin \
-                 (an empty string clears the value)"
-            ),
-        ));
-    }
     if let (true, Backend::Js { writes_workflow_config: false, .. }) =
         (writes_workflow_config(cmd), backend)
     {
@@ -442,7 +480,6 @@ fn run_verb(
     cmd: core::command::Command,
 ) -> DispatchResult {
     use core::command::Command;
-    use speclink_verbs::render::{render, RenderOptions};
     match &cmd {
         Command::Claim { name } => return claim(backend, actor, name),
         // CLI parity: with no name and no changes at all, status is informational,
@@ -463,7 +500,18 @@ fn run_verb(
     let rewrites = parsed.is_stamp() || writes_workflow_config(&cmd);
     let _rewrite_guard = rewrites.then(|| rewrite_lock.lock().unwrap_or_else(|e| e.into_inner()));
     let outcome = run_engine(backend, actor, cmd)?;
-    let rendered = render(parsed, &outcome, RenderOptions { json: false, color: false })?;
+    value_of(parsed, &outcome)
+}
+
+/// A verb's envelope value: its structured value when it has one, else
+/// `{ output }` with its stdout text (no color), plus `stderr` when the verb
+/// also has stderr text — the output definition the CLI uses.
+pub(crate) fn value_of(
+    parsed: &speclink_verbs::ParsedVerb,
+    outcome: &core::command::CommandOutcome,
+) -> DispatchResult {
+    use speclink_verbs::render::{render, RenderOptions};
+    let rendered = render(parsed, outcome, RenderOptions { json: false, color: false })?;
     Ok(match rendered.json {
         Some(value) => value,
         None if rendered.stderr.is_empty() => serde_json::json!({ "output": rendered.stdout }),

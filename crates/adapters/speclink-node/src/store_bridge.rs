@@ -234,7 +234,7 @@ pub fn create_bridge(env: Env, invoker: JsFunction) -> Result<JsStoreBridge> {
 
 impl JsStoreBridge {
     /// Call a store method and wait (on the worker thread) for it to settle.
-    fn call(
+    pub(crate) fn call(
         &self,
         method: &'static str,
         args: serde_json::Value,
@@ -256,6 +256,15 @@ impl JsStoreBridge {
                 "store bridge channel closed before the store method settled",
             ))
         })
+    }
+
+    /// Call a JS function and do not wait for it: nothing reads its result,
+    /// and a failure to queue the call is dropped too.
+    pub(crate) fn notify(&self, method: &'static str, args: serde_json::Value) {
+        // The receiver is dropped at once, so the settle callback's send fails
+        // quietly when the call completes.
+        let (tx, _) = mpsc::channel();
+        let _ = self.tsfn.call(CallRequest { method, args, tx }, ThreadsafeFunctionCallMode::NonBlocking);
     }
 
     /// For trait methods without a `Result` return: a failure aborts the
