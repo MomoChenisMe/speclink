@@ -48,17 +48,18 @@ fn harness() -> Harness {
 
     let store: speclink_server::state::SharedStore =
         Arc::new(speclink_store::memory::MemoryStore::new());
-    let state = AppState {
-        events: EventHub::new(store.clone(), EventSettings::default()),
+    let events = EventHub::new(store.clone(), EventSettings::default());
+    let state = AppState::new(
         store,
-        config: Arc::new(ServerConfig {
+        identity.clone(),
+        Arc::new(ServerConfig {
             store: StoreConfig::Memory,
             identity: IdentityConfig::Memory,
             public_url: "http://127.0.0.1".to_string(),
             events: EventSettings::default(),
         }),
-        identity: identity.clone(),
-    };
+        events,
+    );
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().expect("local addr");

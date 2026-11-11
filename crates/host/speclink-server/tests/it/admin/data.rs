@@ -69,12 +69,12 @@ fn start_with(store: SharedStore) -> (String, Arc<IdentitySqlite>, String, Strin
     common::seed_demo_registry(&*identity);
     let admin_session = seed_admin(&identity);
     let member_session = seed_member(&identity);
-    let state = AppState {
+    let state = AppState::new(
         store,
-        identity: identity.clone(),
-        config: Arc::new(common::demo_config()),
-        events: common::detached_events(),
-    };
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity, admin_session, member_session)
 }
 

@@ -256,10 +256,11 @@ impl Phase3Server {
         })
         .expect("phase3 sqlite store");
         let settings = fast_events();
-        let state = AppState {
-            events: EventHub::new(store.clone(), settings.clone()),
-            store: store.clone(),
-            config: Arc::new(ServerConfig {
+        let events = EventHub::new(store.clone(), settings.clone());
+        let state = AppState::new(
+            store.clone(),
+            identity.clone(),
+            Arc::new(ServerConfig {
                 store: StoreConfig::Sqlite {
                     path: store_path.clone(),
                 },
@@ -269,8 +270,8 @@ impl Phase3Server {
                 public_url: "http://127.0.0.1".to_string(),
                 events: settings,
             }),
-            identity: identity.clone(),
-        };
+            events,
+        );
         let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("phase3 loopback");
         let addr = listener.local_addr().expect("phase3 local addr");
         let server = RestartableServer::from_listener(listener, state);
@@ -679,17 +680,17 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
         .expect("accept");
 
     let store: SharedStore = Arc::new(speclink_store::memory::MemoryStore::new());
-    let state = AppState {
-        events: EventHub::new(store.clone(), settings),
-        store: store.clone(),
-        config: Arc::new(ServerConfig {
+    let state = AppState::new(
+        store.clone(),
+        identity.clone(),
+        Arc::new(ServerConfig {
             store: StoreConfig::Memory,
             identity: IdentityConfig::Memory,
             public_url: "http://127.0.0.1".to_string(),
             events: EventSettings::default(),
         }),
-        identity: identity.clone(),
-    };
+        EventHub::new(store.clone(), settings),
+    );
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().expect("local addr");

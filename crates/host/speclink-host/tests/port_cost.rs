@@ -374,3 +374,30 @@ fn commands_read_only_what_they_use() {
         }
     }
 }
+
+/// What the archived list costs on this project's own archive (design Open
+/// Questions): one list of the archive and one read of every archived
+/// change's task list and data file. The numbers are printed for the design.
+#[test]
+fn the_archived_list_is_one_list_and_one_read() {
+    let (inner, _, _) = loaded_store();
+    let store = CallRecorder {
+        inner,
+        calls: Mutex::default(),
+    };
+    let started = std::time::Instant::now();
+    let (list, _) = speclink_host::documents::archived_list(&store, &scope()).expect("the archived list");
+    let elapsed = started.elapsed();
+    let calls = store.take();
+    let keys: usize = calls.reads.iter().map(Vec::len).sum();
+    let bytes: usize = calls.reads.iter().flatten().filter_map(|(_, size)| *size).sum();
+    println!(
+        "archived list: {} archived changes; {} list, {} read, {keys} keys, {bytes} bytes, {elapsed:?}",
+        list.archived.len(),
+        calls.lists.len(),
+        calls.reads.len()
+    );
+    assert_eq!(calls.lists, ["archive/changes/"]);
+    assert_eq!(calls.reads.len(), 1);
+    assert!(!list.archived.is_empty(), "this project has archived changes");
+}

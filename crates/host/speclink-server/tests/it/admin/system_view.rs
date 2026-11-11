@@ -34,12 +34,12 @@ fn start_over(store: SharedStore) -> String {
     let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
     common::seed_demo_registry(&*identity);
     seed_user(&identity, "admin@example.com", true);
-    let state = AppState {
-        events: common::detached_events(),
+    let state = AppState::new(
         store,
-        config: Arc::new(common::demo_config()),
         identity,
-    };
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::start(state)
 }
 

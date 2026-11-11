@@ -57,7 +57,7 @@ fn server() -> TestServer {
         public_url: "http://127.0.0.1".to_string(),
         events: EventSettings::default(),
     };
-    let state = AppState { store, identity: identity.clone(), config: Arc::new(config), events };
+    let state = AppState::new(store, identity.clone(), Arc::new(config), events);
 
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let addr = listener.local_addr().expect("local addr");

@@ -14,6 +14,7 @@ pub mod bridge;
 pub mod change_diff;
 pub mod commit;
 pub mod context;
+pub mod documents;
 pub mod drift;
 pub mod gate;
 pub mod policy;

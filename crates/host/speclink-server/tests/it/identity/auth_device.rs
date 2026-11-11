@@ -37,12 +37,12 @@ fn seed() -> (String, Arc<IdentitySqlite>, PathBuf, tempfile::TempDir, String) {
     // membership) and `multi` (registered but not a membership, for the 403 path).
     common::seed_demo_registry(&*identity);
     common::seed_multi_project(&*identity);
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity, path, dir, user_id)
 }
 

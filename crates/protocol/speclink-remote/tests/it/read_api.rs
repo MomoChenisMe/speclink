@@ -114,17 +114,18 @@ fn fixture() -> Fixture {
     let (_, pat) = identity.create_pat(&user_id, "test", None).expect("PAT");
 
     let settings = EventSettings::default();
-    let state = AppState {
-        store: store.clone(),
+    let events = EventHub::new(store.clone(), settings.clone());
+    let state = AppState::new(
+        store,
         identity,
-        events: EventHub::new(store, settings.clone()),
-        config: Arc::new(ServerConfig {
+        Arc::new(ServerConfig {
             store: StoreConfig::Memory,
             identity: IdentityConfig::Memory,
             public_url: "http://127.0.0.1".to_string(),
             events: settings,
         }),
-    };
+        events,
+    );
     let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind loopback");
     let address = listener.local_addr().expect("local address");
     listener.set_nonblocking(true).expect("nonblocking");

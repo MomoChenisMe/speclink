@@ -128,12 +128,12 @@ pub fn state_with(store: SharedStore) -> AppState {
     let events = EventHub::new(store.clone(), EventSettings::default());
     let identity = empty_identity();
     seed_demo_registry(&*identity);
-    AppState {
+    AppState::new(
         store,
         identity,
-        config: Arc::new(demo_config()),
+        Arc::new(demo_config()),
         events,
-    }
+    )
 }
 
 /// Build an [`AppState`] over `store`, the demo configuration, and explicit
@@ -143,12 +143,12 @@ pub fn state_with_event_settings(store: SharedStore, settings: EventSettings) ->
     let events = EventHub::new(store.clone(), settings);
     let identity = empty_identity();
     seed_demo_registry(&*identity);
-    AppState {
+    AppState::new(
         store,
         identity,
-        config: Arc::new(demo_config()),
+        Arc::new(demo_config()),
         events,
-    }
+    )
 }
 
 /// Build an [`AppState`] over a fresh in-memory store and `config`, with the
@@ -158,12 +158,12 @@ pub fn state_with_config(config: ServerConfig) -> AppState {
     let events = EventHub::new(store.clone(), config.events.clone());
     let identity = empty_identity();
     seed_demo_registry(&*identity);
-    AppState {
+    AppState::new(
         store,
         identity,
-        config: Arc::new(config),
+        Arc::new(config),
         events,
-    }
+    )
 }
 
 /// Seed the default demo project (repo `backend`) into the registry — the

@@ -43,12 +43,12 @@ fn seed_user(identity: &Arc<IdentitySqlite>, email: &str, admin: bool) -> (Strin
 }
 
 fn start(identity: Arc<IdentitySqlite>, store: SharedStore) -> String {
-    let state = AppState {
-        events: common::detached_events(),
+    let state = AppState::new(
         store,
-        config: Arc::new(common::demo_config()),
         identity,
-    };
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::start(state)
 }
 

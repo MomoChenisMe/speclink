@@ -74,12 +74,12 @@ fn seed(store: &MemoryStore) {
 }
 
 fn state_over(store: Arc<MemoryStore>) -> AppState {
-    let state = AppState {
-        store: store as SharedStore,
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-        events: common::detached_events(),
-    };
+    let state = AppState::new(
+        store as SharedStore,
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     state
 }

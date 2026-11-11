@@ -13,6 +13,7 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 use speclink_core::command::{CommandError, ErrorCode};
 use speclink_host::bridge::BridgeError;
+use speclink_host::documents::DocumentsError;
 use speclink_protocol::command::RevertBlockedEvidence;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_store::StoreError;
@@ -244,6 +245,27 @@ impl From<PortError> for ApiError {
             // infrastructure. Every client sees the one fixed message.
             PortError::Unavailable { .. } => ApiError::unavailable(STORE_UNAVAILABLE),
             backend @ PortError::Backend { .. } => ApiError::internal(backend.to_string()),
+        }
+    }
+}
+
+/// A document read or write failure → the status each route has always
+/// answered with: not found 404, a broken workflow config 422, an oversized
+/// board order 413, a moved scope 409 `revision_conflict`, a corrupt record
+/// 500, and the store's own failures as above.
+impl From<DocumentsError> for ApiError {
+    fn from(e: DocumentsError) -> ApiError {
+        match e {
+            DocumentsError::NotFound(message) => ApiError::not_found(message),
+            DocumentsError::InvalidConfig(message) => ApiError::invalid_config(message),
+            too_large @ DocumentsError::TooLarge { .. } => {
+                ApiError::payload_too_large(too_large.to_string())
+            }
+            moved @ DocumentsError::ScopeMoved { .. } => {
+                ApiError::revision_conflict(moved.to_string())
+            }
+            DocumentsError::Corrupt(message) => ApiError::internal(message),
+            DocumentsError::Store(e) => ApiError::from(e),
         }
     }
 }

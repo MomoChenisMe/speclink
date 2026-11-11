@@ -64,12 +64,12 @@ fn seed_full(store: &MemoryStore, with_config: bool) {
 
 /// Build application state over `store` with the demo registry seeded.
 fn state_over(store: Arc<MemoryStore>) -> AppState {
-    let state = AppState {
-        store: store as SharedStore,
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-        events: common::detached_events(),
-    };
+    let state = AppState::new(
+        store as SharedStore,
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     state
 }

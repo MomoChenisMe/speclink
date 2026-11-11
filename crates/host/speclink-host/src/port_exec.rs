@@ -15,8 +15,10 @@ use speclink_core::command::{
     execute as engine_execute, Command, CommandError, CommandOutcome, DomainEvent, ExecutionContext,
 };
 use speclink_store_port::{
-    Actor, Commit, Event, InvalidValue, Op, PortError, ScopeId, StorePort, Timestamp, Version,
+    keys, Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, Op, PortError,
+    ScopeId, StorePort, Timestamp, Version,
 };
+use std::sync::{Mutex, PoisonError};
 
 /// Why an execution on a store port failed. The two vocabularies stay
 /// apart: the Engine command layer's typed codes, or the store's failures.
@@ -142,6 +144,94 @@ pub(crate) fn execute_at(
         events,
         scope_version: Some(version),
     })
+}
+
+/// The scope's current version, from the narrowest list there is: the key of
+/// the workflow config. Every list returns the scope version, and this one
+/// returns one document at most.
+pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, PortError> {
+    let prefix = KeyPrefix::new(keys::config().as_str()).expect("a key is a prefix");
+    Ok(port.list(scope, &prefix)?.version)
+}
+
+/// What [`execute_at_version`] did.
+#[derive(Debug)]
+pub enum AtVersion {
+    /// The scope stayed at the expected version and the command ran.
+    Done(PortExecution),
+    /// The scope is at another version; nothing was committed.
+    Moved { actual: Version },
+}
+
+/// [`execute`], but only while the scope stays at `expected` — for a write
+/// whose caller states the scope version it last saw.
+///
+/// The scope version is compared before the command runs, and again after
+/// its reads: just before its commit, or at the end when it commits nothing.
+/// A version that moved in between means another writer landed while the
+/// command read, so nothing is committed and the answer is
+/// [`AtVersion::Moved`]. The command thus never writes over content its
+/// caller did not see. A writer that lands between the second comparison and
+/// the commit meets the commit's own version check.
+pub fn execute_at_version(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    ctx: &SpeclinkExecutionContext,
+    cmd: Command,
+    expected: u64,
+) -> Result<AtVersion, ExecError> {
+    let actual = scope_version(port, scope).map_err(ExecError::Store)?;
+    if actual.get() != expected {
+        return Ok(AtVersion::Moved { actual });
+    }
+    let guard = AtExpected {
+        port,
+        expected,
+        moved: Mutex::new(None),
+    };
+    let result = execute(&guard, scope, ctx, cmd);
+    if let Some(actual) = *guard.moved.lock().unwrap_or_else(PoisonError::into_inner) {
+        return Ok(AtVersion::Moved { actual });
+    }
+    let done = result?;
+    if done.scope_version.is_none() {
+        let actual = scope_version(port, scope).map_err(ExecError::Store)?;
+        if actual.get() != expected {
+            return Ok(AtVersion::Moved { actual });
+        }
+    }
+    Ok(AtVersion::Done(done))
+}
+
+/// A store port that refuses to commit once the scope has left `expected`.
+struct AtExpected<'p> {
+    port: &'p dyn StorePort,
+    expected: u64,
+    moved: Mutex<Option<Version>>,
+}
+
+impl StorePort for AtExpected<'_> {
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        self.port.list(scope, prefix)
+    }
+
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        self.port.read(scope, keys)
+    }
+
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        let actual = scope_version(self.port, scope)?;
+        if actual.get() != self.expected {
+            *self.moved.lock().unwrap_or_else(PoisonError::into_inner) = Some(actual);
+            return Err(PortError::Backend {
+                message: format!(
+                    "the scope moved from version {} to {actual} during the command",
+                    self.expected
+                ),
+            });
+        }
+        self.port.commit(scope, commit)
+    }
 }
 
 /// The one commit of a command: its writes in key order, its events in the
@@ -494,6 +584,91 @@ mod tests {
         }
         let doc = probe.inner.read(&scope(), &[key("config.yaml")]).unwrap();
         assert_eq!(doc[0].as_ref().unwrap().content, "schema: spec-driven\nlocale: ja\n");
+    }
+
+    /// A store where another writer replaces the config just before the
+    /// command's first read: after the version comparison, so the command
+    /// reads that writer's content.
+    struct WriterBeforeFirstRead {
+        inner: MemoryStorePort,
+        pending: std::sync::Mutex<Option<&'static str>>,
+    }
+
+    impl StorePort for WriterBeforeFirstRead {
+        fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+            self.inner.list(scope, prefix)
+        }
+        fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+            if let Some(text) = self.pending.lock().unwrap().take() {
+                overwrite(&self.inner, 2_000, "config.yaml", text);
+            }
+            self.inner.read(scope, keys)
+        }
+        fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+            self.inner.commit(scope, commit)
+        }
+    }
+
+    fn config_text(port: &dyn StorePort) -> String {
+        port.read(&scope(), &[key("config.yaml")]).unwrap()[0].clone().unwrap().content
+    }
+
+    fn replace_with(text: &str) -> Command {
+        Command::WorkflowConfigReplace { content: text.to_string() }
+    }
+
+    #[test]
+    fn execute_at_version_runs_the_command_while_the_scope_is_at_that_version() {
+        let port = with_config();
+        let expected = version(&port);
+        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
+            Ok(AtVersion::Done(done)) => assert_eq!(done.scope_version.map(Version::get), Some(version(&port))),
+            other => panic!("expected the command to run, got {other:?}"),
+        }
+        assert_eq!(config_text(&port), "locale: ja\n");
+    }
+
+    #[test]
+    fn execute_at_version_runs_nothing_on_a_stale_version() {
+        let probe = Probe::new(with_config());
+        let expected = version(&probe.inner) - 1;
+        match execute_at_version(&probe, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
+            Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), version(&probe.inner)),
+            other => panic!("expected moved, got {other:?}"),
+        }
+        assert!(probe.reads().is_empty(), "the command did not run");
+        assert!(probe.commits().is_empty());
+    }
+
+    #[test]
+    fn a_writer_that_lands_before_the_command_reads_is_never_written_over() {
+        // 比對版本之後、命令讀取之前有人改了流程設定：命令讀到的是別人的內容，
+        // 提交前的第二次比對發現版本前進，什麼都不寫。
+        let port = WriterBeforeFirstRead {
+            inner: with_config(),
+            pending: std::sync::Mutex::new(Some("schema: spec-driven\nlocale: ja\n")),
+        };
+        let expected = version(&port.inner);
+        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: en\n"), expected) {
+            Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), expected + 1),
+            other => panic!("expected moved, got {other:?}"),
+        }
+        assert_eq!(config_text(&port.inner), "schema: spec-driven\nlocale: ja\n", "the other writer's content stays");
+        assert_eq!(version(&port.inner), expected + 1, "nothing else was committed");
+    }
+
+    #[test]
+    fn a_command_that_commits_nothing_still_reports_a_moved_version() {
+        // 別人寫入的內容剛好等於請求的內容：命令沒有東西可寫，但版本已經不是呼叫端看到的那個。
+        let port = WriterBeforeFirstRead {
+            inner: with_config(),
+            pending: std::sync::Mutex::new(Some("locale: ja\n")),
+        };
+        let expected = version(&port.inner);
+        match execute_at_version(&port, &scope(), &ctx(), replace_with("locale: ja\n"), expected) {
+            Ok(AtVersion::Moved { actual }) => assert_eq!(actual.get(), expected + 1),
+            other => panic!("expected moved, got {other:?}"),
+        }
     }
 
     #[test]

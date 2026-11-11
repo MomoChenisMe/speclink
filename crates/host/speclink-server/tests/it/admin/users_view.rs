@@ -33,12 +33,12 @@ fn start() -> (String, Arc<IdentitySqlite>, String) {
     common::seed_demo_registry(&*identity);
     let token = invite(&identity, "admin@example.com", true, 1);
     identity.accept_invitation(&token, PASSWORD).expect("accept");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     let base = common::start(state);
     let cookie = login(&base);
     (base, identity, cookie)

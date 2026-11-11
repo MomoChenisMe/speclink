@@ -763,41 +763,52 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
 
     // --- Commit phase: snapshots first, then canonical specs, then the directory move.
     // A commit-phase I/O failure therefore always leaves a recoverable backup behind.
+    //
+    // A run with no workspace (an empty root: the Host over a store port) has no local
+    // folder to back up into or clean up. There the store's one commit carries the
+    // canonical specs and the move together, so a failure writes nothing and needs no
+    // backup (host-runtime「沒有 workspace 時封存不寫入本機檔案」).
+    let local = !ws.root.as_os_str().is_empty();
     let snapshot_dir = ws.snapshots_dir().join(&dated_name);
     let mut snapshot_created = false;
-    for plan in &plans {
-        if let Some(previous) = &plan.backup {
-            // Back up the pre-apply canonical spec for unarchive support
-            // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
-            let backup_path = snapshot_dir.join("specs").join(&plan.capability).join("spec.md");
-            util::write_file(&backup_path, previous)
-                .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
+    if local {
+        for plan in &plans {
+            if let Some(previous) = &plan.backup {
+                // Back up the pre-apply canonical spec for unarchive support
+                // (snapshots/<date>-<name>/specs/<cap>/spec.md holds the previous bytes).
+                let backup_path =
+                    snapshot_dir.join("specs").join(&plan.capability).join("spec.md");
+                util::write_file(&backup_path, previous)
+                    .map_err(|e| anyhow::anyhow!("Failed to backup spec: {e}"))?;
+                snapshot_created = true;
+            }
+        }
+        // Snapshot manifest: a bare array of created capability names, written only when
+        // a spec was created (frozen byte-for-byte: `["cap-x"]`, no trailing newline).
+        let created_specs: Vec<&String> =
+            plans.iter().filter(|p| p.backup.is_none()).map(|p| &p.capability).collect();
+        if !created_specs.is_empty() {
+            util::write_file(
+                &snapshot_dir.join("created_specs.json"),
+                &serde_json::to_string(&created_specs)
+                    .map_err(|e| anyhow::anyhow!("Failed to serialize created_specs: {e}"))?,
+            )
+            .map_err(|e| anyhow::anyhow!("Failed to write created_specs.json: {e}"))?;
             snapshot_created = true;
         }
     }
-    // Snapshot manifest: a bare array of created capability names, written only when a spec
-    // was created (frozen byte-for-byte: `["cap-x"]`, no trailing newline).
-    let created_specs: Vec<&String> =
-        plans.iter().filter(|p| p.backup.is_none()).map(|p| &p.capability).collect();
-    if !created_specs.is_empty() {
-        util::write_file(
-            &snapshot_dir.join("created_specs.json"),
-            &serde_json::to_string(&created_specs)
-                .map_err(|e| anyhow::anyhow!("Failed to serialize created_specs: {e}"))?,
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to write created_specs.json: {e}"))?;
-        snapshot_created = true;
-    }
+    // Where a failure says the backups are, when there are any.
+    let backups = if snapshot_created {
+        format!("pre-archive backups are under {}", snapshot_dir.display())
+    } else {
+        String::new()
+    };
     for plan in &plans {
         // A mid-commit failure names the snapshot location (design risk table):
         // the pre-archive backups written above are the recovery path.
         store.write_canonical_spec(&plan.capability, &plan.content).map_err(|e| {
-            anyhow::anyhow!(
-                "Failed to write canonical spec for '{}': {e} — pre-archive backups are \
-                 under {}",
-                plan.capability,
-                snapshot_dir.display()
-            )
+            let backups = if backups.is_empty() { String::new() } else { format!(" — {backups}") };
+            anyhow::anyhow!("Failed to write canonical spec for '{}': {e}{backups}", plan.capability)
         })?;
     }
     let caps: Vec<CapCounts> = plans.into_iter().map(|p| p.counts).collect();
@@ -807,11 +818,7 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // retry's `set` replaces it in place, so the document keeps one line. When canonical
     // specs were already written, a failure names the snapshot location too.
     crate::model::edit_meta(store, &change.name, |m| m.set("archived_at", &stamp)).map_err(|e| {
-        let backups = if snapshot_created {
-            format!("; pre-archive backups are under {}", snapshot_dir.display())
-        } else {
-            String::new()
-        };
+        let backups = if backups.is_empty() { String::new() } else { format!("; {backups}") };
         anyhow::anyhow!(
             "Failed to write archived_at for '{}': {e} — the change was not moved{backups}",
             change.name
@@ -822,16 +829,18 @@ at least one operation (ADDED, MODIFIED, REMOVED, or RENAMED)"
     // stays untouched on archive (frozen behavior).
     store.archive_change(&change.name, &dated_name)?;
 
-    // Clear the app-side "started" marker for this change, if present.
-    let _ = util::remove_file(
-        &ws.work_dir()
-            .join("changes")
-            .join(format!("{}.started", change.name)),
-    );
-    // The legacy touched record dies with the change: its fact was read into the
-    // outcome above, and a leftover would be read back as evidence for a future
-    // change reusing this name.
-    let _ = util::remove_file(&ws.legacy_touched_file(&change.name));
+    if local {
+        // Clear the app-side "started" marker for this change, if present.
+        let _ = util::remove_file(
+            &ws.work_dir()
+                .join("changes")
+                .join(format!("{}.started", change.name)),
+        );
+        // The legacy touched record dies with the change: its fact was read into the
+        // outcome above, and a leftover would be read back as evidence for a future
+        // change reusing this name.
+        let _ = util::remove_file(&ws.legacy_touched_file(&change.name));
+    }
 
     // Stamp archived_by into the archived change metadata.
     if let (Some(id), Some(mut meta)) = (actor, store.read_archived_meta(&dated_name)) {

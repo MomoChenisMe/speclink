@@ -44,12 +44,12 @@ fn start() -> (String, Arc<IdentitySqlite>) {
     common::seed_demo_registry(&*identity);
     seed_user(&identity, "admin@example.com", true);
     seed_user(&identity, "member@example.com", false);
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity)
 }
 

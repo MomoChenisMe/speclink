@@ -81,12 +81,12 @@ fn an_unknown_device_code_polls_not_found() {
 
 fn server() -> (String, Arc<IdentitySqlite>) {
     let identity = Arc::new(store());
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity)
 }
 

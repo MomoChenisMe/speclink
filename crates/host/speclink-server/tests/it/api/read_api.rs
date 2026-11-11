@@ -29,12 +29,12 @@ impl Fixture {
         let store = Arc::new(MemoryStore::new());
         common::seed_demo_registry(&*identity);
         common::seed_multi_project(&*identity);
-        let state = AppState {
-            events: common::detached_events(),
-            store: store.clone(),
-            config: Arc::new(common::demo_config()),
-            identity: identity.clone(),
-        };
+        let state = AppState::new(
+            store.clone(),
+            identity.clone(),
+            Arc::new(common::demo_config()),
+            common::detached_events(),
+        );
         Self {
             base: common::start(state),
             identity,

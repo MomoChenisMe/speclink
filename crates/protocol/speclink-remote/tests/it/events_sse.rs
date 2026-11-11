@@ -54,17 +54,17 @@ fn state_with_retention(retention: u64) -> AppState {
         Arc::new(IdentitySqlite::open_memory().expect("in-memory identity store"));
     identity.create_project("demo", "Demo").expect("seed demo project");
     identity.create_repo("demo", "backend", "backend").expect("seed demo repo");
-    AppState {
+    AppState::new(
         store,
         identity,
-        config: Arc::new(ServerConfig {
+        Arc::new(ServerConfig {
             store: StoreConfig::Memory,
             identity: IdentityConfig::Memory,
             public_url: "http://127.0.0.1".to_string(),
             events: EventSettings::default(),
         }),
         events,
-    }
+    )
 }
 
 /// Seed a member user plus a PAT; returns the PAT plaintext to send as bearer.

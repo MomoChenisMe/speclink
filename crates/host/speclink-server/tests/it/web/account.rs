@@ -36,12 +36,12 @@ fn server_with_user() -> (String, Arc<IdentitySqlite>) {
         })
         .expect("invite");
     identity.accept_invitation(&token, PASSWORD).expect("accept");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity)
 }
 
@@ -74,12 +74,12 @@ fn server_with_memberships(
             .admin_set_membership(&actor, &user_id, key, *role, true)
             .expect("set role");
     }
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity, user_id)
 }
 
