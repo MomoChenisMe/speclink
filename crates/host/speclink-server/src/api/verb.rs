@@ -42,6 +42,21 @@ pub async fn on_port<T: Send + 'static>(
         .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
 }
 
+/// [`on_port`] for a request that writes: on success the scope's event
+/// broadcaster is notified, so any commit's outbox events reach subscribers
+/// (决策 2).
+pub async fn on_port_write<T: Send + 'static>(
+    state: &AppState,
+    binding: &Binding,
+    work: impl FnOnce(&dyn StorePort, &ScopeId) -> Result<T, ApiError> + Send + 'static,
+) -> Result<T, ApiError> {
+    let result = on_port(state, binding, work).await;
+    if result.is_ok() {
+        state.events.notify(&scope_of(binding));
+    }
+    result
+}
+
 /// The scope's ETag: its version, which advances on every commit (design
 /// 決策五), so any change invalidates it.
 pub fn etag_now(port: &dyn StorePort, scope: &ScopeId) -> Result<String, ApiError> {
@@ -75,24 +90,19 @@ pub fn expected_version(
 }
 
 /// Run `cmd` over the binding's scope and read the resulting ETag, on the
-/// blocking pool. On success the scope's event broadcaster is notified so any
-/// commit's outbox events reach subscribers (决策 2).
+/// blocking pool; subscribers are notified on success.
 pub async fn run(
     state: &AppState,
     binding: &Binding,
     cmd: Command,
 ) -> Result<VerbResult, ApiError> {
     let ctx = binding.execution_context();
-    let result = on_port(state, binding, move |port, scope| {
+    on_port_write(state, binding, move |port, scope| {
         let execution = port_exec::execute(port, scope, &ctx, cmd)?;
         let etag = etag_after(port, scope, &execution)?;
         Ok(VerbResult { execution, etag })
     })
-    .await;
-    if result.is_ok() {
-        state.events.notify(&scope_of(binding));
-    }
-    result
+    .await
 }
 
 /// The scope's ETag, read on the blocking pool. For query routes that do not
@@ -116,7 +126,7 @@ pub async fn run_write_with_if_match(
     cmd: Command,
 ) -> Result<(u64, String), ApiError> {
     let ctx = binding.execution_context();
-    let result = on_port(state, binding, move |port, scope| {
+    on_port_write(state, binding, move |port, scope| {
         let version = || {
             documents::document_version(port, scope, &change, &artifact)
                 .map(|v| v.map(|v| v.get()))
@@ -126,11 +136,7 @@ pub async fn run_write_with_if_match(
         let written = version()?.unwrap_or(0);
         Ok((written, etag_after(port, scope, &execution)?))
     })
-    .await;
-    if result.is_ok() {
-        state.events.notify(&scope_of(binding));
-    }
-    result
+    .await
 }
 
 /// Enforce the `If-Match` precondition: `0` is create-only (the document must

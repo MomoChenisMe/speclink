@@ -21,8 +21,8 @@ use speclink_protocol::query::{
 };
 use speclink_store::content_digest;
 use speclink_store_port::{
-    keys, Actor, Commit, DocKey, Document, Event, Expected, KeyPrefix, Listing, Op, PortError,
-    ScopeId, StorePort, Timestamp, Version,
+    keys, Actor, Commit, DocKey, Document, Event, Expected, InvalidValue, KeyPrefix, Listing, Op,
+    PortError, ScopeId, StorePort, Timestamp, Version,
 };
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
@@ -161,9 +161,20 @@ fn archived_change_prefix(dated_name: &str) -> Option<KeyPrefix> {
 
 // --- the scope version ---
 
-/// The scope's current version (the ETag and the polling token): one list of
-/// the narrowest prefix there is.
-pub use crate::port_exec::scope_version;
+/// The scope's current version (the ETag and the polling token), from the
+/// narrowest list there is: the key of the workflow config. Every list
+/// returns the scope version, and this one returns one document at most.
+pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, PortError> {
+    Ok(port.list(scope, &just(&keys::config()))?.version)
+}
+
+/// A value the store contract rejects never reaches the store; the caller
+/// sees a backend failure that names the rule.
+pub(crate) fn invalid_value(e: InvalidValue) -> PortError {
+    PortError::Backend {
+        message: e.to_string(),
+    }
+}
 
 // --- the workflow config ---
 
@@ -201,6 +212,17 @@ pub fn board_order(
     Ok((response, version))
 }
 
+/// Refuse a board order larger than [`BOARD_ORDER_LIMIT`]. A caller that
+/// must refuse an oversized body before anything else checks it first.
+pub fn check_board_order_size(content: &str) -> Result<(), DocumentsError> {
+    if content.len() > BOARD_ORDER_LIMIT {
+        return Err(DocumentsError::TooLarge {
+            limit: BOARD_ORDER_LIMIT,
+        });
+    }
+    Ok(())
+}
+
 /// Replace the board order (design D3) when the scope is at `expected`, and
 /// return the new scope version.
 ///
@@ -217,11 +239,7 @@ pub fn put_board_order(
     expected: Version,
     at: Timestamp,
 ) -> Result<Version, DocumentsError> {
-    if content.len() > BOARD_ORDER_LIMIT {
-        return Err(DocumentsError::TooLarge {
-            limit: BOARD_ORDER_LIMIT,
-        });
-    }
+    check_board_order_size(&content)?;
     let key = keys::board_order();
     let listing = port.list(scope, &just(&key))?;
     if listing.version != expected {
@@ -235,8 +253,7 @@ pub fn put_board_order(
         .iter()
         .find(|entry| entry.key == key)
         .map(|entry| entry.version);
-    let invalid = crate::port_exec::invalid_value;
-    let event = Event::new("board-order-updated", serde_json::json!({})).map_err(invalid)?;
+    let event = Event::new("board-order-updated", serde_json::json!({})).map_err(invalid_value)?;
     let commit = Commit::new(
         actor.clone(),
         "put-board-order",
@@ -248,7 +265,7 @@ pub fn put_board_order(
         }],
         vec![event],
     )
-    .map_err(invalid)?;
+    .map_err(invalid_value)?;
     Ok(port.commit(scope, &commit)?)
 }
 
@@ -404,18 +421,26 @@ pub fn archived_capabilities(
         return Ok((Vec::new(), scope_version(port, scope)?));
     };
     let listing = port.list(scope, &under)?;
-    let capabilities = listing
+    let capabilities = capabilities_in(&listing, |kind| match kind {
+        KeyKind::ArchivedChangeDoc { dated_name: name, doc } if name == dated_name => Some(doc),
+        _ => None,
+    });
+    Ok((capabilities, listing.version))
+}
+
+/// The capability of every listed document that `spec_path` takes for a spec
+/// (`specs/<capability>/spec.md` inside its change), in key order.
+fn capabilities_in<'k>(
+    listing: &'k Listing,
+    spec_path: impl Fn(KeyKind<'k>) -> Option<&'k str>,
+) -> Vec<String> {
+    listing
         .entries
         .iter()
-        .filter_map(|entry| match parse_key(entry.key.as_str()) {
-            Some(KeyKind::ArchivedChangeDoc {
-                dated_name: name,
-                doc,
-            }) if name == dated_name => spec_capability(doc).map(str::to_string),
-            _ => None,
-        })
-        .collect();
-    Ok((capabilities, listing.version))
+        .filter_map(|entry| spec_path(parse_key(entry.key.as_str())?))
+        .filter_map(spec_capability)
+        .map(str::to_string)
+        .collect()
 }
 
 // --- what the change list and one change add ---
@@ -457,17 +482,10 @@ pub fn change_delta_capabilities(
         return Ok(Vec::new());
     };
     let listing = port.list(scope, &under)?;
-    let mut capabilities: Vec<String> = listing
-        .entries
-        .iter()
-        .filter_map(|entry| match parse_key(entry.key.as_str()) {
-            Some(KeyKind::ChangeArtifact {
-                change: c,
-                artifact,
-            }) if c == change => spec_capability(artifact).map(str::to_string),
-            _ => None,
-        })
-        .collect();
+    let mut capabilities = capabilities_in(&listing, |kind| match kind {
+        KeyKind::ChangeArtifact { change: c, artifact } if c == change => Some(artifact),
+        _ => None,
+    });
     capabilities.sort();
     Ok(capabilities)
 }
@@ -725,6 +743,12 @@ pub fn context_snapshot(
 
 // --- text helpers ---
 
+/// The date and the name of an archived change, by the rule the archived
+/// list has always answered with: a `-` at bytes 4, 7 and 10, digits not
+/// checked, and no date at all when the name does not fit. It is lenient on
+/// purpose and differs from `port_view::split_archived_stem`, the key
+/// contract's strict rule for archived discussions: changing this one would
+/// change the `date` and `name` the archived list returns.
 fn split_dated_name(dated_name: &str) -> (&str, &str) {
     let bytes = dated_name.as_bytes();
     if bytes.len() > 11

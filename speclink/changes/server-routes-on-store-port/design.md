@@ -127,6 +127,7 @@
 - 每次列出或讀取先取一次快照，拿到專案 revision。這個範圍已載入的內容是在同一個 revision 載入的 → 重用；否則重新載入（一次匯出與逐份讀取）並記下 revision。
 - 自己的提交成功後，丟掉該範圍已載入的內容。
 - 每個範圍最多留一份已載入的內容；兩次載入同時完成時，留 revision 較新的那份。沒有其他淘汰規則。
+- 同一個範圍的載入一次一個（品質關卡主 checkout 第 1 輪修正）：一個範圍有提交之後，同專案的訂閱者會同時重讀；沒有這條規則時，每個錯過載入的請求都各自匯出一次。等待中的請求在 revision 相同時直接用剛完成的載入；不同範圍互不等待。
 
 **每個請求一份固定的載入（品質關卡第 1 輪修正）。** 原本寫「每次先取一次快照（便宜）」是錯的：TeamStore 的快照會把整個範圍的文件與 history 讀進記憶體（SQLite、PostgreSQL、記憶體版都是）。照原寫法，一個命令有幾次列出或讀取就複製幾次整個範圍，命令內的讀取也可能來自不同的 revision。所以轉接另外提供 `TeamStorePort::pinned(scope)`：一個請求用的視圖。
 
@@ -150,7 +151,7 @@
 2. 命令照常執行，但提交前再取一次範圍版本；不等於 `expected` → 不提交，回「已移動」。
 3. 命令沒有東西可提交時，結束前也再取一次；不等於 `expected` → 回「已移動」。
 
-第 2、3 步看到版本沒變，表示命令讀取的期間沒有任何提交落地，讀到的都是呼叫端看到的那一版。第 2 步與提交之間落地的寫入，由提交本身的版本比對擋下，和改寫前相同。取範圍版本用 `port_exec::scope_version`（列出 `config.yaml` 這個最窄的前綴）；`documents::scope_version` 也用它。
+第 2、3 步看到版本沒變，表示命令讀取的期間沒有任何提交落地，讀到的都是呼叫端看到的那一版。第 2 步與提交之間落地的寫入，由提交本身的版本比對擋下，和改寫前相同。取範圍版本用 `documents::scope_version`（列出 `config.yaml` 這個最窄的前綴）；`port_exec` 的這個函式與所有文件讀取都用它。
 
 流程設定的寫入路由改成在請求的 pinned view 上呼叫它，比對、執行、回傳版本的邏輯不變。在 pinned view 上，命令讀的就是比對時的那份載入，第 2、3 步不會看到版本移動；寫入由提交本身的版本比對把關，行為和改寫前的 `bridge::execute_at_revision` 相同。`bridge::execute_at_revision` 與 `AtRevision` 因此沒有使用者，一併移除；Host 雙路徑測試裡對它的那一條改成在 TeamStore 的轉接上直接測 `execute_at_version`。
 
@@ -176,7 +177,7 @@
 
 實作時的做法：引擎的命令層在執行情境沒有 workspace 時，交給封存的是 root 為空的 workspace；封存裡既有的兩個守門（linked worktree、章失效的內容錨）已經用「root 是空的」判斷沒有 workspace。這個判斷收成 `Workspace::is_local()`，封存的提交階段沿用它，所以 `command/mod.rs` 不用改。另外一個本機效果也一併跳過：移除舊格式的 touched 記錄檔（`legacy_touched_file`），它和開工標記一樣是本機檔案。提交階段的錯誤訊息只在真的寫了備份時才指出備份位置；有 workspace 時訊息不變。
 
-同一類的問題（品質關卡第 1 輪修正，依專案審查規則「同一種寫法在 repo 其他位置有同樣的問題要一併修正」）：discard 也會移除 touched 記錄檔，root 為空時同樣指向程序的工作目錄。discard 改成同樣只在 `is_local()` 時移除；本機專案的 discard 行為不變。
+同一類的問題（品質關卡第 1 輪修正，依專案審查規則「同一種寫法在 repo 其他位置有同樣的問題要一併修正」）：discard 也會移除 touched 記錄檔，root 為空時同樣指向程序的工作目錄。discard 改成同樣只在 `is_local()` 時移除；本機專案的 discard 行為不變。apply 的 preflight 也有同一類寫法（拿 root 接上提案裡的路徑判斷檔案在不在）：主 checkout 第 1 輪修正讓它在沒有 workspace 時不查本機檔案。preflight 本來就不經線上回應，所以遠端用戶端看不到差別。
 
 實作前先查 CLI 的遠端封存輸出與 Speclink Desktop 的封存結果畫面怎麼用 `snapshotCreated`。它只是多印一行時，遠端少那一行屬於刻意的變更，更新對應的測試期望值並補進 proposal 的相容性影響；它影響流程判斷時停下來回報。
 
@@ -184,15 +185,17 @@
 
 **行為**
 
-- 對同一批資料，改寫前後每條路由的狀態碼、回應本文、`ETag` 標頭逐位元相同。例外只有封存回應的 `snapshotCreated`（D7）。
+- 對同一批資料，改寫前後每條路由的狀態碼、回應本文、`ETag` 標頭逐位元相同。例外：
+  - 封存回應的 `snapshotCreated`（D7）。
+  - 儲存失敗時的訊息與狀態碼：兩個請求幾乎同時、比對之後提交之前別人改了同一份文件時，409 的訊息文字改用儲存接口的格式；儲存回報後端錯誤時 500 的訊息文字改用儲存接口的格式；TeamStore 回報找不到或無權限時改回 500（改寫前是 404／403）。儲存接口只有衝突、暫時無法使用、後端錯誤三種失敗，保不住原本的對映；現有的三個 driver 不會回報找不到或無權限。
 - 示範 server 處理匯入與事件串流以外的任何專案路由時，TeamStore 只經轉接被呼叫。
 - 連續輪詢範圍版本號而沒有提交時，TeamStore 的匯出一次都不被呼叫。
 - 經 Host 封存一個會改寫既有正式規格的變更後，程序的工作目錄沒有新增任何檔案。
 
 **介面與資料形狀**
 
-- `speclink_host::documents` 的函式（D1 的表）、`DocumentsError`、`etag`、`scope_moved`、`BOARD_ORDER_LIMIT`。每個讀取函式回傳線上型別與範圍版本；`documents::scope_version` 就是 `port_exec::scope_version`；看板順序寫入的預期版本是 `Version`。
-- `speclink_host::port_exec::scope_version(&dyn StorePort, &ScopeId)`、`execute_at_version(port, scope, ctx, cmd, expected: Version) -> AtVersion`（D6 的實作補充）與 `now()`（提交時間）。
+- `speclink_host::documents` 的函式（D1 的表）、`DocumentsError`、`etag`、`scope_moved`、`check_board_order_size`、`BOARD_ORDER_LIMIT`。每個讀取函式回傳線上型別與範圍版本；`documents::scope_version` 是取範圍版本的唯一入口；看板順序寫入的預期版本是 `Version`。
+- `speclink_host::port_exec::execute_at_version(port, scope, ctx, cmd, expected: Version) -> AtVersion`（D6 的實作補充）與 `now()`（提交時間）。
 - `speclink_host::teamstore_port::scope_id(&Scope)`：TeamStore 的範圍轉成範圍識別（project 段跳脫 `%` 與 `/`）。
 - `TeamStorePort::pinned(&ScopeId)`：一個請求的視圖（D6）。
 - `speclink_core::workspace::Workspace::is_local()`（D7）。
@@ -222,7 +225,7 @@
 - `cargo test -p speclink-host`：轉接的測試涵蓋多個範圍、revision 沒變時不匯出、提交後重新載入、別人提交後重新載入。
 - `cargo test -p speclink-server`：既有的整合測試不改斷言就通過（除了斷言 `snapshotCreated` 為真的，如果有）。
 - `cargo test -p speclink-remote` 與 `cargo test -p speclink-desktop` 既有的遠端整條鏈測試通過。
-- `cargo test -p speclink-core`：封存在沒有 workspace 時不寫檔的測試；本機封存的既有測試不改。
+- `cargo test -p speclink-core`：本機封存照舊寫備份的測試（`a_local_archive_backs_up_the_spec_it_rewrites`）、`Workspace::is_local` 與 preflight 在沒有 workspace 時不查本機檔案的單元測試；本機封存的既有測試不改。沒有 workspace 時封存不寫檔的測試在 Host（`archive_writes_no_local_files`）：它要切換程序的工作目錄，放在 core 會在 crate 資料夾留下檔案。
 - 用搜尋確認 `api/routes.rs`、`api/read_api.rs`、`api/context.rs`、`api/verb.rs` 裡，除了匯入與事件串流，沒有 `snapshot(`、`export(`、`begin_unit_of_work` 的呼叫。
 
 **範圍**
@@ -234,7 +237,9 @@
 
 - [回歸對照] 十幾條路由的讀法都換了。→ 既有的 server 整合測試逐條涵蓋（看板順序、流程設定、查詢、已封存、搜尋、drift、Context 快照、輪詢）；不改它們的斷言。evidence 的路由今天只有整條鏈的測試碰到，這次補一個直接的測試。
 - [一致性] 一條路由的多次呼叫之間可能有人提交。→ D2 的順序讓 ETag 不會比內容新；用戶端輪詢會收斂。
-- [記憶體] 長期持有的轉接為每個用過的範圍留一份內容。→ 示範 server 的定位可以接受；真正的宿主不用這個轉接。寫進專案能力狀態的文件影響。
+- [記憶體] 長期持有的轉接為每個用過的範圍留一份內容。→ 示範 server 的定位可以接受；真正的宿主不用這個轉接。寫進專案能力狀態的文件影響。同一範圍的載入一次一個，所以同專案的訂閱者同時重讀時不會各自匯出。
+- [一份壞文件拖累整個範圍] 轉接以匯出載入整個範圍，範圍裡只要有一份文件 TeamStore 解不開，流程設定、看板順序、evidence、whoami、sync-state 這些原本只讀一份文件的路由也會一起回 500。→ 接受：觸發條件是 TeamStore 本身已經存了壞資料；要避開就得讓單一文件改走快照，會打破「每個請求一份固定載入」。
+- [範圍識別的長度] 範圍識別有 256 位元組的上限，project 裡的 `/` 與 `%` 跳脫後各多 2 位元組；project 加 repo 太長時，whoami、sync-state 這類原本只取快照的路由也會回 500。→ 接受：改寫前全部引擎路由就有同樣的上限；要根治得在建專案與 repo 時驗證長度，不在這個變更的範圍。
 - [跨平台] 新增的程式不碰路徑與程序。封存不寫檔的測試用暫存的工作目錄，Windows 上刪除時沿用既有測試的重試設定。
 - [和進行中的變更衝突] workflow-config-commands 正在改同一個檔的流程設定寫入路由。→ 宣告相依，排在它之後；這個變更不動那條路由的邏輯，只把它取版本的呼叫換成 `scope_version`。
 - [儲存解耦] 完成後示範 server 的讀寫只剩兩處認得 TeamStore，離「引擎與宿主套件只認得三個函式」只差搬移。

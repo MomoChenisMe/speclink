@@ -83,6 +83,8 @@ pub(crate) fn parse_key(key: &str) -> Option<KeyKind<'_>> {
 
 /// Split the stored name of an archived discussion into its creation date
 /// and the rest. `None` when the name does not start with `YYYY-MM-DD-`.
+/// This is the key contract's strict rule; the archived list answers with
+/// its own lenient rule (`documents::split_dated_name`), kept as it was.
 pub(crate) fn split_archived_stem(stem: &str) -> Option<(&str, &str)> {
     let date = stem.get(..10)?;
     let rest = stem.get(10..)?.strip_prefix('-')?;

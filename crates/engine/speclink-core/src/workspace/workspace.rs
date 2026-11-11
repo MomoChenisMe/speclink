@@ -253,6 +253,14 @@ pub struct ModeResolution {
 mod tests {
     use super::*;
 
+    #[test]
+    fn an_empty_root_is_no_local_workspace() {
+        let at = |root: &str| Workspace { root: PathBuf::from(root), spec_dir_name: "speclink".to_string() };
+        assert!(!at("").is_local(), "the Host over a store port");
+        assert!(at("/work/repo").is_local());
+        assert!(at("relative").is_local());
+    }
+
     /// Throwaway workspace root with the given `.speclink.yaml` content.
     /// `label` keeps parallel tests in distinct sandboxes.
     fn workspace_with(label: &str, app_yaml: &str) -> Workspace {

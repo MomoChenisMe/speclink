@@ -138,8 +138,8 @@ fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document(
 
 /// A store seeded with an archive-ready change: tasks all done, one delta spec
 /// so the archive reports capability counts, and a source discussion linked
-/// both ways so it co-travels into the archive.
-fn archive_ready_store() -> Arc<MemoryStore> {
+/// both ways so it co-travels into the archive. The change is named `change`.
+fn archive_ready_store(change: &str) -> Arc<MemoryStore> {
     let store = Arc::new(MemoryStore::new());
     let mut uow = store
         .begin_unit_of_work(
@@ -148,23 +148,25 @@ fn archive_ready_store() -> Arc<MemoryStore> {
         )
         .expect("begin uow");
     uow.create(
-        DocumentId::ChangeMeta { change: "demo-archive".into() },
+        DocumentId::ChangeMeta { change: change.into() },
         "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: scope-talk\n",
     );
     uow.create(
-        DocumentId::ChangeArtifact { change: "demo-archive".into(), artifact: "tasks.md".into() },
+        DocumentId::ChangeArtifact { change: change.into(), artifact: "tasks.md".into() },
         "- [x] 1.1 done\n",
     );
     uow.create(
         DocumentId::ChangeArtifact {
-            change: "demo-archive".into(),
+            change: change.into(),
             artifact: "specs/user-auth/spec.md".into(),
         },
         "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，專供伺服端的測試取用。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
     );
     uow.create(
         DocumentId::Discussion { slug: "scope-talk".into(), archived: false },
-        "---\ntopic: Scope talk\nslug: scope-talk\nstatus: promoted\npromoted_to: demo-archive\n---\n\n## Conclusion\n\nGo.\n",
+        format!(
+            "---\ntopic: Scope talk\nslug: scope-talk\nstatus: promoted\npromoted_to: {change}\n---\n\n## Conclusion\n\nGo.\n"
+        ),
     );
     store.commit(uow, Vec::new()).expect("seed commit");
     store
@@ -288,7 +290,7 @@ fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
 
 #[test]
 fn archive_reports_the_full_engine_outcome_over_the_wire() {
-    let store = archive_ready_store();
+    let store = archive_ready_store("demo-archive");
     let state = common::state_with(store.clone());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -324,8 +326,10 @@ fn archive_reports_the_full_engine_outcome_over_the_wire() {
 #[test]
 fn a_remote_archive_reports_no_backup_and_writes_none_locally() {
     // host-runtime「遠端封存的回應」：改寫既有正式規格的封存，回應的 snapshotCreated 是 false，
-    // 其餘欄位照舊；server 的程序目錄沒有出現備份。
-    let store = archive_ready_store();
+    // 其餘欄位照舊；server 的程序目錄沒有出現備份。變更名稱只用在這裡：修正之前的程式
+    // 跑過的測試，在 crate 資料夾留下過其他名稱的備份。
+    const CHANGE: &str = "rewrite-without-backup";
+    let store = archive_ready_store(CHANGE);
     let mut uow = store
         .begin_unit_of_work(
             &scope(),
@@ -342,11 +346,11 @@ fn a_remote_archive_reports_no_backup_and_writes_none_locally() {
     let base = common::start(state);
     let client = client(&base, &pat);
 
-    let resp = client.archive("demo-archive", false, false).expect("archive over the wire");
+    let resp = client.archive(CHANGE, false, false).expect("archive over the wire");
 
     assert_eq!(resp.snapshot_created, Some(false), "no local backup over a store port");
     let dated = resp.dated_name.as_deref().expect("datedName");
-    assert!(dated.ends_with("-demo-archive"), "{dated}");
+    assert!(dated.ends_with(&format!("-{CHANGE}")), "{dated}");
     let spec = resp.specs.iter().find(|s| s.capability == "user-auth").expect("capability listed");
     assert_eq!((spec.added, spec.modified, spec.removed, spec.renamed), (1, 0, 0, 0));
     assert!(resp.archived_discussions.iter().any(|d| d.slug == "scope-talk"));

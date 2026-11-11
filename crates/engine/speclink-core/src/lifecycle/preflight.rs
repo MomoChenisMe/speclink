@@ -102,9 +102,11 @@ impl Preflight {
             });
 
         let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
+        // A run with no workspace has no local file to look for: an empty root
+        // would look in the process's working directory instead.
         let missing_files: Vec<MissingFile> = proposal_code_refs(&proposal)
             .into_iter()
-            .filter(|p| !ws.root.join(p).exists())
+            .filter(|p| ws.is_local() && !ws.root.join(p).exists())
             .map(|p| MissingFile {
                 path: p,
                 referenced_in: "proposal".to_string(),
@@ -127,5 +129,44 @@ impl Preflight {
             drifted_files,
             staleness,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Preflight;
+    use crate::teststore::TestStore;
+    use crate::workspace::Workspace;
+
+    const PROPOSAL: &str =
+        "## Impact\n\n- Affected code:\n  - `src/present/kept.rs`\n  - `src/nope/missing.rs`\n";
+
+    fn preflight_on(ws: &Workspace) -> Vec<String> {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\n");
+        store.put_artifact("demo", "proposal.md", PROPOSAL);
+        let change = crate::model::find_change(&store, "demo").unwrap();
+        Preflight::compute(ws, &store, &change)
+            .missing_files
+            .into_iter()
+            .map(|m| m.path)
+            .collect()
+    }
+
+    #[test]
+    fn a_local_workspace_reports_the_referenced_files_it_lacks() {
+        let root = std::env::temp_dir().join(format!("speclink-preflight-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&root);
+        std::fs::create_dir_all(root.join("src/present")).unwrap();
+        std::fs::write(root.join("src/present/kept.rs"), "").unwrap();
+        let ws = Workspace { root: root.clone(), spec_dir_name: "speclink".to_string() };
+        assert_eq!(preflight_on(&ws), ["src/nope/missing.rs"]);
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn no_workspace_reports_no_missing_file() {
+        // 沒有 workspace（root 是空的）時沒有本機檔案可查：不拿程序的工作目錄去判斷。
+        let ws = Workspace { root: std::path::PathBuf::new(), spec_dir_name: "speclink".to_string() };
+        assert!(preflight_on(&ws).is_empty());
     }
 }
