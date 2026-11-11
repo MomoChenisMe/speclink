@@ -5,7 +5,7 @@ status: promoted
 created: 2026-11-10
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
-promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands
+promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands, host-kit-agent-door, client-browser-login, skills-verbs-first-wave, server-routes-on-store-port, host-kit-client-door
 ---
 
 # Discussion: 內嵌宿主、遠端能力與「規格不在 checkout 裡」的形態：需求清單
