@@ -1,0 +1,132 @@
+{
+  "version": 2,
+  "change": "engine-on-store-port",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 讓 speclink-host 依賴套件 speclink-store-port，並建立三個空模組 port_view、port_exec、teamstore_port：完成後 workspace 能建置，既有行為不變。涉及 crates/host/speclink-host/Cargo.toml、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/port_exec.rs、crates/host/speclink-host/src/teamstore_port.rs、Cargo.lock。驗證：`cargo build -p speclink-host` 通過；`cargo test -p speclink-host` 既有測試全部通過。",
+      "files": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/teamstore_port.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "2.1 （Red）依 D7 新增雙路徑測試的讀取部分與覆蓋表測試：同樣的內容分別放進檔案實作與 `MemoryStorePort`，比對列出變更、單一變更的狀態、列出討論、讀詞彙表的結果與 not_found 的錯誤碼；覆蓋表列出引擎儲存介面的每個方法，每個方法至少一個經 `PortView` 的斷言（對應「engine 動詞經儲存接口執行」的「兩條路徑結果一致」）。涉及 crates/host/speclink-host/tests/port_dual_path.rs、crates/host/speclink-host/src/port_view.rs。驗證：`cargo test -p speclink-host --test port_dual_path` 失敗。",
+      "files": [
+        "crates/host/speclink-host/tests/port_dual_path.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 （Green）實作 `port_exec::execute`、`PortExecution`、`ExecError`，以及收時間參數的內部版本；把 crates/host/speclink-host/src/commit.rs 的事件對映抽成不依賴 TeamStore 型別的共用函式（事件名稱與 camelCase 的內容）。涉及 crates/host/speclink-host/src/port_exec.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/lib.rs。驗證：3.1 的測試全部通過；`cargo test -p speclink-host --test port_dual_path` 通過。",
+      "files": [
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/commit.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 依 D6 新增量測測試：把本專案的 speclink 資料夾載入 `MemoryStorePort`（路徑換成鍵、封存依鍵對照表、Windows 的分隔符換成 `/`），外包計數的儲存，對列出變更、單一變更的狀態、執行計畫、列出討論、新增一份 artifact、勾選一個任務、封存一個變更、搜尋討論各跑一次並印出列出次數、讀取次數、讀取的鍵數與位元組數、提交次數。斷言三項：三個讀取類命令不讀 `archive/` 底下的鍵也不列出 `archive/changes/`；每個命令同一個前綴最多列出一次、同一個鍵最多讀取一次；寫入類命令提交正好一次。涉及 crates/host/speclink-host/tests/port_cost.rs。驗證：`cargo test -p speclink-host --test port_cost -- --nocapture` 通過並印出數字表。",
+      "files": [
+        "crates/host/speclink-host/tests/port_cost.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.3 依 D3 把既有的橋接入口改成轉接加執行入口，對應「engine 動詞經橋接於 TeamStore 上執行」：`bridge::execute` 的簽名不變、內容改走 `TeamStorePort` 與 `port_exec::execute`；移除 `BridgeStore`、`materialize` 與 commit.rs 裡不再有呼叫端的 `begin_unit_of_work`、`commit_with_events`；`drift::spec_drift` 改用 `PortView`；`BridgeError::Store` 的內容改成 `PortError`。涉及 crates/host/speclink-host/src/bridge.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/drift.rs、crates/host/speclink-host/tests/bridge_dual_path.rs。驗證：既有的五個雙路徑測試不改斷言就通過（只改因型別變動而必要的地方）；`cargo test -p speclink-host` 全部通過；在 crates/host 搜尋不到 `BridgeStore` 與對它的 `materialize` 的呼叫。",
+      "files": [
+        "crates/host/speclink-host/src/drift.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.4 依 D4 完成 Server 的錯誤對映並盤點 driver：新增 `PortError` 到 `ApiError` 的對映（衝突是 409 與 revision_conflict、暫時無法使用是 503、後端錯誤是 500）；盤點 crates/store 底下三個 driver 在 snapshot、export、history、commit 回傳 NotFound 與 PermissionDenied 的位置，把結論寫進任務的完成說明，有的話在轉接帶出訊息並補 server 測試；搜尋 crates/host/speclink-server 與 crates/adapters/speclink-cli 的測試裡對 409 訊息全文的斷言並更新；補上「版本衝突經 Server 回報」的測試。涉及 crates/host/speclink-server/src/api/error.rs、crates/host/speclink-server/src/api/verb.rs、crates/host/speclink-host/src/teamstore_port.rs。驗證：`cargo test -p speclink-server` 全部通過（背景執行；既有的 review_api flaky 單獨重跑確認）。",
+      "files": [
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72TXM647XDSWQZSQQZDYJ9V",
+      "taskDesc": "1.1 讓 speclink-host 依賴套件 speclink-store-port，並建立三個空模組 port_view、port_exec、teamstore_port：完成後 workspace 能建置，既有行為不變。涉及 crates/host/speclink-host/Cargo.toml、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/port_exec.rs、crates/host/speclink-host/src/teamstore_port.rs、Cargo.lock。驗證：`cargo build -p speclink-host` 通過；`cargo test -p speclink-host` 既有測試全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/teamstore_port.rs"
+      ],
+      "recordedAt": "2026-11-11T03:28:12Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM64W1R0J9QWMRKPKCCA",
+      "taskDesc": "2.1 （Red）依 D7 新增雙路徑測試的讀取部分與覆蓋表測試：同樣的內容分別放進檔案實作與 `MemoryStorePort`，比對列出變更、單一變更的狀態、列出討論、讀詞彙表的結果與 not_found 的錯誤碼；覆蓋表列出引擎儲存介面的每個方法，每個方法至少一個經 `PortView` 的斷言（對應「engine 動詞經儲存接口執行」的「兩條路徑結果一致」）。涉及 crates/host/speclink-host/tests/port_dual_path.rs、crates/host/speclink-host/src/port_view.rs。驗證：`cargo test -p speclink-host --test port_dual_path` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/port_dual_path.rs"
+      ],
+      "recordedAt": "2026-11-11T03:34:00Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM6428289ZPFB27XHX4C",
+      "taskDesc": "3.2 （Green）實作 `port_exec::execute`、`PortExecution`、`ExecError`，以及收時間參數的內部版本；把 crates/host/speclink-host/src/commit.rs 的事件對映抽成不依賴 TeamStore 型別的共用函式（事件名稱與 camelCase 的內容）。涉及 crates/host/speclink-host/src/port_exec.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/lib.rs。驗證：3.1 的測試全部通過；`cargo test -p speclink-host --test port_dual_path` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/commit.rs"
+      ],
+      "recordedAt": "2026-11-11T03:40:04Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM64CGMMJ6Q328RGNC6E",
+      "taskDesc": "5.1 依 D6 新增量測測試：把本專案的 speclink 資料夾載入 `MemoryStorePort`（路徑換成鍵、封存依鍵對照表、Windows 的分隔符換成 `/`），外包計數的儲存，對列出變更、單一變更的狀態、執行計畫、列出討論、新增一份 artifact、勾選一個任務、封存一個變更、搜尋討論各跑一次並印出列出次數、讀取次數、讀取的鍵數與位元組數、提交次數。斷言三項：三個讀取類命令不讀 `archive/` 底下的鍵也不列出 `archive/changes/`；每個命令同一個前綴最多列出一次、同一個鍵最多讀取一次；寫入類命令提交正好一次。涉及 crates/host/speclink-host/tests/port_cost.rs。驗證：`cargo test -p speclink-host --test port_cost -- --nocapture` 通過並印出數字表。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/port_cost.rs"
+      ],
+      "recordedAt": "2026-11-11T03:41:56Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM64YZ6CCW9MCQS0V273",
+      "taskDesc": "4.3 依 D3 把既有的橋接入口改成轉接加執行入口，對應「engine 動詞經橋接於 TeamStore 上執行」：`bridge::execute` 的簽名不變、內容改走 `TeamStorePort` 與 `port_exec::execute`；移除 `BridgeStore`、`materialize` 與 commit.rs 裡不再有呼叫端的 `begin_unit_of_work`、`commit_with_events`；`drift::spec_drift` 改用 `PortView`；`BridgeError::Store` 的內容改成 `PortError`。涉及 crates/host/speclink-host/src/bridge.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/drift.rs、crates/host/speclink-host/tests/bridge_dual_path.rs。驗證：既有的五個雙路徑測試不改斷言就通過（只改因型別變動而必要的地方）；`cargo test -p speclink-host` 全部通過；在 crates/host 搜尋不到 `BridgeStore` 與對它的 `materialize` 的呼叫。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/drift.rs"
+      ],
+      "recordedAt": "2026-11-11T03:45:43Z"
+    },
+    {
+      "taskId": "tsk_01M72TXM6448BV5G2R81S22F1R",
+      "taskDesc": "4.4 依 D4 完成 Server 的錯誤對映並盤點 driver：新增 `PortError` 到 `ApiError` 的對映（衝突是 409 與 revision_conflict、暫時無法使用是 503、後端錯誤是 500）；盤點 crates/store 底下三個 driver 在 snapshot、export、history、commit 回傳 NotFound 與 PermissionDenied 的位置，把結論寫進任務的完成說明，有的話在轉接帶出訊息並補 server 測試；搜尋 crates/host/speclink-server 與 crates/adapters/speclink-cli 的測試裡對 409 訊息全文的斷言並更新；補上「版本衝突經 Server 回報」的測試。涉及 crates/host/speclink-server/src/api/error.rs、crates/host/speclink-server/src/api/verb.rs、crates/host/speclink-host/src/teamstore_port.rs。驗證：`cargo test -p speclink-server` 全部通過（背景執行；既有的 review_api flaky 單獨重跑確認）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/tests/it/api/command_routes.rs"
+      ],
+      "recordedAt": "2026-11-11T03:50:15Z"
+    }
+  ]
+}

@@ -4,7 +4,7 @@
 
 討論 embedded-host-needs 定案：引擎改經三個函式的儲存接口讀寫，用到才讀、一次讀多份、寫入收成一次提交並帶事件。這是十六個變更的第二個，建在變更 store-port-contract 的契約上。它同時要回答兩個還沒驗證的問題：三個函式是否足以供應引擎儲存介面的全部操作；用到才讀之後是否還需要快取。
 
-- **目標使用者**：把 speclink 內嵌進自己後端的整合者（之後能把自己的儲存交給引擎），以及連到示範用 server 的工程師、PO、PM（行為不變，讀取量變少）。
+- **目標使用者**：把 speclink 內嵌進自己後端的整合者（之後能把自己的儲存交給引擎），以及連到示範用 server 的工程師、PO、PM（行為不變；讀取量在這個變更還不會變少，原因見 design 的 D5）。
 - **使用情境**：Server 端執行任何動詞的路徑。不對應單一 workflow 階段或技能。
 - **既有規格的對照**：host-runtime 的「engine 動詞經橋接於 TeamStore 上執行」與「Host 承擔 TeamStore 的 UoW 與 event commit」規定今天的橋接與提交路徑，這個變更修改這兩條並新增三條。teamstore-contract 與 store-abstraction 不變。
 
@@ -53,8 +53,9 @@
     - crates/host/speclink-host/src/commit.rs
     - crates/host/speclink-host/src/drift.rs
     - crates/host/speclink-host/tests/bridge_dual_path.rs
+    - crates/host/speclink-server/Cargo.toml
     - crates/host/speclink-server/src/api/error.rs
-    - crates/host/speclink-server/src/api/verb.rs
+    - crates/host/speclink-server/tests/it/api/command_routes.rs
     - Cargo.lock
   - Removed: (none)
 - 三種形態下的結果：
