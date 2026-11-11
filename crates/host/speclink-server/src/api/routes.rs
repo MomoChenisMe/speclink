@@ -433,16 +433,10 @@ pub async fn change_rank(
     Path((_key, name)): Path<(String, String)>,
     Json(req): Json<RankChangeRequest>,
 ) -> Result<Response, ApiError> {
-    let side = match req.position.as_str() {
-        "before" => speclink_core::plan::Side::Before,
-        "after" => speclink_core::plan::Side::After,
-        other => {
-            return Err(ApiError::invalid_argument(format!(
-                "position must be 'before' or 'after', got '{other}'"
-            )))
-        }
-    };
-    let cmd = Command::ChangeRank { name, anchor: req.anchor, side, force: req.force };
+    let position = speclink_core::plan::Side::parse(&req.position).ok_or_else(|| {
+        ApiError::invalid_argument(format!("position must be 'before' or 'after', got '{}'", req.position))
+    })?;
+    let cmd = Command::ChangeRank { name, anchor: req.anchor, position, force: req.force };
     let result = verb::run(&state, &binding, cmd).await?;
     match result.execution.outcome {
         CommandOutcome::ChangeRank(o) => Ok(ok(

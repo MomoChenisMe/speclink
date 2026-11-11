@@ -2091,7 +2091,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::InProgressRemove { name: _ } => {}
         Command::ChangeDepends { name: _, on: _, remove: _ } => {}
         Command::ChangeSchema { name: _, schema: _ } => {}
-        Command::ChangeRank { name: _, anchor: _, side: _, force: _ } => {}
+        Command::ChangeRank { name: _, anchor: _, position: _, force: _ } => {}
         Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
         Command::Discard { change: _, force: _ } => {}
         Command::DiscussNew { topic: _, slug: _, kind: _ } => {}

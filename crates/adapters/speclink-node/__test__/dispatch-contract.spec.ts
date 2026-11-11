@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { createEngine } from '../index.js'
-import { cliBin, fixtureProject, makeFsFixture, memoryStore, rejection } from './helpers'
+import { cliBin, fixtureProject, makeFsFixture, memoryStore, rejection, type MemoryProject } from './helpers'
 
 describe('dispatch config fail-closed (invalid_config)', () => {
   it('a broken workflow-config text rejects new change with code invalid_config', async () => {
@@ -465,6 +465,55 @@ describe('dispatch covers every verb that has an engine command', () => {
     const err = await rejection(engine.dispatch(['change', 'rank', 'beta', '--before', 'alpha']))
     expect(err.code).toBe('refused')
     expect(err.message).toMatch(/readChangeMeta, writeChangeMeta/)
+  })
+
+  it('change rank names only the change-metadata methods it is missing', async () => {
+    const store = memoryStore(fixtureProject()) as Record<string, unknown>
+    delete store.readChangeMeta
+    delete store.deleteArtifact
+    const engine = createEngine({ store: store as never })
+    const err = await rejection(engine.dispatch(['change', 'rank', 'beta', '--before', 'alpha']))
+    expect(err.code).toBe('refused')
+    expect(err.message).toMatch(/readChangeMeta/)
+    expect(err.message).not.toMatch(/writeChangeMeta|deleteArtifact/)
+  })
+
+  // change-plan「Node SDK 既有宿主 Store 沿用 metadata」：31 方法宿主 Store 的順序鍵寫進 metadata。
+  it('change rank on a host store writes the metadata and the plan follows it', async () => {
+    const meta = (created: string, rank?: string) =>
+      `schema: spec-driven\ncreated: ${created}\n${rank ? `board_rank: ${rank}\n` : ''}`
+    const project: MemoryProject = {
+      changes: {
+        a: { meta: { schema: 'spec-driven', created: '2026-09-01' }, artifacts: { '.openspec.yaml': meta('2026-09-01', 'n') } },
+        c: { meta: { schema: 'spec-driven', created: '2026-09-02' }, artifacts: { '.openspec.yaml': meta('2026-09-02') } },
+      },
+      specs: {},
+    }
+    const base = memoryStore(project)
+    // listChanges reports the board rank the raw metadata carries, so a write is seen.
+    const rankOf = (name: string) => /^board_rank: (\S+)$/m.exec(project.changes[name]?.artifacts['.openspec.yaml'] ?? '')?.[1]
+    const withRank = <T extends { name: string; meta: object } | null>(c: T) =>
+      c && { ...c, meta: { ...c.meta, boardRank: rankOf(c.name) } }
+    const store = {
+      ...base,
+      async listChanges() {
+        return (await base.listChanges()).map(withRank)
+      },
+      async findChange(name: string) {
+        return withRank(await base.findChange(name))
+      },
+    }
+    const engine = createEngine({ store: store as never })
+    expect(await engine.dispatch(['change', 'rank', 'c', '--before', 'a', '--json'])).toEqual({
+      change: 'c',
+      anchor: 'a',
+      position: 'before',
+    })
+    const written = rankOf('c')
+    expect(written && written < 'n', `c's rank ${written}`).toBe(true)
+    expect(project.changes.a.artifacts['.openspec.yaml']).toBe(meta('2026-09-01', 'n'))
+    const plan = (await engine.dispatch(['plan', '--json'])) as { changes: { name: string }[] }
+    expect(plan.changes.map((c) => c.name)).toEqual(['c', 'a'])
   })
 
   it('the verbs that need a checkout still reject with invalid_argv', async () => {

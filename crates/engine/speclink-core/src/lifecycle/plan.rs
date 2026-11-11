@@ -153,10 +153,12 @@ impl std::fmt::Display for PlanError {
 
 impl std::error::Error for PlanError {}
 
-/// Plan the active changes with each change's own `board_rank` as its rank.
+/// Plan the active changes with the board ranks the store keeps
+/// ([`Store::board_ranks`]: each change's own metadata locally, the scope's
+/// board-order document through a store port).
 pub fn compute(store: &dyn Store) -> Result<Plan, PlanError> {
     let changes = model::list_changes(store);
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks(&changes);
     compute_from(store, changes, &ranks, false)
 }
 
@@ -166,7 +168,7 @@ pub fn compute(store: &dyn Store) -> Result<Plan, PlanError> {
 /// CLI's local plan is its one caller.
 pub(crate) fn compute_strict(store: &dyn Store) -> Result<Plan, PlanError> {
     let changes = model::list_changes(store);
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks(&changes);
     compute_from(store, changes, &ranks, true)
 }
 
@@ -175,7 +177,7 @@ pub(crate) fn compute_strict(store: &dyn Store) -> Result<Plan, PlanError> {
 /// whether the declared prerequisites form a cycle.
 pub fn check_cycle(store: &dyn Store) -> Result<(), PlanError> {
     let changes = model::list_changes(store);
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks(&changes);
     let (entries, _) = entries_of(store, changes, &ranks);
     place(&entries, &deps_of(&entries), false).map(|_| ())
 }
@@ -260,7 +262,7 @@ pub fn set_depends(
         }
     }
     if !remove {
-        let ranks = meta_ranks(&changes);
+        let ranks = store.board_ranks(&changes);
         let (mut entries, _) = entries_of(store, changes, &ranks);
         // A corrupt target is no entry: nothing to walk, and `edit_meta`
         // below refuses it fail-closed.
@@ -420,7 +422,7 @@ fn entries_of(
 /// computed (a dependency cycle), so both come from one key.
 pub fn basis_order(store: &dyn Store) -> Vec<String> {
     let changes = model::list_changes(store);
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks(&changes);
     entries_of(store, changes, &ranks)
         .0
         .into_iter()
@@ -433,7 +435,7 @@ pub fn basis_order(store: &dyn Store) -> Vec<String> {
 /// stalls it — the one order the board lists and a board move is placed in.
 pub fn board_order(store: &dyn Store) -> Vec<String> {
     let changes = model::list_changes(store);
-    let ranks = meta_ranks(&changes);
+    let ranks = store.board_ranks(&changes);
     let (entries, _) = entries_of(store, changes, &ranks);
     shown_order(&entries)
         .into_iter()
@@ -916,6 +918,13 @@ impl Side {
             Side::After => "after",
         }
     }
+
+    /// The side `as_str` names — `before` or `after`, nothing else. A caller
+    /// at a boundary decides what an unknown word is (a request error, an
+    /// unexpected server response).
+    pub fn parse(word: &str) -> Option<Side> {
+        [Side::Before, Side::After].into_iter().find(|side| side.as_str() == word)
+    }
 }
 
 /// `change rank` (spec「change rank 動詞寫入看板順序鍵」): rewrite `name`'s
@@ -1003,7 +1012,7 @@ fn move_start(
         anyhow::bail!("Change '{name}' not found.");
     };
     model::require_valid_meta(store, moved)?;
-    let ranks = store.board_ranks();
+    let ranks = store.board_ranks(&changes);
     let (entries, _) = entries_of(store, changes, &ranks);
     Ok((ranks, entries))
 }
@@ -2126,6 +2135,18 @@ mod tests {
         assert!(err.must_follow.is_empty());
         assert_eq!(err.must_precede, ["c"]);
         assert_eq!(blocked_move(&["a", "c", "y", "x"], &deps, "c"), Ok(()));
+    }
+
+    #[test]
+    fn side_parses_before_and_after_only() {
+        assert_eq!(Side::parse("before"), Some(Side::Before));
+        assert_eq!(Side::parse("after"), Some(Side::After));
+        for other in ["Before", "first", "", " after"] {
+            assert_eq!(Side::parse(other), None, "{other:?}");
+        }
+        for side in [Side::Before, Side::After] {
+            assert_eq!(Side::parse(side.as_str()), Some(side), "round trip");
+        }
     }
 
     #[test]

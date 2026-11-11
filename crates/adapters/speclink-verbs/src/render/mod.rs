@@ -230,9 +230,7 @@ pub fn render(
             plan::depends_declared(o, on, remove, options)
         }
         O::ChangeSchema(o) => plan::schema(o, options),
-        O::ChangeRank(o) => {
-            plan::rank(&plan::Ranked { change: &o.change, anchor: &o.anchor, side: o.position }, options)
-        }
+        O::ChangeRank(o) => plan::rank(o, options),
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
         O::DiscussNew(info) => discuss::new(info, options),

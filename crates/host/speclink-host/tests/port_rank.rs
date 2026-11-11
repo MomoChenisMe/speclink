@@ -95,13 +95,14 @@ fn overwrite(port: &MemoryStorePort, key: &DocKey, content: &str) {
 }
 
 fn rank(port: &dyn StorePort, name: &str, anchor: &str, side: Side, force: bool) -> Result<port_exec::PortExecution, ExecError> {
-    let cmd = Command::ChangeRank { name: name.into(), anchor: anchor.into(), side, force };
+    let cmd = Command::ChangeRank { name: name.into(), anchor: anchor.into(), position: side, force };
     port_exec::execute(port, &scope(), &host_ctx(), cmd)
 }
 
+/// The plan as an embedded host gets it: through the store port, with no rank
+/// table of its own (D8 — the store supplies the order keys).
 fn plan_order(port: &dyn StorePort) -> Vec<String> {
-    let ranks = BoardOrderDoc::from_content(Some(&board_text(port))).changes;
-    let run = port_exec::execute(port, &scope(), &host_ctx(), Command::Plan { ranks: Some(ranks) }).expect("plan");
+    let run = port_exec::execute(port, &scope(), &host_ctx(), Command::Plan { ranks: None }).expect("plan");
     let CommandOutcome::Plan(plan) = run.outcome else { panic!("a plan") };
     plan.changes.into_iter().map(|c| c.name).collect()
 }
@@ -216,4 +217,26 @@ fn a_name_that_leaves_the_changes_folder_writes_nothing() {
     }
     assert!(port.commits.lock().unwrap().is_empty(), "no commit");
     assert_eq!(board_text(&port), content);
+}
+
+#[test]
+fn orphan_entries_are_pruned_and_the_discussion_section_stays() {
+    // remote-board-order「排序請求修剪孤兒條目並帶回討論那一段」（儲存接口這一層）。
+    let port = seeded(&[("a", A), ("c", C)], Some(r#"{"changes":{"a":"n","gone":"c"},"discussions":{"topic":"f"}}"#));
+    rank(&port, "c", "a", Side::Before, false).expect("the move succeeds");
+    let doc = board(&port);
+    assert_eq!(doc.changes.keys().map(String::as_str).collect::<Vec<_>>(), ["a", "c"]);
+    assert_eq!(doc.changes["a"], "n");
+    assert!(doc.changes["c"].as_str() < "n");
+    assert_eq!(doc.discussions["topic"], "f");
+}
+
+#[test]
+fn plan_follows_a_rank_written_through_the_store_port() {
+    // change-plan Scenario「內嵌宿主排序後 plan 跟著改變」。c 比 a 晚建立，沒有順序鍵時排在 a 後面。
+    let port = seeded(&[("a", A), ("c", C)], Some(r#"{"changes":{"a":"n"}}"#));
+    assert_eq!(plan_order(&port), ["a", "c"], "before the move");
+    rank(&port, "c", "a", Side::Before, false).expect("the move succeeds");
+    assert_eq!(plan_order(&port), ["c", "a"], "the plan reads board/order");
+    assert!(board(&port).changes["c"].as_str() < "n");
 }

@@ -63,7 +63,7 @@ mod tests {
     }
 
     fn rank_cmd(name: &str, anchor: &str, side: Side, force: bool) -> Command {
-        Command::ChangeRank { name: name.into(), anchor: anchor.into(), side, force }
+        Command::ChangeRank { name: name.into(), anchor: anchor.into(), position: side, force }
     }
 
     /// One scenario on two copies of the same store: `set_rank` with the meta
@@ -246,8 +246,11 @@ mod tests {
             ("c", PROPOSED),
             ("bad", ": : :\n\t bad yaml [unclosed\n"),
         ]);
-        let ranks = store.board_ranks();
+        let ranks = store.board_ranks(&store.list_changes());
         assert_eq!(ranks.into_iter().collect::<Vec<_>>(), [("a".to_string(), "n".to_string())]);
+        // Only the changes the caller listed take part.
+        let others: Vec<_> = store.list_changes().into_iter().filter(|c| c.name != "a").collect();
+        assert!(store.board_ranks(&others).is_empty());
     }
 
     #[test]

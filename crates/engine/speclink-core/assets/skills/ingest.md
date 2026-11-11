@@ -15,6 +15,8 @@ Update an existing Speclink change — from a plan file or conversation context.
 - `/speclink:ingest agile-discovering-rocket`
 - `/speclink:ingest` (use conversation context or auto-detect plan file)
 
+{{ARTIFACT_WRITE_BACK}}
+
 **Steps**
 
 1. **Locate the requirement source**
@@ -100,6 +102,8 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Read the existing artifacts for context before updating: `speclink artifact cat <artifact-id> --change "<name>"` prints each one (a delta spec is `specs/<capability>`).
 
+   **A change checked out in a worktree is updated there.** When this change's `speclink list --json` entry carries a `worktree` object, run every command of steps 4 to 8 from its `worktree.path`. Run from the main checkout, they read and write the main copy only, and apply works in the worktree copy, so it would never see the update.
+
 5. **Update artifacts**
 
    **Check the schema first.** Read `schemaName` from `speclink status --change "<name>" --json`. When it is `no-spec-change` and the new requirement adds, modifies or removes behavior a canonical spec promises, switch the change back before you touch any artifact:
@@ -121,15 +125,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do not copy them into the file.
 
-   **Write-back: how every update is written.** Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability>`), merge the new content into that full text, and write the whole result back with `--stdin --force`:
-
-   ```bash
-   speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
-   <full updated content>
-   ARTIFACT_EOF
-   ```
-
-   A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user why — do not edit the file instead.
+   Write every update as a write-back (see **Write-back** above the steps): merge the new content into the artifact's full text, then write the whole result back.
 
    The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
@@ -183,7 +179,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 6. **Inline Self-Review** (before CLI analysis)
 
-   After updating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (step 5), then proceed to the CLI analyzer.
+   After updating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (see **Write-back**), then proceed to the CLI analyzer.
 
    **Check 1: No Placeholders**
 
@@ -223,7 +219,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
    - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
-   Fix every failure with a write-back (step 5) using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
+   Fix every failure with a write-back (see **Write-back**) using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
 
 7. **Analyze-Fix Loop** (max 2 iterations)
 
@@ -235,7 +231,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    2. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
    3. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
-      b. Fix each finding in the affected artifact with a write-back (step 5)
+      b. Fix each finding in the affected artifact with a write-back (see **Write-back**)
       c. Re-run `speclink analyze <name> --json`
       d. Repeat up to 2 total iterations
    4. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
@@ -246,7 +242,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    speclink validate "<name>"
    ```
 
-   If validation fails, fix the errors with a write-back (step 5) and re-validate.
+   If validation fails, fix the errors with a write-back (see **Write-back**) and re-validate.
 
 9. **Re-judge soft dependencies**
 

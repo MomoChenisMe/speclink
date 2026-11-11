@@ -234,13 +234,14 @@ pub trait Store: AsDynStore {
 
     // --- board order ---
 
-    /// Every active change's board rank, keyed by change name; an unranked
-    /// change is absent. `change rank` reads the order here. The default is
-    /// each change's own metadata. A backend that keeps the order in one
-    /// document (the remote board resource) overrides this method and
+    /// The board ranks of `changes` (the active changes the caller just
+    /// listed), keyed by change name; an unranked change and a name outside
+    /// `changes` are absent. `plan` and `change rank` read the order here. The
+    /// default is each change's own metadata. A backend that keeps the order in
+    /// one document (the remote board resource) overrides this method and
     /// [`Store::write_board_ranks`] together.
-    fn board_ranks(&self) -> BTreeMap<String, String> {
-        crate::plan::meta_ranks(&self.list_changes())
+    fn board_ranks(&self, changes: &[Change]) -> BTreeMap<String, String> {
+        crate::plan::meta_ranks(changes)
     }
 
     /// Write a batch of board ranks — all the ranks one `change rank` writes.

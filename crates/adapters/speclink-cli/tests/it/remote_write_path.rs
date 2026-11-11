@@ -276,6 +276,36 @@ fn new_artifact_puts_content_with_if_match_zero() {
 }
 
 #[test]
+fn new_artifact_force_writes_back_the_whole_document_at_the_version_read() {
+    // propose-skill「remote 模式下修正 artifact」、ingest-skill「remote 模式下更新提案」：
+    // 整份寫回先讀出目前的版本，PUT 帶 If-Match 為那個版本、內容是完整的新全文。
+    let mock = mock_server(vec![
+        (
+            "GET",
+            "/changes/demo/artifacts/design",
+            200,
+            r###"{"artifact":"design","content":"## Context\n\nOld body\n","version":7}"###.into(),
+        ),
+        (
+            "PUT",
+            "/changes/demo/artifacts/design",
+            200,
+            r#"{"artifact":"design","version":8}"#.into(),
+        ),
+    ]);
+    let p = TempProject::remote("new-artifact-force", &mock.base, "backend");
+    let full = "## Context\n\nOld body\n\n## Decisions\n\nNew decision\n";
+    let out = p.run_stdin(&["new", "artifact", "design", "--change", "demo", "--stdin", "--force"], full);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(String::from_utf8_lossy(&out.stdout).starts_with("✓ Created design"), "the fs-mode success line");
+
+    let cap = mock.find("PUT", "/changes/demo/artifacts/design");
+    assert_eq!(cap.header("if-match"), Some("7"), "the write asserts the version it replaces");
+    let body: serde_json::Value = serde_json::from_str(&cap.body).unwrap();
+    assert_eq!(body["content"].as_str(), Some(full), "PUT carries the whole new document");
+}
+
+#[test]
 fn artifact_version_conflict_suggests_rereading() {
     let mock = mock_server(vec![(
         "PUT",

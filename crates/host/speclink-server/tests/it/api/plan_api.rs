@@ -661,3 +661,18 @@ fn ranking_an_unknown_change_is_a_404() {
     assert_eq!(status, 404);
     assert_eq!(error.reason, ErrorReason::NotFound);
 }
+
+#[test]
+fn a_rank_request_prunes_orphans_and_keeps_the_discussion_section() {
+    // remote-board-order Scenario「排序請求修剪孤兒條目並帶回討論那一段」。
+    let f = rank_fixture(r#"{"changes":{"add-a":"n","gone":"c"},"discussions":{"topic":"f"}}"#);
+    post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "before" }))
+        .expect("editor POST succeeds");
+    let (board, _) = stored(&f, &DocumentId::BoardOrder).expect("board present");
+    let doc: Value = serde_json::from_str(&board).expect("JSON board");
+    let changes = doc["changes"].as_object().expect("a change section");
+    assert_eq!(changes.keys().map(String::as_str).collect::<Vec<_>>(), ["add-a", "add-c"]);
+    assert_eq!(changes["add-a"], "n");
+    assert!(changes["add-c"].as_str().unwrap() < "n");
+    assert_eq!(doc["discussions"], json!({ "topic": "f" }));
+}

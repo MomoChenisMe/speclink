@@ -272,6 +272,16 @@ impl Store for WorktreeOverlay<'_> {
         self.inner.write_change_meta(name, content)
     }
 
+    /// Refused: the reads come from each mapped change's worktree copy, but the
+    /// default write would land in the main copy. The local `change rank` calls
+    /// `set_rank` itself with a writer that picks each change's own copy.
+    fn write_board_ranks(&self, ranks: &[(String, String)]) -> anyhow::Result<()> {
+        let _ = ranks;
+        anyhow::bail!(
+            "the worktree overlay cannot write board ranks: call set_rank with a writer that picks each change's own copy"
+        )
+    }
+
     fn write_evidence(&self, change: &str, content: &str) -> anyhow::Result<()> {
         self.inner.write_evidence(change, content)
     }
@@ -842,6 +852,25 @@ bare
         let store = FsStore::new(&dir, "openspec");
         assert!(teardown_blockers(&ws, &store).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn the_overlay_refuses_to_write_board_ranks() {
+        // skills-verbs-first-wave D4：讀取來自 worktree 副本、預設寫入卻會落在主副本——
+        // 明確拒絕，兩份副本都不寫。本機 CLI 自己呼叫 set_rank 並選副本。
+        let p = Pair::new("rank");
+        let meta = "schema: spec-driven\n";
+        let file = speclink_core::model::META_FILE;
+        p.put("main", "add-dark-mode", file, meta);
+        p.put("wt", "add-dark-mode", file, meta);
+        let main = FsStore::new(&p.main_root(), "openspec");
+        let ov = overlay(&main, &p.wt_root(), "add-dark-mode");
+        let err = ov
+            .write_board_ranks(&[("add-dark-mode".to_string(), "n".to_string())])
+            .expect_err("the overlay refuses a board rank write");
+        assert!(err.to_string().contains("set_rank"), "{err}");
+        assert_eq!(p.read("main", "add-dark-mode", file).as_deref(), Some(meta));
+        assert_eq!(p.read("wt", "add-dark-mode", file).as_deref(), Some(meta));
     }
 
     #[test]

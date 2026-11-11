@@ -115,7 +115,7 @@ impl ToCommand for ChangeVerbArgs {
             }
             ChangeCommands::Rank { name, before, after, force, .. } => {
                 let (anchor, side) = rank_anchor(before, after);
-                CommandTarget::Command(Command::ChangeRank { name: name.clone(), anchor, side, force: *force })
+                CommandTarget::Command(Command::ChangeRank { name: name.clone(), anchor, position: side, force: *force })
             }
         })
     }
@@ -157,11 +157,11 @@ mod tests {
             ),
             (
                 &["change", "rank", "demo", "--before", "other"],
-                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), side: Side::Before, force: false },
+                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), position: Side::Before, force: false },
             ),
             (
                 &["change", "rank", "demo", "--after=other", "--force", "--json"],
-                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), side: Side::After, force: true },
+                Command::ChangeRank { name: "demo".into(), anchor: "other".into(), position: Side::After, force: true },
             ),
         ];
         for (argv, want) in cases {

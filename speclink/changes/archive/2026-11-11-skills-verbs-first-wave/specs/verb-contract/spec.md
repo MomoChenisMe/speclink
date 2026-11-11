@@ -3,7 +3,7 @@
 ### Requirement: store 文件讀取動詞
 <!-- BEFORE: 只規定閱讀指示用 artifact cat 與 language show；沒有規定正式規格的讀法與改寫的做法 -->
 
-CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact> --change <name> 輸出該 artifact 的內容；speclink language show 輸出共用詞彙文件內容（fs 模式讀本地檔、remote 模式經契約端點）；文件不存在時 SHALL 以非 0 exit code 與語義化訊息結束。生成技能資產中的文件閱讀指示 SHALL 使用這些動詞，SHALL NOT 指示直接讀取規格目錄下的檔案路徑。讀取正式規格的指示 SHALL 以 speclink show <capability> 表述，SHALL NOT 指示以 speclink list --specs --json 回傳的 path 欄位開啟檔案——該欄位在 remote 模式是儲存的鍵，不是本機路徑。discuss、propose、ingest 三支技能中改寫既有 artifact 的指示 SHALL 以「speclink artifact cat 讀出全文、修改後以 speclink new artifact 帶 --stdin --force 整份寫回」表述，SHALL NOT 留下未指名動詞的讀取或改寫步驟。
+CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact> --change <name> 輸出該 artifact 的內容；speclink language show 輸出共用詞彙文件內容（fs 模式讀本地檔、remote 模式經契約端點）；文件不存在時 SHALL 以非 0 exit code 與語義化訊息結束。生成技能資產中的文件閱讀指示 SHALL 使用這些動詞，SHALL NOT 指示直接讀取規格目錄下的檔案路徑。讀取正式規格的指示 SHALL 以 speclink show <capability> --item-type spec 表述（不指定類型時，同名的作用中變更優先），SHALL NOT 指示以 speclink list --specs --json 回傳的 path 欄位開啟檔案——該欄位在 remote 模式是儲存的鍵，不是本機路徑。discuss、propose、ingest 三支技能中改寫既有 artifact 的指示 SHALL 以「speclink artifact cat 讀出全文、修改後以 speclink new artifact 帶 --stdin --force 整份寫回」表述，SHALL NOT 留下未指名動詞的讀取或改寫步驟。
 
 #### Scenario: artifact cat 於兩模式輸出一致
 - **WHEN** 分別於 fs 模式與 remote 模式（server 存有相同內容）執行 speclink artifact cat proposal --change 某 change
@@ -20,7 +20,7 @@ CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact
 #### Scenario: discuss 以 show 讀正式規格
 
 - **WHEN** 檢視生成的 discuss 技能中讀取候選規格 Purpose 的步驟
-- **THEN** 該步驟以 speclink show <capability> 表述；全文不存在把 path 欄位與 spec.md 寫在同一句的指示
+- **THEN** 該步驟以 speclink show <capability> --item-type spec 表述；全文不存在把 path 欄位與 spec.md 寫在同一句的指示
 
 #### Scenario: 三支技能的改寫經動詞
 
@@ -30,7 +30,12 @@ CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact
 #### Scenario: remote 模式下 discuss 讀得到正式規格
 
 - **WHEN** 於 remote 模式（checkout 內沒有規格資料夾）依 discuss 技能的步驟讀取某個 capability 的 Purpose
-- **THEN** 執行的是 speclink show <capability>，stdout 含該規格的 Purpose，exit code 為 0
+- **THEN** 執行的是 speclink show <capability> --item-type spec，stdout 含該規格的 Purpose，exit code 為 0
+
+#### Scenario: 同名的作用中變更不會被誤讀成正式規格
+
+- **WHEN** 專案有一個與某 capability 同名的作用中變更，依 discuss 技能的步驟讀那個 capability 的 Purpose
+- **THEN** 執行的指令帶 --item-type spec，stdout 是正式規格的內容，不是那個變更的內容
 
 ### Requirement: 模式分岔的單點宣告
 <!-- BEFORE: FsOnly 的子情形有兩個：change 的 rank 子指令與 plan 的 --strict-overlap 旗標 -->
