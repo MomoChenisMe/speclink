@@ -12,14 +12,11 @@ use anyhow::Result;
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{
-    engine_command, open_project, print_json, run, worktree_facts, worktree_overlay,
-};
+use crate::common::{open_project, plain_command, print_json, run, worktree_facts, worktree_overlay};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
 use speclink_verbs::families::plan::{ChangeCommands, ChangeVerbArgs, PlanArgs};
-use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
     match &a.command {
@@ -37,7 +34,7 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             // silently split the change's read and write.
             let (ws, fs_store) = open_project()?;
             let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), name);
-            let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+            let cmd = plain_command(&a)?;
             let o: core::command::DependsOutcome = run(&home, Some(&ws), cmd)?;
             render_depends(&o.change, &o.depends_on, on, *remove, *json)
         }
@@ -48,7 +45,7 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             let (ws, fs_store) = open_project()?;
             let home = home_workspace_for(&ws, &worktree_facts(&ws, &fs_store), name);
             let store = speclink_fs::FsStore::new(&home.root, &home.spec_dir_name);
-            let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+            let cmd = plain_command(&a)?;
             let o: core::command::SchemaOutcome = run(&store, Some(&home), cmd)?;
             render_schema(&o, *json)
         }
@@ -221,7 +218,7 @@ pub(crate) fn cmd_plan(a: PlanArgs) -> Result<()> {
     // the stage derivation; everywhere else the plain store is read.
     let (facts, overlaid) = worktree_overlay(&ws, &fs_store);
     // fs mode gives no rank table: each change's own board rank orders it.
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let plan: core::command::PlanReport =
         run(if facts.is_empty() { &fs_store } else { &overlaid }, Some(&ws), cmd)?;
     render_plan(&plan, a.json)

@@ -12,7 +12,7 @@ use crate::color;
 use crate::common::{engine_command, open_project, print_json, read_stdin_content, run, stdin_for};
 use crate::remote_base::RemoteCtx;
 use speclink_verbs::families::discuss::{DiscussArgs, DiscussCommands};
-use speclink_verbs::VerbInputs;
+use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     let (ws, store) = open_project()?;

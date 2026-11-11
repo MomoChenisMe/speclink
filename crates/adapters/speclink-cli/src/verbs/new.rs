@@ -8,10 +8,10 @@ use speclink_core as core;
 use speclink_protocol::command::CreateChangeRequest;
 
 use crate::color;
-use crate::common::{engine_command, open_project, read_stdin, run, stdin_for};
+use crate::common::{engine_command, open_project, plain_command, read_stdin, run, stdin_for};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::new::{NewArgs, NewArtifactArgs, NewChangeArgs, NewCommands};
-use speclink_verbs::VerbInputs;
+use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
     match a.command {
@@ -21,7 +21,7 @@ pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
 }
 fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let o: core::command::NewChangeOutcome = run(&store, Some(&ws), cmd)?;
     render_new_change(
         &o.name,

@@ -5,12 +5,12 @@
 
 use anyhow::{bail, Result};
 
-use crate::common::{engine_command, open_project, run};
+use crate::common::{open_project, plain_command, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::documents::{
     ArtifactArgs, ArtifactCommands, LanguageArgs, LanguageCommands,
 };
-use speclink_verbs::VerbInputs;
+use speclink_verbs::ToCommand;
 
 /// Map a `speclink artifact cat` id onto the store's artifact file path
 /// (`specs/<capability>` addresses a delta spec).
@@ -29,17 +29,10 @@ fn artifact_rel_path(artifact: &str) -> Result<String> {
         },
     }
 }
-pub(crate) fn cmd_artifact(a: ArtifactArgs) -> Result<()> {
+/// The fs arm of both verbs: run the read and print the document as-is.
+pub(crate) fn cmd_document(a: impl ToCommand) -> Result<()> {
     let (ws, store) = open_project()?;
-    let content: String =
-        run(&store, Some(&ws), engine_command(a.to_command(VerbInputs::default()))?)?;
-    print!("{content}");
-    Ok(())
-}
-pub(crate) fn cmd_language(a: LanguageArgs) -> Result<()> {
-    let (ws, store) = open_project()?;
-    let content: String =
-        run(&store, Some(&ws), engine_command(a.to_command(VerbInputs::default()))?)?;
+    let content: String = run(&store, Some(&ws), plain_command(&a)?)?;
     print!("{content}");
     Ok(())
 }

@@ -1,5 +1,5 @@
 use anyhow::{bail, Result};
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, FromArgMatches, Parser, Subcommand};
 use speclink_core as core;
 
 mod color;
@@ -16,7 +16,7 @@ use verbs::checks::{
 use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs, WorkflowConfigArgs};
 use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
 use verbs::discuss::{cmd_discuss, remote_discuss};
-use verbs::documents::{cmd_artifact, cmd_language, remote_artifact, remote_language};
+use verbs::documents::{cmd_document, remote_artifact, remote_language};
 use verbs::init::{cmd_init, cmd_update, InitArgs, UpdateArgs};
 use verbs::instructions::{cmd_instructions, cmd_instructions_skill, remote_instructions};
 use verbs::lifecycle::{cmd_archive, cmd_discard, remote_archive, remote_claim, remote_discard};
@@ -71,56 +71,65 @@ struct Cli {
 }
 
 /// The CLI's top-level commands: the shared spec verbs (`SpecVerb`, defined
-/// in speclink-verbs) plus the CLI's own families. Every variant names its
-/// place in `--help` with `display_order`, because the flattened spec verbs
-/// sit between the CLI's own commands there.
+/// in speclink-verbs) plus the CLI's own families. `HELP_ORDER` sets their
+/// places in `--help`, because the flattened spec verbs sit between the
+/// CLI's own commands there.
 #[derive(Subcommand)]
 enum Commands {
     /// Initialize Speclink in a project
-    #[command(display_order = 0)]
     Init(InitArgs),
     /// Update instruction files
-    #[command(display_order = 1)]
     Update(UpdateArgs),
     #[command(flatten)]
     Spec(SpecVerb),
     /// Connect this repo to a remote spec store
-    #[command(display_order = 13)]
     Link(LinkArgs),
     /// Remove the remote store connection
-    #[command(display_order = 14)]
     Unlink,
     /// Authentication against the remote store
-    #[command(display_order = 15)]
     Auth(AuthArgs),
     /// List available workflow schemas
-    #[command(display_order = 21)]
     Schemas(JsonFlag),
     /// Show template paths
-    #[command(display_order = 22)]
     Templates(TemplatesArgs),
     /// Submit feedback
-    #[command(display_order = 23)]
     Feedback(FeedbackArgs),
     /// Schema management commands
-    #[command(display_order = 24)]
     Schema(SchemaArgs),
     /// Config management commands
-    #[command(display_order = 25)]
     Config(ConfigArgs),
     /// Workflow config commands (<spec dir>/config.yaml)
-    #[command(name = "workflow-config", display_order = 26)]
+    #[command(name = "workflow-config")]
     WorkflowConfig(WorkflowConfigArgs),
     /// Shell completion commands
-    #[command(display_order = 27)]
     Completion(CompletionArgs),
     /// Generate a demo change with sample data
-    #[command(display_order = 30)]
     Demo,
 }
 
+/// Every top-level command in its `--help` order.
+const HELP_ORDER: [&str; 34] = [
+    "init", "update", "list", "show", "validate", "analyze", "drift", "trace", "plan", "change",
+    "archive", "discard", "claim", "link", "unlink", "auth", "artifact", "language", "status",
+    "instructions", "new", "schemas", "templates", "feedback", "schema", "config",
+    "workflow-config", "completion", "task", "in-progress", "demo", "discuss", "review", "verify",
+];
+
+/// The CLI's command tree with each top-level command at its `HELP_ORDER`
+/// place. `mut_subcommands` keeps the subcommand order.
+pub(crate) fn cli_command() -> clap::Command {
+    Cli::command().mut_subcommands(|c| match HELP_ORDER.iter().position(|n| *n == c.get_name()) {
+        Some(place) => c.display_order(place),
+        None => c,
+    })
+}
+
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    // What `Cli::parse()` does, on the ordered tree: clap prints and exits
+    // on parse errors and help.
+    let mut cmd = cli_command();
+    let matches = cmd.get_matches_mut();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.format(&mut cmd).exit());
     color::init(cli.global.no_color);
     match dispatch(cli) {
         Ok(()) => ExitCode::SUCCESS,
@@ -170,8 +179,8 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
         SpecVerb::Validate(a) => dual(a, cmd_validate, |ctx, a| remote_validate(ctx, &a)),
         SpecVerb::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
         SpecVerb::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
-        SpecVerb::Artifact(a) => dual(a, cmd_artifact, remote_artifact),
-        SpecVerb::Language(a) => dual(a, cmd_language, remote_language),
+        SpecVerb::Artifact(a) => dual(a, cmd_document, remote_artifact),
+        SpecVerb::Language(a) => dual(a, cmd_document, remote_language),
         SpecVerb::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
         SpecVerb::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
         SpecVerb::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),
@@ -279,3 +288,18 @@ const CHANGE_RANK_REMOTE_REFUSAL: &str =
     "change rank is not available in remote mode: the board order lives in the board resource";
 const PLAN_STRICT_REMOTE_REFUSAL: &str =
     "plan --strict-overlap is not available in remote mode: the server plans with requirement-level overlap only";
+
+#[cfg(test)]
+mod tests {
+    // `HELP_ORDER` is where every top-level command sits in `--help`; a
+    // command missing from it would drop to the end of the list.
+    #[test]
+    fn help_order_names_every_top_level_command_once() {
+        let cmd = <super::Cli as clap::CommandFactory>::command();
+        let mut names: Vec<&str> = cmd.get_subcommands().map(|c| c.get_name()).collect();
+        let mut order = super::HELP_ORDER.to_vec();
+        names.sort_unstable();
+        order.sort_unstable();
+        assert_eq!(names, order);
+    }
+}

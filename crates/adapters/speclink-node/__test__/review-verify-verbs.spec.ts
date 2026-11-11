@@ -169,6 +169,27 @@ describe('蓋章守門與 argv 契約', () => {
     ).rejects.toMatchObject({ code: 'invalid_argv' })
   })
 
+  it('stamp 帶了 stdin 卻沒帶 --stdin 時以 invalid_argv 拒絕、不落章', async () => {
+    const { store, engine } = engineWithActor(ACTOR)
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    // 忘了旗標的 JSON 不能被靜默丟掉、改用空範圍蓋章。
+    await expect(
+      engine.dispatch(['review', 'stamp', CHANGE], { stdin: STAMP_PAYLOAD }),
+    ).rejects.toMatchObject({ code: 'invalid_argv' })
+    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+    expect(await metaOf(store)).not.toContain('reviewed_by:')
+  })
+
+  it('宿主 Store 缺蓋章方法時先回報缺方法，再看 stdin 的 JSON', async () => {
+    const store = memoryStore(fixtureProject())
+    delete (store as Partial<typeof store>).deleteArtifact
+    const engine = createEngine({ store, actor: ACTOR })
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    await expect(
+      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: 'not json' }),
+    ).rejects.toThrow(/deleteArtifact/)
+  })
+
   it('stamp 不帶 --stdin 時 scope 與 missing 讀作空清單', async () => {
     const { engine } = engineWithActor(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })

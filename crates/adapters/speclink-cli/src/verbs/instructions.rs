@@ -9,10 +9,9 @@ use speclink_protocol::query as protocol_query;
 use speclink_remote::client::ContextSnapshotOutcome;
 
 use crate::color;
-use crate::common::{engine_command, info_if_no_changes, open_project, print_json, run};
+use crate::common::{info_if_no_changes, open_project, plain_command, print_json, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::instructions::InstructionsArgs;
-use speclink_verbs::VerbInputs;
 
 /// `instructions --skill` 的 ModeFree 路徑：常數技能文本，dispatch 已分流。
 pub(crate) fn cmd_instructions_skill(skill: &str) -> Result<()> {
@@ -26,7 +25,7 @@ pub(crate) fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let instr: core::command::InstructionsOutcome = run(&store, Some(&ws), cmd)?;
     match instr {
         core::command::InstructionsOutcome::Apply(payload) => {

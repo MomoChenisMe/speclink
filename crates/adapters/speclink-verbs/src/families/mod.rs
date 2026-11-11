@@ -3,7 +3,14 @@
 use clap::Subcommand;
 use speclink_core::command::CommandError;
 
-use crate::inputs::{CommandTarget, StdinPolicy, VerbInputs};
+use crate::inputs::{CommandTarget, LocalOnlyReason, StdinPolicy, VerbInputs};
+
+/// A parsed verb, or one family's arguments, converted to its engine command
+/// (or `LocalOnly`). `SpecVerb`'s implementation is the single conversion; each
+/// family's implementation is one arm of it.
+pub trait ToCommand {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError>;
+}
 
 pub mod checks;
 pub mod discuss;
@@ -17,74 +24,53 @@ pub mod query;
 pub mod station;
 pub mod trace;
 
-// Every top-level spec verb; the CLI flattens this into its own command list.
-// No doc comments on clap-derived types: clap would print them as help text.
-// `display_order` is each verb's position in the CLI's `--help` list, where
-// the spec verbs sit between the CLI's own commands.
+// Every top-level spec verb; the CLI flattens this into its own command list
+// and sets the `--help` order there. No doc comments on clap-derived types:
+// clap would print them as help text.
 #[derive(Subcommand, Debug)]
 pub enum SpecVerb {
     /// List changes or specs
-    #[command(display_order = 2)]
     List(query::ListArgs),
     /// Show change or spec content
-    #[command(display_order = 3)]
     Show(query::ShowArgs),
     /// Validate changes and specs
-    #[command(display_order = 4)]
     Validate(checks::ValidateArgs),
     /// Analyze change artifacts for consistency and gaps
-    #[command(display_order = 5)]
     Analyze(checks::ChangeArg),
     /// Detect drift between a change and the current codebase state
-    #[command(display_order = 6)]
     Drift(checks::ChangeArg),
     /// Trace a capability's provenance chain (archived changes, discussions, evidence)
-    #[command(display_order = 7)]
     Trace(trace::TraceArgs),
     /// Show the execution order of active changes (waves, blockers, next)
-    #[command(display_order = 8)]
     Plan(plan::PlanArgs),
     /// Change metadata operations (declared prerequisites)
-    #[command(display_order = 9)]
     Change(plan::ChangeVerbArgs),
     /// Archive a completed change
-    #[command(display_order = 10)]
     Archive(lifecycle::ArchiveArgs),
     /// Discard a change (delete it; --force required once work has started)
-    #[command(display_order = 11)]
     Discard(lifecycle::DiscardArgs),
     /// Claim a change for implementation (remote mode)
-    #[command(display_order = 12)]
     Claim(lifecycle::ClaimArgs),
     /// Read store documents (artifact contents)
-    #[command(display_order = 16)]
     Artifact(documents::ArtifactArgs),
     /// Shared vocabulary document
-    #[command(display_order = 17)]
     Language(documents::LanguageArgs),
     /// Show artifact DAG status
-    #[command(display_order = 18)]
     Status(query::StatusArgs),
     /// Get instructions for an artifact
-    #[command(display_order = 19)]
     Instructions(instructions::InstructionsArgs),
     /// Create a new change or resource
-    #[command(display_order = 20)]
     New(new::NewArgs),
     /// Task operations
-    #[command(display_order = 28)]
     Task(progress::TaskArgs),
     /// Manage in-progress markers
-    #[command(name = "in-progress", display_order = 29)]
+    #[command(name = "in-progress")]
     InProgress(progress::InProgressArgs),
     /// Discussion documents (record and evolve a discussion)
-    #[command(display_order = 31)]
     Discuss(discuss::DiscussArgs),
     /// Review quality station (ticket rounds, stamping)
-    #[command(display_order = 32)]
     Review(station::ReviewArgs),
     /// Verify quality station (ticket rounds, stamping)
-    #[command(display_order = 33)]
     Verify(station::VerifyArgs),
 }
 
@@ -142,17 +128,21 @@ impl SpecVerb {
             SpecVerb::Verify(a) => a.stdin_policy(),
         }
     }
+}
 
+impl ToCommand for SpecVerb {
     /// The single conversion from a parsed verb to its engine command. The
     /// match has no wildcard arm: a new verb does not compile until it is
     /// handled here. Each family's own match is exhaustive the same way.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         match self {
             SpecVerb::List(a) => a.to_command(inputs),
             SpecVerb::Show(a) => a.to_command(inputs),
             SpecVerb::Validate(a) => a.to_command(inputs),
             SpecVerb::Analyze(a) => a.analyze_command(inputs),
-            SpecVerb::Drift(_) => Ok(CommandTarget::LocalOnly { verb: "drift" }),
+            SpecVerb::Drift(_) => {
+                Ok(CommandTarget::LocalOnly { verb: self.name(), reason: LocalOnlyReason::NeedsCheckout })
+            }
             SpecVerb::Trace(a) => a.to_command(inputs),
             SpecVerb::Plan(a) => a.to_command(inputs),
             SpecVerb::Change(a) => a.to_command(inputs),
@@ -199,7 +189,7 @@ pub(crate) mod test_support {
     /// The verb name a LocalOnly argv reports, or None for a command.
     pub(crate) fn local_only_of(argv: &[&str]) -> Option<&'static str> {
         match target_of(argv, VerbInputs::default()) {
-            Ok(CommandTarget::LocalOnly { verb }) => Some(verb),
+            Ok(CommandTarget::LocalOnly { verb, .. }) => Some(verb),
             Ok(CommandTarget::Command(_)) => None,
             Err(e) => panic!("{argv:?} must convert: {}", e.message),
         }
@@ -211,5 +201,51 @@ pub(crate) mod test_support {
 
     pub(crate) fn policy_of(argv: &[&str]) -> StdinPolicy {
         parsed(argv).stdin_policy()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::test_support::{policy_of, target_of};
+    use crate::{CommandTarget, LocalOnlyReason, StdinPolicy, VerbInputs};
+
+    // command-runtime: a verb with no engine command is reported with why it
+    // runs only in the CLI.
+    #[test]
+    fn local_only_verbs_name_their_reason() {
+        use LocalOnlyReason::{CliSkillText, NeedsCheckout};
+        let rows: &[(&[&str], LocalOnlyReason)] = &[
+            (&["drift", "demo"], NeedsCheckout),
+            (&["change", "rank", "demo", "--after", "other"], NeedsCheckout),
+            (&["review", "prepare", "demo"], NeedsCheckout),
+            (&["review", "scope", "demo"], NeedsCheckout),
+            (&["verify", "scope", "demo"], NeedsCheckout),
+            (&["instructions", "--skill", "tdd"], CliSkillText),
+        ];
+        for (argv, want) in rows {
+            match target_of(argv, VerbInputs::default()) {
+                Ok(CommandTarget::LocalOnly { reason, .. }) => assert_eq!(reason, *want, "{argv:?}"),
+                other => panic!("{argv:?} must be LocalOnly, got {other:?}"),
+            }
+        }
+    }
+
+    // The Example "stdin 的三種規則" of command-runtime's requirement, row by
+    // row with the spec's own argv.
+    #[test]
+    fn stdin_rules_match_the_spec_example_table() {
+        let rows: &[(&[&str], StdinPolicy)] = &[
+            (&["list"], StdinPolicy::Never),
+            (
+                &["new", "artifact", "proposal", "--change", "demo", "--stdin"],
+                StdinPolicy::WhenFlagged { flagged: true },
+            ),
+            (&["review", "stamp", "demo", "--stdin"], StdinPolicy::WhenFlagged { flagged: true }),
+            (&["discuss", "add-round", "demo"], StdinPolicy::FlagOrPiped { flagged: false }),
+            (&["discuss", "conclude", "demo"], StdinPolicy::FlagOrPiped { flagged: false }),
+        ];
+        for (argv, want) in rows {
+            assert_eq!(policy_of(argv), *want, "{argv:?}");
+        }
     }
 }

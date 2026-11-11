@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, LocalOnlyReason, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct PlanArgs {
@@ -67,10 +67,10 @@ pub enum ChangeCommands {
     },
 }
 
-impl PlanArgs {
+impl ToCommand for PlanArgs {
     /// `plan` takes the caller's rank table; `--strict-overlap` plans on each
     /// change's own rank.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(if self.strict_overlap {
             Command::PlanStrict
         } else {
@@ -92,10 +92,12 @@ impl ChangeVerbArgs {
             ChangeCommands::Rank { .. } => "change rank",
         }
     }
+}
 
+impl ToCommand for ChangeVerbArgs {
     /// `change rank` rewrites board ranks across the checkout's worktree
     /// copies, so it has no engine command.
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(match &self.command {
             ChangeCommands::Depends { name, on, remove, .. } => {
                 CommandTarget::Command(Command::ChangeDepends {
@@ -107,7 +109,9 @@ impl ChangeVerbArgs {
             ChangeCommands::Schema { name, schema, .. } => {
                 CommandTarget::Command(Command::ChangeSchema { name: name.clone(), schema: schema.clone() })
             }
-            ChangeCommands::Rank { .. } => CommandTarget::LocalOnly { verb: "change rank" },
+            ChangeCommands::Rank { .. } => {
+                CommandTarget::LocalOnly { verb: self.name(), reason: LocalOnlyReason::NeedsCheckout }
+            }
         })
     }
 }

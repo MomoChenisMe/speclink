@@ -347,20 +347,20 @@ fn stamp_clean_round_writes_the_anchors_and_deletes_the_ticket() {
 }
 
 #[test]
-fn stamp_refuses_the_hidden_stdin_flag_and_writes_nothing() {
-    // Scenario CLI 拒絕蓋章的 --stdin：共用定義給沒有 checkout 的宿主帶蓋章 JSON；
-    // CLI 自己算範圍，所以兩站都在任何動作之前拒絕，說明文字裡也看不到它。
+fn stamp_rejects_stdin_as_a_parse_error_and_writes_nothing() {
+    // Scenario CLI 拒絕蓋章的 --stdin：--stdin 只有 dispatch 的解析接受；CLI 的蓋章沒有
+    // 這個旗標，收到它時和變更前一樣是 clap 的解析錯誤，不做任何動作。
     let p = TempProject::with_change("stamp-stdin", TASKS_DONE);
     p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
     let meta_before = p.meta();
     for station in ["review", "verify"] {
         let out = p.run_stdin(&[station, "stamp", "demo", "--stdin"], "{}");
-        assert_eq!(out.status.code(), Some(1), "{station}: {}", stderr_of(&out));
+        assert_eq!(out.status.code(), Some(2), "{station}: {}", stderr_of(&out));
         assert!(stdout_of(&out).is_empty(), "{station}");
         assert_eq!(
             stderr_of(&out),
             format!(
-                "Error: {station} stamp --stdin is for hosts without a checkout — the CLI computes the stamp scope from this checkout\n"
+                "error: unexpected argument '--stdin' found\n\n  tip: to pass '--stdin' as a value, use '-- --stdin'\n\nUsage: speclink {station} stamp <CHANGE>\n\nFor more information, try '--help'.\n"
             )
         );
         let help = p.run(&[station, "stamp", "--help"]);
@@ -372,7 +372,7 @@ fn stamp_refuses_the_hidden_stdin_flag_and_writes_nothing() {
 
 #[test]
 fn completion_leaves_out_the_stamps_hidden_stdin() {
-    // 隱藏的 --stdin 只給沒有 checkout 的宿主；CLI 會拒絕它，所以補全也不列出。
+    // 蓋章的 --stdin 只有 dispatch 的解析接受；CLI 的指令樹沒有它，補全也不列出。
     let p = TempProject::with_change("completion-stamp", TASKS_DONE);
     let bash = stdout_of(&p.run(&["completion", "generate", "bash"]));
     for station in ["review", "verify"] {

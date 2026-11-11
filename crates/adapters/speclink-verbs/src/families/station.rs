@@ -4,7 +4,7 @@ use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError, ErrorCode};
 use speclink_core::model::ReviewedScopeEntry;
 
-use crate::{CommandTarget, StdinPolicy, VerbInputs};
+use crate::{CommandTarget, LocalOnlyReason, StdinPolicy, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ReviewArgs {
@@ -60,10 +60,6 @@ pub enum ReviewCommands {
         /// Tool identity recorded as reviewed_with (mirrors `new change --agent`)
         #[arg(long)]
         agent: Option<String>,
-        // A host without a checkout passes the scope and missing lists as
-        // JSON on stdin; the CLI computes them itself and refuses the flag.
-        #[arg(long, hide = true)]
-        stdin: bool,
     },
     /// Discard the review ticket without stamping
     Discard { change: String },
@@ -114,9 +110,6 @@ pub enum VerifyCommands {
         /// Tool identity recorded as verified_with (mirrors `new change --agent`)
         #[arg(long)]
         agent: Option<String>,
-        // See `ReviewCommands::Stamp`.
-        #[arg(long, hide = true)]
-        stdin: bool,
     },
     /// Discard the verify ticket without stamping
     Discard { change: String },
@@ -164,6 +157,118 @@ fn stamp_payload(
     Ok((payload.scope, payload.missing))
 }
 
+/// The id of the stamps' host-only `--stdin`.
+const STAMP_STDIN: &str = "stdin";
+
+/// A host without a checkout passes a stamp's scope and missing lists as JSON
+/// on stdin, under a hidden `--stdin`. `parse` adds the flag to the two
+/// stamps of the tree it parses with; `SpecVerb`, which the CLI flattens,
+/// never has it. `mut_subcommands` keeps the subcommand order.
+pub(crate) fn with_stamp_stdin(tree: clap::Command) -> clap::Command {
+    tree.mut_subcommands(|station| match station.get_name() {
+        "review" | "verify" => station.mut_subcommands(|sub| {
+            if sub.get_name() != "stamp" {
+                return sub;
+            }
+            sub.arg(clap::Arg::new(STAMP_STDIN).long("stdin").action(clap::ArgAction::SetTrue).hide(true))
+        }),
+        _ => station,
+    })
+}
+
+/// For a parsed stamp, whether `--stdin` came with it; `None` for every
+/// other verb.
+pub(crate) fn stamp_stdin_of(matches: &clap::ArgMatches) -> Option<bool> {
+    let ("review" | "verify", station) = matches.subcommand()? else { return None };
+    let ("stamp", stamp) = station.subcommand()? else { return None };
+    Some(stamp.get_flag(STAMP_STDIN))
+}
+
+/// Which station a shared subcommand belongs to: it picks the engine command
+/// and the noun in messages.
+#[derive(Clone, Copy)]
+enum Station {
+    Review,
+    Verify,
+}
+
+impl Station {
+    fn noun(self) -> &'static str {
+        match self {
+            Station::Review => "review",
+            Station::Verify => "verify",
+        }
+    }
+}
+
+/// The subcommands both stations share, read off either station's clap
+/// value. `prepare` (review only) and `scope` work on the checkout's git
+/// state and snapshots, so they have no engine command.
+enum StationSub<'a> {
+    LocalOnly,
+    AddRound { change: &'a str, stdin: bool },
+    Show { change: &'a str },
+    Stamp { change: &'a str, accept: bool, agent: &'a Option<String> },
+    Discard { change: &'a str },
+}
+
+impl StationSub<'_> {
+    /// A stamp's `--stdin` is host-only: `ParsedVerb` gives a stamp its rule.
+    fn stdin_policy(&self) -> StdinPolicy {
+        match *self {
+            StationSub::AddRound { stdin, .. } => StdinPolicy::FlagOrPiped { flagged: stdin },
+            StationSub::LocalOnly | StationSub::Show { .. } | StationSub::Stamp { .. } | StationSub::Discard { .. } => {
+                StdinPolicy::Never
+            }
+        }
+    }
+
+    fn to_command(
+        self,
+        station: Station,
+        name: &'static str,
+        inputs: VerbInputs,
+        stamp_stdin: bool,
+    ) -> Result<CommandTarget, CommandError> {
+        use Station::{Review, Verify};
+        let cmd = match self {
+            StationSub::LocalOnly => {
+                return Ok(CommandTarget::LocalOnly { verb: name, reason: LocalOnlyReason::NeedsCheckout })
+            }
+            StationSub::AddRound { change, .. } => {
+                let (change, content) = (change.to_string(), inputs.stdin.unwrap_or_default());
+                match station {
+                    Review => Command::ReviewAddRound { change, content },
+                    Verify => Command::VerifyAddRound { change, content },
+                }
+            }
+            StationSub::Show { change } => {
+                let change = change.to_string();
+                match station {
+                    Review => Command::ReviewShow { change },
+                    Verify => Command::VerifyShow { change },
+                }
+            }
+            StationSub::Stamp { change, accept, agent } => {
+                let (scope, missing) = stamp_payload(station.noun(), stamp_stdin, inputs.stdin)?;
+                let (change, tool) = (change.to_string(), agent.clone());
+                match station {
+                    Review => Command::ReviewStamp { change, accept, tool, scope, missing },
+                    Verify => Command::VerifyStamp { change, accept, tool, scope, missing },
+                }
+            }
+            StationSub::Discard { change } => {
+                let change = change.to_string();
+                match station {
+                    Review => Command::ReviewDiscard { change },
+                    Verify => Command::VerifyDiscard { change },
+                }
+            }
+        };
+        Ok(CommandTarget::Command(cmd))
+    }
+}
+
 impl ReviewArgs {
     pub fn name(&self) -> &'static str {
         match self.command {
@@ -177,39 +282,29 @@ impl ReviewArgs {
     }
 
     pub fn stdin_policy(&self) -> StdinPolicy {
-        match self.command {
-            ReviewCommands::AddRound { stdin, .. } => StdinPolicy::FlagOrPiped { flagged: stdin },
-            ReviewCommands::Stamp { stdin, .. } => StdinPolicy::WhenFlagged { flagged: stdin },
-            ReviewCommands::Prepare { .. }
-            | ReviewCommands::Scope { .. }
-            | ReviewCommands::Show { .. }
-            | ReviewCommands::Discard { .. } => StdinPolicy::Never,
-        }
+        self.sub().stdin_policy()
     }
 
-    /// `prepare` and `scope` work on the checkout's git state and snapshots,
-    /// so they have no engine command.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
-        Ok(CommandTarget::Command(match &self.command {
-            ReviewCommands::Prepare { .. } => return Ok(CommandTarget::LocalOnly { verb: "review prepare" }),
-            ReviewCommands::Scope { .. } => return Ok(CommandTarget::LocalOnly { verb: "review scope" }),
-            ReviewCommands::AddRound { change, .. } => Command::ReviewAddRound {
-                change: change.clone(),
-                content: inputs.stdin.unwrap_or_default(),
-            },
-            ReviewCommands::Show { change, .. } => Command::ReviewShow { change: change.clone() },
-            ReviewCommands::Stamp { change, accept, agent, stdin } => {
-                let (scope, missing) = stamp_payload("review", *stdin, inputs.stdin)?;
-                Command::ReviewStamp {
-                    change: change.clone(),
-                    accept: *accept,
-                    tool: agent.clone(),
-                    scope,
-                    missing,
-                }
-            }
-            ReviewCommands::Discard { change } => Command::ReviewDiscard { change: change.clone() },
-        }))
+    /// The engine command with the stamp's host-only `--stdin` applied
+    /// (`parse` calls this; `ToCommand` passes `false`).
+    pub(crate) fn command_with(&self, inputs: VerbInputs, stamp_stdin: bool) -> Result<CommandTarget, CommandError> {
+        self.sub().to_command(Station::Review, self.name(), inputs, stamp_stdin)
+    }
+
+    fn sub(&self) -> StationSub<'_> {
+        match &self.command {
+            ReviewCommands::Prepare { .. } | ReviewCommands::Scope { .. } => StationSub::LocalOnly,
+            ReviewCommands::AddRound { change, stdin } => StationSub::AddRound { change, stdin: *stdin },
+            ReviewCommands::Show { change, .. } => StationSub::Show { change },
+            ReviewCommands::Stamp { change, accept, agent } => StationSub::Stamp { change, accept: *accept, agent },
+            ReviewCommands::Discard { change } => StationSub::Discard { change },
+        }
+    }
+}
+
+impl ToCommand for ReviewArgs {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+        self.command_with(inputs, false)
     }
 }
 
@@ -225,35 +320,28 @@ impl VerifyArgs {
     }
 
     pub fn stdin_policy(&self) -> StdinPolicy {
-        match self.command {
-            VerifyCommands::AddRound { stdin, .. } => StdinPolicy::FlagOrPiped { flagged: stdin },
-            VerifyCommands::Stamp { stdin, .. } => StdinPolicy::WhenFlagged { flagged: stdin },
-            VerifyCommands::Scope { .. } | VerifyCommands::Show { .. } | VerifyCommands::Discard { .. } => {
-                StdinPolicy::Never
-            }
-        }
+        self.sub().stdin_policy()
     }
 
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
-        Ok(CommandTarget::Command(match &self.command {
-            VerifyCommands::Scope { .. } => return Ok(CommandTarget::LocalOnly { verb: "verify scope" }),
-            VerifyCommands::AddRound { change, .. } => Command::VerifyAddRound {
-                change: change.clone(),
-                content: inputs.stdin.unwrap_or_default(),
-            },
-            VerifyCommands::Show { change, .. } => Command::VerifyShow { change: change.clone() },
-            VerifyCommands::Stamp { change, accept, agent, stdin } => {
-                let (scope, missing) = stamp_payload("verify", *stdin, inputs.stdin)?;
-                Command::VerifyStamp {
-                    change: change.clone(),
-                    accept: *accept,
-                    tool: agent.clone(),
-                    scope,
-                    missing,
-                }
-            }
-            VerifyCommands::Discard { change } => Command::VerifyDiscard { change: change.clone() },
-        }))
+    /// See `ReviewArgs::command_with`.
+    pub(crate) fn command_with(&self, inputs: VerbInputs, stamp_stdin: bool) -> Result<CommandTarget, CommandError> {
+        self.sub().to_command(Station::Verify, self.name(), inputs, stamp_stdin)
+    }
+
+    fn sub(&self) -> StationSub<'_> {
+        match &self.command {
+            VerifyCommands::Scope { .. } => StationSub::LocalOnly,
+            VerifyCommands::AddRound { change, stdin } => StationSub::AddRound { change, stdin: *stdin },
+            VerifyCommands::Show { change, .. } => StationSub::Show { change },
+            VerifyCommands::Stamp { change, accept, agent } => StationSub::Stamp { change, accept: *accept, agent },
+            VerifyCommands::Discard { change } => StationSub::Discard { change },
+        }
+    }
+}
+
+impl ToCommand for VerifyArgs {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+        self.command_with(inputs, false)
     }
 }
 
@@ -364,8 +452,37 @@ mod tests {
         assert_eq!(policy_of(&["verify", "add-round", "x", "--stdin"]), StdinPolicy::FlagOrPiped { flagged: true });
         assert_eq!(policy_of(&["review", "stamp", "x", "--stdin"]), StdinPolicy::WhenFlagged { flagged: true });
         assert_eq!(policy_of(&["verify", "stamp", "x"]), StdinPolicy::WhenFlagged { flagged: false });
+        assert_eq!(policy_of(&["review", "stamp", "demo"]), StdinPolicy::WhenFlagged { flagged: false });
         for argv in [&["review", "show", "x"][..], &["verify", "discard", "x"], &["review", "prepare", "x"]] {
             assert_eq!(policy_of(argv), StdinPolicy::Never, "{argv:?}");
+        }
+    }
+
+    /// The CLI flattens `SpecVerb`, so its stamps carry no host-only
+    /// `--stdin`; only `parse` adds it.
+    #[test]
+    fn the_shared_stamps_have_no_stdin_flag() {
+        use clap::Subcommand;
+        let tree = crate::SpecVerb::augment_subcommands(clap::Command::new("speclink"));
+        for station in ["review", "verify"] {
+            let stamp = tree
+                .find_subcommand(station)
+                .and_then(|s| s.find_subcommand("stamp"))
+                .expect("the station has a stamp");
+            assert!(stamp.get_arguments().all(|a| a.get_id() != "stdin"), "{station} stamp carries --stdin");
+        }
+    }
+
+    /// The CLI's view of a stamp (`SpecVerb` parsed on its own tree) reads no
+    /// stdin; only `ParsedVerb` gives a stamp its `--stdin` rule.
+    #[test]
+    fn the_cli_view_of_a_stamp_reads_no_stdin() {
+        use clap::{FromArgMatches, Subcommand};
+        let tree = crate::SpecVerb::augment_subcommands(clap::Command::new("speclink"));
+        for station in ["review", "verify"] {
+            let matches = tree.clone().get_matches_from(["speclink", station, "stamp", "demo"]);
+            let verb = crate::SpecVerb::from_arg_matches(&matches).expect("a stamp");
+            assert_eq!(verb.stdin_policy(), StdinPolicy::Never, "{station} stamp");
         }
     }
 }

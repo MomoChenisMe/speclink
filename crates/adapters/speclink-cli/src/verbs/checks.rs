@@ -8,14 +8,16 @@ use anyhow::{bail, Result};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{engine_command, info_if_no_changes, open_project, print_json, run};
+use crate::common::{
+    engine_command, info_if_no_changes, open_project, plain_command, print_json, run,
+};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::checks::{ChangeArg, ValidateArgs};
 use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let v: core::command::ValidateOutcome = run(&store, Some(&ws), cmd)?;
     render_validate_results(&v.results, a.json)
 }

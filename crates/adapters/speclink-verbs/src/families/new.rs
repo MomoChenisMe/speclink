@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError, ErrorCode};
 
-use crate::{CommandTarget, StdinPolicy, VerbInputs};
+use crate::{CommandTarget, StdinPolicy, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct NewArgs {
@@ -76,8 +76,10 @@ impl NewArgs {
             NewCommands::Artifact(a) => a.stdin_policy(),
         }
     }
+}
 
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for NewArgs {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         match &self.command {
             NewCommands::Change(a) => a.to_command(inputs),
             NewCommands::Artifact(a) => a.to_command(inputs),
@@ -85,8 +87,8 @@ impl NewArgs {
     }
 }
 
-impl NewChangeArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for NewChangeArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::NewChange {
             name: self.name.clone(),
             description: self.description.clone(),
@@ -102,10 +104,12 @@ impl NewArtifactArgs {
     pub fn stdin_policy(&self) -> StdinPolicy {
         StdinPolicy::WhenFlagged { flagged: self.stdin }
     }
+}
 
+impl ToCommand for NewArtifactArgs {
     /// With `--stdin` the caller's stdin becomes the content; without it the
     /// schema template is written and any given stdin is ignored.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         let content = match (self.stdin, inputs.stdin) {
             (false, _) => None,
             (true, Some(content)) => Some(content),

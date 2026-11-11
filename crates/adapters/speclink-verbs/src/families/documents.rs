@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ArtifactArgs {
@@ -38,8 +38,10 @@ impl ArtifactArgs {
             ArtifactCommands::Cat { .. } => "artifact cat",
         }
     }
+}
 
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for ArtifactArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         match &self.command {
             ArtifactCommands::Cat { artifact, change } => {
                 Ok(CommandTarget::Command(Command::ArtifactCat {
@@ -57,8 +59,10 @@ impl LanguageArgs {
             LanguageCommands::Show => "language show",
         }
     }
+}
 
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for LanguageArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         match self.command {
             LanguageCommands::Show => Ok(CommandTarget::Command(Command::LanguageShow)),
         }

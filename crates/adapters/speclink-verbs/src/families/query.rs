@@ -3,7 +3,7 @@
 use clap::Args;
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ListArgs {
@@ -50,9 +50,9 @@ pub struct StatusArgs {
     pub json: bool,
 }
 
-impl ListArgs {
+impl ToCommand for ListArgs {
     /// `list` — the caller's worktree facts ride along.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::List {
             sort: self.sort.clone(),
             specs: self.specs,
@@ -62,8 +62,8 @@ impl ListArgs {
     }
 }
 
-impl ShowArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for ShowArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Show {
             item: self.item.clone(),
             item_type: self.item_type.clone(),
@@ -71,8 +71,8 @@ impl ShowArgs {
     }
 }
 
-impl StatusArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for StatusArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Status {
             change: self.change.clone(),
             schema: self.schema.clone(),

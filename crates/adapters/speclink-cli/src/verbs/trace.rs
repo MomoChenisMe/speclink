@@ -3,17 +3,16 @@
 //! 解析與雙輸出渲染。local-only：remote 拒絕宣告在 dispatch 的 fs_only。
 
 use crate::color;
-use crate::common::{engine_command, open_project, print_json, run};
+use crate::common::{open_project, plain_command, print_json, run};
 use anyhow::Result;
 use core::trace::TraceReport;
 use speclink_core as core;
 use speclink_verbs::families::trace::TraceArgs;
-use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_trace(a: TraceArgs) -> Result<()> {
     let (_ws, store) = open_project()?;
     let report: TraceReport =
-        run(&store, None, engine_command(a.to_command(VerbInputs::default()))?)?;
+        run(&store, None, plain_command(&a)?)?;
     if a.json {
         return print_json(&report);
     }
