@@ -214,8 +214,7 @@ fn remote_init_explicit_both_tools_writes_section_without_a_spec_tree() {
 
 // --- 範本的政策示例（spec Scenario「新專案初始化的範本內容」） ---
 
-/// 與 crates/adapters/speclink-cli/src/verbs/config.rs 的同名常數刻意重複（design D6：
-/// 釘樁測試自帶清單才釘得住，且整合測試本就 import 不到 bin target 的私有項）。
+/// 與 speclink_core::config::PolicyKey::ALL 刻意重複（design D6：釘樁測試自帶清單才釘得住）。
 /// 增刪政策鍵時兩處同步。
 const POLICY_KEYS: [&str; 5] = ["locale", "spec_locale", "tdd", "audit", "worktree"];
 

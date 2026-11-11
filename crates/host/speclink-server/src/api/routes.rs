@@ -20,6 +20,7 @@ use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
 use speclink_core::status::StatusReport;
+use speclink_host::bridge::AtRevision;
 use speclink_host::drift as host_drift;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
@@ -681,15 +682,16 @@ pub async fn config(State(state): State<AppState>, binding: Binding) -> Result<R
 }
 
 /// `PUT /config` — server-authoritative workflow policy write. Authorization
-/// and engine parsing happen before any unit of work exists; only then is the
-/// client's scope revision compared and the document committed with store CAS.
+/// and engine parsing happen first; only then is the client's scope revision
+/// compared, and the document written by the engine's whole-document command
+/// (one commit, guarded by the store's own version check).
 pub async fn put_config(
     State(state): State<AppState>,
     binding: Binding,
     Json(req): Json<PutConfigRequest>,
 ) -> Result<Response, ApiError> {
-    // Parse the complete document through the engine config model before a
-    // write is staged. A malformed document never reaches CAS.
+    // The command validates with these same engine functions. They run here
+    // too so a malformed document is reported before a stale revision is.
     let parsed = WorkflowConfig::from_text(Some(&req.content))
         .map_err(|e| ApiError::invalid_config(e.to_string()))?;
     // Value-domain gate shares the engine rule with every client seam; the
@@ -702,37 +704,29 @@ pub async fn put_config(
     .map_err(|e| ApiError::invalid_config(e.to_string()))?;
 
     let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let actor = binding.actor.id.clone();
+    let ctx = binding.execution_context();
     let expected_revision = req.expected_revision;
-    let content = req.content;
+    let cmd = Command::WorkflowConfigReplace { content: req.content };
     let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        let actual_revision = snapshot.revision().0;
-        if actual_revision != expected_revision {
-            return Err(ApiError::revision_conflict(format!(
-                "expected scope revision {expected_revision}, actual {actual_revision}"
-            )));
-        }
-        let current = snapshot
-            .read(&DocumentId::WorkflowConfig)
-            .map_err(ApiError::from)?;
-        drop(snapshot);
-
-        let mut uow = store
-            .begin_unit_of_work(
-                &scope,
-                CommandContext {
-                    command: "put-config".into(),
-                    actor,
-                },
-            )
-            .map_err(ApiError::from)?;
-        match current {
-            Some(doc) => uow.update(DocumentId::WorkflowConfig, content, doc.revision),
-            None => uow.create(DocumentId::WorkflowConfig, content),
-        }
-        let revision = store.commit(uow, Vec::new()).map_err(ApiError::from)?.0;
+        // The wire's expected revision is the SCOPE revision (what `GET /config`
+        // returns), not the config document's own version. The bridge compares
+        // it on the same load of the scope the command reads from.
+        let execution = match speclink_host::bridge::execute_at_revision(
+            store.as_ref(),
+            &ctx,
+            cmd,
+            Revision(expected_revision),
+        )? {
+            AtRevision::Done(execution) => execution,
+            AtRevision::Moved { actual } => {
+                return Err(ApiError::revision_conflict(format!(
+                    "expected scope revision {expected_revision}, actual {}",
+                    actual.0
+                )))
+            }
+        };
+        // Content that did not change commits nothing: the revision stays.
+        let revision = execution.revision.map_or(expected_revision, |r| r.0);
         Ok((revision, format!("\"{revision}\"")))
     })
     .await

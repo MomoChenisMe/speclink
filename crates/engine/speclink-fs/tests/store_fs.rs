@@ -513,6 +513,21 @@ fn workflow_config_read_is_optional() {
     assert_eq!(store.read_workflow_config().unwrap(), "schema: spec-driven\n");
 }
 
+#[test]
+fn workflow_config_write_lands_the_given_text_byte_for_byte() {
+    // workflow-config-commands D3：寫出 `<spec_dir>/config.yaml`，內容逐位元等於給的文字
+    // （CRLF、結尾沒有換行都原樣保留）。
+    let root = TempRoot::new("wf-config-write");
+    let store = root.store();
+    let text = "# note\r\nschema: spec-driven\r\n\nlocale: tw";
+    store.write_workflow_config(text).expect("the first write creates the file");
+    let path = root.dir.join("openspec").join("config.yaml");
+    assert_eq!(std::fs::read(&path).unwrap(), text.as_bytes());
+    store.write_workflow_config("schema: my-flow\n").expect("a second write overwrites");
+    assert_eq!(std::fs::read(&path).unwrap(), b"schema: my-flow\n");
+    assert_eq!(store.read_workflow_config().as_deref(), Some("schema: my-flow\n"));
+}
+
 // --- discussions ---
 
 #[test]

@@ -147,6 +147,14 @@ export interface Store {
   // --- workflow config / shared vocabulary ---
   /** Raw workflow configuration document (config.yaml content), or null. */
   readWorkflowConfig(): MaybePromise<string | null>
+  /**
+   * OPTIONAL: write (create or overwrite) the workflow configuration document.
+   * The `workflow-config` write verbs (`set`, `context`, `rules`, `review …`,
+   * `subagent-model …`) call it once, with content the engine already
+   * validated. A store without it refuses those verbs before anything runs
+   * (code `refused`); `workflow-config show` and `--dry-run` never call it.
+   */
+  writeWorkflowConfig?(content: string): MaybePromise<void>
   /** The project's LANGUAGE document (shared vocabulary), or null. */
   readLanguage(): MaybePromise<string | null>
 

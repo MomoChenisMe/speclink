@@ -60,6 +60,7 @@ pub mod progress;
 pub mod query;
 pub mod station;
 pub mod trace;
+pub mod workflow_config;
 
 pub use paint::Paint;
 
@@ -261,6 +262,14 @@ pub fn render(
         O::VerifyShow(o) => station::show(&VERIFY, &o.change, &o.ticket, o.content.as_deref(), options),
         O::VerifyStamp(o) => station::action(&VERIFY, StationAction::Stamp, &o.change, options),
         O::VerifyDiscard(o) => station::action(&VERIFY, StationAction::Discard, &o.change, options),
+        O::WorkflowConfigShow(o) => workflow_config::show(o, options),
+        O::WorkflowConfigEdit(o) => match verb.spec() {
+            SpecVerb::WorkflowConfig(a) => workflow_config::written(&a.command, o, options),
+            // Only a workflow-config verb converts to this command.
+            _ => Rendered::default(),
+        },
+        // No verb text reaches a whole-document replace, and it has no output.
+        O::WorkflowConfigReplace(_) => Rendered::default(),
     })
 }
 
@@ -345,9 +354,12 @@ mod tests {
             CommandOutcome::VerifyShow(_) => 39,
             CommandOutcome::VerifyStamp(_) => 40,
             CommandOutcome::VerifyDiscard(_) => 41,
+            CommandOutcome::WorkflowConfigShow(_) => 42,
+            CommandOutcome::WorkflowConfigEdit(_) => 43,
+            CommandOutcome::WorkflowConfigReplace(_) => 44,
         }
     }
-    const RESULT_TYPES: usize = 42;
+    const RESULT_TYPES: usize = 45;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -388,6 +400,18 @@ mod tests {
             auto_archived: false,
             closing_error: closing_error.map(s),
             held: false,
+        }
+    }
+
+    fn config_written() -> cmd::WorkflowConfigWriteOutcome {
+        use speclink_core::config::{ChangedKey, PolicyKey, WorkflowConfig};
+        cmd::WorkflowConfigWriteOutcome {
+            file: s("speclink/config.yaml"),
+            before: None,
+            after: s("tdd: true\n"),
+            config: WorkflowConfig { tdd: Some(true), ..Default::default() },
+            changed_keys: vec![ChangedKey::Policy(PolicyKey::Tdd)],
+            written: true,
         }
     }
 
@@ -659,6 +683,24 @@ mod tests {
                 false,
                 "✓ Discarded verification ticket for change 'c'\n",
             ),
+            (
+                &["workflow-config", "show"],
+                O::WorkflowConfigShow(cmd::WorkflowConfigShowOutcome {
+                    file: s("speclink/config.yaml"),
+                    config: Default::default(),
+                    exists: false,
+                }),
+                true,
+                "Workflow config: speclink/config.yaml\n\n  schema       unset (spec-driven)\n  locale       unset (English)\n  spec_locale  unset (specs in English)\n  tdd          unset (off)\n  audit        unset (off)\n  worktree     unset (off)\n  context      none\n  rules        none\n  review       none\n",
+            ),
+            (
+                &["workflow-config", "set", "tdd", "true"],
+                O::WorkflowConfigEdit(config_written()),
+                false,
+                "✓ tdd = true\n",
+            ),
+            // No verb text reaches a whole-document replace.
+            (&["list"], O::WorkflowConfigReplace(config_written()), false, ""),
         ]
     }
 

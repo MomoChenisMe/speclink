@@ -55,6 +55,10 @@ pub(crate) struct TestStore {
     /// lets archive tests probe the commit-phase write order (every snapshot
     /// must already be on disk when the first canonical write happens).
     pub fail_canonical_write: RefCell<Option<String>>,
+    /// The workflow config document; `None` is "no document".
+    pub workflow_config: RefCell<Option<String>>,
+    /// Number of `write_workflow_config` calls (write-once and no-write assertions).
+    pub workflow_config_writes: RefCell<u32>,
     /// Whether this double declares ownership adjudication (a team-mode
     /// backend). Default `false` keeps every existing test on the fs-parity
     /// path; `claim` tests flip it via [`TestStore::team_with_meta`].
@@ -75,6 +79,13 @@ impl TestStore {
             ownership: true,
             ..TestStore::with_meta(name, meta)
         }
+    }
+
+    /// A store whose workflow config document is `text`.
+    pub fn with_workflow_config(text: &str) -> TestStore {
+        let store = TestStore::default();
+        *store.workflow_config.borrow_mut() = Some(text.to_string());
+        store
     }
 
     pub fn meta(&self, name: &str) -> String {
@@ -378,7 +389,12 @@ impl Store for TestStore {
         Ok(Some(format!("{created}-{slug}.md")))
     }
     fn read_workflow_config(&self) -> Option<String> {
-        None
+        self.workflow_config.borrow().clone()
+    }
+    fn write_workflow_config(&self, content: &str) -> Result<()> {
+        *self.workflow_config_writes.borrow_mut() += 1;
+        *self.workflow_config.borrow_mut() = Some(content.to_string());
+        Ok(())
     }
     fn read_language(&self) -> Option<String> {
         None

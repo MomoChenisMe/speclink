@@ -201,6 +201,118 @@ fn invalid_yaml_and_missing_expected_revision_are_rejected_without_writes() {
 }
 
 #[test]
+fn invalid_content_wins_over_a_stale_expected_revision() {
+    // Spec workflow-config「Server 的整份寫入經同一個命令」：內容無法解析與預期版本
+    // 不符同時成立時回 invalid_config。
+    let f = fixture();
+    let (before, _) = get_json(&f, &f.editor_pat, "config");
+    let revision = before["revision"].as_u64().expect("revision");
+
+    let (status, error) = protocol_error(put_config(
+        &f,
+        &f.editor_pat,
+        "schema: [unterminated",
+        revision + 7,
+    ));
+    assert_eq!(status, 422);
+    assert_eq!(error.reason, ErrorReason::InvalidConfig);
+    assert_eq!(stored_policy(&f), (INITIAL.to_string(), revision));
+}
+
+#[test]
+fn a_write_of_the_same_content_keeps_the_revision() {
+    // workflow-config-commands D7：內容沒有變動的寫入不提交，回應的版本等於寫入前的版本。
+    let f = fixture();
+    let (before, _) = get_json(&f, &f.editor_pat, "config");
+    let revision = before["revision"].as_u64().expect("revision");
+
+    let same = put_config(&f, &f.editor_pat, INITIAL, revision).expect("the write succeeds");
+    let etag = same.header("ETag").map(str::to_string);
+    let body = same.into_json::<Value>().expect("JSON body");
+    assert_eq!(body["revision"], revision, "nothing was committed");
+    assert_eq!(etag, Some(format!("\"{revision}\"")));
+    assert_eq!(stored_policy(&f), (INITIAL.to_string(), revision));
+
+    // 版本沒有前進，所以同一個預期版本還能再寫一次。
+    let winner = put_config(&f, &f.editor_pat, WINNER, revision).expect("a real change still lands");
+    let next = winner.into_json::<Value>().expect("JSON body")["revision"].as_u64().expect("revision");
+    assert!(next > revision);
+    assert_eq!(stored_policy(&f), (WINNER.to_string(), next));
+}
+
+#[test]
+fn expected_revision_is_the_scope_revision_not_the_document_revision() {
+    // 線上協定不變：預期版本是整個 scope 的版本。別的文件在流程設定之後寫入時，
+    // 流程設定這份文件自己的版本落後於 scope 版本——用 scope 版本寫入仍要成功，
+    // 用文件自己的舊版本則是衝突。
+    let f = fixture();
+    let (_, document_revision) = stored_policy(&f);
+    let mut uow = f
+        .store
+        .begin_unit_of_work(
+            &scope(),
+            CommandContext { command: "seed-language".into(), actor: "seed".into() },
+        )
+        .expect("begin");
+    uow.create(DocumentId::Language, "# Vocabulary\n");
+    f.store.commit(uow, Vec::new()).expect("another document lands");
+    let (config, _) = get_json(&f, &f.editor_pat, "config");
+    let scope_revision = config["revision"].as_u64().expect("revision");
+    assert!(scope_revision > document_revision, "the scope moved past the config document");
+
+    let (status, error) =
+        protocol_error(put_config(&f, &f.editor_pat, WINNER, document_revision));
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::RevisionConflict);
+    assert!(
+        error.message.contains(&format!(
+            "expected scope revision {document_revision}, actual {scope_revision}"
+        )),
+        "{}",
+        error.message
+    );
+
+    let ok = put_config(&f, &f.editor_pat, WINNER, scope_revision).expect("the scope revision is accepted");
+    let next = ok.into_json::<Value>().expect("JSON body")["revision"].as_u64().expect("revision");
+    assert!(next > scope_revision);
+    assert_eq!(stored_policy(&f), (WINNER.to_string(), next));
+}
+
+#[test]
+fn a_config_write_that_lands_after_the_revision_check_is_a_conflict() {
+    // 兩個寫入帶同一個預期版本：後到的那個通過版本比對之後、讀取流程設定之前，
+    // 先到的那個提交了。後到的不得讀到新內容再覆寫——要回 409，先到的內容留著。
+    let inner = Arc::new(MemoryStore::new());
+    let mut uow = inner
+        .begin_unit_of_work(&scope(), CommandContext { command: "seed-policy".into(), actor: "seed".into() })
+        .expect("begin seed");
+    uow.create(DocumentId::WorkflowConfig, INITIAL);
+    let revision = inner.commit(uow, Vec::new()).expect("seed policy");
+    let racing = common::Racing::after_the_first_snapshot(inner.clone(), move |store| {
+        let mut uow = store
+            .begin_unit_of_work(&scope(), CommandContext { command: "other".into(), actor: "other".into() })
+            .expect("begin the other writer's uow");
+        uow.update(DocumentId::WorkflowConfig, WINNER, revision);
+        store.commit(uow, Vec::new()).expect("the other writer commits");
+    });
+    let state = common::state_with(Arc::new(racing));
+    let (editor_pat, _) =
+        common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
+    let f = Fixture { base: common::start(state), store: inner, editor_pat, reader_pat: String::new() };
+
+    let (status, error) = protocol_error(put_config(
+        &f,
+        &f.editor_pat,
+        "schema: spec-driven\nlocale: ja\n",
+        revision.0,
+    ));
+
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::RevisionConflict);
+    assert_eq!(stored_policy(&f).0, WINNER, "the first writer's content stands");
+}
+
+#[test]
 fn invalid_locale_value_is_rejected_without_writes() {
     // Spec scenario 非法 locale 值不落盤（workflow-config-locale-validation）：
     // 可解析但 locale 值域外的文件不得落盤，沿用 invalid_config 家族。

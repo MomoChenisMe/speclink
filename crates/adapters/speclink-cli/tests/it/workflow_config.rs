@@ -2026,3 +2026,96 @@ fn a_failed_skill_sync_keeps_the_config_write_and_points_at_update() {
         p.config_text()
     );
 }
+
+// --- 值沒有變的寫入：不寫檔，也沒有後續動作 ---
+// Spec workflow-config「流程設定的寫入經命令執行層」的 Scenario「值沒有變時不同步技能
+// 也不提示」與其 Example（逐列）。
+
+#[test]
+fn a_worktree_write_that_changes_nothing_does_not_sync_the_skills() {
+    for (doc, value) in [("schema: spec-driven\nworktree: true\n", "true"), ("schema: spec-driven\n", "false")] {
+        let p = TempProject::new(&format!("noop-wt-{value}"), doc);
+        let out = p.run(&["workflow-config", "set", "worktree", value]);
+        assert!(out.status.success(), "{value}: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), format!("✓ worktree = {value}\n"), "only the confirmation line");
+        assert_eq!(p.config_text(), doc, "{value}: config.yaml is byte-for-byte unchanged");
+        assert!(!p.dir.join(".claude").exists(), "{value}: no skill footprint is generated");
+    }
+}
+
+#[test]
+fn a_station_rule_write_that_changes_nothing_gives_no_stale_hint() {
+    let p = TempProject::new("noop-hint", WF_YAML);
+    generate_skills(&p, &[(CLAUDE, OLD_SKILLS)]);
+    let before = p.config_bytes();
+    let out = p.run(&["workflow-config", "review", "baseline", "extend"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ review.baseline = extend (default)\n");
+    assert_eq!(stderr_of(&out), "", "nothing was written, so nothing is probed");
+    let out = p.run(&["workflow-config", "subagent-model", "verify", "claude", ""]);
+    assert_eq!(stdout_of(&out), "✓ subagent_model.verify.claude unchanged\n");
+    assert_eq!(stderr_of(&out), "");
+    assert_eq!(p.config_bytes(), before);
+}
+
+#[test]
+fn a_write_that_changes_nothing_does_not_create_a_missing_config() {
+    let p = TempProject::new("noop-absent", "");
+    std::fs::remove_file(p.config_path()).unwrap();
+    let out = p.run(&["workflow-config", "set", "tdd", "false"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ tdd = false\n");
+    assert!(!p.config_path().exists(), "no empty config.yaml is created");
+}
+
+#[test]
+fn rules_proposal_from_stdin_prints_and_writes_what_it_did_before_the_command_layer() {
+    // Spec scenario「CLI 的輸出與寫出的檔案不變」：stdout、stderr、exit code 與整份
+    // config.yaml 的位元組，都是變更前的 CLI 對同一份輸入給出的結果。
+    let p = TempProject::new("rules-proposal-frozen", WF_YAML);
+    let out = p.run_stdin(&["workflow-config", "rules", "proposal", "--stdin"], "Rule one\n  Rule two  \n\n");
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(stdout_of(&out), "✓ rules.proposal = 2 entries\n");
+    assert_eq!(stderr_of(&out), "");
+    assert_eq!(
+        p.config_text(),
+        "\
+schema: spec-driven
+locale: tw
+tdd: true
+context: |
+  Project context line one.
+  Line two.
+rules:
+  proposal:
+  - Rule one
+  - Rule two
+  design:
+  - Name the crate boundary
+  - List one alternative
+  tasks:
+  - Use checkbox format
+"
+    );
+}
+
+#[test]
+fn remote_write_that_changes_nothing_gives_no_stale_hint() {
+    // 過期提示在兩種模式都看變動的鍵：remote 模式照常送出寫入，但審查規則沒有變時不提示。
+    let server = mock_server(vec![
+        ("GET", "/config", 200, config_response()),
+        ("PUT", "/config", 200, r#"{"revision":8}"#.to_string()),
+    ]);
+    let p = RemoteProject::new("remote-noop-hint", &server.base);
+    // 與 remote_review_write_warns_from_the_local_skill_files 同一組前提：宣告 claude、
+    // 技能檔舊於引擎——那個測試在規則有變時會提示。
+    let yaml = p.dir.join(".speclink.yaml");
+    let declared = std::fs::read_to_string(&yaml).unwrap() + "tools:\n  - claude\n";
+    std::fs::write(&yaml, declared).unwrap();
+    write_skill_file(&p.dir.join(CLAUDE).join("skills"), "speclink-review", OLD_SKILLS);
+    let out = p.run(&["workflow-config", "review", "baseline", "extend", "--no-color"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ review.baseline = extend (default)\n");
+    assert!(!stderr_of(&out).contains(STALE_HINT), "nothing changed: {}", stderr_of(&out));
+    assert!(!server.none("PUT", "/config"), "the remote arm still sends its write");
+}

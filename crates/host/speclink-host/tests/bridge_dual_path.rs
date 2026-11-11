@@ -13,7 +13,7 @@ use speclink_core::store::Store;
 use speclink_core::workspace::Workspace;
 use speclink_fs::FsStore;
 use speclink_host::binding::local_default_binding;
-use speclink_host::bridge::{self, BridgeError};
+use speclink_host::bridge::{self, AtRevision, BridgeError};
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_store::memory::MemoryStore;
@@ -263,6 +263,50 @@ fn bridged_task_done_lands_document_revision_and_event_in_one_commit() {
         completed[0].revision, new_rev,
         "the event rides the same commit as the document"
     );
+}
+
+#[test]
+fn bridged_workflow_config_replace_lands_the_document_at_the_commit_revision() {
+    // workflow-config-commands D3／D7：經橋接寫入流程設定，文件與新的版本同時可見；
+    // 內容相同的寫入不提交。
+    let (mem, scope) = seed_teamstore();
+    let content = "schema: spec-driven\nlocale: ja\n";
+    let replace = || Command::WorkflowConfigReplace { content: content.to_string() };
+
+    let done = bridge::execute(&mem, &host_ctx(), replace()).expect("bridged replace");
+
+    let new_rev = done.revision.expect("the write commits a revision");
+    let doc = mem
+        .snapshot(&scope)
+        .expect("snapshot")
+        .read(&DocumentId::WorkflowConfig)
+        .expect("read config")
+        .expect("the config document is visible");
+    assert_eq!(doc.content, content);
+    assert_eq!(doc.revision, new_rev);
+
+    let again = bridge::execute(&mem, &host_ctx(), replace()).expect("the same content again");
+    assert_eq!(again.revision, None, "an unchanged document commits nothing");
+    assert_eq!(mem.snapshot(&scope).expect("snapshot").revision(), new_rev);
+}
+
+#[test]
+fn execute_at_revision_runs_only_when_the_scope_is_at_that_revision() {
+    let (mem, scope) = seed_teamstore();
+    let base = mem.snapshot(&scope).expect("snapshot").revision();
+    let replace = |content: &str| Command::WorkflowConfigReplace { content: content.to_string() };
+
+    let stale = speclink_store::Revision(base.0 + 5);
+    match bridge::execute_at_revision(&mem, &host_ctx(), replace("locale: ja\n"), stale).expect("no failure") {
+        AtRevision::Moved { actual } => assert_eq!(actual, base),
+        AtRevision::Done(_) => panic!("the scope is not at {stale:?}"),
+    }
+    assert_eq!(mem.snapshot(&scope).expect("snapshot").revision(), base, "nothing ran");
+
+    match bridge::execute_at_revision(&mem, &host_ctx(), replace("locale: ja\n"), base).expect("no failure") {
+        AtRevision::Done(done) => assert!(done.revision.is_some_and(|r| r.0 > base.0)),
+        AtRevision::Moved { actual } => panic!("the scope is at {base:?}, got {actual:?}"),
+    }
 }
 
 #[test]

@@ -7,12 +7,8 @@ use crate::common;
 
 use speclink_remote::client::Client;
 use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    Bundle, CommandContext, DocumentId, EventRecord, ImportMode, ImportReport, Manifest,
-    OutboxCursor, OutboxEntry, ProjectId, RepoId, Revision, Scope, Snapshot, StoreError,
-    TeamStore, UnitOfWork,
-};
-use std::sync::{Arc, Mutex};
+use speclink_store::{CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore};
+use std::sync::Arc;
 
 const SCOPE_PROJECT: &str = "demo";
 const SCOPE_REPO: &str = "backend";
@@ -82,59 +78,6 @@ fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
     );
 }
 
-/// A store that lets one other writer in between a verb's reads and its
-/// commit: the writer runs when the verb opens its unit of work.
-struct Racing {
-    inner: Arc<MemoryStore>,
-    other_writer: Mutex<Option<Box<dyn FnOnce(&MemoryStore) + Send>>>,
-}
-
-impl TeamStore for Racing {
-    fn manifest(&self) -> Manifest {
-        self.inner.manifest()
-    }
-    fn health(&self) -> Result<(), StoreError> {
-        self.inner.health()
-    }
-    fn migrate(&self, target_version: u32) -> Result<(), StoreError> {
-        self.inner.migrate(target_version)
-    }
-    fn snapshot<'a>(&'a self, scope: &Scope) -> Result<Box<dyn Snapshot + 'a>, StoreError> {
-        self.inner.snapshot(scope)
-    }
-    fn begin_unit_of_work(
-        &self,
-        scope: &Scope,
-        ctx: CommandContext,
-    ) -> Result<UnitOfWork, StoreError> {
-        if let Some(other_writer) = self.other_writer.lock().unwrap().take() {
-            other_writer(&self.inner);
-        }
-        self.inner.begin_unit_of_work(scope, ctx)
-    }
-    fn commit(&self, uow: UnitOfWork, events: Vec<EventRecord>) -> Result<Revision, StoreError> {
-        self.inner.commit(uow, events)
-    }
-    fn rollback(&self, uow: UnitOfWork) -> Result<(), StoreError> {
-        self.inner.rollback(uow)
-    }
-    fn export(&self, scope: &Scope) -> Result<Bundle, StoreError> {
-        self.inner.export(scope)
-    }
-    fn import(&self, bundle: Bundle, mode: ImportMode) -> Result<ImportReport, StoreError> {
-        self.inner.import(bundle, mode)
-    }
-    fn read_outbox(&self, scope: &Scope, from: OutboxCursor) -> Result<Vec<OutboxEntry>, StoreError> {
-        self.inner.read_outbox(scope, from)
-    }
-    fn ack_outbox(&self, scope: &Scope, up_to: OutboxCursor) -> Result<(), StoreError> {
-        self.inner.ack_outbox(scope, up_to)
-    }
-    fn outbox_acked(&self, scope: &Scope) -> Result<OutboxCursor, StoreError> {
-        self.inner.outbox_acked(scope)
-    }
-}
-
 #[test]
 fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document() {
     // host-runtime「版本衝突經 Server 回報」：動詞讀過 metadata 之後、提交
@@ -143,19 +86,16 @@ fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document(
     let inner = seeded_store();
     let base = inner.snapshot(&scope()).expect("snapshot").revision();
     let racing_meta = meta.clone();
-    let store = Arc::new(Racing {
-        inner: inner.clone(),
-        other_writer: Mutex::new(Some(Box::new(move |store: &MemoryStore| {
-            let mut uow = store
-                .begin_unit_of_work(
-                    &scope(),
-                    CommandContext { command: "other".into(), actor: "other".into() },
-                )
-                .expect("begin the other writer's uow");
-            uow.update(racing_meta, "schema: spec-driven\nclaimed_by: Other\n", base);
-            store.commit(uow, Vec::new()).expect("the other writer commits");
-        }))),
-    });
+    let store = Arc::new(common::Racing::at_unit_of_work(inner.clone(), move |store| {
+        let mut uow = store
+            .begin_unit_of_work(
+                &scope(),
+                CommandContext { command: "other".into(), actor: "other".into() },
+            )
+            .expect("begin the other writer's uow");
+        uow.update(racing_meta, "schema: spec-driven\nclaimed_by: Other\n", base);
+        store.commit(uow, Vec::new()).expect("the other writer commits");
+    }));
     let state = common::state_with(store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base_url = common::start(state);

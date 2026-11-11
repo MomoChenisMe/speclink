@@ -121,6 +121,16 @@ pub fn missing_stamp_methods(store: &JsObject) -> Vec<&'static str> {
         .collect()
 }
 
+/// Whether the store implements the optional `writeWorkflowConfig` — captured
+/// at construction so a workflow-config write verb can refuse before it runs.
+pub fn has_workflow_config_write(store: &JsObject) -> bool {
+    store
+        .get_named_property_unchecked::<JsUnknown>("writeWorkflowConfig")
+        .and_then(|v| v.get_type())
+        .map(|t| t == ValueType::Function)
+        .unwrap_or(false)
+}
+
 /// Fail `createEngine` when the store object is missing interface methods,
 /// listing every missing name (fail fast, before any engine exists).
 pub fn validate_store_methods(store: &JsObject) -> Result<()> {
@@ -625,6 +635,11 @@ impl Store for JsStoreBridge {
 
     fn read_workflow_config(&self) -> Option<String> {
         opt_string(self.call_ok("readWorkflowConfig", serde_json::json!([])))
+    }
+
+    fn write_workflow_config(&self, content: &str) -> anyhow::Result<()> {
+        self.call_result("writeWorkflowConfig", serde_json::json!([content]))?;
+        Ok(())
     }
 
     fn read_language(&self) -> Option<String> {

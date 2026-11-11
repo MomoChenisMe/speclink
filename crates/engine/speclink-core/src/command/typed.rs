@@ -8,7 +8,7 @@ use super::{
     DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
     DiscussSubjectOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
     ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
-    TaskFlipOutcome, ValidateOutcome,
+    TaskFlipOutcome, ValidateOutcome, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
 };
 use crate::analyzer::AnalyzeReport;
 use crate::archive::ArchiveOutcome;
@@ -83,6 +83,9 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::VerifyShow(_) => "VerifyShow",
         CommandOutcome::VerifyStamp(_) => "VerifyStamp",
         CommandOutcome::VerifyDiscard(_) => "VerifyDiscard",
+        CommandOutcome::WorkflowConfigShow(_) => "WorkflowConfigShow",
+        CommandOutcome::WorkflowConfigEdit(_) => "WorkflowConfigEdit",
+        CommandOutcome::WorkflowConfigReplace(_) => "WorkflowConfigReplace",
     }
 }
 
@@ -134,6 +137,8 @@ typed_outcomes! {
     DiscussPromoteOutcome => [DiscussPromote],
     DiscussBindOutcome => [DiscussLink, DiscussSeal],
     DiscussArchiveOutcome => [DiscussArchive],
+    WorkflowConfigShowOutcome => [WorkflowConfigShow],
+    WorkflowConfigWriteOutcome => [WorkflowConfigEdit, WorkflowConfigReplace],
 }
 
 #[cfg(test)]

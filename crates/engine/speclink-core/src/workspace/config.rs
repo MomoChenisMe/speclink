@@ -770,6 +770,218 @@ impl WorkflowConfig {
     }
 }
 
+/// A policy key: one of the five fields `workflow-config set` accepts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PolicyKey {
+    Locale,
+    SpecLocale,
+    Tdd,
+    Audit,
+    Worktree,
+}
+
+impl PolicyKey {
+    /// Every policy key, in canonical order.
+    pub const ALL: [PolicyKey; 5] = [
+        PolicyKey::Locale,
+        PolicyKey::SpecLocale,
+        PolicyKey::Tdd,
+        PolicyKey::Audit,
+        PolicyKey::Worktree,
+    ];
+
+    /// The config-file key.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            PolicyKey::Locale => "locale",
+            PolicyKey::SpecLocale => "spec_locale",
+            PolicyKey::Tdd => "tdd",
+            PolicyKey::Audit => "audit",
+            PolicyKey::Worktree => "worktree",
+        }
+    }
+
+    /// The key a `set <key>` word names, case-sensitive; `None` for any other word.
+    pub fn parse(key: &str) -> Option<PolicyKey> {
+        PolicyKey::ALL.into_iter().find(|k| k.as_str() == key)
+    }
+
+    /// The keys as `set`'s help and its unknown-key message list them.
+    pub fn list() -> String {
+        PolicyKey::ALL.map(PolicyKey::as_str).join(", ")
+    }
+}
+
+/// One key of the workflow config whose value a write changed. `Display` gives
+/// the name the spec lists: `schema`, a policy key, `context`,
+/// `rules.<artifact>`, `review.baseline`, `review.<list>`,
+/// `subagent_model.<station>`, `subagent_model.choices`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChangedKey {
+    Schema,
+    Policy(PolicyKey),
+    Context,
+    /// One artifact's rule section.
+    Rules(String),
+    ReviewBaseline,
+    ReviewList(ReviewList),
+    /// One station's sub-agent models (any tool).
+    SubagentModel(SubagentStation),
+    SubagentChoices,
+}
+
+impl std::fmt::Display for ChangedKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChangedKey::Schema => f.write_str("schema"),
+            ChangedKey::Policy(key) => f.write_str(key.as_str()),
+            ChangedKey::Context => f.write_str("context"),
+            ChangedKey::Rules(artifact) => write!(f, "rules.{artifact}"),
+            ChangedKey::ReviewBaseline => f.write_str("review.baseline"),
+            ChangedKey::ReviewList(list) => write!(f, "review.{}", list.key()),
+            ChangedKey::SubagentModel(station) => write!(f, "subagent_model.{}", station.key()),
+            ChangedKey::SubagentChoices => f.write_str("subagent_model.choices"),
+        }
+    }
+}
+
+/// The three severity-grouped rule lists of the `review` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReviewList {
+    Critical,
+    Warning,
+    Suggestion,
+}
+
+impl ReviewList {
+    /// The config-file key (`critical` / `warning` / `suggestion`).
+    pub fn key(self) -> &'static str {
+        match self {
+            ReviewList::Critical => "critical",
+            ReviewList::Warning => "warning",
+            ReviewList::Suggestion => "suggestion",
+        }
+    }
+
+    pub fn entries(self, review: &mut ReviewConfig) -> &mut Vec<String> {
+        match self {
+            ReviewList::Critical => &mut review.critical,
+            ReviewList::Warning => &mut review.warning,
+            ReviewList::Suggestion => &mut review.suggestion,
+        }
+    }
+}
+
+/// The two stations of the `subagent_model` block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubagentStation {
+    Review,
+    Verify,
+}
+
+impl SubagentStation {
+    /// The config-file key (`review` / `verify`).
+    pub fn key(self) -> &'static str {
+        match self {
+            SubagentStation::Review => "review",
+            SubagentStation::Verify => "verify",
+        }
+    }
+
+    pub fn cells(self, block: &mut SubagentModelConfig) -> &mut BTreeMap<ToolName, String> {
+        match self {
+            SubagentStation::Review => &mut block.review,
+            SubagentStation::Verify => &mut block.verify,
+        }
+    }
+}
+
+/// One edit of the workflow config, as a `workflow-config` write verb states
+/// it once argv and stdin are resolved. `body` fields are the stdin text: one
+/// list entry per line.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkflowConfigEdit {
+    /// Set one policy field. `key` and `value` are the raw argv words: the
+    /// command reads them with [`PolicyKey::parse`] and refuses an unknown key
+    /// or a bad value only after it has refused a document that does not
+    /// parse — the order the CLI has always reported them in.
+    Policy { key: String, value: String },
+    /// Replace the context; blank text removes it.
+    Context(String),
+    /// Replace one artifact's rule section; no entries removes it.
+    Rules { artifact: String, body: String },
+    /// Replace one severity list of the review rules; no entries removes it.
+    ReviewList { list: ReviewList, body: String },
+    ReviewBaseline(ReviewBaseline),
+    /// Set one station's sub-agent model for one AI tool; a blank model removes it.
+    SubagentCell { station: SubagentStation, tool: ToolName, model: String },
+    /// Replace one AI tool's custom model list; no entries removes it.
+    SubagentChoices { tool: ToolName, body: String },
+}
+
+/// The keys whose parsed value differs between two workflow configs, in a
+/// fixed order: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`,
+/// `context`, `rules.<artifact>` (by artifact name), `review.baseline`,
+/// `review.critical`, `review.warning`, `review.suggestion`,
+/// `subagent_model.review`, `subagent_model.verify`, `subagent_model.choices`.
+///
+/// The comparison is on what the config means: a toggle that is absent equals
+/// `false`, an empty rule section equals an absent one, and a change of layout
+/// or comments gives no key. For a file that did not exist, pass
+/// `WorkflowConfig::default()` as `before`.
+///
+/// Only the keys this engine reads are compared. A document can also carry
+/// keys it does not know (they are kept, never read): a change of those gives
+/// no key here, so "written, with no changed key" does not mean "nothing but
+/// layout moved".
+pub fn changed_keys(before: &WorkflowConfig, after: &WorkflowConfig) -> Vec<ChangedKey> {
+    // Every field, with no `..`: a field added to `WorkflowConfig` does not
+    // compile until it has its key below — a policy key cannot go unreported.
+    let WorkflowConfig {
+        schema: _,
+        context: _,
+        locale: _,
+        spec_locale: _,
+        tdd: _,
+        audit: _,
+        worktree: _,
+        rules: _,
+        review: _,
+        subagent_model: _,
+    } = before;
+    let on = |toggle: Option<bool>| toggle.unwrap_or(false);
+    let (review_a, review_b) = (before.review(), after.review());
+    let (models_a, models_b) = (before.subagent_model(), after.subagent_model());
+    // Both maps are sorted; a set gives each artifact once, in name order.
+    let artifacts: std::collections::BTreeSet<&String> =
+        before.rules.keys().chain(after.rules.keys()).collect();
+    let rules = artifacts
+        .into_iter()
+        .filter(|artifact| before.rules_for(artifact) != after.rules_for(artifact))
+        .map(|artifact| ChangedKey::Rules(artifact.clone()));
+
+    let head = [
+        (ChangedKey::Schema, before.schema != after.schema),
+        (ChangedKey::Policy(PolicyKey::Locale), before.locale != after.locale),
+        (ChangedKey::Policy(PolicyKey::SpecLocale), before.spec_locale != after.spec_locale),
+        (ChangedKey::Policy(PolicyKey::Tdd), on(before.tdd) != on(after.tdd)),
+        (ChangedKey::Policy(PolicyKey::Audit), on(before.audit) != on(after.audit)),
+        (ChangedKey::Policy(PolicyKey::Worktree), on(before.worktree) != on(after.worktree)),
+        (ChangedKey::Context, before.context_text() != after.context_text()),
+    ];
+    let tail = [
+        (ChangedKey::ReviewBaseline, review_a.baseline != review_b.baseline),
+        (ChangedKey::ReviewList(ReviewList::Critical), review_a.critical != review_b.critical),
+        (ChangedKey::ReviewList(ReviewList::Warning), review_a.warning != review_b.warning),
+        (ChangedKey::ReviewList(ReviewList::Suggestion), review_a.suggestion != review_b.suggestion),
+        (ChangedKey::SubagentModel(SubagentStation::Review), models_a.review != models_b.review),
+        (ChangedKey::SubagentModel(SubagentStation::Verify), models_a.verify != models_b.verify),
+        (ChangedKey::SubagentChoices, models_a.choices != models_b.choices),
+    ];
+    let moved = |(key, changed): (ChangedKey, bool)| changed.then_some(key);
+    head.into_iter().filter_map(moved).chain(rules).chain(tail.into_iter().filter_map(moved)).collect()
+}
+
 /// Target state of the workflow-policy fields for a settings-page write.
 /// `None` / `false` means "back to default": the key is REMOVED from the document
 /// (preserving unset-means-default semantics) instead of writing an explicit value.

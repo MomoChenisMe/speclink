@@ -7,18 +7,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { createEngine } from '../index.js'
-import { cliBin, fixtureProject, makeFsFixture, memoryStore } from './helpers'
-
-async function rejection(promise: Promise<unknown>): Promise<Error & { code?: string }> {
-  let thrown: (Error & { code?: string }) | undefined
-  try {
-    await promise
-  } catch (e) {
-    thrown = e as Error & { code?: string }
-  }
-  expect(thrown).toBeInstanceOf(Error)
-  return thrown!
-}
+import { cliBin, fixtureProject, makeFsFixture, memoryStore, rejection } from './helpers'
 
 describe('dispatch config fail-closed (invalid_config)', () => {
   it('a broken workflow-config text rejects new change with code invalid_config', async () => {

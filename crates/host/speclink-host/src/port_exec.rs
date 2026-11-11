@@ -77,6 +77,8 @@ fn command_label(outcome: &CommandOutcome) -> String {
         CommandOutcome::ReviewAddRound(_) => "review-add-round",
         CommandOutcome::ReviewStamp(_) => "review-stamp",
         CommandOutcome::ReviewDiscard(_) => "review-discard",
+        CommandOutcome::WorkflowConfigEdit(_) => "workflow-config-edit",
+        CommandOutcome::WorkflowConfigReplace(_) => "workflow-config-replace",
         _ => "command",
     }
     .to_string()
@@ -371,6 +373,126 @@ mod tests {
         assert!(docs[1].is_none(), "the evidence write did not land");
         assert!(probe.inner.recorded_events(&scope()).is_empty(), "no event landed");
         assert_eq!(version(&probe.inner), 2);
+    }
+
+    // --- 流程設定的寫入（workflow-config-commands D1／D3）---
+
+    const CONFIG: &str = "schema: spec-driven\ntdd: false\n";
+
+    fn with_config_of(text: &str) -> MemoryStorePort {
+        let port = seeded();
+        seed(&port, 1_500, &[("config.yaml", text)]);
+        port
+    }
+
+    fn with_config() -> MemoryStorePort {
+        with_config_of(CONFIG)
+    }
+
+    fn set_tdd(value: &str, dry_run: bool) -> Command {
+        Command::WorkflowConfigEdit {
+            edit: speclink_core::config::WorkflowConfigEdit::Policy {
+                key: "tdd".to_string(),
+                value: value.to_string(),
+            },
+            dry_run,
+        }
+    }
+
+    #[test]
+    fn a_workflow_config_edit_is_one_commit_of_the_config_document() {
+        let probe = Probe::new(with_config());
+        let read_version = version(&probe.inner);
+
+        let done = execute_at(&probe, &scope(), &ctx(), set_tdd("true", false), at()).expect("edit");
+
+        let commits = probe.commits();
+        assert_eq!(commits.len(), 1, "exactly one commit");
+        let commit = &commits[0];
+        assert_eq!(commit.command(), "workflow-config-edit");
+        match commit.ops() {
+            [Op::Put { key: k, content, expected }] => {
+                assert_eq!(k, &key("config.yaml"));
+                assert_eq!(content, "schema: spec-driven\ntdd: true\n");
+                assert_eq!(
+                    expected,
+                    &Expected::At(Version::new(read_version).unwrap()),
+                    "the write expects the version the command read"
+                );
+            }
+            other => panic!("expected one write of config.yaml, got {other:?}"),
+        }
+        assert!(commit.events().is_empty(), "a workflow-config write has no domain event");
+        assert_eq!(done.scope_version.map(Version::get), Some(version(&probe.inner)));
+        assert_eq!(probe.reads(), [["config.yaml"]], "the command reads only the config document");
+        assert!(probe.lists().is_empty());
+    }
+
+    #[test]
+    fn a_workflow_config_write_that_changes_nothing_commits_nothing() {
+        // 寫明的 `false` 會被改寫函式拿掉（false 不落鍵），所以這裡用沒有它的文件。
+        const PLAIN: &str = "schema: spec-driven\n";
+        for cmd in [
+            set_tdd("false", false),
+            set_tdd("true", true),
+            Command::WorkflowConfigReplace { content: PLAIN.to_string() },
+            Command::WorkflowConfigShow,
+        ] {
+            let probe = Probe::new(with_config_of(PLAIN));
+            let before = version(&probe.inner);
+            let done = execute_at(&probe, &scope(), &ctx(), cmd.clone(), at()).expect("executes");
+            assert!(probe.commits().is_empty(), "{cmd:?}");
+            assert_eq!(done.scope_version, None, "{cmd:?}");
+            assert_eq!(version(&probe.inner), before, "{cmd:?}");
+        }
+    }
+
+    #[test]
+    fn a_workflow_config_replace_creates_a_missing_document() {
+        let probe = Probe::new(seeded());
+        let content = "schema: spec-driven\nlocale: ja\n";
+        execute_at(
+            &probe,
+            &scope(),
+            &ctx(),
+            Command::WorkflowConfigReplace { content: content.to_string() },
+            at(),
+        )
+        .expect("replace");
+        let commits = probe.commits();
+        assert_eq!(commits.len(), 1);
+        assert_eq!(commits[0].command(), "workflow-config-replace");
+        assert!(
+            matches!(
+                commits[0].ops(),
+                [Op::Put { key: k, content: c, expected: Expected::Absent }]
+                    if k == &key("config.yaml") && c == content
+            ),
+            "{:?}",
+            commits[0].ops()
+        );
+    }
+
+    #[test]
+    fn a_workflow_config_edit_after_another_writer_is_a_conflict() {
+        // 別人在讀取之後、提交之前改過流程設定：提交回報衝突，別人的內容留著。
+        let probe = Probe::new(with_config()).before_commit(|store| {
+            overwrite(store, 2_000, "config.yaml", "schema: spec-driven\nlocale: ja\n");
+        });
+        let read_version = version(&probe.inner);
+
+        let err = execute_at(&probe, &scope(), &ctx(), set_tdd("true", false), at()).expect_err("conflict");
+
+        match err {
+            ExecError::Store(PortError::Conflict { key: k, expected, actual }) => {
+                assert_eq!(k, key("config.yaml"));
+                assert_eq!(expected, Expected::At(Version::new(read_version).unwrap()));
+                assert_eq!(actual, Some(Version::new(read_version + 1).unwrap()));
+            }
+            other => panic!("expected a store conflict, got {other:?}"),
+        }
+        let doc = probe.inner.read(&scope(), &[key("config.yaml")]).unwrap();
+        assert_eq!(doc[0].as_ref().unwrap().content, "schema: spec-driven\nlocale: ja\n");
     }
 
     #[test]

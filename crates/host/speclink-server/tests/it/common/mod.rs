@@ -191,3 +191,118 @@ pub fn seed_multi_project(identity: &dyn IdentityStore) {
         .create_repo("multi", "api", "api")
         .expect("seed multi api repo");
 }
+
+/// A store that lets one other writer in while a verb runs: the writer runs
+/// once, when the verb opens its unit of work — or earlier, at the first
+/// snapshot taken after `snapshots_first` snapshots, when that is set.
+pub struct Racing {
+    inner: Arc<MemoryStore>,
+    other_writer: Mutex<Option<OtherWriter>>,
+    snapshots_first: Option<usize>,
+    snapshots: std::sync::atomic::AtomicUsize,
+}
+
+type OtherWriter = Box<dyn FnOnce(&MemoryStore) + Send>;
+
+impl Racing {
+    /// The writer lands between the verb's reads and its commit.
+    pub fn at_unit_of_work(
+        inner: Arc<MemoryStore>,
+        other_writer: impl FnOnce(&MemoryStore) + Send + 'static,
+    ) -> Racing {
+        Racing {
+            inner,
+            other_writer: Mutex::new(Some(Box::new(other_writer))),
+            snapshots_first: None,
+            snapshots: Default::default(),
+        }
+    }
+
+    /// The writer lands right after the first snapshot: a route that reads
+    /// the scope twice sees the writer's content the second time.
+    pub fn after_the_first_snapshot(
+        inner: Arc<MemoryStore>,
+        other_writer: impl FnOnce(&MemoryStore) + Send + 'static,
+    ) -> Racing {
+        Racing { snapshots_first: Some(1), ..Racing::at_unit_of_work(inner, other_writer) }
+    }
+
+    fn let_the_writer_in(&self) {
+        if let Some(other_writer) = self.other_writer.lock().unwrap().take() {
+            other_writer(&self.inner);
+        }
+    }
+}
+
+impl speclink_store::TeamStore for Racing {
+    fn manifest(&self) -> speclink_store::Manifest {
+        self.inner.manifest()
+    }
+    fn health(&self) -> Result<(), speclink_store::StoreError> {
+        self.inner.health()
+    }
+    fn migrate(&self, target_version: u32) -> Result<(), speclink_store::StoreError> {
+        self.inner.migrate(target_version)
+    }
+    fn snapshot<'a>(
+        &'a self,
+        scope: &speclink_store::Scope,
+    ) -> Result<Box<dyn speclink_store::Snapshot + 'a>, speclink_store::StoreError> {
+        let taken = self.snapshots.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        if self.snapshots_first.is_some_and(|first| taken >= first) {
+            self.let_the_writer_in();
+        }
+        self.inner.snapshot(scope)
+    }
+    fn begin_unit_of_work(
+        &self,
+        scope: &speclink_store::Scope,
+        ctx: speclink_store::CommandContext,
+    ) -> Result<speclink_store::UnitOfWork, speclink_store::StoreError> {
+        self.let_the_writer_in();
+        self.inner.begin_unit_of_work(scope, ctx)
+    }
+    fn commit(
+        &self,
+        uow: speclink_store::UnitOfWork,
+        events: Vec<speclink_store::EventRecord>,
+    ) -> Result<speclink_store::Revision, speclink_store::StoreError> {
+        self.inner.commit(uow, events)
+    }
+    fn rollback(&self, uow: speclink_store::UnitOfWork) -> Result<(), speclink_store::StoreError> {
+        self.inner.rollback(uow)
+    }
+    fn export(
+        &self,
+        scope: &speclink_store::Scope,
+    ) -> Result<speclink_store::Bundle, speclink_store::StoreError> {
+        self.inner.export(scope)
+    }
+    fn import(
+        &self,
+        bundle: speclink_store::Bundle,
+        mode: speclink_store::ImportMode,
+    ) -> Result<speclink_store::ImportReport, speclink_store::StoreError> {
+        self.inner.import(bundle, mode)
+    }
+    fn read_outbox(
+        &self,
+        scope: &speclink_store::Scope,
+        from: speclink_store::OutboxCursor,
+    ) -> Result<Vec<speclink_store::OutboxEntry>, speclink_store::StoreError> {
+        self.inner.read_outbox(scope, from)
+    }
+    fn ack_outbox(
+        &self,
+        scope: &speclink_store::Scope,
+        up_to: speclink_store::OutboxCursor,
+    ) -> Result<(), speclink_store::StoreError> {
+        self.inner.ack_outbox(scope, up_to)
+    }
+    fn outbox_acked(
+        &self,
+        scope: &speclink_store::Scope,
+    ) -> Result<speclink_store::OutboxCursor, speclink_store::StoreError> {
+        self.inner.outbox_acked(scope)
+    }
+}
