@@ -8,10 +8,10 @@ use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 use speclink_remote::client::ContextSnapshotOutcome;
 
-use crate::color;
-use crate::common::{info_if_no_changes, open_project, plain_command, print_json, run};
+use crate::common::{emit, info_if_no_changes, open_project, plain_command, render_options, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::instructions::InstructionsArgs;
+use speclink_verbs::render::instructions as render;
 
 /// `instructions --skill` 的 ModeFree 路徑：常數技能文本，dispatch 已分流。
 pub(crate) fn cmd_instructions_skill(skill: &str) -> Result<()> {
@@ -27,87 +27,8 @@ pub(crate) fn cmd_instructions(a: InstructionsArgs) -> Result<()> {
     }
     let cmd = plain_command(&a)?;
     let instr: core::command::InstructionsOutcome = run(&store, Some(&ws), cmd)?;
-    match instr {
-        core::command::InstructionsOutcome::Apply(payload) => {
-            if a.json {
-                return print_json(&payload);
-            }
-            render_apply_human(&payload);
-        }
-        core::command::InstructionsOutcome::Artifact(payload) => {
-            if a.json {
-                return print_json(&payload);
-            }
-            render_artifact_human(&payload);
-        }
-    }
+    emit(render::instructions(&instr, render_options(a.json)));
     Ok(())
-}
-fn render_artifact_human(p: &core::instructions::ArtifactInstructions) {
-    println!("{}: {}", color::bold("Artifact"), p.artifact_id);
-    println!("{}: {}", color::bold("Output"), p.output_path);
-    println!("{}: {}", color::bold("Description"), p.description);
-    // Each section is preceded by one blank separator and rendered only when non-empty
-    // (a custom schema may have no instruction and an empty template) — frozen output shape.
-    if let Some(instr) = &p.instruction {
-        println!();
-        println!("{}", color::bold("Instruction:"));
-        print!("{instr}"); // ends with a newline
-        println!();
-    }
-    if !p.dependencies.is_empty() {
-        println!();
-        println!("{}", color::bold("Dependencies:"));
-        // Dependency symbols stay plain (probed — unlike status's colored ones).
-        for d in &p.dependencies {
-            let sym = if d.done { "✓" } else { "○" };
-            println!("  {sym} {} ({})", d.id, d.path);
-        }
-    }
-    if !p.unlocks.is_empty() {
-        println!();
-        println!("{}", color::bold("Unlocks:"));
-        for u in &p.unlocks {
-            println!("  - {u}");
-        }
-    }
-    if !p.template.is_empty() {
-        println!();
-        println!("{}", color::bold("Template:"));
-        print!("{}", p.template);
-        println!();
-    }
-}
-fn render_apply_human(p: &core::instructions::ApplyInstructions) {
-    println!("{}: {}", color::bold("Change"), p.change_name);
-    println!("{}: {}", color::bold("Schema"), p.schema_name);
-    println!("{}: {}", color::bold("State"), p.state);
-    println!(
-        "{}: {}/{} complete",
-        color::bold("Progress"),
-        p.progress.complete,
-        p.progress.total
-    );
-    println!();
-    if let Some(missing) = &p.missing_artifacts {
-        println!("{}", color::red("Missing artifacts:"));
-        for m in missing {
-            println!("  - {m}");
-        }
-    } else {
-        println!("{}", color::bold("Tasks:"));
-        // Task symbols stay plain here (probed — unlike status's colored ones).
-        for t in &p.tasks {
-            let sym = if t.done { "✓" } else { "○" };
-            println!("  {sym} {}", t.description);
-        }
-    }
-    println!();
-    if let Some(instr) = &p.instruction {
-        println!("{}", color::bold("Instruction:"));
-        print!("{instr}");
-        println!();
-    }
 }
 fn to_apply_instructions(
     p: protocol_query::ApplyInstructions,
@@ -256,19 +177,17 @@ pub(crate) fn remote_instructions(ctx: &RemoteCtx, a: &InstructionsArgs) -> Resu
             .map(|x| x.id.clone())
             .unwrap_or_else(|| "apply".to_string()),
     };
-    if artifact == "apply" {
+    // Both payloads take the fs arm's outcome shape and go through the same
+    // output function.
+    let instr = if artifact == "apply" {
         let mut p = to_apply_instructions(ctx.client.apply_instructions(&name)?);
         point_context_files_at_projection(ctx, &name, &mut p.context_files);
-        if a.json {
-            return print_json(&p);
-        }
-        render_apply_human(&p);
+        core::command::InstructionsOutcome::Apply(p)
     } else {
-        let p = to_artifact_instructions(ctx.client.artifact_instructions(&name, &artifact)?);
-        if a.json {
-            return print_json(&p);
-        }
-        render_artifact_human(&p);
-    }
+        core::command::InstructionsOutcome::Artifact(to_artifact_instructions(
+            ctx.client.artifact_instructions(&name, &artifact)?,
+        ))
+    };
+    emit(render::instructions(&instr, render_options(a.json)));
     Ok(())
 }

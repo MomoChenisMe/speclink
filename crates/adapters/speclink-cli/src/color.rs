@@ -1,10 +1,12 @@
-//! ANSI styling with the frozen palette and anstream-compatible enablement semantics
+//! The process-level color switch, with anstream-compatible enablement semantics
 //! (probed: CLICOLOR_FORCE overrides NO_COLOR; a piped stdout disables color).
 //!
-//! Styling goes through tiny helpers so plain mode stays byte-identical: every helper
-//! returns the input unchanged when color is off, and `dim("")` in color mode emits the
-//! empty `\x1b[2m\x1b[0m` pair for a change without a summary — the frozen output shape.
+//! The ANSI codes themselves live in `speclink_verbs::render::Paint`. The shared
+//! verbs get the switch's value as a parameter (`paint()`); the helpers below
+//! color the CLI's own families through the same `Paint` (only the colors
+//! those families use).
 
+use speclink_verbs::render::Paint;
 use std::io::IsTerminal;
 use std::sync::OnceLock;
 
@@ -32,41 +34,17 @@ fn on() -> bool {
     *ENABLED.get().unwrap_or(&false)
 }
 
-fn paint(code: &str, s: &str) -> String {
-    if on() {
-        format!("\x1b[{code}m{s}\x1b[0m")
-    } else {
-        s.to_string()
-    }
+/// The switch as the value the shared output functions take.
+pub fn paint() -> Paint {
+    Paint::new(on())
 }
 
 pub fn bold(s: &str) -> String {
-    paint("1", s)
-}
-pub fn dim(s: &str) -> String {
-    paint("2", s)
+    paint().bold(s)
 }
 pub fn red(s: &str) -> String {
-    paint("31", s)
+    paint().red(s)
 }
 pub fn green(s: &str) -> String {
-    paint("32", s)
-}
-pub fn yellow(s: &str) -> String {
-    paint("33", s)
-}
-pub fn cyan(s: &str) -> String {
-    paint("36", s)
-}
-pub fn bold_red(s: &str) -> String {
-    paint("1;31", s)
-}
-pub fn bold_green(s: &str) -> String {
-    paint("1;32", s)
-}
-pub fn bold_yellow(s: &str) -> String {
-    paint("1;33", s)
-}
-pub fn bold_cyan(s: &str) -> String {
-    paint("1;36", s)
+    paint().green(s)
 }

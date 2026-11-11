@@ -5,11 +5,12 @@
 
 use anyhow::{bail, Result};
 
-use crate::common::{open_project, plain_command, run};
+use crate::common::{emit, open_project, plain_command, render_options, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::documents::{
     ArtifactArgs, ArtifactCommands, LanguageArgs, LanguageCommands,
 };
+use speclink_verbs::render::documents as render;
 use speclink_verbs::ToCommand;
 
 /// Map a `speclink artifact cat` id onto the store's artifact file path
@@ -33,7 +34,7 @@ fn artifact_rel_path(artifact: &str) -> Result<String> {
 pub(crate) fn cmd_document(a: impl ToCommand) -> Result<()> {
     let (ws, store) = open_project()?;
     let content: String = run(&store, Some(&ws), plain_command(&a)?)?;
-    print!("{content}");
+    emit(render::document(&content, render_options(false)));
     Ok(())
 }
 /// artifact 的 remote 家族臂：子指令 enum 窮盡 match、無 catch-all——新增
@@ -49,7 +50,7 @@ pub(crate) fn remote_artifact(ctx: &RemoteCtx, a: ArtifactArgs) -> Result<()> {
 pub(crate) fn remote_language(ctx: &RemoteCtx, a: LanguageArgs) -> Result<()> {
     match a.command {
         LanguageCommands::Show => {
-            print!("{}", ctx.client.language()?.content);
+            emit(render::document(&ctx.client.language()?.content, render_options(false)));
             Ok(())
         }
     }
@@ -60,6 +61,7 @@ fn remote_artifact_cat(ctx: &RemoteCtx, artifact: &str, change: Option<&str>) ->
     let Some(change) = remote_resolve_change(ctx, change, "Use --change to specify one:")? else {
         return Ok(());
     };
-    print!("{}", ctx.client.get_artifact(&change, artifact)?.content);
+    let content = ctx.client.get_artifact(&change, artifact)?.content;
+    emit(render::document(&content, render_options(false)));
     Ok(())
 }

@@ -46,6 +46,16 @@ dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的�
 - **WHEN** 分別執行 dispatch(['list']) 與 dispatch(['list', '--json'])
 - **THEN** 兩者解析為相同的結構化物件
 
+#### Scenario: 蓋章的 --stdin 只有 dispatch 接受
+
+- **WHEN** 對任務全完成、末輪沒有必修 finding 的 change beta 執行 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: 蓋章 JSON })，並在本機 repo 執行 speclink review stamp beta --stdin
+- **THEN** dispatch 解析為 { change: 'beta' }；CLI 以 exit code 2 結束、沒有寫入，stderr 是解析錯誤
+
+#### Scenario: 給了 stdin 卻沒帶 --stdin
+
+- **WHEN** 執行 dispatch(['new', 'artifact', 'proposal', '--change', 'beta'], { stdin: 內容字串 })
+- **THEN** Promise 以 Error 拒絕，code 為 invalid_argv，message 指出要帶 --stdin，宿主 Store 沒有收到寫入呼叫
+
 #### Scenario: 原本不支援的動詞現在能用
 
 - **WHEN** 對含變更 demo 的 workspace 執行 dispatch(['show', 'demo'])

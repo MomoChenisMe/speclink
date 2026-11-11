@@ -1,0 +1,222 @@
+{
+  "version": 2,
+  "change": "shared-verb-output",
+  "touched": [
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Red→Green）依 D2、D3、D5 建立 render 的外殼：`Rendered`、`RenderOptions`、`Text`、`Paint`，以及守門測試 no_direct_print。先寫失敗的測試：`Paint` 關閉時各方法回傳原字串、開啟時回傳的色碼和 CLI 現有的 color 模組逐位元相同；no_direct_print 遞迴掃描 src 並在放入一個印出巨集時失敗。再實作到通過，並把 CLI 的 color 模組改成經 `Paint` 上色。這是「動詞的輸出只有一份」的基礎。涉及 crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/paint.rs、crates/adapters/speclink-verbs/tests/no_direct_print.rs、crates/adapters/speclink-cli/src/color.rs。驗證：`cargo test -p speclink-verbs` 通過；`cargo test -p speclink-cli` 通過；1.1 的腳本回報全部相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/color.rs",
+        "crates/adapters/speclink-verbs/src/lib.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/paint.rs",
+        "crates/adapters/speclink-verbs/tests/no_direct_print.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 （Red）為 query、checks、documents、trace、instructions 的輸出函式寫測試：每個動詞至少一個斷言人眼 stdout 全文的案例與一個斷言 `--json` 值的案例（有 `--json` 形式者），預期值取自 1.1 的基準。涉及 crates/adapters/speclink-verbs/src/render/query.rs、crates/adapters/speclink-verbs/src/render/checks.rs、crates/adapters/speclink-verbs/src/render/documents.rs、crates/adapters/speclink-verbs/src/render/trace.rs、crates/adapters/speclink-verbs/src/render/instructions.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/checks.rs",
+        "crates/adapters/speclink-verbs/src/render/documents.rs",
+        "crates/adapters/speclink-verbs/src/render/instructions.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/render/trace.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 （Green）依 D1、D4、D8 把這五個家族的 render 函式與屬於引擎結果的印出搬進 speclink-verbs，逐行改寫成寫入字串；CLI 的本機與遠端分支改成呼叫輸出函式再印出；把留在 CLI 的印出（來自 CLI 自己的事實）列進任務的完成說明。涉及 crates/adapters/speclink-verbs/src/render（上列五個檔與 mod.rs）、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-cli/src/verbs/query.rs、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/src/verbs/documents.rs、crates/adapters/speclink-cli/src/verbs/trace.rs、crates/adapters/speclink-cli/src/verbs/instructions.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：2.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這五個家族四種形式回報逐位元相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/src/verbs/instructions.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 （Red）為 new、progress、lifecycle、plan 的輸出函式寫測試，做法同 2.1。涉及 crates/adapters/speclink-verbs/src/render/new.rs、crates/adapters/speclink-verbs/src/render/progress.rs、crates/adapters/speclink-verbs/src/render/lifecycle.rs、crates/adapters/speclink-verbs/src/render/plan.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/lifecycle.rs",
+        "crates/adapters/speclink-verbs/src/render/new.rs",
+        "crates/adapters/speclink-verbs/src/render/plan.rs",
+        "crates/adapters/speclink-verbs/src/render/progress.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 （Green）搬移這四個家族的輸出並讓 CLI 改用，做法同 2.2；封存的批次迴圈的彙總留在 CLI，單一變更的輸出用共用的函式。涉及 crates/adapters/speclink-verbs/src/render（上列四個檔）、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/progress.rs、crates/adapters/speclink-cli/src/verbs/lifecycle.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：3.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這四個家族回報逐位元相同。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/progress.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 （Red）為 discuss 與 station 的輸出函式寫測試，做法同 2.1；另外為單一出口 `render::render` 寫測試：每一種引擎結果都得到輸出，`options.json` 為真時 stdout 是縮排的 JSON 加一個換行，沒有 `--json` 形式的動詞 `json` 欄位是「沒有」。涉及 crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-verbs/src/render/station.rs、crates/adapters/speclink-verbs/src/render/mod.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/station.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 （Green）搬移這兩個家族的輸出並讓 CLI 改用；完成單一出口，裡面對引擎結果的 `match` 不帶萬用分支。涉及 crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-verbs/src/render/station.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/station.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 通過（含 remote_verb_parity）；1.1 的腳本對全部家族、四種形式回報逐位元相同；在 speclink-cli 的十一個家族檔案裡搜尋不到 `render_` 開頭的函式定義；no_direct_print 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-verbs/src/parse.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "5.1 （Red）在 Node 的測試加入「dispatch 的輸入輸出契約」與「dispatch 的蓋章動詞」新增的情境：show、validate、archive、task done、discuss 的 new／add-round／conclude／list／show 的回傳值和 CLI 的 `--json` 相同（用既有的 helper 執行 CLI 對照）；`artifact cat` 回傳 `{ output }` 且和 CLI 的 `--no-color` 輸出相同；`review show` 與 `review discard` 能用；`review prepare`、`drift`、`change rank` 仍以 invalid_argv 拒絕。同時把原本 9 個動詞的回傳值全文釘成快照。涉及 crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts、crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`：新動詞的案例失敗，9 個動詞的快照通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.2 （Green）依 D7 把 `run_dispatch` 改成單一路徑（共用的解析 → 引擎 → `render::render`），移除允許清單與各動詞組結果的程式；保留 `claim` 經宿主儲存的方法、蓋章前的方法檢查與互斥鎖、`status` 沒有變更時的輸出；更新 index.d.ts 的文件註解。逐一比對 9 個動詞的回傳值，有差異時停下來回報。涉及 crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/index.d.ts。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 全部通過，9 個動詞的快照沒有改動。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M72VMQXQWWN0PHF4C3BRPDF8",
+      "taskDesc": "1.2 （Red→Green）依 D2、D3、D5 建立 render 的外殼：`Rendered`、`RenderOptions`、`Text`、`Paint`，以及守門測試 no_direct_print。先寫失敗的測試：`Paint` 關閉時各方法回傳原字串、開啟時回傳的色碼和 CLI 現有的 color 模組逐位元相同；no_direct_print 遞迴掃描 src 並在放入一個印出巨集時失敗。再實作到通過，並把 CLI 的 color 模組改成經 `Paint` 上色。這是「動詞的輸出只有一份」的基礎。涉及 crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/paint.rs、crates/adapters/speclink-verbs/tests/no_direct_print.rs、crates/adapters/speclink-cli/src/color.rs。驗證：`cargo test -p speclink-verbs` 通過；`cargo test -p speclink-cli` 通過；1.1 的腳本回報全部相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/color.rs",
+        "crates/adapters/speclink-verbs/src/lib.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/paint.rs",
+        "crates/adapters/speclink-verbs/tests/no_direct_print.rs"
+      ],
+      "recordedAt": "2026-11-11T03:36:26Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQ4VRD1ZNJYYRV33PK",
+      "taskDesc": "2.1 （Red）為 query、checks、documents、trace、instructions 的輸出函式寫測試：每個動詞至少一個斷言人眼 stdout 全文的案例與一個斷言 `--json` 值的案例（有 `--json` 形式者），預期值取自 1.1 的基準。涉及 crates/adapters/speclink-verbs/src/render/query.rs、crates/adapters/speclink-verbs/src/render/checks.rs、crates/adapters/speclink-verbs/src/render/documents.rs、crates/adapters/speclink-verbs/src/render/trace.rs、crates/adapters/speclink-verbs/src/render/instructions.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/checks.rs",
+        "crates/adapters/speclink-verbs/src/render/documents.rs",
+        "crates/adapters/speclink-verbs/src/render/instructions.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/render/trace.rs"
+      ],
+      "recordedAt": "2026-11-11T03:42:17Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQ6J3PBXP9R867T4KP",
+      "taskDesc": "2.2 （Green）依 D1、D4、D8 把這五個家族的 render 函式與屬於引擎結果的印出搬進 speclink-verbs，逐行改寫成寫入字串；CLI 的本機與遠端分支改成呼叫輸出函式再印出；把留在 CLI 的印出（來自 CLI 自己的事實）列進任務的完成說明。涉及 crates/adapters/speclink-verbs/src/render（上列五個檔與 mod.rs）、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-cli/src/verbs/query.rs、crates/adapters/speclink-cli/src/verbs/checks.rs、crates/adapters/speclink-cli/src/verbs/documents.rs、crates/adapters/speclink-cli/src/verbs/trace.rs、crates/adapters/speclink-cli/src/verbs/instructions.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：2.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這五個家族四種形式回報逐位元相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/checks.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/src/verbs/instructions.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs"
+      ],
+      "recordedAt": "2026-11-11T03:45:51Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQK7K832E85R6X5GY7",
+      "taskDesc": "3.1 （Red）為 new、progress、lifecycle、plan 的輸出函式寫測試，做法同 2.1。涉及 crates/adapters/speclink-verbs/src/render/new.rs、crates/adapters/speclink-verbs/src/render/progress.rs、crates/adapters/speclink-verbs/src/render/lifecycle.rs、crates/adapters/speclink-verbs/src/render/plan.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/lifecycle.rs",
+        "crates/adapters/speclink-verbs/src/render/new.rs",
+        "crates/adapters/speclink-verbs/src/render/plan.rs",
+        "crates/adapters/speclink-verbs/src/render/progress.rs"
+      ],
+      "recordedAt": "2026-11-11T03:49:21Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQ230YQ3V08AEKFEYD",
+      "taskDesc": "3.2 （Green）搬移這四個家族的輸出並讓 CLI 改用，做法同 2.2；封存的批次迴圈的彙總留在 CLI，單一變更的輸出用共用的函式。涉及 crates/adapters/speclink-verbs/src/render（上列四個檔）、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/progress.rs、crates/adapters/speclink-cli/src/verbs/lifecycle.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：3.1 的測試通過；`cargo test -p speclink-cli` 通過；1.1 的腳本對這四個家族回報逐位元相同。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/lifecycle.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/progress.rs"
+      ],
+      "recordedAt": "2026-11-11T03:52:45Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQXYFAHZE0YJYDHCRJ",
+      "taskDesc": "4.1 （Red）為 discuss 與 station 的輸出函式寫測試，做法同 2.1；另外為單一出口 `render::render` 寫測試：每一種引擎結果都得到輸出，`options.json` 為真時 stdout 是縮排的 JSON 加一個換行，沒有 `--json` 形式的動詞 `json` 欄位是「沒有」。涉及 crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-verbs/src/render/station.rs、crates/adapters/speclink-verbs/src/render/mod.rs。驗證：`cargo test -p speclink-verbs render::` 的新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/station.rs"
+      ],
+      "recordedAt": "2026-11-11T03:58:04Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQNYKEHKJ5DB1VG9P1",
+      "taskDesc": "4.2 （Green）搬移這兩個家族的輸出並讓 CLI 改用；完成單一出口，裡面對引擎結果的 `match` 不帶萬用分支。涉及 crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-verbs/src/render/station.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/station.rs、crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 通過（含 remote_verb_parity）；1.1 的腳本對全部家族、四種形式回報逐位元相同；在 speclink-cli 的十一個家族檔案裡搜尋不到 `render_` 開頭的函式定義；no_direct_print 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-verbs/src/parse.rs"
+      ],
+      "recordedAt": "2026-11-11T04:00:27Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQ1MB43TQW0WB3Y3EM",
+      "taskDesc": "5.1 （Red）在 Node 的測試加入「dispatch 的輸入輸出契約」與「dispatch 的蓋章動詞」新增的情境：show、validate、archive、task done、discuss 的 new／add-round／conclude／list／show 的回傳值和 CLI 的 `--json` 相同（用既有的 helper 執行 CLI 對照）；`artifact cat` 回傳 `{ output }` 且和 CLI 的 `--no-color` 輸出相同；`review show` 與 `review discard` 能用；`review prepare`、`drift`、`change rank` 仍以 invalid_argv 拒絕。同時把原本 9 個動詞的回傳值全文釘成快照。涉及 crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts、crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`：新動詞的案例失敗，9 個動詞的快照通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts"
+      ],
+      "recordedAt": "2026-11-11T04:02:48Z"
+    },
+    {
+      "taskId": "tsk_01M72VMQXQ7V0WCPNGDZFKNK52",
+      "taskDesc": "5.2 （Green）依 D7 把 `run_dispatch` 改成單一路徑（共用的解析 → 引擎 → `render::render`），移除允許清單與各動詞組結果的程式；保留 `claim` 經宿主儲存的方法、蓋章前的方法檢查與互斥鎖、`status` 沒有變更時的輸出；更新 index.d.ts 的文件註解。逐一比對 9 個動詞的回傳值，有差異時停下來回報。涉及 crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/index.d.ts。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 全部通過，9 個動詞的快照沒有改動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "5661215de72d0dd21a899caab2773bccc612dbdf",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs"
+      ],
+      "recordedAt": "2026-11-11T04:16:16Z"
+    }
+  ]
+}

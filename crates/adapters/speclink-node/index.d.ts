@@ -204,10 +204,15 @@ export interface Engine {
    * Dispatch one speclink verb. `argv` mirrors the CLI vocabulary one-to-one
    * (shell argv without the program name, e.g. `['list', '--json']`).
    *
+   * Every verb that has an engine command runs. The verbs that need a
+   * checkout (`drift`, `change rank`, `review prepare`, `review scope`,
+   * `verify scope`, `instructions --skill`) reject with `invalid_argv`.
+   *
    * Resolves to the same structured object the CLI prints with `--json`
-   * (camelCase); verbs without a `--json` form resolve to `{ output: string }`.
-   * The verb surface and payload contract are described in
-   * docs/verb-contract.md.
+   * (camelCase); verbs without a `--json` form resolve to `{ output: string }`,
+   * where `output` is the CLI's stdout text with no color codes. Both come
+   * from the output definition the CLI uses. The verb surface and payload
+   * contract are described in docs/verb-contract.md.
    *
    * Rejects with an `Error` whose `message` is the CLI's semantic message and
    * whose `code` property classifies the failure (`error`, `not_found`,

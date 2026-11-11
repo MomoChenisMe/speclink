@@ -61,6 +61,11 @@ impl ParsedVerb {
         self.verb.name()
     }
 
+    /// The parsed verb itself, for the facts only argv holds.
+    pub(crate) fn spec(&self) -> &SpecVerb {
+        &self.verb
+    }
+
     /// Whether this verb is `review stamp` or `verify stamp`.
     pub fn is_stamp(&self) -> bool {
         self.stamp_stdin.is_some()
@@ -75,9 +80,12 @@ impl ParsedVerb {
         }
     }
 
+}
+
+impl ToCommand for ParsedVerb {
     /// The engine command this verb stands for (see `SpecVerb`'s [`ToCommand`]).
-    pub fn into_command(
-        self,
+    fn to_command(
+        &self,
         inputs: VerbInputs,
     ) -> Result<CommandTarget, speclink_core::command::CommandError> {
         // A stamp's stdin is its scope JSON, read under the host-only flag.

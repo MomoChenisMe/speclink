@@ -266,3 +266,431 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
     expect(err.message).not.toContain('\u001b')
   })
 })
+
+// dispatch 涵蓋全部有引擎命令的動詞（spec node-sdk「dispatch 的輸入輸出契約」、
+// command-runtime「動詞的輸出只有一份」）：回傳內容和 CLI 出自同一份輸出定義。
+describe('dispatch covers every verb that has an engine command', () => {
+  /** Run the CLI in `cwd`; stdout comes back whatever the exit code is. */
+  function cliRun(cwd: string, args: string[]): { code: number; stdout: string } {
+    try {
+      return { code: 0, stdout: execFileSync(cliBin, args, { cwd, encoding: 'utf8', stdio: 'pipe' }) }
+    } catch (e) {
+      const err = e as { status?: number; stdout?: string }
+      return { code: err.status ?? -1, stdout: err.stdout ?? '' }
+    }
+  }
+
+  /** The fs fixture plus a change named `demo`, the name the spec scenarios use. */
+  function demoFixture(): string {
+    const root = makeFsFixture()
+    const demo = join(root, 'speclink', 'changes', 'demo')
+    mkdirSync(join(demo, 'specs', 'user-auth'), { recursive: true })
+    writeFileSync(join(demo, '.meta.yaml'), 'schema: spec-driven\ncreated: "2026-07-03"\ncreated_by: tester\n')
+    writeFileSync(join(demo, 'proposal.md'), '## Why\n\nA demo change for the dispatch tests.\n')
+    writeFileSync(join(demo, 'tasks.md'), '## 1. Work\n\n- [ ] 1.1 First task\n- [ ] 1.2 Second task\n')
+    writeFileSync(
+      join(demo, 'specs', 'user-auth', 'spec.md'),
+      '## ADDED Requirements\n\n### Requirement: Logout\nUsers SHALL be able to log out.\n\n#### Scenario: logout\n- **WHEN** the user logs out\n- **THEN** the session ends\n',
+    )
+    return root
+  }
+
+  /** A value with every mention of the fixture root replaced, so two roots compare. */
+  const rootless = (value: unknown, root: string): unknown =>
+    JSON.parse(JSON.stringify(value).split(root).join('<root>'))
+
+  const fsEngine = (root: string) => createEngine({ store: { type: 'fs', root } })
+
+  it('show resolves to what speclink show --json prints', async () => {
+    const root = demoFixture()
+    const sdk = await fsEngine(root).dispatch(['show', 'demo'])
+    expect(sdk).toEqual(JSON.parse(cliRun(root, ['show', 'demo', '--json']).stdout))
+    expect((sdk as { name: string }).name).toBe('demo')
+  })
+
+  it('validate resolves to what speclink validate --json prints', async () => {
+    const root = demoFixture()
+    const sdk = await fsEngine(root).dispatch(['validate', 'demo'])
+    const run = cliRun(root, ['validate', 'demo', '--json'])
+    expect(sdk).toEqual(JSON.parse(run.stdout))
+    expect(sdk).toEqual([{ change: 'demo', errors: [], valid: true, warnings: [] }])
+  })
+
+  it('validate of an invalid change resolves to the same value the CLI prints before it fails', async () => {
+    const root = demoFixture()
+    // A MODIFIED requirement that drops a scenario of the canonical spec does not validate.
+    writeFileSync(
+      join(root, 'speclink', 'changes', 'demo', 'specs', 'user-auth', 'spec.md'),
+      '## MODIFIED Requirements\n\n### Requirement: Login\nUsers SHALL be able to log in fast.\n\n#### Scenario: fast login\n- **WHEN** credentials are valid\n- **THEN** a session is created at once\n',
+    )
+    const sdk = (await fsEngine(root).dispatch(['validate', 'demo'])) as Array<{ valid: boolean }>
+    const run = cliRun(root, ['validate', 'demo', '--json'])
+    expect(run.code).not.toBe(0)
+    expect(sdk).toEqual(JSON.parse(run.stdout))
+    expect(sdk[0].valid).toBe(false)
+  })
+
+  it('artifact cat resolves to { output } with the CLI stdout', async () => {
+    const root = demoFixture()
+    const sdk = await fsEngine(root).dispatch(['artifact', 'cat', 'proposal', '--change', 'demo'])
+    const run = cliRun(root, ['artifact', 'cat', 'proposal', '--change', 'demo', '--no-color'])
+    expect(sdk).toEqual({ output: run.stdout })
+    expect(run.stdout).toBe('## Why\n\nA demo change for the dispatch tests.\n')
+  })
+
+  it('task done resolves to what speclink task done --json prints, and an already-done task rejects', async () => {
+    const [sdkRoot, cliRoot] = [demoFixture(), demoFixture()]
+    const engine = fsEngine(sdkRoot)
+    const sdk = await engine.dispatch(['task', 'done', '1', '--change', 'demo'])
+    expect(sdk).toEqual(JSON.parse(cliRun(cliRoot, ['task', 'done', '1', '--change', 'demo', '--json']).stdout))
+    expect(sdk).toEqual({ change: 'demo', status: 'done', task_desc: '1.1 First task', task_id: '1' })
+    expect(readFileSync(join(sdkRoot, 'speclink', 'changes', 'demo', 'tasks.md'), 'utf8')).toContain('- [x] 1.1')
+    const err = await rejection(engine.dispatch(['task', 'done', '1', '--change', 'demo']))
+    expect(err.message).toBe('Task 1 is already done')
+    expect(err.code).toBe('error')
+  })
+
+  it('archive resolves to { output } with the CLI stdout', async () => {
+    const [sdkRoot, cliRoot] = [demoFixture(), demoFixture()]
+    const sdk = (await fsEngine(sdkRoot).dispatch(['archive', 'beta', '-y'])) as { output: string }
+    const run = cliRun(cliRoot, ['archive', 'beta', '-y', '--no-color'])
+    expect(run.code).toBe(0)
+    expect(sdk).toEqual({ output: run.stdout })
+    expect(sdk.output).toMatch(/^✓ Archived: beta → \d{4}-\d{2}-\d{2}-beta\n/)
+    expect(sdk.output).not.toContain('\u001b')
+  })
+
+  it('the discuss verbs resolve to what the CLI prints with --json', async () => {
+    const [sdkRoot, cliRoot] = [demoFixture(), demoFixture()]
+    const engine = fsEngine(sdkRoot)
+    const round = '**Focus**: which way\n\n**Position**: way A\n\n**Ruled out**: way B\n\n**Open**: none\n'
+    const conclusion =
+      '**Decision**: do A\n\n**Rationale**: simple\n\n**Rejected alternatives**: B\n\n**Deferred**: none\n\n**Capture to**: a change\n\n**Next**: propose\n'
+    const steps: Array<{ argv: string[]; stdin?: string }> = [
+      { argv: ['discuss', 'new', 'Rate limits'] },
+      { argv: ['discuss', 'add-round', 'rate-limits', '--stdin'], stdin: round },
+      { argv: ['discuss', 'list'] },
+      { argv: ['discuss', 'show', 'rate-limits'] },
+      { argv: ['discuss', 'conclude', 'rate-limits', '--stdin'], stdin: conclusion },
+    ]
+    for (const { argv, stdin } of steps) {
+      const sdk = await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
+      const out = execFileSync(cliBin, [...argv, '--json'], { cwd: cliRoot, encoding: 'utf8', input: stdin ?? '' })
+      expect(rootless(sdk, sdkRoot), argv.join(' ')).toEqual(rootless(JSON.parse(out), cliRoot))
+    }
+    expect(await engine.dispatch(['discuss', 'list'])).toMatchObject({
+      discussions: [{ slug: 'rate-limits', status: 'concluded', rounds: 1 }],
+    })
+  })
+
+  it('the verbs that need a checkout still reject with invalid_argv', async () => {
+    const engine = createEngine({ store: memoryStore(fixtureProject()) })
+    for (const argv of [
+      ['drift', 'alpha'],
+      ['change', 'rank', 'demo', '--before', 'other'],
+      ['review', 'prepare', 'beta'],
+      ['review', 'scope', 'beta'],
+      ['verify', 'scope', 'beta'],
+    ]) {
+      const err = await rejection(engine.dispatch(argv))
+      expect(err.code, argv.join(' ')).toBe('invalid_argv')
+      expect(err.message, argv.join(' ')).toMatch(/only runs where a checkout exists/)
+    }
+  })
+})
+
+// 原本 9 個動詞的回傳值全文（spec node-sdk：回傳形狀維持不變）。宿主 Store 的
+// 路徑是相對字串，值不隨機器改變。
+describe('the nine verbs dispatch served before keep their return values', () => {
+  const SCOPE_FILE = 'crates/b/src/util.rs'
+  const ROUND = `**Scope**: ${SCOPE_FILE}\n\n- [SUGGESTION] ${SCOPE_FILE} — rename helper\n`
+  const STAMP = JSON.stringify({ scope: [{ path: SCOPE_FILE, hash: '0f9c' }] })
+  const engine = () => createEngine({ store: memoryStore(fixtureProject()) })
+
+  it('list', async () => {
+    expect(await engine().dispatch(['list', '--sort', 'name'])).toMatchInlineSnapshot(`
+      {
+        "changes": [
+          {
+            "completedTasks": 1,
+            "deltaCapabilities": [
+              "api-quota",
+            ],
+            "name": "alpha",
+            "status": "in-progress",
+            "summary": "Add rate limiting to the publi…",
+            "totalTasks": 3,
+          },
+          {
+            "completedTasks": 1,
+            "name": "beta",
+            "status": "done",
+            "summary": "Small cleanup change with ever…",
+            "totalTasks": 1,
+          },
+        ],
+      }
+    `)
+    expect(await engine().dispatch(['list', '--specs', '--changes', '--sort', 'name'])).toMatchInlineSnapshot(`
+      {
+        "changes": [
+          {
+            "completedTasks": 1,
+            "deltaCapabilities": [
+              "api-quota",
+            ],
+            "name": "alpha",
+            "status": "in-progress",
+            "summary": "Add rate limiting to the publi…",
+            "totalTasks": 3,
+          },
+          {
+            "completedTasks": 1,
+            "name": "beta",
+            "status": "done",
+            "summary": "Small cleanup change with ever…",
+            "totalTasks": 1,
+          },
+        ],
+        "specs": [
+          {
+            "id": "user-auth",
+            "path": "specs/user-auth",
+          },
+        ],
+      }
+    `)
+    expect(await engine().dispatch(['list', '--specs'])).toMatchInlineSnapshot(`
+      {
+        "specs": [
+          {
+            "id": "user-auth",
+            "path": "specs/user-auth",
+          },
+        ],
+      }
+    `)
+  })
+
+  it('status', async () => {
+    expect(await engine().dispatch(['status', '--change', 'alpha'])).toMatchInlineSnapshot(`
+      {
+        "applyRequires": [
+          "tasks",
+        ],
+        "artifacts": [
+          {
+            "id": "proposal",
+            "outputPath": "proposal.md",
+            "status": "done",
+          },
+          {
+            "id": "design",
+            "outputPath": "design.md",
+            "status": "ready",
+          },
+          {
+            "id": "specs",
+            "outputPath": "specs/**/*.md",
+            "status": "done",
+          },
+          {
+            "id": "tasks",
+            "outputPath": "tasks.md",
+            "status": "done",
+          },
+        ],
+        "changeName": "alpha",
+        "isComplete": false,
+        "schemaName": "spec-driven",
+      }
+    `)
+  })
+
+  it('status with no change at all', async () => {
+    const empty = createEngine({ store: memoryStore({ changes: {}, specs: {} }) })
+    expect(await empty.dispatch(['status'])).toMatchInlineSnapshot(`
+      {
+        "output": "No active changes. Create one with: speclink new change <name>",
+      }
+    `)
+  })
+
+  it('new change', async () => {
+    expect(await engine().dispatch(['new', 'change', 'demo'])).toMatchInlineSnapshot(`
+      {
+        "output": "✓ Created change: demo
+        Path: changes/demo
+        Schema: spec-driven
+      ",
+      }
+    `)
+  })
+
+  it('new artifact', async () => {
+    expect(
+      await engine().dispatch(['new', 'artifact', 'design', '--change', 'alpha', '--stdin'], {
+        stdin: '## Context\n\nA design.\n',
+      }),
+    ).toMatchInlineSnapshot(`
+      {
+        "artifact": "design",
+        "change": "alpha",
+        "path": "changes/alpha/design.md",
+        "status": "created",
+        "validated": true,
+        "warnings": [],
+      }
+    `)
+    expect(await engine().dispatch(['new', 'artifact', 'spec', 'user-auth', '--change', 'beta'])).toMatchInlineSnapshot(`
+      {
+        "artifact": "spec",
+        "change": "beta",
+        "path": "changes/beta/specs/user-auth/spec.md",
+        "status": "created",
+        "validated": false,
+        "warnings": [],
+      }
+    `)
+  })
+
+  it('claim', async () => {
+    const store = memoryStore(fixtureProject()) as ReturnType<typeof memoryStore> & {
+      claim?: (name: string) => Promise<unknown>
+    }
+    store.claim = async (name: string) => ({ claimed: true, claimedBy: 'you', name })
+    expect(await createEngine({ store }).dispatch(['claim', 'alpha'])).toMatchInlineSnapshot(`
+      {
+        "claimed": true,
+        "claimedBy": "you",
+        "name": "alpha",
+      }
+    `)
+  })
+
+  it('review add-round and review stamp', async () => {
+    const e = engine()
+    expect(await e.dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: ROUND })).toMatchInlineSnapshot(`
+      {
+        "change": "beta",
+        "round": 1,
+      }
+    `)
+    expect(await e.dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: STAMP })).toMatchInlineSnapshot(`
+      {
+        "change": "beta",
+      }
+    `)
+  })
+
+  it('verify add-round and verify stamp', async () => {
+    const e = engine()
+    expect(await e.dispatch(['verify', 'add-round', 'beta', '--stdin'], { stdin: ROUND })).toMatchInlineSnapshot(`
+      {
+        "change": "beta",
+        "round": 1,
+      }
+    `)
+    expect(await e.dispatch(['verify', 'stamp', 'beta', '--stdin'], { stdin: STAMP })).toMatchInlineSnapshot(`
+      {
+        "change": "beta",
+      }
+    `)
+  })
+})
+
+// 新開放的寫入動詞沿用引擎的守門，fs 形式留下的記錄和 CLI 相同（sharp-edges 稽核）。
+describe('the write verbs dispatch now serves keep the gates and records of the CLI', () => {
+  const git = (cwd: string, ...args: string[]) =>
+    execFileSync('git', args, { cwd, encoding: 'utf8', stdio: 'pipe' })
+
+  /** The fs fixture as a git repo with one uncommitted source edit. */
+  function dirtyRepoFixture(): string {
+    const root = makeFsFixture()
+    mkdirSync(join(root, 'src'))
+    writeFileSync(join(root, 'src', 'lib.rs'), 'fn a() {}\n')
+    git(root, 'init', '-q')
+    git(root, 'config', 'user.name', 'Fixture User')
+    git(root, 'config', 'user.email', 'fixture@example.com')
+    git(root, 'add', '-A')
+    git(root, 'commit', '-q', '-m', 'init')
+    writeFileSync(join(root, 'src', 'lib.rs'), 'fn a() {}\nfn b() {}\n')
+    return root
+  }
+
+  it('task done on the fs form records the same evidence fields the CLI records', async () => {
+    const [sdkRoot, cliRoot] = [dirtyRepoFixture(), dirtyRepoFixture()]
+    await createEngine({ store: { type: 'fs', root: sdkRoot } }).dispatch(['task', 'done', '2', '--change', 'alpha'])
+    execFileSync(cliBin, ['task', 'done', '2', '--change', 'alpha'], { cwd: cliRoot, encoding: 'utf8' })
+    const entry = (root: string) => {
+      const record = JSON.parse(
+        readFileSync(join(root, 'speclink', 'changes', 'alpha', '.evidence.json'), 'utf8'),
+      ) as { entries: Array<Record<string, unknown>> }
+      expect(record.entries).toHaveLength(1)
+      return record.entries[0]
+    }
+    const [sdk, cli] = [entry(sdkRoot), entry(cliRoot)]
+    expect(Object.keys(sdk).sort()).toEqual(Object.keys(cli).sort())
+    for (const field of ['taskDesc', 'actor', 'repo', 'touchedFiles']) {
+      expect(sdk[field], field).toEqual(cli[field])
+    }
+    expect(sdk.repo).toBe('main')
+    expect(sdk.touchedFiles).toEqual(['src/lib.rs'])
+  })
+
+  it('archive of a change with open tasks is refused with the CLI message', async () => {
+    const root = makeFsFixture()
+    const err = await rejection(createEngine({ store: { type: 'fs', root } }).dispatch(['archive', 'alpha', '-y']))
+    expect(err.code).toBe('refused')
+    let cliStderr = ''
+    try {
+      execFileSync(cliBin, ['archive', 'alpha', '-y'], { cwd: root, encoding: 'utf8', stdio: 'pipe' })
+      expect.unreachable('the CLI must refuse too')
+    } catch (e) {
+      cliStderr = (e as { stderr?: string }).stderr ?? ''
+    }
+    expect(cliStderr.trim()).toBe(`Error: ${err.message}`)
+    expect(err.message).toMatch(/1\/3 tasks complete/)
+  })
+
+  it('several changes or --all in one archive call reject with invalid_argv and archive nothing', async () => {
+    const store = memoryStore(fixtureProject())
+    const engine = createEngine({ store })
+    for (const argv of [['archive', '--all', '-y'], ['archive', 'alpha', 'beta', '-y']]) {
+      const err = await rejection(engine.dispatch(argv))
+      expect(err.code, argv.join(' ')).toBe('invalid_argv')
+    }
+    expect(await store.changeExists('beta')).toBe(true)
+  })
+
+  it('a stamp on a change with open tasks is refused before any write', async () => {
+    const store = memoryStore(fixtureProject())
+    const engine = createEngine({ store, actor: 'Rev <rev@example.com>' })
+    await engine.dispatch(['review', 'add-round', 'alpha', '--stdin'], { stdin: '**Scope**: src/lib.rs\n' })
+    const err = await rejection(engine.dispatch(['review', 'stamp', 'alpha']))
+    expect(err.code).toBe('refused')
+    expect(err.message).toMatch(/review stamp requires every code task done/)
+    expect(await store.readArtifact('alpha', 'review.md')).toContain('## Round 1')
+    expect(await store.readArtifact('alpha', '.openspec.yaml')).not.toContain('reviewed_')
+  })
+
+  it('{ output } carries no color codes, whatever the process environment says', async () => {
+    const saved = { force: process.env.CLICOLOR_FORCE, no: process.env.NO_COLOR }
+    process.env.CLICOLOR_FORCE = '1'
+    delete process.env.NO_COLOR
+    try {
+      const engine = createEngine({ store: memoryStore(fixtureProject()) })
+      const created = (await engine.dispatch(['new', 'change', 'demo'])) as { output: string }
+      expect(created.output).toBe('✓ Created change: demo\n  Path: changes/demo\n  Schema: spec-driven\n')
+      const removed = (await engine.dispatch(['in-progress', 'remove', 'demo'])) as { output: string }
+      expect(removed.output).toBe("Change 'demo' has no in-progress marker — already proposed\n")
+      for (const text of [created.output, removed.output]) {
+        expect(text).not.toContain('\u001b')
+      }
+    } finally {
+      if (saved.force === undefined) delete process.env.CLICOLOR_FORCE
+      else process.env.CLICOLOR_FORCE = saved.force
+      if (saved.no !== undefined) process.env.NO_COLOR = saved.no
+    }
+  })
+})

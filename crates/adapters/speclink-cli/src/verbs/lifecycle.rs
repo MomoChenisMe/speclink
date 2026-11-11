@@ -6,12 +6,12 @@
 use anyhow::{bail, Result};
 use speclink_core as core;
 
-use crate::color;
-use crate::common::{open_project, plain_command, print_json, run};
+use crate::common::{emit, open_project, plain_command, render_options, run};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
 use speclink_verbs::families::lifecycle::{ArchiveArgs, DiscardArgs};
+use speclink_verbs::render::lifecycle as render;
 
 pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -21,37 +21,8 @@ pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     // mark-tasks-complete 與封存語意（含 in-progress 標記不動）單點在 runtime。
     let cmd = plain_command(&a)?;
     let outcome: core::archive::ArchiveOutcome = run(&store, Some(&ws), cmd)?;
-    print_archive_outcome(&outcome);
+    emit(render::archive(&outcome, render_options(false)));
     Ok(())
-}
-fn print_archive_outcome(outcome: &core::archive::ArchiveOutcome) {
-    println!("{} Archived: {} → {}", color::green("✓"), outcome.change_name, outcome.dated_name);
-    if !outcome.caps.is_empty() {
-        let names: Vec<&str> = outcome.caps.iter().map(|c| c.capability.as_str()).collect();
-        let added: usize = outcome.caps.iter().map(|c| c.added).sum();
-        let modified: usize = outcome.caps.iter().map(|c| c.modified).sum();
-        let removed: usize = outcome.caps.iter().map(|c| c.removed).sum();
-        let renamed: usize = outcome.caps.iter().map(|c| c.renamed).sum();
-        println!(
-            "Specs applied: {} (added: {added}, modified: {modified}, removed: {removed}, renamed: {renamed})",
-            names.join(", ")
-        );
-    }
-    if outcome.snapshot_created {
-        println!("Snapshot created for unarchive support.");
-    }
-    for (slug, file) in &outcome.archived_discussions {
-        println!("Discussion archived: {slug} → discussions/archive/{file}");
-    }
-    // 零證據提示（spec verify-evidence「archive trace 注入與零證據提示」）：一行、
-    // 不擋人、不影響 exit code——純規格變更本來就掙不到證據，這行只是讓代理回頭
-    // 確認是不是漏走了 apply。
-    if !outcome.evidence_recorded {
-        eprintln!(
-            "note: no task evidence recorded for change '{}' — fine for spec-only changes; otherwise check that tasks went through apply",
-            outcome.change_name
-        );
-    }
 }
 /// Bulk archive (speclink-specific). Semantics: archives in created-date order, skips
 /// not-ready changes with a reason (never silently), and fail-fasts on the first actual
@@ -121,7 +92,7 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
         let archive_cmd = a.archive_command(Some(change.name.clone()));
         match run::<core::archive::ArchiveOutcome>(store, Some(ws), archive_cmd) {
             Ok(outcome) => {
-                print_archive_outcome(&outcome);
+                emit(render::archive(&outcome, render_options(false)));
                 archived.push(outcome.change_name);
             }
             Err(e) => {
@@ -156,25 +127,11 @@ pub(crate) fn cmd_discard(a: DiscardArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let outcome: core::discard::DiscardOutcome = run(&store, Some(&ws), cmd)?;
-    render_discard(&outcome.change_name, &outcome.unlinked_discussions, a.json)
-}
-/// fs 與 remote 共用的 discard 渲染：--json 為 change＋unlinkedDiscussions、
-/// 人眼列出每筆 unlink 後狀態。
-fn render_discard(change: &str, unlinked: &[(String, String)], json: bool) -> Result<()> {
-    if json {
-        let discussions: Vec<serde_json::Value> = unlinked
-            .iter()
-            .map(|(slug, status)| serde_json::json!({ "slug": slug, "status": status }))
-            .collect();
-        return print_json(&serde_json::json!({
-            "change": change,
-            "unlinkedDiscussions": discussions,
-        }));
-    }
-    println!("{} Discarded change: {change}", color::green("✓"));
-    for (slug, status) in unlinked {
-        println!("  Discussion unlinked: {slug} → {status}");
-    }
+    emit(render::discard(
+        &outcome.change_name,
+        &outcome.unlinked_discussions,
+        render_options(a.json),
+    ));
     Ok(())
 }
 pub(crate) fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
@@ -185,22 +142,19 @@ pub(crate) fn remote_archive(ctx: &RemoteCtx, a: &ArchiveArgs) -> Result<()> {
         bail!("Please specify a change to archive.");
     };
     let resp = ctx.client.archive(&name, a.carry_review, a.carry_verify)?;
-    // datedName 是哨兵：新 server 給得出完整封存結果，就走 fs 同一支渲染；
+    // datedName 是哨兵：新 server 給得出完整封存結果，就走 fs 同一支輸出；
     // 舊 server 什麼都沒帶，退回既有的兩行輸出而不是半套。
-    match to_archive_outcome(name, resp) {
-        Ok(outcome) => print_archive_outcome(&outcome),
+    emit(match to_archive_outcome(name, resp) {
+        Ok(outcome) => render::archive(&outcome, render_options(false)),
         Err((name, resp)) => {
-            println!("{} Archived change: {name}", color::green("✓"));
-            if !resp.specs.is_empty() {
-                let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
-                println!("  Specs updated: {}", caps.join(", "));
-            }
+            let caps: Vec<&str> = resp.specs.iter().map(|s| s.capability.as_str()).collect();
+            render::archive_summary(&name, &caps, render_options(false))
         }
-    }
+    });
     Ok(())
 }
 /// The wire archive response reshaped into the engine's outcome, so the fs
-/// rendering path prints it as-is. `Err` hands back the inputs when the
+/// output path renders it as-is. `Err` hands back the inputs when the
 /// sentinel (`datedName`) is absent — an old server whose response cannot
 /// honestly fill the outcome.
 fn to_archive_outcome(
@@ -249,10 +203,11 @@ pub(crate) fn remote_discard(ctx: &RemoteCtx, a: &DiscardArgs) -> Result<()> {
         .into_iter()
         .map(|d| (d.slug, d.status))
         .collect();
-    render_discard(&outcome.change, &unlinked, a.json)
+    emit(render::discard(&outcome.change, &unlinked, render_options(a.json)));
+    Ok(())
 }
 pub(crate) fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
     let _ = ctx.client.claim(name)?;
-    println!("{} Claimed change: {name}", color::green("✓"));
+    emit(render::claim(name, render_options(false)));
     Ok(())
 }

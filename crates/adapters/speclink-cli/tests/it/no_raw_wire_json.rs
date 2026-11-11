@@ -16,22 +16,6 @@ use std::path::{Path, PathBuf};
 /// (path suffix, exact trimmed line). An entry that stops matching fails the
 /// test too, so the list can never go stale silently.
 const FS_SIDE_ALLOWED: &[(&str, &str)] = &[
-    (
-        "verbs/query.rs",
-        "return print_json(&serde_json::Value::Object(payload));",
-    ),
-    (
-        "verbs/query.rs",
-        "fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {",
-    ),
-    (
-        "verbs/lifecycle.rs",
-        "let discussions: Vec<serde_json::Value> = unlinked",
-    ),
-    (
-        "verbs/station.rs",
-        "fn ticket_json(change: &str, ticket: &core::station::Ticket) -> serde_json::Value {",
-    ),
 ];
 
 fn assert_no_value_type(path: PathBuf) {

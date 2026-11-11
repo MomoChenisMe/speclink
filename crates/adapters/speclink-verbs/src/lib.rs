@@ -9,6 +9,7 @@
 pub mod families;
 mod inputs;
 mod parse;
+pub mod render;
 
 pub use families::{SpecVerb, ToCommand};
 pub use inputs::{CommandTarget, LocalOnlyReason, StdinPolicy, VerbInputs};
