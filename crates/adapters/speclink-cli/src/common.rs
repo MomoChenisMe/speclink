@@ -142,6 +142,18 @@ pub(crate) fn print_json<T: serde::Serialize>(v: &T) -> Result<()> {
     Ok(())
 }
 
+/// The options the shared output functions take: `--json` as the verb parsed
+/// it, and the process's color switch.
+pub(crate) fn render_options(json: bool) -> speclink_verbs::render::RenderOptions {
+    speclink_verbs::render::RenderOptions { json, color: crate::color::paint().enabled }
+}
+
+/// Print a shared verb's output: its stdout text, then its stderr text.
+pub(crate) fn emit(rendered: speclink_verbs::render::Rendered) {
+    print!("{}", rendered.stdout);
+    eprint!("{}", rendered.stderr);
+}
+
 /// Discover the host workspace, or fail with the standard not-initialized error.
 /// A `.speclink.yaml` that exists but cannot parse is its own (fail-closed) error.
 pub(crate) fn require_workspace() -> Result<core::workspace::Workspace> {

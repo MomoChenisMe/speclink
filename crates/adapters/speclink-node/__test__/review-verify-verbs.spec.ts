@@ -1,10 +1,11 @@
 // dispatch 的蓋章動詞（spec：dispatch 的蓋章動詞）。宿主 Store 形式沒有工作樹，
 // 指紋是宿主自己的真相——scope／missing 走 stdin 的 JSON（server stamp request
 // body 的 scope／missing 子集；accept／agent 走 argv 旗標）。
+import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 
 import { createEngine } from '../index.js'
-import { fixtureProject, memoryStore } from './helpers'
+import { cliBin, fixtureProject, makeFsFixture, memoryStore } from './helpers'
 
 const ACTOR = 'Rev <rev@example.com>'
 // beta 的任務全數完成——蓋章守門的前提。
@@ -153,12 +154,12 @@ describe('蓋章守門與 argv 契約', () => {
     expect(meta).toContain(`verified_by: ${ACTOR}\n`)
   })
 
-  it('未支援的子動詞以 invalid_argv 拒絕', async () => {
+  it('未支援的子動詞以 invalid_argv 拒絕，訊息說明只能在有 checkout 的一端執行', async () => {
     const { engine } = engineWithActor(ACTOR)
-    await expect(engine.dispatch(['review', 'show', CHANGE])).rejects.toMatchObject({
+    await expect(engine.dispatch(['review', 'prepare', CHANGE])).rejects.toMatchObject({
       code: 'invalid_argv',
+      message: "'review prepare' only runs where a checkout exists — dispatch has none",
     })
-    await expect(engine.dispatch(['review', 'show', CHANGE])).rejects.toThrow(/add-round.*stamp/)
   })
 
   it('stamp 的 stdin JSON 壞掉時以 invalid_argv 拒絕', async () => {
@@ -195,5 +196,45 @@ describe('蓋章守門與 argv 契約', () => {
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     // 工單聯集非空、scope 為空 → 引擎的分割守門拒絕（拒絕訊息由引擎產生）。
     await expect(engine.dispatch(['review', 'stamp', CHANGE])).rejects.toThrow()
+  })
+})
+
+// spec「讀取與丟棄工單」：show 與 CLI 的 --json 同內容；discard 之後沒有工單。
+describe('讀取與丟棄工單', () => {
+  for (const station of ['review', 'verify'] as const) {
+    it(`${station} show 與 CLI 的 --json 相同，discard 後 show 查無工單`, async () => {
+      const root = makeFsFixture()
+      const engine = createEngine({ store: { type: 'fs', root }, actor: ACTOR })
+      await engine.dispatch([station, 'add-round', CHANGE, '--stdin'], { stdin: BLOCKING_ROUND })
+      await engine.dispatch([station, 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+
+      const shown = (await engine.dispatch([station, 'show', CHANGE])) as {
+        change: string
+        rounds: unknown[]
+        lastRound: { index: number }
+      }
+      const cli = execFileSync(cliBin, [station, 'show', CHANGE, '--json'], { cwd: root, encoding: 'utf8' })
+      expect(shown).toEqual(JSON.parse(cli))
+      expect(shown.change).toBe(CHANGE)
+      expect(shown.rounds).toHaveLength(2)
+      expect(shown.lastRound.index).toBe(2)
+
+      const discarded = (await engine.dispatch([station, 'discard', CHANGE])) as { output: string }
+      expect(discarded.output).toMatch(/^✓ Discarded (review|verification) ticket for change 'beta'\n$/)
+      await expect(engine.dispatch([station, 'show', CHANGE])).rejects.toThrow(
+        new RegExp(`no ${station} ticket for change '${CHANGE}'`),
+      )
+    })
+  }
+
+  it('宿主 Store 上 show 與 discard 同樣可用', async () => {
+    const { store, engine } = engineWithActor(ACTOR)
+    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    expect(await engine.dispatch(['review', 'show', CHANGE])).toMatchObject({
+      change: CHANGE,
+      lastRound: { index: 1, scope: [SCOPE_FILE] },
+    })
+    await engine.dispatch(['review', 'discard', CHANGE])
+    expect(await store.readArtifact(CHANGE, 'review.md')).toBeNull()
   })
 })

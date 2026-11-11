@@ -8,11 +8,12 @@ use anyhow::{bail, Result};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{open_project, print_json, read_stdin_content};
+use crate::common::{emit, open_project, print_json, read_stdin_content, render_options};
 use crate::dual;
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use speclink_verbs::families::station::{ReviewArgs, ReviewCommands, VerifyArgs, VerifyCommands};
+use speclink_verbs::render::station::{self as render, StationAction};
 
 /// 兩個品質站共用的動詞形狀（design D1 的 CLI 面）：clap 的兩個子命令 enum
 /// 各自保留自己的說明文字與旗標可用性（verify 無 `prepare`），在此正規化為
@@ -161,19 +162,20 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             };
             ensure_finding_paths(&ws, st, &existing, &content)?;
             let round = core::station::add_round(st, &store, &change, &content)?;
-            render_station_action(st, StationAction::AddRound(round), &change);
+            emit_action(st, StationAction::AddRound(round), &change);
         }
         StationVerb::Show { change, json } => {
             // `--json` 只要解析後的工單，不碰原文——與導入共用渲染前的行為一致
             // （多讀一次是多一個失敗面）。
             if json {
                 let ticket = core::station::show(st, &store, &change)?;
-                return render_station_show(st, &change, &ticket, None, true);
+                emit(render::show(st, &change, &ticket, None, render_options(true)));
+                return Ok(());
             }
             // 人眼路徑印工單原文（show 已驗證存在與格式）。
             let (ticket, doc) = core::station::show_with_content(st, &store, &change)?;
             let doc = doc.expect("show verified the ticket exists");
-            return render_station_show(st, &change, &ticket, Some(&doc), false);
+            emit(render::show(st, &change, &ticket, Some(&doc), render_options(false)));
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
@@ -189,31 +191,20 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                 &read_file,
                 &file_exists,
             )?;
-            render_station_action(st, StationAction::Stamp, &change);
+            emit_action(st, StationAction::Stamp, &change);
             clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
         StationVerb::Discard { change } => {
             core::station::discard(st, &store, &change)?;
-            render_station_action(st, StationAction::Discard, &change);
+            emit_action(st, StationAction::Discard, &change);
             clear_snapshots_warning(&ws, st, cli.ns, &change);
         }
     }
     Ok(())
 }
-/// 兩站三個「動作完成」動詞的成功行——只差站名片語，共用一支渲染。
-fn render_station_action(st: &core::station::Station, action: StationAction, change: &str) {
-    // 動作片語不同、外框相同——三臂共用同一行輸出。
-    let did = match action {
-        StationAction::AddRound(round) => format!("Recorded {} Round {round}", st.noun_phrase),
-        StationAction::Stamp => format!("Stamped {}", st.noun_phrase),
-        StationAction::Discard => format!("Discarded {} ticket", st.noun_phrase),
-    };
-    println!("{} {did} for change '{change}'", color::green("✓"));
-}
-enum StationAction {
-    AddRound(usize),
-    Stamp,
-    Discard,
+/// 三個「動作完成」動詞的成功行。CLI 的這三個動詞沒有 --json 形式。
+fn emit_action(st: &core::station::Station, action: StationAction, change: &str) {
+    emit(render::action(st, action, change, render_options(false)));
 }
 /// add-round 寫入前的 finding 路徑檢查（本機／remote 兩臂共用）：規則是引擎的
 /// 純函式，免檢查前綴取自 host 範圍解析同一份排除清單（規格目錄與 `.speclink`）。違規即
@@ -235,50 +226,6 @@ fn ensure_finding_paths(
         st.noun,
         lines.join("\n")
     )));
-}
-/// 工單閱讀的共用渲染。`--json` 一律走 `ticket_json`——payload 的欄位集合是
-/// 對外契約，工單原文不屬於它，所以原文只走人眼路徑。`doc` 缺席是 remote 對
-/// 舊 server 的退化：印結構化摘要，而不是拿結構化欄位反推一份假原文。
-fn render_station_show(
-    st: &core::station::Station,
-    change: &str,
-    ticket: &core::station::Ticket,
-    doc: Option<&str>,
-    json: bool,
-) -> Result<()> {
-    if json {
-        return print_json(&ticket_json(change, ticket));
-    }
-    if let Some(doc) = doc {
-        print!("{doc}");
-        return Ok(());
-    }
-    println!("{} — {change}", st.title);
-    for r in &ticket.rounds {
-        println!("\nRound {}", r.index);
-        if let Some(phase) = &r.phase {
-            println!("  Phase: {}", phase.as_str());
-        }
-        if let Some(hash) = &r.patch_hash {
-            println!("  Patch: {hash}");
-        }
-        if !r.scope.is_empty() {
-            println!("  Scope: {}", r.scope.join(", "));
-        }
-        for f in &r.findings {
-            println!("  - [{}] {} — {}", f.severity.as_str(), f.path, f.text);
-        }
-    }
-    Ok(())
-}
-/// 工單的 `--json` payload（local／remote 之外，兩站也共用同一份組裝——欄位集合
-/// 與 null 語意是對外契約；輪的形狀由引擎 `Round::to_json` 一處定義）。
-fn ticket_json(change: &str, ticket: &core::station::Ticket) -> serde_json::Value {
-    serde_json::json!({
-        "change": change,
-        "rounds": ticket.rounds.iter().map(core::station::Round::to_json).collect::<Vec<_>>(),
-        "lastRound": ticket.last_round().to_json(),
-    })
 }
 /// `review prepare` 的唯一實作（local／remote 共用）：sidecar 全在本地
 /// checkout，只有「是否已開工」這件事實由各自的 store 提供。
@@ -653,7 +600,7 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             ensure_finding_paths(&ctx.ws, st, &existing, &content)?;
             let round = ctx.client.station_add_round(noun, &change, &content)?.round;
             // u64→usize：支援平台皆 64-bit，無損（不為不可能的情境設防）。
-            render_station_action(st, StationAction::AddRound(round as usize), &change);
+            emit_action(st, StationAction::AddRound(round as usize), &change);
             Ok(())
         }
         StationVerb::Show { change, json } => {
@@ -663,12 +610,13 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             // 解析（與其 fail-loud）只留給真正讀 token 的兩條路：--json 與退化摘要。
             if !json {
                 if let Some(doc) = &resp.content {
-                    print!("{doc}");
+                    emit(render::ticket_text(doc, render_options(false)));
                     return Ok(());
                 }
             }
             let ticket = to_station_ticket(resp)?;
-            render_station_show(st, &change, &ticket, None, json)
+            emit(render::show(st, &change, &ticket, None, render_options(json)));
+            Ok(())
         }
         StationVerb::Stamp { change, accept, agent } => {
             // 指紋歸屬（design D4a）：工作樹持有者是這裡——先取工單算 Scope
@@ -688,12 +636,12 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
                 .collect();
             ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), &scope, &missing)?;
-            render_station_action(st, StationAction::Stamp, &change);
+            emit_action(st, StationAction::Stamp, &change);
             Ok(())
         }
         StationVerb::Discard { change } => {
             ctx.client.station_discard(noun, &change)?;
-            render_station_action(st, StationAction::Discard, &change);
+            emit_action(st, StationAction::Discard, &change);
             Ok(())
         }
     }

@@ -54,6 +54,12 @@ CLI 的本機分支與遠端分支今天已經共用 render 函式：兩邊各�
 
 exit code 不在 `Rendered` 裡。今天「有輸出又要以非零結束」的動詞（例如 validate 有錯誤時），由 `cmd_*` 依結果的內容決定；這段判斷留在 CLI，搬移時一併確認它們不依賴輸出函式的副作用。
 
+實作時補上的三點（都為了維持既有輸出）：
+
+- **`--json` 的文字由結果本身序列化，不由 `json` 的值序列化。** 引擎的結果型別照欄位宣告的順序輸出，而 `serde_json::Value` 會把鍵排序；`stdout` 要逐位元不變，所以兩者各自從同一個來源產生。
+- **兩個動詞的 `--json` 是單行，不縮排**：`new artifact` 與 `task done`／`task undone`。這是既有的凍結形狀，照原樣保留。
+- **`render` 回傳 `Result<Rendered, CommandError>`。** 有兩種引擎結果在 CLI 是「以錯誤結束」：任務已經是要求的狀態（`already`），以及結論已寫入但收尾的封存失敗（`closing_error`）。SDK 要用同一句訊息拒絕，所以單一出口對這兩種結果回傳一般錯誤；訊息文字各有一個共用函式（`progress::already_message`、`discuss::closing_error_message`），CLI 也用它。各動詞自己的 `_json`、`_human` 函式不回傳錯誤。validate 有錯誤時不屬於這一類：SDK 照常回傳結果陣列，由宿主讀 `valid`。
+
 ### D3: 顏色用 Paint 傳入
 
 `render/paint.rs` 定義 `Paint { enabled }`，提供 bold、dim、red、green、yellow、cyan 與四個粗體顏色的方法。ANSI 色碼只在這裡定義。
@@ -91,6 +97,14 @@ CLI 的 `color.rs` 保留 `init` 與開關的判斷，上色的函式改成呼�
 - 原本 9 個動詞的回傳值要和變更前相同。實作時逐一比對：共用的 `_json` 函式得到的值和 Node 原本組出的值不同時，以 CLI 的 `--json` 為準，並把差異列為相容性影響回報；預期沒有差異，因為正式規格要求兩者對齊。
 
 `index.d.ts` 的 `dispatch` 簽名不變，文件註解改成「全部有引擎命令的動詞」。
+
+實作時的比對結果與決定：
+
+- 9 個動詞裡有 1 個不同：`new change` 的 `output` 尾端多一個換行（CLI 的 stdout 本來就有）。決定照規格，不留特例，列進 proposal 的相容性影響。其餘 8 個的快照沒有改動。
+- 審查與驗證的 `add-round`、`stamp` 在 CLI 沒有 `--json` 旗標，但正式規格釘住它們在 SDK 的回傳值（`{ change, round }`、`{ change }`）。所以這兩個動詞在共用的輸出裡有結構化的值（`station::action_json`），CLI 不會用到它。`discard` 沒有被釘住，照通則回傳 `{ output }`。
+- `ParsedVerb` 的轉換改成 `ToCommand` 的實作（借用，不消耗），因為單一路徑在轉成命令之後還要把解析結果交給 `render`。
+- 多個變更或 `--all` 的 `archive` 在 SDK 以 `invalid_argv` 拒絕（批次迴圈是 CLI 的）。
+- `archive` 的零證據提示在 stderr，`{ output }` 只帶 stdout，所以 SDK 的呼叫端收不到這一行提示。
 
 ### D8: 分三批搬移
 
@@ -134,10 +148,18 @@ CLI 的 `color.rs` 保留 `init` 與開關的判斷，上色的函式改成呼�
 - [stdout 與 stderr 的交錯順序] 分成兩段字串後，CLI 先印哪一段會影響終端機上看到的順序 → 兩者是不同的串流，測試與使用者的管線都分開讀；CLI 維持「先 stdout 再 stderr」或原本的順序，搬移時逐一確認並在比對腳本裡分開存。
 - [守門的掃描面] `no_raw_wire_json` 的逐行允許清單會因搬移而對不上 → 同批更新；新的 `no_direct_print` 遞迴掃描，不靠檔案在哪一層。
 - [SDK 行為放寬] 原本被拒絕的動詞現在會寫入 → 列為相容性影響；宿主要用自己的權限檢查決定開放哪些動詞（執行前的掛鉤在後面的變更提供）。
+- [SDK 同一個引擎並發寫入] 新開放的寫入動詞（task done、in-progress、change depends、discuss 的各個寫入動詞）和蓋章一樣是「讀出、修改、寫回」，但引擎內的互斥鎖只序列化蓋章 → 這次不擴大那把鎖：宿主多半一個請求建一個引擎，引擎內的鎖擋不到跨引擎的並發，而且擴大後，儲存方法裡再呼叫寫入動詞的宿主會互等。跨引擎的協調仍屬於宿主的儲存層，之後建在儲存契約上的變更用它的版本檢查處理。
 - [Node 原本組出的 JSON 與 CLI 不同] 若有差異，SDK 的回傳值會變 → D7 規定逐一比對並回報，不靜默改變。
 - [大量搬移與其他進行中的變更衝突] 這十一個檔案被別的變更同時修改時合併困難 → 這個變更排在 shared-verb-parsing 之後立刻做，並在 worktree 裡進行；開工前先看有沒有別的變更碰這些檔案。
 
 ## Open Questions
 
-- 散在 `cmd_*` 裡的印出有哪些屬於「CLI 自己的事實」，D4 列了預期的四類，完整清單要等盤點。
-- `status` 在沒有任何變更時，CLI 與 SDK 的輸出是否相同；不同時這次維持各自的行為，並在完成說明裡記下。
+兩題都在實作時有了答案：
+
+- 留在 CLI 的印出（來自 CLI 或宿主自己的事實），盤點結果：
+  - 共用：規格資料夾位置的兩種提醒（`warn_spec_layout`、`warn_leftover_remote_file`）、沒有任何變更時的提示（`info_if_no_changes`）。
+  - instructions：`--skill` 的技能內文；遠端模式重新整理 context projection 失敗的警告。
+  - lifecycle：批次封存迴圈的彙總（沒有可封存的變更、中止的三段報告、略過的原因、最後的計數）。
+  - station：`review prepare` 的兩種警告、`scope` 的結果與 needsInput 的說明（範圍由宿主的解析器算出，不是引擎的結果）、清除快照失敗的警告。
+  - 預期清單裡的「技能檔過期的提醒」在現在的程式裡不存在。
+- `status` 在沒有任何變更時：CLI 印一行提示並加換行；SDK 回傳 `{ output }`，內容是同一句、尾端沒有換行。兩邊維持各自的行為，SDK 的值有快照釘住。analyze 與 instructions 在同一情況下，CLI 印同一行提示，SDK 則回報引擎的錯誤；這次不改。

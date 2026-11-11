@@ -93,9 +93,12 @@ fn run_engine(
                 .as_ref()
                 .and_then(|ws| speclink_host::context::git_identity(&ws.root))
         }),
-        // Node dispatch carries no task verbs (list/status/new/claim), so no
-        // completion evidence is recorded through this path.
-        repo: None,
+        // The repo binding completion evidence records (`task done`): the fs
+        // form is the local zero-configuration case, so it takes the binding
+        // the CLI takes; a host store has none resolved here.
+        repo: workspace
+            .as_ref()
+            .map(|_| speclink_host::binding::local_default_binding().repo.as_str().to_string()),
         env: speclink_host::policy::process_env_overrides(),
         workspace,
         user_config_dir: Some(speclink_host::context::global_config_dir()),
@@ -268,8 +271,9 @@ pub fn engine_from_store(
 
 // --- argv router ---
 
-/// argv → the parsing the CLI uses → the engine command → the envelope value.
-/// `run_verb` is the one list of the commands dispatch serves.
+/// argv → the parsing the CLI uses → the engine command → the output
+/// definition the CLI uses → the envelope value. Every verb with an engine
+/// command takes this one path.
 fn run_dispatch(
     backend: &Backend,
     actor: Option<&str>,
@@ -277,11 +281,12 @@ fn run_dispatch(
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
+    use speclink_verbs::ToCommand;
     let parsed = speclink_verbs::parse(argv)
         .map_err(|e| DispatchError::new("invalid_argv", e.message))?;
     let name = parsed.name();
     // Before the stdin JSON is read: a store that cannot finish a stamp is
-    // the first thing to report (`stamp()` checks again before it runs).
+    // the first thing to report.
     if parsed.is_stamp() {
         refuse_unfinishable_stamp(backend, name)?;
     }
@@ -299,8 +304,8 @@ fn run_dispatch(
         stdin: if policy.reads(stdin.is_some()) { stdin.map(str::to_string) } else { None },
         ..Default::default()
     };
-    match parsed.into_command(inputs)? {
-        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, name, cmd),
+    match parsed.to_command(inputs)? {
+        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, &parsed, cmd),
         speclink_verbs::CommandTarget::LocalOnly { verb, reason } => Err(local_only(verb, reason)),
     }
 }
@@ -337,103 +342,44 @@ fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Resu
     Ok(())
 }
 
-/// The station families keep their frozen hint (spec and tests pin it).
-fn station_hint(noun: &str) -> DispatchError {
-    DispatchError::new("invalid_argv", format!("{noun} requires a subcommand: 'add-round' or 'stamp'"))
-}
-
-/// Run one of the dispatch verbs and shape its envelope value.
+/// Run one verb's command and shape its envelope value: the verb's
+/// structured value when it has one, else `{ output }` with its stdout text
+/// (no color). Two verbs keep an answer of their own in front of the engine:
+/// `claim`, and `status` when the project has no change at all.
 fn run_verb(
     backend: &Backend,
     actor: Option<&str>,
     stamp_lock: &std::sync::Mutex<()>,
-    name: &str,
+    parsed: &speclink_verbs::ParsedVerb,
     cmd: core::command::Command,
 ) -> DispatchResult {
-    use core::command::{Command, CommandOutcome};
+    use core::command::Command;
+    use speclink_verbs::render::{render, RenderOptions};
     match &cmd {
-        Command::List { .. } => {
-            let CommandOutcome::List(list) = run_engine(backend, actor, cmd)? else {
-                unreachable!("list command yields a list outcome");
-            };
-            list_value(list)
+        Command::Claim { name } => return claim(backend, actor, name),
+        // CLI parity: with no name and no changes at all, status is informational,
+        // not an error (envelope-level presentation, same as the CLI's exit-0 line).
+        Command::Status { change: None, .. }
+            if core::model::list_changes(backend.store().as_ref()).is_empty() =>
+        {
+            return Ok(serde_json::json!({
+                "output": "No active changes. Create one with: speclink new change <name>"
+            }));
         }
-        Command::Status { change, .. } => {
-            // CLI parity: with no name and no changes at all, status is informational,
-            // not an error (envelope-level presentation, same as the CLI's exit-0 line).
-            if change.is_none() && core::model::list_changes(backend.store().as_ref()).is_empty() {
-                return Ok(serde_json::json!({
-                    "output": "No active changes. Create one with: speclink new change <name>"
-                }));
-            }
-            let CommandOutcome::Status(report) = run_engine(backend, actor, cmd)? else {
-                unreachable!("status command yields a status outcome");
-            };
-            serde_json::to_value(&report).map_err(|e| DispatchError::new("error", format!("{e}")))
-        }
-        Command::NewChange { from_discussion, .. } => {
-            let from_discussion = from_discussion.clone();
-            // Default-schema fail-closed, from_discussion guard, and mark_promoted all
-            // live in the runtime — this layer only shapes the envelope.
-            let CommandOutcome::NewChange(o) = run_engine(backend, actor, cmd)? else {
-                unreachable!("new change yields a new-change outcome");
-            };
-            let mut output = format!(
-                "✓ Created change: {}\n  Path: {}\n  Schema: {}",
-                o.name,
-                o.dir.to_string_lossy(),
-                o.schema
-            );
-            if let Some(slug) = from_discussion {
-                output.push_str(&format!("\n  From discussion: {slug}"));
-            }
-            // `new change` has no --json form in the CLI → the {output} shape.
-            Ok(serde_json::json!({ "output": output }))
-        }
-        Command::NewArtifact { kind, .. } => {
-            let kind = kind.clone();
-            let CommandOutcome::NewArtifact(o) = run_engine(backend, actor, cmd)? else {
-                unreachable!("new artifact yields a new-artifact outcome");
-            };
-            Ok(serde_json::json!({
-                "artifact": kind,
-                "change": o.change,
-                "path": o.path.to_string_lossy(),
-                "status": "created",
-                "validated": o.had_content,
-                "warnings": [],
-            }))
-        }
-        Command::Claim { name } => claim(backend, actor, name),
-        Command::ReviewAddRound { .. } | Command::VerifyAddRound { .. } => {
-            let (CommandOutcome::ReviewAddRound(o) | CommandOutcome::VerifyAddRound(o)) =
-                run_engine(backend, actor, cmd)?
-            else {
-                unreachable!("add-round yields a round outcome");
-            };
-            Ok(serde_json::json!({ "change": o.change, "round": o.round }))
-        }
-        Command::ReviewStamp { .. } | Command::VerifyStamp { .. } => stamp(backend, actor, stamp_lock, name, cmd),
-        Command::ReviewShow { .. } | Command::ReviewDiscard { .. } => Err(station_hint("review")),
-        Command::VerifyShow { .. } | Command::VerifyDiscard { .. } => Err(station_hint("verify")),
-        _ => Err(DispatchError::new("invalid_argv", format!("Unknown or unsupported verb '{name}'"))),
+        _ => {}
     }
-}
-
-/// `list` — always the `--json` shape.
-fn list_value(list: core::command::ListOutcome) -> DispatchResult {
-    let err = |e: serde_json::Error| DispatchError::new("error", format!("{e}"));
-    match (list.changes, list.specs) {
-        (None, Some(specs)) => Ok(serde_json::json!({ "specs": specs })),
-        (Some(items), Some(specs)) => Ok(serde_json::json!({
-            "changes": serde_json::to_value(items).map_err(err)?,
-            "specs": specs,
-        })),
-        (Some(items), None) => Ok(serde_json::json!({
-            "changes": serde_json::to_value(items).map_err(err)?,
-        })),
-        (None, None) => unreachable!("list yields at least one section"),
-    }
+    // Stamping rewrites the whole metadata with no CAS, so stamps serialize
+    // within this instance. A poisoned lock only means another stamp
+    // panicked; the metadata itself is no more suspect than after any failed
+    // dispatch, so proceed.
+    let _stamp_guard =
+        parsed.is_stamp().then(|| stamp_lock.lock().unwrap_or_else(|e| e.into_inner()));
+    let outcome = run_engine(backend, actor, cmd)?;
+    let rendered = render(parsed, &outcome, RenderOptions { json: false, color: false })?;
+    Ok(match rendered.json {
+        Some(value) => value,
+        None => serde_json::json!({ "output": rendered.stdout }),
+    })
 }
 
 /// `claim <name>` — ownership is a team-system concept: the fs store fails
@@ -458,29 +404,4 @@ fn claim(backend: &Backend, actor: Option<&str>, name: &str) -> DispatchResult {
             Err(f) => Err(DispatchError::from(f)),
         },
     }
-}
-
-/// `<station> stamp` — the identity-bearing verb: the `_by` field of the stamp
-/// is the engine's construction-time actor, resolved the same way
-/// `created_by` is. The scope and missing lists come from the stdin JSON
-/// (`--stdin`), parsed by the shared conversion.
-fn stamp(
-    backend: &Backend,
-    actor: Option<&str>,
-    stamp_lock: &std::sync::Mutex<()>,
-    name: &str,
-    cmd: core::command::Command,
-) -> DispatchResult {
-    refuse_unfinishable_stamp(backend, name)?;
-    // Serialize stamps within this instance — the metadata write has no CAS.
-    // A poisoned lock only means another stamp panicked; the metadata itself
-    // is no more suspect than after any failed dispatch, so proceed.
-    let _stamp_guard = stamp_lock.lock().unwrap_or_else(|e| e.into_inner());
-    let outcome = run_engine(backend, actor, cmd)?;
-    let (core::command::CommandOutcome::ReviewStamp(o)
-    | core::command::CommandOutcome::VerifyStamp(o)) = outcome
-    else {
-        unreachable!("stamp yields a subject outcome");
-    };
-    Ok(serde_json::json!({ "change": o.change }))
 }

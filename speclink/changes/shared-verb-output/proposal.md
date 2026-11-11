@@ -18,7 +18,7 @@
 - `speclink-node` 的 dispatch 移除 9 個動詞的允許清單與各自組 `--json` 的程式，改成「共用的解析 → 引擎 → 共用的輸出」。結果：有引擎命令的動詞全部能用。
 - **相容性影響**：
   - CLI：每個動詞的 stdout、stderr、exit code 在人眼、`--json`、`--no-color` 三種形式下逐位元不變。
-  - Node SDK：原本 9 個動詞的回傳值不變。原本回傳 `invalid_argv` 的動詞（例如 `show`、`validate`、`archive`、`discuss` 全系列、`review show`、`review discard`、`task done`）現在會執行並回傳結果。依賴「這些動詞一定被拒絕」的宿主要調整。
+  - Node SDK：原本 9 個動詞的回傳值不變，只有一處例外：`new change` 的 `output` 尾端多一個換行，因為 `{ output }` 現在和 CLI 的 stdout 完全相同。原本回傳 `invalid_argv` 的動詞（例如 `show`、`validate`、`archive`、`discuss` 全系列、`review show`、`review discard`、`task done`）現在會執行並回傳結果。依賴「這些動詞一定被拒絕」的宿主要調整。
   - 只能在有 checkout 的一端執行的動詞（drift、change rank、review prepare、review scope、verify scope、帶 `--skill` 的 instructions）在 SDK 仍被拒絕。
 - 沒有新的 CLI 指令、設定欄位或技能變動。
 
@@ -54,6 +54,9 @@
     - crates/adapters/speclink-verbs/src/render/station.rs
     - crates/adapters/speclink-verbs/tests/no_direct_print.rs
   - Modified:
+    - crates/adapters/speclink-verbs/src/lib.rs
+    - crates/adapters/speclink-verbs/src/parse.rs
+    - crates/adapters/speclink-verbs/src/families/mod.rs
     - crates/adapters/speclink-cli/src/color.rs
     - crates/adapters/speclink-cli/src/common.rs
     - crates/adapters/speclink-cli/src/verbs/query.rs

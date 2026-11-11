@@ -1,17 +1,18 @@
 //! Work-progress verbs: task done/undone and the in-progress marker.
 //!
-//! Both are Dual and share the flip renderer, so the success line and the
-//! `--json` shape are written once and reused by the remote arm.
+//! Both are Dual and share the flip output (speclink-verbs' `render::progress`),
+//! so the success line and the `--json` shape are written once and reused by
+//! the remote arm.
 
 use anyhow::{bail, Result};
 use speclink_core as core;
 
-use crate::color;
-use crate::common::{open_project, plain_command, run};
+use crate::common::{emit, open_project, plain_command, render_options, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::progress::{
     InProgressArgs, InProgressCommands, TaskArgs, TaskCommands,
 };
+use speclink_verbs::render::progress::{self as render, FlippedTask, TaskFlip};
 
 pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     let (flip, json) = match a.command {
@@ -22,7 +23,7 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     // fs mode gives no touched files: the engine probes this workspace itself.
     let cmd = plain_command(&a)?;
     let o: core::command::TaskFlipOutcome = run(&store, Some(&ws), cmd)?;
-    render_task_flip(
+    emit_task_flip(
         flip,
         &o.change,
         TaskIdentity { refused: &o.task_id.to_string(), arg: &o.task_id_arg },
@@ -30,12 +31,6 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
         o.already,
         json,
     )
-}
-/// `task done` 與 `task undone` 的輸出只差狀態字與動詞片語，共用一支渲染。
-#[derive(Clone, Copy)]
-enum TaskFlip {
-    Done,
-    Undone,
 }
 /// 同一個任務的兩種識別，具名綁在一起——兩個相鄰同型 `&str` 位置參數
 /// 寫反不會被編譯器擋，具名欄位會。
@@ -45,19 +40,9 @@ struct TaskIdentity<'a> {
     /// 原始 argv——stdout 的人眼行與 `--json` 都用它。
     arg: &'a str,
 }
-impl TaskFlip {
-    /// 一次給齊三段文字：--json 的 status、已是該狀態時的拒絕片語、成功行的
-    /// 動詞片語——單一 match，不重複分派。
-    fn parts(self) -> (&'static str, &'static str, &'static str) {
-        match self {
-            TaskFlip::Done => ("done", "is already done", "marked as done"),
-            TaskFlip::Undone => ("undone", "is already not done", "marked as not done"),
-        }
-    }
-}
-/// `already` 維持現行錯誤結束（引擎已保證零檔案效果）。`--json` 是緊湊單行，
-/// 欄位順序凍結，兩種翻轉對稱。remote 只有 argv 一種識別，兩個欄位都餵它。
-fn render_task_flip(
+/// `already` 維持現行錯誤結束（引擎已保證零檔案效果）；其餘印出共用的輸出。
+/// remote 只有 argv 一種識別，兩個欄位都餵它。
+fn emit_task_flip(
     flip: TaskFlip,
     change: &str,
     id: TaskIdentity<'_>,
@@ -65,33 +50,15 @@ fn render_task_flip(
     already: bool,
     json: bool,
 ) -> Result<()> {
-    let (status, already_phrase, verb_phrase) = flip.parts();
     if already {
-        bail!("Task {} {already_phrase}", id.refused);
+        bail!("{}", render::already_message(flip, id.refused));
     }
-    if json {
-        let v = serde_json::json!({
-            "change": change,
-            "status": status,
-            "task_desc": description,
-            "task_id": id.arg,
-        });
-        println!("{}", serde_json::to_string(&v)?);
-        return Ok(());
-    }
-    println!("{} Task {} {verb_phrase}: {description}", color::green("✓"), id.arg);
+    emit(render::task_flip(
+        flip,
+        &FlippedTask { change, task_id: id.arg, description },
+        render_options(json),
+    ));
     Ok(())
-}
-/// 實際移除與「本來就沒開工」印不同的行——引擎與 wire 都據實回報，渲染只讀事實。
-fn render_in_progress_remove(name: &str, removed: bool) {
-    if removed {
-        println!(
-            "{} Removed the in-progress marker from '{name}' — back to proposed",
-            color::green("✓")
-        );
-    } else {
-        println!("Change '{name}' has no in-progress marker — already proposed");
-    }
 }
 pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -102,7 +69,7 @@ pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
         }
         InProgressCommands::Remove { .. } => {
             let o: core::command::InProgressRemoveOutcome = run(&store, Some(&ws), cmd)?;
-            render_in_progress_remove(&o.name, o.removed);
+            emit(render::in_progress_remove(&o.name, o.removed, render_options(false)));
         }
     }
     Ok(())
@@ -124,7 +91,7 @@ fn remote_task_done(
     let head = core::tasks::head_commit(&ctx.ws.root);
     let resp = ctx.client.task_done(&change, task_id, &touched, head.as_deref())?;
     // remote 只有 argv 一種識別，拒絕訊息與 stdout 兩處都餵它。
-    render_task_flip(
+    emit_task_flip(
         TaskFlip::Done,
         &change,
         TaskIdentity { refused: task_id, arg: task_id },
@@ -143,7 +110,7 @@ fn remote_task_undone(
         return Ok(());
     };
     let resp = ctx.client.task_undone(&change, task_id)?;
-    render_task_flip(
+    emit_task_flip(
         TaskFlip::Undone,
         &change,
         TaskIdentity { refused: task_id, arg: task_id },
@@ -180,6 +147,6 @@ fn remote_in_progress_remove(ctx: &RemoteCtx, name: &str) -> Result<()> {
     // 裸 Ack 讀作已移除,即其原本的意思);守門 409 與 404 的 message 為引擎
     // 凍結文字,經 `?` 轉發後 stderr 與 fs 模式逐位元一致。
     let removed = ctx.client.in_progress_remove(name)?.removed;
-    render_in_progress_remove(name, removed);
+    emit(render::in_progress_remove(name, removed, render_options(false)));
     Ok(())
 }

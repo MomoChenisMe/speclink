@@ -165,7 +165,7 @@ impl ToCommand for SpecVerb {
 
 #[cfg(test)]
 pub(crate) mod test_support {
-    use crate::{CommandTarget, StdinPolicy, VerbInputs};
+    use crate::{CommandTarget, StdinPolicy, ToCommand, VerbInputs};
     use speclink_core::command::{Command, CommandError};
 
     fn parsed(argv: &[&str]) -> crate::ParsedVerb {
@@ -175,7 +175,7 @@ pub(crate) mod test_support {
 
     /// The conversion result, error included.
     pub(crate) fn target_of(argv: &[&str], inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
-        parsed(argv).into_command(inputs)
+        parsed(argv).to_command(inputs)
     }
 
     /// The engine command an argv converts to; panics on LocalOnly or error.

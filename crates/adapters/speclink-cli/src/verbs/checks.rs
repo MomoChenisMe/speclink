@@ -1,51 +1,32 @@
 //! Read-only check verbs: validate, analyze, drift.
 //!
-//! All three are Dual and share one renderer per verb: the remote arm converts
-//! the wire payload back into the core report type and feeds the same function
-//! the fs arm does, so stdout stays byte-identical across modes.
+//! All three are Dual and share one output function per verb (speclink-verbs'
+//! `render::checks`): the remote arm converts the wire payload back into the
+//! core report type and feeds the same function the fs arm does, so stdout
+//! stays byte-identical across modes.
 
 use anyhow::{bail, Result};
 use speclink_core as core;
 
-use crate::color;
 use crate::common::{
-    engine_command, info_if_no_changes, open_project, plain_command, print_json, run,
+    emit, engine_command, info_if_no_changes, open_project, plain_command, render_options, run,
 };
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::checks::{ChangeArg, ValidateArgs};
+use speclink_verbs::render::checks as render;
 use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_validate(a: ValidateArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let v: core::command::ValidateOutcome = run(&store, Some(&ws), cmd)?;
-    render_validate_results(&v.results, a.json)
+    emit_validate(&v.results, a.json)
 }
-/// fs 與 remote 共用的 validate 渲染：--json 印完整結果陣列、人眼逐 change
-/// 列 error/warn；任一 invalid 以「Validation failed.」非零收尾。
-fn render_validate_results(results: &[core::validate::ValidationResult], json: bool) -> Result<()> {
-    let any_invalid = results.iter().any(|r| !r.valid);
-    if json {
-        print_json(&results)?;
-        if any_invalid {
-            bail!("Validation failed.");
-        }
-        return Ok(());
-    }
-    for r in results {
-        if r.valid {
-            println!("{} {} — valid", color::green("✓"), r.change);
-        } else {
-            println!("{} {} — invalid", color::red("✗"), r.change);
-            for e in &r.errors {
-                println!("  {} {e}", color::red("error:"));
-            }
-        }
-        for w in &r.warnings {
-            println!("  {} {w}", color::yellow("warn:"));
-        }
-    }
-    if any_invalid {
+/// fs 與 remote 共用的 validate 收尾：印出共用的輸出後，任一 invalid 以
+/// 「Validation failed.」非零收尾（--json 也一樣）。
+fn emit_validate(results: &[core::validate::ValidationResult], json: bool) -> Result<()> {
+    emit(render::validate(results, render_options(json)));
+    if results.iter().any(|r| !r.valid) {
         bail!("Validation failed.");
     }
     Ok(())
@@ -57,57 +38,8 @@ pub(crate) fn cmd_analyze(a: ChangeArg) -> Result<()> {
     }
     let cmd = engine_command(a.analyze_command(VerbInputs::default()))?;
     let report: core::analyzer::AnalyzeReport = run(&store, Some(&ws), cmd)?;
-    if a.json {
-        return print_json(&report);
-    }
-    render_analyze(&report);
+    emit(render::analyze(&report, render_options(a.json)));
     Ok(())
-}
-fn render_analyze(report: &core::analyzer::AnalyzeReport) {
-    println!("{}: {}", color::bold("Change"), report.change_id);
-    println!();
-    for d in &report.dimensions {
-        let sym = if d.finding_count == 0 {
-            color::green("✓")
-        } else {
-            color::yellow("●")
-        };
-        // The bold span covers a 14-wide padded name; the 15th column separator
-        // space stays outside it (plain bytes are identical to the old {:<15} form).
-        println!(
-            "  {sym} {} {} ({} findings)",
-            color::bold(&format!("{:<14}", d.dimension)),
-            color::dim(&d.status),
-            d.finding_count
-        );
-    }
-    // The blank separator is tied to the "Analyzed:" line; an empty change (nothing analyzed)
-    // prints "Missing:" directly after the dimensions (frozen output shape).
-    if !report.artifacts_analyzed.is_empty() {
-        println!();
-        println!("  {} {}", color::dim("Analyzed:"), report.artifacts_analyzed.join(", "));
-    }
-    if !report.artifacts_missing.is_empty() {
-        println!("  {} {}", color::yellow("Missing:"), report.artifacts_missing.join(", "));
-    }
-    if report.findings.is_empty() {
-        println!();
-        println!("  {} No issues found", color::green("✓"));
-        return;
-    }
-    println!();
-    println!("  {} ({}):", color::bold("Findings"), report.findings.len());
-    println!();
-    for f in &report.findings {
-        let tag = match f.severity.as_str() {
-            "Critical" => color::bold_red("CRITICAL"),
-            "Warning" => color::yellow("WARNING"),
-            _ => color::dim("SUGGEST"),
-        };
-        println!("  [{tag}] {}", f.summary);
-        println!("    {} {}", color::dim("at:"), color::dim(&f.location));
-        println!("    {} {}", color::dim("→"), color::dim(&f.recommendation));
-    }
 }
 pub(crate) fn cmd_drift(a: ChangeArg) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -129,80 +61,8 @@ pub(crate) fn cmd_drift(a: ChangeArg) -> Result<()> {
         current: core::tasks::current_basis_digests(&store, &change.name),
     };
     let report = core::drift::merge_drift_reports(&change, spec, workspace, Some(&basis));
-    if a.json {
-        return print_json(&report);
-    }
-    render_drift(&report.report);
+    emit(render::drift(&report, render_options(a.json)));
     Ok(())
-}
-fn render_drift(report: &core::drift::DriftReport) {
-    println!("{}: {}", color::bold("Drift Report"), report.change_id);
-    if let Some(created) = &report.created {
-        println!("  Created: {created}");
-    }
-    println!();
-    // Bold spans cover 11/35-wide padded cells with the separator spaces outside, plus
-    // a leading-space " Score" cell — plain bytes are identical to the old format.
-    println!(
-        "  {} {} {}",
-        color::bold(&format!("{:<11}", "Dimension")),
-        color::bold(&format!("{:<35}", "Status")),
-        color::bold(" Score")
-    );
-    for d in &report.dimensions {
-        let score = if d.contributes_to_total {
-            format!("+{}", d.score)
-        } else {
-            "—".to_string()
-        };
-        println!("  {:<11} {:<36} {:>5}", d.kind, d.status, score);
-    }
-    println!(
-        "  {} {} {}",
-        color::bold(&format!("{:<11}", "Total")),
-        " ".repeat(35),
-        color::bold(&format!("{:>6}", report.total_score))
-    );
-    if !report.broken_anchors.is_empty() {
-        println!();
-        println!("Broken anchors");
-        for b in &report.broken_anchors {
-            println!("  - {} ({}) — {}", b.anchor, b.category, b.reason);
-        }
-    }
-    if !report.spec_assumptions.is_empty() {
-        println!();
-        println!("Stale delta assumptions");
-        for a in &report.spec_assumptions {
-            println!(
-                "  - {} '{}' in {} — {}",
-                a.operation, a.requirement, a.capability, a.reason
-            );
-        }
-    }
-    if !report.tasks_maybe_resolved.is_empty() {
-        println!();
-        println!("Tasks maybe already done");
-        for t in &report.tasks_maybe_resolved {
-            println!("  - {t}");
-        }
-    }
-    if !report.tasks_blocked_external.is_empty() {
-        println!();
-        println!("Tasks blocked by external changes");
-        for t in &report.tasks_blocked_external {
-            println!("  - {t}");
-        }
-    }
-    println!();
-    let sev = report.severity.to_uppercase();
-    let sev_colored = match sev.as_str() {
-        "LIGHT" => color::bold_green(&sev),
-        "MEDIUM" => color::bold_yellow(&sev),
-        _ => color::bold_red(&sev),
-    };
-    println!("{}: {} drift", color::bold("Severity"), sev_colored);
-    println!("> {}", color::bold_cyan(&report.primary_recommendation));
 }
 /// 聚合語意（無參數／--all／--changes）由 client 組合：先 list 再逐 change 打
 /// 單 change 端點（design 決策 2）；DTO 轉回本地型別後走 fs 同一渲染（決策 6）。
@@ -237,24 +97,21 @@ pub(crate) fn remote_validate(ctx: &RemoteCtx, a: &ValidateArgs) -> Result<()> {
             results.push(core::validate::validate_canonical_spec(cap, &content, a.strict));
         }
     }
-    render_validate_results(&results, a.json)
+    emit_validate(&results, a.json)
 }
 pub(crate) fn remote_analyze(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
     let Some(name) = remote_resolve_change(ctx, a.change.as_deref(), "Specify one:")? else {
         return Ok(());
     };
     let report = speclink_remote::convert::analyze_report(ctx.client.analyze_change(&name)?);
-    if a.json {
-        return print_json(&report);
-    }
-    render_analyze(&report);
+    emit(render::analyze(&report, render_options(a.json)));
     Ok(())
 }
 /// Remote drift: the Server supplies the spec side, the basis it was computed
 /// against, and the change's store-side inputs; the workspace side is collected
 /// and computed here off the local checkout; the Engine's one merger assembles
-/// the report and the renderer fs mode uses prints it — so there is no second
-/// merge and no second output shape.
+/// the report and the output function fs mode uses renders it — so there is no
+/// second merge and no second output shape.
 pub(crate) fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
     // Positional-style wording, matching the fs verb's auto-detect error.
     let Some(name) = remote_resolve_change(ctx, a.change.as_deref(), "Specify one:")? else {
@@ -291,9 +148,6 @@ pub(crate) fn remote_drift(ctx: &RemoteCtx, a: &ChangeArg) -> Result<()> {
     let digests = speclink_host::drift::basis_from_wire(&response.basis);
     let basis = core::drift::DriftBasis { expected: digests.clone(), current: digests };
     let report = core::drift::merge_drift_reports(&change, spec, workspace, Some(&basis));
-    if a.json {
-        return print_json(&report);
-    }
-    render_drift(&report.report);
+    emit(render::drift(&report, render_options(a.json)));
     Ok(())
 }

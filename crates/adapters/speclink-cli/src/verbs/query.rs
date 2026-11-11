@@ -1,20 +1,21 @@
 //! Read verbs: list, show, status.
 //!
-//! Each verb renders through exactly one function that eats the core outcome
-//! type; the remote arm converts the wire payload first, so both modes print
-//! the same bytes.
+//! Each verb's output comes from one shared function (speclink-verbs'
+//! `render::query`) that takes the core outcome type; the remote arm converts
+//! the wire payload first, so both modes print the same bytes.
 
 use anyhow::{bail, Result};
 use speclink_core as core;
 use speclink_protocol::query as protocol_query;
 
-use crate::color;
 use crate::common::{
-    engine_command, info_if_no_changes, open_project, plain_command, print_json, run, worktree_overlay,
+    emit, engine_command, info_if_no_changes, open_project, plain_command, render_options, run,
+    worktree_overlay,
 };
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use core::listing::ListChangeJson;
 use speclink_verbs::families::query::{ListArgs, ShowArgs, StatusArgs};
+use speclink_verbs::render::query as render;
 use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
@@ -29,67 +30,7 @@ pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
     }))?;
     let list: core::command::ListOutcome =
         run(if facts.is_empty() { &fs_store } else { &overlaid }, Some(&ws), cmd)?;
-    render_list(&list, a.json)
-}
-/// fs 與 remote 共用的 list 渲染：兩模式各自組出同一個 ListOutcome，輸出逐位元
-/// 一致。模式差異只活在上游的資料組裝——remote 恆無 worktree 事實，其餘欄位同形。
-fn render_list(list: &core::command::ListOutcome, json: bool) -> Result<()> {
-    // --specs alone omits the changes section (outcome.changes is None).
-    let Some(items) = &list.changes else {
-        return render_specs_section(list.specs.as_ref().expect("specs requested"), json);
-    };
-    if json {
-        if let Some(specs) = &list.specs {
-            let mut payload = serde_json::Map::new();
-            payload.insert("changes".into(), serde_json::to_value(items)?);
-            payload.insert("specs".into(), specs.clone());
-            return print_json(&serde_json::Value::Object(payload));
-        }
-        return print_json(&serde_json::json!({ "changes": items }));
-    }
-    if items.is_empty() {
-        println!("No active changes.");
-        if let Some(specs) = &list.specs {
-            println!();
-            render_specs_section(specs, false)?;
-        }
-        return Ok(());
-    }
-    println!("{}", color::bold("Changes:"));
-    for c in items {
-        // The progress marker is omitted entirely for changes with zero tasks.
-        let marker = if c.total_tasks > 0 {
-            format!(" [{}/{}]", c.completed_tasks, c.total_tasks)
-        } else {
-            String::new()
-        };
-        // The dim wrapper always prints — an empty summary yields the empty
-        // \x1b[2m\x1b[0m pair in color mode and nothing in plain mode.
-        let suffix = if c.summary.is_empty() {
-            String::new()
-        } else {
-            format!(" — {}", c.summary)
-        };
-        // Fail-closed diagnostic (frozen marker text): only corrupt-metadata
-        // lines gain the trailing marker; valid lines stay byte-identical.
-        let invalid = if c.meta_error.is_some() {
-            format!(" {}", color::red("(invalid .meta.yaml)"))
-        } else {
-            String::new()
-        };
-        // Fixed literal, no color: `--no-color` must read exactly the same.
-        let worktree = if c.worktree.is_some() { " [worktree]" } else { "" };
-        println!(
-            "  {} {}{marker}{}{invalid}{worktree}",
-            color::cyan("•"),
-            c.name,
-            color::dim(&suffix)
-        );
-    }
-    if let Some(specs) = &list.specs {
-        println!();
-        render_specs_section(specs, false)?;
-    }
+    emit(render::list(&list, render_options(a.json)));
     Ok(())
 }
 /// The remote list's engine-shaped outcome, assembled from typed wire pieces.
@@ -103,98 +44,11 @@ fn remote_list_outcome(
     let specs = specs.map(serde_json::to_value).transpose()?;
     Ok(core::command::ListOutcome { changes, specs })
 }
-/// Render the specs section from the outcome's `{id, path}` items.
-fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
-    if json {
-        return print_json(&serde_json::json!({ "specs": specs }));
-    }
-    let items = specs.as_array().map(Vec::as_slice).unwrap_or_default();
-    if items.is_empty() {
-        println!("No specs.");
-        return Ok(());
-    }
-    println!("{}", color::bold("Specs:"));
-    for s in items {
-        println!("  {} {}", color::cyan("•"), s["id"].as_str().unwrap_or_default());
-    }
-    Ok(())
-}
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let show: core::command::ShowOutcome = run(&store, Some(&ws), cmd)?;
-    render_show(show, a.json)
-}
-/// fs 與 remote 共用的 show 渲染：兩模式餵進同一個 ShowOutcome，輸出逐位元一致。
-fn render_show(show: core::command::ShowOutcome, json: bool) -> Result<()> {
-    match show {
-        core::command::ShowOutcome::Spec { name, content } => {
-            if json {
-                return print_json(&serde_json::json!({
-                    "files": [{ "content": content, "name": "spec.md" }],
-                    "name": name,
-                }));
-            }
-            println!("{}: {name}", color::bold("Spec"));
-            println!();
-            println!("{}", color::dim("--- spec.md ---"));
-            print!("{content}");
-            println!(); // A trailing newline is always emitted (an extra blank when content ends with \n)
-        }
-        core::command::ShowOutcome::Change(c) => {
-            let caps: Vec<String> = c
-                .delta_capabilities
-                .iter()
-                .map(|cap| format!("{cap}/spec.md"))
-                .collect();
-            if json {
-                return print_json(&serde_json::json!({
-                    "name": c.name,
-                    "schema": c.schema,
-                    "created": c.created,
-                    "proposal": c.proposal,
-                    "design": c.design,
-                    "tasks": c.tasks,
-                    "deltaSpecs": caps,
-                    "fromDiscussions": c.from_discussions,
-                    "restaleFrom": c.restale_from,
-                }));
-            }
-            println!("{}: {}", color::bold("Change"), c.name);
-            if let Some(schema_name) = &c.schema {
-                println!("{}: {schema_name}", color::bold("Schema"));
-            }
-            if let Some(created) = &c.created {
-                println!("{}: {created}", color::bold("Created"));
-            }
-            // The header's trailing blank line prints only when a section follows.
-            if c.proposal.is_some() || !caps.is_empty() {
-                println!();
-            }
-            // The Proposal section renders whenever the FILE exists (even empty) — frozen behavior.
-            if let Some(proposal) = &c.proposal {
-                println!("{}", color::dim("--- Proposal ---"));
-                print!("{proposal}");
-                if !caps.is_empty() {
-                    // The proposal's own trailing newline determines the blank-line count before the header.
-                    print!("\n\n{}\n", color::dim("--- Delta Specs ---"));
-                    for cap in &caps {
-                        println!("  {cap}");
-                    }
-                } else {
-                    // A newline is always appended after the proposal body (an extra blank
-                    // line when the file already ends with one), same as the spec branch above.
-                    println!();
-                }
-            } else if !caps.is_empty() {
-                // No proposal, but delta specs exist — still render the section.
-                println!("{}", color::dim("--- Delta Specs ---"));
-                for cap in &caps {
-                    println!("  {cap}");
-                }
-            }
-        }
-    }
+    emit(render::show(&show, render_options(a.json)));
     Ok(())
 }
 pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
@@ -204,37 +58,8 @@ pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     }
     let cmd = plain_command(&a)?;
     let report: core::status::StatusReport = run(&store, Some(&ws), cmd)?;
-    if a.json {
-        return print_json(&report);
-    }
-    render_status_human(&report);
+    emit(render::status(&report, render_options(a.json)));
     Ok(())
-}
-/// Human status rendering — shared by the fs and remote paths so both modes
-/// stay byte-identical.
-fn render_status_human(report: &core::status::StatusReport) {
-    println!("{}: {}", color::bold("Change"), report.change_name);
-    println!("{}: {}", color::bold("Schema"), report.schema_name);
-    println!();
-    for art in &report.artifacts {
-        let sym = match art.status.as_str() {
-            "done" => color::green("✓"),
-            "ready" => color::yellow("○"),
-            _ => color::red("✗"),
-        };
-        println!(
-            "  {sym} {} ({})",
-            color::bold(&art.id),
-            color::dim(&art.output_path)
-        );
-        if art.status == "blocked" && !art.blocked_by.is_empty() {
-            println!("    blocked by: {}", art.blocked_by.join(", "));
-        }
-    }
-    println!();
-    if report.is_complete {
-        println!("  {} All artifacts complete", color::green("✓"));
-    }
 }
 /// The wire summary reshaped into the core listing item — the same rendering
 /// path then keeps stdout byte-identical to fs mode.
@@ -270,7 +95,8 @@ pub(crate) fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
         Some(items)
     };
     let specs = if a.specs { Some(ctx.client.list_specs()?.specs) } else { None };
-    render_list(&remote_list_outcome(changes, specs)?, a.json)
+    emit(render::list(&remote_list_outcome(changes, specs)?, render_options(a.json)));
+    Ok(())
 }
 /// The wire status reshaped into the fs report type — the same rendering
 /// path keeps stdout byte-identical to fs mode; server extras (repo,
@@ -303,14 +129,11 @@ pub(crate) fn remote_status(ctx: &RemoteCtx, a: &StatusArgs) -> Result<()> {
         return Ok(());
     };
     let report = to_status_report(ctx.client.get_change(&name)?);
-    if a.json {
-        return print_json(&report);
-    }
-    render_status_human(&report);
+    emit(render::status(&report, render_options(a.json)));
     Ok(())
 }
 /// remote show 的讀取組合（design D4）：以既有讀 API 組出與 fs 模式相同的
-/// ShowOutcome，交給共用的 render_show 渲染。item 與 --item-type 的判別序
+/// ShowOutcome，交給共用的輸出函式。item 與 --item-type 的判別序
 /// 對齊引擎 run_show：type==spec 直取規格；否則 change 優先、缺席時規格
 /// 遞補（type==change 不遞補）；錯誤訊息沿引擎凍結文本。
 fn remote_show_outcome(
@@ -385,8 +208,10 @@ fn remote_show_outcome(
     }))
 }
 
-/// show 的 remote 家族臂：wire → ShowOutcome → 與 fs 同一支渲染。臂在族內
-/// 具名，`render_show` 與 `remote_show_outcome` 因此不必離開本檔。
+/// show 的 remote 家族臂：wire → ShowOutcome → 與 fs 同一支輸出函式。臂在族內
+/// 具名，`remote_show_outcome` 因此不必離開本檔。
 pub(crate) fn remote_show(ctx: &RemoteCtx, a: ShowArgs) -> Result<()> {
-    render_show(remote_show_outcome(ctx, a.item.as_deref(), a.item_type.as_deref())?, a.json)
+    let show = remote_show_outcome(ctx, a.item.as_deref(), a.item_type.as_deref())?;
+    emit(render::show(&show, render_options(a.json)));
+    Ok(())
 }
