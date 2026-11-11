@@ -10,12 +10,13 @@
 
 use crate::commit::{actor_name, event_payload};
 use crate::context::SpeclinkExecutionContext;
+use crate::documents::{invalid_value, scope_version};
 use crate::port_view::PortView;
 use speclink_core::command::{
     execute as engine_execute, Command, CommandError, CommandOutcome, DomainEvent, ExecutionContext,
 };
 use speclink_store_port::{
-    keys, Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, Op, PortError,
+    Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, Op, PortError,
     ScopeId, StorePort, Timestamp, Version,
 };
 use std::sync::{Mutex, PoisonError};
@@ -150,14 +151,6 @@ pub(crate) fn execute_at(
     })
 }
 
-/// The scope's current version, from the narrowest list there is: the key of
-/// the workflow config. Every list returns the scope version, and this one
-/// returns one document at most.
-pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, PortError> {
-    let prefix = KeyPrefix::new(keys::config().as_str()).expect("a key is a prefix");
-    Ok(port.list(scope, &prefix)?.version)
-}
-
 /// What [`execute_at_version`] did.
 #[derive(Debug)]
 pub enum AtVersion {
@@ -258,17 +251,9 @@ fn commit_of(
     Commit::new(actor, command_label(outcome), at, ops, events)
 }
 
-/// A value the store contract rejects never reaches the store; the caller
-/// sees a backend failure that names the rule.
+/// [`invalid_value`] as a failure of the command run.
 fn invalid(e: InvalidValue) -> ExecError {
     ExecError::Store(invalid_value(e))
-}
-
-/// [`invalid`] as the store's own failure.
-pub(crate) fn invalid_value(e: InvalidValue) -> PortError {
-    PortError::Backend {
-        message: e.to_string(),
-    }
 }
 
 #[cfg(test)]

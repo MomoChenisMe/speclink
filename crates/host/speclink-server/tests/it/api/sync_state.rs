@@ -102,16 +102,12 @@ fn polling_detects_a_change_across_a_commit() {
     assert_ne!(e1, e0, "the ETag advanced with the commit");
 }
 
-#[test]
-fn a_query_against_an_unreachable_store_is_503_unavailable() {
-    // Asserted at the wire envelope: the typed client collapses every 5xx to a
-    // generic reasonless message, so the raw response carries the registry
-    // reason.
-    let state = common::state_with(crashed_store());
-    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
-    let base = common::start(state);
-    let url = format!("{base}/api/speclink/v1/projects/demo/changes");
-    let (status, reason) = match ureq::get(&url)
+/// GET `path` under the demo project and expect a failure; returns its
+/// status and the reason of its error envelope. The typed client collapses
+/// every 5xx to a generic reasonless message, so the raw response is read.
+fn failure(base: &str, pat: &str, path: &str) -> (u16, ErrorReason) {
+    let url = format!("{base}/api/speclink/v1/projects/demo/{path}");
+    match ureq::get(&url)
         .set("Authorization", &format!("Bearer {pat}"))
         .set("X-Speclink-Api-Version", "1")
         .set("X-Speclink-Repo", "backend")
@@ -126,7 +122,26 @@ fn a_query_against_an_unreachable_store_is_503_unavailable() {
             (code, reason)
         }
         Err(e) => panic!("transport error: {e}"),
-    };
+    }
+}
+
+#[test]
+fn a_query_against_an_unreachable_store_is_503_unavailable() {
+    let state = common::state_with(crashed_store());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let (status, reason) = failure(&base, &pat, "changes");
+    assert_eq!(status, 503, "an unreachable store answers 503");
+    assert_eq!(reason, ErrorReason::Unavailable, "the reason is unavailable");
+}
+
+#[test]
+fn a_document_read_against_an_unreachable_store_is_503_unavailable() {
+    // host-runtime「儲存暫時無法使用」的 server 那一半：不經引擎的讀取也回 unavailable。
+    let state = common::state_with(crashed_store());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let (status, reason) = failure(&base, &pat, "config");
     assert_eq!(status, 503, "an unreachable store answers 503");
     assert_eq!(reason, ErrorReason::Unavailable, "the reason is unavailable");
 }

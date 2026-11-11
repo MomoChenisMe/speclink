@@ -67,7 +67,7 @@ use tokio::sync::broadcast::error::RecvError;
 struct Ack {}
 
 /// A JSON response carrying the scope ETag.
-fn ok<T: Serialize>(dto: T, etag: &str) -> Response {
+pub(crate) fn ok<T: Serialize>(dto: T, etag: &str) -> Response {
     ([(ETAG, etag.to_string())], Json(dto)).into_response()
 }
 
@@ -180,7 +180,6 @@ pub async fn get_change(
     // startedBy 亦自同一份 parsed meta 補上（remote-read-parity「單 change 讀
     // 取回應攜帶 show 組合欄位」擴充）。
     let (meta, delta_capabilities) = verb::on_port(&state, &binding, move |port, scope| {
-        let port = port;
         let meta = documents::change_extras(port, scope, std::slice::from_ref(&name))?.remove(&name);
         let capabilities = documents::change_delta_capabilities(port, scope, &name)?;
         Ok((meta, capabilities))
@@ -660,7 +659,7 @@ pub async fn put_config(
     let ctx = binding.execution_context();
     let expected_revision = req.expected_revision;
     let cmd = Command::WorkflowConfigReplace { content: req.content };
-    let result = verb::on_port(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
+    let (revision, etag) = verb::on_port_write(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
         // The wire's expected revision is the SCOPE revision (what `GET /config`
         // returns), not the config document's own version. The command commits
         // only while the scope stays at it.
@@ -675,12 +674,7 @@ pub async fn put_config(
         let version = execution.scope_version.unwrap_or(expected);
         Ok((version.get(), documents::etag(version)))
     })
-    .await;
-
-    if result.is_ok() {
-        state.events.notify(&verb::scope_of(&binding));
-    }
-    let (revision, etag) = result?;
+    .await?;
     Ok(ok(PutConfigResponse { revision }, &etag))
 }
 
@@ -724,12 +718,7 @@ pub async fn put_board_order(
 ) -> Result<Response, ApiError> {
     // An oversized body is refused before the precondition is looked at, as
     // it always was.
-    if req.content.len() > documents::BOARD_ORDER_LIMIT {
-        return Err(DocumentsError::TooLarge {
-            limit: documents::BOARD_ORDER_LIMIT,
-        }
-        .into());
-    }
+    documents::check_board_order_size(&req.content)?;
 
     let expected_revision = headers
         .get(axum::http::header::IF_MATCH)
@@ -744,17 +733,12 @@ pub async fn put_board_order(
         .map_err(|e| ApiError::internal(e.to_string()))?;
     let at = port_exec::now()?;
     let content = req.content;
-    let result = verb::on_port(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
+    let (revision, etag) = verb::on_port_write(&state, &binding, move |port, scope| -> Result<(u64, String), ApiError> {
         let expected = verb::expected_version(port, scope, expected_revision)?;
         let version = documents::put_board_order(port, scope, &actor, content, expected, at)?;
         Ok((version.get(), documents::etag(version)))
     })
-    .await;
-
-    if result.is_ok() {
-        state.events.notify(&verb::scope_of(&binding));
-    }
-    let (revision, etag) = result?;
+    .await?;
     Ok(ok(PutBoardOrderResponse { revision }, &etag))
 }
 

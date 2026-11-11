@@ -812,8 +812,11 @@ fn a_context_for_a_missing_change_is_not_found() {
 
 // --- 沒有 workspace 時封存不寫入本機檔案 ---
 
-/// Only the test that switches the working directory takes this lock. The
-/// other tests here touch no file, so they cannot see the switch.
+/// Only the tests that switch the working directory take this lock; the
+/// other tests in this file still run beside them. That is safe because no
+/// other test here reads or writes a relative path. A new test that does
+/// must take this lock too, or `archive_writes_no_local_files` can find a
+/// file of its in the temp folder.
 static WORKING_DIRECTORY: Mutex<()> = Mutex::new(());
 
 /// Puts the working directory back when dropped — before the temp folder is

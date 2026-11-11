@@ -7,8 +7,7 @@ use crate::error::ApiError;
 use crate::state::AppState;
 use crate::verb;
 use axum::extract::{Path, Query, State};
-use axum::http::header::ETAG;
-use axum::response::{IntoResponse, Response};
+use axum::response::Response;
 use axum::Json;
 use serde::{Deserialize, Serialize};
 use speclink_host::documents;
@@ -23,8 +22,9 @@ pub(crate) struct SearchQuery {
     q: String,
 }
 
-fn ok<T: Serialize>(dto: T, version: Version) -> Response {
-    ([(ETAG, documents::etag(version))], Json(dto)).into_response()
+/// [`crate::routes::ok`] with the ETag of a scope version.
+fn ok_at<T: Serialize>(dto: T, version: Version) -> Response {
+    crate::routes::ok(dto, &documents::etag(version))
 }
 
 /// `GET /api/speclink/v1/scopes` — membership-filtered identity scope, before
@@ -77,7 +77,7 @@ pub async fn spec_document(
 ) -> Result<Response, ApiError> {
     let (dto, version) =
         verb::on_port(&state, &binding, move |port, scope| Ok(documents::spec_document(port, scope, &capability)?)).await?;
-    Ok(ok(dto, version))
+    Ok(ok_at(dto, version))
 }
 
 /// `GET /archived`.
@@ -86,7 +86,7 @@ pub async fn archived_list(
     binding: Binding,
 ) -> Result<Response, ApiError> {
     let (dto, version) = verb::on_port(&state, &binding, move |port, scope| Ok(documents::archived_list(port, scope)?)).await?;
-    Ok(ok(dto, version))
+    Ok(ok_at(dto, version))
 }
 
 /// `GET /archived/{datedName}/artifacts/{*artifact}`.
@@ -99,7 +99,7 @@ pub async fn archived_artifact(
         Ok(documents::archived_artifact(port, scope, &dated_name, &artifact)?)
     })
     .await?;
-    Ok(ok(dto, version))
+    Ok(ok_at(dto, version))
 }
 
 /// `GET /archived/{datedName}/capabilities`.
@@ -112,7 +112,7 @@ pub async fn archived_capabilities(
         Ok(documents::archived_capabilities(port, scope, &dated_name)?)
     })
     .await?;
-    Ok(ok(capabilities, version))
+    Ok(ok_at(capabilities, version))
 }
 
 /// `GET /search?q=...` — the desktop D6 algorithm, including fixed artifact
@@ -124,5 +124,5 @@ pub(crate) async fn search(
 ) -> Result<Response, ApiError> {
     let (dto, version) =
         verb::on_port(&state, &binding, move |port, scope| Ok(documents::search(port, scope, &query.q)?)).await?;
-    Ok(ok(dto, version))
+    Ok(ok_at(dto, version))
 }

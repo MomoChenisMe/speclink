@@ -10,7 +10,7 @@
 //! drift is diagnostic: nothing here writes to the workspace.
 
 use crate::binding::ResolvedBinding;
-use crate::bridge::BridgeError;
+use crate::port_exec::ExecError;
 use crate::port_view::PortView;
 use serde::Serialize;
 use speclink_core::command::{CommandError, ErrorCode};
@@ -210,7 +210,7 @@ pub fn spec_drift(
     port: &dyn StorePort,
     scope: &ScopeId,
     change: &str,
-) -> Result<SpecDriftView, BridgeError> {
+) -> Result<SpecDriftView, ExecError> {
     let view = PortView::new(port, scope.clone());
     let drift_view = speclink_core::model::find_change(&view, change).map(|found| SpecDriftView {
         spec: drift::compute_spec_drift(&view, &found),
@@ -222,9 +222,9 @@ pub fn spec_drift(
     });
     // A store failure during a read made the Engine see "no document": it is
     // reported first, before anything the Engine concluded from that.
-    view.into_ops().map_err(BridgeError::Store)?;
+    view.into_ops().map_err(ExecError::Store)?;
     drift_view.ok_or_else(|| {
-        BridgeError::Command(CommandError::new(
+        ExecError::Command(CommandError::new(
             ErrorCode::NotFound,
             format!("Change '{change}' not found."),
         ))
@@ -712,14 +712,14 @@ mod tests {
         assert!(spec_drift(&port, &id, "demo").is_ok(), "the healthy store answers");
         assert!(matches!(
             spec_drift(&port, &id, "nope"),
-            Err(BridgeError::Command(e)) if e.code == ErrorCode::NotFound
+            Err(ExecError::Command(e)) if e.code == ErrorCode::NotFound
         ));
 
         // A commit that crashes leaves the store unavailable.
         store.crash_at(FaultPoint::AfterDocWrites);
         seed("other").expect_err("the crashed commit");
         match spec_drift(&port, &id, "demo") {
-            Err(BridgeError::Store(PortError::Unavailable { .. })) => {}
+            Err(ExecError::Store(PortError::Unavailable { .. })) => {}
             other => panic!("expected the store failure, got {:?}", other.map(|_| ())),
         }
     }

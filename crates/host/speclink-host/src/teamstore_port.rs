@@ -249,6 +249,8 @@ fn reading(loaded: &Loaded, keys: &[DocKey]) -> Result<Vec<Option<Document>>, Po
 pub struct TeamStorePort<S> {
     store: S,
     loaded: Mutex<BTreeMap<ScopeId, Arc<Loaded>>>,
+    /// One gate for each scope: loads of one scope run one at a time.
+    loading: Mutex<BTreeMap<ScopeId, Arc<Mutex<()>>>>,
 }
 
 impl<S> TeamStorePort<S>
@@ -262,6 +264,7 @@ where
         TeamStorePort {
             store,
             loaded: Mutex::new(BTreeMap::new()),
+            loading: Mutex::new(BTreeMap::new()),
         }
     }
 
@@ -269,21 +272,39 @@ where
         self.loaded.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// The load of `scope_id` the adapter holds at `revision`, if any.
+    fn held(&self, scope_id: &ScopeId, revision: Revision) -> Option<Arc<Loaded>> {
+        self.slots()
+            .get(scope_id)
+            .filter(|loaded| loaded.revision == revision)
+            .map(Arc::clone)
+    }
+
+    fn gate(&self, scope_id: &ScopeId) -> Arc<Mutex<()>> {
+        let mut gates = self.loading.lock().unwrap_or_else(PoisonError::into_inner);
+        Arc::clone(gates.entry(scope_id.clone()).or_default())
+    }
+
     /// The scope at the current project revision, loading it when the
     /// adapter holds no load at that revision.
     ///
     /// A TeamStore lists documents only through `export`, and gives document
     /// revisions only through a snapshot read. So a load is one export and
-    /// one snapshot read for each exported document. The lock is not held
-    /// while the TeamStore works: another scope never waits for this one.
+    /// one snapshot read for each exported document. Loads of one scope run
+    /// one at a time: a request that misses while another load of the scope
+    /// is under way waits for it, and answers from it when it is at the same
+    /// revision. Another scope never waits for this one.
     fn loaded(&self, scope_id: &ScopeId) -> Result<Arc<Loaded>, PortError> {
         let scope = teamstore_scope(scope_id)?;
         let snapshot = self.store.snapshot(&scope).map_err(port_error)?;
         let revision = snapshot.revision();
-        if let Some(loaded) = self.slots().get(scope_id) {
-            if loaded.revision == revision {
-                return Ok(Arc::clone(loaded));
-            }
+        if let Some(loaded) = self.held(scope_id, revision) {
+            return Ok(loaded);
+        }
+        let gate = self.gate(scope_id);
+        let _one_load_at_a_time = gate.lock().unwrap_or_else(PoisonError::into_inner);
+        if let Some(loaded) = self.held(scope_id, revision) {
+            return Ok(loaded);
         }
         let bundle = self.store.export(&scope).map_err(port_error)?;
         let mut docs = BTreeMap::new();
@@ -890,6 +911,112 @@ mod tests {
         assert_eq!(slots[&sid()].revision, Revision(5), "a slower, older load does not win");
         keep_newer(&mut slots, &sid(), loaded(7));
         assert_eq!(slots[&sid()].revision, Revision(7));
+    }
+
+    /// A memory store whose exports wait until the test lets them go, and
+    /// that counts how many exports began: what shows whether two loads of
+    /// one scope ran at once.
+    #[derive(Default)]
+    struct HeldExports {
+        inner: MemoryStore,
+        began: std::sync::atomic::AtomicUsize,
+        open: Mutex<bool>,
+        opened: std::sync::Condvar,
+    }
+
+    impl HeldExports {
+        fn began(&self) -> usize {
+            self.began.load(std::sync::atomic::Ordering::SeqCst)
+        }
+
+        fn release(&self) {
+            *self.open.lock().unwrap() = true;
+            self.opened.notify_all();
+        }
+    }
+
+    impl TeamStore for HeldExports {
+        fn manifest(&self) -> speclink_store::Manifest {
+            self.inner.manifest()
+        }
+        fn health(&self) -> Result<(), StoreError> {
+            self.inner.health()
+        }
+        fn migrate(&self, target_version: u32) -> Result<(), StoreError> {
+            self.inner.migrate(target_version)
+        }
+        fn snapshot<'a>(&'a self, scope: &Scope) -> Result<Box<dyn speclink_store::Snapshot + 'a>, StoreError> {
+            self.inner.snapshot(scope)
+        }
+        fn begin_unit_of_work(&self, scope: &Scope, ctx: CommandContext) -> Result<speclink_store::UnitOfWork, StoreError> {
+            self.inner.begin_unit_of_work(scope, ctx)
+        }
+        fn commit(&self, uow: speclink_store::UnitOfWork, events: Vec<EventRecord>) -> Result<Revision, StoreError> {
+            self.inner.commit(uow, events)
+        }
+        fn rollback(&self, uow: speclink_store::UnitOfWork) -> Result<(), StoreError> {
+            self.inner.rollback(uow)
+        }
+        fn export(&self, scope: &Scope) -> Result<speclink_store::Bundle, StoreError> {
+            self.began.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut open = self.open.lock().unwrap();
+            while !*open {
+                open = self.opened.wait(open).unwrap();
+            }
+            drop(open);
+            self.inner.export(scope)
+        }
+        fn import(&self, bundle: speclink_store::Bundle, mode: speclink_store::ImportMode) -> Result<speclink_store::ImportReport, StoreError> {
+            self.inner.import(bundle, mode)
+        }
+        fn read_outbox(&self, scope: &Scope, from: OutboxCursor) -> Result<Vec<speclink_store::OutboxEntry>, StoreError> {
+            self.inner.read_outbox(scope, from)
+        }
+        fn ack_outbox(&self, scope: &Scope, up_to: OutboxCursor) -> Result<(), StoreError> {
+            self.inner.ack_outbox(scope, up_to)
+        }
+        fn outbox_acked(&self, scope: &Scope) -> Result<OutboxCursor, StoreError> {
+            self.inner.outbox_acked(scope)
+        }
+    }
+
+    /// Lets every held export go when dropped, so a failing assertion never
+    /// leaves a thread waiting.
+    struct ReleaseOnDrop<'s>(&'s HeldExports);
+
+    impl Drop for ReleaseOnDrop<'_> {
+        fn drop(&mut self) {
+            self.0.release();
+        }
+    }
+
+    #[test]
+    fn two_requests_that_miss_the_same_load_export_once() {
+        let store = HeldExports {
+            inner: seeded(),
+            ..Default::default()
+        };
+        let port = TeamStorePort::new(&store);
+        let changes = || port.list(&sid(), &prefix("changes/")).unwrap().entries.len();
+        let began = std::thread::scope(|threads| {
+            let _release = ReleaseOnDrop(&store);
+            let first = threads.spawn(changes);
+            let second = threads.spawn(changes);
+            // Both requests took their snapshot and an export is under way.
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !(store.inner.snapshot_count() == 2 && store.began() >= 1) {
+                assert!(std::time::Instant::now() < deadline, "the requests did not start");
+                std::thread::sleep(std::time::Duration::from_millis(1));
+            }
+            // Time for the other request to reach the load, or to start its own export.
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            let began = store.began();
+            store.release();
+            assert_eq!((first.join().unwrap(), second.join().unwrap()), (2, 2));
+            began
+        });
+        assert_eq!(began, 1, "the second request waits for the first load");
+        assert_eq!(store.inner.export_count(), 1);
     }
 
     #[test]

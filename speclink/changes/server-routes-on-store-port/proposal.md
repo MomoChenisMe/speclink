@@ -50,6 +50,7 @@ Source discussion: embedded-host-needs（cut 7 的第一塊；拆分的理由見
   - 只在兩個請求幾乎同時送達的空窗才看得到的差別（實作時補記）：
     - 看板順序的寫入與帶 `If-Match` 的 artifact 寫入：比對之後、提交之前有人改了同一份文件時，仍然回 409，但訊息改成儲存接口的格式（例如 `board/order: expected 3, actual 5`），不再是 TeamStore 的格式。
     - 儲存回報後端錯誤時的 500 訊息文字，改成儲存接口的格式。
+    - TeamStore 回報找不到或無權限時，這些路由改回 500（改寫前是 404／403）：儲存接口只有三種失敗。現有的三個 driver 不會回報這兩種錯誤。
 - **CLI 指令、設定欄位、技能**：都沒有新增或變更。
 
 ## Non-Goals
@@ -103,6 +104,7 @@ Source discussion: embedded-host-needs（cut 7 的第一塊；拆分的理由見
     - crates/engine/speclink-core/src/lifecycle/archive.rs
     - crates/engine/speclink-core/src/lifecycle/archive/tests.rs
     - crates/engine/speclink-core/src/lifecycle/discard.rs
+    - crates/engine/speclink-core/src/lifecycle/preflight.rs
     - crates/engine/speclink-core/src/workspace/workspace.rs
     - crates/store/speclink-store/src/memory.rs（測試用的快照與匯出計數）
     - crates/host/speclink-host/tests/common/mod.rs
