@@ -30,12 +30,12 @@ fn seeded_flag(days: i64, admin: bool) -> (String, String, Arc<IdentitySqlite>) 
             expires_at: Utc::now() + Duration::days(days),
         })
         .expect("seed invitation");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     let base = common::start(state);
     (base, token, identity)
 }

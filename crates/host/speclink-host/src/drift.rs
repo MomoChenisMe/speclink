@@ -12,7 +12,6 @@
 use crate::binding::ResolvedBinding;
 use crate::bridge::BridgeError;
 use crate::port_view::PortView;
-use crate::teamstore_port::TeamStorePort;
 use serde::Serialize;
 use speclink_core::command::{CommandError, ErrorCode};
 use speclink_core::drift::{self, PathKind, WorkspaceFacts};
@@ -22,7 +21,7 @@ use speclink_core::tasks::{self, BasisDigests};
 use speclink_core::util;
 use speclink_core::workspace::Workspace;
 use speclink_protocol::drift as wire;
-use speclink_store::{Scope, TeamStore};
+use speclink_store_port::{ScopeId, StorePort};
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -201,19 +200,18 @@ pub struct SpecDriftView {
     pub evidence: Option<String>,
 }
 
-/// Compute a change's spec-side drift over one TeamStore scope, together with
-/// the basis and store-side inputs read in that same execution.
+/// Compute a change's spec-side drift over one scope of a store port,
+/// together with the basis and store-side inputs read in that same execution.
 ///
 /// This is the Host's composition point for the Server's drift endpoint — the
 /// Engine store view is built, used, and dropped inside, never handed out.
 /// Nothing is written: no commit is made.
 pub fn spec_drift(
-    store: &(dyn TeamStore + Sync),
-    scope: &Scope,
+    port: &dyn StorePort,
+    scope: &ScopeId,
     change: &str,
 ) -> Result<SpecDriftView, BridgeError> {
-    let port = TeamStorePort::new(store, scope.clone()).map_err(BridgeError::Store)?;
-    let view = PortView::new(&port, port.scope_id().clone());
+    let view = PortView::new(port, scope.clone());
     let drift_view = speclink_core::model::find_change(&view, change).map(|found| SpecDriftView {
         spec: drift::compute_spec_drift(&view, &found),
         basis: tasks::current_basis_digests(&view, &found.name),
@@ -514,6 +512,8 @@ pub fn basis_from_wire(basis: &wire::DriftBasisDigests) -> BasisDigests {
 mod tests {
     use super::*;
     use crate::binding::local_default_binding;
+    use crate::teamstore_port::{scope_id, TeamStorePort};
+    use speclink_store::Scope;
     use speclink_core::store::Store;
     use speclink_core::workspace::Workspace;
     use speclink_fs::FsStore;
@@ -707,19 +707,89 @@ mod tests {
             store.commit(uow, Vec::new())
         };
         seed("demo").expect("seed commit");
-        assert!(spec_drift(&store, &scope, "demo").is_ok(), "the healthy store answers");
+        let port = TeamStorePort::new(&store);
+        let id = scope_id(&scope).unwrap();
+        assert!(spec_drift(&port, &id, "demo").is_ok(), "the healthy store answers");
         assert!(matches!(
-            spec_drift(&store, &scope, "nope"),
+            spec_drift(&port, &id, "nope"),
             Err(BridgeError::Command(e)) if e.code == ErrorCode::NotFound
         ));
 
         // A commit that crashes leaves the store unavailable.
         store.crash_at(FaultPoint::AfterDocWrites);
         seed("other").expect_err("the crashed commit");
-        match spec_drift(&store, &scope, "demo") {
+        match spec_drift(&port, &id, "demo") {
             Err(BridgeError::Store(PortError::Unavailable { .. })) => {}
             other => panic!("expected the store failure, got {:?}", other.map(|_| ())),
         }
+    }
+
+    #[test]
+    fn spec_drift_gives_the_same_answer_on_a_memory_store_and_on_the_teamstore_adapter() {
+        use speclink_store::memory::MemoryStore;
+        use speclink_store::{CommandContext, DocumentId, TeamStore};
+        use speclink_store_port::{Actor as PortActor, Commit, DocKey, Expected, MemoryStorePort, Op, Timestamp};
+
+        const DELTA: &str = "## ADDED Requirements\n\n### Requirement: Token rotation\n\nIt SHALL rotate.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        const CANON: &str = "## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: Token rotation\n\nIt SHALL rotate.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
+        let docs: [(DocumentId, &str, &str); 5] = [
+            (DocumentId::ChangeMeta { change: "demo".into() }, "changes/demo/.meta.yaml", META),
+            (
+                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "design.md".into() },
+                "changes/demo/design.md",
+                "# Design\n",
+            ),
+            (
+                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
+                "changes/demo/tasks.md",
+                "- [ ] 1.1 a\n",
+            ),
+            (
+                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
+                "changes/demo/specs/auth/spec.md",
+                DELTA,
+            ),
+            (DocumentId::CanonicalSpec { capability: "auth".into() }, "specs/auth/spec.md", CANON),
+        ];
+
+        let teamstore = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        let mut uow = teamstore
+            .begin_unit_of_work(&scope, CommandContext { command: "seed".into(), actor: "seed".into() })
+            .unwrap();
+        for (doc, _, content) in &docs {
+            uow.create(doc.clone(), *content);
+        }
+        teamstore.commit(uow, Vec::new()).unwrap();
+
+        let memory = MemoryStorePort::new();
+        let id = scope_id(&scope).unwrap();
+        let ops = docs
+            .iter()
+            .map(|(_, key, content)| Op::Put {
+                key: DocKey::new(*key).unwrap(),
+                content: content.to_string(),
+                expected: Expected::Absent,
+            })
+            .collect();
+        let commit = Commit::new(
+            PortActor::new("seed", "seed").unwrap(),
+            "seed",
+            Timestamp::new(1_700_000_000_000).unwrap(),
+            ops,
+            Vec::new(),
+        )
+        .unwrap();
+        memory.commit(&id, &commit).unwrap();
+
+        let on_memory = spec_drift(&memory, &id, "demo").map_err(|e| format!("{e:?}")).unwrap();
+        let on_teamstore = spec_drift(&TeamStorePort::new(&teamstore), &id, "demo")
+            .map_err(|e| format!("{e:?}"))
+            .unwrap();
+        assert_eq!(spec_drift_view_to_wire(&on_memory), spec_drift_view_to_wire(&on_teamstore));
+        assert_eq!(on_memory.spec.spec_assumptions.len(), 1, "the ADDED requirement already exists");
+        assert_eq!(on_memory.design.as_deref(), Some("# Design\n"));
     }
 
     #[test]

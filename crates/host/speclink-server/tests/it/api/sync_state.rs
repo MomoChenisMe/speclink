@@ -9,8 +9,11 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_remote::client::Client;
 use speclink_store::memory::MemoryStore;
 use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore,
+    Bundle, CommandContext, DocumentId, EventRecord, FaultPoint, ImportMode, ImportReport,
+    Manifest, OutboxCursor, OutboxEntry, ProjectId, RepoId, Revision, Scope, Snapshot,
+    StoreError, TeamStore, UnitOfWork,
 };
+use std::sync::atomic::{AtomicUsize, Ordering};
 use speclink_server::state::SharedStore;
 use std::sync::Arc;
 
@@ -20,6 +23,11 @@ fn scope() -> Scope {
 
 fn seeded_store() -> Arc<MemoryStore> {
     let store = Arc::new(MemoryStore::new());
+    seed(store.as_ref());
+    store
+}
+
+fn seed(store: &dyn TeamStore) {
     let mut uow = store
         .begin_unit_of_work(
             &scope(),
@@ -32,7 +40,6 @@ fn seeded_store() -> Arc<MemoryStore> {
         "- [ ] 1.1 First\n",
     );
     store.commit(uow, Vec::new()).expect("seed commit");
-    store
 }
 
 fn crashed_store() -> SharedStore {
@@ -129,4 +136,79 @@ fn a_query_against_an_unreachable_store_is_503_unavailable() {
     };
     assert_eq!(status, 503, "an unreachable store answers 503");
     assert_eq!(reason, ErrorReason::Unavailable, "the reason is unavailable");
+}
+
+/// A TeamStore that counts its exports.
+#[derive(Default)]
+struct ExportCounter {
+    inner: MemoryStore,
+    exports: AtomicUsize,
+}
+
+impl ExportCounter {
+    fn exports(&self) -> usize {
+        self.exports.load(Ordering::SeqCst)
+    }
+}
+
+impl TeamStore for ExportCounter {
+    fn manifest(&self) -> Manifest {
+        self.inner.manifest()
+    }
+    fn health(&self) -> Result<(), StoreError> {
+        self.inner.health()
+    }
+    fn migrate(&self, target_version: u32) -> Result<(), StoreError> {
+        self.inner.migrate(target_version)
+    }
+    fn snapshot<'a>(&'a self, scope: &Scope) -> Result<Box<dyn Snapshot + 'a>, StoreError> {
+        self.inner.snapshot(scope)
+    }
+    fn begin_unit_of_work(&self, scope: &Scope, ctx: CommandContext) -> Result<UnitOfWork, StoreError> {
+        self.inner.begin_unit_of_work(scope, ctx)
+    }
+    fn commit(&self, uow: UnitOfWork, events: Vec<EventRecord>) -> Result<Revision, StoreError> {
+        self.inner.commit(uow, events)
+    }
+    fn rollback(&self, uow: UnitOfWork) -> Result<(), StoreError> {
+        self.inner.rollback(uow)
+    }
+    fn export(&self, scope: &Scope) -> Result<Bundle, StoreError> {
+        self.exports.fetch_add(1, Ordering::SeqCst);
+        self.inner.export(scope)
+    }
+    fn import(&self, bundle: Bundle, mode: ImportMode) -> Result<ImportReport, StoreError> {
+        self.inner.import(bundle, mode)
+    }
+    fn read_outbox(&self, scope: &Scope, from: OutboxCursor) -> Result<Vec<OutboxEntry>, StoreError> {
+        self.inner.read_outbox(scope, from)
+    }
+    fn ack_outbox(&self, scope: &Scope, up_to: OutboxCursor) -> Result<(), StoreError> {
+        self.inner.ack_outbox(scope, up_to)
+    }
+    fn outbox_acked(&self, scope: &Scope) -> Result<OutboxCursor, StoreError> {
+        self.inner.outbox_acked(scope)
+    }
+}
+
+#[test]
+fn polling_the_scope_version_exports_nothing() {
+    // 「連續只查詢範圍版本號不造成任何匯出」：先讀一次變更清單載入範圍，再連續輪詢三次。
+    let store = Arc::new(ExportCounter::default());
+    seed(store.as_ref());
+    let state = common::state_with(store.clone());
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let url = sync_url(&base);
+
+    client(&base, &pat).list_changes().expect("list changes");
+    let loaded = store.exports();
+    assert!(loaded >= 1, "the list loaded the scope");
+
+    let (status, etag) = poll(&url, &pat, None);
+    assert_eq!(status, 200);
+    for _ in 0..2 {
+        assert_eq!(poll(&url, &pat, Some(&etag)).0, 304);
+    }
+    assert_eq!(store.exports(), loaded, "no export while polling");
 }

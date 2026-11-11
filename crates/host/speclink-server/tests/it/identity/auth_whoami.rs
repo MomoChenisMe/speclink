@@ -17,12 +17,12 @@ use std::sync::Arc;
 fn server() -> (String, speclink_server::state::SharedIdentity, String, String) {
     let identity = common::empty_identity();
     let (pat, user_id) = common::seed_pat(&identity, &[]);
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity, pat, user_id)
 }
 

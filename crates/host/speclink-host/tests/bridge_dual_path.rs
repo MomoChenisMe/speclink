@@ -13,7 +13,9 @@ use speclink_core::store::Store;
 use speclink_core::workspace::Workspace;
 use speclink_fs::FsStore;
 use speclink_host::binding::local_default_binding;
-use speclink_host::bridge::{self, AtRevision, BridgeError};
+use speclink_host::bridge::{self, BridgeError};
+use speclink_host::port_exec::{self, AtVersion};
+use speclink_host::teamstore_port::{scope_id, TeamStorePort};
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
 use speclink_store::memory::MemoryStore;
@@ -291,21 +293,23 @@ fn bridged_workflow_config_replace_lands_the_document_at_the_commit_revision() {
 }
 
 #[test]
-fn execute_at_revision_runs_only_when_the_scope_is_at_that_revision() {
+fn execute_at_version_over_the_teamstore_runs_only_when_the_scope_is_at_that_version() {
     let (mem, scope) = seed_teamstore();
+    let port = TeamStorePort::new(&mem);
+    let id = scope_id(&scope).expect("scope id");
     let base = mem.snapshot(&scope).expect("snapshot").revision();
     let replace = |content: &str| Command::WorkflowConfigReplace { content: content.to_string() };
 
-    let stale = speclink_store::Revision(base.0 + 5);
-    match bridge::execute_at_revision(&mem, &host_ctx(), replace("locale: ja\n"), stale).expect("no failure") {
-        AtRevision::Moved { actual } => assert_eq!(actual, base),
-        AtRevision::Done(_) => panic!("the scope is not at {stale:?}"),
+    let stale = base.0 + 5;
+    match port_exec::execute_at_version(&port, &id, &host_ctx(), replace("locale: ja\n"), stale).expect("no failure") {
+        AtVersion::Moved { actual } => assert_eq!(actual.get(), base.0),
+        AtVersion::Done(_) => panic!("the scope is not at {stale}"),
     }
     assert_eq!(mem.snapshot(&scope).expect("snapshot").revision(), base, "nothing ran");
 
-    match bridge::execute_at_revision(&mem, &host_ctx(), replace("locale: ja\n"), base).expect("no failure") {
-        AtRevision::Done(done) => assert!(done.revision.is_some_and(|r| r.0 > base.0)),
-        AtRevision::Moved { actual } => panic!("the scope is at {base:?}, got {actual:?}"),
+    match port_exec::execute_at_version(&port, &id, &host_ctx(), replace("locale: ja\n"), base.0).expect("no failure") {
+        AtVersion::Done(done) => assert!(done.scope_version.is_some_and(|v| v.get() > base.0)),
+        AtVersion::Moved { actual } => panic!("the scope is at {base:?}, got {actual:?}"),
     }
 }
 

@@ -1365,6 +1365,23 @@ fn all_snapshots_land_before_any_canonical_write() {
     let _ = std::fs::remove_dir_all(&root);
 }
 
+#[test]
+fn a_local_archive_backs_up_the_spec_it_rewrites() {
+    // spec Scenario「本機封存照舊寫備份」：有 workspace 時，改寫的正式規格先備份成改寫前的內容。
+    let root = temp_root("local-backup");
+    let ws = Workspace { root: root.clone(), spec_dir_name: "openspec".to_string() };
+    let added_r2 = "## ADDED Requirements\n\n### Requirement: R2\n\nIt SHALL also work.\n\n#### Scenario: fine\n\n- **WHEN** used\n- **THEN** fine\n";
+    let store = merge_store(&[("auth", added_r2)], &[("auth", CANON_R1)]);
+    let change = crate::model::find_change(&store, "demo").unwrap();
+
+    let outcome = archive(&ws, &store, &change, &apply_opts(), None).expect("archive");
+
+    assert!(outcome.snapshot_created);
+    let backup = ws.snapshots_dir().join(&outcome.dated_name).join("specs").join("auth").join("spec.md");
+    assert_eq!(std::fs::read_to_string(&backup).expect("the backup"), CANON_R1);
+    let _ = std::fs::remove_dir_all(&root);
+}
+
 // --- MODIFIED 的 scenario 保全與明示刪除聲明（design「scenario superset check
 //     與明示刪除聲明」；spec archive-merge 同名需求）---
 

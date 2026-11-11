@@ -95,7 +95,7 @@ pub(crate) fn split_archived_stem(stem: &str) -> Option<(&str, &str)> {
 /// It is read whatever the change is called: a store can hold older archived
 /// changes without a date in their name. A new archived document goes through
 /// the contract's builder, which takes dated names only.
-fn archived_doc_key(name: &str, doc: &str) -> Option<DocKey> {
+pub(crate) fn archived_doc_key(name: &str, doc: &str) -> Option<DocKey> {
     let key = DocKey::new(format!("{}{name}/{doc}", keys::ARCHIVED_CHANGES)).ok()?;
     let same = matches!(
         parse_key(key.as_str()),
@@ -120,7 +120,7 @@ fn archived_discussion_key(created: &str, name: &str) -> anyhow::Result<DocKey> 
 }
 
 /// The capability of a `specs/<cap>/spec.md` path, exactly one level deep.
-fn spec_capability(path: &str) -> Option<&str> {
+pub(crate) fn spec_capability(path: &str) -> Option<&str> {
     let cap = path.strip_prefix("specs/")?.strip_suffix("/spec.md")?;
     (!cap.is_empty() && !cap.contains('/')).then_some(cap)
 }

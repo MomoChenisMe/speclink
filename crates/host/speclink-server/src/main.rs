@@ -263,7 +263,7 @@ fn run_server(args: RunArgs) -> ExitCode {
     }
 
     let events = EventHub::new(store.clone(), config.events.clone());
-    let state = AppState { store, identity, config: Arc::new(config), events };
+    let state = AppState::new(store, identity, Arc::new(config), events);
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,
         Err(e) => {

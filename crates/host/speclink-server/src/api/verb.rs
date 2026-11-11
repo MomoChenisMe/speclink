@@ -1,18 +1,21 @@
-//! Running one Engine verb over the store through the bridge, off the async
-//! runtime (design 決策二): the synchronous Host/Engine/Store path runs on the
-//! blocking pool, and the scope's ETag is read in the same hop so a command's
-//! response carries its post-commit state token.
+//! Running one Engine verb over the store port, off the async runtime (design
+//! 決策二): the synchronous Host/Engine path runs on the blocking pool, and the
+//! scope's ETag is read in the same hop so a command's response carries its
+//! post-commit state token.
 
 use crate::auth::Binding;
 use crate::error::ApiError;
 use crate::state::AppState;
 use speclink_core::command::Command;
-use speclink_host::bridge::{self, BridgeExecution};
-use speclink_store::{Document, DocumentId, ProjectId, RepoId, Scope, StoreError, TeamStore};
+use speclink_host::documents;
+use speclink_host::port_exec::{self, PortExecution};
+use speclink_host::teamstore_port;
+use speclink_store::{ProjectId, RepoId, Scope};
+use speclink_store_port::ScopeId;
 
 /// The outcome of running a verb plus the scope's current ETag.
 pub struct VerbResult {
-    pub execution: BridgeExecution,
+    pub execution: PortExecution,
     pub etag: String,
 }
 
@@ -24,10 +27,19 @@ pub fn scope_of(binding: &Binding) -> Scope {
     )
 }
 
-/// The scope's ETag: the project revision, which advances on every commit
-/// (design 決策五). Monotonic, so any change invalidates it.
-pub fn scope_token(store: &dyn TeamStore, scope: &Scope) -> Result<String, StoreError> {
-    Ok(format!("\"{}\"", store.snapshot(scope)?.revision().0))
+/// The store-port scope id a binding addresses: `<project>/<repo>`. A
+/// binding that cannot make one is a server bug.
+pub fn scope_id_of(binding: &Binding) -> Result<ScopeId, ApiError> {
+    Ok(teamstore_port::scope_id(&scope_of(binding))?)
+}
+
+/// Run `work` on the blocking pool.
+pub async fn blocking<T: Send + 'static>(
+    work: impl FnOnce() -> Result<T, ApiError> + Send + 'static,
+) -> Result<T, ApiError> {
+    tokio::task::spawn_blocking(work)
+        .await
+        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
 }
 
 /// Run `cmd` over the binding's scope and read the resulting ETag, on the
@@ -38,16 +50,15 @@ pub async fn run(
     binding: &Binding,
     cmd: Command,
 ) -> Result<VerbResult, ApiError> {
-    let store = state.store.clone();
+    let port = state.port.clone();
     let ctx = binding.execution_context();
-    let scope = scope_of(binding);
-    let result = tokio::task::spawn_blocking(move || -> Result<VerbResult, ApiError> {
-        let execution = bridge::execute(store.as_ref(), &ctx, cmd)?;
-        let etag = scope_token(store.as_ref(), &scope)?;
+    let scope = scope_id_of(binding)?;
+    let result = blocking(move || {
+        let execution = port_exec::execute(port.as_ref(), &scope, &ctx, cmd)?;
+        let etag = documents::etag(documents::scope_version(port.as_ref(), &scope)?);
         Ok(VerbResult { execution, etag })
     })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    .await;
     if result.is_ok() {
         state.events.notify(&scope_of(binding));
     }
@@ -55,51 +66,44 @@ pub async fn run(
 }
 
 /// The scope's ETag, read on the blocking pool. For query routes that do not
-/// run a verb but still declare the scope state token.
+/// run a verb but still declare the scope state token. The scope version
+/// changes on every commit (design 決策五), so any change invalidates it.
 pub async fn scope_etag(state: &AppState, binding: &Binding) -> Result<String, ApiError> {
-    let store = state.store.clone();
-    let scope = scope_of(binding);
-    tokio::task::spawn_blocking(move || scope_token(store.as_ref(), &scope).map_err(ApiError::from))
-        .await
-        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
+    let port = state.port.clone();
+    let scope = scope_id_of(binding)?;
+    blocking(move || Ok(documents::etag(documents::scope_version(port.as_ref(), &scope)?))).await
 }
 
-/// Run a write verb guarded by an `If-Match` precondition against `doc`, on the
-/// blocking pool. The precondition catches a stale client read (the doc moved
-/// since the version the client holds); the bridge's own CAS at commit catches
-/// a concurrent write during the request. Returns the doc's new version and the
-/// scope ETag. Both are read after the commit so the response reflects it.
+/// Run a write verb guarded by an `If-Match` precondition against one
+/// artifact of `change`, on the blocking pool. The precondition catches a
+/// stale client read (the document moved since the version the client holds);
+/// the commit's own version check catches a concurrent write during the
+/// request. Returns the document's new version and the scope ETag, both read
+/// after the commit so the response reflects it.
 pub async fn run_write_with_if_match(
     state: &AppState,
     binding: &Binding,
-    doc: DocumentId,
+    change: String,
+    artifact: String,
     if_match: u64,
     cmd: Command,
 ) -> Result<(u64, String), ApiError> {
-    let store = state.store.clone();
+    let port = state.port.clone();
     let ctx = binding.execution_context();
-    let scope = scope_of(binding);
-    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
-        let current = store
-            .snapshot(&scope)
-            .map_err(ApiError::from)?
-            .read(&doc)
-            .map_err(ApiError::from)?
-            .map(|d| d.revision.0);
-        check_if_match(if_match, current)?;
-        bridge::execute(store.as_ref(), &ctx, cmd).map_err(ApiError::from)?;
-        let version = store
-            .snapshot(&scope)
-            .map_err(ApiError::from)?
-            .read(&doc)
-            .map_err(ApiError::from)?
-            .map(|d| d.revision.0)
-            .unwrap_or(0);
-        let etag = scope_token(store.as_ref(), &scope)?;
-        Ok((version, etag))
+    let scope = scope_id_of(binding)?;
+    let result = blocking(move || {
+        let port = port.as_ref();
+        let version = || {
+            documents::document_version(port, &scope, &change, &artifact)
+                .map(|v| v.map(|v| v.get()))
+        };
+        check_if_match(if_match, version()?)?;
+        port_exec::execute(port, &scope, &ctx, cmd)?;
+        let written = version()?.unwrap_or(0);
+        let etag = documents::etag(documents::scope_version(port, &scope)?);
+        Ok((written, etag))
     })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    .await;
     if result.is_ok() {
         state.events.notify(&scope_of(binding));
     }
@@ -126,22 +130,4 @@ fn check_if_match(if_match: u64, current: Option<u64>) -> Result<(), ApiError> {
             "expected version {if_match}, actual {actual}"
         )))
     }
-}
-
-/// Read one document (content + revision) at the scope's current snapshot, on
-/// the blocking pool. Used to stamp an artifact read's version (so a later
-/// If-Match write can CAS against it) and to read the workflow config.
-pub async fn read_doc(
-    state: &AppState,
-    binding: &Binding,
-    doc: DocumentId,
-) -> Result<Option<Document>, ApiError> {
-    let store = state.store.clone();
-    let scope = scope_of(binding);
-    tokio::task::spawn_blocking(move || -> Result<Option<Document>, ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        snapshot.read(&doc).map_err(ApiError::from)
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?
 }

@@ -1,0 +1,829 @@
+//! The document reads and writes a remote client needs that are not Engine
+//! commands (design D1–D4).
+//!
+//! Every function takes a store port and a scope, uses only the three
+//! operations of the port, and returns the wire type with the scope version
+//! where an ETag needs it. Nothing here knows HTTP.
+//!
+//! Each function takes the scope version first and reads the content after
+//! it, so the version it reports is never newer than the content (D2). A
+//! function never exports a whole scope: it lists only the prefix it needs,
+//! and it reads a batch of documents in one call.
+
+use crate::port_view::{archived_doc_key, parse_key, spec_capability, KeyKind};
+use speclink_core::config::WorkflowConfig;
+use speclink_core::model::{ChangeMeta, META_READ_ORDER};
+use speclink_core::workspace::DEFAULT_SPEC_DIR;
+use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
+use speclink_protocol::query::{
+    ArchivedItem, ArchivedListResponse, BoardOrderResponse, ChangeEvidenceResponse, ConfigResponse,
+    SearchHit, SearchResponse, SpecDocumentResponse,
+};
+use speclink_store::content_digest;
+use speclink_store_port::{
+    keys, Actor, Commit, DocKey, Document, Event, Expected, KeyPrefix, Listing, Op, PortError,
+    ScopeId, StorePort, Timestamp, Version,
+};
+use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
+
+/// The largest board order a client can write. The document is a small rank
+/// map; anything near this is a client that does not work.
+pub const BOARD_ORDER_LIMIT: usize = 1024 * 1024;
+
+const SNIPPET_CONTEXT: usize = 30;
+
+/// Why a document read or write failed.
+#[derive(Debug)]
+pub enum DocumentsError {
+    /// The addressed document does not exist. The text names it.
+    NotFound(String),
+    /// The workflow config cannot be parsed.
+    InvalidConfig(String),
+    /// The board order is larger than [`BOARD_ORDER_LIMIT`].
+    TooLarge { limit: usize },
+    /// The scope is not at the version the caller expected.
+    ScopeMoved { expected: u64, actual: u64 },
+    /// A stored record cannot be parsed.
+    Corrupt(String),
+    /// The store failed.
+    Store(PortError),
+}
+
+impl fmt::Display for DocumentsError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DocumentsError::NotFound(message)
+            | DocumentsError::InvalidConfig(message)
+            | DocumentsError::Corrupt(message) => f.write_str(message),
+            DocumentsError::TooLarge { limit } => {
+                write!(f, "board order content exceeds the {limit}-byte cap")
+            }
+            DocumentsError::ScopeMoved { expected, actual } => {
+                write!(f, "expected scope revision {expected}, actual {actual}")
+            }
+            DocumentsError::Store(e) => write!(f, "{e}"),
+        }
+    }
+}
+
+impl std::error::Error for DocumentsError {}
+
+impl From<PortError> for DocumentsError {
+    fn from(e: PortError) -> Self {
+        DocumentsError::Store(e)
+    }
+}
+
+/// The ETag of a scope version: the number in double quotes.
+pub fn etag(version: Version) -> String {
+    format!("\"{}\"", version.get())
+}
+
+/// One of the contract's fixed prefixes (`keys::CHANGES` and the like).
+fn prefix(fixed: &'static str) -> KeyPrefix {
+    KeyPrefix::new(fixed).expect("a fixed prefix of the contract")
+}
+
+/// A prefix that lists exactly one document, for the scope version that
+/// comes with every list. A document key follows every rule of a prefix.
+fn just(key: &DocKey) -> KeyPrefix {
+    KeyPrefix::new(key.as_str()).expect("a document key is a prefix")
+}
+
+fn read_one(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    key: DocKey,
+) -> Result<Option<Document>, PortError> {
+    Ok(port.read(scope, &[key])?.into_iter().next().flatten())
+}
+
+/// The documents of `keys`, by key, in one read. No read for no key.
+fn read_all(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    keys: Vec<DocKey>,
+) -> Result<BTreeMap<DocKey, Document>, PortError> {
+    if keys.is_empty() {
+        return Ok(BTreeMap::new());
+    }
+    let docs = port.read(scope, &keys)?;
+    Ok(keys
+        .into_iter()
+        .zip(docs)
+        .filter_map(|(key, doc)| Some((key, doc?)))
+        .collect())
+}
+
+/// The key of a document of an active change, or `None` when the names
+/// cannot make one that reads back as that same document.
+fn change_artifact_key(change: &str, artifact: &str) -> Option<DocKey> {
+    let key = keys::change_artifact(change, artifact).ok()?;
+    let same = matches!(
+        parse_key(key.as_str()),
+        Some(KeyKind::ChangeArtifact { change: c, artifact: a }) if c == change && a == artifact
+    );
+    same.then_some(key)
+}
+
+/// `changes/<change>/<under>`, or `None` when the name is not a change name.
+/// A name from a request goes through the contract's builder first.
+fn change_prefix(change: &str, under: &str) -> Option<KeyPrefix> {
+    keys::change_meta(change).ok()?;
+    KeyPrefix::new(format!("{}{change}/{under}", keys::CHANGES)).ok()
+}
+
+/// `archive/changes/<dated_name>/`, or `None` when the name cannot be an
+/// archived change's: it must make a key that reads back as that change's.
+fn archived_change_prefix(dated_name: &str) -> Option<KeyPrefix> {
+    archived_doc_key(dated_name, "x")?;
+    KeyPrefix::new(format!("{}{dated_name}/", keys::ARCHIVED_CHANGES)).ok()
+}
+
+// --- the scope version ---
+
+/// The scope's current version (the ETag and the polling token).
+pub fn scope_version(port: &dyn StorePort, scope: &ScopeId) -> Result<Version, DocumentsError> {
+    Ok(crate::port_exec::scope_version(port, scope)?)
+}
+
+// --- the workflow config ---
+
+/// The workflow config's text, its schema name and the scope version. A
+/// scope with no config answers with no text and the default schema.
+pub fn config_document(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+) -> Result<ConfigResponse, DocumentsError> {
+    let version = scope_version(port, scope)?;
+    let content = read_one(port, scope, keys::config())?.map(|doc| doc.content);
+    let schema = WorkflowConfig::from_text(content.as_deref())
+        .map_err(|e| DocumentsError::InvalidConfig(e.to_string()))?
+        .schema_name();
+    Ok(ConfigResponse {
+        schema,
+        content,
+        revision: version.get(),
+    })
+}
+
+// --- the board order ---
+
+/// The board order's text, or none, and the scope version.
+pub fn board_order(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+) -> Result<BoardOrderResponse, DocumentsError> {
+    let key = keys::board_order();
+    let version = port.list(scope, &just(&key))?.version;
+    let content = read_one(port, scope, key)?.map(|doc| doc.content);
+    Ok(BoardOrderResponse {
+        content,
+        revision: version.get(),
+    })
+}
+
+/// Replace the board order (design D3) when the scope is at `expected`, and
+/// return the new scope version.
+///
+/// Every refusal comes before the commit, so a refused write changes
+/// nothing: content over [`BOARD_ORDER_LIMIT`] reaches no store call, and a
+/// scope at another version commits nothing. The write is one commit: the
+/// document, expected at its listed version or absent, and one
+/// `board-order-updated` event.
+pub fn put_board_order(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    actor: &Actor,
+    content: String,
+    expected: u64,
+    at: Timestamp,
+) -> Result<Version, DocumentsError> {
+    if content.len() > BOARD_ORDER_LIMIT {
+        return Err(DocumentsError::TooLarge {
+            limit: BOARD_ORDER_LIMIT,
+        });
+    }
+    let key = keys::board_order();
+    let listing = port.list(scope, &just(&key))?;
+    if listing.version.get() != expected {
+        return Err(DocumentsError::ScopeMoved {
+            expected,
+            actual: listing.version.get(),
+        });
+    }
+    let current = listing
+        .entries
+        .iter()
+        .find(|entry| entry.key == key)
+        .map(|entry| entry.version);
+    let invalid = |e: speclink_store_port::InvalidValue| {
+        DocumentsError::Store(PortError::Backend {
+            message: e.to_string(),
+        })
+    };
+    let event = Event::new("board-order-updated", serde_json::json!({})).map_err(invalid)?;
+    let commit = Commit::new(
+        actor.clone(),
+        "put-board-order",
+        at,
+        vec![Op::Put {
+            key,
+            content,
+            expected: current.map_or(Expected::Absent, Expected::At),
+        }],
+        vec![event],
+    )
+    .map_err(invalid)?;
+    Ok(port.commit(scope, &commit)?)
+}
+
+// --- evidence ---
+
+/// The stored evidence record, as far as this read goes: the v2 entry list.
+/// The v1 file-list channel and the version marker are not part of the
+/// response — v1 entries carry no actor or time and this read never makes
+/// them up; a v1-only record reads as an empty set here while the Engine's
+/// own readers still see its files. The field shape mirrors
+/// `speclink_core::tasks::EvidenceEntry`; a test below pins the two.
+#[derive(serde::Deserialize)]
+struct StoredEvidence {
+    #[serde(default)]
+    entries: Vec<speclink_protocol::query::EvidenceEntry>,
+}
+
+/// A change's recorded evidence and the scope version. A change that never
+/// recorded any, and a name that is no change, answer with an empty set.
+///
+/// A record that does not parse is corrupt, not an empty set: louder than
+/// the Engine's own lenient read on purpose, because answering "no
+/// evidence" over a corrupt record would be wrong.
+pub fn change_evidence(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    change: &str,
+) -> Result<(ChangeEvidenceResponse, Version), DocumentsError> {
+    let Ok(key) = keys::change_evidence(change) else {
+        let version = scope_version(port, scope)?;
+        return Ok((
+            ChangeEvidenceResponse {
+                entries: Vec::new(),
+            },
+            version,
+        ));
+    };
+    let version = port.list(scope, &just(&key))?.version;
+    let entries = match read_one(port, scope, key)? {
+        Some(doc) => {
+            serde_json::from_str::<StoredEvidence>(&doc.content)
+                .map_err(|e| {
+                    DocumentsError::Corrupt(format!("evidence record is unreadable: {e}"))
+                })?
+                .entries
+        }
+        None => Vec::new(),
+    };
+    Ok((ChangeEvidenceResponse { entries }, version))
+}
+
+// --- canonical specs and the archive ---
+
+/// One canonical spec and the scope version.
+pub fn spec_document(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    capability: &str,
+) -> Result<(SpecDocumentResponse, Version), DocumentsError> {
+    let not_found = || DocumentsError::NotFound(format!("Spec '{capability}' not found."));
+    let key = keys::spec(capability).map_err(|_| not_found())?;
+    let version = port.list(scope, &just(&key))?.version;
+    let content = read_one(port, scope, key)?.ok_or_else(not_found)?.content;
+    Ok((SpecDocumentResponse { content }, version))
+}
+
+/// Every archived change, newest name first, with its task counts, spec
+/// count and creator — one list of the archive and one read of every
+/// change's task list and data file.
+pub fn archived_list(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+) -> Result<(ArchivedListResponse, Version), DocumentsError> {
+    let listing = port.list(scope, &prefix(keys::ARCHIVED_CHANGES))?;
+    // Each archived change and the paths of its documents.
+    let mut changes: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
+    let mut wanted = Vec::new();
+    for entry in &listing.entries {
+        if let Some(KeyKind::ArchivedChangeDoc { dated_name, doc }) = parse_key(entry.key.as_str())
+        {
+            changes.entry(dated_name).or_default().push(doc);
+            if doc == "tasks.md" || META_READ_ORDER.contains(&doc) {
+                wanted.push(entry.key.clone());
+            }
+        }
+    }
+    let docs = read_all(port, scope, wanted)?;
+    let text = |dated_name: &str, doc: &str| {
+        archived_doc_key(dated_name, doc)
+            .and_then(|key| docs.get(&key))
+            .map(|doc| doc.content.as_str())
+    };
+
+    let archived = changes
+        .iter()
+        .rev()
+        .map(|(dated_name, paths)| {
+            let (date, name) = split_dated_name(dated_name);
+            let tasks = text(dated_name, "tasks.md").map(|text| {
+                let parsed = speclink_core::tasks::parse(text);
+                let (total, done, _) = speclink_core::tasks::progress(&parsed);
+                (total, done)
+            });
+            let meta = META_READ_ORDER
+                .into_iter()
+                .find_map(|doc| text(dated_name, doc));
+            let meta = ChangeMeta::from_text(meta).unwrap_or_default();
+            ArchivedItem {
+                dated_name: dated_name.to_string(),
+                date: date.to_string(),
+                name: name.to_string(),
+                tasks_total: tasks.map(|counts| counts.0),
+                tasks_done: tasks.map(|counts| counts.1),
+                spec_count: paths
+                    .iter()
+                    .filter(|p| spec_capability(p).is_some())
+                    .count(),
+                from_discussions: meta.from_discussions(),
+                created_by: meta.created_by,
+            }
+        })
+        .collect();
+    Ok((ArchivedListResponse { archived }, listing.version))
+}
+
+/// One document of an archived change and the scope version.
+pub fn archived_artifact(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    dated_name: &str,
+    artifact: &str,
+) -> Result<(SpecDocumentResponse, Version), DocumentsError> {
+    let not_found = || {
+        DocumentsError::NotFound(format!(
+            "Archived artifact '{artifact}' not found in '{dated_name}'."
+        ))
+    };
+    let key = archived_doc_key(dated_name, artifact).ok_or_else(not_found)?;
+    let version = port.list(scope, &just(&key))?.version;
+    let content = read_one(port, scope, key)?.ok_or_else(not_found)?.content;
+    Ok((SpecDocumentResponse { content }, version))
+}
+
+/// The capabilities an archived change carries a spec for, and the scope
+/// version. An archived change that does not exist has none.
+pub fn archived_capabilities(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    dated_name: &str,
+) -> Result<(Vec<String>, Version), DocumentsError> {
+    // A name that cannot be an archived change's names none.
+    let Some(under) = archived_change_prefix(dated_name) else {
+        return Ok((Vec::new(), scope_version(port, scope)?));
+    };
+    let listing = port.list(scope, &under)?;
+    let capabilities = listing
+        .entries
+        .iter()
+        .filter_map(|entry| match parse_key(entry.key.as_str()) {
+            Some(KeyKind::ArchivedChangeDoc {
+                dated_name: name,
+                doc,
+            }) if name == dated_name => spec_capability(doc).map(str::to_string),
+            _ => None,
+        })
+        .collect();
+    Ok((capabilities, listing.version))
+}
+
+// --- what the change list and one change add ---
+
+/// The parsed data file of each named change, in one read. A name with no
+/// data file, or one that does not parse, has no entry: the Engine already
+/// reports a broken data file, and the list must not fail on it.
+pub fn change_extras(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    names: &[String],
+) -> Result<BTreeMap<String, ChangeMeta>, DocumentsError> {
+    let named: Vec<(&String, DocKey)> = names
+        .iter()
+        .filter_map(|name| Some((name, keys::change_meta(name).ok()?)))
+        .collect();
+    let docs = read_all(
+        port,
+        scope,
+        named.iter().map(|(_, key)| key.clone()).collect(),
+    )?;
+    Ok(named
+        .into_iter()
+        .filter_map(|(name, key)| {
+            let meta = ChangeMeta::from_text(Some(&docs.get(&key)?.content)).ok()?;
+            Some((name.clone(), meta))
+        })
+        .collect())
+}
+
+/// The capabilities a change carries a delta spec for, sorted: one list of
+/// `changes/<change>/specs/`, and no read.
+pub fn change_delta_capabilities(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    change: &str,
+) -> Result<Vec<String>, DocumentsError> {
+    let Some(under) = change_prefix(change, "specs/") else {
+        return Ok(Vec::new());
+    };
+    let listing = port.list(scope, &under)?;
+    let mut capabilities: Vec<String> = listing
+        .entries
+        .iter()
+        .filter_map(|entry| match parse_key(entry.key.as_str()) {
+            Some(KeyKind::ChangeArtifact {
+                change: c,
+                artifact,
+            }) if c == change => spec_capability(artifact).map(str::to_string),
+            _ => None,
+        })
+        .collect();
+    capabilities.sort();
+    Ok(capabilities)
+}
+
+/// The version of one document of an active change, or `None` when it does
+/// not exist: what a write's `If-Match` is compared against.
+pub fn document_version(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    change: &str,
+    artifact: &str,
+) -> Result<Option<Version>, DocumentsError> {
+    let Some(key) = change_artifact_key(change, artifact) else {
+        return Ok(None);
+    };
+    Ok(read_one(port, scope, key)?.map(|doc| doc.version))
+}
+
+// --- search ---
+
+/// The desktop's search over active changes and live discussions: a fixed
+/// artifact order, one hit for each change, char-safe snippets. Two lists
+/// and one read; an empty query only takes the scope version.
+pub fn search(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    query: &str,
+) -> Result<(SearchResponse, Version), DocumentsError> {
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok((
+            SearchResponse { hits: Vec::new() },
+            scope_version(port, scope)?,
+        ));
+    }
+    let changes = port.list(scope, &prefix(keys::CHANGES))?;
+    let discussions = port.list(scope, &prefix(keys::DISCUSSIONS))?;
+
+    // Each change with a data file, and the artifacts it has.
+    #[derive(Default)]
+    struct Card<'k> {
+        has_meta: bool,
+        artifacts: BTreeSet<&'k str>,
+        deltas: Vec<&'k str>,
+    }
+    let mut cards: BTreeMap<&str, Card> = BTreeMap::new();
+    for entry in &changes.entries {
+        match parse_key(entry.key.as_str()) {
+            Some(KeyKind::ChangeMeta { change }) => {
+                cards.entry(change).or_default().has_meta = true
+            }
+            Some(KeyKind::ChangeArtifact { change, artifact }) => {
+                let card = cards.entry(change).or_default();
+                card.artifacts.insert(artifact);
+                if let Some(capability) = spec_capability(artifact) {
+                    card.deltas.push(capability);
+                }
+            }
+            _ => {}
+        }
+    }
+    let order: Vec<(&str, Vec<String>)> = cards
+        .iter()
+        .filter(|(_, card)| card.has_meta)
+        .map(|(change, card)| {
+            let artifacts = ["proposal.md", "design.md", "tasks.md"]
+                .into_iter()
+                .map(str::to_string)
+                .chain(card.deltas.iter().map(|cap| format!("specs/{cap}/spec.md")))
+                .filter(|artifact| card.artifacts.contains(artifact.as_str()))
+                .collect();
+            (*change, artifacts)
+        })
+        .collect();
+    let slugs: BTreeSet<&str> = discussions
+        .entries
+        .iter()
+        .filter_map(|entry| match parse_key(entry.key.as_str()) {
+            Some(KeyKind::Discussion { slug }) => Some(slug),
+            _ => None,
+        })
+        .collect();
+
+    let mut wanted: Vec<DocKey> = order
+        .iter()
+        .flat_map(|(change, artifacts)| {
+            artifacts
+                .iter()
+                .filter_map(|a| change_artifact_key(change, a))
+        })
+        .collect();
+    wanted.extend(slugs.iter().filter_map(|slug| keys::discussion(slug).ok()));
+    let docs = read_all(port, scope, wanted)?;
+
+    let mut hits = Vec::new();
+    for (change, artifacts) in &order {
+        for artifact in artifacts {
+            let Some(doc) = change_artifact_key(change, artifact).and_then(|key| docs.get(&key))
+            else {
+                continue;
+            };
+            if let Some(snippet) = find_snippet(&doc.content, q) {
+                hits.push(SearchHit {
+                    kind: "change".to_string(),
+                    id: change.to_string(),
+                    artifact: artifact.clone(),
+                    snippet,
+                });
+                break;
+            }
+        }
+    }
+    for slug in slugs {
+        let Some(doc) = keys::discussion(slug).ok().and_then(|key| docs.get(&key)) else {
+            continue;
+        };
+        if let Some(snippet) = find_snippet(&doc.content, q) {
+            hits.push(SearchHit {
+                kind: "discussion".to_string(),
+                id: slug.to_string(),
+                artifact: format!("{slug}.md"),
+                snippet,
+            });
+        }
+    }
+    Ok((SearchResponse { hits }, changes.version))
+}
+
+// --- the context snapshot ---
+
+/// What [`context_snapshot`] answers.
+#[derive(Debug)]
+pub enum ContextOutcome {
+    /// The caller's `If-None-Match` is the current scope version.
+    NotModified(Version),
+    Snapshot(ContextSnapshot),
+}
+
+/// The projection path of the workflow config: the source of the policy
+/// revision.
+fn config_path() -> String {
+    format!("{DEFAULT_SPEC_DIR}/config.yaml")
+}
+
+/// The projection path (under `speclink/`) of a document when the request
+/// selects it, or `None` to leave it out. A change narrows to its own
+/// artifacts, every canonical spec, the config and the vocabulary; no change
+/// is the full mirror, with every change's artifacts and the live
+/// discussions too. Change data files, evidence and the archive are never
+/// part of the mirror.
+fn select_path(kind: KeyKind<'_>, change: Option<&str>) -> Option<String> {
+    match kind {
+        KeyKind::ChangeArtifact {
+            change: c,
+            artifact,
+        } => change
+            .map_or(true, |n| n == c)
+            .then(|| format!("{DEFAULT_SPEC_DIR}/changes/{c}/{artifact}")),
+        KeyKind::Spec { capability } => {
+            Some(format!("{DEFAULT_SPEC_DIR}/specs/{capability}/spec.md"))
+        }
+        KeyKind::Config => Some(config_path()),
+        KeyKind::Language => Some(format!("{DEFAULT_SPEC_DIR}/LANGUAGE.md")),
+        KeyKind::Discussion { slug } if change.is_none() => {
+            Some(format!("{DEFAULT_SPEC_DIR}/discussions/{slug}.md"))
+        }
+        _ => None,
+    }
+}
+
+/// The context snapshot of a scope (design D4). The snapshot id is the scope
+/// version's ETag, so an `If-None-Match` that equals it answers "not
+/// modified" after one list and no read.
+pub fn context_snapshot(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    request: &ContextSnapshotRequest,
+    if_none_match: Option<&str>,
+) -> Result<ContextOutcome, DocumentsError> {
+    let changes = port.list(scope, &prefix(keys::CHANGES))?;
+    let snapshot_id = etag(changes.version);
+    if if_none_match == Some(snapshot_id.as_str()) {
+        return Ok(ContextOutcome::NotModified(changes.version));
+    }
+    let change = request.change.as_deref();
+    // A change with no data file and no artifact does not exist.
+    if let Some(name) = change {
+        let exists = changes.entries.iter().any(|entry| {
+            matches!(
+                parse_key(entry.key.as_str()),
+                Some(KeyKind::ChangeMeta { change: c } | KeyKind::ChangeArtifact { change: c, .. })
+                    if c == name
+            )
+        });
+        if !exists {
+            return Err(DocumentsError::NotFound(format!(
+                "change '{name}' not found"
+            )));
+        }
+    }
+    let specs = port.list(scope, &prefix(keys::SPECS))?;
+    let discussions = match change {
+        None => Some(port.list(scope, &prefix(keys::DISCUSSIONS))?),
+        Some(_) => None,
+    };
+
+    let listed = [Some(&changes), Some(&specs), discussions.as_ref()]
+        .into_iter()
+        .flatten()
+        .flat_map(|listing: &Listing| listing.entries.iter().map(|entry| entry.key.clone()));
+    let mut selected: Vec<(DocKey, String)> = listed
+        .chain([keys::config(), keys::language()])
+        .filter_map(|key| {
+            let path = select_path(parse_key(key.as_str())?, change)?;
+            Some((key, path))
+        })
+        .collect();
+    let docs = port.read(
+        scope,
+        &selected
+            .iter()
+            .map(|(key, _)| key.clone())
+            .collect::<Vec<_>>(),
+    )?;
+
+    // A document that was listed but is gone by the read is left out.
+    let mut documents: Vec<ContextDocument> = selected
+        .drain(..)
+        .zip(docs)
+        .filter_map(|((_, path), doc)| {
+            let doc = doc?;
+            Some(ContextDocument {
+                path,
+                digest: content_digest(&doc.content),
+                content: doc.content,
+                revision: Some(doc.version.get()),
+            })
+        })
+        .collect();
+    documents.sort_by(|a, b| a.path.cmp(&b.path));
+
+    let policy_revision = documents
+        .iter()
+        .find(|d| d.path == config_path())
+        .and_then(|d| d.revision);
+    let combined: Vec<&str> = documents.iter().map(|d| d.digest.as_str()).collect();
+    let digest = content_digest(&combined.join("\n"));
+    Ok(ContextOutcome::Snapshot(ContextSnapshot {
+        snapshot_id,
+        policy_revision,
+        digest,
+        documents,
+    }))
+}
+
+// --- text helpers ---
+
+fn split_dated_name(dated_name: &str) -> (&str, &str) {
+    let bytes = dated_name.as_bytes();
+    if bytes.len() > 11
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b'-')
+        && dated_name.is_char_boundary(10)
+        && dated_name.is_char_boundary(11)
+    {
+        (&dated_name[..10], &dated_name[11..])
+    } else {
+        ("", dated_name)
+    }
+}
+
+fn find_snippet(text: &str, query: &str) -> Option<String> {
+    let haystack: Vec<char> = text.chars().collect();
+    let folded_haystack: Vec<char> = haystack.iter().map(lower_first).collect();
+    let needle: Vec<char> = query
+        .chars()
+        .map(|character| lower_first(&character))
+        .collect();
+    if needle.is_empty() || folded_haystack.len() < needle.len() {
+        return None;
+    }
+    let start = (0..=folded_haystack.len() - needle.len())
+        .find(|&index| folded_haystack[index..index + needle.len()] == needle[..])?;
+    let end = start + needle.len();
+    let from = start.saturating_sub(SNIPPET_CONTEXT);
+    let to = (end + SNIPPET_CONTEXT).min(haystack.len());
+    let mut snippet = String::new();
+    if from > 0 {
+        snippet.push('…');
+    }
+    snippet.extend(haystack[from..to].iter().map(|character| match character {
+        '\n' | '\r' => ' ',
+        character => *character,
+    }));
+    if to < haystack.len() {
+        snippet.push('…');
+    }
+    Some(snippet)
+}
+
+fn lower_first(character: &char) -> char {
+    character.to_lowercase().next().unwrap_or(*character)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dated_names_and_capabilities_parse_fail_closed() {
+        assert_eq!(split_dated_name("2026-07-20-demo"), ("2026-07-20", "demo"));
+        assert_eq!(split_dated_name("demo"), ("", "demo"));
+        assert_eq!(spec_capability("specs/auth/spec.md"), Some("auth"));
+        assert!(spec_capability("specs/nested/auth/spec.md").is_none());
+    }
+
+    #[test]
+    fn a_snippet_follows_the_desktop_char_level_rules() {
+        let text = format!("{}MagicToken{}", "前".repeat(80), "後".repeat(80));
+        let snippet = find_snippet(&text, "magictoken").expect("case-insensitive hit");
+        assert!(snippet.starts_with('…') && snippet.ends_with('…'));
+        assert!(snippet.contains("MagicToken"));
+        assert!(snippet.chars().count() <= 30 + 10 + 30 + 2);
+    }
+
+    /// 記錄形狀的三份宣告（core 的 EvidenceEntry、protocol 的 wire DTO、此處的
+    /// StoredEvidence 讀取面）以這條測試釘住同步：core 寫出的 entry 必須被 wire
+    /// 面逐欄讀回。core 加欄位而 wire 沒跟上時，這裡最先紅。
+    #[test]
+    fn evidence_wire_shape_matches_the_engine_record() {
+        let record = speclink_core::tasks::TouchedRecord {
+            version: Some(2),
+            change: "demo".to_string(),
+            touched: Vec::new(),
+            entries: vec![speclink_core::tasks::EvidenceEntry {
+                task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
+                task_desc: "1.1 First".to_string(),
+                actor: Some("Tester <t@example.com>".to_string()),
+                repo: Some("backend".to_string()),
+                head_commit: Some("0123456789012345678901234567890123456789".to_string()),
+                touched_files: vec!["src/app.rs".to_string()],
+                recorded_at: "2026-08-23T00:00:00Z".to_string(),
+            }],
+        };
+        let text = serde_json::to_string(&record).expect("engine record serializes");
+
+        let parsed: StoredEvidence = serde_json::from_str(&text).expect("wire face reads it");
+        assert_eq!(parsed.entries.len(), 1);
+        let e = &parsed.entries[0];
+        assert_eq!(e.task_id, "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
+        assert_eq!(e.task_desc, "1.1 First");
+        assert_eq!(e.actor.as_deref(), Some("Tester <t@example.com>"));
+        assert_eq!(e.repo.as_deref(), Some("backend"));
+        assert_eq!(
+            e.head_commit.as_deref(),
+            Some("0123456789012345678901234567890123456789")
+        );
+        assert_eq!(e.touched_files, vec!["src/app.rs".to_string()]);
+        assert_eq!(e.recorded_at, "2026-08-23T00:00:00Z");
+    }
+
+    /// v1-only 記錄（無 entries 欄）讀成空集合，不偽造 actor 或 recordedAt。
+    #[test]
+    fn a_v1_only_record_reads_as_an_empty_entry_set() {
+        let parsed: StoredEvidence = serde_json::from_str(
+            r#"{"change":"demo","touched":[{"task_id":"1","task_desc":"1.1 a","files":["src/a.rs"]}]}"#,
+        )
+        .expect("v1 shape still parses");
+        assert!(parsed.entries.is_empty());
+    }
+}

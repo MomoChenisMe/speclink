@@ -33,12 +33,12 @@ fn seeded_base() -> (String, String, String) {
     uow.create(DocumentId::CanonicalSpec { capability: "user-auth".into() }, "# user-auth\n");
     store.commit(uow, Vec::new()).expect("seed commit");
 
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, user) = common::seed_pat(&state.identity, &["demo"]);
     (common::start(state), pat, user)
@@ -129,12 +129,12 @@ fn list_carries_started_at_only_for_started_changes() {
     );
     uow.create(DocumentId::ChangeMeta { change: "unstarted".into() }, "schema: spec-driven\n");
     store.commit(uow, Vec::new()).expect("seed commit");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -199,12 +199,12 @@ fn change_status_carries_the_show_composition_meta_fields() {
     // created 缺席的 change：成對規則使 created 不出現。
     uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
     store.commit(uow, Vec::new()).expect("seed commit");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -261,12 +261,12 @@ fn change_status_carries_the_attribution_meta_fields() {
     );
     uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
     store.commit(uow, Vec::new()).expect("seed commit");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -324,12 +324,12 @@ fn list_carries_the_creator_and_discussion_fields() {
         "schema: [unterminated\n",
     );
     store.commit(uow, Vec::new()).expect("seed commit");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -387,12 +387,12 @@ fn list_carries_delta_capabilities() {
     );
     uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
     store.commit(uow, Vec::new()).expect("seed commit");
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(store),
-        identity: common::empty_identity(),
-        config: Arc::new(common::demo_config()),
-    };
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::seed_demo_registry(&*state.identity);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
@@ -423,4 +423,59 @@ fn a_missing_change_is_the_404_not_found_triple() {
         Some("not_found"),
         "the error is the not_found triple: {err:?}"
     );
+}
+
+#[test]
+fn the_evidence_route_reads_the_record_and_reports_a_broken_one() {
+    // 直接打 evidence 路由：正常的記錄、不存在的變更、壞的內容。
+    let store = MemoryStore::new();
+    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
+    let mut uow = store
+        .begin_unit_of_work(
+            &scope,
+            CommandContext { command: "seed".into(), actor: "seed".into() },
+        )
+        .expect("begin uow");
+    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
+    uow.create(
+        DocumentId::ChangeEvidence { change: "demo".into() },
+        r#"{"version":2,"change":"demo","touched":[],"entries":[{"taskId":"tsk_01","taskDesc":"1.1 First","actor":"Alice","touchedFiles":["src/app.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#,
+    );
+    uow.create(DocumentId::ChangeMeta { change: "broken".into() }, "schema: spec-driven\n");
+    uow.create(DocumentId::ChangeEvidence { change: "broken".into() }, "not json");
+    store.commit(uow, Vec::new()).expect("seed commit");
+    let state = AppState::new(
+        Arc::new(store),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
+    common::seed_demo_registry(&*state.identity);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let client = client(&base, &pat);
+
+    let evidence = client.change_evidence("demo").expect("the record");
+    assert_eq!(evidence.entries.len(), 1);
+    assert_eq!(evidence.entries[0].task_id, "tsk_01");
+    assert_eq!(evidence.entries[0].touched_files, ["src/app.rs"]);
+
+    let none = client.change_evidence("ghost").expect("no record is an empty set");
+    assert!(none.entries.is_empty());
+
+    // The typed client hides a 500's text; the raw response carries it.
+    let err = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/changes/broken/evidence"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .call()
+        .expect_err("a broken record is an error");
+    let ureq::Error::Status(status, response) = err else {
+        panic!("expected an error status, got {err:?}");
+    };
+    assert_eq!(status, 500);
+    let body: serde_json::Value = response.into_json().expect("the error envelope");
+    assert_eq!(body["reason"], "internal", "{body}");
+    let message = body["message"].as_str().unwrap_or_default();
+    assert!(message.starts_with("evidence record is unreadable: "), "{body}");
 }

@@ -75,7 +75,8 @@
 - 取範圍版本用「列出」的回傳值。函式需要的列出剛好是它要的前綴時，同一次呼叫兼作兩用；否則多列一次窄的前綴。
 - 鍵一律用 `speclink_store_port::keys` 的函式建立；把鍵解析回名稱用 `port_view` 既有的 `parse_key`。
 - 解析、篩選與組合的邏輯原樣從 server 搬來：已封存清單的 metadata 讀取順序與任務進度、搜尋的比對與摘要片段、Context 快照選哪些文件與路徑怎麼組、evidence 的解析（解析失敗仍然是內部錯誤）。搬的時候不改行為。
-- `DocumentsError` 有四種：找不到（帶訊息）、無效的設定（流程設定解析失敗）、儲存失敗（`PortError`）、內容損壞（evidence 無法解析）。server 把它們對到今天各路由回的狀態碼：404、422、依 `PortError` 既有的對映、500。
+- `DocumentsError` 有六種：找不到（帶訊息）、無效的設定（流程設定解析失敗）、內容過大（看板順序超過上限）、範圍已移動（看板順序的預期範圍版本不符）、內容損壞（evidence 無法解析）、儲存失敗（`PortError`）。server 把它們對到今天各路由回的狀態碼：404、422、413、409 `revision_conflict`、500、依 `PortError` 既有的對映。錯誤訊息的文字由 `documents` 組出，和今天各路由的訊息相同。（實作時補上：D3 的兩種拒絕需要自己的種類，原本寫的四種不夠。）
+- `documents::etag(version)` 把範圍版本組成 ETag（數字加上雙引號），server 全部改用它。
 
 已封存清單今天為了每個項目的規格數，是從整包匯出的鍵數出來的；改成從同一次列出的鍵數。
 
@@ -133,6 +134,18 @@
 
 既有的 `bridge::execute` 與它的型別別名留著：Host 的雙路徑測試還在用它，移除 TeamStore 是最後階段的變更。它改成內部建一個不綁範圍的轉接，行為不變。
 
+**實作時補上的一塊：在預期的範圍版本才執行。** 流程設定的寫入（`bridge::execute_at_revision`）原本靠「比對與命令的讀取用同一次載入」保證命令不會讀到比對之後別人寫的內容再蓋掉它。轉接改成 revision 變了就重新載入之後，這個保證不再成立：比對在 N，命令可能讀到 N+1 的內容並以 N+1 的版本提交成功。所以新增 `port_exec::execute_at_version(port, scope, ctx, cmd, expected)`，在任何儲存接口上成立：
+
+1. 先取範圍版本，不等於 `expected` → 回「已移動」，命令不執行。
+2. 命令照常執行，但提交前再取一次範圍版本；不等於 `expected` → 不提交，回「已移動」。
+3. 命令沒有東西可提交時，結束前也再取一次；不等於 `expected` → 回「已移動」。
+
+第 2、3 步看到版本沒變，表示命令讀取的期間沒有任何提交落地，讀到的都是呼叫端看到的那一版。第 2 步與提交之間落地的寫入，由提交本身的版本比對擋下，和改寫前相同。取範圍版本用 `port_exec::scope_version`（列出 `config.yaml` 這個最窄的前綴）；`documents::scope_version` 也用它。
+
+流程設定的寫入路由改成在共用的轉接上呼叫它，比對、執行、回傳版本的邏輯不變。`bridge::execute_at_revision` 與 `AtRevision` 因此沒有使用者，一併移除；Host 雙路徑測試裡對它的那一條改成在 TeamStore 的轉接上直接測 `execute_at_version`。
+
+和改寫前相比只有一個差別：比對之後、提交之前有人提交了**任何**文件時，改寫後回 409；改寫前只有那份提交改到流程設定才會 409（改到別的文件時照樣成功）。這只發生在兩次請求幾乎同時的空窗，用戶端照既有流程重讀後再送。
+
 - **否決：每個請求建一個轉接** — 輪詢會變成每次匯出整個範圍。
 - **否決：為「只取版本」在儲存接口加第四個操作** — 契約已定為三個；真正的儲存用很窄的前綴列出就很便宜，慢的只是這個過渡用的轉接。
 - **否決：依時間淘汰已載入的內容** — 正確性由 revision 比對保證，時間只是多一個要測的維度。
@@ -150,6 +163,8 @@
 
 判斷用的是「執行情境有沒有 workspace」，不是儲存的種類：Node SDK 的 fs 形式有 workspace，照舊寫備份。
 
+實作時的做法：引擎的命令層在執行情境沒有 workspace 時，交給封存的是 root 為空的 workspace；封存裡既有的兩個守門（linked worktree、章失效的內容錨）已經用「root 是空的」判斷沒有 workspace。封存的提交階段沿用同一個判斷，所以 `command/mod.rs` 不用改。另外一個本機效果也一併跳過：移除舊格式的 touched 記錄檔（`legacy_touched_file`），它和開工標記一樣是本機檔案。提交階段的錯誤訊息只在真的寫了備份時才指出備份位置；有 workspace 時訊息不變。
+
 實作前先查 CLI 的遠端封存輸出與 Speclink Desktop 的封存結果畫面怎麼用 `snapshotCreated`。它只是多印一行時，遠端少那一行屬於刻意的變更，更新對應的測試期望值並補進 proposal 的相容性影響；它影響流程判斷時停下來回報。
 
 ## Implementation Contract
@@ -163,7 +178,10 @@
 
 **介面與資料形狀**
 
-- `speclink_host::documents` 的函式（D1 的表）與 `DocumentsError`。
+- `speclink_host::documents` 的函式（D1 的表）、`DocumentsError`、`etag`、`BOARD_ORDER_LIMIT`。
+- `speclink_host::port_exec::scope_version(&dyn StorePort, &ScopeId)` 與 `execute_at_version(port, scope, ctx, cmd, expected: u64) -> AtVersion`（D6 的實作補充）。
+- `speclink_host::teamstore_port::scope_id(&Scope)`：TeamStore 的範圍轉成範圍識別。
+- 示範 server 的 `AppState::new(store, identity, config, events)`：建立時一併建出共用的轉接（欄位 `port`）。
 - `speclink_host::drift::spec_drift(&dyn StorePort, &ScopeId, &str)`。
 - `speclink_host::teamstore_port::TeamStorePort::new(store)`，不綁範圍；它是 `Send + Sync`，可以放進 `Arc`。
 - 線上：沒有新增或改變的型別。
@@ -205,6 +223,19 @@
 - [和進行中的變更衝突] workflow-config-commands 正在改同一個檔的流程設定寫入路由。→ 宣告相依，排在它之後；這個變更不動那條路由的邏輯，只把它取版本的呼叫換成 `scope_version`。
 - [儲存解耦] 完成後示範 server 的讀寫只剩兩處認得 TeamStore，離「引擎與宿主套件只認得三個函式」只差搬移。
 
+## 稽核結論
+
+任務 6.2 用 sharp-edges 清單（壞蛋、懶惰的開發者、搞混的開發者三個角度）看過新增的介面。結論：找到 1 個要修的地方，已修並補測試；其餘六項都成立。
+
+- **來自網址的輸入只組得出自己那一類的鍵**：成立。變更名稱、capability、已封存名稱、artifact 路徑都先經 `speclink_store_port::keys` 的建立函式；能帶多段路徑的兩種（已封存文件、變更的 artifact）再用 `parse_key` 反解，名稱與種類都要對得上才用。`..`、`/`、`archive` 這類名稱組不出鍵，當作找不到或沒有。測試：`request_names_cannot_reach_another_kind_of_document`。
+  - **修正**：已封存的 capability 清單與變更的 delta capability 清單，前綴原本由輸入組出後以 `expect` 建立。前面的鍵檢查保證它不會失敗，但新的呼叫端可能漏掉檢查而 panic。改成建不出前綴就回「沒有」；`prefix()` 只收常數（型別是 `&'static str`）。
+- **長期持有的轉接不會把一個範圍的內容回給另一個範圍**：成立。載入的內容以範圍識別為鍵存放，填入的內容取自同一個識別拆出的 TeamStore 範圍。測試：`one_adapter_serves_two_scopes_without_mixing_them`。
+- **revision 比對沒有「先回舊內容再更新」的路徑**：成立。每次呼叫先取快照，只有已載入內容的 revision 等於這次快照的 revision 才重用，否則用這次的快照重新載入後才回答。兩個請求同時載入時，較舊的載入可能蓋過較新的；下一次呼叫的 revision 比對會發現而重新載入，不會回傳比那次呼叫開始時舊的內容。測試：`a_commit_made_straight_to_the_teamstore_is_read_back`。
+- **看板順序的三種拒絕都沒有任何寫入**：成立。內容過大不呼叫儲存；預期範圍版本不符不提交；比對之後有人寫了看板順序時，提交的版本比對失敗、儲存不變、事件沒有落地。測試：`an_oversized_board_order_never_reaches_the_store`、`a_stale_board_order_write_commits_nothing`、`a_board_order_written_by_another_writer_meanwhile_is_a_conflict`。
+- **錯誤訊息不帶出文件全文**：成立。找不到的訊息只帶請求裡的名稱；evidence 損壞只帶 JSON 解析器的位置訊息；流程設定的 422 沿用既有的解析錯誤文字（和改寫前相同）；儲存的錯誤沿用既有的對映。
+- **封存在沒有 workspace 時沒有其他寫本機檔案的路徑**：成立。封存的兩個守門在 root 為空時本來就不碰檔案；提交階段的備份、清單檔、開工標記與舊格式 touched 記錄都改成只在有 workspace 時處理；一併封存討論的 `close_if_finished` 只用儲存。測試：`archive_writes_no_local_files`。
+- **參數可能被對調**（搞混的開發者）：接受，不改。`document_version(port, scope, change, artifact)` 的兩個字串對調時會讀不到文件，帶正數 `If-Match` 的寫入就全部變成 409；`command_routes` 裡「兩個寫入帶同一個版本、後到的回 409」的既有測試，先到的那筆也會失敗，所以錯用會被測試抓到。`execute_at_version` 的 `expected` 是範圍版本，不是文件版本，文件註解寫明。
+
 ## Migration Plan
 
 沒有資料搬移，線上格式不變。要退回時還原這個變更的 commit。
@@ -212,4 +243,21 @@
 ## Open Questions
 
 - `snapshotCreated` 在 CLI 與 Desktop 的用法（D7）。實作的第一步查清楚。
+  - **查證結果（任務 1.1）**：不影響流程判斷，只少印一行。
+    - 對照基準：改寫前 `cargo test -p speclink-server` 全部通過——lib 單元測試 36 條、`it` 整合測試 362 條（1 條 ignored）、`postgres_store` 3 條因沒有 PostgreSQL 略過。
+    - 斷言封存回應 `snapshotCreated` 的 server 測試：沒有。server 的整合測試沒有任何一條讀這個欄位。
+    - 其他讀到這個欄位的地方：
+      - `crates/host/speclink-server/src/api/routes.rs`：把引擎結果的 `snapshot_created` 原樣放進回應。
+      - `crates/adapters/speclink-cli/src/verbs/lifecycle.rs`：遠端封存把它轉回引擎的結果（缺席讀作 false），交給共用的渲染。
+      - `crates/adapters/speclink-verbs/src/render/lifecycle.rs`：只在 true 時多印一行「Snapshot created for unarchive support.」。不影響結束碼與其他輸出。
+      - `crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs`：用模擬的 server 回 `true`，比對遠端與本機輸出相同。它不經真的 server，這次不受影響。
+      - `crates/protocol/speclink-protocol/src/command.rs`、`crates/protocol/speclink-remote/tests/it/typed_client.rs`：線上型別的序列化測試，不受影響。
+      - `apps/desktop/src-tauri/src/remote.rs` 與 `lib.rs`：遠端封存的回應原樣轉給前端；前端（`apps/desktop/src`、`packages/ui/src`）沒有讀這個欄位。
+      - `apps/desktop/core/src/verbs.rs`：本機封存（有 workspace），不受影響。
+    - 結論：經 server 封存後，CLI 少印「Snapshot created for unarchive support.」這一行；Desktop 沒有可見差別。
 - 已封存清單對很大的封存量（參考量 165 個）一次讀取 330 個鍵是否需要分批。量測沿用 `port_cost` 測試的做法加一筆；超過 1 秒時停下來回報，不自行加分頁。
+  - **量測結果（任務 6.1，`port_cost` 的 `the_archived_list_is_one_list_and_one_read`）**：不需要分批。
+    - 資料：本專案的 `speclink/` 資料夾，307 個已封存變更（比參考量多將近一倍）。
+    - 對儲存的呼叫：1 次列出（前綴 `archive/changes/`）、1 次讀取，讀取帶 614 個鍵、讀回 3,113,825 位元組。
+    - 耗時：三次量測 447、665、683 毫秒（未最佳化的 debug 建置、記憶體版儲存），都低於 1 秒。
+    - 讀回的位元組幾乎都是各封存的 `tasks.md`：任務數要從它算出來。回應本身只帶計數，不帶內容。

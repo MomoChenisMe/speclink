@@ -20,8 +20,9 @@ use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
 use speclink_core::status::StatusReport;
-use speclink_host::bridge::AtRevision;
+use speclink_host::documents::{self, DocumentsError};
 use speclink_host::drift as host_drift;
+use speclink_host::port_exec::{self, AtVersion};
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
     AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion,
@@ -40,9 +41,8 @@ use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::events::InvalidationEvent;
 use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions,
-    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderDoc, BoardOrderResponse,
-    ChangeEvidenceResponse, ChangeStatus,
-    ChangeSummary, ConfigResponse, DependencyEntry, DiscussionCut, DiscussionHit, DiscussionInfo,
+    ArtifactContent, ArtifactInstructions, ArtifactStatus, BoardOrderDoc, ChangeStatus,
+    ChangeSummary, DependencyEntry, DiscussionCut, DiscussionHit, DiscussionInfo,
     DiscussionMatch,
     ImportBundle, ImportDocumentId,
     ImportDocumentOutcome, ImportReportResponse, ImportedDocument, LanguageResponse,
@@ -55,9 +55,10 @@ use speclink_protocol::query::{
     WhoamiResponse, WhoamiUser,
 };
 use speclink_store::{
-    content_digest, Bundle, BundleDoc, CommandContext, DocumentId, EventRecord, ImportMode,
-    ImportOutcome, Revision, StoreError, BUNDLE_FORMAT_VERSION,
+    content_digest, Bundle, BundleDoc, DocumentId, ImportMode, ImportOutcome, Revision,
+    StoreError, BUNDLE_FORMAT_VERSION,
 };
+use speclink_store_port::{Actor as PortActor, Timestamp};
 use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
 
@@ -103,30 +104,11 @@ pub async fn list_changes(
     // 欄位（fs `list --json` parity pin），wire 的 startedAt／createdBy／
     // created／fromDiscussions 由這裡讀各 change meta 沿同一條路徑組裝。
     // 壞 meta 已由 metaError 診斷，這裡對解析失敗維持缺席、清單不失敗。
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
-    let metas: std::collections::HashMap<String, speclink_core::model::ChangeMeta> =
-        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-            let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-            let mut map = std::collections::HashMap::new();
-            for name in names {
-                let doc = snapshot
-                    .read(&DocumentId::ChangeMeta {
-                        change: name.clone(),
-                    })
-                    .map_err(ApiError::from)?;
-                let Some(doc) = doc else { continue };
-                if let Ok(meta) =
-                    speclink_core::model::ChangeMeta::from_text(Some(&doc.content))
-                {
-                    map.insert(name, meta);
-                }
-            }
-            Ok(map)
-        })
-        .await
-        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let metas =
+        verb::blocking(move || Ok(documents::change_extras(port.as_ref(), &scope, &names)?)).await?;
     let dto = ListChangesResponse {
         changes: changes
             .into_iter()
@@ -195,43 +177,19 @@ pub async fn get_change(
         _ => return Err(wrong_outcome("status")),
     };
     // show 組合的 meta 欄位（design D4 實作期修正）：created 沿 ShowChange 的
-    // schema+created 成對規則、fromDiscussions 自 meta、deltaCapabilities 自
-    // scope 文件列舉（export 與每個 verb 的 bridge 物化同成本級）；歸屬四欄
-    // createdBy/createdWith/startedAt/startedBy 亦自同一份 parsed meta 補上
-    // （remote-read-parity「單 change 讀取回應攜帶 show 組合欄位」擴充）。
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let (meta, delta_capabilities) =
-        tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-            let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-            let meta = snapshot
-                .read(&DocumentId::ChangeMeta {
-                    change: name.clone(),
-                })
-                .map_err(ApiError::from)?
-                .and_then(|doc| {
-                    speclink_core::model::ChangeMeta::from_text(Some(&doc.content)).ok()
-                });
-            let prefix = "specs/";
-            let mut caps: Vec<String> = store
-                .export(&scope)
-                .map_err(ApiError::from)?
-                .documents
-                .iter()
-                .filter_map(|entry| match &entry.doc {
-                    DocumentId::ChangeArtifact { change, artifact } if *change == name => artifact
-                        .strip_prefix(prefix)
-                        .and_then(|rest| rest.strip_suffix("/spec.md"))
-                        .filter(|cap| !cap.is_empty() && !cap.contains('/'))
-                        .map(str::to_string),
-                    _ => None,
-                })
-                .collect();
-            caps.sort();
-            Ok((meta, caps))
-        })
-        .await
-        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    // schema+created 成對規則、fromDiscussions 自 meta、deltaCapabilities 只列
+    // 這個變更的 delta 規格前綴；歸屬四欄 createdBy/createdWith/startedAt/
+    // startedBy 亦自同一份 parsed meta 補上（remote-read-parity「單 change 讀
+    // 取回應攜帶 show 組合欄位」擴充）。
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    let (meta, delta_capabilities) = verb::blocking(move || {
+        let port = port.as_ref();
+        let meta = documents::change_extras(port, &scope, std::slice::from_ref(&name))?.remove(&name);
+        let capabilities = documents::change_delta_capabilities(port, &scope, &name)?;
+        Ok((meta, capabilities))
+    })
+    .await?;
     let mut dto = change_status(report);
     if let Some(meta) = meta {
         // 成對規則：schema 與 created 同時存在才回報 created。
@@ -247,10 +205,10 @@ pub async fn get_change(
     Ok(ok(dto, &result.etag))
 }
 
-/// `GET /changes/{name}/drift` — the change's spec-side drift over one store
-/// snapshot, with that snapshot's basis digests. The Host's `spec_drift` entry
+/// `GET /changes/{name}/drift` — the change's spec-side drift over one Engine
+/// store view, with that view's basis digests. The Host's `spec_drift` entry
 /// owns the composition (server-drift-api design 決策 2), so both halves come
-/// from the same snapshot. Workspace facts stay the client's own business: the
+/// from the same view. Workspace facts stay the client's own business: the
 /// Server runs no git, and the wire gives it no field to claim one in. The
 /// computation is a read — no unit of work, no event.
 pub async fn drift(
@@ -258,17 +216,15 @@ pub async fn drift(
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
     // The report and the ETag are read in the same blocking hop, as a verb's are.
-    let (payload, etag) =
-        tokio::task::spawn_blocking(move || -> Result<(SpecDriftResponse, String), ApiError> {
-            let view = host_drift::spec_drift(store.as_ref(), &scope, &name)?;
-            let etag = verb::scope_token(store.as_ref(), &scope)?;
-            Ok((host_drift::spec_drift_view_to_wire(&view), etag))
-        })
-        .await
-        .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let (payload, etag) = verb::blocking(move || -> Result<(SpecDriftResponse, String), ApiError> {
+        let view = host_drift::spec_drift(port.as_ref(), &scope, &name)?;
+        let etag = documents::etag(documents::scope_version(port.as_ref(), &scope)?);
+        Ok((host_drift::spec_drift_view_to_wire(&view), etag))
+    })
+    .await?;
     Ok(ok(payload, &etag))
 }
 
@@ -332,8 +288,10 @@ pub async fn analyze_change(
 /// as a `refused` 409 carrying the engine's line (the error mapping point). A
 /// derived query: no commit, no event.
 pub async fn plan(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
-    let board = verb::read_doc(&state, &binding, DocumentId::BoardOrder).await?;
-    let ranks = BoardOrderDoc::from_content(board.as_ref().map(|doc| doc.content.as_str())).changes;
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    let board = verb::blocking(move || Ok(documents::board_order(port.as_ref(), &scope)?)).await?;
+    let ranks = BoardOrderDoc::from_content(board.content.as_deref()).changes;
     let result = verb::run(&state, &binding, Command::Plan { ranks: Some(ranks) }).await?;
     let plan = match result.execution.outcome {
         CommandOutcome::Plan(plan) => plan,
@@ -620,17 +578,13 @@ pub async fn get_artifact(
     };
     // Stamp the version so a later If-Match write can CAS against it.
     let version = match artifact_rel_path(&artifact) {
-        Some(rel) => verb::read_doc(
-            &state,
-            &binding,
-            DocumentId::ChangeArtifact {
-                change: name,
-                artifact: rel,
-            },
-        )
-        .await?
-        .map(|doc| doc.revision.0)
-        .unwrap_or(0),
+        Some(rel) => {
+            let port = state.port.clone();
+            let scope = verb::scope_id_of(&binding)?;
+            verb::blocking(move || Ok(documents::document_version(port.as_ref(), &scope, &name, &rel)?))
+                .await?
+                .map_or(0, |version| version.get())
+        }
         None => 0,
     };
     let dto = ArtifactContent {
@@ -679,32 +633,13 @@ pub async fn language(
     Ok(ok(LanguageResponse { content }, &result.etag))
 }
 
-/// `GET /config` — the workflow policy source and its scope revision, read from
-/// one store snapshot so `revision` is exactly the ETag value.
+/// `GET /config` — the workflow policy source and its scope revision. The
+/// revision is taken first and is exactly the ETag value.
 pub async fn config(State(state): State<AppState>, binding: Binding) -> Result<Response, ApiError> {
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        let revision = snapshot.revision().0;
-        let content = snapshot
-            .read(&DocumentId::WorkflowConfig)
-            .map_err(ApiError::from)?
-            .map(|doc| doc.content);
-        let schema = WorkflowConfig::from_text(content.as_deref())
-            .map_err(|e| ApiError::invalid_config(e.to_string()))?
-            .schema_name();
-        Ok((
-            ConfigResponse {
-                schema,
-                content,
-                revision,
-            },
-            format!("\"{revision}\""),
-        ))
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    let dto = verb::blocking(move || Ok(documents::config_document(port.as_ref(), &scope)?)).await?;
+    let etag = format!("\"{}\"", dto.revision);
     Ok(ok(dto, &etag))
 }
 
@@ -730,34 +665,34 @@ pub async fn put_config(
     })
     .map_err(|e| ApiError::invalid_config(e.to_string()))?;
 
-    let store = state.store.clone();
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
     let ctx = binding.execution_context();
     let expected_revision = req.expected_revision;
     let cmd = Command::WorkflowConfigReplace { content: req.content };
-    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
+    let result = verb::blocking(move || -> Result<(u64, String), ApiError> {
         // The wire's expected revision is the SCOPE revision (what `GET /config`
-        // returns), not the config document's own version. The bridge compares
-        // it on the same load of the scope the command reads from.
-        let execution = match speclink_host::bridge::execute_at_revision(
-            store.as_ref(),
+        // returns), not the config document's own version. The command commits
+        // only while the scope stays at it.
+        let execution = match port_exec::execute_at_version(
+            port.as_ref(),
+            &scope,
             &ctx,
             cmd,
-            Revision(expected_revision),
+            expected_revision,
         )? {
-            AtRevision::Done(execution) => execution,
-            AtRevision::Moved { actual } => {
+            AtVersion::Done(execution) => execution,
+            AtVersion::Moved { actual } => {
                 return Err(ApiError::revision_conflict(format!(
-                    "expected scope revision {expected_revision}, actual {}",
-                    actual.0
+                    "expected scope revision {expected_revision}, actual {actual}"
                 )))
             }
         };
         // Content that did not change commits nothing: the revision stays.
-        let revision = execution.revision.map_or(expected_revision, |r| r.0);
+        let revision = execution.scope_version.map_or(expected_revision, |v| v.get());
         Ok((revision, format!("\"{revision}\"")))
     })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    .await;
 
     if result.is_ok() {
         state.events.notify(&verb::scope_of(&binding));
@@ -766,99 +701,54 @@ pub async fn put_config(
     Ok(ok(PutConfigResponse { revision }, &etag))
 }
 
-/// `GET /board-order` — the scope's opaque board-order document, read from one
-/// store snapshot so `revision` is exactly the ETag value. Absence is a normal
-/// state: `content` is null and the ETag still carries the scope revision.
+/// `GET /board-order` — the scope's opaque board-order document. Its revision
+/// is the scope version, taken first, and exactly the ETag value. Absence is a
+/// normal state: `content` is null and the ETag still carries the revision.
 pub async fn board_order(
     State(state): State<AppState>,
     binding: Binding,
 ) -> Result<Response, ApiError> {
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        let revision = snapshot.revision().0;
-        let content = snapshot
-            .read(&DocumentId::BoardOrder)
-            .map_err(ApiError::from)?
-            .map(|doc| doc.content);
-        Ok((
-            BoardOrderResponse { content, revision },
-            format!("\"{revision}\""),
-        ))
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    let dto = verb::blocking(move || Ok(documents::board_order(port.as_ref(), &scope)?)).await?;
+    let etag = format!("\"{}\"", dto.revision);
     Ok(ok(dto, &etag))
 }
 
-/// `GET /changes/{name}/evidence` — the change's recorded completion evidence,
-/// read from one store snapshot. Absence is a normal state: a change that never
-/// recorded any answers with an empty set, so a reader never has to tell
-/// "no evidence" apart from "no change" by error code.
+/// `GET /changes/{name}/evidence` — the change's recorded completion evidence.
+/// Absence is a normal state: a change that never recorded any answers with an
+/// empty set, so a reader never has to tell "no evidence" apart from "no
+/// change" by error code. A record that does not parse is a 500.
 pub async fn change_evidence(
     State(state): State<AppState>,
     binding: Binding,
     Path((_key, name)): Path<(String, String)>,
 ) -> Result<Response, ApiError> {
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let (dto, etag) = tokio::task::spawn_blocking(move || -> Result<_, ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        let revision = snapshot.revision().0;
-        let text = snapshot
-            .read(&DocumentId::ChangeEvidence { change: name })
-            .map_err(ApiError::from)?
-            .map(|doc| doc.content);
-        // The store keeps the record opaque; the shape is the engine's, and a
-        // record this server cannot parse is corruption, not an empty set —
-        // deliberately louder than the engine's own lenient read (which treats
-        // a corrupt record as empty so a completion is never blocked): a query
-        // face answering "no evidence" over a corrupt record would be a lie.
-        let entries = match text {
-            Some(text) => serde_json::from_str::<StoredEvidence>(&text)
-                .map_err(|e| ApiError::internal(format!("evidence record is unreadable: {e}")))?
-                .entries,
-            None => Vec::new(),
-        };
-        Ok((ChangeEvidenceResponse { entries }, format!("\"{revision}\"")))
-    })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))??;
-    Ok(ok(dto, &etag))
-}
-
-/// The stored evidence record, as far as this endpoint reads it: the v2 entry
-/// list. The v1 file-list channel and the version marker are deliberately not
-/// part of this response — v1 entries carry no actor/recordedAt and this
-/// endpoint never fabricates them; a v1-only record (a migration import can
-/// carry one) reads as an empty set here while the engine's own consumers
-/// (`all_files`, the in-progress-remove gate) still see its files.
-/// The field shape mirrors `speclink_core::tasks::EvidenceEntry`; the sync is
-/// pinned by `evidence_wire_shape_matches_the_engine_record` below.
-#[derive(serde::Deserialize)]
-struct StoredEvidence {
-    #[serde(default)]
-    entries: Vec<speclink_protocol::query::EvidenceEntry>,
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    let (dto, version) =
+        verb::blocking(move || Ok(documents::change_evidence(port.as_ref(), &scope, &name)?)).await?;
+    Ok(ok(dto, &documents::etag(version)))
 }
 
 /// `PUT /board-order` — full-replacement CAS write of the opaque board
 /// resource, along the put_config shape: role check, `If-Match` against the
-/// scope revision, then store CAS. The content is a presentation resource the
-/// server never parses; the commit carries an event so subscribers re-read.
+/// scope revision, then the store's own version check. The content is a
+/// presentation resource the server never parses; the commit carries an event
+/// so subscribers re-read.
 pub async fn put_board_order(
     State(state): State<AppState>,
     binding: Binding,
     headers: HeaderMap,
     Json(req): Json<PutBoardOrderRequest>,
 ) -> Result<Response, ApiError> {
-    // The board-order document is a small rank map; anything near this cap
-    // is a malfunctioning client, refused before any write is staged.
-    const BOARD_ORDER_CONTENT_CAP_BYTES: usize = 1024 * 1024;
-    if req.content.len() > BOARD_ORDER_CONTENT_CAP_BYTES {
-        return Err(ApiError::payload_too_large(format!(
-            "board order content exceeds the {BOARD_ORDER_CONTENT_CAP_BYTES}-byte cap"
-        )));
+    // An oversized body is refused before the precondition is looked at, as
+    // it always was.
+    if req.content.len() > documents::BOARD_ORDER_LIMIT {
+        return Err(DocumentsError::TooLarge {
+            limit: documents::BOARD_ORDER_LIMIT,
+        }
+        .into());
     }
 
     let expected_revision = headers
@@ -869,49 +759,20 @@ pub async fn put_board_order(
             ApiError::invalid_argument("If-Match must carry the scope revision ETag")
         })?;
 
-    let store = state.store.clone();
-    let scope = verb::scope_of(&binding);
-    let actor = binding.actor.id.clone();
+    let port = state.port.clone();
+    let scope = verb::scope_id_of(&binding)?;
+    // The TeamStore records the actor's id, as it always has.
+    let actor = PortActor::new(binding.actor.id.clone(), binding.actor.id.clone())
+        .map_err(|e| ApiError::internal(e.to_string()))?;
+    let at = Timestamp::new(chrono::Utc::now().timestamp_millis().max(0) as u64)
+        .map_err(|e| ApiError::internal(e.to_string()))?;
     let content = req.content;
-    let result = tokio::task::spawn_blocking(move || -> Result<(u64, String), ApiError> {
-        let snapshot = store.snapshot(&scope).map_err(ApiError::from)?;
-        let actual_revision = snapshot.revision().0;
-        if actual_revision != expected_revision {
-            return Err(ApiError::revision_conflict(format!(
-                "expected scope revision {expected_revision}, actual {actual_revision}"
-            )));
-        }
-        let current = snapshot
-            .read(&DocumentId::BoardOrder)
-            .map_err(ApiError::from)?;
-        drop(snapshot);
-
-        let mut uow = store
-            .begin_unit_of_work(
-                &scope,
-                CommandContext {
-                    command: "put-board-order".into(),
-                    actor: actor.clone(),
-                },
-            )
-            .map_err(ApiError::from)?;
-        match current {
-            Some(doc) => uow.update(DocumentId::BoardOrder, content, doc.revision),
-            None => uow.create(DocumentId::BoardOrder, content),
-        }
-        // The event lands in the outbox so subscribed clients receive an
-        // invalidation and re-read; put_config has no such need.
-        let event = EventRecord {
-            name: "board-order-updated".into(),
-            payload: serde_json::json!({}),
-            actor,
-            at: chrono::Utc::now(),
-        };
-        let revision = store.commit(uow, vec![event]).map_err(ApiError::from)?.0;
-        Ok((revision, format!("\"{revision}\"")))
+    let result = verb::blocking(move || -> Result<(u64, String), ApiError> {
+        let version =
+            documents::put_board_order(port.as_ref(), &scope, &actor, content, expected_revision, at)?;
+        Ok((version.get(), documents::etag(version)))
     })
-    .await
-    .map_err(|e| ApiError::internal(format!("blocking task failed: {e}")))?;
+    .await;
 
     if result.is_ok() {
         state.events.notify(&verb::scope_of(&binding));
@@ -1205,7 +1066,7 @@ pub async fn create_change(
 }
 
 /// `PUT /changes/{name}/artifacts/{*artifact}` with the `If-Match` write
-/// precondition. The write commits atomically through the bridge; a stale
+/// precondition. The write commits atomically on the store port; a stale
 /// precondition is a 409 revision_conflict with no partial write.
 pub async fn put_artifact(
     State(state): State<AppState>,
@@ -1218,12 +1079,8 @@ pub async fn put_artifact(
     let rel = artifact_rel_path(&artifact)
         .ok_or_else(|| ApiError::invalid_argument(format!("unknown artifact '{artifact}'")))?;
     let cmd = artifact_write_command(&artifact, name.clone(), req.content)?;
-    let doc = DocumentId::ChangeArtifact {
-        change: name,
-        artifact: rel,
-    };
     let (version, etag) =
-        verb::run_write_with_if_match(&state, &binding, doc, if_match, cmd).await?;
+        verb::run_write_with_if_match(&state, &binding, name, rel, if_match, cmd).await?;
     Ok(ok(PutArtifactResponse { artifact, version }, &etag))
 }
 
@@ -2143,53 +2000,5 @@ fn artifact_rel_path(artifact: &str) -> Option<String> {
             .strip_prefix("specs/")
             .filter(|cap| !cap.is_empty() && !cap.contains('/'))
             .map(|cap| format!("specs/{cap}/spec.md")),
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::StoredEvidence;
-
-    /// 記錄形狀的三份宣告（core 的 EvidenceEntry、protocol 的 wire DTO、此處的
-    /// StoredEvidence 讀取面）以這條測試釘住同步：core 寫出的 entry 必須被 wire
-    /// 面逐欄讀回。core 加欄位而 wire 沒跟上時，這裡最先紅。
-    #[test]
-    fn evidence_wire_shape_matches_the_engine_record() {
-        let record = speclink_core::tasks::TouchedRecord {
-            version: Some(2),
-            change: "demo".to_string(),
-            touched: Vec::new(),
-            entries: vec![speclink_core::tasks::EvidenceEntry {
-                task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
-                task_desc: "1.1 First".to_string(),
-                actor: Some("Tester <t@example.com>".to_string()),
-                repo: Some("backend".to_string()),
-                head_commit: Some("0123456789012345678901234567890123456789".to_string()),
-                touched_files: vec!["src/app.rs".to_string()],
-                recorded_at: "2026-08-23T00:00:00Z".to_string(),
-            }],
-        };
-        let text = serde_json::to_string(&record).expect("engine record serializes");
-
-        let parsed: StoredEvidence = serde_json::from_str(&text).expect("wire face reads it");
-        assert_eq!(parsed.entries.len(), 1);
-        let e = &parsed.entries[0];
-        assert_eq!(e.task_id, "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
-        assert_eq!(e.task_desc, "1.1 First");
-        assert_eq!(e.actor.as_deref(), Some("Tester <t@example.com>"));
-        assert_eq!(e.repo.as_deref(), Some("backend"));
-        assert_eq!(e.head_commit.as_deref(), Some("0123456789012345678901234567890123456789"));
-        assert_eq!(e.touched_files, vec!["src/app.rs".to_string()]);
-        assert_eq!(e.recorded_at, "2026-08-23T00:00:00Z");
-    }
-
-    /// v1-only 記錄（無 entries 欄）讀成空集合，不偽造 actor 或 recordedAt。
-    #[test]
-    fn a_v1_only_record_reads_as_an_empty_entry_set() {
-        let parsed: StoredEvidence = serde_json::from_str(
-            r#"{"change":"demo","touched":[{"task_id":"1","task_desc":"1.1 a","files":["src/a.rs"]}]}"#,
-        )
-        .expect("v1 shape still parses");
-        assert!(parsed.entries.is_empty());
     }
 }

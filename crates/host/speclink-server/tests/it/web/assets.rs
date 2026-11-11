@@ -15,12 +15,12 @@ use std::sync::Arc;
 
 /// Start a server with no seeded identity — asset serving needs no auth.
 fn server() -> String {
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: common::empty_identity(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        common::empty_identity(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     common::start(state)
 }
 

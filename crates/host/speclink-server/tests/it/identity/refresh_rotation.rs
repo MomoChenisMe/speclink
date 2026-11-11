@@ -31,12 +31,12 @@ fn seed() -> (String, Arc<IdentitySqlite>, String) {
     let user_id = identity.accept_invitation(&token, "pw-correct-horse").expect("accept");
     // The registry now lives in the identity store; register `demo` (repo backend).
     common::seed_demo_registry(&*identity);
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(common::demo_config()),
-        identity: identity.clone(),
-    };
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
     (common::start(state), identity, user_id)
 }
 

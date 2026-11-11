@@ -89,17 +89,17 @@ fn suspension_is_equivalent_across_api_web_and_cli() {
     let (m2_pat, _, m2_id) = seed_user(&identity, "m2@example.com", false);
     let (m3_pat, _, _m3_id) = seed_user(&identity, "m3@example.com", false);
 
-    let state = AppState {
-        events: common::detached_events(),
-        store: Arc::new(MemoryStore::new()),
-        config: Arc::new(ServerConfig {
+    let state = AppState::new(
+        Arc::new(MemoryStore::new()),
+        identity.clone(),
+        Arc::new(ServerConfig {
             store: StoreConfig::Memory,
             identity: IdentityConfig::Sqlite { path: identity_db.clone() },
             public_url: "http://127.0.0.1".to_string(),
             events: EventSettings::default(),
         }),
-        identity: identity.clone(),
-    };
+        common::detached_events(),
+    );
     let base = common::start(state);
 
     // All three members can authenticate before suspension.
