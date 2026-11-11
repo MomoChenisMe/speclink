@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, StdinPolicy, VerbInputs};
+use crate::{CommandTarget, StdinPolicy, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct DiscussArgs {
@@ -139,9 +139,11 @@ impl DiscussArgs {
             | DiscussCommands::Seal { .. } => StdinPolicy::Never,
         }
     }
+}
 
+impl ToCommand for DiscussArgs {
     /// Unread stdin is empty content; the engine's content guard rejects it.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         let content = || inputs.stdin.clone().unwrap_or_default();
         Ok(CommandTarget::Command(match &self.command {
             DiscussCommands::New { topic, slug, kind, .. } => Command::DiscussNew {

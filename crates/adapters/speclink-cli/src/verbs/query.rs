@@ -10,12 +10,12 @@ use speclink_protocol::query as protocol_query;
 
 use crate::color;
 use crate::common::{
-    engine_command, info_if_no_changes, open_project, print_json, run, worktree_overlay,
+    engine_command, info_if_no_changes, open_project, plain_command, print_json, run, worktree_overlay,
 };
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use core::listing::ListChangeJson;
 use speclink_verbs::families::query::{ListArgs, ShowArgs, StatusArgs};
-use speclink_verbs::VerbInputs;
+use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_list(a: ListArgs) -> Result<()> {
     let (ws, fs_store) = open_project()?;
@@ -121,7 +121,7 @@ fn render_specs_section(specs: &serde_json::Value, json: bool) -> Result<()> {
 }
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let show: core::command::ShowOutcome = run(&store, Some(&ws), cmd)?;
     render_show(show, a.json)
 }
@@ -202,7 +202,7 @@ pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     if info_if_no_changes(&store, a.change.as_deref()) {
         return Ok(());
     }
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let report: core::status::StatusReport = run(&store, Some(&ws), cmd)?;
     if a.json {
         return print_json(&report);

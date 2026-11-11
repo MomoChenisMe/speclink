@@ -3,7 +3,7 @@
 use clap::Args;
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ValidateArgs {
@@ -35,8 +35,8 @@ pub struct ChangeArg {
     pub json: bool,
 }
 
-impl ValidateArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for ValidateArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Validate {
             item: self.item.clone(),
             all: self.all,

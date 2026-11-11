@@ -14,8 +14,9 @@
 - 讀寫規格的十一個動詞家族的 clap 定義，從 `speclink-cli` 原樣搬進 `speclink-verbs` 並公開：查詢（list、show、status）、檢查（validate、analyze、drift）、文件（artifact、language）、trace、instructions、new、進度（task、in-progress）、生命週期（archive、discard、claim）、計畫（plan、change）、discuss、品質關卡（review、verify）。說明文字、旗標名稱、預設值都不變。
 - 新增解析入口：收一串動詞文字，回傳解析結果或解析錯誤。它不結束程序，也不印出任何東西。
 - 新增「解析結果轉成引擎命令」的單一函式。需要呼叫端提供的資料——stdin 的內容、worktree 的事實、改了哪些檔與 HEAD commit、看板的順序——經一個輸入結構交進來，函式本身不讀 stdin、不讀檔、不呼叫 git。
-- 沒有對應引擎命令的動詞（drift、change rank、review prepare、review scope、verify scope、instructions 的 `--skill`）由這個函式明確回報「只能在有 checkout 的一端執行」，不回傳命令。
+- 沒有對應引擎命令的動詞（drift、change rank、review prepare、review scope、verify scope、instructions 的 `--skill`）由這個函式明確回報只能在 CLI 那一端執行，不回傳命令。前五個需要 checkout；`--skill` 印的是內建在 CLI 的技能文字。
 - 每個動詞的 stdin 規則（不讀、帶 `--stdin` 才讀、帶 `--stdin` 或 stdin 不是終端機就讀）由解析結果回報，CLI 依它決定要不要讀。
+- 蓋章（`review stamp`、`verify stamp`）的 `--stdin` 只給沒有 checkout 的宿主帶蓋章 JSON，所以它不在 CLI 併進去的那份共用定義裡：解析入口（只有 SDK 呼叫）建出指令樹時替兩個 stamp 加上隱藏的 `--stdin`。CLI 的蓋章維持原樣，沒有這個旗標（品質關卡定案）。
 - `speclink-cli` 改用這些公開的型別與轉換函式。CLI 的指令、旗標、`--help` 文字、人眼輸出、`--json`、exit code 都不變。初始化、連線、設定、schema 工具、completion 與 workflow-config 這些家族留在 CLI，不搬。
 - `speclink-node` 的 dispatch 改用共用的解析，移除手寫的 `parse_argv`。能用的動詞仍是 9 個（list、status、new change、new artifact、claim、review add-round、review stamp、verify add-round、verify stamp）。
 - **相容性影響（Node SDK 的 dispatch）**：
@@ -23,10 +24,17 @@
   - 解析錯誤的 `message` 改成和 CLI 相同的文字。`code` 仍是 `invalid_argv`。
   - `--name=value` 與 CLI 有的短旗標現在被接受。
   - 9 個動詞成功時的回傳形狀不變。argv 帶 `--json` 時結果相同。
-  - 遷移：傳了 CLI 沒有的旗標的宿主，要把那些旗標拿掉。
+  - `review add-round`／`verify add-round` 只要有給 stdin 參數就讀，不再要求 argv 帶 `--stdin`。
+  - 只在帶 `--stdin` 時才讀 stdin 的動詞（`new artifact`、`review stamp`、`verify stamp`）：給了 stdin 參數卻沒帶 `--stdin` 時，以 `invalid_argv` 拒絕；原本靜默丟掉 stdin。帶了 `--stdin` 卻沒給 stdin 參數時，`new artifact` 回傳 `invalid_argv`；原本寫入空內容。
+  - `new change --last` 沒帶 `--from-discussion` 時被拒絕，和 CLI 相同。
+  - 空的 argv 回傳 clap 的說明文字（code 仍是 `invalid_argv`）；原本是一句固定訊息。
+  - 蓋章 JSON 格式不對時，訊息只指出第幾行第幾欄，不再引用 stdin 的內容。
+  - 不支援的動詞若連轉換本身都失敗（`archive` 帶多個 change 或 `--all`），回報轉換的錯誤，而不是「不支援的動詞」；code 都是 `invalid_argv`。
+  - `instructions --skill` 的訊息說明它印的是內建在 CLI 的技能文字；其他沒有引擎命令的動詞說明它們需要 checkout。
+  - 遷移：傳了 CLI 沒有的旗標的宿主，要把那些旗標拿掉；帶 `--stdin` 才讀的動詞，給 stdin 時要一併帶 `--stdin`。
 - **相容性影響（CLI，apply 期定案）**：
   - `speclink completion generate <shell>` 產出的腳本裡，子指令的排列順序改變（共用的動詞以 flatten 併入頂層，排在一起）。補全的功能不變；`--help` 的順序用 display_order 還原，逐位元相同。
-  - `review stamp`／`verify stamp` 的共用定義多一個隱藏的 `--stdin`（給沒有 checkout 的宿主帶蓋章 JSON）。`--help` 不變；補全腳本產生前把它從兩個 stamp 拿掉，所以補全也不列出它。CLI 收到它時以錯誤拒絕：原本是 clap 的解析錯誤（exit 2），改成說明 CLI 自己從 checkout 算蓋章範圍的錯誤（exit 1）。
+  - `review stamp`／`verify stamp` 的 `--stdin` 只有 SDK 的解析接受。CLI 的指令樹沒有它，所以 `--help`、補全腳本，以及收到它時的解析錯誤（exit 2）都和變更前相同（品質關卡定案，取代 apply 期「共用定義加隱藏旗標、CLI 以 exit 1 拒絕並從補全拿掉」的做法）。
 - 沒有新的 CLI 指令、設定欄位或技能變動。
 
 ## Capabilities
@@ -80,11 +88,11 @@
     - crates/adapters/speclink-cli/src/verbs/discuss.rs
     - crates/adapters/speclink-cli/src/verbs/station.rs
     - crates/adapters/speclink-cli/src/verbs/toolchain.rs
-    - crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs
     - crates/adapters/speclink-cli/tests/it/review_verbs.rs
     - crates/adapters/speclink-node/Cargo.toml
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts
+    - crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts
   - Removed: (none)
 - 三種形態下的結果：
   - 本機 repo：可用。CLI 的行為與輸出逐位元不變。

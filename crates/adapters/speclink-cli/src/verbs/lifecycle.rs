@@ -7,12 +7,11 @@ use anyhow::{bail, Result};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{engine_command, open_project, print_json, run};
+use crate::common::{open_project, plain_command, print_json, run};
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
 use speclink_verbs::families::lifecycle::{ArchiveArgs, DiscardArgs};
-use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -20,7 +19,7 @@ pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
         return cmd_archive_bulk(&ws, &store, &a);
     }
     // mark-tasks-complete 與封存語意（含 in-progress 標記不動）單點在 runtime。
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let outcome: core::archive::ArchiveOutcome = run(&store, Some(&ws), cmd)?;
     print_archive_outcome(&outcome);
     Ok(())
@@ -155,7 +154,7 @@ fn cmd_archive_bulk(ws: &Workspace, store: &dyn Store, a: &ArchiveArgs) -> Resul
 }
 pub(crate) fn cmd_discard(a: DiscardArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let outcome: core::discard::DiscardOutcome = run(&store, Some(&ws), cmd)?;
     render_discard(&outcome.change_name, &outcome.unlinked_discussions, a.json)
 }

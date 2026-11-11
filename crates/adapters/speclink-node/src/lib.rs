@@ -268,22 +268,8 @@ pub fn engine_from_store(
 
 // --- argv router ---
 
-/// The verbs dispatch serves, by their stable names from the shared parsing.
-const DISPATCH_VERBS: &[&str] = &[
-    "list",
-    "status",
-    "new change",
-    "new artifact",
-    "claim",
-    "review add-round",
-    "review stamp",
-    "verify add-round",
-    "verify stamp",
-];
-
 /// argv → the parsing the CLI uses → the engine command → the envelope value.
-/// A verb with no engine command reports that it needs a checkout before the
-/// allowlist turns other verbs away.
+/// `run_verb` is the one list of the commands dispatch serves.
 fn run_dispatch(
     backend: &Backend,
     actor: Option<&str>,
@@ -294,37 +280,66 @@ fn run_dispatch(
     let parsed = speclink_verbs::parse(argv)
         .map_err(|e| DispatchError::new("invalid_argv", e.message))?;
     let name = parsed.name();
-    // A host has no terminal: stdin content it passed counts as piped.
-    let read = parsed.stdin_policy().reads(stdin.is_some());
-    let inputs = speclink_verbs::VerbInputs {
-        stdin: if read { stdin.map(str::to_string) } else { None },
-        ..Default::default()
-    };
-    let target = parsed.into_command(inputs);
-    if let Ok(speclink_verbs::CommandTarget::LocalOnly { verb }) = &target {
+    // Before the stdin JSON is read: a store that cannot finish a stamp is
+    // the first thing to report (`stamp()` checks again before it runs).
+    if parsed.is_stamp() {
+        refuse_unfinishable_stamp(backend, name)?;
+    }
+    let policy = parsed.stdin_policy();
+    // Content passed without --stdin to a verb that reads stdin only with the
+    // flag is refused: a forgotten flag must not drop the content silently.
+    if stdin.is_some() && matches!(policy, speclink_verbs::StdinPolicy::WhenFlagged { flagged: false }) {
         return Err(DispatchError::new(
             "invalid_argv",
-            format!("'{verb}' only runs where a checkout exists — dispatch has none"),
+            format!("'{name}' reads stdin only with --stdin — add --stdin, or pass no stdin"),
         ));
     }
-    if !DISPATCH_VERBS.contains(&name) {
-        return Err(unsupported_verb(name));
-    }
-    match target? {
-        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, cmd),
-        speclink_verbs::CommandTarget::LocalOnly { .. } => unreachable!("handled above"),
+    // A host has no terminal: stdin content it passed counts as piped.
+    let inputs = speclink_verbs::VerbInputs {
+        stdin: if policy.reads(stdin.is_some()) { stdin.map(str::to_string) } else { None },
+        ..Default::default()
+    };
+    match parsed.into_command(inputs)? {
+        speclink_verbs::CommandTarget::Command(cmd) => run_verb(backend, actor, stamp_lock, name, cmd),
+        speclink_verbs::CommandTarget::LocalOnly { verb, reason } => Err(local_only(verb, reason)),
     }
 }
 
-/// The station families keep their frozen hint (spec and tests pin it).
-fn unsupported_verb(name: &str) -> DispatchError {
-    let message = match name.split_once(' ') {
-        Some((noun @ ("review" | "verify"), _)) => {
-            format!("{noun} requires a subcommand: 'add-round' or 'stamp'")
+/// A verb with no engine command runs only in the CLI; the message says why.
+fn local_only(verb: &str, reason: speclink_verbs::LocalOnlyReason) -> DispatchError {
+    let message = match reason {
+        speclink_verbs::LocalOnlyReason::CliSkillText => {
+            format!("'{verb}' prints skill text built into the CLI — dispatch does not carry it")
         }
-        _ => format!("Unknown or unsupported verb '{name}'"),
+        speclink_verbs::LocalOnlyReason::NeedsCheckout => {
+            format!("'{verb}' only runs where a checkout exists — dispatch has none")
+        }
     };
     DispatchError::new("invalid_argv", message)
+}
+
+/// A stamp deletes the ticket before it rewrites the metadata, so a store
+/// that cannot finish one is refused before anything else runs — never
+/// mid-way with the ticket already gone.
+fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Result<(), DispatchError> {
+    if let Backend::Js { missing_stamp_methods, .. } = backend {
+        if !missing_stamp_methods.is_empty() {
+            return Err(DispatchError::new(
+                "error",
+                format!(
+                    "{name} requires store methods this store does not implement: {} — \
+                     stamping rewrites the change metadata and deletes the ticket",
+                    missing_stamp_methods.join(", ")
+                ),
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// The station families keep their frozen hint (spec and tests pin it).
+fn station_hint(noun: &str) -> DispatchError {
+    DispatchError::new("invalid_argv", format!("{noun} requires a subcommand: 'add-round' or 'stamp'"))
 }
 
 /// Run one of the dispatch verbs and shape its envelope value.
@@ -332,6 +347,7 @@ fn run_verb(
     backend: &Backend,
     actor: Option<&str>,
     stamp_lock: &std::sync::Mutex<()>,
+    name: &str,
     cmd: core::command::Command,
 ) -> DispatchResult {
     use core::command::{Command, CommandOutcome};
@@ -397,11 +413,10 @@ fn run_verb(
             };
             Ok(serde_json::json!({ "change": o.change, "round": o.round }))
         }
-        Command::ReviewStamp { .. } | Command::VerifyStamp { .. } => {
-            let noun = if matches!(cmd, Command::ReviewStamp { .. }) { "review" } else { "verify" };
-            stamp(backend, actor, stamp_lock, noun, cmd)
-        }
-        other => unreachable!("DISPATCH_VERBS admits no other command: {other:?}"),
+        Command::ReviewStamp { .. } | Command::VerifyStamp { .. } => stamp(backend, actor, stamp_lock, name, cmd),
+        Command::ReviewShow { .. } | Command::ReviewDiscard { .. } => Err(station_hint("review")),
+        Command::VerifyShow { .. } | Command::VerifyDiscard { .. } => Err(station_hint("verify")),
+        _ => Err(DispatchError::new("invalid_argv", format!("Unknown or unsupported verb '{name}'"))),
     }
 }
 
@@ -453,24 +468,10 @@ fn stamp(
     backend: &Backend,
     actor: Option<&str>,
     stamp_lock: &std::sync::Mutex<()>,
-    noun: &str,
+    name: &str,
     cmd: core::command::Command,
 ) -> DispatchResult {
-    // Fail BEFORE anything destructive: the engine deletes the ticket before
-    // it rewrites the metadata, so a store that cannot finish the stamp must
-    // be refused up front — never mid-way with the ticket already gone.
-    if let Backend::Js { missing_stamp_methods, .. } = backend {
-        if !missing_stamp_methods.is_empty() {
-            return Err(DispatchError::new(
-                "error",
-                format!(
-                    "{noun} stamp requires store methods this store does not implement: {} — \
-                     stamping rewrites the change metadata and deletes the ticket",
-                    missing_stamp_methods.join(", ")
-                ),
-            ));
-        }
-    }
+    refuse_unfinishable_stamp(backend, name)?;
     // Serialize stamps within this instance — the metadata write has no CAS.
     // A poisoned lock only means another stamp panicked; the metadata itself
     // is no more suspect than after any failed dispatch, so proceed.

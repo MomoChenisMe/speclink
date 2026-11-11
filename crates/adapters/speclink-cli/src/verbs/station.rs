@@ -56,18 +56,6 @@ const VERIFY_CLI: StationCli = StationCli {
     station: &core::station::VERIFY,
     ns: speclink_host::change_diff::StationNs::Verify,
 };
-/// The stamp's hidden `--stdin` carries a host's precomputed scope; the CLI
-/// computes the scope from this checkout, so it refuses the flag before any
-/// mode resolution or write.
-fn refuse_stamp_stdin(st: &core::station::Station, stdin: bool) -> Result<()> {
-    if stdin {
-        bail!(
-            "{} stamp --stdin is for hosts without a checkout — the CLI computes the stamp scope from this checkout",
-            st.noun
-        );
-    }
-    Ok(())
-}
 pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
     let verb = match a.command {
         // prepare：Apply baseline 的兩站共用入口（verify 無此子指令），自成雙臂。
@@ -80,8 +68,7 @@ pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
         }
         ReviewCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
         ReviewCommands::Show { change, json } => StationVerb::Show { change, json },
-        ReviewCommands::Stamp { change, accept, agent, stdin } => {
-            refuse_stamp_stdin(REVIEW_CLI.station, stdin)?;
+        ReviewCommands::Stamp { change, accept, agent } => {
             StationVerb::Stamp { change, accept, agent }
         }
         ReviewCommands::Discard { change } => StationVerb::Discard { change },
@@ -95,8 +82,7 @@ pub(crate) fn cmd_verify(a: VerifyArgs) -> Result<()> {
         }
         VerifyCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
         VerifyCommands::Show { change, json } => StationVerb::Show { change, json },
-        VerifyCommands::Stamp { change, accept, agent, stdin } => {
-            refuse_stamp_stdin(VERIFY_CLI.station, stdin)?;
+        VerifyCommands::Stamp { change, accept, agent } => {
             StationVerb::Stamp { change, accept, agent }
         }
         VerifyCommands::Discard { change } => StationVerb::Discard { change },

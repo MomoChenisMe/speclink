@@ -10,6 +10,6 @@ pub mod families;
 mod inputs;
 mod parse;
 
-pub use families::SpecVerb;
-pub use inputs::{CommandTarget, StdinPolicy, VerbInputs};
+pub use families::{SpecVerb, ToCommand};
+pub use inputs::{CommandTarget, LocalOnlyReason, StdinPolicy, VerbInputs};
 pub use parse::{parse, GlobalArgs, ParseError, ParseErrorKind, ParsedVerb};

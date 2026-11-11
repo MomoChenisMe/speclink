@@ -3,7 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct TaskArgs {
@@ -62,10 +62,12 @@ impl TaskArgs {
             TaskCommands::Undone { .. } => "task undone",
         }
     }
+}
 
+impl ToCommand for TaskArgs {
     /// `task done` takes the caller's touched files and HEAD commit; without
     /// them the engine probes the local workspace.
-    pub fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(match &self.command {
             TaskCommands::Done { task_id, change, .. } => Command::TaskDone {
                 task_id: task_id.clone(),
@@ -88,8 +90,10 @@ impl InProgressArgs {
             InProgressCommands::Remove { .. } => "in-progress remove",
         }
     }
+}
 
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for InProgressArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(match &self.command {
             InProgressCommands::Add { name } => Command::InProgressAdd { name: name.clone() },
             InProgressCommands::Remove { name } => Command::InProgressRemove { name: name.clone() },

@@ -87,16 +87,22 @@ where
 
 /// The engine command a shared verb converts to. The CLI routes every
 /// LocalOnly verb (drift, `instructions --skill`, …) before it reaches an fs
-/// arm, so only a command arrives here.
+/// arm; one that slips through is an error, not a panic.
 pub(crate) fn engine_command(
     target: Result<speclink_verbs::CommandTarget, core::command::CommandError>,
 ) -> Result<core::command::Command> {
     match target? {
         speclink_verbs::CommandTarget::Command(cmd) => Ok(cmd),
-        speclink_verbs::CommandTarget::LocalOnly { verb } => {
-            unreachable!("{verb} is routed before its fs arm")
+        speclink_verbs::CommandTarget::LocalOnly { verb, .. } => {
+            anyhow::bail!("'{verb}' has no engine command — the CLI runs it before this point")
         }
     }
+}
+
+/// The engine command of a verb that needs no caller data (no stdin, no
+/// worktree facts, no git facts).
+pub(crate) fn plain_command(verb: &impl speclink_verbs::ToCommand) -> Result<core::command::Command> {
+    engine_command(verb.to_command(speclink_verbs::VerbInputs::default()))
 }
 
 /// For read/analysis commands: when no change name is given and no changes exist, print the
@@ -185,4 +191,17 @@ pub(crate) fn worktree_overlay<'a>(
             .collect(),
     );
     (facts, overlaid)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn a_local_only_verb_is_an_error_not_a_panic() {
+        let target = Ok(speclink_verbs::CommandTarget::LocalOnly {
+            verb: "drift",
+            reason: speclink_verbs::LocalOnlyReason::NeedsCheckout,
+        });
+        let err = super::engine_command(target).expect_err("LocalOnly has no engine command");
+        assert!(err.to_string().contains("drift"), "{err}");
+    }
 }

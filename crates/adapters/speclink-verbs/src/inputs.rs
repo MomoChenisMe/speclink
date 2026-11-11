@@ -70,9 +70,19 @@ impl StdinPolicy {
 pub enum CommandTarget {
     /// The engine command this verb stands for.
     Command(Command),
-    /// The verb has no engine command: it needs facts only a checkout holds,
-    /// so only the side that has one can run it.
-    LocalOnly { verb: &'static str },
+    /// The verb has no engine command, so only the CLI runs it; `reason` says
+    /// why.
+    LocalOnly { verb: &'static str, reason: LocalOnlyReason },
+}
+
+/// Why a verb has no engine command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocalOnlyReason {
+    /// It works on facts only a checkout holds: git state, worktree copies,
+    /// the stations' snapshots.
+    NeedsCheckout,
+    /// It prints skill text built into the CLI.
+    CliSkillText,
 }
 
 #[cfg(test)]

@@ -5,9 +5,9 @@
 //! stderr. clap's `try_parse_from` never prints or exits; the rendered text
 //! comes back inside [`ParseError`].
 
-use clap::{Args, Parser};
+use clap::{Args, CommandFactory, FromArgMatches, Parser};
 
-use crate::families::SpecVerb;
+use crate::families::{station, SpecVerb, ToCommand};
 use crate::inputs::{CommandTarget, StdinPolicy, VerbInputs};
 
 // The flags every verb accepts — one definition, flattened into the CLI's
@@ -51,30 +51,41 @@ pub struct ParseError {
 #[derive(Debug)]
 pub struct ParsedVerb {
     verb: SpecVerb,
+    // `Some(flag)` for the two stamps: whether their host-only `--stdin` came.
+    stamp_stdin: Option<bool>,
 }
 
 impl ParsedVerb {
-    /// The parsed clap value, for callers that read its flags.
-    pub fn verb(&self) -> &SpecVerb {
-        &self.verb
-    }
-
     /// The verb's stable name: its subcommand words, e.g. `new artifact`.
     pub fn name(&self) -> &'static str {
         self.verb.name()
     }
 
-    /// Whether this verb reads stdin — see [`StdinPolicy`].
-    pub fn stdin_policy(&self) -> StdinPolicy {
-        self.verb.stdin_policy()
+    /// Whether this verb is `review stamp` or `verify stamp`.
+    pub fn is_stamp(&self) -> bool {
+        self.stamp_stdin.is_some()
     }
 
-    /// The engine command this verb stands for (see [`SpecVerb::to_command`]).
+    /// Whether this verb reads stdin — see [`StdinPolicy`]. A stamp reads it
+    /// only with its host-only `--stdin`.
+    pub fn stdin_policy(&self) -> StdinPolicy {
+        match self.stamp_stdin {
+            Some(flagged) => StdinPolicy::WhenFlagged { flagged },
+            None => self.verb.stdin_policy(),
+        }
+    }
+
+    /// The engine command this verb stands for (see `SpecVerb`'s [`ToCommand`]).
     pub fn into_command(
         self,
         inputs: VerbInputs,
     ) -> Result<CommandTarget, speclink_core::command::CommandError> {
-        self.verb.to_command(inputs)
+        // A stamp's stdin is its scope JSON, read under the host-only flag.
+        match (&self.verb, self.stamp_stdin) {
+            (SpecVerb::Review(a), Some(flagged)) => a.command_with(inputs, flagged),
+            (SpecVerb::Verify(a), Some(flagged)) => a.command_with(inputs, flagged),
+            (verb, _) => verb.to_command(inputs),
+        }
     }
 }
 
@@ -86,13 +97,19 @@ where
 {
     let line = std::iter::once(std::ffi::OsString::from("speclink"))
         .chain(argv.into_iter().map(Into::into));
-    match VerbLine::try_parse_from(line) {
-        Ok(VerbLine { verb, .. }) => Ok(ParsedVerb { verb }),
-        Err(e) => Err(ParseError {
-            kind: if e.use_stderr() { ParseErrorKind::Usage } else { ParseErrorKind::Help },
-            message: e.render().to_string().trim_end().to_string(),
-            exit_code: e.exit_code(),
-        }),
+    // The CLI's tree plus the stamps' host-only `--stdin`.
+    let mut tree = station::with_stamp_stdin(VerbLine::command());
+    let matches = tree.try_get_matches_from_mut(line).map_err(parse_error)?;
+    let VerbLine { verb, .. } =
+        VerbLine::from_arg_matches(&matches).map_err(|e| parse_error(e.format(&mut tree)))?;
+    Ok(ParsedVerb { verb, stamp_stdin: station::stamp_stdin_of(&matches) })
+}
+
+fn parse_error(e: clap::Error) -> ParseError {
+    ParseError {
+        kind: if e.use_stderr() { ParseErrorKind::Usage } else { ParseErrorKind::Help },
+        message: e.render().to_string().trim_end().to_string(),
+        exit_code: e.exit_code(),
     }
 }
 
@@ -101,6 +118,16 @@ mod tests {
     use super::*;
 
     const ANSI_ESC: char = '\u{1b}';
+
+    #[test]
+    fn only_the_two_stamps_are_stamps() {
+        for argv in [&["review", "stamp", "x"][..], &["verify", "stamp", "x", "--stdin"]] {
+            assert!(parse(argv).expect("parses").is_stamp(), "{argv:?}");
+        }
+        for argv in [&["review", "add-round", "x"][..], &["verify", "show", "x"], &["list"]] {
+            assert!(!parse(argv).expect("parses").is_stamp(), "{argv:?}");
+        }
+    }
 
     #[test]
     fn empty_argv_is_a_usage_error() {

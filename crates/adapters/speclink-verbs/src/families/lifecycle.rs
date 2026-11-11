@@ -3,7 +3,7 @@
 use clap::Args;
 use speclink_core::command::{Command, CommandError, ErrorCode};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ArchiveArgs {
@@ -67,20 +67,23 @@ pub struct ClaimArgs {
 impl ArchiveArgs {
     /// One change's archive under these flags — the single command, and each
     /// step of the CLI's bulk loop.
+    /// The flags come from the one `ArchiveOptions` mapping above.
     pub fn archive_command(&self, change: Option<String>) -> Command {
-        Command::Archive {
-            change,
-            skip_specs: self.skip_specs,
-            no_validate: self.no_validate,
-            mark_tasks_complete: self.mark_tasks_complete,
-            carry_review: self.carry_review,
-            carry_verify: self.carry_verify,
-        }
+        let speclink_core::archive::ArchiveOptions {
+            skip_specs,
+            no_validate,
+            mark_tasks_complete,
+            carry_review,
+            carry_verify,
+        } = self.into();
+        Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify }
     }
+}
 
+impl ToCommand for ArchiveArgs {
     /// One engine command archives one change: several names or `--all` run
     /// as the caller's loop of single archives.
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         if self.all || self.changes.len() > 1 {
             return Err(CommandError::new(
                 ErrorCode::InvalidArgv,
@@ -91,14 +94,14 @@ impl ArchiveArgs {
     }
 }
 
-impl DiscardArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for DiscardArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Discard { change: self.change.clone(), force: self.force }))
     }
 }
 
-impl ClaimArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for ClaimArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Claim { name: self.name.clone() }))
     }
 }

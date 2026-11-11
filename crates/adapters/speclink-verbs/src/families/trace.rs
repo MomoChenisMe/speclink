@@ -3,7 +3,7 @@
 use clap::Args;
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct TraceArgs {
@@ -14,8 +14,8 @@ pub struct TraceArgs {
     pub json: bool,
 }
 
-impl TraceArgs {
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+impl ToCommand for TraceArgs {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(Command::Trace { capability: self.capability.clone() }))
     }
 }

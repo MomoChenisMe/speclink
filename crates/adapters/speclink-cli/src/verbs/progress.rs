@@ -7,12 +7,11 @@ use anyhow::{bail, Result};
 use speclink_core as core;
 
 use crate::color;
-use crate::common::{engine_command, open_project, run};
+use crate::common::{open_project, plain_command, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::progress::{
     InProgressArgs, InProgressCommands, TaskArgs, TaskCommands,
 };
-use speclink_verbs::VerbInputs;
 
 pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     let (flip, json) = match a.command {
@@ -21,7 +20,7 @@ pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     };
     let (ws, store) = open_project()?;
     // fs mode gives no touched files: the engine probes this workspace itself.
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     let o: core::command::TaskFlipOutcome = run(&store, Some(&ws), cmd)?;
     render_task_flip(
         flip,
@@ -96,7 +95,7 @@ fn render_in_progress_remove(name: &str, removed: bool) {
 }
 pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = engine_command(a.to_command(VerbInputs::default()))?;
+    let cmd = plain_command(&a)?;
     match a.command {
         InProgressCommands::Add { .. } => {
             let _: core::command::InProgressOutcome = run(&store, Some(&ws), cmd)?;

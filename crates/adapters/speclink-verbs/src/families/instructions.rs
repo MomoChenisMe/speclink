@@ -3,7 +3,7 @@
 use clap::Args;
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, VerbInputs};
+use crate::{CommandTarget, LocalOnlyReason, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct InstructionsArgs {
@@ -23,12 +23,15 @@ pub struct InstructionsArgs {
     pub skill: Option<String>,
 }
 
-impl InstructionsArgs {
+impl ToCommand for InstructionsArgs {
     /// `--skill` prints a constant skill body that lives outside the store,
     /// so it has no engine command.
-    pub fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         if self.skill.is_some() {
-            return Ok(CommandTarget::LocalOnly { verb: "instructions --skill" });
+            return Ok(CommandTarget::LocalOnly {
+                verb: "instructions --skill",
+                reason: LocalOnlyReason::CliSkillText,
+            });
         }
         Ok(CommandTarget::Command(Command::Instructions {
             artifact: self.artifact.clone(),

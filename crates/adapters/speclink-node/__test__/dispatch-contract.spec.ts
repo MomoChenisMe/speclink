@@ -1,7 +1,7 @@
 // dispatch 的輸入輸出契約（spec: 壞工作流設定經 dispatch 拒絕 / CLI 與 dispatch
 // 的錯誤分類一致）：錯誤碼出自引擎命令層的封閉註冊表，message 與 CLI 訊息相同。
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
@@ -195,5 +195,74 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
     expect(err.code).toBe('invalid_argv')
     expect(err.message).toMatch(/drift/)
     expect(err.message).toMatch(/checkout/)
+  })
+
+  it('instructions --skill names the CLI, not a checkout, as where it runs', async () => {
+    const engine = createEngine({ store: memoryStore(fixtureProject()) })
+    const err = await rejection(engine.dispatch(['instructions', '--skill', 'tdd']))
+    expect(err.code).toBe('invalid_argv')
+    expect(err.message).toMatch(/instructions --skill/)
+    expect(err.message).toMatch(/built into the CLI/)
+    expect(err.message).not.toMatch(/checkout/)
+  })
+
+  // spec node-sdk「給了 stdin 卻沒帶 --stdin」
+  it('stdin without --stdin rejects a verb that reads stdin only when flagged', async () => {
+    const store = memoryStore(fixtureProject())
+    const writes: string[] = []
+    const write = store.writeArtifact.bind(store)
+    store.writeArtifact = async (change: string, artifact: string, content: string) => {
+      writes.push(`${change}/${artifact}`)
+      return write(change, artifact, content)
+    }
+    const engine = createEngine({ store })
+    const err = await rejection(
+      engine.dispatch(['new', 'artifact', 'proposal', '--change', 'beta'], { stdin: '## Why\n' }),
+    )
+    expect(err.code).toBe('invalid_argv')
+    expect(err.message).toMatch(/--stdin/)
+    expect(writes).toEqual([])
+  })
+
+  // spec node-sdk「蓋章的 --stdin 只有 dispatch 接受」
+  it('stamp --stdin is accepted by dispatch and rejected by the CLI', async () => {
+    const scopeFile = 'crates/b/src/util.rs'
+    const engine = createEngine({ store: memoryStore(fixtureProject()) })
+    await engine.dispatch(['review', 'add-round', 'beta', '--stdin'], {
+      stdin: `**Scope**: ${scopeFile}\n\n- [SUGGESTION] ${scopeFile} — rename helper\n`,
+    })
+    const stamped = await engine.dispatch(['review', 'stamp', 'beta', '--stdin'], {
+      stdin: JSON.stringify({ scope: [{ path: scopeFile, hash: '0f9c' }] }),
+    })
+    expect(stamped).toEqual({ change: 'beta' })
+
+    const root = makeFsFixture()
+    const meta = join(root, 'speclink', 'changes', 'beta', '.meta.yaml')
+    const before = readFileSync(meta, 'utf8')
+    const run = cli(root, ['review', 'stamp', 'beta', '--stdin'])
+    expect(run.code).toBe(2)
+    expect(run.stderr).toMatch(/unexpected argument '--stdin'/)
+    expect(readFileSync(meta, 'utf8')).toBe(before)
+  })
+
+  // spec command-runtime「動詞文字的解析只有一份」的兩個情境，argv 逐字照抄 spec。
+  it('speclink list --sort name --json and dispatch list --sort name give the same changes', async () => {
+    const root = makeFsFixture()
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const names = (v: unknown) => (v as { changes: Array<{ name: string }> }).changes.map((c) => c.name)
+    const run = cli(root, ['list', '--sort', 'name', '--json'])
+    expect(run.code).toBe(0)
+    expect(names(await engine.dispatch(['list', '--sort', 'name']))).toEqual(names(JSON.parse(run.stdout)))
+  })
+
+  it('status --no-such-flag rejects in both entries with the same text', async () => {
+    const root = makeFsFixture()
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const err = await rejection(engine.dispatch(['status', '--no-such-flag']))
+    expect(err.code).toBe('invalid_argv')
+    const run = cli(root, ['status', '--no-such-flag'])
+    expect(run.code).not.toBe(0)
+    expect(err.message).toBe(run.stderr.trimEnd())
+    expect(err.message).not.toContain('\u001b')
   })
 })
