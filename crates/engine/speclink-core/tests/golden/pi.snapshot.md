@@ -1677,7 +1677,7 @@ Every record has the same fixed skeleton:
 2. Act on what the discussion list shows:
    - **A record matches the topic and is still live** — `status` `open`, or `promoted` mid-way through a spin-out (Step 9) → resume it (reuse its `slug`): the record already exists; every later `add-round`/`conclude` call uses it. Only `concluded` and archived records are past resuming. **Resume ritual**: before continuing, present a recap derived from the record — one line per round (its Focus → the first sentence of its Position), then the last round's Open ledger as the current frontier — and only then pick the discussion back up. The recap is mechanically derived from fields the record already has; it introduces no new format and existing records need no migration. Rounds you add to a resumed record follow **Record language** (Step 5).
    - **No live record matches** → do not create one yet. Derive an English kebab-case slug from the topic (translate when the topic is not English — e.g. 「看板搜尋列」 → `board-search-bar`), announce it ("This discussion will be recorded as `<slug>` once it has substance."), and proceed — scout, judge requirement clarity, present your first assumptions or question with nothing on disk. A mis-invocation or a topic answered in one exchange leaves no file behind. Step 5 says when the record is created.
-3. If the user mentioned a specific change name, read its artifacts for context: `speclink show <name> --json` lists them, and `speclink artifact cat <artifact> --change <name>` prints each one (a delta spec is `specs/<capability>`).
+3. If the user mentioned a specific change name, read its artifacts for context: `speclink show <name> --json` lists them, and `speclink artifact cat <artifact> --change <name>` prints each one — a delta spec is `specs/<capability>`, which `deltaSpecs` lists as `<capability>/spec.md`. When that change's `speclink list --json` entry carries a `worktree` object, run both from its `worktree.path`: the worktree copy is the one being worked on.
 
 ---
 
@@ -1702,7 +1702,7 @@ Pull 2-5 keywords from the user's topic. For "search should support fuzzy matchi
 
 The scout is a funnel: the canon, plus the in-flight deltas about to change it, narrows the vocabulary, the prior-discussion check tells you what is already settled, then the code scan runs on the narrowed terms.
 
-1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates in **candidate order** — the names that match the most keywords first, ties in the order the command lists them. Read the Purpose of at most 3 of them in that order: run `speclink show <capability>` for each and read the Purpose at the top of its output. Each hit's `path` only identifies the capability — do not open it as a file: in remote mode it is a storage key, not a location on disk. Read a spec in full only when the topic directly targets that capability; the same `speclink show <capability>` output is the whole spec. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
+1. **Canon pass** — run `speclink list --specs --json` and match the keywords against capability names. Keep at most 5 candidates in **candidate order** — the names that match the most keywords first, ties in the order the command lists them. Read the Purpose of at most 3 of them in that order: run `speclink show <capability> --item-type spec` for each and read the Purpose at the top of its output (naming the type keeps a same-named active change from answering instead). Each hit's `path` only identifies the capability — do not open it as a file: in remote mode it is a storage key, not a location on disk. Read a spec in full only when the topic directly targets that capability; the same `speclink show <capability> --item-type spec` output is the whole spec. Zero hits → skip silently: don't mention specs at all and run the code pass with the original keywords.
 
    **In-flight deltas belong to this pass.** Every change `speclink list --json` returned ("At the start", item 1) is still active: whatever its `status`, its delta specs have not landed in the canon yet. Each change entry's `deltaCapabilities` field names the capabilities those deltas rewrite (the field is absent when the change has none), so that list already holds the answer — no further call. Every change whose `deltaCapabilities` holds a capability the canon pass hit is an **in-flight delta hit** — note it as `<name>: <capability>`. Time-box: read at most 3 hits — the first 3 in candidate order, several changes on one capability in the order `speclink list --json` returned them — with `speclink artifact cat specs/<capability> --change <name>`, and keep only its `## ADDED` / `MODIFIED` / `REMOVED` / `RENAMED` section markers and `### Requirement:` headings, never the delta's full text. When that change's list entry carries a `worktree` object, run the command from its `worktree.path`: the list took that change's deltas from the worktree copy, so the headings have to come from there too. Zero canon hits, no active changes, or no `deltaCapabilities` holding a hit capability → skip silently: say nothing about in-flight deltas. Both verbs work in remote mode, so the check runs the same way there. The hits feed the in-flight marker on the first two triage rows (Step 3) and the Context's "related changes/specs" line (Step 5); they never open a stage of their own.
 2. **Translate** — rewrite the search terms using the capability names and canonical vocabulary the canon pass surfaced (on top of Step 0's vocabulary), so the code scan speaks the system's language instead of the user's.
@@ -2069,7 +2069,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 
 **Staged cuts — `--hold`.** When the conclusion plans further changes to spin out from this same record later (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`/skill:speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion.
 
-**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name, but only when the spec folder is in this checkout — it is live again and every verb works on it. The engine's error for spinning out from an archived record points at the same path. When the specs are not in this checkout (a remote project, or a host that embeds the engine), move nothing: stop and tell the user that this step has to be done on the Server that holds the specs.
+**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it, and the engine's error for spinning out from an archived record points at the same path. Do this only when the spec folder is in this checkout; when it is not (a remote project, or a host that embeds the engine), move nothing — stop and tell the user that this step has to be done on the Server that holds the specs.
 
 ---
 
@@ -2457,6 +2457,16 @@ Update an existing Speclink change — from a plan file or conversation context.
 - `/skill:speclink-ingest agile-discovering-rocket`
 - `/skill:speclink-ingest` (use conversation context or auto-detect plan file)
 
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+
 **Steps**
 
 1. **Locate the requirement source**
@@ -2542,6 +2552,8 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Read the existing artifacts for context before updating: `speclink artifact cat <artifact-id> --change "<name>"` prints each one (a delta spec is `specs/<capability>`).
 
+   **A change checked out in a worktree is updated there.** When this change's `speclink list --json` entry carries a `worktree` object, run every command of steps 4 to 8 from its `worktree.path`. Run from the main checkout, they read and write the main copy only, and apply works in the worktree copy, so it would never see the update.
+
 5. **Update artifacts**
 
    **Check the schema first.** Read `schemaName` from `speclink status --change "<name>" --json`. When it is `no-spec-change` and the new requirement adds, modifies or removes behavior a canonical spec promises, switch the change back before you touch any artifact:
@@ -2563,15 +2575,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do not copy them into the file.
 
-   **Write-back: how every update is written.** Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability>`), merge the new content into that full text, and write the whole result back with `--stdin --force`:
-
-   ```bash
-   speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
-   <full updated content>
-   ARTIFACT_EOF
-   ```
-
-   A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user why — do not edit the file instead.
+   Write every update as a write-back (see **Write-back** above the steps): merge the new content into the artifact's full text, then write the whole result back.
 
    The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
@@ -2625,7 +2629,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
 6. **Inline Self-Review** (before CLI analysis)
 
-   After updating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (step 5), then proceed to the CLI analyzer.
+   After updating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (see **Write-back**), then proceed to the CLI analyzer.
 
    **Check 1: No Placeholders**
 
@@ -2665,7 +2669,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
    - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
-   Fix every failure with a write-back (step 5) using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
+   Fix every failure with a write-back (see **Write-back**) using the existing context and the new plan/conversation source before running the CLI analyzer. Update incomplete design and task content so behavior contracts, verification criteria, and scope boundaries stay current with the new context. Preserve completed tasks unchanged.
 
 7. **Analyze-Fix Loop** (max 2 iterations)
 
@@ -2677,7 +2681,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    2. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
    3. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
-      b. Fix each finding in the affected artifact with a write-back (step 5)
+      b. Fix each finding in the affected artifact with a write-back (see **Write-back**)
       c. Re-run `speclink analyze <name> --json`
       d. Repeat up to 2 total iterations
    4. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
@@ -2688,7 +2692,7 @@ Update an existing Speclink change — from a plan file or conversation context.
    speclink validate "<name>"
    ```
 
-   If validation fails, fix the errors with a write-back (step 5) and re-validate.
+   If validation fails, fix the errors with a write-back (see **Write-back**) and re-validate.
 
 9. **Re-judge soft dependencies**
 
@@ -3006,6 +3010,16 @@ If no argument is provided, the workflow extracts requirements from conversation
 
 **This workflow writes artifacts, not code.** Never write application code or implement features during this workflow, never skip the artifact workflow to write code directly, and never reinterpret requirements by ignoring the proposal file. The workflow ends after step 12 and its landscape check — it NEVER invokes `/skill:speclink-apply`; the user decides when implementation starts.
 
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+
 **Steps**
 
 1. **Determine the requirement source**
@@ -3085,7 +3099,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    Before creating the change, check if any existing specs overlap:
    1. Run `speclink list --specs --json` to get the spec identifier list
    2. Compare against the user's description to identify related specs (max 5 candidates)
-   3. For each candidate (max 3), run `speclink show <spec-id>` and read the Purpose section at the top of the output
+   3. For each candidate (max 3), run `speclink show <spec-id> --item-type spec` and read the Purpose section at the top of the output (naming the type keeps a same-named active change from answering instead)
    4. Related specs found → display them as an informational summary, then continue to the next step — do not stop or ask for confirmation
    5. No related specs found → proceed without pausing
    6. Either way, leave a trace of the scan result in the proposal: name the related specs you found (or state that none matched) — the "why no existing spec covers this" sentence required for each New Capability in step 6 builds on this trace
@@ -3126,7 +3140,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
    - The conclusion planned **no staged cuts** (a single change) → do not pass it. (The record carries no hold, so the flag would be a harmless no-op — but "not passed" is the rule.)
 
-   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `speclink/discussions/archive/` to `speclink/discussions/` (drop the `<date>-` prefix), which works only when the spec folder is in this checkout — the engine's error message points at that path; when the specs are not in this checkout, stop and tell the user that the move has to be done on the Server that holds the specs. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
+   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `speclink/discussions/archive/` to `speclink/discussions/` (drop the `<date>-` prefix; the engine's error message points at that path). Move it only when the spec folder is in this checkout; when it is not (a remote project, or a host that embeds the engine), move nothing — stop and tell the user that this step has to be done on the Server that holds the specs. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
 6. **Write the proposal**
 
@@ -3315,15 +3329,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
      If the command fails with a validation error, fix the content and retry.
 
-     **Write-back: changing an artifact that already exists.** Every later fix in this workflow — the self-review (step 9), the analyze loop (step 10), a failed validation (step 11) — changes an artifact the same way: read its full text with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability-name>`), make the fix on that full text, and write the whole result back with `--stdin --force`:
-
-     ```bash
-     speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
-     <full corrected content>
-     ARTIFACT_EOF
-     ```
-
-     A delta spec is written back with `speclink new artifact spec <capability-name> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+     Every later fix in this workflow — the self-review (step 9), the analyze loop (step 10), a failed validation (step 11) — changes an artifact through a write-back (see **Write-back** above the steps).
 
      **The `--new` flag declares a new capability.** A capability the canonical specs do not carry yet is refused by default, and the error lists up to three similar existing names with their Purpose lines. Always run the command without `--new` first; only when it refuses AND you have confirmed the suggestion list holds no synonym of your capability, re-run the same command with `--new` appended to declare it as genuinely new. If a suggested name IS the same capability, reuse that exact name instead of declaring a new one.
 
@@ -3338,7 +3344,7 @@ If no argument is provided, the workflow extracts requirements from conversation
 
 9. **Inline Self-Review** (before CLI analysis)
 
-   After creating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (step 8), then proceed to the CLI analyzer.
+   After creating all artifacts, read them back with `speclink artifact cat` and scan them. Fix each issue with a write-back (see **Write-back**), then proceed to the CLI analyzer.
 
    **Check 1: No Placeholders**
 
@@ -3374,7 +3380,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    - **Vague acceptance criteria**: success conditions like "works correctly", "behaves as expected", "handles edge cases" without naming the observable behavior or the verification target (test name, CLI invocation, analyzer rule, manual assertion).
    - **Missing scope boundaries on non-trivial work**: design lacking explicit "in scope" / "out of scope" lines for any change that touches more than one subsystem or introduces new behavior. Trivial artifact-only edits may skip this; runtime, build, or tooling effects may not.
 
-   Fix every failure with a write-back (step 8) using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
+   Fix every failure with a write-back (see **Write-back**) using the existing context before running the CLI analyzer. If a failure cannot be fixed without new input from the user, surface it explicitly rather than papering over it.
 
 10. **Analyze-Fix Loop** (max 2 iterations)
    1. Run `speclink analyze <change-name> --json`
@@ -3382,7 +3388,7 @@ If no argument is provided, the workflow extracts requirements from conversation
    3. No Critical/Warning findings → show "Artifacts look consistent ✓" and proceed
    4. Critical/Warning findings exist →
       a. Show: "Found N issue(s), fixing... (attempt M/2)"
-      b. Fix each finding in the affected artifact with a write-back (step 8)
+      b. Fix each finding in the affected artifact with a write-back (see **Write-back**)
       c. Re-run `speclink analyze <change-name> --json`
       d. Repeat up to 2 total iterations
    5. Findings remain after 2 attempts → show them as a summary and proceed normally (do not block)
@@ -3393,7 +3399,7 @@ If no argument is provided, the workflow extracts requirements from conversation
     speclink validate "<name>"
     ```
 
-    If validation fails, fix the errors with a write-back (step 8) and re-validate.
+    If validation fails, fix the errors with a write-back (see **Write-back**) and re-validate.
 
 12. **End the workflow**
 

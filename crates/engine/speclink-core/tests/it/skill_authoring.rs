@@ -17,6 +17,7 @@ const EMPHASIS_CAPS: &[(&str, usize)] = &[
     ("apply-worktree-pre.md", 21),
     ("apply.md", 8),
     ("archive.md", 4),
+    ("artifact-write-back.md", 0),
     ("audit.md", 1),
     ("baseline.md", 8),
     ("clarify.md", 4),

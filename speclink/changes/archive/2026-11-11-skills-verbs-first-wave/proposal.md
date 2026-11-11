@@ -14,6 +14,14 @@
 - **使用情境**：`/speclink-discuss`、`/speclink-propose`、`/speclink-ingest` 三支技能，以及它們收尾時用到的 `speclink change rank`。
 - **既有規格的對照**：verb-contract 的「store 文件讀取動詞」規定技能用動詞讀文件；「模式分岔的單點宣告」把 `change rank` 列為只限本機。change-plan 的「change rank 動詞寫入看板順序鍵」規定它在遠端拒絕。node-sdk 的 dispatch 把 `change rank` 列為需要 checkout 的動詞。discuss-skill、propose-skill、ingest-skill 沒有規定「讀寫一律經動詞」。remote-board-order 規定遠端的順序存在一份看板順序文件。
 
+**品質關卡第 1 輪找到的缺口**（apply 完成後，`/speclink-quality` 第 1 輪；使用者選「全部修」）：
+
+- **儲存接口上的 `plan` 看不到剛排好的順序。** `ChangeRank` 經儲存接口把順序鍵寫進 `board/order`，但 `plan` 仍讀各變更的 metadata；只有示範用 server 會自己把看板順序表傳進去。內嵌宿主經儲存接口執行 `plan` 時，排序沒有效果。
+- **看板順序文件的寫回不修剪、讀取不分段。** 已封存或丟棄的變更留下的順序鍵不會被清掉，同名重建的變更會繼承舊鍵而被拒絕；討論那一段格式壞掉時，整份讀成空，寫回會丟掉變更那一段原本有效的鍵。remote-board-order 也還寫著「server 只在 GET /plan 解析這份文件」，沒有涵蓋新的排序路由。
+- **規格字面和設計不一致。** change-plan 寫「沒有本機規格檔的內嵌宿主」適用 remote 規則，但 D7 讓 Node SDK 既有的 31 方法宿主 Store 寫 metadata。討論已定案：cut 6 開放 JS 版儲存契約（經儲存接口，會寫 `board/order`），既有的 31 方法 JS 儲存標成即將移除、cut 15 刪掉。所以收窄規格字面，不替要刪的程式碼加功能。
+- **技能文字的兩個洞。** `speclink show <capability>` 沒帶 `--item-type spec`，有同名的作用中變更時讀到的是變更；變更在 worktree 時，從主 checkout 讀寫只會碰主副本，兩份副本從此分岔。
+- **重複與測試缺口。** 寫回段落在 propose 與 ingest 各寫一次、已經開始走樣；`before`／`after` 轉 `Side` 寫了兩次；遠端 `new artifact --stdin --force` 整份寫回沒有測試。
+
 Source discussion: embedded-host-needs（cut 9）。
 
 ## What Changes
@@ -44,6 +52,18 @@ Source discussion: embedded-host-needs（cut 9）。
   - 遠端專案：`change rank` 從「非 0 並說明只限本機」變成「執行並成功」。訊息 `change rank is not available in remote mode` 不再出現。
   - 連到舊版 Server 的新版 CLI：Server 沒有這條路由，回 404；CLI 顯示既有的「找不到」訊息並以非 0 結束。
   - 技能檔：三支技能的內容改變，使用者要執行 `speclink update`。
+**品質關卡第 1 輪之後追加**
+
+- **儲存接口上的 `plan` 讀看板順序文件。** 引擎的 `plan`（含 `--strict-overlap` 與 `change depends` 的成環檢查、看板顯示序）改從 `Store::board_ranks` 取得順序鍵。本機與各預設實作仍讀 metadata，結果不變；經儲存接口時讀 `board/order`。示範用 server 的 plan 路由照舊傳入順序表，結果相同。
+- **看板順序文件的讀寫收成一個規則。** `speclink-protocol` 的 `BoardOrderDoc` 改成逐段寬鬆讀取（一段壞掉只讓那一段讀成空），並提供「把順序鍵併進全文」的函式：只保留作用中變更的條目，討論那一段原樣帶回。`PortView` 的 `board_ranks` 只回作用中變更，`write_board_ranks` 用這個函式寫回。
+- **內嵌宿主的規則收窄。** 經儲存接口執行引擎命令的宿主適用 remote 規則；Node SDK 既有的 31 方法宿主 Store（即將移除）沿用各變更的 metadata。
+- **worktree 視圖不寫看板順序。** `WorktreeOverlay` 的 `write_board_ranks` 明確拒絕：它的讀取來自 worktree 副本、預設寫入卻落在主副本。本機 CLI 照舊直接呼叫 `set_rank` 並自己選副本。
+- **技能文字**：discuss 與 propose 讀正式規格改用 `speclink show <capability> --item-type spec`；ingest 的讀寫步驟與 discuss 讀指名變更的步驟，在變更帶 `worktree` 時從它的 `worktree.path` 執行；寫明 `deltaSpecs` 的 `<capability>/spec.md` 要用 `specs/<capability>` 讀。整份寫回的說明與「搬回封存記錄」的條件句改成共用片段，產生技能檔時注入，propose 與 ingest、discuss 與 propose 不再各寫一份。
+- **整理**：`Side` 新增從 `before`／`after` 解析的函式，server 路由與 CLI 遠端分支共用；輸出函式直接吃 `ChangeRankOutcome`，`Command::ChangeRank` 的欄位 `side` 改名 `position`；Node SDK 的排序拒絕改用自己的方法清單，先判斷命令再看缺什麼。
+- **測試**：CLI 遠端 `new artifact --stdin --force` 帶 If-Match（讀到的版本）並送出完整內容；技能守門加上逐句斷言（寫回被拒時停下、搬回條件、`--item-type spec`、`worktree.path`、共用片段只出現一次）。
+- **追加的相容性影響**：
+  - 經儲存接口執行、不帶順序表的 `plan`：順序鍵從 metadata 改讀 `board/order`。
+  - 看板順序文件：一段格式壞掉不再讓另一段失效（server 的 plan 路由、Desktop 的遠端排序與新的排序路由用同一個規則）；排序路由整份寫回時移除不在作用中清單的條目。
 - **設定欄位**：沒有新增或變更。
 
 ## Non-Goals
@@ -56,6 +76,7 @@ Source discussion: embedded-host-needs（cut 9）。
 - **看板上討論卡的順序**：`change rank` 只排變更。
 - **依「規格在不在 checkout」產生不同的技能文字**：技能的渲染沒有條件語法；這次需要分情況的只有一處，用一句文字條件表達。
 - **使用者文件**：這個變更不動 README 與 docs。
+- **Node SDK 既有 31 方法宿主 Store 的看板順序文件**：它在 cut 6 標成即將移除、cut 15 刪掉；經它執行的 `change rank` 與 `plan` 沿用 metadata。
 
 ## Capabilities
 
@@ -72,16 +93,18 @@ Source discussion: embedded-host-needs（cut 9）。
 - `discuss-skill`: 新增「正式規格與變更文件一律經動詞讀取」。
 - `propose-skill`: 新增「artifact 的讀取與改寫一律經動詞」。
 - `ingest-skill`: 新增「既有 artifact 的更新經動詞整份寫回」。
+- `remote-board-order`: 修改「board resource 為 scope 單文件且 server 不解析」（排序路由經引擎命令讀寫這份文件；逐段寬鬆讀取；整份寫回時修剪孤兒條目、討論那一段原樣帶回）。
 
 ## Impact
 
-- Affected specs: verb-contract（修改兩條）、change-plan（修改一條）、node-sdk（修改一條）、client-protocol（新增一條）、discuss-skill、propose-skill、ingest-skill（各新增一條）
-- Affected crates: `speclink-core`、`speclink-fs`（不改，沿用預設實作）、`speclink-host`、`speclink-protocol`、`speclink-remote`、`speclink-server`、`speclink-verbs`、`speclink-cli`、`speclink-node`。桌面 app 不改。
+- Affected specs: verb-contract（修改兩條）、change-plan（修改一條）、node-sdk（修改一條）、client-protocol（新增一條）、remote-board-order（修改一條）、discuss-skill、propose-skill、ingest-skill（各新增一條）
+- Affected crates: `speclink-core`、`speclink-fs`（不改，沿用預設實作）、`speclink-host`、`speclink-protocol`、`speclink-remote`、`speclink-server`、`speclink-verbs`、`speclink-cli`、`speclink-node`。桌面 app 不改程式碼；它的遠端排序用 `BoardOrderDoc` 讀寫看板順序文件，逐段寬鬆讀取會影響它，所以驗證要跑 `speclink-desktop` 的測試。
 - Affected code:
   - New:
     - crates/engine/speclink-core/src/command/change_rank.rs
     - crates/adapters/speclink-cli/tests/it/remote_change_rank.rs
     - crates/host/speclink-host/tests/port_rank.rs
+    - crates/engine/speclink-core/assets/skills/artifact-write-back.md（品質關卡第 1 輪追加：整份寫回的共用片段）
   - Modified:
     - crates/engine/speclink-core/assets/skills/discuss.md
     - crates/engine/speclink-core/assets/skills/propose.md
@@ -116,14 +139,22 @@ Source discussion: embedded-host-needs（cut 9）。
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/index.d.ts
     - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts
+  - Modified（品質關卡第 1 輪追加）:
+    - crates/protocol/speclink-protocol/src/query.rs
+    - crates/host/speclink-host/src/worktree.rs
+    - crates/engine/speclink-core/src/workspace/skills.rs
+    - crates/engine/speclink-core/tests/it/skill_authoring.rs
+    - crates/adapters/speclink-verbs/src/render/plan.rs
+    - crates/adapters/speclink-node/src/store_bridge.rs
+    - crates/adapters/speclink-cli/tests/it/remote_write_path.rs
   - Removed: (none)
   - 實作後對照（apply 期更新）：`speclink-core` 的 skill_authoring.rs 不必改（強調字上限沒有調高）；`speclink-verbs` 的 render/plan.rs 不必改（`change rank` 的輸出函式本來就在那裡，只在 render/mod.rs 接上 `ChangeRank` 這一支）。
   - 另外會重新產生：crates/engine/speclink-core/tests/golden 底下的技能快照，以及本 repo 由 `speclink update` 產生的技能檔。
-- 相依：沒有硬性的先後。可以和 host-kit-agent-door 並行。排序的線上路由這次加在示範用 server；變更 host-kit-client-door 把路由搬進宿主套件時一起搬。
+- 相依：沒有硬性的先後。可以和 host-kit-agent-door 並行；它經儲存接口執行的 `plan` 會因這次的改動讀到看板順序文件，合併時要對照它的測試。排序的線上路由這次加在示範用 server；變更 host-kit-client-door 把路由搬進宿主套件時一起搬。
 - 三種形態下的結果：
   - 本機 repo：三支技能可用，行為相同（讀寫改經動詞，動詞在本機讀寫同一批檔案）。`change rank` 可用，行為不變。
   - 連到遠端的 checkout：三支技能可用。`change rank` 可用，順序寫進 Server 的看板順序文件。已知缺口：把封存的討論記錄搬回來要在 Server 上處理；詞彙表沒有寫入的動詞。
-  - 沒有本機規格檔的內嵌宿主：三支技能可用（tool-call 形式）。`change rank` 經 Node SDK 的 dispatch 可用。已知缺口同上；另外「讀使用者給的文件路徑」這種輸入只在 agent 有檔案系統時可用。
+  - 沒有本機規格檔的內嵌宿主：三支技能可用（tool-call 形式）。經儲存接口執行時，`change rank` 與 `plan` 都讀寫看板順序文件；經 Node SDK 既有的 31 方法宿主 Store（即將移除）時，`change rank` 經 dispatch 可用，順序鍵沿用 metadata。已知缺口同上；另外「讀使用者給的文件路徑」這種輸入只在 agent 有檔案系統時可用。
 - 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：
   - 動詞與旗標的說明：`change rank` 在遠端專案可用。
   - 專案能力狀態：把兩個已知缺口列進去（搬回封存的討論記錄、寫入詞彙表）。

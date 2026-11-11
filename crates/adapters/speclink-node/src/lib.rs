@@ -117,13 +117,14 @@ enum Backend {
     /// needs (deleteArtifact / readChangeMeta / writeChangeMeta) that the
     /// store did not implement — captured at construction so the stamp verbs
     /// can refuse BEFORE any destructive step (the engine deletes the ticket
-    /// before it rewrites the metadata). `change rank` needs the last two of
-    /// them and refuses the same way. `writes_workflow_config` records
+    /// before it rewrites the metadata). `missing_rank_methods` is the same
+    /// for `change rank`, which writes board ranks through the metadata pair. `writes_workflow_config` records
     /// whether the store has the optional `writeWorkflowConfig`, for the same
     /// reason: a workflow-config write verb refuses before it runs.
     Js {
         bridge: JsStoreBridge,
         missing_stamp_methods: Vec<&'static str>,
+        missing_rank_methods: Vec<&'static str>,
         writes_workflow_config: bool,
     },
 }
@@ -269,10 +270,11 @@ pub fn engine_from_store(
 ) -> Result<Engine> {
     store_bridge::validate_store_methods(&store)?;
     let missing_stamp_methods = store_bridge::missing_stamp_methods(&store);
+    let missing_rank_methods = store_bridge::missing_rank_methods(&store);
     let writes_workflow_config = store_bridge::has_workflow_config_write(&store);
     let bridge = store_bridge::create_bridge(env, invoker)?;
     Ok(Engine {
-        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods, writes_workflow_config }),
+        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods, missing_rank_methods, writes_workflow_config }),
         actor: normalize_actor(actor),
         rewrite_lock: Arc::new(std::sync::Mutex::new(())),
     })
@@ -365,25 +367,20 @@ fn refuse_unrankable(
     name: &str,
     cmd: &core::command::Command,
 ) -> std::result::Result<(), DispatchError> {
-    let Backend::Js { missing_stamp_methods, .. } = backend else {
-        return Ok(());
-    };
-    let missing: Vec<&str> = missing_stamp_methods
-        .iter()
-        .copied()
-        .filter(|method| *method != "deleteArtifact")
-        .collect();
-    if !matches!(cmd, core::command::Command::ChangeRank { .. }) || missing.is_empty() {
+    if !matches!(cmd, core::command::Command::ChangeRank { .. }) {
         return Ok(());
     }
-    Err(DispatchError::new(
-        "refused",
-        format!(
-            "{name} requires store methods this store does not implement: {} — \
-             ranking rewrites the change metadata",
-            missing.join(", ")
-        ),
-    ))
+    match backend {
+        Backend::Js { missing_rank_methods, .. } if !missing_rank_methods.is_empty() => Err(DispatchError::new(
+            "refused",
+            format!(
+                "{name} requires store methods this store does not implement: {} — \
+                 ranking rewrites the change metadata",
+                missing_rank_methods.join(", ")
+            ),
+        )),
+        _ => Ok(()),
+    }
 }
 
 /// Whether `cmd` writes the workflow config document: an edit that is not a

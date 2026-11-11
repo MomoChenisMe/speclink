@@ -154,13 +154,33 @@ pub struct BoardOrderDoc {
 }
 
 impl BoardOrderDoc {
-    /// Lenient read: absent content, or content that is not the expected shape
-    /// (bad JSON, a non-object, a section of the wrong type), reads as no ranks
-    /// at all — a damaged document degrades ordering, never fails a reader.
+    /// Lenient read, one section at a time: absent content, bad JSON or a
+    /// non-object reads as no ranks at all; a section that is missing or not a
+    /// map of strings reads as empty while the other section still reads — a
+    /// damaged document degrades ordering, never fails a reader.
     pub fn from_content(content: Option<&str>) -> BoardOrderDoc {
-        content
-            .and_then(|text| serde_json::from_str(text).ok())
-            .unwrap_or_default()
+        let Some(serde_json::Value::Object(mut doc)) =
+            content.and_then(|text| serde_json::from_str(text).ok())
+        else {
+            return BoardOrderDoc::default();
+        };
+        let mut section = |name: &str| {
+            doc.remove(name)
+                .and_then(|value| serde_json::from_value(value).ok())
+                .unwrap_or_default()
+        };
+        BoardOrderDoc { changes: section("changes"), discussions: section("discussions") }
+    }
+
+    /// The whole document after a rank write: the change section keeps only
+    /// the `active` changes' entries (an orphan left by an archived or
+    /// discarded change is dropped) and takes `ranks`; the discussion section
+    /// goes back as [`BoardOrderDoc::from_content`] read it.
+    pub fn merged_content(content: Option<&str>, active: &[&str], ranks: &[(String, String)]) -> String {
+        let mut doc = BoardOrderDoc::from_content(content);
+        doc.changes.retain(|name, _| active.contains(&name.as_str()));
+        doc.changes.extend(ranks.iter().cloned());
+        serde_json::to_string(&doc).expect("two maps of strings always serialize")
     }
 }
 
@@ -1546,7 +1566,7 @@ mod tests {
 
     #[test]
     fn board_order_doc_reads_unusable_content_as_no_ranks() {
-        // 缺席、壞 JSON、非物件、段落型別錯：一律全員缺 rank，不失敗。
+        // 缺席、壞 JSON、非物件：兩段都是空的；唯一的一段型別錯時那一段也是空的。不失敗。
         for content in [
             None,
             Some("not json"),
@@ -1561,6 +1581,46 @@ mod tests {
         let doc = BoardOrderDoc::from_content(Some(r#"{"discussions":{"topic":"f"}}"#));
         assert!(doc.changes.is_empty());
         assert_eq!(doc.discussions["topic"], "f");
+    }
+
+    #[test]
+    fn board_order_doc_reads_each_section_on_its_own() {
+        // remote-board-order「一段壞掉不影響另一段」：一段型別錯只讓那一段是空的。
+        let doc = BoardOrderDoc::from_content(Some(r#"{"changes":{"a":"n"},"discussions":7}"#));
+        assert_eq!(doc.changes["a"], "n");
+        assert!(doc.discussions.is_empty());
+        let doc = BoardOrderDoc::from_content(Some(r#"{"changes":5,"discussions":{"t":"f"}}"#));
+        assert!(doc.changes.is_empty());
+        assert_eq!(doc.discussions["t"], "f");
+        let doc = BoardOrderDoc::from_content(Some(r#"{"changes":{"a":5,"b":"n"},"discussions":{}}"#));
+        assert!(doc.changes.is_empty(), "a section with a non-string rank reads as empty");
+        let doc = BoardOrderDoc::from_content(Some(r#"{"changes":null,"discussions":{"t":"f"}}"#));
+        assert!(doc.changes.is_empty(), "a null section reads as empty");
+        assert_eq!(doc.discussions["t"], "f");
+    }
+
+    #[test]
+    fn merged_content_prunes_orphans_and_keeps_the_discussion_section() {
+        // remote-board-order「排序請求修剪孤兒條目並帶回討論那一段」。
+        let strict = |text: &str| serde_json::from_str::<BoardOrderDoc>(text).expect("strictly a board-order document");
+        let ranks = [("c".to_string(), "g".to_string())];
+        let text = BoardOrderDoc::merged_content(
+            Some(r#"{"changes":{"a":"n","gone":"c"},"discussions":{"topic":"f"}}"#),
+            &["a", "c"],
+            &ranks,
+        );
+        let doc = strict(&text);
+        assert_eq!(doc.changes.into_iter().collect::<Vec<_>>(), [("a".into(), "n".into()), ("c".into(), "g".into())]);
+        assert_eq!(doc.discussions.into_iter().collect::<Vec<_>>(), [("topic".into(), "f".into())]);
+        // A wrong-typed change section does not take the discussion section with it.
+        let doc = strict(&BoardOrderDoc::merged_content(Some(r#"{"changes":5,"discussions":{"topic":"f"}}"#), &["c"], &ranks));
+        assert_eq!(doc.changes["c"], "g");
+        assert_eq!(doc.discussions["topic"], "f");
+        // No document, or one that is not a document, starts from empty sections.
+        for content in [None, Some("not json")] {
+            let doc = strict(&BoardOrderDoc::merged_content(content, &["c"], &ranks));
+            assert_eq!(doc, BoardOrderDoc { changes: [("c".into(), "g".into())].into(), discussions: Default::default() });
+        }
     }
 
     #[test]

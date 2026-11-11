@@ -232,6 +232,17 @@ pub fn skill_body(name: &str) -> Option<&'static str> {
 /// hand-off section cannot drift apart one wording tweak at a time.
 const NEXT_STEPS_LEAD: &str = "Suggestions only. This skill NEVER invokes any of them — report where things stand and stop; the user decides what runs next.";
 
+/// The write-back section propose and ingest share (skills-verbs-first-wave D9):
+/// how an artifact that already exists is read whole and written back whole.
+/// Injected via `{{ARTIFACT_WRITE_BACK}}` on a line of its own, so the two
+/// copies cannot drift apart.
+const ARTIFACT_WRITE_BACK: &str = include_str!("../../assets/skills/artifact-write-back.md");
+
+/// The condition discuss and propose put on moving an archived discussion
+/// record back (skills-verbs-first-wave D9). Injected via
+/// `{{SPEC_FOLDER_CONDITION}}` inside a sentence.
+const SPEC_FOLDER_CONDITION: &str = "only when the spec folder is in this checkout; when it is not (a remote project, or a host that embeds the engine), move nothing — stop and tell the user that this step has to be done on the Server that holds the specs";
+
 /// The conversation-language paragraph every rendered product skill opens with
 /// (spec skill-authoring「技能共用的對話語言段落」). Inserted by the renderer rather
 /// than embedded in each body, so `instructions --skill` keeps printing the raw body.
@@ -263,6 +274,8 @@ impl Substitutions<'_> {
             body.to_string()
         };
         let rendered = body
+            .replace("{{ARTIFACT_WRITE_BACK}}", ARTIFACT_WRITE_BACK.trim_end())
+            .replace("{{SPEC_FOLDER_CONDITION}}", SPEC_FOLDER_CONDITION)
             .replace("{{SPEC_DIR}}", &self.spec_dir_slash)
             .replace("{{PLAN_DIR}}", self.plan_dir)
             .replace("{{TOOL}}", self.tool_name)

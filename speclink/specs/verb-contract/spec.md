@@ -216,7 +216,8 @@ code:
 
 ---
 ### Requirement: store 文件讀取動詞
-CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact> --change <name> 輸出該 artifact 的內容；speclink language show 輸出共用詞彙文件內容（fs 模式讀本地檔、remote 模式經契約端點）；文件不存在時 SHALL 以非 0 exit code 與語義化訊息結束。生成技能資產中的文件閱讀指示 SHALL 使用這些動詞，SHALL NOT 指示直接讀取規格目錄下的檔案路徑。
+
+CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact> --change <name> 輸出該 artifact 的內容；speclink language show 輸出共用詞彙文件內容（fs 模式讀本地檔、remote 模式經契約端點）；文件不存在時 SHALL 以非 0 exit code 與語義化訊息結束。生成技能資產中的文件閱讀指示 SHALL 使用這些動詞，SHALL NOT 指示直接讀取規格目錄下的檔案路徑。讀取正式規格的指示 SHALL 以 speclink show <capability> --item-type spec 表述（不指定類型時，同名的作用中變更優先），SHALL NOT 指示以 speclink list --specs --json 回傳的 path 欄位開啟檔案——該欄位在 remote 模式是儲存的鍵，不是本機路徑。discuss、propose、ingest 三支技能中改寫既有 artifact 的指示 SHALL 以「speclink artifact cat 讀出全文、修改後以 speclink new artifact 帶 --stdin --force 整份寫回」表述，SHALL NOT 留下未指名動詞的讀取或改寫步驟。
 
 #### Scenario: artifact cat 於兩模式輸出一致
 - **WHEN** 分別於 fs 模式與 remote 模式（server 存有相同內容）執行 speclink artifact cat proposal --change 某 change
@@ -230,55 +231,30 @@ CLI SHALL 提供雙模式的文件讀取動詞：speclink artifact cat <artifact
 - **WHEN** 執行 speclink update 後掃描生成的全部 SKILL.md 內容
 - **THEN** 不存在指示直接開啟規格目錄檔案路徑的語句，文件閱讀一律以 speclink 動詞表述
 
+#### Scenario: discuss 以 show 讀正式規格
+
+- **WHEN** 檢視生成的 discuss 技能中讀取候選規格 Purpose 的步驟
+- **THEN** 該步驟以 speclink show <capability> --item-type spec 表述；全文不存在把 path 欄位與 spec.md 寫在同一句的指示
+
+#### Scenario: 三支技能的改寫經動詞
+
+- **WHEN** 檢視生成的 propose 與 ingest 技能中修正或更新既有 artifact 的步驟
+- **THEN** 每個這樣的步驟都指向「speclink artifact cat 讀出、speclink new artifact 帶 --stdin --force 寫回」的做法；兩支技能的全文不含 config.yaml
+
+#### Scenario: remote 模式下 discuss 讀得到正式規格
+
+- **WHEN** 於 remote 模式（checkout 內沒有規格資料夾）依 discuss 技能的步驟讀取某個 capability 的 Purpose
+- **THEN** 執行的是 speclink show <capability> --item-type spec，stdout 含該規格的 Purpose，exit code 為 0
+
+#### Scenario: 同名的作用中變更不會被誤讀成正式規格
+
+- **WHEN** 專案有一個與某 capability 同名的作用中變更，依 discuss 技能的步驟讀那個 capability 的 Purpose
+- **THEN** 執行的指令帶 --item-type spec，stdout 是正式規格的內容，不是那個變更的內容
+
+
 <!-- @trace
-source: verb-contract-and-remote-client
-updated: 2026-07-05
-code:
-  - .speclink.yaml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/Cargo.toml
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-cli/src/main.rs
-  - crates/speclink-cli/src/remote_commands.rs
-  - crates/speclink-cli/tests/doc_verbs.rs
-  - crates/speclink-cli/tests/remote_connect.rs
-  - crates/speclink-cli/tests/remote_read_path.rs
-  - crates/speclink-cli/tests/remote_write_path.rs
-  - crates/speclink-core/Cargo.toml
-  - crates/speclink-core/assets/skills/archive.md
-  - crates/speclink-core/assets/skills/commit.md
-  - crates/speclink-core/assets/skills/discuss.md
-  - crates/speclink-core/assets/skills/propose.md
-  - crates/speclink-core/assets/skills/sync.md
-  - crates/speclink-core/src/discuss.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/instructions.rs
-  - crates/speclink-core/src/preflight.rs
-  - crates/speclink-core/src/status.rs
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/workspace.rs
-  - crates/speclink-core/tests/golden/claude.snapshot.md
-  - crates/speclink-core/tests/golden/codex.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-cli.snapshot.md
-  - crates/speclink-core/tests/golden/neutral-tool-call.snapshot.md
-  - crates/speclink-core/tests/golden/remote-claude.marker.md
-  - crates/speclink-core/tests/mode_resolution.rs
-  - crates/speclink-core/tests/render_golden.rs
-  - crates/speclink-core/tests/skill_verbization.rs
-  - crates/speclink-fs/src/layout.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-remote/Cargo.toml
-  - crates/speclink-remote/src/auth.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/src/lib.rs
-  - crates/speclink-remote/tests/auth_store.rs
-  - crates/speclink-remote/tests/client_errors.rs
-  - docs/team-mode.md
-  - docs/team-mode.zh-TW.md
-  - docs/verb-contract.md
-  - docs/verb-contract.zh-TW.md
+source: skills-verbs-first-wave
+updated: 2026-11-11T17:52:57+08:00
 -->
 
 ---
@@ -451,7 +427,7 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 
 - **ModeFree**（init、update、link、unlink、auth、schemas、templates、feedback、schema、config、completion）：執行 SHALL NOT 觸發 store 模式解析，dispatch SHALL NOT 因宣告層而對其引入 .speclink.yaml 的解析失敗——不讀取專案設定的動詞（completion、config）SHALL 不受壞的 .speclink.yaml 影響；部分動詞（如 schemas、templates、update）的 workspace 探索本就讀取 .speclink.yaml 以解析 spec_dir，其於壞檔下的既有失敗行為維持不變；連線管理動詞（link、unlink、auth）的連線解析由動詞自理。
 - **Dual**（list、show、validate、analyze、drift、archive、discard、artifact、language、status、instructions、new、workflow-config、task、in-progress、discuss、review、verify、plan、change）：fs 模式 SHALL 作用於本機 store，remote 模式 SHALL 作用於 remote store，SHALL NOT 於 remote 模式靜默作用於本機 store；宣告 SHALL 同時載明本機臂與 remote 臂，缺任一臂 SHALL 構成建置失敗而非執行期靜默回退；不消費 store 的前置步驟（instructions 的 --skill 分流、workflow-config 的 argv／stdin 正規化）SHALL 先於模式解析執行，維持既有可觀察順序。
-- **FsOnly**（demo、trace；以及 Dual 家族內只限本機的兩個子情形——change 的 rank 子指令、plan 的 --strict-overlap 旗標）：remote 模式 SHALL 以非零 exit code 明確拒絕，拒絕判定 SHALL 僅解析模式而不建立連線——SHALL NOT 發出任何 server 請求，離線環境同樣拒絕。子情形的歸屬 SHALL 同樣在 dispatch 的宣告層依子指令或旗標決定，同一動詞的其餘子指令與不帶該旗標的呼叫維持 Dual。
+- **FsOnly**（demo、trace；以及 Dual 家族內只限本機的一個子情形——plan 的 --strict-overlap 旗標）：remote 模式 SHALL 以非零 exit code 明確拒絕，拒絕判定 SHALL 僅解析模式而不建立連線——SHALL NOT 發出任何 server 請求，離線環境同樣拒絕。子情形的歸屬 SHALL 同樣在 dispatch 的宣告層依子指令或旗標決定，同一動詞的其餘子指令與不帶該旗標的呼叫維持 Dual。
 - **RemoteOnly**（claim）：fs 模式 SHALL 以非零 exit code 明確拒絕並於 stderr 說明需要 remote store。
 
 模式判定 SHALL 惰性執行：僅於宣告形狀需要時解析模式，僅於 remote 臂將執行時建立連線。
@@ -468,8 +444,8 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 
 #### Scenario: Dual 家族內的 FsOnly 子情形零請求拒絕
 
-- **WHEN** 於 remote 模式設定且 server 不可達的環境下分別執行 speclink change rank c --before a 與 speclink plan --strict-overlap
-- **THEN** 兩者 exit code 非零，stderr 分別說明 change rank 與 plan --strict-overlap 僅限本機模式，且過程未發出任何 server 請求
+- **WHEN** 於 remote 模式設定且 server 不可達的環境下執行 speclink plan --strict-overlap
+- **THEN** exit code 非零，stderr 說明 plan --strict-overlap 僅限本機模式，且過程未發出任何 server 請求
 
 #### Scenario: RemoteOnly 動詞於 fs 模式明確拒絕
 
@@ -481,8 +457,13 @@ CLI 頂層動詞 SHALL 逐一歸屬四種模式形狀之一，本機（fs）/rem
 - **WHEN** 於 remote 模式執行 speclink plan --json 與 speclink change depends add-b --on add-a
 - **THEN** 兩者分別對 server 發出 GET /plan 與 POST /changes/add-b/depends，stdout 形狀與 fs 模式一致，未觸碰本機 store
 
+#### Scenario: change rank 於 remote 模式走 server
+
+- **WHEN** 於 remote 模式執行 speclink change rank c --before a
+- **THEN** 對 server 發出 POST /changes/c/rank，stdout 形狀與 fs 模式一致，未觸碰本機 store
+
 
 <!-- @trace
-source: plan-requirement-overlap
-updated: 2026-09-24T22:20:29+08:00
+source: skills-verbs-first-wave
+updated: 2026-11-11T17:52:57+08:00
 -->

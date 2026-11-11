@@ -109,8 +109,21 @@ struct SettleError {
 /// missing any of these must be refused before the first destructive step —
 /// the dispatcher captures this list at construction.
 pub fn missing_stamp_methods(store: &JsObject) -> Vec<&'static str> {
-    ["deleteArtifact", "readChangeMeta", "writeChangeMeta"]
-        .into_iter()
+    missing_methods(store, &["deleteArtifact", "readChangeMeta", "writeChangeMeta"])
+}
+
+/// The optional store methods `change rank` depends on: it writes each board
+/// rank into change metadata through the raw pair, so a store missing either
+/// is refused before the command runs — captured at construction.
+pub fn missing_rank_methods(store: &JsObject) -> Vec<&'static str> {
+    missing_methods(store, &["readChangeMeta", "writeChangeMeta"])
+}
+
+/// The names in `names` that `store` does not implement as functions.
+fn missing_methods(store: &JsObject, names: &[&'static str]) -> Vec<&'static str> {
+    names
+        .iter()
+        .copied()
         .filter(|name| {
             !store
                 .get_named_property_unchecked::<JsUnknown>(name)

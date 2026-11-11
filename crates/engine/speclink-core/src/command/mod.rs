@@ -415,7 +415,7 @@ pub enum Command {
     /// change within its stage's column by rewriting board ranks where the
     /// store keeps them (skills-verbs-first-wave D3); every guard refuses
     /// with zero writes.
-    ChangeRank { name: String, anchor: String, side: crate::plan::Side, force: bool },
+    ChangeRank { name: String, anchor: String, position: crate::plan::Side, force: bool },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -882,7 +882,7 @@ pub fn execute(
         Command::ChangeSchema { name, schema } => {
             run_change_schema(store, ws, ctx.user_config_dir.as_deref(), &name, &schema)
         }
-        Command::ChangeRank { name, anchor, side, force } => change_rank::run(store, name, anchor, side, force),
+        Command::ChangeRank { name, anchor, position, force } => change_rank::run(store, name, anchor, position, force),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,

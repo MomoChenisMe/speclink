@@ -2,8 +2,7 @@
 //! `change schema` and `change rank`.
 
 use serde_json::{json, Value};
-use speclink_core::command::{DependsOutcome, PlanReport, SchemaOutcome};
-use speclink_core::plan::Side;
+use speclink_core::command::{ChangeRankOutcome, DependsOutcome, PlanReport, SchemaOutcome};
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
@@ -161,31 +160,23 @@ pub fn schema(o: &SchemaOutcome, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&schema_json(o))), |paint| schema_human(o, paint))
 }
 
-/// What `change rank` reports. The rank value itself is never shown.
-#[derive(Debug, Clone, Copy)]
-pub struct Ranked<'a> {
-    pub change: &'a str,
-    pub anchor: &'a str,
-    pub side: Side,
-}
-
-/// `change rank --json`.
-pub fn rank_json(r: &Ranked<'_>) -> Value {
+/// `change rank --json`. The rank value itself is never shown.
+pub fn rank_json(r: &ChangeRankOutcome) -> Value {
     json!({
         "change": r.change,
         "anchor": r.anchor,
-        "position": r.side.as_str(),
+        "position": r.position.as_str(),
     })
 }
 
 /// `change rank`: one success line naming the side it landed on.
-pub fn rank_human(r: &Ranked<'_>, paint: &Paint) -> Text {
+pub fn rank_human(r: &ChangeRankOutcome, paint: &Paint) -> Text {
     let mut t = Text::default();
-    outln!(t, "{} {} ranked {} {}", paint.green("✓"), r.change, r.side.as_str(), r.anchor);
+    outln!(t, "{} {} ranked {} {}", paint.green("✓"), r.change, r.position.as_str(), r.anchor);
     t
 }
 
-pub fn rank(r: &Ranked<'_>, options: RenderOptions) -> Rendered {
+pub fn rank(r: &ChangeRankOutcome, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&rank_json(r))), |paint| rank_human(r, paint))
 }
 
@@ -194,7 +185,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use speclink_core::model::Stage;
-    use speclink_core::plan::{DeltaOp, PlanChange, RequirementOverlap, Skipped, UnpromotedCut, Wave};
+    use speclink_core::plan::{DeltaOp, PlanChange, RequirementOverlap, Side, Skipped, UnpromotedCut, Wave};
 
     const PLAIN: Paint = Paint::new(false);
     const COLOR: Paint = Paint::new(true);
@@ -359,9 +350,10 @@ mod tests {
 
     #[test]
     fn rank_human_and_json_name_the_side() {
-        let before = Ranked { change: "beta", anchor: "empty", side: Side::Before };
+        let ranked = |anchor: &str, position| ChangeRankOutcome { change: "beta".into(), anchor: anchor.into(), position };
+        let before = ranked("empty", Side::Before);
         assert_eq!(rank_human(&before, &COLOR).stdout, "\x1b[32m✓\x1b[0m beta ranked before empty\n");
-        let after = Ranked { change: "beta", anchor: "broken", side: Side::After };
+        let after = ranked("broken", Side::After);
         assert_eq!(rank_human(&after, &PLAIN).stdout, "✓ beta ranked after broken\n");
         assert_eq!(rank_json(&after), json!({ "change": "beta", "anchor": "broken", "position": "after" }));
         assert_eq!(

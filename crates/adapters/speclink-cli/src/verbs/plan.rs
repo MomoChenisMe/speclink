@@ -18,7 +18,7 @@ use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
 use speclink_verbs::families::plan::{rank_anchor, ChangeCommands, ChangeVerbArgs, PlanArgs};
-use speclink_verbs::render::plan::{self as render, Depends, Ranked};
+use speclink_verbs::render::plan::{self as render, Depends};
 
 pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
     match &a.command {
@@ -69,10 +69,8 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
                 core::model::set_board_rank(&home_store_for(&ws, &facts, change), change, key)
             };
             core::plan::set_rank(&overlaid, &write, name, &anchor, side, *force)?;
-            emit(render::rank(
-                &Ranked { change: name, anchor: &anchor, side },
-                render_options(*json),
-            ));
+            let ranked = core::command::ChangeRankOutcome { change: name.clone(), anchor, position: side };
+            emit(render::rank(&ranked, render_options(*json)));
         }
     }
     Ok(())
@@ -113,14 +111,14 @@ pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
         ChangeCommands::Rank { name, before, after, force, json } => {
             let (anchor, side) = rank_anchor(&before, &after);
             let r = ctx.client.rank_change(&name, &anchor, side.as_str(), force)?;
-            let side = match r.position.as_str() {
-                "before" => core::plan::Side::Before,
-                "after" => core::plan::Side::After,
-                other => anyhow::bail!(
-                    "unexpected server response — update speclink or report a bug (position '{other}')"
-                ),
+            let Some(position) = core::plan::Side::parse(&r.position) else {
+                anyhow::bail!(
+                    "unexpected server response — update speclink or report a bug (position '{}')",
+                    r.position
+                );
             };
-            emit(render::rank(&Ranked { change: &r.change, anchor: &r.anchor, side }, render_options(json)));
+            let ranked = core::command::ChangeRankOutcome { change: r.change, anchor: r.anchor, position };
+            emit(render::rank(&ranked, render_options(json)));
         }
     }
     Ok(())

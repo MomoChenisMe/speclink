@@ -99,6 +99,50 @@
         "crates/adapters/speclink-node/index.d.ts",
         "crates/adapters/speclink-node/src/lib.rs"
       ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.1 （Red→Green）看板順序文件的讀寫規則（D4 追加）：先寫測試再改 `speclink-protocol` 的 `BoardOrderDoc`。`from_content` 改成逐段寬鬆讀取：整份壞掉時兩段都是空的；`{\"changes\":{\"a\":\"n\"},\"discussions\":7}` 讀得到 a 的 n；`{\"changes\":5,\"discussions\":{\"t\":\"f\"}}` 讀得到 t 的 f。新增併入函式：輸入目前的內容、作用中變更的名稱與要寫的順序鍵，輸出整份新內容；changes 段只留作用中的名稱再併入新鍵，discussions 段照逐段讀到的內容帶回，輸出可以被嚴格解析成 `BoardOrderDoc`。改寫既有測試 `board_order_doc_reads_unusable_content_as_no_ranks` 裡「一段型別錯就兩段都清空」的那一列。對應規格 remote-board-order「board resource 為 scope 單文件且 server 不解析」的逐段讀取，以及情境「一段壞掉不影響另一段」。涉及 crates/protocol/speclink-protocol/src/query.rs。驗證：`cargo test -p speclink-protocol` 通過。",
+      "files": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.2 （Red→Green）儲存視圖改用 5.1 的規則，`Store::board_ranks` 改收呼叫端列出的作用中變更（D4 追加）：先寫測試——`PortView::board_ranks(&changes)` 不回不在 `changes` 裡的名稱；`PortView` 整份寫回時孤兒條目被移除、討論那一段原樣帶回（含變更那一段型別錯的情況）；`WorktreeOverlay::write_board_ranks` 回錯誤且沒有任何寫入。再實作：簽名改成 `board_ranks(&self, changes: &[Change])`，預設實作與 `move_start` 跟著改；`PortView::write_board_ranks` 改呼叫併入函式，拿掉自己拆 JSON 的那一段；`WorktreeOverlay` 覆寫 `write_board_ranks`，訊息說明要用 `set_rank` 並自己選副本。在 speclink-server 的 `api::plan_api` 補一個測試，對應規格 remote-board-order「board resource 為 scope 單文件且 server 不解析」的情境「排序請求修剪孤兒條目並帶回討論那一段」。涉及 crates/host/speclink-server/tests/it/api/plan_api.rs、 crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/lifecycle/plan.rs、crates/engine/speclink-core/src/command/change_rank.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/worktree.rs、crates/host/speclink-host/tests/port_rank.rs。驗證：`cargo test -p speclink-core change_rank`、`cargo test -p speclink-host` 與 `cargo test -p speclink-server --test it api::plan_api::` 通過。",
+      "files": [
+        "crates/host/speclink-host/src/worktree.rs"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "5.4 （Red→Green）`Side::parse` 與輸出型別收斂（D3 追加）：先寫測試——`Side::parse(\"before\")`、`Side::parse(\"after\")` 回對應的值，其他字串回 `None`；`render::plan::rank` 收 `ChangeRankOutcome` 時，人眼輸出與 `--json` 和改動前相同。再實作：`Side::parse`；`Command::ChangeRank` 的欄位 `side` 改名 `position`；`render::plan::rank` 改吃 `ChangeRankOutcome`、拿掉 `Ranked`；server 路由與 CLI 遠端分支改用 `Side::parse`；CLI 本機分支自己組出 `ChangeRankOutcome`。涉及 crates/engine/speclink-core/src/lifecycle/plan.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/tests.rs、crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/render/plan.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/host/speclink-server/src/api/routes.rs、crates/adapters/speclink-cli/src/verbs/plan.rs。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli --test it -- plan_verbs:: remote_change_rank::` 與 `cargo test -p speclink-server --test it api::plan_api::` 通過；`plan_verbs::` 既有的本機測試不改斷言就通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/plan.rs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "5.5 （Red→Green）Node SDK 排序拒絕的方法清單（D7 追加）：先寫測試——缺 `readChangeMeta` 或 `writeChangeMeta` 的宿主 Store 執行 `change rank` 時以 `refused` 拒絕，訊息只列缺的這兩個方法；只缺 `deleteArtifact` 的宿主 Store 執行 `change rank` 成功；實作了這兩個方法的宿主 Store 執行 `change rank c --before a` 後，宿主收到 c 的 metadata 寫入，隨後 `plan --json` 的順序 c 在 a 前（規格「Node SDK 既有宿主 Store 沿用 metadata」；測試用的宿主 Store 要讓 `listChanges` 回的 `meta.boardRank` 反映 `writeChangeMeta` 寫入的內容）。再實作：`store_bridge` 提供排序需要的方法清單，建立引擎時記下缺了哪幾個；`refuse_unrankable` 先判斷命令是不是 `ChangeRank` 再看清單。涉及 crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/src/store_bridge.rs、crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts、crates/adapters/speclink-node/index.d.ts。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ]
+    },
+    {
+      "task_id": "19",
+      "task_desc": "5.6 （測試）CLI 遠端整份寫回（規格 propose-skill「remote 模式下修正 artifact」、ingest-skill「remote 模式下更新提案」）：在 `remote_write_path.rs` 新增測試——假的 server 對讀取 artifact 回版本 N 與舊內容，執行 `speclink new artifact design --change c --stdin --force`（stdin 是完整的新內容），斷言送出的寫入請求帶 `If-Match` 為 N、內容是完整的新內容、stdout 與 fs 模式同形。既有實作已符合時測試直接通過；不符合時在 crates/adapters/speclink-cli/src/verbs/new.rs 修正。涉及 crates/adapters/speclink-cli/tests/it/remote_write_path.rs。驗證：`cargo test -p speclink-cli --test it remote_write_path::` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_write_path.rs"
+      ]
+    },
+    {
+      "task_id": "21",
+      "task_desc": "5.8 （Green）依 D1 追加表與 D9 改寫技能原稿：discuss 與 propose 讀正式規格改用 `speclink show <capability> --item-type spec`；discuss 第 3 步與 ingest 步驟 4 到 8 寫明變更帶 `worktree` 時從 `worktree.path` 執行，並寫明 `deltaSpecs` 的 `<capability>/spec.md` 以 `specs/<capability>` 讀取；整份寫回改成資產 `artifact-write-back.md`，經 `{{ARTIFACT_WRITE_BACK}}` 注入 propose 與 ingest，兩支技能裡引用 step 編號的地方改成引用這一節；搬回條件句改成 `skills.rs` 的常數，經 `{{SPEC_FOLDER_CONDITION}}` 注入 discuss 與 propose；新資產登記進 `skill_authoring` 的強調字上限表，強調字總數不增加，每個原稿 500 行以內；確認 `instructions --skill` 不輸出這三支技能（D9）。涉及 crates/engine/speclink-core/assets/skills/discuss.md、crates/engine/speclink-core/assets/skills/propose.md、crates/engine/speclink-core/assets/skills/ingest.md、crates/engine/speclink-core/assets/skills/artifact-write-back.md、crates/engine/speclink-core/src/workspace/skills.rs、crates/engine/speclink-core/tests/it/skill_authoring.rs。驗證：5.7 的測試通過；`cargo test -p speclink-core --test it skill_authoring::` 通過；`cargo test -p speclink-core --test it render_golden::neutral_body_has_no_slash_prefix_and_no_plan_mode_references` 通過（沒有殘留的 `{{`）。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "crates/engine/speclink-core/assets/skills/artifact-write-back.md"
+      ]
     }
   ],
   "entries": [
@@ -235,6 +279,74 @@
         "crates/adapters/speclink-node/src/lib.rs"
       ],
       "recordedAt": "2026-11-11T08:04:31Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYS4P8SDZWAQNB3R399",
+      "taskDesc": "5.1 （Red→Green）看板順序文件的讀寫規則（D4 追加）：先寫測試再改 `speclink-protocol` 的 `BoardOrderDoc`。`from_content` 改成逐段寬鬆讀取：整份壞掉時兩段都是空的；`{\"changes\":{\"a\":\"n\"},\"discussions\":7}` 讀得到 a 的 n；`{\"changes\":5,\"discussions\":{\"t\":\"f\"}}` 讀得到 t 的 f。新增併入函式：輸入目前的內容、作用中變更的名稱與要寫的順序鍵，輸出整份新內容；changes 段只留作用中的名稱再併入新鍵，discussions 段照逐段讀到的內容帶回，輸出可以被嚴格解析成 `BoardOrderDoc`。改寫既有測試 `board_order_doc_reads_unusable_content_as_no_ranks` 裡「一段型別錯就兩段都清空」的那一列。對應規格 remote-board-order「board resource 為 scope 單文件且 server 不解析」的逐段讀取，以及情境「一段壞掉不影響另一段」。涉及 crates/protocol/speclink-protocol/src/query.rs。驗證：`cargo test -p speclink-protocol` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-11-11T09:14:13Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYSWHJ4406DYHRYTR7Q",
+      "taskDesc": "5.2 （Red→Green）儲存視圖改用 5.1 的規則，`Store::board_ranks` 改收呼叫端列出的作用中變更（D4 追加）：先寫測試——`PortView::board_ranks(&changes)` 不回不在 `changes` 裡的名稱；`PortView` 整份寫回時孤兒條目被移除、討論那一段原樣帶回（含變更那一段型別錯的情況）；`WorktreeOverlay::write_board_ranks` 回錯誤且沒有任何寫入。再實作：簽名改成 `board_ranks(&self, changes: &[Change])`，預設實作與 `move_start` 跟著改；`PortView::write_board_ranks` 改呼叫併入函式，拿掉自己拆 JSON 的那一段；`WorktreeOverlay` 覆寫 `write_board_ranks`，訊息說明要用 `set_rank` 並自己選副本。在 speclink-server 的 `api::plan_api` 補一個測試，對應規格 remote-board-order「board resource 為 scope 單文件且 server 不解析」的情境「排序請求修剪孤兒條目並帶回討論那一段」。涉及 crates/host/speclink-server/tests/it/api/plan_api.rs、 crates/engine/speclink-core/src/store.rs、crates/engine/speclink-core/src/lifecycle/plan.rs、crates/engine/speclink-core/src/command/change_rank.rs、crates/host/speclink-host/src/port_view.rs、crates/host/speclink-host/src/worktree.rs、crates/host/speclink-host/tests/port_rank.rs。驗證：`cargo test -p speclink-core change_rank`、`cargo test -p speclink-host` 與 `cargo test -p speclink-server --test it api::plan_api::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/worktree.rs"
+      ],
+      "recordedAt": "2026-11-11T09:16:17Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYSD6A8AABHZVF95ZMJ",
+      "taskDesc": "5.4 （Red→Green）`Side::parse` 與輸出型別收斂（D3 追加）：先寫測試——`Side::parse(\"before\")`、`Side::parse(\"after\")` 回對應的值，其他字串回 `None`；`render::plan::rank` 收 `ChangeRankOutcome` 時，人眼輸出與 `--json` 和改動前相同。再實作：`Side::parse`；`Command::ChangeRank` 的欄位 `side` 改名 `position`；`render::plan::rank` 改吃 `ChangeRankOutcome`、拿掉 `Ranked`；server 路由與 CLI 遠端分支改用 `Side::parse`；CLI 本機分支自己組出 `ChangeRankOutcome`。涉及 crates/engine/speclink-core/src/lifecycle/plan.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/change_rank.rs、crates/engine/speclink-core/src/command/tests.rs、crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/render/plan.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/host/speclink-server/src/api/routes.rs、crates/adapters/speclink-cli/src/verbs/plan.rs。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli --test it -- plan_verbs:: remote_change_rank::` 與 `cargo test -p speclink-server --test it api::plan_api::` 通過；`plan_verbs::` 既有的本機測試不改斷言就通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/plan.rs"
+      ],
+      "recordedAt": "2026-11-11T09:19:18Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYSH08M830CM4HAS8JP",
+      "taskDesc": "5.5 （Red→Green）Node SDK 排序拒絕的方法清單（D7 追加）：先寫測試——缺 `readChangeMeta` 或 `writeChangeMeta` 的宿主 Store 執行 `change rank` 時以 `refused` 拒絕，訊息只列缺的這兩個方法；只缺 `deleteArtifact` 的宿主 Store 執行 `change rank` 成功；實作了這兩個方法的宿主 Store 執行 `change rank c --before a` 後，宿主收到 c 的 metadata 寫入，隨後 `plan --json` 的順序 c 在 a 前（規格「Node SDK 既有宿主 Store 沿用 metadata」；測試用的宿主 Store 要讓 `listChanges` 回的 `meta.boardRank` 反映 `writeChangeMeta` 寫入的內容）。再實作：`store_bridge` 提供排序需要的方法清單，建立引擎時記下缺了哪幾個；`refuse_unrankable` 先判斷命令是不是 `ChangeRank` 再看清單。涉及 crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/src/store_bridge.rs、crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts、crates/adapters/speclink-node/index.d.ts。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/src/store_bridge.rs"
+      ],
+      "recordedAt": "2026-11-11T09:20:18Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYS8ZZG8FV85QTHRTTJ",
+      "taskDesc": "5.6 （測試）CLI 遠端整份寫回（規格 propose-skill「remote 模式下修正 artifact」、ingest-skill「remote 模式下更新提案」）：在 `remote_write_path.rs` 新增測試——假的 server 對讀取 artifact 回版本 N 與舊內容，執行 `speclink new artifact design --change c --stdin --force`（stdin 是完整的新內容），斷言送出的寫入請求帶 `If-Match` 為 N、內容是完整的新內容、stdout 與 fs 模式同形。既有實作已符合時測試直接通過；不符合時在 crates/adapters/speclink-cli/src/verbs/new.rs 修正。涉及 crates/adapters/speclink-cli/tests/it/remote_write_path.rs。驗證：`cargo test -p speclink-cli --test it remote_write_path::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_write_path.rs"
+      ],
+      "recordedAt": "2026-11-11T09:21:47Z"
+    },
+    {
+      "taskId": "tsk_01M74XATYSNJEYXETA5VH9DANH",
+      "taskDesc": "5.8 （Green）依 D1 追加表與 D9 改寫技能原稿：discuss 與 propose 讀正式規格改用 `speclink show <capability> --item-type spec`；discuss 第 3 步與 ingest 步驟 4 到 8 寫明變更帶 `worktree` 時從 `worktree.path` 執行，並寫明 `deltaSpecs` 的 `<capability>/spec.md` 以 `specs/<capability>` 讀取；整份寫回改成資產 `artifact-write-back.md`，經 `{{ARTIFACT_WRITE_BACK}}` 注入 propose 與 ingest，兩支技能裡引用 step 編號的地方改成引用這一節；搬回條件句改成 `skills.rs` 的常數，經 `{{SPEC_FOLDER_CONDITION}}` 注入 discuss 與 propose；新資產登記進 `skill_authoring` 的強調字上限表，強調字總數不增加，每個原稿 500 行以內；確認 `instructions --skill` 不輸出這三支技能（D9）。涉及 crates/engine/speclink-core/assets/skills/discuss.md、crates/engine/speclink-core/assets/skills/propose.md、crates/engine/speclink-core/assets/skills/ingest.md、crates/engine/speclink-core/assets/skills/artifact-write-back.md、crates/engine/speclink-core/src/workspace/skills.rs、crates/engine/speclink-core/tests/it/skill_authoring.rs。驗證：5.7 的測試通過；`cargo test -p speclink-core --test it skill_authoring::` 通過；`cargo test -p speclink-core --test it render_golden::neutral_body_has_no_slash_prefix_and_no_plan_mode_references` 通過（沒有殘留的 `{{`）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "59af485e0226a2b3ff04e14fa9d4f1ea7392d2ee",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/skills.rs",
+        "crates/engine/speclink-core/tests/it/skill_authoring.rs",
+        "crates/engine/speclink-core/assets/skills/artifact-write-back.md"
+      ],
+      "recordedAt": "2026-11-11T09:24:18Z"
     }
   ]
 }

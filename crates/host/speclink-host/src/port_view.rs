@@ -854,30 +854,25 @@ impl Store for PortView<'_> {
 
     // --- board order: the scope's board-order document (skills-verbs-first-wave D4) ---
 
-    /// The change table of `board/order`, read by the one lenient rule every
-    /// reader of the document uses: no document, or one that is not the
-    /// expected shape, has no ranks.
-    fn board_ranks(&self) -> BTreeMap<String, String> {
-        BoardOrderDoc::from_content(self.content(&keys::board_order()).as_deref()).changes
+    /// The change section of `board/order`, read by the one lenient rule every
+    /// reader of the document uses ([`BoardOrderDoc::from_content`]), limited
+    /// to `changes`: an entry left by an archived or discarded change is not
+    /// an order key.
+    fn board_ranks(&self, changes: &[Change]) -> BTreeMap<String, String> {
+        let mut ranks = BoardOrderDoc::from_content(self.content(&keys::board_order()).as_deref()).changes;
+        ranks.retain(|name, _| changes.iter().any(|c| &c.name == name));
+        ranks
     }
 
-    /// Stage the whole `board/order` document with `ranks` put into its change
-    /// table: one write, whatever the batch size, committed with the
-    /// command's events. The discussion table goes back as it was when it is
-    /// a usable table, also when the change table was not; fields the format
-    /// does not define are not kept.
+    /// Stage the whole `board/order` document with `ranks` merged in
+    /// ([`BoardOrderDoc::merged_content`]): one write, whatever the batch
+    /// size, committed with the command's events.
     fn write_board_ranks(&self, ranks: &[(String, String)]) -> anyhow::Result<()> {
         let key = keys::board_order();
-        let current = self.content(&key);
-        let mut changes = BoardOrderDoc::from_content(current.as_deref()).changes;
-        changes.extend(ranks.iter().cloned());
-        let discussions = current
-            .as_deref()
-            .and_then(|text| serde_json::from_str::<serde_json::Value>(text).ok())
-            .and_then(|mut doc| serde_json::from_value(doc.get_mut("discussions")?.take()).ok())
-            .unwrap_or_default();
-        let doc = BoardOrderDoc { changes, discussions };
-        self.put(key, serde_json::to_string(&doc)?);
+        let active = self.list_changes();
+        let active: Vec<&str> = active.iter().map(|c| c.name.as_str()).collect();
+        let content = BoardOrderDoc::merged_content(self.content(&key).as_deref(), &active, ranks);
+        self.put(key, content);
         Ok(())
     }
 }
@@ -1734,10 +1729,12 @@ mod tests {
 
     fn board_ranks() {
         let port = fixture();
-        assert!(PortView::new(&port, scope()).board_ranks().is_empty(), "no document, no ranks");
-        seed(&port, 10_000, &[("board/order", r#"{"changes":{"add-x":"n"},"discussions":{"t":"f"}}"#)]);
-        let ranks = PortView::new(&port, scope()).board_ranks();
-        assert_eq!(ranks, BTreeMap::from([("add-x".to_string(), "n".to_string())]));
+        let view = PortView::new(&port, scope());
+        assert!(view.board_ranks(&view.list_changes()).is_empty(), "no document, no ranks");
+        seed(&port, 10_000, &[("board/order", r#"{"changes":{"add-x":"n","gone":"c"},"discussions":{"t":"f"}}"#)]);
+        let view = PortView::new(&port, scope());
+        let ranks = view.board_ranks(&view.list_changes());
+        assert_eq!(ranks, BTreeMap::from([("add-x".to_string(), "n".to_string())]), "only the active changes");
     }
 
     fn write_board_ranks() {
@@ -1746,9 +1743,16 @@ mod tests {
         let pair = |c: &str, k: &str| (c.to_string(), k.to_string());
         view.write_board_ranks(&[pair("add-y", "f"), pair("add-x", "n")]).unwrap();
         view.write_board_ranks(&[pair("add-y", "g")]).unwrap();
-        assert_eq!(view.board_ranks()["add-y"], "g", "a command sees its own writes");
+        assert_eq!(view.board_ranks(&view.list_changes())["add-y"], "g", "a command sees its own writes");
         let doc = r#"{"changes":{"add-x":"n","add-y":"g"},"discussions":{}}"#;
         assert_eq!(staged(view), [format!("put board/order new {doc:?}")], "one write");
+        // An existing document: the orphan goes, the discussion section stays.
+        let port = fixture();
+        seed(&port, 10_000, &[("board/order", r#"{"changes":{"gone":"c"},"discussions":{"t":"f"}}"#)]);
+        let view = PortView::new(&port, scope());
+        view.write_board_ranks(&[pair("add-x", "n")]).unwrap();
+        let doc = r#"{"changes":{"add-x":"n"},"discussions":{"t":"f"}}"#;
+        assert_eq!(staged(view), [format!("put board/order at 3 {doc:?}")], "orphan pruned");
     }
 
     /// One row per method of `speclink_core::store::Store`.
