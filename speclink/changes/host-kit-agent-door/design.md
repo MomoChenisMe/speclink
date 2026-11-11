@@ -46,7 +46,7 @@
 - `HostKit::new(store: Arc<dyn StorePort>, hooks: Hooks) -> HostKit`
 - `HostKit::run(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError>`
 - `Caller { identity: Identity, scope: ScopeId }`
-- `Identity::new(id, display_name) -> Result<Identity, InvalidValue>`：兩個欄位都不可以是空字串或只有空白。
+- `Identity::new(id, display_name) -> Result<Identity, InvalidIdentity>`：兩個欄位都不可以是空字串或只有空白。`InvalidIdentity` 指出是哪一個欄位；儲存契約的 `InvalidValue` 只能由 store-port 自己建立，所以宿主套件用自己的錯誤型別。
 - `Hooks { before_command, after_commit }`，兩個欄位都是 `Option`，`Hooks::default()` 是兩個都沒有。
 - `BeforeCommand`、`Decision`、`AfterCommit`（D4、D5）。
 
@@ -68,7 +68,7 @@
 
 文件裡的蓋章欄位維持一個字串，不加識別：這些欄位是人讀的，而且本機專案沒有識別可填。宿主想讓蓋章帶 email 時，把顯示名稱給成「名稱 <email>」。
 
-`port_exec` 新增 `execute_with`，比 `execute` 多收兩樣：提交用的身分（識別與顯示名稱），以及一個選填的「提交前檢查」函式（D4 用）。既有的 `execute` 改成呼叫 `execute_with`：身分照舊由執行情境的顯示字串組成、沒有提交前檢查，行為不變。
+`port_exec` 新增 `execute_with`，比 `execute` 多收兩樣：提交用的身分（識別與顯示名稱），以及一個選填的「提交前檢查」函式（D4 用）。它收的執行情境是引擎的執行情境，不是 Host 的執行情境：宿主套件沒有專案與 repo 的綁定，下面的「repo 留空」要由呼叫端決定。既有的 `execute` 改成呼叫 `execute_with`：身分照舊由執行情境的顯示字串組成、沒有提交前檢查，行為不變。
 
 引擎執行情境的其他欄位，宿主套件這樣填：沒有 workspace、沒有環境變數的覆寫、沒有使用者設定資料夾、repo 留空。也就是引擎不讀程序的環境、不讀任何 checkout。
 
@@ -191,7 +191,7 @@ JS 丟出的錯誤怎麼分類：
 
 | 丟出的東西 | 分類 |
 |---|---|
-| 物件的 `code` 是 `'conflict'`，而且是 `commit` 丟的，`key` 是這次提交裡的一個鍵 | 版本衝突；預期值取自這次提交的那筆操作，實際值取自錯誤的 `actual`（數字或 `null`，沒有給時是未知） |
+| 物件的 `code` 是 `'conflict'`，而且是 `commit` 丟的，`key` 是這次提交裡的一個鍵 | 版本衝突；預期值取自這次提交的那筆操作，實際值取自錯誤的 `actual`（數字或 `null`；沒有給時當成 `null`。儲存契約的衝突沒有「未知」這個值，而合格測試會判定不給 `actual` 的儲存失敗） |
 | 物件的 `code` 是 `'unavailable'` | 暫時無法使用 |
 | 其他（含 `code` 是 `'conflict'` 但 `key` 不在這次提交裡） | 其他失敗 |
 
@@ -215,7 +215,7 @@ runStoreConformance(harness: {
 它在背景執行緒呼叫 Rust 的 `speclink_store_port::conformance::run`，JS 的物件經 D7 的橋接成為受測的儲存。所以 Rust 實作與 JS 實作跑的是同一組 16 項檢查，沒有第二份。
 
 - `newScope` 每次回傳一個沒用過的範圍。
-- `recordedEvents` 是選填。沒有提供時，檢查事件的兩項（`events-with-commit`、`events-only-commit`）的結果是 `skipped` 並說明原因；`passed` 只看沒有 `failed`。
+- `recordedEvents` 是選填。沒有提供時，`events-with-commit` 的結果是 `skipped` 並說明原因；`events-only-commit` 照樣檢查只有事件的提交會讓範圍版本前進，只略過讀回事件的那一段。這和正式規格 store-port-contract 對不保存事件的實作的規定相同。`passed` 只看沒有 `failed`。
 - 並行的兩項檢查（`concurrent-single-winner`、`batch-read-atomic`）從多個 Rust 執行緒同時呼叫；JS 這邊是同一個事件迴圈上交錯的非同步呼叫，所以它們驗到的是宿主的資料庫交易，而不是 JS 的執行緒。
 
 SDK 自己的測試用一個測試專用的 JS 記憶體儲存（`__test__/memory-port.ts`）跑這組檢查，證明 JS 實作能通過；再用一個故意不比對版本的儲存，確認它被判定失敗。這個記憶體儲存不對外匯出。
@@ -296,11 +296,37 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 - [死結] 背景執行緒等 JS 的 Promise，而 JS 的函式若同步等待同一個 `dispatch` 的結果會卡住。→ 這是既有 JS 儲存橋接已有的限制，型別宣告的註解寫明掛鉤與儲存函式裡不要等待同一個宿主的 `dispatch`。
 - [儲存解耦] 這個變更讓 Node 的宿主第一次走上「三個函式」的路徑，舊的 31 方法路徑只剩下等待移除；方向和「storage 解耦的規格驅動引擎」一致。
 
+## 稽核結論
+
+依 sharp-edges 稽核清單（`speclink instructions --skill audit`）逐項檢查新增的介面，結論如下。
+
+| 檢查項目 | 結論 | 證據 |
+|---|---|---|
+| 執行前掛鉤拒絕後仍然提交 | 沒有這條路徑。一般命令在引擎執行前被問；流程設定的寫入在 `execute_with` 的提交前檢查被問，檢查失敗就不呼叫儲存的提交。引擎或儲存在檢查前就失敗時，宿主套件補問一次，拒絕優先於原本的錯誤。 | `tests/kit.rs`：`refusing_an_archive_gives_the_reason_and_touches_nothing`、`a_dry_run_and_a_failed_write_are_asked_once_too`；`port_exec` 的 `a_failing_check_stops_the_commit_and_returns_its_error` |
+| 掛鉤壞掉時不放行 | Node 的 `beforeCommand` 丟出例外、Promise 被拒絕、回傳不認得的形狀，都當成拒絕並以 `internal` 結束。Rust 的掛鉤 panic 會往上傳，提交前就中斷。 | `host.spec.ts`：`does not allow when beforeCommand throws`、`does not allow an answer it does not know` |
+| 掛鉤名稱打錯而默默全部放行 | 找到並修正：`createHost` 遇到不認得的掛鉤名稱（例如 `beforecommand`）同步拋出錯誤。 | `host.spec.ts`：`refuses a hook name it does not know` |
+| argv 與 stdin 影響身分 | 不會。身分只來自 `host.dispatch` 的 `identity`；`--agent` 只寫進 `created_with`。 | `host.spec.ts`：`keeps argv and stdin out of the identity` |
+| 被拒絕的一般命令對儲存發出呼叫 | 不會。列出、讀取、提交都是零次。 | `tests/kit.rs`：`refusing_an_archive_gives_the_reason_and_touches_nothing`、`a_query_is_asked_too`；`host.spec.ts`：`rejects with refused when beforeCommand denies` |
+| JS 回傳的版本與時間被靜默截斷 | 不會。小數、負數、大於 2^53 − 1 的值都以 `internal` 拒絕，訊息指出函式與欄位。 | `host.spec.ts`：`fails when a version is not an integer`、`refuses a version past 2^53 − 1 instead of rounding it` |
+| 錯誤訊息帶出文件全文 | 不會。橋接的錯誤訊息只含函式名稱、欄位名稱、鍵與版本號；JS 丟出的訊息照原樣轉交，那是宿主自己的文字。 | `port_bridge.rs` 的 `malformed` 與 `settle_call` |
+| 提交後掛鉤的例外讓程序當掉 | 不會。Rust 端以 `catch_unwind` 吃掉 panic；Node 端在 invoker 的 Promise 鏈裡吃掉同步例外與被拒絕的 Promise，`dispatch` 不等它。 | `tests/kit.rs`：`a_failing_hook_changes_nothing`；`host.spec.ts`：`calls afterCommit with the events, and its failure changes nothing`、`does not wait for afterCommit, and swallows its rejected Promise` |
+| 讀取程序所在的 checkout | 找到並修正（見 Open Questions 第一題）：`task done` 沒有給檔案清單時，引擎原本會探測程序的工作目錄。 | `tests/kit.rs`：`task_done_without_touched_files_is_a_clear_result` |
+
+沒有提供執行前掛鉤時一律放行，這是規格的預設（host-kit「執行前掛鉤可以拒絕命令」），不是稽核發現。
+
 ## Migration Plan
 
 純新增，加上一處內部的標籤來源改動。既有的 `createEngine` 使用者不用改任何東西。要退回時還原這個變更的 commit 即可；沒有資料格式的變動。
 
 ## Open Questions
 
-- 引擎的 `task done` 在沒有 workspace、也沒有給「改了哪些檔」時的行為，在宿主套件的路徑上是什麼（今天它會嘗試探測 workspace）。實作時用測試確認：結果必須是明確的成功或明確的錯誤，不能是 panic。依結果在 proposal 的已知缺口補一句。
-- `repo` 留空對 evidence 的讀取端有沒有影響。實作時搜尋讀取這個欄位的地方；有影響時停下來回報，不自行決定填什麼。
+兩個問題都在實作時回答了，結論如下。
+
+- 引擎的 `task done` 在沒有 workspace、也沒有給「改了哪些檔」時的行為，在宿主套件的路徑上是什麼（今天它會嘗試探測 workspace）。
+  - **結論：明確的成功，不記任何檔案。** 實作時發現：沒有 workspace 時，引擎用空的路徑當專案根目錄，探測的是程序的工作目錄。宿主的程序若在一個 git checkout 的根目錄執行，evidence 會記下那份 checkout 的髒檔。這違反「引擎不讀任何 checkout」。
+  - 所以宿主套件在 `task done` 沒有給檔案清單時，交給引擎一份空的清單：任務照常勾選，沒有可歸屬的檔案所以不寫 evidence。執行前掛鉤收到的參數仍是呼叫端送來的原樣（`touchedFiles` 是 null）。
+  - 這只改宿主套件的路徑；`createEngine` 的 JS 儲存路徑行為不變。
+  - 測試：`crates/host/speclink-host/tests/kit.rs` 的 `task_done_without_touched_files_is_a_clear_result`，以及 `kit.rs` 的單元測試 `a_completion_without_files_names_none_instead_of_probing`。
+- `repo` 留空對 evidence 的讀取端有沒有影響。
+  - **結論：沒有影響。** evidence 的 `repo` 是選填欄位，留空時不寫進記錄。讀取端只有兩處：CLI 的 `remote_evidence_files` 逐欄搬運、不解讀；`TouchedRecord::all_files` 只讀 `touchedFiles`。示範用 server 的路徑照舊填 repo，不受影響。
+  - 測試：`tests/kit.rs` 的 `the_evidence_entry_of_the_kit_has_no_repo`。

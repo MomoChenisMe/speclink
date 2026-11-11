@@ -4,7 +4,7 @@ use crate::keylines::KeyLines;
 use crate::schema::{Artifact, Schema};
 use crate::station::{StampAnchors, Station, StationId};
 use crate::store::Store;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
 /// The per-change data file inside every change directory, active or archived.
@@ -106,7 +106,7 @@ pub struct ChangeMeta {
 
 /// `reviewed_scope` 清單項：path 為 repo-root 相對、`/` 分隔（Windows 路徑
 /// 正規化後寫入）；hash 為內容 CRLF→LF 正規化後的 SHA-256（design D3）。
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize)]
 pub struct ReviewedScopeEntry {
     pub path: String,
     pub hash: String,

@@ -846,7 +846,8 @@ impl std::fmt::Display for ChangedKey {
 }
 
 /// The three severity-grouped rule lists of the `review` block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ReviewList {
     Critical,
     Warning,
@@ -873,7 +874,8 @@ impl ReviewList {
 }
 
 /// The two stations of the `subagent_model` block.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum SubagentStation {
     Review,
     Verify,
@@ -899,7 +901,8 @@ impl SubagentStation {
 /// One edit of the workflow config, as a `workflow-config` write verb states
 /// it once argv and stdin are resolved. `body` fields are the stdin text: one
 /// list entry per line.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum WorkflowConfigEdit {
     /// Set one policy field. `key` and `value` are the raw argv words: the
     /// command reads them with [`PolicyKey::parse`] and refuses an unknown key

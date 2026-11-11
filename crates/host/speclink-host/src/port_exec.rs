@@ -53,41 +53,6 @@ fn engine_context(ctx: &SpeclinkExecutionContext) -> ExecutionContext {
     }
 }
 
-/// A short, stable command label for the commit's audit record. Derived from
-/// the outcome, so it names the verb that produced the writes.
-fn command_label(outcome: &CommandOutcome) -> String {
-    match outcome {
-        CommandOutcome::NewChange(_) => "new-change",
-        CommandOutcome::NewArtifact(_) => "new-artifact",
-        CommandOutcome::TaskDone(_) => "task-done",
-        CommandOutcome::TaskUndone(_) => "task-undone",
-        CommandOutcome::Claim(_) => "claim",
-        CommandOutcome::InProgressAdd(_) => "in-progress-add",
-        CommandOutcome::InProgressRemove(_) => "in-progress-remove",
-        CommandOutcome::ChangeDepends(_) => "change-depends",
-        CommandOutcome::ChangeSchema(_) => "change-schema",
-        CommandOutcome::ChangeRank(_) => "change-rank",
-        CommandOutcome::Archive(_) => "archive",
-        CommandOutcome::Discard(_) => "discard",
-        CommandOutcome::DiscussNew(_) => "discuss-new",
-        CommandOutcome::DiscussContext(_) => "discuss-context",
-        CommandOutcome::DiscussAddRound(_) => "discuss-add-round",
-        CommandOutcome::DiscussConclude(_) => "discuss-conclude",
-        CommandOutcome::DiscussPromote(_) => "discuss-promote",
-        CommandOutcome::DiscussLink(_) => "discuss-link",
-        CommandOutcome::DiscussSeal(_) => "discuss-seal",
-        CommandOutcome::DiscussArchive(_) => "discuss-archive",
-        CommandOutcome::DiscussDiscard(_) => "discuss-discard",
-        CommandOutcome::ReviewAddRound(_) => "review-add-round",
-        CommandOutcome::ReviewStamp(_) => "review-stamp",
-        CommandOutcome::ReviewDiscard(_) => "review-discard",
-        CommandOutcome::WorkflowConfigEdit(_) => "workflow-config-edit",
-        CommandOutcome::WorkflowConfigReplace(_) => "workflow-config-replace",
-        _ => "command",
-    }
-    .to_string()
-}
-
 /// Run one Engine command on `scope` of `port`.
 ///
 /// The command reads only the documents it uses. Its writes, its deletes and
@@ -129,12 +94,53 @@ pub(crate) fn execute_at(
     cmd: Command,
     at: Timestamp,
 ) -> Result<PortExecution, ExecError> {
+    // The execution context has a display name only. It is the actor id too:
+    // this entry has no stable identity to record.
+    let name = actor_name(&ctx.actor);
+    let actor = Actor::new(name.clone(), name).map_err(invalid)?;
+    run(port, scope, &engine_context(ctx), &actor, cmd, None, at)
+}
+
+/// A check on the Engine's result that runs before anything reaches the
+/// store. An `Err` stops the call with that error and commits nothing.
+pub type BeforeCommit<'a> = &'a dyn Fn(&CommandOutcome) -> Result<(), ExecError>;
+
+/// [`execute`] for a caller that resolves its own identity: `engine_ctx` is
+/// the Engine's context (its actor is the name stamped into documents),
+/// `actor` the commit's id and display name. `before_commit` runs once on
+/// every successful Engine result, also when the command commits nothing.
+pub fn execute_with(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    engine_ctx: &ExecutionContext,
+    actor: &Actor,
+    cmd: Command,
+    before_commit: Option<BeforeCommit<'_>>,
+) -> Result<PortExecution, ExecError> {
+    // The Engine does not read the clock: the Host gives the commit time.
+    let at = now().map_err(ExecError::Store)?;
+    run(port, scope, engine_ctx, actor, cmd, before_commit, at)
+}
+
+fn run(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    engine_ctx: &ExecutionContext,
+    actor: &Actor,
+    cmd: Command,
+    before_commit: Option<BeforeCommit<'_>>,
+    at: Timestamp,
+) -> Result<PortExecution, ExecError> {
+    let label = cmd.name();
     let view = PortView::new(port, scope.clone());
-    let result = engine_execute(&view, &engine_context(ctx), cmd);
+    let result = engine_execute(&view, engine_ctx, cmd);
     // A store failure during a read made the Engine see "no document": its
     // result means nothing then, so the store failure is checked first.
     let ops = view.into_ops().map_err(ExecError::Store)?;
     let (outcome, events) = result.map_err(ExecError::Command)?;
+    if let Some(check) = before_commit {
+        check(&outcome)?;
+    }
     if ops.is_empty() && events.is_empty() {
         return Ok(PortExecution {
             outcome,
@@ -142,7 +148,7 @@ pub(crate) fn execute_at(
             scope_version: None,
         });
     }
-    let commit = commit_of(ctx, &outcome, &events, ops, at).map_err(invalid)?;
+    let commit = commit_of(actor, label, &events, ops, at).map_err(invalid)?;
     let version = port.commit(scope, &commit).map_err(ExecError::Store)?;
     Ok(PortExecution {
         outcome,
@@ -234,21 +240,17 @@ impl StorePort for AtExpected<'_> {
 /// The one commit of a command: its writes in key order, its events in the
 /// order the Engine produced them.
 fn commit_of(
-    ctx: &SpeclinkExecutionContext,
-    outcome: &CommandOutcome,
+    actor: &Actor,
+    command: &str,
     events: &[DomainEvent],
     ops: Vec<Op>,
     at: Timestamp,
 ) -> Result<Commit, InvalidValue> {
-    // The execution context has a display name only. It is the actor id too,
-    // until an entry point that carries a stable identity exists.
-    let name = actor_name(&ctx.actor);
-    let actor = Actor::new(name.clone(), name)?;
     let events = events
         .iter()
         .map(|event| Event::new(event.kind(), event_payload(event)))
         .collect::<Result<Vec<Event>, InvalidValue>>()?;
-    Commit::new(actor, command_label(outcome), at, ops, events)
+    Commit::new(actor.clone(), command, at, ops, events)
 }
 
 /// [`invalid_value`] as a failure of the command run.
@@ -712,5 +714,150 @@ mod tests {
         execute_at(&probe, &scope(), &anonymous, task_done(), at()).expect("task done");
         let commit = &probe.commits()[0];
         assert_eq!((commit.actor().id(), commit.actor().display_name()), ("anonymous", "anonymous"));
+    }
+
+    // --- execute_with：呼叫端給的身分與提交前檢查（host-kit-agent-door D2）---
+
+    /// The Engine context a host kit gives: the display name, nothing else.
+    fn display_ctx(display: &str) -> ExecutionContext {
+        ExecutionContext {
+            actor: Some(display.to_string()),
+            ..Default::default()
+        }
+    }
+
+    fn u_42() -> speclink_store_port::Actor {
+        speclink_store_port::Actor::new("u_42", ACTOR).unwrap()
+    }
+
+    fn new_change(name: &str) -> Command {
+        Command::NewChange {
+            name: name.to_string(),
+            description: None,
+            schema: None,
+            agent: None,
+            from_discussion: None,
+            last: false,
+        }
+    }
+
+    #[test]
+    fn execute_with_records_the_given_id_and_display_name() {
+        // 「識別與顯示名稱各有去處」
+        let probe = Probe::new(MemoryStorePort::new());
+        execute_with(&probe, &scope(), &display_ctx(ACTOR), &u_42(), new_change("demo"), None)
+            .expect("new change");
+
+        let commits = probe.commits();
+        assert_eq!(commits.len(), 1);
+        let commit = &commits[0];
+        assert_eq!((commit.actor().id(), commit.actor().display_name()), ("u_42", ACTOR));
+        assert_eq!(commit.command(), "new-change");
+        let meta = put_content(commit, "changes/demo/.meta.yaml").expect("the new meta");
+        let meta = speclink_core::model::ChangeMeta::from_text(Some(meta)).expect("meta parses");
+        assert_eq!(meta.created_by.as_deref(), Some(ACTOR));
+    }
+
+    #[test]
+    fn the_commit_names_the_command_also_for_verify() {
+        // 「寫入命令的提交記錄用同一個名稱」：驗證站的命令原本沒有專屬標籤。
+        let port = MemoryStorePort::new();
+        seed(
+            &port,
+            1_000,
+            &[
+                ("changes/demo/.meta.yaml", META),
+                ("changes/demo/tasks.md", "## 1. Section\n\n- [x] 1.1 first task\n"),
+            ],
+        );
+        let probe = Probe::new(port);
+        let run = |cmd: Command| {
+            execute_with(&probe, &scope(), &display_ctx(ACTOR), &u_42(), cmd, None).expect("executes")
+        };
+        run(Command::VerifyAddRound {
+            change: "demo".to_string(),
+            content: "**Scope**: src/lib.rs\n".to_string(),
+        });
+        run(Command::VerifyStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            scope: vec![speclink_core::model::ReviewedScopeEntry {
+                path: "src/lib.rs".to_string(),
+                hash: speclink_core::station::content_fingerprint("fn lib() {}\n"),
+            }],
+            missing: vec![],
+        });
+        let labels: Vec<String> = probe.commits().iter().map(|c| c.command().to_string()).collect();
+        assert_eq!(labels, ["verify-add-round", "verify-stamp"]);
+    }
+
+    #[test]
+    fn a_failing_check_stops_the_commit_and_returns_its_error() {
+        let probe = Probe::new(seeded());
+        let seen = std::sync::Mutex::new(Vec::new());
+        let check = |outcome: &CommandOutcome| -> Result<(), ExecError> {
+            seen.lock().unwrap().push(matches!(outcome, CommandOutcome::TaskDone(_)));
+            Err(ExecError::Command(CommandError::new(ErrorCode::Refused, "not now")))
+        };
+
+        let err = execute_with(&probe, &scope(), &display_ctx(ACTOR), &u_42(), task_done(), Some(&check))
+            .expect_err("the check refuses");
+
+        match err {
+            ExecError::Command(e) => assert_eq!((e.code, e.message.as_str()), (ErrorCode::Refused, "not now")),
+            other => panic!("expected the check's error, got {other:?}"),
+        }
+        assert_eq!(*seen.lock().unwrap(), [true], "the check saw the task-done outcome once");
+        assert!(probe.commits().is_empty(), "nothing reached the store's commit");
+        assert_eq!(version(&probe.inner), 1);
+    }
+
+    #[test]
+    fn a_passing_check_lets_the_commit_through() {
+        let probe = Probe::new(seeded());
+        let check = |_: &CommandOutcome| -> Result<(), ExecError> { Ok(()) };
+        let done = execute_with(&probe, &scope(), &display_ctx(ACTOR), &u_42(), task_done(), Some(&check))
+            .expect("task done");
+        assert_eq!(probe.commits().len(), 1);
+        assert!(done.scope_version.is_some());
+    }
+
+    #[test]
+    fn the_check_runs_also_when_nothing_is_committed() {
+        // dry-run 與內容沒有變動時不提交，掛鉤照樣被問一次（D4）。
+        let probe = Probe::new(with_config());
+        let calls = std::sync::atomic::AtomicUsize::new(0);
+        let check = |_: &CommandOutcome| -> Result<(), ExecError> {
+            calls.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        };
+        let done = execute_with(&probe, &scope(), &display_ctx(ACTOR), &u_42(), set_tdd("true", true), Some(&check))
+            .expect("dry run");
+        assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert!(probe.commits().is_empty());
+        assert_eq!(done.scope_version, None);
+    }
+
+    #[test]
+    fn execute_still_commits_what_it_did_before() {
+        // 既有的 `execute` 改成呼叫 `execute_with` 之後，同一個命令的提交內容不變。
+        let through_execute = Probe::new(seeded());
+        execute(&through_execute, &scope(), &ctx(), task_done()).expect("execute");
+        let through_with = Probe::new(seeded());
+        let same_actor = speclink_store_port::Actor::new(ACTOR, ACTOR).unwrap();
+        execute_with(&through_with, &scope(), &engine_context(&ctx()), &same_actor, task_done(), None)
+            .expect("execute_with");
+
+        let (a, b) = (&through_execute.commits()[0], &through_with.commits()[0]);
+        assert_eq!((a.actor().id(), a.actor().display_name()), (ACTOR, ACTOR));
+        assert_eq!((a.actor().id(), a.actor().display_name()), (b.actor().id(), b.actor().display_name()));
+        assert_eq!(a.command(), b.command());
+        // The written documents carry a fresh task ID and the time, so the
+        // keys and the event names are what two runs share.
+        let keys = |c: &speclink_store_port::Commit| c.ops().iter().map(|op| op.key().clone()).collect::<Vec<_>>();
+        assert_eq!(keys(a), keys(b));
+        let names = |c: &speclink_store_port::Commit| c.events().iter().map(|e| e.name().to_string()).collect::<Vec<_>>();
+        assert_eq!(names(a), names(b));
     }
 }

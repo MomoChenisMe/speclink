@@ -905,7 +905,8 @@ fn check_ranks(
 }
 
 /// Which side of its anchor `change rank` puts a change.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Side {
     Before,
     After,
