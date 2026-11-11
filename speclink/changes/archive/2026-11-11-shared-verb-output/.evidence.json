@@ -90,6 +90,16 @@
         "crates/adapters/speclink-node/src/lib.rs",
         "crates/adapters/speclink-verbs/src/families/mod.rs"
       ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "7.1 （Red）為 SDK 多帶的兩個欄位寫測試。Rust：單一出口對「結論已寫入但收尾封存失敗」的結果回傳輸出（不是錯誤），`json` 帶 `closingError`、其餘欄位和 conclude 的值相同；`Concluded` 的 `closing_error` 是「沒有」時 `conclude_json` 不帶這個欄位。Node：`archive` 對沒有任務證據的變更解析為 `{ output, stderr }`，兩欄各自和 CLI `--no-color` 的 stdout、stderr 相同；`new change` 解析的物件只有 `output`；一份已轉出、其變更都不在進行中的討論記錄，在收尾封存會失敗的情況下 `discuss conclude` 解析為帶 `closingError` 的物件、記錄的結論已寫入。涉及 crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts。驗證：`cargo test -p speclink-verbs render::` 與 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗，既有案例通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/remote_base.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
     }
   ],
   "entries": [
@@ -217,6 +227,20 @@
         "crates/adapters/speclink-verbs/src/families/mod.rs"
       ],
       "recordedAt": "2026-11-11T04:16:16Z"
+    },
+    {
+      "taskId": "tsk_01M74JEXDH3R82QHQF3CTXCE9R",
+      "taskDesc": "7.1 （Red）為 SDK 多帶的兩個欄位寫測試。Rust：單一出口對「結論已寫入但收尾封存失敗」的結果回傳輸出（不是錯誤），`json` 帶 `closingError`、其餘欄位和 conclude 的值相同；`Concluded` 的 `closing_error` 是「沒有」時 `conclude_json` 不帶這個欄位。Node：`archive` 對沒有任務證據的變更解析為 `{ output, stderr }`，兩欄各自和 CLI `--no-color` 的 stdout、stderr 相同；`new change` 解析的物件只有 `output`；一份已轉出、其變更都不在進行中的討論記錄，在收尾封存會失敗的情況下 `discuss conclude` 解析為帶 `closingError` 的物件、記錄的結論已寫入。涉及 crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/discuss.rs、crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts。驗證：`cargo test -p speclink-verbs render::` 與 `npm --prefix crates/adapters/speclink-node test` 的新案例失敗，既有案例通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "9949ea89531a833229f1c6e0966fb3f6c77624c2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/remote_base.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-11T05:51:24Z"
     }
   ]
 }

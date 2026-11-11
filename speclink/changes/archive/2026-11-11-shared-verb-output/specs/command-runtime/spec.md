@@ -2,7 +2,7 @@
 
 ### Requirement: 動詞的輸出只有一份
 
-每個經命令執行層的動詞，把結果轉成輸出的定義 SHALL 只有一份，CLI 與 Node SDK dispatch SHALL 共用它。這份定義 SHALL 是不產生副作用的函式：SHALL NOT 直接寫 stdout 或 stderr，SHALL NOT 讀取終端機狀態、環境變數或程序層級的顏色開關；是否上色與是否輸出 --json SHALL 由呼叫端以參數指定。CLI 的本機模式與遠端模式 SHALL 經同一份定義產生輸出。CLI 每個動詞在人眼、--json、--no-color 與強制上色四種形式下的 stdout、stderr 與 exit code SHALL 維持位元級一致。有 --json 形式的動詞，Node SDK dispatch 回傳的結構化物件 SHALL 與 CLI --json 輸出解析後的內容相同。
+每個經命令執行層的動詞，把結果轉成輸出的定義 SHALL 只有一份，CLI 與 Node SDK dispatch SHALL 共用它。這份定義 SHALL 是不產生副作用的函式：SHALL NOT 直接寫 stdout 或 stderr，SHALL NOT 讀取終端機狀態、環境變數或程序層級的顏色開關；是否上色與是否輸出 --json SHALL 由呼叫端以參數指定。CLI 的本機模式與遠端模式 SHALL 經同一份定義產生輸出。CLI 每個動詞在人眼、--json、--no-color 與強制上色四種形式下的 stdout、stderr 與 exit code SHALL 維持位元級一致。有 --json 形式的動詞，Node SDK dispatch 回傳的結構化物件 SHALL 與 CLI --json 輸出解析後的內容相同；唯一的例外是 discuss conclude 的收尾封存失敗時，dispatch 的物件另帶 closingError 欄位（CLI 以非零的 exit code 與 stderr 的錯誤訊息表達同一件事）。
 
 #### Scenario: CLI 的輸出不變
 

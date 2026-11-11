@@ -18,8 +18,9 @@
 - `speclink-node` 的 dispatch 移除 9 個動詞的允許清單與各自組 `--json` 的程式，改成「共用的解析 → 引擎 → 共用的輸出」。結果：有引擎命令的動詞全部能用。
 - **相容性影響**：
   - CLI：每個動詞的 stdout、stderr、exit code 在人眼、`--json`、`--no-color` 三種形式下逐位元不變。
-  - Node SDK：原本 9 個動詞的回傳值不變，只有一處例外：`new change` 的 `output` 尾端多一個換行，因為 `{ output }` 現在和 CLI 的 stdout 完全相同。原本回傳 `invalid_argv` 的動詞（例如 `show`、`validate`、`archive`、`discuss` 全系列、`review show`、`review discard`、`task done`）現在會執行並回傳結果。依賴「這些動詞一定被拒絕」的宿主要調整。
+  - Node SDK：原本 9 個動詞的回傳值不變，只有兩處例外，都是 `output` 尾端多一個換行，因為 `{ output }` 現在和 CLI 的 stdout 完全相同：`new change`，以及沒有任何變更時的 `status`。原本回傳 `invalid_argv` 的動詞（例如 `show`、`validate`、`archive`、`discuss` 全系列、`review show`、`review discard`、`task done`）現在會執行並回傳結果。依賴「這些動詞一定被拒絕」的宿主要調整。
   - 只能在有 checkout 的一端執行的動詞（drift、change rank、review prepare、review scope、verify scope、帶 `--skill` 的 instructions）在 SDK 仍被拒絕。
+  - SDK 的回傳值多兩個欄位，都只在特定情況出現：沒有 `--json` 形式的動詞有 stderr 文字時（`archive` 的零證據提示）回傳 `{ output, stderr }`；`discuss conclude` 的結論已寫入但收尾封存失敗時，回傳結果並另帶 `closingError`，不以 Error 拒絕。
 - 沒有新的 CLI 指令、設定欄位或技能變動。
 
 ## Capabilities
@@ -59,6 +60,7 @@
     - crates/adapters/speclink-verbs/src/families/mod.rs
     - crates/adapters/speclink-cli/src/color.rs
     - crates/adapters/speclink-cli/src/common.rs
+    - crates/adapters/speclink-cli/src/remote_base.rs
     - crates/adapters/speclink-cli/src/verbs/query.rs
     - crates/adapters/speclink-cli/src/verbs/checks.rs
     - crates/adapters/speclink-cli/src/verbs/documents.rs
@@ -71,13 +73,16 @@
     - crates/adapters/speclink-cli/src/verbs/discuss.rs
     - crates/adapters/speclink-cli/src/verbs/station.rs
     - crates/adapters/speclink-cli/tests/it/no_raw_wire_json.rs
+    - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/index.d.ts
     - crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts
     - crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts
+    - docs/sdk-node.md
+    - docs/sdk-node.zh-TW.md
   - Removed: (none)
 - 三種形態下的結果：
   - 本機 repo：可用。CLI 的輸出逐位元不變。
   - 連到遠端的 checkout：可用。CLI 的遠端分支用同一個輸出函式，輸出不變。
   - 沒有本機規格檔的內嵌宿主：可用，有兩項已知缺口。SDK 的 dispatch 能用全部有引擎命令的動詞；流程設定的動詞還不行（由變更 workflow-config-commands 補上）；每次呼叫帶身分、事件交給宿主還沒有（由變更 host-kit-agent-door 補上）。
-- 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 列出「只支援 9 個動詞」的段落要改寫。
+- 文件影響：docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 列出「只支援 9 個動詞」的幾句在這個變更改寫，讓文件和 SDK 的行為一致。其餘使用者文件的更新留給最後一個變更 docs-embedded-host。
