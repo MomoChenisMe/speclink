@@ -4637,6 +4637,7 @@ dependencies = [
  "speclink-fs",
  "speclink-protocol",
  "speclink-store",
+ "speclink-store-port",
  "tempfile",
 ]
 
@@ -4713,6 +4714,7 @@ dependencies = [
  "speclink-remote",
  "speclink-store",
  "speclink-store-fs",
+ "speclink-store-port",
  "speclink-store-postgres",
  "speclink-store-sqlite",
  "tar",

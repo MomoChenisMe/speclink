@@ -9,6 +9,7 @@ description = "Canonical Rust Host application layer: ExecutionContext, binding 
 speclink-core = { path = "../../engine/speclink-core" }
 speclink-protocol = { path = "../../protocol/speclink-protocol" }
 speclink-store = { path = "../../store/speclink-store" }
+speclink-store-port = { path = "../../store/speclink-store-port" }
 anyhow.workspace = true
 serde.workspace = true
 serde_json.workspace = true

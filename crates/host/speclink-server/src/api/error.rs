@@ -2,9 +2,10 @@
 //!
 //! Every failure leaves a handler as an [`ApiError`] — an HTTP status plus a
 //! reason from the protocol's eight-value closed registry plus the message.
-//! The store's six failure classes, the Engine command layer's five codes, and
-//! binding refusals all map to this type here and nowhere else; the three
-//! vocabularies never merge and the registry is never widened.
+//! The store's six failure classes, the store port's three (the verb path),
+//! the Engine command layer's five codes, and binding refusals all map to this
+//! type here and nowhere else; the vocabularies never merge and the registry is
+//! never widened.
 
 use crate::identity::IdentityError;
 use axum::http::StatusCode;
@@ -15,6 +16,7 @@ use speclink_host::bridge::BridgeError;
 use speclink_protocol::command::RevertBlockedEvidence;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_store::StoreError;
+use speclink_store_port::{Expected, PortError};
 
 /// A protocol error ready to become the `{ status, reason, message }` triple
 /// (plus flattened refusal evidence when the flow attached it).
@@ -214,6 +216,36 @@ impl From<IdentityError> for ApiError {
     }
 }
 
+/// The store port's three failures → wire reason + status: what a verb run
+/// through the bridge reports. A conflict names the document key and carries
+/// its expected and actual versions in the message (the envelope has no detail
+/// fields).
+impl From<PortError> for ApiError {
+    fn from(e: PortError) -> ApiError {
+        match e {
+            PortError::Conflict {
+                key,
+                expected,
+                actual,
+            } => {
+                let expected = match expected {
+                    Expected::Absent => "absent".to_string(),
+                    Expected::At(version) => version.to_string(),
+                };
+                let actual = actual.map_or_else(|| "absent".to_string(), |v| v.to_string());
+                ApiError::revision_conflict(format!(
+                    "{}: expected {expected}, actual {actual}",
+                    key.as_str()
+                ))
+            }
+            PortError::Unavailable { .. } => {
+                ApiError::unavailable("the store backend is temporarily unavailable")
+            }
+            backend @ PortError::Backend { .. } => ApiError::internal(backend.to_string()),
+        }
+    }
+}
+
 /// A bridge failure dispatches to whichever vocabulary produced it — the two
 /// layers never merge.
 impl From<BridgeError> for ApiError {
@@ -364,8 +396,49 @@ mod tests {
         )));
         assert_eq!(command.reason, ErrorReason::NotFound);
 
-        let store = ApiError::from(BridgeError::Store(StoreError::Unavailable));
+        let store = ApiError::from(BridgeError::Store(PortError::Unavailable {
+            message: "connection lost".into(),
+        }));
         assert_eq!(store.status, StatusCode::SERVICE_UNAVAILABLE);
         assert_eq!(store.reason, ErrorReason::Unavailable);
+    }
+
+    #[test]
+    fn store_port_three_failures_map_to_reason_and_status() {
+        use speclink_store_port::{DocKey, Version};
+        let key = || DocKey::new("changes/demo/tasks.md").unwrap();
+        let v = |n| Version::new(n).unwrap();
+
+        let conflict = ApiError::from(PortError::Conflict {
+            key: key(),
+            expected: Expected::At(v(3)),
+            actual: Some(v(4)),
+        });
+        assert_eq!(conflict.status, StatusCode::CONFLICT);
+        assert_eq!(conflict.reason, ErrorReason::RevisionConflict);
+        assert_eq!(conflict.message, "changes/demo/tasks.md: expected 3, actual 4");
+
+        let created_twice = ApiError::from(PortError::Conflict {
+            key: key(),
+            expected: Expected::Absent,
+            actual: Some(v(4)),
+        });
+        assert_eq!(created_twice.message, "changes/demo/tasks.md: expected absent, actual 4");
+        let gone = ApiError::from(PortError::Conflict {
+            key: key(),
+            expected: Expected::At(v(3)),
+            actual: None,
+        });
+        assert_eq!(gone.message, "changes/demo/tasks.md: expected 3, actual absent");
+
+        let unavailable = ApiError::from(PortError::Unavailable { message: "timeout".into() });
+        assert_eq!(unavailable.status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(unavailable.reason, ErrorReason::Unavailable);
+        assert_eq!(unavailable.message, "the store backend is temporarily unavailable");
+
+        let backend = ApiError::from(PortError::Backend { message: "disk full".into() });
+        assert_eq!(backend.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(backend.reason, ErrorReason::Internal);
+        assert_eq!(backend.message, "store backend error: disk full");
     }
 }

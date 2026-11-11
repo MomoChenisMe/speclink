@@ -94,12 +94,14 @@
 
 ### D3: 既有的橋接入口改成轉接加執行入口
 
-`bridge::execute(store: &dyn TeamStore, ctx, cmd)` 的簽名保留，server 的呼叫點不用改。它的內容改成：用 `ctx` 的專案與 repo 建立 `TeamStorePort`（D5），再呼叫 `port_exec::execute`。
+`bridge::execute(store, ctx, cmd)` 的形狀保留，server 的呼叫點不用改。它的內容改成：用 `ctx` 的專案與 repo 建立 `TeamStorePort`（D5），再呼叫 `port_exec::execute`。
+
+實作時的一處修正：`store` 的型別從 `&dyn TeamStore` 改成 `&(dyn TeamStore + Sync)`，`drift::spec_drift` 也一樣。原因是儲存接口要求實作是 `Send + Sync`，轉接握著 TeamStore 的參考，所以 TeamStore 必須能跨執行緒共用。server 傳進來的本來就是 `Arc<dyn TeamStore + Send + Sync>`，測試傳的是 `MemoryStore`，兩邊的呼叫點都沒有改。
 
 - `BridgeStore` 與 `materialize` 移除。同一件事不留兩套實作。
 - `BridgeError::Store` 的內容從 `StoreError` 改成 `PortError`。`BridgeExecution.revision` 的值取自提交回傳的範圍版本號。
 - `drift::spec_drift` 改用 `PortView`（經 `TeamStorePort`），結束時丟掉視圖，不提交。
-- `commit.rs` 的 `begin_unit_of_work` 與 `commit_with_events` 因為這次改動不再有呼叫端，移除；事件對映的函式保留並改成 D2 的共用形狀。
+- `commit.rs` 的 `begin_unit_of_work` 與 `commit_with_events` 因為這次改動不再有呼叫端，移除；事件對映的函式保留並改成 D2 的共用形狀（`event_payload`）。原本回傳 TeamStore event record 的 `event_record_of` 只剩被移除的函式在用，一併移除，轉成 event record 的工作改在轉接的提交裡做。
 
 ### D4: Server 的錯誤對映
 
@@ -107,13 +109,15 @@
 
 | PortError | 狀態碼與 reason |
 |---|---|
-| `Conflict` | 409、revision_conflict；`message` 是「鍵: expected …, actual …」 |
+| `Conflict` | 409、revision_conflict；`message` 是「鍵: expected …, actual …」，文件不存在時寫 `absent` |
 | `Unavailable` | 503，沿用既有的暫時無法使用訊息 |
-| `Backend` | 500 |
+| `Backend` | 500；`message` 是「store backend error: …」 |
 
 `StoreError` 本身的對映保留，server 其他直接用 TeamStore 的路徑還在用。
 
 TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 driver 在 `snapshot`、`export`、`history`、`commit` 回傳 `NotFound` 與 `PermissionDenied` 的情況：沒有這種情況就對到 `Backend`；有的話，在轉接裡把訊息原樣帶出，並在 server 測試補上對應的案例。
+
+盤點的結論：`crates/store` 底下的 sqlite、fs、postgres 三個 driver 與記憶體版的參考實作，原始碼裡沒有任何一處建立 `StoreError::NotFound` 或 `StoreError::PermissionDenied`（fs driver 遇到作業系統的 NotFound、PermissionDenied 時回的是 `Backend`）。所以執行動詞的路徑上不會出現這兩類，轉接把它們和 `Corrupt`、`Backend` 一起對到 `PortError::Backend`，訊息用 TeamStore 自己的文字，不需要另外補 server 測試。搜尋 server 與 CLI 的測試，也沒有任何一處比對橋接路徑 409 的 `message` 全文，所以沒有測試要跟著改。
 
 ### D5: TeamStore 的轉接 TeamStorePort
 
@@ -121,7 +125,9 @@ TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 dri
 
 - **範圍**：轉接綁定建立時給的 `Scope`。它提供對應的 `ScopeId`（專案與 repo 以 `/` 相接）；收到別的 `ScopeId` 時回傳 `Backend` 錯誤。
 - **鍵與文件種類**：鍵和 `DocumentId` 的九種雙向對應，依 store-port-contract 的鍵對照表。已封存討論的名稱段原樣對應。對不到任何一種的鍵：讀取回傳「沒有」、提交回傳 `Backend` 錯誤。
-- **列出**：TeamStore 只有 `export` 能列舉。轉接在第一次列出時匯出一次並把結果留在自己身上，之後的列出與讀取都從它回答。轉接每次執行建立一個，所以一個動詞最多匯出一次——和今天的成本相同，但不再逐份讀回。自己提交之後，這份記憶作廢。
+- **列出**：TeamStore 只有 `export` 能列舉。轉接在第一次列出或讀取時載入整個範圍一次，把結果留在自己身上，之後的列出與讀取都從它回答。轉接每次執行建立一個，所以一個動詞最多匯出一次。自己提交之後（成功或失敗都算），這份記憶作廢。
+- **載入的成本和今天相同**（實作時的修正；原本寫的是「不再逐份讀回」，做不到）：一次載入是一個快照、一次匯出，再把匯出列到的每份文件經快照讀回一次。讀回省不掉，原因有三：匯出的內容不帶每份文件的 revision，而寫入的預期版本需要它；文件的 revision 只有快照讀得到；快照不能跨執行緒共用，轉接沒辦法把它留著慢慢讀，而 sqlite 與 postgres 的快照本身就是整個範圍的複本，每次呼叫各取一個快照會比今天更貴。所以示範用 server 的讀取量在這個變更不會變少，要等 server 不再經這個轉接；用到才讀的效果只出現在直接實作儲存接口的儲存上（見「量測結果」）。
+- **名稱做不成鍵的文件**（例如名稱帶 `/`）在載入時略過。它們也寫不進去：提交會回報後端錯誤。
 - **版本**：文件版本是 TeamStore 的文件 revision；範圍版本號是快照的專案 revision。
 - **最後修改時間**：TeamStore 沒有便宜的方式取得，轉接一律回報 0。今天的橋接對變更的修改時間也是回報 0，行為不變。
 - **提交**：開一個 unit of work（帶 `command` 與 `actor` 的顯示名稱），放入全部的 `ops`，事件轉成 event record（時間用 `at`），`commit`。`RevisionConflict` 轉成 `PortError::Conflict`，鍵由 `DocumentId` 換回。
@@ -162,7 +168,7 @@ TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 dri
 
 **行為**
 
-- Server 執行任何動詞時，不再把整個範圍讀回記憶體；讀取類的動詞不讀封存文件的內容（經真正的儲存接口時）。經 TeamStore 轉接時，一個動詞最多匯出一次。
+- 經真正的儲存接口執行動詞時，只讀取用到的文件，讀取類的動詞不讀封存文件的內容。經 TeamStore 轉接時，一個動詞最多匯出一次、載入整個範圍一次，成本和今天相同（見 D5）。
 - 動詞的結果、錯誤碼、領域事件與今天相同。例外是提案列出的兩項相容性影響。
 - 用 Rust 內嵌的宿主能呼叫 `port_exec::execute`，把自己的 `StorePort` 交給引擎。
 
@@ -204,7 +210,40 @@ TeamStore 的六類錯誤經轉接後只剩三類。實作時要盤點三個 dri
 - [事件時間改用提交時間] outbox 記錄的時間和事件自己的時間差幾毫秒 → 沒有消費端依賴這個差異；列為相容性影響。
 - [契約還沒實作完] 這個變更依賴 store-port-contract；它的 apply 若調整契約，這裡的文件要跟著改 → 已記錄依賴，先後順序由 plan 排。
 
+## 量測結果
+
+量測日 2026-11-11。資料是本專案的 `speclink/` 資料夾：2297 份文件、約 22.4 MB，進行中的變更有 4 個（repo 當下的 3 個，加上測試自己種的 1 個）。指令是 `cargo test -p speclink-host --test port_cost -- --nocapture`。
+
+| 命令 | 列出次數 | 讀取次數 | 讀取的鍵數 | 讀取的位元組 | 提交次數 | 對儲存的呼叫 |
+|---|---:|---:|---:|---:|---:|---:|
+| 列出變更 | 1 | 9 | 12 | 49,124 | 0 | 10 |
+| 單一變更的狀態 | 1 | 2 | 2 | 86 | 0 | 3 |
+| 執行計畫 | 2 | 18 | 22 | 250,240 | 0 | 20 |
+| 列出討論 | 1 | 1 | 2 | 84,591 | 0 | 2 |
+| 新增一份 artifact | 0 | 2 | 2 | 40 | 1 | 3 |
+| 勾選一個任務 | 0 | 3 | 3 | 98 | 1 | 4 |
+| 封存一個變更 | 1 | 9 | 16 | 1,023 | 1 | 11 |
+| 搜尋討論 | 2 | 2 | 174 | 1,983,191 | 0 | 4 |
+
+**結論：不加快取。** D6 的三項斷言都成立，列出變更、單一變更的狀態、列出討論對儲存的呼叫是 10、3、2 次，都不超過 10 次。
+
+三點觀察，留給後面的計畫：
+
+- **列出變更的呼叫數跟著進行中的變更數成長。** 它是 1 次列出、1 次讀取全部的 metadata，之後每個變更 2 次讀取（`proposal.md` 與 `tasks.md`），也就是 2N＋2 次。N 是 4 時剛好 10 次，N 到 5 就超過門檻。執行計畫的 20 次是同一個形狀。原因是引擎一次只問一個變更的一份文件，視圖沒辦法事先知道要合併成一次讀取。依範圍版本號的快取救不了第一次讀取；要降下來得讓引擎一次要多份文件，那是引擎儲存介面的改動，不在這個變更的範圍。
+- **讀取的資料量。** 三個讀取類命令合計讀了約 134 KB，是全部資料的 0.6%；今天的橋接每個命令都載入全部的 22.4 MB。三個命令都沒有讀 `archive/` 底下的任何鍵。
+- **沒看過就寫而多出來的讀取：只有封存變更有，1 次。** 那一次讀取帶 6 個目的鍵，回來全部是「沒有」。新增 artifact 的 `design.md`、勾選任務的 `.evidence.json`、封存時的正式規格，都是引擎自己先讀的，不算多出來。所以契約不需要為了這個加上不檢查版本的寫入。
+
+## 稽核結論
+
+對新增的公開介面套用 sharp-edges 清單的結果：
+
+- **`PortView` 沒有被公開。** 模組與型別都是 `pub(crate)`，`port_exec` 的文件裡有一個編譯會失敗的範例守著。
+- **儲存錯誤不會被當成「沒有」而繼續提交。** `port_exec` 在引擎回來後先看視圖記到的錯誤，有錯就不提交；測試對一次任務勾選的每一次儲存呼叫各失敗一次。`drift::spec_drift` 也先看這個錯誤，不會把儲存失敗回報成「找不到變更」（新增測試）。稽核另外找到一個洞並修掉：宿主的儲存回傳的文件數和要的鍵數不一樣時，少掉的那幾份原本會被讀成「沒有」，現在回報後端錯誤（新增測試）。
+- **錯誤訊息不帶出文件內容。** 衝突只帶鍵與版本；格式不對的值只帶種類與規則；轉接的後端錯誤是 TeamStore 自己的錯誤文字或鍵。
+- **轉接不會把別的範圍的資料回給呼叫端。** 轉接綁定一個範圍，對 TeamStore 的每次呼叫都用這個範圍；收到別的範圍 id 時三個操作都回報後端錯誤（新增測試，測試裡另一個範圍有資料）。
+- **`execute` 的 `scope` 與 `ctx` 各管一件事。** 文件只由 `scope` 決定，`ctx` 的專案與 repo 不用來定位儲存，已寫進函式的說明。
+
 ## Open Questions
 
-- 三個 driver 是否會在執行動詞的路徑上回傳 `NotFound` 或 `PermissionDenied`（D4），實作時盤點。
-- 10 次的門檻是否合理，等量測的實際數字。
+- 三個 driver 是否會在執行動詞的路徑上回傳 `NotFound` 或 `PermissionDenied`（D4）：已盤點，不會，結論寫在 D4。
+- 10 次的門檻是否合理：量測的數字見「量測結果」。門檻對今天的資料成立，但列出變更是 2N＋2 次，進行中的變更到 5 個就會超過。

@@ -10,7 +10,9 @@
 //! drift is diagnostic: nothing here writes to the workspace.
 
 use crate::binding::ResolvedBinding;
-use crate::bridge::{BridgeError, BridgeStore};
+use crate::bridge::BridgeError;
+use crate::port_view::PortView;
+use crate::teamstore_port::TeamStorePort;
 use serde::Serialize;
 use speclink_core::command::{CommandError, ErrorCode};
 use speclink_core::drift::{self, PathKind, WorkspaceFacts};
@@ -200,31 +202,34 @@ pub struct SpecDriftView {
 }
 
 /// Compute a change's spec-side drift over one TeamStore scope, together with
-/// the basis and store-side inputs fixed by that same snapshot.
+/// the basis and store-side inputs read in that same execution.
 ///
 /// This is the Host's composition point for the Server's drift endpoint — the
-/// bridged Engine `Store` view is materialized, used, and dropped inside, never
-/// handed out. Nothing is written: the view's staged operations are discarded
-/// and no unit of work is opened.
+/// Engine store view is built, used, and dropped inside, never handed out.
+/// Nothing is written: no commit is made.
 pub fn spec_drift(
-    store: &dyn TeamStore,
+    store: &(dyn TeamStore + Sync),
     scope: &Scope,
     change: &str,
 ) -> Result<SpecDriftView, BridgeError> {
-    let view = BridgeStore::materialize(store, scope).map_err(BridgeError::Store)?;
-    let found = speclink_core::model::find_change(&view, change).ok_or_else(|| {
-        BridgeError::Command(CommandError::new(
-            ErrorCode::NotFound,
-            format!("Change '{change}' not found."),
-        ))
-    })?;
-    Ok(SpecDriftView {
+    let port = TeamStorePort::new(store, scope.clone()).map_err(BridgeError::Store)?;
+    let view = PortView::new(&port, port.scope_id().clone());
+    let drift_view = speclink_core::model::find_change(&view, change).map(|found| SpecDriftView {
         spec: drift::compute_spec_drift(&view, &found),
         basis: tasks::current_basis_digests(&view, &found.name),
         created: found.meta.created.clone(),
         design: view.read_artifact(&found.name, "design.md"),
         tasks: view.read_artifact(&found.name, "tasks.md"),
         evidence: view.read_evidence(&found.name),
+    });
+    // A store failure during a read made the Engine see "no document": it is
+    // reported first, before anything the Engine concluded from that.
+    view.into_ops().map_err(BridgeError::Store)?;
+    drift_view.ok_or_else(|| {
+        BridgeError::Command(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{change}' not found."),
+        ))
     })
 }
 
@@ -365,7 +370,7 @@ impl Store for RemoteDriftStore {
     }
     fn list_archived_changes(&self) -> Vec<String> {
         // This adapter is permanently limited to one active change's drift
-        // inputs; archive browsing belongs to the full BridgeStore surface.
+        // inputs; archive browsing belongs to the full store view of the Host.
         Vec::new()
     }
     fn archived_change_exists(&self, _dated_name: &str) -> bool {
@@ -680,6 +685,42 @@ mod tests {
     }
 
     // --- wire ↔ 引擎型別：單點雙向映射往返結構相等 ---
+
+    #[test]
+    fn spec_drift_reports_a_store_failure_as_a_store_failure() {
+        // The Engine store view reads a failed store as "no document". The
+        // drift entry must not turn that into "change not found".
+        use speclink_store::memory::MemoryStore;
+        use speclink_store::{CommandContext, DocumentId, FaultPoint, TeamStore};
+        use speclink_store_port::PortError;
+
+        let store = MemoryStore::new();
+        let binding = local_default_binding();
+        let scope = Scope::new(binding.project, binding.repo);
+        let seed = |change: &str| {
+            let mut uow = store
+                .begin_unit_of_work(
+                    &scope,
+                    CommandContext { command: "seed".to_string(), actor: "seed".to_string() },
+                )?;
+            uow.create(DocumentId::ChangeMeta { change: change.to_string() }, "schema: spec-driven\n");
+            store.commit(uow, Vec::new())
+        };
+        seed("demo").expect("seed commit");
+        assert!(spec_drift(&store, &scope, "demo").is_ok(), "the healthy store answers");
+        assert!(matches!(
+            spec_drift(&store, &scope, "nope"),
+            Err(BridgeError::Command(e)) if e.code == ErrorCode::NotFound
+        ));
+
+        // A commit that crashes leaves the store unavailable.
+        store.crash_at(FaultPoint::AfterDocWrites);
+        seed("other").expect_err("the crashed commit");
+        match spec_drift(&store, &scope, "demo") {
+            Err(BridgeError::Store(PortError::Unavailable { .. })) => {}
+            other => panic!("expected the store failure, got {:?}", other.map(|_| ())),
+        }
+    }
 
     #[test]
     fn spec_drift_round_trips_through_the_wire() {
