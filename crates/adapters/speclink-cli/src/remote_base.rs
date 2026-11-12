@@ -6,6 +6,7 @@
 
 use anyhow::{bail, Result};
 use speclink_core as core;
+use speclink_protocol::binding::BindingResponse;
 use speclink_remote::auth as remote_auth;
 use speclink_remote::client::Client as RemoteClient;
 
@@ -39,18 +40,35 @@ pub(crate) fn remote_ctx() -> Result<Option<RemoteCtx>> {
             ws.spec_dir_name
         );
     }
+    let connected = connect(&conn).map_err(|line| anyhow::anyhow!(line))?;
+    // Every remote verb comes through here, so this is the one place that tells a
+    // CLI whose skill templates are older than the Server's.
+    let declared = connected.binding.capabilities.skills.as_ref().map(|skills| skills.version.as_str());
+    crate::skill_notice::after_handshake(&remote_auth::origin_of(&conn.url), declared);
+    Ok(Some(RemoteCtx { client: connected.client, ws }))
+}
+
+/// What the binding handshake gave: the client for the requests after it, and
+/// what the Server declared.
+pub(crate) struct Connected {
+    pub(crate) client: RemoteClient,
+    pub(crate) binding: BindingResponse,
+}
+
+/// The binding handshake with the Server `conn` names. It precedes every verb
+/// (fail closed): an incompatible API version or a missing/ambiguous binding
+/// stops here — no verb request leaves the client. It doubles as the
+/// credential's first use, so a cached access token the server has aged out
+/// is caught here and rotated once, invisibly. A failure is the single line
+/// the user sees.
+pub(crate) fn connect(conn: &core::workspace::RemoteConnection) -> std::result::Result<Connected, String> {
     let origin = remote_auth::origin_of(&conn.url);
-    // The binding handshake precedes every verb (fail closed): an
-    // incompatible API version or a missing/ambiguous binding stops here —
-    // no verb request leaves the client. It doubles as the credential's first
-    // use, so a cached access token the server has aged out is caught here and
-    // rotated once, invisibly.
     let authenticated = remote_auth::with_resolved_credential(&origin, |bearer| {
         RemoteClient::new(&conn.url, bearer, conn.repo.as_deref())
             .handshake()
             .map(|binding| (binding, bearer.to_string()))
     })
-    .map_err(|e| anyhow::anyhow!(e.message(&origin)))?;
+    .map_err(|e| e.message(&origin))?;
     let (binding, token) = authenticated.value;
     // The confirmed repo identity rides every subsequent request: a declared
     // `remote.repo` keeps its value; an undeclared one adopts the server's
@@ -60,7 +78,8 @@ pub(crate) fn remote_ctx() -> Result<Option<RemoteCtx>> {
     } else {
         conn.repo.as_deref()
     };
-    Ok(Some(RemoteCtx { client: RemoteClient::new(&conn.url, &token, repo), ws }))
+    let client = RemoteClient::new(&conn.url, &token, repo);
+    Ok(Connected { client, binding })
 }
 
 /// Explicit name passes through; otherwise a single active change

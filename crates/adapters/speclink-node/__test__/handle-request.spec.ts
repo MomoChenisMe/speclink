@@ -2,7 +2,7 @@
 // door for a host's one route, over a JS store port.
 import { describe, expect, it } from 'vitest'
 
-import { createHost } from '../index.js'
+import { createHost, skills } from '../index.js'
 import { rejection } from './helpers'
 import { memoryPort } from './memory-port'
 
@@ -202,5 +202,83 @@ describe('host.handleRequest', () => {
       /authMethods/,
     )
     expect(() => createHost({ store: memoryPort().store, scopes: 'alpha' as never })).toThrow(/scopes must be a function/)
+  })
+})
+
+// node-sdk「createHost 的技能清單」: the host chooses which skills the door
+// gives a client; it has no way to change their text.
+describe('createHost skills', () => {
+  type TestHost = ReturnType<typeof createHost>
+
+  /** The names of the skills the door gives `tool`. */
+  async function skillNames(host: TestHost, tool = 'claude'): Promise<string[]> {
+    const response = await host.handleRequest(request('POST', alpha('skills'), { targets: [{ tool }] }), ALICE)
+    expect(response?.status).toBe(200)
+    return json(response).targets[0].skills.map((s: { name: string }) => s.name)
+  }
+
+  it('gives only the two skills the host lists', async () => {
+    const host = createHost({ store: memoryPort().store, scopes: () => ONE_REPO, skills: ['discuss', 'propose'] })
+    expect(await skillNames(host)).toEqual(['discuss', 'propose'])
+  })
+
+  it('gives every skill of the engine when the list is absent, the worktree two by the scope’s config', async () => {
+    const host = createHost({ store: memoryPort().store, scopes: () => ONE_REPO })
+    const worktree = ['apply-with-worktree', 'worktree-merge']
+    const all = skills.list().map((s: { name: string }) => s.name).sort()
+
+    expect(await skillNames(host)).toEqual(all.filter((name: string) => !worktree.includes(name)))
+
+    const revision = json(await host.handleRequest(request('GET', alpha('config')), ALICE)).revision
+    const written = await host.handleRequest(
+      request('PUT', alpha('config'), { content: 'schema: spec-driven\nworktree: true\n', expectedRevision: revision }),
+      ALICE,
+    )
+    expect(written?.status).toBe(200)
+    expect(await skillNames(host)).toEqual(all)
+  })
+
+  it('declares the skill version in the handshake', async () => {
+    const host = createHost({ store: memoryPort().store, scopes: () => ONE_REPO, skills: ['discuss'] })
+    const handshake = json(await host.handleRequest(request('GET', alpha('binding')), ALICE))
+    expect(handshake.capabilities.skills.version).toMatch(/^v\d+\.\d+\.\d+$/)
+
+    const withText = await host.handleRequest(
+      request('POST', alpha('skills'), { targets: [{ tool: 'claude' }], contents: true }),
+      ALICE,
+    )
+    expect(json(withText).version).toBe(handshake.capabilities.skills.version)
+    expect(json(withText).targets[0].skills[0].content).toContain(`version: "${handshake.capabilities.skills.version}"`)
+  })
+
+  it('throws at createHost, at once, for a name the engine does not have', () => {
+    const port = memoryPort()
+    expect(() => createHost({ store: port.store, skills: ['discuss', 'no-such-skill'] })).toThrow(/no-such-skill/)
+    expect(() => createHost({ store: port.store, skills: ['discuss', 'no-such-skill'] })).not.toThrow(/'discuss'/)
+    expect(port.calls.list + port.calls.read + port.calls.commit).toBe(0)
+  })
+
+  it('throws at createHost for an empty list', () => {
+    // No skill for any checkout is not what leaving the list out means.
+    expect(() => createHost({ store: memoryPort().store, skills: [] })).toThrow(/empty/)
+  })
+
+  it('throws at createHost for a list of another shape', () => {
+    expect(() => createHost({ store: memoryPort().store, skills: 'discuss' as never })).toThrow(/skills/)
+    expect(() => createHost({ store: memoryPort().store, skills: [{ name: 'discuss', body: 'mine' }] as never })).toThrow(
+      /skills/,
+    )
+  })
+
+  it('leaves skills.render and host.dispatch as they are', async () => {
+    const before = skills.render('archive', { target: 'claude', invocation: 'cli' })
+    const host = createHost({ store: memoryPort().store, scopes: () => ONE_REPO, skills: ['discuss'] })
+    expect(skills.render('archive', { target: 'claude', invocation: 'cli' })).toBe(before)
+    expect(before).toContain('speclink-archive')
+
+    const listed = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] })) as {
+      changes: unknown[]
+    }
+    expect(listed.changes).toEqual([])
   })
 })

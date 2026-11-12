@@ -20,6 +20,7 @@ mod coverage;
 mod error;
 mod router;
 mod routes;
+mod skills;
 mod wire;
 
 pub use coverage::{wire_coverage, WireCoverage};

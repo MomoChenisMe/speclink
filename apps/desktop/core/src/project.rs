@@ -159,7 +159,12 @@ pub fn probe_assets_at(path: &Path) -> serde_json::Value {
 pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
     let outcome =
         speclink_core::init::update(path, false).map_err(|e| single_line(&e.to_string()))?;
-    Ok(serde_json::json!({
+    Ok(outcome_payload(&outcome))
+}
+
+/// 更新動作回給前端的形狀：本機與 remote 專案共用。
+fn outcome_payload(outcome: &speclink_core::init::UpdateOutcome) -> serde_json::Value {
+    serde_json::json!({
         "updated": outcome.updated,
         "pruned": outcome.pruned,
         "stripped": outcome.stripped,
@@ -169,7 +174,42 @@ pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
             "movedFolder": outcome.migrated.moved_folder,
             "renamed": outcome.migrated.renamed,
         },
-    }))
+    })
+}
+
+/// remote 專案的技能檔探測（remote-skill-delivery D6）：基準是 Server 提供的技能，
+/// 用摘要比對，不需要全文。委派引擎的 `probe_served_skills`，回報和本機探測同形，
+/// 另帶兩個值：`serverVersion`（Server 的技能版本）與 `appOlderThanServer`（這個 app
+/// 內建的技能版號在數值上比 Server 舊；任一邊讀不出數字時為 false）。零寫入。
+pub fn probe_remote_assets_at(
+    checkout: &Path,
+    server_version: &str,
+    served: &[speclink_core::init::ServedSkills],
+) -> serde_json::Value {
+    let probe = speclink_core::init::probe_served_skills(checkout, server_version, served);
+    let mut value = serde_json::to_value(probe).expect("probe payload serializes");
+    value["serverVersion"] = server_version.into();
+    value["appOlderThanServer"] =
+        speclink_core::init::is_newer_version(server_version, speclink_core::init::ASSET_VERSION).into();
+    value
+}
+
+/// 把 Server 提供的技能全文寫進 checkout（remote-skill-delivery D6）：和 CLI 的
+/// `speclink update` 在 remote 專案用同一個計畫——檔案集合等於 Server 的回應，多出來
+/// 的 `speclink-` 資料夾被清掉，不經降級守門（技能版本跟著 Server）。回應和 checkout
+/// 的工具對不上、或技能名稱不是名稱時，在任何寫入之前拒絕。失敗為單行 Err。
+pub fn update_remote_assets_at(
+    checkout: &Path,
+    rendered: Vec<speclink_core::init::RenderedTool>,
+) -> Result<serde_json::Value, String> {
+    use speclink_core::init::{SyncPlan, ToolSelection};
+    let install = || -> Result<_, Box<dyn std::error::Error>> {
+        let app = speclink_core::config::AppConfig::load(&checkout.join(".speclink.yaml"))?;
+        let plan = SyncPlan::from_rendered(checkout, ToolSelection::resolve(checkout, &app), rendered)?;
+        Ok(plan.apply(checkout)?)
+    };
+    let outcome = install().map_err(|e| single_line(&e.to_string()))?;
+    Ok(outcome_payload(&outcome))
 }
 
 /// 關於頁的版本資訊（desktop-about-page design D1）：一次回齊，前端不自行拼湊。
@@ -382,6 +422,114 @@ mod tests {
         assert!(outcome["pruned"].as_array().unwrap().is_empty(), "{outcome}");
         // 再生後探測回到現版。
         assert_eq!(probe_assets_at(fx.root())["status"], "current");
+    }
+
+    // --- remote 專案：基準是 Server 提供的技能（remote-skill-delivery D6） ---
+
+    use speclink_core::init::{managed_skills, skill_digest, RenderedTool, ServedSkills, ASSET_VERSION};
+    use speclink_core::skills::{RenderTarget, SpecLocation, Tool};
+
+    /// 連到遠端專案的 checkout（claude 單工具），技能檔是本機範本產生的。
+    fn remote_checkout(fx: &FixtureRoot) {
+        let url = "https://team.example.test/api/speclink/v1/projects/acme";
+        speclink_core::init::init_remote(fx.root(), &[Tool::Claude], true, url, None).unwrap();
+    }
+
+    /// 和這個 app 同版的 Server 給 claude 的技能：（名稱、全文）。
+    fn served_texts() -> Vec<(String, String)> {
+        let spec_dir = speclink_core::workspace::DEFAULT_SPEC_DIR;
+        managed_skills(RenderTarget::Builtin(Tool::Claude), false, spec_dir, SpecLocation::Elsewhere)
+            .into_iter()
+            .map(|(dir, text)| (dir.trim_start_matches("speclink-").to_string(), text))
+            .collect()
+    }
+
+    fn digests_of(texts: &[(String, String)]) -> Vec<ServedSkills> {
+        let digests = texts.iter().map(|(name, text)| (name.clone(), skill_digest(text))).collect();
+        vec![ServedSkills { tool: "claude".into(), digests }]
+    }
+
+    #[test]
+    fn probe_remote_assets_is_current_when_the_checkout_holds_what_the_server_gives() {
+        let fx = FixtureRoot::new("remote-probe-current");
+        remote_checkout(&fx);
+        let value = probe_remote_assets_at(fx.root(), ASSET_VERSION, &digests_of(&served_texts()));
+        assert_eq!(value["status"], "current", "{value}");
+        assert_eq!(value["currentVersion"], ASSET_VERSION, "你的 Speclink 版本");
+        assert_eq!(value["serverVersion"], ASSET_VERSION, "Server 提供的技能版本");
+        assert_eq!(value["appOlderThanServer"], false);
+        assert_eq!(value["tools"][0]["workspaceVersion"], ASSET_VERSION);
+        assert!(value["differingFiles"].as_array().unwrap().is_empty(), "{value}");
+    }
+
+    #[test]
+    fn probe_remote_assets_lists_the_file_that_differs_from_the_server() {
+        let fx = FixtureRoot::new("remote-probe-stale");
+        remote_checkout(&fx);
+        std::fs::write(propose_skill(&fx), "edited by hand\n").unwrap();
+        let value = probe_remote_assets_at(fx.root(), ASSET_VERSION, &digests_of(&served_texts()));
+        assert_eq!(value["status"], "stale", "{value}");
+        assert_eq!(value["differingFiles"], serde_json::json!([".claude/skills/speclink-propose/SKILL.md"]));
+    }
+
+    #[test]
+    fn probe_remote_assets_is_missing_without_any_skill_file() {
+        let fx = FixtureRoot::new("remote-probe-missing");
+        remote_checkout(&fx);
+        std::fs::remove_dir_all(fx.root().join(".claude").join("skills")).unwrap();
+        let served = served_texts();
+        let value = probe_remote_assets_at(fx.root(), ASSET_VERSION, &digests_of(&served));
+        assert_eq!(value["status"], "missing", "{value}");
+        assert_eq!(value["tools"][0]["missing"], true);
+        assert_eq!(value["differingFiles"].as_array().unwrap().len(), served.len(), "安裝會新建的檔案數");
+    }
+
+    #[test]
+    fn probe_remote_assets_says_when_the_app_is_older_than_the_server() {
+        let fx = FixtureRoot::new("remote-probe-older-app");
+        remote_checkout(&fx);
+        let ahead = ahead_of_current();
+        let value = probe_remote_assets_at(fx.root(), &ahead, &digests_of(&served_texts()));
+        assert_eq!(value["serverVersion"], ahead.as_str());
+        assert_eq!(value["appOlderThanServer"], true, "{value}");
+        // 版號讀不出來時不說 app 比較舊。
+        let unreadable = probe_remote_assets_at(fx.root(), "latest", &digests_of(&served_texts()));
+        assert_eq!(unreadable["appOlderThanServer"], false);
+    }
+
+    #[test]
+    fn update_remote_assets_writes_the_servers_texts() {
+        let fx = FixtureRoot::new("remote-update");
+        remote_checkout(&fx);
+        let ahead = ahead_of_current();
+        // Server 的版本比 app 新、內容也不同：照 Server 的寫。
+        let texts: Vec<(String, String)> = ["apply", "propose"]
+            .iter()
+            .map(|name| {
+                let text = format!("---\nname: speclink-{name}\nmetadata:\n  version: \"{ahead}\"\n---\n\nfrom the server\n");
+                (name.to_string(), text)
+            })
+            .collect();
+        let rendered = vec![RenderedTool { tool: "claude".into(), skills: texts.clone() }];
+
+        let outcome = update_remote_assets_at(fx.root(), rendered).expect("update ok");
+        assert_eq!(outcome["updated"], serde_json::json!(["claude"]), "{outcome}");
+        assert_eq!(std::fs::read_to_string(propose_skill(&fx)).unwrap(), texts[1].1);
+        assert!(!fx.root().join(".claude").join("skills").join("speclink-discuss").exists(), "Server 沒給的被清掉");
+        let probe = probe_remote_assets_at(fx.root(), &ahead, &digests_of(&texts));
+        assert_eq!(probe["status"], "current", "{probe}");
+        assert_eq!(probe["tools"][0]["workspaceVersion"], ahead.as_str());
+    }
+
+    #[test]
+    fn update_remote_assets_refuses_an_answer_that_does_not_fit_with_zero_writes() {
+        let fx = FixtureRoot::new("remote-update-refused");
+        remote_checkout(&fx);
+        let before = std::fs::read_to_string(propose_skill(&fx)).unwrap();
+        let rendered = vec![RenderedTool { tool: "claude".into(), skills: vec![("../escape".into(), "x".into())] }];
+        let err = update_remote_assets_at(fx.root(), rendered).expect_err("不是技能名稱");
+        assert!(!err.contains('\n'), "單行錯誤：{err}");
+        assert_eq!(std::fs::read_to_string(propose_skill(&fx)).unwrap(), before, "拒絕＝零寫入");
     }
 
     /// 舊佈局專案：`.speclink.yaml` 沒有 spec_dir、規格在 openspec/、一個舊檔名的

@@ -30,7 +30,7 @@ import {
 
 import { appT } from "./i18n/runtime";
 import type { ConnectionsAdapter, ConnectionView, LoginPhase } from "./adapter/connections";
-import type { AssetUpdateResult, ProjectProbe, WorkspaceAdapter } from "./adapter/workspace";
+import type { AssetUpdateResult, ProjectProbe, RemoteCheckout, WorkspaceAdapter } from "./adapter/workspace";
 import type { MigrationAdapter } from "./adapter/migration";
 import {
   applyRemoteConnectionState,
@@ -853,29 +853,46 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       };
     }
 
-    /** 探測 `root` 的技能檔並裁決提示；探測失敗照樣拋出，由呼叫端決定怎麼呈現。 */
-    async function promptAt(ws: WorkspaceAdapter, root: string): Promise<AssetPromptState | null> {
-      return assetPrompt(await ws.probeAssets(root), root, readAssetSkips());
+    /** 技能檔探測的對象。`root` 是略過記憶的鍵：本機專案是專案根（也是探測的路徑），
+     * remote 專案是分頁的鍵。`remote` 有值時基準是 Server 提供的技能。 */
+    type AssetSubject = { root: string; remote: RemoteCheckout | null };
+
+    /** 探測 `subject` 的技能檔並裁決提示；探測失敗照樣拋出，由呼叫端決定怎麼呈現。
+     * Server 沒有提供技能（null）時沒有可比的基準：不提示。 */
+    async function promptAt(ws: WorkspaceAdapter, subject: AssetSubject): Promise<AssetPromptState | null> {
+      const probe = subject.remote ? await ws.probeRemoteAssets(subject.remote) : await ws.probeAssets(subject.root);
+      return probe ? assetPrompt(probe, subject.root, readAssetSkips()) : null;
     }
 
     /** 探測指定分頁的技能檔並記進該分頁的記憶（結果屬於探測時的分頁，期間切走也不錯置）。 */
-    async function probeAssetPromptFor(ws: WorkspaceAdapter, key: string, root: string): Promise<void> {
+    async function probeAssetPromptFor(ws: WorkspaceAdapter, key: string, subject: AssetSubject): Promise<void> {
       let next: AssetPromptState | null;
       try {
-        next = await promptAt(ws, root);
+        next = await promptAt(ws, subject);
       } catch {
-        // 探測不可用等同無法判定：靜默不提示，開專案不受影響（既有降級語意）。
+        // 探測不可用（remote 專案連不上也是）等同無法判定：靜默不提示，開專案不受影響。
         next = null;
       }
       set({ assetPrompts: { ...get().assetPrompts, [key]: next } });
     }
 
-    /** 活躍分頁的本地專案根；remote 分頁與零分頁回 null（技能檔探測只對本地
-     * checkout 有意義——決策 4）。 */
-    function activeLocalRoot(): string | null {
+    /** 活躍分頁的技能檔探測對象：本機專案，或有 checkout 的 remote 專案。沒有 checkout
+     * 的 remote 分頁（只看規格）與零分頁回 null——沒有受管的技能檔可查。 */
+    function activeAssetSubject(): AssetSubject | null {
       const key = get().activeKey;
       const locator = key ? get().sessions[key]?.locator : undefined;
-      return locator?.kind === "local" ? locator.root : null;
+      if (!key || !locator) return null;
+      if (locator.kind === "local") return { root: locator.root, remote: null };
+      if (!locator.checkoutRoot) return null;
+      return {
+        root: key,
+        remote: {
+          connectionId: locator.connectionId,
+          project: locator.projectId,
+          repo: locator.repoId,
+          checkout: locator.checkoutRoot,
+        },
+      };
     }
 
     /** 指定 workspace 是否有整批載入在途（loadingActive 的唯一真相）。 */
@@ -2627,23 +2644,23 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     async refreshAssetPrompt() {
       const key = get().activeKey;
-      const root = activeLocalRoot();
+      const subject = activeAssetSubject();
       set({ assetUpdateError: null });
-      // remote 分頁無本地受管技能檔可查（決策 4）；無 adapter 時 UI 不啟用。
-      if (!workspace || !root || !key) return;
-      await probeAssetPromptFor(workspace, key, root);
+      // 沒有 checkout 的 remote 分頁無受管技能檔可查；無 adapter 時 UI 不啟用。
+      if (!workspace || !subject || !key) return;
+      await probeAssetPromptFor(workspace, key, subject);
     },
 
     async applyAssetUpdate() {
       const key = get().activeKey;
-      const root = activeLocalRoot();
-      if (!workspace || !root || !key || get().assetUpdating) return;
+      const subject = activeAssetSubject();
+      if (!workspace || !subject || !key || get().assetUpdating) return;
       set({ assetUpdating: true, assetUpdateError: null });
       // 確認框寫的遷移內容是承諾（例如「資料夾不動」）：按下前狀態變了就改顯示最新內容。
       const shown = get().assetPrompts[key]?.migration.state ?? "none";
       let fresh: AssetPromptState | null;
       try {
-        fresh = await promptAt(workspace, root);
+        fresh = await promptAt(workspace, subject);
       } catch (error) {
         set({ assetUpdateError: String(error), assetUpdating: false });
         return;
@@ -2654,7 +2671,9 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       let result: AssetUpdateResult;
       try {
-        result = await workspace.updateAssets(root);
+        result = subject.remote
+          ? await workspace.updateRemoteAssets(subject.remote)
+          : await workspace.updateAssets(subject.root);
       } catch (error) {
         // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
         set({ assetUpdateError: String(error), assetUpdating: false });
@@ -2671,7 +2690,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       await get().rearmWatch();
       if (migrated.movedFolder && get().activeKey === key) await get().refresh();
       // 重探套用的那個分頁：使用者途中切走，它的提示與琥珀點仍要收合。
-      await probeAssetPromptFor(workspace, key, root);
+      await probeAssetPromptFor(workspace, key, subject);
     },
 
     closeAssetMigrated() {
@@ -2680,10 +2699,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     dismissAssetPrompt() {
       const key = get().activeKey;
-      const root = activeLocalRoot();
+      const subject = activeAssetSubject();
       const prompt = selectAssetPrompt(get());
-      if (!key || !root || !prompt) return;
-      writeAssetSkip(root, prompt.version);
+      if (!key || !subject || !prompt) return;
+      writeAssetSkip(subject.root, prompt.version);
       set({ assetPrompts: { ...get().assetPrompts, [key]: null }, assetUpdateError: null });
     },
 

@@ -60,7 +60,8 @@ fn door_with(can_write: bool, hooks: Hooks) -> Door {
         ..Default::default()
     };
     let store = Arc::new(common::Recorder::new(MemoryStorePort::new()));
-    Door { kit: HostKit::with_options(store.clone(), hooks, options), store }
+    let kit = HostKit::with_options(store.clone(), hooks, options).expect("the options name no unknown skill");
+    Door { kit, store }
 }
 
 fn door() -> Door {
@@ -320,7 +321,8 @@ fn the_station_and_landing_fields_come_from_the_callers_scope_only() {
         ..Default::default()
     };
     let store = Arc::new(common::Recorder::new(MemoryStorePort::new()));
-    let door = Door { kit: HostKit::with_options(store.clone(), Hooks::default(), options), store };
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), options).expect("the options name no unknown skill");
+    let door = Door { kit, store };
     let landed = "landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-04T09:00:00+08:00\nbranch: feature/x\n";
     seed(&door, &[("changes/demo/.meta.yaml", &meta_with(&[REVIEW_STAMP, landed])), ("changes/demo/verify.md", VERIFY_TICKET)]);
     common::write_in(&door.store.inner, &ScopeId::new("s2").unwrap(), &[("changes/demo/.meta.yaml", META)]);

@@ -17,7 +17,7 @@ import { APP_MESSAGES } from "../i18n/messages";
 import fsActionsRs from "../../core/src/fs_actions.rs?raw";
 import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
-import { STALE_PROBE } from "./helpers/assetFixtures";
+import { REMOTE_CHECKOUT, REMOTE_STALE_PROBE, STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList } from "./helpers/changeList";
 
 // sonner 雙面 mock：toast() 本體（背景檢查發現新版本的提示）與 toast.error（失敗路徑）。
@@ -1866,7 +1866,7 @@ describe("指令檔過期提示的顯示裁決", () => {
     expect(selectAssetPrompt(store.getState())).toBeNull();
   });
 
-  it("remote 分頁不執行探測", async () => {
+  it("沒有 checkout 的 remote 分頁不執行探測", async () => {
     const ws = fakeInstructionWorkspace();
     const ds = fakeDataSource();
     const store = trackedAppStore({
@@ -2062,6 +2062,126 @@ describe("指令檔過期提示的顯示裁決", () => {
       {},
     );
     expect(missing?.projectVersion).toBeNull();
+  });
+});
+
+// --- remote 專案的技能檔提示：基準是 Server 提供的技能（remote-skill-delivery D6） ---
+
+describe("remote 專案的技能檔提示", () => {
+  const SKIPS = "speclink.instructionSkips";
+  const CURRENT = { ...REMOTE_STALE_PROBE, status: "current" as const, differingFiles: [] };
+
+  beforeEach(() => {
+    localStorage.removeItem(SKIPS);
+  });
+
+  function remoteWorkspace(over: Partial<WorkspaceAdapter> = {}) {
+    return fakeInstructionWorkspace({
+      probeRemoteAssets: vi.fn().mockResolvedValue(REMOTE_STALE_PROBE),
+      updateRemoteAssets: vi.fn().mockResolvedValue({ migrated: { movedFolder: false, renamed: 0 } }),
+      ...over,
+    });
+  }
+
+  /** 有 checkout 的 remote 分頁（remote:c1/demo/backend）為作用中的 store。 */
+  function storeWithRemoteCheckout(ws: WorkspaceAdapter) {
+    const locator = {
+      kind: "remote" as const,
+      connectionId: "c1",
+      projectId: "demo",
+      repoId: "backend",
+      checkoutRoot: "/work/demo",
+    };
+    const remote: WorkspaceSession = { ...remoteSession(fakeDataSource(), "backend"), locator };
+    const store = trackedAppStore({
+      createSession: () => {
+        throw new Error("remote 分頁不建 local session");
+      },
+      workspace: ws,
+    });
+    store.setState({
+      tabs: [{ locator: remote.locator, name: remote.descriptor.name }],
+      sessions: { [remote.id]: remote },
+      activeKey: remote.id,
+    });
+    return store;
+  }
+
+  it("有 checkout：向 Server 探測，和 Server 不同時提示", async () => {
+    const ws = remoteWorkspace();
+    const store = storeWithRemoteCheckout(ws);
+    await store.getState().refreshAssetPrompt();
+    expect(ws.probeRemoteAssets).toHaveBeenCalledWith(REMOTE_CHECKOUT);
+    expect(ws.probeAssets).not.toHaveBeenCalled();
+    expect(selectAssetPrompt(store.getState())).toEqual({
+      kind: "stale",
+      fileCount: 1,
+      version: "v1.58.0",
+      projectVersion: "v1.56.0",
+      migration: { state: "none" },
+      server: { appVersion: "v1.57.0", appOlder: false },
+    });
+  });
+
+  it("Server 沒有提供技能：沒有提示，也沒有略過被記下", async () => {
+    const store = storeWithRemoteCheckout(remoteWorkspace({ probeRemoteAssets: vi.fn().mockResolvedValue(null) }));
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+    store.getState().dismissAssetPrompt();
+    expect(localStorage.getItem(SKIPS)).toBeNull();
+  });
+
+  it("探測失敗（連不上）：沒有提示、沒有略過；連線恢復後下一次探測照常", async () => {
+    const probe = vi.fn().mockRejectedValue("server unreachable");
+    const store = storeWithRemoteCheckout(remoteWorkspace({ probeRemoteAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+    expect(localStorage.getItem(SKIPS)).toBeNull();
+
+    probe.mockResolvedValue(REMOTE_STALE_PROBE);
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
+  });
+
+  it("更新：向 Server 取技能寫進 checkout，重查後提示消失", async () => {
+    const probe = vi.fn().mockResolvedValue(REMOTE_STALE_PROBE);
+    const ws = remoteWorkspace({ probeRemoteAssets: probe });
+    const store = storeWithRemoteCheckout(ws);
+    await store.getState().refreshAssetPrompt();
+
+    probe.mockResolvedValue(CURRENT);
+    await store.getState().applyAssetUpdate();
+    expect(ws.updateRemoteAssets).toHaveBeenCalledWith(REMOTE_CHECKOUT);
+    expect(ws.updateAssets).not.toHaveBeenCalled();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+    expect(store.getState().assetUpdateError).toBeNull();
+    expect(store.getState().assetMigrated).toBeNull();
+  });
+
+  it("更新失敗：錯誤留在提示原位、可重試", async () => {
+    const ws = remoteWorkspace({ updateRemoteAssets: vi.fn().mockRejectedValue("server unavailable") });
+    const store = storeWithRemoteCheckout(ws);
+    await store.getState().refreshAssetPrompt();
+    await store.getState().applyAssetUpdate();
+    expect(store.getState().assetUpdateError).toContain("server unavailable");
+    expect(store.getState().assetUpdating).toBe(false);
+    expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
+  });
+
+  it("保留現狀：以專案與 Server 的版本記下；同一版不再提示，Server 換版後再出現", async () => {
+    const probe = vi.fn().mockResolvedValue(REMOTE_STALE_PROBE);
+    const store = storeWithRemoteCheckout(remoteWorkspace({ probeRemoteAssets: probe }));
+    await store.getState().refreshAssetPrompt();
+    store.getState().dismissAssetPrompt();
+    expect(JSON.parse(localStorage.getItem(SKIPS) ?? "{}")).toEqual({ "remote:c1/demo/backend": "v1.58.0" });
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())).toBeNull();
+
+    probe.mockResolvedValue({ ...REMOTE_STALE_PROBE, serverVersion: "v1.59.0" });
+    await store.getState().refreshAssetPrompt();
+    expect(selectAssetPrompt(store.getState())?.version).toBe("v1.59.0");
   });
 });
 

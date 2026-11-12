@@ -5,6 +5,7 @@ use speclink_core as core;
 mod color;
 mod common;
 mod remote_base;
+mod skill_notice;
 mod verbs;
 use common::{warn_leftover_remote_file, warn_spec_layout};
 use remote_base::{remote_ctx, RemoteCtx};

@@ -24,6 +24,7 @@ use speclink_protocol::command::{
     SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
     TaskUndoneResponse,
 };
+use speclink_protocol::skills::{SkillsRequest, SkillsResponse};
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::query::{
@@ -391,6 +392,12 @@ impl Client {
             }
             Err(ureq::Error::Transport(_)) => Err(translate_transport()),
         }
+    }
+
+    /// `POST /skills` — the skills this scope's checkouts install for the
+    /// requested tools. It only reads; a caller who cannot write still uses it.
+    pub fn skills(&self, request: &SkillsRequest) -> Result<SkillsResponse, RemoteError> {
+        self.post("/skills", request)
     }
 
     // --- write path ---

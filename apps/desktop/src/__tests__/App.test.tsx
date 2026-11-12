@@ -13,7 +13,7 @@ import { detectPlatform } from "../platform";
 import { RELEASE_NOTES } from "../release-notes/release-notes";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import type { FsActionsAdapter } from "../adapter/fsActions";
-import { STALE_PROBE } from "./helpers/assetFixtures";
+import { REMOTE_CHECKOUT, REMOTE_STALE_PROBE, STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList, sharedBoardRequirement } from "./helpers/changeList";
 import { editorText, typeInEditor } from "./helpers/codemirror";
 import { REMOTE_KEY, fakeRemoteDs, fakeRemoteSession } from "./helpers/remoteFixtures";
@@ -1843,35 +1843,91 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(screen.getByTestId("asset-notice-card")).toBeTruthy();
   });
 
-  it("remote 分頁不探測技能檔、專案欄無提示卡", async () => {
+  /** 以一個 remote 分頁（REMOTE_KEY）啟動 App；`checkoutRoot` 有值時它綁了 checkout。 */
+  function renderRemoteTab(ws: ReturnType<typeof remoteStaleWorkspace>, checkoutRoot?: string) {
+    const locator = {
+      kind: "remote" as const,
+      connectionId: "c1",
+      projectId: "demo",
+      repoId: "backend",
+      ...(checkoutRoot ? { checkoutRoot } : {}),
+    };
     localStorage.setItem(
       "speclink.projectTabs",
-      JSON.stringify({
-        version: 2,
-        tabs: [
-          {
-            locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
-            name: "Demo/backend",
-          },
-        ],
-        activeKey: REMOTE_KEY,
-      }),
+      JSON.stringify({ version: 2, tabs: [{ locator, name: "Demo/backend" }], activeKey: REMOTE_KEY }),
     );
-    const ws = staleWorkspace();
     const ds = fakeRemoteDs();
     render(
       <App
         createSession={() => {
           throw new Error("remote 流程不應觸發 local 工廠");
         }}
-        openRemote={vi.fn(async () => fakeRemoteSession(ds))}
+        openRemote={vi.fn(async () => ({ ...fakeRemoteSession(ds), locator }))}
         workspace={ws as never}
       />,
     );
+  }
+
+  /** remote 專案的技能和 Server 提供的不同（1 個檔案）的 workspace 面。 */
+  function remoteStaleWorkspace() {
+    return {
+      ...staleWorkspace(),
+      probeRemoteAssets: vi.fn().mockResolvedValue(REMOTE_STALE_PROBE),
+      updateRemoteAssets: vi.fn().mockResolvedValue({ migrated: { movedFolder: false, renamed: 0 } }),
+    };
+  }
+
+  it("沒有 checkout 的 remote 分頁不探測技能檔、專案欄無提示卡", async () => {
+    const ws = remoteStaleWorkspace();
+    renderRemoteTab(ws);
     await screen.findByText("remote-change");
     expect(projectColumn()).toBeTruthy();
     expect(ws.probeAssets).not.toHaveBeenCalled();
+    expect(ws.probeRemoteAssets).not.toHaveBeenCalled();
     expect(screen.queryByTestId("asset-notice-card")).toBeNull();
+  });
+
+  it("有 checkout 的 remote 分頁：技能和 Server 不同時出現提示卡；確認框有 Server 的版本，更新後提示消失", async () => {
+    const ws = remoteStaleWorkspace();
+    renderRemoteTab(ws, "/work/demo");
+    await screen.findByText("remote-change");
+    const card = await screen.findByTestId("asset-notice-card");
+    expect(projectColumn().contains(card)).toBe(true);
+    expect(ws.probeRemoteAssets).toHaveBeenCalledWith(REMOTE_CHECKOUT);
+    expect(ws.probeAssets).not.toHaveBeenCalled();
+
+    fireEvent.click(card);
+    const dialog = await screen.findByTestId("asset-notice-dialog");
+    const rows = within(dialog).getByTestId("asset-notice-rows");
+    expect(rows.textContent).toContain("Server 提供的技能版本");
+    expect(rows.textContent).toContain("v1.58.0");
+
+    // 更新後 checkout 等於 Server 的回應：下一次探測是現版。
+    ws.probeRemoteAssets.mockResolvedValue({ ...REMOTE_STALE_PROBE, status: "current", differingFiles: [] });
+    fireEvent.click(within(dialog).getByRole("button", { name: "更新技能檔" }));
+    await waitFor(() => expect(ws.updateRemoteAssets).toHaveBeenCalledWith(REMOTE_CHECKOUT));
+    expect(ws.updateAssets).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId("asset-notice-card")).toBeNull());
+    await waitFor(() => expect(screen.queryByTestId("asset-notice-dialog")).toBeNull());
+  });
+
+  it("有 checkout 的 remote 分頁：Server 沒有提供技能、或探測失敗時沒有提示", async () => {
+    const silent = remoteStaleWorkspace();
+    silent.probeRemoteAssets.mockResolvedValue(null);
+    renderRemoteTab(silent, "/work/demo");
+    await screen.findByText("remote-change");
+    await waitFor(() => expect(silent.probeRemoteAssets).toHaveBeenCalled());
+    expect(screen.queryByTestId("asset-notice-card")).toBeNull();
+    expect(localStorage.getItem("speclink.instructionSkips")).toBeNull();
+    cleanup();
+
+    const failing = remoteStaleWorkspace();
+    failing.probeRemoteAssets.mockRejectedValue("server unreachable");
+    renderRemoteTab(failing, "/work/demo");
+    await screen.findByText("remote-change");
+    await waitFor(() => expect(failing.probeRemoteAssets).toHaveBeenCalled());
+    expect(screen.queryByTestId("asset-notice-card")).toBeNull();
+    expect(localStorage.getItem("speclink.instructionSkips")).toBeNull();
   });
 });
 

@@ -67,7 +67,8 @@ fn door(options: HostKitOptions) -> Door {
 
 fn door_with(options: HostKitOptions, hooks: Hooks) -> Door {
     let store = Arc::new(common::Recorder::new(MemoryStorePort::new()));
-    Door { kit: HostKit::with_options(store.clone(), hooks, options), store }
+    let kit = HostKit::with_options(store.clone(), hooks, options).expect("the options name no unknown skill");
+    Door { kit, store }
 }
 
 // --- requests and responses ---
@@ -747,7 +748,8 @@ fn the_handshake_declares_what_the_switches_allow() {
 
     let editor = caps(switches(true, true));
     assert_eq!(keys(&editor), [
-        "analyze", "authentication", "contextSnapshots", "deleteChange", "events", "moveTask", "policyWrite", "validate"
+        "analyze", "authentication", "contextSnapshots", "deleteChange", "events", "moveTask", "policyWrite", "skills",
+        "validate"
     ]);
     assert_eq!(editor["policyWrite"], true);
 }
@@ -1261,7 +1263,7 @@ fn audit_every_route_that_writes_needs_can_write_and_no_read_commits() {
     with_demo(&door);
     for (method, pattern) in routes() {
         let response = answer(&door, &sample_request(method, pattern), Some(&alice()));
-        let writes = !matches!(method, Method::Get | Method::Head) && pattern != "/context";
+        let writes = !matches!(method, Method::Get | Method::Head) && !matches!(pattern, "/context" | "/skills");
         if writes {
             assert_eq!(response.status, 403, "{} {pattern}", method.as_str());
         } else {
@@ -1313,7 +1315,7 @@ fn audit_a_store_failure_names_no_host_detail() {
         (PortError::Backend { message: detail.to_string() }, 500),
         (PortError::Unavailable { message: detail.to_string() }, 503),
     ] {
-        let kit = HostKit::with_options(Arc::new(Failing(failure)), Hooks::default(), one_repo());
+        let kit = HostKit::with_options(Arc::new(Failing(failure)), Hooks::default(), one_repo()).unwrap();
         for path in [alpha("changes"), alpha("config"), alpha("sync-state")] {
             let response = kit.handle(&get(&path), Some(&alice())).expect("the door's path");
             let (got, _, message) = error(&response);
@@ -1439,7 +1441,7 @@ fn an_artifact_write_never_lands_over_a_version_the_client_did_not_see() {
         &scope_of("s1"),
         &[("changes/demo/.meta.yaml", META), (KEY, "## Why\n\nthe text the client read\n")],
     );
-    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo());
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).unwrap();
     use speclink_store_port::StorePort as _;
     // The version the client read, taken beside the door so the door's own
     // reads start with the write.
@@ -1464,7 +1466,7 @@ fn a_create_only_artifact_write_does_not_replace_a_document_that_just_appeared()
         common::write_in(port, &scope_of("s1"), &[(KEY, "## Context\n\nfirst writer\n")]);
     }));
     common::write_in(&store.inner, &scope_of("s1"), &[("changes/demo/.meta.yaml", META)]);
-    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo());
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).unwrap();
 
     let put = send(Method::Put, &alpha("changes/demo/artifacts/design"), json!({ "content": "## Context\n\nsecond\n" }))
         .header("if-match", "0");
@@ -1484,7 +1486,7 @@ fn a_reads_etag_is_never_newer_than_what_it_read() {
     }));
     common::write_in(&store.inner, &scope_of("s1"), &[("changes/demo/.meta.yaml", META), ("config.yaml", CONFIG)]);
     let before = version_of(&store.inner, "s1");
-    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo());
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).unwrap();
 
     let response = kit.handle(&get(&alpha("changes/demo")), Some(&alice())).unwrap();
 
@@ -2029,3 +2031,315 @@ fn audit_the_reads_ask_the_before_hook_and_a_refusal_reads_nothing() {
     assert!(door.store.calls().reads.is_empty(), "a refused read reads no document");
 }
 
+
+// ======================================================================
+// 入口提供這個範圍的技能 (spec host-kit; design D2, D3)
+// ======================================================================
+
+use speclink_core::config::{CustomTool, Invocation};
+use speclink_core::init::{managed_skills, ASSET_VERSION};
+use speclink_core::skills::{RenderTarget, SpecLocation, Tool};
+use speclink_protocol::skills::{SkillEntry, SkillsResponse};
+
+const WORKTREE_ON: &str = "schema: spec-driven\nworktree: true\n";
+const WORKTREE_SKILLS: [&str; 2] = ["apply-with-worktree", "worktree-merge"];
+
+/// A door on project alpha whose scope s1 holds `config` as its workflow config.
+fn door_with_config(options: HostKitOptions, config: Option<&str>) -> Door {
+    let door = door(options);
+    if let Some(config) = config {
+        seed(&door, "s1", &[("config.yaml", config)]);
+    }
+    door
+}
+
+/// The door's answer to a skills request with `body`, which must be a 200.
+fn skills_of(door: &Door, body: Value) -> SkillsResponse {
+    let response = answer(door, &send(Method::Post, &alpha("skills"), body), Some(&alice()));
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    serde_json::from_slice(&response.body).expect("a skills response")
+}
+
+fn names(skills: &[SkillEntry]) -> Vec<&str> {
+    skills.iter().map(|s| s.name.as_str()).collect()
+}
+
+/// What the Engine generates for `target` in a checkout without the spec
+/// folder: (skill name, SKILL.md text), sorted by name.
+fn engine_skills(target: RenderTarget, worktree_on: bool) -> Vec<(String, String)> {
+    let mut skills: Vec<(String, String)> =
+        managed_skills(target, worktree_on, speclink_core::workspace::DEFAULT_SPEC_DIR, SpecLocation::Elsewhere)
+            .into_iter()
+            .map(|(dir, content)| (dir.trim_start_matches("speclink-").to_string(), content))
+            .collect();
+    skills.sort();
+    skills
+}
+
+fn sha256_of_lf(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(text.replace("\r\n", "\n").as_bytes()))
+}
+
+#[test]
+fn skills_with_the_worktree_policy_on_have_the_two_worktree_skills() {
+    let door = door_with_config(one_repo(), Some(WORKTREE_ON));
+    let response = skills_of(&door, json!({ "targets": [{ "tool": "claude" }] }));
+    let got = names(&response.targets[0].skills);
+    for skill in WORKTREE_SKILLS {
+        assert!(got.contains(&skill), "{skill}: {got:?}");
+    }
+}
+
+#[test]
+fn skills_without_a_workflow_config_have_every_skill_but_the_two_worktree_ones() {
+    let door = door(one_repo());
+    let response = skills_of(&door, json!({ "targets": [{ "tool": "claude" }] }));
+    assert_eq!(response.targets.len(), 1);
+    assert_eq!(response.targets[0].tool, "claude");
+    let got = names(&response.targets[0].skills);
+    let expected = engine_skills(RenderTarget::Builtin(Tool::Claude), false);
+    assert_eq!(got, expected.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>(), "sorted by name");
+    for skill in WORKTREE_SKILLS {
+        assert!(!got.contains(&skill), "{skill}: {got:?}");
+    }
+    assert!(got.contains(&"apply") && got.contains(&"discuss"), "{got:?}");
+}
+
+#[test]
+fn skills_keep_the_two_worktree_skills_when_the_workflow_config_cannot_be_parsed() {
+    let door = door_with_config(one_repo(), Some("schema: [unclosed\n"));
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "claude" }] }));
+    for skill in WORKTREE_SKILLS {
+        assert!(names(&got.targets[0].skills).contains(&skill), "{skill}");
+    }
+}
+
+#[test]
+fn skills_follow_the_scopes_config_and_not_the_process_environment() {
+    // The engine's own rule: generation never reads SPECLINK_WORKTREE.
+    // Two scopes of one door answer by their own config.
+    let door = door(two_repos());
+    seed(&door, "s2", &[("config.yaml", WORKTREE_ON)]);
+    let ask = |repo: &str| {
+        let req = send(Method::Post, &alpha("skills"), json!({ "targets": [{ "tool": "claude" }] }))
+            .header("x-speclink-repo", repo);
+        let response: SkillsResponse = serde_json::from_slice(&answer(&door, &req, Some(&alice())).body).unwrap();
+        response.targets[0].skills.iter().any(|s| s.name == "worktree-merge")
+    };
+    assert!(!ask("web"), "s1 has no config");
+    assert!(ask("api"), "s2 turned the policy on");
+}
+
+#[test]
+fn skills_a_host_lists_are_the_only_ones_given() {
+    let options = HostKitOptions { skills: Some(vec!["discuss".into(), "propose".into()]), ..one_repo() };
+    let door = door_with_config(options, Some(WORKTREE_ON));
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "claude" }] }));
+    assert_eq!(names(&got.targets[0].skills), ["discuss", "propose"]);
+}
+
+#[test]
+fn skills_a_host_lists_still_follow_the_tool_and_the_worktree_policy() {
+    let listed = vec!["analyze".to_string(), "discuss".to_string(), "worktree-merge".to_string()];
+    let door = door(HostKitOptions { skills: Some(listed), ..one_repo() });
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "claude" }, { "tool": "codex" }] }));
+    assert_eq!(names(&got.targets[0].skills), ["analyze", "discuss"], "the policy is off");
+    assert_eq!(names(&got.targets[1].skills), ["discuss"], "analyze is for Claude only");
+}
+
+#[test]
+fn skills_for_claude_only_are_not_given_to_another_tool() {
+    let door = door(one_repo());
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "codex" }, { "tool": "claude" }] }));
+    assert_eq!(
+        got.targets.iter().map(|t| t.tool.as_str()).collect::<Vec<_>>(),
+        ["codex", "claude"],
+        "the targets keep the request's order"
+    );
+    assert!(!names(&got.targets[0].skills).contains(&"analyze"));
+    assert!(names(&got.targets[1].skills).contains(&"analyze"));
+}
+
+#[test]
+fn skills_without_contents_carry_a_name_and_a_digest_only() {
+    let door = door(one_repo());
+    let response = answer(&door, &send(Method::Post, &alpha("skills"), json!({ "targets": [{ "tool": "claude" }] })), Some(&alice()));
+    let body = json(&response);
+    assert_eq!(body["version"], ASSET_VERSION);
+    let skills = body["targets"][0]["skills"].as_array().expect("skills");
+    assert!(!skills.is_empty());
+    for skill in skills {
+        assert_eq!(keys(skill), ["digest", "name"], "{skill}");
+    }
+    let expected = engine_skills(RenderTarget::Builtin(Tool::Claude), false);
+    for (skill, (name, content)) in skills.iter().zip(&expected) {
+        assert_eq!(skill["name"], name.as_str());
+        assert_eq!(skill["digest"], sha256_of_lf(content), "{name}");
+    }
+}
+
+#[test]
+fn skills_with_contents_are_the_engines_render_for_a_checkout_without_the_spec_folder() {
+    let door = door_with_config(one_repo(), Some(WORKTREE_ON));
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "claude" }], "contents": true }));
+    assert_eq!(got.version, ASSET_VERSION);
+    let declared = json(&answer(&door, &get(&alpha("binding")), Some(&alice())))["capabilities"]["skills"]["version"]
+        .as_str()
+        .expect("the handshake declares the version")
+        .to_string();
+    let expected = engine_skills(RenderTarget::Builtin(Tool::Claude), true);
+    assert_eq!(got.targets[0].skills.len(), expected.len());
+    for (skill, (name, content)) in got.targets[0].skills.iter().zip(&expected) {
+        let text = skill.content.as_deref().unwrap_or_else(|| panic!("{name} has its text"));
+        assert_eq!((skill.name.as_str(), text), (name.as_str(), content.as_str()));
+        assert_eq!(skill.digest, sha256_of_lf(text), "{name}: the digest is of the text sent");
+        assert!(text.contains(&format!("  version: \"{declared}\"\n")), "{name}: the frontmatter version");
+    }
+    let apply = got.targets[0].skills.iter().find(|s| s.name == "apply").unwrap().content.as_deref().unwrap();
+    assert!(!apply.contains("speclink/changes/"), "apply names no path in the spec folder");
+}
+
+#[test]
+fn skills_of_a_custom_tool_are_the_neutral_tool_call_render() {
+    let door = door(one_repo());
+    let target = json!({ "tool": "my-agent", "custom": { "invocation": "tool-call" } });
+    let got = skills_of(&door, json!({ "targets": [target], "contents": true }));
+    assert_eq!(got.targets[0].tool, "my-agent");
+    let custom = CustomTool {
+        name: "my-agent".into(),
+        skills_dir: String::new(),
+        instructions_file: None,
+        invocation: Invocation::ToolCall,
+    };
+    let expected = engine_skills(RenderTarget::Custom(&custom), false);
+    let texts: Vec<(&str, &str)> =
+        got.targets[0].skills.iter().map(|s| (s.name.as_str(), s.content.as_deref().unwrap())).collect();
+    assert_eq!(texts, expected.iter().map(|(n, c)| (n.as_str(), c.as_str())).collect::<Vec<_>>());
+    assert!(!names(&got.targets[0].skills).contains(&"analyze"), "a custom tool is not Claude");
+
+    let apply = texts.iter().find(|(name, _)| *name == "apply").unwrap().1;
+    let after_frontmatter = apply.splitn(3, "---\n").nth(2).expect("a frontmatter").trim_start();
+    assert!(
+        after_frontmatter.starts_with("## Invocation\n\nThis harness executes speclink verbs by calling the speclink tool"),
+        "the text opens with the tool-call note: {:?}",
+        &after_frontmatter[..120.min(after_frontmatter.len())]
+    );
+    assert!(apply.contains("speclink-archive") && !apply.contains("/speclink-archive"), "another skill is named `speclink-<name>`");
+
+    let cli = skills_of(&door, json!({ "targets": [{ "tool": "my-agent", "custom": { "invocation": "cli" } }], "contents": true }));
+    let cli_apply = cli.targets[0].skills.iter().find(|s| s.name == "apply").unwrap().content.clone().unwrap();
+    assert!(cli_apply.contains("executes speclink verbs as shell commands"), "the cli note");
+}
+
+#[test]
+fn skills_are_given_to_a_caller_who_cannot_write_and_nothing_is_committed() {
+    let door = door(switches(false, false));
+    with_demo(&door);
+    let got = skills_of(&door, json!({ "targets": [{ "tool": "claude" }], "contents": true }));
+    assert!(!got.targets[0].skills.is_empty());
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+}
+
+#[test]
+fn skills_are_the_same_for_every_caller_of_one_scope() {
+    let door = door_with_config(one_repo(), Some(WORKTREE_ON));
+    let body = json!({ "targets": [{ "tool": "claude" }, { "tool": "codex" }], "contents": true });
+    let bob = Identity::new("u_7", "Bob").unwrap();
+    let as_alice = answer(&door, &send(Method::Post, &alpha("skills"), body.clone()), Some(&alice()));
+    let as_bob = answer(&door, &send(Method::Post, &alpha("skills"), body), Some(&bob));
+    assert_eq!(as_alice.body, as_bob.body);
+}
+
+#[test]
+fn skills_a_host_lists_must_be_ones_the_engine_has() {
+    let store = Arc::new(common::Recorder::new(MemoryStorePort::new()));
+    let options = HostKitOptions { skills: Some(vec!["discuss".into(), "no-such-skill".into()]), ..one_repo() };
+    let Err(error) = HostKit::with_options(store, Hooks::default(), options) else {
+        panic!("a kit with an unknown skill name is not built");
+    };
+    assert_eq!(error.names(), ["no-such-skill"]);
+    let message = error.to_string();
+    assert!(message.contains("no-such-skill"), "{message}");
+    assert!(!message.contains("'discuss'"), "a known name is not listed as unknown: {message}");
+}
+
+#[test]
+fn the_handshake_declares_the_skill_template_version() {
+    let door = door(one_repo());
+    let caps = json(&answer(&door, &get(&alpha("binding")), Some(&alice())))["capabilities"].clone();
+    assert_eq!(caps["skills"], json!({ "version": ASSET_VERSION }), "{caps}");
+}
+
+#[test]
+fn skills_requests_that_name_nothing_the_door_can_render_are_400() {
+    let door = door(one_repo());
+    for (body, names_it) in [
+        (json!({ "targets": [] }), "targets"),
+        (json!({ "targets": [{ "tool": "emacs" }] }), "emacs"),
+        (json!({ "targets": [{ "tool": "claude" }, { "tool": "emacs" }] }), "emacs"),
+        (json!({ "targets": [{ "tool": "my-agent", "custom": { "invocation": "telepathy" } }] }), "telepathy"),
+        (json!({ "targets": [{ "tool": "claude", "custom": { "invocation": "cli" } }] }), "claude"),
+        (json!({ "targets": [{ "tool": "Not A Name", "custom": { "invocation": "cli" } }] }), "Not A Name"),
+        (json!({}), "targets"),
+    ] {
+        let (status, reason, message) =
+            error(&answer(&door, &send(Method::Post, &alpha("skills"), body.clone()), Some(&alice())));
+        assert_eq!((status, reason.as_str()), (400, "invalid_argument"), "{body}");
+        assert!(message.contains(names_it), "{body}: {message}");
+    }
+    assert!(door.store.calls().commits.is_empty());
+}
+
+// --- sharp-edges audit of the skills route ---
+
+#[test]
+fn audit_a_skills_request_cannot_ask_for_more_targets_than_a_checkout_can_have() {
+    // Every target is a render of the whole skill set: the number a caller can ask for is bounded.
+    let door = door(one_repo());
+    let target = |i: usize| json!({ "tool": format!("agent-{i}"), "custom": { "invocation": "cli" } });
+    let at_the_limit: Vec<Value> = (0..32).map(target).collect();
+    assert_eq!(skills_of(&door, json!({ "targets": at_the_limit })).targets.len(), 32);
+
+    let over: Vec<Value> = (0..33).map(target).collect();
+    let (status, reason, message) =
+        error(&answer(&door, &send(Method::Post, &alpha("skills"), json!({ "targets": over })), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (400, "invalid_argument"));
+    assert!(message.contains("32"), "{message}");
+}
+
+#[test]
+fn audit_an_empty_skill_list_builds_no_kit() {
+    // A kit that gives no skill would have every checkout that updates from it lose its
+    // skills. A host that wants every skill leaves the list out.
+    let store = Arc::new(common::Recorder::new(MemoryStorePort::new()));
+    let options = HostKitOptions { skills: Some(Vec::new()), ..one_repo() };
+    let Err(error) = HostKit::with_options(store, Hooks::default(), options) else {
+        panic!("a kit with an empty skill list is not built");
+    };
+    assert!(error.names().is_empty());
+    assert!(error.to_string().contains("empty"), "{error}");
+}
+
+#[test]
+fn audit_the_skills_route_reads_the_callers_scope_only_and_one_document() {
+    let door = door(two_repos());
+    seed(&door, "s2", &[("config.yaml", WORKTREE_ON)]);
+    let req = send(Method::Post, &alpha("skills"), json!({ "targets": [{ "tool": "claude" }], "contents": true }))
+        .header("x-speclink-repo", "web");
+    let response = answer(&door, &req, Some(&alice()));
+    assert_eq!(response.status, 200);
+    assert!(!String::from_utf8_lossy(&response.body).contains("speclink-worktree-merge\n"), "s2's policy is not s1's");
+    let calls = door.store.calls();
+    assert!(calls.lists.is_empty() && calls.commits.is_empty(), "{calls:?}");
+    let read: Vec<&str> = calls.reads.iter().flatten().map(|(key, _)| key.as_str()).collect();
+    assert_eq!(read, ["config.yaml"], "one read, of the workflow config");
+}
+
+#[test]
+fn audit_a_project_that_is_not_the_callers_gives_no_skills() {
+    let door = door(one_repo());
+    let req = send(Method::Post, &format!("{API}/projects/beta/skills"), json!({ "targets": [{ "tool": "claude" }] }));
+    assert_eq!(answer(&door, &req, Some(&alice())).status, 404);
+    assert!(door.store.calls().is_empty(), "the store was not called");
+}

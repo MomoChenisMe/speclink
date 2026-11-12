@@ -194,6 +194,11 @@ pub fn config_document(
     Ok((response, version))
 }
 
+/// The workflow config's text as stored, or none: one read, and no parse.
+pub fn config_text(port: &dyn StorePort, scope: &ScopeId) -> Result<Option<String>, PortError> {
+    Ok(read_one(port, scope, keys::config())?.map(|doc| doc.content))
+}
+
 // --- the board order ---
 
 /// The board order's text, or none, and the scope version.

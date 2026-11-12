@@ -191,7 +191,59 @@ pub struct HostKitOptions {
     /// The push streams the host serves itself; the handshake declares them
     /// before the polling fallback. Empty: polling only.
     pub push_transports: Vec<EventTransport>,
+    /// The skills the door gives a client, by name (`apply`). Absent: every
+    /// skill of the Engine. A host chooses which skills; it has no way to
+    /// change their text. An empty list, or a name the Engine does not have,
+    /// builds no kit ([`InvalidSkills`]).
+    pub skills: Option<Vec<String>>,
 }
+
+/// A [`HostKitOptions::skills`] list no kit is built with: it names skills the
+/// Engine does not have, or it is empty.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidSkills {
+    names: Vec<String>,
+}
+
+impl InvalidSkills {
+    /// The names the Engine does not have, in the order the host gave them;
+    /// none when the list was empty.
+    pub fn names(&self) -> &[String] {
+        &self.names
+    }
+
+    /// Check a skill list as [`HostKit::with_options`] does: a host that
+    /// builds its kit later (one per request) refuses a wrong list at once.
+    ///
+    /// An empty list is refused too. A kit that gives no skill would have
+    /// every checkout that updates from it lose the skills it has; a host
+    /// that wants every skill gives no list.
+    pub fn check(listed: Option<&[String]>) -> Result<(), InvalidSkills> {
+        let Some(listed) = listed else {
+            return Ok(());
+        };
+        let registry = speclink_core::skills::registry();
+        let names: Vec<String> =
+            listed.iter().filter(|name| !registry.iter().any(|skill| skill.name == name.as_str())).cloned().collect();
+        match names.is_empty() && !listed.is_empty() {
+            true => Ok(()),
+            false => Err(InvalidSkills { names }),
+        }
+    }
+}
+
+impl std::fmt::Display for InvalidSkills {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        if self.names.is_empty() {
+            return f.write_str("the skill list is empty (leave it out to give every skill)");
+        }
+        let unknown: Vec<String> = self.names.iter().map(|name| format!("'{name}'")).collect();
+        let known: Vec<&str> = speclink_core::skills::registry().iter().map(|skill| skill.name).collect();
+        write!(f, "unknown skill name: {} (the skills are: {})", unknown.join(", "), known.join(", "))
+    }
+}
+
+impl std::error::Error for InvalidSkills {}
 
 /// The fixed text of a refusal that gives no reason.
 const NO_REASON: &str = "refused by host";
@@ -206,12 +258,19 @@ pub struct HostKit {
 
 impl HostKit {
     pub fn new(store: Arc<dyn StorePort>, hooks: Hooks) -> HostKit {
-        HostKit::with_options(store, hooks, HostKitOptions::default())
+        HostKit { store, hooks, options: HostKitOptions::default() }
     }
 
-    /// A kit whose HTTP door ([`HostKit::handle`]) also has `options`.
-    pub fn with_options(store: Arc<dyn StorePort>, hooks: Hooks, options: HostKitOptions) -> HostKit {
-        HostKit { store, hooks, options }
+    /// A kit whose HTTP door ([`HostKit::handle`]) also has `options`. A
+    /// skill list that is empty, or names a skill the Engine does not have,
+    /// builds no kit.
+    pub fn with_options(
+        store: Arc<dyn StorePort>,
+        hooks: Hooks,
+        options: HostKitOptions,
+    ) -> Result<HostKit, InvalidSkills> {
+        InvalidSkills::check(options.skills.as_deref())?;
+        Ok(HostKit { store, hooks, options })
     }
 
     /// Run `cmd` for `caller`. Without hooks the result is what

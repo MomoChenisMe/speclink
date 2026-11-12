@@ -447,6 +447,15 @@ export interface CreateHostOptions {
   authMethods?: HostAuthMethods
   /** Absent: the handshake declares polling only. */
   pushTransports?: HostPushTransport[]
+  /**
+   * The skills `handleRequest` gives a client that asks which skills to
+   * install, by name (`['discuss', 'propose']`; `skills.list()` has the
+   * names). Absent: every skill of the engine. An empty array, or a name
+   * the engine does not have, makes `createHost` throw at once. You choose which
+   * skills, not their text: it always comes from the engine. `skills.render`
+   * and `host.dispatch` do not read this list.
+   */
+  skills?: string[]
 }
 
 /** A request as your web framework received it. `path` is as sent (still percent-encoded); `query` is the text after `?`. */

@@ -37,6 +37,7 @@ mod remote_plan;
 mod remote_read_path;
 mod remote_read_verbs;
 mod remote_section;
+mod remote_skills;
 mod remote_verb_parity;
 mod remote_write_path;
 mod review_verbs;

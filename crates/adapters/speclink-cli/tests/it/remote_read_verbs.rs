@@ -63,7 +63,7 @@ fn door(docs: &[(&str, &str)], at_millis: u64) -> Door {
         })),
         ..Default::default()
     };
-    let kit = HostKit::with_options(store, Hooks::default(), options);
+    let kit = HostKit::with_options(store, Hooks::default(), options).unwrap();
     let identity = Identity::new("u_1", "Tester").unwrap();
 
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));

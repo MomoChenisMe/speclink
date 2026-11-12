@@ -13,6 +13,7 @@ use serde::Serialize;
 use speclink_core::command::{Command, CommandOutcome, ErrorCode, InstructionsOutcome};
 use speclink_core::discuss::{WriteRefusal, WriteRefusalKind};
 use speclink_core::config::WorkflowConfig;
+use speclink_core::init::ASSET_VERSION;
 use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest, AddReviewRoundResponse,
@@ -34,6 +35,7 @@ use speclink_protocol::query::{
     PutBoardOrderResponse, PutConfigRequest, PutConfigResponse, SpecSummary, ValidateChangeResponse, WhoamiRepo,
     WhoamiResponse, WhoamiUser,
 };
+use speclink_protocol::skills::SkillsDeclaration;
 use speclink_protocol::API_VERSION;
 use speclink_store_port::{Expected, ScopeId, StorePort, Version};
 
@@ -54,11 +56,11 @@ pub(crate) struct Request<'a> {
 pub(crate) type Handler = fn(&Request<'_>) -> Result<HttpResponse, HttpError>;
 
 impl Request<'_> {
-    fn port(&self) -> &dyn StorePort {
+    pub(super) fn port(&self) -> &dyn StorePort {
         self.kit.store.as_ref()
     }
 
-    fn scope(&self) -> &ScopeId {
+    pub(super) fn scope(&self) -> &ScopeId {
         &self.caller.scope
     }
 
@@ -68,7 +70,7 @@ impl Request<'_> {
     }
 
     /// The body as JSON of `T`. Not JSON, or not that shape: 400.
-    fn body<T: DeserializeOwned>(&self) -> Result<T, HttpError> {
+    pub(super) fn body<T: DeserializeOwned>(&self) -> Result<T, HttpError> {
         serde_json::from_slice(&self.http.body)
             .map_err(|e| HttpError::invalid_argument(format!("the request body is not valid: {e}")))
     }
@@ -169,6 +171,7 @@ pub(crate) fn binding(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
                 transports: req.kit.options.push_transports.clone(),
                 polling: Some(PollingDeclaration { url: "/sync-state".to_string(), etag: true }),
             },
+            skills: Some(SkillsDeclaration { version: ASSET_VERSION.to_string() }),
         },
     };
     Ok(HttpResponse::json(200, &dto))

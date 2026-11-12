@@ -311,6 +311,14 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "assets.dialog.update": "更新技能檔",
     "assets.dialog.install": "安裝技能檔",
     "assets.dialog.updateApp": "更新 Speclink",
+    "assets.card.serverStaleTitle": "技能檔和 Server 的不同",
+    "assets.dialog.serverStaleTitle": "這個專案的技能檔和 Server 提供的不同",
+    "assets.dialog.serverStaleDesc":
+      "更新會把這個專案的技能檔換成 Server 提供的內容；若你曾手動調整過這些檔案，調整會被覆蓋。",
+    "assets.dialog.serverMissingDesc": "安裝會在這個專案新建 Server 提供的技能檔，AI 代理才會照這台 Server 的流程工作。",
+    "assets.dialog.serverVersion": "Server 提供的技能版本",
+    "assets.dialog.appOlder":
+      "你的 Speclink 比這台 Server 舊。Server 提供的技能仍然可以安裝，但舊版的 Speclink 可能認不得技能用到的新指令。",
     "assets.railHint": "技能檔需要處理",
     "assets.card.migrateTitle": "規格資料夾要改名",
     "assets.card.migrateDesc": "openspec/ 會改名為 speclink/",
@@ -907,6 +915,15 @@ export const APP_MESSAGES: Record<UiLocale, Record<string, string>> = {
     "assets.dialog.update": "Update skill files",
     "assets.dialog.install": "Install skill files",
     "assets.dialog.updateApp": "Update Speclink",
+    "assets.card.serverStaleTitle": "Skill files differ from the server's",
+    "assets.dialog.serverStaleTitle": "This project's skill files differ from what the server provides",
+    "assets.dialog.serverStaleDesc":
+      "Updating replaces this project's skill files with the ones the server provides; any manual edits to them will be overwritten.",
+    "assets.dialog.serverMissingDesc":
+      "Installing creates the skill files the server provides in this project so AI agents follow this server's workflow.",
+    "assets.dialog.serverVersion": "Skill version the server provides",
+    "assets.dialog.appOlder":
+      "Your Speclink is older than this server. You can still install the skills the server provides, but an older Speclink may not know the new commands they use.",
     "assets.railHint": "Skill files need attention",
     "assets.card.migrateTitle": "Spec folder needs renaming",
     "assets.card.migrateDesc": "openspec/ will be renamed to speclink/",
