@@ -5,7 +5,7 @@ status: promoted
 created: 2026-11-10
 created_by: MomoChen <momochenisme@gmail.com>
 hold: true
-promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands, host-kit-agent-door, client-browser-login, skills-verbs-first-wave, server-routes-on-store-port, host-kit-client-door
+promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands, host-kit-agent-door, client-browser-login, skills-verbs-first-wave, server-routes-on-store-port, host-kit-client-door, remote-read-verbs, skills-verbs-second-wave, remote-skill-delivery, station-status-and-landing, host-free-fields, import-export-on-port
 ---
 
 # Discussion: 內嵌宿主、遠端能力與「規格不在 checkout 裡」的形態：需求清單
@@ -417,19 +417,34 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
 **Ruled out**: shared-verb-parsing 維持一個變更 — 任務會超過 25 項，審查與驗證的範圍太大，中途出問題難定位；解析與輸出合成一個、流程設定另一個 — 第一個仍有約 20 項任務
 **Open**: 無
 
+### Round 29 — interview (2026-11-12)
+
+**Focus**: 前十個變更實作並封存之後，計畫要怎麼調整
+**Position**: 計畫從十六個變更變成十八個：原本的 host-kit-client-door 與 skills-verbs-second-wave 各拆成兩個，使用者都確認了。
+- host-kit-client-door 的拆分（2026-11-11 提案時）：示範用 server 有約 12 條路由不經引擎、直接讀舊的儲存層，不先改成只用三個函式就搬不進宿主套件。先做 server-routes-on-store-port，再做 host-kit-client-door。兩個都已實作並封存
+- skills-verbs-second-wave 的拆分（2026-11-12）：查證發現其餘技能有約 90 處用路徑讀寫規格檔，而且沒有任何動詞能讀 evidence。先做 remote-read-verbs（引擎與線上），再做 skills-verbs-second-wave（技能文字、守門、交棒句子的渲染）
+- 結論列為未驗證的「trace 能否直接跑在三個函式上」已查證：trace 的引擎只讀儲存，不碰 git；git 的部分在技能裡。plan --strict-overlap 也不需要任何本機事實。兩者在遠端被拒絕只是當初的範圍限制
+- 實作時確認的事：宿主套件的路徑上 task done 不替宿主探測檔案；整份寫回只在「任務全部勾選的清單」被引擎拒絕；握手的 engineVersion 是套件版本，不是技能的版號
+- 實作時新增、結論原本沒有的行為：經 Host 封存不寫本機的備份檔；TeamStore 的轉接可長期持有並依專案 revision 重用內容
+- 查證發現、留給後面變更處理的事：遠端的 checkout 永遠拿不到 worktree 的兩支技能（產生技能時讀的是本機的 config.yaml）；Speclink Desktop 對遠端專案完全不探測技能檔；線上的變更清單沒有任何審查與驗證的欄位，六種審查與驗證事件在線上是 unknown；Desktop 組匯入包時漏了 evidence 與看板順序；CLI 沒有匯入匯出的動詞；宿主套件沒有本文大小的設定
+- retire-teamstore-and-drivers 比原本寫的大：示範用 server 的推送事件串流、備份還原、健康檢查都還直接依賴 TeamStore。它的切法在提案時依 import-export-on-port 的實作結果決定
+**Ruled out**: skills-verbs-second-wave 維持一個變更 — 約 26 項任務，同時改引擎命令、線上協定與十幾支技能的原稿；host-kit-client-door 維持一個變更 — 約 25 項任務，是整個系列最大的
+**Open**: retire-teamstore-and-drivers 要不要再拆（提案時定）
+
 ## Conclusion
 
-**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分十六個變更依序實作，全部完成才發版。
+**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分十八個變更依序實作，全部完成才發版。
 - 形態：規格存在哪、引擎在哪執行、程式碼在哪是三個獨立的選擇；本系列服務「規格由一台 Server 持有」的形態，Server 可以是內嵌了引擎的宿主，也可以是官方的示範 server
 - 分工：儲存媒介、連線、遷移、歷史保存、帳號、登入、權限都由宿主負責；speclink 負責引擎、宿主套件、儲存契約與合格測試、用戶端（CLI 與 Speclink Desktop）、技能
 - 官方 server 的定位：示範與試用用，正式使用請把引擎內嵌進自己的系統；它改成用同一套宿主套件組出來
 - 擴充規則：掛鉤可以拒絕或旁觀，不能改內容；宿主不加新動詞；宿主只能選擇提供哪幾支技能，不能改技能文字
-- 發版：十六個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
+- 發版：十八個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
 - 流程設定：兩條規則已寫入 speclink/config.yaml——rules.proposal 新增「三種形態（本機 repo、連到遠端的 checkout、沒有本機規格檔的內嵌宿主）逐一寫明結果：可用、不適用並寫理由、或這次不做並寫成已知缺口」；rules.design 第二條加入內嵌宿主與 Node SDK，並補上「新增的引擎功能若需要本機事實，由呼叫端收集後當成輸入」
 - 用詞：使用者看到的是本機專案、遠端專案、Server；整合者看到的是宿主、內嵌、SDK、宿主套件、儲存接口、入口；講規格在哪裡用「本機」「遠端」，講怎麼蓋出 Server 用「SDK」「內嵌」「宿主」；不再用「SDK」統稱整塊遠端功能，不再用「Remote Store」「團隊模式」「主機套件」
 - 延後的項目必須在之後建立的文件裡明確寫成缺口
 - 開啟中的討論 agent-tool-sdk-layering 已寫結論並封存，它的主要問題由本討論定案
-- 未驗證、留給對應變更查的事：三個函式是否足以供應引擎全部的讀取（cut 2）；舊版用戶端遇到新欄位是否照常運作（cut 12）；trace 能否直接跑在三個函式上（cut 10）
+- 未驗證、留給對應變更查的事：舊版用戶端遇到新欄位是否照常運作（cut 14）
+- 已查證（原列為未驗證）：三個函式足以供應引擎全部的讀取（cut 2 的對照測試）；trace 的引擎只讀儲存，能直接跑在三個函式上
 - **cut 1 `store-port-contract`**: 三個函式的儲存契約、合格測試與記憶體版參考實作；純新增，不接線
   - Rust 的定義是正典，Node 的三個函式是它的對映
   - 列出：依鍵的前綴列出文件；讀取：一次收多個鍵，回傳內容、文件版本、最後修改時間；提交：一次帶全部寫入與刪除、每份文件的預期版本（或「必須不存在」）、事件
@@ -469,7 +484,12 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - 工具的名稱、說明與輸入格式做成現成的匯出，宿主不用自己寫給模型看的工具說明
   - 既有的 31 方法 JS 儲存在文件標示為即將移除
   - 排在進行中的變更 add-pi-cursor-tools 之後，因為它會改 Node SDK 的技能渲染
-- **cut 7 `host-kit-client-door`**: 給 CLI 與 Speclink Desktop 的門
+- **cut 7 `server-routes-on-store-port`**: 示範用 server 不經引擎的文件讀寫改用三個函式
+  - 流程設定的讀取、看板順序、evidence、正式規格、已封存的清單與內容、搜尋、Context 快照、drift，改成只用列出、讀取、提交，並收成不依賴 HTTP 框架的函式
+  - 過渡用的 TeamStore 轉接改成可長期持有，專案 revision 沒變就重用已載入的內容
+  - 沒有 workspace 時，引擎的封存不寫本機的備份檔
+  - 提案時從原本的 host-kit-client-door 拆出
+- **cut 8 `host-kit-client-door`**: 給 CLI 與 Speclink Desktop 的門
   - 把請求轉命令、結果轉線上格式、錯誤對應、握手、「這個範圍有沒有變」的輪詢，從官方 server 搬到宿主套件
   - 宿主只寫一條路由；對每個請求都呼叫入口，驗得出身分就帶身分、驗不出就帶空值；哪些路徑免登入由入口決定
   - 入口回答一個不用登入的路徑：支援哪些登入方式（存取金鑰、裝置登入、瀏覽器登入）與瀏覽器登入的發行者網址，內容來自宿主建立入口時給的設定
@@ -478,27 +498,31 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - 宿主套件放一張涵蓋全部引擎命令的對照，每個命令必須選一個：有線上格式，或明寫不上線與理由；引擎新增命令而沒處理時編譯不過
   - 示範用的 server 改用宿主套件
   - 入口不做登入端點、帳號與成員、管理介面、備份
-- **cut 8 `client-browser-login`**: 用戶端的瀏覽器登入與共用的登入程式
+- **cut 9 `client-browser-login`**: 用戶端的瀏覽器登入與共用的登入程式
   - 用戶端做標準流程的用戶端那一半：開瀏覽器、PKCE、回到本機的隨機埠、保存 token、token 過期時換新
   - 授權網址與換 token 的網址沿用 RFC 8414 的文件格式，由宿主的登入服務提供
   - 預設順序是瀏覽器登入、裝置登入、存取金鑰；宿主沒有宣告時維持現有行為
   - 登入程式收成一份，CLI 與 Speclink Desktop 共用；存取金鑰的存放位置統一
   - Speclink Desktop「新增專案」的 Server 步驟跟著調整
   - 設計時確認 RFC 8252 對本機回呼位址帶任意埠的條文
-  - 可以和 cut 7 並行
-- **cut 9 `skills-verbs-first-wave`**: discuss、propose、ingest 改成全部經過動詞
+  - 可以和 cut 8 並行
+- **cut 10 `skills-verbs-first-wave`**: discuss、propose、ingest 改成全部經過動詞
   - discuss 讀正式規格改用既有的 show 動詞，不用清單回傳的路徑
   - change rank 在遠端可用；寫到哪裡在設計時定
   - 可以和 cut 6 並行
-- **cut 10 `skills-verbs-second-wave`**: 其餘技能改成全部經過動詞，守門加嚴
-  - archive、commit、worktree 開工前與收尾、apply、improve
+- **cut 11 `remote-read-verbs`**: 補上技能在遠端需要的讀取動詞
   - 新增讀 evidence 的動詞，進行中的變更與已封存的變更都能讀
+  - trace 與 plan --strict-overlap 在遠端可用；兩者的引擎都只讀儲存，不需要本機事實
+  - 變更的清單帶出建立時間與最後修改時間
+  - 提案時從原本的 skills-verbs-second-wave 拆出
+- **cut 12 `skills-verbs-second-wave`**: 其餘技能改成全部經過動詞，守門加嚴
+  - archive、commit、worktree 開工前與收尾、apply、improve，以及 review、verify、quality、analyze、drift、trace 裡用路徑讀寫的步驟
   - apply 判斷變更是否閒置太久，改用變更的建立時間與最後修改時間
   - 對規格檔做 git 操作的步驟只在規格位於這個 checkout 時產生
-  - trace 與 plan --strict-overlap 在遠端可用
   - 守門涵蓋 compare against、cat、Check for、git add、git log、直接改寫，以及用清單回傳的路徑讀檔
   - 修正 tool-call 形式把交棒給其他技能的句子渲染成像動詞的寫法
-- **cut 11 `remote-skill-delivery`**: 遠端專案的技能由遠端提供
+  - 排在 cut 11 之後
+- **cut 13 `remote-skill-delivery`**: 遠端專案的技能由遠端提供
   - 入口用引擎內建的範本渲染；產生哪些技能跟著該範圍的流程設定，含 worktree 的兩支
   - 用戶端的安裝與更新改從遠端取得；安裝後仍是 checkout 裡的檔案
   - 降級守門調整：遠端專案的技能版本跟著遠端，比本機 CLI 新時照裝並提醒
@@ -506,24 +530,25 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
   - Speclink Desktop 對遠端專案啟用技能檔探測，基準是遠端提供的版本：專案裡的技能檔較舊顯示「更新技能檔」、沒有技能檔顯示「安裝技能檔」、本機的 Speclink 較舊顯示「更新 Speclink」；確認框多一列「Server 提供的技能版本」
   - 握手送的是套件版本、技能帶的是另一個版號，比對哪一個在設計時定
   - 文件寫明：連到一台 Server 等於信任它提供的技能
-- **cut 12 `station-status-and-landing`**: 關卡狀態上線與程式碼落地的回報
+- **cut 14 `station-status-and-landing`**: 關卡狀態上線與程式碼落地的回報
   - 變更的清單與單筆回應加選填欄位：審查與驗證各自的狀態（未開始、進行中、已通過）、誰蓋的章、何時、幾輪
   - 「蓋章後檔案又改過」維持由有 checkout 的一端判斷
   - 引擎發出的六種審查與驗證事件改為歸到該變更，用戶端據此重新讀取
   - 蓋章的請求多帶 commit；變更記下分支名稱；新增回報落地 commit 的動詞；引擎只存，不附帶任何規則
-- **cut 13 `host-free-fields`**: 變更與討論上的自由欄位
+- **cut 15 `host-free-fields`**: 變更與討論上的自由欄位
   - 宿主自訂的鍵值，引擎只存不解讀
   - 通用的寫入與移除動詞，原版 CLI 也能用；清單與單筆回應會帶出來
   - 宿主的程式可以在呼叫入口時附上，和建立變更或討論在同一次寫入，不經過模型
   - 存在既有 metadata 文字裡的專屬區塊；鍵名規則、數量與大小上限在設計時定
-- **cut 14 `import-export-on-port`**: 匯入匯出建在儲存契約上
+- **cut 16 `import-export-on-port`**: 匯入匯出建在儲存契約上
   - 兩個門都能用；大小上限由宿主在建立入口時設定；不做壓縮；匯入維持只能進空的範圍
-- **cut 15 `retire-teamstore-and-drivers`**: 移除舊的儲存層
+- **cut 17 `retire-teamstore-and-drivers`**: 移除舊的儲存層
   - SQLite、Postgres、serverfs 改寫成儲存契約的範例，供使用者參考
   - 移除 TeamStore 與既有的 31 方法 JS 儲存
   - 流程設定 context 的專案說明同步更新
-- **cut 16 `docs-embedded-host`**: README 與使用者文件一次更新
-  - 前十五個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
+  - 示範用 server 的推送事件串流、備份還原與健康檢查還直接依賴 TeamStore，要一起改接；任務過多時在提案時拆開
+- **cut 18 `docs-embedded-host`**: README 與使用者文件一次更新
+  - 前十七個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
   - README 開頭改用本機專案與遠端專案；「自架 server」拆成「把 Speclink 內嵌進你的系統」與「試用官方 server」兩節，前者在前並列出宿主要做的四件事（實作三個函式並通過合格測試、掛一條路由、驗不出身分時傳空值、要支援瀏覽器登入時讓自己的登入服務提供標準文件並接受本機回呼）
   - 官方 server 的定位句：「官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。」；正式規格 user-documentation 的對應需求跟著改
   - 「目前狀態」改寫；延後的項目在專案能力狀態與路線圖逐項列為已知缺口，README 用一行連過去
@@ -567,6 +592,6 @@ Source doc: /Users/momochenisme/Documents/GitHub/speclink-embedded-host-needs.md
 - 遠端專案的手冊產生 — 導覽模式仍可用；手冊頁之後可以用一個鍵的前綴存放
 - 嚴格一致的讀取快照 — 第一版接受短暫不一致；要嚴格的宿主可以在自己的讀取函式裡處理
 - 多個宿主實例下的推送事件 — 預設只做輪詢，宿主提供跨實例傳遞時才開
-- 依範圍版本號的快取 — 等 cut 2 的量測結果
+- 依範圍版本號的快取 — cut 2 量測後的結論是不加；進行中的變更很多時列出變更的呼叫數會成長，要降下來得讓引擎一次要多份文件
 **Capture to**: proposal | design | spec | tasks | LANGUAGE.md
 **Next**: /speclink-propose --from-discussion embedded-host-needs
