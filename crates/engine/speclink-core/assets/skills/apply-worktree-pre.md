@@ -81,8 +81,11 @@ It returns `changes` (one entry per active change with its `blockedBy`), `next` 
 
 Every STOP in this step ends the run on the spot: do NOT commit the artifacts, do NOT create the worktree. The way out of a block is the user's: land (archive) the blockers first; drop a declared prerequisite that is wrong with `speclink change depends <change-name> --on <prerequisite> --remove`. Then run this skill again.
 
-Once a change is selected, announce: "Using change: <change-name>" and how to override (e.g., `/speclink:apply-with-worktree <other>`). Continue to P3.
+Once a change is selected, announce: "Using change: <change-name>" and how to override (e.g., `/speclink:apply-with-worktree <other>`).
 
+Keep the selected change's `created` and `modifiedAt` from `speclink list --json` now: creating the worktree writes the change's files anew, so inside the worktree `modifiedAt` reads as now. Step 3d of the apply body judges dormancy on the values kept here, not on the ones its own step 2 keeps. Continue to P3.
+
+{{#SPEC_IN_CHECKOUT}}
 ### P3. Get the change's artifacts into HEAD
 
 A worktree is materialized from HEAD. If the change's artifacts (`{{SPEC_DIR}}changes/<change-name>/`) are not committed yet — which is the normal state right after `/speclink:propose` — the new worktree simply will not contain the change, and every later step dead-ends.
@@ -102,19 +105,30 @@ git status --porcelain -- "{{SPEC_DIR}}changes/<change-name>/"
   ```
 
   Never sweep other dirty files into this commit. If the directory cannot be committed cleanly (e.g. merge conflict markers), STOP and report.
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+### P3. Nothing to commit for the artifacts
+
+The spec documents are on the Server, not in this checkout: there is nothing to commit before the worktree is created. Continue to P3.5.
+{{/SPEC_IN_CHECKOUT}}
 
 ### P3.5. Check whether progress and code have come apart
 
+{{#SPEC_IN_CHECKOUT}}
 P3 commits the change's **artifacts**. Its **source changes** are a separate matter: when this change was already applied in the main folder, its task checkboxes went into HEAD just now while the code that satisfies them may still be sitting dirty in the main tree. The worktree would then carry tasks marked done with no implementation behind them.
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+The change's **source changes** are a separate matter: when this change was already applied in the main folder, its tasks read as done on the Server while the code that satisfies them may still be sitting dirty in the main tree. The worktree would then lack the implementation behind tasks marked done.
+{{/SPEC_IN_CHECKOUT}}
 
-Read the change's evidence record and check those files against the main tree:
+Take the files the change touched from its evidence record and check them against the main tree:
 
 ```bash
-cat "{{SPEC_DIR}}changes/<change-name>/.evidence.json"
-git status --porcelain -- <each touched path from that record>
+speclink evidence show "<change-name>" --json
+git status --porcelain -- <each path in that output's `files`>
 ```
 
-- **No record, or it lists no touched files** — nothing was implemented here yet. Continue to P4 silently.
+- **`files` is empty** (no record, or no touched files) — nothing was implemented here yet. Continue to P4 silently.
 - **Every listed path is clean** — the code is already in HEAD and travels with the worktree. Continue to P4 silently.
 - **Any listed path is dirty** — STOP and show the user the dirty paths, then use the **AskUserQuestion tool**:
   - **先收程式碼再開 worktree**（recommended） — run `/speclink:commit <change-name>` to get this change's source into HEAD, then come back and re-run this skill.
@@ -166,7 +180,12 @@ Every step of the apply flow below runs **inside the worktree folder**, not the 
 
 - `cd` into the worktree, or pass it explicitly to every command.
 - File reads and edits target the worktree copy.
+{{#SPEC_IN_CHECKOUT}}
 - `speclink` verbs run with the worktree as the working directory, so task checkboxes and stamps land in that copy.
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- `speclink` verbs run with the worktree as the working directory; task checkboxes and stamps go to the Server.
+{{/SPEC_IN_CHECKOUT}}
 
 The main checkout stays untouched. Its `speclink list` will show this change with a `[worktree]` marker and reflect the worktree's task progress live — that is how the user watches parallel work from one place.
 

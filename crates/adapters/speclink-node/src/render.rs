@@ -1,11 +1,11 @@
 //! The render API: a direct pass-through of the core render matrix
-//! (target × invocation × store) — the same code paths `speclink init`/`update`
+//! (target × invocation × spec-in-checkout) — the same code paths `speclink init`/`update`
 //! use, so SDK-rendered content and CLI-generated files cannot drift.
 
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use speclink_core::config::{CustomTool, Invocation};
-use speclink_core::skills::{self, RenderTarget, Tool};
+use speclink_core::skills::{self, RenderTarget, SpecLocation, Tool};
 
 /// One entry of `skills.list()`.
 #[napi(object)]
@@ -15,13 +15,16 @@ pub struct SkillInfo {
 }
 
 /// Options of `skills.render` — the render matrix: target (claude | codex |
-/// copilot | pi | cursor | neutral) and invocation (cli | tool-call, default
-/// cli), plus the spec directory name and the neutral target's tool name
-/// ({{TOOL}} substitution, default "speclink").
+/// copilot | pi | cursor | neutral), invocation (cli | tool-call, default
+/// cli) and `specInCheckout` (whether the spec folder is in the checkout the
+/// skill is used in; default true — a host that embeds the engine and has no
+/// local spec files passes false), plus the spec directory name and the neutral
+/// target's tool name ({{TOOL}} substitution, default "speclink").
 #[napi(object)]
 pub struct RenderOptions {
     pub target: String,
     pub invocation: Option<String>,
+    pub spec_in_checkout: Option<bool>,
     pub spec_dir: Option<String>,
     pub tool_name: Option<String>,
 }
@@ -30,6 +33,7 @@ pub struct RenderOptions {
 struct Matrix {
     target: TargetKind,
     spec_dir: String,
+    location: SpecLocation,
 }
 
 enum TargetKind {
@@ -71,6 +75,10 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
             .spec_dir
             .clone()
             .unwrap_or_else(|| speclink_core::workspace::DEFAULT_SPEC_DIR.to_string()),
+        location: match opts.spec_in_checkout {
+            Some(false) => SpecLocation::Elsewhere,
+            Some(true) | None => SpecLocation::InCheckout,
+        },
     })
 }
 
@@ -98,5 +106,5 @@ pub fn skills_render(name: String, opts: RenderOptions) -> Result<String> {
         TargetKind::Builtin(tool) => RenderTarget::Builtin(*tool),
         TargetKind::Neutral(custom) => RenderTarget::Custom(custom),
     };
-    Ok(skills::render_skill_file_for(target, &skill, &matrix.spec_dir))
+    Ok(skills::render_skill_file_for(target, &skill, &matrix.spec_dir, matrix.location))
 }

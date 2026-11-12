@@ -6,6 +6,17 @@ mod render_golden;
 mod skill_authoring;
 mod skill_verbization;
 
+/// The skills that write straight into the spec folder, each with the reason the
+/// spec-path guards skip it — `skill_authoring` by source file, `skill_verbization` by
+/// rendered skill. Closed: a skill that is not listed here is checked.
+const SPEC_FOLDER_WRITERS: &[(&str, &str)] = &[
+    ("baseline", "writes the canonical specs straight into the spec folder; rendered for a checkout without the spec folder, it refuses first"),
+    ("manual", "writes the manual pages into the spec folder; rendered for a checkout without the spec folder, its generation mode refuses first"),
+];
+
+/// The two files of a change folder that a skill may name only where the spec folder is.
+const SPEC_FOLDER_FILE_NAMES: [&str; 2] = [".evidence.json", ".meta.yaml"];
+
 /// Each line of `text` (newline included) with its byte offset, skipping fenced code
 /// blocks and their fence lines: the skill-source checks must not read code as prose or
 /// as a heading.

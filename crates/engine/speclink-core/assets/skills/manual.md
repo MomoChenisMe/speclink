@@ -18,6 +18,10 @@ Generate a human-readable operating manual from the canonical specs, or walk the
 
 ### Step 0: Refuse on a remote-bound project
 
+{{^SPEC_IN_CHECKOUT}}
+This skill file was generated for a project whose spec folder is not in this checkout — a remote project, or a host that embeds the engine. Generation is not supported here, whatever the check below finds: print the message below and end the run. Zero files are written. Tour mode is unaffected.
+
+{{/SPEC_IN_CHECKOUT}}
 Read `.speclink.yaml` at the workspace root. No file, or a file without a `remote` section, means a local project — continue with Step 1. A `remote` section means the project is bound to a remote store and generation is not supported yet: the pages would land in this local checkout only and never reach the store. Print
 
 ```

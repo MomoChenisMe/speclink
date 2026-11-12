@@ -6,6 +6,12 @@ Establish the baseline for an existing codebase: generate the initial canonical 
 
 ---
 
+{{^SPEC_IN_CHECKOUT}}
+## Step 0: Refuse — the spec folder is not in this checkout
+
+This skill file was generated for a project that keeps its specs on a Server — a remote project, or a host that embeds the engine. Baseline writes spec files straight into the spec folder, so here they would stay in this checkout and never reach the Server. Tell the user that baseline is not supported for this project yet, and end the run. Write no file, and do not continue with the steps below.
+
+{{/SPEC_IN_CHECKOUT}}
 ## Step 1: Check the current state and load the workflow config
 
 ```bash

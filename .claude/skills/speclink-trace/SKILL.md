@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -42,7 +42,7 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 3. **Read the story behind each link**
 
    - For every discussion slug: `speclink discuss show <slug>` — pull the conclusion (the decision and its reasons) and the rounds where alternatives were weighed and rejected.
-   - For every change in the chain: its `proposal.md` sits inside the archived change directory named by `archivedDir` — pull the motivation ("Why") section.
+   - For every change in the chain: `speclink artifact cat proposal --change <name>` prints its proposal (an archived change answers to its own name) — pull the motivation ("Why") section. `archivedDir` is for display only.
    - Note the sibling changes from `promotedTo` and the capabilities that evolved alongside.
 
 4. **Locate the touched code**

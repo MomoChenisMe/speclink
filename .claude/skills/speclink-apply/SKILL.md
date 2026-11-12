@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -15,11 +15,21 @@ Implement tasks from a Speclink change.
 
 **Input**: Optionally specify a change name (e.g., `/speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
-**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
+**Task tracking lives in the tasks artifact only.** Its markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -48,7 +58,7 @@ Implement tasks from a Speclink change.
    ```
 
    - **The command fails** → show the error and STOP.
-   - **The command succeeds** → capture the review baseline, then mark the change as in-progress:
+   - **The command succeeds** → read the change's entry in `speclink list --json` and keep its `created` and `modifiedAt` for step 3d: the two commands below write to the change, which moves `modifiedAt` to now. Then capture the review baseline, and mark the change as in-progress:
 
      ```bash
      speclink review prepare "<name>"
@@ -111,25 +121,27 @@ Run `speclink analyze <change-name> --json` to check cross-artifact consistency 
 - **Zero findings** → silently continue.
 - **Warning/Suggestion only** → display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
 - **Critical findings** → display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
-  - **Fix and continue** — fix the artifact issues inline, then proceed
+  - **Fix and continue** — fix the artifact issues with a write-back (see **Write-back** above the steps), then proceed
   - **Continue anyway** — skip fixes and start implementation
   - **Stop** — end the workflow
 
 3d. **Drift dormancy check** (passive trigger for stale changes)
 
-When the change has been dormant for more than 5 days AND the change directory has had zero commits in the past 3 days, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
+When the change is dormant, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
 
-Detect dormancy from `.meta.yaml` `created` and `git log -1 --format=%at -- speclink/changes/<name>/`:
+A change is dormant when the `created` of its entry in `speclink list --json` is more than 5 days ago and its `modifiedAt` is more than 3 days ago. An entry with no `modifiedAt` is judged on `created` alone — say then that the last activity cannot be read. An entry with no `created` is not dormant.
 
-- **Both conditions met** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
+Judge on the entry step 2 kept, not on a fresh one.
+
+- **The change is dormant** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
   - **Refresh first** — pause apply, run `/speclink-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
-- **Either condition not met** → silently continue, no output.
+- **It is not dormant** → silently continue, no output.
 
 The trigger is guidance only — it does not block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
 
-(Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
+(Threshold reasoning: AI-assisted work is daily-cadence. ≥5 days since creation + ≥3 days with no change to the change's documents ≈ genuine stagnation, not normal pacing. `modifiedAt` is when the documents last changed, not a commit time — read the verdict as a hint.)
 
 4. **Read context files**
 
@@ -167,18 +179,18 @@ The trigger is guidance only — it does not block apply from proceeding when th
 
    For each pending task:
    - Show which task is being worked on
-   - Re-read the sections of design and spec files that are relevant to this task's scope — do not rely on memory from earlier in the conversation, as context may have been compressed
+   - Re-read the sections of the design and the specs that are relevant to this task's scope with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability>`) — do not rely on memory from earlier in the conversation, as context may have been compressed
    - **Read the Implementation Contract for this task before editing any source file.** If `design.md` exists and contains an `## Implementation Contract` section (or contract content under another heading the design uses), read the part of it that covers this task's scope. The contract names the observable behavior, interface or data shape, failure modes, acceptance criteria, and scope boundaries you must satisfy. Treat the contract as the durable handoff — it is what the task will be measured against, regardless of who started the change.
    - **Detect unclear or path-only tasks before writing code.** A task is unclear if it:
      - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
      - is vague ("handle edge cases", "wire it up", "make it work");
      - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
-       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
+       When this happens, pause. Either update the artifact (design or tasks) with a write-back (see **Write-back** above the steps) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
    - Before writing code, check:
      1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
      2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
      3. **Efficiency** — parallelize independent async operations; avoid unnecessary awaits; match operation scope to actual need
-     4. **No Placeholders in artifacts** — if the design or spec for this task contains placeholder language (TBD, TODO, "add appropriate handling"), pause and fix the artifact first or flag to the user. Do not implement against vague requirements.
+     4. **No Placeholders in artifacts** — if the design or spec for this task contains placeholder language (TBD, TODO, "add appropriate handling"), pause and fix the artifact first (a write-back) or flag to the user. Do not implement against vague requirements.
      5. **Examples as verification** — if the spec for this task's scope includes `##### Example:` blocks, use them as concrete test cases:
         - When TDD is enabled: derive the first failing test directly from the example's GIVEN/WHEN/THEN values
         - When TDD is not enabled: after implementing, verify the code handles the example's input→output correctly
@@ -186,7 +198,7 @@ The trigger is guidance only — it does not block apply from proceeding when th
           Do not invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
    - Make the code changes required
    - Keep changes minimal and focused
-   - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
+   - **Verify before marking done** — re-read the task description (`speclink artifact cat tasks --change "<name>"`) AND the relevant Implementation Contract content of the design (`speclink artifact cat design --change "<name>"`). For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete right away by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
    - **NEVER check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/speclink-review`, `/speclink-verify`, or `/speclink-quality` for both) can run now while archive waits for the manual runs.

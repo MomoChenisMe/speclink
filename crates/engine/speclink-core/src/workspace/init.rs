@@ -1,7 +1,7 @@
 //! Project initialization and instruction-file updates.
 
 use crate::config::{CustomTool, ToolEntry};
-use crate::skills::{self, Tool};
+use crate::skills::{self, SpecLocation, Tool};
 use crate::util;
 use crate::workspace::{resolve_spec_dir, DEFAULT_SPEC_DIR, LEGACY_SPEC_DIR};
 use anyhow::{bail, Result};
@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 /// 產物層的唯一版號：技能檔 frontmatter 的 version 同源於此，也是過期探測與
 /// 降級守門的比對基準。僅在內嵌資產（assets/skills）的 render 內容變動時遞增——
 /// 與 app／CLI 的發版號無關；`assets.lock` 鎖定測試把這條紀律變成紅燈。
-pub const ASSET_VERSION: &str = "v1.56.0";
+pub const ASSET_VERSION: &str = "v1.57.0";
 
 const APP_CONFIG_TEMPLATE: &str = concat!(
     "# Speclink application config
@@ -116,7 +116,7 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     let imported = if import {
         Some(import_openspec(root, tools)?)
     } else {
-        SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder).guard()?;
+        SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder, SpecLocation::InCheckout).guard()?;
         None
     };
     // 匯入時既有的 config.yaml 是使用者的，`--force` 也不得以範本覆蓋。
@@ -127,7 +127,7 @@ pub fn init(root: &Path, tools: &[Tool], force: bool, spec_dir: &str) -> Result<
     // 它寫回範本，寫入用的計畫要在那之後才解析才會排除被政策關掉的技能。守門面只取
     // 決於選集，所以兩次的目錄集合相同。apply 的回報（pruned／stripped）在 init 不
     // 呈現：init 的 stdout 維持既有兩行（proposal Non-Goal）。
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder).apply(root)?;
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), folder, SpecLocation::InCheckout).apply(root)?;
 
     Ok(InitOutcome {
         spec_dir_abs: spec_root,
@@ -146,7 +146,7 @@ fn import_openspec(root: &Path, tools: &[Tool]) -> Result<crate::migrate::Migrat
         }
         plan => plan,
     };
-    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), DEFAULT_SPEC_DIR).guard()?;
+    SyncPlan::resolve(root, ToolSelection::builtins_only(tools), DEFAULT_SPEC_DIR, SpecLocation::InCheckout).guard()?;
     crate::migrate::apply(root, &plan)
 }
 
@@ -165,7 +165,8 @@ pub fn init_remote(
         bail!("Already initialized. Use --force to reinitialize.");
     }
     // Remote init 不寫規格資料夾，政策檔不會被重寫，所以一份計畫同時服務守門與寫入。
-    let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), DEFAULT_SPEC_DIR);
+    // 規格在 Server 上：remote 區段在這之後才寫入，所以「不在 checkout」由這裡直接給。
+    let plan = SyncPlan::resolve(root, ToolSelection::builtins_only(tools), DEFAULT_SPEC_DIR, SpecLocation::Elsewhere);
     plan.guard()?;
 
     write_if(&root.join(".speclink.yaml"), &app_config_text(tools, DEFAULT_SPEC_DIR), force)?;
@@ -304,15 +305,30 @@ impl ToolSelection {
     }
 }
 
+/// Where this project's spec folder is — the render input every sync entry and the
+/// staleness probe share (spec workspace-tools「技能依規格是否在 checkout 渲染」). The
+/// `remote:` section of `.speclink.yaml` is the only signal, the same one mode resolution
+/// reads: a remote project keeps its specs on the Server. A spec folder on disk is not
+/// asked — a remote checkout may still hold an old one.
+fn spec_location(app: &crate::config::AppConfig) -> SpecLocation {
+    if app.remote.is_some() {
+        SpecLocation::Elsewhere
+    } else {
+        SpecLocation::InCheckout
+    }
+}
+
 /// The managed skill set of ONE render target: `speclink-<name>` directory → SKILL.md
 /// content. This is the only producer of that set — generation, orphan cleanup, the
 /// staleness diff and the guard all read it through [`SyncPlan`].
 ///
 /// Non-Claude targets skip the `claude_only` skills; worktree-gated skills need the policy on.
+/// `location` is the render's project side (see [`spec_location`]).
 pub(crate) fn managed_skills(
     target: skills::RenderTarget,
     worktree_on: bool,
     spec_dir: &str,
+    location: SpecLocation,
 ) -> Vec<(String, String)> {
     let non_claude = !matches!(target, skills::RenderTarget::Builtin(Tool::Claude));
     skills::registry()
@@ -320,7 +336,7 @@ pub(crate) fn managed_skills(
         .filter(|s| !(non_claude && s.claude_only))
         .filter(|s| !s.worktree_gated || worktree_on)
         .map(|s| {
-            let content = skills::render_skill_file_for(target, &s, spec_dir);
+            let content = skills::render_skill_file_for(target, &s, spec_dir, location);
             (format!("speclink-{}", s.name), content)
         })
         .collect()
@@ -368,7 +384,14 @@ pub(crate) struct SyncPlan {
 
 impl SyncPlan {
     /// Build the plan. This is the ONE place a sync reads the worktree policy.
-    pub(crate) fn resolve(root: &Path, selection: ToolSelection, spec_dir: &str) -> SyncPlan {
+    /// `location` is the caller's: a project that already has a `.speclink.yaml` takes it
+    /// from [`spec_location`]; an init knows which kind of project it is creating.
+    pub(crate) fn resolve(
+        root: &Path,
+        selection: ToolSelection,
+        spec_dir: &str,
+        location: SpecLocation,
+    ) -> SyncPlan {
         let worktree_on = worktree_skills_enabled(root, spec_dir);
         let mut targets = Vec::new();
         for tool in Tool::ALL {
@@ -381,6 +404,7 @@ impl SyncPlan {
                         skills::RenderTarget::Builtin(tool),
                         worktree_on,
                         spec_dir,
+                        location,
                     ),
                 });
             }
@@ -397,6 +421,7 @@ impl SyncPlan {
                     skills::RenderTarget::Custom(custom),
                     worktree_on,
                     spec_dir,
+                    location,
                 ),
             });
             if let Some(file) = custom.instructions_file.as_deref() {
@@ -621,7 +646,8 @@ fn sync(
     if let Some(message) = &selection.descriptor_error {
         bail!("{message}");
     }
-    let plan = SyncPlan::resolve(root, selection, &spec_dir);
+    let location = spec_location(&app);
+    let plan = SyncPlan::resolve(root, selection, &spec_dir, location);
     if allow_downgrade {
         plan.refuse_shared_skill_dirs()?;
     } else {
@@ -631,7 +657,7 @@ fn sync(
     let migrated = crate::migrate::apply(root, &migration)?;
     // 守門面只取決於選集；搬完資料夾後以實際資料夾重新解析寫入用的計畫。
     let plan = if migrated.moved_folder {
-        SyncPlan::resolve(root, ToolSelection::resolve(root, &app), DEFAULT_SPEC_DIR)
+        SyncPlan::resolve(root, ToolSelection::resolve(root, &app), DEFAULT_SPEC_DIR, location)
     } else {
         plan
     };
@@ -669,7 +695,7 @@ pub fn reconcile_builtin_tools(root: &Path, tools: &[Tool]) -> Result<UpdateOutc
     if let Some(message) = &selection.descriptor_error {
         bail!("{message}");
     }
-    let plan = SyncPlan::resolve(root, selection, &spec_dir);
+    let plan = SyncPlan::resolve(root, selection, &spec_dir, spec_location(&app));
     plan.guard()?;
     util::write_file(&path, &rewritten)?;
     plan.apply(root)
@@ -698,7 +724,7 @@ pub fn adopt(root: &Path, tools: &[Tool]) -> Result<UpdateOutcome> {
     } else {
         // 與匯入路徑相同：守門在骨架與 .gitignore 寫入之前，拒絕＝零寫入。
         let spec_dir = resolve_spec_dir(root, None).0;
-        SyncPlan::resolve(root, ToolSelection::builtins_only(tools), &spec_dir).guard()?;
+        SyncPlan::resolve(root, ToolSelection::builtins_only(tools), &spec_dir, SpecLocation::InCheckout).guard()?;
     }
     store_init(&root.join(resolve_spec_dir(root, None).0), false)?;
     ensure_gitignore(&root.join(".gitignore"))?;
@@ -1220,7 +1246,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
     if selection.legacy_fallback {
         return without_tools(AssetStatus::Current, migration);
     }
-    let plan = SyncPlan::resolve(root, selection, &spec_dir);
+    let plan = SyncPlan::resolve(root, selection, &spec_dir, spec_location(&app));
 
     let mut tools = Vec::new();
     for target in &plan.targets {

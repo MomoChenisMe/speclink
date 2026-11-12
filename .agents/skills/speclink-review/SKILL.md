@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -60,8 +60,18 @@ After the fixes of a fix-and-revalidate answer, build the project and run the af
 Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
 
 - **The code changes to meet the artifact** → leave the artifacts alone.
-- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The artifact wording is wrong but its intent stays** → change the artifact in the main thread with a write-back (see **Write-back** below) and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
 - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `$speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -229,7 +239,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 7 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-   NEVER hand-write or edit `speclink/changes/<name>/review.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+   NEVER hand-write or edit the review ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 9. **Branch on the blocking set**
 

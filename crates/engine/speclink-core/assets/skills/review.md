@@ -164,7 +164,7 @@
 
    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 7 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-   NEVER hand-write or edit `{{SPEC_DIR}}changes/<name>/review.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+   NEVER hand-write or edit the review ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 9. **Branch on the blocking set**
 
@@ -220,5 +220,10 @@ Check these before you report:
 {{NEXT_STEPS_LEAD}}
 
 - The review stamp landed in the main checkout → `/speclink:archive <change-name>`
+{{#SPEC_IN_CHECKOUT}}
 - The review stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink:worktree-merge <change-name>` (archive runs only from the main checkout)
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- The review stamp landed inside a worktree → `/speclink:worktree-merge <change-name>` (the stamp is on the Server — nothing to commit for it; archive runs only from the main checkout)
+{{/SPEC_IN_CHECKOUT}}
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream

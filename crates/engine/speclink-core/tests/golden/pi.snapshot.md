@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -16,11 +16,21 @@ Implement tasks from a Speclink change.
 
 **Input**: Optionally specify a change name (e.g., `/skill:speclink-apply add-auth`). If omitted, check if it can be inferred from conversation context — inference only decides whether a name is given; the selection itself always goes through `speclink plan` in step 1.
 
-**Task tracking is file-based only.** The tasks file's markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
+**Task tracking lives in the tasks artifact only.** Its markdown checkboxes (`- [ ]` / `- [x]`) are the single source of truth for progress. Do not use any external task management system, built-in task tracker, or todo tool. When a task is done, `speclink task done` (step 7) checks its box — that is the only way to record progress.
 
 **Prerequisites**: This skill requires the `speclink` CLI. If any `speclink` command fails with "command not found" or similar, report the error and STOP.
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -49,7 +59,7 @@ Implement tasks from a Speclink change.
    ```
 
    - **The command fails** → show the error and STOP.
-   - **The command succeeds** → capture the review baseline, then mark the change as in-progress:
+   - **The command succeeds** → read the change's entry in `speclink list --json` and keep its `created` and `modifiedAt` for step 3d: the two commands below write to the change, which moves `modifiedAt` to now. Then capture the review baseline, and mark the change as in-progress:
 
      ```bash
      speclink review prepare "<name>"
@@ -112,25 +122,27 @@ Run `speclink analyze <change-name> --json` to check cross-artifact consistency 
 - **Zero findings** → silently continue.
 - **Warning/Suggestion only** → display a one-line summary (e.g., "⚠ Artifact analysis: 2 warnings found") and continue automatically.
 - **Critical findings** → display each Critical finding (summary + location + recommendation), then use the **AskUserQuestion tool**:
-  - **Fix and continue** — fix the artifact issues inline, then proceed
+  - **Fix and continue** — fix the artifact issues with a write-back (see **Write-back** above the steps), then proceed
   - **Continue anyway** — skip fixes and start implementation
   - **Stop** — end the workflow
 
 3d. **Drift dormancy check** (passive trigger for stale changes)
 
-When the change has been dormant for more than 5 days AND the change directory has had zero commits in the past 3 days, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
+When the change is dormant, surface a drift report before tasks begin — the change is likely out-of-sync with the current codebase.
 
-Detect dormancy from `.meta.yaml` `created` and `git log -1 --format=%at -- speclink/changes/<name>/`:
+A change is dormant when the `created` of its entry in `speclink list --json` is more than 5 days ago and its `modifiedAt` is more than 3 days ago. An entry with no `modifiedAt` is judged on `created` alone — say then that the last activity cannot be read. An entry with no `created` is not dormant.
 
-- **Both conditions met** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
+Judge on the entry step 2 kept, not on a fresh one.
+
+- **The change is dormant** → run `speclink drift <change-name>`, display the report, then use the **AskUserQuestion tool**:
   - **Continue with apply** — proceed to tasks (recommended for Light drift)
   - **Refresh first** — pause apply, run `/skill:speclink-ingest <change-name>` to update artifacts, then resume
   - **Stop** — end the workflow
-- **Either condition not met** → silently continue, no output.
+- **It is not dormant** → silently continue, no output.
 
 The trigger is guidance only — it does not block apply from proceeding when the user chooses to continue. Hard-blocking on dormancy would punish legitimate "I came back after a long weekend" cases.
 
-(Threshold reasoning: AI-assisted commits are daily-cadence. ≥5 days dormant + ≥3 days no commit ≈ genuine stagnation, not normal pacing.)
+(Threshold reasoning: AI-assisted work is daily-cadence. ≥5 days since creation + ≥3 days with no change to the change's documents ≈ genuine stagnation, not normal pacing. `modifiedAt` is when the documents last changed, not a commit time — read the verdict as a hint.)
 
 4. **Read context files**
 
@@ -168,18 +180,18 @@ The trigger is guidance only — it does not block apply from proceeding when th
 
    For each pending task:
    - Show which task is being worked on
-   - Re-read the sections of design and spec files that are relevant to this task's scope — do not rely on memory from earlier in the conversation, as context may have been compressed
+   - Re-read the sections of the design and the specs that are relevant to this task's scope with `speclink artifact cat <artifact-id> --change "<name>"` (a delta spec is `specs/<capability>`) — do not rely on memory from earlier in the conversation, as context may have been compressed
    - **Read the Implementation Contract for this task before editing any source file.** If `design.md` exists and contains an `## Implementation Contract` section (or contract content under another heading the design uses), read the part of it that covers this task's scope. The contract names the observable behavior, interface or data shape, failure modes, acceptance criteria, and scope boundaries you must satisfy. Treat the contract as the durable handoff — it is what the task will be measured against, regardless of who started the change.
    - **Detect unclear or path-only tasks before writing code.** A task is unclear if it:
      - only names files to edit ("edit `foo.rs`", "update `bar.svelte`") with no behavior, contract, or verification target;
      - is vague ("handle edge cases", "wire it up", "make it work");
      - conflicts with the implementation contract (asks for behavior the contract excludes, or omits behavior the contract requires).
-       When this happens, pause. Either update the artifact (design or tasks) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
+       When this happens, pause. Either update the artifact (design or tasks) with a write-back (see **Write-back** above the steps) so the task names a concrete behavior and verification target, or report the blocker and wait for guidance. Do not silently guess against unclear requirements.
    - Before writing code, check:
      1. **Reuse** — search adjacent modules and shared utilities for existing implementations before writing new code
      2. **Quality** — derive values from existing state instead of duplicating; use existing types and constants over new literals
      3. **Efficiency** — parallelize independent async operations; avoid unnecessary awaits; match operation scope to actual need
-     4. **No Placeholders in artifacts** — if the design or spec for this task contains placeholder language (TBD, TODO, "add appropriate handling"), pause and fix the artifact first or flag to the user. Do not implement against vague requirements.
+     4. **No Placeholders in artifacts** — if the design or spec for this task contains placeholder language (TBD, TODO, "add appropriate handling"), pause and fix the artifact first (a write-back) or flag to the user. Do not implement against vague requirements.
      5. **Examples as verification** — if the spec for this task's scope includes `##### Example:` blocks, use them as concrete test cases:
         - When TDD is enabled: derive the first failing test directly from the example's GIVEN/WHEN/THEN values
         - When TDD is not enabled: after implementing, verify the code handles the example's input→output correctly
@@ -187,7 +199,7 @@ The trigger is guidance only — it does not block apply from proceeding when th
           Do not invent additional test values beyond what the spec examples provide without reason. The examples ARE the agreed specification.
    - Make the code changes required
    - Keep changes minimal and focused
-   - **Verify before marking done** — re-read the task description from the tasks file AND the relevant Implementation Contract content from design.md. For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
+   - **Verify before marking done** — re-read the task description (`speclink artifact cat tasks --change "<name>"`) AND the relevant Implementation Contract content of the design (`speclink artifact cat design --change "<name>"`). For each requirement stated in the task description and each contract item that covers this task's scope, confirm it is addressed by your changes. Confirm the verification target named by the task (test name, CLI invocation, analyzer check, or manual assertion) actually passes. If any contract item, task requirement, or verification target is missing or failing, implement/fix it now. Do not mark the task complete until every part of the description is covered and the contract for this task is satisfied.
    - Mark task complete right away by running: `speclink task done --change "<name>" <task-id>`
      This command marks the checkbox in tasks.md AND records which files were modified for this task.
    - **NEVER check off an `[M]` task.** A task whose description carries the `[M]` prefix is manual work the user performs by hand — not only manual testing, but anything you cannot do yourself: accepting a result by operating the product, creating an account on an external service, placing a key. You cannot observe the outcome, so you cannot attest to it. Skip it and move on — unless a code task depends on it, which is the next point's blocked case. Once every non-`[M]` task is checked, apply is finished: report completion, name the `[M]` tasks left for the user, and say that the quality stations (`/skill:speclink-review`, `/skill:speclink-verify`, or `/skill:speclink-quality` for both) can run now while archive waits for the manual runs.
@@ -342,7 +354,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -357,6 +369,16 @@ Archive a completed change.
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response.
 
 **Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/skill:speclink-worktree-merge` skill first, then archive from the main checkout.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -386,16 +408,14 @@ Archive a completed change.
 
 3. **Check task completion status**
 
-   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
+   Take the change's `completedTasks` and `totalTasks` from `speclink list --json`.
 
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
-
-   **If incomplete tasks found:**
+   **If incomplete tasks found** (`completedTasks` is less than `totalTasks`):
    - Display warning showing count of incomplete tasks
    - Prompt user for confirmation to continue
    - Proceed if user confirms
 
-   **If no tasks file exists:** Proceed without task-related warning.
+   **If the change has no tasks** (`totalTasks` is 0): Proceed without task-related warning.
 
 3b. **Plan order hint**
 
@@ -421,7 +441,7 @@ Archive a completed change.
 
 4. **Assess delta spec completeness**
 
-   Check for delta specs at `speclink/changes/<name>/specs/`. If none exist, skip this step.
+   The change's `deltaCapabilities` in `speclink list --json` names every capability it carries a delta spec for. If the field is absent or empty, skip this step.
 
    Background: the merge engine is fail-closed. It validates every capability's delta
    against the canonical spec first and writes nothing until all of them pass, so a stale
@@ -447,21 +467,21 @@ Archive a completed change.
    A delta for a capability being created may also carry a `## Purpose` section; it becomes
    the new canonical spec's Purpose (without one, a TBD placeholder is written).
 
-   **For each delta spec, compare against `speclink/specs/<capability>/spec.md`:**
+   **For each capability in `deltaCapabilities`, set the delta (`speclink artifact cat specs/<capability> --change "<name>"`) beside the canonical spec (`speclink show <capability> --item-type spec`; a capability this change creates has none yet):**
    - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
    - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
    **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to the archive (step 5) — no prompt needed.
 
    **Otherwise**, show a summary of what the engine would refuse, then use the **AskUserQuestion tool**:
-   - "Fix the delta then archive (recommended)": rewrite the delta spec file(s) in place —
+   - "Fix the delta then archive (recommended)": fix each delta with a write-back (see **Write-back** above the steps) —
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
-     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
-     - do NOT edit the main specs — only the delta files change
+     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is changed via MODIFIED, not re-added)
+     - do NOT edit the main specs — only the deltas change
    - "Refresh from the codebase": run `/skill:speclink-drift <name>` to see what moved, then `/skill:speclink-ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
-   After fixing, show a brief diff summary of the rewritten delta files, then continue.
+   After fixing, show a brief diff summary of the deltas you wrote back, then continue.
 
 5. **Perform the archive**
 
@@ -488,14 +508,14 @@ Archive a completed change.
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `/skill:speclink-ingest <name>`
+   deltas — `speclink drift <name>` shows what moved, `/skill:speclink-ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
-   **The zero-evidence note.** A change accumulates completion evidence in
-   `speclink/changes/<name>/.evidence.json` as `speclink task done` records which code
-   files each task touched. When a change carries none, the archive still succeeds and
-   stderr gains one line:
+   **The zero-evidence note.** A change accumulates completion evidence as
+   `speclink task done` records which code files each task touched
+   (`speclink evidence show <name>` lists it). When a change carries none, the archive
+   still succeeds and stderr gains one line:
 
    ```
    note: no task evidence recorded for change '<name>' — fine for spec-only changes;
@@ -512,7 +532,7 @@ Archive a completed change.
    Show archive completion summary including:
    - Change name
    - Schema that was used
-   - Archive location
+   - Archived name — the dated name `speclink archive` printed after `→`
    - Spec sync status (synced / sync skipped / no delta specs)
    - Note about any warnings (incomplete artifacts/tasks)
 
@@ -523,6 +543,7 @@ Archive a completed change.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
 **Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** ✓ Synced to main specs
 
@@ -536,6 +557,7 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
 **Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** No delta specs
 
@@ -549,6 +571,7 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
 **Archived to:** speclink/changes/archive/YYYY-MM-DD-<name>/
 **Specs:** Sync skipped (user chose to skip)
 
@@ -583,7 +606,7 @@ Check these before you show the summary:
 - [ ] The user chose the change; nothing was auto-selected (step 1).
 - [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
 - [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
-- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] Only deltas were changed — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
 - [ ] `.meta.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
 
 
@@ -685,7 +708,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -934,7 +957,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -1060,7 +1083,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -1076,6 +1099,16 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
 
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+
 **Steps**
 
 1. **Select the change**
@@ -1089,28 +1122,29 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 2. **Read the evidence record**
 
-   Check for `speclink/changes/<change-name>/.evidence.json` — the change's completion
-   evidence, written by `speclink task done`. If it exists, parse it to get source files
-   grouped by task.
+   Run `speclink evidence show "<change-name>" --json` — the change's completion evidence,
+   written by `speclink task done`. `entries` holds one entry per completed task, which
+   gives the source files grouped by task; `files` is every touched file, listed once.
 
    Expected format:
 
    ```json
    {
      "change": "<change-name>",
-     "touched": [
+     "entries": [
        {
-         "task_id": "1",
-         "task_desc": "Task description",
-         "files": ["src/file1.ts", "src/file2.ts"]
+         "taskId": "tsk_…",
+         "taskDesc": "Task description",
+         "touchedFiles": ["src/file1.ts", "src/file2.ts"]
        }
-     ]
+     ],
+     "files": ["src/file1.ts", "src/file2.ts"]
    }
    ```
 
-   If the file does not exist, check the pre-move location `.speclink/touched/<change-name>.json`
-   (read-only compatibility for records written before the move). If neither exists, proceed
-   without source file data — only artifact files will be included.
+   If `files` is empty, check the pre-move location `.speclink/touched/<change-name>.json`
+   (read-only compatibility for records written before the move — a state file of this
+   checkout, not a spec document). If neither gives a file, proceed without source file data.
 
 3. **Collect artifact files**
 
@@ -1135,7 +1169,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
-   Task progress comes from reading the tasks file and counting `- [x]` vs `- [ ]` checkboxes.
+   Task progress is the change's `completedTasks` and `totalTasks` in `speclink list --json`.
 
    If the archive sub-flow runs later (step 7a), the commit message gains an `Archived: yes` line — see step 7a.
 
@@ -1182,7 +1216,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Only after the commit plan and commit message from step 6 are visible in the conversation, use the **AskUserQuestion tool** to ask the user how to proceed.
 
    Options:
-   - **Commit as shown**: Proceed with the displayed artifact + source files and the displayed commit message
+   - **Commit as shown**: Proceed with the displayed files and the displayed commit message
    - **Include all dirty files**: Add all unrelated files to the commit as well
    - **Customize**: Let the user add or remove specific files from the commit set, or edit the commit message
    - **Archive first, then commit together**: Run archive before committing — archive file moves will be included in this commit
@@ -1201,24 +1235,24 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-i. Incomplete task handling**
 
-    Run `speclink artifact cat tasks --change "<name>"` and count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes in the output.
+    Compare the change's `completedTasks` with its `totalTasks` in `speclink list --json`.
 
     - If **all tasks are complete**: skip to 7a-ii.
     - If **incomplete tasks exist**:
-      - Display the list of incomplete tasks
+      - Display the list of incomplete tasks — the `- [ ]` lines of `speclink artifact cat tasks --change "<name>"`
       - Use the **AskUserQuestion tool** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
     **7a-ii. Delta spec completeness check**
 
-    Check whether delta specs exist at `speclink/changes/<name>/specs/`.
+    The change's `deltaCapabilities` in `speclink list --json` names every capability it carries a delta spec for.
 
-    - If **no delta specs exist** (directory is empty or absent): skip to 7a-ii-b.
-    - If **delta specs exist**: compare each delta against `speclink/specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
+    - If **`deltaCapabilities` is absent or empty**: skip to 7a-ii-b.
+    - If **it names capabilities**: for each one, set the delta (`speclink artifact cat specs/<capability> --change "<name>"`) beside the canonical spec (`speclink show <capability> --item-type spec`; a capability this change creates has none yet). The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
-        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
+        - **Yes**: fix each delta with a write-back (see **Write-back** above the steps) — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
         - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/skill:speclink-ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**
@@ -1371,7 +1405,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -1617,7 +1651,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -1642,7 +1676,9 @@ Have a focused discussion about a topic and reach a conclusion. Every discussion
 
 ## The discussion record
 
-Every speclink discussion is persisted to a document (`speclink/discussions/<slug>.md`), so the conversation keeps its thread across turns and sessions, and a later `/skill:speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the `speclink discuss` verbs — NEVER hand-write or edit the file.
+Every speclink discussion is persisted to a record, so the conversation keeps its thread across turns and sessions, and a later `/skill:speclink-propose --from-discussion <slug>` can seed a proposal directly from it. Drive the record through the `speclink discuss` verbs — NEVER hand-write or edit it.
+
+The record's file is `speclink/discussions/<slug>.md`.
 
 Every record has the same fixed skeleton:
 
@@ -2000,9 +2036,11 @@ Where to capture:
 | Design decision made       | `design.md`                  |
 | Scope changed              | `proposal.md`                |
 | New work identified        | `tasks.md`                   |
-| Vocabulary drift           | `speclink/LANGUAGE.md`    |
+| Vocabulary drift           | `LANGUAGE.md`                |
 
-**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `speclink/LANGUAGE.md`. The conclusion summary preserves this contract — do not silently rewrite the term in the artifacts without recording the drift.
+**Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `LANGUAGE.md`, the shared vocabulary document. The conclusion summary preserves this contract — do not silently rewrite the term in the artifacts without recording the drift.
+
+The document's file is `speclink/LANGUAGE.md`.
 
 Present the summary and say something like "I'll capture this to design.md unless you'd rather not." Default to capturing — the user can decline.
 
@@ -2069,7 +2107,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 
 **Staged cuts — `--hold`.** When the conclusion plans further changes to spin out from this same record later (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`/skill:speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion.
 
-**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it, and the engine's error for spinning out from an archived record points at the same path. Do this only when the spec folder is in this checkout; when it is not (a remote project, or a host that embeds the engine), move nothing — stop and tell the user that this step has to be done on the Server that holds the specs.
+**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name — it is live again and every verb works on it, and the engine's error for spinning out from an archived record points at the same path.
 
 ---
 
@@ -2103,7 +2141,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -2210,9 +2248,9 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 **Passive Trigger**
 
-When `/skill:speclink-apply` is invoked on a change whose `.meta.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
+When `/skill:speclink-apply` is invoked on a dormant change, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. A change is dormant when the `created` of its entry in `speclink list --json` is more than 5 days ago and its `modifiedAt` is more than 3 days ago. An entry with no `modifiedAt` is judged on `created` alone — say then that the last activity cannot be read. An entry with no `created` is not dormant. The trigger is guidance only and does not block apply from proceeding.
 
-(Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
+(Threshold reasoning: AI-assisted work is daily-cadence, not weekly. A change created ≥5 days ago whose documents have not changed for ≥3 days is almost always genuine stagnation rather than normal pacing.)
 
 **Guardrails**
 
@@ -2237,7 +2275,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -2279,7 +2317,7 @@ speclink list --json
 
 - **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. Records are written in the `locale` language of `speclink workflow-config show --json` (Step 4), so pass your keywords in that language as well as the English identifiers — crate, module and command names. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
-- **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
+- **Read the in-flight changes** from `speclink list --json` and their proposals (`speclink artifact cat proposal --change <name>`). A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
 ### Step 2: Converge the scope (scope before you scan)
 
@@ -2294,7 +2332,7 @@ Never blind-scan the whole repository. Candidates from unrelated corners are not
 
   **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
 
-  **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `speclink/changes/archive/<dated-name>/`, the same records `/skill:speclink-commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+  **Local supplement**: cross-check the archived changes' touched records — `speclink evidence show <change> --json`, the same records `/skill:speclink-commit` uses; an archived change answers to its own name, and `speclink trace <capability> --json` lists the archived changes behind a capability. Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
 - **The hotspots are diffuse** — no clear focus, churn spread evenly → **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
 
 Announce the scope you settled on and why, in one or two sentences, before scanning.
@@ -2434,7 +2472,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -2773,7 +2811,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -2988,7 +3026,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -3140,7 +3178,11 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
    - The conclusion planned **no staged cuts** (a single change) → do not pass it. (The record carries no hold, so the flag would be a harmless no-op — but "not passed" is the rule.)
 
-   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `speclink/discussions/archive/` to `speclink/discussions/` (drop the `<date>-` prefix; the engine's error message points at that path). Move it only when the spec folder is in this checkout; when it is not (a remote project, or a host that embeds the engine), move nothing — stop and tell the user that this step has to be done on the Server that holds the specs. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
+   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back out of the archive.
+
+   Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name (the engine's error message points at that path).
+
+   Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
 6. **Write the proposal**
 
@@ -3479,7 +3521,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -3571,12 +3613,13 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 **Resuming after an interrupted session**
 
-A session closed in the middle of a fix round resumes by running `/skill:speclink-quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its open ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
+A session closed in the middle of a fix round resumes by running `/skill:speclink-quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
 
 - Pass both stations' **Verification gate** before step 1 — the earlier session's test state is unknown, and a fix the gate still needs must land before the scopes freeze.
-- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec directory out. List the change folder's uncommitted and untracked files with `git status --porcelain -- "speclink/changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those edits came before or after the last round, so:
+- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec documents out.
+  List the change folder's uncommitted and untracked files with `git status --porcelain -- "speclink/changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those changes came before or after the last round, so:
   - Nothing listed → that station sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
-  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by editing those artifacts. A yes runs the station's validation pass, its brief carrying the edited passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
+  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by changing those artifacts. A yes runs the station's validation pass, its brief carrying the changed passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
 - Tell the user not to commit fixes between the close and the resume: a validation patch picks up fixes by content movement and the dirty state, and a commit can drop a new file the snapshots never captured out of it.
 
 The earlier session's fix-or-skip answers are not kept: step 4 lists only the findings still unresolved and asks again.
@@ -3616,7 +3659,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -3671,8 +3714,18 @@ After the fixes of a fix-and-revalidate answer, build the project and run the af
 Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
 
 - **The code changes to meet the artifact** → leave the artifacts alone.
-- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The artifact wording is wrong but its intent stays** → change the artifact in the main thread with a write-back (see **Write-back** below) and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
 - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/skill:speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -3840,7 +3893,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
    **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 7 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-   NEVER hand-write or edit `speclink/changes/<name>/review.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+   NEVER hand-write or edit the review ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 9. **Branch on the blocking set**
 
@@ -3907,7 +3960,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -3941,7 +3994,7 @@ Answer "how did this come to be / why is it designed this way" for a feature: ma
 3. **Read the story behind each link**
 
    - For every discussion slug: `speclink discuss show <slug>` — pull the conclusion (the decision and its reasons) and the rounds where alternatives were weighed and rejected.
-   - For every change in the chain: its `proposal.md` sits inside the archived change directory named by `archivedDir` — pull the motivation ("Why") section.
+   - For every change in the chain: `speclink artifact cat proposal --change <name>` prints its proposal (an archived change answers to its own name) — pull the motivation ("Why") section. `archivedDir` is for display only.
    - Note the sibling changes from `promotedTo` and the capabilities that evolved alongside.
 
 4. **Locate the touched code**
@@ -3995,7 +4048,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -4050,8 +4103,18 @@ After the fixes of a fix-and-revalidate answer, build the project and run the af
 Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
 
 - **The code changes to meet the artifact** → leave the artifacts alone.
-- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The artifact wording is wrong but its intent stays** → change the artifact in the main thread with a write-back (see **Write-back** below) and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
 - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/skill:speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -4142,7 +4205,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
    **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
-   - If delta specs exist in `speclink/changes/<name>/specs/`:
+   - If the change's `deltaCapabilities` in `speclink list --json` names a capability (the field is absent or empty when the change has no delta spec), take each delta from `speclink artifact cat specs/<capability> --change "<name>"`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
        - Look for its implementation in the frozen patch first
@@ -4156,7 +4219,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
    **Behavior check** (only when `schemaName` is `no-spec-change` — the change has no delta specs, so it replaces Requirement Implementation Mapping, Scenario Coverage and Example Traceability below):
    - Start from the canonical specs the proposal's Why lists as checked.
-   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and search the canonical specs for the requirements that cover those code areas.
+   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and find the requirements that cover those code areas in the canonical specs: `speclink list --specs --json` names them, and `speclink show <capability> --item-type spec` prints one.
    - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
    - A promised behavior changed:
      - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
@@ -4270,7 +4333,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 11 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `speclink/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+    NEVER hand-write or edit the verify ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 13. **Branch on the blocking set**
 

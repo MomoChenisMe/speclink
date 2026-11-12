@@ -9,7 +9,12 @@ The apply body's own **Next steps** section does not apply here — this worktre
 
 ### W1. Commit the change in the worktree
 
-Follow the `/speclink:commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `{{SPEC_DIR}}changes/<change-name>/` plus the source files recorded in the change's evidence record), leave unrelated dirty files alone, and write the commit message in the project's language.
+{{#SPEC_IN_CHECKOUT}}
+Follow the `/speclink:commit` skill's attribution convention: stage only the files belonging to this change (its artifacts under `{{SPEC_DIR}}changes/<change-name>/` plus the source files that `speclink evidence show "<change-name>" --json` lists in `files`), leave unrelated dirty files alone, and put the commit message in the project's language.
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+Follow the `/speclink:commit` skill's attribution convention: stage only the files belonging to this change — the source files that `speclink evidence show "<change-name>" --json` lists in `files`; the spec documents are on the Server and are not part of this commit — leave unrelated dirty files alone, and put the commit message in the project's language.
+{{/SPEC_IN_CHECKOUT}}
 
 The commit lands on branch `speclink/<change-name>` inside the worktree. Nothing reaches the main branch yet.
 
@@ -70,7 +75,12 @@ Pick the path by the change's state: unchecked `[M]` manual tasks show in `specl
 
   > 這個 change 已在 worktree 內完成並提交，尚未合併回主分支。
   >
+  {{#SPEC_IN_CHECKOUT}}
   > 建議在這個 worktree 內跑品質關卡——`/speclink:review`（工藝品質）∥ `/speclink:verify`（規格符合度），或 `/speclink:quality`（兩站合跑），是否要跑由你決定。蓋章會寫進 change 的 meta，記得補一次提交，再執行 `/speclink:worktree-merge <change-name>` 收尾。
+  {{/SPEC_IN_CHECKOUT}}
+  {{^SPEC_IN_CHECKOUT}}
+  > 建議在這個 worktree 內跑品質關卡——`/speclink:review`（工藝品質）∥ `/speclink:verify`（規格符合度），或 `/speclink:quality`（兩站合跑），是否要跑由你決定。蓋完章後執行 `/speclink:worktree-merge <change-name>` 收尾（章在 Server 上，不用補提交）。
+  {{/SPEC_IN_CHECKOUT}}
   >
   > 想在蓋章前先看到 CI 結果的話，改走另一條路：先執行 `/speclink:worktree-merge <change-name>` 合併，再到主 checkout 跑品質關卡——worktree 分支只在本機、從不 push，CI 看不到它；合併時品質關卡的起點會一起承接到主 checkout。
 
@@ -86,7 +96,12 @@ Report alongside it: the worktree path, the branch name, the tasks completed thi
 
 Check these before you hand off:
 
+{{#SPEC_IN_CHECKOUT}}
 - [ ] The commit in the worktree holds only this change's artifacts and evidence-recorded source files (W1).
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- [ ] The commit in the worktree holds only this change's evidence-recorded source files — no spec document (W1).
+{{/SPEC_IN_CHECKOUT}}
 - [ ] W2 rebased only while neither station had a ticket; a conflict was aborted, never resolved; a successful rebase was followed by `speclink review prepare --base` (W2).
 - [ ] Nothing was merged, no worktree or branch was removed, and the main checkout was not touched (W3).
 - [ ] The hand-off names the worktree path, the branch and the tasks completed, takes the path the manual tasks call for, and lists review, verify and quality as the entries next to `/speclink:worktree-merge` (W4).
@@ -95,6 +110,11 @@ Check these before you hand off:
 
 {{NEXT_STEPS_LEAD}}
 
+{{#SPEC_IN_CHECKOUT}}
 - No unchecked `[M]` task → the quality stations here in the worktree: `/speclink:review` ∥ `/speclink:verify`, or `/speclink:quality` for both; commit the stamps, then `/speclink:worktree-merge <change-name>`
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- No unchecked `[M]` task → the quality stations here in the worktree: `/speclink:review` ∥ `/speclink:verify`, or `/speclink:quality` for both; then `/speclink:worktree-merge <change-name>` (the stamps are on the Server — nothing to commit for them)
+{{/SPEC_IN_CHECKOUT}}
 - Unchecked `[M]` tasks remain, or the user wants CI results before stamping (the worktree branch is local only, so CI never sees it) → `/speclink:worktree-merge <change-name>` first, then the quality stations and the manual tasks in the main checkout, then archive
 - Requirements changed mid-work → `/speclink:ingest <change-name>` inside this worktree, then resume apply here

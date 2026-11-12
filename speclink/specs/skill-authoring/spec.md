@@ -46,7 +46,7 @@ crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下
 #### Scenario: 技能引用依工具渲染
 
 - **WHEN** 原稿寫著 `/speclink:ingest`，分別以 claude、codex、copilot、pi、cursor 與自訂描述子渲染
-- **THEN** 六份技能檔中的引用依序為 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`、`speclink ingest`；Codex 與 pi 渲染的技能檔不含 `/speclink-` 形式的技能引用
+- **THEN** 六份技能檔中的引用依序為 `/speclink-ingest`、`$speclink-ingest`、`/speclink-ingest`、`/skill:speclink-ingest`、`/speclink-ingest`、`speclink-ingest`（技能的名稱，和動詞的 `speclink <動詞>` 分得開）；Codex 與 pi 渲染的技能檔不含 `/speclink-` 形式的技能引用
 
 ##### Example: 同一個引用在六種渲染目標
 
@@ -57,7 +57,7 @@ crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下
 | copilot | `/speclink-ingest` |
 | pi | `/skill:speclink-ingest` |
 | cursor | `/speclink-ingest` |
-| 自訂描述子 | `speclink ingest` |
+| 自訂描述子 | `speclink-ingest` |
 
 #### Scenario: 判斷標準不濃縮
 
@@ -66,20 +66,21 @@ crates/engine/speclink-core/assets/skills/ 下每一份技能原稿 SHALL 依下
 
 
 <!-- @trace
-source: add-pi-cursor-tools
-updated: 2026-11-10T21:23:31+08:00
+source: skills-verbs-second-wave
+updated: 2026-11-12T16:54:51+08:00
 -->
 
 ---
 ### Requirement: 寫法規範的機械守門
 
-speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 列出 crates/engine/speclink-core/assets/skills/ 下全部 `.md` 原稿，逐份檢查下列五項；任一項不符時測試 SHALL 失敗（非零 exit code），失敗訊息 SHALL 指名原稿檔名、違反的項目，以及規範出處「skill-authoring 規格『技能原稿的跨模型寫法規範』」：
+speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 列出 crates/engine/speclink-core/assets/skills/ 下全部 `.md` 原稿，逐份檢查下列六項；任一項不符時測試 SHALL 失敗（非零 exit code），失敗訊息 SHALL 指名原稿檔名、違反的項目，以及規範出處「skill-authoring 規格『技能原稿的跨模型寫法規範』」：
 
 1. **行數**：原稿行數 SHALL NOT 超過 500。行數以行為單位計算，LF 與 CRLF 結尾 SHALL 得到相同結果。
 2. **強調字上限**：以大小寫敏感、字詞邊界比對 MUST、NEVER、SHALL、ALWAYS、IMPORTANT、CRITICAL、STOP、NOT 的出現次數，次數 SHALL NOT 超過測試內登記表為該原稿登記的上限。登記表 SHALL 涵蓋 assets/skills/ 下每一份原稿；出現未登記的原稿時測試 SHALL 失敗，並要求登記上限。上限只在修改登記表時改變。
 3. **不寫歷史**：移除 fenced code block 與行內程式碼之後，原稿 SHALL NOT 含 `YYYY-MM-DD` 形式的日期（前後不接數字即算，緊貼中文或後接時間的日期也算）；原稿全文 SHALL NOT 含 `design D` 加數字的決策編號，也 SHALL NOT 含「design 決策」字樣。
 4. **工具退路**：原稿含 `AskUserQuestion` 時，SHALL 含 `plain text`（不分大小寫）；原稿含 `sub-agent`、`subagent` 或 `Agent tool` 時，SHALL 含 `cannot spawn` 或 `can't spawn`（不分大小寫）。單獨的 `inline` 不算退路：無關的句子也常含這個字。
 5. **渲染記號**：原稿 SHALL NOT 含寫死的技能引用——前一個字元不是英數字、底線、`.`、`/` 或 `:` 的 `/speclink-` 加小寫字母（`.claude/skills/speclink-apply` 這類路徑不算）；原稿 SHALL NOT 含 `$speclink-`，也 SHALL NOT 含 `--agent claude`、`--agent codex`、`--agent copilot`、`--agent pi` 或 `--agent cursor`。
+6. **規格路徑只在條件區塊裡**：規格資料夾的佔位符（`{{SPEC_DIR}}`）與 `.evidence.json`、`.meta.yaml` 兩個檔名 SHALL 只出現在「規格資料夾在這個 checkout」的條件區塊內。原稿 SHALL NOT 把規格資料夾的名稱寫死（`speclink/` 或 `openspec/` 後面接 changes、specs、discussions、manual、LANGUAGE.md 或 config.yaml）；工作資料夾 `.speclink/`、`speclink/<變更名稱>` 的分支名稱與技能資料夾的路徑不算。豁免的原稿 SHALL 列在測試內的封閉登記表，每筆附理由；未登記的原稿一律受檢。另外，不論是否豁免，原稿的條件區塊寫壞時（渲染會回報錯誤的情況）測試 SHALL 失敗並帶出原稿與行號；提到 SPEC_IN_CHECKOUT 的行 SHALL 是三種區塊記號之一——多一個空白或寫成小寫的記號會被渲染當成一般文字，兩種情況的內容都會留下。
 
 #### Scenario: 強調字超過登記上限
 
@@ -140,10 +141,35 @@ speclink-core 的整合測試（`cargo test -p speclink-core --test it`）SHALL 
 - **WHEN** assets/skills/ 新增一份 `example.md`，登記表沒有它
 - **THEN** 測試失敗，訊息含 `example.md` 並要求在登記表登記強調字上限
 
+#### Scenario: 區塊外的規格路徑
+
+- **WHEN** 一份未豁免的原稿在條件區塊之外含規格資料夾的佔位符
+- **THEN** 守門測試失敗，訊息指名該原稿與第六項
+
+#### Scenario: 區塊內的規格路徑通過
+
+- **WHEN** 一份原稿只在「規格資料夾在這個 checkout」的條件區塊內含規格資料夾的佔位符與 `.evidence.json`
+- **THEN** 守門測試的第六項通過
+
+#### Scenario: 豁免的原稿不受第六項檢查
+
+- **WHEN** 登記表列有 baseline 與它的理由，baseline 的原稿在區塊外含規格資料夾的佔位符
+- **THEN** 守門測試的第六項對 baseline 通過
+
+#### Scenario: 寫死的規格資料夾名稱
+
+- **WHEN** 一份未豁免的原稿寫著「Read `speclink/changes/<name>/tasks.md`」
+- **THEN** 守門測試失敗，訊息指名該原稿、第六項與命中的 `speclink/changes`
+
+#### Scenario: 拼錯的區塊記號
+
+- **WHEN** 一份原稿的某一行寫著 `{{ #SPEC_IN_CHECKOUT}}`（多一個空白）
+- **THEN** 守門測試失敗，訊息指名該原稿並帶出那一行的內容
+
 
 <!-- @trace
-source: add-pi-cursor-tools
-updated: 2026-11-10T21:23:31+08:00
+source: skills-verbs-second-wave
+updated: 2026-11-12T16:54:51+08:00
 -->
 
 ---
@@ -266,4 +292,39 @@ speclink 渲染的每一份產品技能檔（registry 中的全部技能；claud
 <!-- @trace
 source: add-pi-cursor-tools
 updated: 2026-11-10T21:23:31+08:00
+-->
+
+---
+### Requirement: 原稿的條件區塊
+
+技能原稿 SHALL 能以條件區塊標示只在一種情況產生的內容：`{{#SPEC_IN_CHECKOUT}}` 到 `{{/SPEC_IN_CHECKOUT}}` 之間的行只在「規格資料夾位於這個 checkout」時留下；`{{^SPEC_IN_CHECKOUT}}` 到 `{{/SPEC_IN_CHECKOUT}}` 之間的行只在不位於時留下。記號 SHALL 各自獨佔一行，記號行 SHALL NOT 出現在渲染結果。區塊 SHALL NOT 巢狀；沒有關閉的區塊、沒有開啟的關閉記號、名稱不是 SPEC_IN_CHECKOUT 的區塊記號 SHALL 讓渲染回報錯誤並指出原稿與行號。條件的名稱 SHALL 只有這一個。區塊的處理 SHALL 先於其他佔位符的取代，並 SHALL 同樣套用於被插入的共用片段。LF 與 CRLF 結尾的原稿 SHALL 得到相同的結果。渲染結果 SHALL NOT 殘留任何 `{{`。
+
+#### Scenario: 兩種情況各留下自己的區塊
+
+- **WHEN** 原稿依序含一行一般文字、一個「在」的區塊（內含一行甲）與一個「不在」的區塊（內含一行乙），分別以「在」與「不在」渲染
+- **THEN** 「在」的結果含一般文字與甲、不含乙；「不在」的結果含一般文字與乙、不含甲；兩者都不含區塊記號
+
+#### Scenario: 沒有關閉的區塊
+
+- **WHEN** 原稿有開啟記號而沒有對應的關閉記號
+- **THEN** 渲染回報錯誤，指出原稿與開啟記號的行號
+
+#### Scenario: 巢狀的區塊
+
+- **WHEN** 原稿在一個區塊內又開啟另一個區塊
+- **THEN** 渲染回報錯誤
+
+#### Scenario: 不認得的條件名稱
+
+- **WHEN** 原稿含 `{{#REMOTE}}` 這樣的區塊記號
+- **THEN** 渲染回報錯誤，指出不認得的名稱
+
+#### Scenario: CRLF 的原稿
+
+- **WHEN** 同一份原稿分別以 LF 與 CRLF 結尾渲染
+- **THEN** 兩個結果在行結尾正規化後相同
+
+<!-- @trace
+source: skills-verbs-second-wave
+updated: 2026-11-12T16:54:51+08:00
 -->
