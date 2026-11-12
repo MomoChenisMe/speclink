@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.57.0"
+  version: "v1.58.0"
   generatedBy: "Speclink"
 ---
 
@@ -281,6 +281,25 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
    git commit -m "<message>"
    ```
 
+9a. **Report the landing**
+
+    Do this only after `git commit` succeeded. The commit is where this change's code landed; record it. Take the commit from `git rev-parse HEAD` and pass it, so the report names it wherever the verb runs:
+
+    ```bash
+    speclink change landed "<change-name>" --commit "<commit>"
+    ```
+
+    Skip this step in these two cases, and say which one applied:
+
+    - The current branch (`git branch --show-current`) is `speclink/<change-name>`, the change's branch of a linked worktree. That commit is not the landing yet: `$speclink-worktree-merge` reports it after the merge.
+    - The archive sub-flow ran (step 7a). The change is archived now, and a landing report needs an active change.
+
+    On any other branch, report. The engine does not know which branch is the main one; a host that needs to know checks the recorded commit and branch itself.
+
+    When the verb is refused (for example, a Server that has no such route), tell the user its message and continue with step 10. Leave the commit as it is: do not undo it, and do not make it again.
+
+    The report is recorded in the change's own data file, so that file shows as modified after this step. Say so in the result: it goes into this change's next commit.
+
 10. **Show result**
 
     ```bash
@@ -297,6 +316,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
 **Commit:** <short-hash> speclink(<change-name>): <summary>
 **Files:** <N> files committed (<A> artifacts, <S> source files)
 **Tasks:** <completed>/<total> complete
+**Landing:** reported ✓ — or "left to the worktree merge", "not reported: the change is archived", or the verb's refusal message
 ```
 
 **Output On Nothing To Commit**

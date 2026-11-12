@@ -90,8 +90,9 @@ fn verb_line(words: &[String], leaf: &mut clap::Command) -> Option<String> {
 
 /// The shortest argv that converts this leaf to an engine command, or `None`
 /// when the leaf has none: the verb words plus a placeholder for each
-/// required argument, then the same with `--stdin` when the verb has that
-/// flag (some verbs convert only with it). The placeholder is a valid
+/// required argument, then the same with one optional flag (some verbs
+/// convert only with one: content from `--stdin`, or `change landed`'s
+/// `--commit` when the caller gives no HEAD). The placeholder is a valid
 /// kebab-case name, so the conversion's name checks (a tool name) accept it.
 fn minimal_argv_of(words: &[String], leaf: &clap::Command) -> Option<Vec<String>> {
     let mut argv = words.to_vec();
@@ -125,9 +126,13 @@ fn minimal_argv_of(words: &[String], leaf: &clap::Command) -> Option<Vec<String>
     if converts(&argv) {
         return Some(argv);
     }
-    let has_stdin_flag = leaf.get_arguments().any(|a| a.get_long() == Some("stdin") && !a.is_hide_set());
-    argv.push("--stdin".to_string());
-    (has_stdin_flag && converts(&argv)).then_some(argv)
+    leaf.get_arguments()
+        .filter(|a| !a.is_required_set() && !a.is_hide_set() && a.get_long().is_some())
+        .find_map(|arg| {
+            let mut with_flag = argv.clone();
+            push(&mut with_flag, arg);
+            converts(&with_flag).then_some(with_flag)
+        })
 }
 
 fn converts(argv: &[String]) -> bool {
@@ -238,6 +243,17 @@ mod tests {
         let line = description.lines().find(|l| l.starts_with("- evidence show ")).expect("a line for evidence show");
         assert!(line.contains("<CHANGE>"), "{line}");
         assert_eq!(minimal_argv("evidence show"), Some(vec!["evidence".into(), "show".into(), "demo".into()]));
+    }
+
+    #[test]
+    fn change_landed_is_listed_and_converts_with_its_commit_flag() {
+        // A host has no checkout: without `--commit` the verb has no commit to
+        // report, so the shortest argv that converts names one.
+        assert!(listed().contains("change landed"));
+        assert_eq!(
+            minimal_argv("change landed"),
+            Some(vec!["change".into(), "landed".into(), "demo".into(), "--commit".into(), "demo".into()])
+        );
     }
 
     #[test]

@@ -395,6 +395,37 @@ pub struct RankChangeResponse {
     pub position: String,
 }
 
+/// `POST /changes/{name}/in-progress` request body. An older client sends no
+/// body at all; the mark then lands without a branch.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MarkInProgressRequest {
+    /// The branch the client's checkout is on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+/// `POST /changes/{name}/landed` request body: the commit the change's code
+/// landed on, and optionally the change's branch (it replaces the recorded
+/// one). The server stores both and checks their shape only.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportLandedRequest {
+    pub commit: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
+/// `POST /changes/{name}/landed` response: the CLI `change landed --json` shape.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ReportLandedResponse {
+    pub change: String,
+    pub commit: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+}
+
 /// `POST /changes/{name}/schema` request body: the schema to switch to.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -504,6 +535,10 @@ pub struct StampReviewRequest {
     pub scope: Vec<ReviewScopeEntryDto>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub missing: Vec<String>,
+    /// The commit the client's checkout is on. Absent from an older client:
+    /// the stamp then records none. The server checks its shape only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub head_commit: Option<String>,
 }
 
 /// `reviewed_scope` 清單項的 wire 形狀。
@@ -944,6 +979,7 @@ mod tests {
             agent: Some("claude".into()),
             scope: vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: "abc".into() }],
             missing: vec!["src/gone.rs".into()],
+            head_commit: None,
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["scope"][0]["path"], "src/lib.rs");
@@ -1061,5 +1097,39 @@ mod tests {
         }
         let ticket = serde_json::to_string(&schemars::schema_for!(ReviewTicketResponse)).unwrap();
         assert!(ticket.contains("content"), "ticket schema exposes content: {ticket}");
+    }
+
+    // --- station-status-and-landing：落地回報、蓋章的 headCommit、開工的 branch ---
+
+    #[test]
+    fn a_landing_report_request_needs_a_commit_and_takes_an_optional_branch() {
+        let req: ReportLandedRequest = serde_json::from_str(r#"{"commit":"0123456"}"#).unwrap();
+        assert_eq!((req.commit.as_str(), req.branch), ("0123456", None));
+        assert!(serde_json::from_str::<ReportLandedRequest>(r#"{"branch":"x"}"#).is_err(), "commit is required");
+        let req = ReportLandedRequest { commit: "0123456".into(), branch: Some("speclink/demo".into()) };
+        assert_eq!(
+            serde_json::to_value(&req).unwrap(),
+            serde_json::json!({ "commit": "0123456", "branch": "speclink/demo" })
+        );
+        let res = ReportLandedResponse { change: "demo".into(), commit: "0123456".into(), branch: None };
+        assert_eq!(serde_json::to_value(&res).unwrap(), serde_json::json!({ "change": "demo", "commit": "0123456" }));
+    }
+
+    #[test]
+    fn a_stamp_request_takes_an_optional_head_commit() {
+        let old: StampReviewRequest = serde_json::from_str(r#"{"scope":[]}"#).unwrap();
+        assert!(old.head_commit.is_none());
+        assert!(serde_json::to_value(&old).unwrap().get("headCommit").is_none(), "absent is not serialized");
+        let new: StampReviewRequest = serde_json::from_str(r#"{"scope":[],"headCommit":"0123456789ab"}"#).unwrap();
+        assert_eq!(new.head_commit.as_deref(), Some("0123456789ab"));
+    }
+
+    #[test]
+    fn an_in_progress_request_takes_an_optional_branch() {
+        let old: MarkInProgressRequest = serde_json::from_str("{}").unwrap();
+        assert!(old.branch.is_none());
+        assert_eq!(serde_json::to_value(&old).unwrap(), serde_json::json!({}));
+        let new: MarkInProgressRequest = serde_json::from_str(r#"{"branch":"feature/x"}"#).unwrap();
+        assert_eq!(new.branch.as_deref(), Some("feature/x"));
     }
 }

@@ -17,7 +17,7 @@ fn stamp_demo(store: &TestStore, accept: bool) -> Result<()> {
     let files =
         |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec());
     let present = |p: &str| REPO.iter().any(|(k, _)| *k == p);
-    stamp(&VERIFY, store, "demo", accept, None, None, &files, &present)
+    stamp(&VERIFY, store, "demo", accept, None, None, None, &files, &present)
 }
 
 #[test]
@@ -152,7 +152,7 @@ mod stamp_rounds {
         let files =
             |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec());
         let present = |p: &str| REPO.iter().any(|(k, _)| *k == p);
-        stamp(st, store, "demo", accept, None, None, &files, &present)
+        stamp(st, store, "demo", accept, None, None, None, &files, &present)
     }
 
     /// meta 原文裡 `<prefix>_<suffix>: ` 開頭的每一行的值。
@@ -242,6 +242,243 @@ mod stamp_rounds {
             assert_eq!(*store.meta_writes.borrow(), 0, "{}", st.noun);
             assert!(store.artifact_exists("demo", st.doc), "{}: ticket survives", st.noun);
         }
+    }
+}
+
+/// 蓋章記錄程式碼的 commit（spec review-station「蓋章記錄程式碼的 commit」、verify-station
+/// 「驗證蓋章記錄程式碼的 commit」）：兩站同一條規則，每個測試都對兩站各跑一次。
+mod stamp_commit {
+    use super::*;
+
+    const CLEAN: &str = "**Scope**: crates/a/src/lib.rs\n";
+    const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    /// 任務全勾、`st` 站有一輪乾淨工單的 change。
+    fn ticketed(st: &Station, meta: &str) -> TestStore {
+        let store = TestStore::with_meta("demo", meta);
+        store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+        add_round(st, &store, "demo", CLEAN).expect("round");
+        store
+    }
+
+    fn stamp_at(st: &Station, store: &TestStore, head_commit: Option<&str>) -> Result<()> {
+        let files =
+            |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec());
+        let present = |p: &str| REPO.iter().any(|(k, _)| *k == p);
+        stamp(st, store, "demo", false, None, None, head_commit, &files, &present)
+    }
+
+    fn commit_of(st: &Station, store: &TestStore) -> Option<String> {
+        let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("stamped meta parses");
+        meta.stamp_commit(st).map(str::to_string)
+    }
+
+    fn commit_lines(st: &Station, raw: &str) -> usize {
+        let key = format!("{}_commit:", st.meta_prefix);
+        raw.lines().filter(|l| l.starts_with(key.as_str())).count()
+    }
+
+    #[test]
+    fn a_stamp_with_a_commit_records_it_in_the_same_write() {
+        // Scenario「蓋章記下 HEAD」：commit 與章的其他欄位同一次寫入，工單同時刪除。
+        for st in [&REVIEW, &VERIFY] {
+            let store = ticketed(st, META);
+            stamp_at(st, &store, Some(SHA)).expect("stamp");
+            assert_eq!(commit_of(st, &store).as_deref(), Some(SHA), "{}", st.noun);
+            let raw = store.meta("demo");
+            assert_eq!(commit_lines(st, &raw), 1, "{}: {raw}", st.noun);
+            assert_eq!(*store.meta_writes.borrow(), 1, "{}: one meta write", st.noun);
+            assert!(!store.artifact_exists("demo", st.doc), "{}: ticket deleted", st.noun);
+            assert!(is_stamped(ChangeMeta::from_text(Some(&raw)).unwrap().anchors(st)), "{}", st.noun);
+        }
+    }
+
+    #[test]
+    fn a_stamp_without_a_commit_writes_no_commit_key() {
+        // Scenario「不是 git checkout 時照常蓋章」。
+        for st in [&REVIEW, &VERIFY] {
+            let store = ticketed(st, META);
+            stamp_at(st, &store, None).expect("stamp");
+            assert_eq!(commit_lines(st, &store.meta("demo")), 0, "{}", st.noun);
+            assert_eq!(commit_of(st, &store), None, "{}", st.noun);
+        }
+    }
+
+    #[test]
+    fn the_scope_injected_stamp_records_the_commit_too() {
+        for st in [&REVIEW, &VERIFY] {
+            let store = ticketed(st, META);
+            let scope = vec![ReviewedScopeEntry {
+                path: "crates/a/src/lib.rs".into(),
+                hash: content_fingerprint("fn a() {}\n"),
+            }];
+            stamp_with_scope(st, &store, "demo", false, None, None, Some(SHA), scope, vec![])
+                .expect("stamp");
+            assert_eq!(commit_of(st, &store).as_deref(), Some(SHA), "{}", st.noun);
+        }
+    }
+
+    #[test]
+    fn a_malformed_commit_refuses_with_zero_writes() {
+        // 7 到 64 個十六進位字元；其餘一律是呼叫端參數錯誤，meta 與工單都不動。
+        let too_long = "a".repeat(65);
+        let bad = ["not-a-sha", "012345", too_long.as_str(), "", "   ", "0123 4567", "0123456\nbranch: x", "0123456: x"];
+        for st in [&REVIEW, &VERIFY] {
+            for value in bad {
+                let store = ticketed(st, META);
+                let err = stamp_at(st, &store, Some(value)).expect_err("malformed commit must refuse");
+                assert!(
+                    err.downcast_ref::<crate::command::InvalidContent>().is_some(),
+                    "{}: {value:?} is a caller error: {err}",
+                    st.noun
+                );
+                assert_eq!(store.meta("demo"), META, "{}: {value:?}", st.noun);
+                assert_eq!(*store.meta_writes.borrow(), 0, "{}: {value:?}", st.noun);
+                assert!(store.artifact_exists("demo", st.doc), "{}: ticket survives", st.noun);
+                let scope = vec![ReviewedScopeEntry { path: "crates/a/src/lib.rs".into(), hash: "aa".into() }];
+                stamp_with_scope(st, &store, "demo", false, None, None, Some(value), scope, vec![])
+                    .expect_err("the scope-injected stamp refuses too");
+                assert_eq!(*store.meta_writes.borrow(), 0, "{}: {value:?}", st.noun);
+            }
+        }
+    }
+
+    #[test]
+    fn the_shortest_longest_and_padded_commits_are_accepted() {
+        let longest = "f".repeat(64);
+        for st in [&REVIEW, &VERIFY] {
+            for (given, want) in [("0123456", "0123456"), (longest.as_str(), longest.as_str()), ("  ABCdef0 \n", "ABCdef0")] {
+                let store = ticketed(st, META);
+                stamp_at(st, &store, Some(given)).expect("stamp");
+                assert_eq!(commit_of(st, &store).as_deref(), Some(want), "{}: {given:?}", st.noun);
+            }
+        }
+    }
+
+    #[test]
+    fn a_commit_of_digits_only_reads_back_as_the_same_text() {
+        // 全數字的短 commit 不得被 YAML 讀成數字（讀成數字時整份 meta 解析失敗）。
+        for st in [&REVIEW, &VERIFY] {
+            for digits in ["1234567", "0000000", "1234567890"] {
+                let store = ticketed(st, META);
+                stamp_at(st, &store, Some(digits)).expect("stamp");
+                assert_eq!(commit_of(st, &store).as_deref(), Some(digits), "{}", st.noun);
+            }
+        }
+    }
+
+    #[test]
+    fn a_restamp_replaces_or_drops_the_recorded_commit() {
+        // Scenario「清章時一併清除」的重蓋路徑：commit 與章的其他欄位同進退。
+        for st in [&REVIEW, &VERIFY] {
+            let old = format!("{META}{}_commit: \"abc1234\"\n", st.meta_prefix);
+            let store = ticketed(st, &old);
+            stamp_at(st, &store, Some(SHA)).expect("re-stamp with a commit");
+            assert_eq!(commit_lines(st, &store.meta("demo")), 1, "{}", st.noun);
+            assert_eq!(commit_of(st, &store).as_deref(), Some(SHA), "{}", st.noun);
+
+            let store = ticketed(st, &old);
+            stamp_at(st, &store, None).expect("re-stamp without a commit");
+            assert_eq!(commit_lines(st, &store.meta("demo")), 0, "{}: the old commit must go", st.noun);
+        }
+    }
+
+    #[test]
+    fn the_commit_is_one_of_the_keys_cleared_with_the_stamp() {
+        // 清章的欄位清單只有這一份（`change schema` 用它清驗證的章）。
+        for st in [&REVIEW, &VERIFY] {
+            let key = format!("{}_commit", st.meta_prefix);
+            assert!(st.stamp_keys().contains(&key), "{}", st.noun);
+        }
+    }
+
+    #[test]
+    fn the_commit_does_not_take_part_in_freshness() {
+        // Scenario「commit 不影響凍結判定」：章記下的 commit 與目前的 HEAD 無關，
+        // 任務數與 scope 內容沒有變就是 Fresh。
+        let rf = |p: &str| REPO.iter().find(|(k, _)| *k == p).map(|(_, v)| v.as_bytes().to_vec());
+        let counts = crate::tasks::counts(&crate::tasks::parse("- [x] 1 a\n"));
+        for st in [&REVIEW, &VERIFY] {
+            let store = ticketed(st, META);
+            stamp_at(st, &store, Some(SHA)).expect("stamp");
+            let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
+            assert_eq!(freshness(st, &meta, &counts, &rf), Freshness::Fresh, "{}", st.noun);
+        }
+    }
+}
+
+/// 關卡狀態的判定（station-status-and-landing D1）：`show --json` 與線上回應共用這一份。
+mod station_status {
+    use super::*;
+
+    const STAMPED: &str = "schema: spec-driven\n\
+reviewed_at: 2026-11-02T10:00:00+08:00\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\n\
+reviewed_tasks_total: 12\nreviewed_rounds: 3\nreviewed_commit: \"0123456789ab\"\n\
+reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash: bb\n";
+
+    fn meta(text: &str) -> ChangeMeta {
+        ChangeMeta::from_text(Some(text)).expect("meta parses")
+    }
+
+    #[test]
+    fn an_open_ticket_is_in_progress_even_over_an_earlier_stamp() {
+        // 判定第一條：工單存在 → 進行中。章還在 meta 裡時也一樣，章的欄位不帶出。
+        for text in [META, STAMPED] {
+            let status = status(&REVIEW, &meta(text), true);
+            assert_eq!(status.phase, StationPhase::InProgress);
+            assert_eq!(status.to_json(), serde_json::json!({ "state": "inProgress" }));
+            assert!(status.scope.is_empty());
+        }
+    }
+
+    #[test]
+    fn a_complete_stamp_without_a_ticket_is_stamped_with_its_fields() {
+        let status = status(&REVIEW, &meta(STAMPED), false);
+        assert_eq!(status.phase, StationPhase::Stamped);
+        assert_eq!(
+            status.to_json(),
+            serde_json::json!({
+                "state": "stamped",
+                "stampedAt": "2026-11-02",
+                "stampedBy": "Rev <r@example.com>",
+                "stampedWith": "claude",
+                "rounds": 3,
+                "tasksTotal": 12,
+                "commit": "0123456789ab",
+            }),
+            "the scope stays out of the JSON form"
+        );
+        let paths: Vec<&str> = status.scope.iter().map(|e| e.path.as_str()).collect();
+        assert_eq!(paths, ["src/a.rs", "src/b.rs"]);
+    }
+
+    #[test]
+    fn a_stamp_reports_only_the_fields_it_has() {
+        let bare = "reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: a\n    hash: h\n";
+        assert_eq!(
+            status(&REVIEW, &meta(bare), false).to_json(),
+            serde_json::json!({ "state": "stamped", "stampedAt": "2026-11-02", "rounds": 0, "tasksTotal": 1 }),
+            "no by, with or commit key; rounds absent from an old stamp reads as 0"
+        );
+    }
+
+    #[test]
+    fn no_ticket_and_no_complete_stamp_is_none() {
+        // 章不完整（沒有 scope）讀作未蓋章，和引擎既有的判斷同一條。
+        for text in [META, "reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\n", "reviewed_rounds: 4\n"] {
+            let status = status(&REVIEW, &meta(text), false);
+            assert_eq!(status.phase, StationPhase::None, "{text:?}");
+            assert_eq!(status.to_json(), serde_json::json!({ "state": "none" }));
+        }
+    }
+
+    #[test]
+    fn the_two_stations_read_their_own_fields() {
+        // Scenario「兩個關卡各自獨立」：審查已蓋章、驗證有未結的工單。
+        let m = meta(STAMPED);
+        assert_eq!(status(&REVIEW, &m, false).phase, StationPhase::Stamped);
+        assert_eq!(status(&VERIFY, &m, true).phase, StationPhase::InProgress);
+        assert_eq!(status(&VERIFY, &m, false).phase, StationPhase::None);
     }
 }
 
@@ -611,6 +848,7 @@ mod review {
             accept,
             Some("Rev <r@example.com>"),
             Some("claude"),
+            None,
             &files(REPO),
             &present(REPO),
         )
@@ -766,7 +1004,7 @@ mod review {
         add_round(&REVIEW, &store, "demo", ROUND_1).expect("round 1: a + b");
         add_round(&REVIEW, &store, "demo", CLEAN_ROUND).expect("round 2 clean");
         let survivors: &[(&str, &str)] = &[("crates/a/src/lib.rs", FILE_A)];
-        stamp(&REVIEW, &store, "demo", false, None, None, &files(survivors), &present(survivors))
+        stamp(&REVIEW, &store, "demo", false, None, None, None, &files(survivors), &present(survivors))
             .expect("deleted scope file must not block the stamp");
         assert!(!store.artifact_exists("demo", REVIEW_DOC), "ticket must be deleted");
         let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
@@ -827,7 +1065,7 @@ mod review {
             scope_entry("crates/b/src/util.rs", &content_fingerprint(FILE_B)),
             scope_entry("crates/a/src/lib.rs", &content_fingerprint(FILE_A)),
         ];
-        stamp_with_scope(&REVIEW, &store, "demo", false, Some("Rev <r@example.com>"), Some("claude"), entries, vec![])
+        stamp_with_scope(&REVIEW, &store, "demo", false, Some("Rev <r@example.com>"), Some("claude"), None, entries, vec![])
             .expect("provided-scope stamp");
         assert!(!store.artifact_exists("demo", REVIEW_DOC), "ticket must be deleted");
         let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
@@ -845,7 +1083,7 @@ mod review {
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&REVIEW, &store, "demo", ROUND_1).expect("round"); // 聯集：a + b
         let missing = vec![scope_entry("crates/a/src/lib.rs", &content_fingerprint(FILE_A))];
-        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, missing, vec![])
+        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, None, missing, vec![])
             .expect_err("missing path must refuse");
         assert!(err.to_string().contains("crates/b/src/util.rs"), "must name the gap: {err}");
         let extra = vec![
@@ -853,7 +1091,7 @@ mod review {
             scope_entry("crates/b/src/util.rs", &content_fingerprint(FILE_B)),
             scope_entry("crates/c/extra.rs", &content_fingerprint("x")),
         ];
-        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, extra, vec![])
+        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, None, extra, vec![])
             .expect_err("extra path must refuse");
         assert!(err.to_string().contains("crates/c/extra.rs"), "must name the extra: {err}");
         assert_eq!(*store.meta_writes.borrow(), 0);
@@ -871,7 +1109,7 @@ mod review {
             scope_entry("crates/a/src/lib.rs", &content_fingerprint(FILE_A)),
             scope_entry("crates/a/src/lib.rs", &content_fingerprint("tampered")),
         ];
-        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, dupes, vec![])
+        let err = stamp_with_scope(&REVIEW, &store, "demo", true, None, None, None, dupes, vec![])
             .expect_err("duplicate path must refuse");
         assert!(err.to_string().contains("crates/a/src/lib.rs"), "must name the dupe: {err}");
         assert_eq!(*store.meta_writes.borrow(), 0);
@@ -899,6 +1137,7 @@ mod review {
             false,
             None,
             None,
+            None,
             entries,
             vec!["crates/b/src/util.rs".into()],
         )
@@ -923,17 +1162,18 @@ mod review {
             true,
             None,
             None,
+            None,
             a_entry(),
             vec!["crates/a/src/lib.rs".into()],
         )
         .expect_err("overlap must refuse");
         assert!(err.to_string().contains("crates/a/src/lib.rs"), "names the overlap: {err}");
         let err =
-            stamp_with_scope(&REVIEW, &store, "demo", true, None, None, a_entry(), vec!["not/in/union.rs".into()])
+            stamp_with_scope(&REVIEW, &store, "demo", true, None, None, None, a_entry(), vec!["not/in/union.rs".into()])
                 .expect_err("outside-union declaration must refuse");
         assert!(err.to_string().contains("not/in/union.rs"), "names the stray: {err}");
         let err =
-            stamp_with_scope(&REVIEW, &store, "demo", true, None, None, vec![], vec!["crates/a/src/lib.rs".into()])
+            stamp_with_scope(&REVIEW, &store, "demo", true, None, None, None, vec![], vec!["crates/a/src/lib.rs".into()])
                 .expect_err("empty remainder must refuse");
         assert!(err.to_string().contains("crates/a/src/lib.rs"), "names the gone files: {err}");
         assert_eq!(*store.meta_writes.borrow(), 0);
@@ -949,7 +1189,7 @@ mod review {
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&REVIEW, &store, "demo", "**Scope**: src/@odd #1.rs\n").expect("round");
         let repo: &[(&str, &str)] = &[("src/@odd #1.rs", FILE_A)];
-        stamp(&REVIEW, &store, "demo", false, None, None, &files(repo), &present(repo)).expect("stamp");
+        stamp(&REVIEW, &store, "demo", false, None, None, None, &files(repo), &present(repo)).expect("stamp");
         let raw = store.meta("demo");
         let meta = ChangeMeta::from_text(Some(&raw)).expect("re-parse must survive: {raw}");
         assert_eq!(meta.reviewed_scope.len(), 1);
@@ -981,7 +1221,7 @@ mod review {
         let store = store_with_change();
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&REVIEW, &store, "demo", "**Scope**: assets/logo.png\n").expect("round");
-        let err = stamp(&REVIEW, &store, "demo", false, None, None, &files(&[]), &|_: &str| true)
+        let err = stamp(&REVIEW, &store, "demo", false, None, None, None, &files(&[]), &|_: &str| true)
             .expect_err("must refuse");
         let msg = err.to_string();
         assert!(msg.contains("assets/logo.png"), "names the file: {msg}");
@@ -999,7 +1239,7 @@ mod review {
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&REVIEW, &store, "demo", "**Scope**: assets/logo.png\n").expect("round");
         let repo: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A)];
-        stamp(&REVIEW, &store, "demo", false, None, None, &byte_files(repo), &byte_present(repo))
+        stamp(&REVIEW, &store, "demo", false, None, None, None, &byte_files(repo), &byte_present(repo))
             .expect("a present non-UTF-8 scope file must stamp");
         let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
         // 位元組規則本身由 content_fingerprint_bytes 的 golden 測試釘住；這裡釘
@@ -1027,6 +1267,7 @@ mod review {
             false,
             Some("Rev: the #1 <r@example.com>\nboard_rank: injected"),
             Some("codex: cli"),
+            None,
             &files(REPO),
             &present(REPO),
         )
@@ -1049,7 +1290,7 @@ mod review {
         store.put_artifact("demo", "tasks.md", TASKS_5_DONE);
         add_round(&REVIEW, &store, "demo", CLEAN_ROUND).expect("round");
         let entries = vec![scope_entry("crates/a/src/lib.rs", "dead\nbeef: injected")];
-        stamp_with_scope(&REVIEW, &store, "demo", false, None, None, entries, vec![]).expect("stamp");
+        stamp_with_scope(&REVIEW, &store, "demo", false, None, None, None, entries, vec![]).expect("stamp");
         let raw = store.meta("demo");
         ChangeMeta::from_text(Some(&raw)).expect("meta must still parse: {raw}");
         assert!(!raw.contains("\nbeef: injected"), "no field injection: {raw}");
@@ -1881,6 +2122,7 @@ mod verify {
             accept,
             Some("Ver <v@example.com>"),
             Some("claude"),
+            None,
             &files(REPO),
             &present(REPO),
         )
@@ -2071,6 +2313,7 @@ mod verify {
             false,
             Some("Ver: the #1 <v@example.com>\nboard_rank: injected"),
             Some("codex: cli"),
+            None,
             &files(repo),
             &present(repo),
         )
@@ -2090,7 +2333,7 @@ mod verify {
         let store = finished_change();
         add_round(&VERIFY, &store, "demo", "**Scope**: assets/logo.png\n").expect("round");
         let repo: &[(&str, &[u8])] = &[("assets/logo.png", BIN_A)];
-        stamp(&VERIFY, &store, "demo", false, None, None, &byte_files(repo), &byte_present(repo))
+        stamp(&VERIFY, &store, "demo", false, None, None, None, &byte_files(repo), &byte_present(repo))
             .expect("a present non-UTF-8 scope file must stamp");
         let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("parses");
         // 位元組規則本身由 review 側的 golden 測試釘住；這裡釘站別 wiring：
@@ -2109,12 +2352,12 @@ mod verify {
         // 拒章路由訊息不同，分別比對區別性措辭——只查路徑會讓路由接錯仍綠燈。
         let store = finished_change();
         add_round(&VERIFY, &store, "demo", CLEAN_ROUND).expect("round");
-        let err = stamp(&VERIFY, &store, "demo", false, None, None, &|_: &str| None, &|_: &str| true)
+        let err = stamp(&VERIFY, &store, "demo", false, None, None, None, &|_: &str| None, &|_: &str| true)
             .expect_err("present but unreadable must refuse");
         let msg = err.to_string();
         assert!(msg.contains("crates/a/src/lib.rs"), "names the file: {msg}");
         assert!(msg.contains("must be present and readable"), "I/O route wording: {msg}");
-        let err = stamp(&VERIFY, &store, "demo", false, None, None, &|_: &str| None, &|_: &str| false)
+        let err = stamp(&VERIFY, &store, "demo", false, None, None, None, &|_: &str| None, &|_: &str| false)
             .expect_err("all-gone union must refuse");
         let msg = err.to_string();
         assert!(msg.contains("crates/a/src/lib.rs"), "names the file: {msg}");

@@ -78,6 +78,10 @@ pub struct ChangeMeta {
     /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
     #[serde(default)]
     pub reviewed_scope: Vec<ReviewedScopeEntry>,
+    /// 蓋章時呼叫端回報的 commit（station-status-and-landing D3）。引擎只存不查，
+    /// 章的凍結判定不看它；它和章的其他欄位同進退。
+    #[serde(default)]
+    pub reviewed_commit: Option<String>,
     /// 歷次蓋章累加的審查回合數（process-cost-metrics D1）。不是非負整數時整份
     /// meta 解析失敗——蓋章走 fail-closed 拒絕。
     #[serde(default)]
@@ -97,9 +101,24 @@ pub struct ChangeMeta {
     /// 內容指紋錨：範圍檔 path＋hash 清單（缺席讀作空）。
     #[serde(default)]
     pub verified_scope: Vec<ReviewedScopeEntry>,
+    /// 驗證蓋章時呼叫端回報的 commit；與 `reviewed_commit` 同規則。
+    #[serde(default)]
+    pub verified_commit: Option<String>,
     /// 歷次蓋章累加的驗證回合數；與 `reviewed_rounds` 同規則。
     #[serde(default)]
     pub verified_rounds: Option<u64>,
+    /// 這個變更所在的分支（station-status-and-landing D4）：開工時由呼叫端回報，
+    /// `change landed --branch` 會覆寫。引擎不讀 git，也不檢查它是否存在。
+    #[serde(default)]
+    pub branch: Option<String>,
+    /// 落地記錄（station-status-and-landing D5）：`change landed` 回報的 commit、回報的
+    /// 時間（RFC 3339 原文，不收斂成日期）與回報的人。引擎只存，不依它們做任何判斷。
+    #[serde(default)]
+    pub landed_commit: Option<String>,
+    #[serde(default)]
+    pub landed_at: Option<String>,
+    #[serde(default)]
+    pub landed_by: Option<String>,
     // `archived_at`（封存時戳）刻意不是欄位：只有流程成本讀它、逐鍵讀原文，舊版在
     // 殘留值之後再追加一行時也不會讓整份 meta 因重複鍵解析失敗。
 }
@@ -184,6 +203,23 @@ impl ChangeMeta {
         match st.id {
             StationId::Review => self.reviewed_rounds,
             StationId::Verify => self.verified_rounds,
+        }
+    }
+
+    /// 一個品質站的章是誰蓋的、用什麼工具（`<prefix>_by`、`<prefix>_with`）。與
+    /// [`Self::anchors`] 同樣對 `StationId` 窮舉 match。
+    pub fn stamp_attribution(&self, st: &Station) -> (Option<&str>, Option<&str>) {
+        match st.id {
+            StationId::Review => (self.reviewed_by.as_deref(), self.reviewed_with.as_deref()),
+            StationId::Verify => (self.verified_by.as_deref(), self.verified_with.as_deref()),
+        }
+    }
+
+    /// 一個品質站蓋章時記下的 commit。與 [`Self::anchors`] 同樣對 `StationId` 窮舉 match。
+    pub fn stamp_commit(&self, st: &Station) -> Option<&str> {
+        match st.id {
+            StationId::Review => self.reviewed_commit.as_deref(),
+            StationId::Verify => self.verified_commit.as_deref(),
         }
     }
 
@@ -407,6 +443,30 @@ pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Resu
         anyhow::bail!("change not found: {name}");
     }
     Ok(())
+}
+
+/// 呼叫端回報的 commit（蓋章、落地回報）：去掉前後空白後是 7 到 64 個十六進位字元，
+/// 否則是呼叫端參數錯誤。只看形狀——引擎沒有 repo，不查它是否存在。
+pub fn checked_commit(raw: &str) -> anyhow::Result<String> {
+    let commit = raw.trim();
+    if !(7..=64).contains(&commit.len()) || !commit.bytes().all(|b| b.is_ascii_hexdigit()) {
+        anyhow::bail!(crate::command::InvalidContent(format!(
+            "invalid commit {raw:?} — expected 7 to 64 hexadecimal characters"
+        )));
+    }
+    Ok(commit.to_string())
+}
+
+/// 呼叫端回報的分支名稱（開工、落地回報）：1 到 255 個字元、不含控制字元與空白，
+/// 否則是呼叫端參數錯誤。只看形狀，不查分支是否存在。
+pub fn checked_branch(raw: &str) -> anyhow::Result<&str> {
+    let chars = raw.chars().count();
+    if !(1..=255).contains(&chars) || raw.chars().any(|c| c.is_control() || c.is_whitespace()) {
+        anyhow::bail!(crate::command::InvalidContent(format!(
+            "invalid branch {raw:?} — expected 1 to 255 characters with no whitespace or control characters"
+        )));
+    }
+    Ok(raw)
 }
 
 /// Find an active change by name. A name that cannot be a change's name is

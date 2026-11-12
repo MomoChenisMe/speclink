@@ -202,7 +202,7 @@ fn review_loop_rides_the_verb_contract_end_to_end() {
     assert_eq!(error.reason, ErrorReason::Refused);
     assert!(ticket_doc(&f).is_some(), "a refused stamp keeps the ticket");
 
-    c.station_stamp("review", "demo-change", true, Some("claude"), &scope_entries, &[]).expect("accept stamp");
+    c.station_stamp("review", "demo-change", true, Some("claude"), None, &scope_entries, &[]).expect("accept stamp");
     let meta = meta_doc(&f);
     assert!(meta.contains("reviewed_at:"), "the stamp landed: {meta}");
     assert!(meta.contains("reviewed_with: claude"), "agent recorded: {meta}");
@@ -263,7 +263,7 @@ fn stamp_accepts_a_declared_missing_partition_and_rejects_a_bad_one() {
 
     let scope_entries =
         vec![ReviewScopeEntryDto { path: "src/lib.rs".into(), hash: fingerprint(FILE_A) }];
-    c.station_stamp("review", "demo-change", false, Some("claude"), &scope_entries, &["src/gone.rs".into()])
+    c.station_stamp("review", "demo-change", false, Some("claude"), None, &scope_entries, &["src/gone.rs".into()])
         .expect("declared-missing partition stamps");
     let meta = meta_doc(&f);
     assert!(meta.contains("- path: src/lib.rs"), "surviving file anchored: {meta}");

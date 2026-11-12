@@ -179,6 +179,9 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
+            // The commit the checkout is on goes into the stamp; outside a git
+            // checkout there is none and the stamp lands without it.
+            let head = core::tasks::head_commit(&ws.root);
             let read_file = |p: &str| core::util::read_bytes_opt(&ws.root.join(p));
             let file_exists = |p: &str| ws.root.join(p).is_file();
             core::station::stamp(
@@ -188,6 +191,7 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
                 accept,
                 actor.as_deref(),
                 agent.as_deref(),
+                head.as_deref(),
                 &read_file,
                 &file_exists,
             )?;
@@ -635,7 +639,8 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                 .into_iter()
                 .map(|(path, hash)| speclink_protocol::command::ReviewScopeEntryDto { path, hash })
                 .collect();
-            ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), &scope, &missing)?;
+            let head = core::tasks::head_commit(&ctx.ws.root);
+            ctx.client.station_stamp(noun, &change, accept, agent.as_deref(), head.as_deref(), &scope, &missing)?;
             emit_action(st, StationAction::Stamp, &change);
             Ok(())
         }

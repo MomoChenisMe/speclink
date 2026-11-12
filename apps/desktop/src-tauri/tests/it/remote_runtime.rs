@@ -271,7 +271,7 @@ fn offline_writes_are_rejected_without_queueing_while_reads_can_recover_in_place
     let workspace = RemoteWorkspace::at(&h.origin, "demo", "backend", &manager);
     assert_eq!(
         workspace
-            .list_changes(&store)
+            .list_changes(&store, None)
             .expect("baseline read")
             .changes
             .len(),
@@ -280,7 +280,7 @@ fn offline_writes_are_rejected_without_queueing_while_reads_can_recover_in_place
 
     h.server.stop();
     workspace
-        .list_changes(&store)
+        .list_changes(&store, None)
         .expect_err("server 停止後讀取失敗並使 runtime offline");
     assert_eq!(manager.connection_state(), ConnectionState::Offline);
 
@@ -293,7 +293,7 @@ fn offline_writes_are_rejected_without_queueing_while_reads_can_recover_in_place
     h.server.start();
     let mut recovered = None;
     for _ in 0..20 {
-        match workspace.list_changes(&store) {
+        match workspace.list_changes(&store, None) {
             Ok(changes) => {
                 recovered = Some(changes);
                 break;

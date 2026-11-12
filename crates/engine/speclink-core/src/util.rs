@@ -273,6 +273,20 @@ pub fn yaml_scalar(s: &str) -> String {
     }
 }
 
+/// [`yaml_scalar`]，外加一道保證：寫出的值讀回來一定是同一個字串。YAML 會把
+/// `null`、`~`、`true`、`123`、`1e5` 這類沒加引號的字讀成別種值（或讀成缺席），
+/// 這裡替它們補上引號。給值域是任意識別字的欄位用（分支名稱、commit）。
+pub fn yaml_string(s: &str) -> String {
+    let scalar = yaml_scalar(s);
+    if scalar.starts_with('"') {
+        return scalar;
+    }
+    match serde_yaml::from_str::<serde_yaml::Value>(&scalar) {
+        Ok(serde_yaml::Value::String(_)) => scalar,
+        _ => format!("\"{}\"", scalar.replace('\\', "\\\\")),
+    }
+}
+
 /// [`yaml_scalar`] 的反向：讀回它寫出的值。雙引號包住的值拆掉引號並還原 `\\"`／`\\\\`，
 /// 其餘（沒加引號的純量）原樣回傳。給只做逐字讀取的 `KeyLines::get` 呼叫端在「比對
 /// 身分」前用——寫入走 `yaml_scalar`，讀回就得走這裡，否則帶引號的本人會被當成他人。

@@ -81,10 +81,12 @@ pub const VERIFY: Station = Station {
 };
 
 impl Station {
-    /// 一枚章的五個欄位：`<prefix>_at`、`_by`、`_with`、`_tasks_total`、`_scope`。
-    /// 回合數（[`Station::rounds_key`]）不在內：它是流程成本，清章時保留。
-    pub fn stamp_keys(&self) -> [String; 5] {
-        ["at", "by", "with", "tasks_total", "scope"].map(|suffix| format!("{}_{suffix}", self.meta_prefix))
+    /// 一枚章的六個欄位：`<prefix>_at`、`_by`、`_with`、`_tasks_total`、`_scope`、
+    /// `_commit`——清章就是清這一組。回合數（[`Station::rounds_key`]）不在內：它是
+    /// 流程成本，清章時保留。
+    pub fn stamp_keys(&self) -> [String; 6] {
+        ["at", "by", "with", "tasks_total", "scope", "commit"]
+            .map(|suffix| format!("{}_{suffix}", self.meta_prefix))
     }
 
     /// 回合數欄位 `<prefix>_rounds`。
@@ -252,6 +254,104 @@ pub struct StampAnchors<'a> {
     pub scope: &'a [ReviewedScopeEntry],
 }
 
+/// 一個品質站在一個變更上走到哪裡（station-status-and-landing D1）。「蓋章後內容有沒有
+/// 變」不在這裡：那要讀工作樹，由有工作樹的一端拿 [`StationStatus`] 的任務數與 scope 自己判。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StationPhase {
+    /// 沒有工單，也沒有完整的章。
+    None,
+    /// 有未結的工單。
+    InProgress,
+    /// 沒有工單，meta 有完整的章。
+    Stamped,
+}
+
+impl StationPhase {
+    /// 對外的字串（`show --json` 與線上回應的 `state`）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StationPhase::None => "none",
+            StationPhase::InProgress => "inProgress",
+            StationPhase::Stamped => "stamped",
+        }
+    }
+}
+
+/// 一個品質站的狀態與章的內容。章的欄位只在 [`StationPhase::Stamped`] 時有值。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StationStatus {
+    pub phase: StationPhase,
+    pub stamped_at: Option<String>,
+    pub stamped_by: Option<String>,
+    pub stamped_with: Option<String>,
+    pub rounds: Option<u64>,
+    pub tasks_total: Option<usize>,
+    pub commit: Option<String>,
+    /// 蓋章時每個檔案的路徑與內容指紋。清單與 `show --json` 不帶它。
+    pub scope: Vec<ReviewedScopeEntry>,
+}
+
+impl StationStatus {
+    /// 未開始：沒有任何章的欄位。
+    pub fn none() -> StationStatus {
+        StationStatus {
+            phase: StationPhase::None,
+            stamped_at: None,
+            stamped_by: None,
+            stamped_with: None,
+            rounds: None,
+            tasks_total: None,
+            commit: None,
+            scope: Vec::new(),
+        }
+    }
+
+    /// `show --json` 的形狀：`state`，蓋章後另有 `stampedAt`、`rounds`、`tasksTotal` 與
+    /// 有值才出現的 `stampedBy`、`stampedWith`、`commit`。不含 scope。
+    pub fn to_json(&self) -> serde_json::Value {
+        let mut json = serde_json::json!({ "state": self.phase.as_str() });
+        if self.phase != StationPhase::Stamped {
+            return json;
+        }
+        json["stampedAt"] = serde_json::json!(self.stamped_at);
+        json["rounds"] = serde_json::json!(self.rounds);
+        json["tasksTotal"] = serde_json::json!(self.tasks_total);
+        for (key, value) in
+            [("stampedBy", &self.stamped_by), ("stampedWith", &self.stamped_with), ("commit", &self.commit)]
+        {
+            if let Some(value) = value {
+                json[key] = serde_json::json!(value);
+            }
+        }
+        json
+    }
+}
+
+/// 關卡狀態的判定，`show --json` 與線上的清單、單筆回應共用這一份：工單存在 → 進行中；
+/// 否則 meta 有完整的章（[`is_stamped`]）→ 已蓋章；否則未開始。`ticket_open` 由呼叫端給：
+/// 它手上多半已經有這個變更的文件清單，不必為此再讀一次。
+pub fn status(st: &Station, meta: &ChangeMeta, ticket_open: bool) -> StationStatus {
+    if ticket_open {
+        return StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() };
+    }
+    let anchors = meta.anchors(st);
+    if !is_stamped(anchors) {
+        return StationStatus::none();
+    }
+    let (by, with) = meta.stamp_attribution(st);
+    StationStatus {
+        phase: StationPhase::Stamped,
+        stamped_at: anchors.stamped_at.map(str::to_string),
+        stamped_by: by.map(str::to_string),
+        stamped_with: with.map(str::to_string),
+        // 加入輪數記錄之前蓋的章沒有這個欄位，讀作 0。
+        rounds: Some(meta.stamp_rounds(st).unwrap_or(0)),
+        tasks_total: anchors.tasks_total,
+        commit: meta.stamp_commit(st).map(str::to_string),
+        scope: anchors.scope.to_vec(),
+    }
+}
+
 /// 追加一輪（工單不存在則建立，自 Round 1 起算）。回傳本輪編號。
 /// 內容須含非空的 `**Scope**:` 檔案清單；`- [` 開頭行須為合法 findings 行；
 /// 既有輪次 append-only 不改寫（spec「審查／驗證工單的建立與追加」）。
@@ -361,6 +461,7 @@ pub fn discard(st: &Station, store: &dyn Store, change: &str) -> Result<()> {
 /// 「provided ∪ missing ＝工單各輪 Scope 聯集且不相交」（CAS 式保護），
 /// 不成立即拒。`missing` 是 checkout 持有者對「聯集中已不存在的檔」的明示
 /// 宣告——server 無工作樹無從驗證存在性，宣告與雜湊同屬提交端的權威。
+/// `head_commit` 同 [`stamp`]。
 pub fn stamp_with_scope(
     st: &Station,
     store: &dyn Store,
@@ -368,10 +469,11 @@ pub fn stamp_with_scope(
     accept: bool,
     actor: Option<&str>,
     tool: Option<&str>,
+    head_commit: Option<&str>,
     scope: Vec<ReviewedScopeEntry>,
     missing: Vec<String>,
 ) -> Result<()> {
-    let gate = stamp_gate(st, store, change, accept)?;
+    let gate = stamp_gate(st, store, change, accept, head_commit)?;
     let mut entries: Vec<(String, String)> =
         scope.into_iter().map(|e| (e.path.replace('\\', "/"), e.hash)).collect();
     entries.sort();
@@ -432,8 +534,9 @@ pub fn stamp_with_scope(
 
 /// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零待處理必修
 /// （CRITICAL／WARNING）findings，SUGGESTION 不擋章（`accept` 僅豁免必修條件）；
-/// 通過時以工單各輪 Scope 聯集計算指紋，於同一原子寫入內落五個站別欄位與累加的
-/// 回合數並刪除工單。`read_file` 供指紋計算讀取 repo-root 相對
+/// 通過時以工單各輪 Scope 聯集計算指紋，於同一原子寫入內落站別欄位與累加的
+/// 回合數並刪除工單。`head_commit` 是呼叫端當下看到的 commit（引擎不讀 git）：有給
+/// 就記進章裡，形狀不合即拒；它不參與凍結判定。`read_file` 供指紋計算讀取 repo-root 相對
 /// 路徑的檔案內容（remote 模式亦讀本地工作樹）；`file_exists` 判定聯集檔案是否
 /// 仍在工作樹——修正可能刪除／改名早輪檢查過的檔，死檔跳過不入錨（無從指紋也
 /// 無從再變動），存在但讀不到者仍 fail-closed。
@@ -444,10 +547,11 @@ pub fn stamp(
     accept: bool,
     actor: Option<&str>,
     tool: Option<&str>,
+    head_commit: Option<&str>,
     read_file: &ScopeReadFn<'_>,
     file_exists: &dyn Fn(&str) -> bool,
 ) -> Result<()> {
-    let gate = stamp_gate(st, store, change, accept)?;
+    let gate = stamp_gate(st, store, change, accept, head_commit)?;
     let (present, gone): (Vec<String>, Vec<String>) =
         gate.paths.iter().cloned().partition(|p| file_exists(p));
     ensure_scope_remainder(&present, &gone)?;
@@ -591,16 +695,24 @@ pub fn fingerprint_scope(
 }
 
 /// 兩個蓋章入口共用的守門結果：解析通過的 meta 原文、工單 Scope 聯集
-/// （`\`→`/` 正規化、去重、排序）、任務錨總數與累加後的回合數。
+/// （`\`→`/` 正規化、去重、排序）、任務錨總數、累加後的回合數，以及形狀驗過的 commit。
 struct StampGate {
     raw_meta: String,
     paths: Vec<String>,
     tasks_total: usize,
     rounds: u64,
+    commit: Option<String>,
 }
 
-fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Result<StampGate> {
+fn stamp_gate(
+    st: &Station,
+    store: &dyn Store,
+    change: &str,
+    accept: bool,
+    head_commit: Option<&str>,
+) -> Result<StampGate> {
     ensure_single_segment(change)?;
+    let commit = head_commit.map(crate::model::checked_commit).transpose()?;
     if !store.change_exists(change) {
         bail!(NotFound(format!("change not found: {change}")));
     }
@@ -645,7 +757,7 @@ fn stamp_gate(st: &Station, store: &dyn Store, change: &str, accept: bool) -> Re
     let rounds =
         meta.stamp_rounds(st).unwrap_or(0).saturating_add(ticket.rounds.len() as u64);
     // 錨記全任務總數（含 `[M]`）——欄位形狀不變，舊章資料相容。
-    Ok(StampGate { raw_meta, paths, tasks_total: counts.total, rounds })
+    Ok(StampGate { raw_meta, paths, tasks_total: counts.total, rounds, commit })
 }
 
 fn write_stamp(
@@ -659,11 +771,11 @@ fn write_stamp(
 ) -> Result<()> {
     // 文字手術（直接用 `KeyLines`，不走 `edit_meta`：meta 原文已由 `stamp_gate`
     // 讀過並驗過，且「先刪工單再寫章」要求寫入前插一步刪除）：先移除既有站別
-    // 五鍵與回合數（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
-    let [at_key, by_key, with_key, tasks_total_key, scope_key] = &st.stamp_keys();
+    // 六鍵與回合數（重蓋不留重複鍵、章永遠落在檔尾），再寫新章；其餘欄位逐位元組保留。
+    let [at_key, by_key, with_key, tasks_total_key, scope_key, commit_key] = &st.stamp_keys();
     let rounds_key = &st.rounds_key();
     let mut m = KeyLines::whole(&gate.raw_meta);
-    for key in [at_key, by_key, with_key, tasks_total_key, rounds_key, scope_key] {
+    for key in [at_key, by_key, with_key, tasks_total_key, rounds_key, commit_key, scope_key] {
         m.remove(key);
     }
     // 身分／工具／指紋一律過 YAML 純量守門（沿 started_* 的同一道）：帶 `:`、
@@ -678,6 +790,9 @@ fn write_stamp(
     }
     m.set(tasks_total_key, &gate.tasks_total.to_string())?;
     m.set(rounds_key, &gate.rounds.to_string())?;
+    if let Some(commit) = &gate.commit {
+        m.set(commit_key, &crate::util::yaml_string(commit))?;
+    }
     let body: Vec<String> = entries
         .iter()
         .flat_map(|(path, hash)| {
@@ -811,8 +926,8 @@ fn ensure_single_segment(name: &str) -> Result<()> {
 /// Scope 項須是 repo-root 相對路徑：指紋讀檔以 `root.join(p)` 解析，絕對路徑會
 /// 整個取代 root、`..` 會爬出工作樹。remote 模式的工單來自 server，若不守門即
 /// 等於由 server 指定 client 讀哪個本機檔並把雜湊回傳——守門落在文法層，
-/// stdin 與工單解析共用同一道。
-fn ensure_repo_relative(path: &str) -> Result<()> {
+/// stdin 與工單解析共用同一道。拿線上回應的 scope 去讀工作樹的用戶端也過這一道。
+pub fn ensure_repo_relative(path: &str) -> Result<()> {
     let normalized = path.replace('\\', "/");
     if normalized.starts_with('/')
         || normalized.split('/').any(|seg| seg == ".." || seg.contains(':'))

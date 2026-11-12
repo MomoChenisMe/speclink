@@ -921,6 +921,7 @@ fn every_command() -> Vec<Command> {
             | Command::ChangeDepends { .. }
             | Command::ChangeSchema { .. }
             | Command::ChangeRank { .. }
+            | Command::ChangeLanded { .. }
             | Command::Archive { .. }
             | Command::Discard { .. }
             | Command::DiscussNew { .. }
@@ -977,7 +978,7 @@ fn every_command() -> Vec<Command> {
         Command::TaskUndone { task_id: s("1"), change: Some(s("demo")) },
         Command::TaskMove { change: s("demo"), from: 1, to: 2, before: None },
         Command::Claim { name: s("demo") },
-        Command::InProgressAdd { name: s("demo") },
+        Command::InProgressAdd { name: s("demo"), branch: None },
         Command::InProgressRemove { name: s("demo") },
         Command::ChangeDepends { name: s("demo"), on: vec![s("base")], remove: false },
         Command::ChangeSchema { name: s("demo"), schema: s("spec-driven") },
@@ -987,6 +988,7 @@ fn every_command() -> Vec<Command> {
             position: speclink_core::plan::Side::parse("before").unwrap(),
             force: false,
         },
+        Command::ChangeLanded { name: s("demo"), commit: s("0123456789ab"), branch: None },
         Command::Archive {
             change: Some(s("demo")),
             skip_specs: false,
@@ -1007,11 +1009,11 @@ fn every_command() -> Vec<Command> {
         Command::DiscussDiscard { slug: s("talk"), force: false },
         Command::ReviewAddRound { change: s("demo"), content: s("round") },
         Command::ReviewShow { change: s("demo") },
-        Command::ReviewStamp { change: s("demo"), accept: false, tool: None, scope: Vec::new(), missing: Vec::new() },
+        Command::ReviewStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
         Command::ReviewDiscard { change: s("demo") },
         Command::VerifyAddRound { change: s("demo"), content: s("round") },
         Command::VerifyShow { change: s("demo") },
-        Command::VerifyStamp { change: s("demo"), accept: false, tool: None, scope: Vec::new(), missing: Vec::new() },
+        Command::VerifyStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
         Command::VerifyDiscard { change: s("demo") },
         Command::WorkflowConfigShow,
         Command::WorkflowConfigEdit {
@@ -1043,6 +1045,7 @@ fn sample_request(method: Method, pattern: &str) -> HttpRequest {
         (Method::Post, "/changes/{name}/depends") => json!({ "on": ["base"] }),
         (Method::Post, "/changes/{name}/schema") => json!({ "schema": "spec-driven" }),
         (Method::Post, "/changes/{name}/rank") => json!({ "anchor": "base", "position": "before" }),
+        (Method::Post, "/changes/{name}/landed") => json!({ "commit": "0123456789ab" }),
         (Method::Post, "/discussions") => json!({ "topic": "Talk" }),
         (Method::Post, "/discussions/{slug}/link" | "/discussions/{slug}/seal") => json!({ "change": "demo" }),
         (Method::Put, "/discussions/{slug}/context") => json!({ "content": "x" }),

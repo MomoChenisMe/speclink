@@ -432,12 +432,46 @@ fn station_verbs_address_each_station_endpoint() {
     assert_call(&mock2.last(), "POST", "/changes/demo/verify/rounds");
 
     let mock3 = serve(200, r#"{"change":"demo"}"#);
-    client(&mock3).station_stamp("verify", "demo", false, None, &[], &[]).expect("stamp");
+    client(&mock3).station_stamp("verify", "demo", false, None, None, &[], &[]).expect("stamp");
     assert_call(&mock3.last(), "POST", "/changes/demo/verify/stamp");
 
     let mock4 = serve(200, r#"{"change":"demo"}"#);
     client(&mock4).station_discard("verify", "demo").expect("discard");
     assert_call(&mock4.last(), "DELETE", "/changes/demo/verify");
+}
+
+#[test]
+fn a_stamp_sends_the_head_commit_only_when_the_caller_has_one() {
+    // 蓋章請求的 headCommit 是選填：沒有時 body 與加這個欄位之前逐位元相同。
+    let mock = serve(200, r#"{"change":"demo"}"#);
+    client(&mock).station_stamp("review", "demo", false, None, None, &[], &[]).expect("stamp");
+    assert_eq!(mock.last().body, r#"{"accept":false,"scope":[]}"#);
+    client(&mock).station_stamp("review", "demo", false, None, Some("0123456789ab"), &[], &[]).expect("stamp");
+    assert_eq!(mock.last().body, r#"{"accept":false,"scope":[],"headCommit":"0123456789ab"}"#);
+}
+
+#[test]
+fn a_landing_report_posts_the_commit_and_the_optional_branch() {
+    let mock = serve(200, r#"{"change":"demo","commit":"0123456789ab","branch":"speclink/demo"}"#);
+    let landed = client(&mock).change_landed("demo", "0123456789ab", Some("speclink/demo")).expect("landed");
+    assert_eq!((landed.change.as_str(), landed.commit.as_str()), ("demo", "0123456789ab"));
+    assert_eq!(landed.branch.as_deref(), Some("speclink/demo"));
+    let cap = mock.last();
+    assert_call(&cap, "POST", "/changes/demo/landed");
+    assert_eq!(cap.body, r#"{"commit":"0123456789ab","branch":"speclink/demo"}"#);
+
+    let bare = serve(200, r#"{"change":"demo","commit":"0123456"}"#);
+    let landed = client(&bare).change_landed("demo", "0123456", None).expect("landed");
+    assert!(landed.branch.is_none());
+    assert_eq!(bare.last().body, r#"{"commit":"0123456"}"#);
+}
+
+#[test]
+fn a_landing_report_to_a_server_without_the_route_is_the_servers_404() {
+    // 舊版 Server 沒有落地的路由：404 原樣回給呼叫端。
+    let mock = serve(404, r#"{"status":404,"reason":"not_found","message":"no such route"}"#);
+    let err = client(&mock).change_landed("demo", "0123456", None).unwrap_err();
+    assert_eq!(err.status, Some(404));
 }
 
 #[test]
@@ -602,10 +636,13 @@ fn discussion_parity_verbs_post_typed_bodies() {
 
     // in-progress：空 body POST，回應內容無人消費。
     let mock4 = serve(200, "{}");
-    client(&mock4).in_progress_add("demo").expect("in-progress ok");
+    client(&mock4).in_progress_add("demo", None).expect("in-progress ok");
     let cap4 = mock4.last();
     assert_call(&cap4, "POST", "/changes/demo/in-progress");
     assert_eq!(cap4.body, "{}");
+    // 帶分支時 body 多一個欄位。
+    client(&mock4).in_progress_add("demo", Some("feature/x")).expect("in-progress ok");
+    assert_eq!(mock4.last().body, r#"{"branch":"feature/x"}"#);
 }
 
 #[test]
@@ -704,7 +741,7 @@ fn discussion_parity_verbs_map_a_404_to_the_typed_error() {
     assert_eq!(err.reason.as_deref(), Some("not_found"));
     let err = client(&mock).seal_discussion("no-such", "demo", false).unwrap_err();
     assert_eq!(err.reason.as_deref(), Some("not_found"));
-    let err = client(&mock).in_progress_add("demo").unwrap_err();
+    let err = client(&mock).in_progress_add("demo", None).unwrap_err();
     assert_eq!(err.reason.as_deref(), Some("not_found"));
 }
 

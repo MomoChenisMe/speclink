@@ -12,10 +12,12 @@
 mod change_rank;
 mod describe;
 mod evidence;
+mod landing;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
 pub use evidence::EvidenceShowOutcome;
+pub use landing::{ChangeLandedOutcome, LandedRecord};
 pub use typed::WrongOutcome;
 pub use workflow_config::{
     plan_workflow_config_edit, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
@@ -253,6 +255,14 @@ pub enum DomainEvent {
     ChangeSchemaChanged { change: String, schema: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// `change rank` wrote a board rank; `change` is the change it moved.
     ChangeRanked { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `change landed` recorded where the change's code landed: the commit as
+    /// recorded, and the branch when the report gave one.
+    ChangeLanded {
+        change: String,
+        commit: String,
+        branch: Option<String>,
+        occurred_at: chrono::DateTime<chrono::Utc>,
+    },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -287,6 +297,7 @@ impl DomainEvent {
             DomainEvent::ChangeDependsChanged { .. } => "change-depends-changed",
             DomainEvent::ChangeSchemaChanged { .. } => "change-schema-changed",
             DomainEvent::ChangeRanked { .. } => "change-ranked",
+            DomainEvent::ChangeLanded { .. } => "change-landed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
@@ -435,7 +446,9 @@ pub enum Command {
     /// `claim <name>` — remote-store only; the plain-store path refuses.
     Claim { name: String },
     /// `in-progress add <name>` — silent and idempotent (unknown names included).
-    InProgressAdd { name: String },
+    /// `branch` is the branch the caller observed its checkout on, not an argv
+    /// surface; absent when unreported (detached HEAD, no checkout).
+    InProgressAdd { name: String, branch: Option<String> },
     /// `in-progress remove <name>` — the reverse verb, gated on zero work
     /// traces; unknown names error loudly (deliberately asymmetric with add).
     InProgressRemove { name: String },
@@ -450,6 +463,11 @@ pub enum Command {
     /// store keeps them (skills-verbs-first-wave D3); every guard refuses
     /// with zero writes.
     ChangeRank { name: String, anchor: String, position: crate::plan::Side, force: bool },
+    /// `change landed <name> [--commit <sha>] [--branch <name>]` — record the
+    /// commit the change's code landed on. `commit` is required here: the
+    /// entry point fills it from its checkout when argv gives none. Every
+    /// guard refuses with zero writes.
+    ChangeLanded { name: String, commit: String, branch: Option<String> },
     /// `archive [change] [--skip-specs] [--no-validate] [--mark-tasks-complete]`
     /// (single change; the CLI's `--all`/bulk loop stays in the entry point).
     Archive {
@@ -491,11 +509,13 @@ pub enum Command {
     /// `review stamp <change> [--accept] [--agent]`。`scope` 為工作樹持有者
     /// 預算的指紋清單（design D4a）：server 無工作樹，唯一蓋章路徑是提交
     /// 端算好 (path, hash) 上 wire；`missing` 明示宣告聯集中已不存在的檔，
-    /// 分割「scope ∪ missing ＝工單聯集且不相交」不成立即拒。
+    /// 分割「scope ∪ missing ＝工單聯集且不相交」不成立即拒。`head_commit` 是
+    /// 呼叫端當下看到的 commit，有給就記進章裡；引擎只查形狀。
     ReviewStamp {
         change: String,
         accept: bool,
         tool: Option<String>,
+        head_commit: Option<String>,
         scope: Vec<crate::model::ReviewedScopeEntry>,
         missing: Vec<String>,
     },
@@ -506,11 +526,12 @@ pub enum Command {
     /// `verify show <change>`（查詢——不產生事件）
     VerifyShow { change: String },
     /// `verify stamp <change> [--accept] [--agent]`：`scope`／`missing` 的分割
-    /// 語意與 [`Command::ReviewStamp`] 完全相同（design D4a 的驗證面）。
+    /// 與 `head_commit` 的語意和 [`Command::ReviewStamp`] 完全相同（design D4a 的驗證面）。
     VerifyStamp {
         change: String,
         accept: bool,
         tool: Option<String>,
+        head_commit: Option<String>,
         scope: Vec<crate::model::ReviewedScopeEntry>,
         missing: Vec<String>,
     },
@@ -561,6 +582,14 @@ pub struct ShowChange {
     pub delta_capabilities: Vec<String>,
     pub from_discussions: Vec<String>,
     pub restale_from: Vec<String>,
+    /// The two quality stations' states (`--json` only, without the scope).
+    /// `None` when there is nothing to judge them by: a corrupt metadata
+    /// document, or a server that does not report them.
+    pub review: Option<station::StationStatus>,
+    pub verify: Option<station::StationStatus>,
+    /// The recorded branch and landing (`--json` only); absent when not recorded.
+    pub branch: Option<String>,
+    pub landed: Option<LandedRecord>,
 }
 
 /// `instructions` outcome: the apply view or one artifact's instructions.
@@ -791,6 +820,7 @@ pub enum CommandOutcome {
     ChangeDepends(DependsOutcome),
     ChangeSchema(SchemaOutcome),
     ChangeRank(ChangeRankOutcome),
+    ChangeLanded(ChangeLandedOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -924,13 +954,18 @@ pub fn execute(
             run_task_move(store, &change, from, to, before)
         }
         Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), ctx.actor_id.as_deref(), &name),
-        Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
+        Command::InProgressAdd { name, branch } => {
+            run_in_progress_add(store, ctx.actor.as_deref(), &name, branch.as_deref())
+        }
         Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
         Command::ChangeDepends { name, on, remove } => run_change_depends(store, &name, &on, remove),
         Command::ChangeSchema { name, schema } => {
             run_change_schema(store, ws, ctx.user_config_dir.as_deref(), &name, &schema)
         }
         Command::ChangeRank { name, anchor, position, force } => change_rank::run(store, name, anchor, position, force),
+        Command::ChangeLanded { name, commit, branch } => {
+            landing::run(store, ctx.actor.as_deref(), name, &commit, branch)
+        }
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -999,7 +1034,7 @@ pub fn execute(
         Command::ReviewShow { change } => {
             Ok(CommandOutcome::ReviewShow(station_show(&REVIEW, store, change)?))
         }
-        Command::ReviewStamp { change, accept, tool, scope, missing } => {
+        Command::ReviewStamp { change, accept, tool, head_commit, scope, missing } => {
             station::stamp_with_scope(
                 &REVIEW,
                 store,
@@ -1007,6 +1042,7 @@ pub fn execute(
                 accept,
                 ctx.actor.as_deref(),
                 tool.as_deref(),
+                head_commit.as_deref(),
                 scope,
                 missing,
             )
@@ -1022,7 +1058,7 @@ pub fn execute(
         Command::VerifyShow { change } => {
             Ok(CommandOutcome::VerifyShow(station_show(&VERIFY, store, change)?))
         }
-        Command::VerifyStamp { change, accept, tool, scope, missing } => {
+        Command::VerifyStamp { change, accept, tool, head_commit, scope, missing } => {
             station::stamp_with_scope(
                 &VERIFY,
                 store,
@@ -1030,6 +1066,7 @@ pub fn execute(
                 accept,
                 ctx.actor.as_deref(),
                 tool.as_deref(),
+                head_commit.as_deref(),
                 scope,
                 missing,
             )
@@ -1133,6 +1170,12 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::ChangeRank(o) => vec![DomainEvent::ChangeRanked {
             change: o.change.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ChangeLanded(o) => vec![DomainEvent::ChangeLanded {
+            change: o.change.clone(),
+            commit: o.commit.clone(),
+            branch: o.branch.clone(),
             occurred_at: at,
         }],
         CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
@@ -1362,7 +1405,19 @@ fn run_show(
         (Some(s), Some(c)) => (Some(s.clone()), Some(c.clone())),
         _ => (None, None),
     };
+    // A corrupt metadata document reads as defaults; "not started" must not
+    // be reported from it.
+    let station_status = |st: &Station| {
+        change
+            .meta_error
+            .is_none()
+            .then(|| station::status(st, &change.meta, store.artifact_exists(&change.name, st.doc)))
+    };
     Ok(CommandOutcome::Show(ShowOutcome::Change(ShowChange {
+        review: station_status(&REVIEW),
+        verify: station_status(&VERIFY),
+        branch: change.meta.branch.clone(),
+        landed: LandedRecord::of(&change.meta),
         schema,
         created,
         proposal: store.read_artifact(&change.name, "proposal.md"),
@@ -1900,8 +1955,9 @@ fn run_in_progress_add(
     store: &dyn Store,
     actor: Option<&str>,
     name: &str,
+    branch: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
-    let stamped = crate::inprogress::add(store, name, actor, None).map_err(classify)?;
+    let stamped = crate::inprogress::add(store, name, actor, None, branch).map_err(classify)?;
     Ok(CommandOutcome::InProgressAdd(InProgressOutcome {
         name: name.to_string(),
         stamped,

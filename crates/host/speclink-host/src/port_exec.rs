@@ -850,6 +850,7 @@ mod tests {
             change: "demo".to_string(),
             accept: false,
             tool: None,
+            head_commit: None,
             scope: vec![speclink_core::model::ReviewedScopeEntry {
                 path: "src/lib.rs".to_string(),
                 hash: speclink_core::station::content_fingerprint("fn lib() {}\n"),

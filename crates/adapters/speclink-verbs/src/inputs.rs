@@ -9,7 +9,7 @@ use speclink_core::listing::ListWorktreeJson;
 /// this crate never reads them itself. Every field defaults to "not given".
 ///
 /// Where each command field comes from (checked against the CLI's `cmd_*`):
-/// every field of the 44 commands the conversion returns comes from argv,
+/// every field of the 45 commands the conversion returns comes from argv,
 /// except these.
 ///
 /// | Command field | Input | What the CLI passes |
@@ -21,6 +21,9 @@ use speclink_core::listing::ListWorktreeJson;
 /// | `DiscussContext`／`DiscussAddRound`／`DiscussConclude` `.content` | `stdin` (empty when unread) | `common::stdin_for` |
 /// | `ReviewAddRound`／`VerifyAddRound` `.content` | `stdin` (empty when unread) | — (the CLI's stations run `station_fs`) |
 /// | `ReviewStamp`／`VerifyStamp` `.scope`, `.missing` | `stdin` JSON (with `--stdin`) | — (the CLI computes the scope and refuses `--stdin`) |
+/// | `ReviewStamp`／`VerifyStamp` `.head_commit` | `stdin` JSON `headCommit`, else `head_commit` | — (the CLI's stations pass the checkout's HEAD themselves) |
+/// | `InProgressAdd.branch` | `branch` | the checkout's branch (`common::git_branch`); none on a detached HEAD |
+/// | `ChangeLanded.commit` | `--commit`, else `head_commit` | the checkout's HEAD |
 /// | `WorkflowConfigEdit.edit` of `context`／`rules`／`review <list>`／`subagent-model choices` | `stdin` (with `--stdin`; empty when unread) | `common::stdin_for` |
 ///
 /// The execution context (actor, repo, policy overrides) is not part of a
@@ -34,8 +37,13 @@ pub struct VerbInputs {
     /// The touched-file candidates for `task done`, when the caller resolved
     /// them; absent lets the engine probe the local workspace.
     pub touched_files: Option<Vec<String>>,
-    /// The commit the touched files were observed on, for `task done`.
+    /// The commit the caller's checkout is on: the one the touched files were
+    /// observed on for `task done`, the stamped one for the two stamps, and
+    /// the landing commit of `change landed` without `--commit`.
     pub head_commit: Option<String>,
+    /// The branch the caller's checkout is on, for `in-progress add`; absent
+    /// on a detached HEAD or without a checkout.
+    pub branch: Option<String>,
     /// An external board rank table for `plan`; absent reads each change's
     /// own rank.
     pub ranks: Option<BTreeMap<String, String>>,
@@ -91,11 +99,11 @@ mod tests {
     use crate::families::test_support::target_of;
     use crate::{CommandTarget, VerbInputs};
 
-    /// One argv per command the conversion returns: 44 distinct commands, so
+    /// One argv per command the conversion returns: 45 distinct commands, so
     /// the table above speaks for every one of them (TaskMove and
     /// WorkflowConfigReplace have no argv).
     #[test]
-    fn the_conversion_reaches_44_commands() {
+    fn the_conversion_reaches_45_commands() {
         let argvs: &[&[&str]] = &[
             &["list"], &["show", "x"], &["status"], &["validate"], &["analyze"],
             &["artifact", "cat", "tasks"], &["language", "show"], &["trace", "x"], &["instructions"],
@@ -105,6 +113,7 @@ mod tests {
             &["archive"], &["discard", "x"], &["claim", "x"],
             &["plan"], &["plan", "--strict-overlap"],
             &["change", "depends", "x", "--on", "y"], &["change", "schema", "x", "y"],
+            &["change", "landed", "x", "--commit", "0123456"],
             &["discuss", "new", "t"], &["discuss", "list"], &["discuss", "show", "t"],
             &["discuss", "search", "k"], &["discuss", "context", "t"], &["discuss", "add-round", "t"],
             &["discuss", "conclude", "t"], &["discuss", "archive", "t"], &["discuss", "discard", "t"],
@@ -122,6 +131,6 @@ mod tests {
                 other => panic!("{argv:?} must convert to a command, got {other:?}"),
             })
             .collect();
-        assert_eq!(kinds.len(), 44);
+        assert_eq!(kinds.len(), 45);
     }
 }

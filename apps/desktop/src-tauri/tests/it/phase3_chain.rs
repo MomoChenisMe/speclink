@@ -225,13 +225,13 @@ fn same_origin_workspaces_share_one_rotation_after_reconnect() {
     let pm_start = start.clone();
     let pm_thread = std::thread::spawn(move || {
         pm_start.wait();
-        pm_workspace.list_changes(pm_credentials.as_ref())
+        pm_workspace.list_changes(pm_credentials.as_ref(), None)
     });
     let rd_credentials = credentials.clone();
     let rd_start = start.clone();
     let rd_thread = std::thread::spawn(move || {
         rd_start.wait();
-        rd_workspace.list_changes(rd_credentials.as_ref())
+        rd_workspace.list_changes(rd_credentials.as_ref(), None)
     });
     start.wait();
 
@@ -327,7 +327,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         "handshake 必須綁定 alpha/pm"
     );
 
-    let changes = pm_workspace.list_changes(credentials.as_ref());
+    let changes = pm_workspace.list_changes(credentials.as_ref(), None);
     common::scenario_assert!(
         &h,
         "第二幕：PM 清單讀取",
@@ -564,7 +564,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         second_info.project_key == "beta"
             && second_info.repo_key == "main"
             && second_workspace
-                .list_changes(credentials.as_ref())
+                .list_changes(credentials.as_ref(), None)
                 .is_ok_and(|list| {
                     list.changes.len() == 1 && list.changes[0].summary.name == "second-plan"
                 }),
@@ -746,7 +746,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         .second
         .remote_checkout("main", &h.second.editor_pat, "second-outage");
     let second_cli_write = second_checkout.run(&["new", "change", "second-during-outage"]);
-    let second_during_outage = second_workspace.list_changes(credentials.as_ref());
+    let second_during_outage = second_workspace.list_changes(credentials.as_ref(), None);
     common::scenario_assert!(
         &h,
         "第六幕：第一 server 失聯不波及第二 server",
@@ -782,7 +782,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             recovery_keys.push(key);
         }
     }
-    let recovered_changes = pm_workspace.list_changes(credentials.as_ref());
+    let recovered_changes = pm_workspace.list_changes(credentials.as_ref(), None);
     let rejected_write_absent = pm_workspace.document(credentials.as_ref(), "pm-plan", "tasks.md");
     common::scenario_assert!(
         &h,
@@ -807,7 +807,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
 
     while first_state_rx.try_recv().is_ok() {}
     h.first.revoke_editor_device_family();
-    let revoked_read = pm_workspace.list_changes(credentials.as_ref());
+    let revoked_read = pm_workspace.list_changes(credentials.as_ref(), None);
     let reauth_event = first_state_rx.recv_timeout(Duration::from_secs(5));
     common::scenario_assert!(
         &h,
@@ -826,7 +826,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
     let relogin_access = h.first.device_login_editor(credentials.as_ref());
     first_manager.adopt_access_token(&relogin_access);
     let relogin_event = first_state_rx.recv_timeout(Duration::from_secs(5));
-    let recovered_in_place = pm_workspace.list_changes(credentials.as_ref());
+    let recovered_in_place = pm_workspace.list_changes(credentials.as_ref(), None);
     common::scenario_assert!(
         &h,
         "第六幕：重新登入後原 session 原地恢復",
@@ -858,7 +858,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
             && recovered_in_place.is_ok()
             && checkout.root().join(".git").is_dir()
             && rd_workspace
-                .list_changes(credentials.as_ref())
+                .list_changes(credentials.as_ref(), None)
                 .is_ok_and(|list| list.changes.iter().any(|change| change.summary.name == "rd-plan")),
         "本地資料層、PM spec-only 與 RD checkout 必須在同一劇本同時存活"
     );

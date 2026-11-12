@@ -204,6 +204,25 @@ verified_rounds: 2\n"
     }
 
     #[test]
+    fn switching_clears_the_verify_commit_and_keeps_the_review_commit() {
+        // Scenario「清章時一併清除」：驗證章被清掉時 `verified_commit` 同進退。
+        let meta = "schema: no-spec-change\ncreated: 2026-10-01\n\
+reviewed_at: 2026-10-02T10:00:00+08:00\nreviewed_commit: \"0123456\"\nreviewed_tasks_total: 3\n\
+reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n\
+verified_at: 2026-10-02T11:00:00+08:00\nverified_commit: \"89abcde\"\nverified_tasks_total: 3\n\
+verified_scope:\n  - path: src/a.rs\n    hash: bb\n";
+        let store = TestStore::with_meta("c", meta);
+        let write = switch(&store, "c", "spec-driven").unwrap();
+        assert!(write.verify_stamp_cleared, "{write:?}");
+        assert_eq!(
+            store.meta("c"),
+            "schema: spec-driven\ncreated: 2026-10-01\n\
+reviewed_at: 2026-10-02T10:00:00+08:00\nreviewed_commit: \"0123456\"\nreviewed_tasks_total: 3\n\
+reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n"
+        );
+    }
+
+    #[test]
     fn the_same_schema_writes_nothing() {
         // Scenario「同一個 schema 不寫檔」。
         let store = TestStore::with_meta("c", SPEC_META);

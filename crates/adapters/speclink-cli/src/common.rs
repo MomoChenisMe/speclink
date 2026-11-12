@@ -100,6 +100,12 @@ pub(crate) fn engine_command(
     }
 }
 
+/// The branch the checkout at `root` is on. `None` on a detached HEAD and
+/// outside a git checkout: there is then no branch to report.
+pub(crate) fn git_branch(root: &std::path::Path) -> Option<String> {
+    core::util::git(root, &["branch", "--show-current"]).filter(|branch| !branch.is_empty())
+}
+
 /// The engine command of a verb that needs no caller data (no stdin, no
 /// worktree facts, no git facts).
 pub(crate) fn plain_command(verb: &impl speclink_verbs::ToCommand) -> Result<core::command::Command> {

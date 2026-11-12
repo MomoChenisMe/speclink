@@ -64,10 +64,11 @@ fn variant_index(cmd: &Command) -> usize {
         Command::WorkflowConfigShow => 45,
         Command::WorkflowConfigEdit { .. } => 46,
         Command::WorkflowConfigReplace { .. } => 47,
+        Command::ChangeLanded { .. } => 48,
     }
 }
 
-const VARIANT_COUNT: usize = 48;
+const VARIANT_COUNT: usize = 49;
 
 fn s(v: &str) -> String {
     v.to_string()
@@ -125,7 +126,7 @@ fn samples() -> Vec<Command> {
         Command::TaskUndone { task_id: s("1.1"), change: Some(s("demo")) },
         Command::TaskMove { change: s("demo"), from: 1, to: 3, before: Some(true) },
         Command::Claim { name: s("demo") },
-        Command::InProgressAdd { name: s("demo") },
+        Command::InProgressAdd { name: s("demo"), branch: Some(s("feature/x")) },
         Command::InProgressRemove { name: s("demo") },
         Command::ChangeDepends { name: s("demo"), on: vec![s("base")], remove: false },
         Command::ChangeSchema { name: s("demo"), schema: s("spec-driven") },
@@ -159,6 +160,7 @@ fn samples() -> Vec<Command> {
             change: s("demo"),
             accept: false,
             tool: Some(s("claude")),
+            head_commit: Some(s("0123456789ab")),
             scope: scope.clone(),
             missing: vec![s("src/gone.rs")],
         },
@@ -169,6 +171,7 @@ fn samples() -> Vec<Command> {
             change: s("demo"),
             accept: true,
             tool: None,
+            head_commit: None,
             scope,
             missing: vec![],
         },
@@ -179,6 +182,11 @@ fn samples() -> Vec<Command> {
             dry_run: false,
         },
         Command::WorkflowConfigReplace { content: s("schema: spec-driven\n") },
+        Command::ChangeLanded {
+            name: s("demo"),
+            commit: s("0123456789abcdef0123456789abcdef01234567"),
+            branch: Some(s("speclink/demo")),
+        },
     ]
 }
 

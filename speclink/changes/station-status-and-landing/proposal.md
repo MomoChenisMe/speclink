@@ -42,18 +42,19 @@ Source discussion: embedded-host-needs（cut 14）。
   - exit code：成功 0；變更不存在、或沒有 commit 可用（不帶 `--commit` 而且不在 git checkout 裡）非 0。
   - 產生事件 `change-landed`。
 - 線上新增對應的路由；單筆變更與清單項新增選填的 `branch`、`landedCommit`、`landedAt`、`landedBy`。
-- `speclink show <change> --json` 新增 `review`、`verify`、`branch`、`landed` 四個選填欄位，讓內嵌的宿主經 `host.dispatch` 也讀得到。
-- commit 與 worktree-merge 兩支技能各多一步：提交或合併完成後執行 `speclink change landed`。
+- `speclink show <change> --json` 新增 `review`、`verify`、`branch`、`landed` 四個選填欄位，讓內嵌的宿主經 `host.dispatch` 也讀得到。沒有記錄的欄位不輸出：關卡沒有工單也沒有章時不輸出 `review`（或 `verify`），所以沒有任何記錄的變更輸出不變。
+- commit 與 worktree-merge 兩支技能各多一步：提交或合併完成後執行 `speclink change landed`，並以 `--commit` 明確帶上 HEAD（技能的動詞可能在沒有 checkout 的宿主那一端執行）。commit 技能在封存子流程已經封存變更時略過這一步。
 
 **Speclink Desktop**
 
 - 遠端專案的看板卡片、詳情頁與已封存頁顯示審查與驗證的標示，規則和本機專案相同。有 checkout 時用單筆回應的 `scope` 在本機算「蓋章後有沒有變」；沒有 checkout 時只比任務數。
-- 遠端專案封存時，「還有未結工單」的三選項對話框會出現，選「照樣帶走」時把旗標帶給 Server。
+- 遠端專案封存時，「還有未結工單」的三選項對話框會出現，選「照樣帶走」時把旗標帶給 Server；對話框的「放棄審查／放棄驗證」在遠端也接上（刪掉該站的工單）。
 
 **相容性影響**
 
 - `speclink list --json`：不變（兩個關卡的規格釘住它不含關卡欄位）。CLI 在遠端收到新欄位時不輸出它們。
-- `speclink show <change> --json`：多四個選填欄位。人眼輸出不變。
+- `speclink show <change> --json`：多四個選填欄位，只在變更有對應的記錄時出現；沒有記錄的變更輸出與之前逐位元相同。人眼輸出不變。
+- 本機 repo 的 commit 與 worktree-merge 流程：回報落地會寫進變更的資料檔，所以回報之後那個檔有一筆未提交的改動，留給這個變更的下一次提交（技能會說明，不代為提交）。主 checkout 在下一次 worktree 合併前要先把它提交。
 - 蓋章、開工標記：metadata 多了 `reviewed_commit`、`verified_commit`、`branch`。沒有帶值時不寫，既有的 metadata 照常可讀。
 - 舊版用戶端連到新版 Server：回應多了它不認得的選填欄位，照常運作（這是討論留下的未驗證項，這個變更用測試確認）。
 - 新版用戶端連到舊版 Server：沒有新欄位，遠端專案的標示維持今天的樣子；`change landed` 得到 404。
@@ -130,9 +131,39 @@ Source discussion: embedded-host-needs（cut 14）。
     - crates/adapters/speclink-cli/tests/it/main.rs
     - apps/desktop/core/src/query.rs
     - apps/desktop/src-tauri/src/remote.rs
-    - crates/adapters/speclink-node/src/lib.rs
+    - crates/engine/speclink-core/src/command/typed.rs
+    - crates/engine/speclink-core/src/command/tests.rs
+    - crates/engine/speclink-core/src/lifecycle/change_schema.rs
+    - crates/engine/speclink-core/src/lifecycle/tasks.rs
+    - crates/engine/speclink-core/src/quality/station/tests.rs
+    - crates/engine/speclink-core/src/util.rs
+    - crates/engine/speclink-core/tests/it/command_describe.rs
+    - crates/engine/speclink-core/tests/it/skill_verbization.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
+    - crates/adapters/speclink-verbs/src/tool.rs
+    - crates/adapters/speclink-cli/src/common.rs
+    - crates/host/speclink-host/src/port_exec.rs
+    - crates/host/speclink-host/tests/documents.rs
+    - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-server/tests/it/api/review_api.rs
+    - crates/host/speclink-server/tests/it/api/verify_api.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
+    - crates/protocol/speclink-remote/src/convert.rs
+    - crates/protocol/speclink-remote/tests/it/typed_client.rs
+    - crates/adapters/speclink-node/__test__/host.spec.ts
+    - crates/adapters/speclink-node/__test__/agent-tool.spec.ts
+    - apps/desktop/core/src/manage.rs
+    - apps/desktop/src-tauri/src/lib.rs
+    - apps/desktop/src-tauri/tests/it/remote_data.rs
+    - apps/desktop/src-tauri/tests/it/remote_runtime.rs
+    - apps/desktop/src-tauri/tests/it/phase3_chain.rs
+    - apps/desktop/src/adapter/remoteDataSource.ts
+    - apps/desktop/src/session.ts
+    - apps/desktop/src/__tests__/remoteDataSource.test.ts
+    - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
   - Removed: (none)
-  - 另外會重新產生：技能的 golden 快照與本 repo 的技能檔。
+  - 另外會重新產生：技能的 golden 快照（10 份）與本 repo 的技能檔（`.claude/skills` 與 `.agents/skills` 共 37 份，只有版號行與兩支技能的內文有變）。
+  - `speclink-node` 只加測試：`src/lib.rs` 不用改（蓋章的 stdin 解析在共用的動詞定義裡）。
 - 相依：排在變更 skills-verbs-second-wave 之後（它改寫 commit 的原稿；這個變更在它之上加一步）。和 remote-skill-delivery 沒有先後。
 - 三種形態下的結果：
   - 本機 repo：蓋章記下 commit、開工記下分支、`change landed` 可用，資料存在變更的 metadata。Speclink Desktop 的標示不變。

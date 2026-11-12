@@ -26,11 +26,14 @@ use speclink_protocol::command::{
 };
 use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
-    ArchivedListResponse, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
+    ArchivedItem, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
     DiscussionCut, DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId,
     ImportReportResponse, ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse,
     PlanUnpromotedCut, ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
+    StationOutcome, StationState,
 };
+use speclink_core::station::{Station, StationId, REVIEW, VERIFY};
+use speclink_desktop_core::query::{put_station_fields, station_view, StationView};
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
@@ -831,6 +834,102 @@ pub struct RemoteChangeItem {
     /// 由 [`schedule_of`] 照 desktop-core 的 `PLAN_FIELDS` 組成（與本機清單同一份鍵清單）。
     #[serde(flatten)]
     pub schedule: Option<serde_json::Map<String, serde_json::Value>>,
+    /// 審查與驗證的狀態欄位（station-status-and-landing D7）：鍵與本機清單項相同
+    /// （`reviewStatus`、`reviewedAt`、`reviewedBy` 與驗證站的同構三鍵），由 desktop-core
+    /// 的同一份四態判定算出。Server 的回應沒有關卡欄位時是空的——卡片沒有標示。
+    #[serde(flatten)]
+    pub stations: serde_json::Map<String, serde_json::Value>,
+}
+
+/// remote 清單項的任務計數：只有總數與完成數，沒有寫碼任務的分組。章的任務錨因此
+/// 只比總數（spec desktop-app：tasksTotal 與目前的任務數不同 → 其後有變動）。
+fn task_counts(summary: &ChangeSummary) -> speclink_core::tasks::Counts {
+    speclink_core::tasks::Counts {
+        total: summary.total_tasks,
+        complete: summary.completed_tasks,
+        remaining: summary.total_tasks.saturating_sub(summary.completed_tasks),
+        code_total: 0,
+        code_complete: 0,
+        code_remaining: 0,
+    }
+}
+
+/// 一個清單項兩個關卡的狀態欄位，只依線上的事實與任務數（清單不帶 scope，也還沒有
+/// 工作樹可讀）。沒有關卡物件、或 state 是這個用戶端不認得的值：那一站沒有鍵。
+pub(crate) fn station_fields(summary: &ChangeSummary) -> serde_json::Map<String, serde_json::Value> {
+    let counts = task_counts(summary);
+    let mut fields = serde_json::Map::new();
+    for (st, wire) in [(&REVIEW, &summary.review), (&VERIFY, &summary.verify)] {
+        let Some(status) = wire.as_ref().and_then(speclink_remote::convert::station_status) else {
+            continue;
+        };
+        put_station_fields(&mut fields, st, &status, station_view(&status, &counts, None));
+    }
+    fields
+}
+
+/// 清單項的 `st` 這一站是不是「已蓋章、任務數相符」：只有這種才值得拿 scope 去比檔案。
+fn stamp_holds_so_far(item: &RemoteChangeItem, st: &Station) -> bool {
+    item.stations.get(&format!("{}Status", st.noun)).and_then(|v| v.as_str())
+        == Some(StationView::Stamped.status_str(st))
+}
+
+/// 綁有 checkout 時的第二步（D7）：對任務數相符的已蓋章關卡，用單筆回應帶來的 scope
+/// 比 checkout 裡檔案的現值，不符的改成其後有變動。scope 的路徑是 server 給的外部
+/// 輸入：不是 repo 內相對路徑的一律不讀，讀作內容有變。
+pub(crate) fn refine_with_checkout(
+    item: &mut RemoteChangeItem,
+    review: Option<&StationState>,
+    verify: Option<&StationState>,
+    root: &Path,
+) {
+    let counts = task_counts(&item.summary);
+    let read_file = |p: &str| {
+        speclink_core::station::ensure_repo_relative(p).ok()?;
+        speclink_core::util::read_bytes_opt(&root.join(p))
+    };
+    for (st, wire) in [(&REVIEW, review), (&VERIFY, verify)] {
+        if !stamp_holds_so_far(item, st) {
+            continue;
+        }
+        let Some(status) = wire.and_then(speclink_remote::convert::station_status) else {
+            continue;
+        };
+        let view = station_view(&status, &counts, Some(&read_file));
+        put_station_fields(&mut item.stations, st, &status, view);
+    }
+}
+
+/// 已封存清單的一項：server 的 ArchivedItem 原樣攤平，加上與本機同名的結局欄位
+/// （`reviewStatus`：none／reviewed／reviewedNotPassed；驗證站同構）。Server 沒有回報
+/// 結局、或值是這個用戶端不認得的：沒有鍵。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteArchivedItem {
+    #[serde(flatten)]
+    pub item: ArchivedItem,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub review_status: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub verify_status: Option<&'static str>,
+}
+
+/// `remote_list_archived` 的 payload。
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct RemoteArchivedList {
+    pub archived: Vec<RemoteArchivedItem>,
+}
+
+/// 線上的結局對到已封存卡片讀的字串。
+fn outcome_status(st: &Station, outcome: Option<&StationOutcome>) -> Option<&'static str> {
+    Some(match (st.id, outcome?) {
+        (_, StationOutcome::None) => "none",
+        (StationId::Review, StationOutcome::Stamped) => "reviewed",
+        (StationId::Review, StationOutcome::NotPassed) => "reviewedNotPassed",
+        (StationId::Verify, StationOutcome::Stamped) => "verified",
+        (StationId::Verify, StationOutcome::NotPassed) => "verifiedNotPassed",
+        (_, StationOutcome::Unknown(_)) => return None,
+    })
 }
 
 /// plan 那一列帶給清單項的排程欄位：照 `PLAN_FIELDS` 從該列逐鍵照搬，不另算。舊 server
@@ -869,6 +968,7 @@ pub(crate) fn merge_plan(
     let changes = display_order(changes, board, plan.as_ref())
         .into_iter()
         .map(|(summary, entry)| RemoteChangeItem {
+            stations: station_fields(&summary),
             summary,
             schedule: entry.map(schedule_of),
         })
@@ -1438,14 +1538,32 @@ impl RemoteWorkspace {
     /// add-change-plan-remote D5）：UI 與 TS 層不做排序、不知道 board resource
     /// 存在。board resource 讀取失敗（端點缺席的舊 server）視為缺席；plan 的
     /// 失敗交給 `merge_plan` 分流。
+    ///
+    /// `checkout` 是這個 remote 專案綁定的本機工作副本（沒有就是 `None`）。有的話，
+    /// 任務數相符的已蓋章變更各多取一次單筆回應，拿它的 scope 比 checkout 裡的檔案
+    /// （[`refine_with_checkout`]）；那一次讀取失敗時維持只比任務數的結果，清單不因此失敗。
     pub fn list_changes(
         &self,
         credentials: &dyn CredentialStore,
+        checkout: Option<&Path>,
     ) -> Result<RemoteChangeList, RemoteError> {
         let response = self.run(credentials, |client| client.list_changes())?;
         let board = self.board_order_doc(credentials);
         let plan = self.run(credentials, |client| client.plan());
-        Ok(merge_plan(response.changes, &board, plan))
+        let mut list = merge_plan(response.changes, &board, plan);
+        if let Some(root) = checkout {
+            let stamped = list
+                .changes
+                .iter_mut()
+                .filter(|item| [&REVIEW, &VERIFY].into_iter().any(|st| stamp_holds_so_far(item, st)));
+            for item in stamped {
+                let name = item.summary.name.clone();
+                if let Ok(status) = self.run(credentials, |client| client.get_change(&name)) {
+                    refine_with_checkout(item, status.review.as_ref(), status.verify.as_ref(), root);
+                }
+            }
+        }
+        Ok(list)
     }
 
     /// 讀 board resource 並解析為桌面側形狀；任何讀取失敗與缺席同義
@@ -1562,8 +1680,18 @@ impl RemoteWorkspace {
     pub fn list_archived(
         &self,
         credentials: &dyn CredentialStore,
-    ) -> Result<ArchivedListResponse, RemoteError> {
-        self.run(credentials, |client| client.archived_list())
+    ) -> Result<RemoteArchivedList, RemoteError> {
+        let archived = self
+            .run(credentials, |client| client.archived_list())?
+            .archived
+            .into_iter()
+            .map(|item| RemoteArchivedItem {
+                review_status: outcome_status(&REVIEW, item.review_outcome.as_ref()),
+                verify_status: outcome_status(&VERIFY, item.verify_outcome.as_ref()),
+                item,
+            })
+            .collect();
+        Ok(RemoteArchivedList { archived })
     }
 
     pub fn spec_document(
@@ -1729,15 +1857,27 @@ impl RemoteWorkspace {
             .map(|_| ())
     }
 
+    /// 封存。兩個 carry 旗標是三選項對話框「照樣帶走」的結果（station-status-and-landing
+    /// D7）：帶著該站未結的工單封存。一般封存兩者都是 false。
     pub fn archive(
         &self,
         credentials: &dyn CredentialStore,
         change: &str,
+        carry_review: bool,
+        carry_verify: bool,
     ) -> Result<ArchiveResponse, RemoteError> {
-        // 兩個 carry 旗標恆 false：remote 清單項不帶 reviewStatus／verifyStatus，
-        // UI 不會判到 inReview／inVerify、封存三選項對話框在 remote 不出現
-        //（design「Out of scope」）。
-        self.run_write(credentials, |client| client.archive(change, false, false))
+        self.run_write(credentials, |client| client.archive(change, carry_review, carry_verify))
+    }
+
+    /// 三選項對話框的「放棄審查／放棄驗證」：刪掉該站的工單。`station` 是引擎的站別詞
+    /// （`review`／`verify`），由呼叫端先認過。
+    pub fn discard_station(
+        &self,
+        credentials: &dyn CredentialStore,
+        change: &str,
+        station: &str,
+    ) -> Result<(), RemoteError> {
+        self.run_write(credentials, |client| client.station_discard(station, change)).map(|_| ())
     }
 
     /// active 討論同樣疊 board resource 排序 overlay（決策 4）；archived 清單
@@ -1996,6 +2136,60 @@ mod board_order_tests {
             from_discussions: Vec::new(),
             delta_capabilities: Vec::new(),
             modified_at: None,
+            review: None,
+            verify: None,
+            branch: None,
+            landed_commit: None,
+        }
+    }
+
+    #[test]
+    fn a_server_without_station_fields_gives_no_station_keys() {
+        // Scenario「舊 Server 沒有欄位」：沒有資料就沒有鍵——卡片沒有標示，封存不出現對話框。
+        let list = super::merge_plan(vec![change("demo", 1, 2)], &BoardOrderDoc::default(), Err(super::unavailable("no plan".into())));
+        assert!(list.changes[0].stations.is_empty());
+        let payload = serde_json::to_value(&list).unwrap();
+        for key in ["reviewStatus", "verifyStatus", "review", "verify"] {
+            assert!(payload["changes"][0].get(key).is_none(), "{key}: {payload}");
+        }
+    }
+
+    #[test]
+    fn a_state_this_client_does_not_know_reads_as_no_data() {
+        use speclink_protocol::query::{StationPhase, StationState};
+        let mut summary = change("demo", 1, 1);
+        summary.review = Some(StationState { state: StationPhase::Unknown("paused".into()), ..Default::default() });
+        summary.verify = Some(StationState { state: StationPhase::InProgress, ..Default::default() });
+        let fields = super::station_fields(&summary);
+        assert!(!fields.contains_key("reviewStatus"), "{fields:?}");
+        assert_eq!(fields["verifyStatus"], "inVerify");
+    }
+
+    #[test]
+    fn a_scope_path_outside_the_checkout_is_never_read() {
+        // 線上回應的 scope 路徑是外部輸入：絕對路徑與 `..` 不讀，讀作內容有變。
+        use speclink_protocol::command::ReviewScopeEntryDto;
+        use speclink_protocol::query::{StationPhase, StationState};
+        let outside = tempfile::tempdir().unwrap();
+        let secret = outside.path().join("secret.txt");
+        std::fs::write(&secret, "s").unwrap();
+        let checkout = tempfile::tempdir().unwrap();
+        let hash = speclink_core::station::content_fingerprint("s");
+        for path in [secret.display().to_string(), format!("../{}/secret.txt", outside.path().file_name().unwrap().to_string_lossy())] {
+            let stamped = StationState {
+                state: StationPhase::Stamped,
+                stamped_at: Some("2026-11-02".into()),
+                tasks_total: Some(1),
+                rounds: Some(1),
+                scope: vec![ReviewScopeEntryDto { path, hash: hash.clone() }],
+                ..Default::default()
+            };
+            let mut summary = change("demo", 1, 1);
+            summary.review = Some(StationState { scope: Vec::new(), ..stamped.clone() });
+            let mut item = super::RemoteChangeItem { stations: super::station_fields(&summary), summary, schedule: None };
+            assert_eq!(item.stations["reviewStatus"], "reviewed");
+            super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
+            assert_eq!(item.stations["reviewStatus"], "reviewedStale");
         }
     }
 

@@ -160,6 +160,7 @@ fn stamp_writes_the_verified_fields_and_deletes_the_ticket_atomically() {
         "demo-change",
         false,
         Some("claude"),
+        None,
         &[speclink_protocol::command::ReviewScopeEntryDto {
             path: "src/lib.rs".into(),
             hash: "deadbeef".into(),

@@ -63,6 +63,7 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Post, "/changes/{name}/depends", routes::change_depends),
     route(Post, "/changes/{name}/schema", routes::change_schema),
     route(Post, "/changes/{name}/rank", routes::change_rank),
+    route(Post, "/changes/{name}/landed", routes::change_landed),
     route(Post, "/changes/{name}/in-progress", routes::in_progress),
     route(Delete, "/changes/{name}/in-progress", routes::in_progress_remove),
     route(Post, "/changes/{name}/archive", routes::archive),

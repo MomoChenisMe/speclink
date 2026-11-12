@@ -7,12 +7,13 @@
 use anyhow::{bail, Result};
 use speclink_core as core;
 
-use crate::common::{emit, open_project, plain_command, render_options, run};
+use crate::common::{emit, engine_command, git_branch, open_project, plain_command, render_options, run};
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::progress::{
     InProgressArgs, InProgressCommands, TaskArgs, TaskCommands,
 };
 use speclink_verbs::render::progress::{self as render, FlippedTask, TaskFlip};
+use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_task(a: TaskArgs) -> Result<()> {
     let (flip, json) = match a.command {
@@ -54,12 +55,15 @@ struct RemoteTask<'a> {
 }
 pub(crate) fn cmd_in_progress(a: InProgressArgs) -> Result<()> {
     let (ws, store) = open_project()?;
-    let cmd = plain_command(&a)?;
     match a.command {
         InProgressCommands::Add { .. } => {
+            // The branch this checkout is on goes with the marker; the engine reads no git.
+            let inputs = VerbInputs { branch: git_branch(&ws.root), ..Default::default() };
+            let cmd = engine_command(a.to_command(inputs))?;
             let _: core::command::InProgressOutcome = run(&store, Some(&ws), cmd)?;
         }
         InProgressCommands::Remove { .. } => {
+            let cmd = plain_command(&a)?;
             let o: core::command::InProgressRemoveOutcome = run(&store, Some(&ws), cmd)?;
             emit(render::in_progress_remove(&o.name, o.removed, render_options(false)));
         }
@@ -125,7 +129,7 @@ pub(crate) fn remote_in_progress(ctx: &RemoteCtx, a: InProgressArgs) -> Result<(
         InProgressCommands::Add { name } => {
             // 路由至 server（started_by 由 server 認證身分蓋章）；靜默 exit 0
             // 的 parity 凍結形狀兩模式一致。
-            ctx.client.in_progress_add(&name)?;
+            ctx.client.in_progress_add(&name, git_branch(&ctx.ws.root).as_deref())?;
             Ok(())
         }
         InProgressCommands::Remove { name } => remote_in_progress_remove(ctx, &name),

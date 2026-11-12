@@ -484,6 +484,117 @@ describe('createHost and host.dispatch', () => {
   })
 })
 
+// change-landing「change landed 動詞回報落地的 commit」and the two stations'
+// 「蓋章記錄程式碼的 commit」: a host has no checkout, so it names the commit itself.
+describe('the landing report and the stamp commit through host.dispatch', () => {
+  const SHA = '0123456789abcdef0123456789abcdef01234567'
+
+  it('records a landing in one commit with its event, and the hooks see it', async () => {
+    const asked: { command: string; params: unknown }[] = []
+    const watched: { command: string; events: { name: string; payload: unknown }[] }[] = []
+    const port = portWithDemo()
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: (info) => {
+          asked.push({ command: info.command, params: info.params })
+        },
+        afterCommit: (info) => {
+          watched.push({ command: info.command, events: info.events })
+        },
+      },
+    })
+
+    const landed = await host.dispatch({
+      identity: ALICE,
+      scope: 's1',
+      argv: ['change', 'landed', 'demo', '--commit', SHA, '--json'],
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(landed).toEqual({ change: 'demo', commit: SHA })
+    expect(port.calls.commit).toBe(1)
+    const { commit } = port.commits[0]
+    expect(commit.command).toBe('change-landed')
+    expect(commit.ops.map((op) => `${op.op} ${op.key}`)).toEqual(['put changes/demo/.meta.yaml'])
+    expect(commit.events).toEqual([{ name: 'change-landed', payload: { change: 'demo', commit: SHA } }])
+    expect(asked).toEqual([{ command: 'change-landed', params: { name: 'demo', commit: SHA, branch: null } }])
+    expect(watched.map((w) => [w.command, w.events.map((e) => e.name)])).toEqual([['change-landed', ['change-landed']]])
+    const meta = port.doc('s1', 'changes/demo/.meta.yaml')?.content ?? ''
+    expect(meta).toContain(`landed_commit: ${SHA}\n`)
+    expect(meta).toContain('landed_by: Alice\n')
+  })
+
+  it('rejects a landing with no --commit as invalid_argv, and commits nothing', async () => {
+    const port = portWithDemo()
+    const host = createHost({ store: port.store })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['change', 'landed', 'demo'] }))
+    expect(err.code).toBe('invalid_argv')
+    expect(err.message).toContain('--commit')
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('lets beforeCommand refuse a landing', async () => {
+    const port = portWithDemo()
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: (info) =>
+          info.command === 'change-landed' ? { allow: false, reason: 'the commit is not on main' } : undefined,
+      },
+    })
+    const err = await rejection(
+      host.dispatch({ identity: ALICE, scope: 's1', argv: ['change', 'landed', 'demo', '--commit', SHA] }),
+    )
+    expect(err.code).toBe('refused')
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toBe(META)
+  })
+
+  it('records the headCommit a stamp names on stdin, and show --json reports the records', async () => {
+    const port = portWithDemo(DONE_TASKS)
+    const host = createHost({ store: port.store })
+    const call = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+    const keysBefore = Object.keys((await call(['show', 'demo', '--json'])) as object)
+    for (const key of ['review', 'verify', 'branch', 'landed']) expect(keysBefore).not.toContain(key)
+
+    await call(['in-progress', 'add', 'demo'])
+    await call(['review', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
+    await call(
+      ['review', 'stamp', 'demo', '--stdin'],
+      JSON.stringify({ scope: [{ path: 'src/lib.rs', hash: '0f9c' }], headCommit: '0123456789ab' }),
+    )
+    await call(['verify', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
+    await call(['change', 'landed', 'demo', '--commit', SHA, '--branch', 'speclink/demo'])
+
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('reviewed_commit: 0123456789ab\n')
+    const shown = (await call(['show', 'demo', '--json'])) as Record<string, any>
+    expect(shown.review).toMatchObject({ state: 'stamped', commit: '0123456789ab', rounds: 1, tasksTotal: 1, stampedBy: 'Alice' })
+    expect(typeof shown.review.stampedAt).toBe('string')
+    expect(shown.review.scope).toBeUndefined()
+    expect(shown.verify).toEqual({ state: 'inProgress' })
+    expect(shown.branch).toBe('speclink/demo')
+    expect(shown.landed).toMatchObject({ commit: SHA, by: 'Alice' })
+    expect(typeof shown.landed.at).toBe('string')
+    for (const key of Object.keys(shown)) expect(isCamel(key)).toBe(true)
+  })
+
+  it('stamps without a commit when the stdin JSON names none, and refuses a malformed one', async () => {
+    const port = portWithDemo(DONE_TASKS)
+    const host = createHost({ store: port.store })
+    const call = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+    await call(['verify', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
+    const bad = JSON.stringify({ scope: [{ path: 'src/lib.rs', hash: '0f9c' }], headCommit: 'not-a-sha' })
+    const err = await rejection(call(['verify', 'stamp', 'demo', '--stdin'], bad))
+    expect(err.code).toBe('invalid_argv')
+    expect(port.doc('s1', 'changes/demo/verify.md')).toBeDefined()
+
+    await call(['verify', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope: [{ path: 'src/lib.rs', hash: '0f9c' }] }))
+    const meta = port.doc('s1', 'changes/demo/.meta.yaml')?.content ?? ''
+    expect(meta).toContain('verified_at: ')
+    expect(meta).not.toContain('verified_commit')
+  })
+})
+
 describe('the JS store port', () => {
   it('commits a write verb once, with its events', async () => {
     const port = portWithDemo()

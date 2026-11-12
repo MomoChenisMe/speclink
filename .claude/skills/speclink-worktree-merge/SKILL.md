@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.57.0"
+  version: "v1.58.0"
   generatedBy: "Speclink"
 ---
 
@@ -112,9 +112,19 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
    The main checkout must end up exactly as it was before step 3.
 
-5. **Carry the quality baseline over, then clean up**
+5. **Report the landing, carry the quality baseline over, then clean up**
 
-   After a successful merge — fast-forward or merge node alike — and before the worktree is removed, run this from the main checkout:
+   After a successful merge — fast-forward or merge node alike — the target branch's HEAD is where this change's code landed. Record it first. Take the commit from `git -C <main-checkout> rev-parse HEAD` and pass it, from the main checkout:
+
+   ```bash
+   speclink change landed "<change-name>" --commit "<commit>" --branch "speclink/<change-name>"
+   ```
+
+   When the verb is refused (for example, a Server that has no such route), tell the user its message and go on with the rest of this step. The merge stays as it is: do not revert it.
+
+   The report is recorded in the change's own data file, so the main checkout has that one modified file from here on. Leave it uncommitted and name it in the hand-off: it goes into this change's next commit.
+
+   Then, before the worktree is removed, run this from the main checkout:
 
    ```bash
    speclink review prepare "<change-name>" --base "<pre-merge-HEAD>" --from "<worktree-path>"
@@ -135,7 +145,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 
 6. **Confirm and hand off**
 
-   Tell the user the wrap-up is done: the branch is merged, the quality baseline is carried over, the worktree is removed, and the branch is deleted. Then hand off by the change's state. Read the manual tasks from `speclink instructions apply --change "<change-name>" --json` (`remaining` above `codeRemaining` means unchecked `[M]` tasks); ask the user when you cannot tell whether the quality stations already ran.
+   Tell the user the wrap-up is done: the branch is merged, the landing is reported (or its refusal message), the quality baseline is carried over, the worktree is removed, and the branch is deleted. Then hand off by the change's state. Read the manual tasks from `speclink instructions apply --change "<change-name>" --json` (`remaining` above `codeRemaining` means unchecked `[M]` tasks); ask the user when you cannot tell whether the quality stations already ran.
 
    - **The quality stations already ran in the worktree** (their stamps came along with the merge):
 
@@ -157,6 +167,7 @@ This is the wrap-up half of `/speclink-apply-with-worktree`. That skill stops ri
 **Change:** <change-name>
 **Branch:** speclink/<change-name> → <main-branch> ✓
 **Landed as:** fast-forward (straight line) — or "merge node (rebase fell back)" when step 3 took the fallback
+**Landing reported:** ✓ — or the verb's refusal message
 **Quality baseline:** carried over to the main checkout ✓
 **Worktree:** <path> (removed)
 **Branch deleted:** ✓

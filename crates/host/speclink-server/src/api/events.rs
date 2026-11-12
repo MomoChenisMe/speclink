@@ -6,8 +6,7 @@
 //! a spurious re-read is safe, a missed invalidation is not.
 
 use crate::state::SharedStore;
-use serde_json::Value;
-use speclink_protocol::events::{InvalidationEvent, InvalidationScope};
+use speclink_protocol::events::InvalidationEvent;
 use speclink_store::{OutboxCursor, OutboxEntry, Scope, StoreError};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -19,58 +18,14 @@ use tokio::sync::{broadcast, Notify};
 /// category and resource id come from the event name and payload, and the
 /// revision is the commit that produced it.
 pub fn invalidation_of(entry: &OutboxEntry) -> InvalidationEvent {
-    let (scope, resource_id) = classify(&entry.record.name, &entry.record.payload);
+    // The one table of event kind → resource is the host kit's.
+    let (scope, resource_id) = speclink_host::commit::event_resource(&entry.record.name, &entry.record.payload);
     InvalidationEvent {
         event_id: entry.seq.to_string(),
         scope,
         resource_id,
         revision: entry.revision.0,
     }
-}
-
-/// The single point that classifies a domain event name into a resource
-/// category and identity. `change-archived` points at the specs it promoted;
-/// every other change-family event at the change; every discussion-family
-/// event at the discussion. An unrecognized name is `unknown` with no
-/// identity — the client re-reads everything, never misses.
-fn classify(name: &str, payload: &Value) -> (InvalidationScope, String) {
-    match name {
-        "change-created"
-        | "artifact-created"
-        | "task-completed"
-        | "task-uncompleted"
-        | "task-moved"
-        | "change-claimed"
-        | "change-marked-in-progress"
-        | "change-in-progress-removed"
-        | "change-depends-changed"
-        | "change-schema-changed"
-        | "change-ranked"
-        | "change-discarded" => (InvalidationScope::Change, str_field(payload, "change")),
-        "change-archived" => (InvalidationScope::Spec, str_field(payload, "change")),
-        "discussion-created"
-        | "discussion-context-set"
-        | "discussion-round-added"
-        | "discussion-concluded"
-        | "discussion-promoted"
-        | "discussion-linked"
-        | "discussion-sealed"
-        | "discussion-archived"
-        | "discussion-discarded" => (InvalidationScope::Discussion, str_field(payload, "slug")),
-        _ => (
-            InvalidationScope::Unknown("unknown".to_string()),
-            String::new(),
-        ),
-    }
-}
-
-/// Read a string field from an event payload, empty string if absent.
-fn str_field(payload: &Value, key: &str) -> String {
-    payload
-        .get(key)
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string()
 }
 
 /// Tunables for the event stream. An absent config section uses these defaults
@@ -290,6 +245,8 @@ impl EventHub {
 mod tests {
     use super::*;
     use chrono::DateTime;
+    use serde_json::Value;
+    use speclink_protocol::events::InvalidationScope;
     use speclink_store::{EventRecord, Revision};
 
     /// An outbox entry (seq 7, revision 42) carrying `name` and `payload`.
@@ -436,6 +393,19 @@ mod tests {
                 json!({ "slug": "topic" }),
                 InvalidationScope::Discussion,
                 "topic",
+            ),
+            // The two quality stations and the landing report point at their change.
+            ("review-round-added", json!({ "change": "add-auth", "round": 2 }), InvalidationScope::Change, "add-auth"),
+            ("review-stamped", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            ("review-discarded", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            ("verify-round-added", json!({ "change": "add-auth", "round": 1 }), InvalidationScope::Change, "add-auth"),
+            ("verify-stamped", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            ("verify-discarded", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
+            (
+                "change-landed",
+                json!({ "change": "add-auth", "commit": "0123456789ab" }),
+                InvalidationScope::Change,
+                "add-auth",
             ),
         ];
         for (name, payload, want_scope, want_resource) in cases {

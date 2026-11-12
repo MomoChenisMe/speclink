@@ -1244,15 +1244,18 @@ async fn remote_write_workflow_schema(
     .await
 }
 
+/// `checkout_root` 是這個 remote 專案綁定的本機工作副本（沒有就不帶）：有的話，已蓋章
+/// 變更的「其後有變動」另以 checkout 裡的檔案判定。
 #[tauri::command]
 async fn remote_list_changes(
     app: tauri::AppHandle,
     connection_id: String,
     project: String,
     repo: String,
+    checkout_root: Option<PathBuf>,
 ) -> Result<Value, String> {
-    with_remote(app, connection_id, project, repo, |ws, credentials| {
-        let changes = ws.list_changes(credentials).map_err(|e| e.message)?;
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let changes = ws.list_changes(credentials, checkout_root.as_deref()).map_err(|e| e.message)?;
         serde_json::to_value(&changes).map_err(|e| e.to_string())
     })
     .await
@@ -1558,6 +1561,7 @@ async fn remote_set_all_tasks(
     .await
 }
 
+/// 兩個 carry 旗標是封存對話框「照樣帶走」的選擇；一般封存不帶（讀作 false）。
 #[tauri::command]
 async fn remote_archive(
     app: tauri::AppHandle,
@@ -1565,10 +1569,33 @@ async fn remote_archive(
     project: String,
     repo: String,
     change: String,
+    carry_review: Option<bool>,
+    carry_verify: Option<bool>,
 ) -> Result<Value, String> {
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        let archived = ws.archive(credentials, &change).map_err(|e| e.message)?;
+        let archived = ws
+            .archive(credentials, &change, carry_review.unwrap_or(false), carry_verify.unwrap_or(false))
+            .map_err(|e| e.message)?;
         serde_json::to_value(&archived).map_err(|e| e.to_string())
+    })
+    .await
+}
+
+/// 封存對話框的「放棄審查／放棄驗證」：刪掉 remote 變更該站的工單。未知站別不拼 URL。
+#[tauri::command]
+async fn remote_discard_station(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    change: String,
+    station: String,
+) -> Result<(), String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let Some(st) = speclink_desktop_core::query::station_by_noun(&station) else {
+            return Err(format!("unknown station: {station}"));
+        };
+        ws.discard_station(credentials, &change, st.noun).map_err(|e| e.message)
     })
     .await
 }
@@ -2058,6 +2085,7 @@ pub fn run() {
             remote_set_task_done,
             remote_set_all_tasks,
             remote_archive,
+            remote_discard_station,
             remote_validate,
             remote_analyze,
             remote_claim,

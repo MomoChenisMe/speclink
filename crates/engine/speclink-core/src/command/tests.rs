@@ -1408,8 +1408,107 @@ fn claim_without_an_actor_is_refused_rather_than_stamping_an_anonymous_owner() {
 #[test]
 fn in_progress_add_reports_change_marked_in_progress() {
     let store = TestStore::with_meta("demo", META);
-    let (_, events) = ok(&store, Command::InProgressAdd { name: "demo".to_string() });
+    let (_, events) = ok(&store, Command::InProgressAdd { name: "demo".to_string(), branch: None });
     assert_eq!(kinds(&events), ["change-marked-in-progress"]);
+}
+
+#[test]
+fn in_progress_add_records_the_branch_the_caller_gives() {
+    // spec change-landing「開工時記下分支」：分支是命令的輸入，引擎不讀 git。
+    let store = TestStore::with_meta("demo", META);
+    let cmd = Command::InProgressAdd { name: "demo".to_string(), branch: Some("feature/x".to_string()) };
+    let (_, events) = ok(&store, cmd);
+    assert_eq!(kinds(&events), ["change-marked-in-progress"]);
+    assert!(store.meta("demo").ends_with("branch: feature/x\n"), "{}", store.meta("demo"));
+}
+
+#[test]
+fn a_malformed_branch_or_stamp_commit_is_invalid_argv_with_zero_writes() {
+    let store = TestStore::with_meta("demo", META);
+    store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+    store.put_artifact("demo", "review.md", "# Review — demo\n\n## Round 1\n\n**Scope**: src/lib.rs\n");
+    store.put_artifact("demo", "verify.md", "# Verify — demo\n\n## Round 1\n\n**Scope**: src/lib.rs\n");
+    let scope = || vec![crate::model::ReviewedScopeEntry { path: "src/lib.rs".into(), hash: "aa".into() }];
+    let cases = [
+        Command::InProgressAdd { name: "demo".to_string(), branch: Some("has space".to_string()) },
+        Command::ReviewStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            head_commit: Some("not-a-sha".to_string()),
+            scope: scope(),
+            missing: vec![],
+        },
+        Command::VerifyStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            head_commit: Some("zzz".to_string()),
+            scope: scope(),
+            missing: vec![],
+        },
+    ];
+    for cmd in cases {
+        let name = cmd.name();
+        let err = execute(&store, &ExecutionContext::default(), cmd).expect_err(name);
+        assert_eq!(err.code, ErrorCode::InvalidArgv, "{name}: {}", err.message);
+    }
+    assert_eq!(store.meta("demo"), META);
+    assert_eq!(*store.meta_writes.borrow(), 0);
+    assert!(store.artifact_exists("demo", "review.md") && store.artifact_exists("demo", "verify.md"));
+}
+
+// --- show 帶出關卡、分支與落地（station-status-and-landing D6） ---
+
+fn shown(store: &TestStore, name: &str) -> ShowChange {
+    let (outcome, events) = ok(store, Command::Show { item: Some(name.to_string()), item_type: None });
+    assert!(events.is_empty(), "show is a query");
+    match outcome {
+        CommandOutcome::Show(ShowOutcome::Change(change)) => change,
+        other => panic!("expected a change, got {other:?}"),
+    }
+}
+
+#[test]
+fn show_reports_a_stamped_station_a_ticket_the_branch_and_the_landing() {
+    use crate::station::StationPhase;
+    let meta = "schema: spec-driven\ncreated: 2026-11-01\nbranch: feature/x\n\
+reviewed_at: 2026-11-02T10:00:00+08:00\nreviewed_tasks_total: 12\nreviewed_rounds: 3\nreviewed_commit: \"0123456789ab\"\n\
+reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n\
+landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-03T09:00:00+08:00\nlanded_by: Ann <ann@example.com>\n";
+    let store = TestStore::with_meta("demo", meta);
+    store.put_artifact("demo", "verify.md", "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n");
+    let change = shown(&store, "demo");
+    let review = change.review.expect("a review status");
+    assert_eq!(review.phase, StationPhase::Stamped);
+    assert_eq!(review.commit.as_deref(), Some("0123456789ab"));
+    assert_eq!((review.rounds, review.tasks_total), (Some(3), Some(12)));
+    assert_eq!(change.verify.expect("a verify status").phase, StationPhase::InProgress);
+    assert_eq!(change.branch.as_deref(), Some("feature/x"));
+    let landed = change.landed.expect("a landing record");
+    assert_eq!(landed.commit, "89abcdef0123");
+    assert_eq!(landed.at, "2026-11-03T09:00:00+08:00");
+    assert_eq!(landed.by.as_deref(), Some("Ann <ann@example.com>"));
+}
+
+#[test]
+fn show_without_records_reports_both_stations_as_none_and_no_branch_or_landing() {
+    use crate::station::StationPhase;
+    let store = TestStore::with_meta("demo", META);
+    let change = shown(&store, "demo");
+    assert_eq!(change.review.expect("a review status").phase, StationPhase::None);
+    assert_eq!(change.verify.expect("a verify status").phase, StationPhase::None);
+    assert!(change.branch.is_none() && change.landed.is_none());
+}
+
+#[test]
+fn show_on_a_corrupt_meta_carries_no_station_status() {
+    // 壞 metadata 的變更沒有關卡物件：預設值不得被讀成「未開始」。
+    let store = TestStore::with_meta("demo", BAD_META);
+    store.put_artifact("demo", "review.md", "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n");
+    let change = shown(&store, "demo");
+    assert!(change.review.is_none() && change.verify.is_none());
+    assert!(change.branch.is_none() && change.landed.is_none());
 }
 
 // --- in-progress remove:退回動詞的 outcome、事件與守門錯誤分類 ---
@@ -1778,6 +1877,7 @@ fn review_verbs_execute_over_commands_with_events_and_actor() {
             change: "demo".to_string(),
             accept: false,
             tool: Some("claude".to_string()),
+            head_commit: Some("0123456789ab".to_string()),
             scope: vec![crate::model::ReviewedScopeEntry {
                 path: "src/lib.rs".to_string(),
                 hash,
@@ -1791,6 +1891,7 @@ fn review_verbs_execute_over_commands_with_events_and_actor() {
         .expect("meta parses");
     assert_eq!(meta.reviewed_by.as_deref(), Some("Rev <r@example.com>"));
     assert_eq!(meta.reviewed_with.as_deref(), Some("claude"));
+    assert_eq!(meta.reviewed_commit.as_deref(), Some("0123456789ab"));
 
     let (_, ev) = ok(
         &store,
@@ -2117,8 +2218,12 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         ),
         (DomainEvent::VerifyStamped { change: s("c"), occurred_at: at }, "verify-stamped"),
         (DomainEvent::VerifyDiscarded { change: s("c"), occurred_at: at }, "verify-discarded"),
+        (
+            DomainEvent::ChangeLanded { change: s("c"), commit: s("0123456"), branch: None, occurred_at: at },
+            "change-landed",
+        ),
     ];
-    assert_eq!(table.len(), 27, "the coverage table has 27 mutating verbs");
+    assert_eq!(table.len(), 28, "the coverage table has 28 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2161,11 +2266,12 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::TaskUndone { task_id: _, change: _ } => {}
         Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
         Command::Claim { name: _ } => {}
-        Command::InProgressAdd { name: _ } => {}
+        Command::InProgressAdd { name: _, branch: _ } => {}
         Command::InProgressRemove { name: _ } => {}
         Command::ChangeDepends { name: _, on: _, remove: _ } => {}
         Command::ChangeSchema { name: _, schema: _ } => {}
         Command::ChangeRank { name: _, anchor: _, position: _, force: _ } => {}
+        Command::ChangeLanded { name: _, commit: _, branch: _ } => {}
         Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
         Command::Discard { change: _, force: _ } => {}
         Command::DiscussNew { topic: _, slug: _, kind: _ } => {}
@@ -2181,7 +2287,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::ReviewShow { change: _ } => {}
         // `tool` 是工具名（CLI `--agent`，同 NewChange 的 agent），非身分；
         // 蓋章者身分仍只來自 ExecutionContext.actor。
-        Command::ReviewStamp { change: _, accept: _, tool: _, scope: _, missing: _ } => {}
+        Command::ReviewStamp { change: _, accept: _, tool: _, head_commit: _, scope: _, missing: _ } => {}
         Command::ReviewDiscard { change: _ } => {}
         Command::VerifyAddRound { change: _, content: _ } => {}
         Command::VerifyShow { change: _ } => {}
@@ -2189,6 +2295,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
             change: _,
             accept: _,
             tool: _,
+            head_commit: _,
             scope: _,
             missing: _,
         } => {}
@@ -2249,7 +2356,7 @@ fn started_by_stamp_follows_context_actor_only() {
     execute(
         &store,
         &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
-        Command::InProgressAdd { name: "demo".to_string() },
+        Command::InProgressAdd { name: "demo".to_string(), branch: None },
     )
     .expect("in-progress add succeeds");
     assert!(

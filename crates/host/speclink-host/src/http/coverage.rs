@@ -57,6 +57,7 @@ pub fn wire_coverage(command: &Command) -> WireCoverage {
         Command::ChangeDepends { .. } => route(Post, "/changes/{name}/depends"),
         Command::ChangeSchema { .. } => route(Post, "/changes/{name}/schema"),
         Command::ChangeRank { .. } => route(Post, "/changes/{name}/rank"),
+        Command::ChangeLanded { .. } => route(Post, "/changes/{name}/landed"),
         Command::Archive { .. } => route(Post, "/changes/{name}/archive"),
         Command::Discard { .. } => route(Delete, "/changes/{name}"),
         Command::DiscussNew { .. } => route(Post, "/discussions"),

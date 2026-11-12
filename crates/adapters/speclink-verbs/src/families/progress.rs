@@ -93,9 +93,9 @@ impl InProgressArgs {
 }
 
 impl ToCommand for InProgressArgs {
-    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(CommandTarget::Command(match &self.command {
-            InProgressCommands::Add { name } => Command::InProgressAdd { name: name.clone() },
+            InProgressCommands::Add { name } => Command::InProgressAdd { name: name.clone(), branch: inputs.branch },
             InProgressCommands::Remove { name } => Command::InProgressRemove { name: name.clone() },
         }))
     }
@@ -136,7 +136,7 @@ mod tests {
                 &["task", "undone", "01", "--change", "demo"],
                 Command::TaskUndone { task_id: "01".into(), change: Some("demo".into()) },
             ),
-            (&["in-progress", "add", "demo"], Command::InProgressAdd { name: "demo".into() }),
+            (&["in-progress", "add", "demo"], Command::InProgressAdd { name: "demo".into(), branch: None }),
             (&["in-progress", "remove", "demo"], Command::InProgressRemove { name: "demo".into() }),
         ];
         for (argv, want) in cases {
@@ -155,5 +155,15 @@ mod tests {
             assert_eq!(name_of(argv), name);
             assert_eq!(policy_of(argv), StdinPolicy::Never, "{argv:?}");
         }
+    }
+
+    #[test]
+    fn in_progress_add_carries_the_callers_branch() {
+        // The CLI passes its checkout's branch; a detached HEAD passes none.
+        let inputs = VerbInputs { branch: Some("feature/x".into()), ..Default::default() };
+        assert_eq!(
+            command_of(&["in-progress", "add", "demo"], inputs),
+            Command::InProgressAdd { name: "demo".into(), branch: Some("feature/x".into()) }
+        );
     }
 }

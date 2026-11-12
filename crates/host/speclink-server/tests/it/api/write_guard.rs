@@ -36,6 +36,7 @@ const WRITE_ROUTES: &[(&str, &str)] = &[
     ("POST", "changes/demo/depends"),
     ("POST", "changes/demo/schema"),
     ("POST", "changes/demo/rank"),
+    ("POST", "changes/demo/landed"),
     ("POST", "changes/demo/in-progress"),
     ("DELETE", "changes/demo/in-progress"),
     ("POST", "changes/demo/archive"),

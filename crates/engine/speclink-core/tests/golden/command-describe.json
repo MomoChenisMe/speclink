@@ -165,6 +165,7 @@
   {
     "name": "in-progress-add",
     "params": {
+      "branch": "feature/x",
       "name": "demo"
     }
   },
@@ -303,6 +304,7 @@
     "params": {
       "accept": false,
       "change": "demo",
+      "headCommit": "0123456789ab",
       "missing": [
         "src/gone.rs"
       ],
@@ -339,6 +341,7 @@
     "params": {
       "accept": true,
       "change": "demo",
+      "headCommit": null,
       "missing": [],
       "scope": [
         {
@@ -375,6 +378,14 @@
     "name": "workflow-config-replace",
     "params": {
       "content": "schema: spec-driven\n"
+    }
+  },
+  {
+    "name": "change-landed",
+    "params": {
+      "branch": "speclink/demo",
+      "commit": "0123456789abcdef0123456789abcdef01234567",
+      "name": "demo"
     }
   }
 ]

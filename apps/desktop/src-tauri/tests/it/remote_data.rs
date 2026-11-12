@@ -95,6 +95,10 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             from_discussions: Vec::new(),
             delta_capabilities: Vec::new(),
             modified_at: None,
+            review: None,
+            verify: None,
+            branch: None,
+            landed_commit: None,
         }
     }
     let cases: [(Option<&str>, usize, usize, u8); 7] = [
@@ -142,7 +146,7 @@ fn started_at_rides_the_remote_change_list_payload() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    let changes = ws.list_changes(&credentials).expect("list changes").changes;
+    let changes = ws.list_changes(&credentials, None).expect("list changes").changes;
     let started = changes
         .iter()
         .find(|c| c.summary.name == "started-zero")
@@ -344,7 +348,7 @@ fn changes_specs_and_artifacts_read_server_truth() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    let changes = ws.list_changes(&credentials).expect("list changes");
+    let changes = ws.list_changes(&credentials, None).expect("list changes");
     assert_eq!(changes.changes.len(), 1);
     assert_eq!(changes.changes[0].summary.name, "demo");
     assert_eq!(changes.changes[0].summary.total_tasks, 4, "任務數是 server 真值");
@@ -461,15 +465,18 @@ fn archived_spec_document_and_search_reads_reach_server_truth() {
     );
 
     let archived = ws.list_archived(&credentials).expect("archived list");
-    let item = archived
+    let entry = archived
         .archived
         .iter()
-        .find(|item| item.dated_name == dated_name)
+        .find(|entry| entry.item.dated_name == dated_name)
         .expect("archived item");
+    let item = &entry.item;
     assert_eq!(item.tasks_done, Some(1));
     assert_eq!(item.spec_count, 1);
     assert_eq!(item.created_by.as_deref(), Some("Creator"));
     assert_eq!(item.from_discussions, ["source-talk"]);
+    // 沒有章也沒有化石工單：兩個關卡的結局都是 none。
+    assert_eq!((entry.review_status, entry.verify_status), (Some("none"), Some("none")));
     assert_eq!(
         ws.archived_document(&credentials, dated_name, "proposal.md")
             .expect("archived document")
@@ -557,11 +564,160 @@ fn task_flips_claim_and_archive_write_through() {
             .expect("complete before archive");
     }
 
-    let archived = ws.archive(&credentials, "demo").expect("archive");
+    let archived = ws.archive(&credentials, "demo", false, false).expect("archive");
     assert_eq!(archived.specs.len(), 1, "delta spec 折入正典");
     assert_eq!(archived.specs[0].capability, "auth");
-    let changes = ws.list_changes(&credentials).expect("list changes");
+    let changes = ws.list_changes(&credentials, None).expect("list changes");
     assert!(changes.changes.is_empty(), "archive 後不在 active 清單");
+}
+
+// --- spec desktop-app「remote 專案的審查與驗證標示」（station-status-and-landing D7）---
+
+const ONE_TASK_DONE: &str = "- [x] 1.1 Only\n";
+const REVIEW_TICKET: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
+const VERIFY_TICKET: &str = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
+
+fn artifact(change: &str, artifact: &str) -> DocumentId {
+    DocumentId::ChangeArtifact { change: change.into(), artifact: artifact.into() }
+}
+
+/// 一份已審查的 meta：任務錨 `tasks_total`、scope 是 `src/a.rs`（內容 `fn a() {}`）。
+fn reviewed_meta(tasks_total: usize) -> String {
+    let hash = speclink_core::station::content_fingerprint("fn a() {}\n");
+    format!(
+        "schema: spec-driven\ncreated: 2026-11-01\nreviewed_at: 2026-11-02T10:00:00+08:00\n\
+         reviewed_by: Rev <r@example.com>\nreviewed_tasks_total: {tasks_total}\nreviewed_rounds: 1\n\
+         reviewed_scope:\n  - path: src/a.rs\n    hash: {hash}\n"
+    )
+}
+
+/// 清單 payload 裡名為 `name` 的那一項（序列化後，即前端看到的形狀）。
+fn listed(list: &remote::RemoteChangeList, name: &str) -> serde_json::Value {
+    let payload = serde_json::to_value(list).expect("serialize list");
+    payload["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("{name} in {payload}"))
+        .clone()
+}
+
+#[test]
+fn the_remote_list_carries_the_station_statuses_the_board_reads() {
+    // Scenarios「remote 看板顯示審查中」「沒有 checkout 時只看任務數」：鍵與本機清單項相同。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("in-review"), "schema: spec-driven\ncreated: 2026-11-01\n"),
+            (artifact("in-review", "tasks.md"), ONE_TASK_DONE),
+            (artifact("in-review", "review.md"), REVIEW_TICKET),
+            (change_meta("reviewed"), &reviewed_meta(1)),
+            (artifact("reviewed", "tasks.md"), ONE_TASK_DONE),
+            (artifact("reviewed", "verify.md"), VERIFY_TICKET),
+            (change_meta("recounted"), &reviewed_meta(3)),
+            (artifact("recounted", "tasks.md"), ONE_TASK_DONE),
+            (change_meta("plain"), "schema: spec-driven\ncreated: 2026-11-01\n"),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let list = ws.list_changes(&credentials, None).expect("list changes");
+
+    let in_review = listed(&list, "in-review");
+    assert_eq!(in_review["reviewStatus"], "inReview", "{in_review}");
+    assert_eq!(in_review["verifyStatus"], "none");
+    assert!(in_review.get("reviewedAt").is_none(), "a ticket carries no stamp fields");
+
+    let reviewed = listed(&list, "reviewed");
+    assert_eq!(reviewed["reviewStatus"], "reviewed", "the task count matches: {reviewed}");
+    assert_eq!(reviewed["reviewedAt"], "2026-11-02");
+    assert_eq!(reviewed["reviewedBy"], "Rev <r@example.com>");
+    assert_eq!(reviewed["verifyStatus"], "inVerify", "the two stations are judged apart");
+
+    let recounted = listed(&list, "recounted");
+    assert_eq!(recounted["reviewStatus"], "reviewedStale", "stamped over 3 tasks, 1 now: {recounted}");
+
+    let plain = listed(&list, "plain");
+    assert_eq!((&plain["reviewStatus"], &plain["verifyStatus"]), (&serde_json::json!("none"), &serde_json::json!("none")));
+}
+
+#[test]
+fn a_checkout_turns_a_stamp_stale_when_a_scope_file_differs() {
+    // Scenario「有 checkout 時偵測其後有變動」：任務數相符的已蓋章變更，再拿單筆回應
+    // 的 scope 比 checkout 裡檔案的現值。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[(change_meta("demo"), &reviewed_meta(1)), (artifact("demo", "tasks.md"), ONE_TASK_DONE)],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let checkout = tempfile::tempdir().expect("checkout dir");
+    std::fs::create_dir_all(checkout.path().join("src")).unwrap();
+    let file = checkout.path().join("src").join("a.rs");
+    let status = |ws: &RemoteWorkspace| {
+        listed(&ws.list_changes(&credentials, Some(checkout.path())).expect("list changes"), "demo")["reviewStatus"]
+            .clone()
+    };
+
+    std::fs::write(&file, "fn a() {}\n").unwrap();
+    assert_eq!(status(&ws), "reviewed", "the checkout holds the stamped content");
+    std::fs::write(&file, "fn a() { changed(); }\n").unwrap();
+    assert_eq!(status(&ws), "reviewedStale", "the file changed after the stamp");
+    std::fs::remove_file(&file).unwrap();
+    assert_eq!(status(&ws), "reviewedStale", "a scope file that is gone reads as changed");
+    // 沒有 checkout：只比任務數。
+    let unbound = ws.list_changes(&credentials, None).expect("list changes");
+    assert_eq!(listed(&unbound, "demo")["reviewStatus"], "reviewed");
+}
+
+#[test]
+fn archiving_a_remote_change_in_review_carries_the_ticket_when_told_to() {
+    // Scenario「封存審查中的 remote 變更」：不帶旗標被拒；帶上保留審查工單的旗標後封存，
+    // 已封存清單顯示曾審查未通過。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("demo"), "schema: spec-driven\ncreated: 2026-11-01\n"),
+            (artifact("demo", "tasks.md"), ONE_TASK_DONE),
+            (artifact("demo", "review.md"), REVIEW_TICKET),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+
+    let refused = ws.archive(&credentials, "demo", false, false).expect_err("an open ticket refuses the archive");
+    assert!(refused.message.contains("review ticket"), "{}", refused.message);
+
+    ws.archive(&credentials, "demo", true, false).expect("archive carrying the review ticket");
+    let archived = ws.list_archived(&credentials).expect("archived list");
+    let entry = archived.archived.iter().find(|e| e.item.name == "demo").expect("archived demo");
+    assert_eq!(entry.review_status, Some("reviewedNotPassed"));
+    assert_eq!(entry.verify_status, Some("none"));
+    let payload = serde_json::to_value(&archived).expect("serialize archived list");
+    assert_eq!(payload["archived"][0]["reviewStatus"], "reviewedNotPassed", "{payload}");
+}
+
+#[test]
+fn discarding_a_remote_ticket_lets_the_archive_go_on() {
+    // 三選項對話框的「放棄審查」在 remote 也作用：工單刪掉後一般封存放行。
+    let h = common::harness();
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (change_meta("demo"), "schema: spec-driven\ncreated: 2026-11-01\n"),
+            (artifact("demo", "tasks.md"), ONE_TASK_DONE),
+            (artifact("demo", "verify.md"), VERIFY_TICKET),
+        ],
+    );
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    ws.discard_station(&credentials, "demo", "verify").expect("discard the verify ticket");
+    assert_eq!(listed(&ws.list_changes(&credentials, None).unwrap(), "demo")["verifyStatus"], "none");
+    ws.archive(&credentials, "demo", false, false).expect("archive");
 }
 
 #[test]
@@ -600,7 +756,7 @@ fn board_reorder_writes_the_board_resource_only_and_meta_is_untouched() {
     }
 
     // 清單 overlay 反映新序：carol 移到欄頂（alpha 之前），跨讀取持久。
-    let changes = ws.list_changes(&credentials).expect("list changes");
+    let changes = ws.list_changes(&credentials, None).expect("list changes");
     let names: Vec<&str> = changes.changes.iter().map(|c| c.summary.name.as_str()).collect();
     let pos = |n: &str| names.iter().position(|x| *x == n).expect("card present");
     assert!(pos("carol") < pos("alpha"), "拖排後 carol 在 alpha 前：{names:?}");
@@ -655,7 +811,7 @@ fn change_list_follows_the_plan_order_and_carries_the_schedule_fields() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    let list = ws.list_changes(&credentials).expect("list changes");
+    let list = ws.list_changes(&credentials, None).expect("list changes");
     let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
     assert_eq!(names, ["add-a", "add-b"], "plan order, not the board overlay");
     assert_eq!(list.plan_error, None);
@@ -704,7 +860,7 @@ fn merge_plan_carries_six_plan_fields() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    let list = ws.list_changes(&credentials).expect("list changes");
+    let list = ws.list_changes(&credentials, None).expect("list changes");
     let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
     assert_eq!(names, ["add-c", "add-a", "add-b"], "plan order");
     let payload = serde_json::to_value(&list).expect("serialize list");
@@ -756,7 +912,7 @@ fn a_plan_cycle_falls_back_to_the_board_overlay_with_the_cycle_message() {
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
-    let list = ws.list_changes(&credentials).expect("a cycle still lists");
+    let list = ws.list_changes(&credentials, None).expect("a cycle still lists");
     let names: Vec<&str> = list.changes.iter().map(|c| c.summary.name.as_str()).collect();
     assert_eq!(names, ["add-b", "add-a"], "board overlay order");
     assert_eq!(
@@ -846,7 +1002,7 @@ fn discussion_flow_reads_and_writes_through() {
         .promote_discussion(&credentials, "rate-limiting", None)
         .expect("promote");
     assert!(!promoted.change.is_empty(), "promote 回新 change 名");
-    let changes = ws.list_changes(&credentials).expect("list changes");
+    let changes = ws.list_changes(&credentials, None).expect("list changes");
     assert!(
         changes.changes.iter().any(|c| c.summary.name == promoted.change),
         "promote 產生的 change 出現在清單"
