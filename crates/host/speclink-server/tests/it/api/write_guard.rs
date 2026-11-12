@@ -134,16 +134,15 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 
 #[test]
 fn write_routes_lists_every_write_registration_on_the_project_router() {
-    // Count the write-method registrations above the guard's `route_layer`;
-    // `POST /context` sits below it and stays out of the count.
-    let app = include_str!("../../../src/app.rs");
-    let start = app.find("let project = Router::new()").expect("project router");
-    let end = app.find(".route_layer(").expect("write guard layer");
-    let registered: usize = ["post(", "put(", "delete(", "patch("]
-        .iter()
-        .map(|method| app[start..end].matches(method).count())
-        .sum();
-    assert_eq!(registered, WRITE_ROUTES.len(), "WRITE_ROUTES is out of sync with app.rs");
+    // The project routes are the host kit's door, plus the import the server
+    // keeps: count their write routes. `POST /context` only reads and stays
+    // out of the count.
+    use speclink_host::http::{routes, Method};
+    let door_writes = routes()
+        .filter(|(method, pattern)| !matches!(method, Method::Get | Method::Head) && *pattern != "/context")
+        .count();
+    let server_writes = 1; // POST /import
+    assert_eq!(door_writes + server_writes, WRITE_ROUTES.len(), "WRITE_ROUTES is out of sync with the routes");
 }
 
 #[test]

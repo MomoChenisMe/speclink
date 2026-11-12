@@ -11,6 +11,7 @@
 use crate::audit::{AuditAction, AuditActor, AuditSource};
 use crate::auth::{bearer_token, header};
 use crate::error::ApiError;
+use speclink_host::http::{check_api_version, HttpError};
 use crate::identity::{
     AuditFilter, DeviceFamily, IdentityError, MembershipRole, NewInvitation, Pat, Project, Repo,
     User,
@@ -56,39 +57,31 @@ impl FromRequestParts<AppState> for AdminApi {
         //    into the same check-list (hash-match, unrevoked, unexpired, owning
         //    user active). No cache means suspension and revocation are immediate.
         let token = bearer_token(&parts.headers)
-            .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
+            .ok_or_else(|| HttpError::unauthenticated("missing or malformed bearer token"))?;
         let (user, touch_pat_id): (User, Option<String>) = if token.starts_with("spk_at_") {
             let user = state
                 .identity
                 .authenticate_access_token(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+                .map_err(|_| HttpError::internal("identity store unavailable"))?
+                .ok_or_else(|| HttpError::unauthenticated("invalid token"))?;
             (user, None)
         } else {
             let (pat, user) = state
                 .identity
                 .authenticate_pat(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+                .map_err(|_| HttpError::internal("identity store unavailable"))?
+                .ok_or_else(|| HttpError::unauthenticated("invalid token"))?;
             (user, Some(pat.id))
         };
 
         // 2. admin flag — a valid but non-admin token is 403, the same reason as
         //    the non-member 403 (SHALL NOT 新增 wire reason).
         if !user.admin {
-            return Err(ApiError::forbidden("actor is not an administrator"));
+            return Err(HttpError::forbidden("actor is not an administrator").into());
         }
 
         // 3. API version compatibility — the same check every other API route runs.
-        let version = header(parts, "x-speclink-api-version");
-        if version.as_deref() != Some(API_VERSION) {
-            let sent = version
-                .map(|v| format!(", client sent '{v}'"))
-                .unwrap_or_default();
-            return Err(ApiError::refused(format!(
-                "incompatible api version — this server speaks version '{API_VERSION}'{sent}"
-            )));
-        }
+        check_api_version(header(parts, "x-speclink-api-version").as_deref())?;
 
         // Past the gate: advance a PAT's last-used best-effort (an access token
         // keeps none — it is short-lived and rotates).
@@ -178,7 +171,7 @@ pub async fn list_audit(
     let entries = state
         .identity
         .list_audit(query.limit, query.offset)
-        .map_err(|_| ApiError::internal("identity store unavailable"))?;
+        .map_err(|_| HttpError::internal("identity store unavailable"))?;
     let dto = AuditListResponse {
         entries: entries
             .into_iter()

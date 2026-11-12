@@ -16,7 +16,7 @@ pub mod web;
 // 四個面的子模組在根層掛回原本的名字：crate 內外既有的 `speclink_server::<模組>`
 // 與 `crate::<模組>` 路徑一字不改。`api` 沒有自己的主模組，資料夾私有即可。
 pub use admin::{audit, backup};
-pub use api::{context, error, events, read_api, routes, verb};
+pub use api::{error, events, forward, routes};
 pub use identity::{auth, device, setup};
 pub use web::assets;
 

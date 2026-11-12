@@ -99,7 +99,7 @@
 
 ### Requirement: 握手、輪詢與範圍清單由入口回答
 
-入口 SHALL 回答握手：回應含操作者（身分的識別與顯示名稱）、專案與 repo 的識別、API 版本、引擎版本與 capabilities；capabilities 的更新方式宣告 SHALL 含輪詢，並 SHALL 只在宿主於建立時宣告推送事件的串流時才含推送的 transport。入口 SHALL NOT 自己提供事件串流。入口 SHALL 回答「範圍有沒有變」的輪詢：請求帶的識別等於當下的範圍版本號時回應 304，否則回應 200 並帶新的識別；輪詢 SHALL NOT 讀取任何文件內容。入口 SHALL 回答範圍清單，內容是範圍函式對該身分回傳的專案與 repo。入口 SHALL 回答專案底下與 API 根的身分查詢，使用者的名稱取自身分的顯示名稱、識別取自身分的識別。
+入口 SHALL 回答握手：回應含操作者（身分的識別與顯示名稱）、專案與 repo 的識別、API 版本、引擎版本與 capabilities；capabilities 的更新方式宣告 SHALL 含輪詢，並 SHALL 只在宿主於建立時宣告推送事件的串流時才含推送的 transport。入口 SHALL NOT 自己提供事件串流。入口 SHALL 回答「範圍有沒有變」的輪詢：請求帶的識別等於當下的範圍版本號時回應 304，否則回應 200 並帶新的識別；輪詢 SHALL NOT 讀取任何文件內容。入口 SHALL 回答範圍清單，內容是範圍函式對該身分回傳的專案與 repo。入口 SHALL 回答專案底下與 API 根的身分查詢，使用者的名稱取自身分的顯示用名稱（宿主沒有給時為顯示名稱）、識別取自身分的識別；握手的操作者名稱同樣取自顯示用名稱。
 
 #### Scenario: 預設只宣告輪詢
 
@@ -168,3 +168,39 @@
 
 - **WHEN** 查詢「建立變更」命令的線上歸屬
 - **THEN** 得到專案底下 changes 的 POST
+
+## MODIFIED Requirements
+
+### Requirement: 每次呼叫由宿主給身分與範圍
+
+每次呼叫 SHALL 帶身分與範圍。身分 SHALL 有兩個必填欄位：識別與顯示名稱，兩者都 SHALL NOT 是空字串或只有空白，否則宿主套件 SHALL 在執行前拒絕。身分 MAY 另帶一個選填的顯示用名稱，有帶時同樣 SHALL NOT 是空字串或只有空白；它 SHALL 只用在 HTTP 入口回給用戶端的名稱（握手的操作者名稱、身分查詢的使用者名稱），SHALL NOT 進入提交記錄或任何蓋章值；沒有帶時這些地方 SHALL 用顯示名稱。識別 SHALL 進入提交記錄的操作者識別；顯示名稱 SHALL 進入提交記錄的操作者顯示名稱，並 SHALL 成為這次命令寫進文件的蓋章值（建立者、審查者、驗證者）。提交記錄的命令欄位 SHALL 等於該命令的穩定名稱。識別 SHALL 也是宿主套件路徑上認領（claim）判斷擁有者的依據：識別不同的兩個呼叫即使顯示名稱相同，也 SHALL 是不同的擁有者；識別相同的呼叫即使顯示名稱改變，也 SHALL 是同一個擁有者。宿主套件執行命令時 SHALL NOT 讀取程序的環境變數、git 身分或任何 checkout 來決定操作者。
+
+#### Scenario: 識別與顯示名稱各有去處
+
+- **WHEN** 以識別 `u_42`、顯示名稱 `Alice <alice@example.com>` 的身分經宿主套件建立變更 demo
+- **THEN** 儲存收到的提交記錄操作者識別是 `u_42`、顯示名稱是 `Alice <alice@example.com>`、命令是 `new-change`；demo 的 metadata 的 created_by 是 `Alice <alice@example.com>`
+
+#### Scenario: 空的識別在執行前被拒絕
+
+- **WHEN** 以識別是空字串的身分呼叫宿主套件
+- **THEN** 呼叫失敗並指出識別不合格；儲存沒有收到任何呼叫
+
+#### Scenario: 同名的兩個人不是同一個擁有者
+
+- **WHEN** 同一個宿主套件以識別 `u_1`、顯示名稱 `Alice` 認領變更 demo，接著以識別 `u_2`、顯示名稱 `Alice` 認領 demo，再以識別 `u_1`、顯示名稱 `Alice Chen` 認領 demo
+- **THEN** 第一次寫入 metadata 的 claimed_by 是 `Alice`、claimed_by_id 是 `u_1`；第二次以 `refused` 失敗、訊息含 `Alice`、儲存沒有收到提交；第三次成功、儲存沒有收到提交、claimed_by 仍是 `Alice`
+
+#### Scenario: 程序的 git 身分不影響蓋章
+
+- **WHEN** 程序所在的資料夾設有 git user.name，以顯示名稱 `Bob` 的身分經宿主套件建立變更
+- **THEN** 該變更的 created_by 是 `Bob`
+
+#### Scenario: 顯示用名稱只用在入口回給用戶端的名稱
+
+- **WHEN** 以識別 `u_7`、顯示名稱 `Bob <bob@example.com>`、顯示用名稱 `Bob` 的身分，經 HTTP 入口送出握手、身分查詢與建立變更 demo
+- **THEN** 握手的操作者名稱與身分查詢的使用者名稱都是 `Bob`；demo 的 created_by 與提交記錄的操作者顯示名稱都是 `Bob <bob@example.com>`
+
+#### Scenario: 空白的顯示用名稱被拒絕
+
+- **WHEN** 以只有空白的顯示用名稱建立身分
+- **THEN** 建立失敗並指出顯示用名稱不合格

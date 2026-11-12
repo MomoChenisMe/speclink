@@ -13,6 +13,48 @@ use anyhow::{bail, Result};
 use serde::Serialize;
 use std::path::PathBuf;
 
+/// Why `new`, `link`, `seal` or `discard` turned a discussion write away,
+/// for a host that answers it with a status (the HTTP door). The text is the
+/// whole message. The command layer still files it as a plain error with
+/// that text, so the CLI's output and exit code are what they were.
+#[derive(Debug)]
+pub struct WriteRefusal {
+    pub kind: WriteRefusalKind,
+    message: String,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WriteRefusalKind {
+    /// The discussion or the change does not exist.
+    NotFound,
+    /// A slug, a kind or a topic that cannot be one.
+    Invalid,
+    /// A guard: it exists already, it is archived, or the link is missing.
+    Guard,
+}
+
+impl WriteRefusal {
+    fn not_found(message: String) -> anyhow::Error {
+        WriteRefusal { kind: WriteRefusalKind::NotFound, message }.into()
+    }
+
+    fn invalid(message: String) -> anyhow::Error {
+        WriteRefusal { kind: WriteRefusalKind::Invalid, message }.into()
+    }
+
+    fn guard(message: String) -> anyhow::Error {
+        WriteRefusal { kind: WriteRefusalKind::Guard, message }.into()
+    }
+}
+
+impl std::fmt::Display for WriteRefusal {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for WriteRefusal {}
+
 pub mod cuts;
 
 #[derive(Debug, Clone, Serialize, serde::Deserialize)]
@@ -449,37 +491,40 @@ pub fn new_discussion(
 ) -> Result<DiscussionInfo> {
     if let Some(k) = kind {
         if !DISCUSSION_KINDS.contains(&k) {
-            bail!(
+            return Err(WriteRefusal::invalid(format!(
                 "invalid kind '{k}' — --kind accepts only: {}",
                 DISCUSSION_KINDS.join(", ")
-            );
+            )));
         }
     }
     // topic 逐字寫入 frontmatter，夾帶換行可注入偽造的 kind:/status: 行——
     // 在系統邊界一次擋下整類注入。
     if topic.contains(['\n', '\r']) {
-        bail!("invalid topic '{}' — must be a single line", topic.escape_debug());
+        return Err(WriteRefusal::invalid(format!(
+            "invalid topic '{}' — must be a single line",
+            topic.escape_debug()
+        )));
     }
     let slug = match slug_override {
         Some(s) => {
             if !is_valid_slug_override(s) {
-                bail!(
+                return Err(WriteRefusal::invalid(format!(
                     "invalid slug '{s}' — must be ASCII kebab-case: lowercase letters/digits \
                      separated by single hyphens (e.g. board-search-bar)"
-                );
+                )));
             }
             s.to_string()
         }
         None => util::slugify(topic),
     };
     if slug.is_empty() {
-        bail!("could not derive a slug from topic '{topic}'");
+        return Err(WriteRefusal::invalid(format!("could not derive a slug from topic '{topic}'")));
     }
     if store.live_discussion_exists(&slug) {
-        bail!(
+        return Err(WriteRefusal::guard(format!(
             "discussion '{slug}' already exists at {}",
             util::to_slash(&store.live_discussion_path(&slug))
-        );
+        )));
     }
     let created = util::today();
     // 建立者章（比照 change 的 newcmd）：有 git 身分才蓋，無身分省略該行。
@@ -1021,9 +1066,15 @@ pub fn promote(
 /// success that skips the change-side write.
 pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     match info(store, slug) {
-        None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+        None => {
+            return Err(WriteRefusal::not_found(format!(
+                "discussion '{slug}' not found — run `speclink discuss new` first"
+            )))
+        }
         Some(i) if i.archived => {
-            bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to link it")
+            return Err(WriteRefusal::guard(format!(
+                "discussion '{slug}' is archived — move it out of discussions/archive/ to link it"
+            )))
         }
         Some(_) => {}
     }
@@ -1034,7 +1085,7 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     let linked =
         crate::model::edit_meta(store, change, |m| m.push_list("from_discussion", slug))?;
     if linked.is_none() {
-        bail!("Change '{change}' not found.");
+        return Err(WriteRefusal::not_found(format!("Change '{change}' not found.")));
     }
     Ok(())
 }
@@ -1047,14 +1098,20 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
 /// 時 `mark_promoted` 改寫等值內容。
 pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<()> {
     match info(store, slug) {
-        None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
+        None => {
+            return Err(WriteRefusal::not_found(format!(
+                "discussion '{slug}' not found — run `speclink discuss new` first"
+            )))
+        }
         Some(i) if i.archived => {
-            bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to seal it")
+            return Err(WriteRefusal::guard(format!(
+                "discussion '{slug}' is archived — move it out of discussions/archive/ to seal it"
+            )))
         }
         Some(_) => {}
     }
     let Some(meta) = store.read_change_meta(change) else {
-        bail!("Change '{change}' not found.");
+        return Err(WriteRefusal::not_found(format!("Change '{change}' not found.")));
     };
     // Fail-closed gate: a corrupt document must report itself, not a missing
     // from_discussion chain.
@@ -1064,7 +1121,9 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<(
         .iter()
         .any(|s| s == slug)
     {
-        bail!("Change '{change}' is not linked to discussion '{slug}' — run `speclink discuss link` first.");
+        return Err(WriteRefusal::guard(format!(
+            "Change '{change}' is not linked to discussion '{slug}' — run `speclink discuss link` first."
+        )));
     }
     mark_promoted(store, slug, change, last)?;
     // Sealing is the honest "content landed" act: clear this discussion's re-ingest flag
@@ -1145,9 +1204,11 @@ pub fn archive_discussion(store: &dyn Store, slug: &str) -> Result<Option<String
 pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<()> {
     let Some(text) = store.read_live_discussion(slug) else {
         if store.archived_discussion_exists(slug) {
-            bail!("discussion '{slug}' is archived — archived records are kept, not discarded");
+            return Err(WriteRefusal::guard(format!(
+                "discussion '{slug}' is archived — archived records are kept, not discarded"
+            )));
         }
-        bail!("discussion '{slug}' not found");
+        return Err(WriteRefusal::not_found(format!("discussion '{slug}' not found")));
     };
     let rounds = round_traces(&text);
     if rounds > 0 && !force {

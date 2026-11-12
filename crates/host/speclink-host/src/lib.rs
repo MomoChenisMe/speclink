@@ -17,6 +17,7 @@ pub mod context;
 pub mod documents;
 pub mod drift;
 pub mod gate;
+pub mod http;
 pub mod kit;
 pub mod policy;
 pub mod port_exec;

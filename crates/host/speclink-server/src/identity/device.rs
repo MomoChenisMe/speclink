@@ -7,6 +7,7 @@
 //! and revoke are layered on in the following tasks.
 
 use crate::error::ApiError;
+use speclink_host::http::HttpError;
 use crate::identity::{DevicePoll, RefreshOutcome};
 use crate::state::AppState;
 use axum::extract::State;
@@ -36,7 +37,7 @@ pub async fn initiate(State(state): State<AppState>) -> Result<Response, ApiErro
     let auth = state
         .identity
         .create_device_authorization(interval, ttl)
-        .map_err(|_| ApiError::internal("identity store unavailable"))?;
+        .map_err(|_| HttpError::internal("identity store unavailable"))?;
     let resp = DeviceAuthorizationResponse {
         device_code: auth.device_code,
         user_code: auth.user_code,
@@ -55,14 +56,14 @@ pub async fn poll_token(
     Json(req): Json<DeviceTokenRequest>,
 ) -> Result<Response, ApiError> {
     if req.device_code.trim().is_empty() {
-        return Err(ApiError::invalid_argument("device code is required"));
+        return Err(HttpError::invalid_argument("device code is required").into());
     }
     let resp = match state
         .identity
         .poll_device(&req.device_code)
-        .map_err(|_| ApiError::internal("identity store unavailable"))?
+        .map_err(|_| HttpError::internal("identity store unavailable"))?
     {
-        DevicePoll::NotFound => return Err(ApiError::not_found("unknown device code")),
+        DevicePoll::NotFound => return Err(HttpError::not_found("unknown device code").into()),
         DevicePoll::Pending => bare(DeviceTokenStatus::Pending),
         DevicePoll::SlowDown => bare(DeviceTokenStatus::SlowDown),
         DevicePoll::Expired => bare(DeviceTokenStatus::Expired),
@@ -97,7 +98,7 @@ pub async fn refresh(
     match state
         .identity
         .refresh(&req.refresh_token)
-        .map_err(|_| ApiError::internal("identity store unavailable"))?
+        .map_err(|_| HttpError::internal("identity store unavailable"))?
     {
         RefreshOutcome::Rotated(pair) => Ok(Json(RefreshResponse {
             expires_in: (pair.access_expires_at - Utc::now()).num_seconds().max(0) as u64,
@@ -106,7 +107,7 @@ pub async fn refresh(
         })
         .into_response()),
         RefreshOutcome::Reused | RefreshOutcome::NotFound => {
-            Err(ApiError::permission_denied("invalid refresh credential"))
+            Err(HttpError::unauthenticated("invalid refresh credential").into())
         }
     }
 }
@@ -120,10 +121,10 @@ pub async fn revoke(
     if state
         .identity
         .revoke_family_by_refresh(&req.refresh_token)
-        .map_err(|_| ApiError::internal("identity store unavailable"))?
+        .map_err(|_| HttpError::internal("identity store unavailable"))?
     {
         Ok(Json(RevokeResponse {}).into_response())
     } else {
-        Err(ApiError::permission_denied("invalid refresh credential"))
+        Err(HttpError::unauthenticated("invalid refresh credential").into())
     }
 }

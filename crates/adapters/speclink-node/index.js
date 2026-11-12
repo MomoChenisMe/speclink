@@ -189,9 +189,42 @@ class Host {
       await this.#native.dispatch(text(identity?.id), text(identity?.displayName), text(call.scope), argv, call.stdin),
     )
   }
+
+  /**
+   * Answer one HTTP request of the original CLI or Speclink Desktop for
+   * `identity` (null when the host could not verify one). Resolves to
+   * `{ status, headers, body }`, or to null when the path is not the door's.
+   */
+  async handleRequest(request, identity) {
+    if (!request || typeof request !== 'object') {
+      throw new TypeError('host.handleRequest: request must be an object')
+    }
+    const { method, path, query, headers, body } = request
+    if (typeof method !== 'string' || typeof path !== 'string') {
+      throw new TypeError('host.handleRequest: request.method and request.path must be strings')
+    }
+    if (query !== undefined && query !== null && typeof query !== 'string') {
+      throw new TypeError('host.handleRequest: request.query must be a string')
+    }
+    if (headers === null || typeof headers !== 'object') {
+      throw new TypeError('host.handleRequest: request.headers must be an object of strings')
+    }
+    if (body !== undefined && !(body instanceof Uint8Array)) {
+      throw new TypeError('host.handleRequest: request.body must be a Uint8Array')
+    }
+    const bytes = body === undefined ? Buffer.alloc(0) : Buffer.from(body.buffer, body.byteOffset, body.byteLength)
+    // A field that is not a string reads as empty, which the native side
+    // refuses with invalid_argv before any store call.
+    const text = (value) => (typeof value === 'string' ? value : '')
+    const who = identity == null ? [undefined, undefined] : [text(identity.id), text(identity.displayName)]
+    const fields = JSON.stringify({ method, path, query: query ?? undefined, headers })
+    const response = unwrap(await this.#native.handleRequest(fields, bytes, ...who))
+    if (response === null) return null
+    return { status: response.status, headers: response.headers, body: new TextEncoder().encode(response.body) }
+  }
 }
 
-const HOST_OPTIONS = ['store', 'hooks']
+const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports']
 
 /**
  * The before-command answer as one of three plain shapes, so only these
@@ -211,9 +244,10 @@ function decisionOf(answer) {
 }
 
 /**
- * Build a host kit over a store port (`list`, `read`, `commit`) and optional
- * hooks (`beforeCommand`, `afterCommit`). One host serves every user: each
- * `dispatch` brings its own identity and scope.
+ * Build a host kit over a store port (`list`, `read`, `commit`), optional
+ * hooks (`beforeCommand`, `afterCommit`) and the HTTP door's optional inputs
+ * (`scopes`, `authMethods`, `pushTransports`). One host serves every user:
+ * each `dispatch` and each `handleRequest` brings its own identity.
  */
 function createHost(options) {
   const target = portFunctions(options?.store, 'createHost')
@@ -221,7 +255,7 @@ function createHost(options) {
   const unknownOptions = Object.keys(options).filter((name) => !HOST_OPTIONS.includes(name))
   if (unknownOptions.length > 0) {
     throw new TypeError(
-      `createHost: unknown options: ${unknownOptions.join(', ')} (the options are store and hooks; the identity comes with every dispatch)`,
+      `createHost: unknown options: ${unknownOptions.join(', ')} (the options are ${HOST_OPTIONS.join(', ')}; the identity comes with every call)`,
     )
   }
   const hooks = options.hooks ?? {}
@@ -238,19 +272,27 @@ function createHost(options) {
       throw new TypeError(`createHost: hooks.${name} must be a function`)
     }
   }
+  if (options.scopes !== undefined && typeof options.scopes !== 'function') {
+    throw new TypeError('createHost: scopes must be a function')
+  }
   const hookTarget = {
     beforeCommand: asJson(async (info) => decisionOf(await hooks.beforeCommand(info))),
     // Nothing reads what afterCommit returns, so none of it crosses back.
     afterCommit: async (info) => {
       await hooks.afterCommit(info)
     },
+    scopes: asJson(async (identity) => options.scopes(identity)),
   }
+  // The native side checks both shapes and throws on a field it does not know.
+  const doorOptions = JSON.stringify({ authMethods: options.authMethods, pushTransports: options.pushTransports })
   return new Host(
     binding.hostFromPort(
       makeInvoker(target),
       makeInvoker(hookTarget),
       typeof hooks.beforeCommand === 'function',
       typeof hooks.afterCommit === 'function',
+      typeof options.scopes === 'function',
+      doorOptions,
     ),
   )
 }

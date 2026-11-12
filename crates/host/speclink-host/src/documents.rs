@@ -136,7 +136,7 @@ fn read_all(
 
 /// The key of a document of an active change, or `None` when the names
 /// cannot make one that reads back as that same document.
-fn change_artifact_key(change: &str, artifact: &str) -> Option<DocKey> {
+pub(crate) fn artifact_key(change: &str, artifact: &str) -> Option<DocKey> {
     let key = keys::change_artifact(change, artifact).ok()?;
     let same = matches!(
         parse_key(key.as_str()),
@@ -253,7 +253,7 @@ pub fn put_board_order(
         .iter()
         .find(|entry| entry.key == key)
         .map(|entry| entry.version);
-    let event = Event::new("board-order-updated", serde_json::json!({})).map_err(invalid_value)?;
+    let event = board_order_updated()?;
     let commit = Commit::new(
         actor.clone(),
         "put-board-order",
@@ -267,6 +267,11 @@ pub fn put_board_order(
     )
     .map_err(invalid_value)?;
     Ok(port.commit(scope, &commit)?)
+}
+
+/// The one event of a board-order write.
+pub(crate) fn board_order_updated() -> Result<Event, PortError> {
+    Event::new("board-order-updated", serde_json::json!({})).map_err(invalid_value)
 }
 
 // --- evidence ---
@@ -498,7 +503,7 @@ pub fn document_version(
     change: &str,
     artifact: &str,
 ) -> Result<Option<Version>, DocumentsError> {
-    let Some(key) = change_artifact_key(change, artifact) else {
+    let Some(key) = artifact_key(change, artifact) else {
         return Ok(None);
     };
     Ok(read_one(port, scope, key)?.map(|doc| doc.version))
@@ -574,7 +579,7 @@ pub fn search(
         .flat_map(|(change, artifacts)| {
             artifacts
                 .iter()
-                .filter_map(|a| change_artifact_key(change, a))
+                .filter_map(|a| artifact_key(change, a))
         })
         .collect();
     wanted.extend(slugs.iter().filter_map(|slug| keys::discussion(slug).ok()));
@@ -583,7 +588,7 @@ pub fn search(
     let mut hits = Vec::new();
     for (change, artifacts) in &order {
         for artifact in artifacts {
-            let Some(doc) = change_artifact_key(change, artifact).and_then(|key| docs.get(&key))
+            let Some(doc) = artifact_key(change, artifact).and_then(|key| docs.get(&key))
             else {
                 continue;
             };

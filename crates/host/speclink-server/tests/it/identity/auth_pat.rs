@@ -146,3 +146,16 @@ fn a_successful_request_advances_last_used() {
         "last-used advanced after a successful request"
     );
 }
+
+/// host-kit-client-door D8: a request the server refuses before the door —
+/// here a project the user is not a member of — is not a use of the PAT.
+#[test]
+fn a_request_refused_as_a_non_member_does_not_advance_last_used() {
+    let (base, identity, pat, user_id) = seed();
+    let (status, _) = error_of(get_binding(&base, "multi", &pat, Some("web")));
+    assert_eq!(status, 403);
+    assert!(
+        identity.list_pats(&user_id).unwrap()[0].last_used_at.is_none(),
+        "a refused request leaves last-used alone"
+    );
+}
