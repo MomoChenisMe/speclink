@@ -19,9 +19,10 @@ use speclink_store_port::{
     keys, Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError,
     ScopeId, StorePort, Timestamp, Version,
 };
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::thread::ThreadId;
 
 /// The TeamStore document a key names, or `None` when the key names none of
 /// the nine document kinds.
@@ -151,7 +152,7 @@ pub fn scope_id(scope: &Scope) -> Result<ScopeId, PortError> {
 /// The TeamStore scope a scope id names: the reverse of [`scope_id`]. An id
 /// that is not `<project>/<repo>`, or whose project has an escape other than
 /// `%25` and `%2F`, is a backend error before the TeamStore sees anything.
-fn teamstore_scope(scope: &ScopeId) -> Result<Scope, PortError> {
+pub fn teamstore_scope(scope: &ScopeId) -> Result<Scope, PortError> {
     let malformed = || backend(format!("the scope id {} is not <project>/<repo>", scope.as_str()));
     let (project, repo) = scope.as_str().split_once('/').ok_or_else(malformed)?;
     if project.is_empty() || repo.is_empty() {
@@ -251,6 +252,8 @@ pub struct TeamStorePort<S> {
     loaded: Mutex<BTreeMap<ScopeId, Arc<Loaded>>>,
     /// One gate for each scope: loads of one scope run one at a time.
     loading: Mutex<BTreeMap<ScopeId, Arc<Mutex<()>>>>,
+    /// The loads each pinned thread keeps; see [`TeamStorePort::pin_thread`].
+    pins: Mutex<HashMap<ThreadId, BTreeMap<ScopeId, Arc<Loaded>>>>,
 }
 
 impl<S> TeamStorePort<S>
@@ -265,6 +268,7 @@ where
             store,
             loaded: Mutex::new(BTreeMap::new()),
             loading: Mutex::new(BTreeMap::new()),
+            pins: Mutex::new(HashMap::new()),
         }
     }
 
@@ -323,6 +327,39 @@ where
         Ok(loaded)
     }
 
+    /// Pin this thread until the guard drops: the thread's lists and reads
+    /// of a scope answer from the load its first one took, as a
+    /// [`TeamStorePort::pinned`] view does, and its own commit to a scope
+    /// drops that scope's load. For a caller that runs one request on one
+    /// thread through code that holds the adapter itself, such as the host
+    /// kit's HTTP door. Other threads are not affected; one pin per thread
+    /// at a time.
+    pub fn pin_thread(&self) -> ThreadPin<'_, S> {
+        self.pin_slots().insert(std::thread::current().id(), BTreeMap::new());
+        ThreadPin { port: self }
+    }
+
+    fn pin_slots(&self) -> MutexGuard<'_, HashMap<ThreadId, BTreeMap<ScopeId, Arc<Loaded>>>> {
+        self.pins.lock().unwrap_or_else(PoisonError::into_inner)
+    }
+
+    /// The load a call of this thread reads: the pinned one, or the current
+    /// one.
+    fn view(&self, scope: &ScopeId) -> Result<Arc<Loaded>, PortError> {
+        let thread = std::thread::current().id();
+        // The lock is let go before a load: a load can wait on the TeamStore.
+        let held = self.pin_slots().get(&thread).map(|pinned| pinned.get(scope).map(Arc::clone));
+        let loaded = match held {
+            None => return self.loaded(scope),
+            Some(Some(loaded)) => return Ok(loaded),
+            Some(None) => self.loaded(scope)?,
+        };
+        if let Some(pinned) = self.pin_slots().get_mut(&thread) {
+            pinned.insert(scope.clone(), Arc::clone(&loaded));
+        }
+        Ok(loaded)
+    }
+
     /// A view of `scope` for one request: its first list or read takes the
     /// scope's current load (one snapshot, an export only when the revision
     /// moved), and every later list and read of the view answers from that
@@ -335,6 +372,18 @@ where
             scope: scope.clone(),
             loaded: Mutex::new(None),
         }
+    }
+}
+
+/// A thread's pin on a [`TeamStorePort`]; see [`TeamStorePort::pin_thread`].
+pub struct ThreadPin<'p, S> {
+    port: &'p TeamStorePort<S>,
+}
+
+impl<S> Drop for ThreadPin<'_, S> {
+    fn drop(&mut self) {
+        let mut pins = self.port.pins.lock().unwrap_or_else(PoisonError::into_inner);
+        pins.remove(&std::thread::current().id());
     }
 }
 
@@ -410,14 +459,19 @@ where
     S::Target: TeamStore,
 {
     fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-        listing(&*self.loaded(scope)?, prefix)
+        listing(&*self.view(scope)?, prefix)
     }
 
     fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-        reading(&*self.loaded(scope)?, keys)
+        reading(&*self.view(scope)?, keys)
     }
 
     fn commit(&self, scope_id: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        // A pinned thread reads its own commit, or after a failure the
+        // writer that moved on.
+        if let Some(pinned) = self.pin_slots().get_mut(&std::thread::current().id()) {
+            pinned.remove(scope_id);
+        }
         let scope = teamstore_scope(scope_id)?;
         // Every key is checked before the TeamStore sees anything.
         let docs = commit
@@ -887,6 +941,58 @@ mod tests {
             .unwrap();
         let doc = view.read(&sid(), &[key("changes/add-y/.meta.yaml")]).unwrap()[0].clone();
         assert_eq!(doc.map(|d| d.version), Some(version));
+    }
+
+    #[test]
+    fn a_thread_pin_answers_the_threads_reads_from_one_load_per_scope() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let elsewhere = scope_id(&other_scope()).unwrap();
+        {
+            let _pin = port.pin_thread();
+            port.list(&sid(), &prefix("changes/")).unwrap();
+            port.list(&sid(), &prefix("discussions/")).unwrap();
+            port.read(&sid(), &[key("config.yaml")]).unwrap();
+            port.list(&elsewhere, &prefix("changes/")).unwrap();
+            port.list(&elsewhere, &prefix("changes/")).unwrap();
+            assert_eq!(store.snapshot_count(), 2, "one snapshot for each scope the thread reads");
+        }
+        port.list(&sid(), &prefix("changes/")).unwrap();
+        assert_eq!(store.snapshot_count(), 3, "without the pin every call takes a snapshot again");
+    }
+
+    #[test]
+    fn a_thread_pin_reads_back_its_own_commit() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let _pin = port.pin_thread();
+        port.list(&sid(), &prefix("changes/")).unwrap();
+        let version = port
+            .commit(
+                &sid(),
+                &commit_of(vec![put("changes/add-y/.meta.yaml", "schema: spec-driven\n", Expected::Absent)], Vec::new()),
+            )
+            .unwrap();
+        let doc = port.read(&sid(), &[key("changes/add-y/.meta.yaml")]).unwrap()[0].clone();
+        assert_eq!(doc.map(|d| d.version), Some(version));
+    }
+
+    #[test]
+    fn a_thread_pin_leaves_other_threads_alone() {
+        let store = seeded();
+        let port = TeamStorePort::new(&store);
+        let _pin = port.pin_thread();
+        port.list(&sid(), &prefix("changes/")).unwrap();
+        std::thread::scope(|threads| {
+            threads
+                .spawn(|| {
+                    port.list(&sid(), &prefix("changes/")).unwrap();
+                    port.list(&sid(), &prefix("changes/")).unwrap();
+                })
+                .join()
+                .unwrap();
+        });
+        assert_eq!(store.snapshot_count(), 3, "the other thread took a snapshot on every call");
     }
 
     #[test]

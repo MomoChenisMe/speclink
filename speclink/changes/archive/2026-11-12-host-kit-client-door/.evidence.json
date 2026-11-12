@@ -1,0 +1,214 @@
+{
+  "version": 2,
+  "change": "host-kit-client-door",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）為 D1、D2、D3 寫入口的測試，用記憶體版儲存與固定的範圍函式，對應規格「HTTP 入口處理原版用戶端的請求」與「範圍與能力由宿主的函式決定」中不需要任何動詞路由的情境：沒有身分回 401 且儲存沒有被呼叫；API 版本不符回 409；專案不在清單裡回 404；指定的 repo 不在清單裡回 404；多個 repo 而沒有指定回 409 並列出候選；沒有提供範圍函式時範圍清單與專案路徑回 404；範圍函式失敗回 503；入口不認得的路徑回報「不是入口的路徑」；標頭名稱不分大小寫；路徑比對對結尾的斜線、百分比編碼與「吃掉其餘路徑」的段，結果和今天示範 server 的行為相同。涉及 crates/host/speclink-host/tests/http_door.rs。驗證：`cargo test -p speclink-host --test http_door` 編譯失敗。",
+      "files": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/http/error.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 （Green）把握手、輪詢、身分查詢、範圍清單、登入方式的宣告與不經引擎的路由接進入口（呼叫 `documents` 的函式；看板順序的寫入經掛鉤），並實作兩個能力開關的把關。涉及 crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/kit.rs。驗證：2.1 裡這些路由的測試通過。",
+      "files": [
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/port_exec.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 （Green）把執行引擎命令的路由處理函式與結果的轉換函式從示範 server 搬進入口，分三批（查詢與檢查、變更與任務與品質關卡、討論與計畫），每一批搬完跑一次測試；處理函式的邏輯不改，只換成「收已解析的參數、回傳線上的型別」的形狀。含變更 skills-verbs-first-wave 新增的排序路由。涉及 crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-server/src/api/routes.rs。驗證：2.1 的測試全部通過；`cargo test -p speclink-host` 通過。",
+      "files": [
+        "crates/host/speclink-host/src/http/wire.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 （Red→Green）依 D6 實作對照與兩個綁定路由表的測試，對應規格「每個引擎命令都有線上的歸屬」：先寫測試——每一種命令都有答案且理由不是空字串；對照指到的每條路由都在路由表裡，而且那條路由建出的命令就是那一種；路由表裡每條執行引擎命令的路由都被對照指到；建立變更對到專案底下 changes 的 POST。再用不含萬用分支的 `match` 實作。把最後定下的「不上線」清單與理由寫進 design.md 的 D6。涉及 crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-host/tests/http_door.rs、speclink/changes/host-kit-client-door/design.md。驗證：`cargo test -p speclink-host --test http_door coverage` 通過。",
+      "files": [
+        "crates/host/speclink-host/src/http/coverage.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 （Red）為 D8 新增示範 server 的整合測試：不帶憑證請求登入方式的宣告得到 device 與 token 且沒有 browser 物件；帶有效憑證請求 API 根的身分查詢得到名稱與識別（對應規格「API 根的身分查詢」的三個情境，含不屬於任何專案的使用者）；專案存在但不是成員仍然是 403；已停用的帳號仍然是 403；匯入與事件串流的路由仍然可用。涉及 crates/host/speclink-server/tests/it/api/read_api.rs、crates/host/speclink-server/tests/it/api/health.rs。驗證：`cargo test -p speclink-server` 中新增的測試失敗。",
+      "files": [
+        "crates/host/speclink-host/src/teamstore_port.rs",
+        "crates/host/speclink-server/tests/it/api/health.rs",
+        "crates/host/speclink-server/tests/it/api/read_api.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 （Green）示範 server 在啟動時建立宿主套件（長期持有的 TeamStore 轉接、查身分資料的範圍函式、登入方式的宣告、既有的 SSE 宣告、呼叫事件通知的提交後掛鉤），專案路由與範圍清單改成一個轉交的處理函式：解出使用者、做兩個前置檢查、把請求轉成入口的型別並在 blocking 的執行緒池呼叫入口、入口回報不是它的路徑時交給留下的匯入與事件串流。確認「更新存取金鑰最後使用時間」仍然發生。移除搬走後不再使用的檔案與程式。涉及 crates/host/speclink-server/src/api/forward.rs、crates/host/speclink-server/src/app.rs、crates/host/speclink-server/src/api.rs、crates/host/speclink-server/src/api/error.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/src/api/events.rs、crates/host/speclink-server/src/state.rs、crates/host/speclink-server/src/main.rs、crates/host/speclink-server/src/identity/auth.rs、crates/host/speclink-server/src/api/read_api.rs、crates/host/speclink-server/src/api/context.rs、crates/host/speclink-server/src/api/verb.rs。驗證：`cargo test -p speclink-server` 全部通過，既有的整合測試不改斷言；`cargo test -p speclink-remote`、`cargo test -p speclink-cli`（含 `remote_verb_parity`）與 `cargo test -p speclink-desktop` 通過。",
+      "files": [
+        "crates/host/speclink-server/src/api.rs",
+        "crates/host/speclink-server/src/api/context.rs",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/src/api/read_api.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/api/verb.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/host/speclink-server/src/identity/auth.rs",
+        "crates/host/speclink-server/src/lib.rs",
+        "crates/host/speclink-server/src/state.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/host/speclink-server/src/api/forward.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "5.1 （Red）為 D7 寫 Node 的測試，對應規格「host.handleRequest 與 createHost 的入口設定」的八個情境：用 JS 儲存服務握手與寫入（commit 正好一次）、身分為 null 回 401、不屬於入口的路徑解析為 null、兩個門共用掛鉤且訊息相同、非同步的 scopes、scopes 拋出例外回 503、登入方式的宣告、不支援的方法回 405。涉及 crates/adapters/speclink-node/__test__/handle-request.spec.ts。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 中這個檔案失敗。",
+      "files": [
+        "crates/adapters/speclink-node/Cargo.toml",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.2 最後驗證 design 的 Implementation Contract。涉及 crates/host/speclink-host、crates/host/speclink-server、crates/adapters/speclink-node、crates/protocol/speclink-remote、crates/adapters/speclink-cli、apps/desktop/src-tauri。驗證：`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-kit-client-door` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/admin.rs",
+        "crates/host/speclink-server/src/identity/device.rs",
+        "crates/host/speclink-server/tests/it/identity/auth_pat.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M74Q7S12BRJ5VPD59ES4BXTR",
+      "taskDesc": "1.1 （Red）為 D1、D2、D3 寫入口的測試，用記憶體版儲存與固定的範圍函式，對應規格「HTTP 入口處理原版用戶端的請求」與「範圍與能力由宿主的函式決定」中不需要任何動詞路由的情境：沒有身分回 401 且儲存沒有被呼叫；API 版本不符回 409；專案不在清單裡回 404；指定的 repo 不在清單裡回 404；多個 repo 而沒有指定回 409 並列出候選；沒有提供範圍函式時範圍清單與專案路徑回 404；範圍函式失敗回 503；入口不認得的路徑回報「不是入口的路徑」；標頭名稱不分大小寫；路徑比對對結尾的斜線、百分比編碼與「吃掉其餘路徑」的段，結果和今天示範 server 的行為相同。涉及 crates/host/speclink-host/tests/http_door.rs。驗證：`cargo test -p speclink-host --test http_door` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/http/error.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ],
+      "recordedAt": "2026-11-12T03:15:43Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S121WZKX245THWJ9EVD",
+      "taskDesc": "2.2 （Green）把握手、輪詢、身分查詢、範圍清單、登入方式的宣告與不經引擎的路由接進入口（呼叫 `documents` 的函式；看板順序的寫入經掛鉤），並實作兩個能力開關的把關。涉及 crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/kit.rs。驗證：2.1 裡這些路由的測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/port_exec.rs"
+      ],
+      "recordedAt": "2026-11-12T03:20:17Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S12YAR4BGPQ04DAZE0W",
+      "taskDesc": "2.3 （Green）把執行引擎命令的路由處理函式與結果的轉換函式從示範 server 搬進入口，分三批（查詢與檢查、變更與任務與品質關卡、討論與計畫），每一批搬完跑一次測試；處理函式的邏輯不改，只換成「收已解析的參數、回傳線上的型別」的形狀。含變更 skills-verbs-first-wave 新增的排序路由。涉及 crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-server/src/api/routes.rs。驗證：2.1 的測試全部通過；`cargo test -p speclink-host` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/http/wire.rs"
+      ],
+      "recordedAt": "2026-11-12T03:24:09Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S12647GJB5KJ2HXX7HZ",
+      "taskDesc": "3.1 （Red→Green）依 D6 實作對照與兩個綁定路由表的測試，對應規格「每個引擎命令都有線上的歸屬」：先寫測試——每一種命令都有答案且理由不是空字串；對照指到的每條路由都在路由表裡，而且那條路由建出的命令就是那一種；路由表裡每條執行引擎命令的路由都被對照指到；建立變更對到專案底下 changes 的 POST。再用不含萬用分支的 `match` 實作。把最後定下的「不上線」清單與理由寫進 design.md 的 D6。涉及 crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-host/tests/http_door.rs、speclink/changes/host-kit-client-door/design.md。驗證：`cargo test -p speclink-host --test http_door coverage` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/http/coverage.rs"
+      ],
+      "recordedAt": "2026-11-12T03:25:34Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S12CBSSEY3QQYNW6B47",
+      "taskDesc": "4.1 （Red）為 D8 新增示範 server 的整合測試：不帶憑證請求登入方式的宣告得到 device 與 token 且沒有 browser 物件；帶有效憑證請求 API 根的身分查詢得到名稱與識別（對應規格「API 根的身分查詢」的三個情境，含不屬於任何專案的使用者）；專案存在但不是成員仍然是 403；已停用的帳號仍然是 403；匯入與事件串流的路由仍然可用。涉及 crates/host/speclink-server/tests/it/api/read_api.rs、crates/host/speclink-server/tests/it/api/health.rs。驗證：`cargo test -p speclink-server` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/teamstore_port.rs",
+        "crates/host/speclink-server/tests/it/api/health.rs",
+        "crates/host/speclink-server/tests/it/api/read_api.rs"
+      ],
+      "recordedAt": "2026-11-12T03:36:18Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S12E01ZR886NGKHKWX3",
+      "taskDesc": "4.2 （Green）示範 server 在啟動時建立宿主套件（長期持有的 TeamStore 轉接、查身分資料的範圍函式、登入方式的宣告、既有的 SSE 宣告、呼叫事件通知的提交後掛鉤），專案路由與範圍清單改成一個轉交的處理函式：解出使用者、做兩個前置檢查、把請求轉成入口的型別並在 blocking 的執行緒池呼叫入口、入口回報不是它的路徑時交給留下的匯入與事件串流。確認「更新存取金鑰最後使用時間」仍然發生。移除搬走後不再使用的檔案與程式。涉及 crates/host/speclink-server/src/api/forward.rs、crates/host/speclink-server/src/app.rs、crates/host/speclink-server/src/api.rs、crates/host/speclink-server/src/api/error.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/src/api/events.rs、crates/host/speclink-server/src/state.rs、crates/host/speclink-server/src/main.rs、crates/host/speclink-server/src/identity/auth.rs、crates/host/speclink-server/src/api/read_api.rs、crates/host/speclink-server/src/api/context.rs、crates/host/speclink-server/src/api/verb.rs。驗證：`cargo test -p speclink-server` 全部通過，既有的整合測試不改斷言；`cargo test -p speclink-remote`、`cargo test -p speclink-cli`（含 `remote_verb_parity`）與 `cargo test -p speclink-desktop` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/host/speclink-server/src/api.rs",
+        "crates/host/speclink-server/src/api/context.rs",
+        "crates/host/speclink-server/src/api/error.rs",
+        "crates/host/speclink-server/src/api/read_api.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/api/verb.rs",
+        "crates/host/speclink-server/src/app.rs",
+        "crates/host/speclink-server/src/identity/auth.rs",
+        "crates/host/speclink-server/src/lib.rs",
+        "crates/host/speclink-server/src/state.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/host/speclink-server/src/api/forward.rs"
+      ],
+      "recordedAt": "2026-11-12T03:42:29Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S121PSNXQ8EWXT68BWT",
+      "taskDesc": "5.1 （Red）為 D7 寫 Node 的測試，對應規格「host.handleRequest 與 createHost 的入口設定」的八個情境：用 JS 儲存服務握手與寫入（commit 正好一次）、身分為 null 回 401、不屬於入口的路徑解析為 null、兩個門共用掛鉤且訊息相同、非同步的 scopes、scopes 拋出例外回 503、登入方式的宣告、不支援的方法回 405。涉及 crates/adapters/speclink-node/__test__/handle-request.spec.ts。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test` 中這個檔案失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/Cargo.toml",
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs"
+      ],
+      "recordedAt": "2026-11-12T03:44:37Z"
+    },
+    {
+      "taskId": "tsk_01M74Q7S12D578BTMZ1DVJGKT3",
+      "taskDesc": "6.2 最後驗證 design 的 Implementation Contract。涉及 crates/host/speclink-host、crates/host/speclink-server、crates/adapters/speclink-node、crates/protocol/speclink-remote、crates/adapters/speclink-cli、apps/desktop/src-tauri。驗證：`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-kit-client-door` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cf02ec8a98d3dfa689e81078fdba065a0e86a24d",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-server/Cargo.toml",
+        "crates/host/speclink-server/src/admin.rs",
+        "crates/host/speclink-server/src/identity/device.rs",
+        "crates/host/speclink-server/tests/it/identity/auth_pat.rs"
+      ],
+      "recordedAt": "2026-11-12T04:28:05Z"
+    }
+  ]
+}

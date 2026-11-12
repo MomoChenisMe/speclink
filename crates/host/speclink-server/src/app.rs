@@ -1,157 +1,44 @@
-//! HTTP router assembly. Verb routes are layered on in later knives; this is
-//! the single assembly point they extend.
+//! HTTP router assembly. The project routes and the scope list go through
+//! the host kit's HTTP door (`forward`, design D8); the server keeps its own
+//! routes: login and accounts, the admin surfaces, the static assets, the
+//! import and the event stream.
 
 use crate::admin;
 use crate::assets;
 use crate::auth::Binding;
-use crate::context;
 use crate::device;
 use crate::error::ApiError;
-use crate::read_api;
+use crate::forward;
 use crate::routes;
 use crate::setup;
 use crate::state::AppState;
 use crate::web;
-use axum::body::{to_bytes, Body};
+use axum::body::Body;
 use axum::extract::{DefaultBodyLimit, FromRequestParts, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{get, post, put};
-use axum::{Json, Router};
-use speclink_protocol::binding::BindingResponse;
+use axum::routing::{any, get, post};
+use axum::Router;
+use speclink_host::http::write_refused;
 
 /// Workspace migration uploads a complete local `openspec/` snapshot in one
 /// atomic request. Keep the larger allowance scoped to `/import`; ordinary API
 /// routes retain Axum's conservative default body limit.
-const IMPORT_BODY_LIMIT_BYTES: usize = 32 * 1024 * 1024;
-
-/// Transport bound for the board-order routes: generous enough that an
-/// over-cap request is still read in full and answered with a clean 413 by
-/// the handler (which enforces the real content cap) instead of a dropped
-/// connection mid-upload.
-const BOARD_ORDER_BODY_LIMIT_BYTES: usize = 4 * 1024 * 1024;
+const IMPORT_BODY_LIMIT_BYTES: usize = forward::READ_LIMIT_BYTES;
 
 /// Build the HTTP router over the shared application state.
 pub fn router(state: AppState) -> Router {
+    // The two project routes the server keeps for itself; every other path
+    // under the project goes to the door.
     let project = Router::new()
-        .route("/binding", get(binding))
-        .route(
-            "/changes",
-            get(routes::list_changes).post(routes::create_change),
-        )
-        .route(
-            "/changes/{name}",
-            get(routes::get_change).delete(routes::delete_change),
-        )
-        .route("/changes/{name}/drift", get(routes::drift))
-        .route("/changes/{name}/validate", get(routes::validate_change))
-        .route("/changes/{name}/analyze", get(routes::analyze_change))
-        .route("/changes/{name}/tasks/move", post(routes::move_task))
-        .route(
-            "/changes/{name}/instructions/{*artifact}",
-            get(routes::instructions),
-        )
-        .route(
-            "/changes/{name}/artifacts/{*artifact}",
-            get(routes::get_artifact).put(routes::put_artifact),
-        )
-        .route("/changes/{name}/evidence", get(routes::change_evidence))
-        .route(
-            "/changes/{name}/tasks/{task_id}/done",
-            post(routes::task_done),
-        )
-        .route(
-            "/changes/{name}/tasks/{task_id}/undone",
-            post(routes::task_undone),
-        )
-        .route(
-            "/changes/{name}/review",
-            get(routes::review_show).delete(routes::review_discard),
-        )
-        .route("/changes/{name}/review/rounds", post(routes::review_add_round))
-        .route("/changes/{name}/review/stamp", post(routes::review_stamp))
-        .route(
-            "/changes/{name}/verify",
-            get(routes::verify_show).delete(routes::verify_discard),
-        )
-        .route("/changes/{name}/verify/rounds", post(routes::verify_add_round))
-        .route("/changes/{name}/verify/stamp", post(routes::verify_stamp))
-        .route("/changes/{name}/claim", post(routes::claim))
-        .route("/changes/{name}/depends", post(routes::change_depends))
-        .route("/changes/{name}/schema", post(routes::change_schema))
-        .route("/changes/{name}/rank", post(routes::change_rank))
-        .route(
-            "/changes/{name}/in-progress",
-            post(routes::in_progress).delete(routes::in_progress_remove),
-        )
-        .route("/changes/{name}/archive", post(routes::archive))
-        .route(
-            "/discussions",
-            get(routes::list_discussions).post(routes::create_discussion),
-        )
-        .route("/discussions/search", get(routes::search_discussions))
-        .route(
-            "/discussions/{slug}",
-            get(routes::show_discussion).delete(routes::delete_discussion),
-        )
-        .route("/discussions/{slug}/link", post(routes::link_discussion))
-        .route("/discussions/{slug}/seal", post(routes::seal_discussion))
-        .route(
-            "/discussions/{slug}/context",
-            put(routes::set_discussion_context),
-        )
-        .route(
-            "/discussions/{slug}/rounds",
-            post(routes::add_discussion_round),
-        )
-        .route(
-            "/discussions/{slug}/conclude",
-            post(routes::conclude_discussion),
-        )
-        .route(
-            "/discussions/{slug}/archive",
-            post(routes::archive_discussion),
-        )
-        .route(
-            "/discussions/{slug}/promote",
-            post(routes::promote_discussion),
-        )
-        .route("/plan", get(routes::plan))
-        .route("/specs", get(routes::list_specs))
-        .route("/specs/{capability}/document", get(read_api::spec_document))
-        .route("/archived", get(read_api::archived_list))
-        .route(
-            "/archived/{dated_name}/artifacts/{*artifact}",
-            get(read_api::archived_artifact),
-        )
-        .route(
-            "/archived/{dated_name}/capabilities",
-            get(read_api::archived_capabilities),
-        )
-        .route("/search", get(read_api::search))
-        .route("/language", get(routes::language))
-        .route("/config", get(routes::config).put(routes::put_config))
-        .route(
-            "/board-order",
-            get(routes::board_order)
-                .put(routes::put_board_order)
-                .layer(DefaultBodyLimit::max(BOARD_ORDER_BODY_LIMIT_BYTES)),
-        )
         .route(
             "/import",
             post(routes::import_bundle).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT_BYTES)),
         )
-        .route("/whoami", get(routes::whoami))
-        .route("/sync-state", get(routes::sync_state))
         .route("/events", get(routes::events))
         // 寫入檢查（fail-closed）：以上每條路由的非 GET／HEAD 方法都要 editor。
-        .route_layer(middleware::from_fn_with_state(state.clone(), require_editor));
-    // 寫入檢查的唯一例外：唯讀但以 POST 傳輸的查詢，reader 照常可用。新增這類
-    // 端點要放這裡，並在設計中說明。
-    let read_only_posts = Router::new().route("/context", post(context::snapshot));
-    let project = project
-        .merge(read_only_posts)
+        .route_layer(middleware::from_fn_with_state(state.clone(), require_editor))
         .layer(middleware::from_fn(read_body_before_routing));
     Router::new()
         .route("/healthz", get(healthz))
@@ -168,7 +55,9 @@ pub fn router(state: AppState) -> Router {
         .route("/auth/refresh", post(device::refresh))
         .route("/auth/revoke", post(device::revoke))
         .route("/auth/whoami", get(crate::auth::auth_whoami))
-        .route("/api/speclink/v1/scopes", get(read_api::scopes))
+        .route("/api/speclink/v1/auth-methods", any(forward::root))
+        .route("/api/speclink/v1/whoami", any(forward::root))
+        .route("/api/speclink/v1/scopes", any(forward::root))
         .nest(
             "/api/speclink/v1/web",
             web::api_router()
@@ -177,6 +66,7 @@ pub fn router(state: AppState) -> Router {
         )
         .nest("/api/speclink/v1/admin", admin::api_router())
         .nest("/api/speclink/v1/projects/{key}", project)
+        .route("/api/speclink/v1/projects/{key}/{*rest}", any(forward::project))
         // 內嵌 SPA（D5）：內容雜湊資產與 browser-route fallback shell。fallback 只在
         // 上方任何明確 route 都未命中時執行，故永不吞掉 API／auth／health／下載 route。
         .route("/assets/{*path}", get(assets::asset))
@@ -193,21 +83,20 @@ pub fn router(state: AppState) -> Router {
 /// 永遠走在 body 之後，連線以 FIN 收場。
 ///
 /// 收滿上限取本 route 家族的最大允量（`/import` 的 32MB）；各 route 的實際內容
-/// 上限仍由其 `DefaultBodyLimit` 在 extractor 層把關，不因此放寬。
+/// 上限仍由其 `DefaultBodyLimit` 在 extractor 層把關，不因此放寬。轉交入口的
+/// 路由（`forward`）自己先收滿本文，理由相同。
 async fn read_body_before_routing(req: Request, next: Next) -> Response {
     let (parts, body) = req.into_parts();
-    match to_bytes(body, IMPORT_BODY_LIMIT_BYTES).await {
+    match forward::read_whole(body).await {
         Ok(bytes) => next.run(Request::from_parts(parts, Body::from(bytes))).await,
-        Err(e) => {
-            ApiError::payload_too_large(format!("request body unreadable: {e}")).into_response()
-        }
+        Err(e) => e.into_response(),
     }
 }
 
-/// 專案範圍寫入檢查（server-verb-api「寫入端點一律要求 editor 角色」）：GET／HEAD
-/// 放行，其他方法要求 editor 角色，否則 403、處理函式不執行。以 `route_layer`
-/// 掛在路由註冊之後，之後新增的寫入路由預設受保護。解析好的 [`Binding`] 放進
-/// request extensions，處理函式的 extractor 直接取用，不再解析第二次。
+/// 留在 server 的專案路由（匯入與事件串流）的寫入檢查（server-verb-api「寫入端點
+/// 一律要求 editor 角色」）：GET／HEAD 放行，其他方法要求 editor 角色，否則 403、
+/// 處理函式不執行。轉交入口的路由由入口依 `can_write` 把關，訊息相同。解析好的
+/// [`Binding`] 放進 request extensions，處理函式的 extractor 直接取用，不再解析第二次。
 ///
 /// `route_layer` 也包住每條路由「方法不支援」的 405 處理：對既有路徑送沒有
 /// 註冊的非 GET 方法（例如 `POST /changes/{name}/drift`），reader 先收到 403、
@@ -222,11 +111,7 @@ async fn require_editor(State(state): State<AppState>, req: Request, next: Next)
         Err(e) => return e.into_response(),
     };
     if !binding.editor {
-        return ApiError::forbidden(format!(
-            "your role in project '{}' is reader; this action needs the editor role",
-            binding.project.key
-        ))
-        .into_response();
+        return ApiError(write_refused(&binding.project.key)).into_response();
     }
     parts.extensions.insert(binding);
     next.run(Request::from_parts(parts, body)).await
@@ -245,10 +130,4 @@ async fn readyz(State(state): State<AppState>) -> StatusCode {
         Ok(()) => StatusCode::OK,
         Err(_) => StatusCode::SERVICE_UNAVAILABLE,
     }
-}
-
-/// `GET /binding` — the handshake. The `Binding` extractor already ran the
-/// authentication and binding precondition; a failure never reaches here.
-async fn binding(binding: Binding) -> Json<BindingResponse> {
-    Json(binding.to_response())
 }

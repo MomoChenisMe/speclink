@@ -10,25 +10,13 @@
 
 use crate::config::ActorConfig;
 use crate::error::ApiError;
-use crate::identity::{MembershipRole, Project, Repo, User};
+use speclink_host::http::{check_api_version, choose_repo, HttpError};
+use crate::identity::{MembershipRole, Project, User};
 use crate::state::AppState;
 use axum::extract::{FromRequestParts, Path};
 use axum::http::request::Parts;
-use speclink_core::config::ResolvedPolicy;
-use speclink_host::binding::{resolve_binding, BindingCandidate, BindingError};
-use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
-use speclink_host::policy::EffectiveWorkflowPolicy;
-use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
-use speclink_protocol::events::{
-    EventTransport, EventsDeclaration, PollingDeclaration, TransportKind,
-};
 use speclink_protocol::query::{AuthWhoamiResponse, WhoamiUser};
-use speclink_protocol::API_VERSION;
-use speclink_store::{ProjectId, RepoId};
 use std::collections::HashMap;
-
-/// The engine version the server advertises at handshake.
-const ENGINE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// A resolved request identity: the authenticated actor, the registered
 /// project (from the registry), and the bound repo key.
@@ -37,88 +25,9 @@ pub struct Binding {
     pub actor: ActorConfig,
     pub project: Project,
     pub repo: String,
-    pub policy_write: bool,
     /// The membership role is Editor — the gate every project-scope write
     /// shares, enforced once by the router's write guard (app.rs).
     pub editor: bool,
-}
-
-/// An authenticated identity before any project or repo is selected. The
-/// `/scopes` chooser prerequisite uses this extractor, so requiring a binding
-/// header here would be circular.
-#[derive(Debug, Clone)]
-pub struct IdentityOnly {
-    pub user: User,
-}
-
-impl Binding {
-    /// The Host execution context this binding runs verbs under. The policy is
-    /// a placeholder: server-mode policy is resolved from the store's workflow
-    /// config, not from this field.
-    pub fn execution_context(&self) -> SpeclinkExecutionContext {
-        SpeclinkExecutionContext {
-            actor: Actor::Identified {
-                // The Actor contract is git-config's identity shape,
-                // "Name <email>". A bare display name is not unique — the
-                // identity store keys on email — so stamping it alone would
-                // read two namesakes as the same person wherever a stamp is
-                // compared back, change ownership included.
-                display: format!("{} <{}>", self.actor.display, self.actor.email),
-                source: ActorSource::Explicit,
-            },
-            project: ProjectId::new(self.project.key.clone()),
-            repo: RepoId::new(self.repo.clone()),
-            mode: ExecutionMode::SharedStore,
-            policy: placeholder_policy(),
-        }
-    }
-
-    /// The `/binding` handshake response: identity, versions, and the
-    /// capability declaration — the sse push transport at `/events` (resume
-    /// supported) alongside the unchanged polling fallback over `/sync-state`
-    /// with ETag. The declared urls match the served routes.
-    pub fn to_response(&self) -> BindingResponse {
-        BindingResponse {
-            actor: BindingActor {
-                id: self.actor.id.clone(),
-                name: self.actor.display.clone(),
-            },
-            project: ScopeRef {
-                id: format!("prj_{}", self.project.key),
-                key: self.project.key.clone(),
-                name: self.project.name.clone(),
-            },
-            repo: ScopeRef {
-                id: format!("repo_{}", self.repo),
-                key: self.repo.clone(),
-                name: self.repo.clone(),
-            },
-            api_version: API_VERSION.to_string(),
-            engine_version: ENGINE_VERSION.to_string(),
-            capabilities: Capabilities {
-                context_snapshots: true,
-                policy_write: self.policy_write,
-                // 唯讀衍生查詢全 role 可用；寫入動詞依 role（server-verb-api
-                // 決策 5：capability 依 role 呈現）。
-                validate: true,
-                analyze: true,
-                delete_change: self.editor,
-                move_task: self.editor,
-                authentication: Vec::new(),
-                events: EventsDeclaration {
-                    transports: vec![EventTransport {
-                        kind: TransportKind::Sse,
-                        url: "/events".to_string(),
-                        resume: true,
-                    }],
-                    polling: Some(PollingDeclaration {
-                        url: "/sync-state".to_string(),
-                        etag: true,
-                    }),
-                },
-            },
-        }
-    }
 }
 
 impl FromRequestParts<AppState> for Binding {
@@ -141,56 +50,50 @@ impl FromRequestParts<AppState> for Binding {
         //    suspension and revocation are immediate. A PAT's last-used is
         //    advanced once every check passes (`touch_pat_id`).
         let token = bearer_token(&parts.headers)
-            .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
+            .ok_or_else(|| HttpError::unauthenticated("missing or malformed bearer token"))?;
         let (user, touch_pat_id) = resolve_bearer(state, &token)?;
 
         // 2. project key → registered project, read from the registry
         //    (unregistered → not found; a store failure → internal).
         let params = Path::<HashMap<String, String>>::from_request_parts(parts, state)
             .await
-            .map_err(|_| ApiError::not_found("project not found"))?;
+            .map_err(|_| HttpError::not_found("project not found"))?;
         let key = params
             .get("key")
             .cloned()
-            .ok_or_else(|| ApiError::not_found("project not found"))?;
+            .ok_or_else(|| HttpError::not_found("project not found"))?;
         let project = state
             .identity
             .get_project(&key)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?
-            .ok_or_else(|| ApiError::not_found(format!("project '{key}' not found")))?;
+            .map_err(|_| HttpError::internal("identity store unavailable"))?
+            .ok_or_else(|| HttpError::not_found(format!("project '{key}' not found")))?;
 
         // 3. membership: a valid token whose user is not a member of the URL
         //    project is 403, distinct from the 401 of an invalid token.
         let role = state
             .identity
             .membership_role(&user.id, &project.key)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?;
+            .map_err(|_| HttpError::internal("identity store unavailable"))?;
         let Some(role) = role else {
-            return Err(ApiError::forbidden(format!(
+            return Err(HttpError::forbidden(format!(
                 "actor is not a member of project '{}'",
                 project.key
-            )));
+            )).into());
         };
 
-        // 4. API version compatibility (incompatible → refused with reason)
-        let version = header(parts, "x-speclink-api-version");
-        if version.as_deref() != Some(API_VERSION) {
-            let sent = version
-                .map(|v| format!(", client sent '{v}'"))
-                .unwrap_or_default();
-            return Err(ApiError::refused(format!(
-                "incompatible api version — this server speaks version '{API_VERSION}'{sent}"
-            )));
-        }
+        // 4. API version compatibility (incompatible → refused with reason),
+        //    by the same check the host kit's door runs.
+        check_api_version(header(parts, "x-speclink-api-version").as_deref())?;
 
         // 5. repo adjudication (explicit must be registered; absent binds the
-        //    sole repo or refuses as ambiguous). The candidate repos come from
-        //    the registry.
+        //    sole repo or refuses as ambiguous), by the door's own rule. The
+        //    candidate repos come from the registry.
         let repos = state
             .identity
             .list_repos(&project.key)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?;
-        let repo = resolve_repo(&project.key, &repos, header(parts, "x-speclink-repo"))?;
+            .map_err(|_| HttpError::internal("identity store unavailable"))?;
+        let named = header(parts, "x-speclink-repo");
+        let repo = choose_repo(&project.key, &repos, |r| &r.key, named.as_deref())?.key.clone();
 
         // The request authenticated. A PAT's last-used advances best-effort — a
         // metering write failure never fails the request; an access token keeps
@@ -209,87 +112,8 @@ impl FromRequestParts<AppState> for Binding {
             actor,
             project,
             repo,
-            policy_write: editor,
             editor,
         })
-    }
-}
-
-impl FromRequestParts<AppState> for IdentityOnly {
-    type Rejection = ApiError;
-
-    async fn from_request_parts(
-        parts: &mut Parts,
-        state: &AppState,
-    ) -> Result<Self, Self::Rejection> {
-        let token = bearer_token(&parts.headers)
-            .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
-        let (user, touch_pat_id) = if token.starts_with("spk_at_") {
-            let user = state
-                .identity
-                .authenticate_access_token_allow_suspended(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
-            (user, None)
-        } else {
-            let (pat, user) = state
-                .identity
-                .authenticate_pat_allow_suspended(&token)
-                .map_err(|_| ApiError::internal("identity store unavailable"))?
-                .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
-            (user, Some(pat.id))
-        };
-
-        if !user.active {
-            return Err(ApiError::forbidden("account is suspended"));
-        }
-        if let Some(pat_id) = &touch_pat_id {
-            let _ = state.identity.touch_pat(pat_id);
-        }
-        Ok(IdentityOnly { user })
-    }
-}
-
-/// Adjudicate the repo for a request, fail closed. Reuses the Host's
-/// `resolve_binding` for the no-header case so ambiguity never auto-picks. The
-/// candidate `repos` come from the registry; the error classification and
-/// messages are byte-identical to the config-registry era.
-fn resolve_repo(
-    project_key: &str,
-    repos: &[Repo],
-    repo_header: Option<String>,
-) -> Result<String, ApiError> {
-    if let Some(repo) = repo_header {
-        return if repos.iter().any(|r| r.key == repo) {
-            Ok(repo)
-        } else {
-            Err(ApiError::not_found(format!(
-                "repo '{repo}' is not registered in project '{project_key}'"
-            )))
-        };
-    }
-    let candidates: Vec<BindingCandidate> = repos
-        .iter()
-        .map(|r| BindingCandidate {
-            project: ProjectId::new(project_key.to_string()),
-            repo: RepoId::new(r.key.clone()),
-            project_key: project_key.to_string(),
-            repo_key: r.key.clone(),
-            permitted: true,
-        })
-        .collect();
-    match resolve_binding(candidates) {
-        Ok(binding) => Ok(binding.repo.as_str().to_string()),
-        Err(BindingError::Missing) => Err(ApiError::not_found(format!(
-            "project '{project_key}' has no registered repo"
-        ))),
-        Err(BindingError::Ambiguous { candidates }) => Err(ApiError::refused(format!(
-            "project '{project_key}' registers multiple repos — specify one with X-Speclink-Repo (candidates: {})",
-            candidates.join(", ")
-        ))),
-        Err(BindingError::PermissionDenied { .. }) => Err(ApiError::permission_denied(format!(
-            "no permitted repo in project '{project_key}'"
-        ))),
     }
 }
 
@@ -307,15 +131,15 @@ pub(crate) fn resolve_bearer(
         let user = state
             .identity
             .authenticate_access_token(token)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?
-            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            .map_err(|_| HttpError::internal("identity store unavailable"))?
+            .ok_or_else(|| HttpError::unauthenticated("invalid token"))?;
         Ok((user, None))
     } else {
         let (pat, user) = state
             .identity
             .authenticate_pat(token)
-            .map_err(|_| ApiError::internal("identity store unavailable"))?
-            .ok_or_else(|| ApiError::permission_denied("invalid token"))?;
+            .map_err(|_| HttpError::internal("identity store unavailable"))?
+            .ok_or_else(|| HttpError::unauthenticated("invalid token"))?;
         Ok((user, Some(pat.id)))
     }
 }
@@ -330,7 +154,7 @@ pub async fn auth_whoami(
     headers: axum::http::HeaderMap,
 ) -> Result<axum::Json<AuthWhoamiResponse>, ApiError> {
     let token = bearer_token(&headers)
-        .ok_or_else(|| ApiError::permission_denied("missing or malformed bearer token"))?;
+        .ok_or_else(|| HttpError::unauthenticated("missing or malformed bearer token"))?;
     let (user, touch_pat_id) = resolve_bearer(&state, &token)?;
     if let Some(pat_id) = &touch_pat_id {
         let _ = state.identity.touch_pat(pat_id);
@@ -353,19 +177,4 @@ pub(crate) fn bearer_token(headers: &axum::http::HeaderMap) -> Option<String> {
 /// Read a request header as a string.
 pub(crate) fn header(parts: &Parts, name: &str) -> Option<String> {
     parts.headers.get(name)?.to_str().ok().map(str::to_string)
-}
-
-/// A placeholder policy for the Host context. Unused by the bridge (server-mode
-/// policy comes from the store's workflow config), so its values are inert.
-fn placeholder_policy() -> EffectiveWorkflowPolicy {
-    EffectiveWorkflowPolicy::new(
-        ResolvedPolicy {
-            locale: "English".to_string(),
-            spec_locale: None,
-            tdd: false,
-            audit: false,
-            worktree: false,
-        },
-        "",
-    )
 }

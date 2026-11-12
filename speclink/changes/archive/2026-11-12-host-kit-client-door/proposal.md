@@ -56,14 +56,14 @@ Source discussion: embedded-host-needs（cut 7 的第二塊；第一塊是 serve
 
 ### Modified Capabilities
 
-- `host-kit`: 新增五條——HTTP 入口的範圍、範圍與能力由宿主的函式決定、握手與輪詢與範圍清單、登入方式由宿主宣告、每個引擎命令的線上歸屬。這個 capability 由變更 host-kit-agent-door 建立，這個變更排在它之後。
+- `host-kit`: 新增五條——HTTP 入口的範圍、範圍與能力由宿主的函式決定、握手與輪詢與範圍清單、登入方式由宿主宣告、每個引擎命令的線上歸屬；修改一條——「每次呼叫由宿主給身分與範圍」加上選填的顯示用名稱（只用在入口回給用戶端的名稱，不進蓋章）。這個 capability 由變更 host-kit-agent-door 建立，這個變更排在它之後。
 - `node-sdk`: 新增一條——`host.handleRequest` 與 `createHost` 新增的三個輸入。
 - `client-protocol`: 新增一條——API 根的身分查詢。
 
 ## Impact
 
-- Affected specs: host-kit（新增五條）、node-sdk（新增一條）、client-protocol（新增一條）
-- Affected crates: `speclink-host`、`speclink-server`、`speclink-node`、`speclink-protocol`（只在需要時補上 API 根身分查詢的路徑常數）。`speclink-core`、`speclink-cli`、`speclink-remote`、桌面 app 不改。
+- Affected specs: host-kit（新增五條、修改一條）、node-sdk（新增一條）、client-protocol（新增一條）
+- Affected crates: `speclink-host`、`speclink-server`、`speclink-node`，以及 `speclink-core`（只有 `discuss`：四個討論寫入的拒絕加上型別，訊息與錯誤碼不變，CLI 的行為不變）。`speclink-protocol` 不需要新的路徑常數（用戶端已有 API 根身分查詢的路徑）。`speclink-cli`、`speclink-remote`、桌面 app 不改。
 - Affected code:
   - New:
     - crates/host/speclink-host/src/http/mod.rs
@@ -76,23 +76,34 @@ Source discussion: embedded-host-needs（cut 7 的第二塊；第一塊是 serve
     - crates/host/speclink-server/src/api/forward.rs
     - crates/adapters/speclink-node/__test__/handle-request.spec.ts
   - Modified:
+    - crates/host/speclink-host/Cargo.toml
     - crates/host/speclink-host/src/kit.rs
     - crates/host/speclink-host/src/lib.rs
+    - crates/host/speclink-host/src/port_exec.rs
+    - crates/host/speclink-host/src/documents.rs
+    - crates/host/speclink-host/src/teamstore_port.rs
     - crates/host/speclink-server/src/app.rs
     - crates/host/speclink-server/src/api.rs
     - crates/host/speclink-server/src/api/error.rs
     - crates/host/speclink-server/src/api/routes.rs
-    - crates/host/speclink-server/src/api/events.rs
     - crates/host/speclink-server/src/state.rs
-    - crates/host/speclink-server/src/main.rs
+    - crates/host/speclink-server/src/lib.rs
+    - crates/host/speclink-server/src/admin.rs
+    - crates/host/speclink-server/src/identity/device.rs
+    - crates/host/speclink-server/Cargo.toml
     - crates/host/speclink-server/src/identity/auth.rs
     - crates/host/speclink-server/tests/it/api/read_api.rs
     - crates/host/speclink-server/tests/it/api/health.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
+    - crates/host/speclink-server/tests/it/identity/auth_pat.rs
+    - crates/host/speclink-host/tests/bridge_dual_path.rs
+    - crates/engine/speclink-core/src/lifecycle/discuss.rs
+    - Cargo.lock
+    - crates/adapters/speclink-node/Cargo.toml
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
-    - crates/adapters/speclink-node/binding.js
-    - crates/adapters/speclink-node/binding.d.ts
+    - （`binding.js`、`binding.d.ts` 由 `napi build` 重新產生，被 gitignore，不進 repo）
   - Removed:
     - crates/host/speclink-server/src/api/read_api.rs
     - crates/host/speclink-server/src/api/context.rs

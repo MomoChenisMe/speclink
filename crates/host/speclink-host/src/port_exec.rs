@@ -16,7 +16,7 @@ use speclink_core::command::{
     execute as engine_execute, Command, CommandError, CommandOutcome, DomainEvent, ExecutionContext,
 };
 use speclink_store_port::{
-    Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, PortError,
+    Actor, Commit, DocKey, Document, Event, Expected, InvalidValue, KeyPrefix, Listing, Op, PortError,
     ScopeId, StorePort, Timestamp, Version,
 };
 use std::sync::{Mutex, PoisonError};
@@ -166,17 +166,17 @@ fn run(
     })
 }
 
-/// What [`execute_at_version`] did.
+/// What [`at_version`] did.
 #[derive(Debug)]
-pub enum AtVersion {
+pub(crate) enum AtVersion {
     /// The scope stayed at the expected version and the command ran.
     Done(PortExecution),
     /// The scope is at another version; nothing was committed.
     Moved { actual: Version },
 }
 
-/// [`execute`], but only while the scope stays at `expected` — for a write
-/// whose caller states the scope version it last saw.
+/// `run` on a port that commits only while `scope` stays at `expected` — for
+/// a write whose caller states the scope version it last saw.
 ///
 /// The scope version is compared before the command runs, and again after
 /// its reads: just before its commit, or at the end when it commits nothing.
@@ -185,12 +185,11 @@ pub enum AtVersion {
 /// [`AtVersion::Moved`]. The command thus never writes over content its
 /// caller did not see. A writer that lands between the second comparison and
 /// the commit meets the commit's own version check.
-pub fn execute_at_version(
+pub(crate) fn at_version(
     port: &dyn StorePort,
     scope: &ScopeId,
-    ctx: &SpeclinkExecutionContext,
-    cmd: Command,
     expected: Version,
+    run: impl FnOnce(&dyn StorePort) -> Result<PortExecution, ExecError>,
 ) -> Result<AtVersion, ExecError> {
     let actual = scope_version(port, scope).map_err(ExecError::Store)?;
     if actual != expected {
@@ -201,7 +200,7 @@ pub fn execute_at_version(
         expected,
         moved: Mutex::new(None),
     };
-    let result = execute(&guard, scope, ctx, cmd);
+    let result = run(&guard);
     if let Some(actual) = *guard.moved.lock().unwrap_or_else(PoisonError::into_inner) {
         return Ok(AtVersion::Moved { actual });
     }
@@ -246,6 +245,48 @@ impl StorePort for AtExpected<'_> {
     }
 }
 
+/// A store port that commits a write of `key` only when the command wrote
+/// over what the caller saw: the document at `expected`. A command reads a
+/// document again before it writes it, and its commit expects the version it
+/// read; when another writer landed between the caller's check and that
+/// read, the two differ, and the commit is a conflict instead of an
+/// overwrite. It needs no second look at the store, so it holds on any store.
+pub(crate) struct WriteAt<'p> {
+    pub port: &'p dyn StorePort,
+    pub key: DocKey,
+    pub expected: Expected,
+}
+
+impl StorePort for WriteAt<'_> {
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        self.port.list(scope, prefix)
+    }
+
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        self.port.read(scope, keys)
+    }
+
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        for op in commit.ops().iter().filter(|op| op.key() == &self.key) {
+            let over = match op {
+                Op::Put { expected, .. } => *expected,
+                Op::Delete { expected, .. } => Expected::At(*expected),
+            };
+            if over != self.expected {
+                return Err(PortError::Conflict {
+                    key: self.key.clone(),
+                    expected: self.expected,
+                    actual: match over {
+                        Expected::At(version) => Some(version),
+                        Expected::Absent => None,
+                    },
+                });
+            }
+        }
+        self.port.commit(scope, commit)
+    }
+}
+
 /// The store events of a command's domain events.
 fn commit_events_of(events: &[DomainEvent]) -> Result<Vec<Event>, InvalidValue> {
     events.iter().map(|event| Event::new(event.kind(), event_payload(event))).collect()
@@ -262,7 +303,7 @@ mod tests {
     use crate::context::Actor;
     use crate::port_view::testing::{host_ctx as ctx, key, overwrite, scope, seed, Probe, ACTOR};
     use speclink_core::command::ErrorCode;
-    use speclink_store_port::{Expected, KeyPrefix, MemoryStorePort, Op, Timestamp};
+    use speclink_store_port::{KeyPrefix, MemoryStorePort, Timestamp};
 
     const AT: u64 = 1_800_000_000_000;
     const META: &str = "schema: spec-driven\n";
@@ -605,6 +646,18 @@ mod tests {
 
     fn config_text(port: &dyn StorePort) -> String {
         port.read(&scope(), &[key("config.yaml")]).unwrap()[0].clone().unwrap().content
+    }
+
+    /// [`execute`] under [`at_version`], as the host kit runs a write whose
+    /// caller states the scope version it last saw.
+    fn execute_at_version(
+        port: &dyn StorePort,
+        scope: &ScopeId,
+        ctx: &SpeclinkExecutionContext,
+        cmd: Command,
+        expected: Version,
+    ) -> Result<AtVersion, ExecError> {
+        at_version(port, scope, expected, |guard| execute(guard, scope, ctx, cmd))
     }
 
     fn replace_with(text: &str) -> Command {

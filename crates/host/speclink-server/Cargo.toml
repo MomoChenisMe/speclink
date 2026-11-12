@@ -10,11 +10,9 @@ name = "speclink-server"
 path = "src/main.rs"
 
 [dependencies]
-speclink-core = { path = "../../engine/speclink-core" }
 speclink-host = { path = "../speclink-host" }
 speclink-protocol = { path = "../../protocol/speclink-protocol" }
 speclink-store = { path = "../../store/speclink-store" }
-speclink-store-port = { path = "../../store/speclink-store-port" }
 speclink-store-sqlite = { path = "../../store/speclink-store-sqlite" }
 speclink-store-fs = { path = "../../store/speclink-store-fs" }
 speclink-store-postgres = { path = "../../store/speclink-store-postgres" }
@@ -39,6 +37,7 @@ mime_guess = "2"
 
 [dev-dependencies]
 tempfile = "3"
+speclink-core = { path = "../../engine/speclink-core" }
 speclink-fs = { path = "../../engine/speclink-fs" }
 postgres = "0.19.14"
 speclink-remote = { path = "../../protocol/speclink-remote" }

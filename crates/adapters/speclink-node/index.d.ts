@@ -395,9 +395,73 @@ export interface HostHooks {
   afterCommit?(info: AfterCommitInfo): MaybePromise<void>
 }
 
+/** A repo of a project the caller may use: the store scope it reaches and what the caller may do there. */
+export interface HostScopeRepo {
+  /** The key the client names the repo by (the `X-Speclink-Repo` header). */
+  key: string
+  name: string
+  /** The store scope every request for this repo reads and writes. */
+  scope: string
+  /** False: every request that writes is refused with 403. */
+  canWrite: boolean
+  /** False: a workflow-config write that changes a policy key (schema, locale, spec_locale, tdd, audit, worktree) is refused with 403. */
+  canWritePolicy: boolean
+}
+
+/** A project the caller may use. */
+export interface HostScopeProject {
+  /** The key the URL names the project by. */
+  key: string
+  name: string
+  repos: HostScopeRepo[]
+}
+
+/** The login methods the host supports, answered at `GET /api/speclink/v1/auth-methods` without a credential. */
+export interface HostAuthMethods {
+  /** `browser`, `device`, `token`. */
+  methods: string[]
+  /** The login service behind `browser`. */
+  browser?: { issuer: string; clientId: string; scopes?: string[] }
+}
+
+/** A push stream the host serves itself; the handshake declares it before the polling fallback. */
+export interface HostPushTransport {
+  /** `sse` or `websocket`. */
+  type: string
+  url: string
+  resume?: boolean
+}
+
 export interface CreateHostOptions {
   store: StorePort
   hooks?: HostHooks
+  /**
+   * The projects and repos `identity` may use, asked once per
+   * `handleRequest` and never cached: cache it yourself if it is slow. A
+   * throw or a rejected Promise answers the request with 503. Absent: the
+   * scope list and every project path are 404, so a host with only the Agent
+   * tool opens nothing by accident.
+   */
+  scopes?(identity: HostIdentity): MaybePromise<HostScopeProject[]>
+  /** Absent: `auth-methods` is 404 and clients keep their old login behavior. */
+  authMethods?: HostAuthMethods
+  /** Absent: the handshake declares polling only. */
+  pushTransports?: HostPushTransport[]
+}
+
+/** A request as your web framework received it. `path` is as sent (still percent-encoded); `query` is the text after `?`. */
+export interface HostRequest {
+  method: string
+  path: string
+  query?: string
+  headers: Record<string, string>
+  body?: Uint8Array
+}
+
+export interface HostResponse {
+  status: number
+  headers: Record<string, string>
+  body: Uint8Array
 }
 
 export interface HostDispatchCall {
@@ -419,13 +483,48 @@ export interface Host {
    * of `beforeCommand` with `refused`.
    */
   dispatch(call: HostDispatchCall): Promise<unknown>
+  /**
+   * The HTTP door for the original CLI and Speclink Desktop: every path is
+   * under `/api/speclink/v1/`. Your one route verifies the token itself —
+   * the door never reads `Authorization` — and passes the identity, or null
+   * when it could not verify one:
+   *
+   * ```ts
+   * // Express: mount it before any body parser, so the body is the raw bytes.
+   * app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
+   *   const identity = await verifyToken(req.headers.authorization) // yours; null when invalid
+   *   const [path, query] = req.originalUrl.split('?')
+   *   const answer = await host.handleRequest(
+   *     // `path` and `query` as sent, not parsed; `body` as bytes (a Buffer is a Uint8Array).
+   *     // The door reads single-value headers only, so Node's header object is passed as it is.
+   *     {
+   *       method: req.method,
+   *       path,
+   *       query,
+   *       headers: req.headers as Record<string, string>,
+   *       body: Buffer.isBuffer(req.body) ? req.body : undefined,
+   *     },
+   *     identity,
+   *   )
+   *   if (answer === null) return next() // not the door's path: your own routes, or your 404
+   *   res.status(answer.status).set(answer.headers).send(Buffer.from(answer.body))
+   * })
+   * ```
+   *
+   * Resolves to null for a path that is not the door's. A method other than
+   * GET, HEAD, POST, PUT and DELETE resolves to a 405. Runs on a background
+   * thread; the hooks are the same as `dispatch`'s.
+   */
+  handleRequest(request: HostRequest, identity: HostIdentity | null): Promise<HostResponse | null>
 }
 
 /**
- * Build one host kit for every user over a store port and optional hooks. A
- * store without `list`, `read` or `commit` throws synchronously, naming the
- * missing functions; so does an option other than `store` and `hooks` (an
- * `actor` included: the identity comes with every dispatch).
+ * Build one host kit for every user over a store port, optional hooks and the
+ * HTTP door's optional inputs. A store without `list`, `read` or `commit`
+ * throws synchronously, naming the missing functions; so does an unknown
+ * option (an `actor` included: the identity comes with every call), a
+ * `scopes` that is not a function, or an `authMethods` or `pushTransports`
+ * of another shape.
  */
 export function createHost(options: CreateHostOptions): Host
 

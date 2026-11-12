@@ -561,3 +561,56 @@ fn search_returns_empty_for_blank_queries_and_other_scopes() {
     .expect("SearchResponse");
     assert!(other_scope.hits.is_empty());
 }
+
+// --- spec client-protocol「API 根的身分查詢」 ---
+
+impl Fixture {
+    fn root_whoami(&self, token: Option<&str>) -> Result<ureq::Response, ureq::Error> {
+        let mut request = ureq::get(&format!("{}/api/speclink/v1/whoami", self.base));
+        if let Some(token) = token {
+            request = request.set("Authorization", &format!("Bearer {token}"));
+        }
+        request.call()
+    }
+}
+
+#[test]
+fn the_api_root_whoami_names_the_caller() {
+    let fixture = Fixture::new();
+    let (pat, user_id) = fixture.seed_user("whoami@example.com", &["demo"], false);
+
+    let response = fixture.root_whoami(Some(&pat)).expect("whoami succeeds");
+
+    assert_eq!(response.status(), 200);
+    let body: serde_json::Value = response.into_json().expect("JSON body");
+    assert_eq!(body, serde_json::json!({ "user": { "name": "whoami@example.com", "handle": user_id } }));
+}
+
+#[test]
+fn the_api_root_whoami_needs_no_project() {
+    let fixture = Fixture::new();
+    let (pat, _) = fixture.seed_user("lonely@example.com", &[], false);
+
+    let response = fixture.root_whoami(Some(&pat)).expect("a user in no project still gets an answer");
+    assert_eq!(response.status(), 200);
+}
+
+#[test]
+fn the_api_root_whoami_without_a_bearer_is_unauthorized() {
+    let fixture = Fixture::new();
+    let (status, error) = error_of(fixture.root_whoami(None));
+    assert_eq!(status, 401);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+}
+
+#[test]
+fn a_project_the_caller_is_not_a_member_of_is_still_forbidden() {
+    let fixture = Fixture::new();
+    let (pat, _) = fixture.seed_user("outsider@example.com", &["demo"], false);
+
+    let (status, error) = error_of(fixture.project_request("multi", "web", &pat, "/changes"));
+
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+    assert_eq!(error.message, "actor is not a member of project 'multi'");
+}
