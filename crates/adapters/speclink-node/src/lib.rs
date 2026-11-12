@@ -73,6 +73,25 @@ impl From<core::command::CommandError> for DispatchError {
 
 pub(crate) type DispatchResult = std::result::Result<serde_json::Value, DispatchError>;
 
+/// Run `work` on a background thread and resolve the returned Promise with
+/// its value: the JS event loop never waits for it.
+pub(crate) fn on_worker(env: Env, work: impl FnOnce() -> serde_json::Value + Send + 'static) -> Result<JsObject> {
+    let (deferred, promise) = env.create_deferred()?;
+    std::thread::spawn(move || {
+        let value = work();
+        deferred.resolve(move |_| Ok(value));
+    });
+    Ok(promise)
+}
+
+/// CLI parity: `status` with no name in a project with no change at all is a
+/// notice, not an error — the same text the CLI prints with exit code 0. Both
+/// doors read it off the command's own failure, by its type.
+pub(crate) fn status_notice(status_without_name: bool, e: &core::command::CommandError) -> Option<serde_json::Value> {
+    (status_without_name && e.is_no_active_changes())
+        .then(|| serde_json::json!({ "output": speclink_verbs::render::no_active_changes().stdout }))
+}
+
 /// The envelope a dispatch Promise resolves to; index.js unwraps it.
 pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
     match result {
@@ -88,7 +107,7 @@ fn run_engine(
     backend: &Backend,
     actor: Option<&str>,
     cmd: core::command::Command,
-) -> std::result::Result<core::command::CommandOutcome, DispatchError> {
+) -> std::result::Result<core::command::CommandOutcome, core::command::CommandError> {
     let store = backend.store();
     // Host boundary: identity and the SPECLINK_* env layer are resolved here
     // and injected — the engine runtime only ever consumes the context. The
@@ -103,6 +122,9 @@ fn run_engine(
                 .as_ref()
                 .and_then(|ws| speclink_host::context::git_identity(&ws.root))
         }),
+        // The engine's own door binds one identity per instance and has no
+        // stable identifier: a claim judges its holder by the name.
+        actor_id: None,
         // The repo binding completion evidence records (`task done`): the fs
         // form is the local zero-configuration case, so it takes the binding
         // the CLI takes; a host store has none resolved here.
@@ -113,8 +135,7 @@ fn run_engine(
         workspace,
         user_config_dir: Some(speclink_host::context::global_config_dir()),
     };
-    let (outcome, _events) =
-        core::command::execute(store.as_ref(), &ctx, cmd).map_err(DispatchError::from)?;
+    let (outcome, _events) = core::command::execute(store.as_ref(), &ctx, cmd)?;
     Ok(outcome)
 }
 
@@ -197,38 +218,24 @@ impl Engine {
         let backend = self.backend.clone();
         let actor = self.actor.clone();
         let rewrite_lock = self.rewrite_lock.clone();
-        let (deferred, promise) = env.create_deferred()?;
-        std::thread::spawn(move || {
+        on_worker(env, move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 run_dispatch(&backend, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref())
             }));
-            let envelope = match outcome {
-                Ok(Ok(value)) => serde_json::json!({ "ok": true, "value": value }),
-                Ok(Err(e)) => {
-                    serde_json::json!({ "ok": false, "code": e.code, "message": e.message })
-                }
+            envelope(outcome.unwrap_or_else(|payload| {
                 // A store-method failure unwinds to here from non-Result trait
                 // methods; anything else is a genuine panic — either way an
                 // Error, never a process abort.
-                Err(payload) => match payload.downcast_ref::<BridgeFailure>() {
-                    Some(f) => {
-                        let e = DispatchError::from(f.clone());
-                        serde_json::json!({ "ok": false, "code": e.code, "message": e.message })
-                    }
-                    None => serde_json::json!({
-                        "ok": false,
-                        "code": "panic",
-                        "message": format!("speclink engine panicked: {}", panic_message(&payload)),
-                    }),
-                },
-            };
-            deferred.resolve(move |_| Ok(envelope));
-        });
-        Ok(promise)
+                Err(match payload.downcast_ref::<BridgeFailure>() {
+                    Some(f) => DispatchError::from(f.clone()),
+                    None => DispatchError::new("panic", format!("speclink engine panicked: {}", panic_message(&payload))),
+                })
+            }))
+        })
     }
 }
 
-fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
+pub(crate) fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
     if let Some(s) = payload.downcast_ref::<&str>() {
         (*s).to_string()
     } else if let Some(s) = payload.downcast_ref::<String>() {
@@ -297,12 +304,7 @@ pub fn engine_from_store(
 #[napi(js_name = "runStoreConformance", ts_return_type = "Promise<unknown>")]
 pub fn run_store_conformance(env: Env, invoker: JsFunction, keeps_events: bool) -> Result<JsObject> {
     let bridge = store_bridge::create_bridge(env, invoker)?;
-    let (deferred, promise) = env.create_deferred()?;
-    std::thread::spawn(move || {
-        let report = port_bridge::run_conformance(bridge, keeps_events);
-        deferred.resolve(move |_| Ok(report));
-    });
-    Ok(promise)
+    on_worker(env, move || port_bridge::run_conformance(bridge, keeps_events))
 }
 
 // --- argv router ---
@@ -469,9 +471,9 @@ fn refuse_workflow_config_write(
 
 /// Run one verb's command and shape its envelope value: the verb's
 /// structured value when it has one, else `{ output }` with its stdout text
-/// (no color), plus `stderr` when the verb also has stderr text. Two cases are answered in front of the engine: `claim` (the
-/// host store's own method), and `status` when the project has no change at
-/// all (the notice the CLI prints).
+/// (no color), plus `stderr` when the verb also has stderr text. `claim` is
+/// answered in front of the engine (the host store's own method); `status`
+/// with no name in a project with no change answers with the CLI's notice.
 fn run_verb(
     backend: &Backend,
     actor: Option<&str>,
@@ -480,27 +482,20 @@ fn run_verb(
     cmd: core::command::Command,
 ) -> DispatchResult {
     use core::command::Command;
-    match &cmd {
-        Command::Claim { name } => return claim(backend, actor, name),
-        // CLI parity: with no name and no changes at all, status is informational,
-        // not an error — the same notice as the CLI's exit-0 line.
-        Command::Status { change: None, .. }
-            if core::model::list_changes(backend.store().as_ref()).is_empty() =>
-        {
-            return Ok(serde_json::json!({
-                "output": speclink_verbs::render::no_active_changes().stdout
-            }));
-        }
-        _ => {}
+    if let Command::Claim { name } = &cmd {
+        return claim(backend, actor, name);
     }
+    let status_without_name = matches!(cmd, Command::Status { change: None, .. });
     // A stamp and a workflow-config write each rewrite one whole document
     // with no CAS, so they serialize within this instance. A poisoned lock
     // only means another one panicked; the document itself is no more suspect
     // than after any failed dispatch, so proceed.
     let rewrites = parsed.is_stamp() || writes_workflow_config(&cmd);
     let _rewrite_guard = rewrites.then(|| rewrite_lock.lock().unwrap_or_else(|e| e.into_inner()));
-    let outcome = run_engine(backend, actor, cmd)?;
-    value_of(parsed, &outcome)
+    match run_engine(backend, actor, cmd) {
+        Ok(outcome) => value_of(parsed, &outcome),
+        Err(e) => status_notice(status_without_name, &e).map_or_else(|| Err(DispatchError::from(e)), Ok),
+    }
 }
 
 /// A verb's envelope value: its structured value when it has one, else

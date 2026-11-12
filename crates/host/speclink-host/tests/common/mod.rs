@@ -46,8 +46,13 @@ pub fn host_ctx() -> SpeclinkExecutionContext {
 /// Write `docs` into `port` in one commit: each document is created, or
 /// replaced at its current version.
 pub fn seed(port: &dyn StorePort, docs: Vec<(DocKey, String)>) {
+    seed_in(port, &scope(), docs);
+}
+
+/// [`seed`] on another scope.
+pub fn seed_in(port: &dyn StorePort, scope: &ScopeId, docs: Vec<(DocKey, String)>) {
     let keys: Vec<DocKey> = docs.iter().map(|(key, _)| key.clone()).collect();
-    let current = port.read(&scope(), &keys).expect("read before the seed");
+    let current = port.read(scope, &keys).expect("read before the seed");
     let ops = docs
         .into_iter()
         .zip(current)
@@ -65,11 +70,16 @@ pub fn seed(port: &dyn StorePort, docs: Vec<(DocKey, String)>) {
         Vec::new(),
     )
     .unwrap();
-    port.commit(&scope(), &commit).expect("seed commit");
+    port.commit(scope, &commit).expect("seed commit");
 }
 
 pub fn scope_version(port: &dyn StorePort) -> u64 {
-    port.list(&scope(), &KeyPrefix::new("").unwrap())
+    scope_version_in(port, &scope())
+}
+
+/// [`scope_version`] of another scope.
+pub fn scope_version_in(port: &dyn StorePort, scope: &ScopeId) -> u64 {
+    port.list(scope, &KeyPrefix::new("").unwrap())
         .expect("list")
         .version
         .get()
@@ -87,8 +97,14 @@ pub fn keys_under(port: &dyn StorePort, prefix: &str) -> Vec<String> {
 
 /// [`seed`], from key and content text.
 pub fn write(port: &dyn StorePort, docs: &[(&str, &str)]) {
-    seed(
+    write_in(port, &scope(), docs);
+}
+
+/// [`write`] on another scope.
+pub fn write_in(port: &dyn StorePort, scope: &ScopeId, docs: &[(&str, &str)]) {
+    seed_in(
         port,
+        scope,
         docs.iter()
             .map(|(key, content)| (DocKey::new(*key).unwrap(), content.to_string()))
             .collect(),

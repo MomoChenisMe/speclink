@@ -64,7 +64,9 @@ fn normalize_eol(s: &str) -> String {
     s.replace("\r\n", "\n")
 }
 
-fn assert_matches_golden(name: &str, actual: &str) {
+/// Compare `actual` with `tests/golden/<name>`; `UPDATE_GOLDEN=1` writes it
+/// instead. Shared by every golden of this test binary.
+pub(crate) fn assert_matches_golden(name: &str, actual: &str) {
     let path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("golden")

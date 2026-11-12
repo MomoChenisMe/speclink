@@ -58,6 +58,26 @@ impl ErrorCode {
     }
 }
 
+/// The `not_found` message of a command that needs a change when the project
+/// has none. The Node SDK's two doors answer `status` with no name from this
+/// failure ([`CommandError::is_no_active_changes`]), as a notice with this
+/// text; the CLI decides the same case with `list_changes` first and prints
+/// the text through its renderer.
+pub const NO_ACTIVE_CHANGES: &str = "No active changes. Create one with: speclink new change <name>";
+
+/// The source of the [`NO_ACTIVE_CHANGES`] failure: an entry point recognizes
+/// the case by this type, not by the message text.
+#[derive(Debug)]
+pub struct NoActiveChanges;
+
+impl std::fmt::Display for NoActiveChanges {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(NO_ACTIVE_CHANGES)
+    }
+}
+
+impl std::error::Error for NoActiveChanges {}
+
 /// A typed command failure: `code` classifies it for programmatic handling,
 /// `message` is the semantic text — the SAME string the CLI prints (frozen by
 /// the regression baseline), so hosts can hand it to users or agents verbatim.
@@ -78,6 +98,12 @@ impl CommandError {
             message: message.into(),
             source: None,
         }
+    }
+
+    /// Whether this is the failure of a command that needs a change when the
+    /// project has none ([`NO_ACTIVE_CHANGES`]).
+    pub fn is_no_active_changes(&self) -> bool {
+        self.source.as_ref().is_some_and(|source| source.is::<NoActiveChanges>())
     }
 }
 
@@ -788,6 +814,10 @@ pub struct ExecutionContext {
     /// anonymous: stamping flows stamp nothing (the current local behavior
     /// when git is absent or user.name is unset).
     pub actor: Option<String>,
+    /// The actor's stable identifier, when the entry point has one (the host
+    /// kit's `Identity::id`). A claim records it and judges its holder by it;
+    /// `None` keeps judging by the display name in `actor`.
+    pub actor_id: Option<String>,
     /// Repo binding key resolved at the Host boundary (local fs mode: the
     /// default binding). Recorded in completion evidence; `None` stays absent.
     pub repo: Option<String>,
@@ -878,7 +908,7 @@ pub fn execute(
         Command::TaskMove { change, from, to, before } => {
             run_task_move(store, &change, from, to, before)
         }
-        Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), &name),
+        Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), ctx.actor_id.as_deref(), &name),
         Command::InProgressAdd { name } => run_in_progress_add(store, ctx.actor.as_deref(), &name),
         Command::InProgressRemove { name } => run_in_progress_remove(store, &name),
         Command::ChangeDepends { name, on, remove } => run_change_depends(store, &name, &on, remove),
@@ -1194,10 +1224,10 @@ fn resolve_change(
     }
     let mut changes = crate::model::list_changes(store);
     match changes.len() {
-        0 => Err(CommandError::new(
-            ErrorCode::NotFound,
-            "No active changes. Create one with: speclink new change <name>",
-        )),
+        0 => Err(CommandError {
+            source: Some(anyhow::Error::new(NoActiveChanges)),
+            ..CommandError::new(ErrorCode::NotFound, NO_ACTIVE_CHANGES)
+        }),
         1 => Ok(changes.remove(0)),
         _ => {
             crate::listing::sort_changes(store, &mut changes, "modified");
@@ -1756,6 +1786,7 @@ fn run_task_move(
 fn run_claim(
     store: &dyn Store,
     actor: Option<&str>,
+    actor_id: Option<&str>,
     name: &str,
 ) -> Result<CommandOutcome, CommandError> {
     // Fail-closed gate first: claiming a change whose metadata is corrupt must
@@ -1788,8 +1819,17 @@ fn run_claim(
         // `claimed_by` is written through `yaml_scalar`, so read it back through
         // its inverse before comparing — a quoted holder is still the same person.
         let holder = m.get("claimed_by").map(crate::util::yaml_unscalar);
+        // With an identifier on both sides, the identifier alone decides who
+        // holds the change: one name can belong to two people, and one person
+        // can change their name. Without one on either side, the name decides.
+        let holder_id = m.get("claimed_by_id").map(crate::util::yaml_unscalar);
+        let same_owner = |holder: &str| match (actor_id, holder_id.as_deref()) {
+            (Some(id), Some(holder_id)) => id == holder_id,
+            _ => holder == actor,
+        };
         match (holder, m.get("claimed_at")) {
-            (Some(holder), _) if holder == actor => return Ok(false),
+            // The holder as recorded stays the owner's name.
+            (Some(holder), _) if same_owner(&holder) => return Ok(Some(holder)),
             (Some(holder), _) => {
                 return Err(Refusal(format!(
                     "change '{name}' is already claimed by {holder} — coordinate with them, or ask them to release it"
@@ -1806,10 +1846,15 @@ fn run_claim(
         }
         m.set("claimed_at", &crate::util::now_rfc3339())?;
         m.set("claimed_by", &crate::util::yaml_scalar(actor))?;
-        Ok(true)
+        if let Some(id) = actor_id {
+            m.set("claimed_by_id", &crate::util::yaml_scalar(id))?;
+        }
+        Ok(None)
     })
     .map_err(classify)?;
-    let Some(claimed) = claimed else {
+    // `None` inside: this call stamped the claim; `Some(holder)`: it was
+    // already this owner's.
+    let Some(already) = claimed else {
         return Err(CommandError::new(
             ErrorCode::NotFound,
             format!("Change '{name}' not found."),
@@ -1817,8 +1862,8 @@ fn run_claim(
     };
     Ok(CommandOutcome::Claim(ClaimOutcome {
         name: name.to_string(),
-        claimed_by: actor.map(str::to_string),
-        claimed,
+        claimed: already.is_none(),
+        claimed_by: already.or_else(|| actor.map(str::to_string)),
     }))
 }
 

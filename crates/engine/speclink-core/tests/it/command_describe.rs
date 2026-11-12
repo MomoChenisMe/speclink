@@ -11,7 +11,6 @@ use speclink_core::config::{ReviewList, SubagentStation, ToolName, WorkflowConfi
 use speclink_core::listing::ListWorktreeJson;
 use speclink_core::model::ReviewedScopeEntry;
 use std::collections::BTreeMap;
-use std::path::Path;
 
 /// Every variant's position, matched with no wildcard arm: a new `Command`
 /// variant does not compile here until it has a sample below.
@@ -287,19 +286,7 @@ fn names_and_params_match_the_golden() {
         .map(|cmd| serde_json::json!({ "name": cmd.name(), "params": cmd.params() }))
         .collect();
     let actual = serde_json::to_string_pretty(&entries).unwrap() + "\n";
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/golden/command-describe.json");
-    if std::env::var("UPDATE_GOLDEN").is_ok() {
-        std::fs::write(&path, &actual).unwrap();
-        return;
-    }
-    let expected = std::fs::read_to_string(&path).unwrap_or_else(|_| {
-        panic!("missing golden command-describe.json — generate it with UPDATE_GOLDEN=1 after reviewing the output")
-    });
-    assert_eq!(
-        actual,
-        expected.replace("\r\n", "\n"),
-        "command names or params drifted from golden command-describe.json (regenerate deliberately with UPDATE_GOLDEN=1)"
-    );
+    crate::render_golden::assert_matches_golden("command-describe.json", &actual);
 }
 
 /// The nested workflow-config edit keeps camelCase keys too.

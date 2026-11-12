@@ -106,6 +106,23 @@
       "files": [
         "crates/engine/speclink-core/src/lifecycle/plan.rs"
       ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/host/speclink-host、crates/adapters/speclink-verbs、crates/adapters/speclink-node、crates/adapters/speclink-cli、crates/host/speclink-server。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo build -p speclink-cli` 後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-kit-agent-door` 通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "crates/host/speclink-host/tests/common/mod.rs"
+      ]
+    },
+    {
+      "task_id": "19",
+      "task_desc": "6.2 （Green）依 D11 實作：`ExecutionContext` 新增 `actor_id`；`run_claim` 在有識別時寫入 `claimed_by_id`，並在兩邊都有識別時只比識別；`HostKit::run` 以 `Identity::id` 填 `actor_id`；`speclink-cli` 的 `common.rs` 與 `speclink-node` 的 `run_engine` 建立執行情境時給 `actor_id: None`。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/host/speclink-host/src/kit.rs、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-node/src/lib.rs。驗證：6.1 的測試通過；`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo build -p speclink-cli` 後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過；`speclink validate host-kit-agent-door` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs"
+      ]
     }
   ],
   "entries": [
@@ -265,6 +282,31 @@
         "crates/engine/speclink-core/src/lifecycle/plan.rs"
       ],
       "recordedAt": "2026-11-11T14:29:41Z"
+    },
+    {
+      "taskId": "tsk_01M74MYGJA6HW964T90EC0M94M",
+      "taskDesc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/host/speclink-host、crates/adapters/speclink-verbs、crates/adapters/speclink-node、crates/adapters/speclink-cli、crates/host/speclink-server。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo build -p speclink-cli` 後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-kit-agent-door` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "10431b42cd5832b6930414d8d877325162ae6079",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/tests/it/render_golden.rs",
+        "crates/host/speclink-host/tests/common/mod.rs"
+      ],
+      "recordedAt": "2026-11-12T00:55:36Z"
+    },
+    {
+      "taskId": "tsk_01M76MN5ZVPFCFWK26MWD7XQ0E",
+      "taskDesc": "6.2 （Green）依 D11 實作：`ExecutionContext` 新增 `actor_id`；`run_claim` 在有識別時寫入 `claimed_by_id`，並在兩邊都有識別時只比識別；`HostKit::run` 以 `Identity::id` 填 `actor_id`；`speclink-cli` 的 `common.rs` 與 `speclink-node` 的 `run_engine` 建立執行情境時給 `actor_id: None`。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/host/speclink-host/src/kit.rs、crates/adapters/speclink-cli/src/common.rs、crates/adapters/speclink-node/src/lib.rs。驗證：6.1 的測試通過；`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-cli`、`cargo test -p speclink-server` 通過；`cargo build -p speclink-cli` 後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過；`speclink validate host-kit-agent-door` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "10431b42cd5832b6930414d8d877325162ae6079",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs"
+      ],
+      "recordedAt": "2026-11-12T01:10:19Z"
     }
   ]
 }

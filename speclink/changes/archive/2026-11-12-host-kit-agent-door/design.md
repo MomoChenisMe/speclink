@@ -63,16 +63,16 @@
 
 | 欄位 | 去處 |
 |---|---|
-| 識別（`id`） | 提交記錄的 `actor.id` |
+| 識別（`id`） | 提交記錄的 `actor.id`；引擎執行情境的 `actor_id`，只用來判斷 claim 的擁有者（D11） |
 | 顯示名稱（`display_name`） | 提交記錄的 `actor.display_name`；引擎執行情境的操作者字串，也就是文件裡 `created_by`、`reviewed_by`、`verified_by` 與討論記錄建立者的值 |
 
 文件裡的蓋章欄位維持一個字串，不加識別：這些欄位是人讀的，而且本機專案沒有識別可填。宿主想讓蓋章帶 email 時，把顯示名稱給成「名稱 <email>」。
 
 `port_exec` 新增 `execute_with`，比 `execute` 多收兩樣：提交用的身分（識別與顯示名稱），以及一個選填的「提交前檢查」函式（D4 用）。它收的執行情境是引擎的執行情境，不是 Host 的執行情境：宿主套件沒有專案與 repo 的綁定，下面的「repo 留空」要由呼叫端決定。既有的 `execute` 改成呼叫 `execute_with`：身分照舊由執行情境的顯示字串組成、沒有提交前檢查，行為不變。
 
-引擎執行情境的其他欄位，宿主套件這樣填：沒有 workspace、沒有環境變數的覆寫、沒有使用者設定資料夾、repo 留空。也就是引擎不讀程序的環境、不讀任何 checkout。
+引擎執行情境的其他欄位，宿主套件這樣填：`actor_id` 是識別；沒有 workspace、沒有環境變數的覆寫、沒有使用者設定資料夾、repo 留空。也就是引擎不讀程序的環境、不讀任何 checkout。
 
-- **否決：把識別也寫進文件的蓋章欄位** — 會改變既有文件的格式，本機與遠端的同一份文件會長得不一樣。
+- **否決：把識別也寫進文件的蓋章欄位** — 會改變既有文件的格式，本機與遠端的同一份文件會長得不一樣。（claim 的 `claimed_by_id` 是另一個選填欄位，見 D11。）
 - **否決：身分放進動詞文字或 stdin** — 動詞文字由模型產生，模型能偽造身分。
 
 ### D3: 命令的名稱與參數
@@ -185,7 +185,7 @@ interface StorePort {
 - 版本與時間都是 0 到 9007199254740991 的整數，JS 的 number 能精確表示。
 - `createHost` 在建立時檢查三個函式都存在，缺少時同步丟出錯誤並列出缺少的名稱。
 
-回傳值的檢查（任何一項不合格都是儲存失敗，分類 `internal`，訊息指出是哪個函式與哪個欄位）：`read` 回傳的陣列長度等於鍵的數量；版本與時間是範圍內的整數；`list` 的鍵符合鍵的格式。
+回傳值的檢查（任何一項不合格都是儲存失敗，分類 `internal`，訊息指出是哪個函式與哪個欄位）：`read` 回傳的陣列長度等於鍵的數量；版本與時間是範圍內的整數；`list` 的鍵符合鍵的格式、以 `prefix` 開頭、依 byte 順序排列且不重複。
 
 JS 丟出的錯誤怎麼分類：
 
@@ -197,7 +197,7 @@ JS 丟出的錯誤怎麼分類：
 
 套件匯出兩個小類別 `StoreConflictError(key, actual)` 與 `StoreUnavailableError(message)`，它們只是設好 `code` 的 `Error`。分類只看 `code`，所以宿主不用這兩個類別也可以。
 
-跨界的做法沿用 `store_bridge.rs` 既有的機制：背景執行緒經 threadsafe function 呼叫 JS 函式，回傳 Promise 時等它完成。
+跨界的做法沿用 `store_bridge.rs` 既有的機制：背景執行緒經 threadsafe function 呼叫 JS 函式，回傳 Promise 時等它完成。三個函式的結果以 JSON 文字跨界：數字保持原值（極小的小數不會被當成 0），JSON 裝不下的值（循環、BigInt）以其他失敗結束，不會在轉換時讓程序當掉。
 
 - **否決：`expected` 用字串 `'absent'`** — 一個欄位兩種型別，宿主寫 SQL 時 `null` 更直接。
 - **否決：用錯誤類別的 `instanceof` 分類** — 宿主的打包工具可能載入兩份套件，`instanceof` 會失效。
@@ -242,6 +242,25 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 
 `index.d.ts` 的 `Store` 型別與 `CreateEngineOptions` 的 JS 儲存形式加上 `@deprecated` 的註解，指向 `createHost`。執行期的行為不變、不印警告。
 
+### D11: claim 的擁有者以識別判斷
+
+問題：只用顯示名稱判斷擁有者時，兩個識別不同、顯示名稱都是 Alice 的人會被當成同一個擁有者——第二個人 claim 得到「已經是你的」；改了顯示名稱的人反而認不出自己的 claim。
+
+判斷規則落在 `speclink-core` 的 `run_claim`；`speclink-host` 只負責把識別放進執行情境。
+
+- `ExecutionContext` 新增 `actor_id: Option<String>`：入口給的穩定識別。宿主套件填 `Identity::id`。CLI（`speclink-cli/src/common.rs`）與 Node 的 `createEngine`（`speclink-node/src/lib.rs` 的 `run_engine`）建立執行情境時給 `None`；其他入口以 `..Default::default()` 建立，同樣是 `None`。這些入口的行為不變。
+- `run_claim` 收 `actor_id`：
+  - **寫入**：照舊寫 `claimed_at` 與 `claimed_by`（顯示名稱，給人看的）；`actor_id` 有值時，同一次 metadata 改寫多寫 `claimed_by_id`。三個鍵寫在 change 的 metadata 這一份文件，經儲存接口是同一次提交，沒有半套狀態；純量經 `yaml_scalar` 寫出。
+  - **判斷同一個身分**：執行情境有 `actor_id`、metadata 也有 `claimed_by_id` 時，只比識別；任一邊沒有識別時，照舊比顯示名稱（沒有識別的入口，或不是經宿主套件認領的 change）。
+  - **同一個身分重複 claim**：冪等成功、零寫入，包括改了顯示名稱的人；`claimed_by` 保留第一次寫入的顯示名稱。
+  - **不同身分**：照舊以 ownership 衝突拒絕（`refused`），訊息含目前持有人的顯示名稱（`claimed_by`）。
+- **相容性**：`claimed_by_id` 是 metadata 的選填新欄位。缺席時照舊比顯示名稱。`ChangeMeta` 不加這個欄位——只有 `run_claim` 經 `edit_meta` 讀寫它；舊版引擎以寬鬆解析讀 metadata，忽略不認得的鍵。CLI 的輸出、`--json` 與線上格式都沒有它。
+- **儲存解耦**：判斷只讀寫 metadata 這份文件，經儲存接口完成，不依賴任何特定儲存。
+- **不在範圍內**：示範用 server 與 CLI 連遠端時的認領（它們經 server 的路由，在變更 host-kit-client-door 改接宿主套件時一併帶識別）；`in-progress` 等其他蓋章欄位（它們只記錄，不判斷擁有者）。
+
+- **否決：`claimed_by` 改存識別** — 看板顯示「已由 {name} 認領」，存識別會讓人看到 id；本機與示範用 server 也沒有識別可存。
+- **否決：識別與顯示名稱都相同才算同一個人** — 改了顯示名稱的人會認不出自己的 claim。
+
 ## Implementation Contract
 
 **行為**
@@ -252,10 +271,12 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 - 提交後掛鉤只在有提交時被呼叫一次，收到的事件與範圍版本號等於提交的內容與回傳值。
 - 提交記錄的 `command` 等於 `Command::name()`；`actor.id` 與 `actor.display_name` 等於宿主給的身分。
 - 文件裡的蓋章欄位等於顯示名稱。
+- 經宿主套件的 `claim`：metadata 的 `claimed_by_id` 等於識別；識別相同就是同一個擁有者（顯示名稱可以不同，重複 claim 零寫入），識別不同就是不同擁有者（顯示名稱相同也以 `refused` 拒絕）。沒有識別的入口照舊比顯示名稱。
 
 **介面與資料形狀**
 
-- Rust：`speclink_host::kit::{HostKit, Caller, Identity, Hooks, BeforeCommand, Decision, AfterCommit}`；`speclink_host::port_exec::execute_with`；`speclink_core::command::Command::{name, params}`；`speclink_verbs::tool::{tool_definition, ToolDefinition}`。
+- Rust：`speclink_host::kit::{HostKit, Caller, Identity, Hooks, BeforeCommand, Decision, AfterCommit}`；`speclink_host::port_exec::execute_with`；`speclink_core::command::Command::{name, params}`；`speclink_core::command::ExecutionContext::actor_id`；`speclink_verbs::tool::{tool_definition, ToolDefinition}`。
+- change 的 metadata：選填鍵 `claimed_by_id`（字串，經 `yaml_scalar` 寫出）。
 - Node：`createHost`、`Host.dispatch`、`runStoreConformance`、`agentTool`、`StoreConflictError`、`StoreUnavailableError`，以及型別 `StorePort`、`HostHooks`、`HostIdentity`。形狀見 D6、D7、D8、D9。
 - 命令名稱與參數的 golden：`crates/engine/speclink-core/tests/golden` 底下一份，每個命令變體一筆。
 
@@ -279,12 +300,13 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 - `cargo test -p speclink-host` 既有的測試不改斷言就通過（除了提交標籤從 `command` 變成專屬名稱的那幾個，如果有測試斷言它）。
 - `cargo test -p speclink-verbs`：工具說明列出的動詞集合等於「有引擎命令的末端動詞」集合。
 - Node：`host.spec.ts`、`port-conformance.spec.ts`、`agent-tool.spec.ts` 通過；既有的 Node 測試不改就通過。
-- `cargo test -p speclink-cli` 與 `cargo test -p speclink-server` 不改就通過。
+- `cargo test -p speclink-cli` 與 `cargo test -p speclink-server` 不改就通過（`speclink-cli/src/common.rs` 只多 `actor_id: None` 一行）。
+- `cargo test -p speclink-core` 的 claim 測試、`cargo test -p speclink-host --test kit` 與 `host.spec.ts`：同名不同識別被拒絕、同識別改名後冪等、沒有識別時照舊比顯示名稱。
 
 **範圍**
 
-- 在範圍內：上面列的介面、提交標籤的來源改成命令名稱、型別宣告的 `@deprecated`。
-- 不在範圍內：`speclink-cli`、`speclink-server`、store crates、桌面 app、技能的文字、使用者文件。
+- 在範圍內：上面列的介面、提交標籤的來源改成命令名稱、型別宣告的 `@deprecated`、`ExecutionContext.actor_id` 與 `run_claim` 的識別比對、`speclink-cli` 建立執行情境的那一行。
+- 不在範圍內：`speclink-cli` 其他的程式、`speclink-server`、store crates、桌面 app、技能的文字、使用者文件。
 
 ## Risks / Trade-offs
 
@@ -295,6 +317,8 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 - [JS 掛鉤的延遲] 每個命令多一次跨界呼叫。→ 沒有提供掛鉤時不跨界。
 - [死結] 背景執行緒等 JS 的 Promise，而 JS 的函式若同步等待同一個 `dispatch` 的結果會卡住。→ 這是既有 JS 儲存橋接已有的限制，型別宣告的註解寫明掛鉤與儲存函式裡不要等待同一個宿主的 `dispatch`。
 - [儲存解耦] 這個變更讓 Node 的宿主第一次走上「三個函式」的路徑，舊的 31 方法路徑只剩下等待移除；方向和「storage 解耦的規格驅動引擎」一致。
+- [metadata 新欄位] `claimed_by_id` 只在宿主套件路徑寫入。→ 缺席時照舊比顯示名稱，所以這個變更之前認領的 change 不受影響；舊版引擎忽略它。
+- [過渡期的同名] 不是經宿主套件認領的 change 沒有 `claimed_by_id`，仍以顯示名稱判斷。→ 遠端路徑在變更 host-kit-client-door 改接宿主套件後也會寫入識別。
 
 ## 稽核結論
 
@@ -316,7 +340,7 @@ Node 把它匯出成常數 `agentTool`：`{ name, description, inputSchema }`。
 
 ## Migration Plan
 
-純新增，加上一處內部的標籤來源改動。既有的 `createEngine` 使用者不用改任何東西。要退回時還原這個變更的 commit 即可；沒有資料格式的變動。
+純新增，加上一處內部的標籤來源改動。既有的 `createEngine` 使用者不用改任何東西。資料格式只多一個選填的 metadata 鍵 `claimed_by_id`，只在宿主套件路徑寫入。要退回時還原這個變更的 commit 即可；退回後的引擎忽略這個鍵，改回以顯示名稱判斷。
 
 ## Open Questions
 

@@ -20,15 +20,23 @@ class Engine {
    * that read stdin in the CLI (e.g. `new artifact --stdin`).
    */
   async dispatch(argv, options) {
-    if (!Array.isArray(argv) || argv.some((a) => typeof a !== 'string')) {
-      throw new TypeError('dispatch(argv): argv must be an array of strings')
-    }
-    const envelope = await this.#native.dispatch(argv, options?.stdin)
-    if (envelope.ok) return envelope.value
-    const err = new Error(envelope.message)
-    err.code = envelope.code
-    throw err
+    checkArgv(argv, 'dispatch(argv)')
+    return unwrap(await this.#native.dispatch(argv, options?.stdin))
   }
+}
+
+function checkArgv(argv, caller) {
+  if (!Array.isArray(argv) || argv.some((a) => typeof a !== 'string')) {
+    throw new TypeError(`${caller}: argv must be an array of strings`)
+  }
+}
+
+/** The native envelope as a value, or an Error carrying its `code`. */
+function unwrap(envelope) {
+  if (envelope.ok) return envelope.value
+  const err = new Error(envelope.message)
+  err.code = envelope.code
+  throw err
 }
 
 /**
@@ -41,32 +49,52 @@ class Engine {
  * back to the workspace's git identity and a host store stamps nothing.
  */
 /**
- * The generic store invoker the native bridge calls through one
- * ThreadsafeFunction: executes `store[method](...args)` (plain values and
- * Promises both accepted, synchronous throws captured) and settles exactly
- * once with `(error, value)`.
+ * The invoker the native bridge calls through one ThreadsafeFunction, for the
+ * engine's Store object and for the host kit's store port and hooks alike:
+ * runs `target[method](...args)` (plain values and Promises both accepted,
+ * synchronous throws captured) and settles exactly once with `(error, value)`.
+ * The error carries the thrown object's `code`, `message`, `key` and `actual`.
  */
-function makeInvoker(store) {
+function makeInvoker(target) {
   return (method, args, settle) => {
-    if (typeof store[method] !== 'function') {
+    // The error crosses as JSON text, like an `asJson` result.
+    const fail = (fields) => settle(JSON.stringify(fields), null)
+    if (typeof target[method] !== 'function') {
       // Optional methods (e.g. claim) surface as a marker the native side
       // translates into a semantic "not supported by this store" error.
-      settle({ message: `store does not implement ${method}`, code: '__missing__' }, null)
+      fail({ message: `store does not implement ${method}`, code: '__missing__' })
       return
     }
     Promise.resolve()
-      .then(() => store[method](...args))
+      .then(() => target[method](...args))
       .then(
         (value) => settle(null, value === undefined ? null : value),
-        (e) =>
-          settle(
-            {
-              message: e && e.message !== undefined ? String(e.message) : String(e),
-              code: e && e.code != null ? String(e.code) : null,
-            },
-            null,
-          ),
+        (e) => fail(thrownFields(e)),
       )
+      // The settle must happen once, also when the thrown value cannot be read.
+      .catch(() => fail({ message: 'the function failed with a value that cannot be read' }))
+  }
+}
+
+/** Text of any value; a value whose conversion throws gets a fixed text. */
+function asText(value) {
+  try {
+    return String(value)
+  } catch {
+    return 'a value that cannot be shown as text'
+  }
+}
+
+function thrownFields(e) {
+  const isObject = e !== null && (typeof e === 'object' || typeof e === 'function')
+  const actual = isObject ? e.actual : undefined
+  return {
+    code: isObject && e.code != null ? asText(e.code) : null,
+    message: isObject && e.message !== undefined ? asText(e.message) : asText(e),
+    key: isObject && typeof e.key === 'string' ? e.key : null,
+    // JSON writes NaN and Infinity as null, which reads as "no document":
+    // they cross as text instead, so the native side refuses them.
+    actual: typeof actual === 'number' && !Number.isFinite(actual) ? String(actual) : (actual ?? null),
   }
 }
 
@@ -90,31 +118,13 @@ function createEngine(options) {
 }
 
 /**
- * The invoker the native port bridge calls for a host's store port: it runs
- * `target[method](...args)` (a value or a Promise) and always settles with a
- * value — `{ ok: true, value }`, or `{ ok: false, error }` with the thrown
- * object's `code`, `message`, `key` and `actual` — so the native side reads the
- * fields of any thrown object, an Error or a plain one.
+ * A function whose result crosses to the native side as JSON text. JSON keeps
+ * every number exact (a tiny fraction stays a fraction), and a value JSON
+ * cannot hold — a cycle, a BigInt — fails here as a thrown error instead of
+ * reaching the native conversion.
  */
-function makePortInvoker(target) {
-  return (method, args, settle) => {
-    Promise.resolve()
-      .then(() => target[method](...args))
-      .then(
-        (value) => settle(null, { ok: true, value: value === undefined ? null : value }),
-        (e) => settle(null, { ok: false, error: thrownFields(e) }),
-      )
-  }
-}
-
-function thrownFields(e) {
-  const isObject = e !== null && typeof e === 'object'
-  return {
-    code: isObject && e.code != null ? String(e.code) : null,
-    message: isObject && e.message !== undefined ? String(e.message) : String(e),
-    key: isObject && typeof e.key === 'string' ? e.key : null,
-    actual: isObject && typeof e.actual === 'number' ? e.actual : null,
-  }
+function asJson(fn) {
+  return async (...args) => JSON.stringify(await fn(...args)) ?? 'null'
 }
 
 const PORT_FUNCTIONS = ['list', 'read', 'commit']
@@ -129,9 +139,9 @@ function portFunctions(store, caller) {
     throw new TypeError(`${caller}: store is missing required functions: ${missing.join(', ')}`)
   }
   return {
-    list: (...args) => store.list(...args),
-    read: (...args) => store.read(...args),
-    commit: (...args) => store.commit(...args),
+    list: asJson((...args) => store.list(...args)),
+    read: asJson((...args) => store.read(...args)),
+    commit: asJson((...args) => store.commit(...args)),
   }
 }
 
@@ -170,25 +180,34 @@ class Host {
    */
   async dispatch(call) {
     const argv = call?.argv
-    if (!Array.isArray(argv) || argv.some((a) => typeof a !== 'string')) {
-      throw new TypeError('host.dispatch: argv must be an array of strings')
-    }
+    checkArgv(argv, 'host.dispatch')
     // A field that is not a string reads as empty, which the native side
     // refuses with invalid_argv before any store call.
     const text = (value) => (typeof value === 'string' ? value : '')
     const identity = call.identity
-    const envelope = await this.#native.dispatch(
-      text(identity?.id),
-      text(identity?.displayName),
-      text(call.scope),
-      argv,
-      call.stdin,
+    return unwrap(
+      await this.#native.dispatch(text(identity?.id), text(identity?.displayName), text(call.scope), argv, call.stdin),
     )
-    if (envelope.ok) return envelope.value
-    const err = new Error(envelope.message)
-    err.code = envelope.code
-    throw err
   }
+}
+
+const HOST_OPTIONS = ['store', 'hooks']
+
+/**
+ * The before-command answer as one of three plain shapes, so only these
+ * cross to the native side: `{ allow: true }`, `{ allow: false, reason }`,
+ * or `{ invalid }` naming what came back.
+ */
+function decisionOf(answer) {
+  if (answer === undefined) return { allow: true }
+  if (answer !== null && typeof answer === 'object') {
+    if (answer.allow === true) return { allow: true }
+    if (answer.allow === false && (answer.reason === undefined || typeof answer.reason === 'string')) {
+      return { allow: false, reason: answer.reason ?? '' }
+    }
+    return { invalid: 'an object of another shape' }
+  }
+  return { invalid: answer === null ? 'null' : typeof answer === 'string' ? JSON.stringify(answer) : asText(answer) }
 }
 
 /**
@@ -198,7 +217,14 @@ class Host {
  */
 function createHost(options) {
   const target = portFunctions(options?.store, 'createHost')
-  const hooks = options?.hooks ?? {}
+  // `actor` belongs to createEngine: a host gets the identity with every call.
+  const unknownOptions = Object.keys(options).filter((name) => !HOST_OPTIONS.includes(name))
+  if (unknownOptions.length > 0) {
+    throw new TypeError(
+      `createHost: unknown options: ${unknownOptions.join(', ')} (the options are store and hooks; the identity comes with every dispatch)`,
+    )
+  }
+  const hooks = options.hooks ?? {}
   if (typeof hooks !== 'object') {
     throw new TypeError('createHost: hooks must be an object')
   }
@@ -213,13 +239,16 @@ function createHost(options) {
     }
   }
   const hookTarget = {
-    beforeCommand: (info) => hooks.beforeCommand(info),
-    afterCommit: (info) => hooks.afterCommit(info),
+    beforeCommand: asJson(async (info) => decisionOf(await hooks.beforeCommand(info))),
+    // Nothing reads what afterCommit returns, so none of it crosses back.
+    afterCommit: async (info) => {
+      await hooks.afterCommit(info)
+    },
   }
   return new Host(
     binding.hostFromPort(
-      makePortInvoker(target),
-      makePortInvoker(hookTarget),
+      makeInvoker(target),
+      makeInvoker(hookTarget),
       typeof hooks.beforeCommand === 'function',
       typeof hooks.afterCommit === 'function',
     ),
@@ -249,9 +278,9 @@ async function runStoreConformance(harness) {
     throw new TypeError('runStoreConformance: newScope must be a function')
   }
   const keepsEvents = typeof harness.recordedEvents === 'function'
-  target.newScope = () => harness.newScope()
-  if (keepsEvents) target.recordedEvents = (scope) => harness.recordedEvents(scope)
-  return binding.runStoreConformance(makePortInvoker(target), keepsEvents)
+  target.newScope = asJson(() => harness.newScope())
+  if (keepsEvents) target.recordedEvents = asJson((scope) => harness.recordedEvents(scope))
+  return binding.runStoreConformance(makeInvoker(target), keepsEvents)
 }
 
 /** Skill knowledge: list the registry, render one SKILL.md for a matrix point. */

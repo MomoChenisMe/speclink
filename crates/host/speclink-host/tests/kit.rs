@@ -1,18 +1,15 @@
 //! The host kit (spec host-kit): one kit for every user, an identity and a
 //! scope on every call, a hook that can refuse before anything is written and
 //! a hook that only watches after the commit. Every scenario of the six
-//! requirements runs here on the in-memory store port, wrapped in a recorder
-//! that counts the calls the store receives.
+//! requirements runs here on the in-memory store port, wrapped in the shared
+//! recorder that keeps the calls the store receives.
 
 use speclink_core::command::{Command, CommandOutcome, ErrorCode};
 use speclink_core::config::WorkflowConfigEdit;
 use speclink_core::model::ChangeMeta;
 use speclink_host::kit::{AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, Identity};
 use speclink_host::port_exec::{self, ExecError};
-use speclink_store_port::{
-    Actor as PortActor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort,
-    Op, PortError, ScopeId, StorePort, Timestamp, Version,
-};
+use speclink_store_port::{DocKey, MemoryStorePort, PortError, ScopeId, StorePort, Version};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -23,82 +20,7 @@ const DONE_TASKS: &str = "## 1. Section\n\n- [x] 1.1 first task\n";
 const OPEN_TASKS: &str = "## 1. Section\n\n- [ ] 1.1 first task\n";
 const CONFIG: &str = "schema: spec-driven\naudit: false\n";
 
-// --- the store and its recorder ---
-
-/// How the recorder makes the store fail.
-#[derive(Clone, Copy, PartialEq)]
-enum Fail {
-    Never,
-    /// Every read reports "temporarily unavailable".
-    Reads,
-    /// Every commit reports a conflict on its first key.
-    Commits,
-}
-
-/// The in-memory store, with a count of every call it receives.
-struct Recorder {
-    inner: Arc<MemoryStorePort>,
-    lists: AtomicUsize,
-    reads: AtomicUsize,
-    commits: Mutex<Vec<Commit>>,
-    fail: Fail,
-}
-
-impl Recorder {
-    fn new(inner: Arc<MemoryStorePort>, fail: Fail) -> Arc<Recorder> {
-        Arc::new(Recorder {
-            inner,
-            lists: AtomicUsize::new(0),
-            reads: AtomicUsize::new(0),
-            commits: Mutex::new(Vec::new()),
-            fail,
-        })
-    }
-
-    fn lists(&self) -> usize {
-        self.lists.load(Ordering::SeqCst)
-    }
-
-    fn reads(&self) -> usize {
-        self.reads.load(Ordering::SeqCst)
-    }
-
-    fn commits(&self) -> Vec<Commit> {
-        self.commits.lock().unwrap().clone()
-    }
-
-    fn calls(&self) -> usize {
-        self.lists() + self.reads() + self.commits().len()
-    }
-}
-
-impl StorePort for Recorder {
-    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
-        self.lists.fetch_add(1, Ordering::SeqCst);
-        self.inner.list(scope, prefix)
-    }
-
-    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
-        self.reads.fetch_add(1, Ordering::SeqCst);
-        if self.fail == Fail::Reads {
-            return Err(PortError::Unavailable { message: "store offline".into() });
-        }
-        self.inner.read(scope, keys)
-    }
-
-    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
-        self.commits.lock().unwrap().push(commit.clone());
-        if self.fail == Fail::Commits {
-            let op = &commit.ops()[0];
-            let expected = match op {
-                Op::Put { expected, .. } => *expected,
-                Op::Delete { expected, .. } => Expected::At(*expected),
-            };
-            return Err(PortError::Conflict { key: op.key().clone(), expected, actual: Some(Version::new(99).unwrap()) });
-        }
-        self.inner.commit(scope, commit)
-    }
-}
+// --- the store ---
 
 fn scope_of(id: &str) -> ScopeId {
     ScopeId::new(id).unwrap()
@@ -108,36 +30,24 @@ fn key(text: &str) -> DocKey {
     DocKey::new(text).unwrap()
 }
 
-/// Write `docs` into `scope` of `port` in one commit.
-fn seed(port: &dyn StorePort, scope: &ScopeId, docs: &[(&str, &str)]) {
-    let ops = docs
-        .iter()
-        .map(|(k, content)| Op::Put { key: key(k), content: content.to_string(), expected: Expected::Absent })
-        .collect();
-    let commit = Commit::new(
-        PortActor::new("seed", "seed").unwrap(),
-        "seed",
-        Timestamp::new(1_700_000_000_000).unwrap(),
-        ops,
-        Vec::new(),
-    )
-    .unwrap();
-    port.commit(scope, &commit).expect("seed commit");
-}
-
-/// A store with one change `demo` whose tasks are all done.
-fn store_with_demo(tasks: &str) -> Arc<MemoryStorePort> {
-    let port = Arc::new(MemoryStorePort::new());
-    seed(
-        port.as_ref(),
+/// A store with one change `demo` in scope `s1`.
+fn demo_store(tasks: &str) -> MemoryStorePort {
+    let port = MemoryStorePort::new();
+    common::write_in(
+        &port,
         &scope_of("s1"),
         &[("changes/demo/.meta.yaml", META), ("changes/demo/tasks.md", tasks), ("config.yaml", CONFIG)],
     );
     port
 }
 
-fn version_of(port: &dyn StorePort, scope: &ScopeId) -> u64 {
-    port.list(scope, &KeyPrefix::new("").unwrap()).unwrap().version.get()
+fn store_with_demo(tasks: &str) -> Arc<MemoryStorePort> {
+    Arc::new(demo_store(tasks))
+}
+
+/// The demo store behind a recorder that counts every call it receives.
+fn recorded(port: MemoryStorePort) -> Arc<common::Recorder> {
+    Arc::new(common::Recorder::new(port))
 }
 
 fn content_of(port: &dyn StorePort, scope: &ScopeId, k: &str) -> Option<String> {
@@ -240,8 +150,8 @@ fn before(log: &AskLog, decide: impl Fn(&BeforeCommand) -> Decision + Send + Syn
     Hooks {
         before_command: Some(Box::new(move |info: &BeforeCommand| {
             log.lock().unwrap().push(Asked {
-                id: info.identity.id().to_string(),
-                scope: info.scope.as_str().to_string(),
+                id: info.caller.identity.id().to_string(),
+                scope: info.caller.scope.as_str().to_string(),
                 command: info.command.to_string(),
                 params: info.params.clone(),
                 changed_keys: info.changed_keys.clone(),
@@ -322,25 +232,25 @@ fn two_users_in_two_scopes_do_not_mix() {
 
 #[test]
 fn the_id_and_the_display_name_each_go_their_way() {
-    let recorder = Recorder::new(Arc::new(MemoryStorePort::new()), Fail::Never);
+    let recorder = recorded(MemoryStorePort::new());
     let kit = HostKit::new(recorder.clone(), Hooks::default());
 
     kit.run(&caller("u_42", "Alice <alice@example.com>", "s1"), new_change("demo")).expect("new change");
 
-    let commits = recorder.commits();
+    let commits = recorder.calls().commits;
     assert_eq!(commits.len(), 1);
     let actor = commits[0].actor();
     assert_eq!((actor.id(), actor.display_name()), ("u_42", "Alice <alice@example.com>"));
     assert_eq!(commits[0].command(), "new-change");
     assert_eq!(
-        created_by(recorder.inner.as_ref(), &scope_of("s1"), "demo").as_deref(),
+        created_by(&recorder.inner, &scope_of("s1"), "demo").as_deref(),
         Some("Alice <alice@example.com>")
     );
 }
 
 #[test]
 fn an_empty_or_blank_identity_is_refused_before_anything_runs() {
-    let recorder = Recorder::new(Arc::new(MemoryStorePort::new()), Fail::Never);
+    let recorder = recorded(MemoryStorePort::new());
     let _kit = HostKit::new(recorder.clone(), Hooks::default());
 
     for (id, display_name, field) in
@@ -350,7 +260,33 @@ fn an_empty_or_blank_identity_is_refused_before_anything_runs() {
         assert_eq!(err.field(), field, "{id:?} / {display_name:?}");
         assert!(err.to_string().contains(field), "{err}");
     }
-    assert_eq!(recorder.calls(), 0, "the store received no call");
+    assert!(recorder.calls().is_empty(), "the store received no call");
+}
+
+#[test]
+fn two_people_with_one_name_are_not_one_owner() {
+    // 「同名的兩個人不是同一個擁有者」
+    let recorder = recorded(demo_store(OPEN_TASKS));
+    let kit = HostKit::new(recorder.clone(), Hooks::default());
+    let claim = || Command::Claim { name: "demo".to_string() };
+
+    kit.run(&caller("u_1", "Alice", "s1"), claim()).expect("the first claim");
+    let meta = content_of(&recorder.inner, &scope_of("s1"), "changes/demo/.meta.yaml").unwrap();
+    assert!(meta.contains("claimed_by: Alice\n") && meta.contains("claimed_by_id: u_1\n"), "{meta}");
+    let commits = recorder.calls().commits.len();
+
+    match kit.run(&caller("u_2", "Alice", "s1"), claim()) {
+        Err(ExecError::Command(e)) => {
+            assert_eq!(e.code, ErrorCode::Refused);
+            assert!(e.message.contains("Alice"), "{}", e.message);
+        }
+        other => panic!("expected a refused claim, got {other:?}"),
+    }
+    kit.run(&caller("u_1", "Alice Chen", "s1"), claim()).expect("the holder under a new name");
+
+    assert_eq!(recorder.calls().commits.len(), commits, "neither later call committed");
+    let after = content_of(&recorder.inner, &scope_of("s1"), "changes/demo/.meta.yaml").unwrap();
+    assert_eq!(after, meta, "claimed_by stays Alice");
 }
 
 #[test]
@@ -367,7 +303,7 @@ fn the_process_git_identity_does_not_stamp() {
 
 #[test]
 fn refusing_an_archive_gives_the_reason_and_touches_nothing() {
-    let recorder = Recorder::new(store_with_demo(DONE_TASKS), Fail::Never);
+    let recorder = recorded(demo_store(DONE_TASKS));
     let log = AskLog::default();
     let hooks = before(&log, |info| match info.command {
         "archive" => Decision::Deny { reason: "程式碼還沒合併".to_string() },
@@ -378,7 +314,7 @@ fn refusing_an_archive_gives_the_reason_and_touches_nothing() {
     let err = kit.run(&alice(), archive(false)).expect_err("refused");
 
     assert_eq!(refused(err), "程式碼還沒合併");
-    assert_eq!(recorder.calls(), 0, "no list, no read, no commit");
+    assert!(recorder.calls().is_empty(), "no list, no read, no commit");
     assert_eq!(names(&kit.run(&alice(), list_changes()).unwrap().outcome), ["demo"], "still active");
 }
 
@@ -425,7 +361,7 @@ fn allowing_runs_as_usual_and_asks_exactly_once() {
 #[test]
 fn a_query_is_asked_too() {
     let log = AskLog::default();
-    let recorder = Recorder::new(store_with_demo(OPEN_TASKS), Fail::Never);
+    let recorder = recorded(demo_store(OPEN_TASKS));
     let kit = HostKit::new(
         recorder.clone(),
         before(&log, |info| {
@@ -433,7 +369,7 @@ fn a_query_is_asked_too() {
         }),
     );
     assert_eq!(refused(kit.run(&alice(), list_changes()).unwrap_err()), "no listing");
-    assert_eq!(recorder.calls(), 0, "no data was read");
+    assert!(recorder.calls().is_empty(), "no data was read");
 }
 
 // --- 流程設定的寫入在提交前帶著變動的鍵詢問掛鉤 ---
@@ -442,7 +378,7 @@ fn a_query_is_asked_too() {
 fn tdd_admins_only(log: &AskLog) -> Hooks {
     before(log, |info| {
         let touches_tdd = info.changed_keys.as_ref().is_some_and(|keys| keys.iter().any(|k| k == "tdd"));
-        if touches_tdd && info.identity.id() != "u_admin" {
+        if touches_tdd && info.caller.identity.id() != "u_admin" {
             Decision::Deny { reason: "only admins change tdd".into() }
         } else {
             Decision::Allow
@@ -526,20 +462,7 @@ fn a_write_whose_ground_moved_after_the_approval_is_a_conflict() {
     let kit = HostKit::new(
         port.clone(),
         before(&log, move |_| {
-            let current = other.read(&scope_of("s1"), &[key("config.yaml")]).unwrap().remove(0).unwrap();
-            let commit = Commit::new(
-                PortActor::new("u_other", "Other").unwrap(),
-                "workflow-config-edit",
-                Timestamp::new(1_800_000_000_000).unwrap(),
-                vec![Op::Put {
-                    key: key("config.yaml"),
-                    content: "schema: spec-driven\nlocale: ja\n".to_string(),
-                    expected: Expected::At(current.version),
-                }],
-                Vec::new(),
-            )
-            .unwrap();
-            other.commit(&scope_of("s1"), &commit).expect("the other write");
+            common::write_in(other.as_ref(), &scope_of("s1"), &[("config.yaml", "schema: spec-driven\nlocale: ja\n")]);
             Decision::Allow
         }),
     );
@@ -558,7 +481,7 @@ fn a_write_whose_ground_moved_after_the_approval_is_a_conflict() {
 #[test]
 fn after_a_commit_the_hook_gets_the_events() {
     let port = store_with_demo(OPEN_TASKS);
-    let before_version = version_of(port.as_ref(), &scope_of("s1"));
+    let before_version = common::scope_version_in(port.as_ref(), &scope_of("s1"));
     let log = WatchLog::default();
     let kit = HostKit::new(port.clone(), after(&log));
 
@@ -584,7 +507,10 @@ fn a_query_does_not_trigger_it() {
 
 #[test]
 fn a_failed_commit_does_not_trigger_it() {
-    let recorder = Recorder::new(store_with_demo(OPEN_TASKS), Fail::Commits);
+    // Another writer changes the tasks after the command read them.
+    let recorder = Arc::new(common::Recorder::new(demo_store(OPEN_TASKS)).before_first_commit(|store| {
+        common::write_in(store, &scope_of("s1"), &[("changes/demo/tasks.md", "## 1. Section\n\n- [ ] 1.1 changed\n")]);
+    }));
     let log = WatchLog::default();
     let kit = HostKit::new(recorder.clone(), after(&log));
 
@@ -634,13 +560,13 @@ fn a_failing_hook_changes_nothing() {
 
 #[test]
 fn an_unknown_change_is_a_command_failure() {
-    let recorder = Recorder::new(store_with_demo(OPEN_TASKS), Fail::Never);
+    let recorder = recorded(demo_store(OPEN_TASKS));
     let kit = HostKit::new(recorder.clone(), Hooks::default());
     match kit.run(&alice(), task_done("nonexistent")) {
         Err(ExecError::Command(e)) => assert_eq!(e.code, ErrorCode::NotFound),
         other => panic!("expected a command not_found, got {other:?}"),
     }
-    assert!(recorder.commits().is_empty());
+    assert!(recorder.calls().commits.is_empty());
 }
 
 // --- design 的開放問題 ---
@@ -697,11 +623,11 @@ fn the_evidence_entry_of_the_kit_has_no_repo() {
 
 #[test]
 fn an_unavailable_store_is_a_store_failure() {
-    let recorder = Recorder::new(store_with_demo(OPEN_TASKS), Fail::Reads);
+    let recorder = Arc::new(common::Recorder::unavailable());
     let kit = HostKit::new(recorder.clone(), Hooks::default());
     match kit.run(&alice(), task_done("demo")) {
         Err(ExecError::Store(PortError::Unavailable { .. })) => {}
         other => panic!("expected a store unavailable, got {other:?}"),
     }
-    assert!(recorder.commits().is_empty());
+    assert!(recorder.calls().commits.is_empty());
 }
