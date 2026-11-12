@@ -12,7 +12,9 @@ use speclink_remote::auth as remote_auth;
 use speclink_remote::client::Client as RemoteClient;
 use speclink_remote::credentials as remote_credentials;
 use speclink_remote::credentials::CredentialStore;
-use speclink_remote::login::{self as remote_login, LoginOutcome, LoginPhase, Method, Plan};
+use speclink_remote::login::{
+    self as remote_login, LoginOutcome, LoginPhase, LoginTarget, Method, PatLoginOutcome, Plan,
+};
 use std::cell::RefCell;
 use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
@@ -158,6 +160,14 @@ struct AuthEnv<'a> {
     out: RefCell<&'a mut dyn Write>,
 }
 
+impl AuthEnv<'_> {
+    /// Where a login for `origin` acts: this env's keyring, with the rotation
+    /// lock in the config directory.
+    fn target<'a>(&'a self, origin: &'a str) -> LoginTarget<'a> {
+        LoginTarget { origin, credentials: self.store, lock_dir: &self.config_dir }
+    }
+}
+
 impl remote_login::LoginIo for AuthEnv<'_> {
     fn phase(&self, phase: LoginPhase) {
         let mut out = self.out.borrow_mut();
@@ -221,7 +231,7 @@ fn auth_login(
     let browser = matches!(plan, Plan::Browser(_));
     let kind = if browser { "browser" } else { "device" };
 
-    match remote_login::login(origin, &plan, env.store, &env.config_dir, env) {
+    match remote_login::login(&env.target(origin), &plan, env) {
         LoginOutcome::LoggedIn { display, .. } => {
             let mut out = env.out.borrow_mut();
             let _ = writeln!(out, "{} Logged in as {display}", color::green("✓"));
@@ -271,14 +281,15 @@ fn login_with_pat(origin: &str, prompt: bool, env: &AuthEnv) -> Result<()> {
     if token.is_empty() {
         bail!("empty token — nothing stored");
     }
-    match remote_login::pat_login(origin, &token, env.store, &env.config_dir, Some(&env.config_dir)) {
-        LoginOutcome::LoggedIn { display, handle } => {
+    match remote_login::pat_login(&env.target(origin), &token, Some(&env.config_dir)) {
+        PatLoginOutcome::LoggedIn { display, handle } => {
             print_identity(env, &display, &handle);
             Ok(())
         }
-        LoginOutcome::Denied => bail!("authentication failed — run `speclink auth login`"),
-        LoginOutcome::Failed(message) => bail!("{message}"),
-        other => bail!("unexpected login outcome: {other:?}"),
+        PatLoginOutcome::Denied => bail!("authentication failed — run `speclink auth login`"),
+        // Not reachable with a credentials file to fall back to; said plainly all the same.
+        PatLoginOutcome::KeychainUnavailable => bail!("no system keychain available on this machine"),
+        PatLoginOutcome::Failed(message) => bail!("{message}"),
     }
 }
 
@@ -382,6 +393,12 @@ fn print_identity(env: &AuthEnv, name: &str, handle: &str) {
     }
 }
 
+/// The fake server the binary tests use, shared by path: unit tests and
+/// integration tests are separate crates.
+#[cfg(test)]
+#[path = "../../tests/it/fake_server.rs"]
+mod fake_server;
+
 #[cfg(test)]
 mod tests {
     //! `auth login` and `auth logout` at the function level
@@ -389,84 +406,32 @@ mod tests {
     //! stdout. The binary's own tests (`tests/it/auth_login_methods.rs`) cover
     //! only what needs no keyring.
 
+    use super::fake_server::Fake;
     use super::*;
     use speclink_remote::credentials::{CredentialKind, MemoryCredentialStore};
     use std::cell::RefCell;
-    use std::collections::HashMap;
     use std::path::{Path, PathBuf};
-    use std::sync::{Arc, Mutex};
 
     const DISPLAY: &str = "Dev <dev@example.com>";
 
-    /// A server answering the routes it is given and 404 everywhere else.
-    struct Fake {
-        server: Arc<tiny_http::Server>,
-        origin: String,
-        routes: Arc<Mutex<HashMap<String, (u16, String)>>>,
-        paths: Arc<Mutex<Vec<String>>>,
+    /// Today's official server: a device flow, `/auth/whoami`, `/auth/revoke`.
+    fn device_flow<'a>(fake: &'a Fake, verdict: &str) -> &'a Fake {
+        fake.route(
+            "/auth/device",
+            200,
+            r#"{"deviceCode":"dc_1","userCode":"WDJB-MJHT","verificationUri":"http://approve.example/activate","expiresIn":900,"interval":1}"#,
+        )
+        .route(
+            "/auth/device/token",
+            200,
+            &format!(r#"{{"status":"{verdict}","accessToken":"access-1","refreshToken":"refresh-1","expiresIn":3600}}"#),
+        )
+        .route("/auth/whoami", 200, &format!(r#"{{"user":{{"name":"{DISPLAY}","handle":"dev"}}}}"#))
+        .route("/auth/revoke", 200, "{}")
     }
 
-    impl Drop for Fake {
-        fn drop(&mut self) {
-            self.server.unblock();
-        }
-    }
-
-    impl Fake {
-        fn new() -> Fake {
-            let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
-            let origin = format!("http://{}", server.server_addr());
-            let routes: Arc<Mutex<HashMap<String, (u16, String)>>> = Arc::default();
-            let paths: Arc<Mutex<Vec<String>>> = Arc::default();
-            let (looper, table, log) = (server.clone(), routes.clone(), paths.clone());
-            std::thread::spawn(move || {
-                for req in looper.incoming_requests() {
-                    let path = req.url().split('?').next().unwrap_or_default().to_string();
-                    let (status, body) = table.lock().unwrap().get(&path).cloned().unwrap_or((
-                        404,
-                        r#"{"status":404,"reason":"not_found","message":"no route"}"#.to_string(),
-                    ));
-                    log.lock().unwrap().push(path);
-                    let resp = tiny_http::Response::from_string(body).with_status_code(status).with_header(
-                        tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
-                    );
-                    let _ = req.respond(resp);
-                }
-            });
-            Fake { server, origin, routes, paths }
-        }
-
-        fn route(&self, path: &str, status: u16, body: &str) -> &Fake {
-            self.routes.lock().unwrap().insert(path.to_string(), (status, body.to_string()));
-            self
-        }
-
-        /// Today's official server: a device flow, `/auth/whoami`, `/auth/revoke`.
-        fn device_flow(&self, verdict: &str) -> &Fake {
-            self.route(
-                "/auth/device",
-                200,
-                r#"{"deviceCode":"dc_1","userCode":"WDJB-MJHT","verificationUri":"http://approve.example/activate","expiresIn":900,"interval":1}"#,
-            )
-            .route(
-                "/auth/device/token",
-                200,
-                &format!(r#"{{"status":"{verdict}","accessToken":"access-1","refreshToken":"refresh-1","expiresIn":3600}}"#),
-            )
-            .route("/auth/whoami", 200, &format!(r#"{{"user":{{"name":"{DISPLAY}","handle":"dev"}}}}"#))
-            .route("/auth/revoke", 200, "{}")
-        }
-
-        fn paths(&self) -> Vec<String> {
-            self.paths.lock().unwrap().clone()
-        }
-
-        fn conn(&self, repo: Option<&str>) -> core::workspace::RemoteConnection {
-            core::workspace::RemoteConnection {
-                url: format!("{}/api/speclink/v1/projects/demo", self.origin),
-                repo: repo.map(str::to_string),
-            }
-        }
+    fn conn(fake: &Fake, repo: Option<&str>) -> core::workspace::RemoteConnection {
+        core::workspace::RemoteConnection { url: fake.project_url(), repo: repo.map(str::to_string) }
     }
 
     fn temp_dir(tag: &str) -> PathBuf {
@@ -479,7 +444,7 @@ mod tests {
     /// Run `f` against an env with an in-memory keyring and a captured stdout.
     /// Nobody signs in at a browser, and time passes instantly.
     fn with_env<T>(
-        store: &MemoryCredentialStore,
+        store: &dyn CredentialStore,
         dir: &Path,
         interactive: bool,
         token: &str,
@@ -511,11 +476,11 @@ mod tests {
     #[test]
     fn an_undeclared_server_keeps_the_device_login_output_byte_for_byte() {
         let fake = Fake::new();
-        fake.device_flow("approved");
+        device_flow(&fake, "approved");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("undeclared-ok"));
 
         let (result, out) = with_env(&store, &dir, true, "", |env| {
-            auth_login(&fake.conn(Some("backend")), &fake.origin, LoginRequest::Auto, env)
+            auth_login(&conn(&fake, Some("backend")), &fake.origin, LoginRequest::Auto, env)
         });
 
         result.expect("login");
@@ -529,11 +494,11 @@ mod tests {
     #[test]
     fn an_undeclared_server_keeps_the_device_denial_message() {
         let fake = Fake::new();
-        fake.device_flow("denied");
+        device_flow(&fake, "denied");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("undeclared-denied"));
 
         let (result, _) = with_env(&store, &dir, true, "", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Auto, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Auto, env)
         });
 
         assert_eq!(result.unwrap_err().to_string(), "authorization denied — nothing was stored");
@@ -550,8 +515,8 @@ mod tests {
             "/.well-known/oauth-authorization-server/idp",
             200,
             &format!(r#"{{"issuer":"{issuer}","authorization_endpoint":"{issuer}/authorize","token_endpoint":"{issuer}/token"}}"#),
-        )
-        .device_flow("approved");
+        );
+        device_flow(fake, "approved");
     }
 
     /// No flag on a server with both: the browser login, with its URL on stdout
@@ -564,7 +529,7 @@ mod tests {
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("browser-auto"));
 
         let (result, out) = with_env(&store, &dir, true, "", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Auto, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Auto, env)
         });
 
         assert!(out.contains("Open this URL to sign in:"), "{out}");
@@ -583,7 +548,7 @@ mod tests {
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("device-flag"));
 
         let (result, out) = with_env(&store, &dir, false, "", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Device, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Device, env)
         });
 
         result.expect("login");
@@ -591,14 +556,46 @@ mod tests {
         assert!(!out.contains("Open this URL to sign in"), "{out}");
     }
 
+    /// Without a keyring a device login never starts: its refresh credential
+    /// has nowhere safe to go, and the message says which flags work instead.
+    #[test]
+    fn without_a_keyring_the_device_login_is_refused_before_it_starts() {
+        struct NoKeyring;
+        impl CredentialStore for NoKeyring {
+            fn get(&self, _: &str, _: CredentialKind) -> std::result::Result<Option<String>, String> {
+                Err("no keyring service on this platform".into())
+            }
+            fn set(&self, _: &str, _: CredentialKind, _: &str) -> std::result::Result<(), String> {
+                Err("no keyring service on this platform".into())
+            }
+            fn delete(&self, _: &str, _: CredentialKind) -> std::result::Result<(), String> {
+                Ok(())
+            }
+        }
+        let fake = Fake::new();
+        device_flow(&fake, "approved");
+        let dir = temp_dir("no-keyring");
+
+        let (result, out) = with_env(&NoKeyring, &dir, true, "", |env| {
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Auto, env)
+        });
+
+        let err = result.unwrap_err().to_string();
+        assert!(err.contains("a device login's refresh credential is never written to a plain file"), "{err}");
+        assert!(err.contains("--pat") && err.contains("SPECLINK_TOKEN"), "{err}");
+        assert!(out.is_empty(), "{out}");
+        assert!(!fake.paths().iter().any(|p| p.starts_with("/auth/device")), "{:?}", fake.paths());
+    }
+
     #[test]
     fn a_token_only_server_points_at_the_access_token_flags() {
         let fake = Fake::new();
-        fake.route("/api/speclink/v1/auth-methods", 200, r#"{"methods":["token"]}"#).device_flow("approved");
+        fake.route("/api/speclink/v1/auth-methods", 200, r#"{"methods":["token"]}"#);
+        device_flow(&fake, "approved");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("token-only"));
 
         let (result, _) = with_env(&store, &dir, true, "", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Auto, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Auto, env)
         });
 
         let err = result.unwrap_err().to_string();
@@ -609,11 +606,12 @@ mod tests {
     #[test]
     fn a_failing_discovery_stops_the_flagless_login() {
         let fake = Fake::new();
-        fake.route("/api/speclink/v1/auth-methods", 500, "boom").device_flow("approved");
+        fake.route("/api/speclink/v1/auth-methods", 500, "boom");
+        device_flow(&fake, "approved");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("discovery-5xx"));
 
         let (result, _) = with_env(&store, &dir, true, "", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Auto, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Auto, env)
         });
 
         assert!(result.unwrap_err().to_string().contains("server unavailable"));
@@ -625,11 +623,11 @@ mod tests {
     #[test]
     fn token_stdin_stores_a_keyring_pat_reported_as_keychain_pat() {
         let fake = Fake::new();
-        fake.device_flow("approved");
+        device_flow(&fake, "approved");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("token-stdin"));
 
         let (result, out) = with_env(&store, &dir, false, "pat-abc\n", |env| {
-            auth_login(&fake.conn(None), &fake.origin, LoginRequest::Pat { prompt: false }, env)
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Pat { prompt: false }, env)
         });
 
         result.expect("login");
@@ -665,7 +663,7 @@ mod tests {
     #[test]
     fn logout_clears_all_four_local_credentials() {
         let fake = Fake::new();
-        fake.device_flow("approved");
+        device_flow(&fake, "approved");
         let (store, dir) = (MemoryCredentialStore::new(), temp_dir("logout"));
         store.set(&fake.origin, CredentialKind::Refresh, "spk_rt_live").unwrap();
         store.set(&fake.origin, CredentialKind::Bearer, "{}").unwrap();

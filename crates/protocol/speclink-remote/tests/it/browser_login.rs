@@ -16,8 +16,9 @@ use base64::Engine as _;
 use sha2::Digest as _;
 use speclink_protocol::auth::BrowserLogin;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
-use speclink_remote::login::{self, LoginIo, LoginOutcome, LoginPhase, Plan};
+use speclink_remote::login::{self, LoginIo, LoginOutcome, LoginPhase, LoginTarget, Plan};
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub(crate) const DISPLAY: &str = "Dev <dev@example.com>";
@@ -120,6 +121,11 @@ pub(crate) struct IdpConfig {
     pub(crate) refresh_reply: RefreshReply,
     /// Hold each refresh grant open this long, so racing callers overlap.
     pub(crate) refresh_delay_ms: u64,
+    /// The token endpoint refuses the authorization code.
+    pub(crate) refuse_exchange: bool,
+    /// Raised when the token endpoint gets the authorization code: the user
+    /// cancels while the code is being exchanged.
+    pub(crate) cancel_on_exchange: Option<Arc<AtomicBool>>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -142,6 +148,8 @@ impl Default for IdpConfig {
             revocation: true,
             refresh_reply: RefreshReply::Rotate,
             refresh_delay_ms: 0,
+            refuse_exchange: false,
+            cancel_on_exchange: None,
         }
     }
 }
@@ -225,10 +233,14 @@ pub(crate) fn idp(config: IdpConfig) -> Idp {
                 let expires = config.expires_in.map(|s| format!(r#","expires_in":{s}"#)).unwrap_or_default();
                 match form.get("grant_type").map(String::as_str) {
                     Some("authorization_code") => {
+                        if let Some(cancel) = &config.cancel_on_exchange {
+                            cancel.store(true, Ordering::SeqCst);
+                        }
                         let verifier = form.get("code_verifier").cloned().unwrap_or_default();
                         let hashed = base64::engine::general_purpose::URL_SAFE_NO_PAD
                             .encode(sha2::Sha256::digest(verifier.as_bytes()));
-                        if form.get("code").map(String::as_str) != Some(AUTH_CODE)
+                        if config.refuse_exchange
+                            || form.get("code").map(String::as_str) != Some(AUTH_CODE)
                             || hashed != *challenge.lock().unwrap()
                         {
                             json_response(400, r#"{"error":"invalid_grant"}"#.into())
@@ -292,6 +304,12 @@ pub(crate) struct TestIo {
     /// What the loopback answered the browser, request by request.
     pages: Arc<Mutex<Vec<(u16, String)>>>,
     browsing: Mutex<Option<std::thread::JoinHandle<()>>>,
+    /// The user's cancel button.
+    pub(crate) cancel: Arc<AtomicBool>,
+}
+
+pub(crate) fn target<'a>(origin: &'a str, store: &'a dyn CredentialStore, dir: &'a std::path::Path) -> LoginTarget<'a> {
+    LoginTarget { origin, credentials: store, lock_dir: dir }
 }
 
 impl TestIo {
@@ -302,6 +320,7 @@ impl TestIo {
             opened: Mutex::new(Vec::new()),
             pages: Arc::new(Mutex::new(Vec::new())),
             browsing: Mutex::new(None),
+            cancel: Arc::default(),
         }
     }
 
@@ -354,7 +373,7 @@ impl LoginIo for TestIo {
     }
 
     fn cancelled(&self) -> bool {
-        false
+        self.cancel.load(Ordering::SeqCst)
     }
 }
 
@@ -385,13 +404,7 @@ pub(crate) fn browser_login(
     let store = MemoryCredentialStore::new();
     let dir = tempdir();
     let io = TestIo::new(browser);
-    let outcome = login::login(
-        &server.origin,
-        &Plan::Browser(idp.browser_login()),
-        &store,
-        dir.path(),
-        &io,
-    );
+    let outcome = login::login(&target(&server.origin, &store, dir.path()), &Plan::Browser(idp.browser_login()), &io);
     (server, idp, store, dir, io, outcome)
 }
 
@@ -404,7 +417,7 @@ fn a_full_browser_login_stores_the_oauth_credential_and_reports_the_identity() {
     let dir = tempdir();
     let io = TestIo::new(Browser::Follows);
 
-    let outcome = login::login(&server.origin, &Plan::Browser(idp.browser_login()), &store, dir.path(), &io);
+    let outcome = login::login(&target(&server.origin, &store, dir.path()), &Plan::Browser(idp.browser_login()), &io);
 
     match outcome {
         LoginOutcome::LoggedIn { display, .. } => assert_eq!(display, DISPLAY),
@@ -467,6 +480,7 @@ fn a_full_browser_login_stores_the_oauth_credential_and_reports_the_identity() {
         .expect("resolve")
         .expect("a credential");
     assert_eq!(resolved.source.as_str(), "keychain_refresh");
+    assert!(!format!("{resolved:?}").contains("at-1"), "a debug print hides the bearer");
     assert_eq!(resolved.token, "at-1", "the cached access token, no refresh spent");
 }
 
@@ -493,7 +507,7 @@ fn a_denial_at_the_login_service_is_denied_and_stores_nothing() {
     assert!(matches!(outcome, LoginOutcome::Denied), "{outcome:?}");
     assert_keyring_untouched(&store, &server.origin);
     let pages = io.pages();
-    assert!(!pages[0].1.contains("at-1"));
+    assert!(pages[0].1.contains("登入沒有完成"), "the browser is told the login did not finish: {}", pages[0].1);
 }
 
 /// Nobody comes back within the window: expired, nothing stored, the port shut.
@@ -555,7 +569,7 @@ fn a_login_service_with_only_an_openid_configuration_still_works() {
 /// methods without S256 is a refusal.
 #[test]
 fn a_login_service_listing_only_plain_pkce_is_refused() {
-    let (_, _, _, _dir, io, outcome) = browser_login(
+    let (server, _, store, _dir, io, outcome) = browser_login(
         IdpConfig { pkce_methods: Some(vec!["plain"]), ..IdpConfig::default() },
         Browser::Follows,
     );
@@ -565,6 +579,7 @@ fn a_login_service_listing_only_plain_pkce_is_refused() {
         other => panic!("應失敗，得到 {other:?}"),
     }
     assert!(io.opened.lock().unwrap().is_empty());
+    assert_keyring_untouched(&store, &server.origin);
 }
 
 #[test]
@@ -588,7 +603,7 @@ fn an_http_issuer_off_this_machine_is_refused() {
         scopes: vec![],
     });
 
-    match login::login(&server.origin, &plan, &store, dir.path(), &io) {
+    match login::login(&target(&server.origin, &store, dir.path()), &plan, &io) {
         LoginOutcome::Failed(msg) => assert!(msg.contains("https"), "{msg}"),
         other => panic!("應失敗，得到 {other:?}"),
     }
@@ -605,7 +620,7 @@ fn an_issuer_disguised_as_a_local_address_is_refused() {
     for issuer in ["http://127.0.0.1@id.example.com", "http://localhost.id.example.com"] {
         let plan = Plan::Browser(BrowserLogin { issuer: issuer.into(), client_id: CLIENT_ID.into(), scopes: vec![] });
         assert!(
-            matches!(login::login(&server.origin, &plan, &store, dir.path(), &io), LoginOutcome::Failed(_)),
+            matches!(login::login(&target(&server.origin, &store, dir.path()), &plan, &io), LoginOutcome::Failed(_)),
             "{issuer}"
         );
     }
@@ -633,7 +648,7 @@ fn an_unavailable_keyring_refuses_before_opening_the_browser() {
     let dir = tempdir();
     let io = TestIo::new(Browser::Follows);
 
-    let outcome = login::login(&server.origin, &Plan::Browser(idp.browser_login()), &NoKeyring, dir.path(), &io);
+    let outcome = login::login(&target(&server.origin, &NoKeyring, dir.path()), &Plan::Browser(idp.browser_login()), &io);
 
     assert!(matches!(outcome, LoginOutcome::KeychainUnavailable), "{outcome:?}");
     assert!(io.opened.lock().unwrap().is_empty());
@@ -666,6 +681,61 @@ fn a_token_response_without_a_refresh_token_still_logs_in() {
         .as_secs() as i64;
     let lifetime = cached["expiresAt"].as_i64().unwrap() - now;
     assert!((290..=310).contains(&lifetime), "no expires_in reads as 300s, got {lifetime}");
+}
+
+/// The login service takes the user's sign-in but refuses the code: a failure
+/// that reads as one, with nothing stored and the browser told so.
+#[test]
+fn a_refused_code_exchange_fails_and_stores_nothing() {
+    let (server, _, store, _dir, io, outcome) =
+        browser_login(IdpConfig { refuse_exchange: true, ..IdpConfig::default() }, Browser::Follows);
+
+    match outcome {
+        LoginOutcome::Failed(msg) => assert!(msg.contains("refused"), "{msg}"),
+        other => panic!("應失敗，得到 {other:?}"),
+    }
+    assert_keyring_untouched(&store, &server.origin);
+    assert!(io.pages()[0].1.contains("登入沒有完成"));
+}
+
+/// A cancel that is already set when the login starts opens no browser.
+#[test]
+fn a_browser_login_cancelled_before_it_starts_opens_no_browser() {
+    let server = speclink_server();
+    let idp = idp(IdpConfig::default());
+    let store = MemoryCredentialStore::new();
+    let dir = tempdir();
+    let io = TestIo::new(Browser::Follows);
+    io.cancel.store(true, Ordering::SeqCst);
+
+    let outcome = login::login(&target(&server.origin, &store, dir.path()), &Plan::Browser(idp.browser_login()), &io);
+
+    assert!(matches!(outcome, LoginOutcome::Cancelled), "{outcome:?}");
+    assert!(io.opened.lock().unwrap().is_empty());
+    assert!(io.phases.lock().unwrap().is_empty());
+}
+
+/// A cancel while the code is being exchanged still wins: nothing is stored,
+/// the token the login service just issued is revoked, and the browser is not
+/// told the login finished.
+#[test]
+fn a_cancel_during_the_code_exchange_stores_nothing_and_revokes() {
+    let server = speclink_server();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let idp = idp(IdpConfig { cancel_on_exchange: Some(cancel.clone()), ..IdpConfig::default() });
+    let store = MemoryCredentialStore::new();
+    let dir = tempdir();
+    let mut io = TestIo::new(Browser::Follows);
+    io.cancel = cancel;
+
+    let outcome = login::login(&target(&server.origin, &store, dir.path()), &Plan::Browser(idp.browser_login()), &io);
+
+    assert!(matches!(outcome, LoginOutcome::Cancelled), "{outcome:?}");
+    assert_keyring_untouched(&store, &server.origin);
+    let revocations = idp.revoke.lock().unwrap();
+    assert_eq!(revocations.len(), 1);
+    assert_eq!(revocations[0]["token"], "rt-1");
+    assert!(io.pages()[0].1.contains("登入沒有完成"));
 }
 
 // --- refreshing a browser login (D5；規格「access token 到期的靜默換新」等) ---

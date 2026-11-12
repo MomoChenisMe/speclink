@@ -36,8 +36,7 @@ struct Metadata {
 /// A userinfo part (`user@host`) is refused outright: it is the classic way to
 /// make a remote host look like a local one.
 fn scheme_and_host(url: &str) -> Option<(String, String)> {
-    let (scheme, rest) = url.split_once("://")?;
-    let authority = rest.split(['/', '?', '#']).next()?;
+    let (scheme, authority, _) = crate::auth::split_url(url)?;
     if authority.is_empty() || authority.contains('@') {
         return None;
     }
@@ -73,28 +72,37 @@ pub(crate) fn require_secure(url: &str, what: &str) -> Result<(), String> {
 /// and the OpenID Connect one (appended to the issuer).
 fn metadata_urls(issuer: &str) -> (String, String) {
     let trimmed = issuer.trim_end_matches('/');
-    let (scheme, rest) = trimmed.split_once("://").unwrap_or(("https", trimmed));
-    let (authority, path) = match rest.find('/') {
-        Some(i) => rest.split_at(i),
-        None => (rest, ""),
-    };
+    // `require_secure` already refused an issuer without a scheme.
+    let (scheme, authority, path) = crate::auth::split_url(trimmed).unwrap_or(("https", trimmed, ""));
     (
         format!("{scheme}://{authority}/.well-known/oauth-authorization-server{path}"),
         format!("{trimmed}/.well-known/openid-configuration"),
     )
 }
 
+/// The agent for requests to a login service. It follows no redirect: a
+/// redirect would carry a code or a token to a URL the https rule never saw.
+/// (ureq hands a 3xx back as a response, so each caller checks the status.)
 fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(crate::device::REQUEST_TIMEOUT)
         .redirects(0)
         .build()
+}
+
+/// An error code from outside, cut down to something safe to print.
+pub(crate) fn error_code(raw: &str) -> String {
+    raw.chars().filter(|c| c.is_ascii_graphic()).take(64).collect()
 }
 
 /// One metadata GET: `Ok(None)` for a 404, so the caller can try the other
 /// location.
 fn fetch(url: &str) -> Result<Option<Metadata>, String> {
     match agent().get(url).call() {
+        Ok(resp) if resp.status() >= 300 => Err(format!(
+            "the login service's metadata at {url} answered a redirect (HTTP {}); redirects are not followed",
+            resp.status()
+        )),
         Ok(resp) => resp
             .into_json()
             .map(Some)
@@ -259,14 +267,7 @@ fn token_request(endpoint: &str, what: &str, form: &[(&str, &str)]) -> Result<To
             GrantFailure::Unavailable(format!("the login service's {what} answer is not a token response"))
         }),
         Err(ureq::Error::Status(status, resp)) => {
-            let error = resp
-                .into_json::<ErrorBody>()
-                .map(|b| b.error)
-                .unwrap_or_default()
-                .chars()
-                .filter(|c| c.is_ascii_graphic())
-                .take(64)
-                .collect::<String>();
+            let error = error_code(&resp.into_json::<ErrorBody>().map(|b| b.error).unwrap_or_default());
             let line = format!("the login service refused the {what} (HTTP {status} {error})");
             if status == 401 || (status == 400 && error == "invalid_grant") {
                 Err(GrantFailure::Rejected(line))
@@ -327,7 +328,8 @@ pub(crate) fn revoke(revocation_endpoint: &str, client_id: &str, refresh_token: 
         ("token_type_hint", "refresh_token"),
         ("client_id", client_id),
     ]) {
-        Ok(_) => Ok(()),
+        Ok(resp) if resp.status() < 300 => Ok(()),
+        Ok(resp) => Err(format!("HTTP {}", resp.status())),
         Err(ureq::Error::Status(status, _)) => Err(format!("HTTP {status}")),
         Err(ureq::Error::Transport(_)) => Err("could not reach the login service".to_string()),
     }
@@ -392,6 +394,34 @@ mod tests {
         };
         let printed = format!("{resp:?}");
         assert!(!printed.contains("at-secret") && !printed.contains("rt-secret"), "{printed}");
+    }
+
+    /// A login service that answers everything with a redirect.
+    fn redirecting_service() -> String {
+        let http = tiny_http::Server::http("127.0.0.1:0").expect("bind");
+        let base = format!("http://{}", http.server_addr());
+        std::thread::spawn(move || {
+            for req in http.incoming_requests() {
+                let resp = tiny_http::Response::from_string("").with_status_code(302).with_header(
+                    tiny_http::Header::from_bytes(&b"Location"[..], &b"http://127.0.0.1:1/elsewhere"[..]).unwrap(),
+                );
+                let _ = req.respond(resp);
+            }
+        });
+        base
+    }
+
+    /// A redirect is not a revocation, and not a metadata document.
+    #[test]
+    fn a_redirect_from_the_login_service_is_a_failure_not_a_success() {
+        let base = redirecting_service();
+
+        let revoked = revoke(&format!("{base}/revoke"), "speclink", "rt");
+        assert_eq!(revoked, Err("HTTP 302".to_string()));
+
+        let metadata = fetch(&format!("{base}/.well-known/oauth-authorization-server"));
+        let message = metadata.expect_err("a redirect is not a document");
+        assert!(message.contains("redirect"), "{message}");
     }
 
     #[test]

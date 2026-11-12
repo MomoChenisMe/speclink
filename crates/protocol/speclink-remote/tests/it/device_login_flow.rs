@@ -13,7 +13,7 @@
 //! one generic failure.
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
-use speclink_remote::login::{self, LoginIo, LoginOutcome, LoginPhase};
+use speclink_remote::login::{self, LoginIo, LoginOutcome, LoginPhase, LoginTarget};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -24,6 +24,13 @@ struct RecordingIo {
     slept: Mutex<Vec<u64>>,
     /// Set when the environment has no browser to open.
     browser_fails: bool,
+    /// The user cancels after the login asked this many times; `None` never.
+    cancel_after: Option<usize>,
+    asked: AtomicUsize,
+}
+
+fn target<'a>(origin: &'a str, store: &'a dyn CredentialStore, dir: &'a std::path::Path) -> LoginTarget<'a> {
+    LoginTarget { origin, credentials: store, lock_dir: dir }
 }
 
 impl LoginIo for RecordingIo {
@@ -40,7 +47,8 @@ impl LoginIo for RecordingIo {
         self.slept.lock().unwrap().push(secs);
     }
     fn cancelled(&self) -> bool {
-        false
+        let asked = self.asked.fetch_add(1, Ordering::SeqCst);
+        self.cancel_after.is_some_and(|after| asked >= after)
     }
 }
 
@@ -50,17 +58,35 @@ impl LoginIo for RecordingIo {
 struct Scripted {
     base: String,
     polls: Arc<AtomicUsize>,
+    paths: Arc<Mutex<Vec<String>>>,
 }
 
+/// What the scripted server answers beyond the poll script.
+#[derive(Clone, Copy)]
+struct Answers {
+    /// The refresh credential an approval carries (a JSON string literal's content).
+    refresh_token: &'static str,
+    whoami_status: u16,
+}
+
+const USUAL: Answers = Answers { refresh_token: "refresh-1", whoami_status: 200 };
+
 fn scripted_server(statuses: Vec<&'static str>, interval: u64) -> Scripted {
+    scripted_server_answering(statuses, interval, USUAL)
+}
+
+fn scripted_server_answering(statuses: Vec<&'static str>, interval: u64, answers: Answers) -> Scripted {
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
     let base = format!("http://{}", server.server_addr());
     let polls = Arc::new(AtomicUsize::new(0));
     let counter = polls.clone();
+    let paths: Arc<Mutex<Vec<String>>> = Arc::default();
+    let seen = paths.clone();
     let script = Arc::new(statuses);
     std::thread::spawn(move || {
         for req in server.incoming_requests() {
             let path = req.url().split('?').next().unwrap_or_default().to_string();
+            seen.lock().unwrap().push(path.clone());
             let (code, body) = match path.as_str() {
                 "/auth/device" => (
                     200,
@@ -72,15 +98,19 @@ fn scripted_server(statuses: Vec<&'static str>, interval: u64) -> Scripted {
                     let n = counter.fetch_add(1, Ordering::SeqCst);
                     let status = script.get(n).copied().unwrap_or("pending");
                     let body = match status {
-                        "approved" => r#"{"status":"approved","accessToken":"access-1","refreshToken":"refresh-1","expiresIn":3600}"#.to_string(),
+                        "approved" => format!(
+                            r#"{{"status":"approved","accessToken":"access-1","refreshToken":"{}","expiresIn":3600}}"#,
+                            answers.refresh_token
+                        ),
                         other => format!(r#"{{"status":"{other}"}}"#),
                     };
                     (200, body)
                 }
                 "/auth/whoami" => (
-                    200,
+                    answers.whoami_status,
                     r#"{"user":{"name":"Dev <dev@example.com>","handle":"dev"}}"#.to_string(),
                 ),
+                "/auth/revoke" => (200, "{}".to_string()),
                 _ => (
                     404,
                     r#"{"status":404,"reason":"not_found","message":"no route"}"#.to_string(),
@@ -95,7 +125,7 @@ fn scripted_server(statuses: Vec<&'static str>, interval: u64) -> Scripted {
             let _ = req.respond(resp);
         }
     });
-    Scripted { base, polls }
+    Scripted { base, polls, paths }
 }
 
 /// A server with no device flow at all — the PAT fallback signal.
@@ -129,7 +159,7 @@ fn approval_stores_both_credentials_and_reports_the_identity() {
     let store = MemoryCredentialStore::new();
     let io = RecordingIo::default();
 
-    let outcome = login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &io).expect("登入不應失敗");
 
     match outcome {
         LoginOutcome::LoggedIn { display, .. } => {
@@ -160,7 +190,7 @@ fn approval_replaces_a_keyring_pat() {
     let store = MemoryCredentialStore::new();
     store.set(&server.base, CredentialKind::Pat, "old-pat").unwrap();
 
-    login::device_login(&server.base, &store, dir.path(), &RecordingIo::default()).expect("登入不應失敗");
+    login::device_login(&target(&server.base, &store, dir.path()), &RecordingIo::default()).expect("登入不應失敗");
 
     assert_eq!(store.get(&server.base, CredentialKind::Pat).unwrap(), None);
 }
@@ -174,7 +204,7 @@ fn the_url_and_code_are_always_announced() {
     let store = MemoryCredentialStore::new();
     let io = RecordingIo { browser_fails: true, ..Default::default() };
 
-    login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
+    login::device_login(&target(&server.base, &store, dir.path()), &io).expect("登入不應失敗");
 
     let announced = io.announced.lock().unwrap();
     assert_eq!(
@@ -195,7 +225,7 @@ fn the_browser_url_prefills_the_user_code() {
     let store = MemoryCredentialStore::new();
     let io = RecordingIo::default();
 
-    login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
+    login::device_login(&target(&server.base, &store, dir.path()), &io).expect("登入不應失敗");
 
     let opened = io.opened.lock().unwrap();
     assert_eq!(
@@ -211,7 +241,7 @@ fn polling_waits_the_interval_the_server_declared() {
     let store = MemoryCredentialStore::new();
     let io = RecordingIo::default();
 
-    login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
+    login::device_login(&target(&server.base, &store, dir.path()), &io).expect("登入不應失敗");
 
     assert_eq!(
         io.slept.lock().unwrap().as_slice(),
@@ -230,7 +260,7 @@ fn slow_down_widens_the_interval() {
     let store = MemoryCredentialStore::new();
     let io = RecordingIo::default();
 
-    login::device_login(&server.base, &store, dir.path(), &io).expect("登入不應失敗");
+    login::device_login(&target(&server.base, &store, dir.path()), &io).expect("登入不應失敗");
 
     let slept = io.slept.lock().unwrap();
     assert!(
@@ -245,22 +275,12 @@ fn denial_and_expiry_are_distinct_verdicts() {
     let dir = tempdir();
 
     let denied = scripted_server(vec!["denied"], 1);
-    let outcome = login::device_login(
-        &denied.base,
-        &MemoryCredentialStore::new(),
-        dir.path(),
-        &RecordingIo::default(),
-    )
+    let outcome = login::device_login(&target(&denied.base, &MemoryCredentialStore::new(), dir.path()), &RecordingIo::default())
     .expect("被拒是結果不是錯誤");
     assert!(matches!(outcome, LoginOutcome::Denied));
 
     let expired = scripted_server(vec!["expired"], 1);
-    let outcome = login::device_login(
-        &expired.base,
-        &MemoryCredentialStore::new(),
-        dir.path(),
-        &RecordingIo::default(),
-    )
+    let outcome = login::device_login(&target(&expired.base, &MemoryCredentialStore::new(), dir.path()), &RecordingIo::default())
     .expect("逾期是結果不是錯誤");
     assert!(matches!(outcome, LoginOutcome::Expired));
 }
@@ -270,12 +290,7 @@ fn denial_and_expiry_are_distinct_verdicts() {
 #[test]
 fn a_server_without_the_device_flow_is_unsupported() {
     let dir = tempdir();
-    let outcome = login::device_login(
-        &unsupported_server(),
-        &MemoryCredentialStore::new(),
-        dir.path(),
-        &RecordingIo::default(),
-    )
+    let outcome = login::device_login(&target(&unsupported_server(), &MemoryCredentialStore::new(), dir.path()), &RecordingIo::default())
     .expect("不支援是結果不是錯誤");
 
     assert!(matches!(outcome, LoginOutcome::Unsupported));
@@ -288,7 +303,7 @@ fn a_denied_login_stores_nothing() {
     let dir = tempdir();
     let store = MemoryCredentialStore::new();
 
-    login::device_login(&server.base, &store, dir.path(), &RecordingIo::default())
+    login::device_login(&target(&server.base, &store, dir.path()), &RecordingIo::default())
         .expect("被拒是結果不是錯誤");
 
     assert_eq!(store.get(&server.base, CredentialKind::Refresh).unwrap(), None);
@@ -316,7 +331,107 @@ fn an_unwritable_keyring_fails_the_login() {
     let server = scripted_server(vec!["approved"], 1);
     let dir = tempdir();
 
-    let outcome = login::device_login(&server.base, &ReadOnly, dir.path(), &RecordingIo::default());
+    let outcome = login::device_login(&target(&server.base, &ReadOnly, dir.path()), &RecordingIo::default());
 
     assert!(outcome.is_err(), "無法儲存 credential 時登入必須失敗");
+}
+
+/// The credentials are in; an identity lookup that then fails does not turn
+/// the login into a failure (the browser login answers the same way).
+#[test]
+fn an_identity_failure_after_approval_still_reports_the_login() {
+    let server = scripted_server_answering(vec!["approved"], 1, Answers { whoami_status: 500, ..USUAL });
+    let dir = tempdir();
+    let store = MemoryCredentialStore::new();
+
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &RecordingIo::default())
+        .expect("the credentials are stored, so this is not an error");
+
+    assert!(matches!(outcome, LoginOutcome::LoggedInWithoutIdentity { .. }), "{outcome:?}");
+    assert_eq!(
+        store.get(&server.base, CredentialKind::Refresh).unwrap(),
+        Some("refresh-1".to_string())
+    );
+}
+
+/// The refresh entry is the login; a cache that cannot be written only costs
+/// the next command one rotation.
+#[test]
+fn a_cache_that_cannot_be_written_does_not_fail_the_login() {
+    struct NoCache(MemoryCredentialStore);
+    impl CredentialStore for NoCache {
+        fn get(&self, origin: &str, kind: CredentialKind) -> Result<Option<String>, String> {
+            self.0.get(origin, kind)
+        }
+        fn set(&self, origin: &str, kind: CredentialKind, secret: &str) -> Result<(), String> {
+            if kind == CredentialKind::Bearer {
+                return Err("cache entry refused".into());
+            }
+            self.0.set(origin, kind, secret)
+        }
+        fn delete(&self, origin: &str, kind: CredentialKind) -> Result<(), String> {
+            self.0.delete(origin, kind)
+        }
+    }
+    let server = scripted_server(vec!["approved"], 1);
+    let dir = tempdir();
+    let store = NoCache(MemoryCredentialStore::new());
+
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &RecordingIo::default())
+        .expect("登入不應失敗");
+
+    assert!(matches!(outcome, LoginOutcome::LoggedIn { .. }), "{outcome:?}");
+    assert_eq!(store.get(&server.base, CredentialKind::Refresh).unwrap(), Some("refresh-1".to_string()));
+}
+
+/// A cancel that is already set when the login starts opens nothing and asks
+/// the server nothing more.
+#[test]
+fn a_login_cancelled_before_it_starts_opens_no_browser() {
+    let server = scripted_server(vec!["approved"], 1);
+    let dir = tempdir();
+    let store = MemoryCredentialStore::new();
+    let io = RecordingIo { cancel_after: Some(0), ..Default::default() };
+
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &io).expect("取消是結果不是錯誤");
+
+    assert!(matches!(outcome, LoginOutcome::Cancelled), "{outcome:?}");
+    assert!(io.opened.lock().unwrap().is_empty());
+    assert!(io.announced.lock().unwrap().is_empty());
+    assert_eq!(server.polls.load(Ordering::SeqCst), 0);
+}
+
+/// A cancel that lands together with the approval still wins: nothing is
+/// stored, and the family the server just issued is revoked.
+#[test]
+fn a_cancel_that_lands_with_the_approval_stores_nothing_and_revokes() {
+    let server = scripted_server(vec!["approved"], 1);
+    let dir = tempdir();
+    let store = MemoryCredentialStore::new();
+    // Asked before the phase and before the poll: not cancelled. Asked again
+    // once the approval is in: cancelled.
+    let io = RecordingIo { cancel_after: Some(2), ..Default::default() };
+
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &io).expect("取消是結果不是錯誤");
+
+    assert!(matches!(outcome, LoginOutcome::Cancelled), "{outcome:?}");
+    for kind in [CredentialKind::Refresh, CredentialKind::Bearer] {
+        assert_eq!(store.get(&server.base, kind).unwrap(), None, "{kind:?}");
+    }
+    assert!(server.paths.lock().unwrap().contains(&"/auth/revoke".to_string()));
+}
+
+/// A server cannot plant a browser-login entry through the device flow: such a
+/// "refresh token" would later send requests to endpoints of its choosing.
+#[test]
+fn a_refresh_credential_shaped_like_a_browser_login_entry_is_refused() {
+    let hostile = r#"{\"kind\":\"oauth\",\"refreshToken\":\"x\",\"tokenEndpoint\":\"http://evil.example/t\",\"clientId\":\"c\"}"#;
+    let server = scripted_server_answering(vec!["approved"], 1, Answers { refresh_token: hostile, ..USUAL });
+    let dir = tempdir();
+    let store = MemoryCredentialStore::new();
+
+    let outcome = login::device_login(&target(&server.base, &store, dir.path()), &RecordingIo::default());
+
+    assert!(outcome.is_err(), "{outcome:?}");
+    assert_eq!(store.get(&server.base, CredentialKind::Refresh).unwrap(), None);
 }

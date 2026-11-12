@@ -15,11 +15,13 @@ use std::io::{Read as _, Write as _};
 use std::net::{TcpListener, TcpStream};
 use std::time::Duration;
 
-/// How long one connection may take to send its request. A browser's idle
-/// preconnect must not stall the wait for the real callback for long.
-const REQUEST_READ_TIMEOUT: Duration = Duration::from_secs(2);
-/// A callback request is a request line and a few headers.
-const MAX_REQUEST_BYTES: usize = 8 * 1024;
+/// How long one connection may take to send its request, start to finish. A
+/// browser's idle preconnect, or a program trickling bytes, must not stall the
+/// wait for the real callback for long.
+const REQUEST_DEADLINE: Duration = Duration::from_secs(2);
+/// How much of a request is read. Only the request line matters; the headers
+/// can run long, because cookies set by any server on 127.0.0.1 come along.
+const MAX_REQUEST_BYTES: usize = 64 * 1024;
 
 const PAGE_DONE: &str = "<!doctype html><meta charset=\"utf-8\"><title>speclink</title><p>登入完成，可以關閉這個視窗。</p><p>Sign-in complete. You can close this window.</p>";
 const PAGE_FAILED: &str = "<!doctype html><meta charset=\"utf-8\"><title>speclink</title><p>登入沒有完成，請回到 speclink 查看原因。</p><p>Sign-in did not complete. Return to speclink for details.</p>";
@@ -96,10 +98,9 @@ impl CallbackListener {
 fn handle(mut stream: TcpStream, state: &str) -> Option<Callback> {
     // Accepted sockets inherit non-blocking mode on some platforms.
     stream.set_nonblocking(false).ok()?;
-    stream.set_read_timeout(Some(REQUEST_READ_TIMEOUT)).ok()?;
-    stream.set_write_timeout(Some(REQUEST_READ_TIMEOUT)).ok()?;
-    let head = read_head(&mut stream)?;
-    let mut line = head.lines().next().unwrap_or_default().split(' ');
+    stream.set_write_timeout(Some(REQUEST_DEADLINE)).ok()?;
+    let request_line = read_request_line(&mut stream)?;
+    let mut line = request_line.split(' ');
     let (method, target) = (line.next().unwrap_or_default(), line.next().unwrap_or_default());
     let (path, query) = target.split_once('?').unwrap_or((target, ""));
     if method != "GET" || path != "/callback" {
@@ -120,7 +121,7 @@ fn handle(mut stream: TcpStream, state: &str) -> Option<Callback> {
         if error == "access_denied" {
             return Some(Callback::Denied);
         }
-        let code: String = error.chars().filter(|c| c.is_ascii_graphic()).take(64).collect();
+        let code = crate::oauth::error_code(error);
         return Some(Callback::Failed(format!("the login service returned an error: {code}")));
     }
     match param("code").filter(|code| !code.is_empty()) {
@@ -132,19 +133,27 @@ fn handle(mut stream: TcpStream, state: &str) -> Option<Callback> {
     }
 }
 
-/// The request line and headers, up to the blank line. A connection that sends
-/// nothing in time, or too much, is dropped.
-fn read_head(stream: &mut TcpStream) -> Option<String> {
+/// The request line of one request. The whole request is read — up to the
+/// blank line, the size cap or the deadline, whichever comes first — so the
+/// answer does not race the browser's own sending; then only the first line is
+/// kept. A connection that has not sent a full request line by the deadline is
+/// dropped.
+fn read_request_line(stream: &mut TcpStream) -> Option<String> {
+    let deadline = std::time::Instant::now() + REQUEST_DEADLINE;
     let mut buf = Vec::new();
-    let mut chunk = [0u8; 1024];
-    while !buf.windows(4).any(|w| w == b"\r\n\r\n") {
-        let n = stream.read(&mut chunk).ok()?;
-        if n == 0 || buf.len() + n > MAX_REQUEST_BYTES {
-            return None;
+    let mut chunk = [0u8; 4096];
+    while buf.len() < MAX_REQUEST_BYTES && !buf.windows(4).any(|w| w == b"\r\n\r\n") {
+        let Some(left) = deadline.checked_duration_since(std::time::Instant::now()).filter(|d| !d.is_zero()) else {
+            break;
+        };
+        stream.set_read_timeout(Some(left)).ok()?;
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
         }
-        buf.extend_from_slice(&chunk[..n]);
     }
-    Some(String::from_utf8_lossy(&buf).into_owned())
+    let end = buf.windows(2).position(|w| w == b"\r\n")?;
+    Some(String::from_utf8_lossy(&buf[..end]).into_owned())
 }
 
 fn respond(stream: &mut TcpStream, status: u16, page: &str) {
@@ -214,6 +223,54 @@ mod tests {
                 ("flag".to_string(), String::new()),
             ]
         );
+    }
+
+    /// Accept one connection that `client` writes to, and hand it to `handle`.
+    /// Returns the verdict and how long `handle` took to reach it.
+    fn handled(client: impl FnOnce(TcpStream) + Send + 'static) -> (Option<Callback>, Duration) {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let addr = listener.local_addr().unwrap();
+        let writer = std::thread::spawn(move || client(TcpStream::connect(addr).unwrap()));
+        let (stream, _) = listener.accept().unwrap();
+        let started = std::time::Instant::now();
+        let callback = handle(stream, "the-state");
+        let took = started.elapsed();
+        writer.join().unwrap();
+        (callback, took)
+    }
+
+    /// Cookies from other servers on 127.0.0.1 ride along with the callback;
+    /// headers far past a few kilobytes must not lose it.
+    #[test]
+    fn a_callback_with_very_long_headers_is_still_accepted() {
+        // The client only sends: the answer comes after `handle` returns, and
+        // `handled` joins the client before that.
+        let (callback, _) = handled(|mut stream| {
+            let cookie = "c=".to_string() + &"x".repeat(20_000);
+            let _ = write!(stream, "GET /callback?code=abc&state=the-state HTTP/1.1\r\nCookie: {cookie}\r\n\r\n");
+        });
+        match callback {
+            Some(Callback::Code { code, reply }) => {
+                assert_eq!(code, "abc");
+                reply.finish(true);
+            }
+            _ => panic!("the callback must be accepted"),
+        }
+    }
+
+    /// A connection trickling bytes cannot hold the wait past the deadline.
+    #[test]
+    fn a_connection_that_never_finishes_its_request_line_is_dropped_at_the_deadline() {
+        let (callback, took) = handled(|mut stream| {
+            for _ in 0..8 {
+                if stream.write_all(b"G").is_err() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        });
+        assert!(callback.is_none());
+        assert!(took < REQUEST_DEADLINE + Duration::from_millis(1000), "{took:?}");
     }
 
     #[test]

@@ -9,8 +9,9 @@
 
 use chrono::{Duration, Utc};
 use speclink_desktop_lib::connections::{
-    connection_login, logout, pat_login, read_registry, refresh_connection, upsert_connection,
-    write_registry, ConnectionLogin, DesktopLoginIo, LoginCancels, LoginPhaseEvent,
+    connection_login, logged_in, logout, pat_login, read_registry, refresh_connection,
+    upsert_connection, write_registry, ConnectionLogin, DesktopLoginIo, LoginCancels, LoginMethod,
+    LoginPhaseEvent,
 };
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
@@ -123,7 +124,7 @@ fn run_login(
         open_browser: opener,
         cancel: &cancel,
     };
-    let outcome = connection_login(origin, None, store, registry, &io);
+    let outcome = connection_login(origin, store, registry, &io);
     (outcome, events.into_inner().unwrap())
 }
 
@@ -221,7 +222,10 @@ fn a_browser_denial_reports_denied_and_leaves_no_credential() {
 
     let (outcome, _) = run_login(&h.origin, &store, &h.registry, &opener, false);
 
-    assert!(matches!(outcome, Ok(ConnectionLogin::Denied)), "拒絕是可讀狀態：{outcome:?}");
+    assert!(
+        matches!(outcome, Ok(ConnectionLogin::Denied(LoginMethod::Device))),
+        "拒絕是可讀狀態，並帶出登入方式：{outcome:?}"
+    );
     assert_eq!(store.get(&h.origin, CredentialKind::Refresh).expect("get"), None);
     assert!(read_registry(&h.registry)[0].last_actor_display.is_none());
 }
@@ -542,4 +546,63 @@ fn a_new_login_cancels_the_one_still_running_for_the_same_origin() {
     let other = cancels.begin("https://b.example");
     cancels.cancel("https://a.example");
     assert!(!other.load(Ordering::SeqCst), "取消只作用於該 origin");
+}
+
+// --- 回給前端的內容與除錯輸出都不帶 token ---
+
+#[test]
+fn a_login_result_shows_its_status_and_method_but_never_the_token() {
+    let logged_in = ConnectionLogin::LoggedIn {
+        display: DISPLAY.to_string(),
+        access_token: Some("spk_at_secret".to_string()),
+    };
+    assert_eq!(logged_in.view(), serde_json::json!({ "status": "loggedIn", "display": DISPLAY }));
+    assert!(!format!("{logged_in:?}").contains("spk_at_secret"), "{logged_in:?}");
+
+    assert_eq!(
+        ConnectionLogin::Denied(LoginMethod::Browser).view(),
+        serde_json::json!({ "status": "denied", "method": "browser" })
+    );
+    assert_eq!(
+        ConnectionLogin::Expired(LoginMethod::Device).view(),
+        serde_json::json!({ "status": "expired", "method": "device" })
+    );
+    assert_eq!(ConnectionLogin::PatRequired.view(), serde_json::json!({ "status": "patRequired" }));
+    assert_eq!(ConnectionLogin::Cancelled.view(), serde_json::json!({ "status": "cancelled" }));
+}
+
+// --- 已登入的判斷：和 CLI 看同一組 Keychain 條目 ---
+
+#[test]
+fn a_connection_counts_as_logged_in_with_a_refresh_or_a_pat_entry() {
+    let store = MemoryCredentialStore::new();
+    let origin = "https://team.example.com";
+    assert!(!logged_in(origin, &store), "沒有任何條目＝未登入");
+
+    store.set(origin, CredentialKind::Bearer, "{}").expect("set");
+    assert!(!logged_in(origin, &store), "只有 access token 快取不算登入");
+
+    store.set(origin, CredentialKind::Pat, "spk_pat_x").expect("set");
+    assert!(logged_in(origin, &store), "存取金鑰條目＝已登入");
+
+    store.delete(origin, CredentialKind::Pat).expect("delete");
+    store.set(origin, CredentialKind::Refresh, "spk_rt_x").expect("set");
+    assert!(logged_in(origin, &store), "refresh 條目＝已登入");
+}
+
+/// 規格情境「CLI 以 PAT 登入後 desktop 視為已登入」：CLI 走的是共用的 pat_login
+/// （帶憑證檔退路），寫進同一個 Keychain 條目，Desktop 的清單就看得到。
+#[test]
+fn a_pat_login_made_by_the_cli_shows_as_logged_in_on_the_desktop() {
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let (_, pat) = h.identity.create_pat(&h.user_id, "cli", None).expect("pat");
+    let dir = tempfile::tempdir().expect("tempdir");
+    let origin = speclink_remote::auth::origin_of(&format!("{}/api/speclink/v1/projects/demo", h.origin));
+    let cli = speclink_remote::login::LoginTarget { origin: &origin, credentials: &store, lock_dir: dir.path() };
+
+    let outcome = speclink_remote::login::pat_login(&cli, &pat, Some(dir.path()));
+
+    assert!(matches!(outcome, speclink_remote::login::PatLoginOutcome::LoggedIn { .. }), "{outcome:?}");
+    assert!(logged_in(&h.origin, &store), "Desktop 以 registry 的 origin 查同一個條目");
 }

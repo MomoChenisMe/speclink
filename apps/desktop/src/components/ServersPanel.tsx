@@ -21,7 +21,7 @@ import {
 
 import type { ConnectionView } from "../adapter/connections";
 import type { ConnectionPhase } from "../store";
-import { AwaitingApproval, AwaitingBrowser, PatLoginInput } from "./connectionLogin";
+import { LoginWaiting, PatLoginInput } from "./connectionLogin";
 
 export interface ServersPanelProps {
   connections: ConnectionView[];
@@ -254,11 +254,8 @@ export function ServersPanel({
                         </span>
                       )}
                       {phase.kind === "notice" && <span className="text-xs text-muted-foreground">{phase.message}</span>}
-                      {phase.kind === "awaitingApproval" && (
-                        <AwaitingApproval origin={entry.origin} phase={phase} onCancel={() => onCancelLogin?.(entry.origin)} />
-                      )}
-                      {phase.kind === "awaitingBrowser" && (
-                        <AwaitingBrowser origin={entry.origin} phase={phase} onCancel={() => onCancelLogin?.(entry.origin)} />
+                      {(phase.kind === "awaitingApproval" || phase.kind === "awaitingBrowser") && (
+                        <LoginWaiting origin={entry.origin} phase={phase} onCancel={() => onCancelLogin?.(entry.origin)} />
                       )}
                       {phase.kind === "patInput" && (
                         <div data-testid={`pat-input-${entry.origin}`}>

@@ -29,7 +29,7 @@ import {
 } from "@speclink/ui";
 
 import { appT } from "./i18n/runtime";
-import type { ConnectionsAdapter, ConnectionView } from "./adapter/connections";
+import type { ConnectionsAdapter, ConnectionView, LoginPhase } from "./adapter/connections";
 import type { AssetUpdateResult, ProjectProbe, WorkspaceAdapter } from "./adapter/workspace";
 import type { MigrationAdapter } from "./adapter/migration";
 import {
@@ -144,8 +144,7 @@ export const isSettingsView = (v: BoardView): v is SettingsView => v === "settin
 export type ConnectionPhase =
   | { kind: "idle" }
   | { kind: "busy" }
-  | { kind: "awaitingApproval"; userCode: string; verificationUri: string; expiresAt: number }
-  | { kind: "awaitingBrowser"; url: string; expiresAt: number }
+  | LoginPhase
   | { kind: "patInput"; error: string | null }
   | { kind: "notice"; message: string }
   | { kind: "error"; message: string };
@@ -2199,17 +2198,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 重按登入＝重來一次：Rust 端會取消前一輪，這裡讓它晚到的結果作廢。
       const run = nextLoginRun(origin);
       const current = () => loginRuns.get(origin) === run;
-      /** 最後一個等待階段是不是瀏覽器登入：拒絕與逾時的說法依它而定。 */
-      const waited = { inBrowser: false };
       setConnectionPhase(origin, { kind: "busy" });
       try {
         const result = await connectionsAdapter.loginStart(origin, (phase) => {
-          if (!current()) return;
-          waited.inBrowser = phase.kind === "awaitingBrowser";
-          setConnectionPhase(origin, phase);
+          if (current()) setConnectionPhase(origin, phase);
         });
         if (!current()) return;
-        const browser = waited.inBrowser;
         if (result.status === "loggedIn") {
           await get().refreshConnections();
           await recoverRemoteSessions(origin);
@@ -2219,12 +2213,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         } else if (result.status === "denied") {
           setConnectionPhase(origin, {
             kind: "error",
-            message: appT(browser ? "servers.browserDenied" : "servers.denied"),
+            message: appT(result.method === "browser" ? "servers.browserDenied" : "servers.denied"),
           });
         } else if (result.status === "expired") {
           setConnectionPhase(origin, {
             kind: "error",
-            message: appT(browser ? "servers.browserExpired" : "servers.expired"),
+            message: appT(result.method === "browser" ? "servers.browserExpired" : "servers.expired"),
           });
         } else {
           setConnectionPhase(origin, { kind: "idle" });

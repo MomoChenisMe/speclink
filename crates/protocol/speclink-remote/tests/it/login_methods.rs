@@ -9,38 +9,9 @@
 use speclink_remote::login::{choose, discover, normalize_origin, ChooseError, Discovery, Method, Plan};
 use std::sync::{Arc, Mutex};
 
-/// What the fake server saw: path and whether an Authorization header came.
-#[derive(Debug, Clone)]
-struct Seen {
-    path: String,
-    authorized: bool,
-    versioned: bool,
-}
-
 /// A server answering every request with `status` and `body`.
-fn server(status: u16, body: &'static str) -> (String, Arc<Mutex<Vec<Seen>>>) {
-    let http = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
-    let base = format!("http://{}", http.server_addr());
-    let seen = Arc::new(Mutex::new(Vec::new()));
-    let log = seen.clone();
-    std::thread::spawn(move || {
-        for req in http.incoming_requests() {
-            let has = |name: &'static str| req.headers().iter().any(|h| h.field.equiv(name));
-            log.lock().unwrap().push(Seen {
-                path: req.url().to_string(),
-                authorized: has("Authorization"),
-                versioned: has("X-Speclink-Api-Version"),
-            });
-            let resp = tiny_http::Response::from_string(body)
-                .with_status_code(status)
-                .with_header(
-                    tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..])
-                        .expect("header"),
-                );
-            let _ = req.respond(resp);
-        }
-    });
-    (base, seen)
+fn server(status: u16, body: &'static str) -> (String, Arc<Mutex<Vec<Hit>>>) {
+    fake(Box::new(move |_, _| (status, body.to_string())))
 }
 
 fn declared(body: &'static str) -> Discovery {
@@ -59,7 +30,7 @@ fn discovery_asks_the_api_root_without_credentials() {
     let seen = seen.lock().unwrap();
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].path, "/api/speclink/v1/auth-methods");
-    assert!(!seen[0].authorized, "discovery happens before any credential exists");
+    assert!(seen[0].auth.is_none(), "discovery happens before any credential exists");
     assert!(!seen[0].versioned, "discovery needs no version header");
 }
 
@@ -220,15 +191,22 @@ use crate::browser_login::{idp, tempdir, IdpConfig, CLIENT_ID};
 use speclink_remote::auth;
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore, OAuthRefresh, RefreshEntry};
 use speclink_remote::device;
-use speclink_remote::login::{logout, pat_login, LoginOutcome};
+use speclink_remote::login::{logout, pat_login, LoginTarget, PatLoginOutcome};
+use speclink_remote::refresh;
 
 const GOOD_PAT: &str = "pat-good";
+
+fn target<'a>(origin: &'a str, store: &'a dyn CredentialStore, dir: &'a std::path::Path) -> LoginTarget<'a> {
+    LoginTarget { origin, credentials: store, lock_dir: dir }
+}
 
 /// One request the fake server saw.
 #[derive(Debug, Clone)]
 struct Hit {
     path: String,
     auth: Option<String>,
+    /// Whether the protocol's version header came along.
+    versioned: bool,
     body: String,
 }
 
@@ -251,7 +229,8 @@ fn fake(handler: Box<Handler>) -> (String, Arc<Mutex<Vec<Hit>>>) {
             let _ = std::io::Read::read_to_string(req.as_reader(), &mut body);
             let path = req.url().to_string();
             let (status, answer) = handler(&path, auth.as_deref());
-            log.lock().unwrap().push(Hit { path, auth, body });
+            let versioned = req.headers().iter().any(|h| h.field.equiv("X-Speclink-Api-Version"));
+            log.lock().unwrap().push(Hit { path, auth, versioned, body });
             let resp = tiny_http::Response::from_string(answer).with_status_code(status).with_header(
                 tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).expect("header"),
             );
@@ -321,11 +300,11 @@ fn a_pat_is_validated_then_stored_in_the_keyring_replacing_other_logins() {
     store.set(&base, CredentialKind::Bearer, "{}").unwrap();
     let dir = tempdir();
 
-    let outcome = pat_login(&base, GOOD_PAT, &store, dir.path(), Some(dir.path()));
+    let outcome = pat_login(&target(&base, &store, dir.path()), GOOD_PAT, Some(dir.path()));
 
     assert_eq!(
         outcome,
-        LoginOutcome::LoggedIn { display: "Dev <dev@example.com>".into(), handle: "dev".into() }
+        PatLoginOutcome::LoggedIn { display: "Dev <dev@example.com>".into(), handle: "dev".into() }
     );
     assert!(paths(&hits).iter().any(|p| p == "/auth/whoami"), "validated before storing");
     assert_eq!(store.get(&base, CredentialKind::Pat).unwrap(), Some(GOOD_PAT.to_string()));
@@ -352,9 +331,9 @@ fn without_a_keyring_a_pat_goes_to_the_credentials_file() {
     let (base, _) = official_server();
     let dir = tempdir();
 
-    let outcome = pat_login(&base, GOOD_PAT, &NoKeyring, dir.path(), Some(dir.path()));
+    let outcome = pat_login(&target(&base, &NoKeyring, dir.path()), GOOD_PAT, Some(dir.path()));
 
-    assert!(matches!(outcome, LoginOutcome::LoggedIn { .. }), "{outcome:?}");
+    assert!(matches!(outcome, PatLoginOutcome::LoggedIn { .. }), "{outcome:?}");
     assert_eq!(auth::load_token_at(dir.path(), &base), Some(GOOD_PAT.to_string()));
 }
 
@@ -364,9 +343,9 @@ fn without_a_keyring_and_no_fallback_a_pat_is_refused() {
     let (base, _) = official_server();
     let dir = tempdir();
 
-    let outcome = pat_login(&base, GOOD_PAT, &NoKeyring, dir.path(), None);
+    let outcome = pat_login(&target(&base, &NoKeyring, dir.path()), GOOD_PAT, None);
 
-    assert_eq!(outcome, LoginOutcome::KeychainUnavailable);
+    assert_eq!(outcome, PatLoginOutcome::KeychainUnavailable);
     assert!(!auth::credentials_path_in(dir.path()).exists());
 }
 
@@ -376,9 +355,9 @@ fn an_invalid_pat_is_denied_and_stores_nothing() {
     let store = MemoryCredentialStore::new();
     let dir = tempdir();
 
-    let outcome = pat_login(&base, "pat-bad", &store, dir.path(), Some(dir.path()));
+    let outcome = pat_login(&target(&base, &store, dir.path()), "pat-bad", Some(dir.path()));
 
-    assert_eq!(outcome, LoginOutcome::Denied);
+    assert_eq!(outcome, PatLoginOutcome::Denied);
     assert_nothing_stored(&store, dir.path(), &base);
 }
 
@@ -475,4 +454,90 @@ fn logout_with_nothing_stored_reports_not_logged_in() {
     let outcome = logout("http://127.0.0.1:1", &store, Some(dir.path())).expect("logout");
 
     assert!(!outcome.was_logged_in);
+}
+
+/// A keyring that cannot be read is not "logged out". The desktop app has
+/// nothing else to act on, so its logout fails instead of claiming success.
+#[test]
+fn logout_with_an_unreadable_keyring_and_no_credentials_file_is_an_error() {
+    assert!(logout("http://127.0.0.1:1", &NoKeyring, None).is_err());
+}
+
+/// The CLI on a machine without a keyring still has the credentials file: the
+/// keyring layer is skipped, the way the resolution ladder skips it.
+#[test]
+fn logout_without_a_keyring_still_clears_the_credentials_file() {
+    let dir = tempdir();
+    let origin = "http://127.0.0.1:1";
+    auth::save_token_at(dir.path(), origin, "file-pat").unwrap();
+
+    let outcome = logout(origin, &NoKeyring, Some(dir.path())).expect("logout");
+
+    assert!(outcome.was_logged_in);
+    assert_eq!(auth::load_token_at(dir.path(), origin), None);
+}
+
+/// A keyring that reads but will not delete leaves the credential behind;
+/// that must not be reported as a logout.
+#[test]
+fn a_keyring_that_will_not_delete_fails_the_logout() {
+    struct NoDelete(MemoryCredentialStore);
+    impl CredentialStore for NoDelete {
+        fn get(&self, origin: &str, kind: CredentialKind) -> Result<Option<String>, String> {
+            self.0.get(origin, kind)
+        }
+        fn set(&self, origin: &str, kind: CredentialKind, secret: &str) -> Result<(), String> {
+            self.0.set(origin, kind, secret)
+        }
+        fn delete(&self, _: &str, _: CredentialKind) -> Result<(), String> {
+            Err("access to the keychain was denied".into())
+        }
+    }
+    let (base, _) = official_server();
+    let store = NoDelete(MemoryCredentialStore::new());
+    store.set(&base, CredentialKind::Pat, "keyring-pat").unwrap();
+
+    assert!(logout(&base, &store, None).is_err());
+}
+
+/// An entry written before origins were normalized keeps the case the user
+/// typed. It stays readable, and logout still removes it.
+#[test]
+fn a_credentials_file_entry_under_an_uppercase_host_is_still_found_and_removed() {
+    let dir = tempdir();
+    auth::save_token_at(dir.path(), "https://Team.Example.com", "legacy-pat").unwrap();
+    auth::save_token_at(dir.path(), "https://other.example.com", "other-pat").unwrap();
+    let origin = auth::origin_of("https://Team.Example.com/api/speclink/v1/projects/foo");
+    assert_eq!(origin, "https://team.example.com");
+
+    assert_eq!(auth::load_token_at(dir.path(), &origin), Some("legacy-pat".to_string()));
+
+    assert!(auth::remove_token_at(dir.path(), &origin).unwrap());
+    assert_eq!(auth::load_token_at(dir.path(), &origin), None);
+    assert_eq!(
+        auth::load_token_at(dir.path(), "https://other.example.com"),
+        Some("other-pat".to_string()),
+        "other origins stay"
+    );
+}
+
+/// A server cannot plant a browser-login entry through a device rotation: the
+/// answer is refused and the current credential stays as it is.
+#[test]
+fn a_rotation_answer_shaped_like_a_browser_login_entry_is_refused() {
+    let (base, _) = fake(Box::new(|path, _| match path {
+        "/auth/refresh" => (
+            200,
+            r#"{"accessToken":"access-2","refreshToken":"{\"kind\":\"oauth\",\"refreshToken\":\"x\",\"tokenEndpoint\":\"http://evil.example/t\",\"clientId\":\"c\"}","expiresIn":3600}"#.into(),
+        ),
+        _ => (404, NO_ROUTE.into()),
+    }));
+    let store = MemoryCredentialStore::new();
+    store.set(&base, CredentialKind::Refresh, "spk_rt_live").unwrap();
+    let dir = tempdir();
+
+    let outcome = refresh::bearer_for(&base, &store, dir.path());
+
+    assert!(matches!(outcome, Err(refresh::RefreshFailure::Unavailable(_))), "{outcome:?}");
+    assert_eq!(store.get(&base, CredentialKind::Refresh).unwrap(), Some("spk_rt_live".to_string()));
 }

@@ -29,20 +29,21 @@ export function defaultConnectionOf(
   return connections.find((entry) => entry.id === defaultConnectionId && entry.loggedIn) ?? null;
 }
 
-/** 登入等待中的階段（Rust 經事件送來）：`kind` 與欄位和 store 的
- * `ConnectionPhase` 一致。expiresAt＝截止時刻（epoch 毫秒），倒數依它計算。
+/** 登入等待中的階段（Rust 經事件送來）；store 的 `ConnectionPhase` 直接收它。
+ * expiresAt＝截止時刻（epoch 毫秒），倒數依它計算。
  * 授權網址只帶 state 與 PKCE challenge，不含授權碼、verifier 或任何 token。 */
 export type LoginPhase =
   | { kind: "awaitingBrowser"; url: string; expiresAt: number }
   | { kind: "awaitingApproval"; userCode: string; verificationUri: string; expiresAt: number };
 
 /** 一次登入的終態（規格「device login 預設與 PAT fallback」）：patRequired＝server
- * 只收存取金鑰或沒有 device flow，就地改收 PAT；連線錯誤走 reject。 */
+ * 只收存取金鑰或沒有 device flow，就地改收 PAT；被拒與逾時帶出這一輪的登入方式
+ * （兩種的說法不同）；連線錯誤走 reject。 */
 export type LoginResult =
   | { status: "loggedIn"; display: string }
   | { status: "patRequired" }
-  | { status: "denied" }
-  | { status: "expired" }
+  | { status: "denied"; method: "browser" | "device" }
+  | { status: "expired"; method: "browser" | "device" }
   | { status: "cancelled" };
 
 /** 登出結果：撤銷為盡力語意；patNotice＝請至伺服器帳號頁撤銷 PAT。 */

@@ -1,0 +1,185 @@
+schema: spec-driven
+created: 2026-11-11T14:38:39+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs
+started_at: 2026-11-11T15:36:29+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-12T10:48:26+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 15
+reviewed_rounds: 2
+reviewed_scope:
+  - path: Cargo.lock
+    hash: 55bc721a64d8d852b5dec71e075547b75fb241d27a1edbad4763de8bbefb3d86
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: 656d050ec99017b95b70273160b4a01d054e9c9150f331f08fc65c833b0e3e8b
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 6873468ef10a27cc0337e457132b06c339b8402b20da1742b4c1ced7d3ba367d
+  - path: apps/desktop/src-tauri/tests/it/common/mod.rs
+    hash: e168b947880882bfba83d73adadddcb40fd6b40c5052eb75ef3d2ca25331a3d2
+  - path: apps/desktop/src-tauri/tests/it/login_orchestration.rs
+    hash: afa632eb43ffea083e9355b9f64cd896abfa2aa8b51db538b6e27e56b1a40c90
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: 481e337c13a1fe381f2dd8a9e25be8641278e77a86e3f9e1c42bc42edee63fbf
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: a21de9feeebb1f02693a878e2b8c406e1d481b02f2f58acc439ca4699cb94619
+  - path: apps/desktop/src/__tests__/serversPage.test.tsx
+    hash: b0b45daa5fef1bdc5cd06e94189793799a3e62309a71f526d7bf55c396239df2
+  - path: apps/desktop/src/__tests__/serversPanel.test.tsx
+    hash: 5e0b54abf63f2a3a28ebbfb87b922a7b6f42d195f57ff2e36839da6418003da4
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 862a61467718824048fbcf0d425c7943018f2a5098dbf14913d6cdb85d485b95
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 5b0b4ebb2124af49c8d29a8e373f045339f7358c38efe04214ccf0913b991e32
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: b2ec3febfca08ae53f2ef50573b1025c4cdd5621a6c492a1b7068ec8ebd0110e
+  - path: apps/desktop/src/components/ServersPanel.tsx
+    hash: df6115f98a661050a6060f24d61ff3e37ba2c912ce7614686702f872310011b9
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: f21205a83086e7d31f469137edc3608def953eb88035f51735e5f8832f028574
+  - path: apps/desktop/src/components/connectionLogin.tsx
+    hash: 0ac18243f06ff694d092b04ffe4d8b7b7e63e9e46ca463778ffec27ad8e6c724
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 41e48fc1a690194a3d0e689b764b5f3dce912692ccdceea1fb37ce56e0e001aa
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: e82c97335eddf188b979a0a4aad2ba190f2598f3ee98e47e94d8bedd0072c840
+  - path: apps/desktop/src/store.ts
+    hash: c55f1665ce91ff5cecc6421e9fcee5f913685b46d16aff4aa08a53a708f3d044
+  - path: apps/desktop/src/views/settings/ServersPage.tsx
+    hash: f85a920eade80ca18c4590376dca39833cc5774db55758c3743c753cf6f2c478
+  - path: crates/adapters/speclink-cli/src/verbs/connection.rs
+    hash: 52f5575cca159d32b47add6144ebae46a1521f910809374a1325ee5ec2fcf1e3
+  - path: crates/adapters/speclink-cli/tests/it/auth_login_methods.rs
+    hash: 70e15ecf9bf9264f1687f9e089dd93faf83e83b4843cad540f38629648467a64
+  - path: crates/adapters/speclink-cli/tests/it/fake_server.rs
+    hash: d20d07abbf156ba3c6b5801d0abe0b1d96d4092cd40bcca83e5f902bccd834f3
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: adcd7d675855c8539345fc826f52a0f8984649901e7144f1263a36653db04e08
+  - path: crates/adapters/speclink-cli/tests/it/remote_connect.rs
+    hash: 81cacc55f1986fc5639094178a1e70cf3fd3aefa368d0bf36454c61ef5e5ae96
+  - path: crates/protocol/speclink-protocol/src/auth.rs
+    hash: 655d92f66241db3821b561ba86fef764bc44055caf9f6842613d29414a212e7d
+  - path: crates/protocol/speclink-protocol/src/device.rs
+    hash: 8fbf71bffd9fafa6f7ffd6d522ef7ba3c10b4d29749850fc50b83a0ff8cb7679
+  - path: crates/protocol/speclink-protocol/src/lib.rs
+    hash: cce79620f83ee1c25fa80756b7a19f3ade8dbb1100dab6168dfa8991d38ded62
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: f7e49609e7b48dd30641ec64258a7ea9bae97be79775195aded8d1c1e5970561
+  - path: crates/protocol/speclink-remote/src/auth.rs
+    hash: 66bfe21454d51a8dde08be12b79d945d7ca87d29bc90e328f3cb6722936e7111
+  - path: crates/protocol/speclink-remote/src/credentials.rs
+    hash: e4174389f5b6a92c4ee2efe19e27ed417121e87195703824f0fd25c48f0b8c66
+  - path: crates/protocol/speclink-remote/src/device.rs
+    hash: 75dc8e33d4736ec48406350616a69586ef4698fdd6f45c978ebe292fe49ab3c3
+  - path: crates/protocol/speclink-remote/src/discovery.rs
+    hash: 89027b654428903f1bfcc2e887ff87505d3e861d9a2c3eda1be5f760ab6aed9b
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 5ce92f96d2cfdbc4c3eb7f472ffa3239a66e788efe06131429ad44a031a9b657
+  - path: crates/protocol/speclink-remote/src/login.rs
+    hash: 9d17089530711bf6f1a3e31e80d4ee16c2fcf568be31c46076394f7e1909b5aa
+  - path: crates/protocol/speclink-remote/src/loopback.rs
+    hash: da90a141619b82ef2b5181a370e7b2ba2f3e8a2abee002aa495429b420d3f7f3
+  - path: crates/protocol/speclink-remote/src/oauth.rs
+    hash: 6c28d8b4d087dad8eeea15765bbfa5c77b09deaab8eaa1d9b3da5ca5ba4330c0
+  - path: crates/protocol/speclink-remote/src/refresh.rs
+    hash: 902476458420f0a71b6543410c44e72c826265b29cc18133985eb218e0c9da24
+  - path: crates/protocol/speclink-remote/tests/it/browser_login.rs
+    hash: 0c9c67803e78a93bd56a554bf89f2e673975e4a3b472b359a3c91b3a5f19754b
+  - path: crates/protocol/speclink-remote/tests/it/device_login_flow.rs
+    hash: de83743e22d8126f97a55e4dddf35f223316442121a3405a9df267fc68f2dee7
+  - path: crates/protocol/speclink-remote/tests/it/login_methods.rs
+    hash: a727c9cc142f8777790075fea9aaae6ff618cea71142fa9f013407d9377a2e2d
+  - path: crates/protocol/speclink-remote/tests/it/main.rs
+    hash: 7eeb39580443f0e1e7238e2f764774828e84298f4eb197d44c8021ab259b01ba
+verified_at: 2026-11-12T10:48:26+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 15
+verified_rounds: 2
+verified_scope:
+  - path: Cargo.lock
+    hash: 55bc721a64d8d852b5dec71e075547b75fb241d27a1edbad4763de8bbefb3d86
+  - path: apps/desktop/src-tauri/src/connections.rs
+    hash: 656d050ec99017b95b70273160b4a01d054e9c9150f331f08fc65c833b0e3e8b
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: 6873468ef10a27cc0337e457132b06c339b8402b20da1742b4c1ced7d3ba367d
+  - path: apps/desktop/src-tauri/tests/it/common/mod.rs
+    hash: e168b947880882bfba83d73adadddcb40fd6b40c5052eb75ef3d2ca25331a3d2
+  - path: apps/desktop/src-tauri/tests/it/login_orchestration.rs
+    hash: afa632eb43ffea083e9355b9f64cd896abfa2aa8b51db538b6e27e56b1a40c90
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: 481e337c13a1fe381f2dd8a9e25be8641278e77a86e3f9e1c42bc42edee63fbf
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: a21de9feeebb1f02693a878e2b8c406e1d481b02f2f58acc439ca4699cb94619
+  - path: apps/desktop/src/__tests__/serversPage.test.tsx
+    hash: b0b45daa5fef1bdc5cd06e94189793799a3e62309a71f526d7bf55c396239df2
+  - path: apps/desktop/src/__tests__/serversPanel.test.tsx
+    hash: 5e0b54abf63f2a3a28ebbfb87b922a7b6f42d195f57ff2e36839da6418003da4
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 862a61467718824048fbcf0d425c7943018f2a5098dbf14913d6cdb85d485b95
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 5b0b4ebb2124af49c8d29a8e373f045339f7358c38efe04214ccf0913b991e32
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: b2ec3febfca08ae53f2ef50573b1025c4cdd5621a6c492a1b7068ec8ebd0110e
+  - path: apps/desktop/src/components/ServersPanel.tsx
+    hash: df6115f98a661050a6060f24d61ff3e37ba2c912ce7614686702f872310011b9
+  - path: apps/desktop/src/components/WorkspaceChooser.tsx
+    hash: f21205a83086e7d31f469137edc3608def953eb88035f51735e5f8832f028574
+  - path: apps/desktop/src/components/connectionLogin.tsx
+    hash: 0ac18243f06ff694d092b04ffe4d8b7b7e63e9e46ca463778ffec27ad8e6c724
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 41e48fc1a690194a3d0e689b764b5f3dce912692ccdceea1fb37ce56e0e001aa
+  - path: apps/desktop/src/settingsCatalog.ts
+    hash: e82c97335eddf188b979a0a4aad2ba190f2598f3ee98e47e94d8bedd0072c840
+  - path: apps/desktop/src/store.ts
+    hash: c55f1665ce91ff5cecc6421e9fcee5f913685b46d16aff4aa08a53a708f3d044
+  - path: apps/desktop/src/views/settings/ServersPage.tsx
+    hash: f85a920eade80ca18c4590376dca39833cc5774db55758c3743c753cf6f2c478
+  - path: crates/adapters/speclink-cli/src/verbs/connection.rs
+    hash: 52f5575cca159d32b47add6144ebae46a1521f910809374a1325ee5ec2fcf1e3
+  - path: crates/adapters/speclink-cli/tests/it/auth_login_methods.rs
+    hash: 70e15ecf9bf9264f1687f9e089dd93faf83e83b4843cad540f38629648467a64
+  - path: crates/adapters/speclink-cli/tests/it/fake_server.rs
+    hash: d20d07abbf156ba3c6b5801d0abe0b1d96d4092cd40bcca83e5f902bccd834f3
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: adcd7d675855c8539345fc826f52a0f8984649901e7144f1263a36653db04e08
+  - path: crates/adapters/speclink-cli/tests/it/remote_connect.rs
+    hash: 81cacc55f1986fc5639094178a1e70cf3fd3aefa368d0bf36454c61ef5e5ae96
+  - path: crates/protocol/speclink-protocol/src/auth.rs
+    hash: 655d92f66241db3821b561ba86fef764bc44055caf9f6842613d29414a212e7d
+  - path: crates/protocol/speclink-protocol/src/device.rs
+    hash: 8fbf71bffd9fafa6f7ffd6d522ef7ba3c10b4d29749850fc50b83a0ff8cb7679
+  - path: crates/protocol/speclink-protocol/src/lib.rs
+    hash: cce79620f83ee1c25fa80756b7a19f3ade8dbb1100dab6168dfa8991d38ded62
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: f7e49609e7b48dd30641ec64258a7ea9bae97be79775195aded8d1c1e5970561
+  - path: crates/protocol/speclink-remote/src/auth.rs
+    hash: 66bfe21454d51a8dde08be12b79d945d7ca87d29bc90e328f3cb6722936e7111
+  - path: crates/protocol/speclink-remote/src/credentials.rs
+    hash: e4174389f5b6a92c4ee2efe19e27ed417121e87195703824f0fd25c48f0b8c66
+  - path: crates/protocol/speclink-remote/src/device.rs
+    hash: 75dc8e33d4736ec48406350616a69586ef4698fdd6f45c978ebe292fe49ab3c3
+  - path: crates/protocol/speclink-remote/src/discovery.rs
+    hash: 89027b654428903f1bfcc2e887ff87505d3e861d9a2c3eda1be5f760ab6aed9b
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 5ce92f96d2cfdbc4c3eb7f472ffa3239a66e788efe06131429ad44a031a9b657
+  - path: crates/protocol/speclink-remote/src/login.rs
+    hash: 9d17089530711bf6f1a3e31e80d4ee16c2fcf568be31c46076394f7e1909b5aa
+  - path: crates/protocol/speclink-remote/src/loopback.rs
+    hash: da90a141619b82ef2b5181a370e7b2ba2f3e8a2abee002aa495429b420d3f7f3
+  - path: crates/protocol/speclink-remote/src/oauth.rs
+    hash: 6c28d8b4d087dad8eeea15765bbfa5c77b09deaab8eaa1d9b3da5ca5ba4330c0
+  - path: crates/protocol/speclink-remote/src/refresh.rs
+    hash: 902476458420f0a71b6543410c44e72c826265b29cc18133985eb218e0c9da24
+  - path: crates/protocol/speclink-remote/tests/it/browser_login.rs
+    hash: 0c9c67803e78a93bd56a554bf89f2e673975e4a3b472b359a3c91b3a5f19754b
+  - path: crates/protocol/speclink-remote/tests/it/device_login_flow.rs
+    hash: de83743e22d8126f97a55e4dddf35f223316442121a3405a9df267fc68f2dee7
+  - path: crates/protocol/speclink-remote/tests/it/login_methods.rs
+    hash: a727c9cc142f8777790075fea9aaae6ff618cea71142fa9f013407d9377a2e2d
+  - path: crates/protocol/speclink-remote/tests/it/main.rs
+    hash: 7eeb39580443f0e1e7238e2f764774828e84298f4eb197d44c8021ab259b01ba
+archived_at: 2026-11-12T10:49:31+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

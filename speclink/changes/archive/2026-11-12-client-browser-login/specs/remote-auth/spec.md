@@ -118,7 +118,7 @@ speclink auth login 不帶 --pat 與 --token-stdin 時 SHALL 在登入前向 ser
 ### Requirement: PAT 登入與憑證儲存
 <!-- BEFORE: PAT 一律存入使用者層級設定目錄的憑證檔；只有 --pat 與 --token-stdin 兩個旗標互斥 -->
 
-speclink auth login --pat SHALL 互動接受 PAT 輸入；speclink auth login --token-stdin SHALL 自 stdin 讀取 PAT（CI／腳本用），其行為、輸出與 exit code SHALL 維持既有位元級不變。兩者 SHALL 先以身分查詢確認 PAT 有效，再依連接 url 正規化後的 origin（scheme 與主機轉小寫）將 PAT 存入 OS 金鑰圈；金鑰圈不可用（無服務或存取被拒）時 SHALL 改存入使用者層級設定目錄的憑證檔（Unix 檔案權限 0600）。兩者 SHALL NOT 將憑證寫入專案 repo 內的任何檔案，SHALL NOT 先探索 server 宣告的登入方式。PAT 登入成功時 SHALL 清除該 origin 的金鑰圈 refresh 與 access token 快取條目。既有憑證檔中的 PAT SHALL 照常可讀，SHALL NOT 被搬移。--browser、--device、--pat、--token-stdin 四個旗標中任兩個同時給定 SHALL 以非 0 exit code 拒絕。環境變數 SPECLINK_TOKEN 存在時 SHALL 優先於所有其他憑證來源。speclink auth status SHALL 查驗當前解析所得憑證並顯示身分與 repo 驗證結果，且 SHALL 標示憑證來源層：人眼輸出增列來源描述，--json 新增 credentialSource 欄位（string，值域 env、keychain_refresh、keychain_pat、credentials_file），既有欄位不變。
+speclink auth login --pat SHALL 互動接受 PAT 輸入；speclink auth login --token-stdin SHALL 自 stdin 讀取 PAT（CI／腳本用），其 stdin 用法、提示與成功時的輸出格式 SHALL 維持不變。兩者 SHALL 先以不限定專案的身分查詢確認 PAT 有效——PAT 有效但使用者不是該專案成員時登入 SHALL 成功，權限不足由之後的動詞回報——再依連接 url 正規化後的 origin（scheme 與主機轉小寫）將 PAT 存入 OS 金鑰圈；金鑰圈不可用（無服務或存取被拒）時 SHALL 改存入使用者層級設定目錄的憑證檔（Unix 檔案權限 0600）。兩者 SHALL NOT 將憑證寫入專案 repo 內的任何檔案，SHALL NOT 先探索 server 宣告的登入方式。PAT 登入成功時 SHALL 清除該 origin 的金鑰圈 refresh 與 access token 快取條目。既有憑證檔中的 PAT SHALL 照常可讀，SHALL NOT 被搬移。--browser、--device、--pat、--token-stdin 四個旗標中任兩個同時給定 SHALL 以非 0 exit code 拒絕。環境變數 SPECLINK_TOKEN 存在時 SHALL 優先於所有其他憑證來源。speclink auth status SHALL 查驗當前解析所得憑證並顯示身分與 repo 驗證結果，且 SHALL 標示憑證來源層：人眼輸出增列來源描述，--json 新增 credentialSource 欄位（string，值域 env、keychain_refresh、keychain_pat、credentials_file），既有欄位不變。
 
 #### Scenario: --pat 登入後憑證落於使用者目錄
 - **WHEN** 於 remote 模式專案執行 speclink auth login --pat 並提供有效 PAT
@@ -188,7 +188,7 @@ speclink auth login 帶 --device 時，或於互動 TTY 且無旗標而依「登
 
 #### Scenario: 對沒有宣告的 server 輸出不變
 
-- **WHEN** server 對登入方式的探索回應 404，於互動 TTY 執行 speclink auth login 並完成核准
+- **WHEN** server 對登入方式的探索回應 404，於互動 TTY 執行 speclink auth login 並完成核准，核准後的身分查詢成功
 - **THEN** stdout、stderr 與 exit code 和這個需求修改前逐位元相同
 
 ### Requirement: 登出

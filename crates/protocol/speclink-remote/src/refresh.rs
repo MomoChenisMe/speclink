@@ -38,7 +38,7 @@ const LOCK_POLL: std::time::Duration = std::time::Duration::from_millis(50);
 /// The cached access token. An internal storage format, not a wire contract —
 /// but the field names are still camelCase, matching every other JSON this
 /// project writes.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct CachedBearer {
     token: String,
@@ -234,8 +234,11 @@ fn rotate_device(
         Some("permission_denied") => RefreshFailure::Rejected(e.message),
         _ => RefreshFailure::Unavailable(e.message),
     })?;
+    // Nothing is written when the server answers with a token that reads as
+    // a browser-login entry; the current credential stays as it is.
+    let entry = RefreshEntry::device(rotated.refresh_token).map_err(RefreshFailure::Unavailable)?;
     credentials
-        .set(origin, CredentialKind::Refresh, &rotated.refresh_token)
+        .set(origin, CredentialKind::Refresh, &entry.encode())
         .map_err(RefreshFailure::Unavailable)?;
     store_bearer(origin, credentials, &rotated.access_token, rotated.expires_in)?;
     Ok(rotated.access_token)
