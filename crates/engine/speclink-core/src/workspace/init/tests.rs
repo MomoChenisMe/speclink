@@ -675,7 +675,7 @@ fn skill_dirs(root: &TempRoot, rel: &str) -> Vec<String> {
 /// 目錄名集合（排序後）——與生成端同源，取自 `managed_skills`，不另抄一份過濾規則。
 fn expected_dirs(tool: Tool) -> Vec<String> {
     let mut names: Vec<String> =
-        managed_skills(skills::RenderTarget::Builtin(tool), false, "openspec")
+        managed_skills(skills::RenderTarget::Builtin(tool), false, "openspec", SpecLocation::InCheckout)
             .into_iter()
             .map(|(dir, _)| dir)
             .collect();
@@ -1762,9 +1762,9 @@ fn registry_dirs(non_claude: bool) -> Vec<String> {
 #[test]
 fn managed_skills_covers_the_registry_per_target() {
     let custom = custom_target();
-    let claude = managed_skills(skills::RenderTarget::Builtin(Tool::Claude), true, "openspec");
-    let codex = managed_skills(skills::RenderTarget::Builtin(Tool::Codex), true, "openspec");
-    let neutral = managed_skills(skills::RenderTarget::Custom(&custom), true, "openspec");
+    let claude = managed_skills(skills::RenderTarget::Builtin(Tool::Claude), true, "openspec", SpecLocation::InCheckout);
+    let codex = managed_skills(skills::RenderTarget::Builtin(Tool::Codex), true, "openspec", SpecLocation::InCheckout);
+    let neutral = managed_skills(skills::RenderTarget::Custom(&custom), true, "openspec", SpecLocation::InCheckout);
 
     assert_eq!(dir_names(&claude), registry_dirs(false));
     assert_eq!(dir_names(&codex), registry_dirs(true));
@@ -1784,7 +1784,7 @@ fn managed_skills_covers_the_registry_per_target() {
                 .unwrap_or_else(|| panic!("{dir} 不在 registry"));
             assert_eq!(
                 content,
-                &skills::render_skill_file_for(target, skill, "openspec"),
+                &skills::render_skill_file_for(target, skill, "openspec", SpecLocation::InCheckout),
                 "{dir} 的內容必須等於同參數的 render"
             );
         }
@@ -1796,9 +1796,9 @@ fn managed_skills_covers_the_registry_per_target() {
 fn managed_skills_drops_the_gated_skills_when_the_policy_is_off() {
     let custom = custom_target();
     for set in [
-        managed_skills(skills::RenderTarget::Builtin(Tool::Claude), false, "openspec"),
-        managed_skills(skills::RenderTarget::Builtin(Tool::Codex), false, "openspec"),
-        managed_skills(skills::RenderTarget::Custom(&custom), false, "openspec"),
+        managed_skills(skills::RenderTarget::Builtin(Tool::Claude), false, "openspec", SpecLocation::InCheckout),
+        managed_skills(skills::RenderTarget::Builtin(Tool::Codex), false, "openspec", SpecLocation::InCheckout),
+        managed_skills(skills::RenderTarget::Custom(&custom), false, "openspec", SpecLocation::InCheckout),
     ] {
         for gated in ["speclink-apply-with-worktree", "speclink-worktree-merge"] {
             assert!(
@@ -1814,7 +1814,7 @@ fn managed_skills_drops_the_gated_skills_when_the_policy_is_off() {
 fn sync_plan_builds_one_target_per_selected_tool() {
     let root = TempRoot::new("sync-plan-targets");
     let plan =
-        SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec");
+        SyncPlan::resolve(&root.dir, ToolSelection::builtins_only(&[Tool::Codex]), "openspec", SpecLocation::InCheckout);
     assert_eq!(plan.targets.len(), 1, "只選 codex 就只有一個 target");
     assert_eq!(plan.targets[0].label, "codex");
     assert_eq!(plan.targets[0].skills_root, root.at(".agents/skills"));
@@ -1830,7 +1830,7 @@ fn sync_plan_prunes_nothing_on_the_legacy_fallback() {
     let root = TempRoot::new("sync-plan-legacy");
     std::fs::create_dir_all(root.at(".claude")).unwrap();
     let selection = ToolSelection::resolve(&root.dir, &app_config("tools: []\n"));
-    let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
+    let plan = SyncPlan::resolve(&root.dir, selection, "openspec", SpecLocation::InCheckout);
     assert_eq!(plan.targets.len(), 1);
     assert_eq!(plan.targets[0].label, "claude");
     assert!(plan.deselected_builtins.is_empty(), "沒有清單就沒有「下架」這回事");
@@ -1844,7 +1844,7 @@ fn sync_plan_adds_a_target_for_each_descriptor() {
         &root.dir,
         &app_config(&format!("tools:\n  - claude\n{CUSTOM_DESCRIPTOR}")),
     );
-    let plan = SyncPlan::resolve(&root.dir, selection, "openspec");
+    let plan = SyncPlan::resolve(&root.dir, selection, "openspec", SpecLocation::InCheckout);
     assert_eq!(plan.targets.len(), 2);
     assert_eq!(plan.targets[0].label, "claude");
     assert_eq!(plan.targets[1].label, "wad-harness");
@@ -1867,7 +1867,7 @@ fn sync_plan_guard_checks_every_targets_skills_root() {
     crate::testkit::set_skill_version(&root.at(".wad/skills"), &ahead);
 
     let app = crate::config::AppConfig::load(&root.at(".speclink.yaml")).expect("config parses");
-    let plan = SyncPlan::resolve(&root.dir, ToolSelection::resolve(&root.dir, &app), "openspec");
+    let plan = SyncPlan::resolve(&root.dir, ToolSelection::resolve(&root.dir, &app), "openspec", SpecLocation::InCheckout);
     assert_eq!(
         plan.targets.iter().map(|t| t.skills_root.clone()).collect::<Vec<PathBuf>>(),
         vec![root.at(".wad/skills")],
@@ -2687,4 +2687,88 @@ fn a_loop_of_links_does_not_hang_the_sync() {
     root.write(".speclink.yaml", "tools: [claude, cursor]\n");
 
     assert!(update(&root.dir, false).is_err(), "寫進連結迴圈必須失敗，而不是卡住");
+}
+
+// --- 渲染的軸：規格在不在這個 checkout（spec workspace-tools「技能依規格是否在 checkout 渲染」） ---
+
+/// `skills_dir` 下的受管技能檔逐份等於以這個軸渲染的內容（worktree 政策關閉的集合）。
+fn assert_skills_rendered_as(
+    root: &TempRoot,
+    target: skills::RenderTarget,
+    skills_dir: &str,
+    location: SpecLocation,
+) {
+    // 兩個軸渲染出來的內容不同，下面的比對才分得出寫進去的是哪一個。
+    assert_ne!(
+        managed_skills(target, false, DEFAULT_SPEC_DIR, SpecLocation::InCheckout),
+        managed_skills(target, false, DEFAULT_SPEC_DIR, SpecLocation::Elsewhere),
+        "兩個軸的受管集合不該相同"
+    );
+    for (dir, expected) in managed_skills(target, false, DEFAULT_SPEC_DIR, location) {
+        assert_eq!(
+            eol_normalized(&root.read(&format!("{skills_dir}/{dir}/SKILL.md"))),
+            eol_normalized(&expected),
+            "{skills_dir}/{dir}（{location:?}）"
+        );
+    }
+}
+
+const CLAUDE_TARGET: skills::RenderTarget = skills::RenderTarget::Builtin(Tool::Claude);
+
+#[test]
+fn init_renders_skills_with_the_spec_in_the_checkout() {
+    let root = TempRoot::new("axis-init-local");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    assert_skills_rendered_as(&root, CLAUDE_TARGET, ".claude/skills", SpecLocation::InCheckout);
+}
+
+#[test]
+fn init_remote_renders_skills_with_the_spec_not_in_the_checkout() {
+    let root = TempRoot::new("axis-init-remote");
+    init_remote(&root.dir, &[Tool::Claude], false, REMOTE_URL, None).unwrap();
+    assert_skills_rendered_as(&root, CLAUDE_TARGET, ".claude/skills", SpecLocation::Elsewhere);
+}
+
+/// `update` 與各同步函式看 `.speclink.yaml` 的 remote 區段，不看規格資料夾在不在磁碟上：
+/// 本機專案是「在」；remote 專案留著舊的規格資料夾，仍然是「不在」
+/// （Scenario「殘留的規格資料夾不影響判斷」）。
+#[test]
+fn update_renders_skills_by_the_remote_section_not_by_the_spec_folder() {
+    let local = TempRoot::new("axis-update-local");
+    init(&local.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    update(&local.dir, false).unwrap();
+    assert_skills_rendered_as(&local, CLAUDE_TARGET, ".claude/skills", SpecLocation::InCheckout);
+
+    let remote = TempRoot::new("axis-update-remote");
+    remote.write("speclink/changes/leftover/proposal.md", "## Why\n");
+    seed_remote_workspace(&remote, &[Tool::Claude]);
+    let custom = custom_target();
+    let assert_not_in_checkout = |entry: &str| {
+        assert!(remote.exists("speclink/changes/leftover/proposal.md"), "{entry}：殘留的資料夾還在");
+        assert_skills_rendered_as(&remote, CLAUDE_TARGET, ".claude/skills", SpecLocation::Elsewhere);
+        assert_skills_rendered_as(&remote, skills::RenderTarget::Custom(&custom), ".wad/skills", SpecLocation::Elsewhere);
+    };
+    assert_not_in_checkout("update");
+    sync_skills(&remote.dir).unwrap();
+    assert_not_in_checkout("sync_skills");
+    reconcile_builtin_tools(&remote.dir, &[Tool::Claude]).unwrap();
+    assert_not_in_checkout("reconcile_builtin_tools");
+}
+
+/// Scenario「探測用相同的基準」：remote 專案剛更新後是現版；之後只有一份技能檔變舊時，
+/// 被列為不同的就只有那一份——比對基準和 `update` 用同一個軸。
+#[test]
+fn probing_skills_after_a_remote_update_uses_the_same_base() {
+    let root = TempRoot::new("axis-probe-remote");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Current);
+    assert_eq!(probe.differing_files, Vec::<String>::new());
+
+    let aged = ".claude/skills/speclink-commit/SKILL.md";
+    root.write(aged, &root.read(aged).replace(ASSET_VERSION, "v0.0.1"));
+    let probe = probe_assets(&root.dir);
+    assert_eq!(probe.status, AssetStatus::Stale);
+    assert_eq!(probe.differing_files, vec![aged.to_string()]);
 }

@@ -8,6 +8,8 @@ Archive a completed change.
 
 **Where to run it**: archiving runs in the **main checkout**. Inside a linked worktree on a `speclink/` branch the engine refuses the archive outright — the unarchive backup would land in the worktree's gitignored `.speclink/snapshots/` and vanish with the worktree, and deltas would merge onto the branch point's stale canon. If you are in a worktree, wrap it up with the `/speclink:worktree-merge` skill first, then archive from the main checkout.
 
+{{ARTIFACT_WRITE_BACK}}
+
 **Steps**
 
 1. **If no change name provided, prompt for selection**
@@ -36,16 +38,14 @@ Archive a completed change.
 
 3. **Check task completion status**
 
-   Read the tasks file (typically `tasks.md`) to check for incomplete tasks.
+   Take the change's `completedTasks` and `totalTasks` from `speclink list --json`.
 
-   Count tasks marked with `- [ ]` (incomplete) vs `- [x]` (complete).
-
-   **If incomplete tasks found:**
+   **If incomplete tasks found** (`completedTasks` is less than `totalTasks`):
    - Display warning showing count of incomplete tasks
    - Prompt user for confirmation to continue
    - Proceed if user confirms
 
-   **If no tasks file exists:** Proceed without task-related warning.
+   **If the change has no tasks** (`totalTasks` is 0): Proceed without task-related warning.
 
 3b. **Plan order hint**
 
@@ -71,7 +71,7 @@ Archive a completed change.
 
 4. **Assess delta spec completeness**
 
-   Check for delta specs at `{{SPEC_DIR}}changes/<name>/specs/`. If none exist, skip this step.
+   The change's `deltaCapabilities` in `speclink list --json` names every capability it carries a delta spec for. If the field is absent or empty, skip this step.
 
    Background: the merge engine is fail-closed. It validates every capability's delta
    against the canonical spec first and writes nothing until all of them pass, so a stale
@@ -97,21 +97,21 @@ Archive a completed change.
    A delta for a capability being created may also carry a `## Purpose` section; it becomes
    the new canonical spec's Purpose (without one, a TBD placeholder is written).
 
-   **For each delta spec, compare against `{{SPEC_DIR}}specs/<capability>/spec.md`:**
+   **For each capability in `deltaCapabilities`, set the delta (`speclink artifact cat specs/<capability> --change "<name>"`) beside the canonical spec (`speclink show <capability> --item-type spec`; a capability this change creates has none yet):**
    - MODIFIED requirements: does the canonical requirement contain scenarios or content the delta omits but that should survive?
    - ADDED requirements: does the requirement already exist in the canonical spec (e.g., from an earlier mid-flight sync)?
 
    **If every delta is already complete final-state and no ADDED requirement pre-exists:** proceed directly to the archive (step 5) — no prompt needed.
 
    **Otherwise**, show a summary of what the engine would refuse, then use the **AskUserQuestion tool**:
-   - "Fix the delta then archive (recommended)": rewrite the delta spec file(s) in place —
+   - "Fix the delta then archive (recommended)": fix each delta with a write-back (see **Write-back** above the steps) —
      - merge the omitted canonical content into each MODIFIED requirement so it reads as the complete final state, or declare the drop with `<!-- REMOVED-SCENARIO: … -->`
-     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is edited via MODIFIED, not re-added)
-     - do NOT edit the main specs — only the delta files change
+     - drop or retarget each pre-existing ADDED requirement (a requirement the canon already carries is changed via MODIFIED, not re-added)
+     - do NOT edit the main specs — only the deltas change
    - "Refresh from the codebase": run `/speclink:drift <name>` to see what moved, then `/speclink:ingest <name>` to update the delta — the route the refusal message itself points at
    - "Cancel"
 
-   After fixing, show a brief diff summary of the rewritten delta files, then continue.
+   After fixing, show a brief diff summary of the deltas you wrote back, then continue.
 
 5. **Perform the archive**
 
@@ -134,18 +134,23 @@ Archive a completed change.
    what the work tree looks like, and the canon carries no file list. Which files a change
    touched lives in its evidence record, not in the specs.
 
+   {{#SPEC_IN_CHECKOUT}}
    **If archive fails** because the archived name already exists, suggest renaming existing archive.
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   **If archive fails** because the archived name already exists, stop and tell the user that the existing archive has to be handled on the Server that holds the specs — this checkout has no archive folder to rename or delete.
+   {{/SPEC_IN_CHECKOUT}}
 
    **If the merge gate refuses**, the error lists every offending operation
    (capability / operation / requirement / reason) at once. Fix them in one round on the
-   delta files — `speclink drift <name>` shows what moved, `/speclink:ingest <name>`
+   deltas — `speclink drift <name>` shows what moved, `/speclink:ingest <name>`
    updates the delta — then re-run the archive. `--no-validate` does not unlock the gate;
    `--skip-specs` skips spec application entirely.
 
-   **The zero-evidence note.** A change accumulates completion evidence in
-   `{{SPEC_DIR}}changes/<name>/.evidence.json` as `speclink task done` records which code
-   files each task touched. When a change carries none, the archive still succeeds and
-   stderr gains one line:
+   **The zero-evidence note.** A change accumulates completion evidence as
+   `speclink task done` records which code files each task touched
+   (`speclink evidence show <name>` lists it). When a change carries none, the archive
+   still succeeds and stderr gains one line:
 
    ```
    note: no task evidence recorded for change '<name>' — fine for spec-only changes;
@@ -162,7 +167,7 @@ Archive a completed change.
    Show archive completion summary including:
    - Change name
    - Schema that was used
-   - Archive location
+   - Archived name — the dated name `speclink archive` printed after `→`
    - Spec sync status (synced / sync skipped / no delta specs)
    - Note about any warnings (incomplete artifacts/tasks)
 
@@ -173,7 +178,10 @@ Archive a completed change.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
+{{#SPEC_IN_CHECKOUT}}
 **Archived to:** {{SPEC_DIR}}changes/archive/YYYY-MM-DD-<name>/
+{{/SPEC_IN_CHECKOUT}}
 **Specs:** ✓ Synced to main specs
 
 All artifacts complete. All tasks complete.
@@ -186,7 +194,10 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
+{{#SPEC_IN_CHECKOUT}}
 **Archived to:** {{SPEC_DIR}}changes/archive/YYYY-MM-DD-<name>/
+{{/SPEC_IN_CHECKOUT}}
 **Specs:** No delta specs
 
 All artifacts complete. All tasks complete.
@@ -199,7 +210,10 @@ All artifacts complete. All tasks complete.
 
 **Change:** <change-name>
 **Schema:** <schema-name>
+**Archived as:** YYYY-MM-DD-<name>
+{{#SPEC_IN_CHECKOUT}}
 **Archived to:** {{SPEC_DIR}}changes/archive/YYYY-MM-DD-<name>/
+{{/SPEC_IN_CHECKOUT}}
 **Specs:** Sync skipped (user chose to skip)
 
 **Warnings:**
@@ -216,6 +230,7 @@ Review the archive if this was not intentional.
 ## Archive Failed
 
 **Change:** <change-name>
+{{#SPEC_IN_CHECKOUT}}
 **Target:** {{SPEC_DIR}}changes/archive/YYYY-MM-DD-<name>/
 
 Target archive directory already exists.
@@ -224,6 +239,13 @@ Target archive directory already exists.
 1. Rename the existing archive
 2. Delete the existing archive if it's a duplicate
 3. Wait until a different date to archive
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+**Archived name:** YYYY-MM-DD-<name>
+
+An archived change with this name already exists on the Server. Handle it there — this
+checkout has no archive folder to rename or delete — or wait until a different date to archive.
+{{/SPEC_IN_CHECKOUT}}
 ```
 
 **Guardrails**
@@ -233,8 +255,13 @@ Check these before you show the summary:
 - [ ] The user chose the change; nothing was auto-selected (step 1).
 - [ ] Completion was checked with the artifact graph (`speclink status --json`, step 2); warnings were reported and confirmed, not treated as blockers (steps 2–3).
 - [ ] When delta specs exist, the completeness assessment ran, and a prompt appeared only when a fix was needed (step 4).
-- [ ] Only delta files were edited — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+- [ ] Only deltas were changed — never the main specs; delta application is the archive CLI's job, and the merge gate was not worked around (steps 4–5).
+{{#SPEC_IN_CHECKOUT}}
 - [ ] `.meta.yaml` moved with the change directory, and the summary says clearly what happened (step 6).
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- [ ] The summary names the archived name and says clearly what happened (step 6).
+{{/SPEC_IN_CHECKOUT}}
 
 
 ## RENAMED is actually executed (speclink-specific)
@@ -289,6 +316,11 @@ up, nothing to delete.
 
 ## After the archive
 
+{{^SPEC_IN_CHECKOUT}}
+The archive ran on the Server that holds the specs. This checkout has no spec file, so
+the archive leaves nothing here to commit.
+{{/SPEC_IN_CHECKOUT}}
+{{#SPEC_IN_CHECKOUT}}
 Every archive — whichever path led here: straight from apply, after a review or verify
 stamp, after `/speclink:quality`, or following `/speclink:worktree-merge` — leaves
 uncommitted working-tree changes: the deltas merged into the canonical specs and the
@@ -303,6 +335,7 @@ this archive's spec changes outdated. The condition is the directory's existence
 do not work out which specs this archive touched, and do not judge whether the manual
 is actually stale; that is the manual skill's report. This too is a reminder only —
 never run `/speclink:manual` yourself.
+{{/SPEC_IN_CHECKOUT}}
 
 When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add
 one more line:

@@ -1,10 +1,12 @@
 //! Mechanical guards for the skill sources under `assets/skills/` (skill-authoring
-//! spec「寫法規範的機械守門」). Five checks run on every `.md` source: line count,
+//! spec「寫法規範的機械守門」). Six checks run on every `.md` source: line count,
 //! the emphasis-word cap, no history in prose, a fallback for tool-dependent
-//! capabilities, and no hard-coded skill references or `--agent` values (those must
-//! go through the render markers so every tool gets its own spelling).
+//! capabilities, no hard-coded skill references or `--agent` values (those must
+//! go through the render markers so every tool gets its own spelling), and spec-folder
+//! paths only inside the block that is rendered when the spec folder is in the checkout.
 
 use regex::Regex;
+use speclink_core::skills::{self, SpecLocation};
 
 /// The spec every failure message points the reader to.
 const SPEC_REF: &str = "skill-authoring 規格『技能原稿的跨模型寫法規範』";
@@ -41,6 +43,67 @@ const EMPHASIS_CAPS: &[(&str, usize)] = &[
     ("verify.md", 20),
     ("worktree-merge.md", 18),
 ];
+
+/// The internal skills: taken through `instructions --skill`, never rendered into a
+/// skill file, so the sixth check has nothing to protect in them.
+const INTERNAL_SOURCES: [&str; 3] = ["sync.md", "clarify.md", "tdd.md"];
+
+/// The sources the sixth check skips, each with its reason: the skills that write into
+/// the spec folder ([`crate::SPEC_FOLDER_WRITERS`]) and the internal skills. The table
+/// is closed: a source that is not in it is checked.
+fn spec_path_exempt() -> Vec<(String, &'static str)> {
+    let writers = crate::SPEC_FOLDER_WRITERS.iter().map(|(skill, reason)| (format!("{skill}.md"), *reason));
+    let internal = INTERNAL_SOURCES.map(|source| {
+        (source.to_string(), "internal skill: taken through `instructions --skill`, never rendered into a skill file")
+    });
+    writers.chain(internal).collect()
+}
+
+/// The lines that name a spec-folder file and stay when the spec folder is not in the
+/// checkout — everything outside a `{{#SPEC_IN_CHECKOUT}}` block — as (line, spelling).
+/// The renderer decides what stays; a malformed block is its to report ([`block_error`]).
+fn spec_paths_outside_blocks(name: &str, text: &str) -> Vec<(String, &'static str)> {
+    let Ok(kept) = skills::resolve_blocks(name, text, SpecLocation::Elsewhere) else {
+        return Vec::new();
+    };
+    let words: Vec<&str> = std::iter::once("{{SPEC_DIR}}").chain(crate::SPEC_FOLDER_FILE_NAMES).collect();
+    kept.lines()
+        .flat_map(|line| {
+            words.iter().filter(move |word| line.contains(**word)).map(move |word| (line.trim().to_string(), *word))
+        })
+        .collect()
+}
+
+/// The renderer's own verdict on the source's conditional blocks.
+fn block_error(name: &str, text: &str) -> Option<String> {
+    skills::resolve_blocks(name, text, SpecLocation::InCheckout).err().map(|err| err.to_string())
+}
+
+/// Lines that name the block condition and still reach a rendering — a misspelt marker
+/// (`{{ #SPEC_IN_CHECKOUT}}`) is plain text to the renderer, and both sides of the block
+/// would then be rendered.
+fn misspelt_markers(name: &str, text: &str) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    for location in SpecLocation::BOTH {
+        let kept = skills::resolve_blocks(name, text, location).unwrap_or_default();
+        for line in kept.lines().filter(|line| line.to_ascii_uppercase().contains("SPEC_IN_CHECKOUT")) {
+            if !lines.iter().any(|seen| seen == line.trim()) {
+                lines.push(line.trim().to_string());
+            }
+        }
+    }
+    lines
+}
+
+/// A spec-folder path written with the folder's name instead of `{{SPEC_DIR}}` — it
+/// would pass the placeholder check and name a folder the project may not use.
+fn hardcoded_spec_paths(text: &str) -> Vec<String> {
+    Regex::new(r"(?:^|[^.\w/-])((?:speclink|openspec)/(?:changes|specs|discussions|manual|LANGUAGE\.md|config\.yaml))")
+        .unwrap()
+        .captures_iter(text)
+        .map(|caps| caps[1].to_string())
+        .collect()
+}
 
 fn line_count(text: &str) -> usize {
     text.lines().count()
@@ -115,7 +178,8 @@ fn hardcoded_references(text: &str) -> Vec<String> {
 }
 
 /// Every violation of one source, each message naming the file, the check and [`SPEC_REF`].
-fn violations(name: &str, text: &str, caps: &[(&str, usize)]) -> Vec<String> {
+/// `exempt` is the sixth check's table ([`spec_path_exempt`] in the real scan).
+fn violations(name: &str, text: &str, caps: &[(&str, usize)], exempt: &[(String, &str)]) -> Vec<String> {
     let mut found = Vec::new();
     let lines = line_count(text);
     if lines > 500 {
@@ -142,6 +206,26 @@ fn violations(name: &str, text: &str, caps: &[(&str, usize)]) -> Vec<String> {
             "{name}：渲染記號，命中寫死的 `{hit}`；技能引用寫成 /speclink:<名稱>、--agent 的值寫成 {{{{TOOL}}}}（{SPEC_REF}）"
         ));
     }
+    if let Some(error) = block_error(name, text) {
+        found.push(format!("{name}：規格路徑只在條件區塊裡，條件區塊寫壞了：{error}（{SPEC_REF}）"));
+    }
+    for line in misspelt_markers(name, text) {
+        found.push(format!(
+            "{name}：規格路徑只在條件區塊裡，這一行提到 SPEC_IN_CHECKOUT 卻不是區塊記號：`{line}`；記號要獨佔一行，寫成 {{{{#SPEC_IN_CHECKOUT}}}}、{{{{^SPEC_IN_CHECKOUT}}}} 或 {{{{/SPEC_IN_CHECKOUT}}}}（{SPEC_REF}）"
+        ));
+    }
+    if !exempt.iter().any(|(file, _)| file == name) {
+        for hit in hardcoded_spec_paths(text) {
+            found.push(format!(
+                "{name}：規格路徑只在條件區塊裡，命中寫死的 `{hit}`；規格資料夾寫成 {{{{SPEC_DIR}}}} 並放進 {{{{#SPEC_IN_CHECKOUT}}}} 區塊（{SPEC_REF}）"
+            ));
+        }
+        for (line, word) in spec_paths_outside_blocks(name, text) {
+            found.push(format!(
+                "{name}：規格路徑只在條件區塊裡，`{word}` 在 {{{{#SPEC_IN_CHECKOUT}}}} 區塊之外：`{line}`；讀寫改用動詞，git 步驟與顯示路徑的句子放進區塊（{SPEC_REF}）"
+            ));
+        }
+    }
     found
 }
 
@@ -165,7 +249,7 @@ fn line_count_is_the_same_for_lf_and_crlf() {
 #[test]
 fn a_source_over_500_lines_fails_with_its_line_count() {
     let text = "line\n".repeat(501);
-    let found = violations("long.md", &text, &[("long.md", 0)]);
+    let found = violations("long.md", &text, &[("long.md", 0)], &[]);
     assert!(
         found.iter().any(|v| v.contains("long.md")
             && v.contains("行數")
@@ -181,6 +265,7 @@ fn emphasis_over_the_cap_fails_with_cap_and_count() {
         "review.md",
         "MUST do this. NEVER that.\n",
         &[("review.md", 1)],
+        &[],
     );
     assert!(
         found.iter().any(|v| v.contains("review.md")
@@ -190,7 +275,7 @@ fn emphasis_over_the_cap_fails_with_cap_and_count() {
             && v.contains(SPEC_REF)),
         "{found:?}"
     );
-    assert!(violations("review.md", "MUST do this.\n", &[("review.md", 2)]).is_empty());
+    assert!(violations("review.md", "MUST do this.\n", &[("review.md", 2)], &[]).is_empty());
 }
 
 #[test]
@@ -232,7 +317,7 @@ fn dates_and_design_decision_ids_in_prose_are_history() {
         history_hits("updated at 2026-08-10T10:00"),
         vec!["2026-08-10".to_string()]
     );
-    let found = violations("x.md", "此規則於 2026-08-10 加入\n", &[("x.md", 0)]);
+    let found = violations("x.md", "此規則於 2026-08-10 加入\n", &[("x.md", 0)], &[]);
     assert!(
         found
             .iter()
@@ -248,7 +333,7 @@ fn ask_user_question_needs_a_plain_text_fallback() {
         "Use the AskUserQuestion tool; if it is unavailable, ask as Plain Text."
     )
     .is_empty());
-    let found = violations("x.md", "Use the AskUserQuestion tool.\n", &[("x.md", 0)]);
+    let found = violations("x.md", "Use the AskUserQuestion tool.\n", &[("x.md", 0)], &[]);
     assert!(
         found
             .iter()
@@ -304,7 +389,7 @@ fn hardcoded_references_are_found_but_skill_paths_are_not() {
     );
     assert!(hardcoded_references("see .claude/skills/speclink-propose/SKILL.md").is_empty());
     assert!(hardcoded_references("run `/speclink:apply <name>` with --agent {{TOOL}}").is_empty());
-    let found = violations("x.md", "run `/speclink-apply <name>`\n", &[("x.md", 0)]);
+    let found = violations("x.md", "run `/speclink-apply <name>`\n", &[("x.md", 0)], &[]);
     assert!(
         found
             .iter()
@@ -315,13 +400,102 @@ fn hardcoded_references_are_found_but_skill_paths_are_not() {
 
 #[test]
 fn an_unregistered_source_is_asked_to_register() {
-    let found = violations("example.md", "plain text\n", &[("other.md", 0)]);
+    let found = violations("example.md", "plain text\n", &[("other.md", 0)], &[]);
     assert!(
         found
             .iter()
             .any(|v| v.contains("example.md") && v.contains("EMPHASIS_CAPS")),
         "{found:?}"
     );
+}
+
+/// Scenario「區塊外的規格路徑」「區塊內的規格路徑通過」: each of the three spellings fails
+/// outside the block — also inside the block for the other case — and passes inside it.
+#[test]
+fn spec_paths_are_allowed_only_in_the_in_checkout_block() {
+    let inside = "{{#SPEC_IN_CHECKOUT}}\ngit add \"{{SPEC_DIR}}changes/<name>\"\nIt carries `.evidence.json` and `.meta.yaml`.\n{{/SPEC_IN_CHECKOUT}}\n";
+    assert!(violations("x.md", inside, &[("x.md", 0)], &[]).is_empty());
+
+    let outside = "Read `{{SPEC_DIR}}changes/<name>/tasks.md`.\n";
+    let found = violations("x.md", outside, &[("x.md", 0)], &[]);
+    assert!(
+        found.iter().any(|v| v.contains("x.md")
+            && v.contains("規格路徑只在條件區塊裡")
+            && v.contains("Read `{{SPEC_DIR}}changes/<name>/tasks.md`.")
+            && v.contains(SPEC_REF)),
+        "{found:?}"
+    );
+
+    let other_case = "{{^SPEC_IN_CHECKOUT}}\nSee `.evidence.json`.\n{{/SPEC_IN_CHECKOUT}}\nAnd `.meta.yaml`.\n";
+    assert_eq!(
+        spec_paths_outside_blocks("x.md", other_case),
+        vec![("See `.evidence.json`.".to_string(), ".evidence.json"), ("And `.meta.yaml`.".to_string(), ".meta.yaml")]
+    );
+}
+
+/// Scenario「豁免的原稿不受第六項檢查」: a listed source passes; the table is closed, so
+/// the same text under another name fails.
+#[test]
+fn an_exempt_source_skips_the_spec_path_check() {
+    let text = "Write `{{SPEC_DIR}}specs/<capability>/spec.md`.\n";
+    let exempt = [("baseline.md".to_string(), "writes the canonical specs")];
+    assert!(violations("baseline.md", text, &[("baseline.md", 0)], &exempt).is_empty());
+    assert!(!violations("other.md", text, &[("other.md", 0)], &exempt).is_empty());
+}
+
+/// The exemption table names real sources and gives each a reason.
+#[test]
+fn the_exemption_table_is_closed_and_reasoned() {
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/skills");
+    let exempt = spec_path_exempt();
+    assert_eq!(exempt.len(), crate::SPEC_FOLDER_WRITERS.len() + INTERNAL_SOURCES.len());
+    for (file, reason) in exempt {
+        assert!(dir.join(&file).is_file(), "{file} is exempt but is not a source");
+        assert!(reason.len() > 20, "{file} needs a reason");
+    }
+}
+
+/// A malformed conditional block fails the scan with the renderer's file and line.
+#[test]
+fn a_malformed_block_fails_with_its_file_and_line() {
+    let found = violations("x.md", "a\n{{#SPEC_IN_CHECKOUT}}\nb\n", &[("x.md", 0)], &[]);
+    assert!(found.iter().any(|v| v.contains("條件區塊寫壞了") && v.contains("x.md:2:")), "{found:?}");
+}
+
+/// A misspelt marker fails the scan. The renderer takes a stray space before the sigil
+/// or a single brace for plain text — both sides of the block would be rendered — so
+/// the line is reported as it stands; a wrong name after the sigil is a render error.
+#[test]
+fn a_misspelt_block_marker_fails() {
+    for marker in ["{{ #SPEC_IN_CHECKOUT}}", "{#SPEC_IN_CHECKOUT}"] {
+        let text = format!("a\n{marker}\nb\n");
+        let found = violations("x.md", &text, &[("x.md", 0)], &[]);
+        assert!(found.iter().any(|v| v.contains("不是區塊記號") && v.contains(marker)), "{marker}: {found:?}");
+    }
+    for marker in ["{{#SPEC_IN_CHECKOUT }}", "{{#spec_in_checkout}}"] {
+        let text = format!("a\n{marker}\nb\n");
+        let found = violations("x.md", &text, &[("x.md", 0)], &[]);
+        assert!(found.iter().any(|v| v.contains("條件區塊寫壞了") && v.contains("x.md:2:")), "{marker}: {found:?}");
+    }
+    assert!(misspelt_markers("x.md", "  {{#SPEC_IN_CHECKOUT}}\nx\n  {{/SPEC_IN_CHECKOUT}}\n").is_empty());
+}
+
+/// The spec folder's name written out instead of `{{SPEC_DIR}}` fails the scan; the work
+/// directory `.speclink/`, a `speclink/<change>` branch and a skill directory do not.
+#[test]
+fn a_hardcoded_spec_folder_path_fails() {
+    assert_eq!(hardcoded_spec_paths("Read `speclink/changes/<name>/tasks.md`."), vec!["speclink/changes".to_string()]);
+    assert_eq!(hardcoded_spec_paths("under openspec/specs/"), vec!["openspec/specs".to_string()]);
+    for legal in [
+        "the snapshots in `.speclink/review-scopes/<change>/`",
+        "branch `speclink/<change-name>`",
+        "see .claude/skills/speclink-propose/SKILL.md",
+        "`docs/specs/specs/auth/spec.md`",
+    ] {
+        assert!(hardcoded_spec_paths(legal).is_empty(), "{legal}");
+    }
+    let found = violations("x.md", "Read `speclink/changes/<name>/tasks.md`.\n", &[("x.md", 0)], &[]);
+    assert!(found.iter().any(|v| v.contains("寫死的 `speclink/changes`")), "{found:?}");
 }
 
 /// The real scan: every source under assets/skills/, in file-name order.
@@ -334,6 +508,7 @@ fn every_skill_source_follows_the_authoring_rules() {
         .filter(|name| name.ends_with(".md"))
         .collect();
     names.sort();
+    let exempt = spec_path_exempt();
     let found: Vec<String> = names
         .iter()
         .flat_map(|name| {
@@ -341,6 +516,7 @@ fn every_skill_source_follows_the_authoring_rules() {
                 name,
                 &std::fs::read_to_string(dir.join(name)).unwrap(),
                 EMPHASIS_CAPS,
+                &exempt,
             )
         })
         .collect();

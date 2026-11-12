@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -112,9 +112,9 @@ Detect drift between a Speclink change and the current codebase state. Reports t
 
 **Passive Trigger**
 
-When `$speclink-apply` is invoked on a change whose `.meta.yaml created` date is more than 5 days ago AND no commits have touched the change directory in the past 3 days, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. The trigger is guidance only and does not block apply from proceeding.
+When `$speclink-apply` is invoked on a dormant change, the apply skill SHOULD run drift analysis first and surface findings before tasks begin. A change is dormant when the `created` of its entry in `speclink list --json` is more than 5 days ago and its `modifiedAt` is more than 3 days ago. An entry with no `modifiedAt` is judged on `created` alone — say then that the last activity cannot be read. An entry with no `created` is not dormant. The trigger is guidance only and does not block apply from proceeding.
 
-(Threshold reasoning: AI-assisted commits are daily-cadence, not weekly. A change sitting ≥5 days with ≥3 days of no commits is almost always genuine stagnation rather than normal pacing.)
+(Threshold reasoning: AI-assisted work is daily-cadence, not weekly. A change created ≥5 days ago whose documents have not changed for ≥3 days is almost always genuine stagnation rather than normal pacing.)
 
 **Guardrails**
 

@@ -51,11 +51,14 @@ describe('skills.render — render matrix', () => {
     const s = skills.render('propose', {
       target: 'neutral',
       invocation: 'tool-call',
+      specInCheckout: false,
     })
     expect(s).toContain('calling the speclink tool')
     expect(s).toContain('argv')
     expect(s).not.toContain('/speclink-')
     expect(s).not.toContain('$speclink-')
+    // 本地規格路徑句：預設的規格資料夾是 speclink/（`.speclink/` 是工作資料夾，不算）。
+    expect(s).not.toMatch(/(^|[^.\w/-])speclink\/(changes|specs|discussions|manual)/m)
     expect(s.toLowerCase()).not.toContain('plan mode')
     expect(s).not.toContain('{{')
   })
@@ -100,6 +103,67 @@ describe('skills.render — render matrix', () => {
     expect(normalize(rendered)).toBe(normalize(generated))
     expect(rendered).toContain('/speclink-')
     expect(rendered).not.toContain('$speclink-')
+  })
+
+  // spec node-sdk「渲染 API」：specInCheckout（規格資料夾是否在使用這份技能的 checkout）。
+  const remoteSnapshot = () => {
+    const text = normalize(
+      readFileSync(
+        join(repoRoot, 'crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md'),
+        'utf8',
+      ),
+    )
+    const parts = text.split(/^=== (.*) ===\n/m)
+    const sections = new Map<string, string>()
+    for (let i = 1; i < parts.length; i += 2) sections.set(parts[i], parts[i + 1])
+    return sections
+  }
+
+  it('specInCheckout false renders no spec-folder path and names hand-offs as skills', () => {
+    const s = skills.render('archive', {
+      target: 'neutral',
+      invocation: 'tool-call',
+      specInCheckout: false,
+      specDir: 'openspec',
+    })
+    expect(s).not.toContain('openspec/')
+    expect(s).toContain('`speclink-ingest <name>`')
+    expect(s).not.toContain('`speclink ingest <name>`')
+    // 動詞仍是動詞寫法。
+    expect(s).toContain('speclink archive <name>')
+  })
+
+  it('specInCheckout false matches the remote neutral tool-call snapshot', () => {
+    const section = remoteSnapshot().get('.wad/skills/speclink-archive/SKILL.md')
+    expect(section).toBeDefined()
+    const rendered = skills.render('archive', {
+      target: 'neutral',
+      invocation: 'tool-call',
+      specInCheckout: false,
+      toolName: 'wad-harness',
+    })
+    expect(normalize(rendered).trimEnd()).toBe(section!.trimEnd())
+  })
+
+  it('omitting specInCheckout equals true, and both match what the CLI generates locally', () => {
+    const generated = readFileSync(
+      join(initedProject, '.claude', 'skills', 'speclink-commit', 'SKILL.md'),
+      'utf8',
+    )
+    const omitted = skills.render('commit', { target: 'claude' })
+    const explicit = skills.render('commit', { target: 'claude', specInCheckout: true })
+    expect(explicit).toBe(omitted)
+    expect(normalize(omitted)).toBe(normalize(generated))
+    // 兩個值渲染出不同的內容：這個選項不是擺設。
+    expect(skills.render('commit', { target: 'claude', specInCheckout: false })).not.toBe(omitted)
+  })
+
+  it('a non-boolean specInCheckout fails loud instead of being read as true', () => {
+    for (const bad of ['false', 0, {}, null]) {
+      expect(() =>
+        skills.render('commit', { target: 'claude', specInCheckout: bad as never }),
+      ).toThrow()
+    }
   })
 
   it('unknown target fails loud, listing every valid target', () => {

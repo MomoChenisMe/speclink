@@ -1,12 +1,18 @@
 Commit files related to a specific Speclink change.
 
 This is a **utility skill** (not a workflow step). It reads source file tracking data and artifact changes to stage and commit only the files belonging to one change — useful when multiple changes are in progress simultaneously.
+{{^SPEC_IN_CHECKOUT}}
+
+**The spec folder is not in this checkout.** The change's artifacts and its evidence record live on the Server, and every change to them is already there. A commit made here holds code files only.
+{{/SPEC_IN_CHECKOUT}}
 
 **Input**: Optionally specify a change name after `/speclink:commit` (e.g., `/speclink:commit add-auth`). If omitted, check if it can be inferred from conversation context; if it is still vague or ambiguous, step 1 asks the user.
 
 **Prerequisites**: This skill requires `git`. Run `git --version`. If git is not available (command not found or similar error), inform the user to install git and STOP.
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
+
+{{ARTIFACT_WRITE_BACK}}
 
 **Steps**
 
@@ -21,32 +27,38 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 2. **Read the evidence record**
 
-   Check for `{{SPEC_DIR}}changes/<change-name>/.evidence.json` — the change's completion
-   evidence, written by `speclink task done`. If it exists, parse it to get source files
-   grouped by task.
+   Run `speclink evidence show "<change-name>" --json` — the change's completion evidence,
+   written by `speclink task done`. `entries` holds one entry per completed task, which
+   gives the source files grouped by task; `files` is every touched file, listed once.
 
    Expected format:
 
    ```json
    {
      "change": "<change-name>",
-     "touched": [
+     "entries": [
        {
-         "task_id": "1",
-         "task_desc": "Task description",
-         "files": ["src/file1.ts", "src/file2.ts"]
+         "taskId": "tsk_…",
+         "taskDesc": "Task description",
+         "touchedFiles": ["src/file1.ts", "src/file2.ts"]
        }
-     ]
+     ],
+     "files": ["src/file1.ts", "src/file2.ts"]
    }
    ```
 
-   If the file does not exist, check the pre-move location `.speclink/touched/<change-name>.json`
-   (read-only compatibility for records written before the move). If neither exists, proceed
-   without source file data — only artifact files will be included.
+   If `files` is empty, check the pre-move location `.speclink/touched/<change-name>.json`
+   (read-only compatibility for records written before the move — a state file of this
+   checkout, not a spec document). If neither gives a file, proceed without source file data.
 
 3. **Collect artifact files**
 
+   {{#SPEC_IN_CHECKOUT}}
    Run `git status --porcelain` and filter the output to files under `{{SPEC_DIR}}changes/<name>/`. These are the change's artifact files (proposal, design, tasks, specs, etc.) — including `.evidence.json` itself, which is version-controlled and belongs to this change's commit.
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   The artifact set is empty: no artifact file is in this checkout, so none is staged.
+   {{/SPEC_IN_CHECKOUT}}
 
 4. **Identify unrelated dirty files**
 
@@ -67,7 +79,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
-   Task progress comes from reading the tasks file and counting `- [x]` vs `- [ ]` checkboxes.
+   Task progress is the change's `completedTasks` and `totalTasks` in `speclink list --json`.
 
    If the archive sub-flow runs later (step 7a), the commit message gains an `Archived: yes` line — see step 7a.
 
@@ -79,8 +91,13 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    ## Commit Plan: <change-name>
 
    ### Change Artifacts
+   {{#SPEC_IN_CHECKOUT}}
    - M  {{SPEC_DIR}}changes/<name>/proposal.md
    - M  {{SPEC_DIR}}changes/<name>/tasks.md
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   (none in this commit — the spec changes are already on the Server)
+   {{/SPEC_IN_CHECKOUT}}
 
    ### Source Files
    **Task 1: <task description>**
@@ -101,6 +118,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
+   {{#SPEC_IN_CHECKOUT}}
    If no evidence record was found, show a warning instead of the Source Files section:
 
    ```
@@ -108,16 +126,25 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    ⚠ No source file tracking data found.
    Only artifact files will be committed. Use `speclink task done` during apply to enable source file tracking.
    ```
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   The Change Artifacts line above is part of the plan the user confirms: it says why the list holds no spec file, and the files shown are exactly the files step 8 stages.
+   {{/SPEC_IN_CHECKOUT}}
 
 7. **User confirmation**
 
    Only after the commit plan and commit message from step 6 are visible in the conversation, use the **AskUserQuestion tool** to ask the user how to proceed.
 
    Options:
-   - **Commit as shown**: Proceed with the displayed artifact + source files and the displayed commit message
+   - **Commit as shown**: Proceed with the displayed files and the displayed commit message
    - **Include all dirty files**: Add all unrelated files to the commit as well
    - **Customize**: Let the user add or remove specific files from the commit set, or edit the commit message
+   {{#SPEC_IN_CHECKOUT}}
    - **Archive first, then commit together**: Run archive before committing — archive file moves will be included in this commit
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   - **Archive first, then commit together**: Run archive before committing — the archive happens on the Server, and this commit still holds code files only
+   {{/SPEC_IN_CHECKOUT}}
 
    If the user selects "Customize":
    - Show a numbered list of all dirty files (included and excluded)
@@ -133,24 +160,24 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-i. Incomplete task handling**
 
-    Run `speclink artifact cat tasks --change "<name>"` and count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes in the output.
+    Compare the change's `completedTasks` with its `totalTasks` in `speclink list --json`.
 
     - If **all tasks are complete**: skip to 7a-ii.
     - If **incomplete tasks exist**:
-      - Display the list of incomplete tasks
+      - Display the list of incomplete tasks — the `- [ ]` lines of `speclink artifact cat tasks --change "<name>"`
       - Use the **AskUserQuestion tool** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
     **7a-ii. Delta spec completeness check**
 
-    Check whether delta specs exist at `{{SPEC_DIR}}changes/<name>/specs/`.
+    The change's `deltaCapabilities` in `speclink list --json` names every capability it carries a delta spec for.
 
-    - If **no delta specs exist** (directory is empty or absent): skip to 7a-ii-b.
-    - If **delta specs exist**: compare each delta against `{{SPEC_DIR}}specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
+    - If **`deltaCapabilities` is absent or empty**: skip to 7a-ii-b.
+    - If **it names capabilities**: for each one, set the delta (`speclink artifact cat specs/<capability> --change "<name>"`) beside the canonical spec (`speclink show <capability> --item-type spec`; a capability this change creates has none yet). The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
-        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
+        - **Yes**: fix each delta with a write-back (see **Write-back** above the steps) — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
         - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `/speclink:ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**
@@ -186,14 +213,21 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     After archive completes successfully:
 
+    {{#SPEC_IN_CHECKOUT}}
     1. Re-run `git status --porcelain` to capture all file changes produced by the archive (deletions from `{{SPEC_DIR}}changes/<name>/`, additions in `{{SPEC_DIR}}changes/archive/`)
     2. Add these archive-related file changes to the commit set
+    {{/SPEC_IN_CHECKOUT}}
+    {{^SPEC_IN_CHECKOUT}}
+    1. The archive ran on the Server and moved no file in this checkout
+    2. The commit set stays as it was: the source files
+    {{/SPEC_IN_CHECKOUT}}
     3. Regenerate the commit message with an `Archived: yes` line appended to the body
     4. Display an **updated commit plan and message** as one visible message, showing all sections:
 
     ```
     ## Updated Commit Plan: <change-name> (with archive)
 
+    {{#SPEC_IN_CHECKOUT}}
     ### Change Artifacts (archived)
     - D  {{SPEC_DIR}}changes/<name>/proposal.md
     - D  {{SPEC_DIR}}changes/<name>/tasks.md
@@ -204,13 +238,21 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
     - A  {{SPEC_DIR}}changes/archive/<name>/tasks.md
     - ...
 
+    {{/SPEC_IN_CHECKOUT}}
+    {{^SPEC_IN_CHECKOUT}}
+    ### Change Artifacts
+    (none in this commit — the change is archived on the Server)
+
+    {{/SPEC_IN_CHECKOUT}}
     ### Source Files
     (same as before)
 
+    {{#SPEC_IN_CHECKOUT}}
     ### Main Spec Updates (from archive's delta application)
     - M  {{SPEC_DIR}}specs/<spec-name>/spec.md
     - ...
 
+    {{/SPEC_IN_CHECKOUT}}
     ### Commit Message
     speclink(<change-name>): <summary>
 
@@ -221,9 +263,15 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     5. Use the **AskUserQuestion tool** again to confirm the updated plan and message (the archive option is no longer offered). Only continue to step 8 after this re-confirmation.
 
+    {{#SPEC_IN_CHECKOUT}}
     6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run either way, and after a stop its file moves are still uncommitted, so also remind the user to commit them with a plain git commit:
 
        - When the workspace has a `{{SPEC_DIR}}manual/` directory, add one line: the manual may be stale now, and `/speclink:manual` will report which pages this archive's spec changes outdated. The condition is the directory's existence only — do not work out which specs this archive touched, and do not judge whether the manual is actually stale; that is the manual skill's report. This is a reminder only — never run `/speclink:manual` yourself.
+    {{/SPEC_IN_CHECKOUT}}
+    {{^SPEC_IN_CHECKOUT}}
+    6. Close the sub-flow with the reminders below. Print them once, wherever the flow ends: after the step 10 result, or right where the user stops at the re-confirmation above — the archive has already run on the Server either way:
+
+    {{/SPEC_IN_CHECKOUT}}
        - When the plan order hint noted changes that list `<name>` in their `archiveAfter`, add one more line:
 
          > <那些 change 的名稱> 要在 <name> 之後封存，並動到同名的 requirement：先重讀它們對同名 requirement 的 MODIFIED／REMOVED／RENAMED 區塊、對照正式規格重寫（走 `/speclink:ingest`），再封存它們。
@@ -292,6 +340,11 @@ Check these before you commit:
 - [ ] Every file was staged individually with `git add <file>` — no `git add .` or `git add -A` (step 8).
 - [ ] The user confirmed the exact file list; nothing unconfirmed was committed, and nothing was staged silently (step 7).
 - [ ] **NEVER ask for confirmation before the commit plan and the full commit message have been output as visible message text** — the confirmation question must not reference content that was never displayed in the conversation (e.g., "the plan above" when no plan was shown). This applies equally to the plain-text fallback: display first, then ask.
+{{#SPEC_IN_CHECKOUT}}
 - [ ] A missing evidence record produced a warning, not a block — artifact-only commits are valid (step 6).
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- [ ] No spec file was staged: this commit holds code files only, and the plan said so (step 6).
+{{/SPEC_IN_CHECKOUT}}
 - [ ] The "Unrelated Changes" section stayed informational; those files were excluded by default (step 6).
 

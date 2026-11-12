@@ -41,6 +41,8 @@ After the fixes of a fix-and-revalidate answer, build the project and run the af
 Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
 
 - **The code changes to meet the artifact** → leave the artifacts alone.
-- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The artifact wording is wrong but its intent stays** → change the artifact in the main thread with a write-back (see **Write-back** below) and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
 - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/speclink:ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+{{ARTIFACT_WRITE_BACK}}
 

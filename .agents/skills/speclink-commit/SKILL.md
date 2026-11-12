@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -21,6 +21,16 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 **Asking the user**: ask with the **AskUserQuestion tool**; when that tool is not available, ask the same question with the same options as plain text and wait for the user's response. The display-first rule of step 7 applies to the plain-text question too.
 
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
+
 **Steps**
 
 1. **Select the change**
@@ -34,28 +44,29 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
 2. **Read the evidence record**
 
-   Check for `speclink/changes/<change-name>/.evidence.json` — the change's completion
-   evidence, written by `speclink task done`. If it exists, parse it to get source files
-   grouped by task.
+   Run `speclink evidence show "<change-name>" --json` — the change's completion evidence,
+   written by `speclink task done`. `entries` holds one entry per completed task, which
+   gives the source files grouped by task; `files` is every touched file, listed once.
 
    Expected format:
 
    ```json
    {
      "change": "<change-name>",
-     "touched": [
+     "entries": [
        {
-         "task_id": "1",
-         "task_desc": "Task description",
-         "files": ["src/file1.ts", "src/file2.ts"]
+         "taskId": "tsk_…",
+         "taskDesc": "Task description",
+         "touchedFiles": ["src/file1.ts", "src/file2.ts"]
        }
-     ]
+     ],
+     "files": ["src/file1.ts", "src/file2.ts"]
    }
    ```
 
-   If the file does not exist, check the pre-move location `.speclink/touched/<change-name>.json`
-   (read-only compatibility for records written before the move). If neither exists, proceed
-   without source file data — only artifact files will be included.
+   If `files` is empty, check the pre-move location `.speclink/touched/<change-name>.json`
+   (read-only compatibility for records written before the move — a state file of this
+   checkout, not a spec document). If neither gives a file, proceed without source file data.
 
 3. **Collect artifact files**
 
@@ -80,7 +91,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Tasks: <completed>/<total> complete
    ```
 
-   Task progress comes from reading the tasks file and counting `- [x]` vs `- [ ]` checkboxes.
+   Task progress is the change's `completedTasks` and `totalTasks` in `speclink list --json`.
 
    If the archive sub-flow runs later (step 7a), the commit message gains an `Archived: yes` line — see step 7a.
 
@@ -127,7 +138,7 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
    Only after the commit plan and commit message from step 6 are visible in the conversation, use the **AskUserQuestion tool** to ask the user how to proceed.
 
    Options:
-   - **Commit as shown**: Proceed with the displayed artifact + source files and the displayed commit message
+   - **Commit as shown**: Proceed with the displayed files and the displayed commit message
    - **Include all dirty files**: Add all unrelated files to the commit as well
    - **Customize**: Let the user add or remove specific files from the commit set, or edit the commit message
    - **Archive first, then commit together**: Run archive before committing — archive file moves will be included in this commit
@@ -146,24 +157,24 @@ This is a **utility skill** (not a workflow step). It reads source file tracking
 
     **7a-i. Incomplete task handling**
 
-    Run `speclink artifact cat tasks --change "<name>"` and count `- [x]` (complete) and `- [ ]` (incomplete) checkboxes in the output.
+    Compare the change's `completedTasks` with its `totalTasks` in `speclink list --json`.
 
     - If **all tasks are complete**: skip to 7a-ii.
     - If **incomplete tasks exist**:
-      - Display the list of incomplete tasks
+      - Display the list of incomplete tasks — the `- [ ]` lines of `speclink artifact cat tasks --change "<name>"`
       - Use the **AskUserQuestion tool** to ask: "These tasks are still incomplete. Mark all as complete before archiving?"
         - **Yes**: set a flag to pass `--mark-tasks-complete` to `speclink archive`
         - **No**: proceed without the flag (archive will continue with a warning)
 
     **7a-ii. Delta spec completeness check**
 
-    Check whether delta specs exist at `speclink/changes/<name>/specs/`.
+    The change's `deltaCapabilities` in `speclink list --json` names every capability it carries a delta spec for.
 
-    - If **no delta specs exist** (directory is empty or absent): skip to 7a-ii-b.
-    - If **delta specs exist**: compare each delta against `speclink/specs/<capability>/spec.md`. The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
+    - If **`deltaCapabilities` is absent or empty**: skip to 7a-ii-b.
+    - If **it names capabilities**: for each one, set the delta (`speclink artifact cat specs/<capability> --change "<name>"`) beside the canonical spec (`speclink show <capability> --item-type spec`; a capability this change creates has none yet). The archive merge engine is fail-closed: a MODIFIED requirement wholesale-replaces the canonical block, and the engine refuses the whole archive with zero file effect when an ADDED requirement already exists in the canon, a MODIFIED/REMOVED/RENAMED target is missing, or a MODIFIED block drops a canonical scenario without a `<!-- REMOVED-SCENARIO: <name> -->` declaration.
       - If every delta is complete final-state and no ADDED requirement pre-exists: skip to 7a-ii-b.
       - Otherwise use the **AskUserQuestion tool** to ask: "Delta specs would be refused by the archive merge gate. Fix them before archiving?"
-        - **Yes**: rewrite the delta files in place — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
+        - **Yes**: fix each delta with a write-back (see **Write-back** above the steps) — merge the omitted canonical content into MODIFIED requirements (or declare deliberate drops with `<!-- REMOVED-SCENARIO: … -->`), drop or retarget pre-existing ADDED requirements — then proceed. Do NOT edit main specs.
         - **No**: skip the archive (commit without it) and route the delta repair through `speclink drift <name>` → `$speclink-ingest <name>` — archiving as-is would exit non-zero
 
     **7a-ii-b. Plan order hint**

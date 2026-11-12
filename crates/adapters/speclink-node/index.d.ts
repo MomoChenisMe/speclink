@@ -586,11 +586,19 @@ export interface ConformanceReport {
  */
 export function runStoreConformance(harness: ConformanceHarness): Promise<ConformanceReport>
 
-/** The render matrix: target × invocation. */
+/** The render matrix: target × invocation × specInCheckout. */
 export interface RenderOptions {
   target: 'claude' | 'codex' | 'copilot' | 'pi' | 'cursor' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
   invocation?: 'cli' | 'tool-call'
+  /**
+   * Whether the spec folder is in the checkout the skill is used in. Default:
+   * `true` — the content a local project gets. Pass `false` for a remote
+   * project, or when a host embeds the engine and has no local spec files: the
+   * rendered skill then names no spec-folder path and no git step on spec files.
+   * A value that is not a boolean throws.
+   */
+  specInCheckout?: boolean
   /** Spec directory name substituted into rendered content. Default: `"speclink"`. */
   specDir?: string
   /** Neutral target only: the harness name (`{{TOOL}}` substitution). Default: `"speclink"`. */
@@ -607,7 +615,8 @@ export const skills: {
   list(): SkillInfo[]
   /**
    * Render one skill's SKILL.md content for a matrix point — identical to
-   * what `speclink init` generates for equivalent parameters.
+   * what `speclink init` (or `speclink init --store remote`, for
+   * `specInCheckout: false`) generates for equivalent parameters.
    */
   render(name: string, options: RenderOptions): string
 }

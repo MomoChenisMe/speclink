@@ -8,7 +8,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -68,7 +68,7 @@ Analyze artifact consistency for a change. Can be invoked directly or triggered 
 
 4. **Supplement with AI semantic analysis** (optional)
 
-   The programmatic analyzer catches structural issues. For deeper semantic analysis, also read the artifacts and check for:
+   The programmatic analyzer catches structural issues. For deeper semantic analysis, also read the artifacts — `speclink show <name> --json` lists them and `speclink artifact cat <artifact-id> --change "<name>"` prints each one — and check for:
    - Design decisions that contradict spec requirements
    - Tasks referencing work outside proposal scope
    - Risks in design without corresponding spec coverage

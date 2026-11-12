@@ -3,7 +3,9 @@
 //! Render targets: the built-in tools (claude, codex, copilot, pi, cursor) and custom descriptors
 //! (neutral body, wording decided by `invocation`). The built-in snapshots lock their
 //! output BIT-FOR-BIT — the neutral work must not drift them. The neutral snapshots pin
-//! the cli and tool-call wordings. Instruction files are not part
+//! the cli and tool-call wordings. Two more snapshots pin what a project gets when the
+//! spec folder is not in its checkout (a remote project, a host that embeds the engine):
+//! Claude and the neutral tool-call form. Instruction files are not part
 //! of the generated set (change: remove-marker-injection), so nothing here reads one.
 //!
 //! Regenerate goldens deliberately with: UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::
@@ -154,6 +156,28 @@ fn claude_rendering_with_the_worktree_policy_on_is_bit_identical_to_golden() {
     );
 }
 
+// --- the spec folder is not in the checkout: what a remote project and an embedding host get ---
+
+const REMOTE_URL: &str = "https://team.example.com/api/speclink/v1/projects/foo";
+
+/// Spec workspace-tools「技能依規格是否在 checkout 渲染」: the Claude skills of a
+/// remote project.
+#[test]
+fn claude_rendering_for_a_remote_project_is_bit_identical_to_golden() {
+    let root = TempRoot::new("claude-remote");
+    init::init_remote(&root.dir, &[Tool::Claude], true, REMOTE_URL, None).unwrap();
+    assert_matches_golden("claude-remote.snapshot.md", &snapshot(&root.dir, ".claude/skills"));
+}
+
+/// Same requirement: the neutral tool-call skills of a remote project — the form an
+/// embedding host renders for its own agent.
+#[test]
+fn neutral_tool_call_rendering_for_a_remote_project_is_bit_identical_to_golden() {
+    let remote = format!("remote:\n  url: {REMOTE_URL}\n");
+    let root = neutral_project("neutral-tool-call-remote", "tool-call", &remote);
+    assert_matches_golden("neutral-tool-call-remote.snapshot.md", &snapshot(&root.dir, ".wad/skills"));
+}
+
 // --- commit skill: confirmation gate requires visible plan + message ---
 
 /// Spec requirement commit 確認閘門所見即所簽: the rendered commit skill must
@@ -292,15 +316,16 @@ fn trace_skill_keeps_degradations_invisible_and_archaeology_in_format() {
 }
 
 /// Spec verify-evidence「task done 寫入逐任務 evidence」的技能面: the commit
-/// skill's file attribution reads the change directory's record, falls back to
-/// the pre-move path, and treats the record itself as part of the commit.
+/// skill's file attribution reads the change's record through the evidence verb,
+/// falls back to the pre-move path, and — the spec folder being in this checkout —
+/// treats the record file itself as part of the commit.
 #[test]
 fn commit_skill_attributes_files_from_the_change_directory_record() {
     for (rel, content) in skill_for_both_tools("commit-evidence", "commit") {
         for needle in [
-            "speclink/changes/<change-name>/.evidence.json",
+            "`speclink evidence show \"<change-name>\" --json`",
             "the pre-move location `.speclink/touched/<change-name>.json`",
-            "belongs to this change's commit",
+            "including `.evidence.json` itself, which is version-controlled and belongs to this change's commit",
         ] {
             assert!(
                 content.contains(needle),
@@ -587,7 +612,7 @@ fn every_product_skill_carries_conversation_language_once() {
     }
 
     // A descriptor declared in .speclink.yaml, rendered through `update`.
-    let root = neutral_project("conversation-descriptor", "cli");
+    let root = neutral_project("conversation-descriptor", "cli", "");
     for skill in skills::registry() {
         if skill.claude_only || skill.worktree_gated {
             continue;
@@ -1205,13 +1230,16 @@ fn remote_init_writes_no_instruction_file() {
 
 // --- neutral target: descriptor-generated content ---
 
-fn neutral_project(tag: &str, invocation: &str) -> TempRoot {
+/// A project whose only tool is a custom descriptor with this `invocation`, synced once.
+/// `more_config` is appended to `.speclink.yaml` — a `remote:` section makes it a remote
+/// project.
+fn neutral_project(tag: &str, invocation: &str, more_config: &str) -> TempRoot {
     let root = TempRoot::new(tag);
     std::fs::create_dir_all(root.dir.join("speclink").join("changes")).unwrap();
     std::fs::write(
         root.dir.join(".speclink.yaml"),
         format!(
-            "tools:\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n    invocation: {invocation}\n"
+            "tools:\n  - name: wad-harness\n    skills_dir: .wad/skills\n    instructions_file: WAD.md\n    invocation: {invocation}\n{more_config}"
         ),
     )
     .unwrap();
@@ -1223,7 +1251,7 @@ fn neutral_project(tag: &str, invocation: &str) -> TempRoot {
 fn neutral_body_has_no_slash_prefix_and_no_plan_mode_references() {
     // Spec requirement 中性渲染目標: no /speclink- prefix, no plan-mode wording.
     for invocation in ["cli", "tool-call"] {
-        let root = neutral_project(&format!("neutral-scan-{invocation}"), invocation);
+        let root = neutral_project(&format!("neutral-scan-{invocation}"), invocation, "");
         for (rel, content) in generated_files(&root.dir, ".wad/skills") {
             if let Some(i) = content.find("/speclink-").or_else(|| content.find("$speclink-")) {
                 let lo = i.saturating_sub(120);
@@ -1247,7 +1275,7 @@ fn neutral_body_has_no_slash_prefix_and_no_plan_mode_references() {
 #[test]
 fn neutral_cli_wording_runs_speclink_verbs() {
     // Spec design: cli invocation wording is "run `speclink <verb>`".
-    let root = neutral_project("neutral-cli", "cli");
+    let root = neutral_project("neutral-cli", "cli", "");
     let snap = snapshot(&root.dir, ".wad/skills");
     assert!(
         snap.contains("run `speclink"),
@@ -1261,7 +1289,7 @@ fn neutral_cli_wording_runs_speclink_verbs() {
 fn neutral_tool_call_wording_calls_the_speclink_tool() {
     // Spec scenario tool-call 措辭: verbs are referenced by calling the speclink tool
     // with an argv array.
-    let root = neutral_project("neutral-tool-call", "tool-call");
+    let root = neutral_project("neutral-tool-call", "tool-call", "");
     let snap = snapshot(&root.dir, ".wad/skills");
     assert!(
         snap.contains("calling the speclink tool") && snap.contains("argv"),
@@ -1292,7 +1320,9 @@ fn fingerprint(input: &str) -> String {
 }
 
 /// Every render output the lock covers, aggregated deterministically: every built-in
-/// tool plus one custom descriptor, for every registered skill. Instruction-file content left the managed
+/// tool plus one custom descriptor, for every registered skill, on both sides of "the spec
+/// folder is in the checkout" — an edit inside either conditional block is a content change.
+/// Instruction-file content left the managed
 /// set with change remove-marker-injection, so skills are now the whole asset surface.
 ///
 /// ASSET_VERSION is stamped INTO those outputs (skill frontmatter), so it is normalized
@@ -1309,7 +1339,9 @@ fn render_fingerprint_input() -> String {
     for skill in skills::registry() {
         let builtins = Tool::ALL.into_iter().map(skills::RenderTarget::Builtin);
         for target in builtins.chain([skills::RenderTarget::Custom(&custom)]) {
-            parts.push(skills::render_skill_file_for(target, &skill, "openspec"));
+            for location in skills::SpecLocation::BOTH {
+                parts.push(skills::render_skill_file_for(target, &skill, "openspec", location));
+            }
         }
     }
     normalize_eol(&parts.join("\n")).replace(init::ASSET_VERSION, "{{PRODUCT_VERSION}}")
@@ -1408,7 +1440,12 @@ records the old fingerprint.\n{}",
 /// The apply asset as the tool of the generated file `rel` renders it.
 fn rendered_apply_body(rel: &str) -> String {
     let tool = if rel.starts_with(".claude") { Tool::Claude } else { Tool::Codex };
-    skills::substitute(skills::skill_body("apply").expect("apply body"), tool, "speclink")
+    skills::substitute(
+        skills::skill_body("apply").expect("apply body"),
+        skills::RenderTarget::Builtin(tool),
+        "speclink",
+        skills::SpecLocation::InCheckout,
+    )
 }
 
 /// Spec「apply-with-worktree 技能的生成與組合」: both tool targets generate the
@@ -1554,9 +1591,16 @@ fn apply_with_worktree_selects_and_guards_with_plan() {
         let body = content
             .find("以下為 apply 本體流程")
             .unwrap_or_else(|| panic!("{rel}: missing the hand-over to the apply body"));
-        assert!(
-            !content[..body].contains("speclink list --json"),
+        // 前置段唯一一次用到 list，是在建立 worktree 之前留下閒置判斷要的兩個欄位。
+        let preamble = &content[..body];
+        assert_eq!(
+            preamble.matches("speclink list --json").count(),
+            1,
             "{rel}: the list-based existence check is folded into the plan step"
+        );
+        assert!(
+            preamble.contains("Keep the selected change's `created` and `modifiedAt` from `speclink list --json` now"),
+            "{rel}: the one list call of the preamble keeps the dormancy fields"
         );
     }
 }
@@ -1620,7 +1664,7 @@ fn apply_with_worktree_treats_the_body_plan_as_a_recheck() {
 fn apply_with_worktree_detects_progress_parted_from_code() {
     for (rel, content) in worktree_skill_for_both_tools("apply-wt-split", "apply-with-worktree") {
         let check = content
-            .find(".evidence.json")
+            .find("speclink evidence show \"<change-name>\" --json\ngit status --porcelain -- <each path")
             .unwrap_or_else(|| panic!("{rel}: missing the evidence-record check"));
         let commit_step = content.find("into HEAD").expect("commit step");
         let worktree_add = content.find("git worktree add").expect("worktree add step");
@@ -2769,15 +2813,21 @@ fn skill_references_render_per_tool() {
             }
         }
     }
-    let root = neutral_project("reference-neutral", "cli");
+    let root = neutral_project("reference-neutral", "cli", "");
     let files = generated_files(&root.dir, ".wad/skills");
     let (rel, drift) = files
         .iter()
         .find(|(rel, _)| rel.contains("speclink-drift/"))
         .expect("neutral drift skill");
+    // 中性渲染把另一支技能寫成它的技能名稱，和動詞（`speclink <動詞>`）分得開
+    //（workspace-tools「中性渲染目標」）。
     assert!(
-        drift.contains(&format!("`speclink {expected}")),
-        "{rel}: /speclink:ingest must render as `speclink ingest`"
+        drift.contains(&format!("`speclink-{expected}")),
+        "{rel}: /speclink:ingest must render as the skill name `speclink-ingest`"
+    );
+    assert!(
+        !drift.contains(&format!("`speclink {expected}")),
+        "{rel}: a hand-off must not read as the verb `speclink ingest`"
     );
 }
 

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.56.0"
+  version: "v1.57.0"
   generatedBy: "Speclink"
 ---
 
@@ -60,8 +60,18 @@ After the fixes of a fix-and-revalidate answer, build the project and run the af
 Report which test commands ran and which scope was skipped, and say that CI guards the skipped scope. When a fix touches an artifact (specs, design, tasks), the case decides:
 
 - **The code changes to meet the artifact** → leave the artifacts alone.
-- **The artifact wording is wrong but its intent stays** → edit the artifact in the main thread and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
+- **The artifact wording is wrong but its intent stays** → change the artifact in the main thread with a write-back (see **Write-back** below) and get `speclink validate "<name>"` to pass before the next round; report which passages changed, and paste them verbatim into the next round's checking briefs.
 - **The intent or scope changes** (the fix needs a new task, or changes what a Requirement means) → end this station as **scope changed**: keep the ticket, record no new round, do not stamp, and recommend `/speclink-ingest <name>` before running the station again. Do not add or reopen tasks inside this loop.
+
+**Write-back: changing an artifact that already exists.** Every fix and update this skill makes to an artifact that already exists is a write-back. Read the artifact's full text with `speclink artifact cat <artifact-id> --change "<name>"` — a delta spec is `specs/<capability>`, which the `deltaSpecs` field of `speclink show <name> --json` lists as `<capability>/spec.md` — make the change on that full text, and write the whole result back with `--stdin --force`:
+
+```bash
+speclink new artifact <artifact-id> --change "<name>" --stdin --force <<'ARTIFACT_EOF'
+<full updated content>
+ARTIFACT_EOF
+```
+
+A delta spec is written back with `speclink new artifact spec <capability> --change "<name>" --stdin --force`. The same verbs work when the documents live in a remote store. When `new artifact` refuses a write-back with an error (for example, a task list whose tasks are all checked), stop and tell the user the message — do not edit the file instead.
 
 **Steps**
 
@@ -152,7 +162,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
    **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
-   - If delta specs exist in `speclink/changes/<name>/specs/`:
+   - If the change's `deltaCapabilities` in `speclink list --json` names a capability (the field is absent or empty when the change has no delta spec), take each delta from `speclink artifact cat specs/<capability> --change "<name>"`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
        - Look for its implementation in the frozen patch first
@@ -166,7 +176,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
    **Behavior check** (only when `schemaName` is `no-spec-change` — the change has no delta specs, so it replaces Requirement Implementation Mapping, Scenario Coverage and Example Traceability below):
    - Start from the canonical specs the proposal's Why lists as checked.
-   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and search the canonical specs for the requirements that cover those code areas.
+   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and find the requirements that cover those code areas in the canonical specs: `speclink list --specs --json` names them, and `speclink show <capability> --item-type spec` prints one.
    - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
    - A promised behavior changed:
      - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
@@ -280,7 +290,7 @@ Report which test commands ran and which scope was skipped, and say that CI guar
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 11 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `speclink/changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+    NEVER hand-write or edit the verify ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 13. **Branch on the blocking set**
 

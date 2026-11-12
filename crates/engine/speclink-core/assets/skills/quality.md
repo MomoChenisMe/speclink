@@ -84,12 +84,20 @@ Which findings are worth fixing, and whether the change is ready to stamp, are t
 
 **Resuming after an interrupted session**
 
-A session closed in the middle of a fix round resumes by running `/speclink:quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its open ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
+A session closed in the middle of a fix round resumes by running `/speclink:quality` again. The tickets live in the change folder and the frozen snapshots in `.speclink/review-scopes/<change>/`, so each station's scope sees its ticket and freezes a validation patch that holds every fix landed before the close. A resumed run adds three rules to the steps above:
 
 - Pass both stations' **Verification gate** before step 1 — the earlier session's test state is unknown, and a fix the gate still needs must land before the scopes freeze.
-- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec directory out. List the change folder's uncommitted and untracked files with `git status --porcelain -- "{{SPEC_DIR}}changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those edits came before or after the last round, so:
+- A station whose validation patch has no files while its last round still carries must-fix findings may still have an artifact fix to judge, because the patch leaves the spec documents out.
+  {{#SPEC_IN_CHECKOUT}}
+  List the change folder's uncommitted and untracked files with `git status --porcelain -- "{{SPEC_DIR}}changes/<change-name>/"`, the two tickets left out. Git cannot tell whether those changes came before or after the last round, so:
   - Nothing listed → that station sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
-  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by editing those artifacts. A yes runs the station's validation pass, its brief carrying the edited passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
+  - Files listed → show the list and ask the user (see **Asking the user**) whether the earlier session fixed findings by changing those artifacts. A yes runs the station's validation pass, its brief carrying the changed passages verbatim as the gate's artifact case says; a no takes the nothing-listed path above.
+  {{/SPEC_IN_CHECKOUT}}
+  {{^SPEC_IN_CHECKOUT}}
+  The spec documents are on the Server, so no git status can list those fixes. Show the station's must-fix findings that name an artifact and ask the user (see **Asking the user**) whether the earlier session fixed findings with a write-back to those artifacts:
+  - No → that station sends no sub-agent and records no round this time: a round with nothing to judge would count as "no progress" and fail. The summary says that station had no fix to judge. When both stations are in that state, go straight to step 4 with the last rounds' findings.
+  - Yes → take the passages those findings name from `speclink artifact cat <artifact-id> --change "<change-name>"` and run the station's validation pass, its brief carrying them verbatim as the gate's artifact case says.
+  {{/SPEC_IN_CHECKOUT}}
 - Tell the user not to commit fixes between the close and the resume: a validation patch picks up fixes by content movement and the dirty state, and a commit can drop a new file the snapshots never captured out of it.
 
 The earlier session's fix-or-skip answers are not kept: step 4 lists only the findings still unresolved and asks again.

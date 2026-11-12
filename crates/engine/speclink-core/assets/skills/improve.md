@@ -34,7 +34,7 @@ speclink list --json
 
 - **Search the discussions with your scope's keywords** — the module, crate or pain-point nouns. This check always runs before the scan (Step 3); its keywords come from the user's direction when one was given, and from the scope Step 2 settles when it was not — in that case do Step 2 first, then come back here. Records are written in the `locale` language of `speclink workflow-config show --json` (Step 4), so pass your keywords in that language as well as the English identifiers — crate, module and command names. `discuss search` covers live and archived records alike and matches only the topic, the slug and the decision lines — each round's `Ruled out` and the Conclusion's `Decision` / `Rejected alternatives` / `Deferred`; any one keyword matching counts. Those lines are this project's decision record: an option that lost, with the reason it lost. Read the full Conclusion of the hits that touch your scope (`speclink discuss show <slug>` falls back to the archive), **earlier `improve` records for the same scope first** — a hit whose `kind` is `improve` is the closest precedent to what you are about to propose.
 - **A previously rejected approach is not re-proposed as a candidate** — unless you can name the reason it was rejected AND state concretely why that reason no longer holds (the code it depended on is gone, the constraint was lifted, the trade-off inverted). Say so in the candidate itself; do not quietly re-file it.
-- **Read the in-flight changes** from `speclink list --json` and their proposals. A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
+- **Read the in-flight changes** from `speclink list --json` and their proposals (`speclink artifact cat proposal --change <name>`). A candidate that overlaps the area an in-flight change is already rewriting is not proposed — the work is happening, and a discussion about it now collides with a change mid-flight.
 
 ### Step 2: Converge the scope (scope before you scan)
 
@@ -49,7 +49,7 @@ Never blind-scan the whole repository. Candidates from unrelated corners are not
 
   **Weight recent churn more heavily.** The payoff of deepening is that future changes get easier, so the code that keeps changing is where that payoff lands.
 
-  **Local supplement**: cross-check the archived changes' touched records (`.evidence.json` under `{{SPEC_DIR}}changes/archive/<dated-name>/`, the same records `/speclink:commit` uses). Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
+  **Local supplement**: cross-check the archived changes' touched records — `speclink evidence show <change> --json`, the same records `/speclink:commit` uses; an archived change answers to its own name, and `speclink trace <capability> --json` lists the archived changes behind a capability. Where a bare `git log` says "these files changed together", the touched records say *which intent* moved *which files* — a stronger signal for what belongs to one seam.
 - **The hotspots are diffuse** — no clear focus, churn spread evenly → **widen the net** instead of forcing one. Take a larger area (a whole crate, a whole layer) and scan it as one scope rather than picking an arbitrary hot file.
 
 Announce the scope you settled on and why, in one or two sentences, before scanning.

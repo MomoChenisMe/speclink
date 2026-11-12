@@ -136,7 +136,16 @@ If no argument is provided, the workflow extracts requirements from conversation
    - You are **splitting one planned cut into several changes** at propose time → only the last piece of the split gets `--last`; every earlier piece is spun out without it.
    - The conclusion planned **no staged cuts** (a single change) → do not pass it. (The record carries no hold, so the flag would be a harmless no-op — but "not passed" is the rule.)
 
-   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back from `{{SPEC_DIR}}discussions/archive/` to `{{SPEC_DIR}}discussions/` (drop the `<date>-` prefix; the engine's error message points at that path). Move it {{SPEC_FOLDER_CONDITION}}. Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
+   What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back out of the archive.
+
+   {{#SPEC_IN_CHECKOUT}}
+   Move the record file from `{{SPEC_DIR}}discussions/archive/` back to `{{SPEC_DIR}}discussions/` and drop the `<date>-` prefix from its name (the engine's error message points at that path).
+   {{/SPEC_IN_CHECKOUT}}
+   {{^SPEC_IN_CHECKOUT}}
+   The archived record is on the Server and no verb moves it back: stop and tell the user that this step has to be done on the Server that holds the specs.
+   {{/SPEC_IN_CHECKOUT}}
+
+   Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
 6. **Write the proposal**
 

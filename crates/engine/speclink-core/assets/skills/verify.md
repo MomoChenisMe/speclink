@@ -87,7 +87,7 @@
      - Recommendation: "Complete task: <description>" or "Mark as done if already implemented"
 
    **Spec Coverage** (skip it when `schemaName` is `no-spec-change` — step 8's behavior check takes its place):
-   - If delta specs exist in `{{SPEC_DIR}}changes/<name>/specs/`:
+   - If the change's `deltaCapabilities` in `speclink list --json` names a capability (the field is absent or empty when the change has no delta spec), take each delta from `speclink artifact cat specs/<capability> --change "<name>"`:
      - Extract all requirements (marked with "### Requirement:")
      - For each requirement:
        - Look for its implementation in the frozen patch first
@@ -101,7 +101,7 @@
 
    **Behavior check** (only when `schemaName` is `no-spec-change` — the change has no delta specs, so it replaces Requirement Implementation Mapping, Scenario Coverage and Example Traceability below):
    - Start from the canonical specs the proposal's Why lists as checked.
-   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and search the canonical specs for the requirements that cover those code areas.
+   - Take the concrete names in the frozen patch — commands, flags, `--json` fields, file names, screen text — and find the requirements that cover those code areas in the canonical specs: `speclink list --specs --json` names them, and `speclink show <capability> --item-type spec` prints one.
    - For each such requirement, compare: does the patch change the observable behavior the requirement promises?
    - A promised behavior changed:
      - Add WARNING: "Behavior change in a no-spec-change change: <capability> / <requirement>" — it is must-fix (step 11) and blocks a clean stamp
@@ -215,7 +215,7 @@
 
     **Validation rounds**: every unresolved original finding is carried into the new round verbatim — never reworded; a reworded line fakes the shrinking the loop rule depends on. Resolved findings are dropped. Regressions the remediation patch directly introduced enter as new findings lines. Every accepted, still-unfixed **must-fix** finding is appended verbatim ending with the structural token `(accepted)` — the token stays English like the severity labels. Unfixed SUGGESTIONs carry forward as plain unresolved lines without the token (the step 11 boundary). The last round must reflect all outstanding reservations — that is what keeps an `--accept` stamp honest.
 
-    NEVER hand-write or edit `{{SPEC_DIR}}changes/<name>/verify.md` — the ticket is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
+    NEVER hand-write or edit the verify ticket — it is verb-owned; a malformed round, or a finding path with a `:line` suffix or outside the ticket's scope, is rejected by the verb: fix the stdin content (anchor the finding on the in-scope file) and retry.
 
 13. **Branch on the blocking set**
 
@@ -293,6 +293,11 @@ Check these before you report:
 {{NEXT_STEPS_LEAD}}
 
 - The verify stamp landed in the main checkout → `/speclink:archive <change-name>`
+{{#SPEC_IN_CHECKOUT}}
 - The verify stamp landed inside a worktree → commit the stamp's meta changes first, then `/speclink:worktree-merge <change-name>` (archive runs only from the main checkout)
+{{/SPEC_IN_CHECKOUT}}
+{{^SPEC_IN_CHECKOUT}}
+- The verify stamp landed inside a worktree → `/speclink:worktree-merge <change-name>` (the stamp is on the Server — nothing to commit for it; archive runs only from the main checkout)
+{{/SPEC_IN_CHECKOUT}}
 - Findings were left unfixed on purpose → they stay in the ticket; say which ones before suggesting anything downstream
 - A no-spec-change change got a behavior-change WARNING → the repair steps in its recommendation: `speclink verify discard <change-name>`, `speclink change schema <change-name> spec-driven`, `/speclink:ingest <change-name>`, then verify again — not `--accept`
