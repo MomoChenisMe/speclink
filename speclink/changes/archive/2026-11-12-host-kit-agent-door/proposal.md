@@ -19,6 +19,7 @@ Source discussion: embedded-host-needs（cut 6）。
 
 - `speclink-host` 新增**宿主套件**：建立時收儲存接口與選填的掛鉤；之後每次呼叫收「誰」「哪個範圍」「哪個命令」。一個宿主套件由全部使用者共用。
 - 每次呼叫的身分有兩個欄位：改名後也不變的識別，以及顯示名稱。識別進入提交的記錄；顯示名稱進入文件裡的蓋章欄位（建立者、審查者、驗證者）。
+- **claim 的擁有者以識別判斷**：宿主套件路徑上，引擎的執行情境多帶識別（`actor_id`）。`claim` 除了寫入顯示名稱（`claimed_by`），也寫入識別（`claimed_by_id`）；判斷是不是同一個擁有者時，兩邊都有識別就只比識別——識別不同、顯示名稱相同的兩個人是不同的擁有者，改了顯示名稱的人仍認得自己的 claim。沒有識別的入口（CLI、示範用 server、`createEngine`）照舊比顯示名稱。
 - 兩個掛鉤，都是選填，用一個具名的集合傳入：
   - **執行前**：收到身分、範圍、命令名稱、命令的參數。可以放行或拒絕。拒絕時這次呼叫以 `refused` 結束，訊息是宿主給的原因，儲存沒有任何變動。沒有提供時一律放行。
   - **提交後**：提交成功後收到身分、範圍、命令名稱、新的範圍版本號、這次提交的事件。它只能旁觀：它的失敗不影響呼叫的結果，也不保證送達。
@@ -39,6 +40,7 @@ Source discussion: embedded-host-needs（cut 6）。
   - `engine.dispatch`：不變。
   - 提交記錄的命令標籤：審查以外原本沒有專屬標籤的寫入命令（驗證的三個、搬移任務）今天記成 `command`，之後記成各自的名稱（`verify-add-round`、`verify-stamp`、`verify-discard`、`task-move`）。其餘寫入命令的標籤不變。這個標籤只出現在儲存的提交記錄裡，線上格式與 CLI 輸出都沒有它。
   - 示範用 server：這個變更不接宿主套件，行為不變（在變更 host-kit-client-door 改接）。
+  - change 的 metadata：經宿主套件認領的 change 多一個選填欄位 `claimed_by_id`。缺席時照舊比顯示名稱；舊版引擎讀到它時忽略；CLI 的輸出、`--json` 與線上格式都沒有它。
 - **影響的技能**：沒有。技能的文字不變，claude 與 codex 都不用重新產生技能檔。
 
 ## Non-Goals
@@ -64,11 +66,12 @@ Source discussion: embedded-host-needs（cut 6）。
 
 - `command-runtime`: 新增一條——每個引擎命令有穩定的名稱與可序列化的參數。
 - `node-sdk`: 新增四條——`createHost` 與 `host.dispatch`、JS 版的儲存接口、隨套件提供的合格測試、Agent 工具定義的匯出。
+- `change-lifecycle`: 修改「認領標記欄位」——執行情境帶識別時，認領多寫 `claimed_by_id`，並以識別判斷是否同一身分。
 
 ## Impact
 
-- Affected specs: host-kit（新增）、command-runtime（新增一條）、node-sdk（新增四條）
-- Affected crates: `speclink-core`、`speclink-host`、`speclink-verbs`、`speclink-node`。`speclink-cli`、`speclink-server`、store crates 與桌面 app 不改。
+- Affected specs: host-kit（新增）、command-runtime（新增一條）、node-sdk（新增四條）、change-lifecycle（修改一條）
+- Affected crates: `speclink-core`、`speclink-host`、`speclink-verbs`、`speclink-node`；`speclink-cli` 只改建立執行情境的一行（`actor_id: None`）。`speclink-server`、store crates 與桌面 app 不改。
 - Affected code:
   - New:
     - crates/engine/speclink-core/src/command/describe.rs
@@ -85,23 +88,27 @@ Source discussion: embedded-host-needs（cut 6）。
     - crates/adapters/speclink-node/__test__/agent-tool.spec.ts
   - Modified:
     - crates/engine/speclink-core/src/command/mod.rs
+    - crates/engine/speclink-core/src/command/tests.rs
     - crates/engine/speclink-core/src/lifecycle/model.rs
     - crates/engine/speclink-core/src/lifecycle/plan.rs
     - crates/engine/speclink-core/src/workspace/config.rs
     - crates/engine/speclink-core/tests/it/main.rs
+    - crates/engine/speclink-core/tests/it/render_golden.rs
     - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/src/lib.rs
+    - crates/host/speclink-host/tests/common/mod.rs
     - crates/adapters/speclink-verbs/src/lib.rs
     - crates/adapters/speclink-verbs/src/parse.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
+    - crates/adapters/speclink-cli/src/common.rs
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/src/store_bridge.rs
     - crates/adapters/speclink-node/Cargo.toml
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
-    - crates/adapters/speclink-node/binding.js
-    - crates/adapters/speclink-node/binding.d.ts
     - Cargo.lock
   - Removed: (none)
+- 建置產生的檔案：`crates/adapters/speclink-node/binding.js` 與 `binding.d.ts` 在 `.gitignore` 裡，由 `npm run build` 重新產生，所以不在上面的清單。跑 Node 測試前要先重新建置。
 - 相依：排在變更 workflow-config-commands 之後（流程設定的寫入要先成為引擎命令，執行前掛鉤才收得到變動的鍵）。
 - 三種形態下的結果：
   - 本機 repo：不適用。本機沒有宿主，CLI 直接對檔案執行；`createEngine` 的 fs 形式不變。

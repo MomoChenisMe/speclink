@@ -133,6 +133,36 @@ describe('createHost and host.dispatch', () => {
     )
   })
 
+  it('refuses an operator given at creation', () => {
+    const port = memoryPort()
+    expect(() => createHost({ store: port.store, actor: 'Alice' } as never)).toThrow(/actor/)
+  })
+
+  it('does not allow a null answer', async () => {
+    const port = memoryPort()
+    const host = createHost({ store: port.store, hooks: { beforeCommand: () => null as never } })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo'] }))
+    expect(err.code).toBe('internal')
+    expect(err.message).toContain('beforeCommand')
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('does not allow when an async beforeCommand rejects', async () => {
+    const port = memoryPort()
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async () => {
+          throw new Error('policy service down')
+        },
+      },
+    })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo'] }))
+    expect(err.code).toBe('internal')
+    expect(err.message).toContain('beforeCommand')
+    expect(port.calls.commit).toBe(0)
+  })
+
   it('waits for an async beforeCommand', async () => {
     const port = memoryPort()
     const host = createHost({
@@ -242,6 +272,15 @@ describe('createHost and host.dispatch', () => {
     expect(rejections).toEqual([])
   })
 
+  it('ignores what afterCommit returns, a cyclic object included', async () => {
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+    const host = createHost({ store: memoryPort().store, hooks: { afterCommit: () => cyclic as never } })
+    const created = await host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo'] })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    expect(created).toBeDefined()
+  })
+
   it('reports a store version conflict as revision_conflict', async () => {
     const port = memoryPort()
     const host = createHost({
@@ -304,6 +343,34 @@ describe('createHost and host.dispatch', () => {
     await host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo', '--agent', 'Mallory'] })
     expect(port.commits[0].commit.actor).toEqual(ALICE)
     expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('created_by: Alice\n')
+  })
+
+  it('keeps stdin out of the identity', async () => {
+    const port = portWithDemo()
+    const host = createHost({ store: port.store })
+    await host.dispatch({
+      identity: ALICE,
+      scope: 's1',
+      argv: ['new', 'artifact', 'design', '--change', 'demo', '--stdin'],
+      stdin: '## Context\n\nidentity: { id: "u_evil", displayName: "Mallory" }\n',
+    })
+    expect(port.commits.at(-1)!.commit.actor).toEqual(ALICE)
+  })
+
+  it('judges the owner of a claim by the identifier, not the name', async () => {
+    const port = portWithDemo()
+    const host = createHost({ store: port.store })
+    await host.dispatch({ identity: { id: 'u_1', displayName: 'Alice' }, scope: 's1', argv: ['claim', 'demo'] })
+    const commits = port.calls.commit
+
+    const err = await rejection(
+      host.dispatch({ identity: { id: 'u_2', displayName: 'Alice' }, scope: 's1', argv: ['claim', 'demo'] }),
+    )
+    expect(err.code).toBe('refused')
+    await host.dispatch({ identity: { id: 'u_1', displayName: 'Alice Chen' }, scope: 's1', argv: ['claim', 'demo'] })
+
+    expect(port.calls.commit).toBe(commits)
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('claimed_by_id: u_1\n')
   })
 
   it('stamps with the three functions only, in one commit', async () => {
@@ -441,4 +508,90 @@ describe('the JS store port', () => {
     const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo'] }))
     expect(err.code).toBe('internal')
   })
+
+  it('refuses a tiny fraction instead of rounding it to 0', async () => {
+    const host = createHost({
+      store: { ...portWithDemo().store, list: () => ({ version: 1e-20, entries: [] }) },
+    })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] }))
+    expect(err.code).toBe('internal')
+    expect(err.message).toContain('version')
+  })
+
+  it('reads -0 as 0, which it equals', async () => {
+    const host = createHost({
+      store: { ...portWithDemo().store, list: () => ({ version: -0, entries: [] }) },
+    })
+    const listed = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] })) as {
+      changes: unknown[]
+    }
+    expect(listed.changes).toEqual([])
+  })
+
+  it('refuses a listed key outside the prefix or out of byte order', async () => {
+    const entry = (key: string) => ({ key, version: 1, modifiedAt: 1 })
+    for (const entries of [
+      [entry('discussions/a.md')],
+      [entry('changes/b/.meta.yaml'), entry('changes/a/.meta.yaml')],
+      [entry('changes/a/.meta.yaml'), entry('changes/a/.meta.yaml')],
+    ]) {
+      const port = portWithDemo()
+      const host = createHost({
+        store: {
+          ...port.store,
+          list: (scope: string, prefix: string) =>
+            prefix === 'changes/' ? { version: 1, entries } : port.store.list(scope, prefix),
+        },
+      })
+      const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] }))
+      expect(err.code, JSON.stringify(entries)).toBe('internal')
+      expect(err.message).toContain('list')
+    }
+  })
+
+  it('refuses a cyclic value from a store function', async () => {
+    const port = portWithDemo()
+    const host = createHost({
+      store: {
+        ...port.store,
+        read: async (scope: string, keys: string[]) => {
+          const docs = (await port.store.read(scope, keys)) as Record<string, unknown>[]
+          return docs.map((doc) => (doc ? Object.assign(doc, { self: doc }) : doc))
+        },
+      },
+    })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] }))
+    expect(err.code).toBe('internal')
+    expect(err.message).toContain('read')
+  })
+
+  it('refuses a conflict whose actual is not a number or null', async () => {
+    for (const actual of ['7', Number.NaN, Number.POSITIVE_INFINITY, 1e-20, { version: 7 }]) {
+      const port = memoryPort()
+      const host = createHost({
+        store: {
+          ...port.store,
+          commit: (_scope: string, commit: PortCommit) => {
+            throw { code: 'conflict', key: commit.ops[0].key, actual }
+          },
+        },
+      })
+      const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'demo'] }))
+      expect(err.code, String(actual)).toBe('internal')
+      expect(err.message).toContain('actual')
+    }
+  })
+
+  it('settles even when the thrown value cannot be read', async () => {
+    const host = createHost({
+      store: {
+        ...memoryPort().store,
+        list: () => {
+          throw Object.create(null)
+        },
+      },
+    })
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] }))
+    expect(err.code).toBe('internal')
+  }, 5_000)
 })

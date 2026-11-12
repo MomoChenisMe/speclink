@@ -153,7 +153,7 @@ pub(crate) fn value_of<T: Serialize + ?Sized>(source: &T) -> Value {
 /// this one text.
 pub fn no_active_changes() -> Rendered {
     let mut t = Text::default();
-    outln!(t, "No active changes. Create one with: speclink new change <name>");
+    outln!(t, "{}", speclink_core::command::NO_ACTIVE_CHANGES);
     Rendered { stdout: t.stdout, stderr: t.stderr, json: None }
 }
 

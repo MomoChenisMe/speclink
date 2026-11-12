@@ -75,6 +75,7 @@ describe('agentTool', () => {
     expect(listed).toContain('discuss add-round')
     expect(listed).toContain('workflow-config set')
     expect(listed).toContain('change rank')
+    expect(usages.filter((usage) => / stamp /.test(usage)).every((usage) => usage.includes('--stdin'))).toBe(true)
 
     const host = createHost({ store: memoryPort().store })
     for (const usage of usages) {
@@ -92,9 +93,12 @@ describe('agentTool', () => {
 
   it('passes the tool input straight to host.dispatch', async () => {
     const host = createHost({ store: memoryPort().store })
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['discuss', 'new', 'Host kit', '--slug', 'host-kit'] })
     const input = { argv: ['discuss', 'list', '--json'] }
-    const result = await host.dispatch({ identity: ALICE, scope: 's1', ...input })
-    expect(typeof result).toBe('object')
-    expect(result).not.toBeNull()
+    const result = (await host.dispatch({ identity: ALICE, scope: 's1', ...input })) as {
+      discussions: { slug: string }[]
+    }
+    expect(Array.isArray(result.discussions)).toBe(true)
+    expect(result.discussions.map((d) => d.slug)).toEqual(['host-kit'])
   })
 })

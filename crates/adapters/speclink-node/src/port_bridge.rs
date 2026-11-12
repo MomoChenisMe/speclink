@@ -3,12 +3,12 @@
 //! Promises; each call goes through the store bridge's threadsafe function and
 //! the calling worker thread waits for it to settle.
 //!
-//! The JS invoker (`makePortInvoker` in index.js) always settles with a value:
-//! `{ ok: true, value }` or `{ ok: false, error: { code, message, key, actual } }`,
-//! so the thrown object's fields reach this side whole. Everything the JS side
-//! returns is checked here before the engine sees it.
+//! The JS side (`makeInvoker` over `asJson` functions in index.js) settles
+//! with the result as JSON text, or with the thrown object's `code`,
+//! `message`, `key` and `actual`. Everything the JS side returns is checked
+//! here before the engine sees it.
 
-use crate::store_bridge::JsStoreBridge;
+use crate::store_bridge::{BridgeFailure, JsStoreBridge};
 use speclink_store_port::conformance::{self, CheckOutcome, PortHarness};
 use speclink_store_port::{
     Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError, RecordedEvent,
@@ -27,56 +27,40 @@ impl JsPort {
         JsPort { bridge }
     }
 
-    fn call(&self, method: &'static str, args: serde_json::Value) -> Result<serde_json::Value, Thrown> {
+    fn call(&self, method: &'static str, args: serde_json::Value) -> Result<serde_json::Value, BridgeFailure> {
         settle_call(&self.bridge, method, args)
     }
 }
 
-/// Call one JS function through a bridge built over `makePortInvoker`, and
-/// wait for it to settle; a thrown error comes back as its fields, its message
-/// prefixed with the function's name.
+/// Call one JS function whose result crosses as JSON text, and wait for it to
+/// settle. A throw comes back as a [`BridgeFailure`] carrying its fields.
 pub(crate) fn settle_call(
     bridge: &JsStoreBridge,
     method: &'static str,
     args: serde_json::Value,
-) -> Result<serde_json::Value, Thrown> {
-    let settled = bridge
-        .call(method, args)
-        .map_err(|f| Thrown::other(format!("{method}: {}", f.message)))?;
-    if settled.get("ok").and_then(|ok| ok.as_bool()) == Some(true) {
-        return Ok(settled.get("value").cloned().unwrap_or(serde_json::Value::Null));
-    }
-    let error = settled.get("error").cloned().unwrap_or_default();
-    let text = |field: &str| error.get(field).and_then(|v| v.as_str()).map(str::to_string);
-    Err(Thrown {
-        code: text("code"),
-        message: format!("{method}: {}", text("message").unwrap_or_else(|| "failed".to_string())),
-        key: text("key"),
-        actual: error.get("actual").cloned().unwrap_or_default(),
-    })
+) -> Result<serde_json::Value, BridgeFailure> {
+    let text = bridge.call(method, args)?;
+    let text = text.as_str().ok_or_else(|| BridgeFailure::new(method, "returned no JSON text"))?;
+    serde_json::from_str(text).map_err(|e| BridgeFailure::new(method, format!("returned text that is not JSON: {e}")))
 }
 
-/// What a JS function threw.
-pub(crate) struct Thrown {
-    code: Option<String>,
-    pub(crate) message: String,
-    key: Option<String>,
-    actual: serde_json::Value,
+/// `unavailable` is a temporary failure; every other throw outside a commit's
+/// conflict is a backend failure. The message names the function.
+fn port_error(f: BridgeFailure) -> PortError {
+    match f.code.as_deref() {
+        Some("unavailable") => PortError::Unavailable { message: f.to_string() },
+        _ => PortError::Backend { message: f.to_string() },
+    }
 }
 
-impl Thrown {
-    fn other(message: String) -> Thrown {
-        Thrown { code: None, message, key: None, actual: serde_json::Value::Null }
-    }
+/// `{ id, displayName }`, as the JS side reads an actor or an identity.
+pub(crate) fn person_json(id: &str, display_name: &str) -> serde_json::Value {
+    serde_json::json!({ "id": id, "displayName": display_name })
+}
 
-    /// `unavailable` is a temporary failure; every other throw outside a
-    /// commit's conflict is a backend failure.
-    fn into_port_error(self) -> PortError {
-        match self.code.as_deref() {
-            Some("unavailable") => PortError::Unavailable { message: self.message },
-            _ => PortError::Backend { message: self.message },
-        }
-    }
+/// `[{ name, payload }]`, as the JS side reads a commit's events.
+pub(crate) fn events_json(events: &[speclink_store_port::Event]) -> serde_json::Value {
+    events.iter().map(|e| serde_json::json!({ "name": e.name(), "payload": e.payload() })).collect()
 }
 
 /// A returned value that breaks the contract: a backend failure that names
@@ -129,17 +113,12 @@ fn commit_json(commit: &Commit) -> serde_json::Value {
             }
         })
         .collect();
-    let events: Vec<serde_json::Value> = commit
-        .events()
-        .iter()
-        .map(|e| serde_json::json!({ "name": e.name(), "payload": e.payload() }))
-        .collect();
     serde_json::json!({
-        "actor": { "id": commit.actor().id(), "displayName": commit.actor().display_name() },
+        "actor": person_json(commit.actor().id(), commit.actor().display_name()),
         "command": commit.command(),
         "at": commit.at().get(),
         "ops": ops,
-        "events": events,
+        "events": events_json(commit.events()),
     })
 }
 
@@ -156,28 +135,33 @@ impl StorePort for JsPort {
         const M: &str = "list";
         let value = self
             .call(M, serde_json::json!([scope.as_str(), prefix.as_str()]))
-            .map_err(Thrown::into_port_error)?;
+            .map_err(port_error)?;
         let scope_version = version(M, "version", value.get("version"))?;
-        let entries = value
+        let raw = value
             .get("entries")
             .and_then(|e| e.as_array())
             .ok_or_else(|| malformed(M, "entries", "must be an array"))?;
-        let entries = entries
-            .iter()
-            .enumerate()
-            .map(|(i, entry)| {
-                let field = |name: &str| format!("entries[{i}].{name}");
-                let key = entry
-                    .get("key")
-                    .and_then(|k| k.as_str())
-                    .ok_or_else(|| malformed(M, &field("key"), "must be a string"))?;
-                Ok(ListEntry {
-                    key: DocKey::new(key).map_err(|e| malformed(M, &field("key"), e))?,
-                    version: version(M, &field("version"), entry.get("version"))?,
-                    modified_at: timestamp(M, &field("modifiedAt"), entry.get("modifiedAt"))?,
-                })
-            })
-            .collect::<Result<Vec<ListEntry>, PortError>>()?;
+        let mut entries: Vec<ListEntry> = Vec::with_capacity(raw.len());
+        for (i, entry) in raw.iter().enumerate() {
+            let field = |name: &str| format!("entries[{i}].{name}");
+            let key = entry
+                .get("key")
+                .and_then(|k| k.as_str())
+                .ok_or_else(|| malformed(M, &field("key"), "must be a string"))?;
+            let key = DocKey::new(key).map_err(|e| malformed(M, &field("key"), e))?;
+            if !key.as_str().starts_with(prefix.as_str()) {
+                return Err(malformed(M, &field("key"), format!("must start with the prefix '{}'", prefix.as_str())));
+            }
+            // Byte order, each key once: the engine reads the listing as given.
+            if entries.last().is_some_and(|before| key <= before.key) {
+                return Err(malformed(M, &field("key"), "must come after the key before it, in byte order"));
+            }
+            entries.push(ListEntry {
+                key,
+                version: version(M, &field("version"), entry.get("version"))?,
+                modified_at: timestamp(M, &field("modifiedAt"), entry.get("modifiedAt"))?,
+            });
+        }
         Ok(Listing { version: scope_version, entries })
     }
 
@@ -186,7 +170,7 @@ impl StorePort for JsPort {
         let names: Vec<&str> = keys.iter().map(DocKey::as_str).collect();
         let value = self
             .call(M, serde_json::json!([scope.as_str(), names]))
-            .map_err(Thrown::into_port_error)?;
+            .map_err(port_error)?;
         let docs = value.as_array().ok_or_else(|| malformed(M, "result", "must be an array"))?;
         if docs.len() != keys.len() {
             return Err(malformed(
@@ -227,7 +211,8 @@ impl StorePort for JsPort {
                     Some((key, expected)) => Err(PortError::Conflict {
                         key,
                         expected,
-                        // `null` (or no `actual` at all) reads as "no document".
+                        // `null` (or no `actual` at all) reads as "no document";
+                        // a value of another type is refused, never read as one.
                         actual: match &thrown.actual {
                             serde_json::Value::Null => None,
                             other => Some(version(M, "error.actual", Some(other))?),
@@ -235,14 +220,13 @@ impl StorePort for JsPort {
                     }),
                     None => Err(PortError::Backend {
                         message: format!(
-                            "{} (a conflict on a key that is not in this commit: {})",
-                            thrown.message,
+                            "{thrown} (a conflict on a key that is not in this commit: {})",
                             thrown.key.as_deref().unwrap_or("none given")
                         ),
                     }),
                 }
             }
-            Err(thrown) => Err(thrown.into_port_error()),
+            Err(thrown) => Err(port_error(thrown)),
         }
     }
 }
@@ -261,7 +245,7 @@ impl PortHarness for JsHarness {
 
     fn new_scope(&self) -> Result<ScopeId, PortError> {
         const M: &str = "newScope";
-        let value = self.port.call(M, serde_json::json!([])).map_err(Thrown::into_port_error)?;
+        let value = self.port.call(M, serde_json::json!([])).map_err(port_error)?;
         let scope = value.as_str().ok_or_else(|| malformed(M, "result", "must be a string"))?;
         ScopeId::new(scope).map_err(|e| malformed(M, "result", e))
     }
@@ -274,7 +258,7 @@ impl PortHarness for JsHarness {
         let value = self
             .port
             .call(M, serde_json::json!([scope.as_str()]))
-            .map_err(Thrown::into_port_error)?;
+            .map_err(port_error)?;
         let events = value.as_array().ok_or_else(|| malformed(M, "result", "must be an array"))?;
         events
             .iter()

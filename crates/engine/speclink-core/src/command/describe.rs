@@ -68,13 +68,9 @@ impl Command {
         // a unit variant its bare name.
         match serde_json::to_value(self).expect("command fields serialize to JSON") {
             serde_json::Value::Object(tagged) => {
-                tagged.into_iter().next().map(|(_, fields)| fields).unwrap_or_else(empty)
+                tagged.into_values().next().expect("a struct variant serializes as one tagged entry")
             }
-            _ => empty(),
+            _ => serde_json::Value::Object(serde_json::Map::new()),
         }
     }
-}
-
-fn empty() -> serde_json::Value {
-    serde_json::Value::Object(serde_json::Map::new())
 }

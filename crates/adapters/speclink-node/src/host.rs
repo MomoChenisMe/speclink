@@ -4,13 +4,15 @@
 //! same verb parsing, stdin rules and output as `engine.dispatch`, and runs
 //! the command through `speclink_host::kit::HostKit`.
 
-use crate::port_bridge::{settle_call, JsPort};
+use crate::port_bridge::{events_json, person_json, settle_call, JsPort};
 use crate::store_bridge::{create_bridge, JsStoreBridge};
-use crate::{command_of, envelope, parse_verb, value_of, DispatchError, DispatchResult};
+use crate::{
+    command_of, envelope, on_worker, panic_message, parse_verb, status_notice, value_of, DispatchError, DispatchResult,
+};
 use napi::bindgen_prelude::*;
 use napi::{JsFunction, JsObject};
 use napi_derive::napi;
-use speclink_core::command::{Command, ErrorCode};
+use speclink_core::command::Command;
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit, Identity,
 };
@@ -18,7 +20,9 @@ use speclink_host::port_exec::ExecError;
 use speclink_store_port::{PortError, ScopeId, StorePort};
 use std::sync::{Arc, Mutex};
 
-struct Parts {
+/// What `createHost` set up: the store port, the bridge over the hooks, and
+/// which hooks the host gave.
+struct HostSetup {
     store: Arc<dyn StorePort>,
     /// The bridge over `{ beforeCommand, afterCommit }` (index.js).
     hooks: JsStoreBridge,
@@ -28,12 +32,12 @@ struct Parts {
 
 #[napi]
 pub struct Host {
-    parts: Arc<Parts>,
+    setup: Arc<HostSetup>,
 }
 
 /// Build a host over a JS store port. `port_invoker` and `hook_invoker` are
-/// index.js's port invokers over the store's three functions and over the
-/// two hooks; the flags say which hooks the host gave.
+/// index.js's invokers over the store's three functions and over the two
+/// hooks; the flags say which hooks the host gave.
 #[napi(js_name = "hostFromPort")]
 pub fn host_from_port(
     env: Env,
@@ -44,7 +48,7 @@ pub fn host_from_port(
 ) -> Result<Host> {
     let store: Arc<dyn StorePort> = Arc::new(JsPort::new(create_bridge(env, port_invoker)?));
     let hooks = create_bridge(env, hook_invoker)?;
-    Ok(Host { parts: Arc::new(Parts { store, hooks, has_before, has_after }) })
+    Ok(Host { setup: Arc::new(HostSetup { store, hooks, has_before, has_after }) })
 }
 
 /// The `speclink` Agent tool (design D9), shaped for JS:
@@ -69,31 +73,27 @@ impl Host {
         argv: Vec<String>,
         stdin: Option<String>,
     ) -> Result<JsObject> {
-        let parts = self.parts.clone();
-        let (deferred, promise) = env.create_deferred()?;
-        std::thread::spawn(move || {
+        let setup = self.setup.clone();
+        on_worker(env, move || {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run(&parts, id, display_name, scope, &argv, stdin.as_deref())
+                caller_of(id, display_name, scope).and_then(|caller| run(&setup, &caller, &argv, stdin.as_deref()))
             }))
-            .unwrap_or_else(|_| Err(DispatchError::new("internal", "speclink host panicked")));
-            let value = envelope(result);
-            deferred.resolve(move |_| Ok(value));
-        });
-        Ok(promise)
+            .unwrap_or_else(|payload| {
+                Err(DispatchError::new("internal", format!("speclink host panicked: {}", panic_message(&payload))))
+            });
+            envelope(result)
+        })
     }
 }
 
-fn run(
-    parts: &Parts,
-    id: String,
-    display_name: String,
-    scope: String,
-    argv: &[String],
-    stdin: Option<&str>,
-) -> DispatchResult {
-    // Who and where come from the host's own code, never from argv or stdin.
+/// Who and where, from the host's own code — never from argv or stdin.
+fn caller_of(id: String, display_name: String, scope: String) -> std::result::Result<Caller, DispatchError> {
     let identity = Identity::new(id, display_name).map_err(|e| DispatchError::new("invalid_argv", e.to_string()))?;
     let scope = ScopeId::new(scope).map_err(|e| DispatchError::new("invalid_argv", format!("invalid scope: {e}")))?;
+    Ok(Caller { identity, scope })
+}
+
+fn run(setup: &HostSetup, caller: &Caller, argv: &[String], stdin: Option<&str>) -> DispatchResult {
     let parsed = parse_verb(argv)?;
     let cmd = command_of(&parsed, stdin)?;
     let status_without_name = matches!(cmd, Command::Status { change: None, .. });
@@ -102,23 +102,15 @@ fn run(
     // the call as `internal`; the Rust hook can only allow or deny, so it
     // denies and leaves the reason here.
     let broken_hook: Arc<Mutex<Option<String>>> = Arc::default();
-    let kit = HostKit::new(parts.store.clone(), hooks_for(parts, &broken_hook));
-    let result = kit.run(&Caller { identity, scope }, cmd);
+    let kit = HostKit::new(setup.store.clone(), hooks_for(setup, &broken_hook));
+    let result = kit.run(caller, cmd);
     if let Some(message) = broken_hook.lock().unwrap_or_else(|e| e.into_inner()).take() {
         return Err(DispatchError::new("internal", message));
     }
     match result {
         Ok(execution) => value_of(&parsed, &execution.outcome),
-        // CLI parity: with no name and no change at all, status is a notice,
-        // not an error — the same text the CLI prints with exit code 0.
-        Err(ExecError::Command(e))
-            if status_without_name
-                && e.code == ErrorCode::NotFound
-                && e.message == speclink_verbs::render::no_active_changes().stdout.trim_end() =>
-        {
-            Ok(serde_json::json!({ "output": speclink_verbs::render::no_active_changes().stdout }))
-        }
-        Err(ExecError::Command(e)) => Err(DispatchError::new(e.code.as_str(), e.message)),
+        Err(ExecError::Command(e)) => status_notice(status_without_name, &e)
+            .map_or_else(|| Err(DispatchError::new(e.code.as_str(), e.message)), Ok),
         Err(ExecError::Store(e)) => Err(store_error(e)),
     }
 }
@@ -134,14 +126,14 @@ fn store_error(e: PortError) -> DispatchError {
 }
 
 /// This call's hooks: each one calls its JS function through the hook bridge.
-fn hooks_for(parts: &Parts, broken_hook: &Arc<Mutex<Option<String>>>) -> Hooks {
-    let before_command = parts.has_before.then(|| {
-        let bridge = parts.hooks.clone();
+fn hooks_for(setup: &HostSetup, broken_hook: &Arc<Mutex<Option<String>>>) -> Hooks {
+    let before_command = setup.has_before.then(|| {
+        let bridge = setup.hooks.clone();
         let broken_hook = broken_hook.clone();
         Box::new(move |info: &BeforeCommand| decide(&bridge, info, &broken_hook)) as BeforeCommandHook
     });
-    let after_commit = parts.has_after.then(|| {
-        let bridge = parts.hooks.clone();
+    let after_commit = setup.has_after.then(|| {
+        let bridge = setup.hooks.clone();
         // Not waited for: the dispatch resolves whatever the hook does.
         Box::new(move |info: &AfterCommit| bridge.notify("afterCommit", serde_json::json!([after_json(info)])))
             as AfterCommitHook
@@ -150,13 +142,13 @@ fn hooks_for(parts: &Parts, broken_hook: &Arc<Mutex<Option<String>>>) -> Hooks {
 }
 
 fn identity_json(identity: &Identity) -> serde_json::Value {
-    serde_json::json!({ "id": identity.id(), "displayName": identity.display_name() })
+    person_json(identity.id(), identity.display_name())
 }
 
 fn before_json(info: &BeforeCommand) -> serde_json::Value {
     let mut value = serde_json::json!({
-        "identity": identity_json(&info.identity),
-        "scope": info.scope.as_str(),
+        "identity": identity_json(&info.caller.identity),
+        "scope": info.caller.scope.as_str(),
         "command": info.command,
         "params": info.params,
     });
@@ -167,44 +159,36 @@ fn before_json(info: &BeforeCommand) -> serde_json::Value {
 }
 
 fn after_json(info: &AfterCommit) -> serde_json::Value {
-    let events: Vec<serde_json::Value> = info
-        .events
-        .iter()
-        .map(|e| serde_json::json!({ "name": e.name(), "payload": e.payload() }))
-        .collect();
     serde_json::json!({
-        "identity": identity_json(&info.identity),
-        "scope": info.scope.as_str(),
+        "identity": identity_json(&info.caller.identity),
+        "scope": info.caller.scope.as_str(),
         "command": info.command,
         "scopeVersion": info.scope_version.get(),
-        "events": events,
+        "events": events_json(&info.events),
     })
 }
 
-/// The JS answer as a decision. `undefined` and `{ allow: true }` allow;
-/// `{ allow: false, reason }` denies. A throw, a rejected Promise or any other
-/// answer does not allow: it is recorded as a broken hook.
+/// The JS answer as a decision. index.js hands over one of three shapes —
+/// `{ allow: true }`, `{ allow: false, reason }`, `{ invalid }` — so a throw,
+/// a rejected Promise or any other answer does not allow: it is recorded as a
+/// broken hook.
 fn decide(bridge: &JsStoreBridge, info: &BeforeCommand, broken_hook: &Mutex<Option<String>>) -> Decision {
-    let answer = settle_call(bridge, "beforeCommand", serde_json::json!([before_json(info)]));
     let broken = |message: String| {
         *broken_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some(message);
         Decision::Deny { reason: "beforeCommand failed".to_string() }
     };
-    let answer = match answer {
+    let answer = match settle_call(bridge, "beforeCommand", serde_json::json!([before_json(info)])) {
         Ok(answer) => answer,
-        Err(thrown) => return broken(thrown.message),
+        Err(failure) => return broken(failure.to_string()),
     };
-    match (&answer, answer.get("allow"), answer.get("reason")) {
-        (serde_json::Value::Null, _, _) => Decision::Allow,
-        (_, Some(serde_json::Value::Bool(true)), _) => Decision::Allow,
-        (_, Some(serde_json::Value::Bool(false)), None | Some(serde_json::Value::Null)) => {
-            Decision::Deny { reason: String::new() }
-        }
-        (_, Some(serde_json::Value::Bool(false)), Some(serde_json::Value::String(reason))) => {
+    match (answer.get("allow"), answer.get("reason")) {
+        (Some(serde_json::Value::Bool(true)), _) => Decision::Allow,
+        (Some(serde_json::Value::Bool(false)), Some(serde_json::Value::String(reason))) => {
             Decision::Deny { reason: reason.clone() }
         }
         _ => broken(format!(
-            "beforeCommand: expected undefined, {{ allow: true }} or {{ allow: false, reason }}, got {answer}"
+            "beforeCommand: expected undefined, {{ allow: true }} or {{ allow: false, reason }}, got {}",
+            answer.get("invalid").and_then(|v| v.as_str()).unwrap_or("an answer of another shape")
         )),
     }
 }

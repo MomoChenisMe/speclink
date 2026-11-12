@@ -7,7 +7,6 @@
 //! [`Command`] and calls [`HostKit::run`], so the hooks see the same thing
 //! from every door.
 
-use crate::commit::event_payload;
 use crate::port_exec::{execute_with, BeforeCommit, ExecError, PortExecution};
 use speclink_core::command::{Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext};
 use speclink_store_port::{Actor, Event, ScopeId, StorePort, Version};
@@ -29,7 +28,7 @@ impl Identity {
         if display_name.trim().is_empty() {
             return Err(InvalidIdentity { field: "display name" });
         }
-        let actor = Actor::new(id, display_name).map_err(|_| InvalidIdentity { field: "id" })?;
+        let actor = Actor::new(id, display_name).expect("a non-blank id is a valid actor id");
         Ok(Identity { actor })
     }
 
@@ -75,8 +74,7 @@ pub struct Caller {
 /// What the before-command hook is asked about (design D4).
 #[derive(Debug, Clone)]
 pub struct BeforeCommand {
-    pub identity: Identity,
-    pub scope: ScopeId,
+    pub caller: Caller,
     /// [`Command::name`].
     pub command: &'static str,
     /// [`Command::params`].
@@ -97,8 +95,7 @@ pub enum Decision {
 /// What the after-commit hook watches (design D5).
 #[derive(Debug, Clone)]
 pub struct AfterCommit {
-    pub identity: Identity,
-    pub scope: ScopeId,
+    pub caller: Caller,
     pub command: &'static str,
     pub scope_version: Version,
     /// The events of the commit, as the store's commit received them.
@@ -144,8 +141,7 @@ impl HostKit {
                 return Ok(());
             };
             let info = BeforeCommand {
-                identity: caller.identity.clone(),
-                scope: caller.scope.clone(),
+                caller: caller.clone(),
                 command,
                 params: params.clone(),
                 changed_keys,
@@ -164,9 +160,10 @@ impl HostKit {
         };
         let cmd = without_local_facts(cmd);
         // The kit reads no process environment and no checkout: the Engine
-        // gets the caller's name and nothing else.
+        // gets the caller's name and identifier, and nothing else.
         let engine_ctx = ExecutionContext {
             actor: Some(caller.identity.display_name().to_string()),
+            actor_id: Some(caller.identity.id().to_string()),
             ..Default::default()
         };
         let (store, scope, actor) = (self.store.as_ref(), &caller.scope, &caller.identity.actor);
@@ -194,22 +191,13 @@ impl HostKit {
         };
 
         if let (Some(hook), Some(scope_version)) = (&self.hooks.after_commit, execution.scope_version) {
-            let events = execution
-                .events
-                .iter()
-                .map(|event| Event::new(event.kind(), event_payload(event)))
-                .collect::<Result<Vec<Event>, _>>();
-            // The same mapping built the commit's events, so it cannot fail here.
-            if let Ok(events) = events {
-                let info = AfterCommit {
-                    identity: caller.identity.clone(),
-                    scope: caller.scope.clone(),
-                    command,
-                    scope_version,
-                    events,
-                };
-                let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hook(&info)));
-            }
+            let info = AfterCommit {
+                caller: caller.clone(),
+                command,
+                scope_version,
+                events: execution.commit_events.clone(),
+            };
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hook(&info)));
         }
         Ok(execution)
     }

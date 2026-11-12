@@ -2,20 +2,12 @@
 // an in-memory map, with a switch for Promise results and a broken variant
 // that ignores `expected`. Not exported by the SDK — a host writes its own.
 
-export type PortDoc = { content: string; version: number; modifiedAt: number }
-export type PortOp =
-  | { op: 'put'; key: string; content: string; expected: number | null }
-  | { op: 'delete'; key: string; expected: number }
-export type PortCommit = {
-  actor: { id: string; displayName: string }
-  command: string
-  at: number
-  ops: PortOp[]
-  events: { name: string; payload: unknown }[]
-}
+import type { PortCommit, PortDocument } from '../index'
+
+export type { PortCommit }
 export type KeptEvent = { name: string; payload: unknown; version: number }
 
-type ScopeState = { version: number; docs: Map<string, PortDoc>; events: KeptEvent[] }
+type ScopeState = { version: number; docs: Map<string, PortDocument>; events: KeptEvent[] }
 
 export type MemoryPortOptions = {
   /** Every function returns a Promise that settles a little later. */
@@ -120,7 +112,7 @@ export function memoryPort(options: MemoryPortOptions = {}) {
       for (const [key, content] of Object.entries(docs)) s.docs.set(key, { content, version, modifiedAt: at })
       s.version = version
     },
-    doc: (scope: string, key: string): PortDoc | undefined => state(scope).docs.get(key),
+    doc: (scope: string, key: string): PortDocument | undefined => state(scope).docs.get(key),
     version: (scope: string): number => state(scope).version,
   }
 }

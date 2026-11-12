@@ -64,19 +64,32 @@ pub const REQUIRED_METHODS: &[&str] = &[
 
 /// A store-method failure (throw/reject on the JS side, or a shape the bridge
 /// cannot convert). `Display` yields the contract's method-prefixed message.
-#[derive(Debug, Clone)]
+/// The thrown object's fields arrive as the JSON text index.js's
+/// `thrownFields` builds; `method` is the bridge's own.
+#[derive(Debug, Clone, serde::Deserialize)]
 pub struct BridgeFailure {
+    #[serde(skip)]
     pub method: String,
     pub message: String,
+    #[serde(default)]
     pub code: Option<String>,
+    /// The thrown object's `key` (a store port's conflict names it).
+    #[serde(default)]
+    pub key: Option<String>,
+    /// The thrown object's `actual` as JSON: a number, null, or another value
+    /// (`NaN` and `Infinity` as text), which a store port's conflict refuses.
+    #[serde(default)]
+    pub actual: serde_json::Value,
 }
 
 impl BridgeFailure {
-    fn new(method: &str, message: impl Into<String>) -> BridgeFailure {
+    pub(crate) fn new(method: &str, message: impl Into<String>) -> BridgeFailure {
         BridgeFailure {
             method: method.to_string(),
             message: message.into(),
             code: None,
+            key: None,
+            actual: serde_json::Value::Null,
         }
     }
 }
@@ -95,13 +108,6 @@ pub struct CallRequest {
     /// JSON array of the method's arguments.
     args: serde_json::Value,
     tx: mpsc::Sender<std::result::Result<serde_json::Value, BridgeFailure>>,
-}
-
-/// The invoker's error argument (built by `index.js` from the JS throw/reject).
-#[derive(serde::Deserialize)]
-struct SettleError {
-    message: String,
-    code: Option<String>,
 }
 
 /// The optional store methods the review/verify stamp verbs depend on. The
@@ -202,17 +208,15 @@ pub fn create_bridge(env: Env, invoker: JsFunction) -> Result<JsStoreBridge> {
                         }
                     }
                     _ => {
+                        // index.js sends the thrown object's fields as JSON text.
                         let parsed = fctx
                             .env
-                            .from_js_value::<SettleError, JsUnknown>(err)
-                            .unwrap_or(SettleError {
-                                message: "store method failed".to_string(),
-                                code: None,
-                            });
-                        Err(BridgeFailure {
-                            method: method.to_string(),
-                            message: parsed.message,
-                            code: parsed.code,
+                            .from_js_value::<String, JsUnknown>(err)
+                            .ok()
+                            .and_then(|text| serde_json::from_str::<BridgeFailure>(&text).ok());
+                        Err(match parsed {
+                            Some(failure) => BridgeFailure { method: method.to_string(), ..failure },
+                            None => BridgeFailure::new(method, "store method failed"),
                         })
                     }
                 };

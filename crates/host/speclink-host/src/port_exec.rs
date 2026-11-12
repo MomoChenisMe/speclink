@@ -16,7 +16,7 @@ use speclink_core::command::{
     execute as engine_execute, Command, CommandError, CommandOutcome, DomainEvent, ExecutionContext,
 };
 use speclink_store_port::{
-    Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, Op, PortError,
+    Actor, Commit, DocKey, Document, Event, InvalidValue, KeyPrefix, Listing, PortError,
     ScopeId, StorePort, Timestamp, Version,
 };
 use std::sync::{Mutex, PoisonError};
@@ -38,6 +38,9 @@ pub enum ExecError {
 pub struct PortExecution {
     pub outcome: CommandOutcome,
     pub events: Vec<DomainEvent>,
+    /// The events as the store's commit received them; empty when nothing
+    /// was committed.
+    pub commit_events: Vec<Event>,
     pub scope_version: Option<Version>,
 }
 
@@ -95,10 +98,10 @@ pub(crate) fn execute_at(
     at: Timestamp,
 ) -> Result<PortExecution, ExecError> {
     // The execution context has a display name only. It is the actor id too:
-    // this entry has no stable identity to record.
+    // this entry has no stable identity to record. A name the store refuses
+    // fails only a command that commits.
     let name = actor_name(&ctx.actor);
-    let actor = Actor::new(name.clone(), name).map_err(invalid)?;
-    run(port, scope, &engine_context(ctx), &actor, cmd, None, at)
+    run(port, scope, &engine_context(ctx), Actor::new(name.clone(), name), cmd, None, at)
 }
 
 /// A check on the Engine's result that runs before anything reaches the
@@ -119,14 +122,15 @@ pub fn execute_with(
 ) -> Result<PortExecution, ExecError> {
     // The Engine does not read the clock: the Host gives the commit time.
     let at = now().map_err(ExecError::Store)?;
-    run(port, scope, engine_ctx, actor, cmd, before_commit, at)
+    run(port, scope, engine_ctx, Ok(actor.clone()), cmd, before_commit, at)
 }
 
+/// `actor` is checked only when the command commits.
 fn run(
     port: &dyn StorePort,
     scope: &ScopeId,
     engine_ctx: &ExecutionContext,
-    actor: &Actor,
+    actor: Result<Actor, InvalidValue>,
     cmd: Command,
     before_commit: Option<BeforeCommit<'_>>,
     at: Timestamp,
@@ -145,14 +149,19 @@ fn run(
         return Ok(PortExecution {
             outcome,
             events,
+            commit_events: Vec::new(),
             scope_version: None,
         });
     }
-    let commit = commit_of(actor, label, &events, ops, at).map_err(invalid)?;
+    let commit_events = commit_events_of(&events).map_err(invalid)?;
+    // Its writes in key order, its events in the order the Engine produced them.
+    let actor = actor.map_err(invalid)?;
+    let commit = Commit::new(actor, label, at, ops, commit_events.clone()).map_err(invalid)?;
     let version = port.commit(scope, &commit).map_err(ExecError::Store)?;
     Ok(PortExecution {
         outcome,
         events,
+        commit_events,
         scope_version: Some(version),
     })
 }
@@ -237,20 +246,9 @@ impl StorePort for AtExpected<'_> {
     }
 }
 
-/// The one commit of a command: its writes in key order, its events in the
-/// order the Engine produced them.
-fn commit_of(
-    actor: &Actor,
-    command: &str,
-    events: &[DomainEvent],
-    ops: Vec<Op>,
-    at: Timestamp,
-) -> Result<Commit, InvalidValue> {
-    let events = events
-        .iter()
-        .map(|event| Event::new(event.kind(), event_payload(event)))
-        .collect::<Result<Vec<Event>, InvalidValue>>()?;
-    Commit::new(actor.clone(), command, at, ops, events)
+/// The store events of a command's domain events.
+fn commit_events_of(events: &[DomainEvent]) -> Result<Vec<Event>, InvalidValue> {
+    events.iter().map(|event| Event::new(event.kind(), event_payload(event))).collect()
 }
 
 /// [`invalid_value`] as a failure of the command run.
@@ -704,6 +702,23 @@ mod tests {
             }
             assert_eq!(version(&probe.inner), 1, "call {n}: the store did not change");
         }
+    }
+
+    #[test]
+    fn an_empty_display_name_fails_only_a_commit() {
+        // The commit record needs a non-empty actor; a query never builds one.
+        let mut nameless = ctx();
+        nameless.actor = Actor::Identified {
+            display: String::new(),
+            source: crate::context::ActorSource::Explicit,
+        };
+        let probe = Probe::new(seeded());
+        execute_at(&probe, &scope(), &nameless, list_changes(), at()).expect("a query runs");
+        assert!(matches!(
+            execute_at(&probe, &scope(), &nameless, task_done(), at()),
+            Err(ExecError::Store(PortError::Backend { .. }))
+        ));
+        assert!(probe.commits().is_empty());
     }
 
     #[test]

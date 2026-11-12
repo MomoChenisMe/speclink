@@ -311,13 +311,20 @@ export interface PortCommit {
  *   and keep the events in the same transaction when you need them delivered.
  * - `read` returns one result per key, in the same order (`null` for a
  *   missing document), all from one completed commit. `list` returns the
- *   documents whose key starts with `prefix`.
+ *   documents whose key starts with `prefix`, in byte order of the keys, each
+ *   key once.
+ * - Results cross to the engine as JSON, so every number keeps its exact
+ *   value; a result JSON cannot hold (a cycle, a BigInt) fails the call.
  *
  * Errors: throw an object whose `code` is `'conflict'` (with the `key` that
  * does not match and its `actual` version, or null when it does not exist) or
  * `'unavailable'` (a temporary failure). Anything else is another failure.
  * `StoreConflictError` and `StoreUnavailableError` set these fields for you;
  * the SDK reads only the fields, never `instanceof`.
+ *
+ * Each function must settle: the dispatch waits for it with no time limit,
+ * so a Promise that never settles keeps that dispatch (and its worker thread)
+ * waiting. Put any timeout you need inside the function.
  *
  * WARNING: do not wait for a `dispatch` of the same host inside these
  * functions — the dispatch waits for them, so it would never finish.
@@ -347,7 +354,7 @@ export interface BeforeCommandInfo {
   changedKeys?: string[]
 }
 
-/** `undefined` or `{ allow: true }` allows; `{ allow: false, reason }` refuses with that reason. */
+/** `undefined` or `{ allow: true }` allows; `{ allow: false, reason }` refuses with that reason. Any other answer, `null` included, does not allow. */
 export type BeforeCommandAnswer = void | { allow: true } | { allow: false; reason: string }
 
 export interface AfterCommitInfo {
@@ -364,6 +371,8 @@ export interface AfterCommitInfo {
  * The host's two points to step in; both are optional. An unknown name is
  * refused at `createHost`.
  *
+ * `beforeCommand` must settle: the dispatch waits for it with no time limit.
+ *
  * WARNING: do not wait for a `dispatch` of the same host inside a hook —
  * the dispatch waits for `beforeCommand`, so it would never finish.
  */
@@ -378,7 +387,8 @@ export interface HostHooks {
   beforeCommand?(info: BeforeCommandInfo): MaybePromise<BeforeCommandAnswer>
   /**
    * Called after a successful commit; it only watches. The dispatch does not
-   * wait for it, and its throw or rejected Promise is swallowed. Delivery is
+   * wait for it, what it returns is ignored, and its throw or rejected
+   * Promise is swallowed. Delivery is
    * not guaranteed: a host that needs every event handles them in the store's
    * `commit`, in the same transaction as the writes.
    */
@@ -414,7 +424,8 @@ export interface Host {
 /**
  * Build one host kit for every user over a store port and optional hooks. A
  * store without `list`, `read` or `commit` throws synchronously, naming the
- * missing functions.
+ * missing functions; so does an option other than `store` and `hooks` (an
+ * `actor` included: the identity comes with every dispatch).
  */
 export function createHost(options: CreateHostOptions): Host
 
@@ -435,7 +446,7 @@ export const agentTool: {
 export class StoreConflictError extends Error {
   readonly code: 'conflict'
   readonly key: string
-  /** The document's current version, or null when it does not exist. */
+  /** The document's current version, or null when it does not exist. Any other value is refused as an `internal` failure. */
   readonly actual: number | null
   constructor(key: string, actual: number | null)
 }

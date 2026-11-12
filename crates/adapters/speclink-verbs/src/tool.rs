@@ -29,9 +29,11 @@ pub fn tool_definition() -> ToolDefinition {
     let mut tree = crate::parse::verb_tree();
     tree.build();
     let mut lines = Vec::new();
-    for sub in tree.get_subcommands_mut().filter(|s| s.get_name() != "help") {
-        list_leaves(sub, &mut vec![sub.get_name().to_string()], &mut lines);
-    }
+    for_each_leaf(&mut tree, &mut Vec::new(), &mut |words, leaf| {
+        if let Some(line) = verb_line(words, leaf) {
+            lines.push(line);
+        }
+    });
     ToolDefinition {
         name: "speclink",
         description: format!("{USAGE}\nVerbs:\n{}", lines.join("\n")),
@@ -54,24 +56,36 @@ pub fn tool_definition() -> ToolDefinition {
     }
 }
 
-/// One line per leaf verb under `cmd` that converts to an engine command:
-/// its usage and its one-line help.
-fn list_leaves(cmd: &mut clap::Command, words: &mut Vec<String>, lines: &mut Vec<String>) {
-    let has_subs = cmd.get_subcommands().any(|s| s.get_name() != "help");
-    if !has_subs {
-        if minimal_argv_of(words, cmd).is_some() {
-            let usage = cmd.render_usage().to_string();
-            let usage = usage.trim().trim_start_matches("Usage:").trim().trim_start_matches("speclink ");
-            let about = cmd.get_about().map(|a| a.to_string()).unwrap_or_default();
-            lines.push(format!("- {usage}: {about}"));
-        }
+/// Call `visit` with each leaf verb under `cmd` and its words
+/// (`discuss add-round`), in the tree's order. clap's own `help` is no verb.
+fn for_each_leaf(
+    cmd: &mut clap::Command,
+    words: &mut Vec<String>,
+    visit: &mut dyn FnMut(&[String], &mut clap::Command),
+) {
+    if !cmd.get_subcommands().any(|s| s.get_name() != "help") {
+        visit(words, cmd);
         return;
     }
     for sub in cmd.get_subcommands_mut().filter(|s| s.get_name() != "help") {
         words.push(sub.get_name().to_string());
-        list_leaves(sub, words, lines);
+        for_each_leaf(sub, words, visit);
         words.pop();
     }
+}
+
+/// The description line of a leaf verb that converts to an engine command:
+/// its usage and its one-line help. `None` for a leaf with no engine command.
+fn verb_line(words: &[String], leaf: &mut clap::Command) -> Option<String> {
+    minimal_argv_of(words, leaf)?;
+    let usage = leaf.render_usage().to_string();
+    let usage = usage.trim().trim_start_matches("Usage:").trim().trim_start_matches("speclink ");
+    // The stamps' `--stdin` is hidden from the CLI's help, which refuses it; a
+    // host takes the scope JSON through it, so the model sees it.
+    let hidden_stdin = leaf.get_arguments().any(|a| a.get_long() == Some("stdin") && a.is_hide_set());
+    let flag = if hidden_stdin { " --stdin" } else { "" };
+    let about = leaf.get_about().map(|a| a.to_string()).unwrap_or_default();
+    Some(format!("- {usage}{flag}: {about}"))
 }
 
 /// The shortest argv that converts this leaf to an engine command, or `None`
@@ -147,19 +161,10 @@ mod tests {
 
     /// Every leaf verb of the clap tree, as its words (`discuss add-round`).
     fn leaves() -> BTreeSet<String> {
-        fn walk(cmd: &clap::Command, words: &mut Vec<String>, out: &mut BTreeSet<String>) {
-            let subs: Vec<&clap::Command> = cmd.get_subcommands().filter(|s| s.get_name() != "help").collect();
-            if subs.is_empty() {
-                out.insert(words.join(" "));
-            }
-            for sub in subs {
-                words.push(sub.get_name().to_string());
-                walk(sub, words, out);
-                words.pop();
-            }
-        }
         let mut out = BTreeSet::new();
-        walk(&crate::parse::verb_tree(), &mut Vec::new(), &mut out);
+        for_each_leaf(&mut crate::parse::verb_tree(), &mut Vec::new(), &mut |words, _| {
+            out.insert(words.join(" "));
+        });
         out
     }
 
@@ -222,6 +227,16 @@ mod tests {
             let argv = minimal_argv(&verb).unwrap_or_else(|| panic!("'{verb}' has no minimal argv"));
             let argv: Vec<&str> = argv.iter().map(String::as_str).collect();
             assert_eq!(local_only_of(&argv), None, "{argv:?}");
+        }
+    }
+
+    #[test]
+    fn the_stamps_show_their_stdin_flag() {
+        let description = tool_definition().description;
+        let stamps: Vec<&str> = description.lines().filter(|l| l.contains(" stamp ")).collect();
+        assert_eq!(stamps.len(), 2, "{description}");
+        for line in stamps {
+            assert!(line.contains("--stdin"), "{line}");
         }
     }
 

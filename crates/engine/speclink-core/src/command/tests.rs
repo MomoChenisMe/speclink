@@ -519,6 +519,16 @@ fn status_with_no_changes_is_not_found_with_the_informational_text() {
         err.message,
         "No active changes. Create one with: speclink new change <name>"
     );
+    assert!(err.is_no_active_changes(), "the failure is recognizable by type");
+
+    let named = execute(
+        &store,
+        &ExecutionContext::default(),
+        Command::Status { change: Some("ghost".to_string()), schema: None },
+    )
+    .expect_err("a missing named change fails");
+    assert_eq!(named.code, ErrorCode::NotFound);
+    assert!(!named.is_no_active_changes(), "another not_found is not this case");
 }
 
 #[test]
@@ -1196,6 +1206,69 @@ fn first_claim_on_a_team_store_stamps_the_owner_and_reports_change_claimed() {
     assert_eq!(parsed.claimed_by.as_deref(), Some("Alice <a@example.com>"));
     assert_eq!(parsed.claimed_at.as_deref(), Some(crate::util::today().as_str()));
     assert_eq!(*store.meta_writes.borrow(), 1, "exactly one meta write");
+}
+
+/// A claim by `actor` that also carries the host's stable identifier.
+fn claim_as(store: &TestStore, actor: &str, id: Option<&str>) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+    let ctx = ExecutionContext { actor_id: id.map(str::to_string), ..claim_ctx(actor) };
+    execute(store, &ctx, Command::Claim { name: "demo".to_string() })
+}
+
+fn claimed_by_of(outcome: &CommandOutcome) -> (Option<&str>, bool) {
+    match outcome {
+        CommandOutcome::Claim(o) => (o.claimed_by.as_deref(), o.claimed),
+        other => panic!("expected a claim outcome, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_claim_with_an_identifier_records_it_and_judges_the_owner_by_it() {
+    // change-lifecycle「認領標記欄位」：帶識別的認領以識別判斷身分。
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    let (first, _) = claim_as(&store, "Alice", Some("u_1")).expect("first claim succeeds");
+    assert_eq!(claimed_by_of(&first), (Some("Alice"), true));
+    let stamped = store.meta("demo");
+    assert!(stamped.contains("claimed_by: Alice\n"), "{stamped}");
+    assert!(stamped.contains("claimed_by_id: u_1\n"), "{stamped}");
+    assert!(stamped.contains("claimed_at: "), "{stamped}");
+
+    // Same name, another identifier: another person.
+    let err = claim_as(&store, "Alice", Some("u_2")).expect_err("another identifier is refused");
+    assert_eq!(err.code, ErrorCode::Refused);
+    assert!(err.message.contains("Alice"), "{}", err.message);
+    assert_eq!(store.meta("demo"), stamped, "meta unchanged");
+
+    // Same identifier, a new name: the same person.
+    let (renamed, events) = claim_as(&store, "Alice Chen", Some("u_1")).expect("the holder is recognized");
+    assert_eq!(claimed_by_of(&renamed), (Some("Alice"), false), "the recorded holder stays");
+    assert!(events.is_empty());
+    assert_eq!(store.meta("demo"), stamped, "zero writes");
+    assert_eq!(*store.meta_writes.borrow(), 1, "only the first claim wrote");
+}
+
+#[test]
+fn a_claim_without_an_identifier_still_compares_the_display_name() {
+    // 任一方沒有識別時比對 actor：meta 有 claimed_by_id 但呼叫沒有識別。
+    let held = format!(
+        "{CLAIM_META}claimed_at: 2026-11-12T10:00:00+08:00\nclaimed_by: Alice <a@example.com>\nclaimed_by_id: u_1\n"
+    );
+    let store = TestStore::team_with_meta("demo", &held);
+    let (same, events) = claim_as(&store, "Alice <a@example.com>", None).expect("the same name is the holder");
+    assert_eq!(claimed_by_of(&same), (Some("Alice <a@example.com>"), false));
+    assert!(events.is_empty());
+    let err = claim_as(&store, "Bob <b@example.com>", None).expect_err("another name is refused");
+    assert_eq!(err.code, ErrorCode::Refused);
+    assert_eq!(store.meta("demo"), held, "meta unchanged");
+    assert_eq!(*store.meta_writes.borrow(), 0);
+
+    // The call has an identifier but the meta has none: names are compared.
+    let unkeyed = TestStore::team_with_meta(
+        "demo",
+        &format!("{CLAIM_META}claimed_at: 2026-11-12T10:00:00+08:00\nclaimed_by: Alice\n"),
+    );
+    let (by_name, _) = claim_as(&unkeyed, "Alice", Some("u_9")).expect("the same name is the holder");
+    assert_eq!(claimed_by_of(&by_name), (Some("Alice"), false));
+    assert_eq!(*unkeyed.meta_writes.borrow(), 0);
 }
 
 #[test]
