@@ -16,7 +16,9 @@
 use serde::{Deserialize, Serialize};
 use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use speclink_remote::device;
-use speclink_remote::login::{self as remote_login, LoginOutcome, LoginPhase, Method};
+use speclink_remote::login::{
+    self as remote_login, LoginOutcome, LoginPhase, LoginTarget, PatLoginOutcome, Plan,
+};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -345,6 +347,14 @@ impl remote_login::LoginIo for DesktopLoginIo<'_> {
     }
 }
 
+/// 被拒或逾時的那一輪用的是哪一種登入：兩種的說法不同，前端照它選文案。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum LoginMethod {
+    Browser,
+    Device,
+}
+
 /// 一次登入的可讀結果。連線錯誤走 Err、絕不進 PAT fallback。
 pub enum ConnectionLogin {
     /// 已登入。`access_token` 是登入當下快取的短效 token，交給 TokenManager
@@ -355,9 +365,25 @@ pub enum ConnectionLogin {
     },
     /// server 沒有 device flow（沒有宣告時）或只收存取金鑰：就地改收 PAT。
     PatRequired,
-    Denied,
-    Expired,
+    Denied(LoginMethod),
+    Expired(LoginMethod),
     Cancelled,
+}
+
+impl ConnectionLogin {
+    /// 回給前端的內容：狀態，加上顯示名（已登入）或登入方式（被拒、逾時）。
+    /// access token 不在裡面。
+    pub fn view(&self) -> serde_json::Value {
+        match self {
+            ConnectionLogin::LoggedIn { display, .. } => {
+                serde_json::json!({ "status": "loggedIn", "display": display })
+            }
+            ConnectionLogin::PatRequired => serde_json::json!({ "status": "patRequired" }),
+            ConnectionLogin::Denied(method) => serde_json::json!({ "status": "denied", "method": method }),
+            ConnectionLogin::Expired(method) => serde_json::json!({ "status": "expired", "method": method }),
+            ConnectionLogin::Cancelled => serde_json::json!({ "status": "cancelled" }),
+        }
+    }
 }
 
 /// 印出時不帶 access token，`{:?}` 進了 log 也不會洩漏。
@@ -370,8 +396,8 @@ impl std::fmt::Debug for ConnectionLogin {
                 .field("access_token", &access_token.as_ref().map(|_| "<redacted>"))
                 .finish(),
             ConnectionLogin::PatRequired => f.write_str("PatRequired"),
-            ConnectionLogin::Denied => f.write_str("Denied"),
-            ConnectionLogin::Expired => f.write_str("Expired"),
+            ConnectionLogin::Denied(method) => write!(f, "Denied({method:?})"),
+            ConnectionLogin::Expired(method) => write!(f, "Expired({method:?})"),
             ConnectionLogin::Cancelled => f.write_str("Cancelled"),
         }
     }
@@ -379,10 +405,9 @@ impl std::fmt::Debug for ConnectionLogin {
 
 /// 登入（D7）：先以 Keychain 既有 refresh credential 靜默換新（規格「rotation 後
 /// 舊 credential 失效仍可用」——重啟後無需重新登入）；沒有或已失效才探索
-/// server 宣告的方式、依固定順序選擇並跑到終態。
+/// server 宣告的方式、依固定順序選擇並跑到終態。Desktop 不指定方式。
 pub fn connection_login(
     origin: &str,
-    method: Option<Method>,
     credentials: &dyn CredentialStore,
     registry_path: &Path,
     io: &DesktopLoginIo,
@@ -404,9 +429,11 @@ pub fn connection_login(
     }
 
     let discovery = remote_login::discover(origin).map_err(|e| e.message)?;
-    let plan = remote_login::choose(&discovery, method).map_err(|e| e.to_string())?;
+    let plan = remote_login::choose(&discovery, None).map_err(|e| e.to_string())?;
+    let method = if matches!(plan, Plan::Browser(_)) { LoginMethod::Browser } else { LoginMethod::Device };
     let lock_dir = speclink_remote::auth::speclink_config_dir();
-    Ok(match remote_login::login(origin, &plan, credentials, &lock_dir, io) {
+    let target = LoginTarget { origin, credentials, lock_dir: &lock_dir };
+    Ok(match remote_login::login(&target, &plan, io) {
         LoginOutcome::LoggedIn { display, .. } => {
             record_identity(registry_path, origin, Some(&display))?;
             ConnectionLogin::LoggedIn {
@@ -419,8 +446,8 @@ pub fn connection_login(
             display: String::new(),
             access_token: speclink_remote::refresh::cached_bearer(origin, credentials),
         },
-        LoginOutcome::Denied => ConnectionLogin::Denied,
-        LoginOutcome::Expired => ConnectionLogin::Expired,
+        LoginOutcome::Denied => ConnectionLogin::Denied(method),
+        LoginOutcome::Expired => ConnectionLogin::Expired(method),
         LoginOutcome::Cancelled => ConnectionLogin::Cancelled,
         LoginOutcome::Unsupported | LoginOutcome::TokenRequired => ConnectionLogin::PatRequired,
         LoginOutcome::KeychainUnavailable => {
@@ -428,6 +455,15 @@ pub fn connection_login(
         }
         LoginOutcome::Failed(message) => return Err(message),
     })
+}
+
+/// 這個 origin 在 Keychain 有沒有登入：瀏覽器或裝置登入的 refresh 條目，或
+/// 存取金鑰的條目。CLI 寫的是同一組條目，所以在 CLI 以存取金鑰登入後，這裡
+/// 也算已登入，反過來也一樣。
+pub fn logged_in(origin: &str, credentials: &dyn CredentialStore) -> bool {
+    [CredentialKind::Refresh, CredentialKind::Pat]
+        .into_iter()
+        .any(|kind| matches!(credentials.get(origin, kind), Ok(Some(_))))
 }
 
 /// 進行中的登入的取消旗標（keyed by origin）。同一 origin 再按登入＝取消前一輪。
@@ -475,15 +511,15 @@ pub fn pat_login(
     registry_path: &Path,
 ) -> Result<String, String> {
     let lock_dir = speclink_remote::auth::speclink_config_dir();
-    match remote_login::pat_login(origin, pat, credentials, &lock_dir, None) {
-        LoginOutcome::LoggedIn { display, .. } => {
+    let target = LoginTarget { origin, credentials, lock_dir: &lock_dir };
+    match remote_login::pat_login(&target, pat, None) {
+        PatLoginOutcome::LoggedIn { display, .. } => {
             record_identity(registry_path, origin, Some(&display))?;
             Ok(display)
         }
-        LoginOutcome::Denied => Err("PAT 無效或已被撤銷".to_string()),
-        LoginOutcome::KeychainUnavailable => Err("無法存入系統 Keychain".to_string()),
-        LoginOutcome::Failed(message) => Err(message),
-        other => Err(format!("非預期的登入結果：{other:?}")),
+        PatLoginOutcome::Denied => Err("PAT 無效或已被撤銷".to_string()),
+        PatLoginOutcome::KeychainUnavailable => Err("無法存入系統 Keychain".to_string()),
+        PatLoginOutcome::Failed(message) => Err(message),
     }
 }
 

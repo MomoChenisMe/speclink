@@ -24,6 +24,9 @@ use speclink_protocol::device::{
 };
 use speclink_protocol::query::AuthWhoamiResponse;
 
+/// How long one request to a server or a login service may take.
+pub(crate) const REQUEST_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+
 /// The outcome of probing the initiation endpoint (design 決策 3).
 #[derive(Debug)]
 pub enum InitiateOutcome {
@@ -42,10 +45,7 @@ fn post<T: DeserializeOwned, B: Serialize>(
     body: Option<&B>,
 ) -> Result<T, (Option<u16>, RemoteError)> {
     let url = format!("{}{path}", base_url.trim_end_matches('/'));
-    let req = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .post(&url);
+    let req = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build().post(&url);
     let result = match body {
         Some(payload) => req.send_json(payload),
         None => req.call(),
@@ -127,13 +127,18 @@ pub fn identity(base_url: &str, bearer: &str) -> Result<AuthWhoamiResponse, Remo
 }
 
 fn get_identity(url: &str, bearer: &str) -> Result<AuthWhoamiResponse, RemoteError> {
-    let result = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .get(url)
-        .set("Authorization", &format!("Bearer {bearer}"))
-        .call();
-    match result {
+    get_json(url, Some(bearer))
+}
+
+/// One GET answered in JSON, with a bearer when there is one. A non-2xx answer
+/// goes through the shared registry mapping and keeps its HTTP status, so a
+/// caller can tell "no such route" from a refusal.
+pub(crate) fn get_json<T: DeserializeOwned>(url: &str, bearer: Option<&str>) -> Result<T, RemoteError> {
+    let mut request = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build().get(url);
+    if let Some(bearer) = bearer {
+        request = request.set("Authorization", &format!("Bearer {bearer}"));
+    }
+    match request.call() {
         Ok(resp) => resp.into_json().map_err(|_| RemoteError {
             message: "unexpected server response — the server did not return valid JSON".into(),
             reason: None,

@@ -10,7 +10,7 @@
 //! access token when the server has no device flow). Every other failure is an
 //! error — a broken server must never read as "use a different method".
 
-use crate::{translate_protocol_error, translate_transport, RemoteError};
+use crate::RemoteError;
 use speclink_protocol::auth::{AuthMethodsResponse, BrowserLogin};
 
 /// A login method this client knows how to run.
@@ -82,28 +82,10 @@ impl Discovery {
 /// `GET {origin}/api/speclink/v1/auth-methods`, without a credential.
 pub fn discover(origin: &str) -> Result<Discovery, RemoteError> {
     let url = format!("{}/api/speclink/v1/auth-methods", origin.trim_end_matches('/'));
-    let result = ureq::AgentBuilder::new()
-        .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .get(&url)
-        .call();
-    match result {
-        Ok(resp) => resp
-            .into_json::<AuthMethodsResponse>()
-            .map(Discovery::from_response)
-            .map_err(|_| RemoteError {
-                message: "unexpected server response — the server did not return valid JSON"
-                    .into(),
-                reason: None,
-                status: None,
-                evidence: None,
-            }),
-        Err(ureq::Error::Status(404 | 405, _)) => Ok(Discovery::Undeclared),
-        Err(ureq::Error::Status(status, resp)) => {
-            let body = resp.into_string().unwrap_or_default();
-            Err(translate_protocol_error(status, &body))
-        }
-        Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+    match crate::device::get_json::<AuthMethodsResponse>(&url, None) {
+        Ok(resp) => Ok(Discovery::from_response(resp)),
+        Err(e) if matches!(e.status, Some(404 | 405)) => Ok(Discovery::Undeclared),
+        Err(e) => Err(e),
     }
 }
 

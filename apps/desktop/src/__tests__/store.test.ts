@@ -1605,17 +1605,17 @@ describe("登入階段", () => {
   });
 
   it("拒絕與逾時各自浮為可讀狀態，瀏覽器登入與裝置核准的說法不同", async () => {
-    for (const [phase, status, message] of [
-      [APPROVAL, "denied", "已在瀏覽器拒絕授權"],
-      [APPROVAL, "expired", "授權逾時"],
-      [BROWSER, "denied", "已在登入服務拒絕登入"],
-      [BROWSER, "expired", "瀏覽器登入逾時"],
+    for (const [phase, method, status, message] of [
+      [APPROVAL, "device", "denied", "已在瀏覽器拒絕授權"],
+      [APPROVAL, "device", "expired", "授權逾時"],
+      [BROWSER, "browser", "denied", "已在登入服務拒絕登入"],
+      [BROWSER, "browser", "expired", "瀏覽器登入逾時"],
     ] as const) {
       const login = controlledLogin();
       const store = storeWithConnections(fakeConnections({ loginStart: login.loginStart }));
       const done = store.getState().loginConnection(ORIGIN);
       login.phase(phase);
-      login.finish({ status });
+      login.finish({ status, method });
       await done;
 
       const current = store.getState().connectionPhases[ORIGIN];
@@ -1648,7 +1648,7 @@ describe("登入階段", () => {
     expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
 
     login.phase(APPROVAL);
-    login.finish({ status: "denied" });
+    login.finish({ status: "denied", method: "device" });
     await done;
     expect(store.getState().connectionPhases[ORIGIN]).toEqual({ kind: "idle" });
   });

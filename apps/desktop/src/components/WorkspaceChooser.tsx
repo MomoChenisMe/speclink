@@ -26,7 +26,7 @@ import type { WorkspaceAdapter } from "../adapter/workspace";
 import type { RecentEntry } from "../recents";
 import { locatorKey } from "../session";
 import type { ConnectionPhase } from "../store";
-import { AwaitingApproval, AwaitingBrowser, PatLoginInput } from "./connectionLogin";
+import { LoginWaiting, PatLoginInput } from "./connectionLogin";
 import { RecentList, useRecentOpener, type OpenLocal } from "./RecentList";
 import { BUILTIN_TOOLS } from "../builtinTools";
 
@@ -654,32 +654,20 @@ export function WorkspaceChooser({
             )}
             {/* 登入回饋跟著發起登入的介面走（design 決策三）：等待授權面／PAT
                 輸入／錯誤就地渲染，不要求使用者切到設定頁才看得到狀態。 */}
-            {pendingOrigin && pendingPhase?.kind === "awaitingApproval" && (
-              <div className="rounded-lg border border-border bg-muted/30 p-3">
-                <AwaitingApproval
-                  origin={pendingOrigin}
-                  phase={pendingPhase}
-                  onCancel={() => {
-                    onCancelLogin(pendingOrigin);
-                    setPendingOrigin(null);
-                    setNotice(null);
-                  }}
-                />
-              </div>
-            )}
-            {pendingOrigin && pendingPhase?.kind === "awaitingBrowser" && (
-              <div className="rounded-lg border border-border bg-muted/30 p-3">
-                <AwaitingBrowser
-                  origin={pendingOrigin}
-                  phase={pendingPhase}
-                  onCancel={() => {
-                    onCancelLogin(pendingOrigin);
-                    setPendingOrigin(null);
-                    setNotice(null);
-                  }}
-                />
-              </div>
-            )}
+            {pendingOrigin &&
+              (pendingPhase?.kind === "awaitingApproval" || pendingPhase?.kind === "awaitingBrowser") && (
+                <div className="rounded-lg border border-border bg-muted/30 p-3">
+                  <LoginWaiting
+                    origin={pendingOrigin}
+                    phase={pendingPhase}
+                    onCancel={() => {
+                      onCancelLogin(pendingOrigin);
+                      setPendingOrigin(null);
+                      setNotice(null);
+                    }}
+                  />
+                </div>
+              )}
             {pendingOrigin && pendingPhase?.kind === "patInput" && (
               <div
                 className="rounded-lg border border-border bg-muted/30 p-3"

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 /// expiry, and the minimum poll interval. The device code is high-entropy (used
 /// to poll and to exchange for tokens); the user code is short and human-entered
 /// on the approval page.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceAuthorizationResponse {
     pub device_code: String,
@@ -27,7 +27,7 @@ pub struct DeviceAuthorizationResponse {
 }
 
 /// `POST /auth/device/token` request: the device code obtained at initiation.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTokenRequest {
     pub device_code: String,
@@ -48,7 +48,7 @@ pub enum DeviceTokenStatus {
 /// `POST /auth/device/token` response. On `approved` the token pair and the
 /// access token's lifetime are present; every other status carries only
 /// `status`.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceTokenResponse {
     pub status: DeviceTokenStatus,
@@ -62,14 +62,14 @@ pub struct DeviceTokenResponse {
 }
 
 /// `POST /auth/refresh` request: the current refresh credential.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshRequest {
     pub refresh_token: String,
 }
 
 /// `POST /auth/refresh` response: the rotated token pair.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RefreshResponse {
     pub access_token: String,
@@ -80,7 +80,7 @@ pub struct RefreshResponse {
 
 /// `POST /auth/revoke` request: the refresh credential whose family to revoke
 /// (logout semantics).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RevokeRequest {
     pub refresh_token: String,
@@ -91,6 +91,61 @@ pub struct RevokeRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RevokeResponse {}
+
+/// What a secret prints as. These types travel through error paths and test
+/// output; a `{:?}` there must not carry a token or a device code.
+const REDACTED: &str = "<redacted>";
+
+impl std::fmt::Debug for DeviceAuthorizationResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceAuthorizationResponse")
+            .field("device_code", &REDACTED)
+            .field("user_code", &self.user_code)
+            .field("verification_uri", &self.verification_uri)
+            .field("expires_in", &self.expires_in)
+            .field("interval", &self.interval)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for DeviceTokenRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceTokenRequest").field("device_code", &REDACTED).finish()
+    }
+}
+
+impl std::fmt::Debug for DeviceTokenResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DeviceTokenResponse")
+            .field("status", &self.status)
+            .field("access_token", &self.access_token.as_ref().map(|_| REDACTED))
+            .field("refresh_token", &self.refresh_token.as_ref().map(|_| REDACTED))
+            .field("expires_in", &self.expires_in)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for RefreshRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RefreshRequest").field("refresh_token", &REDACTED).finish()
+    }
+}
+
+impl std::fmt::Debug for RefreshResponse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RefreshResponse")
+            .field("access_token", &REDACTED)
+            .field("refresh_token", &REDACTED)
+            .field("expires_in", &self.expires_in)
+            .finish()
+    }
+}
+
+impl std::fmt::Debug for RevokeRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RevokeRequest").field("refresh_token", &REDACTED).finish()
+    }
+}
 
 #[cfg(test)]
 mod tests {
@@ -187,6 +242,49 @@ mod tests {
 
         let revoked: RevokeResponse = serde_json::from_str("{}").unwrap();
         assert_eq!(serde_json::to_value(&revoked).unwrap(), serde_json::json!({}));
+    }
+
+    /// Printed with `{:?}`, none of these may carry a token or a device code:
+    /// a debug line in a log must not leak a credential.
+    #[test]
+    fn token_carrying_dtos_debug_print_hides_the_secrets() {
+        let printed = [
+            format!(
+                "{:?}",
+                DeviceAuthorizationResponse {
+                    device_code: "dc-secret".into(),
+                    user_code: "WDJB-MJHT".into(),
+                    verification_uri: "https://speclink.example/activate".into(),
+                    expires_in: 900,
+                    interval: 5,
+                }
+            ),
+            format!("{:?}", DeviceTokenRequest { device_code: "dc-secret".into() }),
+            format!(
+                "{:?}",
+                DeviceTokenResponse {
+                    status: DeviceTokenStatus::Approved,
+                    access_token: Some("at-secret".into()),
+                    refresh_token: Some("rt-secret".into()),
+                    expires_in: Some(3600),
+                }
+            ),
+            format!("{:?}", RefreshRequest { refresh_token: "rt-secret".into() }),
+            format!(
+                "{:?}",
+                RefreshResponse {
+                    access_token: "at-secret".into(),
+                    refresh_token: "rt-secret".into(),
+                    expires_in: 3600,
+                }
+            ),
+            format!("{:?}", RevokeRequest { refresh_token: "rt-secret".into() }),
+        ];
+        for line in &printed {
+            assert!(!line.contains("secret"), "{line}");
+        }
+        assert!(printed[0].contains("WDJB-MJHT"), "what is not a secret stays readable: {}", printed[0]);
+        assert!(printed[2].contains("Approved"), "{}", printed[2]);
     }
 
     #[test]

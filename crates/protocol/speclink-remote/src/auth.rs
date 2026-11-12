@@ -44,19 +44,32 @@ pub fn origin_of(url: &str) -> String {
 /// are accepted. Every keyring and credentials-file key goes through this, so
 /// `https://Team.Example.com/x` and `https://team.example.com` are one login.
 pub fn normalize_origin(base_url: &str) -> Result<String, String> {
-    let trimmed = base_url.trim();
-    let (scheme, rest) = trimmed
-        .split_once("://")
+    let (scheme, authority, _) = split_url(base_url.trim())
         .ok_or_else(|| "伺服器位址需以 http:// 或 https:// 開頭".to_string())?;
     let scheme = scheme.to_ascii_lowercase();
     if scheme != "http" && scheme != "https" {
         return Err(format!("不支援的協定「{scheme}」：僅接受 http 或 https"));
     }
-    let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     if authority.is_empty() {
         return Err("伺服器位址缺少主機名".to_string());
     }
     Ok(format!("{scheme}://{}", authority.to_ascii_lowercase()))
+}
+
+/// Split `scheme://authority[rest]` at its two seams: the authority ends at the
+/// first `/`, `?` or `#`, and may be empty. `None` without a `://`.
+pub(crate) fn split_url(url: &str) -> Option<(&str, &str, &str)> {
+    let (scheme, after) = url.split_once("://")?;
+    let (authority, rest) = after.split_at(after.find(['/', '?', '#']).unwrap_or(after.len()));
+    Some((scheme, authority, rest))
+}
+
+/// Whether a credentials-file key names `origin`. Keys written before origins
+/// were normalized keep the case the user typed, so a key also matches by its
+/// normalized form — an entry saved for `https://Team.Example.com` stays
+/// readable, and removable, as `https://team.example.com`.
+fn names_origin(key: &str, origin: &str) -> bool {
+    key == origin || normalize_origin(key).is_ok_and(|normalized| normalized == origin)
 }
 
 fn read_map(path: &Path) -> BTreeMap<String, String> {
@@ -101,7 +114,9 @@ pub fn save_token_at(dir: &Path, origin: &str, token: &str) -> anyhow::Result<Pa
 /// Read the token stored for `origin`, if any. A missing file or missing
 /// entry is simply `None` (treated as "not logged in").
 pub fn load_token_at(dir: &Path, origin: &str) -> Option<String> {
-    read_map(&credentials_path_in(dir)).remove(origin)
+    let mut map = read_map(&credentials_path_in(dir));
+    map.remove(origin)
+        .or_else(|| map.into_iter().find(|(key, _)| names_origin(key, origin)).map(|(_, token)| token))
 }
 
 /// Drop `origin`'s entry from the credentials file, leaving other origins
@@ -110,7 +125,9 @@ pub fn load_token_at(dir: &Path, origin: &str) -> Option<String> {
 pub fn remove_token_at(dir: &Path, origin: &str) -> anyhow::Result<bool> {
     let path = credentials_path_in(dir);
     let mut map = read_map(&path);
-    if map.remove(origin).is_none() {
+    let before = map.len();
+    map.retain(|key, _| !names_origin(key, origin));
+    if map.len() == before {
         return Ok(false);
     }
     std::fs::write(&path, serde_yaml::to_string(&map)?)?;
@@ -152,10 +169,20 @@ impl CredentialSource {
 }
 
 /// A resolved credential: the bearer to send, and which layer produced it.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct ResolvedCredential {
     pub token: String,
     pub source: CredentialSource,
+}
+
+/// Printed without the bearer, so a `{:?}` in a log line cannot leak it.
+impl std::fmt::Debug for ResolvedCredential {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ResolvedCredential")
+            .field("token", &"<redacted>")
+            .field("source", &self.source)
+            .finish()
+    }
 }
 
 /// Walk the ladder against an explicit config dir, credential store and

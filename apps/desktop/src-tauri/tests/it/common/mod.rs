@@ -786,7 +786,7 @@ fn approved_device_login(
         open_browser: opener,
         cancel: &cancel,
     };
-    match connection_login(origin, None, store, registry, &io)? {
+    match connection_login(origin, store, registry, &io)? {
         ConnectionLogin::LoggedIn { access_token: Some(access), .. } => Ok(access),
         other => Err(format!("device login did not complete: {other:?}")),
     }

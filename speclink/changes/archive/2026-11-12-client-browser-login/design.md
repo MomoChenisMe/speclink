@@ -88,7 +88,9 @@ JSON 是 camelCase：`{ "methods": ["browser", "device", "token"], "browser": { 
 11. **存檔。** 在既有的換新鎖裡寫入（D4）。
 12. **查身分。** 用拿到的 access token 問 Server（D6），回傳顯示名稱。
 
-失敗後的狀態：第 11 步之前的任何失敗，本機沒有新增或改變任何憑證。第 11 步是鎖裡的兩筆寫入（refresh 條目、access token 快取），先寫 refresh 條目；第二筆失敗時留下的是「有 refresh、沒有快取」，下一次使用時會換新一次，這是可以接受的半套。第 12 步失敗時憑證已經存好，回報「已登入但無法取得身分」，不清掉憑證。
+失敗後的狀態：第 11 步之前的任何失敗，本機沒有新增或改變任何憑證。第 11 步是鎖裡的兩筆寫入（refresh 條目、access token 快取），先寫 refresh 條目；第二筆失敗時留下的是「有 refresh、沒有快取」，下一次使用時會換新一次，這是可以接受的半套。快取寫不進去不算登入失敗：refresh 條目存好就是登入成功。第 12 步失敗時憑證已經存好，回報「已登入但無法取得身分」，不清掉憑證；裝置登入核准後查不到身分時也是同一個結果。
+
+取消在存檔之前的每一步都算數：開瀏覽器之前、收到回呼之後、換完 token 之後各看一次取消的旗標。換完 token 才發現已取消時不存檔，並對登入服務的撤銷網址（有的話）盡力撤銷剛拿到的 refresh token；裝置登入在核准的同時被取消，也不存檔並盡力撤銷剛發下來的那一族。
 
 - **否決：用 `localhost` 當回呼主機** — RFC 8252 的 8.3 節不建議：它可能被解析到別的位址。
 - **否決：固定的埠** — 會和別的程式衝突；標準要求登入服務接受任意埠。
@@ -140,9 +142,10 @@ API 根的 `whoami` 由變更 host-kit-client-door 的入口提供。在那之�
 
 - `discover(origin) -> Result<Discovery, RemoteError>`（D1）
 - `choose(&Discovery, Option<Method>) -> Result<Plan, ChooseError>`（D2）
-- `login(origin, plan, &dyn CredentialStore, config_dir, &dyn LoginIo) -> LoginOutcome`：依計畫跑瀏覽器登入、裝置登入，或回報「需要存取金鑰」。
-- `pat_login(origin, token, &dyn CredentialStore, lock_dir, fallback_dir: Option<&Path>) -> LoginOutcome`：驗證後存入金鑰圈；金鑰圈不能用時存入 `fallback_dir` 的憑證檔。`fallback_dir` 是 `None` 時（Desktop 的憑證只在金鑰圈）回報「金鑰圈不能用」。
-- `logout(origin, &dyn CredentialStore, credentials_file_dir: Option<&Path>) -> Result<LogoutOutcome, String>`：有裝置登入的 refresh 時呼叫 Server 的撤銷端點；有瀏覽器登入的 refresh 且條目帶撤銷網址時對它送 RFC 7009 的撤銷請求；兩者失敗都只回報警告。之後清掉 refresh、快取、存取金鑰三個條目，有 `credentials_file_dir` 時（CLI）也清掉憑證檔的條目。這個位址沒有任何本機憑證時什麼都不動，回報「沒有登入」。
+- `LoginTarget { origin, credentials: &dyn CredentialStore, lock_dir }`：一次登入作用的對象——哪一台 Server、憑證放哪個金鑰圈、換新鎖在哪個目錄。`login`、`pat_login` 與裝置登入的迴圈 `device_login` 都收它，不再各自傳這三個參數；`logout` 用不到換新鎖，照舊收位址與金鑰圈。
+- `login(&LoginTarget, plan, &dyn LoginIo) -> LoginOutcome`：依計畫跑瀏覽器登入、裝置登入，或回報「需要存取金鑰」。
+- `pat_login(&LoginTarget, token, fallback_dir: Option<&Path>) -> PatLoginOutcome`：驗證後存入金鑰圈；金鑰圈不能用時存入 `fallback_dir` 的憑證檔。`fallback_dir` 是 `None` 時（Desktop 的憑證只在金鑰圈）回報「金鑰圈不能用」。結果只有四種：成功（顯示名稱與 handle）、被拒絕、金鑰圈不能用、錯誤。
+- `logout(origin, &dyn CredentialStore, credentials_file_dir: Option<&Path>) -> Result<LogoutOutcome, String>`：有裝置登入的 refresh 時呼叫 Server 的撤銷端點；有瀏覽器登入的 refresh 且條目帶撤銷網址時對它送 RFC 7009 的撤銷請求；兩者失敗都只回報警告。之後清掉 refresh、快取、存取金鑰三個條目，有 `credentials_file_dir` 時（CLI）也清掉憑證檔的條目。這個位址沒有任何本機憑證時什麼都不動，回報「沒有登入」。金鑰圈讀不到不等於沒有登入：有憑證檔可以處理時（CLI 在沒有金鑰圈的機器上）略過金鑰圈這一層；沒有時（Desktop）登出失敗。金鑰圈讀得到但刪不掉時，兩邊都是登出失敗。
 - `normalize_origin(input) -> Result<String, String>`：從 Desktop 搬來的規則（scheme 與主機轉小寫、只接受 http 與 https、去掉路徑）。金鑰圈的鍵與憑證檔的鍵都用它的結果。
 
 `LoginIo` 取代既有的 `DeviceLoginIo`：
@@ -156,13 +159,13 @@ pub trait LoginIo {
 }
 ```
 
-`LoginOutcome` 的種類：成功（顯示名稱與 handle；CLI 用存取金鑰登入時印的是「名稱 (@handle)」）、成功但查不到身分、被拒絕、逾時、取消、這台 Server 不支援、需要存取金鑰、金鑰圈不能用、錯誤（訊息）。
+`LoginOutcome` 的種類：成功（顯示名稱與 handle）、成功但查不到身分、被拒絕、逾時、取消、這台 Server 不支援、需要存取金鑰、金鑰圈不能用、錯誤（訊息）。存取金鑰登入有自己的 `PatLoginOutcome`（CLI 用存取金鑰登入時印的是「名稱 (@handle)」）。
 
 各端怎麼用：
 
 - **CLI**：`cmd_auth` 依旗標組出偏好，呼叫 `discover`、`choose`、`login`。`LoginIo` 的實作把階段印到 stdout、用既有的三個平台指令開瀏覽器、`cancelled` 一律回假（Ctrl-C 直接結束程序）。「需要存取金鑰」時印出既有的指引並以非 0 結束。
 - **Desktop**：Tauri 的 `connection_login_start` 在背景執行緒跑同一組函式；`LoginIo` 的實作把階段經 Tauri 事件送到前端、用既有的 opener 外掛開瀏覽器、`cancelled` 讀一個由 `connection_login_cancel` 設定的旗標。既有「先試一次安靜換新」的捷徑保留，放在 `connection_login_start` 呼叫 `login` 之前。前端的 store 只做一件事：收到階段就更新 `ConnectionPhase`；計時器、間隔加倍、逾時判斷都刪掉。倒數仍在前端依階段帶來的期限顯示。
-- 每個 Tauri command 只做一行委派；背景執行緒與旗標的管理放在 `connections.rs` 既有的連線狀態旁。
+- Tauri command 只做接線：`connection_login_start` 把事件的送出與 opener 外掛（都帶 tauri 型別，不能進 `connections.rs`）包成 `LoginIo`，呼叫 `connections::connection_login`，把 access token 交給記憶體持有，再回傳結果的檢視；`connection_login_cancel` 是一行。登入的編排、結果怎麼轉成回給前端的內容、取消旗標的管理都在 `connections.rs`。Desktop 不指定登入方式，所以 command 只收 `origin`。
 
 裝置登入迴圈的規則沿用 CLI 那一份（收到 slow_down 時間隔加 5 秒、累計等待超過期限就逾時），Desktop 改用後不再是「間隔加倍」。
 
@@ -209,9 +212,9 @@ stdout 的內容：瀏覽器登入印「Open this URL to sign in:」加授權網
 **介面與資料形狀**
 
 - 線上：`GET /api/speclink/v1/auth-methods` 的回應（D1）。
-- Rust：`speclink_protocol::auth::{AuthMethodsResponse, BrowserLogin}`；`speclink_remote::login::{discover, choose, login, pat_login, logout, normalize_origin, LoginIo, LoginPhase, LoginOutcome, Method}`。`DeviceLoginIo` 與 `DeviceLoginOutcome` 移除，由上面的取代。
+- Rust：`speclink_protocol::auth::{AuthMethodsResponse, BrowserLogin}`；`speclink_remote::login::{discover, choose, login, pat_login, logout, normalize_origin, LoginTarget, LoginIo, LoginPhase, LoginOutcome, PatLoginOutcome, Method}`。`DeviceLoginIo` 與 `DeviceLoginOutcome` 移除，由上面的取代。
 - 金鑰圈：`refresh:<位址>` 的值多一種形狀（D4）。
-- Tauri：`connection_login_start { origin, method? }`、`connection_login_cancel { origin }`、事件 `connection-login-phase`。既有的 `device_login_start`、`device_login_observe` 移除；`pat_login`、`logout` 保留名稱，內部改成委派。
+- Tauri：`connection_login_start { origin }`（回傳的被拒與逾時帶 `method`：`browser` 或 `device`）、`connection_login_cancel { origin }`、事件 `connection-login-phase`。既有的 `device_login_start`、`device_login_observe` 移除；`pat_login`、`logout` 保留名稱，內部改成委派。
 - CLI：`auth login` 的 `--browser`、`--device`。
 
 **失敗的樣子**
@@ -267,12 +270,21 @@ stdout 的內容：瀏覽器登入印「Open this URL to sign in:」加授權網
 - verifier 與 state 各是 32 個來自作業系統的隨機位元組（getrandom）。
 - 金鑰圈 `refresh` 條目的 JSON 解析失敗時退回裝置登入的舊格式，不會 panic。
 - `pat_login` 與 `logout` 的退路參數是 `Option`，省略（`None`）時是比較安全的那一邊：只用金鑰圈、不碰憑證檔。
+- 對登入服務的請求不跟隨轉址；3xx 的回應不會被當成撤銷成功或標準文件。
+- 回呼監聽讀一個請求有整體期限（2 秒），慢速送位元組的連線到期就丟掉；只需要請求的第一行，標頭很長（同機其他服務的 cookie）也不會漏掉回呼。
 
 **找到並修正的問題（都補了測試）：**
 
 - **Windows 的 CLI 開瀏覽器會被 `cmd.exe` 拆開網址。** 既有的做法是 `cmd /C start "" <網址>`，`cmd.exe` 把 `&` 當成指令分隔；授權網址一定含 `&`，所以瀏覽器只會收到前半段，後半段會被當成指令執行（惡意的標準文件可以藉此在使用者的電腦上執行指令）。改成 `rundll32 url.dll,FileProtocolHandler <網址>`，網址不經過任何 shell。測試確認網址原樣是最後一個參數、程式不是 `cmd`。
 - **帶 token 的型別用 derive 的 `Debug`。** `RefreshEntry`、`OAuthRefresh`、`TokenResponse` 與 Desktop 的 `ConnectionLogin` 被 `{:?}` 印出時會帶出 token。改成手寫的 `Debug`，token 欄位印成 `<redacted>`，其他欄位照常可讀。
 - **IPv6 主機的判斷太寬。** `http://[::1].example.com` 會被讀成主機 `::1`。改成 `]` 之後只能接 `:埠` 或結束。
+
+**品質關卡第一輪之後補上的（都補了測試）：**
+
+- 同一類帶 token 的型別一併遮蔽：`speclink-protocol` 的裝置登入線上型別（device code、access token、refresh token）與 `ResolvedCredential`。
+- 裝置登入的 refresh 條目種類是看內容分辨的。Server 發下來的 refresh token 如果長得像瀏覽器登入的條目，登入與換新都拒收，不然之後的換新與撤銷會打到 Server 寫在裡面的任意網址。
+- 取消與換 token 撞在一起時不再留下憑證（見 D3）。
+- 登出時金鑰圈讀不到或刪不掉，不再回報成功（見 D7）。
 
 **沒有改、留給之後的項目：**
 

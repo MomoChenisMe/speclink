@@ -35,16 +35,18 @@ Source discussion: embedded-host-needs（cut 8）。
   - 不帶旗標且在互動的終端機：依探索的結果選擇。
   - `--browser`：強制瀏覽器登入。Server 沒有宣告瀏覽器登入時以非 0 結束並說明。
   - `--device`：強制裝置登入。
-  - `--pat`、`--token-stdin`：行為與輸出不變；stdin 的用法不變。
+  - `--pat`、`--token-stdin`：提示、成功時的輸出格式與 stdin 的用法不變；驗證金鑰改用不限定專案的身分查詢（見相容性影響）。
   - 不帶旗標且不是互動的終端機：照舊以非 0 結束並指引 `--token-stdin`。
   - exit code：成功 0；被拒絕、逾時、取消、Server 不支援指定的方式、金鑰圈不能用都是非 0，訊息可以分辨。
   - 瀏覽器登入時 stdout 印出授權網址（瀏覽器沒有自動開啟時使用者可以自己貼上）。
 - **Speclink Desktop**：「新增專案 → Server」與「設定 → 伺服器」的登入多一個「等待瀏覽器登入」的階段，就地顯示說明、可複製的網址、倒數與取消。「登入方式」卡改成三列。
 - **相容性影響**：
-  - 連到今天的官方 server：它沒有 `auth-methods`，所以登入流程、輸出與 exit code 都不變。
+  - 連到今天的官方 server：它沒有 `auth-methods`，所以登入流程、輸出與 exit code 都不變。唯一的例外是裝置登入核准後查不到身分的情況（見本段最後一條）。
   - `speclink auth login --pat` 與 `--token-stdin`：輸出不變。存放位置在有金鑰圈的機器上從憑證檔改成金鑰圈，`speclink auth status --json` 的 `credentialSource` 因此從 `credentials_file` 變成 `keychain_pat`。既有憑證檔的條目不搬移、照常可用；`auth logout` 會清掉它。
   - `auth status --json` 的欄位與值域不變：瀏覽器登入的憑證來源顯示為既有的 `keychain_refresh`。
-  - Server 位址含大寫主機名稱的既有登入：正規化後金鑰圈的鍵不同，要重新登入一次。
+  - `speclink auth login --pat` 與 `--token-stdin` 的驗證：改問 Server 根的身分查詢，不再要求使用者是該專案的成員。金鑰有效但不是成員的人，以前登入時就被擋（exit code 非 0）；現在登入成功，執行動詞時才收到權限錯誤。`speclink auth status` 仍會顯示 repo 驗證的結果。
+  - Server 位址含大寫主機名稱的既有登入：正規化後金鑰圈的鍵不同，要重新登入一次。憑證檔不受影響：以大寫主機名稱存下的條目照常讀得到，登出時也會清掉。
+  - 裝置登入核准後查不到身分（例如 Server 剛好出錯）：憑證已經存好，以前 CLI 以非 0 結束，現在回報「已登入」並在 stderr 警告查不到身分。
   - 同一台電腦上新舊版本混用：舊版讀到瀏覽器登入存的條目時會當成裝置登入的 refresh token 去換新，被拒絕後清掉它。只有宿主啟用瀏覽器登入時才會遇到，而舊版本來就不能用瀏覽器登入。
 - **設定欄位**：`speclink/config.yaml` 與 `.speclink.yaml` 沒有新增或變更。
 - **影響的技能**：沒有。
@@ -85,8 +87,10 @@ Source discussion: embedded-host-needs（cut 8）。
     - crates/protocol/speclink-remote/tests/it/browser_login.rs
     - crates/protocol/speclink-remote/tests/it/login_methods.rs
     - crates/adapters/speclink-cli/tests/it/auth_login_methods.rs
+    - crates/adapters/speclink-cli/tests/it/fake_server.rs
   - Modified:
     - crates/protocol/speclink-protocol/src/lib.rs
+    - crates/protocol/speclink-protocol/src/device.rs
     - crates/protocol/speclink-remote/Cargo.toml
     - crates/protocol/speclink-remote/src/lib.rs
     - crates/protocol/speclink-remote/src/login.rs
@@ -95,11 +99,14 @@ Source discussion: embedded-host-needs（cut 8）。
     - crates/protocol/speclink-remote/src/credentials.rs
     - crates/protocol/speclink-remote/src/device.rs
     - crates/protocol/speclink-remote/tests/it/main.rs
+    - crates/protocol/speclink-remote/tests/it/device_login_flow.rs
     - crates/adapters/speclink-cli/src/verbs/connection.rs
     - crates/adapters/speclink-cli/tests/it/main.rs
+    - crates/adapters/speclink-cli/tests/it/remote_connect.rs
     - apps/desktop/src-tauri/src/connections.rs
     - apps/desktop/src-tauri/src/lib.rs
-    - apps/desktop/src-tauri/src/remote.rs
+    - apps/desktop/src-tauri/tests/it/login_orchestration.rs
+    - apps/desktop/src-tauri/tests/it/common/mod.rs
     - apps/desktop/src/store.ts
     - apps/desktop/src/adapter/connections.ts
     - apps/desktop/src/components/connectionLogin.tsx
@@ -107,7 +114,13 @@ Source discussion: embedded-host-needs（cut 8）。
     - apps/desktop/src/components/ServersPanel.tsx
     - apps/desktop/src/views/settings/ServersPage.tsx
     - apps/desktop/src/i18n/messages.ts
+    - apps/desktop/src/settingsCatalog.ts
     - apps/desktop/src/__tests__/serversPage.test.tsx
+    - apps/desktop/src/__tests__/serversPanel.test.tsx
+    - apps/desktop/src/__tests__/store.test.ts
+    - apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    - apps/desktop/src/__tests__/remoteOpen.test.ts
+    - apps/desktop/src/__tests__/remoteResilience.test.tsx
   - Removed: (none)
 - 新的相依套件（都已經在 Cargo.lock 裡，由其他 crate 帶入）：`speclink-remote` 直接相依 sha2、base64、getrandom。
 - 相依：沒有。可以和 host-kit-client-door 並行；兩邊靠 `speclink-protocol` 的線上型別對齊，型別由這個變更加入。

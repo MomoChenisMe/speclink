@@ -56,6 +56,15 @@ pub enum LoginPhase {
     },
 }
 
+/// Where a login acts: the server, the keyring its credentials go to, and the
+/// directory that holds the rotation lock.
+#[derive(Clone, Copy)]
+pub struct LoginTarget<'a> {
+    pub origin: &'a str,
+    pub credentials: &'a dyn CredentialStore,
+    pub lock_dir: &'a Path,
+}
+
 /// How a login ended. Denial, expiry and cancellation are verdicts, not
 /// errors — each needs its own message.
 #[derive(Debug, Clone, PartialEq)]
@@ -76,23 +85,17 @@ pub enum LoginOutcome {
 }
 
 /// Run `plan` to a verdict, storing the credentials on success.
-pub fn login(
-    origin: &str,
-    plan: &Plan,
-    credentials: &dyn CredentialStore,
-    config_dir: &Path,
-    io: &dyn LoginIo,
-) -> LoginOutcome {
+pub fn login(target: &LoginTarget, plan: &Plan, io: &dyn LoginIo) -> LoginOutcome {
     let result = match plan {
         Plan::Token => return LoginOutcome::TokenRequired,
         // Probe before starting: signing in only to find there is nowhere to
         // keep the credential wastes the user's time, and a refresh credential
         // never goes to a plain file.
-        _ if credentials.get(origin, CredentialKind::Refresh).is_err() => {
+        _ if target.credentials.get(target.origin, CredentialKind::Refresh).is_err() => {
             return LoginOutcome::KeychainUnavailable
         }
-        Plan::Browser(browser) => browser_login(origin, browser, credentials, config_dir, io),
-        Plan::Device => device_login(origin, credentials, config_dir, io),
+        Plan::Browser(browser) => browser_login(target, browser, io),
+        Plan::Device => device_login(target, io),
     };
     result.unwrap_or_else(LoginOutcome::Failed)
 }
@@ -103,16 +106,15 @@ pub fn login(
 /// Both credentials are written before the identity lookup: the refresh
 /// credential is what survives this process, and the access token beside it is
 /// what keeps the next command from spending a rotation.
-pub fn device_login(
-    origin: &str,
-    credentials: &dyn CredentialStore,
-    lock_dir: &Path,
-    io: &dyn LoginIo,
-) -> Result<LoginOutcome, String> {
+pub fn device_login(target: &LoginTarget, io: &dyn LoginIo) -> Result<LoginOutcome, String> {
+    let origin = target.origin;
     let auth = match device::initiate(origin).map_err(|e| e.to_string())? {
         InitiateOutcome::Supported(auth) => auth,
         InitiateOutcome::Unsupported => return Ok(LoginOutcome::Unsupported),
     };
+    if io.cancelled() {
+        return Ok(LoginOutcome::Cancelled);
+    }
 
     io.phase(LoginPhase::AwaitingDevice {
         verification_uri: auth.verification_uri.clone(),
@@ -140,16 +142,15 @@ pub fn device_login(
                 let refresh = resp
                     .refresh_token
                     .ok_or_else(|| "server 回報已核准卻未附 refresh credential".to_string())?;
-                store_login(
-                    origin,
-                    credentials,
-                    lock_dir,
-                    &RefreshEntry::Device(refresh),
-                    &access,
-                    resp.expires_in.unwrap_or(0),
-                )?;
-                let who = device::identity(origin, &access).map_err(|e| e.to_string())?;
-                return Ok(LoginOutcome::LoggedIn { display: who.user.name, handle: who.user.handle });
+                let entry = RefreshEntry::device(refresh.clone())?;
+                // A cancel that lands with the approval still wins: nothing is
+                // stored, and the family the server just issued is revoked.
+                if io.cancelled() {
+                    let _ = device::revoke(origin, &refresh);
+                    return Ok(LoginOutcome::Cancelled);
+                }
+                store_login(target, &entry, &access, resp.expires_in.unwrap_or(0))?;
+                return Ok(signed_in(origin, &access));
             }
             DeviceTokenStatus::Denied => return Ok(LoginOutcome::Denied),
             DeviceTokenStatus::Expired => return Ok(LoginOutcome::Expired),
@@ -169,12 +170,11 @@ pub fn device_login(
 
 /// A browser login (D3): metadata, loopback listener, PKCE and state, the
 /// browser, the callback, the code exchange, storage, identity. Nothing is
-/// stored before the exchange succeeds.
+/// stored before the exchange succeeds, and a cancel wins at every step up to
+/// the store.
 fn browser_login(
-    origin: &str,
+    target: &LoginTarget,
     browser: &BrowserLogin,
-    credentials: &dyn CredentialStore,
-    lock_dir: &Path,
     io: &dyn LoginIo,
 ) -> Result<LoginOutcome, String> {
     let endpoints = oauth::discover_endpoints(&browser.issuer)?;
@@ -191,6 +191,9 @@ fn browser_login(
         &state,
         &browser.scopes,
     );
+    if io.cancelled() {
+        return Ok(LoginOutcome::Cancelled);
+    }
 
     io.phase(LoginPhase::AwaitingBrowser {
         url: url.clone(),
@@ -207,10 +210,21 @@ fn browser_login(
     };
     // The port closes now: nothing that arrives later can matter.
     drop(listener);
+    if io.cancelled() {
+        reply.finish(false);
+        return Ok(LoginOutcome::Cancelled);
+    }
 
+    // `Ok(None)`: the user cancelled while the code was being exchanged.
     let stored = oauth::exchange_code(&endpoints.token, &browser.client_id, &code, &redirect_uri, &verifier)
         .map_err(oauth::GrantFailure::message)
         .and_then(|tokens| {
+            if io.cancelled() {
+                if let (Some(revocation), Some(refresh)) = (&endpoints.revocation, &tokens.refresh_token) {
+                    let _ = oauth::revoke(revocation, &browser.client_id, refresh);
+                }
+                return Ok(None);
+            }
             let entry = RefreshEntry::OAuth(OAuthRefresh {
                 refresh_token: tokens.refresh_token,
                 token_endpoint: endpoints.token,
@@ -218,45 +232,58 @@ fn browser_login(
                 revocation_endpoint: endpoints.revocation,
             });
             store_login(
-                origin,
-                credentials,
-                lock_dir,
+                target,
                 &entry,
                 &tokens.access_token,
                 tokens.expires_in.unwrap_or(oauth::DEFAULT_ACCESS_TOKEN_SECS),
             )?;
-            Ok(tokens.access_token)
+            Ok(Some(tokens.access_token))
         });
-    reply.finish(stored.is_ok());
-    let access = stored?;
+    reply.finish(matches!(stored, Ok(Some(_))));
+    match stored? {
+        Some(access) => Ok(signed_in(target.origin, &access)),
+        None => Ok(LoginOutcome::Cancelled),
+    }
+}
 
-    // The credentials are in; an identity lookup that fails does not undo them.
-    Ok(match device::identity(origin, &access) {
+/// The verdict of a login whose credentials are stored: an identity lookup
+/// that fails does not undo them.
+fn signed_in(origin: &str, access: &str) -> LoginOutcome {
+    match device::identity(origin, access) {
         Ok(who) => LoginOutcome::LoggedIn { display: who.user.name, handle: who.user.handle },
         Err(e) => LoginOutcome::LoggedInWithoutIdentity { message: e.message },
-    })
+    }
 }
 
 /// Store a login's credentials under the rotation lock: another process
 /// mid-rotation would otherwise write back a credential from the family this
-/// login just replaced. The refresh entry goes first — a failure after it
-/// leaves "a refresh, no cache", which the next command repairs with one
-/// rotation. An origin holds one kind of login at a time, so the access-token
-/// entry goes; the ladder prefers the refresh entry anyway if that delete fails.
+/// login just replaced. The refresh entry is the login. A cache that cannot be
+/// written costs the next command one rotation, and a PAT entry that cannot be
+/// removed loses the ladder to the refresh entry anyway — neither fails it.
 fn store_login(
-    origin: &str,
-    credentials: &dyn CredentialStore,
-    lock_dir: &Path,
+    target: &LoginTarget,
     refresh: &RefreshEntry,
     access: &str,
     expires_in: u64,
 ) -> Result<(), String> {
+    let LoginTarget { origin, credentials, lock_dir } = *target;
     crate::refresh::with_rotation_lock(lock_dir, || {
         credentials.set(origin, CredentialKind::Refresh, &refresh.encode())?;
-        crate::refresh::store_cached_bearer(origin, credentials, access, expires_in)?;
+        let _ = crate::refresh::store_cached_bearer(origin, credentials, access, expires_in);
         let _ = credentials.delete(origin, CredentialKind::Pat);
         Ok(())
     })
+}
+
+/// How a personal-access-token login ended.
+#[derive(Debug, Clone, PartialEq)]
+pub enum PatLoginOutcome {
+    LoggedIn { display: String, handle: String },
+    /// The server refused the token; nothing was stored.
+    Denied,
+    /// The keyring cannot take the token and there is no file to fall back to.
+    KeychainUnavailable,
+    Failed(String),
 }
 
 /// Log in with a personal access token: check it with the identity lookup,
@@ -264,21 +291,15 @@ fn store_login(
 ///
 /// When the keyring cannot take it, the token goes to the credentials file in
 /// `fallback_dir`; with no `fallback_dir` (the desktop app keeps credentials in
-/// the keyring only) that is [`LoginOutcome::KeychainUnavailable`]. A token
-/// the server refuses is [`LoginOutcome::Denied`] and stores nothing.
-pub fn pat_login(
-    origin: &str,
-    token: &str,
-    credentials: &dyn CredentialStore,
-    lock_dir: &Path,
-    fallback_dir: Option<&Path>,
-) -> LoginOutcome {
+/// the keyring only) that is [`PatLoginOutcome::KeychainUnavailable`].
+pub fn pat_login(target: &LoginTarget, token: &str, fallback_dir: Option<&Path>) -> PatLoginOutcome {
+    let LoginTarget { origin, credentials, lock_dir } = *target;
     let who = match device::identity(origin, token) {
         Ok(who) => who,
-        Err(e) if matches!(e.status, Some(401 | 403)) => return LoginOutcome::Denied,
-        Err(e) => return LoginOutcome::Failed(e.message),
+        Err(e) if matches!(e.status, Some(401 | 403)) => return PatLoginOutcome::Denied,
+        Err(e) => return PatLoginOutcome::Failed(e.message),
     };
-    let logged_in = LoginOutcome::LoggedIn { display: who.user.name, handle: who.user.handle };
+    let logged_in = PatLoginOutcome::LoggedIn { display: who.user.name, handle: who.user.handle };
 
     // Under the rotation lock: a rotation in flight would otherwise write the
     // refresh entry back after it was cleared, and win the ladder over the PAT.
@@ -293,13 +314,13 @@ pub fn pat_login(
         })
     });
     match (in_keyring, fallback_dir) {
-        (Err(message), _) => LoginOutcome::Failed(message),
+        (Err(message), _) => PatLoginOutcome::Failed(message),
         (Ok(true), _) => logged_in,
         (Ok(false), Some(dir)) => match auth::save_token_at(dir, origin, token) {
             Ok(_) => logged_in,
-            Err(e) => LoginOutcome::Failed(format!("could not write the credentials file: {e}")),
+            Err(e) => PatLoginOutcome::Failed(format!("could not write the credentials file: {e}")),
         },
-        (Ok(false), None) => LoginOutcome::KeychainUnavailable,
+        (Ok(false), None) => PatLoginOutcome::KeychainUnavailable,
     }
 }
 
@@ -320,13 +341,25 @@ pub struct LogoutOutcome {
 /// Log out of `origin`: revoke what can be revoked (best effort), then clear
 /// every local credential — the keyring's refresh, cache and PAT entries, and
 /// the credentials-file entry in `credentials_file_dir` when there is one.
+///
+/// A keyring that cannot be read is not "logged out". With a credentials file
+/// to act on (the CLI on a machine without a keyring) the keyring layer is
+/// skipped, as the resolution ladder skips it; without one (the desktop app)
+/// the logout fails, because nothing could be checked or cleared. A keyring
+/// that reads but will not delete fails the logout for both.
 pub fn logout(
     origin: &str,
     credentials: &dyn CredentialStore,
     credentials_file_dir: Option<&Path>,
 ) -> Result<LogoutOutcome, String> {
-    let refresh = credentials.get(origin, CredentialKind::Refresh).ok().flatten();
-    let removed_pat = matches!(credentials.get(origin, CredentialKind::Pat), Ok(Some(_)));
+    let read = credentials.get(origin, CredentialKind::Refresh).and_then(|refresh| {
+        Ok((refresh, credentials.get(origin, CredentialKind::Pat)?.is_some()))
+    });
+    let (refresh, removed_pat, keyring_reads) = match (read, credentials_file_dir) {
+        (Ok((refresh, pat)), _) => (refresh, pat, true),
+        (Err(_), Some(_)) => (None, false, false),
+        (Err(e), None) => return Err(e),
+    };
     let in_file = credentials_file_dir.is_some_and(|dir| auth::load_token_at(dir, origin).is_some());
     let mut outcome = LogoutOutcome {
         was_logged_in: refresh.is_some() || removed_pat || in_file,
@@ -356,8 +389,10 @@ pub fn logout(
         None => {}
     }
 
-    for kind in [CredentialKind::Refresh, CredentialKind::Bearer, CredentialKind::Pat] {
-        let _ = credentials.delete(origin, kind);
+    if keyring_reads {
+        for kind in [CredentialKind::Refresh, CredentialKind::Bearer, CredentialKind::Pat] {
+            credentials.delete(origin, kind)?;
+        }
     }
     if let Some(dir) = credentials_file_dir {
         auth::remove_token_at(dir, origin)

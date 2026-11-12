@@ -7,52 +7,16 @@
 //! do store a credential are pinned at the function level, in
 //! `src/verbs/connection.rs`, against an in-memory keyring.
 
+use crate::fake_server::Fake;
 use std::io::Write as _;
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
-use std::sync::{Arc, Mutex};
 
-/// A server that answers `auth-methods` as told and 404s everything else,
-/// recording every path it was asked for.
-struct Fake {
-    server: Arc<tiny_http::Server>,
-    url: String,
-    paths: Arc<Mutex<Vec<String>>>,
-}
-
-impl Drop for Fake {
-    fn drop(&mut self) {
-        self.server.unblock();
-    }
-}
-
+/// A server that answers `auth-methods` as told and 404s everything else.
 fn fake(auth_methods: (u16, &'static str)) -> Fake {
-    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
-    let url = format!("http://{}/api/speclink/v1/projects/demo", server.server_addr());
-    let paths = Arc::new(Mutex::new(Vec::new()));
-    let (looper, log) = (server.clone(), paths.clone());
-    std::thread::spawn(move || {
-        for req in looper.incoming_requests() {
-            let path = req.url().to_string();
-            let (status, body) = if path == "/api/speclink/v1/auth-methods" {
-                auth_methods
-            } else {
-                (404, r#"{"status":404,"reason":"not_found","message":"no route"}"#)
-            };
-            log.lock().unwrap().push(path);
-            let resp = tiny_http::Response::from_string(body).with_status_code(status).with_header(
-                tiny_http::Header::from_bytes(&b"Content-Type"[..], &b"application/json"[..]).unwrap(),
-            );
-            let _ = req.respond(resp);
-        }
-    });
-    Fake { server, url, paths }
-}
-
-impl Fake {
-    fn paths(&self) -> Vec<String> {
-        self.paths.lock().unwrap().clone()
-    }
+    let server = Fake::new();
+    server.route("/api/speclink/v1/auth-methods", auth_methods.0, auth_methods.1);
+    server
 }
 
 /// A throwaway project connected to `url`, with a throwaway home.
@@ -107,7 +71,7 @@ const DEVICE_ONLY: (u16, &str) = (200, r#"{"methods":["device"]}"#);
 #[test]
 fn any_two_login_flags_conflict_before_any_request() {
     let server = fake(DEVICE_ONLY);
-    let project = Project::new("conflict", &server.url);
+    let project = Project::new("conflict", &server.project_url());
     let flags = ["--browser", "--device", "--pat", "--token-stdin"];
 
     for (i, a) in flags.iter().enumerate() {
@@ -123,7 +87,7 @@ fn any_two_login_flags_conflict_before_any_request() {
 #[test]
 fn browser_on_a_server_without_browser_login_lists_what_it_supports() {
     let server = fake(DEVICE_ONLY);
-    let project = Project::new("browser-device-only", &server.url);
+    let project = Project::new("browser-device-only", &server.project_url());
 
     let out = project.run(&["auth", "login", "--browser"], "");
 
@@ -136,7 +100,7 @@ fn browser_on_a_server_without_browser_login_lists_what_it_supports() {
 #[test]
 fn browser_on_a_server_that_declares_nothing_says_so() {
     let server = fake((404, r#"{"status":404,"reason":"not_found","message":"no route"}"#));
-    let project = Project::new("browser-undeclared", &server.url);
+    let project = Project::new("browser-undeclared", &server.project_url());
 
     let out = project.run(&["auth", "login", "--browser"], "");
 
@@ -148,7 +112,7 @@ fn browser_on_a_server_that_declares_nothing_says_so() {
 #[test]
 fn device_on_a_token_only_server_lists_what_it_supports() {
     let server = fake((200, r#"{"methods":["token"]}"#));
-    let project = Project::new("device-token-only", &server.url);
+    let project = Project::new("device-token-only", &server.project_url());
 
     let out = project.run(&["auth", "login", "--device"], "");
 
@@ -162,7 +126,7 @@ fn device_on_a_token_only_server_lists_what_it_supports() {
 #[test]
 fn a_failing_discovery_is_a_connection_error() {
     let server = fake((500, "boom"));
-    let project = Project::new("discovery-5xx", &server.url);
+    let project = Project::new("discovery-5xx", &server.project_url());
 
     let out = project.run(&["auth", "login", "--browser"], "");
 
@@ -174,7 +138,7 @@ fn a_failing_discovery_is_a_connection_error() {
 #[test]
 fn no_flag_without_a_terminal_sends_no_request() {
     let server = fake(DEVICE_ONLY);
-    let project = Project::new("no-tty", &server.url);
+    let project = Project::new("no-tty", &server.project_url());
 
     let out = project.run(&["auth", "login"], "");
 

@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { Button, CopyButton, Input, SEMANTIC_TONE, useI18n } from "@speclink/ui";
 
-import type { ConnectionPhase } from "../store";
+import type { LoginPhase } from "../adapter/connections";
 
 /** 授權有效期限的剩餘時間（分:秒）：以截止時刻減現在時間計算、每秒更新，
  * 不依賴輪詢節奏（design 決策三）；歸零即停在 0:00。 */
@@ -25,64 +25,79 @@ function Countdown({ expiresAt }: { expiresAt: number }) {
   );
 }
 
-/** 等待授權面（規格「device login 預設與 PAT fallback」）：裝置碼與驗證網址
- * 各附複製、倒數與取消——使用者無需依賴已開啟的分頁即可換裝置核准。 */
-export function AwaitingApproval({
-  origin,
-  phase,
-  onCancel,
+/** 等待面裡的一列：標籤、內容與複製鈕。裝置碼要人照著輸入，字放大並拉開字距。 */
+function CopyRow({
+  label,
+  value,
+  copyLabel,
+  code = false,
 }: {
-  origin: string;
-  phase: Extract<ConnectionPhase, { kind: "awaitingApproval" }>;
-  onCancel?: () => void;
+  label: string;
+  value: string;
+  copyLabel: string;
+  code?: boolean;
 }) {
-  const { t } = useI18n();
   return (
-    <div className="flex flex-col gap-1.5" data-testid={`awaiting-approval-${origin}`}>
-      <div className="text-xs font-medium">{t("servers.awaitingTitle")}</div>
-      <p className="m-0 text-xs text-muted-foreground">{t("servers.awaitingHint")}</p>
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">{t("servers.deviceCode")}</span>
-        <code className="font-mono text-sm tracking-widest">{phase.userCode}</code>
-        <CopyButton size="sm" label={t("servers.copyDeviceCode")} value={phase.userCode} onCopy={writeText} />
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">{t("servers.verificationUri")}</span>
-        <span className="min-w-0 truncate font-mono text-xs">{phase.verificationUri}</span>
-        <CopyButton size="sm" label={t("servers.copyVerificationUri")} value={phase.verificationUri} onCopy={writeText} />
-      </div>
-      <div className="flex items-center gap-3">
-        <Countdown expiresAt={phase.expiresAt} />
-        <Button type="button" variant="outline" size="sm" onClick={onCancel}>
-          {t("servers.cancelLogin")}
-        </Button>
-      </div>
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      {code ? (
+        <code className="font-mono text-sm tracking-widest">{value}</code>
+      ) : (
+        <span className="min-w-0 truncate font-mono text-xs">{value}</span>
+      )}
+      <CopyButton size="sm" label={copyLabel} value={value} onCopy={writeText} />
     </div>
   );
 }
 
-/** 等待瀏覽器登入面（client-browser-login D9）：一句說明、可複製的授權網址、
- * 倒數與取消——瀏覽器沒有自動開啟時，使用者複製網址自己開。版面同等待授權面；
- * 授權網址只帶 state 與 challenge，不含任何 credential。 */
-export function AwaitingBrowser({
+/** 登入等待面（規格「device login 預設與 PAT fallback」；client-browser-login D9）：
+ * 標題、一句說明、可複製的內容、倒數與取消。等待裝置核准時是裝置碼與驗證網址
+ * ——使用者無需依賴已開啟的分頁即可換裝置核准；等待瀏覽器登入時是授權網址——
+ * 瀏覽器沒有自動開啟時自己複製去開（網址只帶 state 與 challenge，不含任何
+ * credential）。伺服器頁的連線列與工作區選擇器共用這一個元件。 */
+export function LoginWaiting({
   origin,
   phase,
   onCancel,
 }: {
   origin: string;
-  phase: Extract<ConnectionPhase, { kind: "awaitingBrowser" }>;
+  phase: LoginPhase;
   onCancel?: () => void;
 }) {
   const { t } = useI18n();
+  const browser = phase.kind === "awaitingBrowser";
   return (
-    <div className="flex flex-col gap-1.5" data-testid={`awaiting-browser-${origin}`}>
-      <div className="text-xs font-medium">{t("servers.awaitingBrowserTitle")}</div>
-      <p className="m-0 text-xs text-muted-foreground">{t("servers.awaitingBrowserHint")}</p>
-      <div className="flex items-center gap-1.5">
-        <span className="text-xs text-muted-foreground">{t("servers.authorizationUrl")}</span>
-        <span className="min-w-0 truncate font-mono text-xs">{phase.url}</span>
-        <CopyButton size="sm" label={t("servers.copyAuthorizationUrl")} value={phase.url} onCopy={writeText} />
+    <div
+      className="flex flex-col gap-1.5"
+      data-testid={`${browser ? "awaiting-browser" : "awaiting-approval"}-${origin}`}
+    >
+      <div className="text-xs font-medium">
+        {t(browser ? "servers.awaitingBrowserTitle" : "servers.awaitingTitle")}
       </div>
+      <p className="m-0 text-xs text-muted-foreground">
+        {t(browser ? "servers.awaitingBrowserHint" : "servers.awaitingHint")}
+      </p>
+      {phase.kind === "awaitingBrowser" ? (
+        <CopyRow
+          label={t("servers.authorizationUrl")}
+          value={phase.url}
+          copyLabel={t("servers.copyAuthorizationUrl")}
+        />
+      ) : (
+        <>
+          <CopyRow
+            code
+            label={t("servers.deviceCode")}
+            value={phase.userCode}
+            copyLabel={t("servers.copyDeviceCode")}
+          />
+          <CopyRow
+            label={t("servers.verificationUri")}
+            value={phase.verificationUri}
+            copyLabel={t("servers.copyVerificationUri")}
+          />
+        </>
+      )}
       <div className="flex items-center gap-3">
         <Countdown expiresAt={phase.expiresAt} />
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>

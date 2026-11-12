@@ -13,6 +13,7 @@ mod discuss_seal;
 mod discuss_slug;
 mod doc_verbs;
 mod engine_version;
+mod fake_server;
 mod in_progress_remove;
 mod init_tools;
 mod instructions_policy;

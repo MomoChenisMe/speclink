@@ -869,18 +869,7 @@ impl ConnectionsState {
 
 /// 條目的 TS 檢視：registry 欄位＋由 Keychain 推導的登入狀態。secret 不出現。
 fn entry_view(entry: &connections::ConnectionEntry, state: &ConnectionsState) -> Value {
-    let logged_in = state
-        .credentials
-        .get(&entry.origin, speclink_remote::credentials::CredentialKind::Refresh)
-        .ok()
-        .flatten()
-        .is_some()
-        || state
-            .credentials
-            .get(&entry.origin, speclink_remote::credentials::CredentialKind::Pat)
-            .ok()
-            .flatten()
-            .is_some();
+    let logged_in = connections::logged_in(&entry.origin, &*state.credentials);
     let mut view = serde_json::to_value(entry).expect("entry serializes");
     view["loggedIn"] = Value::Bool(logged_in);
     view
@@ -965,9 +954,11 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         .inner()
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
+        // 條目要消失了：先取消等待中的登入，它才不會在登出之後寫回 credential。
+        if let Some(entry) = connections::read_registry(&path).iter().find(|e| e.id == id) {
+            state.logins.cancel(&entry.origin);
+        }
         if let Some(origin) = connections::remove_connection(&path, &id, &*state.credentials)? {
-            // 條目要消失了：等待中的登入不得再寫回它的 credential。
-            state.logins.cancel(&origin);
             state.managers.lock().expect("manager lock").remove(&origin);
         }
         Ok(())
@@ -981,17 +972,7 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
 /// tauri-plugin-opener，取消由 connection_login_cancel 設旗標。回 TS 的只有狀態
 /// 與顯示名——access token 交給記憶體持有、refresh credential 已寫入 Keychain。
 #[tauri::command]
-async fn connection_login_start(
-    app: tauri::AppHandle,
-    origin: String,
-    method: Option<String>,
-) -> Result<Value, String> {
-    let method = match method.as_deref() {
-        None => None,
-        Some("browser") => Some(speclink_remote::login::Method::Browser),
-        Some("device") => Some(speclink_remote::login::Method::Device),
-        Some(other) => return Err(format!("不支援的登入方式「{other}」")),
-    };
+async fn connection_login_start(app: tauri::AppHandle, origin: String) -> Result<Value, String> {
     let path = connections_path(&app)?;
     let state = app
         .state::<std::sync::Arc<ConnectionsState>>()
@@ -1015,20 +996,13 @@ async fn connection_login_start(
             open_browser: &opener,
             cancel: &cancel,
         };
-        let outcome = connections::connection_login(&origin, method, &*state.credentials, &path, &io);
+        let outcome = connections::connection_login(&origin, &*state.credentials, &path, &io);
         state.logins.end(&origin, &cancel);
-        Ok(match outcome? {
-            connections::ConnectionLogin::LoggedIn { display, access_token } => {
-                if let Some(access_token) = access_token {
-                    state.manager_for(&origin).adopt_access_token(&access_token);
-                }
-                serde_json::json!({ "status": "loggedIn", "display": display })
-            }
-            connections::ConnectionLogin::PatRequired => serde_json::json!({ "status": "patRequired" }),
-            connections::ConnectionLogin::Denied => serde_json::json!({ "status": "denied" }),
-            connections::ConnectionLogin::Expired => serde_json::json!({ "status": "expired" }),
-            connections::ConnectionLogin::Cancelled => serde_json::json!({ "status": "cancelled" }),
-        })
+        let outcome = outcome?;
+        if let connections::ConnectionLogin::LoggedIn { access_token: Some(access_token), .. } = &outcome {
+            state.manager_for(&origin).adopt_access_token(access_token);
+        }
+        Ok(outcome.view())
     })
     .await
     .map_err(|e| format!("login worker failed: {e}"))?

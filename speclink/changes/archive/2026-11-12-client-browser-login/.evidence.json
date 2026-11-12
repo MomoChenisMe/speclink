@@ -100,6 +100,14 @@
         "apps/desktop/src/store.ts",
         "apps/desktop/src/views/settings/ServersPage.tsx"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、apps/desktop。驗證：`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop`、`npm test -w apps/desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate client-browser-login` 通過。",
+      "files": [
+        "crates/protocol/speclink-protocol/src/device.rs",
+        "crates/adapters/speclink-cli/tests/it/fake_server.rs"
+      ]
     }
   ],
   "entries": [
@@ -241,6 +249,18 @@
         "apps/desktop/src/views/settings/ServersPage.tsx"
       ],
       "recordedAt": "2026-11-11T08:35:29Z"
+    },
+    {
+      "taskId": "tsk_01M74NJA95EGHQ3Y9HVDYE7GJE",
+      "taskDesc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、apps/desktop。驗證：`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop`、`npm test -w apps/desktop` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate client-browser-login` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "675f450267aaedc724dcab4536d5190014fa2757",
+      "touchedFiles": [
+        "crates/protocol/speclink-protocol/src/device.rs",
+        "crates/adapters/speclink-cli/tests/it/fake_server.rs"
+      ],
+      "recordedAt": "2026-11-12T02:35:23Z"
     }
   ]
 }

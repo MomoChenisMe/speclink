@@ -237,7 +237,7 @@ describe("ServersPanel", () => {
       ...adapter,
       loginStart: async (_origin, onPhase) => {
         onPhase(APPROVAL);
-        return { status: "denied" };
+        return { status: "denied", method: "device" };
       },
     });
     addServer("http://localhost:8080", "本地");
@@ -344,7 +344,7 @@ describe("ServersPanel", () => {
     ] as const) {
       const login = renderAwaiting(BROWSER);
       await screen.findByTestId("awaiting-browser-http://localhost:8080");
-      login.finish({ status });
+      login.finish({ status, method: "browser" });
       await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(message));
       expect(screen.queryByTestId("awaiting-browser-http://localhost:8080")).toBeNull();
       cleanup();

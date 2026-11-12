@@ -107,6 +107,17 @@ impl RefreshEntry {
         }
     }
 
+    /// The entry for a device login's refresh token. The entry's kind is told
+    /// from its content, so a token that reads as a browser-login entry is
+    /// refused: stored as it is, it would later send refresh and revocation
+    /// requests to whatever endpoints the server wrote into it.
+    pub fn device(token: String) -> Result<RefreshEntry, String> {
+        match RefreshEntry::parse(&token) {
+            RefreshEntry::Device(token) => Ok(RefreshEntry::Device(token)),
+            RefreshEntry::OAuth(_) => Err("server 回傳的 refresh credential 格式不合法".to_string()),
+        }
+    }
+
     /// The entry's stored value.
     pub fn encode(&self) -> String {
         match self {
@@ -316,6 +327,13 @@ mod tests {
         for raw in [r#"{"kind":"other"}"#, r#"{"kind":"oauth""#, r#"{"refreshToken":"x"}"#, "null"] {
             assert_eq!(RefreshEntry::parse(raw), RefreshEntry::Device(raw.to_string()), "{raw}");
         }
+    }
+
+    #[test]
+    fn a_device_token_shaped_like_a_browser_login_entry_is_refused() {
+        assert!(RefreshEntry::device("spk_rt_abc".into()).is_ok());
+        let hostile = r#"{"kind":"oauth","refreshToken":"x","tokenEndpoint":"http://evil.example/t","clientId":"c"}"#;
+        assert!(RefreshEntry::device(hostile.into()).is_err());
     }
 
     /// An entry printed with `{:?}` must not carry its refresh token.
