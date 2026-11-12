@@ -8,7 +8,7 @@
 
 ### Requirement: 動詞覆蓋與跨入口一致性
 
-引擎 SHALL 提供唯一的命令執行層，覆蓋讀寫規格儲存的領域動詞——查詢：list、show、status、instructions、validate、analyze、drift、artifact cat、language show、discuss list、discuss show 與 discuss search；變更：new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard。CLI 與 Node SDK dispatch SHALL 經此層執行覆蓋表動詞；對相同 workspace 狀態執行同一動詞，各入口 SHALL 得到相同的語意結果與錯誤分類，且既有人眼輸出與 --json 形狀 SHALL 維持位元級一致（既有輸出基線不變）。discuss search 為唯讀查詢動詞，SHALL NOT 發出領域事件。workspace bootstrap 與周邊工具動詞（init、update、config、schema、completion、templates、feedback、demo）及 remote 連線管理動詞（link、unlink、auth）SHALL NOT 進入命令層。workflow-config 的 show 與全部寫入動詞（set、context、rules、review、subagent-model）在本機模式與 SDK 的 dispatch SHALL 同樣經此層執行；CLI 的 remote 模式經連線讀寫 server 的文件，server 端的整份寫入 SHALL 經此層執行。
+引擎 SHALL 提供唯一的命令執行層，覆蓋讀寫規格儲存的領域動詞——查詢：list、show、status、instructions、validate、analyze、drift、artifact cat、language show、evidence show、trace、plan（含 --strict-overlap）、discuss list、discuss show 與 discuss search；變更：new change、new artifact、task done、task undone、claim、in-progress add、archive、discard、discuss new／context／add-round／conclude／promote／link／seal／archive／discard。CLI 與 Node SDK dispatch SHALL 經此層執行覆蓋表動詞；對相同 workspace 狀態執行同一動詞，各入口 SHALL 得到相同的語意結果與錯誤分類，且既有人眼輸出與 --json 形狀 SHALL 維持位元級一致（既有輸出基線不變）。discuss search 為唯讀查詢動詞，SHALL NOT 發出領域事件。workspace bootstrap 與周邊工具動詞（init、update、config、schema、completion、templates、feedback、demo）及 remote 連線管理動詞（link、unlink、auth）SHALL NOT 進入命令層。workflow-config 的 show 與全部寫入動詞（set、context、rules、review、subagent-model）在本機模式與 SDK 的 dispatch SHALL 同樣經此層執行；CLI 的 remote 模式經連線讀寫 server 的文件，server 端的整份寫入 SHALL 經此層執行。
 
 #### Scenario: CLI 與 dispatch 的成功結果語意一致
 
@@ -35,10 +35,15 @@
 - **WHEN** 同一 workspace 內分別執行 speclink workflow-config show --json 與 engine.dispatch(['workflow-config', 'show'])
 - **THEN** 兩者回傳的流程設定語意相同，dispatch 結果為與 CLI --json 對齊的結構化物件
 
+#### Scenario: evidence show 經命令層且各入口一致
+
+- **WHEN** 對相同內容，分別以 CLI 的本機模式、Node SDK 的 dispatch 與宿主套件的 dispatch 執行 evidence show demo --json
+- **THEN** 三者的結構化結果深度相等；對不存在的名稱三者的錯誤分類都是 not_found
+
 
 <!-- @trace
-source: workflow-config-commands
-updated: 2026-11-11T15:31:28+08:00
+source: remote-read-verbs
+updated: 2026-11-12T15:18:56+08:00
 -->
 
 ---

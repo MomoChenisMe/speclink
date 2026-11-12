@@ -28,3 +28,5 @@ clap_complete = "4"
 speclink-core = { path = "../../engine/speclink-core", features = ["testkit"] }
 tiny_http = "0.12"
 chrono.workspace = true
+# The remote-read tests run the real HTTP door on the in-memory store port.
+speclink-store-port = { path = "../../store/speclink-store-port" }

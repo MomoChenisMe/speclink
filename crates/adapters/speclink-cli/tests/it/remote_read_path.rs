@@ -312,7 +312,7 @@ fn assert_same_keys(remote: &serde_json::Value, fs: &serde_json::Value, verb: &s
 
 // --- server payloads mirroring the fs twin ---
 
-const LIST_BODY: &str = r#"{"changes":[{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me","deltaCapabilities":["cap-a"]}]}"#;
+const LIST_BODY: &str = r#"{"changes":[{"name":"demo","summary":"Demo change summary","status":"done","completedTasks":2,"totalTasks":2,"repo":"backend","lifecycle":"applying","claimedBy":"me","deltaCapabilities":["cap-a"],"modifiedAt":"2026-11-12T03:00:00Z"}]}"#;
 
 const STATUS_BODY: &str = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":true,"applyRequires":["tasks"],"artifacts":[{"id":"proposal","outputPath":"proposal.md","status":"done","version":3},{"id":"design","outputPath":"design.md","status":"done","version":1},{"id":"specs","outputPath":"specs/**/*.md","status":"done","version":2},{"id":"tasks","outputPath":"tasks.md","status":"done","version":5}],"repo":"backend","lifecycle":"applying","statusVersion":4,"claimedBy":"me"}"#;
 

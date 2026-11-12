@@ -29,7 +29,7 @@ use speclink_protocol::context::ContextSnapshotRequest;
 use speclink_protocol::events::{EventsDeclaration, PollingDeclaration};
 use speclink_protocol::query::{
     ArtifactContent, BoardOrderDoc, DiscussionCut, DiscussionHit, DiscussionMatch, LanguageResponse,
-    ListDiscussionsResponse, SearchDiscussionsResponse, ShowDiscussionResponse, ListChangesResponse, ListSpecsResponse, PutBoardOrderRequest,
+    ListDiscussionsResponse, SearchDiscussionsResponse, ShowDiscussionResponse, ListChangesResponse, ListSpecsResponse, PlanResponse, PutBoardOrderRequest,
     PutBoardOrderResponse, PutConfigRequest, PutConfigResponse, SpecSummary, ValidateChangeResponse, WhoamiRepo,
     WhoamiResponse, WhoamiUser,
 };
@@ -260,14 +260,29 @@ pub(crate) fn put_board_order(req: &Request<'_>) -> Result<HttpResponse, HttpErr
     Ok(ok_at(&PutBoardOrderResponse { revision: version.get() }, version))
 }
 
-// --- documents that are not Engine commands ---
-
-/// `GET /changes/{name}/evidence`: the change's recorded evidence; none is
-/// an empty set.
+/// `GET /changes/{name}/evidence`: the recorded evidence of the change the
+/// name stands for — an active one, else the newest archived one. None is an
+/// empty set; a name that is no change is a 404.
 pub(crate) fn change_evidence(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let (dto, version) = documents::change_evidence(req.port(), req.scope(), &req.params[0])?;
-    Ok(ok_at(&dto, version))
+    let (execution, etag) = req.run(Command::EvidenceShow { change: req.param(0) })?;
+    match execution.outcome {
+        CommandOutcome::EvidenceShow(shown) => Ok(ok(&wire::change_evidence(shown), etag)),
+        _ => Err(wrong_outcome("evidence-show")),
+    }
 }
+
+/// `GET /trace/{capability}`: the capability's provenance chain, as
+/// `speclink trace --json` gives it. An unknown capability is a 404 with the
+/// Engine's near names.
+pub(crate) fn trace(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let (execution, etag) = req.run(Command::Trace { capability: req.param(0) })?;
+    match execution.outcome {
+        CommandOutcome::Trace(report) => Ok(ok(&wire::trace(report), etag)),
+        _ => Err(wrong_outcome("trace")),
+    }
+}
+
+// --- documents that are not Engine commands ---
 
 /// `GET /specs/{capability}/document`.
 pub(crate) fn spec_document(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
@@ -432,14 +447,21 @@ pub(crate) fn get_artifact(req: &Request<'_>) -> Result<HttpResponse, HttpError>
     let (name, artifact) = (req.param(0), req.param(1));
     let cmd = Command::ArtifactCat { artifact: artifact.clone(), change: Some(name.clone()) };
     let (execution, etag) = req.run(cmd)?;
-    let content = match execution.outcome {
-        CommandOutcome::ArtifactCat(content) => content,
+    let read = match execution.outcome {
+        CommandOutcome::ArtifactCat(read) => read,
         _ => return Err(wrong_outcome("artifact")),
     };
+    // The version is the document's own: an archived change's document when
+    // the command read from the archive.
     let version = match wire::artifact_rel_path(&artifact) {
-        Some(rel) => documents::document_version(req.port(), req.scope(), &name, &rel)?.map_or(0, |v| v.get()),
+        Some(rel) => match &read.archived_as {
+            Some(dated) => documents::archived_document_version(req.port(), req.scope(), dated, &rel)?,
+            None => documents::document_version(req.port(), req.scope(), &name, &rel)?,
+        }
+        .map_or(0, |v| v.get()),
         None => 0,
     };
+    let content = read.content;
     Ok(ok(&ArtifactContent { artifact, content, version }, etag))
 }
 
@@ -876,11 +898,32 @@ pub(crate) fn archive(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
 
 // --- discussions and the plan ---
 
+#[derive(serde::Deserialize)]
+struct PlanQuery {
+    /// `true` asks for the plan before requirement-level overlap. Absent is
+    /// `false`; a value that is neither is a 400.
+    #[serde(default, rename = "strictOverlap")]
+    strict_overlap: bool,
+}
+
+
 /// `GET /plan`: the change-level execution order. The ranks come from the
 /// board order, read leniently (absent or unusable is no ranks) and never
 /// written back. A dependency cycle is a refused 409 with the Engine's text.
 /// The ETag is the version the board order was read at: the first read.
 pub(crate) fn plan(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let query: PlanQuery = req.query()?;
+    if query.strict_overlap {
+        // The Engine takes the ranks from the same board order, through the
+        // store view. The response says that it is the strict plan: a server
+        // that does not know the parameter answers the plain one, and the
+        // client has to be able to tell.
+        let (execution, etag) = req.run(Command::PlanStrict)?;
+        return match execution.outcome {
+            CommandOutcome::Plan(plan) => Ok(ok(&PlanResponse { strict_overlap: true, ..wire::plan(plan) }, etag)),
+            _ => Err(wrong_outcome("plan-strict")),
+        };
+    }
     let (board, version) = documents::board_order(req.port(), req.scope())?;
     let ranks = BoardOrderDoc::from_content(board.content.as_deref()).changes;
     let (execution, _) = req.run(Command::Plan { ranks: Some(ranks) })?;

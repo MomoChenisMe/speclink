@@ -34,8 +34,30 @@ use speclink_protocol::query::{
     ListSpecsResponse, PlanResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
     PutConfigResponse, ScopesResponse, SearchDiscussionsResponse, SearchResponse,
     ShowDiscussionResponse,
-    SpecDocumentResponse, ValidateChangeResponse, WhoamiResponse,
+    SpecDocumentResponse, TraceResponse, ValidateChangeResponse, WhoamiResponse,
 };
+
+/// What [`Client::plan_strict`] says of a server that answered the plain plan.
+const STRICT_PLAN_UNSUPPORTED: &str =
+    "this server does not support plan --strict-overlap — update the server, or run the plan without the flag";
+
+/// `text` percent-encoded as one path segment: every byte outside RFC 3986's
+/// unreserved set is encoded, so a `/`, `?`, `#` or space in a name stays
+/// inside its segment and the server answers for the name as it was typed.
+/// Three names cannot travel as a segment: the two dot names are left as they
+/// are — no encoding keeps them from being read as path steps — and the empty
+/// name leaves no segment at all. The server has no route for what the path
+/// becomes, so they end as its 404, not as the Engine's own line.
+fn encode_segment(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for byte in text.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => out.push(byte as char),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
 
 /// The contract major version this client speaks (`X-Speclink-Api-Version`)
 /// — the protocol crate's constant is the single source.
@@ -294,10 +316,38 @@ impl Client {
         self.get("/plan")
     }
 
-    /// `GET /changes/{name}/evidence` — the change's recorded completion
-    /// evidence. A change that never recorded any answers with an empty set.
+    /// `GET /plan?strictOverlap=true` — the plan before requirement-level
+    /// overlap, in the payload of [`Client::plan`] with its `strictOverlap`
+    /// mark. A server from before the strict plan ignores the query and
+    /// answers the plain plan without the mark: that is an error here, never
+    /// a plan handed back as the strict one.
+    pub fn plan_strict(&self) -> Result<PlanResponse, RemoteError> {
+        let request = self.request("GET", "/plan").query("strictOverlap", "true");
+        let plan = self.send_request::<PlanResponse, Empty>(request, None)?;
+        if !plan.strict_overlap {
+            return Err(RemoteError {
+                message: STRICT_PLAN_UNSUPPORTED.to_string(),
+                reason: None,
+                status: None,
+                evidence: None,
+            });
+        }
+        Ok(plan)
+    }
+
+    /// `GET /trace/{capability}` — the capability's provenance chain. An
+    /// unknown capability comes back as a `not_found` 404 carrying the
+    /// engine's line with its near names.
+    pub fn trace(&self, capability: &str) -> Result<TraceResponse, RemoteError> {
+        self.get(&format!("/trace/{}", encode_segment(capability)))
+    }
+
+    /// `GET /changes/{name}/evidence` — the recorded completion evidence of
+    /// the change the name stands for: an active one, else the newest archived
+    /// one (the response then names it). A change that never recorded any
+    /// answers with an empty set; a name that is no change is a `not_found`.
     pub fn change_evidence(&self, name: &str) -> Result<ChangeEvidenceResponse, RemoteError> {
-        self.get(&format!("/changes/{name}/evidence"))
+        self.get(&format!("/changes/{}/evidence", encode_segment(name)))
     }
 
     /// `GET /whoami`

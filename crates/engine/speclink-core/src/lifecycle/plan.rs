@@ -164,8 +164,7 @@ pub fn compute(store: &dyn Store) -> Result<Plan, PlanError> {
 
 /// `plan --strict-overlap` — the plan as it was before requirement-level
 /// overlap: a delta capability shared with a change placed earlier pushes the
-/// wave and joins `blocked_by`, and the unranked sort by created alone. The
-/// CLI's local plan is its one caller.
+/// wave and joins `blocked_by`, and the unranked sort by created alone.
 pub(crate) fn compute_strict(store: &dyn Store) -> Result<Plan, PlanError> {
     let changes = model::list_changes(store);
     let ranks = store.board_ranks(&changes);

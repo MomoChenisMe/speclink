@@ -97,10 +97,16 @@ fn plain_date_created_keeps_the_existing_outputs() {
     );
     let list = p.run(&["list", "--json"]);
     assert!(list.status.success() && list.stderr.is_empty(), "{}", String::from_utf8_lossy(&list.stderr));
+    // `modifiedAt` is the store's clock, so it is checked for its shape and
+    // then left out of the exact comparison.
+    let mut listed = serde_json::from_slice::<serde_json::Value>(&list.stdout).unwrap();
+    let modified_at = listed["changes"][0].as_object_mut().unwrap().remove("modifiedAt");
+    assert!(modified_at.is_some_and(|at| at.is_string()), "the fs store dates the change");
     assert_eq!(
-        serde_json::from_slice::<serde_json::Value>(&list.stdout).unwrap(),
+        listed,
         serde_json::json!({ "changes": [{
             "completedTasks": 0,
+            "created": "2026-07-29",
             "name": "demo",
             "status": "in-progress",
             "summary": "Demo.",

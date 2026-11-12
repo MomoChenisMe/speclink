@@ -95,11 +95,23 @@ pub struct BoardOrderResponse {
 
 /// `GET /changes/{name}/evidence` response: the change's completion-evidence
 /// entries, oldest first. A change that has never recorded evidence answers
-/// with an empty set — absence is a normal state, not a not-found.
+/// with an empty set — absence is a normal state, not a not-found. A name that
+/// is neither an active nor an archived change is a not-found.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ChangeEvidenceResponse {
+    /// The name of the change the record belongs to: the active change's
+    /// name, or an archived change's own name (its archived name without the
+    /// date). A server that looks the name up through the Engine always sends
+    /// it; a server from before that reads active changes only and does not,
+    /// which is how `evidence show` tells that it cannot trust the answer.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub change: Option<String>,
     pub entries: Vec<EvidenceEntry>,
+    /// The archived name, when the record came from an archived change. Absent
+    /// for an active change, and from a server that only reads active ones.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_as: Option<String>,
 }
 
 /// One task completion's recorded evidence: who completed which task, on which
@@ -292,6 +304,10 @@ pub struct ChangeSummary {
     pub from_discussions: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delta_capabilities: Vec<String>,
+    /// When a document of the change was last modified: an RFC 3339 UTC time,
+    /// from the store. Absent when the store cannot tell — never 0 or empty.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
@@ -699,10 +715,77 @@ pub struct SearchDiscussionsResponse {
     pub hits: Vec<DiscussionHit>,
 }
 
+/// `GET /trace/{capability}` response — the CLI `trace --json` shape, field
+/// for field: the capability, each requirement's current source, the archived
+/// changes that touched it (oldest first) and the discussions they came from.
+/// The two fields that `trace --json` prints as `null` stay `null` here.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceResponse {
+    pub capability: String,
+    #[serde(default)]
+    pub requirements: Vec<TraceRequirement>,
+    #[serde(default)]
+    pub changes: Vec<TraceChange>,
+    #[serde(default)]
+    pub discussions: Vec<TraceDiscussion>,
+}
+
+/// One requirement of the canonical spec and the change its `@trace` names.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceRequirement {
+    pub name: String,
+    pub source: String,
+}
+
+/// One archived change of the chain. `fromDiscussion` is the metadata's own
+/// text; `evidence` is the per-task file lists, `null` when the change has no
+/// record.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceChange {
+    pub name: String,
+    pub archived_dir: String,
+    #[serde(default)]
+    pub from_discussion: Option<String>,
+    #[serde(default)]
+    pub evidence: Option<Vec<TraceEvidenceTask>>,
+}
+
+/// The files one task of an archived change touched.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceEvidenceTask {
+    pub task_id: String,
+    #[serde(default)]
+    pub files: Vec<String>,
+}
+
+/// A discussion the chain's changes came from, and every change it led to.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TraceDiscussion {
+    pub slug: String,
+    pub archived: bool,
+    #[serde(default)]
+    pub promoted_to: Vec<TracePromotedChange>,
+}
+
+/// A change a discussion led to, and the capabilities it touched.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct TracePromotedChange {
+    pub change: String,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+}
+
 /// `GET /plan` response — the CLI `plan --json` shape: waves, every placed
 /// change in placement order, the next startable change, the changes left
 /// out for corrupt metadata, and the discussion cuts not yet promoted. Array
 /// fields read an absent key as empty (a new client reading an old server).
+/// `strictOverlap` is the wire's own mark, not part of `plan --json`.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PlanResponse {
@@ -715,6 +798,12 @@ pub struct PlanResponse {
     pub skipped: Vec<PlanSkipped>,
     #[serde(default)]
     pub unpromoted_cuts: Vec<PlanUnpromotedCut>,
+    /// `true` only on the plan a server computed with `strictOverlap=true`;
+    /// absent otherwise. A server from before the strict plan ignores that
+    /// query and never sends this, which is how a client tells that the plan
+    /// it got is not the one it asked for.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict_overlap: bool,
 }
 
 /// A cut planned in a live discussion's conclusion with a change name not yet
@@ -1354,6 +1443,106 @@ mod tests {
     }
 
     #[test]
+    fn an_evidence_response_names_the_archive_only_when_it_read_one() {
+        let active = ChangeEvidenceResponse { change: None, entries: Vec::new(), archived_as: None };
+        let json = serde_json::to_value(&active).unwrap();
+        assert!(json.get("archivedAs").is_none(), "absent, not null: {json}");
+        let archived = ChangeEvidenceResponse {
+            change: Some("demo".into()),
+            entries: Vec::new(),
+            archived_as: Some("2026-11-12-demo".into()),
+        };
+        let json = serde_json::to_value(&archived).unwrap();
+        assert_eq!(json["archivedAs"], "2026-11-12-demo");
+        assert_eq!(json["change"], "demo");
+        assert!(serde_json::to_value(&active).unwrap().get("change").is_none(), "absent, not null");
+        // A response from a server that does not send the field still parses.
+        let old: ChangeEvidenceResponse = serde_json::from_str(r#"{"entries":[]}"#).unwrap();
+        assert_eq!(old, active);
+        // A client that does not know the field reads the response as before.
+        #[derive(serde::Deserialize)]
+        struct OldClient {
+            entries: Vec<EvidenceEntry>,
+        }
+        let read: OldClient = serde_json::from_value(json).expect("an unknown field is no error");
+        assert!(read.entries.is_empty());
+    }
+
+    #[test]
+    fn a_listed_change_carries_modified_at_only_when_the_store_gave_one() {
+        let dated: ChangeSummary =
+            serde_json::from_str(r#"{"name":"demo","created":"2026-11-01","modifiedAt":"2026-11-12T03:00:00Z"}"#).unwrap();
+        assert_eq!(dated.modified_at.as_deref(), Some("2026-11-12T03:00:00Z"));
+        assert_eq!(serde_json::to_value(&dated).unwrap()["modifiedAt"], "2026-11-12T03:00:00Z");
+        let undated: ChangeSummary = serde_json::from_str(r#"{"name":"demo","created":"2026-11-01"}"#).unwrap();
+        assert_eq!(undated.modified_at, None);
+        let json = serde_json::to_value(&undated).unwrap();
+        assert!(json.get("modifiedAt").is_none(), "absent, never 0 or empty: {json}");
+        assert_eq!(json["created"], "2026-11-01");
+    }
+
+    #[test]
+    fn a_client_that_does_not_know_modified_at_reads_the_list_as_before() {
+        // 規格「變更清單的最後修改時間欄位」Scenario「舊版用戶端不受影響」：不認得
+        // modifiedAt 的型別解析含該欄位的清單回應，其餘欄位的值不變。
+        #[derive(Debug, PartialEq, serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OldSummary {
+            name: String,
+            #[serde(default)]
+            summary: String,
+            #[serde(default)]
+            status: String,
+            #[serde(default)]
+            completed_tasks: usize,
+            #[serde(default)]
+            total_tasks: usize,
+            #[serde(default)]
+            created: Option<String>,
+            #[serde(default)]
+            delta_capabilities: Vec<String>,
+        }
+        #[derive(serde::Deserialize)]
+        struct OldList {
+            changes: Vec<OldSummary>,
+        }
+        let sent = ListChangesResponse {
+            changes: vec![serde_json::from_str::<ChangeSummary>(
+                r#"{"name":"demo","summary":"Demo.","status":"in-progress","completedTasks":1,"totalTasks":3,"created":"2026-11-01","deltaCapabilities":["auth"],"modifiedAt":"2026-11-12T03:00:00Z"}"#,
+            )
+            .unwrap()],
+        };
+        let text = serde_json::to_string(&sent).unwrap();
+        assert!(text.contains(r#""modifiedAt":"2026-11-12T03:00:00Z""#), "{text}");
+        let read: OldList = serde_json::from_str(&text).expect("an unknown field is no error");
+        assert_eq!(
+            read.changes,
+            [OldSummary {
+                name: "demo".into(),
+                summary: "Demo.".into(),
+                status: "in-progress".into(),
+                completed_tasks: 1,
+                total_tasks: 3,
+                created: Some("2026-11-01".into()),
+                delta_capabilities: vec!["auth".into()],
+            }]
+        );
+    }
+
+    #[test]
+    fn a_trace_response_has_the_field_names_and_nulls_of_trace_json() {
+        let text = r#"{"capability":"auth","requirements":[{"name":"Session","source":"beta"}],"changes":[{"name":"alpha","archivedDir":"2026-11-01-alpha","fromDiscussion":"origin-talk","evidence":[{"taskId":"tsk_a","files":["src/a.rs"]}]},{"name":"beta","archivedDir":"2026-11-02-beta","fromDiscussion":null,"evidence":null}],"discussions":[{"slug":"origin-talk","archived":true,"promotedTo":[{"change":"alpha","capabilities":["auth"]}]}]}"#;
+        let trace: TraceResponse = serde_json::from_str(text).unwrap();
+        assert_eq!(trace.changes[0].archived_dir, "2026-11-01-alpha");
+        assert_eq!(trace.changes[0].evidence.as_ref().unwrap()[0].task_id, "tsk_a");
+        assert_eq!(trace.changes[1].from_discussion, None);
+        assert_eq!(trace.changes[1].evidence, None);
+        assert_eq!(trace.discussions[0].promoted_to[0].capabilities, ["auth"]);
+        // Written back, it is the same text: the nulls stay, the names stay camelCase.
+        assert_eq!(serde_json::to_string(&trace).unwrap(), text);
+    }
+
+    #[test]
     fn change_evidence_travels_camel_case_and_omits_what_it_cannot_attribute() {
         let entry = EvidenceEntry {
             task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".into(),
@@ -1364,7 +1553,7 @@ mod tests {
             touched_files: vec!["src/app.rs".into()],
             recorded_at: "2026-08-23T00:00:00Z".into(),
         };
-        let json = serde_json::to_value(ChangeEvidenceResponse { entries: vec![entry.clone()] })
+        let json = serde_json::to_value(ChangeEvidenceResponse { change: None, entries: vec![entry.clone()], archived_as: None })
             .unwrap();
         let wire = &json["entries"][0];
         assert_eq!(wire["taskId"], "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
@@ -1385,7 +1574,7 @@ mod tests {
     #[test]
     fn an_empty_evidence_set_is_a_representable_response() {
         // 缺席是正常狀態：空集合必須是能表達的成功回應，讀取端不必看錯誤碼。
-        let json = serde_json::to_value(ChangeEvidenceResponse { entries: Vec::new() }).unwrap();
+        let json = serde_json::to_value(ChangeEvidenceResponse { change: None, entries: Vec::new(), archived_as: None }).unwrap();
         assert_eq!(json["entries"], serde_json::json!([]));
         let back: ChangeEvidenceResponse = serde_json::from_value(json).unwrap();
         assert!(back.entries.is_empty());
@@ -1430,6 +1619,17 @@ mod tests {
             show.contains("\"cuts\"") && show.contains("changesInBold"),
             "the discussion detail schema carries cuts: {show}"
         );
+    }
+
+    #[test]
+    fn a_plan_response_says_strict_overlap_only_when_it_is_one() {
+        let plain: PlanResponse = serde_json::from_str(r#"{"waves":[],"changes":[],"next":null,"skipped":[]}"#).unwrap();
+        assert!(!plain.strict_overlap, "a server that says nothing gave the plain plan");
+        assert!(serde_json::to_value(&plain).unwrap().get("strictOverlap").is_none(), "absent, not false");
+        let strict: PlanResponse =
+            serde_json::from_str(r#"{"waves":[],"changes":[],"next":null,"skipped":[],"strictOverlap":true}"#).unwrap();
+        assert!(strict.strict_overlap);
+        assert_eq!(serde_json::to_value(&strict).unwrap()["strictOverlap"], true);
     }
 
     #[test]
@@ -1519,6 +1719,7 @@ mod tests {
                 changes: vec!["add-b".into()],
                 unpromoted: vec!["add-b".into()],
             }],
+            strict_overlap: false,
         };
         let json = serde_json::to_value(&plan).unwrap();
         // 比鍵集合、不比鍵序：serde_json 的 preserve_order 可能被別的 crate 統一開啟。

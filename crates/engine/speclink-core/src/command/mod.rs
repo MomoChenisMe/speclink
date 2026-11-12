@@ -11,9 +11,11 @@
 
 mod change_rank;
 mod describe;
+mod evidence;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
+pub use evidence::EvidenceShowOutcome;
 pub use typed::WrongOutcome;
 pub use workflow_config::{
     plan_workflow_config_edit, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
@@ -362,14 +364,17 @@ pub enum Command {
     /// own `board_rank`.
     Plan { ranks: Option<std::collections::BTreeMap<String, String>> },
     /// `plan --strict-overlap [--json]` — the plan before requirement-level
-    /// overlap, on each meta's own `board_rank`. A CLI-local query: the server
-    /// has no such switch.
+    /// overlap, on the store's own ranks (each meta's `board_rank` locally,
+    /// the scope's board order through a store port).
     PlanStrict,
     /// `artifact cat <artifact> [--change <name>]`
     ArtifactCat {
         artifact: String,
         change: Option<String>,
     },
+    /// `evidence show <change>` — the change's completion evidence; an archived
+    /// change reads by its archived name or its own name (query, no events).
+    EvidenceShow { change: String },
     /// `language show`
     LanguageShow,
     /// `discuss list [--archived]`
@@ -572,6 +577,15 @@ pub struct ValidateOutcome {
     pub results: Vec<crate::validate::ValidationResult>,
 }
 
+/// `artifact cat` outcome: the raw artifact content, and the archived name
+/// when it was read from an archived change — an entry point that reports the
+/// document's version needs to know which document that was.
+#[derive(Debug)]
+pub struct ArtifactCatOutcome {
+    pub content: String,
+    pub archived_as: Option<String>,
+}
+
 /// `discuss show` outcome: the raw document plus its parsed info header.
 #[derive(Debug)]
 pub struct DiscussShowOutcome {
@@ -758,8 +772,8 @@ pub enum CommandOutcome {
     Analyze(crate::analyzer::AnalyzeReport),
     Trace(crate::trace::TraceReport),
     Plan(PlanReport),
-    /// Raw artifact content (`artifact cat`).
-    ArtifactCat(String),
+    ArtifactCat(ArtifactCatOutcome),
+    EvidenceShow(EvidenceShowOutcome),
     /// Raw LANGUAGE document content (`language show`).
     Language(String),
     DiscussList(Vec<crate::discuss::DiscussionInfo>),
@@ -874,6 +888,7 @@ pub fn execute(
         Command::ArtifactCat { artifact, change } => {
             run_artifact_cat(store, &artifact, change.as_deref())
         }
+        Command::EvidenceShow { change } => evidence::show(store, &change),
         Command::LanguageShow => run_language_show(store),
         Command::DiscussList { archived } => Ok(CommandOutcome::DiscussList(if archived {
             crate::discuss::list_archived(store)
@@ -1054,6 +1069,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::Trace(_)
         | CommandOutcome::Plan(_)
         | CommandOutcome::ArtifactCat(_)
+        | CommandOutcome::EvidenceShow(_)
         | CommandOutcome::Language(_)
         | CommandOutcome::DiscussList(_)
         | CommandOutcome::DiscussShow(_)
@@ -1528,15 +1544,28 @@ fn run_artifact_cat(
     artifact: &str,
     change: Option<&str>,
 ) -> Result<CommandOutcome, CommandError> {
-    let change = resolve_change(store, change, SPECIFY_FLAG)?;
+    let missing = |change: &str| {
+        CommandError::new(ErrorCode::NotFound, format!("artifact '{artifact}' not found for change '{change}'"))
+    };
+    // A named change is looked up the way `evidence show` does it: the active
+    // one, else its archive.
+    let change = match change.map(|name| (name, crate::model::locate_change(store, name))) {
+        Some((_, Some(crate::model::Located::Active(change)))) => change,
+        Some((name, Some(crate::model::Located::Archived(dated)))) => {
+            let rel = artifact_rel_path(artifact)?;
+            let content = store.read_archived_artifact(&dated, &rel).ok_or_else(|| missing(name))?;
+            return Ok(CommandOutcome::ArtifactCat(ArtifactCatOutcome { content, archived_as: Some(dated) }));
+        }
+        Some((name, None)) => {
+            return Err(CommandError::new(ErrorCode::NotFound, format!("Change '{name}' not found.")));
+        }
+        None => resolve_change(store, None, SPECIFY_FLAG)?,
+    };
     guard_meta(store, &change)?;
     let rel = artifact_rel_path(artifact)?;
     match store.read_artifact(&change.name, &rel) {
-        Some(content) => Ok(CommandOutcome::ArtifactCat(content)),
-        None => Err(CommandError::new(
-            ErrorCode::NotFound,
-            format!("artifact '{artifact}' not found for change '{}'", change.name),
-        )),
+        Some(content) => Ok(CommandOutcome::ArtifactCat(ArtifactCatOutcome { content, archived_as: None })),
+        None => Err(missing(&change.name)),
     }
 }
 

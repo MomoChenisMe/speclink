@@ -79,6 +79,7 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Post, "/discussions/{slug}/archive", routes::archive_discussion),
     route(Post, "/discussions/{slug}/promote", routes::promote_discussion),
     route(Get, "/plan", routes::plan),
+    route(Get, "/trace/{capability}", routes::trace),
     route(Get, "/specs", routes::list_specs),
     route(Get, "/specs/{capability}/document", routes::spec_document),
     route(Get, "/archived", routes::archived_list),

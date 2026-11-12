@@ -308,23 +308,50 @@ fn remote_plan_cycle_exits_non_zero_with_the_engine_line() {
 }
 
 #[test]
-fn remote_plan_refuses_strict_overlap_without_a_request() {
-    // verb-contract 明文分歧第 6 項：server 只以 requirement 級重疊規劃、沒有目錄級
-    // 開關，remote 模式以固定訊息拒絕——只解析模式，握手與 GET /plan 都不發。
-    let mock = mock_server(vec![("GET", "/plan".into(), 200, "{}".into())]);
+fn remote_plan_strict_overlap_asks_the_server() {
+    // verb-contract「plan 的 --strict-overlap 於 remote 同形」（改寫自
+    // remote_plan_refuses_strict_overlap_without_a_request）：旗標不再被拒絕，remote
+    // 臂握手後打 GET /plan，把 server 的計畫照本機同一個輸出函式印出。帶上的查詢參數
+    // 與兩模式逐位元相同由 remote_read_verbs 對真的入口驗證。
+    let mock = mock_server(vec![(
+        "GET",
+        "/plan".into(),
+        200,
+        r#"{"waves":[{"index":1,"changes":["add-a"]},{"index":2,"changes":["add-b"]}],"changes":[{"name":"add-a","wave":1,"stage":"proposed","ready":true},{"name":"add-b","wave":2,"stage":"proposed","blockedBy":["add-a"],"ready":false}],"next":"add-a","skipped":[],"strictOverlap":true}"#
+            .into(),
+    )]);
     let remote = TempProject::remote("strict-remote", &mock.base);
     let out = remote.run(&["plan", "--strict-overlap", "--json"]);
-    assert!(!out.status.success(), "the flag is refused in remote mode");
-    assert!(
-        stderr_of(&out).contains("plan --strict-overlap is not available in remote mode"),
-        "stderr: {}",
-        stderr_of(&out)
-    );
-    assert!(stdout_of(&out).is_empty(), "stdout stays empty");
-    assert!(
-        mock.captured.lock().unwrap().is_empty(),
-        "no request at all, the handshake included"
-    );
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let plan: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("plan --json is JSON");
+    assert_eq!(plan["changes"][1]["blockedBy"], serde_json::json!(["add-a"]));
+    assert_eq!(mock.verb_calls(), ["GET /plan"]);
+}
+
+#[test]
+fn remote_plan_strict_overlap_refuses_a_server_that_does_not_know_the_flag() {
+    // 舊版 server 不認得 strictOverlap，照樣回一般的計畫（沒有 strictOverlap 鍵）。CLI
+    // 不能把它當成嚴格重疊的結果印出來：非 0 結束、stdout 空、stderr 說明原因。
+    let mock = mock_server(vec![(
+        "GET",
+        "/plan".into(),
+        200,
+        r#"{"waves":[{"index":1,"changes":["add-a","add-b"]}],"changes":[{"name":"add-a","wave":1,"stage":"proposed","ready":true},{"name":"add-b","wave":1,"stage":"proposed","ready":true}],"next":"add-a","skipped":[]}"#
+            .into(),
+    )]);
+    let remote = TempProject::remote("strict-old-server", &mock.base);
+    for args in [&["plan", "--strict-overlap"][..], &["plan", "--strict-overlap", "--json"]] {
+        let out = remote.run(args);
+        assert!(!out.status.success(), "{args:?}");
+        assert!(stdout_of(&out).is_empty(), "{args:?}: {}", stdout_of(&out));
+        assert!(
+            stderr_of(&out).contains("this server does not support plan --strict-overlap"),
+            "{args:?}: {}",
+            stderr_of(&out)
+        );
+    }
+    // Without the flag the same server's plan prints as before.
+    assert!(remote.run(&["plan", "--json"]).status.success());
 }
 
 // --- change depends ---

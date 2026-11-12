@@ -17,6 +17,7 @@ use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs};
 use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
 use verbs::discuss::{cmd_discuss, remote_discuss};
 use verbs::documents::{cmd_document, remote_artifact, remote_language};
+use verbs::evidence::{cmd_evidence, remote_evidence};
 use verbs::init::{cmd_init, cmd_update, InitArgs, UpdateArgs};
 use verbs::instructions::{cmd_instructions, cmd_instructions_skill, remote_instructions};
 use verbs::lifecycle::{cmd_archive, cmd_discard, remote_archive, remote_claim, remote_discard};
@@ -29,7 +30,7 @@ use verbs::toolchain::{
     cmd_completion, cmd_demo, cmd_feedback, cmd_schema, cmd_schemas, cmd_templates, CompletionArgs,
     FeedbackArgs, JsonFlag, SchemaArgs, TemplatesArgs,
 };
-use verbs::trace::cmd_trace;
+use verbs::trace::{cmd_trace, remote_trace};
 
 /// The frozen architecture suffix, absent on architectures we do not ship.
 const ARCH: Option<&str> = {
@@ -105,9 +106,9 @@ enum Commands {
 }
 
 /// Every top-level command in its `--help` order.
-const HELP_ORDER: [&str; 34] = [
+const HELP_ORDER: [&str; 35] = [
     "init", "update", "list", "show", "validate", "analyze", "drift", "trace", "plan", "change",
-    "archive", "discard", "claim", "link", "unlink", "auth", "artifact", "language", "status",
+    "archive", "discard", "claim", "link", "unlink", "auth", "artifact", "evidence", "language", "status",
     "instructions", "new", "schemas", "templates", "feedback", "schema", "config",
     "workflow-config", "completion", "task", "in-progress", "demo", "discuss", "review", "verify",
 ];
@@ -182,12 +183,9 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
         SpecVerb::New(a) => dual(a, cmd_new, remote_new),
         SpecVerb::Task(a) => dual(a, cmd_task, remote_task),
         SpecVerb::InProgress(a) => dual(a, cmd_in_progress, remote_in_progress),
-        // `plan --strict-overlap` 同理只限本機：server 沒有目錄級開關（verb-contract
-        // 明文分歧第 6 項）——只解析模式、不握手即拒。
-        SpecVerb::Plan(a) if a.strict_overlap => {
-            fs_only(PLAN_STRICT_REMOTE_REFUSAL, || cmd_plan(a))
-        }
         SpecVerb::Plan(a) => dual(a, cmd_plan, |ctx, a| remote_plan(ctx, &a)),
+        SpecVerb::Trace(a) => dual(a, cmd_trace, |ctx, a| remote_trace(ctx, &a)),
+        SpecVerb::Evidence(a) => dual(a, cmd_evidence, remote_evidence),
         SpecVerb::Change(a) => dual(a, cmd_change, remote_change),
         SpecVerb::Discuss(a) => dual(a, cmd_discuss, remote_discuss),
         // review／verify 為 Dual 家族：clap → StationVerb 正規化先行，雙臂
@@ -203,8 +201,6 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
                 dual(a, cmd_instructions, |ctx, a| remote_instructions(ctx, &a))
             }
         }
-        // --- FsOnly ---
-        SpecVerb::Trace(a) => fs_only(TRACE_REMOTE_REFUSAL, || cmd_trace(a)),
         // --- RemoteOnly：fs 明寫拒絕 ---
         SpecVerb::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
     }
@@ -268,15 +264,6 @@ const CLAIM_FS_REFUSAL: &str =
 // 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。
 const DEMO_REMOTE_REFUSAL: &str =
     "demo is not available in remote mode — it seeds a demo change into the local spec directory";
-
-// trace 讀本機封存目錄、討論檔與 evidence 組裝溯源鏈；remote 端點屬本
-// change 的 Non-Goal（v1 僅本地 CLI），比照 demo 的 FsOnly 形狀明寫拒絕。
-const TRACE_REMOTE_REFUSAL: &str =
-    "trace is not available in remote mode — it assembles the provenance chain from the local spec directory";
-
-// Dual 家族裡只限本機的子情形（理由見 dispatch 的對應分支）。
-const PLAN_STRICT_REMOTE_REFUSAL: &str =
-    "plan --strict-overlap is not available in remote mode: the server plans with requirement-level overlap only";
 
 #[cfg(test)]
 mod tests {

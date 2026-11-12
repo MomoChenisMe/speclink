@@ -6,7 +6,7 @@
 use super::{
     ChangeRankOutcome, CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
     DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
-    DiscussSubjectOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
+    DiscussSubjectOutcome, EvidenceShowOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
     ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
     TaskFlipOutcome, ValidateOutcome, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
 };
@@ -50,6 +50,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::Trace(_) => "Trace",
         CommandOutcome::Plan(_) => "Plan",
         CommandOutcome::ArtifactCat(_) => "ArtifactCat",
+        CommandOutcome::EvidenceShow(_) => "EvidenceShow",
         CommandOutcome::Language(_) => "Language",
         CommandOutcome::DiscussList(_) => "DiscussList",
         CommandOutcome::DiscussShow(_) => "DiscussShow",
@@ -109,6 +110,19 @@ macro_rules! typed_outcomes {
     )+};
 }
 
+/// The two commands that read one document give its text: the artifact's
+/// content, or the LANGUAGE document.
+impl TryFrom<CommandOutcome> for String {
+    type Error = WrongOutcome;
+    fn try_from(outcome: CommandOutcome) -> Result<Self, WrongOutcome> {
+        match outcome {
+            CommandOutcome::ArtifactCat(read) => Ok(read.content),
+            CommandOutcome::Language(content) => Ok(content),
+            other => Err(WrongOutcome { expected: "String", actual: variant_name(&other) }),
+        }
+    }
+}
+
 typed_outcomes! {
     ListOutcome => [List],
     ShowOutcome => [Show],
@@ -118,7 +132,7 @@ typed_outcomes! {
     AnalyzeReport => [Analyze],
     TraceReport => [Trace],
     PlanReport => [Plan],
-    String => [ArtifactCat, Language],
+    EvidenceShowOutcome => [EvidenceShow],
     Vec<DiscussionInfo> => [DiscussList],
     DiscussShowOutcome => [DiscussShow],
     Vec<DiscussionHit> => [DiscussSearch],
@@ -191,7 +205,10 @@ mod tests {
 
     #[test]
     fn string_accepts_artifact_cat_and_language() {
-        let cat = String::try_from(CommandOutcome::ArtifactCat("cat body".into()))
+        let cat = String::try_from(CommandOutcome::ArtifactCat(ArtifactCatOutcome {
+            content: "cat body".into(),
+            archived_as: None,
+        }))
             .expect("ArtifactCat carries String");
         assert_eq!(cat, "cat body");
         let lang = String::try_from(CommandOutcome::Language("lang body".into()))

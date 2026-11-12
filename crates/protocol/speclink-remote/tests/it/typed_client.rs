@@ -924,3 +924,122 @@ fn discussion_search_is_typed_and_sends_space_joined_q() {
         .replace("%20", " ");
     assert_eq!(q, "golden sse", "keywords travel space-joined in one q");
 }
+
+// --- remote-read-verbs: trace, the strict plan, evidence of an archived change, the list times ---
+
+#[test]
+fn trace_gets_the_typed_chain_of_one_capability() {
+    // 規格「溯源回應 payload」：GET /trace/{capability} 回型別化的 TraceResponse。
+    let mock = serve(
+        200,
+        r#"{"capability":"auth","requirements":[{"name":"Session","source":"beta"}],"changes":[{"name":"alpha","archivedDir":"2026-11-01-alpha","fromDiscussion":"origin-talk","evidence":[{"taskId":"tsk_a","files":["src/a.rs"]}]},{"name":"beta","archivedDir":"2026-11-02-beta","fromDiscussion":null,"evidence":null}],"discussions":[{"slug":"origin-talk","archived":true,"promotedTo":[{"change":"alpha","capabilities":["auth"]}]}]}"#,
+    );
+    let trace = client(&mock).trace("auth").expect("trace ok");
+    assert_eq!(trace.capability, "auth");
+    assert_eq!(trace.changes[0].archived_dir, "2026-11-01-alpha");
+    assert_eq!(trace.changes[1].evidence, None);
+    assert_eq!(trace.discussions[0].promoted_to[0].change, "alpha");
+    let call = mock.last();
+    assert_call(&call, "GET", "/trace/auth");
+    assert_eq!(call.header("x-speclink-repo"), Some("backend"));
+}
+
+#[test]
+fn trace_of_an_unknown_capability_relays_the_engines_line() {
+    let mock = serve(
+        404,
+        r#"{"status":404,"reason":"not_found","message":"Capability 'auth-flow' is not in the canonical specs.\nNo similar capability names found."}"#,
+    );
+    let err = client(&mock).trace("auth-flow").unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
+    assert_eq!(err.message, "Capability 'auth-flow' is not in the canonical specs.\nNo similar capability names found.");
+}
+
+#[test]
+fn plan_strict_asks_for_the_strict_overlap_plan() {
+    // 規格「溯源回應 payload」：帶嚴格重疊旗標取得 plan 回應，沿用既有的 plan payload。
+    let mock = serve(
+        200,
+        r#"{"waves":[{"index":1,"changes":["a"]},{"index":2,"changes":["b"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","ready":true},{"name":"b","wave":2,"stage":"proposed","blockedBy":["a"],"ready":false}],"next":"a","skipped":[],"strictOverlap":true}"#,
+    );
+    let plan = client(&mock).plan_strict().expect("strict plan ok");
+    assert_eq!(plan.waves.len(), 2);
+    assert_eq!(plan.changes[1].blocked_by, ["a"]);
+    let call = mock.last();
+    assert_call(&call, "GET", "/plan?strictOverlap=true");
+    // The plain plan still sends no query.
+    client(&mock).plan().expect("plan ok");
+    assert_call(&mock.last(), "GET", "/plan");
+}
+
+#[test]
+fn change_evidence_carries_the_archived_name_when_the_server_sends_one() {
+    let archived = serve(
+        200,
+        r#"{"entries":[{"taskId":"tsk_a","taskDesc":"1.1 First","touchedFiles":["src/a.rs"],"recordedAt":"2026-11-12T03:00:00Z"}],"archivedAs":"2026-11-12-demo"}"#,
+    );
+    let evidence = client(&archived).change_evidence("demo").expect("evidence ok");
+    assert_eq!(evidence.archived_as.as_deref(), Some("2026-11-12-demo"));
+    assert_eq!(evidence.entries[0].task_id, "tsk_a");
+    assert_call(&archived.last(), "GET", "/changes/demo/evidence");
+
+    let active = serve(200, r#"{"entries":[]}"#);
+    let evidence = client(&active).change_evidence("demo").expect("evidence ok");
+    assert_eq!(evidence.archived_as, None);
+    assert!(
+        serde_json::to_value(&evidence).unwrap().get("archivedAs").is_none(),
+        "absent means not serialized"
+    );
+}
+
+#[test]
+fn list_changes_carries_the_two_times_and_reads_a_server_that_sends_neither() {
+    let dated = serve(
+        200,
+        r#"{"changes":[{"name":"demo","created":"2026-11-01","modifiedAt":"2026-11-12T03:00:00Z"}]}"#,
+    );
+    let changes = client(&dated).list_changes().expect("list ok").changes;
+    assert_eq!(changes[0].created.as_deref(), Some("2026-11-01"));
+    assert_eq!(changes[0].modified_at.as_deref(), Some("2026-11-12T03:00:00Z"));
+
+    let undated = serve(200, r#"{"changes":[{"name":"demo","created":"2026-11-01"}]}"#);
+    let changes = client(&undated).list_changes().expect("list ok").changes;
+    assert_eq!(changes[0].modified_at, None);
+    assert_eq!(changes[0].created.as_deref(), Some("2026-11-01"));
+}
+
+#[test]
+fn a_name_with_a_separator_stays_inside_its_path_segment() {
+    // A `/`, a space or a `?` in a name must not turn into another path or a
+    // query: the server answers for the name as it was typed.
+    let mock = serve(404, r#"{"status":404,"reason":"not_found","message":"Change 'a/b' not found."}"#);
+    let err = client(&mock).change_evidence("a/b").unwrap_err();
+    assert_eq!(err.message, "Change 'a/b' not found.");
+    assert_call(&mock.last(), "GET", "/changes/a%2Fb/evidence");
+
+    client(&mock).trace("../changes/demo/evidence?x=1 #y").unwrap_err();
+    assert_call(&mock.last(), "GET", "/trace/..%2Fchanges%2Fdemo%2Fevidence%3Fx%3D1%20%23y");
+
+    // A plain name goes out as it is.
+    client(&mock).trace("user-auth_v2.1").unwrap_err();
+    assert_call(&mock.last(), "GET", "/trace/user-auth_v2.1");
+}
+
+#[test]
+fn plan_strict_refuses_a_plan_the_server_does_not_call_strict() {
+    // A server from before the strict plan ignores the query and answers the
+    // plain plan. Handing that back as the strict one would be a wrong answer.
+    let old = serve(
+        200,
+        r#"{"waves":[{"index":1,"changes":["a","b"]}],"changes":[{"name":"a","wave":1,"stage":"proposed","ready":true},{"name":"b","wave":1,"stage":"proposed","ready":true}],"next":"a","skipped":[]}"#,
+    );
+    let err = client(&old).plan_strict().unwrap_err();
+    assert_eq!(
+        err.message,
+        "this server does not support plan --strict-overlap — update the server, or run the plan without the flag"
+    );
+    assert_call(&old.last(), "GET", "/plan?strictOverlap=true");
+    // The plain plan of the same server still reads.
+    assert_eq!(client(&old).plan().expect("plan ok").waves.len(), 1);
+}
+

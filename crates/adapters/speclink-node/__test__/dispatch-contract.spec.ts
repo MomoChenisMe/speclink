@@ -539,15 +539,19 @@ describe('the nine verbs dispatch served before keep their return values', () =>
   const STAMP = JSON.stringify({ scope: [{ path: SCOPE_FILE, hash: '0f9c' }] })
   const engine = () => createEngine({ store: memoryStore(fixtureProject()) })
 
+  // One deliberate addition (change remote-read-verbs): each change carries
+  // `created` and `modifiedAt` — here the fixture's 100 and 200 seconds.
   it('list', async () => {
     expect(await engine().dispatch(['list', '--sort', 'name'])).toMatchInlineSnapshot(`
       {
         "changes": [
           {
             "completedTasks": 1,
+            "created": "2026-07-01",
             "deltaCapabilities": [
               "api-quota",
             ],
+            "modifiedAt": "1970-01-01T00:01:40Z",
             "name": "alpha",
             "status": "in-progress",
             "summary": "Add rate limiting to the publi…",
@@ -555,6 +559,8 @@ describe('the nine verbs dispatch served before keep their return values', () =>
           },
           {
             "completedTasks": 1,
+            "created": "2026-07-02",
+            "modifiedAt": "1970-01-01T00:03:20Z",
             "name": "beta",
             "status": "done",
             "summary": "Small cleanup change with ever…",
@@ -568,9 +574,11 @@ describe('the nine verbs dispatch served before keep their return values', () =>
         "changes": [
           {
             "completedTasks": 1,
+            "created": "2026-07-01",
             "deltaCapabilities": [
               "api-quota",
             ],
+            "modifiedAt": "1970-01-01T00:01:40Z",
             "name": "alpha",
             "status": "in-progress",
             "summary": "Add rate limiting to the publi…",
@@ -578,6 +586,8 @@ describe('the nine verbs dispatch served before keep their return values', () =>
           },
           {
             "completedTasks": 1,
+            "created": "2026-07-02",
+            "modifiedAt": "1970-01-01T00:03:20Z",
             "name": "beta",
             "status": "done",
             "summary": "Small cleanup change with ever…",

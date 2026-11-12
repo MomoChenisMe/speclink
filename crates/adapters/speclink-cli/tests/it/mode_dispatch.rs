@@ -4,9 +4,9 @@
 //!
 //! - ModeFree: verbs that read no project config (completion, config) run
 //!   untouched under a broken .speclink.yaml.
-//! - FsOnly: demo and trace under a remote-mode project are refused at mode
-//!   resolution — no server request leaves the process, so offline refuses
-//!   identically.
+//! - FsOnly: demo under a remote-mode project is refused at mode resolution —
+//!   no server request leaves the process, so offline refuses identically.
+//! - Dual: trace and evidence show reach the server in remote mode.
 //! - RemoteOnly: claim under an fs project is refused with the frozen message.
 
 use std::path::PathBuf;
@@ -97,7 +97,7 @@ fn mode_free_config_list_runs_under_broken_app_yaml() {
     );
 }
 
-// --- FsOnly: demo and trace refuse remote mode at mode resolution — zero server requests ---
+// --- FsOnly: demo refuses remote mode at mode resolution — zero server requests ---
 
 /// FsOnly 動詞於 remote 模式且 server 不可達：exit code 非零、stderr 含各自
 /// 拒絕句、stdout 空、零請求（listener 在線但從不說 HTTP——若動詞發出任何請求，
@@ -158,15 +158,46 @@ fn fs_only_demo_rejects_remote_mode_when_no_server_listens() {
     );
 }
 
+// --- Dual: trace and evidence show reach the server in remote mode ---
+
 #[test]
-fn fs_only_trace_rejects_remote_mode_without_any_server_request() {
-    // Spec scenario trace 於 remote 明確拒絕.
-    assert_fs_only_refuses_remote(
-        "fsonly-trace",
-        &["trace", "some-capability"],
-        "trace is not available in remote mode — it assembles the provenance chain from the local spec directory",
-    );
+fn trace_and_evidence_show_reach_the_server_in_remote_mode() {
+    // Spec scenario「trace 與 evidence show 於 remote 模式走 server」（改寫自
+    // fs_only_trace_rejects_remote_mode_without_any_server_request：trace 不再只限本機）。
+    let fake = crate::fake_server::Fake::new();
+    fake.route("/api/speclink/v1/projects/demo/binding", 200, BINDING)
+        .route(
+            "/api/speclink/v1/projects/demo/trace/some-capability",
+            200,
+            r#"{"capability":"some-capability","requirements":[],"changes":[],"discussions":[]}"#,
+        )
+        .route(
+            "/api/speclink/v1/projects/demo/changes/some-change/evidence",
+            200,
+            r#"{"change":"some-change","entries":[]}"#,
+        );
+    let p = TempProject::new("dual-trace", &format!("remote:\n  url: {}\n", fake.project_url()));
+    for (args, first_line) in [
+        (&["trace", "some-capability"][..], "Capability: some-capability"),
+        (&["evidence", "show", "some-change"], "No evidence recorded for 'some-change'."),
+    ] {
+        let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
+        cmd.args(args).current_dir(&p.dir).env_remove("SPECLINK_STORE_URL").env("SPECLINK_TOKEN", "tok");
+        cmd.env("HOME", &p.dir).env("USERPROFILE", &p.dir).env("XDG_CONFIG_HOME", &p.dir);
+        let out = cmd.output().expect("run speclink binary");
+        assert!(out.status.success(), "{args:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let stdout = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(stdout.lines().next(), Some(first_line), "{args:?}: {stdout}");
+    }
+    let paths = fake.paths();
+    assert!(paths.contains(&"/api/speclink/v1/projects/demo/trace/some-capability".to_string()), "{paths:?}");
+    assert!(paths.contains(&"/api/speclink/v1/projects/demo/changes/some-change/evidence".to_string()), "{paths:?}");
+    // Nothing was written next to the connection file.
+    let left: Vec<_> = std::fs::read_dir(&p.dir).unwrap().flatten().map(|e| e.file_name()).collect();
+    assert_eq!(left, [std::ffi::OsString::from(".speclink.yaml")], "the local store is not touched");
 }
+
+const BINDING: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
 
 // --- RemoteOnly: claim refuses fs mode with the frozen message ---
 

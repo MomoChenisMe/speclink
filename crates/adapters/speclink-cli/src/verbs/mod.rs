@@ -13,6 +13,7 @@ pub(crate) mod config;
 pub(crate) mod connection;
 pub(crate) mod discuss;
 pub(crate) mod documents;
+pub(crate) mod evidence;
 pub(crate) mod init;
 pub(crate) mod instructions;
 pub(crate) mod lifecycle;

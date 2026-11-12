@@ -135,7 +135,7 @@ fn query_verbs_yield_the_same_outcome_on_both_paths() {
     let (fs_out, fs_events) =
         engine_execute(&fs, &fs_engine_ctx(), list_cmd()).expect("fs list");
     let bridged = bridge::execute(&mem, &host_ctx(), list_cmd()).expect("bridged list");
-    let fs_changes = match &fs_out {
+    let mut fs_changes = match &fs_out {
         CommandOutcome::List(l) => serde_json::to_value(&l.changes).unwrap(),
         other => panic!("expected list, got {other:?}"),
     };
@@ -143,6 +143,17 @@ fn query_verbs_yield_the_same_outcome_on_both_paths() {
         CommandOutcome::List(l) => serde_json::to_value(&l.changes).unwrap(),
         other => panic!("expected list, got {other:?}"),
     };
+    // The one difference between the two stores: the fs store reports each
+    // file's modified time, the TeamStore adapter reports none (0), so only
+    // the fs items carry `modifiedAt`.
+    for item in fs_changes.as_array_mut().expect("a changes array") {
+        let at = item.as_object_mut().unwrap().remove("modifiedAt");
+        assert!(at.is_some_and(|at| at.is_string()), "the fs store dates its changes");
+    }
+    assert!(
+        br_changes.as_array().unwrap().iter().all(|item| item.get("modifiedAt").is_none()),
+        "a store that reports no time gives no modifiedAt: {br_changes}"
+    );
     assert_eq!(fs_changes, br_changes, "list changes section matches");
     assert!(fs_events.is_empty() && bridged.events.is_empty(), "queries emit no events");
     assert!(bridged.revision.is_none(), "a query opens no unit of work");

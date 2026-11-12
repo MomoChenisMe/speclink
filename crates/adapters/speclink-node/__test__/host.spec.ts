@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createEngine, createHost, StoreConflictError } from '../index.js'
-import { rejection } from './helpers'
+import { cliJson, rejection } from './helpers'
 import { memoryPort, type PortCommit } from './memory-port'
 
 const ALICE = { id: 'u_1', displayName: 'Alice' }
@@ -75,6 +75,91 @@ describe('createHost and host.dispatch', () => {
     const viaHost = await createHost({ store: portWithDemo().store }).dispatch({ identity: ALICE, scope: 's1', argv })
 
     expect(viaHost).toEqual(viaEngine)
+  })
+
+  // command-runtime「evidence show 經命令層且各入口一致」、verify-evidence「經 SDK 讀取」
+  it('reads the evidence of a change the same way as engine.dispatch, and commits nothing', async () => {
+    const evidence = JSON.stringify({
+      version: 2,
+      change: 'demo',
+      entries: [
+        { taskId: 'tsk_11', taskDesc: '1.1 First', touchedFiles: ['src/b.rs', 'src/a.rs'], recordedAt: '2026-11-12T03:00:00Z' },
+        {
+          taskId: 'tsk_12',
+          taskDesc: '1.2 Second',
+          actor: 'Alice',
+          touchedFiles: ['src/b.rs', 'src/c.rs'],
+          recordedAt: '2026-11-12T04:00:00Z',
+        },
+      ],
+    })
+    const archived = JSON.stringify({
+      version: 2,
+      change: 'old',
+      entries: [{ taskId: 'tsk_o1', taskDesc: '1.1 Old', touchedFiles: ['src/old.rs'], recordedAt: '2026-11-10T00:00:00Z' }],
+    })
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-host-evidence-')))
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }))
+    const demoDir = join(root, 'speclink', 'changes', 'demo')
+    const oldDir = join(root, 'speclink', 'changes', 'archive', '2026-11-12-old')
+    mkdirSync(demoDir, { recursive: true })
+    mkdirSync(oldDir, { recursive: true })
+    writeFileSync(join(demoDir, '.meta.yaml'), META)
+    writeFileSync(join(demoDir, '.evidence.json'), evidence)
+    writeFileSync(join(oldDir, '.meta.yaml'), META)
+    writeFileSync(join(oldDir, '.evidence.json'), archived)
+    const port = memoryPort()
+    port.seed('s1', {
+      'changes/demo/.meta.yaml': META,
+      'changes/demo/.evidence.json': evidence,
+      'archive/changes/2026-11-12-old/.meta.yaml': META,
+      'archive/changes/2026-11-12-old/.evidence.json': archived,
+      'config.yaml': CONFIG,
+    })
+    const engine = createEngine({ store: { type: 'fs', root } })
+    const host = createHost({ store: port.store })
+    const viaHost = (argv: string[]) => host.dispatch({ identity: ALICE, scope: 's1', argv })
+
+    const demo = await viaHost(['evidence', 'show', 'demo', '--json'])
+    expect(demo).toEqual(await engine.dispatch(['evidence', 'show', 'demo', '--json']))
+    // The CLI's own `--json` on the same files is the third entry point.
+    expect(demo).toEqual(cliJson(root, ['evidence', 'show', 'demo', '--json']))
+    expect(demo).toMatchObject({ change: 'demo', files: ['src/a.rs', 'src/b.rs', 'src/c.rs'] })
+    expect(demo).not.toHaveProperty('archivedAs')
+    const entries = (demo as { entries: Record<string, unknown>[] }).entries
+    expect(entries.map((e) => e.taskId)).toEqual(['tsk_11', 'tsk_12'])
+    expect(entries.every((e) => Object.keys(e).every(isCamel))).toBe(true)
+    expect(Object.keys(entries[0]).sort()).toEqual(['recordedAt', 'taskDesc', 'taskId', 'touchedFiles'])
+    expect(entries[1].actor).toBe('Alice')
+
+    // An archived change, by its own name and by its archived name.
+    for (const name of ['old', '2026-11-12-old']) {
+      const old = await viaHost(['evidence', 'show', name, '--json'])
+      expect(old).toEqual(await engine.dispatch(['evidence', 'show', name, '--json']))
+      expect(old).toEqual(cliJson(root, ['evidence', 'show', name, '--json']))
+      expect(old).toMatchObject({ change: 'old', archivedAs: '2026-11-12-old', files: ['src/old.rs'] })
+    }
+
+    // The text form is the same too.
+    expect(await viaHost(['evidence', 'show', 'demo'])).toEqual(await engine.dispatch(['evidence', 'show', 'demo']))
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('rejects evidence show of a name that is no change with not_found, as engine.dispatch does', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-host-evidence-ghost-')))
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }))
+    mkdirSync(join(root, 'speclink', 'changes'), { recursive: true })
+    const argv = ['evidence', 'show', 'ghost', '--json']
+    const port = portWithDemo()
+
+    const viaEngine = await rejection(createEngine({ store: { type: 'fs', root } }).dispatch(argv))
+    const viaHost = await rejection(createHost({ store: port.store }).dispatch({ identity: ALICE, scope: 's1', argv }))
+
+    expect(viaEngine.code).toBe('not_found')
+    expect(viaHost.code).toBe('not_found')
+    expect(viaHost.message).toBe(viaEngine.message)
+    expect(viaHost.message).toBe("Change 'ghost' not found.")
+    expect(port.calls.commit).toBe(0)
   })
 
   it('answers status with no change at all with the notice, as engine.dispatch does', async () => {

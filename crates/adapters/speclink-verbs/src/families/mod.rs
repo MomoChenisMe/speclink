@@ -15,6 +15,7 @@ pub trait ToCommand {
 pub mod checks;
 pub mod discuss;
 pub mod documents;
+pub mod evidence;
 pub mod instructions;
 pub mod lifecycle;
 pub mod new;
@@ -54,6 +55,8 @@ pub enum SpecVerb {
     Claim(lifecycle::ClaimArgs),
     /// Read store documents (artifact contents)
     Artifact(documents::ArtifactArgs),
+    /// Completion evidence (the files each completed task touched)
+    Evidence(evidence::EvidenceArgs),
     /// Shared vocabulary document
     Language(documents::LanguageArgs),
     /// Show artifact DAG status
@@ -94,6 +97,7 @@ impl SpecVerb {
             SpecVerb::Discard(_) => "discard",
             SpecVerb::Claim(_) => "claim",
             SpecVerb::Artifact(a) => a.name(),
+            SpecVerb::Evidence(a) => a.name(),
             SpecVerb::Language(a) => a.name(),
             SpecVerb::Status(_) => "status",
             SpecVerb::Instructions(_) => "instructions",
@@ -122,6 +126,7 @@ impl SpecVerb {
             | SpecVerb::Discard(_)
             | SpecVerb::Claim(_)
             | SpecVerb::Artifact(_)
+            | SpecVerb::Evidence(_)
             | SpecVerb::Language(_)
             | SpecVerb::Status(_)
             | SpecVerb::Instructions(_)
@@ -156,6 +161,7 @@ impl ToCommand for SpecVerb {
             SpecVerb::Discard(a) => a.to_command(inputs),
             SpecVerb::Claim(a) => a.to_command(inputs),
             SpecVerb::Artifact(a) => a.to_command(inputs),
+            SpecVerb::Evidence(a) => a.to_command(inputs),
             SpecVerb::Language(a) => a.to_command(inputs),
             SpecVerb::Status(a) => a.to_command(inputs),
             SpecVerb::Instructions(a) => a.to_command(inputs),

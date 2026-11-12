@@ -35,6 +35,17 @@ pub struct ListChangeJson {
     /// change has none, so a delta-less change's payload stays byte-identical.
     #[serde(rename = "deltaCapabilities", skip_serializing_if = "Vec::is_empty")]
     pub delta_capabilities: Vec<String>,
+    /// The creation date of the change's metadata, `YYYY-MM-DD`. Absent when
+    /// the metadata has none or does not parse.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created: Option<String>,
+    /// When a document of the change was last modified, as an RFC 3339 UTC
+    /// time in whole seconds — the store's `updated_at_secs`. Absent when the
+    /// store cannot tell; never 0 or an empty string. On a local checkout it
+    /// is a file time, which a checkout or a copy also moves: a hint for "how
+    /// long has this been idle", not a fact to decide on.
+    #[serde(rename = "modifiedAt", skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -158,10 +169,24 @@ pub fn changes_json_with(
                 restale_from: c.meta.restale_from(),
                 meta_error: c.meta_error.clone(),
                 delta_capabilities: store.delta_capabilities(&c.name),
+                created: c.meta.created.clone(),
+                modified_at: modified_at(store.updated_at_secs(&c.name)),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })
         .collect()
+}
+
+/// Whole seconds since the Unix epoch as an RFC 3339 UTC time. 0 is a store
+/// that cannot tell, so it gives nothing; a value past what RFC 3339 can
+/// state (year 9999) gives nothing either.
+fn modified_at(secs: u64) -> Option<String> {
+    use chrono::Datelike;
+    if secs == 0 {
+        return None;
+    }
+    let at = chrono::DateTime::from_timestamp(i64::try_from(secs).ok()?, 0)?;
+    (at.year() <= 9999).then(|| at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
 }
 
 /// The `specs` items of `list --specs --json`.
@@ -260,7 +285,7 @@ mod tests {
         stamped.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
         stamped.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
 
-        let expected = r#"{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2}"#;
+        let expected = r#"{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01"}"#;
         for store in [old_meta, stamped] {
             let changes = crate::model::list_changes(&store);
             let items = changes_json(&store, &changes);
@@ -380,5 +405,92 @@ mod tests {
                 "no verify field may leak into the CLI item: {json}"
             );
         }
+    }
+
+    // --- the two time fields (remote-read-verbs D5) ---
+
+    /// 2026-11-12T03:00:00Z in whole seconds since the Unix epoch.
+    const NOV_12_0300: u64 = 1_794_452_400;
+
+    fn item_json(store: &TestStore) -> serde_json::Value {
+        let changes = crate::model::list_changes(store);
+        let items = changes_json(store, &changes);
+        assert_eq!(items.len(), 1);
+        serde_json::to_value(&items[0]).unwrap()
+    }
+
+    #[test]
+    fn an_item_carries_the_creation_date_of_its_metadata() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01\n");
+        assert_eq!(item_json(&store)["created"], "2026-11-01");
+        // A creation time stamp reads as its date.
+        let stamped = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01T08:30:00+08:00\n");
+        assert_eq!(item_json(&stamped)["created"], "2026-11-01");
+    }
+
+    #[test]
+    fn a_creation_value_that_is_no_date_goes_out_as_the_metadata_has_it() {
+        // A hand-edited value is not corrected and not dropped: `show` prints
+        // it the same way, and a reader that cannot parse it skips it.
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: someday\n");
+        assert_eq!(item_json(&store)["created"], "someday");
+    }
+
+    #[test]
+    fn an_item_carries_the_last_modified_time_as_rfc3339_utc() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01\n");
+        store.updated_at.borrow_mut().insert("demo".to_string(), NOV_12_0300);
+        let item = item_json(&store);
+        assert_eq!(item["modifiedAt"], "2026-11-12T03:00:00Z");
+        assert!(item.get("modified_at").is_none(), "the key is camelCase: {item}");
+    }
+
+    #[test]
+    fn a_store_that_reports_zero_gives_no_modified_at() {
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01\n");
+        let item = item_json(&store);
+        assert!(item.get("modifiedAt").is_none(), "absent, never 0 or an empty string: {item}");
+        assert_eq!(item["created"], "2026-11-01", "created does not depend on the store's clock");
+    }
+
+    #[test]
+    fn a_change_with_no_usable_metadata_gives_no_created() {
+        // Corrupt metadata, and metadata with no creation date.
+        for meta in ["schema: [unclosed\n", "schema: spec-driven\n"] {
+            let store = TestStore::with_meta("demo", meta);
+            let item = item_json(&store);
+            assert!(item.get("created").is_none(), "{meta:?}: {item}");
+        }
+    }
+
+    #[test]
+    fn the_time_fields_come_after_the_frozen_fields_and_before_worktree() {
+        let store = demo_store("demo");
+        store.updated_at.borrow_mut().insert("demo".to_string(), NOV_12_0300);
+        let changes = crate::model::list_changes(&store);
+        let facts = BTreeMap::from([(
+            "demo".to_string(),
+            ListWorktreeJson { path: "/x".into(), branch: "speclink/demo".into() },
+        )]);
+        assert_eq!(
+            serde_json::to_string(&changes_json_with(&store, &changes, &facts)).unwrap(),
+            r#"[{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","modifiedAt":"2026-11-12T03:00:00Z","worktree":{"path":"/x","branch":"speclink/demo"}}]"#
+        );
+    }
+
+    #[test]
+    fn a_time_no_rfc3339_text_can_state_gives_no_modified_at_and_no_panic() {
+        // Year 9999 ends at 253402300799; a store can report anything in u64.
+        for secs in [253_402_300_800_u64, i64::MAX as u64, i64::MAX as u64 + 1, u64::MAX] {
+            let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01\n");
+            store.updated_at.borrow_mut().insert("demo".to_string(), secs);
+            let item = item_json(&store);
+            assert!(item.get("modifiedAt").is_none(), "{secs}: {item}");
+        }
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-01\n");
+        store.updated_at.borrow_mut().insert("demo".to_string(), 253_402_300_799);
+        assert_eq!(item_json(&store)["modifiedAt"], "9999-12-31T23:59:59Z");
+        store.updated_at.borrow_mut().insert("demo".to_string(), 1);
+        assert_eq!(item_json(&store)["modifiedAt"], "1970-01-01T00:00:01Z");
     }
 }

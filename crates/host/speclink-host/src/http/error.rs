@@ -165,7 +165,6 @@ impl From<DocumentsError> for HttpError {
             DocumentsError::InvalidConfig(message) => HttpError::invalid_config(message),
             too_large @ DocumentsError::TooLarge { .. } => HttpError::payload_too_large(too_large.to_string()),
             moved @ DocumentsError::ScopeMoved { .. } => HttpError::revision_conflict(moved.to_string()),
-            DocumentsError::Corrupt(message) => HttpError::internal(message),
             DocumentsError::Store(e) => HttpError::from(e),
         }
     }

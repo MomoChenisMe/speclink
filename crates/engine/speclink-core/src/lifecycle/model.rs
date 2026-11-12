@@ -409,9 +409,65 @@ pub fn set_board_rank(store: &dyn Store, name: &str, rank: &str) -> anyhow::Resu
     Ok(())
 }
 
-/// Find an active change by name.
+/// Find an active change by name. A name that cannot be a change's name is
+/// never looked up ([`is_change_name`]).
 pub fn find_change(store: &dyn Store, name: &str) -> Option<Change> {
+    if !is_change_name(name) {
+        return None;
+    }
     store.find_change(name)
+}
+
+/// Whether `name` can be a change's name at all: one path segment that is not
+/// a dot name and not `archive`, the name the archive itself has among the
+/// changes. A store may find a change by probing a directory; such a store
+/// would answer `..` with the folder above the changes, `archive` with the
+/// archive, and `archive/<name>` with an archived change read as an active one.
+fn is_change_name(name: &str) -> bool {
+    !matches!(name, "" | "." | ".." | "archive") && !name.contains(['/', '\\'])
+}
+
+/// Where a change name leads.
+pub enum Located {
+    Active(Change),
+    /// The archived name.
+    Archived(String),
+}
+
+/// Find `name`: the active change of that name, else the archived change the
+/// name stands for ([`archived_change_name`]). The archive is only looked at
+/// when no active change has the name.
+pub fn locate_change(store: &dyn Store, name: &str) -> Option<Located> {
+    if !is_change_name(name) {
+        return None;
+    }
+    match find_change(store, name) {
+        Some(change) => Some(Located::Active(change)),
+        None => archived_change_name(store, name).map(Located::Archived),
+    }
+}
+
+/// The archived name `name` stands for:
+///
+/// - an archived name with its date, given as it is → that archived change;
+/// - else a change's own name → its newest archive (`<date>-<name>`; the
+///   dates sort as text, so the greatest is the newest);
+/// - else an older archive that holds the change under its bare name.
+pub fn archived_change_name(store: &dyn Store, name: &str) -> Option<String> {
+    use crate::util::strip_date_prefix;
+    let archived = store.list_archived_changes();
+    let exact = || archived.iter().any(|dated| dated == name).then(|| name.to_string());
+    if strip_date_prefix(name) != name {
+        if let Some(found) = exact() {
+            return Some(found);
+        }
+    }
+    archived
+        .iter()
+        .filter(|dated| dated.as_str() != name && strip_date_prefix(dated) == name)
+        .max()
+        .cloned()
+        .or_else(exact)
 }
 
 /// Whether an artifact's output exists and has content.
@@ -685,6 +741,76 @@ mod tests {
     use super::ChangeMeta;
     use crate::store::Store;
     use crate::teststore::TestStore;
+
+    // --- the lookup of a change by name ---
+
+    fn archive_of(names: &[&str]) -> TestStore {
+        let store = TestStore::default();
+        for name in names {
+            store.archived_metas.borrow_mut().insert(name.to_string(), "schema: spec-driven\n".to_string());
+        }
+        store
+    }
+
+    #[test]
+    fn find_change_never_looks_up_a_name_that_is_no_change_name() {
+        // This double answers for every name it holds, as a store that probes
+        // a directory would for `..` or `archive/<name>`.
+        let store = TestStore::default();
+        for name in ["..", ".", "", "archive", "archive/2026-11-12-demo", "demo/../other", "a\\b", "../discussions"] {
+            store.metas.borrow_mut().insert(name.to_string(), "schema: spec-driven\n".to_string());
+            assert!(super::find_change(&store, name).is_none(), "{name:?}");
+            assert!(super::locate_change(&store, name).is_none(), "{name:?}");
+        }
+        store.metas.borrow_mut().insert("demo".to_string(), "schema: spec-driven\n".to_string());
+        assert_eq!(super::find_change(&store, "demo").map(|c| c.name).as_deref(), Some("demo"));
+        // A name that only looks like the reserved one is a name like any other.
+        store.metas.borrow_mut().insert("archive-tools".to_string(), "schema: spec-driven\n".to_string());
+        assert!(super::find_change(&store, "archive-tools").is_some());
+    }
+
+    #[test]
+    fn a_changes_own_name_stands_for_its_newest_archive() {
+        let store = archive_of(&["2026-10-01-demo", "2026-11-12-demo", "2026-11-30-other", "2026-01-01-foo-demo"]);
+        assert_eq!(super::archived_change_name(&store, "demo").as_deref(), Some("2026-11-12-demo"));
+        assert_eq!(super::archived_change_name(&store, "2026-10-01-demo").as_deref(), Some("2026-10-01-demo"));
+        assert_eq!(super::archived_change_name(&store, "ghost"), None);
+        // Only the date goes: `foo-demo` is another change.
+        assert_eq!(super::archived_change_name(&store, "foo-demo").as_deref(), Some("2026-01-01-foo-demo"));
+    }
+
+    #[test]
+    fn a_dated_archive_is_newer_than_an_older_one_under_the_bare_name() {
+        // As text, `demo` sorts after every dated name; it is still the older one.
+        let store = archive_of(&["demo", "2026-11-12-demo"]);
+        assert_eq!(super::archived_change_name(&store, "demo").as_deref(), Some("2026-11-12-demo"));
+        // With no dated archive, the bare name is what there is.
+        let store = archive_of(&["demo"]);
+        assert_eq!(super::archived_change_name(&store, "demo").as_deref(), Some("demo"));
+    }
+
+    #[test]
+    fn an_archived_name_given_as_it_is_wins_over_a_change_named_like_it() {
+        // `2026-01-01-foo` is the archive of `foo`; a change that was itself
+        // named `2026-01-01-foo` was archived later under a second date.
+        let store = archive_of(&["2026-01-01-foo", "2026-05-05-2026-01-01-foo"]);
+        assert_eq!(super::archived_change_name(&store, "2026-01-01-foo").as_deref(), Some("2026-01-01-foo"));
+        assert_eq!(super::archived_change_name(&store, "foo").as_deref(), Some("2026-01-01-foo"));
+        // Without the exact archive, the dated name is a change's own name.
+        let store = archive_of(&["2026-05-05-2026-01-01-foo"]);
+        assert_eq!(
+            super::archived_change_name(&store, "2026-01-01-foo").as_deref(),
+            Some("2026-05-05-2026-01-01-foo")
+        );
+    }
+
+    #[test]
+    fn an_active_change_is_found_before_the_archive() {
+        let store = archive_of(&["2026-11-12-demo"]);
+        assert!(matches!(super::locate_change(&store, "demo"), Some(super::Located::Archived(dated)) if dated == "2026-11-12-demo"));
+        store.metas.borrow_mut().insert("demo".to_string(), "schema: spec-driven\n".to_string());
+        assert!(matches!(super::locate_change(&store, "demo"), Some(super::Located::Active(change)) if change.name == "demo"));
+    }
 
     // --- from_text fail-closed（design 決策一：存在但解析失敗回 Err）---
 

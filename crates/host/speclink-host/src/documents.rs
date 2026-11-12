@@ -16,7 +16,7 @@ use speclink_core::model::{ChangeMeta, META_READ_ORDER};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::query::{
-    ArchivedItem, ArchivedListResponse, BoardOrderResponse, ChangeEvidenceResponse, ConfigResponse,
+    ArchivedItem, ArchivedListResponse, BoardOrderResponse, ConfigResponse,
     SearchHit, SearchResponse, SpecDocumentResponse,
 };
 use speclink_store::content_digest;
@@ -44,8 +44,6 @@ pub enum DocumentsError {
     TooLarge { limit: usize },
     /// The scope is not at the version the caller expected.
     ScopeMoved { expected: Version, actual: Version },
-    /// A stored record cannot be parsed.
-    Corrupt(String),
     /// The store failed.
     Store(PortError),
 }
@@ -53,9 +51,7 @@ pub enum DocumentsError {
 impl fmt::Display for DocumentsError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            DocumentsError::NotFound(message)
-            | DocumentsError::InvalidConfig(message)
-            | DocumentsError::Corrupt(message) => f.write_str(message),
+            DocumentsError::NotFound(message) | DocumentsError::InvalidConfig(message) => f.write_str(message),
             DocumentsError::TooLarge { limit } => {
                 write!(f, "board order content exceeds the {limit}-byte cap")
             }
@@ -274,54 +270,6 @@ pub(crate) fn board_order_updated() -> Result<Event, PortError> {
     Event::new("board-order-updated", serde_json::json!({})).map_err(invalid_value)
 }
 
-// --- evidence ---
-
-/// The stored evidence record, as far as this read goes: the v2 entry list.
-/// The v1 file-list channel and the version marker are not part of the
-/// response — v1 entries carry no actor or time and this read never makes
-/// them up; a v1-only record reads as an empty set here while the Engine's
-/// own readers still see its files. The field shape mirrors
-/// `speclink_core::tasks::EvidenceEntry`; a test below pins the two.
-#[derive(serde::Deserialize)]
-struct StoredEvidence {
-    #[serde(default)]
-    entries: Vec<speclink_protocol::query::EvidenceEntry>,
-}
-
-/// A change's recorded evidence and the scope version. A change that never
-/// recorded any, and a name that is no change, answer with an empty set.
-///
-/// A record that does not parse is corrupt, not an empty set: louder than
-/// the Engine's own lenient read on purpose, because answering "no
-/// evidence" over a corrupt record would be wrong.
-pub fn change_evidence(
-    port: &dyn StorePort,
-    scope: &ScopeId,
-    change: &str,
-) -> Result<(ChangeEvidenceResponse, Version), DocumentsError> {
-    let Ok(key) = keys::change_evidence(change) else {
-        let version = scope_version(port, scope)?;
-        return Ok((
-            ChangeEvidenceResponse {
-                entries: Vec::new(),
-            },
-            version,
-        ));
-    };
-    let (version, doc) = versioned(port, scope, key)?;
-    let entries = match doc {
-        Some(doc) => {
-            serde_json::from_str::<StoredEvidence>(&doc.content)
-                .map_err(|e| {
-                    DocumentsError::Corrupt(format!("evidence record is unreadable: {e}"))
-                })?
-                .entries
-        }
-        None => Vec::new(),
-    };
-    Ok((ChangeEvidenceResponse { entries }, version))
-}
-
 // --- canonical specs and the archive ---
 
 /// One canonical spec and the scope version.
@@ -504,6 +452,20 @@ pub fn document_version(
     artifact: &str,
 ) -> Result<Option<Version>, DocumentsError> {
     let Some(key) = artifact_key(change, artifact) else {
+        return Ok(None);
+    };
+    Ok(read_one(port, scope, key)?.map(|doc| doc.version))
+}
+
+/// The version of one document of the archived change `dated_name`, or
+/// `None` when it does not exist.
+pub fn archived_document_version(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    dated_name: &str,
+    artifact: &str,
+) -> Result<Option<Version>, DocumentsError> {
+    let Some(key) = archived_doc_key(dated_name, artifact) else {
         return Ok(None);
     };
     Ok(read_one(port, scope, key)?.map(|doc| doc.version))
@@ -821,51 +783,5 @@ mod tests {
         assert!(snippet.starts_with('…') && snippet.ends_with('…'));
         assert!(snippet.contains("MagicToken"));
         assert!(snippet.chars().count() <= 30 + 10 + 30 + 2);
-    }
-
-    /// 記錄形狀的三份宣告（core 的 EvidenceEntry、protocol 的 wire DTO、此處的
-    /// StoredEvidence 讀取面）以這條測試釘住同步：core 寫出的 entry 必須被 wire
-    /// 面逐欄讀回。core 加欄位而 wire 沒跟上時，這裡最先紅。
-    #[test]
-    fn evidence_wire_shape_matches_the_engine_record() {
-        let record = speclink_core::tasks::TouchedRecord {
-            version: Some(2),
-            change: "demo".to_string(),
-            touched: Vec::new(),
-            entries: vec![speclink_core::tasks::EvidenceEntry {
-                task_id: "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV".to_string(),
-                task_desc: "1.1 First".to_string(),
-                actor: Some("Tester <t@example.com>".to_string()),
-                repo: Some("backend".to_string()),
-                head_commit: Some("0123456789012345678901234567890123456789".to_string()),
-                touched_files: vec!["src/app.rs".to_string()],
-                recorded_at: "2026-08-23T00:00:00Z".to_string(),
-            }],
-        };
-        let text = serde_json::to_string(&record).expect("engine record serializes");
-
-        let parsed: StoredEvidence = serde_json::from_str(&text).expect("wire face reads it");
-        assert_eq!(parsed.entries.len(), 1);
-        let e = &parsed.entries[0];
-        assert_eq!(e.task_id, "tsk_01ARZ3NDEKTSV4RRFFQ69G5FAV");
-        assert_eq!(e.task_desc, "1.1 First");
-        assert_eq!(e.actor.as_deref(), Some("Tester <t@example.com>"));
-        assert_eq!(e.repo.as_deref(), Some("backend"));
-        assert_eq!(
-            e.head_commit.as_deref(),
-            Some("0123456789012345678901234567890123456789")
-        );
-        assert_eq!(e.touched_files, vec!["src/app.rs".to_string()]);
-        assert_eq!(e.recorded_at, "2026-08-23T00:00:00Z");
-    }
-
-    /// v1-only 記錄（無 entries 欄）讀成空集合，不偽造 actor 或 recordedAt。
-    #[test]
-    fn a_v1_only_record_reads_as_an_empty_entry_set() {
-        let parsed: StoredEvidence = serde_json::from_str(
-            r#"{"change":"demo","touched":[{"task_id":"1","task_desc":"1.1 a","files":["src/a.rs"]}]}"#,
-        )
-        .expect("v1 shape still parses");
-        assert!(parsed.entries.is_empty());
     }
 }

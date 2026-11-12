@@ -106,9 +106,12 @@ fn list_json_adds_meta_error_string_only_on_the_broken_item() {
     let keys: Vec<&str> = good.as_object().unwrap().keys().map(String::as_str).collect();
     assert_eq!(
         keys,
-        vec!["completedTasks", "name", "status", "summary", "totalTasks"],
-        "valid item's field shape is unchanged (no metaError key)"
+        vec!["completedTasks", "created", "modifiedAt", "name", "status", "summary", "totalTasks"],
+        "a valid item has no metaError key (created and modifiedAt joined with remote-read-verbs)"
     );
+    // Corrupt metadata has no creation date to report; the store still dates the change.
+    assert!(broken.get("created").is_none(), "{broken}");
+    assert!(broken["modifiedAt"].is_string(), "{broken}");
 }
 
 // --- single-change queries fail closed (spec「單一 change 查詢對壞 metadata fail closed」) ---

@@ -170,7 +170,10 @@ pub(crate) fn cmd_plan(a: PlanArgs) -> Result<()> {
 /// output function renders it — a cycle arrives as a refused 409 carrying the
 /// engine line.
 pub(crate) fn remote_plan(ctx: &RemoteCtx, a: &PlanArgs) -> Result<()> {
-    let plan = speclink_remote::convert::plan_report(ctx.client.plan()?)?;
+    // `--strict-overlap` asks the server for the plan before requirement-level
+    // overlap; the payload has the same shape either way.
+    let response = if a.strict_overlap { ctx.client.plan_strict()? } else { ctx.client.plan()? };
+    let plan = speclink_remote::convert::plan_report(response)?;
     emit(render::plan(&plan, render_options(a.json)));
     Ok(())
 }
