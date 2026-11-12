@@ -35,7 +35,11 @@ use speclink_protocol::query::{
 use speclink_core::model::ReviewedScopeEntry;
 use speclink_core::station::{ArchivedOutcome, Station, StationId, REVIEW, VERIFY};
 use speclink_desktop_core::query::{archived_status_str, put_station_fields, station_view, StationView};
+use speclink_core::config::AppConfig;
+use speclink_core::init::ToolSelection;
+use speclink_protocol::skills::SkillsResponse;
 use speclink_remote::client::Client;
+use speclink_remote::skills as remote_skills;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
@@ -1629,6 +1633,52 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
     ) -> Result<ListSpecsResponse, RemoteError> {
         self.run(credentials, |client| client.list_specs())
+    }
+
+    /// Server 提供給 `checkout` 的工具的技能（remote-skill-delivery D6）：握手沒有宣告
+    /// 技能、或 checkout 沒有任何工具時為 None。`contents` 為 false 時只有摘要。
+    fn served_skills(
+        &self,
+        credentials: &dyn CredentialStore,
+        checkout: &Path,
+        contents: bool,
+    ) -> Result<Option<SkillsResponse>, RemoteError> {
+        let app = AppConfig::load(&checkout.join(".speclink.yaml")).map_err(|e| unavailable(e.to_string()))?;
+        // 無效的描述子不成為目標：探測略過它，更新由安裝計畫在寫入前回報。
+        let targets = remote_skills::targets_of(&ToolSelection::resolve(checkout, &app));
+        if targets.is_empty() {
+            return Ok(None);
+        }
+        if self.run(credentials, |client| client.handshake())?.capabilities.skills.is_none() {
+            return Ok(None);
+        }
+        self.run(credentials, |client| remote_skills::fetch(client, &targets, contents)).map(Some)
+    }
+
+    /// 技能檔探測：以 Server 的摘要比對 checkout，不下載全文。Server 沒有提供技能時
+    /// 為 None（沒有可比的基準，前端不提示）。
+    pub fn probe_assets(
+        &self,
+        credentials: &dyn CredentialStore,
+        checkout: &Path,
+    ) -> Result<Option<serde_json::Value>, RemoteError> {
+        Ok(self.served_skills(credentials, checkout, false)?.map(|served| {
+            let digests = remote_skills::digests(&served);
+            speclink_desktop_core::project::probe_remote_assets_at(checkout, &served.version, &digests)
+        }))
+    }
+
+    /// 技能檔更新：取得 Server 的全文並寫進 checkout。
+    pub fn update_assets(
+        &self,
+        credentials: &dyn CredentialStore,
+        checkout: &Path,
+    ) -> Result<serde_json::Value, RemoteError> {
+        let served = self
+            .served_skills(credentials, checkout, true)?
+            .ok_or_else(|| unavailable("這台 Server 沒有提供技能".to_string()))?;
+        let rendered = remote_skills::rendered(served)?;
+        speclink_desktop_core::project::update_remote_assets_at(checkout, rendered).map_err(unavailable)
     }
 
     /// GET `/config` 的文件原文一律經 desktop-core from-text seam；revision

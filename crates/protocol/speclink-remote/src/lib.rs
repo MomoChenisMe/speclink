@@ -33,6 +33,7 @@ pub mod login;
 mod loopback;
 mod oauth;
 pub mod refresh;
+pub mod skills;
 
 /// A translated remote failure: one semantic line for the user/agent, plus
 /// the machine-readable `reason` when the server provided one.

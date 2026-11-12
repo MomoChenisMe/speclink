@@ -22,11 +22,12 @@ serde_yaml.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 clap_complete = "4"
+# The skill version notice is told once a local calendar day.
+chrono.workspace = true
 
 [dev-dependencies]
 # 測試借 core 的 testkit（技能檔版號讀寫 helper）；feature 只在 dev 構建生效。
 speclink-core = { path = "../../engine/speclink-core", features = ["testkit"] }
 tiny_http = "0.12"
-chrono.workspace = true
 # The remote-read tests run the real HTTP door on the in-memory store port.
 speclink-store-port = { path = "../../store/speclink-store-port" }

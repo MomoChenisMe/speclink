@@ -41,7 +41,9 @@ export function AssetNoticeCard({ prompt, onOpen }: AssetNoticeCardProps) {
 function cardText(prompt: AssetPromptState, t: Translator["t"], tn: Translator["tn"]) {
   const { kind, migration } = prompt;
   if (kind !== "migrate") {
-    return { title: t(`assets.card.${kind}Title`), desc: tn(`assets.card.${kind}Desc`, prompt.fileCount) };
+    // remote 專案的過期是「和 Server 提供的不同」，不一定比較舊。
+    const title = prompt.server && kind === "stale" ? "assets.card.serverStaleTitle" : `assets.card.${kind}Title`;
+    return { title: t(title), desc: tn(`assets.card.${kind}Desc`, prompt.fileCount) };
   }
   const desc =
     migration.state === "pending" && migration.folder === "speclink"

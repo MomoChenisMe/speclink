@@ -525,8 +525,8 @@ function AppInner({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore, s.activeKey, s.sessionEpoch]);
 
-  // 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：本地專案分頁
-  // 成為活躍時查一次；remote 分頁由 store 自行略過。
+  // 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：本地專案與有 checkout
+  // 的 remote 專案分頁成為活躍時查一次；沒有 checkout 的 remote 分頁由 store 自行略過。
   useEffect(() => {
     if (workspace) void useStore.getState().refreshAssetPrompt();
     // eslint-disable-next-line react-hooks/exhaustive-deps

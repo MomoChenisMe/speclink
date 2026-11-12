@@ -10,7 +10,9 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::path::PathBuf;
 
 use crate::color;
-use crate::remote_base::validate_or_defer;
+use crate::remote_base::{connect, validate_or_defer};
+use core::init::{SyncPlan, ToolSelection, UpdateOutcome, ASSET_VERSION};
+use speclink_remote::skills as remote_skills;
 
 #[derive(Args)]
 pub(crate) struct InitArgs {
@@ -187,7 +189,21 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     }
     let _ = a.force;
     // 降級守門在引擎的 update 本體（唯一實作落點）；--allow-downgrade 是唯一越過。
-    let outcome = core::init::update(&root, a.allow_downgrade)?;
+    // remote 專案的技能跟著 Server：Server 有給就不經這道守門。
+    let local = || core::init::update(&root, a.allow_downgrade);
+    let (outcome, source) = match skills_from_server(&root)? {
+        FromServer::NotRemote => (local()?, None),
+        FromServer::NotGiven(reason) => {
+            eprintln!("speclink: skills generated from this CLI's templates — {reason}");
+            (local()?, Some(format!("local ({ASSET_VERSION})")))
+        }
+        FromServer::Installed { outcome, version, replaced } => {
+            if let Some(had) = replaced {
+                println!("! Skills replaced with the server's version {version} (this checkout had {had})");
+            }
+            (outcome, Some(format!("server ({version})")))
+        }
+    };
     print_migration(&outcome.migration, &outcome.migrated);
     for note in &outcome.notes {
         println!("! {note}");
@@ -209,6 +225,9 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
             );
         }
     }
+    if let Some(source) = source {
+        println!("  Skills source: {source}");
+    }
     // 遺留剝除的摘要（design D2）：舊版引擎注入的區塊被移除時明說改了哪些檔案，
     // 使用者才知道 diff 裡多出的變動從何而來。
     if !outcome.stripped.is_empty() {
@@ -219,6 +238,63 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     }
     Ok(())
 }
+/// What asking the Server for a project's skills came to.
+enum FromServer {
+    /// A local project, or a remote one with no tool to ask for: no Server is asked.
+    NotRemote,
+    /// The Server gives no skills this run, for this reason (one line): it declares
+    /// none, or the handshake did not succeed. The local templates stand in.
+    NotGiven(String),
+    /// The Server's skills are in the checkout. `replaced` is the newer version the
+    /// checkout had, when the Server's is older.
+    Installed { outcome: UpdateOutcome, version: String, replaced: Option<String> },
+}
+
+/// Take a remote project's skills from its Server (spec workspace-tools「remote 專案的
+/// 技能取自 Server」). Once the handshake declares skills there is no way back to the
+/// local templates: a request that fails then is an error, and nothing is written —
+/// the Server said it has the skills, and other text in their place could tell the
+/// agent to use verbs this Server does not have.
+fn skills_from_server(root: &std::path::Path) -> Result<FromServer> {
+    let app = core::config::AppConfig::load(&root.join(".speclink.yaml"))?;
+    if app.remote.is_none() {
+        return Ok(FromServer::NotRemote);
+    }
+    let selection = ToolSelection::resolve(root, &app);
+    // 壞描述子＝零寫入、零請求：和本機的同步同一條規則。
+    if let Some(message) = &selection.descriptor_error {
+        bail!("{message}");
+    }
+    let targets = remote_skills::targets_of(&selection);
+    if targets.is_empty() {
+        return Ok(FromServer::NotRemote);
+    }
+    let Some(ws) = core::workspace::Workspace::discover(root)? else {
+        return Ok(FromServer::NotRemote);
+    };
+    let conn = match speclink_host::context::resolve_store_mode(&ws) {
+        Ok(core::workspace::ModeResolution { mode: core::workspace::StoreMode::Remote(conn), .. }) => conn,
+        Ok(_) => return Ok(FromServer::NotRemote),
+        Err(e) => return Ok(FromServer::NotGiven(e.to_string())),
+    };
+    let connected = match connect(&conn) {
+        Ok(connected) => connected,
+        Err(line) => return Ok(FromServer::NotGiven(line)),
+    };
+    if connected.binding.capabilities.skills.is_none() {
+        return Ok(FromServer::NotGiven("this server does not provide skills".to_string()));
+    }
+
+    let refused = |e: &dyn std::fmt::Display| anyhow::anyhow!("could not get the skills from the server: {e}");
+    let response = remote_skills::fetch(&connected.client, &targets, true).map_err(|e| refused(&e))?;
+    let version = response.version.clone();
+    let rendered = remote_skills::rendered(response).map_err(|e| refused(&e))?;
+    let plan = SyncPlan::from_rendered(root, selection, rendered).map_err(|e| refused(&e))?;
+    let replaced = plan.leading_version(&version);
+    let outcome = plan.apply(root)?;
+    Ok(FromServer::Installed { outcome, version, replaced })
+}
+
 /// The spec directory migration's lines (spec-dir-migration D5): what moved and
 /// what to do next, or why it waits.
 fn print_migration(plan: &core::migrate::MigrationPlan, report: &core::migrate::MigrationReport) {
@@ -482,5 +558,8 @@ fn cmd_init_remote(
     println!("Generated files for: {}", names.join(", "));
     // Validate the declared repo now when credentials exist; defer otherwise
     // (offline init must not block — the first verb still validates).
-    validate_or_defer(root, url, a.repo.as_deref())
+    validate_or_defer(root, url, a.repo.as_deref())?;
+    // 這裡產生的技能來自本機的範本（還沒登入的人也要有技能可用）。
+    println!("! After you log in (`speclink auth login`), run `speclink update` to get the skills this server provides");
+    Ok(())
 }

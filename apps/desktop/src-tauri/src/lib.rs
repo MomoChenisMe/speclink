@@ -1337,6 +1337,45 @@ async fn remote_list_specs(
     .await
 }
 
+/// remote 專案的技能檔探測（remote-skill-delivery D6）：基準是 Server 提供的技能。
+/// Server 沒有提供技能時回 null；連不上時為 Err——兩者前端都不提示。
+#[tauri::command]
+async fn probe_remote_assets(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    checkout: String,
+) -> Result<Value, String> {
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let probe = ws.probe_assets(credentials, std::path::Path::new(&checkout)).map_err(|e| e.message)?;
+        Ok(probe.unwrap_or(Value::Null))
+    })
+    .await
+}
+
+/// remote 專案的技能檔更新：把 Server 的全文寫進 checkout。和本機的更新相同，寫入
+/// 期間暫停檔案監看。
+#[tauri::command]
+async fn update_remote_assets(
+    app: tauri::AppHandle,
+    connection_id: String,
+    project: String,
+    repo: String,
+    checkout: String,
+) -> Result<Value, String> {
+    let ticket = app.try_state::<WatcherState>().map(|state| state.next_ticket());
+    let handle = app.clone();
+    with_remote(app, connection_id, project, repo, move |ws, credentials| {
+        let update = || ws.update_assets(credentials, std::path::Path::new(&checkout)).map_err(|e| e.message);
+        match (handle.try_state::<WatcherState>(), ticket) {
+            (Some(state), Some(ticket)) => state.while_paused(ticket, update),
+            _ => update(),
+        }
+    })
+    .await
+}
+
 #[tauri::command]
 async fn remote_list_archived(
     app: tauri::AppHandle,
@@ -2034,6 +2073,8 @@ pub fn run() {
             project_stats,
             probe_assets,
             update_assets,
+            probe_remote_assets,
+            update_remote_assets,
             watch_workspace,
             read_settings,
             write_app_tools,

@@ -3,6 +3,7 @@
 //! client must obtain before any verb flows.
 
 use crate::events::EventsDeclaration;
+use crate::skills::SkillsDeclaration;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -62,6 +63,9 @@ pub struct Capabilities {
     pub authentication: Vec<String>,
     #[serde(default)]
     pub events: EventsDeclaration,
+    /// The skills this Server gives; absent from a Server that gives none.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub skills: Option<SkillsDeclaration>,
 }
 
 #[cfg(test)]
@@ -108,6 +112,60 @@ mod tests {
         assert!(handshake.capabilities.events.transports.is_empty());
         assert!(handshake.capabilities.events.polling.is_none());
         assert!(!handshake.capabilities.policy_write);
+    }
+
+    const WITH_SKILLS: &str = r#"{"actor":{"id":"u_1","name":"m"},"project":{"id":"p_1","key":"erp","name":"ERP"},"repo":{"id":"r_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.12.0","capabilities":{"contextSnapshots":true,"skills":{"version":"v1.58.0"}}}"#;
+
+    #[test]
+    fn the_handshake_declares_the_skill_template_version() {
+        let handshake: BindingResponse = serde_json::from_str(WITH_SKILLS).unwrap();
+        let skills = handshake.capabilities.skills.as_ref().expect("the declaration is kept");
+        assert_eq!(skills.version, "v1.58.0");
+        assert_eq!(handshake.engine_version, "0.12.0", "engineVersion keeps its meaning");
+        let json = serde_json::to_value(&handshake).unwrap();
+        assert_eq!(json["capabilities"]["skills"]["version"], "v1.58.0");
+    }
+
+    #[test]
+    fn a_server_that_declares_no_skills_reads_as_none() {
+        let handshake: BindingResponse = serde_json::from_str(
+            r#"{"actor":{"id":"u_1","name":"m"},"project":{"id":"p_1","key":"erp","name":"ERP"},"repo":{"id":"r_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"contextSnapshots":true}}"#,
+        )
+        .unwrap();
+        assert_eq!(handshake.capabilities.skills, None);
+        let json = serde_json::to_value(&handshake).unwrap();
+        assert!(json["capabilities"].get("skills").is_none(), "an absent declaration is not serialized: {json}");
+    }
+
+    /// The handshake as a client built before the declaration reads it.
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OldCapabilities {
+        #[serde(default)]
+        context_snapshots: bool,
+        #[serde(default)]
+        policy_write: bool,
+    }
+
+    #[derive(serde::Deserialize)]
+    #[serde(rename_all = "camelCase")]
+    struct OldBindingResponse {
+        actor: Actor,
+        api_version: String,
+        engine_version: String,
+        #[serde(default)]
+        capabilities: Option<OldCapabilities>,
+    }
+
+    #[test]
+    fn a_client_that_does_not_know_the_declaration_still_reads_the_handshake() {
+        let old: OldBindingResponse = serde_json::from_str(WITH_SKILLS).unwrap();
+        assert_eq!(old.actor.id, "u_1");
+        assert_eq!(old.api_version, "1");
+        assert_eq!(old.engine_version, "0.12.0");
+        let caps = old.capabilities.expect("capabilities are kept");
+        assert!(caps.context_snapshots);
+        assert!(!caps.policy_write);
     }
 
     #[test]

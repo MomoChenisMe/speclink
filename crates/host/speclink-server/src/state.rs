@@ -89,8 +89,10 @@ fn host_kit(port: SharedPort, identity: SharedIdentity, events: Arc<EventHub>) -
             url: "/events".to_string(),
             resume: true,
         }],
+        // Every skill of the Engine.
+        skills: None,
     };
-    HostKit::with_options(port, hooks, options)
+    HostKit::with_options(port, hooks, options).expect("no skill list, so no unknown skill name")
 }
 
 /// The projects `user_id` is a member of, in registry order, each with its

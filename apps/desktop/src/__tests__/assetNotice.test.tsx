@@ -27,6 +27,18 @@ const STALE: AssetPromptState = { kind: "stale", fileCount: 3, version: "v1.3.0"
 const MISSING: AssetPromptState = { kind: "missing", fileCount: 12, version: "v1.3.0", projectVersion: null, migration: NONE };
 const NEWER: AssetPromptState = { kind: "newer", fileCount: 2, version: "v1.3.0", projectVersion: "v1.4.0", migration: NONE };
 
+// remote 專案：基準是 Server 提供的技能（version＝Server 的版本）。
+const REMOTE_STALE: AssetPromptState = {
+  kind: "stale",
+  fileCount: 1,
+  version: "v1.58.0",
+  projectVersion: "v1.56.0",
+  migration: NONE,
+  server: { appVersion: "v1.57.0", appOlder: false },
+};
+const REMOTE_MISSING: AssetPromptState = { ...REMOTE_STALE, kind: "missing", fileCount: 19, projectVersion: null };
+const REMOTE_OLD_APP: AssetPromptState = { ...REMOTE_STALE, server: { appVersion: "v1.57.0", appOlder: true } };
+
 const button = (name: string) => screen.getByRole("button", { name }) as HTMLButtonElement;
 
 describe("AssetNoticeCard", () => {
@@ -52,6 +64,19 @@ describe("AssetNoticeCard", () => {
     expect(card.className).toContain("border-status-warning/40");
     expect(card.querySelector("svg")?.getAttribute("class")).toContain(SEMANTIC_TONE.warning);
     expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("remote 專案的過期態：說的是和 Server 不同，不說舊版", () => {
+    render(<AssetNoticeCard prompt={REMOTE_STALE} onOpen={vi.fn()} />);
+    const card = screen.getByTestId("asset-notice-card");
+    expect(card.getAttribute("aria-label")).toBe("技能檔和 Server 的不同");
+    expect(card.textContent).toContain("更新會改寫 1 個檔案");
+    expect(card.textContent).not.toContain("舊版");
+  });
+
+  it("remote 專案的缺失態：和本機專案同一句", () => {
+    render(<AssetNoticeCard prompt={REMOTE_MISSING} onOpen={vi.fn()} />);
+    expect(screen.getByTestId("asset-notice-card").textContent).toContain("還沒安裝技能檔");
   });
 
   it("無提示時不渲染任何內容", () => {
@@ -195,6 +220,75 @@ describe("AssetNoticeDialog", () => {
   it("無提示時不渲染框", () => {
     render(<AssetNoticeDialog {...dialogProps({ prompt: null })} />);
     expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+});
+
+// spec「指令檔過期提示」的 remote 情境：確認框多一列「Server 提供的技能版本」；app 比 Server
+// 舊時多一句說明與「更新 Speclink」，安裝或更新仍然可用。
+describe("AssetNoticeDialog：remote 專案", () => {
+  it("四列：專案的技能檔版本、Server 提供的技能版本、你的 Speclink 版本、會改寫的檔案數", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: REMOTE_STALE })} />);
+    const rows = screen.getByTestId("asset-notice-rows");
+    const labels = ["這個專案的技能檔版本", "Server 提供的技能版本", "你的 Speclink 版本", "會改寫的檔案數"];
+    for (const label of labels) expect(rows.textContent).toContain(label);
+    expect(rowValues()).toEqual(["v1.56.0", "v1.58.0", "v1.57.0", "1"]);
+  });
+
+  it("本機專案沒有「Server 提供的技能版本」一列", () => {
+    render(<AssetNoticeDialog {...dialogProps()} />);
+    expect(screen.getByTestId("asset-notice-rows").textContent).not.toContain("Server 提供的技能版本");
+  });
+
+  it("標題與說明講的是 Server 提供的內容，不講「你的 Speclink 這一版」", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: REMOTE_STALE })} />);
+    const dialog = screen.getByRole("alertdialog");
+    expect(dialog.textContent).toContain("這個專案的技能檔和 Server 提供的不同");
+    expect(dialog.textContent).toContain("換成 Server 提供的內容");
+    expect(dialog.textContent).not.toContain("你的 Speclink 這一版");
+  });
+
+  it.each([
+    ["和 Server 不同", REMOTE_STALE, ["稍後", "保留現狀", "更新技能檔"]],
+    ["沒有技能檔", REMOTE_MISSING, ["稍後", "保留現狀", "安裝技能檔"]],
+    ["app 比 Server 舊", REMOTE_OLD_APP, ["稍後", "保留現狀", "更新 Speclink", "更新技能檔"]],
+  ])("%s的按鈕依序", (_label, prompt, labels) => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt })} />);
+    const footer = screen.getByTestId("asset-notice-actions");
+    expect(within(footer).getAllByRole("button").map((b) => b.textContent)).toEqual(labels);
+  });
+
+  it("沒有技能檔：專案版本顯示「—」，說明講安裝 Server 提供的技能檔", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: REMOTE_MISSING })} />);
+    expect(rowValues()).toEqual(["—", "v1.58.0", "v1.57.0", "19"]);
+    expect(screen.getByRole("alertdialog").textContent).toContain("Server 提供的技能檔");
+  });
+
+  it("app 比 Server 舊：多一句說明；「更新 Speclink」開設定的更新頁，「更新技能檔」照常可用", () => {
+    const p = dialogProps({ prompt: REMOTE_OLD_APP });
+    render(<AssetNoticeDialog {...p} />);
+    expect(screen.getByTestId("asset-notice-app-older").textContent).toContain("你的 Speclink 比這台 Server 舊");
+    fireEvent.click(button("更新 Speclink"));
+    expect(p.onOpenSettingsUpdate).toHaveBeenCalledTimes(1);
+    expect(p.onOpenChange).toHaveBeenLastCalledWith(false);
+    expect(p.onApply).not.toHaveBeenCalled();
+    fireEvent.click(button("更新技能檔"));
+    expect(p.onApply).toHaveBeenCalledTimes(1);
+  });
+
+  it("app 不比 Server 舊：沒有那句說明，也沒有「更新 Speclink」", () => {
+    render(<AssetNoticeDialog {...dialogProps({ prompt: REMOTE_STALE })} />);
+    expect(screen.queryByTestId("asset-notice-app-older")).toBeNull();
+    expect(screen.queryByRole("button", { name: "更新 Speclink" })).toBeNull();
+  });
+
+  it("英文介面也有這一列與這句說明", () => {
+    rtlRender(
+      <I18nProvider locale="en" messages={APP_MESSAGES}>
+        <AssetNoticeDialog {...dialogProps({ prompt: REMOTE_OLD_APP })} />
+      </I18nProvider>,
+    );
+    expect(screen.getByTestId("asset-notice-rows").textContent).toContain("Skill version the server provides");
+    expect(screen.getByTestId("asset-notice-app-older").textContent).toContain("older than this server");
   });
 });
 

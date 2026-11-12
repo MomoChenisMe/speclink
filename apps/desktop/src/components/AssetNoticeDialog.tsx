@@ -7,6 +7,9 @@
 // 記憶；更新／安裝不自行關框：成功由提示消失收合，失敗的錯誤留在內容卡下方可重試。
 // 規格資料夾遷移由同一個框承載（desktop-spec-dir-migration D2）：按下前寫明會改名或為何
 // 暫緩，遷移完成後改顯示要 commit 的路徑與提醒，直到使用者按「知道了」。
+// remote 專案的基準是 Server 提供的技能（remote-skill-delivery D6）：多一列「Server 提供的
+// 技能版本」；app 比 Server 舊時多一句說明與「更新 Speclink」，安裝或更新仍然可用——Server
+// 的技能是對的，只是舊版的 Speclink 可能認不得新指令。
 import { AlertCircle } from "lucide-react";
 import {
   AlertDialog,
@@ -62,12 +65,18 @@ export function AssetNoticeDialog({
   if (!prompt) return null;
   const newer = prompt.kind === "newer";
   const migrateOnly = prompt.kind === "migrate";
-  // 前兩列同一套技能檔版號（專案的標記 vs 這版 Speclink 帶的），一眼比得出誰新誰舊。
+  const { server } = prompt;
+  // 版本列同一套技能檔版號（專案的標記、Server 提供的、這版 Speclink 帶的），一眼比得出誰新誰舊。
   const rows: Array<[string, string]> = [
     [t("assets.dialog.projectVersion"), prompt.projectVersion ?? "—"],
-    [t("assets.dialog.appVersion"), prompt.version],
+    ...(server ? [[t("assets.dialog.serverVersion"), prompt.version] as [string, string]] : []),
+    [t("assets.dialog.appVersion"), server ? server.appVersion : prompt.version],
     [t(newer ? "assets.dialog.revertCount" : "assets.dialog.fileCount"), String(prompt.fileCount)],
   ];
+  // remote 專案的過期與缺失另有文案：換上的是 Server 提供的內容，不是「你的 Speclink 這一版」。
+  const text = server && (prompt.kind === "stale" || prompt.kind === "missing") ? SERVER_TEXT[prompt.kind] : null;
+  const title = text?.title ?? `assets.dialog.${prompt.kind}Title`;
+  const desc = text?.desc ?? `assets.dialog.${prompt.kind}Desc`;
   return (
     // 更新進行中不收框（含 Esc）：完成態與錯誤都要留在框內。
     <AlertDialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
@@ -75,9 +84,9 @@ export function AssetNoticeDialog({
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <AlertCircle className={cn("h-5 w-5 shrink-0", SEMANTIC_TONE.warning)} />
-            {t(`assets.dialog.${prompt.kind}Title`)}
+            {t(title)}
           </AlertDialogTitle>
-          <AlertDialogDescription>{t(`assets.dialog.${prompt.kind}Desc`)}</AlertDialogDescription>
+          <AlertDialogDescription>{t(desc)}</AlertDialogDescription>
         </AlertDialogHeader>
         {!migrateOnly && (
           <Card size="nested" data-testid="asset-notice-rows" className="divide-y divide-border text-[13px]">
@@ -90,6 +99,11 @@ export function AssetNoticeDialog({
               </div>
             ))}
           </Card>
+        )}
+        {server?.appOlder && (
+          <p data-testid="asset-notice-app-older" className="m-0 text-[13px]">
+            {t("assets.dialog.appOlder")}
+          </p>
         )}
         {prompt.migration.state !== "none" && <MigrationNote migration={prompt.migration} />}
         {error && (
@@ -110,9 +124,24 @@ export function AssetNoticeDialog({
           {prompt.kind === "newer" ? (
             <AlertDialogAction onClick={onOpenSettingsUpdate}>{t("assets.dialog.updateApp")}</AlertDialogAction>
           ) : (
-            <Button type="button" disabled={busy} onClick={onApply}>
-              {t(APPLY_LABEL[prompt.kind])}
-            </Button>
+            <>
+              {server?.appOlder && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={busy}
+                  onClick={() => {
+                    onOpenSettingsUpdate();
+                    onOpenChange(false);
+                  }}
+                >
+                  {t("assets.dialog.updateApp")}
+                </Button>
+              )}
+              <Button type="button" disabled={busy} onClick={onApply}>
+                {t(APPLY_LABEL[prompt.kind])}
+              </Button>
+            </>
           )}
         </AlertDialogFooter>
       </AlertDialogContent>
@@ -126,6 +155,12 @@ const APPLY_LABEL: Record<Exclude<AssetPromptState["kind"], "newer">, string> = 
   missing: "assets.dialog.install",
   migrate: "assets.dialog.migrate",
 };
+
+/** remote 專案的標題與說明：基準是 Server 提供的技能。 */
+const SERVER_TEXT = {
+  stale: { title: "assets.dialog.serverStaleTitle", desc: "assets.dialog.serverStaleDesc" },
+  missing: { title: "assets.dialog.missingTitle", desc: "assets.dialog.serverMissingDesc" },
+} as const;
 
 /** 按下更新前的遷移說明：會改名什麼，或這次為何不改名——暫緩只出現在技能檔過期或缺失的
  * 提示裡，按更新仍會更新技能檔，要講明資料夾不動。 */

@@ -324,7 +324,10 @@ fn spec_location(app: &crate::config::AppConfig) -> SpecLocation {
 ///
 /// Non-Claude targets skip the `claude_only` skills; worktree-gated skills need the policy on.
 /// `location` is the render's project side (see [`spec_location`]).
-pub(crate) fn managed_skills(
+///
+/// Public for the host kit's HTTP door: a Server answers a skills request with this same
+/// set, with `worktree_on` read from the scope's workflow config ([`worktree_skills_on`]).
+pub fn managed_skills(
     target: skills::RenderTarget,
     worktree_on: bool,
     spec_dir: &str,
@@ -340,6 +343,25 @@ pub(crate) fn managed_skills(
             (format!("speclink-{}", s.name), content)
         })
         .collect()
+}
+
+/// The skills a Server gave for one tool: the tool's name as the request sent it, and
+/// each skill's name (`apply`, without the `speclink-` of its folder) with its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedTool {
+    pub tool: String,
+    pub skills: Vec<(String, String)>,
+}
+
+/// Whether `name` has the form of a skill name in the registry: lower-case letters,
+/// digits and single hyphens between them, 64 characters at most. It becomes a folder
+/// name, so nothing that could leave the skills directory (a slash, a backslash, `..`,
+/// an empty name) is one, nor a name long enough for a file system to refuse the path.
+fn is_skill_name(name: &str) -> bool {
+    (1..=64).contains(&name.len())
+        && name.split('-').all(|part| {
+            !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
+        })
 }
 
 /// One tool's slice of a sync: where its skills live, and what should be there.
@@ -366,8 +388,11 @@ pub(crate) struct SyncTarget {
 /// - `apply`'s orphan cleanup removes `speclink-` prefixed directories only, so a user's
 ///   own skill directories under the same root survive.
 /// - `guard` has exactly one bypass, `update`'s explicit `--allow-downgrade`; every other
-///   regeneration path calls it.
-pub(crate) struct SyncPlan {
+///   regeneration path of the local templates calls it.
+/// - Outside this crate a plan can only be built by [`SyncPlan::from_rendered`], from
+///   skills a Server gave: skill names are checked there, so a response cannot name a
+///   path outside a tool's skills directory.
+pub struct SyncPlan {
     /// Ordered claude, codex, copilot, pi, cursor, then descriptors in list order.
     pub(crate) targets: Vec<SyncTarget>,
     /// Built-ins that are NOT selected and lose their footprint. Empty on the legacy
@@ -393,6 +418,68 @@ impl SyncPlan {
         location: SpecLocation,
     ) -> SyncPlan {
         let worktree_on = worktree_skills_enabled(root, spec_dir);
+        let rendered = |target: skills::RenderTarget| -> Result<_, std::convert::Infallible> {
+            Ok(managed_skills(target, worktree_on, spec_dir, location))
+        };
+        let Ok(plan) = SyncPlan::build(root, selection, rendered);
+        plan
+    }
+
+    /// A plan whose files are the skills a Server gave for this checkout's tools, not
+    /// this engine's own render (spec workspace-tools「remote 專案的技能取自 Server」).
+    /// `rendered` must hold exactly the selection's tools, each once, by the name the
+    /// request sent (a built-in's name, a descriptor's name); a skill name must be a
+    /// plain name (`apply`, `worktree-merge`). Anything else is refused here, before any
+    /// write, as is an invalid descriptor and a skills directory shared through a symlink.
+    ///
+    /// The downgrade guard is not asked: a remote project's skills follow its Server,
+    /// also back to an older version ([`SyncPlan::leading_version`] says when that happens).
+    pub fn from_rendered(root: &Path, selection: ToolSelection, rendered: Vec<RenderedTool>) -> Result<SyncPlan> {
+        if let Some(message) = &selection.descriptor_error {
+            bail!("{message}");
+        }
+        for tool in &rendered {
+            if let Some((bad, _)) = tool.skills.iter().find(|(name, _)| !is_skill_name(name)) {
+                bail!("the server gave a skill name that is not a plain name for tool '{}': {bad:?}", tool.tool);
+            }
+            let names: Vec<&str> = tool.skills.iter().map(|(name, _)| name.as_str()).collect();
+            if let Some(name) = names.iter().enumerate().find(|(i, name)| names[..*i].contains(name)).map(|(_, name)| name) {
+                bail!("the server gave skill '{name}' twice for tool '{}'", tool.tool);
+            }
+        }
+        let mut left = rendered;
+        let files_of = |target: skills::RenderTarget| {
+            let label = match target {
+                skills::RenderTarget::Builtin(tool) => tool.name(),
+                skills::RenderTarget::Custom(custom) => custom.name.as_str(),
+            };
+            let Some(at) = left.iter().position(|tool| tool.tool == label) else {
+                bail!("the server gave no skills for tool '{label}'");
+            };
+            let skills = left.swap_remove(at).skills;
+            Ok(skills.into_iter().map(|(name, content)| (format!("speclink-{name}"), content)).collect())
+        };
+        let plan = SyncPlan::build(root, selection, files_of)?;
+        if let Some(extra) = left.first() {
+            bail!("the server gave skills for tool '{}', which this checkout did not ask for", extra.tool);
+        }
+        plan.refuse_shared_skill_dirs()?;
+        Ok(plan)
+    }
+
+    /// The version of the skills in this plan's directories that is numerically newer
+    /// than `version`, if any: what applying a plan of `version` would take the checkout
+    /// back from.
+    pub fn leading_version(&self, version: &str) -> Option<String> {
+        self.targets.iter().find_map(|target| leading_skill_version(&target.skills_root, version))
+    }
+
+    /// The plan of `selection`, with each target's files from `files_of`.
+    fn build<E>(
+        root: &Path,
+        selection: ToolSelection,
+        mut files_of: impl FnMut(skills::RenderTarget) -> Result<Vec<(String, String)>, E>,
+    ) -> Result<SyncPlan, E> {
         let mut targets = Vec::new();
         for tool in Tool::ALL {
             if selection.builtins.contains(&tool) {
@@ -400,12 +487,7 @@ impl SyncPlan {
                     label: tool.name().to_string(),
                     skills_dir: tool.skills_dir().to_string(),
                     skills_root: root.join(tool.skills_dir()),
-                    files: managed_skills(
-                        skills::RenderTarget::Builtin(tool),
-                        worktree_on,
-                        spec_dir,
-                        location,
-                    ),
+                    files: files_of(skills::RenderTarget::Builtin(tool))?,
                 });
             }
         }
@@ -417,12 +499,7 @@ impl SyncPlan {
                 label: custom.name.clone(),
                 skills_dir: custom.skills_dir.clone(),
                 skills_root: root.join(&custom.skills_dir),
-                files: managed_skills(
-                    skills::RenderTarget::Custom(custom),
-                    worktree_on,
-                    spec_dir,
-                    location,
-                ),
+                files: files_of(skills::RenderTarget::Custom(custom))?,
             });
             if let Some(file) = custom.instructions_file.as_deref() {
                 custom_strip_targets.push((
@@ -442,13 +519,13 @@ impl SyncPlan {
                 .filter(|t| !selection.builtins.contains(t))
                 .collect()
         };
-        SyncPlan {
+        Ok(SyncPlan {
             targets,
             deselected_builtins,
             custom_strip_targets,
             selection,
             root: root.to_path_buf(),
-        }
+        })
     }
 
     /// The pre-write guard: the shared-directory check, then the downgrade guard (refuse
@@ -531,7 +608,7 @@ impl SyncPlan {
     ///    managed file and remove the `speclink-` directories that are not in the set.
     /// 4. Prune the deselected built-ins.
     /// 5. Record the current descriptors as the footprint for the next sync.
-    pub(crate) fn apply(&self, root: &Path) -> Result<UpdateOutcome> {
+    pub fn apply(&self, root: &Path) -> Result<UpdateOutcome> {
         let mut out = UpdateOutcome {
             updated: Vec::new(),
             pruned: Vec::new(),
@@ -791,8 +868,13 @@ fn save_custom_state(root: &Path, customs: &[CustomTool]) -> Result<()> {
 /// merge skill their open worktree depends on; the skill's runtime check still refuses
 /// to run under an off policy.
 fn worktree_skills_enabled(root: &Path, spec_dir: &str) -> bool {
-    let text = util::read_opt(&root.join(spec_dir).join("config.yaml"));
-    match crate::config::WorkflowConfig::from_text(text.as_deref()) {
+    worktree_skills_on(util::read_opt(&root.join(spec_dir).join("config.yaml")).as_deref())
+}
+
+/// [`worktree_skills_enabled`] for a workflow config held as text — the rule a Server
+/// applies to the config of the scope it answers for. No text is the defaults (off).
+pub fn worktree_skills_on(workflow_config: Option<&str>) -> bool {
+    match crate::config::WorkflowConfig::from_text(workflow_config) {
         Ok(cfg) => cfg.worktree.unwrap_or(false),
         Err(_) => true,
     }
@@ -1117,8 +1199,9 @@ enum SkillsProbe {
 /// 抽樣一份：守門的契約是「即將被改寫的技能檔中任一檔領先即拒絕」，抽樣會漏。
 /// 回傳最能代表方向的版號——任一檔領先引擎即回該檔（領先優先），否則回第一個
 /// 與現版不等的版號，全部現版時回現版。目錄項目排序後掃描，結果與檔案系統的
-/// 列舉順序無關。
-fn probe_skills_dir(skills_root: &Path) -> SkillsProbe {
+/// 列舉順序無關。`base` 是比較的基準版號：本機的探測與守門給引擎現版，Server 給的
+/// 技能給 Server 的版號。
+fn probe_skills_dir(skills_root: &Path, base: &str) -> SkillsProbe {
     let entries = match std::fs::read_dir(skills_root) {
         Ok(entries) => entries,
         // 目錄不存在＝從未安裝；其他失敗（權限、路徑是檔案）＝無法判定。
@@ -1147,10 +1230,10 @@ fn probe_skills_dir(skills_root: &Path) -> SkillsProbe {
             return SkillsProbe::Unreadable;
         };
         found_any = true;
-        if workspace_is_newer(&v, ASSET_VERSION) {
+        if workspace_is_newer(&v, base) {
             return SkillsProbe::Found(v);
         }
-        if v != ASSET_VERSION {
+        if v != base {
             differing.get_or_insert(v);
         } else {
             current.get_or_insert(v);
@@ -1166,6 +1249,14 @@ fn probe_skills_dir(skills_root: &Path) -> SkillsProbe {
 /// 形式被誤報為內容有異。
 fn eol_normalized(text: &str) -> String {
     text.replace("\r\n", "\n")
+}
+
+/// The digest of a skill file's text, as the wire carries it: `sha256:` and the hex
+/// SHA-256 of the text with its line ends as LF, so a CRLF checkout of the same file
+/// gives the same value.
+pub fn skill_digest(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(eol_normalized(content).as_bytes()))
 }
 
 /// 版號拆段：去 v 前綴、以點號拆段、逐段解析為數字；任一段非純數字即回 None
@@ -1195,21 +1286,36 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
     false
 }
 
+/// Whether skill template version `version` is numerically newer than `than`
+/// (`v1.58.0` over `v1.57.0`; a missing segment counts as zero). False when either
+/// does not parse as numbers: a version that cannot be read leads nothing.
+pub fn is_newer_version(version: &str, than: &str) -> bool {
+    workspace_is_newer(version, than)
+}
+
 /// 降級守門的拒絕判定：`dirs` 中任一 skills 目錄的技能版號數值領先引擎時，以單行
 /// 英文錯誤拒絕（含兩邊版號）。技能不在、或版號讀不出來的目錄不擋——守門只在
 /// 「可證明較新」時觸發（決策 3 的安全預設）。
 fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
     for dir in dirs {
-        if let SkillsProbe::Found(v) = probe_skills_dir(dir) {
-            if workspace_is_newer(&v, ASSET_VERSION) {
-                bail!(
-                    "Workspace skill files ({v}) are newer than this engine ({ASSET_VERSION}). \
-                     Update Speclink first, or run `speclink update --allow-downgrade` to rewrite them anyway."
-                );
-            }
+        if let Some(v) = leading_skill_version(dir, ASSET_VERSION) {
+            bail!(
+                "Workspace skill files ({v}) are newer than this engine ({ASSET_VERSION}). \
+                 Update Speclink first, or run `speclink update --allow-downgrade` to rewrite them anyway."
+            );
         }
     }
     Ok(())
+}
+
+/// The version of a skill file in `skills_root` that is numerically newer than `than`,
+/// if any file's is. A directory without skills, or with a version that cannot be read,
+/// leads nothing.
+fn leading_skill_version(skills_root: &Path, than: &str) -> Option<String> {
+    match probe_skills_dir(skills_root, than) {
+        SkillsProbe::Found(v) if workspace_is_newer(&v, than) => Some(v),
+        _ => None,
+    }
 }
 
 /// 唯讀的技能檔過期探測（規格「技能檔過期探測」）：依 `.speclink.yaml` 的 tools
@@ -1250,7 +1356,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
 
     let mut tools = Vec::new();
     for target in &plan.targets {
-        let version = match probe_skills_dir(&target.skills_root) {
+        let version = match probe_skills_dir(&target.skills_root, ASSET_VERSION) {
             SkillsProbe::Absent => {
                 tools.push(ToolAssetState {
                     tool: target.label.clone(),
@@ -1298,6 +1404,97 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
         differing_files,
         migration,
     }
+}
+
+/// What a Server gives for one tool, by digest: the tool's name as the request sent
+/// it, and each skill's name with the [`skill_digest`] of its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ServedSkills {
+    pub tool: String,
+    pub digests: Vec<(String, String)>,
+}
+
+/// [`probe_assets`] for a remote project, against what its Server gives instead of
+/// this engine's own render (spec desktop-app「指令檔過期提示」): no text is needed,
+/// the digests decide. A tool with no skill file at all is missing; a skill whose
+/// text differs, is absent, or is one the Server does not give makes the checkout
+/// stale, and its file is listed; else it is current. `version` is the Server's skill
+/// version; `current_version` stays this engine's. Zero writes.
+///
+/// An answer that does not fit the checkout's tools (a tool absent, a tool that was
+/// not asked for, a name that is no skill name) cannot be judged: unknown, never
+/// current. A checkout without a tools list is not probed, as in [`probe_assets`].
+pub fn probe_served_skills(root: &Path, version: &str, served: &[ServedSkills]) -> AssetProbe {
+    let verdict = |status: AssetStatus, tools: Vec<ToolAssetState>, differing_files: Vec<String>| AssetProbe {
+        status,
+        current_version: ASSET_VERSION.to_string(),
+        tools,
+        differing_files,
+        migration: crate::migrate::MigrationProbe::None,
+    };
+    let unknown = || verdict(AssetStatus::Unknown, Vec::new(), Vec::new());
+    let Ok(app) = crate::config::AppConfig::load(&root.join(".speclink.yaml")) else {
+        return unknown();
+    };
+    let selection = ToolSelection::resolve(root, &app);
+    if selection.legacy_fallback {
+        return verdict(AssetStatus::Current, Vec::new(), Vec::new());
+    }
+    // The same fit check as an install: the digests stand where the texts would.
+    let as_rendered = served.iter().map(|s| RenderedTool { tool: s.tool.clone(), skills: s.digests.clone() }).collect();
+    let Ok(plan) = SyncPlan::from_rendered(root, ToolSelection { descriptor_error: None, ..selection }, as_rendered)
+    else {
+        return unknown();
+    };
+
+    let (mut tools, mut differing) = (Vec::new(), Vec::new());
+    for target in &plan.targets {
+        let present = managed_skill_dirs(&target.skills_root);
+        let file = |dir: &str| format!("{}/{dir}/SKILL.md", target.skills_dir);
+        let before = differing.len();
+        for (dir, digest) in &target.files {
+            let text = std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md")).ok();
+            if text.map(|text| skill_digest(&text)).as_ref() != Some(digest) {
+                differing.push(file(dir));
+            }
+        }
+        differing.extend(present.iter().filter(|dir| !target.files.iter().any(|(d, _)| d == *dir)).map(|dir| file(dir)));
+        let missing = present.is_empty();
+        tools.push(ToolAssetState {
+            tool: target.label.clone(),
+            workspace_version: match probe_skills_dir(&target.skills_root, version) {
+                SkillsProbe::Found(v) => Some(v),
+                SkillsProbe::Absent | SkillsProbe::Unreadable => None,
+            },
+            // Against a Server there is no direction: a tool whose files differ is stale.
+            stale: !missing && differing.len() > before,
+            newer: false,
+            missing,
+        });
+    }
+    let status = if tools.iter().any(|t| t.missing) {
+        AssetStatus::Missing
+    } else if differing.is_empty() {
+        AssetStatus::Current
+    } else {
+        AssetStatus::Stale
+    };
+    verdict(status, tools, differing)
+}
+
+/// The `speclink-` folders under `skills_root` that hold a SKILL.md, sorted: the
+/// managed skills a tool has now.
+fn managed_skill_dirs(skills_root: &Path) -> Vec<String> {
+    let mut dirs: Vec<String> = std::fs::read_dir(skills_root)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|entry| entry.path().join("SKILL.md").is_file())
+        .map(|entry| entry.file_name().to_string_lossy().to_string())
+        .filter(|name| name.starts_with("speclink-"))
+        .collect();
+    dirs.sort();
+    dirs
 }
 
 /// 內建工具曾被注入 marker 的指令檔路徑（專案根相對）。copilot、pi、cursor 從未有

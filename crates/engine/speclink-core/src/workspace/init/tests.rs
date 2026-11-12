@@ -2772,3 +2772,269 @@ fn probing_skills_after_a_remote_update_uses_the_same_base() {
     assert_eq!(probe.status, AssetStatus::Stale);
     assert_eq!(probe.differing_files, vec![aged.to_string()]);
 }
+
+// --- Server 給的技能（spec workspace-tools「remote 專案的技能取自 Server」） ---
+
+/// 一份技能檔：frontmatter 帶 `version`，本文帶 `mark` 以分辨來源。
+fn served_skill(name: &str, version: &str, mark: &str) -> String {
+    format!("---\nname: speclink-{name}\nmetadata:\n  version: \"{version}\"\n---\n\n{mark}\n")
+}
+
+fn served(tool: &str, version: &str, names: &[&str]) -> RenderedTool {
+    RenderedTool {
+        tool: tool.to_string(),
+        skills: names.iter().map(|name| (name.to_string(), served_skill(name, version, tool))).collect(),
+    }
+}
+
+/// claude 與自訂描述子（`.wad/skills`）的 remote 專案，技能由本機的 `update` 產生。
+fn remote_selection(root: &TempRoot) -> ToolSelection {
+    let app = crate::config::AppConfig::load(&root.at(".speclink.yaml")).expect("config parses");
+    ToolSelection::resolve(&root.dir, &app)
+}
+
+#[test]
+fn from_rendered_writes_the_given_skills_and_removes_the_other_speclink_folders() {
+    let root = TempRoot::new("rendered-install");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    root.write(".claude/skills/my-own/SKILL.md", "mine\n");
+    assert!(root.exists(".claude/skills/speclink-improve/SKILL.md"), "the local render has improve");
+
+    let rendered = vec![served("claude", "v1.58.0", &["apply", "discuss"]), served("wad-harness", "v1.58.0", &["apply"])];
+    let plan = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).unwrap();
+    let outcome = plan.apply(&root.dir).unwrap();
+
+    assert_eq!(outcome.updated, ["claude", "wad-harness"]);
+    assert_eq!(root.read(".claude/skills/speclink-apply/SKILL.md"), served_skill("apply", "v1.58.0", "claude"));
+    assert_eq!(root.read(".claude/skills/speclink-discuss/SKILL.md"), served_skill("discuss", "v1.58.0", "claude"));
+    assert_eq!(root.read(".wad/skills/speclink-apply/SKILL.md"), served_skill("apply", "v1.58.0", "wad-harness"));
+    assert!(!root.exists(".claude/skills/speclink-improve"), "a skill the Server does not give is removed");
+    assert!(!root.exists(".wad/skills/speclink-discuss"), "per tool: the descriptor got apply only");
+    assert_eq!(root.read(".claude/skills/my-own/SKILL.md"), "mine\n", "a folder that is not speclink's stays");
+
+    // 寫出的檔案和本機產生的同形：既有的探測讀得出版本。
+    let probe = probe_assets(&root.dir);
+    let versions: Vec<Option<&str>> = probe.tools.iter().map(|t| t.workspace_version.as_deref()).collect();
+    assert_eq!(versions, [Some("v1.58.0"), Some("v1.58.0")]);
+}
+
+#[test]
+fn from_rendered_replaces_newer_skills_and_names_the_version_it_replaces() {
+    let root = TempRoot::new("rendered-older");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let ahead = ".claude/skills/speclink-apply/SKILL.md";
+    root.write(ahead, &root.read(ahead).replace(ASSET_VERSION, "v99.0.0"));
+    assert!(update(&root.dir, false).is_err(), "the local path refuses to go back");
+
+    let rendered = vec![served("claude", "v1.2.0", &["apply"]), served("wad-harness", "v1.2.0", &["apply"])];
+    let plan = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).unwrap();
+    assert_eq!(plan.leading_version(ASSET_VERSION).as_deref(), Some("v99.0.0"), "the one file that leads");
+    assert!(plan.leading_version("v1.2.0").is_some(), "every file leads the Server's version");
+    assert_eq!(plan.leading_version("v99.0.0"), None, "the same version leads nothing");
+    plan.apply(&root.dir).unwrap();
+    assert_eq!(root.read(ahead), served_skill("apply", "v1.2.0", "claude"));
+}
+
+#[test]
+fn from_rendered_refuses_a_skill_name_that_is_not_a_plain_name_and_writes_nothing() {
+    let root = TempRoot::new("rendered-bad-name");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let before = snapshot(&root);
+    for bad in ["", "..", "../../escape", "a/b", "a\\b", "Apply", "apply ", ".hidden", "-apply", "apply-"] {
+        let rendered = vec![
+            served("claude", "v1.58.0", &["apply", bad]),
+            served("wad-harness", "v1.58.0", &["apply"]),
+        ];
+        let Err(error) = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered) else {
+            panic!("{bad:?} is no skill name");
+        };
+        assert!(error.to_string().contains("skill name"), "{bad:?}: {error}");
+    }
+    assert_eq!(snapshot(&root), before, "nothing was written");
+}
+
+/// Sharp edge (audit): a name longer than any skill's would become a path the file
+/// system may refuse half-way through the writes; a name given twice would have one
+/// text silently replace the other.
+#[test]
+fn from_rendered_refuses_an_overlong_name_and_a_name_given_twice() {
+    let root = TempRoot::new("rendered-odd-names");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let before = snapshot(&root);
+    let wad = || served("wad-harness", "v1.58.0", &["apply"]);
+    let long = "a".repeat(65);
+    let overlong = vec![served("claude", "v1.58.0", &["apply", &long]), wad()];
+    let error = SyncPlan::from_rendered(&root.dir, remote_selection(&root), overlong).err().expect("65 characters");
+    assert!(error.to_string().contains("skill name"), "{error}");
+    let longest = "a".repeat(64);
+    assert!(SyncPlan::from_rendered(&root.dir, remote_selection(&root), vec![served("claude", "v1.58.0", &[&longest]), wad()]).is_ok());
+
+    let twice = vec![served("claude", "v1.58.0", &["apply", "discuss", "apply"]), wad()];
+    let error = SyncPlan::from_rendered(&root.dir, remote_selection(&root), twice).err().expect("apply twice");
+    assert!(error.to_string().contains("apply") && error.to_string().contains("twice"), "{error}");
+    assert_eq!(snapshot(&root), before, "nothing was written");
+}
+
+#[test]
+fn from_rendered_takes_exactly_the_tools_of_the_selection() {
+    let root = TempRoot::new("rendered-tools");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let before = snapshot(&root);
+    let claude = || served("claude", "v1.58.0", &["apply"]);
+    let wad = || served("wad-harness", "v1.58.0", &["apply"]);
+    for (rendered, names_it) in [
+        (vec![claude()], "wad-harness"),
+        (vec![claude(), wad(), served("codex", "v1.58.0", &["apply"])], "codex"),
+        (vec![claude(), wad(), claude()], "claude"),
+    ] {
+        let Err(error) = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered) else {
+            panic!("the tools must be the selection's ({names_it})");
+        };
+        assert!(error.to_string().contains(names_it), "{names_it}: {error}");
+    }
+    assert_eq!(snapshot(&root), before, "nothing was written");
+}
+
+#[test]
+fn from_rendered_refuses_an_invalid_descriptor_like_the_local_sync() {
+    let root = TempRoot::new("rendered-bad-descriptor");
+    root.write(".speclink.yaml", "tools:\n  - claude\n  - name: Bad Name\n    skills_dir: .x/skills\nremote:\n  url: https://team.example.test/api/speclink/v1/projects/acme\n");
+    let before = snapshot(&root);
+    let rendered = vec![served("claude", "v1.58.0", &["apply"])];
+    let error = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).err().expect("refused");
+    assert!(error.to_string().contains("Bad Name"), "{error}");
+    assert_eq!(snapshot(&root), before);
+}
+
+#[test]
+fn worktree_skills_follow_the_config_text() {
+    assert!(!worktree_skills_on(None), "no config is the defaults");
+    assert!(!worktree_skills_on(Some("schema: spec-driven\n")));
+    assert!(!worktree_skills_on(Some("worktree: false\n")));
+    assert!(worktree_skills_on(Some("worktree: true\n")));
+    assert!(worktree_skills_on(Some("schema: [unclosed\n")), "a config that cannot be parsed keeps the skills");
+}
+
+#[test]
+fn a_skill_digest_is_the_sha256_of_the_text_with_lf_line_ends() {
+    let digest = skill_digest("a\nb\n");
+    // `printf 'a\nb\n' | shasum -a 256`
+    assert_eq!(digest, "sha256:911169ddaaf146aff539f58c26c489af3b892dff0fe283c1c264c65ae5aa59a2");
+    assert_eq!(skill_digest("a\r\nb\r\n"), digest, "CRLF and LF give one digest");
+    assert_ne!(skill_digest("a\nc\n"), digest);
+}
+
+// --- 以 Server 的摘要探測（spec desktop-app「指令檔過期提示」的 remote 專案） ---
+
+/// What a Server of `version` gives `tool`: the digests of `served_skill` texts.
+fn served_digests(tool: &str, version: &str, names: &[&str]) -> ServedSkills {
+    ServedSkills {
+        tool: tool.to_string(),
+        digests: names
+            .iter()
+            .map(|name| (name.to_string(), skill_digest(&served_skill(name, version, tool))))
+            .collect(),
+    }
+}
+
+/// A remote checkout (claude and the `.wad/skills` descriptor) that holds exactly what
+/// a Server of v1.58.0 gives: apply and discuss for claude, apply for the descriptor.
+fn checkout_with_served_skills(tag: &str) -> (TempRoot, Vec<ServedSkills>) {
+    let root = TempRoot::new(tag);
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let rendered = vec![served("claude", "v1.58.0", &["apply", "discuss"]), served("wad-harness", "v1.58.0", &["apply"])];
+    SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).unwrap().apply(&root.dir).unwrap();
+    let digests =
+        vec![served_digests("claude", "v1.58.0", &["apply", "discuss"]), served_digests("wad-harness", "v1.58.0", &["apply"])];
+    (root, digests)
+}
+
+#[test]
+fn a_checkout_that_holds_what_the_server_gives_is_current() {
+    let (root, served) = checkout_with_served_skills("served-current");
+    let before = snapshot(&root);
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &served);
+    assert_eq!(probe.status, AssetStatus::Current);
+    assert_eq!(probe.differing_files, Vec::<String>::new());
+    assert_eq!(probe.current_version, ASSET_VERSION, "the app's own version");
+    let tools: Vec<(&str, Option<&str>, bool)> =
+        probe.tools.iter().map(|t| (t.tool.as_str(), t.workspace_version.as_deref(), t.missing)).collect();
+    assert_eq!(tools, [("claude", Some("v1.58.0"), false), ("wad-harness", Some("v1.58.0"), false)]);
+    assert_eq!(snapshot(&root), before, "a probe writes nothing");
+}
+
+#[test]
+fn line_ends_alone_do_not_make_a_served_skill_differ() {
+    let (root, served) = checkout_with_served_skills("served-crlf");
+    let file = ".claude/skills/speclink-apply/SKILL.md";
+    root.write(file, &root.read(file).replace('\n', "\r\n"));
+    assert_eq!(probe_served_skills(&root.dir, "v1.58.0", &served).status, AssetStatus::Current);
+}
+
+#[test]
+fn a_changed_a_missing_and_an_extra_skill_each_make_the_checkout_stale() {
+    let (root, served) = checkout_with_served_skills("served-stale");
+    let changed = ".claude/skills/speclink-apply/SKILL.md";
+    root.write(changed, &format!("{}edited by hand\n", root.read(changed)));
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &served);
+    let stale: Vec<(&str, bool)> = probe.tools.iter().map(|t| (t.tool.as_str(), t.stale)).collect();
+    assert_eq!(stale, [("claude", true), ("wad-harness", false)], "the tool whose file differs");
+    assert_eq!((probe.status, probe.differing_files), (AssetStatus::Stale, vec![changed.to_string()]));
+
+    let (root, served) = checkout_with_served_skills("served-missing-one");
+    std::fs::remove_dir_all(root.at(".claude/skills/speclink-discuss")).unwrap();
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &served);
+    assert_eq!(
+        (probe.status, probe.differing_files),
+        (AssetStatus::Stale, vec![".claude/skills/speclink-discuss/SKILL.md".to_string()])
+    );
+
+    let (root, served) = checkout_with_served_skills("served-extra");
+    root.write(".wad/skills/speclink-improve/SKILL.md", &served_skill("improve", "v1.58.0", "wad-harness"));
+    root.write(".wad/skills/my-own/SKILL.md", "mine\n");
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &served);
+    assert_eq!(
+        (probe.status, probe.differing_files),
+        (AssetStatus::Stale, vec![".wad/skills/speclink-improve/SKILL.md".to_string()]),
+        "a folder that is not speclink's is not an extra skill"
+    );
+}
+
+#[test]
+fn a_tool_without_any_skill_file_makes_the_checkout_missing() {
+    let (root, served) = checkout_with_served_skills("served-missing");
+    std::fs::remove_dir_all(root.at(".wad/skills")).unwrap();
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &served);
+    assert_eq!(probe.status, AssetStatus::Missing);
+    assert_eq!(probe.differing_files, [".wad/skills/speclink-apply/SKILL.md"], "the files an install would create");
+    let wad = probe.tools.iter().find(|t| t.tool == "wad-harness").unwrap();
+    assert!(wad.missing && wad.workspace_version.is_none());
+    assert!(!probe.tools.iter().find(|t| t.tool == "claude").unwrap().missing);
+}
+
+#[test]
+fn a_served_answer_that_does_not_fit_the_checkout_cannot_be_judged() {
+    let (root, served) = checkout_with_served_skills("served-unknown");
+    // 少一個工具、多一個工具、不是技能名稱的名稱：都無法判定，不是「現版」。
+    let without_descriptor = vec![served[0].clone()];
+    let with_another = [served.clone(), vec![served_digests("codex", "v1.58.0", &["apply"])]].concat();
+    let bad_name = vec![
+        ServedSkills { tool: "claude".into(), digests: vec![("../escape".into(), "sha256:00".into())] },
+        served[1].clone(),
+    ];
+    for (case, answer) in [("a tool is absent", without_descriptor), ("a tool was not asked for", with_another), ("a bad name", bad_name)] {
+        let probe = probe_served_skills(&root.dir, "v1.58.0", &answer);
+        assert_eq!(probe.status, AssetStatus::Unknown, "{case}");
+        assert!(probe.tools.is_empty() && probe.differing_files.is_empty(), "{case}");
+    }
+}
+
+#[test]
+fn a_checkout_without_a_tools_list_is_not_probed_against_the_server() {
+    let root = TempRoot::new("served-no-list");
+    root.write(".speclink.yaml", &format!("remote:\n  url: {REMOTE_URL}\n"));
+    std::fs::create_dir_all(root.at(".claude")).unwrap();
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &[served_digests("claude", "v1.58.0", &["apply"])]);
+    assert_eq!(probe.status, AssetStatus::Current, "the same rule as the local probe");
+    assert!(probe.tools.is_empty());
+}

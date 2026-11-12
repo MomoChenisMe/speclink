@@ -19,7 +19,7 @@ use speclink_core::command::Command;
 use speclink_host::http::{HttpRequest, Method};
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit,
-    HostKitOptions, Identity, ProjectEntry, RepoEntry, ScopesFn,
+    HostKitOptions, Identity, ProjectEntry, RepoEntry, ScopesFn, InvalidSkills,
 };
 use speclink_host::port_exec::ExecError;
 use speclink_protocol::auth::AuthMethodsResponse;
@@ -39,6 +39,9 @@ struct HostSetup {
     has_scopes: bool,
     auth_methods: Option<AuthMethodsResponse>,
     push_transports: Vec<EventTransport>,
+    /// The skills the door gives a client, checked at `createHost`. Absent:
+    /// every skill of the Engine.
+    skills: Option<Vec<String>>,
 }
 
 /// The HTTP door's declarations as index.js passes them, in the wire's own
@@ -51,6 +54,8 @@ struct DoorOptions {
     auth_methods: Option<AuthMethodsResponse>,
     #[serde(default)]
     push_transports: Vec<EventTransport>,
+    #[serde(default)]
+    skills: Option<Vec<String>>,
 }
 
 #[napi]
@@ -61,8 +66,10 @@ pub struct Host {
 /// Build a host over a JS store port. `port_invoker` and `hook_invoker` are
 /// index.js's invokers over the store's three functions and over the two
 /// hooks; the flags say which hooks the host gave.
-/// `door_options` is the JSON text of `{ authMethods, pushTransports }`;
-/// `has_scopes` says whether the host gave a scope function.
+/// `door_options` is the JSON text of `{ authMethods, pushTransports, skills }`;
+/// `has_scopes` says whether the host gave a scope function. An empty skill
+/// list, or a name the Engine does not have, throws here: `createHost` gives
+/// no host.
 #[napi(js_name = "hostFromPort")]
 pub fn host_from_port(
     env: Env,
@@ -73,8 +80,11 @@ pub fn host_from_port(
     has_scopes: bool,
     door_options: String,
 ) -> Result<Host> {
-    let door: DoorOptions = serde_json::from_str(&door_options)
-        .map_err(|e| Error::new(Status::InvalidArg, format!("createHost: authMethods or pushTransports: {e}")))?;
+    let door: DoorOptions = serde_json::from_str(&door_options).map_err(|e| {
+        Error::new(Status::InvalidArg, format!("createHost: authMethods, pushTransports or skills: {e}"))
+    })?;
+    InvalidSkills::check(door.skills.as_deref())
+        .map_err(|e| Error::new(Status::InvalidArg, format!("createHost: skills: {e}")))?;
     let store: Arc<dyn StorePort> = Arc::new(JsPort::new(create_bridge(env, port_invoker)?));
     let hooks = create_bridge(env, hook_invoker)?;
     Ok(Host {
@@ -86,6 +96,7 @@ pub fn host_from_port(
             has_scopes,
             auth_methods: door.auth_methods,
             push_transports: door.push_transports,
+            skills: door.skills,
         }),
     })
 }
@@ -190,8 +201,10 @@ fn handle(setup: &HostSetup, request: &str, body: Vec<u8>, who: Option<(String, 
         scopes: setup.has_scopes.then(|| scopes_for(setup, &broken_hook)),
         auth_methods: setup.auth_methods.clone(),
         push_transports: setup.push_transports.clone(),
+        skills: setup.skills.clone(),
     };
-    let kit = HostKit::with_options(setup.store.clone(), hooks_for(setup, &broken_hook), options);
+    let kit = HostKit::with_options(setup.store.clone(), hooks_for(setup, &broken_hook), options)
+        .expect("the skill list was checked at createHost");
     let response = kit.handle(&request, identity.as_ref());
     hooks_held(&broken_hook)?;
     let Some(response) = response else {

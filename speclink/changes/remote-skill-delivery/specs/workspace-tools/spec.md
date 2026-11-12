@@ -2,7 +2,7 @@
 
 ### Requirement: remote 專案的技能取自 Server
 
-`.speclink.yaml` 含 remote 區段的專案執行 speclink update 時，引擎 SHALL 先握手：Server 宣告技能時，SHALL 以 `.speclink.yaml` 的工具清單向 Server 請求技能全文，並把回應寫成各工具技能目錄下的受管技能檔——檔案集合與內容 SHALL 等於 Server 的回應，checkout 多出來的 speclink- 技能目錄 SHALL 依既有的清理生命週期移除。Server 沒有宣告技能、沒有可用的憑證、或無法連線時，SHALL 退回本機的範本（以「規格資料夾不在 checkout」渲染），並於 stderr 以單行英文說明原因，exit code 為 0。握手宣告了技能而技能請求失敗時 SHALL 以非零 exit code 結束，SHALL NOT 寫入任何檔案，SHALL NOT 退回本機的範本。stdout 的摘要 SHALL 指出技能的來源（server 或 local）與版本。speclink init --store remote 的流程不變，結尾 SHALL 多一行提示：登入後執行 speclink update 以取得 Server 提供的技能。本機專案 SHALL NOT 向任何 Server 請求技能。寫入的技能檔 SHALL 與本機產生的技能檔同形（同樣的路徑與 frontmatter），既有的探測與清理 SHALL 能照常處理它們。
+`.speclink.yaml` 含 remote 區段的專案執行 speclink update 時，引擎 SHALL 先握手：Server 宣告技能時，SHALL 以 `.speclink.yaml` 的工具清單向 Server 請求技能全文，並把回應寫成各工具技能目錄下的受管技能檔——檔案集合與內容 SHALL 等於 Server 的回應，checkout 多出來的 speclink- 技能目錄 SHALL 依既有的清理生命週期移除。Server 沒有宣告技能、沒有可用的憑證、無法連線、或握手沒有成功時，SHALL 退回本機的範本（以「規格資料夾不在 checkout」渲染），並於 stderr 以單行英文說明原因，exit code 為 0。握手宣告了技能而技能請求失敗時 SHALL 以非零 exit code 結束，SHALL NOT 寫入任何檔案，SHALL NOT 退回本機的範本。Server 的回應與 checkout 對不上時——技能名稱不是由小寫英數與連字號組成、至多 64 字元的名稱，同一個工具的技能名稱重複，回應缺少全文，或回應的工具不等於請求的工具——SHALL 同樣以非零 exit code 結束且 SHALL NOT 寫入任何檔案：技能名稱會成為資料夾名稱，不合形式的名稱 SHALL NOT 成為路徑。stdout 的摘要 SHALL 指出技能的來源（server 或 local）與版本。speclink init --store remote 的流程不變，結尾 SHALL 多一行提示：登入後執行 speclink update 以取得 Server 提供的技能。本機專案 SHALL NOT 向任何 Server 請求技能。寫入的技能檔 SHALL 與本機產生的技能檔同形（同樣的路徑與 frontmatter），既有的探測與清理 SHALL 能照常處理它們。
 
 #### Scenario: 自 Server 安裝
 
@@ -23,6 +23,11 @@
 
 - **WHEN** Server 的握手宣告技能，但技能請求回應 500，執行 speclink update
 - **THEN** exit code 非零，stderr 說明取得技能失敗，checkout 的技能檔逐位元不變
+
+#### Scenario: 回應的技能名稱是路徑
+
+- **WHEN** Server 回應的技能名稱為 `../../escape`，執行 speclink update
+- **THEN** exit code 非零，checkout 的技能檔逐位元不變，checkout 之外沒有新檔案
 
 #### Scenario: Server 不再提供的技能被清掉
 

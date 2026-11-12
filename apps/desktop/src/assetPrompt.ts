@@ -2,6 +2,8 @@
 // 探測回報是引擎事實，是否顯示提示則是本機個人決定——「保留現狀」寫入 app 本機
 // 持久化（專案路徑 → 已略過的產物層版號），不進 .speclink.yaml、不進任何 repo 檔案。
 // 規格資料夾遷移由同一張提示承載（desktop-spec-dir-migration D2）。
+// remote 專案的基準是 Server 提供的技能（remote-skill-delivery D6）：同一套裁決，略過的鍵
+// 改用 Server 的版本。
 import type { AssetProbeResult, MigrationProbe } from "./adapter/workspace";
 
 /** 提示的呈現態：主動作依此分文案（過期→更新、缺失→安裝、較新→無改寫動作、
@@ -10,18 +12,22 @@ export interface AssetPromptState {
   kind: "stale" | "missing" | "newer" | "migrate";
   /** 將被新建或改寫且內容有異的受管檔數。 */
   fileCount: number;
-  /** 此提示對應的產物層版號（「保留現狀」記的就是它）。 */
+  /** 此提示對應的版號（「保留現狀」記的就是它）：本機專案是這個 app 內建的技能版號，
+   * remote 專案是 Server 提供的技能版本。 */
   version: string;
   /** 專案指令檔的標記版號（確認框「這個專案的技能檔版本」列）；從未安裝為 null。 */
   projectVersion: string | null;
   /** 按更新時規格資料夾會怎樣；較新態恆為 none（引擎拒絕這次更新），migrate 態恆為 pending。 */
   migration: MigrationProbe;
+  /** remote 專案才有。`appVersion` 是這個 app 內建的技能版號（確認框「你的 Speclink 版本」
+   * 列）；`appOlder` 為真時 app 比 Server 舊，確認框多一句說明與「更新 Speclink」。 */
+  server?: { appVersion: string; appOlder: boolean };
 }
 
 // 沿用改名前的 key：既有使用者的略過記憶存在這個名字下，換名等於全部失效。
 const STORAGE_KEY = "speclink.instructionSkips";
 
-/** 讀取略過記憶（專案路徑 → 已略過版號）。壞 JSON 或不識別形狀一律視為無記憶。 */
+/** 讀取略過記憶（專案 → 已略過版號；本機專案的鍵是專案路徑，remote 專案是分頁的鍵）。壞 JSON 或不識別形狀一律視為無記憶。 */
 export function readAssetSkips(storage: Storage = localStorage): Record<string, string> {
   try {
     const raw = storage.getItem(STORAGE_KEY);
@@ -65,7 +71,8 @@ export function assetPrompt(
         ? "migrate"
         : null;
   if (!kind) return null;
-  if (skips[root] === probe.currentVersion) return null;
+  const version = probe.serverVersion ?? probe.currentVersion;
+  if (skips[root] === version) return null;
   // 專案的技能檔版號取觸發這個狀態的工具：較新取領先的、過期取落後的；缺失（從未安裝）為 null；
   // 現版取第一個有版號的工具。
   const flagged =
@@ -78,8 +85,11 @@ export function assetPrompt(
   return {
     kind,
     fileCount: probe.differingFiles.length,
-    version: probe.currentVersion,
+    version,
     projectVersion: flagged?.workspaceVersion ?? null,
     migration: kind === "newer" ? { state: "none" } : migration,
+    ...(probe.serverVersion === undefined
+      ? {}
+      : { server: { appVersion: probe.currentVersion, appOlder: probe.appOlderThanServer === true } }),
   };
 }

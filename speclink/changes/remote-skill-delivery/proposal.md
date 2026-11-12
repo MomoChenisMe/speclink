@@ -23,7 +23,7 @@ Source discussion: embedded-host-needs（cut 13）。
 - 新增一條唯讀的路由：用戶端送出它要的工具清單（內建工具的名稱，或自訂工具的名稱與呼叫形式），入口回傳每個工具要安裝的技能——每支技能的名稱、內容的摘要，以及（要求時）全文。
 - 產生哪些技能由三件事決定：工具（有些技能只給 Claude）、這個範圍的流程設定（worktree 開啟才有那兩支）、宿主建立宿主套件時給的技能清單（選填；沒有給就是全部）。
 - 內容用引擎內建的範本，以「規格資料夾不在 checkout」渲染。宿主不能改文字。
-- 建立宿主套件時新增一個選填的輸入：要提供的技能名稱清單。清單裡有不認得的名稱時，建立就失敗。
+- 建立宿主套件時新增一個選填的輸入：要提供的技能名稱清單。清單裡有不認得的名稱、或清單是空的時，建立就失敗。
 
 **用戶端這一邊**
 
@@ -94,12 +94,14 @@ Source discussion: embedded-host-needs（cut 13）。
     - crates/adapters/speclink-cli/tests/it/remote_skills.rs
   - Modified:
     - crates/engine/speclink-core/src/workspace/init.rs
-    - crates/engine/speclink-core/src/workspace/skills.rs
+    - crates/engine/speclink-core/src/workspace/init/tests.rs
     - crates/host/speclink-host/src/kit.rs
+    - crates/host/speclink-host/src/documents.rs
     - crates/host/speclink-host/src/http/mod.rs
     - crates/host/speclink-host/src/http/router.rs
     - crates/host/speclink-host/src/http/routes.rs
     - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-host/tests/station_wire.rs
     - crates/protocol/speclink-protocol/src/binding.rs
     - crates/protocol/speclink-protocol/src/lib.rs
     - crates/protocol/speclink-remote/src/client.rs
@@ -108,19 +110,30 @@ Source discussion: embedded-host-needs（cut 13）。
     - crates/adapters/speclink-cli/src/remote_base.rs
     - crates/adapters/speclink-cli/src/main.rs
     - crates/adapters/speclink-cli/tests/it/main.rs
+    - crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs
+    - crates/adapters/speclink-cli/Cargo.toml
     - crates/host/speclink-server/src/state.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
+    - crates/adapters/speclink-node/__test__/handle-request.spec.ts
     - apps/desktop/core/src/project.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src-tauri/src/lib.rs
+    - apps/desktop/src-tauri/tests/it/remote_data.rs
+    - apps/desktop/src/App.tsx
+    - apps/desktop/src/adapter/workspace.ts
+    - apps/desktop/src/components/AssetNoticeCard.tsx
     - apps/desktop/src/store.ts
     - apps/desktop/src/assetPrompt.ts
     - apps/desktop/src/components/AssetNoticeDialog.tsx
     - apps/desktop/src/i18n/messages.ts
     - apps/desktop/src/__tests__/assetNotice.test.tsx
     - apps/desktop/src/__tests__/assetPrompt.test.ts
+    - apps/desktop/src/__tests__/App.test.tsx
+    - apps/desktop/src/__tests__/store.test.ts
+    - apps/desktop/src/__tests__/helpers/assetFixtures.ts
   - Removed: (none)
 - 相依：排在變更 skills-verbs-second-wave 之後（要用它的「規格資料夾不在 checkout」渲染）。
 - 三種形態下的結果：

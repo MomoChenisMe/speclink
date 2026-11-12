@@ -115,6 +115,19 @@ export interface AssetProbeResult {
   differingFiles: string[];
   /** 規格資料夾遷移狀態（desktop-spec-dir-migration D1）。 */
   migration: MigrationProbe;
+  /** remote 專案才有（probe_remote_assets）：Server 提供的技能版本——比對的基準是它，
+   * `currentVersion` 仍是這個 app 內建的技能版號。 */
+  serverVersion?: string;
+  /** remote 專案才有：這個 app 內建的技能版號比 Server 的舊。 */
+  appOlderThanServer?: boolean;
+}
+
+/** 有 checkout 的 remote 專案：連線、Project／Repo 與 checkout 的資料夾。 */
+export interface RemoteCheckout {
+  connectionId: string;
+  project: string;
+  repo: string;
+  checkout: string;
 }
 
 /** 遷移暫緩的原因（引擎 DeferReason 的代碼）。 */
@@ -151,6 +164,11 @@ export interface WorkspaceAdapter {
   /** 技能檔整套再生（委派引擎 update()，含規格資料夾遷移；呼叫期間暫停監看）；
    * 失敗為單行錯誤訊息。 */
   updateAssets(path: string): Promise<AssetUpdateResult>;
+  /** remote 專案的技能檔探測：以 Server 提供的技能為基準（只比摘要，不下載全文）。
+   * Server 沒有提供技能時為 null；連不上時 reject。 */
+  probeRemoteAssets(target: RemoteCheckout): Promise<AssetProbeResult | null>;
+  /** 把 Server 提供的技能寫進 checkout（呼叫期間暫停監看）；失敗為單行錯誤訊息。 */
+  updateRemoteAssets(target: RemoteCheckout): Promise<AssetUpdateResult>;
   /** 監看重掛（workspace-session 決策 5）：顯式跟隨活躍 session。 */
   watchWorkspace(root: string): Promise<void>;
   /** 原生資料夾選擇器；取消回 null。 */
@@ -166,6 +184,8 @@ export function createWorkspaceAdapter(): WorkspaceAdapter {
     projectStats: (path) => tauriInvoke("project_stats", { path }),
     probeAssets: (path) => tauriInvoke("probe_assets", { path }),
     updateAssets: (path) => tauriInvoke("update_assets", { path }),
+    probeRemoteAssets: (target) => tauriInvoke("probe_remote_assets", { ...target }),
+    updateRemoteAssets: (target) => tauriInvoke("update_remote_assets", { ...target }),
     watchWorkspace: (root) => tauriInvoke("watch_workspace", { root }),
     pickFolder: async () => {
       const picked = await open({ directory: true, multiple: false });

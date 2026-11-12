@@ -1309,3 +1309,56 @@ fn archived_station_ticket_text_parses_into_the_d1_shape() {
         .expect("review.md was not carried");
     assert_eq!(missing.status, Some(404), "{}", missing.message);
 }
+
+// --- remote 專案的技能檔：基準是 Server 提供的技能（remote-skill-delivery D6） ---
+
+#[test]
+fn a_remote_checkout_is_probed_and_updated_from_what_the_server_gives() {
+    use speclink_core::init::{managed_skills, ASSET_VERSION};
+    use speclink_core::skills::{RenderTarget, SpecLocation, Tool};
+
+    let h = common::harness();
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("{}/api/speclink/v1/projects/demo", h.origin);
+    speclink_core::init::init_remote(dir.path(), &[Tool::Claude], true, &url, Some("backend")).expect("checkout");
+    let propose = dir.path().join(".claude").join("skills").join("speclink-propose").join("SKILL.md");
+    let probe = || ws.probe_assets(&credentials, dir.path()).expect("probe").expect("the server declares skills");
+
+    // 這台 server 與 app 同版、流程設定沒有開啟 worktree：剛產生的技能檔就是它提供的。
+    let current = probe();
+    assert_eq!(current["status"], "current", "{current}");
+    assert_eq!(current["serverVersion"], ASSET_VERSION);
+    assert_eq!(current["appOlderThanServer"], false);
+
+    // 改壞一支：過期，並列出那個檔案。
+    std::fs::write(&propose, "edited by hand\n").expect("edit");
+    let stale = probe();
+    assert_eq!(stale["status"], "stale", "{stale}");
+    assert_eq!(stale["differingFiles"], serde_json::json!([".claude/skills/speclink-propose/SKILL.md"]));
+
+    // 更新：寫回 Server 的全文。
+    let outcome = ws.update_assets(&credentials, dir.path()).expect("update");
+    assert_eq!(outcome["updated"], serde_json::json!(["claude"]), "{outcome}");
+    let served = managed_skills(
+        RenderTarget::Builtin(Tool::Claude),
+        false,
+        speclink_core::workspace::DEFAULT_SPEC_DIR,
+        SpecLocation::Elsewhere,
+    );
+    let (_, expected) = served.iter().find(|(dir, _)| dir == "speclink-propose").expect("propose is served");
+    assert_eq!(&std::fs::read_to_string(&propose).expect("read"), expected);
+    assert_eq!(probe()["status"], "current");
+}
+
+#[test]
+fn a_remote_checkout_without_a_tool_has_nothing_to_probe() {
+    let h = common::harness();
+    let (credentials, manager) = runtime(&h);
+    let ws = open(&h, &credentials, &manager);
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("{}/api/speclink/v1/projects/demo", h.origin);
+    std::fs::write(dir.path().join(".speclink.yaml"), format!("remote:\n  url: {url}\n")).expect("config");
+    assert_eq!(ws.probe_assets(&credentials, dir.path()).expect("probe"), None);
+}

@@ -15,6 +15,7 @@
 //! - HEAD takes the GET routes.
 
 use super::routes::{self, Handler};
+use super::skills;
 use super::Method;
 
 /// Every project path starts here; the segment after it is the project key.
@@ -95,11 +96,12 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Get, "/whoami", routes::whoami),
     route(Get, "/sync-state", routes::sync_state),
     route(Post, "/context", routes::context),
+    route(Post, "/skills", skills::skills),
 ];
 
 /// The POST routes that only read: a caller who cannot write still uses
 /// them. A new one goes here, and in the design.
-pub(crate) const READ_ONLY_POSTS: &[&str] = &["/context"];
+pub(crate) const READ_ONLY_POSTS: &[&str] = &["/context", "/skills"];
 
 /// What a path matched: the route's pattern and its params, as they are in
 /// the path (still percent-encoded), the project key first.

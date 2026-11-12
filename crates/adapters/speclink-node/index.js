@@ -224,7 +224,7 @@ class Host {
   }
 }
 
-const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports']
+const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports', 'skills']
 
 /**
  * The before-command answer as one of three plain shapes, so only these
@@ -246,7 +246,7 @@ function decisionOf(answer) {
 /**
  * Build a host kit over a store port (`list`, `read`, `commit`), optional
  * hooks (`beforeCommand`, `afterCommit`) and the HTTP door's optional inputs
- * (`scopes`, `authMethods`, `pushTransports`). One host serves every user:
+ * (`scopes`, `authMethods`, `pushTransports`, `skills`). One host serves every user:
  * each `dispatch` and each `handleRequest` brings its own identity.
  */
 function createHost(options) {
@@ -283,8 +283,13 @@ function createHost(options) {
     },
     scopes: asJson(async (identity) => options.scopes(identity)),
   }
-  // The native side checks both shapes and throws on a field it does not know.
-  const doorOptions = JSON.stringify({ authMethods: options.authMethods, pushTransports: options.pushTransports })
+  // The native side checks the shapes and throws on a field it does not know,
+  // and on a skill name the engine does not have.
+  const doorOptions = JSON.stringify({
+    authMethods: options.authMethods,
+    pushTransports: options.pushTransports,
+    skills: options.skills,
+  })
   return new Host(
     binding.hostFromPort(
       makeInvoker(target),
