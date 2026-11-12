@@ -144,6 +144,13 @@ impl Drop for Fixture {
     }
 }
 
+/// `list --json` text without its `modifiedAt` lines: that time belongs to the
+/// files, and two projects (or one project before and after a write) never
+/// share it.
+fn without_modified_at(text: &str) -> String {
+    text.lines().filter(|line| !line.trim_start().starts_with("\"modifiedAt\"")).collect::<Vec<_>>().join("\n")
+}
+
 fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
@@ -246,9 +253,10 @@ fn policy_off_never_overlays_and_leaves_both_outputs_untouched() {
 
     let bare = Fixture::new("policy-off-bare", false);
 
+    // 兩個專案各自建立，檔案的修改時間不同；除了 `modifiedAt` 以外逐位元一致。
     assert_eq!(
-        stdout_of(&off.run(&["list", "--json"])),
-        stdout_of(&bare.run(&["list", "--json"])),
+        without_modified_at(&stdout_of(&off.run(&["list", "--json"]))),
+        without_modified_at(&stdout_of(&bare.run(&["list", "--json"]))),
         "政策關閉時 --json 與沒有 worktree 時逐位元一致"
     );
     assert_eq!(

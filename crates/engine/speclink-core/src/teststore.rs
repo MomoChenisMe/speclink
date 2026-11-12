@@ -25,6 +25,9 @@ pub(crate) struct TestStore {
     pub archived_artifacts: RefCell<HashMap<(String, String), String>>,
     /// Change name → evidence record text (the seam's storage side).
     pub evidence: RefCell<HashMap<String, String>>,
+    /// Change name → the last-modified seconds `updated_at_secs` reports; a
+    /// change with no entry reports 0 (a store that cannot tell).
+    pub updated_at: RefCell<HashMap<String, u64>>,
     /// Capability → canonical spec content.
     pub canonical: RefCell<HashMap<String, String>>,
     /// When set to a change name, `read_change_meta` reads it as absent while
@@ -154,8 +157,8 @@ impl Store for TestStore {
         self.metas.borrow_mut().insert(name.to_string(), meta_text.to_string());
         Ok(PathBuf::from(format!("changes/{name}")))
     }
-    fn updated_at_secs(&self, _name: &str) -> u64 {
-        0
+    fn updated_at_secs(&self, name: &str) -> u64 {
+        self.updated_at.borrow().get(name).copied().unwrap_or(0)
     }
     fn read_change_meta(&self, name: &str) -> Option<String> {
         if self.missing_meta.borrow().as_deref() == Some(name) {

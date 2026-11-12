@@ -231,6 +231,16 @@ mod tests {
     }
 
     #[test]
+    fn evidence_show_is_a_listed_verb() {
+        assert!(leaves().contains("evidence show"));
+        assert!(listed().contains("evidence show"));
+        let description = tool_definition().description;
+        let line = description.lines().find(|l| l.starts_with("- evidence show ")).expect("a line for evidence show");
+        assert!(line.contains("<CHANGE>"), "{line}");
+        assert_eq!(minimal_argv("evidence show"), Some(vec!["evidence".into(), "show".into(), "demo".into()]));
+    }
+
+    #[test]
     fn the_stamps_show_their_stdin_flag() {
         let description = tool_definition().description;
         let stamps: Vec<&str> = description.lines().filter(|l| l.contains(" stamp ")).collect();

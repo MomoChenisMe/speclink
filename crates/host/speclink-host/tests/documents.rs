@@ -35,6 +35,10 @@ fn doc_version(port: &dyn StorePort, k: &str) -> u64 {
 
 const META: &str = "schema: spec-driven\ncreated: 2026-11-01\n";
 
+/// A change's evidence record (other documents' reads must not reach it).
+const EVIDENCE: &str = r#"{"version":2,"change":"add-x","touched":["src/a.rs"],"entries":[{"taskId":"1","taskDesc":"1.1 a","actor":"Alice","touchedFiles":["src/a.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#;
+
+
 // --- 範圍版本號 ---
 
 #[test]
@@ -296,55 +300,6 @@ fn a_board_order_written_by_another_writer_meanwhile_is_a_conflict() {
         store.inner.recorded_events(&scope()).is_empty(),
         "no board-order event landed"
     );
-}
-
-// --- evidence ---
-
-const EVIDENCE: &str = r#"{"version":2,"change":"add-x","touched":["src/a.rs"],"entries":[{"taskId":"1","taskDesc":"1.1 a","actor":"Alice","touchedFiles":["src/a.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#;
-
-#[test]
-fn a_change_evidence_reads_its_entries() {
-    let store = Recorder::new(MemoryStorePort::new());
-    write(
-        &store.inner,
-        &[
-            ("changes/add-x/.meta.yaml", META),
-            ("changes/add-x/.evidence.json", EVIDENCE),
-        ],
-    );
-    let (evidence, version) = documents::change_evidence(&store, &scope(), "add-x").unwrap();
-    assert_eq!(version.get(), scope_version(&store.inner));
-    assert_eq!(evidence.entries.len(), 1);
-    assert_eq!(evidence.entries[0].task_id, "1");
-    assert_eq!(evidence.entries[0].touched_files, ["src/a.rs"]);
-    assert_eq!(store.calls().read_keys(), [["changes/add-x/.evidence.json"]]);
-}
-
-#[test]
-fn a_missing_evidence_is_an_empty_set() {
-    let store = Recorder::new(MemoryStorePort::new());
-    write(&store.inner, &[("changes/add-x/.meta.yaml", META)]);
-    let (evidence, _) = documents::change_evidence(&store, &scope(), "nope").unwrap();
-    assert!(evidence.entries.is_empty());
-}
-
-#[test]
-fn a_broken_evidence_is_corrupt() {
-    // 「壞的 evidence」
-    let store = Recorder::new(MemoryStorePort::new());
-    write(
-        &store.inner,
-        &[("changes/add-x/.evidence.json", "not json")],
-    );
-    match documents::change_evidence(&store, &scope(), "add-x") {
-        Err(DocumentsError::Corrupt(message)) => {
-            assert!(
-                message.starts_with("evidence record is unreadable: "),
-                "{message}"
-            );
-        }
-        other => panic!("expected corrupt, got {other:?}"),
-    }
 }
 
 // --- 正式規格與已封存 ---
@@ -954,11 +909,6 @@ fn request_names_cannot_reach_another_kind_of_document() {
             .unwrap()
             .is_empty()
     );
-    assert!(documents::change_evidence(&store, &scope(), "..")
-        .unwrap()
-        .0
-        .entries
-        .is_empty());
     // An artifact path that names the data file or the evidence is no artifact.
     for artifact in [".meta.yaml", ".evidence.json"] {
         assert_eq!(
@@ -1005,3 +955,28 @@ fn discard_removes_no_local_file() {
     assert!(local.is_file(), "a file in the working directory is not the change's");
     assert!(common::keys_under(&store.inner, "changes/").is_empty(), "the change is gone");
 }
+
+// --- the version of an archived change's document ---
+
+#[test]
+fn an_archived_documents_version_is_one_read_and_a_store_failure_is_an_error() {
+    let store = Recorder::new(MemoryStorePort::new());
+    write(&store.inner, &[("archive/changes/2026-11-12-demo/proposal.md", "## Why\n")]);
+    store.take();
+    let version = documents::archived_document_version(&store, &scope(), "2026-11-12-demo", "proposal.md").unwrap();
+    assert!(version.is_some());
+    assert_eq!(store.calls().read_keys(), [["archive/changes/2026-11-12-demo/proposal.md"]]);
+    assert!(store.calls().lists.is_empty(), "no listing of the archive for one document");
+    assert_eq!(
+        documents::archived_document_version(&store, &scope(), "2026-11-12-demo", "design.md").unwrap(),
+        None
+    );
+    // A name that makes no key names no document.
+    assert_eq!(documents::archived_document_version(&store, &scope(), "..", "proposal.md").unwrap(), None);
+    // A store that fails is a failure, never "no such document".
+    match documents::archived_document_version(&Recorder::unavailable(), &scope(), "2026-11-12-demo", "proposal.md") {
+        Err(DocumentsError::Store(PortError::Unavailable { .. })) => {}
+        other => panic!("expected the store's failure, got {other:?}"),
+    }
+}
+

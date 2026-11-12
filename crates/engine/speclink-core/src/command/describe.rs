@@ -21,6 +21,7 @@ impl Command {
             Command::Plan { .. } => "plan",
             Command::PlanStrict => "plan-strict",
             Command::ArtifactCat { .. } => "artifact-cat",
+            Command::EvidenceShow { .. } => "evidence-show",
             Command::LanguageShow => "language-show",
             Command::DiscussList { .. } => "discuss-list",
             Command::DiscussShow { .. } => "discuss-show",

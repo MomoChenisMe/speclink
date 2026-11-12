@@ -905,6 +905,7 @@ fn every_command() -> Vec<Command> {
             | Command::Plan { .. }
             | Command::PlanStrict
             | Command::ArtifactCat { .. }
+            | Command::EvidenceShow { .. }
             | Command::LanguageShow
             | Command::DiscussList { .. }
             | Command::DiscussShow { .. }
@@ -958,6 +959,7 @@ fn every_command() -> Vec<Command> {
         Command::Plan { ranks: None },
         Command::PlanStrict,
         Command::ArtifactCat { artifact: s("proposal"), change: Some(s("demo")) },
+        Command::EvidenceShow { change: s("demo") },
         Command::LanguageShow,
         Command::DiscussList { archived: false },
         Command::DiscussShow { slug: s("talk") },
@@ -1061,11 +1063,26 @@ fn sample_request(method: Method, pattern: &str) -> HttpRequest {
 
 /// The command names the hook was asked about for one request to `route`.
 fn asked_by(method: Method, pattern: &str) -> Vec<String> {
+    asked_with(sample_request(method, pattern))
+}
+
+/// The command names the hook was asked about for `req`.
+fn asked_with(req: HttpRequest) -> Vec<String> {
     let seen = Arc::new(Seen::default());
     let door = door_with(one_repo(), recording(&seen, |_| Decision::Deny { reason: "watching".into() }));
-    answer(&door, &sample_request(method, pattern), Some(&alice()));
+    answer(&door, &req, Some(&alice()));
     let asked = seen.asked.lock().unwrap().iter().map(|(command, _)| command.clone()).collect();
     asked
+}
+
+/// The sample request that runs `cmd` on its route: the route's sample, with
+/// the query that picks the command where one route runs two.
+fn request_for(cmd: &Command, method: Method, pattern: &str) -> HttpRequest {
+    let mut req = sample_request(method, pattern);
+    if matches!(cmd, Command::PlanStrict) {
+        req.query = Some("strictOverlap=true".to_string());
+    }
+    req
 }
 
 #[test]
@@ -1086,7 +1103,8 @@ fn coverage_routes_are_in_the_table_and_run_their_command() {
             continue;
         };
         assert!(table.contains(&(method, pattern)), "{}: {} {pattern} is not a route", cmd.name(), method.as_str());
-        assert_eq!(asked_by(method, pattern), [cmd.name()], "{} {pattern} runs {}", method.as_str(), cmd.name());
+        let asked = asked_with(request_for(&cmd, method, pattern));
+        assert_eq!(asked, [cmd.name()], "{} {pattern} runs {}", method.as_str(), cmd.name());
     }
 }
 
@@ -1495,3 +1513,516 @@ fn a_refused_discussion_write_gets_its_status_from_the_kind_of_refusal() {
     let (status, reason, _) = error(&answer(&door, &unlinked, Some(&me)));
     assert_eq!((status, reason.as_str()), (404, "not_found"));
 }
+
+// ======================================================================
+// Change remote-read-verbs: the reads that need no checkout.
+// ======================================================================
+
+// --- artifact cat 讀取已封存變更的文件（經儲存接口） ---
+
+const ARCHIVED_PROPOSAL: &str = "## Why\n\nArchived.\n";
+
+/// `demo` archived as 2026-11-12-demo with a proposal and a delta spec for auth.
+fn with_archived_demo(door: &Door) {
+    seed(
+        door,
+        "s1",
+        &[
+            ("archive/changes/2026-11-12-demo/.meta.yaml", META),
+            ("archive/changes/2026-11-12-demo/proposal.md", ARCHIVED_PROPOSAL),
+            ("archive/changes/2026-11-12-demo/specs/auth/spec.md", "## ADDED Requirements\n"),
+            ("config.yaml", CONFIG),
+        ],
+    );
+}
+
+#[test]
+fn an_artifact_of_an_archived_change_reads_by_either_name() {
+    let door = door(one_repo());
+    with_archived_demo(&door);
+    let me = alice();
+    for name in ["demo", "2026-11-12-demo"] {
+        let proposal = answer(&door, &get(&alpha(&format!("changes/{name}/artifacts/proposal"))), Some(&me));
+        assert_eq!(proposal.status, 200, "{name}: {:?}", String::from_utf8_lossy(&proposal.body));
+        let body = json(&proposal);
+        assert_eq!(body["content"], ARCHIVED_PROPOSAL, "{name}");
+        assert_eq!(body["artifact"], "proposal", "{name}");
+        // The version is the archived document's own.
+        assert!(body["version"].as_u64().unwrap() > 0, "{name}: {body}");
+        let spec = answer(&door, &get(&alpha(&format!("changes/{name}/artifacts/specs/auth"))), Some(&me));
+        assert_eq!(json(&spec)["content"], "## ADDED Requirements\n", "{name}");
+    }
+    assert!(door.store.calls().commits.is_empty(), "a read commits nothing");
+}
+
+#[test]
+fn an_archived_artifacts_version_is_that_documents_own() {
+    let door = door(one_repo());
+    with_archived_demo(&door);
+    // A later write to another document moves the scope, not this document.
+    let proposal = json(&answer(&door, &get(&alpha("changes/demo/artifacts/proposal")), Some(&alice())));
+    seed(&door, "s1", &[("archive/changes/2026-11-12-demo/design.md", "## Context\n")]);
+    let again = json(&answer(&door, &get(&alpha("changes/demo/artifacts/proposal")), Some(&alice())));
+    assert_eq!(again["version"], proposal["version"]);
+    let design = json(&answer(&door, &get(&alpha("changes/demo/artifacts/design")), Some(&alice())));
+    assert!(design["version"].as_u64().unwrap() > proposal["version"].as_u64().unwrap(), "{design} vs {proposal}");
+    // The read asks the store for the archive's names once, for the command.
+    door.store.take();
+    answer(&door, &get(&alpha("changes/demo/artifacts/proposal")), Some(&alice()));
+    let archive_lists = door.store.calls().lists.iter().filter(|prefix| prefix.starts_with("archive/changes")).count();
+    assert_eq!(archive_lists, 1, "{:?}", door.store.calls().lists);
+}
+
+#[test]
+fn an_artifact_of_an_active_change_wins_over_an_archived_one_of_its_name() {
+    let door = door(one_repo());
+    with_archived_demo(&door);
+    seed(&door, "s1", &[("changes/demo/.meta.yaml", META), ("changes/demo/proposal.md", "## Why\n\nActive.\n")]);
+    let me = alice();
+    let proposal = answer(&door, &get(&alpha("changes/demo/artifacts/proposal")), Some(&me));
+    assert_eq!(json(&proposal)["content"], "## Why\n\nActive.\n");
+    // The active change has no delta spec: the archive is not a second chance.
+    let spec = answer(&door, &get(&alpha("changes/demo/artifacts/specs/auth")), Some(&me));
+    assert_eq!(
+        error(&spec),
+        (404, "not_found".to_string(), "artifact 'specs/auth' not found for change 'demo'".to_string())
+    );
+}
+
+#[test]
+fn an_artifact_of_a_name_in_neither_place_keeps_its_message() {
+    let door = door(one_repo());
+    with_archived_demo(&door);
+    let me = alice();
+    let ghost = answer(&door, &get(&alpha("changes/ghost/artifacts/proposal")), Some(&me));
+    assert_eq!(error(&ghost), (404, "not_found".to_string(), "Change 'ghost' not found.".to_string()));
+    let design = answer(&door, &get(&alpha("changes/demo/artifacts/design")), Some(&me));
+    assert_eq!(
+        error(&design),
+        (404, "not_found".to_string(), "artifact 'design' not found for change 'demo'".to_string())
+    );
+}
+
+// --- 溯源與嚴格重疊的唯讀端點 ---
+
+fn get_with(path: &str, query: &str) -> HttpRequest {
+    let mut req = get(path);
+    req.query = Some(query.to_string());
+    req
+}
+
+const AUTH_SPEC: &str = "# auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: Session\n\nIt SHALL work.\n\n<!-- @trace\nsource: beta\nupdated: 2026-11-02\n-->\n";
+
+const ARCHIVED_EVIDENCE: &str = r#"{"version":2,"change":"alpha","entries":[
+    {"taskId":"tsk_a","taskDesc":"1.1 First","touchedFiles":["src/a.rs","src/b.rs"],"recordedAt":"2026-11-01T03:00:00Z"},
+    {"taskId":"tsk_b","taskDesc":"1.2 Second","actor":"Alice","touchedFiles":["src/b.rs"],"recordedAt":"2026-11-01T04:00:00Z"}]}"#;
+
+/// Capability auth, changed by two archived changes: alpha (from a
+/// discussion, with evidence) then beta.
+fn with_traced_auth(door: &Door) {
+    seed(
+        door,
+        "s1",
+        &[
+            ("specs/auth/spec.md", AUTH_SPEC),
+            (
+                "archive/changes/2026-11-01-alpha/.meta.yaml",
+                "schema: spec-driven\ncreated: 2026-10-30\nfrom_discussion: origin-talk\n",
+            ),
+            ("archive/changes/2026-11-01-alpha/specs/auth/spec.md", "## MODIFIED Requirements\n"),
+            ("archive/changes/2026-11-01-alpha/.evidence.json", ARCHIVED_EVIDENCE),
+            ("archive/changes/2026-11-02-beta/.meta.yaml", META),
+            ("archive/changes/2026-11-02-beta/specs/auth/spec.md", "## MODIFIED Requirements\n"),
+            ("config.yaml", CONFIG),
+        ],
+    );
+}
+
+#[test]
+fn the_trace_route_answers_the_chain_oldest_first_with_an_etag() {
+    let door = door(switches(false, false));
+    with_traced_auth(&door);
+    let response = answer(&door, &get(&alpha("trace/auth")), Some(&alice()));
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    assert_eq!(etag_of(&response), common::scope_version_in(&door.store.inner, &scope_of("s1")));
+    let body = json(&response);
+    assert_eq!(keys(&body), ["capability", "changes", "discussions", "requirements"]);
+    assert_eq!(body["capability"], "auth");
+    assert_eq!(body["requirements"], json!([{ "name": "Session", "source": "beta" }]));
+    assert_eq!(
+        body["changes"],
+        json!([
+            {
+                "name": "alpha",
+                "archivedDir": "2026-11-01-alpha",
+                "fromDiscussion": "origin-talk",
+                "evidence": [
+                    { "taskId": "tsk_a", "files": ["src/a.rs", "src/b.rs"] },
+                    { "taskId": "tsk_b", "files": ["src/b.rs"] },
+                ],
+            },
+            { "name": "beta", "archivedDir": "2026-11-02-beta", "fromDiscussion": null, "evidence": null },
+        ])
+    );
+    assert!(body["discussions"].is_array());
+    assert!(door.store.calls().commits.is_empty(), "the trace commits nothing");
+}
+
+#[test]
+fn the_trace_route_of_an_unknown_capability_is_404_with_the_engines_suggestion() {
+    let door = door(one_repo());
+    with_traced_auth(&door);
+    // The Engine suggests names that share a word with the one asked for.
+    let (status, reason, message) = error(&answer(&door, &get(&alpha("trace/auth-flow")), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (404, "not_found"));
+    assert!(message.starts_with("Capability 'auth-flow' is not in the canonical specs.\n"), "{message}");
+    assert!(message.contains("\n  - auth") || message.contains(" auth\n"), "the near name is suggested: {message}");
+    assert!(message.ends_with("Re-run with one of these exact names."), "{message}");
+}
+
+fn modified(requirement: &str) -> String {
+    format!("## MODIFIED Requirements\n\n### Requirement: {requirement}\n\nbody\n")
+}
+
+/// Changes a and b: each has a delta for desktop-app, on different requirements.
+fn with_shared_capability(door: &Door, meta_a: &str, meta_b: &str) {
+    seed(
+        door,
+        "s1",
+        &[
+            ("changes/a/.meta.yaml", meta_a),
+            ("changes/a/specs/desktop-app/spec.md", &modified("Run rewind point")),
+            ("changes/b/.meta.yaml", meta_b),
+            ("changes/b/specs/desktop-app/spec.md", &modified("Conversation pin")),
+            ("config.yaml", CONFIG),
+        ],
+    );
+}
+
+const META_A: &str = "schema: spec-driven\ncreated: 2026-09-01\n";
+const META_B: &str = "schema: spec-driven\ncreated: 2026-09-02\n";
+
+#[test]
+fn a_strict_overlap_plan_puts_a_shared_capability_in_two_waves() {
+    let door = door(switches(false, false));
+    with_shared_capability(&door, META_A, META_B);
+    let me = alice();
+    let plain = answer(&door, &get(&alpha("plan")), Some(&me));
+    assert_eq!(plain.status, 200);
+    assert_eq!(json(&plain)["waves"], json!([{ "index": 1, "changes": ["a", "b"] }]));
+
+    let strict = answer(&door, &get_with(&alpha("plan"), "strictOverlap=true"), Some(&me));
+    assert_eq!(strict.status, 200, "{:?}", String::from_utf8_lossy(&strict.body));
+    let body = json(&strict);
+    assert_eq!(body["waves"], json!([{ "index": 1, "changes": ["a"] }, { "index": 2, "changes": ["b"] }]));
+    assert_eq!(body["changes"][1]["blockedBy"], json!(["a"]));
+    assert_eq!(body["changes"][1]["ready"], false);
+    // The strict plan says that it is one; the rest of the shape is the same.
+    assert_eq!(body["strictOverlap"], true);
+    assert!(json(&plain).get("strictOverlap").is_none(), "the plain plan does not carry the key");
+    let mut shape = keys(&json(&plain));
+    shape.push("strictOverlap".to_string());
+    shape.sort();
+    assert_eq!(keys(&body), shape);
+    assert_eq!(keys(&body["changes"][1]), keys(&json(&plain)["changes"][1]));
+    assert!(header(&strict, "etag").is_some());
+
+    // `false` and any other parameter leave the plan as it was.
+    for query in ["strictOverlap=false", "strict=true", "foo=bar&x=1"] {
+        let same = answer(&door, &get_with(&alpha("plan"), query), Some(&me));
+        assert_eq!(json(&same), json(&plain), "{query}");
+    }
+    assert!(door.store.calls().commits.is_empty(), "a plan commits nothing");
+}
+
+#[test]
+fn the_strict_plan_orders_by_the_same_board_order_as_the_plain_one() {
+    // 「嚴格重疊的計算 SHALL 使用與一般 plan 相同的順序來源」：兩個互不相干的變更，
+    // 依建立日期是 a 在前；看板順序把 b 排到前面。兩種計畫都要照看板順序。
+    let door = door(one_repo());
+    seed(
+        &door,
+        "s1",
+        &[
+            ("changes/a/.meta.yaml", META_A),
+            ("changes/b/.meta.yaml", META_B),
+            ("config.yaml", CONFIG),
+        ],
+    );
+    let me = alice();
+    let order = |query: Option<&str>| -> Vec<String> {
+        let mut req = get(&alpha("plan"));
+        req.query = query.map(str::to_string);
+        let body = json(&answer(&door, &req, Some(&me)));
+        body["changes"].as_array().unwrap().iter().map(|c| c["name"].as_str().unwrap().to_string()).collect()
+    };
+    assert_eq!(order(None), ["a", "b"], "with no board order, the older change is first");
+    assert_eq!(order(Some("strictOverlap=true")), ["a", "b"]);
+
+    seed(&door, "s1", &[("board/order", r#"{"changes":{"b":"a0","a":"a1"}}"#)]);
+    assert_eq!(order(None), ["b", "a"], "the board order ranks b first");
+    assert_eq!(order(Some("strictOverlap=true")), ["b", "a"], "the strict plan reads the same ranks");
+}
+
+#[test]
+fn a_strict_overlap_value_that_is_not_a_boolean_is_400() {
+    let door = door(one_repo());
+    with_shared_capability(&door, META_A, META_B);
+    for query in ["strictOverlap=maybe", "strictOverlap=", "strictOverlap=1"] {
+        let (status, reason, _) = error(&answer(&door, &get_with(&alpha("plan"), query), Some(&alice())));
+        assert_eq!((status, reason.as_str()), (400, "invalid_argument"), "{query}");
+    }
+}
+
+#[test]
+fn a_dependency_cycle_refuses_the_strict_plan_like_the_plain_one() {
+    let door = door(one_repo());
+    with_shared_capability(&door, &format!("{META_A}depends_on: b\n"), &format!("{META_B}depends_on: a\n"));
+    let me = alice();
+    let plain = error(&answer(&door, &get(&alpha("plan")), Some(&me)));
+    let strict = error(&answer(&door, &get_with(&alpha("plan"), "strictOverlap=true"), Some(&me)));
+    assert_eq!((strict.0, strict.1.as_str()), (409, "refused"));
+    assert!(strict.2.starts_with("dependency cycle: "), "{}", strict.2);
+    assert_eq!(strict, plain);
+}
+
+// --- evidence 端點以引擎命令回答 ---
+
+const DEMO_EVIDENCE: &str = r#"{"version":2,"change":"demo","entries":[{"taskId":"tsk_a","taskDesc":"1.1 First","actor":"Alice","touchedFiles":["src/a.rs"],"recordedAt":"2026-11-12T03:00:00Z"}]}"#;
+
+#[test]
+fn the_evidence_route_reads_an_active_change_without_naming_an_archive() {
+    let door = door(switches(false, false));
+    with_demo(&door);
+    seed(&door, "s1", &[("changes/demo/.evidence.json", DEMO_EVIDENCE)]);
+    let response = answer(&door, &get(&alpha("changes/demo/evidence")), Some(&alice()));
+    assert_eq!(response.status, 200);
+    assert!(header(&response, "etag").is_some());
+    let body = json(&response);
+    assert_eq!(keys(&body), ["change", "entries"], "no archivedAs for an active change: {body}");
+    assert_eq!(body["change"], "demo");
+    assert_eq!(
+        body["entries"],
+        json!([{
+            "taskId": "tsk_a",
+            "taskDesc": "1.1 First",
+            "actor": "Alice",
+            "touchedFiles": ["src/a.rs"],
+            "recordedAt": "2026-11-12T03:00:00Z",
+        }])
+    );
+    assert!(door.store.calls().commits.is_empty(), "reading evidence commits nothing");
+}
+
+#[test]
+fn the_evidence_route_reads_back_what_task_done_recorded() {
+    let door = door(one_repo());
+    with_demo(&door);
+    let me = alice();
+    let done = send(Method::Post, &alpha("changes/demo/tasks/1/done"), json!({ "touchedFiles": ["src/app.rs"] }));
+    assert_eq!(answer(&door, &done, Some(&me)).status, 200);
+    let body = json(&answer(&door, &get(&alpha("changes/demo/evidence")), Some(&me)));
+    assert_eq!(body["entries"].as_array().unwrap().len(), 1, "{body}");
+    assert_eq!(body["entries"][0]["touchedFiles"], json!(["src/app.rs"]));
+    assert!(body["entries"][0]["taskId"].is_string() && body["entries"][0]["recordedAt"].is_string());
+}
+
+#[test]
+fn the_evidence_route_reads_an_archived_change_and_names_it() {
+    let door = door(one_repo());
+    seed(
+        &door,
+        "s1",
+        &[
+            ("archive/changes/2026-11-12-demo/.meta.yaml", META),
+            ("archive/changes/2026-11-12-demo/.evidence.json", DEMO_EVIDENCE),
+            ("config.yaml", CONFIG),
+        ],
+    );
+    for name in ["demo", "2026-11-12-demo"] {
+        let response = answer(&door, &get(&alpha(&format!("changes/{name}/evidence"))), Some(&alice()));
+        assert_eq!(response.status, 200, "{name}");
+        let body = json(&response);
+        assert_eq!(keys(&body), ["archivedAs", "change", "entries"], "{name}");
+        assert_eq!(body["archivedAs"], "2026-11-12-demo", "{name}");
+        assert_eq!(body["change"], "demo", "the change's own name, whichever name was asked: {name}");
+        assert_eq!(body["entries"][0]["taskId"], "tsk_a", "{name}");
+    }
+}
+
+#[test]
+fn a_change_with_no_evidence_is_an_empty_set_and_an_unknown_name_is_404() {
+    let door = door(one_repo());
+    with_demo(&door);
+    let me = alice();
+    let none = answer(&door, &get(&alpha("changes/demo/evidence")), Some(&me));
+    assert_eq!(none.status, 200);
+    assert_eq!(json(&none), json!({ "change": "demo", "entries": [] }));
+    for name in ["ghost", "..", "archive"] {
+        let missing = answer(&door, &get(&alpha(&format!("changes/{name}/evidence"))), Some(&me));
+        assert_eq!(
+            error(&missing),
+            (404, "not_found".to_string(), format!("Change '{name}' not found.")),
+            "{name}"
+        );
+    }
+}
+
+#[test]
+fn a_broken_evidence_record_is_500_and_its_content_stays_out_of_the_message() {
+    let door = door(one_repo());
+    with_demo(&door);
+    seed(&door, "s1", &[("changes/demo/.evidence.json", "SECRET-CONTENT not json")]);
+    let (status, reason, message) = error(&answer(&door, &get(&alpha("changes/demo/evidence")), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (500, "internal"));
+    assert!(message.starts_with("evidence record of 'demo' cannot be parsed: "), "{message}");
+    assert!(!message.contains("SECRET-CONTENT"), "{message}");
+}
+
+// --- 變更清單的最後修改時間欄位 ---
+
+/// Seed `docs` in scope s1 with a commit at `at_millis`.
+fn seed_at(door: &Door, at_millis: u64, docs: &[(&str, &str)]) {
+    use speclink_store_port::{Actor, Commit, DocKey, Expected, Op, StorePort, Timestamp};
+    let ops = docs
+        .iter()
+        .map(|(key, content)| Op::Put {
+            key: DocKey::new(*key).unwrap(),
+            content: content.to_string(),
+            expected: Expected::Absent,
+        })
+        .collect();
+    let commit =
+        Commit::new(Actor::new("seed", "seed").unwrap(), "seed", Timestamp::new(at_millis).unwrap(), ops, Vec::new())
+            .unwrap();
+    door.store.inner.commit(&scope_of("s1"), &commit).expect("seed commit");
+    door.store.take();
+}
+
+const DATED_META: &str = "schema: spec-driven\ncreated: 2026-11-01\n";
+
+#[test]
+fn a_listed_change_carries_created_and_the_stores_last_modified_time() {
+    let door = door(switches(false, false));
+    // 2026-11-12T03:00:00Z, then a later write to one document of the change.
+    seed_at(&door, 1_794_452_400_000, &[("changes/demo/.meta.yaml", DATED_META), ("config.yaml", CONFIG)]);
+    seed_at(&door, 1_794_456_000_999, &[("changes/demo/tasks.md", OPEN_TASKS)]);
+    let body = json(&answer(&door, &get(&alpha("changes")), Some(&alice())));
+    let demo = &body["changes"][0];
+    assert_eq!(demo["name"], "demo");
+    assert_eq!(demo["created"], "2026-11-01");
+    assert_eq!(demo["modifiedAt"], "2026-11-12T04:00:00Z", "the newest document, in whole seconds");
+    assert!(demo.get("modified_at").is_none());
+}
+
+#[test]
+fn a_store_that_reports_no_time_gives_no_modified_at_key() {
+    let door = door(one_repo());
+    seed_at(&door, 0, &[("changes/demo/.meta.yaml", DATED_META), ("changes/demo/tasks.md", OPEN_TASKS)]);
+    let body = json(&answer(&door, &get(&alpha("changes")), Some(&alice())));
+    let demo = &body["changes"][0];
+    assert_eq!(demo["created"], "2026-11-01");
+    assert!(!keys(demo).contains(&"modifiedAt".to_string()), "{demo}");
+}
+
+// --- 線上歸屬表：三個讀取都有路由 ---
+
+#[test]
+fn coverage_puts_the_three_reads_on_their_routes() {
+    let s = |text: &str| text.to_string();
+    let route = |pattern| WireCoverage::Route { method: Method::Get, pattern };
+    assert_eq!(wire_coverage(&Command::Trace { capability: s("auth") }), route("/trace/{capability}"));
+    assert_eq!(wire_coverage(&Command::PlanStrict), route("/plan"));
+    assert_eq!(wire_coverage(&Command::EvidenceShow { change: s("demo") }), route("/changes/{name}/evidence"));
+}
+
+// --- sharp-edges audit of the three reads ---
+
+#[test]
+fn audit_a_crafted_name_reaches_no_other_document_through_the_reads() {
+    let door = door(one_repo());
+    with_demo(&door);
+    with_traced_auth(&door);
+    seed(
+        &door,
+        "s1",
+        &[
+            ("discussions/secret.md", "# SECRET-TALK\n"),
+            ("changes/demo/.evidence.json", DEMO_EVIDENCE),
+            ("archive/changes/2026-11-01-alpha/proposal.md", "## Why\n\nSECRET-ARCHIVED\n"),
+        ],
+    );
+    let me = alice();
+    for tail in [
+        // An archived change is not an active one under another name.
+        "changes/archive%2F2026-11-01-alpha/evidence",
+        "changes/archive%2F2026-11-01-alpha/artifacts/proposal",
+        "changes/demo%2F..%2Fdemo/evidence",
+        "changes/..%2Fdiscussions%2Fsecret.md/evidence",
+        "changes/%2E%2E/evidence",
+        "changes/./evidence",
+        "trace/..%2Fdiscussions%2Fsecret",
+        "trace/auth%2F..%2F..%2Fdiscussions%2Fsecret",
+        "trace/..%2F..%2Fchanges%2Fdemo%2F.evidence.json",
+    ] {
+        let response = answer(&door, &get(&alpha(tail)), Some(&me));
+        let body = String::from_utf8_lossy(&response.body);
+        assert_eq!(response.status, 404, "GET {tail}: {body}");
+        assert!(!body.contains("SECRET") && !body.contains("tsk_a"), "GET {tail} read a document: {body}");
+    }
+    assert!(door.store.calls().commits.is_empty(), "no read commits");
+}
+
+#[test]
+fn an_archived_change_without_a_date_in_its_name_is_traced_and_read_like_any_other() {
+    // design Open Question: an older archive can hold a change under its
+    // bare name. The store view reads its documents by that name, so the
+    // trace finds its evidence and `evidence show` reads it.
+    let door = door(one_repo());
+    with_traced_auth(&door);
+    seed(
+        &door,
+        "s1",
+        &[
+            ("archive/changes/legacy/.meta.yaml", META),
+            ("archive/changes/legacy/specs/auth/spec.md", "## MODIFIED Requirements\n"),
+            ("archive/changes/legacy/.evidence.json", DEMO_EVIDENCE),
+        ],
+    );
+    let me = alice();
+    let trace = json(&answer(&door, &get(&alpha("trace/auth")), Some(&me)));
+    let legacy = trace["changes"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["archivedDir"] == "legacy")
+        .unwrap_or_else(|| panic!("legacy is in the chain: {trace}"));
+    assert_eq!(legacy["name"], "legacy");
+    assert_eq!(legacy["evidence"], json!([{ "taskId": "tsk_a", "files": ["src/a.rs"] }]));
+
+    let evidence = json(&answer(&door, &get(&alpha("changes/legacy/evidence")), Some(&me)));
+    assert_eq!(evidence["archivedAs"], "legacy");
+    assert_eq!(evidence["change"], "legacy");
+    assert_eq!(evidence["entries"][0]["taskId"], "tsk_a");
+}
+
+#[test]
+fn audit_the_reads_ask_the_before_hook_and_a_refusal_reads_nothing() {
+    // A host that refuses a read gets its refusal, and no document is read.
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, |_| Decision::Deny { reason: "not today".into() }));
+    with_demo(&door);
+    for (tail, query, command) in [
+        ("trace/auth", None, "trace"),
+        ("plan", Some("strictOverlap=true"), "plan-strict"),
+        ("changes/demo/evidence", None, "evidence-show"),
+    ] {
+        let mut req = get(&alpha(tail));
+        req.query = query.map(str::to_string);
+        let (status, reason, message) = error(&answer(&door, &req, Some(&alice())));
+        assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "not today"), "{tail}");
+        assert_eq!(seen.asked.lock().unwrap().last().unwrap().0, command, "{tail}");
+    }
+    assert!(door.store.calls().reads.is_empty(), "a refused read reads no document");
+}
+

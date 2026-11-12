@@ -4,7 +4,8 @@
 
 use crate::RemoteError;
 use speclink_protocol::query::{
-    AnalyzeMsg, AnalyzeReportResponse, PlanResponse, ValidateChangeResponse,
+    AnalyzeMsg, AnalyzeReportResponse, ChangeEvidenceResponse, EvidenceEntry, PlanResponse,
+    TraceResponse, ValidateChangeResponse,
 };
 
 /// `GET /changes/{name}/validate` 回應 → 引擎 `ValidationResult`。
@@ -142,6 +143,84 @@ pub fn plan_report(p: PlanResponse) -> Result<speclink_core::command::PlanReport
     })
 }
 
+/// `GET /trace/{capability}` 回應 → 引擎的溯源報告，逐欄搬運；`fromDiscussion` 與
+/// `evidence` 的 null 照樣是 None，共用的輸出函式印出來和本機逐位元相同。
+pub fn trace_report(t: TraceResponse) -> speclink_core::trace::TraceReport {
+    use speclink_core::trace::{
+        ChangeTrace, DiscussionTrace, EvidenceTask, PromotedChange, RequirementTrace, TraceReport,
+    };
+    TraceReport {
+        capability: t.capability,
+        requirements: t
+            .requirements
+            .into_iter()
+            .map(|r| RequirementTrace { name: r.name, source: r.source })
+            .collect(),
+        changes: t
+            .changes
+            .into_iter()
+            .map(|c| ChangeTrace {
+                name: c.name,
+                archived_dir: c.archived_dir,
+                from_discussion: c.from_discussion,
+                evidence: c.evidence.map(|tasks| {
+                    tasks.into_iter().map(|e| EvidenceTask { task_id: e.task_id, files: e.files }).collect()
+                }),
+            })
+            .collect(),
+        discussions: t
+            .discussions
+            .into_iter()
+            .map(|d| DiscussionTrace {
+                slug: d.slug,
+                archived: d.archived,
+                promoted_to: d
+                    .promoted_to
+                    .into_iter()
+                    .map(|p| PromotedChange { change: p.change, capabilities: p.capabilities })
+                    .collect(),
+            })
+            .collect(),
+    }
+}
+
+/// `evidence show` 對一個不帶 `change` 的回應說的話。
+const EVIDENCE_SHOW_UNSUPPORTED: &str =
+    "this server does not support evidence show — update the server";
+
+/// `GET /changes/{name}/evidence` 回應 → 引擎 `evidence show` 的結果。變更名稱取自回應
+/// 的 `change`（server 以引擎的規則解析後的名稱）。回應沒有 `change` 是舊版 server：它
+/// 只讀進行中的變更，對已封存或不存在的名稱都回空集合——把那個答案當成「沒有記錄」
+/// 交回去是錯的，所以回報錯誤。每筆記錄逐欄拆開再組回，協定多一個欄位時這裡不會靜
+/// 默丟掉。
+pub fn evidence_show(r: ChangeEvidenceResponse) -> Result<speclink_core::command::EvidenceShowOutcome, RemoteError> {
+    let Some(change) = r.change else {
+        return Err(RemoteError {
+            message: EVIDENCE_SHOW_UNSUPPORTED.to_string(),
+            reason: None,
+            status: None,
+            evidence: None,
+        });
+    };
+    let entries = r
+        .entries
+        .into_iter()
+        .map(|entry| {
+            let EvidenceEntry { task_id, task_desc, actor, repo, head_commit, touched_files, recorded_at } = entry;
+            speclink_core::tasks::EvidenceEntry {
+                task_id,
+                task_desc,
+                actor,
+                repo,
+                head_commit,
+                touched_files,
+                recorded_at,
+            }
+        })
+        .collect();
+    Ok(speclink_core::command::EvidenceShowOutcome { change, archived_as: r.archived_as, entries })
+}
+
 #[cfg(test)]
 mod tests {
     use speclink_core::model::Stage;
@@ -220,6 +299,121 @@ mod tests {
         let wire: PlanResponse =
             serde_json::from_value(serde_json::to_value(&plan).unwrap()).unwrap();
         assert_eq!(super::plan_report(wire).unwrap(), plan);
+    }
+
+    // --- remote-read-verbs: the trace report and the evidence of a change ---
+
+    fn engine_trace() -> speclink_core::trace::TraceReport {
+        use speclink_core::trace::{
+            ChangeTrace, DiscussionTrace, EvidenceTask, PromotedChange, RequirementTrace, TraceReport,
+        };
+        TraceReport {
+            capability: "auth".into(),
+            requirements: vec![RequirementTrace { name: "Session".into(), source: "beta".into() }],
+            changes: vec![
+                ChangeTrace {
+                    name: "alpha".into(),
+                    archived_dir: "2026-11-01-alpha".into(),
+                    from_discussion: Some("origin-talk".into()),
+                    evidence: Some(vec![
+                        EvidenceTask { task_id: "tsk_a".into(), files: vec!["src/a.rs".into(), "src/b.rs".into()] },
+                        EvidenceTask { task_id: "tsk_b".into(), files: Vec::new() },
+                    ]),
+                },
+                // No discussion, no record: both print as null.
+                ChangeTrace {
+                    name: "beta".into(),
+                    archived_dir: "2026-11-02-beta".into(),
+                    from_discussion: None,
+                    evidence: None,
+                },
+                // A record with no task is not "no record".
+                ChangeTrace {
+                    name: "gamma".into(),
+                    archived_dir: "2026-11-03-gamma".into(),
+                    from_discussion: None,
+                    evidence: Some(Vec::new()),
+                },
+            ],
+            discussions: vec![DiscussionTrace {
+                slug: "origin-talk".into(),
+                archived: true,
+                promoted_to: vec![
+                    PromotedChange { change: "alpha".into(), capabilities: vec!["auth".into(), "billing".into()] },
+                    PromotedChange { change: "other".into(), capabilities: Vec::new() },
+                ],
+            }],
+        }
+    }
+
+    #[test]
+    fn a_trace_report_comes_back_from_the_wire_with_the_same_json() {
+        // 規格「溯源回應 payload」Scenario「溯源回應轉回報告後輸出相同」：報告 → 回應 →
+        // 序列化 → 解析 → 報告，`trace --json` 印的文字（縮排 JSON）逐位元相同。
+        let original = engine_trace();
+        let sent = serde_json::to_string(&original).unwrap();
+        let wire: speclink_protocol::query::TraceResponse = serde_json::from_str(&sent).unwrap();
+        let back = super::trace_report(serde_json::from_str(&serde_json::to_string(&wire).unwrap()).unwrap());
+        assert_eq!(
+            serde_json::to_string_pretty(&back).unwrap(),
+            serde_json::to_string_pretty(&original).unwrap()
+        );
+        assert_eq!(back.changes[1].evidence.as_ref().map(Vec::len), None);
+        assert_eq!(back.changes[2].evidence.as_ref().map(Vec::len), Some(0));
+    }
+
+    fn wire_evidence(change: Option<&str>, archived_as: Option<&str>) -> speclink_protocol::query::ChangeEvidenceResponse {
+        use speclink_protocol::query::{ChangeEvidenceResponse, EvidenceEntry};
+        ChangeEvidenceResponse {
+            change: change.map(str::to_string),
+            entries: vec![EvidenceEntry {
+                task_id: "tsk_a".into(),
+                task_desc: "1.1 First".into(),
+                actor: Some("Alice".into()),
+                repo: Some("web".into()),
+                head_commit: Some("abc123".into()),
+                touched_files: vec!["src/a.rs".into()],
+                recorded_at: "2026-11-12T03:00:00Z".into(),
+            }],
+            archived_as: archived_as.map(str::to_string),
+        }
+    }
+
+    #[test]
+    fn the_evidence_of_a_change_comes_back_field_by_field() {
+        let shown = super::evidence_show(wire_evidence(Some("demo"), None)).unwrap();
+        assert_eq!(shown.change, "demo");
+        assert_eq!(shown.archived_as, None);
+        let entry = &shown.entries[0];
+        assert_eq!(
+            (entry.task_id.as_str(), entry.task_desc.as_str(), entry.recorded_at.as_str()),
+            ("tsk_a", "1.1 First", "2026-11-12T03:00:00Z")
+        );
+        assert_eq!(
+            (entry.actor.as_deref(), entry.repo.as_deref(), entry.head_commit.as_deref()),
+            (Some("Alice"), Some("web"), Some("abc123"))
+        );
+        assert_eq!(entry.touched_files, ["src/a.rs"]);
+    }
+
+    #[test]
+    fn the_evidence_of_an_archived_change_keeps_the_servers_names() {
+        let shown = super::evidence_show(wire_evidence(Some("demo"), Some("2026-11-12-demo"))).unwrap();
+        assert_eq!(shown.change, "demo");
+        assert_eq!(shown.archived_as.as_deref(), Some("2026-11-12-demo"));
+    }
+
+    #[test]
+    fn evidence_without_the_change_name_is_a_server_that_cannot_answer() {
+        // A server from before the Engine lookup reads active changes only and
+        // answers an empty set for an archived or unknown name. An empty set
+        // and one with entries are refused alike: the answer cannot be told
+        // from a wrong one.
+        let mut old = wire_evidence(None, None);
+        let err = super::evidence_show(old.clone()).unwrap_err();
+        assert_eq!(err.message, "this server does not support evidence show — update the server");
+        old.entries.clear();
+        assert_eq!(super::evidence_show(old).unwrap_err().message, err.message);
     }
 
     #[test]

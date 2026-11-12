@@ -114,6 +114,13 @@ impl Drop for TempProject {
     }
 }
 
+/// `list --json` text without its `modifiedAt` lines: that time belongs to the
+/// files, and two projects (or one project before and after a write) never
+/// share it.
+fn without_modified_at(text: &str) -> String {
+    text.lines().filter(|line| !line.trim_start().starts_with("\"modifiedAt\"")).collect::<Vec<_>>().join("\n")
+}
+
 fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
@@ -781,8 +788,10 @@ fn list_and_status_json_ignore_depends_on_byte_for_byte() {
     ] {
         assert!(a.status.success() && b.status.success(), "{label} runs");
         assert!(!a.stdout.is_empty(), "{label} has output");
+        // Writing the metadata moves the change's `modifiedAt`; nothing else may move.
         assert_eq!(
-            a.stdout, b.stdout,
+            without_modified_at(&stdout_of(a)),
+            without_modified_at(&stdout_of(b)),
             "{label} must not change with depends_on"
         );
         assert!(
@@ -923,34 +932,36 @@ fn change_rank_needs_exactly_one_side() {
 }
 
 #[test]
-fn plan_strict_overlap_remote_mode_still_refuses_without_request() {
-    // Scenario「Dual 家族內的 FsOnly 子情形零請求拒絕」：change rank 在 remote 模式改走
-    // server 之後，只剩 plan --strict-overlap 只限本機——只解析模式、不握手。listener
-    // 在線但從不回話：若發出任何請求，連線會躺在 backlog 裡被 accept() 撿到。
-    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = listener.local_addr().unwrap().port();
+fn plan_strict_overlap_remote_mode_asks_the_server() {
+    // Scenario「plan --strict-overlap 於 remote 模式走 server」（改寫自
+    // plan_strict_overlap_remote_mode_still_refuses_without_request：嚴格重疊不再只限
+    // 本機）。印出的是 server 的計畫，本機那一份沒有被讀也沒有被改。
+    let fake = crate::fake_server::Fake::new();
+    fake.route(
+        "/api/speclink/v1/projects/demo/binding",
+        200,
+        r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#,
+    )
+    .route(
+        "/api/speclink/v1/projects/demo/plan",
+        200,
+        r#"{"waves":[{"index":1,"changes":["x"]},{"index":2,"changes":["y"]}],"changes":[{"name":"x","wave":1,"stage":"proposed","ready":true},{"name":"y","wave":2,"stage":"proposed","blockedBy":["x"],"ready":false}],"next":"x","skipped":[],"strictOverlap":true}"#,
+    );
     let p = TempProject::new("strict-remote");
     p.put_change("a", PROPOSED, &[]);
     p.put_change("c", PROPOSED, &[]);
-    std::fs::write(
-        p.dir.join(".speclink.yaml"),
-        format!("remote:\n  url: http://127.0.0.1:{port}/api/speclink/v1/projects/demo\n"),
-    )
-    .unwrap();
-    let out = p.run(&["plan", "--strict-overlap"]);
-    assert!(!out.status.success(), "remote mode refuses the flag");
-    let err = stderr_of(&out);
-    assert!(
-        err.contains("plan --strict-overlap is not available in remote mode"),
-        "stderr: {err}"
+    std::fs::write(p.dir.join(".speclink.yaml"), format!("remote:\n  url: {}\n", fake.project_url())).unwrap();
+    let out = p.run_env(&["plan", "--strict-overlap", "--json"], &[("SPECLINK_TOKEN", "tok")]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(!stderr_of(&out).contains("not available in remote mode"), "{}", stderr_of(&out));
+    let plan = json_of(&out);
+    assert_eq!(
+        plan["waves"],
+        serde_json::json!([{ "index": 1, "changes": ["x"] }, { "index": 2, "changes": ["y"] }]),
+        "the server's plan, not the local changes a and c"
     );
-    assert!(out.stdout.is_empty());
+    assert!(fake.paths().contains(&"/api/speclink/v1/projects/demo/plan".to_string()), "{:?}", fake.paths());
     assert_eq!(p.meta("c"), PROPOSED.as_bytes(), "the local copy is untouched");
-    listener.set_nonblocking(true).unwrap();
-    match listener.accept() {
-        Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
-        other => panic!("no server request may be emitted, got {other:?}"),
-    }
 }
 
 #[test]

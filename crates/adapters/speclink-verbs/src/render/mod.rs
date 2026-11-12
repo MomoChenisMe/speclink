@@ -51,6 +51,7 @@ macro_rules! errln {
 pub mod checks;
 pub mod discuss;
 pub mod documents;
+pub mod evidence;
 pub mod instructions;
 pub mod lifecycle;
 pub mod new;
@@ -185,7 +186,9 @@ pub fn render(
         O::Analyze(o) => checks::analyze(o, options),
         O::Trace(o) => trace::trace(o, options),
         O::Plan(o) => plan::plan(o, options),
-        O::ArtifactCat(content) | O::Language(content) => documents::document(content, options),
+        O::ArtifactCat(read) => documents::document(&read.content, options),
+        O::Language(content) => documents::document(content, options),
+        O::EvidenceShow(o) => evidence::show(o, options),
         O::DiscussList(items) => {
             let archived =
                 matches!(discuss_command(verb), Some(DiscussCommands::List { archived: true, .. }));
@@ -359,9 +362,10 @@ mod tests {
             CommandOutcome::WorkflowConfigEdit(_) => 43,
             CommandOutcome::WorkflowConfigReplace(_) => 44,
             CommandOutcome::ChangeRank(_) => 45,
+            CommandOutcome::EvidenceShow(_) => 46,
         }
     }
-    const RESULT_TYPES: usize = 46;
+    const RESULT_TYPES: usize = 47;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -536,8 +540,19 @@ mod tests {
                 true,
                 "next: none\n",
             ),
-            (&["artifact", "cat", "tasks"], O::ArtifactCat(s("- [ ] 1.1 x\n")), false, "- [ ] 1.1 x\n"),
+            (
+                &["artifact", "cat", "tasks"],
+                O::ArtifactCat(cmd::ArtifactCatOutcome { content: s("- [ ] 1.1 x\n"), archived_as: None }),
+                false,
+                "- [ ] 1.1 x\n",
+            ),
             (&["language", "show"], O::Language(s("# Language\n")), false, "# Language\n"),
+            (
+                &["evidence", "show", "c"],
+                O::EvidenceShow(cmd::EvidenceShowOutcome { change: s("c"), archived_as: None, entries: Vec::new() }),
+                true,
+                "No evidence recorded for 'c'.\n",
+            ),
             (&["discuss", "list", "--archived"], O::DiscussList(Vec::new()), true, "No archived discussions found.\n"),
             (
                 &["discuss", "show", "t"],

@@ -221,6 +221,8 @@ mod tests {
             restale_from: Vec::new(),
             meta_error: None,
             delta_capabilities: Vec::new(),
+            created: None,
+            modified_at: None,
             worktree: None,
         }
     }
@@ -283,6 +285,26 @@ mod tests {
         assert_eq!(list_json(&changes_only), json!({ "changes": [empty] }));
         let specs_only = ListOutcome { changes: None, specs: Some(specs()) };
         assert_eq!(list_json(&specs_only), json!({ "specs": specs() }));
+    }
+
+    #[test]
+    fn list_json_carries_the_two_time_fields_and_the_human_form_does_not() {
+        let mut timed = change("alpha", 1, 4, "Sign-in needs a second rule.");
+        timed.created = Some("2026-11-01".to_string());
+        timed.modified_at = Some("2026-11-12T03:00:00Z".to_string());
+        let list = ListOutcome { changes: Some(vec![timed, change("empty", 0, 0, "")]), specs: None };
+        let value = list_json(&list);
+        assert_eq!(value["changes"][0]["created"], "2026-11-01");
+        assert_eq!(value["changes"][0]["modifiedAt"], "2026-11-12T03:00:00Z");
+        // A change the store cannot date, with no usable metadata, has neither key.
+        assert!(value["changes"][1].get("created").is_none(), "{value}");
+        assert!(value["changes"][1].get("modifiedAt").is_none(), "{value}");
+        let untimed = ListOutcome {
+            changes: Some(vec![change("alpha", 1, 4, "Sign-in needs a second rule."), change("empty", 0, 0, "")]),
+            specs: None,
+        };
+        assert_eq!(list_human(&list, &PLAIN), list_human(&untimed, &PLAIN));
+        assert_eq!(list_human(&list, &COLOR), list_human(&untimed, &COLOR));
     }
 
     #[test]

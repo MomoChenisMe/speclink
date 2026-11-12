@@ -94,6 +94,7 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             created: None,
             from_discussions: Vec::new(),
             delta_capabilities: Vec::new(),
+            modified_at: None,
         }
     }
     let cases: [(Option<&str>, usize, usize, u8); 7] = [

@@ -106,8 +106,18 @@ fn list_changes_matches_and_commits_nothing() {
     let (fs_out, fs_events) = on_fs(&fs, list_cmd());
     let ported = on_port(&port, list_cmd()).expect("ported list");
 
+    // Each store dates a change with its own clock (the file times, the
+    // commit times), so `modifiedAt` is the one field that differs: both
+    // sides must carry it, and everything else must be the same.
     let changes = |o: &CommandOutcome| match o {
-        CommandOutcome::List(l) => serde_json::to_value(&l.changes).unwrap(),
+        CommandOutcome::List(l) => {
+            let mut items = serde_json::to_value(&l.changes).unwrap();
+            for item in items.as_array_mut().expect("a changes array") {
+                let at = item.as_object_mut().unwrap().remove("modifiedAt");
+                assert!(at.is_some_and(|at| at.is_string()), "every change is dated");
+            }
+            items
+        }
         other => panic!("expected list, got {other:?}"),
     };
     assert_eq!(changes(&fs_out), changes(&ported.outcome));

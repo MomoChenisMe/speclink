@@ -1995,6 +1995,7 @@ mod board_order_tests {
             created: None,
             from_discussions: Vec::new(),
             delta_capabilities: Vec::new(),
+            modified_at: None,
         }
     }
 
@@ -2120,6 +2121,7 @@ mod plan_merge_tests {
             next: None,
             skipped: Vec::new(),
             unpromoted_cuts: Vec::new(),
+            strict_overlap: false,
         }
     }
 

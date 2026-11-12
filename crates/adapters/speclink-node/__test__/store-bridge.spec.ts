@@ -27,7 +27,18 @@ describe('createEngine (host Store object)', () => {
     // The memory store mirrors the fs fixture content, so the CLI on the fs
     // fixture is the field-name and field-value authority (camelCase).
     const cli = cliJson(fsFixture, ['list', '--sort', 'name', '--json'])
-    expect(sdk).toEqual(cli)
+    // `modifiedAt` is each store's own clock (the fixture's numbers here, the
+    // file times there): both sides carry it, and it stays out of the comparison.
+    const undated = (list: unknown) =>
+      (list as { changes: Record<string, unknown>[] }).changes.map(({ modifiedAt, ...rest }) => {
+        expect(typeof modifiedAt).toBe('string')
+        return rest
+      })
+    expect(undated(sdk)).toEqual(undated(cli))
+    expect((sdk as { changes: { modifiedAt: string }[] }).changes.map((c) => c.modifiedAt)).toEqual([
+      '1970-01-01T00:01:40Z',
+      '1970-01-01T00:03:20Z',
+    ])
   })
 
   it('serves dispatch(["status",…]) from an async host store, fields matching the CLI', async () => {

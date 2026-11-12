@@ -1,0 +1,312 @@
+{
+  "version": 2,
+  "change": "remote-read-verbs",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）為 D1 寫 `EvidenceShow` 的測試，用引擎的測試儲存，對應規格「evidence show 動詞」的名稱解析與失敗：進行中的變更回傳它的記錄；變更存在但沒有記錄時是空的；以原本的名稱與以封存名稱都讀得到已封存變更的記錄且帶封存名稱；同名的進行中變更優先；同一個名稱封存兩次時取最新的一筆；進行中與已封存都沒有時是 not_found；記錄無法解析時回報錯誤而不是空的；執行後沒有任何寫入與事件。更新列舉全部命令變體的既有測試與命令名稱和參數的 golden（新增 `evidence-show` 一筆）。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/tests/golden/command-describe.json。驗證：`cargo test -p speclink-core evidence` 編譯失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/engine/speclink-core/src/command/evidence.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）實作 `Command::EvidenceShow` 與 `EvidenceShowOutcome`，並補上它的名稱與參數。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core --test it command_describe::` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/typed.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red→Green）依 D5 讓清單項帶出時間：先寫測試——2026-11-01 建立的變更，清單項的 `created` 是 `2026-11-01`；`modifiedAt` 是 RFC 3339 的 UTC 字串；儲存回報 0 時沒有 `modifiedAt`；metadata 壞掉時沒有 `created`；序列化的鍵是 camelCase。再實作，並同批更新 `list --json` 的 golden。確認人眼輸出的 golden 沒有變。對應規格「動詞契約的涵蓋面與 payload 形狀」新增的時間欄位與「動詞 --json 輸出形狀凍結」。涉及 crates/engine/speclink-core/src/lifecycle/listing.rs、crates/engine/speclink-core/tests/golden。驗證：`cargo test -p speclink-core` 全部通過；用 `git diff --stat crates/engine/speclink-core/tests/golden` 確認只有含 `list --json` 的快照變動。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 （Red）為 D2 寫 speclink-verbs 的測試：`evidence show <change>` 與它的 `--json`、`--no-color` 能解析並轉成 `EvidenceShow`，不讀 stdin；人眼輸出對兩筆記錄的結果含標題行、兩段任務與檔案，`--no-color` 下沒有色碼；已封存的結果多一行封存名稱；沒有記錄時是一行說明；`--json` 的欄位是 `change`、`entries`、`files`，有封存名稱時才有 `archivedAs`，`files` 去重複並排序（斷言 camelCase 與型別）；清單的 `--json` 輸出含 `created` 與 `modifiedAt`。把 `evidence show` 加進「全部有引擎命令的末端動詞」的對照與 Agent 工具說明的測試。涉及 crates/adapters/speclink-verbs/src/families/evidence.rs、crates/adapters/speclink-verbs/src/render/evidence.rs。驗證：`cargo test -p speclink-verbs evidence` 編譯失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/adapters/speclink-verbs/src/families/evidence.rs",
+        "crates/adapters/speclink-verbs/src/render/evidence.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.1 （Red）為 D3、D4、D5 寫宿主套件 HTTP 入口的測試，用記憶體版儲存，對應規格「溯源與嚴格重疊的唯讀端點」「task done 消費 touchedFiles 且 evidence 有唯讀端點」修改後的內容、「溯源回應 payload」「變更清單的最後修改時間欄位」：溯源端點回傳鏈並帶 ETag、capability 不存在回 404 與近似建議；`strictOverlap=true` 把共用 capability 的兩個變更排進不同的波次而一般的 plan 排在同一波、不合法的值回 400、成環回 409；evidence 端點讀得到已封存的變更並帶 `archivedAs`、變更存在但沒有記錄回空集合、不存在的名稱回 404；清單項在儲存回報時間時帶 `modifiedAt`、回報 0 時沒有這個鍵；三條路由對沒有寫入能力的人仍然可讀；線上歸屬表對 `Trace`、`PlanStrict`、`EvidenceShow` 都回答路由。回應的 JSON 斷言 camelCase 與型別。列出釘住「不存在的變更回空集合」的既有測試並在同批改寫。涉及 crates/host/speclink-host/tests/http_door.rs、crates/host/speclink-host/tests/documents.rs。驗證：`cargo test -p speclink-host --test http_door` 中新增的測試失敗。",
+      "files": [
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-server/tests/it/api/query_routes.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.3 （Red→Green）`speclink-remote` 的呼叫與轉換：先寫測試——溯源回應轉回報告後，輸出函式產生的 `--json` 與原報告的相同；`archivedAs` 缺席時不序列化；不認得 `modifiedAt` 的舊型別仍能解析清單回應；`Client::trace` 與 `Client::plan_strict` 對假的 Server 發出正確的請求。再實作。涉及 crates/protocol/speclink-remote/src/client.rs、crates/protocol/speclink-remote/src/convert.rs。驗證：`cargo test -p speclink-remote` 通過。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-host/tests/port_dual_path.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/src/convert.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.1 （Red）寫 CLI 的整合測試，對應規格「動詞人眼輸出的兩模式同形」與「模式分岔的單點宣告」修改後的內容，以及「動詞覆蓋與跨入口一致性」新增的情境：對內容相同的本機專案與 Server，`speclink trace <capability>`、`speclink plan --strict-overlap`、`speclink evidence show <change>` 的人眼輸出（含 `--no-color`）與 `--json` 在兩種模式逐位元相同；遠端分支對 Server 發出對應的請求且不碰本機 store；遠端的 `list --json` 帶 `created`，連到不回報時間的 Server 時沒有 `modifiedAt`；遠端的 trace 對不存在的 capability 與本機同樣的訊息；`speclink demo` 在遠端仍然零請求拒絕。把既有「trace 於遠端拒絕」與「嚴格重疊於遠端拒絕」的測試改寫成新行為，並在完成說明列出改寫的測試名稱。涉及 crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it remote_read_verbs::` 失敗。",
+      "files": [
+        "Cargo.lock",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/mode_dispatch.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 （Red→Green）依 D6 讓 `ArtifactCat` 讀得到已封存的變更，對應規格「artifact cat 讀取已封存變更的文件」：先寫測試——以原本的名稱與以封存名稱讀到已封存變更的提案與 delta spec；同名的進行中變更優先且輸出與改之前逐位元相同；兩邊都沒有時是既有的找不到訊息；該變更沒有這份文件時是既有的訊息；經儲存接口執行時同樣成立（記憶體版儲存）。再實作，名稱的解析和 `EvidenceShow` 共用同一個函式。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/evidence.rs、crates/host/speclink-host/tests/http_door.rs。驗證：`cargo test -p speclink-core artifact_cat` 與 `cargo test -p speclink-host --test http_door` 通過；`cargo test -p speclink-cli` 中 artifact cat 的既有測試不改斷言。",
+      "files": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/mod.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_fail_closed.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/src/verbs/evidence.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.2 （Green）線上的型別與路由：`speclink-protocol` 新增溯源回應的型別、evidence 回應的 `archivedAs`、清單項的 `modifiedAt`；宿主套件新增溯源的路由、plan 的 `strictOverlap` 查詢參數，evidence 的路由改成執行 `EvidenceShow` 並移除 `documents::change_evidence`；線上歸屬表三個命令改成對到路由。涉及 crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-host/src/documents.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`、`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過；用既有的成本測試確認列出變更對儲存的呼叫數沒有增加。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/agent-tool.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "4.3 Node SDK 經共用的解析與輸出得到 `evidence show`：新增測試——`engine.dispatch` 的 fs 形式與 `host.dispatch` 對同樣的資料回傳深度相等的物件、儲存的 commit 沒有被呼叫、不存在的名稱是 code 為 `not_found` 的錯誤；`agentTool.description` 列出 `evidence show`。不需要改 SDK 的程式時在完成說明寫明。涉及 crates/adapters/speclink-node/__test__ 底下既有的 dispatch 與 host 測試檔。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/store-bridge.spec.ts"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 對新增的介面套用 sharp-edges 稽核清單（用 `speclink instructions --skill audit` 取得）：確認 evidence 的名稱解析不能用帶 `/` 或 `..` 的名稱讀到別類文件；三條路由只對看得到該範圍的人回應，而且沒有任何寫入；evidence 的內容不會出現在錯誤訊息裡；`strictOverlap` 以外的查詢參數不影響計畫；`modifiedAt` 在儲存回報異常大的值時不會 panic；溯源在儲存接口上對名稱不帶日期的舊封存的處理（回答 design 的 Open Question 並寫進去）。找到的問題在這個任務修正並補測試，結論寫進 design.md 新增的「稽核結論」一節。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/host/speclink-host/src/http/routes.rs、speclink/changes/remote-read-verbs/design.md。驗證：`cargo test -p speclink-core` 與 `cargo test -p speclink-host` 通過；design.md 有「稽核結論」一節。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/adapters/speclink-verbs、crates/host/speclink-host、crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-host`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate remote-read-verbs` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/host/speclink-host/src/http/error.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M773CJ5PMBAPEXYWQJY557YD",
+      "taskDesc": "1.1 （Red）為 D1 寫 `EvidenceShow` 的測試，用引擎的測試儲存，對應規格「evidence show 動詞」的名稱解析與失敗：進行中的變更回傳它的記錄；變更存在但沒有記錄時是空的；以原本的名稱與以封存名稱都讀得到已封存變更的記錄且帶封存名稱；同名的進行中變更優先；同一個名稱封存兩次時取最新的一筆；進行中與已封存都沒有時是 not_found；記錄無法解析時回報錯誤而不是空的；執行後沒有任何寫入與事件。更新列舉全部命令變體的既有測試與命令名稱和參數的 golden（新增 `evidence-show` 一筆）。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/tests/golden/command-describe.json。驗證：`cargo test -p speclink-core evidence` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/engine/speclink-core/src/command/evidence.rs"
+      ],
+      "recordedAt": "2026-11-12T05:54:38Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5PCRR5Q7ZR45SDFRM3",
+      "taskDesc": "1.2 （Green）實作 `Command::EvidenceShow` 與 `EvidenceShowOutcome`，並補上它的名稱與參數。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core --test it command_describe::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/typed.rs"
+      ],
+      "recordedAt": "2026-11-12T05:55:08Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5PKE9NHC0NGANNC1KM",
+      "taskDesc": "1.3 （Red→Green）依 D5 讓清單項帶出時間：先寫測試——2026-11-01 建立的變更，清單項的 `created` 是 `2026-11-01`；`modifiedAt` 是 RFC 3339 的 UTC 字串；儲存回報 0 時沒有 `modifiedAt`；metadata 壞掉時沒有 `created`；序列化的鍵是 camelCase。再實作，並同批更新 `list --json` 的 golden。確認人眼輸出的 golden 沒有變。對應規格「動詞契約的涵蓋面與 payload 形狀」新增的時間欄位與「動詞 --json 輸出形狀凍結」。涉及 crates/engine/speclink-core/src/lifecycle/listing.rs、crates/engine/speclink-core/tests/golden。驗證：`cargo test -p speclink-core` 全部通過；用 `git diff --stat crates/engine/speclink-core/tests/golden` 確認只有含 `list --json` 的快照變動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/teststore.rs"
+      ],
+      "recordedAt": "2026-11-12T05:55:51Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5PE39QX359FPZMRK4Q",
+      "taskDesc": "2.1 （Red）為 D2 寫 speclink-verbs 的測試：`evidence show <change>` 與它的 `--json`、`--no-color` 能解析並轉成 `EvidenceShow`，不讀 stdin；人眼輸出對兩筆記錄的結果含標題行、兩段任務與檔案，`--no-color` 下沒有色碼；已封存的結果多一行封存名稱；沒有記錄時是一行說明；`--json` 的欄位是 `change`、`entries`、`files`，有封存名稱時才有 `archivedAs`，`files` 去重複並排序（斷言 camelCase 與型別）；清單的 `--json` 輸出含 `created` 與 `modifiedAt`。把 `evidence show` 加進「全部有引擎命令的末端動詞」的對照與 Agent 工具說明的測試。涉及 crates/adapters/speclink-verbs/src/families/evidence.rs、crates/adapters/speclink-verbs/src/render/evidence.rs。驗證：`cargo test -p speclink-verbs evidence` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/adapters/speclink-verbs/src/families/evidence.rs",
+        "crates/adapters/speclink-verbs/src/render/evidence.rs"
+      ],
+      "recordedAt": "2026-11-12T05:59:49Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5P88WT30NEN3FQ0NZF",
+      "taskDesc": "3.1 （Red）為 D3、D4、D5 寫宿主套件 HTTP 入口的測試，用記憶體版儲存，對應規格「溯源與嚴格重疊的唯讀端點」「task done 消費 touchedFiles 且 evidence 有唯讀端點」修改後的內容、「溯源回應 payload」「變更清單的最後修改時間欄位」：溯源端點回傳鏈並帶 ETag、capability 不存在回 404 與近似建議；`strictOverlap=true` 把共用 capability 的兩個變更排進不同的波次而一般的 plan 排在同一波、不合法的值回 400、成環回 409；evidence 端點讀得到已封存的變更並帶 `archivedAs`、變更存在但沒有記錄回空集合、不存在的名稱回 404；清單項在儲存回報時間時帶 `modifiedAt`、回報 0 時沒有這個鍵；三條路由對沒有寫入能力的人仍然可讀；線上歸屬表對 `Trace`、`PlanStrict`、`EvidenceShow` 都回答路由。回應的 JSON 斷言 camelCase 與型別。列出釘住「不存在的變更回空集合」的既有測試並在同批改寫。涉及 crates/host/speclink-host/tests/http_door.rs、crates/host/speclink-host/tests/documents.rs。驗證：`cargo test -p speclink-host --test http_door` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-server/tests/it/api/query_routes.rs"
+      ],
+      "recordedAt": "2026-11-12T06:02:28Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5P0DMWBDSSN01XEQCN",
+      "taskDesc": "3.3 （Red→Green）`speclink-remote` 的呼叫與轉換：先寫測試——溯源回應轉回報告後，輸出函式產生的 `--json` 與原報告的相同；`archivedAs` 缺席時不序列化；不認得 `modifiedAt` 的舊型別仍能解析清單回應；`Client::trace` 與 `Client::plan_strict` 對假的 Server 發出正確的請求。再實作。涉及 crates/protocol/speclink-remote/src/client.rs、crates/protocol/speclink-remote/src/convert.rs。驗證：`cargo test -p speclink-remote` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-host/tests/port_dual_path.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/src/convert.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-11-12T06:07:42Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5PRGK62DZS5MJADJGX",
+      "taskDesc": "4.1 （Red）寫 CLI 的整合測試，對應規格「動詞人眼輸出的兩模式同形」與「模式分岔的單點宣告」修改後的內容，以及「動詞覆蓋與跨入口一致性」新增的情境：對內容相同的本機專案與 Server，`speclink trace <capability>`、`speclink plan --strict-overlap`、`speclink evidence show <change>` 的人眼輸出（含 `--no-color`）與 `--json` 在兩種模式逐位元相同；遠端分支對 Server 發出對應的請求且不碰本機 store；遠端的 `list --json` 帶 `created`，連到不回報時間的 Server 時沒有 `modifiedAt`；遠端的 trace 對不存在的 capability 與本機同樣的訊息；`speclink demo` 在遠端仍然零請求拒絕。把既有「trace 於遠端拒絕」與「嚴格重疊於遠端拒絕」的測試改寫成新行為，並在完成說明列出改寫的測試名稱。涉及 crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it remote_read_verbs::` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "Cargo.lock",
+        "crates/adapters/speclink-cli/Cargo.toml",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/mode_dispatch.rs",
+        "crates/adapters/speclink-cli/tests/it/plan_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_plan.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs"
+      ],
+      "recordedAt": "2026-11-12T06:12:01Z"
+    },
+    {
+      "taskId": "tsk_01M773FJXCJ1VDBT04PWV4PHVJ",
+      "taskDesc": "1.4 （Red→Green）依 D6 讓 `ArtifactCat` 讀得到已封存的變更，對應規格「artifact cat 讀取已封存變更的文件」：先寫測試——以原本的名稱與以封存名稱讀到已封存變更的提案與 delta spec；同名的進行中變更優先且輸出與改之前逐位元相同；兩邊都沒有時是既有的找不到訊息；該變更沒有這份文件時是既有的訊息；經儲存接口執行時同樣成立（記憶體版儲存）。再實作，名稱的解析和 `EvidenceShow` 共用同一個函式。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/evidence.rs、crates/host/speclink-host/tests/http_door.rs。驗證：`cargo test -p speclink-core artifact_cat` 與 `cargo test -p speclink-host --test http_door` 通過；`cargo test -p speclink-cli` 中 artifact cat 的既有測試不改斷言。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/mod.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/src/verbs/trace.rs",
+        "crates/adapters/speclink-cli/tests/it/list_delta_capabilities.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_fail_closed.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/src/verbs/evidence.rs"
+      ],
+      "recordedAt": "2026-11-12T06:13:59Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5P0DVFF7YV1F859FF6",
+      "taskDesc": "3.2 （Green）線上的型別與路由：`speclink-protocol` 新增溯源回應的型別、evidence 回應的 `archivedAs`、清單項的 `modifiedAt`；宿主套件新增溯源的路由、plan 的 `strictOverlap` 查詢參數，evidence 的路由改成執行 `EvidenceShow` 並移除 `documents::change_evidence`；線上歸屬表三個命令改成對到路由。涉及 crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-host/src/documents.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`、`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過；用既有的成本測試確認列出變更對儲存的呼叫數沒有增加。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/agent-tool.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ],
+      "recordedAt": "2026-11-12T06:15:19Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5P42D9ZBHY2VKAJZ2E",
+      "taskDesc": "4.3 Node SDK 經共用的解析與輸出得到 `evidence show`：新增測試——`engine.dispatch` 的 fs 形式與 `host.dispatch` 對同樣的資料回傳深度相等的物件、儲存的 commit 沒有被呼叫、不存在的名稱是 code 為 `not_found` 的錯誤；`agentTool.description` 列出 `evidence show`。不需要改 SDK 的程式時在完成說明寫明。涉及 crates/adapters/speclink-node/__test__ 底下既有的 dispatch 與 host 測試檔。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/dispatch-contract.spec.ts",
+        "crates/adapters/speclink-node/__test__/store-bridge.spec.ts"
+      ],
+      "recordedAt": "2026-11-12T06:18:18Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5PX5MEV5Q4AMCQT5PW",
+      "taskDesc": "5.1 對新增的介面套用 sharp-edges 稽核清單（用 `speclink instructions --skill audit` 取得）：確認 evidence 的名稱解析不能用帶 `/` 或 `..` 的名稱讀到別類文件；三條路由只對看得到該範圍的人回應，而且沒有任何寫入；evidence 的內容不會出現在錯誤訊息裡；`strictOverlap` 以外的查詢參數不影響計畫；`modifiedAt` 在儲存回報異常大的值時不會 panic；溯源在儲存接口上對名稱不帶日期的舊封存的處理（回答 design 的 Open Question 並寫進去）。找到的問題在這個任務修正並補測試，結論寫進 design.md 新增的「稽核結論」一節。涉及 crates/engine/speclink-core/src/command/evidence.rs、crates/host/speclink-host/src/http/routes.rs、speclink/changes/remote-read-verbs/design.md。驗證：`cargo test -p speclink-core` 與 `cargo test -p speclink-host` 通過；design.md 有「稽核結論」一節。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/plan.rs"
+      ],
+      "recordedAt": "2026-11-12T06:29:36Z"
+    },
+    {
+      "taskId": "tsk_01M773CJ5P8DPXA7P25A9F7B59",
+      "taskDesc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/adapters/speclink-verbs、crates/host/speclink-host、crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-host`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate remote-read-verbs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "2b6e0f28f7865076afefed5330c76fba58b18ff3",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/host/speclink-host/src/http/error.rs"
+      ],
+      "recordedAt": "2026-11-12T06:58:53Z"
+    }
+  ]
+}

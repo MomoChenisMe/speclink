@@ -2,6 +2,7 @@
 //! server): typed field mapping, no raw JSON.
 
 use speclink_core::analyzer::{AnalyzeReport, Msg};
+use speclink_core::command::EvidenceShowOutcome;
 use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
@@ -9,10 +10,14 @@ use speclink_core::model::ChangeMeta;
 use speclink_core::plan::Plan;
 use speclink_core::station::Round;
 use speclink_core::status::StatusReport;
+use speclink_core::tasks::EvidenceEntry as EngineEvidenceEntry;
+use speclink_core::trace::TraceReport;
 use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions, ArtifactInstructions,
-    ArtifactStatus, ChangeStatus, ChangeSummary, DependencyEntry, DiscussionInfo, PlanChangeEntry, PlanOverlap,
-    PlanRequirementOverlap, PlanResponse, PlanSkipped, PlanUnpromotedCut, PlanWave, Progress, TaskEntry,
+    ArtifactStatus, ChangeEvidenceResponse, ChangeStatus, ChangeSummary, DependencyEntry, DiscussionInfo,
+    EvidenceEntry, PlanChangeEntry, PlanOverlap, PlanRequirementOverlap, PlanResponse, PlanSkipped,
+    PlanUnpromotedCut, PlanWave, Progress, TaskEntry, TraceChange, TraceDiscussion, TraceEvidenceTask,
+    TracePromotedChange, TraceRequirement, TraceResponse,
 };
 use speclink_protocol::command::{ReviewFindingDto, ReviewRoundDto, ReviewRulesDto};
 
@@ -33,6 +38,58 @@ pub(crate) fn change_summary(change: ListChangeJson, meta: Option<&ChangeMeta>) 
         created: meta.and_then(|m| m.created.clone()),
         from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
         delta_capabilities: change.delta_capabilities,
+        modified_at: change.modified_at,
+    }
+}
+
+/// The evidence of one change. Each entry is taken apart field by field, so a
+/// field the Engine adds does not compile until the wire carries it.
+pub(crate) fn change_evidence(shown: EvidenceShowOutcome) -> ChangeEvidenceResponse {
+    let entries = shown
+        .entries
+        .into_iter()
+        .map(|entry| {
+            let EngineEvidenceEntry { task_id, task_desc, actor, repo, head_commit, touched_files, recorded_at } = entry;
+            EvidenceEntry { task_id, task_desc, actor, repo, head_commit, touched_files, recorded_at }
+        })
+        .collect();
+    ChangeEvidenceResponse { change: Some(shown.change), entries, archived_as: shown.archived_as }
+}
+
+/// A capability's provenance chain, field for field.
+pub(crate) fn trace(report: TraceReport) -> TraceResponse {
+    TraceResponse {
+        capability: report.capability,
+        requirements: report
+            .requirements
+            .into_iter()
+            .map(|r| TraceRequirement { name: r.name, source: r.source })
+            .collect(),
+        changes: report
+            .changes
+            .into_iter()
+            .map(|c| TraceChange {
+                name: c.name,
+                archived_dir: c.archived_dir,
+                from_discussion: c.from_discussion,
+                evidence: c.evidence.map(|tasks| {
+                    tasks.into_iter().map(|t| TraceEvidenceTask { task_id: t.task_id, files: t.files }).collect()
+                }),
+            })
+            .collect(),
+        discussions: report
+            .discussions
+            .into_iter()
+            .map(|d| TraceDiscussion {
+                slug: d.slug,
+                archived: d.archived,
+                promoted_to: d
+                    .promoted_to
+                    .into_iter()
+                    .map(|p| TracePromotedChange { change: p.change, capabilities: p.capabilities })
+                    .collect(),
+            })
+            .collect(),
     }
 }
 
@@ -194,6 +251,8 @@ pub(crate) fn plan(plan: Plan) -> PlanResponse {
                 unpromoted: c.unpromoted,
             })
             .collect(),
+        // The route that computed a strict plan sets the mark.
+        strict_overlap: false,
     }
 }
 

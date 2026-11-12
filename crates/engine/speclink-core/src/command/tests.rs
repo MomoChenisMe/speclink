@@ -2143,6 +2143,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::Plan { ranks: _ } => {}
         Command::PlanStrict => {}
         Command::ArtifactCat { artifact: _, change: _ } => {}
+        Command::EvidenceShow { change: _ } => {}
         Command::LanguageShow => {}
         Command::DiscussList { archived: _ } => {}
         Command::DiscussShow { slug: _ } => {}

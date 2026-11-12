@@ -460,8 +460,8 @@ fn the_evidence_route_reads_the_record_and_reports_a_broken_one() {
     assert_eq!(evidence.entries[0].task_id, "tsk_01");
     assert_eq!(evidence.entries[0].touched_files, ["src/app.rs"]);
 
-    let none = client.change_evidence("ghost").expect("no record is an empty set");
-    assert!(none.entries.is_empty());
+    let ghost = client.change_evidence("ghost").expect_err("a name that is no change is not found");
+    assert_eq!(ghost.reason.as_deref(), Some("not_found"), "{ghost:?}");
 
     // The typed client hides a 500's text; the raw response carries it.
     let err = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/changes/broken/evidence"))
@@ -477,5 +477,5 @@ fn the_evidence_route_reads_the_record_and_reports_a_broken_one() {
     let body: serde_json::Value = response.into_json().expect("the error envelope");
     assert_eq!(body["reason"], "internal", "{body}");
     let message = body["message"].as_str().unwrap_or_default();
-    assert!(message.starts_with("evidence record is unreadable: "), "{body}");
+    assert!(message.starts_with("evidence record of 'broken' cannot be parsed: "), "{body}");
 }
