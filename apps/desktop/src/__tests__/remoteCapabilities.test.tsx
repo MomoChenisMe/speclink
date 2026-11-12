@@ -233,6 +233,74 @@ describe("remote 分頁的 capability 停用", () => {
     await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "remote-change"));
   });
 
+  // --- spec desktop-app「remote 專案的審查與驗證標示」（station-status-and-landing D7）---
+
+  /** remote 清單：四個已就緒的變更，審查站各一種狀態；`verified` 另帶驗證站的章。 */
+  function stationDs(over: Partial<SpeclinkDataSource> = {}) {
+    const ready = { status: "in-progress", totalTasks: 2, completedTasks: 2 } as const;
+    return fakeRemoteDs({
+      listChanges: vi.fn().mockResolvedValue(
+        changeList([
+          { name: "under-review", ...ready, reviewStatus: "inReview" },
+          { name: "reviewed-change", ...ready, reviewStatus: "reviewed", verifyStatus: "verified" },
+          { name: "changed-since", ...ready, reviewStatus: "reviewedStale" },
+          { name: "no-station-data", ...ready },
+        ]),
+      ),
+      // 審查中的變更詳情頁會讀工單（remote 資料源直達 server）。
+      getStationTicket: vi.fn().mockResolvedValue(null),
+      ...over,
+    });
+  }
+
+  /** 卡片：以變更名稱找到它所在的 [data-change]；標示是帶 aria-label 的圖示。 */
+  const cardOf = (name: string) => screen.getByText(name).closest("[data-change]") as HTMLElement;
+
+  it("remote 卡片依關卡資料顯示既有的標示，沒有資料時沒有標示", async () => {
+    renderRemoteApp(stationDs());
+    await screen.findByText("under-review");
+    expect(within(cardOf("under-review")).getByLabelText("審查中")).toBeTruthy();
+    expect(within(cardOf("reviewed-change")).getByLabelText("已審查")).toBeTruthy();
+    expect(within(cardOf("reviewed-change")).getByLabelText("已驗證")).toBeTruthy();
+    expect(within(cardOf("changed-since")).getByLabelText("已審查·其後有變動")).toBeTruthy();
+    const plain = cardOf("no-station-data");
+    for (const label of ["審查中", "已審查", "已審查·其後有變動", "驗證中", "已驗證"]) {
+      expect(within(plain).queryByLabelText(label), label).toBeNull();
+    }
+  });
+
+  it("封存審查中的 remote 變更出現三選項對話框，選「照樣帶走」呼叫帶旗標的封存", async () => {
+    const archiveCarry = vi.fn().mockResolvedValue({});
+    const ds = stationDs({ archiveCarry });
+    renderRemoteApp(ds);
+    fireEvent.click(await screen.findByText("under-review"));
+    fireEvent.click(await screen.findByRole("button", { name: "封存" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).getByText("此變更審查中")).toBeTruthy();
+    for (const option of ["前往完成蓋章", "放棄審查", "照樣帶走"]) {
+      expect(within(dialog).getByRole("button", { name: option })).toBeTruthy();
+    }
+    expect(archiveCarry).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole("button", { name: "照樣帶走" }));
+    await waitFor(() => expect(archiveCarry).toHaveBeenCalledWith("under-review", true, false));
+    expect(ds.runVerb).not.toHaveBeenCalled();
+  });
+
+  it("沒有關卡資料的 remote 變更封存走一般確認，不出現三選項對話框", async () => {
+    const archiveCarry = vi.fn().mockResolvedValue({});
+    const ds = stationDs({ archiveCarry });
+    renderRemoteApp(ds);
+    fireEvent.click(await screen.findByText("no-station-data"));
+    fireEvent.click(await screen.findByRole("button", { name: "封存" }));
+
+    const dialog = await screen.findByRole("alertdialog");
+    expect(within(dialog).queryByRole("button", { name: "照樣帶走" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "封存" }));
+    await waitFor(() => expect(ds.runVerb).toHaveBeenCalledWith("archive", "no-station-data"));
+    expect(archiveCarry).not.toHaveBeenCalled();
+  });
+
   it("offline mask 同時維持 deleteChange 停用並關閉 archive 與前置編輯", () => {
     const base = fakeRemoteSession(fakeRemoteDs());
     const session = { ...base, capabilities: { ...base.capabilities, setDepends: true } };

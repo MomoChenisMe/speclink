@@ -116,8 +116,8 @@ pub enum VerifyCommands {
 }
 
 /// The `--stdin` payload of a stamp: the work-tree holder's `(path, hash)`
-/// list and the union paths that are gone. Both default to empty; any other
-/// field is refused.
+/// list, the union paths that are gone, and the commit the stamp is for. The
+/// lists default to empty and the commit to absent; any other field is refused.
 #[derive(serde::Deserialize, Default)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct StampPayload {
@@ -125,6 +125,8 @@ struct StampPayload {
     scope: Vec<ReviewedScopeEntry>,
     #[serde(default)]
     missing: Vec<String>,
+    #[serde(default)]
+    head_commit: Option<String>,
 }
 
 /// Parse the stamp payload. The error names only where the JSON broke, never
@@ -133,18 +135,18 @@ fn stamp_payload(
     noun: &str,
     flagged: bool,
     stdin: Option<String>,
-) -> Result<(Vec<ReviewedScopeEntry>, Vec<String>), CommandError> {
+) -> Result<StampPayload, CommandError> {
     if !flagged {
-        return Ok((Vec::new(), Vec::new()));
+        return Ok(StampPayload::default());
     }
-    let shape = r#"{"scope": [{"path", "hash"}], "missing": []}"#;
+    let shape = r#"{"scope": [{"path", "hash"}], "missing": [], "headCommit": "<sha>"}"#;
     let Some(text) = stdin else {
         return Err(CommandError::new(
             ErrorCode::InvalidArgv,
             format!("{noun} stamp --stdin expects {shape} on stdin, and none was given"),
         ));
     };
-    let payload: StampPayload = serde_json::from_str(&text).map_err(|e| {
+    serde_json::from_str(&text).map_err(|e| {
         let what = match e.classify() {
             serde_json::error::Category::Data => "does not have that shape",
             _ => "is not valid JSON",
@@ -153,8 +155,7 @@ fn stamp_payload(
             ErrorCode::InvalidArgv,
             format!("{noun} stamp --stdin expects {shape}: the input {what} (line {}, column {})", e.line(), e.column()),
         )
-    })?;
-    Ok((payload.scope, payload.missing))
+    })
 }
 
 /// The id of the stamps' host-only `--stdin`.
@@ -250,11 +251,14 @@ impl StationSub<'_> {
                 }
             }
             StationSub::Stamp { change, accept, agent } => {
-                let (scope, missing) = stamp_payload(station.noun(), stamp_stdin, inputs.stdin)?;
+                let StampPayload { scope, missing, head_commit } =
+                    stamp_payload(station.noun(), stamp_stdin, inputs.stdin)?;
+                // The commit the stdin JSON names, else the caller's HEAD.
+                let head_commit = head_commit.or(inputs.head_commit);
                 let (change, tool) = (change.to_string(), agent.clone());
                 match station {
-                    Review => Command::ReviewStamp { change, accept, tool, scope, missing },
-                    Verify => Command::VerifyStamp { change, accept, tool, scope, missing },
+                    Review => Command::ReviewStamp { change, accept, tool, head_commit, scope, missing },
+                    Verify => Command::VerifyStamp { change, accept, tool, head_commit, scope, missing },
                 }
             }
             StationSub::Discard { change } => {
@@ -369,13 +373,14 @@ mod tests {
                     change: "demo".into(),
                     accept: true,
                     tool: Some("claude".into()),
+                    head_commit: None,
                     scope: vec![],
                     missing: vec![],
                 },
             ),
             (
                 &["verify", "stamp", "demo"],
-                Command::VerifyStamp { change: "demo".into(), accept: false, tool: None, scope: vec![], missing: vec![] },
+                Command::VerifyStamp { change: "demo".into(), accept: false, tool: None, head_commit: None, scope: vec![], missing: vec![] },
             ),
         ];
         for (argv, want) in cases {
@@ -400,6 +405,7 @@ mod tests {
                 change: "demo".into(),
                 accept: false,
                 tool: None,
+                head_commit: None,
                 scope: vec![ReviewedScopeEntry { path: "src/a.rs".into(), hash: "h1".into() }],
                 missing: vec!["src/gone.rs".into()],
             }
@@ -407,8 +413,63 @@ mod tests {
         // Both fields absent read as empty lists.
         assert_eq!(
             command_of(&["verify", "stamp", "demo", "--stdin"], with_stdin("{}")),
-            Command::VerifyStamp { change: "demo".into(), accept: false, tool: None, scope: vec![], missing: vec![] }
+            Command::VerifyStamp { change: "demo".into(), accept: false, tool: None, head_commit: None, scope: vec![], missing: vec![] }
         );
+    }
+
+    #[test]
+    fn a_stamp_carries_the_callers_head_commit() {
+        // The CLI passes its checkout's HEAD; without one the stamp carries none.
+        let head = || VerbInputs { head_commit: Some("abc1234".into()), ..Default::default() };
+        assert_eq!(
+            command_of(&["review", "stamp", "demo"], head()),
+            Command::ReviewStamp {
+                change: "demo".into(),
+                accept: false,
+                tool: None,
+                head_commit: Some("abc1234".into()),
+                scope: vec![],
+                missing: vec![],
+            }
+        );
+        assert_eq!(
+            command_of(&["verify", "stamp", "demo", "--accept"], head()),
+            Command::VerifyStamp {
+                change: "demo".into(),
+                accept: true,
+                tool: None,
+                head_commit: Some("abc1234".into()),
+                scope: vec![],
+                missing: vec![],
+            }
+        );
+    }
+
+    #[test]
+    fn the_stamp_stdin_json_can_name_the_head_commit() {
+        // A host without a checkout names the commit itself; it wins over the
+        // caller's HEAD input.
+        let json = r#"{"scope": [], "headCommit": "0123456789ab"}"#;
+        let inputs = VerbInputs { stdin: Some(json.into()), head_commit: Some("abc1234".into()), ..Default::default() };
+        assert_eq!(
+            command_of(&["review", "stamp", "demo", "--stdin"], inputs),
+            Command::ReviewStamp {
+                change: "demo".into(),
+                accept: false,
+                tool: None,
+                head_commit: Some("0123456789ab".into()),
+                scope: vec![],
+                missing: vec![],
+            }
+        );
+        let inputs = VerbInputs { stdin: Some("{}".into()), head_commit: Some("abc1234".into()), ..Default::default() };
+        let Command::VerifyStamp { head_commit, .. } = command_of(&["verify", "stamp", "demo", "--stdin"], inputs) else {
+            panic!("a verify stamp");
+        };
+        assert_eq!(head_commit.as_deref(), Some("abc1234"), "absent in the JSON: the caller's HEAD");
+        let bad = VerbInputs { stdin: Some(r#"{"headCommit": 7}"#.into()), ..Default::default() };
+        let err = target_of(&["review", "stamp", "demo", "--stdin"], bad).expect_err("a number is not a commit");
+        assert_eq!(err.code, ErrorCode::InvalidArgv);
     }
 
     #[test]

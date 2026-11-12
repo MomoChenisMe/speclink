@@ -19,9 +19,10 @@ use speclink_protocol::command::{
     ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion, ArchivedSpec, BindDiscussionRequest,
     BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse, MoveTaskRequest,
-    MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
-    RankChangeRequest, RankChangeResponse, ReviewTicketResponse, SetDependsRequest, SetDependsResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
+    MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
+    RankChangeRequest, RankChangeResponse, ReportLandedRequest, ReportLandedResponse, ReviewTicketResponse,
+    SetDependsRequest, SetDependsResponse,
     SetDiscussionContextRequest, SetSchemaRequest, SetSchemaResponse, StampReviewRequest, StampReviewResponse,
     TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
@@ -345,9 +346,10 @@ fn wrong_outcome(route: &str) -> HttpError {
 // --- queries and checks ---
 
 /// `GET /changes`: the Engine's list, with the fields its items do not
-/// carry (started, creator, created, source discussions) read from each
-/// change's data file. A broken data file stays absent: the list reports it
-/// as `metaError` and does not fail.
+/// carry (started, creator, created, source discussions, the two quality
+/// stations, the branch and the landing) read from each change's data file
+/// and its tickets. A broken data file stays absent: the list reports it as
+/// `metaError` and does not fail.
 pub(crate) fn list_changes(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let cmd = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default() };
     let (execution, etag) = req.run(cmd)?;
@@ -356,19 +358,20 @@ pub(crate) fn list_changes(req: &Request<'_>) -> Result<HttpResponse, HttpError>
         _ => return Err(wrong_outcome("list")),
     };
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
-    let metas = documents::change_extras(req.port(), req.scope(), &names)?;
+    let extras = documents::change_extras(req.port(), req.scope(), &names)?;
     let changes = changes
         .into_iter()
         .map(|c| {
-            let meta = metas.get(&c.name);
-            wire::change_summary(c, meta)
+            let extras = extras.get(&c.name);
+            wire::change_summary(c, extras)
         })
         .collect();
     Ok(ok(&ListChangesResponse { changes }, etag))
 }
 
 /// `GET /changes/{name}`: the change's status, with the show fields read
-/// from its data file and its delta specs.
+/// from its data file and its delta specs, and its two quality stations —
+/// here with the scope a stamp covers.
 pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let name = req.param(0);
     let (execution, etag) = req.run(Command::Status { change: Some(name.clone()), schema: None })?;
@@ -376,13 +379,19 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         CommandOutcome::Status(report) => report,
         _ => return Err(wrong_outcome("status")),
     };
-    let meta = documents::change_extras(req.port(), req.scope(), std::slice::from_ref(&name))?.remove(&name);
+    let extras = documents::change_extras(req.port(), req.scope(), std::slice::from_ref(&name))?.remove(&name);
     let delta_capabilities = documents::change_delta_capabilities(req.port(), req.scope(), &name)?;
     let mut dto = wire::change_status(report);
-    if let Some(meta) = meta {
+    if let Some(documents::ChangeExtras { meta, review, verify }) = extras {
+        dto.review = Some(wire::station_state(&review, true));
+        dto.verify = Some(wire::station_state(&verify, true));
         // `created` only with `schema`, as `show` pairs them.
         dto.created = meta.schema.is_some().then_some(meta.created.clone()).flatten();
         dto.from_discussions = meta.from_discussions();
+        dto.branch = meta.branch;
+        dto.landed_commit = meta.landed_commit;
+        dto.landed_at = meta.landed_at;
+        dto.landed_by = meta.landed_by;
         dto.created_by = meta.created_by;
         dto.created_with = meta.created_with;
         dto.started_at = meta.started_at;
@@ -700,7 +709,7 @@ impl Station {
 
     /// `POST /changes/{name}/<station>/stamp`. The submitted fingerprints are
     /// the caller's work-tree truth; the Engine checks the path set and never
-    /// hashes again.
+    /// hashes again. The commit the caller names goes into the stamp as given.
     fn stamp(self, req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         let body: StampReviewRequest = req.body()?;
         let scope = body
@@ -709,9 +718,10 @@ impl Station {
             .map(|e| speclink_core::model::ReviewedScopeEntry { path: e.path, hash: e.hash })
             .collect();
         let (change, accept, tool, missing) = (req.param(0), body.accept, body.agent, body.missing);
+        let head_commit = body.head_commit;
         let (execution, etag) = req.run(match self {
-            Station::Review => Command::ReviewStamp { change, accept, tool, scope, missing },
-            Station::Verify => Command::VerifyStamp { change, accept, tool, scope, missing },
+            Station::Review => Command::ReviewStamp { change, accept, tool, head_commit, scope, missing },
+            Station::Verify => Command::VerifyStamp { change, accept, tool, head_commit, scope, missing },
         })?;
         let (CommandOutcome::ReviewStamp(o) | CommandOutcome::VerifyStamp(o)) = execution.outcome else {
             return Err(wrong_outcome(&format!("{}-stamp", self.name())));
@@ -825,10 +835,29 @@ pub(crate) fn change_rank(req: &Request<'_>) -> Result<HttpResponse, HttpError> 
     }
 }
 
+/// `POST /changes/{name}/landed`: record the commit the change's code
+/// landed on, as the caller reports it. The door has no repo to check it in.
+pub(crate) fn change_landed(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let body: ReportLandedRequest = req.body()?;
+    let cmd = Command::ChangeLanded { name: req.param(0), commit: body.commit, branch: body.branch };
+    let (execution, etag) = req.run(cmd)?;
+    match execution.outcome {
+        CommandOutcome::ChangeLanded(o) => {
+            Ok(ok(&ReportLandedResponse { change: o.change, commit: o.commit, branch: o.branch }, etag))
+        }
+        _ => Err(wrong_outcome("change landed")),
+    }
+}
+
 /// `POST /changes/{name}/in-progress`: the first mark stamps the caller; a
-/// repeat or an unknown name is the Engine's silent success.
+/// repeat or an unknown name is the Engine's silent success. The body is
+/// optional (an older client sends none): it can name the caller's branch.
 pub(crate) fn in_progress(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let (execution, etag) = req.run(Command::InProgressAdd { name: req.param(0) })?;
+    let body: MarkInProgressRequest = match req.http.body.is_empty() {
+        true => MarkInProgressRequest::default(),
+        false => req.body()?,
+    };
+    let (execution, etag) = req.run(Command::InProgressAdd { name: req.param(0), branch: body.branch })?;
     match execution.outcome {
         CommandOutcome::InProgressAdd(_) => Ok(ok(&serde_json::json!({}), etag)),
         _ => Err(wrong_outcome("in-progress")),

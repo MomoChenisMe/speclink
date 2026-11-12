@@ -521,7 +521,7 @@ pub fn complete(
         record.save(store)?;
     }
 
-    crate::inprogress::add(store, change, attr.identity, attr.agent)?;
+    crate::inprogress::add(store, change, attr.identity, attr.agent, None)?;
     Ok(CompleteOutcome {
         description: desc,
         already: false,

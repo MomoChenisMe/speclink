@@ -287,7 +287,7 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
             });
             record.save(&ctx.store).map_err(|e| e.to_string())?;
         }
-        speclink_core::inprogress::add(&ctx.store, change, identity.as_deref(), None)
+        speclink_core::inprogress::add(&ctx.store, change, identity.as_deref(), None, None)
             .map_err(|e| e.to_string())?;
     }
     Ok(())

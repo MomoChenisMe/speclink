@@ -208,6 +208,16 @@ fn remote_show_outcome(
         delta_capabilities: status.delta_capabilities,
         from_discussions: status.from_discussions,
         restale_from,
+        // A server that does not report these sends none of them: the keys
+        // then stay out of `--json`, as for a change without the records.
+        review: status.review.as_ref().and_then(speclink_remote::convert::station_status),
+        verify: status.verify.as_ref().and_then(speclink_remote::convert::station_status),
+        branch: status.branch,
+        landed: status.landed_commit.map(|commit| core::command::LandedRecord {
+            commit,
+            at: status.landed_at.unwrap_or_default(),
+            by: status.landed_by,
+        }),
     }))
 }
 

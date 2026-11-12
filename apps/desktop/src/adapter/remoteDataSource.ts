@@ -65,6 +65,8 @@ export function createRemoteDataSource(
   project: string,
   repo: string,
   invoke: InvokeFn = tauriInvoke as InvokeFn,
+  /** 這個 remote 專案綁定的本機工作副本；沒有 checkout 時不帶。 */
+  checkoutRoot?: string,
 ): SpeclinkDataSource {
   const locator = { connectionId, project, repo };
   // changeCapabilities 與 changeMeta 映射同一份 status payload（spec：不另開
@@ -82,8 +84,13 @@ export function createRemoteDataSource(
   return {
     async listChanges(): Promise<ChangeListPayload> {
       // remote_list_changes payload 原樣（add-change-plan-remote D5）：清單項已依 plan
-      // 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。
-      return await invoke<ChangeListPayload>("remote_list_changes", { ...locator });
+      // 排序並帶排程欄位，頂層 planError 在 plan 成環時為訊息。清單項的審查與驗證狀態
+      // 也在 Rust 算好（鍵與本機清單相同）；綁有 checkout 時帶上它的位置，已蓋章變更的
+      // 「其後有變動」才比得到 checkout 裡的檔案。
+      return await invoke<ChangeListPayload>("remote_list_changes", {
+        ...locator,
+        ...(checkoutRoot ? { checkoutRoot } : {}),
+      });
     },
     async listSpecs(): Promise<SpecItem[]> {
       const r = await invoke<{ specs: SpecItem[] }>("remote_list_specs", { ...locator });
@@ -172,6 +179,16 @@ export function createRemoteDataSource(
       if (verb === "validate") return await invoke("remote_validate", { ...locator, change });
       if (verb === "analyze") return await invoke("remote_analyze", { ...locator, change });
       return await invoke("remote_archive", { ...locator, change });
+    },
+    // 封存對話框的三個選項在 remote 與本機相同：放棄該站的工單，或帶著它封存。
+    async discardReview(change: string): Promise<void> {
+      await invoke("remote_discard_station", { ...locator, change, station: "review" });
+    },
+    async discardVerify(change: string): Promise<void> {
+      await invoke("remote_discard_station", { ...locator, change, station: "verify" });
+    },
+    async archiveCarry(change: string, carryReview: boolean, carryVerify: boolean): Promise<unknown> {
+      return await invoke("remote_archive", { ...locator, change, carryReview, carryVerify });
     },
     async getStationTicket(change: string, station: TicketStation): Promise<StationTicket | null> {
       // 活工單走 GET /changes/{name}/{station} 的結構化 rounds（不走 artifact 白名單）。

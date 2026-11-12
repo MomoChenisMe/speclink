@@ -234,6 +234,7 @@ pub fn render(
         }
         O::ChangeSchema(o) => plan::schema(o, options),
         O::ChangeRank(o) => plan::rank(o, options),
+        O::ChangeLanded(o) => plan::landed(o, options),
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
         O::DiscussNew(info) => discuss::new(info, options),
@@ -363,9 +364,10 @@ mod tests {
             CommandOutcome::WorkflowConfigReplace(_) => 44,
             CommandOutcome::ChangeRank(_) => 45,
             CommandOutcome::EvidenceShow(_) => 46,
+            CommandOutcome::ChangeLanded(_) => 47,
         }
     }
-    const RESULT_TYPES: usize = 47;
+    const RESULT_TYPES: usize = 48;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -727,6 +729,12 @@ mod tests {
                 }),
                 true,
                 "✓ c ranked before a\n",
+            ),
+            (
+                &["change", "landed", "c", "--commit", "0123456789abcdef"],
+                O::ChangeLanded(cmd::ChangeLandedOutcome { change: s("c"), commit: s("0123456789abcdef"), branch: None }),
+                true,
+                "✓ c landed at 0123456789ab\n",
             ),
         ]
     }

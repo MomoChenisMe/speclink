@@ -2,7 +2,7 @@
 
 ### Requirement: 蓋章記錄程式碼的 commit
 
-審查蓋章 SHALL 接受由呼叫端提供的 commit，並在寫入章欄位的同一次寫入裡把它記進 metadata 的 `reviewed_commit`。CLI 的 `speclink review stamp` SHALL 以 checkout 目前的 HEAD 提供它（本機與 remote 模式皆然）；讀不到 HEAD 時 SHALL 不提供，蓋章照常進行。commit SHALL 是 7 到 64 個十六進位字元，否則蓋章 SHALL 以非零 exit code 拒絕且不寫入。引擎 SHALL NOT 讀取 git，SHALL NOT 檢查 commit 是否存在，SHALL NOT 以它判斷章是否有效：章的凍結判定仍然只看任務錨與內容指紋錨。清除章的每一條既有路徑 SHALL 一併清除 `reviewed_commit`。沒有提供 commit 時 SHALL NOT 寫入這個鍵。`speclink show <change> --json` SHALL 增列選填的 `review` 物件（`state`，以及蓋章後的 `stampedAt`、`rounds`、`tasksTotal` 與有值才出現的 `stampedBy`、`stampedWith`、`commit`）；`speclink list --json` 的形狀 SHALL 維持不變。蓋章的 stdout 與 exit code SHALL 維持既有的位元級輸出。
+審查蓋章 SHALL 接受由呼叫端提供的 commit，並在寫入章欄位的同一次寫入裡把它記進 metadata 的 `reviewed_commit`。CLI 的 `speclink review stamp` SHALL 以 checkout 目前的 HEAD 提供它（本機與 remote 模式皆然）；讀不到 HEAD 時 SHALL 不提供，蓋章照常進行。commit SHALL 是 7 到 64 個十六進位字元，否則蓋章 SHALL 以非零 exit code 拒絕且不寫入。引擎 SHALL NOT 讀取 git，SHALL NOT 檢查 commit 是否存在，SHALL NOT 以它判斷章是否有效：章的凍結判定仍然只看任務錨與內容指紋錨。清除章的每一條既有路徑 SHALL 一併清除 `reviewed_commit`。沒有提供 commit 時 SHALL NOT 寫入這個鍵。`speclink show <change> --json` SHALL 增列選填的 `review` 物件（`state`，以及蓋章後的 `stampedAt`、`rounds`、`tasksTotal` 與有值才出現的 `stampedBy`、`stampedWith`、`commit`）；這個關卡沒有工單也沒有章時 SHALL 不輸出 `review`，沒有任何記錄的變更輸出因此維持既有的位元級輸出；`speclink list --json` 的形狀 SHALL 維持不變。蓋章的 stdout 與 exit code SHALL 維持既有的位元級輸出。
 
 #### Scenario: 蓋章記下 HEAD
 
@@ -28,6 +28,11 @@
 
 - **WHEN** 對已蓋章的 demo 執行 speclink show demo --json
 - **THEN** 輸出的 review 物件含 state `stamped`、stampedAt、rounds、tasksTotal 與 commit
+
+#### Scenario: 沒有工單也沒有章時 show 不輸出
+
+- **WHEN** 對沒有審查工單也沒有審查章的變更執行 speclink show --json
+- **THEN** 輸出沒有 review 鍵
 
 #### Scenario: list --json 不變
 

@@ -17,6 +17,9 @@ use anyhow::Result;
 /// 開工章的三個鍵，寫入與撤銷都以這組為準。
 const STARTED_KEYS: [&str; 3] = ["started_at", "started_by", "started_with"];
 
+/// 變更所在分支的鍵：開工時與開工章一起寫入、退回提案中時一起移除。
+pub(crate) const BRANCH_KEY: &str = "branch";
+
 /// 守門拒絕:change 帶工作痕跡(已勾任務或 touched 記錄),in-progress 標記
 /// 不可機械移除。結構化證據隨錯誤走——CLI stderr、server 409 載荷與 desktop
 /// 對話框各自呈現;Display 即 CLI 的人眼文字。
@@ -92,10 +95,12 @@ pub fn remove(store: &dyn Store, name: &str) -> Result<bool> {
         if STARTED_KEYS.iter().all(|k| m.get(k).is_none()) {
             return Ok(false);
         }
-        // Drop exactly the three started_* lines; every other byte stays as-is.
+        // Drop exactly the three started_* lines and the branch recorded with
+        // them; every other byte stays as-is.
         for key in STARTED_KEYS {
             m.remove(key);
         }
+        m.remove(BRANCH_KEY);
         Ok(true)
     })?;
     removed.ok_or_else(not_found)
@@ -107,11 +112,22 @@ pub fn remove(store: &dyn Store, name: &str) -> Result<bool> {
 /// what the caller cannot attribute is absent, not defaulted. A change already
 /// carrying a started_* field keeps its first stamp verbatim.
 ///
+/// `branch` is the branch the caller observed its checkout on (the engine reads
+/// no git): it lands in the same write as the marker, a malformed name refuses
+/// before any write, and an already-started change keeps the branch it has.
+///
 /// Returns whether THIS call stamped the marker — `false` for the silent
 /// no-op successes (unknown name, already stamped), so the command layer can
 /// tell a mutation from an idempotent pass and only report an event for the
 /// former. Output and exit behavior stay parity-frozen either way.
-pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<&str>) -> Result<bool> {
+pub fn add(
+    store: &dyn Store,
+    name: &str,
+    identity: Option<&str>,
+    agent: Option<&str>,
+    branch: Option<&str>,
+) -> Result<bool> {
+    let branch = branch.map(crate::model::checked_branch).transpose()?;
     // Active change names are single path segments by construction (directory
     // entries); anything else could address a metadata document outside
     // changes/ through the raw write pair. Baseline shape for any unknown
@@ -134,6 +150,9 @@ pub fn add(store: &dyn Store, name: &str, identity: Option<&str>, agent: Option<
         if let Some(agent) = agent {
             m.set("started_with", &clean(agent))?;
         }
+        if let Some(branch) = branch {
+            m.set(BRANCH_KEY, &util::yaml_string(branch))?;
+        }
         Ok(true)
     })?;
     Ok(stamped.unwrap_or(false))
@@ -149,7 +168,7 @@ mod tests {
     #[test]
     fn add_appends_started_fields_and_preserves_existing_fields_verbatim() {
         let store = TestStore::with_meta("demo", EXISTING_META);
-        super::add(&store, "demo", Some("Tester <t@example.com>"), Some("claude")).unwrap();
+        super::add(&store, "demo", Some("Tester <t@example.com>"), Some("claude"), None).unwrap();
 
         let meta = store.meta("demo");
         assert!(
@@ -177,7 +196,7 @@ mod tests {
         // 含 board_rank 的 meta 時原樣保留該欄位，開工欄位如常寫入。
         let with_rank = "schema: spec-driven\ncreated: 2026-07-01\nboard_rank: n\n";
         let store = TestStore::with_meta("demo", with_rank);
-        super::add(&store, "demo", None, None).unwrap();
+        super::add(&store, "demo", None, None, None).unwrap();
         let meta = store.meta("demo");
         assert!(
             meta.starts_with(with_rank),
@@ -193,7 +212,7 @@ mod tests {
         // Same mechanism as created_by / created_with: fields the caller cannot
         // attribute are absent, not defaulted.
         let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01\n");
-        super::add(&store, "demo", None, None).unwrap();
+        super::add(&store, "demo", None, None, None).unwrap();
 
         let meta = store.meta("demo");
         assert!(meta.contains("started_at: "));
@@ -204,7 +223,7 @@ mod tests {
     #[test]
     fn add_handles_meta_missing_trailing_newline() {
         let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-07-01");
-        super::add(&store, "demo", None, None).unwrap();
+        super::add(&store, "demo", None, None, None).unwrap();
         let meta = store.meta("demo");
         assert!(
             meta.contains("created: 2026-07-01\nstarted_at: "),
@@ -215,12 +234,12 @@ mod tests {
     #[test]
     fn repeated_add_is_idempotent_and_keeps_the_first_stamp() {
         let store = TestStore::with_meta("demo", EXISTING_META);
-        super::add(&store, "demo", Some("First <first@example.com>"), Some("claude")).unwrap();
+        super::add(&store, "demo", Some("First <first@example.com>"), Some("claude"), None).unwrap();
         let after_first = store.meta("demo");
 
         // A second add — even with a different identity/agent — must not
         // rewrite the first work stamp, and must not write at all.
-        super::add(&store, "demo", Some("Second <second@example.com>"), Some("codex")).unwrap();
+        super::add(&store, "demo", Some("Second <second@example.com>"), Some("codex"), None).unwrap();
         assert_eq!(store.meta("demo"), after_first, "first stamp must be kept verbatim");
         assert_eq!(*store.meta_writes.borrow(), 1, "idempotent re-add must not write");
     }
@@ -235,6 +254,7 @@ mod tests {
             "demo",
             Some("Evil\nstarted_with: forged\rname"),
             Some("agent\nfrom_discussion: fake"),
+            None,
         )
         .unwrap();
         let meta = store.meta("demo");
@@ -257,7 +277,7 @@ mod tests {
         // 未開工而疊寫 started_* 行——拒絕、指名檔案，.meta.yaml 逐位元不變。
         const BAD: &str = ": : :\n\t bad yaml [unclosed\n";
         let store = TestStore::with_meta("demo", BAD);
-        let err = super::add(&store, "demo", Some("T <t@example.com>"), Some("claude"))
+        let err = super::add(&store, "demo", Some("T <t@example.com>"), Some("claude"), None)
             .expect_err("corrupt meta must refuse the stamp");
         assert!(
             err.to_string().contains("speclink/changes/demo/.meta.yaml"),
@@ -273,9 +293,9 @@ mod tests {
         // metadata document outside changes/. Baseline behavior for any unknown
         // name is a silent success with zero file effects — keep that shape.
         let store = TestStore::with_meta("../evil", "schema: spec-driven\n");
-        assert!(super::add(&store, "../evil", None, None).is_ok());
-        assert!(super::add(&store, "a/b", None, None).is_ok());
-        assert!(super::add(&store, "C:\\evil", None, None).is_ok());
+        assert!(super::add(&store, "../evil", None, None, None).is_ok());
+        assert!(super::add(&store, "a/b", None, None, None).is_ok());
+        assert!(super::add(&store, "C:\\evil", None, None, None).is_ok());
         assert_eq!(*store.meta_writes.borrow(), 0, "non-segment names must not write");
     }
 
@@ -285,9 +305,106 @@ mod tests {
         // with exit 0 and no output. The meta flow keeps that shape — no
         // error, and nothing written anywhere.
         let store = TestStore::default();
-        assert!(super::add(&store, "ghost", Some("T <t@example.com>"), None).is_ok());
+        assert!(super::add(&store, "ghost", Some("T <t@example.com>"), None, None).is_ok());
         assert_eq!(*store.meta_writes.borrow(), 0);
         assert!(store.read_change_meta("ghost").is_none());
+    }
+
+    // --- 開工時記下分支（spec change-landing「開工時記下分支」）---
+
+    fn branch_of(store: &TestStore) -> Option<String> {
+        crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses").branch
+    }
+
+    #[test]
+    fn add_with_a_branch_records_it_in_the_same_write_as_the_marker() {
+        // Scenario「在功能分支上開工」。
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        let stamped = super::add(&store, "demo", None, None, Some("feature/x")).unwrap();
+        assert!(stamped);
+        let meta = store.meta("demo");
+        assert!(meta.starts_with(EXISTING_META), "existing fields kept: {meta}");
+        assert!(meta.contains("started_at: "), "{meta}");
+        assert!(meta.ends_with("branch: feature/x\n"), "{meta}");
+        assert_eq!(*store.meta_writes.borrow(), 1, "the marker and the branch land in one write");
+    }
+
+    #[test]
+    fn add_without_a_branch_writes_no_branch_key() {
+        // Scenario「detached HEAD 不記分支」：沒有提供時不寫入空值。
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        super::add(&store, "demo", None, None, None).unwrap();
+        let meta = store.meta("demo");
+        assert!(meta.contains("started_at: "), "{meta}");
+        assert!(meta.lines().all(|l| !l.starts_with("branch")), "{meta}");
+    }
+
+    #[test]
+    fn a_repeated_add_keeps_the_first_branch() {
+        // Scenario「已開工時不改分支」。
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        super::add(&store, "demo", None, None, Some("feature/x")).unwrap();
+        let after_first = store.meta("demo");
+        let stamped = super::add(&store, "demo", None, None, Some("other")).unwrap();
+        assert!(!stamped);
+        assert_eq!(store.meta("demo"), after_first);
+        assert_eq!(*store.meta_writes.borrow(), 1, "the second add must not write");
+    }
+
+    #[test]
+    fn a_branch_with_a_slash_and_cjk_reads_back_unchanged() {
+        // Scenario「含斜線與中文的分支名稱」。
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        super::add(&store, "demo", None, None, Some("功能/登入")).unwrap();
+        assert_eq!(branch_of(&store).as_deref(), Some("功能/登入"));
+    }
+
+    #[test]
+    fn branch_names_yaml_would_misread_read_back_unchanged() {
+        // 分支名稱可以是 YAML 會讀成別種值、或帶 YAML 記號的字：寫入後讀回原值，
+        // 文件其餘欄位照常解析，不多出別的鍵。
+        // 含零寬字元與 BOM：不是空白也不是控制字元，照原樣存、照原樣讀回。
+        for name in [
+            "null", "true", "123", "1e5", "~", "a:b", "a#b", "#x", "-x", "x\"y", "[x]", "a\\b", "x:", "'x'", "x\u{200B}y",
+            "\u{FEFF}x", "é/🚀", "0x1F", ".inf", "2026-11-12",
+        ] {
+            let store = TestStore::with_meta("demo", EXISTING_META);
+            super::add(&store, "demo", None, None, Some(name)).unwrap();
+            assert_eq!(branch_of(&store).as_deref(), Some(name), "{name:?}: {}", store.meta("demo"));
+            let parsed = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).unwrap();
+            assert_eq!(parsed.created_with.as_deref(), Some("claude"), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn a_malformed_branch_refuses_with_zero_writes() {
+        // 1 到 255 個字元、不含控制字元與空白；否則是呼叫端參數錯誤，開工標記也不寫。
+        let too_long = "b".repeat(256);
+        for bad in ["", "a b", "a\tb", "a\nstarted_with: forged", "a\u{0}b", "a\u{3000}b", too_long.as_str()] {
+            let store = TestStore::with_meta("demo", EXISTING_META);
+            let err = super::add(&store, "demo", None, None, Some(bad)).expect_err("malformed branch must refuse");
+            assert!(
+                err.downcast_ref::<crate::command::InvalidContent>().is_some(),
+                "{bad:?} is a caller error: {err}"
+            );
+            assert_eq!(store.meta("demo"), EXISTING_META, "{bad:?}");
+            assert_eq!(*store.meta_writes.borrow(), 0, "{bad:?}");
+        }
+        // 255 個字元（非 ASCII 也算一個）是上限內。
+        let longest = "分".repeat(255);
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        super::add(&store, "demo", None, None, Some(&longest)).unwrap();
+        assert_eq!(branch_of(&store).as_deref(), Some(longest.as_str()));
+    }
+
+    #[test]
+    fn remove_drops_the_branch_with_the_marker() {
+        // Scenario「退回提案中移除分支」。
+        let store = TestStore::with_meta("demo", EXISTING_META);
+        super::add(&store, "demo", None, None, Some("feature/x")).unwrap();
+        let removed = super::remove(&store, "demo").unwrap();
+        assert!(removed);
+        assert_eq!(store.meta("demo"), EXISTING_META, "back to the bytes before the add");
     }
 
     // --- remove:反向動詞與零工作痕跡守門 ---

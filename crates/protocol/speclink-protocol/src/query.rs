@@ -245,6 +245,12 @@ pub struct ArchivedItem {
     pub created_by: Option<String>,
     #[serde(default)]
     pub from_discussions: Vec<String>,
+    /// How the two quality stations ended. Absent from a server that does not
+    /// report them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review_outcome: Option<StationOutcome>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify_outcome: Option<StationOutcome>,
 }
 
 /// `GET /search` response.
@@ -269,6 +275,62 @@ pub struct SearchHit {
 #[serde(rename_all = "camelCase")]
 pub struct ListChangesResponse {
     pub changes: Vec<ChangeSummary>,
+}
+
+/// One quality station (review or verify) of a change. `state` is always
+/// there; the stamp fields come with `stamped`. `scope` — the path and content
+/// fingerprint of every file the stamp covers — is in the single-change
+/// response only: a list item never carries it.
+///
+/// The server reports facts only. Whether the content changed after the
+/// stamp is for a client with a work tree to judge, from `tasksTotal` and
+/// `scope`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct StationState {
+    pub state: StationPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stamped_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stamped_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stamped_with: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rounds: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tasks_total: Option<usize>,
+    /// The commit the stamping client reported. The server does not check it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub scope: Vec<crate::command::ReviewScopeEntryDto>,
+}
+
+/// Where a quality station is: no ticket and no stamp, an open ticket, or a
+/// stamp. A value this client does not know deserializes as
+/// [`StationPhase::Unknown`], so a newer server never breaks an older client.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum StationPhase {
+    #[default]
+    None,
+    InProgress,
+    Stamped,
+    #[serde(untagged)]
+    Unknown(String),
+}
+
+/// How a quality station ended for an archived change: never run, stamped,
+/// or archived with its ticket still open (`notPassed`). Unknown values are
+/// kept, as for [`StationPhase`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum StationOutcome {
+    None,
+    Stamped,
+    NotPassed,
+    #[serde(untagged)]
+    Unknown(String),
 }
 
 /// One change in the listing.
@@ -308,6 +370,19 @@ pub struct ChangeSummary {
     /// from the store. Absent when the store cannot tell — never 0 or empty.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
+    /// The two quality stations, without their scope. Absent when the
+    /// change's data file is broken, and from a server that does not report
+    /// them: a client reads both cases as no data.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<StationState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<StationState>,
+    /// The branch the change was started on, or the one its landing report named.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The commit the change's code was reported to have landed on.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landed_commit: Option<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
@@ -347,6 +422,21 @@ pub struct ChangeStatus {
     pub started_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_by: Option<String>,
+    /// The two quality stations; a stamped one carries its scope here. Absent
+    /// as in [`ChangeSummary`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<StationState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verify: Option<StationState>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The landing report: the commit, when it was reported (RFC 3339) and by whom.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landed_commit: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landed_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub landed_by: Option<String>,
 }
 
 /// One artifact's status inside [`ChangeStatus`].
@@ -1839,6 +1929,85 @@ mod tests {
             "unpromoted",
         ] {
             assert!(text.contains(field), "plan schema exposes {field}: {text}");
+        }
+    }
+
+    // --- station-status-and-landing：關卡、分支與落地的選填欄位 ---
+
+    #[test]
+    fn a_response_without_the_station_fields_reads_as_no_data() {
+        // Scenario「新版用戶端解析舊回應」：舊版 Server 的回應沒有這些欄位。
+        let list: ListChangesResponse =
+            serde_json::from_str(r#"{"changes":[{"name":"demo","status":"in-progress","totalTasks":3}]}"#).unwrap();
+        let demo = &list.changes[0];
+        assert!(demo.review.is_none() && demo.verify.is_none());
+        assert!(demo.branch.is_none() && demo.landed_commit.is_none());
+
+        let single: ChangeStatus = serde_json::from_str(
+            r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":[],"artifacts":[]}"#,
+        )
+        .unwrap();
+        assert!(single.review.is_none() && single.verify.is_none());
+        assert!(single.branch.is_none() && single.landed_commit.is_none());
+        assert!(single.landed_at.is_none() && single.landed_by.is_none());
+
+        let archived: ArchivedListResponse =
+            serde_json::from_str(r#"{"archived":[{"datedName":"2026-11-01-old","date":"2026-11-01","name":"old"}]}"#)
+                .unwrap();
+        assert!(archived.archived[0].review_outcome.is_none() && archived.archived[0].verify_outcome.is_none());
+    }
+
+    #[test]
+    fn absent_station_fields_are_not_serialized() {
+        let list: ListChangesResponse = serde_json::from_str(r#"{"changes":[{"name":"demo"}]}"#).unwrap();
+        let json = serde_json::to_value(&list).unwrap();
+        for key in ["review", "verify", "branch", "landedCommit"] {
+            assert!(json["changes"][0].get(key).is_none(), "{key}: {json}");
+        }
+    }
+
+    #[test]
+    fn a_station_state_is_camel_case_and_keeps_to_the_fields_it_has() {
+        let none = StationState { state: StationPhase::None, ..Default::default() };
+        assert_eq!(serde_json::to_value(&none).unwrap(), serde_json::json!({ "state": "none" }));
+        let in_progress = StationState { state: StationPhase::InProgress, ..Default::default() };
+        assert_eq!(serde_json::to_value(&in_progress).unwrap(), serde_json::json!({ "state": "inProgress" }));
+
+        let text = r#"{"state":"stamped","stampedAt":"2026-11-02","stampedBy":"Rev","rounds":3,"tasksTotal":12,
+            "commit":"0123456789ab","scope":[{"path":"src/a.rs","hash":"aa"}]}"#;
+        let stamped: StationState = serde_json::from_str(text).unwrap();
+        assert_eq!(stamped.state, StationPhase::Stamped);
+        assert_eq!((stamped.rounds, stamped.tasks_total), (Some(3), Some(12)));
+        assert_eq!(stamped.commit.as_deref(), Some("0123456789ab"));
+        assert_eq!(stamped.scope[0].path, "src/a.rs");
+        assert!(stamped.stamped_with.is_none());
+        let back = serde_json::to_value(&stamped).unwrap();
+        assert_eq!(back, serde_json::from_str::<serde_json::Value>(text).unwrap(), "round trip, no null keys");
+    }
+
+    #[test]
+    fn a_state_or_an_outcome_this_client_does_not_know_is_read_as_unknown() {
+        // Scenario「不認得的 state」：解析成功，讀作未知。
+        let paused: StationState = serde_json::from_str(r#"{"state":"paused"}"#).unwrap();
+        assert_eq!(paused.state, StationPhase::Unknown("paused".to_string()));
+        let item: ArchivedItem = serde_json::from_str(
+            r#"{"datedName":"d","date":"2026-11-01","name":"n","reviewOutcome":"waived","verifyOutcome":"notPassed"}"#,
+        )
+        .unwrap();
+        assert_eq!(item.review_outcome, Some(StationOutcome::Unknown("waived".to_string())));
+        assert_eq!(item.verify_outcome, Some(StationOutcome::NotPassed));
+        for (outcome, text) in
+            [(StationOutcome::None, "none"), (StationOutcome::Stamped, "stamped"), (StationOutcome::NotPassed, "notPassed")]
+        {
+            assert_eq!(serde_json::to_value(&outcome).unwrap(), text);
+        }
+    }
+
+    #[test]
+    fn the_station_types_export_a_json_schema() {
+        let text = serde_json::to_string(&schemars::schema_for!(ChangeStatus)).unwrap();
+        for field in ["review", "verify", "landedCommit", "landedAt", "landedBy", "stampedAt", "tasksTotal"] {
+            assert!(text.contains(field), "the schema exposes {field}: {text}");
         }
     }
 }

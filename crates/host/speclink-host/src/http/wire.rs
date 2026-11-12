@@ -6,9 +6,8 @@ use speclink_core::command::EvidenceShowOutcome;
 use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
-use speclink_core::model::ChangeMeta;
 use speclink_core::plan::Plan;
-use speclink_core::station::Round;
+use speclink_core::station::{Round, StationPhase as EnginePhase, StationStatus};
 use speclink_core::status::StatusReport;
 use speclink_core::tasks::EvidenceEntry as EngineEvidenceEntry;
 use speclink_core::trace::TraceReport;
@@ -16,13 +15,42 @@ use speclink_protocol::query::{
     AnalyzeDimension, AnalyzeFinding, AnalyzeMsg, AnalyzeReportResponse, ApplyInstructions, ArtifactInstructions,
     ArtifactStatus, ChangeEvidenceResponse, ChangeStatus, ChangeSummary, DependencyEntry, DiscussionInfo,
     EvidenceEntry, PlanChangeEntry, PlanOverlap, PlanRequirementOverlap, PlanResponse, PlanSkipped,
-    PlanUnpromotedCut, PlanWave, Progress, TaskEntry, TraceChange, TraceDiscussion, TraceEvidenceTask,
-    TracePromotedChange, TraceRequirement, TraceResponse,
+    PlanUnpromotedCut, PlanWave, Progress, StationPhase, StationState, TaskEntry, TraceChange, TraceDiscussion,
+    TraceEvidenceTask, TracePromotedChange, TraceRequirement, TraceResponse,
 };
-use speclink_protocol::command::{ReviewFindingDto, ReviewRoundDto, ReviewRulesDto};
+use speclink_protocol::command::{ReviewFindingDto, ReviewRoundDto, ReviewRulesDto, ReviewScopeEntryDto};
+use crate::documents::ChangeExtras;
 
-pub(crate) fn change_summary(change: ListChangeJson, meta: Option<&ChangeMeta>) -> ChangeSummary {
+/// A station's status as the wire's object. The scope goes out only with
+/// the single change: a list item never carries it.
+pub(crate) fn station_state(status: &StationStatus, with_scope: bool) -> StationState {
+    let scope = match with_scope {
+        true => status.scope.iter().map(|e| ReviewScopeEntryDto { path: e.path.clone(), hash: e.hash.clone() }).collect(),
+        false => Vec::new(),
+    };
+    StationState {
+        state: match status.phase {
+            EnginePhase::None => StationPhase::None,
+            EnginePhase::InProgress => StationPhase::InProgress,
+            EnginePhase::Stamped => StationPhase::Stamped,
+        },
+        stamped_at: status.stamped_at.clone(),
+        stamped_by: status.stamped_by.clone(),
+        stamped_with: status.stamped_with.clone(),
+        rounds: status.rounds,
+        tasks_total: status.tasks_total,
+        commit: status.commit.clone(),
+        scope,
+    }
+}
+
+pub(crate) fn change_summary(change: ListChangeJson, extras: Option<&ChangeExtras>) -> ChangeSummary {
+    let meta = extras.map(|e| &e.meta);
     ChangeSummary {
+        review: extras.map(|e| station_state(&e.review, false)),
+        verify: extras.map(|e| station_state(&e.verify, false)),
+        branch: meta.and_then(|m| m.branch.clone()),
+        landed_commit: meta.and_then(|m| m.landed_commit.clone()),
         name: change.name,
         summary: change.summary,
         status: change.status,
@@ -121,6 +149,12 @@ pub(crate) fn change_status(report: StatusReport) -> ChangeStatus {
         created_with: None,
         started_at: None,
         started_by: None,
+        review: None,
+        verify: None,
+        branch: None,
+        landed_commit: None,
+        landed_at: None,
+        landed_by: None,
     }
 }
 

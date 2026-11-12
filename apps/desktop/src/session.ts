@@ -415,7 +415,7 @@ export function createRemoteSession(
     id: key,
     locator,
     descriptor: { name: `${info.projectName}/${info.repoName}`, badge: null },
-    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke),
+    dataSource: createRemoteDataSource(connectionId, info.projectKey, info.repoKey, invoke, checkoutRoot),
     settings: createRemoteSettings(
       connectionId,
       info.projectKey,

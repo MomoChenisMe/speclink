@@ -17,9 +17,9 @@ use speclink_protocol::command::{
     BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
-    MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
+    MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, RankChangeRequest, RankChangeResponse,
-    ReviewScopeEntryDto, ReviewTicketResponse,
+    ReportLandedRequest, ReportLandedResponse, ReviewScopeEntryDto, ReviewTicketResponse,
     SetDependsRequest, SetDependsResponse, SetDiscussionContextRequest, SetSchemaRequest,
     SetSchemaResponse, StampReviewRequest, StampReviewResponse, TaskDoneRequest, TaskDoneResponse,
     TaskUndoneResponse,
@@ -711,6 +711,7 @@ impl Client {
     /// `POST /changes/{name}/{station}/stamp` — the scope fingerprints are
     /// computed by the caller from its work tree (design D4a); the server
     /// validates the path set against the ticket and never re-hashes.
+    /// `head_commit` is the commit the caller's checkout is on, when it has one.
     #[allow(clippy::too_many_arguments)]
     pub fn station_stamp(
         &self,
@@ -718,6 +719,7 @@ impl Client {
         name: &str,
         accept: bool,
         agent: Option<&str>,
+        head_commit: Option<&str>,
         scope: &[ReviewScopeEntryDto],
         missing: &[String],
     ) -> Result<StampReviewResponse, RemoteError> {
@@ -728,6 +730,7 @@ impl Client {
                 agent: agent.map(str::to_string),
                 scope: scope.to_vec(),
                 missing: missing.to_vec(),
+                head_commit: head_commit.map(str::to_string),
             },
         )
     }
@@ -747,13 +750,28 @@ impl Client {
     }
 
     /// `POST /changes/{name}/in-progress` — silent parity verb: the response
-    /// body carries nothing the client consumes.
-    pub fn in_progress_add(&self, name: &str) -> Result<(), RemoteError> {
+    /// body carries nothing the client consumes. `branch` is the branch the
+    /// caller's checkout is on; without one the body is the bare `{}`.
+    pub fn in_progress_add(&self, name: &str, branch: Option<&str>) -> Result<(), RemoteError> {
         self.post::<serde::de::IgnoredAny, _>(
             &format!("/changes/{name}/in-progress"),
-            &Empty {},
+            &MarkInProgressRequest { branch: branch.map(str::to_string) },
         )
         .map(|_| ())
+    }
+
+    /// `POST /changes/{name}/landed` — report the commit the change's code
+    /// landed on. A server from before this route answers 404.
+    pub fn change_landed(
+        &self,
+        name: &str,
+        commit: &str,
+        branch: Option<&str>,
+    ) -> Result<ReportLandedResponse, RemoteError> {
+        self.post(
+            &format!("/changes/{name}/landed"),
+            &ReportLandedRequest { commit: commit.to_string(), branch: branch.map(str::to_string) },
+        )
     }
 
     /// `DELETE /changes/{name}/in-progress` — the reverse verb, gated on zero

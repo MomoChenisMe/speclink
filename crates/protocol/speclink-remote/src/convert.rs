@@ -9,6 +9,34 @@ use speclink_protocol::query::{
 };
 
 /// `GET /changes/{name}/validate` 回應 → 引擎 `ValidationResult`。
+/// One quality station of a wire response as the engine's status, which
+/// `show --json` and the desktop's badges are built from. `None` for a state
+/// this client does not know: it is read as no data, not as an error.
+pub fn station_status(s: &speclink_protocol::query::StationState) -> Option<speclink_core::station::StationStatus> {
+    use speclink_core::station::StationPhase as Phase;
+    use speclink_protocol::query::StationPhase as Wire;
+    let phase = match &s.state {
+        Wire::None => Phase::None,
+        Wire::InProgress => Phase::InProgress,
+        Wire::Stamped => Phase::Stamped,
+        Wire::Unknown(_) => return None,
+    };
+    Some(speclink_core::station::StationStatus {
+        phase,
+        stamped_at: s.stamped_at.clone(),
+        stamped_by: s.stamped_by.clone(),
+        stamped_with: s.stamped_with.clone(),
+        rounds: s.rounds,
+        tasks_total: s.tasks_total,
+        commit: s.commit.clone(),
+        scope: s
+            .scope
+            .iter()
+            .map(|e| speclink_core::model::ReviewedScopeEntry { path: e.path.clone(), hash: e.hash.clone() })
+            .collect(),
+    })
+}
+
 pub fn validation_result(p: ValidateChangeResponse) -> speclink_core::validate::ValidationResult {
     speclink_core::validate::ValidationResult {
         change: p.change,

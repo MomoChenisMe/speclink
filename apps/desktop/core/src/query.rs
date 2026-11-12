@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
-use speclink_core::station::{self, Freshness, REVIEW, REVIEW_DOC, VERIFY, VERIFY_DOC};
+use speclink_core::station::{self, Station, StationId, StationPhase, StationStatus, REVIEW, VERIFY};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -90,36 +90,15 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["codeTotal"] = json!(counts.code_total);
             v["codeComplete"] = json!(counts.code_complete);
             v["codeRemaining"] = json!(counts.code_remaining);
-            let review = if store.artifact_exists(&c.name, REVIEW_DOC) {
-                "inReview"
-            } else {
-                match station::freshness(&REVIEW, &c.meta, &counts, &read_file) {
-                    Freshness::Fresh => "reviewed",
-                    Freshness::Stale => "reviewedStale",
-                    Freshness::Unknown => "none",
-                }
-            };
-            v["reviewStatus"] = json!(review);
-            if matches!(review, "reviewed" | "reviewedStale") {
-                v["reviewedAt"] = json!(c.meta.reviewed_at);
-                v["reviewedBy"] = json!(c.meta.reviewed_by);
-            }
             // 驗證狀態（spec client-protocol「變更清單的驗證狀態欄位」；design
-            // D5）：與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故
-            // 各判各的，共用同一份失效純函式與同一個讀取根。
-            let verify = if store.artifact_exists(&c.name, VERIFY_DOC) {
-                "inVerify"
-            } else {
-                match station::freshness(&VERIFY, &c.meta, &counts, &read_file) {
-                    Freshness::Fresh => "verified",
-                    Freshness::Stale => "verifiedStale",
-                    Freshness::Unknown => "none",
+            // D5）與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故各判各的，
+            // 共用同一份四態判定（[`station_view`]，remote 清單也走它）與同一個讀取根。
+            for st in [&REVIEW, &VERIFY] {
+                let status = station::status(st, &c.meta, store.artifact_exists(&c.name, st.doc));
+                let view = station_view(&status, &counts, Some(&read_file));
+                if let Some(item) = v.as_object_mut() {
+                    put_station_fields(item, st, &status, view);
                 }
-            };
-            v["verifyStatus"] = json!(verify);
-            if matches!(verify, "verified" | "verifiedStale") {
-                v["verifiedAt"] = json!(c.meta.verified_at);
-                v["verifiedBy"] = json!(c.meta.verified_by);
             }
             // 排程欄位（spec client-protocol「變更清單的排程欄位」）：照 PLAN_FIELDS
             // 從引擎 plan 列逐鍵照搬，不在呈現層另算；壞 meta（plan 的 skipped）的項
@@ -154,6 +133,76 @@ pub fn list_changes_at(root: &Path) -> Value {
             "next": null,
             "unpromotedCuts": [],
         }),
+    }
+}
+
+/// 一個品質站在卡片上的四態（station-status-and-landing D7）：本機與 remote 的清單
+/// 共用這一份判定，差別只在關卡的事實從哪裡來、有沒有工作樹可讀。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StationView {
+    /// 沒有工單也沒有章。
+    None,
+    /// 有未結的工單。
+    InProgress,
+    /// 已蓋章，章的兩個錨都還成立。
+    Stamped,
+    /// 已蓋章，其後任務數或 scope 內的檔案有變。
+    StampedStale,
+}
+
+impl StationView {
+    /// 清單項 `reviewStatus`／`verifyStatus` 的字串。
+    pub fn status_str(self, st: &Station) -> &'static str {
+        match (st.id, self) {
+            (_, StationView::None) => "none",
+            (StationId::Review, StationView::InProgress) => "inReview",
+            (StationId::Review, StationView::Stamped) => "reviewed",
+            (StationId::Review, StationView::StampedStale) => "reviewedStale",
+            (StationId::Verify, StationView::InProgress) => "inVerify",
+            (StationId::Verify, StationView::Stamped) => "verified",
+            (StationId::Verify, StationView::StampedStale) => "verifiedStale",
+        }
+    }
+}
+
+/// 從關卡的事實算出四態。`status` 是本機讀到的或線上回應給的同一種事實；`counts` 是
+/// 目前的任務數；`read_file` 讀工作樹裡 scope 檔的現值——沒有工作樹（remote 專案沒有
+/// checkout）時給 `None`，只比任務錨。失效規則是引擎的 [`station::stale_reason`]，這裡不另寫。
+pub fn station_view(
+    status: &StationStatus,
+    counts: &speclink_core::tasks::Counts,
+    read_file: station::ScopeReader<'_>,
+) -> StationView {
+    match status.phase {
+        StationPhase::None => StationView::None,
+        StationPhase::InProgress => StationView::InProgress,
+        StationPhase::Stamped => {
+            let anchors = station::StampAnchors {
+                stamped_at: status.stamped_at.as_deref(),
+                tasks_total: status.tasks_total,
+                scope: &status.scope,
+            };
+            match station::stale_reason(anchors, counts, read_file) {
+                Some(_) => StationView::StampedStale,
+                None => StationView::Stamped,
+            }
+        }
+    }
+}
+
+/// 把一個站的狀態寫進清單項：`reviewStatus`（驗證站是 `verifyStatus`），章存在時另有
+/// `reviewedAt`、`reviewedBy`（驗證站是 `verifiedAt`、`verifiedBy`）。本機與 remote
+/// 的清單項同形，看板卡片讀同一組鍵。
+pub fn put_station_fields(
+    item: &mut serde_json::Map<String, Value>,
+    st: &Station,
+    status: &StationStatus,
+    view: StationView,
+) {
+    item.insert(format!("{}Status", st.noun), json!(view.status_str(st)));
+    if matches!(view, StationView::Stamped | StationView::StampedStale) {
+        item.insert(format!("{}At", st.meta_prefix), json!(status.stamped_at));
+        item.insert(format!("{}By", st.meta_prefix), json!(status.stamped_by));
     }
 }
 
@@ -950,6 +999,87 @@ mod tests {
 
     const TICKET: &str = "# Review — x\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n";
     const TASKS_ALL_DONE: &str = "## 1. Group\n\n- [x] 1.1 First task\n- [x] 1.2 Second task\n";
+
+    // --- 四態的共用判定（station-status-and-landing D7；spec desktop-app「remote 專案的
+    // 審查與驗證標示」） ---
+
+    fn stamped_status(tasks_total: usize, scope: &[(&str, &str)]) -> station::StationStatus {
+        station::StationStatus {
+            phase: station::StationPhase::Stamped,
+            stamped_at: Some("2026-11-02".to_string()),
+            tasks_total: Some(tasks_total),
+            scope: scope
+                .iter()
+                .map(|(path, content)| speclink_core::model::ReviewedScopeEntry {
+                    path: path.to_string(),
+                    hash: station::content_fingerprint(content),
+                })
+                .collect(),
+            ..station::StationStatus::none()
+        }
+    }
+
+    fn task_counts(total: usize) -> speclink_core::tasks::Counts {
+        let tasks = "- [x] t\n".repeat(total);
+        speclink_core::tasks::counts(&speclink_core::tasks::parse(&tasks))
+    }
+
+    #[test]
+    fn station_view_follows_the_facts_the_task_count_and_the_scope_files() {
+        use station::{StationPhase, StationStatus};
+        let files = [("src/a.rs", "fn a() {}\n"), ("src/b.rs", "fn b() {}\n")];
+        let read = |changed: &'static str| {
+            move |p: &str| {
+                files.iter().find(|(path, _)| *path == p).map(|(path, content)| {
+                    if *path == changed { b"fn changed() {}\n".to_vec() } else { content.as_bytes().to_vec() }
+                })
+            }
+        };
+        let unchanged = read("");
+        let b_changed = read("src/b.rs");
+        let in_progress = StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() };
+        let stamped = stamped_status(3, &files);
+
+        // 進行中：有工單。
+        assert_eq!(station_view(&in_progress, &task_counts(3), Some(&unchanged)), StationView::InProgress);
+        // 已蓋章且任務數不同：其後有變，不必讀檔。
+        assert_eq!(station_view(&stamped, &task_counts(4), None), StationView::StampedStale);
+        // 已蓋章、任務數相同、沒有讀檔函式：只比任務數。
+        assert_eq!(station_view(&stamped, &task_counts(3), None), StationView::Stamped);
+        // 已蓋章、任務數相同、檔案都沒變。
+        assert_eq!(station_view(&stamped, &task_counts(3), Some(&unchanged)), StationView::Stamped);
+        // 已蓋章、任務數相同、一個檔案的指紋不同。
+        assert_eq!(station_view(&stamped, &task_counts(3), Some(&b_changed)), StationView::StampedStale);
+        // 沒有資料：沒有工單也沒有章。
+        assert_eq!(station_view(&StationStatus::none(), &task_counts(3), Some(&unchanged)), StationView::None);
+    }
+
+    #[test]
+    fn station_fields_use_the_keys_the_board_reads() {
+        let stamped = station::StationStatus {
+            stamped_by: Some("Rev <r@example.com>".to_string()),
+            ..stamped_status(3, &[("src/a.rs", "x")])
+        };
+        let mut item = serde_json::Map::new();
+        put_station_fields(&mut item, &REVIEW, &stamped, StationView::StampedStale);
+        put_station_fields(&mut item, &VERIFY, &station::StationStatus::none(), StationView::InProgress);
+        assert_eq!(
+            Value::Object(item),
+            json!({
+                "reviewStatus": "reviewedStale",
+                "reviewedAt": "2026-11-02",
+                "reviewedBy": "Rev <r@example.com>",
+                "verifyStatus": "inVerify",
+            })
+        );
+        let mut item = serde_json::Map::new();
+        put_station_fields(&mut item, &REVIEW, &station::StationStatus::none(), StationView::None);
+        put_station_fields(&mut item, &VERIFY, &stamped, StationView::Stamped);
+        assert_eq!(item["reviewStatus"], "none");
+        assert_eq!(item["verifyStatus"], "verified");
+        assert_eq!(item["verifiedAt"], "2026-11-02");
+        assert!(!item.contains_key("reviewedAt"), "no stamp fields without a stamp");
+    }
 
     fn reviewed_meta(scope_path: &str, hash: &str) -> String {
         format!(

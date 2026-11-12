@@ -2,7 +2,7 @@
 //! `change schema` and `change rank`.
 
 use serde_json::{json, Value};
-use speclink_core::command::{ChangeRankOutcome, DependsOutcome, PlanReport, SchemaOutcome};
+use speclink_core::command::{ChangeLandedOutcome, ChangeRankOutcome, DependsOutcome, PlanReport, SchemaOutcome};
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
@@ -180,6 +180,27 @@ pub fn rank(r: &ChangeRankOutcome, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&rank_json(r))), |paint| rank_human(r, paint))
 }
 
+/// `change landed --json`: the whole commit, and the branch when the report gave one.
+pub fn landed_json(l: &ChangeLandedOutcome) -> Value {
+    let mut landed = json!({ "change": l.change, "commit": l.commit });
+    if let Some(branch) = &l.branch {
+        landed["branch"] = json!(branch);
+    }
+    landed
+}
+
+/// `change landed`: one success line with the commit's first twelve characters.
+pub fn landed_human(l: &ChangeLandedOutcome, paint: &Paint) -> Text {
+    let mut t = Text::default();
+    let short: String = l.commit.chars().take(12).collect();
+    outln!(t, "{} {} landed at {short}", paint.green("✓"), l.change);
+    t
+}
+
+pub fn landed(l: &ChangeLandedOutcome, options: RenderOptions) -> Rendered {
+    Rendered::of(options, Some(JsonForm::pretty(&landed_json(l))), |paint| landed_human(l, paint))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,6 +367,27 @@ mod tests {
             schema(&switched(false, false), JSON).stdout,
             "{\n  \"change\": \"beta\",\n  \"changed\": false,\n  \"previous\": \"spec-driven\",\n  \"schema\": \"spec-driven\"\n}\n"
         );
+    }
+
+    #[test]
+    fn landed_human_shows_twelve_characters_and_json_the_whole_commit() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        let outcome = |commit: &str, branch: Option<&str>| ChangeLandedOutcome {
+            change: "demo".into(),
+            commit: commit.into(),
+            branch: branch.map(str::to_string),
+        };
+        assert_eq!(landed_human(&outcome(sha, None), &PLAIN).stdout, "✓ demo landed at 0123456789ab\n");
+        assert_eq!(
+            landed_human(&outcome("0123456", Some("speclink/demo")), &COLOR).stdout,
+            "\x1b[32m✓\x1b[0m demo landed at 0123456\n",
+            "a commit shorter than twelve characters prints whole; the branch is not in the line"
+        );
+        assert_eq!(landed_json(&outcome(sha, None)), json!({ "change": "demo", "commit": sha }), "no branch key");
+        let with_branch = landed_json(&outcome(sha, Some("speclink/demo")));
+        assert_eq!(with_branch, json!({ "change": "demo", "commit": sha, "branch": "speclink/demo" }));
+        assert!(with_branch["commit"].is_string() && with_branch["branch"].is_string());
+        assert!(landed(&outcome(sha, None), JSON).stdout.contains(sha));
     }
 
     #[test]

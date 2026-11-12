@@ -529,7 +529,7 @@ fn the_change_extras_are_one_read_of_the_metadata() {
         1,
         "a broken or missing metadata file has no extras"
     );
-    assert_eq!(extras["add-x"].created_by.as_deref(), Some("Alice"));
+    assert_eq!(extras["add-x"].meta.created_by.as_deref(), Some("Alice"));
 }
 
 #[test]

@@ -37,6 +37,7 @@ impl Command {
             Command::ChangeDepends { .. } => "change-depends",
             Command::ChangeSchema { .. } => "change-schema",
             Command::ChangeRank { .. } => "change-rank",
+            Command::ChangeLanded { .. } => "change-landed",
             Command::Archive { .. } => "archive",
             Command::Discard { .. } => "discard",
             Command::DiscussNew { .. } => "discuss-new",

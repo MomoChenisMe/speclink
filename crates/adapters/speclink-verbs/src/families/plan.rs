@@ -1,7 +1,8 @@
-//! Execution-order verbs: `plan`, `change depends`, `change schema`, `change rank`.
+//! Execution-order verbs: `plan`, `change depends`, `change schema`, `change rank`;
+//! and `change landed`, the landing report of the same `change` family.
 
 use clap::{Args, Subcommand};
-use speclink_core::command::{Command, CommandError};
+use speclink_core::command::{Command, CommandError, ErrorCode};
 use speclink_core::plan::Side;
 
 use crate::{CommandTarget, ToCommand, VerbInputs};
@@ -66,6 +67,20 @@ pub enum ChangeCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Report the commit a change's code landed on (the checkout's HEAD when --commit is not given)
+    Landed {
+        /// Change name
+        name: String,
+        /// The commit the code landed on
+        #[arg(long, value_name = "SHA")]
+        commit: Option<String>,
+        /// The change's branch; replaces the recorded one
+        #[arg(long, value_name = "NAME")]
+        branch: Option<String>,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 impl ToCommand for PlanArgs {
@@ -79,6 +94,11 @@ impl ToCommand for PlanArgs {
         }))
     }
 }
+
+/// What `change landed` answers when there is no commit to report: no
+/// `--commit`, and the caller has no HEAD to give. A host without a work tree
+/// reads this too, so it names the flag first.
+pub const NO_COMMIT_TO_REPORT: &str = "no commit to report: pass --commit <sha>, or run this inside a git work tree";
 
 /// The anchor of `change rank` and the side it names. clap makes exactly one
 /// of `--before` and `--after` present.
@@ -96,12 +116,13 @@ impl ChangeVerbArgs {
             ChangeCommands::Depends { .. } => "change depends",
             ChangeCommands::Schema { .. } => "change schema",
             ChangeCommands::Rank { .. } => "change rank",
+            ChangeCommands::Landed { .. } => "change landed",
         }
     }
 }
 
 impl ToCommand for ChangeVerbArgs {
-    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         Ok(match &self.command {
             ChangeCommands::Depends { name, on, remove, .. } => {
                 CommandTarget::Command(Command::ChangeDepends {
@@ -117,15 +138,23 @@ impl ToCommand for ChangeVerbArgs {
                 let (anchor, side) = rank_anchor(before, after);
                 CommandTarget::Command(Command::ChangeRank { name: name.clone(), anchor, position: side, force: *force })
             }
+            // The branch comes from `--branch` only: after a merge the caller's
+            // checkout is on the main branch, which is not the change's branch.
+            ChangeCommands::Landed { name, commit, branch, .. } => {
+                let Some(commit) = commit.clone().or(inputs.head_commit) else {
+                    return Err(CommandError::new(ErrorCode::InvalidArgv, NO_COMMIT_TO_REPORT));
+                };
+                CommandTarget::Command(Command::ChangeLanded { name: name.clone(), commit, branch: branch.clone() })
+            }
         })
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::families::test_support::{command_of, name_of, policy_of};
+    use crate::families::test_support::{command_of, name_of, policy_of, target_of};
     use crate::{StdinPolicy, VerbInputs};
-    use speclink_core::command::Command;
+    use speclink_core::command::{Command, ErrorCode};
     use speclink_core::plan::Side;
     use std::collections::BTreeMap;
 
@@ -169,6 +198,49 @@ mod tests {
         }
     }
 
+    const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    fn with_head(commit: &str) -> VerbInputs {
+        VerbInputs { head_commit: Some(commit.into()), ..Default::default() }
+    }
+
+    #[test]
+    fn change_landed_takes_the_commit_from_the_flag_then_from_the_callers_head() {
+        let landed = |commit: &str, branch: Option<&str>| Command::ChangeLanded {
+            name: "demo".into(),
+            commit: commit.into(),
+            branch: branch.map(str::to_string),
+        };
+        assert_eq!(
+            command_of(&["change", "landed", "demo", "--commit", SHA, "--branch", "speclink/demo", "--json"], VerbInputs::default()),
+            landed(SHA, Some("speclink/demo"))
+        );
+        assert_eq!(command_of(&["change", "landed", "demo"], with_head("abc1234")), landed("abc1234", None));
+        assert_eq!(
+            command_of(&["change", "landed", "demo", "--commit=0123456"], with_head("abc1234")),
+            landed("0123456", None),
+            "the flag wins over the caller's HEAD"
+        );
+    }
+
+    #[test]
+    fn change_landed_never_takes_the_branch_from_the_caller() {
+        // After a merge the checkout is on the main branch: that is not the
+        // change's branch, so only `--branch` names one.
+        let inputs = VerbInputs { branch: Some("main".into()), ..with_head("abc1234") };
+        assert_eq!(
+            command_of(&["change", "landed", "demo"], inputs),
+            Command::ChangeLanded { name: "demo".into(), commit: "abc1234".into(), branch: None }
+        );
+    }
+
+    #[test]
+    fn change_landed_without_a_commit_is_invalid_argv_and_says_how_to_give_one() {
+        let err = target_of(&["change", "landed", "demo"], VerbInputs::default()).expect_err("no commit");
+        assert_eq!(err.code, ErrorCode::InvalidArgv);
+        assert!(err.message.contains("--commit") && err.message.contains("git work tree"), "{}", err.message);
+    }
+
     #[test]
     fn names_and_stdin_policies() {
         for (argv, name) in [
@@ -176,6 +248,7 @@ mod tests {
             (&["change", "depends", "x", "--on", "y"], "change depends"),
             (&["change", "schema", "x", "y"], "change schema"),
             (&["change", "rank", "x", "--after", "y"], "change rank"),
+            (&["change", "landed", "x", "--commit", "0123456"], "change landed"),
         ] {
             assert_eq!(name_of(argv), name);
             assert_eq!(policy_of(argv), StdinPolicy::Never, "{argv:?}");

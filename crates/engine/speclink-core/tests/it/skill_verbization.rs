@@ -814,6 +814,80 @@ fn committing_a_stamp_is_a_step_for_a_checkout_with_the_spec_folder() {
     }
 }
 
+/// commit-skill「提交後回報落地」: the report comes after the commit, is left to the
+/// merge on a worktree's change branch, has nothing to report to once the change is
+/// archived, and a refusal never touches the commit. The note about the modified data
+/// file is for a checkout with the spec folder only.
+#[test]
+fn commit_skill_reports_the_landing_after_the_commit() {
+    for location in SpecLocation::BOTH {
+        for rendering in rendered("commit", location) {
+            let step = section(&rendering, "**Report the landing**", "**Show result**");
+            assert_has(
+                &rendering,
+                step,
+                &[
+                    "Do this only after `git commit` succeeded",
+                    "Take the commit from `git rev-parse HEAD` and pass it",
+                    "speclink change landed \"<change-name>\" --commit \"<commit>\"",
+                    "is `speclink/<change-name>`, the change's branch of a linked worktree",
+                    "reports it after the merge",
+                    "The archive sub-flow ran (step 7a)",
+                    "On any other branch, report",
+                    "tell the user its message and continue with step 10",
+                    "do not undo it, and do not make it again",
+                ],
+            );
+            let content = &rendering.content;
+            let (commit, report) = (content.find("git commit -m").unwrap(), content.find("speclink change landed").unwrap());
+            assert!(commit < report, "{}: the report follows the commit", rendering.label());
+            assert_has(&rendering, content, &["**Landing:** reported ✓"]);
+        }
+    }
+    let data_file_note = ["that file shows as modified after this step", "it goes into this change's next commit"];
+    for rendering in rendered("commit", SpecLocation::InCheckout) {
+        assert_has(&rendering, &rendering.content, &data_file_note);
+    }
+    for rendering in rendered("commit", SpecLocation::Elsewhere) {
+        assert_lacks(&rendering, &rendering.content, &data_file_note);
+    }
+}
+
+/// worktree-merge-skill「合併後回報落地」: the report follows a successful merge and
+/// names the change's branch; the conflict stop has no report; a refusal never reverts
+/// the merge and the wrap-up goes on.
+#[test]
+fn worktree_merge_skill_reports_the_landing_after_a_successful_merge() {
+    for location in SpecLocation::BOTH {
+        for rendering in rendered("worktree-merge", location) {
+            let step = section(&rendering, "**Report the landing, carry the quality baseline over, then clean up**", "**Confirm and hand off**");
+            assert_has(
+                &rendering,
+                step,
+                &[
+                    "After a successful merge",
+                    "Take the commit from `git -C <main-checkout> rev-parse HEAD` and pass it",
+                    "speclink change landed \"<change-name>\" --commit \"<commit>\" --branch \"speclink/<change-name>\"",
+                    "tell the user its message and go on with the rest of this step",
+                    "do not revert it",
+                ],
+            );
+            let (report, prepare) = (step.find("speclink change landed").unwrap(), step.find("speclink review prepare").unwrap());
+            assert!(report < prepare, "{}: the report comes first in the step", rendering.label());
+            let conflict = section(&rendering, "**Conflict — stop immediately**", "**Report the landing, carry");
+            assert_lacks(&rendering, conflict, &["change landed"]);
+            assert_has(&rendering, &rendering.content, &["**Landing reported:** ✓"]);
+        }
+    }
+    let data_file_note = ["the main checkout has that one modified file from here on", "Leave it uncommitted and name it in the hand-off"];
+    for rendering in rendered("worktree-merge", SpecLocation::InCheckout) {
+        assert_has(&rendering, &rendering.content, &data_file_note);
+    }
+    for rendering in rendered("worktree-merge", SpecLocation::Elsewhere) {
+        assert_lacks(&rendering, &rendering.content, &data_file_note);
+    }
+}
+
 /// The quality skill's resume rule for an artifact fix a validation patch cannot show:
 /// with the spec folder in the checkout, git lists the changed files; elsewhere the
 /// skill asks the user and reads the passages through the verb — both sides have an exit.

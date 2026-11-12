@@ -1,0 +1,306 @@
+{
+  "version": 2,
+  "change": "station-status-and-landing",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）為 D3、D4 寫引擎的測試，用測試儲存，對應規格「蓋章記錄程式碼的 commit」「驗證蓋章記錄程式碼的 commit」與「開工時記下分支」：蓋章帶 commit 時 metadata 多一個 `reviewed_commit`（或 `verified_commit`），和章的其他欄位在同一次寫入、工單同時刪除；不帶時沒有這個鍵；形狀不合的 commit 被拒絕且沒有寫入；清除章的每一條既有路徑（放棄、變更 schema 清掉驗證的章）一併清除 commit；commit 不影響凍結判定；開工帶分支時寫入 `branch`，不帶時沒有這個鍵，已開工時不改，退回提案中時移除；含斜線與中文的分支名稱寫入後 metadata 仍可解析且讀回原值；形狀不合的分支被拒絕。更新列舉全部命令變體的測試與命令名稱和參數的 golden（蓋章與開工的參數多了欄位）。涉及 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/inprogress.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/tests/golden/command-describe.json。驗證：`cargo test -p speclink-core -- station inprogress` 編譯失敗或測試失敗，且列出的測試數不是 0。",
+      "files": [
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/change_schema.rs",
+        "crates/engine/speclink-core/src/lifecycle/inprogress.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）實作蓋章的 commit 與開工的分支：`ReviewStamp`、`VerifyStamp` 新增 `head_commit`，`InProgressAdd` 新增 `branch`，`ChangeMeta` 新增對應的欄位；寫入都經既有的純量跳脫。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/inprogress.rs、crates/engine/speclink-core/src/lifecycle/model.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core` 全部通過，`render_golden` 中 `list --json` 的快照沒有變。",
+      "files": [
+        "apps/desktop/core/src/manage.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-verbs/src/families/progress.rs",
+        "crates/adapters/speclink-verbs/src/families/station.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red→Green）依 D5 實作落地的命令，對應規格「change landed 動詞回報落地的 commit」的引擎情境：先寫測試——寫入 `landed_commit`、`landed_at`、`landed_by`（匿名時不寫），有分支時覆寫 `branch`；重複回報覆寫；變更不存在是 not_found、metadata 壞掉被拒絕、commit 形狀不合是 invalid_argv，三者都零寫入；提案中的變更也能回報且階段不變；成功時回報一筆 `change-landed` 事件；封存後記錄仍在封存的 metadata。再實作 `Command::ChangeLanded`、結果與事件，並補上名稱、參數與事件的 payload。涉及 crates/engine/speclink-core/src/command/landing.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/host/speclink-host/src/commit.rs。驗證：`cargo test -p speclink-core landing` 與 `cargo test -p speclink-core --test it command_describe::` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/engine/speclink-core/src/command/landing.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 （Red→Green）依 D6 讓 `show <change> --json` 帶出關卡、分支與落地，對應規格「分支與落地記錄的讀取」與兩個關卡規格的 show 情境：先寫測試——已蓋章的變更有 `review`（state、stampedAt、rounds、tasksTotal 與有值才出現的欄位，沒有 scope）；有工單時 state 是 `inProgress`；有分支與落地記錄時有 `branch` 與 `landed`；沒有資料時不輸出這些鍵；人眼輸出的 golden 不變；`list --json` 的輸出不變（既有的釘住測試不改）。再實作。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/adapters/speclink-verbs/src/render/query.rs。驗證：`cargo test -p speclink-core` 與 `cargo test -p speclink-verbs` 通過；show `--json` 的 golden 同批更新。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/plan.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 （Red）為 D1、D2、D5、D6 寫 Host 與線上型別的測試，對應規格「線上變更回應的關卡欄位」「落地回報的請求與回應」「變更回應攜帶關卡狀態與落地記錄」「審查與驗證事件歸到變更」：清單回填三態、已蓋章的清單項不帶 scope、單筆回應帶 scope、兩個關卡各自獨立、已封存的結局三種值、壞 metadata 的變更沒有關卡物件、回填不多發儲存呼叫（計數的儲存）；落地的路由成功、沒有寫入能力被拒、commit 形狀不合回 400、變更不存在回 404；蓋章請求帶與不帶 `headCommit`、開工請求帶 `branch`；線上歸屬表對落地的命令回答路由；事件分類函式把六種審查與驗證事件與落地事件歸到變更、其他維持 unknown；用新增欄位之前的型別解析新回應成功、新型別解析舊回應成功、不認得的 state 讀作未知。回應的 JSON 斷言 camelCase 與型別。涉及 crates/host/speclink-host/tests/station_wire.rs、crates/protocol/speclink-protocol/src/query.rs。驗證：`cargo test -p speclink-host --test station_wire` 編譯失敗。",
+      "files": [
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/host/speclink-host/tests/station_wire.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 （Red）寫 CLI 的整合測試，對應 change-landing 三條需求的 CLI 情境：在 git checkout 裡 `speclink change landed demo` 用 HEAD 並印出前 12 個字元；指定 commit 與分支的 `--json`；重複回報覆寫；不是 git checkout 且不帶 `--commit` 時非 0 且 metadata 逐位元不變；commit 形狀不合、變更不存在各非 0；兩種模式的 `--json` 相同；在分支 feature/x 上 `in-progress add` 記下分支，detached HEAD 不記；`review stamp` 與 `verify stamp` 記下 HEAD，不是 git checkout 時照常蓋章，stdout 與改之前相同；`show --json` 帶出四個欄位；`list --json` 在兩種模式都沒有新欄位。涉及 crates/adapters/speclink-cli/tests/it/change_landing.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it change_landing::` 失敗。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/progress.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs",
+        "crates/host/speclink-server/tests/it/api/verify_api.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/adapters/speclink-cli/tests/it/change_landing.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 （Green）線上的型別、回填與路由：`speclink-protocol` 新增關卡物件與各回應的新欄位、落地的請求與回應、蓋章請求的 `headCommit`、開工請求的 `branch`；Host 新增「從工單與 metadata 判定關卡狀態」的函式並在清單、單筆與已封存的回填使用；新增落地的路由；事件分類函式搬到 Host 並公開，示範用 server 改呼叫它。涉及 crates/protocol/speclink-protocol/src/query.rs、crates/protocol/speclink-protocol/src/command.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-server/src/api/events.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`（含成本測試）、`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過，事件串流的既有測試只在審查與驗證事件的類別上更新期望值。",
+      "files": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-node/__test__/agent-tool.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts",
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.1 （Red→Green）依 D7 把四態的判定抽成共用的純函式並接上遠端，對應規格「remote 專案的審查與驗證標示」：先寫測試——函式對「進行中」「已蓋章且任務數不同」「已蓋章、任務數相同、沒有讀檔函式」「已蓋章、任務數相同、一個檔案的指紋不同」「沒有資料」各回傳正確的狀態；本機專案的清單結果與抽出之前相同；遠端的清單項帶出兩個關卡的狀態、時間與人；有 checkout 時對任務數相符的已蓋章變更取單筆回應的 scope 並比對 checkout 的檔案；已封存的項目帶出結局；遠端封存在審查中或驗證中時帶上使用者選的保留旗標；Server 沒有欄位時狀態是沒有資料。再實作，並依 design 的 Open Question 量一次重新整理的耗時、決定要不要快取，把結論寫進 design.md。涉及 apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/remote.rs、speclink/changes/station-status-and-landing/design.md。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
+      "files": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/phase3_chain.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src-tauri/tests/it/remote_runtime.rs",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/session.ts"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.1 依 D8 在 commit 與 worktree-merge 的原稿各加一步，對應規格「提交後回報落地」與「合併後回報落地」：commit 在 git commit 成功後、不在 worktree 的變更分支上時執行 `speclink change landed <change-name>`；worktree-merge 在合併成功後執行帶 `--branch` 的同一個動詞；兩處都寫明被拒絕時告訴使用者並繼續。回答 design 的 Open Question（功能分支上的提交）並寫進 design.md。前進資產版號，重新產生 golden 快照與 lock 檔，用 `speclink update` 重新產生本 repo 的技能檔。不新增強調字。涉及 crates/engine/speclink-core/assets/skills/commit.md、crates/engine/speclink-core/assets/skills/worktree-merge.md、crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/tests/golden、本 repo 的 .claude/skills 與 .agents/skills。驗證：先 `cargo build -p speclink-cli` 再用 target/debug 的執行檔執行 `speclink update`；`cargo test -p speclink-core` 全部通過（含 `skill_authoring::` 與 `skill_verbization::`）；用 `git diff --stat` 確認快照的差異只在這兩支技能與版號行。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/worktree-merge.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md",
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M77488ZEN7ZV7EGX6DQJF8W5",
+      "taskDesc": "1.1 （Red）為 D3、D4 寫引擎的測試，用測試儲存，對應規格「蓋章記錄程式碼的 commit」「驗證蓋章記錄程式碼的 commit」與「開工時記下分支」：蓋章帶 commit 時 metadata 多一個 `reviewed_commit`（或 `verified_commit`），和章的其他欄位在同一次寫入、工單同時刪除；不帶時沒有這個鍵；形狀不合的 commit 被拒絕且沒有寫入；清除章的每一條既有路徑（放棄、變更 schema 清掉驗證的章）一併清除 commit；commit 不影響凍結判定；開工帶分支時寫入 `branch`，不帶時沒有這個鍵，已開工時不改，退回提案中時移除；含斜線與中文的分支名稱寫入後 metadata 仍可解析且讀回原值；形狀不合的分支被拒絕。更新列舉全部命令變體的測試與命令名稱和參數的 golden（蓋章與開工的參數多了欄位）。涉及 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/inprogress.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/tests/golden/command-describe.json。驗證：`cargo test -p speclink-core -- station inprogress` 編譯失敗或測試失敗，且列出的測試數不是 0。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/change_schema.rs",
+        "crates/engine/speclink-core/src/lifecycle/inprogress.rs",
+        "crates/engine/speclink-core/src/quality/station/tests.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs"
+      ],
+      "recordedAt": "2026-11-12T09:03:47Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZE3CQ9RMZFP89F4XHA",
+      "taskDesc": "1.2 （Green）實作蓋章的 commit 與開工的分支：`ReviewStamp`、`VerifyStamp` 新增 `head_commit`，`InProgressAdd` 新增 `branch`，`ChangeMeta` 新增對應的欄位；寫入都經既有的純量跳脫。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/lifecycle/inprogress.rs、crates/engine/speclink-core/src/lifecycle/model.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core` 全部通過，`render_golden` 中 `list --json` 的快照沒有變。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "apps/desktop/core/src/manage.rs",
+        "crates/adapters/speclink-cli/src/verbs/station.rs",
+        "crates/adapters/speclink-verbs/src/families/progress.rs",
+        "crates/adapters/speclink-verbs/src/families/station.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/quality/station.rs",
+        "crates/engine/speclink-core/src/util.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ],
+      "recordedAt": "2026-11-12T09:08:23Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZEVYWR6J3Z3HNHSWTS",
+      "taskDesc": "1.3 （Red→Green）依 D5 實作落地的命令，對應規格「change landed 動詞回報落地的 commit」的引擎情境：先寫測試——寫入 `landed_commit`、`landed_at`、`landed_by`（匿名時不寫），有分支時覆寫 `branch`；重複回報覆寫；變更不存在是 not_found、metadata 壞掉被拒絕、commit 形狀不合是 invalid_argv，三者都零寫入；提案中的變更也能回報且階段不變；成功時回報一筆 `change-landed` 事件；封存後記錄仍在封存的 metadata。再實作 `Command::ChangeLanded`、結果與事件，並補上名稱、參數與事件的 payload。涉及 crates/engine/speclink-core/src/command/landing.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/host/speclink-host/src/commit.rs。驗證：`cargo test -p speclink-core landing` 與 `cargo test -p speclink-core --test it command_describe::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/engine/speclink-core/src/command/landing.rs"
+      ],
+      "recordedAt": "2026-11-12T09:10:51Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZE8B4F3B4SZ8XQK9RX",
+      "taskDesc": "1.4 （Red→Green）依 D6 讓 `show <change> --json` 帶出關卡、分支與落地，對應規格「分支與落地記錄的讀取」與兩個關卡規格的 show 情境：先寫測試——已蓋章的變更有 `review`（state、stampedAt、rounds、tasksTotal 與有值才出現的欄位，沒有 scope）；有工單時 state 是 `inProgress`；有分支與落地記錄時有 `branch` 與 `landed`；沒有資料時不輸出這些鍵；人眼輸出的 golden 不變；`list --json` 的輸出不變（既有的釘住測試不改）。再實作。涉及 crates/engine/speclink-core/src/command/mod.rs、crates/adapters/speclink-verbs/src/render/query.rs。驗證：`cargo test -p speclink-core` 與 `cargo test -p speclink-verbs` 通過；show `--json` 的 golden 同批更新。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/plan.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs"
+      ],
+      "recordedAt": "2026-11-12T09:15:24Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZEGEY6SYBE3EFNQ3DZ",
+      "taskDesc": "3.1 （Red）為 D1、D2、D5、D6 寫 Host 與線上型別的測試，對應規格「線上變更回應的關卡欄位」「落地回報的請求與回應」「變更回應攜帶關卡狀態與落地記錄」「審查與驗證事件歸到變更」：清單回填三態、已蓋章的清單項不帶 scope、單筆回應帶 scope、兩個關卡各自獨立、已封存的結局三種值、壞 metadata 的變更沒有關卡物件、回填不多發儲存呼叫（計數的儲存）；落地的路由成功、沒有寫入能力被拒、commit 形狀不合回 400、變更不存在回 404；蓋章請求帶與不帶 `headCommit`、開工請求帶 `branch`；線上歸屬表對落地的命令回答路由；事件分類函式把六種審查與驗證事件與落地事件歸到變更、其他維持 unknown；用新增欄位之前的型別解析新回應成功、新型別解析舊回應成功、不認得的 state 讀作未知。回應的 JSON 斷言 camelCase 與型別。涉及 crates/host/speclink-host/tests/station_wire.rs、crates/protocol/speclink-protocol/src/query.rs。驗證：`cargo test -p speclink-host --test station_wire` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/host/speclink-host/tests/station_wire.rs"
+      ],
+      "recordedAt": "2026-11-12T09:20:51Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZEF08J1M14S53QAGZE",
+      "taskDesc": "4.1 （Red）寫 CLI 的整合測試，對應 change-landing 三條需求的 CLI 情境：在 git checkout 裡 `speclink change landed demo` 用 HEAD 並印出前 12 個字元；指定 commit 與分支的 `--json`；重複回報覆寫；不是 git checkout 且不帶 `--commit` 時非 0 且 metadata 逐位元不變；commit 形狀不合、變更不存在各非 0；兩種模式的 `--json` 相同；在分支 feature/x 上 `in-progress add` 記下分支，detached HEAD 不記；`review stamp` 與 `verify stamp` 記下 HEAD，不是 git checkout 時照常蓋章，stdout 與改之前相同；`show --json` 帶出四個欄位；`list --json` 在兩種模式都沒有新欄位。涉及 crates/adapters/speclink-cli/tests/it/change_landing.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it change_landing::` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/progress.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/tests/it/api/review_api.rs",
+        "crates/host/speclink-server/tests/it/api/verify_api.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/adapters/speclink-cli/tests/it/change_landing.rs"
+      ],
+      "recordedAt": "2026-11-12T09:29:23Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZEHY800MX1M3TJJ0ZJ",
+      "taskDesc": "3.2 （Green）線上的型別、回填與路由：`speclink-protocol` 新增關卡物件與各回應的新欄位、落地的請求與回應、蓋章請求的 `headCommit`、開工請求的 `branch`；Host 新增「從工單與 metadata 判定關卡狀態」的函式並在清單、單筆與已封存的回填使用；新增落地的路由；事件分類函式搬到 Host 並公開，示範用 server 改呼叫它。涉及 crates/protocol/speclink-protocol/src/query.rs、crates/protocol/speclink-protocol/src/command.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/commit.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/host/speclink-server/src/api/events.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`（含成本測試）、`cargo test -p speclink-protocol` 與 `cargo test -p speclink-server` 通過，事件串流的既有測試只在審查與驗證事件的類別上更新期望值。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/common.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-node/__test__/agent-tool.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts",
+        "crates/protocol/speclink-remote/src/convert.rs"
+      ],
+      "recordedAt": "2026-11-12T09:34:55Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZE9RAD7NTDZ818XMJT",
+      "taskDesc": "5.1 （Red→Green）依 D7 把四態的判定抽成共用的純函式並接上遠端，對應規格「remote 專案的審查與驗證標示」：先寫測試——函式對「進行中」「已蓋章且任務數不同」「已蓋章、任務數相同、沒有讀檔函式」「已蓋章、任務數相同、一個檔案的指紋不同」「沒有資料」各回傳正確的狀態；本機專案的清單結果與抽出之前相同；遠端的清單項帶出兩個關卡的狀態、時間與人；有 checkout 時對任務數相符的已蓋章變更取單筆回應的 scope 並比對 checkout 的檔案；已封存的項目帶出結局；遠端封存在審查中或驗證中時帶上使用者選的保留旗標；Server 沒有欄位時狀態是沒有資料。再實作，並依 design 的 Open Question 量一次重新整理的耗時、決定要不要快取，把結論寫進 design.md。涉及 apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/remote.rs、speclink/changes/station-status-and-landing/design.md。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "apps/desktop/core/src/query.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/phase3_chain.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "apps/desktop/src-tauri/tests/it/remote_runtime.rs",
+        "apps/desktop/src/__tests__/remoteCapabilities.test.tsx",
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts",
+        "apps/desktop/src/adapter/remoteDataSource.ts",
+        "apps/desktop/src/session.ts"
+      ],
+      "recordedAt": "2026-11-12T09:46:18Z"
+    },
+    {
+      "taskId": "tsk_01M77488ZE6ZYQ6PB8X3SD81XD",
+      "taskDesc": "6.1 依 D8 在 commit 與 worktree-merge 的原稿各加一步，對應規格「提交後回報落地」與「合併後回報落地」：commit 在 git commit 成功後、不在 worktree 的變更分支上時執行 `speclink change landed <change-name>`；worktree-merge 在合併成功後執行帶 `--branch` 的同一個動詞；兩處都寫明被拒絕時告訴使用者並繼續。回答 design 的 Open Question（功能分支上的提交）並寫進 design.md。前進資產版號，重新產生 golden 快照與 lock 檔，用 `speclink update` 重新產生本 repo 的技能檔。不新增強調字。涉及 crates/engine/speclink-core/assets/skills/commit.md、crates/engine/speclink-core/assets/skills/worktree-merge.md、crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/tests/golden、本 repo 的 .claude/skills 與 .agents/skills。驗證：先 `cargo build -p speclink-cli` 再用 target/debug 的執行檔執行 `speclink update`；`cargo test -p speclink-core` 全部通過（含 `skill_authoring::` 與 `skill_verbization::`）；用 `git diff --stat` 確認快照的差異只在這兩支技能與版號行。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/commit.md",
+        "crates/engine/speclink-core/assets/skills/worktree-merge.md",
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md",
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs"
+      ],
+      "recordedAt": "2026-11-12T09:50:52Z"
+    }
+  ]
+}

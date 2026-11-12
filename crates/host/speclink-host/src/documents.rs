@@ -13,11 +13,12 @@
 use crate::port_view::{archived_doc_key, parse_key, spec_capability, KeyKind};
 use speclink_core::config::WorkflowConfig;
 use speclink_core::model::{ChangeMeta, META_READ_ORDER};
+use speclink_core::station::{self, Station, StationStatus, REVIEW, VERIFY};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::query::{
     ArchivedItem, ArchivedListResponse, BoardOrderResponse, ConfigResponse,
-    SearchHit, SearchResponse, SpecDocumentResponse,
+    SearchHit, SearchResponse, SpecDocumentResponse, StationOutcome,
 };
 use speclink_store::content_digest;
 use speclink_store_port::{
@@ -326,7 +327,20 @@ pub fn archived_list(
                 .into_iter()
                 .find_map(|doc| text(dated_name, doc));
             let meta = ChangeMeta::from_text(meta).unwrap_or_default();
+            // How a station ended: a stamp, or its ticket archived with the
+            // change, or nothing. The paths are the ones already listed.
+            let outcome = |st: &Station| {
+                if station::is_stamped(meta.anchors(st)) {
+                    StationOutcome::Stamped
+                } else if paths.contains(&st.doc) {
+                    StationOutcome::NotPassed
+                } else {
+                    StationOutcome::None
+                }
+            };
             ArchivedItem {
+                review_outcome: Some(outcome(&REVIEW)),
+                verify_outcome: Some(outcome(&VERIFY)),
                 dated_name: dated_name.to_string(),
                 date: date.to_string(),
                 name: name.to_string(),
@@ -398,28 +412,45 @@ fn capabilities_in<'k>(
 
 // --- what the change list and one change add ---
 
-/// The parsed data file of each named change, in one read. A name with no
-/// data file, or one that does not parse, has no entry: the Engine already
-/// reports a broken data file, and the list must not fail on it.
+/// What the change list and one change add to the Engine's answer: the
+/// change's parsed data file and its two quality stations.
+pub struct ChangeExtras {
+    pub meta: ChangeMeta,
+    pub review: StationStatus,
+    pub verify: StationStatus,
+}
+
+/// The [`ChangeExtras`] of each named change, in one read: each change's
+/// data file and its two tickets go into the same read, so the stations cost
+/// no store call. A name with no data file, or one that does not parse, has
+/// no entry: the Engine already reports a broken data file, and the list
+/// must not fail on it.
 pub fn change_extras(
     port: &dyn StorePort,
     scope: &ScopeId,
     names: &[String],
-) -> Result<BTreeMap<String, ChangeMeta>, DocumentsError> {
-    let named: Vec<(&String, DocKey)> = names
+) -> Result<BTreeMap<String, ChangeExtras>, DocumentsError> {
+    let named: Vec<(&String, DocKey, [Option<DocKey>; 2])> = names
         .iter()
-        .filter_map(|name| Some((name, keys::change_meta(name).ok()?)))
+        .filter_map(|name| {
+            let tickets = [&REVIEW, &VERIFY].map(|st| artifact_key(name, st.doc));
+            Some((name, keys::change_meta(name).ok()?, tickets))
+        })
         .collect();
-    let docs = read_all(
-        port,
-        scope,
-        named.iter().map(|(_, key)| key.clone()).collect(),
-    )?;
+    let wanted = named
+        .iter()
+        .flat_map(|(_, meta, tickets)| std::iter::once(meta.clone()).chain(tickets.iter().flatten().cloned()))
+        .collect();
+    let docs = read_all(port, scope, wanted)?;
     Ok(named
         .into_iter()
-        .filter_map(|(name, key)| {
+        .filter_map(|(name, key, [review, verify])| {
             let meta = ChangeMeta::from_text(Some(&docs.get(&key)?.content)).ok()?;
-            Some((name.clone(), meta))
+            let status = |st: &Station, ticket: Option<DocKey>| {
+                station::status(st, &meta, ticket.is_some_and(|key| docs.contains_key(&key)))
+            };
+            let (review, verify) = (status(&REVIEW, review), status(&VERIFY, verify));
+            Some((name.clone(), ChangeExtras { meta, review, verify }))
         })
         .collect())
 }

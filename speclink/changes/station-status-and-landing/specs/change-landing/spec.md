@@ -35,7 +35,7 @@
 
 ### Requirement: change landed 動詞回報落地的 commit
 
-CLI SHALL 提供 `speclink change landed <name> [--commit <sha>] [--branch <name>] [--json]`（另有 `--no-color`，無 stdin）。它 SHALL 把這個變更的程式碼落在哪個 commit 記進變更的 metadata：落地的 commit、回報的時間（RFC 3339）、回報的人（匿名時不記），以及有給 `--branch` 時覆寫分支的記錄。不帶 `--commit` 時 CLI SHALL 以 checkout 目前的 HEAD 提供；兩者都沒有時 SHALL 以非零 exit code 拒絕並說明要給 `--commit` 或在 git checkout 裡執行。commit SHALL 是 7 到 64 個十六進位字元，否則 SHALL 拒絕；引擎 SHALL NOT 檢查 commit 是否存在於任何 repo。變更不存在時 SHALL 以 not_found 拒絕；metadata 無法解析時 SHALL 拒絕且不寫入。這個動詞 SHALL NOT 依變更的階段拒絕，也 SHALL NOT 改變變更的階段。重複回報 SHALL 覆寫先前的記錄。全部寫入 SHALL 是對 metadata 的一次寫入；任一守門失敗時 SHALL 零寫入。成功時 stdout SHALL 為一行 `✓ <name> landed at <commit 的前 12 個字元>`；`--json` 時 SHALL 為 `{ "change": string, "commit": string, "branch"?: string }`，commit 為完整的值。成功時命令層 SHALL 回報一筆 change-landed 領域事件，payload 含 change、commit 與（有時）branch。這個動詞 SHALL 經命令執行層，本機、remote 模式、Node SDK 的 dispatch 與宿主套件的兩個門對相同輸入 SHALL 得到相同的結果；宿主的執行前掛鉤 SHALL 能看到命令名稱 change-landed 與它的參數。封存時這些記錄 SHALL 隨 metadata 一併保留。
+CLI SHALL 提供 `speclink change landed <name> [--commit <sha>] [--branch <name>] [--json]`（另有 `--no-color`，無 stdin）。它 SHALL 把這個變更的程式碼落在哪個 commit 記進變更的 metadata：落地的 commit、回報的時間（RFC 3339）、回報的人（匿名時不記），以及有給 `--branch` 時覆寫分支的記錄。不帶 `--commit` 時 CLI SHALL 以 checkout 目前的 HEAD 提供；兩者都沒有時 SHALL 以非零 exit code 拒絕並說明要給 `--commit` 或在 git checkout 裡執行。commit SHALL 是 7 到 64 個十六進位字元，否則 SHALL 拒絕；引擎 SHALL NOT 檢查 commit 是否存在於任何 repo。變更不存在時 SHALL 以 not_found 拒絕；metadata 無法解析時 SHALL 拒絕且不寫入。寫入後的 metadata 讀不回這次回報的值時（手改過的 metadata 把鍵寫成文字手術認不得的形式，補寫會造成重複的鍵）SHALL 拒絕且不寫入。這個動詞 SHALL NOT 依變更的階段拒絕，也 SHALL NOT 改變變更的階段。重複回報 SHALL 覆寫先前的記錄。全部寫入 SHALL 是對 metadata 的一次寫入；任一守門失敗時 SHALL 零寫入。成功時 stdout SHALL 為一行 `✓ <name> landed at <commit 的前 12 個字元>`；`--json` 時 SHALL 為 `{ "change": string, "commit": string, "branch"?: string }`，commit 為完整的值。成功時命令層 SHALL 回報一筆 change-landed 領域事件，payload 含 change、commit 與（有時）branch。這個動詞 SHALL 經命令執行層，本機、remote 模式、Node SDK 的 dispatch 與宿主套件的兩個門對相同輸入 SHALL 得到相同的結果；宿主的執行前掛鉤 SHALL 能看到命令名稱 change-landed 與它的參數。封存時這些記錄 SHALL 隨 metadata 一併保留。
 
 #### Scenario: 以目前的 HEAD 回報
 
@@ -66,6 +66,11 @@ CLI SHALL 提供 `speclink change landed <name> [--commit <sha>] [--branch <name
 
 - **WHEN** 執行 speclink change landed ghost --commit 0123456
 - **THEN** exit code 非零，stderr 說明找不到 ghost
+
+#### Scenario: 手改的鍵讀不回時拒絕
+
+- **WHEN** demo 的 metadata 有一行 `landed_commit : 0000000`（冒號前有空白），執行 speclink change landed demo --commit 0123456
+- **THEN** exit code 非零；metadata 逐位元不變
 
 #### Scenario: 提案中的變更也能回報
 

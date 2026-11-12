@@ -1,10 +1,12 @@
 //! What a commit carries besides its documents: the actor name and the
 //! events. Every commit path of the Host uses these two mappings, so a store
 //! sees the same actor string and the same event payload whichever store it
-//! is.
+//! is. [`event_resource`] is the way back: the resource a stored event is
+//! about, for a host that pushes events to its clients.
 
 use crate::context::Actor;
 use speclink_core::command::DomainEvent;
+use speclink_protocol::events::InvalidationScope;
 
 /// The actor string recorded in store history and event records. A store
 /// needs a non-empty actor, so anonymity maps to the stable "anonymous"
@@ -35,6 +37,14 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::ChangeDependsChanged { change, depends_on, .. } => json!({ "change": change, "dependsOn": depends_on }),
         DomainEvent::ChangeSchemaChanged { change, schema, .. } => json!({ "change": change, "schema": schema }),
         DomainEvent::ChangeRanked { change, .. } => json!({ "change": change }),
+        DomainEvent::ChangeLanded { change, commit, branch, .. } => {
+            // `branch` is in the payload only when the report gave one.
+            let mut payload = json!({ "change": change, "commit": commit });
+            if let Some(branch) = branch {
+                payload["branch"] = json!(branch);
+            }
+            payload
+        }
         DomainEvent::ChangeArchived { change, dated_name, .. } => json!({ "change": change, "datedName": dated_name }),
         DomainEvent::ChangeDiscarded { change, .. } => json!({ "change": change }),
         DomainEvent::DiscussionCreated { slug, .. } => json!({ "slug": slug }),
@@ -52,6 +62,51 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::VerifyRoundAdded { change, round, .. } => json!({ "change": change, "round": round }),
         DomainEvent::VerifyStamped { change, .. } => json!({ "change": change }),
         DomainEvent::VerifyDiscarded { change, .. } => json!({ "change": change }),
+    }
+}
+
+/// The resource a stored event is about: its category and its identity,
+/// from the event's kind name and its payload. This is the one table of it;
+/// the demo server's stream and a host with its own push both use it.
+///
+/// `change-archived` points at the specs the archive promoted; every other
+/// change event, the two quality stations' events and the landing report
+/// point at the change; every discussion event at the discussion. A name
+/// this table does not have is `unknown` with no identity: the client then
+/// reads everything again, and misses nothing.
+pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationScope, String) {
+    let field = |key: &str| payload.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
+    match kind {
+        "change-created"
+        | "artifact-created"
+        | "task-completed"
+        | "task-uncompleted"
+        | "task-moved"
+        | "change-claimed"
+        | "change-marked-in-progress"
+        | "change-in-progress-removed"
+        | "change-depends-changed"
+        | "change-schema-changed"
+        | "change-ranked"
+        | "change-landed"
+        | "change-discarded"
+        | "review-round-added"
+        | "review-stamped"
+        | "review-discarded"
+        | "verify-round-added"
+        | "verify-stamped"
+        | "verify-discarded" => (InvalidationScope::Change, field("change")),
+        "change-archived" => (InvalidationScope::Spec, field("change")),
+        "discussion-created"
+        | "discussion-context-set"
+        | "discussion-round-added"
+        | "discussion-concluded"
+        | "discussion-promoted"
+        | "discussion-linked"
+        | "discussion-sealed"
+        | "discussion-archived"
+        | "discussion-discarded" => (InvalidationScope::Discussion, field("slug")),
+        _ => (InvalidationScope::Unknown("unknown".to_string()), String::new()),
     }
 }
 
@@ -96,6 +151,24 @@ mod tests {
             (
                 DomainEvent::DiscussionRoundAdded { slug: "talk".into(), round: 2, occurred_at: at() },
                 json!({ "slug": "talk", "round": 2 }),
+            ),
+            (
+                DomainEvent::ChangeLanded {
+                    change: "add-x".into(),
+                    commit: "0123456789ab".into(),
+                    branch: Some("speclink/add-x".into()),
+                    occurred_at: at(),
+                },
+                json!({ "change": "add-x", "commit": "0123456789ab", "branch": "speclink/add-x" }),
+            ),
+            (
+                DomainEvent::ChangeLanded {
+                    change: "add-x".into(),
+                    commit: "0123456789ab".into(),
+                    branch: None,
+                    occurred_at: at(),
+                },
+                json!({ "change": "add-x", "commit": "0123456789ab" }),
             ),
         ];
         for (event, payload) in rows {

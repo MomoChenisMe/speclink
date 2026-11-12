@@ -1,7 +1,8 @@
 //! Execution-order verbs: `plan` (read), `change depends`, `change schema` and
-//! `change rank` (writes).
+//! `change rank` (writes); and `change landed`, the landing report of the same
+//! `change` family (station-status-and-landing D5).
 //!
-//! All four are Dual (add-change-plan-remote D4; change-schema-verb D5;
+//! All five are Dual (add-change-plan-remote D4; change-schema-verb D5;
 //! skills-verbs-first-wave D6): the fs arms read and write the local spec
 //! tree; the remote arms call the server endpoints and pass the response to
 //! the same output functions (speclink-verbs' `render::plan`), so both modes
@@ -12,13 +13,14 @@ use anyhow::Result;
 use speclink_core as core;
 
 use crate::common::{
-    emit, open_project, plain_command, render_options, run, worktree_facts, worktree_overlay,
+    emit, engine_command, open_project, plain_command, render_options, run, worktree_facts, worktree_overlay,
 };
 use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
-use speclink_verbs::families::plan::{rank_anchor, ChangeCommands, ChangeVerbArgs, PlanArgs};
+use speclink_verbs::families::plan::{rank_anchor, ChangeCommands, ChangeVerbArgs, PlanArgs, NO_COMMIT_TO_REPORT};
 use speclink_verbs::render::plan::{self as render, Depends};
+use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
     match &a.command {
@@ -72,6 +74,17 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             let ranked = core::command::ChangeRankOutcome { change: name.clone(), anchor, position: side };
             emit(render::rank(&ranked, render_options(*json)));
         }
+        ChangeCommands::Landed { json, .. } => {
+            // The checkout's own copy takes the record, not a worktree's: the
+            // report follows a commit or a merge made here, and after a merge
+            // the worktree's copy is about to be removed with it. Without
+            // `--commit` the commit is this checkout's HEAD.
+            let (ws, store) = open_project()?;
+            let inputs = VerbInputs { head_commit: core::tasks::head_commit(&ws.root), ..Default::default() };
+            let cmd = engine_command(a.to_command(inputs))?;
+            let o: core::command::ChangeLandedOutcome = run(&store, Some(&ws), cmd)?;
+            emit(render::landed(&o, render_options(*json)));
+        }
     }
     Ok(())
 }
@@ -119,6 +132,16 @@ pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
             };
             let ranked = core::command::ChangeRankOutcome { change: r.change, anchor: r.anchor, position };
             emit(render::rank(&ranked, render_options(json)));
+        }
+        ChangeCommands::Landed { name, commit, branch, json } => {
+            // The server has no repo: the commit comes from the flag or from
+            // this checkout's HEAD, and nothing is sent without one.
+            let Some(commit) = commit.or_else(|| core::tasks::head_commit(&ctx.ws.root)) else {
+                anyhow::bail!(NO_COMMIT_TO_REPORT);
+            };
+            let r = ctx.client.change_landed(&name, &commit, branch.as_deref())?;
+            let landed = core::command::ChangeLandedOutcome { change: r.change, commit: r.commit, branch: r.branch };
+            emit(render::landed(&landed, render_options(json)));
         }
     }
     Ok(())

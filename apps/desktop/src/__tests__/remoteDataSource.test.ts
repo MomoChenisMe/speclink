@@ -346,6 +346,33 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     });
   });
 
+  it("綁有 checkout 時清單請求帶 checkoutRoot，沒有時不帶（station-status-and-landing D7）", async () => {
+    const bound = fakeInvoke();
+    await createRemoteDataSource(CONN, PROJECT, REPO, bound.invoke, "/work/checkout").listChanges();
+    expect(bound.calls[0]).toEqual({
+      cmd: "remote_list_changes",
+      args: { connectionId: CONN, project: PROJECT, repo: REPO, checkoutRoot: "/work/checkout" },
+    });
+
+    const unbound = fakeInvoke();
+    await createRemoteDataSource(CONN, PROJECT, REPO, unbound.invoke).listChanges();
+    expect(unbound.calls[0].args).toEqual({ connectionId: CONN, project: PROJECT, repo: REPO });
+  });
+
+  it("封存對話框的放棄與照樣帶走映射到 remote_discard_station／remote_archive 並帶旗標", async () => {
+    const { invoke, calls } = fakeInvoke();
+    const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);
+    await ds.discardReview?.("chg");
+    await ds.discardVerify?.("chg");
+    await ds.archiveCarry?.("chg", true, false);
+    const locator = { connectionId: CONN, project: PROJECT, repo: REPO };
+    expect(calls).toEqual([
+      { cmd: "remote_discard_station", args: { ...locator, change: "chg", station: "review" } },
+      { cmd: "remote_discard_station", args: { ...locator, change: "chg", station: "verify" } },
+      { cmd: "remote_archive", args: { ...locator, change: "chg", carryReview: true, carryVerify: false } },
+    ]);
+  });
+
   it("claim maps to remote_claim carrying the locator（remote-claim-ownership）", async () => {
     const { calls, invoke } = fakeInvoke();
     const ds = createRemoteDataSource(CONN, PROJECT, REPO, invoke);

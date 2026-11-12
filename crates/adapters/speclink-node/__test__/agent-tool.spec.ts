@@ -75,6 +75,7 @@ describe('agentTool', () => {
     expect(listed).toContain('discuss add-round')
     expect(listed).toContain('workflow-config set')
     expect(listed).toContain('change rank')
+    expect(listed).toContain('change landed')
     expect(listed).toContain('evidence show')
     expect(listed).toContain('trace')
     expect(usages.filter((usage) => / stamp /.test(usage)).every((usage) => usage.includes('--stdin'))).toBe(true)

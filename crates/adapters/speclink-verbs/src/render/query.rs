@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 use speclink_core::command::{ListOutcome, ShowChange, ShowOutcome};
+use speclink_core::station::StationPhase;
 use speclink_core::status::StatusReport;
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
@@ -102,17 +103,37 @@ pub fn show_json(show: &ShowOutcome) -> Value {
             "files": [{ "content": content, "name": "spec.md" }],
             "name": name,
         }),
-        ShowOutcome::Change(c) => json!({
-            "name": c.name,
-            "schema": c.schema,
-            "created": c.created,
-            "proposal": c.proposal,
-            "design": c.design,
-            "tasks": c.tasks,
-            "deltaSpecs": delta_spec_files(c),
-            "fromDiscussions": c.from_discussions,
-            "restaleFrom": c.restale_from,
-        }),
+        ShowOutcome::Change(c) => {
+            let mut shown = json!({
+                "name": c.name,
+                "schema": c.schema,
+                "created": c.created,
+                "proposal": c.proposal,
+                "design": c.design,
+                "tasks": c.tasks,
+                "deltaSpecs": delta_spec_files(c),
+                "fromDiscussions": c.from_discussions,
+                "restaleFrom": c.restale_from,
+            });
+            // Optional keys: each is there only when the change has the record.
+            // A station with no ticket and no stamp has nothing recorded, so a
+            // change without records prints what it printed before these keys.
+            for (key, station) in [("review", &c.review), ("verify", &c.verify)] {
+                if let Some(station) = station.as_ref().filter(|s| s.phase != StationPhase::None) {
+                    shown[key] = station.to_json();
+                }
+            }
+            if let Some(branch) = &c.branch {
+                shown["branch"] = json!(branch);
+            }
+            if let Some(landed) = &c.landed {
+                shown["landed"] = json!({ "commit": landed.commit, "at": landed.at });
+                if let Some(by) = &landed.by {
+                    shown["landed"]["by"] = json!(by);
+                }
+            }
+            shown
+        }
     }
 }
 
@@ -331,6 +352,10 @@ mod tests {
             delta_capabilities: vec!["auth".to_string()],
             from_discussions: Vec::new(),
             restale_from: Vec::new(),
+            review: None,
+            verify: None,
+            branch: None,
+            landed: None,
         })
     }
 
@@ -355,6 +380,10 @@ mod tests {
                 delta_capabilities: caps,
                 from_discussions: Vec::new(),
                 restale_from: Vec::new(),
+                review: None,
+                verify: None,
+                branch: None,
+                landed: None,
             })
         };
         assert_eq!(show_human(&bare(Vec::new()), &PLAIN).stdout, "Change: empty\n");
@@ -391,6 +420,81 @@ mod tests {
             show_json(&spec),
             json!({ "files": [{ "content": "# auth\n", "name": "spec.md" }], "name": "auth" })
         );
+    }
+
+    /// `shown_change` with both stations, a branch and a landing record.
+    fn shown_change_with_records() -> ShowOutcome {
+        use speclink_core::command::LandedRecord;
+        use speclink_core::station::StationStatus;
+        let ShowOutcome::Change(mut change) = shown_change() else { unreachable!() };
+        change.review = Some(StationStatus {
+            phase: StationPhase::Stamped,
+            stamped_at: Some("2026-11-02".to_string()),
+            stamped_by: Some("Rev <r@example.com>".to_string()),
+            stamped_with: None,
+            rounds: Some(3),
+            tasks_total: Some(12),
+            commit: Some("0123456789ab".to_string()),
+            scope: vec![speclink_core::model::ReviewedScopeEntry { path: "src/a.rs".into(), hash: "aa".into() }],
+        });
+        change.verify = Some(StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() });
+        change.branch = Some("feature/x".to_string());
+        change.landed = Some(LandedRecord {
+            commit: "89abcdef0123".to_string(),
+            at: "2026-11-03T09:00:00+08:00".to_string(),
+            by: None,
+        });
+        ShowOutcome::Change(change)
+    }
+
+    #[test]
+    fn show_json_adds_the_stations_the_branch_and_the_landing_when_the_change_has_them() {
+        // spec change-landing「分支與落地記錄的讀取」與兩個關卡規格的 show 情境。
+        let shown = show_json(&shown_change_with_records());
+        assert_eq!(
+            shown["review"],
+            json!({
+                "state": "stamped",
+                "stampedAt": "2026-11-02",
+                "stampedBy": "Rev <r@example.com>",
+                "rounds": 3,
+                "tasksTotal": 12,
+                "commit": "0123456789ab",
+            }),
+            "no scope and no stampedWith key"
+        );
+        assert_eq!(shown["verify"], json!({ "state": "inProgress" }));
+        assert_eq!(shown["branch"], json!("feature/x"));
+        assert_eq!(shown["landed"], json!({ "commit": "89abcdef0123", "at": "2026-11-03T09:00:00+08:00" }));
+        // The keys that were there before are unchanged.
+        let before = show_json(&shown_change());
+        for (key, value) in before.as_object().unwrap() {
+            assert_eq!(&shown[key], value, "{key}");
+        }
+    }
+
+    #[test]
+    fn show_json_has_no_key_for_a_record_the_change_does_not_have() {
+        let shown = show_json(&shown_change());
+        for key in ["review", "verify", "branch", "landed"] {
+            assert!(shown.get(key).is_none(), "{key}");
+        }
+        // A station that never started is no record either: the output is the
+        // one from before these keys.
+        let ShowOutcome::Change(mut change) = shown_change() else { unreachable!() };
+        change.review = Some(speclink_core::station::StationStatus::none());
+        change.verify = Some(speclink_core::station::StationStatus::none());
+        assert_eq!(show_json(&ShowOutcome::Change(change)), shown);
+    }
+
+    #[test]
+    fn show_human_is_the_same_with_and_without_the_records() {
+        for paint in [&PLAIN, &COLOR] {
+            assert_eq!(
+                show_human(&shown_change_with_records(), paint).stdout,
+                show_human(&shown_change(), paint).stdout
+            );
+        }
     }
 
     // --- status ---
