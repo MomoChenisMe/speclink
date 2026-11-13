@@ -1062,18 +1062,18 @@ fn workspace_version_direction_only_orders_parsable_versions() {
     // 段數不足補零；任一邊無法完整解析為數字段時不排序方向——寧可誤報過期，
     // 不可誤報較新（會封鎖 update）。
     // spec Example「引擎 v1.11.0 探測 v1.14.0 工作區」的字面值：
-    assert!(workspace_is_newer("v1.14.0", "v1.11.0"), "工作區領先引擎");
-    assert!(!workspace_is_newer("v1.11.0", "v1.14.0"), "工作區落後引擎");
-    assert!(!workspace_is_newer("v1.14.0", "v1.14.0"), "同版不算領先");
+    assert!(is_newer_version("v1.14.0", "v1.11.0"), "工作區領先引擎");
+    assert!(!is_newer_version("v1.11.0", "v1.14.0"), "工作區落後引擎");
+    assert!(!is_newer_version("v1.14.0", "v1.14.0"), "同版不算領先");
     // 逐段數值（非字典序）：v1.9.0 < v1.10.0
-    assert!(workspace_is_newer("v1.10.0", "v1.9.0"), "以數值而非字典序比較");
+    assert!(is_newer_version("v1.10.0", "v1.9.0"), "以數值而非字典序比較");
     // 段數不足補零
-    assert!(workspace_is_newer("v1.14.1", "v1.14"), "缺段視為 0");
-    assert!(!workspace_is_newer("v1.14", "v1.14.0"), "補零後相等不算領先");
+    assert!(is_newer_version("v1.14.1", "v1.14"), "缺段視為 0");
+    assert!(!is_newer_version("v1.14", "v1.14.0"), "補零後相等不算領先");
     // 無法解析：兩個方向都不判較新
-    assert!(!workspace_is_newer("bogus", "v1.14.0"), "無法解析不得判較新");
-    assert!(!workspace_is_newer("v1.14.0-beta", "v1.14.0"), "非純數字段不得判較新");
-    assert!(!workspace_is_newer("v1.14.0", "bogus"), "引擎端無法解析亦不判較新");
+    assert!(!is_newer_version("bogus", "v1.14.0"), "無法解析不得判較新");
+    assert!(!is_newer_version("v1.14.0-beta", "v1.14.0"), "非純數字段不得判較新");
+    assert!(!is_newer_version("v1.14.0", "bogus"), "引擎端無法解析亦不判較新");
 }
 
 #[test]
@@ -2783,7 +2783,10 @@ fn served_skill(name: &str, version: &str, mark: &str) -> String {
 fn served(tool: &str, version: &str, names: &[&str]) -> RenderedTool {
     RenderedTool {
         tool: tool.to_string(),
-        skills: names.iter().map(|name| (name.to_string(), served_skill(name, version, tool))).collect(),
+        skills: names
+            .iter()
+            .map(|name| RenderedSkill { name: name.to_string(), content: served_skill(name, version, tool) })
+            .collect(),
     }
 }
 
@@ -2932,7 +2935,7 @@ fn served_digests(tool: &str, version: &str, names: &[&str]) -> ServedSkills {
         tool: tool.to_string(),
         digests: names
             .iter()
-            .map(|name| (name.to_string(), skill_digest(&served_skill(name, version, tool))))
+            .map(|name| SkillDigest { name: name.to_string(), digest: skill_digest(&served_skill(name, version, tool)) })
             .collect(),
     }
 }
@@ -3019,7 +3022,10 @@ fn a_served_answer_that_does_not_fit_the_checkout_cannot_be_judged() {
     let without_descriptor = vec![served[0].clone()];
     let with_another = [served.clone(), vec![served_digests("codex", "v1.58.0", &["apply"])]].concat();
     let bad_name = vec![
-        ServedSkills { tool: "claude".into(), digests: vec![("../escape".into(), "sha256:00".into())] },
+        ServedSkills {
+            tool: "claude".into(),
+            digests: vec![SkillDigest { name: "../escape".into(), digest: "sha256:00".into() }],
+        },
         served[1].clone(),
     ];
     for (case, answer) in [("a tool is absent", without_descriptor), ("a tool was not asked for", with_another), ("a bad name", bad_name)] {
@@ -3037,4 +3043,103 @@ fn a_checkout_without_a_tools_list_is_not_probed_against_the_server() {
     let probe = probe_served_skills(&root.dir, "v1.58.0", &[served_digests("claude", "v1.58.0", &["apply"])]);
     assert_eq!(probe.status, AssetStatus::Current, "the same rule as the local probe");
     assert!(probe.tools.is_empty());
+}
+
+// --- Server 一支技能都不給的工具不動（design D9） ---
+
+/// The files under one skills directory, with their bytes.
+fn files_under(root: &TempRoot, skills_dir: &str) -> Vec<(String, Vec<u8>)> {
+    let prefix = format!("{skills_dir}/");
+    snapshot(root).into_iter().filter(|(path, _)| path.starts_with(&prefix)).collect()
+}
+
+#[test]
+fn from_rendered_leaves_a_tool_the_server_gives_no_skill_alone() {
+    let root = TempRoot::new("rendered-unserved");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let wad_before = files_under(&root, ".wad/skills");
+    assert!(wad_before.iter().any(|(path, _)| path.ends_with("speclink-improve/SKILL.md")), "the descriptor has skills");
+
+    let rendered = vec![served("claude", "v1.58.0", &["apply"]), served("wad-harness", "v1.58.0", &[])];
+    let plan = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).unwrap();
+    let outcome = plan.apply(&root.dir).unwrap();
+
+    assert_eq!(outcome.updated, ["claude"], "the tool without skills is not reported as updated");
+    assert_eq!(outcome.unserved, ["wad-harness"]);
+    assert_eq!(files_under(&root, ".wad/skills"), wad_before, "nothing written, nothing removed");
+    assert_eq!(root.read(".claude/skills/speclink-apply/SKILL.md"), served_skill("apply", "v1.58.0", "claude"));
+    assert!(!root.exists(".claude/skills/speclink-improve"), "the other tool is installed and cleaned as before");
+}
+
+#[test]
+fn from_rendered_writes_nothing_when_the_server_gives_no_tool_a_skill() {
+    let root = TempRoot::new("rendered-all-unserved");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    let before = snapshot(&root);
+
+    let rendered = vec![served("claude", "v1.58.0", &[]), served("wad-harness", "v1.58.0", &[])];
+    let plan = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).unwrap();
+    assert_eq!(plan.leading_version("v0.0.1"), None, "nothing would be replaced");
+    let outcome = plan.apply(&root.dir).unwrap();
+
+    assert_eq!(outcome.updated, Vec::<String>::new());
+    assert_eq!(outcome.unserved, ["claude", "wad-harness"]);
+    assert_eq!(snapshot(&root), before, "no file changed");
+}
+
+#[test]
+fn a_local_sync_reports_no_unserved_tool() {
+    let root = TempRoot::new("local-unserved");
+    init(&root.dir, &[Tool::Claude], false, DEFAULT_SPEC_DIR).unwrap();
+    assert_eq!(update(&root.dir, false).unwrap().unserved, Vec::<String>::new());
+}
+
+#[test]
+fn a_tool_the_server_gives_no_skill_is_not_compared() {
+    let (root, served) = checkout_with_served_skills("served-unserved");
+    // The descriptor: the Server gives it nothing, and the checkout has skills of it.
+    let answer = vec![served[0].clone(), served_digests("wad-harness", "v1.58.0", &[])];
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &answer);
+    assert_eq!(probe.status, AssetStatus::Current, "its files are not extra");
+    assert_eq!(probe.differing_files, Vec::<String>::new());
+    let wad = probe.tools.iter().find(|t| t.tool == "wad-harness").expect("the tool is listed");
+    assert!(!wad.missing && !wad.stale);
+
+    // No skill file of it at all: not missing either.
+    std::fs::remove_dir_all(root.at(".wad/skills")).unwrap();
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &answer);
+    assert_eq!(probe.status, AssetStatus::Current);
+    assert!(!probe.tools.iter().find(|t| t.tool == "wad-harness").unwrap().missing);
+
+    // The other tool is still compared.
+    let changed = ".claude/skills/speclink-apply/SKILL.md";
+    root.write(changed, "edited\n");
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &answer);
+    assert_eq!((probe.status, probe.differing_files), (AssetStatus::Stale, vec![changed.to_string()]));
+}
+
+#[test]
+fn a_checkout_is_current_when_the_server_gives_no_tool_a_skill() {
+    let (root, _) = checkout_with_served_skills("served-all-unserved");
+    let answer = vec![served_digests("claude", "v1.58.0", &[]), served_digests("wad-harness", "v1.58.0", &[])];
+    let probe = probe_served_skills(&root.dir, "v1.58.0", &answer);
+    assert_eq!(probe.status, AssetStatus::Current);
+    assert_eq!(probe.differing_files, Vec::<String>::new());
+}
+
+/// 兩個工具共用同一個技能資料夾時，Server 對其中一個回空的清單也不能讓檢查看不到它：
+/// 另一個工具的清理會刪掉共用資料夾裡的技能（design D9 要避免的靜默刪除）。
+#[cfg(unix)]
+#[test]
+fn from_rendered_refuses_a_shared_skills_directory_also_when_one_of_its_tools_gets_no_skill() {
+    let root = TempRoot::new("rendered-shared-unserved");
+    seed_remote_workspace(&root, &[Tool::Claude]);
+    std::fs::remove_dir_all(root.at(".wad/skills")).unwrap();
+    std::os::unix::fs::symlink("../.claude/skills", root.at(".wad/skills")).unwrap();
+    let before = snapshot(&root);
+
+    let rendered = vec![served("claude", "v1.58.0", &["apply"]), served("wad-harness", "v1.58.0", &[])];
+    let error = SyncPlan::from_rendered(&root.dir, remote_selection(&root), rendered).err().expect("a shared directory");
+    assert!(error.to_string().contains("resolves to the same directory"), "{error}");
+    assert_eq!(snapshot(&root), before, "nothing was written or removed");
 }

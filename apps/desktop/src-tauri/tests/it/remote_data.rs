@@ -1339,7 +1339,11 @@ fn a_remote_checkout_is_probed_and_updated_from_what_the_server_gives() {
     assert_eq!(stale["differingFiles"], serde_json::json!([".claude/skills/speclink-propose/SKILL.md"]));
 
     // 更新：寫回 Server 的全文。
-    let outcome = ws.update_assets(&credentials, dir.path()).expect("update");
+    let outcome = ws
+        .skills_to_install(&credentials, dir.path())
+        .expect("the server's texts")
+        .install(dir.path())
+        .expect("update");
     assert_eq!(outcome["updated"], serde_json::json!(["claude"]), "{outcome}");
     let served = managed_skills(
         RenderTarget::Builtin(Tool::Claude),
@@ -1361,4 +1365,73 @@ fn a_remote_checkout_without_a_tool_has_nothing_to_probe() {
     let url = format!("{}/api/speclink/v1/projects/demo", h.origin);
     std::fs::write(dir.path().join(".speclink.yaml"), format!("remote:\n  url: {url}\n")).expect("config");
     assert_eq!(ws.probe_assets(&credentials, dir.path()).expect("probe"), None);
+}
+
+/// 一台固定回應的假 server：`/binding` 回 `binding`，`/skills` 回 `skills`；記下每個請求的
+/// 「METHOD 路徑」與內容。回傳 (origin, 請求記錄)。
+fn skills_fake(
+    binding: String,
+    skills: &'static str,
+) -> (Arc<tiny_http::Server>, String, Arc<std::sync::Mutex<Vec<(String, String)>>>) {
+    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
+    let origin = format!("http://{}", server.server_addr());
+    let asked: Arc<std::sync::Mutex<Vec<(String, String)>>> = Arc::default();
+    let (looper, log) = (server.clone(), asked.clone());
+    std::thread::spawn(move || {
+        for mut req in looper.incoming_requests() {
+            let mut body = String::new();
+            let _ = req.as_reader().read_to_string(&mut body);
+            let path = req.url().to_string();
+            log.lock().unwrap().push((format!("{} {path}", req.method()), body));
+            let answer = if path.ends_with("/binding") { binding.clone() } else { skills.to_string() };
+            let _ = req.respond(tiny_http::Response::from_string(answer));
+        }
+    });
+    (server, origin, asked)
+}
+
+fn fake_binding(capabilities: &str) -> String {
+    format!(
+        r#"{{"actor":{{"id":"u_1","name":"Tester"}},"project":{{"id":"prj_demo","key":"demo","name":"Demo"}},"repo":{{"id":"repo_backend","key":"backend","name":"Backend"}},"apiVersion":"1","engineVersion":"0.12.0","capabilities":{capabilities}}}"#
+    )
+}
+
+/// 連到 `origin` 的 claude checkout 與它的 workspace 把手。
+fn fake_checkout(origin: &str) -> (tempfile::TempDir, MemoryCredentialStore, RemoteWorkspace) {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let url = format!("{origin}/api/speclink/v1/projects/demo");
+    let claude = [speclink_core::skills::Tool::Claude];
+    speclink_core::init::init_remote(dir.path(), &claude, true, &url, Some("backend")).expect("checkout");
+    let credentials = MemoryCredentialStore::new();
+    credentials.set(origin, CredentialKind::Pat, "spk_pat_test").expect("set pat");
+    let workspace = RemoteWorkspace::at(origin, "demo", "backend", &Arc::new(TokenManager::new(origin)));
+    (dir, credentials, workspace)
+}
+
+#[test]
+fn a_server_that_declares_no_skills_gives_nothing_to_probe_and_is_not_asked_for_skills() {
+    let (server, origin, asked) = skills_fake(fake_binding("{}"), "{}");
+    let (dir, credentials, ws) = fake_checkout(&origin);
+
+    assert_eq!(ws.probe_assets(&credentials, dir.path()).expect("probe"), None);
+    let calls: Vec<String> = asked.lock().unwrap().iter().map(|(call, _)| call.clone()).collect();
+    assert_eq!(calls, ["GET /api/speclink/v1/projects/demo/binding"], "the handshake, and no skills request");
+    assert!(ws.skills_to_install(&credentials, dir.path()).is_err(), "nothing to install either");
+    server.unblock();
+}
+
+#[test]
+fn a_probe_asks_for_digests_only() {
+    let skills = r#"{"version":"v1.58.0","targets":[{"tool":"claude","skills":[{"name":"apply","digest":"sha256:00"}]}]}"#;
+    let (server, origin, asked) = skills_fake(fake_binding(r#"{"skills":{"version":"v1.58.0"}}"#), skills);
+    let (dir, credentials, ws) = fake_checkout(&origin);
+
+    let probe = ws.probe_assets(&credentials, dir.path()).expect("probe").expect("the server declares skills");
+    assert_eq!(probe["serverVersion"], "v1.58.0");
+    assert_eq!(probe["status"], "stale", "the checkout holds the local templates: {probe}");
+    let sent = asked.lock().unwrap().clone();
+    let (call, body) = sent.last().expect("a skills request");
+    assert_eq!(call, "POST /api/speclink/v1/projects/demo/skills");
+    assert_eq!(body, r#"{"targets":[{"tool":"claude"}]}"#, "no `contents`: the texts are not downloaded");
+    server.unblock();
 }

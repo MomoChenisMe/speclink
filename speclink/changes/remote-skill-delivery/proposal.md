@@ -27,7 +27,7 @@ Source discussion: embedded-host-needs（cut 13）。
 
 **用戶端這一邊**
 
-- `speclink update` 在遠端專案：Server 有宣告技能時，從 Server 取得技能並寫進 checkout；checkout 裡多出來的舊技能資料夾照既有的規則清掉。Server 沒有宣告（舊版 Server）或連不上時，照舊用本機的範本產生，並在 stderr 說明用的是本機的範本。
+- `speclink update` 在遠端專案：Server 有宣告技能時，從 Server 取得技能並寫進 checkout；checkout 裡多出來的舊技能資料夾照既有的規則清掉。Server 對某個工具一支技能都不給時，那個工具的技能檔維持原狀，stdout 多一行列出這些工具。Server 沒有宣告（舊版 Server）或連不上時，照舊用本機的範本產生，並在 stderr 說明用的是本機的範本。
 - 遠端專案的技能版本跟著 Server：Server 提供的版本比 checkout 裡的舊時也照裝，並印一行說明。`--allow-downgrade` 在這條路徑上不需要。
 - CLI 的提醒：執行遠端動詞時，如果本機 CLI 的技能版號比 Server 宣告的舊，在 stderr 印一行提醒，內容有兩邊的版號與更新的方式。同一台 Server 一天最多一次，不擋操作，不影響 exit code。CLI 不做自我更新。
 - `speclink init --store remote`：流程不變（先用本機的範本產生，讓還沒登入的人也有技能可用），結尾多一行提示登入後執行 `speclink update`。
@@ -42,6 +42,8 @@ Source discussion: embedded-host-needs（cut 13）。
   - Speclink Desktop 內建的技能版號比 Server 宣告的舊 → 「更新 Speclink」（仍然可以先安裝 Server 提供的技能）。
 - 確認框多一列「Server 提供的技能版本」。
 - 沒有 checkout 的遠端專案（只看規格）不探測。
+- Server 對某個工具一支技能都不給時，那個工具不比對，不出現提示。
+- 作用中的遠端專案有 checkout 時，監看 checkout 裡的技能目錄與 `.speclink.yaml`；在終端機改動技能檔之後，提示卡不必切換分頁就會更新。
 
 **Node SDK**
 
@@ -92,6 +94,7 @@ Source discussion: embedded-host-needs（cut 13）。
     - crates/protocol/speclink-remote/src/skills.rs
     - crates/adapters/speclink-cli/src/skill_notice.rs
     - crates/adapters/speclink-cli/tests/it/remote_skills.rs
+    - crates/adapters/speclink-cli/tests/it/door.rs
   - Modified:
     - crates/engine/speclink-core/src/workspace/init.rs
     - crates/engine/speclink-core/src/workspace/init/tests.rs
@@ -121,6 +124,7 @@ Source discussion: embedded-host-needs（cut 13）。
     - apps/desktop/core/src/project.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src-tauri/src/lib.rs
+    - apps/desktop/src-tauri/src/watch.rs
     - apps/desktop/src-tauri/tests/it/remote_data.rs
     - apps/desktop/src/App.tsx
     - apps/desktop/src/adapter/workspace.ts
@@ -138,7 +142,7 @@ Source discussion: embedded-host-needs（cut 13）。
 - 相依：排在變更 skills-verbs-second-wave 之後（要用它的「規格資料夾不在 checkout」渲染）。
 - 三種形態下的結果：
   - 本機 repo：不適用。本機專案的技能維持由本機產生。
-  - 連到遠端的 checkout：可用。技能來自 Server，worktree 的兩支跟著 Server 的流程設定。已知缺口：連到沒有宣告技能的舊版 Server 時，仍然用本機的範本，worktree 的兩支不會產生。
+  - 連到遠端的 checkout：可用。技能來自 Server，worktree 的兩支跟著 Server 的流程設定。Server 對某個工具一支技能都不給時，那個工具既有的技能檔留著。已知缺口：連到沒有宣告技能的舊版 Server 時，仍然用本機的範本，worktree 的兩支不會產生。
   - 沒有本機規格檔的內嵌宿主：宿主經 `createHost` 的 `skills` 決定提供哪些技能給連進來的工程師。宿主自己的 Agent 不適用：它直接用 `skills.render`。
 - 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：
   - Remote 入門：連上之後執行 `speclink update`；技能來自 Server；連到一台 Server 等於信任它提供的技能。

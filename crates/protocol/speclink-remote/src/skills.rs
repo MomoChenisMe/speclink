@@ -1,46 +1,60 @@
 //! The skills a Server gives a checkout (spec workspace-tools「remote 專案的技能取自
-//! Server」): which tools to ask for, the request, and the answer in the form the
-//! engine's sync plan installs. The CLI's `update` and the desktop app share these.
+//! Server」): which tools to ask for, and what to do with the answer — install it, or
+//! hand its digests to the engine's probe. The CLI's `update` and the desktop app share
+//! these; each asks the Server through its own client ([`Client::skills`]).
+//!
+//! [`Client::skills`]: crate::client::Client::skills
 
-use crate::client::Client;
 use crate::RemoteError;
 use speclink_core::config::Invocation;
-use speclink_core::init::{RenderedTool, ServedSkills, ToolSelection};
-use speclink_core::skills::Tool;
-use speclink_protocol::skills::{CustomTarget, SkillTarget, SkillsRequest, SkillsResponse};
+use speclink_core::init::{RenderedSkill, RenderedTool, ServedSkills, SkillDigest, SyncPlan, ToolSelection, UpdateOutcome};
+use speclink_protocol::skills::{CustomTarget, SkillTarget, SkillsResponse};
+use std::path::Path;
 
 /// The request targets of a checkout's tool selection, in the order the sync plan
-/// writes them: the built-ins (claude, codex, copilot, pi, cursor), then the
-/// descriptors in list order. The selection is the one the local sync resolves from
-/// `.speclink.yaml`, so both paths agree on which tools a checkout has; a descriptor
-/// that is not valid is no target, and the selection carries its error.
+/// writes them ([`ToolSelection::labels`]). The selection is the one the local sync
+/// resolves from `.speclink.yaml`, so both paths agree on which tools a checkout has;
+/// a descriptor that is not valid is no target, and the selection carries its error.
 pub fn targets_of(selection: &ToolSelection) -> Vec<SkillTarget> {
-    let builtins = Tool::ALL
-        .into_iter()
-        .filter(|tool| selection.builtins.contains(tool))
-        .map(|tool| SkillTarget { tool: tool.name().to_string(), custom: None });
-    let customs = selection.customs.iter().map(|custom| SkillTarget {
-        tool: custom.name.clone(),
-        custom: Some(CustomTarget {
-            invocation: match custom.invocation {
-                Invocation::Cli => "cli",
-                Invocation::ToolCall => "tool-call",
-            }
-            .to_string(),
-        }),
-    });
-    builtins.chain(customs).collect()
+    let invocation_of = |name: &str| {
+        let custom = selection.customs.iter().find(|custom| custom.name == name)?;
+        let invocation = match custom.invocation {
+            Invocation::Cli => "cli",
+            Invocation::ToolCall => "tool-call",
+        };
+        Some(CustomTarget { invocation: invocation.to_string() })
+    };
+    selection.labels().into_iter().map(|tool| SkillTarget { custom: invocation_of(&tool), tool }).collect()
 }
 
-/// Ask the Server for the skills of `targets`: digests only, or with each skill's
-/// text when `contents` is true.
-pub fn fetch(client: &Client, targets: &[SkillTarget], contents: bool) -> Result<SkillsResponse, RemoteError> {
-    client.skills(&SkillsRequest { targets: targets.to_vec(), contents })
+/// What installing a Server's answer did.
+#[derive(Debug)]
+pub struct Installed {
+    pub outcome: UpdateOutcome,
+    /// The Server's skill version.
+    pub version: String,
+    /// The newer version the checkout had, when the Server's is older.
+    pub replaced: Option<String>,
+}
+
+/// Install the skills of `response` — an answer asked for with contents — into the
+/// checkout at `root`: the files become what the Server gave for each tool of
+/// `selection`, and the other `speclink-` folders are removed. A tool the Server gives
+/// no skill is left as it is, and named in the outcome's `unserved`. The downgrade guard
+/// is not asked: a remote project's skills follow its Server. An answer that does not fit
+/// the checkout (a skill without its text, a name that is no skill name, a tool that was
+/// not asked for) is refused before any write.
+pub fn install(root: &Path, selection: ToolSelection, response: SkillsResponse) -> anyhow::Result<Installed> {
+    let version = response.version.clone();
+    let plan = SyncPlan::from_rendered(root, selection, rendered(response)?)?;
+    let replaced = plan.leading_version(&version);
+    let outcome = plan.apply(root)?;
+    Ok(Installed { outcome, version, replaced })
 }
 
 /// A response that was asked for with contents, as the sync plan takes it. A skill
 /// without its text is refused: there is nothing to install for it.
-pub fn rendered(response: SkillsResponse) -> Result<Vec<RenderedTool>, RemoteError> {
+fn rendered(response: SkillsResponse) -> Result<Vec<RenderedTool>, RemoteError> {
     response
         .targets
         .into_iter()
@@ -49,7 +63,7 @@ pub fn rendered(response: SkillsResponse) -> Result<Vec<RenderedTool>, RemoteErr
                 .skills
                 .into_iter()
                 .map(|skill| match skill.content {
-                    Some(content) => Ok((skill.name, content)),
+                    Some(content) => Ok(RenderedSkill { name: skill.name, content }),
                     None => Err(RemoteError {
                         message: format!(
                             "unexpected server response — skill '{}' of tool '{}' came without its text",
@@ -73,7 +87,11 @@ pub fn digests(response: &SkillsResponse) -> Vec<ServedSkills> {
         .iter()
         .map(|target| ServedSkills {
             tool: target.tool.clone(),
-            digests: target.skills.iter().map(|skill| (skill.name.clone(), skill.digest.clone())).collect(),
+            digests: target
+                .skills
+                .iter()
+                .map(|skill| SkillDigest { name: skill.name.clone(), digest: skill.digest.clone() })
+                .collect(),
         })
         .collect()
 }
@@ -81,7 +99,9 @@ pub fn digests(response: &SkillsResponse) -> Vec<ServedSkills> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::client::Client;
     use speclink_core::config::AppConfig;
+    use speclink_protocol::skills::SkillsRequest;
     use speclink_protocol::skills::{SkillEntry, TargetSkills};
     use std::sync::{Arc, Mutex};
 
@@ -161,13 +181,14 @@ mod tests {
     }
 
     #[test]
-    fn fetch_posts_the_targets_and_reads_the_answer() {
+    fn the_client_posts_the_targets_and_reads_the_answer() {
         let (server, base, sent) = serve(
             200,
             r#"{"version":"v1.58.0","targets":[{"tool":"claude","skills":[{"name":"apply","digest":"sha256:ab","content":"text\n"}]}]}"#,
         );
         let client = Client::new(&base, "tok", Some("backend"));
-        let response = fetch(&client, &[target("claude", None)], true).expect("the skills");
+        let ask = |targets: Vec<SkillTarget>, contents| client.skills(&SkillsRequest { targets, contents });
+        let response = ask(vec![target("claude", None)], true).expect("the skills");
         assert_eq!(response.version, "v1.58.0");
         assert_eq!(response.targets[0].skills[0].content.as_deref(), Some("text\n"));
 
@@ -178,16 +199,17 @@ mod tests {
         assert_eq!(header("x-speclink-api-version"), Some(speclink_protocol::API_VERSION));
         assert_eq!(header("x-speclink-repo"), Some("backend"));
 
-        fetch(&client, &[target("my-agent", Some("tool-call"))], false).expect("the digests");
+        ask(vec![target("my-agent", Some("tool-call"))], false).expect("the digests");
         let (_, _, body, _) = sent.lock().unwrap().last().cloned().unwrap();
         assert_eq!(body, r#"{"targets":[{"tool":"my-agent","custom":{"invocation":"tool-call"}}]}"#);
         server.unblock();
     }
 
     #[test]
-    fn fetch_gives_the_servers_refusal_as_a_remote_error() {
+    fn the_client_gives_the_servers_refusal_as_a_remote_error() {
         let (server, base, _) = serve(500, "{}");
-        let error = fetch(&Client::new(&base, "tok", None), &[target("claude", None)], true).expect_err("a 500");
+        let request = SkillsRequest { targets: vec![target("claude", None)], contents: true };
+        let error = Client::new(&base, "tok", None).skills(&request).expect_err("a 500");
         assert_eq!(error.status, Some(500));
         server.unblock();
     }
@@ -196,22 +218,84 @@ mod tests {
         SkillEntry { name: name.into(), digest: "sha256:00".into(), content: content.map(str::to_string) }
     }
 
+    /// A remote checkout with claude, its skills rendered by the local templates.
+    fn remote_checkout(dir: &std::path::Path) -> ToolSelection {
+        let url = "https://team.example.test/api/speclink/v1/projects/acme";
+        speclink_core::init::init_remote(dir, &[speclink_core::skills::Tool::Claude], true, url, None).unwrap();
+        ToolSelection::resolve(dir, &AppConfig::load(&dir.join(".speclink.yaml")).unwrap())
+    }
+
+    fn served_text(name: &str, version: &str) -> String {
+        format!("---\nname: speclink-{name}\nmetadata:\n  version: \"{version}\"\n---\n\nfrom the server\n")
+    }
+
+    fn answer(version: &str, skills: Vec<SkillEntry>) -> SkillsResponse {
+        SkillsResponse { version: version.into(), targets: vec![TargetSkills { tool: "claude".into(), skills }] }
+    }
+
+    fn skill_file(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+        dir.join(".claude").join("skills").join(format!("speclink-{name}")).join("SKILL.md")
+    }
+
     #[test]
-    fn rendered_is_each_tools_names_and_texts() {
-        let response = SkillsResponse {
-            version: "v1.58.0".into(),
-            targets: vec![
-                TargetSkills { tool: "claude".into(), skills: vec![entry("apply", Some("a\n")), entry("discuss", Some("d\n"))] },
-                TargetSkills { tool: "my-agent".into(), skills: vec![entry("apply", Some("n\n"))] },
-            ],
-        };
+    fn install_writes_the_servers_texts_and_removes_what_it_does_not_give() {
+        let dir = tempfile::tempdir().unwrap();
+        let selection = remote_checkout(dir.path());
+        assert!(skill_file(dir.path(), "discuss").exists(), "the local templates have discuss");
+        let texts = ["apply", "propose"].map(|name| (name, served_text(name, "v0.9.0")));
+        let skills = texts.iter().map(|(name, text)| entry(name, Some(text))).collect();
+
+        let installed = install(dir.path(), selection, answer("v0.9.0", skills)).expect("installed");
+        assert_eq!(installed.outcome.updated, ["claude"]);
+        assert_eq!(installed.version, "v0.9.0");
         assert_eq!(
-            rendered(response).unwrap(),
-            [
-                RenderedTool { tool: "claude".into(), skills: vec![("apply".into(), "a\n".into()), ("discuss".into(), "d\n".into())] },
-                RenderedTool { tool: "my-agent".into(), skills: vec![("apply".into(), "n\n".into())] },
-            ]
+            installed.replaced.as_deref(),
+            Some(speclink_core::init::ASSET_VERSION),
+            "the checkout had this engine's version, which is newer"
         );
+        for (name, text) in &texts {
+            assert_eq!(&std::fs::read_to_string(skill_file(dir.path(), name)).unwrap(), text);
+        }
+        assert!(!skill_file(dir.path(), "discuss").exists(), "a skill the Server does not give is removed");
+    }
+
+    #[test]
+    fn install_leaves_a_tool_without_skills_alone_and_names_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let selection = remote_checkout(dir.path());
+        let before = std::fs::read_to_string(skill_file(dir.path(), "discuss")).unwrap();
+        let installed = install(dir.path(), selection, answer("v1.58.0", Vec::new())).expect("nothing to install");
+        assert_eq!(installed.outcome.unserved, ["claude"]);
+        assert_eq!(installed.outcome.updated, Vec::<String>::new());
+        assert_eq!(installed.replaced, None);
+        assert_eq!(std::fs::read_to_string(skill_file(dir.path(), "discuss")).unwrap(), before);
+    }
+
+    #[test]
+    fn install_names_no_replaced_version_when_the_servers_is_not_older() {
+        let dir = tempfile::tempdir().unwrap();
+        let selection = remote_checkout(dir.path());
+        let text = served_text("apply", "v999.0.0");
+        let installed = install(dir.path(), selection, answer("v999.0.0", vec![entry("apply", Some(&text))])).unwrap();
+        assert_eq!(installed.replaced, None);
+    }
+
+    #[test]
+    fn install_refuses_an_answer_that_does_not_fit_and_writes_nothing() {
+        let dir = tempfile::tempdir().unwrap();
+        let before = std::fs::read_to_string(skill_file(dir.path(), "propose")).ok();
+        for (skills, names_it) in [
+            (vec![entry("apply", None)], "without its text"),
+            (vec![entry("../escape", Some("x"))], "skill name"),
+        ] {
+            let selection = remote_checkout(dir.path());
+            let kept = std::fs::read_to_string(skill_file(dir.path(), "propose")).unwrap();
+            let error = install(dir.path(), selection, answer("v1.58.0", skills)).expect_err("refused");
+            assert!(error.to_string().contains(names_it), "{names_it}: {error}");
+            assert_eq!(std::fs::read_to_string(skill_file(dir.path(), "propose")).unwrap(), kept, "{names_it}: zero writes");
+        }
+        assert_eq!(before, None, "the checkout started empty");
+        assert!(!dir.path().join("escape").exists());
     }
 
     #[test]
@@ -224,18 +308,11 @@ mod tests {
             digests(&response),
             [ServedSkills {
                 tool: "claude".into(),
-                digests: vec![("apply".into(), "sha256:00".into()), ("discuss".into(), "sha256:00".into())],
+                digests: ["apply", "discuss"]
+                    .map(|name| SkillDigest { name: name.into(), digest: "sha256:00".into() })
+                    .to_vec(),
             }]
         );
     }
 
-    #[test]
-    fn rendered_refuses_a_skill_without_its_text() {
-        let response = SkillsResponse {
-            version: "v1.58.0".into(),
-            targets: vec![TargetSkills { tool: "claude".into(), skills: vec![entry("apply", None)] }],
-        };
-        let error = rendered(response).expect_err("no text, nothing to install");
-        assert!(error.message.contains("apply") && error.message.contains("claude"), "{}", error.message);
-    }
 }

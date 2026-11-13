@@ -6,3 +6,7 @@ from_discussion: embedded-host-needs
 depends_on: skills-verbs-second-wave
 started_at: 2026-11-12T16:59:01+08:00
 started_by: MomoChen <momochenisme@gmail.com>
+landed_commit: 007e82cb546374c19e54aa1f2c8c0c74f88a9b47
+landed_at: 2026-11-13T10:14:25+08:00
+landed_by: MomoChen <momochenisme@gmail.com>
+branch: speclink/remote-skill-delivery

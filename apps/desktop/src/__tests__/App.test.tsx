@@ -1866,14 +1866,25 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
         workspace={ws as never}
       />,
     );
+    return ds;
   }
 
-  /** remote 專案的技能和 Server 提供的不同（1 個檔案）的 workspace 面。 */
+  /** remote 專案的技能和 Server 提供的不同（1 個檔案）的 workspace 面。checkout 的監看
+   * 以 `checkoutChanged()` 模擬通知；`unsubscribe` 是訂閱回傳的退訂函式。 */
   function remoteStaleWorkspace() {
+    const handlers: Array<() => void> = [];
+    const unsubscribe = vi.fn();
     return {
       ...staleWorkspace(),
       probeRemoteAssets: vi.fn().mockResolvedValue(REMOTE_STALE_PROBE),
       updateRemoteAssets: vi.fn().mockResolvedValue({ migrated: { movedFolder: false, renamed: 0 } }),
+      watchCheckoutSkills: vi.fn().mockResolvedValue(undefined),
+      onCheckoutSkillsChanged: vi.fn((_checkout: string, handler: () => void) => {
+        handlers.push(handler);
+        return unsubscribe;
+      }),
+      unsubscribe,
+      checkoutChanged: () => handlers.forEach((handler) => handler()),
     };
   }
 
@@ -1909,6 +1920,45 @@ describe("main content scroll containment（主內容區捲動約束）", () => 
     expect(ws.updateAssets).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId("asset-notice-card")).toBeNull());
     await waitFor(() => expect(screen.queryByTestId("asset-notice-dialog")).toBeNull());
+  });
+
+  // design D8／spec「remote 專案的技能檔被外部改動後提示自動更新」。
+  it("有 checkout 的 remote 分頁：checkout 的技能檔被改動後重新探測，提示卡跟著出現與消失，資料不重新載入", async () => {
+    const ws = remoteStaleWorkspace();
+    const current = { ...REMOTE_STALE_PROBE, status: "current" as const, differingFiles: [] };
+    ws.probeRemoteAssets.mockResolvedValue(current);
+    const ds = renderRemoteTab(ws, "/work/demo");
+    await screen.findByText("remote-change");
+    await waitFor(() => expect(ws.onCheckoutSkillsChanged).toHaveBeenCalledWith("/work/demo", expect.any(Function)));
+    await waitFor(() => expect(ws.watchCheckoutSkills).toHaveBeenCalledWith("/work/demo"));
+    expect(ws.watchWorkspace).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("asset-notice-card")).toBeNull();
+    const loads = vi.mocked(ds.listChanges).mock.calls.length;
+    const probes = ws.probeRemoteAssets.mock.calls.length;
+
+    // 使用者在終端機改壞一個技能檔。
+    ws.probeRemoteAssets.mockResolvedValue(REMOTE_STALE_PROBE);
+    act(() => ws.checkoutChanged());
+    expect(await screen.findByTestId("asset-notice-card")).toBeTruthy();
+    expect(ws.probeRemoteAssets.mock.calls.length).toBe(probes + 1);
+
+    // 改回 Server 的內容。
+    ws.probeRemoteAssets.mockResolvedValue(current);
+    act(() => ws.checkoutChanged());
+    await waitFor(() => expect(screen.queryByTestId("asset-notice-card")).toBeNull());
+    expect(vi.mocked(ds.listChanges).mock.calls.length).toBe(loads);
+
+    // 分頁卸載後退訂。
+    cleanup();
+    expect(ws.unsubscribe).toHaveBeenCalled();
+  });
+
+  it("沒有 checkout 的 remote 分頁不訂閱 checkout 的監看", async () => {
+    const ws = remoteStaleWorkspace();
+    renderRemoteTab(ws);
+    await screen.findByText("remote-change");
+    expect(ws.onCheckoutSkillsChanged).not.toHaveBeenCalled();
+    expect(ws.watchCheckoutSkills).not.toHaveBeenCalled();
   });
 
   it("有 checkout 的 remote 分頁：Server 沒有提供技能、或探測失敗時沒有提示", async () => {

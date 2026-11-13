@@ -1,7 +1,7 @@
 //! 開啟專案：所選目錄的四態判定（本機專案／remote binding／未初始化／錯誤）與未初始化目錄的
 //! 初始化。僅回報判定結果或執行 init——root 的切換由 Tauri 層的狀態持有者決定。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Serialize;
 use speclink_core::workspace::Workspace;
@@ -159,11 +159,12 @@ pub fn probe_assets_at(path: &Path) -> serde_json::Value {
 pub fn update_assets_at(path: &Path) -> Result<serde_json::Value, String> {
     let outcome =
         speclink_core::init::update(path, false).map_err(|e| single_line(&e.to_string()))?;
-    Ok(outcome_payload(&outcome))
+    Ok(update_outcome_payload(&outcome))
 }
 
-/// 更新動作回給前端的形狀：本機與 remote 專案共用。
-fn outcome_payload(outcome: &speclink_core::init::UpdateOutcome) -> serde_json::Value {
+/// 更新動作回給前端的形狀：本機與 remote 專案共用（remote 專案的更新由 Tauri 殼以
+/// `speclink_remote::skills::install` 套用，回報經這裡轉成同一個形狀）。
+pub fn update_outcome_payload(outcome: &speclink_core::init::UpdateOutcome) -> serde_json::Value {
     serde_json::json!({
         "updated": outcome.updated,
         "pruned": outcome.pruned,
@@ -194,22 +195,75 @@ pub fn probe_remote_assets_at(
     value
 }
 
-/// 把 Server 提供的技能全文寫進 checkout（remote-skill-delivery D6）：和 CLI 的
-/// `speclink update` 在 remote 專案用同一個計畫——檔案集合等於 Server 的回應，多出來
-/// 的 `speclink-` 資料夾被清掉，不經降級守門（技能版本跟著 Server）。回應和 checkout
-/// 的工具對不上、或技能名稱不是名稱時，在任何寫入之前拒絕。失敗為單行 Err。
-pub fn update_remote_assets_at(
-    checkout: &Path,
-    rendered: Vec<speclink_core::init::RenderedTool>,
-) -> Result<serde_json::Value, String> {
-    use speclink_core::init::{SyncPlan, ToolSelection};
-    let install = || -> Result<_, Box<dyn std::error::Error>> {
-        let app = speclink_core::config::AppConfig::load(&checkout.join(".speclink.yaml"))?;
-        let plan = SyncPlan::from_rendered(checkout, ToolSelection::resolve(checkout, &app), rendered)?;
-        Ok(plan.apply(checkout)?)
-    };
-    let outcome = install().map_err(|e| single_line(&e.to_string()))?;
-    Ok(outcome_payload(&outcome))
+/// checkout 監看的一個掛載點：路徑，以及要不要連同底下的資料夾一起監看。
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WatchTarget {
+    pub path: PathBuf,
+    pub recursive: bool,
+}
+
+/// 有 checkout 的 remote 專案要監看什麼（remote-skill-delivery D8）：技能檔探測會讀的東西，
+/// 不是整個 checkout。
+#[derive(Debug, Clone)]
+pub struct SkillWatchTargets {
+    /// checkout 的根。
+    root: PathBuf,
+    /// 掛載點。第一個是 checkout 的根（不遞迴）；其餘每個都存在。
+    pub mounts: Vec<WatchTarget>,
+    /// 各工具的技能目錄，相對於 checkout 的根。
+    skills_dirs: Vec<PathBuf>,
+    /// 其中推導時還不存在的：等它們出現。
+    awaited: Vec<PathBuf>,
+}
+
+impl SkillWatchTargets {
+    /// `relative`（相對於 checkout 的根）的變動和技能檔的探測有沒有關係：`.speclink.yaml`
+    /// 本身、技能目錄裡的任何東西，或一個不在的技能目錄的某一層上層——推導時還不存在的
+    /// （它的出現代表技能目錄可能跟著出現），以及現在不見了的（整個工具資料夾被刪掉時，
+    /// 只剩上層的事件能說明這件事）。根不遞迴的監看會看到根底下每一項的變動——`.git`、
+    /// 原始碼資料夾，在 Windows 上還有「還在的工具資料夾裡多了一個檔案」——這些都不算。
+    pub fn concerns(&self, relative: &Path) -> bool {
+        if relative == Path::new(".speclink.yaml") {
+            return true;
+        }
+        if relative.as_os_str().is_empty() {
+            return false;
+        }
+        self.skills_dirs.iter().any(|dir| {
+            relative.starts_with(dir)
+                || (dir.starts_with(relative) && (self.awaited.contains(dir) || !self.root.join(dir).is_dir()))
+        })
+    }
+}
+
+/// `checkout` 的監看目標：checkout 的根（不遞迴：`.speclink.yaml` 的改動、工具資料夾的
+/// 出現），加上每個工具的技能目錄（遞迴）。技能目錄還不存在時，改成它最近一個存在的上層
+/// （不遞迴，最遠到根）。工具清單和探測用同一個選集；`.speclink.yaml` 讀不出來時只有根。
+pub fn skill_watch_targets_at(checkout: &Path) -> SkillWatchTargets {
+    use speclink_core::config::AppConfig;
+    use speclink_core::init::ToolSelection;
+    let skills_dirs: Vec<PathBuf> = AppConfig::load(&checkout.join(".speclink.yaml"))
+        .map(|app| ToolSelection::resolve(checkout, &app).skills_dirs().into_iter().map(PathBuf::from).collect())
+        .unwrap_or_default();
+    let mut mounts = vec![WatchTarget { path: checkout.to_path_buf(), recursive: false }];
+    let mut awaited = Vec::new();
+    for dir in &skills_dirs {
+        let full = checkout.join(dir);
+        let target = if full.is_dir() {
+            WatchTarget { path: full, recursive: true }
+        } else {
+            awaited.push(dir.clone());
+            let below_root = |path: &&Path| path.starts_with(checkout) && *path != checkout;
+            match full.ancestors().skip(1).take_while(below_root).find(|path| path.is_dir()) {
+                Some(ancestor) => WatchTarget { path: ancestor.to_path_buf(), recursive: false },
+                None => continue,
+            }
+        };
+        if !mounts.contains(&target) {
+            mounts.push(target);
+        }
+    }
+    SkillWatchTargets { root: checkout.to_path_buf(), mounts, skills_dirs, awaited }
 }
 
 /// 關於頁的版本資訊（desktop-about-page design D1）：一次回齊，前端不自行拼湊。
@@ -426,7 +480,7 @@ mod tests {
 
     // --- remote 專案：基準是 Server 提供的技能（remote-skill-delivery D6） ---
 
-    use speclink_core::init::{managed_skills, skill_digest, RenderedTool, ServedSkills, ASSET_VERSION};
+    use speclink_core::init::{managed_skills, skill_digest, ServedSkills, SkillDigest, ASSET_VERSION};
     use speclink_core::skills::{RenderTarget, SpecLocation, Tool};
 
     /// 連到遠端專案的 checkout（claude 單工具），技能檔是本機範本產生的。
@@ -445,7 +499,8 @@ mod tests {
     }
 
     fn digests_of(texts: &[(String, String)]) -> Vec<ServedSkills> {
-        let digests = texts.iter().map(|(name, text)| (name.clone(), skill_digest(text))).collect();
+        let digests =
+            texts.iter().map(|(name, text)| SkillDigest { name: name.clone(), digest: skill_digest(text) }).collect();
         vec![ServedSkills { tool: "claude".into(), digests }]
     }
 
@@ -497,39 +552,93 @@ mod tests {
         assert_eq!(unreadable["appOlderThanServer"], false);
     }
 
-    #[test]
-    fn update_remote_assets_writes_the_servers_texts() {
-        let fx = FixtureRoot::new("remote-update");
-        remote_checkout(&fx);
-        let ahead = ahead_of_current();
-        // Server 的版本比 app 新、內容也不同：照 Server 的寫。
-        let texts: Vec<(String, String)> = ["apply", "propose"]
-            .iter()
-            .map(|name| {
-                let text = format!("---\nname: speclink-{name}\nmetadata:\n  version: \"{ahead}\"\n---\n\nfrom the server\n");
-                (name.to_string(), text)
-            })
-            .collect();
-        let rendered = vec![RenderedTool { tool: "claude".into(), skills: texts.clone() }];
+    // --- checkout 的監看目標（remote-skill-delivery D8） ---
 
-        let outcome = update_remote_assets_at(fx.root(), rendered).expect("update ok");
-        assert_eq!(outcome["updated"], serde_json::json!(["claude"]), "{outcome}");
-        assert_eq!(std::fs::read_to_string(propose_skill(&fx)).unwrap(), texts[1].1);
-        assert!(!fx.root().join(".claude").join("skills").join("speclink-discuss").exists(), "Server 沒給的被清掉");
-        let probe = probe_remote_assets_at(fx.root(), &ahead, &digests_of(&texts));
-        assert_eq!(probe["status"], "current", "{probe}");
-        assert_eq!(probe["tools"][0]["workspaceVersion"], ahead.as_str());
+    /// claude 與一個自訂描述子（`.my-agent/skills`）的 remote checkout；只有 claude 的技能檔存在。
+    fn checkout_with_two_tools(fx: &FixtureRoot) {
+        remote_checkout(fx);
+        fx.write(
+            ".speclink.yaml",
+            "tools:\n  - claude\n  - name: my-agent\n    skills_dir: .my-agent/skills\nremote:\n  url: https://team.example.test/api/speclink/v1/projects/acme\n",
+        );
+    }
+
+    fn mounts(fx: &FixtureRoot) -> Vec<(PathBuf, bool)> {
+        skill_watch_targets_at(fx.root()).mounts.into_iter().map(|m| (m.path, m.recursive)).collect()
     }
 
     #[test]
-    fn update_remote_assets_refuses_an_answer_that_does_not_fit_with_zero_writes() {
-        let fx = FixtureRoot::new("remote-update-refused");
-        remote_checkout(&fx);
-        let before = std::fs::read_to_string(propose_skill(&fx)).unwrap();
-        let rendered = vec![RenderedTool { tool: "claude".into(), skills: vec![("../escape".into(), "x".into())] }];
-        let err = update_remote_assets_at(fx.root(), rendered).expect_err("不是技能名稱");
-        assert!(!err.contains('\n'), "單行錯誤：{err}");
-        assert_eq!(std::fs::read_to_string(propose_skill(&fx)).unwrap(), before, "拒絕＝零寫入");
+    fn skill_watch_targets_are_the_root_and_each_tools_skills_directory() {
+        let fx = FixtureRoot::new("watch-targets");
+        checkout_with_two_tools(&fx);
+        std::fs::create_dir_all(fx.root().join(".my-agent").join("skills")).unwrap();
+        assert_eq!(
+            mounts(&fx),
+            [
+                (fx.root().to_path_buf(), false),
+                (fx.root().join(".claude").join("skills"), true),
+                (fx.root().join(".my-agent").join("skills"), true),
+            ],
+            "根不遞迴；每個工具的技能目錄遞迴"
+        );
+    }
+
+    #[test]
+    fn skill_watch_targets_fall_back_to_the_nearest_folder_that_exists() {
+        let fx = FixtureRoot::new("watch-targets-missing");
+        checkout_with_two_tools(&fx);
+        // claude：`.claude` 在、`.claude/skills` 不在；my-agent：整個不在，最近的上層是根。
+        std::fs::remove_dir_all(fx.root().join(".claude").join("skills")).unwrap();
+        assert_eq!(
+            mounts(&fx),
+            [(fx.root().to_path_buf(), false), (fx.root().join(".claude"), false)],
+            "上層不遞迴；根不重複"
+        );
+    }
+
+    #[test]
+    fn skill_watch_targets_are_only_the_root_when_the_config_cannot_be_read() {
+        let fx = FixtureRoot::new("watch-targets-bad-config");
+        checkout_with_two_tools(&fx);
+        fx.write(".speclink.yaml", ": not yaml : [\n");
+        assert_eq!(mounts(&fx), [(fx.root().to_path_buf(), false)]);
+        // 設定檔修好的那一次改動仍然要通知。
+        assert!(skill_watch_targets_at(fx.root()).concerns(Path::new(".speclink.yaml")));
+    }
+
+    #[test]
+    fn a_checkout_watch_concerns_the_config_and_the_skills_directories_only() {
+        let fx = FixtureRoot::new("watch-concerns");
+        checkout_with_two_tools(&fx);
+        let targets = skill_watch_targets_at(fx.root());
+        // claude 的技能目錄存在；my-agent 的還不存在，它的上層出現時要重新探測。
+        for path in [
+            ".speclink.yaml",
+            ".claude/skills/speclink-apply/SKILL.md",
+            ".claude/skills",
+            ".my-agent",
+            ".my-agent/skills",
+            ".my-agent/skills/speclink-apply",
+        ] {
+            assert!(targets.concerns(Path::new(path)), "{path}");
+        }
+        // `.claude` 本身的變動（例如裡面多了一個設定檔）不算：它的技能目錄已經被監看。
+        for path in
+            ["", "src", "src/main.rs", ".git", ".git/index", ".claude", ".claude/settings.json", "README.md", ".speclink"]
+        {
+            assert!(!targets.concerns(Path::new(path)), "{path}");
+        }
+    }
+
+    #[test]
+    fn a_checkout_watch_concerns_the_parent_of_a_skills_directory_that_is_gone() {
+        let fx = FixtureRoot::new("watch-concerns-gone");
+        checkout_with_two_tools(&fx);
+        let targets = skill_watch_targets_at(fx.root());
+        assert!(!targets.concerns(Path::new(".claude")), "技能目錄還在：上層的變動不算");
+        // 整個工具資料夾被刪掉：只剩上層的事件能說明這件事。
+        std::fs::remove_dir_all(fx.root().join(".claude")).unwrap();
+        assert!(targets.concerns(Path::new(".claude")));
     }
 
     /// 舊佈局專案：`.speclink.yaml` 沒有 spec_dir、規格在 openspec/、一個舊檔名的

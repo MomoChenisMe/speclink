@@ -4,7 +4,7 @@
 <!-- BEFORE: 只對本地專案探測；remote 專案不觸發；確認框三列 -->
 <!-- REMOVED-SCENARIO: remote 分頁不觸發 -->
 
-桌面 app SHALL 於本地專案成為作用中時執行指令檔過期探測,並於更新動作完成後與 workspace-changed 事件到達時重新探測。有 checkout 的 remote 專案成為作用中時 SHALL 同樣探測,基準改為 Server 提供的技能:Server 宣告技能時,以 Server 回應的技能摘要與 checkout 裡各工具的技能檔比對——任一工具沒有任何技能檔為缺失,任一技能的內容不同、缺少或多出為過期,全部相同為現版;Server 沒有宣告技能、無法連線或沒有 checkout 時 SHALL 無任何提示,且 SHALL NOT 記入略過。remote 專案的探測 SHALL NOT 下載技能全文。探測回報過期、缺失或較新、且該專案未略過當前產物層版號時,SHALL 於專案欄底部、專案設定項上方呈現一張琥珀淡底的提示卡(琥珀圖示、一句標題、一句說明、右端 ›);提示卡 SHALL 於該專案的所有頁面(變更、已封存、規格、手冊、專案設定)常駐,SHALL NOT 佔用主區、SHALL NOT 以 modal 阻斷操作,SHALL NOT 於沒有 checkout 的 remote 專案觸發探測。探測回報現版或無法判定時 SHALL 無任何提示;無法判定 SHALL NOT 記入略過、SHALL NOT 視同現版。其他開著的本地專案上次探測為過期、缺失或較新時,其圖示列方塊角落 SHALL 亮琥珀點,提示附「技能檔需要處理」;背景專案 SHALL NOT 主動探測。
+桌面 app SHALL 於本地專案成為作用中時執行指令檔過期探測,並於更新動作完成後與 workspace-changed 事件到達時重新探測。有 checkout 的 remote 專案成為作用中時 SHALL 同樣探測,基準改為 Server 提供的技能:Server 宣告技能時,以 Server 回應的技能摘要與 checkout 裡各工具的技能檔比對——任一工具沒有任何技能檔為缺失,任一技能的內容不同、缺少或多出為過期,全部相同為現版;Server 對某個工具的回應不含任何技能時,該工具 SHALL NOT 參與比對——不算缺失、也不算過期,它既有的技能檔不列入會改寫的檔案;每個工具都是如此時為現版。Server 沒有宣告技能、無法連線或沒有 checkout 時 SHALL 無任何提示,且 SHALL NOT 記入略過。有 checkout 的 remote 專案為作用中時,app SHALL 監看 checkout 裡各工具的技能目錄與 `.speclink.yaml`,它們變動時 SHALL 重新探測,不需要切換分頁;這個監看 SHALL NOT 觸發專案資料的重新載入,切到其他分頁後 SHALL 停止。remote 專案的探測 SHALL NOT 下載技能全文。探測回報過期、缺失或較新、且該專案未略過當前產物層版號時,SHALL 於專案欄底部、專案設定項上方呈現一張琥珀淡底的提示卡(琥珀圖示、一句標題、一句說明、右端 ›);提示卡 SHALL 於該專案的所有頁面(變更、已封存、規格、手冊、專案設定)常駐,SHALL NOT 佔用主區、SHALL NOT 以 modal 阻斷操作,SHALL NOT 於沒有 checkout 的 remote 專案觸發探測。探測回報現版或無法判定時 SHALL 無任何提示;無法判定 SHALL NOT 記入略過、SHALL NOT 視同現版。其他開著的本地專案上次探測為過期、缺失或較新時,其圖示列方塊角落 SHALL 亮琥珀點,提示附「技能檔需要處理」;背景專案 SHALL NOT 主動探測。
 
 點提示卡 SHALL 開啟確認框:琥珀圖示、標題、說明,一張細框卡三列(這個專案的技能檔版本、你的 Speclink 版本、會改寫的檔案數——較新態第三列為會被換回舊內容的檔案數),按鈕依探測狀態:過期為「稍後」「保留現狀」「更新技能檔」、缺失為「稍後」「保留現狀」「安裝技能檔」(從未安裝的專案不以「更新」稱之)、較新為「保留現狀」「更新 Speclink」。較新時 SHALL 以「app 本體是舊版、專案檔案較新」語意呈現,SHALL NOT 提供任何改寫專案檔案的動作,「更新 Speclink」SHALL 開啟應用程式設定的更新頁。「稍後」SHALL 只關閉確認框、提示卡維持。remote 專案的確認框 SHALL 多一列「Server 提供的技能版本」;「更新技能檔」與「安裝技能檔」SHALL 向 Server 取得技能全文並寫入 checkout,寫入後的技能檔 SHALL 等於 Server 的回應。app 內建的技能版號舊於 Server 宣告的版號時,remote 專案的確認框 SHALL 多一句說明與「更新 Speclink」按鈕,原有的安裝或更新按鈕 SHALL 仍然可用。remote 專案的略過記憶 SHALL 以該專案與 Server 提供的技能版本為鍵。
 
@@ -79,6 +79,16 @@
 
 - **WHEN** app 內建的技能版號舊於 Server 宣告的版號，remote 專案的技能需要更新
 - **THEN** 確認框有一句說明 app 較舊，並同時有「更新技能檔」與「更新 Speclink」兩個按鈕
+
+#### Scenario: Server 對某個工具不提供任何技能時不提示
+
+- **WHEN** 有 checkout 的 remote 專案的 tools 為 claude 與 codex;claude 的技能與 Server 提供的相同,Server 對 codex 回應空的清單,而 checkout 的 codex 技能目錄有既有的技能檔(或沒有任何技能檔)
+- **THEN** 沒有提示卡;codex 的技能檔不列入會改寫的檔案
+
+#### Scenario: remote 專案的技能檔被外部改動後提示自動更新
+
+- **WHEN** 有 checkout 的 remote 專案為作用中且技能與 Server 相同,使用者在終端機改動 checkout 裡的一個技能檔
+- **THEN** 不需要切換分頁,提示卡出現;把那個檔案改回 Server 的內容後,提示卡消失;過程中專案的變更清單沒有重新載入
 
 #### Scenario: 沒有 checkout 的 remote 分頁不觸發
 

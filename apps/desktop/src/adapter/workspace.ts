@@ -4,6 +4,7 @@
 // 統計）收路徑參數；設定面經 createWorkspaceSettings 將 root 綁入閉包，每支
 // command 顯式帶 root。
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { ReviewRules } from "@speclink/ui";
 
@@ -171,6 +172,11 @@ export interface WorkspaceAdapter {
   updateRemoteAssets(target: RemoteCheckout): Promise<AssetUpdateResult>;
   /** 監看重掛（workspace-session 決策 5）：顯式跟隨活躍 session。 */
   watchWorkspace(root: string): Promise<void>;
+  /** 有 checkout 的 remote 專案的監看重掛：監看 checkout 裡各工具的技能目錄與
+   * `.speclink.yaml`（不是整個 checkout）。和本機的監看共用同一個槽位。 */
+  watchCheckoutSkills(checkout: string): Promise<void>;
+  /** 訂閱 `checkout` 的技能檔變動；回傳退訂函式。只通知，不帶內容——收到後重新探測。 */
+  onCheckoutSkillsChanged(checkout: string, handler: () => void): () => void;
   /** 原生資料夾選擇器；取消回 null。 */
   pickFolder(): Promise<string | null>;
 }
@@ -187,6 +193,15 @@ export function createWorkspaceAdapter(): WorkspaceAdapter {
     probeRemoteAssets: (target) => tauriInvoke("probe_remote_assets", { ...target }),
     updateRemoteAssets: (target) => tauriInvoke("update_remote_assets", { ...target }),
     watchWorkspace: (root) => tauriInvoke("watch_workspace", { root }),
+    watchCheckoutSkills: (checkout) => tauriInvoke("watch_checkout_skills", { checkout }),
+    onCheckoutSkillsChanged: (checkout, handler) => {
+      const unlisten = listen<string>("checkout-skills-changed", (event) => {
+        if (event.payload === checkout) handler();
+      });
+      return () => {
+        void unlisten.then((stop) => stop());
+      };
+    },
     pickFolder: async () => {
       const picked = await open({ directory: true, multiple: false });
       return typeof picked === "string" ? picked : null;

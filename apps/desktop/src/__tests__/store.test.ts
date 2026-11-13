@@ -2168,6 +2168,40 @@ describe("remote 專案的技能檔提示", () => {
     expect(selectAssetPrompt(store.getState())?.kind).toBe("stale");
   });
 
+  // design D8：有 checkout 的 remote 分頁監看 checkout 的技能檔，不監看規格資料夾。
+  it("監看重掛：有 checkout 的 remote 分頁掛 checkout 的監看，不掛本機的監看", async () => {
+    const ws = remoteWorkspace({ watchCheckoutSkills: vi.fn().mockResolvedValue(undefined) });
+    const store = storeWithRemoteCheckout(ws);
+    await store.getState().rearmWatch();
+    expect(ws.watchCheckoutSkills).toHaveBeenCalledWith("/work/demo");
+    expect(ws.watchWorkspace).not.toHaveBeenCalled();
+  });
+
+  it("監看重掛：checkout 的監看掛不上時不拋錯（降級為沒有自動重新探測）", async () => {
+    const ws = remoteWorkspace({ watchCheckoutSkills: vi.fn().mockRejectedValue("watch unavailable") });
+    const store = storeWithRemoteCheckout(ws);
+    await expect(store.getState().rearmWatch()).resolves.toBeUndefined();
+  });
+
+  it("監看重掛：沒有 checkout 的 remote 分頁什麼都不掛", async () => {
+    const ws = remoteWorkspace({ watchCheckoutSkills: vi.fn().mockResolvedValue(undefined) });
+    const remote = remoteSession(fakeDataSource(), "backend");
+    const store = trackedAppStore({
+      createSession: () => {
+        throw new Error("remote 分頁不建 local session");
+      },
+      workspace: ws,
+    });
+    store.setState({
+      tabs: [{ locator: remote.locator, name: remote.descriptor.name }],
+      sessions: { [remote.id]: remote },
+      activeKey: remote.id,
+    });
+    await store.getState().rearmWatch();
+    expect(ws.watchCheckoutSkills).not.toHaveBeenCalled();
+    expect(ws.watchWorkspace).not.toHaveBeenCalled();
+  });
+
   it("保留現狀：以專案與 Server 的版本記下；同一版不再提示，Server 換版後再出現", async () => {
     const probe = vi.fn().mockResolvedValue(REMOTE_STALE_PROBE);
     const store = storeWithRemoteCheckout(remoteWorkspace({ probeRemoteAssets: probe }));
