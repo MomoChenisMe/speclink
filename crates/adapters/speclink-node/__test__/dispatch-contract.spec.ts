@@ -288,13 +288,13 @@ describe('dispatch covers every verb that has an engine command', () => {
    * A value two runs can compare: every mention of the fixture root is
    * replaced, and so is every date (a run across midnight writes two days).
    */
-  const portable = (value: unknown, root: string): unknown =>
-    JSON.parse(
-      JSON.stringify(value)
-        .split(root)
-        .join('<root>')
-        .replace(/\d{4}-\d{2}-\d{2}/g, '<date>'),
-    )
+  const portable = (value: unknown, root: string): unknown => {
+    // On Windows the root has backslashes: path fields print it with forward
+    // slashes, and JSON escapes the backslashes of every other mention.
+    const forms = [root.split('\\').join('/'), JSON.stringify(root).slice(1, -1)]
+    const text = forms.reduce((all, form) => all.split(form).join('<root>'), JSON.stringify(value))
+    return JSON.parse(text.replace(/\d{4}-\d{2}-\d{2}/g, '<date>'))
+  }
 
   const fsEngine = (root: string) => createEngine({ store: { type: 'fs', root } })
 
