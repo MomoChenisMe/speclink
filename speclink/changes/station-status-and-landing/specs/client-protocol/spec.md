@@ -2,7 +2,7 @@
 
 ### Requirement: 線上變更回應的關卡欄位
 
-變更清單回應的每個項目與單筆變更的回應 SHALL 各增列選填的 `review` 與 `verify` 物件（camelCase，缺席時不序列化）：`state`（字串：`none`、`inProgress`、`stamped`）；state 為 `stamped` 時另有 `stampedAt`（字串）、`rounds`（整數）、`tasksTotal`（整數），以及有值才出現的 `stampedBy`、`stampedWith`、`commit`（字串）。單筆變更的回應在 `stamped` 時 SHALL 另含 `scope`（陣列，每項 `path` 與 `hash`）；清單的項目 SHALL NOT 含 `scope`。判定 SHALL 為：該關卡的工單存在 → `inProgress`；否則 metadata 有完整的章 → `stamped`；否則 → `none`。Server SHALL NOT 回報「蓋章後內容是否變動」：這個判定 SHALL 由有工作樹的用戶端以 `tasksTotal` 與 `scope` 自行完成。已封存清單的每個項目 SHALL 增列選填的 `reviewOutcome` 與 `verifyOutcome`（字串：`none`、`stamped`、`notPassed`——封存的文件集含該關卡的工單而沒有章）。變更清單的項目 SHALL 增列選填的 `branch` 與 `landedCommit`；單筆變更的回應 SHALL 增列選填的 `branch`、`landedCommit`、`landedAt`、`landedBy`。用戶端 SHALL 把不認得的 state 值讀作未知而不報錯。這些欄位 SHALL 全部是選填：不認得它們的舊版用戶端 SHALL 照常解析回應，舊版 Server 的回應沒有它們時新版用戶端 SHALL 把關卡讀作沒有資料。CLI 於 remote 模式 SHALL NOT 把 `review`、`verify`、`branch`、`landedCommit` 帶進 `speclink list --json`。
+變更清單回應的每個項目與單筆變更的回應 SHALL 各增列選填的 `review` 與 `verify` 物件（camelCase，缺席時不序列化）：`state`（字串：`none`、`inProgress`、`stamped`）；state 為 `stamped` 時另有 `stampedAt`（字串）、`rounds`（整數）、`tasksTotal`（整數），以及有值才出現的 `stampedBy`、`stampedWith`、`commit`（字串）。單筆變更的回應在 `stamped` 時 SHALL 另含 `scope`（陣列，每項 `path` 與 `hash`）；清單的項目 SHALL NOT 含 `scope`。判定 SHALL 為：該關卡的工單存在 → `inProgress`；否則 metadata 有完整的章 → `stamped`；否則 → `none`。Server SHALL NOT 回報「蓋章後內容是否變動」：這個判定 SHALL 由有工作樹的用戶端以 `tasksTotal` 與 `scope` 自行完成。已封存清單的每個項目 SHALL 增列選填的 `reviewOutcome` 與 `verifyOutcome`（字串：`none`、`stamped`、`notPassed`）。結局的判定 SHALL 與進行中的變更同一個順序：封存的文件集含該關卡的工單 → `notPassed`；否則 metadata 有章 → `stamped`；否則 → `none`。工單與章並存時（蓋章後重開工單，再帶著未結的工單封存）SHALL 是 `notPassed`：重開的工單取代了舊章。變更清單的項目 SHALL 增列選填的 `branch` 與 `landedCommit`；單筆變更的回應 SHALL 增列選填的 `branch`、`landedCommit`、`landedAt`、`landedBy`。用戶端 SHALL 把不認得的 state 值讀作未知而不報錯。這些欄位 SHALL 全部是選填：不認得它們的舊版用戶端 SHALL 照常解析回應，舊版 Server 的回應沒有它們時新版用戶端 SHALL 把關卡讀作沒有資料。CLI 於 remote 模式 SHALL NOT 把 `review`、`verify`、`branch`、`landedCommit` 帶進 `speclink list --json`。
 
 #### Scenario: 審查中的清單項
 
@@ -28,6 +28,11 @@
 
 - **WHEN** 一個變更帶著未結的驗證工單被封存，另一個兩關都蓋章後封存，請求已封存清單
 - **THEN** 前者的 verifyOutcome 是 `notPassed`，後者的 reviewOutcome 與 verifyOutcome 都是 `stamped`
+
+#### Scenario: 蓋章後重開工單再封存
+
+- **WHEN** 一個變更的審查蓋章後又開了新的一輪審查（審查工單存在，章還在 metadata），帶著這張未結的工單被封存，請求已封存清單
+- **THEN** 它的 reviewOutcome 是 `notPassed`
 
 #### Scenario: 舊版用戶端解析新回應
 
@@ -77,3 +82,38 @@ Client Protocol SHALL 定義落地回報：對專案底下 changes/<name>/landed
 
 - **WHEN** 舊版用戶端送出不含 headCommit 的蓋章請求
 - **THEN** 蓋章照常成功，該關卡沒有 commit 欄位
+
+## MODIFIED Requirements
+
+### Requirement: 已封存清單的審查結局欄位
+
+desktop 協定的已封存清單項 SHALL 增列 `reviewStatus`（字串 enum：`"none"`／`"reviewed"`／`"reviewedNotPassed"`）：封存目錄含審查工單 → `reviewedNotPassed`；否則含章 → `reviewed`；皆無 → `none`。工單與章並存時（蓋章後重開工單，再帶著未結的工單封存）SHALL 讀作 `reviewedNotPassed`：重開的工單取代了舊章，順序與進行中變更的判定相同。這是刻意變更：先前工單與章並存的封存項讀作 `reviewed`；其餘封存項的值不變。已經存進本機快取的結局 SHALL 依這個順序重新判定。已封存側 SHALL NOT 做凍結度重算（封存即定格）。
+
+#### Scenario: 化石工單的封存項
+
+- **WHEN** desktop 載入已封存清單且某項的封存目錄含 review.md 而 metadata 無 reviewed 欄位
+- **THEN** 該項 `reviewStatus` 為 `"reviewedNotPassed"`
+
+#### Scenario: 工單與章並存的封存項
+
+- **WHEN** desktop 載入已封存清單且某項的封存目錄含 review.md，metadata 也有 reviewed 欄位
+- **THEN** 該項 `reviewStatus` 為 `"reviewedNotPassed"`
+
+#### Scenario: 只有章的封存項
+
+- **WHEN** desktop 載入已封存清單且某項的封存目錄沒有 review.md 而 metadata 有 reviewed 欄位
+- **THEN** 該項 `reviewStatus` 為 `"reviewed"`
+
+### Requirement: 已封存清單的驗證結局欄位
+
+desktop 協定的已封存清單項 SHALL 增列 `verifyStatus`（`"none"`／`"verified"`／`"verifiedNotPassed"`）：封存目錄含驗證工單 → `verifiedNotPassed`；否則含驗證章 → `verified`；皆無 → `none`。工單與章並存時 SHALL 讀作 `verifiedNotPassed`，理由與順序同審查結局。這是刻意變更：先前工單與章並存的封存項讀作 `verified`；其餘封存項的值不變。已經存進本機快取的結局 SHALL 依這個順序重新判定。已封存側不重算凍結度。
+
+#### Scenario: 化石驗證工單的封存項
+
+- **WHEN** desktop 載入已封存清單且某項封存目錄含 verify.md 而 metadata 無 verified 欄位
+- **THEN** 該項 `verifyStatus` 為 `"verifiedNotPassed"`
+
+#### Scenario: 驗證工單與章並存的封存項
+
+- **WHEN** desktop 載入已封存清單且某項封存目錄含 verify.md，metadata 也有 verified 欄位
+- **THEN** 該項 `verifyStatus` 為 `"verifiedNotPassed"`

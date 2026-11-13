@@ -2,7 +2,7 @@
 
 use crate::keylines::KeyLines;
 use crate::schema::{Artifact, Schema};
-use crate::station::{StampAnchors, Station, StationId};
+use crate::station::{Stamp, StampAnchors, Station, StationId};
 use crate::store::Store;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -179,48 +179,40 @@ impl ChangeMeta {
             .unwrap_or_else(|| "spec-driven".to_string())
     }
 
-    /// 一個品質站的章在這份 meta 裡的三個錨（lifecycle-station-anchors D1）：
-    /// 「這個站的章住在哪些欄位」只有這一份對映。對 `StationId` 窮舉 match——
-    /// 第三站來時漏補臂是編譯錯誤，不會靜默讀到空章。
-    pub fn anchors(&self, st: &Station) -> StampAnchors<'_> {
+    /// 一個品質站的章在這份 meta 裡的全部欄位（lifecycle-station-anchors D1）：「這個站的
+    /// 章住在哪些欄位」只有這一份對映。對 `StationId` 窮舉 match——第三站來時漏補臂是
+    /// 編譯錯誤，不會靜默讀到空章。
+    pub fn stamp(&self, st: &Station) -> Stamp<'_> {
         match st.id {
-            StationId::Review => StampAnchors {
-                stamped_at: self.reviewed_at.as_deref(),
+            StationId::Review => Stamp {
+                at: self.reviewed_at.as_deref(),
+                by: self.reviewed_by.as_deref(),
+                with: self.reviewed_with.as_deref(),
                 tasks_total: self.reviewed_tasks_total,
+                rounds: self.reviewed_rounds,
+                commit: self.reviewed_commit.as_deref(),
                 scope: &self.reviewed_scope,
             },
-            StationId::Verify => StampAnchors {
-                stamped_at: self.verified_at.as_deref(),
+            StationId::Verify => Stamp {
+                at: self.verified_at.as_deref(),
+                by: self.verified_by.as_deref(),
+                with: self.verified_with.as_deref(),
                 tasks_total: self.verified_tasks_total,
+                rounds: self.verified_rounds,
+                commit: self.verified_commit.as_deref(),
                 scope: &self.verified_scope,
             },
         }
     }
 
-    /// 一個品質站歷次蓋章累加的回合數（process-cost-metrics D1）。與 [`Self::anchors`]
-    /// 同樣對 `StationId` 窮舉 match——第三站來時漏補臂是編譯錯誤。
+    /// 章的三個錨（凍結判定與「是否已蓋章」的原料），取自 [`Self::stamp`]。
+    pub fn anchors(&self, st: &Station) -> StampAnchors<'_> {
+        self.stamp(st).anchors()
+    }
+
+    /// 一個品質站歷次蓋章累加的回合數（process-cost-metrics D1），取自 [`Self::stamp`]。
     pub fn stamp_rounds(&self, st: &Station) -> Option<u64> {
-        match st.id {
-            StationId::Review => self.reviewed_rounds,
-            StationId::Verify => self.verified_rounds,
-        }
-    }
-
-    /// 一個品質站的章是誰蓋的、用什麼工具（`<prefix>_by`、`<prefix>_with`）。與
-    /// [`Self::anchors`] 同樣對 `StationId` 窮舉 match。
-    pub fn stamp_attribution(&self, st: &Station) -> (Option<&str>, Option<&str>) {
-        match st.id {
-            StationId::Review => (self.reviewed_by.as_deref(), self.reviewed_with.as_deref()),
-            StationId::Verify => (self.verified_by.as_deref(), self.verified_with.as_deref()),
-        }
-    }
-
-    /// 一個品質站蓋章時記下的 commit。與 [`Self::anchors`] 同樣對 `StationId` 窮舉 match。
-    pub fn stamp_commit(&self, st: &Station) -> Option<&str> {
-        match st.id {
-            StationId::Review => self.reviewed_commit.as_deref(),
-            StationId::Verify => self.verified_commit.as_deref(),
-        }
+        self.stamp(st).rounds
     }
 
     /// The discussions this change was promoted from or linked to. `from_discussion`
@@ -458,12 +450,20 @@ pub fn checked_commit(raw: &str) -> anyhow::Result<String> {
 }
 
 /// 呼叫端回報的分支名稱（開工、落地回報）：1 到 255 個字元、不含控制字元與空白，
-/// 否則是呼叫端參數錯誤。只看形狀，不查分支是否存在。
+/// 而且 metadata 存得進去；否則是呼叫端參數錯誤。只看名稱本身，不查分支是否存在。
 pub fn checked_branch(raw: &str) -> anyhow::Result<&str> {
     let chars = raw.chars().count();
     if !(1..=255).contains(&chars) || raw.chars().any(|c| c.is_control() || c.is_whitespace()) {
         anyhow::bail!(crate::command::InvalidContent(format!(
             "invalid branch {raw:?} — expected 1 to 255 characters with no whitespace or control characters"
+        )));
+    }
+    // 形狀合格的名稱 YAML 不一定帶得了（U+FFFE 讀回來是別的字，整份文件從此解析不了）：
+    // 照寫入的樣子寫一次，讀不回同一個字串就拒絕。
+    let stored = format!("{}: {}\n", crate::inprogress::BRANCH_KEY, crate::util::yaml_roundtrip_scalar(raw));
+    if !ChangeMeta::from_text(Some(&stored)).is_ok_and(|meta| meta.branch.as_deref() == Some(raw)) {
+        anyhow::bail!(crate::command::InvalidContent(format!(
+            "invalid branch {raw:?} — the change's metadata cannot record it"
         )));
     }
     Ok(raw)

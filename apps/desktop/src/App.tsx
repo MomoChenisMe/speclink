@@ -1622,7 +1622,8 @@ function AppInner({
 
       {/* 封存入口的未結工單三選項（spec「封存入口三選項擴及驗證工單」）：目標
           change 該站工單未結時取代一般封存確認；未選擇前不執行封存。remote
-          清單項不帶 inReview／inVerify，天然走一般確認。 */}
+          專案同樣適用；連到不回報關卡狀態的舊版 Server 時清單項沒有
+          inReview／inVerify，走一般確認。 */}
       <ReviewArchiveDialog
         open={pendingArchiveStation !== null}
         change={s.pendingArchive}

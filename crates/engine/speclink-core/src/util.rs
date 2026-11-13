@@ -273,10 +273,11 @@ pub fn yaml_scalar(s: &str) -> String {
     }
 }
 
-/// [`yaml_scalar`]，外加一道保證：寫出的值讀回來一定是同一個字串。YAML 會把
-/// `null`、`~`、`true`、`123`、`1e5` 這類沒加引號的字讀成別種值（或讀成缺席），
-/// 這裡替它們補上引號。給值域是任意識別字的欄位用（分支名稱、commit）。
-pub fn yaml_string(s: &str) -> String {
+/// [`yaml_scalar`]，再替「讀回來會變成別種值」的字補上引號：YAML 會把 `null`、`~`、
+/// `true`、`123`、`1e5` 這類沒加引號的字讀成別種型別（或讀成缺席）。給值域是任意識別字
+/// 的欄位用（分支名稱、commit）。它管不到 YAML 根本帶不了的字元（例如 U+FFFE）：值來自
+/// 外部時，呼叫端要自己在寫入前確認讀得回來。
+pub fn yaml_roundtrip_scalar(s: &str) -> String {
     let scalar = yaml_scalar(s);
     if scalar.starts_with('"') {
         return scalar;

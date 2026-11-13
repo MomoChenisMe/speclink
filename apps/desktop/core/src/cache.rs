@@ -10,10 +10,11 @@ use std::path::Path;
 
 use rusqlite::Connection;
 use serde_json::{json, Value};
-use speclink_core::station::{REVIEW_DOC, VERIFY_DOC};
+use speclink_core::station::{ArchivedOutcome, Station, REVIEW, VERIFY};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
+use crate::query::archived_status_str;
 
 /// 快取 schema 版本。改動快取表結構時遞增——舊版本會被丟棄重建。
 /// v2：archived_changes 加 tasks_total／tasks_done（清單徽章，首次收斂後零解析）。
@@ -24,7 +25,8 @@ use crate::init_core_context;
 ///     「已封存清單的呈現輔助欄位」）。
 /// v7：加 doc_lines／lead_days／lead_hours／review_rounds／verify_rounds（已封存頁的
 ///     流程成本摘要，spec client-protocol「已封存清單的流程成本欄位」）。
-const CACHE_VERSION: i64 = 7;
+/// v8：表結構不變；審查與驗證的結局改成「有工單優先」，存下的舊結局要重算。
+const CACHE_VERSION: i64 = 8;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -86,29 +88,15 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             // 歷史紀錄照舊寬鬆讀取。
             let parsed = speclink_core::model::ChangeMeta::from_text(Some(&meta)).unwrap_or_default();
             let spec_count = store.archived_delta_capabilities(name).len() as i64;
-            // 審查結局（封存即定格，不重算凍結度）：含章 → reviewed；含化石工單
-            // 而無章 → reviewedNotPassed；皆無 → none。入庫後清單讀取零解析。
-            let review_status = if parsed.reviewed_at.is_some() {
-                "reviewed"
-            } else if store
-                .read_archived_artifact(name, REVIEW_DOC)
-                .is_some()
-            {
-                "reviewedNotPassed"
-            } else {
-                "none"
+            // 審查結局（封存即定格，不重算凍結度）：含工單 → reviewedNotPassed；否則
+            // 含章 → reviewed；皆無 → none（順序是引擎的 ArchivedOutcome）。入庫後清單
+            // 讀取零解析。驗證結局同構且獨立判定：同一項可以是「審查通過」卻「曾驗證未通過」。
+            let outcome = |st: &Station, stamped: bool| {
+                let ticket_archived = store.read_archived_artifact(name, st.doc).is_some();
+                archived_status_str(st, ArchivedOutcome::of(ticket_archived, stamped))
             };
-            // 驗證結局同構且獨立判定：同一項可以是「審查通過」卻「曾驗證未通過」。
-            let verify_status = if parsed.verified_at.is_some() {
-                "verified"
-            } else if store
-                .read_archived_artifact(name, VERIFY_DOC)
-                .is_some()
-            {
-                "verifiedNotPassed"
-            } else {
-                "none"
-            };
+            let review_status = outcome(&REVIEW, parsed.reviewed_at.is_some());
+            let verify_status = outcome(&VERIFY, parsed.verified_at.is_some());
             // 呈現輔助欄位（desktop-archived-parity D2）：封存卡描述列的 Why 首句與
             // 抽屜出身列的建立日期。來源不可讀／缺席時存 NULL，讀出時不插 key。
             let why_excerpt = store
@@ -316,24 +304,21 @@ mod tests {
 
     #[test]
     fn archived_list_carries_review_outcome_three_states() {
-        // spec client-protocol「已封存清單的審查結局欄位」：封存目錄含章 → reviewed；
-        // 含（化石）工單而無章 → reviewedNotPassed；皆無 → none。已封存側不重算
-        // 凍結度（封存即定格）——此處的假 hash 不得使 reviewed 降級。
+        // spec client-protocol「已封存清單的審查結局欄位」：封存目錄含工單 →
+        // reviewedNotPassed（章還在也一樣：重開的工單取代了舊章）；否則含章 → reviewed；
+        // 皆無 → none。已封存側不重算凍結度（封存即定格）——此處的假 hash 不得使
+        // reviewed 降級。
         let root = fixture_project(
             "review",
-            &["2026-01-01-plain", "2026-01-02-passed", "2026-01-03-carried"],
+            &["2026-01-01-plain", "2026-01-02-passed", "2026-01-03-carried", "2026-01-04-reopened"],
         );
         let archive = root.join("speclink").join("changes").join("archive");
-        fs::write(
-            archive.join("2026-01-02-passed").join(".meta.yaml"),
-            "schema: spec-driven\ncreated: 2026-01-01\nreviewed_at: 2026-01-02\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: dead\n",
-        )
-        .unwrap();
-        fs::write(
-            archive.join("2026-01-03-carried").join("review.md"),
-            "# Review — carried\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — broken\n",
-        )
-        .unwrap();
+        const STAMPED: &str = "schema: spec-driven\ncreated: 2026-01-01\nreviewed_at: 2026-01-02\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: dead\n";
+        const TICKET: &str = "# Review — carried\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [CRITICAL] src/lib.rs — broken\n";
+        fs::write(archive.join("2026-01-02-passed").join(".meta.yaml"), STAMPED).unwrap();
+        fs::write(archive.join("2026-01-03-carried").join("review.md"), TICKET).unwrap();
+        fs::write(archive.join("2026-01-04-reopened").join(".meta.yaml"), STAMPED).unwrap();
+        fs::write(archive.join("2026-01-04-reopened").join("review.md"), TICKET).unwrap();
         let v = archived_changes_at(&root);
         let by_name = |n: &str| {
             v["archived"]
@@ -347,23 +332,27 @@ mod tests {
         assert_eq!(by_name("2026-01-01-plain")["reviewStatus"], "none");
         assert_eq!(by_name("2026-01-02-passed")["reviewStatus"], "reviewed");
         assert_eq!(by_name("2026-01-03-carried")["reviewStatus"], "reviewedNotPassed");
+        assert_eq!(by_name("2026-01-04-reopened")["reviewStatus"], "reviewedNotPassed");
         let _ = fs::remove_dir_all(&root);
     }
 
     #[test]
     fn archived_list_carries_verify_outcome_three_states() {
-        // spec client-protocol「已封存清單的驗證結局欄位」：封存目錄含章 →
-        // verified；含（化石）工單而無章 → verifiedNotPassed；皆無 → none。
+        // spec client-protocol「已封存清單的驗證結局欄位」：封存目錄含工單 →
+        // verifiedNotPassed（章還在也一樣）；否則含章 → verified；皆無 → none。
         // 已封存側不重算凍結度（封存即定格）——假 hash 不得使 verified 降級。
         // 兩站在同一項上獨立判定：末項同時是「審查通過」與「曾驗證未通過」。
         let root = fixture_project(
             "verify",
-            &["2026-02-01-plain", "2026-02-02-passed", "2026-02-03-carried"],
+            &["2026-02-01-plain", "2026-02-02-passed", "2026-02-03-carried", "2026-02-04-reopened"],
         );
         let archive = root.join("speclink").join("changes").join("archive");
+        const STAMPED: &str = "schema: spec-driven\ncreated: 2026-02-01\nverified_at: 2026-02-02\nverified_by: Ver <v@example.com>\nverified_with: claude\nverified_tasks_total: 1\nverified_scope:\n  - path: src/lib.rs\n    hash: dead\n";
+        fs::write(archive.join("2026-02-02-passed").join(".meta.yaml"), STAMPED).unwrap();
+        fs::write(archive.join("2026-02-04-reopened").join(".meta.yaml"), STAMPED).unwrap();
         fs::write(
-            archive.join("2026-02-02-passed").join(".meta.yaml"),
-            "schema: spec-driven\ncreated: 2026-02-01\nverified_at: 2026-02-02\nverified_by: Ver <v@example.com>\nverified_with: claude\nverified_tasks_total: 1\nverified_scope:\n  - path: src/lib.rs\n    hash: dead\n",
+            archive.join("2026-02-04-reopened").join("verify.md"),
+            "# Verify — reopened\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — reopened after the stamp\n",
         )
         .unwrap();
         fs::write(
@@ -391,6 +380,7 @@ mod tests {
         let carried = by_name("2026-02-03-carried");
         assert_eq!(carried["verifyStatus"], "verifiedNotPassed");
         assert_eq!(carried["reviewStatus"], "reviewed", "the two outcomes stay independent");
+        assert_eq!(by_name("2026-02-04-reopened")["verifyStatus"], "verifiedNotPassed");
         let _ = fs::remove_dir_all(&root);
     }
 
@@ -741,7 +731,36 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT version FROM schema_version LIMIT 1", [], |r| r.get(0))
             .unwrap();
-        assert_eq!(version, 7, "schema version stamped to 7 after rebuild");
+        assert_eq!(version, CACHE_VERSION, "schema version stamped to current after rebuild");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v7_cache_is_dropped_so_stored_outcomes_follow_the_ticket_first_rule() {
+        // v8：結局改成「有工單優先」。v7 存下的 reviewed 是舊順序算的，整表重建後重算。
+        let root = fixture_project("v7", &["2026-11-04-reopened"]);
+        let dir = root.join("speclink").join("changes").join("archive").join("2026-11-04-reopened");
+        fs::write(
+            dir.join(".meta.yaml"),
+            "schema: spec-driven\ncreated: 2026-11-01\nreviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: dead\n",
+        )
+        .unwrap();
+        fs::write(dir.join("review.md"), "# Review — reopened\n\n## Round 1\n\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — reopened\n").unwrap();
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER);
+             INSERT INTO schema_version (version) VALUES (7);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT, doc_lines INTEGER, lead_days INTEGER, lead_hours REAL, review_rounds INTEGER, verify_rounds INTEGER);
+             INSERT INTO archived_changes (dated_name, meta, spec_count, review_status, verify_status) VALUES ('2026-11-04-reopened', '', 0, 'reviewed', 'none');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["reviewStatus"], "reviewedNotPassed", "{item}");
         let _ = fs::remove_dir_all(&root);
     }
 

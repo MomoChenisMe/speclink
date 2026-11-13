@@ -213,11 +213,7 @@ fn remote_show_outcome(
         review: status.review.as_ref().and_then(speclink_remote::convert::station_status),
         verify: status.verify.as_ref().and_then(speclink_remote::convert::station_status),
         branch: status.branch,
-        landed: status.landed_commit.map(|commit| core::command::LandedRecord {
-            commit,
-            at: status.landed_at.unwrap_or_default(),
-            by: status.landed_by,
-        }),
+        landed: core::command::LandedRecord::new(status.landed_commit, status.landed_at, status.landed_by),
     }))
 }
 

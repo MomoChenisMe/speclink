@@ -21,7 +21,8 @@ Source discussion: embedded-host-needs（cut 14）。
 
 - 變更清單的每一項新增選填的 `review` 與 `verify`：`state`（`none`、`inProgress`、`stamped`）；蓋章後另有 `stampedAt`、`stampedBy`、`stampedWith`、`rounds`、`tasksTotal`、`commit`。
 - 單筆變更的回應有相同的兩個物件，另外多 `scope`（蓋章時每個檔案的路徑與內容指紋），讓有 checkout 的用戶端自己算「蓋章後檔案有沒有變」。
-- 已封存清單的每一項新增選填的 `reviewOutcome` 與 `verifyOutcome`：`none`、`stamped`、`notPassed`（帶著未結的工單封存）。
+- 已封存清單的每一項新增選填的 `reviewOutcome` 與 `verifyOutcome`：`none`、`stamped`、`notPassed`（帶著未結的工單封存）。封存的文件集裡有工單就是 `notPassed`，章還留在 metadata 也一樣。
+- 本機的已封存清單（Speclink Desktop 的 `reviewStatus`、`verifyStatus`）改成同一個順序：有工單優先。這是品質關卡找到的問題——蓋章後重開工單、再帶著工單封存的變更，原本會顯示成通過。
 - Server 不判斷「蓋章後檔案有沒有變」。它沒有程式碼。
 
 **事件**
@@ -55,6 +56,7 @@ Source discussion: embedded-host-needs（cut 14）。
 - `speclink list --json`：不變（兩個關卡的規格釘住它不含關卡欄位）。CLI 在遠端收到新欄位時不輸出它們。
 - `speclink show <change> --json`：多四個選填欄位，只在變更有對應的記錄時出現；沒有記錄的變更輸出與之前逐位元相同。人眼輸出不變。
 - 本機 repo 的 commit 與 worktree-merge 流程：回報落地會寫進變更的資料檔，所以回報之後那個檔有一筆未提交的改動，留給這個變更的下一次提交（技能會說明，不代為提交）。主 checkout 在下一次 worktree 合併前要先把它提交。
+- Speclink Desktop 的已封存清單：工單與章並存的封存項，`reviewStatus` 由 `reviewed` 變成 `reviewedNotPassed`（驗證同理），詳情頁因此多出那一站的工單分頁。其他封存項不變。本機快取的版本加一，升級後第一次開啟會重算一次，使用者不用做任何事。
 - 蓋章、開工標記：metadata 多了 `reviewed_commit`、`verified_commit`、`branch`。沒有帶值時不寫，既有的 metadata 照常可讀。
 - 舊版用戶端連到新版 Server：回應多了它不認得的選填欄位，照常運作（這是討論留下的未驗證項，這個變更用測試確認）。
 - 新版用戶端連到舊版 Server：沒有新欄位，遠端專案的標示維持今天的樣子；`change landed` 得到 404。
@@ -79,7 +81,7 @@ Source discussion: embedded-host-needs（cut 14）。
 
 ### Modified Capabilities
 
-- `client-protocol`: 新增「線上變更回應的關卡欄位」與「落地回報的請求與回應」。
+- `client-protocol`: 新增「線上變更回應的關卡欄位」與「落地回報的請求與回應」；修改「已封存清單的審查結局欄位」與「已封存清單的驗證結局欄位」（工單與章並存時讀作未通過）。
 - `server-verb-api`: 新增「變更回應攜帶關卡狀態與落地記錄」。
 - `server-event-stream`: 新增「審查與驗證事件歸到變更」。
 - `review-station`: 新增「蓋章記錄程式碼的 commit」。
@@ -90,7 +92,7 @@ Source discussion: embedded-host-needs（cut 14）。
 
 ## Impact
 
-- Affected specs: change-landing（新增）、client-protocol（新增兩條）、server-verb-api、server-event-stream、review-station、verify-station、desktop-app、commit-skill、worktree-merge-skill（各新增一條）
+- Affected specs: change-landing（新增）、client-protocol（新增兩條、修改兩條）、server-verb-api、server-event-stream、review-station、verify-station、desktop-app、commit-skill、worktree-merge-skill（各新增一條）
 - Affected crates 與 app: `speclink-core`、`speclink-verbs`、`speclink-host`、`speclink-protocol`、`speclink-remote`、`speclink-server`（事件的分類）、`speclink-cli`、`speclink-node`（只加測試）、apps/desktop（core、Tauri 殼與前端）。
 - Affected code:
   - New:
@@ -161,14 +163,18 @@ Source discussion: embedded-host-needs（cut 14）。
     - apps/desktop/src/session.ts
     - apps/desktop/src/__tests__/remoteDataSource.test.ts
     - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
+    - apps/desktop/core/src/cache.rs
+    - apps/desktop/src/App.tsx
+    - packages/ui/src/adapter.ts
+    - crates/host/speclink-server/tests/it/api/sse_events.rs
   - Removed: (none)
   - 另外會重新產生：技能的 golden 快照（10 份）與本 repo 的技能檔（`.claude/skills` 與 `.agents/skills` 共 37 份，只有版號行與兩支技能的內文有變）。
-  - `speclink-node` 只加測試：`src/lib.rs` 不用改（蓋章的 stdin 解析在共用的動詞定義裡）。
+  - `speclink-node` 只加測試：crates/adapters/speclink-node/src/lib.rs 不用改（蓋章的 stdin 解析在共用的動詞定義裡）。
 - 相依：排在變更 skills-verbs-second-wave 之後（它改寫 commit 的原稿；這個變更在它之上加一步）。和 remote-skill-delivery 沒有先後。
 - 三種形態下的結果：
   - 本機 repo：蓋章記下 commit、開工記下分支、`change landed` 可用，資料存在變更的 metadata。Speclink Desktop 的標示不變。
   - 連到遠端的 checkout：同上，資料存在 Server；Speclink Desktop 的遠端專案有關卡的標示。
-  - 沒有本機規格檔的內嵌宿主：宿主經線上的清單、`show --json` 與提交時的事件讀到關卡狀態、分支與落地；宿主的程式也能自己執行 `change landed`（要給 `--commit`）。蓋章與開工標記在這個形態不帶 commit 與分支，除非呼叫端提供：宿主套件不替宿主讀 git。
+  - 沒有本機規格檔的內嵌宿主：宿主經線上的清單、`show --json` 與提交時的事件讀到關卡狀態、分支與落地；宿主的程式也能自己執行 `change landed`（要給 `--commit`）。蓋章與開工標記在這個形態不帶 commit 與分支，除非呼叫端提供：宿主套件不替宿主讀 git。蓋章的 commit 由 `--stdin` 的 JSON（`headCommit`）提供；開工標記經 `host.dispatch` 沒有帶分支的輸入，分支要由線上的開工請求帶上，或事後以 `change landed --branch` 補記。
 - 文件影響（留給最後一個變更 docs-embedded-host，這個變更不動使用者文件）：
   - 動詞與旗標的參考文件：`change landed`、新的線上欄位與路由、事件的分類。
   - 「把 Speclink 內嵌進你的系統」：怎麼用執行前掛鉤加「沒有落地就不能封存」這類條件。

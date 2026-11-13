@@ -219,8 +219,8 @@ impl std::fmt::Display for NotFound {
 
 impl std::error::Error for NotFound {}
 
-/// 凍結度：章的雙錨判定結果（design D3——讀取端純函式，desktop-core 呼叫，
-/// CLI 不輸出）。Unknown＝meta 未帶完整的章（缺席讀作未蓋章）。
+/// 凍結度：章的雙錨判定結果（design D3——[`StationStatus::freshness`] 算出，桌面的本機
+/// 與 remote 清單都用它，CLI 不輸出）。Unknown＝沒有完整的章（缺席讀作未蓋章）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Freshness {
     Fresh,
@@ -254,10 +254,54 @@ pub struct StampAnchors<'a> {
     pub scope: &'a [ReviewedScopeEntry],
 }
 
+/// 一枚章在 meta 裡的全部欄位（[`ChangeMeta::stamp`] 依站別取出）。「這個站的章住在哪些
+/// 欄位」只有那一份對映；判定只看其中三個錨（[`Stamp::anchors`]），其餘是回報用的事實。
+#[derive(Clone, Copy)]
+pub struct Stamp<'a> {
+    pub at: Option<&'a str>,
+    pub by: Option<&'a str>,
+    pub with: Option<&'a str>,
+    pub tasks_total: Option<usize>,
+    pub rounds: Option<u64>,
+    /// 蓋章時呼叫端回報的 commit。引擎只存不查，判定不看它。
+    pub commit: Option<&'a str>,
+    pub scope: &'a [ReviewedScopeEntry],
+}
+
+impl<'a> Stamp<'a> {
+    /// 章的雙錨原料：凍結判定與「是否已蓋章」只看這三個欄位。
+    pub fn anchors(&self) -> StampAnchors<'a> {
+        StampAnchors { stamped_at: self.at, tasks_total: self.tasks_total, scope: self.scope }
+    }
+}
+
+/// 已封存變更一個品質站的結局（封存即定格，不重算凍結度）。順序與 [`status`] 相同：
+/// 工單先於章——蓋章後重開的工單取代了舊章，帶著它封存就是未通過。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArchivedOutcome {
+    /// 沒有章，也沒有帶著工單封存。
+    None,
+    /// 封存時有章，沒有工單。
+    Stamped,
+    /// 帶著未結的工單封存。
+    NotPassed,
+}
+
+impl ArchivedOutcome {
+    /// `ticket_archived`：封存的文件集裡有這一站的工單；`stamped`：封存的 meta 有章。
+    pub fn of(ticket_archived: bool, stamped: bool) -> Self {
+        match (ticket_archived, stamped) {
+            (true, _) => ArchivedOutcome::NotPassed,
+            (false, true) => ArchivedOutcome::Stamped,
+            (false, false) => ArchivedOutcome::None,
+        }
+    }
+}
+
 /// 一個品質站在一個變更上走到哪裡（station-status-and-landing D1）。「蓋章後內容有沒有
 /// 變」不在這裡：那要讀工作樹，由有工作樹的一端拿 [`StationStatus`] 的任務數與 scope 自己判。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum StationPhase {
+pub enum StationProgress {
     /// 沒有工單，也沒有完整的章。
     None,
     /// 有未結的工單。
@@ -266,21 +310,21 @@ pub enum StationPhase {
     Stamped,
 }
 
-impl StationPhase {
+impl StationProgress {
     /// 對外的字串（`show --json` 與線上回應的 `state`）。
     pub fn as_str(&self) -> &'static str {
         match self {
-            StationPhase::None => "none",
-            StationPhase::InProgress => "inProgress",
-            StationPhase::Stamped => "stamped",
+            StationProgress::None => "none",
+            StationProgress::InProgress => "inProgress",
+            StationProgress::Stamped => "stamped",
         }
     }
 }
 
-/// 一個品質站的狀態與章的內容。章的欄位只在 [`StationPhase::Stamped`] 時有值。
+/// 一個品質站的狀態與章的內容。章的欄位只在 [`StationProgress::Stamped`] 時有值。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StationStatus {
-    pub phase: StationPhase,
+    pub progress: StationProgress,
     pub stamped_at: Option<String>,
     pub stamped_by: Option<String>,
     pub stamped_with: Option<String>,
@@ -295,7 +339,7 @@ impl StationStatus {
     /// 未開始：沒有任何章的欄位。
     pub fn none() -> StationStatus {
         StationStatus {
-            phase: StationPhase::None,
+            progress: StationProgress::None,
             stamped_at: None,
             stamped_by: None,
             stamped_with: None,
@@ -306,11 +350,31 @@ impl StationStatus {
         }
     }
 
+    /// 章的凍結度（design D3、D4）：任務錨＝當前全任務總數仍等於蓋章時總數，且寫碼任務
+    /// 全完成——`[M]` 手測任務的勾選狀態不影響章（章＝驗證過，手測是封存的事）；內容錨＝
+    /// 全部 scope 檔的現值指紋相符（缺檔即不符）。任一錨破 → Stale；全符 → Fresh；沒有
+    /// 章（未開始或進行中）→ Unknown。`read_file` 為 None 時只判任務錨：沒有工作樹可讀
+    /// 的一端（remote 清單）無從判定內容錨。本機與 remote 的桌面清單共用這一份。
+    pub fn freshness(&self, counts: &crate::tasks::Counts, read_file: ScopeReader<'_>) -> Freshness {
+        if self.progress != StationProgress::Stamped {
+            return Freshness::Unknown;
+        }
+        let anchors = StampAnchors {
+            stamped_at: self.stamped_at.as_deref(),
+            tasks_total: self.tasks_total,
+            scope: &self.scope,
+        };
+        match stale_reason(anchors, counts, read_file) {
+            Some(_) => Freshness::Stale,
+            None => Freshness::Fresh,
+        }
+    }
+
     /// `show --json` 的形狀：`state`，蓋章後另有 `stampedAt`、`rounds`、`tasksTotal` 與
     /// 有值才出現的 `stampedBy`、`stampedWith`、`commit`。不含 scope。
     pub fn to_json(&self) -> serde_json::Value {
-        let mut json = serde_json::json!({ "state": self.phase.as_str() });
-        if self.phase != StationPhase::Stamped {
+        let mut json = serde_json::json!({ "state": self.progress.as_str() });
+        if self.progress != StationProgress::Stamped {
             return json;
         }
         json["stampedAt"] = serde_json::json!(self.stamped_at);
@@ -332,23 +396,22 @@ impl StationStatus {
 /// 它手上多半已經有這個變更的文件清單，不必為此再讀一次。
 pub fn status(st: &Station, meta: &ChangeMeta, ticket_open: bool) -> StationStatus {
     if ticket_open {
-        return StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() };
+        return StationStatus { progress: StationProgress::InProgress, ..StationStatus::none() };
     }
-    let anchors = meta.anchors(st);
-    if !is_stamped(anchors) {
+    let stamp = meta.stamp(st);
+    if !is_stamped(stamp.anchors()) {
         return StationStatus::none();
     }
-    let (by, with) = meta.stamp_attribution(st);
     StationStatus {
-        phase: StationPhase::Stamped,
-        stamped_at: anchors.stamped_at.map(str::to_string),
-        stamped_by: by.map(str::to_string),
-        stamped_with: with.map(str::to_string),
+        progress: StationProgress::Stamped,
+        stamped_at: stamp.at.map(str::to_string),
+        stamped_by: stamp.by.map(str::to_string),
+        stamped_with: stamp.with.map(str::to_string),
         // 加入輪數記錄之前蓋的章沒有這個欄位，讀作 0。
-        rounds: Some(meta.stamp_rounds(st).unwrap_or(0)),
-        tasks_total: anchors.tasks_total,
-        commit: meta.stamp_commit(st).map(str::to_string),
-        scope: anchors.scope.to_vec(),
+        rounds: Some(stamp.rounds.unwrap_or(0)),
+        tasks_total: stamp.tasks_total,
+        commit: stamp.commit.map(str::to_string),
+        scope: stamp.scope.to_vec(),
     }
 }
 
@@ -791,7 +854,7 @@ fn write_stamp(
     m.set(tasks_total_key, &gate.tasks_total.to_string())?;
     m.set(rounds_key, &gate.rounds.to_string())?;
     if let Some(commit) = &gate.commit {
-        m.set(commit_key, &crate::util::yaml_string(commit))?;
+        m.set(commit_key, &crate::util::yaml_roundtrip_scalar(commit))?;
     }
     let body: Vec<String> = entries
         .iter()
@@ -837,33 +900,12 @@ fn hex_sha256(bytes: &[u8]) -> String {
     format!("{:x}", Sha256::digest(bytes))
 }
 
-/// 失效判定純函式（design D3、D4）：任務錨＝當前全任務總數仍等於蓋章時總數，
-/// 且寫碼任務全完成——`[M]` 手測任務的勾選狀態不影響章（章＝驗證過，手測是
-/// 封存的事）；內容錨＝全部 scope 檔的現值指紋相符（缺檔即不符）。任一錨破 →
-/// Stale；全符 → Fresh；meta 未帶完整章 → Unknown。錨直接從 meta 依站別取
-/// （[`ChangeMeta::anchors`]），呼叫端不再手工組 [`StampAnchors`]。
-pub fn freshness(
-    st: &Station,
-    meta: &ChangeMeta,
-    counts: &crate::tasks::Counts,
-    read_file: &ScopeReadFn<'_>,
-) -> Freshness {
-    let anchors = meta.anchors(st);
-    if !is_stamped(anchors) {
-        return Freshness::Unknown;
-    }
-    match stale_reason(anchors, counts, Some(read_file)) {
-        Some(_) => Freshness::Stale,
-        None => Freshness::Fresh,
-    }
-}
-
 /// meta 是否帶了可判定的完整章（缺席讀作未蓋章）。
 pub fn is_stamped(anchors: StampAnchors<'_>) -> bool {
     anchors.tasks_total.is_some() && anchors.stamped_at.is_some() && !anchors.scope.is_empty()
 }
 
-/// [`freshness`] 的判定本體，附破錨原因。未蓋章（見 [`is_stamped`]）與兩錨皆符
+/// [`StationStatus::freshness`] 的判定本體，附破錨原因。未蓋章（見 [`is_stamped`]）與兩錨皆符
 /// 都回 None——呼叫端先以 `is_stamped` 分辨。`read_file` 為 None 時只判任務錨：
 /// remote 封存通道無工作樹可讀，內容錨無從判定（design D5 的已知非對稱）。
 pub fn stale_reason(

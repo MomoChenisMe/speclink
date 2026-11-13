@@ -32,8 +32,9 @@ use speclink_protocol::query::{
     PlanUnpromotedCut, ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
     StationOutcome, StationState,
 };
-use speclink_core::station::{Station, StationId, REVIEW, VERIFY};
-use speclink_desktop_core::query::{put_station_fields, station_view, StationView};
+use speclink_core::model::ReviewedScopeEntry;
+use speclink_core::station::{ArchivedOutcome, Station, StationId, REVIEW, VERIFY};
+use speclink_desktop_core::query::{archived_status_str, put_station_fields, station_view, StationView};
 use speclink_remote::client::Client;
 use speclink_remote::RemoteError;
 use speclink_store::content_digest;
@@ -869,14 +870,56 @@ pub(crate) fn station_fields(summary: &ChangeSummary) -> serde_json::Map<String,
 }
 
 /// 清單項的 `st` 這一站是不是「已蓋章、任務數相符」：只有這種才值得拿 scope 去比檔案。
-fn stamp_holds_so_far(item: &RemoteChangeItem, st: &Station) -> bool {
-    item.stations.get(&format!("{}Status", st.noun)).and_then(|v| v.as_str())
-        == Some(StationView::Stamped.status_str(st))
+fn stamp_holds_so_far(summary: &ChangeSummary, st: &Station) -> bool {
+    let wire = match st.id {
+        StationId::Review => &summary.review,
+        StationId::Verify => &summary.verify,
+    };
+    wire.as_ref()
+        .and_then(speclink_remote::convert::station_status)
+        .is_some_and(|status| station_view(&status, &task_counts(summary), None) == StationView::Stamped)
+}
+
+/// 章記下的 `commit`，如果 checkout 的 HEAD 包含它。commit 是 server 給的外部輸入，
+/// 先過引擎的形狀檢查（只收十六進位）才交給 git；checkout 不認得它也算不包含。
+fn held_commit(root: &Path, commit: &str) -> Option<String> {
+    let commit = speclink_core::model::checked_commit(commit).ok()?;
+    speclink_core::util::git(root, &["merge-base", "--is-ancestor", &commit, "HEAD"])?;
+    Some(commit)
+}
+
+/// `path` 在 checkout 裡是不是還停在 `commit` 當時的樣子（當時沒有、現在也沒有也算）。
+/// 用 git 的 blob 識別比：現值照 git 存檔時的換行轉換算。
+fn still_at_commit(root: &Path, commit: &str, path: &str, exists: bool) -> bool {
+    let git = |args: &[&str]| speclink_core::util::git(root, args);
+    match (exists, git(&["rev-parse", "--verify", "--quiet", &format!("{commit}:{path}")])) {
+        (false, None) => true,
+        (true, Some(blob)) => git(&["hash-object", "--", path]).is_some_and(|now| now == blob),
+        _ => false,
+    }
+}
+
+/// 章之後 scope 裡有沒有檔案變了（D7）：現值和章的指紋不同，而且也不是章記下的
+/// commit 當時的樣子。章記的是蓋章當下的 HEAD，被審的內容那時可能還沒 commit；checkout
+/// 的檔案若還是那個 commit 的版本，它只是還沒拿到被審的內容，不算其後有變動。scope 的
+/// 路徑是 server 給的外部輸入：不是 repo 內相對路徑的一律不讀，讀作有變。
+fn changed_since_stamp(root: &Path, commit: &str, scope: &[ReviewedScopeEntry]) -> bool {
+    scope.iter().any(|entry| {
+        if speclink_core::station::ensure_repo_relative(&entry.path).is_err() {
+            return true;
+        }
+        let current = speclink_core::util::read_bytes_opt(&root.join(&entry.path));
+        let reviewed = current
+            .as_deref()
+            .is_some_and(|bytes| speclink_core::station::content_fingerprint_bytes(bytes) == entry.hash);
+        !reviewed && !still_at_commit(root, commit, &entry.path, current.is_some())
+    })
 }
 
 /// 綁有 checkout 時的第二步（D7）：對任務數相符的已蓋章關卡，用單筆回應帶來的 scope
-/// 比 checkout 裡檔案的現值，不符的改成其後有變動。scope 的路徑是 server 給的外部
-/// 輸入：不是 repo 內相對路徑的一律不讀，讀作內容有變。
+/// 比 checkout 裡的檔案，章之後有變的改成其後有變動（規則見 [`changed_since_stamp`]）。
+/// 只有 checkout 的 HEAD 包含章記下的 commit 時才比：章若蓋在別的分支或別台機器，checkout
+/// 沒有可以對照的那一版——這時（以及章沒有記下 commit 時）維持只比任務數的結果。
 pub(crate) fn refine_with_checkout(
     item: &mut RemoteChangeItem,
     review: Option<&StationState>,
@@ -884,18 +927,23 @@ pub(crate) fn refine_with_checkout(
     root: &Path,
 ) {
     let counts = task_counts(&item.summary);
-    let read_file = |p: &str| {
-        speclink_core::station::ensure_repo_relative(p).ok()?;
-        speclink_core::util::read_bytes_opt(&root.join(p))
-    };
     for (st, wire) in [(&REVIEW, review), (&VERIFY, verify)] {
-        if !stamp_holds_so_far(item, st) {
+        if !stamp_holds_so_far(&item.summary, st) {
             continue;
         }
         let Some(status) = wire.and_then(speclink_remote::convert::station_status) else {
             continue;
         };
-        let view = station_view(&status, &counts, Some(&read_file));
+        // 單筆回應若已不是「已蓋章、任務數相符」（清單之後狀態變了），照它的狀態重寫，
+        // 不必比檔案。
+        let mut view = station_view(&status, &counts, None);
+        // 章沒有任務數就不判內容：引擎的規則（`stale_reason`）如此，本機清單也是。
+        let held = status.tasks_total.and(status.commit.as_deref()).and_then(|commit| held_commit(root, commit));
+        if let (StationView::Stamped, Some(commit)) = (view, held) {
+            if changed_since_stamp(root, &commit, &status.scope) {
+                view = StationView::StampedStale;
+            }
+        }
         put_station_fields(&mut item.stations, st, &status, view);
     }
 }
@@ -920,16 +968,16 @@ pub struct RemoteArchivedList {
     pub archived: Vec<RemoteArchivedItem>,
 }
 
-/// 線上的結局對到已封存卡片讀的字串。
+/// 線上的結局對到已封存卡片讀的字串（字串表是 desktop-core 的 [`archived_status_str`]，
+/// 與本機的封存快取同一份）。
 fn outcome_status(st: &Station, outcome: Option<&StationOutcome>) -> Option<&'static str> {
-    Some(match (st.id, outcome?) {
-        (_, StationOutcome::None) => "none",
-        (StationId::Review, StationOutcome::Stamped) => "reviewed",
-        (StationId::Review, StationOutcome::NotPassed) => "reviewedNotPassed",
-        (StationId::Verify, StationOutcome::Stamped) => "verified",
-        (StationId::Verify, StationOutcome::NotPassed) => "verifiedNotPassed",
-        (_, StationOutcome::Unknown(_)) => return None,
-    })
+    let outcome = match outcome? {
+        StationOutcome::None => ArchivedOutcome::None,
+        StationOutcome::Stamped => ArchivedOutcome::Stamped,
+        StationOutcome::NotPassed => ArchivedOutcome::NotPassed,
+        StationOutcome::Unknown(_) => return None,
+    };
+    Some(archived_status_str(st, outcome))
 }
 
 /// plan 那一列帶給清單項的排程欄位：照 `PLAN_FIELDS` 從該列逐鍵照搬，不另算。舊 server
@@ -1555,7 +1603,7 @@ impl RemoteWorkspace {
             let stamped = list
                 .changes
                 .iter_mut()
-                .filter(|item| [&REVIEW, &VERIFY].into_iter().any(|st| stamp_holds_so_far(item, st)));
+                .filter(|item| [&REVIEW, &VERIFY].into_iter().any(|st| stamp_holds_so_far(&item.summary, st)));
             for item in stamped {
                 let name = item.summary.name.clone();
                 if let Ok(status) = self.run(credentials, |client| client.get_change(&name)) {
@@ -2165,32 +2213,133 @@ mod board_order_tests {
         assert_eq!(fields["verifyStatus"], "inVerify");
     }
 
+    /// A git checkout in a temp dir with one commit; returns it with its HEAD.
+    fn git_checkout() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().unwrap();
+        let git = |args: &[&str]| {
+            let out = std::process::Command::new("git").args(args).current_dir(dir.path()).output().unwrap();
+            assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        };
+        git(&["init", "-q", "-b", "main"]);
+        git(&["config", "user.name", "T"]);
+        git(&["config", "user.email", "t@example.com"]);
+        git(&["config", "commit.gpgsign", "false"]);
+        std::fs::write(dir.path().join("a.rs"), "fn a() {}\n").unwrap();
+        git(&["add", "a.rs"]);
+        git(&["commit", "-q", "-m", "init"]);
+        let head = git(&["rev-parse", "HEAD"]);
+        (dir, head)
+    }
+
+    /// A list item whose review is stamped over one task, and the single-change
+    /// station state that goes with it (the scope and the stamp's commit).
+    fn stamped_item(
+        scope_path: &str,
+        hash: &str,
+        commit: Option<&str>,
+    ) -> (super::RemoteChangeItem, speclink_protocol::query::StationState) {
+        use speclink_protocol::command::ReviewScopeEntryDto;
+        use speclink_protocol::query::{StationPhase, StationState};
+        let stamped = StationState {
+            state: StationPhase::Stamped,
+            stamped_at: Some("2026-11-02".into()),
+            tasks_total: Some(1),
+            rounds: Some(1),
+            commit: commit.map(str::to_string),
+            scope: vec![ReviewScopeEntryDto { path: scope_path.into(), hash: hash.into() }],
+            ..Default::default()
+        };
+        let mut summary = change("demo", 1, 1);
+        summary.review = Some(StationState { scope: Vec::new(), ..stamped.clone() });
+        let item = super::RemoteChangeItem { stations: super::station_fields(&summary), summary, schedule: None };
+        assert_eq!(item.stations["reviewStatus"], "reviewed");
+        (item, stamped)
+    }
+
     #[test]
     fn a_scope_path_outside_the_checkout_is_never_read() {
         // 線上回應的 scope 路徑是外部輸入：絕對路徑與 `..` 不讀，讀作內容有變。
-        use speclink_protocol::command::ReviewScopeEntryDto;
-        use speclink_protocol::query::{StationPhase, StationState};
         let outside = tempfile::tempdir().unwrap();
         let secret = outside.path().join("secret.txt");
         std::fs::write(&secret, "s").unwrap();
-        let checkout = tempfile::tempdir().unwrap();
+        let (checkout, head) = git_checkout();
         let hash = speclink_core::station::content_fingerprint("s");
-        for path in [secret.display().to_string(), format!("../{}/secret.txt", outside.path().file_name().unwrap().to_string_lossy())] {
-            let stamped = StationState {
-                state: StationPhase::Stamped,
-                stamped_at: Some("2026-11-02".into()),
-                tasks_total: Some(1),
-                rounds: Some(1),
-                scope: vec![ReviewScopeEntryDto { path, hash: hash.clone() }],
-                ..Default::default()
-            };
-            let mut summary = change("demo", 1, 1);
-            summary.review = Some(StationState { scope: Vec::new(), ..stamped.clone() });
-            let mut item = super::RemoteChangeItem { stations: super::station_fields(&summary), summary, schedule: None };
-            assert_eq!(item.stations["reviewStatus"], "reviewed");
+        let folder = outside.path().file_name().unwrap().to_string_lossy().to_string();
+        for path in [secret.display().to_string(), format!("../{folder}/secret.txt")] {
+            let (mut item, stamped) = stamped_item(&path, &hash, Some(&head));
             super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
-            assert_eq!(item.stations["reviewStatus"], "reviewedStale");
+            assert_eq!(item.stations["reviewStatus"], "reviewedStale", "{path}");
         }
+    }
+
+    #[test]
+    fn files_are_compared_only_when_the_checkout_holds_the_stamps_commit() {
+        // 章若蓋在 checkout 還沒有的 commit 上（別的分支、別台機器），checkout 的檔案不是
+        // 那一版，比了只會誤報「其後有變動」：這時維持只比任務數的結果。章沒有 commit 時同樣。
+        let (checkout, head) = git_checkout();
+        // 章之後檔案被改成別的內容（不是章的那一版，也不是 commit 當時的那一版）。
+        std::fs::write(checkout.path().join("a.rs"), "fn a() { later(); }\n").unwrap();
+        let stale_hash = speclink_core::station::content_fingerprint("fn a() { other(); }\n");
+        let unknown = "0123456789abcdef0123456789abcdef01234567";
+        for (commit, want) in [(Some(head.as_str()), "reviewedStale"), (Some(unknown), "reviewed"), (None, "reviewed"), (Some("--help"), "reviewed")] {
+            let (mut item, stamped) = stamped_item("a.rs", &stale_hash, commit);
+            super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
+            assert_eq!(item.stations["reviewStatus"], want, "{commit:?}");
+        }
+        // 檔案內容與章相符、checkout 含那個 commit：維持已審查。
+        let fresh = speclink_core::station::content_fingerprint("fn a() { later(); }\n");
+        let (mut item, stamped) = stamped_item("a.rs", &fresh, Some(&head));
+        super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
+        assert_eq!(item.stations["reviewStatus"], "reviewed");
+    }
+
+    #[test]
+    fn a_file_still_at_the_stamps_commit_is_not_a_change_after_the_stamp() {
+        // 被審的內容在蓋章時還沒 commit：章記下的 commit 是它的前一版。checkout 含那個
+        // commit、檔案還是 commit 當時的樣子＝只是還沒拿到被審的內容，不算其後有變動。
+        let (checkout, head) = git_checkout();
+        let reviewed = "fn a() { reviewed(); }\n";
+        let hash = speclink_core::station::content_fingerprint(reviewed);
+        let status = |path: &str| {
+            let (mut item, stamped) = stamped_item(path, &hash, Some(&head));
+            super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
+            item.stations["reviewStatus"].clone()
+        };
+        assert_eq!(status("a.rs"), "reviewed", "the file is still what the stamp's commit holds");
+        std::fs::write(checkout.path().join("a.rs"), reviewed).unwrap();
+        assert_eq!(status("a.rs"), "reviewed", "the reviewed content arrived");
+        std::fs::write(checkout.path().join("a.rs"), "fn a() { later(); }\n").unwrap();
+        assert_eq!(status("a.rs"), "reviewedStale", "neither the reviewed content nor the commit's");
+        // 蓋章時新增的檔：commit 裡沒有，checkout 也還沒有 → 不算；出現別的內容 → 其後有變動。
+        assert_eq!(status("new.rs"), "reviewed", "absent at the commit and absent now");
+        std::fs::write(checkout.path().join("new.rs"), "fn other() {}\n").unwrap();
+        assert_eq!(status("new.rs"), "reviewedStale", "a different file appeared");
+    }
+
+    #[test]
+    fn a_stamp_without_a_task_count_is_never_compared_with_files() {
+        // 引擎的規則：章沒有任務數就不判內容（本機清單也是這樣）。remote 的比對照同一條。
+        let (checkout, head) = git_checkout();
+        std::fs::write(checkout.path().join("a.rs"), "fn a() { later(); }\n").unwrap();
+        let hash = speclink_core::station::content_fingerprint("fn a() { other(); }\n");
+        let (mut item, mut stamped) = stamped_item("a.rs", &hash, Some(&head));
+        stamped.tasks_total = None;
+        super::refine_with_checkout(&mut item, Some(&stamped), None, checkout.path());
+        assert_eq!(item.stations["reviewStatus"], "reviewed");
+    }
+
+    #[test]
+    fn a_station_that_is_no_longer_stamped_keeps_no_stamp_fields() {
+        // 清單與單筆回應之間狀態變了（單筆已是審查中）：章的時間與人不留在項目上。
+        use speclink_protocol::query::{StationPhase, StationState};
+        let (checkout, head) = git_checkout();
+        let (mut item, _) = stamped_item("a.rs", "aa", Some(&head));
+        assert!(item.stations.contains_key("reviewedAt"));
+        let reopened = StationState { state: StationPhase::InProgress, ..Default::default() };
+        super::refine_with_checkout(&mut item, Some(&reopened), None, checkout.path());
+        assert_eq!(item.stations["reviewStatus"], "inReview");
+        assert!(!item.stations.contains_key("reviewedAt") && !item.stations.contains_key("reviewedBy"));
     }
 
     pub(super) fn discussion(slug: &str) -> DiscussionInfo {

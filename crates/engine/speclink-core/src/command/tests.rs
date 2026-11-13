@@ -1471,7 +1471,7 @@ fn shown(store: &TestStore, name: &str) -> ShowChange {
 
 #[test]
 fn show_reports_a_stamped_station_a_ticket_the_branch_and_the_landing() {
-    use crate::station::StationPhase;
+    use crate::station::StationProgress;
     let meta = "schema: spec-driven\ncreated: 2026-11-01\nbranch: feature/x\n\
 reviewed_at: 2026-11-02T10:00:00+08:00\nreviewed_tasks_total: 12\nreviewed_rounds: 3\nreviewed_commit: \"0123456789ab\"\n\
 reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n\
@@ -1480,10 +1480,10 @@ landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-03T09:00:00+08:00\nlanded_by
     store.put_artifact("demo", "verify.md", "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n");
     let change = shown(&store, "demo");
     let review = change.review.expect("a review status");
-    assert_eq!(review.phase, StationPhase::Stamped);
+    assert_eq!(review.progress, StationProgress::Stamped);
     assert_eq!(review.commit.as_deref(), Some("0123456789ab"));
     assert_eq!((review.rounds, review.tasks_total), (Some(3), Some(12)));
-    assert_eq!(change.verify.expect("a verify status").phase, StationPhase::InProgress);
+    assert_eq!(change.verify.expect("a verify status").progress, StationProgress::InProgress);
     assert_eq!(change.branch.as_deref(), Some("feature/x"));
     let landed = change.landed.expect("a landing record");
     assert_eq!(landed.commit, "89abcdef0123");
@@ -1493,11 +1493,11 @@ landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-03T09:00:00+08:00\nlanded_by
 
 #[test]
 fn show_without_records_reports_both_stations_as_none_and_no_branch_or_landing() {
-    use crate::station::StationPhase;
+    use crate::station::StationProgress;
     let store = TestStore::with_meta("demo", META);
     let change = shown(&store, "demo");
-    assert_eq!(change.review.expect("a review status").phase, StationPhase::None);
-    assert_eq!(change.verify.expect("a verify status").phase, StationPhase::None);
+    assert_eq!(change.review.expect("a review status").progress, StationProgress::None);
+    assert_eq!(change.verify.expect("a verify status").progress, StationProgress::None);
     assert!(change.branch.is_none() && change.landed.is_none());
 }
 

@@ -7,7 +7,7 @@ use speclink_core::discuss::DiscussionInfo as EngineDiscussionInfo;
 use speclink_core::instructions as engine;
 use speclink_core::listing::ListChangeJson;
 use speclink_core::plan::Plan;
-use speclink_core::station::{Round, StationPhase as EnginePhase, StationStatus};
+use speclink_core::station::{Round, StationProgress, StationStatus};
 use speclink_core::status::StatusReport;
 use speclink_core::tasks::EvidenceEntry as EngineEvidenceEntry;
 use speclink_core::trace::TraceReport;
@@ -29,10 +29,10 @@ pub(crate) fn station_state(status: &StationStatus, with_scope: bool) -> Station
         false => Vec::new(),
     };
     StationState {
-        state: match status.phase {
-            EnginePhase::None => StationPhase::None,
-            EnginePhase::InProgress => StationPhase::InProgress,
-            EnginePhase::Stamped => StationPhase::Stamped,
+        state: match status.progress {
+            StationProgress::None => StationPhase::None,
+            StationProgress::InProgress => StationPhase::InProgress,
+            StationProgress::Stamped => StationPhase::Stamped,
         },
         stamped_at: status.stamped_at.clone(),
         stamped_by: status.stamped_by.clone(),

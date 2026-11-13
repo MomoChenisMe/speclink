@@ -277,6 +277,30 @@ fn in_progress_add_on_a_detached_head_or_outside_git_records_no_branch() {
 }
 
 #[test]
+fn a_project_inside_another_repo_records_no_branch_and_no_commit() {
+    // 專案資料夾自己不是 git repo、但位於別的 repo 底下：外層 repo 的分支與 HEAD 不是
+    // 這個專案的事實，開工不記分支，蓋章不記 commit。
+    let outer = std::env::temp_dir().join(format!("speclink-cli-landing-outer-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&outer);
+    std::fs::create_dir_all(&outer).unwrap();
+    git_checkout(&outer);
+    git(&outer, &["checkout", "-q", "-b", "outer/branch"]);
+    let inner = Project { dir: outer.join("nested") };
+    let change = inner.dir.join("speclink").join("changes").join("demo");
+    std::fs::create_dir_all(&change).unwrap();
+    std::fs::write(change.join(".meta.yaml"), META).unwrap();
+
+    inner.ok(&["in-progress", "add", "demo"]);
+    assert!(inner.meta_value("started_at").is_some());
+    assert!(inner.meta_value("branch").is_none(), "{}", inner.meta());
+    inner.ready_to_stamp("review");
+    inner.ok(&["review", "stamp", "demo"]);
+    assert!(inner.meta_value("reviewed_commit").is_none(), "{}", inner.meta());
+    drop(inner);
+    let _ = std::fs::remove_dir_all(&outer);
+}
+
+#[test]
 fn a_branch_with_a_slash_and_cjk_reads_back_through_show() {
     // Scenario「含斜線與中文的分支名稱」。
     let (p, _) = Project::git("cjk");
@@ -379,6 +403,19 @@ fn show_json_carries_the_stations_the_branch_and_the_landing() {
 
     let human_after = stdout_of(&p.ok(&["show", "demo", "--no-color"]));
     assert_eq!(human_after, human_before, "the human output shows none of it");
+}
+
+#[test]
+fn show_json_reports_a_verify_stamp_with_its_commit() {
+    // verify-station Scenario「show --json 帶出關卡狀態」。
+    let (p, head) = Project::git("show-verify");
+    p.ready_to_stamp("verify");
+    p.ok(&["verify", "stamp", "demo"]);
+    let verify = p.json(&["show", "demo", "--json"])["verify"].clone();
+    assert_eq!(verify["state"], "stamped");
+    assert_eq!(verify["commit"], json!(head));
+    assert_eq!((&verify["rounds"], &verify["tasksTotal"]), (&json!(1), &json!(1)));
+    assert!(verify["stampedAt"].is_string() && verify.get("scope").is_none(), "{verify}");
 }
 
 #[test]

@@ -132,6 +132,16 @@
         "crates/engine/speclink-core/tests/golden/pi.snapshot.md",
         "crates/engine/speclink-core/tests/it/skill_verbization.rs"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "8.1 （Red→Green）已封存的關卡結局改成「有工單優先」，對應規格「線上變更回應的關卡欄位」的情境「蓋章後重開工單再封存」，以及修改的兩條需求「已封存清單的審查結局欄位」「已封存清單的驗證結局欄位」。先寫測試——引擎的結局函式對「有工單、有章」與「有工單、沒有章」回傳未通過，「只有章」回傳已蓋章，「都沒有」回傳無；Host 的已封存清單對工單與章並存的封存項回 `reviewOutcome` 為 `notPassed`；desktop 本機的已封存清單對同樣的封存項回 `reviewStatus` 為 `reviewedNotPassed`、`verifyStatus` 為 `verifiedNotPassed`，只有章的項目仍是 `reviewed`、`verified`。再實作：判定收成引擎 `station` 模組的一個純函式（`ArchivedOutcome::of`），Host 的已封存清單與 desktop 的已封存快取都呼叫它；desktop core 自己的結局 enum 改用引擎的；快取版本加一，讓已經存下的結局重算。同類位置排查：以 `NotPassed` 搜尋 crates、apps、packages 的 Rust 與 TypeScript，做判定的只有 crates/host/speclink-host/src/documents.rs 與 apps/desktop/core/src/cache.rs，兩處都改；apps/desktop/src-tauri/src/remote.rs 只把線上的值轉成卡片的字串，不做判定，只跟著換型別；packages/ui 的元件只讀結局字串，不用改，packages/ui/src/adapter.ts 只更新欄位的說明註解。涉及 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/quality/station/tests.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/tests/station_wire.rs、apps/desktop/core/src/cache.rs、apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/remote.rs、packages/ui/src/adapter.ts。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/src/App.tsx",
+        "crates/host/speclink-server/tests/it/api/sse_events.rs",
+        "packages/ui/src/adapter.ts"
+      ]
     }
   ],
   "entries": [
@@ -301,6 +311,20 @@
         "crates/engine/speclink-core/tests/it/skill_verbization.rs"
       ],
       "recordedAt": "2026-11-12T09:50:52Z"
+    },
+    {
+      "taskId": "tsk_01M784PVFJW9GDER5KRKAQ1K11",
+      "taskDesc": "8.1 （Red→Green）已封存的關卡結局改成「有工單優先」，對應規格「線上變更回應的關卡欄位」的情境「蓋章後重開工單再封存」，以及修改的兩條需求「已封存清單的審查結局欄位」「已封存清單的驗證結局欄位」。先寫測試——引擎的結局函式對「有工單、有章」與「有工單、沒有章」回傳未通過，「只有章」回傳已蓋章，「都沒有」回傳無；Host 的已封存清單對工單與章並存的封存項回 `reviewOutcome` 為 `notPassed`；desktop 本機的已封存清單對同樣的封存項回 `reviewStatus` 為 `reviewedNotPassed`、`verifyStatus` 為 `verifiedNotPassed`，只有章的項目仍是 `reviewed`、`verified`。再實作：判定收成引擎 `station` 模組的一個純函式（`ArchivedOutcome::of`），Host 的已封存清單與 desktop 的已封存快取都呼叫它；desktop core 自己的結局 enum 改用引擎的；快取版本加一，讓已經存下的結局重算。同類位置排查：以 `NotPassed` 搜尋 crates、apps、packages 的 Rust 與 TypeScript，做判定的只有 crates/host/speclink-host/src/documents.rs 與 apps/desktop/core/src/cache.rs，兩處都改；apps/desktop/src-tauri/src/remote.rs 只把線上的值轉成卡片的字串，不做判定，只跟著換型別；packages/ui 的元件只讀結局字串，不用改，packages/ui/src/adapter.ts 只更新欄位的說明註解。涉及 crates/engine/speclink-core/src/quality/station.rs、crates/engine/speclink-core/src/quality/station/tests.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/tests/station_wire.rs、apps/desktop/core/src/cache.rs、apps/desktop/core/src/query.rs、apps/desktop/src-tauri/src/remote.rs、packages/ui/src/adapter.ts。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-host`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7642ae7c48ebec217ce555b5d58edb214ee9cdf6",
+      "touchedFiles": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/src/App.tsx",
+        "crates/host/speclink-server/tests/it/api/sse_events.rs",
+        "packages/ui/src/adapter.ts"
+      ],
+      "recordedAt": "2026-11-12T15:10:45Z"
     }
   ]
 }

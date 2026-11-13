@@ -1417,7 +1417,11 @@ fn run_show(
         review: station_status(&REVIEW),
         verify: station_status(&VERIFY),
         branch: change.meta.branch.clone(),
-        landed: LandedRecord::of(&change.meta),
+        landed: LandedRecord::new(
+            change.meta.landed_commit.clone(),
+            change.meta.landed_at.clone(),
+            change.meta.landed_by.clone(),
+        ),
         schema,
         created,
         proposal: store.read_artifact(&change.name, "proposal.md"),

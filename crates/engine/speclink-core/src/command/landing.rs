@@ -33,13 +33,12 @@ pub struct LandedRecord {
 }
 
 impl LandedRecord {
-    /// The record in `meta`; `None` when no landing was reported.
-    pub fn of(meta: &crate::model::ChangeMeta) -> Option<LandedRecord> {
-        Some(LandedRecord {
-            commit: meta.landed_commit.clone()?,
-            at: meta.landed_at.clone().unwrap_or_default(),
-            by: meta.landed_by.clone(),
-        })
+    /// The record from its three stored values — a change's metadata, or a
+    /// server's single-change response. `None` when no landing was reported
+    /// (no commit). A commit with no time is a hand-edited record: the time
+    /// reads as empty.
+    pub fn new(commit: Option<String>, at: Option<String>, by: Option<String>) -> Option<LandedRecord> {
+        Some(LandedRecord { commit: commit?, at: at.unwrap_or_default(), by })
     }
 }
 
@@ -62,7 +61,7 @@ pub(super) fn run(
     }
     // The stage is not a guard: code can land before the change is started.
     crate::model::edit_meta(store, &name, |m| {
-        m.set(LANDED_COMMIT, &crate::util::yaml_string(&commit))?;
+        m.set(LANDED_COMMIT, &crate::util::yaml_roundtrip_scalar(&commit))?;
         m.set(LANDED_AT, &crate::util::now_rfc3339())?;
         // The reporter of this report only: an anonymous report does not keep
         // the name of whoever reported before it.
@@ -71,7 +70,7 @@ pub(super) fn run(
             None => m.remove(LANDED_BY),
         }
         if let Some(branch) = &branch {
-            m.set(crate::inprogress::BRANCH_KEY, &crate::util::yaml_string(branch))?;
+            m.set(crate::inprogress::BRANCH_KEY, &crate::util::yaml_roundtrip_scalar(branch))?;
         }
         // The edit only sees a key written as `key:` in the first column. A
         // hand-written `key : value` would get a second line with the same
