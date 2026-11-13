@@ -18,8 +18,8 @@ const NOV_12_0300_MS: u64 = 1_794_452_400_000;
 
 // --- the two projects ---
 
-struct TempProject {
-    dir: PathBuf,
+pub(crate) struct TempProject {
+    pub(crate) dir: PathBuf,
 }
 
 impl TempProject {
@@ -33,33 +33,38 @@ impl TempProject {
     /// A local project that holds `docs` as files: a store key is its path
     /// under the spec directory, except the archive, which the files keep
     /// under each kind's own folder.
-    fn local(tag: &str, docs: &[(&str, &str)]) -> TempProject {
+    pub(crate) fn local(tag: &str, docs: &[(&str, &str)]) -> TempProject {
         let p = TempProject::bare(&format!("{tag}-fs"));
         std::fs::write(p.dir.join(".speclink.yaml"), "tools:\n  - claude\n").unwrap();
         std::fs::create_dir_all(p.dir.join("speclink").join("changes")).unwrap();
         for (key, content) in docs {
-            let rel = match key.strip_prefix("archive/changes/") {
-                Some(rest) => format!("changes/archive/{rest}"),
-                None => match key.strip_prefix("archive/discussions/") {
-                    Some(rest) => format!("discussions/archive/{rest}"),
-                    None => key.to_string(),
-                },
-            };
-            let path = p.dir.join("speclink").join(rel.split('/').collect::<PathBuf>());
+            let path = p.spec_file(key);
             std::fs::create_dir_all(path.parent().unwrap()).unwrap();
             std::fs::write(path, content).unwrap();
         }
         p
     }
 
+    /// The file a local project keeps the document of store key `key` in.
+    pub(crate) fn spec_file(&self, key: &str) -> PathBuf {
+        let rel = match key.strip_prefix("archive/changes/") {
+            Some(rest) => format!("changes/archive/{rest}"),
+            None => match key.strip_prefix("archive/discussions/") {
+                Some(rest) => format!("discussions/archive/{rest}"),
+                None => key.to_string(),
+            },
+        };
+        self.dir.join("speclink").join(rel.split('/').collect::<PathBuf>())
+    }
+
     /// A project that holds only its connection to `url`.
-    fn remote(tag: &str, url: &str) -> TempProject {
+    pub(crate) fn remote(tag: &str, url: &str) -> TempProject {
         let p = TempProject::bare(&format!("{tag}-remote"));
         std::fs::write(p.dir.join(".speclink.yaml"), format!("remote:\n  url: {url}\n  repo: backend\n")).unwrap();
         p
     }
 
-    fn run(&self, args: &[&str]) -> Output {
+    pub(crate) fn run(&self, args: &[&str]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
         cmd.args(args).current_dir(&self.dir);
         for key in [
@@ -102,26 +107,26 @@ impl Drop for TempProject {
     }
 }
 
-fn stdout_of(out: &Output) -> String {
+pub(crate) fn stdout_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stdout).to_string()
 }
 
-fn stderr_of(out: &Output) -> String {
+pub(crate) fn stderr_of(out: &Output) -> String {
     String::from_utf8_lossy(&out.stderr).to_string()
 }
 
-fn json_of(out: &Output) -> serde_json::Value {
+pub(crate) fn json_of(out: &Output) -> serde_json::Value {
     serde_json::from_slice(&out.stdout).unwrap_or_else(|e| panic!("stdout is JSON ({e}): {}", stdout_of(out)))
 }
 
 /// One set of documents as a local project, a server and a remote project.
-struct Pair {
-    fs: TempProject,
-    remote: TempProject,
+pub(crate) struct Pair {
+    pub(crate) fs: TempProject,
+    pub(crate) remote: TempProject,
     door: Door,
 }
 
-fn pair(tag: &str, docs: &[(&str, &str)]) -> Pair {
+pub(crate) fn pair(tag: &str, docs: &[(&str, &str)]) -> Pair {
     pair_at(tag, docs, NOV_12_0300_MS)
 }
 
@@ -133,7 +138,7 @@ fn pair_at(tag: &str, docs: &[(&str, &str)], at_millis: u64) -> Pair {
 impl Pair {
     /// Run `args` in both projects and hold the two runs to each other: the
     /// same stdout, the same stderr, the same exit code. Gives the local run.
-    fn same(&self, args: &[&str]) -> Output {
+    pub(crate) fn same(&self, args: &[&str]) -> Output {
         let (fs, remote) = (self.fs.run(args), self.remote.run(args));
         assert_eq!(stdout_of(&remote), stdout_of(&fs), "{args:?}: stdout");
         assert_eq!(stderr_of(&remote), stderr_of(&fs), "{args:?}: stderr");
@@ -142,7 +147,7 @@ impl Pair {
     }
 
     /// [`Pair::same`], for a run that succeeds with output.
-    fn same_ok(&self, args: &[&str]) -> Output {
+    pub(crate) fn same_ok(&self, args: &[&str]) -> Output {
         let out = self.same(args);
         assert!(out.status.success(), "{args:?}: {}", stderr_of(&out));
         assert!(!out.stdout.is_empty(), "{args:?} prints something");

@@ -328,6 +328,7 @@ fn run_dispatch(
     let cmd = command_of(&parsed, stdin)?;
     refuse_workflow_config_write(backend, parsed.name(), &cmd)?;
     refuse_unrankable(backend, parsed.name(), &cmd)?;
+    refuse_free_fields(backend, parsed.name(), &cmd)?;
     run_verb(backend, actor, rewrite_lock, &parsed, cmd)
 }
 
@@ -435,6 +436,31 @@ fn refuse_unrankable(
         )),
         _ => Ok(()),
     }
+}
+
+/// Free fields on a JS store object (host-free-fields D8): that bridge gives
+/// JavaScript a change's metadata as a fixed set of fields, so a field written
+/// through it does not come back. The field verbs, and a create verb with
+/// `--field`, are refused before anything runs. A host that needs free fields
+/// builds a host kit over a store port.
+fn refuse_free_fields(
+    backend: &Backend,
+    name: &str,
+    cmd: &core::command::Command,
+) -> std::result::Result<(), DispatchError> {
+    use core::command::Command;
+    let uses_fields = matches!(cmd, Command::ChangeFieldsEdit { .. } | Command::DiscussFieldsEdit { .. })
+        || cmd.creation_fields().is_some_and(|fields| !fields.is_empty());
+    if uses_fields && matches!(backend, Backend::Js { .. }) {
+        return Err(DispatchError::new(
+            "refused",
+            format!(
+                "{name}: free fields are not available on a store object passed to createEngine: \
+                 it does not carry them. Use createHost with a store port (list, read, commit)"
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// Whether `cmd` writes the workflow config document: an edit that is not a

@@ -282,6 +282,7 @@ fn create_change_posts_the_typed_request_body() {
         agent: Some("claude".into()),
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     };
     let resp = client(&mock).create_change(req.clone()).expect("create ok");
     assert_eq!(resp.name, "demo");
@@ -490,6 +491,7 @@ fn discussion_writes_post_typed_bodies() {
             topic: "Auth scope".into(),
             slug: None,
             kind: None,
+            fields: Default::default(),
         })
         .unwrap(),
         "no override keeps the body byte-identical to the pre-slug client's"
@@ -532,7 +534,7 @@ fn discussion_writes_post_typed_bodies() {
     assert_eq!(promoted.change, "add-auth");
     assert_eq!(
         mock5.last().body,
-        serde_json::to_string(&PromoteDiscussionRequest { name: Some("add-auth".into()), last: false })
+        serde_json::to_string(&PromoteDiscussionRequest { name: Some("add-auth".into()), last: false, fields: Default::default() })
             .unwrap()
     );
     let bare = client(&mock5).discussion_promote("auth-scope", None, false).expect("promote ok");
@@ -561,6 +563,7 @@ fn spin_out_verbs_post_last_true_and_link_stays_flagless() {
             agent: None,
             from_discussion: Some("auth-scope".into()),
             last: true,
+            fields: Default::default(),
         })
         .expect("create ok");
     let cap = mock.last();
@@ -602,6 +605,7 @@ fn discussion_parity_verbs_post_typed_bodies() {
             topic: "看板搜尋列".into(),
             slug: Some("board-search-bar".into()),
             kind: None,
+            fields: Default::default(),
         })
         .unwrap()
     );
@@ -689,6 +693,64 @@ fn plan_gets_the_typed_plan() {
     assert_eq!(plan.unpromoted_cuts[0].discussion, "talk-a");
     assert_eq!(plan.unpromoted_cuts[0].unpromoted, ["add-b"]);
     assert_call(&mock.last(), "GET", "/plan");
+}
+
+// --- free fields (host-free-fields D7) ---
+
+fn free_fields(pairs: &[(&str, &str)]) -> speclink_protocol::command::FreeFields {
+    pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+}
+
+#[test]
+fn the_two_field_writes_put_set_and_unset_and_read_the_fields_back() {
+    // client-protocol「寫入請求」。
+    let mock = serve(200, r#"{"fields":{"a":"1","keep":"k"},"changed":["a","b"]}"#);
+    let resp = client(&mock)
+        .set_change_fields("demo", &free_fields(&[("a", "1")]), &["b".to_string()])
+        .expect("set_change_fields ok");
+    assert_eq!(resp.fields, free_fields(&[("a", "1"), ("keep", "k")]));
+    assert_eq!(resp.changed, ["a", "b"]);
+    let cap = mock.last();
+    assert_call(&cap, "PUT", "/changes/demo/fields");
+    assert_eq!(cap.body, r#"{"set":{"a":"1"},"unset":["b"]}"#);
+
+    let mock = serve(200, r#"{"fields":{},"changed":["owner"]}"#);
+    let resp = client(&mock)
+        .set_discussion_fields("board-search", &free_fields(&[]), &["owner".to_string()])
+        .expect("set_discussion_fields ok");
+    assert!(resp.fields.is_empty());
+    let cap = mock.last();
+    assert_call(&cap, "PUT", "/discussions/board-search/fields");
+    assert_eq!(cap.body, r#"{"unset":["owner"]}"#);
+}
+
+#[test]
+fn a_field_write_relays_the_servers_refusal_and_an_older_servers_404() {
+    let mock = serve(400, r#"{"status":400,"reason":"invalid_argument","message":"invalid field key \"Bad\""}"#);
+    let err = client(&mock).set_change_fields("demo", &free_fields(&[("Bad", "1")]), &[]).unwrap_err();
+    assert_eq!((err.status, err.reason.as_deref()), (Some(400), Some("invalid_argument")));
+    assert!(err.message.contains("Bad"), "{}", err.message);
+    let mock = serve(404, r#"{"status":404,"reason":"not_found","message":"Change 'ghost' not found."}"#);
+    let err = client(&mock).set_change_fields("ghost", &free_fields(&[("a", "1")]), &[]).unwrap_err();
+    assert_eq!(err.reason.as_deref(), Some("not_found"));
+}
+
+#[test]
+fn the_create_calls_send_fields_and_the_calls_without_them_keep_their_body() {
+    // client-protocol「建立請求帶欄位」。
+    let mock = serve(200, r#"{"slug":"board-search","topic":"Board search","path":"discussions/board-search.md"}"#);
+    client(&mock)
+        .new_discussion_with_fields("Board search", None, None, &free_fields(&[("owner", "alice")]))
+        .expect("new ok");
+    assert_eq!(mock.last().body, r#"{"topic":"Board search","fields":{"owner":"alice"}}"#);
+    // 既有的呼叫：請求體和這個欄位出現之前相同。
+    client(&mock).new_discussion("Board search", None, None).expect("new ok");
+    assert_eq!(mock.last().body, r#"{"topic":"Board search"}"#);
+
+    // 轉出變更的呼叫不帶欄位：請求體和這個欄位出現之前相同。
+    let mock = serve(200, r#"{"change":"demo"}"#);
+    client(&mock).discussion_promote("board-search", Some("demo"), false).expect("promote ok");
+    assert_eq!(mock.last().body, r#"{"name":"demo"}"#);
 }
 
 #[test]

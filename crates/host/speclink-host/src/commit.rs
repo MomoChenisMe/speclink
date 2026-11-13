@@ -37,6 +37,10 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::ChangeDependsChanged { change, depends_on, .. } => json!({ "change": change, "dependsOn": depends_on }),
         DomainEvent::ChangeSchemaChanged { change, schema, .. } => json!({ "change": change, "schema": schema }),
         DomainEvent::ChangeRanked { change, .. } => json!({ "change": change }),
+        // The keys only. A field's value is the host's own data, and an event
+        // goes to every subscriber.
+        DomainEvent::ChangeFieldsChanged { change, keys, .. } => json!({ "change": change, "keys": keys }),
+        DomainEvent::DiscussionFieldsChanged { slug, keys, .. } => json!({ "slug": slug, "keys": keys }),
         DomainEvent::ChangeLanded { change, commit, branch, .. } => {
             // `branch` is in the payload only when the report gave one.
             let mut payload = json!({ "change": change, "commit": commit });
@@ -88,6 +92,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "change-depends-changed"
         | "change-schema-changed"
         | "change-ranked"
+        | "change-fields-changed"
         | "change-landed"
         | "change-discarded"
         | "review-round-added"
@@ -105,6 +110,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "discussion-linked"
         | "discussion-sealed"
         | "discussion-archived"
+        | "discussion-fields-changed"
         | "discussion-discarded" => (InvalidationScope::Discussion, field("slug")),
         _ => (InvalidationScope::Unknown("unknown".to_string()), String::new()),
     }
@@ -170,10 +176,34 @@ mod tests {
                 },
                 json!({ "change": "add-x", "commit": "0123456789ab" }),
             ),
+            (
+                DomainEvent::ChangeFieldsChanged {
+                    change: "add-x".into(),
+                    keys: vec!["source".into(), "ticket".into()],
+                    occurred_at: at(),
+                },
+                json!({ "change": "add-x", "keys": ["source", "ticket"] }),
+            ),
+            (
+                DomainEvent::DiscussionFieldsChanged { slug: "talk".into(), keys: vec!["owner".into()], occurred_at: at() },
+                json!({ "slug": "talk", "keys": ["owner"] }),
+            ),
         ];
         for (event, payload) in rows {
             assert_eq!(event_payload(&event), payload, "{}", event.kind());
         }
+    }
+
+    #[test]
+    fn a_fields_event_points_at_its_change_or_its_discussion() {
+        assert_eq!(
+            event_resource("change-fields-changed", &json!({ "change": "add-x", "keys": ["ticket"] })),
+            (InvalidationScope::Change, "add-x".to_string())
+        );
+        assert_eq!(
+            event_resource("discussion-fields-changed", &json!({ "slug": "talk", "keys": ["owner"] })),
+            (InvalidationScope::Discussion, "talk".to_string())
+        );
     }
 
     #[test]

@@ -11,6 +11,9 @@ use std::path::PathBuf;
 
 /// Create a new change with its metadata document. `actor` is the
 /// Host-resolved display identity — None (anonymous) stamps no created_by.
+/// `fields` are the free fields the change starts with: they are part of the
+/// one document written here, and a field outside the rules creates nothing.
+#[allow(clippy::too_many_arguments)]
 pub fn new_change(
     store: &dyn Store,
     name: &str,
@@ -19,6 +22,7 @@ pub fn new_change(
     agent: Option<&str>,
     from_discussion: Option<&str>,
     actor: Option<&str>,
+    fields: &crate::fields::Fields,
 ) -> Result<PathBuf> {
     if !is_kebab_case(name) {
         bail!("Invalid change name '{name}'. Must be kebab-case (e.g., 'add-feature').");
@@ -26,6 +30,7 @@ pub fn new_change(
     if store.change_exists(name) {
         bail!("Change '{name}' already exists.");
     }
+    crate::fields::check(fields)?;
     let created = util::now_rfc3339();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
     if let Some(id) = actor {
@@ -37,6 +42,7 @@ pub fn new_change(
     if let Some(slug) = from_discussion {
         meta.push_str(&format!("from_discussion: {slug}\n"));
     }
+    meta.push_str(&crate::fields::block_text(fields));
     store.create_change(name, &meta)
 }
 
@@ -218,7 +224,7 @@ mod tests {
     #[test]
     fn new_change_stamps_the_injected_actor_only() {
         let store = TestStore::default();
-        new_change(&store, "with-actor", None, "spec-driven", None, None, Some("Alice <a@example.com>"))
+        new_change(&store, "with-actor", None, "spec-driven", None, None, Some("Alice <a@example.com>"), &Default::default())
             .expect("new change succeeds");
         assert!(
             store.meta("with-actor").contains("created_by: Alice <a@example.com>\n"),
@@ -231,7 +237,7 @@ mod tests {
     fn new_change_writes_created_as_an_offset_stamp() {
         // spec「新變更寫入時戳」：created 為帶偏移量、秒精度的 RFC 3339。
         let store = TestStore::default();
-        new_change(&store, "stamped", None, "spec-driven", None, None, None)
+        new_change(&store, "stamped", None, "spec-driven", None, None, None, &Default::default())
             .expect("new change succeeds");
         let meta = store.meta("stamped");
         let created = util::offset_stamp_line(&meta, "created");
@@ -243,7 +249,7 @@ mod tests {
     fn new_change_without_actor_stamps_no_created_by() {
         // 無身分：沿用現行無章行為（同今日無 git／未設 user.name）。
         let store = TestStore::default();
-        new_change(&store, "anon", None, "spec-driven", None, None, None)
+        new_change(&store, "anon", None, "spec-driven", None, None, None, &Default::default())
             .expect("new change succeeds");
         assert!(
             !store.meta("anon").contains("created_by:"),

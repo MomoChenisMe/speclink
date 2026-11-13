@@ -2,7 +2,7 @@
 
 ### Requirement: 自由欄位的線上欄位與請求
 
-變更清單的項目、單筆變更的回應、已封存清單的項目與討論資訊 SHALL 各增列選填的 `fields`（物件，字串對字串；空的時候不序列化）。建立變更、建立討論與轉出變更的請求 SHALL 各增列選填的 `fields`。Client Protocol SHALL 定義兩個寫入請求：對專案底下 changes/<name>/fields 與 discussions/<slug>/fields 的 PUT，payload 為 `set`（物件，選填）與 `unset`（字串陣列，選填），兩者至少一個不是空的；成功回應為 `{ "fields": object }`（寫入後的全部欄位）並帶新的範圍版本。握手的 capabilities SHALL 增列選填的布林 `fields`，Server 支援自由欄位時為 true。不認得這些欄位的舊版用戶端 SHALL 照常解析回應。用戶端在建立請求帶了 `fields` 而握手沒有宣告支援時 SHALL 警告使用者欄位沒有被保存，建立本身 SHALL 視為成功。這些型別 SHALL 在 protocol 的單一定義處宣告。
+變更清單的項目、單筆變更的回應、已封存清單的項目與討論資訊 SHALL 各增列選填的 `fields`（物件，字串對字串；空的時候不序列化）。建立變更、建立討論與轉出變更的請求 SHALL 各增列選填的 `fields`。Client Protocol SHALL 定義兩個寫入請求：對專案底下 changes/<name>/fields 與 discussions/<slug>/fields 的 PUT，payload 為 `set`（物件，選填）與 `unset`（字串陣列，選填），兩者至少一個不是空的；成功回應為 `{ "fields": object, "changed": string[] }`（寫入後的全部欄位，與這次實際變動的鍵——依位元組順序，沒有變動時是空陣列）並帶新的範圍版本。握手的 capabilities SHALL 增列選填的布林 `fields`，Server 支援自由欄位時為 true。不認得這些欄位的舊版用戶端 SHALL 照常解析回應。用戶端在建立請求帶了 `fields` 而握手沒有宣告支援時 SHALL 警告使用者欄位沒有被保存，建立本身 SHALL 視為成功。這些型別 SHALL 在 protocol 的單一定義處宣告。
 
 #### Scenario: 回應帶出欄位
 
@@ -22,7 +22,7 @@
 #### Scenario: 寫入請求
 
 - **WHEN** 對 changes/demo/fields 送出 `{"set":{"a":"1"},"unset":["b"]}`
-- **THEN** 回應的 fields 含 a、不含 b，並帶新的範圍版本
+- **THEN** 回應的 fields 含 a、不含 b，changed 是這次實際變動的鍵，並帶新的範圍版本
 
 #### Scenario: set 與 unset 都是空的
 

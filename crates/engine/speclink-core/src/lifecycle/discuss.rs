@@ -72,6 +72,9 @@ pub struct DiscussionInfo {
     pub kind: Option<String>,
     pub path: String,
     pub archived: bool,
+    /// 自由欄位（host-free-fields D5）；沒有時省略，`discuss list --json` 逐位元不變。
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty", default)]
+    pub fields: crate::fields::Fields,
     /// Conclusion 段是否已寫入內文（佔位註解不算）。不進 JSON（`discuss list --json`
     /// 逐位元不變）；反序列化取預設。
     #[serde(skip)]
@@ -136,6 +139,9 @@ pub struct DiscussionHead {
     pub promoted_to: Vec<String>,
     pub hold: bool,
     pub board_rank: Option<String>,
+    /// 自由欄位（host-free-fields D2）：frontmatter 的 `fields` 區塊，寬鬆讀取。寫入走
+    /// [`crate::fields::edit_discussion`]，不經 [`write_back`](Self::write_back)。
+    pub fields: crate::fields::Fields,
     /// frontmatter 區域；記錄沒有 frontmatter 時為 `None`。
     lines: Option<KeyLines>,
     /// 解析當下的四個可寫欄位——`write_back` 只寫與它不同的欄位。
@@ -178,6 +184,7 @@ impl DiscussionHead {
             promoted_to: parsed.promoted_to.clone(),
             hold: parsed.hold,
             board_rank: parsed.board_rank.clone(),
+            fields: lines.as_ref().map(crate::fields::read).unwrap_or_default(),
             lines,
             parsed,
             hold_restated: false,
@@ -449,6 +456,7 @@ fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
         kind: head.kind.clone(),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
+        fields: head.fields.clone(),
         concluded: conclusion_body(&doc.text).is_some(),
         head,
     }
@@ -482,13 +490,17 @@ fn is_valid_slug_override(s: &str) -> bool {
 /// `slug_override` names the record file directly (validated ASCII kebab-case);
 /// without it the slug falls back to deriving from the topic. `kind` marks the
 /// record's type (whitelist [`DISCUSSION_KINDS`]); absent means a plain discussion.
+/// `fields` are the free fields the record starts with, in the frontmatter it is
+/// created with; a field outside the rules creates nothing.
 pub fn new_discussion(
     store: &dyn Store,
     topic: &str,
     slug_override: Option<&str>,
     created_by: Option<&str>,
     kind: Option<&str>,
+    fields: &crate::fields::Fields,
 ) -> Result<DiscussionInfo> {
+    crate::fields::check(fields)?;
     if let Some(k) = kind {
         if !DISCUSSION_KINDS.contains(&k) {
             return Err(WriteRefusal::invalid(format!(
@@ -533,6 +545,7 @@ pub fn new_discussion(
         .unwrap_or_default();
     // kind 已過白名單，寫出的必是常數字串（無 YAML 跳脫顧慮）；缺席時整行不存在。
     let kind_line = kind.map(|k| format!("kind: {k}\n")).unwrap_or_default();
+    let fields_block = crate::fields::block_text(fields);
     let content = format!(
         "---\n\
          topic: {topic}\n\
@@ -541,6 +554,7 @@ pub fn new_discussion(
          created: {created}\n\
          {created_by_line}\
          {kind_line}\
+         {fields_block}\
          ---\n\
          \n\
          # Discussion: {topic}\n\
@@ -578,6 +592,7 @@ pub fn new_discussion(
         kind: kind.map(str::to_string),
         path: util::to_slash(&path),
         archived: false,
+        fields: fields.clone(),
         concluded: false,
         head: DiscussionHead::parse(&content),
     })
@@ -1019,6 +1034,20 @@ pub fn promote(
     actor: Option<&str>,
     last: bool,
 ) -> Result<PromoteOutcome> {
+    promote_with_fields(store, slug, name, actor, last, &crate::fields::Fields::new())
+}
+
+/// [`promote`], and the change it creates starts with the free fields
+/// `fields` (in the metadata document it is created with). A field outside
+/// the rules fails before anything is written.
+pub fn promote_with_fields(
+    store: &dyn Store,
+    slug: &str,
+    name: Option<&str>,
+    actor: Option<&str>,
+    last: bool,
+    fields: &crate::fields::Fields,
+) -> Result<PromoteOutcome> {
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
         Some(i) if i.archived => {
@@ -1034,7 +1063,7 @@ pub fn promote(
     let schema =
         crate::config::WorkflowConfig::from_store(store)?
             .schema_name();
-    let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), actor)?;
+    let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), actor, fields)?;
     // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
     // the remaining sections stay as TBD markers for /speclink-propose to complete.
     let why = conclusion_text(store, slug).unwrap_or_else(|| {

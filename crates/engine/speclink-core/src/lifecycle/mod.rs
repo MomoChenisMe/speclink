@@ -4,6 +4,7 @@ pub mod change_schema;
 pub mod cost;
 pub mod discard;
 pub mod discuss;
+pub mod fields;
 pub mod inprogress;
 pub mod listing;
 pub mod model;

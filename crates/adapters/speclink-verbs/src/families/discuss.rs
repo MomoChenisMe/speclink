@@ -3,6 +3,7 @@
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
+use super::fields::FieldKind;
 use crate::{CommandTarget, StdinPolicy, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
@@ -21,6 +22,9 @@ pub enum DiscussCommands {
         /// Mark the record's type (only: improve)
         #[arg(long)]
         kind: Option<String>,
+        /// A free field the record starts with (repeatable)
+        #[arg(long = "field", value_name = "KEY=VALUE")]
+        field: Vec<String>,
         #[arg(long)]
         json: bool,
     },
@@ -102,11 +106,13 @@ pub enum DiscussCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Free fields of a discussion: your own key/value pairs, stored and never read by speclink
+    Field(super::fields::FieldArgs),
 }
 
 impl DiscussArgs {
     pub fn name(&self) -> &'static str {
-        match self.command {
+        match &self.command {
             DiscussCommands::New { .. } => "discuss new",
             DiscussCommands::List { .. } => "discuss list",
             DiscussCommands::Show { .. } => "discuss show",
@@ -119,6 +125,7 @@ impl DiscussArgs {
             DiscussCommands::Promote { .. } => "discuss promote",
             DiscussCommands::Link { .. } => "discuss link",
             DiscussCommands::Seal { .. } => "discuss seal",
+            DiscussCommands::Field(a) => a.name(FieldKind::Discussion),
         }
     }
 
@@ -136,7 +143,8 @@ impl DiscussArgs {
             | DiscussCommands::Discard { .. }
             | DiscussCommands::Promote { .. }
             | DiscussCommands::Link { .. }
-            | DiscussCommands::Seal { .. } => StdinPolicy::Never,
+            | DiscussCommands::Seal { .. }
+            | DiscussCommands::Field(_) => StdinPolicy::Never,
         }
     }
 }
@@ -146,10 +154,11 @@ impl ToCommand for DiscussArgs {
     fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
         let content = || inputs.stdin.clone().unwrap_or_default();
         Ok(CommandTarget::Command(match &self.command {
-            DiscussCommands::New { topic, slug, kind, .. } => Command::DiscussNew {
+            DiscussCommands::New { topic, slug, kind, field, .. } => Command::DiscussNew {
                 topic: topic.clone(),
                 slug: slug.clone(),
                 kind: kind.clone(),
+                fields: super::fields::parse_pairs(field)?,
             },
             DiscussCommands::List { archived, .. } => Command::DiscussList { archived: *archived },
             DiscussCommands::Show { slug, .. } => Command::DiscussShow { slug: slug.clone() },
@@ -175,6 +184,7 @@ impl ToCommand for DiscussArgs {
                 slug: slug.clone(),
                 name: name.clone(),
                 last: *last,
+                fields: Default::default(),
             },
             DiscussCommands::Link { slug, change, .. } => {
                 Command::DiscussLink { slug: slug.clone(), change: change.clone() }
@@ -184,6 +194,7 @@ impl ToCommand for DiscussArgs {
                 change: change.clone(),
                 last: *last,
             },
+            DiscussCommands::Field(a) => a.command(FieldKind::Discussion)?,
         }))
     }
 }
@@ -208,6 +219,7 @@ mod tests {
                     topic: "Rate limits".into(),
                     slug: Some("rate-limits".into()),
                     kind: Some("improve".into()),
+                    fields: Default::default(),
                 },
             ),
             (&["discuss", "list", "--archived"], VerbInputs::default(), Command::DiscussList { archived: true }),
@@ -246,7 +258,7 @@ mod tests {
             (
                 &["discuss", "promote", "topic", "--name", "add-x", "--last"],
                 VerbInputs::default(),
-                Command::DiscussPromote { slug: "topic".into(), name: Some("add-x".into()), last: true },
+                Command::DiscussPromote { slug: "topic".into(), name: Some("add-x".into()), last: true, fields: Default::default() },
             ),
             (
                 &["discuss", "link", "topic", "add-x"],

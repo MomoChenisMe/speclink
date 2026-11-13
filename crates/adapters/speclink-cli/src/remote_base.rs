@@ -19,6 +19,43 @@ pub(crate) struct RemoteCtx {
     /// exists (discovery failure resolves to fs mode), so arms read it here
     /// instead of re-discovering.
     pub(crate) ws: core::workspace::Workspace,
+    /// The handshake's `capabilities.fields`: the Server keeps free fields.
+    keeps_fields: bool,
+}
+
+impl RemoteCtx {
+    /// The remote arm of the four field verbs: the Server runs the edit, and
+    /// its answer goes to the output function the local arm uses.
+    pub(crate) fn edit_fields(
+        &self,
+        kind: speclink_verbs::render::fields::FieldKind,
+        field: &speclink_verbs::families::fields::FieldArgs,
+    ) -> Result<()> {
+        use speclink_verbs::render::fields::{edited, FieldKind};
+        let edit = field.edit()?;
+        let written = match kind {
+            FieldKind::Change => self.client.set_change_fields(&edit.subject, &edit.set, &edit.unset),
+            FieldKind::Discussion => self.client.set_discussion_fields(&edit.subject, &edit.set, &edit.unset),
+        }?;
+        let outcome =
+            core::command::FieldsOutcome { subject: edit.subject, fields: written.fields, changed: written.changed };
+        crate::common::emit(edited(kind, &outcome, crate::common::render_options(field.json())));
+        Ok(())
+    }
+
+    /// After a create that sent free fields: a Server from before free fields
+    /// took the create and dropped them without a word, so the user is told
+    /// (host-free-fields D7). One stderr line, with no value in it; the
+    /// create stands and the exit code does not change.
+    pub(crate) fn warn_if_fields_were_not_kept(&self, sent: &speclink_protocol::command::FreeFields) {
+        if !sent.is_empty() && !self.keeps_fields {
+            let keys: Vec<&str> = sent.keys().map(String::as_str).collect();
+            eprintln!(
+                "speclink: warning: this server did not keep the fields ({}) — it does not support free fields",
+                keys.join(", ")
+            );
+        }
+    }
 }
 
 /// Resolve remote mode for the current workspace. `Ok(None)` = fs mode
@@ -45,7 +82,8 @@ pub(crate) fn remote_ctx() -> Result<Option<RemoteCtx>> {
     // CLI whose skill templates are older than the Server's.
     let declared = connected.binding.capabilities.skills.as_ref().map(|skills| skills.version.as_str());
     crate::skill_notice::after_handshake(&remote_auth::origin_of(&conn.url), declared);
-    Ok(Some(RemoteCtx { client: connected.client, ws }))
+    let keeps_fields = connected.binding.capabilities.fields;
+    Ok(Some(RemoteCtx { client: connected.client, ws, keeps_fields }))
 }
 
 /// What the binding handshake gave: the client for the requests after it, and

@@ -29,6 +29,7 @@ pub use router::{match_route, routes, RouteMatch};
 
 use crate::binding::{resolve_binding, BindingCandidate, BindingError};
 use crate::kit::{Caller, HostKit, Identity, ProjectEntry};
+use speclink_core::fields::Fields;
 use router::{Route, READ_ONLY_POSTS};
 use serde::Serialize;
 use speclink_protocol::binding::ScopeRef;
@@ -113,7 +114,8 @@ impl HttpResponse {
     }
 }
 
-const API_ROOT: &str = "/api/speclink/v1";
+/// Every path of the door is under this root.
+pub const API_ROOT: &str = "/api/speclink/v1";
 
 /// What the door answers when the host gave no identity.
 const NO_IDENTITY: &str = "this request needs an authenticated identity";
@@ -129,6 +131,20 @@ impl HostKit {
     /// only one (404, or 409 with the candidates when there are several);
     /// a request that writes needs `can_write` (403). Then the route runs.
     pub fn handle(&self, request: &HttpRequest, identity: Option<&Identity>) -> Option<HttpResponse> {
+        self.handle_with_fields(request, identity, &Fields::new())
+    }
+
+    /// [`HostKit::handle`] with free fields the host attaches to this call
+    /// from its own program, as [`HostKit::run_with_fields`] takes them. They
+    /// reach only a request that creates a change or a discussion; every
+    /// other request ignores them. Nothing in the request can remove or
+    /// change them.
+    pub fn handle_with_fields(
+        &self,
+        request: &HttpRequest,
+        identity: Option<&Identity>,
+        fields: &Fields,
+    ) -> Option<HttpResponse> {
         let reads = request.method.reads();
         let result = match request.path.strip_prefix(API_ROOT) {
             Some("/auth-methods") if reads => self.auth_methods(),
@@ -136,7 +152,7 @@ impl HostKit {
             Some("/scopes") if reads => self.scope_list(identity),
             _ => {
                 let (route, params) = router::find(request.method, &request.path)?;
-                self.project_request(request, identity, route, params)
+                self.project_request(request, identity, fields, route, params)
             }
         };
         let mut response = result.unwrap_or_else(HttpError::into_response);
@@ -200,6 +216,7 @@ impl HostKit {
         &self,
         request: &HttpRequest,
         identity: Option<&Identity>,
+        fields: &Fields,
         route: &'static Route,
         raw_params: Vec<String>,
     ) -> Result<HttpResponse, HttpError> {
@@ -218,7 +235,7 @@ impl HostKit {
         }
 
         let caller = Caller { identity: identity.clone(), scope: repo.scope.clone() };
-        let bound = routes::Request { kit: self, http: request, caller, project, repo, params };
+        let bound = routes::Request { kit: self, http: request, caller, project, repo, params, attached: fields };
         (route.handler)(&bound)
     }
 }

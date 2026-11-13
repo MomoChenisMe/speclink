@@ -52,6 +52,7 @@ pub mod checks;
 pub mod discuss;
 pub mod documents;
 pub mod evidence;
+pub mod fields;
 pub mod instructions;
 pub mod lifecycle;
 pub mod new;
@@ -235,6 +236,7 @@ pub fn render(
         O::ChangeSchema(o) => plan::schema(o, options),
         O::ChangeRank(o) => plan::rank(o, options),
         O::ChangeLanded(o) => plan::landed(o, options),
+        O::ChangeFieldsEdit(o) => fields::edited(fields::FieldKind::Change, o, options),
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
         O::DiscussNew(info) => discuss::new(info, options),
@@ -255,6 +257,7 @@ pub fn render(
         O::DiscussSeal(o) => discuss::bind(discuss::DiscussBind::Seal, &o.slug, &o.change, options),
         O::DiscussArchive(o) => discuss::archived(o, options),
         O::DiscussDiscard(o) => discuss::discard(&o.slug, options),
+        O::DiscussFieldsEdit(o) => fields::edited(fields::FieldKind::Discussion, o, options),
         O::ReviewAddRound(o) => {
             station::action(&REVIEW, StationAction::AddRound(o.round), &o.change, options)
         }
@@ -365,9 +368,11 @@ mod tests {
             CommandOutcome::ChangeRank(_) => 45,
             CommandOutcome::EvidenceShow(_) => 46,
             CommandOutcome::ChangeLanded(_) => 47,
+            CommandOutcome::ChangeFieldsEdit(_) => 48,
+            CommandOutcome::DiscussFieldsEdit(_) => 49,
         }
     }
-    const RESULT_TYPES: usize = 48;
+    const RESULT_TYPES: usize = 50;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -384,6 +389,7 @@ mod tests {
             kind: None,
             path: s("/p/t.md"),
             archived: false,
+            fields: Default::default(),
             concluded: false,
             head: Default::default(),
         }
@@ -736,6 +742,26 @@ mod tests {
                 true,
                 "✓ c landed at 0123456789ab\n",
             ),
+            (
+                &["change", "field", "set", "c", "ticket=PROJ-1", "source=portal"],
+                O::ChangeFieldsEdit(cmd::FieldsOutcome {
+                    subject: s("c"),
+                    fields: [(s("source"), s("portal")), (s("ticket"), s("PROJ-1"))].into(),
+                    changed: vec![s("source"), s("ticket")],
+                }),
+                true,
+                "✓ c: set source, ticket\n",
+            ),
+            (
+                &["discuss", "field", "unset", "t", "owner", "ghost"],
+                O::DiscussFieldsEdit(cmd::FieldsOutcome {
+                    subject: s("t"),
+                    fields: Default::default(),
+                    changed: vec![s("owner")],
+                }),
+                true,
+                "✓ t: unset owner\n",
+            ),
         ]
     }
 
@@ -786,6 +812,20 @@ mod tests {
             let human_out = render(&parsed(argv), &outcome, HUMAN).unwrap();
             assert_eq!(human_out.json.as_ref(), Some(value), "{argv:?}");
         }
+    }
+
+    #[test]
+    fn a_field_edit_names_its_subject_by_kind_in_json() {
+        let edit = |subject: &str| cmd::FieldsOutcome {
+            subject: s(subject),
+            fields: [(s("ticket"), s("PROJ-1"))].into(),
+            changed: vec![s("ticket")],
+        };
+        let out = render(&parsed(&["change", "field", "set", "demo", "ticket=PROJ-1", "--json"]), &CommandOutcome::ChangeFieldsEdit(edit("demo")), JSON)
+            .unwrap();
+        assert_eq!(out.json, Some(json!({ "change": "demo", "fields": { "ticket": "PROJ-1" } })));
+        let out = render(&parsed(&["discuss", "field", "set", "t", "ticket=PROJ-1"]), &CommandOutcome::DiscussFieldsEdit(edit("t")), JSON).unwrap();
+        assert_eq!(out.json, Some(json!({ "discussion": "t", "fields": { "ticket": "PROJ-1" } })));
     }
 
     #[test]

@@ -1,10 +1,12 @@
 //! Execution-order verbs: `plan`, `change depends`, `change schema`, `change rank`;
-//! and `change landed`, the landing report of the same `change` family.
+//! and `change landed`, the landing report of the same `change` family. The
+//! family's `field` verbs are in [`super::fields`].
 
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError, ErrorCode};
 use speclink_core::plan::Side;
 
+use super::fields::FieldKind;
 use crate::{CommandTarget, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
@@ -81,6 +83,8 @@ pub enum ChangeCommands {
         #[arg(long)]
         json: bool,
     },
+    /// Free fields of a change: your own key/value pairs, stored and never read by speclink
+    Field(super::fields::FieldArgs),
 }
 
 impl ToCommand for PlanArgs {
@@ -112,11 +116,12 @@ pub fn rank_anchor(before: &Option<String>, after: &Option<String>) -> (String, 
 
 impl ChangeVerbArgs {
     pub fn name(&self) -> &'static str {
-        match self.command {
+        match &self.command {
             ChangeCommands::Depends { .. } => "change depends",
             ChangeCommands::Schema { .. } => "change schema",
             ChangeCommands::Rank { .. } => "change rank",
             ChangeCommands::Landed { .. } => "change landed",
+            ChangeCommands::Field(a) => a.name(FieldKind::Change),
         }
     }
 }
@@ -146,6 +151,7 @@ impl ToCommand for ChangeVerbArgs {
                 };
                 CommandTarget::Command(Command::ChangeLanded { name: name.clone(), commit, branch: branch.clone() })
             }
+            ChangeCommands::Field(a) => CommandTarget::Command(a.command(FieldKind::Change)?),
         })
     }
 }

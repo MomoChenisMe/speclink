@@ -37,6 +37,9 @@ pub struct NewChangeArgs {
     /// record's hold so the final archive co-archives the discussion
     #[arg(long, requires = "from_discussion")]
     pub last: bool,
+    /// A free field the change starts with (repeatable)
+    #[arg(long = "field", value_name = "KEY=VALUE")]
+    pub field: Vec<String>,
 }
 #[derive(Args, Debug)]
 pub struct NewArtifactArgs {
@@ -96,6 +99,7 @@ impl ToCommand for NewChangeArgs {
             agent: self.agent.clone(),
             from_discussion: self.from_discussion.clone(),
             last: self.last,
+            fields: super::fields::parse_pairs(&self.field)?,
         }))
     }
 }
@@ -153,6 +157,7 @@ mod tests {
                     agent: None,
                     from_discussion: None,
                     last: false,
+                    fields: Default::default(),
                 },
             ),
             (
@@ -167,6 +172,7 @@ mod tests {
                     agent: Some("claude".into()),
                     from_discussion: Some("topic".into()),
                     last: true,
+                    fields: Default::default(),
                 },
             ),
         ];

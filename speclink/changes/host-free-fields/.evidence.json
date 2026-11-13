@@ -1,0 +1,322 @@
+{
+  "version": 2,
+  "change": "host-free-fields",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）為 D1、D2 寫測試，對應規格「自由欄位的規則與存放」的八個情境：值 `123`、`true`、`null`、`a: b # c`、含雙引號與反斜線的字串、中文，寫入後讀回逐字相同且 metadata 仍可解析；不合規則的鍵、含換行或控制字元的值、超過 1024 位元組的值、第 33 個鍵各被拒絕且文件逐位元不變；區塊裡的鍵依位元組順序、值一律加雙引號；移除最後一個鍵時區塊消失；手改過的區塊（未加引號的數字、巢狀的項目）讀取寬鬆且變更仍可列出；CRLF 的 metadata 寫入後行尾一致；討論記錄開頭區塊的 `fields` 同樣往返，各輪的內容不變。涉及 crates/engine/speclink-core/src/lifecycle/fields.rs。驗證：`cargo test -p speclink-core fields` 編譯失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/fields.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）實作規則、區塊的讀寫與一律加雙引號的函式；`ChangeMeta` 與討論的解析新增 `fields`。涉及 crates/engine/speclink-core/src/lifecycle/fields.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core` 全部通過。",
+      "files": [
+        "crates/engine/speclink-core/src/keylines.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/util.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 （Red→Green）依 D3 實作兩個編輯命令與建立時附帶，對應規格「自由欄位的寫入動詞」的引擎情境與「既有的寫入動詞保留欄位」「引擎的行為不因欄位改變」：先寫測試——set 與 unset 的套用順序、全部寫入或全部不寫、同一個鍵同時 set 與 unset 是 invalid_argv、兩者都空是 invalid_argv、unset 不存在的鍵沒有變動也沒有事件、有變動時一筆事件且 payload 只有名稱與鍵、不存在的變更與已封存的討論是 not_found；建立變更、建立討論、轉出變更帶 `fields` 時在建立的同一份文件裡寫入，規則不符時沒有建立；對帶欄位的變更依序執行勾選任務、宣告依賴、變更 schema、排序、審查與驗證蓋章、封存，每一步之後欄位相同，封存後的 metadata 仍有；兩個內容相同、只差自由欄位（含名為 schema、depends_on 的鍵）的變更，plan、validate、archive 的結果相同。再實作。更新列舉全部命令變體與事件的測試、命令名稱和參數的 golden。涉及 crates/engine/speclink-core/src/command/fields.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/engine/speclink-core/src/lifecycle/newcmd.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs、crates/engine/speclink-core/tests/golden/command-describe.json、crates/host/speclink-host/src/commit.rs。驗證：`cargo test -p speclink-core` 全部通過；`cargo test -p speclink-core --test it command_describe::` 通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/new.rs",
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/kit.rs",
+        "crates/engine/speclink-core/src/command/fields.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "1.4 （Red→Green）依 D5 讓讀取的結果帶出欄位，對應規格「自由欄位的讀取輸出」：先寫測試——清單項、單一變更的 show、討論資訊在有欄位時有 `fields`，沒有時不序列化這個鍵；沒有任何欄位的專案，既有的 `render_golden` 不更新就通過。再實作。涉及 crates/engine/speclink-core/src/lifecycle/listing.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs。驗證：`cargo test -p speclink-core --test it render_golden::` 不更新快照就通過；新增的測試通過。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.1 （Red→Green）依 D4 實作四個動詞與兩個 `--field` 旗標，對應規格「自由欄位的寫入動詞」的 CLI 情境：先寫測試——`<key>=<value>` 在第一個 `=` 分開、值可含 `=`、沒有 `=` 與重複的鍵是用法錯誤；四個動詞轉成對應的命令，都不讀 stdin；`new change` 與 `discuss new` 的 `--field` 可重複並帶進命令；輸出的三種句子（set、unset、no change）鍵依位元組順序，`--json` 是 `change` 或 `discussion` 加 `fields`（斷言 camelCase 與型別）；`list --json`、`show --json`、`discuss show --json` 在有欄位時輸出 `fields`，人眼輸出不變；Agent 工具說明列出四個新動詞。再實作。涉及 crates/adapters/speclink-verbs/src/families/fields.rs、crates/adapters/speclink-verbs/src/families/mod.rs、crates/adapters/speclink-verbs/src/families/new.rs、crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/render/fields.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/query.rs、crates/adapters/speclink-verbs/src/render/discuss.rs。驗證：`cargo test -p speclink-verbs` 全部通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs",
+        "crates/adapters/speclink-verbs/src/families/fields.rs",
+        "crates/adapters/speclink-verbs/src/render/fields.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 （Red）為 D6、D7 寫 Host 的測試，用記憶體版儲存，對應規格「呼叫入口時附上自由欄位」「自由欄位的寫入端點」「自由欄位的線上欄位與請求」：宿主附上的欄位在建立變更、建立討論、轉出變更時併入並和建立在同一次提交；同名時宿主的值蓋過請求的值；列出變更與勾選任務忽略它且沒有欄位被改動；執行前掛鉤收到最後的欄位；附上不合規則的欄位時 invalid_argv 且沒有建立；兩條 PUT 路由的成功、沒有寫入能力被拒、規則不符回 400、不存在回 404、沒有變動時範圍版本不前進；`{}` 回 400；清單、單筆、已封存、討論的回應回填 `fields` 且沒有多發儲存呼叫（計數的儲存；已封存清單若會多發，依 design 的 Open Question 改成不帶並記下）；空的不序列化；握手的 `capabilities.fields` 為 true；線上歸屬表對兩個編輯命令回答路由；用不認得 `fields` 的舊型別解析新回應成功。涉及 crates/host/speclink-host/tests/free_fields.rs。驗證：`cargo test -p speclink-host --test free_fields` 編譯失敗。",
+      "files": [
+        "crates/host/speclink-host/tests/free_fields.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 （Red）寫 CLI 的整合測試：四個動詞在本機與 remote 模式的 stdout（人眼與 `--json`）相同；`new change --field` 與 `discuss new --field` 在兩種模式建立時就有欄位；全部寫入或全部不寫；沒有任何欄位的專案 `list --json`、`show --json`、`discuss list --json` 與新增之前逐位元相同；對握手沒有宣告 `fields` 的 Server 用 `--field` 建立時成功並在 stderr 警告。涉及 crates/adapters/speclink-cli/tests/it/free_fields.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it free_fields::` 失敗。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-server/tests/it/admin/backup_e2e.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/host/speclink-server/tests/it/e2e_cli.rs",
+        "crates/host/speclink-server/tests/it/serverfs_store.rs",
+        "crates/host/speclink-server/tests/postgres_store.rs",
+        "crates/protocol/speclink-protocol/src/binding.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/adapters/speclink-cli/tests/it/free_fields.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 （Green）CLI 接上四個動詞的本機與遠端分支、兩個建立動詞的 `--field`、遠端讀取把 `fields` 轉回引擎的型別、舊 Server 的警告。回答 design 的 Open Question（`discuss promote` 的 CLI 要不要 `--field`）並寫進 design.md。涉及 crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/query.rs、speclink/changes/host-free-fields/design.md。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 全部通過，`remote_verb_parity` 不改斷言。",
+      "files": [
+        "crates/adapters/speclink-cli/src/remote_base.rs",
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 （Green）實作：線上的請求與回應欄位、兩條路由、回填、握手的宣告；`HostKit::run_with_fields`、`HostKit::handle_with` 與 `CallExtras`，合併的函式由兩個門共用；`speclink-remote` 新增兩個寫入的呼叫並讓三個建立的呼叫帶欄位。涉及 crates/protocol/speclink-protocol/src/command.rs、crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/src/kit.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/http/mod.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/protocol/speclink-remote/src/client.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`（含成本測試）、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/free-fields.spec.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.3 （Red→Green）Node SDK，對應規格「dispatch 與 handleRequest 的 fields」的六個情境：先寫測試——`host.dispatch` 附上欄位建立變更時 commit 一次且 metadata 含欄位、`beforeCommand` 的 params.fields 含它；同樣的 `fields` 配 `['list', '--json']` 不呼叫 commit；`handleRequest` 的第三個參數生效；值不是字串時 dispatch 是 invalid_argv、handleRequest 是 400；欄位動詞經 dispatch 回傳和 CLI 相同的物件；fs 形式的 engine 可用，JS 儲存形式的 engine 依 D8（舊的 JS 儲存）以 refused 拒絕且沒有寫入方法被呼叫。再實作並更新型別宣告。涉及 crates/adapters/speclink-node/__test__/free-fields.spec.ts、crates/adapters/speclink-node/src/host.rs、crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/index.js、crates/adapters/speclink-node/index.d.ts。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/adapters/speclink-verbs、crates/host/speclink-host、crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-host`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-free-fields` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-host/tests/station_wire.rs",
+        "crates/host/speclink-host/tests/common/door.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M774G5FGQMWK1AB000Y7WJHQ",
+      "taskDesc": "1.1 （Red）為 D1、D2 寫測試，對應規格「自由欄位的規則與存放」的八個情境：值 `123`、`true`、`null`、`a: b # c`、含雙引號與反斜線的字串、中文，寫入後讀回逐字相同且 metadata 仍可解析；不合規則的鍵、含換行或控制字元的值、超過 1024 位元組的值、第 33 個鍵各被拒絕且文件逐位元不變；區塊裡的鍵依位元組順序、值一律加雙引號；移除最後一個鍵時區塊消失；手改過的區塊（未加引號的數字、巢狀的項目）讀取寬鬆且變更仍可列出；CRLF 的 metadata 寫入後行尾一致；討論記錄開頭區塊的 `fields` 同樣往返，各輪的內容不變。涉及 crates/engine/speclink-core/src/lifecycle/fields.rs。驗證：`cargo test -p speclink-core fields` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lib.rs",
+        "crates/engine/speclink-core/src/lifecycle/mod.rs",
+        "crates/engine/speclink-core/src/lifecycle/fields.rs"
+      ],
+      "recordedAt": "2026-11-13T07:07:44Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGXKKFRPW487DJY7FR",
+      "taskDesc": "1.2 （Green）實作規則、區塊的讀寫與一律加雙引號的函式；`ChangeMeta` 與討論的解析新增 `fields`。涉及 crates/engine/speclink-core/src/lifecycle/fields.rs、crates/engine/speclink-core/src/lifecycle/model.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs。驗證：1.1 的測試通過；`cargo test -p speclink-core` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/keylines.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs",
+        "crates/engine/speclink-core/src/util.rs"
+      ],
+      "recordedAt": "2026-11-13T07:10:20Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGFC15NTVE2VAME4KC",
+      "taskDesc": "1.3 （Red→Green）依 D3 實作兩個編輯命令與建立時附帶，對應規格「自由欄位的寫入動詞」的引擎情境與「既有的寫入動詞保留欄位」「引擎的行為不因欄位改變」：先寫測試——set 與 unset 的套用順序、全部寫入或全部不寫、同一個鍵同時 set 與 unset 是 invalid_argv、兩者都空是 invalid_argv、unset 不存在的鍵沒有變動也沒有事件、有變動時一筆事件且 payload 只有名稱與鍵、不存在的變更與已封存的討論是 not_found；建立變更、建立討論、轉出變更帶 `fields` 時在建立的同一份文件裡寫入，規則不符時沒有建立；對帶欄位的變更依序執行勾選任務、宣告依賴、變更 schema、排序、審查與驗證蓋章、封存，每一步之後欄位相同，封存後的 metadata 仍有；兩個內容相同、只差自由欄位（含名為 schema、depends_on 的鍵）的變更，plan、validate、archive 的結果相同。再實作。更新列舉全部命令變體與事件的測試、命令名稱和參數的 golden。涉及 crates/engine/speclink-core/src/command/fields.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/command/describe.rs、crates/engine/speclink-core/src/lifecycle/newcmd.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs、crates/engine/speclink-core/tests/golden/command-describe.json、crates/host/speclink-host/src/commit.rs。驗證：`cargo test -p speclink-core` 全部通過；`cargo test -p speclink-core --test it command_describe::` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/new.rs",
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/port_exec.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/kit.rs",
+        "crates/engine/speclink-core/src/command/fields.rs"
+      ],
+      "recordedAt": "2026-11-13T07:16:48Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FG9EFJKN1HGHXNBK66",
+      "taskDesc": "1.4 （Red→Green）依 D5 讓讀取的結果帶出欄位，對應規格「自由欄位的讀取輸出」：先寫測試——清單項、單一變更的 show、討論資訊在有欄位時有 `fields`，沒有時不序列化這個鍵；沒有任何欄位的專案，既有的 `render_golden` 不更新就通過。再實作。涉及 crates/engine/speclink-core/src/lifecycle/listing.rs、crates/engine/speclink-core/src/command/mod.rs、crates/engine/speclink-core/src/lifecycle/discuss.rs。驗證：`cargo test -p speclink-core --test it render_golden::` 不更新快照就通過；新增的測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs"
+      ],
+      "recordedAt": "2026-11-13T07:18:38Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FG9D9FD285336APNE6",
+      "taskDesc": "2.1 （Red→Green）依 D4 實作四個動詞與兩個 `--field` 旗標，對應規格「自由欄位的寫入動詞」的 CLI 情境：先寫測試——`<key>=<value>` 在第一個 `=` 分開、值可含 `=`、沒有 `=` 與重複的鍵是用法錯誤；四個動詞轉成對應的命令，都不讀 stdin；`new change` 與 `discuss new` 的 `--field` 可重複並帶進命令；輸出的三種句子（set、unset、no change）鍵依位元組順序，`--json` 是 `change` 或 `discussion` 加 `fields`（斷言 camelCase 與型別）；`list --json`、`show --json`、`discuss show --json` 在有欄位時輸出 `fields`，人眼輸出不變；Agent 工具說明列出四個新動詞。再實作。涉及 crates/adapters/speclink-verbs/src/families/fields.rs、crates/adapters/speclink-verbs/src/families/mod.rs、crates/adapters/speclink-verbs/src/families/new.rs、crates/adapters/speclink-verbs/src/families/plan.rs、crates/adapters/speclink-verbs/src/families/discuss.rs、crates/adapters/speclink-verbs/src/render/fields.rs、crates/adapters/speclink-verbs/src/render/mod.rs、crates/adapters/speclink-verbs/src/render/query.rs、crates/adapters/speclink-verbs/src/render/discuss.rs。驗證：`cargo test -p speclink-verbs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/families/plan.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/render/query.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs",
+        "crates/adapters/speclink-verbs/src/families/fields.rs",
+        "crates/adapters/speclink-verbs/src/render/fields.rs"
+      ],
+      "recordedAt": "2026-11-13T07:30:38Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGPPFZRZVH2ZMM08F4",
+      "taskDesc": "3.1 （Red）為 D6、D7 寫 Host 的測試，用記憶體版儲存，對應規格「呼叫入口時附上自由欄位」「自由欄位的寫入端點」「自由欄位的線上欄位與請求」：宿主附上的欄位在建立變更、建立討論、轉出變更時併入並和建立在同一次提交；同名時宿主的值蓋過請求的值；列出變更與勾選任務忽略它且沒有欄位被改動；執行前掛鉤收到最後的欄位；附上不合規則的欄位時 invalid_argv 且沒有建立；兩條 PUT 路由的成功、沒有寫入能力被拒、規則不符回 400、不存在回 404、沒有變動時範圍版本不前進；`{}` 回 400；清單、單筆、已封存、討論的回應回填 `fields` 且沒有多發儲存呼叫（計數的儲存；已封存清單若會多發，依 design 的 Open Question 改成不帶並記下）；空的不序列化；握手的 `capabilities.fields` 為 true；線上歸屬表對兩個編輯命令回答路由；用不認得 `fields` 的舊型別解析新回應成功。涉及 crates/host/speclink-host/tests/free_fields.rs。驗證：`cargo test -p speclink-host --test free_fields` 編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/free_fields.rs"
+      ],
+      "recordedAt": "2026-11-13T07:34:02Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FG41J3A79AHWF8XY2E",
+      "taskDesc": "4.1 （Red）寫 CLI 的整合測試：四個動詞在本機與 remote 模式的 stdout（人眼與 `--json`）相同；`new change --field` 與 `discuss new --field` 在兩種模式建立時就有欄位；全部寫入或全部不寫；沒有任何欄位的專案 `list --json`、`show --json`、`discuss list --json` 與新增之前逐位元相同；對握手沒有宣告 `fields` 的 Server 用 `--field` 建立時成功並在 stderr 警告。涉及 crates/adapters/speclink-cli/tests/it/free_fields.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it free_fields::` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs",
+        "crates/adapters/speclink-cli/src/verbs/new.rs",
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-server/tests/it/admin/backup_e2e.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs",
+        "crates/host/speclink-server/tests/it/e2e_cli.rs",
+        "crates/host/speclink-server/tests/it/serverfs_store.rs",
+        "crates/host/speclink-server/tests/postgres_store.rs",
+        "crates/protocol/speclink-protocol/src/binding.rs",
+        "crates/protocol/speclink-protocol/src/command.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/protocol/speclink-remote/src/client.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs",
+        "crates/adapters/speclink-cli/tests/it/free_fields.rs"
+      ],
+      "recordedAt": "2026-11-13T07:43:57Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGH5G5BDBNFHYFJHGZ",
+      "taskDesc": "4.2 （Green）CLI 接上四個動詞的本機與遠端分支、兩個建立動詞的 `--field`、遠端讀取把 `fields` 轉回引擎的型別、舊 Server 的警告。回答 design 的 Open Question（`discuss promote` 的 CLI 要不要 `--field`）並寫進 design.md。涉及 crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/src/verbs/new.rs、crates/adapters/speclink-cli/src/verbs/plan.rs、crates/adapters/speclink-cli/src/verbs/discuss.rs、crates/adapters/speclink-cli/src/verbs/query.rs、speclink/changes/host-free-fields/design.md。驗證：4.1 的測試通過；`cargo test -p speclink-cli` 全部通過，`remote_verb_parity` 不改斷言。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/remote_base.rs",
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/plan.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs"
+      ],
+      "recordedAt": "2026-11-13T08:11:49Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGDENJH8SD9KP6G68E",
+      "taskDesc": "3.2 （Green）實作：線上的請求與回應欄位、兩條路由、回填、握手的宣告；`HostKit::run_with_fields`、`HostKit::handle_with` 與 `CallExtras`，合併的函式由兩個門共用；`speclink-remote` 新增兩個寫入的呼叫並讓三個建立的呼叫帶欄位。涉及 crates/protocol/speclink-protocol/src/command.rs、crates/protocol/speclink-protocol/src/query.rs、crates/host/speclink-host/src/kit.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/http/mod.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-host/src/http/wire.rs、crates/host/speclink-host/src/http/coverage.rs、crates/protocol/speclink-remote/src/client.rs。驗證：3.1 的測試通過；`cargo test -p speclink-host`（含成本測試）、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/free-fields.spec.ts"
+      ],
+      "recordedAt": "2026-11-13T08:13:19Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGZH6ZFW6KA31N45S9",
+      "taskDesc": "4.3 （Red→Green）Node SDK，對應規格「dispatch 與 handleRequest 的 fields」的六個情境：先寫測試——`host.dispatch` 附上欄位建立變更時 commit 一次且 metadata 含欄位、`beforeCommand` 的 params.fields 含它；同樣的 `fields` 配 `['list', '--json']` 不呼叫 commit；`handleRequest` 的第三個參數生效；值不是字串時 dispatch 是 invalid_argv、handleRequest 是 400；欄位動詞經 dispatch 回傳和 CLI 相同的物件；fs 形式的 engine 可用，JS 儲存形式的 engine 依 D8（舊的 JS 儲存）以 refused 拒絕且沒有寫入方法被呼叫。再實作並更新型別宣告。涉及 crates/adapters/speclink-node/__test__/free-fields.spec.ts、crates/adapters/speclink-node/src/host.rs、crates/adapters/speclink-node/src/lib.rs、crates/adapters/speclink-node/index.js、crates/adapters/speclink-node/index.d.ts。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-13T08:14:52Z"
+    },
+    {
+      "taskId": "tsk_01M774G5FGHXW7FJ6CPP8W5P8V",
+      "taskDesc": "5.2 最後驗證 design 的 Implementation Contract。涉及 crates/engine/speclink-core、crates/adapters/speclink-verbs、crates/host/speclink-host、crates/protocol/speclink-protocol、crates/protocol/speclink-remote、crates/adapters/speclink-cli、crates/adapters/speclink-node。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-host`、`cargo test -p speclink-protocol`、`cargo test -p speclink-remote`、`cargo test -p speclink-server`、`cargo test -p speclink-cli`、`cargo test -p speclink-desktop` 通過；Node 的建置與測試通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過；`speclink validate host-free-fields` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "27fbd648493335e15e33363004a3bdeacb449f06",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-host/tests/station_wire.rs",
+        "crates/host/speclink-host/tests/common/door.rs"
+      ],
+      "recordedAt": "2026-11-13T10:50:21Z"
+    }
+  ]
+}

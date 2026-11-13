@@ -356,6 +356,8 @@ pub fn archived_list(
                     .count(),
                 from_discussions: meta.from_discussions(),
                 created_by: meta.created_by,
+                // From the archived data file this list already read.
+                fields: meta.fields,
             }
         })
         .collect();

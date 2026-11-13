@@ -66,6 +66,11 @@ pub struct Capabilities {
     /// The skills this Server gives; absent from a Server that gives none.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub skills: Option<SkillsDeclaration>,
+    /// The Server keeps free fields. Absent from an older Server, which reads
+    /// as false: a client that sent `fields` with a create request then tells
+    /// the user they were not kept.
+    #[serde(default)]
+    pub fields: bool,
 }
 
 #[cfg(test)]
@@ -155,6 +160,18 @@ mod tests {
         engine_version: String,
         #[serde(default)]
         capabilities: Option<OldCapabilities>,
+    }
+
+    #[test]
+    fn the_handshake_says_whether_the_server_keeps_free_fields() {
+        // An older Server has no `fields` key: it reads as false.
+        let old: BindingResponse = serde_json::from_str(WITH_SKILLS).unwrap();
+        assert!(!old.capabilities.fields);
+        let mut value: serde_json::Value = serde_json::from_str(WITH_SKILLS).unwrap();
+        value["capabilities"]["fields"] = serde_json::json!(true);
+        let new: BindingResponse = serde_json::from_value(value).unwrap();
+        assert!(new.capabilities.fields);
+        assert_eq!(serde_json::to_value(&new).unwrap()["capabilities"]["fields"], true);
     }
 
     #[test]

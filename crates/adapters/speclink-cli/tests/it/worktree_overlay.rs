@@ -430,6 +430,34 @@ fn change_depends_writes_the_worktree_copy_of_a_mapped_change() {
 }
 
 #[test]
+fn change_field_writes_the_worktree_copy_of_a_mapped_change() {
+    // host-free-fields design D4：`change field` 和 `change depends` 一樣寫進變更所在的那一份。
+    // 變更映射到 worktree 時寫 worktree 的副本——`list` 讀的也是它；主副本的 meta 不動。
+    let f = Fixture::new("field-worktree", true);
+    let wt = f.add_worktree("add-dark-mode");
+
+    let out = f.run(&["change", "field", "set", "add-dark-mode", "ticket=PROJ-1", "--no-color"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(stdout_of(&out), "✓ add-dark-mode: set ticket\n");
+    assert_eq!(meta_at(&wt, "add-dark-mode"), format!("{META}fields:\n  ticket: \"PROJ-1\"\n"));
+    assert_eq!(meta_at(&f.repo, "add-dark-mode"), META, "the main copy stays untouched");
+    let item = first_change(&f.run(&["list", "--json"]));
+    assert_eq!(item["fields"], serde_json::json!({ "ticket": "PROJ-1" }), "{item}");
+
+    let out = f.run(&["change", "field", "unset", "add-dark-mode", "ticket", "--no-color"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(meta_at(&wt, "add-dark-mode"), META);
+
+    // 對照：政策關閉時沒有映射，寫的是主副本。
+    let off = Fixture::new("field-worktree-off", false);
+    let wt = off.add_worktree("add-dark-mode");
+    let out = off.run(&["change", "field", "set", "add-dark-mode", "ticket=PROJ-1"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(meta_at(&off.repo, "add-dark-mode"), format!("{META}fields:\n  ticket: \"PROJ-1\"\n"));
+    assert_eq!(meta_at(&wt, "add-dark-mode"), META, "policy off never touches the worktree copy");
+}
+
+#[test]
 fn change_schema_writes_the_worktree_copy_of_a_mapped_change() {
     // workflow-schemas Scenario「目標變更在 worktree 內時寫入副本」：與 change depends
     // 同一條路由——守門與寫入都對 worktree 副本，主副本不動。

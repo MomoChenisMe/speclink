@@ -46,6 +46,11 @@ pub struct ListChangeJson {
     /// long has this been idle", not a fact to decide on.
     #[serde(rename = "modifiedAt", skip_serializing_if = "Option::is_none")]
     pub modified_at: Option<String>,
+    /// The change's free fields (host-free-fields D5). Omitted when the change
+    /// has none, so a project that uses no free field keeps its output byte
+    /// for byte.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: crate::fields::Fields,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -171,6 +176,7 @@ pub fn changes_json_with(
                 delta_capabilities: store.delta_capabilities(&c.name),
                 created: c.meta.created.clone(),
                 modified_at: modified_at(store.updated_at_secs(&c.name)),
+                fields: c.meta.fields.clone(),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })

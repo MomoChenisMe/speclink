@@ -288,6 +288,28 @@ pub fn yaml_roundtrip_scalar(s: &str) -> String {
     }
 }
 
+/// 一律加雙引號的 YAML 純量：`\\` 與 `"` 跳脫。和 [`yaml_scalar`]、[`yaml_roundtrip_scalar`]
+/// 的差別是不看內容決定要不要加引號——值域是任意文字、而且讀回來必須逐字相同的地方用
+/// （自由欄位的值：`123`、`true`、`null` 不加引號會被讀成別的型別）。控制字元不壓成空白，
+/// 而是和 YAML 帶不了或會當成換行的字元（U+2028、U+2029、U+FFFE、U+FFFF）一起寫成
+/// `\uXXXX`，所以任何字串都讀得回來；要不要收控制字元是呼叫端的規則。
+pub fn yaml_quoted(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() + 2);
+    out.push('"');
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            c if c.is_control() || matches!(c, '\u{2028}' | '\u{2029}' | '\u{FFFE}' | '\u{FFFF}') => {
+                out.push_str(&format!("\\u{:04X}", c as u32));
+            }
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+    out
+}
+
 /// [`yaml_scalar`] 的反向：讀回它寫出的值。雙引號包住的值拆掉引號並還原 `\\"`／`\\\\`，
 /// 其餘（沒加引號的純量）原樣回傳。給只做逐字讀取的 `KeyLines::get` 呼叫端在「比對
 /// 身分」前用——寫入走 `yaml_scalar`，讀回就得走這裡，否則帶引號的本人會被當成他人。
@@ -351,6 +373,18 @@ pub fn slugify(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn yaml_quoted_always_quotes_and_reads_back_verbatim() {
+        assert_eq!(yaml_quoted("123"), "\"123\"");
+        assert_eq!(yaml_quoted(""), "\"\"");
+        assert_eq!(yaml_quoted("a \"b\" \\"), "\"a \\\"b\\\" \\\\\"");
+        for s in ["123", "true", "null", "~", "a: b # c", "tab\there", "nel\u{85}", "ls\u{2028}ps\u{2029}", "\u{FFFE}\u{FFFF}", "中文 \"x\" \\"] {
+            let quoted = yaml_quoted(s);
+            assert!(!quoted.contains(['\n', '\r']), "one line for {s:?}");
+            assert_eq!(serde_yaml::from_str::<String>(&quoted).unwrap(), s, "round trip for {s:?}");
+        }
+    }
 
     #[test]
     fn yaml_unscalar_inverts_yaml_scalar() {

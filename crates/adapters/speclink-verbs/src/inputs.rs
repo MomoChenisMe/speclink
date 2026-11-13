@@ -9,7 +9,7 @@ use speclink_core::listing::ListWorktreeJson;
 /// this crate never reads them itself. Every field defaults to "not given".
 ///
 /// Where each command field comes from (checked against the CLI's `cmd_*`):
-/// every field of the 45 commands the conversion returns comes from argv,
+/// every field of the 47 commands the conversion returns comes from argv,
 /// except these.
 ///
 /// | Command field | Input | What the CLI passes |
@@ -99,11 +99,11 @@ mod tests {
     use crate::families::test_support::target_of;
     use crate::{CommandTarget, VerbInputs};
 
-    /// One argv per command the conversion returns: 45 distinct commands, so
+    /// One argv per command the conversion returns: 47 distinct commands, so
     /// the table above speaks for every one of them (TaskMove and
     /// WorkflowConfigReplace have no argv).
     #[test]
-    fn the_conversion_reaches_45_commands() {
+    fn the_conversion_reaches_47_commands() {
         let argvs: &[&[&str]] = &[
             &["list"], &["show", "x"], &["status"], &["validate"], &["analyze"],
             &["artifact", "cat", "tasks"], &["language", "show"], &["trace", "x"], &["instructions"],
@@ -114,6 +114,7 @@ mod tests {
             &["plan"], &["plan", "--strict-overlap"],
             &["change", "depends", "x", "--on", "y"], &["change", "schema", "x", "y"],
             &["change", "landed", "x", "--commit", "0123456"],
+            &["change", "field", "set", "x", "a=1"], &["discuss", "field", "unset", "t", "a"],
             &["discuss", "new", "t"], &["discuss", "list"], &["discuss", "show", "t"],
             &["discuss", "search", "k"], &["discuss", "context", "t"], &["discuss", "add-round", "t"],
             &["discuss", "conclude", "t"], &["discuss", "archive", "t"], &["discuss", "discard", "t"],
@@ -131,6 +132,6 @@ mod tests {
                 other => panic!("{argv:?} must convert to a command, got {other:?}"),
             })
             .collect();
-        assert_eq!(kinds.len(), 45);
+        assert_eq!(kinds.len(), 47);
     }
 }

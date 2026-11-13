@@ -748,8 +748,8 @@ fn the_handshake_declares_what_the_switches_allow() {
 
     let editor = caps(switches(true, true));
     assert_eq!(keys(&editor), [
-        "analyze", "authentication", "contextSnapshots", "deleteChange", "events", "moveTask", "policyWrite", "skills",
-        "validate"
+        "analyze", "authentication", "contextSnapshots", "deleteChange", "events", "fields", "moveTask", "policyWrite",
+        "skills", "validate"
     ]);
     assert_eq!(editor["policyWrite"], true);
 }
@@ -924,6 +924,8 @@ fn every_command() -> Vec<Command> {
             | Command::ChangeSchema { .. }
             | Command::ChangeRank { .. }
             | Command::ChangeLanded { .. }
+            | Command::ChangeFieldsEdit { .. }
+            | Command::DiscussFieldsEdit { .. }
             | Command::Archive { .. }
             | Command::Discard { .. }
             | Command::DiscussNew { .. }
@@ -967,7 +969,7 @@ fn every_command() -> Vec<Command> {
         Command::DiscussList { archived: false },
         Command::DiscussShow { slug: s("talk") },
         Command::DiscussSearch { terms: vec![s("auth")] },
-        Command::NewChange { name: s("demo"), description: None, schema: None, agent: None, from_discussion: None, last: false },
+        Command::NewChange { name: s("demo"), description: None, schema: None, agent: None, from_discussion: None, last: false, fields: Default::default() },
         Command::NewArtifact {
             kind: s("proposal"),
             capability: None,
@@ -991,6 +993,8 @@ fn every_command() -> Vec<Command> {
             force: false,
         },
         Command::ChangeLanded { name: s("demo"), commit: s("0123456789ab"), branch: None },
+        Command::ChangeFieldsEdit { name: s("demo"), set: [(s("ticket"), s("PROJ-1"))].into(), unset: vec![] },
+        Command::DiscussFieldsEdit { slug: s("talk"), set: [(s("owner"), s("alice"))].into(), unset: vec![] },
         Command::Archive {
             change: Some(s("demo")),
             skip_specs: false,
@@ -1000,11 +1004,11 @@ fn every_command() -> Vec<Command> {
             carry_verify: false,
         },
         Command::Discard { change: s("demo"), force: false },
-        Command::DiscussNew { topic: s("Talk"), slug: None, kind: None },
+        Command::DiscussNew { topic: s("Talk"), slug: None, kind: None, fields: Default::default() },
         Command::DiscussContext { slug: s("talk"), content: s("context") },
         Command::DiscussAddRound { slug: s("talk"), mode: s("round"), content: s("text") },
         Command::DiscussConclude { slug: s("talk"), content: s("done"), hold: false },
-        Command::DiscussPromote { slug: s("talk"), name: Some(s("demo")), last: false },
+        Command::DiscussPromote { slug: s("talk"), name: Some(s("demo")), last: false, fields: Default::default() },
         Command::DiscussLink { slug: s("talk"), change: s("demo") },
         Command::DiscussSeal { slug: s("talk"), change: s("demo"), last: false },
         Command::DiscussArchive { slug: s("talk") },
@@ -1051,6 +1055,7 @@ fn sample_request(method: Method, pattern: &str) -> HttpRequest {
         (Method::Post, "/discussions") => json!({ "topic": "Talk" }),
         (Method::Post, "/discussions/{slug}/link" | "/discussions/{slug}/seal") => json!({ "change": "demo" }),
         (Method::Put, "/discussions/{slug}/context") => json!({ "content": "x" }),
+        (Method::Put, "/changes/{name}/fields" | "/discussions/{slug}/fields") => json!({ "set": { "ticket": "PROJ-1" } }),
         (Method::Post, "/discussions/{slug}/rounds") => json!({ "mode": "round", "content": "x" }),
         (Method::Post, "/discussions/{slug}/conclude") => json!({ "content": "x" }),
         (Method::Post, "/discussions/{slug}/promote") => json!({}),
@@ -1144,6 +1149,7 @@ fn coverage_puts_create_change_on_the_post_of_changes() {
         agent: None,
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     };
     assert_eq!(wire_coverage(&create), WireCoverage::Route { method: Method::Post, pattern: "/changes" });
 }

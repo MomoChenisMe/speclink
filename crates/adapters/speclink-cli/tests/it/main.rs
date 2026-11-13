@@ -16,6 +16,7 @@ mod doc_verbs;
 mod door;
 mod engine_version;
 mod fake_server;
+mod free_fields;
 mod in_progress_remove;
 mod init_tools;
 mod instructions_policy;

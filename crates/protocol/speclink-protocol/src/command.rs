@@ -8,6 +8,36 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// A document's free fields on the wire: key to value, both strings. The
+/// Server stores them and reads nothing in them. A body with no `fields` key
+/// reads as none, and none is never serialized: a body or a response without
+/// free fields is what it was before them.
+pub type FreeFields = std::collections::BTreeMap<String, String>;
+
+/// `PUT /changes/{name}/fields` and `PUT /discussions/{slug}/fields` request
+/// body: the fields to set and the keys to remove, in one write. At least one
+/// of the two is not empty.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFieldsRequest {
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub set: FreeFields,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unset: Vec<String>,
+}
+
+/// The response of the two field writes: every field after the write, and the
+/// keys this write changed (in byte order; empty when it changed nothing, and
+/// then the scope version did not move). `fields` always travels, empty too.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct SetFieldsResponse {
+    #[serde(default)]
+    pub fields: FreeFields,
+    #[serde(default)]
+    pub changed: Vec<String>,
+}
+
 /// `POST /changes` request body. `last` only means something alongside
 /// `from_discussion`: it marks this change as the final cut the discussion's
 /// conclusion planned, so the engine drops the record's hold flag in the same
@@ -26,6 +56,9 @@ pub struct CreateChangeRequest {
     pub from_discussion: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub last: bool,
+    /// Free fields the change starts with, written with it; left out when there are none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `POST /changes` response.
@@ -225,6 +258,9 @@ pub struct CreateDiscussionRequest {
     /// 討論型別（白名單由引擎裁決）；缺席時省略，舊 client 的請求體逐位元不變。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
+    /// Free fields the record starts with, written with it; left out when there are none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `POST /discussions` response.
@@ -342,6 +378,9 @@ pub struct PromoteDiscussionRequest {
     pub name: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub last: bool,
+    /// Free fields of the change the promotion creates, written with it; left out when there are none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `POST /discussions/{slug}/promote` response.
@@ -567,6 +606,79 @@ pub struct DiscardReviewResponse {
 mod tests {
     use crate::command::*;
 
+    // --- free fields (host-free-fields; client-protocol「自由欄位的線上欄位與請求」) ---
+
+    fn fields(pairs: &[(&str, &str)]) -> FreeFields {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn the_three_create_requests_carry_fields_and_leave_the_key_out_when_there_are_none() {
+        let bodies = [
+            serde_json::to_value(CreateChangeRequest {
+                name: "demo".into(),
+                schema: None,
+                description: None,
+                agent: None,
+                from_discussion: None,
+                last: false,
+                fields: fields(&[("ticket", "PROJ-1")]),
+            }),
+            serde_json::to_value(CreateDiscussionRequest {
+                topic: "T".into(),
+                slug: None,
+                kind: None,
+                fields: fields(&[("ticket", "PROJ-1")]),
+            }),
+            serde_json::to_value(PromoteDiscussionRequest { name: None, last: false, fields: fields(&[("ticket", "PROJ-1")]) }),
+        ];
+        for body in bodies {
+            assert_eq!(body.unwrap()["fields"], serde_json::json!({ "ticket": "PROJ-1" }));
+        }
+        // 沒有欄位：請求體和這個欄位出現之前逐位元相同；舊用戶端的請求體照樣讀得進來。
+        let plain = CreateChangeRequest {
+            name: "demo".into(),
+            schema: None,
+            description: None,
+            agent: None,
+            from_discussion: None,
+            last: false,
+            fields: FreeFields::new(),
+        };
+        assert_eq!(serde_json::to_string(&plain).unwrap(), r#"{"name":"demo"}"#);
+        let old: CreateChangeRequest = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert!(old.fields.is_empty());
+        let old: CreateDiscussionRequest = serde_json::from_str(r#"{"topic":"T"}"#).unwrap();
+        assert!(old.fields.is_empty());
+        let old: PromoteDiscussionRequest = serde_json::from_str("{}").unwrap();
+        assert!(old.fields.is_empty());
+        assert_eq!(serde_json::to_string(&old).unwrap(), "{}");
+    }
+
+    #[test]
+    fn a_field_value_that_is_not_a_string_is_not_a_create_request() {
+        assert!(serde_json::from_str::<CreateChangeRequest>(r#"{"name":"demo","fields":{"n":1}}"#).is_err());
+        assert!(serde_json::from_str::<SetFieldsRequest>(r#"{"set":{"n":true}}"#).is_err());
+    }
+
+    #[test]
+    fn the_field_write_request_has_two_optional_parts_and_the_response_always_has_fields() {
+        let req: SetFieldsRequest = serde_json::from_str(r#"{"set":{"a":"1"},"unset":["b"]}"#).unwrap();
+        assert_eq!(req, SetFieldsRequest { set: fields(&[("a", "1")]), unset: vec!["b".into()] });
+        let empty: SetFieldsRequest = serde_json::from_str("{}").unwrap();
+        assert!(empty.set.is_empty() && empty.unset.is_empty());
+        let only_unset = SetFieldsRequest { set: FreeFields::new(), unset: vec!["b".into()] };
+        assert_eq!(serde_json::to_string(&only_unset).unwrap(), r#"{"unset":["b"]}"#);
+
+        let none = SetFieldsResponse::default();
+        assert_eq!(serde_json::to_string(&none).unwrap(), r#"{"fields":{},"changed":[]}"#);
+        let some = SetFieldsResponse { fields: fields(&[("a", "1")]), changed: vec!["a".into()] };
+        assert_eq!(serde_json::to_string(&some).unwrap(), r#"{"fields":{"a":"1"},"changed":["a"]}"#);
+        // 只有 fields 的回應（較舊的 Server）也讀得進來。
+        let old: SetFieldsResponse = serde_json::from_str(r#"{"fields":{"a":"1"}}"#).unwrap();
+        assert!(old.changed.is_empty());
+    }
+
     #[test]
     fn create_change_request_round_trips_in_camel_case() {
         let req = CreateChangeRequest {
@@ -576,6 +688,7 @@ mod tests {
             agent: Some("claude".into()),
             from_discussion: Some("auth-scope".into()),
             last: false,
+            fields: Default::default(),
         };
         let json = serde_json::to_value(&req).unwrap();
         assert_eq!(json["name"], "add-rate-limit");
@@ -595,9 +708,9 @@ mod tests {
         // false 不出鍵（body 與本變更前逐位元相同）、true 才出鍵。
         let bare: PromoteDiscussionRequest = serde_json::from_str("{}").unwrap();
         assert!(!bare.last, "promote 缺席即 false");
-        let off = PromoteDiscussionRequest { name: Some("cut-b".into()), last: false };
+        let off = PromoteDiscussionRequest { name: Some("cut-b".into()), last: false, fields: Default::default() };
         assert_eq!(serde_json::to_string(&off).unwrap(), r#"{"name":"cut-b"}"#);
-        let on = PromoteDiscussionRequest { name: None, last: true };
+        let on = PromoteDiscussionRequest { name: None, last: true, fields: Default::default() };
         assert_eq!(serde_json::to_string(&on).unwrap(), r#"{"last":true}"#);
 
         let bare: CreateChangeRequest = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
@@ -609,6 +722,7 @@ mod tests {
             agent: None,
             from_discussion: Some("alpha".into()),
             last: false,
+            fields: Default::default(),
         };
         assert_eq!(
             serde_json::to_string(&off).unwrap(),
@@ -862,7 +976,7 @@ mod tests {
             serde_json::from_str(r#"{"archivedTo":"discussions/archive/auth-scope.md"}"#).unwrap();
         assert_eq!(archived.archived_to, "discussions/archive/auth-scope.md");
 
-        let promote_none = PromoteDiscussionRequest { name: None, last: false };
+        let promote_none = PromoteDiscussionRequest { name: None, last: false, fields: Default::default() };
         assert_eq!(
             serde_json::to_string(&promote_none).unwrap(),
             "{}",
@@ -925,7 +1039,7 @@ mod tests {
 
     #[test]
     fn create_discussion_request_slug_is_optional_and_camel_case() {
-        let bare = CreateDiscussionRequest { topic: "看板搜尋列".into(), slug: None, kind: None };
+        let bare = CreateDiscussionRequest { topic: "看板搜尋列".into(), slug: None, kind: None, fields: Default::default() };
         assert_eq!(
             serde_json::to_string(&bare).unwrap(),
             r#"{"topic":"看板搜尋列"}"#,
@@ -936,6 +1050,7 @@ mod tests {
             topic: "看板搜尋列".into(),
             slug: Some("board-search-bar".into()),
             kind: None,
+            fields: Default::default(),
         };
         let json = serde_json::to_value(&with_slug).unwrap();
         assert_eq!(json["slug"], "board-search-bar");

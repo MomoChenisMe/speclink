@@ -65,10 +65,12 @@ fn variant_index(cmd: &Command) -> usize {
         Command::WorkflowConfigEdit { .. } => 46,
         Command::WorkflowConfigReplace { .. } => 47,
         Command::ChangeLanded { .. } => 48,
+        Command::ChangeFieldsEdit { .. } => 49,
+        Command::DiscussFieldsEdit { .. } => 50,
     }
 }
 
-const VARIANT_COUNT: usize = 49;
+const VARIANT_COUNT: usize = 51;
 
 fn s(v: &str) -> String {
     v.to_string()
@@ -108,6 +110,7 @@ fn samples() -> Vec<Command> {
             agent: Some(s("claude")),
             from_discussion: Some(s("topic")),
             last: true,
+            fields: BTreeMap::from([(s("source"), s("portal"))]),
         },
         Command::NewArtifact {
             kind: s("specs"),
@@ -145,11 +148,11 @@ fn samples() -> Vec<Command> {
             carry_verify: false,
         },
         Command::Discard { change: s("demo"), force: true },
-        Command::DiscussNew { topic: s("Host kit"), slug: Some(s("host-kit")), kind: Some(s("feature")) },
+        Command::DiscussNew { topic: s("Host kit"), slug: Some(s("host-kit")), kind: Some(s("feature")), fields: Default::default() },
         Command::DiscussContext { slug: s("topic"), content: s("context text") },
         Command::DiscussAddRound { slug: s("topic"), mode: s("explore"), content: s("round text") },
         Command::DiscussConclude { slug: s("topic"), content: s("conclusion"), hold: false },
-        Command::DiscussPromote { slug: s("topic"), name: Some(s("demo")), last: false },
+        Command::DiscussPromote { slug: s("topic"), name: Some(s("demo")), last: false, fields: Default::default() },
         Command::DiscussLink { slug: s("topic"), change: s("demo") },
         Command::DiscussSeal { slug: s("topic"), change: s("demo"), last: true },
         Command::DiscussArchive { slug: s("topic") },
@@ -186,6 +189,16 @@ fn samples() -> Vec<Command> {
             name: s("demo"),
             commit: s("0123456789abcdef0123456789abcdef01234567"),
             branch: Some(s("speclink/demo")),
+        },
+        Command::ChangeFieldsEdit {
+            name: s("demo"),
+            set: BTreeMap::from([(s("ticket"), s("PROJ-1"))]),
+            unset: vec![s("source")],
+        },
+        Command::DiscussFieldsEdit {
+            slug: s("board-search"),
+            set: BTreeMap::from([(s("owner"), s("alice"))]),
+            unset: vec![],
         },
     ]
 }
@@ -243,6 +256,7 @@ fn the_name_depends_only_on_the_kind() {
         agent: None,
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     };
     let with_schema = Command::NewChange {
         name: s("b"),
@@ -251,6 +265,7 @@ fn the_name_depends_only_on_the_kind() {
         agent: None,
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     };
     assert_eq!(plain.name(), "new-change");
     assert_eq!(with_schema.name(), "new-change");

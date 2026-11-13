@@ -6,7 +6,7 @@
 
 ### Requirement: 自由欄位的規則與存放
 
-每個進行中的變更與每個進行中的討論 SHALL 能帶一組自由欄位：鍵對字串值。寫入時 SHALL 檢查：鍵符合 `^[a-z][a-z0-9_.-]{0,63}$`；值是 0 到 1024 個位元組的 UTF-8 字串，不含換行與其他控制字元；一份文件的鍵數不超過 32。任一項不符 SHALL 拒絕整次寫入且不留任何變動。變更的自由欄位 SHALL 存在其 metadata 的 `fields` 區塊，討論的 SHALL 存在討論記錄開頭區塊的 `fields` 區塊；SHALL NOT 為它新增文件種類。寫入的值 SHALL 讀回逐字相同——包含看起來像數字、布林、null 的值，以及含冒號、井號、引號、反斜線與非 ASCII 字元的值——寫入後該文件 SHALL 仍可被引擎解析。最後一個鍵被移除時 SHALL 一併移除 `fields` 區塊。引擎 SHALL 只存放自由欄位：SHALL NOT 解讀任何鍵或值，SHALL NOT 因為它們改變任何動詞的行為、順序或守門。引擎既有的每一個寫入動詞（含蓋章、變更 schema、宣告依賴、排序、封存）SHALL 原樣保留既有的自由欄位；封存 SHALL 讓自由欄位隨文件進入封存。讀取 SHALL 寬鬆：區塊內既有的純量值讀成字串，非純量的項目略過，SHALL NOT 因此讓整份文件無法讀取。
+每個進行中的變更與每個進行中的討論 SHALL 能帶一組自由欄位：鍵對字串值。寫入時 SHALL 檢查：鍵符合 `^[a-z][a-z0-9_.-]{0,63}$`；值是 0 到 1024 個位元組的 UTF-8 字串，不含換行與其他控制字元；一份文件的鍵數不超過 32。任一項不符 SHALL 拒絕整次寫入且不留任何變動。變更的自由欄位 SHALL 存在其 metadata 的 `fields` 區塊，討論的 SHALL 存在討論記錄開頭區塊的 `fields` 區塊；SHALL NOT 為它新增文件種類。寫入的值 SHALL 讀回逐字相同——包含看起來像數字、布林、null 的值，以及含冒號、井號、引號、反斜線與非 ASCII 字元的值——寫入後該文件 SHALL 仍可被引擎解析。最後一個鍵被移除時 SHALL 一併移除 `fields` 區塊。引擎 SHALL 只存放自由欄位：SHALL NOT 解讀任何鍵或值，SHALL NOT 因為它們改變任何動詞的行為、順序或守門。引擎既有的每一個寫入動詞（含蓋章、變更 schema、宣告依賴、排序、封存）SHALL 原樣保留既有的自由欄位；封存 SHALL 讓自由欄位隨文件進入封存。讀取 SHALL 寬鬆：區塊內既有的純量值讀成字串，非純量的項目略過，SHALL NOT 因此讓整份文件無法讀取。寫入會整個重寫 `fields` 區塊；既有的區塊含有讀取略過的內容（非純量的項目、重複的鍵、無法解讀的區塊）時，寫入 SHALL 被拒絕且文件不變，SHALL NOT 弄丟那些內容。
 
 #### Scenario: 值讀回逐字相同
 
@@ -48,14 +48,19 @@
 - **WHEN** metadata 的 `fields` 區塊被人手改成含一個未加引號的數字值與一個巢狀的項目
 - **THEN** 變更仍可列出；數字值讀成字串，巢狀的項目被略過
 
+#### Scenario: 寫入不弄丟手改的內容
+
+- **WHEN** metadata 的 `fields` 區塊被人手改成含一個巢狀的項目，再對這個變更設定一個自由欄位
+- **THEN** 被拒絕，文件逐位元不變
+
 ### Requirement: 自由欄位的寫入動詞
 
-CLI SHALL 提供四個動詞，皆有 `--json` 與 `--no-color`、無 stdin：`speclink change field set <name> <key>=<value>...`、`speclink change field unset <name> <key>...`、`speclink discuss field set <slug> <key>=<value>...`、`speclink discuss field unset <slug> <key>...`。`<key>=<value>` SHALL 在第一個 `=` 分開，值可含 `=`；沒有 `=` 的參數、同一次呼叫重複的鍵 SHALL 為用法錯誤。一次呼叫的全部鍵 SHALL 全部寫入或全部不寫，並 SHALL 是對該文件的一次寫入。unset 不存在的鍵 SHALL 成功且不產生變動。變更或討論不存在、討論已封存 SHALL 以非零 exit code 回報找不到。成功時 stdout SHALL 為一行：`✓ <名稱>: set <鍵…>`、`✓ <名稱>: unset <鍵…>`，或沒有任何變動時的 `✓ <名稱>: no change`；`--json` 時 SHALL 為 `{ "change": string, "fields": object }`（討論為 `"discussion"`），`fields` 是寫入後的全部欄位。有變動時命令層 SHALL 回報一筆領域事件（change-fields-changed 或 discussion-fields-changed），payload SHALL 含名稱與變動的鍵，SHALL NOT 含值；沒有變動時 SHALL NOT 產生事件。`speclink new change` 與 `speclink discuss new` SHALL 接受可重複的 `--field <key>=<value>`：欄位 SHALL 與建立在同一次寫入，規則不符時建立 SHALL 整個失敗。四個動詞與 `--field` SHALL 經命令執行層，本機、remote 模式、Node SDK 的 dispatch 與宿主套件的兩個門 SHALL 得到相同的結果。
+CLI SHALL 提供四個動詞，皆有 `--json` 與 `--no-color`、無 stdin：`speclink change field set <name> <key>=<value>...`、`speclink change field unset <name> <key>...`、`speclink discuss field set <slug> <key>=<value>...`、`speclink discuss field unset <slug> <key>...`。`<key>=<value>` SHALL 在第一個 `=` 分開，值可含 `=`；沒有 `=` 的參數、同一次呼叫重複的鍵 SHALL 以 invalid_argv 拒絕（CLI 為非零 exit code），且不產生任何寫入。一次呼叫的全部鍵 SHALL 全部寫入或全部不寫，並 SHALL 是對該文件的一次寫入。unset 不存在的鍵 SHALL 成功且不產生變動。變更或討論不存在、討論已封存 SHALL 以非零 exit code 回報找不到。成功時 stdout SHALL 為一行：`✓ <名稱>: set <鍵…>`、`✓ <名稱>: unset <鍵…>`，或沒有任何變動時的 `✓ <名稱>: no change`；`--json` 時 SHALL 為 `{ "change": string, "fields": object }`（討論為 `"discussion"`），`fields` 是寫入後的全部欄位。有變動時命令層 SHALL 回報一筆領域事件（change-fields-changed 或 discussion-fields-changed），payload SHALL 含名稱與變動的鍵，SHALL NOT 含值；沒有變動時 SHALL NOT 產生事件。`speclink new change` 與 `speclink discuss new` SHALL 接受可重複的 `--field <key>=<value>`：欄位 SHALL 與建立在同一次寫入，規則不符時建立 SHALL 整個失敗。四個動詞與 `--field` SHALL 經命令執行層，本機、remote 模式、Node SDK 的 dispatch 與宿主套件的兩個門 SHALL 得到相同的結果。
 
 #### Scenario: 設定兩個欄位
 
 - **WHEN** 執行 speclink change field set demo ticket=PROJ-1 source=portal
-- **THEN** stdout 為 `✓ demo: set ticket, source`（鍵依位元組順序），exit code 為 0；demo 的自由欄位是這兩組
+- **THEN** stdout 為 `✓ demo: set source, ticket`（鍵依位元組順序，不是輸入的順序），exit code 為 0；demo 的自由欄位是這兩組
 
 #### Scenario: --json 回傳全部欄位
 

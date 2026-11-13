@@ -99,6 +99,7 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             verify: None,
             branch: None,
             landed_commit: None,
+            fields: Default::default(),
         }
     }
     let cases: [(Option<&str>, usize, usize, u8); 7] = [

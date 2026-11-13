@@ -16,7 +16,8 @@ use napi::bindgen_prelude::*;
 use napi::{JsFunction, JsObject};
 use napi_derive::napi;
 use speclink_core::command::Command;
-use speclink_host::http::{HttpRequest, Method};
+use speclink_core::fields::Fields;
+use speclink_host::http::{HttpError, HttpRequest, Method, API_ROOT};
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit,
     HostKitOptions, Identity, ProjectEntry, RepoEntry, ScopesFn, InvalidSkills,
@@ -113,6 +114,8 @@ pub fn agent_tool_definition() -> serde_json::Value {
 impl Host {
     /// One verb for `identity` on `scope`, on a background thread. Resolves
     /// to the envelope index.js unwraps; never blocks the JS event loop.
+    /// `fields` is the JSON text of the free fields the host attaches to
+    /// this call, absent when it attaches none.
     #[napi(ts_return_type = "Promise<unknown>")]
     pub fn dispatch(
         &self,
@@ -122,10 +125,16 @@ impl Host {
         scope: String,
         argv: Vec<String>,
         stdin: Option<String>,
+        fields: Option<String>,
     ) -> Result<JsObject> {
         let setup = self.setup.clone();
         on_worker(env, move || {
-            guarded(|| caller_of(id, display_name, scope).and_then(|caller| run(&setup, &caller, &argv, stdin.as_deref())))
+            guarded(|| {
+                let caller = caller_of(id, display_name, scope)?;
+                let fields =
+                    fields_of(fields.as_deref()).map_err(|message| DispatchError::new("invalid_argv", message))?;
+                run(&setup, &caller, &argv, stdin.as_deref(), &fields)
+            })
         })
     }
 
@@ -133,7 +142,8 @@ impl Host {
     /// background thread. `request` is the JSON text of
     /// `{ method, path, query, headers }`. Resolves to the envelope index.js
     /// unwraps: the response `{ status, headers, body }` with the body as
-    /// text, or null when the path is not the door's.
+    /// text, or null when the path is not the door's. `fields` is the JSON
+    /// text of the free fields the host attaches, as for `dispatch`.
     #[napi(ts_return_type = "Promise<unknown>")]
     pub fn handle_request(
         &self,
@@ -142,10 +152,11 @@ impl Host {
         body: Buffer,
         id: Option<String>,
         display_name: Option<String>,
+        fields: Option<String>,
     ) -> Result<JsObject> {
         let setup = self.setup.clone();
         let body = body.to_vec();
-        on_worker(env, move || guarded(|| handle(&setup, &request, body, id.zip(display_name))))
+        on_worker(env, move || guarded(|| handle(&setup, &request, body, id.zip(display_name), fields.as_deref())))
     }
 }
 
@@ -168,6 +179,17 @@ fn hooks_held(broken_hook: &Mutex<Option<String>>) -> std::result::Result<(), Di
     }
 }
 
+/// The free fields a host attached to one call, from their JSON text: an
+/// object whose values are all strings. Absent text is no field. Any other
+/// shape is refused: a number or a nested object is the host's own bug, and
+/// writing its text form would hide it.
+fn fields_of(json: Option<&str>) -> std::result::Result<Fields, String> {
+    let Some(json) = json else {
+        return Ok(Fields::new());
+    };
+    serde_json::from_str(json).map_err(|_| "fields: expected an object whose values are all strings".to_string())
+}
+
 /// The methods the door takes; any other is answered 405 before the door.
 const DOOR_METHODS: &str = "GET, HEAD, POST, PUT, DELETE";
 
@@ -182,7 +204,13 @@ struct DoorRequest {
 }
 
 /// `who` is the identity's id and display name, from the host's own code.
-fn handle(setup: &HostSetup, request: &str, body: Vec<u8>, who: Option<(String, String)>) -> DispatchResult {
+fn handle(
+    setup: &HostSetup,
+    request: &str,
+    body: Vec<u8>,
+    who: Option<(String, String)>,
+    fields: Option<&str>,
+) -> DispatchResult {
     let request: DoorRequest = serde_json::from_str(request)
         .map_err(|e| DispatchError::new("invalid_argv", format!("handleRequest: request: {e}")))?;
     let Some(method) = Method::from_name(&request.method) else {
@@ -195,6 +223,13 @@ fn handle(setup: &HostSetup, request: &str, body: Vec<u8>, who: Option<(String, 
     let headers =
         request.headers.into_iter().filter_map(|(name, value)| Some((name, value.as_str()?.to_string()))).collect();
     let request = HttpRequest { method, path: request.path, query: request.query, headers, body };
+    // The door's answer for the host's own mistake is a 400, like any request
+    // it cannot read; a path outside the door's prefix stays the host's.
+    let attached = match fields_of(fields) {
+        Ok(fields) => fields,
+        Err(_) if !request.path.starts_with(API_ROOT) => return Ok(serde_json::Value::Null),
+        Err(message) => return Ok(response_json(HttpError::invalid_argument(message).into_response())),
+    };
 
     let broken_hook: Arc<Mutex<Option<String>>> = Arc::default();
     let options = HostKitOptions {
@@ -205,16 +240,18 @@ fn handle(setup: &HostSetup, request: &str, body: Vec<u8>, who: Option<(String, 
     };
     let kit = HostKit::with_options(setup.store.clone(), hooks_for(setup, &broken_hook), options)
         .expect("the skill list was checked at createHost");
-    let response = kit.handle(&request, identity.as_ref());
+    let response = kit.handle_with_fields(&request, identity.as_ref(), &attached);
     hooks_held(&broken_hook)?;
-    let Some(response) = response else {
-        return Ok(serde_json::Value::Null);
-    };
+    Ok(response.map_or(serde_json::Value::Null, response_json))
+}
+
+/// A door response as index.js takes it: `{ status, headers, body }`.
+fn response_json(response: speclink_host::http::HttpResponse) -> serde_json::Value {
     let headers: serde_json::Map<String, serde_json::Value> =
         response.headers.into_iter().map(|(name, value)| (name, value.into())).collect();
     // The door writes JSON or nothing: the body is always text.
     let body = String::from_utf8(response.body).expect("the door writes UTF-8 JSON");
-    Ok(serde_json::json!({ "status": response.status, "headers": headers, "body": body }))
+    serde_json::json!({ "status": response.status, "headers": headers, "body": body })
 }
 
 /// One project the scope function gives, in the SDK's camelCase shape. A
@@ -285,14 +322,14 @@ fn caller_of(id: String, display_name: String, scope: String) -> std::result::Re
     Ok(Caller { identity, scope })
 }
 
-fn run(setup: &HostSetup, caller: &Caller, argv: &[String], stdin: Option<&str>) -> DispatchResult {
+fn run(setup: &HostSetup, caller: &Caller, argv: &[String], stdin: Option<&str>, fields: &Fields) -> DispatchResult {
     let parsed = parse_verb(argv)?;
     let cmd = command_of(&parsed, stdin)?;
     let status_without_name = matches!(cmd, Command::Status { change: None, .. });
 
     let broken_hook: Arc<Mutex<Option<String>>> = Arc::default();
     let kit = HostKit::new(setup.store.clone(), hooks_for(setup, &broken_hook));
-    let result = kit.run(caller, cmd);
+    let result = kit.run_with_fields(caller, cmd, fields);
     hooks_held(&broken_hook)?;
     match result {
         Ok(execution) => value_of(&parsed, &execution.outcome),

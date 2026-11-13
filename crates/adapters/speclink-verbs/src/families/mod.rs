@@ -16,6 +16,7 @@ pub mod checks;
 pub mod discuss;
 pub mod documents;
 pub mod evidence;
+pub mod fields;
 pub mod instructions;
 pub mod lifecycle;
 pub mod new;

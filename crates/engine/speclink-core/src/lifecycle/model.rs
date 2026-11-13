@@ -119,6 +119,11 @@ pub struct ChangeMeta {
     pub landed_at: Option<String>,
     #[serde(default)]
     pub landed_by: Option<String>,
+    /// 自由欄位（host-free-fields D2）：`fields` 區塊的內容，寬鬆讀取。不經 serde——
+    /// 區塊裡不是純量的項目要略過而不是讓整份文件解析失敗，數字要照字面讀。引擎只存，
+    /// 不依它做任何判斷。
+    #[serde(skip)]
+    pub fields: crate::fields::Fields,
     // `archived_at`（封存時戳）刻意不是欄位：只有流程成本讀它、逐鍵讀原文，舊版在
     // 殘留值之後再追加一行時也不會讓整份 meta 因重複鍵解析失敗。
 }
@@ -141,6 +146,7 @@ impl ChangeMeta {
             return Ok(ChangeMeta::default());
         };
         let mut meta: ChangeMeta = crate::config::parse_lenient_or_reason(s)?;
+        meta.fields = crate::fields::read(&KeyLines::whole(s));
         meta.collapse_time_fields();
         Ok(meta)
     }

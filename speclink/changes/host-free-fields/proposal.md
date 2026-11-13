@@ -39,7 +39,7 @@ Source discussion: embedded-host-needs（cut 15）。
 
 **讀取**
 
-- `speclink list --json` 的變更項目、`speclink show <change> --json`、`speclink discuss list --json` 與 `speclink discuss show --json` 的討論資訊，新增選填的 `fields` 物件。沒有欄位時不輸出這個鍵，所以沒有用到自由欄位的專案，輸出逐位元不變。
+- `speclink list --json` 的變更項目、`speclink show <change> --json`，以及 `speclink discuss list --json`、`speclink discuss show --json` 與 `speclink discuss search --json` 的討論資訊，新增選填的 `fields` 物件。沒有欄位時不輸出這個鍵，所以沒有用到自由欄位的專案，輸出逐位元不變。
 - 線上的變更清單項、單筆變更、已封存清單項與討論資訊，新增選填的 `fields`。
 - 人眼輸出：`speclink show <change>` 與 `speclink discuss show` 不變；自由欄位只在 `--json` 出現。
 
@@ -93,7 +93,7 @@ Source discussion: embedded-host-needs（cut 15）。
 ## Impact
 
 - Affected specs: free-fields（新增）、client-protocol、server-verb-api、host-kit、node-sdk（各新增一條）
-- Affected crates: `speclink-core`、`speclink-verbs`、`speclink-host`、`speclink-protocol`、`speclink-remote`、`speclink-cli`、`speclink-node`。`speclink-server`、store crates、桌面 app 不改。
+- Affected crates: `speclink-core`、`speclink-verbs`、`speclink-host`、`speclink-protocol`、`speclink-remote`、`speclink-cli`、`speclink-node`。`speclink-server`、store crates、桌面 app 的產品程式不改；`speclink-server` 與桌面 app 只改測試：手寫的線上型別完整字面值各補一行 `fields`，示範 server 的寫入路由清單補上兩條新路由。
 - Affected code:
   - New:
     - crates/engine/speclink-core/src/lifecycle/fields.rs
@@ -102,15 +102,32 @@ Source discussion: embedded-host-needs（cut 15）。
     - crates/adapters/speclink-verbs/src/render/fields.rs
     - crates/adapters/speclink-cli/tests/it/free_fields.rs
     - crates/host/speclink-host/tests/free_fields.rs
+    - crates/host/speclink-host/tests/common/door.rs
     - crates/adapters/speclink-node/__test__/free-fields.spec.ts
+  - Modified (tests only, outside the seven crates):
+    - crates/host/speclink-server/tests/postgres_store.rs
+    - crates/host/speclink-server/tests/it/serverfs_store.rs
+    - crates/host/speclink-server/tests/it/e2e_cli.rs
+    - crates/host/speclink-server/tests/it/admin/backup_e2e.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
+    - apps/desktop/src-tauri/src/remote.rs
+    - apps/desktop/src-tauri/tests/it/remote_data.rs
   - Modified:
+    - crates/engine/speclink-core/src/lib.rs
+    - crates/engine/speclink-core/src/util.rs
+    - crates/engine/speclink-core/src/keylines.rs
     - crates/engine/speclink-core/src/command/mod.rs
+    - crates/engine/speclink-core/src/command/typed.rs
+    - crates/engine/speclink-core/src/command/tests.rs
     - crates/engine/speclink-core/src/command/describe.rs
+    - crates/engine/speclink-core/src/lifecycle/mod.rs
     - crates/engine/speclink-core/src/lifecycle/model.rs
     - crates/engine/speclink-core/src/lifecycle/newcmd.rs
     - crates/engine/speclink-core/src/lifecycle/discuss.rs
+    - crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
     - crates/engine/speclink-core/src/lifecycle/listing.rs
     - crates/engine/speclink-core/tests/golden/command-describe.json
+    - crates/engine/speclink-core/tests/it/command_describe.rs
     - crates/adapters/speclink-verbs/src/families/mod.rs
     - crates/adapters/speclink-verbs/src/families/new.rs
     - crates/adapters/speclink-verbs/src/families/plan.rs
@@ -118,6 +135,8 @@ Source discussion: embedded-host-needs（cut 15）。
     - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/adapters/speclink-verbs/src/render/query.rs
     - crates/adapters/speclink-verbs/src/render/discuss.rs
+    - crates/adapters/speclink-verbs/src/inputs.rs
+    - crates/adapters/speclink-verbs/src/tool.rs
     - crates/host/speclink-host/src/kit.rs
     - crates/host/speclink-host/src/commit.rs
     - crates/host/speclink-host/src/documents.rs
@@ -126,15 +145,24 @@ Source discussion: embedded-host-needs（cut 15）。
     - crates/host/speclink-host/src/http/routes.rs
     - crates/host/speclink-host/src/http/wire.rs
     - crates/host/speclink-host/src/http/coverage.rs
+    - crates/host/speclink-host/src/port_exec.rs
+    - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-host/tests/common/mod.rs
+    - crates/host/speclink-host/tests/station_wire.rs
+    - crates/host/speclink-host/tests/kit.rs
+    - crates/protocol/speclink-protocol/src/binding.rs
     - crates/protocol/speclink-protocol/src/command.rs
     - crates/protocol/speclink-protocol/src/query.rs
     - crates/protocol/speclink-remote/src/client.rs
-    - crates/adapters/speclink-cli/src/main.rs
+    - crates/protocol/speclink-remote/tests/it/typed_client.rs
+    - crates/adapters/speclink-cli/src/remote_base.rs
     - crates/adapters/speclink-cli/src/verbs/new.rs
     - crates/adapters/speclink-cli/src/verbs/plan.rs
     - crates/adapters/speclink-cli/src/verbs/discuss.rs
     - crates/adapters/speclink-cli/src/verbs/query.rs
     - crates/adapters/speclink-cli/tests/it/main.rs
+    - crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs
+    - crates/adapters/speclink-cli/tests/it/worktree_overlay.rs
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/src/lib.rs
     - crates/adapters/speclink-node/index.js

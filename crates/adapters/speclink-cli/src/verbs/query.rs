@@ -76,6 +76,7 @@ fn to_list_change_json(c: &protocol_query::ChangeSummary) -> ListChangeJson {
         // 兩個時間欄位照 server 給的帶回：server 沒給（儲存答不出）就缺席。
         created: c.created.clone(),
         modified_at: c.modified_at.clone(),
+        fields: c.fields.clone(),
         // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
         // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
         worktree: None,
@@ -214,6 +215,7 @@ fn remote_show_outcome(
         verify: status.verify.as_ref().and_then(speclink_remote::convert::station_status),
         branch: status.branch,
         landed: core::command::LandedRecord::new(status.landed_commit, status.landed_at, status.landed_by),
+        fields: status.fields,
     }))
 }
 

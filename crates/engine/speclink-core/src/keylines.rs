@@ -8,7 +8,7 @@
 //! （change meta 不帶圍欄，整份就是映射），永遠可在尾端插入——尾行缺換行時
 //! 插入前先補一個（沿文件多數行尾）。
 //!
-//! 介面：`get`／`list` 讀；`set`／`remove` 純量鍵；`push_list`／`remove_list`
+//! 介面：`get`／`list`／`raw`／`yaml_extent`／`count`／`has_unseen` 讀；`set`／`remove` 純量鍵；`push_list`／`remove_list`
 //! 逗號清單累加與縮減（去重、統一以「, 」串接、清空即整行移除）；`set_block`
 //! 區塊鍵（移除既有同名鍵與區塊後，在區域尾端寫 `key:` 行＋呼叫端給定的縮排
 //! 續行原文）。
@@ -183,6 +183,47 @@ impl KeyLines {
         self.region_lines()
             .find_map(|(_, l)| value_after_key(l, key))
             .map(str::trim)
+    }
+
+    /// 區域內第一條 `key:` 行的原文；它是區塊鍵時連同後面的續行。鍵缺席回 `None`。
+    /// 給要自己解讀區塊內容的呼叫端（自由欄位）。
+    pub fn raw(&self, key: &str) -> Option<String> {
+        let (first, line) = self.region_lines().find(|(_, l)| value_after_key(l, key).is_some())?;
+        let block = is_block_key(line, key);
+        let rest = self.lines[first + 1..self.end].iter().take_while(|l| block && is_continuation(l));
+        Some(std::iter::once(&self.lines[first]).chain(rest).map(String::as_str).collect())
+    }
+
+    /// 區域內第一條 `key:` 行，連同 YAML 會算成它的值的每一行：後面的縮排行與空行、夾在
+    /// 中間的第 0 欄 `#` 註解行，區塊鍵時還有第 0 欄的 `- ` 序列項。這比 [`KeyLines::raw`]
+    /// （＝`remove`／`set_block` 會動到的範圍）寬：`key: # 註解` 底下的縮排行、被第 0 欄註解
+    /// 隔開的後半段，手術都不會碰。兩者讀出來的值不同，就表示改寫會留下孤兒行。
+    pub fn yaml_extent(&self, key: &str) -> Option<String> {
+        let (first, line) = self.region_lines().find(|(_, l)| value_after_key(l, key).is_some())?;
+        let block = is_block_key(line, key);
+        let rest = self.lines[first + 1..self.end].iter().take_while(|l| {
+            l.trim().is_empty() || l.starts_with([' ', '\t', '#']) || (block && l.starts_with("- "))
+        });
+        Some(std::iter::once(&self.lines[first]).chain(rest).map(String::as_str).collect())
+    }
+
+    /// 區域內第 0 欄 `key:` 行的數目。讀只認第一條，`remove`／`set_block` 卻全部移除：
+    /// 超過一條時，改寫會弄丟後面幾條的內容。
+    pub fn count(&self, key: &str) -> usize {
+        self.region_lines().filter(|(_, l)| value_after_key(l, key).is_some()).count()
+    }
+
+    /// 區域內有沒有一條第 0 欄的行，YAML 會把它讀成 `key`，而本模組的 `key:` 前綴比對
+    /// 看不到：冒號前有空白的 `key :`，或加了引號的 `"key":`／`'key':`。對這種文件做
+    /// `set`／`set_block` 會多寫出一個同名的鍵；要寫入的呼叫端先問這個。
+    pub fn has_unseen(&self, key: &str) -> bool {
+        self.region_lines().any(|(_, line)| {
+            let quoted = ['"', '\'']
+                .into_iter()
+                .find_map(|quote| line.strip_prefix(quote)?.strip_prefix(key)?.strip_prefix(quote));
+            let spaced = || line.strip_prefix(key).filter(|rest| rest.starts_with([' ', '\t']));
+            quoted.or_else(spaced).is_some_and(|rest| rest.trim_start().starts_with(':'))
+        })
     }
 
     /// 逗號清單：split(',')、trim、去空。鍵缺席回空清單。
@@ -366,6 +407,57 @@ mod tests {
     fn get_trims_the_value() {
         let kl = KeyLines::frontmatter("---\nboard_rank:   n   \n---\n").unwrap();
         assert_eq!(kl.get("board_rank"), Some("n"));
+    }
+
+    #[test]
+    fn raw_returns_the_key_line_and_the_block_below_it() {
+        let text = "---\na: 1\nfields:\n  x: \"1\"\n\n  y: 2\nb: 2\n---\nfields:\n  body: no\n";
+        let kl = KeyLines::frontmatter(text).unwrap();
+        // 區塊鍵：連同續行（含區塊內的空行），到下一個第 0 欄的鍵為止。
+        assert_eq!(kl.raw("fields").as_deref(), Some("fields:\n  x: \"1\"\n\n  y: 2\n"));
+        // 純量行只有那一行；缺席是 None；圍欄外的不算。
+        assert_eq!(kl.raw("a").as_deref(), Some("a: 1\n"));
+        assert_eq!(kl.raw("missing"), None);
+        assert_eq!(KeyLines::whole("fields: {a: 1}\n  not: mine\n").raw("fields").as_deref(), Some("fields: {a: 1}\n"));
+    }
+
+    #[test]
+    fn has_unseen_finds_the_key_lines_the_prefix_match_misses() {
+        for text in ["a: 1\nfields : {x: 1}\n", "\"fields\":\n  x: 1\n", "'fields' : 3\n", "fields\t: 3\n"] {
+            let kl = KeyLines::whole(text);
+            assert!(kl.has_unseen("fields"), "{text:?}");
+            assert_eq!(kl.get("fields"), None, "{text:?}: the prefix match does not see it");
+        }
+        for text in ["fields: 3\n", "fields:\n  x: 1\n", "fieldsets : 3\n", "fields and more : 3\n", "  fields : nested\n", "a: fields : x\n", ""] {
+            assert!(!KeyLines::whole(text).has_unseen("fields"), "{text:?}");
+        }
+        // 只看區域內：frontmatter 圍欄外的內文不算。
+        assert!(!KeyLines::frontmatter("---\nslug: a\n---\nfields : body text\n").unwrap().has_unseen("fields"));
+    }
+
+    #[test]
+    fn yaml_extent_follows_the_value_past_what_the_block_rules_take() {
+        // 區塊鍵：續行之外，夾在中間的第 0 欄註解與它後面的縮排行也是同一個值。
+        let kl = KeyLines::whole("fields:\n  a: 1\n# note\n  b: 2\n# next\nrank: n\n");
+        assert_eq!(kl.raw("fields").as_deref(), Some("fields:\n  a: 1\n"));
+        assert_eq!(kl.yaml_extent("fields").as_deref(), Some("fields:\n  a: 1\n# note\n  b: 2\n# next\n"));
+        // 冒號後有註解的鍵行不是區塊鍵，但底下的縮排行仍是它的值。
+        let kl = KeyLines::whole("fields: # note\n  a: 1\nrank: n\n");
+        assert_eq!(kl.raw("fields").as_deref(), Some("fields: # note\n"));
+        assert_eq!(kl.yaml_extent("fields").as_deref(), Some("fields: # note\n  a: 1\n"));
+        // 純量行、缺席、圍欄外。
+        assert_eq!(KeyLines::whole("a: 1\nb: 2\n").yaml_extent("a").as_deref(), Some("a: 1\n"));
+        assert_eq!(KeyLines::whole("a: 1\n").yaml_extent("fields"), None);
+        let kl = KeyLines::frontmatter("---\nfields:\n  a: 1\n---\n  body: no\n").unwrap();
+        assert_eq!(kl.yaml_extent("fields").as_deref(), Some("fields:\n  a: 1\n"));
+    }
+
+    #[test]
+    fn count_is_the_number_of_key_lines_the_prefix_match_sees() {
+        let kl = KeyLines::whole("fields:\n  fields: nested\nrank: n\nfields: 3\nfieldsets: x\n");
+        assert_eq!(kl.count("fields"), 2);
+        assert_eq!(kl.count("rank"), 1);
+        assert_eq!(kl.count("missing"), 0);
     }
 
     // --- set ---
