@@ -583,12 +583,24 @@ fn artifact(change: &str, artifact: &str) -> DocumentId {
 
 /// 一份已審查的 meta：任務錨 `tasks_total`、scope 是 `src/a.rs`（內容 `fn a() {}`）。
 fn reviewed_meta(tasks_total: usize) -> String {
+    reviewed_meta_at(tasks_total, None)
+}
+
+/// 同上，章另外記下蓋章時的 commit。
+fn reviewed_meta_at(tasks_total: usize, commit: Option<&str>) -> String {
     let hash = speclink_core::station::content_fingerprint("fn a() {}\n");
+    let commit = commit.map(|c| format!("reviewed_commit: \"{c}\"\n")).unwrap_or_default();
     format!(
         "schema: spec-driven\ncreated: 2026-11-01\nreviewed_at: 2026-11-02T10:00:00+08:00\n\
-         reviewed_by: Rev <r@example.com>\nreviewed_tasks_total: {tasks_total}\nreviewed_rounds: 1\n\
+         reviewed_by: Rev <r@example.com>\nreviewed_tasks_total: {tasks_total}\nreviewed_rounds: 1\n{commit}\
          reviewed_scope:\n  - path: src/a.rs\n    hash: {hash}\n"
     )
+}
+
+fn git_in(dir: &std::path::Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git").args(args).current_dir(dir).output().expect("run git");
+    assert!(out.status.success(), "git {args:?}: {}", String::from_utf8_lossy(&out.stderr));
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
 }
 
 /// 清單 payload 裡名為 `name` 的那一項（序列化後，即前端看到的形狀）。
@@ -647,16 +659,31 @@ fn the_remote_list_carries_the_station_statuses_the_board_reads() {
 fn a_checkout_turns_a_stamp_stale_when_a_scope_file_differs() {
     // Scenario「有 checkout 時偵測其後有變動」：任務數相符的已蓋章變更，再拿單筆回應
     // 的 scope 比 checkout 裡檔案的現值。
+    // checkout 是一個 git repo，章記下的 commit 就是它的 HEAD——checkout 握有蓋章的那一版。
+    let checkout = tempfile::tempdir().expect("checkout dir");
+    for args in [&["init", "-q", "-b", "main"][..], &["config", "user.name", "T"], &["config", "user.email", "t@example.com"], &["config", "commit.gpgsign", "false"]] {
+        git_in(checkout.path(), args);
+    }
+    std::fs::create_dir_all(checkout.path().join("src")).unwrap();
+    let file = checkout.path().join("src").join("a.rs");
+    std::fs::write(&file, "fn a() {}\n").unwrap();
+    git_in(checkout.path(), &["add", "src/a.rs"]);
+    git_in(checkout.path(), &["commit", "-q", "-m", "init"]);
+    let head = git_in(checkout.path(), &["rev-parse", "HEAD"]);
+
     let h = common::harness();
     seed_docs(
         h.store.as_ref(),
-        &[(change_meta("demo"), &reviewed_meta(1)), (artifact("demo", "tasks.md"), ONE_TASK_DONE)],
+        &[
+            (change_meta("demo"), &reviewed_meta_at(1, Some(&head))),
+            (artifact("demo", "tasks.md"), ONE_TASK_DONE),
+            // 章蓋在這個 checkout 沒有的 commit 上：不比檔案。
+            (change_meta("elsewhere"), &reviewed_meta_at(1, Some("0123456789abcdef0123456789abcdef01234567"))),
+            (artifact("elsewhere", "tasks.md"), ONE_TASK_DONE),
+        ],
     );
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
-    let checkout = tempfile::tempdir().expect("checkout dir");
-    std::fs::create_dir_all(checkout.path().join("src")).unwrap();
-    let file = checkout.path().join("src").join("a.rs");
     let status = |ws: &RemoteWorkspace| {
         listed(&ws.list_changes(&credentials, Some(checkout.path())).expect("list changes"), "demo")["reviewStatus"]
             .clone()
@@ -666,6 +693,8 @@ fn a_checkout_turns_a_stamp_stale_when_a_scope_file_differs() {
     assert_eq!(status(&ws), "reviewed", "the checkout holds the stamped content");
     std::fs::write(&file, "fn a() { changed(); }\n").unwrap();
     assert_eq!(status(&ws), "reviewedStale", "the file changed after the stamp");
+    let elsewhere = listed(&ws.list_changes(&credentials, Some(checkout.path())).unwrap(), "elsewhere");
+    assert_eq!(elsewhere["reviewStatus"], "reviewed", "stamped on a commit this checkout does not hold");
     std::fs::remove_file(&file).unwrap();
     assert_eq!(status(&ws), "reviewedStale", "a scope file that is gone reads as changed");
     // 沒有 checkout：只比任務數。

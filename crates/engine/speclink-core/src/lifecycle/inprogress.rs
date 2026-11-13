@@ -151,7 +151,20 @@ pub fn add(
             m.set("started_with", &clean(agent))?;
         }
         if let Some(branch) = branch {
-            m.set(BRANCH_KEY, &util::yaml_string(branch))?;
+            m.set(BRANCH_KEY, &util::yaml_roundtrip_scalar(branch))?;
+            // `checked_branch` already refused a name YAML cannot carry. What
+            // is left is the document: the edit only sees a key written as
+            // `branch:` in the first column, so a hand-written `branch : x`
+            // would get a second line and stop parsing (the landing command
+            // has the same guard). Refuse unless the result reads back as
+            // this branch.
+            let reads_back = crate::model::ChangeMeta::from_text(Some(&m.text()))
+                .is_ok_and(|meta| meta.branch.as_deref() == Some(branch));
+            if !reads_back {
+                anyhow::bail!(crate::command::InvalidContent(format!(
+                    "invalid branch {branch:?} — the change's metadata cannot record it"
+                )));
+            }
         }
         Ok(true)
     })?;
@@ -373,6 +386,24 @@ mod tests {
             assert_eq!(branch_of(&store).as_deref(), Some(name), "{name:?}: {}", store.meta("demo"));
             let parsed = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).unwrap();
             assert_eq!(parsed.created_with.as_deref(), Some("claude"), "{name:?}");
+        }
+    }
+
+    #[test]
+    fn a_branch_yaml_cannot_carry_is_refused_and_never_corrupts_the_meta() {
+        // U+FFFE 與 U+FFFF 不是空白也不是控制字元；YAML 卻帶不了它們，寫進去整份 meta
+        // 就再也解析不了。分支檢查連「存不存得進去」一起看，所以 CLI 自己帶分支前用同一個
+        // 檢查就能略過這種名稱；開工在任何寫入之前拒絕。
+        for name in ["x\u{FFFE}", "\u{FFFF}y", "a\u{FFFE}b"] {
+            assert!(crate::model::checked_branch(name).is_err(), "{name:?}");
+            let store = TestStore::with_meta("demo", EXISTING_META);
+            let err = super::add(&store, "demo", None, None, Some(name)).expect_err("must refuse");
+            assert!(
+                err.downcast_ref::<crate::command::InvalidContent>().is_some(),
+                "{name:?} is a caller error: {err}"
+            );
+            assert_eq!(store.meta("demo"), EXISTING_META, "{name:?}");
+            assert_eq!(*store.meta_writes.borrow(), 0, "{name:?}");
         }
     }
 

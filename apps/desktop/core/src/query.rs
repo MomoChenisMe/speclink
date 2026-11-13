@@ -6,7 +6,7 @@
 use std::path::{Path, PathBuf};
 
 use serde_json::{json, Value};
-use speclink_core::station::{self, Station, StationId, StationPhase, StationStatus, REVIEW, VERIFY};
+use speclink_core::station::{self, ArchivedOutcome, Freshness, Station, StationId, StationProgress, StationStatus, REVIEW, VERIFY};
 use speclink_core::store::Store;
 
 use crate::init_core_context;
@@ -165,34 +165,39 @@ impl StationView {
     }
 }
 
+/// 已封存項 `reviewStatus`／`verifyStatus` 的字串。結局由引擎判定（本機的封存快取）或
+/// 由線上回應給（remote 的已封存清單），字串只有這一份。
+pub fn archived_status_str(st: &Station, outcome: ArchivedOutcome) -> &'static str {
+    match (st.id, outcome) {
+        (_, ArchivedOutcome::None) => "none",
+        (StationId::Review, ArchivedOutcome::Stamped) => "reviewed",
+        (StationId::Review, ArchivedOutcome::NotPassed) => "reviewedNotPassed",
+        (StationId::Verify, ArchivedOutcome::Stamped) => "verified",
+        (StationId::Verify, ArchivedOutcome::NotPassed) => "verifiedNotPassed",
+    }
+}
+
 /// 從關卡的事實算出四態。`status` 是本機讀到的或線上回應給的同一種事實；`counts` 是
 /// 目前的任務數；`read_file` 讀工作樹裡 scope 檔的現值——沒有工作樹（remote 專案沒有
-/// checkout）時給 `None`，只比任務錨。失效規則是引擎的 [`station::stale_reason`]，這裡不另寫。
+/// checkout）時給 `None`，只比任務錨。失效規則是引擎的 [`StationStatus::freshness`]，這裡不另寫。
 pub fn station_view(
     status: &StationStatus,
     counts: &speclink_core::tasks::Counts,
     read_file: station::ScopeReader<'_>,
 ) -> StationView {
-    match status.phase {
-        StationPhase::None => StationView::None,
-        StationPhase::InProgress => StationView::InProgress,
-        StationPhase::Stamped => {
-            let anchors = station::StampAnchors {
-                stamped_at: status.stamped_at.as_deref(),
-                tasks_total: status.tasks_total,
-                scope: &status.scope,
-            };
-            match station::stale_reason(anchors, counts, read_file) {
-                Some(_) => StationView::StampedStale,
-                None => StationView::Stamped,
-            }
-        }
+    match status.progress {
+        StationProgress::None => StationView::None,
+        StationProgress::InProgress => StationView::InProgress,
+        StationProgress::Stamped => match status.freshness(counts, read_file) {
+            Freshness::Stale => StationView::StampedStale,
+            Freshness::Fresh | Freshness::Unknown => StationView::Stamped,
+        },
     }
 }
 
 /// 把一個站的狀態寫進清單項：`reviewStatus`（驗證站是 `verifyStatus`），章存在時另有
 /// `reviewedAt`、`reviewedBy`（驗證站是 `verifiedAt`、`verifiedBy`）。本機與 remote
-/// 的清單項同形，看板卡片讀同一組鍵。
+/// 的清單項同形，看板卡片讀同一組鍵。沒有章時這兩個鍵不存在。
 pub fn put_station_fields(
     item: &mut serde_json::Map<String, Value>,
     st: &Station,
@@ -200,9 +205,14 @@ pub fn put_station_fields(
     view: StationView,
 ) {
     item.insert(format!("{}Status", st.noun), json!(view.status_str(st)));
+    let (at, by) = (format!("{}At", st.meta_prefix), format!("{}By", st.meta_prefix));
     if matches!(view, StationView::Stamped | StationView::StampedStale) {
-        item.insert(format!("{}At", st.meta_prefix), json!(status.stamped_at));
-        item.insert(format!("{}By", st.meta_prefix), json!(status.stamped_by));
+        item.insert(at, json!(status.stamped_at));
+        item.insert(by, json!(status.stamped_by));
+    } else {
+        // 同一項被重寫成沒有章的狀態時（remote 的第二步），先前的章欄位不留下。
+        item.remove(&at);
+        item.remove(&by);
     }
 }
 
@@ -1005,7 +1015,7 @@ mod tests {
 
     fn stamped_status(tasks_total: usize, scope: &[(&str, &str)]) -> station::StationStatus {
         station::StationStatus {
-            phase: station::StationPhase::Stamped,
+            progress: station::StationProgress::Stamped,
             stamped_at: Some("2026-11-02".to_string()),
             tasks_total: Some(tasks_total),
             scope: scope
@@ -1026,7 +1036,7 @@ mod tests {
 
     #[test]
     fn station_view_follows_the_facts_the_task_count_and_the_scope_files() {
-        use station::{StationPhase, StationStatus};
+        use station::{StationProgress, StationStatus};
         let files = [("src/a.rs", "fn a() {}\n"), ("src/b.rs", "fn b() {}\n")];
         let read = |changed: &'static str| {
             move |p: &str| {
@@ -1037,7 +1047,7 @@ mod tests {
         };
         let unchanged = read("");
         let b_changed = read("src/b.rs");
-        let in_progress = StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() };
+        let in_progress = StationStatus { progress: StationProgress::InProgress, ..StationStatus::none() };
         let stamped = stamped_status(3, &files);
 
         // 進行中：有工單。
@@ -1079,6 +1089,23 @@ mod tests {
         assert_eq!(item["verifyStatus"], "verified");
         assert_eq!(item["verifiedAt"], "2026-11-02");
         assert!(!item.contains_key("reviewedAt"), "no stamp fields without a stamp");
+        // 同一項重寫成沒有章的狀態時，先前的章欄位不留下。
+        put_station_fields(&mut item, &VERIFY, &station::StationStatus::none(), StationView::InProgress);
+        assert_eq!(item["verifyStatus"], "inVerify");
+        assert!(!item.contains_key("verifiedAt") && !item.contains_key("verifiedBy"), "{item:?}");
+    }
+
+    #[test]
+    fn archived_outcomes_use_the_keys_the_archived_cards_read() {
+        let table = [
+            (ArchivedOutcome::None, "none", "none"),
+            (ArchivedOutcome::Stamped, "reviewed", "verified"),
+            (ArchivedOutcome::NotPassed, "reviewedNotPassed", "verifiedNotPassed"),
+        ];
+        for (outcome, review, verify) in table {
+            assert_eq!(archived_status_str(&REVIEW, outcome), review);
+            assert_eq!(archived_status_str(&VERIFY, outcome), verify);
+        }
     }
 
     fn reviewed_meta(scope_path: &str, hash: &str) -> String {

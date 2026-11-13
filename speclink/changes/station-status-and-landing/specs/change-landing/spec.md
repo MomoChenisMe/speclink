@@ -6,7 +6,7 @@
 
 ### Requirement: 開工時記下分支
 
-`speclink in-progress add` SHALL 接受由呼叫端提供的分支名稱，並在寫入開工標記的同一次寫入裡把它記進變更的 metadata。CLI SHALL 以 checkout 目前的分支名稱提供它；checkout 不在任何分支上（detached HEAD）或不是 git checkout 時 SHALL 不提供，開工標記照常寫入。變更已有開工標記時 SHALL NOT 改寫已記下的分支。`speclink in-progress remove` SHALL 一併移除分支的記錄。分支名稱 SHALL 是 1 到 255 個字元、不含控制字元與空白，否則 SHALL 以非零 exit code 拒絕且不寫入。引擎 SHALL NOT 讀取 git；它 SHALL NOT 檢查分支是否存在。沒有提供分支時 SHALL NOT 寫入空值。
+`speclink in-progress add` SHALL 接受由呼叫端提供的分支名稱，並在寫入開工標記的同一次寫入裡把它記進變更的 metadata。CLI SHALL 以 checkout 目前的分支名稱提供它；checkout 不在任何分支上（detached HEAD）或不是 git checkout 時 SHALL 不提供，開工標記照常寫入。專案資料夾自己不是 git repo、只是位於別的 repo 底下時，也算不是 git checkout；git 給的分支名稱過不了下述檢查（形狀不合，或 metadata 的格式存不了）時，CLI 同樣 SHALL 不提供（那不是使用者給的參數，動詞不因此失敗）。變更已有開工標記時 SHALL NOT 改寫已記下的分支。`speclink in-progress remove` SHALL 一併移除分支的記錄。分支名稱 SHALL 是 1 到 255 個字元、不含控制字元與空白，否則 SHALL 以非零 exit code 拒絕且不寫入。形狀合格、但 metadata 的格式存不了的名稱（寫入後讀不回同一個字串，例如含 U+FFFE）SHALL 同樣拒絕且不寫入。引擎 SHALL NOT 讀取 git；它 SHALL NOT 檢查分支是否存在。沒有提供分支時 SHALL NOT 寫入空值。
 
 #### Scenario: 在功能分支上開工
 
@@ -27,6 +27,16 @@
 
 - **WHEN** 對已記下分支的 demo 執行 speclink in-progress remove demo
 - **THEN** metadata 不再有 branch 鍵與開工標記
+
+#### Scenario: 存不進 metadata 的分支名稱
+
+- **WHEN** 呼叫端提供含 U+FFFE 的分支名稱
+- **THEN** 以非零 exit code 拒絕；metadata 逐位元不變，仍可解析
+
+#### Scenario: 專案位於別的 repo 底下
+
+- **WHEN** 專案資料夾自己沒有 `.git`、位於另一個 git repo 的子資料夾，執行 speclink in-progress add demo
+- **THEN** 開工標記寫入，metadata 沒有 branch 鍵
 
 #### Scenario: 含斜線與中文的分支名稱
 
@@ -114,4 +124,4 @@ CLI SHALL 提供 `speclink change landed <name> [--commit <sha>] [--branch <name
 #### Scenario: list 不變
 
 - **WHEN** 比對回報落地前後 speclink list --json 的輸出
-- **THEN** 兩者逐位元相同
+- **THEN** 兩者的欄位集合相同；除了 `modifiedAt`（變更的文件確實被改寫了）以外，值逐位元相同

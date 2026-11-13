@@ -101,9 +101,18 @@ pub(crate) fn engine_command(
 }
 
 /// The branch the checkout at `root` is on. `None` on a detached HEAD and
-/// outside a git checkout: there is then no branch to report.
+/// outside a git checkout: there is then no branch to report. Guarded on
+/// `.git` like `core::tasks::head_commit`: a project nested inside an ancestor
+/// repo must not report the ancestor's branch. The user did not type this
+/// value, so a name the engine would refuse (git allows some that the engine's
+/// shape rule or the change's metadata does not) is left out instead of
+/// failing the verb: `checked_branch` is the engine's whole test.
 pub(crate) fn git_branch(root: &std::path::Path) -> Option<String> {
-    core::util::git(root, &["branch", "--show-current"]).filter(|branch| !branch.is_empty())
+    if !root.join(".git").exists() {
+        return None;
+    }
+    core::util::git(root, &["branch", "--show-current"])
+        .filter(|branch| core::model::checked_branch(branch).is_ok())
 }
 
 /// The engine command of a verb that needs no caller data (no stdin, no

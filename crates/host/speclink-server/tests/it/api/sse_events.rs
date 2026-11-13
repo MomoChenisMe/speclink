@@ -217,6 +217,41 @@ fn a_write_pushes_an_invalidation_hint_carrying_no_document_content() {
 }
 
 #[test]
+fn station_and_landing_writes_invalidate_their_change_and_a_board_write_stays_unknown() {
+    // server-event-stream「審查與驗證事件歸到變更」：蓋章、新增一輪、放棄與落地回報，
+    // 訂閱者收到的都是 scope=change、resourceId=該變更；看板順序的寫入維持 unknown。
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store, fast_events());
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let c = client(&base, &pat);
+    for task in ["1", "2", "3", "4"] {
+        c.task_done("demo", task, &[], None).expect("task done");
+    }
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    let scope_file = [speclink_protocol::command::ReviewScopeEntryDto { path: "src/a.rs".into(), hash: "aa".into() }];
+    c.station_add_round("verify", "demo", "**Scope**: src/a.rs\n").expect("verify round");
+    c.station_stamp("verify", "demo", false, None, Some("0123456789ab"), &scope_file, &[]).expect("verify stamp");
+    c.station_add_round("review", "demo", "**Scope**: src/a.rs\n").expect("review round");
+    c.station_discard("review", "demo").expect("review discard");
+    c.change_landed("demo", "0123456789ab", None).expect("landed");
+    let revision = c.board_order().expect("board order").revision;
+    c.put_board_order("{}", revision).expect("board order write");
+
+    let mut hints = Vec::new();
+    for _ in 0..6 {
+        let (_, _, data) = parts(sub.next_event(Duration::from_secs(3)).expect("an invalidation arrives"));
+        let dto: serde_json::Value = serde_json::from_str(&data).expect("data is the JSON DTO");
+        hints.push((dto["scope"].as_str().unwrap().to_string(), dto["resourceId"].as_str().unwrap().to_string()));
+    }
+    let change = ("change".to_string(), "demo".to_string());
+    assert_eq!(hints[..5], vec![change; 5], "round, stamp, round, discard and landing point at the change");
+    assert_eq!(hints[5], ("unknown".to_string(), String::new()), "a board-order write stays unknown");
+}
+
+#[test]
 fn every_subscriber_receives_the_write_exactly_once() {
     let store = seeded_store();
     let state = common::state_with_event_settings(store, fast_events());

@@ -13,7 +13,7 @@
 use crate::port_view::{archived_doc_key, parse_key, spec_capability, KeyKind};
 use speclink_core::config::WorkflowConfig;
 use speclink_core::model::{ChangeMeta, META_READ_ORDER};
-use speclink_core::station::{self, Station, StationStatus, REVIEW, VERIFY};
+use speclink_core::station::{self, ArchivedOutcome, Station, StationStatus, REVIEW, VERIFY};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::query::{
@@ -327,15 +327,14 @@ pub fn archived_list(
                 .into_iter()
                 .find_map(|doc| text(dated_name, doc));
             let meta = ChangeMeta::from_text(meta).unwrap_or_default();
-            // How a station ended: a stamp, or its ticket archived with the
-            // change, or nothing. The paths are the ones already listed.
+            // How a station ended: its ticket archived with the change, or a
+            // stamp, or nothing. The paths are the ones already listed.
             let outcome = |st: &Station| {
-                if station::is_stamped(meta.anchors(st)) {
-                    StationOutcome::Stamped
-                } else if paths.contains(&st.doc) {
-                    StationOutcome::NotPassed
-                } else {
-                    StationOutcome::None
+                let stamped = station::is_stamped(meta.anchors(st));
+                match ArchivedOutcome::of(paths.contains(&st.doc), stamped) {
+                    ArchivedOutcome::None => StationOutcome::None,
+                    ArchivedOutcome::Stamped => StationOutcome::Stamped,
+                    ArchivedOutcome::NotPassed => StationOutcome::NotPassed,
                 }
             };
             ArchivedItem {

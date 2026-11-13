@@ -2,7 +2,7 @@
 
 use serde_json::{json, Value};
 use speclink_core::command::{ListOutcome, ShowChange, ShowOutcome};
-use speclink_core::station::StationPhase;
+use speclink_core::station::StationProgress;
 use speclink_core::status::StatusReport;
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
@@ -119,7 +119,7 @@ pub fn show_json(show: &ShowOutcome) -> Value {
             // A station with no ticket and no stamp has nothing recorded, so a
             // change without records prints what it printed before these keys.
             for (key, station) in [("review", &c.review), ("verify", &c.verify)] {
-                if let Some(station) = station.as_ref().filter(|s| s.phase != StationPhase::None) {
+                if let Some(station) = station.as_ref().filter(|s| s.progress != StationProgress::None) {
                     shown[key] = station.to_json();
                 }
             }
@@ -428,7 +428,7 @@ mod tests {
         use speclink_core::station::StationStatus;
         let ShowOutcome::Change(mut change) = shown_change() else { unreachable!() };
         change.review = Some(StationStatus {
-            phase: StationPhase::Stamped,
+            progress: StationProgress::Stamped,
             stamped_at: Some("2026-11-02".to_string()),
             stamped_by: Some("Rev <r@example.com>".to_string()),
             stamped_with: None,
@@ -437,7 +437,7 @@ mod tests {
             commit: Some("0123456789ab".to_string()),
             scope: vec![speclink_core::model::ReviewedScopeEntry { path: "src/a.rs".into(), hash: "aa".into() }],
         });
-        change.verify = Some(StationStatus { phase: StationPhase::InProgress, ..StationStatus::none() });
+        change.verify = Some(StationStatus { progress: StationProgress::InProgress, ..StationStatus::none() });
         change.branch = Some("feature/x".to_string());
         change.landed = Some(LandedRecord {
             commit: "89abcdef0123".to_string(),

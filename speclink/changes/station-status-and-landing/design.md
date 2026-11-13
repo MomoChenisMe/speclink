@@ -46,9 +46,10 @@ pub enum StationPhase { None, InProgress, Stamped }   // "none" | "inProgress" |
   2. 否則 metadata 有完整的章（引擎既有的「已蓋章」判斷） → `stamped`，其餘欄位取自 metadata。
   3. 否則 → `none`。
 - metadata 壞掉的變更沒有這兩個物件（和既有補欄位的做法相同）。
-- `ArchivedItem` 新增選填的 `reviewOutcome` 與 `verifyOutcome`：有章 → `stamped`；封存的文件集裡有工單而沒有章 → `notPassed`；否則 `none`。
+- `ArchivedItem` 新增選填的 `reviewOutcome` 與 `verifyOutcome`，順序和上面的判定相同：封存的文件集裡有工單 → `notPassed`；否則有章 → `stamped`；否則 `none`。工單與章並存出現在「蓋章後重開工單，再用 `--carry-review`（或 `--carry-verify`）封存」：新增一輪不清掉舊章，封存的章失效守門也把這種舊章當成已被工單取代，所以結局是未通過。
+- 結局的順序只有一份：引擎的 `station` 模組提供「有沒有工單、有沒有章 → 結局」的純函式（`ArchivedOutcome::of`）。「有沒有章」這個事實由兩端各自提供：Host 用引擎的「完整的章」（時間、任務數、scope 都有），本機快取沿用它既有的判斷（有蓋章時間就算），所以舊封存在本機的標示不變。Host 的已封存清單與 desktop 本機的已封存快取（`apps/desktop/core/src/cache.rs`）都呼叫它，各自只負責把結局轉成自己的字串（線上的 `StationOutcome`、卡片的 `reviewStatus`／`verifyStatus`）。本機快取原本是「有章優先」，這次一起改；快取版本加一，讓已經存下的結局重算（舊版本的快取本來就會被丟掉重建）。
 
-讀取的成本：清單要知道每個變更有沒有工單。`changes/` 這個前綴本來就列出過，工單存在與否從鍵看得出來，不多發呼叫；metadata 也本來就讀了。用成本測試釘住呼叫數不變。
+讀取的成本：清單要知道每個變更有沒有工單。metadata 本來就要讀一次；兩個關卡的工單文件併進同一次讀取（一次讀取帶多個鍵），讀回來有那份文件就是有工單，不多發呼叫。代價是清單會把未結工單的內文一起讀回來——未結的工單通常很少（蓋章就刪掉了）；量大時再改成只取鍵。用成本測試釘住呼叫數不變。
 
 為什麼三態而不是 Desktop 的四態：第四態（蓋章後有變）只有有工作樹的一端算得出來。線上給事實，用戶端自己加上第四態。
 
@@ -73,7 +74,7 @@ pub enum StationPhase { None, InProgress, Stamped }   // "none" | "inProgress" |
 
 ### D4: 分支
 
-- `Command::InProgressAdd` 新增 `branch: Option<String>`。開工標記寫入 `started_*` 的同一次文字手術裡，有值就寫 `branch`。已經有開工標記時（命令本來就不重複蓋）不改 `branch`。
+- `Command::InProgressAdd` 新增 `branch: Option<String>`。開工標記寫入 `started_*` 的同一次文字手術裡，有值就寫 `branch`。已經有開工標記時（命令本來就不重複蓋）不改 `branch`。寫入前確認改完的文字讀得回同一個分支名稱，讀不回就拒絕、零寫入：形狀檢查擋不掉 YAML 帶不了的字元（例如 U+FFFE），那種名稱寫進去整份 metadata 就再也解析不了。
 - 退回提案中（`in-progress remove`）時一併移除 `branch`。
 - 形狀的檢查：1 到 255 個字元、沒有控制字元與空白；否則 `invalid_argv`。
 - CLI：`in-progress add` 把 checkout 目前的分支名稱帶上（detached HEAD 或不是 git checkout 時不帶）。讀分支的小函式放在 CLI 既有收集本機事實的地方；`VerbInputs` 新增 `branch`。
@@ -110,7 +111,7 @@ pub enum StationPhase { None, InProgress, Stamped }   // "none" | "inProgress" |
 
 - `speclink-desktop-core` 把「從關卡的事實算出四態」抽成一個純函式：輸入是線上的 `StationState`（或本機讀到的同樣事實）、目前的任務數、一個選填的讀檔函式；輸出是既有的四態。本機專案改呼叫它（行為不變），遠端專案也呼叫它：
   - 清單：`inProgress` → 審查中／驗證中；`stamped` 且任務數不同 → 其後有變；`stamped` 且任務數相同 → 已蓋章（有 checkout 時再做下一步）；`none` → 未開始。
-  - 有 checkout 的遠端專案：對清單裡任務數相符的已蓋章變更，取單筆回應的 scope，用 checkout 的檔案比內容指紋，不符的改成其後有變。不做快取（量測與理由見 Open Questions 的結論）。那一次單筆讀取失敗時維持只比任務數的結果，清單不因此失敗。scope 的路徑是 Server 給的外部輸入：不是 repo 內相對路徑的（絕對路徑、`..`、磁碟代號）一律不讀，讀作內容有變。
+  - 有 checkout 的遠端專案：對清單裡任務數相符的已蓋章變更，取單筆回應的 scope，用 checkout 的檔案比內容指紋，不符的改成其後有變。只有 checkout 握有蓋章的那一版時才比：checkout 的 HEAD 包含章記下的 commit（`git merge-base --is-ancestor`）。章沒有記下 commit、或 checkout 不包含它（章蓋在別的分支、worktree 或別台機器，checkout 還沒有那批程式碼）時，維持只比任務數的結果——否則剛蓋好的章會被誤報成其後有變。commit 是 Server 給的外部輸入，先過引擎的形狀檢查才交給 git。比對一個檔案時多看一步：內容和章的指紋不同的檔案，若還是章記下的 commit 當時的樣子（當時沒有、現在也沒有也算），不算其後有變。章記的是蓋章當下的 HEAD，被審的內容那時常常還沒提交（先蓋章、後提交）；別台機器的 checkout 有那個 commit、卻還沒有被審的內容，檔案和指紋當然不同，但它沒有在章之後被改過。「還是 commit 當時的樣子」用 git 的 blob 識別比（`git rev-parse <commit>:<path>` 對 `git hash-object`），只對指紋不符的檔案才呼叫 git。不做快取（量測與理由見 Open Questions 的結論）。那一次單筆讀取失敗時維持只比任務數的結果，清單不因此失敗。scope 的路徑是 Server 給的外部輸入：不是 repo 內相對路徑的（絕對路徑、`..`、磁碟代號）一律不讀，讀作內容有變。
   - 遠端的任務數只有總數（清單項沒有寫碼任務的分組），所以遠端的任務錨只比總數；本機另外還看寫碼任務是否全部完成。兩邊走同一個函式，差別只在餵進去的計數。
 - 已封存頁用 `reviewOutcome` 與 `verifyOutcome`。
 - 封存入口：遠端專案的變更是審查中或驗證中時，出現既有的三選項對話框；選「照樣帶走」時把對應的旗標帶進封存的請求（線上本來就支援）。對話框的另一個選項「放棄審查／放棄驗證」在本機是刪掉該站的工單；遠端原本沒有接這個動作，對話框一出現它就會失敗，所以一併接上（刪除工單的路由本來就有，桌面多一個 `remote_discard_station` 命令）。
@@ -164,8 +165,9 @@ commit 與 worktree-merge 的原稿各加一步（都只在成功之後）：
 **驗收**
 
 - `cargo test -p speclink-core`：蓋章寫入與清除 commit、開工的分支、落地的命令與守門；命令名稱與參數的 golden 同批更新；`render_golden` 中 `list --json` 不變。
-- `cargo test -p speclink-host --test station_wire`：三態的判定、清單不帶 scope、已封存的結局、落地的路由、事件的分類；成本測試的呼叫數不變。
-- `cargo test -p speclink-protocol`：新欄位的形狀；用「這個變更之前的型別」解析新回應成功（回答未驗證項）。
+- `cargo test -p speclink-host --test station_wire`：三態的判定、清單不帶 scope、已封存的結局（含工單與章並存 → `notPassed`）、落地的路由、事件的分類；成本測試的呼叫數不變。
+- `cargo test -p speclink-desktop-core`：本機已封存清單對工單與章並存的封存項回 `reviewedNotPassed`／`verifiedNotPassed`，只有章的項目仍是 `reviewed`／`verified`。
+- `cargo test -p speclink-protocol`：新欄位的形狀；新型別解析沒有這些欄位的舊回應、不認得的 state 讀作未知。「舊版用戶端解析新回應」（回答未驗證項）放在 `cargo test -p speclink-host --test station_wire`：它拿真的路由回應，用一組只含舊欄位的型別解析清單、單筆、已封存三種回應。
 - `cargo test -p speclink-cli --test it change_landing::`：動詞在兩種模式的輸出、`show --json` 的新欄位、`list --json` 不變、蓋章與開工帶出 commit 與分支。
 - `cargo test -p speclink-server`：串流的事件類別。
 - `cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop`、`npm test -w apps/desktop`：四態的函式、遠端的標示、封存的對話框。
@@ -182,7 +184,7 @@ commit 與 worktree-merge 的原稿各加一步（都只在成功之後）：
 - [回歸對照] `show --json` 多欄位。→ 刻意的變更，golden 同批更新；人眼輸出的 golden 不變。
 - [舊用戶端] 新欄位都是選填。→ 用舊型別解析新回應的測試；`speclink-remote` 與桌面既有的整條鏈測試不改。
 - [跨平台] 讀 HEAD 與分支都是 CLI 既有呼叫 git 的方式（三個平台相同）；分支名稱可能含非 ASCII 字元，寫入時經跳脫函式。→ 測試放一個含 `/` 與中文的分支名稱。
-- [Desktop 的成本] 遠端有 checkout 時要為已蓋章的變更各取一次單筆回應。→ 只對任務數相符的已蓋章變更做，並用快取；數量通常是個位數。
+- [Desktop 的成本] 遠端有 checkout 時要為已蓋章的變更各取一次單筆回應。→ 只對任務數相符的已蓋章變更做；數量通常是個位數，所以不做快取（量測見 Open Questions 的結論）。
 - [技能多一步可能失敗] 落地的回報被拒絕。→ 技能寫明繼續，不回頭。
 - [資料的可信度] commit 與分支是用戶端說的，Server 不查。→ 這是討論的裁定；宿主要驗證時在自己的掛鉤裡對自己的 Git 服務查。寫進文件影響。
 - [儲存解耦] 新資料都在既有的 metadata 文件裡，儲存不用認得新的文件種類。
@@ -207,7 +209,8 @@ commit 與 worktree-merge 的原稿各加一步（都只在成功之後）：
 - commit（蓋章與落地）：寫入前先過形狀檢查，只收 7 到 64 個十六進位字元，換行、冒號、井號都進不來。全數字的短 commit 會被 YAML 讀成數字（整份 metadata 因此解析失敗），所以寫入時經 `yaml_string`：讀回來不是同一個字串的值一律加引號。
 - 分支：形狀檢查擋掉空白與控制字元（含換行、Tab、NEL、U+2028、全形空白），冒號、井號、引號、方括號這類 YAML 記號則照收並加引號。`null`、`true`、`123`、`1e5`、`~`、`.inf`、`0x1F` 這類會被讀成別種值的名稱同樣加引號。測試逐一寫入後讀回，確認值相同、文件其餘欄位不變、沒有多出鍵。
 - 回報的人（`landed_by`）走既有的純量跳脫，測試以帶換行與冒號的名字確認沒有多出 `branch` 鍵。
-- **找到並修正的問題**：手改過的 metadata 若把鍵寫成 `landed_commit : x`（冒號前有空白），文字手術看不到那個鍵，會再補一行同名的鍵，整份 metadata 從此解析失敗。落地是會重複覆寫的寫入，所以 `change landed` 在寫入前多一道把關：改完的文字解析後讀不回這次的 commit（與分支）就拒絕，零寫入。蓋章與開工標記沿用既有的寫入路徑，這個既有的弱點（`started_at :` 等所有鍵都一樣）不在這個變更擴大處理。
+- **找到並修正的問題**：手改過的 metadata 若把鍵寫成 `landed_commit : x`（冒號前有空白），文字手術看不到那個鍵，會再補一行同名的鍵，整份 metadata 從此解析失敗。落地是會重複覆寫的寫入，所以 `change landed` 在寫入前多一道把關：改完的文字解析後讀不回這次的 commit（與分支）就拒絕，零寫入。開工標記寫分支時有同一道把關（見下一條）。蓋章沿用既有的寫入路徑，這個既有的弱點（`started_at :`、`reviewed_at :` 等既有的鍵都一樣）不在這個變更擴大處理。
+- **品質關卡找到並修正的問題**：分支的形狀檢查擋不掉 YAML 帶不了的字元（U+FFFE、U+FFFF）；這種名稱加了引號照樣寫不進去，寫入後整份 metadata 解析失敗，線上的開工請求就能觸發。開工標記寫分支前因此確認讀得回來，讀不回就以參數錯誤拒絕。分支檢查（`checked_branch`）本身也確認名稱存得進 metadata，CLI 自己帶分支之前用的就是這同一個檢查：過不了（形狀不合，或 metadata 存不了；git 允許的比引擎多）就當作沒有分支，不讓使用者沒給的參數把動詞擋下來；專案資料夾位於別的 repo 底下時也不帶外層 repo 的分支。
 
 **commit 與分支會不會被當成判定的依據**
 
@@ -230,6 +233,8 @@ commit 與 worktree-merge 的原稿各加一步（都只在成功之後）：
 **Speclink Desktop 讀 Server 給的 scope 路徑**
 
 - **找到並修正的問題**：綁有 checkout 時，桌面會照單筆回應的 scope 路徑去讀本機檔案。路徑是 Server 給的外部輸入，絕對路徑或 `..` 會讓它讀 checkout 以外的檔案（例如一個永遠讀不完的裝置檔，重新整理就卡住）。現在路徑先過引擎既有的「repo 內相對路徑」檢查，不合的不讀、讀作內容有變；測試以絕對路徑與 `..` 確認。
+- **品質關卡找到並修正的問題**：已封存的結局原本是「有章優先」，蓋章後重開工單再帶著工單封存的變更會被回報成通過。現在線上與本機都改成「有工單優先」，判定收成引擎的一個函式（見 D1）。這改了 client-protocol 兩條既有需求的意思，所以經 ingest 補進 delta 與任務 8.1。
+- **品質關卡找到並修正的問題**：章若蓋在 checkout 還沒有的 commit 上，checkout 的檔案不是那一版，比了會把剛蓋好的章誤報成其後有變。現在只在 checkout 的 HEAD 包含章記下的 commit 時才比檔案（見 D7）。第二輪再補一步：被審的內容在蓋章時還沒提交的話，章記下的 commit 是它的前一版，checkout 有那個 commit 卻沒有被審的內容，仍會被誤報；所以和指紋不同、但還是那個 commit 當時樣子的檔案，不算其後有變。
 
 **參數會不會被寫反而不報錯**
 

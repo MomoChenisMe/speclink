@@ -134,10 +134,10 @@ export interface ArchivedItem {
   /** 來源討論 slug 清單；空/缺席＝來源討論標記缺席。 */
   fromDiscussions?: string[];
   /** 封存時的審查結局（spec client-protocol「已封存清單的審查結局欄位」）：
-   * 含章＝reviewed；含化石工單而無章＝reviewedNotPassed；缺席＝none。 */
+   * 含工單＝reviewedNotPassed（章還在也一樣）；否則含章＝reviewed；缺席＝none。 */
   reviewStatus?: "none" | "reviewed" | "reviewedNotPassed";
   /** 封存時的驗證結局（spec client-protocol「已封存清單的驗證結局欄位」）：
-   * 含章＝verified；含化石工單而無章＝verifiedNotPassed；缺席＝none。
+   * 含工單＝verifiedNotPassed（章還在也一樣）；否則含章＝verified；缺席＝none。
    * 與審查結局並存——同一項可以「審查通過」卻「曾驗證未通過」。 */
   verifyStatus?: "none" | "verified" | "verifiedNotPassed";
   /** 封存 proposal.md 的 Why 區段首個非空行（spec client-protocol「已封存清單的
@@ -494,8 +494,8 @@ export interface SpeclinkDataSource {
   moveTask(change: string, from: number, to: number, before?: boolean): Promise<void>;
   /** 對選定 change 執行動詞，回傳 core 的結果 payload；失敗時 reject 附訊息。 */
   runVerb(verb: Verb, change: string): Promise<unknown>;
-  /** 放棄審查（刪工單、不蓋章）——封存入口三選項的資料面；未實作的後端
-   * （如 remote）不觸發三選項（其清單項本就不帶 inReview）。 */
+  /** 放棄審查（刪工單、不蓋章）——封存入口三選項的資料面。本機與 remote 的資料
+   * 來源都實作；未實作的後端在使用者選這一項時顯示「不支援」。 */
   discardReview?(change: string): Promise<void>;
   /** 放棄驗證（刪工單、不蓋章）——驗證站的同一面。 */
   discardVerify?(change: string): Promise<void>;

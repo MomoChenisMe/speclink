@@ -252,7 +252,8 @@ fn a_change_with_a_broken_data_file_has_no_station_objects() {
 
 #[test]
 fn the_archived_list_reports_each_stations_outcome() {
-    // Scenario「已封存的結局」：有章 → stamped；有工單沒有章 → notPassed；否則 none。
+    // Scenario「已封存的結局」與「蓋章後重開工單再封存」：有工單 → notPassed（章還在也
+    // 一樣）；否則有章 → stamped；否則 none。
     let door = door();
     seed(
         &door,
@@ -261,6 +262,8 @@ fn the_archived_list_reports_each_stations_outcome() {
             ("archive/changes/2026-11-02-carried/.meta.yaml", &meta_with(&[REVIEW_STAMP])),
             ("archive/changes/2026-11-02-carried/verify.md", VERIFY_TICKET),
             ("archive/changes/2026-11-03-plain/.meta.yaml", META),
+            ("archive/changes/2026-11-04-reopened/.meta.yaml", &meta_with(&[REVIEW_STAMP])),
+            ("archive/changes/2026-11-04-reopened/review.md", REVIEW_TICKET),
         ],
     );
     let archived = get(&door, "archived");
@@ -271,6 +274,7 @@ fn the_archived_list_reports_each_stations_outcome() {
     assert_eq!(outcome("both"), (json!("stamped"), json!("stamped")));
     assert_eq!(outcome("carried"), (json!("stamped"), json!("notPassed")));
     assert_eq!(outcome("plain"), (json!("none"), json!("none")));
+    assert_eq!(outcome("reopened"), (json!("notPassed"), json!("none")));
 }
 
 #[test]

@@ -6,6 +6,17 @@ use crate::teststore::TestStore;
 const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
 const REPO: &[(&str, &str)] = &[("crates/a/src/lib.rs", "fn a() {}\n")];
 
+/// 一份 meta 上某站的章的凍結度：沒有工單時的 [`status`]，再問 [`StationStatus::freshness`]
+/// （讀得到工作樹）。這個檔的凍結度測試都從 meta 出發。
+fn freshness(
+    st: &Station,
+    meta: &ChangeMeta,
+    counts: &crate::tasks::Counts,
+    read_file: &ScopeReadFn<'_>,
+) -> Freshness {
+    status(st, meta, false).freshness(counts, Some(read_file))
+}
+
 fn store_with_round(round: &str) -> TestStore {
     let store = TestStore::with_meta("demo", META);
     store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
@@ -270,7 +281,7 @@ mod stamp_commit {
 
     fn commit_of(st: &Station, store: &TestStore) -> Option<String> {
         let meta = ChangeMeta::from_text(Some(&store.meta("demo"))).expect("stamped meta parses");
-        meta.stamp_commit(st).map(str::to_string)
+        meta.stamp(st).commit.map(str::to_string)
     }
 
     fn commit_lines(st: &Station, raw: &str) -> usize {
@@ -421,11 +432,30 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     }
 
     #[test]
+    fn an_archived_ticket_outranks_a_stamp() {
+        // 已封存的結局與進行中同一個順序：有工單 → 未通過，章還在 meta 裡也一樣
+        // （蓋章後重開的工單取代了舊章）。
+        let table = [
+            (true, true, ArchivedOutcome::NotPassed),
+            (true, false, ArchivedOutcome::NotPassed),
+            (false, true, ArchivedOutcome::Stamped),
+            (false, false, ArchivedOutcome::None),
+        ];
+        for (ticket_archived, stamped, want) in table {
+            assert_eq!(
+                ArchivedOutcome::of(ticket_archived, stamped),
+                want,
+                "ticket_archived={ticket_archived} stamped={stamped}"
+            );
+        }
+    }
+
+    #[test]
     fn an_open_ticket_is_in_progress_even_over_an_earlier_stamp() {
         // 判定第一條：工單存在 → 進行中。章還在 meta 裡時也一樣，章的欄位不帶出。
         for text in [META, STAMPED] {
             let status = status(&REVIEW, &meta(text), true);
-            assert_eq!(status.phase, StationPhase::InProgress);
+            assert_eq!(status.progress, StationProgress::InProgress);
             assert_eq!(status.to_json(), serde_json::json!({ "state": "inProgress" }));
             assert!(status.scope.is_empty());
         }
@@ -434,7 +464,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     #[test]
     fn a_complete_stamp_without_a_ticket_is_stamped_with_its_fields() {
         let status = status(&REVIEW, &meta(STAMPED), false);
-        assert_eq!(status.phase, StationPhase::Stamped);
+        assert_eq!(status.progress, StationProgress::Stamped);
         assert_eq!(
             status.to_json(),
             serde_json::json!({
@@ -467,7 +497,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
         // 章不完整（沒有 scope）讀作未蓋章，和引擎既有的判斷同一條。
         for text in [META, "reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\n", "reviewed_rounds: 4\n"] {
             let status = status(&REVIEW, &meta(text), false);
-            assert_eq!(status.phase, StationPhase::None, "{text:?}");
+            assert_eq!(status.progress, StationProgress::None, "{text:?}");
             assert_eq!(status.to_json(), serde_json::json!({ "state": "none" }));
         }
     }
@@ -476,9 +506,9 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn the_two_stations_read_their_own_fields() {
         // Scenario「兩個關卡各自獨立」：審查已蓋章、驗證有未結的工單。
         let m = meta(STAMPED);
-        assert_eq!(status(&REVIEW, &m, false).phase, StationPhase::Stamped);
-        assert_eq!(status(&VERIFY, &m, true).phase, StationPhase::InProgress);
-        assert_eq!(status(&VERIFY, &m, false).phase, StationPhase::None);
+        assert_eq!(status(&REVIEW, &m, false).progress, StationProgress::Stamped);
+        assert_eq!(status(&VERIFY, &m, true).progress, StationProgress::InProgress);
+        assert_eq!(status(&VERIFY, &m, false).progress, StationProgress::None);
     }
 }
 
@@ -640,6 +670,7 @@ mod finding_paths {
 /// 蓋章、structured rounds、指紋與失效判定——全部帶 `&REVIEW` 走本模組的函式。
 mod review {
     use super::super::*;
+    use super::freshness;
     use crate::teststore::TestStore;
 
     const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
@@ -1766,6 +1797,7 @@ mod review {
 /// （刻意不對稱）、五個 `verified_*` 欄位，以及與審查站互不遮蔽的斷言。
 mod verify {
     use super::super::*;
+    use super::freshness;
     use crate::teststore::TestStore;
 
     const META: &str = "schema: spec-driven\ncreated: 2026-07-01\n";
