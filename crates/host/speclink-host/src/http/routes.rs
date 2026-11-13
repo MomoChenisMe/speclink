@@ -23,7 +23,7 @@ use speclink_protocol::command::{
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
     RankChangeRequest, RankChangeResponse, ReportLandedRequest, ReportLandedResponse, ReviewTicketResponse,
-    SetDependsRequest, SetDependsResponse,
+    SetDependsRequest, SetDependsResponse, SetFieldsRequest, SetFieldsResponse,
     SetDiscussionContextRequest, SetSchemaRequest, SetSchemaResponse, StampReviewRequest, StampReviewResponse,
     TaskDoneRequest, TaskDoneResponse, TaskUndoneResponse, UnlinkedDiscussion,
 };
@@ -51,6 +51,8 @@ pub(crate) struct Request<'a> {
     pub project: &'a ProjectEntry,
     pub repo: &'a RepoEntry,
     pub params: Vec<String>,
+    /// The free fields the host attached to this call.
+    pub attached: &'a speclink_core::fields::Fields,
 }
 
 pub(crate) type Handler = fn(&Request<'_>) -> Result<HttpResponse, HttpError>;
@@ -114,9 +116,10 @@ impl Request<'_> {
     }
 
     /// How the kit runs a command for this request: the repo key goes into
-    /// completion evidence.
+    /// completion evidence, and the host's attached fields go with the run
+    /// (the kit writes them only when the command creates something).
     fn options(&self) -> RunOptions {
-        RunOptions { repo: Some(self.repo.key.clone()), ..RunOptions::default() }
+        RunOptions { repo: Some(self.repo.key.clone()), fields: self.attached.clone(), ..RunOptions::default() }
     }
 
     /// The scope version a client says it last saw. A number past the
@@ -172,6 +175,7 @@ pub(crate) fn binding(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
                 polling: Some(PollingDeclaration { url: "/sync-state".to_string(), etag: true }),
             },
             skills: Some(SkillsDeclaration { version: ASSET_VERSION.to_string() }),
+            fields: true,
         },
     };
     Ok(HttpResponse::json(200, &dto))
@@ -395,6 +399,7 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         dto.landed_commit = meta.landed_commit;
         dto.landed_at = meta.landed_at;
         dto.landed_by = meta.landed_by;
+        dto.fields = meta.fields;
         dto.created_by = meta.created_by;
         dto.created_with = meta.created_with;
         dto.started_at = meta.started_at;
@@ -511,6 +516,7 @@ pub(crate) fn create_change(req: &Request<'_>) -> Result<HttpResponse, HttpError
         agent: body.agent,
         from_discussion: body.from_discussion,
         last: body.last,
+        fields: body.fields,
     };
     let (execution, etag) = req.run(cmd)?;
     let outcome = match execution.outcome {
@@ -852,6 +858,35 @@ pub(crate) fn change_landed(req: &Request<'_>) -> Result<HttpResponse, HttpError
     }
 }
 
+/// The response of the two field writes: every field after the write and the
+/// keys it changed. A write that changed nothing committed nothing, so its
+/// ETag is the scope version from before it.
+fn fields_written(o: speclink_core::command::FieldsOutcome, etag: String) -> HttpResponse {
+    ok(&SetFieldsResponse { fields: o.fields, changed: o.changed }, etag)
+}
+
+/// `PUT /changes/{name}/fields`: set and remove free fields of a change in
+/// one write. A request with nothing to set and nothing to remove is the
+/// Engine's refusal, a 400.
+pub(crate) fn change_fields(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let body: SetFieldsRequest = req.body()?;
+    let (execution, etag) = req.run(Command::ChangeFieldsEdit { name: req.param(0), set: body.set, unset: body.unset })?;
+    match execution.outcome {
+        CommandOutcome::ChangeFieldsEdit(o) => Ok(fields_written(o, etag)),
+        _ => Err(wrong_outcome("change fields")),
+    }
+}
+
+/// `PUT /discussions/{slug}/fields`: the same write for a live discussion.
+pub(crate) fn discussion_fields(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let body: SetFieldsRequest = req.body()?;
+    let (execution, etag) = req.run(Command::DiscussFieldsEdit { slug: req.param(0), set: body.set, unset: body.unset })?;
+    match execution.outcome {
+        CommandOutcome::DiscussFieldsEdit(o) => Ok(fields_written(o, etag)),
+        _ => Err(wrong_outcome("discuss fields")),
+    }
+}
+
 /// `POST /changes/{name}/in-progress`: the first mark stamps the caller; a
 /// repeat or an unknown name is the Engine's silent success. The body is
 /// optional (an older client sends none): it can name the caller's branch.
@@ -1035,7 +1070,7 @@ fn run_discussion_write(req: &Request<'_>, cmd: Command) -> Result<(PortExecutio
 /// `POST /discussions`.
 pub(crate) fn create_discussion(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let body: CreateDiscussionRequest = req.body()?;
-    let cmd = Command::DiscussNew { topic: body.topic, slug: body.slug, kind: body.kind };
+    let cmd = Command::DiscussNew { topic: body.topic, slug: body.slug, kind: body.kind, fields: body.fields };
     let (execution, etag) = run_discussion_write(req, cmd)?;
     match execution.outcome {
         CommandOutcome::DiscussNew(info) => {
@@ -1153,7 +1188,7 @@ pub(crate) fn archive_discussion(req: &Request<'_>) -> Result<HttpResponse, Http
 /// the wire: it is a place in the store, meaningless to a local user.
 pub(crate) fn promote_discussion(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let body: PromoteDiscussionRequest = req.body()?;
-    let (execution, etag) = req.run(Command::DiscussPromote { slug: req.param(0), name: body.name, last: body.last })?;
+    let (execution, etag) = req.run(Command::DiscussPromote { slug: req.param(0), name: body.name, last: body.last, fields: body.fields })?;
     match execution.outcome {
         CommandOutcome::DiscussPromote(o) => Ok(ok(&PromoteDiscussionResponse { change: o.change }, etag)),
         _ => Err(wrong_outcome("discuss-promote")),

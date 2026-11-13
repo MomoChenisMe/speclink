@@ -2257,6 +2257,7 @@ mod board_order_tests {
             verify: None,
             branch: None,
             landed_commit: None,
+            fields: Default::default(),
         }
     }
 
@@ -2425,6 +2426,7 @@ mod board_order_tests {
             hold: None,
             path: format!("openspec/discussions/{slug}.md"),
             archived: false,
+            fields: Default::default(),
         }
     }
 

@@ -5,7 +5,8 @@
 //! The kit takes Engine commands, not verb text: every door (the Agent tool
 //! of the Node SDK, and the HTTP door in [`crate::http`]) turns its input
 //! into a [`Command`] and calls [`HostKit::run`], so the hooks see the same
-//! thing from every door.
+//! thing from every door. A host can attach free fields to a call
+//! ([`HostKit::run_with_fields`], [`HostKit::handle_with_fields`]).
 
 use crate::documents::scope_version;
 use crate::port_exec::{at_version, execute_with, AtVersion, BeforeCommit, ExecError, PortExecution, WriteAt};
@@ -13,6 +14,7 @@ use speclink_core::command::{
     Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext, WorkflowConfigWriteOutcome,
 };
 use speclink_core::config::ChangedKey;
+use speclink_core::fields::Fields;
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::EventTransport;
 use speclink_store_port::{Actor, DocKey, Event, Expected, ScopeId, StorePort, Version};
@@ -277,7 +279,20 @@ impl HostKit {
     /// [`crate::port_exec::execute`] gives for the same command; the commit
     /// records the caller's identity and the command's name.
     pub fn run(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError> {
-        match self.run_with(caller, cmd, &RunOptions::default())?.at {
+        self.run_with_fields(caller, cmd, &Fields::new())
+    }
+
+    /// [`HostKit::run`] with free fields the host attaches to this call, from
+    /// its own program: for example where the call came from. They are
+    /// written only when the call creates a change or a discussion (new
+    /// change, new discussion, promote), in the commit that creates it, and
+    /// they win over a field of the same key that the verb text or the HTTP
+    /// request gave. Every other call ignores them, so a host can attach the
+    /// same fields to every call. Attached fields that break the rules of
+    /// free fields are the host's own defect: a call that would write them
+    /// fails as `invalid_argv` before the hook is asked, with nothing written.
+    pub fn run_with_fields(&self, caller: &Caller, cmd: Command, fields: &Fields) -> Result<PortExecution, ExecError> {
+        match self.run_with(caller, cmd, &RunOptions { fields: fields.clone(), ..RunOptions::default() })?.at {
             AtVersion::Done(execution) => Ok(execution),
             AtVersion::Moved { .. } => unreachable!("a run with no expected version never sees the scope move"),
         }
@@ -285,6 +300,8 @@ impl HostKit {
 
     /// [`HostKit::run`] with what the HTTP door adds; see [`RunOptions`].
     pub(crate) fn run_with(&self, caller: &Caller, cmd: Command, options: &RunOptions) -> Result<Ran, ExecError> {
+        // Before the hook: it sees the fields that will be written.
+        let cmd = attach_fields(cmd, &options.fields)?;
         let command = cmd.name();
         let params = match &self.hooks.before_command {
             Some(_) => cmd.params(),
@@ -403,6 +420,9 @@ pub(crate) struct RunOptions {
     /// Take the scope version before the Engine reads anything
     /// ([`Ran::before`]), for an ETag that is never newer than the content.
     pub version_first: bool,
+    /// The free fields the host attached to this call
+    /// ([`HostKit::run_with_fields`]).
+    pub fields: Fields,
 }
 
 /// What [`HostKit::run_with`] did.
@@ -460,6 +480,24 @@ fn without_local_facts(cmd: Command) -> Command {
         }
         other => other,
     }
+}
+
+/// `cmd` with the host's attached fields: merged into a command that creates
+/// a change or a discussion, the host's value over the command's own; any
+/// other command comes back as it was. This is the one merge, for both doors.
+/// The host can add its fields and nothing else: no other part of the command
+/// changes. A merged set outside the rules fails here, as `invalid_argv`.
+fn attach_fields(mut cmd: Command, attached: &Fields) -> Result<Command, ExecError> {
+    if attached.is_empty() {
+        return Ok(cmd);
+    }
+    let Some(own) = cmd.creation_fields_mut() else {
+        return Ok(cmd);
+    };
+    own.extend(attached.iter().map(|(key, value)| (key.clone(), value.clone())));
+    speclink_core::fields::check(own)
+        .map_err(|e| ExecError::Command(CommandError::new(ErrorCode::InvalidArgv, e.to_string())))?;
+    Ok(cmd)
 }
 
 fn is_workflow_config_write(cmd: &Command) -> bool {

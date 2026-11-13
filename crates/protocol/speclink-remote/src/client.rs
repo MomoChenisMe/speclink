@@ -16,6 +16,7 @@ use speclink_protocol::command::{
     AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, BindDiscussionRequest,
     BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
+    FreeFields, SetFieldsRequest, SetFieldsResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, RankChangeRequest, RankChangeResponse,
@@ -624,14 +625,56 @@ impl Client {
         slug: Option<&str>,
         kind: Option<&str>,
     ) -> Result<CreateDiscussionResponse, RemoteError> {
+        self.new_discussion_with_fields(topic, slug, kind, &FreeFields::new())
+    }
+
+    /// [`Client::new_discussion`] with free fields the record starts with
+    /// (`discuss new --field`). The call without fields keeps its signature:
+    /// the desktop app and the server's tests call it. No field keeps the
+    /// body what it was. A server from before free fields
+    /// creates the record and drops them: the handshake's
+    /// `capabilities.fields` says whether it keeps them.
+    pub fn new_discussion_with_fields(
+        &self,
+        topic: &str,
+        slug: Option<&str>,
+        kind: Option<&str>,
+        fields: &FreeFields,
+    ) -> Result<CreateDiscussionResponse, RemoteError> {
         self.post(
             "/discussions",
             &CreateDiscussionRequest {
                 topic: topic.to_string(),
                 slug: slug.map(str::to_string),
                 kind: kind.map(str::to_string),
+                fields: fields.clone(),
             },
         )
+    }
+
+    /// `PUT /changes/{name}/fields` — set and remove free fields of a change
+    /// in one write. A server from before this route answers 404.
+    pub fn set_change_fields(
+        &self,
+        name: &str,
+        set: &FreeFields,
+        unset: &[String],
+    ) -> Result<SetFieldsResponse, RemoteError> {
+        self.put_fields(&format!("/changes/{name}/fields"), set, unset)
+    }
+
+    /// `PUT /discussions/{slug}/fields` — the same write for a live discussion.
+    pub fn set_discussion_fields(
+        &self,
+        slug: &str,
+        set: &FreeFields,
+        unset: &[String],
+    ) -> Result<SetFieldsResponse, RemoteError> {
+        self.put_fields(&format!("/discussions/{slug}/fields"), set, unset)
+    }
+
+    fn put_fields(&self, path: &str, set: &FreeFields, unset: &[String]) -> Result<SetFieldsResponse, RemoteError> {
+        self.send("PUT", path, Some(&SetFieldsRequest { set: set.clone(), unset: unset.to_vec() }), &[])
     }
 
     /// `DELETE /discussions/{slug}?force=` — Command::DiscussDiscard 直通；
@@ -879,6 +922,9 @@ impl Client {
             &PromoteDiscussionRequest {
                 name: name.map(str::to_string),
                 last,
+                // No caller sends fields with a promotion: the CLI has no flag
+                // for it. The request type carries them for a host's own client.
+                fields: FreeFields::new(),
             },
         )
     }

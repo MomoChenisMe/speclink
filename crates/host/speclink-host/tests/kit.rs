@@ -77,6 +77,7 @@ fn new_change(name: &str) -> Command {
         agent: None,
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     }
 }
 

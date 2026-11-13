@@ -248,6 +248,7 @@ fn seed(project_url: &str, pat: &str) {
             agent: None,
             from_discussion: None,
             last: false,
+            fields: Default::default(),
         })
         .expect("create change");
     for (artifact, content) in

@@ -709,6 +709,7 @@ fn new_change_from_discussion_fails_before_the_change_lands_when_the_record_cann
             agent: None,
             from_discussion: Some("x".to_string()),
             last: false,
+            fields: Default::default(),
         },
     )
     .unwrap_err();
@@ -730,6 +731,7 @@ fn new_change_reports_exactly_one_change_created_event() {
             agent: None,
             from_discussion: None,
             last: false,
+            fields: Default::default(),
         },
     );
     assert_eq!(events.len(), 1, "exactly one event");
@@ -759,6 +761,7 @@ fn failed_new_change_produces_no_events_and_frozen_message() {
             agent: None,
             from_discussion: None,
             last: false,
+            fields: Default::default(),
         },
     )
     .expect_err("duplicate name must fail");
@@ -1924,6 +1927,7 @@ fn discuss_verbs_report_their_events() {
             topic: "API auth".to_string(),
             slug: Some("api-auth".to_string()),
             kind: None,
+            fields: Default::default(),
         },
     );
     assert_eq!(kinds(&ev), ["discussion-created"]);
@@ -1971,6 +1975,7 @@ fn discuss_verbs_report_their_events() {
             agent: None,
             from_discussion: None,
             last: false,
+            fields: Default::default(),
         },
     );
     let (_, ev) = ok(
@@ -2035,6 +2040,7 @@ fn promote_reports_promoted_and_change_created() {
             topic: "API auth".to_string(),
             slug: Some("api-auth".to_string()),
             kind: None,
+            fields: Default::default(),
         },
     );
     ok(
@@ -2047,7 +2053,7 @@ fn promote_reports_promoted_and_change_created() {
     );
     let (_, events) = ok(
         &store,
-        Command::DiscussPromote { slug: "api-auth".to_string(), name: None, last: false },
+        Command::DiscussPromote { slug: "api-auth".to_string(), name: None, last: false, fields: Default::default() },
     );
     assert_eq!(kinds(&events), ["discussion-promoted", "change-created"]);
     match (&events[0], &events[1]) {
@@ -2172,6 +2178,14 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         ),
         (DomainEvent::ChangeRanked { change: s("c"), occurred_at: at }, "change-ranked"),
         (
+            DomainEvent::ChangeFieldsChanged { change: s("c"), keys: vec![s("ticket")], occurred_at: at },
+            "change-fields-changed",
+        ),
+        (
+            DomainEvent::DiscussionFieldsChanged { slug: s("d"), keys: vec![s("owner")], occurred_at: at },
+            "discussion-fields-changed",
+        ),
+        (
             DomainEvent::ChangeArchived { change: s("c"), dated_name: s("2026-07-12-c"), occurred_at: at },
             "change-archived",
         ),
@@ -2223,7 +2237,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-landed",
         ),
     ];
-    assert_eq!(table.len(), 28, "the coverage table has 28 mutating verbs");
+    assert_eq!(table.len(), 30, "the coverage table has 30 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2260,6 +2274,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
             agent: _,
             from_discussion: _,
             last: _,
+            fields: _,
         } => {}
         Command::NewArtifact { kind: _, capability: _, change: _, content: _, force: _, new_capability: _ } => {}
         Command::TaskDone { task_id: _, change: _, touched_files: _, head_commit: _ } => {}
@@ -2271,14 +2286,16 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::ChangeDepends { name: _, on: _, remove: _ } => {}
         Command::ChangeSchema { name: _, schema: _ } => {}
         Command::ChangeRank { name: _, anchor: _, position: _, force: _ } => {}
+        Command::ChangeFieldsEdit { name: _, set: _, unset: _ } => {}
+        Command::DiscussFieldsEdit { slug: _, set: _, unset: _ } => {}
         Command::ChangeLanded { name: _, commit: _, branch: _ } => {}
         Command::Archive { change: _, skip_specs: _, no_validate: _, mark_tasks_complete: _, carry_review: _, carry_verify: _ } => {}
         Command::Discard { change: _, force: _ } => {}
-        Command::DiscussNew { topic: _, slug: _, kind: _ } => {}
+        Command::DiscussNew { topic: _, slug: _, kind: _, fields: _ } => {}
         Command::DiscussContext { slug: _, content: _ } => {}
         Command::DiscussAddRound { slug: _, mode: _, content: _ } => {}
         Command::DiscussConclude { slug: _, content: _, hold: _ } => {}
-        Command::DiscussPromote { slug: _, name: _, last: _ } => {}
+        Command::DiscussPromote { slug: _, name: _, last: _, fields: _ } => {}
         Command::DiscussLink { slug: _, change: _ } => {}
         Command::DiscussSeal { slug: _, change: _, last: _ } => {}
         Command::DiscussArchive { slug: _ } => {}
@@ -2322,6 +2339,7 @@ fn new_change_cmd(name: &str) -> Command {
         agent: None,
         from_discussion: None,
         last: false,
+        fields: Default::default(),
     }
 }
 
@@ -2372,7 +2390,7 @@ fn discussion_created_by_follows_context_actor_only() {
     let (outcome, _) = execute(
         &store,
         &actor_ctx(Some("Ctx Actor <ctx@example.com>")),
-        Command::DiscussNew { topic: "Identity probe".to_string(), slug: None, kind: None },
+        Command::DiscussNew { topic: "Identity probe".to_string(), slug: None, kind: None, fields: Default::default() },
     )
     .expect("discuss new succeeds");
     match outcome {

@@ -112,6 +112,9 @@
     "params": {
       "agent": "claude",
       "description": "A demo change",
+      "fields": {
+        "source": "portal"
+      },
       "fromDiscussion": "topic",
       "last": true,
       "name": "demo",
@@ -222,6 +225,7 @@
   {
     "name": "discuss-new",
     "params": {
+      "fields": {},
       "kind": "feature",
       "slug": "host-kit",
       "topic": "Host kit"
@@ -253,6 +257,7 @@
   {
     "name": "discuss-promote",
     "params": {
+      "fields": {},
       "last": false,
       "name": "demo",
       "slug": "topic"
@@ -386,6 +391,28 @@
       "branch": "speclink/demo",
       "commit": "0123456789abcdef0123456789abcdef01234567",
       "name": "demo"
+    }
+  },
+  {
+    "name": "change-fields-edit",
+    "params": {
+      "name": "demo",
+      "set": {
+        "ticket": "PROJ-1"
+      },
+      "unset": [
+        "source"
+      ]
+    }
+  },
+  {
+    "name": "discuss-fields-edit",
+    "params": {
+      "set": {
+        "owner": "alice"
+      },
+      "slug": "board-search",
+      "unset": []
     }
   }
 ]

@@ -16,6 +16,7 @@ use speclink_verbs::families::discuss::{DiscussArgs, DiscussCommands};
 use speclink_verbs::render::discuss::{
     self as render, Concluded, DiscussBind, NewDiscussionLines, Promoted, RecordedRound,
 };
+use speclink_verbs::render::fields::{self as render_fields, FieldKind};
 use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
@@ -76,6 +77,10 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let o: core::command::DiscussBindOutcome = run(&store, Some(&ws), cmd)?;
             emit(render::bind(DiscussBind::Seal, &o.slug, &o.change, render_options(json)));
         }
+        DiscussCommands::Field(field) => {
+            let o: core::command::FieldsOutcome = run(&store, Some(&ws), cmd)?;
+            emit(render_fields::edited(FieldKind::Discussion, &o, render_options(field.json())));
+        }
     }
     Ok(())
 }
@@ -124,10 +129,12 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
                 render_options(json),
             ));
         }
-        DiscussCommands::New { topic, slug, kind, json } => {
+        DiscussCommands::New { topic, slug, kind, field, json } => {
             // --slug 與 --kind 隨請求上 wire；驗證的單一事實來源在引擎（server 端），
-            // CLI 不預驗（design D1）。
-            let resp = ctx.client.new_discussion(&topic, slug.as_deref(), kind.as_deref())?;
+            // CLI 不預驗（design D1）。`--field` 只在這裡拆成鍵值，規則同樣由 server 檢查。
+            let fields = speclink_verbs::families::fields::parse_pairs(&field)?;
+            let resp = ctx.client.new_discussion_with_fields(&topic, slug.as_deref(), kind.as_deref(), &fields)?;
+            ctx.warn_if_fields_were_not_kept(&fields);
             // remote 的 --json 契約是 wire 回應原樣（slug／topic／path）——
             // 組 core 型別會捏造 server 沒說的欄位，形狀凍結不允許。
             emit(render::new_from(
@@ -188,6 +195,7 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             let bound = ctx.client.seal_discussion(&slug, &change, last)?;
             emit(render::bind(DiscussBind::Seal, &bound.slug, &bound.change, render_options(json)));
         }
+        DiscussCommands::Field(field) => ctx.edit_fields(FieldKind::Discussion, &field)?,
     }
     Ok(())
 }
@@ -209,6 +217,7 @@ fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::Disc
         kind: d.kind.clone(),
         path: d.path.clone(),
         archived: d.archived,
+        fields: d.fields.clone(),
         concluded: d.concluded.unwrap_or(false),
         head,
     }

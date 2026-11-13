@@ -419,6 +419,7 @@ mod tests {
             kind: None,
             path: format!("/p/speclink/discussions/{slug}.md"),
             archived,
+            fields: Default::default(),
             concluded: false,
             head: Default::default(),
         }
@@ -491,6 +492,25 @@ mod tests {
         );
         assert_eq!(list_human(&[], false).stdout, "No discussions found.\n");
         assert_eq!(list_human(&[], true).stdout, "No archived discussions found.\n");
+    }
+
+    #[test]
+    fn every_json_form_carries_the_fields_of_a_record_that_has_some_and_the_human_forms_do_not() {
+        // 規格「討論資訊帶出欄位」：board-search 有欄位 owner。
+        let plain = info("board-search", "Board search", "open", 1, false);
+        let with = DiscussionInfo { fields: [("owner".to_string(), "alice".to_string())].into(), ..plain.clone() };
+        assert_eq!(list_json(&[with.clone(), plain.clone()])["discussions"][0]["fields"], json!({ "owner": "alice" }));
+        assert!(list_json(&[with.clone(), plain.clone()])["discussions"][1].get("fields").is_none());
+        let shown = |info: &DiscussionInfo| DiscussShowOutcome { info: Some(info.clone()), content: "# T\n".to_string() };
+        assert_eq!(show_json(&shown(&with))["info"]["fields"], json!({ "owner": "alice" }));
+        assert!(show_json(&shown(&plain))["info"].get("fields").is_none());
+        let hit = |info: &DiscussionInfo| DiscussionHit { info: info.clone(), matches: Vec::new() };
+        // 搜尋的命中項目把討論資訊攤平在同一層。
+        assert_eq!(search_json(&[hit(&with)])["hits"][0]["fields"], json!({ "owner": "alice" }));
+        assert!(search_json(&[hit(&plain)])["hits"][0].get("fields").is_none());
+        // 人眼輸出不變。
+        assert_eq!(list_human(&[with.clone()], false).stdout, list_human(&[plain.clone()], false).stdout);
+        assert_eq!(show_human(&shown(&with)).stdout, show_human(&shown(&plain)).stdout);
     }
 
     #[test]

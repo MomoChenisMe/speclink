@@ -2,7 +2,9 @@
 //! `change rank` (writes); and `change landed`, the landing report of the same
 //! `change` family (station-status-and-landing D5).
 //!
-//! All five are Dual (add-change-plan-remote D4; change-schema-verb D5;
+//! The family's `field` verbs (host-free-fields D4) are here too.
+//!
+//! All of them are Dual (add-change-plan-remote D4; change-schema-verb D5;
 //! skills-verbs-first-wave D6): the fs arms read and write the local spec
 //! tree; the remote arms call the server endpoints and pass the response to
 //! the same output functions (speclink-verbs' `render::plan`), so both modes
@@ -19,6 +21,7 @@ use crate::remote_base::RemoteCtx;
 use core::store::Store;
 use core::workspace::Workspace;
 use speclink_verbs::families::plan::{rank_anchor, ChangeCommands, ChangeVerbArgs, PlanArgs, NO_COMMIT_TO_REPORT};
+use speclink_verbs::render::fields::{self as render_fields, FieldKind};
 use speclink_verbs::render::plan::{self as render, Depends};
 use speclink_verbs::{ToCommand, VerbInputs};
 
@@ -85,6 +88,15 @@ pub(crate) fn cmd_change(a: ChangeVerbArgs) -> Result<()> {
             let o: core::command::ChangeLandedOutcome = run(&store, Some(&ws), cmd)?;
             emit(render::landed(&o, render_options(*json)));
         }
+        ChangeCommands::Field(field) => {
+            // Routed like `change depends`: a change checked out in a worktree
+            // lives in that copy, the one `list` reads.
+            let (ws, fs_store) = open_project()?;
+            let home = home_store_for(&ws, &worktree_facts(&ws, &fs_store), field.subject());
+            let cmd = plain_command(&a)?;
+            let o: core::command::FieldsOutcome = run(&home, Some(&ws), cmd)?;
+            emit(render_fields::edited(FieldKind::Change, &o, render_options(field.json())));
+        }
     }
     Ok(())
 }
@@ -143,6 +155,7 @@ pub(crate) fn remote_change(ctx: &RemoteCtx, a: ChangeVerbArgs) -> Result<()> {
             let landed = core::command::ChangeLandedOutcome { change: r.change, commit: r.commit, branch: r.branch };
             emit(render::landed(&landed, render_options(json)));
         }
+        ChangeCommands::Field(field) => ctx.edit_fields(FieldKind::Change, &field)?,
     }
     Ok(())
 }

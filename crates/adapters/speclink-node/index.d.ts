@@ -480,6 +480,31 @@ export interface HostDispatchCall {
   /** The verb text without the program name, as for `engine.dispatch`. */
   argv: string[]
   stdin?: string
+  /**
+   * Free fields from your own code, never from the model: for example where
+   * the call came from. They are written only when the verb creates a change
+   * or a discussion (`new change`, `discuss new`, `discuss promote`), in the
+   * commit that creates it, and they win over a `--field` of the same key.
+   * Every other verb ignores them, so you can pass the same fields with every
+   * call. `beforeCommand` sees the fields that will be written, in
+   * `params.fields`. A value that is not a string, or fields outside the
+   * rules of free fields (a key of `a-z`, `0-9`, `_`, `.`, `-` that starts
+   * with a letter; a one-line value of at most 1024 bytes; at most 32 keys),
+   * reject with `invalid_argv` and nothing is written. Do not put a secret in
+   * a field: every reader of the change gets it.
+   */
+  fields?: Record<string, string>
+}
+
+/** What `host.handleRequest` takes besides the request and the identity. */
+export interface HostRequestExtras {
+  /**
+   * Free fields from your own code, as `HostDispatchCall.fields`: written
+   * only when the request creates a change or a discussion, over a field of
+   * the same key in the request body; every other request ignores them. A
+   * value that is not a string, or fields outside the rules, answers 400.
+   */
+  fields?: Record<string, string>
 }
 
 export interface Host {
@@ -522,9 +547,14 @@ export interface Host {
    *
    * Resolves to null for a path that is not the door's. A method other than
    * GET, HEAD, POST, PUT and DELETE resolves to a 405. Runs on a background
-   * thread; the hooks are the same as `dispatch`'s.
+   * thread; the hooks are the same as `dispatch`'s. `extras.fields` attaches
+   * free fields from your own code to the request ({@link HostRequestExtras}).
    */
-  handleRequest(request: HostRequest, identity: HostIdentity | null): Promise<HostResponse | null>
+  handleRequest(
+    request: HostRequest,
+    identity: HostIdentity | null,
+    extras?: HostRequestExtras,
+  ): Promise<HostResponse | null>
 }
 
 /**

@@ -6,7 +6,7 @@
 use super::{
     ChangeLandedOutcome, ChangeRankOutcome, CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
     DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
-    DiscussSubjectOutcome, EvidenceShowOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
+    DiscussSubjectOutcome, EvidenceShowOutcome, FieldsOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
     ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
     TaskFlipOutcome, ValidateOutcome, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
 };
@@ -67,6 +67,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::ChangeSchema(_) => "ChangeSchema",
         CommandOutcome::ChangeRank(_) => "ChangeRank",
         CommandOutcome::ChangeLanded(_) => "ChangeLanded",
+        CommandOutcome::ChangeFieldsEdit(_) => "ChangeFieldsEdit",
         CommandOutcome::Archive(_) => "Archive",
         CommandOutcome::Discard(_) => "Discard",
         CommandOutcome::DiscussNew(_) => "DiscussNew",
@@ -78,6 +79,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::DiscussSeal(_) => "DiscussSeal",
         CommandOutcome::DiscussArchive(_) => "DiscussArchive",
         CommandOutcome::DiscussDiscard(_) => "DiscussDiscard",
+        CommandOutcome::DiscussFieldsEdit(_) => "DiscussFieldsEdit",
         CommandOutcome::ReviewAddRound(_) => "ReviewAddRound",
         CommandOutcome::ReviewShow(_) => "ReviewShow",
         CommandOutcome::ReviewStamp(_) => "ReviewStamp",
@@ -146,6 +148,7 @@ typed_outcomes! {
     SchemaOutcome => [ChangeSchema],
     ChangeRankOutcome => [ChangeRank],
     ChangeLandedOutcome => [ChangeLanded],
+    FieldsOutcome => [ChangeFieldsEdit, DiscussFieldsEdit],
     ArchiveOutcome => [Archive],
     DiscardOutcome => [Discard],
     DiscussionInfo => [DiscussNew],

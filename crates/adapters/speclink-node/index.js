@@ -167,6 +167,24 @@ class StoreUnavailableError extends Error {
 
 const HOOK_NAMES = ['beforeCommand', 'afterCommit']
 
+/**
+ * The free fields a host attaches to one call, as JSON text for the native
+ * side. Absent or null is no field. Anything but a plain object whose values
+ * are all strings crosses as `null`, which the native side refuses. The check
+ * is here because JSON would hide the mistake: it drops a key whose value is
+ * `undefined`, a function or a symbol key, and writes a Date as text.
+ */
+function fieldsText(fields) {
+  if (fields === undefined || fields === null) return undefined
+  const proto = typeof fields === 'object' ? Object.getPrototypeOf(fields) : undefined
+  const plain = proto === Object.prototype || proto === null
+  const strings =
+    plain &&
+    Object.getOwnPropertySymbols(fields).length === 0 &&
+    Object.values(fields).every((value) => typeof value === 'string')
+  return strings ? JSON.stringify(fields) : 'null'
+}
+
 class Host {
   #native
 
@@ -176,7 +194,9 @@ class Host {
 
   /**
    * Run one speclink verb for `identity` on `scope`. `argv`, `stdin`, the
-   * result and the errors are those of `engine.dispatch`.
+   * result and the errors are those of `engine.dispatch`. `fields` are free
+   * fields from your own code: written when the verb creates a change or a
+   * discussion, ignored by every other verb.
    */
   async dispatch(call) {
     const argv = call?.argv
@@ -186,7 +206,14 @@ class Host {
     const text = (value) => (typeof value === 'string' ? value : '')
     const identity = call.identity
     return unwrap(
-      await this.#native.dispatch(text(identity?.id), text(identity?.displayName), text(call.scope), argv, call.stdin),
+      await this.#native.dispatch(
+        text(identity?.id),
+        text(identity?.displayName),
+        text(call.scope),
+        argv,
+        call.stdin,
+        fieldsText(call.fields),
+      ),
     )
   }
 
@@ -194,8 +221,9 @@ class Host {
    * Answer one HTTP request of the original CLI or Speclink Desktop for
    * `identity` (null when the host could not verify one). Resolves to
    * `{ status, headers, body }`, or to null when the path is not the door's.
+   * `extras.fields` are free fields from your own code, as for `dispatch`.
    */
-  async handleRequest(request, identity) {
+  async handleRequest(request, identity, extras) {
     if (!request || typeof request !== 'object') {
       throw new TypeError('host.handleRequest: request must be an object')
     }
@@ -217,8 +245,16 @@ class Host {
     // refuses with invalid_argv before any store call.
     const text = (value) => (typeof value === 'string' ? value : '')
     const who = identity == null ? [undefined, undefined] : [text(identity.id), text(identity.displayName)]
-    const fields = JSON.stringify({ method, path, query: query ?? undefined, headers })
-    const response = unwrap(await this.#native.handleRequest(fields, bytes, ...who))
+    if (extras !== undefined && extras !== null && typeof extras !== 'object') {
+      throw new TypeError('host.handleRequest: extras must be an object')
+    }
+    // A misspelled key would drop the fields without a word.
+    const unknown = Object.keys(extras ?? {}).filter((name) => name !== 'fields')
+    if (unknown.length > 0) {
+      throw new TypeError(`host.handleRequest: unknown extras: ${unknown.join(', ')} (the only one is fields)`)
+    }
+    const line = JSON.stringify({ method, path, query: query ?? undefined, headers })
+    const response = unwrap(await this.#native.handleRequest(line, bytes, ...who, fieldsText(extras?.fields)))
     if (response === null) return null
     return { status: response.status, headers: response.headers, body: new TextEncoder().encode(response.body) }
   }

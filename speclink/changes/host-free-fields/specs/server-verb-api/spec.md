@@ -2,7 +2,7 @@
 
 ### Requirement: 自由欄位的寫入端點
 
-server SHALL 提供變更與討論的自由欄位寫入端點（PUT changes/{name}/fields 與 PUT discussions/{slug}/fields），以引擎的欄位編輯命令執行，editor 以上角色可用。規則不符（鍵、值、數量、同一個鍵同時設定與移除）SHALL 以 invalid_argument 回應且儲存不變；變更或討論不存在、討論已封存 SHALL 以 not_found 回應。沒有任何變動時 SHALL 成功回應目前的欄位，範圍版本 SHALL 不前進。建立變更、建立討論與轉出變更的端點 SHALL 把請求的 fields 交給引擎，與建立在同一次提交。變更清單、單筆變更、已封存清單與討論的讀取端點 SHALL 回填 fields，且 SHALL NOT 為此多發儲存呼叫。
+server SHALL 提供變更與討論的自由欄位寫入端點（PUT changes/{name}/fields 與 PUT discussions/{slug}/fields），以引擎的欄位編輯命令執行，editor 以上角色可用。規則不符（鍵、值、數量、同一個鍵同時設定與移除）SHALL 以 invalid_argument 回應且儲存不變；變更或討論不存在、討論已封存 SHALL 以 not_found 回應。成功回應 SHALL 帶寫入後的全部欄位與這次實際變動的鍵。沒有任何變動時 SHALL 成功回應目前的欄位與空的變動清單，範圍版本 SHALL 不前進。建立變更、建立討論與轉出變更的端點 SHALL 把請求的 fields 交給引擎，與建立在同一次提交。變更清單、單筆變更、已封存清單與討論的讀取端點 SHALL 回填 fields，且 SHALL NOT 為此多發儲存呼叫。
 
 #### Scenario: editor 設定欄位
 

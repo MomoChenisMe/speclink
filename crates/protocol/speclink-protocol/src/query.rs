@@ -11,6 +11,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::binding::ScopeRef;
+use crate::command::FreeFields;
 
 /// `POST /import` request. This migration surface is intentionally closed:
 /// there is no mode field, so the store's maintenance-only Overwrite mode can
@@ -251,6 +252,9 @@ pub struct ArchivedItem {
     pub review_outcome: Option<StationOutcome>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub verify_outcome: Option<StationOutcome>,
+    /// The document's free fields; left out when it has none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `GET /search` response.
@@ -383,6 +387,9 @@ pub struct ChangeSummary {
     /// The commit the change's code was reported to have landed on.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub landed_commit: Option<String>,
+    /// The document's free fields; left out when it has none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
@@ -437,6 +444,9 @@ pub struct ChangeStatus {
     pub landed_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub landed_by: Option<String>,
+    /// The document's free fields; left out when it has none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// One artifact's status inside [`ChangeStatus`].
@@ -736,6 +746,9 @@ pub struct DiscussionInfo {
     pub hold: Option<bool>,
     pub path: String,
     pub archived: bool,
+    /// The document's free fields; left out when it has none.
+    #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
+    pub fields: FreeFields,
 }
 
 /// `GET /discussions/{slug}` response. `cuts` reads an absent key as empty
@@ -975,6 +988,34 @@ pub struct PlanSkipped {
 #[cfg(test)]
 mod tests {
     use crate::query::*;
+
+    #[test]
+    fn the_four_read_types_carry_fields_and_leave_the_key_out_when_there_are_none() {
+        // client-protocol「空的不序列化」「舊版用戶端解析新回應」。
+        let summary = r#"{"name":"demo"}"#;
+        let status = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":[],"artifacts":[]}"#;
+        let archived = r#"{"datedName":"2026-11-02-demo","name":"demo","date":"2026-11-02","specCount":0}"#;
+        let info = r#"{"slug":"t","topic":"T","status":"open","rounds":0,"created":"2026-11-01","path":"discussions/t.md","archived":false}"#;
+        let with = |json: &str| {
+            let mut value: serde_json::Value = serde_json::from_str(json).unwrap();
+            value["fields"] = serde_json::json!({ "ticket": "PROJ-1" });
+            value
+        };
+        macro_rules! check {
+            ($ty:ty, $json:expr) => {{
+                let plain: $ty = serde_json::from_str($json).expect("a response with no fields key");
+                assert!(plain.fields.is_empty());
+                assert!(serde_json::to_value(&plain).unwrap().get("fields").is_none(), "none is not serialized");
+                let carried: $ty = serde_json::from_value(with($json)).expect("a response with fields");
+                assert_eq!(carried.fields.get("ticket").map(String::as_str), Some("PROJ-1"));
+                assert_eq!(serde_json::to_value(&carried).unwrap()["fields"], serde_json::json!({ "ticket": "PROJ-1" }));
+            }};
+        }
+        check!(ChangeSummary, summary);
+        check!(ChangeStatus, status);
+        check!(ArchivedItem, archived);
+        check!(DiscussionInfo, info);
+    }
 
     #[test]
     fn server_scope_read_dtos_round_trip_in_desktop_aligned_shapes() {

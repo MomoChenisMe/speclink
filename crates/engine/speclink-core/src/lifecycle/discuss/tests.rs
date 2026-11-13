@@ -1172,7 +1172,7 @@ fn new_discussion_rejects_invalid_slug_override() {
         "board--search",
         "",
     ] {
-        let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None, None).unwrap_err();
+        let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None, None, &Default::default()).unwrap_err();
         assert!(err.to_string().contains("kebab-case"), "slug {bad:?} err: {err}");
     }
     assert!(store.list_live_discussions().is_empty(), "invalid slug must not create files");
@@ -1181,7 +1181,7 @@ fn new_discussion_rejects_invalid_slug_override() {
 #[test]
 fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None, None).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None, None, &Default::default()).unwrap();
     assert_eq!(info.slug, "board-search-2");
     assert_eq!(info.topic, "看板搜尋列");
     let text = store
@@ -1195,7 +1195,7 @@ fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
 fn new_discussion_slug_override_conflicts_with_existing() {
     let store = TestStore::with_live_discussion("taken", &open_doc("taken", "Taken"));
     let before = store.discussion("taken");
-    let err = super::new_discussion(&store, "另一個主題", Some("taken"), None, None).unwrap_err();
+    let err = super::new_discussion(&store, "另一個主題", Some("taken"), None, None, &Default::default()).unwrap_err();
     assert!(err.to_string().contains("already exists"), "err: {err}");
     assert_eq!(store.discussion("taken"), before, "existing record must not be overwritten");
 }
@@ -1209,14 +1209,14 @@ fn new_discussion_fallback_derivation_is_unchanged() {
         ("看板 搜尋列", "看板-搜尋列"),
     ] {
         let store = TestStore::default();
-        let info = super::new_discussion(&store, topic, None, None, None).unwrap();
+        let info = super::new_discussion(&store, topic, None, None, None, &Default::default()).unwrap();
         assert_eq!(info.slug, want, "topic: {topic}");
         assert_eq!(info.topic, topic);
         assert!(store.read_live_discussion(want).is_some(), "file under derived slug");
     }
     // 純 ASCII 標點主題衍生為空 → 報錯。
     let store = TestStore::default();
-    let err = super::new_discussion(&store, "!?!", None, None, None).unwrap_err();
+    let err = super::new_discussion(&store, "!?!", None, None, None, &Default::default()).unwrap_err();
     assert!(err.to_string().contains("could not derive"), "err: {err}");
 }
 
@@ -1226,7 +1226,7 @@ fn new_discussion_fallback_derivation_is_unchanged() {
 fn new_discussion_stamps_created_by_when_identity_present() {
     let store = TestStore::default();
     let id = "Base Line <base@example.com>";
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id), None).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id), None, &Default::default()).unwrap();
     // frontmatter 蓋 created_by、且 DiscussionInfo（→ --json createdBy）帶同值。
     let text = store.read_live_discussion("board-search-3").expect("record stored");
     assert!(text.contains(&format!("created_by: {id}\n")), "frontmatter: {text}");
@@ -1236,7 +1236,7 @@ fn new_discussion_stamps_created_by_when_identity_present() {
 #[test]
 fn new_discussion_omits_created_by_when_identity_absent() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None, None).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None, None, &Default::default()).unwrap();
     // 無身分：frontmatter 不含 created_by、createdBy 缺席。
     let text = store.read_live_discussion("board-search-4").expect("record stored");
     assert!(!text.contains("created_by:"), "frontmatter should omit created_by: {text}");
@@ -1392,7 +1392,7 @@ fn seal_restale_clear_is_noop_when_absent() {
 fn new_discussion_with_kind_writes_frontmatter_and_reports_it() {
     let store = TestStore::default();
     let info =
-        super::new_discussion(&store, "核心結構改進", Some("improve-core"), None, Some("improve"))
+        super::new_discussion(&store, "核心結構改進", Some("improve-core"), None, Some("improve"), &Default::default())
             .unwrap();
     assert_eq!(info.kind.as_deref(), Some("improve"));
     let text = store.discussion("improve-core");
@@ -1403,7 +1403,7 @@ fn new_discussion_with_kind_writes_frontmatter_and_reports_it() {
 fn new_discussion_rejects_kind_outside_the_whitelist_without_writing() {
     for bad in ["refactor", "IMPROVE", "", "improve\nstatus: forged"] {
         let store = TestStore::default();
-        let err = super::new_discussion(&store, "主題", Some("alpha"), None, Some(bad))
+        let err = super::new_discussion(&store, "主題", Some("alpha"), None, Some(bad), &Default::default())
             .expect_err("非白名單 kind 必須拒絕")
             .to_string();
         assert!(err.contains("improve"), "訊息須說明僅接受 improve：{err}");
@@ -1414,7 +1414,7 @@ fn new_discussion_rejects_kind_outside_the_whitelist_without_writing() {
 #[test]
 fn new_discussion_without_kind_leaves_frontmatter_unchanged() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "主題", Some("alpha"), None, None).unwrap();
+    let info = super::new_discussion(&store, "主題", Some("alpha"), None, None, &Default::default()).unwrap();
     assert!(info.kind.is_none(), "無 kind 時欄位缺席");
     assert!(!store.discussion("alpha").contains("kind:"), "不得寫入 kind 行");
 }
@@ -1425,7 +1425,7 @@ fn new_discussion_rejects_multiline_topic_without_writing() {
     // （讀端取第一個命中），必須在系統邊界擋下。
     for bad in ["x\nkind: improve\nstatus: promoted", "x\rkind: improve", "x\r\ny"] {
         let store = TestStore::default();
-        let err = super::new_discussion(&store, bad, Some("plain-a"), None, None)
+        let err = super::new_discussion(&store, bad, Some("plain-a"), None, None, &Default::default())
             .expect_err("多行 topic 必須拒絕")
             .to_string();
         assert!(err.contains("invalid topic"), "訊息須點名 topic：{err}");

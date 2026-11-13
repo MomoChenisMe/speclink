@@ -44,6 +44,8 @@ pub(crate) fn remote_new(ctx: &RemoteCtx, a: NewArgs) -> Result<()> {
     }
 }
 fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
+    // `--field` 只在這裡拆成鍵值；鍵與值的規則由 server 端的引擎檢查。
+    let fields = speclink_verbs::families::fields::parse_pairs(&a.field)?;
     let resp = ctx.client.create_change(CreateChangeRequest {
         name: a.name.clone(),
         schema: a.schema.clone(),
@@ -51,7 +53,9 @@ fn remote_new_change(ctx: &RemoteCtx, a: &NewChangeArgs) -> Result<()> {
         agent: a.agent.clone(),
         from_discussion: a.from_discussion.clone(),
         last: a.last,
+        fields: fields.clone(),
     })?;
+    ctx.warn_if_fields_were_not_kept(&fields);
     // Path 行是明文分歧（design D5）：server 端目錄對本機使用者無意義。
     emit(render::new_change(
         &a.name,

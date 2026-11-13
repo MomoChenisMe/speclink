@@ -132,6 +132,9 @@ pub fn show_json(show: &ShowOutcome) -> Value {
                     shown["landed"]["by"] = json!(by);
                 }
             }
+            if !c.fields.is_empty() {
+                shown["fields"] = json!(c.fields);
+            }
             shown
         }
     }
@@ -244,6 +247,7 @@ mod tests {
             delta_capabilities: Vec::new(),
             created: None,
             modified_at: None,
+            fields: Default::default(),
             worktree: None,
         }
     }
@@ -356,6 +360,7 @@ mod tests {
             verify: None,
             branch: None,
             landed: None,
+            fields: Default::default(),
         })
     }
 
@@ -384,6 +389,7 @@ mod tests {
                 verify: None,
                 branch: None,
                 landed: None,
+                fields: Default::default(),
             })
         };
         assert_eq!(show_human(&bare(Vec::new()), &PLAIN).stdout, "Change: empty\n");
@@ -471,6 +477,43 @@ mod tests {
         for (key, value) in before.as_object().unwrap() {
             assert_eq!(&shown[key], value, "{key}");
         }
+    }
+
+    // --- free fields (host-free-fields D5) ---
+
+    fn fields_of(pairs: &[(&str, &str)]) -> speclink_core::fields::Fields {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn list_json_carries_the_fields_of_the_changes_that_have_some_and_the_human_form_does_not() {
+        // 規格「清單帶出欄位」「人眼輸出不變」：demo 有兩個欄位，other 沒有。
+        let with = ListChangeJson { fields: fields_of(&[("ticket", "PROJ-1"), ("source", "portal")]), ..change("demo", 0, 0, "") };
+        let listed = |items| ListOutcome { changes: Some(items), specs: None };
+        let json = list_json(&listed(vec![with, change("other", 0, 0, "")]));
+        assert_eq!(json["changes"][0]["fields"], json!({ "source": "portal", "ticket": "PROJ-1" }));
+        assert!(json["changes"][1].get("fields").is_none(), "{json}");
+        let with = ListChangeJson { fields: fields_of(&[("ticket", "PROJ-1")]), ..change("demo", 0, 0, "") };
+        assert_eq!(
+            list_human(&listed(vec![with]), &PLAIN).stdout,
+            list_human(&listed(vec![change("demo", 0, 0, "")]), &PLAIN).stdout
+        );
+    }
+
+    #[test]
+    fn show_json_carries_the_fields_only_when_the_change_has_some_and_the_human_form_does_not() {
+        let ShowOutcome::Change(plain) = shown_change() else { unreachable!() };
+        let with = ShowOutcome::Change(ShowChange { fields: fields_of(&[("ticket", "PROJ-1"), ("n", "123")]), ..plain });
+        let shown = show_json(&with);
+        assert_eq!(shown["fields"], json!({ "n": "123", "ticket": "PROJ-1" }));
+        assert!(shown["fields"]["n"].is_string(), "a value is always a string");
+        // 沒有欄位的變更：沒有這個鍵，其餘和之前一樣。
+        let before = show_json(&shown_change());
+        assert!(before.get("fields").is_none());
+        let mut without = shown.clone();
+        without.as_object_mut().unwrap().remove("fields");
+        assert_eq!(without, before);
+        assert_eq!(show_human(&with, &PLAIN).stdout, show_human(&shown_change(), &PLAIN).stdout);
     }
 
     #[test]

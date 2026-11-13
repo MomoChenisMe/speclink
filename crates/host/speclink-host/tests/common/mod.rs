@@ -13,6 +13,8 @@ use speclink_store_port::{
 };
 use std::sync::Mutex;
 
+pub mod door;
+
 pub const ACTOR: &str = "Alice <alice@example.com>";
 
 pub fn scope() -> ScopeId {

@@ -67,6 +67,8 @@ pub(crate) fn change_summary(change: ListChangeJson, extras: Option<&ChangeExtra
         from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
         delta_capabilities: change.delta_capabilities,
         modified_at: change.modified_at,
+        // The Engine read them from the data file its list already reads.
+        fields: change.fields,
     }
 }
 
@@ -155,6 +157,7 @@ pub(crate) fn change_status(report: StatusReport) -> ChangeStatus {
         landed_commit: None,
         landed_at: None,
         landed_by: None,
+        fields: Default::default(),
     }
 }
 
@@ -330,6 +333,7 @@ pub(crate) fn discussion(info: EngineDiscussionInfo) -> DiscussionInfo {
         hold: Some(info.head.hold),
         path: info.path,
         archived: info.archived,
+        fields: info.fields,
     }
 }
 

@@ -101,7 +101,8 @@ fn minimal_argv_of(words: &[String], leaf: &clap::Command) -> Option<Vec<String>
             .get_possible_values()
             .first()
             .map(|v| v.get_name().to_string())
-            .unwrap_or_else(|| "demo".to_string());
+            // An argument that takes `<key>=<value>` converts only with a pair.
+            .unwrap_or_else(|| if takes_a_pair(arg) { "demo=demo" } else { "demo" }.to_string());
         match arg.get_long() {
             None => argv.push(value),
             Some(long) => {
@@ -133,6 +134,10 @@ fn minimal_argv_of(words: &[String], leaf: &clap::Command) -> Option<Vec<String>
             push(&mut with_flag, arg);
             converts(&with_flag).then_some(with_flag)
         })
+}
+
+fn takes_a_pair(arg: &clap::Arg) -> bool {
+    arg.get_value_names().is_some_and(|names| names.iter().any(|name| name.contains('=')))
 }
 
 fn converts(argv: &[String]) -> bool {
@@ -254,6 +259,22 @@ mod tests {
             minimal_argv("change landed"),
             Some(vec!["change".into(), "landed".into(), "demo".into(), "--commit".into(), "demo".into()])
         );
+    }
+
+    #[test]
+    fn the_four_field_verbs_are_listed_with_a_pair_that_converts() {
+        for verb in ["change field set", "change field unset", "discuss field set", "discuss field unset"] {
+            assert!(leaves().contains(verb), "{verb}");
+            assert!(listed().contains(verb), "{verb}");
+        }
+        // 「set」的位置參數是 <key>=<value>：佔位字要有等號才轉得成命令。
+        assert_eq!(
+            minimal_argv("change field set"),
+            Some(vec!["change".into(), "field".into(), "set".into(), "demo".into(), "demo=demo".into()])
+        );
+        let description = tool_definition().description;
+        let line = description.lines().find(|l| l.starts_with("- discuss field set ")).expect("a line for discuss field set");
+        assert!(line.contains("<KEY=VALUE>"), "{line}");
     }
 
     #[test]

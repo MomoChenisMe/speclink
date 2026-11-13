@@ -12,11 +12,13 @@
 mod change_rank;
 mod describe;
 mod evidence;
+mod fields;
 mod landing;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
 pub use evidence::EvidenceShowOutcome;
+pub use fields::FieldsOutcome;
 pub use landing::{ChangeLandedOutcome, LandedRecord};
 pub use typed::WrongOutcome;
 pub use workflow_config::{
@@ -263,6 +265,11 @@ pub enum DomainEvent {
         branch: Option<String>,
         occurred_at: chrono::DateTime<chrono::Utc>,
     },
+    /// `change field set`／`unset` actually changed the change's free fields.
+    /// `keys` are the keys it changed, in byte order. The values are not
+    /// here: an event goes to every subscriber, and a value can be the
+    /// host's own data.
+    ChangeFieldsChanged { change: String, keys: Vec<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -278,6 +285,8 @@ pub enum DomainEvent {
     DiscussionPromoted { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionLinked { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionSealed { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// The discussion twin of [`DomainEvent::ChangeFieldsChanged`]: keys, no values.
+    DiscussionFieldsChanged { slug: String, keys: Vec<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionArchived { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionDiscarded { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
 }
@@ -298,6 +307,7 @@ impl DomainEvent {
             DomainEvent::ChangeSchemaChanged { .. } => "change-schema-changed",
             DomainEvent::ChangeRanked { .. } => "change-ranked",
             DomainEvent::ChangeLanded { .. } => "change-landed",
+            DomainEvent::ChangeFieldsChanged { .. } => "change-fields-changed",
             DomainEvent::ChangeArchived { .. } => "change-archived",
             DomainEvent::ChangeDiscarded { .. } => "change-discarded",
             DomainEvent::ReviewRoundAdded { .. } => "review-round-added",
@@ -313,6 +323,7 @@ impl DomainEvent {
             DomainEvent::DiscussionPromoted { .. } => "discussion-promoted",
             DomainEvent::DiscussionLinked { .. } => "discussion-linked",
             DomainEvent::DiscussionSealed { .. } => "discussion-sealed",
+            DomainEvent::DiscussionFieldsChanged { .. } => "discussion-fields-changed",
             DomainEvent::DiscussionArchived { .. } => "discussion-archived",
             DomainEvent::DiscussionDiscarded { .. } => "discussion-discarded",
         }
@@ -395,8 +406,11 @@ pub enum Command {
     /// `discuss search <keyword>...` — keywords are matched any-of, case-insensitive.
     DiscussSearch { terms: Vec<String> },
     // --- 變更群 ---
-    /// `new change <name> [--description] [--schema] [--agent] [--from-discussion] [--last]`;
+    /// `new change <name> [--description] [--schema] [--agent] [--from-discussion] [--last] [--field <key>=<value>]...`;
     /// `last` only means something with `from_discussion` (the CLI binds the two).
+    /// `fields` are free fields the change starts with: they are in the
+    /// metadata document the change is created with, and a field outside the
+    /// rules fails the creation.
     NewChange {
         name: String,
         description: Option<String>,
@@ -404,6 +418,7 @@ pub enum Command {
         agent: Option<String>,
         from_discussion: Option<String>,
         last: bool,
+        fields: crate::fields::Fields,
     },
     /// `new artifact <type> [capability] [--change <name>] [--force] [--new]`;
     /// `content` is the CLI's `--stdin` payload, `new_capability` the `--new`
@@ -463,6 +478,10 @@ pub enum Command {
     /// store keeps them (skills-verbs-first-wave D3); every guard refuses
     /// with zero writes.
     ChangeRank { name: String, anchor: String, position: crate::plan::Side, force: bool },
+    /// `change field set <name> <key>=<value>...` and `change field unset <name>
+    /// <key>...` — edit the change's free fields: `unset` first, then `set`,
+    /// all in one write of the metadata or none (host-free-fields D3).
+    ChangeFieldsEdit { name: String, set: crate::fields::Fields, unset: Vec<String> },
     /// `change landed <name> [--commit <sha>] [--branch <name>]` — record the
     /// commit the change's code landed on. `commit` is required here: the
     /// entry point fills it from its checkout when argv gives none. Every
@@ -480,8 +499,9 @@ pub enum Command {
     },
     /// `discard <change> [--force]`
     Discard { change: String, force: bool },
-    /// `discuss new <topic> [--slug <slug>] [--kind <kind>]`
-    DiscussNew { topic: String, slug: Option<String>, kind: Option<String> },
+    /// `discuss new <topic> [--slug <slug>] [--kind <kind>] [--field <key>=<value>]...`;
+    /// `fields` are in the record the discussion is created with.
+    DiscussNew { topic: String, slug: Option<String>, kind: Option<String>, fields: crate::fields::Fields },
     /// `discuss context <slug>` with stdin content
     DiscussContext { slug: String, content: String },
     /// `discuss add-round <slug> --mode <mode>` with stdin content
@@ -492,8 +512,9 @@ pub enum Command {
     },
     /// `discuss conclude <slug> [--hold]` with stdin content
     DiscussConclude { slug: String, content: String, hold: bool },
-    /// `discuss promote <slug> [--name <change>] [--last]`
-    DiscussPromote { slug: String, name: Option<String>, last: bool },
+    /// `discuss promote <slug> [--name <change>] [--last]`; `fields` are free
+    /// fields of the change it creates (no argv form).
+    DiscussPromote { slug: String, name: Option<String>, last: bool, fields: crate::fields::Fields },
     /// `discuss link <slug> --change <change>`
     DiscussLink { slug: String, change: String },
     /// `discuss seal <slug> <change> [--last]`
@@ -502,6 +523,10 @@ pub enum Command {
     DiscussArchive { slug: String },
     /// `discuss discard <slug> [--force]`
     DiscussDiscard { slug: String, force: bool },
+    /// `discuss field set <slug> <key>=<value>...` and `discuss field unset
+    /// <slug> <key>...` — the discussion twin of [`Command::ChangeFieldsEdit`];
+    /// only a live record can change.
+    DiscussFieldsEdit { slug: String, set: crate::fields::Fields, unset: Vec<String> },
     /// `review add-round <change> --stdin`
     ReviewAddRound { change: String, content: String },
     /// `review show <change>`（查詢——不產生事件）
@@ -590,6 +615,8 @@ pub struct ShowChange {
     /// The recorded branch and landing (`--json` only); absent when not recorded.
     pub branch: Option<String>,
     pub landed: Option<LandedRecord>,
+    /// The change's free fields (`--json` only, and only when it has some).
+    pub fields: crate::fields::Fields,
 }
 
 /// `instructions` outcome: the apply view or one artifact's instructions.
@@ -821,6 +848,7 @@ pub enum CommandOutcome {
     ChangeSchema(SchemaOutcome),
     ChangeRank(ChangeRankOutcome),
     ChangeLanded(ChangeLandedOutcome),
+    ChangeFieldsEdit(FieldsOutcome),
     Archive(crate::archive::ArchiveOutcome),
     Discard(crate::discard::DiscardOutcome),
     DiscussNew(crate::discuss::DiscussionInfo),
@@ -832,6 +860,7 @@ pub enum CommandOutcome {
     DiscussSeal(DiscussBindOutcome),
     DiscussArchive(DiscussArchiveOutcome),
     DiscussDiscard(DiscussSubjectOutcome),
+    DiscussFieldsEdit(FieldsOutcome),
     ReviewAddRound(ReviewRoundOutcome),
     ReviewShow(ReviewShowOutcome),
     ReviewStamp(ReviewSubjectOutcome),
@@ -931,8 +960,8 @@ pub fn execute(
             // The engine's only refusal here is an empty/blank keyword list —
             // an argv defect (the server maps it to 400 invalid_argument).
             .map_err(|e| CommandError::new(ErrorCode::InvalidArgv, e.to_string())),
-        Command::NewChange { name, description, schema, agent, from_discussion, last } => {
-            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion, last)
+        Command::NewChange { name, description, schema, agent, from_discussion, last, fields } => {
+            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion, last, &fields)
         }
         Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
@@ -966,6 +995,7 @@ pub fn execute(
         Command::ChangeLanded { name, commit, branch } => {
             landing::run(store, ctx.actor.as_deref(), name, &commit, branch)
         }
+        Command::ChangeFieldsEdit { name, set, unset } => fields::run_change(store, name, &set, &unset),
         Command::Archive { change, skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify } => run_archive(
             store,
             ws,
@@ -974,8 +1004,8 @@ pub fn execute(
             crate::archive::ArchiveOptions { skip_specs, no_validate, mark_tasks_complete, carry_review, carry_verify },
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
-        Command::DiscussNew { topic, slug, kind } => {
-            run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref(), kind.as_deref())
+        Command::DiscussNew { topic, slug, kind, fields } => {
+            run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref(), kind.as_deref(), &fields)
         }
         Command::DiscussContext { slug, content } => {
             crate::discuss::set_context(store, &slug, &content).map_err(classify)?;
@@ -996,8 +1026,8 @@ pub fn execute(
                 held: outcome.held,
             }))
         }
-        Command::DiscussPromote { slug, name, last } => {
-            let o = crate::discuss::promote(store, &slug, name.as_deref(), ctx.actor.as_deref(), last)
+        Command::DiscussPromote { slug, name, last, fields } => {
+            let o = crate::discuss::promote_with_fields(store, &slug, name.as_deref(), ctx.actor.as_deref(), last, &fields)
                 .map_err(classify)?;
             Ok(CommandOutcome::DiscussPromote(DiscussPromoteOutcome {
                 slug,
@@ -1028,6 +1058,7 @@ pub fn execute(
             crate::discuss::discard_discussion(store, &slug, force).map_err(classify)?;
             Ok(CommandOutcome::DiscussDiscard(DiscussSubjectOutcome { slug }))
         }
+        Command::DiscussFieldsEdit { slug, set, unset } => fields::run_discussion(store, slug, &set, &unset),
         Command::ReviewAddRound { change, content } => {
             Ok(CommandOutcome::ReviewAddRound(station_add_round(&REVIEW, store, change, &content)?))
         }
@@ -1176,6 +1207,18 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             change: o.change.clone(),
             commit: o.commit.clone(),
             branch: o.branch.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ChangeFieldsEdit(o) if o.changed.is_empty() => Vec::new(),
+        CommandOutcome::ChangeFieldsEdit(o) => vec![DomainEvent::ChangeFieldsChanged {
+            change: o.subject.clone(),
+            keys: o.changed.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::DiscussFieldsEdit(o) if o.changed.is_empty() => Vec::new(),
+        CommandOutcome::DiscussFieldsEdit(o) => vec![DomainEvent::DiscussionFieldsChanged {
+            slug: o.subject.clone(),
+            keys: o.changed.clone(),
             occurred_at: at,
         }],
         CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
@@ -1422,6 +1465,7 @@ fn run_show(
             change.meta.landed_at.clone(),
             change.meta.landed_by.clone(),
         ),
+        fields: change.meta.fields.clone(),
         schema,
         created,
         proposal: store.read_artifact(&change.name, "proposal.md"),
@@ -1654,6 +1698,7 @@ fn run_new_change(
     agent: Option<String>,
     from_discussion: Option<String>,
     last: bool,
+    fields: &crate::fields::Fields,
 ) -> Result<CommandOutcome, CommandError> {
     // Default schema comes from openspec/config.yaml; the name is NOT validated
     // here (downstream commands fail on resolution).
@@ -1682,6 +1727,7 @@ fn run_new_change(
         agent.as_deref(),
         from_discussion.as_deref(),
         actor,
+        fields,
     )
     .map_err(classify)?;
     // A change born of a discussion marks that discussion promoted — both
@@ -2073,8 +2119,9 @@ fn run_discuss_new(
     topic: &str,
     slug: Option<&str>,
     kind: Option<&str>,
+    fields: &crate::fields::Fields,
 ) -> Result<CommandOutcome, CommandError> {
-    let info = crate::discuss::new_discussion(store, topic, slug, actor, kind).map_err(classify)?;
+    let info = crate::discuss::new_discussion(store, topic, slug, actor, kind, fields).map_err(classify)?;
     Ok(CommandOutcome::DiscussNew(info))
 }
 
