@@ -11,7 +11,8 @@ use std::path::PathBuf;
 
 use crate::color;
 use crate::remote_base::{connect, validate_or_defer};
-use core::init::{SyncPlan, ToolSelection, UpdateOutcome, ASSET_VERSION};
+use core::init::{ToolSelection, ASSET_VERSION};
+use speclink_protocol::skills::SkillsRequest;
 use speclink_remote::skills as remote_skills;
 
 #[derive(Args)]
@@ -197,7 +198,7 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
             eprintln!("speclink: skills generated from this CLI's templates — {reason}");
             (local()?, Some(format!("local ({ASSET_VERSION})")))
         }
-        FromServer::Installed { outcome, version, replaced } => {
+        FromServer::Installed(remote_skills::Installed { outcome, version, replaced }) => {
             if let Some(had) = replaced {
                 println!("! Skills replaced with the server's version {version} (this checkout had {had})");
             }
@@ -212,7 +213,8 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
     for note in &outcome.deprecations {
         eprintln!("! {note}");
     }
-    if outcome.updated.is_empty() && outcome.pruned.is_empty() && outcome.stripped.is_empty() {
+    let nothing_done = outcome.updated.is_empty() && outcome.pruned.is_empty() && outcome.stripped.is_empty();
+    if nothing_done && outcome.unserved.is_empty() {
         println!("! No AI tool configurations found. Use 'speclink init --tools' to set up.");
     } else {
         if !outcome.updated.is_empty() {
@@ -224,6 +226,13 @@ pub(crate) fn cmd_update(a: UpdateArgs) -> Result<()> {
                 outcome.pruned.join(", ")
             );
         }
+    }
+    // Server 一支技能都不給的工具：沒有寫入也沒有清理，要講明是哪些。
+    if !outcome.unserved.is_empty() {
+        println!(
+            "! The server gives no skills for: {} — their skill files were left as they are",
+            outcome.unserved.join(", ")
+        );
     }
     if let Some(source) = source {
         println!("  Skills source: {source}");
@@ -245,9 +254,8 @@ enum FromServer {
     /// The Server gives no skills this run, for this reason (one line): it declares
     /// none, or the handshake did not succeed. The local templates stand in.
     NotGiven(String),
-    /// The Server's skills are in the checkout. `replaced` is the newer version the
-    /// checkout had, when the Server's is older.
-    Installed { outcome: UpdateOutcome, version: String, replaced: Option<String> },
+    /// The Server's skills are in the checkout.
+    Installed(remote_skills::Installed),
 }
 
 /// Take a remote project's skills from its Server (spec workspace-tools「remote 專案的
@@ -286,13 +294,10 @@ fn skills_from_server(root: &std::path::Path) -> Result<FromServer> {
     }
 
     let refused = |e: &dyn std::fmt::Display| anyhow::anyhow!("could not get the skills from the server: {e}");
-    let response = remote_skills::fetch(&connected.client, &targets, true).map_err(|e| refused(&e))?;
-    let version = response.version.clone();
-    let rendered = remote_skills::rendered(response).map_err(|e| refused(&e))?;
-    let plan = SyncPlan::from_rendered(root, selection, rendered).map_err(|e| refused(&e))?;
-    let replaced = plan.leading_version(&version);
-    let outcome = plan.apply(root)?;
-    Ok(FromServer::Installed { outcome, version, replaced })
+    let request = SkillsRequest { targets, contents: true };
+    let response = connected.client.skills(&request).map_err(|e| refused(&e))?;
+    let installed = remote_skills::install(root, selection, response).map_err(|e| refused(&e))?;
+    Ok(FromServer::Installed(installed))
 }
 
 /// The spec directory migration's lines (spec-dir-migration D5): what moved and

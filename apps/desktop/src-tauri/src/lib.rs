@@ -664,6 +664,41 @@ async fn watch_workspace(app: tauri::AppHandle, root: String) {
     }
 }
 
+/// 有 checkout 的 remote 專案的技能檔監看（remote-skill-delivery D8）：掛上 checkout 裡
+/// 各工具的技能目錄與 `.speclink.yaml`，變動時以 `checkout-skills-changed` 通知（payload 為
+/// checkout 的路徑，原樣回送）。和本機的 `workspace-changed` 分開：它只讓前端重新探測
+/// 技能檔，不重新載入專案資料。沿用同一個監看槽位——跟著作用中的分頁，同一時間只有一個
+/// 監看。掛不上只記錄、不回錯（既有降級語意）。
+#[tauri::command]
+async fn watch_checkout_skills(app: tauri::AppHandle, checkout: String) {
+    let ticket = match app.try_state::<WatcherState>() {
+        Some(state) => state.next_ticket(),
+        None => return,
+    };
+    let checkout_path = PathBuf::from(&checkout);
+    let emitter = app.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        let Some(state) = app.try_state::<WatcherState>() else {
+            return;
+        };
+        let rearmed = state.slot().rearm_checkout(
+            ticket,
+            &checkout_path,
+            std::time::Duration::from_millis(400),
+            move || {
+                let _ = emitter.emit("checkout-skills-changed", checkout.clone());
+            },
+        );
+        if let Err(e) = rearmed {
+            eprintln!("speclink-desktop: checkout skill watching unavailable: {e}");
+        }
+    })
+    .await;
+    if let Err(e) = joined {
+        eprintln!("speclink-desktop: watch worker failed: {e}");
+    }
+}
+
 #[tauri::command]
 async fn read_settings(root: PathBuf) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1354,8 +1389,9 @@ async fn probe_remote_assets(
     .await
 }
 
-/// remote 專案的技能檔更新：把 Server 的全文寫進 checkout。和本機的更新相同，寫入
-/// 期間暫停檔案監看。
+/// remote 專案的技能檔更新：向 Server 取得全文，再寫進 checkout。和本機的更新相同，
+/// 寫入期間暫停檔案監看；向 Server 取得的那一段不暫停——等網路的時間裡，其他分頁的監看
+/// 照常運作。
 #[tauri::command]
 async fn update_remote_assets(
     app: tauri::AppHandle,
@@ -1364,13 +1400,14 @@ async fn update_remote_assets(
     repo: String,
     checkout: String,
 ) -> Result<Value, String> {
-    let ticket = app.try_state::<WatcherState>().map(|state| state.next_ticket());
     let handle = app.clone();
     with_remote(app, connection_id, project, repo, move |ws, credentials| {
-        let update = || ws.update_assets(credentials, std::path::Path::new(&checkout)).map_err(|e| e.message);
-        match (handle.try_state::<WatcherState>(), ticket) {
-            (Some(state), Some(ticket)) => state.while_paused(ticket, update),
-            _ => update(),
+        let checkout = std::path::Path::new(&checkout);
+        let served = ws.skills_to_install(credentials, checkout).map_err(|e| e.message)?;
+        let install = || served.install(checkout).map_err(|e| e.message);
+        match handle.try_state::<WatcherState>() {
+            Some(state) => state.while_paused(state.next_ticket(), install),
+            None => install(),
         }
     })
     .await
@@ -2076,6 +2113,7 @@ pub fn run() {
             probe_remote_assets,
             update_remote_assets,
             watch_workspace,
+            watch_checkout_skills,
             read_settings,
             write_app_tools,
             write_workflow_config,

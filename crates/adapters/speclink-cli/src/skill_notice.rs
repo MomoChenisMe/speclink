@@ -41,19 +41,37 @@ fn notice(dir: &Path, server: &str, declared: Option<&str>, local: &str, today: 
     if !is_newer_version(declared, local) {
         return None;
     }
+    // Without a home the config directory falls back to a relative folder, which
+    // would be under the current directory: the project. No record goes there.
+    if !dir.is_absolute() {
+        return None;
+    }
     let server = without_user_info(server);
     let path = dir.join(RECORD_FILE);
-    // No record yet, or one that is not a record: nothing was told today.
-    let mut told: BTreeMap<String, String> =
-        std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default();
+    // No record yet, or one that is not a record: nothing was told today. A record
+    // that is there and cannot be read says nothing about today: no notice.
+    let mut told: BTreeMap<String, String> = match std::fs::read(&path) {
+        // Read as bytes: content that is not text is "not a record", not "cannot be read".
+        Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_default(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => BTreeMap::new(),
+        Err(_) => return None,
+    };
     if told.get(&server).map(String::as_str) == Some(today) {
         return None;
     }
     // Only today's entries can stop a notice, so the record keeps no other.
     told.retain(|_, day| day == today);
     told.insert(server, today.to_string());
+    // The record is replaced whole: a verb that runs at the same time reads the
+    // old record or the new one, never a part of one.
     std::fs::create_dir_all(dir).ok()?;
-    std::fs::write(&path, serde_json::to_string_pretty(&told).ok()?).ok()?;
+    let part = dir.join(format!("{RECORD_FILE}.{}.part", std::process::id()));
+    let replaced = std::fs::write(&part, serde_json::to_string_pretty(&told).ok()?)
+        .and_then(|()| std::fs::rename(&part, &path));
+    if replaced.is_err() {
+        let _ = std::fs::remove_file(&part);
+        return None;
+    }
     Some(format!(
         "speclink: this CLI's skill templates ({local}) are older than this server's ({declared}) — update Speclink: {HOW_TO_UPDATE}"
     ))
@@ -172,11 +190,48 @@ mod tests {
     }
 
     #[test]
+    fn a_record_that_cannot_be_read_means_no_notice() {
+        let dir = TempDir::new();
+        // A folder where the record is: it is there, and reading it fails.
+        std::fs::create_dir(dir.path().join(RECORD_FILE)).unwrap();
+        for _ in 0..2 {
+            assert_eq!(notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12"), None);
+        }
+        assert!(dir.path().join(RECORD_FILE).is_dir(), "the folder was left alone");
+    }
+
+    #[test]
+    fn without_a_user_config_directory_there_is_no_notice_and_no_record() {
+        // No home: the config directory falls back to a relative folder, which would be in the project.
+        let relative = Path::new("speclink-cli-skill-notice-relative");
+        assert_eq!(notice(relative, SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12"), None);
+        assert!(!relative.exists(), "nothing was created under the current directory");
+    }
+
+    #[test]
+    fn the_record_is_replaced_whole_and_no_part_file_stays() {
+        let dir = TempDir::new();
+        notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12").unwrap();
+        notice(dir.path(), "https://other.example.test", Some("v1.58.0"), "v1.57.0", "2026-11-12").unwrap();
+        let files: Vec<String> =
+            std::fs::read_dir(dir.path()).unwrap().flatten().map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        assert_eq!(files, [RECORD_FILE]);
+    }
+
+    #[test]
     fn a_record_that_is_not_readable_as_a_record_is_replaced() {
         let dir = TempDir::new();
         std::fs::write(dir.path().join(RECORD_FILE), "{ not json").unwrap();
         assert!(notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12").is_some());
         assert_eq!(notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12"), None);
+    }
+
+    #[test]
+    fn a_record_that_is_not_text_is_no_record_and_is_replaced() {
+        let dir = TempDir::new();
+        std::fs::write(dir.path().join(RECORD_FILE), [0xff, 0xfe, 0x00, 0x80]).unwrap();
+        assert!(notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12").is_some(), "not a record: told");
+        assert_eq!(notice(dir.path(), SERVER, Some("v1.58.0"), "v1.57.0", "2026-11-12"), None, "and recorded");
     }
 
     #[test]

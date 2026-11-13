@@ -2,7 +2,7 @@
 
 ### Requirement: remote 專案的技能取自 Server
 
-`.speclink.yaml` 含 remote 區段的專案執行 speclink update 時，引擎 SHALL 先握手：Server 宣告技能時，SHALL 以 `.speclink.yaml` 的工具清單向 Server 請求技能全文，並把回應寫成各工具技能目錄下的受管技能檔——檔案集合與內容 SHALL 等於 Server 的回應，checkout 多出來的 speclink- 技能目錄 SHALL 依既有的清理生命週期移除。Server 沒有宣告技能、沒有可用的憑證、無法連線、或握手沒有成功時，SHALL 退回本機的範本（以「規格資料夾不在 checkout」渲染），並於 stderr 以單行英文說明原因，exit code 為 0。握手宣告了技能而技能請求失敗時 SHALL 以非零 exit code 結束，SHALL NOT 寫入任何檔案，SHALL NOT 退回本機的範本。Server 的回應與 checkout 對不上時——技能名稱不是由小寫英數與連字號組成、至多 64 字元的名稱，同一個工具的技能名稱重複，回應缺少全文，或回應的工具不等於請求的工具——SHALL 同樣以非零 exit code 結束且 SHALL NOT 寫入任何檔案：技能名稱會成為資料夾名稱，不合形式的名稱 SHALL NOT 成為路徑。stdout 的摘要 SHALL 指出技能的來源（server 或 local）與版本。speclink init --store remote 的流程不變，結尾 SHALL 多一行提示：登入後執行 speclink update 以取得 Server 提供的技能。本機專案 SHALL NOT 向任何 Server 請求技能。寫入的技能檔 SHALL 與本機產生的技能檔同形（同樣的路徑與 frontmatter），既有的探測與清理 SHALL 能照常處理它們。
+`.speclink.yaml` 含 remote 區段的專案執行 speclink update 時，引擎 SHALL 先握手：Server 宣告技能時，SHALL 以 `.speclink.yaml` 的工具清單向 Server 請求技能全文，並把回應寫成各工具技能目錄下的受管技能檔——檔案集合與內容 SHALL 等於 Server 的回應，checkout 多出來的 speclink- 技能目錄 SHALL 依既有的清理生命週期移除。Server 對某個工具的回應不含任何技能時，SHALL NOT 寫入或移除該工具技能目錄下的任何檔案，並 SHALL 於 stdout 以一行英文列出這些工具、說明它們的技能檔維持原狀；其餘工具照常安裝。Server 沒有宣告技能、沒有可用的憑證、無法連線、或握手沒有成功時，SHALL 退回本機的範本（以「規格資料夾不在 checkout」渲染），並於 stderr 以單行英文說明原因，exit code 為 0。握手宣告了技能而技能請求失敗時 SHALL 以非零 exit code 結束，SHALL NOT 寫入任何檔案，SHALL NOT 退回本機的範本。Server 的回應與 checkout 對不上時——技能名稱不是由小寫英數與連字號組成、至多 64 字元的名稱，同一個工具的技能名稱重複，回應缺少全文，或回應的工具不等於請求的工具——SHALL 同樣以非零 exit code 結束且 SHALL NOT 寫入任何檔案：技能名稱會成為資料夾名稱，不合形式的名稱 SHALL NOT 成為路徑。stdout 的摘要 SHALL 指出技能的來源（server 或 local）與版本。speclink init --store remote 的流程不變，結尾 SHALL 多一行提示：登入後執行 speclink update 以取得 Server 提供的技能。本機專案 SHALL NOT 向任何 Server 請求技能。寫入的技能檔 SHALL 與本機產生的技能檔同形（同樣的路徑與 frontmatter），既有的探測與清理 SHALL 能照常處理它們。
 
 #### Scenario: 自 Server 安裝
 
@@ -34,6 +34,11 @@
 - **WHEN** checkout 有 speclink-improve 技能目錄，Server 的回應不含 improve，執行 speclink update
 - **THEN** speclink-improve 目錄被移除
 
+#### Scenario: Server 對某個工具不提供任何技能
+
+- **WHEN** .speclink.yaml 的 tools 為 claude 與 codex，兩者都已有技能檔；Server 對 claude 回應 apply、對 codex 回應空的清單，執行 speclink update
+- **THEN** exit code 為 0；.claude/skills 的技能檔等於 Server 的回應；.agents/skills 下的每個檔案逐位元不變；stdout 有一行指出 codex 沒有拿到技能、技能檔維持原狀
+
 #### Scenario: 自訂工具的技能自 Server 取得
 
 - **WHEN** .speclink.yaml 含一個 invocation 為 tool-call 的自訂描述子，Server 宣告技能，執行 speclink update
@@ -46,7 +51,7 @@
 
 ### Requirement: CLI 的技能版本提醒
 
-remote 動詞握手之後，Server 宣告的技能版號在數值上新於本機 CLI 的技能範本版號時，CLI SHALL 於 stderr 印出一行英文提醒，內容含兩邊的版號與更新 Speclink 的方式。同一個 Server 位址同一個日曆日 SHALL 最多提醒一次；記錄 SHALL 存於使用者層級設定目錄，SHALL NOT 寫入專案內的任何檔案。提醒 SHALL NOT 改變 stdout、`--json` 的內容與 exit code，SHALL NOT 阻擋動詞的執行。任一邊的版號無法解析為數字段、Server 沒有宣告、或本機不舊於 Server 時 SHALL NOT 提醒。記錄檔無法讀寫時 SHALL NOT 提醒也 SHALL NOT 報錯。CLI SHALL NOT 自行下載或安裝更新。
+remote 動詞握手之後，Server 宣告的技能版號在數值上新於本機 CLI 的技能範本版號時，CLI SHALL 於 stderr 印出一行英文提醒，內容含兩邊的版號與更新 Speclink 的方式。speclink update 自己的握手 SHALL NOT 印出這一行，也 SHALL NOT 用掉當天的那一次：它的摘要已經指出技能的來源與版本。同一個 Server 位址同一個日曆日 SHALL 最多提醒一次；記錄 SHALL 存於使用者層級設定目錄，SHALL NOT 寫入專案內的任何檔案。提醒 SHALL NOT 改變 stdout、`--json` 的內容與 exit code，SHALL NOT 阻擋動詞的執行。任一邊的版號無法解析為數字段、Server 沒有宣告、或本機不舊於 Server 時 SHALL NOT 提醒。記錄檔無法讀寫時 SHALL NOT 提醒也 SHALL NOT 報錯；記錄檔不存在、或內容不是記錄時視為沒有記錄。CLI SHALL NOT 自行下載或安裝更新。
 
 #### Scenario: 本機較舊時提醒一次
 
@@ -67,6 +72,11 @@ remote 動詞握手之後，Server 宣告的技能版號在數值上新於本機
 
 - **WHEN** 本機 CLI 的技能版號等於或新於 Server 宣告的版號，執行 speclink list
 - **THEN** stderr 沒有提醒
+
+#### Scenario: update 不提醒也不用掉當天的那一次
+
+- **WHEN** 本機 CLI 的技能版號舊於 Server 宣告的版號，當天先執行 speclink update，再執行 speclink list
+- **THEN** speclink update 的 stderr 沒有提醒；之後的 speclink list 出現提醒
 
 #### Scenario: 另一台 Server 各自計算
 

@@ -113,6 +113,20 @@
       "files": [
         "crates/host/speclink-host/tests/station_wire.rs"
       ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "7.1 （Red→Green）依 D9 讓引擎不動 Server 一支技能都不給的工具，對應規格「remote 專案的技能取自 Server」新增的情境與「指令檔過期提示」的「Server 對某個工具不提供任何技能時不提示」：先寫測試——`SyncPlan::from_rendered` 收到某個工具是空的清單時，套用後那個工具技能目錄下的每個檔案逐位元不變（既有的 `speclink-` 目錄不被清掉），其餘工具照常寫入與清理，那個工具不在「已更新」裡而在「沒有拿到技能」的清單裡；每個工具都是空的時沒有任何檔案被寫入；`probe_served_skills` 對空的工具不算缺少、不算過期、它既有的檔案不列入不同的檔案，每個工具都是空的時為現版。再實作。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/src/workspace/init/tests.rs。驗證：`cargo test -p speclink-core init` 通過，既有的 golden 不變。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/door.rs"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "7.3 （Red→Green）依 D8 推導 checkout 的監看目標並讓監看槽位能掛上它們：先寫測試——`skill_watch_targets_at` 對 tools 為 claude 與一個自訂描述子的 checkout 回傳 checkout 的根（不遞迴）與兩個技能目錄（遞迴）；技能目錄不存在時改回傳最近一個存在的上層（不遞迴），不重複回傳根；`.speclink.yaml` 讀不出來時只回傳根。監看：改動技能目錄裡的檔案、改動 `.speclink.yaml` 各通知一次；改動 checkout 裡其他位置的檔案（例如 `src/` 底下）不通知；目標不變時重掛沿用原監看；暫停期間不掛。再實作，`.git` 哨兵的既有測試不改斷言。涉及 apps/desktop/core/src/project.rs、apps/desktop/src-tauri/src/watch.rs。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
+      "files": [
+        "apps/desktop/src-tauri/src/watch.rs"
+      ]
     }
   ],
   "entries": [
@@ -271,6 +285,28 @@
         "crates/host/speclink-host/tests/station_wire.rs"
       ],
       "recordedAt": "2026-11-13T02:14:12Z"
+    },
+    {
+      "taskId": "tsk_01M79CQJ3690FVNA8DMA7DMN07",
+      "taskDesc": "7.1 （Red→Green）依 D9 讓引擎不動 Server 一支技能都不給的工具，對應規格「remote 專案的技能取自 Server」新增的情境與「指令檔過期提示」的「Server 對某個工具不提供任何技能時不提示」：先寫測試——`SyncPlan::from_rendered` 收到某個工具是空的清單時，套用後那個工具技能目錄下的每個檔案逐位元不變（既有的 `speclink-` 目錄不被清掉），其餘工具照常寫入與清理，那個工具不在「已更新」裡而在「沒有拿到技能」的清單裡；每個工具都是空的時沒有任何檔案被寫入；`probe_served_skills` 對空的工具不算缺少、不算過期、它既有的檔案不列入不同的檔案，每個工具都是空的時為現版。再實作。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/src/workspace/init/tests.rs。驗證：`cargo test -p speclink-core init` 通過，既有的 golden 不變。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "007e82cb546374c19e54aa1f2c8c0c74f88a9b47",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/door.rs"
+      ],
+      "recordedAt": "2026-11-13T02:48:10Z"
+    },
+    {
+      "taskId": "tsk_01M79CQJ36ZK2RZJ2WYY4MA4TA",
+      "taskDesc": "7.3 （Red→Green）依 D8 推導 checkout 的監看目標並讓監看槽位能掛上它們：先寫測試——`skill_watch_targets_at` 對 tools 為 claude 與一個自訂描述子的 checkout 回傳 checkout 的根（不遞迴）與兩個技能目錄（遞迴）；技能目錄不存在時改回傳最近一個存在的上層（不遞迴），不重複回傳根；`.speclink.yaml` 讀不出來時只回傳根。監看：改動技能目錄裡的檔案、改動 `.speclink.yaml` 各通知一次；改動 checkout 裡其他位置的檔案（例如 `src/` 底下）不通知；目標不變時重掛沿用原監看；暫停期間不掛。再實作，`.git` 哨兵的既有測試不改斷言。涉及 apps/desktop/core/src/project.rs、apps/desktop/src-tauri/src/watch.rs。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "007e82cb546374c19e54aa1f2c8c0c74f88a9b47",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/watch.rs"
+      ],
+      "recordedAt": "2026-11-13T02:51:57Z"
     }
   ]
 }

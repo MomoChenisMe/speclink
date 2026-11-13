@@ -83,11 +83,12 @@
 
 `speclink-remote` 新增 `skills.rs`：
 
-- `fetch(client, targets, contents) -> SkillsResponse`：呼叫 D2 的路由。
+- 路由由 `Client::skills(request)` 呼叫（typed client 的一個方法，CLI 與桌面各用自己的 client）。
 - `targets_of(selection) -> Vec<SkillTarget>`：把工具選集轉成請求的目標。輸入是本機同步用的同一個 `ToolSelection`（由 `.speclink.yaml` 解析一次），所以規則和本機的工具解析相同：沒有工具清單時的回退要看 checkout 的資料夾，單靠設定檔的內容算不出來。無效的描述子不成為目標，錯誤由選集帶著；`update` 在送出任何請求之前回報它。
-- `rendered(response)` 與 `digests(response)`：把回應轉成引擎的計畫與探測要的形狀（全文、摘要）。
+- `install(root, selection, response) -> Installed`：把要求了全文的回應裝進 checkout——轉成計畫、套用，並回報 Server 的版本與「checkout 原本領先的版本」。CLI 的 `update` 與桌面的更新共用這一個函式。
+- `digests(response)`：把回應轉成引擎的探測要的形狀（摘要）。
 
-`speclink-core` 的同步計畫新增一個建構方式：`SyncPlan::from_rendered(root, tools, rendered)`，檔案集合來自外部給的內容而不是本機的渲染。寫入、清掉多出來的資料夾、移除被取消選取的工具的足跡，都沿用同一個 `apply`。寫入順序與今天相同：逐檔寫入，最後清理；中途失敗時已寫的檔案留著，重跑會收斂（既有行為，技能檔沒有跨檔的一致性要求）。
+`speclink-core` 的同步計畫新增一個建構方式：`SyncPlan::from_rendered(root, tools, rendered)`，檔案集合來自外部給的內容而不是本機的渲染。寫入、清掉多出來的資料夾、移除被取消選取的工具的足跡，都沿用同一個 `apply`。例外是 Server 一支技能都不給的工具：見 D9。寫入順序與今天相同：逐檔寫入，最後清理；中途失敗時已寫的檔案留著，重跑會收斂（既有行為，技能檔沒有跨檔的一致性要求）。
 
 `speclink update` 在遠端專案的步驟：
 
@@ -96,7 +97,7 @@
 3. 有宣告 → 取得全文，建計畫，套用。這條路徑**不經降級守門**：遠端專案的技能版本跟著 Server。Server 的版本比 checkout 裡既有的舊時，stdout 的摘要多一行說明「技能已換成 Server 提供的版本」。
 4. 摘要印出來源（`server` 或 `local`）與版本。
 
-第 3 步取得失敗（握手成功之後路由回錯誤）→ 非 0，不寫任何檔案，不退回本機的範本：這時 Server 明確說它提供技能，退回本機會默默裝上可能對不上的內容。回應和 checkout 對不上時（技能名稱不是名稱、同一個工具的名稱重複、缺少全文、工具不是請求的工具）同樣非 0、零寫入；檢查在 `SyncPlan::from_rendered` 裡，任何寫入之前。
+第 3 步取得失敗（握手成功之後路由回錯誤）→ 非 0，不寫任何檔案，不退回本機的範本：這時 Server 明確說它提供技能，退回本機會默默裝上可能對不上的內容。回應和 checkout 對不上時（技能名稱不是名稱、同一個工具的名稱重複、缺少全文、工具不是請求的工具）同樣非 0、零寫入；檢查都在任何寫入之前：缺少全文在 `install` 把回應轉成計畫的輸入時擋下，其餘三種在 `SyncPlan::from_rendered` 裡。
 
 `speclink init --store remote` 不變：這時常常還沒登入。它的結尾多一行提示。Speclink Desktop 綁定 checkout 時的工具同步也不變；之後由 D6 的提示帶使用者更新。
 
@@ -124,17 +125,51 @@ speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.
   - 全部相同 → 現版。
   - 回應和 checkout 的工具對不上、或技能名稱不是名稱 → 無法判定（不提示）。
   - 另外帶兩個值：Server 的版本，以及「Speclink Desktop 內建的技能版號比 Server 舊」這個布林。
-- Tauri 殼：`probe_remote_assets(connection, scope, checkout)` 取得摘要後委派給上面的函式；`update_remote_assets(...)` 取得全文後用 D4 的同一個計畫套用。兩個 command 各只做委派。
+- Tauri 殼：`probe_remote_assets(connection, scope, checkout)` 取得摘要後委派給上面的函式；`update_remote_assets(...)` 取得全文後用 D4 的同一個 `install` 套用；向 Server 取得全文的那一段不暫停檔案監看，只有寫入那一段暫停。兩個 command 各只做委派。
 - 前端：作用中的分頁是「有 checkout 的遠端專案」時，改呼叫遠端的探測（`WorkspaceAdapter` 新增 `probeRemoteAssets` 與 `updateRemoteAssets`）；提示卡、略過的記憶、其他分頁的琥珀點都沿用既有的元件與邏輯（`assetPrompt.ts` 與 `AssetNoticeDialog`），不新增元件。略過的鍵改成「專案加 Server 的版本」。遠端專案的過期文案另寫一組（標題「技能檔和 Server 的不同」、說明「換成 Server 提供的內容」）：本機專案的「舊版」「換成你的 Speclink 這一版」對遠端專案是錯的。
 - 確認框的列：這個專案的技能檔版本、**Server 提供的技能版本**（遠端專案才有）、你的 Speclink 版本、會改寫的檔案數。
 - 按鈕：缺少 →「安裝技能檔」；過期 →「更新技能檔」。Speclink Desktop 比 Server 舊時，確認框多一句說明並多一個「更新 Speclink」的按鈕，原本的安裝或更新按鈕仍然可用（Server 的技能是對的，只是本機的 CLI 可能認不得新動詞）。
 - Server 沒有宣告技能、或沒有 checkout → 不探測，沒有提示（今天的行為）。
-- 探測的時機和本機專案相同（分頁成為作用中、更新完成後、收到變動事件）。摘要的請求約幾 KB。
+- 探測的時機：分頁成為作用中、更新完成後、Server 推來變動事件，以及 checkout 的技能檔被改動時（D8）。摘要的請求約幾 KB。
+- Server 對某個工具一支技能都不給時，那個工具不參與比對（D9）。
 
 ### D7: Node 與示範用 server
 
 - `createHost({ skills?: string[] })`：傳給 `HostKitOptions.skills`。有不認得的名稱時 `createHost` 同步拋出錯誤並列出名稱。
 - 示範用 server：不給清單（提供全部）。
+
+### D8: 有 checkout 的遠端分頁監看 checkout 的技能檔
+
+品質關卡第 1 輪指出：遠端分頁收到的變動事件只有 Server 推來的，checkout 的檔案沒有被監看。使用者在終端機對 checkout 跑 `speclink update`、或手動改技能檔之後，提示卡要等切換分頁才更新。本機專案沒有這個落差（規格資料夾被監看）。
+
+- **監看什麼**：探測會讀的東西，不是整個 checkout（原始碼樹太大）。`speclink-desktop-core` 新增 `skill_watch_targets_at(checkout)`，回傳目標與各自的方式：
+  - checkout 的根，不遞迴：`.speclink.yaml` 的改動、工具資料夾的出現。
+  - 每個工具的技能資料夾，遞迴。資料夾還不存在時，改成它最近一個存在的上層，不遞迴（最遠到 checkout 的根）；資料夾出現後的那次重掛會換成遞迴監看它本身。
+  - 工具清單和探測用同一個 `ToolSelection`；`.speclink.yaml` 讀不出來時只監看根。
+- **掛在哪裡**：沿用 app 唯一的監看槽位（`WatchSlot`）——它本來就跟著作用中的分頁。`watch.rs` 的掛載函式改成每個目標帶自己的方式（遞迴或不遞迴），既有的 `.git` 哨兵是其中一種；`WatchSlot` 新增以明確目標重掛的入口，沿用序號、暫停與「目標不變就沿用原監看」的規則。
+- **Tauri 殼**：新的 command `watch_checkout_skills(checkout)` 只做委派，掛上後以事件 `checkout-skills-changed` 通知，內容是 checkout 的路徑。和本機的 `workspace-changed` 分開，因為它不該觸發資料的重新載入。去抖時間和本機相同（400 毫秒）。
+- **前端**：`WorkspaceAdapter` 新增 `watchCheckoutSkills(checkout)` 與 `onCheckoutSkillsChanged(checkout, handler)`。store 的 `rearmWatch` 對有 checkout 的遠端分頁改呼叫前者；`App.tsx` 既有的「技能檔探測」effect 在作用中的分頁是有 checkout 的遠端專案時訂閱後者，收到就重掛監看並重新探測——不呼叫整批的 `refresh`。唯一的實作落點是這個 effect 與 store 的 `rearmWatch`，沒有第二處。
+- **自己寫的檔案**：app 的更新在寫入期間暫停監看（既有的 `while_paused`），寫完由 store 重掛並重新探測，所以不會因為自己的寫入多探測一輪。
+- **切走之後**：切到本機分頁時，同一個槽位被本機的監看換掉；切到沒有 checkout 的遠端分頁時，槽位留著舊的監看，但沒有人訂閱它的事件（既有行為）。
+
+- **否決：監看整個 checkout** — 會把 `node_modules`、建置產物都掛上去，事件量與掛載時間都不可接受。
+- **否決：定時重新探測** — 每次探測是兩個網路請求；沒有變動時白白打 Server。
+
+### D9: Server 對某個工具一支技能都不給時，那個工具不動
+
+品質關卡第 1 輪指出兩個同源的問題。宿主的技能清單經工具或 worktree 政策過濾後，可能對某個工具變成空的（例如清單只列 Claude 專用的 `analyze`，而 checkout 有 codex）。這時：`speclink update` 會把那個工具的 `speclink-` 技能資料夾全部清掉並回報成功；Speclink Desktop 則永遠判定那個工具「缺少」，按「安裝技能檔」也不會消失。
+
+規則：**Server 對某個工具的回應是空的清單時，用戶端不動那個工具。**
+
+- **安裝**（`SyncPlan::from_rendered` 與它的 `apply`）：那個工具不寫入任何檔案，也不清理它技能資料夾裡的 `speclink-` 資料夾；它不列入「已更新」的工具，改列在計畫的「沒有拿到技能」清單。其餘工具照常。`speclink update` 的 stdout 多一行：`! The server gives no skills for: codex — their skill files were left as they are`。exit code 仍是 0。每個工具都是空的時，沒有任何檔案被寫入，摘要只有這一行與來源。
+- **探測**（`probe_served_skills`）：那個工具不參與比對——不算缺少，不算過期，它既有的檔案也不算「多出來的」。每個工具都是空的時，結果是現版。
+- **Server 這一邊不變**：路由照樣回空的清單。宿主的清單整份是空的時仍然在建立時被拒絕（稽核結論第 3 點）。
+- **寫入順序**：和既有的 `apply` 相同，只是空的工具整個略過；中途失敗時已寫的檔案留著，重跑會收斂。
+
+代價：宿主沒有辦法用「空的清單」讓某個工具的技能從 checkout 消失。留下來的技能檔要由使用者自己刪，或把那個工具從 `.speclink.yaml` 的工具清單拿掉（既有的清理會處理）。這比「一個算出來剛好是空的集合就刪光技能」安全，而且那些技能在刪掉之前本來就是可用的。
+
+- **否決：照樣清空（原本的決定）** — 見上；刪除是不可逆的方向。
+- **否決：Server 對空的工具回錯誤** — 清單只列 Claude 專用技能是合理的設定，不該讓有 codex 的 checkout 整個 `update` 失敗。
 
 ## Implementation Contract
 
@@ -145,13 +180,15 @@ speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.
 - 本機 CLI 的技能版號比 Server 舊：遠端動詞照常成功，stderr 有一行提醒；同一天第二次執行沒有提醒。
 - Speclink Desktop 開啟有 checkout 的遠端專案：技能和 Server 不同時出現提示卡；按「更新技能檔」後提示消失，checkout 的技能檔等於 Server 的內容。
 - 宿主以 `skills: ['discuss', 'propose']` 建立宿主套件：路由只回這兩支。
+- Server 對某個工具回空的技能清單：`speclink update` 不寫入也不移除那個工具的任何技能檔，stdout 有一行列出它；Speclink Desktop 不因為那個工具出現提示。
+- Speclink Desktop 開著有 checkout 的遠端專案時，在終端機改動 checkout 裡的一個技能檔：不切換分頁，提示卡就出現。
 
 **介面與資料形狀**
 
 - 線上：`capabilities.skills.version`；`POST /projects/{key}/skills` 的請求與回應（D2）。
-- Rust：`HostKitOptions.skills`（`HostKit::with_options` 回傳 `Result`）；`speclink_remote::skills::{fetch, targets_of, rendered, digests}`；`SyncPlan::from_rendered`；引擎公開的「某個目標要產生哪些技能」函式（`managed_skills`）、`worktree_skills_on`、`skill_digest`、`probe_served_skills`。
+- Rust：`HostKitOptions.skills`（`HostKit::with_options` 回傳 `Result`）；`Client::skills`；`speclink_remote::skills::{targets_of, install, digests}`；`SyncPlan::from_rendered`；引擎公開的「某個目標要產生哪些技能」函式（`managed_skills`）、`worktree_skills_on`、`skill_digest`、`probe_served_skills`。
 - Node：`CreateHostOptions.skills`。
-- Tauri：`probe_remote_assets`、`update_remote_assets`。
+- Tauri：`probe_remote_assets`、`update_remote_assets`、`watch_checkout_skills`；事件 `checkout-skills-changed`（內容是 checkout 的路徑）。
 - CLI 的狀態檔：使用者設定目錄的 `skill-notice.json`。
 
 **失敗的樣子**
@@ -165,6 +202,8 @@ speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.
 | Server 的回應和 checkout 對不上（名稱不是名稱、名稱重複、缺全文、工具不符） | `update` 非 0，不寫任何檔案；Desktop 的探測為無法判定 |
 | 提醒的狀態檔不能讀寫 | 不提醒，不報錯 |
 | Desktop 探測時連不上 | 沒有提示（無法判定），不記入略過 |
+| Server 對某個工具回空的技能清單 | 那個工具不寫入、不清理、不比對；`update` 的 exit code 仍是 0 |
+| checkout 的監看掛不上（資料夾不存在、系統拒絕） | 記錄一行，app 照常運作，只是少了自動重新探測 |
 | `.speclink.yaml` 的自訂描述子無效 | 和本機相同：`update` 報錯；探測略過它 |
 
 **驗收**
@@ -175,6 +214,7 @@ speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.
 - `cargo test -p speclink-cli --test it remote_skills::`：上面「行為」的前三項與失敗的前兩項。
 - `cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop`、`npm test -w apps/desktop`：探測、更新、提示與確認框。
 - Node：`skills` 的過濾與不認得的名稱。
+- D8、D9：`cargo test -p speclink-core init`（零支技能的工具）、`cargo test -p speclink-cli --test it remote_skills::`、`cargo test -p speclink-desktop-core`（監看目標與探測）、`cargo test -p speclink-desktop`（監看的掛載與事件）、`npm test -w apps/desktop`（前端的訂閱）。
 
 **範圍**
 
@@ -209,7 +249,7 @@ speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.
 
 稽核後決定不改的兩點：
 
-- Server 回空的技能清單（或某個工具的清單是空的）時，用戶端照樣套用，那個工具的技能資料夾會被清空。這是「技能由 Server 決定」的直接結果，也是連到一台 Server 的固有信任（見 Risks 的「信任」）；宿主這一邊已經用第 3 點擋住最容易發生的成因。
+- （已在品質關卡第 1 輪之後推翻，見 D9。）原本的決定是：Server 對某個工具回空的技能清單時，用戶端照樣套用，那個工具的技能資料夾會被清空。第 3 點只擋住「整份清單是空的」；清單經工具或 worktree 政策過濾後對某個工具變空的情況照樣通過，而結果是那個工具的技能被默默刪光。
 - Desktop 用分頁記下的 checkout 位置更新技能，不重新比對那個 checkout 的 `.speclink.yaml` 是不是還指向同一台 Server。綁定時已經驗證過；之後使用者手動改掉連線設定的情況留給綁定檢查處理。
 
 ## Open Questions

@@ -321,7 +321,8 @@ export interface AppState {
 
   refresh: () => Promise<void>;
   /** 監看重掛（事件驅動）：workspace-changed 後重解析監看目標——worktree 增減
-   * 會改變監看拓撲；Rust 端目標集合不變時沿用原監看，故可放心每次事件都叫。 */
+   * 會改變監看拓撲；Rust 端目標集合不變時沿用原監看，故可放心每次事件都叫。有 checkout 的
+   * remote 分頁掛的是 checkout 的技能檔監看；沒有 checkout 的 remote 分頁不掛。 */
   rearmWatch: () => Promise<void>;
   /** 重取手冊索引：切到手冊視圖時、以及手冊視圖活躍下的每次整批 refresh
    * （workspace-changed 沿用同一條路，不新增監看目標）；交錯回應以最新為準。 */
@@ -853,15 +854,18 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       };
     }
 
-    /** 技能檔探測的對象。`root` 是略過記憶的鍵：本機專案是專案根（也是探測的路徑），
-     * remote 專案是分頁的鍵。`remote` 有值時基準是 Server 提供的技能。 */
-    type AssetSubject = { root: string; remote: RemoteCheckout | null };
+    /** 技能檔探測的對象：本機專案（探測它的專案根），或有 checkout 的 remote 專案（基準是
+     * Server 提供的技能）。`skipKey` 是略過記憶的鍵：本機專案是專案根，remote 專案是分頁的鍵。 */
+    type AssetSubject =
+      | { kind: "local"; root: string; skipKey: string }
+      | { kind: "remote"; checkout: RemoteCheckout; skipKey: string };
 
     /** 探測 `subject` 的技能檔並裁決提示；探測失敗照樣拋出，由呼叫端決定怎麼呈現。
      * Server 沒有提供技能（null）時沒有可比的基準：不提示。 */
     async function promptAt(ws: WorkspaceAdapter, subject: AssetSubject): Promise<AssetPromptState | null> {
-      const probe = subject.remote ? await ws.probeRemoteAssets(subject.remote) : await ws.probeAssets(subject.root);
-      return probe ? assetPrompt(probe, subject.root, readAssetSkips()) : null;
+      const probe =
+        subject.kind === "remote" ? await ws.probeRemoteAssets(subject.checkout) : await ws.probeAssets(subject.root);
+      return probe ? assetPrompt(probe, subject.skipKey, readAssetSkips()) : null;
     }
 
     /** 探測指定分頁的技能檔並記進該分頁的記憶（結果屬於探測時的分頁，期間切走也不錯置）。 */
@@ -882,11 +886,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const key = get().activeKey;
       const locator = key ? get().sessions[key]?.locator : undefined;
       if (!key || !locator) return null;
-      if (locator.kind === "local") return { root: locator.root, remote: null };
+      if (locator.kind === "local") return { kind: "local", root: locator.root, skipKey: locator.root };
       if (!locator.checkoutRoot) return null;
       return {
-        root: key,
-        remote: {
+        kind: "remote",
+        skipKey: key,
+        checkout: {
           connectionId: locator.connectionId,
           project: locator.projectId,
           repo: locator.repoId,
@@ -1412,10 +1417,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
 
     async rearmWatch() {
       const st = get();
-      const session = st.activeKey ? st.sessions[st.activeKey] : undefined;
-      if (session?.locator.kind !== "local") return;
+      const locator = st.activeKey ? st.sessions[st.activeKey]?.locator : undefined;
+      if (!locator) return;
       try {
-        await workspace?.watchWorkspace(session.locator.root);
+        if (locator.kind === "local") await workspace?.watchWorkspace(locator.root);
+        // 有 checkout 的 remote 專案：監看 checkout 的技能檔，供提示卡自動更新。
+        else if (locator.checkoutRoot) await workspace?.watchCheckoutSkills(locator.checkoutRoot);
       } catch {
         /* 降級：無自動刷新 */
       }
@@ -2671,9 +2678,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       let result: AssetUpdateResult;
       try {
-        result = subject.remote
-          ? await workspace.updateRemoteAssets(subject.remote)
-          : await workspace.updateAssets(subject.root);
+        result =
+          subject.kind === "remote"
+            ? await workspace.updateRemoteAssets(subject.checkout)
+            : await workspace.updateAssets(subject.root);
       } catch (error) {
         // 失敗留在原位可重試——update() 冪等，重試即收斂（決策 5）。
         set({ assetUpdateError: String(error), assetUpdating: false });
@@ -2702,7 +2710,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       const subject = activeAssetSubject();
       const prompt = selectAssetPrompt(get());
       if (!key || !subject || !prompt) return;
-      writeAssetSkip(subject.root, prompt.version);
+      writeAssetSkip(subject.skipKey, prompt.version);
       set({ assetPrompts: { ...get().assetPrompts, [key]: null }, assetUpdateError: null });
     },
 

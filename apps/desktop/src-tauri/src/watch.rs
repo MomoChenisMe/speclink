@@ -34,6 +34,17 @@ fn normalized_for_match(p: &Path) -> PathBuf {
     p.to_path_buf()
 }
 
+/// `event` 相對於 `roots` 其中一個的路徑：先比正規化後的事件路徑，再比事件原本的路徑。
+/// 連上層都已經不在的路徑無法正規化（[`normalized_for_match`] 這時才原樣退回），在 Windows 上
+/// 它的前綴和正規化後的根（`\\?\` 形式）對不上——所以掛載時給的根也要比。都比不上時為 None。
+fn relative_under(roots: &[PathBuf], event: &Path) -> Option<PathBuf> {
+    let normalized = normalized_for_match(event);
+    roots
+        .iter()
+        .find_map(|root| normalized.strip_prefix(root).or_else(|_| event.strip_prefix(root)).ok())
+        .map(Path::to_path_buf)
+}
+
 /// 自 `start` 向上探索 speclink 專案，回傳所有監看目標——第一項為其 spec 目錄，
 /// 其後為 worktree 流程下的副本 change 目錄與 worktree 登記簿（推導歸 desktop-core）。
 /// 探索不到專案時回傳可記錄的 `Err`（含起點路徑）——呼叫端記錄後照常運作，
@@ -62,45 +73,62 @@ pub fn watch_targets(
     let Some(target) = targets.first() else {
         return Err("no watch target".to_string());
     };
-    if !target.is_dir() {
-        return Err(format!("watch target missing: {}", target.display()));
-    }
+    let is_sentinel = |p: &Path| p.file_name() == Some(std::ffi::OsStr::new(".git"));
     // 哨兵目標只等 worktrees/ 出生；index、HEAD 等 .git 直接子項幾乎每個
     // git 指令都寫，這些事件於事件層過濾，不變成看板空刷新。比對前兩側都
     // 正規化——FSEvents 回報解析後路徑，監看目標卻可能經 symlink 或含 `..`。
     let sentinel = targets
         .iter()
         .skip(1)
-        .find(|p| p.file_name() == Some(std::ffi::OsStr::new(".git")))
+        .find(|p| is_sentinel(p))
         .map(|p| p.canonicalize().unwrap_or_else(|_| p.clone()));
+    let relevant = move |event: &Path| match &sentinel {
+        Some(git_dir) => {
+            let path = normalized_for_match(event);
+            path != *git_dir
+                && !(path.parent() == Some(git_dir.as_path())
+                    && path.file_name() != Some(std::ffi::OsStr::new("worktrees")))
+        }
+        None => true,
+    };
+    let mounts: Vec<(PathBuf, RecursiveMode)> = std::iter::once((target.clone(), RecursiveMode::Recursive))
+        .chain(targets.iter().skip(1).map(|extra| {
+            let mode = if is_sentinel(extra) { RecursiveMode::NonRecursive } else { RecursiveMode::Recursive };
+            (extra.clone(), mode)
+        }))
+        .collect();
+    watch_mounts(&mounts, relevant, debounce, on_change)
+}
+
+/// 掛上 `mounts`，每個掛載點帶自己的方式；去抖窗口內只要有一個事件的路徑通過 `relevant`，
+/// 就合併為一次 `on_change()`。第一個掛載點不存在或建立失敗時回傳可記錄的 `Err`；其後的
+/// 掛載點為盡力而為（推導與實際掛載之間資料夾可能已被移除），不存在的略過。
+fn watch_mounts(
+    mounts: &[(PathBuf, RecursiveMode)],
+    relevant: impl Fn(&Path) -> bool + Send + 'static,
+    debounce: Duration,
+    on_change: impl Fn() + Send + 'static,
+) -> Result<WorkspaceWatcher, String> {
+    let Some((first, first_mode)) = mounts.first() else {
+        return Err("no watch target".to_string());
+    };
+    if !first.is_dir() {
+        return Err(format!("watch target missing: {}", first.display()));
+    }
     let mut debouncer = new_debouncer(debounce, move |result: DebounceEventResult| {
-        // 事件內容只看一件事：是否全為哨兵雜訊；錯誤批次不通知也不中斷監看。
+        // 錯誤批次不通知也不中斷監看。
         let Ok(events) = &result else { return };
-        let relevant = events.iter().any(|e| match &sentinel {
-            Some(git_dir) => {
-                let path = normalized_for_match(&e.path);
-                path != *git_dir
-                    && !(path.parent() == Some(git_dir.as_path())
-                        && path.file_name() != Some(std::ffi::OsStr::new("worktrees")))
-            }
-            None => true,
-        });
-        if !events.is_empty() && relevant {
+        if events.iter().any(|e| relevant(&e.path)) {
             on_change();
         }
     })
     .map_err(|e| format!("watcher setup failed: {e}"))?;
     debouncer
         .watcher()
-        .watch(target, RecursiveMode::Recursive)
-        .map_err(|e| format!("watch {} failed: {e}", target.display()))?;
-    for extra in targets.iter().skip(1).filter(|p| p.is_dir()) {
-        let mode = if extra.file_name() == Some(std::ffi::OsStr::new(".git")) {
-            RecursiveMode::NonRecursive
-        } else {
-            RecursiveMode::Recursive
-        };
-        let _ = debouncer.watcher().watch(extra, mode);
+        .watch(first, *first_mode)
+        .map_err(|e| format!("watch {} failed: {e}", first.display()))?;
+    for (extra, mode) in mounts.iter().skip(1).filter(|(p, _)| p.is_dir()) {
+        let _ = debouncer.watcher().watch(extra, *mode);
     }
     Ok(WorkspaceWatcher {
         _debouncer: debouncer,
@@ -153,6 +181,50 @@ impl WatchSlot {
             }
         };
         self.rearm_with_targets(ticket, targets, debounce, on_change)
+    }
+
+    /// 掛上有 checkout 的 remote 專案的技能檔監看（remote-skill-delivery D8），視需要重掛；
+    /// 回傳是否重建。目標由 desktop-core 推導：checkout 的根（不遞迴）與各工具的技能目錄；
+    /// 事件只在和技能檔探測有關時通知——根底下的 `.git`、原始碼資料夾的變動不算。序號、
+    /// 暫停與「目標不變就沿用原監看」的規則和 [`WatchSlot::rearm`] 相同。
+    pub fn rearm_checkout(
+        &mut self,
+        ticket: u64,
+        checkout: &Path,
+        debounce: Duration,
+        on_change: impl Fn() + Send + 'static,
+    ) -> Result<bool, String> {
+        if self.paused || ticket < self.last_ticket {
+            return Ok(false);
+        }
+        self.last_ticket = ticket;
+        let targets = speclink_desktop_core::project::skill_watch_targets_at(checkout);
+        let mounted: Vec<PathBuf> = targets.mounts.iter().map(|mount| mount.path.clone()).collect();
+        if matches!(&self.current, Some((prev, _)) if *prev == mounted) {
+            return Ok(false);
+        }
+        let mounts: Vec<(PathBuf, RecursiveMode)> = targets
+            .mounts
+            .iter()
+            .map(|mount| {
+                let mode = if mount.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive };
+                (mount.path.clone(), mode)
+            })
+            .collect();
+        // 事件回報的路徑可能是解析後的形式，也可能是掛載時給的形式：兩種根都拿來比。
+        let roots = [checkout.canonicalize().unwrap_or_else(|_| checkout.to_path_buf()), checkout.to_path_buf()];
+        let relevant =
+            move |event: &Path| relative_under(&roots, event).is_some_and(|relative| targets.concerns(&relative));
+        match watch_mounts(&mounts, relevant, debounce, on_change) {
+            Ok(watcher) => {
+                self.current = Some((mounted, watcher));
+                Ok(true)
+            }
+            Err(e) => {
+                self.current = None;
+                Err(e)
+            }
+        }
     }
 
     /// 暫停監看（desktop-spec-dir-migration D2）：drop 目前的監看，到 [`WatchSlot::resume`]
@@ -482,6 +554,127 @@ mod tests {
         assert!(!slot.rearm(2, &root.0, Duration::from_millis(200), || {}).unwrap(), "恢復後陳舊序號照舊略過");
         let rebuilt = slot.rearm(5, &root.0, Duration::from_millis(200), || {}).unwrap();
         assert!(rebuilt, "恢復後必為重建：暫停已 drop 原監看");
+    }
+
+    // --- checkout 的技能檔監看（remote-skill-delivery D8） ---
+
+    /// claude 的 remote checkout：`.speclink.yaml`、一個技能檔、一個原始碼檔。
+    fn checkout(tag: &str) -> TempRoot {
+        let root = TempRoot::new(tag);
+        std::fs::write(
+            root.0.join(".speclink.yaml"),
+            "tools:\n  - claude\nremote:\n  url: https://team.example.test/api/speclink/v1/projects/acme\n",
+        )
+        .unwrap();
+        std::fs::create_dir_all(root.0.join(".claude").join("skills").join("speclink-apply")).unwrap();
+        std::fs::write(root.0.join(".claude").join("skills").join("speclink-apply").join("SKILL.md"), "one\n").unwrap();
+        std::fs::create_dir_all(root.0.join("src")).unwrap();
+        std::fs::write(root.0.join("src").join("main.rs"), "fn main() {}\n").unwrap();
+        root
+    }
+
+    /// 掛上 checkout 的監看，回傳槽位與通知計數；掛載的自我通知已流完並歸零。
+    fn watched_checkout(root: &TempRoot) -> (WatchSlot, Arc<AtomicUsize>) {
+        let hits = Arc::new(AtomicUsize::new(0));
+        let h = Arc::clone(&hits);
+        let mut slot = WatchSlot::new();
+        let rebuilt = slot
+            .rearm_checkout(1, &root.0, Duration::from_millis(200), move || {
+                h.fetch_add(1, Ordering::SeqCst);
+            })
+            .expect("the checkout watch mounts");
+        assert!(rebuilt, "首次必為重建");
+        std::thread::sleep(Duration::from_millis(600));
+        hits.store(0, Ordering::SeqCst);
+        (slot, hits)
+    }
+
+    #[test]
+    fn a_checkout_watch_notifies_for_a_skill_file_and_for_the_config() {
+        let root = checkout("checkout-notify");
+        let (_slot, hits) = watched_checkout(&root);
+
+        std::fs::write(root.0.join(".claude").join("skills").join("speclink-apply").join("SKILL.md"), "two\n").unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        // 去抖逐路徑計時：一次寫入可能拆成檔案與資料夾兩個路徑、落在兩輪（見上面的 coalesce 測試）。
+        let n = hits.swap(0, Ordering::SeqCst);
+        assert!((1..=2).contains(&n), "改動技能檔要通知，而且去抖後至多兩次，實際 {n}");
+
+        let config = std::fs::read_to_string(root.0.join(".speclink.yaml")).unwrap();
+        std::fs::write(root.0.join(".speclink.yaml"), format!("{config}# edited\n")).unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        let n = hits.load(Ordering::SeqCst);
+        assert!((1..=2).contains(&n), "改動 .speclink.yaml 要通知，而且去抖後至多兩次，實際 {n}");
+    }
+
+    #[test]
+    fn a_checkout_watch_does_not_notify_for_other_files() {
+        let root = checkout("checkout-quiet");
+        let (_slot, hits) = watched_checkout(&root);
+
+        // 原始碼、根目錄的其他檔案、技能目錄旁邊的檔案：都不是探測會讀的東西。
+        std::fs::write(root.0.join("src").join("main.rs"), "fn main() { }\n").unwrap();
+        std::fs::write(root.0.join("src").join("other.rs"), "// new\n").unwrap();
+        std::fs::write(root.0.join("README.md"), "readme\n").unwrap();
+        std::fs::write(root.0.join(".claude").join("settings.json"), "{}\n").unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        assert_eq!(hits.load(Ordering::SeqCst), 0);
+    }
+
+    #[test]
+    fn a_checkout_watch_sees_a_skills_directory_that_appears_later() {
+        let root = checkout("checkout-appears");
+        std::fs::remove_dir_all(root.0.join(".claude")).unwrap();
+        let (mut slot, hits) = watched_checkout(&root);
+
+        std::fs::create_dir_all(root.0.join(".claude").join("skills")).unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(hits.load(Ordering::SeqCst) >= 1, "工具資料夾的出現要通知");
+        // 通知之後的那次重掛換成監看技能目錄本身。
+        assert!(slot.rearm_checkout(2, &root.0, Duration::from_millis(200), || {}).unwrap(), "目標改變須重建");
+    }
+
+    #[test]
+    fn a_checkout_watch_notifies_when_a_whole_tool_folder_is_removed() {
+        let root = checkout("checkout-removed");
+        let (_slot, hits) = watched_checkout(&root);
+        std::fs::remove_dir_all(root.0.join(".claude")).unwrap();
+        std::thread::sleep(Duration::from_millis(1500));
+        assert!(hits.load(Ordering::SeqCst) >= 1, "技能檔全部不見了，要重新探測");
+    }
+
+    #[test]
+    fn an_event_path_is_taken_relative_to_either_form_of_the_checkout_root() {
+        // 事件回報的路徑可能是解析後的形式，也可能是掛載時給的形式（Windows 上兩者的前綴不同，
+        // 連上層都不在的路徑又無法正規化）：兩種根都要比得上。
+        let resolved = PathBuf::from("/resolved/checkout");
+        let as_given = PathBuf::from("/as-given/checkout");
+        let roots = [resolved.clone(), as_given.clone()];
+        let skill = Path::new(".claude").join("skills").join("speclink-apply");
+        assert_eq!(relative_under(&roots, &resolved.join(&skill)), Some(skill.clone()));
+        assert_eq!(relative_under(&roots, &as_given.join(&skill)), Some(skill));
+        assert_eq!(relative_under(&roots, Path::new("/elsewhere/file")), None);
+    }
+
+    #[test]
+    fn a_checkout_rearm_keeps_the_watcher_when_targets_are_unchanged_and_obeys_the_pause() {
+        let root = checkout("checkout-rearm");
+        let mut slot = WatchSlot::new();
+        assert!(slot.rearm_checkout(1, &root.0, Duration::from_millis(200), || {}).unwrap());
+        assert!(!slot.rearm_checkout(2, &root.0, Duration::from_millis(200), || {}).unwrap(), "目標不變沿用原監看");
+        assert!(!slot.rearm_checkout(1, &root.0, Duration::from_millis(200), || {}).unwrap(), "陳舊序號略過");
+        slot.pause(3);
+        assert!(!slot.rearm_checkout(4, &root.0, Duration::from_millis(200), || {}).unwrap(), "暫停期間不掛");
+        slot.resume();
+        assert!(slot.rearm_checkout(5, &root.0, Duration::from_millis(200), || {}).unwrap(), "恢復後重建");
+    }
+
+    #[test]
+    fn a_checkout_that_does_not_exist_mounts_nothing() {
+        let root = TempRoot::new("checkout-gone");
+        let gone = root.0.join("no-such-checkout");
+        let mut slot = WatchSlot::new();
+        assert!(slot.rearm_checkout(1, &gone, Duration::from_millis(200), || {}).is_err());
     }
 
     #[test]

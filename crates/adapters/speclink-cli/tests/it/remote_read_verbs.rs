@@ -9,112 +9,12 @@
 //! same. The remote project holds nothing but its connection file, so a read
 //! of the local store has nothing to find.
 
-use speclink_host::http::{HttpRequest, Method};
-use speclink_host::kit::{Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
-use speclink_store_port::{Actor, Commit, DocKey, Expected, MemoryStorePort, Op, ScopeId, StorePort, Timestamp};
+use crate::door::{door, Door};
 use std::path::PathBuf;
 use std::process::{Command, Output};
-use std::sync::{Arc, Mutex};
-
-// --- the server: the host kit's door on a memory store ---
-
-struct Door {
-    server: Arc<tiny_http::Server>,
-    base: String,
-    /// `METHOD path?query` of every request, the project prefix removed.
-    asked: Arc<Mutex<Vec<String>>>,
-}
-
-const PROJECT: &str = "/api/speclink/v1/projects/demo";
 
 /// 2026-11-12T03:00:00Z, in milliseconds.
 const NOV_12_0300_MS: u64 = 1_794_452_400_000;
-
-/// A server whose store holds `docs` (store keys), committed at `at_millis`.
-fn door(docs: &[(&str, &str)], at_millis: u64) -> Door {
-    let scope = ScopeId::new("s1").unwrap();
-    let store = Arc::new(MemoryStorePort::new());
-    let ops = docs
-        .iter()
-        .map(|(key, content)| Op::Put {
-            key: DocKey::new(*key).unwrap(),
-            content: content.to_string(),
-            expected: Expected::Absent,
-        })
-        .collect();
-    let seed =
-        Commit::new(Actor::new("seed", "seed").unwrap(), "seed", Timestamp::new(at_millis).unwrap(), ops, Vec::new())
-            .unwrap();
-    store.commit(&scope, &seed).expect("seed commit");
-
-    let options = HostKitOptions {
-        scopes: Some(Box::new(move |_identity: &Identity| {
-            Ok(vec![ProjectEntry {
-                key: "demo".to_string(),
-                name: "Demo".to_string(),
-                repos: vec![RepoEntry {
-                    key: "backend".to_string(),
-                    name: "Backend".to_string(),
-                    scope: scope.clone(),
-                    can_write: true,
-                    can_write_policy: true,
-                }],
-            }])
-        })),
-        ..Default::default()
-    };
-    let kit = HostKit::with_options(store, Hooks::default(), options).unwrap();
-    let identity = Identity::new("u_1", "Tester").unwrap();
-
-    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
-    let base = format!("http://{}{PROJECT}", server.server_addr());
-    let asked: Arc<Mutex<Vec<String>>> = Arc::default();
-    let (looper, log) = (server.clone(), asked.clone());
-    std::thread::spawn(move || {
-        for mut req in looper.incoming_requests() {
-            let mut body = Vec::new();
-            let _ = req.as_reader().read_to_end(&mut body);
-            let url = req.url().to_string();
-            let (path, query) = match url.split_once('?') {
-                Some((path, query)) => (path.to_string(), Some(query.to_string())),
-                None => (url.clone(), None),
-            };
-            log.lock().unwrap().push(format!("{} {}", req.method(), url.trim_start_matches(PROJECT)));
-            let request = HttpRequest {
-                method: Method::from_name(&req.method().to_string()).expect("a method the door takes"),
-                path,
-                query,
-                headers: req.headers().iter().map(|h| (h.field.to_string(), h.value.to_string())).collect(),
-                body,
-            };
-            let response = match kit.handle(&request, Some(&identity)) {
-                Some(response) => {
-                    let mut out = tiny_http::Response::from_data(response.body).with_status_code(response.status);
-                    for (name, value) in &response.headers {
-                        out.add_header(tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).unwrap());
-                    }
-                    out
-                }
-                None => tiny_http::Response::from_data(Vec::new()).with_status_code(404),
-            };
-            let _ = req.respond(response);
-        }
-    });
-    Door { server, base, asked }
-}
-
-impl Door {
-    /// Every request but the handshake.
-    fn verb_calls(&self) -> Vec<String> {
-        self.asked.lock().unwrap().iter().filter(|call| *call != "GET /binding").cloned().collect()
-    }
-}
-
-impl Drop for Door {
-    fn drop(&mut self) {
-        self.server.unblock();
-    }
-}
 
 // --- the two projects ---
 

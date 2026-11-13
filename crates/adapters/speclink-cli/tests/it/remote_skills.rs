@@ -2,122 +2,32 @@
 //! (spec workspace-tools「remote 專案的技能取自 Server」, and the remote
 //! scenarios of「worktree 技能的政策條件式生成」and「受管檔再生的降級守門」).
 //!
-//! Two kinds of server stand in for the real one. The door is the host kit's
-//! HTTP door on a memory store: what it gives is what a real Server gives.
+//! Two kinds of server stand in for the real one. The door (`door.rs`) is the
+//! host kit's HTTP door on a memory store: what it gives is what a real Server gives.
 //! The fake answers fixed text, for the cases a real Server of this version
 //! cannot make: no skills declared, another skill version, a failing route.
 //!
 //! Credential isolation: every run points HOME, USERPROFILE and
 //! XDG_CONFIG_HOME at a throwaway folder; the credential is `SPECLINK_TOKEN`.
 
+use crate::door::{door, Door, PROJECT};
 use crate::fake_server::Fake;
 use speclink_core::config::{CustomTool, Invocation};
 use speclink_core::init::{managed_skills, ASSET_VERSION};
 use speclink_core::skills::{RenderTarget, SpecLocation, Tool};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
-use speclink_host::http::{HttpRequest, Method};
-use speclink_host::kit::{Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
-use speclink_store_port::{Actor, Commit, DocKey, Expected, MemoryStorePort, Op, ScopeId, StorePort, Timestamp};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
-use std::sync::{Arc, Mutex};
 
-const PROJECT: &str = "/api/speclink/v1/projects/demo";
 const WORKTREE_SKILLS: [&str; 2] = ["speclink-apply-with-worktree", "speclink-worktree-merge"];
 
-// --- the door: a real Server of this engine ---
+/// 2026-11-12T03:00:00Z, in milliseconds.
+const AT_MS: u64 = 1_794_452_400_000;
 
-struct Door {
-    server: Arc<tiny_http::Server>,
-    url: String,
-    store: Arc<MemoryStorePort>,
-    /// `METHOD path` of every request, the project prefix removed.
-    asked: Arc<Mutex<Vec<String>>>,
-}
-
-fn scope() -> ScopeId {
-    ScopeId::new("s1").unwrap()
-}
-
-fn door() -> Door {
-    let store = Arc::new(MemoryStorePort::new());
-    let options = HostKitOptions {
-        scopes: Some(Box::new(|_identity: &Identity| {
-            Ok(vec![ProjectEntry {
-                key: "demo".to_string(),
-                name: "Demo".to_string(),
-                repos: vec![RepoEntry {
-                    key: "backend".to_string(),
-                    name: "Backend".to_string(),
-                    scope: scope(),
-                    can_write: true,
-                    can_write_policy: true,
-                }],
-            }])
-        })),
-        ..Default::default()
-    };
-    let kit = HostKit::with_options(store.clone(), Hooks::default(), options).unwrap();
-    let identity = Identity::new("u_1", "Tester").unwrap();
-
-    let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
-    let url = format!("http://{}{PROJECT}", server.server_addr());
-    let asked: Arc<Mutex<Vec<String>>> = Arc::default();
-    let (looper, log) = (server.clone(), asked.clone());
-    std::thread::spawn(move || {
-        for mut req in looper.incoming_requests() {
-            let mut body = Vec::new();
-            let _ = req.as_reader().read_to_end(&mut body);
-            let path = req.url().to_string();
-            log.lock().unwrap().push(format!("{} {}", req.method(), path.trim_start_matches(PROJECT)));
-            let request = HttpRequest {
-                method: Method::from_name(&req.method().to_string()).expect("a method the door takes"),
-                path,
-                query: None,
-                headers: req.headers().iter().map(|h| (h.field.to_string(), h.value.to_string())).collect(),
-                body,
-            };
-            let response = match kit.handle(&request, Some(&identity)) {
-                Some(response) => {
-                    let mut out = tiny_http::Response::from_data(response.body).with_status_code(response.status);
-                    for (name, value) in &response.headers {
-                        out.add_header(tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()).unwrap());
-                    }
-                    out
-                }
-                None => tiny_http::Response::from_data(Vec::new()).with_status_code(404),
-            };
-            let _ = req.respond(response);
-        }
-    });
-    Door { server, url, store, asked }
-}
-
-impl Door {
-    /// Write the scope's workflow config.
-    fn set_config(&self, content: &str) {
-        let key = DocKey::new("config.yaml").unwrap();
-        let current = self.store.read(&scope(), std::slice::from_ref(&key)).unwrap().remove(0);
-        let op = Op::Put {
-            key,
-            content: content.to_string(),
-            expected: current.map_or(Expected::Absent, |doc| Expected::At(doc.version)),
-        };
-        let at = Timestamp::new(1_794_452_400_000).unwrap();
-        let commit = Commit::new(Actor::new("seed", "seed").unwrap(), "seed", at, vec![op], Vec::new()).unwrap();
-        self.store.commit(&scope(), &commit).expect("config commit");
-    }
-
-    fn asked(&self) -> Vec<String> {
-        self.asked.lock().unwrap().clone()
-    }
-}
-
-impl Drop for Door {
-    fn drop(&mut self) {
-        self.server.unblock();
-    }
+/// Write the workflow config of the door's scope.
+fn set_config(door: &Door, content: &str) {
+    door.put("config.yaml", content, AT_MS);
 }
 
 // --- the fake: fixed answers ---
@@ -315,9 +225,9 @@ fn update_installs_the_servers_skills_for_each_tool() {
 
 #[test]
 fn update_installs_what_a_real_server_gives() {
-    let door = door();
-    door.set_config("schema: spec-driven\nworktree: true\n");
-    let checkout = Checkout::remote("real", &door.url);
+    let door = door(&[], AT_MS);
+    set_config(&door, "schema: spec-driven\nworktree: true\n");
+    let checkout = Checkout::remote("real", &door.base);
 
     let out = checkout.run(&["update"]);
     assert_ok(&out);
@@ -372,6 +282,24 @@ fn update_uses_the_local_templates_without_a_credential() {
     assert!(fake.paths().is_empty(), "nothing was asked without a credential: {:?}", fake.paths());
 }
 
+#[test]
+fn update_uses_the_local_templates_when_the_server_refuses_the_handshake() {
+    let fake = Fake::new();
+    fake.route(
+        &format!("{PROJECT}/binding"),
+        403,
+        r#"{"status":403,"reason":"permission_denied","message":"you are not a member of project 'demo'"}"#,
+    );
+    let checkout = Checkout::remote("refused", &fake.project_url());
+
+    let out = checkout.run(&["update"]);
+    assert_ok(&out);
+    assert_eq!(checkout.skills(".claude/skills"), local_render(RenderTarget::Builtin(Tool::Claude), false));
+    assert!(fallback_line(&out).contains("access denied"), "{}", stderr_of(&out));
+    assert!(stdout_of(&out).contains("Skills source: local"), "{}", stdout_of(&out));
+    assert!(!fake.paths().iter().any(|path| path.ends_with("/skills")), "no skills request: {:?}", fake.paths());
+}
+
 // --- 宣告了卻取不到 ---
 
 #[test]
@@ -411,9 +339,9 @@ fn update_removes_a_skill_the_server_no_longer_gives() {
 
 #[test]
 fn update_installs_a_custom_tools_skills_from_the_server() {
-    let door = door();
+    let door = door(&[], AT_MS);
     let tools = "  - name: my-agent\n    skills_dir: .my-agent/skills\n    invocation: tool-call\n";
-    let checkout = Checkout::new("custom", tools, Some(&door.url));
+    let checkout = Checkout::new("custom", tools, Some(&door.base));
 
     assert_ok(&checkout.run(&["update"]));
     let custom = CustomTool {
@@ -450,9 +378,9 @@ fn update_of_a_local_project_asks_no_server_and_prints_what_it_did_before() {
 
 #[test]
 fn update_follows_the_servers_worktree_policy_on_and_then_off() {
-    let door = door();
-    door.set_config("schema: spec-driven\nworktree: true\n");
-    let checkout = Checkout::remote("worktree", &door.url);
+    let door = door(&[], AT_MS);
+    set_config(&door, "schema: spec-driven\nworktree: true\n");
+    let checkout = Checkout::remote("worktree", &door.base);
 
     assert_ok(&checkout.run(&["update"]));
     for skills_dir in [".claude/skills", ".agents/skills"] {
@@ -461,7 +389,7 @@ fn update_follows_the_servers_worktree_policy_on_and_then_off() {
         }
     }
 
-    door.set_config("schema: spec-driven\nworktree: false\n");
+    set_config(&door, "schema: spec-driven\nworktree: false\n");
     assert_ok(&checkout.run(&["update"]));
     for skills_dir in [".claude/skills", ".agents/skills"] {
         let left = checkout.skills(skills_dir);
@@ -668,4 +596,61 @@ fn audit_an_answer_for_another_tool_or_without_text_writes_nothing() {
     assert!(!out.status.success(), "stdout: {}", stdout_of(&out));
     assert!(stderr_of(&out).contains("without its text"), "{}", stderr_of(&out));
     assert_eq!(checkout.snapshot(), before);
+}
+
+// --- Server 對某個工具不提供任何技能（design D9） ---
+
+/// A skills response of `version` that gives claude `apply` and codex nothing.
+fn claude_only_body(version: &str) -> String {
+    serde_json::json!({
+        "version": version,
+        "targets": [
+            { "tool": "claude", "skills": [{ "name": "apply", "digest": "sha256:00", "content": served_skill("apply", version, "claude") }] },
+            { "tool": "codex", "skills": [] }
+        ]
+    })
+    .to_string()
+}
+
+#[test]
+fn update_leaves_a_tool_the_server_gives_no_skill_as_it_is() {
+    let fake = old_server();
+    let checkout = Checkout::remote("unserved", &fake.project_url());
+    assert_ok(&checkout.run(&["update"]));
+    let codex_before = checkout.skills(".agents/skills");
+    assert!(codex_before.contains_key("speclink-apply"), "codex has skills from the local templates");
+
+    fake.route(&format!("{PROJECT}/binding"), 200, &binding(Some("v1.58.0")));
+    fake.route(&format!("{PROJECT}/skills"), 200, &claude_only_body("v1.58.0"));
+    let out = checkout.run(&["update"]);
+    assert_ok(&out);
+
+    assert_eq!(checkout.skills(".agents/skills"), codex_before, "codex: every file is as it was");
+    let claude: Vec<(String, String)> = checkout.skills(".claude/skills").into_iter().collect();
+    assert_eq!(claude, [("speclink-apply".to_string(), served_skill("apply", "v1.58.0", "claude"))]);
+    let stdout = stdout_of(&out);
+    assert!(stdout.contains("Updated skill files for: claude\n"), "only claude was updated: {stdout}");
+    assert!(
+        stdout.contains("! The server gives no skills for: codex — their skill files were left as they are\n"),
+        "{stdout}"
+    );
+    assert!(stdout.contains("Skills source: server (v1.58.0)"), "{stdout}");
+}
+
+#[test]
+fn update_writes_nothing_when_the_server_gives_no_tool_a_skill() {
+    let fake = old_server();
+    let checkout = Checkout::remote("all-unserved", &fake.project_url());
+    assert_ok(&checkout.run(&["update"]));
+    let before = checkout.snapshot();
+
+    fake.route(&format!("{PROJECT}/binding"), 200, &binding(Some("v1.58.0")));
+    fake.route(&format!("{PROJECT}/skills"), 200, &skills_body("v1.58.0", &["claude", "codex"], &[]));
+    let out = checkout.run(&["update"]);
+    assert_ok(&out);
+    assert_eq!(checkout.snapshot(), before, "no file changed");
+    let stdout = stdout_of(&out);
+    assert!(stdout.contains("! The server gives no skills for: claude, codex — their skill files were left as they are\n"), "{stdout}");
+    assert!(!stdout.contains("No AI tool configurations found"), "the tools are configured: {stdout}");
+    assert!(!stdout.contains("Updated skill files for"), "{stdout}");
 }

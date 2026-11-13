@@ -527,8 +527,20 @@ function AppInner({
 
   // 指令檔過期探測（desktop-instruction-staleness-prompt 決策 4）：本地專案與有 checkout
   // 的 remote 專案分頁成為活躍時查一次；沒有 checkout 的 remote 分頁由 store 自行略過。
+  // 有 checkout 的 remote 專案另外監看 checkout 的技能檔：在終端機改動技能檔之後，提示卡
+  // 不必切換分頁就會更新。這個通知只重新探測，不重新載入專案資料。
   useEffect(() => {
-    if (workspace) void useStore.getState().refreshAssetPrompt();
+    if (!workspace) return;
+    const store = useStore.getState();
+    void store.refreshAssetPrompt();
+    const locator = store.activeKey ? store.sessions[store.activeKey]?.locator : undefined;
+    if (locator?.kind !== "remote" || !locator.checkoutRoot) return;
+    void store.rearmWatch();
+    return workspace.onCheckoutSkillsChanged(locator.checkoutRoot, () => {
+      // 技能目錄可能剛出現：重掛讓監看換成它本身，再重新探測。
+      void useStore.getState().rearmWatch();
+      void useStore.getState().refreshAssetPrompt();
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore, workspace, s.activeKey, s.sessionEpoch]);
 

@@ -44,13 +44,14 @@ export function readAssetSkips(storage: Storage = localStorage): Record<string, 
   }
 }
 
-/** 記下「此專案於此版號已保留現狀」。同專案再次略過時覆蓋舊版號。 */
+/** 記下「此專案於此版號已保留現狀」。同專案再次略過時覆蓋舊版號。`skipKey` 是專案在略過
+ * 記憶裡的鍵：本機專案是專案路徑，remote 專案是分頁的鍵。 */
 export function writeAssetSkip(
-  root: string,
+  skipKey: string,
   version: string,
   storage: Storage = localStorage,
 ): void {
-  const skips = { ...readAssetSkips(storage), [root]: version };
+  const skips = { ...readAssetSkips(storage), [skipKey]: version };
   storage.setItem(STORAGE_KEY, JSON.stringify(skips));
 }
 
@@ -60,7 +61,7 @@ export function writeAssetSkip(
  * 提示裡說明。無法判定一律不提示——無法判定不記入略過、也不視同現版。 */
 export function assetPrompt(
   probe: AssetProbeResult,
-  root: string,
+  skipKey: string,
   skips: Record<string, string>,
 ): AssetPromptState | null {
   const { migration, status } = probe;
@@ -72,7 +73,7 @@ export function assetPrompt(
         : null;
   if (!kind) return null;
   const version = probe.serverVersion ?? probe.currentVersion;
-  if (skips[root] === version) return null;
+  if (skips[skipKey] === version) return null;
   // 專案的技能檔版號取觸發這個狀態的工具：較新取領先的、過期取落後的；缺失（從未安裝）為 null；
   // 現版取第一個有版號的工具。
   const flagged =

@@ -209,6 +209,9 @@ pub struct UpdateOutcome {
     /// 棄用提示（design D3）：非錯誤、不影響 exit code，CLI 走 stderr。
     pub deprecations: Vec<String>,
     pub notes: Vec<String>,
+    /// Tools a Server gave no skill at all: their skills directories were neither
+    /// written nor cleaned (design D9). Always empty for a sync from the local templates.
+    pub unserved: Vec<String>,
     /// What `update` decided about the spec directory layout before syncing
     /// (spec-dir-migration D5); `Nothing` for every other entry.
     pub migration: crate::migrate::MigrationPlan,
@@ -291,6 +294,22 @@ impl ToolSelection {
         sel
     }
 
+    /// The names of the selected tools, in the order a sync writes them: the built-ins
+    /// (claude, codex, copilot, pi, cursor), then the descriptors in list order. A
+    /// Server's answer names its tools by these.
+    pub fn labels(&self) -> Vec<String> {
+        let builtins = Tool::ALL.into_iter().filter(|tool| self.builtins.contains(tool)).map(|tool| tool.name().to_string());
+        builtins.chain(self.customs.iter().map(|custom| custom.name.clone())).collect()
+    }
+
+    /// Where each selected tool keeps its skills, project-root relative and `/`-joined,
+    /// in the order of [`ToolSelection::labels`].
+    pub fn skills_dirs(&self) -> Vec<String> {
+        let builtins =
+            Tool::ALL.into_iter().filter(|tool| self.builtins.contains(tool)).map(|tool| tool.skills_dir().to_string());
+        builtins.chain(self.customs.iter().map(|custom| custom.skills_dir.clone())).collect()
+    }
+
     /// Build a selection straight from an in-memory built-in list — the entry `init`,
     /// `init_remote` and `reconcile_builtin_tools` use, where the selection is the
     /// caller's argument rather than a file.
@@ -345,12 +364,20 @@ pub fn managed_skills(
         .collect()
 }
 
-/// The skills a Server gave for one tool: the tool's name as the request sent it, and
-/// each skill's name (`apply`, without the `speclink-` of its folder) with its text.
+/// The skills a Server gave for one tool, with their texts: the tool's name as the
+/// request sent it, and each skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RenderedTool {
     pub tool: String,
-    pub skills: Vec<(String, String)>,
+    pub skills: Vec<RenderedSkill>,
+}
+
+/// One skill of a Server's answer: its name (`apply`, without the `speclink-` of its
+/// folder) and the text of its SKILL.md.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderedSkill {
+    pub name: String,
+    pub content: String,
 }
 
 /// Whether `name` has the form of a skill name in the registry: lower-case letters,
@@ -362,6 +389,14 @@ fn is_skill_name(name: &str) -> bool {
         && name.split('-').all(|part| {
             !part.is_empty() && part.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit())
         })
+}
+
+/// The name a render target goes by in a sync's reports and in a Server's answer.
+fn label_of(target: skills::RenderTarget<'_>) -> &str {
+    match target {
+        skills::RenderTarget::Builtin(tool) => tool.name(),
+        skills::RenderTarget::Custom(custom) => custom.name.as_str(),
+    }
 }
 
 /// One tool's slice of a sync: where its skills live, and what should be there.
@@ -402,6 +437,9 @@ pub struct SyncPlan {
     /// strip a legacy marker from, and the deprecation notice to report.
     pub(crate) custom_strip_targets: Vec<(String, String)>,
     pub(crate) selection: ToolSelection,
+    /// Selected tools a Server gave no skill at all ([`SyncPlan::from_rendered`]). They
+    /// are no target: nothing of theirs is written, cleaned or compared.
+    pub(crate) unserved: Vec<String>,
     /// The project root the targets hang off — the shared-directory check compares
     /// paths below it.
     pub(crate) root: PathBuf,
@@ -417,7 +455,8 @@ impl SyncPlan {
         spec_dir: &str,
         location: SpecLocation,
     ) -> SyncPlan {
-        let worktree_on = worktree_skills_enabled(root, spec_dir);
+        let config = util::read_opt(&root.join(spec_dir).join("config.yaml"));
+        let worktree_on = worktree_skills_on(config.as_deref());
         let rendered = |target: skills::RenderTarget| -> Result<_, std::convert::Infallible> {
             Ok(managed_skills(target, worktree_on, spec_dir, location))
         };
@@ -434,36 +473,37 @@ impl SyncPlan {
     ///
     /// The downgrade guard is not asked: a remote project's skills follow its Server,
     /// also back to an older version ([`SyncPlan::leading_version`] says when that happens).
+    ///
+    /// A tool whose skill list is empty is no target of the plan: [`SyncPlan::apply`]
+    /// neither writes nor cleans its skills directory, and names it in
+    /// [`UpdateOutcome::unserved`].
     pub fn from_rendered(root: &Path, selection: ToolSelection, rendered: Vec<RenderedTool>) -> Result<SyncPlan> {
         if let Some(message) = &selection.descriptor_error {
             bail!("{message}");
         }
-        for tool in &rendered {
-            if let Some((bad, _)) = tool.skills.iter().find(|(name, _)| !is_skill_name(name)) {
-                bail!("the server gave a skill name that is not a plain name for tool '{}': {bad:?}", tool.tool);
-            }
-            let names: Vec<&str> = tool.skills.iter().map(|(name, _)| name.as_str()).collect();
-            if let Some(name) = names.iter().enumerate().find(|(i, name)| names[..*i].contains(name)).map(|(_, name)| name) {
-                bail!("the server gave skill '{name}' twice for tool '{}'", tool.tool);
-            }
-        }
-        let mut left = rendered;
-        let files_of = |target: skills::RenderTarget| {
-            let label = match target {
-                skills::RenderTarget::Builtin(tool) => tool.name(),
-                skills::RenderTarget::Custom(custom) => custom.name.as_str(),
-            };
-            let Some(at) = left.iter().position(|tool| tool.tool == label) else {
-                bail!("the server gave no skills for tool '{label}'");
-            };
-            let skills = left.swap_remove(at).skills;
-            Ok(skills.into_iter().map(|(name, content)| (format!("speclink-{name}"), content)).collect())
+        let answer: Vec<(&str, Vec<&str>)> = rendered
+            .iter()
+            .map(|tool| (tool.tool.as_str(), tool.skills.iter().map(|skill| skill.name.as_str()).collect()))
+            .collect();
+        check_answer(&selection.labels(), &answer)?;
+        let mut by_tool: std::collections::HashMap<String, Vec<RenderedSkill>> =
+            rendered.into_iter().map(|tool| (tool.tool, tool.skills)).collect();
+        let files_of = |target: skills::RenderTarget| -> Result<_, std::convert::Infallible> {
+            let skills = by_tool.remove(label_of(target)).unwrap_or_default();
+            Ok(skills.into_iter().map(|skill| (format!("speclink-{}", skill.name), skill.content)).collect())
         };
-        let plan = SyncPlan::build(root, selection, files_of)?;
-        if let Some(extra) = left.first() {
-            bail!("the server gave skills for tool '{}', which this checkout did not ask for", extra.tool);
-        }
+        let Ok(mut plan) = SyncPlan::build(root, selection, files_of);
+        // Checked on every selected tool, before the ones without skills leave the plan:
+        // a tool that is left alone can still share its directory with one that is
+        // cleaned, and the cleaning would then remove what was to stay.
         plan.refuse_shared_skill_dirs()?;
+        // A tool the Server gives no skill is left alone (design D9): an empty set is
+        // more often a filter that came out empty than a wish to remove every skill,
+        // and removing is the direction that cannot be taken back.
+        let (served, unserved): (Vec<SyncTarget>, Vec<SyncTarget>) =
+            plan.targets.into_iter().partition(|target| !target.files.is_empty());
+        plan.targets = served;
+        plan.unserved = unserved.into_iter().map(|target| target.label).collect();
         Ok(plan)
     }
 
@@ -524,6 +564,7 @@ impl SyncPlan {
             deselected_builtins,
             custom_strip_targets,
             selection,
+            unserved: Vec::new(),
             root: root.to_path_buf(),
         })
     }
@@ -615,6 +656,7 @@ impl SyncPlan {
             stripped: Vec::new(),
             deprecations: Vec::new(),
             notes: self.selection.notes.clone(),
+            unserved: self.unserved.clone(),
             migration: crate::migrate::MigrationPlan::Nothing,
             migrated: crate::migrate::MigrationReport::default(),
         };
@@ -857,22 +899,18 @@ fn save_custom_state(root: &Path, customs: &[CustomTool]) -> Result<()> {
     Ok(())
 }
 
-/// Whether worktree-gated skills belong in the generation set.
+/// Whether worktree-gated skills belong in the generation set, by the workflow config's
+/// text: a local project's `config.yaml` in its spec folder, or the config of the scope a
+/// Server answers for. No text is the defaults (off).
 ///
-/// Reads `openspec/config.yaml`'s `worktree` key DIRECTLY rather than through the
-/// three-layer policy resolution: injection is the project's persistent state, while
-/// `SPECLINK_WORKTREE` is a per-run escape hatch for the skill's own runtime check.
+/// It reads the `worktree` key DIRECTLY rather than through the three-layer policy
+/// resolution: injection is the project's persistent state, while `SPECLINK_WORKTREE` is a
+/// per-run escape hatch for the skill's own runtime check.
 ///
 /// A config that exists but cannot be parsed keeps the skills. Pruning is the
 /// irreversible direction — a user who broke their config mid-flight must not lose the
 /// merge skill their open worktree depends on; the skill's runtime check still refuses
 /// to run under an off policy.
-fn worktree_skills_enabled(root: &Path, spec_dir: &str) -> bool {
-    worktree_skills_on(util::read_opt(&root.join(spec_dir).join("config.yaml")).as_deref())
-}
-
-/// [`worktree_skills_enabled`] for a workflow config held as text — the rule a Server
-/// applies to the config of the scope it answers for. No text is the defaults (off).
 pub fn worktree_skills_on(workflow_config: Option<&str>) -> bool {
     match crate::config::WorkflowConfig::from_text(workflow_config) {
         Ok(cfg) => cfg.worktree.unwrap_or(false),
@@ -1230,7 +1268,7 @@ fn probe_skills_dir(skills_root: &Path, base: &str) -> SkillsProbe {
             return SkillsProbe::Unreadable;
         };
         found_any = true;
-        if workspace_is_newer(&v, base) {
+        if is_newer_version(&v, base) {
             return SkillsProbe::Found(v);
         }
         if v != base {
@@ -1270,11 +1308,13 @@ fn version_parts(version: &str) -> Option<Vec<u64>> {
         .collect()
 }
 
-/// 工作區版號是否數值領先引擎版號（決策 3）：段數不足補零後逐段比較。
-/// 任一邊無法完整解析為數字段時回 false——手改壞的 frontmatter 寧可誤報過期
-///（改寫即恢復受管狀態），不可誤報較新（那會封鎖 update）。
-fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
-    let (Some(a), Some(b)) = (version_parts(workspace), version_parts(engine)) else {
+/// Whether skill template version `version` is numerically newer than `than`
+/// (`v1.58.0` over `v1.57.0`): the segments are compared as numbers, and a missing
+/// segment counts as zero. False when either side does not parse as numbers — a
+/// frontmatter someone broke by hand may read as stale (a rewrite makes it managed
+/// again), but never as newer (that would block `update`).
+pub fn is_newer_version(version: &str, than: &str) -> bool {
+    let (Some(a), Some(b)) = (version_parts(version), version_parts(than)) else {
         return false;
     };
     for i in 0..a.len().max(b.len()) {
@@ -1284,13 +1324,6 @@ fn workspace_is_newer(workspace: &str, engine: &str) -> bool {
         }
     }
     false
-}
-
-/// Whether skill template version `version` is numerically newer than `than`
-/// (`v1.58.0` over `v1.57.0`; a missing segment counts as zero). False when either
-/// does not parse as numbers: a version that cannot be read leads nothing.
-pub fn is_newer_version(version: &str, than: &str) -> bool {
-    workspace_is_newer(version, than)
 }
 
 /// 降級守門的拒絕判定：`dirs` 中任一 skills 目錄的技能版號數值領先引擎時，以單行
@@ -1313,7 +1346,7 @@ fn refuse_downgrade(dirs: &[PathBuf]) -> Result<()> {
 /// leads nothing.
 fn leading_skill_version(skills_root: &Path, than: &str) -> Option<String> {
     match probe_skills_dir(skills_root, than) {
-        SkillsProbe::Found(v) if workspace_is_newer(&v, than) => Some(v),
+        SkillsProbe::Found(v) if is_newer_version(&v, than) => Some(v),
         _ => None,
     }
 }
@@ -1373,7 +1406,7 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
             SkillsProbe::Found(version) => version,
         };
         // 方向優先於相等判定：領先現版的版號是「較新」，不得再算成過期。
-        let newer = workspace_is_newer(&version, ASSET_VERSION);
+        let newer = is_newer_version(&version, ASSET_VERSION);
         tools.push(ToolAssetState {
             tool: target.label.clone(),
             stale: !newer && version != ASSET_VERSION,
@@ -1407,18 +1440,51 @@ pub fn probe_assets(root: &Path) -> AssetProbe {
 }
 
 /// What a Server gives for one tool, by digest: the tool's name as the request sent
-/// it, and each skill's name with the [`skill_digest`] of its text.
+/// it, and each skill.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ServedSkills {
     pub tool: String,
-    pub digests: Vec<(String, String)>,
+    pub digests: Vec<SkillDigest>,
+}
+
+/// One skill of a Server's answer by digest: its name and the [`skill_digest`] of its text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SkillDigest {
+    pub name: String,
+    pub digest: String,
+}
+
+/// Check that a Server's answer fits a checkout's tools, before anything reads or writes
+/// by it. `labels` are the selection's tools ([`ToolSelection::labels`]); `answer` is each
+/// answered tool with its skill names. The answer must hold exactly those tools, each
+/// once; a skill name must be a plain name ([`is_skill_name`]) and come once per tool.
+fn check_answer(labels: &[String], answer: &[(&str, Vec<&str>)]) -> Result<()> {
+    for (tool, names) in answer {
+        if let Some(bad) = names.iter().find(|name| !is_skill_name(name)) {
+            bail!("the server gave a skill name that is not a plain name for tool '{tool}': {bad:?}");
+        }
+        if let Some((_, name)) = names.iter().enumerate().find(|(i, name)| names[..*i].contains(name)) {
+            bail!("the server gave skill '{name}' twice for tool '{tool}'");
+        }
+    }
+    if let Some(label) = labels.iter().find(|label| !answer.iter().any(|(tool, _)| tool == label)) {
+        bail!("the server gave no skills for tool '{label}'");
+    }
+    let extra = answer.iter().enumerate().find(|(i, (tool, _))| {
+        !labels.iter().any(|label| label == tool) || answer[..*i].iter().any(|(earlier, _)| earlier == tool)
+    });
+    if let Some((_, (tool, _))) = extra {
+        bail!("the server gave skills for tool '{tool}', which this checkout did not ask for");
+    }
+    Ok(())
 }
 
 /// [`probe_assets`] for a remote project, against what its Server gives instead of
 /// this engine's own render (spec desktop-app「指令檔過期提示」): no text is needed,
 /// the digests decide. A tool with no skill file at all is missing; a skill whose
 /// text differs, is absent, or is one the Server does not give makes the checkout
-/// stale, and its file is listed; else it is current. `version` is the Server's skill
+/// stale, and its file is listed; else it is current. A tool the Server gives no skill
+/// at all is not compared. `version` is the Server's skill
 /// version; `current_version` stays this engine's. Zero writes.
 ///
 /// An answer that does not fit the checkout's tools (a tool absent, a tool that was
@@ -1440,32 +1506,56 @@ pub fn probe_served_skills(root: &Path, version: &str, served: &[ServedSkills]) 
     if selection.legacy_fallback {
         return verdict(AssetStatus::Current, Vec::new(), Vec::new());
     }
-    // The same fit check as an install: the digests stand where the texts would.
-    let as_rendered = served.iter().map(|s| RenderedTool { tool: s.tool.clone(), skills: s.digests.clone() }).collect();
-    let Ok(plan) = SyncPlan::from_rendered(root, ToolSelection { descriptor_error: None, ..selection }, as_rendered)
-    else {
+    let answer: Vec<(&str, Vec<&str>)> = served
+        .iter()
+        .map(|tool| (tool.tool.as_str(), tool.digests.iter().map(|skill| skill.name.as_str()).collect()))
+        .collect();
+    if check_answer(&selection.labels(), &answer).is_err() {
         return unknown();
-    };
+    }
+    // Where each tool keeps its skills. An invalid descriptor is no target, here as in
+    // [`probe_assets`]; the files to compare with come from the Server's digests.
+    let selection = ToolSelection { descriptor_error: None, ..selection };
+    let Ok(plan) = SyncPlan::build(root, selection, |_| Ok::<_, std::convert::Infallible>(Vec::new()));
+    if plan.refuse_shared_skill_dirs().is_err() {
+        return unknown();
+    }
 
     let (mut tools, mut differing) = (Vec::new(), Vec::new());
     for target in &plan.targets {
+        let given = served.iter().find(|tool| tool.tool == target.label).map_or(&[][..], |tool| &tool.digests[..]);
+        let workspace_version = || match probe_skills_dir(&target.skills_root, version) {
+            SkillsProbe::Found(v) => Some(v),
+            SkillsProbe::Absent | SkillsProbe::Unreadable => None,
+        };
+        // A tool the Server gives no skill is not compared (design D9): an install
+        // leaves it alone, so nothing of it is missing, stale or extra.
+        if given.is_empty() {
+            tools.push(ToolAssetState {
+                tool: target.label.clone(),
+                workspace_version: workspace_version(),
+                stale: false,
+                newer: false,
+                missing: false,
+            });
+            continue;
+        }
+        let dir_of = |skill: &SkillDigest| format!("speclink-{}", skill.name);
         let present = managed_skill_dirs(&target.skills_root);
         let file = |dir: &str| format!("{}/{dir}/SKILL.md", target.skills_dir);
         let before = differing.len();
-        for (dir, digest) in &target.files {
-            let text = std::fs::read_to_string(target.skills_root.join(dir).join("SKILL.md")).ok();
-            if text.map(|text| skill_digest(&text)).as_ref() != Some(digest) {
-                differing.push(file(dir));
+        for skill in given {
+            let dir = dir_of(skill);
+            let text = std::fs::read_to_string(target.skills_root.join(&dir).join("SKILL.md")).ok();
+            if text.map(|text| skill_digest(&text)).as_ref() != Some(&skill.digest) {
+                differing.push(file(&dir));
             }
         }
-        differing.extend(present.iter().filter(|dir| !target.files.iter().any(|(d, _)| d == *dir)).map(|dir| file(dir)));
+        differing.extend(present.iter().filter(|dir| !given.iter().any(|skill| dir_of(skill) == **dir)).map(|dir| file(dir)));
         let missing = present.is_empty();
         tools.push(ToolAssetState {
             tool: target.label.clone(),
-            workspace_version: match probe_skills_dir(&target.skills_root, version) {
-                SkillsProbe::Found(v) => Some(v),
-                SkillsProbe::Absent | SkillsProbe::Unreadable => None,
-            },
+            workspace_version: workspace_version(),
             // Against a Server there is no direction: a tool whose files differ is stale.
             stale: !missing && differing.len() > before,
             newer: false,
