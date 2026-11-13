@@ -216,3 +216,5 @@ verified_scope:
     hash: 9eb4d3f40a19bc5b1bd4f179c7b6673de7bf1a1599b711c13c7e427addd5d400
   - path: crates/protocol/speclink-remote/src/skills.rs
     hash: f0982fb10b9e359a0dc4eb723bba24b7a4cb5fc2f2932eb99ae96a8a8ea869c0
+archived_at: 2026-11-13T14:35:20+08:00
+archived_by: MomoChen <momochenisme@gmail.com>
