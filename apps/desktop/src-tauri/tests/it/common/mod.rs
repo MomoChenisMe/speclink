@@ -615,16 +615,20 @@ fn phase3_cli_bin() -> PathBuf {
             .expect("spawn cargo build for phase3 CLI");
         assert!(status.success(), "building the phase3 CLI failed");
     });
-    let test_bin = std::env::current_exe().expect("phase3 test executable");
-    let profile_dir = test_bin
-        .parent()
-        .and_then(Path::parent)
-        .expect("target profile directory");
-    profile_dir.join(if cfg!(windows) {
+    // 測試執行檔在輸出資料夾底下第幾層，隨 cargo 版本而變（1.100 起從 deps/ 改到
+    // build/<套件>/<雜湊>/out/）：往上找第一個放有 CLI 的資料夾，不寫死層數。
+    let name = if cfg!(windows) {
         "speclink.exe"
     } else {
         "speclink"
-    })
+    };
+    let test_bin = std::env::current_exe().expect("phase3 test executable");
+    test_bin
+        .ancestors()
+        .skip(1)
+        .map(|dir| dir.join(name))
+        .find(|bin| bin.is_file())
+        .expect("the built phase3 CLI above the test executable")
 }
 
 /// demo project 的 scope（repo backend）。
