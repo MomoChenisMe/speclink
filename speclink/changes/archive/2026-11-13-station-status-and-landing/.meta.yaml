@@ -340,3 +340,5 @@ verified_scope:
     hash: 98317b7e005f337c1054c00925ba592d267aae2425a4bf445f9ae88c19222eb8
   - path: packages/ui/src/adapter.ts
     hash: d006dad1a91fa5faa47f67841006709ced0d9cab9f4a86b2f77cd0a77367e5a3
+archived_at: 2026-11-13T09:30:51+08:00
+archived_by: MomoChen <momochenisme@gmail.com>
