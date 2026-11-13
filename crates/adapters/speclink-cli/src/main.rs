@@ -64,7 +64,7 @@ static VERSION: std::sync::LazyLock<String> = std::sync::LazyLock::new(|| {
 
 /// Speclink — spec management CLI
 #[derive(Parser)]
-#[command(name = "speclink", version = VERSION.as_str(), about = "Speclink — spec management CLI", disable_help_subcommand = false)]
+#[command(name = "speclink", bin_name = "speclink", version = VERSION.as_str(), about = "Speclink — spec management CLI", disable_help_subcommand = false)]
 struct Cli {
     #[command(flatten)]
     global: GlobalArgs,
@@ -278,5 +278,17 @@ mod tests {
         names.sort_unstable();
         order.sort_unstable();
         assert_eq!(names, order);
+    }
+
+    // clap takes the program name from the file name by default, so Windows
+    // printed `speclink.exe` in usage lines while the shared verb parsing (the
+    // Node SDK's dispatch) says `speclink`. The two texts must be the same.
+    #[test]
+    fn usage_names_the_program_speclink_whatever_the_file_is_called() {
+        let error = super::cli_command()
+            .try_get_matches_from(["C:\\tools\\speclink.exe", "list", "--no-such-flag"])
+            .expect_err("an unknown flag");
+        let text = error.render().to_string();
+        assert!(text.contains("Usage: speclink list [OPTIONS]"), "{text}");
     }
 }
