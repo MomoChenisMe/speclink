@@ -77,7 +77,8 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
 /// change event, the two quality stations' events and the landing report
 /// point at the change; every discussion event at the discussion. A name
 /// this table does not have is `unknown` with no identity: the client then
-/// reads everything again, and misses nothing.
+/// reads everything again, and misses nothing. An import's `scope-imported`
+/// is left out for that reason: it changes every resource of the scope.
 pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationScope, String) {
     let field = |key: &str| payload.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
     match kind {
@@ -203,6 +204,14 @@ mod tests {
         assert_eq!(
             event_resource("discussion-fields-changed", &json!({ "slug": "talk", "keys": ["owner"] })),
             (InvalidationScope::Discussion, "talk".to_string())
+        );
+    }
+
+    #[test]
+    fn an_import_points_at_no_one_resource_so_the_client_reads_everything_again() {
+        assert_eq!(
+            event_resource("scope-imported", &json!({ "documents": 3 })),
+            (InvalidationScope::Unknown("unknown".to_string()), String::new())
         );
     }
 

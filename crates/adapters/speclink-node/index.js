@@ -201,20 +201,7 @@ class Host {
   async dispatch(call) {
     const argv = call?.argv
     checkArgv(argv, 'host.dispatch')
-    // A field that is not a string reads as empty, which the native side
-    // refuses with invalid_argv before any store call.
-    const text = (value) => (typeof value === 'string' ? value : '')
-    const identity = call.identity
-    return unwrap(
-      await this.#native.dispatch(
-        text(identity?.id),
-        text(identity?.displayName),
-        text(call.scope),
-        argv,
-        call.stdin,
-        fieldsText(call.fields),
-      ),
-    )
+    return unwrap(await this.#native.dispatch(...whoAndWhere(call), argv, call.stdin, fieldsText(call.fields)))
   }
 
   /**
@@ -241,9 +228,6 @@ class Host {
       throw new TypeError('host.handleRequest: request.body must be a Uint8Array')
     }
     const bytes = body === undefined ? Buffer.alloc(0) : Buffer.from(body.buffer, body.byteOffset, body.byteLength)
-    // A field that is not a string reads as empty, which the native side
-    // refuses with invalid_argv before any store call.
-    const text = (value) => (typeof value === 'string' ? value : '')
     const who = identity == null ? [undefined, undefined] : [text(identity.id), text(identity.displayName)]
     if (extras !== undefined && extras !== null && typeof extras !== 'object') {
       throw new TypeError('host.handleRequest: extras must be an object')
@@ -258,9 +242,58 @@ class Host {
     if (response === null) return null
     return { status: response.status, headers: response.headers, body: new TextEncoder().encode(response.body) }
   }
+
+  /**
+   * Every document of `scope`, for `identity`: `{ formatVersion: 2,
+   * scopeVersion, documents: [{ key, content, digest }] }`, in key order.
+   */
+  async exportScope(call) {
+    // The bundle crosses as JSON text: one string, and exact numbers.
+    return JSON.parse(unwrap(await this.#native.exportScope(...whoAndWhere(call))))
+  }
+
+  /**
+   * Write `bundle` (of either version) into `scope`, which must be empty,
+   * for `identity`. Resolves to `{ scopeVersion, documents }`.
+   */
+  async importScope(call) {
+    // What is not a bundle crosses as `null`, which the native side refuses
+    // with invalid_argv.
+    const bundle = JSON.stringify(call?.bundle) ?? 'null'
+    return unwrap(await this.#native.importScope(...whoAndWhere(call), bundle))
+  }
 }
 
-const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports', 'skills']
+/**
+ * A field of an identity or a scope as it crosses: one that is not a string
+ * reads as empty, which the native side refuses with invalid_argv before any
+ * store call.
+ */
+const text = (value) => (typeof value === 'string' ? value : '')
+
+/** The identity's id and display name and the scope of one call. */
+function whoAndWhere(call) {
+  return [text(call?.identity?.id), text(call?.identity?.displayName), text(call?.scope)]
+}
+
+const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports', 'skills', 'limits']
+
+/**
+ * `createHost`'s `limits`, checked here for what the native side cannot see:
+ * it would read an array as the limits in order, and JSON would write NaN as
+ * null, which reads as "no limit given". The native side refuses a limit it
+ * does not know.
+ */
+function checkLimits(limits) {
+  if (limits === undefined) return
+  if (limits === null || typeof limits !== 'object' || Array.isArray(limits)) {
+    throw new TypeError('createHost: limits must be an object')
+  }
+  const { importBytes } = limits
+  if (importBytes !== undefined && !(Number.isSafeInteger(importBytes) && importBytes > 0)) {
+    throw new TypeError('createHost: limits.importBytes must be a positive integer (bytes)')
+  }
+}
 
 /**
  * The before-command answer as one of three plain shapes, so only these
@@ -282,8 +315,8 @@ function decisionOf(answer) {
 /**
  * Build a host kit over a store port (`list`, `read`, `commit`), optional
  * hooks (`beforeCommand`, `afterCommit`) and the HTTP door's optional inputs
- * (`scopes`, `authMethods`, `pushTransports`, `skills`). One host serves every user:
- * each `dispatch` and each `handleRequest` brings its own identity.
+ * (`scopes`, `authMethods`, `pushTransports`, `skills`, `limits`). One host
+ * serves every user: each call brings its own identity.
  */
 function createHost(options) {
   const target = portFunctions(options?.store, 'createHost')
@@ -311,6 +344,7 @@ function createHost(options) {
   if (options.scopes !== undefined && typeof options.scopes !== 'function') {
     throw new TypeError('createHost: scopes must be a function')
   }
+  checkLimits(options.limits)
   const hookTarget = {
     beforeCommand: asJson(async (info) => decisionOf(await hooks.beforeCommand(info))),
     // Nothing reads what afterCommit returns, so none of it crosses back.
@@ -325,6 +359,7 @@ function createHost(options) {
     authMethods: options.authMethods,
     pushTransports: options.pushTransports,
     skills: options.skills,
+    limits: options.limits,
   })
   return new Host(
     binding.hostFromPort(

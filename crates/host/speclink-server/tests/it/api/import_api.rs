@@ -395,3 +395,127 @@ fn a_large_bundle_with_a_late_validation_failure_leaves_no_partial_state() {
         "validation rejects the whole request before any prefix is visible"
     );
 }
+
+// ======================================================================
+// The import is the host kit's, on the store port (import-export-on-port,
+// design D7): no TeamStore import, an event for the stream, and the export.
+// ======================================================================
+
+use crate::common::subscriber::Recorder;
+use speclink_protocol::query::{BundleDocument, ScopeBundle};
+use std::time::Duration;
+
+fn typed_client(fixture: &Fixture, pat: &str) -> Client {
+    Client::new(&format!("{}/api/speclink/v1/projects/demo", fixture.base), pat, Some("backend"))
+}
+
+fn keyed_document(key: &str, content: &str) -> BundleDocument {
+    BundleDocument { key: key.into(), content: content.into(), digest: content_digest(content) }
+}
+
+#[test]
+fn a_successful_import_writes_through_the_store_port_and_never_calls_the_teamstores_import() {
+    // No other writer: the store is here for its count of import calls.
+    let inner = Arc::new(MemoryStore::new());
+    let store = Arc::new(common::Racing::at_unit_of_work(inner.clone(), |_| {}));
+    let state = common::state_with(store.clone());
+    let (pat, _) = common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
+    let base = common::start(state);
+
+    let response = ureq::post(&format!("{base}/api/speclink/v1/projects/demo/import"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .send_json(bundle(migration_documents()))
+        .expect("the import succeeds")
+        .into_json::<Value>()
+        .expect("ImportReport JSON");
+
+    assert_eq!(response["documents"].as_array().map(Vec::len), Some(migration_documents().len()));
+    assert_eq!(store.imports(), 0, "the TeamStore's import was called");
+    let snapshot = inner.snapshot(&scope()).expect("snapshot");
+    assert_eq!(snapshot.revision().0, 1, "one commit wrote every document");
+    assert!(snapshot
+        .read(&DocumentId::CanonicalSpec { capability: "payments".into() })
+        .expect("read")
+        .is_some());
+}
+
+#[test]
+fn a_subscriber_of_the_event_stream_gets_one_invalidation_after_an_import() {
+    let fixture = fixture();
+    let events_url = format!("{}/api/speclink/v1/projects/demo/events", fixture.base);
+    let mut subscriber = Recorder::connect(&events_url, &fixture.editor_pat, "backend");
+
+    let revision = post_import(&fixture, &fixture.editor_pat, bundle(migration_documents()))
+        .expect("the import succeeds")
+        .into_json::<Value>()
+        .expect("ImportReport JSON")["projectRevision"]
+        .as_u64()
+        .expect("the revision");
+
+    // An import changes every resource of the scope: it names none.
+    let event = subscriber.await_resource("", Duration::from_secs(5));
+    assert_eq!(event.revision, revision, "the invalidation names the import's commit");
+    assert_eq!(event.scope, "unknown");
+    assert_eq!(subscriber.drain(Duration::from_millis(300)), 0, "one import, one invalidation");
+}
+
+#[test]
+fn the_export_gives_an_editor_the_keyed_bundle_and_refuses_a_reader() {
+    let fixture = fixture();
+    post_import(&fixture, &fixture.editor_pat, bundle(migration_documents())).expect("the import succeeds");
+
+    let exported = get_json(&fixture, &fixture.editor_pat, "export");
+    assert_eq!(exported["formatVersion"], 2);
+    assert_eq!(exported["scopeVersion"], 1);
+    let keys: Vec<&str> = exported["documents"]
+        .as_array()
+        .expect("documents")
+        .iter()
+        .map(|document| document["key"].as_str().expect("a key"))
+        .collect();
+    assert_eq!(
+        keys,
+        [
+            "LANGUAGE.md",
+            "archive/changes/2026-07-20-old-change/proposal.md",
+            "archive/discussions/2026-07-20-old-plan.md",
+            "changes/demo/.meta.yaml",
+            "changes/demo/proposal.md",
+            "changes/demo/tasks.md",
+            "config.yaml",
+            "discussions/migration-plan.md",
+            "specs/payments/spec.md",
+        ],
+        "every document, in key order"
+    );
+
+    let (status, _, reason) = error_of(request("GET", &fixture, &fixture.reader_pat, "export").call());
+    assert_eq!(status, 403);
+    assert_eq!(reason, Some(ErrorReason::PermissionDenied));
+}
+
+#[test]
+fn the_typed_client_imports_a_keyed_bundle_and_exports_it_back() {
+    let fixture = fixture();
+    let client = typed_client(&fixture, &fixture.editor_pat);
+    let documents = vec![
+        keyed_document("changes/demo/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-21\n"),
+        keyed_document("config.yaml", "schema: spec-driven\n"),
+    ];
+
+    let report = client
+        .import_scope(&ScopeBundle { format_version: 2, scope_version: None, documents: documents.clone() })
+        .expect("the keyed import succeeds");
+    assert_eq!((report.scope_version, report.documents), (1, 2));
+
+    let exported = client.export().expect("the export succeeds");
+    assert_eq!(exported.format_version, 2);
+    assert_eq!(exported.scope_version, Some(1));
+    assert_eq!(exported.documents, documents);
+
+    // A second import finds the scope not empty.
+    let error = client.import_scope(&exported).expect_err("the scope is not empty");
+    assert!(error.to_string().contains("create-new"), "{error}");
+}

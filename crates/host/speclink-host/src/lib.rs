@@ -24,4 +24,5 @@ pub mod port_exec;
 pub(crate) mod port_view;
 pub mod projection;
 pub mod teamstore_port;
+pub mod transfer;
 pub mod worktree;

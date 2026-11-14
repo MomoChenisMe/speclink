@@ -8,7 +8,7 @@
 
 ### Requirement: import 端點僅限 CreateNew 且原子
 
-server SHALL 提供綁定 scope 的 import 端點：接受 wire Bundle（format version、文件全集），模式固定 CreateNew——wire SHALL NOT 暴露 Overwrite。目標 scope 已持有任何文件時 SHALL 拒絕且不寫入任何內容；reader SHALL 拒於 403；未知 format version 或缺欄位 SHALL 拒收。成功時整包 SHALL 以單一原子提交落庫並回報 project revision 與逐文件結果——部分寫入狀態 SHALL NOT 存在。
+server SHALL 提供綁定 scope 的 import 端點：接受 wire Bundle（format version、文件全集；以文件種類標示的第一版與以鍵標示的第二版皆可），模式固定 CreateNew——wire SHALL NOT 暴露 Overwrite。端點 SHALL 由宿主套件以儲存接口完成，示範用 Server 與內嵌引擎的宿主 SHALL 行為相同。目標 scope 已持有任何文件時 SHALL 拒絕且不寫入任何內容（判定的時間點與並行寫入的邊界，依 host-kit「範圍的匯出與匯入」）；reader SHALL 拒於 403；未知 format version 或缺欄位 SHALL 拒收。成功時整包 SHALL 以單一原子提交落庫並回報 project revision 與逐文件結果（第二版回報份數）——部分寫入狀態 SHALL NOT 存在；該次提交 SHALL 帶一筆匯入的事件，使已連線的用戶端得知範圍已變動。本文超過宿主設定的上限時 SHALL 以 413 拒絕。
 
 #### Scenario: 空 scope 匯入後全面可讀
 
@@ -20,70 +20,51 @@ server SHALL 提供綁定 scope 的 import 端點：接受 wire Bundle（format 
 - **WHEN** 對已持有文件的 scope 呼叫 import
 - **THEN** 回應衝突錯誤且訊息含 create-new 語意，scope 內容與 revision 皆未改變
 
+#### Scenario: 匯入後已連線的用戶端收到事件
+
+- **WHEN** 一個用戶端訂閱著某個空範圍的事件串流，另一個請求對該範圍匯入成功
+- **THEN** 訂閱者收到一筆 invalidation
+
+#### Scenario: 對內嵌引擎的宿主匯入
+
+- **WHEN** 以原版的用戶端對一個用宿主套件服務的空範圍送出匯入請求
+- **THEN** 匯入成功，之後的讀取面回傳包的內容
+
 
 <!-- @trace
-source: local-remote-migration
-updated: 2026-07-21
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/migrationDialog.test.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/migration.ts
-  - apps/desktop/src/components/MigrationDialog.tsx
-  - apps/desktop/src/components/RemoteConflictDialog.tsx
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/import_api.rs
+source: import-export-on-port
+updated: 2026-11-14T22:04:44+08:00
 -->
 
 ---
 ### Requirement: Bundle 組裝涵蓋本地 workspace 全集
 
-desktop SHALL 以引擎讀取面把本地 workspace 組裝為 Bundle：active changes 的 meta 與全部 artifacts、canonical specs、live 與 archived 討論、archived changes 的全部文件、workflow config 與共用詞彙文件——與 store 契約的 DocumentId 全集一一對應。任一來源檔解析失敗 SHALL 中止組裝並點名該檔——SHALL NOT 部分遷移。
+desktop SHALL 以引擎讀取面把本地 workspace 組裝為 Bundle：active changes 的 meta 與全部 artifacts、canonical specs、live 與 archived 討論、archived changes 的全部文件（含其 evidence）、active changes 的 evidence、workflow config、共用詞彙文件，以及由各變更與各討論的看板順序鍵組成的看板順序文件（沒有任何順序鍵時不含這份文件）。desktop SHALL 以鍵標示文件的第二版送出；Server 不認得第二版時 SHALL 以第一版重送同一批內容。任一來源檔解析失敗 SHALL 中止組裝並點名該檔——SHALL NOT 部分遷移。
 
 #### Scenario: 全集往返一致
 
 - **WHEN** 對含各類文件的本地 workspace 組裝 Bundle 並匯入空 scope，再自 server 逐端點讀回
 - **THEN** 每一份文件內容與本地原檔一致，無缺漏類別
 
+#### Scenario: evidence 隨遷移保留
+
+- **WHEN** 本地 workspace 的變更 demo 有兩筆 evidence 記錄，遷移到空的遠端範圍
+- **THEN** 遠端 demo 的 evidence 讀出同樣的兩筆記錄
+
+#### Scenario: 看板順序隨遷移保留
+
+- **WHEN** 本地看板上同一欄的 a、b、c 依序排列（各有順序鍵），遷移到空的遠端範圍
+- **THEN** 遠端的 plan 與看板以 a、b、c 的順序呈現這三個變更
+
+#### Scenario: 對舊 Server 退回第一版
+
+- **WHEN** 遷移的目標 Server 只認得第一版的包
+- **THEN** 遷移仍然成功
+
 
 <!-- @trace
-source: local-remote-migration
-updated: 2026-07-21
-code:
-  - Cargo.lock
-  - apps/desktop/src-tauri/Cargo.toml
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/migration.rs
-  - apps/desktop/src/App.tsx
-  - apps/desktop/src/__tests__/App.test.tsx
-  - apps/desktop/src/__tests__/migrationDialog.test.tsx
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/__tests__/workspaceChooser.test.tsx
-  - apps/desktop/src/adapter/migration.ts
-  - apps/desktop/src/components/MigrationDialog.tsx
-  - apps/desktop/src/components/RemoteConflictDialog.tsx
-  - apps/desktop/src/components/WorkspaceChooser.tsx
-  - apps/desktop/src/i18n/messages.ts
-  - apps/desktop/src/store.ts
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/routes.rs
-  - crates/speclink-server/tests/import_api.rs
+source: import-export-on-port
+updated: 2026-11-14T22:04:44+08:00
 -->
 
 ---

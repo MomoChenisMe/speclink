@@ -9,7 +9,8 @@
 //! ([`HostKit::run_with_fields`], [`HostKit::handle_with_fields`]).
 
 use crate::documents::scope_version;
-use crate::port_exec::{at_version, execute_with, AtVersion, BeforeCommit, ExecError, PortExecution, WriteAt};
+use crate::port_exec::{at_version, execute_with, now, AtVersion, BeforeCommit, ExecError, PortExecution, WriteAt};
+use crate::transfer::{self, ImportReport, ScopeBundle, TransferError};
 use speclink_core::command::{
     Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext, WorkflowConfigWriteOutcome,
 };
@@ -198,7 +199,20 @@ pub struct HostKitOptions {
     /// change their text. An empty list, or a name the Engine does not have,
     /// builds no kit ([`InvalidSkills`]).
     pub skills: Option<Vec<String>>,
+    /// The most an import takes, in bytes. Absent:
+    /// [`DEFAULT_IMPORT_LIMIT_BYTES`]. The HTTP door compares it with the
+    /// request body before it parses anything (413);
+    /// [`HostKit::import_scope`] compares it with the documents' content.
+    ///
+    /// The door gets a body the host's web framework already read, so the
+    /// framework's own body limit for the import route must be at least this
+    /// value. The kit neither compresses nor decompresses: that is the
+    /// framework's route layer. An export has no limit.
+    pub import_limit_bytes: Option<usize>,
 }
+
+/// The import limit of a kit whose host gave none: 32 MiB.
+pub const DEFAULT_IMPORT_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
 /// A [`HostKitOptions::skills`] list no kit is built with: it names skills the
 /// Engine does not have, or it is empty.
@@ -371,6 +385,54 @@ impl HostKit {
             }
         }
         Ok(Ran { at, before })
+    }
+
+    /// The most an import takes, in bytes ([`HostKitOptions::import_limit_bytes`]).
+    pub fn import_limit_bytes(&self) -> usize {
+        self.options.import_limit_bytes.unwrap_or(DEFAULT_IMPORT_LIMIT_BYTES)
+    }
+
+    /// Every document of the caller's scope ([`transfer::export`]). The
+    /// before hook is asked first, as `scope-export` with no params; a
+    /// refusal ends the call as `refused` before the store is called. The
+    /// kit does not ask who may export: the host decides who calls this (the
+    /// HTTP door asks for the write switch).
+    pub fn export_scope(&self, caller: &Caller) -> Result<ScopeBundle, ExecError> {
+        Ok(self.export_asked(caller)??)
+    }
+
+    /// [`Self::export_scope`], with the export's own failure apart from the
+    /// hook's refusal: the HTTP door tells a client why an export found no
+    /// still moment, which the store's failures do not say.
+    pub(crate) fn export_asked(&self, caller: &Caller) -> Result<Result<ScopeBundle, TransferError>, ExecError> {
+        self.ask(caller, transfer::EXPORT_COMMAND, &serde_json::json!({}), None)?;
+        Ok(transfer::export(self.store.as_ref(), &caller.scope))
+    }
+
+    /// Write `bundle` into the caller's scope, which must be empty
+    /// ([`transfer::import`]). Content over the kit's import limit is not
+    /// valid. The before hook is asked first, as `scope-import` with the
+    /// number of documents and the bytes of their content, and never the
+    /// content; a refusal ends the call as `refused` before the store is
+    /// called. The after hook watches the commit.
+    pub fn import_scope(&self, caller: &Caller, bundle: ScopeBundle) -> Result<ImportReport, ExecError> {
+        let bytes: usize = bundle.documents.iter().map(|doc| doc.content.len()).sum();
+        let limit = self.import_limit_bytes();
+        if bytes > limit {
+            return Err(TransferError::InvalidBundle(format!(
+                "the bundle's content is {bytes} bytes, over the {limit}-byte import limit"
+            ))
+            .into());
+        }
+        let params = serde_json::json!({ "documents": bundle.documents.len(), "bytes": bytes });
+        self.ask(caller, transfer::IMPORT_COMMAND, &params, None)?;
+        let at = now().map_err(ExecError::Store)?;
+        let (report, events) =
+            transfer::import_with_events(self.store.as_ref(), &caller.scope, caller.identity.actor(), bundle, at)?;
+        if !events.is_empty() {
+            self.watch(caller, transfer::IMPORT_COMMAND, report.scope_version, events);
+        }
+        Ok(report)
     }
 
     /// Ask the before hook about `command`; a refusal is the `refused`

@@ -8,6 +8,7 @@ use super::{HttpRequest, HttpResponse};
 use crate::documents::{self, ContextOutcome};
 use crate::kit::{Caller, HostKit, ProjectEntry, RepoEntry, RunOptions};
 use crate::port_exec::{self, AtVersion, ExecError, PortExecution};
+use crate::transfer::{self, SentBundle, TransferError, UnreadBundle};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_core::command::{Command, CommandOutcome, ErrorCode, InstructionsOutcome};
@@ -29,6 +30,7 @@ use speclink_protocol::command::{
 };
 use speclink_protocol::context::ContextSnapshotRequest;
 use speclink_protocol::events::{EventsDeclaration, PollingDeclaration};
+use speclink_protocol::query::{ImportDocumentId, ScopeImportResponse};
 use speclink_protocol::query::{
     ArtifactContent, BoardOrderDoc, DiscussionCut, DiscussionHit, DiscussionMatch, LanguageResponse,
     ListDiscussionsResponse, SearchDiscussionsResponse, ShowDiscussionResponse, ListChangesResponse, ListSpecsResponse, PlanResponse, PutBoardOrderRequest,
@@ -266,6 +268,65 @@ pub(crate) fn put_board_order(req: &Request<'_>) -> Result<HttpResponse, HttpErr
     let version = documents::put_board_order(req.port(), req.scope(), actor, body.content, expected, at)?;
     req.kit.watch(&req.caller, COMMAND, version, vec![documents::board_order_updated()?]);
     Ok(ok_at(&PutBoardOrderResponse { revision: version.get() }, version))
+}
+
+// --- the export and the import of the scope ---
+
+/// `GET /export`: every document of the scope as a keyed bundle, with the
+/// scope version it was taken at (also the ETag). The door gave it to a
+/// caller who can write only.
+pub(crate) fn export_scope(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let bundle = req.kit.export_asked(&req.caller)?.map_err(|e| match e {
+        // The cause is the scope, not the host's store: the client is told.
+        TransferError::Unstable => HttpError::unavailable(e.to_string()),
+        e => ExecError::from(e).into(),
+    })?;
+    let version = bundle.scope_version.expect("an export carries its scope version");
+    Ok(ok(&bundle, format!("\"{version}\"")))
+}
+
+/// `POST /import`: a bundle into the scope, which must be empty. A body over
+/// the kit's import limit is refused before it is parsed. The format version
+/// is read first and chooses the shape: 1 names each document by its kind
+/// and answers each document's outcome, as it always did; 2 names it by its
+/// key and answers the count.
+pub(crate) fn import_scope(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let limit = req.kit.import_limit_bytes();
+    if req.http.body.len() > limit {
+        return Err(HttpError::payload_too_large(format!("request body exceeds the {limit}-byte import limit")));
+    }
+    // Not JSON: 400. JSON of another shape: 422, the status the import
+    // always gave for it. A version the door does not know: refused.
+    let sent = transfer::read_bundle(&req.http.body).map_err(|unread| match unread {
+        UnreadBundle::NotJson(_) => HttpError::invalid_argument(unread.to_string()),
+        UnreadBundle::WrongShape(_) => HttpError::unprocessable(unread.to_string()),
+        UnreadBundle::UnknownVersion(_) => HttpError::refused(unread.to_string()),
+    })?;
+    match sent {
+        SentBundle::First(bundle) => {
+            let (project, repo) = (&req.project.key, &req.repo.key);
+            if bundle.scope.project != *project || bundle.scope.repo != *repo {
+                // The two names come from the body: cut, and with no control character.
+                let sent = format!("{}/{}", transfer::brief(&bundle.scope.project), transfer::brief(&bundle.scope.repo));
+                return Err(HttpError::refused(format!(
+                    "bundle scope {sent:?} does not match authenticated binding {project}/{repo}"
+                )));
+            }
+            let sent: Vec<ImportDocumentId> = bundle.documents.iter().map(|doc| doc.document.clone()).collect();
+            let keyed = transfer::from_first_version(bundle).map_err(ExecError::from)?;
+            let report = req.kit.import_scope(&req.caller, keyed)?;
+            let dto = transfer::first_version_report(report.scope_version.get(), sent);
+            Ok(ok_at(&dto, report.scope_version))
+        }
+        SentBundle::Keyed(bundle) => {
+            let report = req.kit.import_scope(&req.caller, bundle)?;
+            let dto = ScopeImportResponse {
+                scope_version: report.scope_version.get(),
+                documents: report.documents as u64,
+            };
+            Ok(ok_at(&dto, report.scope_version))
+        }
+    }
 }
 
 /// `GET /changes/{name}/evidence`: the recorded evidence of the change the

@@ -105,17 +105,23 @@ Source discussion: embedded-host-needs（cut 16）。
     - crates/host/speclink-host/src/http/routes.rs
     - crates/host/speclink-host/src/http/error.rs
     - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-host/tests/common/mod.rs（成本測試載入規格資料夾的函式搬到這裡共用）
+    - crates/host/speclink-host/tests/port_cost.rs（改用共用的載入函式）
     - crates/protocol/speclink-protocol/src/query.rs
     - crates/protocol/speclink-remote/src/client.rs
     - crates/host/speclink-server/src/app.rs
     - crates/host/speclink-server/src/state.rs
     - crates/host/speclink-server/src/api/routes.rs
     - crates/host/speclink-server/src/api/forward.rs
+    - crates/host/speclink-server/src/identity/auth.rs（移除沒有人讀的 binding 交接；品質關卡第 1 輪）
     - crates/host/speclink-server/tests/it/api/import_api.rs
+    - crates/host/speclink-server/tests/it/common/mod.rs（既有的測試用儲存包裝多一個匯入次數的計數；品質關卡第 1 輪）
+    - crates/host/speclink-server/tests/it/api/write_guard.rs（寫入路由的數量檢查：匯入改算在宿主套件的路由裡）
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
     - apps/desktop/src-tauri/src/remote.rs
+    - apps/desktop/src-tauri/tests/it/migration.rs（新增「遷移後遠端有 evidence 與看板順序」的測試）
   - Removed: (none)
 - 相依：沒有硬性的先後。它和 station-status-and-landing、host-free-fields 改到宿主套件的同一批檔案，建議排在 host-free-fields 之後依序做。
 - 三種形態下的結果：

@@ -3,7 +3,7 @@
 ### Requirement: import 端點僅限 CreateNew 且原子
 <!-- BEFORE: 只接受以文件種類標示的包；由 server 直接呼叫儲存層的匯入；不帶事件 -->
 
-server SHALL 提供綁定 scope 的 import 端點：接受 wire Bundle（format version、文件全集；以文件種類標示的第一版與以鍵標示的第二版皆可），模式固定 CreateNew——wire SHALL NOT 暴露 Overwrite。端點 SHALL 由宿主套件以儲存接口完成，示範用 Server 與內嵌引擎的宿主 SHALL 行為相同。目標 scope 已持有任何文件時 SHALL 拒絕且不寫入任何內容；reader SHALL 拒於 403；未知 format version 或缺欄位 SHALL 拒收。成功時整包 SHALL 以單一原子提交落庫並回報 project revision 與逐文件結果（第二版回報份數）——部分寫入狀態 SHALL NOT 存在；該次提交 SHALL 帶一筆匯入的事件，使已連線的用戶端得知範圍已變動。本文超過宿主設定的上限時 SHALL 以 413 拒絕。
+server SHALL 提供綁定 scope 的 import 端點：接受 wire Bundle（format version、文件全集；以文件種類標示的第一版與以鍵標示的第二版皆可），模式固定 CreateNew——wire SHALL NOT 暴露 Overwrite。端點 SHALL 由宿主套件以儲存接口完成，示範用 Server 與內嵌引擎的宿主 SHALL 行為相同。目標 scope 已持有任何文件時 SHALL 拒絕且不寫入任何內容（判定的時間點與並行寫入的邊界，依 host-kit「範圍的匯出與匯入」）；reader SHALL 拒於 403；未知 format version 或缺欄位 SHALL 拒收。成功時整包 SHALL 以單一原子提交落庫並回報 project revision 與逐文件結果（第二版回報份數）——部分寫入狀態 SHALL NOT 存在；該次提交 SHALL 帶一筆匯入的事件，使已連線的用戶端得知範圍已變動。本文超過宿主設定的上限時 SHALL 以 413 拒絕。
 
 #### Scenario: 空 scope 匯入後全面可讀
 

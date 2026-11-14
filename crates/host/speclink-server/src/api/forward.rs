@@ -22,7 +22,8 @@ use speclink_host::http::{match_route, HttpError, HttpRequest, Method};
 use speclink_host::kit::Identity;
 
 /// The most a request body is read before anything is answered: the import's
-/// allowance, so an early answer never cuts a body off mid-upload.
+/// allowance, so an early answer never cuts a body off mid-upload. The host
+/// kit gets the same value as its import limit (`state`).
 pub(crate) const READ_LIMIT_BYTES: usize = 32 * 1024 * 1024;
 
 /// The board order's allowance. Its handler still refuses content over its
@@ -84,7 +85,13 @@ pub async fn project(
     let Some(route) = match_route(method, parts.uri.path()) else {
         return Ok(assets::spa_fallback(parts.method, parts.uri).await);
     };
-    within(&body, if route.pattern == "/board-order" { BOARD_ORDER_BODY_LIMIT_BYTES } else { BODY_LIMIT_BYTES })?;
+    let limit = match route.pattern {
+        // A workspace migration is the whole local spec folder in one request.
+        "/import" => READ_LIMIT_BYTES,
+        "/board-order" => BOARD_ORDER_BODY_LIMIT_BYTES,
+        _ => BODY_LIMIT_BYTES,
+    };
+    within(&body, limit)?;
     let user = member_user(&state, &parts, &key)?;
     through_door(state, method, parts, body, user).await
 }

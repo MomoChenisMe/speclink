@@ -15,50 +15,11 @@ use speclink_host::port_exec;
 use speclink_store_port::{DocKey, Expected, MemoryStorePort, Op};
 
 mod common;
-use common::{host_ctx, scope, seed, Calls, Recorder};
+use common::{host_ctx, scope, seed, spec_folder_docs, Calls, Recorder};
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
 
 const CHANGE: &str = "cost-probe";
 const TALK: &str = "cost-probe-talk";
-
-// --- loading the folder ---
-
-/// The key of a file under `speclink/`, from its path segments. The archive
-/// moves to the top-level `archive/` (the key naming rules); a file that is
-/// no speclink document (the manual, for one) has no key.
-fn key_of(segments: &[String]) -> Option<String> {
-    let parts: Vec<&str> = segments.iter().map(String::as_str).collect();
-    match parts.as_slice() {
-        ["changes", "archive", dated, rest @ ..] if !rest.is_empty() => {
-            Some(format!("archive/changes/{dated}/{}", rest.join("/")))
-        }
-        ["discussions", "archive", file] => Some(format!("archive/discussions/{file}")),
-        ["changes", _, _, ..] | ["specs", _, _] | ["discussions", _] => Some(parts.join("/")),
-        ["config.yaml"] | ["LANGUAGE.md"] => Some(parts.join("/")),
-        _ => None,
-    }
-}
-
-/// Every file under `dir` as its path segments from the root. Segments, not
-/// a path string: the key separator is `/` on every platform.
-fn walk(dir: &Path, segments: &mut Vec<String>, out: &mut Vec<(Vec<String>, PathBuf)>) {
-    let mut entries: Vec<_> = std::fs::read_dir(dir)
-        .unwrap_or_else(|e| panic!("read {}: {e}", dir.display()))
-        .map(|entry| entry.expect("directory entry"))
-        .collect();
-    entries.sort_by_key(|entry| entry.file_name());
-    for entry in entries {
-        segments.push(entry.file_name().to_string_lossy().into_owned());
-        let path = entry.path();
-        if path.is_dir() {
-            walk(&path, segments, out);
-        } else {
-            out.push((segments.clone(), path));
-        }
-        segments.pop();
-    }
-}
 
 fn doc(key: &str, content: &str) -> (DocKey, String) {
     (DocKey::new(key).unwrap(), content.to_string())
@@ -67,29 +28,9 @@ fn doc(key: &str, content: &str) -> (DocKey, String) {
 /// This project's spec folder as a store, plus the documents the measured
 /// commands work on. Returns the store and the bytes it holds.
 fn loaded_store() -> (MemoryStorePort, usize, usize) {
-    let root = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("..")
-        .join("..")
-        .join("..")
-        .join("speclink");
-    let mut files = Vec::new();
-    walk(&root, &mut Vec::new(), &mut files);
-    let mut docs = Vec::new();
-    let mut bytes = 0;
-    for (segments, path) in files {
-        let Some(key) = key_of(&segments) else {
-            continue;
-        };
-        // A file that is not text, or a name the key format rejects, is not
-        // a speclink document.
-        let (Ok(content), Ok(key)) = (std::fs::read_to_string(&path), DocKey::new(key)) else {
-            continue;
-        };
-        bytes += content.len();
-        docs.push((key, content));
-    }
+    let docs = spec_folder_docs();
     let documents = docs.len();
-    assert!(documents > 100, "the spec folder was found at {}", root.display());
+    let bytes = docs.iter().map(|(_, content)| content.len()).sum();
     let port = MemoryStorePort::new();
     seed(&port, docs);
     // The commands that need one change or one discussion use these, so the

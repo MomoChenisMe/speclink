@@ -84,6 +84,44 @@ pub enum ImportDocumentOutcome {
     Created,
 }
 
+/// The second version of the bundle: every document of one scope, each named
+/// by its store key instead of a document kind. `GET /export` answers with
+/// it, and `POST /import` takes it next to the first version
+/// ([`ImportBundle`]). It names no scope: the request's binding is the only
+/// destination.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ScopeBundle {
+    /// Always 2.
+    pub format_version: u32,
+    /// The scope version the export was taken at. An export always carries
+    /// it; an import ignores it, so an export's answer imports as it is.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub scope_version: Option<u64>,
+    /// In byte order of the keys when the bundle is an export.
+    pub documents: Vec<BundleDocument>,
+}
+
+/// One document of a [`ScopeBundle`]. `digest` is `sha256:` and the hex
+/// SHA-256 of `content`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BundleDocument {
+    pub key: String,
+    pub content: String,
+    pub digest: String,
+}
+
+/// Successful `POST /import` response for a [`ScopeBundle`]: the scope version
+/// the import landed at and how many documents it wrote. A first-version
+/// request keeps its [`ImportReportResponse`].
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ScopeImportResponse {
+    pub scope_version: u64,
+    pub documents: u64,
+}
+
 /// `GET /board-order` response: the scope's opaque board-order document and
 /// the scope revision (the CAS token a later PUT sends back as `If-Match`).
 /// An absent document is a normal state — `content` is null.

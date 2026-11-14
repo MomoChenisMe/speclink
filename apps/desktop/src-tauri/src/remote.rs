@@ -28,9 +28,9 @@ use speclink_protocol::events::TransportKind;
 use speclink_protocol::query::{
     ArchivedItem, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
     DiscussionCut, DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId,
-    ImportReportResponse, ImportScope, ListSpecsResponse, PlanChangeEntry, PlanResponse,
-    PlanUnpromotedCut, ScopesResponse, SearchResponse, ShowDiscussionResponse, SpecDocumentResponse,
-    StationOutcome, StationState,
+    ImportReportResponse, ImportScope, ListSpecsResponse,
+    PlanChangeEntry, PlanResponse, PlanUnpromotedCut, ScopeBundle, ScopesResponse, SearchResponse,
+    ShowDiscussionResponse, SpecDocumentResponse, StationOutcome, StationState,
 };
 use speclink_core::model::ReviewedScopeEntry;
 use speclink_core::station::{ArchivedOutcome, Station, StationId, REVIEW, VERIFY};
@@ -38,6 +38,7 @@ use speclink_desktop_core::query::{archived_status_str, put_station_fields, stat
 use speclink_core::config::AppConfig;
 use speclink_core::init::ToolSelection;
 use speclink_protocol::skills::{SkillsRequest, SkillsResponse};
+use speclink_host::transfer::{first_version_report, from_first_version, UNSUPPORTED_VERSION};
 use speclink_remote::client::Client;
 use speclink_remote::skills as remote_skills;
 use speclink_remote::RemoteError;
@@ -457,9 +458,16 @@ fn artifact_id(artifact: &str) -> &str {
     artifact.strip_suffix(".md").unwrap_or(artifact)
 }
 
+/// 已封存變更的 evidence 在封存資料夾裡的檔名。
+const EVIDENCE_FILE: &str = ".evidence.json";
+
 /// Read one local filesystem workspace through the Engine Store seam and
 /// produce the migration wire bundle. Every source is read before upload; any
 /// corrupt metadata or unsupported artifact pattern aborts the whole build.
+///
+/// 內容涵蓋進行中變更的資料檔、artifact 與 evidence，正式規格，討論，已封存變更
+/// 的全部文件（含 evidence），流程設定，詞彙表，以及由各變更與各討論的順序鍵組成
+/// 的看板順序文件（一個順序鍵都沒有時不含）。
 pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<ImportBundle, String> {
     if project.trim().is_empty() || repo.trim().is_empty() {
         return Err("migration target project and repo must both be selected".to_string());
@@ -470,8 +478,9 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     let user_dir = speclink_host::context::global_config_dir();
     let mut documents = BTreeMap::<ImportDocumentId, String>::new();
 
-    for change in store.list_changes() {
-        require_valid_meta(store, &change).map_err(|error| error.to_string())?;
+    let changes = store.list_changes();
+    for change in &changes {
+        require_valid_meta(store, change).map_err(|error| error.to_string())?;
         let meta = store.read_change_meta(&change.name).unwrap_or_default();
         insert_import_document(
             &mut documents,
@@ -493,6 +502,13 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
                     content,
                 )?;
             }
+        }
+        if let Some(content) = store.read_evidence(&change.name) {
+            insert_import_document(
+                &mut documents,
+                ImportDocumentId::ChangeEvidence { change: change.name.clone() },
+                content,
+            )?;
         }
     }
 
@@ -552,9 +568,9 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
         )?;
         let schema =
             resolve_migration_schema(&context.workspace, &user_dir, &parsed.schema_name())?;
-        for artifact in
-            migration_artifact_paths(&schema, store.archived_delta_capabilities(&dated_name))?
-        {
+        let mut paths = migration_artifact_paths(&schema, store.archived_delta_capabilities(&dated_name))?;
+        paths.push(EVIDENCE_FILE.to_string());
+        for artifact in paths {
             if let Some(content) = store.read_archived_artifact(&dated_name, &artifact) {
                 insert_import_document(
                     &mut documents,
@@ -573,6 +589,20 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     }
     if let Some(content) = store.read_language() {
         insert_import_document(&mut documents, ImportDocumentId::Language, content)?;
+    }
+
+    // 本機的看板順序在各變更與各討論自己的順序鍵裡；遠端是一份文件。變更的資料檔
+    // 原樣上傳，裡面的順序鍵留著：遠端不讀它，搬回本機時還在。
+    let board = BoardOrderDoc {
+        changes: store.board_ranks(&changes),
+        discussions: speclink_core::discuss::list_discussions(store)
+            .into_iter()
+            .filter_map(|info| Some((info.slug, info.head.board_rank?)))
+            .collect(),
+    };
+    if !board.changes.is_empty() || !board.discussions.is_empty() {
+        let content = serde_json::to_string(&board).map_err(|error| error.to_string())?;
+        insert_import_document(&mut documents, ImportDocumentId::BoardOrder, content)?;
     }
 
     Ok(ImportBundle {
@@ -637,6 +667,27 @@ fn insert_import_document(
     Ok(())
 }
 
+/// 先送第二版；Server 不認得它時改送第一版一次，內容相同。回報一律是第一版的
+/// 形狀（逐份的結果），畫面只看這一種。
+///
+/// 「不認得」有兩種樣子：照協定以 refused 拒絕並說出格式版本；已發布的舊版
+/// Server 則是框架在處理函式之前就以 422 拒絕不認得的本文形狀。
+fn send_bundle(client: &Client, keyed: &ScopeBundle, first: &ImportBundle) -> Result<ImportReportResponse, RemoteError> {
+    let done = match client.import_scope(keyed) {
+        Ok(done) => done,
+        Err(error) if second_version_unknown(&error) => return client.import(first),
+        Err(error) => return Err(error),
+    };
+    Ok(first_version_report(done.scope_version, first.documents.iter().map(|doc| doc.document.clone())))
+}
+
+/// 協定沒有「格式版本不認得」專用的 reason，所以 refused 要看訊息開頭的固定用語
+///（入口自己也用同一個常數組訊息）。
+fn second_version_unknown(error: &RemoteError) -> bool {
+    error.status == Some(422)
+        || (error.reason.as_deref() == Some("refused") && error.message.contains(UNSUPPORTED_VERSION))
+}
+
 /// Successful local-to-remote conversion. The UI uses `checkoutRoot` to replace
 /// the local tab in place and displays the retained backup path.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -697,13 +748,15 @@ pub fn migrate_workspace(
     let folder = migratable_spec_dir(&context.workspace, "local-to-remote migration")?;
     let checkout_root = context.workspace.root;
     let bundle = build_import_bundle(root, project, repo)?;
+    // 同一批內容的第二版：每份文件以儲存的鍵標示。名稱組不出鍵的文件中止並點名。
+    let keyed = from_first_version(bundle.clone()).map_err(|error| error.to_string())?;
     let project_base = format!(
         "{}/api/speclink/v1/projects/{project}",
         origin.trim_end_matches('/')
     );
     let report = manager
         .execute_write(credentials, |token| {
-            Client::new(&project_base, token, Some(repo)).import(&bundle)
+            send_bundle(&Client::new(&project_base, token, Some(repo)), &keyed, &bundle)
         })
         .map_err(|error| error.message)?;
 
@@ -3134,11 +3187,14 @@ mod board_reorder_tests {
 #[cfg(test)]
 mod migration_bundle_tests {
     use super::{
-        adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with, migratable_spec_dir,
+        adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with, from_first_version,
+        migratable_spec_dir, send_bundle,
     };
-    use speclink_protocol::query::ImportDocumentId;
+    use speclink_protocol::query::{BoardOrderDoc, ImportBundle, ImportDocumentId};
+    use speclink_remote::client::Client;
     use std::collections::BTreeMap;
     use std::path::Path;
+    use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
 
     fn write(root: &Path, relative: &str, content: &str) {
@@ -3216,6 +3272,178 @@ mod migration_bundle_tests {
             "## ADDED Requirements\n\n### Requirement: Archived payment\n",
         );
         root
+    }
+
+    // --- evidence、看板順序與第二版的包（import-export-on-port D6）---
+
+    const EVIDENCE: &str = "{\"version\":2,\"change\":\"active-change\",\"entries\":[{\"taskId\":\"tsk_1\",\"taskDesc\":\"1.1 Active task\",\"touchedFiles\":[\"src/a.rs\"],\"recordedAt\":\"2026-07-21T10:00:00Z\"}]}\n";
+    const ARCHIVED_EVIDENCE: &str = "{\"version\":2,\"change\":\"old-change\",\"entries\":[]}\n";
+
+    fn content_of<'b>(bundle: &'b ImportBundle, id: &ImportDocumentId) -> Option<&'b str> {
+        bundle.documents.iter().find(|doc| &doc.document == id).map(|doc| doc.content.as_str())
+    }
+
+    #[test]
+    fn the_evidence_of_an_active_and_of_an_archived_change_is_in_the_bundle() {
+        let root = complete_workspace();
+        write(root.path(), "openspec/changes/active-change/.evidence.json", EVIDENCE);
+        write(root.path(), "openspec/changes/archive/2026-07-20-old-change/.evidence.json", ARCHIVED_EVIDENCE);
+
+        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+
+        let active = ImportDocumentId::ChangeEvidence { change: "active-change".into() };
+        assert_eq!(content_of(&bundle, &active), Some(EVIDENCE));
+        let archived = ImportDocumentId::ArchivedChange {
+            change: "2026-07-20-old-change".into(),
+            doc: ".evidence.json".into(),
+        };
+        assert_eq!(content_of(&bundle, &archived), Some(ARCHIVED_EVIDENCE));
+    }
+
+    #[test]
+    fn the_rank_keys_of_changes_and_discussions_become_the_board_order_document() {
+        let root = complete_workspace();
+        let ranked_meta = "schema: spec-driven\ncreated: 2026-07-21\nboard_rank: f\n";
+        write(root.path(), "openspec/changes/active-change/.openspec.yaml", ranked_meta);
+        write(root.path(), "openspec/changes/second-change/.openspec.yaml", "schema: spec-driven\ncreated: 2026-07-21\nboard_rank: b\n");
+        write(root.path(), "openspec/changes/second-change/proposal.md", "## Why\n\nSecond.\n");
+        write(root.path(), "openspec/changes/unranked-change/.openspec.yaml", "schema: spec-driven\ncreated: 2026-07-21\n");
+        write(
+            root.path(),
+            "openspec/discussions/live-plan.md",
+            "---\ntopic: Live plan\nslug: live-plan\nstatus: open\ncreated: 2026-07-21\nboard_rank: n\n---\n\nLive discussion.\n",
+        );
+
+        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+
+        let board = BoardOrderDoc::from_content(content_of(&bundle, &ImportDocumentId::BoardOrder));
+        let ranks = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
+            pairs.iter().map(|(name, rank)| (name.to_string(), rank.to_string())).collect()
+        };
+        assert_eq!(board.changes, ranks(&[("active-change", "f"), ("second-change", "b")]));
+        assert_eq!(board.discussions, ranks(&[("live-plan", "n")]));
+        // 本機的順序：second-change（b）在 active-change（f）之前；遠端的文件說同一件事。
+        assert!(board.changes["second-change"] < board.changes["active-change"]);
+        // 變更自己的資料檔原樣上傳，順序鍵留著。
+        let meta = ImportDocumentId::ChangeMeta { change: "active-change".into() };
+        assert_eq!(content_of(&bundle, &meta), Some(ranked_meta));
+    }
+
+    #[test]
+    fn a_workspace_with_no_rank_key_has_no_board_order_document() {
+        let root = complete_workspace();
+        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+        assert_eq!(content_of(&bundle, &ImportDocumentId::BoardOrder), None);
+    }
+
+    #[test]
+    fn the_keyed_bundle_names_every_document_by_its_store_key_with_the_same_content() {
+        let root = complete_workspace();
+        write(root.path(), "openspec/changes/active-change/.evidence.json", EVIDENCE);
+        let first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+
+        let keyed = from_first_version(first.clone()).expect("every document has a key");
+
+        assert_eq!((keyed.format_version, keyed.scope_version), (2, None));
+        let keys: Vec<&str> = keyed.documents.iter().map(|doc| doc.key.as_str()).collect();
+        let mut expected = vec![
+            "LANGUAGE.md",
+            "archive/changes/2026-07-20-old-change/.meta.yaml",
+            "archive/changes/2026-07-20-old-change/proposal.md",
+            "archive/changes/2026-07-20-old-change/specs/payments/spec.md",
+            "archive/changes/2026-07-20-old-change/tasks.md",
+            "archive/discussions/old-plan.md",
+            "changes/active-change/.evidence.json",
+            "changes/active-change/.meta.yaml",
+            "changes/active-change/design.md",
+            "changes/active-change/proposal.md",
+            "changes/active-change/specs/payments/spec.md",
+            "changes/active-change/tasks.md",
+            "config.yaml",
+            "discussions/live-plan.md",
+            "specs/accounts/spec.md",
+        ];
+        let mut sorted = keys.clone();
+        sorted.sort_unstable();
+        expected.sort_unstable();
+        assert_eq!(sorted, expected);
+        for (by_key, by_kind) in keyed.documents.iter().zip(&first.documents) {
+            assert_eq!((&by_key.content, &by_key.digest), (&by_kind.content, &by_kind.digest), "{}", by_key.key);
+        }
+    }
+
+    #[test]
+    fn a_document_whose_names_make_no_key_stops_the_keyed_bundle_and_is_named() {
+        let root = complete_workspace();
+        let mut first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+        first.documents[0].document = ImportDocumentId::CanonicalSpec { capability: "a/b".into() };
+        let error = from_first_version(first).expect_err("no key").to_string();
+        assert!(error.contains("a/b"), "{error}");
+    }
+
+    /// 一個只認得第一版的 Server：第二版的包以 `refusal` 回覆，第一版回成功。
+    /// 回傳它的專案網址與它收到的每個請求（格式版本、文件份數）。
+    fn first_version_only_server(refusal: (u16, &'static str)) -> (Arc<tiny_http::Server>, String, Arc<Mutex<Vec<(u64, usize)>>>) {
+        let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
+        let base = format!("http://{}/api/speclink/v1/projects/demo", server.server_addr());
+        let seen: Arc<Mutex<Vec<(u64, usize)>>> = Arc::default();
+        let (looper, log) = (server.clone(), seen.clone());
+        std::thread::spawn(move || {
+            for mut req in looper.incoming_requests() {
+                let mut body = String::new();
+                let _ = req.as_reader().read_to_string(&mut body);
+                let sent: serde_json::Value = serde_json::from_str(&body).expect("a JSON body");
+                let version = sent["formatVersion"].as_u64().expect("a format version");
+                let documents = sent["documents"].as_array().expect("documents").len();
+                log.lock().unwrap().push((version, documents));
+                let (status, text) = match version {
+                    1 => (200, format!("{{\"projectRevision\":1,\"documents\":[{}]}}", vec![r#"{"document":{"type":"language"},"outcome":"created"}"#; documents].join(","))),
+                    _ => (refusal.0, refusal.1.to_string()),
+                };
+                let _ = req.respond(tiny_http::Response::from_string(text).with_status_code(status));
+            }
+        });
+        (server, base, seen)
+    }
+
+    #[test]
+    fn a_server_that_knows_the_first_version_only_gets_the_same_contents_in_the_first_version() {
+        let root = complete_workspace();
+        let first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+        let keyed = from_first_version(first.clone()).expect("keyed");
+        let refusals = [
+            // 規格：以「格式版本不認得」拒絕（refused）。
+            (409, r#"{"status":409,"reason":"refused","message":"unsupported bundle format version 2 (supported: 1)"}"#),
+            // 已發布的舊版 Server：框架在處理函式之前就以 422 拒絕不認得的本文形狀。
+            (422, "Failed to deserialize the JSON body into the target type: missing field `scope` at line 1 column 20"),
+        ];
+        for refusal in refusals {
+            let (_server, base, seen) = first_version_only_server(refusal);
+            let client = Client::new(&base, "spk_pat_test", Some("backend"));
+
+            let report = send_bundle(&client, &keyed, &first).expect("the first version lands");
+
+            assert_eq!(report.project_revision, 1);
+            assert_eq!(report.documents.len(), first.documents.len());
+            let documents = first.documents.len();
+            assert_eq!(seen.lock().unwrap().clone(), [(2, documents), (1, documents)], "status {}", refusal.0);
+        }
+    }
+
+    #[test]
+    fn a_refusal_for_another_reason_is_not_sent_again() {
+        let root = complete_workspace();
+        let first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
+        let keyed = from_first_version(first.clone()).expect("keyed");
+        let not_empty =
+            (409, r#"{"status":409,"reason":"refused","message":"import (create-new): the target scope already holds documents"}"#);
+        let (_server, base, seen) = first_version_only_server(not_empty);
+        let client = Client::new(&base, "spk_pat_test", Some("backend"));
+
+        let error = send_bundle(&client, &keyed, &first).expect_err("refused");
+
+        assert!(error.message.contains("create-new"), "{}", error.message);
+        assert_eq!(seen.lock().unwrap().len(), 1, "one request, no second try");
     }
 
     #[test]

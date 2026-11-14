@@ -194,12 +194,14 @@ pub fn seed_multi_project(identity: &dyn IdentityStore) {
 
 /// A store that lets one other writer in while a verb runs: the writer runs
 /// once, when the verb opens its unit of work — or earlier, at the first
-/// snapshot taken after `snapshots_first` snapshots, when that is set.
+/// snapshot taken after `snapshots_first` snapshots, when that is set. It
+/// also counts the calls of its import operation.
 pub struct Racing {
     inner: Arc<MemoryStore>,
     other_writer: Mutex<Option<OtherWriter>>,
     snapshots_first: Option<usize>,
     snapshots: std::sync::atomic::AtomicUsize,
+    imports: std::sync::atomic::AtomicUsize,
 }
 
 type OtherWriter = Box<dyn FnOnce(&MemoryStore) + Send>;
@@ -215,7 +217,13 @@ impl Racing {
             other_writer: Mutex::new(Some(Box::new(other_writer))),
             snapshots_first: None,
             snapshots: Default::default(),
+            imports: Default::default(),
         }
+    }
+
+    /// How many times the TeamStore's import operation was called.
+    pub fn imports(&self) -> usize {
+        self.imports.load(std::sync::atomic::Ordering::SeqCst)
     }
 
     /// The writer lands right after the first snapshot: a route that reads
@@ -283,6 +291,7 @@ impl speclink_store::TeamStore for Racing {
         bundle: speclink_store::Bundle,
         mode: speclink_store::ImportMode,
     ) -> Result<speclink_store::ImportReport, speclink_store::StoreError> {
+        self.imports.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.inner.import(bundle, mode)
     }
     fn read_outbox(

@@ -61,6 +61,13 @@ impl HttpError {
         HttpError::new(400, ErrorReason::InvalidArgument, message)
     }
 
+    /// 422: the body is JSON, but not of the shape the import takes. Only
+    /// the import answers a wrong shape this way, as it always did; every
+    /// other route answers 400.
+    pub fn unprocessable(message: impl Into<String>) -> HttpError {
+        HttpError::new(422, ErrorReason::InvalidArgument, message)
+    }
+
     /// 422: a config document cannot be parsed.
     pub fn invalid_config(message: impl Into<String>) -> HttpError {
         HttpError::new(422, ErrorReason::InvalidConfig, message)

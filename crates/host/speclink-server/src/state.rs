@@ -31,8 +31,8 @@ pub type SharedIdentity = Arc<dyn IdentityStore>;
 /// per-scope event broadcaster fed from the store's outbox.
 ///
 /// The project routes and the scope list go through `kit` (design D8).
-/// `store` is left for what the store port has no operation for: the
-/// import, the event stream's outbox, the admin surfaces and the backups.
+/// `store` is left for what the store port has no operation for: the event
+/// stream's outbox, the admin surfaces and the backups.
 #[derive(Clone)]
 pub struct AppState {
     pub store: SharedStore,
@@ -91,6 +91,8 @@ fn host_kit(port: SharedPort, identity: SharedIdentity, events: Arc<EventHub>) -
         }],
         // Every skill of the Engine.
         skills: None,
+        // The same allowance the server reads a body up to.
+        import_limit_bytes: Some(crate::forward::READ_LIMIT_BYTES),
     };
     HostKit::with_options(port, hooks, options).expect("no skill list, so no unknown skill name")
 }

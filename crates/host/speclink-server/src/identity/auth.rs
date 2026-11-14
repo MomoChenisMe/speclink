@@ -37,11 +37,6 @@ impl FromRequestParts<AppState> for Binding {
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        // 0. 寫入檢查中介層已解析過的請求直接取用（app.rs `require_editor`）：
-        //    同一請求不查兩次 identity store、不重複推進 PAT 的最後使用時間。
-        if let Some(binding) = parts.extensions.get::<Binding>() {
-            return Ok(binding.clone());
-        }
         // 1. bearer token → actor, resolved per-request against the identity
         //    store (決策 4): split by prefix — `spk_at_` is a device access
         //    token, anything else a PAT — into the same check-list (hash-match,

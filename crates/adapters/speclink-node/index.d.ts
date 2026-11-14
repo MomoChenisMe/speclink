@@ -456,6 +456,25 @@ export interface CreateHostOptions {
    * and `host.dispatch` do not read this list.
    */
   skills?: string[]
+  /** Size limits. A value that is not a positive integer makes `createHost` throw at once. */
+  limits?: HostLimits
+}
+
+export interface HostLimits {
+  /**
+   * The most an import takes, in bytes. Absent: 33554432 (32 MiB).
+   * `handleRequest` compares it with the request body of the import route
+   * before it parses anything, and answers 413 over it; `importScope`
+   * compares it with the documents' content, and rejects with `invalid_argv`
+   * over it. An export has no limit.
+   *
+   * `handleRequest` gets a body your web framework already read, so the
+   * framework's own body limit for the import route must be at least this
+   * value (the Express example on `handleRequest` reads 4 MB: raise it for
+   * the import). The host kit does not compress or decompress: turn that on
+   * in your route layer.
+   */
+  importBytes?: number
 }
 
 /** A request as your web framework received it. `path` is as sent (still percent-encoded); `query` is the text after `?`. */
@@ -471,6 +490,56 @@ export interface HostResponse {
   status: number
   headers: Record<string, string>
   body: Uint8Array
+}
+
+/** One document of a {@link ScopeBundle}. `digest` is `sha256:` and the hex SHA-256 of `content` (UTF-8). */
+export interface BundleDocument {
+  /** The document's store key, as your store port sees it (`changes/add-x/proposal.md`). */
+  key: string
+  content: string
+  digest: string
+}
+
+/** Every document of one scope, each named by its store key: the second version of the bundle. */
+export interface ScopeBundle {
+  formatVersion: 2
+  /** The scope version an export was taken at. An export always has it; an import does not read it. */
+  scopeVersion?: number
+  /** In byte order of the keys when the bundle is an export. */
+  documents: BundleDocument[]
+}
+
+/**
+ * The first version of the bundle, which names each document by its kind
+ * (`{ type: 'changeMeta', change }`, …): what an older Speclink Desktop
+ * sends. `importScope` takes it; an export never gives it.
+ */
+export interface FirstVersionBundle {
+  formatVersion: 1
+  scope: { project: string; repo: string }
+  projectRevision: number
+  documents: { document: { type: string; [name: string]: unknown }; content: string; digest: string }[]
+}
+
+export interface HostExportCall {
+  /** From your own code (your session). You decide who may export: this call asks for no write switch. */
+  identity: HostIdentity
+  scope: string
+}
+
+export interface HostImportCall {
+  /** From your own code (your session). You decide who may import. */
+  identity: HostIdentity
+  /** The scope to fill. It must be empty. */
+  scope: string
+  bundle: ScopeBundle | FirstVersionBundle
+}
+
+export interface HostImportReport {
+  /** The scope version after the import. */
+  scopeVersion: number
+  /** How many documents were written. */
+  documents: number
 }
 
 export interface HostDispatchCall {
@@ -555,6 +624,32 @@ export interface Host {
     identity: HostIdentity | null,
     extras?: HostRequestExtras,
   ): Promise<HostResponse | null>
+  /**
+   * Every document of `scope` — for a backup, or to move the scope — with the
+   * scope version it was read at. It uses your store's `list` and `read`
+   * only. When the scope changes during the export it starts again, three
+   * times at most, then rejects with `unavailable`: it never gives old and
+   * new content together. An empty scope is a bundle with no documents.
+   * `beforeCommand` is asked first, as `scope-export` with no params. Runs
+   * on a background thread.
+   */
+  exportScope(call: HostExportCall): Promise<ScopeBundle>
+  /**
+   * Write a bundle into `scope`, which must be empty, in one `commit` of
+   * your store: every document with `expected: null`, and one
+   * `scope-imported` event. A failure leaves the scope as it was.
+   * `beforeCommand` is asked first, as `scope-import` with
+   * `params: { documents, bytes }` — the count and the bytes of the content,
+   * never the content; `afterCommit` is told about the commit.
+   *
+   * Rejects with `invalid_argv` when the bundle is not valid (a digest that
+   * is not its content's, a key outside the engine's naming rules, a key
+   * that appears twice, content over `limits.importBytes`; the message names
+   * the key) and with `refused` when the scope is not empty or
+   * `beforeCommand` refuses. Store failures reject with `revision_conflict`,
+   * `unavailable` or `internal`. Runs on a background thread.
+   */
+  importScope(call: HostImportCall): Promise<HostImportReport>
 }
 
 /**
@@ -562,8 +657,8 @@ export interface Host {
  * HTTP door's optional inputs. A store without `list`, `read` or `commit`
  * throws synchronously, naming the missing functions; so does an unknown
  * option (an `actor` included: the identity comes with every call), a
- * `scopes` that is not a function, or an `authMethods` or `pushTransports`
- * of another shape.
+ * `scopes` that is not a function, an `authMethods` or `pushTransports` of
+ * another shape, or a `limits.importBytes` that is not a positive integer.
  */
 export function createHost(options: CreateHostOptions): Host
 

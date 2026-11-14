@@ -1,7 +1,7 @@
 //! HTTP router assembly. The project routes and the scope list go through
 //! the host kit's HTTP door (`forward`, design D8); the server keeps its own
-//! routes: login and accounts, the admin surfaces, the static assets, the
-//! import and the event stream.
+//! routes: login and accounts, the admin surfaces, the static assets and the
+//! event stream.
 
 use crate::admin;
 use crate::assets;
@@ -14,7 +14,7 @@ use crate::setup;
 use crate::state::AppState;
 use crate::web;
 use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, FromRequestParts, Request, State};
+use axum::extract::{FromRequestParts, Request, State};
 use axum::http::{Method, StatusCode};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -22,22 +22,13 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use speclink_host::http::write_refused;
 
-/// Workspace migration uploads a complete local `openspec/` snapshot in one
-/// atomic request. Keep the larger allowance scoped to `/import`; ordinary API
-/// routes retain Axum's conservative default body limit.
-const IMPORT_BODY_LIMIT_BYTES: usize = forward::READ_LIMIT_BYTES;
-
 /// Build the HTTP router over the shared application state.
 pub fn router(state: AppState) -> Router {
-    // The two project routes the server keeps for itself; every other path
+    // The one project route the server keeps for itself; every other path
     // under the project goes to the door.
     let project = Router::new()
-        .route(
-            "/import",
-            post(routes::import_bundle).layer(DefaultBodyLimit::max(IMPORT_BODY_LIMIT_BYTES)),
-        )
         .route("/events", get(routes::events))
-        // 寫入檢查（fail-closed）：以上每條路由的非 GET／HEAD 方法都要 editor。
+        // 寫入檢查（fail-closed）：這條路由的非 GET／HEAD 方法都要 editor。
         .route_layer(middleware::from_fn_with_state(state.clone(), require_editor))
         .layer(middleware::from_fn(read_body_before_routing));
     Router::new()
@@ -82,9 +73,8 @@ pub fn router(state: AppState) -> Router {
 ///（高負載下 context_api 測試 403 envelope 斷言的間歇紅）。body 先收滿，早回應
 /// 永遠走在 body 之後，連線以 FIN 收場。
 ///
-/// 收滿上限取本 route 家族的最大允量（`/import` 的 32MB）；各 route 的實際內容
-/// 上限仍由其 `DefaultBodyLimit` 在 extractor 層把關，不因此放寬。轉交入口的
-/// 路由（`forward`）自己先收滿本文，理由相同。
+/// 收滿上限取 `forward` 讀本文的上限（匯入的 32MB）。轉交入口的路由（`forward`）
+/// 自己先收滿本文，理由相同。
 async fn read_body_before_routing(req: Request, next: Next) -> Response {
     let (parts, body) = req.into_parts();
     match forward::read_whole(body).await {
@@ -93,10 +83,10 @@ async fn read_body_before_routing(req: Request, next: Next) -> Response {
     }
 }
 
-/// 留在 server 的專案路由（匯入與事件串流）的寫入檢查（server-verb-api「寫入端點
+/// 留在 server 的專案路由（事件串流）的寫入檢查（server-verb-api「寫入端點
 /// 一律要求 editor 角色」）：GET／HEAD 放行，其他方法要求 editor 角色，否則 403、
-/// 處理函式不執行。轉交入口的路由由入口依 `can_write` 把關，訊息相同。解析好的
-/// [`Binding`] 放進 request extensions，處理函式的 extractor 直接取用，不再解析第二次。
+/// 處理函式不執行。轉交入口的路由由入口依 `can_write` 把關，訊息相同。留下的路由
+/// 只有 GET，所以通過檢查的請求只會走到 405，沒有處理函式要接手解析好的 [`Binding`]。
 ///
 /// `route_layer` 也包住每條路由「方法不支援」的 405 處理：對既有路徑送沒有
 /// 註冊的非 GET 方法（例如 `POST /changes/{name}/drift`），reader 先收到 403、
@@ -113,7 +103,6 @@ async fn require_editor(State(state): State<AppState>, req: Request, next: Next)
     if !binding.editor {
         return ApiError(write_refused(&binding.project.key)).into_response();
     }
-    parts.extensions.insert(binding);
     next.run(Request::from_parts(parts, body)).await
 }
 

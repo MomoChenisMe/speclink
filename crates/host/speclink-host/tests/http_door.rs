@@ -275,8 +275,7 @@ fn a_path_the_door_does_not_know_goes_back_to_the_host() {
     let unknown = [
         get(&alpha("nonsense")),
         get(&alpha("changes/demo/nonsense")),
-        // The two routes the demo server keeps for itself.
-        request(Method::Post, &alpha("import")),
+        // The route the demo server keeps for itself.
         get(&alpha("events")),
         // A known path with a method it does not have.
         request(Method::Post, &alpha("changes/demo/drift")),
@@ -1269,8 +1268,13 @@ fn audit_every_route_that_writes_needs_can_write_and_no_read_commits() {
     with_demo(&door);
     for (method, pattern) in routes() {
         let response = answer(&door, &sample_request(method, pattern), Some(&alice()));
-        let writes = !matches!(method, Method::Get | Method::Head) && !matches!(pattern, "/context" | "/skills");
-        if writes {
+        // The export only reads, and hands out the whole scope: it needs
+        // the write switch too.
+        let needs_write = match method {
+            Method::Get | Method::Head => pattern == "/export",
+            _ => !matches!(pattern, "/context" | "/skills"),
+        };
+        if needs_write {
             assert_eq!(response.status, 403, "{} {pattern}", method.as_str());
         } else {
             assert_ne!(response.status, 403, "{} {pattern} only reads", method.as_str());
@@ -2348,4 +2352,340 @@ fn audit_a_project_that_is_not_the_callers_gives_no_skills() {
     let req = send(Method::Post, &format!("{API}/projects/beta/skills"), json!({ "targets": [{ "tool": "claude" }] }));
     assert_eq!(answer(&door, &req, Some(&alice())).status, 404);
     assert!(door.store.calls().is_empty(), "the store was not called");
+}
+
+// ======================================================================
+// 範圍的匯出與匯入 (import-export-on-port, design D3–D5): the two routes,
+// the two bundle versions, the write switch and the size limit.
+// ======================================================================
+
+use speclink_store::content_digest;
+
+const MIB: usize = 1024 * 1024;
+
+/// A keyed (second version) bundle of `docs`.
+fn keyed(docs: &[(&str, &str)]) -> Value {
+    let documents: Vec<Value> = docs
+        .iter()
+        .map(|(key, content)| json!({ "key": key, "content": content, "digest": content_digest(content) }))
+        .collect();
+    json!({ "formatVersion": 2, "documents": documents })
+}
+
+/// A first-version bundle of `documents`, for project alpha, repo web.
+fn by_kind(documents: &[(Value, &str)]) -> Value {
+    let documents: Vec<Value> = documents
+        .iter()
+        .map(|(document, content)| json!({ "document": document, "content": content, "digest": content_digest(content) }))
+        .collect();
+    json!({
+        "formatVersion": 1,
+        "scope": { "project": "alpha", "repo": "web" },
+        "projectRevision": 27,
+        "documents": documents,
+    })
+}
+
+const THREE: &[(&str, &str)] =
+    &[("changes/demo/.meta.yaml", META), ("changes/demo/tasks.md", OPEN_TASKS), ("config.yaml", CONFIG)];
+
+fn import(door: &Door, body: Value) -> HttpResponse {
+    answer(door, &send(Method::Post, &alpha("import"), body), Some(&alice()))
+}
+
+fn export(door: &Door) -> HttpResponse {
+    answer(door, &get(&alpha("export")), Some(&alice()))
+}
+
+/// Every key of scope `scope` of the door's store.
+fn stored(door: &Door, scope: &str) -> Vec<String> {
+    use speclink_store_port::{KeyPrefix, StorePort};
+    let listing = door.store.inner.list(&scope_of(scope), &KeyPrefix::new("").unwrap()).unwrap();
+    listing.entries.into_iter().map(|entry| entry.key.as_str().to_string()).collect()
+}
+
+fn limited(limit: usize) -> HostKitOptions {
+    HostKitOptions { import_limit_bytes: Some(limit), ..one_repo() }
+}
+
+#[test]
+fn a_keyed_bundle_imports_into_an_empty_scope_and_answers_the_count_and_the_version() {
+    let door = door(one_repo());
+
+    let response = import(&door, keyed(THREE));
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    let body = json(&response);
+    assert_eq!(keys(&body), ["documents", "scopeVersion"]);
+    assert_eq!(body["documents"], json!(3));
+    assert_eq!(body["scopeVersion"].as_u64(), Some(etag_of(&response)));
+    assert_eq!(stored(&door, "s1"), ["changes/demo/.meta.yaml", "changes/demo/tasks.md", "config.yaml"]);
+    assert_eq!(content(&door, "s1", "config.yaml").as_deref(), Some(CONFIG));
+    assert_eq!(door.store.calls().commits.len(), 1);
+    // What was imported is what the read routes give.
+    let listed = json(&answer(&door, &get(&alpha("changes")), Some(&alice())));
+    assert_eq!(listed["changes"][0]["name"], "demo");
+}
+
+#[test]
+fn a_first_version_bundle_keeps_the_answer_shape_it_always_had() {
+    let door = door(one_repo());
+    let documents = [
+        (json!({ "type": "changeMeta", "change": "demo" }), META),
+        (json!({ "type": "changeArtifact", "change": "demo", "artifact": "tasks.md" }), OPEN_TASKS),
+        (json!({ "type": "workflowConfig" }), CONFIG),
+    ];
+
+    let response = import(&door, by_kind(&documents));
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    let body = json(&response);
+    assert_eq!(keys(&body), ["documents", "projectRevision"]);
+    assert_eq!(body["projectRevision"].as_u64(), Some(etag_of(&response)));
+    let expected: Vec<Value> =
+        documents.iter().map(|(document, _)| json!({ "document": document, "outcome": "created" })).collect();
+    assert_eq!(body["documents"], json!(expected));
+    assert_eq!(stored(&door, "s1"), ["changes/demo/.meta.yaml", "changes/demo/tasks.md", "config.yaml"]);
+}
+
+#[test]
+fn a_format_version_the_door_does_not_know_is_refused_and_the_scope_is_unchanged() {
+    let door = door(one_repo());
+    let mut body = keyed(THREE);
+    body["formatVersion"] = json!(3);
+
+    let (status, reason, message) = error(&import(&door, body));
+
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert!(message.contains("format version"), "{message}");
+    assert!(door.store.calls().is_empty(), "the store was called");
+}
+
+#[test]
+fn an_export_answers_the_keyed_bundle_and_it_imports_as_it_is_into_another_scope() {
+    let source = door(one_repo());
+    seed(&source, "s1", THREE);
+
+    let response = export(&source);
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    let body = json(&response);
+    assert_eq!(keys(&body), ["documents", "formatVersion", "scopeVersion"]);
+    assert_eq!(body["formatVersion"], json!(2));
+    assert_eq!(body["scopeVersion"].as_u64(), Some(etag_of(&response)));
+    let documents = body["documents"].as_array().expect("documents");
+    let listed: Vec<&str> = documents.iter().map(|doc| doc["key"].as_str().expect("a key")).collect();
+    assert_eq!(listed, ["changes/demo/.meta.yaml", "changes/demo/tasks.md", "config.yaml"], "in key order");
+    for doc in documents {
+        assert_eq!(keys(doc), ["content", "digest", "key"]);
+        assert_eq!(doc["digest"], json!(content_digest(doc["content"].as_str().expect("content"))));
+    }
+    assert!(source.store.calls().commits.is_empty(), "an export commits nothing");
+
+    // The answer, as it is, is an import request.
+    let target = door(one_repo());
+    let imported = import(&target, body);
+    assert_eq!(imported.status, 200, "{:?}", String::from_utf8_lossy(&imported.body));
+    assert_eq!(json(&imported)["documents"], json!(3));
+    assert_eq!(content(&target, "s1", "changes/demo/tasks.md").as_deref(), Some(OPEN_TASKS));
+}
+
+#[test]
+fn without_write_the_import_and_the_export_are_403_and_the_store_is_not_called() {
+    let door = door(switches(false, false));
+    seed(&door, "s1", THREE);
+
+    for response in [import(&door, keyed(THREE)), export(&door)] {
+        let (status, reason, message) = error(&response);
+        assert_eq!((status, reason.as_str()), (403, "permission_denied"));
+        assert_eq!(message, "your role in project 'alpha' is reader; this action needs the editor role");
+    }
+    // HEAD takes the GET route, and its switch with it.
+    assert_eq!(answer(&door, &request(Method::Head, &alpha("export")), Some(&alice())).status, 403);
+    assert!(door.store.calls().is_empty(), "the store was called");
+}
+
+#[test]
+fn a_body_over_the_default_limit_is_413_before_it_is_parsed_and_the_store_is_not_called() {
+    let door = door(one_repo());
+    let mut req = request(Method::Post, &alpha("import"));
+    // Not JSON at all: a body over the limit is never parsed.
+    req.body = vec![b'x'; 33 * MIB];
+
+    let (status, reason, message) = error(&answer(&door, &req, Some(&alice())));
+
+    assert_eq!((status, reason.as_str()), (413, "refused"));
+    assert!(message.contains("33554432"), "the limit, in bytes: {message}");
+    assert!(door.store.calls().is_empty(), "the store was called");
+
+    // Exactly the limit is parsed (and here refused for what it is).
+    req.body.truncate(32 * MIB);
+    assert_eq!(answer(&door, &req, Some(&alice())).status, 400);
+}
+
+#[test]
+fn a_host_that_raises_the_limit_takes_an_import_over_the_default() {
+    let door = door(limited(128 * MIB));
+    let large = "x".repeat(40 * MIB);
+
+    let response = import(&door, keyed(&[("specs/large/spec.md", &large)]));
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body[..response.body.len().min(300)]));
+    assert_eq!(json(&response)["documents"], json!(1));
+    assert_eq!(content(&door, "s1", "specs/large/spec.md").map(|text| text.len()), Some(40 * MIB));
+}
+
+#[test]
+fn a_host_that_lowers_the_limit_refuses_a_body_over_it() {
+    let door = door(limited(MIB));
+    let large = "x".repeat(2 * MIB);
+
+    let (status, reason, _) = error(&import(&door, keyed(&[("specs/large/spec.md", &large)])));
+
+    assert_eq!((status, reason.as_str()), (413, "refused"));
+    assert!(door.store.calls().is_empty(), "the store was called");
+}
+
+#[test]
+fn an_export_is_not_held_to_the_import_limit() {
+    let door = door(limited(MIB));
+    let large = "x".repeat(MIB);
+    let docs: Vec<(String, &str)> = (0..5).map(|i| (format!("specs/large-{i}/spec.md"), large.as_str())).collect();
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(key, content)| (key.as_str(), *content)).collect();
+    seed(&door, "s1", &docs);
+
+    let response = export(&door);
+
+    assert_eq!(response.status, 200);
+    assert!(response.body.len() > 5 * MIB);
+    assert_eq!(json(&response)["documents"].as_array().map(Vec::len), Some(5));
+}
+
+#[test]
+fn a_bundle_that_is_not_valid_is_400_and_names_its_key() {
+    let wrong_digest = json!({
+        "formatVersion": 2,
+        "documents": [{ "key": "config.yaml", "content": CONFIG, "digest": "sha256:0000" }],
+    });
+    let twice = keyed(&[("config.yaml", CONFIG), ("config.yaml", META)]);
+    let no_key = by_kind(&[(json!({ "type": "changeMeta", "change": "a/b" }), META)]);
+    let rows = [
+        ("a digest that is not the content's", wrong_digest, "config.yaml"),
+        ("a key outside the naming rules", keyed(&[("secrets/token", "x")]), "secrets/token"),
+        ("a key with a '..' segment", keyed(&[("changes/../config.yaml", "x")]), "changes/../config.yaml"),
+        ("a key that appears twice", twice, "config.yaml"),
+        ("a first-version document with no key", no_key, "a/b"),
+    ];
+    for (case, body, named) in rows {
+        let door = door(one_repo());
+        let (status, reason, message) = error(&import(&door, body));
+        assert_eq!((status, reason.as_str()), (400, "invalid_argument"), "{case}: {message}");
+        assert!(message.contains(named), "{case}: {message}");
+        assert!(door.store.calls().is_empty(), "{case}: the store was called");
+    }
+}
+
+#[test]
+fn a_scope_that_holds_a_document_refuses_the_import_and_stays_as_it_was() {
+    let door = door(one_repo());
+    seed(&door, "s1", &[("config.yaml", "schema: other\n")]);
+
+    let (status, reason, message) = error(&import(&door, keyed(THREE)));
+
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert!(message.contains("create-new"), "{message}");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+    assert_eq!(stored(&door, "s1"), ["config.yaml"]);
+    assert_eq!(content(&door, "s1", "config.yaml").as_deref(), Some("schema: other\n"));
+}
+
+#[test]
+fn a_first_version_bundle_for_another_scope_is_refused() {
+    let door = door(one_repo());
+    let mut body = by_kind(&[(json!({ "type": "workflowConfig" }), CONFIG)]);
+    body["scope"] = json!({ "project": "alpha", "repo": "api" });
+
+    let (status, reason, message) = error(&import(&door, body.clone()));
+
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert!(message.contains("alpha/api") && message.contains("alpha/web"), "{message}");
+    assert!(door.store.calls().is_empty(), "the store was called");
+
+    // The names come from the body: the message cuts them.
+    body["scope"] = json!({ "project": "p".repeat(100_000), "repo": "r\n".repeat(100_000) });
+    let (status, _, message) = error(&import(&door, body));
+    assert_eq!(status, 409);
+    assert!(message.len() < 600 && !message.contains('\n'), "{} bytes", message.len());
+}
+
+#[test]
+fn an_export_of_a_scope_that_never_stops_changing_is_503_and_says_why() {
+    let store = Arc::new(common::Recorder::never_still());
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).expect("no skill list");
+    let door = Door { kit, store };
+    seed(&door, "s1", THREE);
+
+    let (status, reason, message) = error(&export(&door));
+
+    assert_eq!((status, reason.as_str()), (503, "unavailable"));
+    assert!(message.contains("changed during") && message.contains("try again"), "{message}");
+}
+
+#[test]
+fn a_body_that_is_not_a_bundle_keeps_the_statuses_the_import_always_gave() {
+    let door = door(one_repo());
+    let mut no_version = keyed(THREE);
+    no_version.as_object_mut().unwrap().remove("formatVersion");
+    let mut selector = keyed(THREE);
+    selector["mode"] = json!("overwrite");
+    let mut first_selector = by_kind(&[(json!({ "type": "workflowConfig" }), CONFIG)]);
+    first_selector["mode"] = json!("overwrite");
+    let mut no_scope = by_kind(&[(json!({ "type": "workflowConfig" }), CONFIG)]);
+    no_scope.as_object_mut().unwrap().remove("scope");
+
+    for (case, body) in [
+        ("no format version", no_version),
+        ("a mode field on a keyed bundle", selector),
+        ("a mode field on a first-version bundle", first_selector),
+        ("a first-version bundle with no scope", no_scope),
+    ] {
+        let (status, reason, _) = error(&import(&door, body));
+        assert_eq!((status, reason.as_str()), (422, "invalid_argument"), "{case}");
+    }
+
+    let mut not_json = request(Method::Post, &alpha("import"));
+    not_json.body = b"{formatVersion: 2".to_vec();
+    assert_eq!(error(&answer(&door, &not_json, Some(&alice()))).0, 400);
+    assert!(door.store.calls().is_empty(), "the store was called");
+}
+
+#[test]
+fn the_import_and_the_export_go_through_the_hooks() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, deny("scope-import", "搬移凍結中")));
+
+    let (status, reason, message) = error(&import(&door, keyed(THREE)));
+
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "搬移凍結中"));
+    let bytes = META.len() + OPEN_TASKS.len() + CONFIG.len();
+    assert_eq!(
+        seen.asked.lock().unwrap().clone(),
+        vec![("scope-import".to_string(), json!({ "documents": 3, "bytes": bytes }))],
+        "the count and the bytes, and no content"
+    );
+    assert!(seen.watched.lock().unwrap().is_empty());
+    assert!(stored(&door, "s1").is_empty(), "the scope is unchanged");
+
+    // Allowed, the import lands and the after hook watches it; the export is
+    // asked about under its own name.
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, deny("scope-export", "不開放匯出")));
+    assert_eq!(import(&door, keyed(THREE)).status, 200);
+    assert_eq!(
+        seen.watched.lock().unwrap().clone(),
+        vec![("scope-import".to_string(), vec!["scope-imported".to_string()])]
+    );
+    let (status, reason, message) = error(&export(&door));
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "不開放匯出"));
+    assert_eq!(seen.asked.lock().unwrap().last().cloned(), Some(("scope-export".to_string(), json!({}))));
 }

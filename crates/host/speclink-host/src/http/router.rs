@@ -35,7 +35,7 @@ const fn route(method: Method, pattern: &'static str, handler: Handler) -> Route
 use Method::{Delete, Get, Post, Put};
 
 /// The routes of the door, under `/api/speclink/v1/projects/{key}`. The demo
-/// server keeps `/import` and `/events` for itself.
+/// server keeps `/events` for itself.
 pub(crate) static ROUTES: &[Route] = &[
     route(Get, "/binding", routes::binding),
     route(Get, "/changes", routes::list_changes),
@@ -99,11 +99,17 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Get, "/sync-state", routes::sync_state),
     route(Post, "/context", routes::context),
     route(Post, "/skills", skills::skills),
+    route(Get, "/export", routes::export_scope),
+    route(Post, "/import", routes::import_scope),
 ];
 
 /// The POST routes that only read: a caller who cannot write still uses
 /// them. A new one goes here, and in the design.
 pub(crate) const READ_ONLY_POSTS: &[&str] = &["/context", "/skills"];
+
+/// The GET routes only a caller who can write uses: the export hands out
+/// the whole scope in one answer, its history with it.
+pub(crate) const WRITER_ONLY_READS: &[&str] = &["/export"];
 
 /// What a path matched: the route's pattern and its params, as they are in
 /// the path (still percent-encoded), the project key first.

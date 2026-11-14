@@ -233,3 +233,59 @@ fn rejected_import_leaves_every_local_file_byte_identical() {
         "no backup is created before import succeeds"
     );
 }
+
+/// 兩筆完成記錄的 evidence。
+const DEMO_EVIDENCE: &str = "{\"version\":2,\"change\":\"demo\",\"entries\":[{\"taskId\":\"tsk_1\",\"taskDesc\":\"1.1 First\",\"touchedFiles\":[\"src/a.rs\"],\"recordedAt\":\"2026-07-21T10:00:00Z\"},{\"taskId\":\"tsk_2\",\"taskDesc\":\"1.2 Second\",\"touchedFiles\":[\"src/b.rs\"],\"recordedAt\":\"2026-07-21T11:00:00Z\"}]}\n";
+
+#[test]
+fn evidence_and_the_board_order_are_on_the_remote_after_a_migration() {
+    // workspace-migration「evidence 隨遷移保留」「看板順序隨遷移保留」。
+    let harness = common::harness();
+    let root = tempfile::tempdir().unwrap();
+    write(root.path(), "speclink/config.yaml", "schema: spec-driven\n");
+    write(root.path(), "speclink/changes/demo/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-21\n");
+    write(root.path(), "speclink/changes/demo/tasks.md", "- [x] 1.1 First\n- [x] 1.2 Second\n");
+    write(root.path(), "speclink/changes/demo/.evidence.json", DEMO_EVIDENCE);
+    // 順序鍵故意和名稱序相反：本機看板同一欄依序是 c、b、a。只照名稱排的話會是 a、b、c。
+    for (change, rank) in [("a", "n"), ("b", "f"), ("c", "b")] {
+        write(
+            root.path(),
+            &format!("speclink/changes/{change}/.meta.yaml"),
+            &format!("schema: spec-driven\ncreated: 2026-07-21\nboard_rank: {rank}\n"),
+        );
+        write(root.path(), &format!("speclink/changes/{change}/proposal.md"), "## Why\n\nRanked.\n");
+    }
+    let credentials = MemoryCredentialStore::new();
+    let pat = common::pat_of(&harness);
+    credentials.set(&harness.origin, CredentialKind::Pat, &pat).expect("set PAT");
+    let manager = Arc::new(TokenManager::new(&harness.origin));
+
+    remote::migrate_workspace(root.path(), &harness.origin, "demo", "backend", &manager, &credentials)
+        .expect("bundle uploads into the empty scope");
+
+    let client = Client::new(
+        &format!("{}/api/speclink/v1/projects/demo", harness.origin),
+        &pat,
+        Some("backend"),
+    );
+    let evidence = client.change_evidence("demo").expect("the evidence of demo");
+    let tasks: Vec<&str> = evidence.entries.iter().map(|entry| entry.task_id.as_str()).collect();
+    assert_eq!(tasks, ["tsk_1", "tsk_2"], "the same two records");
+    assert_eq!(evidence.entries[1].touched_files, ["src/b.rs"]);
+
+    let board = client.board_order().expect("the board order");
+    let doc = speclink_protocol::query::BoardOrderDoc::from_content(board.content.as_deref());
+    let ranks: Vec<(&str, &str)> = doc.changes.iter().map(|(name, rank)| (name.as_str(), rank.as_str())).collect();
+    assert_eq!(ranks, [("a", "n"), ("b", "f"), ("c", "b")]);
+    assert!(doc.discussions.is_empty());
+
+    // 遠端的 plan 以本機的順序列出這三個變更。
+    let plan = client.plan().expect("the plan");
+    let ranked: Vec<&str> = plan
+        .waves
+        .iter()
+        .flat_map(|wave| wave.changes.iter().map(String::as_str))
+        .filter(|name| ["a", "b", "c"].contains(name))
+        .collect();
+    assert_eq!(ranked, ["c", "b", "a"]);
+}

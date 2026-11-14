@@ -10,14 +10,15 @@
 //! it reports 0 as every last-modified time, and the scopes of one project
 //! share their version counter.
 
-use crate::port_view::{parse_key, KeyKind};
+use crate::transfer::{document_of_key, key_of_document};
+use speclink_protocol::query::ImportDocumentId;
 use speclink_store::{
     CommandContext, DocumentId, EventRecord, ExpectedRevision, ProjectId, RepoId, Revision, Scope,
     StoreError, TeamStore,
 };
 use speclink_store_port::{
-    keys, Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError,
-    ScopeId, StorePort, Timestamp, Version,
+    Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError, ScopeId,
+    StorePort, Timestamp, Version,
 };
 use std::collections::{BTreeMap, HashMap};
 use std::ops::Deref;
@@ -25,70 +26,37 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use std::thread::ThreadId;
 
 /// The TeamStore document a key names, or `None` when the key names none of
-/// the nine document kinds.
+/// the nine document kinds. The keys are the import's ([`crate::transfer`]):
+/// there is one table of them.
 fn doc_of(key: &DocKey) -> Option<DocumentId> {
-    Some(match parse_key(key.as_str())? {
-        KeyKind::ChangeMeta { change } => DocumentId::ChangeMeta {
-            change: change.to_string(),
-        },
-        KeyKind::ChangeEvidence { change } => DocumentId::ChangeEvidence {
-            change: change.to_string(),
-        },
-        KeyKind::ChangeArtifact { change, artifact } => DocumentId::ChangeArtifact {
-            change: change.to_string(),
-            artifact: artifact.to_string(),
-        },
-        KeyKind::ArchivedChangeDoc { dated_name, doc } => DocumentId::ArchivedChange {
-            change: dated_name.to_string(),
-            doc: doc.to_string(),
-        },
-        KeyKind::Spec { capability } => DocumentId::CanonicalSpec {
-            capability: capability.to_string(),
-        },
-        KeyKind::Discussion { slug } => DocumentId::Discussion {
-            slug: slug.to_string(),
-            archived: false,
-        },
-        // The stored name is the slug, as it is: a record the Engine archives
-        // through the port carries its creation date, an older one does not.
-        KeyKind::ArchivedDiscussion { stem } => DocumentId::Discussion {
-            slug: stem.to_string(),
-            archived: true,
-        },
-        KeyKind::Config => DocumentId::WorkflowConfig,
-        KeyKind::Language => DocumentId::Language,
-        KeyKind::BoardOrder => DocumentId::BoardOrder,
+    Some(match document_of_key(key)? {
+        ImportDocumentId::ChangeMeta { change } => DocumentId::ChangeMeta { change },
+        ImportDocumentId::ChangeEvidence { change } => DocumentId::ChangeEvidence { change },
+        ImportDocumentId::ChangeArtifact { change, artifact } => DocumentId::ChangeArtifact { change, artifact },
+        ImportDocumentId::ArchivedChange { change, doc } => DocumentId::ArchivedChange { change, doc },
+        ImportDocumentId::CanonicalSpec { capability } => DocumentId::CanonicalSpec { capability },
+        ImportDocumentId::Discussion { slug, archived } => DocumentId::Discussion { slug, archived },
+        ImportDocumentId::WorkflowConfig => DocumentId::WorkflowConfig,
+        ImportDocumentId::Language => DocumentId::Language,
+        ImportDocumentId::BoardOrder => DocumentId::BoardOrder,
     })
 }
 
 /// The key of a TeamStore document, or `None` when its names cannot make a
 /// key that reads back as the same document (a name with a `/`, for one).
 fn key_of(doc: &DocumentId) -> Option<DocKey> {
-    let key = match doc {
-        DocumentId::ChangeMeta { change } => keys::change_meta(change),
-        DocumentId::ChangeEvidence { change } => keys::change_evidence(change),
-        DocumentId::ChangeArtifact { change, artifact } => keys::change_artifact(change, artifact),
-        DocumentId::CanonicalSpec { capability } => keys::spec(capability),
-        DocumentId::Discussion {
-            slug,
-            archived: false,
-        } => keys::discussion(slug),
-        // The contract's builders for the two archived kinds take dated names
-        // only. A TeamStore holds older records without a date, so these keep
-        // the stored name as it is.
-        DocumentId::ArchivedChange { change, doc } => {
-            DocKey::new(format!("{}{change}/{doc}", keys::ARCHIVED_CHANGES))
-        }
-        DocumentId::Discussion {
-            slug,
-            archived: true,
-        } => DocKey::new(format!("{}{slug}.md", keys::ARCHIVED_DISCUSSIONS)),
-        DocumentId::WorkflowConfig => Ok(keys::config()),
-        DocumentId::Language => Ok(keys::language()),
-        DocumentId::BoardOrder => Ok(keys::board_order()),
-    }
-    .ok()?;
-    (doc_of(&key).as_ref() == Some(doc)).then_some(key)
+    let doc = doc.clone();
+    key_of_document(&match doc {
+        DocumentId::ChangeMeta { change } => ImportDocumentId::ChangeMeta { change },
+        DocumentId::ChangeEvidence { change } => ImportDocumentId::ChangeEvidence { change },
+        DocumentId::ChangeArtifact { change, artifact } => ImportDocumentId::ChangeArtifact { change, artifact },
+        DocumentId::ArchivedChange { change, doc } => ImportDocumentId::ArchivedChange { change, doc },
+        DocumentId::CanonicalSpec { capability } => ImportDocumentId::CanonicalSpec { capability },
+        DocumentId::Discussion { slug, archived } => ImportDocumentId::Discussion { slug, archived },
+        DocumentId::WorkflowConfig => ImportDocumentId::WorkflowConfig,
+        DocumentId::Language => ImportDocumentId::Language,
+        DocumentId::BoardOrder => ImportDocumentId::BoardOrder,
+    })
 }
 
 fn backend(message: impl Into<String>) -> PortError {

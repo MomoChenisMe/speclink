@@ -30,7 +30,7 @@ pub use router::{match_route, routes, RouteMatch};
 use crate::binding::{resolve_binding, BindingCandidate, BindingError};
 use crate::kit::{Caller, HostKit, Identity, ProjectEntry};
 use speclink_core::fields::Fields;
-use router::{Route, READ_ONLY_POSTS};
+use router::{Route, READ_ONLY_POSTS, WRITER_ONLY_READS};
 use serde::Serialize;
 use speclink_protocol::binding::ScopeRef;
 use speclink_protocol::query::{AuthWhoamiResponse, ProjectScope, ScopesResponse, WhoamiUser};
@@ -129,7 +129,8 @@ impl HostKit {
     /// header is this one (409); the caller's scope function lists the
     /// project (404) and the repo — the `X-Speclink-Repo` header's, or the
     /// only one (404, or 409 with the candidates when there are several);
-    /// a request that writes needs `can_write` (403). Then the route runs.
+    /// a request that writes, and the export, need `can_write` (403). Then
+    /// the route runs.
     pub fn handle(&self, request: &HttpRequest, identity: Option<&Identity>) -> Option<HttpResponse> {
         self.handle_with_fields(request, identity, &Fields::new())
     }
@@ -229,8 +230,11 @@ impl HostKit {
         let project = projects.iter().find(|p| p.key == key).ok_or_else(|| project_not_found(&key))?;
         let repo = choose_repo(&project.key, &project.repos, |r| &r.key, request.header("x-speclink-repo"))?;
 
-        let writes = !request.method.reads() && !READ_ONLY_POSTS.contains(&route.pattern);
-        if writes && !repo.can_write {
+        let needs_write = match request.method.reads() {
+            true => WRITER_ONLY_READS.contains(&route.pattern),
+            false => !READ_ONLY_POSTS.contains(&route.pattern),
+        };
+        if needs_write && !repo.can_write {
             return Err(write_refused(&project.key));
         }
 

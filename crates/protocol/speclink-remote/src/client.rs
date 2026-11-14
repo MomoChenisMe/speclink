@@ -32,7 +32,7 @@ use speclink_protocol::query::{
     AnalyzeReportResponse, ApplyInstructions, ArchivedListResponse, ArtifactContent,
     ArtifactInstructions, BoardOrderResponse, ChangeEvidenceResponse, ChangeStatus,
     ConfigResponse, ImportBundle,
-    ImportReportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
+    ImportReportResponse, ScopeBundle, ScopeImportResponse, LanguageResponse, ListChangesResponse, ListDiscussionsResponse,
     ListSpecsResponse, PlanResponse, PutBoardOrderRequest, PutBoardOrderResponse, PutConfigRequest,
     PutConfigResponse, ScopesResponse, SearchDiscussionsResponse, SearchResponse,
     ShowDiscussionResponse,
@@ -408,6 +408,21 @@ impl Client {
     /// so callers cannot select the store's maintenance-only Overwrite path.
     pub fn import(&self, bundle: &ImportBundle) -> Result<ImportReportResponse, RemoteError> {
         self.post("/import", bundle)
+    }
+
+    /// `POST /import` with a bundle that names each document by its key (the
+    /// second version). A server that knows the first version only refuses
+    /// it (`refused`, the message names the format version); the caller can
+    /// then send the same contents with [`Client::import`].
+    pub fn import_scope(&self, bundle: &ScopeBundle) -> Result<ScopeImportResponse, RemoteError> {
+        self.post("/import", bundle)
+    }
+
+    /// `GET /export` — every document of the bound scope as a keyed bundle,
+    /// with the scope version it was taken at. It needs the write role. A
+    /// server from before the route answers 404.
+    pub fn export(&self) -> Result<ScopeBundle, RemoteError> {
+        self.get("/export")
     }
 
     /// `PUT /config` with the complete workflow policy source and the scope

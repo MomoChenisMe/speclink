@@ -1,34 +1,18 @@
-//! The project routes the demo server keeps for itself: the import and the
-//! event stream. Every other project route is the host kit's HTTP door
-//! (`forward`).
+//! The project route the demo server keeps for itself: the event stream.
+//! Every other project route is the host kit's HTTP door (`forward`).
 
 use crate::auth::Binding;
 use crate::error::ApiError;
-use speclink_host::http::HttpError;
 use crate::events::Subscription;
 use crate::state::AppState;
-use axum::http::header::ETAG;
+use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use axum::extract::State;
-use axum::Json;
-use serde::Serialize;
 use speclink_protocol::events::InvalidationEvent;
-use speclink_protocol::query::{
-    ImportBundle, ImportDocumentId, ImportDocumentOutcome, ImportReportResponse, ImportedDocument,
-};
-use speclink_store::{
-    content_digest, Bundle, BundleDoc, DocumentId, ImportMode, ImportOutcome, ProjectId, RepoId, Revision, Scope,
-    StoreError, BUNDLE_FORMAT_VERSION,
-};
+use speclink_store::{ProjectId, RepoId, Scope};
 use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
-
-/// A JSON response carrying the scope ETag.
-fn ok<T: Serialize>(dto: T, etag: &str) -> Response {
-    ([(ETAG, etag.to_string())], Json(dto)).into_response()
-}
 
 /// The store scope a binding addresses.
 fn scope_of(binding: &Binding) -> Scope {
@@ -36,139 +20,6 @@ fn scope_of(binding: &Binding) -> Scope {
         ProjectId::new(binding.project.key.clone()),
         RepoId::new(binding.repo.clone()),
     )
-}
-
-/// `POST /import` — local-to-remote migration into one empty bound scope.
-/// The wire has no operation selector; the handler always invokes CreateNew.
-pub async fn import_bundle(
-    State(state): State<AppState>,
-    binding: Binding,
-    Json(request): Json<ImportBundle>,
-) -> Result<Response, ApiError> {
-    if request.format_version != BUNDLE_FORMAT_VERSION {
-        return Err(HttpError::refused(format!(
-            "unsupported bundle format version {} (supported: {})",
-            request.format_version, BUNDLE_FORMAT_VERSION
-        )).into());
-    }
-
-    let scope = scope_of(&binding);
-    if request.scope.project != scope.project.as_str() || request.scope.repo != scope.repo.as_str()
-    {
-        return Err(HttpError::refused(format!(
-            "bundle scope {}/{} does not match authenticated binding {}/{}",
-            request.scope.project,
-            request.scope.repo,
-            scope.project.as_str(),
-            scope.repo.as_str()
-        )).into());
-    }
-
-    let mut documents = Vec::with_capacity(request.documents.len());
-    for document in request.documents {
-        let actual_digest = content_digest(&document.content);
-        if actual_digest != document.digest {
-            return Err(HttpError::invalid_argument(format!(
-                "bundle digest mismatch for {:?}",
-                document.document
-            )).into());
-        }
-        documents.push(BundleDoc {
-            doc: import_document_id(document.document),
-            content: document.content,
-            digest: document.digest,
-        });
-    }
-
-    let bundle = Bundle {
-        format_version: request.format_version,
-        scope: scope.clone(),
-        project_revision: Revision(request.project_revision),
-        documents,
-    };
-    let store = state.store.clone();
-    let report = tokio::task::spawn_blocking(move || {
-        store
-            .import(bundle, ImportMode::CreateNew)
-            .map_err(import_store_error)
-    })
-    .await
-    .map_err(|error| HttpError::internal(format!("blocking task failed: {error}")))??;
-
-    let project_revision = report.project_revision.0;
-    let documents = report
-        .documents
-        .into_iter()
-        .map(|document| {
-            if document.outcome != ImportOutcome::Created {
-                return Err(HttpError::internal(
-                    "CreateNew import returned an impossible overwrite outcome",
-                ).into());
-            }
-            Ok(ImportedDocument {
-                document: store_document_id(document.doc),
-                outcome: ImportDocumentOutcome::Created,
-            })
-        })
-        .collect::<Result<Vec<_>, ApiError>>()?;
-
-    state.events.notify(&scope);
-    Ok(ok(
-        ImportReportResponse {
-            project_revision,
-            documents,
-        },
-        &format!("\"{project_revision}\""),
-    ))
-}
-
-fn import_store_error(error: StoreError) -> ApiError {
-    match error {
-        StoreError::Backend { source } if source.contains("import (create-new)") => {
-            HttpError::refused(source).into()
-        }
-        other => ApiError::from(other),
-    }
-}
-
-fn import_document_id(document: ImportDocumentId) -> DocumentId {
-    match document {
-        ImportDocumentId::ChangeMeta { change } => DocumentId::ChangeMeta { change },
-        ImportDocumentId::ChangeArtifact { change, artifact } => {
-            DocumentId::ChangeArtifact { change, artifact }
-        }
-        ImportDocumentId::ChangeEvidence { change } => DocumentId::ChangeEvidence { change },
-        ImportDocumentId::CanonicalSpec { capability } => DocumentId::CanonicalSpec { capability },
-        ImportDocumentId::Discussion { slug, archived } => {
-            DocumentId::Discussion { slug, archived }
-        }
-        ImportDocumentId::WorkflowConfig => DocumentId::WorkflowConfig,
-        ImportDocumentId::ArchivedChange { change, doc } => {
-            DocumentId::ArchivedChange { change, doc }
-        }
-        ImportDocumentId::Language => DocumentId::Language,
-        ImportDocumentId::BoardOrder => DocumentId::BoardOrder,
-    }
-}
-
-fn store_document_id(document: DocumentId) -> ImportDocumentId {
-    match document {
-        DocumentId::ChangeMeta { change } => ImportDocumentId::ChangeMeta { change },
-        DocumentId::ChangeArtifact { change, artifact } => {
-            ImportDocumentId::ChangeArtifact { change, artifact }
-        }
-        DocumentId::ChangeEvidence { change } => ImportDocumentId::ChangeEvidence { change },
-        DocumentId::CanonicalSpec { capability } => ImportDocumentId::CanonicalSpec { capability },
-        DocumentId::Discussion { slug, archived } => {
-            ImportDocumentId::Discussion { slug, archived }
-        }
-        DocumentId::WorkflowConfig => ImportDocumentId::WorkflowConfig,
-        DocumentId::ArchivedChange { change, doc } => {
-            ImportDocumentId::ArchivedChange { change, doc }
-        }
-        DocumentId::Language => ImportDocumentId::Language,
-        DocumentId::BoardOrder => ImportDocumentId::BoardOrder,
-    }
 }
 
 /// `GET /events` — the project-scoped SSE invalidation stream (server-event-stream
