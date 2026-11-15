@@ -2,8 +2,8 @@
 
 // Public entry of @speclink/engine. The generated `binding.js` loads the
 // platform-specific native addon; this wrapper shapes the public API:
-// createEngine forms, Promise-based dispatch, and Error objects carrying a
-// semantic `code` property.
+// createEngine and createHost, Promise-based dispatch, and Error objects
+// carrying a semantic `code` property.
 
 const binding = require('./binding.js')
 
@@ -40,31 +40,17 @@ function unwrap(envelope) {
 }
 
 /**
- * Build an engine over one of the two storage forms:
- * - `{ store: { type: 'fs', root, specDir? } }` — built-in filesystem store
- * - `{ store: <object implementing the Store interface> }` — host storage
- *
- * `options.actor` ("Name <email>") is the operator every stamp this engine
- * writes is attributed to. Both forms accept it; without it the fs form falls
- * back to the workspace's git identity and a host store stamps nothing.
- */
-/**
- * The invoker the native bridge calls through one ThreadsafeFunction, for the
- * engine's Store object and for the host kit's store port and hooks alike:
- * runs `target[method](...args)` (plain values and Promises both accepted,
+ * The invoker the native side calls through one ThreadsafeFunction, for the
+ * host kit's store port, its hooks and the conformance harness alike: runs
+ * `target[method](...args)` (plain values and Promises both accepted,
  * synchronous throws captured) and settles exactly once with `(error, value)`.
  * The error carries the thrown object's `code`, `message`, `key` and `actual`.
+ * Every caller builds `target` with the functions the native side names.
  */
 function makeInvoker(target) {
   return (method, args, settle) => {
     // The error crosses as JSON text, like an `asJson` result.
     const fail = (fields) => settle(JSON.stringify(fields), null)
-    if (typeof target[method] !== 'function') {
-      // Optional methods (e.g. claim) surface as a marker the native side
-      // translates into a semantic "not supported by this store" error.
-      fail({ message: `store does not implement ${method}`, code: '__missing__' })
-      return
-    }
     Promise.resolve()
       .then(() => target[method](...args))
       .then(
@@ -98,23 +84,40 @@ function thrownFields(e) {
   }
 }
 
+/**
+ * Build an engine over a local project folder:
+ * `{ store: { type: 'fs', root, specDir? } }`. A store of your own goes to
+ * `createHost`, as three functions (list, read, commit).
+ *
+ * `options.actor` ("Name <email>") is the operator every stamp this engine
+ * writes is attributed to; without it the engine uses the project's git
+ * identity.
+ */
 function createEngine(options) {
   const store = options?.store
   if (!store || typeof store !== 'object') {
-    throw new TypeError("createEngine: options.store is required — pass { type: 'fs', root } or a Store object")
+    throw new TypeError(
+      "createEngine: options.store must be an object — pass { type: 'fs', root }, or use createHost for a custom store (list, read, commit)",
+    )
+  }
+  // `type` is the only property read before this check, so an object of
+  // another shape gets none of its methods called.
+  if (store.type !== 'fs') {
+    throw new TypeError(
+      "createEngine: only { type: 'fs', root } is accepted — use createHost for a custom store (list, read, commit)",
+    )
   }
   // The operator identity is bound here, once — dispatch never takes one.
   const actor = options?.actor
   if (actor !== undefined && typeof actor !== 'string') {
     throw new TypeError("createEngine: options.actor must be a string (\"Name <email>\")")
   }
-  if (store.type === 'fs') {
-    if (typeof store.root !== 'string') {
-      throw new TypeError("createEngine: fs store requires a string 'root'")
-    }
-    return new Engine(binding.engineFromFs(store.root, store.specDir, actor))
+  // Each property is read once: the value that was checked is the value used.
+  const { root, specDir } = store
+  if (typeof root !== 'string') {
+    throw new TypeError("createEngine: fs store requires a string 'root'")
   }
-  return new Engine(binding.engineFromStore(store, makeInvoker(store), actor))
+  return new Engine(binding.engineFromFs(root, specDir, actor))
 }
 
 /**

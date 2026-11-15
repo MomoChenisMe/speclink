@@ -1,11 +1,13 @@
-// dispatch 的蓋章動詞（spec：dispatch 的蓋章動詞）。宿主 Store 形式沒有工作樹，
-// 指紋是宿主自己的真相——scope／missing 走 stdin 的 JSON（server stamp request
-// body 的 scope／missing 子集；accept／agent 走 argv 旗標）。
+// dispatch 的蓋章動詞（spec：dispatch 的蓋章動詞）。scope 指紋與 missing 清單 argv
+// 承載不了，走 stdin 的 JSON（server stamp request body 的 scope／missing 子集；
+// accept／agent 走 argv 旗標）。
 import { execFileSync } from 'node:child_process'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { createEngine } from '../index.js'
-import { cliBin, fixtureProject, makeFsFixture, memoryStore } from './helpers'
+import { cliBin, makeFsFixture, projectFiles } from './helpers'
 
 const ACTOR = 'Rev <rev@example.com>'
 // beta 的任務全數完成——蓋章守門的前提。
@@ -16,131 +18,97 @@ const CLEAN_ROUND = `**Scope**: ${SCOPE_FILE}\n\n- [SUGGESTION] ${SCOPE_FILE} �
 const BLOCKING_ROUND = `**Scope**: ${SCOPE_FILE}\n\n- [CRITICAL] ${SCOPE_FILE} — unwrap on user input\n`
 const STAMP_PAYLOAD = JSON.stringify({ scope: [{ path: SCOPE_FILE, hash: '0f9c' }] })
 
-function engineWithActor(actor?: string) {
-  const store = memoryStore(fixtureProject())
+/** A new fixture project, an engine on it, and readers for the change's metadata and tickets. */
+function project(actor?: string) {
+  const root = makeFsFixture()
+  const store = { type: 'fs' as const, root }
   const engine = actor === undefined ? createEngine({ store }) : createEngine({ store, actor })
-  return { store, engine }
+  const file = (name: string) => join(root, 'speclink', 'changes', CHANGE, name)
+  return {
+    root,
+    engine,
+    meta: () => readFileSync(file('.meta.yaml'), 'utf8'),
+    /** The ticket's text, or null when the change has none. */
+    ticket: (name = 'review.md') => (existsSync(file(name)) ? readFileSync(file(name), 'utf8') : null),
+  }
 }
-
-const metaOf = (store: ReturnType<typeof memoryStore>) =>
-  store.readArtifact(CHANGE, '.openspec.yaml').then((m) => m ?? '')
 
 describe('review 蓋章鏈', () => {
   it('add-round 建立工單、stamp 以建構期 actor 落 reviewed_by', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta, ticket } = project(ACTOR)
     const added = await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], {
       stdin: CLEAN_ROUND,
     })
     expect(added).toEqual({ change: CHANGE, round: 1 })
-    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
+    expect(ticket()).toContain('## Round 1')
 
     const stamped = await engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], {
       stdin: STAMP_PAYLOAD,
     })
     expect(stamped).toEqual({ change: CHANGE })
-    const meta = await metaOf(store)
-    expect(meta).toContain(`reviewed_by: ${ACTOR}\n`)
+    expect(meta()).toContain(`reviewed_by: ${ACTOR}\n`)
     // 蓋章是 read-modify-write：既有欄位必須原樣保留，不得整份洗掉。
-    expect(meta).toContain('schema: spec-driven\n')
-    expect(meta).toContain('created_by: tester\n')
+    expect(meta()).toContain('schema: spec-driven\n')
+    expect(meta()).toContain('created_by: tester\n')
     // 蓋章效果的另一半：工單刪除。
-    expect(await store.readArtifact(CHANGE, 'review.md')).toBeNull()
+    expect(ticket()).toBeNull()
   })
 })
 
 describe('verify 蓋章鏈', () => {
   it('同一 actor 落 verified_by', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta } = project(ACTOR)
     const added = await engine.dispatch(['verify', 'add-round', CHANGE, '--stdin'], {
       stdin: CLEAN_ROUND,
     })
     expect(added).toEqual({ change: CHANGE, round: 1 })
 
     await engine.dispatch(['verify', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD })
-    expect(await metaOf(store)).toContain(`verified_by: ${ACTOR}\n`)
+    expect(meta()).toContain(`verified_by: ${ACTOR}\n`)
   })
 })
 
 describe('蓋章守門與 argv 契約', () => {
   it('末輪未解必修 findings 讓 stamp 以語義化訊息拒絕，且不落任何章', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: BLOCKING_ROUND })
     await expect(
       engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
     ).rejects.toThrow(/CRITICAL|unresolved|must-fix/i)
-    expect(await metaOf(store)).not.toContain('reviewed_by:')
+    expect(meta()).not.toContain('reviewed_')
   })
 
   it('--accept 豁免必修條件後落章', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: BLOCKING_ROUND })
     await engine.dispatch(['review', 'stamp', CHANGE, '--accept', '--stdin'], {
       stdin: STAMP_PAYLOAD,
     })
-    expect(await metaOf(store)).toContain(`reviewed_by: ${ACTOR}\n`)
+    expect(meta()).toContain(`reviewed_by: ${ACTOR}\n`)
   })
 
   it('--agent 落 reviewed_with', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     await engine.dispatch(['review', 'stamp', CHANGE, '--agent', 'claude', '--stdin'], {
       stdin: STAMP_PAYLOAD,
     })
-    expect(await metaOf(store)).toContain('reviewed_with: claude\n')
+    expect(meta()).toContain('reviewed_with: claude\n')
   })
 
-  it('未給 actor 時蓋章無 _by 欄位（宿主 Store 無回退）', async () => {
-    const { store, engine } = engineWithActor()
+  it('未給 actor 時 reviewed_by 回退專案的 git 身分', async () => {
+    // 與 created_by 同一條解析：有 actor 用它，沒有就用 git 身分。
+    const { root, engine, meta } = project()
+    execFileSync('git', ['init', '-q'], { cwd: root })
+    execFileSync('git', ['config', 'user.name', 'Fixture Dev'], { cwd: root })
+    execFileSync('git', ['config', 'user.email', 'fixture@example.com'], { cwd: root })
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     await engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD })
-    const meta = await metaOf(store)
-    expect(meta).toContain('reviewed_at:')
-    expect(meta).not.toContain('reviewed_by:')
-  })
-
-  it('宿主 Store 未實作 deleteArtifact 時蓋章在動手前拒絕、工單不動', async () => {
-    const store = memoryStore(fixtureProject())
-    // deleteArtifact 是蓋章前置的選配方法——拿掉它，其餘動詞照走。
-    delete (store as Partial<typeof store>).deleteArtifact
-    const engine = createEngine({ store, actor: ACTOR })
-    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
-    await expect(
-      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
-    ).rejects.toThrow(/deleteArtifact/)
-    // 前置檢查擋在任何寫入之前：工單還在、章沒落。
-    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
-    expect(await metaOf(store)).not.toContain('reviewed_by:')
-    await expect(engine.dispatch(['list', '--json'])).resolves.toBeTruthy()
-  })
-
-  it('宿主 Store 未實作 writeChangeMeta 時蓋章在刪工單前拒絕', async () => {
-    const store = memoryStore(fixtureProject())
-    // 蓋章順序是先刪工單再寫 meta——缺 writeChangeMeta 若不擋在前面，
-    // 工單會先被刪掉、章卻落不下來（全部輪次永久遺失）。
-    delete (store as Partial<typeof store>).writeChangeMeta
-    const engine = createEngine({ store, actor: ACTOR })
-    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
-    await expect(
-      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
-    ).rejects.toThrow(/writeChangeMeta/)
-    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
-  })
-
-  it('宿主 Store 未實作 readChangeMeta 時蓋章拒絕，不得靜默洗掉既有 meta', async () => {
-    const store = memoryStore(fixtureProject())
-    // 缺 readChangeMeta 時橋接層讀作「無 metadata」，蓋章寫回會把
-    // schema／created_by 整份丟掉——必須拒絕，不能靜默資料流失。
-    delete (store as Partial<typeof store>).readChangeMeta
-    const engine = createEngine({ store, actor: ACTOR })
-    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
-    await expect(
-      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
-    ).rejects.toThrow(/readChangeMeta/)
-    expect(await metaOf(store)).toContain('created_by: tester\n')
+    expect(meta()).toContain('reviewed_by: Fixture Dev <fixture@example.com>\n')
   })
 
   it('同一 engine 的 review 與 verify 並發蓋章不互吃', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     await engine.dispatch(['verify', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     // stamp 是整份 meta 的 read-modify-write：同實例內序列化，後蓋的章
@@ -149,13 +117,12 @@ describe('蓋章守門與 argv 契約', () => {
       engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
       engine.dispatch(['verify', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD }),
     ])
-    const meta = await metaOf(store)
-    expect(meta).toContain(`reviewed_by: ${ACTOR}\n`)
-    expect(meta).toContain(`verified_by: ${ACTOR}\n`)
+    expect(meta()).toContain(`reviewed_by: ${ACTOR}\n`)
+    expect(meta()).toContain(`verified_by: ${ACTOR}\n`)
   })
 
   it('未支援的子動詞以 invalid_argv 拒絕，訊息說明只能在有 checkout 的一端執行', async () => {
-    const { engine } = engineWithActor(ACTOR)
+    const { engine } = project(ACTOR)
     await expect(engine.dispatch(['review', 'prepare', CHANGE])).rejects.toMatchObject({
       code: 'invalid_argv',
       message: "'review prepare' only runs where a checkout exists — dispatch has none",
@@ -163,39 +130,33 @@ describe('蓋章守門與 argv 契約', () => {
   })
 
   it('stamp 的 stdin JSON 壞掉時以 invalid_argv 拒絕', async () => {
-    const { engine } = engineWithActor(ACTOR)
+    const { root, engine } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
+    const before = projectFiles(root)
     await expect(
       engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: 'not json' }),
     ).rejects.toMatchObject({ code: 'invalid_argv' })
+    expect(projectFiles(root)).toEqual(before)
   })
 
   it('stamp 帶了 stdin 卻沒帶 --stdin 時以 invalid_argv 拒絕、不落章', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+    const { engine, meta, ticket } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     // 忘了旗標的 JSON 不能被靜默丟掉、改用空範圍蓋章。
     await expect(
       engine.dispatch(['review', 'stamp', CHANGE], { stdin: STAMP_PAYLOAD }),
     ).rejects.toMatchObject({ code: 'invalid_argv' })
-    expect(await store.readArtifact(CHANGE, 'review.md')).toContain('## Round 1')
-    expect(await metaOf(store)).not.toContain('reviewed_by:')
-  })
-
-  it('宿主 Store 缺蓋章方法時先回報缺方法，再看 stdin 的 JSON', async () => {
-    const store = memoryStore(fixtureProject())
-    delete (store as Partial<typeof store>).deleteArtifact
-    const engine = createEngine({ store, actor: ACTOR })
-    await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
-    await expect(
-      engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: 'not json' }),
-    ).rejects.toThrow(/deleteArtifact/)
+    expect(ticket()).toContain('## Round 1')
+    expect(meta()).not.toContain('reviewed_')
   })
 
   it('stamp 不帶 --stdin 時 scope 與 missing 讀作空清單', async () => {
-    const { engine } = engineWithActor(ACTOR)
+    const { engine, meta, ticket } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     // 工單聯集非空、scope 為空 → 引擎的分割守門拒絕（拒絕訊息由引擎產生）。
     await expect(engine.dispatch(['review', 'stamp', CHANGE])).rejects.toThrow()
+    expect(ticket()).toContain('## Round 1')
+    expect(meta()).not.toContain('reviewed_')
   })
 })
 
@@ -227,14 +188,14 @@ describe('讀取與丟棄工單', () => {
     })
   }
 
-  it('宿主 Store 上 show 與 discard 同樣可用', async () => {
-    const { store, engine } = engineWithActor(ACTOR)
+  it('show 帶出末輪的 scope，discard 刪掉工單檔', async () => {
+    const { engine, ticket } = project(ACTOR)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     expect(await engine.dispatch(['review', 'show', CHANGE])).toMatchObject({
       change: CHANGE,
       lastRound: { index: 1, scope: [SCOPE_FILE] },
     })
     await engine.dispatch(['review', 'discard', CHANGE])
-    expect(await store.readArtifact(CHANGE, 'review.md')).toBeNull()
+    expect(ticket()).toBeNull()
   })
 })

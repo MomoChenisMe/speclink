@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createEngine, createHost, type BeforeCommandInfo } from '../index.js'
-import { fixtureProject, memoryStore, rejection } from './helpers'
+import { rejection } from './helpers'
 import { memoryPort } from './memory-port'
 
 const API = '/api/speclink/v1'
@@ -296,40 +296,5 @@ describe('engine.dispatch and the field verbs', () => {
       discussion: 'board-search',
       fields: {},
     })
-  })
-
-  it('refuses them on the JS store form before any store method runs, and points at createHost', async () => {
-    // Scenario「舊的 JS 儲存形式拒絕」。
-    const calls: string[] = []
-    const store = memoryStore(fixtureProject()) as Record<string, (...args: unknown[]) => unknown>
-    const counted = Object.fromEntries(
-      Object.entries(store).map(([name, fn]) => [
-        name,
-        (...args: unknown[]) => {
-          calls.push(name)
-          return fn(...args)
-        },
-      ]),
-    )
-    const engine = createEngine({ store: counted })
-
-    for (const argv of [
-      ['change', 'field', 'set', 'alpha', 'a=1'],
-      ['change', 'field', 'unset', 'alpha', 'a'],
-      ['discuss', 'field', 'set', 'topic', 'a=1'],
-      ['discuss', 'field', 'unset', 'topic', 'a'],
-      ['new', 'change', 'fresh', '--field', 'a=1'],
-      ['discuss', 'new', 'Fresh topic', '--field', 'a=1'],
-    ]) {
-      const err = await rejection(engine.dispatch(argv))
-      expect(err.code).toBe('refused')
-      expect(err.message).toContain('createHost')
-      expect(err.message).not.toMatch(/ {2,}/)
-    }
-    expect(calls).toEqual([])
-
-    // The same create verbs without --field still run on this store.
-    await engine.dispatch(['new', 'change', 'fresh'])
-    expect(calls).toContain('createChange')
   })
 })

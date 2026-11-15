@@ -1,11 +1,9 @@
-// Shared test helpers: the fs fixture project, CLI invocation, and an
-// in-memory JS Store implementing the full Store interface (async methods)
-// with the same content as the fs fixture, so bridge output can be compared
-// to CLI output field by field.
+// Shared test helpers: the fs fixture project and CLI invocation, so engine
+// output can be compared to CLI output field by field.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { expect } from 'vitest'
 
 export const repoRoot = join(__dirname, '..', '..', '..', '..')
@@ -30,6 +28,23 @@ export async function rejection(promise: Promise<unknown>): Promise<Error & { co
   }
   expect(thrown).toBeInstanceOf(Error)
   return thrown!
+}
+
+/**
+ * Every file under `root`, as path (forward slashes) → content: compare two of
+ * them to see what a call wrote, or that it wrote nothing.
+ */
+export function projectFiles(root: string): Record<string, string> {
+  const files: Record<string, string> = {}
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else files[relative(root, full).split(sep).join('/')] = readFileSync(full, 'utf8')
+    }
+  }
+  walk(root)
+  return files
 }
 
 export const PROPOSAL_ALPHA =
@@ -75,217 +90,4 @@ export function makeFsFixture(): string {
   mkdirSync(specDir, { recursive: true })
   writeFileSync(join(specDir, 'spec.md'), SPEC_USER_AUTH)
   return root
-}
-
-export interface MemoryProject {
-  changes: Record<
-    string,
-    {
-      meta?: { schema?: string; created?: string; createdBy?: string }
-      artifacts: Record<string, string>
-      updatedAtSecs?: number
-    }
-  >
-  specs: Record<string, string>
-  language?: string
-  workflowConfig?: string
-}
-
-/** The memory-store twin of `makeFsFixture()`. */
-export function fixtureProject(): MemoryProject {
-  return {
-    changes: {
-      alpha: {
-        meta: { schema: 'spec-driven', created: '2026-07-01', createdBy: 'tester' },
-        artifacts: {
-          // raw metadata 文件與 meta 物件同步——蓋章走 readChangeMeta 讀原文，
-          // 缺了它就測不出「既有欄位被整份洗掉」。
-          '.openspec.yaml': 'schema: spec-driven\ncreated: "2026-07-01"\ncreated_by: tester\n',
-          'proposal.md': PROPOSAL_ALPHA,
-          'tasks.md': TASKS_ALPHA,
-          'specs/api-quota/spec.md': DELTA_ALPHA,
-        },
-        updatedAtSecs: 100,
-      },
-      beta: {
-        meta: { schema: 'spec-driven', created: '2026-07-02', createdBy: 'tester' },
-        artifacts: {
-          '.openspec.yaml': 'schema: spec-driven\ncreated: "2026-07-02"\ncreated_by: tester\n',
-          'proposal.md': PROPOSAL_BETA,
-          'tasks.md': TASKS_BETA,
-        },
-        updatedAtSecs: 200,
-      },
-    },
-    specs: { 'user-auth': SPEC_USER_AUTH },
-  }
-}
-
-/**
- * A complete in-memory Store: every method of the Store interface, all async
- * (returning Promises), backed by a MemoryProject. Discussions and the archive
- * are held in maps so write-path verbs work too.
- */
-export function memoryStore(project: MemoryProject) {
-  const changes = project.changes
-  const specs = project.specs
-  const archived = new Map<string, string>()
-  const liveDiscussions = new Map<string, string>()
-  const archivedDiscussions = new Map<string, string>()
-
-  const changeObj = (name: string) => ({
-    name,
-    dir: `changes/${name}`,
-    meta: changes[name].meta ?? {},
-  })
-  const discussionDoc = (slug: string, text: string, isArchived: boolean) => ({
-    slug,
-    text,
-    path: isArchived ? `discussions/archive/${slug}.md` : `discussions/${slug}.md`,
-    archived: isArchived,
-  })
-
-  return {
-    // --- changes ---
-    async listChanges() {
-      return Object.keys(changes).sort().map(changeObj)
-    },
-    async findChange(name: string) {
-      return changes[name] ? changeObj(name) : null
-    },
-    async changeExists(name: string) {
-      return Boolean(changes[name])
-    },
-    async createChange(name: string, metaText: string) {
-      if (changes[name]) throw new Error(`change '${name}' already exists`)
-      changes[name] = { artifacts: { '.openspec.yaml': metaText } }
-      return `changes/${name}`
-    },
-    async updatedAtSecs(name: string) {
-      return changes[name]?.updatedAtSecs ?? 0
-    },
-    // 原始 metadata 文件（選填的宿主方法）——蓋章動詞經這一對讀寫 .openspec.yaml。
-    async readChangeMeta(name: string) {
-      return changes[name]?.artifacts['.openspec.yaml'] ?? null
-    },
-    async writeChangeMeta(name: string, content: string) {
-      if (!changes[name]) throw new Error(`change '${name}' not found`)
-      changes[name].artifacts['.openspec.yaml'] = content
-    },
-    // --- artifacts ---
-    async readArtifact(change: string, artifact: string) {
-      return changes[change]?.artifacts[artifact] ?? null
-    },
-    async writeArtifact(change: string, artifact: string, content: string) {
-      if (!changes[change]) throw new Error(`change '${change}' not found`)
-      changes[change].artifacts[artifact] = content
-      return `changes/${change}/${artifact}`
-    },
-    async artifactExists(change: string, artifact: string) {
-      return changes[change]?.artifacts[artifact] !== undefined
-    },
-    async deleteArtifact(change: string, artifact: string) {
-      delete changes[change]?.artifacts[artifact]
-    },
-    // --- delta specs ---
-    async deltaCapabilities(change: string) {
-      const caps = Object.keys(changes[change]?.artifacts ?? {})
-        .map((p) => /^specs\/([^/]+)\/spec\.md$/.exec(p)?.[1])
-        .filter((c): c is string => Boolean(c))
-      return [...new Set(caps)].sort()
-    },
-    async hasCapabilityDirs(change: string) {
-      return Object.keys(changes[change]?.artifacts ?? {}).some((p) => p.startsWith('specs/'))
-    },
-    // --- canonical specs ---
-    async listCanonicalCapabilities() {
-      return Object.keys(specs)
-    },
-    async canonicalSpecExists(cap: string) {
-      return specs[cap] !== undefined
-    },
-    async readCanonicalSpec(cap: string) {
-      return specs[cap] ?? null
-    },
-    async writeCanonicalSpec(cap: string, content: string) {
-      specs[cap] = content
-    },
-    async canonicalSpecPath(cap: string) {
-      return `specs/${cap}/spec.md`
-    },
-    // --- archive ---
-    async archivedChangeExists(datedName: string) {
-      return archived.has(datedName)
-    },
-    async archiveChange(name: string, datedName: string) {
-      if (!changes[name]) throw new Error(`change '${name}' not found`)
-      archived.set(datedName, JSON.stringify(changes[name]))
-      delete changes[name]
-    },
-    async readArchivedMeta(datedName: string) {
-      const raw = archived.get(datedName)
-      if (!raw) return null
-      return (JSON.parse(raw).artifacts ?? {})['.openspec.yaml'] ?? null
-    },
-    async writeArchivedMeta(datedName: string, content: string) {
-      const raw = archived.get(datedName)
-      if (!raw) throw new Error(`archived change '${datedName}' not found`)
-      const parsed = JSON.parse(raw)
-      parsed.artifacts['.openspec.yaml'] = content
-      archived.set(datedName, JSON.stringify(parsed))
-    },
-    // --- discussions ---
-    async liveDiscussionExists(slug: string) {
-      return liveDiscussions.has(slug)
-    },
-    async archivedDiscussionExists(slug: string) {
-      return [...archivedDiscussions.keys()].some((k) => k.endsWith(`-${slug}`) || k === slug)
-    },
-    async liveDiscussionPath(slug: string) {
-      return `discussions/${slug}.md`
-    },
-    async readLiveDiscussion(slug: string) {
-      return liveDiscussions.get(slug) ?? null
-    },
-    async writeLiveDiscussion(slug: string, content: string) {
-      liveDiscussions.set(slug, content)
-      return `discussions/${slug}.md`
-    },
-    async deleteLiveDiscussion(slug: string) {
-      if (!liveDiscussions.delete(slug)) throw new Error(`discussion '${slug}' not found`)
-    },
-    async readDiscussion(slug: string) {
-      const live = liveDiscussions.get(slug)
-      if (live !== undefined) return discussionDoc(slug, live, false)
-      const key = [...archivedDiscussions.keys()]
-        .filter((k) => k.endsWith(`-${slug}`) || k === slug)
-        .sort()
-        .pop()
-      if (key === undefined) return null
-      return discussionDoc(slug, archivedDiscussions.get(key)!, true)
-    },
-    async listLiveDiscussions() {
-      return [...liveDiscussions.entries()].map(([slug, text]) => discussionDoc(slug, text, false))
-    },
-    async listArchivedDiscussions() {
-      return [...archivedDiscussions.entries()]
-        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-        .map(([key, text]) => discussionDoc(key, text, true))
-    },
-    async archiveDiscussion(slug: string, created: string) {
-      const live = liveDiscussions.get(slug)
-      if (live === undefined) return null
-      const stored = `${created}-${slug}`
-      archivedDiscussions.set(stored, live)
-      liveDiscussions.delete(slug)
-      return stored
-    },
-    // --- workflow config / shared vocabulary ---
-    async readWorkflowConfig() {
-      return project.workflowConfig ?? null
-    },
-    async readLanguage() {
-      return project.language ?? null
-    },
-  }
 }

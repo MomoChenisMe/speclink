@@ -8,7 +8,7 @@
 //! Desktop talk to it. Both doors share the store and the hooks.
 
 use crate::port_bridge::{events_json, person_json, settle_call, JsPort};
-use crate::store_bridge::{create_bridge, JsStoreBridge};
+use crate::js_bridge::{create_bridge, JsBridge};
 use crate::{
     command_of, envelope, on_worker, panic_message, parse_verb, status_notice, value_of, DispatchError, DispatchResult,
 };
@@ -35,7 +35,7 @@ use std::sync::{Arc, Mutex};
 struct HostSetup {
     store: Arc<dyn StorePort>,
     /// The bridge over `{ beforeCommand, afterCommit, scopes }` (index.js).
-    hooks: JsStoreBridge,
+    hooks: JsBridge,
     has_before: bool,
     has_after: bool,
     has_scopes: bool,
@@ -472,7 +472,7 @@ fn after_json(info: &AfterCommit) -> serde_json::Value {
 /// `{ allow: true }`, `{ allow: false, reason }`, `{ invalid }` — so a throw,
 /// a rejected Promise or any other answer does not allow: it is recorded as a
 /// broken hook.
-fn decide(bridge: &JsStoreBridge, info: &BeforeCommand, broken_hook: &Mutex<Option<String>>) -> Decision {
+fn decide(bridge: &JsBridge, info: &BeforeCommand, broken_hook: &Mutex<Option<String>>) -> Decision {
     let broken = |message: String| {
         *broken_hook.lock().unwrap_or_else(|e| e.into_inner()) = Some(message);
         Decision::Deny { reason: "beforeCommand failed".to_string() }

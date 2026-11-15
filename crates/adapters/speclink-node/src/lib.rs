@@ -8,18 +8,16 @@
 //! is idiomatic, while the semantic message and code are produced here.
 
 mod host;
+mod js_bridge;
 mod port_bridge;
 pub mod render;
-mod store_bridge;
 
 use napi::bindgen_prelude::*;
 use napi::{JsFunction, JsObject};
 use napi_derive::napi;
 use speclink_core as core;
-use speclink_core::store::Store;
 use std::path::PathBuf;
 use std::sync::Arc;
-use store_bridge::{BridgeFailure, JsStoreBridge};
 
 /// A dispatch failure: `message` is the same semantic text the CLI prints,
 /// `code` classifies it (exit-code / 409-reason category — see docs/sdk-node.md).
@@ -39,34 +37,12 @@ impl DispatchError {
 
 impl From<anyhow::Error> for DispatchError {
     fn from(e: anyhow::Error) -> DispatchError {
-        // A store-method failure keeps its JS code and the method-name prefix.
-        if let Some(f) = e.downcast_ref::<BridgeFailure>() {
-            return DispatchError::from(f.clone());
-        }
         DispatchError::new("error", format!("{e}"))
-    }
-}
-
-impl From<BridgeFailure> for DispatchError {
-    fn from(f: BridgeFailure) -> DispatchError {
-        DispatchError {
-            code: f.code.clone().unwrap_or_else(|| "store_error".to_string()),
-            message: f.to_string(),
-        }
     }
 }
 
 impl From<core::command::CommandError> for DispatchError {
     fn from(e: core::command::CommandError) -> DispatchError {
-        // A store-bridge failure keeps its JS code and method-name prefix —
-        // that taxonomy belongs to the envelope layer, not the command layer.
-        if let Some(f) = e
-            .source
-            .as_ref()
-            .and_then(|s| s.downcast_ref::<BridgeFailure>())
-        {
-            return DispatchError::from(f.clone());
-        }
         DispatchError::new(e.code.as_str(), e.message)
     }
 }
@@ -100,101 +76,51 @@ pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
     }
 }
 
-/// Route a typed command through the engine runtime against this backend.
+/// Route a typed command through the engine runtime on the project's files.
 /// Events are not surfaced through dispatch (yet) — the envelope shape is
 /// frozen; they will ride the outbox once event persistence lands.
 fn run_engine(
-    backend: &Backend,
+    workspace: &core::workspace::Workspace,
     actor: Option<&str>,
     cmd: core::command::Command,
 ) -> std::result::Result<core::command::CommandOutcome, core::command::CommandError> {
-    let store = backend.store();
+    let store = speclink_fs::FsStore::new(&workspace.root, &workspace.spec_dir_name);
     // Host boundary: identity and the SPECLINK_* env layer are resolved here
-    // and injected — the engine runtime only ever consumes the context. The
-    // JS host is that Host: an actor bound at construction wins outright.
-    // Without one, a filesystem backend falls back to the workspace's git
-    // identity; a host-store backend has no local workspace, hence no
-    // identity at all (anonymous, as before).
-    let workspace = backend.workspace();
+    // and injected — the engine runtime only ever consumes the context. An
+    // actor bound at construction wins outright; without one, the identity
+    // is the project's git identity.
     let ctx = core::command::ExecutionContext {
-        actor: actor.map(str::to_string).or_else(|| {
-            workspace
-                .as_ref()
-                .and_then(|ws| speclink_host::context::git_identity(&ws.root))
-        }),
+        actor: actor
+            .map(str::to_string)
+            .or_else(|| speclink_host::context::git_identity(&workspace.root)),
         // The engine's own door binds one identity per instance and has no
         // stable identifier: a claim judges its holder by the name.
         actor_id: None,
-        // The repo binding completion evidence records (`task done`): the fs
-        // form is the local zero-configuration case, so it takes the binding
-        // the CLI takes; a host store has none resolved here.
-        repo: workspace
-            .as_ref()
-            .map(|_| speclink_host::binding::local_default_binding().repo.as_str().to_string()),
+        // The repo binding completion evidence records (`task done`): the
+        // local zero-configuration case, so it takes the binding the CLI takes.
+        repo: Some(speclink_host::binding::local_default_binding().repo.as_str().to_string()),
         env: speclink_host::policy::process_env_overrides(),
-        workspace,
+        workspace: Some(workspace.clone()),
         user_config_dir: Some(speclink_host::context::global_config_dir()),
     };
-    let (outcome, _events) = core::command::execute(store.as_ref(), &ctx, cmd)?;
+    let (outcome, _events) = core::command::execute(&store, &ctx, cmd)?;
     Ok(outcome)
-}
-
-/// Storage assembly of an engine instance.
-enum Backend {
-    /// Built-in filesystem store over a project root (zero bridging cost).
-    Fs { root: PathBuf, spec_dir: String },
-    /// Host-implemented Store object, bridged from JavaScript.
-    /// `missing_stamp_methods` lists the optional store methods stamping
-    /// needs (deleteArtifact / readChangeMeta / writeChangeMeta) that the
-    /// store did not implement — captured at construction so the stamp verbs
-    /// can refuse BEFORE any destructive step (the engine deletes the ticket
-    /// before it rewrites the metadata). `missing_rank_methods` is the same
-    /// for `change rank`, which writes board ranks through the metadata pair. `writes_workflow_config` records
-    /// whether the store has the optional `writeWorkflowConfig`, for the same
-    /// reason: a workflow-config write verb refuses before it runs.
-    Js {
-        bridge: JsStoreBridge,
-        missing_stamp_methods: Vec<&'static str>,
-        missing_rank_methods: Vec<&'static str>,
-        writes_workflow_config: bool,
-    },
-}
-
-impl Backend {
-    fn store(&self) -> Box<dyn Store> {
-        match self {
-            Backend::Fs { root, spec_dir } => Box::new(speclink_fs::FsStore::new(root, spec_dir)),
-            Backend::Js { bridge, .. } => Box::new(bridge.clone()),
-        }
-    }
-
-    /// The host workspace, when the backend has a local filesystem one —
-    /// drives schema resolution (project → user → built-in) and config files.
-    /// A host store has no local workspace: built-in schemas only.
-    fn workspace(&self) -> Option<core::workspace::Workspace> {
-        match self {
-            Backend::Fs { root, spec_dir } => Some(core::workspace::Workspace {
-                root: root.clone(),
-                spec_dir_name: spec_dir.clone(),
-            }),
-            Backend::Js { .. } => None,
-        }
-    }
 }
 
 #[napi]
 pub struct Engine {
-    backend: Arc<Backend>,
-    /// The Host-resolved operator identity, bound once at construction —
-    /// one instance, one identity. A multi-tenant host builds one engine per
-    /// request (or per identity); dispatch carries no identity parameter, so
-    /// call-time forgery has no surface.
+    /// The local project: its root and the name of its spec folder. The
+    /// built-in filesystem store over it is the engine's one storage.
+    workspace: core::workspace::Workspace,
+    /// The operator identity, bound once at construction — one instance, one
+    /// identity. dispatch carries no identity parameter, so call-time forgery
+    /// has no surface. A host that serves several users uses the host kit,
+    /// where every call brings its identity.
     actor: Option<Arc<str>>,
     /// A stamp rewrites the whole change metadata, and a workflow-config write
     /// rewrites the whole config document: both are read-modify-write with no
-    /// CAS in the Store contract. Two of them at once on one instance would
-    /// clobber each other, so they serialize here. Coordination ACROSS engine
-    /// instances (or processes) belongs to the host store.
+    /// version check. Two of them at once on one instance would clobber each
+    /// other, so they serialize here. The lock covers this instance only.
     rewrite_lock: Arc<std::sync::Mutex<()>>,
 }
 
@@ -215,21 +141,19 @@ impl Engine {
     /// unwrapped by the JS wrapper; never blocks the JS event loop.
     #[napi(ts_return_type = "Promise<unknown>")]
     pub fn dispatch(&self, env: Env, argv: Vec<String>, stdin: Option<String>) -> Result<JsObject> {
-        let backend = self.backend.clone();
+        let workspace = self.workspace.clone();
         let actor = self.actor.clone();
         let rewrite_lock = self.rewrite_lock.clone();
         on_worker(env, move || {
             let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_dispatch(&backend, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref())
+                run_dispatch(&workspace, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref())
             }));
             envelope(outcome.unwrap_or_else(|payload| {
-                // A store-method failure unwinds to here from non-Result trait
-                // methods; anything else is a genuine panic — either way an
-                // Error, never a process abort.
-                Err(match payload.downcast_ref::<BridgeFailure>() {
-                    Some(f) => DispatchError::from(f.clone()),
-                    None => DispatchError::new("panic", format!("speclink engine panicked: {}", panic_message(&payload))),
-                })
+                // A panic is an Error, never a process abort.
+                Err(DispatchError::new(
+                    "panic",
+                    format!("speclink engine panicked: {}", panic_message(&payload)),
+                ))
             }))
         })
     }
@@ -245,7 +169,7 @@ pub(crate) fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// Build an engine over the built-in filesystem store.
+/// Build an engine over a local project folder.
 #[napi(js_name = "engineFromFs")]
 pub fn engine_from_fs(
     root: String,
@@ -269,29 +193,7 @@ pub fn engine_from_fs(
         }
     };
     Ok(Engine {
-        backend: Arc::new(Backend::Fs { root, spec_dir }),
-        actor: normalize_actor(actor),
-        rewrite_lock: Arc::new(std::sync::Mutex::new(())),
-    })
-}
-
-/// Build an engine over a host-implemented Store object. `invoker` is the JS
-/// closure `(method, args, settle) => void` created by index.js with the store
-/// bound; the store object itself is passed for construction-time validation.
-#[napi(js_name = "engineFromStore")]
-pub fn engine_from_store(
-    env: Env,
-    store: JsObject,
-    invoker: JsFunction,
-    actor: Option<String>,
-) -> Result<Engine> {
-    store_bridge::validate_store_methods(&store)?;
-    let missing_stamp_methods = store_bridge::missing_stamp_methods(&store);
-    let missing_rank_methods = store_bridge::missing_rank_methods(&store);
-    let writes_workflow_config = store_bridge::has_workflow_config_write(&store);
-    let bridge = store_bridge::create_bridge(env, invoker)?;
-    Ok(Engine {
-        backend: Arc::new(Backend::Js { bridge, missing_stamp_methods, missing_rank_methods, writes_workflow_config }),
+        workspace: core::workspace::Workspace { root, spec_dir_name: spec_dir },
         actor: normalize_actor(actor),
         rewrite_lock: Arc::new(std::sync::Mutex::new(())),
     })
@@ -303,7 +205,7 @@ pub fn engine_from_store(
 /// `keeps_events` says whether `recordedEvents` was given.
 #[napi(js_name = "runStoreConformance", ts_return_type = "Promise<unknown>")]
 pub fn run_store_conformance(env: Env, invoker: JsFunction, keeps_events: bool) -> Result<JsObject> {
-    let bridge = store_bridge::create_bridge(env, invoker)?;
+    let bridge = js_bridge::create_bridge(env, invoker)?;
     on_worker(env, move || port_bridge::run_conformance(bridge, keeps_events))
 }
 
@@ -313,23 +215,15 @@ pub fn run_store_conformance(env: Env, invoker: JsFunction, keeps_events: bool) 
 /// definition the CLI uses → the envelope value. Every verb with an engine
 /// command takes this one path.
 fn run_dispatch(
-    backend: &Backend,
+    workspace: &core::workspace::Workspace,
     actor: Option<&str>,
     rewrite_lock: &std::sync::Mutex<()>,
     argv: &[String],
     stdin: Option<&str>,
 ) -> DispatchResult {
     let parsed = parse_verb(argv)?;
-    // Before the stdin JSON is read: a store that cannot finish a stamp is
-    // the first thing to report.
-    if parsed.is_stamp() {
-        refuse_unfinishable_stamp(backend, parsed.name())?;
-    }
     let cmd = command_of(&parsed, stdin)?;
-    refuse_workflow_config_write(backend, parsed.name(), &cmd)?;
-    refuse_unrankable(backend, parsed.name(), &cmd)?;
-    refuse_free_fields(backend, parsed.name(), &cmd)?;
-    run_verb(backend, actor, rewrite_lock, &parsed, cmd)
+    run_verb(workspace, actor, rewrite_lock, &parsed, cmd)
 }
 
 /// Parse one verb's argv with the CLI's vocabulary. A usage or help text is
@@ -395,74 +289,6 @@ fn local_only(verb: &str, reason: speclink_verbs::LocalOnlyReason) -> DispatchEr
     DispatchError::new("invalid_argv", message)
 }
 
-/// A stamp deletes the ticket before it rewrites the metadata, so a store
-/// that cannot finish one is refused before anything else runs — never
-/// mid-way with the ticket already gone.
-fn refuse_unfinishable_stamp(backend: &Backend, name: &str) -> std::result::Result<(), DispatchError> {
-    if let Backend::Js { missing_stamp_methods, .. } = backend {
-        if !missing_stamp_methods.is_empty() {
-            return Err(DispatchError::new(
-                "error",
-                format!(
-                    "{name} requires store methods this store does not implement: {} — \
-                     stamping rewrites the change metadata and deletes the ticket",
-                    missing_stamp_methods.join(", ")
-                ),
-            ));
-        }
-    }
-    Ok(())
-}
-
-/// `change rank` on a JS store writes each board rank into change metadata
-/// (the store's default) through the optional raw pair. A store without it
-/// is refused before anything runs, the way a stamp is.
-fn refuse_unrankable(
-    backend: &Backend,
-    name: &str,
-    cmd: &core::command::Command,
-) -> std::result::Result<(), DispatchError> {
-    if !matches!(cmd, core::command::Command::ChangeRank { .. }) {
-        return Ok(());
-    }
-    match backend {
-        Backend::Js { missing_rank_methods, .. } if !missing_rank_methods.is_empty() => Err(DispatchError::new(
-            "refused",
-            format!(
-                "{name} requires store methods this store does not implement: {} — \
-                 ranking rewrites the change metadata",
-                missing_rank_methods.join(", ")
-            ),
-        )),
-        _ => Ok(()),
-    }
-}
-
-/// Free fields on a JS store object (host-free-fields D8): that bridge gives
-/// JavaScript a change's metadata as a fixed set of fields, so a field written
-/// through it does not come back. The field verbs, and a create verb with
-/// `--field`, are refused before anything runs. A host that needs free fields
-/// builds a host kit over a store port.
-fn refuse_free_fields(
-    backend: &Backend,
-    name: &str,
-    cmd: &core::command::Command,
-) -> std::result::Result<(), DispatchError> {
-    use core::command::Command;
-    let uses_fields = matches!(cmd, Command::ChangeFieldsEdit { .. } | Command::DiscussFieldsEdit { .. })
-        || cmd.creation_fields().is_some_and(|fields| !fields.is_empty());
-    if uses_fields && matches!(backend, Backend::Js { .. }) {
-        return Err(DispatchError::new(
-            "refused",
-            format!(
-                "{name}: free fields are not available on a store object passed to createEngine: \
-                 it does not carry them. Use createHost with a store port (list, read, commit)"
-            ),
-        ));
-    }
-    Ok(())
-}
-
 /// Whether `cmd` writes the workflow config document: an edit that is not a
 /// dry run, or a whole-document replace.
 fn writes_workflow_config(cmd: &core::command::Command) -> bool {
@@ -473,52 +299,27 @@ fn writes_workflow_config(cmd: &core::command::Command) -> bool {
     )
 }
 
-/// A workflow-config verb that writes, on a host store without the optional
-/// `writeWorkflowConfig`, is refused before its command runs, so no store
-/// method is called. `show` and `--dry-run` write nothing and pass.
-fn refuse_workflow_config_write(
-    backend: &Backend,
-    name: &str,
-    cmd: &core::command::Command,
-) -> std::result::Result<(), DispatchError> {
-    if let (true, Backend::Js { writes_workflow_config: false, .. }) =
-        (writes_workflow_config(cmd), backend)
-    {
-        return Err(DispatchError::new(
-            "refused",
-            format!(
-                "{name} requires a store method this store does not implement: writeWorkflowConfig — \
-                 it writes the workflow config document"
-            ),
-        ));
-    }
-    Ok(())
-}
-
 /// Run one verb's command and shape its envelope value: the verb's
 /// structured value when it has one, else `{ output }` with its stdout text
-/// (no color), plus `stderr` when the verb also has stderr text. `claim` is
-/// answered in front of the engine (the host store's own method); `status`
+/// (no color), plus `stderr` when the verb also has stderr text. `status`
 /// with no name in a project with no change answers with the CLI's notice.
+/// `claim` gets the engine's own refusal for a local project, as in the CLI.
 fn run_verb(
-    backend: &Backend,
+    workspace: &core::workspace::Workspace,
     actor: Option<&str>,
     rewrite_lock: &std::sync::Mutex<()>,
     parsed: &speclink_verbs::ParsedVerb,
     cmd: core::command::Command,
 ) -> DispatchResult {
     use core::command::Command;
-    if let Command::Claim { name } = &cmd {
-        return claim(backend, actor, name);
-    }
     let status_without_name = matches!(cmd, Command::Status { change: None, .. });
     // A stamp and a workflow-config write each rewrite one whole document
-    // with no CAS, so they serialize within this instance. A poisoned lock
+    // with no version check, so they serialize within this instance. A poisoned lock
     // only means another one panicked; the document itself is no more suspect
     // than after any failed dispatch, so proceed.
     let rewrites = parsed.is_stamp() || writes_workflow_config(&cmd);
     let _rewrite_guard = rewrites.then(|| rewrite_lock.lock().unwrap_or_else(|e| e.into_inner()));
-    match run_engine(backend, actor, cmd) {
+    match run_engine(workspace, actor, cmd) {
         Ok(outcome) => value_of(parsed, &outcome),
         Err(e) => status_notice(status_without_name, &e).map_or_else(|| Err(DispatchError::from(e)), Ok),
     }
@@ -539,28 +340,4 @@ pub(crate) fn value_of(
         // A note the CLI prints to stderr (archive's zero-evidence note).
         None => serde_json::json!({ "output": rendered.stdout, "stderr": rendered.stderr }),
     })
-}
-
-/// `claim <name>` — ownership is a team-system concept: the fs store fails
-/// loud like the CLI; a host store may implement the optional `claim` method
-/// and adjudicate (conflicts reject with their semantic message and code).
-fn claim(backend: &Backend, actor: Option<&str>, name: &str) -> DispatchResult {
-    match backend {
-        // The plain-store refusal comes from the runtime's Claim branch (the
-        // frozen text shared with the CLI).
-        Backend::Fs { .. } => {
-            run_engine(backend, actor, core::command::Command::Claim { name: name.to_string() })?;
-            unreachable!("claim on a plain store always refuses");
-        }
-        // Ownership adjudication is a host-store capability — the optional
-        // `claim` bridge method stays at the envelope layer (決策三).
-        Backend::Js { bridge, .. } => match bridge.claim(name) {
-            Ok(v) => Ok(v),
-            Err(f) if f.code.as_deref() == Some("__missing__") => Err(DispatchError::new(
-                "error",
-                "claim requires a store with claim support — this store does not implement claim",
-            )),
-            Err(f) => Err(DispatchError::from(f)),
-        },
-    }
 }

@@ -41,7 +41,9 @@ Node SDK 的原生層（`crates/adapters/speclink-node`）今天有兩種後端�
 
 `createEngine: only { type: 'fs', root } is accepted — use createHost for a custom store (list, read, commit)`
 
-`store` 不存在或不是物件時的既有訊息跟著改，不再提「a Store object」。
+`store` 不存在或不是物件時的既有訊息跟著改，不再提「a Store object」，並同樣指向 `createHost`：
+
+`createEngine: options.store must be an object — pass { type: 'fs', root }, or use createHost for a custom store (list, read, commit)`
 
 檢查在讀 `store.type` 之後立刻做，不碰物件的其他屬性，所以傳入的物件沒有任何方法被呼叫。
 
@@ -67,7 +69,7 @@ Node SDK 的原生層（`crates/adapters/speclink-node`）今天有兩種後端�
 
 操作者身分的解析只剩一條：有 `actor` 用它，沒有就用專案的 git 身分。「沒有就不蓋章」的分支隨舊物件移除。
 
-`BridgeFailure` 轉成 `dispatch` 錯誤的對照留著：`createHost` 的路還在用。
+`BridgeFailure` 這個型別留著（搬到 js_bridge.rs）：`createHost` 的路把它轉成儲存接口的錯誤。它直接轉成 `dispatch` 錯誤的對照（錯誤碼 `store_error`）實作時確認只有舊物件的路在用，所以連同 `dispatch` 裡攔截它的兩處一起移除；型別宣告的註解不再列 `store_error`。
 
 ### D4: 測試的處置
 
@@ -131,6 +133,55 @@ delta 只在新增 capability 時帶入 Purpose；既有 capability 的 Purpose 
 
 - 只改 `crates/adapters/speclink-node` 與 node-sdk 正式規格的 Purpose 一段。
 - 不改 `docs/`、README、CHANGELOG。
+
+## 稽核結論
+
+對 D1 的輸入檢查套用稽核清單（三個角色）的結果。每一項都有 `engine.spec.ts` 的測試。
+
+| 輸入 | 結果 |
+| --- | --- |
+| 沒有 options、沒有 `store`、`store` 是 null、字串、數字、函式 | 同步拋出 `TypeError`，訊息說 `store` 必須是物件並指向 `createHost` |
+| `store` 是陣列、沒有 `type` 的物件、`type` 是 `'FS'`、`'fs '`、數字、只有 list／read／commit 三個函式的物件 | 同步拋出 `TypeError`，訊息是 D1 的那一句 |
+| `store` 的 `type` 是會丟錯的 getter | 那個錯誤原樣傳出，沒有引擎實例 |
+| 帶 `type: 'fs'` 又帶多餘方法的物件 | 照本機資料夾處理；多餘的方法沒有被呼叫 |
+| `actor` 不是字串（數字、null、物件、陣列） | 既有的 `TypeError`，訊息不變 |
+
+逐角色的判斷：
+
+- **故意亂用的人**：`type` 用嚴格相等比對，大小寫或多一個空白都不通過。檢查在讀 `type` 之後立刻做，其他屬性都還沒被碰，所以傳進來的物件沒有機會在檢查前執行自己的程式。`root` 與 `specDir` 各只讀一次：檢查過的值就是交給原生層的值，getter 無法第一次回字串、第二次回別的東西。
+- **照範例貼上的人**：最短的寫法 `createEngine({ store: { type: 'fs', root } })` 就是正確的寫法。沒有給 `actor` 時用專案的 git 身分，和 CLI 相同；不再有「沒有身分也照寫」的情況。兩句錯誤訊息都寫出正確的形狀與 `createHost`。
+- **搞混的人**：把舊的 Store 物件、或 `createHost` 用的三個函式傳給 `createEngine`，都在建構當下失敗並被指到 `createHost`，不會建出一個之後才出錯的引擎。錯誤是同步的 `TypeError`，沒有回傳值可以被忽略。
+
+這一輪因為稽核而改的程式：非物件的 `store` 的訊息改成上面 D1 的第二句（原本寫「is required」，對字串或函式不準確）；`root` 與 `specDir` 改成只讀一次。
+
+沒有處理、也不在這個變更範圍內的：`root` 與 `specDir` 指到哪個資料夾由呼叫端決定，本機資料夾形式本來就是在呼叫端的檔案系統上工作。
+
+## 測試處置結果
+
+改寫前只測舊物件的案例共 68 個。逐檔的結果：
+
+| 檔案 | 舊物件案例 | 刪除 | 改用本機資料夾保留 | 另外新增 |
+| --- | --- | --- | --- | --- |
+| `dispatch-contract.spec.ts` | 23 | 4 | 19 | 1（claim 在本機專案被拒絕） |
+| `write-path.spec.ts` | 4 | 2 | 2 | 0 |
+| `review-verify-verbs.spec.ts` | 16 | 5 | 11 | 1（未給 actor 時回退 git 身分） |
+| `workflow-config-verbs.spec.ts` | 12 | 3 | 9 | 1（dry-run 不寫入） |
+| `actor.spec.ts` | 3 | 3 | 0 | 0 |
+| `free-fields.spec.ts` | 1 | 1 | 0 | 0 |
+| `stress.spec.ts` | 3 | 3 個改成 D4 規定的兩組 | — | 2 |
+| `store-bridge.spec.ts` | 6 | 6（整檔） | 0 | 0 |
+
+每個被刪的案例與 D4 刪除清單的對照：
+
+- `dispatch-contract.spec.ts`：「change rank on a store without the change-metadata pair is refused before it runs」「change rank names only the change-metadata methods it is missing」→ 缺 metadata 方法時 `change rank` 被拒絕。「change rank on a host store writes the metadata and the plan follows it」→ 經 Store 物件的 `change rank` 把順序鍵寫進 metadata。「claim」（回傳值全文那一組）→ Store 物件的 `claim` 裁決。
+- `write-path.spec.ts`：「a held change rejects with a semantic message and the conflict code」→ Store 物件的 `claim` 裁決與它的衝突碼。「a granted claim resolves with the host payload」→ Store 物件的 `claim` 裁決。
+- `review-verify-verbs.spec.ts`：「未給 actor 時蓋章無 _by 欄位」→ 沒有 `actor` 時不蓋章。「未實作 deleteArtifact 時蓋章在動手前拒絕」「未實作 writeChangeMeta 時蓋章在刪工單前拒絕」「未實作 readChangeMeta 時蓋章拒絕」「缺蓋章方法時先回報缺方法，再看 stdin 的 JSON」→ 缺 `deleteArtifact`、`readChangeMeta`、`writeChangeMeta` 時蓋章被拒絕。
+- `workflow-config-verbs.spec.ts`：「寫入方法失敗時 dispatch 以該方法的錯誤拒絕」→ Store 方法丟出的錯誤與自訂錯誤碼怎麼傳到 `dispatch`。「寫入動詞以 refused 拒絕，沒有任何寫入方法被呼叫」「讀取與 dry-run 不需要它」→ 缺 `writeWorkflowConfig` 時寫入被拒絕。
+- `actor.spec.ts`：「未給 actor 時維持無章」「trim 後為空的 actor 視同未給——宿主 Store 無回退」→ 沒有 `actor` 時不蓋章。「帶 actor 時落 created_by」→ D4 表格的「宿主 Store 形式帶 actor」；`actor` 優先這個行為由本機資料夾的「明給 actor 時優先於 git identity」繼續測。
+- `free-fields.spec.ts`：「refuses them on the JS store form…」→ 舊物件拒絕自由欄位。
+- `store-bridge.spec.ts`：「throws synchronously at construction listing every missing method name」→ 缺必要方法時建構失敗。「a rejecting store method rejects dispatch with the method name prefixed」→ Store 方法丟出的錯誤怎麼傳到 `dispatch`。其餘四個（list 與 status 經宿主 Store、證據方法不是必要方法、方法直接回傳值）測的是 Store 物件形式本身，屬 D4 表格的「整檔刪除」與規格移除的情境「宿主 Store 物件生效」。
+
+`stress.spec.ts` 原本三個案例測的都是「並發不死結」這一個行為，照 D4 改成兩組後是兩個案例。其他各檔保留的案例數都等於或多於改寫前仍存在的行為數。刪除清單上的「從 Store 方法回呼引擎」沒有對應的測試可刪，只有型別宣告的一段警告，已移除。
 
 ## Risks / Trade-offs
 

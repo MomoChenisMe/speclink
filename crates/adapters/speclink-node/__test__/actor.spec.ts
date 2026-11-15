@@ -6,7 +6,7 @@ import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { createEngine } from '../index.js'
-import { cliBin, fixtureProject, makeFsFixture, memoryStore, repoRoot } from './helpers'
+import { cliBin, makeFsFixture, repoRoot } from './helpers'
 
 // fixture 專案自帶 git 身分——不設就會沿用開發者的 global config，斷言不可重現。
 const GIT_NAME = 'Fixture Dev'
@@ -63,31 +63,5 @@ describe('createEngine actor — fs 形式', () => {
     const engine = createEngine({ store: { type: 'fs', root: fsFixture }, actor: '   ' })
     await engine.dispatch(['new', 'change', 'demo-blank'])
     expect(createdByLine(fsMeta('demo-blank'))).toBe(`created_by: ${GIT_IDENTITY}`)
-  })
-})
-
-describe('createEngine actor — 宿主 Store 形式', () => {
-  it('帶 actor 時落 created_by', async () => {
-    const store = memoryStore(fixtureProject())
-    const engine = createEngine({ store, actor: 'Bob <bob@example.com>' })
-    await engine.dispatch(['new', 'change', 'demo3'])
-    const meta = (await store.readArtifact('demo3', '.openspec.yaml')) ?? ''
-    expect(createdByLine(meta)).toBe('created_by: Bob <bob@example.com>')
-  })
-
-  it('未給 actor 時維持無章', async () => {
-    const store = memoryStore(fixtureProject())
-    const engine = createEngine({ store })
-    await engine.dispatch(['new', 'change', 'demo4'])
-    const meta = (await store.readArtifact('demo4', '.openspec.yaml')) ?? ''
-    expect(createdByLine(meta)).toBeNull()
-  })
-
-  it('trim 後為空的 actor 視同未給——宿主 Store 無回退，維持無章', async () => {
-    const store = memoryStore(fixtureProject())
-    const engine = createEngine({ store, actor: ' ' })
-    await engine.dispatch(['new', 'change', 'demo5'])
-    const meta = (await store.readArtifact('demo5', '.openspec.yaml')) ?? ''
-    expect(createdByLine(meta)).toBeNull()
   })
 })

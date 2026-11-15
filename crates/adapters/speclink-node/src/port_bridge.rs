@@ -1,6 +1,6 @@
 //! The JS store port (design D7): a host's three JS functions — `list`, `read`,
 //! `commit` — as a Rust `StorePort`. The functions may return values or
-//! Promises; each call goes through the store bridge's threadsafe function and
+//! Promises; each call goes through the JS bridge's threadsafe function and
 //! the calling worker thread waits for it to settle.
 //!
 //! The JS side (`makeInvoker` over `asJson` functions in index.js) settles
@@ -8,7 +8,7 @@
 //! `message`, `key` and `actual`. Everything the JS side returns is checked
 //! here before the engine sees it.
 
-use crate::store_bridge::{BridgeFailure, JsStoreBridge};
+use crate::js_bridge::{BridgeFailure, JsBridge};
 use speclink_store_port::conformance::{self, CheckOutcome, PortHarness};
 use speclink_store_port::{
     Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError, RecordedEvent,
@@ -19,11 +19,11 @@ use speclink_store_port::{
 /// `newScope` and `recordedEvents`), reached through the bridge.
 #[derive(Clone)]
 pub struct JsPort {
-    bridge: JsStoreBridge,
+    bridge: JsBridge,
 }
 
 impl JsPort {
-    pub fn new(bridge: JsStoreBridge) -> JsPort {
+    pub fn new(bridge: JsBridge) -> JsPort {
         JsPort { bridge }
     }
 
@@ -35,7 +35,7 @@ impl JsPort {
 /// Call one JS function whose result crosses as JSON text, and wait for it to
 /// settle. A throw comes back as a [`BridgeFailure`] carrying its fields.
 pub(crate) fn settle_call(
-    bridge: &JsStoreBridge,
+    bridge: &JsBridge,
     method: &'static str,
     args: serde_json::Value,
 ) -> Result<serde_json::Value, BridgeFailure> {
@@ -281,7 +281,7 @@ impl PortHarness for JsHarness {
 
 /// Run the store contract's checks on the JS functions behind `bridge` and
 /// shape the report for JS: `{ passed, checks: [{ name, outcome, detail? }] }`.
-pub fn run_conformance(bridge: JsStoreBridge, keeps_events: bool) -> serde_json::Value {
+pub fn run_conformance(bridge: JsBridge, keeps_events: bool) -> serde_json::Value {
     let harness = JsHarness { port: JsPort::new(bridge), keeps_events };
     let report = conformance::run(&harness);
     let checks: Vec<serde_json::Value> = report
