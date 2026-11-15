@@ -4,8 +4,7 @@ slug: embedded-host-needs
 status: promoted
 created: 2026-11-10
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands, host-kit-agent-door, client-browser-login, skills-verbs-first-wave, server-routes-on-store-port, host-kit-client-door, remote-read-verbs, skills-verbs-second-wave, remote-skill-delivery, station-status-and-landing, host-free-fields, import-export-on-port
+promoted_to: store-port-contract, engine-on-store-port, shared-verb-parsing, shared-verb-output, workflow-config-commands, host-kit-agent-door, client-browser-login, skills-verbs-first-wave, server-routes-on-store-port, host-kit-client-door, remote-read-verbs, skills-verbs-second-wave, remote-skill-delivery, station-status-and-landing, host-free-fields, import-export-on-port, node-retire-legacy-store, store-port-examples, server-on-port-examples, retire-teamstore-and-drivers, docs-embedded-host
 ---
 
 # Discussion: 內嵌宿主、遠端能力與「規格不在 checkout 裡」的形態：需求清單
@@ -431,20 +430,38 @@ Source doc: ../speclink-embedded-host-needs.md
 **Ruled out**: skills-verbs-second-wave 維持一個變更 — 約 26 項任務，同時改引擎命令、線上協定與十幾支技能的原稿；host-kit-client-door 維持一個變更 — 約 25 項任務，是整個系列最大的
 **Open**: retire-teamstore-and-drivers 要不要再拆（提案時定）
 
+### Round 30 — interview (2026-11-14)
+
+**Focus**: 第 11 到 16 個變更封存之後，retire-teamstore-and-drivers 要怎麼切，舊資料要怎麼搬
+**Position**: retire-teamstore-and-drivers 拆成四個變更，計畫從十八個變成二十一個；已經在跑的示範用 server 用備份與還原把舊資料搬到新版。兩件事使用者都確認了（2026-11-14）。
+- 查證：Node SDK 既有的 31 方法 JS 儲存接的是引擎自己的儲存介面，不是 TeamStore。移除它不需要等 TeamStore，可以單獨做
+- 查證：示範用 server 還直接用 TeamStore 的地方有六處——推送事件的串流（讀待送佇列與已讀位置）、備份／檢查／還原、管理頁的系統狀態與待送佇列數量、管理頁的「遷移資料結構」、readyz 的健康檢查、初次設定頁的儲存狀態。帳號、登入工作階段、存取金鑰與成員不在 TeamStore 裡，不受影響
+- 查證：repo 裡沒有任何建在 SQLite、Postgres 或檔案系統上的三函式實作，只有記憶體版與 JS 的橋接。儲存契約也沒有「讀回事件」的操作，所以示範用 server 的串流不能只靠契約
+- 查證：宿主套件還借用舊儲存層的 ProjectId、RepoId 與內容摘要函式；Speclink Desktop 借用內容摘要函式與匯入包的版本常數。刪除舊儲存層之前要先搬走
+- 查證：示範用 server 有 44 個測試檔直接用舊的記憶體儲存塞資料；speclink-remote 與 Speclink Desktop 的測試也用
+- 新的順序：cut 17 node-retire-legacy-store、cut 18 store-port-examples、cut 19 server-on-port-examples、cut 20 retire-teamstore-and-drivers、cut 21 docs-embedded-host。cut 17 與 cut 18 可以並行
+- 三個範例各自把事件和寫入放在同一次交易裡，寫進範例自己的事件記錄；示範用 server 的串流讀這份記錄。這就是結論裡「需要至少送達一次的宿主把事件寫進自己的事件表」的做法
+- 舊資料的搬法：新版的還原讀得懂舊版做的備份檔；新版啟動時遇到舊配置的資料就拒絕啟動，並印出「在舊版做備份、升級、用新版還原」三個步驟。三種儲存用同一條路
+- 管理頁的「遷移資料結構」跟著舊儲存層移除：範例在開啟時自己建立資料表，沒有跨版本的遷移
+- 前十六個變更封存後，使用者文件裡有幾句已經不對（change rank、trace、plan --strict-overlap 仍被寫成只限本機）。這些由最後一個變更一起改
+**Ruled out**: retire-teamstore-and-drivers 維持一個變更 — 約 45 項任務，同時刪四個 crate、新寫三個實作並改接 server；拆成三個（新寫範例與 server 改接合併） — 那一個約 22 項任務；三個範例都在啟動時自動轉換舊配置 — 範例要長期帶著舊配置的知識，和範例的定位衝突；只有 SQLite 自動轉換 — 要多寫並測一個讀舊資料表的轉換程式，而備份與還原已經能搬
+**Open**: 無
+
 ## Conclusion
 
-**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分十八個變更依序實作，全部完成才發版。
+**Decision**: speclink 的遠端能力重做成「引擎＋宿主套件＋宿主實作的儲存接口」，官方 server 降為示範；分二十一個變更依序實作，全部完成才發版。
 - 形態：規格存在哪、引擎在哪執行、程式碼在哪是三個獨立的選擇；本系列服務「規格由一台 Server 持有」的形態，Server 可以是內嵌了引擎的宿主，也可以是官方的示範 server
 - 分工：儲存媒介、連線、遷移、歷史保存、帳號、登入、權限都由宿主負責；speclink 負責引擎、宿主套件、儲存契約與合格測試、用戶端（CLI 與 Speclink Desktop）、技能
 - 官方 server 的定位：示範與試用用，正式使用請把引擎內嵌進自己的系統；它改成用同一套宿主套件組出來
 - 擴充規則：掛鉤可以拒絕或旁觀，不能改內容；宿主不加新動詞；宿主只能選擇提供哪幾支技能，不能改技能文字
-- 發版：十八個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
+- 發版：二十一個變更全部完成才發版；每個變更完成後，示範用的 server 與既有測試都要維持可用，所以移除舊東西排在最後
 - 流程設定：兩條規則已寫入 speclink/config.yaml——rules.proposal 新增「三種形態（本機 repo、連到遠端的 checkout、沒有本機規格檔的內嵌宿主）逐一寫明結果：可用、不適用並寫理由、或這次不做並寫成已知缺口」；rules.design 第二條加入內嵌宿主與 Node SDK，並補上「新增的引擎功能若需要本機事實，由呼叫端收集後當成輸入」
 - 用詞：使用者看到的是本機專案、遠端專案、Server；整合者看到的是宿主、內嵌、SDK、宿主套件、儲存接口、入口；講規格在哪裡用「本機」「遠端」，講怎麼蓋出 Server 用「SDK」「內嵌」「宿主」；不再用「SDK」統稱整塊遠端功能，不再用「Remote Store」「團隊模式」「主機套件」
 - 延後的項目必須在之後建立的文件裡明確寫成缺口
 - 開啟中的討論 agent-tool-sdk-layering 已寫結論並封存，它的主要問題由本討論定案
 - 未驗證、留給對應變更查的事：舊版用戶端遇到新欄位是否照常運作（cut 14）
 - 已查證（原列為未驗證）：三個函式足以供應引擎全部的讀取（cut 2 的對照測試）；trace 的引擎只讀儲存，能直接跑在三個函式上
+- 已查證：Node SDK 既有的 31 方法 JS 儲存接的是引擎自己的儲存介面，不是 TeamStore；repo 裡沒有建在 SQLite、Postgres 或檔案系統上的三函式實作；儲存契約沒有讀回事件的操作
 - **cut 1 `store-port-contract`**: 三個函式的儲存契約、合格測試與記憶體版參考實作；純新增，不接線
   - Rust 的定義是正典，Node 的三個函式是它的對映
   - 列出：依鍵的前綴列出文件；讀取：一次收多個鍵，回傳內容、文件版本、最後修改時間；提交：一次帶全部寫入與刪除、每份文件的預期版本（或「必須不存在」）、事件
@@ -542,13 +559,28 @@ Source doc: ../speclink-embedded-host-needs.md
   - 存在既有 metadata 文字裡的專屬區塊；鍵名規則、數量與大小上限在設計時定
 - **cut 16 `import-export-on-port`**: 匯入匯出建在儲存契約上
   - 兩個門都能用；大小上限由宿主在建立入口時設定；不做壓縮；匯入維持只能進空的範圍
-- **cut 17 `retire-teamstore-and-drivers`**: 移除舊的儲存層
-  - SQLite、Postgres、serverfs 改寫成儲存契約的範例，供使用者參考
-  - 移除 TeamStore 與既有的 31 方法 JS 儲存
+- **cut 17 `node-retire-legacy-store`**: Node SDK 移除既有的 31 方法 JS 儲存
+  - createEngine 只留本機資料夾的形式；自訂儲存一律用 createHost 與三個函式
+  - 和 TeamStore 無相依，可以和 cut 18 並行
+  - 提案時從原本的 retire-teamstore-and-drivers 拆出
+- **cut 18 `store-port-examples`**: SQLite、Postgres、檔案系統三個儲存接口的範例
+  - 三個都只實作列出、讀取、提交，各自通過合格測試；純新增，不接線
+  - 事件和寫入在同一次交易裡寫進範例自己的事件記錄，範例另外提供讀這份記錄的方法
+  - 定位是給使用者參考的範例，同時是示範用 server 的儲存
+  - 提案時從原本的 retire-teamstore-and-drivers 拆出
+- **cut 19 `server-on-port-examples`**: 示範用 server 改用三個範例
+  - 推送事件的串流、備份還原、管理頁的系統狀態、健康檢查、初次設定頁的儲存狀態改接
+  - 舊資料用備份與還原搬：新版的還原讀得懂舊版做的備份檔；啟動時遇到舊配置的資料就拒絕啟動，並印出「在舊版做備份、升級、用新版還原」三個步驟
+  - 管理頁的「遷移資料結構」移除
+  - 排在 cut 18 之後；提案時從原本的 retire-teamstore-and-drivers 拆出
+- **cut 20 `retire-teamstore-and-drivers`**: 移除舊的儲存層
+  - 刪除 TeamStore、三個舊的 driver、TeamStore 的轉接與橋接；還在用的型別搬進宿主套件
+  - 測試改用記憶體版的儲存接口
+  - 舊儲存層的四份正式規格移除
   - 流程設定 context 的專案說明同步更新
-  - 示範用 server 的推送事件串流、備份還原與健康檢查還直接依賴 TeamStore，要一起改接；任務過多時在提案時拆開
-- **cut 18 `docs-embedded-host`**: README 與使用者文件一次更新
-  - 前十七個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
+  - 排在 cut 17 與 cut 19 之後
+- **cut 21 `docs-embedded-host`**: README 與使用者文件一次更新
+  - 前二十個變更不動使用者文件，各自在提案的 Impact 寫明文件影響，本變更照清單收
   - README 開頭改用本機專案與遠端專案；「自架 server」拆成「把 Speclink 內嵌進你的系統」與「試用官方 server」兩節，前者在前並列出宿主要做的四件事（實作三個函式並通過合格測試、掛一條路由、驗不出身分時傳空值、要支援瀏覽器登入時讓自己的登入服務提供標準文件並接受本機回呼）
   - 官方 server 的定位句：「官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。」；正式規格 user-documentation 的對應需求跟著改
   - 「目前狀態」改寫；延後的項目在專案能力狀態與路線圖逐項列為已知缺口，README 用一行連過去
@@ -585,6 +617,8 @@ Source doc: ../speclink-embedded-host-needs.md
 - 先移除舊的再做新的 — 中間會有一段時間示範用的 server 與測試不能跑
 - 用「SDK」統稱整塊遠端功能 — SDK 是工具的名字，連到官方 server 的遠端專案沒有用到它
 - shared-verb-parsing 維持一個變更 — 查證後任務會超過 25 項，審查與驗證的範圍太大
+- retire-teamstore-and-drivers 維持一個變更 — 查證後約 45 項任務，同時刪四個 crate、新寫三個實作並改接示範用 server
+- 三個範例在啟動時自動轉換舊配置的資料 — 範例要長期帶著舊配置的知識；備份與還原已經能搬
 **Deferred**:
 - 規格放在 checkout 之外的本機位置（spec_dir 的路徑規則與固定的決定順序） — 內嵌宿主用不到；spec_dir 今天沒有檢查，絕對路徑與 ../ 被接受是未定義的行為，文件要寫明
 - 唯讀引用另一套規格 — 目前沒有需求
