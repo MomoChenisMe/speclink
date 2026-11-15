@@ -1,0 +1,20 @@
+[package]
+name = "speclink-store-port-postgres"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Example store port on one PostgreSQL schema: list, read and commit in one transaction, with an event log"
+# The test target is listed by hand: it needs `harness = false` to report
+# `skipped` when no PostgreSQL instance is configured.
+autotests = false
+
+[dependencies]
+speclink-store-port = { path = "../speclink-store-port" }
+postgres = "0.19.14"
+serde_json = { workspace = true }
+
+[[test]]
+name = "it"
+path = "tests/it/main.rs"
+harness = false

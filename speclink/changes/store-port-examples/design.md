@@ -181,6 +181,51 @@ PostgreSQL 的測試沿用舊 driver 的做法：測試執行檔自己當主程�
 - 範圍內：三個新 crate、根目錄的 Cargo.toml 與 Cargo.lock、ci.yml 的一個 job。
 - 範圍外：接線、舊 driver、儲存契約、Node SDK、使用者文件。
 
+## 稽核結論
+
+依稽核清單，用三種使用者的角度（故意搗亂的人、照抄範例不看說明的人、搞混用法的人）檢查三個範例的輸入。沒有發現 Critical 或 High 等級的問題。下表每一項都有測試；沒有另外註明的，三個 crate 用同一個測試名稱。
+
+**已確認並有測試的行為**
+
+| 輸入 | 行為 | 測試 |
+| --- | --- | --- |
+| `events_after` 的 `limit` 是 0 | 回空清單。0 不代表「不限筆數」。 | `events_after_with_limit_zero_or_the_largest_number_is_empty` |
+| `events_after` 的 `after` 是 u64 的最大值 | 回空清單，沒有溢位。 | 同上 |
+| `trim_events` 的序號是 u64 的最大值 | 下限停在目前最大的序號，下一筆事件接著編。 | `a_trim_through_the_largest_number_stops_at_the_last_sequence` |
+| 鍵含 `%`、`_`、`*`、`[` | 前綴查詢用鍵的範圍比較，這些字元只是一般字元。 | `a_prefix_matches_bytes_and_has_no_wildcard` |
+| 前綴以最大的字元（U+10FFFF）結尾 | 上界往前一個字元進位；整個前綴都是最大字元時沒有上界。 | 同上 |
+| 空前綴 | 列出全部，依位元組順序。 | 同上 |
+| SQLite 的路徑指向資料夾 | 開啟失敗，訊息寫明「是資料夾，需要檔案的路徑」。 | `a_directory_path_is_refused_with_the_reason`（SQLite） |
+| 檔案系統的路徑指向檔案 | 開啟失敗，訊息寫明「是檔案，需要資料夾的路徑」；檔案不變。 | `a_file_path_is_refused_with_the_reason`（檔案系統） |
+| PostgreSQL 的連線字串格式錯誤 | 開啟失敗，訊息說明無法解讀連線字串，不含密碼。 | `a_connection_string_that_cannot_be_read_is_refused_with_the_reason`（PostgreSQL） |
+| meta 的 layout_version 不是數字 | 拒絕開啟，讀到的值原樣帶出，資料不變。 | `a_layout_version_that_is_not_a_number_is_refused_as_it_is` |
+| 範圍到達版本號上限 | 提交被拒絕（儲存的失敗），文件、事件與事件序號都不變。 | `a_scope_at_the_version_limit_rejects_the_commit_and_keeps_its_sequence` |
+
+**和任務文字不同的地方**
+
+- 任務 4.2 列的「鍵含反斜線與 0xFF 位元組」做不出來：儲存契約的型別不接受含反斜線的鍵與前綴，Rust 的字串也不能含 0xFF 位元組，所以範例永遠收不到這兩種輸入。測試改為斷言契約的型別拒絕反斜線，並用「前綴以最大字元結尾」涵蓋上界進位的邊界。
+- 為了這次稽核新增的程式只有兩個明確的檢查（SQLite：路徑是資料夾；檔案系統：路徑是檔案）。其餘項目，原本的實作就符合，測試一加上就通過。
+
+**其他確認過的項目**
+
+- SQL 的值全部用參數帶入，沒有把輸入接進 SQL 字串。
+- 範圍名稱不會變成跳出資料夾的路徑（測試 `scope_names_stay_inside_the_directory_and_do_not_mix`）。
+- 環境變數 `SPECLINK_POSTGRES_PASSWORD` 是空字串時視為沒有設定，不會送出空密碼。
+- 等不到鎖時回報暫時無法使用，不是衝突（SQLite 的忙碌逾時 5 秒；PostgreSQL 的 `lock_timeout` 5 秒）。兩個秒數寫死在程式裡，沒有設定項。
+- `url_embeds_password` 對無法解讀的連線字串回 false；無法解讀的原因由 `connect` 回報。
+
+**已知的限制（這個變更不修）**
+
+- 檔案系統：範圍名稱跳脫後最長是原本的三倍。超過檔案系統單一名稱上限（通常 255 位元組）時，提交回報儲存的失敗。例如全部是中文字的範圍名稱，超過 28 個字就會超過。已寫進 crate 的說明。
+- 檔案系統：在 Windows 上，`con`、`nul`、`aux`、`com1` 這類名稱是裝置名稱。範圍名稱剛好是這些字時，D6 的跳脫規則不會改動它，資料夾可能建不出來。修法是在資料夾名稱前加固定的字首，但這會改動 D6 的配置，所以留給使用者決定。已寫進 crate 的說明。
+- PostgreSQL：事件名稱含 NUL 字元時，資料庫拒絕寫入，整筆提交回報儲存的失敗（text 欄位不能存 NUL）。文件內容不受影響（用 bytea）。
+- PostgreSQL：連線沒有 TLS，密碼與資料以明文傳輸。這是 Non-Goals 明列的範圍。
+- SQLite 與檔案系統：路徑打錯時，會在新的位置建立一個空的儲存，不會警告。這是規格「空的位置初始化」的結果。
+- `probe` 只檢查讀得到，不檢查寫得進去。
+- `UnknownLayout` 帶出的標記與版本來自不認得的資料，長度與內容沒有限制。宿主顯示它之前，要把它當成不可信的文字。
+- `events_after(scope, after, limit)` 的 `after` 與 `limit` 都是整數，寫成字面值時對調不會有編譯錯誤。簽章由 D2 固定；對調的後果是讀到的清單不對，不會寫入任何東西。
+- D2 寫 `url_embeds_password` 的回傳是 bool，舊 driver 的是 Result。示範用 server 換相依時，呼叫處要拿掉 `.unwrap_or(false)`。
+
 ## Risks / Trade-offs
 
 - [回歸對照] → 這個變更不改任何既有 crate，引擎的 golden 與 CLI 的整合測試不受影響。驗收條件明列「既有 crate 沒有檔案被改動」。

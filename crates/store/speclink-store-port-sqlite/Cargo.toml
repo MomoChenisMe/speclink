@@ -1,0 +1,16 @@
+[package]
+name = "speclink-store-port-sqlite"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Example store port on one SQLite file: list, read and commit in one transaction, with an event log"
+
+[dependencies]
+speclink-store-port = { path = "../speclink-store-port" }
+# `fallible_uint` lets a u64 go in and out of a statement; it adds no package.
+rusqlite = { version = "0.40.1", features = ["bundled", "fallible_uint"] }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

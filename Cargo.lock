@@ -4760,6 +4760,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "speclink-store-port-fs"
+version = "0.12.0"
+dependencies = [
+ "fs4",
+ "serde_json",
+ "speclink-store-port",
+ "tempfile",
+]
+
+[[package]]
+name = "speclink-store-port-postgres"
+version = "0.12.0"
+dependencies = [
+ "postgres",
+ "serde_json",
+ "speclink-store-port",
+]
+
+[[package]]
+name = "speclink-store-port-sqlite"
+version = "0.12.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "speclink-store-port",
+ "tempfile",
+]
+
+[[package]]
 name = "speclink-store-postgres"
 version = "0.12.0"
 dependencies = [

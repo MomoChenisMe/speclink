@@ -1,0 +1,15 @@
+[package]
+name = "speclink-store-port-fs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Example store port on one directory: an index file per scope, published by one rename, with an event log"
+
+[dependencies]
+speclink-store-port = { path = "../speclink-store-port" }
+fs4 = "1.1.0"
+serde_json = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
