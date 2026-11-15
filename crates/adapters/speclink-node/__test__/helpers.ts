@@ -1,10 +1,21 @@
 // Shared test helpers: the fs fixture project and CLI invocation, so engine
 // output can be compared to CLI output field by field.
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, relative, sep } from 'node:path'
-import { expect } from 'vitest'
+import { afterAll, expect } from 'vitest'
+
+import { createEngine } from '../index.js'
 
 export const repoRoot = join(__dirname, '..', '..', '..', '..')
 // 本機 cargo test 產 debug CLI；CI 的 Node SDK workflow 只建 release——擇一存在者。
@@ -58,11 +69,22 @@ export const TASKS_BETA = '## 1. Work\n\n- [x] 1.1 Only task\n'
 export const SPEC_USER_AUTH =
   '## Purpose\nAuthentication.\n\n### Requirement: Login\nUsers SHALL be able to log in.\n\n#### Scenario: valid login\n- **WHEN** credentials are valid\n- **THEN** a session is created\n'
 
+/** A workflow config that is not YAML. */
+export const BAD_CONFIG = ': not yaml : [\n'
+
+// Every fixture project a test file made is removed when the file is done.
+const fixtureRoots: string[] = []
+afterAll(() => {
+  // maxRetries: Windows can still hold a file of a project for a moment.
+  for (const root of fixtureRoots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 5 })
+})
+
 /** A fixture project with two changes (task progress + proposal summaries) and one spec. */
 export function makeFsFixture(): string {
   // realpath: macOS 的 tmpdir 是 /var → /private/var 的 symlink；CLI 以 getcwd 回報
   // 實體路徑，engine 則沿用傳入字串——不先解析，兩邊的 path 欄位無法逐位元比對。
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-node-fixture-')))
+  fixtureRoots.push(root)
   const changes = join(root, 'speclink', 'changes')
 
   const alpha = join(changes, 'alpha')
@@ -90,4 +112,21 @@ export function makeFsFixture(): string {
   mkdirSync(specDir, { recursive: true })
   writeFileSync(join(specDir, 'spec.md'), SPEC_USER_AUTH)
   return root
+}
+
+/** An engine over a local project folder; a new fixture project when no root is given. */
+export const fsEngine = (root: string = makeFsFixture(), actor?: string) =>
+  createEngine({ store: { type: 'fs', root }, actor })
+
+// A fixture project brings its own git identity: without one the developer's
+// global config is used, and the assertions cannot be repeated.
+export const GIT_NAME = 'Fixture Dev'
+export const GIT_EMAIL = 'fixture@example.com'
+export const GIT_IDENTITY = `${GIT_NAME} <${GIT_EMAIL}>`
+
+/** Make `root` a git repo whose identity is the fixture's. */
+export function initGitIdentity(root: string): void {
+  execFileSync('git', ['init', '-q'], { cwd: root })
+  execFileSync('git', ['config', 'user.name', GIT_NAME], { cwd: root })
+  execFileSync('git', ['config', 'user.email', GIT_EMAIL], { cwd: root })
 }

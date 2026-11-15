@@ -27,11 +27,11 @@ Node SDK 的原生層（`crates/adapters/speclink-node`）今天有兩種後端�
 **Non-Goals:**
 
 - 不改 `createHost`、`host.dispatch`、`host.handleRequest`、匯出匯入、`skills`、`agentTool`、`runStoreConformance` 的任何行為。
-- 不改引擎（`speclink-core`）與宿主套件（`speclink-host`）。
+- 不改引擎（`speclink-core`）與宿主套件（`speclink-host`）的程式。`speclink-core` 有一段註解拿 Node SDK 的舊橋接當例子，那段註解跟著改。
 - 不替舊物件做相容層。
 - 不動使用者文件。
 
-範圍內：`crates/adapters/speclink-node` 的原生層、JS 包裝、型別宣告與測試；正式規格 node-sdk 的 Purpose 一句。範圍外：其他 crate、apps、docs、README。
+範圍內：`crates/adapters/speclink-node` 的原生層、JS 包裝、型別宣告與測試；正式規格 node-sdk 的 Purpose 一句；`speclink-core` 的一段註解。範圍外：其他 crate 的程式、apps、docs、README。
 
 ## Decisions
 
@@ -53,7 +53,14 @@ Node SDK 的原生層（`crates/adapters/speclink-node`）今天有兩種後端�
 
 `store_bridge.rs` 裡這幾樣是三條路共用的，搬到新檔 `src/js_bridge.rs`：失敗的型別（`BridgeFailure`）、呼叫的請求（`CallRequest`）、持有 JS 函式的結構與它的 `create_bridge`、`call`、`notify`。
 
-結構從 `JsStoreBridge` 改名為 `JsBridge`：它現在也承載兩個掛鉤，名稱裡的「Store」不對。`port_bridge.rs` 與 `host.rs` 的引用跟著改。行為不變。
+結構從 `JsStoreBridge` 改名為 `JsBridge`：它現在也承載兩個掛鉤，名稱裡的「Store」不對。`port_bridge.rs` 與 `host.rs` 的引用跟著改。行為不變，只有四句失敗訊息的用字例外：它們原本寫「store method」「store bridge」，掛鉤失敗也帶這些字，同樣不對。改成：
+
+- `the function returned a non-JSON value: …`
+- `the function failed`
+- `JS bridge unavailable (…)`
+- `JS bridge channel closed before the function settled`
+
+錯誤碼、出現的時機與訊息開頭的函式名稱都不變。`BridgeFailure` 的 `Clone` 與 `std::error::Error` 實作只有舊物件的路在用，一起移除。
 
 `store_bridge.rs` 其餘的部分（必要方法的清單、缺方法的檢查、把 JS 值轉成引擎型別的函式、約 310 行的儲存介面實作、`claim`）刪除，檔案刪除。
 
@@ -131,7 +138,7 @@ delta 只在新增 capability 時帶入 Purpose；既有 capability 的 Purpose 
 
 **範圍邊界**
 
-- 只改 `crates/adapters/speclink-node` 與 node-sdk 正式規格的 Purpose 一段。
+- 只改 `crates/adapters/speclink-node`、node-sdk 正式規格的 Purpose 一段，以及 `speclink-core` 的一段註解（crates/engine/speclink-core/src/command/mod.rs）。
 - 不改 `docs/`、README、CHANGELOG。
 
 ## 稽核結論
@@ -181,12 +188,14 @@ delta 只在新增 capability 時帶入 Purpose；既有 capability 的 Purpose 
 - `free-fields.spec.ts`：「refuses them on the JS store form…」→ 舊物件拒絕自由欄位。
 - `store-bridge.spec.ts`：「throws synchronously at construction listing every missing method name」→ 缺必要方法時建構失敗。「a rejecting store method rejects dispatch with the method name prefixed」→ Store 方法丟出的錯誤怎麼傳到 `dispatch`。其餘四個（list 與 status 經宿主 Store、證據方法不是必要方法、方法直接回傳值）測的是 Store 物件形式本身，屬 D4 表格的「整檔刪除」與規格移除的情境「宿主 Store 物件生效」。
 
-`stress.spec.ts` 原本三個案例測的都是「並發不死結」這一個行為，照 D4 改成兩組後是兩個案例。其他各檔保留的案例數都等於或多於改寫前仍存在的行為數。刪除清單上的「從 Store 方法回呼引擎」沒有對應的測試可刪，只有型別宣告的一段警告，已移除。
+`stress.spec.ts` 原本三個案例測的都是「並發不死結」這一個行為，照 D4 改成兩組後是兩個案例。兩組都無條件斷言「最後一個呼叫結束時，在呼叫送出前排定的計時器已經執行過」。`createHost` 那一組的每次儲存呼叫都要等一個計時器，批次一定比計時器晚結束。本機資料夾那一組的二十個呼叫可能比第一輪計時器更早結束，所以批次裡多放一串「一個接一個、持續 60ms」的讀取：它只等呼叫本身，不等任何計時器。呼叫要是不經過事件迴圈就結束，這 60ms 裡計時器一次都不會執行，斷言就會失敗（用一個不經事件迴圈就結束的假呼叫實測過，計時器的次數是 0）。
+
+`workflow-config-verbs.spec.ts` 的並行寫入測試原本靠在 Store 的讀取方法注入 30ms 延遲來逼出互蓋。本機資料夾無法注入延遲，所以改成同時送出五個不同鍵的寫入，再逐一確認都留下。實測過它的偵測力：把引擎裡讓寫入排隊的鎖關掉後，這個測試 10 次都失敗；鎖在的時候通過。其他各檔保留的案例數都等於或多於改寫前仍存在的行為數。刪除清單上的「從 Store 方法回呼引擎」沒有對應的測試可刪，只有型別宣告的一段警告，已移除。
 
 ## Risks / Trade-offs
 
 - [改寫測試時不小心丟掉仍然存在的行為] → D4 的刪除清單是封閉的；任務要求列出每個被刪案例屬於清單上的哪一項，並比對改寫前後的案例數。
-- [回歸對照] → 本機資料夾形式的 `dispatch` 有與 CLI `--json` 逐欄位比對的測試（`engine.spec.ts`、`dispatch-contract.spec.ts` 的 fs 案例），這個變更不改它們的斷言。引擎的 golden 與 CLI 的整合測試不受影響：這個變更不改 `speclink-core` 與 `speclink-cli`。
+- [回歸對照] → 本機資料夾形式的 `dispatch` 有與 CLI `--json` 逐欄位比對的測試（`engine.spec.ts`、`dispatch-contract.spec.ts` 的 fs 案例），這個變更不改它們的斷言。引擎的 golden 與 CLI 的整合測試不受影響：這個變更不改 `speclink-core` 與 `speclink-cli` 的程式（`speclink-core` 只改一段註解）。
 - [跨平台] → 改用本機資料夾的測試會多寫暫存目錄。沿用 `helpers.ts` 既有的 fixture 函式（它已經處理 macOS 暫存目錄的符號連結）；路徑一律用 `path.join` 組；Windows 上刪暫存目錄沿用既有測試的寫法。
 - [外部使用者的程式壞掉] → 這是刻意的破壞性變更。錯誤在建構時立刻出現，訊息指向 `createHost`；發版說明列出遷移方式。
 - [`__missing__` 標記其實還有人用] → D2 規定先用 `createHost` 的三個測試檔驗證再移除。

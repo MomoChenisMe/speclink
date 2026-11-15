@@ -41,7 +41,7 @@ Source discussion: embedded-host-needs（cut 17）。
 
 - **破壞性**：用 Store 物件呼叫 `createEngine` 的程式會在建立引擎時得到錯誤。遷移方式：把儲存改寫成三個函式（`list`、`read`、`commit`），改用 `createHost`，每次呼叫給身分與範圍。套件裡的 `runStoreConformance` 能檢查三個函式的實作。
 - 本機資料夾形式：`dispatch` 的輸入、輸出與錯誤碼都不變。
-- `createHost`、`host.dispatch`、`host.handleRequest`、匯出匯入、`skills`、`agentTool`、`runStoreConformance`：都不變。
+- `createHost`、`host.dispatch`、`host.handleRequest`、匯出匯入、`skills`、`agentTool`、`runStoreConformance`：都不變。唯一的例外是四句失敗訊息的用字：宿主的函式（三個儲存函式或掛鉤）失敗、而且沒有自己的訊息時，引擎補上的文字原本寫「store method」「store bridge」，掛鉤失敗也帶這些字。現在改成「the function」「JS bridge」。錯誤碼、出現的時機與訊息開頭的函式名稱都不變。
 - **CLI 指令、設定欄位、技能、線上協定**：都沒有變更。
 - 這個變更在整個系列完成之後才發版，發版說明要列出這一項破壞性變更。
 
@@ -66,7 +66,7 @@ Source discussion: embedded-host-needs（cut 17）。
 ## Impact
 
 - Affected specs: node-sdk（移除一條、新增一條、修改五條）、change-plan（修改一條）
-- Affected crates 與 app: `speclink-node`。`speclink-core`、`speclink-host`、`speclink-cli`、store crates、apps/desktop 不改。
+- Affected crates 與 app: `speclink-node`。`speclink-core` 只改一段註解（它原本拿 Node SDK 的舊橋接當例子），程式不改。`speclink-host`、`speclink-cli`、store crates、apps/desktop 不改。
 - Affected code:
   - New:
     - crates/adapters/speclink-node/src/js_bridge.rs
@@ -77,6 +77,7 @@ Source discussion: embedded-host-needs（cut 17）。
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts
     - crates/adapters/speclink-node/__test__/helpers.ts
+    - crates/adapters/speclink-node/__test__/engine.spec.ts
     - crates/adapters/speclink-node/__test__/stress.spec.ts
     - crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts
     - crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts
@@ -84,6 +85,7 @@ Source discussion: embedded-host-needs（cut 17）。
     - crates/adapters/speclink-node/__test__/write-path.spec.ts
     - crates/adapters/speclink-node/__test__/actor.spec.ts
     - crates/adapters/speclink-node/__test__/free-fields.spec.ts
+    - crates/engine/speclink-core/src/command/mod.rs（只改一段註解）
     - speclink/specs/node-sdk/spec.md（只改 Purpose 那一段的一句；需求由 delta 處理）
   - Removed:
     - crates/adapters/speclink-node/src/store_bridge.rs

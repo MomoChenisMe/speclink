@@ -91,9 +91,9 @@ impl std::error::Error for NoActiveChanges {}
 pub struct CommandError {
     pub code: ErrorCode,
     pub message: String,
-    /// The original flow error when one exists. Hosts with their own error
-    /// taxonomy (the Node SDK's store-bridge failures) downcast it to refine
-    /// their envelope — that taxonomy stays at the envelope layer (決策三).
+    /// The original flow error when one exists. A host with its own error
+    /// taxonomy can downcast it to refine its envelope — that taxonomy stays
+    /// at the envelope layer (決策三).
     pub source: Option<anyhow::Error>,
 }
 

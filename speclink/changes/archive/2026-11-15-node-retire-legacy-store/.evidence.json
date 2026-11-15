@@ -54,6 +54,13 @@
         "crates/adapters/speclink-node/src/store_bridge.rs",
         "crates/adapters/speclink-node/src/js_bridge.rs"
       ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 依 D5 更新正式規格 node-sdk 的 Purpose 一段（只改這一段，`## Requirements` 以下不碰），並做最後檢查：D4 的刪除清單與 2.1、2.2、2.3 實際刪掉的測試逐項對得上；design 的 Implementation Contract 驗收條件逐條成立。涉及 speclink/specs/node-sdk/spec.md。驗證：`speclink validate node-retire-legacy-store` 通過；`cargo build -p speclink-cli` 之後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 全部通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs"
+      ]
     }
   ],
   "entries": [
@@ -133,6 +140,17 @@
         "crates/adapters/speclink-node/src/js_bridge.rs"
       ],
       "recordedAt": "2026-11-15T13:36:33Z"
+    },
+    {
+      "taskId": "tsk_01M7D7SZB3W58CRCHX9YRAR9XM",
+      "taskDesc": "4.2 依 D5 更新正式規格 node-sdk 的 Purpose 一段（只改這一段，`## Requirements` 以下不碰），並做最後檢查：D4 的刪除清單與 2.1、2.2、2.3 實際刪掉的測試逐項對得上；design 的 Implementation Contract 驗收條件逐條成立。涉及 speclink/specs/node-sdk/spec.md。驗證：`speclink validate node-retire-legacy-store` 通過；`cargo build -p speclink-cli` 之後 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 全部通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "37699fd4f23b68c3dfe391c6a60208d80e5a9c51",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs"
+      ],
+      "recordedAt": "2026-11-15T14:02:21Z"
     }
   ]
 }

@@ -6,8 +6,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { createEngine } from '../index.js'
-import { cliBin, makeFsFixture, projectFiles } from './helpers'
+import { cliBin, fsEngine, GIT_IDENTITY, initGitIdentity, makeFsFixture, projectFiles } from './helpers'
 
 const ACTOR = 'Rev <rev@example.com>'
 // beta 的任務全數完成——蓋章守門的前提。
@@ -21,8 +20,7 @@ const STAMP_PAYLOAD = JSON.stringify({ scope: [{ path: SCOPE_FILE, hash: '0f9c' 
 /** A new fixture project, an engine on it, and readers for the change's metadata and tickets. */
 function project(actor?: string) {
   const root = makeFsFixture()
-  const store = { type: 'fs' as const, root }
-  const engine = actor === undefined ? createEngine({ store }) : createEngine({ store, actor })
+  const engine = fsEngine(root, actor)
   const file = (name: string) => join(root, 'speclink', 'changes', CHANGE, name)
   return {
     root,
@@ -99,12 +97,10 @@ describe('蓋章守門與 argv 契約', () => {
   it('未給 actor 時 reviewed_by 回退專案的 git 身分', async () => {
     // 與 created_by 同一條解析：有 actor 用它，沒有就用 git 身分。
     const { root, engine, meta } = project()
-    execFileSync('git', ['init', '-q'], { cwd: root })
-    execFileSync('git', ['config', 'user.name', 'Fixture Dev'], { cwd: root })
-    execFileSync('git', ['config', 'user.email', 'fixture@example.com'], { cwd: root })
+    initGitIdentity(root)
     await engine.dispatch(['review', 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
     await engine.dispatch(['review', 'stamp', CHANGE, '--stdin'], { stdin: STAMP_PAYLOAD })
-    expect(meta()).toContain('reviewed_by: Fixture Dev <fixture@example.com>\n')
+    expect(meta()).toContain(`reviewed_by: ${GIT_IDENTITY}\n`)
   })
 
   it('同一 engine 的 review 與 verify 並發蓋章不互吃', async () => {
@@ -165,7 +161,7 @@ describe('讀取與丟棄工單', () => {
   for (const station of ['review', 'verify'] as const) {
     it(`${station} show 與 CLI 的 --json 相同，discard 後 show 查無工單`, async () => {
       const root = makeFsFixture()
-      const engine = createEngine({ store: { type: 'fs', root }, actor: ACTOR })
+      const engine = fsEngine(root, ACTOR)
       await engine.dispatch([station, 'add-round', CHANGE, '--stdin'], { stdin: BLOCKING_ROUND })
       await engine.dispatch([station, 'add-round', CHANGE, '--stdin'], { stdin: CLEAN_ROUND })
 

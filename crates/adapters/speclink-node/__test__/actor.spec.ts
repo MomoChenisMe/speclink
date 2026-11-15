@@ -1,17 +1,12 @@
 // 建構期 actor 注入（spec：createEngine 的建構期 actor 注入）。
 // fs 形式的回退對照物是 CLI 自己蓋的章——同一 fixture 專案跑兩邊，逐位元比對。
-import { beforeAll, afterAll, describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it } from 'vitest'
 import { execFileSync, execSync } from 'node:child_process'
-import { existsSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { createEngine } from '../index.js'
-import { cliBin, makeFsFixture, repoRoot } from './helpers'
-
-// fixture 專案自帶 git 身分——不設就會沿用開發者的 global config，斷言不可重現。
-const GIT_NAME = 'Fixture Dev'
-const GIT_EMAIL = 'fixture@example.com'
-const GIT_IDENTITY = `${GIT_NAME} <${GIT_EMAIL}>`
+import { cliBin, GIT_IDENTITY, GIT_NAME, initGitIdentity, makeFsFixture, projectFiles, rejection, repoRoot } from './helpers'
 
 let fsFixture: string
 
@@ -30,14 +25,8 @@ beforeAll(() => {
     execSync('cargo build -p speclink-cli', { cwd: repoRoot, stdio: 'inherit' })
   }
   fsFixture = makeFsFixture()
-  execFileSync('git', ['init', '-q'], { cwd: fsFixture })
-  execFileSync('git', ['config', 'user.name', GIT_NAME], { cwd: fsFixture })
-  execFileSync('git', ['config', 'user.email', GIT_EMAIL], { cwd: fsFixture })
+  initGitIdentity(fsFixture)
 }, 600_000)
-
-afterAll(() => {
-  if (fsFixture) rmSync(fsFixture, { recursive: true, force: true })
-})
 
 describe('createEngine actor — fs 形式', () => {
   it('明給 actor 時優先於 git identity', async () => {
@@ -63,5 +52,20 @@ describe('createEngine actor — fs 形式', () => {
     const engine = createEngine({ store: { type: 'fs', root: fsFixture }, actor: '   ' })
     await engine.dispatch(['new', 'change', 'demo-blank'])
     expect(createdByLine(fsMeta('demo-blank'))).toBe(`created_by: ${GIT_IDENTITY}`)
+  })
+
+  // spec「呼叫期無從覆寫身分」：dispatch 沒有身分的參數，argv 也帶不進去。
+  it('argv 帶不進身分：--actor 被拒絕，之後的蓋章仍是建構期的 actor', async () => {
+    const root = makeFsFixture()
+    initGitIdentity(root)
+    const engine = createEngine({ store: { type: 'fs', root }, actor: 'Alice <alice@example.com>' })
+    const before = projectFiles(root)
+    const err = await rejection(engine.dispatch(['new', 'change', 'forged', '--actor', 'Bob <bob@example.com>']))
+    expect(err.code).toBe('invalid_argv')
+    expect(projectFiles(root)).toEqual(before)
+
+    await engine.dispatch(['new', 'change', 'honest'])
+    const meta = readFileSync(join(root, 'speclink', 'changes', 'honest', '.meta.yaml'), 'utf8')
+    expect(createdByLine(meta)).toBe('created_by: Alice <alice@example.com>')
   })
 })

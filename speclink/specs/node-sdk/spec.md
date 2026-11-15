@@ -6,81 +6,32 @@ Node 綁定對外的 SDK 契約：createEngine 的本機資料夾形式與 dispa
 
 ## Requirements
 
-### Requirement: createEngine 的雙形式儲存建構
-Node SDK 的 createEngine SHALL 接受兩種儲存形式：內建 fs（指定專案根與選填 spec 目錄名），或宿主實作的 Store 物件（方法回傳值或 Promise 皆可）。以 Store 物件建構且缺少必要方法時，createEngine SHALL 於建構當下拋出錯誤並列出缺少的方法名。
-
-#### Scenario: fs 形式與 CLI 行為對等
-- **WHEN** 以 createEngine 的 fs 形式指向某 fixture 專案，執行 await engine.dispatch(['list', '--json'])
-- **THEN** 回傳物件與在同一專案執行 speclink list --json 的輸出 JSON 完全一致
-
-#### Scenario: 宿主 Store 物件生效
-- **WHEN** 以模擬兩個 change 的 JS Store 物件（方法回傳 Promise）建構引擎並 dispatch(['list', '--json'])
-- **THEN** 回傳兩個 change 且欄位名（camelCase）與 CLI 輸出一致
-
-#### Scenario: 缺方法建構即失敗
-- **WHEN** 以缺少 artifact 寫入方法的 Store 物件呼叫 createEngine
-- **THEN** 同步拋出錯誤，訊息列出缺少的方法名，不產生引擎實例
-
-
-<!-- @trace
-source: node-sdk
-updated: 2026-07-05
-code:
-  - .github/workflows/node-sdk.yml
-  - Cargo.lock
-  - Cargo.toml
-  - README.md
-  - crates/speclink-cli/src/commands.rs
-  - crates/speclink-core/src/init.rs
-  - crates/speclink-core/src/lib.rs
-  - crates/speclink-core/src/listing.rs
-  - crates/speclink-node/.gitignore
-  - crates/speclink-node/Cargo.toml
-  - crates/speclink-node/__test__/engine.spec.ts
-  - crates/speclink-node/__test__/helpers.ts
-  - crates/speclink-node/__test__/render.spec.ts
-  - crates/speclink-node/__test__/store-bridge.spec.ts
-  - crates/speclink-node/__test__/stress.spec.ts
-  - crates/speclink-node/__test__/write-path.spec.ts
-  - crates/speclink-node/build.rs
-  - crates/speclink-node/index.d.ts
-  - crates/speclink-node/index.js
-  - crates/speclink-node/package-lock.json
-  - crates/speclink-node/package.json
-  - crates/speclink-node/src/lib.rs
-  - crates/speclink-node/src/render.rs
-  - crates/speclink-node/src/store_bridge.rs
-  - docs/sdk-node.md
-  - docs/sdk-node.zh-TW.md
--->
-
----
 ### Requirement: dispatch 的輸入輸出契約
 
 engine.dispatch SHALL 接受 argv 字串陣列（與 CLI 動詞詞彙一對一）與選填第二參數（stdin 內容），回傳 Promise；成功時解析為與 CLI --json 對齊的結構化物件（無 --json 形式的動詞回傳含 output 字串的物件）；失敗時以 Error 拒絕——message 為與 CLI 相同的語義化訊息並附 code 欄位。dispatch SHALL 於背景工作執行，SHALL NOT 阻塞 JS 事件迴圈。
 
-dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳形狀與既有錯誤碼值域維持不變；對相同 workspace 狀態，dispatch 的成功結果與錯誤 SHALL 與 CLI 對應動詞語意一致，錯誤碼 SHALL 出自命令層的封閉註冊表（含 invalid_config 與 refused）。宿主 Store 提供的工作流設定文字存在但無法解析時，讀取政策的 dispatch 呼叫 SHALL 以 Error 拒絕且 code 為 invalid_config，SHALL NOT 以預設政策繼續執行。
+dispatch SHALL 由與 CLI 共用的引擎命令層執行：argv 詞彙、回傳形狀與既有錯誤碼值域維持不變；對相同 workspace 狀態，dispatch 的成功結果與錯誤 SHALL 與 CLI 對應動詞語意一致，錯誤碼 SHALL 出自命令層的封閉註冊表（含 invalid_config 與 refused）。規格資料夾的流程設定檔存在但無法解析時，讀取政策的 dispatch 呼叫 SHALL 以 Error 拒絕且 code 為 invalid_config，SHALL NOT 以預設政策繼續執行。
 
 dispatch 的 argv SHALL 由與 CLI 共用的同一份動詞解析處理：CLI 接受的寫法（含 `--name=value` 與 CLI 有的短旗標）dispatch SHALL 同樣接受；CLI 不接受的旗標與多出來的位置參數，dispatch SHALL 以 Error 拒絕、code 為 invalid_argv、message 為與 CLI 相同的解析錯誤文字（不含 ANSI 色碼），SHALL NOT 靜默忽略。argv 帶 `--json` 時，回傳的結構化物件與不帶時相同。argv 是 `--help` 時 SHALL 以 Error 拒絕、code 為 invalid_argv、message 為該動詞的說明文字。
 
-dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的一端執行的動詞（drift、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 以 Error 拒絕、code 為 invalid_argv、message 說明原因。dispatch 的回傳內容 SHALL 由與 CLI 共用的同一份輸出定義產生：有 --json 形式的動詞回傳與 CLI --json 內容相同的結構化物件；沒有 --json 形式的動詞回傳 { output }，output 與 CLI 在 --no-color 下的 stdout 相同。有兩種情況不經引擎命令：claim 由宿主 Store 的 claim 方法裁決，成功時回傳該方法的回傳值；status 沒有給變更名稱、而且專案沒有任何變更時，與 CLI 一樣只有一行提示，回傳 { output }，output 與 CLI 的 stdout 相同。
+dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的一端執行的動詞（drift、review prepare、review scope、verify scope、帶 --skill 的 instructions）SHALL 以 Error 拒絕、code 為 invalid_argv、message 說明原因。dispatch 的回傳內容 SHALL 由與 CLI 共用的同一份輸出定義產生：有 --json 形式的動詞回傳與 CLI --json 內容相同的結構化物件；沒有 --json 形式的動詞回傳 { output }，output 與 CLI 在 --no-color 下的 stdout 相同。有一種情況不經引擎命令：status 沒有給變更名稱、而且專案沒有任何變更時，與 CLI 一樣只有一行提示，回傳 { output }，output 與 CLI 的 stdout 相同。claim SHALL 與 CLI 在本機專案的行為相同：以 Error 拒絕，message 含 CLI 對本機專案的拒絕文字 `claim requires a remote store`。
 
 沒有 --json 形式的動詞，CLI 另有提示文字印到 stderr 時（例如 archive 在變更沒有任務證據時的提示），dispatch 回傳的物件 SHALL 另帶 stderr 欄位，內容與 CLI 為該動詞印到 stderr 的提示文字相同；沒有這種文字時 SHALL NOT 帶 stderr 欄位。discuss conclude 的結論已寫入、而收尾的封存步驟失敗時，dispatch SHALL 解析為 conclude 的結構化物件並另帶 closingError 欄位（失敗原因的文字），SHALL NOT 以 Error 拒絕：結論已經寫入，拒絕會讓呼叫端以為沒有寫入而重試。
 
 #### Scenario: 寫入動詞經 stdin 參數
-- **WHEN** 執行 await engine.dispatch(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin'], { stdin: 內容字串 })
-- **THEN** 宿主 Store 收到該 artifact 的寫入呼叫，dispatch 解析為成功結果
+- **WHEN** 對含變更 demo 的專案執行 await engine.dispatch(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin'], { stdin: 內容字串 })
+- **THEN** 專案的 speclink/changes/demo/proposal.md 的內容是傳入的字串，dispatch 解析為成功結果
 
 #### Scenario: 錯誤以語義化例外傳遞
-- **WHEN** Store 於認領時回報該 change 已被他人持有，執行 dispatch(['claim', 'x'])
-- **THEN** Promise 以 Error 拒絕，message 為語義化訊息（含持有情境與建議動作）、code 反映衝突類別，宿主可將 message 直接回給 agent
+- **WHEN** 對一個本機專案執行 dispatch(['claim', 'x'])
+- **THEN** Promise 以 Error 拒絕，message 為語義化訊息（含 `claim requires a remote store`）並附 code 欄位，宿主可將 message 直接回給 agent；專案裡沒有任何檔案被寫入
 
 #### Scenario: 並發 dispatch 不死結
-- **WHEN** 對同一引擎並發發出多個 dispatch 呼叫（宿主 Store 方法為 async）
+- **WHEN** 對同一引擎並發發出多個 dispatch 呼叫（讀取與寫入的動詞都有）
 - **THEN** 全部呼叫在有限時間內完成（無互等死結），事件迴圈期間可持續處理其他工作
 
 #### Scenario: 壞工作流設定經 dispatch 拒絕
-- **WHEN** 宿主 Store 的工作流設定讀取方法回傳無法解析的 YAML 文字，執行 dispatch(['new', 'change', 'demo'])
+- **WHEN** 專案的 speclink/config.yaml 是無法解析的 YAML 文字，執行 dispatch(['new', 'change', 'demo'])
 - **THEN** Promise 以 Error 拒絕，code 為 invalid_config，message 指出工作流設定無法解析與原因
 
 #### Scenario: 不認得的旗標被拒絕
@@ -111,7 +62,7 @@ dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的�
 #### Scenario: 給了 stdin 卻沒帶 --stdin
 
 - **WHEN** 執行 dispatch(['new', 'artifact', 'proposal', '--change', 'beta'], { stdin: 內容字串 })
-- **THEN** Promise 以 Error 拒絕，code 為 invalid_argv，message 指出要帶 --stdin，宿主 Store 沒有收到寫入呼叫
+- **THEN** Promise 以 Error 拒絕，code 為 invalid_argv，message 指出要帶 --stdin，專案裡沒有任何檔案被寫入
 
 #### Scenario: 原本不支援的動詞現在能用
 
@@ -150,8 +101,8 @@ dispatch SHALL 接受全部有引擎命令的動詞。只能在有 checkout 的�
 
 
 <!-- @trace
-source: skills-verbs-first-wave
-updated: 2026-11-11T17:52:57+08:00
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->
 
 ---
@@ -223,7 +174,7 @@ updated: 2026-08-05
 ---
 ### Requirement: createEngine 的建構期 actor 注入
 
-createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），兩種儲存形式皆於建構期收下並綁定於該 engine 實例；dispatch 的操作者身分解析 SHALL 為：建構期 actor 有給值（trim 後非空）一律優先，fs 形式未給時回退 workspace 的 git identity（現行為），宿主 Store 形式未給時維持無章（現行為）。trim 後為空字串的 actor SHALL 視同未給。actor SHALL NOT 能經 dispatch 的 argv 或其他呼叫期參數傳入或覆寫——一個實例一個身分，多身分宿主以多個 engine 實例表達。
+createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），於建構期收下並綁定於該 engine 實例；dispatch 的操作者身分解析 SHALL 為：建構期 actor 有給值（trim 後非空）一律優先，未給時回退 workspace 的 git identity。trim 後為空字串的 actor SHALL 視同未給。actor SHALL NOT 能經 dispatch 的 argv 或其他呼叫期參數傳入或覆寫——一個實例一個身分。每次呼叫帶不同身分的需求由 createHost 承擔：身分由每次呼叫給。
 
 #### Scenario: fs 形式明給 actor 優先於 git identity
 
@@ -235,34 +186,25 @@ createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），
 - **WHEN** 同一 fixture 專案以不帶 actor 的 createEngine fs 形式建構並 dispatch(['new', 'change', 'demo2'])
 - **THEN** demo2 的 created_by 與在該專案執行 CLI speclink new change 的蓋章逐位元一致（git identity 回退不變）
 
-#### Scenario: 宿主 Store 形式帶 actor 落章
-
-- **WHEN** 以 JS Store 物件＋actor: 'Bob <bob@example.com>' 建構引擎並 dispatch(['new', 'change', 'demo3'])
-- **THEN** 宿主 Store 收到的 metadata 寫入含 created_by: Bob <bob@example.com>；同引擎後續的 review／verify 蓋章動詞亦以同值落 _by 欄位
-
-#### Scenario: 宿主 Store 形式未給 actor 維持無章
-
-- **WHEN** 以 JS Store 物件建構引擎（不帶 actor）並 dispatch(['new', 'change', 'demo4'])
-- **THEN** 寫入的 metadata 不含 created_by（與現行無章行為一致）
-
 #### Scenario: 呼叫期無從覆寫身分
 
 - **WHEN** 檢視 dispatch 的輸入契約並嘗試以任意 argv 影響蓋章身分
 - **THEN** dispatch 不存在 actor 參數，蓋章內容只隨建構期 actor（或其回退）改變
 
+
 <!-- @trace
-source: node-host-actor
-updated: 2026-08-24
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->
 
 ---
 ### Requirement: dispatch 的蓋章動詞
 
-dispatch SHALL 認得 `review` 與 `verify` 的 `add-round`、`show`、`stamp`、`discard` 八個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時依儲存形式回退，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。蓋章會刪除工單文件並改寫 change 的 metadata 原文，宿主 Store 因此 SHALL 可提供三個選填的前置方法：`deleteArtifact(change, artifact)`、`readChangeMeta(name)`、`writeChangeMeta(name, content)`；缺任何一個時蓋章 SHALL 在動手前以語義化訊息拒絕（工單與 metadata 皆不動），其餘動詞不受影響。
+dispatch SHALL 認得 `review` 與 `verify` 的 `add-round`、`show`、`stamp`、`discard` 八個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時回退 git identity，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。
 
 #### Scenario: review 蓋章鏈落 actor
 
-- **WHEN** 以 actor: 'Rev <rev@example.com>' 建構引擎，對一個任務全完成的 change 依序 dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: 只含 SUGGESTION 的輪次內容 }) 與 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: JSON.stringify({ missing: [輪次 Scope 的檔路徑] }) })
+- **WHEN** 以 actor: 'Rev <rev@example.com>' 建構引擎，對一個任務全完成的 change 依序 dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: 只含 SUGGESTION 的輪次內容 }) 與 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: JSON.stringify({ scope: [{ path: 輪次 Scope 的檔路徑, hash: 該檔的指紋 }] }) })
 - **THEN** add-round 解析為 { change: 'beta', round: 1 }；stamp 解析為 { change: 'beta' }，且 change 的 metadata 落下 reviewed_by: Rev <rev@example.com>
 
 #### Scenario: verify 蓋章鏈落 actor
@@ -274,11 +216,6 @@ dispatch SHALL 認得 `review` 與 `verify` 的 `add-round`、`show`、`stamp`�
 
 - **WHEN** 對末輪帶 CRITICAL finding 的工單 dispatch(['review', 'stamp', ...]) 而不帶 --accept
 - **THEN** dispatch 以 Error 拒絕，message 為引擎的語義化守門訊息，未落任何 reviewed_* 欄位
-
-#### Scenario: 宿主 Store 未實作 deleteArtifact 時蓋章失敗
-
-- **WHEN** 以未實作 deleteArtifact 的 JS Store 建構引擎，走完 add-round 後 dispatch(['review', 'stamp', ...])
-- **THEN** 以 Error 拒絕，訊息指名 deleteArtifact 是蓋章所需的方法；同一個 store 的 list／status／new 動詞不受影響
 
 #### Scenario: 未支援的子動詞明確拒絕
 
@@ -292,43 +229,39 @@ dispatch SHALL 認得 `review` 與 `verify` 的 `add-round`、`show`、`stamp`�
 
 
 <!-- @trace
-source: shared-verb-output
-updated: 2026-11-11T14:07:12+08:00
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->
 
 ---
 ### Requirement: dispatch 的流程設定動詞
 
-dispatch SHALL 認得 workflow-config 的全部動詞（show、set、context、rules、review 的四個、subagent-model 的三個），argv 與 stdin 沿用 CLI 的詞彙，回傳內容與 CLI 同一動詞的輸出同源。宿主 Store 物件 SHALL 可提供一個選填方法 writeWorkflowConfig(content)，回傳值或 Promise 皆可。宿主 Store 沒有提供這個方法時，會寫入的 workflow-config 動詞 SHALL 在動手前以語義化訊息拒絕、code 為 refused，宿主 Store 的任何寫入方法 SHALL NOT 被呼叫；show 與帶 --dry-run 的動詞 SHALL 不受影響。argv 帶 --stdin 而 dispatch 沒有收到 stdin 內容時，workflow-config 的動詞 SHALL 以 code invalid_argv 拒絕，宿主 Store 的任何寫入方法 SHALL NOT 被呼叫；空字串是有效的內容（清掉該值）。fs 形式建構的引擎 SHALL 直接寫入規格資料夾的 config.yaml。
+dispatch SHALL 認得 workflow-config 的全部動詞（show、set、context、rules、review 的四個、subagent-model 的三個），argv 與 stdin 沿用 CLI 的詞彙，回傳內容與 CLI 同一動詞的輸出同源。會寫入的動詞 SHALL 直接寫入規格資料夾的 config.yaml，寫入後的檔案內容 SHALL 與 CLI 在同一個專案執行同一個動詞的結果相同；帶 --dry-run 的動詞 SHALL NOT 寫入。argv 帶 --stdin 而 dispatch 沒有收到 stdin 內容時，workflow-config 的動詞 SHALL 以 code invalid_argv 拒絕，config.yaml SHALL NOT 被改動；空字串是有效的內容（清掉該值）。
 
 #### Scenario: 經 dispatch 設定政策欄位
 
-- **WHEN** 宿主 Store 提供 writeWorkflowConfig，現有流程設定含 tdd: false，執行 dispatch(['workflow-config', 'set', 'tdd', 'true'])
-- **THEN** writeWorkflowConfig 被呼叫正好一次，收到的內容裡 tdd 是 true；Promise 解析為成功結果
+- **WHEN** 專案的 speclink/config.yaml 含 tdd: false，執行 dispatch(['workflow-config', 'set', 'tdd', 'true'])
+- **THEN** config.yaml 裡 tdd 是 true；Promise 解析為成功結果
 
-#### Scenario: 沒有寫入方法時拒絕
+#### Scenario: dry-run 不寫入
 
-- **WHEN** 宿主 Store 沒有 writeWorkflowConfig，執行 dispatch(['workflow-config', 'set', 'tdd', 'true'])
-- **THEN** Promise 以 Error 拒絕，code 為 refused，message 指出宿主 Store 缺少 writeWorkflowConfig；宿主 Store 沒有任何寫入方法被呼叫
-
-#### Scenario: 讀取與 dry-run 不需要寫入方法
-
-- **WHEN** 宿主 Store 沒有 writeWorkflowConfig，分別執行 dispatch(['workflow-config', 'show']) 與 dispatch(['workflow-config', 'set', 'tdd', 'true', '--dry-run'])
-- **THEN** 兩者都成功
+- **WHEN** 專案的 speclink/config.yaml 含 tdd: false，執行 dispatch(['workflow-config', 'set', 'tdd', 'true', '--dry-run'])
+- **THEN** Promise 解析為成功結果；config.yaml 逐位元不變
 
 #### Scenario: 帶 --stdin 卻沒有 stdin 內容時拒絕
 
-- **WHEN** 宿主 Store 的流程設定含 rules.tasks 一條規則，執行 dispatch(['workflow-config', 'rules', 'tasks', '--stdin']) 而沒有傳 stdin
+- **WHEN** 專案的流程設定含 rules.tasks 一條規則，執行 dispatch(['workflow-config', 'rules', 'tasks', '--stdin']) 而沒有傳 stdin
 - **THEN** Promise 以 Error 拒絕，code 為 invalid_argv；流程設定沒有被改動。改傳 stdin 為空字串時成功，rules.tasks 被移除
 
 #### Scenario: 壞的流程設定經 dispatch 拒絕
 
-- **WHEN** 宿主 Store 的流程設定讀取方法回傳無法解析的 YAML，執行 dispatch(['workflow-config', 'show'])
+- **WHEN** 專案的 speclink/config.yaml 是無法解析的 YAML，執行 dispatch(['workflow-config', 'show'])
 - **THEN** Promise 以 Error 拒絕，code 為 invalid_config
 
+
 <!-- @trace
-source: workflow-config-commands
-updated: 2026-11-11T15:31:28+08:00
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->
 
 ---
@@ -614,7 +547,7 @@ updated: 2026-11-13T14:35:20+08:00
 ---
 ### Requirement: dispatch 與 handleRequest 的 fields
 
-host.dispatch 的呼叫物件 SHALL 接受選填的 `fields`（物件，字串對字串）；host.handleRequest SHALL 接受選填的第三個參數，其 `fields` 欄位同型。兩者的行為 SHALL 等同宿主套件「呼叫入口時附上自由欄位」：只在建立變更或討論時生效、蓋過同名的值、其他命令忽略。`fields` 的任一值不是字串時，呼叫 SHALL 以 code 為 invalid_argv 的 Error（dispatch）或狀態碼 400 的回應（handleRequest）結束，儲存 SHALL 沒有變動。host.dispatch SHALL 接受自由欄位的四個動詞與兩個建立動詞的 `--field` 旗標，回傳值與 CLI 的 `--json` 相同。engine.dispatch 的 fs 形式 SHALL 同樣接受這些動詞；以即將移除的 JS 儲存形式建立的引擎 SHALL 以 code 為 refused 的 Error 在動手前拒絕它們，訊息 SHALL 指向 createHost。
+host.dispatch 的呼叫物件 SHALL 接受選填的 `fields`（物件，字串對字串）；host.handleRequest SHALL 接受選填的第三個參數，其 `fields` 欄位同型。兩者的行為 SHALL 等同宿主套件「呼叫入口時附上自由欄位」：只在建立變更或討論時生效、蓋過同名的值、其他命令忽略。`fields` 的任一值不是字串時，呼叫 SHALL 以 code 為 invalid_argv 的 Error（dispatch）或狀態碼 400 的回應（handleRequest）結束，儲存 SHALL 沒有變動。host.dispatch SHALL 接受自由欄位的四個動詞與兩個建立動詞的 `--field` 旗標，回傳值與 CLI 的 `--json` 相同。engine.dispatch SHALL 同樣接受這些動詞。
 
 #### Scenario: dispatch 附上欄位建立變更
 
@@ -641,14 +574,10 @@ host.dispatch 的呼叫物件 SHALL 接受選填的 `fields`（物件，字串�
 - **WHEN** 執行 `host.dispatch({ …, argv: ['change', 'field', 'set', 'demo', 'ticket=PROJ-1', '--json'] })`
 - **THEN** 回傳 `{ change: 'demo', fields: { ticket: 'PROJ-1' } }`
 
-#### Scenario: 舊的 JS 儲存形式拒絕
-
-- **WHEN** 以 JS 儲存形式建立的 engine 執行 `['change', 'field', 'set', 'demo', 'a=1']`
-- **THEN** Promise 以 code 為 refused 的 Error 拒絕，訊息提到 createHost；儲存的任何寫入方法都沒有被呼叫
 
 <!-- @trace
-source: host-free-fields
-updated: 2026-11-13T21:57:16+08:00
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->
 
 ---
@@ -689,4 +618,29 @@ Node SDK 的宿主套件 SHALL 提供 `host.exportScope({ identity, scope })`，
 <!-- @trace
 source: import-export-on-port
 updated: 2026-11-14T22:04:44+08:00
+-->
+
+---
+### Requirement: createEngine 只接受本機資料夾
+
+Node SDK 的 createEngine SHALL 只接受內建的本機資料夾形式：`store` 是 `{ type: 'fs', root, specDir? }`，root 是專案根目錄，specDir 是選填的規格資料夾名稱。`store` 是其他形狀（包含帶方法的物件）時，createEngine SHALL 在建構當下同步拋出錯誤：訊息 SHALL 說明只接受本機資料夾形式並含 `createHost` 字樣，SHALL NOT 產生引擎實例，SHALL NOT 呼叫傳入物件的任何方法。自訂的儲存 SHALL 只能經 createHost 與三個儲存函式提供。
+
+#### Scenario: fs 形式與 CLI 行為對等
+
+- **WHEN** 以 createEngine 的 fs 形式指向某 fixture 專案，執行 await engine.dispatch(['list', '--json'])
+- **THEN** 回傳物件與在同一專案執行 speclink list --json 的輸出 JSON 完全一致
+
+#### Scenario: 傳入帶方法的物件時建構失敗
+
+- **WHEN** 以一個帶 listChanges、readArtifact 等方法的 JS 物件當 store 呼叫 createEngine
+- **THEN** 同步拋出錯誤，訊息含 `createHost`；不產生引擎實例；該物件的任何方法都沒有被呼叫
+
+#### Scenario: fs 形式缺 root 時建構失敗
+
+- **WHEN** 執行 createEngine({ store: { type: 'fs' } })
+- **THEN** 同步拋出錯誤，訊息指出 root 必須是字串；不產生引擎實例
+
+<!-- @trace
+source: node-retire-legacy-store
+updated: 2026-11-15T22:20:32+08:00
 -->

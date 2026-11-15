@@ -21,7 +21,7 @@ use std::sync::mpsc;
 /// cannot convert). `Display` yields the contract's method-prefixed message.
 /// The thrown object's fields arrive as the JSON text index.js's
 /// `thrownFields` builds; `method` is the bridge's own.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize)]
 pub struct BridgeFailure {
     #[serde(skip)]
     pub method: String,
@@ -54,8 +54,6 @@ impl std::fmt::Display for BridgeFailure {
         write!(f, "{}: {}", self.method, self.message)
     }
 }
-
-impl std::error::Error for BridgeFailure {}
 
 /// One call, sent from a worker thread to the JS thread.
 pub struct CallRequest {
@@ -94,7 +92,7 @@ pub fn create_bridge(env: Env, invoker: JsFunction) -> Result<JsBridge> {
                                 .map_err(|e| {
                                     BridgeFailure::new(
                                         method,
-                                        format!("store method returned a non-JSON value: {e}"),
+                                        format!("the function returned a non-JSON value: {e}"),
                                     )
                                 }),
                         }
@@ -108,7 +106,7 @@ pub fn create_bridge(env: Env, invoker: JsFunction) -> Result<JsBridge> {
                             .and_then(|text| serde_json::from_str::<BridgeFailure>(&text).ok());
                         Err(match parsed {
                             Some(failure) => BridgeFailure { method: method.to_string(), ..failure },
-                            None => BridgeFailure::new(method, "store method failed"),
+                            None => BridgeFailure::new(method, "the function failed"),
                         })
                     }
                 };
@@ -143,13 +141,13 @@ impl JsBridge {
         if status != Status::Ok {
             return Err(BridgeFailure::new(
                 method,
-                format!("store bridge unavailable ({status:?})"),
+                format!("JS bridge unavailable ({status:?})"),
             ));
         }
         rx.recv().unwrap_or_else(|_| {
             Err(BridgeFailure::new(
                 method,
-                "store bridge channel closed before the store method settled",
+                "JS bridge channel closed before the function settled",
             ))
         })
     }

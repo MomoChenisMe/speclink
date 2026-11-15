@@ -6,11 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-import { createEngine } from '../index.js'
-import { cliBin, makeFsFixture, projectFiles, rejection } from './helpers'
-
-/** An engine over a local project folder; a new fixture project when none is given. */
-const fsEngine = (root: string = makeFsFixture()) => createEngine({ store: { type: 'fs', root } })
+import { BAD_CONFIG, cliBin, fsEngine, makeFsFixture, projectFiles, rejection } from './helpers'
 
 /**
  * A value an inline snapshot can hold on every machine: the fixture root reads
@@ -32,7 +28,7 @@ describe('dispatch config fail-closed (invalid_config)', () => {
   /** The fs fixture with a workflow config that is not YAML. */
   const brokenConfigFixture = () => {
     const root = makeFsFixture()
-    writeFileSync(join(root, 'speclink', 'config.yaml'), ': not yaml : [\n')
+    writeFileSync(join(root, 'speclink', 'config.yaml'), BAD_CONFIG)
     return root
   }
 
@@ -78,7 +74,7 @@ describe('dispatch error classification matches the CLI', () => {
   it('claim on a local project rejects with the CLI refusal and writes nothing', async () => {
     const root = makeFsFixture()
     const before = projectFiles(root)
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     for (const name of ['alpha', 'x']) {
       const err = await rejection(engine.dispatch(['claim', name]))
       expect(err.message).toBe('claim requires a remote store — this project uses the local fs store')
@@ -103,7 +99,7 @@ describe('dispatch change-metadata fail-closed (invalid_config)', () => {
 
   it('status of a corrupt-meta change rejects with invalid_config and the CLI message text', async () => {
     const root = brokenFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const err = await rejection(engine.dispatch(['status', '--change', 'alpha', '--json']))
     expect(err.code).toBe('invalid_config')
     expect(err.message).toContain('invalid speclink/changes/alpha/.meta.yaml: ')
@@ -123,7 +119,7 @@ describe('dispatch change-metadata fail-closed (invalid_config)', () => {
   })
 
   it('list marks the corrupt item with metaError and keeps valid items clean', async () => {
-    const engine = createEngine({ store: { type: 'fs', root: brokenFixture() } })
+    const engine = fsEngine(brokenFixture())
     const list = (await engine.dispatch(['list', '--sort', 'name', '--json'])) as {
       changes: Array<Record<string, unknown>>
     }
@@ -144,7 +140,7 @@ describe('fs form honors an explicit spec_dir in .speclink.yaml', () => {
       const change = join(root, 'docs', 'specs', 'changes', 'gamma')
       mkdirSync(change, { recursive: true })
       writeFileSync(join(change, '.meta.yaml'), 'schema: spec-driven\n')
-      const engine = createEngine({ store: { type: 'fs', root } })
+      const engine = fsEngine(root)
       const list = (await engine.dispatch(['list', '--json'])) as { changes: Array<{ name: string }> }
       expect(list.changes.map((c) => c.name)).toEqual(['gamma'])
     } finally {
@@ -169,7 +165,7 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
 
   it('an unknown flag rejects with invalid_argv and the CLI error text', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const err = await rejection(engine.dispatch(['list', '--no-such-flag']))
     expect(err.code).toBe('invalid_argv')
     const run = cli(root, ['list', '--no-such-flag'])
@@ -180,7 +176,7 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
 
   it('extra positionals reject with invalid_argv, as in the CLI', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const err = await rejection(engine.dispatch(['status', 'extra-one', 'extra-two']))
     expect(err.code).toBe('invalid_argv')
     const run = cli(root, ['status', 'extra-one', 'extra-two'])
@@ -195,7 +191,7 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
     for (const f of ['.meta.yaml', 'proposal.md', 'tasks.md']) {
       utimesSync(join(root, 'speclink', 'changes', 'beta', f), later, later)
     }
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const names = (v: unknown) => (v as { changes: Array<{ name: string }> }).changes.map((c) => c.name)
     expect(names(await engine.dispatch(['list']))).toEqual(['beta', 'alpha'])
     const spaced = await engine.dispatch(['list', '--sort', 'name'])
@@ -204,13 +200,13 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
   })
 
   it('--json does not change the returned shape', async () => {
-    const engine = createEngine({ store: { type: 'fs', root: makeFsFixture() } })
+    const engine = fsEngine()
     expect(await engine.dispatch(['list', '--json'])).toEqual(await engine.dispatch(['list']))
   })
 
   it('--help rejects with invalid_argv and the verb help text', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const err = await rejection(engine.dispatch(['list', '--help']))
     expect(err.code).toBe('invalid_argv')
     expect(err.message).toBe(cli(root, ['list', '--help']).stdout.trimEnd())
@@ -269,7 +265,7 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
   // spec command-runtime「動詞文字的解析只有一份」的兩個情境，argv 逐字照抄 spec。
   it('speclink list --sort name --json and dispatch list --sort name give the same changes', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const names = (v: unknown) => (v as { changes: Array<{ name: string }> }).changes.map((c) => c.name)
     const run = cli(root, ['list', '--sort', 'name', '--json'])
     expect(run.code).toBe(0)
@@ -278,7 +274,7 @@ describe('dispatch argv goes through the parsing the CLI uses', () => {
 
   it('status --no-such-flag rejects in both entries with the same text', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root } })
+    const engine = fsEngine(root)
     const err = await rejection(engine.dispatch(['status', '--no-such-flag']))
     expect(err.code).toBe('invalid_argv')
     const run = cli(root, ['status', '--no-such-flag'])
@@ -475,7 +471,7 @@ describe('dispatch covers every verb that has an engine command', () => {
       writeFileSync(join(root, 'speclink', 'changes', name, '.meta.yaml'), meta)
     }
     try {
-      const engine = createEngine({ store: { type: 'fs', root } })
+      const engine = fsEngine(root)
       expect(await engine.dispatch(['change', 'rank', 'c', '--before', 'a', '--json'])).toEqual({
         change: 'c',
         anchor: 'a',
@@ -483,7 +479,8 @@ describe('dispatch covers every verb that has an engine command', () => {
       })
       // The rank lands in c's own metadata; the anchor's file is not touched.
       const metaOf = (name: string) => readFileSync(join(root, 'speclink', 'changes', name, '.meta.yaml'), 'utf8')
-      const written = /^board_rank: (\S+)$/m.exec(metaOf('c'))?.[1]
+      // The key without the quotes YAML may put around it: a quote sorts before every letter.
+      const written = /^board_rank: "?([^"\s]+)"?$/m.exec(metaOf('c'))?.[1]
       expect(written !== undefined && written < 'n', `c's rank ${written}`).toBe(true)
       expect(metaOf('a')).toBe('schema: spec-driven\ncreated: 2026-09-01\nboard_rank: n\n')
       const plan = (await engine.dispatch(['plan', '--json'])) as { changes: { name: string }[] }
@@ -515,8 +512,8 @@ describe('the verbs dispatch served before keep their return values', () => {
   const SCOPE_FILE = 'crates/b/src/util.rs'
   const ROUND = `**Scope**: ${SCOPE_FILE}\n\n- [SUGGESTION] ${SCOPE_FILE} — rename helper\n`
   const STAMP = JSON.stringify({ scope: [{ path: SCOPE_FILE, hash: '0f9c' }] })
-  /** A new fixture project and a function that dispatches on it and returns the stable value. */
-  const project = () => {
+  /** A function that dispatches on a new fixture project and returns the stable value. */
+  const runner = () => {
     const root = makeFsFixture()
     const engine = fsEngine(root)
     return async (argv: string[], stdin?: string) =>
@@ -526,7 +523,7 @@ describe('the verbs dispatch served before keep their return values', () => {
   // One deliberate addition (change remote-read-verbs): each change carries
   // `created` and `modifiedAt`.
   it('list', async () => {
-    const run = project()
+    const run = runner()
     expect(await run(['list', '--sort', 'name'])).toMatchInlineSnapshot(`
       {
         "changes": [
@@ -600,7 +597,7 @@ describe('the verbs dispatch served before keep their return values', () => {
   })
 
   it('status', async () => {
-    expect(await project()(['status', '--change', 'alpha'])).toMatchInlineSnapshot(`
+    expect(await runner()(['status', '--change', 'alpha'])).toMatchInlineSnapshot(`
       {
         "applyRequires": [
           "tasks",
@@ -665,13 +662,13 @@ describe('the verbs dispatch served before keep their return values', () => {
   })
 
   it('new change', async () => {
-    expect(await project()(['new', 'change', 'demo'])).toEqual({
+    expect(await runner()(['new', 'change', 'demo'])).toEqual({
       output: '✓ Created change: demo\n  Path: <root>/speclink/changes/demo\n  Schema: spec-driven\n',
     })
   })
 
   it('new artifact', async () => {
-    const run = project()
+    const run = runner()
     expect(await run(['new', 'artifact', 'design', '--change', 'alpha', '--stdin'], '## Context\n\nA design.\n'))
       .toMatchInlineSnapshot(`
       {
@@ -696,7 +693,7 @@ describe('the verbs dispatch served before keep their return values', () => {
   })
 
   it('review add-round and review stamp', async () => {
-    const run = project()
+    const run = runner()
     expect(await run(['review', 'add-round', 'beta', '--stdin'], ROUND)).toMatchInlineSnapshot(`
       {
         "change": "beta",
@@ -711,7 +708,7 @@ describe('the verbs dispatch served before keep their return values', () => {
   })
 
   it('verify add-round and verify stamp', async () => {
-    const run = project()
+    const run = runner()
     expect(await run(['verify', 'add-round', 'beta', '--stdin'], ROUND)).toMatchInlineSnapshot(`
       {
         "change": "beta",
@@ -747,7 +744,7 @@ describe('the write verbs dispatch now serves keep the gates and records of the 
 
   it('task done on the fs form records the same evidence fields the CLI records', async () => {
     const [sdkRoot, cliRoot] = [dirtyRepoFixture(), dirtyRepoFixture()]
-    await createEngine({ store: { type: 'fs', root: sdkRoot } }).dispatch(['task', 'done', '2', '--change', 'alpha'])
+    await fsEngine(sdkRoot).dispatch(['task', 'done', '2', '--change', 'alpha'])
     execFileSync(cliBin, ['task', 'done', '2', '--change', 'alpha'], { cwd: cliRoot, encoding: 'utf8' })
     const entry = (root: string) => {
       const record = JSON.parse(
@@ -767,7 +764,7 @@ describe('the write verbs dispatch now serves keep the gates and records of the 
 
   it('archive of a change with open tasks is refused with the CLI message', async () => {
     const root = makeFsFixture()
-    const err = await rejection(createEngine({ store: { type: 'fs', root } }).dispatch(['archive', 'alpha', '-y']))
+    const err = await rejection(fsEngine(root).dispatch(['archive', 'alpha', '-y']))
     expect(err.code).toBe('refused')
     let cliStderr = ''
     try {
@@ -794,7 +791,7 @@ describe('the write verbs dispatch now serves keep the gates and records of the 
 
   it('a stamp on a change with open tasks is refused before any write', async () => {
     const root = makeFsFixture()
-    const engine = createEngine({ store: { type: 'fs', root }, actor: 'Rev <rev@example.com>' })
+    const engine = fsEngine(root, 'Rev <rev@example.com>')
     await engine.dispatch(['review', 'add-round', 'alpha', '--stdin'], { stdin: '**Scope**: src/lib.rs\n' })
     const before = projectFiles(root)
     const err = await rejection(engine.dispatch(['review', 'stamp', 'alpha']))

@@ -2,21 +2,23 @@
 // writes together, must all settle in bounded time while the event loop keeps
 // running timers — on an engine over a local folder, and on a host kit whose
 // store port answers with Promises.
-import { rmSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
-import { createEngine, createHost } from '../index.js'
-import { makeFsFixture } from './helpers'
+import { createHost } from '../index.js'
+import { fsEngine } from './helpers'
 import { memoryPort } from './memory-port'
 
 const CALLS = 20
 const TIME_LIMIT_MS = 30_000
+/** Long enough for several turns of a timer. */
+const BUSY_MS = 60
 
 /**
  * Run `start()` (which sends every call) next to a timer that counts its
- * turns. Resolves to the results, how long the batch took, and the count.
+ * turns. Resolves to the results, how long the batch took, and how many turns
+ * the timer had when the last call settled.
  */
-async function withTicker<T>(start: () => Promise<T>[]): Promise<{ results: T[]; elapsed: number; ticks: number }> {
+async function withTicker(start: () => Promise<unknown>[]): Promise<{ results: unknown[]; elapsed: number; ticks: number }> {
   let ticks = 0
   const ticker = setInterval(() => {
     ticks++
@@ -30,29 +32,36 @@ async function withTicker<T>(start: () => Promise<T>[]): Promise<{ results: T[];
   }
 }
 
+/**
+ * Send `call` again and again, each after the one before settled, until `ms`
+ * have passed. It waits on the calls only, never on a timer: when a call
+ * settles without a turn of the event loop, no timer runs in all that time.
+ */
+async function callFor(ms: number, call: () => Promise<unknown>): Promise<void> {
+  const until = Date.now() + ms
+  while (Date.now() < until) await call()
+}
+
 describe('dispatch stress — no deadlock', () => {
   it('twenty concurrent reads and writes on a local folder all settle', async () => {
-    const root = makeFsFixture()
-    try {
-      const engine = createEngine({ store: { type: 'fs', root } })
-      const { results, elapsed, ticks } = await withTicker(() =>
-        Array.from({ length: CALLS }, (_, i) =>
-          i % 2 === 0 ? engine.dispatch(['list', '--json']) : engine.dispatch(['new', 'change', `stress-${i}`]),
-        ),
-      )
-      expect(results).toHaveLength(CALLS)
-      expect(elapsed).toBeLessThan(TIME_LIMIT_MS)
-      // The event loop was not starved while the workers ran. A batch that
-      // finishes inside a few timer turns can see zero ticks on a fast
-      // machine, so the timer is only checked when the batch was long enough.
-      if (elapsed >= 50) expect(ticks).toBeGreaterThan(0)
-      // Every write landed.
-      const listed = (await engine.dispatch(['list', '--sort', 'name', '--json'])) as { changes: { name: string }[] }
-      const written = listed.changes.map((c) => c.name).filter((name) => name.startsWith('stress-'))
-      expect(written).toHaveLength(CALLS / 2)
-    } finally {
-      rmSync(root, { recursive: true, force: true, maxRetries: 5 })
-    }
+    const engine = fsEngine()
+    const { results, elapsed, ticks } = await withTicker(() => [
+      ...Array.from({ length: CALLS }, (_, i) =>
+        i % 2 === 0 ? engine.dispatch(['list', '--json']) : engine.dispatch(['new', 'change', `stress-${i}`]),
+      ),
+      // Twenty calls on a local folder can settle before the first timer turn.
+      // This keeps the batch pending for several turns, with dispatches only.
+      callFor(BUSY_MS, () => engine.dispatch(['list', '--json'])),
+    ])
+    expect(results).toHaveLength(CALLS + 1)
+    expect(elapsed).toBeLessThan(TIME_LIMIT_MS)
+    // The timer ran while calls were pending. A dispatch that settled without
+    // a turn of the event loop would leave it at 0.
+    expect(ticks).toBeGreaterThan(0)
+    // Every write landed.
+    const listed = (await engine.dispatch(['list', '--sort', 'name', '--json'])) as { changes: { name: string }[] }
+    const written = listed.changes.map((c) => c.name).filter((name) => name.startsWith('stress-'))
+    expect(written).toHaveLength(CALLS / 2)
   }, 60_000)
 
   it('twenty concurrent reads and writes on a host kit with an async store port all settle', async () => {
