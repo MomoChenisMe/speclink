@@ -146,14 +146,14 @@ createEngine SHALL 接受選填 actor 欄位（"Name <email>" 格式字串），
 - **THEN** dispatch 不存在 actor 參數，蓋章內容只隨建構期 actor（或其回退）改變
 
 ### Requirement: dispatch 的蓋章動詞
-<!-- BEFORE: 蓋章的身分未給時依儲存形式回退；宿主 Store 可提供 deleteArtifact、readChangeMeta、writeChangeMeta 三個選填方法，缺任何一個時蓋章在動手前拒絕 -->
+<!-- BEFORE: 蓋章的身分未給時依儲存形式回退；宿主 Store 可提供 deleteArtifact、readChangeMeta、writeChangeMeta 三個選填方法，缺任何一個時蓋章在動手前拒絕；情境「review 蓋章鏈落 actor」的蓋章 stdin 原本寫 { missing: [...] }，引擎會拒絕整張工單的檔案都列為 missing 的蓋章，改成帶 scope 指紋 -->
 <!-- REMOVED-SCENARIO: 宿主 Store 未實作 deleteArtifact 時蓋章失敗 -->
 
 dispatch SHALL 認得 `review` 與 `verify` 的 `add-round`、`show`、`stamp`、`discard` 八個動詞，argv 沿用 CLI 詞彙（`--accept`、`--agent <tool>`、`--stdin`）。add-round 的輪次內容 SHALL 由 dispatch 的 stdin 參數帶入；stamp 的 scope 指紋與 missing 清單 argv 承載不了，SHALL 由 stdin 參數以 JSON 帶入（`{ "scope": [{ "path", "hash" }], "missing": [] }`，兩欄缺席讀作空清單）。蓋章落下的 `reviewed_by`／`verified_by` SHALL 為該 engine 建構期綁定的 actor（未給時回退 git identity，與 created_by 同一條解析）。引擎既有的守門（任務未全完成、末輪未解必修 findings、scope ∪ missing 與工單聯集的分割）SHALL 原封傳遞，拒絕時以語義化例外呈現。
 
 #### Scenario: review 蓋章鏈落 actor
 
-- **WHEN** 以 actor: 'Rev <rev@example.com>' 建構引擎，對一個任務全完成的 change 依序 dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: 只含 SUGGESTION 的輪次內容 }) 與 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: JSON.stringify({ missing: [輪次 Scope 的檔路徑] }) })
+- **WHEN** 以 actor: 'Rev <rev@example.com>' 建構引擎，對一個任務全完成的 change 依序 dispatch(['review', 'add-round', 'beta', '--stdin'], { stdin: 只含 SUGGESTION 的輪次內容 }) 與 dispatch(['review', 'stamp', 'beta', '--stdin'], { stdin: JSON.stringify({ scope: [{ path: 輪次 Scope 的檔路徑, hash: 該檔的指紋 }] }) })
 - **THEN** add-round 解析為 { change: 'beta', round: 1 }；stamp 解析為 { change: 'beta' }，且 change 的 metadata 落下 reviewed_by: Rev <rev@example.com>
 
 #### Scenario: verify 蓋章鏈落 actor
