@@ -304,7 +304,7 @@ describe("頁標題區", () => {
     ["/admin/users", "使用者", "能登入這台 server 的帳號。"],
     ["/admin/registry", "專案與儲存庫", "遠端工作流程的範圍：專案與其底下的儲存庫。"],
     ["/admin/credentials", "憑證", "所有使用者的存取金鑰與裝置登入；撤銷後立即失效。"],
-    ["/admin/system", "系統", "執行環境、儲存狀態、匯出與資料結構遷移。"],
+    ["/admin/system", "系統", "執行環境、儲存狀態與匯出。"],
     ["/admin/audit", "稽核紀錄", "每一筆管理動作的紀錄；只能檢視，不能修改。"],
     ["/account", "帳號", "Member（member@example.com）——你的專案、存取金鑰與登入紀錄。"],
   ])("%s 恰有一個 h1「%s」，位於共用頁標題區且附說明", async (route, title, description) => {

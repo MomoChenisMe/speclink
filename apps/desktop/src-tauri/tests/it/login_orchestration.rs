@@ -50,7 +50,7 @@ fn harness() -> Harness {
         .expect("accept");
 
     let store: speclink_server::state::SharedStore =
-        Arc::new(speclink_store::memory::MemoryStore::new());
+        Arc::new(speclink_server::storage::Memory::new());
     let events = EventHub::new(store.clone(), EventSettings::default());
     let state = AppState::new(
         store,

@@ -347,55 +347,28 @@ fn apply_locale(project: &Path, token: &str) -> String {
 
 // --- direct store access (the second SQLite connection; WAL makes it safe) ---
 
-fn scope() -> speclink_store::Scope {
-    speclink_store::Scope::new(
-        speclink_store::ProjectId::new("demo"),
-        speclink_store::RepoId::new("backend"),
-    )
-}
-
-fn open_store(db: &Path) -> speclink_store_sqlite::SqliteTeamStore {
-    speclink_store_sqlite::SqliteTeamStore::open(db).expect("open store on a second connection")
+fn open_store(db: &Path) -> common::TestStore {
+    common::TestStore::sqlite(db)
 }
 
 /// Write the workflow config document directly on a second store connection —
 /// remote mode has no CLI/wire config write surface today (design 決策 2); the
 /// seam under test (store → policy → instructions rendering) is unchanged.
 fn write_workflow_config(db: &Path, content: &str) {
-    use speclink_store::{CommandContext, DocumentId, TeamStore};
-    let store = open_store(db);
-    let current = store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::WorkflowConfig)
-        .expect("read workflow config");
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "chain-policy".into(), actor: "chain".into() },
-        )
-        .expect("begin config uow");
-    match current {
-        Some(doc) => uow.update(DocumentId::WorkflowConfig, content, doc.revision),
-        None => uow.create(DocumentId::WorkflowConfig, content),
-    }
-    store.commit(uow, Vec::new()).expect("commit config write");
+    open_store(db).put("demo", "backend", &[("config.yaml", content)]);
 }
 
 /// The retained outbox tail as (seq, event name, payload).
 fn outbox_records(db: &Path) -> Vec<(u64, String, serde_json::Value)> {
-    use speclink_store::{OutboxCursor, TeamStore};
     open_store(db)
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
+        .events("demo", "backend")
         .into_iter()
-        .map(|e| (e.seq, e.record.name.clone(), e.record.payload.clone()))
+        .map(|e| (e.seq, e.name, e.payload))
         .collect()
 }
 
 fn outbox_acked(db: &Path) -> u64 {
-    use speclink_store::TeamStore;
-    open_store(db).outbox_acked(&scope()).expect("read acked floor").0
+    open_store(db).event_floor("demo", "backend")
 }
 
 /// The canonical spec content for `cap`, queried over the wire (a scope-wide
@@ -840,22 +813,14 @@ fn phase2_chain_walks_all_stages_with_reset_recovery() {
 #[test]
 fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
     let _gate = crate::common::acquire_process_gate();
-    use speclink_store::{CommandContext, DocumentId, OutboxCursor, TeamStore};
-    let store = std::sync::Arc::new(speclink_store::memory::MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[("changes/demo/.meta.yaml", "schema: spec-driven\n"), ("changes/demo/tasks.md", "- [ ] 1.1 First\n")],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let store_state_identity = state.identity.clone();
     let base = common::start(state);
@@ -870,18 +835,18 @@ fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
         )
         .expect("task done with touched files");
 
-    // 事件面：outbox 的 task-completed 記錄帶 actor 與 touchedFiles。
-    let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox");
+    // 事件面：事件記錄的 task-completed 帶 touchedFiles（事件記錄不存 actor；
+    // actor 由下面的 evidence 斷言）。
+    let entries = store.events("demo", "backend");
     let done = entries
         .iter()
-        .find(|e| e.record.name == "task-completed")
+        .find(|e| e.name == "task-completed")
         .expect("task-completed lands in the outbox");
-    assert!(!done.record.actor.is_empty(), "the actor face already works");
     assert_eq!(
-        done.record.payload["touchedFiles"],
+        done.payload["touchedFiles"],
         serde_json::json!(["src/app.rs"]),
         "the reported touchedFiles stay queryable on the event face: {}",
-        done.record.payload,
+        done.payload,
     );
 
     // 文件面：evidence 端點讀得回這筆 entry，欄位為 camelCase。以 Reader 角色
@@ -931,18 +896,10 @@ fn task_done_with_touched_files_leaves_queryable_evidence_on_the_server() {
 #[test]
 fn a_change_without_evidence_reads_back_an_empty_set() {
     let _gate = crate::common::acquire_process_gate();
-    use speclink_store::{CommandContext, DocumentId, TeamStore};
-    let store = std::sync::Arc::new(speclink_store::memory::MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
+    let store = common::TestStore::memory();
+    store.put("demo", "backend", &[("changes/demo/.meta.yaml", "schema: spec-driven\n")]);
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 

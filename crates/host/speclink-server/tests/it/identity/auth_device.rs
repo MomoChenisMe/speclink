@@ -12,7 +12,6 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::API_VERSION;
 use speclink_server::identity::{DevicePoll, IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -38,7 +37,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, PathBuf, tempfile::TempDir, String) {
     common::seed_demo_registry(&*identity);
     common::seed_multi_project(&*identity);
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

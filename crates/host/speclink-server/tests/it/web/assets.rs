@@ -10,13 +10,12 @@
 use crate::common;
 
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// Start a server with no seeded identity — asset serving needs no auth.
 fn server() -> String {
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),

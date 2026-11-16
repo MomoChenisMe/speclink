@@ -14,7 +14,6 @@ use serde_json::{json, Value};
 use speclink_server::identity::{IdentitySqlite, IdentityStore};
 use speclink_server::setup::setup_token_ttl;
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// The origin matching `demo_config().public_url`.
@@ -28,7 +27,7 @@ fn start_setup() -> (String, String, Arc<IdentitySqlite>) {
         .create_setup_token(setup_token_ttl())
         .expect("setup token");
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -123,6 +122,13 @@ fn setup_state_reports_the_admin_step_and_store_status() {
         body["data"]["store"]["identitySchemaVersion"].is_number(),
         "the identity schema version is shown (camelCase)"
     );
+    // The store object has these fields and no other: the contract version,
+    // the level and the capabilities of the old store layer are gone.
+    assert_eq!(body["data"]["store"]["driver"], json!("memory"));
+    let mut fields: Vec<&str> =
+        body["data"]["store"].as_object().expect("an object").keys().map(String::as_str).collect();
+    fields.sort();
+    assert_eq!(fields, ["driver", "healthy", "identitySchemaVersion"], "{body}");
 }
 
 #[test]

@@ -14,7 +14,6 @@ use speclink_server::identity::{
     DevicePoll, IdentitySqlite, IdentityStore, MembershipRole, NewInvitation, TokenPair,
 };
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 const EMAIL: &str = "user@example.com";
@@ -37,7 +36,7 @@ fn server_with_user() -> (String, Arc<IdentitySqlite>) {
         .expect("invite");
     identity.accept_invitation(&token, PASSWORD).expect("accept");
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -75,7 +74,7 @@ fn server_with_memberships(
             .expect("set role");
     }
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

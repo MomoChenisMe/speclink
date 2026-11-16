@@ -7,6 +7,7 @@
 //! These run against a real in-process `speclink-server` (memory store +
 //! memory identity), mirroring the harness in the server's own route tests.
 
+use crate::seed::seed;
 use speclink_protocol::events::{InvalidationEvent, InvalidationScope};
 use speclink_remote::client::Client;
 use speclink_remote::events::{self, RemoteEvent};
@@ -14,37 +15,29 @@ use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, NewInvitation};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
+use speclink_server::storage::Memory;
+use speclink_store_port::StorePort;
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
 
 /// Seed change `demo` (schema + four tasks) so `task done` commits land
-/// task-completed events in the outbox.
-fn seed_change(store: &dyn TeamStore) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n",
+/// task-completed events in the event log.
+fn seed_change(store: &dyn StorePort) {
+    seed(
+        store,
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
 }
 
 /// An [`AppState`] over a seeded memory store with the given outbox retention
 /// (short heartbeat so idle streams stay lively in tests).
 fn state_with_retention(retention: u64) -> AppState {
     let store: SharedStore = {
-        let store = Arc::new(MemoryStore::new());
+        let store = Arc::new(Memory::new());
         seed_change(store.as_ref());
         store
     };

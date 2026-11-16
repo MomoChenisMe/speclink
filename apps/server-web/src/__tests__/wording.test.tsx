@@ -190,9 +190,6 @@ describe("中文正典詞出現在對應畫面（zh-TW）", () => {
               step: "registry",
               store: {
                 driver: "sqlite",
-                contractVersion: 3,
-                level: "full",
-                capabilities: [],
                 healthy: true,
                 identitySchemaVersion: 6,
               },
@@ -207,6 +204,48 @@ describe("中文正典詞出現在對應畫面（zh-TW）", () => {
     expect(screen.getByLabelText(/儲存庫代號/)).toBeTruthy();
     expect(visibleText()).not.toContain("Project key");
     expect(visibleText()).not.toContain("Repo key");
+  });
+});
+
+// server-on-port-examples design D7：資料結構遷移整個移除，系統頁的文字不再提它；
+// 舊版留下的 store-migrated 稽核紀錄仍要看得懂。
+describe("資料結構遷移已移除", () => {
+  it.each([
+    ["zh-TW", "執行環境、儲存狀態與匯出。", ["遷移", "危險區"]],
+    ["en", "Runtime, storage status, and exports.", ["igration", "Danger zone"]],
+  ] as const)("%s 的系統頁說明文字不提遷移", async (locale, description, gone) => {
+    setLanguage(locale);
+    renderAt("/admin/system", makeAdminClient());
+    await screen.findByRole("heading", { level: 1 });
+    await waitFor(() => expect(screen.getAllByRole("region").length).toBeGreaterThan(0));
+    const text = visibleText();
+    expect(text).toContain(description);
+    for (const term of gone) {
+      expect(text, `系統頁不應出現「${term}」`).not.toContain(term);
+    }
+  });
+
+  it.each([
+    ["zh-TW", "資料結構遷移"],
+    ["en", "Store migrated"],
+  ] as const)("%s 的稽核頁仍顯示既有 store-migrated 紀錄的標籤", async (locale, label) => {
+    setLanguage(locale);
+    const getAdminAudit = vi.fn(async () => ({
+      entries: [
+        {
+          id: "e9",
+          actorId: "a1",
+          action: "store-migrated",
+          subject: "contract version 1",
+          source: "web",
+          createdAt: "2026-01-01T00:00:00Z",
+        },
+      ],
+      totalPages: 1,
+      total: 1,
+    }));
+    renderAt("/admin/audit", makeAdminClient({ getAdminAudit }));
+    expect((await screen.findAllByText(label)).length).toBeGreaterThan(0);
   });
 });
 

@@ -12,17 +12,13 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::query::BoardOrderDoc;
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
+/// The key of the board order.
+const BOARD_ORDER: &str = "board/order";
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
@@ -36,43 +32,28 @@ fn meta(created: &str, depends_on: Option<&str>) -> String {
 }
 
 /// Write `docs` into the demo scope in one commit (creating or updating).
-fn seed(store: &MemoryStore, docs: &[(DocumentId, String)]) {
-    let snapshot = store.snapshot(&scope()).expect("snapshot");
-    let current: Vec<_> = docs
-        .iter()
-        .map(|(id, _)| snapshot.read(id).expect("read").map(|d| d.revision))
-        .collect();
-    drop(snapshot);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    for ((id, content), revision) in docs.iter().zip(current) {
-        match revision {
-            Some(rev) => uow.update(id.clone(), content, rev),
-            None => uow.create(id.clone(), content),
-        }
-    }
-    store.commit(uow, Vec::new()).expect("seed commit");
+fn seed(store: &common::TestStore, docs: &[(String, String)]) {
+    let docs: Vec<(&str, &str)> =
+        docs.iter().map(|(key, content)| (key.as_str(), content.as_str())).collect();
+    store.put("demo", "backend", &docs);
 }
 
-fn change_meta(name: &str) -> DocumentId {
-    DocumentId::ChangeMeta { change: name.into() }
+/// The key of the metadata of change `name`.
+fn change_meta(name: &str) -> String {
+    format!("changes/{name}/.meta.yaml")
 }
 
 /// Server over a store seeded with `changes` (name, meta text); an editor PAT
 /// and a reader PAT are both live.
 fn fixture(changes: &[(&str, String)]) -> Fixture {
-    let store = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory();
     let docs: Vec<_> = changes
         .iter()
         .map(|(name, text)| (change_meta(name), text.clone()))
         .collect();
     seed(&store, &docs);
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let (reader_pat, reader_id) =
@@ -128,25 +109,18 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 }
 
 fn revision(f: &Fixture) -> u64 {
-    f.store.snapshot(&scope()).expect("snapshot").revision().0
+    f.store.version("demo", "backend")
 }
 
 fn outbox_names(f: &Fixture) -> Vec<String> {
-    f.store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
+    f.store.events("demo", "backend")
         .iter()
-        .map(|e| e.record.name.clone())
+        .map(|e| e.name.clone())
         .collect()
 }
 
-fn stored(f: &Fixture, id: &DocumentId) -> Option<(String, u64)> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(id)
-        .expect("read")
-        .map(|d| (d.content, d.revision.0))
+fn stored(f: &Fixture, key: &str) -> Option<(String, u64)> {
+    f.store.doc("demo", "backend", key).map(|d| (d.content, d.version))
 }
 
 fn order(plan: &Value) -> Vec<String> {
@@ -197,7 +171,7 @@ fn plan_carries_the_unpromoted_cuts_of_the_scope_discussions() {
                 - **cut 1 `add-a`**: 第一刀\n- **cut 2 `add-b`**: 第二刀\n";
     seed(
         &f.store,
-        &[(DocumentId::Discussion { slug: "talk-a".into(), archived: false }, talk.to_string())],
+        &[("discussions/talk-a.md".to_string(), talk.to_string())],
     );
     let before = revision(&f);
 
@@ -229,7 +203,7 @@ fn plan_ranks_come_from_the_board_resource() {
     seed(
         &f.store,
         &[(
-            DocumentId::BoardOrder,
+            BOARD_ORDER.to_string(),
             r#"{"changes":{"add-b":"b","add-a":"f"},"discussions":{}}"#.to_string(),
         )],
     );
@@ -247,26 +221,26 @@ fn unusable_board_content_reads_as_no_ranks_and_is_never_rewritten() {
     ]);
     seed(
         &f.store,
-        &[(DocumentId::BoardOrder, r#"{"changes":{"add-a":"n"},"discussions":{}}"#.to_string())],
+        &[(BOARD_ORDER.to_string(), r#"{"changes":{"add-a":"n"},"discussions":{}}"#.to_string())],
     );
-    let board = stored(&f, &DocumentId::BoardOrder);
+    let board = stored(&f, BOARD_ORDER);
     let (ranked, _) = get_plan(&f, &f.reader_pat);
     assert_eq!(order(&ranked), ["add-a", "add-b"], "add-a's rank n places it first");
-    assert_eq!(stored(&f, &DocumentId::BoardOrder), board, "the plan never writes the board");
+    assert_eq!(stored(&f, BOARD_ORDER), board, "the plan never writes the board");
 
-    seed(&f.store, &[(DocumentId::BoardOrder, "not json".to_string())]);
-    let board = stored(&f, &DocumentId::BoardOrder);
+    seed(&f.store, &[(BOARD_ORDER.to_string(), "not json".to_string())]);
+    let board = stored(&f, BOARD_ORDER);
     let before = revision(&f);
     let (unranked, _) = get_plan(&f, &f.reader_pat);
     assert_eq!(order(&unranked), ["add-b", "add-a"], "bad content: every change unranked");
-    assert_eq!(stored(&f, &DocumentId::BoardOrder), board, "bad content is left as it is");
+    assert_eq!(stored(&f, BOARD_ORDER), board, "bad content is left as it is");
     assert_eq!(revision(&f), before);
 }
 
 /// A delta for `change` that MODIFIES `requirement` in capability `cap`.
-fn modified(change: &str, cap: &str, requirement: &str) -> (DocumentId, String) {
+fn modified(change: &str, cap: &str, requirement: &str) -> (String, String) {
     (
-        DocumentId::ChangeArtifact { change: change.into(), artifact: format!("specs/{cap}/spec.md") },
+        format!("changes/{change}/specs/{cap}/spec.md"),
         format!("## MODIFIED Requirements\n\n### Requirement: {requirement}\n\nbody\n"),
     )
 }
@@ -397,10 +371,7 @@ fn guard_refusals_are_refused_409s_with_the_engine_line_and_write_nothing() {
     seed(
         &f.store,
         &[(
-            DocumentId::ArchivedChange {
-                change: "2026-08-01-old-change".into(),
-                doc: ".openspec.yaml".into(),
-            },
+            "archive/changes/2026-08-01-old-change/.openspec.yaml".to_string(),
             "schema: spec-driven\ncreated: 2026-07-01\n".to_string(),
         )],
     );
@@ -522,11 +493,11 @@ fn schema_guard_refusals_are_refused_409s_with_the_engine_line() {
         &f.store,
         &[
             (
-                DocumentId::ChangeArtifact { change: "c".into(), artifact: "specs/auth/spec.md".into() },
+                "changes/c/specs/auth/spec.md".to_string(),
                 "## ADDED Requirements\n".to_string(),
             ),
             (
-                DocumentId::ChangeArtifact { change: "c".into(), artifact: "verify.md".into() },
+                "changes/c/verify.md".to_string(),
                 "# Verify\n".to_string(),
             ),
         ],
@@ -582,7 +553,7 @@ fn post_rank(f: &Fixture, pat: &str, change: &str, body: Value) -> Result<ureq::
 /// add-a ranked `n` on the board, add-c unranked: both proposed.
 fn rank_fixture(board: &str) -> Fixture {
     let f = fixture(&[("add-a", meta("2026-09-01", None)), ("add-c", meta("2026-09-02", None))]);
-    seed(&f.store, &[(DocumentId::BoardOrder, board.to_string())]);
+    seed(&f.store, &[(BOARD_ORDER.to_string(), board.to_string())]);
     f
 }
 
@@ -603,7 +574,7 @@ fn an_editor_ranks_a_change_on_the_board_resource() {
     let after = revision(&f);
     assert_eq!(after, before + 1, "one commit");
     assert_eq!(etag, format!("\"{after}\""), "the response carries the post-commit ETag");
-    let (board, _) = stored(&f, &DocumentId::BoardOrder).expect("board present");
+    let (board, _) = stored(&f, BOARD_ORDER).expect("board present");
     let ranks = BoardOrderDoc::from_content(Some(&board)).changes;
     assert_eq!(ranks["add-a"], "n");
     assert!(ranks["add-c"].as_str() < "n", "{ranks:?}");
@@ -617,26 +588,26 @@ fn an_editor_ranks_a_change_on_the_board_resource() {
 fn an_absent_force_reads_as_false() {
     // Scenario「force 缺席讀作 false」。
     let f = rank_fixture(r#"{"changes":{"add-a":"n","add-c":"t"},"discussions":{}}"#);
-    let board = stored(&f, &DocumentId::BoardOrder);
+    let board = stored(&f, BOARD_ORDER);
     let (status, error) =
         protocol_error(post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "after" })));
     assert_eq!(status, 409);
     assert_eq!(error.reason, ErrorReason::Refused);
     assert!(error.message.contains("already has a board rank"), "{}", error.message);
-    assert_eq!(stored(&f, &DocumentId::BoardOrder), board, "a refusal writes nothing");
+    assert_eq!(stored(&f, BOARD_ORDER), board, "a refusal writes nothing");
 }
 
 #[test]
 fn a_position_other_than_before_or_after_is_an_invalid_argument() {
     // Scenario「不合法的 position」。
     let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
-    let board = stored(&f, &DocumentId::BoardOrder);
+    let board = stored(&f, BOARD_ORDER);
     let before = revision(&f);
     let (status, error) =
         protocol_error(post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "first" })));
     assert_eq!(status, 400);
     assert_eq!(error.reason, ErrorReason::InvalidArgument);
-    assert_eq!(stored(&f, &DocumentId::BoardOrder), board);
+    assert_eq!(stored(&f, BOARD_ORDER), board);
     assert_eq!(revision(&f), before);
 }
 
@@ -644,12 +615,12 @@ fn a_position_other_than_before_or_after_is_an_invalid_argument() {
 fn a_reader_cannot_rank() {
     // Scenario「沒有編輯權限」。
     let f = rank_fixture(r#"{"changes":{"add-a":"n"},"discussions":{}}"#);
-    let board = stored(&f, &DocumentId::BoardOrder);
+    let board = stored(&f, BOARD_ORDER);
     let (status, error) =
         protocol_error(post_rank(&f, &f.reader_pat, "add-c", json!({ "anchor": "add-a", "position": "before" })));
     assert_eq!(status, 403);
     assert_eq!(error.reason, ErrorReason::PermissionDenied);
-    assert_eq!(stored(&f, &DocumentId::BoardOrder), board);
+    assert_eq!(stored(&f, BOARD_ORDER), board);
 }
 
 #[test]
@@ -668,7 +639,7 @@ fn a_rank_request_prunes_orphans_and_keeps_the_discussion_section() {
     let f = rank_fixture(r#"{"changes":{"add-a":"n","gone":"c"},"discussions":{"topic":"f"}}"#);
     post_rank(&f, &f.editor_pat, "add-c", json!({ "anchor": "add-a", "position": "before" }))
         .expect("editor POST succeeds");
-    let (board, _) = stored(&f, &DocumentId::BoardOrder).expect("board present");
+    let (board, _) = stored(&f, BOARD_ORDER).expect("board present");
     let doc: Value = serde_json::from_str(&board).expect("JSON board");
     let changes = doc["changes"].as_object().expect("a change section");
     assert_eq!(changes.keys().map(String::as_str).collect::<Vec<_>>(), ["add-a", "add-c"]);

@@ -579,27 +579,13 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
     // Same window, store truth: the stamp landed the five reviewed_* fields with
     // the checkout-computed fingerprint, atomically with the ticket delete.
     {
-        use speclink_store::{DocumentId, ProjectId, RepoId, Scope, TeamStore};
-        let store =
-            speclink_store_sqlite::SqliteTeamStore::open(&db).expect("open store for meta check");
-        let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-        let meta = store
-            .snapshot(&scope)
-            .expect("snapshot")
-            .read(&DocumentId::ChangeMeta { change: "demo".into() })
-            .expect("read meta")
-            .expect("meta exists")
-            .content;
+        let store = crate::common::TestStore::sqlite(&db);
+        let meta = store.content("demo", "backend", "changes/demo/.meta.yaml").expect("meta exists");
         assert!(meta.contains("reviewed_at:"), "the stamp persisted: {meta}");
         assert!(meta.contains("reviewed_with: claude"), "agent recorded: {meta}");
         assert!(meta.contains("- path: src/demo.rs"), "work-tree fingerprint recorded: {meta}");
         assert!(
-            store
-                .snapshot(&scope)
-                .expect("snapshot")
-                .read(&DocumentId::ChangeArtifact { change: "demo".into(), artifact: "review.md".into() })
-                .expect("read ticket")
-                .is_none(),
+            store.content("demo", "backend", "changes/demo/review.md").is_none(),
             "the ticket is gone from the store"
         );
     }
@@ -637,19 +623,16 @@ fn setup_flow_onboards_a_team_and_a_restart_closes_it() {
 /// the LANGUAGE document (the store's new shared-vocabulary kind). Dropping the
 /// store closes the connection before the server starts.
 fn preseed_scope(db: &Path) {
-    use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
-    let store = speclink_store_sqlite::SqliteTeamStore::open(db).expect("open store for preseed");
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "preseed".into(), actor: "preseed".into() },
-        )
-        .expect("begin preseed uow");
-    uow.create(DocumentId::CanonicalSpec { capability: "cap-a".into() }, CANON_SPEC);
-    uow.create(DocumentId::WorkflowConfig, "schema: spec-driven\n");
-    uow.create(DocumentId::Language, LANGUAGE_DOC);
-    store.commit(uow, Vec::new()).expect("preseed commit");
+    let store = crate::common::TestStore::sqlite(db);
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("specs/cap-a/spec.md", CANON_SPEC),
+            ("config.yaml", "schema: spec-driven\n"),
+            ("LANGUAGE.md", LANGUAGE_DOC),
+        ],
+    );
 }
 
 /// The snapshot id recorded in a projection's manifest.

@@ -9,21 +9,13 @@ use crate::common;
 
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_remote::client::Client;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
-
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 fn client(base: &str, token: &str) -> Client {
     Client::new(&format!("{base}/api/speclink/v1/projects/demo"), token, Some("backend"))
 }
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     pat: String,
 }
 
@@ -34,24 +26,17 @@ const CLEAN_ROUND: &str = "**Scope**: src/lib.rs\n";
 /// Server over a store seeded with change `demo-change`; `tasks` decides
 /// whether the D3 add-round gate lets a ticket exist at all.
 fn fixture_with_tasks(tasks: &str) -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-verify-api".into(), actor: "seed".into() },
-        )
-        .expect("begin seed uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: "demo-change".into() },
-        "schema: spec-driven\ncreated: 2026-08-01\n",
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo-change/.meta.yaml", "schema: spec-driven\ncreated: 2026-08-01\n"),
+            ("changes/demo-change/tasks.md", tasks),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo-change".into(), artifact: "tasks.md".into() },
-        tasks,
-    );
-    store.commit(uow, Vec::new()).expect("seed documents");
     Fixture { base: common::start(state), store, pat }
 }
 
@@ -60,34 +45,15 @@ fn fixture() -> Fixture {
 }
 
 fn artifact(f: &Fixture, name: &str) -> Option<String> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::ChangeArtifact {
-            change: "demo-change".into(),
-            artifact: name.into(),
-        })
-        .expect("read artifact")
-        .map(|d| d.content)
+    f.store.content("demo", "backend", &format!("changes/demo-change/{name}"))
 }
 
 fn meta_doc(f: &Fixture) -> String {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::ChangeMeta { change: "demo-change".into() })
-        .expect("read meta")
-        .expect("meta exists")
-        .content
+    f.store.content("demo", "backend", "changes/demo-change/.meta.yaml").expect("meta exists")
 }
 
 fn outbox_names(f: &Fixture) -> Vec<String> {
-    f.store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
-        .iter()
-        .map(|e| e.record.name.clone())
-        .collect()
+    f.store.event_names("demo", "backend")
 }
 
 fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorResponse) {

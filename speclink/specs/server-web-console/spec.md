@@ -28,7 +28,7 @@ Server SHALL 以 Vite、React 與 TypeScript SPA 提供 `/`、`/setup`、`/invit
 #### Scenario: 資料操作目的地已併入系統
 
 - **WHEN** 已登入管理員檢視側欄並開啟系統目的地
-- **THEN** 側欄不含資料操作項目，系統頁單頁呈現執行環境、儲存狀態、匯出與資料結構遷移
+- **THEN** 側欄不含資料操作項目，系統頁單頁呈現執行環境、儲存狀態與匯出，沒有資料結構遷移
 
 #### Scenario: 深連結可直接重新整理
 
@@ -57,8 +57,8 @@ Server SHALL 以 Vite、React 與 TypeScript SPA 提供 `/`、`/setup`、`/invit
 
 
 <!-- @trace
-source: server-web-detail-pages
-updated: 2026-10-15T10:20:04+08:00
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->
 
 ---
@@ -301,7 +301,7 @@ Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic the
 #### Scenario: 設定型頁以置中欄與設定型卡呈現
 
 - **WHEN** 管理員以 1440px viewport 開啟系統頁
-- **THEN** 內容欄寬 768px 且水平置中，執行環境、儲存狀態、匯出與危險區各為一張帶 14px 小標的卡，卡內一列一筆
+- **THEN** 內容欄寬 768px 且水平置中，執行環境、儲存狀態與匯出各為一張帶 14px 小標的卡，卡內一列一筆
 
 #### Scenario: 撤銷鈕滑過才出現
 
@@ -320,14 +320,14 @@ Server SPA SHALL 復用 `packages/ui` 的 shadcn/ui 原語、共用 semantic the
 
 
 <!-- @trace
-source: server-web-detail-pages
-updated: 2026-10-15T10:20:04+08:00
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->
 
 ---
 ### Requirement: Browser API 互動狀態一致且可恢復
 
-SPA SHALL 只透過 `/api/speclink/v1/web` same-origin JSON API 讀寫 server 資料，所有 raw HTTP 呼叫 SHALL 集中於 typed client。成功 envelope SHALL 為 `{data: T}`；錯誤 envelope SHALL 為 `{error:{code,message,fieldErrors?}}`，欄位 SHALL 使用 camelCase。每個 route SHALL 表示 loading、success、empty、forbidden 與 unexpected error；route chunk 或 render 失敗 SHALL 由 error boundary 顯示重試入口而非白屏。Mutation 期間 SHALL 停用重複提交並顯示進度；成功 SHALL 以 `aria-live=polite` 回饋；失敗 SHALL 保留輸入與原頁資料。停權、撤銷與資料遷移等破壞性操作 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。
+SPA SHALL 只透過 `/api/speclink/v1/web` same-origin JSON API 讀寫 server 資料，所有 raw HTTP 呼叫 SHALL 集中於 typed client。成功 envelope SHALL 為 `{data: T}`；錯誤 envelope SHALL 為 `{error:{code,message,fieldErrors?}}`，欄位 SHALL 使用 camelCase。每個 route SHALL 表示 loading、success、empty、forbidden 與 unexpected error；route chunk 或 render 失敗 SHALL 由 error boundary 顯示重試入口而非白屏。Mutation 期間 SHALL 停用重複提交並顯示進度；成功 SHALL 以 `aria-live=polite` 回饋；失敗 SHALL 保留輸入與原頁資料。停權與撤銷等破壞性操作 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。
 
 #### Scenario: 欄位驗證失敗保留輸入
 
@@ -344,107 +344,10 @@ SPA SHALL 只透過 `/api/speclink/v1/web` same-origin JSON API 讀寫 server �
 - **WHEN** 管理員確認撤銷一組憑證且請求仍在進行
 - **THEN** 確認按鈕停用並顯示進度，第二次提交不會送出；完成後以可存取訊息回報結果
 
+
 <!-- @trace
-source: web-service-navigation-redesign
-updated: 2026-07-25
-code:
-  - .dockerignore
-  - .github/workflows/ci.yml
-  - .github/workflows/release.yml
-  - Cargo.lock
-  - apps/desktop/src/index.css
-  - apps/server-web/index.html
-  - apps/server-web/package.json
-  - apps/server-web/src/App.tsx
-  - apps/server-web/src/__tests__/a11y.test.tsx
-  - apps/server-web/src/__tests__/account.test.tsx
-  - apps/server-web/src/__tests__/activate.test.tsx
-  - apps/server-web/src/__tests__/admin.test.tsx
-  - apps/server-web/src/__tests__/app.test.tsx
-  - apps/server-web/src/__tests__/build.test.ts
-  - apps/server-web/src/__tests__/invite.test.tsx
-  - apps/server-web/src/__tests__/setup.test.tsx
-  - apps/server-web/src/api/client.ts
-  - apps/server-web/src/app/context.tsx
-  - apps/server-web/src/assets/logo-mark.png
-  - apps/server-web/src/assets/speclink-wordmark.png
-  - apps/server-web/src/components/AdminNav.tsx
-  - apps/server-web/src/components/Field.tsx
-  - apps/server-web/src/components/LogoutButton.tsx
-  - apps/server-web/src/components/RouteErrorBoundary.tsx
-  - apps/server-web/src/components/SkipLink.tsx
-  - apps/server-web/src/components/Wordmark.tsx
-  - apps/server-web/src/index.css
-  - apps/server-web/src/layouts/AccountLayout.tsx
-  - apps/server-web/src/layouts/AdminLayout.tsx
-  - apps/server-web/src/layouts/FocusLayout.tsx
-  - apps/server-web/src/lib/formError.ts
-  - apps/server-web/src/lib/returnTo.ts
-  - apps/server-web/src/lib/useAsync.ts
-  - apps/server-web/src/lib/useFocusMain.ts
-  - apps/server-web/src/lib/useMediaQuery.ts
-  - apps/server-web/src/main.tsx
-  - apps/server-web/src/pages/AccountPage.tsx
-  - apps/server-web/src/pages/ActivatePage.tsx
-  - apps/server-web/src/pages/InvitePage.tsx
-  - apps/server-web/src/pages/LoginPage.tsx
-  - apps/server-web/src/pages/SetupPage.tsx
-  - apps/server-web/src/pages/admin/AdminSection.tsx
-  - apps/server-web/src/pages/admin/AuditPage.tsx
-  - apps/server-web/src/pages/admin/CredentialsPage.tsx
-  - apps/server-web/src/pages/admin/DataPage.tsx
-  - apps/server-web/src/pages/admin/OverviewPage.tsx
-  - apps/server-web/src/pages/admin/RegistryPage.tsx
-  - apps/server-web/src/pages/admin/SystemPage.tsx
-  - apps/server-web/src/pages/admin/UsersPage.tsx
-  - apps/server-web/src/pages/admin/states.tsx
-  - apps/server-web/src/pages/admin/stubs.tsx
-  - apps/server-web/src/routes/AppRoutes.tsx
-  - apps/server-web/src/vite-env.d.ts
-  - apps/server-web/tsconfig.json
-  - apps/server-web/vite.config.ts
-  - apps/server-web/vitest.config.ts
-  - apps/server-web/vitest.setup.ts
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/Dockerfile
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/assets.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/setup.rs
-  - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/admin_api.rs
-  - crates/speclink-server/tests/admin_data.rs
-  - crates/speclink-server/tests/admin_e2e.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/admin_three_entry.rs
-  - crates/speclink-server/tests/admin_web_api.rs
-  - crates/speclink-server/tests/backup_e2e.rs
-  - crates/speclink-server/tests/device_e2e.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/phase2_chain.rs
-  - crates/speclink-server/tests/setup_flow.rs
-  - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_activate.rs
-  - crates/speclink-server/tests/web_assets.rs
-  - crates/speclink-server/tests/web_device_sessions.rs
-  - crates/speclink-server/tests/web_invite.rs
-  - crates/speclink-server/tests/web_session.rs
-  - crates/speclink-server/tests/web_setup.rs
-  - docs/remote-getting-started.md
-  - docs/remote-getting-started.zh-TW.md
-  - docs/server-deployment.zh-TW.md
-  - package-lock.json
-  - package.json
-  - packages/ui/src/__tests__/table.test.tsx
-  - packages/ui/src/__tests__/theme.test.ts
-  - packages/ui/src/components/ui/label.tsx
-  - packages/ui/src/components/ui/table.tsx
-  - packages/ui/src/index.ts
-  - packages/ui/src/theme.css
-  - scripts/delivery-gate.test.mjs
-  - scripts/remote-docs.test.mjs
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->
 
 ---
@@ -763,7 +666,7 @@ updated: 2026-10-13T11:49:40+08:00
 
 主區頂列右端 SHALL 呈現 ‹ n／m ›：m 為列表目前呈現的筆數（含搜尋與篩選），n 為目前這一筆在其中的序位；直接開啟詳情頁網址時，序列為該列表未經搜尋與篩選的全部項目。到頭時對應鈕 SHALL 停用，SHALL NOT 循環；目前這一筆不在序列中時整組 SHALL 缺席；以 ‹ › 切換 SHALL NOT 新增瀏覽紀錄。從詳情頁回到列表（麵包屑的目的地、側欄的目的地或瀏覽器上一頁）時，列表的搜尋字串、篩選與頁碼 SHALL 維持進入詳情頁前的狀態。
 
-建立與邀請類動作（邀請使用者、建立專案、新增儲存庫、建立存取金鑰）SHALL 由一個按鈕開啟置中對話框承載，SHALL NOT 常駐於頁面；邀請使用者、建立專案與建立存取金鑰 SHALL 為各自頁面唯一的 primary action。對話框 SHALL 與 Desktop 新增專案對話框同款（12px 圓角、15px 標題加灰字說明、頁尾細線上方右側為主要動作）；按取消或 Esc SHALL 關閉對話框，點對話框以外的區域 SHALL NOT 關閉。挑選既有項目加入一筆資料（例如邀請時選擇要加入的專案）SHALL 以下拉選單逐一挑選並列出已選項目，SHALL NOT 為每個候選項各渲染一個常駐勾選框。停權、撤銷憑證、移除成員資格、刪除專案與資料結構遷移 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。對話框提交失敗 SHALL 保持對話框開啟、保留非祕密輸入，並把錯誤以 `role=alert` 置於對應欄位附近；建立專案、新增儲存庫與更名提交成功 SHALL 關閉對話框，並 SHALL 立即更新列表或詳情頁。只顯示一次的祕密值（邀請連結、存取金鑰明文）SHALL 於送出成功後在同一個對話框內以已建立狀態呈現：成功標題、說明此值只顯示這一次、綠系成功框內的值與複製動作、「完成」鈕；成功框 SHALL 以 `aria-live=polite` 宣告。邀請 SHALL 以受邀者可直接開啟的連結呈現，SHALL NOT 只呈現裸 token；對話框關閉後該值 SHALL NOT 出現在頁面上。
+建立與邀請類動作（邀請使用者、建立專案、新增儲存庫、建立存取金鑰）SHALL 由一個按鈕開啟置中對話框承載，SHALL NOT 常駐於頁面；邀請使用者、建立專案與建立存取金鑰 SHALL 為各自頁面唯一的 primary action。對話框 SHALL 與 Desktop 新增專案對話框同款（12px 圓角、15px 標題加灰字說明、頁尾細線上方右側為主要動作）；按取消或 Esc SHALL 關閉對話框，點對話框以外的區域 SHALL NOT 關閉。挑選既有項目加入一筆資料（例如邀請時選擇要加入的專案）SHALL 以下拉選單逐一挑選並列出已選項目，SHALL NOT 為每個候選項各渲染一個常駐勾選框。停權、撤銷憑證、移除成員資格與刪除專案 SHALL 在送出前以 AlertDialog 顯示確切對象並要求確認。對話框提交失敗 SHALL 保持對話框開啟、保留非祕密輸入，並把錯誤以 `role=alert` 置於對應欄位附近；建立專案、新增儲存庫與更名提交成功 SHALL 關閉對話框，並 SHALL 立即更新列表或詳情頁。只顯示一次的祕密值（邀請連結、存取金鑰明文）SHALL 於送出成功後在同一個對話框內以已建立狀態呈現：成功標題、說明此值只顯示這一次、綠系成功框內的值與複製動作、「完成」鈕；成功框 SHALL 以 `aria-live=polite` 宣告。邀請 SHALL 以受邀者可直接開啟的連結呈現，SHALL NOT 只呈現裸 token；對話框關閉後該值 SHALL NOT 出現在頁面上。
 
 #### Scenario: 點整列開啟詳情頁
 
@@ -840,9 +743,10 @@ updated: 2026-10-13T11:49:40+08:00
 - **WHEN** 管理員開啟唯一一位有效管理員的使用者詳情頁
 - **THEN** 概要分頁的管理員開關為開啟且停用，頁標題區的停權鈕停用
 
+
 <!-- @trace
-source: server-web-detail-pages
-updated: 2026-10-15T10:20:04+08:00
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->
 
 ---

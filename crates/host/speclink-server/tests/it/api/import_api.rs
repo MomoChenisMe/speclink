@@ -12,26 +12,24 @@ use speclink_protocol::query::{
 use speclink_remote::client::Client;
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    content_digest, CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore,
-};
-use std::sync::Arc;
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+/// The digest a bundle carries for `content`: SHA-256, lowercase hex, with
+/// the algorithm as a prefix.
+fn content_digest(content: &str) -> String {
+    use sha2::{Digest, Sha256};
+    format!("sha256:{:x}", Sha256::digest(content.as_bytes()))
 }
 
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let (reader_pat, reader_id) =
@@ -150,7 +148,7 @@ fn migration_documents() -> Vec<Value> {
         ),
         document(
             json!({ "type": "language" }),
-            "TeamStore: 團隊儲存\n",
+            "Store port: 儲存接口\n",
         ),
     ]
 }
@@ -220,7 +218,7 @@ fn empty_scope_import_reports_created_and_every_read_surface_returns_bundle_trut
     let config = get_json(&fixture, &fixture.editor_pat, "config");
     assert_eq!(config["content"], "schema: spec-driven\nlocale: tw\n");
     let language = get_json(&fixture, &fixture.editor_pat, "language");
-    assert_eq!(language["content"], "TeamStore: 團隊儲存\n");
+    assert_eq!(language["content"], "Store port: 儲存接口\n");
 }
 
 #[test]
@@ -276,18 +274,8 @@ fn import_accepts_workspace_bundles_above_axums_default_body_limit() {
 #[test]
 fn non_empty_scope_is_refused_without_changing_content_or_revision() {
     let fixture = fixture();
-    let mut uow = fixture
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext {
-                command: "seed-existing".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin seed");
-    uow.create(DocumentId::WorkflowConfig, "schema: spec-driven\n");
-    let before_revision = fixture.store.commit(uow, Vec::new()).expect("seed");
+    let before_revision =
+        fixture.store.put("demo", "backend", &[("config.yaml", "schema: spec-driven\n")]);
 
     let (status, message, reason) = error_of(post_import(
         &fixture,
@@ -301,22 +289,18 @@ fn non_empty_scope_is_refused_without_changing_content_or_revision() {
         "the CreateNew gate stays visible: {message}"
     );
 
-    let snapshot = fixture.store.snapshot(&scope()).expect("snapshot");
-    assert_eq!(snapshot.revision(), before_revision);
+    assert_eq!(fixture.store.version("demo", "backend"), before_revision);
     assert_eq!(
-        snapshot
-            .read(&DocumentId::WorkflowConfig)
-            .expect("read")
-            .expect("existing config")
-            .content,
+        fixture
+            .store
+            .content("demo", "backend", "config.yaml")
+            .expect("existing config"),
         "schema: spec-driven\n"
     );
     assert!(
-        snapshot
-            .read(&DocumentId::CanonicalSpec {
-                capability: "payments".into()
-            })
-            .expect("read")
+        fixture
+            .store
+            .doc("demo", "backend", "specs/payments/spec.md")
             .is_none(),
         "no prefix of the rejected bundle was written"
     );
@@ -332,7 +316,7 @@ fn reader_cannot_import_even_with_a_valid_bundle() {
     ));
     assert_eq!(status, 403);
     assert_eq!(reason, Some(ErrorReason::PermissionDenied));
-    assert_eq!(fixture.store.snapshot(&scope()).unwrap().revision().0, 0);
+    assert_eq!(fixture.store.version("demo", "backend"), 0);
 }
 
 #[test]
@@ -361,7 +345,7 @@ fn unknown_version_missing_fields_and_an_overwrite_selector_are_not_accepted() {
         422,
         "the migration wire has no Overwrite selector"
     );
-    assert_eq!(fixture.store.snapshot(&scope()).unwrap().revision().0, 0);
+    assert_eq!(fixture.store.version("demo", "backend"), 0);
 }
 
 #[test]
@@ -383,14 +367,11 @@ fn a_large_bundle_with_a_late_validation_failure_leaves_no_partial_state() {
         bundle(documents),
     ));
     assert!(status >= 400);
-    let snapshot = fixture.store.snapshot(&scope()).expect("snapshot");
-    assert_eq!(snapshot.revision().0, 0);
+    assert_eq!(fixture.store.version("demo", "backend"), 0);
     assert!(
-        snapshot
-            .read(&DocumentId::ChangeMeta {
-                change: "demo".into()
-            })
-            .expect("read")
+        fixture
+            .store
+            .doc("demo", "backend", "changes/demo/.meta.yaml")
             .is_none(),
         "validation rejects the whole request before any prefix is visible"
     );
@@ -398,7 +379,8 @@ fn a_large_bundle_with_a_late_validation_failure_leaves_no_partial_state() {
 
 // ======================================================================
 // The import is the host kit's, on the store port (import-export-on-port,
-// design D7): no TeamStore import, an event for the stream, and the export.
+// design D7): no import of the store's own, an event for the stream, and the
+// export.
 // ======================================================================
 
 use crate::common::subscriber::Recorder;
@@ -414,11 +396,9 @@ fn keyed_document(key: &str, content: &str) -> BundleDocument {
 }
 
 #[test]
-fn a_successful_import_writes_through_the_store_port_and_never_calls_the_teamstores_import() {
-    // No other writer: the store is here for its count of import calls.
-    let inner = Arc::new(MemoryStore::new());
-    let store = Arc::new(common::Racing::at_unit_of_work(inner.clone(), |_| {}));
-    let state = common::state_with(store.clone());
+fn a_successful_import_writes_every_document_in_one_commit() {
+    let inner = common::TestStore::memory();
+    let state = common::state_with(inner.shared());
     let (pat, _) = common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let base = common::start(state);
 
@@ -432,13 +412,8 @@ fn a_successful_import_writes_through_the_store_port_and_never_calls_the_teamsto
         .expect("ImportReport JSON");
 
     assert_eq!(response["documents"].as_array().map(Vec::len), Some(migration_documents().len()));
-    assert_eq!(store.imports(), 0, "the TeamStore's import was called");
-    let snapshot = inner.snapshot(&scope()).expect("snapshot");
-    assert_eq!(snapshot.revision().0, 1, "one commit wrote every document");
-    assert!(snapshot
-        .read(&DocumentId::CanonicalSpec { capability: "payments".into() })
-        .expect("read")
-        .is_some());
+    assert_eq!(inner.version("demo", "backend"), 1, "one commit wrote every document");
+    assert!(inner.doc("demo", "backend", "specs/payments/spec.md").is_some());
 }
 
 #[test]

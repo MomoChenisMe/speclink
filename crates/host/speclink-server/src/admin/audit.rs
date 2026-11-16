@@ -53,7 +53,9 @@ pub enum AuditAction {
     SetupCompleted,
     /// An admin downloaded a scope's export bundle (决策 5).
     ScopeExported,
-    /// An admin triggered a store migration that succeeded (决策 5).
+    /// A store migration of speclink-server 0.12 or earlier. This version
+    /// has no migration and writes no such record; the action stays so the
+    /// records of an older version still read.
     StoreMigrated,
     /// A backup or verify run recorded its result summary (决策 5).
     BackupRecorded,

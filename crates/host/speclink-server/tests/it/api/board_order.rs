@@ -11,27 +11,20 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{DocumentId, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
 use std::time::Duration;
 
 const ORDER: &str = "{\"changes\":{\"add-auth\":\"n\"},\"discussions\":{\"auth-scope\":\"c\"}}";
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (editor_pat, _editor_id) = common::seed_named_pat(
         &state.identity,
         "editor@example.com",
@@ -105,11 +98,7 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 }
 
 fn stored_order(f: &Fixture) -> Option<String> {
-    let snapshot = f.store.snapshot(&scope()).expect("snapshot");
-    snapshot
-        .read(&DocumentId::BoardOrder)
-        .expect("read board order")
-        .map(|document| document.content)
+    f.store.content("demo", "backend", "board/order")
 }
 
 #[test]

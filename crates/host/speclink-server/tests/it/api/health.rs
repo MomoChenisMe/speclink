@@ -4,12 +4,7 @@
 
 use crate::common;
 
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore,
-};
 use speclink_server::state::SharedStore;
-use std::sync::Arc;
 
 /// The HTTP status of a GET, whether the response was 2xx or an error status.
 fn status_of(url: &str) -> u16 {
@@ -20,27 +15,16 @@ fn status_of(url: &str) -> u16 {
     }
 }
 
-/// A store driven into the crashed state (a fault injected at a commit stage),
-/// so `health()` reports Unavailable.
+/// A store that broke down, so its health check fails.
 fn crashed_store() -> SharedStore {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let scope = Scope::new(ProjectId::new("default"), RepoId::new("main"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::WorkflowConfig, "x");
-    let _ = store.commit(uow, Vec::new()); // hits the armed fault; store is now crashed
-    assert!(store.health().is_err(), "the store is unhealthy after the crash");
-    Arc::new(store)
+    let store = common::TestStore::memory();
+    store.break_down();
+    store.shared()
 }
 
 #[test]
 fn healthz_and_readyz_are_2xx_on_a_healthy_store() {
-    let store: SharedStore = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory().shared();
     let base = common::start(common::state_with(store));
     assert_eq!(status_of(&format!("{base}/healthz")), 200, "healthz is 2xx");
     assert_eq!(status_of(&format!("{base}/readyz")), 200, "readyz is 2xx on a live store");
@@ -63,7 +47,7 @@ fn readyz_turns_non_2xx_when_the_store_is_unavailable() {
 /// and no browser login.
 #[test]
 fn the_login_methods_are_device_and_token_without_a_credential() {
-    let store: SharedStore = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory().shared();
     let base = common::start(common::state_with(store));
 
     let response = ureq::get(&format!("{base}/api/speclink/v1/auth-methods"))
@@ -79,7 +63,7 @@ fn the_login_methods_are_device_and_token_without_a_credential() {
 /// by the host, with the methods it does take.
 #[test]
 fn a_method_the_door_does_not_take_is_405() {
-    let store: SharedStore = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory().shared();
     let base = common::start(common::state_with(store));
     for path in ["/api/speclink/v1/scopes", "/api/speclink/v1/projects/demo/changes"] {
         match ureq::request("PATCH", &format!("{base}{path}")).call() {

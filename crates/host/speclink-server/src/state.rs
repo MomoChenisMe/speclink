@@ -3,40 +3,35 @@
 use crate::config::ServerConfig;
 use crate::events::EventHub;
 use crate::identity::{IdentityStore, MembershipRole};
+use crate::storage::ServerStore;
 use speclink_host::kit::{AfterCommit, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
-use speclink_host::teamstore_port::{scope_id, teamstore_scope, TeamStorePort};
+use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::{EventTransport, TransportKind};
-use speclink_store::{ProjectId, RepoId, Scope, TeamStore};
+use speclink_store_port::StorePort;
 use std::collections::HashSet;
 use std::sync::Arc;
 
-/// The store backend, shared across async handlers. `Send + Sync` so a handler
+/// The store, shared across async handlers: a store port for the host kit,
+/// and the event log and health check the server's own routes use. A handler
 /// can move a clone into `spawn_blocking` to run the synchronous Host path.
-pub type SharedStore = Arc<dyn TeamStore + Send + Sync>;
-
-/// The store backend as a store port: the one adapter every request shares,
-/// so a run of requests with no commit in between loads a scope once. The
-/// project routes go through the host kit on it, each request with its
-/// thread pinned (`forward`), so a request reads from one load.
-pub type SharedPort = Arc<TeamStorePort<SharedStore>>;
+pub type SharedStore = Arc<dyn ServerStore>;
 
 /// The identity store, shared across handlers. The API auth precondition and the
 /// web entry both resolve identity through it.
 pub type SharedIdentity = Arc<dyn IdentityStore>;
 
-/// State every handler receives: the store backend and its store-port
-/// adapter, the host kit on that adapter, the identity store, the validated
-/// configuration (Project/Repo registry and public origin), and the
-/// per-scope event broadcaster fed from the store's outbox.
+/// State every handler receives: the store, the host kit on it, the identity
+/// store, the validated configuration (Project/Repo registry and public
+/// origin), and the per-scope event broadcaster fed from the store's event
+/// log.
 ///
 /// The project routes and the scope list go through `kit` (design D8).
 /// `store` is left for what the store port has no operation for: the event
-/// stream's outbox, the admin surfaces and the backups.
+/// stream's log, the admin surfaces and the backups.
 #[derive(Clone)]
 pub struct AppState {
     pub store: SharedStore,
-    pub port: SharedPort,
     pub kit: Arc<HostKit>,
     pub identity: SharedIdentity,
     pub config: Arc<ServerConfig>,
@@ -44,24 +39,32 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// The state over `store`, with the one store-port adapter and the host
-    /// kit built here.
+    /// The state over `store`, with the host kit built here.
     pub fn new(
         store: SharedStore,
         identity: SharedIdentity,
         config: Arc<ServerConfig>,
         events: Arc<EventHub>,
     ) -> AppState {
-        let port = Arc::new(TeamStorePort::new(store.clone()));
-        let kit = Arc::new(host_kit(port.clone(), identity.clone(), events.clone()));
+        let kit = Arc::new(host_kit(store.clone(), identity.clone(), events.clone()));
         AppState {
             store,
-            port,
             kit,
             identity,
             config,
             events,
         }
+    }
+
+    /// Run `work` on the blocking pool. Every read of the store a route of
+    /// the server makes goes through here: a store can block (the PostgreSQL
+    /// example's client does, and panics on an async worker), and an event
+    /// log can be long.
+    pub async fn blocking<T: Send + 'static>(&self, work: impl FnOnce(&AppState) -> T + Send + 'static) -> T {
+        let state = self.clone();
+        tokio::task::spawn_blocking(move || work(&state))
+            .await
+            .expect("a blocking store read ends without a panic")
     }
 }
 
@@ -69,14 +72,10 @@ impl AppState {
 /// caller's memberships, both switches are "is an editor", the login methods
 /// are device login and access keys, the push stream is the server's own
 /// SSE route, and every commit wakes that stream.
-fn host_kit(port: SharedPort, identity: SharedIdentity, events: Arc<EventHub>) -> HostKit {
+fn host_kit(port: Arc<dyn StorePort>, identity: SharedIdentity, events: Arc<EventHub>) -> HostKit {
     let hooks = Hooks {
         before_command: None,
-        after_commit: Some(Box::new(move |info: &AfterCommit| {
-            if let Ok(scope) = teamstore_scope(&info.caller.scope) {
-                events.notify(&scope);
-            }
-        })),
+        after_commit: Some(Box::new(move |info: &AfterCommit| events.notify(&info.caller.scope))),
     };
     let options = HostKitOptions {
         scopes: Some(Box::new(move |who: &Identity| member_scopes(&*identity, who.id()))),

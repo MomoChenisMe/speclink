@@ -96,7 +96,10 @@ Source discussion: embedded-host-needs（cut 19）。
     - crates/host/speclink-server/tests/it/legacy_layout.rs
     - crates/host/speclink-server/tests/it/admin/legacy_backup.rs
     - crates/host/speclink-server/tests/fixtures/backup-format-1.tar
+    - crates/host/speclink-server/tests/fixtures/backup-format-1.md
     - crates/host/speclink-host/src/scope.rs
+    - crates/protocol/speclink-remote/tests/it/seed.rs
+    - apps/server-web/src/components/StoreStatus.tsx
   - Modified:
     - crates/host/speclink-server/Cargo.toml
     - Cargo.lock
@@ -111,6 +114,8 @@ Source discussion: embedded-host-needs（cut 19）。
     - crates/host/speclink-server/src/api/forward.rs
     - crates/host/speclink-server/src/admin.rs
     - crates/host/speclink-server/src/admin/backup.rs
+    - crates/host/speclink-server/src/admin/audit.rs
+    - crates/host/speclink-server/src/identity/sqlite.rs
     - crates/host/speclink-server/src/identity/setup.rs
     - crates/host/speclink-server/tests/it/common/mod.rs
     - crates/host/speclink-server/tests/it/main.rs
@@ -119,6 +124,7 @@ Source discussion: embedded-host-needs（cut 19）。
     - crates/host/speclink-server/tests/pg/mod.rs
     - crates/host/speclink-server/tests/it/e2e_cli.rs
     - crates/host/speclink-server/tests/it/phase2_chain.rs
+    - crates/host/speclink-server/tests/it/startup.rs
     - crates/host/speclink-server/tests/it/admin/backup_restore.rs
     - crates/host/speclink-server/tests/it/api/sse_events.rs
     - crates/host/speclink-server/tests/it/api/import_api.rs
@@ -128,9 +134,12 @@ Source discussion: embedded-host-needs（cut 19）。
     - crates/host/speclink-server/tests/it/web（同上）
     - crates/host/speclink-host/src/lib.rs
     - crates/host/speclink-host/src/teamstore_port.rs
+    - crates/protocol/speclink-remote/Cargo.toml
     - crates/protocol/speclink-remote/tests/it/read_api.rs
+    - crates/protocol/speclink-remote/tests/it/main.rs
     - crates/protocol/speclink-remote/tests/it/events_sse.rs
     - crates/protocol/speclink-remote/tests/it/device_flow.rs
+    - apps/desktop/src-tauri/Cargo.toml
     - apps/desktop/src-tauri/tests/it/common/mod.rs
     - apps/desktop/src-tauri/tests/it/login_orchestration.rs
     - apps/desktop/src-tauri/tests/it/remote_data.rs
@@ -142,6 +151,7 @@ Source discussion: embedded-host-needs（cut 19）。
     - apps/server-web/src/__tests__/setup.test.tsx
     - apps/server-web/src/__tests__/wording.test.tsx
     - apps/server-web/src/__tests__/helpers/adminHarness.tsx
+    - apps/server-web/src/__tests__/admin-console-shell.test.tsx
   - Removed: (none)
 - 相依：store-port-examples（要先有三個範例）。
 - 三種形態下的結果：

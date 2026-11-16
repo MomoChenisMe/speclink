@@ -233,7 +233,7 @@ fn run_server(args: RunArgs) -> ExitCode {
     let store = match speclink_server::build_store(&config.store) {
         Ok(store) => store,
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("{}", e.shown(&config_path));
             return ExitCode::FAILURE;
         }
     };
@@ -437,7 +437,7 @@ fn run_backup(args: BackupArgs) -> ExitCode {
     let store = match speclink_server::build_store(&config.store) {
         Ok(store) => store,
         Err(e) => {
-            eprintln!("{e}");
+            eprintln!("{}", e.shown(&args.config));
             return ExitCode::FAILURE;
         }
     };
@@ -555,6 +555,10 @@ fn run_restore(args: RestoreArgs) -> ExitCode {
             for diff in &report.differences {
                 eprintln!("  - {diff}");
             }
+            ExitCode::FAILURE
+        }
+        Err(speclink_server::backup::BackupError::Open(e)) => {
+            eprintln!("{}", e.shown(&args.config));
             ExitCode::FAILURE
         }
         Err(e) => {

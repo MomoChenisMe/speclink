@@ -1,24 +1,20 @@
 //! Backup, verify and restore (server-backup capability). A backup is a single
 //! self-describing tar: a manifest with per-member digests, one export bundle per
-//! scope (through the TeamStore export contract, never a database-file copy), and
+//! scope (through the store's export contract, never a database-file copy), and
 //! a time-point-consistent identity snapshot that holds only hashes.
 
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::Path;
-use std::sync::Arc;
-
+use crate::common::TestStore;
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::EventSettings;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
-use speclink_store_sqlite::SqliteTeamStore;
 
 use chrono::{Duration, Utc};
 
 /// Read every member of the tar at `path` into name → bytes.
-fn read_tar(path: &Path) -> BTreeMap<String, Vec<u8>> {
+pub(super) fn read_tar(path: &Path) -> BTreeMap<String, Vec<u8>> {
     let file = std::fs::File::open(path).expect("open backup");
     let mut archive = tar::Archive::new(file);
     let mut members = BTreeMap::new();
@@ -41,17 +37,15 @@ const SEED_SCOPES: [(&str, &str, &str); 2] =
 const SEED_PASSWORD: &str = "seed-password-9f3a";
 
 /// Write two documents into each seed scope of `store`.
-fn seed_store_docs(store: &dyn TeamStore) {
+fn seed_store_docs(store: &TestStore) {
     for (project, repo, doc) in SEED_SCOPES {
-        let scope = Scope::new(ProjectId::new(project), RepoId::new(repo));
-        let ctx = CommandContext { command: "seed".into(), actor: "seed".into() };
-        let mut uow = store.begin_unit_of_work(&scope, ctx).expect("uow");
-        uow.create(DocumentId::ChangeMeta { change: doc.into() }, "schema: spec-driven\n");
-        uow.create(
-            DocumentId::ChangeArtifact { change: doc.into(), artifact: "proposal.md".into() },
-            "## Why\nseed\n",
+        let meta = format!("changes/{doc}/.meta.yaml");
+        let proposal = format!("changes/{doc}/proposal.md");
+        store.put(
+            project,
+            repo,
+            &[(&meta, "schema: spec-driven\n"), (&proposal, "## Why\nseed\n")],
         );
-        store.commit(uow, Vec::new()).expect("commit");
     }
 }
 
@@ -77,9 +71,9 @@ fn seed_identity(identity: &IdentitySqlite) -> String {
 }
 
 /// The in-memory seed fixture: store, identity, PAT plaintext and password.
-fn seed() -> (Arc<MemoryStore>, IdentitySqlite, String, String) {
-    let store = Arc::new(MemoryStore::new());
-    seed_store_docs(store.as_ref());
+fn seed() -> (TestStore, IdentitySqlite, String, String) {
+    let store = TestStore::memory();
+    seed_store_docs(&store);
     let identity = IdentitySqlite::open_memory().expect("identity");
     let pat_plaintext = seed_identity(&identity);
     (store, identity, pat_plaintext, SEED_PASSWORD.to_string())
@@ -90,17 +84,17 @@ fn seed() -> (Arc<MemoryStore>, IdentitySqlite, String, String) {
 fn seed_and_backup(dir: &Path) -> std::path::PathBuf {
     let backup = dir.join("backup.tar");
     {
-        let store = SqliteTeamStore::open(dir.join("src-store.db")).expect("src store");
+        let store = TestStore::sqlite(dir.join("src-store.db"));
         seed_store_docs(&store);
         let identity = IdentitySqlite::open(dir.join("src-identity.db")).expect("src identity");
         seed_identity(&identity);
-        speclink_server::backup::create(&store, &identity, &backup).expect("backup");
+        speclink_server::backup::create(&*store.shared(), &identity, &backup).expect("backup");
     }
     backup
 }
 
 /// A restore target config over fresh sqlite paths under `dir`.
-fn target_config(dir: &Path) -> ServerConfig {
+pub(super) fn target_config(dir: &Path) -> ServerConfig {
     ServerConfig {
         store: StoreConfig::Sqlite { path: dir.join("tgt-store.db") },
         identity: IdentityConfig::Sqlite { path: dir.join("tgt-identity.db") },
@@ -116,8 +110,8 @@ fn backup_is_self_describing_and_verifiable_per_member() {
     let output = dir.path().join("backup.tar");
 
     let summary =
-        speclink_server::backup::create(store.as_ref(), &identity, &output).expect("backup");
-    assert_eq!(summary.backup_format_version, speclink_server::backup::BACKUP_FORMAT_VERSION);
+        speclink_server::backup::create(&*store.shared(), &identity, &output).expect("backup");
+    assert_eq!(summary.backup_format_version, 2, "this version writes backup format version 2");
     assert_eq!(summary.scope_count, 2, "both registry scopes are backed up");
 
     let members = read_tar(&output);
@@ -126,7 +120,9 @@ fn backup_is_self_describing_and_verifiable_per_member() {
     let manifest_bytes = members.get("manifest.json").expect("manifest present");
     let manifest: serde_json::Value =
         serde_json::from_slice(manifest_bytes).expect("manifest is json");
-    assert_eq!(manifest["backup_format_version"], speclink_server::backup::BACKUP_FORMAT_VERSION);
+    assert_eq!(manifest["backup_format_version"], 2);
+    assert_eq!(manifest["store_kind"], "memory", "the manifest records the kind of the store");
+    assert!(manifest.get("store").is_none(), "no store manifest of the old store layer: {manifest}");
     assert!(manifest["created_at"].as_str().unwrap().ends_with('Z'), "UTC creation time");
     assert!(!manifest["engine_version"].as_str().unwrap().is_empty(), "engine version recorded");
     assert!(manifest["identity_schema_version"].as_u64().is_some(), "identity schema version");
@@ -136,17 +132,32 @@ fn backup_is_self_describing_and_verifiable_per_member() {
     // The manifest self-digest side file exists (决策 1).
     assert!(members.contains_key("manifest.json.sha256"), "manifest self-digest side file");
 
-    // One bundle per scope, produced through export — a parseable Bundle JSON,
-    // not an opaque database file. Each scope's documents are present.
-    let mut bundle_docs = 0usize;
+    // One bundle per scope, produced through export — a parseable bundle JSON,
+    // not an opaque database file. Each scope's documents are present, each
+    // named by its key.
+    let mut bundle_keys = Vec::new();
     for scope in scopes {
         let member = scope["member"].as_str().expect("scope member name");
         let bundle_bytes = members.get(member).expect("scope bundle present");
         let bundle: serde_json::Value =
             serde_json::from_slice(bundle_bytes).expect("bundle is json (export, not db copy)");
-        bundle_docs += bundle["documents"].as_array().expect("bundle documents").len();
+        assert_eq!(bundle["formatVersion"], 2, "a bundle by key: {bundle}");
+        for doc in bundle["documents"].as_array().expect("bundle documents") {
+            assert!(doc.get("doc").is_none(), "no document kind: {doc}");
+            bundle_keys.push(doc["key"].as_str().expect("a document is named by its key").to_string());
+        }
     }
-    assert_eq!(bundle_docs, 4, "both scopes' documents are exported");
+    bundle_keys.sort();
+    assert_eq!(
+        bundle_keys,
+        [
+            "changes/add-auth/.meta.yaml",
+            "changes/add-auth/proposal.md",
+            "changes/add-billing/.meta.yaml",
+            "changes/add-billing/proposal.md",
+        ],
+        "both scopes' documents are exported"
+    );
 
     // The identity snapshot member is present.
     let identity_member = manifest["identity"]["member"].as_str().expect("identity member name");
@@ -184,7 +195,7 @@ fn contains(haystack: &[u8], needle: &[u8]) -> bool {
 }
 
 /// Rewrite a tar at `path` from name → bytes members.
-fn write_tar(path: &Path, members: &BTreeMap<String, Vec<u8>>) {
+pub(super) fn write_tar(path: &Path, members: &BTreeMap<String, Vec<u8>>) {
     let file = std::fs::File::create(path).expect("create tar");
     let mut builder = tar::Builder::new(file);
     for (name, bytes) in members {
@@ -204,7 +215,7 @@ fn fresh_backup() -> (tempfile::TempDir, std::path::PathBuf) {
     let (store, identity, _, _) = seed();
     let dir = tempfile::tempdir().expect("tempdir");
     let output = dir.path().join("backup.tar");
-    speclink_server::backup::create(store.as_ref(), &identity, &output).expect("backup");
+    speclink_server::backup::create(&*store.shared(), &identity, &output).expect("backup");
     (dir, output)
 }
 
@@ -212,7 +223,7 @@ fn fresh_backup() -> (tempfile::TempDir, std::path::PathBuf) {
 fn verify_accepts_a_fresh_backup() {
     let (_dir, output) = fresh_backup();
     let report = speclink_server::backup::verify(&output).expect("a fresh backup verifies");
-    assert_eq!(report.backup_format_version, speclink_server::backup::BACKUP_FORMAT_VERSION);
+    assert_eq!(report.backup_format_version, 2);
     assert_eq!(report.scope_count, 2);
 }
 
@@ -284,10 +295,9 @@ fn restore_into_empty_target_validates_green() {
 
     // The restored target carries the backed-up data: both scopes' documents and
     // the member user.
-    let store = SqliteTeamStore::open(dir.path().join("tgt-store.db")).expect("target store");
+    let store = TestStore::sqlite(dir.path().join("tgt-store.db"));
     for (project, repo, _) in SEED_SCOPES {
-        let scope = Scope::new(ProjectId::new(project), RepoId::new(repo));
-        assert_eq!(store.export(&scope).expect("export").documents.len(), 2, "scope restored");
+        assert_eq!(store.keys(project, repo).len(), 2, "scope restored");
     }
     let identity = IdentitySqlite::open(dir.path().join("tgt-identity.db")).expect("target identity");
     assert_eq!(identity.list_users().expect("users").len(), 1, "member user restored");
@@ -327,15 +337,12 @@ fn restore_validation_reports_a_post_restore_mismatch() {
     // Tamper with the restored target: change one document's content, so the
     // scope no longer matches the backup's recorded digest and count.
     {
-        let store = SqliteTeamStore::open(dir.path().join("tgt-store.db")).expect("target store");
-        let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-        let snapshot = store.snapshot(&scope).expect("snapshot");
-        let doc = DocumentId::ChangeMeta { change: "add-auth".into() };
-        let rev = snapshot.read(&doc).expect("read").expect("present").revision;
-        let ctx = CommandContext { command: "tamper".into(), actor: "tamper".into() };
-        let mut uow = store.begin_unit_of_work(&scope, ctx).expect("uow");
-        uow.update(doc, "schema: spec-driven\n# drift\n", rev);
-        store.commit(uow, Vec::new()).expect("commit");
+        let store = TestStore::sqlite(dir.path().join("tgt-store.db"));
+        assert!(
+            store.doc("demo", "backend", "changes/add-auth/.meta.yaml").is_some(),
+            "the document to change is present"
+        );
+        store.put("demo", "backend", &[("changes/add-auth/.meta.yaml", "schema: spec-driven\n# drift\n")]);
     }
 
     let report = speclink_server::backup::validate(&config, &backup).expect("validate runs");

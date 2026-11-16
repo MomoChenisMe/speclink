@@ -86,7 +86,7 @@ fn a_serverfs_store_pointed_at_a_foreign_directory_exits_non_zero_and_touches_no
         "stderr names the directory: {stderr}"
     );
     assert!(
-        stderr.contains("not a speclink team store"),
+        stderr.contains("is not a speclink store"),
         "stderr states the reason: {stderr}"
     );
 

@@ -6,37 +6,20 @@
 use crate::common;
 
 use speclink_remote::client::Client;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
-
-const SCOPE_PROJECT: &str = "demo";
-const SCOPE_REPO: &str = "backend";
-
-fn scope() -> Scope {
-    Scope::new(ProjectId::new(SCOPE_PROJECT), RepoId::new(SCOPE_REPO))
-}
 
 /// A store seeded with change `demo` (a proposal and a tasks file), returned so
 /// the test can inspect its outbox after driving the server.
-fn seeded_store() -> Arc<MemoryStore> {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
-        "## Why\n\noriginal\n",
+fn seeded_store() -> common::TestStore {
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/proposal.md", "## Why\n\noriginal\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n- [ ] 1.2 Second\n"),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n- [ ] 1.2 Second\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
     store
 }
 
@@ -51,7 +34,7 @@ fn client(base: &str, token: &str) -> Client {
 #[test]
 fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
     let store = seeded_store();
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -82,21 +65,13 @@ fn competing_writers_on_the_same_version_leave_a_distinguishable_conflict() {
 fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document() {
     // host-runtime「版本衝突經 Server 回報」：動詞讀過 metadata 之後、提交
     // 之前，另一方改寫了同一份文件。
-    let meta = DocumentId::ChangeMeta { change: "demo".into() };
+    let meta = "changes/demo/.meta.yaml";
     let inner = seeded_store();
-    let base = inner.snapshot(&scope()).expect("snapshot").revision();
-    let racing_meta = meta.clone();
-    let store = Arc::new(common::Racing::at_unit_of_work(inner.clone(), move |store| {
-        let mut uow = store
-            .begin_unit_of_work(
-                &scope(),
-                CommandContext { command: "other".into(), actor: "other".into() },
-            )
-            .expect("begin the other writer's uow");
-        uow.update(racing_meta, "schema: spec-driven\nclaimed_by: Other\n", base);
-        store.commit(uow, Vec::new()).expect("the other writer commits");
-    }));
-    let state = common::state_with(store);
+    let base = inner.version("demo", "backend");
+    let store = common::Racing::before_the_commit(&inner, move |store| {
+        store.put("demo", "backend", &[(meta, "schema: spec-driven\nclaimed_by: Other\n")]);
+    });
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base_url = common::start(state);
 
@@ -121,17 +96,16 @@ fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document(
     assert_eq!(error["reason"], "revision_conflict");
     assert_eq!(
         error["message"],
-        format!("changes/demo/.meta.yaml: expected {}, actual {}", base.0, base.0 + 1),
+        format!("changes/demo/.meta.yaml: expected {}, actual {}", base, base + 1),
         "the message names the key, expected and actual"
     );
-    let after = inner.snapshot(&scope()).expect("snapshot");
     assert_eq!(
-        after.read(&meta).expect("read").expect("meta").content,
+        inner.content("demo", "backend", meta).expect("meta"),
         "schema: spec-driven\nclaimed_by: Other\n",
         "the other writer's content stands"
     );
     assert!(
-        inner.read_outbox(&scope(), OutboxCursor(0)).expect("outbox").is_empty(),
+        inner.events("demo", "backend").is_empty(),
         "the refused verb published no event"
     );
 }
@@ -139,36 +113,20 @@ fn a_write_between_a_verbs_read_and_its_commit_is_a_409_that_names_the_document(
 /// A store seeded with an archive-ready change: tasks all done, one delta spec
 /// so the archive reports capability counts, and a source discussion linked
 /// both ways so it co-travels into the archive. The change is named `change`.
-fn archive_ready_store(change: &str) -> Arc<MemoryStore> {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-archive".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: change.into() },
-        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: scope-talk\n",
-    );
-    uow.create(
-        DocumentId::ChangeArtifact { change: change.into(), artifact: "tasks.md".into() },
-        "- [x] 1.1 done\n",
-    );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: change.into(),
-            artifact: "specs/user-auth/spec.md".into(),
-        },
-        "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，專供伺服端的測試取用。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
-    );
-    uow.create(
-        DocumentId::Discussion { slug: "scope-talk".into(), archived: false },
-        format!(
+fn archive_ready_store(change: &str) -> common::TestStore {
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (&format!("changes/{}/.meta.yaml", change), "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: scope-talk\n"),
+            (&format!("changes/{}/tasks.md", change), "- [x] 1.1 done\n"),
+            (&format!("changes/{}/specs/user-auth/spec.md", change), "## Purpose\n\n本 capability 是測試用的示範能力，涵蓋一個可觀察行為與其成功路徑，專供伺服端的測試取用。\n\n## ADDED Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n"),
+            ("discussions/scope-talk.md", &format!(
             "---\ntopic: Scope talk\nslug: scope-talk\nstatus: promoted\npromoted_to: {change}\n---\n\n## Conclusion\n\nGo.\n"
-        ),
+        )),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
     store
 }
 
@@ -176,23 +134,16 @@ fn archive_ready_store(change: &str) -> Arc<MemoryStore> {
 fn conclude_reports_the_restale_flagged_changes_over_the_wire() {
     // spec server-verb-api「結論端點回填被打回的變更」：對已轉出且進行中的
     // 討論 re-conclude，回應點名被打回重收的變更。
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-conclude".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: "add-auth".into() },
-        "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: auth-scope\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/add-auth/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-01\nfrom_discussion: auth-scope\n"),
+            ("discussions/auth-scope.md", "---\ntopic: Auth scope\nslug: auth-scope\nstatus: promoted\npromoted_to: add-auth\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\nold\n"),
+        ],
     );
-    uow.create(
-        DocumentId::Discussion { slug: "auth-scope".into(), archived: false },
-        "---\ntopic: Auth scope\nslug: auth-scope\nstatus: promoted\npromoted_to: add-auth\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\nold\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -212,19 +163,15 @@ fn conclude_reports_the_restale_flagged_changes_over_the_wire() {
 fn conclude_backfills_auto_archived_over_the_wire() {
     // spec server-verb-api「討論結論端點回填順手封存事實」：promoted_to 非空且
     // 無在途變更引用 → 回應含 autoArchived: true，討論自 live 清單消失。
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-auto-archive".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "done-talk".into(), archived: false },
-        "---\ntopic: Done talk\nslug: done-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("discussions/done-talk.md", "---\ntopic: Done talk\nslug: done-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -250,20 +197,16 @@ fn conclude_backfills_auto_archived_over_the_wire() {
 fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
     // spec server-verb-api「討論結論端點轉傳保留旗標並回填 held」：閉環條件原本
     // 成立的討論以 hold: true 結論 → 回應 held: true 無 autoArchived，記錄留 live。
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-hold".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "staged-talk".into(), archived: false },
-        "---\ntopic: Staged talk\nslug: staged-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("discussions/staged-talk.md", "---\ntopic: Staged talk\nslug: staged-talk\nstatus: promoted\npromoted_to: shipped-change\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let before = store.snapshot(&scope()).expect("snapshot").revision().0;
-    let state = common::state_with(store.clone());
+    let before = store.version("demo", "backend");
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -273,7 +216,7 @@ fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
         .expect("conclude with hold over the wire");
     assert!(resp.held, "held 回填");
     assert!(!resp.auto_archived, "帶 hold 不觸發閉環");
-    let after = store.snapshot(&scope()).expect("snapshot").revision().0;
+    let after = store.version("demo", "backend");
     assert!(after > before, "the conclude commit advances the scope revision");
 
     let listed = client.list_discussions(false).expect("list live discussions");
@@ -291,7 +234,7 @@ fn conclude_with_hold_keeps_the_record_live_over_the_wire() {
 #[test]
 fn archive_reports_the_full_engine_outcome_over_the_wire() {
     let store = archive_ready_store("demo-archive");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -330,18 +273,14 @@ fn a_remote_archive_reports_no_backup_and_writes_none_locally() {
     // 跑過的測試，在 crate 資料夾留下過其他名稱的備份。
     const CHANGE: &str = "rewrite-without-backup";
     let store = archive_ready_store(CHANGE);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-canonical".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::CanonicalSpec { capability: "user-auth".into() },
-        "# user-auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R0\n\nIt SHALL start.\n\n#### Scenario: start\n\n- **WHEN** used\n- **THEN** starts\n",
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("specs/user-auth/spec.md", "# user-auth Specification\n\n## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: R0\n\nIt SHALL start.\n\n#### Scenario: start\n\n- **WHEN** used\n- **THEN** starts\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -368,7 +307,7 @@ fn a_remote_archive_reports_no_backup_and_writes_none_locally() {
 #[test]
 fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let store = seeded_store();
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -376,10 +315,10 @@ fn a_completed_task_lands_a_task_completed_event_in_the_outbox() {
     let done = client.task_done("demo", "1", &[], None).expect("task done");
     assert!(!done.already_done, "the task flipped for the first time");
 
-    let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox");
+    let entries = store.events("demo", "backend");
     let completed: Vec<_> = entries
         .iter()
-        .filter(|e| e.record.name == "task-completed")
+        .filter(|e| e.name == "task-completed")
         .collect();
     assert_eq!(completed.len(), 1, "exactly one task-completed event landed in the outbox");
 }

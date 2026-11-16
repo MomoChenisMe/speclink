@@ -101,14 +101,10 @@ export type AdminSystem = {
   apiVersion: string;
   identitySchemaVersion: number | null;
   storeDriver: string;
-  storeContractVersion: number;
-  storeLevel: string;
-  storeCapabilities: string[];
   storeHealthy: boolean;
   storeHealthError: string | null;
   outboxBacklogs: AdminBacklog[];
   scopes: AdminScope[];
-  migrateAvailable: boolean;
 };
 
 export type AdminAuditEntry = {
@@ -138,9 +134,6 @@ export type AdminAuditParams = {
 /** The setup store-status panel (四要素之二). */
 export type StoreStatus = {
   driver: string;
-  contractVersion: number;
-  level: string;
-  capabilities: string[];
   healthy: boolean;
   healthError?: string;
   identitySchemaVersion: number;
@@ -273,7 +266,6 @@ export interface WebClient {
   adminRenameRepo(body: { projectKey: string; key: string; name: string }): Promise<void>;
   adminRevokeToken(id: string): Promise<void>;
   adminRevokeFamily(id: string): Promise<void>;
-  adminMigrate(): Promise<void>;
 }
 
 const BASE = "/api/speclink/v1/web";
@@ -346,6 +338,5 @@ export function createHttpClient(): WebClient {
       request("POST", `/admin/credentials/tokens/${encodeURIComponent(id)}/revoke`, {}),
     adminRevokeFamily: (id) =>
       request("POST", `/admin/credentials/families/${encodeURIComponent(id)}/revoke`, {}),
-    adminMigrate: () => request("POST", "/admin/data/migrate", {}),
   };
 }

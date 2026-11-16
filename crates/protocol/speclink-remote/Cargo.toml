@@ -28,7 +28,7 @@ getrandom = "0.3"
 [dev-dependencies]
 tiny_http = "0.12"
 speclink-server = { path = "../../host/speclink-server" }
-speclink-store = { path = "../../store/speclink-store" }
+speclink-store-port = { path = "../../store/speclink-store-port" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 chrono = { workspace = true }

@@ -333,51 +333,28 @@ code:
 ---
 ### Requirement: 系統資訊唯讀聚合
 
-admin 的系統狀態檢視 SHALL 唯讀聚合：engine 與 API 版本、store manifest（driver、contract version、capabilities、等級）、store health 即時結果、identity schema version、每個 registry scope 的 outbox 積壓量。store 失聯時 SHALL 如實顯示 health 失敗，SHALL NOT 使頁面整體失效；identity 庫的管理功能照常。
+admin 的系統狀態檢視 SHALL 唯讀聚合：engine 與 API 版本、儲存的種類、儲存可用性檢查的即時結果、identity schema version、每個 registry scope 保留中的事件筆數。store 失聯時 SHALL 如實顯示 health 失敗，SHALL NOT 使頁面整體失效；identity 庫的管理功能照常。
 
 #### Scenario: store 失聯不癱管理面
 
 - **WHEN** store 後端不可用時開啟系統狀態頁並執行一筆使用者停權
 - **THEN** 頁面顯示 store health 失敗與可得的其餘資訊；停權照常成功且入 audit
 
+
 <!-- @trace
-source: server-admin-audit
-updated: 2026-07-15
-code:
-  - crates/speclink-server/src/admin.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/audit.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/error.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/setup.rs
-  - crates/speclink-server/tests/admin_api.rs
-  - crates/speclink-server/tests/admin_e2e.rs
-  - crates/speclink-server/tests/admin_pages.rs
-  - crates/speclink-server/tests/admin_system.rs
-  - crates/speclink-server/tests/admin_three_entry.rs
-  - crates/speclink-server/tests/audit.rs
-  - crates/speclink-server/tests/cli_admin.rs
-  - crates/speclink-server/tests/identity.rs
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->
 
 ---
 ### Requirement: 管理 browser API 提供最小且完整的頁面 view model
 
-`/api/speclink/v1/web/admin` SHALL 提供總覽、users、registry、credentials、system 與 audit 的獨立讀取操作，SHALL NOT 保留獨立的 data view model。System view model SHALL 於單次回應內同時提供引擎與 API 版本、identity schema version、store 驅動、契約版本、等級、能力、store health、outbox backlog、可匯出 scope 清單與資料結構遷移可用性。Overview SHALL 回 active／suspended user 數、project／repo 數、active credential 數、待啟用邀請數、store health、identity schema version、setup welcome connection metadata、待處理事項清單與最近稽核事件清單；每則待處理事項 SHALL 標示其類型與對應目的地。Audit view model SHALL 接受關鍵字、動作、來源、時間區間、頁碼與每頁筆數參數，於伺服器端套用後回傳當頁事件、總頁數與符合篩選的事件總筆數（`total`，非負整數，與頁碼及每頁筆數無關）；頁碼小於 1 或時間區間起始晚於結束 SHALL 回 400 `invalid_argument`，頁碼超出總頁數 SHALL 回空事件清單與正確總頁數及總筆數。清單 SHALL 回穩定 id、顯示欄位與 action eligibility。回應 SHALL NOT 包含 PAT hash、PAT plaintext、password hash、refresh credential、setup token 或 invite token。Store health 失敗時，overview 與 system SHALL 回傳仍可取得的 identity 資料、`storeHealthy: false` 與可公開的 `storeHealthError`；users 與 credentials 管理 SHALL 保持可用。既有欄位名稱 SHALL 維持不變，新增欄位 SHALL 以 camelCase 輸出。
+`/api/speclink/v1/web/admin` SHALL 提供總覽、users、registry、credentials、system 與 audit 的獨立讀取操作，SHALL NOT 保留獨立的 data view model。System view model SHALL 於單次回應內同時提供引擎與 API 版本、identity schema version、store 驅動、store health、outbox backlog 與可匯出 scope 清單，SHALL NOT 含契約版本、等級、能力與資料結構遷移可用性（`storeContractVersion`、`storeLevel`、`storeCapabilities`、`migrateAvailable` 四個欄位移除）。Overview SHALL 回 active／suspended user 數、project／repo 數、active credential 數、待啟用邀請數、store health、identity schema version、setup welcome connection metadata、待處理事項清單與最近稽核事件清單；每則待處理事項 SHALL 標示其類型與對應目的地。Audit view model SHALL 接受關鍵字、動作、來源、時間區間、頁碼與每頁筆數參數，於伺服器端套用後回傳當頁事件、總頁數與符合篩選的事件總筆數（`total`，非負整數，與頁碼及每頁筆數無關）；頁碼小於 1 或時間區間起始晚於結束 SHALL 回 400 `invalid_argument`，頁碼超出總頁數 SHALL 回空事件清單與正確總頁數及總筆數。清單 SHALL 回穩定 id、顯示欄位與 action eligibility。回應 SHALL NOT 包含 PAT hash、PAT plaintext、password hash、refresh credential、setup token 或 invite token。Store health 失敗時，overview 與 system SHALL 回傳仍可取得的 identity 資料、`storeHealthy: false` 與可公開的 `storeHealthError`；users 與 credentials 管理 SHALL 保持可用。其餘既有欄位名稱 SHALL 維持不變，新增欄位 SHALL 以 camelCase 輸出。
 
 #### Scenario: 管理導覽各頁獨立載入
 
 - **WHEN** admin 依序開啟 users、registry、credentials、system 與 audit route
 - **THEN** 每個 route 只呼叫對應 view-model API 並呈現頁面所需欄位，不取得祕密值
-
-#### Scenario: 系統頁單次回應涵蓋四組資料
-
-- **WHEN** admin 開啟 system route
-- **THEN** 單次 view-model 回應同時包含執行環境版本、store 狀態與 outbox backlog、可匯出 scope 清單與遷移可用性，SPA 不再呼叫第二支 API 取得其中任何一組
 
 #### Scenario: 總覽回傳待處理事項與最近稽核
 
@@ -407,7 +384,7 @@ code:
 
 #### Scenario: Store 不健康時 identity 管理仍可用
 
-- **WHEN** TeamStore health check 失敗但 identity store 可讀
+- **WHEN** 儲存的可用性檢查失敗但 identity store 可讀
 - **THEN** overview 明確顯示 `storeHealthy: false`，users 與 credentials API 仍成功，system 呈現可得資料與可公開錯誤
 
 #### Scenario: 清單回傳 action eligibility
@@ -415,8 +392,13 @@ code:
 - **WHEN** admin 讀取包含最後一位 active admin 的 users view model
 - **THEN** 該使用者項目明確標示不可停權或移除 admin 旗標，且 server mutation 仍獨立執行相同安全檢查
 
+#### Scenario: 系統頁單次回應涵蓋三組資料
+
+- **WHEN** admin 開啟 system route
+- **THEN** 單次 view-model 回應同時包含執行環境版本、store 狀態與 outbox backlog、可匯出 scope 清單，SPA 不再呼叫第二支 API 取得其中任何一組；回應沒有 `storeContractVersion`、`storeLevel`、`storeCapabilities` 與 `migrateAvailable` 欄位
+
 
 <!-- @trace
-source: server-web-list-pages
-updated: 2026-10-14T17:14:35+08:00
+source: server-on-port-examples
+updated: 2026-11-16T23:24:33+08:00
 -->

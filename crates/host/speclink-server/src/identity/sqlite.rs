@@ -1,8 +1,8 @@
 //! The SQLite identity store: a server-owned database, separate from the
-//! TeamStore's (決策 1). A `meta` table records the schema version and an
+//! document store's (決策 1). A `meta` table records the schema version and an
 //! identity marker; opening gates on them read-only before any write, so a
 //! foreign or newer database is refused with its bytes untouched — the same
-//! discipline as the sqlite TeamStore driver.
+//! discipline as the SQLite document store.
 
 use crate::audit::{AuditAction, AuditActor, AuditEntry};
 use crate::identity::{

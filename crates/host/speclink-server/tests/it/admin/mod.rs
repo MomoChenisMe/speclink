@@ -6,6 +6,7 @@ mod backup_restore;
 mod cli_admin;
 mod data;
 mod e2e;
+mod legacy_backup;
 mod overview_view;
 mod system;
 mod system_view;

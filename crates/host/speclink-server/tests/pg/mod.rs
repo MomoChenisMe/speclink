@@ -106,6 +106,13 @@ impl TestDb {
         &self.url
     }
 
+    /// Run `sql` in this instance's private schema.
+    pub fn execute(&mut self, sql: &str) {
+        self.admin
+            .batch_execute(&format!("SET search_path TO \"{}\"; {sql}", self.schema))
+            .expect("run the statement in the test schema");
+    }
+
     /// This instance in the "password comes from the environment" shape: a
     /// connection string carrying no password, plus the password the caller
     /// must export for it to connect.

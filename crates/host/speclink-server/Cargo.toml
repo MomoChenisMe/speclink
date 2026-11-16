@@ -3,7 +3,7 @@ name = "speclink-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "The official Speclink HTTP server: an axum adapter that serves the Client Protocol over the Host → Engine → TeamStore path"
+description = "The official Speclink HTTP server: an axum adapter that serves the Client Protocol over the Host → Engine → store port path"
 
 [[bin]]
 name = "speclink-server"
@@ -12,10 +12,10 @@ path = "src/main.rs"
 [dependencies]
 speclink-host = { path = "../speclink-host" }
 speclink-protocol = { path = "../../protocol/speclink-protocol" }
-speclink-store = { path = "../../store/speclink-store" }
-speclink-store-sqlite = { path = "../../store/speclink-store-sqlite" }
-speclink-store-fs = { path = "../../store/speclink-store-fs" }
-speclink-store-postgres = { path = "../../store/speclink-store-postgres" }
+speclink-store-port = { path = "../../store/speclink-store-port" }
+speclink-store-port-sqlite = { path = "../../store/speclink-store-port-sqlite" }
+speclink-store-port-fs = { path = "../../store/speclink-store-port-fs" }
+speclink-store-port-postgres = { path = "../../store/speclink-store-port-postgres" }
 axum = "0.8"
 async-stream = "0.3"
 tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"] }

@@ -11,7 +11,6 @@ use chrono::{Duration, Utc};
 use speclink_protocol::API_VERSION;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedStore};
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// Seed an admin (session + pat) and a plain member; returns the identity handle,
@@ -55,7 +54,7 @@ fn start(identity: Arc<IdentitySqlite>, store: SharedStore) -> String {
 #[test]
 fn the_system_view_aggregates_the_observable_surface() {
     let (identity, (_, admin_pat), _) = seed();
-    let base = start(identity, Arc::new(MemoryStore::new()));
+    let base = start(identity, common::TestStore::memory().shared());
 
     // The system aggregation is served over the bearer admin API.
     let json: serde_json::Value = ureq::builder()
@@ -72,7 +71,10 @@ fn the_system_view_aggregates_the_observable_surface() {
     assert!(json["engine_version"].as_str().is_some_and(|v| !v.is_empty()), "engine version present");
     assert_eq!(json["identity_schema_version"], 6, "current identity schema version");
     assert_eq!(json["store_healthy"], true);
-    assert!(json["store_driver"].as_str().is_some_and(|v| !v.is_empty()), "store driver present");
+    assert_eq!(json["store_driver"], "memory", "the kind of the store");
+    for gone in ["store_contract_version", "store_level", "store_capabilities"] {
+        assert!(json.get(gone).is_none(), "{gone} is gone: {json}");
+    }
     let backlogs = json["outbox_backlogs"].as_array().expect("backlogs");
     assert!(
         backlogs.iter().any(|b| b["project"] == "demo" && b["repo"] == "backend" && b["backlog"] == 0),

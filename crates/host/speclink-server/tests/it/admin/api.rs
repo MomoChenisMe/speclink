@@ -13,7 +13,6 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::API_VERSION;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// Seed a user with `email`/`display`, the given `admin` flag and a membership of
@@ -55,7 +54,7 @@ fn start() -> (
     let admin = seed_user(&identity, "admin@example.com", "Admin <admin@example.com>", true);
     let member = seed_user(&identity, "member@example.com", "Member <member@example.com>", false);
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

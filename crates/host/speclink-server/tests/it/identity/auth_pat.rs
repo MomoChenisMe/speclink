@@ -13,7 +13,6 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::API_VERSION;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// Seed an identity store with a user (member of `demo`, not of `multi`) and a
@@ -37,7 +36,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, String, String) {
     common::seed_demo_registry(&*identity);
     common::seed_multi_project(&*identity);
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

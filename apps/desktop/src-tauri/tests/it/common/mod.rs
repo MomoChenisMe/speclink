@@ -10,7 +10,9 @@ use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, MembershipRole, NewInvitation};
 use speclink_server::state::{AppState, SharedStore};
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
+use speclink_store_port::{
+    Actor, Commit, DocKey, Document, Expected, Op, ScopeId, StorePort, Timestamp,
+};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -310,37 +312,19 @@ impl Phase3Server {
         format!("{}/api/speclink/v1/projects/{}", self.origin, self.project)
     }
 
-    pub fn scope(&self, repo: &str) -> Scope {
-        Scope::new(ProjectId::new(&self.project), RepoId::new(repo))
+    pub fn scope(&self, repo: &str) -> ScopeId {
+        ScopeId::new(format!("{}/{repo}", self.project)).expect("a scope id")
     }
 
     pub fn seed_change(&self, repo: &str, change: &str, tasks: &str) {
-        let mut uow = self
-            .store
-            .begin_unit_of_work(
-                &self.scope(repo),
-                CommandContext {
-                    command: "phase3-seed".into(),
-                    actor: "phase3-seed".into(),
-                },
-            )
-            .expect("begin phase3 seed");
-        uow.create(
-            DocumentId::ChangeMeta {
-                change: change.into(),
-            },
-            "schema: spec-driven\n",
+        put(
+            self.store.as_ref(),
+            &self.scope(repo),
+            &[
+                (&format!("changes/{change}/.meta.yaml"), "schema: spec-driven\n"),
+                (&format!("changes/{change}/tasks.md"), tasks),
+            ],
         );
-        uow.create(
-            DocumentId::ChangeArtifact {
-                change: change.into(),
-                artifact: "tasks.md".into(),
-            },
-            tasks,
-        );
-        self.store
-            .commit(uow, Vec::new())
-            .expect("commit phase3 seed");
         self.record(format!("seeded {}/{repo}/{change}", self.project));
     }
 
@@ -632,8 +616,44 @@ fn phase3_cli_bin() -> PathBuf {
 }
 
 /// demo project 的 scope（repo backend）。
-pub fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+pub fn scope() -> ScopeId {
+    ScopeId::new("demo/backend").expect("a scope id")
+}
+
+/// 把 `docs`（鍵、內容）在一次提交裡寫進 `scope`：鍵上沒有文件就建立，有就覆寫。
+/// 回傳提交後的範圍版本號。文件以儲存接口的鍵指名（`changes/demo/tasks.md`、
+/// `config.yaml`）。
+pub fn put(store: &dyn StorePort, scope: &ScopeId, docs: &[(&str, &str)]) -> u64 {
+    let keys: Vec<DocKey> = docs
+        .iter()
+        .map(|(key, _)| DocKey::new(*key).unwrap_or_else(|e| panic!("{key}: {e}")))
+        .collect();
+    let current = store.read(scope, &keys).expect("read the current versions");
+    let ops = keys
+        .into_iter()
+        .zip(docs)
+        .zip(current)
+        .map(|((key, (_, content)), current)| Op::Put {
+            key,
+            content: content.to_string(),
+            expected: current.map_or(Expected::Absent, |doc| Expected::At(doc.version)),
+        })
+        .collect();
+    let commit = Commit::new(
+        Actor::new("seed", "seed").expect("an actor"),
+        "seed",
+        Timestamp::new(0).expect("a time"),
+        ops,
+        Vec::new(),
+    )
+    .expect("a commit");
+    store.commit(scope, &commit).expect("the test's write commits").get()
+}
+
+/// `key` 上的文件；範圍在那裡沒有文件時是 `None`。
+pub fn doc(store: &dyn StorePort, scope: &ScopeId, key: &str) -> Option<Document> {
+    let key = DocKey::new(key).unwrap_or_else(|e| panic!("{key}: {e}"));
+    store.read(scope, &[key]).expect("read the document").into_iter().next().flatten()
 }
 
 /// 事件測試用的快節奏設定：短心跳、充足 live buffer。
@@ -683,7 +703,7 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
         .accept_invitation(&invite, "pw-correct-horse")
         .expect("accept");
 
-    let store: SharedStore = Arc::new(speclink_store::memory::MemoryStore::new());
+    let store: SharedStore = Arc::new(speclink_server::storage::Memory::new());
     let state = AppState::new(
         store.clone(),
         identity.clone(),
@@ -721,35 +741,20 @@ pub fn harness_with_events(settings: EventSettings) -> Harness {
 }
 
 /// 種 change `demo`（schema＋給定的 tasks.md 內容）進 demo/backend scope。
-pub fn seed_change(store: &dyn TeamStore, tasks: &str) {
+pub fn seed_change(store: &dyn StorePort, tasks: &str) {
     seed_named_change(store, "demo", tasks);
 }
 
 /// 在 demo/backend scope 種指定名稱的 change，供重啟期間外部寫入情境使用。
-pub fn seed_named_change(store: &dyn TeamStore, change: &str, tasks: &str) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext {
-                command: "seed".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta {
-            change: change.into(),
-        },
-        "schema: spec-driven\n",
+pub fn seed_named_change(store: &dyn StorePort, change: &str, tasks: &str) {
+    put(
+        store,
+        &scope(),
+        &[
+            (&format!("changes/{change}/.meta.yaml"), "schema: spec-driven\n"),
+            (&format!("changes/{change}/tasks.md"), tasks),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: change.into(),
-            artifact: "tasks.md".into(),
-        },
-        tasks,
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
 }
 
 /// 以 device flow（假瀏覽器直接核准）登入，讓 credential store 只留下 refresh

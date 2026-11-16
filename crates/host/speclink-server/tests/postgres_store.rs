@@ -22,7 +22,7 @@ use speclink_remote::client::Client;
 use speclink_server::build_store;
 use speclink_server::config::StoreConfig;
 use speclink_server::state::SharedStore;
-use speclink_store::{OutboxCursor, ProjectId, RepoId, Scope};
+use speclink_store_port::ScopeId;
 use std::process::{Command, Stdio};
 
 const PROPOSAL: &str = "## Why\n\npostgres drives the same flow.\n";
@@ -33,8 +33,8 @@ const URL_ENV: &str = "SPECLINK_POSTGRES_E2E_URL";
 /// Asks the helper process to play the password-warning role instead.
 const WARN_ENV: &str = "SPECLINK_POSTGRES_E2E_WARN_URL";
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+fn scope() -> ScopeId {
+    ScopeId::new("demo/backend").expect("a scope id")
 }
 
 fn client(base: &str, token: &str) -> Client {
@@ -133,10 +133,10 @@ fn drive(store: SharedStore) -> Outcome {
             .collect(),
         task_already_done: done.already_done,
         events: store
-            .read_outbox(&scope(), OutboxCursor(0))
-            .expect("read outbox")
+            .events_after(&scope(), 0, usize::MAX)
+            .expect("read the events")
             .into_iter()
-            .map(|entry| entry.record.name)
+            .map(|(_, event)| event.name)
             .collect(),
     }
 }
@@ -231,10 +231,10 @@ fn a_postgres_store_serves_the_same_data_after_a_server_restart() {
         "the completed task's checkbox survived the restart"
     );
     let events: Vec<String> = store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
+        .events_after(&scope(), 0, usize::MAX)
+        .expect("read the events")
         .into_iter()
-        .map(|entry| entry.record.name)
+        .map(|(_, event)| event.name)
         .collect();
     assert_eq!(
         serde_json::to_value(&events).unwrap(),
@@ -259,7 +259,7 @@ fn the_password_source_is_a_warning_not_a_gate() {
     let mut passwordless = Command::new(std::env::current_exe().unwrap());
     passwordless.env(WARN_ENV, &bare_url);
     if let Some(password) = &password {
-        passwordless.env(speclink_store_postgres::PASSWORD_VAR, password);
+        passwordless.env(speclink_store_port_postgres::PASSWORD_VAR, password);
     }
     let quiet = passwordless.output().expect("run the passwordless case");
     let stderr = String::from_utf8_lossy(&quiet.stderr);
@@ -290,6 +290,83 @@ fn the_password_source_is_a_warning_not_a_gate() {
         stderr.contains("carries a password") && stderr.contains("SPECLINK_POSTGRES_PASSWORD"),
         "stderr should advise the environment variable: {stderr}"
     );
+}
+
+/// The routes the server keeps for itself read the store too: `/readyz`
+/// (the health check) and `/events` (the event log). The PostgreSQL client
+/// blocks, so these reads must not run on an async worker.
+fn the_servers_own_routes_answer_on_a_postgres_store() {
+    let db = pg::TestDb::new();
+    let store = build_store(&StoreConfig::Postgres { url: db.url().to_string() }).expect("the store opens");
+    let state = common::state_with(store);
+    let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let ready = ureq::get(&format!("{base}/readyz")).call().expect("GET /readyz answers");
+    assert_eq!(ready.status(), 200, "a reachable PostgreSQL store is ready");
+
+    let events = ureq::get(&format!("{base}/api/speclink/v1/projects/demo/events"))
+        .set("Authorization", &format!("Bearer {pat}"))
+        .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
+        .set("X-Speclink-Repo", "backend")
+        .set("Accept", "text/event-stream")
+        .call()
+        .expect("GET /events answers");
+    assert_eq!(events.status(), 200, "the event stream opens on a PostgreSQL store");
+}
+
+/// spec reference-server「舊版建立的資料夾與 PostgreSQL 資料同樣拒絕」: a schema
+/// with the old driver's marker is not opened, the reason gives the steps,
+/// and no error text shows the connection string.
+fn a_schema_of_an_older_version_is_refused_with_the_steps() {
+    let mut db = pg::TestDb::new();
+    db.execute(
+        "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         INSERT INTO meta (key, value) VALUES ('format', 'speclink-team-store'), ('schema_version', '1');
+         CREATE TABLE documents (id TEXT PRIMARY KEY, content TEXT NOT NULL);",
+    );
+    let shown = match build_store(&StoreConfig::Postgres { url: db.url().to_string() }) {
+        Ok(_) => panic!("the old layout was opened"),
+        Err(e) => e.to_string(),
+    };
+    for line in ["0.12 or earlier", "speclink-server backup --config", "speclink-server restore --config"] {
+        assert!(shown.contains(line), "the reason has {line:?}: {shown}");
+    }
+    assert!(!shown.contains(db.url()), "the connection string is not in the reason: {shown}");
+
+    // The server binary on the same schema: a failure exit with the steps,
+    // and no try to bind — the port it is given is taken by this test.
+    let dir = tempfile::tempdir().expect("tempdir");
+    let config = dir.path().join("server.yaml");
+    std::fs::write(
+        &config,
+        format!(
+            "store:\n  driver: postgres\n  url: \"{}\"\nidentity:\n  driver: sqlite\n  path: {}\n",
+            db.url(),
+            dir.path().join("identity.db").display()
+        ),
+    )
+    .expect("write the config");
+    let held = std::net::TcpListener::bind("127.0.0.1:0").expect("hold a port");
+    let addr = held.local_addr().expect("the held address").to_string();
+    let out = Command::new(env!("CARGO_BIN_EXE_speclink-server"))
+        .args(["--config", config.to_str().unwrap(), "--addr", &addr])
+        .output()
+        .expect("run the server");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(!out.status.success(), "the server ends with a failure: {stderr}");
+    for line in [
+        "0.12 or earlier".to_string(),
+        format!("speclink-server backup --config {} --output <file>", config.display()),
+        format!("speclink-server restore --config {} --input <file>", config.display()),
+    ] {
+        assert!(stderr.contains(&line), "stderr has {line:?}: {stderr}");
+    }
+    assert!(!stderr.contains(db.url()), "the connection string is not on stderr: {stderr}");
+    assert!(!stderr.to_lowercase().contains("in use"), "the server did not try to bind: {stderr}");
+    assert!(!dir.path().join("identity.db").exists(), "no identity database was made");
+
+    db.execute("SELECT 1 FROM documents; SELECT 1 FROM meta WHERE value = 'speclink-team-store'");
 }
 
 fn main() {
@@ -328,6 +405,14 @@ fn main() {
         (
             "the_password_source_is_a_warning_not_a_gate",
             the_password_source_is_a_warning_not_a_gate,
+        ),
+        (
+            "the_servers_own_routes_answer_on_a_postgres_store",
+            the_servers_own_routes_answer_on_a_postgres_store,
+        ),
+        (
+            "a_schema_of_an_older_version_is_refused_with_the_steps",
+            a_schema_of_an_older_version_is_refused_with_the_steps,
         ),
     ]);
 }

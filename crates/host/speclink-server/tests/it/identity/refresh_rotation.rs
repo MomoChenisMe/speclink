@@ -14,7 +14,6 @@ use speclink_server::identity::{
     DevicePoll, IdentitySqlite, IdentityStore, NewInvitation, RefreshOutcome, TokenPair,
 };
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 fn seed() -> (String, Arc<IdentitySqlite>, String) {
@@ -32,7 +31,7 @@ fn seed() -> (String, Arc<IdentitySqlite>, String) {
     // The registry now lives in the identity store; register `demo` (repo backend).
     common::seed_demo_registry(&*identity);
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

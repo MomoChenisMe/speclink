@@ -10,10 +10,6 @@ use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedStore};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore,
-};
 use std::sync::Arc;
 
 const PASSWORD: &str = "pw-correct-horse";
@@ -48,21 +44,15 @@ fn start_over(store: SharedStore) -> (String, Arc<IdentitySqlite>, String, Strin
 }
 
 fn start_healthy() -> (String, Arc<IdentitySqlite>, String, String) {
-    start_over(Arc::new(MemoryStore::new()))
+    start_over(common::TestStore::memory().shared())
 }
 
 /// A store crashed so `health()` reports an error, while the identity store stays
 /// readable — the store-degradation case.
 fn start_crashed() -> (String, Arc<IdentitySqlite>, String, String) {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let ctx = CommandContext { command: "crash".into(), actor: "seed".into() };
-    let mut uow = store.begin_unit_of_work(&scope, ctx).expect("uow");
-    uow.create(DocumentId::WorkflowConfig, "cfg");
-    let _ = store.commit(uow, Vec::new());
-    assert!(store.health().is_err(), "the store is unhealthy after the crash");
-    start_over(Arc::new(store))
+    let store = common::TestStore::memory();
+    store.break_down();
+    start_over(store.shared())
 }
 
 fn agent() -> ureq::Agent {
@@ -285,4 +275,42 @@ fn store_degradation_keeps_identity_management_up() {
     // System reflects the unhealthy store.
     let (_s, system) = json_of(get(&base, "/api/speclink/v1/web/admin/system", Some(&admin)));
     assert_eq!(system["data"]["storeHealthy"], json!(false));
+    assert!(system["data"]["storeHealthError"].is_string(), "with a public error");
+}
+
+/// spec server-admin「store 失聯不癱管理面」: with the store down, a user is
+/// suspended as usual and the suspension is in the audit.
+#[test]
+fn a_user_is_suspended_while_the_store_is_down() {
+    let (base, identity, _admin_id, member_id) = start_crashed();
+    let admin = login(&base, "admin@example.com");
+    let (status, body) = json_of(post(
+        &base,
+        &format!("/api/speclink/v1/web/admin/users/{member_id}/suspend"),
+        Value::Null,
+        Some(SAME_ORIGIN),
+        Some(&admin),
+    ));
+    assert_eq!(status, 200, "the suspension succeeds: {body}");
+    let member = identity.get_user(&member_id).expect("get user").expect("the member");
+    assert!(!member.active, "the member is suspended");
+    let audit = identity.list_audit(100, 0).expect("audit");
+    assert!(audit.iter().any(|e| e.action == "user-suspended"), "the suspension is audited");
+}
+
+/// spec server-backup「遷移的路由不存在」.
+#[test]
+fn the_migration_route_does_not_exist() {
+    let (base, identity, _admin_id, _member_id) = start_healthy();
+    let admin = login(&base, "admin@example.com");
+    let (status, _body) = json_of(post(
+        &base,
+        "/api/speclink/v1/web/admin/data/migrate",
+        Value::Null,
+        Some(SAME_ORIGIN),
+        Some(&admin),
+    ));
+    assert_eq!(status, 404, "an admin's POST to data/migrate finds no route");
+    let audit = identity.list_audit(100, 0).expect("audit");
+    assert!(!audit.iter().any(|e| e.action == "store-migrated"), "no store-migrated record");
 }

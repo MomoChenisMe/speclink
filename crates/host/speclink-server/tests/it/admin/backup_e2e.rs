@@ -338,6 +338,15 @@ fn disaster_recovery_round_trip_preserves_everything() {
         .output()
         .expect("run backup");
     assert!(backup.status.success(), "backup failed: {}", String::from_utf8_lossy(&backup.stderr));
+    let verified = Command::new(server_bin())
+        .arg("verify-backup")
+        .args(["--input", backup_tar.to_str().unwrap()])
+        .output()
+        .expect("run verify-backup");
+    assert!(
+        verified.status.success() && String::from_utf8_lossy(&verified.stdout).contains("格式版本 2"),
+        "this version's backup is format version 2: {verified:?}"
+    );
 
     // Restore into a brand-new target; validation must be green (exit 0).
     let tgt_store = workdir.path().join("tgt-store.db");

@@ -9,9 +9,16 @@ use chrono::{Duration, Utc};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
+use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
-use speclink_store::memory::MemoryStore;
+use speclink_server::storage::{Memory, ServerStore};
+use speclink_store_port::{
+    Actor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, Op, PortError, RecordedEvent, ScopeId,
+    StorePort, Timestamp, Version,
+};
 use std::net::TcpListener as StdListener;
+use std::path::Path;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
 /// 重量級測試閘門：spawn 真實子程序（server／CLI binary）的測試取此鎖互斥
@@ -85,7 +92,7 @@ pub fn empty_identity() -> SharedIdentity {
 /// An event hub over a throwaway store, for tests that build [`AppState`]
 /// directly but never exercise the event stream (auth, web, device flows).
 pub fn detached_events() -> Arc<EventHub> {
-    EventHub::new(Arc::new(MemoryStore::new()), EventSettings::default())
+    EventHub::new(TestStore::memory().shared(), EventSettings::default())
 }
 
 /// Seed a user (display [`SEED_DISPLAY`]) that is a member of every project in
@@ -154,7 +161,7 @@ pub fn state_with_event_settings(store: SharedStore, settings: EventSettings) ->
 /// Build an [`AppState`] over a fresh in-memory store and `config`, with the
 /// demo project seeded into the registry.
 pub fn state_with_config(config: ServerConfig) -> AppState {
-    let store: SharedStore = Arc::new(MemoryStore::new());
+    let store = TestStore::memory().shared();
     let events = EventHub::new(store.clone(), config.events.clone());
     let identity = empty_identity();
     seed_demo_registry(&*identity);
@@ -192,47 +199,259 @@ pub fn seed_multi_project(identity: &dyn IdentityStore) {
         .expect("seed multi api repo");
 }
 
-/// A store that lets one other writer in while a verb runs: the writer runs
-/// once, when the verb opens its unit of work — or earlier, at the first
-/// snapshot taken after `snapshots_first` snapshots, when that is set. It
-/// also counts the calls of its import operation.
-pub struct Racing {
-    inner: Arc<MemoryStore>,
-    other_writer: Mutex<Option<OtherWriter>>,
-    snapshots_first: Option<usize>,
-    snapshots: std::sync::atomic::AtomicUsize,
-    imports: std::sync::atomic::AtomicUsize,
+// --- the store a test server runs on ---
+
+/// One document as a test reads it back.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StoredDoc {
+    pub content: String,
+    /// The scope version of the commit that last wrote the document.
+    pub version: u64,
 }
 
-type OtherWriter = Box<dyn FnOnce(&MemoryStore) + Send>;
+/// One event a store kept, with its sequence in the scope.
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredEvent {
+    pub seq: u64,
+    pub name: String,
+    pub payload: serde_json::Value,
+    /// The scope version of the commit the event came with.
+    pub version: u64,
+}
+
+/// A test's handle on the store a server runs on. A test fills the store,
+/// reads documents back and reads the kept events through it; a document is
+/// named by its store-port key (`changes/demo/tasks.md`, `config.yaml`).
+/// The store type is not part of a test.
+#[derive(Clone)]
+pub struct TestStore {
+    /// The store as the server state takes it.
+    shared: SharedStore,
+    /// The switch and the counter of the in-memory store.
+    memory: Option<Arc<Switched>>,
+}
+
+impl TestStore {
+    /// A new, empty store in memory.
+    pub fn memory() -> TestStore {
+        let memory = Arc::new(Switched { inner: Memory::new(), down: AtomicBool::new(false), reads: AtomicUsize::new(0) });
+        TestStore { shared: memory.clone(), memory: Some(memory) }
+    }
+
+    /// The SQLite store at `path`: a second connection when a server has it
+    /// open.
+    pub fn sqlite(path: impl AsRef<Path>) -> TestStore {
+        let opened = speclink_server::build_store(&StoreConfig::Sqlite { path: path.as_ref().to_path_buf() });
+        let shared = opened.unwrap_or_else(|e| panic!("open the sqlite store: {e}"));
+        TestStore { shared, memory: None }
+    }
+
+    /// The store as the server state takes it.
+    pub fn shared(&self) -> SharedStore {
+        self.shared.clone()
+    }
+
+    /// Write `docs` (key, content) into the scope in one commit: a key with
+    /// no document is created, one with a document is written over. Returns
+    /// the scope version after the commit.
+    pub fn put(&self, project: &str, repo: &str, docs: &[(&str, &str)]) -> u64 {
+        let scope = scope_of(project, repo);
+        let keys: Vec<DocKey> = docs.iter().map(|(key, _)| doc_key(key)).collect();
+        let current = self.shared.read(&scope, &keys).expect("read the current versions");
+        let ops = keys
+            .into_iter()
+            .zip(docs)
+            .zip(current)
+            .map(|((key, (_, content)), current)| Op::Put {
+                key,
+                content: content.to_string(),
+                expected: current.map_or(Expected::Absent, |doc| Expected::At(doc.version)),
+            })
+            .collect();
+        let commit = Commit::new(
+            Actor::new("seed", "seed").expect("an actor"),
+            "seed",
+            Timestamp::new(0).expect("a time"),
+            ops,
+            Vec::new(),
+        )
+        .expect("a commit");
+        self.shared.commit(&scope, &commit).expect("the test's write commits").get()
+    }
+
+    /// The document at `key`, or `None` when the scope has none there.
+    pub fn doc(&self, project: &str, repo: &str, key: &str) -> Option<StoredDoc> {
+        let read = self.shared.read(&scope_of(project, repo), &[doc_key(key)]).expect("read the document");
+        read.into_iter()
+            .next()
+            .flatten()
+            .map(|doc| StoredDoc { content: doc.content, version: doc.version.get() })
+    }
+
+    /// The content of the document at `key`.
+    pub fn content(&self, project: &str, repo: &str, key: &str) -> Option<String> {
+        self.doc(project, repo, key).map(|doc| doc.content)
+    }
+
+    /// The scope's current version; 0 when nothing was written.
+    pub fn version(&self, project: &str, repo: &str) -> u64 {
+        let everything = KeyPrefix::new("").expect("the empty prefix");
+        self.shared.list(&scope_of(project, repo), &everything).expect("list the scope").version.get()
+    }
+
+    /// The key of every document of the scope, in key order.
+    pub fn keys(&self, project: &str, repo: &str) -> Vec<String> {
+        let everything = KeyPrefix::new("").expect("the empty prefix");
+        let listing = self.shared.list(&scope_of(project, repo), &everything).expect("list the scope");
+        listing.entries.into_iter().map(|entry| entry.key.as_str().to_string()).collect()
+    }
+
+    /// The events the store keeps for the scope, oldest first.
+    pub fn events(&self, project: &str, repo: &str) -> Vec<StoredEvent> {
+        self.shared
+            .events_after(&scope_of(project, repo), 0, usize::MAX)
+            .expect("read the events")
+            .into_iter()
+            .map(|(seq, event)| StoredEvent {
+                seq,
+                name: event.name,
+                payload: event.payload,
+                version: event.version.get(),
+            })
+            .collect()
+    }
+
+    /// The names of the scope's kept events, oldest first.
+    pub fn event_names(&self, project: &str, repo: &str) -> Vec<String> {
+        self.events(project, repo).into_iter().map(|event| event.name).collect()
+    }
+
+    /// The largest event sequence the server removed from the scope; 0 when
+    /// it removed none.
+    pub fn event_floor(&self, project: &str, repo: &str) -> u64 {
+        self.shared.event_floor(&scope_of(project, repo)).expect("read the event floor")
+    }
+
+    /// Break the store: from now on its health check fails and it serves
+    /// nothing. In-memory store only.
+    pub fn break_down(&self) {
+        let memory = self.memory.as_ref().expect("only the in-memory store can be broken");
+        memory.down.store(true, Ordering::SeqCst);
+        assert!(self.shared.probe().is_err(), "the store is unhealthy after the break");
+    }
+
+    /// How many times documents were read from the store (a list reads
+    /// none). In-memory store only.
+    pub fn loads(&self) -> usize {
+        self.memory.as_ref().expect("only the in-memory store counts its reads").reads.load(Ordering::SeqCst)
+    }
+}
+
+fn scope_of(project: &str, repo: &str) -> ScopeId {
+    scope_id(&Scope::new(ProjectId::new(project), RepoId::new(repo))).expect("a scope id")
+}
+
+fn doc_key(key: &str) -> DocKey {
+    DocKey::new(key).unwrap_or_else(|e| panic!("{key}: {e}"))
+}
+
+/// The in-memory store with a switch: once it is down, every operation is
+/// the store's temporary failure. It also counts the document reads.
+struct Switched {
+    inner: Memory,
+    down: AtomicBool,
+    reads: AtomicUsize,
+}
+
+impl Switched {
+    fn up(&self) -> Result<(), PortError> {
+        if self.down.load(Ordering::SeqCst) {
+            return Err(PortError::Unavailable { message: "the test broke the store".into() });
+        }
+        Ok(())
+    }
+}
+
+impl StorePort for Switched {
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        self.up()?;
+        self.inner.list(scope, prefix)
+    }
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        self.up()?;
+        self.reads.fetch_add(1, Ordering::SeqCst);
+        self.inner.read(scope, keys)
+    }
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
+        self.up()?;
+        self.inner.commit(scope, commit)
+    }
+}
+
+impl ServerStore for Switched {
+    fn kind(&self) -> &'static str {
+        self.inner.kind()
+    }
+    fn events_after(&self, scope: &ScopeId, after: u64, limit: usize) -> Result<Vec<(u64, RecordedEvent)>, PortError> {
+        self.up()?;
+        self.inner.events_after(scope, after, limit)
+    }
+    fn event_floor(&self, scope: &ScopeId) -> Result<u64, PortError> {
+        self.up()?;
+        self.inner.event_floor(scope)
+    }
+    fn trim_events(&self, scope: &ScopeId, through: u64) -> Result<(), PortError> {
+        self.up()?;
+        self.inner.trim_events(scope, through)
+    }
+    fn probe(&self) -> Result<(), PortError> {
+        self.up()?;
+        self.inner.probe()
+    }
+}
+
+/// A store that lets one other writer in while a verb runs: the writer runs
+/// once, right before the verb's commit — or earlier, before the first list
+/// or read after `reads_first` of them, when that is set.
+pub struct Racing {
+    inner: TestStore,
+    other_writer: Mutex<Option<OtherWriter>>,
+    reads_first: Option<usize>,
+    reads: AtomicUsize,
+}
+
+type OtherWriter = Box<dyn FnOnce(&TestStore) + Send>;
 
 impl Racing {
+    fn new(inner: &TestStore, other_writer: OtherWriter, reads_first: Option<usize>) -> Arc<Racing> {
+        Arc::new(Racing {
+            inner: inner.clone(),
+            other_writer: Mutex::new(Some(other_writer)),
+            reads_first,
+            reads: Default::default(),
+        })
+    }
+
     /// The writer lands between the verb's reads and its commit.
-    pub fn at_unit_of_work(
-        inner: Arc<MemoryStore>,
-        other_writer: impl FnOnce(&MemoryStore) + Send + 'static,
-    ) -> Racing {
-        Racing {
-            inner,
-            other_writer: Mutex::new(Some(Box::new(other_writer))),
-            snapshots_first: None,
-            snapshots: Default::default(),
-            imports: Default::default(),
-        }
+    pub fn before_the_commit(
+        inner: &TestStore,
+        other_writer: impl FnOnce(&TestStore) + Send + 'static,
+    ) -> Arc<Racing> {
+        Racing::new(inner, Box::new(other_writer), None)
     }
 
-    /// How many times the TeamStore's import operation was called.
-    pub fn imports(&self) -> usize {
-        self.imports.load(std::sync::atomic::Ordering::SeqCst)
+    /// The writer lands right after the first list or read: a route that
+    /// reads the scope twice sees the writer's content the second time.
+    pub fn after_the_first_read(
+        inner: &TestStore,
+        other_writer: impl FnOnce(&TestStore) + Send + 'static,
+    ) -> Arc<Racing> {
+        Racing::new(inner, Box::new(other_writer), Some(1))
     }
 
-    /// The writer lands right after the first snapshot: a route that reads
-    /// the scope twice sees the writer's content the second time.
-    pub fn after_the_first_snapshot(
-        inner: Arc<MemoryStore>,
-        other_writer: impl FnOnce(&MemoryStore) + Send + 'static,
-    ) -> Racing {
-        Racing { snapshots_first: Some(1), ..Racing::at_unit_of_work(inner, other_writer) }
+    /// The store as the server state takes it.
+    pub fn shared(self: &Arc<Self>) -> SharedStore {
+        self.clone()
     }
 
     fn let_the_writer_in(&self) {
@@ -240,78 +459,45 @@ impl Racing {
             other_writer(&self.inner);
         }
     }
-}
 
-impl speclink_store::TeamStore for Racing {
-    fn manifest(&self) -> speclink_store::Manifest {
-        self.inner.manifest()
-    }
-    fn health(&self) -> Result<(), speclink_store::StoreError> {
-        self.inner.health()
-    }
-    fn migrate(&self, target_version: u32) -> Result<(), speclink_store::StoreError> {
-        self.inner.migrate(target_version)
-    }
-    fn snapshot<'a>(
-        &'a self,
-        scope: &speclink_store::Scope,
-    ) -> Result<Box<dyn speclink_store::Snapshot + 'a>, speclink_store::StoreError> {
-        let taken = self.snapshots.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        if self.snapshots_first.is_some_and(|first| taken >= first) {
+    /// One more list or read begins.
+    fn reading(&self) {
+        let taken = self.reads.fetch_add(1, Ordering::SeqCst);
+        if self.reads_first.is_some_and(|first| taken >= first) {
             self.let_the_writer_in();
         }
-        self.inner.snapshot(scope)
     }
-    fn begin_unit_of_work(
-        &self,
-        scope: &speclink_store::Scope,
-        ctx: speclink_store::CommandContext,
-    ) -> Result<speclink_store::UnitOfWork, speclink_store::StoreError> {
+}
+
+impl StorePort for Racing {
+    fn list(&self, scope: &ScopeId, prefix: &KeyPrefix) -> Result<Listing, PortError> {
+        self.reading();
+        self.inner.shared.list(scope, prefix)
+    }
+    fn read(&self, scope: &ScopeId, keys: &[DocKey]) -> Result<Vec<Option<Document>>, PortError> {
+        self.reading();
+        self.inner.shared.read(scope, keys)
+    }
+    fn commit(&self, scope: &ScopeId, commit: &Commit) -> Result<Version, PortError> {
         self.let_the_writer_in();
-        self.inner.begin_unit_of_work(scope, ctx)
+        self.inner.shared.commit(scope, commit)
     }
-    fn commit(
-        &self,
-        uow: speclink_store::UnitOfWork,
-        events: Vec<speclink_store::EventRecord>,
-    ) -> Result<speclink_store::Revision, speclink_store::StoreError> {
-        self.inner.commit(uow, events)
+}
+
+impl ServerStore for Racing {
+    fn kind(&self) -> &'static str {
+        self.inner.shared.kind()
     }
-    fn rollback(&self, uow: speclink_store::UnitOfWork) -> Result<(), speclink_store::StoreError> {
-        self.inner.rollback(uow)
+    fn events_after(&self, scope: &ScopeId, after: u64, limit: usize) -> Result<Vec<(u64, RecordedEvent)>, PortError> {
+        self.inner.shared.events_after(scope, after, limit)
     }
-    fn export(
-        &self,
-        scope: &speclink_store::Scope,
-    ) -> Result<speclink_store::Bundle, speclink_store::StoreError> {
-        self.inner.export(scope)
+    fn event_floor(&self, scope: &ScopeId) -> Result<u64, PortError> {
+        self.inner.shared.event_floor(scope)
     }
-    fn import(
-        &self,
-        bundle: speclink_store::Bundle,
-        mode: speclink_store::ImportMode,
-    ) -> Result<speclink_store::ImportReport, speclink_store::StoreError> {
-        self.imports.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        self.inner.import(bundle, mode)
+    fn trim_events(&self, scope: &ScopeId, through: u64) -> Result<(), PortError> {
+        self.inner.shared.trim_events(scope, through)
     }
-    fn read_outbox(
-        &self,
-        scope: &speclink_store::Scope,
-        from: speclink_store::OutboxCursor,
-    ) -> Result<Vec<speclink_store::OutboxEntry>, speclink_store::StoreError> {
-        self.inner.read_outbox(scope, from)
-    }
-    fn ack_outbox(
-        &self,
-        scope: &speclink_store::Scope,
-        up_to: speclink_store::OutboxCursor,
-    ) -> Result<(), speclink_store::StoreError> {
-        self.inner.ack_outbox(scope, up_to)
-    }
-    fn outbox_acked(
-        &self,
-        scope: &speclink_store::Scope,
-    ) -> Result<speclink_store::OutboxCursor, speclink_store::StoreError> {
-        self.inner.outbox_acked(scope)
+    fn probe(&self) -> Result<(), PortError> {
+        self.inner.shared.probe()
     }
 }

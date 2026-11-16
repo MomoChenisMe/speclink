@@ -9,16 +9,8 @@ use crate::common;
 
 use speclink_protocol::drift::SpecDriftResponse;
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
-use speclink_server::state::{AppState, SharedStore};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, OutboxCursor, ProjectId, RepoId, Scope, TeamStore,
-};
+use speclink_server::state::AppState;
 use std::sync::Arc;
-
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
 
 const META: &str = "schema: spec-driven\ncreated: 2026-07-13\n";
 const CONFIG: &str = "schema: spec-driven\n";
@@ -36,46 +28,27 @@ const SPEC_AUTH: &str = "## Purpose\n\nA\n\n## Requirements\n\n### Requirement: 
 
 /// Seed a scope with the `demo` change (design, tasks, two delta specs) and the
 /// canonical specs its deltas address.
-fn seed(store: &MemoryStore) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, META);
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "design.md".into() },
-        DESIGN,
+fn seed(store: &common::TestStore) {
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", META),
+            ("changes/demo/design.md", DESIGN),
+            ("changes/demo/tasks.md", TASKS),
+            ("changes/demo/specs/payment/spec.md", DELTA_PAYMENT),
+            ("changes/demo/specs/auth/spec.md", DELTA_AUTH),
+            ("specs/payment/spec.md", SPEC_PAYMENT),
+            ("specs/auth/spec.md", SPEC_AUTH),
+            ("changes/demo/.evidence.json", EVIDENCE),
+            ("config.yaml", CONFIG),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        TASKS,
-    );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: "demo".into(),
-            artifact: "specs/payment/spec.md".into(),
-        },
-        DELTA_PAYMENT,
-    );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
-        DELTA_AUTH,
-    );
-    uow.create(DocumentId::CanonicalSpec { capability: "payment".into() }, SPEC_PAYMENT);
-    uow.create(DocumentId::CanonicalSpec { capability: "auth".into() }, SPEC_AUTH);
-    uow.create(
-        DocumentId::ChangeEvidence { change: "demo".into() },
-        EVIDENCE,
-    );
-    uow.create(DocumentId::WorkflowConfig, CONFIG);
-    store.commit(uow, Vec::new()).expect("seed commit");
 }
 
-fn state_over(store: Arc<MemoryStore>) -> AppState {
+fn state_over(store: &common::TestStore) -> AppState {
     let state = AppState::new(
-        store as SharedStore,
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -107,10 +80,10 @@ fn parse(body: &str) -> SpecDriftResponse {
         .unwrap_or_else(|e| panic!("body is a SpecDriftResponse ({e}): {body}"))
 }
 
-fn started() -> (Arc<MemoryStore>, String, String) {
-    let store = Arc::new(MemoryStore::new());
+fn started() -> (common::TestStore, String, String) {
+    let store = common::TestStore::memory();
     seed(&store);
-    let state = state_over(store.clone());
+    let state = state_over(&store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     (store, base, pat)
@@ -162,22 +135,18 @@ fn a_change_with_delta_specs_gets_its_spec_dimension_and_basis() {
 /// Structure dimension "a design exists with no anchors" instead of "no design".
 #[test]
 fn a_change_without_a_design_reports_it_absent_not_empty() {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, META);
-    uow.create(
-        DocumentId::ChangeArtifact { change: "bare".into(), artifact: "tasks.md".into() },
-        TASKS,
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/bare/.meta.yaml", META),
+            ("changes/bare/tasks.md", TASKS),
+            ("config.yaml", CONFIG),
+        ],
     );
-    uow.create(DocumentId::WorkflowConfig, CONFIG);
-    store.commit(uow, Vec::new()).expect("seed commit");
 
-    let state = state_over(store);
+    let state = state_over(&store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -275,9 +244,9 @@ fn an_unknown_change_is_404_not_found() {
 
 #[test]
 fn unauthenticated_is_401_and_non_member_is_403() {
-    let store = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory();
     seed(&store);
-    let state = state_over(store);
+    let state = state_over(&store);
     common::seed_multi_project(&*state.identity);
     let (_pat_demo, _) = common::seed_pat(&state.identity, &["demo"]);
     let (pat_other, _) = common::seed_named_pat(
@@ -299,18 +268,10 @@ fn unauthenticated_is_401_and_non_member_is_403() {
 
 #[test]
 fn an_unreachable_store_is_503_unavailable() {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::WorkflowConfig, "x");
-    let _ = store.commit(uow, Vec::new());
+    let store = common::TestStore::memory();
+    store.break_down();
 
-    let state = state_over(Arc::new(store));
+    let state = state_over(&store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -325,11 +286,11 @@ fn an_unreachable_store_is_503_unavailable() {
 #[test]
 fn computing_drift_produces_no_outbox_event() {
     let (store, base, pat) = started();
-    let before = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox").len();
+    let before = store.events("demo", "backend").len();
 
     let (status, _body) = get_drift(&drift_url(&base, "demo"), &pat);
     assert_eq!(status, 200);
 
-    let after = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox").len();
+    let after = store.events("demo", "backend").len();
     assert_eq!(after, before, "a drift computation is read-only — no event lands in the outbox");
 }

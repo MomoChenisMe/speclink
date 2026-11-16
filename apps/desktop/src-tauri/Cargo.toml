@@ -38,6 +38,7 @@ ulid = { workspace = true }
 [dev-dependencies]
 tempfile = "3"
 speclink-server = { path = "../../../crates/host/speclink-server" }
+speclink-store-port = { path = "../../../crates/store/speclink-store-port" }
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 tiny_http = "0.12"

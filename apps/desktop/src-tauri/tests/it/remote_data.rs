@@ -18,7 +18,7 @@ use speclink_remote::RemoteError;
 use speclink_desktop_core::query::PLAN_FIELDS;
 use speclink_protocol::query::ChangeSummary;
 use speclink_server::identity::{IdentityStore, NewInvitation};
-use speclink_store::{CommandContext, DocumentId, TeamStore};
+use speclink_store_port::StorePort;
 use std::sync::Arc;
 
 const FOUR_TASKS: &str = "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n";
@@ -45,7 +45,7 @@ fn open(
 }
 
 /// 種一個討論文件（concluded fixture 格式）進 demo/backend scope。
-fn seed_discussion(store: &dyn TeamStore, slug: &str, topic: &str) {
+fn seed_discussion(store: &dyn StorePort, slug: &str, topic: &str) {
     let doc = format!(
         "---\ntopic: {topic}\nslug: {slug}\nstatus: concluded\ncreated: 2026-01-02\n---\n\n\
          # Discussion: {topic}\n\n\
@@ -53,23 +53,7 @@ fn seed_discussion(store: &dyn TeamStore, slug: &str, topic: &str) {
          ## Rounds\n\n### Round 1 — assumptions (2026-01-02)\n\n**Focus**: scope\n\n\
          ## Conclusion\n\n**Decision**: do it\n"
     );
-    let mut uow = store
-        .begin_unit_of_work(
-            &common::scope(),
-            CommandContext {
-                command: "seed".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion {
-            slug: slug.into(),
-            archived: false,
-        },
-        &doc,
-    );
-    store.commit(uow, Vec::new()).expect("seed discussion");
+    common::put(store, &common::scope(), &[(&format!("discussions/{slug}.md"), &doc)]);
 }
 
 // --- 看板欄位由生命週期標記驅動（spec desktop-app）---
@@ -125,25 +109,13 @@ fn started_at_rides_the_remote_change_list_payload() {
     // in-progress 蓋章後 startedAt 隨清單 payload 進桌面（系統匣與看板同源）。
     let h = common::harness();
     common::seed_change(h.store.as_ref(), FOUR_TASKS);
-    {
-        let mut uow = h
-            .store
-            .begin_unit_of_work(
-                &common::scope(),
-                CommandContext {
-                    command: "seed".into(),
-                    actor: "seed".into(),
-                },
-            )
-            .expect("begin uow");
-        uow.create(
-            DocumentId::ChangeMeta {
-                change: "started-zero".into(),
-            },
+    seed_docs(
+        h.store.as_ref(),
+        &[(
+            change_meta("started-zero"),
             "schema: spec-driven\ncreated: 2026-07-29\nstarted_at: 2026-07-30\nstarted_by: Momo <m@example.com>\n",
-        );
-        h.store.commit(uow, Vec::new()).expect("seed started change");
-    }
+        )],
+    );
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
@@ -327,25 +299,7 @@ fn remote_open_failure_serializes_machine_readable_fields_without_credentials() 
 fn changes_specs_and_artifacts_read_server_truth() {
     let h = common::harness();
     common::seed_change(h.store.as_ref(), FOUR_TASKS);
-    {
-        let mut uow = h
-            .store
-            .begin_unit_of_work(
-                &common::scope(),
-                CommandContext {
-                    command: "seed".into(),
-                    actor: "seed".into(),
-                },
-            )
-            .expect("begin uow");
-        uow.create(
-            DocumentId::CanonicalSpec {
-                capability: "auth".into(),
-            },
-            "## Purpose\n\nAuth canon.\n",
-        );
-        h.store.commit(uow, Vec::new()).expect("seed spec");
-    }
+    seed_docs(h.store.as_ref(), &[(spec("auth"), "## Purpose\n\nAuth canon.\n")]);
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
@@ -399,62 +353,23 @@ fn archived_spec_document_and_search_reads_reach_server_truth() {
     common::seed_change(h.store.as_ref(), FOUR_TASKS);
     seed_discussion(h.store.as_ref(), "search-talk", "RemoteNeedle discussion");
     let dated_name = "2026-07-19-old-feature";
-    let mut uow = h
-        .store
-        .begin_unit_of_work(
-            &common::scope(),
-            CommandContext {
-                command: "seed-read-surfaces".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin uow");
-    for (document, content) in [
-        (
-            DocumentId::CanonicalSpec {
-                capability: "auth".into(),
-            },
-            "# auth Specification\n\nRemote canonical truth.\n",
-        ),
-        (
-            DocumentId::ChangeArtifact {
-                change: "demo".into(),
-                artifact: "proposal.md".into(),
-            },
-            "## Why\n\nRemoteNeedle in a change.\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: dated_name.into(),
-                doc: ".openspec.yaml".into(),
-            },
-            "schema: spec-driven\ncreated_by: Creator\nfrom_discussion: source-talk\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: dated_name.into(),
-                doc: "proposal.md".into(),
-            },
-            "## Why\n\nRemote archived truth.\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: dated_name.into(),
-                doc: "tasks.md".into(),
-            },
-            "- [x] 1.1 Done\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: dated_name.into(),
-                doc: "specs/auth/spec.md".into(),
-            },
-            "## ADDED Requirements\n\n### Requirement: Login\n",
-        ),
-    ] {
-        uow.create(document, content);
-    }
-    h.store.commit(uow, Vec::new()).expect("seed read surfaces");
+    seed_docs(
+        h.store.as_ref(),
+        &[
+            (spec("auth"), "# auth Specification\n\nRemote canonical truth.\n"),
+            (artifact("demo", "proposal.md"), "## Why\n\nRemoteNeedle in a change.\n"),
+            (
+                archived(dated_name, ".openspec.yaml"),
+                "schema: spec-driven\ncreated_by: Creator\nfrom_discussion: source-talk\n",
+            ),
+            (archived(dated_name, "proposal.md"), "## Why\n\nRemote archived truth.\n"),
+            (archived(dated_name, "tasks.md"), "- [x] 1.1 Done\n"),
+            (
+                archived(dated_name, "specs/auth/spec.md"),
+                "## ADDED Requirements\n\n### Requirement: Login\n",
+            ),
+        ],
+    );
 
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
@@ -502,31 +417,18 @@ fn archived_spec_document_and_search_reads_reach_server_truth() {
 fn task_flips_claim_and_archive_write_through() {
     let h = common::harness();
     common::seed_change(h.store.as_ref(), FOUR_TASKS);
-    {
-        // 一個 delta spec 讓 archive 有 capability 可折入正典。
-        let mut uow = h
-            .store
-            .begin_unit_of_work(
-                &common::scope(),
-                CommandContext {
-                    command: "seed".into(),
-                    actor: "seed".into(),
-                },
-            )
-            .expect("begin uow");
-        uow.create(
-            DocumentId::ChangeArtifact {
-                change: "demo".into(),
-                artifact: "specs/auth/spec.md".into(),
-            },
+    // 一個 delta spec 讓 archive 有 capability 可折入正典。
+    seed_docs(
+        h.store.as_ref(),
+        &[(
+            artifact("demo", "specs/auth/spec.md"),
             // 新開 capability 的 delta 自帶合格 Purpose，否則封存被 Purpose 守門擋下
             // （spec archive-merge「新 capability 的 Purpose 自 delta 帶入」）。
             "## Purpose\n\n本 capability 負責使用者登入與登出的可觀察行為，涵蓋工作階段的建立、續期與撤銷三段流程。\n\n\
              ## ADDED Requirements\n\n### Requirement: Login\n\nUsers SHALL log in.\n\n\
              #### Scenario: ok\n\n- **WHEN** login\n- **THEN** ok\n",
-        );
-        h.store.commit(uow, Vec::new()).expect("seed delta spec");
-    }
+        )],
+    );
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
 
@@ -578,8 +480,24 @@ const ONE_TASK_DONE: &str = "- [x] 1.1 Only\n";
 const REVIEW_TICKET: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
 const VERIFY_TICKET: &str = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n";
 
-fn artifact(change: &str, artifact: &str) -> DocumentId {
-    DocumentId::ChangeArtifact { change: change.into(), artifact: artifact.into() }
+/// 變更產出的鍵。
+fn artifact(change: &str, artifact: &str) -> String {
+    format!("changes/{change}/{artifact}")
+}
+
+/// 正式規格的鍵。
+fn spec(capability: &str) -> String {
+    format!("specs/{capability}/spec.md")
+}
+
+/// 已封存變更的文件的鍵。
+fn archived(dated_name: &str, doc: &str) -> String {
+    format!("archive/changes/{dated_name}/{doc}")
+}
+
+/// 看板順序的鍵。
+fn board_order() -> String {
+    "board/order".to_string()
 }
 
 /// 一份已審查的 meta：任務錨 `tasks_total`、scope 是 `src/a.rs`（內容 `fn a() {}`）。
@@ -763,26 +681,19 @@ fn board_reorder_writes_the_board_resource_only_and_meta_is_untouched() {
     let ws = open(&h, &credentials, &manager);
 
     let read_meta = |name: &str| {
-        let snap = h.store.snapshot(&common::scope()).expect("snapshot");
-        snap.read(&DocumentId::ChangeMeta {
-            change: name.into(),
-        })
-        .expect("read meta")
-        .expect("meta exists")
+        common::doc(h.store.as_ref(), &common::scope(), &change_meta(name)).expect("meta exists")
     };
     let before: Vec<_> = ["alpha", "bravo", "carol"].map(read_meta).into();
 
     ws.reorder_card(&credentials, "change", "carol", None, Some("alpha"))
         .expect("reorder lands");
 
-    let snap = h.store.snapshot(&common::scope()).expect("snapshot");
-    snap.read(&DocumentId::BoardOrder)
-        .expect("read board resource")
+    common::doc(h.store.as_ref(), &common::scope(), &board_order())
         .expect("board resource created by the first reorder");
     for (name, was) in ["alpha", "bravo", "carol"].iter().zip(before) {
         let now = read_meta(name);
         assert_eq!(now.content, was.content, "{name} 的 meta 內容不變");
-        assert_eq!(now.revision, was.revision, "{name} 的 meta revision 不變");
+        assert_eq!(now.version, was.version, "{name} 的 meta revision 不變");
     }
 
     // 清單 overlay 反映新序：carol 移到欄頂（alpha 之前），跨讀取持久。
@@ -795,26 +706,14 @@ fn board_reorder_writes_the_board_resource_only_and_meta_is_untouched() {
 // --- 規格「remote 變更清單的排程欄位」「remote 排序 overlay 與本地語意同構」---
 
 /// 一次 commit 新建多份文件進 demo/backend scope。
-fn seed_docs(store: &dyn TeamStore, docs: &[(DocumentId, &str)]) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &common::scope(),
-            CommandContext {
-                command: "seed".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin uow");
-    for (id, content) in docs {
-        uow.create(id.clone(), *content);
-    }
-    store.commit(uow, Vec::new()).expect("seed docs");
+fn seed_docs(store: &dyn StorePort, docs: &[(String, &str)]) {
+    let docs: Vec<(&str, &str)> = docs.iter().map(|(key, content)| (key.as_str(), *content)).collect();
+    common::put(store, &common::scope(), &docs);
 }
 
-fn change_meta(name: &str) -> DocumentId {
-    DocumentId::ChangeMeta {
-        change: name.into(),
-    }
+/// 變更 metadata 的鍵。
+fn change_meta(name: &str) -> String {
+    format!("changes/{name}/.meta.yaml")
 }
 
 #[test]
@@ -831,7 +730,7 @@ fn change_list_follows_the_plan_order_and_carries_the_schedule_fields() {
                 "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
             ),
             (
-                DocumentId::BoardOrder,
+                board_order(),
                 r#"{"changes":{"add-b":"b","add-a":"f"},"discussions":{"beta":"b","alpha":"f"}}"#,
             ),
         ],
@@ -868,10 +767,7 @@ fn merge_plan_carries_six_plan_fields() {
     // 同一個 requirement；board 的 rank 讓 add-c 配置在 add-b 前——server 的 plan
     // 帶來的排程欄位全部疊到 add-b 上，archiveAfter 為 ["add-c"]。
     let h = common::harness();
-    let modified = |change: &str| DocumentId::ChangeArtifact {
-        change: change.into(),
-        artifact: "specs/desktop-app/spec.md".into(),
-    };
+    let modified = |change: &str| artifact(change, "specs/desktop-app/spec.md");
     let delta = "## MODIFIED Requirements\n\n### Requirement: 看板與任務\n\nbody\n";
     seed_docs(
         h.store.as_ref(),
@@ -884,7 +780,7 @@ fn merge_plan_carries_six_plan_fields() {
             (change_meta("add-c"), "schema: spec-driven\ncreated: 2026-09-03\n"),
             (modified("add-b"), delta),
             (modified("add-c"), delta),
-            (DocumentId::BoardOrder, r#"{"changes":{"add-b":"b","add-c":"c","add-a":"f"}}"#),
+            (board_order(), r#"{"changes":{"add-b":"b","add-c":"c","add-a":"f"}}"#),
         ],
     );
     let (credentials, manager) = runtime(&h);
@@ -936,7 +832,7 @@ fn a_plan_cycle_falls_back_to_the_board_overlay_with_the_cycle_message() {
                 change_meta("add-b"),
                 "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
             ),
-            (DocumentId::BoardOrder, r#"{"changes":{"add-b":"b","add-a":"f"}}"#),
+            (board_order(), r#"{"changes":{"add-b":"b","add-a":"f"}}"#),
         ],
     );
     let (credentials, manager) = runtime(&h);
@@ -970,18 +866,13 @@ fn a_remote_drag_across_a_declared_dependency_sends_no_put() {
                 change_meta("add-b"),
                 "schema: spec-driven\ncreated: 2026-09-02\ndepends_on: add-a\n",
             ),
-            (DocumentId::BoardOrder, r#"{"changes":{"add-a":"f","add-b":"n"},"discussions":{}}"#),
+            (board_order(), r#"{"changes":{"add-a":"f","add-b":"n"},"discussions":{}}"#),
         ],
     );
     let (credentials, manager) = runtime(&h);
     let ws = open(&h, &credentials, &manager);
     let board = || {
-        h.store
-            .snapshot(&common::scope())
-            .expect("snapshot")
-            .read(&DocumentId::BoardOrder)
-            .expect("read board")
-            .map(|doc| (doc.content, doc.revision))
+        common::doc(h.store.as_ref(), &common::scope(), &board_order()).map(|doc| (doc.content, doc.version))
     };
     let before = board();
 
@@ -1194,28 +1085,11 @@ fn station_ticket_maps_404_to_none_and_200_to_rounds() {
             .is_none()
     );
 
-    let mut uow = h
-        .store
-        .begin_unit_of_work(
-            &common::scope(),
-            CommandContext {
-                command: "seed-ticket".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin uow");
     let ticket_text = format!(
         "# Review — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{}\n**Rules**: replace\n**Rule**: WARNING 新增的公開 API 要有對應的測試\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — possible smell\n",
         "a".repeat(64)
     );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: "demo".into(),
-            artifact: "review.md".into(),
-        },
-        &ticket_text,
-    );
-    h.store.commit(uow, Vec::new()).expect("seed ticket");
+    seed_docs(h.store.as_ref(), &[(artifact("demo", "review.md"), ticket_text.as_str())]);
 
     let ticket = ws
         .station_ticket(&credentials, "demo", "review")
@@ -1266,10 +1140,7 @@ fn archived_station_ticket_text_parses_into_the_d1_shape() {
     let ticket_text = format!(
         "# Verify — demo\n\n## Round 1\n\n**Phase**: discovery\n**Patch**: sha256:{hash}\n**Scope**: src/lib.rs\n\n- [WARNING] src/lib.rs — Correctness: scenario uncovered\n"
     );
-    let archived = |doc: &str| DocumentId::ArchivedChange {
-        change: dated_name.into(),
-        doc: doc.into(),
-    };
+    let archived = |doc: &str| archived(dated_name, doc);
     seed_docs(
         h.store.as_ref(),
         &[

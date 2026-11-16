@@ -1,29 +1,41 @@
 //! Server backup, verification and restore (server-backup capability). A backup
 //! is a single self-describing tar file: a manifest (backup format version, UTC
-//! creation time, engine version, store manifest, identity schema version, the
-//! scope list, per-scope document counts and identity counts), one export bundle
-//! per registry scope (produced through the TeamStore export contract, never a
-//! database-file copy — 決策 2), a time-point-consistent snapshot of the identity
-//! database, and a per-member digest chain rooted in a side file. Credentials are
-//! never in plaintext: the identity database holds only hashes.
+//! creation time, engine version, the kind of the store, identity schema
+//! version, the scope list, per-scope document counts and identity counts), one
+//! export bundle per registry scope (produced through the host kit's scope
+//! export, each document named by its key; never a database-file copy — 決策
+//! 2), a time-point-consistent snapshot of the identity database, and a
+//! per-member digest chain rooted in a side file. Credentials are never in
+//! plaintext: the identity database holds only hashes.
+//!
+//! This build writes backup format version 2. It also verifies and restores
+//! version 1, the format of speclink-server 0.12 and earlier, whose bundles
+//! name each document by its kind: a restore turns every kind into its key
+//! first (design D4 of server-on-port-examples).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use speclink_store::{
-    Bundle, BundleDoc, DocumentId, ImportMode, ProjectId, RepoId, Revision, Scope, TeamStore,
-};
+use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::transfer::{self, BundleDocument, ScopeBundle};
+use speclink_protocol::query::ImportDocumentId;
+use speclink_store_port::{Actor, MemoryStorePort, ScopeId};
 
 use crate::config::{IdentityConfig, ServerConfig};
-use crate::identity::IdentityStore;
 use crate::identity::IdentitySqlite;
+use crate::identity::IdentityStore;
+use crate::storage::{OpenError, ServerStore};
 
-/// The backup format version this build writes and reads. A backup declaring an
-/// unknown version is refused (fail closed — 決策 4).
-pub const BACKUP_FORMAT_VERSION: u32 = 1;
+/// The backup format version this build writes. A backup declaring a version
+/// this build does not read is refused (fail closed — 決策 4).
+pub const BACKUP_FORMAT_VERSION: u32 = 2;
+
+/// The format of speclink-server 0.12 and earlier: read, never written.
+const FIRST_FORMAT_VERSION: u32 = 1;
 
 /// The manifest member name, and its self-digest side file (决策 1).
 const MANIFEST_NAME: &str = "manifest.json";
@@ -34,6 +46,8 @@ const IDENTITY_MEMBER: &str = "identity.db";
 /// Why a backup, verify or restore operation failed.
 #[derive(Debug)]
 pub enum BackupError {
+    /// The configured store could not be opened.
+    Open(OpenError),
     /// The store could not be exported or imported.
     Store(String),
     /// The identity database could not be read, snapshotted or placed.
@@ -46,11 +60,20 @@ pub enum BackupError {
     TargetNotEmpty(String),
     /// The configuration cannot host a restore (e.g. an in-memory target).
     Unsupported(String),
+    /// The backup holds a document a restore cannot write: one of an old
+    /// backup that has no key in this version, or one the import refuses.
+    /// Nothing was written.
+    NotRestorable(String),
+    /// The restore stopped between two scopes: the identity snapshot and the
+    /// scopes in `done` are in the target, the scope `failed` and the ones
+    /// after it are not.
+    Incomplete { done: Vec<String>, failed: String, reason: String },
 }
 
 impl std::fmt::Display for BackupError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            BackupError::Open(e) => write!(f, "{e}"),
             BackupError::Store(r) => write!(f, "store operation failed: {r}"),
             BackupError::Identity(r) => write!(f, "identity operation failed: {r}"),
             BackupError::Io(r) => write!(f, "backup io failed: {r}"),
@@ -62,6 +85,17 @@ impl std::fmt::Display for BackupError {
                 )
             }
             BackupError::Unsupported(r) => write!(f, "restore is not supported here: {r}"),
+            BackupError::NotRestorable(r) => {
+                write!(f, "this backup cannot be restored, and nothing was written: {r}")
+            }
+            BackupError::Incomplete { done, failed, reason } => {
+                let done = if done.is_empty() { "none".to_string() } else { done.join(", ") };
+                write!(
+                    f,
+                    "restore stopped at scope {failed}: {reason}; scopes restored before it: {done}. \
+                     The target is incomplete: do not put it into service"
+                )
+            }
         }
     }
 }
@@ -96,32 +130,27 @@ pub struct ValidationReport {
     pub scopes_checked: usize,
 }
 
-// --- serializable manifest and bundle mirrors ------------------------------
-//
-// The TeamStore contract types intentionally carry no serde derives, and this
-// knife is a consumer of the contract, not its author (决策 2 / Non-Goals). The
-// backup format therefore owns its own JSON shapes and converts at the boundary.
+// --- the manifest ------------------------------------------------------------
 
 /// A backup manifest: everything needed to describe, verify and validate a
-/// backup without the original environment present.
+/// backup without the original environment present. A field this build does
+/// not know is ignored, so the manifest of version 1 (which has a `store`
+/// object where version 2 has `store_kind`) reads with the same type.
 #[derive(Debug, Serialize, Deserialize)]
 struct Manifest {
     backup_format_version: u32,
     /// UTC, RFC3339 with a `Z` suffix.
     created_at: String,
     engine_version: String,
-    store: StoreManifest,
+    /// The kind of the store the backup was taken from: `sqlite`, `serverfs`,
+    /// `postgres` or `memory`. Version 1 does not have it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    store_kind: Option<String>,
     identity_schema_version: u32,
     scopes: Vec<ScopeEntry>,
     identity: IdentityEntry,
     /// Per-member digest of every non-manifest tar member (决策 1).
     members: Vec<MemberDigest>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct StoreManifest {
-    driver: String,
-    contract_version: u32,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -131,6 +160,18 @@ struct ScopeEntry {
     /// The tar member holding this scope's export bundle.
     member: String,
     doc_count: usize,
+}
+
+impl ScopeEntry {
+    /// The scope as the messages show it.
+    fn shown(&self) -> String {
+        format!("{}/{}", self.project, self.repo)
+    }
+
+    fn scope_id(&self) -> Result<ScopeId, BackupError> {
+        scope_id(&Scope::new(ProjectId::new(&self.project), RepoId::new(&self.repo)))
+            .map_err(|e| BackupError::Store(e.to_string()))
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -149,26 +190,34 @@ struct MemberDigest {
     digest: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct BundleDto {
-    format_version: u32,
+// --- the bundle of backup format version 1 ------------------------------------
+//
+// Only read. These are the server's own types for the old format: they do not
+// come from the old store layer.
+
+/// A scope's bundle as version 1 wrote it. Its format version and project
+/// revision are not looked at.
+#[derive(Debug, Deserialize)]
+struct FirstBundle {
     project: String,
     repo: String,
-    project_revision: u64,
-    documents: Vec<BundleDocDto>,
+    documents: Vec<FirstDoc>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct BundleDocDto {
-    doc: DocIdDto,
+/// One document of a [`FirstBundle`]. `doc` stays as JSON until a restore
+/// turns it into a key, so a kind this build does not know is reported with
+/// its scope and not as a file that cannot be read.
+#[derive(Debug, Deserialize)]
+struct FirstDoc {
+    doc: serde_json::Value,
     content: String,
     digest: String,
 }
 
-/// A serializable mirror of the closed [`DocumentId`] set.
-#[derive(Debug, Serialize, Deserialize)]
+/// The nine document kinds of version 1.
+#[derive(Debug, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-enum DocIdDto {
+enum FirstDocId {
     ChangeMeta { change: String },
     ChangeArtifact { change: String, artifact: String },
     ChangeEvidence { change: String },
@@ -180,89 +229,91 @@ enum DocIdDto {
     BoardOrder,
 }
 
-impl From<&DocumentId> for DocIdDto {
-    fn from(doc: &DocumentId) -> Self {
+impl From<FirstDocId> for ImportDocumentId {
+    fn from(doc: FirstDocId) -> Self {
         match doc {
-            DocumentId::ChangeMeta { change } => DocIdDto::ChangeMeta {
-                change: change.clone(),
-            },
-            DocumentId::ChangeArtifact { change, artifact } => DocIdDto::ChangeArtifact {
-                change: change.clone(),
-                artifact: artifact.clone(),
-            },
-            DocumentId::ChangeEvidence { change } => DocIdDto::ChangeEvidence {
-                change: change.clone(),
-            },
-            DocumentId::CanonicalSpec { capability } => DocIdDto::CanonicalSpec {
-                capability: capability.clone(),
-            },
-            DocumentId::Discussion { slug, archived } => DocIdDto::Discussion {
-                slug: slug.clone(),
-                archived: *archived,
-            },
-            DocumentId::WorkflowConfig => DocIdDto::WorkflowConfig,
-            DocumentId::ArchivedChange { change, doc } => DocIdDto::ArchivedChange {
-                change: change.clone(),
-                doc: doc.clone(),
-            },
-            DocumentId::Language => DocIdDto::Language,
-            DocumentId::BoardOrder => DocIdDto::BoardOrder,
+            FirstDocId::ChangeMeta { change } => ImportDocumentId::ChangeMeta { change },
+            FirstDocId::ChangeArtifact { change, artifact } => ImportDocumentId::ChangeArtifact { change, artifact },
+            FirstDocId::ChangeEvidence { change } => ImportDocumentId::ChangeEvidence { change },
+            FirstDocId::CanonicalSpec { capability } => ImportDocumentId::CanonicalSpec { capability },
+            FirstDocId::Discussion { slug, archived } => ImportDocumentId::Discussion { slug, archived },
+            FirstDocId::WorkflowConfig => ImportDocumentId::WorkflowConfig,
+            FirstDocId::ArchivedChange { change, doc } => ImportDocumentId::ArchivedChange { change, doc },
+            FirstDocId::Language => ImportDocumentId::Language,
+            FirstDocId::BoardOrder => ImportDocumentId::BoardOrder,
         }
     }
 }
 
-impl From<DocIdDto> for DocumentId {
-    fn from(dto: DocIdDto) -> Self {
-        match dto {
-            DocIdDto::ChangeMeta { change } => DocumentId::ChangeMeta { change },
-            DocIdDto::ChangeEvidence { change } => DocumentId::ChangeEvidence { change },
-            DocIdDto::ChangeArtifact { change, artifact } => {
-                DocumentId::ChangeArtifact { change, artifact }
-            }
-            DocIdDto::CanonicalSpec { capability } => DocumentId::CanonicalSpec { capability },
-            DocIdDto::Discussion { slug, archived } => DocumentId::Discussion { slug, archived },
-            DocIdDto::WorkflowConfig => DocumentId::WorkflowConfig,
-            DocIdDto::ArchivedChange { change, doc } => DocumentId::ArchivedChange { change, doc },
-            DocIdDto::Language => DocumentId::Language,
-            DocIdDto::BoardOrder => DocumentId::BoardOrder,
+/// The most characters of a document's name a message shows.
+const SHOWN_CHARS: usize = 200;
+
+impl FirstBundle {
+    /// The bundle by key, with the same contents in the same order. A
+    /// document whose kind this build does not know, or whose names make no
+    /// key, stops the conversion: the error names the scope and the document.
+    fn into_keyed(self, entry: &ScopeEntry) -> Result<ScopeBundle, BackupError> {
+        if (self.project.as_str(), self.repo.as_str()) != (entry.project.as_str(), entry.repo.as_str()) {
+            return Err(BackupError::Integrity(format!(
+                "bundle {} holds scope {}/{}, the manifest says {}",
+                entry.member,
+                self.project,
+                self.repo,
+                entry.shown()
+            )));
         }
+        let documents = self
+            .documents
+            .into_iter()
+            .map(|doc| {
+                let no_key = |why: &str| {
+                    let name: String = doc.doc.to_string().chars().take(SHOWN_CHARS).collect();
+                    BackupError::NotRestorable(format!("scope {}: document {name} {why}", entry.shown()))
+                };
+                let id: FirstDocId = serde_json::from_value(doc.doc.clone())
+                    .map_err(|_| no_key("is of a kind this version does not know"))?;
+                let key = transfer::key_of_document(&id.into())
+                    .ok_or_else(|| no_key("has a name that makes no key in this version"))?;
+                Ok(BundleDocument { key: key.as_str().to_string(), content: doc.content, digest: doc.digest })
+            })
+            .collect::<Result<Vec<_>, BackupError>>()?;
+        Ok(ScopeBundle { format_version: transfer::FORMAT_VERSION, scope_version: None, documents })
     }
 }
 
-impl BundleDto {
-    fn from_bundle(bundle: &Bundle) -> Self {
-        BundleDto {
-            format_version: bundle.format_version,
-            project: bundle.scope.project.as_str().to_string(),
-            repo: bundle.scope.repo.as_str().to_string(),
-            project_revision: bundle.project_revision.0,
-            documents: bundle
-                .documents
-                .iter()
-                .map(|d| BundleDocDto {
-                    doc: DocIdDto::from(&d.doc),
-                    content: d.content.clone(),
-                    digest: d.digest.clone(),
-                })
-                .collect(),
-        }
-    }
+/// A scope's bundle as the backup holds it, in the shape of its version.
+enum StoredBundle {
+    First(FirstBundle),
+    Keyed(ScopeBundle),
+}
 
-    fn into_bundle(self) -> Bundle {
-        Bundle {
-            format_version: self.format_version,
-            scope: Scope::new(ProjectId::new(self.project), RepoId::new(self.repo)),
-            project_revision: Revision(self.project_revision),
-            documents: self
-                .documents
-                .into_iter()
-                .map(|d| BundleDoc {
-                    doc: d.doc.into(),
-                    content: d.content,
-                    digest: d.digest,
-                })
-                .collect(),
-        }
+/// Parse the bundle of `entry`: the structure check of a verify, and the
+/// first half of a restore.
+fn stored_bundle(
+    manifest: &Manifest,
+    entry: &ScopeEntry,
+    members: &BTreeMap<String, Vec<u8>>,
+) -> Result<StoredBundle, BackupError> {
+    let bytes = members
+        .get(&entry.member)
+        .ok_or_else(|| BackupError::Integrity(format!("missing bundle {}", entry.member)))?;
+    let unparseable = |e: serde_json::Error| BackupError::Integrity(format!("unparseable bundle {}: {e}", entry.member));
+    if manifest.backup_format_version == FIRST_FORMAT_VERSION {
+        serde_json::from_slice(bytes).map(StoredBundle::First).map_err(unparseable)
+    } else {
+        serde_json::from_slice(bytes).map(StoredBundle::Keyed).map_err(unparseable)
+    }
+}
+
+/// The bundle of `entry` by key, whichever version the backup is in.
+fn keyed_bundle(
+    manifest: &Manifest,
+    entry: &ScopeEntry,
+    members: &BTreeMap<String, Vec<u8>>,
+) -> Result<ScopeBundle, BackupError> {
+    match stored_bundle(manifest, entry, members)? {
+        StoredBundle::First(bundle) => bundle.into_keyed(entry),
+        StoredBundle::Keyed(bundle) => Ok(bundle),
     }
 }
 
@@ -274,6 +325,20 @@ fn digest_bytes(bytes: &[u8]) -> String {
     let mut hasher = Sha256::new();
     hasher.update(bytes);
     format!("sha256:{:x}", hasher.finalize())
+}
+
+/// The most bytes one member of a backup holds: 1 GiB. Every member is read
+/// into memory whole, so a file that declares more is refused before it is
+/// read. The backup refuses to write a member over the limit too, before it
+/// makes the output file: a backup this build writes is one it restores.
+const MAX_MEMBER_BYTES: u64 = 1024 * 1024 * 1024;
+
+/// `Err` with the reason when a member of `bytes` bytes is over `limit`.
+fn within_limit(name: &str, bytes: u64, limit: u64) -> Result<(), String> {
+    if bytes > limit {
+        return Err(format!("member {name} is {bytes} bytes, over the limit of {limit} bytes for one member"));
+    }
+    Ok(())
 }
 
 /// Append one in-memory member to a tar builder under `name`.
@@ -292,12 +357,27 @@ fn append<W: std::io::Write>(
         .map_err(|e| BackupError::Io(e.to_string()))
 }
 
+/// Write `members` (name, bytes) as the tar at `output`. Every member's size
+/// is checked first: a member over `limit` fails the write with `output` not
+/// made, and a file already at `output` as it was.
+fn write_archive(output: &Path, members: &[(&str, &[u8])], limit: u64) -> Result<(), BackupError> {
+    for (name, bytes) in members {
+        within_limit(name, bytes.len() as u64, limit).map_err(BackupError::Io)?;
+    }
+    let file = std::fs::File::create(output).map_err(|e| BackupError::Io(e.to_string()))?;
+    let mut builder = tar::Builder::new(file);
+    for (name, bytes) in members {
+        append(&mut builder, name, bytes)?;
+    }
+    builder.finish().map_err(|e| BackupError::Io(e.to_string()))
+}
+
 // --- backup ----------------------------------------------------------------
 
 /// Produce a backup of the store and identity into `output` (决策 1/2). Offline:
 /// the caller guarantees no writes for the backup's duration.
 pub fn create(
-    store: &dyn TeamStore,
+    store: &dyn ServerStore,
     identity: &IdentitySqlite,
     output: &Path,
 ) -> Result<BackupSummary, BackupError> {
@@ -307,43 +387,28 @@ pub fn create(
         .list_projects()
         .map_err(|e| BackupError::Identity(e.to_string()))?;
     let mut repo_count = 0usize;
-    let mut scopes: Vec<Scope> = Vec::new();
+    let mut members: Vec<MemberDigest> = Vec::new();
+    let mut scope_entries: Vec<ScopeEntry> = Vec::new();
+    // Serialized bundle bytes, kept to write into the tar after the manifest.
+    let mut bundle_bytes: Vec<(String, Vec<u8>)> = Vec::new();
     for project in &projects {
         let repos = identity
             .list_repos(&project.key)
             .map_err(|e| BackupError::Identity(e.to_string()))?;
         repo_count += repos.len();
         for repo in repos {
-            scopes.push(Scope::new(
-                ProjectId::new(&project.key),
-                RepoId::new(&repo.key),
-            ));
+            let member = format!("bundles/{}.json", scope_entries.len());
+            let mut entry =
+                ScopeEntry { project: project.key.clone(), repo: repo.key, member: member.clone(), doc_count: 0 };
+            let bundle = transfer::export(store, &entry.scope_id()?)
+                .map_err(|e| BackupError::Store(format!("export scope {}: {e}", entry.shown())))?;
+            entry.doc_count = bundle.documents.len();
+            let bytes = serde_json::to_vec_pretty(&bundle)
+                .map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))?;
+            members.push(MemberDigest { name: member.clone(), digest: digest_bytes(&bytes) });
+            scope_entries.push(entry);
+            bundle_bytes.push((member, bytes));
         }
-    }
-
-    let mut members: Vec<MemberDigest> = Vec::new();
-    let mut scope_entries: Vec<ScopeEntry> = Vec::new();
-    // Serialized bundle bytes, kept to write into the tar after the manifest.
-    let mut bundle_bytes: Vec<(String, Vec<u8>)> = Vec::new();
-    for (i, scope) in scopes.iter().enumerate() {
-        let bundle = store
-            .export(scope)
-            .map_err(|e| BackupError::Store(e.to_string()))?;
-        let dto = BundleDto::from_bundle(&bundle);
-        let bytes = serde_json::to_vec_pretty(&dto)
-            .map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))?;
-        let member = format!("bundles/{i}.json");
-        members.push(MemberDigest {
-            name: member.clone(),
-            digest: digest_bytes(&bytes),
-        });
-        scope_entries.push(ScopeEntry {
-            project: scope.project.as_str().to_string(),
-            repo: scope.repo.as_str().to_string(),
-            member: member.clone(),
-            doc_count: dto.documents.len(),
-        });
-        bundle_bytes.push((member, bytes));
     }
 
     // Snapshot the identity database through the online backup API into a temp
@@ -365,16 +430,13 @@ pub fn create(
     let audit_count = identity.list_audit(u32::MAX, 0).map_err(idn)?.len();
     let identity_schema_version = identity.schema_version().map_err(idn)?;
 
-    let store_manifest = store.manifest();
     let created_at = Utc::now();
+    let scope_count = scope_entries.len();
     let manifest = Manifest {
         backup_format_version: BACKUP_FORMAT_VERSION,
         created_at: created_at.to_rfc3339_opts(SecondsFormat::Micros, true),
         engine_version: env!("CARGO_PKG_VERSION").to_string(),
-        store: StoreManifest {
-            driver: store_manifest.driver,
-            contract_version: store_manifest.contract_version,
-        },
+        store_kind: Some(store.kind().to_string()),
         identity_schema_version,
         scopes: scope_entries,
         identity: IdentityEntry {
@@ -393,26 +455,16 @@ pub fn create(
 
     // Write the tar: manifest, its self-digest side file, every bundle, then the
     // identity snapshot.
-    let file = std::fs::File::create(output).map_err(|e| BackupError::Io(e.to_string()))?;
-    let mut builder = tar::Builder::new(file);
-    append(&mut builder, MANIFEST_NAME, &manifest_bytes)?;
-    append(
-        &mut builder,
-        MANIFEST_DIGEST_NAME,
-        manifest_digest.as_bytes(),
-    )?;
-    for (member, bytes) in &bundle_bytes {
-        append(&mut builder, member, bytes)?;
-    }
-    append(&mut builder, IDENTITY_MEMBER, &identity_bytes)?;
-    builder
-        .finish()
-        .map_err(|e| BackupError::Io(e.to_string()))?;
+    let mut archive: Vec<(&str, &[u8])> =
+        vec![(MANIFEST_NAME, &manifest_bytes), (MANIFEST_DIGEST_NAME, manifest_digest.as_bytes())];
+    archive.extend(bundle_bytes.iter().map(|(member, bytes)| (member.as_str(), bytes.as_slice())));
+    archive.push((IDENTITY_MEMBER, &identity_bytes));
+    write_archive(output, &archive, MAX_MEMBER_BYTES)?;
 
     Ok(BackupSummary {
         created_at,
         backup_format_version: BACKUP_FORMAT_VERSION,
-        scope_count: scopes.len(),
+        scope_count,
         member_count,
     })
 }
@@ -425,21 +477,36 @@ fn idn(e: crate::identity::IdentityError) -> BackupError {
 // --- verify ----------------------------------------------------------------
 
 /// Read every member of the backup tar at `input` into name → bytes.
-fn read_members(input: &Path) -> Result<std::collections::BTreeMap<String, Vec<u8>>, BackupError> {
+fn read_members(input: &Path) -> Result<BTreeMap<String, Vec<u8>>, BackupError> {
+    read_members_within(input, MAX_MEMBER_BYTES)
+}
+
+/// [`read_members`] with the size limit of one member given.
+///
+/// A member's name is only ever a key of the returned map: no member is
+/// written to disk under its name. A name that is not a plain relative path
+/// (one with `..`, or an absolute one) is refused all the same: no backup
+/// this server wrote has one, so the file is not a backup.
+fn read_members_within(input: &Path, limit: u64) -> Result<BTreeMap<String, Vec<u8>>, BackupError> {
     use std::io::Read;
     let file = std::fs::File::open(input).map_err(|e| BackupError::Io(e.to_string()))?;
     let mut archive = tar::Archive::new(file);
-    let mut members = std::collections::BTreeMap::new();
+    let mut members = BTreeMap::new();
     for entry in archive
         .entries()
         .map_err(|e| BackupError::Io(e.to_string()))?
     {
         let mut entry = entry.map_err(|e| BackupError::Io(e.to_string()))?;
-        let name = entry
-            .path()
-            .map_err(|e| BackupError::Io(e.to_string()))?
-            .to_string_lossy()
-            .to_string();
+        let path = entry.path().map_err(|e| BackupError::Io(e.to_string()))?;
+        let name = path.to_string_lossy().to_string();
+        if !path.components().all(|part| matches!(part, std::path::Component::Normal(_))) {
+            return Err(BackupError::Integrity(format!(
+                "member name {name:?} is not a plain relative path"
+            )));
+        }
+        // The entry's own size, not the header's: a PAX record can give a
+        // size larger than the header's field.
+        within_limit(&name, entry.size(), limit).map_err(BackupError::Integrity)?;
         let mut bytes = Vec::new();
         entry
             .read_to_end(&mut bytes)
@@ -453,9 +520,7 @@ fn read_members(input: &Path) -> Result<std::collections::BTreeMap<String, Vec<u
 /// format version, every per-member digest, and every bundle's structure. On
 /// success returns the parsed manifest and the members for a caller (restore) to
 /// consume; on any failure a [`BackupError::Integrity`] naming the fault.
-fn load_verified(
-    input: &Path,
-) -> Result<(Manifest, std::collections::BTreeMap<String, Vec<u8>>), BackupError> {
+fn load_verified(input: &Path) -> Result<(Manifest, BTreeMap<String, Vec<u8>>), BackupError> {
     let members = read_members(input)?;
 
     let manifest_bytes = members
@@ -476,10 +541,10 @@ fn load_verified(
         .map_err(|e| BackupError::Integrity(format!("unparseable {MANIFEST_NAME}: {e}")))?;
 
     // Fail closed on an unknown format version (决策 4).
-    if manifest.backup_format_version != BACKUP_FORMAT_VERSION {
+    if ![FIRST_FORMAT_VERSION, BACKUP_FORMAT_VERSION].contains(&manifest.backup_format_version) {
         return Err(BackupError::Integrity(format!(
-            "incompatible backup format version {} (this build reads {})",
-            manifest.backup_format_version, BACKUP_FORMAT_VERSION
+            "incompatible backup format version {} (this build reads {FIRST_FORMAT_VERSION} and {BACKUP_FORMAT_VERSION})",
+            manifest.backup_format_version
         )));
     }
 
@@ -497,14 +562,10 @@ fn load_verified(
         }
     }
 
-    // Every bundle must parse as an export bundle (structure check).
+    // Every bundle must parse as a bundle of the backup's version (structure
+    // check). Whether a version 1 document has a key is a restore's question.
     for scope in &manifest.scopes {
-        let bytes = members
-            .get(&scope.member)
-            .ok_or_else(|| BackupError::Integrity(format!("missing bundle {}", scope.member)))?;
-        serde_json::from_slice::<BundleDto>(bytes).map_err(|e| {
-            BackupError::Integrity(format!("unparseable bundle {}: {e}", scope.member))
-        })?;
+        stored_bundle(&manifest, scope, &members)?;
     }
 
     Ok((manifest, members))
@@ -523,13 +584,68 @@ pub fn verify(input: &Path) -> Result<VerifyReport, BackupError> {
 
 // --- restore ---------------------------------------------------------------
 
+/// Every scope of the backup with its bundle by key, in the manifest's order.
+/// A version 1 bundle is converted here, so a document with no key stops a
+/// restore before anything is written.
+fn keyed_bundles<'m>(
+    manifest: &'m Manifest,
+    members: &BTreeMap<String, Vec<u8>>,
+) -> Result<Vec<(&'m ScopeEntry, ScopeId, ScopeBundle)>, BackupError> {
+    manifest
+        .scopes
+        .iter()
+        .map(|entry| Ok((entry, entry.scope_id()?, keyed_bundle(manifest, entry, members)?)))
+        .collect()
+}
+
+/// Run the import of every bundle against a scratch store in memory. The
+/// import checks each document (its key follows a naming rule, its digest is
+/// its content's, a board order is within its size): a bundle it would
+/// refuse stops a restore here, before anything is written.
+fn check_importable(bundles: &[(&ScopeEntry, ScopeId, ScopeBundle)], actor: &Actor) -> Result<(), BackupError> {
+    let scratch = MemoryStorePort::new();
+    for (entry, scope, bundle) in bundles {
+        speclink_host::port_exec::now()
+            .map_err(transfer::TransferError::Store)
+            .and_then(|at| transfer::import(&scratch, scope, actor, bundle.clone(), at))
+            .map_err(|e| BackupError::NotRestorable(format!("scope {}: {e}", entry.shown())))?;
+    }
+    Ok(())
+}
+
+/// Import every bundle into `store`: each scope is one commit into an empty
+/// scope. The imports are not one transaction over every scope: a failure
+/// between two scopes is [`BackupError::Incomplete`].
+fn import_all(
+    store: &dyn ServerStore,
+    bundles: Vec<(&ScopeEntry, ScopeId, ScopeBundle)>,
+    actor: &Actor,
+) -> Result<(), BackupError> {
+    let mut done = Vec::new();
+    for (entry, scope, bundle) in bundles {
+        let imported = speclink_host::port_exec::now()
+            .map_err(transfer::TransferError::Store)
+            .and_then(|at| transfer::import(store, &scope, actor, bundle, at));
+        if let Err(e) = imported {
+            return Err(BackupError::Incomplete { done, failed: entry.shown(), reason: e.to_string() });
+        }
+        done.push(entry.shown());
+    }
+    Ok(())
+}
+
 /// Restore a backup into the empty target the config declares (决策 3), then
-/// validate. Order: integrity verify → empty-target guard → identity snapshot →
-/// per-scope import → validation. A non-empty target or an integrity failure is
-/// refused before any write.
+/// validate. Order: integrity verify → every bundle by key → the import's
+/// document checks on a scratch store → empty-target guard → identity
+/// snapshot → per-scope import → validation. A non-empty target, an
+/// integrity failure, a document with no key or one the import refuses stops
+/// the restore before any write.
 pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, BackupError> {
     // 决策 3: the integrity verification is restore's first step.
     let (manifest, members) = load_verified(input)?;
+    let bundles = keyed_bundles(&manifest, &members)?;
+    let actor = Actor::new("speclink-server", "speclink-server restore").expect("a fixed actor");
+    check_importable(&bundles, &actor)?;
 
     // The identity snapshot is placed at the file level, so a restore target must
     // be a persistent sqlite database.
@@ -544,22 +660,16 @@ pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, 
 
     // Empty-target guard (决策 3). Read-only: on refusal the target's existing
     // bytes are left untouched.
+    let store = crate::build_store(&config.store).map_err(BackupError::Open)?;
     {
-        let store =
-            crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
         let mut existing = Vec::new();
-        for entry in &manifest.scopes {
-            let scope = Scope::new(ProjectId::new(&entry.project), RepoId::new(&entry.repo));
-            let bundle = store
-                .export(&scope)
-                .map_err(|e| BackupError::Store(e.to_string()))?;
-            if !bundle.documents.is_empty() {
-                existing.push(format!(
-                    "scope {}/{} holds {} document(s)",
-                    entry.project,
-                    entry.repo,
-                    bundle.documents.len()
-                ));
+        for (entry, scope, _) in &bundles {
+            let held = transfer::export(&*store, scope)
+                .map_err(|e| BackupError::Store(e.to_string()))?
+                .documents
+                .len();
+            if held > 0 {
+                existing.push(format!("scope {} holds {held} document(s)", entry.shown()));
             }
         }
         let identity = crate::build_identity(&config.identity)
@@ -582,63 +692,38 @@ pub fn restore(config: &ServerConfig, input: &Path) -> Result<ValidationReport, 
     })?;
     std::fs::write(&identity_path, snapshot_bytes).map_err(|e| BackupError::Io(e.to_string()))?;
 
-    // Per-scope import into the target store, in fresh-create mode.
-    {
-        let store =
-            crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
-        for entry in &manifest.scopes {
-            let bytes = members.get(&entry.member).ok_or_else(|| {
-                BackupError::Integrity(format!("missing bundle {}", entry.member))
-            })?;
-            let dto: BundleDto = serde_json::from_slice(bytes).map_err(|e| {
-                BackupError::Integrity(format!("unparseable bundle {}: {e}", entry.member))
-            })?;
-            store
-                .import(dto.into_bundle(), ImportMode::CreateNew)
-                .map_err(|e| BackupError::Store(e.to_string()))?;
-        }
-    }
+    import_all(&*store, bundles, &actor)?;
+    drop(store);
 
     validate(config, input)
 }
 
 /// Re-read the restored target and compare it item-for-item against the backup:
-/// per-scope content digests and document count, identity counts and schema
-/// version against the manifest. Separable so it can be re-run after a restore.
+/// per scope the keys, each document's content digest and the document count;
+/// identity counts and schema version against the manifest. Separable so it can
+/// be re-run after a restore.
 pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport, BackupError> {
     let (manifest, members) = load_verified(input)?;
     let mut differences = Vec::new();
 
-    // Per-scope: the target's re-exported content digest multiset and document
-    // count must match the backup's bundle.
-    let store = crate::build_store(&config.store).map_err(|e| BackupError::Store(e.to_string()))?;
-    for entry in &manifest.scopes {
-        let scope = Scope::new(ProjectId::new(&entry.project), RepoId::new(&entry.repo));
-        let target = store
-            .export(&scope)
-            .map_err(|e| BackupError::Store(e.to_string()))?;
+    // Per scope: the target's re-exported documents must be the backup's, key
+    // by key.
+    let store = crate::build_store(&config.store).map_err(BackupError::Open)?;
+    for (entry, scope, expected) in keyed_bundles(&manifest, &members)? {
+        let target = transfer::export(&*store, &scope).map_err(|e| BackupError::Store(e.to_string()))?;
         if target.documents.len() != entry.doc_count {
             differences.push(format!(
-                "scope {}/{}: {} document(s), expected {}",
-                entry.project,
-                entry.repo,
+                "scope {}: {} document(s), expected {}",
+                entry.shown(),
                 target.documents.len(),
                 entry.doc_count
             ));
             continue;
         }
-        let bytes = members
-            .get(&entry.member)
-            .ok_or_else(|| BackupError::Integrity(format!("missing bundle {}", entry.member)))?;
-        let expected: BundleDto = serde_json::from_slice(bytes).map_err(|e| {
-            BackupError::Integrity(format!("unparseable bundle {}: {e}", entry.member))
-        })?;
-        if digest_multiset(target.documents.iter().map(|d| d.digest.as_str()))
-            != digest_multiset(expected.documents.iter().map(|d| d.digest.as_str()))
-        {
+        if digests_by_key(&target) != digests_by_key(&expected) {
             differences.push(format!(
-                "scope {}/{}: content digests differ from the backup",
-                entry.project, entry.repo
+                "scope {}: the keys or the content digests differ from the backup",
+                entry.shown()
             ));
         }
     }
@@ -683,20 +768,197 @@ pub fn validate(config: &ServerConfig, input: &Path) -> Result<ValidationReport,
     })
 }
 
-/// A sorted multiset of digests, for order-independent set comparison.
-fn digest_multiset<'a>(digests: impl Iterator<Item = &'a str>) -> Vec<&'a str> {
-    let mut v: Vec<&str> = digests.collect();
-    v.sort_unstable();
-    v
+/// Every document of a bundle as key → content digest.
+fn digests_by_key(bundle: &ScopeBundle) -> BTreeMap<&str, &str> {
+    bundle.documents.iter().map(|doc| (doc.key.as_str(), doc.digest.as_str())).collect()
 }
 
 /// Export one scope as the same self-verifying bundle JSON a backup member holds
 /// (决策 5) — the admin scope-download reuses the backup export shape, so a
 /// downloaded bundle passes the same structure and digest verification.
-pub fn export_bundle_json(store: &dyn TeamStore, scope: &Scope) -> Result<Vec<u8>, BackupError> {
-    let bundle = store
-        .export(scope)
-        .map_err(|e| BackupError::Store(e.to_string()))?;
-    serde_json::to_vec_pretty(&BundleDto::from_bundle(&bundle))
-        .map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))
+pub fn export_bundle_json(store: &dyn ServerStore, scope: &Scope) -> Result<Vec<u8>, BackupError> {
+    let scope = scope_id(scope).map_err(|e| BackupError::Store(e.to_string()))?;
+    let bundle = transfer::export(store, &scope).map_err(|e| BackupError::Store(e.to_string()))?;
+    serde_json::to_vec_pretty(&bundle).map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_member_over_the_size_limit_is_refused_by_its_declared_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("backup.tar");
+        let mut builder = tar::Builder::new(std::fs::File::create(&path).unwrap());
+        append(&mut builder, "small.json", &[b'a'; 64]).unwrap();
+        append(&mut builder, "big.json", &[b'b'; 65]).unwrap();
+        builder.finish().unwrap();
+        drop(builder);
+
+        let err = read_members_within(&path, 64).expect_err("65 bytes is over a limit of 64");
+        match err {
+            BackupError::Integrity(reason) => {
+                assert!(reason.contains("big.json") && reason.contains("65 bytes"), "{reason}")
+            }
+            other => panic!("not an integrity failure: {other}"),
+        }
+        let members = read_members_within(&path, 65).expect("at the limit is within it");
+        assert_eq!(members["big.json"].len(), 65);
+    }
+
+    #[test]
+    fn a_pax_size_record_does_not_get_a_member_past_the_limit() {
+        // The header says 0 bytes; a PAX record before it says 65.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("backup.tar");
+        let mut builder = tar::Builder::new(std::fs::File::create(&path).unwrap());
+        builder.append_pax_extensions([("size", "65".as_bytes())]).unwrap();
+        let mut header = tar::Header::new_gnu();
+        header.set_path("big.json").unwrap();
+        header.set_size(0);
+        header.set_mode(0o644);
+        header.set_cksum();
+        builder.append(&header, &[b'b'; 65][..]).unwrap();
+        builder.finish().unwrap();
+        drop(builder);
+
+        match read_members_within(&path, 64) {
+            Err(BackupError::Integrity(reason)) => assert!(reason.contains("65 bytes"), "{reason}"),
+            Ok(members) => panic!("read {} bytes past a limit of 64", members["big.json"].len()),
+            Err(other) => panic!("not an integrity failure: {other}"),
+        }
+    }
+
+    #[test]
+    fn a_backup_with_a_member_over_the_limit_leaves_the_file_at_its_path_as_it_was() {
+        let dir = tempfile::tempdir().unwrap();
+        let output = dir.path().join("backup.tar");
+        std::fs::write(&output, b"the backup of last night").unwrap();
+
+        let members: [(&str, &[u8]); 2] = [("manifest.json", b"{}"), ("identity.db", &[0u8; 65])];
+        let err = write_archive(&output, &members, 64).expect_err("65 bytes is over a limit of 64");
+        assert!(err.to_string().contains("identity.db"), "{err}");
+        assert_eq!(std::fs::read(&output).unwrap(), b"the backup of last night", "the old backup is whole");
+
+        let fresh = dir.path().join("fresh.tar");
+        assert!(write_archive(&fresh, &members, 64).is_err());
+        assert!(!fresh.exists(), "no half-written file is left");
+        write_archive(&fresh, &members, 65).expect("within the limit");
+        assert_eq!(read_members_within(&fresh, 65).unwrap()["identity.db"].len(), 65);
+    }
+
+    /// The in-memory store, with one scope whose commits fail.
+    struct FailsScope {
+        inner: crate::storage::Memory,
+        fails: ScopeId,
+    }
+
+    impl speclink_store_port::StorePort for FailsScope {
+        fn list(
+            &self,
+            scope: &ScopeId,
+            prefix: &speclink_store_port::KeyPrefix,
+        ) -> Result<speclink_store_port::Listing, speclink_store_port::PortError> {
+            self.inner.list(scope, prefix)
+        }
+        fn read(
+            &self,
+            scope: &ScopeId,
+            keys: &[speclink_store_port::DocKey],
+        ) -> Result<Vec<Option<speclink_store_port::Document>>, speclink_store_port::PortError> {
+            self.inner.read(scope, keys)
+        }
+        fn commit(
+            &self,
+            scope: &ScopeId,
+            commit: &speclink_store_port::Commit,
+        ) -> Result<speclink_store_port::Version, speclink_store_port::PortError> {
+            if *scope == self.fails {
+                return Err(speclink_store_port::PortError::Backend { message: "disk full".into() });
+            }
+            self.inner.commit(scope, commit)
+        }
+    }
+
+    impl ServerStore for FailsScope {
+        fn kind(&self) -> &'static str {
+            self.inner.kind()
+        }
+        fn events_after(
+            &self,
+            scope: &ScopeId,
+            after: u64,
+            limit: usize,
+        ) -> Result<Vec<(u64, speclink_store_port::RecordedEvent)>, speclink_store_port::PortError> {
+            self.inner.events_after(scope, after, limit)
+        }
+        fn event_floor(&self, scope: &ScopeId) -> Result<u64, speclink_store_port::PortError> {
+            self.inner.event_floor(scope)
+        }
+        fn trim_events(&self, scope: &ScopeId, through: u64) -> Result<(), speclink_store_port::PortError> {
+            self.inner.trim_events(scope, through)
+        }
+        fn probe(&self) -> Result<(), speclink_store_port::PortError> {
+            self.inner.probe()
+        }
+    }
+
+    fn entry(repo: &str) -> ScopeEntry {
+        ScopeEntry { project: "demo".into(), repo: repo.into(), member: format!("bundles/{repo}.json"), doc_count: 1 }
+    }
+
+    fn one_document() -> ScopeBundle {
+        let content = "schema: spec-driven\n";
+        ScopeBundle {
+            format_version: transfer::FORMAT_VERSION,
+            scope_version: None,
+            documents: vec![BundleDocument {
+                key: "config.yaml".into(),
+                content: content.into(),
+                digest: digest_bytes(content.as_bytes()),
+            }],
+        }
+    }
+
+    /// design「還原在逐範圍匯入的中途失敗」: the failure names the scopes that
+    /// were restored and the one that failed, and says the target is not to
+    /// be used.
+    #[test]
+    fn an_import_that_fails_between_two_scopes_reports_what_was_done_and_what_failed() {
+        let (backend, web, api) = (entry("backend"), entry("web"), entry("api"));
+        let store = FailsScope { inner: crate::storage::Memory::new(), fails: web.scope_id().unwrap() };
+        let bundles = [&backend, &web, &api]
+            .into_iter()
+            .map(|entry| (entry, entry.scope_id().unwrap(), one_document()))
+            .collect();
+        let actor = Actor::new("t", "t").unwrap();
+
+        let err = import_all(&store, bundles, &actor).expect_err("the second scope fails");
+
+        match &err {
+            BackupError::Incomplete { done, failed, reason } => {
+                assert_eq!(done, &["demo/backend"]);
+                assert_eq!(failed, "demo/web");
+                assert!(reason.contains("disk full"), "{reason}");
+            }
+            other => panic!("not an incomplete restore: {other}"),
+        }
+        let shown = err.to_string();
+        assert!(shown.contains("scopes restored before it: demo/backend"), "{shown}");
+        assert!(shown.contains("do not put it into service"), "{shown}");
+        // The first scope was written, the one after the failure was not.
+        let everything = speclink_store_port::KeyPrefix::new("").unwrap();
+        let held = |entry: &ScopeEntry| {
+            speclink_store_port::StorePort::list(&store, &entry.scope_id().unwrap(), &everything).unwrap().entries.len()
+        };
+        assert_eq!((held(&backend), held(&web), held(&api)), (1, 0, 0));
+    }
+
+    #[test]
+    fn the_limit_holds_for_what_the_backup_writes_too() {
+        assert!(within_limit("identity.db", MAX_MEMBER_BYTES, MAX_MEMBER_BYTES).is_ok());
+        let reason = within_limit("identity.db", MAX_MEMBER_BYTES + 1, MAX_MEMBER_BYTES).unwrap_err();
+        assert!(reason.contains("identity.db"), "{reason}");
+    }
 }

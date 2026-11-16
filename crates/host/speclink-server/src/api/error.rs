@@ -3,15 +3,14 @@
 //!
 //! The envelope is the host kit's [`HttpError`]: the door and the server's
 //! own routes answer in one shape, built in one place. [`ApiError`] only
-//! makes it an axum response, and maps the two failure vocabularies that are
-//! the server's alone: the TeamStore's six classes (the import and the event
-//! stream still use the TeamStore) and the identity store's failures.
+//! makes it an axum response, and maps the failures of the event stream's
+//! store reads and of the identity store.
 
 use crate::identity::IdentityError;
 use axum::body::Body;
 use axum::response::{IntoResponse, Response};
-use speclink_host::http::{HttpError, HttpResponse, STORE_UNAVAILABLE};
-use speclink_store::StoreError;
+use speclink_host::http::{HttpError, HttpResponse};
+use speclink_store_port::PortError;
 
 /// An [`HttpError`] as the error of an axum handler.
 #[derive(Debug, Clone)]
@@ -38,30 +37,11 @@ pub(crate) fn into_axum(response: HttpResponse) -> Response {
     builder.body(Body::from(response.body)).expect("the door's status and headers are valid")
 }
 
-/// The store's six failure classes → wire reason + status. A `revision_conflict`
-/// carries its expected/actual detail in the message (the envelope has no detail
-/// fields); a store-layer permission denial is 403, distinct from the 401 the
-/// auth layer returns.
-impl From<StoreError> for ApiError {
-    fn from(e: StoreError) -> ApiError {
-        match e {
-            StoreError::NotFound => HttpError::not_found("the addressed scope or document does not exist"),
-            StoreError::PermissionDenied => {
-                HttpError::forbidden("not allowed to perform this operation in this scope")
-            }
-            StoreError::RevisionConflict {
-                doc,
-                expected,
-                actual,
-            } => HttpError::revision_conflict(format!(
-                "{:?}: expected {:?}, actual {:?}",
-                doc.doc, expected, actual
-            )),
-            StoreError::Unavailable => HttpError::unavailable(STORE_UNAVAILABLE),
-            StoreError::Corrupt { reason } => HttpError::internal(format!("corrupt: {reason}")),
-            StoreError::Backend { source } => HttpError::internal(format!("backend: {source}")),
-        }
-        .into()
+/// A failure of the store, as the host kit's door answers it: a temporary
+/// failure is 503, any other is 500, and neither carries the store's text.
+impl From<PortError> for ApiError {
+    fn from(e: PortError) -> ApiError {
+        HttpError::from(e).into()
     }
 }
 
@@ -81,50 +61,5 @@ impl From<IdentityError> for ApiError {
             }
         }
         .into()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use speclink_protocol::error::ErrorReason;
-    use speclink_store::{DocRef, DocumentId, ExpectedRevision, ProjectId, RepoId, Revision};
-
-    #[test]
-    fn store_six_classes_map_to_reason_and_status() {
-        let doc = DocRef {
-            project: ProjectId::new("demo"),
-            repo: RepoId::new("backend"),
-            doc: DocumentId::WorkflowConfig,
-        };
-        let cases = [
-            (StoreError::NotFound, 404, ErrorReason::NotFound),
-            (StoreError::PermissionDenied, 403, ErrorReason::PermissionDenied),
-            (
-                StoreError::RevisionConflict {
-                    doc: doc.clone(),
-                    expected: ExpectedRevision::At(Revision(2)),
-                    actual: Some(Revision(5)),
-                },
-                409,
-                ErrorReason::RevisionConflict,
-            ),
-            (StoreError::Unavailable, 503, ErrorReason::Unavailable),
-            (StoreError::Corrupt { reason: "bad".into() }, 500, ErrorReason::Internal),
-            (StoreError::Backend { source: "io".into() }, 500, ErrorReason::Internal),
-        ];
-        for (err, status, reason) in cases {
-            let is_conflict = matches!(err, StoreError::RevisionConflict { .. });
-            let api = ApiError::from(err).0;
-            assert_eq!(api.status, status, "status");
-            assert_eq!(api.reason, reason, "reason");
-            if is_conflict {
-                assert!(
-                    api.message.contains("At(Revision(2))") && api.message.contains("Revision(5)"),
-                    "revision_conflict carries expected/actual: {}",
-                    api.message
-                );
-            }
-        }
     }
 }

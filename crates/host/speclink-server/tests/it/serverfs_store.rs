@@ -14,7 +14,7 @@ use speclink_remote::client::Client;
 use speclink_server::build_store;
 use speclink_server::config::StoreConfig;
 use speclink_server::state::SharedStore;
-use speclink_store::{OutboxCursor, ProjectId, RepoId, Scope};
+use speclink_store_port::ScopeId;
 use std::process::{Command, Stdio};
 
 const PROPOSAL: &str = "## Why\n\nserverfs drives the same flow.\n";
@@ -23,8 +23,8 @@ const TASKS: &str = "## 1. Work\n\n- [ ] 1.1 First\n- [ ] 1.2 Second\n";
 /// Names the data directory for the helper process of the restart test.
 const DIR_ENV: &str = "SPECLINK_SERVERFS_E2E_DIR";
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+fn scope() -> ScopeId {
+    ScopeId::new("demo/backend").expect("a scope id")
 }
 
 fn client(base: &str, token: &str) -> Client {
@@ -125,10 +125,10 @@ fn drive(store: SharedStore) -> Outcome {
             .collect(),
         task_already_done: done.already_done,
         events: store
-            .read_outbox(&scope(), OutboxCursor(0))
-            .expect("read outbox")
+            .events_after(&scope(), 0, usize::MAX)
+            .expect("read the events")
             .into_iter()
-            .map(|entry| entry.record.name)
+            .map(|(_, event)| event.name)
             .collect(),
     }
 }
@@ -220,10 +220,10 @@ fn a_serverfs_store_serves_the_same_data_after_a_server_restart() {
         ["demo"]
     );
     let events: Vec<String> = store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
+        .events_after(&scope(), 0, usize::MAX)
+        .expect("read the events")
         .into_iter()
-        .map(|entry| entry.record.name)
+        .map(|(_, event)| event.name)
         .collect();
     assert_eq!(
         serde_json::to_value(&events).unwrap(),
@@ -267,7 +267,7 @@ fn a_second_server_on_the_same_data_directory_is_refused() {
 
     let shown = open_error(&config);
     assert!(
-        shown.contains("serverfs store") && shown.contains("unavailable"),
+        shown.contains("serverfs store") && shown.contains("another store object holds the directory"),
         "the reason names the store and why it could not open: {shown}"
     );
 }

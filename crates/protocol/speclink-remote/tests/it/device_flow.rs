@@ -28,7 +28,7 @@ struct TestServer {
 }
 
 /// Start a real speclink-server on a loopback port: memory identity seeded
-/// with one member of `demo`, a sqlite team store in a tempdir. The server
+/// with one member of `demo`, a sqlite store in a tempdir. The server
 /// thread lives for the rest of the test process.
 fn server() -> TestServer {
     let dir = tempfile::tempdir().expect("tempdir");

@@ -14,7 +14,6 @@ use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::EventSettings;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -90,7 +89,7 @@ fn suspension_is_equivalent_across_api_web_and_cli() {
     let (m3_pat, _, _m3_id) = seed_user(&identity, "m3@example.com", false);
 
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(ServerConfig {
             store: StoreConfig::Memory,

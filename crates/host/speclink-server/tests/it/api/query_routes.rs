@@ -7,34 +7,24 @@ use crate::common;
 
 use speclink_remote::client::Client;
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
 use std::sync::Arc;
 
 /// A server seeded with one change (`demo`) and one canonical spec.
 fn seeded_base() -> (String, String, String) {
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
-        "## Why\n\nBecause it is needed.\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/proposal.md", "## Why\n\nBecause it is needed.\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n- [ ] 1.2 Second\n"),
+            ("specs/user-auth/spec.md", "# user-auth\n"),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n- [ ] 1.2 Second\n",
-    );
-    uow.create(DocumentId::CanonicalSpec { capability: "user-auth".into() }, "# user-auth\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
 
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -115,22 +105,20 @@ fn config_and_whoami_return_typed_dtos() {
 
 #[test]
 fn list_carries_started_at_only_for_started_changes() {
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: "started".into() },
-        "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-30\nstarted_by: Momo <m@example.com>\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "changes/started/.meta.yaml",
+                "schema: spec-driven\ncreated: 2026-07-01\nstarted_at: 2026-07-30\nstarted_by: Momo <m@example.com>\n",
+            ),
+            ("changes/unstarted/.meta.yaml", "schema: spec-driven\n"),
+        ],
     );
-    uow.create(DocumentId::ChangeMeta { change: "unstarted".into() }, "schema: spec-driven\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -173,34 +161,23 @@ fn list_carries_started_at_only_for_started_changes() {
 fn change_status_carries_the_show_composition_meta_fields() {
     // design D4 實作期修正：GET /changes/{name} 增列 show 組合需要的選填
     // meta 欄位（created 成對規則、fromDiscussions、deltaCapabilities）。
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: "demo".into() },
-        "schema: spec-driven\ncreated: 2026-07-29\nfrom_discussion: auth-scope\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "changes/demo/.meta.yaml",
+                "schema: spec-driven\ncreated: 2026-07-29\nfrom_discussion: auth-scope\n",
+            ),
+            ("changes/demo/proposal.md", "## Why\n\nseed\n"),
+            ("changes/demo/specs/auth/spec.md", "## ADDED Requirements\n"),
+            // created 缺席的 change：成對規則使 created 不出現。
+            ("changes/bare/.meta.yaml", "schema: spec-driven\n"),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
-        "## Why\n\nseed\n",
-    );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: "demo".into(),
-            artifact: "specs/auth/spec.md".into(),
-        },
-        "## ADDED Requirements\n",
-    );
-    // created 缺席的 change：成對規則使 created 不出現。
-    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -238,31 +215,23 @@ fn change_status_carries_the_show_composition_meta_fields() {
 fn change_status_carries_the_attribution_meta_fields() {
     // remote-read-parity「單 change 讀取回應攜帶 show 組合欄位」擴充：meta 的
     // created_by/created_with/started_at/started_by 上 wire，四欄皆缺即無鍵。
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    // Example「欄位組裝」第 2 列：show 組合三欄「再加」歸屬四欄——同一
-    // change 七鍵同時上 wire，故 meta 帶鏈、附一份 delta spec。
-    uow.create(
-        DocumentId::ChangeMeta { change: "attributed".into() },
-        "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\ncreated_with: claude-code\nstarted_at: 2026-08-25T00:00:00Z\nstarted_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            // Example「欄位組裝」第 2 列：show 組合三欄「再加」歸屬四欄——同一
+            // change 七鍵同時上 wire，故 meta 帶鏈、附一份 delta spec。
+            (
+                "changes/attributed/.meta.yaml",
+                "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\ncreated_with: claude-code\nstarted_at: 2026-08-25T00:00:00Z\nstarted_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+            ),
+            ("changes/attributed/specs/auth/spec.md", "## ADDED Requirements\n"),
+            ("changes/bare/.meta.yaml", "schema: spec-driven\n"),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: "attributed".into(),
-            artifact: "specs/auth/spec.md".into(),
-        },
-        "## ADDED Requirements\n",
-    );
-    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -305,27 +274,22 @@ fn change_status_carries_the_attribution_meta_fields() {
 fn list_carries_the_creator_and_discussion_fields() {
     // remote-read-parity「變更清單回應攜帶建立者與來源討論欄位」：沿 startedAt
     // 的逐筆 meta 組裝路徑補 createdBy/created/fromDiscussions，缺席即無鍵。
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeMeta { change: "attributed".into() },
-        "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "changes/attributed/.meta.yaml",
+                "schema: spec-driven\ncreated: 2026-07-29\ncreated_by: Demo <d@e.com>\nfrom_discussion: auth-scope\n",
+            ),
+            ("changes/bare/.meta.yaml", "schema: spec-driven\n"),
+            // meta 解析失敗的 change：metaError 容錯路徑三欄缺席、清單不失敗。
+            ("changes/corrupt/.meta.yaml", "schema: [unterminated\n"),
+        ],
     );
-    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
-    // meta 解析失敗的 change：metaError 容錯路徑三欄缺席、清單不失敗。
-    uow.create(
-        DocumentId::ChangeMeta { change: "corrupt".into() },
-        "schema: [unterminated\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -369,26 +333,18 @@ fn list_carries_the_creator_and_discussion_fields() {
 fn list_carries_delta_capabilities() {
     // discuss-scout-in-flight-deltas「變更清單回應攜帶 delta capability 欄位」：清單項與
     // GET /changes/{name} 同源帶 deltaCapabilities，沒有 delta 規格即無鍵。
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "with-delta".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact {
-            change: "with-delta".into(),
-            artifact: "specs/auth/spec.md".into(),
-        },
-        "## ADDED Requirements\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/with-delta/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/with-delta/specs/auth/spec.md", "## ADDED Requirements\n"),
+            ("changes/bare/.meta.yaml", "schema: spec-driven\n"),
+        ],
     );
-    uow.create(DocumentId::ChangeMeta { change: "bare".into() }, "schema: spec-driven\n");
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -428,24 +384,22 @@ fn a_missing_change_is_the_404_not_found_triple() {
 #[test]
 fn the_evidence_route_reads_the_record_and_reports_a_broken_one() {
     // 直接打 evidence 路由：正常的記錄、不存在的變更、壞的內容。
-    let store = MemoryStore::new();
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeEvidence { change: "demo".into() },
-        r#"{"version":2,"change":"demo","touched":[],"entries":[{"taskId":"tsk_01","taskDesc":"1.1 First","actor":"Alice","touchedFiles":["src/app.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#,
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            (
+                "changes/demo/.evidence.json",
+                r#"{"version":2,"change":"demo","touched":[],"entries":[{"taskId":"tsk_01","taskDesc":"1.1 First","actor":"Alice","touchedFiles":["src/app.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#,
+            ),
+            ("changes/broken/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/broken/.evidence.json", "not json"),
+        ],
     );
-    uow.create(DocumentId::ChangeMeta { change: "broken".into() }, "schema: spec-driven\n");
-    uow.create(DocumentId::ChangeEvidence { change: "broken".into() }, "not json");
-    store.commit(uow, Vec::new()).expect("seed commit");
     let state = AppState::new(
-        Arc::new(store),
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),

@@ -9,17 +9,15 @@ use crate::common;
 
 use speclink_protocol::context::{ContextSnapshot, ContextSnapshotRequest};
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
-use speclink_server::state::{AppState, SharedStore};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    content_digest, CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Revision, Scope,
-    TeamStore,
-};
+use sha2::{Digest, Sha256};
+use speclink_server::state::AppState;
 use std::collections::BTreeSet;
 use std::sync::Arc;
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
+/// The contract's content digest: SHA-256 of the content, lowercase hex,
+/// with the algorithm in front.
+fn content_digest(content: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(content.as_bytes()))
 }
 
 const PROPOSAL: &str = "## Why\n\nDemo change.\n";
@@ -35,37 +33,30 @@ const LANGUAGE: &str = "# Shared Vocabulary\n\n- Change: a proposed edit.\n";
 /// Seed a scope with two changes (`demo` with a delta spec, `other`), three
 /// canonical specs, the workflow config, and the LANGUAGE document — the full
 /// read surface a change-narrowed snapshot draws from.
-fn seed_full(store: &MemoryStore, with_config: bool) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, CONFIG);
-    uow.create(DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() }, PROPOSAL);
-    uow.create(DocumentId::ChangeArtifact { change: "demo".into(), artifact: "design.md".into() }, DESIGN);
-    uow.create(DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() }, TASKS);
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/payment/spec.md".into() },
-        DELTA,
-    );
-    uow.create(DocumentId::ChangeMeta { change: "other".into() }, CONFIG);
-    uow.create(DocumentId::ChangeArtifact { change: "other".into(), artifact: "proposal.md".into() }, "## Why\n\nOther.\n");
-    uow.create(DocumentId::CanonicalSpec { capability: "payment".into() }, SPEC_PAYMENT);
-    uow.create(DocumentId::CanonicalSpec { capability: "auth".into() }, SPEC_AUTH);
-    uow.create(DocumentId::CanonicalSpec { capability: "billing".into() }, SPEC_BILLING);
-    uow.create(DocumentId::Language, LANGUAGE);
+fn seed_full(store: &common::TestStore, with_config: bool) {
+    let mut docs = vec![
+        ("changes/demo/.meta.yaml", CONFIG),
+        ("changes/demo/proposal.md", PROPOSAL),
+        ("changes/demo/design.md", DESIGN),
+        ("changes/demo/tasks.md", TASKS),
+        ("changes/demo/specs/payment/spec.md", DELTA),
+        ("changes/other/.meta.yaml", CONFIG),
+        ("changes/other/proposal.md", "## Why\n\nOther.\n"),
+        ("specs/payment/spec.md", SPEC_PAYMENT),
+        ("specs/auth/spec.md", SPEC_AUTH),
+        ("specs/billing/spec.md", SPEC_BILLING),
+        ("LANGUAGE.md", LANGUAGE),
+    ];
     if with_config {
-        uow.create(DocumentId::WorkflowConfig, CONFIG);
+        docs.push(("config.yaml", CONFIG));
     }
-    store.commit(uow, Vec::new()).expect("seed commit");
+    store.put("demo", "backend", &docs);
 }
 
 /// Build application state over `store` with the demo registry seeded.
-fn state_over(store: Arc<MemoryStore>) -> AppState {
+fn state_over(store: &common::TestStore) -> AppState {
     let state = AppState::new(
-        store as SharedStore,
+        store.shared(),
         common::empty_identity(),
         Arc::new(common::demo_config()),
         common::detached_events(),
@@ -75,23 +66,8 @@ fn state_over(store: Arc<MemoryStore>) -> AppState {
 }
 
 /// A commit that edits `demo`'s tasks.md, advancing the scope revision.
-fn commit_edit(store: &MemoryStore) {
-    let doc = DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() };
-    let rev = store
-        .snapshot(&scope())
-        .unwrap()
-        .read(&doc)
-        .unwrap()
-        .map(|d| d.revision)
-        .unwrap_or(Revision(0));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "edit".into(), actor: "edit".into() },
-        )
-        .expect("begin uow");
-    uow.update(doc, "- [x] 1.1 First\n- [ ] 1.2 Second\n", rev);
-    store.commit(uow, Vec::new()).expect("edit commit");
+fn commit_edit(store: &common::TestStore) {
+    store.put("demo", "backend", &[("changes/demo/tasks.md", "- [x] 1.1 First\n- [ ] 1.2 Second\n")]);
 }
 
 fn context_url(base: &str) -> String {
@@ -140,10 +116,10 @@ fn paths(snap: &ContextSnapshot) -> BTreeSet<String> {
     snap.documents.iter().map(|d| d.path.clone()).collect()
 }
 
-fn started(with_config: bool) -> (Arc<MemoryStore>, String, String) {
-    let store = Arc::new(MemoryStore::new());
+fn started(with_config: bool) -> (common::TestStore, String, String) {
+    let store = common::TestStore::memory();
     seed_full(&store, with_config);
-    let state = state_over(store.clone());
+    let state = state_over(&store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     (store, base, pat)
@@ -317,9 +293,9 @@ fn flow_is_passed_through_without_changing_the_document_set() {
 
 #[test]
 fn unauthenticated_is_401_and_non_member_is_403() {
-    let store = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory();
     seed_full(&store, true);
-    let state = state_over(store);
+    let state = state_over(&store);
     common::seed_multi_project(&*state.identity);
     let (_pat_demo, _) = common::seed_pat(&state.identity, &["demo"]);
     let (pat_other, _) =
@@ -338,18 +314,10 @@ fn unauthenticated_is_401_and_non_member_is_403() {
 
 #[test]
 fn an_unreachable_store_is_503_unavailable() {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::WorkflowConfig, "x");
-    let _ = store.commit(uow, Vec::new());
+    let store = common::TestStore::memory();
+    store.break_down();
 
-    let state = state_over(Arc::new(store));
+    let state = state_over(&store);
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -369,9 +337,9 @@ fn an_error_reply_is_not_sent_before_the_request_body_completes() {
     // body）。
     use std::io::{Read, Write};
 
-    let store = Arc::new(MemoryStore::new());
+    let store = common::TestStore::memory();
     seed_full(&store, true);
-    let state = state_over(store);
+    let state = state_over(&store);
     common::seed_multi_project(&*state.identity);
     let (pat_other, _) =
         common::seed_named_pat(&state.identity, "other@example.com", "Other <o@example.com>", &["multi"]);

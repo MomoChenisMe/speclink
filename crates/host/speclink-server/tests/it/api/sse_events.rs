@@ -7,42 +7,29 @@ use crate::common;
 
 use speclink_remote::client::Client;
 use speclink_server::events::EventSettings;
-use speclink_server::state::SharedStore;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
-use speclink_store_sqlite::SqliteTeamStore;
 use std::io::{BufRead, BufReader};
 use std::sync::mpsc;
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 const EVENTS_PATH: &str = "/api/speclink/v1/projects/demo/events";
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 /// Seed change `demo` (schema + four tasks) into `store` so `task done` commits
 /// land task-completed events in the outbox.
-fn seed_change(store: &dyn TeamStore) {
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n",
+fn seed_change(store: &common::TestStore) {
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n- [ ] 1.4 Fourth\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
 }
 
 /// A memory store seeded with change `demo`.
-fn seeded_store() -> Arc<MemoryStore> {
-    let store = Arc::new(MemoryStore::new());
-    seed_change(store.as_ref());
+fn seeded_store() -> common::TestStore {
+    let store = common::TestStore::memory();
+    seed_change(&store);
     store
 }
 
@@ -180,7 +167,7 @@ fn parts(frame: Frame) -> (Option<String>, Option<String>, String) {
 #[test]
 fn events_runs_the_same_auth_precondition_as_every_route() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (member_pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let (stranger_pat, _) =
         common::seed_named_pat(&state.identity, "stranger@example.com", "Stranger", &["other"]);
@@ -194,7 +181,7 @@ fn events_runs_the_same_auth_precondition_as_every_route() {
 #[test]
 fn a_write_pushes_an_invalidation_hint_carrying_no_document_content() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -221,7 +208,7 @@ fn station_and_landing_writes_invalidate_their_change_and_a_board_write_stays_un
     // server-event-stream「審查與驗證事件歸到變更」：蓋章、新增一輪、放棄與落地回報，
     // 訂閱者收到的都是 scope=change、resourceId=該變更；看板順序的寫入維持 unknown。
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let c = client(&base, &pat);
@@ -254,7 +241,7 @@ fn station_and_landing_writes_invalidate_their_change_and_a_board_write_stays_un
 #[test]
 fn every_subscriber_receives_the_write_exactly_once() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -273,7 +260,7 @@ fn every_subscriber_receives_the_write_exactly_once() {
 #[test]
 fn a_reconnect_with_last_event_id_backfills_the_gap_without_loss_or_repeat() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let writer = client(&base, &pat);
@@ -307,7 +294,7 @@ fn a_reconnect_with_last_event_id_backfills_the_gap_without_loss_or_repeat() {
 #[test]
 fn an_illegal_last_event_id_is_treated_as_absent() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let writer = client(&base, &pat);
@@ -330,7 +317,7 @@ fn an_illegal_last_event_id_is_treated_as_absent() {
 fn a_reconnect_below_the_cleaned_floor_gets_a_reset_first() {
     let store = seeded_store();
     let settings = EventSettings { retention: 2, buffer: 64, heartbeat: Duration::from_millis(100) };
-    let state = common::state_with_event_settings(store, settings);
+    let state = common::state_with_event_settings(store.shared(), settings);
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let writer = client(&base, &pat);
@@ -367,10 +354,135 @@ fn a_reconnect_below_the_cleaned_floor_gets_a_reset_first() {
     writer.task_done("demo", "4", &[], None).expect("task 4 idempotent flip is fine as a new write");
 }
 
+/// spec server-event-stream「Last-Event-ID 比 server 的序號新」: the largest
+/// sequence is 3, the client reconnects with 500 (its id is from before a
+/// restore), then one write happens.
+#[test]
+fn a_last_event_id_newer_than_the_server_gets_a_reset_and_then_the_next_event() {
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store.shared(), fast_events());
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let writer = client(&base, &pat);
+    for task in ["1", "2", "3"] {
+        writer.task_done("demo", task, &[], None).expect("task done");
+    }
+    assert_eq!(store.events("demo", "backend").last().map(|event| event.seq), Some(3));
+
+    let sub = Sub::open(&base, &pat, Some("500")).expect("resubscribe");
+    let (_, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("a frame"));
+    assert_eq!(event.as_deref(), Some("reset"), "an id newer than the server's gets a reset first");
+
+    std::thread::sleep(Duration::from_millis(80));
+    writer.task_done("demo", "4", &[], None).expect("task 4");
+    let (id, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("the next write arrives"));
+    assert_eq!(event.as_deref(), Some("invalidate"));
+    assert_eq!(id.as_deref(), Some("4"), "the stream continues after the server's largest sequence");
+}
+
+/// The largest id a client can send is above every sequence: a reset, and
+/// no arithmetic on it goes wrong.
+#[test]
+fn the_largest_last_event_id_gets_a_reset() {
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store.shared(), fast_events());
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let writer = client(&base, &pat);
+    writer.task_done("demo", "1", &[], None).expect("task 1");
+
+    let sub = Sub::open(&base, &pat, Some(&u64::MAX.to_string())).expect("resubscribe");
+    let (_, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("a frame"));
+    assert_eq!(event.as_deref(), Some("reset"));
+
+    std::thread::sleep(Duration::from_millis(80));
+    writer.task_done("demo", "2", &[], None).expect("task 2");
+    let (id, _, _) = parts(sub.next_event(Duration::from_secs(3)).expect("the next write arrives"));
+    assert_eq!(id.as_deref(), Some("2"));
+}
+
+/// The events are read in batches of the buffer setting. A gap of more than
+/// one batch is backfilled whole: no loss, no repeat, in order.
+#[test]
+fn a_gap_of_more_than_one_batch_is_backfilled_whole() {
+    let store = common::TestStore::memory();
+    let tasks: String = (1..=10).map(|n| format!("- [ ] 1.{n} Task {n}\n")).collect();
+    store.put(
+        "demo",
+        "backend",
+        &[("changes/demo/.meta.yaml", "schema: spec-driven\n"), ("changes/demo/tasks.md", &tasks)],
+    );
+    // A batch is 4 events.
+    let settings = EventSettings { retention: 1024, buffer: 4, heartbeat: Duration::from_millis(100) };
+    let state = common::state_with_event_settings(store.shared(), settings);
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let writer = client(&base, &pat);
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    writer.task_done("demo", "1", &[], None).expect("task 1");
+    let first_id = parts(sub.next_event(Duration::from_secs(3)).expect("first event")).0.expect("an id");
+    drop(sub);
+
+    // Nine writes while disconnected: more than two batches.
+    for task in 2..=10 {
+        writer.task_done("demo", &task.to_string(), &[], None).expect("task done");
+    }
+
+    let resumed = Sub::open(&base, &pat, Some(&first_id)).expect("resubscribe");
+    let mut ids = Vec::new();
+    for _ in 0..9 {
+        let (id, _, _) = parts(resumed.next_event(Duration::from_secs(3)).expect("a backfilled event"));
+        ids.push(id.expect("an id").parse::<u64>().expect("a sequence"));
+    }
+    assert!(resumed.next_event(Duration::from_millis(400)).is_none(), "no extra replay");
+    let first: u64 = first_id.parse().unwrap();
+    assert_eq!(ids, (first + 1..=first + 9).collect::<Vec<_>>(), "the whole gap, in order, once");
+}
+
+/// spec server-event-stream「過期 cursor 得到 reset」with the numbers of the
+/// task: 2 events are kept, 5 happened, the client reconnects from 1.
+#[test]
+fn five_events_with_two_kept_reset_a_reconnect_from_the_first() {
+    let store = common::TestStore::memory();
+    let tasks: String = (1..=5).map(|n| format!("- [ ] 1.{n} Task {n}\n")).collect();
+    store.put(
+        "demo",
+        "backend",
+        &[("changes/demo/.meta.yaml", "schema: spec-driven\n"), ("changes/demo/tasks.md", &tasks)],
+    );
+    let settings = EventSettings { retention: 2, buffer: 64, heartbeat: Duration::from_millis(100) };
+    let state = common::state_with_event_settings(store.shared(), settings);
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let writer = client(&base, &pat);
+
+    // A subscriber makes the server keep only the newest two.
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    for task in 1..=5 {
+        writer.task_done("demo", &task.to_string(), &[], None).expect("task done");
+    }
+    for _ in 0..5 {
+        sub.next_event(Duration::from_secs(3)).expect("live event");
+    }
+    // The floor rises after the events are sent: wait for it.
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while store.event_floor("demo", "backend") < 3 {
+        assert!(Instant::now() < deadline, "the server removes the events before the newest two");
+        std::thread::sleep(Duration::from_millis(20));
+    }
+
+    let resumed = Sub::open(&base, &pat, Some("1")).expect("resubscribe");
+    let (_, event, _) = parts(resumed.next_event(Duration::from_secs(3)).expect("a frame"));
+    assert_eq!(event.as_deref(), Some("reset"), "a removed sequence gets a reset first");
+}
+
 #[test]
 fn an_idle_stream_sends_heartbeat_comments() {
     let store = seeded_store();
-    let state = common::state_with_event_settings(store, fast_events());
+    let state = common::state_with_event_settings(store.shared(), fast_events());
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -391,12 +503,11 @@ fn an_idle_stream_sends_heartbeat_comments() {
 fn dropped_events_converge_via_reset_and_full_reread_on_a_sqlite_server() {
     // A real SQLite-backed server: a fresh file initializes its own schema.
     let dir = tempfile::tempdir().expect("tempdir");
-    let store: SharedStore =
-        Arc::new(SqliteTeamStore::open(dir.path().join("store.db")).expect("open sqlite store"));
-    seed_change(store.as_ref());
+    let store = common::TestStore::sqlite(dir.path().join("store.db"));
+    seed_change(&store);
     // Retention 2: after four writes the earliest sequences are acked-cleaned.
     let settings = EventSettings { retention: 2, buffer: 64, heartbeat: Duration::from_millis(100) };
-    let state = common::state_with_event_settings(store, settings);
+    let state = common::state_with_event_settings(store.shared(), settings);
     let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let writer = client(&base, &pat);

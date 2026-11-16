@@ -179,8 +179,7 @@ fn identity_of(user: &User) -> Result<Identity, ApiError> {
     Ok(identity.shown_as(user.display.clone()).map_err(invalid)?)
 }
 
-/// Hand the request to the door on the blocking pool, with this thread's
-/// store reads pinned to one load per scope.
+/// Hand the request to the door on the blocking pool.
 async fn through_door(
     state: AppState,
     method: Method,
@@ -200,11 +199,8 @@ async fn through_door(
             .collect(),
         body: body.to_vec(),
     };
-    let (kit, port) = (state.kit.clone(), state.port.clone());
-    let answer = tokio::task::spawn_blocking(move || {
-        let _pin = port.pin_thread();
-        kit.handle(&request, identity.as_ref())
-    })
+    let kit = state.kit.clone();
+    let answer = tokio::task::spawn_blocking(move || kit.handle(&request, identity.as_ref()))
     .await
     .map_err(|e| HttpError::internal(format!("blocking task failed: {e}")))?;
     Ok(match answer {

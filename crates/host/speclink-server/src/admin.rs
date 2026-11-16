@@ -16,7 +16,7 @@ use crate::identity::{
     AuditFilter, DeviceFamily, IdentityError, MembershipRole, NewInvitation, Pat, Project, Repo,
     User,
 };
-use crate::state::{AppState, SharedStore};
+use crate::state::AppState;
 use crate::web;
 use axum::extract::{FromRequestParts, Path, Query, State};
 use axum::http::request::Parts;
@@ -26,10 +26,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
+use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
 use speclink_protocol::API_VERSION;
-use speclink_store::{
-    Capability, OutboxCursor, ProjectId, RepoId, Scope, StoreError, CONTRACT_VERSION,
-};
+use speclink_store_port::PortError;
 
 /// An acknowledgment body for admin API actions whose response the caller ignores.
 #[derive(Serialize)]
@@ -291,8 +290,9 @@ pub fn api_router() -> Router<AppState> {
 
 // --- /admin system status (決策 5) ---
 
-/// One scope's outbox backlog: newest sequence minus the acked cursor. `backlog`
-/// is `None` when the store could not be read (e.g. it is unavailable).
+/// How many events the store keeps for one scope. The names are the wire's:
+/// the number was the outbox backlog of the store of 0.12, and the admin API
+/// keeps the field's name. `backlog` is `None` when the store could not be read (e.g. it is unavailable).
 #[derive(Serialize)]
 pub(crate) struct ScopeBacklog {
     pub(crate) project: String,
@@ -300,39 +300,38 @@ pub(crate) struct ScopeBacklog {
     pub(crate) backlog: Option<u64>,
 }
 
-/// The read-only system aggregation (決策 5): engine/API versions, the store
-/// manifest and live health, the identity schema version, and per-scope outbox
-/// backlog. Every field comes from an existing interface; nothing here is a new
-/// probe. A store failure surfaces as a health error, not a 500.
+/// The read-only system aggregation (決策 5): engine/API versions, the kind of
+/// the store and its live health, the identity schema version, and how many
+/// events the store keeps for each scope. A store failure surfaces as a health
+/// error, not a 500.
 #[derive(Serialize)]
 pub struct SystemInfo {
     pub(crate) engine_version: String,
     pub(crate) api_version: String,
     pub(crate) identity_schema_version: Option<u32>,
     pub(crate) store_driver: String,
-    pub(crate) store_contract_version: u32,
-    pub(crate) store_level: String,
-    pub(crate) store_capabilities: Vec<String>,
     pub(crate) store_healthy: bool,
     pub(crate) store_health_error: Option<String>,
     pub(crate) outbox_backlogs: Vec<ScopeBacklog>,
 }
 
-/// One scope's backlog: newest outbox sequence minus the acked cursor.
-fn scope_backlog(store: &SharedStore, scope: &Scope) -> Result<u64, StoreError> {
-    let acked = store.outbox_acked(scope)?.0;
-    let tail = store.read_outbox(scope, OutboxCursor(acked))?;
-    let newest = tail.last().map(|e| e.seq).unwrap_or(acked);
-    Ok(newest.saturating_sub(acked))
+/// How many events the store keeps for one scope: the newest sequence minus
+/// the floor. The events after the floor are read in batches to find it.
+fn scope_backlog(state: &AppState, scope: &Scope) -> Result<u64, PortError> {
+    let scope = scope_id(scope)?;
+    let floor = state.store.event_floor(&scope)?;
+    let newest = crate::storage::newest_event(&*state.store, &scope, floor, state.events.settings().buffer)?;
+    Ok(newest - floor)
 }
 
-/// Aggregate the system view. The manifest, versions and identity schema are read
+/// Aggregate the system view. The versions and the identity schema are read
 /// even when the store backend is down; a store health failure and unreadable
 /// backlogs are reported as such rather than failing the whole view — the
 /// identity-side management面 stays up (決策 5).
+///
+/// It reads the store: an async route runs it through [`AppState::blocking`].
 fn gather_system(state: &AppState) -> SystemInfo {
-    let manifest = state.store.manifest();
-    let (store_healthy, store_health_error) = match state.store.health() {
+    let (store_healthy, store_health_error) = match state.store.probe() {
         Ok(()) => (true, None),
         Err(e) => (false, Some(e.to_string())),
     };
@@ -346,7 +345,7 @@ fn gather_system(state: &AppState) -> SystemInfo {
             outbox_backlogs.push(ScopeBacklog {
                 project: project.key.clone(),
                 repo: repo.key,
-                backlog: scope_backlog(&state.store, &scope).ok(),
+                backlog: scope_backlog(state, &scope).ok(),
             });
         }
     }
@@ -354,14 +353,7 @@ fn gather_system(state: &AppState) -> SystemInfo {
         engine_version: env!("CARGO_PKG_VERSION").to_string(),
         api_version: API_VERSION.to_string(),
         identity_schema_version: state.identity.schema_version().ok(),
-        store_driver: manifest.driver,
-        store_contract_version: manifest.contract_version,
-        store_level: manifest.level.as_str().to_string(),
-        store_capabilities: manifest
-            .capabilities
-            .iter()
-            .map(|c| c.as_str().to_string())
-            .collect(),
+        store_driver: state.store.kind().to_string(),
         store_healthy,
         store_health_error,
         outbox_backlogs,
@@ -370,7 +362,7 @@ fn gather_system(state: &AppState) -> SystemInfo {
 
 /// `GET /api/speclink/v1/admin/system` — the system aggregation as JSON.
 pub async fn api_system(State(state): State<AppState>, _admin: AdminApi) -> Response {
-    Json(gather_system(&state)).into_response()
+    Json(state.blocking(gather_system).await).into_response()
 }
 
 // --- data operations (决策 5): scope export download ---
@@ -398,7 +390,8 @@ pub async fn web_export_scope(
             .into_response();
     }
     let scope = Scope::new(ProjectId::new(&project), RepoId::new(&repo));
-    let bytes = match crate::backup::export_bundle_json(state.store.as_ref(), &scope) {
+    let exported = state.blocking(move |state| crate::backup::export_bundle_json(state.store.as_ref(), &scope));
+    let bytes = match exported.await {
         Ok(bytes) => bytes,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
@@ -571,7 +564,7 @@ pub async fn web_admin_overview(State(state): State<AppState>, headers: HeaderMa
         .into_iter()
         .filter(|(_, f)| f.revoked_at.is_none())
         .count();
-    let (store_healthy, store_health_error) = match state.store.health() {
+    let (store_healthy, store_health_error) = match state.blocking(|state| state.store.probe()).await {
         Ok(()) => (true, None),
         Err(e) => (false, Some(e.to_string())),
     };
@@ -882,40 +875,25 @@ struct WebSystem {
     api_version: String,
     identity_schema_version: Option<u32>,
     store_driver: String,
-    store_contract_version: u32,
-    store_level: String,
-    store_capabilities: Vec<String>,
     store_healthy: bool,
     store_health_error: Option<String>,
     outbox_backlogs: Vec<WebBacklog>,
     /// From the former data view: every registered scope's export-download path.
     scopes: Vec<WebScope>,
-    /// Whether a migration can be offered at all — the backend must both declare
-    /// the capability and be healthy. `POST /admin/data/migrate` re-checks health
-    /// itself; this only decides whether the console offers the button.
-    migrate_available: bool,
 }
 
 /// `GET /admin/system` — the merged system aggregation (camelCase). Reuses
-/// [`gather_system`] and adds the two groups the data view used to carry.
+/// [`gather_system`] and adds the group the data view used to carry.
 pub async fn web_admin_system(State(state): State<AppState>, headers: HeaderMap) -> Response {
     if let Err(refused) = require_web_admin(&state, &headers) {
         return refused;
     }
-    let info = gather_system(&state);
-    let migrate_available = info.store_healthy
-        && info
-            .store_capabilities
-            .iter()
-            .any(|c| c == Capability::Migration.as_str());
+    let info = state.blocking(gather_system).await;
     web::web_ok(WebSystem {
         engine_version: info.engine_version,
         api_version: info.api_version,
         identity_schema_version: info.identity_schema_version,
         store_driver: info.store_driver,
-        store_contract_version: info.store_contract_version,
-        store_level: info.store_level,
-        store_capabilities: info.store_capabilities,
         store_healthy: info.store_healthy,
         store_health_error: info.store_health_error,
         outbox_backlogs: info
@@ -924,7 +902,6 @@ pub async fn web_admin_system(State(state): State<AppState>, headers: HeaderMap)
             .map(|b| WebBacklog { project: b.project, repo: b.repo, backlog: b.backlog })
             .collect(),
         scopes: exportable_scopes(&state),
-        migrate_available,
     })
 }
 
@@ -1381,33 +1358,6 @@ pub async fn web_admin_revoke_family(
     }
 }
 
-/// `POST /admin/data/migrate` — migrate the store to the current contract version.
-/// An unhealthy backend is not migrated (409) and nothing is recorded.
-pub async fn web_admin_migrate(State(state): State<AppState>, headers: HeaderMap) -> Response {
-    let actor = match web_admin_mutation(&state, &headers) {
-        Ok(actor) => actor,
-        Err(refused) => return refused,
-    };
-    if let Err(e) = state.store.health() {
-        return web::web_err(
-            StatusCode::CONFLICT,
-            "store_unhealthy",
-            format!("Store health 檢查未通過，遷移未執行：{e}"),
-        );
-    }
-    match state.store.migrate(CONTRACT_VERSION) {
-        Ok(()) => {
-            let _ = state.identity.record_audit(
-                &actor,
-                AuditAction::StoreMigrated,
-                &format!("contract version {CONTRACT_VERSION}"),
-            );
-            web::web_ok(WebAck { ok: true })
-        }
-        Err(e) => web::web_err(StatusCode::CONFLICT, "migrate_failed", e.to_string()),
-    }
-}
-
 /// The browser admin API sub-router, merged into the `/api/speclink/v1/web` nest.
 /// Every handler runs the session + admin gate; mutations additionally verify
 /// same-origin before the permission decision.
@@ -1432,7 +1382,6 @@ pub fn web_router() -> Router<AppState> {
         .route("/admin/credentials", get(web_admin_credentials))
         .route("/admin/credentials/tokens/{id}/revoke", post(web_admin_revoke_token))
         .route("/admin/credentials/families/{id}/revoke", post(web_admin_revoke_family))
-        .route("/admin/data/migrate", post(web_admin_migrate))
         .route("/admin/system", get(web_admin_system))
         .route("/admin/audit", get(web_admin_audit))
 }

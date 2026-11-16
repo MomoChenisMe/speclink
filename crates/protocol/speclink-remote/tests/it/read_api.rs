@@ -2,14 +2,14 @@
 //! URL derivation for identity-only `/scopes` and every project-bound response
 //! shape without a mock JSON bypass.
 
+use crate::seed::seed;
 use chrono::{Duration, Utc};
 use speclink_remote::client::Client;
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
+use speclink_server::storage::Memory;
 use std::sync::Arc;
 
 const DATED_NAME: &str = "2026-07-19-old-feature";
@@ -18,81 +18,34 @@ struct Fixture {
     client: Client,
 }
 
+/// The key of a document of the archived change.
+fn archived(doc: &str) -> String {
+    format!("archive/changes/{DATED_NAME}/{doc}")
+}
+
+
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope,
-            CommandContext {
-                command: "seed-read-client".to_string(),
-                actor: "test".to_string(),
-            },
-        )
-        .expect("begin seed");
-    for (document, content) in [
-        (
-            DocumentId::WorkflowConfig,
-            "schema: spec-driven\nlocale: en\n",
-        ),
-        (
-            DocumentId::CanonicalSpec {
-                capability: "payments".to_string(),
-            },
-            "# payments Specification\n\nCanonical truth.\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: DATED_NAME.to_string(),
-                doc: ".openspec.yaml".to_string(),
-            },
-            "schema: spec-driven\ncreated: 2026-07-18\ncreated_by: Creator\nfrom_discussion: source-talk\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: DATED_NAME.to_string(),
-                doc: "proposal.md".to_string(),
-            },
-            "## Why\n\nArchived truth.\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: DATED_NAME.to_string(),
-                doc: "tasks.md".to_string(),
-            },
-            "- [x] 1.1 Done\n- [ ] 1.2 Pending\n",
-        ),
-        (
-            DocumentId::ArchivedChange {
-                change: DATED_NAME.to_string(),
-                doc: "specs/payments/spec.md".to_string(),
-            },
-            "## ADDED Requirements\n\n### Requirement: Pay\n",
-        ),
-        (
-            DocumentId::ChangeMeta {
-                change: "searchable".to_string(),
-            },
-            "schema: spec-driven\n",
-        ),
-        (
-            DocumentId::ChangeArtifact {
-                change: "searchable".to_string(),
-                artifact: "proposal.md".to_string(),
-            },
-            "## Why\n\nRemoteNeedle in a change.\n",
-        ),
-        (
-            DocumentId::Discussion {
-                slug: "search-talk".to_string(),
-                archived: false,
-            },
-            "---\ntopic: Search\nslug: search-talk\nstatus: open\ncreated: 2026-07-19\n---\n\nRemoteNeedle in a discussion.\n",
-        ),
-    ] {
-        uow.create(document, content);
-    }
-    store.commit(uow, Vec::new()).expect("seed commit");
+    let store = Arc::new(Memory::new());
+    seed(
+        store.as_ref(),
+        &[
+            ("config.yaml", "schema: spec-driven\nlocale: en\n"),
+            ("specs/payments/spec.md", "# payments Specification\n\nCanonical truth.\n"),
+            (
+                &archived(".openspec.yaml"),
+                "schema: spec-driven\ncreated: 2026-07-18\ncreated_by: Creator\nfrom_discussion: source-talk\n",
+            ),
+            (&archived("proposal.md"), "## Why\n\nArchived truth.\n"),
+            (&archived("tasks.md"), "- [x] 1.1 Done\n- [ ] 1.2 Pending\n"),
+            (&archived("specs/payments/spec.md"), "## ADDED Requirements\n\n### Requirement: Pay\n"),
+            ("changes/searchable/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/searchable/proposal.md", "## Why\n\nRemoteNeedle in a change.\n"),
+            (
+                "discussions/search-talk.md",
+                "---\ntopic: Search\nslug: search-talk\nstatus: open\ncreated: 2026-07-19\n---\n\nRemoteNeedle in a discussion.\n",
+            ),
+        ],
+    );
 
     let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
     identity.create_project("demo", "Demo").expect("project");

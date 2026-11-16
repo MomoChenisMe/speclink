@@ -86,6 +86,8 @@ pub enum ConfigError {
     UnknownIdentityDriver { path: String, driver: String },
     /// A required field for the chosen shape is absent.
     MissingField { path: String, field: String },
+    /// A field holds a value the server cannot run with.
+    InvalidValue { path: String, field: String, rule: String },
     /// The config still carries the retired bootstrap `tokens` section.
     ResidualTokens { path: String },
     /// The config still carries the retired Project/Repo `projects` section,
@@ -114,6 +116,9 @@ impl std::fmt::Display for ConfigError {
             ),
             ConfigError::MissingField { path, field } => {
                 write!(f, "config file '{path}': missing required field '{field}'")
+            }
+            ConfigError::InvalidValue { path, field, rule } => {
+                write!(f, "config file '{path}': '{field}' {rule}")
             }
             ConfigError::ResidualTokens { path } => write!(
                 f,
@@ -270,6 +275,15 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
     // An absent section is all defaults; a present one overrides only the
     // fields it names. A malformed shape already failed the parse above.
     let defaults = EventSettings::default();
+    // A buffer of 0 is no buffer: the live channel cannot be made, and a
+    // batched read of the event log would never end.
+    if raw.events.as_ref().and_then(|e| e.buffer) == Some(0) {
+        return Err(ConfigError::InvalidValue {
+            path: shown,
+            field: "events.buffer".to_string(),
+            rule: "must be at least 1".to_string(),
+        });
+    }
     let events = match raw.events {
         Some(e) => EventSettings {
             retention: e.retention.unwrap_or(defaults.retention),
@@ -549,5 +563,20 @@ mod tests {
             matches!(err, ConfigError::Unparseable { .. }),
             "shape mismatch is a parse failure"
         );
+    }
+
+    #[test]
+    fn an_event_buffer_of_zero_fails_closed_and_names_the_field() {
+        let err = load_text(
+            "store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  buffer: 0\n",
+        )
+        .expect_err("a buffer of 0 fails startup");
+        assert!(matches!(err, ConfigError::InvalidValue { .. }), "{err}");
+        let shown = err.to_string();
+        assert!(shown.contains("'events.buffer' must be at least 1"), "{shown}");
+
+        let one = load_text("store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  buffer: 1\n")
+            .expect("the smallest buffer loads");
+        assert_eq!(one.events.buffer, 1);
     }
 }

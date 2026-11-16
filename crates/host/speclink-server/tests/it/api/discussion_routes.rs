@@ -9,16 +9,6 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_remote::client::Client;
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore,
-};
-use std::sync::Arc;
-
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 fn client(base: &str, token: &str) -> Client {
     Client::new(
         &format!("{base}/api/speclink/v1/projects/demo"),
@@ -29,8 +19,8 @@ fn client(base: &str, token: &str) -> Client {
 
 #[test]
 fn create_and_show_round_trip_a_discussion() {
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let state = common::state_with(store);
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -50,8 +40,8 @@ fn create_and_show_round_trip_a_discussion() {
 #[test]
 fn improve_discussion_is_created_and_read_back_with_its_kind() {
     // add-improve-flow：--kind 上 wire → 引擎寫入 frontmatter → 讀取路徑曝露。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let state = common::state_with(store);
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -77,23 +67,22 @@ fn improve_discussion_is_created_and_read_back_with_its_kind() {
 fn list_discussions_carries_promoted_to_for_promoted_ones() {
     // remote-read-parity「討論列表回應攜帶 promotedTo」：server 於 route 邊緣
     // 以引擎 promoted_to 查詢函式組裝，順序沿 frontmatter 累加、未轉出無鍵。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "gamma-promoted".into(), archived: false },
-        "---\ntopic: Gamma promoted\nslug: gamma-promoted\nstatus: promoted\npromoted_to: cut-a, cut-b\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: split\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "discussions/gamma-promoted.md",
+                "---\ntopic: Gamma promoted\nslug: gamma-promoted\nstatus: promoted\npromoted_to: cut-a, cut-b\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: split\n",
+            ),
+            (
+                "discussions/plain-topic.md",
+                "---\ntopic: Plain topic\nslug: plain-topic\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nseed\n",
+            ),
+        ],
     );
-    uow.create(
-        DocumentId::Discussion { slug: "plain-topic".into(), archived: false },
-        "---\ntopic: Plain topic\nslug: plain-topic\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nseed\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store);
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -133,23 +122,22 @@ fn list_discussions_carries_promoted_to_for_promoted_ones() {
 fn list_discussions_carries_concluded_for_every_record() {
     // conclusion-gated-discussion-archive「討論列表回應攜帶 concluded」：route
     // 邊緣以引擎結論查詢恆填 true／false（佔位註解不算內文）。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "settled".into(), archived: false },
-        "---\ntopic: Settled\nslug: settled\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: ship\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "discussions/settled.md",
+                "---\ntopic: Settled\nslug: settled\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\n---\n\n## Conclusion\n\n**Decision**: ship\n",
+            ),
+            (
+                "discussions/still-open.md",
+                "---\ntopic: Still open\nslug: still-open\nstatus: promoted\npromoted_to: cut-b\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+            ),
+        ],
     );
-    uow.create(
-        DocumentId::Discussion { slug: "still-open".into(), archived: false },
-        "---\ntopic: Still open\nslug: still-open\nstatus: promoted\npromoted_to: cut-b\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store);
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -179,23 +167,22 @@ fn list_discussions_carries_concluded_for_every_record() {
 fn discussion_routes_carry_hold_for_list_and_show() {
     // discussion-hold-until-release「討論列表回應攜帶 concluded」：route 邊緣自
     // 引擎的 frontmatter 解析恆填 hold true／false，單筆 show 的 info 同。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "held".into(), archived: false },
-        "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "discussions/held.md",
+                "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+            ),
+            (
+                "discussions/free.md",
+                "---\ntopic: Free\nslug: free\nstatus: open\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
+            ),
+        ],
     );
-    uow.create(
-        DocumentId::Discussion { slug: "free".into(), archived: false },
-        "---\ntopic: Free\nslug: free\nstatus: open\ncreated: 2026-07-02\n---\n\n## Rounds\n\n## Conclusion\n\n<!-- Written by `speclink discuss conclude` -->\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store);
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
 
@@ -229,19 +216,18 @@ fn discussion_routes_carry_hold_for_list_and_show() {
 fn promote_route_keeps_the_hold_flag_on_the_record() {
     // discussion-docs「轉出保留旗標」的 remote 面：經 POST /discussions/{slug}/promote
     // 轉出後，記錄的 hold 行逐字保留，列表回應仍回 hold: true。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "held".into(), archived: false },
-        "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "discussions/held.md",
+                "---\ntopic: Held\nslug: held\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: more cuts\n",
+            ),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -250,12 +236,8 @@ fn promote_route_keeps_the_hold_flag_on_the_record() {
     assert_eq!(promoted.change, "cut-b");
 
     let record = store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::Discussion { slug: "held".into(), archived: false })
-        .expect("read record")
-        .expect("record still live")
-        .content;
+        .content("demo", "backend", "discussions/held.md")
+        .expect("record still live");
     assert!(record.contains("promoted_to: cut-a, cut-b\n"), "累加下一刀: {record}");
     assert!(record.contains("hold: true\n"), "轉出不清旗標: {record}");
 
@@ -268,21 +250,19 @@ fn promote_route_keeps_the_hold_flag_on_the_record() {
 fn promote_route_with_last_releases_the_hold() {
     // server-verb-api「promote 端點帶 last 解除 hold」：last: true 的轉出把記錄的 hold
     // 行移除、列表回 hold: false；不含 last 的轉出仍保留旗標。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    for slug in ["last-cut", "more-cuts"] {
-        uow.create(
-            DocumentId::Discussion { slug: slug.into(), archived: false },
-            &format!("---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: staged\n"),
-        );
-    }
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let record = |slug: &str| {
+        format!("---\ntopic: {slug}\nslug: {slug}\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-07-01\nhold: true\n---\n\n## Conclusion\n\n**Decision**: staged\n")
+    };
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("discussions/last-cut.md", &record("last-cut")),
+            ("discussions/more-cuts.md", &record("more-cuts")),
+        ],
+    );
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -292,13 +272,10 @@ fn promote_route_with_last_releases_the_hold() {
     let promoted = client.discussion_promote("more-cuts", Some("cut-c"), false).expect("promote");
     assert_eq!(promoted.change, "cut-c");
 
-    let snapshot = store.snapshot(&scope()).expect("snapshot");
     let read = |slug: &str| {
-        snapshot
-            .read(&DocumentId::Discussion { slug: slug.into(), archived: false })
-            .expect("read record")
+        store
+            .content("demo", "backend", &format!("discussions/{slug}.md"))
             .expect("record still live")
-            .content
     };
     let released = read("last-cut");
     assert!(released.contains("promoted_to: cut-a, cut-b\n"), "累加最後一刀: {released}");
@@ -316,19 +293,18 @@ fn promote_route_with_last_releases_the_hold() {
 fn archive_after_a_last_spin_out_co_archives_the_discussion() {
     // server-verb-api「帶 last 轉出後最後一個封存收走討論」：promote --last 建立唯一的
     // 轉出變更，封存它時隨行封存清單列該討論，live 清單不再有它。
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::Discussion { slug: "one-cut".into(), archived: false },
-        "---\ntopic: One cut\nslug: one-cut\nstatus: concluded\ncreated: 2026-07-01\nhold: true\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: one cut, then done\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            (
+                "discussions/one-cut.md",
+                "---\ntopic: One cut\nslug: one-cut\nstatus: concluded\ncreated: 2026-07-01\nhold: true\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: one cut, then done\n",
+            ),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -336,17 +312,13 @@ fn archive_after_a_last_spin_out_co_archives_the_discussion() {
     let promoted = client.discussion_promote("one-cut", Some("only-cut"), true).expect("promote --last");
     assert_eq!(promoted.change, "only-cut");
     // 讓轉出的變更可封存：任務全勾（proposal 骨架由 promote 建好）。
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-tasks".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "only-cut".into(), artifact: "tasks.md".into() },
-        "- [x] 1.1 done\n",
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/only-cut/tasks.md", "- [x] 1.1 done\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed tasks");
 
     let resp = client.archive("only-cut", false, false).expect("archive over the wire");
     assert!(
@@ -362,8 +334,8 @@ fn archive_after_a_last_spin_out_co_archives_the_discussion() {
 
 #[test]
 fn promote_returns_the_change_and_lands_both_events() {
-    let store: Arc<MemoryStore> = Arc::new(MemoryStore::new());
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let client = client(&base, &pat);
@@ -374,8 +346,8 @@ fn promote_returns_the_change_and_lands_both_events() {
         .expect("promote discussion");
     assert!(!promoted.change.is_empty(), "promote returns the new change name");
 
-    let entries = store.read_outbox(&scope(), OutboxCursor(0)).expect("read outbox");
-    let kinds: Vec<&str> = entries.iter().map(|e| e.record.name.as_str()).collect();
+    let entries = store.events("demo", "backend");
+    let kinds: Vec<&str> = entries.iter().map(|e| e.name.as_str()).collect();
     assert!(
         kinds.contains(&"discussion-promoted"),
         "a discussion-promoted event landed: {kinds:?}"
@@ -390,15 +362,15 @@ fn promote_returns_the_change_and_lands_both_events() {
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
 
 /// Server over an empty store with an editor PAT and a reader PAT both live.
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let state = common::state_with(store.clone());
+    let store = common::TestStore::memory();
+    let state = common::state_with(store.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let (reader_pat, reader_id) =
@@ -437,47 +409,30 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 }
 
 fn revision(f: &Fixture) -> u64 {
-    f.store.snapshot(&scope()).expect("snapshot").revision().0
+    f.store.version("demo", "backend")
 }
 
 fn outbox_names(f: &Fixture) -> Vec<String> {
-    f.store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
-        .iter()
-        .map(|e| e.record.name.clone())
-        .collect()
+    f.store.event_names("demo", "backend")
 }
 
 fn live_discussion(f: &Fixture, slug: &str) -> Option<String> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::Discussion { slug: slug.into(), archived: false })
-        .expect("read discussion")
-        .map(|d| d.content)
+    f.store.content("demo", "backend", &format!("discussions/{slug}.md"))
 }
 
 fn change_meta(f: &Fixture, change: &str) -> Option<String> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::ChangeMeta { change: change.into() })
-        .expect("read change meta")
-        .map(|d| d.content)
+    f.store.content("demo", "backend", &format!("changes/{change}/.meta.yaml"))
 }
 
 /// Seed change `demo` directly in the store (the link/seal subject).
 fn seed_change(f: &Fixture) {
-    let mut uow = f
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    f.store.commit(uow, Vec::new()).expect("seed commit");
+    f.store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+        ],
+    );
 }
 
 #[test]
@@ -734,15 +689,12 @@ fn discussion_writes_on_missing_subjects_are_404_with_engine_messages() {
 
 /// Seed one discussion record straight into the store, live or archived.
 fn seed_discussion(f: &Fixture, slug: &str, archived: bool, text: &str) {
-    let mut uow = f
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::Discussion { slug: slug.into(), archived }, text);
-    f.store.commit(uow, Vec::new()).expect("seed commit");
+    let key = if archived {
+        format!("archive/discussions/{slug}.md")
+    } else {
+        format!("discussions/{slug}.md")
+    };
+    f.store.put("demo", "backend", &[(&key, text)]);
 }
 
 const SEARCH_LIVE_RECORD: &str =

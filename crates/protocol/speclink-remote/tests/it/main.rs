@@ -10,4 +10,5 @@ mod login_methods;
 mod read_api;
 mod reauth_retry;
 mod refresh_lock;
+mod seed;
 mod typed_client;

@@ -117,14 +117,10 @@ export const SYSTEM = {
   apiVersion: "1",
   identitySchemaVersion: 1,
   storeDriver: "memory",
-  storeContractVersion: 1,
-  storeLevel: "full",
-  storeCapabilities: ["read", "write"],
   storeHealthy: true,
   storeHealthError: null,
   outboxBacklogs: [{ project: "demo", repo: "backend", backlog: 0 }],
   scopes: [{ project: "demo", repo: "backend", exportPath: "/admin/data/export/demo/backend" }],
-  migrateAvailable: true,
 };
 
 export const AUDIT = {
@@ -180,7 +176,6 @@ export function makeAdminClient(overrides: Record<string, unknown> = {}) {
     adminRenameRepo: vi.fn(async () => {}),
     adminRevokeToken: vi.fn(async () => {}),
     adminRevokeFamily: vi.fn(async () => {}),
-    adminMigrate: vi.fn(async () => {}),
     ...overrides,
   };
 }

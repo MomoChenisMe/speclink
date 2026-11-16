@@ -10,7 +10,6 @@ use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 /// The origin matching `demo_config().public_url`.
@@ -31,7 +30,7 @@ fn seeded_flag(days: i64, admin: bool) -> (String, String, Arc<IdentitySqlite>) 
         })
         .expect("seed invitation");
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

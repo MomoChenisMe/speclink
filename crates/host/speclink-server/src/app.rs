@@ -115,7 +115,7 @@ async fn healthz() -> StatusCode {
 /// `GET /readyz` — readiness gated on the store backend. A store that cannot
 /// serve answers non-2xx so a load balancer stops routing to this instance.
 async fn readyz(State(state): State<AppState>) -> StatusCode {
-    match state.store.health() {
+    match state.blocking(|state| state.store.probe()).await {
         Ok(()) => StatusCode::OK,
         Err(_) => StatusCode::SERVICE_UNAVAILABLE,
     }

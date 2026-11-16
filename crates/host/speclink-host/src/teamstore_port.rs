@@ -10,6 +10,7 @@
 //! it reports 0 as every last-modified time, and the scopes of one project
 //! share their version counter.
 
+pub use crate::scope::scope_id;
 use crate::transfer::{document_of_key, key_of_document};
 use speclink_protocol::query::ImportDocumentId;
 use speclink_store::{
@@ -104,17 +105,6 @@ fn port_error(e: StoreError) -> PortError {
         },
         other => backend(other.to_string()),
     }
-}
-
-/// The store-port scope id of a TeamStore scope: `<project>/<repo>`.
-///
-/// A project or repo name can hold a `/`, so the project is written with its
-/// `%` and `/` escaped (`%25`, `%2F`): the first `/` of an id always ends the
-/// project, and no two scopes share an id. Fails when the names cannot make
-/// a scope id (one longer than a scope id may be).
-pub fn scope_id(scope: &Scope) -> Result<ScopeId, PortError> {
-    let project = scope.project.as_str().replace('%', "%25").replace('/', "%2F");
-    ScopeId::new(format!("{project}/{}", scope.repo.as_str())).map_err(|e| backend(e.to_string()))
 }
 
 /// The TeamStore scope a scope id names: the reverse of [`scope_id`]. An id

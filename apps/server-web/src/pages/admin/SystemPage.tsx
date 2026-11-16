@@ -1,49 +1,22 @@
-import { useState } from "react";
-import { Compass, Database, Download, Server, TriangleAlert } from "lucide-react";
-import {
-  Button,
-  ConfirmDialog,
-  SettingsCard,
-  SettingsRow,
-  StatusPill,
-  useI18n,
-  PageHeader,
-} from "@speclink/ui";
+import { Compass, Database, Download, Server } from "lucide-react";
+import { Button, SettingsCard, SettingsRow, useI18n, PageHeader } from "@speclink/ui";
 import { useClient } from "../../app/context";
 import { useAsync } from "../../lib/useAsync";
 import { CardNote } from "../../components/CardNote";
+import { Mono, StoreStatusRow } from "../../components/StoreStatus";
 import { useTour } from "../../components/Tour";
 import { AdminError, AdminLoading } from "./states";
 
 // 系統頁（server-web-console「資料操作目的地已併入系統」；server-web-list-pages design D10）：
-// 原「資料操作」與「系統狀態」合併為一個目的地與一份 view model。768px 置中欄，四張設定型卡——
-// 執行環境、儲存狀態、匯出、危險區，各值為卡內的列。取得失敗時整頁呈現錯誤與重試，不部分渲染：
+// 原「資料操作」與「系統狀態」合併為一個目的地與一份 view model。768px 置中欄，三張設定型卡——
+// 執行環境、儲存狀態、匯出，各值為卡內的列。取得失敗時整頁呈現錯誤與重試，不部分渲染：
 // 儲存後端的健康狀態在整個介面只該有一處權威來源，半份資料比沒有資料更容易誤導。
-
-/** 列右側的等寬值。 */
-function Mono({ children }: { children: string | number }) {
-  return <span className="break-all font-mono text-[13px]">{children}</span>;
-}
 
 export function SystemPage() {
   const { t } = useI18n();
   const client = useClient();
   const { loading, data, error, reload } = useAsync(() => client.getAdminSystem(), []);
-  const [confirmMigrate, setConfirmMigrate] = useState(false);
-  const [busy, setBusy] = useState(false);
   const { restart: restartTour } = useTour();
-
-  async function runMigrate() {
-    if (busy) return;
-    setBusy(true);
-    try {
-      await client.adminMigrate();
-    } finally {
-      setBusy(false);
-      setConfirmMigrate(false);
-      reload();
-    }
-  }
 
   return (
     <div className="mx-auto flex w-full max-w-[768px] flex-col gap-6">
@@ -71,24 +44,13 @@ export function SystemPage() {
               label={t("system.schemaVersion")}
               control={<Mono>{data.identitySchemaVersion ?? t("common.dash")}</Mono>}
             />
-            <SettingsRow label={t("system.storeDriver")} control={<Mono>{data.storeDriver}</Mono>} />
-            <SettingsRow label={t("system.contractVersion")} control={<Mono>{data.storeContractVersion}</Mono>} />
-            <SettingsRow label={t("system.storeLevel")} control={<Mono>{data.storeLevel}</Mono>} />
-            <SettingsRow
-              label={t("system.storeCapabilities")}
-              control={<Mono>{data.storeCapabilities.join("、") || t("common.dash")}</Mono>}
-            />
           </SettingsCard>
 
           <SettingsCard title={t("system.storage")} icon={<Database />}>
-            <SettingsRow
-              label={t("system.storeDriver")}
-              description={data.storeHealthy ? undefined : data.storeHealthError}
-              control={
-                <StatusPill tone={data.storeHealthy ? "success" : "destructive"}>
-                  {data.storeHealthy ? t("common.normal") : t("common.abnormal")}
-                </StatusPill>
-              }
+            <StoreStatusRow
+              driver={data.storeDriver}
+              healthy={data.storeHealthy}
+              healthError={data.storeHealthError}
             />
             {data.outboxBacklogs.length === 0 ? (
               <CardNote>{t("system.noBacklog")}</CardNote>
@@ -128,36 +90,8 @@ export function SystemPage() {
               ))
             )}
           </SettingsCard>
-
-          <SettingsCard title={t("system.danger")} icon={<TriangleAlert className="text-destructive" />}>
-            <SettingsRow
-              label={t("system.migrate")}
-              description={`${t("system.migrateWarning")}${data.migrateAvailable ? "" : t("system.migrateUnavailable")}`}
-              control={
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  disabled={busy || !data.migrateAvailable}
-                  onClick={() => setConfirmMigrate(true)}
-                >
-                  {t("system.migrateAction")}
-                </Button>
-              }
-            />
-          </SettingsCard>
         </>
       )}
-
-      <ConfirmDialog
-        open={confirmMigrate}
-        onOpenChange={(open) => !open && setConfirmMigrate(false)}
-        title={t("system.migrateConfirm")}
-        description={t("system.migrateWarning")}
-        confirmLabel={t("system.migrateAction")}
-        busy={busy}
-        onConfirm={runMigrate}
-      />
     </div>
   );
 }

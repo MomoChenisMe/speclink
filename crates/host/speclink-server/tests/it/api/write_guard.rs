@@ -9,9 +9,6 @@ use serde_json::{json, Value};
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
 
 const READER_DENIED: &str =
     "your role in project 'demo' is reader; this action needs the editor role";
@@ -58,39 +55,28 @@ const WRITE_ROUTES: &[(&str, &str)] = &[
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
-        "## Why\n\noriginal\n",
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/proposal.md", "## Why\n\noriginal\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n"),
+            (
+                "discussions/talk.md",
+                "---\ntopic: Talk\nslug: talk\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n",
+            ),
+        ],
     );
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n",
-    );
-    uow.create(
-        DocumentId::Discussion { slug: "talk".into(), archived: false },
-        "---\ntopic: Talk\nslug: talk\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n",
-    );
-    store.commit(uow, Vec::new()).expect("seed commit");
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let (reader_pat, reader_id) =
@@ -119,7 +105,7 @@ fn request(f: &Fixture, method: &str, pat: Option<&str>, tail: &str) -> ureq::Re
 }
 
 fn revision(f: &Fixture) -> u64 {
-    f.store.snapshot(&scope()).expect("snapshot").revision().0
+    f.store.version("demo", "backend")
 }
 
 fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorResponse) {

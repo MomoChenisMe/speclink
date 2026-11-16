@@ -1,16 +1,19 @@
 import { useState, type FormEvent } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { Button, useI18n } from "@speclink/ui";
+import { Database } from "lucide-react";
+import { Button, SettingsCard, SettingsRow, useI18n } from "@speclink/ui";
 import { useClient, useSession } from "../app/context";
 import { useAsync } from "../lib/useAsync";
 import { readFormError } from "../lib/formError";
 import { Field } from "../components/Field";
+import { Mono, StoreStatusRow } from "../components/StoreStatus";
 import { FocusFooter, FocusHeader, FocusNotice } from "../layouts/FocusLayout";
-import type { SetupState } from "../api/client";
+import type { SetupState, StoreStatus } from "../api/client";
 
 // 開箱流程（server-setup「setup 流程完成開箱四要素」, D2／D3／D8 第三階段）。token 由
 // URL query 帶入；兩個提交節點分別建立第一位 Admin 與第一組 Project／Repo，最後節點
-// 完成後 Server 已建立 session 並回 `/admin?welcome=1`，SPA 站內導向。
+// 完成後 Server 已建立 session 並回 `/admin?welcome=1`，SPA 站內導向。兩個節點下方都
+// 顯示 Store 狀態（四要素之二）：儲存的種類、是否可用與 identity 的資料結構版本。
 export function SetupPage() {
   const { t } = useI18n();
   const client = useClient();
@@ -34,10 +37,22 @@ export function SetupPage() {
     return <FocusNotice title={t("setup.invalidTitle")} body={t("setup.invalidBody")} />;
   }
 
-  return state.step === "admin" ? (
-    <AdminStep token={token} onAdvance={setAdvanced} />
-  ) : (
-    <RegistryStep token={token} />
+  return (
+    <div className="flex flex-col gap-6">
+      {state.step === "admin" ? <AdminStep token={token} onAdvance={setAdvanced} /> : <RegistryStep token={token} />}
+      <StoreStatusCard store={state.store} />
+    </div>
+  );
+}
+
+// Store 狀態：與系統頁的「儲存狀態」卡同一種卡與同一列。
+function StoreStatusCard({ store }: { store: StoreStatus }) {
+  const { t } = useI18n();
+  return (
+    <SettingsCard title={t("system.storage")} icon={<Database />}>
+      <StoreStatusRow driver={store.driver} healthy={store.healthy} healthError={store.healthError} />
+      <SettingsRow label={t("system.schemaVersion")} control={<Mono>{store.identitySchemaVersion}</Mono>} />
+    </SettingsCard>
   );
 }
 

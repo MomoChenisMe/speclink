@@ -9,26 +9,28 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
+use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
 use speclink_protocol::events::InvalidationEvent;
-use speclink_store::{ProjectId, RepoId, Scope};
+use speclink_store_port::{PortError, ScopeId};
 use std::convert::Infallible;
 use tokio::sync::broadcast::error::RecvError;
 
 /// The store scope a binding addresses.
-fn scope_of(binding: &Binding) -> Scope {
-    Scope::new(
+fn scope_of(binding: &Binding) -> Result<ScopeId, PortError> {
+    scope_id(&Scope::new(
         ProjectId::new(binding.project.key.clone()),
         RepoId::new(binding.repo.clone()),
-    )
+    ))
 }
 
 /// `GET /events` — the project-scoped SSE invalidation stream (server-event-stream
 /// spec). The `Binding` extractor has already run the same bearer/binding
 /// precondition as every route, so an unauthenticated or non-member request
-/// never reaches here. A `Last-Event-ID` below the cleaned floor gets a reset
-/// frame first; a resumable one backfills the gap; an idle stream is kept alive
-/// by comment heartbeats. Each hint carries only the outbox sequence, scope,
-/// resource id, and revision — never document content.
+/// never reaches here. A `Last-Event-ID` below the cleaned floor, or above the
+/// newest sequence, gets a reset frame first; a resumable one backfills the
+/// gap; an idle stream is kept alive by comment heartbeats. Each hint carries
+/// only the event sequence, scope, resource id, and revision — never document
+/// content.
 pub async fn events(
     State(state): State<AppState>,
     binding: Binding,
@@ -39,8 +41,9 @@ pub async fn events(
         .and_then(|v| v.to_str().ok())
         .and_then(|s| s.trim().parse::<u64>().ok());
     let heartbeat = state.events.settings().heartbeat;
-    let scope = scope_of(&binding);
-    let Subscription { mut rx, plan } = state.events.subscribe(&scope, last_event_id)?;
+    let scope = scope_of(&binding)?;
+    let Subscription { mut rx, plan } =
+        state.blocking(move |state| state.events.subscribe(&scope, last_event_id)).await?;
 
     let stream = async_stream::stream! {
         if plan.reset {
@@ -75,7 +78,7 @@ pub async fn events(
         .into_response())
 }
 
-/// One invalidation hint as an SSE event: `id` is the outbox sequence (so a
+/// One invalidation hint as an SSE event: `id` is the event sequence (so a
 /// client's `Last-Event-ID` resumes from it), the event type is `invalidate`,
 /// and the data is the DTO JSON.
 fn invalidation_event(hint: &InvalidationEvent) -> Event {
@@ -87,7 +90,7 @@ fn invalidation_event(hint: &InvalidationEvent) -> Event {
 }
 
 /// The reset signal — a distinct SSE event type telling the client its cursor
-/// is cleaned; it converges by re-reading through Query + ETag.
+/// cannot resume; it converges by re-reading through Query + ETag.
 fn reset_event() -> Event {
     Event::default()
         .event("reset")

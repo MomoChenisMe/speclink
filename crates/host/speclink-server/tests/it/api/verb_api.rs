@@ -9,15 +9,6 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_remote::client::Client;
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, OutboxCursor, ProjectId, RepoId, Scope, TeamStore,
-};
-use std::sync::Arc;
-
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
 
 /// 兩群組任務檔（spec「跨群組搬移重編號」的 GIVEN）。
 const TASKS_TWO_GROUPS: &str =
@@ -25,7 +16,7 @@ const TASKS_TWO_GROUPS: &str =
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     /// Kept live so a test can seed a third identity after the server started.
     identity: speclink_server::state::SharedIdentity,
     editor_pat: String,
@@ -35,27 +26,17 @@ struct Fixture {
 /// Server over a store seeded with change `demo`; `tasks` picks its tasks.md
 /// (None seeds no tasks file). An editor PAT and a reader PAT are both live.
 fn fixture(tasks: Option<&str>) -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "proposal.md".into() },
-        "## Why\n\nseed\n",
-    );
+    let store = common::TestStore::memory();
+    let mut docs = vec![
+        ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+        ("changes/demo/proposal.md", "## Why\n\nseed\n"),
+    ];
     if let Some(tasks) = tasks {
-        uow.create(
-            DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-            tasks,
-        );
+        docs.push(("changes/demo/tasks.md", tasks));
     }
-    store.commit(uow, Vec::new()).expect("seed commit");
+    store.put("demo", "backend", &docs);
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let (reader_pat, reader_id) =
@@ -105,25 +86,18 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 }
 
 fn revision(f: &Fixture) -> u64 {
-    f.store.snapshot(&scope()).expect("snapshot").revision().0
+    f.store.version("demo", "backend")
 }
 
 fn outbox_names(f: &Fixture) -> Vec<String> {
-    f.store
-        .read_outbox(&scope(), OutboxCursor(0))
-        .expect("read outbox")
+    f.store.events("demo", "backend")
         .iter()
-        .map(|e| e.record.name.clone())
+        .map(|e| e.name.clone())
         .collect()
 }
 
 fn artifact_content(f: &Fixture, artifact: &str) -> Option<String> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::ChangeArtifact { change: "demo".into(), artifact: artifact.into() })
-        .expect("read artifact")
-        .map(|d| d.content)
+    f.store.content("demo", "backend", &format!("changes/demo/{artifact}"))
 }
 
 // --- 規格「validate 與 analyze 為唯讀衍生查詢端點」---
@@ -132,18 +106,13 @@ fn artifact_content(f: &Fixture, artifact: &str) -> Option<String> {
 fn validate_reports_the_engines_frozen_errors_without_advancing_revision() {
     let f = fixture(None);
     // 追加一個零操作 delta spec：fs 模式 speclink validate 對同內容的凍結錯誤項。
-    let mut uow = f
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed2".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
-        "## Notes\n\nno delta operation here\n",
+    f.store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/specs/auth/spec.md", "## Notes\n\nno delta operation here\n"),
+        ],
     );
-    f.store.commit(uow, Vec::new()).expect("seed spec");
 
     let before = revision(&f);
     // reader 與 editor 皆可用（唯讀衍生查詢）。
@@ -178,18 +147,13 @@ fn validate_reports_the_engines_frozen_errors_without_advancing_revision() {
 fn analyze_is_available_to_reader_and_reports_the_engines_findings() {
     let f = fixture(None);
     // 情境缺具體 Example → 引擎的 Ambiguity finding（與本地 fs 模式同 outcome）。
-    let mut uow = f
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed2".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
-        "## ADDED Requirements\n\n### Requirement: 登入保護\n\n系統 SHALL 保護登入。\n\n#### Scenario: 密碼錯誤被拒\n\n- **WHEN** 密碼錯誤\n- **THEN** 拒絕登入\n",
+    f.store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/specs/auth/spec.md", "## ADDED Requirements\n\n### Requirement: 登入保護\n\n系統 SHALL 保護登入。\n\n#### Scenario: 密碼錯誤被拒\n\n- **WHEN** 密碼錯誤\n- **THEN** 拒絕登入\n"),
+        ],
     );
-    f.store.commit(uow, Vec::new()).expect("seed spec");
 
     let before = revision(&f);
     let (body, _) = get_json(&f, &f.reader_pat, "changes/demo/analyze");
@@ -335,12 +299,7 @@ fn move_out_of_range_refuses_with_zero_side_effects() {
 // --- 規格「變更開工標記端點」---
 
 fn meta_content(f: &Fixture) -> Option<String> {
-    f.store
-        .snapshot(&scope())
-        .expect("snapshot")
-        .read(&DocumentId::ChangeMeta { change: "demo".into() })
-        .expect("read meta")
-        .map(|d| d.content)
+    f.store.content("demo", "backend", "changes/demo/.meta.yaml")
 }
 
 #[test]
@@ -532,7 +491,7 @@ const EDITOR_IDENTITY: &str = "Editor <editor@example.com>";
 /// 一台「重開機」的 server：同一個 store、全新的 AppState 與 identity。認領若
 /// 只活在程序記憶體，這裡就讀不回來。
 fn restart_over(f: &Fixture) -> (String, String) {
-    let state = common::state_with(f.store.clone() as Arc<dyn TeamStore + Send + Sync>);
+    let state = common::state_with(f.store.shared());
     let (pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     (common::start(state), pat)

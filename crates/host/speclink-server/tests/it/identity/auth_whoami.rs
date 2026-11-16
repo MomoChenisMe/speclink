@@ -11,14 +11,13 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_protocol::query::AuthWhoamiResponse;
 use speclink_server::identity::{DevicePoll, IdentityStore, TokenPair};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 fn server() -> (String, speclink_server::state::SharedIdentity, String, String) {
     let identity = common::empty_identity();
     let (pat, user_id) = common::seed_pat(&identity, &[]);
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

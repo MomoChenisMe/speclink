@@ -7,46 +7,25 @@ use crate::common;
 
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_remote::client::Client;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore,
-};
 use speclink_server::state::SharedStore;
-use std::sync::Arc;
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
-fn seeded_store() -> Arc<MemoryStore> {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::ChangeMeta { change: "demo".into() }, "schema: spec-driven\n");
-    uow.create(
-        DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-        "- [ ] 1.1 First\n",
+fn seeded_store() -> common::TestStore {
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n"),
+        ],
     );
-    store.commit(uow, Vec::new()).expect("seed commit");
     store
 }
 
 fn crashed_store() -> SharedStore {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed".into(), actor: "seed".into() },
-        )
-        .expect("begin uow");
-    uow.create(DocumentId::WorkflowConfig, "x");
-    let _ = store.commit(uow, Vec::new());
-    Arc::new(store)
+    let store = common::TestStore::memory();
+    store.break_down();
+    store.shared()
 }
 
 fn sync_url(base: &str) -> String {
@@ -82,7 +61,7 @@ fn client(base: &str, token: &str) -> Client {
 #[test]
 fn polling_detects_a_change_across_a_commit() {
     let store = seeded_store();
-    let state = common::state_with(store);
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let url = sync_url(&base);
@@ -150,13 +129,13 @@ fn a_document_read_against_an_unreachable_store_is_503_unavailable() {
 fn polling_the_scope_version_exports_nothing() {
     // 「連續只查詢範圍版本號不造成任何匯出」：先讀一次變更清單載入範圍，再連續輪詢三次。
     let store = seeded_store();
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (pat, _user) = common::seed_pat(&state.identity, &["demo"]);
     let base = common::start(state);
     let url = sync_url(&base);
 
     client(&base, &pat).list_changes().expect("list changes");
-    let loaded = store.export_count();
+    let loaded = store.loads();
     assert!(loaded >= 1, "the list loaded the scope");
 
     let (status, etag) = poll(&url, &pat, None);
@@ -164,5 +143,5 @@ fn polling_the_scope_version_exports_nothing() {
     for _ in 0..2 {
         assert_eq!(poll(&url, &pat, Some(&etag)).0, 304);
     }
-    assert_eq!(store.export_count(), loaded, "no export while polling");
+    assert_eq!(store.loads(), loaded, "no export while polling");
 }

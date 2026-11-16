@@ -221,6 +221,31 @@ To move the data to this version:
 
 還原之後，每個範圍的版本號與事件序號重新開始；文件內容不變。用戶端重連時會收到一次 reset 並重新讀取。
 
+## 稽核結論
+
+實作時定下來的名稱與稽核的結果記在這裡。
+
+- **備份檔 manifest 的新欄位**（任務 3.2）：`store_kind`，字串，值是 `sqlite`、`serverfs`、`postgres` 或 `memory`。第 2 版的 manifest 不再寫出第 1 版的 `store` 物件（`driver`、`contract_version`）；讀第 1 版時把它當成不認得的欄位忽略。每個範圍的包是宿主套件的 `ScopeBundle` 原樣的 JSON（`formatVersion`、`scopeVersion`、`documents[].key`／`content`／`digest`）。
+- **還原的兩種新失敗**（任務 3.2，品質關卡第 1 輪後修訂）：備份裡有還原寫不進去的文件時回報 `BackupError::NotRestorable`（訊息含範圍與原因，沒有寫入任何東西）——第 1 版的文件換不成鍵，或是匯入本身會拒絕的文件（摘要與內容不符、鍵不合命名規則、看板順序過大）。後者的檢查方式是在放 identity 快照之前，先對記憶體裡的暫存儲存把每個範圍匯入一次。逐範圍匯入中途失敗（儲存本身出錯）時回報 `BackupError::Incomplete`（訊息列出已完成的範圍、失敗的範圍，並明示目標不可投產）。還原的目標是舊版資料時回報 `BackupError::Open`，主程式印出 D2 的訊息並填入設定檔路徑。
+
+- **稽核清單的結果**（任務 6.1；以壞蛋、懶惰的開發者、搞混的開發者三個角度看這個變更新增的輸入）：
+  - 備份檔的成員名稱：成員只會被讀進記憶體、以名稱當查表的鍵，不會以它的名稱寫到磁碟。名稱不是單純的相對路徑（含 `..` 或是絕對路徑）時仍然整份拒絕，因為這個 server 寫出的備份沒有這種名稱。
+  - 備份檔的成員大小：改寫前沒有上限。現在每個成員上限 1 GiB（`MAX_MEMBER_BYTES`），讀取時依成員實際的大小（PAX 記錄給的大小也算）在讀入之前拒絕；寫備份時超過同一個上限也拒絕，而且是在建立輸出檔之前檢查，所以同一個路徑上原有的備份不會被清空，這個版本寫得出來的備份也一定還原得回去。
+  - manifest：不認得的欄位忽略（第 1 版的 `store` 物件就是這樣讀過去的）。`backup_format_version` 不是 0 到 2^32−1 的整數（字串、負數、小數、null）時，回報 manifest 無法解析；是整數但不是 1 或 2 時，回報版本不相容。
+  - 啟動訊息裡的位置：SQLite 與檔案系統印出設定的路徑原文（含空白與非 ASCII 字元）；PostgreSQL 一律印「the configured PostgreSQL database」，連線字串與密碼不會出現在任何訊息裡。指令裡的設定檔路徑含空白時以雙引號包住。
+  - `outboxBacklogs`：某個範圍讀不到事件筆數時該範圍回報 `null`，回應照常是 200。
+  - 事件串流的 Last-Event-ID：比目前最大的序號大（包含 u64 的最大值）就送 reset；判斷只有比較，沒有加減，不會溢位。
+  - 分批讀事件：一批的大小是緩衝設定值。設定檔的 `events.buffer` 是 0 時啟動失敗並指出這個欄位（0 筆的批次永遠讀不完，廣播通道也建不起來）。
+  - server 自己的路由讀儲存的地方（`/readyz`、事件串流的訂閱、管理頁的總覽與系統狀態、範圍匯出下載、初次設定頁的儲存狀態）一律在 blocking pool 上執行：PostgreSQL 範例的 client 會阻塞，在 async 的執行緒上呼叫會 panic。
+  - 事件串流的訂閱在讀儲存失敗時不留下沒有泵的通道：泵在第一個讀取成功的訂閱才啟動。
+  - 沒有處理、與改接前相同的一件事：沒有訂閱者的範圍不會清事件，所以系統頁的事件筆數與它的讀取量只有在該範圍有過訂閱者時才受保留筆數限制（三個範例沒有「回報最大序號」的方法，只能分批讀過去）。
+
+- **實作與這份設計的出入**（apply 時發現，行為沒有偏離規格）：
+  - D1：記憶體版的 `ServerStore`（`storage::Memory`）在任務 2.2 就寫了，給 `EventHub` 的單元測試用；`build_store` 到任務 5.2 才改用它。`build_store` 是 `storage::open` 的轉出，失敗型別是 `storage::OpenError`（三種），主程式用 `OpenError::shown` 把設定檔路徑填進指令；`Display` 在沒有路徑時留下 `<config>`。搬到 `speclink-host` 新檔 `src/scope.rs` 的只有 `scope_id`；反向的 `teamstore_scope` 只有轉接在用，留在轉接檔。`config.rs` 只加了 `events.buffer` 不得為 0 的檢查。
+  - D7：初次設定頁（`SetupPage.tsx`）在這個變更之前沒有把儲存狀態畫出來，與規格 server-setup 不符；品質關卡第 1 輪後補上，兩個步驟下方都顯示儲存的種類、是否可用與 identity 的資料結構版本，和系統頁共用同一列元件（`components/StoreStatus.tsx`）。待送佇列的標籤文字沒有改（它是 LANGUAGE.md 的正典詞）。
+  - D8：實際逐檔改寫的 server 測試檔是 40 個（設計寫 44 個，差的是三個 driver 的端到端測試與共用模組）。`speclink-remote` 與 Speclink Desktop 的測試改用儲存接口的型別塞資料，所以兩者的測試相依各加了 `speclink-store-port`（`speclink-remote` 同時拿掉 `speclink-store`）。
+  - 改了斷言的既有測試：`startup` 的「不是 speclink 的儲存」訊息文字、`serverfs_store` 的「資料夾使用中」訊息文字、`phase2_chain` 拿掉事件的 actor 斷言（事件記錄不存 actor，同一個測試仍以 evidence 斷言 actor）、`import_api` 拿掉「沒有呼叫舊儲存層的匯入」的計數、`admin-console-shell` 的系統頁說明文字。沒有任何寫死範圍版本號數值的斷言需要修正。
+
 ## Open Questions
 
 （無）

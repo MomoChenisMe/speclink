@@ -10,7 +10,6 @@ use speclink_protocol::device::{DeviceAuthorizationResponse, DeviceTokenResponse
 use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_server::identity::{DevicePoll, IdentitySqlite, IdentityStore};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
 use std::sync::Arc;
 
 fn store() -> IdentitySqlite {
@@ -82,7 +81,7 @@ fn an_unknown_device_code_polls_not_found() {
 fn server() -> (String, Arc<IdentitySqlite>) {
     let identity = Arc::new(store());
     let state = AppState::new(
-        Arc::new(MemoryStore::new()),
+        common::TestStore::memory().shared(),
         identity.clone(),
         Arc::new(common::demo_config()),
         common::detached_events(),

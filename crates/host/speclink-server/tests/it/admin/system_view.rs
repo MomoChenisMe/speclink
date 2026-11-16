@@ -1,7 +1,8 @@
 //! 合併後的系統 view model（server-admin「管理 browser API 提供最小且完整的頁面
 //! view model」）。`/admin/data` 與 `/admin/system` 兩份 view model 併為一份：單次
-//! 回應同時給執行環境版本、儲存狀態與待送佇列、可匯出範圍清單與遷移可用性，SPA 不再
+//! 回應同時給執行環境版本、儲存狀態與各範圍保留中的事件筆數、可匯出範圍清單，SPA 不再
 //! 為其中任何一組打第二支 API。既有欄位名稱一律不重新命名，新欄位以 camelCase 輸出。
+//! 契約版本、等級、能力與遷移可用性是舊儲存層的概念，回應裡沒有它們。
 
 use crate::common;
 
@@ -9,10 +10,6 @@ use chrono::{Duration, Utc};
 use serde_json::{json, Value};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::{AppState, SharedStore};
-use speclink_store::memory::MemoryStore;
-use speclink_store::{
-    CommandContext, DocumentId, FaultPoint, ProjectId, RepoId, Scope, TeamStore,
-};
 use std::sync::Arc;
 
 const PASSWORD: &str = "pw-correct-horse";
@@ -30,6 +27,9 @@ fn seed_user(identity: &Arc<IdentitySqlite>, email: &str, admin: bool) -> String
     identity.accept_invitation(&token, PASSWORD).expect("accept")
 }
 
+/// The four fields of the old store layer the view no longer has.
+const GONE: [&str; 4] = ["storeContractVersion", "storeLevel", "storeCapabilities", "migrateAvailable"];
+
 fn start_over(store: SharedStore) -> String {
     let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
     common::seed_demo_registry(&*identity);
@@ -44,20 +44,14 @@ fn start_over(store: SharedStore) -> String {
 }
 
 fn start_healthy() -> String {
-    start_over(Arc::new(MemoryStore::new()))
+    start_over(common::TestStore::memory().shared())
 }
 
 /// A store whose `health()` reports an error while identity stays readable.
 fn start_crashed() -> String {
-    let store = MemoryStore::new();
-    store.crash_at(FaultPoint::AfterDocWrites);
-    let scope = Scope::new(ProjectId::new("demo"), RepoId::new("backend"));
-    let ctx = CommandContext { command: "crash".into(), actor: "seed".into() };
-    let mut uow = store.begin_unit_of_work(&scope, ctx).expect("uow");
-    uow.create(DocumentId::WorkflowConfig, "cfg");
-    let _ = store.commit(uow, Vec::new());
-    assert!(store.health().is_err(), "the store is unhealthy after the crash");
-    start_over(Arc::new(store))
+    let store = common::TestStore::memory();
+    store.break_down();
+    start_over(store.shared())
 }
 
 fn agent() -> ureq::Agent {
@@ -93,7 +87,7 @@ fn get(base: &str, path: &str, cookie: &str) -> (u16, Value) {
 }
 
 #[test]
-fn the_system_view_carries_all_four_groups_in_one_response() {
+fn the_system_view_carries_all_three_groups_in_one_response() {
     let base = start_healthy();
     let cookie = login(&base);
     let (status, body) = get(&base, "/api/speclink/v1/web/admin/system", &cookie);
@@ -105,20 +99,22 @@ fn the_system_view_carries_all_four_groups_in_one_response() {
     assert!(data["apiVersion"].is_string(), "apiVersion: {data}");
     assert!(data["identitySchemaVersion"].is_number(), "identitySchemaVersion: {data}");
 
-    // 2. 儲存狀態：驅動、契約版本、等級、能力、健康（既有欄位名稱不變）。
-    assert!(data["storeDriver"].is_string(), "storeDriver: {data}");
-    assert!(data["storeContractVersion"].is_number(), "storeContractVersion: {data}");
-    assert!(data["storeLevel"].is_string(), "storeLevel: {data}");
-    assert!(data["storeCapabilities"].is_array(), "storeCapabilities: {data}");
+    // 2. 儲存狀態：種類、是否可用，與各範圍保留中的事件筆數（既有欄位名稱不變）。
+    assert_eq!(data["storeDriver"], json!("memory"), "storeDriver: {data}");
     assert_eq!(data["storeHealthy"], json!(true), "storeHealthy: {data}");
-
-    // 3. 待送佇列（既有欄位名稱不變）。
     let backlogs = data["outboxBacklogs"].as_array().expect("outboxBacklogs array");
     assert_eq!(backlogs[0]["project"], json!("demo"));
     assert_eq!(backlogs[0]["repo"], json!("backend"));
-    assert!(backlogs[0]["backlog"].is_number());
+    assert_eq!(backlogs[0]["backlog"], json!(0), "a number: no event yet");
 
-    // 4. 原「資料操作」併入的兩組：可匯出範圍清單與遷移可用性。
+    // 契約版本、等級、能力與遷移可用性已移除；每個鍵都是 camelCase。
+    for gone in GONE {
+        assert!(data.get(gone).is_none(), "{gone} is gone: {data}");
+    }
+    let fields = data.as_object().expect("an object");
+    assert!(fields.keys().all(|key| !key.contains('_')), "camelCase keys: {data}");
+
+    // 3. 原「資料操作」併入的一組：可匯出範圍清單。
     let scopes = data["scopes"].as_array().expect("scopes array");
     assert_eq!(scopes[0]["project"], json!("demo"));
     assert_eq!(scopes[0]["repo"], json!("backend"));
@@ -127,7 +123,44 @@ fn the_system_view_carries_all_four_groups_in_one_response() {
         json!("/admin/data/export/demo/backend"),
         "the export download path is unchanged"
     );
-    assert_eq!(data["migrateAvailable"], json!(true), "a healthy store can migrate");
+}
+
+#[test]
+fn the_backlog_of_a_scope_is_the_number_of_events_the_store_keeps() {
+    let store = common::TestStore::memory();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("changes/demo/.meta.yaml", "schema: spec-driven\n"),
+            ("changes/demo/tasks.md", "- [ ] 1.1 First\n- [ ] 1.2 Second\n- [ ] 1.3 Third\n"),
+        ],
+    );
+    let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
+    common::seed_demo_registry(&*identity);
+    seed_user(&identity, "admin@example.com", true);
+    let state = AppState::new(
+        store.shared(),
+        identity,
+        Arc::new(common::demo_config()),
+        common::detached_events(),
+    );
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let writer = speclink_remote::client::Client::new(
+        &format!("{base}/api/speclink/v1/projects/demo"),
+        &pat,
+        Some("backend"),
+    );
+    for task in ["1", "2", "3"] {
+        writer.task_done("demo", task, &[], None).expect("task done");
+    }
+    let kept = store.events("demo", "backend").len();
+    assert_eq!(kept, 3, "three events are in the scope's log");
+
+    let cookie = login(&base);
+    let (_status, body) = get(&base, "/api/speclink/v1/web/admin/system", &cookie);
+    assert_eq!(body["data"]["outboxBacklogs"][0]["backlog"], json!(kept), "{body}");
 }
 
 #[test]
@@ -147,11 +180,13 @@ fn an_unhealthy_store_degrades_the_system_view_without_failing_it() {
     let data = &body["data"];
     assert_eq!(data["storeHealthy"], json!(false));
     assert!(data["storeHealthError"].is_string(), "with a public error");
-    assert_eq!(
-        data["migrateAvailable"],
-        json!(false),
-        "an unhealthy store is not offered a migration"
-    );
+    for gone in GONE {
+        assert!(data.get(gone).is_none(), "{gone} is gone: {data}");
+    }
+    // 讀不到事件筆數的範圍回報空值，其餘欄位照常。
+    let backlogs = data["outboxBacklogs"].as_array().expect("outboxBacklogs array");
+    assert_eq!(backlogs[0]["project"], json!("demo"));
+    assert!(backlogs[0]["backlog"].is_null(), "an unreadable backlog is null, not a failure: {data}");
     // 識別側資料仍可讀，範圍清單來自 registry。
     assert!(data["identitySchemaVersion"].is_number());
     assert!(!data["scopes"].as_array().expect("scopes").is_empty());

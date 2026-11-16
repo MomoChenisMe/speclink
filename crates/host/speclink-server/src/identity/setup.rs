@@ -100,9 +100,6 @@ pub fn web_router() -> Router<AppState> {
 #[serde(rename_all = "camelCase")]
 struct StoreStatusPayload {
     driver: String,
-    contract_version: u32,
-    level: String,
-    capabilities: Vec<String>,
     healthy: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     health_error: Option<String>,
@@ -168,7 +165,7 @@ pub async fn api_setup_state(State(state): State<AppState>, Query(q): Query<Setu
         Gate::Invalid => web_setup_invalid(),
         Gate::Open => web::web_ok(SetupStatePayload {
             step: current_step(&state),
-            store: store_payload(&state),
+            store: state.blocking(store_payload).await,
         }),
     }
 }
@@ -199,7 +196,7 @@ pub async fn api_setup_admin(
     if state.identity.has_admin().unwrap_or(false) {
         return web::web_ok(SetupStatePayload {
             step: "registry",
-            store: store_payload(&state),
+            store: state.blocking(store_payload).await,
         });
     }
     let Ok(Json(body)) = body else {
@@ -220,7 +217,7 @@ pub async fn api_setup_admin(
     {
         Ok(_) => web::web_ok(SetupStatePayload {
             step: "registry",
-            store: store_payload(&state),
+            store: state.blocking(store_payload).await,
         }),
         Err(IdentityError::Duplicate(msg)) => {
             web::web_field_err(StatusCode::CONFLICT, "duplicate", msg, "email", "此 email 已被使用")
@@ -336,22 +333,16 @@ fn complete_setup_json(state: &AppState, token: &str) -> Response {
     )
 }
 
-/// The store manifest, health and identity schema version as a JSON payload.
+/// The kind of the store, its health and the identity schema version as a
+/// JSON payload. It reads the store: a route runs it through
+/// [`AppState::blocking`].
 fn store_payload(state: &AppState) -> StoreStatusPayload {
-    let manifest = state.store.manifest();
-    let (healthy, health_error) = match state.store.health() {
+    let (healthy, health_error) = match state.store.probe() {
         Ok(()) => (true, None),
         Err(e) => (false, Some(e.to_string())),
     };
     StoreStatusPayload {
-        driver: manifest.driver.clone(),
-        contract_version: manifest.contract_version,
-        level: manifest.level.as_str().to_string(),
-        capabilities: manifest
-            .capabilities
-            .iter()
-            .map(|c| c.as_str().to_string())
-            .collect(),
+        driver: state.store.kind().to_string(),
         healthy,
         health_error,
         identity_schema_version: state.identity.schema_version().unwrap_or(0),

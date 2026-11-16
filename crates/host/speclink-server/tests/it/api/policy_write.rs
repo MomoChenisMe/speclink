@@ -9,39 +9,22 @@ use speclink_protocol::error::{ErrorReason, ErrorResponse};
 use speclink_server::audit::AuditActor;
 use speclink_server::identity::MembershipRole;
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
-use std::sync::Arc;
 
 const INITIAL: &str = "schema: spec-driven\nlocale: en\n";
 const WINNER: &str = "schema: spec-driven\nlocale: tw\ntdd: true\n";
 
 struct Fixture {
     base: String,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
     editor_pat: String,
     reader_pat: String,
 }
 
-fn scope() -> Scope {
-    Scope::new(ProjectId::new("demo"), RepoId::new("backend"))
-}
-
 fn fixture() -> Fixture {
-    let store = Arc::new(MemoryStore::new());
-    let mut uow = store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext {
-                command: "seed-policy".into(),
-                actor: "seed".into(),
-            },
-        )
-        .expect("begin seed");
-    uow.create(DocumentId::WorkflowConfig, INITIAL);
-    store.commit(uow, Vec::new()).expect("seed policy");
+    let store = common::TestStore::memory();
+    store.put("demo", "backend", &[("config.yaml", INITIAL)]);
 
-    let state = common::state_with(store.clone());
+    let state = common::state_with(store.shared());
     let (editor_pat, _editor_id) = common::seed_named_pat(
         &state.identity,
         "editor@example.com",
@@ -120,12 +103,8 @@ fn protocol_error(result: Result<ureq::Response, ureq::Error>) -> (u16, ErrorRes
 }
 
 fn stored_policy(f: &Fixture) -> (String, u64) {
-    let snapshot = f.store.snapshot(&scope()).expect("snapshot");
-    let document = snapshot
-        .read(&DocumentId::WorkflowConfig)
-        .expect("read policy")
-        .expect("policy exists");
-    (document.content, document.revision.0)
+    let document = f.store.doc("demo", "backend", "config.yaml").expect("policy exists");
+    (document.content, document.version)
 }
 
 #[test]
@@ -247,15 +226,7 @@ fn expected_revision_is_the_scope_revision_not_the_document_revision() {
     // 用文件自己的舊版本則是衝突。
     let f = fixture();
     let (_, document_revision) = stored_policy(&f);
-    let mut uow = f
-        .store
-        .begin_unit_of_work(
-            &scope(),
-            CommandContext { command: "seed-language".into(), actor: "seed".into() },
-        )
-        .expect("begin");
-    uow.create(DocumentId::Language, "# Vocabulary\n");
-    f.store.commit(uow, Vec::new()).expect("another document lands");
+    f.store.put("demo", "backend", &[("LANGUAGE.md", "# Vocabulary\n")]);
     let (config, _) = get_json(&f, &f.editor_pat, "config");
     let scope_revision = config["revision"].as_u64().expect("revision");
     assert!(scope_revision > document_revision, "the scope moved past the config document");
@@ -282,20 +253,12 @@ fn expected_revision_is_the_scope_revision_not_the_document_revision() {
 fn a_config_write_that_lands_after_the_revision_check_is_a_conflict() {
     // 兩個寫入帶同一個預期版本：後到的那個通過版本比對之後、讀取流程設定之前，
     // 先到的那個提交了。後到的不得讀到新內容再覆寫——要回 409，先到的內容留著。
-    let inner = Arc::new(MemoryStore::new());
-    let mut uow = inner
-        .begin_unit_of_work(&scope(), CommandContext { command: "seed-policy".into(), actor: "seed".into() })
-        .expect("begin seed");
-    uow.create(DocumentId::WorkflowConfig, INITIAL);
-    let revision = inner.commit(uow, Vec::new()).expect("seed policy");
-    let racing = common::Racing::after_the_first_snapshot(inner.clone(), move |store| {
-        let mut uow = store
-            .begin_unit_of_work(&scope(), CommandContext { command: "other".into(), actor: "other".into() })
-            .expect("begin the other writer's uow");
-        uow.update(DocumentId::WorkflowConfig, WINNER, revision);
-        store.commit(uow, Vec::new()).expect("the other writer commits");
+    let inner = common::TestStore::memory();
+    let revision = inner.put("demo", "backend", &[("config.yaml", INITIAL)]);
+    let racing = common::Racing::after_the_first_read(&inner, move |store| {
+        store.put("demo", "backend", &[("config.yaml", WINNER)]);
     });
-    let state = common::state_with(Arc::new(racing));
+    let state = common::state_with(racing.shared());
     let (editor_pat, _) =
         common::seed_named_pat(&state.identity, "editor@example.com", "Editor", &["demo"]);
     let f = Fixture { base: common::start(state), store: inner, editor_pat, reader_pat: String::new() };
@@ -304,7 +267,7 @@ fn a_config_write_that_lands_after_the_revision_check_is_a_conflict() {
         &f,
         &f.editor_pat,
         "schema: spec-driven\nlocale: ja\n",
-        revision.0,
+        revision,
     ));
 
     assert_eq!(status, 409);

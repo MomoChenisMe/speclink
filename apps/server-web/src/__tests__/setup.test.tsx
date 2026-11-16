@@ -12,9 +12,6 @@ const UNAUTH = { authenticated: false, user: null, home: "/login" };
 
 const STORE = {
   driver: "memory",
-  contractVersion: 1,
-  level: "full",
-  capabilities: ["read", "write"],
   healthy: true,
   identitySchemaVersion: 1,
 };
@@ -139,5 +136,37 @@ describe("setup 開箱流程", () => {
     expect(within(notice).getByRole("heading", { level: 1, name: "設定連結無效" })).toBeTruthy();
     expect(notice.querySelector("svg")?.getAttribute("class")).toContain("text-status-warning");
     expect(document.querySelectorAll("input")).toHaveLength(0);
+  });
+
+  // server-setup「setup 流程完成開箱四要素」之二：顯示 Store 狀態——儲存的種類、可用性
+  // 檢查的結果與 identity 資料結構版本；沒有契約版本、等級與能力。
+  it("兩個步驟都顯示儲存狀態：種類、是否可用與資料結構版本", async () => {
+    for (const step of ["admin", "registry"]) {
+      const store = { driver: "sqlite", healthy: true, identitySchemaVersion: 6 };
+      const { unmount } = renderAt(
+        "/setup?token=boot",
+        makeClient({ getSetupState: vi.fn(async () => ({ step, store })) }),
+      );
+      const status = await screen.findByRole("region", { name: "儲存狀態" });
+      const backend = within(status).getByRole("group", { name: "儲存後端" });
+      expect(backend.textContent).toContain("sqlite");
+      expect(backend.textContent).toContain("正常");
+      expect(within(status).getByRole("group", { name: "資料結構版本" }).textContent).toContain("6");
+      expect(within(status).getAllByRole("group")).toHaveLength(2);
+      for (const gone of ["契約版本", "等級", "能力"]) {
+        expect(document.body.textContent, `${step} 步驟沒有「${gone}」`).not.toContain(gone);
+      }
+      unmount();
+    }
+  });
+
+  it("儲存不可用時顯示異常與原因，表單照常可用", async () => {
+    const store = { driver: "postgres", healthy: false, healthError: "store unreachable", identitySchemaVersion: 6 };
+    renderAt("/setup?token=boot", makeClient({ getSetupState: vi.fn(async () => ({ step: "admin", store })) }));
+    const status = await screen.findByRole("region", { name: "儲存狀態" });
+    const backend = within(status).getByRole("group", { name: "儲存後端" });
+    expect(backend.textContent).toContain("store unreachable");
+    expect(within(backend).getByText("異常").className).toContain("destructive");
+    expect(screen.getByRole("button", { name: /建立管理員/ })).toBeTruthy();
   });
 });

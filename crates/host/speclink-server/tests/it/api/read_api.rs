@@ -13,24 +13,22 @@ use speclink_protocol::query::{
 use speclink_protocol::API_VERSION;
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
 use speclink_server::state::AppState;
-use speclink_store::memory::MemoryStore;
-use speclink_store::{CommandContext, DocumentId, ProjectId, RepoId, Scope, TeamStore};
 use std::sync::Arc;
 
 struct Fixture {
     base: String,
     identity: Arc<IdentitySqlite>,
-    store: Arc<MemoryStore>,
+    store: common::TestStore,
 }
 
 impl Fixture {
     fn new() -> Self {
         let identity = Arc::new(IdentitySqlite::open_memory().expect("identity"));
-        let store = Arc::new(MemoryStore::new());
+        let store = common::TestStore::memory();
         common::seed_demo_registry(&*identity);
         common::seed_multi_project(&*identity);
         let state = AppState::new(
-            store.clone(),
+            store.shared(),
             identity.clone(),
             Arc::new(common::demo_config()),
             common::detached_events(),
@@ -106,22 +104,9 @@ impl Fixture {
         assert_eq!(response.status(), 200);
     }
 
-    fn seed_docs(&self, project: &str, repo: &str, docs: Vec<(DocumentId, String)>) {
-        let scope = Scope::new(ProjectId::new(project), RepoId::new(repo));
-        let mut uow = self
-            .store
-            .begin_unit_of_work(
-                &scope,
-                CommandContext {
-                    command: "seed-read-api".to_string(),
-                    actor: "test".to_string(),
-                },
-            )
-            .expect("begin seed unit of work");
-        for (document, content) in docs {
-            uow.create(document, content);
-        }
-        self.store.commit(uow, Vec::new()).expect("seed documents");
+    /// Write `docs` (key, content) into the scope in one commit.
+    fn seed_docs(&self, project: &str, repo: &str, docs: &[(&str, &str)]) {
+        self.store.put(project, repo, docs);
     }
 
     fn scopes(&self, token: &str) -> ScopesResponse {
@@ -150,55 +135,20 @@ impl ReadFixture {
         fixture.seed_docs(
             "demo",
             "backend",
-            vec![
+            &[
+                ("specs/payments/spec.md", "# payments Specification\n\nCanonical truth.\n"),
+                ("changes/searchable/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-19\n"),
+                ("changes/searchable/proposal.md", &long_change_text),
+                ("changes/searchable/design.md", "## Context\n\nA second magictoken must not win.\n"),
                 (
-                    DocumentId::CanonicalSpec {
-                        capability: "payments".to_string(),
-                    },
-                    "# payments Specification\n\nCanonical truth.\n".to_string(),
+                    "discussions/search-talk.md",
+                    "---\ntopic: Search\nslug: search-talk\nstatus: open\ncreated: 2026-07-19\n---\n\nA live discussion contains MAGICTOKEN too.\n",
                 ),
                 (
-                    DocumentId::ChangeMeta {
-                        change: "searchable".to_string(),
-                    },
-                    "schema: spec-driven\ncreated: 2026-07-19\n".to_string(),
+                    "changes/old-feature/.meta.yaml",
+                    "schema: spec-driven\ncreated: 2026-07-18\ncreated_by: Original Creator <creator@example.com>\nfrom_discussion: source-one, source-two\n",
                 ),
-                (
-                    DocumentId::ChangeArtifact {
-                        change: "searchable".to_string(),
-                        artifact: "proposal.md".to_string(),
-                    },
-                    long_change_text,
-                ),
-                (
-                    DocumentId::ChangeArtifact {
-                        change: "searchable".to_string(),
-                        artifact: "design.md".to_string(),
-                    },
-                    "## Context\n\nA second magictoken must not win.\n".to_string(),
-                ),
-                (
-                    DocumentId::Discussion {
-                        slug: "search-talk".to_string(),
-                        archived: false,
-                    },
-                    "---\ntopic: Search\nslug: search-talk\nstatus: open\ncreated: 2026-07-19\n---\n\nA live discussion contains MAGICTOKEN too.\n"
-                        .to_string(),
-                ),
-                (
-                    DocumentId::ChangeMeta {
-                        change: "old-feature".to_string(),
-                    },
-                    "schema: spec-driven\ncreated: 2026-07-18\ncreated_by: Original Creator <creator@example.com>\nfrom_discussion: source-one, source-two\n"
-                        .to_string(),
-                ),
-                (
-                    DocumentId::ChangeArtifact {
-                        change: "old-feature".to_string(),
-                        artifact: "proposal.md".to_string(),
-                    },
-                    "## Why\n\nArchived proposal truth.\n".to_string(),
-                ),
+                ("changes/old-feature/proposal.md", "## Why\n\nArchived proposal truth.\n"),
             ],
         );
         fixture.archive_change("demo", "backend", &pat, "old-feature");
@@ -211,20 +161,14 @@ impl ReadFixture {
         fixture.seed_docs(
             "demo",
             "backend",
-            vec![
+            &[
                 (
-                    DocumentId::ArchivedChange {
-                        change: dated_name.clone(),
-                        doc: "tasks.md".to_string(),
-                    },
-                    "- [x] 1.1 Completed\n- [ ] 1.2 Pending\n".to_string(),
+                    &format!("archive/changes/{dated_name}/tasks.md"),
+                    "- [x] 1.1 Completed\n- [ ] 1.2 Pending\n",
                 ),
                 (
-                    DocumentId::ArchivedChange {
-                        change: dated_name.clone(),
-                        doc: "specs/payments/spec.md".to_string(),
-                    },
-                    "## ADDED Requirements\n\n### Requirement: Archived delta\n".to_string(),
+                    &format!("archive/changes/{dated_name}/specs/payments/spec.md"),
+                    "## ADDED Requirements\n\n### Requirement: Archived delta\n",
                 ),
             ],
         );
@@ -394,17 +338,12 @@ fn an_archived_list_derives_truth_after_the_archive_verb() {
     );
     assert_eq!(item.from_discussions, ["source-one", "source-two"]);
     // spec store-abstraction「新封存寫新鍵」：封存動詞只寫 `.meta.yaml` 鍵。
-    let snapshot = read
-        .fixture
-        .store
-        .snapshot(&Scope::new(ProjectId::new("demo"), RepoId::new("backend")))
-        .expect("snapshot");
-    let archived_doc = |doc: &str| DocumentId::ArchivedChange {
-        change: read.dated_name.clone(),
-        doc: doc.to_string(),
+    let archived_doc = |doc: &str| {
+        let key = format!("archive/changes/{}/{doc}", read.dated_name);
+        read.fixture.store.doc("demo", "backend", &key)
     };
-    assert!(snapshot.read(&archived_doc(".meta.yaml")).expect("read").is_some());
-    assert!(snapshot.read(&archived_doc(".openspec.yaml")).expect("read").is_none());
+    assert!(archived_doc(".meta.yaml").is_some());
+    assert!(archived_doc(".openspec.yaml").is_none());
 
     let other_scope: ArchivedListResponse = serde_json::from_str(
         &read
@@ -427,13 +366,9 @@ fn a_legacy_archived_data_key_still_yields_creator_and_source_discussions() {
     fixture.seed_docs(
         "demo",
         "backend",
-        vec![(
-            DocumentId::ArchivedChange {
-                change: "2026-07-01-legacy".to_string(),
-                doc: ".openspec.yaml".to_string(),
-            },
-            "schema: spec-driven\ncreated_by: Legacy Creator <legacy@example.com>\nfrom_discussion: old-talk\n"
-                .to_string(),
+        &[(
+            "archive/changes/2026-07-01-legacy/.openspec.yaml",
+            "schema: spec-driven\ncreated_by: Legacy Creator <legacy@example.com>\nfrom_discussion: old-talk\n",
         )],
     );
 
