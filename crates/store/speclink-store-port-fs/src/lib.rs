@@ -45,6 +45,14 @@
 //! not name, and an event file with a sequence above the index's, do not
 //! exist for a reader. Each open and each commit removes such files.
 //!
+//! One case has no sure answer. After the rename, the store syncs the
+//! directory so the new name stays after a power loss. When that sync fails,
+//! the commit is visible but possibly not durable, and the store cannot take
+//! it back. It returns [`PortError::Backend`], which does not ask for a new
+//! try: the caller must list the scope again before it sends the commit a
+//! second time. A commit with only events has no version to check, so a
+//! second send writes its events again.
+//!
 //! # Outside the contract
 //!
 //! [`FsPort::events_after`], [`FsPort::event_floor`], [`FsPort::trim_events`]
@@ -72,6 +80,8 @@ const LAYOUT_VERSION: u64 = 1;
 const META_FILE: &str = "meta.json";
 const META_NEW_FILE: &str = "meta.json.new";
 const LOCK_FILE: &str = "lock";
+/// Made and removed by [`FsPort::probe`].
+const PROBE_FILE: &str = "probe.tmp";
 const SCOPES_DIR: &str = "scopes";
 const INDEX_FILE: &str = "index.json";
 const INDEX_NEW_FILE: &str = "index.json.new";
@@ -139,13 +149,6 @@ fn corrupt(path: &Path) -> PortError {
     }
 }
 
-/// A stored number that the contract's types refuse.
-fn out_of_range<E>(_: E) -> PortError {
-    PortError::Backend {
-        message: "a stored version or time is out of range".into(),
-    }
-}
-
 // --- durable writes ---------------------------------------------------------
 
 /// Write a file and sync it, so its bytes are on the disk before anything
@@ -169,27 +172,36 @@ fn sync_dir(dir: &Path) -> Result<(), PortError> {
     Ok(())
 }
 
-/// Put `bytes` at `path` in one step: a reader sees the old file or the new
-/// file, never a part of one.
-fn publish(path: &Path, staging: &Path, bytes: &[u8]) -> Result<(), PortError> {
-    write_synced(staging, bytes)?;
-    fs::rename(staging, path).map_err(|err| io_err("rename to", path, err))?;
-    sync_dir(path.parent().unwrap_or(Path::new(".")))
+/// Put `bytes` at `dir/name` in one step: a reader sees the old file or the
+/// new file, never a part of one. `staging` is the name the bytes have
+/// before the rename.
+///
+/// After the rename the file is visible. A sync of the directory that then
+/// fails is reported as [`PortError::Backend`] with a message that says so:
+/// see "A commit" in the crate documentation.
+fn publish(dir: &Path, name: &str, staging: &str, bytes: &[u8]) -> Result<(), PortError> {
+    let (path, staging) = (dir.join(name), dir.join(staging));
+    write_synced(&staging, bytes)?;
+    fs::rename(&staging, &path).map_err(|err| io_err("rename to", &path, err))?;
+    sync_dir(dir).map_err(|err| PortError::Backend {
+        message: format!(
+            "{} is published but possibly not durable: {err}",
+            path.display()
+        ),
+    })
 }
 
 // --- the index of one scope -------------------------------------------------
 
 struct Entry {
     blob: u64,
-    version: u64,
-    modified_at: u64,
+    version: Version,
+    modified_at: Timestamp,
 }
 
-/// The content of `index.json`. A scope with no index file has the default:
-/// version 0, no documents, no events.
-#[derive(Default)]
+/// The content of `index.json`.
 struct Index {
-    version: u64,
+    version: Version,
     event_seq: u64,
     event_floor: u64,
     /// The name of the next content file.
@@ -199,6 +211,18 @@ struct Index {
 }
 
 impl Index {
+    /// The index of a scope that has no index file: version 0, no
+    /// documents, no events.
+    fn empty() -> Self {
+        Self {
+            version: Version::ZERO,
+            event_seq: 0,
+            event_floor: 0,
+            next_blob: 0,
+            documents: BTreeMap::new(),
+        }
+    }
+
     fn to_json(&self) -> Value {
         let documents: serde_json::Map<String, Value> = self
             .documents
@@ -206,14 +230,14 @@ impl Index {
             .map(|(key, entry)| {
                 let entry = json!({
                     "blob": entry.blob,
-                    "version": entry.version,
-                    "modified_at": entry.modified_at,
+                    "version": entry.version.get(),
+                    "modified_at": entry.modified_at.get(),
                 });
                 (key.clone(), entry)
             })
             .collect();
         json!({
-            "version": self.version,
+            "version": self.version.get(),
             "event_seq": self.event_seq,
             "event_floor": self.event_floor,
             "next_blob": self.next_blob,
@@ -221,6 +245,8 @@ impl Index {
         })
     }
 
+    /// `None` for a value that is not an index, a number that the
+    /// contract's types refuse included.
     fn from_json(value: &Value) -> Option<Self> {
         let number = |value: &Value, field: &str| value.get(field)?.as_u64();
         let mut documents = BTreeMap::new();
@@ -229,13 +255,13 @@ impl Index {
                 key.clone(),
                 Entry {
                     blob: number(entry, "blob")?,
-                    version: number(entry, "version")?,
-                    modified_at: number(entry, "modified_at")?,
+                    version: Version::new(number(entry, "version")?).ok()?,
+                    modified_at: Timestamp::new(number(entry, "modified_at")?).ok()?,
                 },
             );
         }
         Some(Self {
-            version: number(value, "version")?,
+            version: Version::new(number(value, "version")?).ok()?,
             event_seq: number(value, "event_seq")?,
             event_floor: number(value, "event_floor")?,
             next_blob: number(value, "next_blob")?,
@@ -268,11 +294,24 @@ impl ScopeDir {
         self.events().join(format!("{seq}.json"))
     }
 
+    /// Make the scope's directories. The first commit of a scope makes the
+    /// scope's own directory, and syncs `scopes` so the new name stays.
+    fn create(&self, scopes: &Path) -> Result<(), PortError> {
+        if !self.0.exists() {
+            fs::create_dir_all(&self.0).map_err(|err| io_err("create", &self.0, err))?;
+            sync_dir(scopes)?;
+        }
+        for dir in [self.blobs(), self.events()] {
+            fs::create_dir_all(&dir).map_err(|err| io_err("create", &dir, err))?;
+        }
+        Ok(())
+    }
+
     fn load_index(&self) -> Result<Index, PortError> {
         let path = self.index();
         let bytes = match fs::read(&path) {
             Ok(bytes) => bytes,
-            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Index::default()),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(Index::empty()),
             Err(err) => return Err(io_err("read", &path, err)),
         };
         serde_json::from_slice(&bytes)
@@ -283,8 +322,9 @@ impl ScopeDir {
 
     fn publish_index(&self, index: &Index) -> Result<(), PortError> {
         publish(
-            &self.index(),
-            &self.0.join(INDEX_NEW_FILE),
+            &self.0,
+            INDEX_FILE,
+            INDEX_NEW_FILE,
             index.to_json().to_string().as_bytes(),
         )
     }
@@ -378,6 +418,13 @@ fn needs_layout(root: &Path) -> Result<bool, OpenError> {
                     _ => false,
                 };
                 if !ours {
+                    // This look has no lock. Another process can finish its
+                    // first open between the read of `meta.json` above and
+                    // this listing; the directory is then a store, and the
+                    // answer comes from its `meta.json`.
+                    if meta_path.is_file() {
+                        return needs_layout(root);
+                    }
                     return Err(OpenError::UnknownLayout {
                         format: None,
                         layout_version: None,
@@ -393,6 +440,8 @@ fn needs_layout(root: &Path) -> Result<bool, OpenError> {
 /// A store on one directory. Every operation takes the object's one lock, so
 /// a reader never sees a commit between its rename and its cleanup.
 pub struct FsPort {
+    /// An absolute path: a later change of the process's working directory
+    /// must not move the store.
     root: PathBuf,
     /// The open lock file. The file lock keeps other store objects out; the
     /// mutex makes the calls on this object take turns.
@@ -409,7 +458,8 @@ impl FsPort {
     /// - Anything else: [`OpenError::UnknownLayout`], and the directory does
     ///   not change.
     pub fn open(dir: impl AsRef<Path>) -> Result<Self, OpenError> {
-        let root = dir.as_ref();
+        let dir = dir.as_ref();
+        let root = std::path::absolute(dir).map_err(|err| io_err("resolve", dir, err))?;
         // The operating systems each say this in a different way.
         if root.is_file() {
             return Err(OpenError::Store(PortError::Backend {
@@ -419,29 +469,29 @@ impl FsPort {
                 ),
             }));
         }
-        let needs_layout = needs_layout(root)?;
+        let needs_layout = needs_layout(&root)?;
         // Past the check: from here the directory is ours to write.
-        fs::create_dir_all(root).map_err(|err| io_err("create", root, err))?;
-        let lock = acquire_lock(root)?;
+        fs::create_dir_all(&root).map_err(|err| io_err("create", &root, err))?;
+        let lock = acquire_lock(&root)?;
         let scopes = root.join(SCOPES_DIR);
         if needs_layout {
             // `meta.json` comes last and in one step, so a stop before it
             // leaves a directory that the next open makes again.
             fs::create_dir_all(&scopes).map_err(|err| io_err("create", &scopes, err))?;
             let meta = json!({ "format": FORMAT, "layout_version": LAYOUT_VERSION });
-            publish(
-                &root.join(META_FILE),
-                &root.join(META_NEW_FILE),
-                meta.to_string().as_bytes(),
-            )?;
+            publish(&root, META_FILE, META_NEW_FILE, meta.to_string().as_bytes())?;
         }
         let entries = fs::read_dir(&scopes).map_err(|err| io_err("read", &scopes, err))?;
         for entry in entries {
             let entry = entry.map_err(|err| io_err("read", &scopes, err))?;
-            ScopeDir(entry.path()).clean()?;
+            // Only a directory is a scope. A file here, such as one that a
+            // file manager leaves, is not the store's to read or to remove.
+            if entry.path().is_dir() {
+                ScopeDir(entry.path()).clean()?;
+            }
         }
         Ok(Self {
-            root: root.to_path_buf(),
+            root,
             lock: Mutex::new(lock),
         })
     }
@@ -452,8 +502,12 @@ impl FsPort {
         self.lock.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    fn scopes(&self) -> PathBuf {
+        self.root.join(SCOPES_DIR)
+    }
+
     fn scope_dir(&self, scope: &ScopeId) -> ScopeDir {
-        ScopeDir(self.root.join(SCOPES_DIR).join(escape(scope)))
+        ScopeDir(self.scopes().join(escape(scope)))
     }
 
     /// The events of `scope` with a sequence larger than `after`, smallest
@@ -520,14 +574,15 @@ impl FsPort {
         Ok(())
     }
 
-    /// Check that the store can answer: `meta.json` is in the directory and
-    /// can be read.
+    /// Check that the store can answer: `meta.json` can be read, and a file
+    /// can be made in the directory and removed again.
     pub fn probe(&self) -> Result<(), PortError> {
         let _guard = self.guard();
-        let path = self.root.join(META_FILE);
-        fs::read(&path)
-            .map(|_| ())
-            .map_err(|err| io_err("read", &path, err))
+        let meta = self.root.join(META_FILE);
+        fs::read(&meta).map_err(|err| io_err("read", &meta, err))?;
+        let probe = self.root.join(PROBE_FILE);
+        File::create(&probe).map_err(|err| io_err("create", &probe, err))?;
+        fs::remove_file(&probe).map_err(|err| io_err("remove", &probe, err))
     }
 }
 
@@ -570,13 +625,13 @@ impl StorePort for FsPort {
                     key: DocKey::new(key.clone()).map_err(|err| PortError::Backend {
                         message: format!("a stored key is not valid: {err}"),
                     })?,
-                    version: Version::new(entry.version).map_err(out_of_range)?,
-                    modified_at: Timestamp::new(entry.modified_at).map_err(out_of_range)?,
+                    version: entry.version,
+                    modified_at: entry.modified_at,
                 })
             })
             .collect::<Result<_, PortError>>()?;
         Ok(Listing {
-            version: Version::new(index.version).map_err(out_of_range)?,
+            version: index.version,
             entries,
         })
     }
@@ -593,8 +648,8 @@ impl StorePort for FsPort {
                 let path = dir.blob(entry.blob);
                 Ok(Some(Document {
                     content: fs::read_to_string(&path).map_err(|err| io_err("read", &path, err))?,
-                    version: Version::new(entry.version).map_err(out_of_range)?,
-                    modified_at: Timestamp::new(entry.modified_at).map_err(out_of_range)?,
+                    version: entry.version,
+                    modified_at: entry.modified_at,
                 }))
             })
             .collect()
@@ -610,9 +665,7 @@ impl StorePort for FsPort {
             let actual = index
                 .documents
                 .get(op.key().as_str())
-                .map(|entry| Version::new(entry.version))
-                .transpose()
-                .map_err(out_of_range)?;
+                .map(|entry| entry.version);
             let expected = match op {
                 Op::Put { expected, .. } => *expected,
                 Op::Delete { expected, .. } => Expected::At(*expected),
@@ -629,18 +682,13 @@ impl StorePort for FsPort {
                 });
             }
         }
-        let new_version = Version::new(index.version + 1).map_err(|_| PortError::Backend {
-            message: "the scope version reached its limit".into(),
-        })?;
+        let new_version =
+            Version::new(index.version.get() + 1).map_err(|_| PortError::Backend {
+                message: "the scope version reached its limit".into(),
+            })?;
 
         // 2. The new content files and event files. Nothing names them yet.
-        if !dir.0.exists() {
-            fs::create_dir_all(&dir.0).map_err(|err| io_err("create", &dir.0, err))?;
-            sync_dir(&self.root.join(SCOPES_DIR))?;
-        }
-        let (blobs, events) = (dir.blobs(), dir.events());
-        fs::create_dir_all(&blobs).map_err(|err| io_err("create", &blobs, err))?;
-        fs::create_dir_all(&events).map_err(|err| io_err("create", &events, err))?;
+        dir.create(&self.scopes())?;
         let mut replaced = Vec::new();
         for op in commit.ops() {
             let old = match op {
@@ -652,8 +700,8 @@ impl StorePort for FsPort {
                         key.as_str().to_string(),
                         Entry {
                             blob,
-                            version: new_version.get(),
-                            modified_at: commit.at().get(),
+                            version: new_version,
+                            modified_at: commit.at(),
                         },
                     )
                 }
@@ -670,11 +718,11 @@ impl StorePort for FsPort {
             });
             write_synced(&dir.event(index.event_seq), record.to_string().as_bytes())?;
         }
-        sync_dir(&blobs)?;
-        sync_dir(&events)?;
+        sync_dir(&dir.blobs())?;
+        sync_dir(&dir.events())?;
 
         // 3. The one point that publishes the commit.
-        index.version = new_version.get();
+        index.version = new_version;
         dir.publish_index(&index)?;
 
         // 4. Best effort: a file that stays is removed by a later commit.

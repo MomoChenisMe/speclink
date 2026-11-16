@@ -32,7 +32,7 @@
 
 - 位置：`crates/store/speclink-store-port-sqlite`、`crates/store/speclink-store-port-postgres`、`crates/store/speclink-store-port-fs`。名稱接在 `speclink-store-port` 後面，表示「儲存契約在某種儲存上的實作」。
 - 三個都設 `publish = false`。每個 crate 的說明註解第一段寫明：這是範例；它示範什麼；它不做什麼（連線池、TLS、遷移、多實例的事件傳遞）。
-- 相依：`speclink-store-port`、`serde_json`，加上各自的函式庫——rusqlite 0.40.1（bundled）、postgres 0.19.14、fs4 1.1.0。版本與舊 driver 相同，所以 Cargo.lock 不會多出新的第三方套件。
+- 相依：`speclink-store-port`、`serde_json`，加上各自的函式庫——rusqlite 0.40.1（bundled 與 fallible_uint；後者是 rusqlite 自己的開關，讓 u64 能直接進出 SQL，不帶新的套件）、postgres 0.19.14、fs4 1.1.0。版本與舊 driver 相同，所以 Cargo.lock 不會多出新的第三方套件。
 - 三個 crate 互不相依，也不相依 `speclink-store`。三份程式之間的重複（錯誤的型別、標記的檢查、事件方法的簽章）是刻意的：使用者會整個複製其中一個，不該被迫帶走一個共用的小 crate。
 
 替代方案：放在最上層的 examples 資料夾。不採用——workspace 的 crate 都在 crates 底下依層分類，守門與建置腳本依這個配置找 crate；示範用 server 之後要把它們當一般相依使用。
@@ -134,7 +134,7 @@ SQLite 回報忙碌或鎖定時對映成「暫時無法使用」；其他錯誤�
 - 合格測試：實作測試用的接口（每次給一個新的範圍；事件由 `events_after` 讀回），斷言 16 項全部通過。
 - 事件：規格「事件與寫入同一次交易並可依序號讀回」與「清除舊事件與下限」的每個情境。
 - 配置：空的位置、重新開啟、別的標記（測試自己寫一個帶 `speclink-team-store` 標記的 meta，不相依舊 driver）、較新的版本、沒有標記；拒絕之後比對檔案或資料表沒有變動。
-- 一致性：重新開啟後內容相同；交易中途失敗用「同一次提交的第二個操作預期不符」製造，斷言第一個操作沒有留下痕跡；檔案系統另外手動放遺留的內容檔、事件檔與 `index.json.new` 再開啟。
+- 一致性：重新開啟後內容相同；交易中途失敗的做法是讓事件的寫入在文件寫入之後失敗（SQLite 用原生連線在 events 表建一個會中止寫入的 trigger，PostgreSQL 用名稱含 NUL 字元的事件），斷言文件、事件與版本號都沒有留下；另外保留「同一次提交的第二個操作預期不符」的測試，確認預期不符時第一個操作沒有留下痕跡；檔案系統另外手動放遺留的內容檔、事件檔與 `index.json.new` 再開啟。
 - 兩個儲存物件：SQLite 與 PostgreSQL 開兩個物件；檔案系統用子程序持有鎖，測第二個開啟失敗，以及子程序被強制結束後可以開啟。
 - 可用性與失敗的分類：SQLite 與檔案系統在開啟後把檔案或資料夾移走；PostgreSQL 用伺服器端終止連線的函式製造斷線，並測錯誤訊息不含密碼。
 
@@ -213,15 +213,17 @@ PostgreSQL 的測試沿用舊 driver 的做法：測試執行檔自己當主程�
 - 環境變數 `SPECLINK_POSTGRES_PASSWORD` 是空字串時視為沒有設定，不會送出空密碼。
 - 等不到鎖時回報暫時無法使用，不是衝突（SQLite 的忙碌逾時 5 秒；PostgreSQL 的 `lock_timeout` 5 秒）。兩個秒數寫死在程式裡，沒有設定項。
 - `url_embeds_password` 對無法解讀的連線字串回 false；無法解讀的原因由 `connect` 回報。
+- `probe` 除了讀取，還做一次不留痕跡的寫入檢查：SQLite 與 PostgreSQL 在交易裡把標記寫回原值再回滾；檔案系統建立再刪除一個暫存檔（`probe.tmp`）。儲存讀得到但寫不進去時，`probe` 回報失敗（測試 `probe_fails_when_the_store_cannot_be_written`、`probe_fails_when_the_directory_cannot_be_written`、`probe_fails_when_the_database_cannot_be_written`）。
 
 **已知的限制（這個變更不修）**
 
 - 檔案系統：範圍名稱跳脫後最長是原本的三倍。超過檔案系統單一名稱上限（通常 255 位元組）時，提交回報儲存的失敗。例如全部是中文字的範圍名稱，超過 28 個字就會超過。已寫進 crate 的說明。
 - 檔案系統：在 Windows 上，`con`、`nul`、`aux`、`com1` 這類名稱是裝置名稱。範圍名稱剛好是這些字時，D6 的跳脫規則不會改動它，資料夾可能建不出來。修法是在資料夾名稱前加固定的字首，但這會改動 D6 的配置，所以留給使用者決定。已寫進 crate 的說明。
 - PostgreSQL：事件名稱含 NUL 字元時，資料庫拒絕寫入，整筆提交回報儲存的失敗（text 欄位不能存 NUL）。文件內容不受影響（用 bytea）。
+- PostgreSQL：schema 沒有 meta、但已有名為 `scopes`、`documents` 或 `events` 的外來資料表時，建表失敗，開啟回報儲存的失敗（`OpenError::Store`），不是 `UnknownLayout`；schema 不變（測試 `a_table_with_a_store_name_and_no_meta_is_refused`）。
 - PostgreSQL：連線沒有 TLS，密碼與資料以明文傳輸。這是 Non-Goals 明列的範圍。
+- 檔案系統：索引改名成功之後，同步資料夾失敗時，這次提交已經看得到，但斷電後不一定還在，範例也收不回來。範例回報儲存的失敗（不是「暫時無法使用」），訊息寫明「已發布但不一定耐久」。呼叫端要先重新列出這個範圍，再決定要不要重送：帶文件操作的提交重送時會被版本比對擋下；只帶事件的提交沒有版本可以比對，重送會再寫一次事件。
 - SQLite 與檔案系統：路徑打錯時，會在新的位置建立一個空的儲存，不會警告。這是規格「空的位置初始化」的結果。
-- `probe` 只檢查讀得到，不檢查寫得進去。
 - `UnknownLayout` 帶出的標記與版本來自不認得的資料，長度與內容沒有限制。宿主顯示它之前，要把它當成不可信的文字。
 - `events_after(scope, after, limit)` 的 `after` 與 `limit` 都是整數，寫成字面值時對調不會有編譯錯誤。簽章由 D2 固定；對調的後果是讀到的清單不對，不會寫入任何東西。
 - D2 寫 `url_embeds_password` 的回傳是 bool，舊 driver 的是 Result。示範用 server 換相依時，呼叫處要拿掉 `.unwrap_or(false)`。

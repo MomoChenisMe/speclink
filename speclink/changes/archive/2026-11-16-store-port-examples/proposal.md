@@ -77,12 +77,36 @@ Source discussion: embedded-host-needs（cut 18）。
     - crates/store/speclink-store-port-sqlite/Cargo.toml
     - crates/store/speclink-store-port-sqlite/src/lib.rs
     - crates/store/speclink-store-port-sqlite/tests/it/main.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/support.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/conformance.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/events.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/layout.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/consistency.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/two_objects.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/availability.rs
+    - crates/store/speclink-store-port-sqlite/tests/it/boundaries.rs
     - crates/store/speclink-store-port-postgres/Cargo.toml
     - crates/store/speclink-store-port-postgres/src/lib.rs
     - crates/store/speclink-store-port-postgres/tests/it/main.rs
+    - crates/store/speclink-store-port-postgres/tests/it/support.rs
+    - crates/store/speclink-store-port-postgres/tests/it/conformance.rs
+    - crates/store/speclink-store-port-postgres/tests/it/events.rs
+    - crates/store/speclink-store-port-postgres/tests/it/layout.rs
+    - crates/store/speclink-store-port-postgres/tests/it/consistency.rs
+    - crates/store/speclink-store-port-postgres/tests/it/two_objects.rs
+    - crates/store/speclink-store-port-postgres/tests/it/availability.rs
+    - crates/store/speclink-store-port-postgres/tests/it/boundaries.rs
     - crates/store/speclink-store-port-fs/Cargo.toml
     - crates/store/speclink-store-port-fs/src/lib.rs
     - crates/store/speclink-store-port-fs/tests/it/main.rs
+    - crates/store/speclink-store-port-fs/tests/it/support.rs
+    - crates/store/speclink-store-port-fs/tests/it/conformance.rs
+    - crates/store/speclink-store-port-fs/tests/it/events.rs
+    - crates/store/speclink-store-port-fs/tests/it/layout.rs
+    - crates/store/speclink-store-port-fs/tests/it/consistency.rs
+    - crates/store/speclink-store-port-fs/tests/it/two_objects.rs
+    - crates/store/speclink-store-port-fs/tests/it/availability.rs
+    - crates/store/speclink-store-port-fs/tests/it/boundaries.rs
   - Modified:
     - Cargo.toml
     - Cargo.lock

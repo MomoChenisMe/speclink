@@ -37,6 +37,36 @@
       "files": [
         ".github/workflows/ci.yml"
       ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.3 最後檢查 D1 與 design 的 Implementation Contract 驗收條件：三個 crate 都設 `publish = false`、說明註解第一段寫明定位；`cargo tree -p speclink-store-port-sqlite -i speclink-store`、`cargo tree -p speclink-store-port-fs -i speclink-store`、`cargo tree -p speclink-store-port-postgres -i speclink-store` 都回報找不到套件；Cargo.lock 只多三個 workspace 成員、沒有新的第三方套件；`speclink-server`、`speclink-host` 與舊的 store crates 沒有檔案被改動（用 git status 對照）。涉及 Cargo.toml、Cargo.lock。驗證：`cargo build --workspace` 成功；`cargo test -p speclink-store-port-sqlite`、`cargo test -p speclink-store-port-fs` 通過；`speclink validate store-port-examples` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "crates/store/speclink-store-port-fs/tests/it/availability.rs",
+        "crates/store/speclink-store-port-fs/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-fs/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-fs/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-fs/tests/it/events.rs",
+        "crates/store/speclink-store-port-fs/tests/it/layout.rs",
+        "crates/store/speclink-store-port-fs/tests/it/support.rs",
+        "crates/store/speclink-store-port-fs/tests/it/two_objects.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/availability.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/events.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/layout.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/support.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/two_objects.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/availability.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/events.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/layout.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/support.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/two_objects.rs"
+      ]
     }
   ],
   "entries": [
@@ -91,6 +121,40 @@
         ".github/workflows/ci.yml"
       ],
       "recordedAt": "2026-11-15T13:49:02Z"
+    },
+    {
+      "taskId": "tsk_01M7D85AVHF51A8TQB7T5S8Q3H",
+      "taskDesc": "4.3 最後檢查 D1 與 design 的 Implementation Contract 驗收條件：三個 crate 都設 `publish = false`、說明註解第一段寫明定位；`cargo tree -p speclink-store-port-sqlite -i speclink-store`、`cargo tree -p speclink-store-port-fs -i speclink-store`、`cargo tree -p speclink-store-port-postgres -i speclink-store` 都回報找不到套件；Cargo.lock 只多三個 workspace 成員、沒有新的第三方套件；`speclink-server`、`speclink-host` 與舊的 store crates 沒有檔案被改動（用 git status 對照）。涉及 Cargo.toml、Cargo.lock。驗證：`cargo build --workspace` 成功；`cargo test -p speclink-store-port-sqlite`、`cargo test -p speclink-store-port-fs` 通過；`speclink validate store-port-examples` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "cb6852970340a7370a4f39d8e16c48cc1124c745",
+      "touchedFiles": [
+        "crates/store/speclink-store-port-fs/tests/it/availability.rs",
+        "crates/store/speclink-store-port-fs/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-fs/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-fs/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-fs/tests/it/events.rs",
+        "crates/store/speclink-store-port-fs/tests/it/layout.rs",
+        "crates/store/speclink-store-port-fs/tests/it/support.rs",
+        "crates/store/speclink-store-port-fs/tests/it/two_objects.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/availability.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/events.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/layout.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/support.rs",
+        "crates/store/speclink-store-port-postgres/tests/it/two_objects.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/availability.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/boundaries.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/conformance.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/consistency.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/events.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/layout.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/support.rs",
+        "crates/store/speclink-store-port-sqlite/tests/it/two_objects.rs"
+      ],
+      "recordedAt": "2026-11-15T15:19:50Z"
     }
   ]
 }

@@ -180,14 +180,16 @@ fn needs_tables(conn: &Connection) -> Result<bool, OpenError> {
     if tables == 0 {
         return Ok(true);
     }
-    let has_meta: bool = conn
+    // This example's `meta` table has a `key` and a `value` column. With no
+    // such table, or one with other columns, there is no marker to read.
+    let meta_columns: u64 = conn
         .query_row(
-            "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'meta')",
+            "SELECT count(*) FROM pragma_table_info('meta') WHERE name IN ('key', 'value')",
             [],
             |row| row.get(0),
         )
         .map_err(store_err)?;
-    let (format, layout_version) = if has_meta {
+    let (format, layout_version) = if meta_columns == 2 {
         (
             meta_value(conn, "format")?,
             meta_value(conn, "layout_version")?,
@@ -237,7 +239,12 @@ impl SqlitePort {
     /// - Anything else: [`OpenError::UnknownLayout`], and the file does not
     ///   change.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, OpenError> {
-        let path = path.as_ref();
+        // An absolute path: a later change of the process's working
+        // directory must not make `probe` look for the file in a new place.
+        let path = std::path::absolute(path.as_ref()).map_err(|err| PortError::Backend {
+            message: format!("resolve {}: {err}", path.as_ref().display()),
+        })?;
+        let path = path.as_path();
         // SQLite only says "unable to open database file" for this.
         if path.is_dir() {
             return Err(OpenError::Store(PortError::Backend {
@@ -384,8 +391,11 @@ impl SqlitePort {
         tx.commit().map_err(store_err)
     }
 
-    /// Check that the store can answer: the file is at its path and a read
-    /// works.
+    /// Check that the store can answer: the file is at its path, and a
+    /// write works. The write leaves nothing: it takes the write lock,
+    /// writes the marker over itself and rolls back. As a commit does, it
+    /// waits for another writer and reports [`PortError::Unavailable`] when
+    /// the wait is too long.
     pub fn probe(&self) -> Result<(), PortError> {
         // SQLite continues to read a file that was moved or deleted while
         // it is open, so a query alone does not see that the file is gone.
@@ -394,7 +404,14 @@ impl SqlitePort {
                 message: "the SQLite file is no longer at its path".into(),
             });
         }
-        meta_value(&self.conn(), "format").map(|_| ())
+        let mut conn = self.conn();
+        let tx = conn
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(store_err)?;
+        tx.execute("UPDATE meta SET value = value WHERE key = 'format'", [])
+            .map_err(store_err)?;
+        // The drop of the transaction rolls it back.
+        Ok(())
     }
 }
 

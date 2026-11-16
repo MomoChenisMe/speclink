@@ -1,0 +1,171 @@
+schema: spec-driven
+created: 2026-11-14T22:38:35+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs
+started_at: 2026-11-15T21:27:01+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: speclink/store-port-examples
+landed_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+landed_at: 2026-11-15T22:22:56+08:00
+landed_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-16T21:55:47+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_rounds: 3
+reviewed_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+reviewed_scope:
+  - path: .github/workflows/ci.yml
+    hash: 78d8053b9e3f09d0bba9119941886763341fc7d26a7a4718f30f539b5adbff10
+  - path: Cargo.lock
+    hash: 8325b538336c4c0ea612b37ae18eba5998a181a3215e2e3f7a0feb57f0afd919
+  - path: Cargo.toml
+    hash: a9fde932b3cf3b5812daa19028e4382fb4e2e2918353db889e3722add3513e28
+  - path: crates/store/speclink-store-port-fs/Cargo.toml
+    hash: cbbcd2f4fb4a6c12bb868d56291cae8cc1c90e7a5566dd57e95dc87647c49c04
+  - path: crates/store/speclink-store-port-fs/src/lib.rs
+    hash: 0f90dab8ea25bf5ebaf8beb45960f96093eed12b3958c71eb64f11d57b5d2bbe
+  - path: crates/store/speclink-store-port-fs/tests/it/availability.rs
+    hash: a96837c337c96141ff675d9df05868934e59802d466bcd4f558374a0b5196781
+  - path: crates/store/speclink-store-port-fs/tests/it/boundaries.rs
+    hash: 135b0762dc67d2cf986bff7a20f82b9fc7a5910b382f67bccbc818db47332cd0
+  - path: crates/store/speclink-store-port-fs/tests/it/conformance.rs
+    hash: 23939760155a8a3616bc08f8e86b548a9bca4805cf7eb00d3cafc004f0992ffb
+  - path: crates/store/speclink-store-port-fs/tests/it/consistency.rs
+    hash: 71898c30371ca11426e793d76f8c8dd7864310fde8db12054f2ca403b9f014aa
+  - path: crates/store/speclink-store-port-fs/tests/it/events.rs
+    hash: b0634ce23800cea9b90e1dd80fdd89586fe9ded1695c0338a9e65c00866226e2
+  - path: crates/store/speclink-store-port-fs/tests/it/layout.rs
+    hash: 690ca089ee5ba31cb0daf1fc37d50ed3608dcc41b56bf456a753255f5e1f2f5e
+  - path: crates/store/speclink-store-port-fs/tests/it/main.rs
+    hash: a457eb57fa2621f895c81db55df650e543891592bf64c4de8df2a0978c150731
+  - path: crates/store/speclink-store-port-fs/tests/it/support.rs
+    hash: 02bef614f6db4cbc4047fa7c488990afd09c5d36276f9a2e67ba0655812ecb53
+  - path: crates/store/speclink-store-port-fs/tests/it/two_objects.rs
+    hash: 7f98721890f9e0a7da31f29dc344aab0ebc4f8096a02add563895649a2a71cff
+  - path: crates/store/speclink-store-port-postgres/Cargo.toml
+    hash: b8dc4b614cd4b4f799b1a051de4d4a8d5e7347ce27ba001fef2ac258b5242c7e
+  - path: crates/store/speclink-store-port-postgres/src/lib.rs
+    hash: f57eea3bc256d2f68c4516e05e304737977591df51314888ad8b2a0fd3f5703d
+  - path: crates/store/speclink-store-port-postgres/tests/it/availability.rs
+    hash: 9f58ac99e9d40bfab16e5401487102247cbd84f958f6dce850a818a1fa377af2
+  - path: crates/store/speclink-store-port-postgres/tests/it/boundaries.rs
+    hash: bd8fe18c14a286f5185cbc91d7a03b0fa10248b9d0c0327503915decf76a59d8
+  - path: crates/store/speclink-store-port-postgres/tests/it/conformance.rs
+    hash: cc5686996b9c389002b3d70b25d6f18fc535fd8d731d28a21f6c7e50ed979604
+  - path: crates/store/speclink-store-port-postgres/tests/it/consistency.rs
+    hash: 1f0429c1b052e2937b266d3774cd837fe1902a56ccc6111b24052b632ea5fd25
+  - path: crates/store/speclink-store-port-postgres/tests/it/events.rs
+    hash: f2d261ed2849740d8b54d1375f79c61e5749025f3eb8c20d79d9d102ec0eb4a1
+  - path: crates/store/speclink-store-port-postgres/tests/it/layout.rs
+    hash: 63c1b6c3bd3c52b9cb80ba8345f996f2e3a0ceb5b34bce9aa5cf9fdb0a120eb9
+  - path: crates/store/speclink-store-port-postgres/tests/it/main.rs
+    hash: 71bd5c0c8b4de99e90b31d81fbc2aac449ddc8a62c72bd8e843c1f489f7bedfb
+  - path: crates/store/speclink-store-port-postgres/tests/it/support.rs
+    hash: 54e6513329464dff640e7ae95e024e9df00a985433e862f64c2caeac4b89872c
+  - path: crates/store/speclink-store-port-postgres/tests/it/two_objects.rs
+    hash: c17d4014e480135c728dc7e7221d8c0f02260f74a40ecdf036716d085c6343bf
+  - path: crates/store/speclink-store-port-sqlite/Cargo.toml
+    hash: 813260d10feb21fe8f853d4e8838429c6160b3fda3d473aaf629d11f37f577b8
+  - path: crates/store/speclink-store-port-sqlite/src/lib.rs
+    hash: cea2fab0d27a42255df2c75d41a9db8a02c8c2d2213c8c1d7fb23b0e752afb9c
+  - path: crates/store/speclink-store-port-sqlite/tests/it/availability.rs
+    hash: 19df087a1e6964f6cb89d6a6a5cfd83b6c2233e46e04f91f5de469f87be41534
+  - path: crates/store/speclink-store-port-sqlite/tests/it/boundaries.rs
+    hash: 8fc1937c09ee216b5718f553e44585c8c6ae187878e0df1d8f045f09bf248a62
+  - path: crates/store/speclink-store-port-sqlite/tests/it/conformance.rs
+    hash: e5cb00fafd082fda583d327350c4aa4fc1ff0dd64f70b890f90a645ffc26fc8f
+  - path: crates/store/speclink-store-port-sqlite/tests/it/consistency.rs
+    hash: bff82016d334cd82f632de23dfe4b190ceb7197427e86649c129929b2f3b68a4
+  - path: crates/store/speclink-store-port-sqlite/tests/it/events.rs
+    hash: b0634ce23800cea9b90e1dd80fdd89586fe9ded1695c0338a9e65c00866226e2
+  - path: crates/store/speclink-store-port-sqlite/tests/it/layout.rs
+    hash: 3b161a441bb8f520c3d0b648ce7a49dfa52e8715f605a4d987cfe1094b630b47
+  - path: crates/store/speclink-store-port-sqlite/tests/it/main.rs
+    hash: efbb0bd8d1c786b2c19a234956e4682c7c384ba13540117b6ed712dd6984a884
+  - path: crates/store/speclink-store-port-sqlite/tests/it/support.rs
+    hash: f36d1877f35f9fa6db358afa642f34bb9065541bc55c60ffb55ee31808052006
+  - path: crates/store/speclink-store-port-sqlite/tests/it/two_objects.rs
+    hash: 60106fe84acafd5c9605c00a41e420d090808dc910d4c370095cdba5bd51aee2
+verified_at: 2026-11-16T21:55:48+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_rounds: 3
+verified_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+verified_scope:
+  - path: .github/workflows/ci.yml
+    hash: 78d8053b9e3f09d0bba9119941886763341fc7d26a7a4718f30f539b5adbff10
+  - path: Cargo.lock
+    hash: 8325b538336c4c0ea612b37ae18eba5998a181a3215e2e3f7a0feb57f0afd919
+  - path: Cargo.toml
+    hash: a9fde932b3cf3b5812daa19028e4382fb4e2e2918353db889e3722add3513e28
+  - path: crates/store/speclink-store-port-fs/Cargo.toml
+    hash: cbbcd2f4fb4a6c12bb868d56291cae8cc1c90e7a5566dd57e95dc87647c49c04
+  - path: crates/store/speclink-store-port-fs/src/lib.rs
+    hash: 0f90dab8ea25bf5ebaf8beb45960f96093eed12b3958c71eb64f11d57b5d2bbe
+  - path: crates/store/speclink-store-port-fs/tests/it/availability.rs
+    hash: a96837c337c96141ff675d9df05868934e59802d466bcd4f558374a0b5196781
+  - path: crates/store/speclink-store-port-fs/tests/it/boundaries.rs
+    hash: 135b0762dc67d2cf986bff7a20f82b9fc7a5910b382f67bccbc818db47332cd0
+  - path: crates/store/speclink-store-port-fs/tests/it/conformance.rs
+    hash: 23939760155a8a3616bc08f8e86b548a9bca4805cf7eb00d3cafc004f0992ffb
+  - path: crates/store/speclink-store-port-fs/tests/it/consistency.rs
+    hash: 71898c30371ca11426e793d76f8c8dd7864310fde8db12054f2ca403b9f014aa
+  - path: crates/store/speclink-store-port-fs/tests/it/events.rs
+    hash: b0634ce23800cea9b90e1dd80fdd89586fe9ded1695c0338a9e65c00866226e2
+  - path: crates/store/speclink-store-port-fs/tests/it/layout.rs
+    hash: 690ca089ee5ba31cb0daf1fc37d50ed3608dcc41b56bf456a753255f5e1f2f5e
+  - path: crates/store/speclink-store-port-fs/tests/it/main.rs
+    hash: a457eb57fa2621f895c81db55df650e543891592bf64c4de8df2a0978c150731
+  - path: crates/store/speclink-store-port-fs/tests/it/support.rs
+    hash: 02bef614f6db4cbc4047fa7c488990afd09c5d36276f9a2e67ba0655812ecb53
+  - path: crates/store/speclink-store-port-fs/tests/it/two_objects.rs
+    hash: 7f98721890f9e0a7da31f29dc344aab0ebc4f8096a02add563895649a2a71cff
+  - path: crates/store/speclink-store-port-postgres/Cargo.toml
+    hash: b8dc4b614cd4b4f799b1a051de4d4a8d5e7347ce27ba001fef2ac258b5242c7e
+  - path: crates/store/speclink-store-port-postgres/src/lib.rs
+    hash: f57eea3bc256d2f68c4516e05e304737977591df51314888ad8b2a0fd3f5703d
+  - path: crates/store/speclink-store-port-postgres/tests/it/availability.rs
+    hash: 9f58ac99e9d40bfab16e5401487102247cbd84f958f6dce850a818a1fa377af2
+  - path: crates/store/speclink-store-port-postgres/tests/it/boundaries.rs
+    hash: bd8fe18c14a286f5185cbc91d7a03b0fa10248b9d0c0327503915decf76a59d8
+  - path: crates/store/speclink-store-port-postgres/tests/it/conformance.rs
+    hash: cc5686996b9c389002b3d70b25d6f18fc535fd8d731d28a21f6c7e50ed979604
+  - path: crates/store/speclink-store-port-postgres/tests/it/consistency.rs
+    hash: 1f0429c1b052e2937b266d3774cd837fe1902a56ccc6111b24052b632ea5fd25
+  - path: crates/store/speclink-store-port-postgres/tests/it/events.rs
+    hash: f2d261ed2849740d8b54d1375f79c61e5749025f3eb8c20d79d9d102ec0eb4a1
+  - path: crates/store/speclink-store-port-postgres/tests/it/layout.rs
+    hash: 63c1b6c3bd3c52b9cb80ba8345f996f2e3a0ceb5b34bce9aa5cf9fdb0a120eb9
+  - path: crates/store/speclink-store-port-postgres/tests/it/main.rs
+    hash: 71bd5c0c8b4de99e90b31d81fbc2aac449ddc8a62c72bd8e843c1f489f7bedfb
+  - path: crates/store/speclink-store-port-postgres/tests/it/support.rs
+    hash: 54e6513329464dff640e7ae95e024e9df00a985433e862f64c2caeac4b89872c
+  - path: crates/store/speclink-store-port-postgres/tests/it/two_objects.rs
+    hash: c17d4014e480135c728dc7e7221d8c0f02260f74a40ecdf036716d085c6343bf
+  - path: crates/store/speclink-store-port-sqlite/Cargo.toml
+    hash: 813260d10feb21fe8f853d4e8838429c6160b3fda3d473aaf629d11f37f577b8
+  - path: crates/store/speclink-store-port-sqlite/src/lib.rs
+    hash: cea2fab0d27a42255df2c75d41a9db8a02c8c2d2213c8c1d7fb23b0e752afb9c
+  - path: crates/store/speclink-store-port-sqlite/tests/it/availability.rs
+    hash: 19df087a1e6964f6cb89d6a6a5cfd83b6c2233e46e04f91f5de469f87be41534
+  - path: crates/store/speclink-store-port-sqlite/tests/it/boundaries.rs
+    hash: 8fc1937c09ee216b5718f553e44585c8c6ae187878e0df1d8f045f09bf248a62
+  - path: crates/store/speclink-store-port-sqlite/tests/it/conformance.rs
+    hash: e5cb00fafd082fda583d327350c4aa4fc1ff0dd64f70b890f90a645ffc26fc8f
+  - path: crates/store/speclink-store-port-sqlite/tests/it/consistency.rs
+    hash: bff82016d334cd82f632de23dfe4b190ceb7197427e86649c129929b2f3b68a4
+  - path: crates/store/speclink-store-port-sqlite/tests/it/events.rs
+    hash: b0634ce23800cea9b90e1dd80fdd89586fe9ded1695c0338a9e65c00866226e2
+  - path: crates/store/speclink-store-port-sqlite/tests/it/layout.rs
+    hash: 3b161a441bb8f520c3d0b648ce7a49dfa52e8715f605a4d987cfe1094b630b47
+  - path: crates/store/speclink-store-port-sqlite/tests/it/main.rs
+    hash: efbb0bd8d1c786b2c19a234956e4682c7c384ba13540117b6ed712dd6984a884
+  - path: crates/store/speclink-store-port-sqlite/tests/it/support.rs
+    hash: f36d1877f35f9fa6db358afa642f34bb9065541bc55c60ffb55ee31808052006
+  - path: crates/store/speclink-store-port-sqlite/tests/it/two_objects.rs
+    hash: 60106fe84acafd5c9605c00a41e420d090808dc910d4c370095cdba5bd51aee2
+archived_at: 2026-11-16T21:59:35+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

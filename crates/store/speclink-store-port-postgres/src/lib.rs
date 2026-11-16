@@ -61,7 +61,7 @@ use std::fmt;
 use std::sync::{Mutex, PoisonError};
 
 use postgres::error::SqlState;
-use postgres::{Client, Config, GenericClient, IsolationLevel, NoTls, Row, Transaction};
+use postgres::{Client, Config, IsolationLevel, NoTls, Row, Transaction};
 use speclink_store_port::{
     Commit, DocKey, Document, Expected, KeyPrefix, ListEntry, Listing, Op, PortError,
     RecordedEvent, ScopeId, StorePort, Timestamp, Version,
@@ -278,7 +278,7 @@ fn connect_client(config: &Config) -> Result<Client, postgres::Error> {
 /// Bind a count from the contract as a `bigint`. Versions and times stop at
 /// 2^53 − 1 and no sequence gets near `i64::MAX`, so only a number that a
 /// caller made up is cut here.
-fn db(n: u64) -> i64 {
+fn to_bigint(n: u64) -> i64 {
     i64::try_from(n).unwrap_or(i64::MAX)
 }
 
@@ -301,8 +301,9 @@ fn prefix_upper_bound(prefix: &str) -> Option<String> {
     None
 }
 
+/// The value of one `meta` key as text, whatever types the columns have.
 fn meta_value(tx: &mut Transaction<'_>, key: &str) -> Result<Option<String>, postgres::Error> {
-    let row = tx.query_opt("SELECT value::text FROM meta WHERE key = $1", &[&key])?;
+    let row = tx.query_opt("SELECT value::text FROM meta WHERE key::text = $1", &[&key])?;
     Ok(row.and_then(|row| row.get(0)))
 }
 
@@ -327,8 +328,24 @@ fn open_layout(client: &mut Client) -> Result<(), OpenError> {
         )?
         .get(0);
     if has_meta {
-        let format = meta_value(&mut tx, "format")?;
-        let layout_version = meta_value(&mut tx, "layout_version")?;
+        // This example's `meta` table has a `key` and a `value` column. One
+        // with other columns is someone else's, and has no marker to read.
+        let meta_columns: i64 = tx
+            .query_one(
+                "SELECT count(*) FROM information_schema.columns
+                 WHERE table_schema = current_schema() AND table_name = 'meta'
+                   AND column_name IN ('key', 'value')",
+                &[],
+            )?
+            .get(0);
+        let (format, layout_version) = if meta_columns == 2 {
+            (
+                meta_value(&mut tx, "format")?,
+                meta_value(&mut tx, "layout_version")?,
+            )
+        } else {
+            (None, None)
+        };
         if format.as_deref() != Some(FORMAT) || layout_version.as_deref() != Some(LAYOUT_VERSION) {
             return Err(OpenError::UnknownLayout {
                 format,
@@ -346,23 +363,6 @@ fn open_layout(client: &mut Client) -> Result<(), OpenError> {
     }
     tx.commit()?;
     Ok(())
-}
-
-/// The scope's version and last event sequence; 0 and 0 for a scope that
-/// was never written.
-fn scope_counters(
-    client: &mut impl GenericClient,
-    scope: &ScopeId,
-) -> Result<(Version, u64), Failure> {
-    let row = client.query_opt(
-        "SELECT version, event_seq FROM scopes WHERE scope = $1",
-        &[&scope.as_str()],
-    )?;
-    let (version, event_seq) = match row {
-        Some(row) => (number(&row, 0)?, number(&row, 1)?),
-        None => (0, 0),
-    };
-    Ok((Version::new(version).map_err(out_of_range)?, event_seq))
 }
 
 /// A transaction for a list or a read: every statement in it sees the same
@@ -466,7 +466,7 @@ impl PostgresPort {
             let rows = client.query(
                 "SELECT seq, name, payload, version FROM events
                  WHERE scope = $1 AND seq > $2 ORDER BY seq LIMIT $3",
-                &[&scope.as_str(), &db(after), &limit],
+                &[&scope.as_str(), &to_bigint(after), &limit],
             )?;
             let mut events = Vec::with_capacity(rows.len());
             for row in rows {
@@ -522,11 +522,11 @@ impl PostgresPort {
             }
             tx.execute(
                 "DELETE FROM events WHERE scope = $1 AND seq <= $2",
-                &[&scope.as_str(), &db(new_floor)],
+                &[&scope.as_str(), &to_bigint(new_floor)],
             )?;
             tx.execute(
                 "UPDATE scopes SET event_floor = $2 WHERE scope = $1",
-                &[&scope.as_str(), &db(new_floor)],
+                &[&scope.as_str(), &to_bigint(new_floor)],
             )?;
             // To trim two times gives the same result, so this can run again.
             tx.commit()?;
@@ -534,11 +534,15 @@ impl PostgresPort {
         })
     }
 
-    /// Check that the store can answer: the database is there and the
-    /// store's tables can be read.
+    /// Check that the store can answer: the database is there, and a write
+    /// to the store's tables works. The write leaves nothing: it writes the
+    /// marker over itself in a transaction and rolls back. A session that
+    /// can only read, as on a standby server, fails here.
     pub fn probe(&self) -> Result<(), PortError> {
         self.run(|client| {
-            client.query("SELECT 1 FROM meta WHERE key = 'format'", &[])?;
+            let mut tx = client.transaction()?;
+            tx.execute("UPDATE meta SET value = value WHERE key = 'format'", &[])?;
+            // The drop of the transaction rolls it back.
             Ok(())
         })
     }
@@ -549,7 +553,15 @@ impl StorePort for PostgresPort {
         let upper = prefix_upper_bound(prefix.as_str());
         self.run(|client| {
             let mut tx = snapshot(client)?;
-            let (version, _) = scope_counters(&mut tx, scope)?;
+            // A scope that was never written has no row and version 0.
+            let row = tx.query_opt(
+                "SELECT version FROM scopes WHERE scope = $1",
+                &[&scope.as_str()],
+            )?;
+            let version = match row {
+                Some(row) => Version::new(number(&row, 0)?).map_err(out_of_range)?,
+                None => Version::ZERO,
+            };
             // A range on the key, not LIKE: `%` and `_` in a key are
             // ordinary characters. The column's "C" collation gives the byte
             // order that the contract asks for.
@@ -663,8 +675,8 @@ impl StorePort for PostgresPort {
                             &scope.as_str(),
                             &key.as_str(),
                             &content.as_bytes(),
-                            &db(new_version.get()),
-                            &db(commit.at().get()),
+                            &to_bigint(new_version.get()),
+                            &to_bigint(commit.at().get()),
                         ],
                     )?,
                     Op::Delete { key, .. } => tx.execute(
@@ -683,8 +695,8 @@ impl StorePort for PostgresPort {
                      VALUES ($1, $2, $3, $4, $5)",
                     &[
                         &scope.as_str(),
-                        &db(seq),
-                        &db(new_version.get()),
+                        &to_bigint(seq),
+                        &to_bigint(new_version.get()),
                         &event.name(),
                         &event.payload().to_string(),
                     ],
@@ -695,7 +707,11 @@ impl StorePort for PostgresPort {
             //    the COMMIT itself must not make the call run again.
             tx.execute(
                 "UPDATE scopes SET version = $2, event_seq = $3 WHERE scope = $1",
-                &[&scope.as_str(), &db(new_version.get()), &db(seq)],
+                &[
+                    &scope.as_str(),
+                    &to_bigint(new_version.get()),
+                    &to_bigint(seq),
+                ],
             )?;
             tx.commit().map_err(Failure::Commit)?;
             Ok(new_version)
