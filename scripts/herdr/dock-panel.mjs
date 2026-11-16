@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板。
-// 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉；複製 tabs 讓捲動不會切換頁籤。
+// 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉。
 // 內建版面不能停靠，複製版又不會跟著 Herdr 更新，所以 Herdr 更新後要重跑這支。
 // 舊的版面會留在 layouts/speclink.json.old-<時間>，和 Herdr 的 layout.reset 同樣做法；
 // 舊的 mod 複製版直接刪掉，那些資料夾沒有使用者的資料。
@@ -44,11 +44,7 @@ const SPACES_EDITS = [
   ['.child(repair?.busy ? "Connecting…" : "Connect")', '.child(tr(repair?.busy ? "Connecting…" : "Connect"))'],
   ['.child("New space there")', '.child(tr("New space there"))'],
   ['el.child("Spaces")', 'el.child(tr("Spaces"))'],
-  // 徽章會佔掉寬度。git 的箭頭搬到 rowEnd，和徽章一起固定在右邊；放不下時讓 space 名字變短，才不會疊在一起。
-  [
-    '.child(div().flex_shrink(0).max_w(150).truncate().text_color(t.foreground).child(w.name))',
-    '.child(div().max_w(150).truncate().text_color(t.foreground).child(w.name))',
-  ],
+  // 徽章會佔掉寬度。git 的箭頭搬到 rowEnd，和徽章一起固定在右邊。放不下時名字會變短，Herdr 0.1.16 起內建就這樣做。
   [
     '.child(where)))\n      .when(g.ahead > 0, (el) => el.child(div().flex_none().text_color(t.ansi2).child(`\\u2191${g.ahead}`)))\n      .when(g.behind > 0, (el) => el.child(div().flex_none().text_color(t.ansi1).child(`\\u2193${g.behind}`)));',
     '.child(where)));',
@@ -129,9 +125,6 @@ const CHANGES_EDITS = [
   ['.child(div().flex_1().min_w(0).truncate().child(text));', '.child(div().flex_1().min_w(0).truncate().child(`${text}\u2060`));'],
 ];
 
-// 內建的頁籤列一捲動就切換頁籤，觸控板滑一次會連切好幾個，畫面一直閃。拿掉後捲動只移動頁籤列。
-const TABS_EDITS = [['      .on_scroll_wheel(e => { if (Math.abs(e.delta.y) >= 1) run(e.delta.y > 0 ? "tab.prev" : "tab.next"); })\n', '']];
-
 const integration = (file) => fileURLToPath(new URL(`../../integrations/herdr/${file}`, import.meta.url));
 // 版面裡的區塊換成哪個複製版。files 是複製版裡的檔名對應 repo 裡的檔案。
 const I18N = { 'i18n.js': 'mods/speclink/i18n.js' };
@@ -154,7 +147,6 @@ const CLONES = [
   // 這幾個 Herdr 改了就用內建的，不擋停靠。optional 寫的是改用內建後會怎樣。
   { mod: 'files', blocks: ['files'], as: 'speclink-files', edits: FILES_EDITS, files: {}, optional: UNPROTECTED },
   { mod: 'changes', blocks: ['changes'], as: 'speclink-changes', edits: CHANGES_EDITS, files: {}, optional: UNPROTECTED },
-  { mod: 'tabs', blocks: ['tabs'], as: 'speclink-tabs', edits: TABS_EDITS, files: {}, optional: '捲動頁籤列時會切換頁籤。' },
 ];
 
 const home = process.env.HERDR_APP_HOME ?? path.join(homedir(), '.config/herdr-app');
@@ -191,6 +183,8 @@ if (existsSync(file)) {
   herdr('layout.switch', { name: 'main' });
   renameSync(file, `${file}.old-${Date.now()}`);
 }
+// Herdr 0.1.16 起頁籤列捲一格只切一個頁籤，改用內建的。之前複製的頁籤列不再用到。
+rmSync(path.join(home, 'mods', 'speclink-tabs'), { recursive: true, force: true });
 
 for (const clone of clones) {
   const dir = path.join(home, 'mods', clone.as);

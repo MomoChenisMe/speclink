@@ -1619,6 +1619,7 @@ test('autoTr：帶變數的句子要整句符合才翻', () => {
   assert.equal(autoTr('vps needs a login: run hc machine login vps. Click for Copy.'), 'vps 需要登入，請執行 hc machine login vps。按一下到設定複製指令。');
   assert.equal(autoTr('vps needs a login: run'), 'vps 需要登入，請執行');
   assert.equal(autoTr('needs a login: run'), '需要登入，請執行');
+  assert.equal(autoTr('Agents stop when you disconnect. Click for the fix.'), '中斷連線後 agent 會停下來。點這裡看修正方法。');
   assert.equal(autoTr('Copy'), '複製');
   assert.equal(autoTr('Copied'), '已複製');
   assert.equal(autoTr('Could not check installed agents'), '檢查不了已安裝的 agent');
@@ -1668,10 +1669,10 @@ test('dock-panel：檔案樹的名稱不會被翻，改不到時不擋停靠', (
   for (const name of ['speclink-status', 'speclink-chrome']) assert.ok(!source.includes(name), name);
 });
 
-test('dock-panel：捲動頁籤列不切換頁籤，改不到時不擋停靠', () => {
+test('dock-panel：頁籤列用內建的，刪掉之前複製的頁籤列', () => {
   const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
-  assert.match(source, /const TABS_EDITS = \[\['[^']*on_scroll_wheel[^']*tab\.prev[^']*', ''\]\];/);
-  assert.match(source, /as: 'speclink-tabs', edits: TABS_EDITS.*optional: '/);
+  assert.ok(!source.includes("as: 'speclink-tabs'"));
+  assert.match(source, /rmSync\(path\.join\(home, 'mods', 'speclink-tabs'\), \{ recursive: true, force: true \}\);/);
 });
 
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));
@@ -1720,7 +1721,7 @@ const ALL_AGENTS = [
   { key: 'claude', name: 'Claude Code', run: ['claude'], installed: true },
   { key: 'codex', name: 'Codex', run: ['codex'], installed: true },
   { key: 'pi', name: 'Pi', run: ['pi'], installed: true },
-  { key: 'cursor', name: 'Cursor', run: ['cursor-agent'], installed: true },
+  { key: 'cursor', name: 'Cursor', run: ['agent'], installed: true },
   { key: 'opencode', name: 'OpenCode', run: ['opencode'], installed: true },
   { key: 'copilot', name: 'Copilot', run: ['copilot'], installed: false },
 ];

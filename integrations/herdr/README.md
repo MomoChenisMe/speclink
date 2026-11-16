@@ -212,13 +212,13 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
 
 ## 需求
 
-- Herdr 0.1.13 以上（以這一版測試）。`dock-panel.mjs` 要改的程式行跟著 Herdr 的版本走，在 0.1.12 上會停下來。
+- Herdr 0.1.16 以上（以這一版測試）。面板會取消用不到的資料夾監看，這要 0.1.16 才有。`dock-panel.mjs` 要改的程式行也跟著 Herdr 的版本走，在 0.1.12 上會停下來。
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show`、`speclink instructions apply` 的 `--json` 輸出。CLI 沒有提供的章，另外讀變更資料夾的 `.meta.yaml`。
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
 - 要停靠或裝 hook 時需要 Node.js，用來執行複製版面的腳本和 hook。
 - 要判斷章有沒有過期、讀「我的技能」時需要 `perl`。macOS 內建。
-- 要用 Codex、Pi 或 Cursor 時，`codex`、`pi`、`cursor-agent` 要在 PATH 上，Herdr 才選得到。專案要有對應的技能檔：Codex 是 `.agents/skills`（`speclink init --tools codex`），Pi 是 `.pi/skills`（`speclink init --tools pi`），Cursor 是 `.cursor/skills`（`speclink init --tools cursor`）。Pi 要先信任專案、登入模型。Codex 內建在 ChatGPT app 裡時，連一個到 PATH：`ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`。Pi 用 `npm i -g @earendil-works/pi-coding-agent` 安裝。
+- 要用 Codex、Pi 或 Cursor 時，`codex`、`pi`、`agent`（Cursor 的 CLI）要在 PATH 上，Herdr 才選得到。專案要有對應的技能檔：Codex 是 `.agents/skills`（`speclink init --tools codex`），Pi 是 `.pi/skills`（`speclink init --tools pi`），Cursor 是 `.cursor/skills`（`speclink init --tools cursor`）。Pi 要先信任專案、登入模型。Codex 內建在 ChatGPT app 裡時，連一個到 PATH：`ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`。Pi 用 `npm i -g @earendil-works/pi-coding-agent` 安裝。
 
 ## 安裝
 
@@ -277,8 +277,8 @@ node scripts/herdr/dock-panel.mjs
 它會做這些事：
 
 1. 切回 `main`。
-2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`、`mods/speclink-agents`、`mods/speclink-files`、`mods/speclink-changes` 和 `mods/speclink-tabs`。
-3. 用新版的 `spaces`、`agents`、`files`、`changes`、`tabs` 重新複製並接上。Herdr 改了 `spaces`、`agents` 要接的那幾行時，腳本會在動任何東西之前停下來。`files`、`changes`、`tabs` 改不到時，腳本會警告並改用內建的，不擋停靠。
+2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`、`mods/speclink-agents`、`mods/speclink-files`、`mods/speclink-changes`，以及之前版本留下的 `mods/speclink-tabs`。
+3. 用新版的 `spaces`、`agents`、`files`、`changes` 重新複製並接上。Herdr 改了 `spaces`、`agents` 要接的那幾行時，腳本會在動任何東西之前停下來。`files`、`changes` 改不到時，腳本會警告並改用內建的，不擋停靠。
 4. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
 
 改過 `keys.json` 的話，Herdr 更新不會自動加新的快捷鍵，要自己加。例如 0.1.13 的終端機搜尋，要在 `terminal` 區段加 `"cmd-f": "terminal.search"`。
@@ -302,8 +302,6 @@ node scripts/herdr/dock-panel.mjs
 Agents 清單也是同樣的做法。內建的 agents mod 沒有擴充點，所以腳本複製它、放進 `integrations/herdr/agents-list/speclink-rows.js` 和面板的 `model.js`、`shared.js`，再改十幾行。這樣清單和面板用同一套規則判斷 agent 在做哪個變更。
 
 檔案和變更面板也各複製一份，只改兩三行，讓檔案名稱和差異內容不會被翻。其他內建畫面不用複製，見「語言」。
-
-頁籤列也複製一份，只拿掉一行。內建的頁籤列一捲動就切換頁籤，觸控板滑一次會連切好幾個，畫面一直閃。拿掉後，捲動只移動頁籤列。要切換頁籤就用點的，或按 `⌃Tab`、`⌘⇧]`、`⌘⇧[`。
 
 Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` 沒有作用，對 `main` 跑 `layout.set` 也會被拒。
 

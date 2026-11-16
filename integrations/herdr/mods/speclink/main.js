@@ -183,7 +183,10 @@ export default class SpeclinkPanel extends View {
   }
 
   // 規格資料夾有動靜就重抓。內容問 CLI，只有章 CLI 不給（見 stationFacts）。watchFolder 只看得到本機。
+  // 換專案時取消舊專案的監看：Herdr 同時最多只等 64 個資料夾，不取消的話，舊的會一直佔著名額。
   watch(root, on, cx) {
+    this.watching?.cancel();
+    this.watching = null;
     if (on) return;
     cx.spawn(async (cx) => {
       const found = await exec("ls", ["-d", "speclink", "openspec"], { cwd: root }).catch(() => null);
@@ -191,7 +194,8 @@ export default class SpeclinkPanel extends View {
       if (!dir) return;
       try {
         while (this.root === root) {
-          await watchFolder(`${root}/${dir}`);
+          this.watching = watchFolder(`${root}/${dir}`);
+          await this.watching;
           if (this.root === root) this.reload(cx);
         }
       } catch {

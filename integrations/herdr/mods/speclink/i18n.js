@@ -170,6 +170,8 @@ export const TO_ZH = {
   "needs a login: run": "需要登入，請執行",
   Copy: "複製",
   Copied: "已複製",
+  // 遠端機器在中斷連線後會停掉 agent 時，機器名稱旁的警告。
+  "Agents stop when you disconnect. Click for the fix.": "中斷連線後 agent 會停下來。點這裡看修正方法。",
   "Loading…": "載入中…",
   Connect: "連線",
   "Connecting…": "連線中…",

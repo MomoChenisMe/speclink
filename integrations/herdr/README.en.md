@@ -212,13 +212,13 @@ The logo sends a `speclink://project` URL. The desktop app goes to the project o
 
 ## Requirements
 
-- Herdr 0.1.13 or later (tested with this version). The lines that `dock-panel.mjs` edits follow the Herdr version, so the script stops on 0.1.12.
+- Herdr 0.1.16 or later (tested with this version). The panel cancels the folder watches that it does not need, and only 0.1.16 can do this. The lines that `dock-panel.mjs` edits also follow the Herdr version, so the script stops on 0.1.12.
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list`, `speclink workflow-config show` and `speclink instructions apply`. The CLI does not give the stamps, so the panel also reads `.meta.yaml` in the change folder.
 - A project with `speclink init` done. If it is not done, the panel gives an initialize button.
 - To open pages in Speclink, or to go to a project with the logo, a desktop app that knows `speclink://` URLs (a version after v0.11.0). Releases up to and including v0.11.0 do not have these URLs, so the logo only brings up the app. A version that you built yourself after 2026-11-03 may not know `speclink://project` yet. In that version the logo brings the app to the front, the project does not change, and the app shows "Can't open this speclink link". The message goes away after you update the app.
 - To dock the panel or use the hooks, Node.js, which runs the script that clones the layout and the hooks.
 - To check whether a stamp is stale and to read My skills, `perl`. macOS includes it.
-- To use Codex, Pi or Cursor, `codex`, `pi` and `cursor-agent` on PATH, so Herdr can select them. The project needs the related skill files: `.agents/skills` for Codex (`speclink init --tools codex`), `.pi/skills` for Pi (`speclink init --tools pi`) and `.cursor/skills` for Cursor (`speclink init --tools cursor`). Pi needs a trusted project and a model login. If Codex is inside the ChatGPT app, add a link on PATH: `ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`. Install Pi with `npm i -g @earendil-works/pi-coding-agent`.
+- To use Codex, Pi or Cursor, `codex`, `pi` and `agent` (the Cursor CLI) on PATH, so Herdr can select them. The project needs the related skill files: `.agents/skills` for Codex (`speclink init --tools codex`), `.pi/skills` for Pi (`speclink init --tools pi`) and `.cursor/skills` for Cursor (`speclink init --tools cursor`). Pi needs a trusted project and a model login. If Codex is inside the ChatGPT app, add a link on PATH: `ln -s /Applications/ChatGPT.app/Contents/Resources/codex-cli/bin/codex ~/.local/bin/codex`. Install Pi with `npm i -g @earendil-works/pi-coding-agent`.
 
 ## Install
 
@@ -277,8 +277,8 @@ node scripts/herdr/dock-panel.mjs
 The script does these steps:
 
 1. It switches to `main`.
-2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents`, `mods/speclink-files`, `mods/speclink-changes` and `mods/speclink-tabs`.
-3. It clones the new `spaces`, `agents`, `files`, `changes` and `tabs` and connects them. If Herdr changed the lines that the script edits in `spaces` or `agents`, the script stops before it changes anything. If it cannot edit `files`, `changes` or `tabs`, it warns, uses the built-in mod, and continues.
+2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents`, `mods/speclink-files`, `mods/speclink-changes`, and the `mods/speclink-tabs` that earlier versions made.
+3. It clones the new `spaces`, `agents`, `files` and `changes` and connects them. If Herdr changed the lines that the script edits in `spaces` or `agents`, the script stops before it changes anything. If it cannot edit `files` or `changes`, it warns, uses the built-in mod, and continues.
 4. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
 
 If you edited `keys.json`, a Herdr update does not add new shortcuts, so add them yourself. For example, for terminal search in 0.1.13, add `"cmd-f": "terminal.search"` to the `terminal` section.
@@ -302,8 +302,6 @@ The conclusion first said that Start opens a new space, on the assumption that i
 The Agents list works the same way. The built-in agents mod has no extension point, so the script clones it, adds `integrations/herdr/agents-list/speclink-rows.js` and the panel's `model.js` and `shared.js`, and changes about fifteen lines. The list and the panel then use the same rules to find the change that an agent works on.
 
 The script also clones the Files and Changes panels and edits two or three lines, so file names and diff lines do not get translated. Herdr's other screens do not need clones. See "Language". The translations for all the clones are in the panel's `i18n.js`.
-
-The script also clones the tab bar and removes one line. In Herdr's own tab bar, a scroll switches the tab, so one trackpad swipe switches several tabs and the window flashes. After the edit, a scroll only moves the tab bar. To switch tabs, click a tab or press `⌃Tab`, `⌘⇧]` or `⌘⇧[`.
 
 Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` has no effect, and `layout.set` on `main` is refused.
 
