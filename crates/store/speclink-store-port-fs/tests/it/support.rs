@@ -83,7 +83,8 @@ pub fn open_error(result: Result<FsPort, OpenError>) -> OpenError {
 /// Every file and directory below `dir`, with the bytes of each file, to
 /// prove that a call changed nothing and added nothing. The `lock` file is
 /// listed without its bytes: while a store holds its lock, Windows does not
-/// let another handle read it, and its bytes mean nothing.
+/// let another handle read it, and its bytes mean nothing. It is found by its
+/// name at any depth, because some tests pass the directory above the store.
 pub fn tree(dir: &Path) -> Vec<(PathBuf, Option<Vec<u8>>)> {
     fn walk(root: &Path, dir: &Path, found: &mut Vec<(PathBuf, Option<Vec<u8>>)>) {
         for entry in std::fs::read_dir(dir).unwrap() {
@@ -92,7 +93,7 @@ pub fn tree(dir: &Path) -> Vec<(PathBuf, Option<Vec<u8>>)> {
             if path.is_dir() {
                 found.push((relative, None));
                 walk(root, &path, found);
-            } else if relative == Path::new("lock") {
+            } else if relative.ends_with("lock") {
                 found.push((relative, Some(Vec::new())));
             } else {
                 found.push((relative, Some(std::fs::read(&path).unwrap())));
