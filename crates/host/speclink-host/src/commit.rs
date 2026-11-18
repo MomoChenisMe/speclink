@@ -32,6 +32,7 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::TaskUncompleted { change, task_id, .. } => json!({ "change": change, "taskId": task_id }),
         DomainEvent::TaskMoved { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeClaimed { change, .. } => json!({ "change": change }),
+        DomainEvent::ChangeClaimReleased { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeMarkedInProgress { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeInProgressRemoved { change, .. } => json!({ "change": change }),
         DomainEvent::ChangeDependsChanged { change, depends_on, .. } => json!({ "change": change, "dependsOn": depends_on }),
@@ -88,6 +89,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "task-uncompleted"
         | "task-moved"
         | "change-claimed"
+        | "change-claim-released"
         | "change-marked-in-progress"
         | "change-in-progress-removed"
         | "change-depends-changed"

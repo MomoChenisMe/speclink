@@ -53,6 +53,10 @@ pub struct ChangeMeta {
     /// 與 started_* 同居 change meta：缺席即未認領，舊版讀者忽略。
     #[serde(default)]
     pub claimed_by: Option<String>,
+    /// 認領人的識別（宿主的穩定 id）；沒有識別的認領不寫這個欄位。
+    #[serde(default)]
+    pub claimed_by_id: Option<String>,
+    /// 認領的時間，保留寫入時的原樣——它不在 `collapse_time_fields` 的清單裡。
     #[serde(default)]
     pub claimed_at: Option<String>,
     /// 看板欄內排序鍵（speclink 桌面延伸；desktop-card-reorder）。缺席＝未排序，
@@ -169,7 +173,6 @@ impl ChangeMeta {
         let time_fields = [
             &mut self.created,
             &mut self.started_at,
-            &mut self.claimed_at,
             &mut self.reviewed_at,
             &mut self.verified_at,
         ];
@@ -1077,9 +1080,29 @@ mod tests {
         let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
         assert_eq!(meta.created.as_deref(), Some("2026-10-21"));
         assert_eq!(meta.started_at.as_deref(), Some("2026-10-22"));
-        assert_eq!(meta.claimed_at.as_deref(), Some("2026-10-23"));
         assert_eq!(meta.reviewed_at.as_deref(), Some("2026-10-24"));
         assert_eq!(meta.verified_at.as_deref(), Some("2026-10-25"));
+    }
+
+    #[test]
+    fn meta_keeps_claimed_at_as_written_and_reads_the_claimant_identifier() {
+        // spec「認領記錄的讀取」：claimed_at 原樣輸出（`show --json` 的 `claimed.at`、
+        // 線上的 `claimedAt`），所以它不在收斂的清單裡。把它移出清單前搜尋過
+        // claimed_at：除了這個模組的測試，沒有任何輸出點讀 ChangeMeta 的這個欄位，
+        // 所以沒有輸出因此從日期變成時戳。
+        let text = "schema: spec-driven\ncreated: 2026-10-21T14:05:00+08:00\nclaimed_at: 2026-10-23T10:00:00+00:00\nclaimed_by: Alice\nclaimed_by_id: u_1\n";
+        let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
+        assert_eq!(meta.claimed_at.as_deref(), Some("2026-10-23T10:00:00+00:00"));
+        assert_eq!(meta.claimed_by.as_deref(), Some("Alice"));
+        assert_eq!(meta.claimed_by_id.as_deref(), Some("u_1"));
+        assert_eq!(meta.created.as_deref(), Some("2026-10-21"), "the other time fields still collapse");
+        // 缺席讀作沒有。
+        let unkeyed = ChangeMeta::from_text(Some("claimed_at: 2026-10-23\nclaimed_by: Alice\n")).expect("meta parses");
+        assert_eq!(unkeyed.claimed_by_id, None);
+        assert_eq!(unkeyed.claimed_at.as_deref(), Some("2026-10-23"), "a plain date stays a plain date");
+        // from_fields 走同一道收斂：claimed_at 也不截。
+        let built = ChangeMeta::from_fields(|m| m.claimed_at = Some("2026-10-23T10:00:00+00:00".into()));
+        assert_eq!(built.claimed_at.as_deref(), Some("2026-10-23T10:00:00+00:00"));
     }
 
     #[test]

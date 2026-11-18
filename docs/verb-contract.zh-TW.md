@@ -29,7 +29,7 @@
 | 歸屬 | 動詞 | 在不支援的模式下執行 |
 | --- | --- | --- |
 | 只限本機 | `demo` | 遠端模式直接拒絕、非零結束，連一個請求都不送（離線也一樣拒絕） |
-| 只限遠端 | `claim` | 本機模式直接拒絕、非零結束，stderr 說明這個動詞需要遠端專案 |
+| 只限遠端 | `claim`（含 `--release`） | 本機模式直接拒絕、非零結束，stderr 說明這個動詞需要遠端專案 |
 | 兩種模式都可用 | `list`、`show`、`validate`、`analyze`、`drift`、`trace`、`plan`（含 `--strict-overlap`）、`change`（`depends`、`schema`、`rank`、`landed`、`field`）、`archive`、`discard`、`artifact`、`evidence`、`language`、`status`、`instructions`、`new`、`workflow-config`、`task`、`in-progress`、`discuss`、`review`、`verify` | 不適用。遠端模式只讀寫 Server，不會偷偷改用本機檔案 |
 | 不分模式 | `init`、`update`、`link`、`unlink`、`auth`、`schemas`、`templates`、`feedback`、`schema`、`config`、`completion` | 不適用。這些動詞不讀寫規格文件 |
 
@@ -67,7 +67,7 @@
 
 ## <a id="verb-reference"></a>動詞、旗標與 `--json` 欄位
 
-這一節列出落地回報、自由欄位與 evidence 的動詞、`auth login` 的登入方式旗標，以及 `list --json` 與 `show --json` 的選填欄位。除了 `auth login`（它只用在遠端專案），這些動詞與旗標在本機專案與遠端專案都能用，輸出相同。每個動詞都接受 `--no-color`。
+這一節列出認領、落地回報、自由欄位與 evidence 的動詞、`auth login` 的登入方式旗標，以及 `list --json` 與 `show --json` 的選填欄位。除了 `auth login` 與 `claim`（它們只用在遠端專案），這些動詞與旗標在本機專案與遠端專案都能用，輸出相同。每個動詞都接受 `--no-color`。
 
 ### `speclink evidence show <變更>`
 
@@ -84,6 +84,44 @@
 | `archivedAs` | 帶日期的封存名稱；只有記錄來自已封存的變更時才出現 |
 | `entries` | 每筆一個任務：`taskId`、`taskDesc`、`touchedFiles`、`recordedAt`，以及有值才出現的 `actor`、`repo`、`headCommit` |
 | `files` | 全部任務動到的檔案，去重複並排序 |
+
+### `speclink claim <變更>`
+
+記下「這個變更我在做」，別人就不會重複開工。只有遠端專案有認領；本機專案會拒絕這個動詞，帶不帶 `--release` 都一樣。
+
+- 旗標：`--release`、`--json`。
+- 不帶 `--release` 是認領。同一個人重複認領照樣成功、不重寫；別人已經認領時以非零結束，stderr 寫出持有人。
+- `--release` 是釋放認領。釋放之後，任何人都可以再認領。
+- **有寫入權限的人都可以釋放，不必是認領的人。** 引擎不管誰可以釋放。「只有認領的人可以釋放」這類規則由宿主自己加，寫在執行前掛鉤（`beforeCommand`）裡，見下面的範例。
+- 釋放成功時輸出 `✓ Released claim on change: <變更> (was claimed by <持有人>)`。
+- 對沒有被認領的變更執行 `--release` 不是錯誤：輸出 `Change '<變更>' is not claimed — nothing to release`，什麼都不寫，exit code 是 0。
+- `claim --json` 輸出 `{"change":"add-login","claimedBy":"Demo <demo@example.com>"}`。
+- `claim --release --json` 輸出 `{"change":"add-login","released":true,"previousHolder":"Demo <demo@example.com>"}`。變更本來就沒有被認領時，`released` 是 `false`。`previousHolder` 只在釋放前的認領有寫持有人時出現。
+- 認領被拒絕、變更不存在、在本機專案執行，都以非零結束。訊息寫到 stderr，stdout 沒有 JSON。
+- 在 Node SDK，`dispatch(['claim', name])` 現在回傳 `--json` 的物件，和其他有 JSON 形式的動詞一樣。`claim` 有 JSON 形式之前，它回傳 `{ output }`；讀 `output` 的宿主要改讀 `claimedBy`。
+
+掛鉤收到的釋放，命令名稱是 `claim-release`，變更名稱在 `params.name`。這個名稱不是 `claim`：只擋 `claim` 的掛鉤擋不到釋放。下面是 Node SDK 的範例，只讓認領的人釋放：
+
+```js
+async beforeCommand({ identity, command, params }, { read }) {
+  if (command !== 'claim-release') return
+  let change
+  try {
+    change = await read(['show', params.name, '--json'])
+  } catch {
+    return // 變更不存在或資料壞掉，由釋放本身回報。
+  }
+  const holder = change.claimed
+  if (!holder) return
+  // 沒有識別的認領比對名稱，和引擎的判斷相同。
+  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
+  if (!isHolder) return { allow: false, reason: '只有認領的人可以釋放' }
+}
+```
+
+範例刻意接住讀取失敗。掛鉤丟出例外時，這次呼叫會以掛鉤的錯誤結束，蓋掉釋放本身的訊息（例如「找不到變更」）。還沒有識別的時候留下的認領沒有 `byId`，範例這時比對名稱，所以認領的人一定放得掉。
+
+要知道誰認領了一個變更，讀 `speclink show <變更> --json` 的 `claimed`，見[下面的欄位說明](#verb-reference)。
 
 ### `speclink change landed <變更>`
 
@@ -162,6 +200,7 @@ speclink discuss new "看板搜尋列" --field owner=alice
 | `review`、`verify` | 審查站與驗證站的狀態。`state` 是 `inProgress`（有未結的工單）或 `stamped`（已蓋章）。已蓋章時另有 `stampedAt`、`rounds`、`tasksTotal`，以及有值才出現的 `stampedBy`、`stampedWith`、`commit`（蓋章時 checkout 的 HEAD）。沒有工單也沒有章的站，整個鍵不出現 |
 | `branch` | 開工時記下的分支，或落地回報給的分支 |
 | `landed` | 落地記錄：`commit`、`at`（回報時間，RFC 3339），以及有回報人時才出現的 `by` |
+| `claimed` | 認領記錄：`by`（認領的人），以及有記錄才出現的 `byId`（認領人的識別）與 `at`（認領的時間，照變更資料記的原樣）。沒有被認領的變更，整個鍵不出現。連到不提供識別與時間的舊版 Server 時，只有 `by` |
 | `fields` | 自由欄位 |
 
 ```json
@@ -171,6 +210,7 @@ speclink discuss new "看板搜尋列" --field owner=alice
   "verify": { "state": "inProgress" },
   "branch": "speclink/add-login",
   "landed": { "commit": "0123456789ab", "at": "2026-11-03T10:10:00+08:00", "by": "Demo <demo@example.com>" },
+  "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
   "fields": { "ticket": "PROJ-1" }
 }
 ```
@@ -331,6 +371,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | POST | `/changes/{name}/in-progress` | editor | 標記開工（`speclink in-progress add`） |
 | DELETE | `/changes/{name}/in-progress` | editor | 移除開工標記（`speclink in-progress remove`） |
 | POST | `/changes/{name}/claim` | editor | 認領（`speclink claim`） |
+| DELETE | `/changes/{name}/claim` | editor | 釋放認領（`speclink claim --release`） |
 | POST | `/changes/{name}/depends` | editor | 宣告或移除前置變更（`speclink change depends`） |
 | POST | `/changes/{name}/schema` | editor | 切換變更的 schema（`speclink change schema`） |
 | POST | `/changes/{name}/rank` | editor | 把變更排到同一欄另一個變更的前面或後面（`speclink change rank`） |
@@ -441,7 +482,7 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 
 | 事件種類 | `scope` | `resourceId` |
 | --- | --- | --- |
-| `change-created`、`artifact-created`、`task-completed`、`task-uncompleted`、`task-moved`、`change-claimed`、`change-marked-in-progress`、`change-in-progress-removed`、`change-depends-changed`、`change-schema-changed`、`change-ranked`、`change-fields-changed`、`change-landed`、`change-discarded` | `change` | 變更名稱 |
+| `change-created`、`artifact-created`、`task-completed`、`task-uncompleted`、`task-moved`、`change-claimed`、`change-claim-released`、`change-marked-in-progress`、`change-in-progress-removed`、`change-depends-changed`、`change-schema-changed`、`change-ranked`、`change-fields-changed`、`change-landed`、`change-discarded` | `change` | 變更名稱 |
 | `review-round-added`、`review-stamped`、`review-discarded`、`verify-round-added`、`verify-stamped`、`verify-discarded` | `change` | 變更名稱 |
 | `change-archived` | `spec` | 變更名稱 |
 | `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-archived`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
@@ -463,6 +504,7 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 | `POST /changes` | `{"name":"add-login","agent":"claude"}` | `{"name":"add-login","schema":"spec-driven","repo":"backend"}` |
 | `DELETE /changes/{name}?force=true` | 無 | `{"change":"add-search-bar","unlinkedDiscussions":[{"slug":"board-search-bar","status":"concluded"}]}` |
 | `POST /changes/{name}/claim` | 無 | `{"claimedBy":"Demo <demo@example.com>"}` |
+| `DELETE /changes/{name}/claim` | 無 | `{"released":true,"previousHolder":"Demo <demo@example.com>"}`；變更沒有被認領時是 `{"released":false}` |
 | `POST /changes/{name}/depends` | `{"on":["add-login"],"remove":false}` | `{"change":"add-logout","dependsOn":["add-login"]}` |
 | `POST /changes/{name}/schema` | `{"schema":"no-spec-change"}` | `{"change":"tidy","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":false}` |
 | `POST /changes/{name}/rank` | `{"anchor":"add-login","position":"before"}` | `{"change":"add-logout","anchor":"add-login","position":"before"}` |
@@ -480,6 +522,7 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 - `POST /changes` 的選填欄位：`schema`、`description`、`agent`、`fromDiscussion`（來源討論代號）、`last`（搭配 `fromDiscussion`，表示這是結論規劃的最後一個變更）、`fields`（建立時就帶上的自由欄位，和建立在同一次寫入）。
 - `DELETE /changes/{name}` 的 `force` 預設 `false`。變更已開工（有開工標記或任一任務已勾）時，不帶 `force=true` 會回 409 `refused`，什麼都不刪。metadata 壞掉時，即使 `force=true` 也回 422 `invalid_config`。回應的 `unlinkedDiscussions` 列出被解除連結的來源討論，以及解除後的狀態。
 - `POST /changes/{name}/claim`：同一個人重複認領，照樣成功、不重寫；別人已認領時回 409 `refused`，`message` 寫出目前的持有人。
+- `DELETE /changes/{name}/claim`：editor 都可以釋放，不必是認領的人。要更嚴格的宿主在掛鉤裡拒絕命令 `claim-release`，這時 Server 回 409 `refused`，`message` 是宿主給的原因。`previousHolder` 是釋放前的持有人名稱，只在那次認領有寫持有人時出現。變更沒有被認領時回 200、`released` 是 `false`，什麼都不寫。變更不存在回 404；還沒有這個端點的舊版 Server 也回 404，這時 CLI 會說這個 Server 不支援 `claim --release`、要更新 Server。
 - `POST /changes/{name}/depends`：`on` 必填，`remove` 預設 `false`。自己依賴自己、目標不存在或已封存、依賴成環，都回 409 `refused`。
 - `POST /changes/{name}/schema`：Server 只解析內建的 schema。schema 找不到、要切到沒有 specs 的 schema 而變更帶著 delta spec、有未結的驗證工單，都回 409 `refused`。切到同一個 schema 時回 200、`changed` 為 `false`，Server 不寫入。這次切換移除了驗證章時，`verifyStampCleared` 為 `true`。
 - `POST /changes/{name}/rank`：`anchor` 是同一欄的另一個變更，`position` 是 `before` 或 `after`，其他值回 400 `invalid_argument`。選填的 `force` 為 `true` 時，已經手動排過順序的變更也照樣移動。
@@ -697,6 +740,7 @@ POST /skills
 | `createdBy`、`created` | 建立者與建立日期 |
 | `fromDiscussions` | 來源討論代號清單 |
 | `claimedBy` | 認領人；沒人認領就不出現 |
+| `claimedById`、`claimedAt` | 認領人的識別，以及認領的時間（照變更資料記的原樣）。各自有記錄才出現：沒有識別的認領就沒有 `claimedById`。識別是宿主給這個人的那一個，讀得到專案的人都看得到，所以宿主不要拿機密的值當識別 |
 | `deltaCapabilities` | 這個變更的 delta 規格動到的 capability |
 | `restaleFrom` | 重寫了結論、需要這個變更重新吸收內容的來源討論代號 |
 | `metaError` | metadata 壞掉時的原因 |
@@ -719,6 +763,7 @@ POST /skills
 選填欄位：
 
 - `created`（只有 metadata 同時記了 schema 與建立日期時才出現）、`fromDiscussions`、`deltaCapabilities`、`createdBy`、`createdWith`、`startedAt`、`startedBy`、`claimedBy`。
+- `claimedById`、`claimedAt`：認領人的識別與認領的時間，規則和上面變更清單的相同。
 - `review`、`verify`：品質關卡的狀態物件。已蓋章的站在這裡多帶 `scope`。
 - `branch`：開工時記下的分支，或落地回報給的分支。
 - `landedCommit`、`landedAt`、`landedBy`：落地回報的 commit、回報時間（RFC 3339）與回報的人。

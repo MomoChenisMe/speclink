@@ -458,6 +458,84 @@ describe('createHost and host.dispatch', () => {
     expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('claimed_by_id: u_1\n')
   })
 
+  it('releases a claim for anyone, and show --json names the holder only while the change is held', async () => {
+    // change-lifecycle「釋放認領」「認領記錄的讀取」：dispatch 經共用的解析與輸出取得新旗標。
+    const port = portWithDemo()
+    const host = createHost({ store: port.store })
+    const as = (identity: typeof ALICE, argv: string[]) =>
+      host.dispatch({ identity, scope: 's1', argv }) as Promise<Record<string, unknown>>
+
+    expect(await as(ALICE, ['claim', 'demo'])).toEqual({ change: 'demo', claimedBy: 'Alice' })
+    const held = await as(BOB, ['show', 'demo', '--json'])
+    expect(held.claimed).toMatchObject({ by: 'Alice', byId: 'u_1' })
+    expect(Number.isNaN(Date.parse((held.claimed as { at: string }).at))).toBe(false)
+
+    // Bob is not the holder: the engine does not restrict who releases.
+    expect(await as(BOB, ['claim', 'demo', '--release'])).toEqual({
+      change: 'demo',
+      released: true,
+      previousHolder: 'Alice',
+    })
+    expect(await as(BOB, ['show', 'demo', '--json'])).not.toHaveProperty('claimed')
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toBe(META)
+
+    // Nothing to release: a success that writes nothing.
+    const commits = port.calls.commit
+    expect(await as(BOB, ['claim', 'demo', '--release', '--json'])).toEqual({ change: 'demo', released: false })
+    expect(port.calls.commit).toBe(commits)
+    expect(await as(BOB, ['claim', 'demo'])).toEqual({ change: 'demo', claimedBy: 'Bob' })
+  })
+
+  it('lets beforeCommand keep a release to the holder, under its own command name', async () => {
+    // The hook of docs/verb-contract.md: `claim-release` is not `claim`, and
+    // the holder is read from `show --json`.
+    const port = portWithDemo()
+    const asked: { command: string; params: unknown }[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async ({ identity, command, params }, { read }) => {
+          asked.push({ command, params })
+          if (command !== 'claim-release') return
+          let change: { claimed?: { by: string; byId?: string } }
+          try {
+            change = (await read(['show', (params as { name: string }).name, '--json'])) as typeof change
+          } catch {
+            return // The release reports an unknown change or broken data itself.
+          }
+          const holder = change.claimed
+          if (!holder) return
+          // A claim with no identifier is judged by the name, as the engine does.
+          const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
+          if (!isHolder) return { allow: false, reason: '只有認領的人可以釋放' }
+        },
+      },
+    })
+    const release = (identity: typeof ALICE) =>
+      host.dispatch({ identity, scope: 's1', argv: ['claim', 'demo', '--release'] })
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['claim', 'demo'] })
+    const meta = port.doc('s1', 'changes/demo/.meta.yaml')?.content
+
+    const err = await rejection(release(BOB))
+
+    expect(err.code).toBe('refused')
+    expect(err.message).toBe('只有認領的人可以釋放')
+    expect(asked.at(-1)).toEqual({ command: 'claim-release', params: { name: 'demo' } })
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toBe(meta)
+    expect(await release(ALICE)).toEqual({ change: 'demo', released: true, previousHolder: 'Alice' })
+
+    // A claim that recorded no identifier: the holder is judged by the name,
+    // so the holder is not locked out of the release.
+    port.seed('s1', { 'changes/demo/.meta.yaml': `${META}claimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice\n` })
+    expect((await rejection(release(BOB))).code).toBe('refused')
+    expect(await release(ALICE)).toEqual({ change: 'demo', released: true, previousHolder: 'Alice' })
+
+    // A change the hook cannot read: the release itself reports it.
+    const ghost = await rejection(host.dispatch({ identity: BOB, scope: 's1', argv: ['claim', 'ghost', '--release'] }))
+    expect(ghost.code).toBe('not_found')
+    expect(ghost.message).toContain('ghost')
+  })
+
   it('stamps with the three functions only, in one commit', async () => {
     const port = portWithDemo(DONE_TASKS)
     const host = createHost({ store: port.store })

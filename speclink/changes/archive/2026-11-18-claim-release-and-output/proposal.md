@@ -34,6 +34,7 @@
 - `list --json` 不變（review-station 與 verify-station 固定它的欄位；清單的詳細輸出由另一個變更處理）。
 - 線上格式只新增選填欄位與一個端點。舊版用戶端忽略新欄位；新版用戶端連到舊版 Server 時，`claim --release` 得到 404，`show --json` 的 `claimed` 只有 `by`。
 - 引擎新增一個命令，命令名稱與參數的 golden 同批更新。
+- Node SDK 的 `dispatch(['claim', <名稱>])` 回傳值從 `{ output }` 變成 `{ change, claimedBy }`。這是 node-sdk 既有規則的結果（有 `--json` 形式的動詞回傳結構化物件），實作時才確認到；讀 `output` 的宿主要改讀新的鍵。套件尚未發版。
 
 三種形態：
 
@@ -65,18 +66,22 @@
 ## Impact
 
 - Affected specs: change-lifecycle、server-verb-api、client-protocol
-- Affected crates: speclink-core（命令、事件、show 的結果）、speclink-verbs（解析與輸出）、speclink-protocol（線上型別）、speclink-host（路由、事件歸類、讀取類命令以外的對照表）、speclink-remote（用戶端方法）、speclink-cli（遠端分支）；speclink-server 與 apps/desktop 只更新手寫線上型別字面值的地方（測試與一處組裝），行為不改；speclink-node 只加一個測試，程式碼不改
+- Affected crates: speclink-core（命令、事件、show 的結果）、speclink-verbs（解析與輸出）、speclink-protocol（線上型別）、speclink-host（路由、事件歸類、讀取類命令以外的對照表）、speclink-remote（用戶端方法）、speclink-cli（遠端分支）；speclink-server 只在事件歸類的測試表與寫入路由的測試清單各加一列，apps/desktop 只更新手寫線上型別字面值的地方（測試與一處組裝），兩者行為不改；speclink-node 只加測試，程式碼不改。實作時確認 crates/host/speclink-host/tests/kit.rs 與 crates/host/speclink-server/tests/it/api/command_routes.rs 沒有手寫這兩個型別的字面值，不必改，所以不在下面的清單
 - Affected code:
   - New: (none)
   - Modified:
     - crates/engine/speclink-core/src/command/mod.rs
     - crates/engine/speclink-core/src/command/describe.rs
     - crates/engine/speclink-core/src/command/tests.rs
+    - crates/engine/speclink-core/src/command/typed.rs
+    - crates/engine/speclink-core/tests/it/command_describe.rs
     - crates/engine/speclink-core/src/lifecycle/model.rs
     - crates/engine/speclink-core/tests/golden/command-describe.json
     - crates/adapters/speclink-verbs/src/parse.rs
     - crates/adapters/speclink-verbs/src/inputs.rs
     - crates/adapters/speclink-verbs/src/tool.rs
+    - crates/adapters/speclink-verbs/src/families/lifecycle.rs
+    - crates/adapters/speclink-verbs/src/families/mod.rs
     - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/adapters/speclink-verbs/src/render/lifecycle.rs
     - crates/adapters/speclink-verbs/src/render/query.rs
@@ -85,15 +90,18 @@
     - crates/protocol/speclink-remote/src/client.rs
     - crates/host/speclink-host/src/commit.rs
     - crates/host/speclink-host/src/http/coverage.rs
+    - crates/host/speclink-host/src/http/router.rs
+    - crates/host/speclink-host/src/read_only.rs
     - crates/host/speclink-host/src/http/routes.rs
     - crates/host/speclink-host/src/http/wire.rs
     - crates/host/speclink-host/tests/http_door.rs
-    - crates/host/speclink-host/tests/kit.rs
+    - crates/host/speclink-host/tests/common/mod.rs
     - crates/adapters/speclink-cli/src/main.rs
     - crates/adapters/speclink-cli/src/verbs/lifecycle.rs
     - crates/adapters/speclink-cli/src/verbs/query.rs
     - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
-    - crates/host/speclink-server/tests/it/api/command_routes.rs
+    - crates/host/speclink-server/src/api/events.rs
+    - crates/host/speclink-server/tests/it/api/write_guard.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src-tauri/tests/it/remote_data.rs
     - crates/adapters/speclink-node/__test__/host.spec.ts

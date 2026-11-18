@@ -29,7 +29,7 @@ All verbs work in local projects and in remote projects, except the "Local only"
 | Assignment | Verbs | In the unsupported mode |
 | --- | --- | --- |
 | Local only | `demo` | Remote mode refuses with a non-zero exit code. The CLI sends no request, and it refuses offline too. |
-| Remote only | `claim` | Local mode refuses with a non-zero exit code. stderr says that the verb needs a remote project. |
+| Remote only | `claim` (also with `--release`) | Local mode refuses with a non-zero exit code. stderr says that the verb needs a remote project. |
 | Both modes | `list`, `show`, `validate`, `analyze`, `drift`, `trace`, `plan` (also with `--strict-overlap`), `change` (`depends`, `schema`, `rank`, `landed`, `field`), `archive`, `discard`, `artifact`, `evidence`, `language`, `status`, `instructions`, `new`, `workflow-config`, `task`, `in-progress`, `discuss`, `review`, `verify` | Not applicable. Remote mode reads and writes only the Server. It never falls back to local files. |
 | Mode-free | `init`, `update`, `link`, `unlink`, `auth`, `schemas`, `templates`, `feedback`, `schema`, `config`, `completion` | Not applicable. These verbs do not read or write spec documents. |
 
@@ -67,7 +67,7 @@ The `--json` field set and its camelCase names are a frozen contract. Fields do 
 
 ## <a id="verb-reference"></a>Verbs, flags, and `--json` fields
 
-This section lists the verbs for landing reports, free fields, and evidence, the login method flags of `auth login`, and the optional fields of `list --json` and `show --json`. `auth login` is only for remote projects. All other verbs and flags here work in local projects and in remote projects, with the same output. Each verb accepts `--no-color`.
+This section lists the verbs for claims, landing reports, free fields, and evidence, the login method flags of `auth login`, and the optional fields of `list --json` and `show --json`. `auth login` and `claim` are only for remote projects. All other verbs and flags here work in local projects and in remote projects, with the same output. Each verb accepts `--no-color`.
 
 ### `speclink evidence show <change>`
 
@@ -84,6 +84,44 @@ It prints the files that each completed task of the change touched. `speclink ta
 | `archivedAs` | The archived name with its date. It appears only when the record comes from an archived change. |
 | `entries` | One entry for each task: `taskId`, `taskDesc`, `touchedFiles`, and `recordedAt`. `actor`, `repo`, and `headCommit` appear only when they have a value. |
 | `files` | The files of all tasks, each one once, in sorted order |
+
+### `speclink claim <change>`
+
+It records that you work on the change, so that other people do not start the same work. Only a remote project has claims. A local project refuses the verb, with or without `--release`.
+
+- Flags: `--release`, `--json`.
+- Without `--release`, the verb claims the change. A repeat claim by the same person succeeds and writes nothing. If another person holds the claim, the verb stops with a non-zero exit code, and stderr names the holder.
+- `--release` removes the claim. After that, any person can claim the change again.
+- **Any person who can write to the project can release a claim.** The person does not have to be the holder. The engine has no rule about who releases. A rule such as "only the holder releases" belongs to the host, in its `beforeCommand` hook. See the example below.
+- A release prints `✓ Released claim on change: <change> (was claimed by <holder>)`.
+- `--release` on a change with no claim is not an error. It prints `Change '<change>' is not claimed — nothing to release`, it writes nothing, and the exit code is 0.
+- `claim --json` prints `{"change":"add-login","claimedBy":"Demo <demo@example.com>"}`.
+- `claim --release --json` prints `{"change":"add-login","released":true,"previousHolder":"Demo <demo@example.com>"}`. `released` is `false` when the change had no claim. `previousHolder` appears only when the claim named a holder.
+- A refused claim, an unknown change, and a local project give a non-zero exit code. The message goes to stderr, and stdout has no JSON.
+- In the Node SDK, `dispatch(['claim', name])` now returns the `--json` object, as each verb with a JSON form does. Before `claim` had a JSON form, it returned `{ output }`. A host that reads `output` must read `claimedBy`.
+
+The hook gets the release under the command name `claim-release`, with the change name in `params.name`. This name is not `claim`: a hook that refuses only `claim` does not refuse a release. This example, for the Node SDK, lets only the holder release:
+
+```js
+async beforeCommand({ identity, command, params }, { read }) {
+  if (command !== 'claim-release') return
+  let change
+  try {
+    change = await read(['show', params.name, '--json'])
+  } catch {
+    return // The release reports an unknown change or broken data itself.
+  }
+  const holder = change.claimed
+  if (!holder) return
+  // A claim with no identifier is judged by the name, as the engine does.
+  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
+  if (!isHolder) return { allow: false, reason: 'Only the holder can release this claim' }
+}
+```
+
+The example catches a failed read on purpose. A hook that throws ends the call with an error of the hook, and that error hides the message of the release, for example "not found". A claim from before identifiers has no `byId`; the example then compares the name, so the holder can always release.
+
+To see who holds a change, read `claimed` in `speclink show <change> --json`. See [the fields below](#verb-reference).
 
 ### `speclink change landed <change>`
 
@@ -162,6 +200,7 @@ Each change in `speclink list --json`:
 | `review`, `verify` | The state of the review station and of the verify station. `state` is `inProgress` (an open ticket) or `stamped`. A stamped station also has `stampedAt`, `rounds`, and `tasksTotal`. `stampedBy`, `stampedWith`, and `commit` (the HEAD of the checkout at the stamp) appear only when they have a value. A station with no ticket and no stamp has no key. |
 | `branch` | The branch that the start marker recorded, or the branch from the landing report |
 | `landed` | The landing record: `commit` and `at` (the report time, RFC 3339). `by` appears only when the report has a reporter. |
+| `claimed` | The claim record: `by` (the holder). `byId` (the identifier of the holder) and `at` (the time of the claim, as the change data records it) appear only when the claim recorded them. A change with no claim has no key. An older Server that does not send the identifier and the time gives `by` only. |
 | `fields` | The free fields |
 
 ```json
@@ -171,6 +210,7 @@ Each change in `speclink list --json`:
   "verify": { "state": "inProgress" },
   "branch": "speclink/add-login",
   "landed": { "commit": "0123456789ab", "at": "2026-11-03T10:10:00+08:00", "by": "Demo <demo@example.com>" },
+  "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
   "fields": { "ticket": "PROJ-1" }
 }
 ```
@@ -331,6 +371,7 @@ The routes below are in the HTTP entry point of the host kit, except where a row
 | POST | `/changes/{name}/in-progress` | editor | Mark the change as started (`speclink in-progress add`) |
 | DELETE | `/changes/{name}/in-progress` | editor | Remove the start marker (`speclink in-progress remove`) |
 | POST | `/changes/{name}/claim` | editor | Claim the change (`speclink claim`) |
+| DELETE | `/changes/{name}/claim` | editor | Release the claim (`speclink claim --release`) |
 | POST | `/changes/{name}/depends` | editor | Declare or remove prerequisite changes (`speclink change depends`) |
 | POST | `/changes/{name}/schema` | editor | Switch the schema of the change (`speclink change schema`) |
 | POST | `/changes/{name}/rank` | editor | Put the change before or after another change in the same column (`speclink change rank`) |
@@ -441,7 +482,7 @@ The kind of the event decides `scope` and `resourceId`. A host that pushes event
 
 | Event kind | `scope` | `resourceId` |
 | --- | --- | --- |
-| `change-created`, `artifact-created`, `task-completed`, `task-uncompleted`, `task-moved`, `change-claimed`, `change-marked-in-progress`, `change-in-progress-removed`, `change-depends-changed`, `change-schema-changed`, `change-ranked`, `change-fields-changed`, `change-landed`, `change-discarded` | `change` | The change name |
+| `change-created`, `artifact-created`, `task-completed`, `task-uncompleted`, `task-moved`, `change-claimed`, `change-claim-released`, `change-marked-in-progress`, `change-in-progress-removed`, `change-depends-changed`, `change-schema-changed`, `change-ranked`, `change-fields-changed`, `change-landed`, `change-discarded` | `change` | The change name |
 | `review-round-added`, `review-stamped`, `review-discarded`, `verify-round-added`, `verify-stamped`, `verify-discarded` | `change` | The change name |
 | `change-archived` | `spec` | The change name |
 | `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-archived`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
@@ -463,6 +504,7 @@ The field shapes below come from real responses of the demonstration server. If 
 | `POST /changes` | `{"name":"add-login","agent":"claude"}` | `{"name":"add-login","schema":"spec-driven","repo":"backend"}` |
 | `DELETE /changes/{name}?force=true` | None | `{"change":"add-search-bar","unlinkedDiscussions":[{"slug":"board-search-bar","status":"concluded"}]}` |
 | `POST /changes/{name}/claim` | None | `{"claimedBy":"Demo <demo@example.com>"}` |
+| `DELETE /changes/{name}/claim` | None | `{"released":true,"previousHolder":"Demo <demo@example.com>"}`; `{"released":false}` when the change had no claim |
 | `POST /changes/{name}/depends` | `{"on":["add-login"],"remove":false}` | `{"change":"add-logout","dependsOn":["add-login"]}` |
 | `POST /changes/{name}/schema` | `{"schema":"no-spec-change"}` | `{"change":"tidy","schema":"no-spec-change","previous":"spec-driven","changed":true,"verifyStampCleared":false}` |
 | `POST /changes/{name}/rank` | `{"anchor":"add-login","position":"before"}` | `{"change":"add-logout","anchor":"add-login","position":"before"}` |
@@ -480,6 +522,7 @@ Notes:
 - `POST /changes` has these optional fields: `schema`, `description`, `agent`, `fromDiscussion` (the source discussion slug), `last`, and `fields`. With `fromDiscussion`, `last` marks the final change that the conclusion plans. `fields` holds the free fields that the change starts with; they go into the same write as the creation.
 - `force` on `DELETE /changes/{name}` is `false` by default. If the change has a start marker or a checked task, the Server needs `force=true`. Without it, the Server answers 409 `refused` and deletes nothing. Corrupt metadata gives 422 `invalid_config`, also with `force=true`. `unlinkedDiscussions` lists the source discussions that the Server unlinked, with their new status.
 - `POST /changes/{name}/claim`: a repeat claim by the same person succeeds and writes nothing. If another person holds the claim, the Server answers 409 `refused`. The `message` names the current holder.
+- `DELETE /changes/{name}/claim`: any editor can release the claim, also a person who is not the holder. A host that wants a stricter rule refuses the command `claim-release` in its hook; the Server then answers 409 `refused` with the reason of the host. `previousHolder` is the name of the holder before the release. It appears only when the claim named a holder. A change with no claim gives 200 with `released` set to `false`, and the Server writes nothing. An unknown change gives 404. A Server from before this endpoint also gives 404; the CLI then says that the Server does not support `claim --release` and that you must update the Server.
 - `POST /changes/{name}/depends`: `on` is required, and `remove` is `false` by default. The Server answers 409 `refused` for a self-dependency, a missing or archived target, or a dependency cycle.
 - `POST /changes/{name}/schema`: the Server resolves built-in schemas only. It answers 409 `refused` for an unknown schema, for a switch to a schema without specs while the change has delta specs, and for an open verify ticket. The same schema gives 200 with `changed` set to `false`, and the Server writes nothing. `verifyStampCleared` is `true` when the switch removed the verify stamp.
 - `POST /changes/{name}/rank`: `anchor` is another change in the same column. `position` is `before` or `after`; any other value gives 400 `invalid_argument`. With the optional `force` set to `true`, the Server also moves a change that someone already ordered by hand.
@@ -697,6 +740,7 @@ Optional:
 | `createdBy`, `created` | The creator and the creation date |
 | `fromDiscussions` | Source discussion slugs |
 | `claimedBy` | The claim holder. It does not appear without a claim. |
+| `claimedById`, `claimedAt` | The identifier of the claim holder, and the time of the claim as the change data records it. Each one appears only when the claim recorded it: a claim without an identifier has no `claimedById`. The identifier is the one that the host gives for the person. Each person who can read the project can see it, so a host must not use a secret value as the identifier. |
 | `deltaCapabilities` | The capabilities that the delta specs of this change touch |
 | `restaleFrom` | Source discussions with a new conclusion that this change must take in again |
 | `metaError` | The cause, when the metadata is corrupt |
@@ -719,6 +763,7 @@ Always present: `changeName`, `schemaName`, `isComplete`, `applyRequires`, and `
 Optional fields:
 
 - `created`, `fromDiscussions`, `deltaCapabilities`, `createdBy`, `createdWith`, `startedAt`, `startedBy`, and `claimedBy`. `created` appears only when the metadata holds both the schema and the creation date.
+- `claimedById` and `claimedAt`: the identifier of the claim holder and the time of the claim. They follow the same rules as in the change list above.
 - `review` and `verify`: the station state objects. A stamped station also has `scope` here.
 - `branch`: the branch that the start marker recorded, or the branch from the landing report.
 - `landedCommit`, `landedAt`, and `landedBy`: the commit of the landing report, the report time (RFC 3339), and the reporter.

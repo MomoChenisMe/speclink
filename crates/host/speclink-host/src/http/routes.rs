@@ -19,7 +19,7 @@ use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabil
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest, AddReviewRoundResponse,
     ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion, ArchivedSpec, BindDiscussionRequest,
-    BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
+    BindDiscussionResponse, ClaimReleaseResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
     MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
@@ -466,6 +466,8 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         dto.started_at = meta.started_at;
         dto.started_by = meta.started_by;
         dto.claimed_by = meta.claimed_by;
+        dto.claimed_by_id = meta.claimed_by_id;
+        dto.claimed_at = meta.claimed_at;
     }
     dto.delta_capabilities = delta_capabilities;
     Ok(ok(&dto, etag))
@@ -854,6 +856,20 @@ pub(crate) fn claim(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     match execution.outcome {
         CommandOutcome::Claim(o) => Ok(ok(&ClaimResponse { lifecycle: None, claimed_by: o.claimed_by }, etag)),
         _ => Err(wrong_outcome("claim")),
+    }
+}
+
+/// `DELETE /changes/{name}/claim`: removes the claim `POST` made, whoever the
+/// caller is — like every write it needs the editor role, and a host that
+/// wants a narrower rule refuses `claim-release` in its hook. A change with no
+/// claim answers `released: false` and commits nothing.
+pub(crate) fn claim_release(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let (execution, etag) = req.run(Command::ClaimRelease { name: req.param(0) })?;
+    match execution.outcome {
+        CommandOutcome::ClaimRelease(o) => {
+            Ok(ok(&ClaimReleaseResponse { released: o.released, previous_holder: o.previous_holder }, etag))
+        }
+        _ => Err(wrong_outcome("claim-release")),
     }
 }
 

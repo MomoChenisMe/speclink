@@ -215,6 +215,8 @@ fn remote_show_outcome(
         verify: status.verify.as_ref().and_then(speclink_remote::convert::station_status),
         branch: status.branch,
         landed: core::command::LandedRecord::new(status.landed_commit, status.landed_at, status.landed_by),
+        // An older server sends `claimedBy` alone: the record then has the holder only.
+        claimed: core::command::ClaimRecord::new(status.claimed_by, status.claimed_by_id, status.claimed_at),
         fields: status.fields,
     }))
 }

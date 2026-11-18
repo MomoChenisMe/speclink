@@ -52,6 +52,7 @@ pub fn wire_coverage(command: &Command) -> WireCoverage {
         Command::TaskUndone { .. } => route(Post, "/changes/{name}/tasks/{task_id}/undone"),
         Command::TaskMove { .. } => route(Post, "/changes/{name}/tasks/move"),
         Command::Claim { .. } => route(Post, "/changes/{name}/claim"),
+        Command::ClaimRelease { .. } => route(Delete, "/changes/{name}/claim"),
         Command::InProgressAdd { .. } => route(Post, "/changes/{name}/in-progress"),
         Command::InProgressRemove { .. } => route(Delete, "/changes/{name}/in-progress"),
         Command::ChangeDepends { .. } => route(Post, "/changes/{name}/depends"),

@@ -398,6 +398,12 @@ pub struct ChangeSummary {
     pub lifecycle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
+    /// The holder's identifier and the claim time as recorded. Absent when the
+    /// claim recorded none, and from a server that does not report them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_by_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub started_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -453,6 +459,12 @@ pub struct ChangeStatus {
     pub lifecycle: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
+    /// The holder's identifier and the claim time as recorded. Absent when the
+    /// claim recorded none, and from a server that does not report them.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_by_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub claimed_at: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -1053,6 +1065,36 @@ mod tests {
         check!(ChangeStatus, status);
         check!(ArchivedItem, archived);
         check!(DiscussionInfo, info);
+    }
+
+    #[test]
+    fn the_two_change_read_types_carry_the_claimant_identifier_and_time_only_when_recorded() {
+        // client-protocol「認領的識別與時間欄位及釋放回應」。
+        let summary = r#"{"name":"demo"}"#;
+        let status = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":[],"artifacts":[]}"#;
+        macro_rules! check {
+            ($ty:ty, $json:expr) => {{
+                // 舊版 Server 的回應只有 claimedBy：解析成功，識別與時間視為沒有記錄。
+                let mut old: serde_json::Value = serde_json::from_str($json).unwrap();
+                old["claimedBy"] = serde_json::json!("Alice");
+                let old: $ty = serde_json::from_value(old).expect("a response without the two new keys");
+                assert_eq!(old.claimed_by.as_deref(), Some("Alice"));
+                assert_eq!((old.claimed_by_id.as_deref(), old.claimed_at.as_deref()), (None, None));
+                let out = serde_json::to_value(&old).unwrap();
+                assert!(out.get("claimedById").is_none() && out.get("claimedAt").is_none(), "none is not serialized: {out}");
+
+                let mut held = old.clone();
+                held.claimed_by_id = Some("u_1".into());
+                held.claimed_at = Some("2026-11-18T10:00:00+00:00".into());
+                let out = serde_json::to_value(&held).unwrap();
+                assert_eq!(out["claimedById"], "u_1");
+                assert_eq!(out["claimedAt"], "2026-11-18T10:00:00+00:00");
+                let back: $ty = serde_json::from_value(out).expect("the new keys round-trip");
+                assert_eq!(back, held);
+            }};
+        }
+        check!(ChangeSummary, summary);
+        check!(ChangeStatus, status);
     }
 
     #[test]

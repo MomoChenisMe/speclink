@@ -143,6 +143,23 @@ mod tests {
     }
 
     #[test]
+    fn claim_parses_to_a_claim_or_with_release_to_a_claim_release() {
+        use speclink_core::command::Command;
+        let command = |argv: &[&str]| match parse(argv.iter().copied()).expect("parses").to_command(VerbInputs::default()) {
+            Ok(CommandTarget::Command(command)) => command,
+            other => panic!("{argv:?} must convert to a command, got {other:?}"),
+        };
+        // `--json` picks the output form; it never changes the command.
+        for argv in [&["claim", "x"][..], &["claim", "x", "--json"]] {
+            assert_eq!(command(argv), Command::Claim { name: "x".into() }, "{argv:?}");
+        }
+        for argv in [&["claim", "x", "--release"][..], &["claim", "x", "--release", "--json"], &["claim", "--release", "x", "--no-color"]] {
+            assert_eq!(command(argv), Command::ClaimRelease { name: "x".into() }, "{argv:?}");
+            assert_eq!(parse(argv.iter().copied()).unwrap().name(), "claim", "{argv:?}");
+        }
+    }
+
+    #[test]
     fn empty_argv_is_a_usage_error() {
         let err = parse(Vec::<String>::new()).err().expect("empty argv must not parse");
         assert_eq!(err.kind, ParseErrorKind::Usage);

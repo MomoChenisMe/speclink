@@ -72,6 +72,7 @@ pub fn is_read(command: &Command) -> bool {
         | Command::TaskUndone { .. }
         | Command::TaskMove { .. }
         | Command::Claim { .. }
+        | Command::ClaimRelease { .. }
         | Command::InProgressAdd { .. }
         | Command::InProgressRemove { .. }
         | Command::ChangeDepends { .. }

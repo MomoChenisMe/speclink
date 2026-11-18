@@ -14,7 +14,7 @@ use speclink_protocol::binding::BindingResponse;
 use speclink_protocol::command::{
     AddDiscussionRoundRequest, AddDiscussionRoundResponse, AddReviewRoundRequest,
     AddReviewRoundResponse, ArchiveDiscussionResponse, ArchiveResponse, BindDiscussionRequest,
-    BindDiscussionResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
+    BindDiscussionResponse, ClaimReleaseResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     FreeFields, SetFieldsRequest, SetFieldsResponse,
     DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
@@ -42,6 +42,9 @@ use speclink_protocol::query::{
 /// What [`Client::plan_strict`] says of a server that answered the plain plan.
 const STRICT_PLAN_UNSUPPORTED: &str =
     "this server does not support plan --strict-overlap — update the server, or run the plan without the flag";
+
+/// What `claim --release` says to a server that has no release endpoint.
+const CLAIM_RELEASE_UNSUPPORTED: &str = "this server does not support claim --release — update the server";
 
 /// `text` percent-encoded as one path segment: every byte outside RFC 3986's
 /// unreserved set is encoded, so a `/`, `?`, `#` or space in a name stays
@@ -523,6 +526,21 @@ impl Client {
     /// `POST /changes/{name}/claim`
     pub fn claim(&self, name: &str) -> Result<ClaimResponse, RemoteError> {
         self.post(&format!("/changes/{name}/claim"), &Empty {})
+    }
+
+    /// `DELETE /changes/{name}/claim` — remove the change's claim, whoever
+    /// holds it. A change with no claim answers `released: false`.
+    ///
+    /// A 404 with no engine reason is a server's answer for a path it does not
+    /// have — a server from before this endpoint. An unknown change is the
+    /// engine's own `not_found`, and keeps its message.
+    pub fn release_claim(&self, name: &str) -> Result<ClaimReleaseResponse, RemoteError> {
+        self.send::<ClaimReleaseResponse, Empty>("DELETE", &format!("/changes/{name}/claim"), None, &[]).map_err(
+            |e| match (e.status, &e.reason) {
+                (Some(404), None) => RemoteError { message: CLAIM_RELEASE_UNSUPPORTED.to_string(), ..e },
+                _ => e,
+            },
+        )
     }
 
     /// `POST /changes/{name}/depends` — declare (or with `remove`, drop) the

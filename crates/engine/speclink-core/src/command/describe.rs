@@ -32,6 +32,7 @@ impl Command {
             Command::TaskUndone { .. } => "task-undone",
             Command::TaskMove { .. } => "task-move",
             Command::Claim { .. } => "claim",
+            Command::ClaimRelease { .. } => "claim-release",
             Command::InProgressAdd { .. } => "in-progress-add",
             Command::InProgressRemove { .. } => "in-progress-remove",
             Command::ChangeDepends { .. } => "change-depends",

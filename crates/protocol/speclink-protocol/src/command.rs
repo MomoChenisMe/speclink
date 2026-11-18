@@ -161,6 +161,16 @@ pub struct ClaimResponse {
     pub claimed_by: Option<String>,
 }
 
+/// `DELETE /changes/{name}/claim` response: whether this call removed a claim,
+/// and the holder it named before the release.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ClaimReleaseResponse {
+    pub released: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub previous_holder: Option<String>,
+}
+
 /// `POST /changes/{name}/archive` response. Every field beyond `specs` is an
 /// additive extension carrying the engine's archive outcome, so the remote
 /// path can render the same text the fs path does. `dated_name` is the
@@ -605,6 +615,21 @@ pub struct DiscardReviewResponse {
 #[cfg(test)]
 mod tests {
     use crate::command::*;
+
+    #[test]
+    fn the_claim_release_response_leaves_the_previous_holder_out_when_there_is_none() {
+        // client-protocol「認領的識別與時間欄位及釋放回應」：released 必填、previousHolder 選填。
+        let released = ClaimReleaseResponse { released: true, previous_holder: Some("Alice".into()) };
+        assert_eq!(
+            serde_json::to_value(&released).unwrap(),
+            serde_json::json!({ "released": true, "previousHolder": "Alice" })
+        );
+        let nothing = ClaimReleaseResponse { released: false, previous_holder: None };
+        assert_eq!(serde_json::to_value(&nothing).unwrap(), serde_json::json!({ "released": false }));
+        let back: ClaimReleaseResponse = serde_json::from_str(r#"{"released":false}"#).expect("the key may be absent");
+        assert_eq!(back, nothing);
+        serde_json::from_str::<ClaimReleaseResponse>("{}").expect_err("released is required");
+    }
 
     // --- free fields (host-free-fields; client-protocol「自由欄位的線上欄位與請求」) ---
 

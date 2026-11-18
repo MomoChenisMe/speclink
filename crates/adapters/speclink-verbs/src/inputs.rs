@@ -99,18 +99,18 @@ mod tests {
     use crate::families::test_support::target_of;
     use crate::{CommandTarget, VerbInputs};
 
-    /// One argv per command the conversion returns: 47 distinct commands, so
+    /// One argv per command the conversion returns: 48 distinct commands, so
     /// the table above speaks for every one of them (TaskMove and
     /// WorkflowConfigReplace have no argv).
     #[test]
-    fn the_conversion_reaches_47_commands() {
+    fn the_conversion_reaches_48_commands() {
         let argvs: &[&[&str]] = &[
             &["list"], &["show", "x"], &["status"], &["validate"], &["analyze"],
             &["artifact", "cat", "tasks"], &["language", "show"], &["trace", "x"], &["instructions"],
             &["new", "change", "x"], &["new", "artifact", "tasks"],
             &["task", "done", "1"], &["task", "undone", "1"],
             &["in-progress", "add", "x"], &["in-progress", "remove", "x"],
-            &["archive"], &["discard", "x"], &["claim", "x"],
+            &["archive"], &["discard", "x"], &["claim", "x"], &["claim", "x", "--release"],
             &["plan"], &["plan", "--strict-overlap"],
             &["change", "depends", "x", "--on", "y"], &["change", "schema", "x", "y"],
             &["change", "landed", "x", "--commit", "0123456"],
@@ -132,6 +132,6 @@ mod tests {
                 other => panic!("{argv:?} must convert to a command, got {other:?}"),
             })
             .collect();
-        assert_eq!(kinds.len(), 47);
+        assert_eq!(kinds.len(), 48);
     }
 }

@@ -67,10 +67,11 @@ fn variant_index(cmd: &Command) -> usize {
         Command::ChangeLanded { .. } => 48,
         Command::ChangeFieldsEdit { .. } => 49,
         Command::DiscussFieldsEdit { .. } => 50,
+        Command::ClaimRelease { .. } => 51,
     }
 }
 
-const VARIANT_COUNT: usize = 51;
+const VARIANT_COUNT: usize = 52;
 
 fn s(v: &str) -> String {
     v.to_string()
@@ -200,6 +201,7 @@ fn samples() -> Vec<Command> {
             set: BTreeMap::from([(s("owner"), s("alice"))]),
             unset: vec![],
         },
+        Command::ClaimRelease { name: s("demo") },
     ]
 }
 

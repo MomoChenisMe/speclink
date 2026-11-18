@@ -281,6 +281,7 @@ pub fn every_command() -> Vec<Command> {
             | Command::TaskUndone { .. }
             | Command::TaskMove { .. }
             | Command::Claim { .. }
+            | Command::ClaimRelease { .. }
             | Command::InProgressAdd { .. }
             | Command::InProgressRemove { .. }
             | Command::ChangeDepends { .. }
@@ -345,6 +346,7 @@ pub fn every_command() -> Vec<Command> {
         Command::TaskUndone { task_id: s("1"), change: Some(s("demo")) },
         Command::TaskMove { change: s("demo"), from: 1, to: 2, before: None },
         Command::Claim { name: s("demo") },
+        Command::ClaimRelease { name: s("demo") },
         Command::InProgressAdd { name: s("demo"), branch: None },
         Command::InProgressRemove { name: s("demo") },
         Command::ChangeDepends { name: s("demo"), on: vec![s("base")], remove: false },

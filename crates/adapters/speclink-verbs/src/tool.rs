@@ -251,6 +251,16 @@ mod tests {
     }
 
     #[test]
+    fn the_claim_line_tells_the_model_how_to_release() {
+        // 釋放是 `claim` 的旗標，不是另一個動詞：清單只有一行 claim，它要說得出 --release。
+        assert!(listed().contains("claim"));
+        let description = tool_definition().description;
+        let lines: Vec<&str> = description.lines().filter(|l| l.starts_with("- claim ")).collect();
+        assert_eq!(lines.len(), 1, "{description}");
+        assert!(lines[0].contains("<NAME>") && lines[0].contains("--release"), "{}", lines[0]);
+    }
+
+    #[test]
     fn change_landed_is_listed_and_converts_with_its_commit_flag() {
         // A host has no checkout: without `--commit` the verb has no commit to
         // report, so the shortest argv that converts names one.

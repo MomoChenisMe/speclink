@@ -52,7 +52,7 @@ pub enum SpecVerb {
     Archive(lifecycle::ArchiveArgs),
     /// Discard a change (delete it; --force required once work has started)
     Discard(lifecycle::DiscardArgs),
-    /// Claim a change for implementation (remote mode)
+    /// Claim a change for implementation, or release its claim with --release (remote mode)
     Claim(lifecycle::ClaimArgs),
     /// Read store documents (artifact contents)
     Artifact(documents::ArtifactArgs),

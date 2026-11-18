@@ -132,6 +132,15 @@ pub fn show_json(show: &ShowOutcome) -> Value {
                     shown["landed"]["by"] = json!(by);
                 }
             }
+            if let Some(claimed) = &c.claimed {
+                shown["claimed"] = json!({ "by": claimed.by });
+                if let Some(by_id) = &claimed.by_id {
+                    shown["claimed"]["byId"] = json!(by_id);
+                }
+                if let Some(at) = &claimed.at {
+                    shown["claimed"]["at"] = json!(at);
+                }
+            }
             if !c.fields.is_empty() {
                 shown["fields"] = json!(c.fields);
             }
@@ -228,7 +237,7 @@ pub fn status(report: &StatusReport, options: RenderOptions) -> Rendered {
 mod tests {
     use super::*;
     use serde_json::json;
-    use speclink_core::command::ShowChange;
+    use speclink_core::command::{ClaimRecord, ShowChange};
     use speclink_core::listing::{ListChangeJson, ListWorktreeJson};
     use speclink_core::status::ArtifactStatusJson;
 
@@ -360,6 +369,7 @@ mod tests {
             verify: None,
             branch: None,
             landed: None,
+            claimed: None,
             fields: Default::default(),
         })
     }
@@ -389,6 +399,7 @@ mod tests {
                 verify: None,
                 branch: None,
                 landed: None,
+                claimed: None,
                 fields: Default::default(),
             })
         };
@@ -517,9 +528,45 @@ mod tests {
     }
 
     #[test]
+    fn show_json_adds_the_claim_record_and_the_human_form_does_not() {
+        // spec「認領記錄的讀取」：by，以及有記錄才出現的 byId 與 at。
+        let with = |claimed: ClaimRecord| {
+            let ShowOutcome::Change(plain) = shown_change() else { unreachable!() };
+            ShowOutcome::Change(ShowChange { claimed: Some(claimed), ..plain })
+        };
+        let full = with(ClaimRecord {
+            by: "Alice".to_string(),
+            by_id: Some("u_1".to_string()),
+            at: Some("2026-11-18T10:00:00+00:00".to_string()),
+        });
+        let shown = show_json(&full);
+        assert_eq!(shown["claimed"], json!({ "by": "Alice", "byId": "u_1", "at": "2026-11-18T10:00:00+00:00" }));
+        // 其餘欄位與沒有認領時相同；人眼輸出不變。
+        let before = show_json(&shown_change());
+        let mut without = shown.clone();
+        without.as_object_mut().unwrap().remove("claimed");
+        assert_eq!(without, before);
+        assert_eq!(show_human(&full, &PLAIN).stdout, show_human(&shown_change(), &PLAIN).stdout);
+        assert_eq!(show(&shown_change(), RenderOptions { json: true, color: false }).stdout.contains("claimed"), false);
+
+        // 沒有識別的認領不輸出 byId；舊版 Server 只給得出 by。
+        let unkeyed = with(ClaimRecord {
+            by: "Alice <a@example.com>".to_string(),
+            by_id: None,
+            at: Some("2026-11-18T10:00:00+00:00".to_string()),
+        });
+        assert_eq!(
+            show_json(&unkeyed)["claimed"],
+            json!({ "by": "Alice <a@example.com>", "at": "2026-11-18T10:00:00+00:00" })
+        );
+        let by_only = with(ClaimRecord { by: "Alice".to_string(), by_id: None, at: None });
+        assert_eq!(show_json(&by_only)["claimed"], json!({ "by": "Alice" }));
+    }
+
+    #[test]
     fn show_json_has_no_key_for_a_record_the_change_does_not_have() {
         let shown = show_json(&shown_change());
-        for key in ["review", "verify", "branch", "landed"] {
+        for key in ["review", "verify", "branch", "landed", "claimed"] {
             assert!(shown.get(key).is_none(), "{key}");
         }
         // A station that never started is no record either: the output is the

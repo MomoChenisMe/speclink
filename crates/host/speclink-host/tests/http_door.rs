@@ -2578,3 +2578,188 @@ fn the_import_and_the_export_go_through_the_hooks() {
     assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "不開放匯出"));
     assert_eq!(seen.asked.lock().unwrap().last().cloned(), Some(("scope-export".to_string(), json!({}))));
 }
+
+// ======================================================================
+// 釋放認領與認領記錄的讀取（claim-release-and-output；server-verb-api
+// 「claim 釋放端點」、client-protocol「認領的識別與時間欄位及釋放回應」）
+// ======================================================================
+
+const CLAIM_KEYS: [&str; 3] = ["claimedBy", "claimedById", "claimedAt"];
+const HELD_META: &str =
+    "schema: spec-driven\nclaimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice\nclaimed_by_id: u_1\n";
+
+fn bob() -> Identity {
+    Identity::new("u_7", "Bob").unwrap()
+}
+
+/// Change `demo` on scope s1 with this metadata document.
+fn with_demo_meta(door: &Door, meta: &str) {
+    seed(door, "s1", &[("changes/demo/.meta.yaml", meta), ("changes/demo/tasks.md", OPEN_TASKS), ("config.yaml", CONFIG)]);
+}
+
+/// `demo` as the list and the single read answer it, in that order.
+fn demo_reads(door: &Door) -> [Value; 2] {
+    let list = json(&answer(door, &get(&alpha("changes")), Some(&bob())));
+    let listed = list["changes"]
+        .as_array()
+        .and_then(|changes| changes.iter().find(|c| c["name"] == "demo"))
+        .unwrap_or_else(|| panic!("demo is listed: {list}"))
+        .clone();
+    [listed, json(&answer(door, &get(&alpha("changes/demo")), Some(&bob())))]
+}
+
+fn release_claim(door: &Door, change: &str, identity: &Identity) -> HttpResponse {
+    answer(door, &request(Method::Delete, &alpha(&format!("changes/{change}/claim"))), Some(identity))
+}
+
+#[test]
+fn a_claim_with_an_identifier_is_in_both_reads_with_its_identifier_and_time() {
+    // Scenario「帶識別的認領出現在兩個讀取回應」：例子裡的值原樣帶出。
+    let door = door(one_repo());
+    with_demo_meta(&door, HELD_META);
+    for read in demo_reads(&door) {
+        assert_eq!(read["claimedBy"], "Alice", "{read}");
+        assert_eq!(read["claimedById"], "u_1", "{read}");
+        assert_eq!(read["claimedAt"], "2026-11-18T10:00:00+00:00", "the time as written, not its date: {read}");
+    }
+
+    // 經入口認領：識別是宿主給的身分，時間是寫入時的時戳。
+    let door = self::door(one_repo());
+    with_demo(&door);
+    assert_eq!(answer(&door, &request(Method::Post, &alpha("changes/demo/claim")), Some(&alice())).status, 200);
+    for read in demo_reads(&door) {
+        assert_eq!((&read["claimedBy"], &read["claimedById"]), (&json!("Alice"), &json!("u_42")), "{read}");
+        let at = read["claimedAt"].as_str().unwrap_or_else(|| panic!("a claim time: {read}"));
+        chrono::DateTime::parse_from_rfc3339(at).unwrap_or_else(|e| panic!("{at}: {e}"));
+    }
+}
+
+#[test]
+fn a_claim_without_an_identifier_has_no_claimed_by_id_and_an_unclaimed_change_has_none_of_the_three() {
+    let door = door(one_repo());
+    with_demo_meta(&door, "schema: spec-driven\nclaimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice <a@example.com>\n");
+    for read in demo_reads(&door) {
+        assert_eq!(read["claimedBy"], "Alice <a@example.com>", "{read}");
+        assert_eq!(read["claimedAt"], "2026-11-18T10:00:00+00:00", "{read}");
+        assert!(read.get("claimedById").is_none(), "{read}");
+    }
+
+    let door = self::door(one_repo());
+    with_demo(&door);
+    for read in demo_reads(&door) {
+        for key in CLAIM_KEYS {
+            assert!(read.get(key).is_none(), "{key}: {read}");
+        }
+    }
+}
+
+#[test]
+fn another_editor_releases_a_claim_and_the_reads_name_no_holder() {
+    // Scenario「釋放落盤且讀取回應不再有認領人」。
+    use speclink_host::commit::event_resource;
+    use speclink_protocol::events::InvalidationScope;
+    let door = door(one_repo());
+    with_demo(&door);
+    answer(&door, &request(Method::Post, &alpha("changes/demo/claim")), Some(&alice()));
+    door.store.take();
+
+    let response = release_claim(&door, "demo", &bob());
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    assert_eq!(json(&response), json!({ "released": true, "previousHolder": "Alice" }));
+    assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(META), "the other fields stay");
+    // 一次提交，事件歸到這個變更。
+    let commits = door.store.take().commits;
+    assert_eq!(commits.len(), 1, "{commits:?}");
+    let resources: Vec<(String, InvalidationScope, String)> = commits[0]
+        .events()
+        .iter()
+        .map(|event| {
+            let (scope, id) = event_resource(event.name(), event.payload());
+            (event.name().to_string(), scope, id)
+        })
+        .collect();
+    assert_eq!(resources, [("change-claim-released".to_string(), InvalidationScope::Change, "demo".to_string())]);
+    for read in demo_reads(&door) {
+        for key in CLAIM_KEYS {
+            assert!(read.get(key).is_none(), "{key}: {read}");
+        }
+    }
+    // 「server 重啟後讀取結果不變」：同一個 store 上重新建一個入口，讀到的一樣。
+    let restarted = Door {
+        kit: HostKit::with_options(door.store.clone(), Hooks::default(), one_repo()).expect("the options name no unknown skill"),
+        store: door.store.clone(),
+    };
+    for read in demo_reads(&restarted) {
+        for key in CLAIM_KEYS {
+            assert!(read.get(key).is_none(), "after a restart, {key}: {read}");
+        }
+    }
+    // 釋放之後別人可以認領。
+    let reclaimed = answer(&door, &request(Method::Post, &alpha("changes/demo/claim")), Some(&bob()));
+    assert_eq!(json(&reclaimed)["claimedBy"], "Bob");
+}
+
+#[test]
+fn releasing_an_unclaimed_change_is_200_with_nothing_released_and_no_commit() {
+    let door = door(one_repo());
+    with_demo(&door);
+    let before = version_of(&door.store.inner, "s1");
+
+    let response = release_claim(&door, "demo", &bob());
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    assert_eq!(json(&response), json!({ "released": false }), "no previousHolder key");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+    assert_eq!(version_of(&door.store.inner, "s1"), before, "the scope version stays");
+}
+
+#[test]
+fn a_reader_cannot_release_and_an_unknown_change_is_404() {
+    let door = door(switches(false, false));
+    with_demo_meta(&door, HELD_META);
+    let (status, reason, _) = error(&release_claim(&door, "demo", &bob()));
+    assert_eq!((status, reason.as_str()), (403, "permission_denied"));
+    assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(HELD_META), "the claim stays");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+
+    let door = self::door(one_repo());
+    with_demo(&door);
+    let (status, reason, message) = error(&release_claim(&door, "ghost", &bob()));
+    assert_eq!((status, reason.as_str()), (404, "not_found"));
+    assert!(message.contains("ghost"), "{message}");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+}
+
+#[test]
+fn a_hook_refusal_of_a_release_is_refused_with_the_hosts_reason() {
+    // Scenario「掛鉤拒絕釋放」：掛鉤收到的命令名稱是 claim-release，參數含變更名稱。
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, deny("claim-release", "只有認領的人可以釋放")));
+    with_demo_meta(&door, HELD_META);
+
+    let (status, reason, message) = error(&release_claim(&door, "demo", &bob()));
+
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "只有認領的人可以釋放"));
+    assert_eq!(seen.asked.lock().unwrap().clone(), vec![("claim-release".to_string(), json!({ "name": "demo" }))]);
+    assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(HELD_META), "the claim stays");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+}
+
+#[test]
+fn a_release_over_metadata_that_changed_meanwhile_is_409_revision_conflict() {
+    // 釋放和其他寫入端點走同一條樂觀並行規則：命令讀過 metadata 之後別人改了它，
+    // 提交不落地，別人寫的內容留著。
+    const OTHER: &str = "schema: spec-driven\nclaimed_at: 2026-11-18T11:00:00+00:00\nclaimed_by: Carol\n";
+    let store = Arc::new(common::Recorder::new(MemoryStorePort::new()).before_first_commit(|inner| {
+        common::write_in(inner, &scope_of("s1"), &[("changes/demo/.meta.yaml", OTHER)]);
+    }));
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).expect("the options name no unknown skill");
+    let door = Door { kit, store };
+    with_demo_meta(&door, HELD_META);
+
+    let (status, reason, _) = error(&release_claim(&door, "demo", &bob()));
+
+    assert_eq!((status, reason.as_str()), (409, "revision_conflict"));
+    assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(OTHER), "the other write stays");
+}

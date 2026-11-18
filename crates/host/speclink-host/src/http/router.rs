@@ -61,6 +61,7 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Post, "/changes/{name}/verify/rounds", routes::verify_add_round),
     route(Post, "/changes/{name}/verify/stamp", routes::verify_stamp),
     route(Post, "/changes/{name}/claim", routes::claim),
+    route(Delete, "/changes/{name}/claim", routes::claim_release),
     route(Post, "/changes/{name}/depends", routes::change_depends),
     route(Post, "/changes/{name}/schema", routes::change_schema),
     route(Post, "/changes/{name}/rank", routes::change_rank),

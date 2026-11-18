@@ -2,6 +2,7 @@
 
 use serde_json::{json, Value};
 use speclink_core::archive::ArchiveOutcome;
+use speclink_core::command::ClaimReleaseOutcome;
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
@@ -95,9 +96,49 @@ pub fn claim_human(name: &str, paint: &Paint) -> Text {
     t
 }
 
-/// `claim` has no JSON form.
-pub fn claim(name: &str, options: RenderOptions) -> Rendered {
-    Rendered::of(options, None, |paint| claim_human(name, paint))
+/// `claim --json`: the change and its holder after the call. A server too old
+/// to name the holder leaves `claimedBy` out.
+pub fn claim_json(name: &str, claimed_by: Option<&str>) -> Value {
+    let mut claimed = json!({ "change": name });
+    if let Some(holder) = claimed_by {
+        claimed["claimedBy"] = json!(holder);
+    }
+    claimed
+}
+
+pub fn claim(name: &str, claimed_by: Option<&str>, options: RenderOptions) -> Rendered {
+    Rendered::of(options, Some(JsonForm::pretty(&claim_json(name, claimed_by))), |paint| claim_human(name, paint))
+}
+
+/// `claim --release --json`: whether this call removed a claim, and the holder
+/// it named before — left out when there was none to read.
+pub fn claim_release_json(release: &ClaimReleaseOutcome) -> Value {
+    let mut released = json!({ "change": release.name, "released": release.released });
+    if let Some(holder) = &release.previous_holder {
+        released["previousHolder"] = json!(holder);
+    }
+    released
+}
+
+/// `claim --release`: one line. A release that found no claim is not a
+/// success mark — nothing was done — but it is no failure either.
+pub fn claim_release_human(release: &ClaimReleaseOutcome, paint: &Paint) -> Text {
+    let mut t = Text::default();
+    let name = &release.name;
+    match (release.released, &release.previous_holder) {
+        (false, _) => outln!(t, "Change '{name}' is not claimed — nothing to release"),
+        (true, Some(holder)) => {
+            outln!(t, "{} Released claim on change: {name} (was claimed by {holder})", paint.green("✓"))
+        }
+        (true, None) => outln!(t, "{} Released claim on change: {name}", paint.green("✓")),
+    }
+    t
+}
+
+pub fn claim_release(release: &ClaimReleaseOutcome, options: RenderOptions) -> Rendered {
+    Rendered::of(options, Some(JsonForm::pretty(&claim_release_json(release))), |paint| {
+        claim_release_human(release, paint)
+    })
 }
 
 #[cfg(test)]
@@ -105,6 +146,7 @@ mod tests {
     use super::*;
     use serde_json::json;
     use speclink_core::archive::CapCounts;
+    use speclink_core::command::ClaimReleaseOutcome;
 
     const PLAIN: Paint = Paint::new(false);
     const COLOR: Paint = Paint::new(true);
@@ -179,11 +221,59 @@ mod tests {
         assert_eq!(discard("alpha", &[], RenderOptions::default()).stdout, "✓ Discarded change: alpha\n");
     }
 
+    const JSON: RenderOptions = RenderOptions { json: true, color: false };
+
     #[test]
-    fn claim_human_is_one_line_and_has_no_json_form() {
+    fn claim_human_is_one_line_and_the_json_form_names_the_holder() {
+        // 人眼輸出逐位元不變；`--json` 是 `{change, claimedBy}`。
         assert_eq!(claim_human("alpha", &COLOR).stdout, "\x1b[32m✓\x1b[0m Claimed change: alpha\n");
-        let out = claim("alpha", RenderOptions { json: true, color: false });
-        assert_eq!(out.stdout, "✓ Claimed change: alpha\n");
-        assert_eq!(out.json, None);
+        assert_eq!(claim("alpha", Some("Alice"), RenderOptions::default()).stdout, "✓ Claimed change: alpha\n");
+        let out = claim("alpha", Some("Alice"), JSON);
+        assert_eq!(out.stdout, "{\n  \"change\": \"alpha\",\n  \"claimedBy\": \"Alice\"\n}\n");
+        assert_eq!(out.json, Some(json!({ "change": "alpha", "claimedBy": "Alice" })));
+        assert_eq!(out.stderr, "");
+        // design D3：Server 沒有回持有人時（線上的 claimedBy 是選填），省略這個鍵。
+        assert_eq!(claim_json("alpha", None), json!({ "change": "alpha" }));
+        assert_eq!(claim("alpha", None, JSON).stdout, "{\n  \"change\": \"alpha\"\n}\n");
+    }
+
+    fn release(released: bool, previous_holder: Option<&str>) -> ClaimReleaseOutcome {
+        ClaimReleaseOutcome { name: "demo".to_string(), released, previous_holder: previous_holder.map(str::to_string) }
+    }
+
+    #[test]
+    fn claim_release_human_has_three_forms() {
+        // spec「釋放認領」的 CLI 輸出：有持有人、沒有可讀的持有人、沒有被認領。
+        let cases = [
+            (release(true, Some("Alice")), "✓ Released claim on change: demo (was claimed by Alice)\n"),
+            (release(true, None), "✓ Released claim on change: demo\n"),
+            (release(false, None), "Change 'demo' is not claimed — nothing to release\n"),
+        ];
+        for (outcome, plain) in &cases {
+            let text = claim_release_human(outcome, &PLAIN);
+            assert_eq!(&text.stdout, plain, "{outcome:?}");
+            assert_eq!(text.stderr, "");
+            // `--no-color`：文字相同、不含色碼。
+            assert_eq!(claim_release(outcome, RenderOptions::default()).stdout, *plain);
+        }
+        assert_eq!(
+            claim_release_human(&cases[0].0, &COLOR).stdout,
+            "\x1b[32m✓\x1b[0m Released claim on change: demo (was claimed by Alice)\n"
+        );
+        // 沒有被認領的那一行沒有勾號，上色與否都一樣。
+        assert_eq!(claim_release_human(&cases[2].0, &COLOR).stdout, cases[2].1);
+    }
+
+    #[test]
+    fn claim_release_json_leaves_the_previous_holder_out_when_there_is_none() {
+        assert_eq!(
+            claim_release_json(&release(true, Some("Alice"))),
+            json!({ "change": "demo", "released": true, "previousHolder": "Alice" })
+        );
+        assert_eq!(claim_release_json(&release(true, None)), json!({ "change": "demo", "released": true }));
+        assert_eq!(claim_release_json(&release(false, None)), json!({ "change": "demo", "released": false }));
+        let out = claim_release(&release(false, None), JSON);
+        assert_eq!(out.stdout, "{\n  \"change\": \"demo\",\n  \"released\": false\n}\n");
+        assert_eq!(out.json, Some(json!({ "change": "demo", "released": false })));
     }
 }

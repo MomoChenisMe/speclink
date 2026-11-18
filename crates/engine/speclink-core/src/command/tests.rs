@@ -1207,7 +1207,9 @@ fn first_claim_on_a_team_store_stamps_the_owner_and_reports_change_claimed() {
     );
     let parsed = crate::model::ChangeMeta::from_text(Some(&meta)).expect("stamped meta parses");
     assert_eq!(parsed.claimed_by.as_deref(), Some("Alice <a@example.com>"));
-    assert_eq!(parsed.claimed_at.as_deref(), Some(crate::util::today().as_str()));
+    // claimed_at 保留寫入時的完整時戳（不截成日期）。
+    let at = parsed.claimed_at.as_deref().expect("claimed_at is recorded");
+    chrono::DateTime::parse_from_rfc3339(at).expect("claimed_at reads back as the stamp it was written as");
     assert_eq!(*store.meta_writes.borrow(), 1, "exactly one meta write");
 }
 
@@ -1347,8 +1349,7 @@ fn claim_by_another_actor_is_refused_naming_the_holder_and_writes_nothing() {
     assert_eq!(*store.meta_writes.borrow(), 1, "the refused claim writes nothing");
 }
 
-/// 只剩 claimed_at 的 meta:目前沒有 release 動詞,人工「釋出」最直覺
-/// 就是手刪 claimed_by 那一行。
+/// 只剩 claimed_at 的 meta:手刪 claimed_by 那一行就會留下這種半套標記。
 const HALF_CLAIMED_META: &str =
     "schema: spec-driven\ncreated: 2026-07-01\nclaimed_at: 2026-07-02\n";
 
@@ -1406,6 +1407,164 @@ fn claim_without_an_actor_is_refused_rather_than_stamping_an_anonymous_owner() {
     assert_eq!(err.code, ErrorCode::Refused);
     assert_eq!(store.meta("demo"), CLAIM_META);
     assert_eq!(*store.meta_writes.borrow(), 0);
+}
+
+// --- claim --release:釋放認領(change-lifecycle「釋放認領」)---
+
+fn release(store: &TestStore, ctx: &ExecutionContext) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+    execute(store, ctx, Command::ClaimRelease { name: "demo".to_string() })
+}
+
+fn released_of(outcome: &CommandOutcome) -> (bool, Option<&str>) {
+    match outcome {
+        CommandOutcome::ClaimRelease(o) => {
+            assert_eq!(o.name, "demo");
+            (o.released, o.previous_holder.as_deref())
+        }
+        other => panic!("expected a claim-release outcome, got {other:?}"),
+    }
+}
+
+/// 認領的三個欄位夾在既有欄位之間：移除後前後的欄位都要逐字元保留。
+fn held_meta(holder_line: &str) -> String {
+    format!("{CLAIM_META}claimed_at: 2026-11-18T10:00:00+00:00\n{holder_line}claimed_by_id: u_1\nbranch: feature/x\n")
+}
+
+#[test]
+fn release_removes_the_three_claim_fields_and_reports_the_previous_holder() {
+    let store = TestStore::team_with_meta("demo", &held_meta("claimed_by: Alice\n"));
+    // Bob 不是認領的人：引擎不限定誰可以釋放。
+    let (outcome, events) = release(&store, &claim_ctx("Bob")).expect("anyone may release");
+    assert_eq!(released_of(&outcome), (true, Some("Alice")));
+    assert_eq!(kinds(&events), ["change-claim-released"]);
+    match &events[0] {
+        DomainEvent::ChangeClaimReleased { change, .. } => assert_eq!(change, "demo"),
+        other => panic!("expected change-claim-released, got {other:?}"),
+    }
+    assert_eq!(store.meta("demo"), format!("{CLAIM_META}branch: feature/x\n"), "the other fields stay byte-identical");
+    assert_eq!(*store.meta_writes.borrow(), 1, "one write removes all three fields");
+}
+
+#[test]
+fn release_needs_no_identity_at_all() {
+    let store = TestStore::team_with_meta("demo", &held_meta("claimed_by: Alice\n"));
+    let anonymous = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+    let (outcome, events) = release(&store, &anonymous).expect("release does not record an owner");
+    assert_eq!(released_of(&outcome), (true, Some("Alice")));
+    assert_eq!(kinds(&events), ["change-claim-released"]);
+}
+
+#[test]
+fn release_reads_a_quoted_holder_back_as_the_plain_name() {
+    // claimed_by 經 yaml_scalar 寫入，previous_holder 要經它的反函式讀回。
+    let store = TestStore::team_with_meta("demo", &held_meta("claimed_by: \"Alice: dev <a@example.com>\"\n"));
+    let (outcome, _) = release(&store, &claim_ctx("Bob")).expect("release succeeds");
+    assert_eq!(released_of(&outcome), (true, Some("Alice: dev <a@example.com>")));
+}
+
+#[test]
+fn release_reports_no_previous_holder_for_an_empty_claimed_by_line() {
+    // 手改成空值的 `claimed_by:`：ChangeMeta 讀成沒有持有人，釋放的結果也一樣。
+    let store = TestStore::team_with_meta("demo", &held_meta("claimed_by:\n"));
+    let (outcome, events) = release(&store, &claim_ctx("Bob")).expect("release succeeds");
+    assert_eq!(released_of(&outcome), (true, None));
+    assert_eq!(kinds(&events), ["change-claim-released"]);
+    assert_eq!(store.meta("demo"), format!("{CLAIM_META}branch: feature/x\n"));
+}
+
+#[test]
+fn release_refuses_a_claim_line_it_cannot_remove_whole() {
+    // 手改出來的寫法：YAML 讀得到這個鍵，逐行移除卻看不到它，或只移得掉第一行。
+    // 寧可拒絕並點名檔案，也不要回報「沒有被認領」或留下孤兒行。
+    for odd in ["claimed_by : Alice\n", "\"claimed_by\": Alice\n", "claimed_by: >-\n  Alice\n  Chen\n"] {
+        let meta = format!("{CLAIM_META}{odd}branch: feature/x\n");
+        let store = TestStore::team_with_meta("demo", &meta);
+        let err = release(&store, &claim_ctx("Bob")).expect_err("an entry it cannot remove whole refuses");
+        assert_eq!(err.code, ErrorCode::Refused, "{odd:?}");
+        assert!(err.message.contains("`claimed_by`"), "{odd:?}: {}", err.message);
+        assert!(err.message.contains("speclink/changes/demo/.meta.yaml"), "{odd:?}: {}", err.message);
+        assert_eq!(store.meta("demo"), meta, "{odd:?}: meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "{odd:?}");
+    }
+    // 鍵後面的空行與註解不是它的值：照常釋放，這兩行留著。
+    let spaced = format!("{CLAIM_META}claimed_by: Alice\n\n# note\nbranch: feature/x\n");
+    let store = TestStore::team_with_meta("demo", &spaced);
+    let (outcome, _) = release(&store, &claim_ctx("Bob")).expect("a blank line and a comment are not the value");
+    assert_eq!(released_of(&outcome), (true, Some("Alice")));
+    assert_eq!(store.meta("demo"), format!("{CLAIM_META}\n# note\nbranch: feature/x\n"));
+}
+
+#[test]
+fn another_identity_can_claim_after_a_release() {
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    claim_as(&store, "Alice", Some("u_1")).expect("Alice claims");
+    release(&store, &claim_ctx("Bob")).expect("Bob releases");
+    assert_eq!(store.meta("demo"), CLAIM_META, "the release restores the meta as it was before the claim");
+    let (reclaimed, events) = claim_as(&store, "Bob", Some("u_2")).expect("Bob claims the released change");
+    assert_eq!(claimed_by_of(&reclaimed), (Some("Bob"), true));
+    assert_eq!(kinds(&events), ["change-claimed"]);
+    assert!(store.meta("demo").contains("claimed_by_id: u_2\n"), "{}", store.meta("demo"));
+}
+
+#[test]
+fn release_of_an_unclaimed_change_succeeds_with_no_write_and_no_event() {
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    let (outcome, events) = release(&store, &claim_ctx("Bob")).expect("releasing nothing still succeeds");
+    assert_eq!(released_of(&outcome), (false, None));
+    assert!(events.is_empty(), "no event when nothing was released");
+    assert_eq!(store.meta("demo"), CLAIM_META);
+    assert_eq!(*store.meta_writes.borrow(), 0, "no write when nothing was released");
+}
+
+#[test]
+fn release_clears_a_half_stamped_meta_so_the_change_can_be_claimed_again() {
+    let store = TestStore::team_with_meta("demo", HALF_CLAIMED_META);
+    let (outcome, events) = release(&store, &claim_ctx("Bob")).expect("a half stamp counts as claimed");
+    assert_eq!(released_of(&outcome), (true, None), "no claimed_by to report");
+    assert_eq!(kinds(&events), ["change-claim-released"]);
+    assert_eq!(store.meta("demo"), "schema: spec-driven\ncreated: 2026-07-01\n");
+    let (reclaimed, _) = claim(&store, "Alice <a@example.com>").expect("the change is claimable again");
+    assert_eq!(claimed_by_of(&reclaimed), (Some("Alice <a@example.com>"), true));
+}
+
+#[test]
+fn release_on_the_fs_store_refuses_with_the_same_text_as_claim() {
+    let store = TestStore::with_meta("demo", META);
+    let ctx = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+    let err = release(&store, &ctx).expect_err("release must refuse on a plain store");
+    let claim_err = execute(&store, &ctx, Command::Claim { name: "demo".to_string() })
+        .expect_err("claim must refuse on a plain store");
+    assert_eq!(err.code, claim_err.code);
+    assert_eq!(err.message, claim_err.message);
+    assert_eq!(err.message, "claim requires a remote store — this project uses the local fs store");
+    assert_eq!(err.message, super::CLAIM_NEEDS_REMOTE_STORE, "the one constant every entry point prints");
+    assert_eq!(*store.meta_writes.borrow(), 0);
+}
+
+#[test]
+fn release_of_an_unknown_change_on_a_team_store_is_not_found() {
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    let err = execute(&store, &claim_ctx("Bob"), Command::ClaimRelease { name: "ghost".to_string() })
+        .expect_err("an unknown change cannot be released");
+    assert_eq!(err.code, ErrorCode::NotFound);
+    assert!(err.message.contains("ghost"), "{}", err.message);
+    assert_eq!(*store.meta_writes.borrow(), 0);
+}
+
+#[test]
+fn release_on_corrupt_meta_fails_closed_naming_the_file() {
+    // 團隊模式與本機 store 都先過 fail-closed 守門，訊息點名壞掉的檔案。
+    for store in [TestStore::team_with_meta("demo", BAD_META), TestStore::with_meta("demo", BAD_META)] {
+        let err = release(&store, &claim_ctx("Bob")).expect_err("corrupt meta refuses");
+        assert_eq!(err.code, ErrorCode::InvalidConfig);
+        assert!(
+            err.message.contains("speclink/changes/demo/.meta.yaml"),
+            "the error must name the metadata file: {}",
+            err.message
+        );
+        assert_eq!(store.meta("demo"), BAD_META, "meta byte-identical");
+        assert_eq!(*store.meta_writes.borrow(), 0, "no write on a fail-closed refusal");
+    }
 }
 
 #[test]
@@ -1502,6 +1661,26 @@ fn show_without_records_reports_both_stations_as_none_and_no_branch_or_landing()
     assert_eq!(change.review.expect("a review status").progress, StationProgress::None);
     assert_eq!(change.verify.expect("a verify status").progress, StationProgress::None);
     assert!(change.branch.is_none() && change.landed.is_none());
+}
+
+#[test]
+fn show_carries_the_claim_record_only_when_someone_holds_the_change() {
+    // spec「認領記錄的讀取」：by、有記錄才有的 by_id 與 at（at 是 meta 的原樣）。
+    let held = format!("{META}claimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice\nclaimed_by_id: u_1\n");
+    let claimed = shown(&TestStore::with_meta("demo", &held), "demo").claimed.expect("a claim record");
+    assert_eq!(claimed.by, "Alice");
+    assert_eq!(claimed.by_id.as_deref(), Some("u_1"));
+    assert_eq!(claimed.at.as_deref(), Some("2026-11-18T10:00:00+00:00"));
+
+    let unkeyed = format!("{META}claimed_by: \"Alice <a@example.com>\"\n");
+    let claimed = shown(&TestStore::with_meta("demo", &unkeyed), "demo").claimed.expect("a claim record");
+    assert_eq!(claimed.by, "Alice <a@example.com>");
+    assert_eq!((claimed.by_id, claimed.at), (None, None));
+
+    assert!(shown(&TestStore::with_meta("demo", META), "demo").claimed.is_none());
+    // 只有 claimed_at 的半套標記沒有持有人可報。
+    let half = format!("{META}claimed_at: 2026-11-18\n");
+    assert!(shown(&TestStore::with_meta("demo", &half), "demo").claimed.is_none());
 }
 
 #[test]
@@ -2164,6 +2343,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         ),
         (DomainEvent::TaskMoved { change: s("c"), occurred_at: at }, "task-moved"),
         (DomainEvent::ChangeClaimed { change: s("c"), occurred_at: at }, "change-claimed"),
+        (DomainEvent::ChangeClaimReleased { change: s("c"), occurred_at: at }, "change-claim-released"),
         (
             DomainEvent::ChangeMarkedInProgress { change: s("c"), occurred_at: at },
             "change-marked-in-progress",
@@ -2237,7 +2417,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-landed",
         ),
     ];
-    assert_eq!(table.len(), 30, "the coverage table has 30 mutating verbs");
+    assert_eq!(table.len(), 31, "the coverage table has 31 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2281,6 +2461,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::TaskUndone { task_id: _, change: _ } => {}
         Command::TaskMove { change: _, from: _, to: _, before: _ } => {}
         Command::Claim { name: _ } => {}
+        Command::ClaimRelease { name: _ } => {}
         Command::InProgressAdd { name: _, branch: _ } => {}
         Command::InProgressRemove { name: _ } => {}
         Command::ChangeDepends { name: _, on: _, remove: _ } => {}

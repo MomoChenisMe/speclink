@@ -8,9 +8,10 @@ use speclink_core as core;
 
 use crate::common::{emit, open_project, plain_command, render_options, run};
 use crate::remote_base::RemoteCtx;
+use core::command::ClaimReleaseOutcome;
 use core::store::Store;
 use core::workspace::Workspace;
-use speclink_verbs::families::lifecycle::{ArchiveArgs, DiscardArgs};
+use speclink_verbs::families::lifecycle::{ArchiveArgs, ClaimArgs, DiscardArgs};
 use speclink_verbs::render::lifecycle as render;
 
 pub(crate) fn cmd_archive(a: ArchiveArgs) -> Result<()> {
@@ -206,8 +207,21 @@ pub(crate) fn remote_discard(ctx: &RemoteCtx, a: &DiscardArgs) -> Result<()> {
     emit(render::discard(&outcome.change, &unlinked, render_options(a.json)));
     Ok(())
 }
-pub(crate) fn remote_claim(ctx: &RemoteCtx, name: &str) -> Result<()> {
-    let _ = ctx.client.claim(name)?;
-    emit(render::claim(name, render_options(false)));
+/// remote claim：`--release` 走釋放端點，否則走認領端點；回應轉成引擎的結果，
+/// 交給和宿主套件同一支輸出函式。
+pub(crate) fn remote_claim(ctx: &RemoteCtx, a: &ClaimArgs) -> Result<()> {
+    let options = render_options(a.json);
+    if a.release {
+        let response = ctx.client.release_claim(&a.name)?;
+        let release = ClaimReleaseOutcome {
+            name: a.name.clone(),
+            released: response.released,
+            previous_holder: response.previous_holder,
+        };
+        emit(render::claim_release(&release, options));
+    } else {
+        let response = ctx.client.claim(&a.name)?;
+        emit(render::claim(&a.name, response.claimed_by.as_deref(), options));
+    }
     Ok(())
 }

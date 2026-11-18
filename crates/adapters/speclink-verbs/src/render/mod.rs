@@ -222,7 +222,8 @@ pub fn render(
         O::TaskUndone(o) => progress::task_flipped(TaskFlip::Undone, o, options)?,
         // No verb text reaches a task move, and it has no output.
         O::TaskMove(_) => Rendered::default(),
-        O::Claim(o) => lifecycle::claim(&o.name, options),
+        O::Claim(o) => lifecycle::claim(&o.name, o.claimed_by.as_deref(), options),
+        O::ClaimRelease(o) => lifecycle::claim_release(o, options),
         // `in-progress add` prints nothing.
         O::InProgressAdd(_) => Rendered::default(),
         O::InProgressRemove(o) => progress::in_progress_remove(&o.name, o.removed, options),
@@ -370,9 +371,10 @@ mod tests {
             CommandOutcome::ChangeLanded(_) => 47,
             CommandOutcome::ChangeFieldsEdit(_) => 48,
             CommandOutcome::DiscussFieldsEdit(_) => 49,
+            CommandOutcome::ClaimRelease(_) => 50,
         }
     }
-    const RESULT_TYPES: usize = 50;
+    const RESULT_TYPES: usize = 51;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -592,9 +594,15 @@ mod tests {
             (&["list"], O::TaskMove(cmd::TaskMoveOutcome { change: s("c"), description: s("d") }), false, ""),
             (
                 &["claim", "c"],
-                O::Claim(cmd::ClaimOutcome { name: s("c"), claimed_by: None, claimed: true }),
-                false,
+                O::Claim(cmd::ClaimOutcome { name: s("c"), claimed_by: Some(s("Alice")), claimed: true }),
+                true,
                 "✓ Claimed change: c\n",
+            ),
+            (
+                &["claim", "c", "--release"],
+                O::ClaimRelease(cmd::ClaimReleaseOutcome { name: s("c"), released: true, previous_holder: Some(s("Alice")) }),
+                true,
+                "✓ Released claim on change: c (was claimed by Alice)\n",
             ),
             (
                 &["in-progress", "add", "c"],
@@ -812,6 +820,20 @@ mod tests {
             let human_out = render(&parsed(argv), &outcome, HUMAN).unwrap();
             assert_eq!(human_out.json.as_ref(), Some(value), "{argv:?}");
         }
+    }
+
+    #[test]
+    fn claim_and_its_release_have_a_json_form() {
+        let claimed = CommandOutcome::Claim(cmd::ClaimOutcome { name: s("c"), claimed_by: Some(s("Alice")), claimed: false });
+        let out = render(&parsed(&["claim", "c", "--json"]), &claimed, JSON).unwrap();
+        assert_eq!(out.json, Some(json!({ "change": "c", "claimedBy": "Alice" })));
+        assert_eq!(serde_json::from_str::<Value>(&out.stdout).unwrap(), json!({ "change": "c", "claimedBy": "Alice" }));
+
+        let nothing = CommandOutcome::ClaimRelease(cmd::ClaimReleaseOutcome { name: s("c"), released: false, previous_holder: None });
+        let out = render(&parsed(&["claim", "c", "--release", "--json"]), &nothing, JSON).unwrap();
+        assert_eq!(out.json, Some(json!({ "change": "c", "released": false })));
+        let out = render(&parsed(&["claim", "c", "--release"]), &nothing, HUMAN).unwrap();
+        assert_eq!(out.stdout, "Change 'c' is not claimed — nothing to release\n");
     }
 
     #[test]

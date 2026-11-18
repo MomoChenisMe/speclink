@@ -30,6 +30,7 @@ const WRITE_ROUTES: &[(&str, &str)] = &[
     ("POST", "changes/demo/verify/stamp"),
     ("DELETE", "changes/demo/verify"),
     ("POST", "changes/demo/claim"),
+    ("DELETE", "changes/demo/claim"),
     ("POST", "changes/demo/depends"),
     ("POST", "changes/demo/schema"),
     ("POST", "changes/demo/rank"),

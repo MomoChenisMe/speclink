@@ -73,6 +73,8 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             repo: None,
             lifecycle: None,
             claimed_by: None,
+            claimed_by_id: None,
+            claimed_at: None,
             started_at: started_at.map(str::to_string),
             created_by: None,
             created: None,

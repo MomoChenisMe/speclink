@@ -2300,6 +2300,8 @@ mod board_order_tests {
             repo: None,
             lifecycle: None,
             claimed_by: None,
+            claimed_by_id: None,
+            claimed_at: None,
             started_at: None,
             created_by: None,
             created: None,

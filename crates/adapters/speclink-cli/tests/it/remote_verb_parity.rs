@@ -2204,3 +2204,186 @@ fn remote_change_schema_refusal_prints_the_fs_stderr_verbatim() {
     assert!(!out.status.success());
     assert_eq!(stderr_of(&out), stderr_of(&fs), "stderr matches fs mode");
 }
+
+// --- claim --release、claim --json、show --json 的 claimed（claim-release-and-output）---
+//
+// 這一段連到真的 Server（宿主套件的 HTTP 入口，見 door.rs），所以認領與釋放的
+// 語意是引擎的，不是寫死的回應。Server 給的身分固定是 Tester（u_1）。
+
+use crate::door::door;
+use crate::remote_read_verbs::{json_of, TempProject as DoorProject};
+
+const NOV_18_MS: u64 = 1_794_996_000_000;
+const CLAIM_TASKS: &str = "- [ ] 1.1 第一項\n";
+const UNCLAIMED_META: &str = "schema: spec-driven\ncreated: 2026-11-01\n";
+const HELD_BY_ALICE: &str =
+    "schema: spec-driven\ncreated: 2026-11-01\nclaimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice\nclaimed_by_id: u_9\n";
+
+fn claim_docs(meta: &'static str) -> [(&'static str, &'static str); 2] {
+    [("changes/demo/.meta.yaml", meta), ("changes/demo/tasks.md", CLAIM_TASKS)]
+}
+
+#[test]
+fn remote_claim_release_reports_the_previous_holder_then_nothing_to_release() {
+    let server = door(&claim_docs(HELD_BY_ALICE), NOV_18_MS);
+    let p = DoorProject::remote("claim-release", &server.base);
+
+    // Tester 不是認領的人，照樣可以釋放。
+    let out = p.run(&["claim", "demo", "--release"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ Released claim on change: demo (was claimed by Alice)\n");
+    assert_eq!(stderr_of(&out), "");
+    assert!(server.verb_calls().contains(&"DELETE /changes/demo/claim".to_string()), "{:?}", server.verb_calls());
+
+    // 沒有被認領：成功、不是錯誤，`--no-color` 下文字相同。
+    for argv in [&["claim", "demo", "--release"][..], &["claim", "demo", "--release", "--no-color"]] {
+        let out = p.run(argv);
+        assert!(out.status.success(), "{argv:?} stderr: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), "Change 'demo' is not claimed — nothing to release\n", "{argv:?}");
+    }
+    let out = p.run(&["claim", "demo", "--release", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(json_of(&out), serde_json::json!({ "change": "demo", "released": false }));
+
+    // 釋放之後可以認領；再釋放一次，`--json` 帶出釋放前的持有人。
+    assert!(p.run(&["claim", "demo"]).status.success());
+    let out = p.run(&["claim", "demo", "--release", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(json_of(&out), serde_json::json!({ "change": "demo", "released": true, "previousHolder": "Tester" }));
+}
+
+#[test]
+fn remote_claim_release_of_an_unknown_change_fails_on_stderr() {
+    let server = door(&claim_docs(UNCLAIMED_META), NOV_18_MS);
+    let p = DoorProject::remote("claim-release-ghost", &server.base);
+    for argv in [&["claim", "ghost", "--release"][..], &["claim", "ghost", "--release", "--json"]] {
+        let out = p.run(argv);
+        assert!(!out.status.success(), "{argv:?}");
+        assert!(stderr_of(&out).contains("ghost"), "{argv:?}: {}", stderr_of(&out));
+        assert_eq!(stdout_of(&out), "", "{argv:?}: no output on a failure");
+    }
+}
+
+#[test]
+fn remote_claim_json_names_the_holder_and_the_plain_form_is_unchanged() {
+    let server = door(&claim_docs(UNCLAIMED_META), NOV_18_MS);
+    let p = DoorProject::remote("claim-json", &server.base);
+    // 第一次認領與同一身分重複認領，輸出相同。
+    for _ in 0..2 {
+        let out = p.run(&["claim", "demo", "--json"]);
+        assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+        assert_eq!(json_of(&out), serde_json::json!({ "change": "demo", "claimedBy": "Tester" }));
+    }
+    let out = p.run(&["claim", "demo"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), "✓ Claimed change: demo\n", "the plain form is byte-identical to before");
+}
+
+#[test]
+fn remote_claim_json_refused_prints_no_json() {
+    let server = door(&claim_docs(HELD_BY_ALICE), NOV_18_MS);
+    let p = DoorProject::remote("claim-json-held", &server.base);
+    for argv in [&["claim", "demo", "--json"][..], &["claim", "demo"], &["claim", "ghost", "--json"]] {
+        let out = p.run(argv);
+        assert!(!out.status.success(), "{argv:?}");
+        assert_eq!(stdout_of(&out), "", "{argv:?}: stdout stays empty");
+    }
+    let held = stderr_of(&p.run(&["claim", "demo", "--json"]));
+    assert!(held.contains("Alice"), "the holder is named: {held}");
+}
+
+#[test]
+fn remote_show_json_carries_the_claim_record_like_the_engine() {
+    // 同一份文件放進本機專案與 Server：本機的 show 就是引擎（宿主套件也用它）的輸出。
+    const NO_ID: &str =
+        "schema: spec-driven\ncreated: 2026-11-01\nclaimed_at: 2026-11-18T10:00:00+00:00\nclaimed_by: Alice <a@example.com>\n";
+    let cases = [
+        ("full", HELD_BY_ALICE, Some(serde_json::json!({ "by": "Alice", "byId": "u_9", "at": "2026-11-18T10:00:00+00:00" }))),
+        ("no-id", NO_ID, Some(serde_json::json!({ "by": "Alice <a@example.com>", "at": "2026-11-18T10:00:00+00:00" }))),
+        ("none", UNCLAIMED_META, None),
+    ];
+    let unclaimed_human = {
+        let fs = DoorProject::local("show-claimed-base", &claim_docs(UNCLAIMED_META));
+        stdout_of(&fs.run(&["show", "demo"]))
+    };
+    for (tag, meta, claimed) in cases {
+        let docs = claim_docs(meta);
+        let fs = DoorProject::local(&format!("show-claimed-{tag}"), &docs);
+        let server = door(&docs, NOV_18_MS);
+        let remote = DoorProject::remote(&format!("show-claimed-{tag}"), &server.base);
+
+        let (fs_json, remote_json) = (fs.run(&["show", "demo", "--json"]), remote.run(&["show", "demo", "--json"]));
+        assert!(fs_json.status.success() && remote_json.status.success(), "{tag}: {}", stderr_of(&remote_json));
+        assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "{tag}: --json is byte-identical to the engine's");
+        assert_eq!(json_of(&remote_json).get("claimed"), claimed.as_ref(), "{tag}");
+
+        // 人眼輸出不因認領改變。
+        let human = remote.run(&["show", "demo"]);
+        assert!(human.status.success(), "{tag}: {}", stderr_of(&human));
+        assert_eq!(stdout_of(&human), unclaimed_human, "{tag}");
+        assert_eq!(stdout_of(&fs.run(&["show", "demo"])), unclaimed_human, "{tag}");
+    }
+}
+
+#[test]
+fn remote_show_json_from_an_older_server_carries_the_holder_only() {
+    // 舊版 Server 只有 claimedBy：`claimed` 只含 by。
+    let mut routes = show_change_routes();
+    for route in &mut routes {
+        if route.1 == "/changes/demo" {
+            route.3 = r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":["tasks"],"artifacts":[],"created":"2026-07-29","claimedBy":"Alice"}"#.into();
+        }
+    }
+    let mock = mock_server(routes);
+    let p = TempProject::remote("show-claimed-old", &mock.base, "backend");
+    let out = p.run(&["show", "demo", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(json_of(&out)["claimed"], serde_json::json!({ "by": "Alice" }));
+}
+
+#[test]
+fn remote_claim_release_against_an_older_server_says_to_update_the_server() {
+    // 舊版 Server 沒有 DELETE 端點，回它自己的 404（不是引擎的錯誤外殼）：非零結束、
+    // stdout 沒有 JSON，stderr 說要更新 Server，不叫使用者去查變更名稱。
+    let mock = mock_server(vec![(
+        "DELETE",
+        "/changes/demo/claim",
+        404,
+        r#"{"error":{"code":"not_found","message":"找不到該路徑"}}"#.into(),
+    )]);
+    let p = TempProject::remote("claim-release-old", &mock.base, "backend");
+    let out = p.run(&["claim", "demo", "--release", "--json"]);
+    assert!(!out.status.success());
+    assert_eq!(stdout_of(&out), "");
+    mock.find("DELETE", "/changes/demo/claim");
+    let stderr = stderr_of(&out);
+    assert!(
+        stderr.contains("this server does not support claim --release — update the server"),
+        "the message names the cause: {stderr}"
+    );
+    assert!(!stderr.contains("404") && !stderr.contains("speclink list"), "{stderr}");
+}
+
+#[test]
+fn claim_release_on_a_local_project_refuses_with_the_text_of_claim() {
+    let p = TempProject::fs("claim-release-fs");
+    p.write("speclink/changes/demo/.meta.yaml", UNCLAIMED_META);
+    let (claim, release) = (p.run(&["claim", "demo"]), p.run(&["claim", "demo", "--release"]));
+    assert!(!claim.status.success() && !release.status.success());
+    assert_eq!(stderr_of(&release), stderr_of(&claim), "the same refusal");
+    assert!(stderr_of(&release).contains("claim requires a remote store"), "{}", stderr_of(&release));
+    assert_eq!(stdout_of(&release), "");
+    assert_eq!(
+        std::fs::read_to_string(p.dir.join("speclink/changes/demo/.meta.yaml")).unwrap(),
+        UNCLAIMED_META,
+        "nothing was written"
+    );
+    // 帶不帶 `--json`、認領或釋放，本機專案都一樣：非零結束、stdout 沒有 JSON。
+    assert_eq!(stdout_of(&claim), "");
+    for argv in [&["claim", "demo", "--json"][..], &["claim", "demo", "--release", "--json"]] {
+        let out = p.run(argv);
+        assert!(!out.status.success(), "{argv:?}");
+        assert_eq!(stdout_of(&out), "", "{argv:?}");
+        assert_eq!(stderr_of(&out), stderr_of(&claim), "{argv:?}");
+    }
+}

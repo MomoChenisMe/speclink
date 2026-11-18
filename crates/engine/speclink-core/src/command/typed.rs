@@ -61,6 +61,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::TaskUndone(_) => "TaskUndone",
         CommandOutcome::TaskMove(_) => "TaskMove",
         CommandOutcome::Claim(_) => "Claim",
+        CommandOutcome::ClaimRelease(_) => "ClaimRelease",
         CommandOutcome::InProgressAdd(_) => "InProgressAdd",
         CommandOutcome::InProgressRemove(_) => "InProgressRemove",
         CommandOutcome::ChangeDepends(_) => "ChangeDepends",

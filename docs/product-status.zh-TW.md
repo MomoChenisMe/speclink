@@ -36,7 +36,7 @@
 | 品質關卡（`review`、`verify`） | 可用 | 可用 | 工單、輪與蓋章的規則兩邊相同。 |
 | 執行順序（`plan`、`change depends`、`change rank`、`change schema`） | 可用 | 可用 | `change rank` 與 `plan --strict-overlap` 兩邊都能用。遠端專案的 `change schema` 只解析內建的產出流程。 |
 | 溯源（`trace`） | 可用 | 可用 | 兩邊的輸出相同。 |
-| 認領變更（`claim`） | 不適用 | 可用 | 認領人存進變更資料，Server 重啟後還在。認領別人持有的變更會回 409，訊息寫出持有人。 |
+| 認領變更與釋放認領（`claim`、`claim --release`） | 不適用 | 可用 | 認領人存進變更資料，Server 重啟後還在。認領別人持有的變更會回 409，訊息寫出持有人。有寫入權限的人都可以釋放認領；要更嚴格的宿主在掛鉤裡拒絕釋放。`show --json` 看得到認領的人。 |
 | 示範資料（`demo`） | 可用 | 不適用 | 只限本機專案；在遠端專案直接拒絕，不送出請求。 |
 | Agent 讀取背景資料 | 可用 | 可用 | 本機專案直接讀 repo；遠端專案讀唯讀的 `.speclink/context/`。 |
 | 任務動到哪些檔案的證據 | 可用 | 可用 | 本機專案寫進 `.evidence.json`；遠端專案由 Server 保存，可用 `speclink evidence show` 或 `GET /changes/{name}/evidence` 讀回。 |
@@ -66,7 +66,7 @@
 | 遠端專案的 CLI 與唯讀投影 | 可用 | `speclink link`、`auth`、`update`（技能由 Server 提供）、`artifact`；唯讀的 `.speclink/context/` | [遠端專案的 CLI 測試](../crates/adapters/speclink-cli/tests/it/remote_read_path.rs)<br>[技能取自 Server 的測試](../crates/adapters/speclink-cli/tests/it/remote_skills.rs)<br>[投影實作](../crates/host/speclink-host/src/projection.rs) | 連到沒有宣告技能的舊版 Server 時，改用本機的範本，見[已知缺口](#known-gaps)。 | 2026-11-18 |
 | 遠端專案的任務證據 | 可用 | 在遠端專案執行 `speclink task done`，動到的檔案交給 Server 保存；`speclink evidence show` 讀回 | [證據實作](../crates/engine/speclink-core/src/lifecycle/tasks.rs)<br>[遠端證據端到端測試](../crates/host/speclink-server/tests/it/phase2_chain.rs) | 在 Speclink Desktop 勾遠端專案的任務時不送出動到的檔案。宿主經 `host.dispatch` 勾任務時也不記檔案，見[已知缺口](#known-gaps)。 | 2026-11-18 |
 | 桌面 Server 連線 | 可用 | 設定的「伺服器」頁、瀏覽器登入、裝置登入、存取金鑰、登出與 OS Keychain | [連線流程](../apps/desktop/src-tauri/src/connections.rs)<br>[Servers 面板測試](../apps/desktop/src/__tests__/serversPanel.test.tsx) | 瀏覽器登入要 Server 宣告它；沒有宣告時用 裝置登入或存取金鑰。 | 2026-11-18 |
-| Speclink Desktop 的遠端專案 | 部分可用 | 「新增專案」對話框的遠端開啟：只看規格，或綁本機 checkout；詳情頁可認領；「遷移到 Server」把本機專案搬上去 | [新增專案對話框](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報動到的檔案；認領沒有釋放或接手的動詞。 | 2026-11-18 |
+| Speclink Desktop 的遠端專案 | 部分可用 | 「新增專案」對話框的遠端開啟：只看規格，或綁本機 checkout；詳情頁可認領；「遷移到 Server」把本機專案搬上去 | [新增專案對話框](../apps/desktop/src/components/WorkspaceChooser.tsx)<br>[遠端開啟測試](../apps/desktop/src/__tests__/remoteOpen.test.ts) | 可瀏覽、勾任務、讀寫 artifact。缺口：勾任務不回報動到的檔案；沒有釋放認領的按鈕（改用 CLI 的 `speclink claim <變更> --release`）。 | 2026-11-18 |
 | Claude Code 外掛（`speclink-skills`） | 部分可用 | `/plugin install speclink-skills --marketplace MomoChenisMe/speclink` | [外掛測試](../integrations/claude-code/speclink-skills/tests/register.test.tsx)<br>[技能分組測試](../scripts/claude-code/skill-groups.test.mjs) | 建立在 Claude Code 的 early-access 外掛介面上，Claude Code 改版時可能要跟著更新。Windows 尚未實機測試。 | 2026-10-07 |
 | Herdr mod（`speclink`） | 部分可用 | `cp -R integrations/herdr/mods/speclink integrations/herdr/mods/speclink-new ~/.config/herdr-app/mods/` | [面板邏輯測試](../scripts/herdr/panel-model.test.mjs)<br>[安裝說明](../integrations/herdr/README.md) | 停靠的版面、側欄清單、檔案和變更面板是 Herdr 內建版面與 mod 的複製版，Herdr 更新後要重做停靠。內建畫面的翻譯靠文件沒寫的行為，Herdr 改掉後會回到英文。貼進輸入框和開頁面只有 macOS。沒有用 Codex 測試過。 | 2026-11-04 |
 | MCP | 規劃中 | 沒有入口 | [方向與下一步](roadmap.zh-TW.md) | 見路線圖的「Agent 工具整合」。 | 2026-11-18 |
@@ -81,6 +81,7 @@
 | 沒有本機規格檔的內嵌宿主不能用需要 checkout 的動詞：`drift`、`review prepare`、`review scope`、`verify scope`，以及帶 `--skill` 的 `instructions`。技能裡「讀使用者給的檔案路徑」這種輸入，也只在 Agent 有檔案系統時可用。 | 經 `host.dispatch` 執行動詞的宿主與它的 Agent 工具。這幾個動詞會被拒絕，錯誤碼是 `invalid_argv`。 | 由工程師在連到這個遠端專案的 checkout 用 CLI 執行這幾個動詞。Agent 沒有檔案系統時，請使用者把文件內容直接貼進對話。 |
 | `task done` 不替宿主收集改了哪些檔；蓋章與開工標記也不替宿主讀 commit 與分支。宿主套件不讀 git。 | 經 `host.dispatch` 勾任務、蓋章或標記開工的宿主。任務照常勾選，但 evidence 不記檔案、repo 與 commit。 | 需要 evidence 時，由工程師在 checkout 用 CLI 執行 `speclink task done`，CLI 會收集。蓋章的 commit 由宿主放進 `--stdin` 的 JSON（`headCommit`）。落地的 commit 與分支用 `speclink change landed <名稱> --commit <sha> --branch <分支>` 回報。 |
 | 用 Node 內嵌的宿主沒有現成的推送事件。 | 連到這種宿主的 Speclink Desktop 與其他用戶端：畫面靠定時詢問更新，不是即時。 | 不用設定，用戶端會自己輪詢。要即時更新的宿主自己提供 SSE 或 WebSocket 串流，並用 `createHost` 的 `pushTransports` 宣告網址。 |
+| Speclink Desktop 沒有釋放認領的按鈕。 | 只用 Speclink Desktop 操作遠端專案，又要交出自己認領的變更、或接手離開的人認領的變更的人。 | 在連到這個遠端專案的 checkout 執行 `speclink claim <變更> --release`。在內嵌引擎的宿主裡，Agent 工具執行同一個動詞。釋放之後，再回 Speclink Desktop 認領。 |
 | 沒有把封存的討論記錄搬回來的動詞。 | 把討論封存錯了的人，例如最後一刀的旗標下錯。 | 本機專案：把檔案從 `discussions/archive/` 搬回 `discussions/`，並拿掉檔名前面的日期。遠端專案：今天沒有動詞可用，要由持有規格的 Server 那一端處理。 |
 | 沒有寫入詞彙表的動詞。只有 `speclink language show` 可以讀。 | 討論做出用詞的結論之後，要更新詞彙表的人。 | 本機專案：直接編輯規格資料夾裡的 `LANGUAGE.md`。遠端專案：今天沒有替代做法。 |
 | `baseline` 與 `manual` 兩支技能在遠端專案被拒絕。 | 遠端專案裡，要從既有程式碼建立規格基準或要生成手冊的人。 | `manual` 的導覽模式照常可用（`/speclink-manual 導覽`）。規格基準先在本機專案做完，再用 Speclink Desktop 的「遷移到 Server」搬到一個空的遠端專案。遠端專案的手冊今天沒有替代做法。 |

@@ -54,7 +54,7 @@
 
 輸出函式在 `render/lifecycle.rs`：
 
-- 認領的人眼輸出不變。`--json` 是 `{ "change": <名稱>, "claimedBy": <持有人> }`。
+- 認領的人眼輸出不變。`--json` 是 `{ "change": <名稱>, "claimedBy": <持有人> }`。引擎的認領一定有持有人；只有連到不回持有人的 Server 時（線上回應的 `claimedBy` 是選填），輸出省略 `claimedBy` 這個鍵，不輸出空值。
 - 釋放的人眼輸出：`✓ Released claim on change: <name> (was claimed by <holder>)`，沒有 `previous_holder` 時省略括號那一段；`released` 為假時是 `Change '<name>' is not claimed — nothing to release`（不帶勾號）。`--json` 是 `{ "change", "released" }`，有 `previous_holder` 時加 `previousHolder`。
 
 `--json` 的鍵名比照 `change landed --json`（用 `change` 當變更名稱的鍵）。
@@ -132,6 +132,21 @@
 - [引擎新增命令會讓沒有萬用分支的對照表編譯不過] → 這是預期的提醒：`wire_coverage` 在這個變更裡補上。變更 hook-read-function 會新增另一張這樣的對照（讀取類命令的判定）；兩個變更有先後時，後合併的那一個要在對方的對照裡補上 `ClaimRelease`（歸為寫入類），所以把這個變更排在 hook-read-function 之後。
 - [`claimed_at` 不再截成日期] → 搜尋確認沒有輸出點讀它；`ChangeMeta` 的時間欄位測試同批更新，並新增一個測試固定「`claimed_at` 保留原樣」。
 - [以文字手術改寫 YAML] → 釋放只移除整行，不寫入新的純量；移除沿用 `edit_meta` 既有的移除操作，讀出 `previous_holder` 時經 `yaml_unscalar`。
-- [舊版 Server 沒有 DELETE 端點] → 新版 CLI 得到 404；訊息沿用既有的錯誤翻譯。套件尚未發版，官方的示範用 server 與 CLI 會一起更新。
+- [舊版 Server 沒有 DELETE 端點] → 新版 CLI 得到 404。沒有引擎錯誤原因的 404 是 Server 對「沒有這條路徑」的回答，用戶端的 `release_claim` 把它說成 `this server does not support claim --release — update the server`（比照 `evidence show` 的文案）；既有的 404 翻譯會叫使用者去查變更名稱，在這裡是誤導。變更不存在是引擎自己的 not-found，訊息照舊。套件尚未發版，官方的示範用 server 與 CLI 會一起更新。
 - [跨平台] → 沒有檔案路徑或 git 的行為；輸出的勾號與色碼沿用既有的輸出函式，`--no-color` 的行為由既有機制處理。
 - [任何 editor 都能釋放別人的認領] → 這是來源討論的裁定；文件寫明，並在範例說明宿主如何用掛鉤限定。
+
+**稽核結論（sharp-edges）**
+
+用三個角色（故意濫用的人、照範例複製的人、弄錯用法的人）檢查新增的命令、端點與旗標，結論如下：
+
+- [釋放不需要是認領的人] → 刻意的設計，不是漏洞。引擎命令的註解、路由的註解與使用者文件都寫明；要限定的宿主在執行前掛鉤對命令 `claim-release` 回答拒絕。注意：只擋 `claim` 的宿主不會自動擋到 `claim-release`，兩個名稱要分開處理；文件的範例寫出這一點。測試：`a_hook_refusal_of_a_release_is_refused_with_the_hosts_reason`。
+- [DELETE 端點的權限] → 和其他寫入端點相同，editor 限定。既有的稽核測試 `audit_every_route_that_writes_needs_can_write_and_no_read_commits` 逐條路由檢查，新路由自動納入；另有 `a_reader_cannot_release_and_an_unknown_change_is_404`。
+- [revision 前置條件] → 釋放沒有自己的請求欄位，沿用命令閘道的樂觀並行：命令讀過 metadata 之後別人改了它，提交不落地並回 409 `revision_conflict`。測試：`a_release_over_metadata_that_changed_meanwhile_is_409_revision_conflict`。
+- [`previousHolder` 的內容] → 只有 metadata 裡的顯示名稱（`claimed_by`），不含識別，也不含其他欄位。這個名稱本來就出現在讀取回應的 `claimedBy`，沒有多露出資料。
+- [`claimedById` 是新露出的資料] → 它是宿主給身分的識別（`Identity` 的 id），現在出現在變更清單、單筆回應與 `show --json`，讀得到專案的人都看得到。宿主不應該拿機密的值當識別；文件的欄位說明寫明它對所有讀者可見。
+- [`--release` 與 `--json` 的組合] → 四種組合都有解析測試（`claim_parses_to_a_claim_or_with_release_to_a_claim_release`）、輸出測試與連到真實入口的 CLI 測試。打錯旗標（例如 `--relase`）是用法錯誤，不會退回成認領。
+- [`released` 為假時 exit code 是 0] → 呼叫端要的結果（沒有人認領）已經成立，所以是成功；要分辨「這次有沒有移除」的程式讀 `--json` 的 `released`。
+- [變更名稱進路徑前的檢查] → 名稱經 store 既有的 key 建構檢查（`keys::change_meta`），建不出 key 的名稱讀不到文件，命令回 not-found、零寫入。這道檢查在 store 那一層，釋放沒有另外的路徑可以繞過它；入口層寫不出會失敗的專屬測試（惡意名稱連測試資料的 key 都建不出來），所以不另加測試。
+- [三個選填值的順序] → 兩個建立點共用 `ClaimRecord::new(by, by_id, at)`（比照 `LandedRecord::new`），「有持有人才有記錄」的規則只寫一次。三個參數同型別，對調由兩端的測試擋下：引擎的 `show_carries_the_claim_record_only_when_someone_holds_the_change` 與 CLI 的 `remote_show_json_carries_the_claim_record_like_the_engine` 都逐一斷言三個值。
+- [手改的認領欄位] → 逐行移除看不到的寫法（`claimed_by :`、加引號的鍵）或跨行的值，釋放時拒絕並點名檔案，不回報「沒有被認領」、也不留下孤兒行。空值的 `claimed_by:` 視為沒有可讀的持有人。測試：`release_refuses_a_claim_line_it_cannot_remove_whole`、`release_reports_no_previous_holder_for_an_empty_claimed_by_line`。

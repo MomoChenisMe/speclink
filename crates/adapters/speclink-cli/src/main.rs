@@ -203,7 +203,7 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
             }
         }
         // --- RemoteOnly：fs 明寫拒絕 ---
-        SpecVerb::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a.name)),
+        SpecVerb::Claim(a) => remote_only(a, CLAIM_FS_REFUSAL, |ctx, a| remote_claim(ctx, &a)),
     }
 }
 
@@ -256,10 +256,9 @@ fn remote_only<A>(
 // --- claim ---
 
 // claim 是 remote 生命週期的所有權概念，本機 fs store 沒有 claim 狀態——
-// fs 模式 fail-loud。訊息與 runtime 的 Claim 分支共用同一份 frozen 文字
+// fs 模式 fail-loud。訊息就是引擎 Claim 分支的那一份 frozen 文字
 // （node dispatch 經該分支）。
-const CLAIM_FS_REFUSAL: &str =
-    "claim requires a remote store — this project uses the local fs store";
+const CLAIM_FS_REFUSAL: &str = speclink_core::command::CLAIM_NEEDS_REMOTE_STORE;
 
 // 本質本機動詞：remote 模式明確拒絕（比照 claim 在 fs 的 fail-loud），
 // 由 dispatch 的 fs_only 形狀執行——只判斷連線設定、不走 handshake。

@@ -244,6 +244,9 @@ pub enum DomainEvent {
     /// Only stores that adjudicate ownership reach this — the fs store's
     /// `claim` still refuses, so a local checkout never produces it.
     ChangeClaimed { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `claim --release` removed a claim stamp. A release that found nothing to
+    /// remove produces no event.
+    ChangeClaimReleased { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeMarkedInProgress { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeInProgressRemoved { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// `change depends` actually changed the declaration; `depends_on` is the
@@ -301,6 +304,7 @@ impl DomainEvent {
             DomainEvent::TaskUncompleted { .. } => "task-uncompleted",
             DomainEvent::TaskMoved { .. } => "task-moved",
             DomainEvent::ChangeClaimed { .. } => "change-claimed",
+            DomainEvent::ChangeClaimReleased { .. } => "change-claim-released",
             DomainEvent::ChangeMarkedInProgress { .. } => "change-marked-in-progress",
             DomainEvent::ChangeInProgressRemoved { .. } => "change-in-progress-removed",
             DomainEvent::ChangeDependsChanged { .. } => "change-depends-changed",
@@ -460,6 +464,10 @@ pub enum Command {
     },
     /// `claim <name>` — remote-store only; the plain-store path refuses.
     Claim { name: String },
+    /// `claim <name> --release` — removes the claim stamp. Remote-store only,
+    /// like `claim`. The engine does not restrict who may release: a host that
+    /// wants a rule refuses this command by name in its before-execute hook.
+    ClaimRelease { name: String },
     /// `in-progress add <name>` — silent and idempotent (unknown names included).
     /// `branch` is the branch the caller observed its checkout on, not an argv
     /// surface; absent when unreported (detached HEAD, no checkout).
@@ -615,6 +623,8 @@ pub struct ShowChange {
     /// The recorded branch and landing (`--json` only); absent when not recorded.
     pub branch: Option<String>,
     pub landed: Option<LandedRecord>,
+    /// Who holds the change (`--json` only); absent when nobody claimed it.
+    pub claimed: Option<ClaimRecord>,
     /// The change's free fields (`--json` only, and only when it has some).
     pub fields: crate::fields::Fields,
 }
@@ -702,6 +712,36 @@ pub struct ClaimOutcome {
     pub name: String,
     pub claimed_by: Option<String>,
     pub claimed: bool,
+}
+
+/// The claim a change's metadata holds, as `show --json` reports it. It exists
+/// only when the metadata names a holder (`claimed_by`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClaimRecord {
+    pub by: String,
+    /// The holder's identifier, when the claim recorded one.
+    pub by_id: Option<String>,
+    /// The claim time as written.
+    pub at: Option<String>,
+}
+
+impl ClaimRecord {
+    /// The record from its three stored values — a change's metadata, or a
+    /// server's single-change response. `None` when nobody holds the change
+    /// (no holder name), whatever the other two say.
+    pub fn new(by: Option<String>, by_id: Option<String>, at: Option<String>) -> Option<ClaimRecord> {
+        Some(ClaimRecord { by: by?, by_id, at })
+    }
+}
+
+/// `claim --release` outcome: whether THIS call removed a claim stamp (false when
+/// the change was not claimed — no write and no event then), and the holder the
+/// stamp named before it went (absent for a half stamp with no `claimed_by`).
+#[derive(Debug)]
+pub struct ClaimReleaseOutcome {
+    pub name: String,
+    pub released: bool,
+    pub previous_holder: Option<String>,
 }
 
 /// `in-progress add` outcome: whether this call stamped the marker (false for
@@ -842,6 +882,7 @@ pub enum CommandOutcome {
     TaskUndone(TaskFlipOutcome),
     TaskMove(TaskMoveOutcome),
     Claim(ClaimOutcome),
+    ClaimRelease(ClaimReleaseOutcome),
     InProgressAdd(InProgressOutcome),
     InProgressRemove(InProgressRemoveOutcome),
     ChangeDepends(DependsOutcome),
@@ -983,6 +1024,7 @@ pub fn execute(
             run_task_move(store, &change, from, to, before)
         }
         Command::Claim { name } => run_claim(store, ctx.actor.as_deref(), ctx.actor_id.as_deref(), &name),
+        Command::ClaimRelease { name } => run_claim_release(store, &name),
         Command::InProgressAdd { name, branch } => {
             run_in_progress_add(store, ctx.actor.as_deref(), &name, branch.as_deref())
         }
@@ -1174,6 +1216,11 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::Claim(o) if !o.claimed => Vec::new(),
         CommandOutcome::Claim(o) => vec![DomainEvent::ChangeClaimed {
+            change: o.name.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::ClaimRelease(o) if !o.released => Vec::new(),
+        CommandOutcome::ClaimRelease(o) => vec![DomainEvent::ChangeClaimReleased {
             change: o.name.clone(),
             occurred_at: at,
         }],
@@ -1464,6 +1511,11 @@ fn run_show(
             change.meta.landed_commit.clone(),
             change.meta.landed_at.clone(),
             change.meta.landed_by.clone(),
+        ),
+        claimed: ClaimRecord::new(
+            change.meta.claimed_by.clone(),
+            change.meta.claimed_by_id.clone(),
+            change.meta.claimed_at.clone(),
         ),
         fields: change.meta.fields.clone(),
         schema,
@@ -1913,6 +1965,30 @@ fn run_task_move(
     }))
 }
 
+/// The frozen refusal of `claim` and `claim --release` on a store with nobody to
+/// coordinate with. The CLI prints the same text before it reaches a command.
+pub const CLAIM_NEEDS_REMOTE_STORE: &str = "claim requires a remote store — this project uses the local fs store";
+
+// The claim stamp's metadata keys: `claim` writes them, `claim --release`
+// removes every one in `CLAIM_KEYS`. A key added to the stamp goes in both.
+const CLAIMED_AT: &str = "claimed_at";
+const CLAIMED_BY: &str = "claimed_by";
+const CLAIMED_BY_ID: &str = "claimed_by_id";
+const CLAIM_KEYS: [&str; 3] = [CLAIMED_AT, CLAIMED_BY, CLAIMED_BY_ID];
+
+/// What `claim` and `claim --release` check before they touch the stamp. The
+/// fail-closed gate comes first: a change whose metadata is corrupt must name
+/// the broken file, not the missing remote store.
+fn claim_gate(store: &dyn Store, name: &str) -> Result<(), CommandError> {
+    if let Some(change) = crate::model::find_change(store, name) {
+        guard_meta(store, &change)?;
+    }
+    if !store.supports_ownership() {
+        return Err(CommandError::new(ErrorCode::Error, CLAIM_NEEDS_REMOTE_STORE));
+    }
+    Ok(())
+}
+
 /// `claim` — ownership adjudication, split on what the backend can do (design
 /// D2). A plain fs store has nobody to coordinate with and refuses with the
 /// frozen text; a team-mode store stamps `claimed_at` / `claimed_by` into the
@@ -1923,17 +1999,7 @@ fn run_claim(
     actor_id: Option<&str>,
     name: &str,
 ) -> Result<CommandOutcome, CommandError> {
-    // Fail-closed gate first: claiming a change whose metadata is corrupt must
-    // name the broken file, not the missing remote store.
-    if let Some(change) = crate::model::find_change(store, name) {
-        guard_meta(store, &change)?;
-    }
-    if !store.supports_ownership() {
-        return Err(CommandError::new(
-            ErrorCode::Error,
-            "claim requires a remote store — this project uses the local fs store",
-        ));
-    }
+    claim_gate(store, name)?;
     let meta_file = store.change_meta_display(name);
     let claimed = crate::model::edit_meta(store, name, |m| {
         // An owner is the whole point of the verb: with nobody to record, a
@@ -1952,16 +2018,16 @@ fn run_claim(
         // permanently unparseable, so the half stamp refuses instead.
         // `claimed_by` is written through `yaml_scalar`, so read it back through
         // its inverse before comparing — a quoted holder is still the same person.
-        let holder = m.get("claimed_by").map(crate::util::yaml_unscalar);
+        let holder = m.get(CLAIMED_BY).map(crate::util::yaml_unscalar);
         // With an identifier on both sides, the identifier alone decides who
         // holds the change: one name can belong to two people, and one person
         // can change their name. Without one on either side, the name decides.
-        let holder_id = m.get("claimed_by_id").map(crate::util::yaml_unscalar);
+        let holder_id = m.get(CLAIMED_BY_ID).map(crate::util::yaml_unscalar);
         let same_owner = |holder: &str| match (actor_id, holder_id.as_deref()) {
             (Some(id), Some(holder_id)) => id == holder_id,
             _ => holder == actor,
         };
-        match (holder, m.get("claimed_at")) {
+        match (holder, m.get(CLAIMED_AT)) {
             // The holder as recorded stays the owner's name.
             (Some(holder), _) if same_owner(&holder) => return Ok(Some(holder)),
             (Some(holder), _) => {
@@ -1978,10 +2044,10 @@ fn run_claim(
             }
             (None, None) => {}
         }
-        m.set("claimed_at", &crate::util::now_rfc3339())?;
-        m.set("claimed_by", &crate::util::yaml_scalar(actor))?;
+        m.set(CLAIMED_AT, &crate::util::now_rfc3339())?;
+        m.set(CLAIMED_BY, &crate::util::yaml_scalar(actor))?;
         if let Some(id) = actor_id {
-            m.set("claimed_by_id", &crate::util::yaml_scalar(id))?;
+            m.set(CLAIMED_BY_ID, &crate::util::yaml_scalar(id))?;
         }
         Ok(None)
     })
@@ -1998,6 +2064,56 @@ fn run_claim(
         name: name.to_string(),
         claimed: already.is_none(),
         claimed_by: already.or_else(|| actor.map(str::to_string)),
+    }))
+}
+
+/// `claim --release` — removes the claim stamp `claim` wrote, behind the same
+/// gate as [`run_claim`]. One `edit_meta` call drops every claim field that
+/// is present, so the stamp goes whole or not at all. Nobody is asked who they
+/// are: the engine does not restrict who may release (a host refuses the
+/// command in its hook when it wants a rule).
+fn run_claim_release(store: &dyn Store, name: &str) -> Result<CommandOutcome, CommandError> {
+    claim_gate(store, name)?;
+    let meta_file = store.change_meta_display(name);
+    let edited = crate::model::edit_meta(store, name, |m| {
+        // A hand edit can leave a claim entry the line surgery cannot remove
+        // whole: a key it does not see (`claimed_by :`, a quoted key) would
+        // read as "not claimed" while `show` names a holder, and a value that
+        // runs on over indented lines would leave those lines behind. Blank
+        // lines and comments after the key are not its value.
+        let lines_of = |text: String| text.lines().filter(|l| !l.trim().is_empty() && !l.starts_with('#')).count();
+        for key in CLAIM_KEYS {
+            if m.has_unseen(key) || m.yaml_extent(key).map(lines_of) != m.raw(key).map(lines_of) {
+                return Err(Refusal(format!(
+                    "cannot release the claim on '{name}': its metadata has a `{key}` entry this command cannot remove — make it a plain `{key}: <value>` line in {meta_file}"
+                ))
+                .into());
+            }
+        }
+        // `claimed_by` is written through `yaml_scalar`: read it back through
+        // its inverse so the caller sees the holder's plain name. An empty
+        // value names nobody, as the parsed metadata reads it.
+        let previous_holder =
+            m.get(CLAIMED_BY).map(crate::util::yaml_unscalar).filter(|holder| !holder.is_empty());
+        // A half stamp (`claimed_at` alone) counts as claimed: removing it is
+        // what makes the change claimable again.
+        let released = CLAIM_KEYS.iter().any(|key| m.count(key) > 0);
+        for key in CLAIM_KEYS {
+            m.remove(key);
+        }
+        Ok((released, previous_holder))
+    })
+    .map_err(classify)?;
+    let Some((released, previous_holder)) = edited else {
+        return Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("Change '{name}' not found."),
+        ));
+    };
+    Ok(CommandOutcome::ClaimRelease(ClaimReleaseOutcome {
+        name: name.to_string(),
+        released,
+        previous_holder,
     }))
 }
 

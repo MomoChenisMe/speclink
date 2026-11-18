@@ -281,6 +281,12 @@ mod tests {
                 "add-auth",
             ),
             (
+                "change-claim-released",
+                json!({ "change": "add-auth" }),
+                InvalidationScope::Change,
+                "add-auth",
+            ),
+            (
                 "change-marked-in-progress",
                 json!({ "change": "add-auth" }),
                 InvalidationScope::Change,
