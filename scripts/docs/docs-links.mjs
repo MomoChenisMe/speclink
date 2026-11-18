@@ -73,6 +73,30 @@ export function scanDocs(root) {
   );
 }
 
+/// 文件的語言看檔名：`.zh-TW.md` 是繁中，其餘是英文（docs 與 README 都是這個慣例）。
+export const docLocale = (file) => (file.endsWith('.zh-TW.md') ? 'zh-TW' : 'en');
+
+/// 每個語言的文件引用到的本地檔案，每筆寫成 `<語言>:<絕對路徑>`。
+export function referencedByLocale(root) {
+  return new Set(
+    docFilesIn(root).flatMap((file) =>
+      extractTargets(readFileSync(path.join(root, file), 'utf8')).map(
+        ({ target }) => `${docLocale(file)}:${resolveTarget({ fromFile: file, target, root })}`,
+      ),
+    ),
+  );
+}
+
+/// 分語言放的圖（`<dir>/<語言>/<檔名>`）裡，沒有被同語言文件引用的那些，寫成 `<語言>/<檔名>`。
+/// 截圖與圖解都用它：英文文件引用 en/ 的那一張，繁中文件引用 zh-TW/ 的那一張。
+export function unreferencedAssets({ root, dir, locales, names, referenced = referencedByLocale(root) }) {
+  return locales.flatMap((locale) =>
+    names
+      .map((name) => `${locale}/${name}`)
+      .filter((relative) => !referenced.has(`${locale}:${path.join(root, dir, relative)}`)),
+  );
+}
+
 function main() {
   const broken = scanDocs(ROOT);
   const files = docFilesIn(ROOT);

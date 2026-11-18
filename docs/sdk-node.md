@@ -358,8 +358,9 @@ const speclinkTool = {
 `host.handleRequest` is the HTTP entry point for the original CLI and Speclink Desktop. You mount one route and give it all requests below `/api/speclink/v1/`:
 
 ```js
-// Express: mount it before any body parser, so that the body stays as raw bytes.
-app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
+// For Express 4 and 5: mount it before any body parser, so that the body stays as raw bytes.
+// Use app.use on the prefix. Express 5 does not accept a wildcard without a name, such as '/api/speclink/v1/*'.
+app.use('/api/speclink/v1', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
   const identity = await verifyToken(req.headers.authorization) // your code; null when it cannot verify
   const [path, query] = req.originalUrl.split('?')
   const answer = await host.handleRequest(
@@ -466,51 +467,14 @@ An Agent without a code checkout can use these skills: `discuss`, `propose`, `in
 
 ## <a id="example"></a>Complete example
 
-One file does all steps: the three store functions, the conformance tests, the host kit, the Agent tool, and one route. It uses the built-in `http` module of Node. For Express, see [Serve the CLI and Speclink Desktop](#http-entry).
+This example does all steps: the three store functions, the conformance tests, the host kit, the Agent tool, and one route. It does not repeat the three store functions. Save the `memoryStore` code from [Implement the three store functions](#store-port) as `memory-store.js`, and add the line `module.exports = { memoryStore }` at the end. Then save the code below as a second file in the same folder. It uses the built-in `http` module of Node. For Express, see [Serve the CLI and Speclink Desktop](#http-entry).
 
 ```js
 const http = require('node:http')
-const { createHost, runStoreConformance, agentTool, skills, StoreConflictError } = require('@speclink/engine')
+const { createHost, runStoreConformance, agentTool, skills } = require('@speclink/engine')
+const { memoryStore } = require('./memory-store')
 
-// 1. The three store functions (in memory; in production, make commit one database transaction).
-function memoryStore() {
-  const scopes = new Map()
-  const state = (scope) => {
-    if (!scopes.has(scope)) scopes.set(scope, { version: 0, docs: new Map(), events: [] })
-    return scopes.get(scope)
-  }
-  const byBytes = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
-  const store = {
-    list(scope, prefix) {
-      const s = state(scope)
-      const entries = [...s.docs.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .sort(([a], [b]) => byBytes(a, b))
-        .map(([key, doc]) => ({ key, version: doc.version, modifiedAt: doc.modifiedAt }))
-      return { version: s.version, entries }
-    },
-    read(scope, keys) {
-      const s = state(scope)
-      return keys.map((key) => (s.docs.has(key) ? { ...s.docs.get(key) } : null))
-    },
-    commit(scope, commit) {
-      const s = state(scope)
-      for (const op of commit.ops) {
-        const actual = s.docs.has(op.key) ? s.docs.get(op.key).version : null
-        if (op.expected !== actual) throw new StoreConflictError(op.key, actual)
-      }
-      const version = s.version + 1
-      for (const op of commit.ops) {
-        if (op.op === 'put') s.docs.set(op.key, { content: op.content, version, modifiedAt: commit.at })
-        else s.docs.delete(op.key)
-      }
-      for (const event of commit.events) s.events.push({ ...event, version })
-      s.version = version
-      return version
-    },
-  }
-  return { store, recordedEvents: (scope) => state(scope).events.map((e) => ({ ...e })) }
-}
+// 1. The three store functions: memoryStore from memory-store.js (in memory; in production, make commit one database transaction).
 
 // The parts of your system: fixed data replaces them here.
 const ALICE = { id: 'u_42', displayName: 'Alice' }
@@ -609,12 +573,7 @@ After the start, run `curl http://127.0.0.1:8080/api/speclink/v1/auth-methods` i
 
 ## <a id="limits"></a>Current limits
 
-- A host without local spec files cannot use the verbs that need a checkout (see [Run verbs on a local project](#local-project)).
-- The host kit does not read git or files: `task done` records no changed files, and your program must supply the commit for stamps and landing.
-- A host that embeds with Node has no ready push events. Clients use polling.
-- There is no JavaScript store port example.
-- Only the built-in artifact workflows (schemas) are available.
 - There is no prebuilt package for musl Linux.
 - The result of `dispatch` has no specific TypeScript type. The [verb and flag contract](verb-contract.md) gives the shapes.
 
-For the full list of the items that this series delays or does not do, and what to do today, see the [known gaps](product-status.md#known-gaps) in the product status.
+This section does not repeat the other limits of an embedded host: the verbs that need a checkout, no git access in the host kit, push events, a JavaScript store port example, custom artifact workflows, and more. The [known gaps](product-status.md#known-gaps) in the product status list them, with what to do today.

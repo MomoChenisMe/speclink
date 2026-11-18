@@ -43,7 +43,7 @@ In a remote project, the Server runs `trace`, `change rank`, and `plan --strict-
 
 With an older Server that does not have these routes, all three stop with a non-zero exit code. `trace` and `change rank` get 404. The response to `plan --strict-overlap` has no `strictOverlap` mark, so the CLI says that this Server does not support it. It does not print the plain plan as the strict-overlap plan.
 
-Four subcommands read git and the working tree on your machine: `drift`, `review prepare`, `review scope`, and `verify scope`. The CLI runs them in the checkout of a remote project as usual. A host without a checkout refuses them when a call comes through the call entry point (`host.dispatch`). See [Known gaps](product-status.md#known-gaps) in Product status.
+Four subcommands read git and the working tree on your machine: `drift`, `review prepare`, `review scope`, and `verify scope`. The CLI runs them in the checkout of a remote project as usual. A host without a checkout refuses them when a call comes through the call entry point (`host.dispatch`). `instructions` with `--skill` prints skill text that is built into the CLI, and the call entry point refuses it too. Thus the entry point refuses five in total. See [Known gaps](product-status.md#known-gaps) in Product status.
 
 ## <a id="output-differences"></a>Output differences between modes
 

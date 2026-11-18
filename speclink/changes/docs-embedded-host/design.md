@@ -138,7 +138,7 @@ SVG 的規格：
 
 - 用 `viewBox`，自然寬度 760；引用處不指定固定的像素高度。
 - 第一個元素是鋪滿的白色矩形。樣式寫在 SVG 裡（屬性或 SVG 內的 style 元素），不引用外部的樣式表、字型、圖片，不含 script 與 foreignObject。
-- 字型用系統字型的清單（含繁體中文的常見字型）並以 sans-serif 結尾；最小字級 12。
+- 字型用系統字型的清單（含繁體中文的常見字型）並以 sans-serif 結尾；最小字級 12。圖裡的檔案路徑與指令用系統的等寬字型清單，以 monospace 結尾。
 - 顏色用固定的一組，文字與底色的對比在白底上清楚；箭頭用 marker。
 - 每個 SVG 有 `role="img"` 與 `aria-label`（一句說明圖意）。
 
@@ -155,7 +155,8 @@ SVG 的規格：
 - `scripts/docs/docs-parity.test.mjs`：比對圖解的檔名序列（規則與截圖相同，資料夾是 figures）；十二組文件加 README 的兩個語言都不得出現 `Remote Store`、`Self-hosting`、`自架 server`；README 兩版都有 `embedding` 與 `official-server` 兩個錨點且順序是前者在前，沒有 `self-hosting`。
 - 新增 `scripts/docs/docs-figures.test.mjs`：兩個語言資料夾的 SVG 檔名相同；每個 SVG 不含 script、foreignObject、外部的 href 或 url；第一個繪圖元素是鋪滿的矩形；有 `aria-label`；每張圖至少被一份同語言的 README 或 docs 引用。
 - `scripts/docs/remote-docs.test.mjs`：Remote 入門、Server 部署與 Server 備份與還原的兩個語言含各自語言的定位句；既有的必要字串照舊。
-- `scripts/docs/docs-links.test.mjs`：連結檢查本來就涵蓋圖片；只在它寫死文件數下限或清單時才需要調整。
+- `scripts/docs/docs-links.test.mjs`：連結檢查本來就涵蓋圖片；只在它寫死文件數下限或清單時才需要調整。品質關卡第 1 輪之後追加：「文件的語言看檔名」與「分語言放的圖有沒有被同語言的文件引用」收成 `scripts/docs/docs-links.mjs` 的共用函式，截圖的檢查（這個檔）、圖解的檢查與定位句的檢查都用它，不各寫一份。
+- `scripts/docs/docs-surface.test.mjs`（品質關卡第 1 輪之後追加）：「文件裡的指令存在於 CLI」的檢查多掃動詞與旗標的參考文件的兩個語言，讓規格情境「文件與 CLI 一致」有常駐的守門。
 - 守門先改（測試先失敗），文件後改。
 
 ### D10: 發版說明的素材

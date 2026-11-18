@@ -3,11 +3,18 @@
 // 測試面就擋下來（後者對應 spec「使用者文件以截圖呈現實際介面」）。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { brokenIn, docFilesIn, extractTargets, resolveTarget, scanDocs } from './docs-links.mjs';
+import {
+  brokenIn,
+  docFilesIn,
+  docLocale,
+  extractTargets,
+  resolveTarget,
+  scanDocs,
+  unreferencedAssets,
+} from './docs-links.mjs';
 import { SHOT_DIR, SHOT_LIST, SHOT_LOCALES } from './docs-screenshots.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -103,21 +110,26 @@ test('版本庫實況：使用者文件沒有任何斷鏈', () => {
   );
 });
 
-/// 文件的語言看檔名：`.zh-TW.md` 是繁中，其餘是英文（docs 與 README 都是這個慣例）。
-const docLocale = (file) => (file.endsWith('.zh-TW.md') ? 'zh-TW' : 'en');
+test('文件的語言看檔名：帶 .zh-TW 的是繁中，其餘是英文', () => {
+  assert.equal(docLocale('docs/workflow.zh-TW.md'), 'zh-TW');
+  assert.equal(docLocale('README.md'), 'en');
+});
+
+test('沒有被引用的圖：只算同語言文件的引用，另一個語言引用了也不算', () => {
+  const at = (relative) => path.join(ROOT, 'docs/assets/x', relative);
+  const referenced = new Set([`en:${at('en/a.png')}`, `zh-TW:${at('zh-TW/a.png')}`, `en:${at('zh-TW/b.png')}`]);
+  assert.deepEqual(
+    unreferencedAssets({ root: ROOT, dir: 'docs/assets/x', locales: ['en', 'zh-TW'], names: ['a.png', 'b.png'], referenced }),
+    ['en/b.png', 'zh-TW/b.png'],
+  );
+});
 
 test('版本庫實況：截圖腳本清單裡的每張截圖，在每個語言目錄都被同語言的 README 或 docs/ 文件引用', () => {
-  const referenced = new Set(
-    docFilesIn(ROOT).flatMap((file) =>
-      extractTargets(readFileSync(path.join(ROOT, file), 'utf8')).map(
-        ({ target }) => `${docLocale(file)}:${resolveTarget({ fromFile: file, target, root: ROOT })}`,
-      ),
-    ),
-  );
-  const orphans = SHOT_LOCALES.flatMap((locale) =>
-    SHOT_LIST.map((shot) => `${locale}/${shot.file}`).filter(
-      (relative) => !referenced.has(`${locale}:${path.join(ROOT, SHOT_DIR, relative)}`),
-    ),
-  );
+  const orphans = unreferencedAssets({
+    root: ROOT,
+    dir: SHOT_DIR,
+    locales: SHOT_LOCALES,
+    names: SHOT_LIST.map((shot) => shot.file),
+  });
   assert.deepEqual(orphans, [], `沒有同語言文件引用的截圖：${orphans.join('、')}`);
 });

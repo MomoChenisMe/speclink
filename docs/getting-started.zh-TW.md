@@ -114,7 +114,7 @@ speclink/
 
 全部是純 Markdown 與 YAML。不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多兩樣東西：`discussions/`，以及每個變更目錄裡的 `.meta.yaml`（記錄開工時間、來源討論等生命週期資料）。
 
-這一點只適用 Local 模式，不適用遠端模式：遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。
+這一點只適用本機專案（Local 模式），不適用遠端專案：遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。
 
 確認起點是空的：
 

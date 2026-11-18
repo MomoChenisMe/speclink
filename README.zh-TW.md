@@ -77,7 +77,7 @@ Speclink 有兩條路徑：一個人用本機專案就夠；團隊要共用規�
 
 ## <a id="features"></a>特色
 
-- **純文字**：Local 模式的產物放在 repo 的 `speclink/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.meta.yaml`（生命週期資料）。這一點只適用 Local 模式，不適用遠端模式：遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。已經在用 OpenSpec 的專案，在專案根執行 `speclink init` 就能匯入：`openspec/` 會搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案，所以這是單向的匯入，不能再轉回去。
+- **純文字**：Local 模式的產物放在 repo 的 `speclink/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.meta.yaml`（生命週期資料）。這一點只適用本機專案（Local 模式），不適用遠端專案：遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。已經在用 OpenSpec 的專案，在專案根執行 `speclink init` 就能匯入：`openspec/` 會搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案，所以這是單向的匯入，不能再轉回去。
 - **給 AI Agent 的技能**：`speclink init` 為 Claude Code、Codex、GitHub Copilot、pi 與 Cursor 產生技能檔。從討論、提案、實作、品質關卡到封存，每一站都有對應的 `/speclink-*` 指令（Codex 寫成 `$speclink-*`，pi 寫成 `/skill:speclink-*`）。
 - **桌面看板**：每個變更是一張卡片。你看得到它在哪一站、任務做到哪裡、規格改了什麼。
 - **品質關卡**：`review` 看程式碼寫得好不好，`verify` 看交付是否符合規格。兩道都是選用的。
@@ -192,7 +192,7 @@ node scripts/herdr/dock-panel.mjs
 
 團隊要共用規格，而且你已經有自己的後端（帳號、登入、權限與資料庫）時，走這條路：把引擎放進你的後端程序，規格存進你自己的資料庫。你的系統就是遠端專案的 Server。原版的 CLI 與桌面 app 直接連上它，你自己的 AI Agent 也用同一個引擎。這裡把你的系統叫做「宿主」。
 
-![整體形態：CLI 與 Speclink Desktop 經宿主的一條路由、宿主的 Agent 工具直接呼叫，兩者都進到宿主套件的入口；引擎經列出、讀取、提交三個函式讀寫宿主的資料庫](docs/assets/figures/zh-TW/embedded-shape.svg)
+![整體形態：CLI 與桌面 app 經宿主的一條路由、宿主的 Agent 工具直接呼叫，兩者都進到宿主套件的入口；引擎經列出、讀取、提交三個函式讀寫宿主的資料庫](docs/assets/figures/zh-TW/embedded-shape.svg)
 
 請求從兩個地方來：工程師的 CLI 與桌面 app 經 HTTP 到宿主的一條路由，宿主的 Agent 工具直接呼叫。兩者都進到宿主套件的入口，再由引擎執行。引擎只經三個函式（列出、讀取、提交）讀寫規格；這三個函式由宿主實作，資料放在宿主的資料庫。宿主套件與引擎由 Speclink 提供，其餘都是宿主自己的。
 
@@ -200,8 +200,8 @@ node scripts/herdr/dock-panel.mjs
 
 1. **實作三個儲存函式，並通過合格測試。** `list`、`read`、`commit` 三個函式在你的資料庫裡完成；一次提交要全部成功或全部不做。套件附的合格測試會檢查你的實作。見 Node SDK 的[實作三個儲存函式](docs/sdk-node.zh-TW.md#store-port)與[用合格測試檢查你的實作](docs/sdk-node.zh-TW.md#conformance)。
 2. **掛一條路由，把請求交給入口。** `/api/speclink/v1/` 底下的請求全部交給 `host.handleRequest`，CLI 與桌面 app 就能連上。見[服務 CLI 與 Speclink Desktop](docs/sdk-node.zh-TW.md#http-entry)。
-3. **驗不出身分時傳空值。** 你的路由自己驗 token：驗得出就把身分交給入口，驗不出就傳 `null`。哪些路徑不用登入，由入口決定。
-4. **要支援瀏覽器登入時，讓你的登入服務提供標準的說明文件並接受本機回呼。** 登入服務要提供 RFC 8414 的說明文件、接受 `http://127.0.0.1` 任意埠的回呼，並把 Speclink 的用戶端登記成不帶密鑰的公開用戶端。不做這一項也可以：用戶端改用存取金鑰登入。
+3. **驗不出身分時傳空值。** 你的路由自己驗 token：驗得出就把身分交給入口，驗不出就傳 `null`。哪些路徑不用登入，由入口決定。見[服務 CLI 與 Speclink Desktop](docs/sdk-node.zh-TW.md#http-entry)的說明。
+4. **要支援瀏覽器登入時，讓你的登入服務提供標準的說明文件並接受本機回呼。** 登入服務要提供 RFC 8414 的說明文件、接受 `http://127.0.0.1` 任意埠的回呼，並把 Speclink 的用戶端登記成不帶密鑰的公開用戶端。不做這一項也可以：用戶端改用存取金鑰登入。登入方式怎麼宣告，見同一節的[登入方式的宣告](docs/sdk-node.zh-TW.md#http-entry)。
 
 用 Node.js 的後端以 `createHost` 建立宿主套件，完整的說明與範例見 [Node SDK](docs/sdk-node.zh-TW.md)。SQLite、PostgreSQL 與檔案系統各有一個通過合格測試的實作可以參考，見[儲存接口的範例](docs/server-store-drivers.zh-TW.md)。
 

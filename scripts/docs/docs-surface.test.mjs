@@ -1,5 +1,6 @@
-// getting-started 與 workflow 的指令面查核（user-documentation spec「文件準確性具可重複
-// 驗證清單」）：寫成可直接使用的 `speclink` 子指令與旗標要出現在目前 CLI 的 help，
+// getting-started、workflow 與 verb-contract 的指令面查核（user-documentation spec「文件準確性
+// 具可重複驗證清單」與「動詞參考文件涵蓋遠端可用的動詞與新增的路由」的情境「文件與 CLI
+// 一致」）：寫成可直接使用的 `speclink` 子指令與旗標要出現在目前 CLI 的 help，
 // 文件明說「沒有」的指令要確實不存在；技能名要存在於產生的技能目錄。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -18,6 +19,8 @@ const DOCS = [
   'docs/getting-started.md',
   'docs/workflow.zh-TW.md',
   'docs/workflow.md',
+  'docs/verb-contract.zh-TW.md',
+  'docs/verb-contract.md',
 ];
 
 /// 文件寫明不存在的指令：「沒有 `speclink baseline` 指令」／「No `speclink baseline` command exists」。
@@ -96,7 +99,7 @@ function walkSubcommands(command) {
 const FLAG = /(?<![\w-])(--?[a-zA-Z][\w-]*)/g;
 
 test(
-  'getting-started／workflow 的 speclink 子指令與旗標都在目前的 help 裡',
+  'getting-started／workflow／verb-contract 的 speclink 子指令與旗標都在目前的 help 裡',
   { skip: !cli && NO_BUILT_CLI },
   () => {
     const problems = [];
@@ -120,7 +123,7 @@ test(
 );
 
 test(
-  'getting-started／workflow 寫明「沒有」的 speclink 指令確實不存在',
+  'getting-started／workflow／verb-contract 寫明「沒有」的 speclink 指令確實不存在',
   { skip: !cli && NO_BUILT_CLI },
   () => {
     const problems = [];
@@ -138,7 +141,7 @@ test(
 const SKILL = /(?<![\w./-])([/$])(speclink-[a-z]+(?:-[a-z]+)*)/g;
 const SKILL_DIRS = { '/': '.claude/skills', $: '.agents/skills' };
 
-test('getting-started／workflow 的技能名稱都存在於產生的技能目錄', () => {
+test('getting-started／workflow／verb-contract 的技能名稱都存在於產生的技能目錄', () => {
   const problems = [];
   for (const doc of DOCS) {
     for (const [, sigil, name] of read(doc).matchAll(SKILL)) {

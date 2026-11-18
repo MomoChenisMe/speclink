@@ -80,7 +80,7 @@ await engine.dispatch(
 - **`discuss conclude`**：結論已經寫入、但收尾的封存失敗時不算錯誤，物件另帶 `closingError` 說明原因。這時不要再執行一次 `discuss conclude`，改執行 `discuss archive`。
 - **不會卡住事件迴圈**：每次呼叫都在背景執行緒執行，可以同時發出多個。
 
-有引擎命令的動詞全部能用，流程設定的動詞（`workflow-config`）也在內。需要 checkout 的動詞以 `invalid_argv` 拒絕：`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更。
+有引擎命令的動詞全部能用，工作流設定的動詞（`workflow-config`）也在內。需要 checkout 的動詞以 `invalid_argv` 拒絕：`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更。
 
 失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 Agent；`code` 是分類：
 
@@ -181,7 +181,7 @@ interface StorePort {
 | `specs/<capability>/spec.md` | 正式規格 |
 | `archive/changes/<日期-名稱>/…` | 已封存的變更 |
 | `discussions/<slug>.md`、`archive/discussions/<日期-slug>.md` | 討論記錄 |
-| `config.yaml`、`LANGUAGE.md`、`board/order` | 流程設定、詞彙表、看板順序 |
+| `config.yaml`、`LANGUAGE.md`、`board/order` | 工作流設定、詞彙表、看板順序 |
 
 限制：鍵最長 512 位元組，範圍最長 256 位元組；版本與時間是 0 到 2^53 − 1 的整數。
 
@@ -303,8 +303,8 @@ const hooks = {
 }
 ```
 
-- **`beforeCommand` 收到**誰、哪個範圍、命令的固定名稱（例如 `archive`、`new-change`、`workflow-config-edit`）與參數。參數只能讀，改了沒有作用：掛鉤可以拒絕或旁觀，不能改內容。流程設定的寫入另外帶 `changedKeys`（這次會改的鍵，例如 `['tdd']`）。
-- **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了流程設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
+- **`beforeCommand` 收到**誰、哪個範圍、命令的固定名稱（例如 `archive`、`new-change`、`workflow-config-edit`）與參數。參數只能讀，改了沒有作用：掛鉤可以拒絕或旁觀，不能改內容。工作流設定的寫入另外帶 `changedKeys`（這次會改的鍵，例如 `['tdd']`）。
+- **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了工作流設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
 - **掛鉤自己失敗**（拋錯、回傳其他形狀，`null` 也算）時不算允許：這次呼叫以 `internal` 結束。
 - **`afterCommit` 不保證送達。** 程序在提交之後、通知之前中斷，這個事件就不會再來。需要「至少送達一次」時，在 `commit` 的同一次交易裡把 `events` 寫進你自己的事件表，再由你的程式從那張表送出。
 - **不要在掛鉤裡等同一個宿主套件的 `dispatch`**，理由和儲存函式相同。
@@ -358,8 +358,9 @@ const speclinkTool = {
 `host.handleRequest` 是給原版 CLI 與 Speclink Desktop 的 HTTP 入口。你只要掛一條路由，把 `/api/speclink/v1/` 底下的請求全部交給它：
 
 ```js
-// Express：掛在任何 body parser 之前，讓 body 保持原始位元組。
-app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
+// Express 4 與 5 都適用：掛在任何 body parser 之前，讓 body 保持原始位元組。
+// 用 app.use 掛在前綴上；Express 5 不接受 '/api/speclink/v1/*' 這種沒有名字的萬用字元。
+app.use('/api/speclink/v1', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
   const identity = await verifyToken(req.headers.authorization) // 你的程式；驗不出時回傳 null
   const [path, query] = req.originalUrl.split('?')
   const answer = await host.handleRequest(
@@ -375,7 +376,7 @@ app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async 
 - **`path` 與 `query` 照收到的樣子傳**（不要先解碼），`body` 是位元組。
 - **回傳 `null`** 表示這個路徑不是入口的。GET、HEAD、POST、PUT、DELETE 以外的方法得到 405。
 - **路徑固定在 `/api/speclink/v1/` 底下**，用戶端假設 API 在這裡，不能掛到別的前綴。
-- **掛鉤和 `host.dispatch` 共用。** 不經引擎的讀取（流程設定的原文、已封存的內容、搜尋）不會逐一問 `beforeCommand`，由「這個人看不看得到這個範圍」決定。
+- **掛鉤和 `host.dispatch` 共用。** 不經引擎的讀取（工作流設定的原文、已封存的內容、搜尋）不會逐一問 `beforeCommand`，由「這個人看不看得到這個範圍」決定。
 - 第三個參數可以帶自由欄位：`host.handleRequest(request, identity, { fields })`，規則和 `host.dispatch` 的 `fields` 相同。
 
 **`scopes`** 回答「這個人可以用哪些專案與 repo」。每個請求問一次，不快取；慢的話自己快取。
@@ -394,7 +395,7 @@ async function scopes(identity) {
 }
 ```
 
-`canWritePolicy` 為 `false` 時，會改到政策鍵（`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）的流程設定寫入得到 403。`scopes` 拋錯時，請求得到 503。
+`canWritePolicy` 為 `false` 時，會改到政策鍵（`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）的工作流設定寫入得到 403。`scopes` 拋錯時，請求得到 503。
 
 **登入方式的宣告**讓用戶端知道要怎麼登入。入口在 `GET /api/speclink/v1/auth-methods` 回答它，不需要登入：
 
@@ -466,51 +467,14 @@ const skillMd = skills.render('propose', {
 
 ## <a id="example"></a>完整範例
 
-一個檔案走完全部：三個儲存函式、合格測試、宿主套件、Agent 工具與一條路由。這裡用 Node 內建的 `http`，換成 Express 的寫法見[服務 CLI 與 Speclink Desktop](#http-entry)。
+這個範例走完全部：三個儲存函式、合格測試、宿主套件、Agent 工具與一條路由。三個儲存函式不重貼：把[實作三個儲存函式](#store-port)那一段 `memoryStore` 存成 `memory-store.js`，在檔尾加一行 `module.exports = { memoryStore }`，再把下面的程式存成同一個資料夾的另一個檔。這裡用 Node 內建的 `http`，換成 Express 的寫法見[服務 CLI 與 Speclink Desktop](#http-entry)。
 
 ```js
 const http = require('node:http')
-const { createHost, runStoreConformance, agentTool, skills, StoreConflictError } = require('@speclink/engine')
+const { createHost, runStoreConformance, agentTool, skills } = require('@speclink/engine')
+const { memoryStore } = require('./memory-store')
 
-// 1. 三個儲存函式（記憶體版；正式環境把 commit 換成一次資料庫交易）。
-function memoryStore() {
-  const scopes = new Map()
-  const state = (scope) => {
-    if (!scopes.has(scope)) scopes.set(scope, { version: 0, docs: new Map(), events: [] })
-    return scopes.get(scope)
-  }
-  const byBytes = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
-  const store = {
-    list(scope, prefix) {
-      const s = state(scope)
-      const entries = [...s.docs.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .sort(([a], [b]) => byBytes(a, b))
-        .map(([key, doc]) => ({ key, version: doc.version, modifiedAt: doc.modifiedAt }))
-      return { version: s.version, entries }
-    },
-    read(scope, keys) {
-      const s = state(scope)
-      return keys.map((key) => (s.docs.has(key) ? { ...s.docs.get(key) } : null))
-    },
-    commit(scope, commit) {
-      const s = state(scope)
-      for (const op of commit.ops) {
-        const actual = s.docs.has(op.key) ? s.docs.get(op.key).version : null
-        if (op.expected !== actual) throw new StoreConflictError(op.key, actual)
-      }
-      const version = s.version + 1
-      for (const op of commit.ops) {
-        if (op.op === 'put') s.docs.set(op.key, { content: op.content, version, modifiedAt: commit.at })
-        else s.docs.delete(op.key)
-      }
-      for (const event of commit.events) s.events.push({ ...event, version })
-      s.version = version
-      return version
-    },
-  }
-  return { store, recordedEvents: (scope) => state(scope).events.map((e) => ({ ...e })) }
-}
+// 1. 三個儲存函式：memory-store.js 的 memoryStore（記憶體版；正式環境把 commit 換成一次資料庫交易）。
 
 // 你的系統的部分：這裡用固定的資料代替。
 const ALICE = { id: 'u_42', displayName: 'Alice' }
@@ -609,12 +573,7 @@ listening on http://127.0.0.1:8080
 
 ## <a id="limits"></a>目前的限制
 
-- 沒有本機規格檔的宿主不能用需要 checkout 的動詞（見[在本機專案上執行動詞](#local-project)）。
-- 宿主套件不讀 git 與檔案：`task done` 不記錄改了哪些檔，蓋章與落地的 commit 要由你的程式提供。
-- 用 Node 內嵌的宿主沒有現成的推送事件，用戶端靠輪詢。
-- 沒有 JavaScript 寫的儲存接口範例。
-- 只能用內建的產出流程（schema）。
 - 沒有 musl Linux 的預編譯套件。
 - `dispatch` 的回傳值沒有個別的 TypeScript 型別，形狀以[動詞與旗標契約](verb-contract.zh-TW.md)為準。
 
-這個系列刻意延後或不做的項目，完整清單與替代做法在專案能力狀態的[已知缺口](product-status.zh-TW.md#known-gaps)。
+內嵌宿主的其他限制不在這裡重複：需要 checkout 的動詞、宿主套件不讀 git、推送事件、JavaScript 的儲存接口範例、自訂的產出流程等，連同替代做法都列在專案能力狀態的[已知缺口](product-status.zh-TW.md#known-gaps)。

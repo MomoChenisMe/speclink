@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { NO_BUILT_CLI, builtCli } from './built-cli.mjs';
+import { docLocale } from './docs-links.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const zhPath = path.join(root, 'docs/remote-getting-started.zh-TW.md');
@@ -115,12 +116,11 @@ const POSITIONING = {
   'zh-TW': '官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。',
   en: 'The official server is for demonstration and trial. It lets you try remote projects without writing code. For production use, embed the engine in your own system.',
 };
-const localeOf = (relativePath) => (relativePath.endsWith('.zh-TW.md') ? 'zh-TW' : 'en');
 
 test('the remote guides carry the official-server positioning and link to the embedding section', () => {
   for (const relativePath of remoteGuides) {
     const guide = read(relativePath);
-    assert.ok(guide.includes(POSITIONING[localeOf(relativePath)]), `${relativePath}: 缺少官方 server 的定位句`);
+    assert.ok(guide.includes(POSITIONING[docLocale(relativePath)]), `${relativePath}: 缺少官方 server 的定位句`);
     assert.match(guide, /README(?:\.zh-TW)?\.md#embedding/, `${relativePath}: 缺少通往「內嵌」一節的連結`);
   }
 });
@@ -130,7 +130,7 @@ test('the operations guides state the positioning before their first H2', () => 
     for (const relativePath of [`docs/${name}.zh-TW.md`, `docs/${name}.md`]) {
       const preamble = read(relativePath).split(/^## /m, 1)[0];
       assert.ok(
-        preamble.includes(POSITIONING[localeOf(relativePath)]),
+        preamble.includes(POSITIONING[docLocale(relativePath)]),
         `${relativePath}: 第一個 H2 之前缺少官方 server 的定位句`,
       );
     }
@@ -142,7 +142,7 @@ test('the README official-server section opens with the positioning sentence', (
     const body = section(read(relativePath), 'official-server', relativePath);
     const firstParagraph = body.split('\n').slice(1).find((line) => line.trim() !== '') ?? '';
     assert.ok(
-      firstParagraph.startsWith(POSITIONING[localeOf(relativePath)]),
+      firstParagraph.startsWith(POSITIONING[docLocale(relativePath)]),
       `${relativePath}: 「試用官方 server」一節的第一句不是定位句`,
     );
     assert.match(body, /#embedding/, `${relativePath}: 「試用官方 server」一節缺少通往「內嵌」一節的連結`);

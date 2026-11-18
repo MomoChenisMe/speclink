@@ -8,7 +8,7 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { docFilesIn, extractTargets, resolveTarget } from './docs-links.mjs';
+import { unreferencedAssets } from './docs-links.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
@@ -33,7 +33,18 @@ function figuresIn(locale) {
     .sort();
 }
 
-const attr = (tag, name) => new RegExp(`\\s${name}="([^"]*)"`).exec(tag)?.[1];
+/// 屬性值，單引號與雙引號都認，值可以折行。
+const attr = (tag, name) => new RegExp(`\\s${name}=(["'])([\\s\\S]*?)\\1`).exec(tag)?.[2];
+
+/// 出現幾次。
+const count = (text, pattern) => (text.match(pattern) ?? []).length;
+
+/// 指向圖檔自己裡面的 `#id` 的寫法：引號與前後的空白可有可無，兩邊的引號要相同。
+const INTERNAL_URL = /url\(\s*(["']?)#[^"')\s]+\1\s*\)/gi;
+const INTERNAL_HREF = /\b(?:xlink:)?href\s*=\s*(["'])\s*#[^"']*\1/gi;
+
+/// 透明度的數值；百分比換成 0 到 100 的數字。讀不出數字時是 NaN。
+const opacityOf = (value) => Number(value.trim().replace(/%$/, ''));
 
 /// 第一個繪圖元素：略過註解、`<title>`、`<desc>`、`<defs>` 與 `<style>`——它們不畫東西。
 function firstDrawnTag(svg) {
@@ -52,10 +63,12 @@ function svgProblems(svg) {
 
   if (/<script\b/i.test(svg)) problems.push('含 script');
   if (/<foreignObject\b/i.test(svg)) problems.push('含 foreignObject');
-  // 外部資源：指向檔案或網址的 href（只准 `#id` 的內部參照）、url(...) 裡不是 `#id` 的、
-  // @import 與 <image>。xmlns 的網址是命名空間，不是資源。
-  if (/\b(?:xlink:)?href="(?!#)[^"]*"/i.test(svg)) problems.push('含外部的 href');
-  if (/url\(\s*['"]?(?!#)/i.test(svg)) problems.push('含外部的 url()');
+  // 外部資源：指向檔案或網址的 href、url(...) 裡不是 `#id` 的、@import 與 <image>。
+  // xmlns 的網址是命名空間，不是資源。href 與 url() 都用正面比對：每一處都要是內部參照的
+  // 寫法，其餘一律算外部——去解析「外部的長什麼樣」，解析不了的寫法（值裡有括號、另一種
+  // 引號、data URI）就會漏掉。
+  if (count(svg, /\b(?:xlink:)?href\s*=/gi) !== count(svg, INTERNAL_HREF)) problems.push('含外部的 href');
+  if (count(svg, /url\(/gi) !== count(svg, INTERNAL_URL)) problems.push('含外部的 url()');
   if (/@import/i.test(svg)) problems.push('含 @import');
   if (/<image\b/i.test(svg)) problems.push('含 image');
 
@@ -67,20 +80,25 @@ function svgProblems(svg) {
     problems.push('缺 viewBox');
     return problems;
   }
-  const [, , width, height] = viewBox;
+  const [minX, minY, width, height] = viewBox;
   const first = firstDrawnTag(svg);
   const covers = (value, full) => value === full || value === '100%';
-  const atOrigin = (value) => value === undefined || value === '0';
+  // 矩形的起點要和 viewBox 的起點相同；沒寫的 x、y 是 0。
+  const startsAt = (value, min) => (value ?? '0') === min;
+  // 沒寫就是不透明；寫了要是大於 0 的數字，讀不出數字的不算。
+  const opaque = (value) => value === undefined || opacityOf(value) > 0;
   const fill = attr(first, 'fill');
   if (
     !first.startsWith('<rect') ||
     !covers(attr(first, 'width'), width) ||
     !covers(attr(first, 'height'), height) ||
-    !atOrigin(attr(first, 'x')) ||
-    !atOrigin(attr(first, 'y')) ||
+    !startsAt(attr(first, 'x'), minX) ||
+    !startsAt(attr(first, 'y'), minY) ||
     !fill ||
     fill === 'none' ||
-    fill === 'transparent'
+    fill === 'transparent' ||
+    !opaque(attr(first, 'fill-opacity')) ||
+    !opaque(attr(first, 'opacity'))
   ) {
     problems.push('第一個繪圖元素不是鋪滿的背景矩形');
   }
@@ -115,6 +133,67 @@ test('檢查：script、foreignObject 與外部資源各自被點名', () => {
   );
 });
 
+test('檢查：內部參照 url(#id) 不論有沒有引號與空白都不算外部資源，外部的都算', () => {
+  const withFill = (value) => GOOD.replace('</svg>', `<rect fill='${value}'/></svg>`);
+  for (const internal of ['url(#arrow)', 'url("#arrow")', 'url( #arrow )']) {
+    assert.deepEqual(svgProblems(withFill(internal)), [], internal);
+  }
+  assert.deepEqual(svgProblems(GOOD.replace('</svg>', `<rect fill="url('#arrow')"/></svg>`)), []);
+  for (const external of ['url(pattern.svg#x)', 'url("https://example.com/p.svg")', 'url( //example.com/p.svg )']) {
+    assert.deepEqual(svgProblems(withFill(external)), ['含外部的 url()'], external);
+  }
+});
+
+test('檢查：解析不了的 url() 一律算外部資源，不會因為對不上而放行', () => {
+  const inStyle = (value) => GOOD.replace('<style>', `<style>.x { fill: ${value}; } `);
+  for (const external of [
+    'url("a)b.svg")',
+    `url("it's.svg")`,
+    `url("data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg'/>")`,
+    `url("#arrow')`,
+    'url()',
+  ]) {
+    assert.deepEqual(svgProblems(inStyle(external)), ['含外部的 url()'], external);
+  }
+  for (const internal of ["url('#arrow')", 'url(#箭頭)', 'url( "#a:b.c-d" )']) {
+    assert.deepEqual(svgProblems(inStyle(internal)), [], internal);
+  }
+});
+
+test('檢查：折行的屬性值照樣讀得到', () => {
+  assert.deepEqual(svgProblems(GOOD.replace(' aria-label="示意"', ' aria-label="示意\n圖"')), []);
+  assert.deepEqual(svgProblems(GOOD.replace('</svg>', '<use href="\nother.svg#a"/></svg>')), ['含外部的 href']);
+  assert.deepEqual(svgProblems(GOOD.replace('</svg>', '<use href="\n#arrow"/></svg>')), []);
+});
+
+test('檢查：透明度寫成百分比時照數值判斷', () => {
+  const background = '<rect width="760" height="300" fill="#ffffff"/>';
+  const withOpacity = (attribute) => GOOD.replace(background, `<rect width="760" height="300" fill="#ffffff" ${attribute}/>`);
+  assert.deepEqual(svgProblems(withOpacity('opacity="50%"')), []);
+  assert.deepEqual(svgProblems(withOpacity('fill-opacity="0.4"')), []);
+  assert.deepEqual(svgProblems(withOpacity('fill-opacity="0%"')), ['第一個繪圖元素不是鋪滿的背景矩形']);
+});
+
+test('檢查：單引號的屬性和雙引號一樣判定', () => {
+  const planted = (extra) => GOOD.replace('</svg>', `${extra}</svg>`);
+  assert.deepEqual(svgProblems(planted("<use href='other.svg#a'/>")), ['含外部的 href']);
+  assert.deepEqual(svgProblems(planted("<use href='#arrow'/>")), []);
+  const single = GOOD.replace(/"/g, "'");
+  assert.deepEqual(svgProblems(single), []);
+  assert.deepEqual(svgProblems(single.replace(" aria-label='示意'", '')), ['缺 aria-label']);
+});
+
+test('檢查：背景矩形以 viewBox 的起點為準，全透明的不算背景', () => {
+  const background = '<rect width="760" height="300" fill="#ffffff"/>';
+  const problem = ['第一個繪圖元素不是鋪滿的背景矩形'];
+  const shifted = GOOD.replace('viewBox="0 0 760 300"', 'viewBox="-10 -20 760 300"');
+  assert.deepEqual(svgProblems(shifted), problem);
+  assert.deepEqual(svgProblems(shifted.replace(background, '<rect x="-10" y="-20" width="760" height="300" fill="#ffffff"/>')), []);
+  assert.deepEqual(svgProblems(GOOD.replace(background, '<rect width="760" height="300" fill="#ffffff" fill-opacity="0"/>')), problem);
+  assert.deepEqual(svgProblems(GOOD.replace(background, '<rect width="760" height="300" fill="#ffffff" opacity="0"/>')), problem);
+  assert.deepEqual(svgProblems(GOOD.replace(background, '<rect width="760" height="300" fill="#ffffff" fill-opacity="1"/>')), []);
+});
+
 test('檢查：沒有背景、背景沒鋪滿或透明時被點名', () => {
   const background = '<rect width="760" height="300" fill="#ffffff"/>';
   const problem = ['第一個繪圖元素不是鋪滿的背景矩形'];
@@ -146,21 +225,7 @@ test('版本庫實況：每張圖都自帶背景與說明，沒有 script、fore
   assert.deepEqual(problems, []);
 });
 
-/// 文件的語言看檔名：`.zh-TW.md` 是繁中，其餘是英文。
-const docLocale = (file) => (file.endsWith('.zh-TW.md') ? 'zh-TW' : 'en');
-
 test('版本庫實況：每張圖在每個語言都被同語言的 README 或 docs/ 文件引用', () => {
-  const referenced = new Set(
-    docFilesIn(ROOT).flatMap((file) =>
-      extractTargets(readFileSync(path.join(ROOT, file), 'utf8')).map(
-        ({ target }) => `${docLocale(file)}:${resolveTarget({ fromFile: file, target, root: ROOT })}`,
-      ),
-    ),
-  );
-  const orphans = FIGURE_LOCALES.flatMap((locale) =>
-    FIGURES.map((name) => `${locale}/${name}`).filter(
-      (relative) => !referenced.has(`${locale}:${path.join(ROOT, FIGURE_DIR, relative)}`),
-    ),
-  );
+  const orphans = unreferencedAssets({ root: ROOT, dir: FIGURE_DIR, locales: FIGURE_LOCALES, names: FIGURES });
   assert.deepEqual(orphans, [], `沒有同語言文件引用的圖：${orphans.join('、')}`);
 });

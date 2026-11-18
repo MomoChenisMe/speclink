@@ -90,6 +90,15 @@
         "docs/assets/screenshots/en/server-setup.png",
         "docs/assets/screenshots/zh-TW/server-setup.png"
       ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "5.2 依 D10 整理發版說明的素材並做最後檢查：把前二十個變更的相容性影響裡使用者要採取行動的項目寫進 design.md 的「發版說明的素材」一節；用 1.1 的盤點表逐列核對每一條文件影響都已落在文件裡；規格 user-documentation 這次新增與修改的每個情境都能指出對應的段落；在 README 與 docs 搜尋 Remote Store、Self-hosting、自架 server、團隊模式、主機套件、TeamStore 沒有命中。涉及 speclink/changes/docs-embedded-host/design.md。驗證：先 `cargo build -p speclink-cli`；`speclink validate docs-embedded-host` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "scripts/docs/docs-links.mjs",
+        "scripts/docs/docs-links.test.mjs",
+        "scripts/docs/docs-surface.test.mjs"
+      ]
     }
   ],
   "entries": [
@@ -213,6 +222,19 @@
         "docs/assets/screenshots/zh-TW/server-setup.png"
       ],
       "recordedAt": "2026-11-18T01:04:23Z"
+    },
+    {
+      "taskId": "tsk_01M7D9AJMBM32HAD8682ZHGFSR",
+      "taskDesc": "5.2 依 D10 整理發版說明的素材並做最後檢查：把前二十個變更的相容性影響裡使用者要採取行動的項目寫進 design.md 的「發版說明的素材」一節；用 1.1 的盤點表逐列核對每一條文件影響都已落在文件裡；規格 user-documentation 這次新增與修改的每個情境都能指出對應的段落；在 README 與 docs 搜尋 Remote Store、Self-hosting、自架 server、團隊模式、主機套件、TeamStore 沒有命中。涉及 speclink/changes/docs-embedded-host/design.md。驗證：先 `cargo build -p speclink-cli`；`speclink validate docs-embedded-host` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "f5484747d923888e44c988c17fa1f16e7c6d7b16",
+      "touchedFiles": [
+        "scripts/docs/docs-links.mjs",
+        "scripts/docs/docs-links.test.mjs",
+        "scripts/docs/docs-surface.test.mjs"
+      ],
+      "recordedAt": "2026-11-18T01:52:25Z"
     }
   ]
 }

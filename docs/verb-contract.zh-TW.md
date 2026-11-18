@@ -43,7 +43,7 @@
 
 連到還沒有這些路由的舊版 Server 時，三者都以非零結束。`trace` 與 `change rank` 得到 404。`plan --strict-overlap` 的回應少了 `strictOverlap` 標記，CLI 會說明這台 Server 不支援，不會把一般的計畫當成嚴格重疊的計畫印出來。
 
-有四個子指令要讀你電腦上的 git 與工作目錄：`drift`、`review prepare`、`review scope`、`verify scope`。用 CLI 在遠端專案的 checkout 裡執行，它們照常可用。沒有 checkout 的宿主經呼叫入口（`host.dispatch`）執行它們會被拒絕，見專案能力狀態的[已知缺口](product-status.zh-TW.md#known-gaps)。
+有四個子指令要讀你電腦上的 git 與工作目錄：`drift`、`review prepare`、`review scope`、`verify scope`。用 CLI 在遠端專案的 checkout 裡執行，它們照常可用。沒有 checkout 的宿主經呼叫入口（`host.dispatch`）執行它們會被拒絕。帶 `--skill` 的 `instructions` 印的是 CLI 內建的技能文字，經呼叫入口同樣被拒絕，所以被拒絕的一共五個。見專案能力狀態的[已知缺口](product-status.zh-TW.md#known-gaps)。
 
 ## <a id="output-differences"></a>兩種模式的輸出差異
 
@@ -198,7 +198,7 @@ https://<server>/api/speclink/v1/projects/<專案代號>
 | `X-Speclink-Repo` | 儲存庫代號 | 專案只有一個 repo 時可省略；有多個 repo 卻省略回 409 `refused`；寫了沒註冊的 repo 回 404 `not_found` |
 | `Content-Type` | `application/json`（有 body 時） | 415，回應是純文字 |
 
-憑證由 Server 決定。示範用 server 接受兩種：存取金鑰（PAT，`spk_pat_` 開頭，在 server 的帳號頁建立），或 `speclink auth login` 取得的裝置登入憑證（`spk_at_` 開頭）；憑證有效但帳號不是這個專案的成員，回 403。內嵌的宿主自己驗憑證，再把身分交給入口；驗不出身分時傳空值，入口就回 401。宿主宣告了瀏覽器登入時，憑證是它的登入服務發的 access token。
+憑證由 Server 決定。示範用 server 接受兩種：存取金鑰（PAT，`spk_pat_` 開頭，在 server 的帳號頁建立），或 `speclink auth login` 取得的裝置登入憑證（`spk_at_` 開頭）；憑證有效但帳號不是這個專案的成員，回 403。內嵌的宿主自己驗用戶端送來的 token，再把身分交給入口；驗不出身分時傳空值，入口就回 401。宿主宣告了瀏覽器登入時，憑證是它的登入服務發的 access token。
 
 ### 角色
 

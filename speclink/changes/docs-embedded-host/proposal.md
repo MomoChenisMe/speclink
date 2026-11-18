@@ -68,6 +68,8 @@ Source discussion: embedded-host-needs（cut 21，最後一個變更）。
 - 中英對照的檢查涵蓋圖解：兩版引用相同的圖檔名序列，各自用自己語言的那一組。
 - 新增圖解的檢查：SVG 不含 script 與外部資源、有背景、兩個語言資料夾的檔名相同、每張圖至少被一份同語言的文件引用。
 - 中英對照的檢查加上「不得出現 Remote Store、Self-hosting、自架 server」。
+- 「文件裡的指令存在於 CLI」的檢查多掃動詞與旗標的參考文件（中英兩版）。
+- 「每張圖都被同語言的文件引用」的判斷，截圖與圖解共用一份，放在連結檢查的模組。
 
 **相容性影響**
 
@@ -153,6 +155,8 @@ Source discussion: embedded-host-needs（cut 21，最後一個變更）。
     - scripts/docs/docs-parity.test.mjs
     - scripts/docs/remote-docs.test.mjs
     - scripts/docs/docs-links.test.mjs
+    - scripts/docs/docs-links.mjs
+    - scripts/docs/docs-surface.test.mjs
   - Removed: (none)
 - 相依：retire-teamstore-and-drivers（它是前面最後一個變更；文件要描述全部完成之後的狀態）。
 - 三種形態下的結果：這個變更不新增或變更引擎命令、動詞、文件種類與技能步驟，所以沒有形態上的行為差異。文件本身要把三種形態寫清楚：

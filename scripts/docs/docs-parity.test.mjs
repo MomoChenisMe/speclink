@@ -41,21 +41,25 @@ const h2s = (markdown) =>
     .filter((line) => line.startsWith('## '))
     .map((line) => ANCHORED_H2.exec(line)?.[1] ?? `（缺錨點）${line.slice(3).trim()}`);
 
-/// 截圖分語言放在 `assets/screenshots/<語言>/`；語言目錄寫成選用，平放的舊寫法也會被抓出來、
-/// 再由下面的目錄斷言點名。
-const shots = (markdown) => markdown.match(/[\w./-]*assets\/screenshots\/(?:[\w-]+\/)?[a-z-]+\.png/g) ?? [];
+/// 分語言放的圖：截圖在 `assets/screenshots/<語言>/`，圖解在 `assets/figures/<語言>/`，
+/// 兩種用同一套規則。
+const ASSET_KINDS = [
+  { label: '截圖', folder: 'screenshots', extension: 'png' },
+  { label: '圖解', folder: 'figures', extension: 'svg' },
+];
+const FIGURES = ASSET_KINDS[1];
 
-const outsideDir = (refs, locale) => refs.filter((ref) => !ref.includes(`assets/screenshots/${locale}/`));
+/// 文件引用到的某一種圖。語言目錄寫成選用，平放的舊寫法也會被抓出來、再由下面的目錄斷言點名。
+const assetRefs = (markdown, { folder, extension }) =>
+  markdown.match(new RegExp(`[\\w./-]*assets/${folder}/(?:[\\w-]+/)?[a-z-]+\\.${extension}`, 'g')) ?? [];
 
-/// 圖解和截圖同一套規則，資料夾是 `assets/figures/<語言>/`。
-const figures = (markdown) => markdown.match(/[\w./-]*assets\/figures\/(?:[\w-]+\/)?[a-z-]+\.svg/g) ?? [];
-
-const outsideFigureDir = (refs, locale) => refs.filter((ref) => !ref.includes(`assets/figures/${locale}/`));
+const outsideLocaleDir = (refs, { folder }, locale) =>
+  refs.filter((ref) => !ref.includes(`assets/${folder}/${locale}/`));
 
 /// spec「使用者文件採用本機專案與遠端專案的用詞」停用的說法裡，詞彙守門管不到的三個：
 /// 兩個是純英文、一個中英混寫，所以直接在成對文件的兩個語言檢查。不分大小寫——README 的
 /// 舊錨點 `self-hosting` 也算。
-const RETIRED_PHRASES = [/remote store\b/i, /self-hosting/i, /自架 server/];
+const RETIRED_PHRASES = [/remote store/i, /self-hosting/i, /自架 server/];
 
 const cells = (line) =>
   line
@@ -125,27 +129,18 @@ for (const [zhPath, enPath] of PAIRS) {
     assert.deepEqual(h2s(read(zhPath)), h2s(read(enPath)));
   });
 
-  test(`中英對等：${zhPath} 與 ${enPath} 的截圖檔名序列相同，且各自引用該語言目錄`, () => {
-    const zhRefs = shots(read(zhPath));
-    const enRefs = shots(read(enPath));
-    assert.deepEqual(
-      zhRefs.map((s) => s.split('/').pop()),
-      enRefs.map((s) => s.split('/').pop()),
-    );
-    assert.deepEqual(outsideDir(zhRefs, 'zh-TW'), [], `${zhPath} 有截圖不在 zh-TW/`);
-    assert.deepEqual(outsideDir(enRefs, 'en'), [], `${enPath} 有截圖不在 en/`);
-  });
-
-  test(`中英對等：${zhPath} 與 ${enPath} 的圖解檔名序列相同，且各自引用該語言目錄`, () => {
-    const zhRefs = figures(read(zhPath));
-    const enRefs = figures(read(enPath));
-    assert.deepEqual(
-      zhRefs.map((s) => s.split('/').pop()),
-      enRefs.map((s) => s.split('/').pop()),
-    );
-    assert.deepEqual(outsideFigureDir(zhRefs, 'zh-TW'), [], `${zhPath} 有圖解不在 zh-TW/`);
-    assert.deepEqual(outsideFigureDir(enRefs, 'en'), [], `${enPath} 有圖解不在 en/`);
-  });
+  for (const kind of ASSET_KINDS) {
+    test(`中英對等：${zhPath} 與 ${enPath} 的${kind.label}檔名序列相同，且各自引用該語言目錄`, () => {
+      const zhRefs = assetRefs(read(zhPath), kind);
+      const enRefs = assetRefs(read(enPath), kind);
+      assert.deepEqual(
+        zhRefs.map((s) => s.split('/').pop()),
+        enRefs.map((s) => s.split('/').pop()),
+      );
+      assert.deepEqual(outsideLocaleDir(zhRefs, kind, 'zh-TW'), [], `${zhPath} 有${kind.label}不在 zh-TW/`);
+      assert.deepEqual(outsideLocaleDir(enRefs, kind, 'en'), [], `${enPath} 有${kind.label}不在 en/`);
+    });
+  }
 
   test(`停用的說法：${zhPath} 與 ${enPath} 不出現 Remote Store、Self-hosting、自架 server`, () => {
     const hits = [zhPath, enPath].flatMap((relative) =>
@@ -163,14 +158,16 @@ for (const [zhPath, enPath] of PAIRS) {
 
 test('圖解引用：平放的舊寫法與放錯語言目錄的引用都會被點名', () => {
   const md = '![a](assets/figures/zh-TW/embedded-shape.svg)\n![b](assets/figures/sdk-contents.svg)\n';
-  assert.deepEqual(figures(md), ['assets/figures/zh-TW/embedded-shape.svg', 'assets/figures/sdk-contents.svg']);
-  assert.deepEqual(outsideFigureDir(figures(md), 'zh-TW'), ['assets/figures/sdk-contents.svg']);
-  assert.deepEqual(outsideFigureDir(figures(md), 'en'), figures(md));
+  const refs = assetRefs(md, FIGURES);
+  assert.deepEqual(refs, ['assets/figures/zh-TW/embedded-shape.svg', 'assets/figures/sdk-contents.svg']);
+  assert.deepEqual(outsideLocaleDir(refs, FIGURES, 'zh-TW'), ['assets/figures/sdk-contents.svg']);
+  assert.deepEqual(outsideLocaleDir(refs, FIGURES, 'en'), refs);
 });
 
 test('停用的說法：三個說法各自命中；`--store remote` 與 remote storage 不算', () => {
   const hit = (line) => RETIRED_PHRASES.some((phrase) => phrase.test(line));
   assert.ok(hit('the Remote Store path'));
+  assert.ok(hit('two Remote Stores'));
   assert.ok(hit('## <a id="self-hosting"></a>Self-hosting'));
   assert.ok(hit('自架 server 的後台'));
   assert.ok(!hit('speclink init --store remote'));
@@ -178,12 +175,12 @@ test('停用的說法：三個說法各自命中；`--store remote` 與 remote s
 });
 
 for (const readme of ['README.zh-TW.md', 'README.md']) {
-  test(`${readme}：有 embedding 與 official-server 兩節，前者在前，沒有 self-hosting`, () => {
+  // 舊錨點 `self-hosting` 由上面「停用的說法」對同一對 README 檢查，這裡不重複。
+  test(`${readme}：有 embedding 與 official-server 兩節，前者在前`, () => {
     const anchors = h2s(read(readme));
     assert.ok(anchors.includes('embedding'), '缺少錨點 embedding');
     assert.ok(anchors.includes('official-server'), '缺少錨點 official-server');
     assert.ok(anchors.indexOf('embedding') < anchors.indexOf('official-server'), 'embedding 要排在 official-server 之前');
-    assert.ok(!anchors.includes('self-hosting'), '舊錨點 self-hosting 還在');
   });
 }
 

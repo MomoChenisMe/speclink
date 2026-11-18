@@ -265,10 +265,10 @@ tools:
 
 關於遠端專案的技能，要知道這幾件事：
 
-- **技能來自 Server。** 遠端專案的動詞由 Server 上的引擎執行，所以技能也由 Server 提供，內容是 Server 那一版引擎的範本。提供哪些技能由 Server 決定：例如 Server 上的流程設定開了 worktree，才會有兩個 worktree 技能。
+- **技能來自 Server。** 遠端專案的動詞由 Server 上的引擎執行，所以技能也由 Server 提供，內容是 Server 那一版引擎的範本。提供哪些技能由 Server 決定：例如 Server 上的工作流設定開了 worktree，才會有兩個 worktree 技能。
 - **版本跟著 Server。** Server 提供的版本比 checkout 裡的舊時也照裝，輸出多一行 `! Skills replaced with the server's version …`。這裡不需要 `--allow-downgrade`。
 - **連到一台 Server，等於信任它提供的技能。** 技能檔是 AI 工具會照著做的指示。Speclink 不替技能簽章，也不檢查內容。只連你信任的 Server。
-- Server 升級之後，或 Server 上的流程設定改了之後，再執行一次 `speclink update`。
+- Server 升級之後，或 Server 上的工作流設定改了之後，再執行一次 `speclink update`。
 - Server 對某個 AI 工具一支技能都不提供時，那個工具既有的技能檔維持原狀，輸出多一行 `! The server gives no skills for: …`。
 - Server 有宣告技能、取得卻失敗時，指令以非零結束，不寫入任何檔案。
 
@@ -288,7 +288,7 @@ tools:
 另外有兩處差異：
 
 - `speclink archive` 在遠端專案一次只封存一個變更；`--all` 或一次給多個名稱會被拒絕。
-- `speclink status` 與 `speclink instructions` 的 `--schema` 在遠端專案會被拒絕：schema 由 Server 上的流程設定決定。
+- `speclink status` 與 `speclink instructions` 的 `--schema` 在遠端專案會被拒絕：產出流程由 Server 上的工作流設定決定。
 
 技能方面，baseline 與 manual 兩支技能在遠端專案還不支援：技能會說明原因後結束，不寫任何檔案。manual 的導覽模式不受影響。見[已知缺口](product-status.zh-TW.md#known-gaps)。
 
