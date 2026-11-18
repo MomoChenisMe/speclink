@@ -45,9 +45,9 @@ const DORMANCY_SKILLS: [&str; 3] = ["apply", "apply-with-worktree", "drift"];
 /// The one sentence apply and drift share for that judgement.
 const DORMANCY_RULE: &str = "A change is dormant when the `created` of its entry in `speclink list --json` is more than 5 days ago and its `modifiedAt` is more than 3 days ago. An entry with no `modifiedAt` is judged on `created` alone — say then that the last activity cannot be read. An entry with no `created` is not dormant.";
 
-/// What discuss and propose say about moving an archived discussion record back when
-/// the spec folder is not in the checkout.
-const MOVE_BACK_ELSEWHERE: &str = "stop and tell the user that this step has to be done on the Server that holds the specs";
+/// What a skill told the reader to do with a record archived too early, before
+/// `discuss restore` existed: move the file by hand, or stop for the Server.
+const MOVE_BACK_BY_HAND: [&str; 3] = ["Move the record file", "no verb moves it back", "has to be done on the Server"];
 
 /// One rendered skill file.
 struct Rendering {
@@ -355,9 +355,14 @@ fn skills_name_the_verb_for_every_read_and_write_back() {
 /// 一律經動詞讀取」; propose-skill「artifact 的讀取與改寫一律經動詞」; ingest-skill「既有
 /// artifact 的更新經動詞整份寫回」), kept on both sides: a canonical spec is read with
 /// its type named, a change checked out in a worktree is read and written from that
-/// copy, and an archived discussion record is moved back only where the spec folder is.
+/// copy. An archived discussion record comes back with `speclink discuss restore`, and
+/// vocabulary drift is written with `speclink language replace --stdin` — the same
+/// text wherever the spec folder is (discuss-skill「用詞偏移以動詞寫回詞彙表」;
+/// propose-skill「從討論轉出最後一刀時帶 --last」).
 #[test]
 fn discuss_propose_and_ingest_keep_their_pinned_wording() {
+    // (form, skill) → the lines that name the two write verbs, per spec location.
+    let mut verb_lines: std::collections::BTreeMap<(&str, &str), Vec<Vec<String>>> = Default::default();
     // The list's `path` field — not another object's `.path` (a change's `worktree.path`).
     let path_word = Regex::new(r"(?:^|[^.\w])path\b").unwrap();
     let show = Regex::new(r"speclink show <(?:capability|spec-id)>( --item-type spec)?").unwrap();
@@ -385,13 +390,39 @@ fn discuss_propose_and_ingest_keep_their_pinned_wording() {
             if reads.is_empty() || reads.iter().any(|c| c.get(1).is_none()) {
                 problem("reads a canonical spec without `--item-type spec`".into());
             }
-            let moves_back = content.contains("Move the record file");
-            let stops = content.matches(MOVE_BACK_ELSEWHERE).count() == 1;
-            if rendering.location == SpecLocation::InCheckout && (!moves_back || stops) {
-                problem("must carry the move-back step, and only that".into());
+            if !content.contains("speclink discuss restore <slug>") {
+                problem("never names `speclink discuss restore <slug>` for a record archived too early".into());
             }
-            if rendering.location == SpecLocation::Elsewhere && (moves_back || !stops) {
-                problem("must stop instead of moving the record back".into());
+            for by_hand in MOVE_BACK_BY_HAND {
+                if content.contains(by_hand) {
+                    problem(format!("still moves an archived record back by hand: `{by_hand}`"));
+                }
+            }
+            let lines = content
+                .lines()
+                .filter(|l| l.contains("discuss restore") || l.contains("language replace"))
+                .map(|l| l.trim().to_string())
+                .collect();
+            verb_lines.entry((rendering.form, name)).or_default().push(lines);
+        }
+        if name == "discuss" {
+            for verb in ["speclink language show", "speclink language replace --stdin"] {
+                if !content.contains(verb) {
+                    problem(format!("never names `{verb}` for the vocabulary document"));
+                }
+            }
+            // Only "no document yet" starts from an empty one: any other failed
+            // read must not end in a write over the stored document.
+            if !content.contains("Any other failure of that command") {
+                problem("does not stop the vocabulary write when `language show` fails for another reason".into());
+            }
+            for gone in ["/LANGUAGE.md", "no verb writes it", "when the command fails there is no document yet"] {
+                if content.contains(gone) {
+                    problem(format!("still carries `{gone}`"));
+                }
+            }
+            if !content.contains("**Capture to**: proposal | design | spec | tasks | LANGUAGE.md") {
+                problem("the Capture to value `LANGUAGE.md` changed".into());
             }
         }
         if name == "ingest" && !content.lines().any(|l| l.contains("worktree.path") && l.contains("steps 4 to 8")) {
@@ -405,6 +436,11 @@ fn discuss_propose_and_ingest_keep_their_pinned_wording() {
             if !(named.contains("worktree.path") && named.contains("specs/<capability>")) {
                 problem("step 3 lacks the worktree.path and deltaSpecs reads".into());
             }
+        }
+    }
+    for ((form, skill), sides) in &verb_lines {
+        if sides.len() != 2 || sides[0] != sides[1] || sides[0].is_empty() {
+            found.push(format!("{form} speclink-{skill}: the restore and vocabulary steps differ by spec location: {sides:?}"));
         }
     }
     assert!(found.is_empty(), "discuss, propose and ingest drifted from their pinned wording:\n{}", found.join("\n"));

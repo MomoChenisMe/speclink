@@ -413,11 +413,17 @@ impl Store for RemoteDriftStore {
     fn archive_discussion(&self, _slug: &str, _created: &str) -> anyhow::Result<Option<String>> {
         unreachable!("remote drift never touches the archive")
     }
+    fn restore_discussion(&self, _slug: &str) -> anyhow::Result<Option<String>> {
+        unreachable!("remote drift never touches the archive")
+    }
     fn read_workflow_config(&self) -> Option<String> {
         unreachable!("the policy basis is computed on the Server; this store serves the workspace side")
     }
     fn read_language(&self) -> Option<String> {
         unreachable!("remote drift never reads the language document")
+    }
+    fn write_language(&self, _content: &str) -> anyhow::Result<()> {
+        unreachable!("remote drift is diagnostic — it writes nothing")
     }
 }
 

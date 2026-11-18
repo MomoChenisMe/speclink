@@ -377,6 +377,30 @@ pub struct ArchiveDiscussionResponse {
     pub archived_to: String,
 }
 
+/// `POST /discussions/{slug}/restore` response: the slug, and the name the
+/// record had in the archive (no folder).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct DiscussRestoreResponse {
+    pub slug: String,
+    pub restored_from: String,
+}
+
+/// `PUT /language` request body: the whole LANGUAGE document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageReplaceRequest {
+    pub content: String,
+}
+
+/// `PUT /language` response: whether this call created a document that did
+/// not exist.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct LanguageReplaceResponse {
+    pub created: bool,
+}
+
 /// `POST /discussions/{slug}/promote` request body. `last` marks the spun-out
 /// change as the final cut the conclusion planned: the engine drops the record's
 /// hold flag in the same write, so the last archive co-archives the record.
@@ -629,6 +653,25 @@ mod tests {
         let back: ClaimReleaseResponse = serde_json::from_str(r#"{"released":false}"#).expect("the key may be absent");
         assert_eq!(back, nothing);
         serde_json::from_str::<ClaimReleaseResponse>("{}").expect_err("released is required");
+    }
+
+    #[test]
+    fn the_language_and_restore_shapes_are_camel_case_with_every_key_required() {
+        // server-verb-api「詞彙文件寫入與討論搬回的端點」的線上形狀。
+        let restored = DiscussRestoreResponse { slug: "talk".into(), restored_from: "2026-11-10-talk.md".into() };
+        assert_eq!(
+            serde_json::to_value(&restored).unwrap(),
+            serde_json::json!({ "slug": "talk", "restoredFrom": "2026-11-10-talk.md" })
+        );
+        serde_json::from_str::<DiscussRestoreResponse>(r#"{"slug":"talk"}"#).expect_err("restoredFrom is required");
+        let body: LanguageReplaceRequest = serde_json::from_str(r##"{"content":"# Language\n"}"##).unwrap();
+        assert_eq!(body.content, "# Language\n");
+        serde_json::from_str::<LanguageReplaceRequest>("{}").expect_err("content is required");
+        assert_eq!(
+            serde_json::to_value(LanguageReplaceResponse { created: true }).unwrap(),
+            serde_json::json!({ "created": true })
+        );
+        serde_json::from_str::<LanguageReplaceResponse>("{}").expect_err("created is required");
     }
 
     // --- free fields (host-free-fields; client-protocol「自由欄位的線上欄位與請求」) ---

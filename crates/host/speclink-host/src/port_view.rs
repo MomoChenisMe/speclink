@@ -93,6 +93,12 @@ pub(crate) fn split_archived_stem(stem: &str) -> Option<(&str, &str)> {
     (!rest.is_empty() && keys::archived_discussion(date, "x").is_ok()).then_some((date, rest))
 }
 
+/// The stored name of an archived discussion (`2026-11-10-talk.md`): its key
+/// without the fixed prefix.
+fn archived_file_name(key: &DocKey) -> String {
+    key.as_str()[keys::ARCHIVED_DISCUSSIONS.len()..].to_string()
+}
+
 /// The key of a document of an archived change that is already in the store.
 /// It is read whatever the change is called: a store can hold older archived
 /// changes without a date in their name. A new archived document goes through
@@ -439,7 +445,10 @@ impl<'a> PortView<'a> {
 
     /// The key of the newest archived discussion for `slug`, ranked by
     /// creation date and then by the `-N` reuse suffix (a plain name counts
-    /// as 1). A stored name without a date ranks oldest.
+    /// as 1). A stored name without a date ranks oldest. A `-N` name counts
+    /// only when the record is a reuse of this slug
+    /// ([`speclink_core::discuss::is_reuse_of`]): another discussion whose own
+    /// slug ends in a number has the same name. Only such a name costs a read.
     fn newest_archived_discussion(&self, slug: &str) -> Option<DocKey> {
         let mut newest: Option<(String, u64, DocKey)> = None;
         for key in self.keys_under(keys::ARCHIVED_DISCUSSIONS, keys::ARCHIVED_DISCUSSIONS) {
@@ -455,6 +464,9 @@ impl<'a> PortView<'a> {
                     .and_then(|suffix| suffix.strip_prefix('-'))
                     .filter(|n| !n.is_empty() && n.bytes().all(|c| c.is_ascii_digit()))
                     .and_then(|n| n.parse::<u64>().ok())
+                    .filter(|_| {
+                        self.content(&key).is_some_and(|text| speclink_core::discuss::is_reuse_of(&text, slug))
+                    })
                     .map(|n| (date, n)),
             };
             let Some((date, seq)) = ranked else { continue };
@@ -833,7 +845,27 @@ impl Store for PortView<'_> {
             name = format!("{slug}-{n}");
             n += 1;
         };
-        let file = target.as_str()[keys::ARCHIVED_DISCUSSIONS.len()..].to_string();
+        let file = archived_file_name(&target);
+        self.put(target, text);
+        self.del(source);
+        Ok(Some(file))
+    }
+
+    fn restore_discussion(&self, slug: &str) -> anyhow::Result<Option<String>> {
+        // A name that cannot make a key names no document, as for a read.
+        let Ok(target) = keys::discussion(slug) else {
+            return Ok(None);
+        };
+        let Some(source) = self.newest_archived_discussion(slug) else {
+            return Ok(None);
+        };
+        let Some(text) = self.content(&source) else {
+            return Ok(None);
+        };
+        let file = archived_file_name(&source);
+        // Both writes go out in the one commit of this command, each with the
+        // version this execution first saw: the live key absent, the archived
+        // key as read. The store takes both or neither.
         self.put(target, text);
         self.del(source);
         Ok(Some(file))
@@ -852,6 +884,11 @@ impl Store for PortView<'_> {
 
     fn read_language(&self) -> Option<String> {
         self.content(&keys::language())
+    }
+
+    fn write_language(&self, content: &str) -> anyhow::Result<()> {
+        self.put(keys::language(), content.to_string());
+        Ok(())
     }
 
     // --- board order: the scope's board-order document (skills-verbs-first-wave D4) ---
@@ -1714,6 +1751,77 @@ mod tests {
         );
     }
 
+    fn restore_discussion() {
+        let port = fixture();
+        let view = PortView::new(&port, scope());
+        assert_eq!(view.restore_discussion("nope").unwrap(), None, "no archived record");
+        // The newest archived record comes back, the one a slug read shows.
+        assert_eq!(
+            view.restore_discussion("old-talk").unwrap().as_deref(),
+            Some("2026-11-01-old-talk-2.md")
+        );
+        assert!(view.live_discussion_exists("old-talk"));
+        let restored = view.read_discussion("old-talk").expect("the live record");
+        assert_eq!((restored.text.as_str(), restored.archived), ("newer text", false));
+        let archived: Vec<String> = view.list_archived_discussions().into_iter().map(|d| d.text).collect();
+        assert_eq!(archived, ["archived text"], "the older record stays archived");
+        // A name that cannot make a key names no document, as for a read.
+        assert_eq!(view.restore_discussion("../x").unwrap(), None);
+        assert_eq!(view.restore_discussion("a\u{7}b").unwrap(), None);
+        // One commit carries both writes: the live key must be absent, the
+        // archived key at the version this execution read.
+        assert_eq!(
+            staged(view),
+            [
+                "delete archive/discussions/2026-11-01-old-talk-2.md at 1",
+                "put discussions/old-talk.md new \"newer text\"",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_record_of_another_slug_that_ends_in_a_number_is_not_a_reuse_of_this_slug() {
+        // `<slug>-2` names a same-day reuse, and also another discussion whose
+        // own slug ends in `-2`: a record that states its slug belongs to it.
+        const FIRST: &str = "---\nslug: host-needs\ncreated: 2026-11-10\n---\nthe first discussion\n";
+        const SECOND: &str = "---\nslug: host-needs-2\ncreated: 2026-11-18\n---\nanother discussion\n";
+        let port = MemoryStorePort::new();
+        seed(
+            &port,
+            5_000,
+            &[
+                ("archive/discussions/2026-11-10-host-needs.md", FIRST),
+                ("archive/discussions/2026-11-18-host-needs-2.md", SECOND),
+            ],
+        );
+        let view = PortView::new(&port, scope());
+        assert_eq!(view.read_discussion("host-needs").expect("the slug's own record").text, FIRST);
+        assert_eq!(view.restore_discussion("host-needs").unwrap().as_deref(), Some("2026-11-10-host-needs.md"));
+        assert!(view.archived_discussion_exists("host-needs-2"), "the other discussion stays archived");
+        assert!(!view.archived_discussion_exists("host-needs"));
+        assert_eq!(
+            staged(view),
+            [
+                "delete archive/discussions/2026-11-10-host-needs.md at 1".to_string(),
+                format!("put discussions/host-needs.md new {FIRST:?}"),
+            ]
+        );
+    }
+
+    fn write_language() {
+        // An existing document is replaced at the version first seen.
+        let port = fixture();
+        let view = PortView::new(&port, scope());
+        view.write_language("# Language\n").unwrap();
+        assert_eq!(view.read_language().as_deref(), Some("# Language\n"), "a command sees its own write");
+        assert_eq!(staged(view), ["put LANGUAGE.md at 1 \"# Language\\n\""]);
+        // A missing document is created.
+        let empty = MemoryStorePort::new();
+        let view = PortView::new(&empty, scope());
+        view.write_language("# L").unwrap();
+        assert_eq!(staged(view), ["put LANGUAGE.md new \"# L\""]);
+    }
+
     fn write_workflow_config() {
         // An existing document is written at the version first seen.
         let port = fixture();
@@ -1772,6 +1880,8 @@ mod tests {
         ("write_live_discussion", write_live_discussion),
         ("delete_live_discussion", delete_live_discussion),
         ("archive_discussion", archive_discussion),
+        ("restore_discussion", restore_discussion),
+        ("write_language", write_language),
         ("spec_dir_display", spec_dir_display),
         ("change_meta_display", change_meta_display),
         ("list_changes", list_changes),

@@ -128,11 +128,11 @@ impl SpecVerb {
             | SpecVerb::Claim(_)
             | SpecVerb::Artifact(_)
             | SpecVerb::Evidence(_)
-            | SpecVerb::Language(_)
             | SpecVerb::Status(_)
             | SpecVerb::Instructions(_)
             | SpecVerb::Task(_)
             | SpecVerb::InProgress(_) => StdinPolicy::Never,
+            SpecVerb::Language(a) => a.stdin_policy(),
             SpecVerb::New(a) => a.stdin_policy(),
             SpecVerb::Discuss(a) => a.stdin_policy(),
             SpecVerb::Review(a) => a.stdin_policy(),

@@ -209,6 +209,13 @@ pub trait Store: AsDynStore {
     /// A name collision (same day, reused slug) must be resolved by the
     /// implementation, never an error.
     fn archive_discussion(&self, slug: &str, created: &str) -> Result<Option<String>>;
+    /// Move the newest archived discussion of the slug back to the live set —
+    /// the record a slug read resolves when no live one exists — with its
+    /// content unchanged. Returns the name it had in the archive, or None when
+    /// the slug has no archived record (nothing is written). The move is
+    /// atomic: the record is live and gone from the archive, or nothing
+    /// changed. The caller refuses first when a live record already exists.
+    fn restore_discussion(&self, slug: &str) -> Result<Option<String>>;
 
     // --- workflow config ---
 
@@ -231,6 +238,9 @@ pub trait Store: AsDynStore {
     /// The project's LANGUAGE document (shared vocabulary), or None when the
     /// project has none — a missing vocabulary is a normal state, not an error.
     fn read_language(&self) -> Option<String>;
+    /// Write (create or replace) the whole LANGUAGE document. The content
+    /// lands as given: nothing is merged, added or trimmed.
+    fn write_language(&self, content: &str) -> Result<()>;
 
     // --- board order ---
 

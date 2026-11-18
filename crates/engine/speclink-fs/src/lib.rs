@@ -12,7 +12,7 @@ use anyhow::Result;
 use layout::Layout;
 use speclink_core::model::{change_meta_file, Change, ChangeMeta, LEGACY_META_FILE, META_FILE};
 use speclink_core::store::{DiscussionDoc, Store};
-use speclink_core::util;
+use speclink_core::{discuss, util};
 use std::path::{Path, PathBuf};
 
 /// Filesystem-backed [`Store`] over a project's spec directory.
@@ -102,7 +102,9 @@ fn is_dup_suffix(s: &str) -> bool {
 impl FsStore {
     /// Locate an archived discussion by slug (`archive/<YYYY-MM-DD>-<slug>[-N].md`)
     /// — return the newest, ranked by (date prefix, `-N` suffix number; a plain
-    /// name counts as 1).
+    /// name counts as 1). A `-N` name counts only when the record is a reuse of
+    /// this slug ([`discuss::is_reuse_of`]): another discussion whose own slug
+    /// ends in a number has the same name.
     fn find_archived_discussion(&self, slug: &str) -> Option<PathBuf> {
         let mut candidates: Vec<(String, u64, PathBuf)> = Vec::new();
         if let Ok(entries) = std::fs::read_dir(self.layout.discussions_archive_dir()) {
@@ -120,6 +122,7 @@ impl FsStore {
                     rest.strip_prefix(slug)
                         .filter(|s| is_dup_suffix(s))
                         .and_then(|s| s[1..].parse::<u64>().ok())
+                        .filter(|_| util::read_opt(&path).is_some_and(|text| discuss::is_reuse_of(&text, slug)))
                 };
                 if let Some(seq) = seq {
                     candidates.push((stem[..10].to_string(), seq, path));
@@ -489,6 +492,23 @@ impl Store for FsStore {
         Ok(Some(name))
     }
 
+    fn restore_discussion(&self, slug: &str) -> Result<Option<String>> {
+        let Some(src) = self.find_archived_discussion(slug) else {
+            return Ok(None);
+        };
+        let name = src.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+        // A rename replaces what is at its target on some systems. The command
+        // refuses first; this second look keeps a record that appeared since
+        // then (the gap that stays is the one between this line and the next).
+        let live = self.layout.live_discussion(slug);
+        if live.exists() {
+            anyhow::bail!("discussion '{slug}' already exists as a live record — nothing was restored");
+        }
+        // One rename: it lands whole or leaves both sides as they were.
+        std::fs::rename(&src, live)?;
+        Ok(Some(name))
+    }
+
     // --- workflow config ---
 
     fn read_workflow_config(&self) -> Option<String> {
@@ -504,5 +524,10 @@ impl Store for FsStore {
 
     fn read_language(&self) -> Option<String> {
         util::read_opt(&self.layout.language_doc())
+    }
+
+    fn write_language(&self, content: &str) -> Result<()> {
+        util::write_file(&self.layout.language_doc(), content)?;
+        Ok(())
     }
 }

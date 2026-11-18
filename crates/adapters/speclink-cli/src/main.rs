@@ -17,7 +17,7 @@ use verbs::checks::{
 use verbs::config::{cmd_config, cmd_workflow_config, ConfigArgs};
 use verbs::connection::{cmd_auth, cmd_link, cmd_unlink, AuthArgs, LinkArgs};
 use verbs::discuss::{cmd_discuss, remote_discuss};
-use verbs::documents::{cmd_document, remote_artifact, remote_language};
+use verbs::documents::{cmd_document, cmd_language, remote_artifact, remote_language};
 use verbs::evidence::{cmd_evidence, remote_evidence};
 use verbs::init::{cmd_init, cmd_update, InitArgs, UpdateArgs};
 use verbs::instructions::{cmd_instructions, cmd_instructions_skill, remote_instructions};
@@ -177,7 +177,7 @@ fn spec_dispatch(verb: SpecVerb) -> Result<()> {
         SpecVerb::Analyze(a) => dual(a, cmd_analyze, |ctx, a| remote_analyze(ctx, &a)),
         SpecVerb::Drift(a) => dual(a, cmd_drift, |ctx, a| remote_drift(ctx, &a)),
         SpecVerb::Artifact(a) => dual(a, cmd_document, remote_artifact),
-        SpecVerb::Language(a) => dual(a, cmd_document, remote_language),
+        SpecVerb::Language(a) => dual(a, cmd_language, remote_language),
         SpecVerb::Status(a) => dual(a, cmd_status, |ctx, a| remote_status(ctx, &a)),
         SpecVerb::Archive(a) => dual(a, cmd_archive, |ctx, a| remote_archive(ctx, &a)),
         SpecVerb::Discard(a) => dual(a, cmd_discard, |ctx, a| remote_discard(ctx, &a)),

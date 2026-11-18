@@ -68,10 +68,12 @@ fn variant_index(cmd: &Command) -> usize {
         Command::ChangeFieldsEdit { .. } => 49,
         Command::DiscussFieldsEdit { .. } => 50,
         Command::ClaimRelease { .. } => 51,
+        Command::LanguageReplace { .. } => 52,
+        Command::DiscussRestore { .. } => 53,
     }
 }
 
-const VARIANT_COUNT: usize = 52;
+const VARIANT_COUNT: usize = 54;
 
 fn s(v: &str) -> String {
     v.to_string()
@@ -203,6 +205,8 @@ fn samples() -> Vec<Command> {
             unset: vec![],
         },
         Command::ClaimRelease { name: s("demo") },
+        Command::LanguageReplace { content: s("# Language\n") },
+        Command::DiscussRestore { slug: s("topic") },
     ]
 }
 

@@ -361,3 +361,108 @@ fn archiving_a_discussion_matches_and_moves_the_record() {
         Some(TALK)
     );
 }
+
+// --- language replace／discuss restore（language-replace-and-discuss-restore D2、D4） ---
+
+/// The code of a refused command on each path: the fs seam's and the port's.
+fn refusal_codes(fs: &FsStore, port: &MemoryStorePort, cmd: impl Fn() -> Command) -> (ErrorCode, ErrorCode) {
+    let fs_code = engine_execute(fs, &fs_engine_ctx(), cmd()).expect_err("the fs path refuses").code;
+    let port_code = match on_port(port, cmd()) {
+        Err(ExecError::Command(e)) => e.code,
+        other => panic!("the port path refuses with a command error, got {other:?}"),
+    };
+    (fs_code, port_code)
+}
+
+#[test]
+fn replacing_the_language_document_matches_on_both_paths() {
+    const NEW: &str = "# Shared Vocabulary\n\n- Change: 一個提出的修改。\n- Cut: 一刀\n";
+    let (_dir, fs) = seed_fs();
+    let port = seed_port();
+    let cmd = |content: &str| Command::LanguageReplace { content: content.to_string() };
+
+    let (fs_out, fs_events) = on_fs(&fs, cmd(NEW));
+    let ported = on_port(&port, cmd(NEW)).expect("ported language replace");
+
+    assert_eq!(format!("{fs_out:?}"), format!("{:?}", ported.outcome));
+    assert!(matches!(&ported.outcome, CommandOutcome::LanguageReplace(o) if !o.created), "{:?}", ported.outcome);
+    assert_eq!(event_kinds(&fs_events), event_kinds(&ported.events));
+    assert_eq!(event_kinds(&ported.events), ["language-replaced"]);
+    assert_eq!(fs.read_language().as_deref(), Some(NEW));
+    assert_eq!(port_content(&port, "LANGUAGE.md").as_deref(), Some(NEW));
+
+    // 空內容：兩條路徑同一個錯誤碼，文件都不變，儲存接口上沒有提交。
+    let before = scope_version(&port);
+    let codes = refusal_codes(&fs, &port, || cmd("  \n"));
+    assert_eq!(codes, (ErrorCode::InvalidArgv, ErrorCode::InvalidArgv));
+    assert_eq!(fs.read_language().as_deref(), Some(NEW));
+    assert_eq!(port_content(&port, "LANGUAGE.md").as_deref(), Some(NEW));
+    assert_eq!(scope_version(&port), before, "a refusal commits nothing");
+}
+
+#[test]
+fn creating_the_language_document_matches_on_both_paths() {
+    let dir = tempfile::tempdir().expect("tempdir");
+    let fs = FsStore::new(dir.path(), DEFAULT_SPEC_DIR);
+    let port = MemoryStorePort::new();
+    let cmd = || Command::LanguageReplace { content: "# Language\n".to_string() };
+
+    let (fs_out, _) = on_fs(&fs, cmd());
+    let ported = on_port(&port, cmd()).expect("ported language replace");
+
+    assert_eq!(format!("{fs_out:?}"), format!("{:?}", ported.outcome));
+    assert!(matches!(&ported.outcome, CommandOutcome::LanguageReplace(o) if o.created), "{:?}", ported.outcome);
+    assert_eq!(fs.read_language().as_deref(), Some("# Language\n"));
+    assert_eq!(port_content(&port, "LANGUAGE.md").as_deref(), Some("# Language\n"));
+}
+
+#[test]
+fn restoring_a_discussion_matches_and_is_one_commit_on_the_port() {
+    let (_dir, fs) = seed_fs();
+    let port = seed_port();
+    let archive = || Command::DiscussArchive { slug: "board-search".to_string() };
+    let restore = |slug: &str| Command::DiscussRestore { slug: slug.to_string() };
+    on_fs(&fs, archive());
+    on_port(&port, archive()).expect("ported discuss archive");
+    let archived_at = scope_version(&port);
+
+    let (fs_out, fs_events) = on_fs(&fs, restore("board-search"));
+    let ported = on_port(&port, restore("board-search")).expect("ported discuss restore");
+
+    assert_eq!(format!("{fs_out:?}"), format!("{:?}", ported.outcome));
+    match &ported.outcome {
+        CommandOutcome::DiscussRestore(o) => {
+            assert_eq!((o.slug.as_str(), o.restored_from.as_str()), ("board-search", "2026-11-10-board-search.md"));
+        }
+        other => panic!("expected a restore outcome, got {other:?}"),
+    }
+    assert_eq!(event_kinds(&fs_events), event_kinds(&ported.events));
+    assert_eq!(event_kinds(&ported.events), ["discussion-restored"]);
+    // 同樣的文件在同樣的位置，內容逐字元不變。
+    assert_eq!(fs.read_live_discussion("board-search").as_deref(), Some(TALK));
+    assert!(!fs.archived_discussion_exists("board-search"));
+    assert_eq!(keys_under(&port, "discussions/"), ["discussions/board-search.md"]);
+    assert_eq!(keys_under(&port, "archive/discussions/"), Vec::<String>::new());
+    assert_eq!(port_content(&port, "discussions/board-search.md").as_deref(), Some(TALK));
+    // 搬回在儲存接口上是一次提交：範圍版本只前進一步。
+    assert_eq!(ported.scope_version.map(|v| v.get()), Some(scope_version(&port)));
+    assert_eq!(scope_version(&port), archived_at + 1, "one commit");
+
+    // 沒有封存的記錄、已有進行中的記錄：兩條路徑同一個錯誤碼，零寫入。
+    assert_eq!(refusal_codes(&fs, &port, || restore("ghost")), (ErrorCode::NotFound, ErrorCode::NotFound));
+    on_fs(&fs, archive());
+    on_port(&port, archive()).expect("ported discuss archive");
+    fs.write_live_discussion("board-search", "a new live record\n").expect("write discussion");
+    seed(&port, vec![(keys::discussion("board-search").unwrap(), "a new live record\n".to_string())]);
+    let before = scope_version(&port);
+    assert_eq!(refusal_codes(&fs, &port, || restore("board-search")), (ErrorCode::Refused, ErrorCode::Refused));
+    assert_eq!(scope_version(&port), before, "a refusal commits nothing");
+    assert_eq!(fs.read_live_discussion("board-search").as_deref(), Some("a new live record\n"));
+    assert_eq!(port_content(&port, "discussions/board-search.md").as_deref(), Some("a new live record\n"));
+    assert!(fs.archived_discussion_exists("board-search"));
+    assert_eq!(
+        port_content(&port, "archive/discussions/2026-11-10-board-search.md").as_deref(),
+        Some(TALK),
+        "the archived record is untouched"
+    );
+}

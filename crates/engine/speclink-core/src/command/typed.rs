@@ -5,9 +5,9 @@
 
 use super::{
     ChangeLandedOutcome, ChangeRankOutcome, CommandOutcome, DependsOutcome, DiscussArchiveOutcome, DiscussBindOutcome,
-    DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome, DiscussShowOutcome,
+    DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRestoreOutcome, DiscussRoundOutcome, DiscussShowOutcome,
     DiscussSubjectOutcome, EvidenceShowOutcome, FieldsOutcome, InProgressOutcome, InProgressRemoveOutcome, InstructionsOutcome,
-    ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
+    LanguageReplaceOutcome, ListOutcome, NewArtifactOutcome, NewChangeOutcome, PlanReport, SchemaOutcome, ShowOutcome,
     TaskFlipOutcome, ValidateOutcome, WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
 };
 use crate::analyzer::AnalyzeReport;
@@ -52,6 +52,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::ArtifactCat(_) => "ArtifactCat",
         CommandOutcome::EvidenceShow(_) => "EvidenceShow",
         CommandOutcome::Language(_) => "Language",
+        CommandOutcome::LanguageReplace(_) => "LanguageReplace",
         CommandOutcome::DiscussList(_) => "DiscussList",
         CommandOutcome::DiscussShow(_) => "DiscussShow",
         CommandOutcome::DiscussSearch(_) => "DiscussSearch",
@@ -79,6 +80,7 @@ fn variant_name(o: &CommandOutcome) -> &'static str {
         CommandOutcome::DiscussLink(_) => "DiscussLink",
         CommandOutcome::DiscussSeal(_) => "DiscussSeal",
         CommandOutcome::DiscussArchive(_) => "DiscussArchive",
+        CommandOutcome::DiscussRestore(_) => "DiscussRestore",
         CommandOutcome::DiscussDiscard(_) => "DiscussDiscard",
         CommandOutcome::DiscussFieldsEdit(_) => "DiscussFieldsEdit",
         CommandOutcome::ReviewAddRound(_) => "ReviewAddRound",
@@ -159,6 +161,8 @@ typed_outcomes! {
     DiscussPromoteOutcome => [DiscussPromote],
     DiscussBindOutcome => [DiscussLink, DiscussSeal],
     DiscussArchiveOutcome => [DiscussArchive],
+    DiscussRestoreOutcome => [DiscussRestore],
+    LanguageReplaceOutcome => [LanguageReplace],
     WorkflowConfigShowOutcome => [WorkflowConfigShow],
     WorkflowConfigWriteOutcome => [WorkflowConfigEdit, WorkflowConfigReplace],
 }

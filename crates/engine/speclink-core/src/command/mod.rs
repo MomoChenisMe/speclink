@@ -291,6 +291,11 @@ pub enum DomainEvent {
     /// The discussion twin of [`DomainEvent::ChangeFieldsChanged`]: keys, no values.
     DiscussionFieldsChanged { slug: String, keys: Vec<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionArchived { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// An archived discussion is live again.
+    DiscussionRestored { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// The LANGUAGE document was written. It carries no content and no subject:
+    /// a project has one such document.
+    LanguageReplaced { occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionDiscarded { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
 }
 
@@ -329,6 +334,8 @@ impl DomainEvent {
             DomainEvent::DiscussionSealed { .. } => "discussion-sealed",
             DomainEvent::DiscussionFieldsChanged { .. } => "discussion-fields-changed",
             DomainEvent::DiscussionArchived { .. } => "discussion-archived",
+            DomainEvent::DiscussionRestored { .. } => "discussion-restored",
+            DomainEvent::LanguageReplaced { .. } => "language-replaced",
             DomainEvent::DiscussionDiscarded { .. } => "discussion-discarded",
         }
     }
@@ -407,6 +414,12 @@ pub enum Command {
     EvidenceShow { change: String },
     /// `language show`
     LanguageShow,
+    /// `language replace --stdin` — write the whole LANGUAGE document. The
+    /// params a hook sees carry the size of the text (`bytes`), never the text.
+    LanguageReplace {
+        #[serde(rename = "bytes", serialize_with = "serialize_len")]
+        content: String,
+    },
     /// `discuss list [--archived]`
     DiscussList { archived: bool },
     /// `discuss show <slug>`
@@ -533,6 +546,9 @@ pub enum Command {
     DiscussSeal { slug: String, change: String, last: bool },
     /// `discuss archive <slug>`
     DiscussArchive { slug: String },
+    /// `discuss restore <slug>` — the newest archived record of the slug
+    /// becomes the live one again.
+    DiscussRestore { slug: String },
     /// `discuss discard <slug> [--force]`
     DiscussDiscard { slug: String, force: bool },
     /// `discuss field set <slug> <key>=<value>...` and `discuss field unset
@@ -584,6 +600,24 @@ pub enum Command {
     /// Replace the whole workflow config document (no argv form; the server's
     /// full-document write).
     WorkflowConfigReplace { content: String },
+}
+
+impl crate::discuss::WriteRefusalKind {
+    /// The code of this kind of refusal: the one table for a command that
+    /// reports the kind itself and for a host that answers it with a status.
+    pub fn code(self) -> ErrorCode {
+        match self {
+            Self::NotFound => ErrorCode::NotFound,
+            Self::Invalid => ErrorCode::InvalidArgv,
+            Self::Guard => ErrorCode::Refused,
+        }
+    }
+}
+
+/// Serialize a text field as its size in bytes: what a hook may know of a
+/// document it must not be handed.
+fn serialize_len<S: serde::Serializer>(text: &str, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_u64(text.len() as u64)
 }
 
 /// `plan` outcome — the engine's plan payload as computed (design D3).
@@ -840,6 +874,21 @@ pub struct DiscussArchiveOutcome {
     pub archived_file: String,
 }
 
+/// `discuss restore` outcome.
+#[derive(Debug)]
+pub struct DiscussRestoreOutcome {
+    pub slug: String,
+    /// The name the record had in the archive (no folder).
+    pub restored_from: String,
+}
+
+/// `language replace` outcome.
+#[derive(Debug)]
+pub struct LanguageReplaceOutcome {
+    /// Whether this call created a document that did not exist.
+    pub created: bool,
+}
+
 /// `review add-round` outcome.
 #[derive(Debug)]
 pub struct ReviewRoundOutcome {
@@ -880,6 +929,7 @@ pub enum CommandOutcome {
     EvidenceShow(EvidenceShowOutcome),
     /// Raw LANGUAGE document content (`language show`).
     Language(String),
+    LanguageReplace(LanguageReplaceOutcome),
     DiscussList(Vec<crate::discuss::DiscussionInfo>),
     DiscussShow(DiscussShowOutcome),
     /// `discuss search` hits, already in the spec's order.
@@ -908,6 +958,7 @@ pub enum CommandOutcome {
     DiscussLink(DiscussBindOutcome),
     DiscussSeal(DiscussBindOutcome),
     DiscussArchive(DiscussArchiveOutcome),
+    DiscussRestore(DiscussRestoreOutcome),
     DiscussDiscard(DiscussSubjectOutcome),
     DiscussFieldsEdit(FieldsOutcome),
     ReviewAddRound(ReviewRoundOutcome),
@@ -998,6 +1049,7 @@ pub fn execute(
         }
         Command::EvidenceShow { change } => evidence::show(store, &change),
         Command::LanguageShow => run_language_show(store),
+        Command::LanguageReplace { content } => run_language_replace(store, &content),
         Command::DiscussList { archived } => Ok(CommandOutcome::DiscussList(if archived {
             crate::discuss::list_archived(store)
         } else {
@@ -1104,6 +1156,7 @@ pub fn execute(
                 )),
             }
         }
+        Command::DiscussRestore { slug } => run_discuss_restore(store, slug),
         Command::DiscussDiscard { slug, force } => {
             crate::discuss::discard_discussion(store, &slug, force).map_err(classify)?;
             Ok(CommandOutcome::DiscussDiscard(DiscussSubjectOutcome { slug }))
@@ -1327,6 +1380,11 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             slug: o.slug.clone(),
             occurred_at: at,
         }],
+        CommandOutcome::DiscussRestore(o) => vec![DomainEvent::DiscussionRestored {
+            slug: o.slug.clone(),
+            occurred_at: at,
+        }],
+        CommandOutcome::LanguageReplace(_) => vec![DomainEvent::LanguageReplaced { occurred_at: at }],
         CommandOutcome::DiscussDiscard(o) => vec![DomainEvent::DiscussionDiscarded {
             slug: o.slug.clone(),
             occurred_at: at,
@@ -1731,6 +1789,70 @@ fn run_language_show(store: &dyn Store) -> Result<CommandOutcome, CommandError> 
         None => Err(CommandError::new(
             ErrorCode::NotFound,
             "this project has no LANGUAGE document (shared vocabulary)",
+        )),
+    }
+}
+
+/// `language replace`: write the whole LANGUAGE document.
+///
+/// Sharp-edges audit (language-replace-and-discuss-restore 6.1):
+/// - The text reaches the store and nothing else. A hook sees its size
+///   ([`Command::LanguageReplace`] serializes `bytes`), and the event has no
+///   payload: a vocabulary is the project's own data, and an event goes to
+///   every subscriber.
+/// - Empty and whitespace-only content is refused before the store is asked
+///   anything, so a caller that forgot its stdin cannot blank the document.
+///   The text is otherwise free Markdown and lands as given.
+/// - The engine sets no size limit. On the wire the body of `PUT /language`
+///   is under the server's limit for every request body; a host that embeds
+///   the engine limits what it hands to `dispatch`, as for an artifact.
+/// - The write is whole and has no merge: two writers that read the same
+///   document overwrite each other unless the store refuses the older one.
+///   A store port write names the version it read; the route is editor-only
+///   and is not a policy key.
+fn run_language_replace(store: &dyn Store, content: &str) -> Result<CommandOutcome, CommandError> {
+    if content.trim().is_empty() {
+        return Err(CommandError::new(
+            ErrorCode::InvalidArgv,
+            "the LANGUAGE document content is empty — give the whole document on stdin",
+        ));
+    }
+    let created = store.read_language().is_none();
+    store.write_language(content).map_err(classify)?;
+    Ok(CommandOutcome::LanguageReplace(LanguageReplaceOutcome { created }))
+}
+
+/// `discuss restore`: the newest archived record of the slug goes back to the
+/// live set.
+///
+/// Sharp-edges audit (language-replace-and-discuss-restore 6.1):
+/// - The slug is checked to be one name before any read ([`crate::discuss::restore`]),
+///   so it cannot point at another location; a store finds the archived record
+///   by matching stored names against the slug, never by joining it into a path
+///   or a key of the archive.
+/// - A live record of the slug refuses the restore: nothing is overwritten.
+/// - The move is atomic in every store: one rename on the file system, one
+///   commit of a put and a delete on a store port — the live key expected
+///   absent, the archived key at the version read — and the worktree overlay
+///   hands it to the main copy. It never leaves two records or none.
+/// - There is no parameter to pick a record: the newest one is the one a slug
+///   read shows, so the caller restores what `discuss show` displayed.
+/// - The content is not changed, `hold` included: a record that meets the
+///   auto-archive rule again is archived again by the next closing step.
+/// - On the wire the route is editor-only, like every write.
+fn run_discuss_restore(store: &dyn Store, slug: String) -> Result<CommandOutcome, CommandError> {
+    let restored = crate::discuss::restore(store, &slug).map_err(|e| {
+        // The refusals of a restore are part of its contract, so they carry
+        // their own codes instead of the plain `error` other discussion writes
+        // file a `WriteRefusal` under.
+        let code = e.downcast_ref::<crate::discuss::WriteRefusal>().map_or(ErrorCode::Error, |r| r.kind.code());
+        CommandError { code, message: e.to_string(), source: Some(e) }
+    })?;
+    match restored {
+        Some(restored_from) => Ok(CommandOutcome::DiscussRestore(DiscussRestoreOutcome { slug, restored_from })),
+        None => Err(CommandError::new(
+            ErrorCode::NotFound,
+            format!("discussion '{slug}' has no archived record to restore"),
         )),
     }
 }

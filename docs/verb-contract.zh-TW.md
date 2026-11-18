@@ -67,7 +67,7 @@
 
 ## <a id="verb-reference"></a>動詞、旗標與 `--json` 欄位
 
-這一節列出認領、落地回報、自由欄位與 evidence 的動詞、`auth login` 的登入方式旗標，以及 `list --json` 與 `show --json` 的選填欄位。除了 `auth login` 與 `claim`（它們只用在遠端專案），這些動詞與旗標在本機專案與遠端專案都能用，輸出相同。每個動詞都接受 `--no-color`。
+這一節列出認領、共用詞彙文件的寫入、討論搬回、落地回報、自由欄位與 evidence 的動詞、`auth login` 的登入方式旗標，以及 `list --json` 與 `show --json` 的選填欄位。除了 `auth login` 與 `claim`（它們只用在遠端專案），這些動詞與旗標在本機專案與遠端專案都能用，輸出相同。每個動詞都接受 `--no-color`。
 
 ### `speclink evidence show <變更>`
 
@@ -122,6 +122,33 @@ async beforeCommand({ identity, command, params }, { read }) {
 範例刻意接住讀取失敗。掛鉤丟出例外時，這次呼叫會以掛鉤的錯誤結束，蓋掉釋放本身的訊息（例如「找不到變更」）。還沒有識別的時候留下的認領沒有 `byId`，範例這時比對名稱，所以認領的人一定放得掉。
 
 要知道誰認領了一個變更，讀 `speclink show <變更> --json` 的 `claimed`，見[下面的欄位說明](#verb-reference)。
+
+### `speclink language replace --stdin`
+
+把 stdin 的內容整份寫成專案的共用詞彙文件（`LANGUAGE.md`）。文件不存在時建立，存在時整份取代，不做合併。
+
+- 旗標：`--stdin`（必填）、`--json`。沒有 `--stdin` 是用法錯誤。
+- 要改一個詞條：先用 `speclink language show` 讀出全文，修改後整份寫回。讀出、修改、寫回之間不要隔著其他步驟。
+- 取代成功時輸出 `✓ Replaced the LANGUAGE document`。這次呼叫建立了原本不存在的文件時，輸出 `✓ Created the LANGUAGE document`。
+- `--json` 輸出 `{"created":true}`。`created` 表示這次呼叫是否建立了原本不存在的文件。
+- 內容是空的或只有空白時拒絕，以非零結束，文件不變。訊息寫到 stderr，stdout 沒有輸出。
+- 有寫入權限就能用，不需要改工作流政策的權限。
+- 掛鉤收到的命令名稱是 `language-replace`。`params` 只有內文的位元組數（`bytes`），沒有內文。成功後的事件是 `language-replaced`。
+- 連到還沒有這個端點的舊版 Server 時以非零結束，訊息說明這台 Server 不支援這個動詞。
+
+### `speclink discuss restore <slug>`
+
+把已封存的討論記錄搬回進行中。用在討論封存錯了的時候，例如最後一刀的旗標下錯，記錄跟著變更一起被封存。
+
+- 旗標：`--json`。
+- 同一個 slug 有多份封存時，搬回最新的一份，也就是 `speclink discuss show <slug>` 讀到的那一份。其他的留在封存。記錄的內容不變。
+- 成功時輸出兩行：`✓ Restored discussion: <slug>` 與 `  From: <封存時的檔名>`。
+- `--json` 輸出 `{"slug":"board-search-bar","restoredFrom":"2026-11-10-board-search-bar.md"}`。
+- 同一個 slug 已經有進行中的記錄時拒絕；沒有封存的記錄時回報找不到。兩種情況都以非零結束，什麼都不寫。
+- 搬回不改記錄的內容，保留旗標也不會補回來。搬回之後接著做原本被擋住的那一步：再轉出一個變更，或繼續討論。
+- 繼續討論、轉出變更、`discuss link` 與 `discuss seal` 遇到已封存的討論時，錯誤訊息會指向這個動詞。
+- 掛鉤收到的命令名稱是 `discuss-restore`，slug 在 `params.slug`。成功後的事件是 `discussion-restored`。
+- 連到還沒有這個端點的舊版 Server 時以非零結束，訊息說明這台 Server 不支援這個動詞。
 
 ### `speclink change landed <變更>`
 
@@ -456,6 +483,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | POST | `/discussions/{slug}/rounds` | editor | 新增一輪（`speclink discuss add-round`） |
 | POST | `/discussions/{slug}/conclude` | editor | 寫結論（`speclink discuss conclude`） |
 | POST | `/discussions/{slug}/archive` | editor | 封存討論（`speclink discuss archive`） |
+| POST | `/discussions/{slug}/restore` | editor | 把已封存的討論搬回進行中（`speclink discuss restore`） |
 | POST | `/discussions/{slug}/promote` | editor | 轉為變更（`speclink discuss promote`） |
 | POST | `/discussions/{slug}/link` | editor | 把既有變更連到這個討論（`speclink discuss link`） |
 | POST | `/discussions/{slug}/seal` | editor | 內容寫好後，把討論標為已轉出變更（`speclink discuss seal`） |
@@ -474,6 +502,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | GET | `/archived/{datedName}/capabilities` | reader | 該次封存動到的 capability 名稱 |
 | GET | `/search?q=<文字>` | reader | 桌面 app 的全文搜尋（只搜在途的變更與討論） |
 | GET | `/language` | reader | 共用詞彙文件（`speclink language show`） |
+| PUT | `/language` | editor | 整份寫入共用詞彙文件（`speclink language replace`） |
 | GET | `/config` | reader | 工作流設定原文與修訂號 |
 | PUT | `/config` | editor | 寫工作流設定（`speclink workflow-config set`） |
 | GET | `/board-order` | reader | 看板順序 |
@@ -529,8 +558,8 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 | `change-created`、`artifact-created`、`task-completed`、`task-uncompleted`、`task-moved`、`change-claimed`、`change-claim-released`、`change-marked-in-progress`、`change-in-progress-removed`、`change-depends-changed`、`change-schema-changed`、`change-ranked`、`change-fields-changed`、`change-landed`、`change-discarded` | `change` | 變更名稱 |
 | `review-round-added`、`review-stamped`、`review-discarded`、`verify-round-added`、`verify-stamped`、`verify-discarded` | `change` | 變更名稱 |
 | `change-archived` | `spec` | 變更名稱 |
-| `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-archived`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
-| 其他（例如匯入的 `scope-imported`） | `unknown` | 空字串 |
+| `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-archived`、`discussion-restored`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
+| 其他（例如匯入的 `scope-imported`、寫入共用詞彙文件的 `language-replaced`） | `unknown` | 空字串 |
 
 - 審查站與驗證站的六種事件都歸到變更：新增一輪、蓋章、丟棄工單，`resourceId` 是變更名稱。用戶端收到後重新讀取那個變更，就拿得到新的關卡狀態。
 - `change-landed` 的 payload 有 `change`、`commit`，以及這次有回報分支時才出現的 `branch`。
@@ -626,21 +655,25 @@ If-Match: 2
 | `POST /discussions/{slug}/link` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
 | `POST /discussions/{slug}/seal` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
 | `POST /discussions/{slug}/archive` | 無 | `{"archivedTo":"discussions/archive/<檔名>"}` |
+| `POST /discussions/{slug}/restore` | 無 | `{"slug":"board-search-bar","restoredFrom":"2026-11-10-board-search-bar.md"}` |
 | `DELETE /discussions/{slug}?force=true` | 無 | `{"slug":"board-search-bar"}` |
 
 - `POST /discussions`：`slug` 選填，省略時由 `topic` 推導；必須是小寫英數字以單一連字號分隔，不合格回 400 `invalid_argument`。選填 `kind` 目前只接受 `improve`。選填 `fields` 是建立時就帶上的自由欄位。
 - `conclude`：`hold: true` 表示結論之後記錄保留在途，還欠尚未建立的變更。回應的 `restaleFlagged` 列出因重寫結論而被打回的變更；`autoArchived: true` 只在結論順便封存了記錄時出現。
 - `promote`：`name` 選填；選填的 `fields` 是新變更一開始就帶的自由欄位。`promote` 與 `seal` 都接受選填的 `last: true`，表示這是結論規劃的最後一個變更，會解除記錄的保留旗標。
 - `seal`：變更必須先用 `link` 連到這個討論，否則回 409 `refused`。
+- `POST /discussions/{slug}/restore`：搬回同一個 slug 最新的一份封存記錄，內容不變；`restoredFrom` 是它封存時的檔名。同一個 slug 已有進行中的記錄時回 409 `refused`；沒有封存的記錄時回 404 `not_found`。
 - `DELETE /discussions/{slug}`：`force` 預設 `false`。已有輪的討論不帶 `force=true` 會回 409 `refused`；封存的討論不能刪，也回 409 `refused`。
 
 ### 專案層資料
 
 | 端點 | 請求 body | 成功回應 |
 | --- | --- | --- |
+| `PUT /language` | `{"content":"# Language\n"}` | `{"created":true}` |
 | `PUT /config` | `{"content":"schema: spec-driven\n","expectedRevision":16}` | `{"revision":17}` |
 | `PUT /board-order`（加 `If-Match: "16"`） | `{"content":"{\"changes\":{\"add-logout\":\"a\"}}"}` | `{"revision":17}` |
 
+- `PUT /language` 收整份共用詞彙文件，整份取代；`created` 表示這次是否建立了原本不存在的文件。`content` 是空的或只有空白時回 400 `invalid_argument`，文件不變。有寫入權限就能寫，不需要改工作流政策的權限。
 - `PUT /config` 收整份設定文件；Server 先解析，解析不了回 422 `invalid_config`。
 - `POST /context` 的 body 可帶 `change`，只取這個變更的文件；送 `{}` 就取全部。回應有 `snapshotId`、`digest` 與 `documents`，每份文件有 `path`、`content`、`revision` 與 `digest`。CLI 用它把 Server 上的文件鏡像到本機的唯讀目錄 `.speclink/context/`。
 - 看板順序的 `content` 是一段 JSON 文字，形如 `{"changes":{"<變更>":"<排序鍵>"},"discussions":{…}}`。`PUT /board-order` 原樣存下內容。`GET /plan` 與 `POST /changes/{name}/rank` 會讀它，看不懂的那一段當作沒有排序；`rank` 寫回時只保留在途變更的排序鍵，討論那一段原樣帶回。

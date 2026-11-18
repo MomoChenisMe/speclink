@@ -64,6 +64,8 @@ pub enum DiscussCommands {
     },
     /// Archive a discussion (move to discussions/archive/<created>-<slug>.md)
     Archive { slug: String, #[arg(long)] json: bool },
+    /// Restore an archived discussion to the live set (the newest archived record of the slug)
+    Restore { slug: String, #[arg(long)] json: bool },
     /// Discard a live discussion (delete the file; --force required once rounds exist)
     Discard {
         slug: String,
@@ -121,6 +123,7 @@ impl DiscussArgs {
             DiscussCommands::AddRound { .. } => "discuss add-round",
             DiscussCommands::Conclude { .. } => "discuss conclude",
             DiscussCommands::Archive { .. } => "discuss archive",
+            DiscussCommands::Restore { .. } => "discuss restore",
             DiscussCommands::Discard { .. } => "discuss discard",
             DiscussCommands::Promote { .. } => "discuss promote",
             DiscussCommands::Link { .. } => "discuss link",
@@ -140,6 +143,7 @@ impl DiscussArgs {
             | DiscussCommands::Show { .. }
             | DiscussCommands::Search { .. }
             | DiscussCommands::Archive { .. }
+            | DiscussCommands::Restore { .. }
             | DiscussCommands::Discard { .. }
             | DiscussCommands::Promote { .. }
             | DiscussCommands::Link { .. }
@@ -177,6 +181,7 @@ impl ToCommand for DiscussArgs {
                 hold: *hold,
             },
             DiscussCommands::Archive { slug, .. } => Command::DiscussArchive { slug: slug.clone() },
+            DiscussCommands::Restore { slug, .. } => Command::DiscussRestore { slug: slug.clone() },
             DiscussCommands::Discard { slug, force, .. } => {
                 Command::DiscussDiscard { slug: slug.clone(), force: *force }
             }

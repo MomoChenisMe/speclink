@@ -17,7 +17,8 @@ use speclink_protocol::command::{
     BindDiscussionResponse, ClaimReleaseResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
     FreeFields, SetFieldsRequest, SetFieldsResponse,
-    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, DiscussRestoreResponse, InProgressRemoveResponse,
+    LanguageReplaceRequest, LanguageReplaceResponse,
     MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse,
     PutArtifactRequest, PutArtifactResponse, RankChangeRequest, RankChangeResponse,
     ReportLandedRequest, ReportLandedResponse, ReviewScopeEntryDto, ReviewTicketResponse,
@@ -45,6 +46,23 @@ const STRICT_PLAN_UNSUPPORTED: &str =
 
 /// What `claim --release` says to a server that has no release endpoint.
 const CLAIM_RELEASE_UNSUPPORTED: &str = "this server does not support claim --release — update the server";
+
+/// What `language replace` says to a server that has no write endpoint for
+/// the LANGUAGE document.
+const LANGUAGE_REPLACE_UNSUPPORTED: &str = "this server does not support language replace — update the server";
+
+/// What `discuss restore` says to a server that has no restore endpoint.
+const DISCUSS_RESTORE_UNSUPPORTED: &str = "this server does not support discuss restore — update the server";
+
+/// A 404 with no engine reason is a server's answer for a path it does not
+/// have — a server from before the endpoint — so it becomes `unsupported`.
+/// The engine's own `not_found` carries a reason, and keeps its message.
+fn or_unsupported(e: RemoteError, unsupported: &str) -> RemoteError {
+    match (e.status, &e.reason) {
+        (Some(404), None) => RemoteError { message: unsupported.to_string(), ..e },
+        _ => e,
+    }
+}
 
 /// `text` percent-encoded as one path segment: every byte outside RFC 3986's
 /// unreserved set is encoded, so a `/`, `?`, `#` or space in a name stays
@@ -303,6 +321,13 @@ impl Client {
         self.get("/language")
     }
 
+    /// `PUT /language` — write the whole LANGUAGE document; `created` says
+    /// whether the server had none before.
+    pub fn replace_language(&self, content: &str) -> Result<LanguageReplaceResponse, RemoteError> {
+        let body = LanguageReplaceRequest { content: content.to_string() };
+        self.send("PUT", "/language", Some(&body), &[]).map_err(|e| or_unsupported(e, LANGUAGE_REPLACE_UNSUPPORTED))
+    }
+
     /// `GET /config`
     pub fn config(&self) -> Result<ConfigResponse, RemoteError> {
         self.get("/config")
@@ -535,12 +560,8 @@ impl Client {
     /// have — a server from before this endpoint. An unknown change is the
     /// engine's own `not_found`, and keeps its message.
     pub fn release_claim(&self, name: &str) -> Result<ClaimReleaseResponse, RemoteError> {
-        self.send::<ClaimReleaseResponse, Empty>("DELETE", &format!("/changes/{name}/claim"), None, &[]).map_err(
-            |e| match (e.status, &e.reason) {
-                (Some(404), None) => RemoteError { message: CLAIM_RELEASE_UNSUPPORTED.to_string(), ..e },
-                _ => e,
-            },
-        )
+        self.send::<ClaimReleaseResponse, Empty>("DELETE", &format!("/changes/{name}/claim"), None, &[])
+            .map_err(|e| or_unsupported(e, CLAIM_RELEASE_UNSUPPORTED))
     }
 
     /// `POST /changes/{name}/depends` — declare (or with `remove`, drop) the
@@ -939,6 +960,26 @@ impl Client {
     /// `POST /discussions/{slug}/archive`
     pub fn discussion_archive(&self, slug: &str) -> Result<ArchiveDiscussionResponse, RemoteError> {
         self.post(&format!("/discussions/{slug}/archive"), &Empty {})
+    }
+
+    /// `POST /discussions/{slug}/restore` — the newest archived record of the
+    /// slug becomes the live one again.
+    ///
+    /// The three names that cannot travel as a path segment ([`encode_segment`])
+    /// are refused here: the server's answer for the path they make is a 404
+    /// with no engine reason, which would read as a server without the
+    /// endpoint.
+    pub fn restore_discussion(&self, slug: &str) -> Result<DiscussRestoreResponse, RemoteError> {
+        if matches!(slug, "" | "." | "..") {
+            return Err(RemoteError {
+                message: format!("invalid slug '{slug}' — a discussion slug is one name, not a path"),
+                reason: None,
+                status: None,
+                evidence: None,
+            });
+        }
+        self.post(&format!("/discussions/{}/restore", encode_segment(slug)), &Empty {})
+            .map_err(|e| or_unsupported(e, DISCUSS_RESTORE_UNSUPPORTED))
     }
 
     /// `POST /discussions/{slug}/promote` — `last` marks the spun-out change as

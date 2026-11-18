@@ -693,7 +693,9 @@ rules:
         fn list_live_discussions(&self) -> Vec<DiscussionDoc> { unreachable!() }
         fn list_archived_discussions(&self) -> Vec<DiscussionDoc> { unreachable!() }
         fn archive_discussion(&self, _: &str, _: &str) -> anyhow::Result<Option<String>> { unreachable!() }
+        fn restore_discussion(&self, _: &str) -> anyhow::Result<Option<String>> { unreachable!() }
         fn read_language(&self) -> Option<String> { unreachable!() }
+        fn write_language(&self, _: &str) -> anyhow::Result<()> { unreachable!() }
     }
 
     #[test]

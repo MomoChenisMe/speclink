@@ -468,7 +468,7 @@ fn load_live(store: &dyn Store, slug: &str) -> Result<String> {
         Some(t) => Ok(t),
         None => {
             if store.archived_discussion_exists(slug) {
-                bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to continue it");
+                bail!("discussion '{slug}' is archived — run `speclink discuss restore {slug}` to continue it");
             }
             bail!("discussion '{slug}' not found — run `speclink discuss new` first")
         }
@@ -1051,7 +1051,7 @@ pub fn promote_with_fields(
     match info(store, slug) {
         None => bail!("discussion '{slug}' not found — run `speclink discuss new` first"),
         Some(i) if i.archived => {
-            bail!("discussion '{slug}' is archived — move it out of discussions/archive/ to promote it")
+            bail!("discussion '{slug}' is archived — run `speclink discuss restore {slug}` to promote it")
         }
         Some(_) => {}
     }
@@ -1102,7 +1102,7 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
         }
         Some(i) if i.archived => {
             return Err(WriteRefusal::guard(format!(
-                "discussion '{slug}' is archived — move it out of discussions/archive/ to link it"
+                "discussion '{slug}' is archived — run `speclink discuss restore {slug}` to link it"
             )))
         }
         Some(_) => {}
@@ -1134,7 +1134,7 @@ pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<(
         }
         Some(i) if i.archived => {
             return Err(WriteRefusal::guard(format!(
-                "discussion '{slug}' is archived — move it out of discussions/archive/ to seal it"
+                "discussion '{slug}' is archived — run `speclink discuss restore {slug}` to seal it"
             )))
         }
         Some(_) => {}
@@ -1225,6 +1225,51 @@ pub fn archive_discussion(store: &dyn Store, slug: &str) -> Result<Option<String
         .filter(|c| !c.is_empty())
         .unwrap_or_else(util::today);
     store.archive_discussion(slug, &created)
+}
+
+/// Whether `name` is one name and not a path: not empty, not a dot name, no
+/// separator. It is not the slug format (that is [`is_valid_slug_override`]):
+/// it only keeps a path away from a store, which may find a record by probing
+/// a location.
+fn is_single_name(name: &str) -> bool {
+    !matches!(name, "" | "." | "..") && !name.contains(['/', '\\'])
+}
+
+/// Whether an archived record stored as `<date>-<slug>-<N>` is a same-day
+/// reuse of `slug`. The same name is also what another discussion gets whose
+/// own slug ends in `-<N>`, so a record that states its slug belongs to the
+/// slug it states. A record that states none is read by its name. The line
+/// is one a person can edit: an empty value states no slug, and a quoted
+/// value is the slug inside the quotes.
+pub fn is_reuse_of(text: &str, slug: &str) -> bool {
+    let stated = DiscussionHead::parse(text).slug.unwrap_or_default();
+    let stated = stated.trim();
+    let stated = match stated.strip_prefix('\'').and_then(|rest| rest.strip_suffix('\'')) {
+        Some(inner) => inner.to_string(),
+        None => util::yaml_unscalar(stated),
+    };
+    stated.is_empty() || stated == slug
+}
+
+/// Move the newest archived record of `slug` back to the live set, content
+/// unchanged — the way back for a record that was archived too early. Returns
+/// the name it had in the archive, or `None` when the slug has no archived
+/// record. Refuses before any write when `slug` is not a name or a live record
+/// already holds it.
+pub fn restore(store: &dyn Store, slug: &str) -> Result<Option<String>> {
+    if !is_single_name(slug) {
+        return Err(WriteRefusal::invalid(format!(
+            "invalid slug '{}' — a discussion slug is one name, not a path",
+            slug.escape_debug()
+        )));
+    }
+    if store.live_discussion_exists(slug) {
+        return Err(WriteRefusal::guard(format!(
+            "discussion '{slug}' already exists as a live record at {} — nothing was restored",
+            util::to_slash(&store.live_discussion_path(slug))
+        )));
+    }
+    store.restore_discussion(slug)
 }
 
 /// Delete a live discussion outright — the exit for a record that turned out not to be

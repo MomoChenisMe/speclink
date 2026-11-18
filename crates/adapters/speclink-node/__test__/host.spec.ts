@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { createEngine, createHost, StoreConflictError } from '../index.js'
 import { cliJson, rejection, repoRoot } from './helpers'
@@ -1335,5 +1335,134 @@ describe('host output for a store with no local folder', () => {
     expect(withSpecs.message).toContain('--specs')
     expect(withSpecs.message).toContain('--detail')
     expect(totalCalls(port)).toBe(before)
+  })
+})
+
+// verb-contract「詞彙文件的寫入動詞」、discussion-docs「討論以 restore 動詞搬回進行中」:
+// the two verbs run in a host with no local spec files, and ask beforeCommand first.
+describe('language replace and discuss restore through host.dispatch', () => {
+  type Asked = { command: string; params: unknown }
+
+  function hostThatRecords(port: ReturnType<typeof memoryPort>, deny: Record<string, string> = {}) {
+    const asked: Asked[] = []
+    const events: { command: string; names: string[] }[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: ({ command, params }) => {
+          asked.push({ command, params })
+          return command in deny ? { allow: false, reason: deny[command] } : undefined
+        },
+        afterCommit: (info) => {
+          events.push({ command: info.command, names: info.events.map((e) => e.name) })
+        },
+      },
+    })
+    const run = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+    return { run, asked, events }
+  }
+
+  it('writes the LANGUAGE document from stdin, and language show reads the same content back', async () => {
+    const port = memoryPort()
+    const { run, asked, events } = hostThatRecords(port)
+    const second = '# Language\n\n## 詞彙\n'
+
+    expect(await run(['language', 'replace', '--stdin'], '# Language\n')).toEqual({ created: true })
+    expect(await run(['language', 'show'])).toEqual({ output: '# Language\n' })
+    expect(await run(['language', 'replace', '--stdin', '--json'], second)).toEqual({ created: false })
+    expect(await run(['language', 'show'])).toEqual({ output: second })
+    expect(port.doc('s1', 'LANGUAGE.md')?.content).toBe(second)
+
+    // The hook is asked under the command's own name, and sees the size of the
+    // text, never the text.
+    expect(asked.filter((a) => a.command === 'language-replace')).toEqual([
+      { command: 'language-replace', params: { bytes: 11 } },
+      { command: 'language-replace', params: { bytes: 22 } },
+    ])
+    // afterCommit runs after dispatch resolves: wait for it, not for a fixed time.
+    await vi.waitFor(() =>
+      expect(events).toEqual([
+        { command: 'language-replace', names: ['language-replaced'] },
+        { command: 'language-replace', names: ['language-replaced'] },
+      ]),
+    )
+  })
+
+  it('rejects empty content as invalid_argv and leaves the document as it was', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'LANGUAGE.md': '# Old\n' })
+    const { run } = hostThatRecords(port)
+    const commits = port.calls.commit
+
+    for (const stdin of ['', '   \n\n', undefined]) {
+      const err = await rejection(run(['language', 'replace', '--stdin'], stdin))
+      expect(err.code).toBe('invalid_argv')
+      expect(err.message).toContain('empty')
+    }
+    // Without --stdin the verb is a usage error.
+    expect((await rejection(run(['language', 'replace'], '# New\n'))).code).toBe('invalid_argv')
+
+    expect(port.doc('s1', 'LANGUAGE.md')?.content).toBe('# Old\n')
+    expect(port.calls.commit).toBe(commits)
+  })
+
+  it('restores an archived discussion, and the discussion is in the list again', async () => {
+    const port = memoryPort()
+    const { run, asked, events } = hostThatRecords(port)
+    await run(['discuss', 'new', 'Topic', '--slug', 'topic'])
+    await run(['discuss', 'conclude', 'topic', '--stdin', '--hold'], '**Decision**: ship it\n')
+    const record = port.doc('s1', 'discussions/topic.md')?.content
+    const archived = (await run(['discuss', 'archive', 'topic'])) as { archived_to: string }
+    const file = archived.archived_to.replace('discussions/archive/', '')
+    expect(port.doc('s1', 'discussions/topic.md')).toBeUndefined()
+    const commits = port.calls.commit
+
+    const restored = await run(['discuss', 'restore', 'topic', '--json'])
+
+    expect(restored).toEqual({ slug: 'topic', restoredFrom: file })
+    expect(file).toMatch(/^\d{4}-\d{2}-\d{2}-topic\.md$/)
+    expect(port.doc('s1', 'discussions/topic.md')?.content).toBe(record)
+    expect(port.doc('s1', `archive/discussions/${file}`)).toBeUndefined()
+    // One commit carries the two writes.
+    expect(port.calls.commit).toBe(commits + 1)
+    expect(port.commits.at(-1)!.commit.ops.map((op) => op.op).sort()).toEqual(['delete', 'put'])
+    const listed = (await run(['discuss', 'list', '--json'])) as { discussions: { slug: string }[] }
+    expect(listed.discussions.map((d) => d.slug)).toEqual(['topic'])
+    expect(await run(['discuss', 'list', '--archived', '--json'])).toEqual({ discussions: [] })
+    expect(asked.filter((a) => a.command === 'discuss-restore')).toEqual([
+      { command: 'discuss-restore', params: { slug: 'topic' } },
+    ])
+    await vi.waitFor(() =>
+      expect(events.at(-1)).toEqual({ command: 'discuss-restore', names: ['discussion-restored'] }),
+    )
+
+    // A live record blocks a second restore; a slug with no archived record is not found.
+    expect((await rejection(run(['discuss', 'restore', 'topic']))).code).toBe('refused')
+    const ghost = await rejection(run(['discuss', 'restore', 'ghost']))
+    expect(ghost.code).toBe('not_found')
+    expect(ghost.message).toContain('ghost')
+  })
+
+  it('lets beforeCommand refuse both verbs under their own command names', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'LANGUAGE.md': '# Old\n', 'archive/discussions/2026-11-10-topic.md': 'an archived record\n' })
+    const { run, asked } = hostThatRecords(port, {
+      'language-replace': '只有維護者可以改詞彙表',
+      'discuss-restore': '封存的討論不開放搬回',
+    })
+    const commits = port.calls.commit
+
+    const language = await rejection(run(['language', 'replace', '--stdin'], '# New\n'))
+    const restore = await rejection(run(['discuss', 'restore', 'topic']))
+
+    expect([language.code, language.message]).toEqual(['refused', '只有維護者可以改詞彙表'])
+    expect([restore.code, restore.message]).toEqual(['refused', '封存的討論不開放搬回'])
+    expect(asked).toEqual([
+      { command: 'language-replace', params: { bytes: 6 } },
+      { command: 'discuss-restore', params: { slug: 'topic' } },
+    ])
+    expect(port.doc('s1', 'LANGUAGE.md')?.content).toBe('# Old\n')
+    expect(port.doc('s1', 'discussions/topic.md')).toBeUndefined()
+    expect(port.calls.commit).toBe(commits)
   })
 })

@@ -11,8 +11,8 @@ use crate::port_exec::{self, AtVersion, ExecError, PortExecution};
 use crate::transfer::{self, SentBundle, TransferError, UnreadBundle};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use speclink_core::command::{Command, CommandOutcome, ErrorCode, InstructionsOutcome};
-use speclink_core::discuss::{WriteRefusal, WriteRefusalKind};
+use speclink_core::command::{Command, CommandError, CommandOutcome, ErrorCode, InstructionsOutcome};
+use speclink_core::discuss::WriteRefusal;
 use speclink_core::config::WorkflowConfig;
 use speclink_core::init::ASSET_VERSION;
 use speclink_protocol::binding::{Actor as BindingActor, BindingResponse, Capabilities, ScopeRef};
@@ -21,7 +21,8 @@ use speclink_protocol::command::{
     ArchiveDiscussionResponse, ArchiveResponse, ArchivedDiscussion, ArchivedSpec, BindDiscussionRequest,
     BindDiscussionResponse, ClaimReleaseResponse, ClaimResponse, ConcludeDiscussionRequest, ConcludeDiscussionResponse,
     CreateChangeRequest, CreateChangeResponse, CreateDiscussionRequest, CreateDiscussionResponse,
-    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, InProgressRemoveResponse,
+    DiscardDiscussionResponse, DiscardResponse, DiscardReviewResponse, DiscussRestoreResponse, InProgressRemoveResponse,
+    LanguageReplaceRequest, LanguageReplaceResponse,
     MarkInProgressRequest, MoveTaskRequest, MoveTaskResponse, PromoteDiscussionRequest, PromoteDiscussionResponse, PutArtifactRequest, PutArtifactResponse,
     RankChangeRequest, RankChangeResponse, ReportLandedRequest, ReportLandedResponse, ReviewTicketResponse,
     SetDependsRequest, SetDependsResponse, SetFieldsRequest, SetFieldsResponse,
@@ -564,6 +565,19 @@ pub(crate) fn language(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     match execution.outcome {
         CommandOutcome::Language(content) => Ok(ok(&LanguageResponse { content }, etag)),
         _ => Err(wrong_outcome("language")),
+    }
+}
+
+/// `PUT /language`: the whole LANGUAGE document. It is an ordinary write —
+/// the editor role, no policy-key check. The door takes a body its host
+/// already read, so the body's size is under the host's limit for a request
+/// body, as for every other write.
+pub(crate) fn put_language(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let body: LanguageReplaceRequest = req.body()?;
+    let (execution, etag) = req.run(Command::LanguageReplace { content: body.content })?;
+    match execution.outcome {
+        CommandOutcome::LanguageReplace(o) => Ok(ok(&LanguageReplaceResponse { created: o.created }, etag)),
+        _ => Err(wrong_outcome("language-replace")),
     }
 }
 
@@ -1136,9 +1150,7 @@ fn run_discussion_write(req: &Request<'_>, cmd: Command) -> Result<(PortExecutio
         };
         let error = HttpError::from(e);
         match kind {
-            Some(WriteRefusalKind::NotFound) => HttpError::not_found(error.message),
-            Some(WriteRefusalKind::Invalid) => HttpError::invalid_argument(error.message),
-            Some(WriteRefusalKind::Guard) => HttpError::refused(error.message),
+            Some(kind) => HttpError::from(CommandError::new(kind.code(), error.message)),
             None => error,
         }
     })
@@ -1258,6 +1270,19 @@ pub(crate) fn archive_discussion(req: &Request<'_>) -> Result<HttpResponse, Http
             etag,
         )),
         _ => Err(wrong_outcome("discuss-archive")),
+    }
+}
+
+/// `POST /discussions/{slug}/restore`: the newest archived record of the slug
+/// is live again. A live record of the slug is 409, no archived record 404 —
+/// the Engine's own codes.
+pub(crate) fn restore_discussion(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    let (execution, etag) = req.run(Command::DiscussRestore { slug: req.param(0) })?;
+    match execution.outcome {
+        CommandOutcome::DiscussRestore(o) => {
+            Ok(ok(&DiscussRestoreResponse { slug: o.slug, restored_from: o.restored_from }, etag))
+        }
+        _ => Err(wrong_outcome("discuss-restore")),
     }
 }
 

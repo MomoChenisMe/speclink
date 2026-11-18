@@ -67,6 +67,7 @@ pub fn is_read(command: &Command) -> bool {
         | Command::DiscussSearch { .. }
         | Command::WorkflowConfigShow => true,
         Command::NewChange { .. }
+        | Command::LanguageReplace { .. }
         | Command::NewArtifact { .. }
         | Command::TaskDone { .. }
         | Command::TaskUndone { .. }
@@ -90,6 +91,7 @@ pub fn is_read(command: &Command) -> bool {
         | Command::DiscussLink { .. }
         | Command::DiscussSeal { .. }
         | Command::DiscussArchive { .. }
+        | Command::DiscussRestore { .. }
         | Command::DiscussDiscard { .. }
         | Command::DiscussFieldsEdit { .. }
         | Command::ReviewAddRound { .. }

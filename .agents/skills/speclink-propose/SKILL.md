@@ -5,7 +5,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -159,7 +159,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
 
    What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back out of the archive.
 
-   Move the record file from `speclink/discussions/archive/` back to `speclink/discussions/` and drop the `<date>-` prefix from its name (the engine's error message points at that path).
+   Run `speclink discuss restore <slug>` to move it back: the record is live again with its content unchanged (the engine's error message names the same verb).
 
    Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 

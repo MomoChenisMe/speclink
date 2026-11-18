@@ -300,6 +300,8 @@ pub fn every_command() -> Vec<Command> {
             | Command::DiscussLink { .. }
             | Command::DiscussSeal { .. }
             | Command::DiscussArchive { .. }
+            | Command::DiscussRestore { .. }
+            | Command::LanguageReplace { .. }
             | Command::DiscussDiscard { .. }
             | Command::ReviewAddRound { .. }
             | Command::ReviewShow { .. }
@@ -377,6 +379,8 @@ pub fn every_command() -> Vec<Command> {
         Command::DiscussLink { slug: s("talk"), change: s("demo") },
         Command::DiscussSeal { slug: s("talk"), change: s("demo"), last: false },
         Command::DiscussArchive { slug: s("talk") },
+        Command::DiscussRestore { slug: s("talk") },
+        Command::LanguageReplace { content: s("# Language\n") },
         Command::DiscussDiscard { slug: s("talk"), force: false },
         Command::ReviewAddRound { change: s("demo"), content: s("round") },
         Command::ReviewShow { change: s("demo") },

@@ -2217,6 +2217,173 @@ fn discuss_archive_ignores_the_hold_flag() {
     assert!(!store.live_discussion_exists("staged"));
 }
 
+// === language replace／discuss restore（language-replace-and-discuss-restore D1、D5） ===
+
+const ARCHIVED_DEMO: &str = "---\nslug: demo-topic\nstatus: promoted\npromoted_to: cut-a\ncreated: 2026-11-10\n---\n\n# Discussion: demo\n\n## Context\n\n背景  \n\n## Rounds\n\n## Conclusion\n\n**Decision**: cut-b later\n";
+
+fn language_store(existing: Option<&str>) -> TestStore {
+    let store = TestStore::default();
+    *store.language.borrow_mut() = existing.map(str::to_string);
+    store
+}
+
+fn replace_language(store: &TestStore, content: &str) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+    execute(store, &ExecutionContext::default(), Command::LanguageReplace { content: content.to_string() })
+}
+
+/// A store whose discussion `demo-topic` was archived the way the engine
+/// archives: under the record's creation date.
+fn archived_demo_store() -> TestStore {
+    let store = TestStore::with_live_discussion("demo-topic", ARCHIVED_DEMO);
+    ok(&store, Command::DiscussArchive { slug: "demo-topic".to_string() });
+    store
+}
+
+fn restore(store: &TestStore, slug: &str) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
+    execute(store, &ExecutionContext::default(), Command::DiscussRestore { slug: slug.to_string() })
+}
+
+#[test]
+fn language_replace_follows_the_spec_example_table() {
+    // verb-contract「詞彙文件的寫入動詞」Example「輸入與結果」：一列一個案例。
+    // (既有文件, stdin, created；None＝拒絕且文件不變)
+    let rows: [(Option<&str>, &str, Option<bool>); 4] = [
+        (Some("# Old\n"), "# Language\n\n## 詞彙\n", Some(false)),
+        (None, "# Language\n", Some(true)),
+        (Some("# Old\n"), "", None),
+        (Some("# Old\n"), "   \n\n", None),
+    ];
+    for (existing, stdin, created) in rows {
+        let store = language_store(existing);
+        match (replace_language(&store, stdin), created) {
+            (Ok((CommandOutcome::LanguageReplace(o), events)), Some(created)) => {
+                assert_eq!(o.created, created, "stdin {stdin:?}");
+                assert_eq!(store.read_language().as_deref(), Some(stdin), "the content lands as given");
+                assert_eq!(kinds(&events), ["language-replaced"]);
+                assert_eq!(*store.language_writes.borrow(), 1, "one write");
+            }
+            (Err(e), None) => {
+                assert_eq!(e.code, ErrorCode::InvalidArgv, "stdin {stdin:?}: {}", e.message);
+                assert!(e.message.contains("empty"), "the message names the empty content: {}", e.message);
+                assert_eq!(store.read_language().as_deref(), existing, "the document is unchanged");
+                assert_eq!(*store.language_writes.borrow(), 0, "zero writes");
+            }
+            (other, _) => panic!("stdin {stdin:?}: unexpected {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn language_replace_writes_the_content_untouched() {
+    // D1：內容原樣寫入，不補也不刪結尾換行；頭尾的空白也留著。
+    for content in ["# L", "\n\n# L\n\n\n", "  # L  \r\n"] {
+        let store = language_store(Some("# Old\n"));
+        replace_language(&store, content).expect("a non-empty document is written");
+        assert_eq!(store.read_language().as_deref(), Some(content));
+    }
+}
+
+#[test]
+fn language_replace_shows_a_hook_the_size_and_never_the_text() {
+    // D1：掛鉤看到的參數只有內文的位元組數。
+    let cmd = Command::LanguageReplace { content: "# 詞彙\n".to_string() };
+    assert_eq!(cmd.name(), "language-replace");
+    assert_eq!(cmd.params(), serde_json::json!({ "bytes": 9 }));
+}
+
+#[test]
+fn discuss_restore_brings_the_record_back_unchanged() {
+    // discussion-docs「搬回被隨行封存的討論」。
+    let store = archived_demo_store();
+
+    let (outcome, events) = restore(&store, "demo-topic").expect("the archived record comes back");
+
+    match outcome {
+        CommandOutcome::DiscussRestore(o) => {
+            assert_eq!(o.slug, "demo-topic");
+            assert_eq!(o.restored_from, "2026-11-10-demo-topic.md", "the name the archive gave it, no folder");
+        }
+        other => panic!("unexpected outcome {other:?}"),
+    }
+    assert_eq!(kinds(&events), ["discussion-restored"]);
+    assert!(matches!(&events[0], DomainEvent::DiscussionRestored { slug, .. } if slug == "demo-topic"));
+    assert_eq!(store.discussion("demo-topic"), ARCHIVED_DEMO, "byte-for-byte");
+    assert!(!store.archived_discussion_exists("demo-topic"));
+    // 搬回之後每個動詞都把它當成進行中的記錄。
+    let (_, events) = ok(
+        &store,
+        Command::DiscussAddRound { slug: "demo-topic".to_string(), mode: "explore".to_string(), content: "再談一輪".to_string() },
+    );
+    assert_eq!(kinds(&events), ["discussion-round-added"]);
+}
+
+#[test]
+fn discuss_restore_refuses_when_a_live_record_exists() {
+    // 「已有進行中的記錄時拒絕」：兩份記錄都逐位元不變。
+    let store = archived_demo_store();
+    store.discussions.borrow_mut().insert("demo-topic".to_string(), "live text\n".to_string());
+
+    let err = restore(&store, "demo-topic").expect_err("a live record blocks the restore");
+
+    assert_eq!(err.code, ErrorCode::Refused, "{}", err.message);
+    assert!(err.message.contains("demo-topic") && err.message.contains("already"), "{}", err.message);
+    assert_eq!(store.discussion("demo-topic"), "live text\n");
+    assert_eq!(store.archived_discussions.borrow().get("demo-topic").map(String::as_str), Some(ARCHIVED_DEMO));
+}
+
+#[test]
+fn discuss_restore_without_an_archived_record_is_not_found() {
+    // 「沒有封存的記錄」：零寫入。
+    let store = archived_demo_store();
+
+    let err = restore(&store, "ghost").expect_err("nothing to restore");
+
+    assert_eq!(err.code, ErrorCode::NotFound, "{}", err.message);
+    assert!(err.message.contains("ghost") && err.message.contains("archived"), "{}", err.message);
+    assert!(!store.live_discussion_exists("ghost"));
+    assert!(store.archived_discussion_exists("demo-topic"), "the other record is untouched");
+}
+
+#[test]
+fn discuss_restore_takes_only_a_name_that_can_be_a_slug() {
+    // 稽核：slug 不能用來指向別的位置——不是單一名稱就在讀寫之前拒絕。
+    let store = archived_demo_store();
+    for slug in ["", ".", "..", "../demo-topic", "archive/2026-11-10-demo-topic", "a\\b"] {
+        let err = restore(&store, slug).expect_err("not a slug");
+        assert_eq!(err.code, ErrorCode::InvalidArgv, "slug {slug:?}: {}", err.message);
+    }
+    assert!(store.archived_discussion_exists("demo-topic"));
+    assert!(store.discussions.borrow().is_empty(), "zero writes");
+}
+
+#[test]
+fn the_archived_refusals_point_at_discuss_restore() {
+    // discussion-docs「已封存的拒絕訊息指向 restore」：四個動詞、同一個指路。
+    let store = archived_demo_store();
+    store.metas.borrow_mut().insert("cut-b".to_string(), "schema: spec-driven\ncreated: 2026-11-12\n".to_string());
+    let slug = || "demo-topic".to_string();
+    let attempts: [(Command, &str); 4] = [
+        (Command::DiscussAddRound { slug: slug(), mode: "explore".to_string(), content: "x".to_string() }, "continue it"),
+        (
+            Command::DiscussPromote { slug: slug(), name: Some("cut-c".to_string()), last: false, fields: Default::default() },
+            "promote it",
+        ),
+        (Command::DiscussLink { slug: slug(), change: "cut-b".to_string() }, "link it"),
+        (Command::DiscussSeal { slug: slug(), change: "cut-b".to_string(), last: false }, "seal it"),
+    ];
+    for (cmd, tail) in attempts {
+        let name = cmd.name();
+        let err = execute(&store, &ExecutionContext::default(), cmd).expect_err("an archived record refuses");
+        assert_eq!(
+            err.message,
+            format!("discussion 'demo-topic' is archived — run `speclink discuss restore demo-topic` to {tail}"),
+            "{name}"
+        );
+        assert!(!err.message.contains("move it out of"), "{name}");
+    }
+    assert_eq!(store.archived_discussions.borrow().get("demo-topic").map(String::as_str), Some(ARCHIVED_DEMO));
+}
+
 #[test]
 fn discuss_discard_reports_discussion_discarded() {
     let store = TestStore::with_live_discussion(
@@ -2418,6 +2585,8 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "discussion-sealed",
         ),
         (DomainEvent::DiscussionArchived { slug: s("d"), occurred_at: at }, "discussion-archived"),
+        (DomainEvent::DiscussionRestored { slug: s("d"), occurred_at: at }, "discussion-restored"),
+        (DomainEvent::LanguageReplaced { occurred_at: at }, "language-replaced"),
         (
             DomainEvent::DiscussionDiscarded { slug: s("d"), occurred_at: at },
             "discussion-discarded",
@@ -2439,7 +2608,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-landed",
         ),
     ];
-    assert_eq!(table.len(), 31, "the coverage table has 31 mutating verbs");
+    assert_eq!(table.len(), 33, "the coverage table has 33 mutating verbs");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2466,6 +2635,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::ArtifactCat { artifact: _, change: _ } => {}
         Command::EvidenceShow { change: _ } => {}
         Command::LanguageShow => {}
+        Command::LanguageReplace { content: _ } => {}
         Command::DiscussList { archived: _ } => {}
         Command::DiscussShow { slug: _ } => {}
         Command::DiscussSearch { terms: _ } => {}
@@ -2502,6 +2672,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
         Command::DiscussLink { slug: _, change: _ } => {}
         Command::DiscussSeal { slug: _, change: _, last: _ } => {}
         Command::DiscussArchive { slug: _ } => {}
+        Command::DiscussRestore { slug: _ } => {}
         Command::DiscussDiscard { slug: _, force: _ } => {}
         Command::ReviewAddRound { change: _, content: _ } => {}
         Command::ReviewShow { change: _ } => {}

@@ -3,8 +3,8 @@
 use serde::Serialize;
 use serde_json::{json, Value};
 use speclink_core::command::{
-    DiscussArchiveOutcome, DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRoundOutcome,
-    DiscussShowOutcome,
+    DiscussArchiveOutcome, DiscussConcludeOutcome, DiscussPromoteOutcome, DiscussRestoreOutcome,
+    DiscussRoundOutcome, DiscussShowOutcome,
 };
 use speclink_core::discuss::{DiscussionHit, DiscussionInfo};
 
@@ -281,6 +281,25 @@ pub fn archive(slug: &str, archived_to: &str, options: RenderOptions) -> Rendere
 /// `discuss archive`, from the engine's result.
 pub fn archived(o: &DiscussArchiveOutcome, options: RenderOptions) -> Rendered {
     archive(&o.slug, &archived_to(&o.archived_file), options)
+}
+
+/// `discuss restore --json`: the slug, and the name the record had in the
+/// archive (no folder).
+pub fn restore_json(o: &DiscussRestoreOutcome) -> Value {
+    json!({ "slug": o.slug, "restoredFrom": o.restored_from })
+}
+
+/// `discuss restore`: the success line, then the archived name.
+pub fn restore_human(o: &DiscussRestoreOutcome, paint: &Paint) -> Text {
+    let mut t = Text::default();
+    outln!(t, "{} Restored discussion: {}", paint.green("✓"), o.slug);
+    outln!(t, "  From: {}", o.restored_from);
+    t
+}
+
+/// `discuss restore`, from the engine's result.
+pub fn restored(o: &DiscussRestoreOutcome, options: RenderOptions) -> Rendered {
+    Rendered::of(options, Some(JsonForm::pretty(&restore_json(o))), |paint| restore_human(o, paint))
 }
 
 /// `discuss discard --json`.
@@ -707,6 +726,30 @@ mod tests {
         assert_eq!(
             discard("topic-live", JSON).stdout,
             "{\n  \"slug\": \"topic-live\",\n  \"status\": \"discarded\"\n}\n"
+        );
+    }
+
+    #[test]
+    fn restore_is_two_lines_and_names_the_archived_record() {
+        // spec discussion-docs「討論以 restore 動詞搬回進行中」的輸出。
+        let o = speclink_core::command::DiscussRestoreOutcome {
+            slug: "demo-topic".to_string(),
+            restored_from: "2026-11-10-demo-topic.md".to_string(),
+        };
+        let plain = restored(&o, RenderOptions::default());
+        assert_eq!(plain.stdout, "✓ Restored discussion: demo-topic\n  From: 2026-11-10-demo-topic.md\n");
+        assert_eq!(plain.stderr, "");
+        assert_eq!(
+            restored(&o, RenderOptions { json: false, color: true }).stdout,
+            "\x1b[32m✓\x1b[0m Restored discussion: demo-topic\n  From: 2026-11-10-demo-topic.md\n"
+        );
+        let want = json!({ "slug": "demo-topic", "restoredFrom": "2026-11-10-demo-topic.md" });
+        assert_eq!(plain.json.as_ref(), Some(&want), "the value is there without --json too");
+        let as_json = restored(&o, JSON);
+        assert_eq!(as_json.json.as_ref(), Some(&want));
+        assert_eq!(
+            as_json.stdout,
+            "{\n  \"restoredFrom\": \"2026-11-10-demo-topic.md\",\n  \"slug\": \"demo-topic\"\n}\n"
         );
     }
 

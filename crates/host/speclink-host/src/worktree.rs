@@ -386,12 +386,20 @@ impl Store for WorktreeOverlay<'_> {
         self.inner.archive_discussion(slug, created)
     }
 
+    fn restore_discussion(&self, slug: &str) -> anyhow::Result<Option<String>> {
+        self.inner.restore_discussion(slug)
+    }
+
     fn read_workflow_config(&self) -> Option<String> {
         self.inner.read_workflow_config()
     }
 
     fn read_language(&self) -> Option<String> {
         self.inner.read_language()
+    }
+
+    fn write_language(&self, content: &str) -> anyhow::Result<()> {
+        self.inner.write_language(content)
     }
 }
 

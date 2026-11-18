@@ -160,6 +160,56 @@ mod tests {
     }
 
     #[test]
+    fn language_replace_takes_the_document_from_stdin_and_needs_the_flag() {
+        // spec verb-contract「詞彙文件的寫入動詞」：內容來自 stdin，沒有 --stdin 是用法錯誤。
+        use speclink_core::command::Command;
+        let given = || VerbInputs { stdin: Some("# Language\n".to_string()), ..VerbInputs::default() };
+        for argv in [&["language", "replace", "--stdin"][..], &["language", "replace", "--stdin", "--json", "--no-color"]] {
+            let verb = parse(argv.iter().copied()).expect("parses");
+            assert_eq!(verb.name(), "language replace", "{argv:?}");
+            assert_eq!(verb.stdin_policy(), StdinPolicy::WhenFlagged { flagged: true }, "{argv:?}");
+            assert_eq!(
+                verb.to_command(given()).expect("converts"),
+                CommandTarget::Command(Command::LanguageReplace { content: "# Language\n".into() }),
+                "{argv:?}"
+            );
+        }
+        // Unread stdin is empty content, which the engine refuses before any write.
+        let unread = parse(["language", "replace", "--stdin"]).unwrap().to_command(VerbInputs::default());
+        assert_eq!(unread.unwrap(), CommandTarget::Command(Command::LanguageReplace { content: String::new() }));
+
+        for argv in [&["language", "replace"][..], &["language", "replace", "--json"]] {
+            let err = parse(argv.iter().copied()).err().unwrap_or_else(|| panic!("{argv:?} must not parse"));
+            assert_eq!((err.kind, err.exit_code), (ParseErrorKind::Usage, 2), "{argv:?}");
+            assert!(
+                err.message.contains("required arguments were not provided") && err.message.contains("--stdin"),
+                "{}",
+                err.message
+            );
+        }
+    }
+
+    #[test]
+    fn discuss_restore_parses_to_a_restore_of_the_slug() {
+        // spec discussion-docs「討論以 restore 動詞搬回進行中」：一個位置參數。
+        use speclink_core::command::Command;
+        for argv in [&["discuss", "restore", "demo"][..], &["discuss", "restore", "demo", "--json"], &["discuss", "restore", "--no-color", "demo"]] {
+            let verb = parse(argv.iter().copied()).expect("parses");
+            assert_eq!(verb.name(), "discuss restore", "{argv:?}");
+            assert_eq!(verb.stdin_policy(), StdinPolicy::Never, "{argv:?}");
+            assert_eq!(
+                verb.to_command(VerbInputs::default()).expect("converts"),
+                CommandTarget::Command(Command::DiscussRestore { slug: "demo".into() }),
+                "{argv:?}"
+            );
+        }
+        for argv in [&["discuss", "restore"][..], &["discuss", "restore", "a", "b"]] {
+            let err = parse(argv.iter().copied()).err().unwrap_or_else(|| panic!("{argv:?} must not parse"));
+            assert_eq!((err.kind, err.exit_code), (ParseErrorKind::Usage, 2), "{argv:?}");
+        }
+    }
+
+    #[test]
     fn list_detail_goes_with_json_and_never_with_specs() {
         // spec verb-contract「清單的詳細輸出」：三個解析情境。兩條檢查在這個共用的
         // 解析裡，CLI 與宿主套件因此給出同一個用法錯誤。

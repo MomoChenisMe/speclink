@@ -311,6 +311,26 @@ mod tests {
     }
 
     #[test]
+    fn language_replace_and_discuss_restore_are_listed() {
+        // language-replace-and-discuss-restore D3：清單由同一份定義產生，自動帶出兩個新動詞。
+        for verb in ["language replace", "discuss restore"] {
+            assert!(leaves().contains(verb), "{verb}");
+            assert!(listed().contains(verb), "{verb}");
+        }
+        let description = tool_definition().description;
+        let line = |start: &str| {
+            description.lines().find(|l| l.starts_with(start)).unwrap_or_else(|| panic!("a line for {start}")).to_string()
+        };
+        // 內容放在 stdin，和其他帶 --stdin 的動詞相同。
+        assert!(line("- language replace ").contains("--stdin"), "{}", line("- language replace "));
+        assert!(line("- discuss restore ").contains("<SLUG>"), "{}", line("- discuss restore "));
+        assert_eq!(
+            minimal_argv("language replace"),
+            Some(vec!["language".into(), "replace".into(), "--stdin".into()])
+        );
+    }
+
+    #[test]
     fn the_stamps_show_their_stdin_flag() {
         let description = tool_definition().description;
         let stamps: Vec<&str> = description.lines().filter(|l| l.contains(" stamp ")).collect();

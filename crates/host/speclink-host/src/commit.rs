@@ -60,6 +60,9 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::DiscussionLinked { slug, change, .. } => json!({ "slug": slug, "change": change }),
         DomainEvent::DiscussionSealed { slug, change, .. } => json!({ "slug": slug, "change": change }),
         DomainEvent::DiscussionArchived { slug, .. } => json!({ "slug": slug }),
+        DomainEvent::DiscussionRestored { slug, .. } => json!({ "slug": slug }),
+        // No subject and no content: the project has one LANGUAGE document.
+        DomainEvent::LanguageReplaced { .. } => json!({}),
         DomainEvent::DiscussionDiscarded { slug, .. } => json!({ "slug": slug }),
         DomainEvent::ReviewRoundAdded { change, round, .. } => json!({ "change": change, "round": round }),
         DomainEvent::ReviewStamped { change, .. } => json!({ "change": change }),
@@ -113,6 +116,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "discussion-linked"
         | "discussion-sealed"
         | "discussion-archived"
+        | "discussion-restored"
         | "discussion-fields-changed"
         | "discussion-discarded" => (InvalidationScope::Discussion, field("slug")),
         _ => (InvalidationScope::Unknown("unknown".to_string()), String::new()),

@@ -421,5 +421,17 @@
     "params": {
       "name": "demo"
     }
+  },
+  {
+    "name": "language-replace",
+    "params": {
+      "bytes": 11
+    }
+  },
+  {
+    "name": "discuss-restore",
+    "params": {
+      "slug": "topic"
+    }
   }
 ]

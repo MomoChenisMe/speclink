@@ -947,6 +947,7 @@ fn sample_request(method: Method, pattern: &str) -> HttpRequest {
         (Method::Post, "/discussions/{slug}/promote") => json!({}),
         (Method::Put, "/config") => json!({ "content": "schema: spec-driven\ntdd: true\n", "expectedRevision": 0 }),
         (Method::Put, "/board-order") => json!({ "content": "{}" }),
+        (Method::Put, "/language") => json!({ "content": "# Language\n" }),
         (Method::Post, _) => json!({}),
         _ => Value::Null,
     };
@@ -2762,4 +2763,239 @@ fn a_release_over_metadata_that_changed_meanwhile_is_409_revision_conflict() {
 
     assert_eq!((status, reason.as_str()), (409, "revision_conflict"));
     assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(OTHER), "the other write stays");
+}
+
+// ======================================================================
+// Change language-replace-and-discuss-restore: PUT /language and
+// POST /discussions/{slug}/restore (spec server-verb-api「詞彙文件寫入與討論搬回的端點」).
+// ======================================================================
+
+const ARCHIVED_TALK: &str = "---\nslug: talk\nstatus: concluded\ncreated: 2026-11-10\n---\n\n# Discussion: talk\n\n## Conclusion\n\n**Decision**: done  \n";
+
+fn put_language(door: &Door, content: &str, identity: &Identity) -> HttpResponse {
+    answer(door, &send(Method::Put, &alpha("language"), json!({ "content": content })), Some(identity))
+}
+
+fn restore_discussion(door: &Door, slug: &str, identity: &Identity) -> HttpResponse {
+    answer(door, &request(Method::Post, &alpha(&format!("discussions/{slug}/restore"))), Some(identity))
+}
+
+/// One commit's events as (name, scope, resource id).
+fn resources_of(commit: &speclink_store_port::Commit) -> Vec<(String, speclink_protocol::events::InvalidationScope, String)> {
+    commit
+        .events()
+        .iter()
+        .map(|event| {
+            let (scope, id) = speclink_host::commit::event_resource(event.name(), event.payload());
+            (event.name().to_string(), scope, id)
+        })
+        .collect()
+}
+
+#[test]
+fn a_language_write_is_read_back_and_says_whether_it_created_the_document() {
+    // Scenario「寫入詞彙文件後讀回」。
+    use speclink_protocol::events::InvalidationScope;
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    with_demo(&door);
+
+    let created = put_language(&door, "# Language\n", &alice());
+
+    assert_eq!(created.status, 200, "{:?}", String::from_utf8_lossy(&created.body));
+    assert_eq!(json(&created), json!({ "created": true }));
+    let read = answer(&door, &get(&alpha("language")), Some(&alice()));
+    assert_eq!(json(&read)["content"], "# Language\n");
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Language\n"), "it is in the store");
+    // 一次提交；事件不指向任何一種資源，用戶端重新讀取全部。
+    let commits = door.store.take().commits;
+    assert_eq!(commits.len(), 1, "{commits:?}");
+    assert_eq!(
+        resources_of(&commits[0]),
+        [("language-replaced".to_string(), InvalidationScope::Unknown("unknown".to_string()), String::new())]
+    );
+
+    // 「server 重啟後讀取結果不變」：同一個 store 上重新建一個入口，讀到的一樣。
+    let restarted = Door {
+        kit: HostKit::with_options(door.store.clone(), Hooks::default(), one_repo()).expect("the options name no unknown skill"),
+        store: door.store.clone(),
+    };
+    assert_eq!(json(&answer(&restarted, &get(&alpha("language")), Some(&alice())))["content"], "# Language\n");
+
+    let replaced = put_language(&door, "# Language\n\n## 詞彙\n", &alice());
+    assert_eq!(json(&replaced), json!({ "created": false }));
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Language\n\n## 詞彙\n"), "replaced whole");
+
+    // 掛鉤看到命令名稱與內文的位元組數，看不到內文。
+    let asked: Vec<(String, Value)> =
+        seen.asked.lock().unwrap().iter().filter(|(command, _)| command == "language-replace").cloned().collect();
+    assert_eq!(
+        asked,
+        vec![
+            ("language-replace".to_string(), json!({ "bytes": 11 })),
+            ("language-replace".to_string(), json!({ "bytes": 22 })),
+        ]
+    );
+    let watched = seen.watched.lock().unwrap().clone();
+    assert_eq!(watched.last(), Some(&("language-replace".to_string(), vec!["language-replaced".to_string()])));
+}
+
+#[test]
+fn an_empty_language_write_is_400_and_a_readers_is_403() {
+    // Scenario「空內容與 reader 被拒絕」：兩次之後詞彙文件都不變。
+    let door = door(one_repo());
+    seed(&door, "s1", &[("LANGUAGE.md", "# Old\n")]);
+    for empty in ["  \n", "", "\n\t \r\n"] {
+        let (status, reason, message) = error(&put_language(&door, empty, &alice()));
+        assert_eq!((status, reason.as_str()), (400, "invalid_argument"), "{empty:?}: {message}");
+        assert!(message.contains("empty"), "{message}");
+    }
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Old\n"));
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+
+    let reader = self::door(switches(false, false));
+    seed(&reader, "s1", &[("LANGUAGE.md", "# Old\n")]);
+    let (status, reason, _) = error(&put_language(&reader, "# New\n", &alice()));
+    assert_eq!((status, reason.as_str()), (403, "permission_denied"));
+    assert_eq!(content(&reader, "s1", "LANGUAGE.md").as_deref(), Some("# Old\n"));
+    assert!(reader.store.calls().commits.is_empty(), "no commit");
+
+    // A body without `content` is not a language write at all.
+    let no_content = answer(&door, &send(Method::Put, &alpha("language"), json!({})), Some(&alice()));
+    assert_eq!(error(&no_content).0, 400);
+}
+
+#[test]
+fn an_editor_without_policy_write_writes_the_language_document() {
+    // Scenario「沒有政策寫入權限的 editor 可以寫詞彙文件」：它不是政策鍵。
+    let door = door(switches(true, false));
+    seed(&door, "s1", &[("config.yaml", CONFIG)]);
+
+    let response = put_language(&door, "# Language\n", &alice());
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Language\n"));
+    assert_eq!(content(&door, "s1", "config.yaml").as_deref(), Some(CONFIG), "the config is not touched");
+}
+
+#[test]
+fn a_restore_has_three_answers() {
+    // Scenario「搬回討論的三種結果」。
+    use speclink_protocol::events::InvalidationScope;
+    let door = door(one_repo());
+    seed(
+        &door,
+        "s1",
+        &[
+            ("archive/discussions/2026-09-01-talk.md", "an older record\n"),
+            ("archive/discussions/2026-11-10-talk.md", ARCHIVED_TALK),
+            ("archive/discussions/2026-11-10-both.md", "archived both\n"),
+            ("discussions/both.md", "live both\n"),
+        ],
+    );
+
+    let restored = restore_discussion(&door, "talk", &alice());
+
+    assert_eq!(restored.status, 200, "{:?}", String::from_utf8_lossy(&restored.body));
+    assert_eq!(json(&restored), json!({ "slug": "talk", "restoredFrom": "2026-11-10-talk.md" }));
+    assert_eq!(content(&door, "s1", "discussions/talk.md").as_deref(), Some(ARCHIVED_TALK), "byte-for-byte");
+    assert_eq!(content(&door, "s1", "archive/discussions/2026-11-10-talk.md"), None, "it left the archive");
+    assert_eq!(
+        content(&door, "s1", "archive/discussions/2026-09-01-talk.md").as_deref(),
+        Some("an older record\n"),
+        "the older record stays archived"
+    );
+    // 一次提交帶兩筆寫入，事件歸到這個討論。
+    let commits = door.store.take().commits;
+    assert_eq!(commits.len(), 1, "{commits:?}");
+    assert_eq!(commits[0].ops().len(), 2, "{:?}", commits[0].ops());
+    assert_eq!(
+        resources_of(&commits[0]),
+        [("discussion-restored".to_string(), InvalidationScope::Discussion, "talk".to_string())]
+    );
+    let listed = json(&answer(&door, &get(&alpha("discussions")), Some(&alice())));
+    assert!(
+        listed["discussions"].as_array().is_some_and(|all| all.iter().any(|d| d["slug"] == "talk")),
+        "the list has it again: {listed}"
+    );
+
+    let (status, reason, message) = error(&restore_discussion(&door, "both", &alice()));
+    assert_eq!((status, reason.as_str()), (409, "refused"), "{message}");
+    assert!(message.contains("both") && message.contains("already"), "{message}");
+    assert_eq!(content(&door, "s1", "discussions/both.md").as_deref(), Some("live both\n"));
+    assert_eq!(content(&door, "s1", "archive/discussions/2026-11-10-both.md").as_deref(), Some("archived both\n"));
+
+    let (status, reason, message) = error(&restore_discussion(&door, "ghost", &alice()));
+    assert_eq!((status, reason.as_str()), (404, "not_found"), "{message}");
+    assert!(message.contains("ghost"), "{message}");
+    assert!(door.store.calls().commits.is_empty(), "the two refusals committed nothing");
+}
+
+#[test]
+fn a_reader_restores_nothing_and_a_hook_can_refuse_both_commands() {
+    let reader = door(switches(false, false));
+    seed(&reader, "s1", &[("archive/discussions/2026-11-10-talk.md", ARCHIVED_TALK)]);
+    let (status, reason, _) = error(&restore_discussion(&reader, "talk", &alice()));
+    assert_eq!((status, reason.as_str()), (403, "permission_denied"));
+    assert_eq!(content(&reader, "s1", "discussions/talk.md"), None);
+
+    // verb-contract Scenario「宿主的掛鉤擋下寫入」的原因原文。
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, |info: &BeforeCommand| match info.command {
+        "language-replace" => Decision::Deny { reason: "只有維護者可以改詞彙表".to_string() },
+        "discuss-restore" => Decision::Deny { reason: "封存的討論不開放搬回".to_string() },
+        _ => Decision::Allow,
+    }));
+    seed(&door, "s1", &[("LANGUAGE.md", "# Old\n"), ("archive/discussions/2026-11-10-talk.md", ARCHIVED_TALK)]);
+
+    let (status, reason, message) = error(&put_language(&door, "# New\n", &alice()));
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "只有維護者可以改詞彙表"));
+    let (status, reason, message) = error(&restore_discussion(&door, "talk", &alice()));
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "封存的討論不開放搬回"));
+
+    assert_eq!(
+        seen.asked.lock().unwrap().clone(),
+        vec![
+            ("language-replace".to_string(), json!({ "bytes": 6 })),
+            ("discuss-restore".to_string(), json!({ "slug": "talk" })),
+        ]
+    );
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Old\n"));
+    assert_eq!(content(&door, "s1", "discussions/talk.md"), None);
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+}
+
+#[test]
+fn a_restore_over_a_record_that_appeared_meanwhile_is_409_revision_conflict() {
+    // 搬回和其他寫入端點走同一條樂觀並行規則：進行中的鍵必須不存在。命令讀過之後
+    // 別人建立了同 slug 的記錄，整筆提交不落地——不會兩邊都有，也不會兩邊都沒有。
+    let store = Arc::new(common::Recorder::new(MemoryStorePort::new()).before_first_commit(|inner| {
+        common::write_in(inner, &scope_of("s1"), &[("discussions/talk.md", "someone else's record\n")]);
+    }));
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).expect("the options name no unknown skill");
+    let door = Door { kit, store };
+    seed(&door, "s1", &[("archive/discussions/2026-11-10-talk.md", ARCHIVED_TALK)]);
+
+    let (status, reason, _) = error(&restore_discussion(&door, "talk", &alice()));
+
+    assert_eq!((status, reason.as_str()), (409, "revision_conflict"));
+    assert_eq!(content(&door, "s1", "discussions/talk.md").as_deref(), Some("someone else's record\n"));
+    assert_eq!(content(&door, "s1", "archive/discussions/2026-11-10-talk.md").as_deref(), Some(ARCHIVED_TALK));
+}
+
+#[test]
+fn a_language_write_over_a_document_that_changed_meanwhile_is_409_revision_conflict() {
+    // 詞彙文件的寫入和其他寫入端點走同一條樂觀並行規則：命令讀過文件之後別人改了它，
+    // 提交不落地，文件維持別人寫的內容。
+    let store = Arc::new(common::Recorder::new(MemoryStorePort::new()).before_first_commit(|inner| {
+        common::write_in(inner, &scope_of("s1"), &[("LANGUAGE.md", "# Someone else\n")]);
+    }));
+    let kit = HostKit::with_options(store.clone(), Hooks::default(), one_repo()).expect("the options name no unknown skill");
+    let door = Door { kit, store };
+    seed(&door, "s1", &[("LANGUAGE.md", "# Old\n")]);
+
+    let (status, reason, _) = error(&put_language(&door, "# Mine\n", &alice()));
+
+    assert_eq!((status, reason.as_str()), (409, "revision_conflict"));
+    assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Someone else\n"), "the other write stays");
 }

@@ -4,7 +4,7 @@
 
 **討論的封存。** `Store` 有 `archive_discussion(slug, created)`：把進行中的記錄搬進封存，名稱是 `<建立日期>-<slug>.md`。反方向沒有方法。`list_archived_discussions` 依封存名稱排序回傳全部封存的記錄。四個動詞在討論已封存時拒絕（`lifecycle/discuss.rs`），訊息寫「move it out of discussions/archive/ to …」。
 
-**儲存介面的實作有四個。** 本機檔案（`speclink-fs`）、儲存接口上的視圖（`speclink-host` 的 `port_view.rs`，寫入收進一次提交）、worktree 覆蓋層（`speclink-host` 的 `worktree.rs`，寫入一律落在主副本）、測試用的記憶體版（`speclink-core` 的 `teststore.rs`）。`Store` 加方法時四個都要實作。
+**儲存介面的實作有四個。** 本機檔案（`speclink-fs`）、儲存接口上的視圖（`speclink-host` 的 `port_view.rs`，寫入收進一次提交）、worktree 覆蓋層（`speclink-host` 的 `worktree.rs`，寫入一律落在主副本）、測試用的記憶體版（`speclink-core` 的 `teststore.rs`）。`Store` 加方法時四個都要實作。另有兩個不會被這兩個命令呼叫到的實作（`speclink-host` 的 `drift.rs`，以及 `command/workflow_config.rs` 測試裡的替身），只補上方法。
 
 **線上與遠端的 CLI。** 每個引擎命令在 `http/coverage.rs` 要有歸屬（沒有萬用分支）。CLI 連到遠端專案時，各動詞有自己的遠端分支，把回應轉成和本機相同的結果再交給共用的輸出函式。
 
@@ -37,7 +37,7 @@
 執行的步驟：
 
 - `LanguageReplace`：內容去掉頭尾空白後是空的就拒絕（`invalid_argv`，訊息指出內容是空的）；先用 `read_language` 判斷 `created`；再呼叫 `Store::write_language`。內容原樣寫入，不補也不刪結尾換行。
-- `DiscussRestore`：slug 先過既有的 slug 檢查；`live_discussion_exists` 為真就拒絕（`refused`）；沒有封存的記錄就回 not-found；否則呼叫 `Store::restore_discussion`。
+- `DiscussRestore`：slug 先檢查是不是單一名稱（不是空字串、`.`、`..`，不含 `/` 與 `\`），不是就以 `invalid_argv` 拒絕；`live_discussion_exists` 為真就拒絕（`refused`）；沒有封存的記錄就回 not-found；否則呼叫 `Store::restore_discussion`。
 
 替代方案：把詞彙表當成一種 artifact，沿用 `new artifact`。否決：artifact 屬於某個變更，詞彙表屬於整個專案，硬套會讓 `--change` 變成必填卻沒有意義。
 
@@ -46,11 +46,11 @@
 `Store` 新增：
 
 - `write_language(&self, content: &str) -> Result<()>`
-- `restore_discussion(&self, slug: &str) -> Result<Option<String>>`：把該 slug 封存名稱排序最後的一份搬回進行中，回傳它封存時的名稱；沒有封存的記錄時回傳 `None`。
+- `restore_discussion(&self, slug: &str) -> Result<Option<String>>`：把該 slug 最新的一份封存記錄搬回進行中，回傳它封存時的名稱。「最新」和 `read_discussion` 在沒有進行中記錄時解析到的是同一份：封存名稱的日期最新者；同一天重複封存、名稱帶 `-N` 序號時取序號最大者（這種情況下它不是字串排序的最後一個）。名稱帶 `-N` 的那一份只在它是這個 slug 的重複封存時才算：記錄的 frontmatter 寫明另一個 slug（slug 本身以 `-2` 結尾的另一個討論，封存後有同樣的名稱）時不算，沒寫 slug 的記錄照名稱判斷。這條判定在 `speclink-core` 的 `discuss::is_reuse_of`，本機檔案與儲存接口兩個實作原有的解析函式都呼叫它，所以 `discuss show` 與搬回讀到的仍是同一份；沒有封存的記錄時回傳 `None`。
 
 寫入順序與失敗後的狀態：
 
-- 本機檔案：`write_language` 用既有的原子寫檔（先寫暫存檔再改名）。`restore_discussion` 是一次改名（封存的檔案改名成進行中的檔案）；改名失敗時兩邊都維持原樣。目的檔已存在的情況在命令層先擋掉。
+- 本機檔案：`write_language` 用既有的原子寫檔（先寫暫存檔再改名）。`restore_discussion` 是一次改名（封存的檔案改名成進行中的檔案）；改名失敗時兩邊都維持原樣。目的檔已存在的情況在命令層先擋掉；儲存實作在改名之前再看一次，已存在就失敗、什麼都不動（改名在部分系統會蓋掉目的檔）。
 - 儲存接口上的視圖：兩個方法都只把操作排進這次命令的寫入清單，隨命令結束時的一次提交送出。`restore_discussion` 排的是「寫入進行中的鍵」加「刪除封存的鍵」兩筆，放在同一次提交，並各自帶預期版本（進行中的鍵必須不存在、封存的鍵必須是讀到的版本），所以不會出現兩邊都有或都沒有。
 - worktree 覆蓋層：比照其他討論寫入，一律轉給主副本。
 - 測試用的記憶體版：直接改記憶體裡的表。
@@ -61,6 +61,8 @@
 
 - `language` 新增子動詞 `replace`，旗標 `--stdin`（必填）與 `--json`。沒有 `--stdin` 是用法錯誤。
 - `discuss` 新增子動詞 `restore <slug>`，旗標 `--json`。
+- 兩個子動詞的定義在 `families/documents.rs` 與 `families/discuss.rs`。`language replace` 沒有收到 stdin 時內容是空字串，由引擎的空內容檢查拒絕（和 discuss 的內容動詞同一種做法）。
+- `--json` 沿用多數動詞的縮排形式；規格裡寫成一行的 JSON 指的是值。
 - 輸出函式：`language replace` 的兩種成功行（`✓ Replaced the LANGUAGE document`、`✓ Created the LANGUAGE document`）與 `{ "created" }`；`discuss restore` 的兩行（`✓ Restored discussion: <slug>`、`  From: <名稱>`）與 `{ "slug", "restoredFrom" }`。
 - Agent 工具的動詞清單由同一份定義產生，自動帶出兩個新動詞。`language replace` 在工具裡把內容放在 `stdin`，和其他帶 `--stdin` 的動詞相同。
 
@@ -70,7 +72,7 @@
 - 請求與回應型別放在 `speclink-protocol`：`LanguageReplaceRequest { content }`、`LanguageReplaceResponse { created }`、`DiscussRestoreResponse { slug, restored_from }`（序列化成 `restoredFrom`）。
 - 路由經既有的命令閘道：editor 限定、revision 前置條件、掛鉤、事件都沿用。`PUT /language` 不套用政策鍵的權限檢查。
 - 事件歸類（`commit.rs`）：`discussion-restored` 和其他討論事件同一組（`scope` 是 `discussion`、`resourceId` 是 slug）；`language-replaced` 不加進任何一組，落在「其他」，用戶端收到後重新讀取全部。
-- `speclink-remote` 的用戶端新增 `replace_language(content)` 與 `restore_discussion(slug)`；CLI 的遠端分支呼叫它們，把回應轉成結果後交給 D3 的輸出函式。
+- `speclink-remote` 的用戶端新增 `replace_language(content)` 與 `restore_discussion(slug)`；CLI 的遠端分支呼叫它們，把回應轉成結果後交給 D3 的輸出函式。舊版 Server 回的 404（沒有引擎的 reason）在用戶端轉成「這台 Server 不支援這個動詞」的訊息，比照 `claim --release`。
 
 ### D5 已封存的拒絕訊息改成指向 restore
 
@@ -112,6 +114,7 @@
 **失敗模式**
 
 - 空內容：`invalid_argv`（HTTP 400 `invalid_argument`），零寫入。
+- slug 不是單一名稱：`invalid_argv`，零寫入。連到遠端時 `.`、`..` 與空字串由用戶端先擋，訊息相同。儲存接口上建不出鍵的 slug（例如含控制字元）：沒有這份文件，回 not-found。
 - 已有進行中的同 slug 記錄：`refused`（HTTP 409），零寫入。沒有封存的記錄：not-found（HTTP 404）。
 - reader：HTTP 403。掛鉤拒絕：`refused` 與宿主給的原因。
 - revision 衝突、離線、認證失效：和其他寫入動詞相同。

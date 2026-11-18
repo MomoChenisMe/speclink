@@ -62,6 +62,10 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
             let o: core::command::DiscussArchiveOutcome = run(&store, Some(&ws), cmd)?;
             emit(render::archived(&o, render_options(json)));
         }
+        DiscussCommands::Restore { json, .. } => {
+            let o: core::command::DiscussRestoreOutcome = run(&store, Some(&ws), cmd)?;
+            emit(render::restored(&o, render_options(json)));
+        }
         DiscussCommands::Discard { json, .. } => {
             let o: core::command::DiscussSubjectOutcome = run(&store, Some(&ws), cmd)?;
             emit(render::discard(&o.slug, render_options(json)));
@@ -174,6 +178,12 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
         DiscussCommands::Archive { slug, json } => {
             let archived_to = ctx.client.discussion_archive(&slug)?.archived_to;
             emit(render::archive(&slug, &archived_to, render_options(json)));
+        }
+        DiscussCommands::Restore { slug, json } => {
+            // 回應轉成引擎的結果，交給和本機同一支輸出函式。
+            let restored = ctx.client.restore_discussion(&slug)?;
+            let o = core::command::DiscussRestoreOutcome { slug: restored.slug, restored_from: restored.restored_from };
+            emit(render::restored(&o, render_options(json)));
         }
         DiscussCommands::Promote { slug, name, last, json } => {
             let change = ctx.client.discussion_promote(&slug, name.as_deref(), last)?.change;

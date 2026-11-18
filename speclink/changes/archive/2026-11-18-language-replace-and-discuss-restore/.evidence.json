@@ -1,0 +1,338 @@
+{
+  "version": 2,
+  "change": "language-replace-and-discuss-restore",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗的測試：crates/engine/speclink-fs/src/lib.rs 的測試區塊斷言 `write_language` 建立與整份取代規格資料夾裡的詞彙文件（之後 `read_language` 讀回同樣的內容）；`restore_discussion` 把同 slug 封存名稱排序最後的一份改名回進行中、回傳封存時的名稱、內容逐字元不變、較舊的那一份留在封存，沒有封存的記錄時回傳 None 且零寫入。驗證：`cargo test -p speclink-fs` 這時因方法不存在而編譯失敗。",
+      "files": [
+        "crates/engine/speclink-fs/tests/store_fs.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 D2 儲存介面新增兩個方法，四個實作各自保證原子：crates/engine/speclink-core/src/store.rs 的 `Store` 新增 `write_language` 與 `restore_discussion`；crates/engine/speclink-fs/src/lib.rs 用既有的原子寫檔與一次改名實作；crates/engine/speclink-core/src/teststore.rs 實作記憶體版；crates/host/speclink-host/src/port_view.rs 把寫入排進這次命令的一次提交（搬回是「寫入進行中的鍵」加「刪除封存的鍵」兩筆，各帶預期版本）；crates/host/speclink-host/src/worktree.rs 轉給主副本。驗證：1.1 的測試通過；`cargo build --workspace` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/workflow_config.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/host/speclink-host/src/drift.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/worktree.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫失敗的測試，寫在 crates/engine/speclink-core/src/command/tests.rs，涵蓋需求「詞彙文件的寫入動詞」與「討論以 restore 動詞搬回進行中」的引擎語意：LanguageReplace 取代既有文件（created 為假）、建立不存在的文件（created 為真）、空內容與只有空白的內容以 invalid_argv 拒絕且零寫入、內容原樣寫入、發出 language-replaced 事件；DiscussRestore 搬回最新的一份且內容不變、已有進行中的同 slug 記錄時 refused 且零寫入、沒有封存的記錄時 not-found、發出 discussion-restored 事件、搬回之後 add-round 成功；四個已封存的拒絕訊息含 `speclink discuss restore <slug>` 且不含 `move it out of`。驗證：`cargo test -p speclink-core command::tests` 這時編譯失敗。",
+      "files": [
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作 D1 兩個新的引擎命令：LanguageReplace 與 DiscussRestore：crates/engine/speclink-core/src/command/mod.rs 新增兩個命令、結果型別、事件與執行函式；crates/engine/speclink-core/src/command/describe.rs 新增穩定名稱與參數（language-replace 的參數只有 bytes）；刻意更新 crates/engine/speclink-core/tests/golden/command-describe.json。實作 D5 已封存的拒絕訊息改成指向 restore：crates/engine/speclink-core/src/lifecycle/discuss.rs 的四處訊息。驗證：2.1 的測試通過；`cargo test -p speclink-core` 中與技能渲染無關的測試全部通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 先寫失敗的測試，寫在 crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/render/documents.rs 與 crates/adapters/speclink-verbs/src/render/discuss.rs 的測試區塊：`language replace --stdin` 解析成 LanguageReplace 並取用 stdin，沒有 `--stdin` 是用法錯誤；`discuss restore demo` 解析成 DiscussRestore；language replace 的兩種成功行與 `{created}`；discuss restore 的兩行輸出與 `{slug, restoredFrom}`，含 `--no-color`。驗證：`cargo test -p speclink-verbs` 這時失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/parse.rs",
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/documents.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 實作 D3 動詞的解析與輸出落在共用的 speclink-verbs：crates/adapters/speclink-verbs/src/parse.rs 與 inputs.rs 新增兩個子動詞；render/documents.rs 與 render/discuss.rs 新增輸出函式，render/mod.rs 接上兩個結果；crates/adapters/speclink-verbs/src/tool.rs 的動詞清單測試同批更新。驗證：3.1 的測試通過；`cargo test -p speclink-verbs` 全部通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/documents.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 先寫失敗的測試，涵蓋需求「詞彙文件寫入與討論搬回的端點」，寫在 crates/host/speclink-host/tests/http_door.rs 與 crates/host/speclink-host/tests/port_dual_path.rs：PUT /language 寫入後 GET /language 讀回；空內容回 400 invalid_argument；reader 回 403；有寫入權限而沒有政策寫入權限的身分可以寫；POST /discussions/{slug}/restore 的三種結果（200、409 refused、404）；掛鉤對兩個命令的拒絕；discussion-restored 歸到 scope `discussion`、language-replaced 歸到 `unknown`；兩個命令在本機路徑與儲存接口路徑的結果相同，搬回在儲存接口上是一次提交。驗證：`cargo test -p speclink-host` 這時失敗。",
+      "files": [
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/port_dual_path.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 實作 D4 線上的兩個端點與遠端的 CLI 分支的 Server 部分：crates/protocol/speclink-protocol/src/command.rs 新增請求與回應型別；crates/host/speclink-host/src/http/coverage.rs 與 routes.rs 新增兩條路由；crates/host/speclink-host/src/commit.rs 把 discussion-restored 歸到討論。驗證：4.1 的測試通過；`cargo test -p speclink-host` 全部通過，包含每個引擎命令都有線上歸屬的對照測試。",
+      "files": [
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/read_only.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/protocol/speclink-protocol/src/command.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 排查同類位置：在整個 repo 搜尋 `move it out of` 與 `discussions/archive/ to`，逐一處理命中的檔案——測試裡斷言舊訊息的地方改成新訊息，文件與技能原稿裡的留給第 5、6 組處理，並在這個任務的提交說明列出命中的檔案與各自的處理方式。驗證：`cargo test -p speclink-cli --test it` 中斷言這些訊息的測試通過；再搜尋一次，程式碼與測試裡沒有殘留的舊文字。",
+      "files": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/tests/it/doc_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/protocol/speclink-remote/src/client.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.4 確認內嵌宿主可用：在 crates/adapters/speclink-node/__test__/host.spec.ts 新增測試——`host.dispatch` 以 `['language', 'replace', '--stdin']` 加 stdin 寫入後 `['language', 'show']` 讀回同樣的內容；封存一份討論後 `['discuss', 'restore', slug, '--json']` 回傳 `{slug, restoredFrom}` 且討論回到清單；兩個動詞都先問 beforeCommand（命令名稱 `language-replace` 與 `discuss-restore`）。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全部通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 依 D6 技能原稿改用兩個動詞，並前進資產版本，修改原稿（需求「用詞偏移以動詞寫回詞彙表」「正式規格與變更文件一律經動詞讀取」「從討論轉出最後一刀時帶 --last」）：crates/engine/speclink-core/assets/skills/discuss.md 把詞彙表那一段與「Archived by mistake?」那一段原本分兩種情況的區塊各換成一段不分情況的指示（`language show` 讀出、`language replace --stdin` 整份寫回；`discuss restore <slug>`）；crates/engine/speclink-core/assets/skills/propose.md 把標錯 `--last` 的救援換成 `discuss restore <slug>`。驗證：`cargo test -p speclink-core` 的技能守門測試通過（技能不直接讀寫規格資料夾、強調字上限、規格路徑只在條件區塊裡）。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.2 連動衍生物：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 前進一版；重新產生 crates/engine/speclink-core/tests/golden 底下的渲染快照與 assets.lock；`cargo build -p speclink-cli` 之後用新建的 binary 執行 `speclink update` 重新產生本 repo 已安裝的技能檔，並用 `git status` 盤點全部被重新產生的檔案。驗證：`cargo test -p speclink-core` 全部通過（含 render golden 與資產鎖定）；`target/debug/speclink --version` 顯示新的 engine 版號；渲染出的 discuss 與 propose 技能在「規格在這個 checkout」與「不在」兩種渲染下，這三段文字相同且指名新動詞。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "7.1 依 D7 使用者文件更新，中英兩版同步：docs/product-status.md 與 docs/product-status.zh-TW.md 的已知缺口表移除「沒有把封存的討論記錄搬回來的動詞」與「沒有寫入詞彙表的動詞」兩列，移到表格下方已經解決的清單並寫上對應的動詞；docs/verb-contract.md 與 docs/verb-contract.zh-TW.md 的動詞表、端點表、事件對照表與回應範例補上兩個動詞、兩個端點與兩個事件。驗證：文件裡的輸出與回應範例和 3.1、4.1 的測試斷言一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7PNTY7NK4F1N8RH3SJQ3TRM",
+      "taskDesc": "1.1 先寫失敗的測試：crates/engine/speclink-fs/src/lib.rs 的測試區塊斷言 `write_language` 建立與整份取代規格資料夾裡的詞彙文件（之後 `read_language` 讀回同樣的內容）；`restore_discussion` 把同 slug 封存名稱排序最後的一份改名回進行中、回傳封存時的名稱、內容逐字元不變、較舊的那一份留在封存，沒有封存的記錄時回傳 None 且零寫入。驗證：`cargo test -p speclink-fs` 這時因方法不存在而編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-fs/tests/store_fs.rs"
+      ],
+      "recordedAt": "2026-11-18T13:43:59Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NQWYKT87NN4B9Q4YW",
+      "taskDesc": "1.2 實作 D2 儲存介面新增兩個方法，四個實作各自保證原子：crates/engine/speclink-core/src/store.rs 的 `Store` 新增 `write_language` 與 `restore_discussion`；crates/engine/speclink-fs/src/lib.rs 用既有的原子寫檔與一次改名實作；crates/engine/speclink-core/src/teststore.rs 實作記憶體版；crates/host/speclink-host/src/port_view.rs 把寫入排進這次命令的一次提交（搬回是「寫入進行中的鍵」加「刪除封存的鍵」兩筆，各帶預期版本）；crates/host/speclink-host/src/worktree.rs 轉給主副本。驗證：1.1 的測試通過；`cargo build --workspace` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/workflow_config.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-core/src/teststore.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/host/speclink-host/src/drift.rs",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/worktree.rs"
+      ],
+      "recordedAt": "2026-11-18T13:46:59Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7N6J5KX90NC75W2H8V",
+      "taskDesc": "2.1 先寫失敗的測試，寫在 crates/engine/speclink-core/src/command/tests.rs，涵蓋需求「詞彙文件的寫入動詞」與「討論以 restore 動詞搬回進行中」的引擎語意：LanguageReplace 取代既有文件（created 為假）、建立不存在的文件（created 為真）、空內容與只有空白的內容以 invalid_argv 拒絕且零寫入、內容原樣寫入、發出 language-replaced 事件；DiscussRestore 搬回最新的一份且內容不變、已有進行中的同 slug 記錄時 refused 且零寫入、沒有封存的記錄時 not-found、發出 discussion-restored 事件、搬回之後 add-round 成功；四個已封存的拒絕訊息含 `speclink discuss restore <slug>` 且不含 `move it out of`。驗證：`cargo test -p speclink-core command::tests` 這時編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ],
+      "recordedAt": "2026-11-18T13:49:19Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NN7TJTDQNQF0AGH2E",
+      "taskDesc": "2.2 實作 D1 兩個新的引擎命令：LanguageReplace 與 DiscussRestore：crates/engine/speclink-core/src/command/mod.rs 新增兩個命令、結果型別、事件與執行函式；crates/engine/speclink-core/src/command/describe.rs 新增穩定名稱與參數（language-replace 的參數只有 bytes）；刻意更新 crates/engine/speclink-core/tests/golden/command-describe.json。實作 D5 已封存的拒絕訊息改成指向 restore：crates/engine/speclink-core/src/lifecycle/discuss.rs 的四處訊息。驗證：2.1 的測試通過；`cargo test -p speclink-core` 中與技能渲染無關的測試全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/typed.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/tests/golden/command-describe.json",
+        "crates/engine/speclink-core/tests/it/command_describe.rs"
+      ],
+      "recordedAt": "2026-11-18T13:50:31Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NG8PMN5DTWTZT9KDD",
+      "taskDesc": "3.1 先寫失敗的測試，寫在 crates/adapters/speclink-verbs/src/parse.rs、crates/adapters/speclink-verbs/src/render/documents.rs 與 crates/adapters/speclink-verbs/src/render/discuss.rs 的測試區塊：`language replace --stdin` 解析成 LanguageReplace 並取用 stdin，沒有 `--stdin` 是用法錯誤；`discuss restore demo` 解析成 DiscussRestore；language replace 的兩種成功行與 `{created}`；discuss restore 的兩行輸出與 `{slug, restoredFrom}`，含 `--no-color`。驗證：`cargo test -p speclink-verbs` 這時失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/parse.rs",
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/documents.rs"
+      ],
+      "recordedAt": "2026-11-18T13:51:56Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7N4RVVFF5HMAGSZSGP",
+      "taskDesc": "3.2 實作 D3 動詞的解析與輸出落在共用的 speclink-verbs：crates/adapters/speclink-verbs/src/parse.rs 與 inputs.rs 新增兩個子動詞；render/documents.rs 與 render/discuss.rs 新增輸出函式，render/mod.rs 接上兩個結果；crates/adapters/speclink-verbs/src/tool.rs 的動詞清單測試同批更新。驗證：3.1 的測試通過；`cargo test -p speclink-verbs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/discuss.rs",
+        "crates/adapters/speclink-verbs/src/families/documents.rs",
+        "crates/adapters/speclink-verbs/src/families/mod.rs",
+        "crates/adapters/speclink-verbs/src/inputs.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/adapters/speclink-verbs/src/tool.rs"
+      ],
+      "recordedAt": "2026-11-18T13:53:32Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7N84YW3VXB1K421VQ0",
+      "taskDesc": "4.1 先寫失敗的測試，涵蓋需求「詞彙文件寫入與討論搬回的端點」，寫在 crates/host/speclink-host/tests/http_door.rs 與 crates/host/speclink-host/tests/port_dual_path.rs：PUT /language 寫入後 GET /language 讀回；空內容回 400 invalid_argument；reader 回 403；有寫入權限而沒有政策寫入權限的身分可以寫；POST /discussions/{slug}/restore 的三種結果（200、409 refused、404）；掛鉤對兩個命令的拒絕；discussion-restored 歸到 scope `discussion`、language-replaced 歸到 `unknown`；兩個命令在本機路徑與儲存接口路徑的結果相同，搬回在儲存接口上是一次提交。驗證：`cargo test -p speclink-host` 這時失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/port_dual_path.rs"
+      ],
+      "recordedAt": "2026-11-18T13:55:32Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NVJJ944RDE87DFVQF",
+      "taskDesc": "4.2 實作 D4 線上的兩個端點與遠端的 CLI 分支的 Server 部分：crates/protocol/speclink-protocol/src/command.rs 新增請求與回應型別；crates/host/speclink-host/src/http/coverage.rs 與 routes.rs 新增兩條路由；crates/host/speclink-host/src/commit.rs 把 discussion-restored 歸到討論。驗證：4.1 的測試通過；`cargo test -p speclink-host` 全部通過，包含每個引擎命令都有線上歸屬的對照測試。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/commit.rs",
+        "crates/host/speclink-host/src/http/coverage.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/read_only.rs",
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/protocol/speclink-protocol/src/command.rs"
+      ],
+      "recordedAt": "2026-11-18T13:59:42Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NKECMZYN4SCSRY2Y7",
+      "taskDesc": "2.3 排查同類位置：在整個 repo 搜尋 `move it out of` 與 `discussions/archive/ to`，逐一處理命中的檔案——測試裡斷言舊訊息的地方改成新訊息，文件與技能原稿裡的留給第 5、6 組處理，並在這個任務的提交說明列出命中的檔案與各自的處理方式。驗證：`cargo test -p speclink-cli --test it` 中斷言這些訊息的測試通過；再搜尋一次，程式碼與測試裡沒有殘留的舊文字。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/documents.rs",
+        "crates/adapters/speclink-cli/tests/it/doc_verbs.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/protocol/speclink-remote/src/client.rs"
+      ],
+      "recordedAt": "2026-11-18T14:04:34Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NV3K18HB9MCKKREN1",
+      "taskDesc": "4.4 確認內嵌宿主可用：在 crates/adapters/speclink-node/__test__/host.spec.ts 新增測試——`host.dispatch` 以 `['language', 'replace', '--stdin']` 加 stdin 寫入後 `['language', 'show']` 讀回同樣的內容；封存一份討論後 `['discuss', 'restore', slug, '--json']` 回傳 `{slug, restoredFrom}` 且討論回到清單；兩個動詞都先問 beforeCommand（命令名稱 `language-replace` 與 `discuss-restore`）。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ],
+      "recordedAt": "2026-11-18T14:06:23Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NCCRDN23SAFX30VRY",
+      "taskDesc": "5.1 依 D6 技能原稿改用兩個動詞，並前進資產版本，修改原稿（需求「用詞偏移以動詞寫回詞彙表」「正式規格與變更文件一律經動詞讀取」「從討論轉出最後一刀時帶 --last」）：crates/engine/speclink-core/assets/skills/discuss.md 把詞彙表那一段與「Archived by mistake?」那一段原本分兩種情況的區塊各換成一段不分情況的指示（`language show` 讀出、`language replace --stdin` 整份寫回；`discuss restore <slug>`）；crates/engine/speclink-core/assets/skills/propose.md 把標錯 `--last` 的救援換成 `discuss restore <slug>`。驗證：`cargo test -p speclink-core` 的技能守門測試通過（技能不直接讀寫規格資料夾、強調字上限、規格路徑只在條件區塊裡）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/discuss.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs",
+        "crates/host/speclink-server/src/api/events.rs",
+        "crates/host/speclink-server/tests/it/api/write_guard.rs"
+      ],
+      "recordedAt": "2026-11-18T14:08:26Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7NT731AA86FWF3NX4Z",
+      "taskDesc": "5.2 連動衍生物：crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 前進一版；重新產生 crates/engine/speclink-core/tests/golden 底下的渲染快照與 assets.lock；`cargo build -p speclink-cli` 之後用新建的 binary 執行 `speclink update` 重新產生本 repo 已安裝的技能檔，並用 `git status` 盤點全部被重新產生的檔案。驗證：`cargo test -p speclink-core` 全部通過（含 render golden 與資產鎖定）；`target/debug/speclink --version` 顯示新的 engine 版號；渲染出的 discuss 與 propose 技能在「規格在這個 checkout」與「不在」兩種渲染下，這三段文字相同且指名新動詞。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ],
+      "recordedAt": "2026-11-18T14:09:30Z"
+    },
+    {
+      "taskId": "tsk_01M7PNTY7N5YH18AZKM5H16MGY",
+      "taskDesc": "7.1 依 D7 使用者文件更新，中英兩版同步：docs/product-status.md 與 docs/product-status.zh-TW.md 的已知缺口表移除「沒有把封存的討論記錄搬回來的動詞」與「沒有寫入詞彙表的動詞」兩列，移到表格下方已經解決的清單並寫上對應的動詞；docs/verb-contract.md 與 docs/verb-contract.zh-TW.md 的動詞表、端點表、事件對照表與回應範例補上兩個動詞、兩個端點與兩個事件。驗證：文件裡的輸出與回應範例和 3.1、4.1 的測試斷言一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ddf2eadb61b02e6bcc33148e876024bcae5843b3",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-18T14:12:45Z"
+    }
+  ]
+}

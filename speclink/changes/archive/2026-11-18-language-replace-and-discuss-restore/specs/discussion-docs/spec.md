@@ -2,9 +2,9 @@
 
 ### Requirement: 討論以 restore 動詞搬回進行中
 
-speclink discuss restore SHALL 接受一個位置參數（討論 slug），把該 slug 已封存的討論記錄搬回進行中：記錄離開封存、成為以 slug 命名的進行中記錄，內容 SHALL 逐字元不變（frontmatter、Context、Rounds、Conclusion 都不改寫）。同一個 slug 有多份封存的記錄時 SHALL 搬回最新的一份（封存名稱排序最後的那一份），其餘 SHALL 留在封存裡。搬回之後，discuss show、add-round、conclude、promote、link、seal 等動詞 SHALL 把它當成進行中的記錄處理，discuss list SHALL 列出它，discuss list --archived SHALL 不再列出被搬回的那一份。
+speclink discuss restore SHALL 接受一個位置參數（討論 slug），把該 slug 已封存的討論記錄搬回進行中：記錄離開封存、成為以 slug 命名的進行中記錄，內容 SHALL 逐字元不變（frontmatter、Context、Rounds、Conclusion 都不改寫）。同一個 slug 有多份封存的記錄時 SHALL 搬回最新的一份——封存名稱的日期最新者；同一天重複封存（名稱帶 -N 序號）時取序號最大者，也就是 discuss show 在沒有進行中記錄時讀到的那一份——其餘 SHALL 留在封存裡。搬回之後，discuss show、add-round、conclude、promote、link、seal 等動詞 SHALL 把它當成進行中的記錄處理，discuss list SHALL 列出它，discuss list --archived SHALL 不再列出被搬回的那一份。
 
-拒絕條件：該 slug 已有進行中的記錄時 SHALL 拒絕且零寫入，訊息 SHALL 指出進行中的記錄已存在；該 slug 沒有任何封存的記錄時 SHALL 以 not-found 拒絕。搬回 SHALL 是一次原子的寫入：不是「進行中有、封存沒有」，就是什麼都沒變；SHALL NOT 留下兩邊都有或兩邊都沒有的狀態。成功時 SHALL 發布事件 `discussion-restored`，歸到該討論。
+拒絕條件：slug 不是單一名稱（空字串、. 與 ..，或含路徑分隔字元）時 SHALL 在任何讀寫之前拒絕；該 slug 已有進行中的記錄時 SHALL 拒絕且零寫入，訊息 SHALL 指出進行中的記錄已存在；該 slug 沒有任何封存的記錄時 SHALL 以 not-found 拒絕。搬回 SHALL 是一次原子的寫入：不是「進行中有、封存沒有」，就是什麼都沒變；SHALL NOT 留下兩邊都有或兩邊都沒有的狀態。成功時 SHALL 發布事件 `discussion-restored`，歸到該討論。
 
 動詞 SHALL 於本機、remote 與宿主套件三種執行方式同語意：本機專案把檔案自 speclink/discussions/archive/ 搬回 speclink/discussions/ 並拿掉檔名的日期前綴；remote 模式經契約端點；宿主套件經引擎命令（穩定名稱 `discuss-restore`），執行前 SHALL 先問執行前掛鉤。
 

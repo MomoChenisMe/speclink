@@ -67,7 +67,7 @@ The `--json` field set and its camelCase names are a frozen contract. Fields do 
 
 ## <a id="verb-reference"></a>Verbs, flags, and `--json` fields
 
-This section lists the verbs for claims, landing reports, free fields, and evidence, the login method flags of `auth login`, and the optional fields of `list --json` and `show --json`. `auth login` and `claim` are only for remote projects. All other verbs and flags here work in local projects and in remote projects, with the same output. Each verb accepts `--no-color`.
+This section lists the verbs for claims, writes of the shared vocabulary document, discussion restores, landing reports, free fields, and evidence, the login method flags of `auth login`, and the optional fields of `list --json` and `show --json`. `auth login` and `claim` are only for remote projects. All other verbs and flags here work in local projects and in remote projects, with the same output. Each verb accepts `--no-color`.
 
 ### `speclink evidence show <change>`
 
@@ -122,6 +122,33 @@ async beforeCommand({ identity, command, params }, { read }) {
 The example catches a failed read on purpose. A hook that throws ends the call with an error of the hook, and that error hides the message of the release, for example "not found". A claim from before identifiers has no `byId`; the example then compares the name, so the holder can always release.
 
 To see who holds a change, read `claimed` in `speclink show <change> --json`. See [the fields below](#verb-reference).
+
+### `speclink language replace --stdin`
+
+Writes the content of stdin as the full shared vocabulary document of the project (`LANGUAGE.md`). The verb creates the document when there is none. It replaces the full document when there is one, and does not merge.
+
+- Flags: `--stdin` (necessary), `--json`. A call without `--stdin` is a usage error.
+- To change one entry: read the full document with `speclink language show`, change it, and write the full document back. Do no other step between the read and the write.
+- A replace prints `✓ Replaced the LANGUAGE document`. A call that creates the document prints `✓ Created the LANGUAGE document`.
+- `--json` prints `{"created":true}`. `created` tells if this call created a document that did not exist.
+- The verb refuses content that is empty or has only whitespace. It ends non-zero, and the document does not change. The message goes to stderr, and stdout has no output.
+- Write access is sufficient. The verb does not need the permission to change workflow policy.
+- The hook gets the command name `language-replace`. `params` has only the size of the text in bytes (`bytes`), not the text. The event after a write is `language-replaced`.
+- With an older Server that does not have this endpoint, the verb ends non-zero, and the message says that the Server does not support the verb.
+
+### `speclink discuss restore <slug>`
+
+Brings an archived discussion back as a live record. Use it when a discussion was archived by mistake, for example when the last-cut flag was on the wrong cut and the record was archived together with the change.
+
+- Flags: `--json`.
+- When a slug has more than one archived record, the verb brings back the newest one. This is the record that `speclink discuss show <slug>` reads. The other records stay archived. The content of the record does not change.
+- Success prints two lines: `✓ Restored discussion: <slug>` and `  From: <archived file name>`.
+- `--json` prints `{"slug":"board-search-bar","restoredFrom":"2026-11-10-board-search-bar.md"}`.
+- The verb refuses when the slug has a live record. It reports not found when the slug has no archived record. The two cases end non-zero and write nothing.
+- The verb does not change the content of the record, and it does not put the hold flag back. After the restore, do the step that was blocked: spin out the next change, or continue the discussion.
+- When a verb that continues a discussion, spins out a change, `discuss link`, or `discuss seal` finds an archived discussion, its error message points at this verb.
+- The hook gets the command name `discuss-restore`, with the slug in `params.slug`. The event after a restore is `discussion-restored`.
+- With an older Server that does not have this endpoint, the verb ends non-zero, and the message says that the Server does not support the verb.
 
 ### `speclink change landed <change>`
 
@@ -456,6 +483,7 @@ The routes below are in the HTTP entry point of the host kit, except where a row
 | POST | `/discussions/{slug}/rounds` | editor | Add a round (`speclink discuss add-round`) |
 | POST | `/discussions/{slug}/conclude` | editor | Write the conclusion (`speclink discuss conclude`) |
 | POST | `/discussions/{slug}/archive` | editor | Archive the discussion (`speclink discuss archive`) |
+| POST | `/discussions/{slug}/restore` | editor | Bring an archived discussion back as a live record (`speclink discuss restore`) |
 | POST | `/discussions/{slug}/promote` | editor | Turn the discussion into a change (`speclink discuss promote`) |
 | POST | `/discussions/{slug}/link` | editor | Link an existing change to the discussion (`speclink discuss link`) |
 | POST | `/discussions/{slug}/seal` | editor | Mark the discussion as promoted after its content lands (`speclink discuss seal`) |
@@ -474,6 +502,7 @@ The routes below are in the HTTP entry point of the host kit, except where a row
 | GET | `/archived/{datedName}/capabilities` | reader | Capability names that the archive changed |
 | GET | `/search?q=<text>` | reader | Full-text search of the desktop app (live changes and discussions only) |
 | GET | `/language` | reader | Shared vocabulary document (`speclink language show`) |
+| PUT | `/language` | editor | Write the full shared vocabulary document (`speclink language replace`) |
 | GET | `/config` | reader | Workflow config text and revision |
 | PUT | `/config` | editor | Write the workflow config (`speclink workflow-config set`) |
 | GET | `/board-order` | reader | Board order |
@@ -529,8 +558,8 @@ The kind of the event decides `scope` and `resourceId`. A host that pushes event
 | `change-created`, `artifact-created`, `task-completed`, `task-uncompleted`, `task-moved`, `change-claimed`, `change-claim-released`, `change-marked-in-progress`, `change-in-progress-removed`, `change-depends-changed`, `change-schema-changed`, `change-ranked`, `change-fields-changed`, `change-landed`, `change-discarded` | `change` | The change name |
 | `review-round-added`, `review-stamped`, `review-discarded`, `verify-round-added`, `verify-stamped`, `verify-discarded` | `change` | The change name |
 | `change-archived` | `spec` | The change name |
-| `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-archived`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
-| All others (for example `scope-imported` of an import) | `unknown` | An empty string |
+| `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-archived`, `discussion-restored`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
+| All others (for example `scope-imported` of an import, and `language-replaced` of a write of the shared vocabulary document) | `unknown` | An empty string |
 
 - The six events of the review station and the verify station belong to the change: a new round, a stamp, and a discarded ticket. `resourceId` is the change name. A client that reads the change again gets the new station state.
 - The payload of `change-landed` has `change` and `commit`. It has `branch` only when the report gave a branch.
@@ -626,21 +655,25 @@ If-Match: 2
 | `POST /discussions/{slug}/link` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
 | `POST /discussions/{slug}/seal` | `{"change":"add-auth"}` | `{"slug":"auth-scope","change":"add-auth"}` |
 | `POST /discussions/{slug}/archive` | None | `{"archivedTo":"discussions/archive/<file name>"}` |
+| `POST /discussions/{slug}/restore` | None | `{"slug":"board-search-bar","restoredFrom":"2026-11-10-board-search-bar.md"}` |
 | `DELETE /discussions/{slug}?force=true` | None | `{"slug":"board-search-bar"}` |
 
 - `POST /discussions`: `slug` is optional; without it, the Server makes one from `topic`. A slug uses lowercase letters and digits with single hyphens. A bad slug gives 400 `invalid_argument`. The optional `kind` accepts only `improve` today. The optional `fields` holds the free fields that the discussion starts with.
 - `conclude`: `hold: true` keeps the record live after the conclusion, because it still owes a change. `restaleFlagged` lists the changes that a new conclusion sends back for a refresh. `autoArchived: true` appears only when the conclusion also archives the record.
 - `promote`: `name` is optional. The optional `fields` holds the free fields that the new change starts with. `promote` and `seal` accept an optional `last: true`. It marks the final change that the conclusion plans, and it clears the hold flag of the record.
 - `seal`: first link the change to the discussion with `link`. Without the link, the Server answers 409 `refused`.
+- `POST /discussions/{slug}/restore`: brings back the newest archived record of the slug, with its content unchanged. `restoredFrom` is the file name that the record had in the archive. When the slug has a live record, the Server answers 409 `refused`. When the slug has no archived record, the Server answers 404 `not_found`.
 - `DELETE /discussions/{slug}`: `force` is `false` by default. A discussion with rounds needs `force=true`; without it, the Server answers 409 `refused`. The Server does not delete an archived discussion; it also answers 409 `refused`.
 
 ### Project data
 
 | Endpoint | Request body | Success response |
 | --- | --- | --- |
+| `PUT /language` | `{"content":"# Language\n"}` | `{"created":true}` |
 | `PUT /config` | `{"content":"schema: spec-driven\n","expectedRevision":16}` | `{"revision":17}` |
 | `PUT /board-order` (with `If-Match: "16"`) | `{"content":"{\"changes\":{\"add-logout\":\"a\"}}"}` | `{"revision":17}` |
 
+- `PUT /language` takes the full shared vocabulary document and replaces the stored one. `created` tells if this call created a document that did not exist. When `content` is empty or has only whitespace, the Server answers 400 `invalid_argument`, and the document does not change. Write access is sufficient: the endpoint does not need the permission to change workflow policy.
 - `PUT /config` takes the full config document. The Server parses it first and answers 422 `invalid_config` when it cannot.
 - `POST /context` can take `change` in the body to get only the documents of that change. Send `{}` to get all documents. The response has `snapshotId`, `digest`, and `documents`. Each document has `path`, `content`, `revision`, and `digest`. The CLI uses it to mirror the documents of the Server into the read-only local folder `.speclink/context/`.
 - The board-order `content` is JSON text in the form `{"changes":{"<change>":"<rank key>"},"discussions":{…}}`. `PUT /board-order` stores the content as it is. `GET /plan` and `POST /changes/{name}/rank` read it, and they treat an unreadable section as "no order". When `rank` writes it back, it keeps only the rank keys of active changes, and it returns the discussions section unchanged.

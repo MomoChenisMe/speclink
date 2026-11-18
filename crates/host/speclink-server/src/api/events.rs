@@ -377,6 +377,12 @@ mod tests {
                 "topic",
             ),
             (
+                "discussion-restored",
+                json!({ "slug": "topic" }),
+                InvalidationScope::Discussion,
+                "topic",
+            ),
+            (
                 "discussion-discarded",
                 json!({ "slug": "topic" }),
                 InvalidationScope::Discussion,

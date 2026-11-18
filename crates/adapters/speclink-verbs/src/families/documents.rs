@@ -1,9 +1,9 @@
-//! Document-read verbs: `artifact cat` and `language show`.
+//! Document verbs: `artifact cat`, `language show` and `language replace`.
 
 use clap::{Args, Subcommand};
 use speclink_core::command::{Command, CommandError};
 
-use crate::{CommandTarget, ToCommand, VerbInputs};
+use crate::{CommandTarget, StdinPolicy, ToCommand, VerbInputs};
 
 #[derive(Args, Debug)]
 pub struct ArtifactArgs {
@@ -30,6 +30,15 @@ pub struct LanguageArgs {
 pub enum LanguageCommands {
     /// Print the project's shared vocabulary (LANGUAGE document)
     Show,
+    /// Replace the whole LANGUAGE document with the content from stdin (creates it when absent)
+    Replace {
+        /// Read the whole document from stdin
+        #[arg(long, required = true)]
+        stdin: bool,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 impl ArtifactArgs {
@@ -57,15 +66,27 @@ impl LanguageArgs {
     pub fn name(&self) -> &'static str {
         match self.command {
             LanguageCommands::Show => "language show",
+            LanguageCommands::Replace { .. } => "language replace",
+        }
+    }
+
+    pub fn stdin_policy(&self) -> StdinPolicy {
+        match self.command {
+            LanguageCommands::Show => StdinPolicy::Never,
+            LanguageCommands::Replace { stdin, .. } => StdinPolicy::WhenFlagged { flagged: stdin },
         }
     }
 }
 
 impl ToCommand for LanguageArgs {
-    fn to_command(&self, _inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
-        match self.command {
-            LanguageCommands::Show => Ok(CommandTarget::Command(Command::LanguageShow)),
-        }
+    /// Unread stdin is empty content; the engine refuses an empty document.
+    fn to_command(&self, inputs: VerbInputs) -> Result<CommandTarget, CommandError> {
+        Ok(CommandTarget::Command(match self.command {
+            LanguageCommands::Show => Command::LanguageShow,
+            LanguageCommands::Replace { .. } => {
+                Command::LanguageReplace { content: inputs.stdin.unwrap_or_default() }
+            }
+        }))
     }
 }
 

@@ -9,13 +9,14 @@ use speclink_core::listing::ListWorktreeJson;
 /// this crate never reads them itself. Every field defaults to "not given".
 ///
 /// Where each command field comes from (checked against the CLI's `cmd_*`):
-/// every field of the 47 commands the conversion returns comes from argv,
+/// every field of the 50 commands the conversion returns comes from argv,
 /// except these.
 ///
 /// | Command field | Input | What the CLI passes |
 /// |---|---|---|
 /// | `List.worktrees` | `worktrees` | the main checkout's worktree facts (`common::worktree_overlay`) |
 /// | `NewArtifact.content` | `stdin` (with `--stdin`) | `common::stdin_for` |
+/// | `LanguageReplace.content` | `stdin` (empty when unread) | `common::stdin_for` |
 /// | `TaskDone.touched_files`, `TaskDone.head_commit` | `touched_files`, `head_commit` | nothing: the engine probes the workspace (the remote arm sends its own request) |
 /// | `Plan.ranks` | `ranks` | nothing: each change's own board rank |
 /// | `DiscussContext`／`DiscussAddRound`／`DiscussConclude` `.content` | `stdin` (empty when unread) | `common::stdin_for` |
@@ -99,11 +100,11 @@ mod tests {
     use crate::families::test_support::target_of;
     use crate::{CommandTarget, VerbInputs};
 
-    /// One argv per command the conversion returns: 48 distinct commands, so
+    /// One argv per command the conversion returns: 50 distinct commands, so
     /// the table above speaks for every one of them (TaskMove and
     /// WorkflowConfigReplace have no argv).
     #[test]
-    fn the_conversion_reaches_48_commands() {
+    fn the_conversion_reaches_50_commands() {
         let argvs: &[&[&str]] = &[
             &["list"], &["show", "x"], &["status"], &["validate"], &["analyze"],
             &["artifact", "cat", "tasks"], &["language", "show"], &["trace", "x"], &["instructions"],
@@ -124,6 +125,7 @@ mod tests {
             &["verify", "add-round", "c"], &["verify", "show", "c"], &["verify", "stamp", "c"],
             &["verify", "discard", "c"],
             &["workflow-config", "show"], &["workflow-config", "set", "tdd", "true"],
+            &["language", "replace", "--stdin"], &["discuss", "restore", "t"],
         ];
         let kinds: std::collections::HashSet<_> = argvs
             .iter()
@@ -132,6 +134,6 @@ mod tests {
                 other => panic!("{argv:?} must convert to a command, got {other:?}"),
             })
             .collect();
-        assert_eq!(kinds.len(), 48);
+        assert_eq!(kinds.len(), 50);
     }
 }

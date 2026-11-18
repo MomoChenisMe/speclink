@@ -82,8 +82,6 @@
 | `task done` 不替宿主收集改了哪些檔；蓋章與開工標記也不替宿主讀 commit 與分支。宿主套件不讀 git。 | 經 `host.dispatch` 勾任務、蓋章或標記開工的宿主。任務照常勾選，但 evidence 不記檔案、repo 與 commit。 | 需要 evidence 時，由工程師在 checkout 用 CLI 執行 `speclink task done`，CLI 會收集。蓋章的 commit 由宿主放進 `--stdin` 的 JSON（`headCommit`）。落地的 commit 與分支用 `speclink change landed <名稱> --commit <sha> --branch <分支>` 回報。 |
 | 用 Node 內嵌的宿主沒有現成的推送事件。 | 連到這種宿主的 Speclink Desktop 與其他用戶端：畫面靠定時詢問更新，不是即時。 | 不用設定，用戶端會自己輪詢。要即時更新的宿主自己提供 SSE 或 WebSocket 串流，並用 `createHost` 的 `pushTransports` 宣告網址。 |
 | Speclink Desktop 沒有釋放認領的按鈕。 | 只用 Speclink Desktop 操作遠端專案，又要交出自己認領的變更、或接手離開的人認領的變更的人。 | 在連到這個遠端專案的 checkout 執行 `speclink claim <變更> --release`。在內嵌引擎的宿主裡，Agent 工具執行同一個動詞。釋放之後，再回 Speclink Desktop 認領。 |
-| 沒有把封存的討論記錄搬回來的動詞。 | 把討論封存錯了的人，例如最後一刀的旗標下錯。 | 本機專案：把檔案從 `discussions/archive/` 搬回 `discussions/`，並拿掉檔名前面的日期。遠端專案：今天沒有動詞可用，要由持有規格的 Server 那一端處理。 |
-| 沒有寫入詞彙表的動詞。只有 `speclink language show` 可以讀。 | 討論做出用詞的結論之後，要更新詞彙表的人。 | 本機專案：直接編輯規格資料夾裡的 `LANGUAGE.md`。遠端專案：今天沒有替代做法。 |
 | `baseline` 與 `manual` 兩支技能在遠端專案被拒絕。 | 遠端專案裡，要從既有程式碼建立規格基準或要生成手冊的人。 | `manual` 的導覽模式照常可用（`/speclink-manual 導覽`）。規格基準先在本機專案做完，再用 Speclink Desktop 的「遷移到 Server」搬到一個空的遠端專案。遠端專案的手冊今天沒有替代做法。 |
 | 連到沒有宣告技能的舊版 Server 時，CLI 用本機的範本，worktree 的兩支技能不會產生。 | 連到舊版示範用 server 的遠端專案使用者。 | 把 Server 升級到會提供技能的版本，再執行 `speclink update`。升級之前，本機範本產生的其他技能照常可用。 |
 | 已封存的變更與討論不能改自由欄位；也沒有依欄位查詢的動詞。 | 用自由欄位把變更對到自己的工單或看板的宿主。 | 封存之前先設好欄位，欄位會跟著文件進封存。要查詢時，讀 `speclink list --json`、`speclink show <名稱> --json` 與 `speclink discuss list --json` 的 `fields`，在自己的程式裡篩選。 |
@@ -106,6 +104,8 @@
 - 內嵌的宿主不能匯入：已解決，見 `host.importScope` 與 HTTP 入口的 `POST /import`。
 - 沒有任何 Server 回答支援哪些登入方式：已解決，宿主用 `authMethods` 宣告，示範用 server 也會回答。
 - 遠端專案的技能來自本機的 CLI、worktree 的兩支技能不會產生：已解決，技能由 Server 提供。連上遠端專案之後技能檔不會自動重新產生，這一步寫在 [Remote 入門](remote-getting-started.zh-TW.md)：執行 `speclink update`。
+- 沒有把封存的討論記錄搬回來的動詞：已解決，執行 `speclink discuss restore <slug>`，同一個 slug 最新的一份封存記錄會回到進行中，內容不變。本機專案、遠端專案與內嵌的宿主都能用。
+- 沒有寫入詞彙表的動詞：已解決，用 `speclink language show` 讀出全文，修改後用 `speclink language replace --stdin` 整份寫回。本機專案、遠端專案與內嵌的宿主都能用。
 
 ## <a id="recheck"></a>怎麼重新查核
 

@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -360,7 +360,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -701,7 +701,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -956,7 +956,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -1092,7 +1092,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -1421,7 +1421,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -1673,7 +1673,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -2068,7 +2068,15 @@ Where to capture:
 
 **Vocabulary drift** means the discussion surfaced a recurring concept that is missing, ambiguous, or pulling away from the shared vocabulary loaded in Step 0. Examples: the topic uses a term that the vocabulary lists as an `avoid` synonym, or the discussion repeatedly names a concept that has no entry yet. When this happens, name it as vocabulary drift in the conclusion summary and direct the capture to `LANGUAGE.md`, the shared vocabulary document. The conclusion summary preserves this contract — do not silently rewrite the term in the artifacts without recording the drift.
 
-The Server that holds the specs keeps the document, and no verb writes it: name the drift in the conclusion and leave the document to whoever maintains it there.
+To record the drift, read the whole document with `speclink language show`, add or change the entry, and write the whole document back at once. When `speclink language show` fails because the project has no LANGUAGE document yet, start from an empty one. Any other failure of that command (the Server cannot be reached, access is refused) ends this capture: report the error and write nothing, because a write then replaces a document you did not read.
+
+```bash
+speclink language replace --stdin <<'LANGUAGE_EOF'
+<the whole document, with the new or changed entry>
+LANGUAGE_EOF
+```
+
+The document is replaced whole, so do the read, the edit and the write back with no other step in between. This capture follows the rule below like every other one: when the user declines it, write nothing.
 
 Present the summary and say something like "I'll capture this to design.md unless you'd rather not." Default to capturing — the user can decline.
 
@@ -2135,7 +2143,7 @@ Never require a conclusion before a mid-discussion promote, and never conclude t
 
 **Staged cuts — `--hold`.** When the conclusion plans further changes to spin out from this same record later (cut A now, cut B once A lands, cut C after that), run `conclude` with `--hold` **once** — an ordinary spin-out never clears the flag, so the single call covers the whole series. The record stays live past its conclusion and past every middle cut's archive. The **last cut is spun out with `--last`** (`speclink-propose --from-discussion <slug>` decides this from the conclusion's cut list and the record's `promoted_to`; on the raw verbs it is `speclink discuss promote <slug> --last`, `speclink new change <name> --from-discussion <slug> --last`, or `speclink discuss seal <slug> <change> --last`): that spin-out drops the flag in the same write, and when the last spun-out change is archived the record is co-archived automatically — there is nothing to close by hand. Besides `--last`, only a `conclude` without `--hold` or a manual `speclink discuss archive <slug>` releases the flag. Forgot `--last`? The record simply stays live (the board labels it "promoted · on hold"); run `speclink discuss archive <slug>` once to close the series. Without `--hold` the record is archived along with the last of its changes, and any later cut needs a new discussion.
 
-**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) The archived record is on the Server and no verb moves it back: stop and tell the user that this step has to be done on the Server that holds the specs.
+**Archived by mistake?** (For example, `--last` went on a cut that was not the last one, and the record was co-archived with it.) Run `speclink discuss restore <slug>`: the record is live again with its content unchanged, and every verb works on it. The engine's error for spinning out from an archived record names the same verb. Then do the step that was blocked — spin out the next cut, or continue the discussion.
 
 ---
 
@@ -2169,7 +2177,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -2309,7 +2317,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -2512,7 +2520,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -2856,7 +2864,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -3079,7 +3087,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -3238,7 +3246,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
 
    What `--last` does: the engine drops the record's `hold: true` line in the same write that accumulates `promoted_to`, so when the last spun-out change is archived, the discussion is co-archived automatically — nobody has to remember to close the series. Passing it on a cut that was **not** the last is the one mistake to avoid: the record would be co-archived when the last in-flight change is archived, and spinning out the next cut then needs the record moved back out of the archive.
 
-   The archived record is on the Server and no verb moves it back: stop and tell the user that this step has to be done on the Server that holds the specs.
+   Run `speclink discuss restore <slug>` to move it back: the record is live again with its content unchanged (the engine's error message names the same verb).
 
    Forgetting it is cheap: the record stays live, the board shows it as "promoted · on hold", and one `speclink discuss archive <slug>` closes the series by hand.
 
@@ -3578,7 +3586,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -3722,7 +3730,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -4029,7 +4037,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 
@@ -4123,7 +4131,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.58.0"
+  version: "v1.59.0"
   generatedBy: "Speclink"
 ---
 

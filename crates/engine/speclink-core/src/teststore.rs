@@ -48,6 +48,10 @@ pub(crate) struct TestStore {
     pub discussions: RefCell<HashMap<String, String>>,
     /// Archived discussion slug → document text (promote must refuse these).
     pub archived_discussions: RefCell<HashMap<String, String>>,
+    /// Archived discussion slug → the name `archive_discussion` gave it. A
+    /// record a test put straight into `archived_discussions` has none, and
+    /// is shown under one fixed date.
+    pub archived_discussion_names: RefCell<HashMap<String, String>>,
     /// When set, `delete_change` fails — lets discard tests exercise the
     /// "directory removal failed, unlinks not rolled back" path.
     pub fail_delete_change: RefCell<bool>,
@@ -62,6 +66,10 @@ pub(crate) struct TestStore {
     pub workflow_config: RefCell<Option<String>>,
     /// Number of `write_workflow_config` calls (write-once and no-write assertions).
     pub workflow_config_writes: RefCell<u32>,
+    /// The LANGUAGE document; `None` is "no document".
+    pub language: RefCell<Option<String>>,
+    /// Number of `write_language` calls (no-write assertions).
+    pub language_writes: RefCell<u32>,
     /// Whether this double declares ownership adjudication (a team-mode
     /// backend). Default `false` keeps every existing test on the fs-parity
     /// path; `claim` tests flip it via [`TestStore::team_with_meta`].
@@ -349,7 +357,7 @@ impl Store for TestStore {
         Some(DiscussionDoc {
             slug: slug.to_string(),
             text: text.clone(),
-            path: archived_discussion_path(slug),
+            path: self.archived_discussion_path(slug),
             archived: true,
         })
     }
@@ -374,7 +382,7 @@ impl Store for TestStore {
             .map(|(slug, text)| DiscussionDoc {
                 slug: slug.clone(),
                 text: text.clone(),
-                path: archived_discussion_path(slug),
+                path: self.archived_discussion_path(slug),
                 archived: true,
             })
             .collect()
@@ -389,7 +397,21 @@ impl Store for TestStore {
             return Ok(None);
         };
         self.archived_discussions.borrow_mut().insert(slug.to_string(), text);
-        Ok(Some(format!("{created}-{slug}.md")))
+        let name = format!("{created}-{slug}.md");
+        self.archived_discussion_names.borrow_mut().insert(slug.to_string(), name.clone());
+        Ok(Some(name))
+    }
+    fn restore_discussion(&self, slug: &str) -> Result<Option<String>> {
+        // The reverse move: the double keeps one archived record per slug, so
+        // that record is the newest. It comes back under the name it was
+        // archived with.
+        let name = self.archived_discussion_name(slug);
+        let Some(text) = self.archived_discussions.borrow_mut().remove(slug) else {
+            return Ok(None);
+        };
+        self.archived_discussion_names.borrow_mut().remove(slug);
+        self.discussions.borrow_mut().insert(slug.to_string(), text);
+        Ok(Some(name))
     }
     fn read_workflow_config(&self) -> Option<String> {
         self.workflow_config.borrow().clone()
@@ -400,14 +422,27 @@ impl Store for TestStore {
         Ok(())
     }
     fn read_language(&self) -> Option<String> {
-        None
+        self.language.borrow().clone()
+    }
+    fn write_language(&self, content: &str) -> Result<()> {
+        *self.language_writes.borrow_mut() += 1;
+        *self.language.borrow_mut() = Some(content.to_string());
+        Ok(())
     }
 }
 
-/// The double's archived location: one fixed date prefix, the same shape the
-/// fs store produces (`<created>-<slug>.md`).
-fn archived_discussion_path(slug: &str) -> PathBuf {
-    PathBuf::from(format!("discussions/archive/2026-01-02-{slug}.md"))
+impl TestStore {
+    /// The name of the slug's archived record: the one `archive_discussion`
+    /// gave it, else one fixed date prefix — the shape the fs store produces
+    /// (`<created>-<slug>.md`).
+    fn archived_discussion_name(&self, slug: &str) -> String {
+        let recorded = self.archived_discussion_names.borrow().get(slug).cloned();
+        recorded.unwrap_or_else(|| format!("2026-01-02-{slug}.md"))
+    }
+
+    fn archived_discussion_path(&self, slug: &str) -> PathBuf {
+        PathBuf::from(format!("discussions/archive/{}", self.archived_discussion_name(slug)))
+    }
 }
 
 #[cfg(test)]

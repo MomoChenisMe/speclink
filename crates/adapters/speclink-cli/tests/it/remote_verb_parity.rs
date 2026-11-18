@@ -2614,3 +2614,189 @@ fn claim_release_on_a_local_project_refuses_with_the_text_of_claim() {
         assert_eq!(stderr_of(&out), stderr_of(&claim), "{argv:?}");
     }
 }
+
+// --- language replace／discuss restore：兩模式輸出逐位元相同
+//     （spec verb-contract「詞彙文件的寫入動詞」、discussion-docs「討論以 restore 動詞搬回進行中」）---
+
+const LANGUAGE_DOC: &str = "# Language\n\n## 詞彙\n";
+
+#[test]
+fn remote_language_replace_matches_fs_output_byte_for_byte() {
+    // Scenario「三種執行方式結果相同」的本機與 remote 兩邊：取代與建立各一次。
+    let replaced_fs = TempProject::fs("lang-replace-fs");
+    replaced_fs.write("speclink/LANGUAGE.md", "# Old\n");
+    let created_fs = TempProject::fs("lang-create-fs");
+
+    for (fs, created, tag) in [(&replaced_fs, false, "lang-replace-remote"), (&created_fs, true, "lang-create-remote")] {
+        let mock = mock_server(vec![("PUT", "/language", 200, serde_json::json!({ "created": created }).to_string())]);
+        let remote = TempProject::remote(tag, &mock.base, "backend");
+
+        let fs_json = fs.run_stdin(&["language", "replace", "--stdin", "--json"], LANGUAGE_DOC);
+        let remote_json = remote.run_stdin(&["language", "replace", "--stdin", "--json"], LANGUAGE_DOC);
+        assert!(fs_json.status.success(), "fs stderr: {}", stderr_of(&fs_json));
+        assert!(remote_json.status.success(), "remote stderr: {}", stderr_of(&remote_json));
+        assert_eq!(stdout_of(&remote_json), stdout_of(&fs_json), "--json parity (created: {created})");
+        assert_eq!(json_of(&remote_json), serde_json::json!({ "created": created }));
+        // The request carries the whole document, as given.
+        let sent: serde_json::Value = serde_json::from_str(&mock.find("PUT", "/language").body).unwrap();
+        assert_eq!(sent, serde_json::json!({ "content": LANGUAGE_DOC }));
+    }
+
+    // The human lines, one per outcome. (The fs documents exist by now, so
+    // the fs side of "created" comes from a fresh project.)
+    let fresh_fs = TempProject::fs("lang-create-fs-human");
+    for (fs, created, tag) in [(&replaced_fs, false, "lang-replace-remote-h"), (&fresh_fs, true, "lang-create-remote-h")] {
+        let mock = mock_server(vec![("PUT", "/language", 200, serde_json::json!({ "created": created }).to_string())]);
+        let remote = TempProject::remote(tag, &mock.base, "backend");
+        let fs_out = fs.run_stdin(&["language", "replace", "--stdin"], LANGUAGE_DOC);
+        let remote_out = remote.run_stdin(&["language", "replace", "--stdin"], LANGUAGE_DOC);
+        assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+        assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "human parity (created: {created})");
+        assert_eq!(stderr_of(&remote_out), "");
+    }
+    assert_eq!(
+        stdout_of(&replaced_fs.run_stdin(&["language", "replace", "--stdin"], LANGUAGE_DOC)),
+        "✓ Replaced the LANGUAGE document\n"
+    );
+}
+
+#[test]
+fn remote_language_replace_refusals_end_non_zero_with_the_servers_line() {
+    // 空內容（400）、沒有寫入權限（403）：非零結束、stdout 沒有輸出、訊息是 Server 給的。
+    let rows: [(u16, &str, &str); 2] = [
+        (400, "invalid_argument", "the LANGUAGE document content is empty — give the whole document on stdin"),
+        (403, "permission_denied", "your role in project 'demo' is reader; this action needs the editor role"),
+    ];
+    for (status, reason, message) in rows {
+        let body = serde_json::json!({ "status": status, "reason": reason, "message": message }).to_string();
+        let mock = mock_server(vec![("PUT", "/language", status, body)]);
+        let remote = TempProject::remote(&format!("lang-replace-{status}"), &mock.base, "backend");
+        let stdin = if status == 400 { "   \n" } else { LANGUAGE_DOC };
+        let out = remote.run_stdin(&["language", "replace", "--stdin"], stdin);
+        assert!(!out.status.success(), "{status}");
+        assert_eq!(stdout_of(&out), "", "{status}");
+        assert!(stderr_of(&out).contains(message), "{status}: {}", stderr_of(&out));
+    }
+    // 本機的空內容同樣非零結束。
+    let fs = TempProject::fs("lang-replace-empty-fs");
+    let out = fs.run_stdin(&["language", "replace", "--stdin"], "   \n");
+    assert!(!out.status.success());
+    assert!(stderr_of(&out).contains("empty"), "{}", stderr_of(&out));
+}
+
+#[test]
+fn remote_language_replace_against_an_older_server_says_to_update_the_server() {
+    // 舊版 Server 沒有 PUT /language：回它自己的 404，不是引擎的錯誤外殼。
+    let mock = mock_server(vec![("PUT", "/language", 404, r#"{"error":{"code":"not_found","message":"找不到該路徑"}}"#.into())]);
+    let remote = TempProject::remote("lang-replace-old", &mock.base, "backend");
+    let out = remote.run_stdin(&["language", "replace", "--stdin"], LANGUAGE_DOC);
+    assert!(!out.status.success());
+    assert_eq!(stdout_of(&out), "");
+    assert!(
+        stderr_of(&out).contains("this server does not support language replace — update the server"),
+        "{}",
+        stderr_of(&out)
+    );
+}
+
+const RESTORE_RECORD: &str = "---\ntopic: Demo topic\nslug: demo-topic\nstatus: concluded\ncreated: 2026-11-10\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: ship it\n";
+
+#[test]
+fn remote_discuss_restore_matches_fs_output_byte_for_byte() {
+    // Scenario「remote 模式與宿主套件同語意」的本機與 remote 兩邊。
+    let restored = serde_json::json!({ "slug": "demo-topic", "restoredFrom": "2026-11-10-demo-topic.md" }).to_string();
+    for (args, tag) in [
+        (&["discuss", "restore", "demo-topic"][..], "restore-human"),
+        (&["discuss", "restore", "demo-topic", "--json"][..], "restore-json"),
+    ] {
+        let fs = TempProject::fs(&format!("{tag}-fs"));
+        fs.write("speclink/discussions/archive/2026-11-10-demo-topic.md", RESTORE_RECORD);
+        let mock = mock_server(vec![("POST", "/discussions/demo-topic/restore", 200, restored.clone())]);
+        let remote = TempProject::remote(&format!("{tag}-remote"), &mock.base, "backend");
+
+        let fs_out = fs.run(args);
+        let remote_out = remote.run(args);
+
+        assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+        assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+        assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "{args:?}");
+        assert_eq!(stderr_of(&remote_out), "");
+        mock.find("POST", "/discussions/demo-topic/restore");
+        if args.contains(&"--json") {
+            assert_eq!(
+                json_of(&remote_out),
+                serde_json::json!({ "slug": "demo-topic", "restoredFrom": "2026-11-10-demo-topic.md" })
+            );
+        } else {
+            assert_eq!(
+                stdout_of(&remote_out),
+                "✓ Restored discussion: demo-topic\n  From: 2026-11-10-demo-topic.md\n"
+            );
+        }
+    }
+}
+
+#[test]
+fn remote_discuss_restore_refusals_end_non_zero_like_fs_mode() {
+    // 已有進行中的記錄（409 refused）與沒有封存的記錄（404 not_found）：兩模式都非零結束，
+    // stdout 沒有輸出，stderr 是引擎的那一行。
+    let fs = TempProject::fs("restore-refused-fs");
+    fs.write("speclink/discussions/archive/2026-11-10-demo-topic.md", RESTORE_RECORD);
+    fs.write("speclink/discussions/demo-topic.md", RESTORE_RECORD);
+    for (slug, status, reason) in [("demo-topic", 409, "refused"), ("ghost", 404, "not_found")] {
+        let fs_out = fs.run(&["discuss", "restore", slug]);
+        assert!(!fs_out.status.success(), "{slug}");
+        assert_eq!(stdout_of(&fs_out), "", "{slug}");
+        // The server answers with the engine's own line; take it from fs mode.
+        let line = stderr_of(&fs_out);
+        let message = line.trim().trim_start_matches("Error: ").trim_start_matches("error: ").to_string();
+        let body = serde_json::json!({ "status": status, "reason": reason, "message": message }).to_string();
+        let path: &'static str = if slug == "ghost" { "/discussions/ghost/restore" } else { "/discussions/demo-topic/restore" };
+        let mock = mock_server(vec![("POST", path, status, body)]);
+        let remote = TempProject::remote(&format!("restore-refused-{slug}"), &mock.base, "backend");
+
+        let remote_out = remote.run(&["discuss", "restore", slug]);
+
+        assert!(!remote_out.status.success(), "{slug}");
+        assert_eq!(stdout_of(&remote_out), "", "{slug}");
+        assert!(stderr_of(&remote_out).contains(&message), "{slug}: {} vs {message}", stderr_of(&remote_out));
+    }
+}
+
+#[test]
+fn remote_discuss_restore_against_an_older_server_says_to_update_the_server() {
+    let mock = mock_server(vec![(
+        "POST",
+        "/discussions/demo-topic/restore",
+        404,
+        r#"{"error":{"code":"not_found","message":"找不到該路徑"}}"#.into(),
+    )]);
+    let remote = TempProject::remote("restore-old", &mock.base, "backend");
+    let out = remote.run(&["discuss", "restore", "demo-topic", "--json"]);
+    assert!(!out.status.success());
+    assert_eq!(stdout_of(&out), "");
+    assert!(
+        stderr_of(&out).contains("this server does not support discuss restore — update the server"),
+        "{}",
+        stderr_of(&out)
+    );
+}
+
+#[test]
+fn remote_discuss_restore_of_a_dot_name_is_an_invalid_slug_and_sends_nothing() {
+    // `.` 與 `..` 當不成路徑的一段：Server 對那條路徑回的是它自己的 404，會被讀成
+    // 「這台 Server 不支援」。用戶端先擋，訊息和本機模式同一句。
+    let mock = mock_server(vec![]);
+    let remote = TempProject::remote("restore-dot", &mock.base, "backend");
+    let fs = TempProject::fs("restore-dot-fs");
+    for slug in [".", ".."] {
+        let fs_out = fs.run(&["discuss", "restore", slug]);
+        let remote_out = remote.run(&["discuss", "restore", slug]);
+        assert!(!fs_out.status.success() && !remote_out.status.success(), "{slug}");
+        assert_eq!(stdout_of(&remote_out), "", "{slug}");
+        assert_eq!(stderr_of(&remote_out), stderr_of(&fs_out), "{slug}: the same line in both modes");
+        assert!(stderr_of(&remote_out).contains("invalid slug"), "{slug}: {}", stderr_of(&remote_out));
+    }
+    let sent = mock.captured.lock().unwrap();
+    assert!(sent.iter().all(|c| !c.path.contains("/discussions")), "no restore request went out: {sent:?}");
+}

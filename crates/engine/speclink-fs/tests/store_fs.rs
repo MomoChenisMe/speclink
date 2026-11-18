@@ -613,6 +613,150 @@ fn discussion_archive_naming_resolution_and_delete() {
     assert!(store.archived_discussion_exists("topic-a"));
 }
 
+// --- restore: an archived discussion comes back live (language-replace-and-discuss-restore D2) ---
+
+#[test]
+fn restore_discussion_brings_back_the_newest_archived_record_unchanged() {
+    // discussion-docs「討論以 restore 動詞搬回進行中」：多份封存時搬回最新的一份，
+    // 內容逐字元不變，較舊的那一份留在封存。
+    let root = TempRoot::new("discussion-restore");
+    let store = root.store();
+    let older = "---\nslug: demo-topic\ncreated: 2026-09-01\n---\n\n## Context\n\n舊的一份\n";
+    let newer = "---\nslug: demo-topic\ncreated: 2026-11-10\nhold: true\n---\n\n## Context\n\n新的一份  \n\n";
+    let old_path = root.write("openspec/discussions/archive/2026-09-01-demo-topic.md", older);
+    let new_path = root.write("openspec/discussions/archive/2026-11-10-demo-topic.md", newer);
+
+    let name = store.restore_discussion("demo-topic").unwrap();
+
+    assert_eq!(name.as_deref(), Some("2026-11-10-demo-topic.md"), "the archive-time name comes back");
+    assert_eq!(store.read_live_discussion("demo-topic").as_deref(), Some(newer), "byte-for-byte");
+    assert!(!new_path.exists(), "the restored record left the archive");
+    assert_eq!(std::fs::read_to_string(&old_path).unwrap(), older, "the older record stays archived");
+    let archived: Vec<String> = store.list_archived_discussions().into_iter().map(|d| d.text).collect();
+    assert_eq!(archived, vec![older.to_string()]);
+}
+
+#[test]
+fn restore_discussion_takes_the_same_record_a_slug_read_resolves() {
+    // A same-day reuse is stored with a `-N` suffix; the newest one is the
+    // record `read_discussion` shows, and it comes back under the plain slug.
+    let root = TempRoot::new("discussion-restore-reuse");
+    let store = root.store();
+    root.write("openspec/discussions/archive/2026-07-01-topic-a.md", "first\n");
+    root.write("openspec/discussions/archive/2026-07-01-topic-a-2.md", "second\n");
+    assert_eq!(store.read_discussion("topic-a").unwrap().text, "second\n");
+
+    let name = store.restore_discussion("topic-a").unwrap();
+
+    assert_eq!(name.as_deref(), Some("2026-07-01-topic-a-2.md"));
+    assert_eq!(store.read_live_discussion("topic-a").as_deref(), Some("second\n"));
+    assert_eq!(store.read_discussion("topic-a").unwrap().text, "second\n", "live now");
+    assert!(root.dir.join("openspec/discussions/archive/2026-07-01-topic-a.md").is_file());
+}
+
+#[test]
+fn a_record_of_another_slug_that_ends_in_a_number_is_not_a_reuse_of_this_slug() {
+    // `<slug>-2` is the name of a same-day reuse, and also of another
+    // discussion whose own slug ends in `-2`. A record that states its slug
+    // decides: it belongs to the slug it states.
+    let root = TempRoot::new("discussion-numbered-slug");
+    let store = root.store();
+    let first = "---\nslug: host-needs\ncreated: 2026-11-10\n---\nthe first discussion\n";
+    let second = "---\nslug: host-needs-2\ncreated: 2026-11-18\n---\nanother discussion\n";
+    let first_path = root.write("openspec/discussions/archive/2026-11-10-host-needs.md", first);
+    let second_path = root.write("openspec/discussions/archive/2026-11-18-host-needs-2.md", second);
+
+    // A slug read and a restore resolve the same record: the slug's own.
+    assert_eq!(store.read_discussion("host-needs").unwrap().text, first);
+    assert_eq!(store.restore_discussion("host-needs").unwrap().as_deref(), Some("2026-11-10-host-needs.md"));
+    assert_eq!(store.read_live_discussion("host-needs").as_deref(), Some(first));
+    assert!(!first_path.exists());
+    assert_eq!(std::fs::read_to_string(&second_path).unwrap(), second, "the other discussion stays archived");
+
+    // The other discussion is still reached by its own slug.
+    assert!(store.archived_discussion_exists("host-needs-2"));
+    assert_eq!(store.restore_discussion("host-needs-2").unwrap().as_deref(), Some("2026-11-18-host-needs-2.md"));
+    assert_eq!(store.read_live_discussion("host-needs-2").as_deref(), Some(second));
+    assert!(!store.archived_discussion_exists("host-needs"), "nothing of this slug is left in the archive");
+}
+
+#[test]
+fn a_hand_edited_slug_line_still_reads_as_a_reuse_of_its_slug() {
+    // A person can quote the slug or leave the line empty. A quoted slug is
+    // that slug; an empty line states none, so the name decides.
+    for (tag, slug_line) in [("quoted", "slug: \"topic-a\""), ("single", "slug: 'topic-a'"), ("empty", "slug:")] {
+        let root = TempRoot::new(&format!("discussion-slug-line-{tag}"));
+        let store = root.store();
+        root.write("openspec/discussions/archive/2026-07-01-topic-a.md", "first\n");
+        let second = format!("---\n{slug_line}\ncreated: 2026-07-01\n---\nsecond\n");
+        root.write("openspec/discussions/archive/2026-07-01-topic-a-2.md", &second);
+
+        assert_eq!(store.read_discussion("topic-a").unwrap().text, second, "{slug_line}");
+        assert_eq!(
+            store.restore_discussion("topic-a").unwrap().as_deref(),
+            Some("2026-07-01-topic-a-2.md"),
+            "{slug_line}"
+        );
+    }
+}
+
+#[test]
+fn restore_discussion_never_replaces_a_live_record() {
+    // The command refuses first; the store still does not rename over a
+    // record that appeared in between.
+    let root = TempRoot::new("discussion-restore-live");
+    let store = root.store();
+    let archived = root.write("openspec/discussions/archive/2026-11-10-demo-topic.md", "archived\n");
+    let live = root.write("openspec/discussions/demo-topic.md", "live\n");
+
+    let err = store.restore_discussion("demo-topic").expect_err("a live record is in the way");
+
+    assert!(err.to_string().contains("demo-topic"), "{err}");
+    assert_eq!(std::fs::read_to_string(&live).unwrap(), "live\n");
+    assert_eq!(std::fs::read_to_string(&archived).unwrap(), "archived\n");
+}
+
+#[test]
+fn restore_discussion_without_an_archived_record_writes_nothing() {
+    let root = TempRoot::new("discussion-restore-none");
+    let store = root.store();
+    root.write("openspec/discussions/archive/2026-11-10-other.md", "other\n");
+
+    assert_eq!(store.restore_discussion("ghost").unwrap(), None);
+
+    assert!(!store.live_discussion_exists("ghost"));
+    assert!(store.list_live_discussions().is_empty(), "zero writes");
+    assert_eq!(store.list_archived_discussions().len(), 1);
+    // No archive directory at all is the same answer.
+    let bare = TempRoot::new("discussion-restore-bare");
+    assert_eq!(bare.store().restore_discussion("ghost").unwrap(), None);
+    assert!(!bare.dir.join("openspec").exists(), "nothing was created");
+}
+
+// --- shared vocabulary: the LANGUAGE document is written whole ---
+
+#[test]
+fn write_language_creates_then_replaces_the_whole_document() {
+    // verb-contract「詞彙文件的寫入動詞」：不存在時建立，存在時整份取代。
+    let root = TempRoot::new("language-write");
+    let store = root.store();
+    assert_eq!(store.read_language(), None);
+
+    store.write_language("# Language\n").unwrap();
+    assert_eq!(store.read_language().as_deref(), Some("# Language\n"));
+    assert_eq!(
+        std::fs::read_to_string(root.dir.join("openspec").join("LANGUAGE.md")).unwrap(),
+        "# Language\n",
+        "the document lives in the spec directory"
+    );
+
+    // A shorter replacement leaves no tail of the old content, and the bytes
+    // land as given: no newline is added or removed.
+    store.write_language("# Language\n\n## 詞彙\n\n很長的一段舊內容\n").unwrap();
+    store.write_language("# L").unwrap();
+    assert_eq!(store.read_language().as_deref(), Some("# L"));
+}
+
 // --- completion evidence: the record's on-disk home and the legacy fallback ---
 
 #[test]

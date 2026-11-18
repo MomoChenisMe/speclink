@@ -258,6 +258,7 @@ fn render_with(
         O::Plan(o) => plan::plan(o, options),
         O::ArtifactCat(read) => documents::document(&read.content, options),
         O::Language(content) => documents::document(content, options),
+        O::LanguageReplace(o) => documents::replaced(o, options),
         O::EvidenceShow(o) => evidence::show(o, options),
         O::DiscussList(items) => {
             let archived =
@@ -326,6 +327,7 @@ fn render_with(
         O::DiscussLink(o) => discuss::bind(discuss::DiscussBind::Link, &o.slug, &o.change, options),
         O::DiscussSeal(o) => discuss::bind(discuss::DiscussBind::Seal, &o.slug, &o.change, options),
         O::DiscussArchive(o) => discuss::archived(o, options),
+        O::DiscussRestore(o) => discuss::restored(o, options),
         O::DiscussDiscard(o) => discuss::discard(&o.slug, options),
         O::DiscussFieldsEdit(o) => fields::edited(fields::FieldKind::Discussion, o, options),
         O::ReviewAddRound(o) => {
@@ -441,9 +443,11 @@ mod tests {
             CommandOutcome::ChangeFieldsEdit(_) => 48,
             CommandOutcome::DiscussFieldsEdit(_) => 49,
             CommandOutcome::ClaimRelease(_) => 50,
+            CommandOutcome::LanguageReplace(_) => 51,
+            CommandOutcome::DiscussRestore(_) => 52,
         }
     }
-    const RESULT_TYPES: usize = 51;
+    const RESULT_TYPES: usize = 53;
 
     fn s(text: &str) -> String {
         text.to_string()
@@ -838,6 +842,18 @@ mod tests {
                 }),
                 true,
                 "✓ t: unset owner\n",
+            ),
+            (
+                &["language", "replace", "--stdin"],
+                O::LanguageReplace(cmd::LanguageReplaceOutcome { created: false }),
+                true,
+                "✓ Replaced the LANGUAGE document\n",
+            ),
+            (
+                &["discuss", "restore", "t"],
+                O::DiscussRestore(cmd::DiscussRestoreOutcome { slug: s("t"), restored_from: s("2026-01-01-t.md") }),
+                true,
+                "✓ Restored discussion: t\n  From: 2026-01-01-t.md\n",
             ),
         ]
     }
