@@ -56,11 +56,26 @@ Answer these questions in order. The first "yes" gives your entry:
 | --- | --- | --- |
 | Skill | Workflow knowledge for the agent: what to read, how to write and check documents, and when to stop and ask you. | Claude, GitHub Copilot, and Cursor `/speclink-propose`, Codex `$speclink-propose`, pi `/skill:speclink-propose` |
 | `speclink` CLI | The command line that does the actual work. Local and remote mode both use it. | `speclink status --change add-csv-export` |
-| Host | Joins the engine, the Store, authentication, revisions, transactions, and events. The CLI, the server, and the Node SDK all go through it. | Built into the CLI, or `speclink-server` |
+| Engine | The program that runs a verb: it reads the specs, runs the workflow, and writes the result. For a local project, the engine in the CLI runs the verb. For a remote project, the engine on the Server runs it, and the CLI sends the verb over HTTP. | Built into the CLI; for a remote project, on the Server (the demonstration server, or a host that embeds the engine) |
 
 The skill names below use the Claude syntax. GitHub Copilot and Cursor use the same syntax. In Codex, change the first `/` to `$`, or enter `/skills` and pick from the list. In pi, change the first `/` to `/skill:`. One exception: only Claude has the `analyze` skill. In Codex, GitHub Copilot, pi, and Cursor, use the CLI instead.
 
 After you upgrade Speclink, run `speclink update` to write the skill files again.
+
+### <a id="skills-read-through-verbs"></a>Skills read specs through verbs
+
+A skill step often has to read a spec: the proposal of a change, the task list, or a canonical spec. The skill does not open a file. It runs a verb, for example `speclink artifact cat proposal --change <name>` or `speclink show <capability> --item-type spec`.
+
+The reason is that the checkout of a remote project has no spec files. The Server holds the specs. The same step can read in two ways, with different results:
+
+- **Read by path**: the skill opens a file in the spec folder. A local project has the file. The checkout of a remote project does not have it, so the step fails.
+- **Read through a verb**: the skill runs a `speclink` verb. In a local project, the CLI reads the file in the repo. In a remote project, the CLI gets the content from the Server over HTTP. The output is the same in both kinds of project.
+
+![Two ways for a skill step to read a canonical spec: a read by path finds no file in the checkout of a remote project, and a read through a verb lets the CLI get the content from the Server over HTTP](assets/figures/en/skill-path-vs-verb.svg)
+
+Thus the skills read through verbs, and the same flow works in local projects and in remote projects. Writes also go through verbs, for example `speclink new artifact` to write a document back. There are two exceptions: `baseline` writes spec files directly, and `manual` writes manual pages directly. Thus these two skills do not work in a remote project at this time (the tour of `manual` works).
+
+In a remote project, the Server provides the skill files: after you connect, run `speclink update` to get them. See [Remote getting started](remote-getting-started.md).
 
 ## <a id="stages"></a>Stages
 
@@ -124,7 +139,7 @@ Create a change that is ready for the work.
 Do the tasks in the task list, and check each task when it is done.
 
 - **When to use**: The documents for the work are complete. **Skip**: Documents are missing, the requirement is changing, or the change stopped for a while and you did not run `drift`.
-- **Input → output**: The proposal, specs, design (if one exists), and tasks → code and test changes, checked tasks, and file evidence. The evidence lists the files that each task touched. It goes into `speclink/changes/<name>/.evidence.json`, and you commit it with the change.
+- **Input → output**: The proposal, specs, design (if one exists), and tasks → code and test changes, checked tasks, and file evidence. The evidence lists the files that each task touched. In a local project, it goes into `speclink/changes/<name>/.evidence.json`, and you commit it with the change. In a remote project, the Server keeps it. In both, `speclink evidence show <name>` reads it.
 - **Skill**: `/speclink-apply <change-name>`
 - **CLI**: Before the work starts, the agent runs `speclink plan` and stops if another change blocks this one. Then it runs `speclink review prepare` (to record the start point for the quality stations) and `speclink in-progress add`. During the work, it uses `speclink instructions apply --change <name> --json` for context and runs `speclink task done --change <name> <number>` after each task.
 - **Done**: The behavior and tests of each task pass, and `instructions apply` reports `state: all_done`. You check the `[M]` manual tasks yourself. The agent does not check them.
@@ -178,7 +193,7 @@ Work on several independent changes at the same time. Each change gets its own g
   - No open manual task: run the quality stations in the worktree, commit the stamps, then run `worktree-merge`.
   - Manual tasks are still open, or you want the CI result before the stamps (the worktree branch stays on your machine, so CI cannot see it): run `worktree-merge` first, then run the quality stations in the main checkout.
 
-  `worktree-merge` merges the branch back into the main branch, brings the start point of the quality stations into the main checkout, and removes the worktree.
+  `worktree-merge` merges the branch back into the main branch, reports the landing (see [commit](#commit)), brings the start point of the quality stations into the main checkout, and removes the worktree.
 - **Next**: Go back to the main checkout and run `archive`. Archive works only in the main checkout. In a worktree, it fails.
 - **If something goes wrong**: The worktree and the main checkout each have their own `tasks.md`. Change only the one in the worktree. A change merged with an older worktree-merge skill has no start point in the main checkout: give the quality stations `--base` once, with the parent of the first commit of the change. The current merge skill writes the start point at merge time, whichever skill version ran the apply.
 
@@ -301,10 +316,15 @@ Commit only the files that belong to one change.
 - **When to use**: You want a commit that holds only one change. **Skip**: You have your own commit method. A change does not have to go through this stage.
 - **Input → output**: The change name, the Git status, and the task evidence → a file list that you approve, and one commit.
 - **Skill**: `/speclink-commit <change-name>`. It also supports "archive first, then commit both".
-- **CLI**: The skill uses `speclink list --json`, `.evidence.json`, `speclink artifact cat`, `speclink plan`, and Git to find the files. It does not use `git add .`.
+- **CLI**: The skill uses `speclink list --json`, `speclink evidence show <name> --json`, `speclink artifact cat`, `speclink plan`, and Git to find the files. It does not use `git add .`.
+- **A commit in a remote project holds only code**: The spec changes are not in the checkout. The Server keeps the documents and the evidence of the change, and each edit is on the Server at once. Thus the commit holds only code files. A commit in a local project holds the code and also the documents under `speclink/changes/<name>/`.
+- **The landing report after a commit**: After the commit succeeds, the skill runs `speclink change landed <name> --commit <commit>`. It records the commit that the code of the change landed on. In the worktree flow, a commit on the branch is not the landing yet. `/speclink-worktree-merge` reports it after the merge, and it also records the branch with `--branch`. The verb only records. It checks nothing: it does not check that the commit is on the main branch, and it does not block a later step.
 - **Done**: The commit holds only the files that you approved, and the skill reports the hash and the message.
 - **Next**: Continue with `apply`, or `archive`. A commit does not replace the archive.
-- **If something goes wrong**: If the list has files that do not belong, leave them out. Do not overwrite or delete them.
+- **If something goes wrong**:
+  - If the list has files that do not belong, leave them out. Do not overwrite or delete them.
+  - In a local project, the `.meta.yaml` of the change has one uncommitted edit after the landing report. This is normal. It goes into the next commit of this change.
+  - The landing report is refused (for example, by an older Server that does not have this verb): the skill tells you the message and continues. The commit stays as it is. With "archive first, then commit", the skill does not report, because the change is already in the archive.
 
 ### <a id="config"></a>config: workflow settings
 
@@ -336,7 +356,7 @@ Generate a manual for people from the specs (`speclink/manual/`), or get a tour 
 
 Answer "how did this feature come to be, and why does it work this way". It goes back from the specs to the archived changes, the discussions, and the code.
 
-- **When to use**: You take over a feature that you do not know, or you want to change a design. Local only.
+- **When to use**: You take over a feature that you do not know, or you want to change a design. It works in local projects and in remote projects.
 - **Input → output**: A capability name or a question → a trace chain: which changes, which discussions, and which files, each with its source.
 - **Skill**: `/speclink-trace <capability or question>`
 - **CLI**: `speclink trace <capability> [--json]`
@@ -356,7 +376,9 @@ Put all open changes in an execution order.
 - **CLI**:
   - `speclink plan [--json]`
   - Declare a dependency: `speclink change depends <change> --on <prerequisite>` (add `--remove` to drop it)
-  - Change the order in one column: `speclink change rank <change> --before <other-change>` (or `--after`; local only)
+  - Change the order in one column: `speclink change rank <change> --before <other-change>` (or `--after`)
+  - Use the stricter overlap rule: `speclink plan --strict-overlap`. When two changes touch the same capability, the later one moves to the next wave.
+  - These commands work in local projects and in remote projects.
 - **Next**: Start the change that `next` names. In the desktop app, the Plan document and the Plan row of the change detail page show the same data.
 
 ## <a id="discussion-outcomes"></a>Discussion outcomes

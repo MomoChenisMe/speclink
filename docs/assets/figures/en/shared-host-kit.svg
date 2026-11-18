@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 332" width="760" role="img" aria-label="Your system and the official server share the host kit: the top layer is different (your route and login; the official routes, accounts, and admin pages), the middle layer is the same (the host kit and the engine), and the bottom layer is different (your three functions and database; the three store port examples)">
+  <title>Your system and the official server share the host kit: the top layer is different (your route and login; the official routes, accounts, and admin pages), the middle layer is the same (the host kit and the engine), and the bottom layer is different (your three functions and database; the three store port examples)</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk"/></marker>
+    <marker id="arrow-gap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-gap"/></marker>
+    <marker id="arrow-kit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-kit"/></marker>
+  </defs>
+  <style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+  .box { fill: #ffffff; stroke: #98a6a3; stroke-width: 1.25; }
+  .host { fill: #edf0ef; stroke: #98a6a3; stroke-width: 1.25; }
+  .kit { fill: #e9effb; stroke: #1f55c4; stroke-width: 1.5; }
+  .eng { fill: #e2f1ee; stroke: #0b6b5f; stroke-width: 1.5; }
+  .gap { fill: #fdefea; stroke: #b4371a; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .zone { fill: none; stroke: #98a6a3; stroke-width: 1; stroke-dasharray: 2 5; }
+  .zl { font-size: 12px; fill: #5c6b68; font-weight: 500; }
+  .t { font-size: 14px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t13 { font-size: 13px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t-kit { fill: #1f55c4; }
+  .t-eng { fill: #0b6b5f; }
+  .t-gap { fill: #b4371a; }
+  .s { font-size: 12px; fill: #40504d; text-anchor: middle; }
+  .lbl { font-size: 12px; fill: #40504d; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+  .start { text-anchor: start; }
+  .end { text-anchor: end; }
+  .l-gap { fill: #b4371a; font-weight: 700; }
+  .l-kit { fill: #1f55c4; font-weight: 700; }
+  .edge { fill: none; stroke: #40504d; stroke-width: 1.4; }
+  .e-gap { fill: none; stroke: #b4371a; stroke-width: 1.6; stroke-dasharray: 6 4; }
+  .e-kit { fill: none; stroke: #1f55c4; stroke-width: 2; }
+  .mk { fill: #40504d; }
+  .mk-gap { fill: #b4371a; }
+  .mk-kit { fill: #1f55c4; }
+  </style>
+  <rect width="760" height="332" fill="#ffffff"/>
+  <rect class="host" x="24" y="16" width="340" height="64" rx="6"/>
+  <text class="t" x="194" y="43">Your system (the host)</text>
+  <text class="s" x="194" y="64">your route and login, your Agent tool</text>
+  <rect class="box" x="396" y="16" width="340" height="64" rx="6"/>
+  <text class="t" x="566" y="43">Official server (demonstration and trial)</text>
+  <text class="s" x="566" y="64">official routes, accounts, and admin pages</text>
+  <path class="edge" d="M194 80 V116" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="204" y="103">request + identity</text>
+  <path class="edge" d="M566 80 V116" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="576" y="103">request + identity</text>
+  <rect class="kit" x="24" y="120" width="712" height="76" rx="6"/>
+  <text class="t t-kit" x="380" y="153">Host kit and engine (the same for both)</text>
+  <text class="s" x="380" y="174">entry point → before-command hook → engine → one commit → after-commit hook</text>
+  <path class="edge" d="M194 196 V244" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="204" y="225">list, read, commit</text>
+  <path class="edge" d="M566 196 V244" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="576" y="225">list, read, commit</text>
+  <rect class="host" x="24" y="248" width="340" height="68" rx="6"/>
+  <text class="t" x="194" y="277">Your three functions and database</text>
+  <text class="s" x="194" y="298">the conformance tests check your implementation</text>
+  <rect class="box" x="396" y="248" width="340" height="68" rx="6"/>
+  <text class="t" x="566" y="277">Three store port examples</text>
+  <text class="s" x="566" y="298">SQLite, PostgreSQL, file system</text>
+</svg>

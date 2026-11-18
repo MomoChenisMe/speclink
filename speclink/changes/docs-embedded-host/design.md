@@ -214,3 +214,227 @@ SVG 的規格：
 ## Open Questions
 
 （無）
+
+## 盤點結果
+
+任務 1.1 的結果（2026-11-18）。來源是前二十個變更封存後的提案（`speclink/changes/archive/`）與討論 embedded-host-needs 結論的 Deferred 清單。之後的任務照這幾張表做；任務 5.2 用它核對。
+
+落點的代號：README＝D3；SDK＝Node SDK 文件（D4）；範例＝Server 儲存後端文件（D5）；部署、備份、Remote、動詞、流程、設定、路線圖、開發＝D5 對應的文件；狀態＝專案能力狀態（D6）；缺口＝專案能力狀態的 `known-gaps` 一節；素材＝這份 design 的「發版說明的素材」（D10）。
+
+### 文件影響
+
+| # | 變更 | 文件影響 | 落點 |
+| --- | --- | --- | --- |
+| 1 | store-port-contract | Node SDK 文件新增儲存接口與合格測試；Server 儲存後端改寫成範例；專案能力狀態列出已知缺口 | SDK 第 5、6 節；範例整份；缺口 |
+| 2 | engine-on-store-port | 專案能力狀態的 Server 效能說明；Server 儲存後端「每個動詞載入整個範圍」的段落 | 狀態「示範用 server」一列的限制；範例「一次提交的步驟」（改成用到才讀） |
+| 3 | shared-verb-parsing | Node SDK 文件補上「不認得的旗標會被拒絕」 | SDK 第 3 節 |
+| 4 | shared-verb-output | Node SDK 文件「只支援 9 個動詞」的幾句（已在該變更改寫）；其餘留給這個變更 | SDK 第 3、8 節（全部有引擎命令的動詞、需要 checkout 的動詞被拒絕） |
+| 5 | workflow-config-commands | Node SDK 文件補上流程設定的動詞與選填的儲存方法 | SDK 第 8 節（流程設定的動詞可用）；「選填的儲存方法」已隨 Store 物件移除，不寫 |
+| 6 | host-kit-agent-door | Node SDK 文件新增宿主套件、兩個掛鉤、JS 版儲存接口、合格測試、Agent 工具定義；README 的內嵌一節引用 `createHost`；專案能力狀態列出這個門的缺口 | SDK 第 4 到 8 節；README `embedding`；缺口 |
+| 7 | server-routes-on-store-port | 專案能力狀態記一句「遠端封存不留本機備份」 | 缺口 |
+| 8 | host-kit-client-door | 內嵌一節的第二、三件事與範圍函式、能力開關、登入方式宣告；Node SDK 文件的 `host.handleRequest` 與 `createHost` 新輸入；專案能力狀態的推送事件與匯入；Server 部署的定位句 | README `embedding`；SDK 第 4、9 節；缺口；部署開頭 |
+| 9 | client-browser-login | Remote 入門與動詞參考文件的 `auth login` 新旗標、三種登入方式與順序、存取金鑰存放位置；內嵌一節對登入服務的三個要求；Speclink Desktop 的登入方式卡（說明與截圖） | Remote「CLI」一節；動詞；README `embedding` 第四件事與 SDK 第 9 節；登入方式卡只用文字（Non-Goals：不新增截圖） |
+| 10 | skills-verbs-first-wave | 動詞參考文件：`change rank` 在遠端專案可用；專案能力狀態列兩個缺口 | 動詞的模式分岔表；流程；缺口 |
+| 11 | remote-read-verbs | 動詞參考文件：`evidence show`、trace 與 `plan --strict-overlap` 移出只限本機、`list --json` 新欄位、兩條新路由；正式規格的那一句 | 動詞；流程；delta 已改 |
+| 12 | skills-verbs-second-wave | Node SDK 文件的 `skills.render` 的 `specInCheckout`；工作流程：遠端專案的 commit 只含程式碼；專案能力狀態：baseline 與 manual 的缺口 | SDK 第 11 節；流程；缺口 |
+| 13 | remote-skill-delivery | Remote 入門：`speclink update`、技能來自 Server、信任；內嵌一節與 Node SDK 文件的 `skills`；設定說明：CLI 的提醒與狀態檔；Speclink Desktop 的技能檔提示 | Remote「取得技能」；SDK 第 4 節；設定；Desktop 的提示只用文字（Remote 入門的 Speclink Desktop 一節） |
+| 14 | station-status-and-landing | 動詞參考文件：`change landed`、新欄位與路由、事件的分類；內嵌一節：用執行前掛鉤加「沒有落地就不能封存」；工作流程：回報落地 | 動詞；SDK 第 7 節（掛鉤的例子）；流程 |
+| 15 | host-free-fields | 動詞參考文件：四個動詞、`--field`、新欄位與路由；內嵌一節與 Node SDK 文件：呼叫入口時附上欄位、用掛鉤檢查；鍵與值的規則 | 動詞；SDK 第 8 節；設定 |
+| 16 | import-export-on-port | 內嵌一節與 Node SDK 文件：匯出與匯入、大小上限、本文上限、壓縮；動詞參考文件：`GET /export`、第二版的包；專案能力狀態：CLI 沒有動詞 | SDK 第 10 節；動詞；缺口 |
+| 17 | node-retire-legacy-store | Node SDK 文件移除 Store 物件的全部內容、「完整範例」改用 `createHost`；README「Store 介面」的說法；路線圖提到 Store bridge 的兩處；發版說明 | SDK 整份；README 文件一節；路線圖；素材 |
+| 18 | store-port-examples | Server 儲存後端改寫；內嵌一節的第一件事連到三個範例；開發指南的 repo 結構表；專案能力狀態：沒有 JavaScript 範例 | 範例；README `embedding`；開發；缺口 |
+| 19 | server-on-port-examples | Server 部署的升級三步驟與回退；Server 備份的格式第 2 版；Server 儲存後端移除契約版本等說明；專案能力狀態移除「沒有最後修改時間」並改三列儲存；後台截圖；發版說明 | 部署；備份；範例；狀態；截圖只重拍 `server-setup.png`（D8；清單裡沒有系統頁的截圖，`server-overview.png` 拍的是總覽）；素材 |
+| 20 | retire-teamstore-and-drivers | 專案能力狀態的三列 TeamStore 與「Command Runtime、Host 與 Protocol」一列；開發指南的 crates/store；README「三種 TeamStore」；LANGUAGE.md 的「儲存後端」；手冊重新產生 | 狀態；開發；README 目前狀態；LANGUAGE.md（D2）；手冊在 Non-Goals，不做 |
+
+沒有文件影響的變更：沒有。二十個變更各自都列了至少一項（server-routes-on-store-port 只有一句）。
+
+### 已知缺口
+
+「缺口」一欄的編號對應規格「已知缺口逐項列出」列的十六項（G1 到 G16）；G17 以後是盤點多出來的。
+
+| # | 來源 | 缺口 | 狀態 | 落點 |
+| --- | --- | --- | --- | --- |
+| G1 | host-kit-agent-door、shared-verb-output | 沒有本機規格檔的內嵌宿主不能用需要 checkout 的動詞（drift、review prepare、review scope、verify scope、帶 `--skill` 的 instructions；實際清單在 3.7 對照程式） | 仍然成立 | 缺口 |
+| G2 | host-kit-agent-door、station-status-and-landing | `task done` 不替宿主收集改了哪些檔；蓋章與開工標記也不替宿主讀 commit 與分支（宿主套件不讀 git） | 仍然成立 | 缺口 |
+| G3 | host-kit-client-door | 用 Node 內嵌的宿主沒有推送事件，用戶端只靠輪詢 | 仍然成立 | 缺口 |
+| G4 | skills-verbs-first-wave、skills-verbs-second-wave | 沒有把封存的討論記錄搬回來的動詞 | 仍然成立 | 缺口 |
+| G5 | skills-verbs-first-wave、skills-verbs-second-wave | 沒有寫入詞彙表的動詞 | 仍然成立 | 缺口 |
+| G6 | skills-verbs-second-wave；Deferred「遠端專案的手冊產生」 | baseline 與 manual 兩支技能在遠端專案被拒絕（manual 的導覽模式仍可用） | 仍然成立 | 缺口；路線圖 |
+| G7 | remote-skill-delivery | 連到沒有宣告技能的舊版 Server 時用本機的範本，worktree 的兩支不會產生 | 仍然成立 | 缺口 |
+| G8 | host-free-fields | 已封存的文件不能改自由欄位，也沒有依欄位查詢的動詞 | 仍然成立 | 缺口 |
+| G9 | import-export-on-port | CLI 沒有匯入匯出的動詞 | 仍然成立 | 缺口 |
+| G10 | store-port-examples | 沒有 JavaScript 寫的儲存接口範例 | 仍然成立 | 缺口 |
+| G11 | server-on-port-examples（Non-Goals） | 示範用 server 只支援單一實例 | 仍然成立 | 缺口 |
+| G12 | Deferred | 規格放在 checkout 之外的本機位置（`spec_dir` 不檢查絕對路徑與 `../`，行為未定義） | 仍然成立 | 缺口；設定；路線圖 |
+| G13 | Deferred | 唯讀引用另一套規格 | 仍然成立 | 缺口；路線圖 |
+| G14 | Deferred | 遠端專案的自訂產出流程 | 仍然成立 | 缺口；路線圖 |
+| G15 | Deferred；engine-on-store-port、server-routes-on-store-port | 嚴格一致的讀取快照（純讀取可能短暫看到新舊混合的內容） | 仍然成立 | 缺口 |
+| G16 | Deferred | 多個宿主實例之間的推送事件 | 仍然成立 | 缺口；路線圖 |
+| G17 | Deferred | 依範圍版本號的快取（進行中的變更很多時，列出變更對儲存的呼叫數會成長） | 仍然成立 | 缺口 |
+| G18 | server-routes-on-store-port | 遠端專案的封存不留本機備份（`snapshotCreated` 一律 false） | 仍然成立 | 缺口 |
+| G19 | skills-verbs-first-wave | 「讀使用者給的文件路徑」這種技能輸入只在 agent 有檔案系統時可用 | 仍然成立 | 缺口（併入 G1 那一列的說明） |
+| G20 | host-kit-client-door（Non-Goals） | 入口固定掛在 `/api/speclink/v1/` 底下；不經引擎的讀取不逐一問執行前掛鉤 | 仍然成立（設計上的限制） | SDK 第 9 節 |
+| — | store-port-contract | 引擎還不會經儲存接口讀寫、Node 還拿不到它 | 已由 engine-on-store-port 與 host-kit-agent-door 解決 | 不寫 |
+| — | engine-on-store-port | Node 的宿主還不能交出自己的儲存接口；沒有每次呼叫帶身分的入口 | 已由 host-kit-agent-door 解決 | 不寫 |
+| — | shared-verb-parsing | SDK 只有 9 個動詞 | 已由 shared-verb-output 解決 | 不寫 |
+| — | shared-verb-output | 流程設定的動詞不能用；沒有每次呼叫帶身分 | 已由 workflow-config-commands 與 host-kit-agent-door 解決 | 不寫 |
+| — | workflow-config-commands | 沒有執行前檢查 | 已由 host-kit-agent-door 解決 | 不寫 |
+| — | host-kit-client-door | 匯入不可用；遠端的技能安裝仍來自本機的 CLI | 已由 import-export-on-port 與 remote-skill-delivery 解決 | 不寫 |
+| — | client-browser-login | 沒有任何 Server 回答登入方式 | 已由 host-kit-client-door 解決 | 不寫 |
+| — | remote-read-verbs、skills-verbs-second-wave | 連到示範用 server 時清單沒有最後修改時間 | 已由 server-on-port-examples 解決 | 不寫 |
+| — | skills-verbs-second-wave | worktree 的兩支技能在遠端專案不會被產生；`speclink link` 之後技能檔不會自動重新產生 | 前者已由 remote-skill-delivery 解決；後者改成 Remote 入門的一個步驟（連上之後執行 `speclink update`） | Remote「取得技能」 |
+
+### 相容性影響（使用者要採取行動的項目，供 D10）
+
+| 來源 | 項目 |
+| --- | --- |
+| node-retire-legacy-store | `createEngine` 不再接受 Store 物件；改寫成三個函式並改用 `createHost` |
+| shared-verb-parsing | Node SDK 的 `dispatch` 以 `invalid_argv` 拒絕不認得的旗標；帶 `--stdin` 才讀 stdin 的動詞要一併帶 `--stdin` |
+| shared-verb-output | 原本一定被拒絕的動詞現在會執行；`new change` 與空清單的 `status` 的 `output` 尾端多一個換行 |
+| server-on-port-examples | 示範用 server 從 0.12.0 以前升級要走備份與還原；備份格式第 2 版（舊版讀不了）；管理頁移除資料結構遷移與 `POST /admin/data/migrate`；範圍匯出下載的內容改變 |
+| client-browser-login | 存取金鑰在有金鑰圈的機器上改存金鑰圈（`credentialSource` 變成 `keychain_pat`）；`auth login --pat` 不再要求是專案成員；Server 位址含大寫主機名稱的登入要重新登入一次 |
+| skills-verbs-first-wave、skills-verbs-second-wave、station-status-and-landing | 技能檔內容改變，要執行 `speclink update`；自訂工具的交棒寫法從 `speclink <名稱>` 變成 `speclink-<名稱>` |
+| remote-read-verbs | 變更名稱必須是單一路徑段；`artifact cat --change archive/<封存名稱>` 改用變更名稱或封存名稱本身；evidence 的路由對不存在的名稱回 404 |
+| server-routes-on-store-port | 遠端封存的回應 `snapshotCreated` 一律 false，CLI 少印一行 |
+| engine-on-store-port | 版本衝突（409）的 `message` 文字改成字串鍵的表示法 |
+| 這個變更 | README 的錨點 `self-hosting` 移除，改成 `embedding` 與 `official-server` |
+
+### 用詞的存量（2026-11-18）
+
+掃描面是 README 兩版、docs、三份介面文案（`apps/desktop/src/i18n/messages.ts`、`apps/server-web/src/i18n/messages.ts`、`packages/ui/src/i18n.tsx`）與技能原稿（`crates/engine/speclink-core/assets/skills`）。
+
+| 詞 | 命中 |
+| --- | --- |
+| 團隊模式 | 沒有 |
+| 主機套件 | 沒有 |
+| Remote Store | README 兩版各 2；docs/product-status 兩版各 2；docs/verb-contract.md 1；技能原稿 7 份各 1（技能原稿不在 D9 的禁用範圍，不改） |
+| Self-hosting（含錨點 `self-hosting`） | README 兩版各 1 |
+| 自架 server | README.zh-TW.md 2；docs/development.zh-TW.md 1 |
+| TeamStore | README 兩版各 1；docs/product-status 兩版各 3 |
+| 參考實作／reference implementation | README 兩版各 1；docs/remote-getting-started、docs/sdk-node、docs/verb-contract 兩版各 1；docs/server-deployment 兩版各 2 |
+
+結論：新增的兩個 avoid 詞沒有存量，任務 2.2 不會動到介面文案與技能原稿。
+
+## 稽核結論
+
+任務 5.1 的結果（2026-11-18）。對象是 README 兩版與 docs 的十二組文件。
+
+### 檢查過的項目
+
+| 檢查 | 做法 | 數量 | 結果 |
+| --- | --- | --- | --- |
+| 文件裡的 `speclink` 與 `speclink-server` 指令存在 | 取出行內程式碼與 shell 區塊裡的指令，逐層對照 `target/debug/speclink` 與 `target/debug/speclink-server` 的 `--help`（子指令與長旗標）。先用三個故意寫錯的指令確認檢查會抓到錯 | 26 個檔、192 個不重複的指令 | 全部存在 |
+| Node SDK 文件範例用到的名稱在型別宣告裡 | 取出兩版每一段範例從 `@speclink/engine` 取用的名稱，對照 `crates/adapters/speclink-node/index.d.ts` 的匯出 | 6 個名稱（`createEngine`、`createHost`、`agentTool`、`skills`、`runStoreConformance`、`StoreConflictError`） | 全部存在 |
+| Node SDK 文件的「完整範例」能執行 | 先 `npm --prefix crates/adapters/speclink-node run build`，把兩版的範例各存成暫存檔以 node 執行，再對它的路由送請求 | 2 份範例 | 合格測試通過、建立與列出變更成功、`auth-methods` 回 `{"methods":["token"]}`、沒有身分時回 401、帶金鑰時回變更清單、非入口的路徑回 404 |
+| Node SDK 文件不含已移除的介面 | 在兩版搜尋 `listChanges`、`writeArtifact`、`31` | 2 個檔 | 沒有命中 |
+| 動詞參考文件列的路由在路由表裡 | 取出兩版寫的「方法＋路徑」，對照宿主套件的路由表（`crates/host/speclink-host/src/http/router.rs` 與 `mod.rs`）與示範用 server 自己的路由 | 每版 54 條 | 全部找得到（兩條是 `/changes/{name}/artifacts/{*artifact}` 的實例） |
+| 專案能力狀態的證據連結指向存在的檔案 | 連結守門（`scripts/docs/docs-links.mjs`） | 28 份文件的全部相對連結 | 全部指得到 |
+| 文件之間帶錨點的連結指得到錨點 | 取出 README 與 docs 之間帶 `#` 的連結，對照目標檔的 `<a id>`（連結守門不檢查錨點） | 200 條 | 全部存在 |
+| 停用的說法 | 在 README 與 docs 搜尋 Remote Store、Self-hosting、自架 server、團隊模式、主機套件、TeamStore、參考實作、reference implementation、Store 介面、Store interface、Store driver、Store bridge | 26 個檔 | 沒有命中 |
+| Remote 入門的步驟 | 以記憶體設定（`store.driver: memory`、`identity.driver: memory`）啟動 `target/debug/speclink-server`，用無頭瀏覽器走初次設定的兩步、加成員資格、建立存取金鑰，再用 `target/debug/speclink` 在暫存資料夾執行 `link`、`auth status`、`update`、`new change`、`list`、`plan --strict-overlap`、`discard` | 第 1、2、3、4、6 節 | 每一步的輸出與文件相同：`link` 的兩行、`auth status` 的 `Credential from:` 與 `Repo 'backend' is registered in this project`、沒有 `tools` 時的 `No AI tool configurations found`、加上 `tools` 之後的 `✓ Updated skill files for: claude` 與 `Skills source: server (v1.58.0)`、`list` 的 `• smoke-test`；直接 GET 建立金鑰的路徑回 405。非成員得到 403 的那一段沒有實際觸發（只有一個帳號），以既有的 server 測試為準 |
+| 十張圖 | 用無頭瀏覽器把每張圖轉成 PNG 逐一檢視；圖解的守門（`scripts/docs/docs-figures.test.mjs`） | 10 張 | 文字都在方塊內、沒有重疊；沒有 script、foreignObject 與外部資源 |
+| 守門 | `node --test scripts/*.test.mjs scripts/*/*.test.mjs` | 575 條 | 全部通過，沒有被略過的 |
+
+### 發現與修正
+
+| 發現 | 修正 |
+| --- | --- |
+| 工作流程文件「怎麼呼叫」的表有一列「Host」，寫它「把引擎、Store、認證…組在一起」。這是舊架構的說法，而且和「宿主」的新意思衝突 | 兩版都改成「引擎」一列：本機專案由 CLI 裡的引擎執行，遠端專案由 Server 上的引擎執行 |
+| 自由欄位的鍵有 64 個字元的上限（`crates/engine/speclink-core/src/lifecycle/fields.rs`），Node SDK 文件只寫了字元規則 | 兩版補上「最長 64 個字元」 |
+| Remote 入門原本寫非成員執行 `speclink auth login` 會得到 `access denied`。實際上登入只確認身分，不看成員資格 | 改成 `auth status` 與讀寫專案的動詞才回 `access denied` |
+| 只用 `speclink link` 接上的資料夾沒有 `tools` 清單，`speclink update` 會印 `No AI tool configurations found`，不會取得技能 | Remote 入門的「取得技能」加上先寫 `tools` 的步驟，故障排除加一列 |
+| Server 儲存後端的舊文寫「連線 URL 裡的密碼優先於 `SPECLINK_POSTGRES_PASSWORD`」、PostgreSQL 的資料表是 `documents`、`history`、`outbox`、`meta`、檔案系統的舊內容檔「下次啟動才清」 | 照程式改寫：環境變數的密碼優先；四張表是 `meta`、`scopes`、`documents`、`events`；被取代的內容檔在同一次提交的最後刪除 |
+| 路線圖寫「儲存保留每份文件不可變的歷史」與「Agent 工具沒有入口」 | 前者改成每次提交把操作者與命令交給儲存、沒有查詢的 API；後者改成已經有 `agentTool` 與 `host.dispatch`，剩下 MCP |
+| 專案能力狀態的 Node SDK 一列寫「還沒有 Agent 工具層」 | 改寫；`agentTool` 已隨 SDK 提供 |
+| 初次設定頁多了「儲存狀態」卡，舊的截圖高度不夠 | 重拍的兩張截圖改成 2820×1720（原本 2820×1640） |
+
+### 沒有實際執行的部分
+
+- `speclink auth login` 把憑證寫進系統鑰匙圈的那一步：稽核用環境變數 `SPECLINK_TOKEN` 帶金鑰，不寫入這台機器的鑰匙圈。裝置登入與瀏覽器登入的流程以程式與既有測試為準。
+- Remote 入門第 5 節（Speclink Desktop）、第 7 到 9 節（重啟、離線、重置）。
+- Server 部署文件的升級三步驟：指令與訊息逐字對照 `crates/host/speclink-server/src/main.rs` 與 `storage.rs`，舊版的輸出對照 `v0.12.0` 的原始碼；沒有拿一份 0.12.0 的資料實際升級。Docker Compose 與 npx 的升級路徑只有說明，沒有走過。
+- 十張圖在 GitHub 淺色與深色主題的顯示：留給手動任務 4.3。
+
+### 規格情境對應的段落
+
+| 需求 | 情境 | 段落 |
+| --- | --- | --- |
+| 官方 server 定位為示範與試用 | 讀者判斷得出正式使用的路徑 | README `#official-server` 第一段；Remote 入門開頭 |
+| | 營運文件開頭標明定位 | Server 部署、Server 備份與還原第一個 H2 之前 |
+| | 能力對照表標明量測對象 | 專案能力狀態 `#local-and-remote` 表格前的說明 |
+| 使用者文件採用本機專案與遠端專案的用詞 | 舊的說法不再出現 | 全部文件；守門「停用的說法」與詞彙守門 |
+| | 詞彙表有新的詞條 | `speclink/LANGUAGE.md` 最後九個詞條與「儲存後端」 |
+| | 詞彙守門涵蓋新的 avoid 詞 | 任務 2.2 的植入檢查：寫入「團隊模式」「主機套件」後守門失敗並指出檔案與詞 |
+| 內嵌宿主的文件涵蓋宿主套件的對外介面 | 整合者照文件接上自己的儲存 | Node SDK `#create-host`、`#store-port`、`#conformance`、`#http-entry`、`#example` |
+| | 文件不含已移除的介面 | Node SDK 兩版（搜尋沒有命中） |
+| | 範例用到的名稱存在 | Node SDK 兩版的範例（六個名稱） |
+| 儲存接口的範例有專文說明 | 整合者找得到同類儲存的範例 | Server 儲存後端 `#examples`、`#layout`（`#postgres`）、`#commit`、`#limits` |
+| | 管理者選擇示範用 server 的儲存 | Server 儲存後端 `#choose` |
+| 遠端專案的登入與技能來源有說明 | 讀者知道技能從哪裡來 | Remote 入門 `#cli` 的「取得技能」 |
+| | 讀者知道會用哪一種登入方式 | Remote 入門 `#cli` 的「三種登入方式與選擇的順序」；設定說明 `#remote` 的「CLI 的技能版本提醒」 |
+| 動詞參考文件涵蓋遠端可用的動詞與新增的路由 | 讀者查得到新的動詞 | 動詞參考文件 `#verb-reference` |
+| | 文件與 CLI 一致 | 上表第一列（192 個指令） |
+| 已知缺口逐項列出 | 整合者在採用前看得到缺口 | 專案能力狀態 `#known-gaps`（18 列） |
+| | 缺口與提案一致 | 同一節，表格下方列出已經解決的缺口；對照「盤點結果」的 G1 到 G19 |
+| 圖解以自帶樣式的 SVG 呈現 | 圖在深色與淺色頁面都看得清楚 | 手動任務 4.3 |
+| | 兩組圖檔對等、圖檔不帶外部資源 | `docs/assets/figures/` 兩個資料夾；圖解的守門 |
+| 示範用 server 的升級步驟有說明 | 管理者照文件完成升級 | Server 部署 `#upgrade-from-0-12` |
+| | 管理者直接換版本啟動 | Server 部署 `#refused-start` |
+| 使用者文件採漸進揭露與單一責任 | README 保留專案定位與起源；定位段以可驗收開場 | README 第一個 H2 之前與 `#acknowledgments` |
+| | 首次使用者由 README 到完成第一輪；進階使用者查詢目前能力與目標 | README `#quick-start`、`#status` |
+| | 整合者從 README 找到內嵌的四件事 | README `#embedding` |
+| | 試用的讀者先看到定位 | README `#official-server` |
+| 產品狀態以證據分類目前與規劃能力 | 三個情境 | 專案能力狀態 `#capabilities`、`#recheck` |
+| 中英文文件保持結構與事實對等 | 圖解引用兩版一致 | 中英對照的守門（每一組文件一條） |
+| 品質關卡蓋章效果與非成員錯誤碼的文件揭露 | 本質本機動詞列表完整 | 動詞參考文件 `#mode-assignment`（只限本機：`demo`） |
+| 使用者文件載明本地產物的純文字可攜性 | 讀者判斷得出資料可攜 | README `#features` 的「純文字」；入門教學 `#init` |
+| 使用者面路線圖與內部交付順序分列 | 對外方向不含時程承諾 | 專案路線圖 `#own-client` 與其餘四節 |
+
+### 盤點表的核對
+
+「盤點結果」的二十列文件影響都已落在對應的文件。唯一沒有做的是第 20 列的「手冊重新產生」，它在 Non-Goals。仍然成立的缺口 G1 到 G19 都在專案能力狀態的 `known-gaps`（G19 併入 G1 那一列）；G20 寫在 Node SDK 文件的 `#http-entry`。
+
+## 發版說明的素材
+
+任務 5.2 的結果。這一節只是素材，不是更新日誌：發版流程從這裡取要列進發版說明的項目。來源是前二十個變更封存後的提案的「相容性影響」，只收使用者要採取行動、或升級後會看到差別的項目。
+
+### 破壞性變更（要採取行動）
+
+| 對象 | 變了什麼 | 要做什麼 | 來源 |
+| --- | --- | --- | --- |
+| 用 Node SDK 的宿主 | `createEngine` 只接受本機資料夾。傳入 Store 物件會在建立引擎時拋錯 | 把儲存改寫成三個函式（`list`、`read`、`commit`），改用 `createHost`，每次呼叫給身分與範圍。用 `runStoreConformance` 檢查三個函式。見 docs/sdk-node.zh-TW.md | node-retire-legacy-store |
+| 用 Node SDK 的宿主 | `dispatch` 以 `invalid_argv` 拒絕不認得的旗標與多出來的位置參數（原本靜默忽略）；帶 `--stdin` 才讀 stdin 的動詞（`new artifact`、`review stamp`、`verify stamp`），給了 stdin 就要一併帶 `--stdin` | 拿掉 CLI 沒有的旗標；給 stdin 時在 argv 加上 `--stdin` | shared-verb-parsing |
+| 用 Node SDK 的宿主 | 原本一定回 `invalid_argv` 的動詞（`show`、`validate`、`archive`、`discuss` 全系列、`workflow-config` 等）現在會執行；`new change` 與沒有變更時的 `status`，`output` 尾端多一個換行 | 依賴「這些動詞一定被拒絕」或比對 `output` 全文的程式要調整 | shared-verb-output、workflow-config-commands |
+| 示範用 server 的管理者 | 0.12.0 與更早版本建立的資料，新版不能直接開啟：server 會拒絕啟動，不改動資料 | 用舊版執行 `backup`，把組態指向空的儲存位置與空的 identity 資料庫，再用新版執行 `restore`。見 docs/server-deployment.zh-TW.md 的升級一節 | server-on-port-examples |
+| 示範用 server 的管理者 | 備份格式改成第 2 版。新版能檢查與還原第 1 版；舊版讀不了第 2 版 | 升級之後做的備份不能拿回舊版還原。回退要用升級前的備份與原本的資料 | server-on-port-examples |
+| 示範用 server 的管理者 | 管理頁移除「遷移資料結構」；`POST /admin/data/migrate` 回 404；系統頁與初次設定頁不再顯示契約版本、等級與能力；範圍匯出下載的檔案內容改用鍵 | 讀這些欄位或下載檔的自動化腳本要調整 | server-on-port-examples |
+| 連到 README 舊錨點的外部連結 | `#self-hosting` 移除，改成 `#embedding` 與 `#official-server` | 更新連結；舊連結會落在頁首 | docs-embedded-host |
+
+### 升級後會看到的差別（多半不用動作）
+
+| 對象 | 變了什麼 | 來源 |
+| --- | --- | --- |
+| 全部使用者 | 技能檔的內容改變（讀寫規格一律經過動詞；commit 與 worktree-merge 多一步回報落地）。升級後執行一次 `speclink update` | skills-verbs-first-wave、skills-verbs-second-wave、station-status-and-landing |
+| 用自訂工具描述子的人 | 技能裡交棒給其他技能的寫法，從 `speclink <名稱>` 變成 `speclink-<名稱>` | skills-verbs-second-wave |
+| 遠端專案的使用者 | `trace`、`change rank`、`plan --strict-overlap` 在遠端專案可用；技能改由 Server 提供，連上之後執行 `speclink update` | skills-verbs-first-wave、remote-read-verbs、remote-skill-delivery |
+| 用存取金鑰登入 CLI 的人 | 在有鑰匙圈的機器上，金鑰改存鑰匙圈，`speclink auth status --json` 的 `credentialSource` 從 `credentials_file` 變成 `keychain_pat`；既有的憑證檔照常可用 | client-browser-login |
+| 用存取金鑰登入 CLI 的人 | `auth login --pat` 與 `--token-stdin` 不再要求你是該專案的成員：金鑰有效就登入成功，不是成員時執行動詞才收到權限錯誤 | client-browser-login |
+| Server 位址含大寫主機名稱的人 | 位址正規化之後鑰匙圈的鍵不同，要重新登入一次 | client-browser-login |
+| 讀 `--json` 的腳本 | `speclink list --json` 每個變更多了 `created` 與 `modifiedAt`；`speclink show <change> --json` 在有記錄時多了審查、驗證、分支與落地的欄位；有自由欄位時多一個 `fields` 鍵 | remote-read-verbs、station-status-and-landing、host-free-fields |
+| 用 `artifact cat` 讀封存文件的人 | 變更名稱必須是單一路徑段。`artifact cat --change archive/<封存名稱>` 改用變更名稱或封存名稱本身 | remote-read-verbs |
+| 遠端專案的使用者 | 遠端封存不留本機備份：回應的 `snapshotCreated` 一律 false，CLI 少印 `Snapshot created for unarchive support.` 一行 | server-routes-on-store-port |
+| 讀錯誤訊息文字的程式 | 版本衝突（HTTP 409，`revision_conflict`）的 `message` 改用字串鍵表示文件；錯誤碼與狀態碼不變 | engine-on-store-port、server-routes-on-store-port |
+| 接 evidence 路由的程式 | 變更不存在時回 404 `not_found`（原本回空集合）；變更存在但沒有記錄時仍回空集合 | remote-read-verbs |
+| 用 shell 補全的人 | `speclink completion generate` 產出的腳本裡子指令的排列順序改變，功能不變 | shared-verb-parsing、workflow-config-commands |
+| 用 `workflow-config` 的人 | 值沒有變的寫入不再有後續動作（不重新同步技能檔、不印過期提示、不建空的 config.yaml） | workflow-config-commands |
+| 從原始碼引用舊儲存層的程式 | `speclink-store` 與三個舊 driver 的 crate 已移除（它們沒有發布到 crates.io） | retire-teamstore-and-drivers |
+
+### 新功能（供發版說明取材）
+
+- 內嵌：`createHost`、三個儲存函式、合格測試、兩個掛鉤、給 Agent 工具的入口與 `agentTool`、給 CLI 與 Speclink Desktop 的 HTTP 入口、匯出與匯入、技能清單的設定。
+- 三個儲存接口的範例（SQLite、PostgreSQL、檔案系統）。
+- 用戶端的瀏覽器登入，與三種登入方式的自動選擇。
+- 遠端專案的技能由 Server 提供；CLI 的技能版本提醒。
+- 新動詞：`evidence show`、`change landed`、`change field set`／`unset`、`discuss field set`／`unset`；`new change` 與 `discuss new` 的 `--field`。
+- 關卡狀態、分支與落地出現在線上的清單與 `show --json`；Speclink Desktop 的遠端專案顯示關卡的標示。
+- 文件：README 的「把 Speclink 內嵌進你的系統」與「試用官方 server」兩節、改寫的 Node SDK 文件、儲存接口的範例、已知缺口、五張圖解。

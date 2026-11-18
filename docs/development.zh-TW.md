@@ -4,7 +4,7 @@
 
 這份文件給 clone 原始碼的開發者。它說明 repo 根目錄的五個一鍵入口、怎麼跑測試、repo 的結構，最後附上下載安裝檔時的未簽章放行步驟。
 
-只想在 checkout 之外自架 server，不需要這份文件：用 `npx @speclink/server`，見 [Remote 入門](remote-getting-started.zh-TW.md)。
+只想在 checkout 之外跑示範用 server，不需要這份文件：用 `npx @speclink/server`，見 [Remote 入門](remote-getting-started.zh-TW.md)。
 
 ## <a id="prerequisites"></a>前置需求
 
@@ -125,14 +125,14 @@ node --test scripts/*.test.mjs scripts/*/*.test.mjs     # 同上，Node 20 用�
 npm test -w packages/ui                                 # 共用 UI
 npm test -w apps/desktop                                # 桌面前端
 npm test -w apps/server-web                             # server 網頁後台
-cargo test --workspace                                  # Rust：引擎、CLI、Host、儲存後端、server、桌面 app
+cargo test --workspace                                  # Rust：引擎、CLI、Host、儲存接口的範例、server、桌面 app
 npm --prefix crates/adapters/speclink-node ci           # Node SDK：先安裝依賴
 npm --prefix crates/adapters/speclink-node run build    #           再建置 .node
 npm --prefix crates/adapters/speclink-node test         #           再跑測試
 ```
 
 - `cargo test --workspace` 很久。只改了某個 crate 時，用 `cargo test -p <crate>`。
-- PostgreSQL 儲存後端的測試在沒設 `SPECLINK_TEST_POSTGRES_URL` 時會自動跳過。要跑就把它指向一個可用的資料庫（CI 用 PostgreSQL 15）。
+- 用到 PostgreSQL 的測試（儲存接口的 PostgreSQL 範例，以及示範用 server 接上它的測試）在沒設 `SPECLINK_TEST_POSTGRES_URL` 時會自動跳過。要跑就把它指向一個可用的資料庫（CI 用 PostgreSQL 15）。
 - Node SDK 不是 npm workspace 的成員，所以要用 `npm --prefix` 指定路徑；用 `-w` 找不到它。
 
 ## <a id="layout"></a>repo 結構
@@ -143,8 +143,8 @@ npm --prefix crates/adapters/speclink-node test         #           再跑測試
 | `apps/server-web/` | server 的網頁後台（React），建置後內嵌進 `speclink-server` |
 | `crates/engine/` | 引擎核心：`speclink-core`（動詞、工作流、技能產生）與 `speclink-fs`（讀寫本機 `speclink/`） |
 | `crates/protocol/` | 遠端協定：`speclink-protocol`（client 與 server 共用的資料型別）與 `speclink-remote`（CLI 與桌面 app 用的遠端 client 與登入） |
-| `crates/store/` | server 的儲存後端（Store driver）：共用介面 `speclink-store`，以及 sqlite、檔案（serverfs）、postgres 三種實作 |
-| `crates/host/` | `speclink-host`（引擎與 CLI、桌面 app、server 之間的共用層）與 `speclink-server`（官方參考 server） |
+| `crates/store/` | 儲存接口：`speclink-store-port`（契約、文件種類與鍵的對照、合格測試、給測試用的記憶體版實作），以及三個範例 `speclink-store-port-sqlite`、`speclink-store-port-postgres`、`speclink-store-port-fs`。見[儲存接口的範例](server-store-drivers.zh-TW.md) |
+| `crates/host/` | `speclink-host`（引擎外面的共用層，CLI、桌面 app、Node SDK 與示範用 server 都用它；宿主套件在這裡：在儲存接口上執行引擎的命令、兩個掛鉤與 HTTP 入口）與 `speclink-server`（官方的示範用 server，儲存後端是三個範例之一） |
 | `crates/adapters/` | 對外入口：`speclink-cli`（`speclink` 指令）與 `speclink-node`（Node SDK `@speclink/engine`） |
 | `packages/ui/` | 桌面 app 與網頁後台共用的 UI 元件 |
 | `packages/cli-npm/`、`packages/server-npm/` | npm 套件 `@speclink/cli` 與 `@speclink/server` 的外殼；各平台的 binary 另外發布 |

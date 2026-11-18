@@ -22,10 +22,10 @@
 
 Speclink is a Spec-Driven Development (SDD) engine written in Rust. It makes AI-built changes checkable. Each change starts with a small spec that says what the change must do. Then an AI agent builds it. Before archive, two quality stations, review and verify, check the work and record the evidence. The specs are plain text in your repo.
 
-Speclink has two deployment paths. One person needs only Local Repo. A team that wants shared specs connects a Remote Store.
+Speclink has two paths. One person needs only a local project. A team that wants shared specs uses a remote project.
 
-- **Local Repo**: Specs live in the `speclink/` folder of your repo. Git handles collaboration. No server is necessary.
-- **Remote Store**: Specs live in a shared Store. A Host handles authentication, revisions, transactions, events, and workflow decisions. The Host and Protocol are public contracts, so you can use the official server or write your own. At this team layer, PMs and POs take part in discussions and proposals, and they share one set of terms with engineers and AI agents: change, artifact, task, verify, and archive.
+- **Local project**: Specs live in the `speclink/` folder of your repo. Git handles collaboration. No Server is necessary.
+- **Remote project**: One Server holds the specs, and the checkout has no spec files. The Server can be [a system that embeds the engine](#embedding) (your own backend) or [the official demonstration server](#official-server). The CLI and the desktop app work the same way with both. At this team layer, PMs and POs take part in discussions and proposals, and they share one set of terms with engineers and AI agents: change, artifact, task, verify, and archive.
 
 ![The Speclink desktop app: a board with the columns Discussions, Proposed, In progress, and Ready](docs/assets/screenshots/en/desktop-board.png)
 
@@ -34,7 +34,7 @@ Speclink has two deployment paths. One person needs only Local Repo. A team that
 - **The specs live next to your code.** They are plain Markdown and YAML files in your repo. You can read them without Speclink, and every edit shows in the Git diff.
 - **Your AI agent knows each step.** Speclink writes skills for Claude Code, Codex, GitHub Copilot, pi, and Cursor. Each skill tells the agent what to read, what to write, and when to stop and ask you.
 - **You check the work before it lands.** Two optional quality stations run before archive: `review` checks the code craft, and `verify` checks the delivery against the specs.
-- **One workflow from one person to a team.** Start in one repo with Git. When the team grows, connect a shared server. The workflow and the terms stay the same.
+- **One workflow from one person to a team.** Start in one repo with a local project. When the team wants shared specs, change to a remote project. The workflow and the terms stay the same.
 
 ## <a id="quick-start"></a>Quick start
 
@@ -56,7 +56,7 @@ Speclink has two deployment paths. One person needs only Local Repo. A team that
 
 3. Ask your agent to start a change. In Claude Code, GitHub Copilot, or Cursor, enter `/speclink-propose <change-name>`. In Codex, enter `$speclink-propose <change-name>`. In pi, enter `/skill:speclink-propose <change-name>`. The agent writes the proposal, the specs, and the task list.
 
-For the full first round (propose, apply, check, archive), see [Getting started](docs/getting-started.md). To connect to a shared server, see [Remote getting started](docs/remote-getting-started.md).
+For the full first round (propose, apply, check, archive), see [Getting started](docs/getting-started.md). To use a remote project, see [Remote getting started](docs/remote-getting-started.md).
 
 ## <a id="screenshots"></a>Screenshots
 
@@ -67,7 +67,7 @@ For the full first round (propose, apply, check, archive), see [Getting started]
   </tr>
   <tr>
     <td width="50%"><img src="docs/assets/screenshots/en/desktop-spec.png" alt="The detail page of a spec, with its requirements and scenarios" /><br /><sub>A spec with its requirements and scenarios</sub></td>
-    <td width="50%"><img src="docs/assets/screenshots/en/server-overview.png" alt="The overview page of the server console" /><br /><sub>The console of the self-hosted server</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/en/server-overview.png" alt="The overview page of the server console" /><br /><sub>The console of the demonstration server</sub></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/assets/screenshots/en/desktop-tray.png" width="200" alt="The Speclink tray panel, opened from the macOS menu bar, with the changes grouped by Proposed, In progress, Ready, and Discussions" /><br /><sub>The tray panel in the macOS menu bar</sub></td>
@@ -77,13 +77,13 @@ For the full first round (propose, apply, check, archive), see [Getting started]
 
 ## <a id="features"></a>Features
 
-- **Plain text**: In Local mode, the files live under `speclink/` in your repo: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.meta.yaml` file in each change (lifecycle metadata). This applies to Local mode only. In remote mode, the specs live in the Store, and your machine has only a read-only projection. To import a project that uses OpenSpec, run `speclink init` in the project root. Speclink moves `openspec/` to `speclink/`, and after that the OpenSpec CLI cannot read the project. The import is one-way: you cannot convert the project back.
+- **Plain text**: In Local mode, the files live under `speclink/` in your repo: `specs/<capability>/spec.md`, `changes/<name>/`, `changes/archive/`, and `config.yaml`. All content is Markdown and YAML. You can read and edit it without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/` (discussion records) and a `.meta.yaml` file in each change (lifecycle metadata). This applies to Local mode only, not to remote mode: the Server holds the specs of a remote project, and the checkout has no spec files. To import a project that uses OpenSpec, run `speclink init` in the project root. Speclink moves `openspec/` to `speclink/`, and after that the OpenSpec CLI cannot read the project. The import is one-way: you cannot convert the project back.
 - **Skills for AI agents**: `speclink init` writes skill files for Claude Code, Codex, GitHub Copilot, pi, and Cursor. Each stage, from discussion to archive, has a `/speclink-*` command (`$speclink-*` in Codex, `/skill:speclink-*` in pi).
 - **Desktop board**: Each change is a card. You can see its stage, its task progress, and the spec changes it makes.
 - **Quality stations**: `review` checks code craft. `verify` checks that the delivery matches the specs. Both stations are optional.
 - **Execution order**: `speclink plan` puts changes into waves from their declared dependencies and shows the next change that is ready to start.
 - **Manual and trace**: Speclink generates a readable manual from the specs, and `trace` shows how a capability came to be.
-- **Team sharing**: After you connect a server, the CLI, the desktop app, and AI agents read and write the same specs.
+- **Team sharing**: In a remote project, the CLI, the desktop app, and AI agents read and write the same specs on the Server.
 
 ## <a id="workflow"></a>How it works
 
@@ -188,11 +188,30 @@ node scripts/herdr/dock-panel.mjs
 
 For keyboard shortcuts, requirements, and known limits, see [speclink for Herdr](integrations/herdr/README.en.md).
 
-## <a id="self-hosting"></a>Self-hosting a server
+## <a id="embedding"></a>Embed Speclink in your system
 
-You need a server only when a team shares one set of specs. For one person in one repo, you do not need a server.
+Use this path when a team shares specs and you already have a backend with its own accounts, login, permissions, and database. You put the engine in your backend process, and the specs go into your own database. Your system is then the Server of the remote project. The original CLI and desktop app connect to it, and your own AI agent uses the same engine. This section calls your system the host.
 
-`speclink-server` is the official **reference implementation**. Use it to start fast or to try the remote features. Pick one way to run it:
+![The embedded shape: the CLI and Speclink Desktop go through one route of the host, and the Agent tool of the host calls directly; both reach the entry point of the host kit; the engine reads and writes the database of the host through three functions: list, read, and commit](docs/assets/figures/en/embedded-shape.svg)
+
+Requests come from two places. The CLI and the desktop app of an engineer use HTTP to reach one route of the host. The Agent tool of the host calls directly. Both reach the entry point of the host kit, and then the engine runs the request. The engine reads and writes specs through three functions only (list, read, and commit). The host implements these three functions, and the data stays in the database of the host. Speclink supplies the host kit and the engine. All other parts belong to the host.
+
+The host does four things:
+
+1. **Implement the three store functions and pass the conformance tests.** The functions `list`, `read`, and `commit` do their work in your database. One commit applies all of its writes or none. The conformance tests in the package check your implementation. See [Implement the three store functions](docs/sdk-node.md#store-port) and [Check your implementation with the conformance tests](docs/sdk-node.md#conformance) in the Node SDK.
+2. **Mount one route that gives each request to the entry point.** Give all requests below `/api/speclink/v1/` to `host.handleRequest`. Then the CLI and the desktop app can connect. See [Serve the CLI and Speclink Desktop](docs/sdk-node.md#http-entry).
+3. **Pass null when you cannot verify an identity.** Your route verifies the token. When it finds an identity, it gives the identity to the entry point. When it does not, it passes `null`. The entry point decides which paths need no login.
+4. **For browser login, make your login service publish the standard metadata document and accept a loopback callback.** The login service must publish an RFC 8414 metadata document, accept a callback to `http://127.0.0.1` on any port, and register the Speclink client as a public client with no secret. This item is optional: without it, the client logs in with an access token.
+
+A Node.js backend builds the host kit with `createHost`. For the full description and examples, see the [Node SDK](docs/sdk-node.md). SQLite, PostgreSQL, and the file system each have an implementation that passes the conformance tests. See the [store port examples](docs/server-store-drivers.md).
+
+Speclink does not supply accounts, login, permissions, or database connections: these belong to the host. For the parts that are not done, see the [known gaps](docs/product-status.md#known-gaps) in the product status.
+
+## <a id="official-server"></a>Try the official server
+
+The official server is for demonstration and trial. It lets you try remote projects without writing code. For production use, embed the engine in your own system. See [Embed Speclink in your system](#embedding).
+
+`speclink-server` and an embedded host use the same host kit and the same store contract, so the CLI and the desktop app work with both. Pick one way to run it:
 
 | Method | Command |
 | --- | --- |
@@ -200,9 +219,7 @@ You need a server only when a team shares one set of specs. For one person in on
 | Docker | `docker run -d -p 8080:8080 -v speclink-data:/data ghcr.io/momochenisme/speclink-server:latest` |
 | Docker Compose | `cd deploy && docker compose up -d` |
 
-On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default Store is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md). To connect the desktop app and the CLI, see [Remote getting started](docs/remote-getting-started.md).
-
-Remote mode does not depend on this server. Two public contracts define remote mode: `host-runtime` and `client-protocol` in `speclink/specs/`. You can write your own server with the Speclink engine and connect your own authentication, database, and permission model. The CLI and the desktop app work with it too. To load the engine, see the [Node SDK](docs/sdk-node.md).
+On the first start, the server prints a one-time `/setup` link. A normal restart does not print it again. The default storage is SQLite, and the data goes to `./speclink-data` (`/data` in the container). For environment variables, PostgreSQL, upgrades, and rollbacks, see [Server deployment](docs/server-deployment.md). To connect the desktop app and the CLI, see [Remote getting started](docs/remote-getting-started.md).
 
 ## <a id="docs"></a>Documentation
 
@@ -214,20 +231,20 @@ Remote mode does not depend on this server. Two public contracts define remote m
 | [SDD workflow](docs/workflow.md) | The purpose, skill, done criteria, and next step of each stage |
 | [Configuration](docs/configuration.md) | `.speclink.yaml`, `speclink/config.yaml`, and remote settings |
 
-**For a team that shares one set of specs**
+**Remote projects**
 
 | Document | Content |
 | --- | --- |
-| [Remote getting started](docs/remote-getting-started.md) | From server start to a connected desktop app and CLI |
-| [Server deployment](docs/server-deployment.md) | npx, Docker, Compose, upgrades, and rollbacks |
-| [Server Store drivers](docs/server-store-drivers.md) | How to choose SQLite, Server FS, or PostgreSQL |
-| [Server backup and restore](docs/server-backup.md) | `backup`, `verify-backup`, and `restore` |
+| [Remote getting started](docs/remote-getting-started.md) | From the start of the demonstration server to a connected desktop app and CLI |
+| [Server deployment](docs/server-deployment.md) | npx, Docker, Compose, upgrades, and rollbacks of the demonstration server |
+| [Server backup and restore](docs/server-backup.md) | `backup`, `verify-backup`, and `restore` of the demonstration server |
 
-**To connect Speclink to your own program**
+**Embed Speclink in your system**
 
 | Document | Content |
 | --- | --- |
-| [Node SDK](docs/sdk-node.md) | Load `@speclink/engine`, the Store interface, and `dispatch` |
+| [Node SDK](docs/sdk-node.md) | `@speclink/engine`: `createHost`, the three store functions, the conformance tests, the hooks, and the two entry points |
+| [Store port examples](docs/server-store-drivers.md) | The SQLite, PostgreSQL, and file system examples, and how to choose one for the demonstration server |
 | [Verb and flag contract](docs/verb-contract.md) | Local and remote verbs, output shapes, and HTTP endpoints |
 
 **Project status and direction**
@@ -243,11 +260,11 @@ Remote mode does not depend on this server. Two public contracts define remote m
 
 ## <a id="status"></a>Project status
 
-- **Available**: Local Repo CLI, Local desktop app, agent skills (Claude, Codex, GitHub Copilot, pi, and Cursor), quality stations, execution order, manual and trace, Node SDK (`@speclink/engine`), three TeamStores (SQLite, Server FS, PostgreSQL), single-node server and admin console, Remote CLI, install channels, server operations (deployment, backup, and restore).
-- **Partial**: Remote workspaces in the desktop app, the Claude Code plugin, the Herdr mod.
-- **Planned**: Agent tool packages and MCP, SSO, runtime plugins, multi-node deployment.
+- **Available**: the CLI and the desktop app for local projects, agent skills (Claude, Codex, GitHub Copilot, pi, and Cursor), quality stations, execution order, manual and trace, the Node SDK and the host kit (`@speclink/engine`), three store port examples (SQLite, PostgreSQL, file system), the demonstration server and its admin console, the CLI for remote projects, install channels, operations of the demonstration server (deployment, backup, and restore).
+- **Partial**: Remote projects in the desktop app, the Claude Code plugin, the Herdr mod.
+- **Planned**: MCP, SSO, runtime plugins, multi-node deployment.
 
-For the evidence, limits, and check date of each item, see [Product status](docs/product-status.md). For the work that is not done yet, see the [Roadmap](docs/roadmap.md).
+For the evidence, limits, and check date of each item, see [Product status](docs/product-status.md). Its [known gaps](docs/product-status.md#known-gaps) list the items that this version delays or does not do. For the work that is not done yet, see the [Roadmap](docs/roadmap.md).
 
 ## <a id="contributing"></a>Contributing
 
@@ -266,7 +283,7 @@ speclink --version
 
 ## <a id="acknowledgments"></a>Acknowledgments
 
-- [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app): the Local CLI started with its CLI as the behavior reference. Golden tests and CLI integration tests protect the human output, the `--json` shape, and the core workflow. On top of that base, Speclink adds discussions, a desktop app, a Store abstraction, a Node SDK, and a remote platform.
+- [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app): the Local CLI started with its CLI as the behavior reference. Golden tests and CLI integration tests protect the human output, the `--json` shape, and the core workflow. On top of that base, Speclink adds discussions, a desktop app, a Node SDK, a host kit, and remote projects.
 - [OpenSpec](https://github.com/Fission-AI/OpenSpec): Local mode uses the OpenSpec folder layout for specs and changes.
 
 ## <a id="license"></a>License

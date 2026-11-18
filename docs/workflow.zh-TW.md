@@ -56,11 +56,26 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 | --- | --- | --- |
 | 技能 | 寫給 Agent 讀的流程知識：什麼時候讀什麼、怎麼產生與檢查文件、什麼時候停下來問你。 | Claude、GitHub Copilot 與 Cursor `/speclink-propose`、Codex `$speclink-propose`、pi `/skill:speclink-propose` |
 | `speclink` CLI | 真正執行動作的命令列。本地與遠端都用它。 | `speclink status --change add-csv-export` |
-| Host | 把引擎、Store、認證、版本、交易與事件組在一起。CLI、server 與 Node SDK 都經過它。 | 內嵌在 CLI 裡，或 `speclink-server` |
+| 引擎 | 執行動詞的程式：讀規格、跑流程、把結果寫回去。本機專案由 CLI 裡的引擎執行；遠端專案由 Server 上的引擎執行，CLI 經 HTTP 把動詞送過去。 | 內建在 CLI 裡；遠端專案時在 Server 上（示範用 server，或內嵌了引擎的宿主） |
 
 下面的技能名都用 Claude 的寫法，GitHub Copilot 與 Cursor 的寫法相同。Codex 把開頭的 `/` 換成 `$`，也可以輸入 `/skills` 從清單挑。pi 把開頭的 `/` 換成 `/skill:`。`analyze` 是例外：只有 Claude 有這個技能，Codex、GitHub Copilot、pi 與 Cursor 直接用 CLI。
 
 升級 Speclink 之後，執行 `speclink update` 重新產生技能檔。
+
+### <a id="skills-read-through-verbs"></a>技能透過動詞讀規格
+
+技能的步驟常常要讀規格：變更的提案、任務清單、正式規格。技能不直接開檔案，而是執行動詞，例如 `speclink artifact cat proposal --change <名稱>` 或 `speclink show <capability> --item-type spec`。
+
+原因是遠端專案的 checkout 裡沒有規格檔，規格由 Server 持有。同一個步驟有兩種讀法，結果不同：
+
+- **用路徑讀**：技能去開規格資料夾底下的檔案。本機專案找得到。遠端專案的 checkout 裡沒有這個檔案，這一步就失敗。
+- **用動詞讀**：技能執行 `speclink` 的動詞。本機專案由 CLI 讀 repo 裡的檔案；遠端專案由 CLI 經 HTTP 向 Server 取得內容。兩種專案拿到的輸出相同。
+
+![一個技能步驟要讀正式規格的兩條路：用路徑讀，在遠端專案的 checkout 找不到檔案；用動詞讀，CLI 經 HTTP 向 Server 取得內容](assets/figures/zh-TW/skill-path-vs-verb.svg)
+
+所以技能用動詞讀，同一套流程在本機專案與遠端專案都走得通。寫入也一樣走動詞，例如用 `speclink new artifact` 寫回文件。有兩個例外：`baseline` 直接寫正式規格檔，`manual` 直接寫手冊頁，所以這兩支在遠端專案目前不能用（`manual` 的導覽可以）。
+
+遠端專案的技能檔由 Server 提供：連上之後執行 `speclink update` 取得，見 [Remote 入門](remote-getting-started.zh-TW.md)。
 
 ## <a id="stages"></a>各站說明
 
@@ -124,7 +139,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 照任務清單實作，每完成一項就勾掉。
 
 - **什麼時候用**：開工需要的文件都齊了。**跳過**：文件還沒齊、需求正在變，或變更停了一陣子還沒跑 `drift`。
-- **輸入 → 產物**：提案、規格、設計（如果有）與任務 → 程式碼與測試的修改、勾好的任務，以及每項任務動到哪些檔案的證據。證據寫在 `speclink/changes/<名稱>/.evidence.json`，跟著變更一起提交。
+- **輸入 → 產物**：提案、規格、設計（如果有）與任務 → 程式碼與測試的修改、勾好的任務，以及每項任務動到哪些檔案的證據。本機專案的證據寫在 `speclink/changes/<名稱>/.evidence.json`，跟著變更一起提交；遠端專案的證據存在 Server。兩者都用 `speclink evidence show <名稱>` 讀。
 - **技能**：`/speclink-apply <變更名稱>`
 - **底層 CLI**：開工前先跑 `speclink plan`，被其他變更擋住就停下來。接著 `speclink review prepare`（記下品質關卡要用的起點）與 `speclink in-progress add`。實作時用 `speclink instructions apply --change <名稱> --json` 取得背景，每完成一項跑 `speclink task done --change <名稱> <編號>`。
 - **完成**：每項任務的行為與該過的測試都通過，`instructions apply` 回報 `state: all_done`。標著 `[M]` 的手動任務由你確認，Agent 不會代勾。
@@ -178,7 +193,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
   - 沒有未完成的手動任務：在 worktree 裡跑品質關卡，提交蓋章的異動，再跑 `worktree-merge`。
   - 還有手動任務沒做，或想在蓋章前先看到 CI 結果（worktree 分支只在你的電腦上，CI 看不到）：先跑 `worktree-merge`，再到主 checkout 跑品質關卡。
 
-  `worktree-merge` 把分支併回主分支、把品質關卡的起點帶進主 checkout，並清掉 worktree。
+  `worktree-merge` 把分支併回主分支、回報落地（見 [commit](#commit) 的說明）、把品質關卡的起點帶進主 checkout，並清掉 worktree。
 - **下一步**：回主 checkout 執行 `archive`。封存只能在主 checkout 跑，在 worktree 裡會被拒絕。
 - **出狀況**：worktree 裡的 `tasks.md` 和主 checkout 的是兩份，只改 worktree 那份。用舊版 worktree-merge 技能合併的變更，主 checkout 沒有起點：跑品質關卡時，用 `--base` 指定一次變更第一個 commit 的上一個 commit。現在的合併技能會在合併時寫入起點，不管 apply 用的是哪一版技能。
 
@@ -301,10 +316,15 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **什麼時候用**：想要一個只含單一變更的 commit。**跳過**：你有自己的提交方式。它不是每個變更都要經過的一站。
 - **輸入 → 產物**：變更名稱、Git 狀態與任務證據 → 經你確認的檔案清單，以及一個 commit。
 - **技能**：`/speclink-commit <變更名稱>`。也支援「先封存再一起提交」。
-- **CLI**：技能用 `speclink list --json`、`.evidence.json`、`speclink artifact cat`、`speclink plan` 與 Git 判斷檔案，不用 `git add .`。
+- **CLI**：技能用 `speclink list --json`、`speclink evidence show <名稱> --json`、`speclink artifact cat`、`speclink plan` 與 Git 判斷檔案，不用 `git add .`。
+- **遠端專案的 commit 只含程式碼**：規格的變動不在 checkout 裡。變更的文件與證據存在 Server，每次修改當下就已經寫到 Server，所以 commit 裡只有程式碼的檔案。本機專案的 commit 則同時含程式碼與 `speclink/changes/<名稱>/` 底下的文件。
+- **提交後回報落地**：commit 成功後，技能執行 `speclink change landed <名稱> --commit <commit>`，記下這個變更的程式碼落在哪個 commit。worktree 流程裡，分支上的 commit 還不算落地，改由 `/speclink-worktree-merge` 在合併之後回報（同時用 `--branch` 記下分支）。這個動詞只記錄、不檢查：它不查 commit 在不在主分支，也不擋任何後續動作。
 - **完成**：commit 只含你確認過的檔案，並回報 hash 與訊息。
 - **下一步**：繼續 `apply`，或 `archive`。提交不能取代封存。
-- **出狀況**：清單裡有無關的檔案就排除，不要覆寫或刪掉它們。
+- **出狀況**：
+  - 清單裡有無關的檔案就排除，不要覆寫或刪掉它們。
+  - 本機專案回報落地之後，變更的 `.meta.yaml` 會多一筆還沒提交的修改。這是正常的，它會進這個變更的下一次提交。
+  - 回報落地被拒絕（例如連到還沒有這個動詞的舊版 Server）：技能會轉述訊息並繼續，commit 不受影響。先封存再提交時不回報，因為變更已經封存了。
 
 ### <a id="config"></a>config：工作流設定
 
@@ -336,7 +356,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 
 回答「這個功能怎麼來的、為什麼這樣設計」。它沿著正式規格、封存的變更、討論與程式碼往回找。
 
-- **什麼時候用**：接手不熟的功能，或要改一個設計之前。只限本地。
+- **什麼時候用**：接手不熟的功能，或要改一個設計之前。本機專案與遠端專案都能用。
 - **輸入 → 產物**：一個 capability 名稱或一個問題 → 溯源鏈：哪些變更、哪些討論、動過哪些檔案，每一段都附來源。
 - **技能**：`/speclink-trace <capability 或問題>`
 - **CLI**：`speclink trace <capability> [--json]`
@@ -356,7 +376,9 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - **CLI**：
   - `speclink plan [--json]`
   - 宣告依賴：`speclink change depends <變更> --on <前置變更>`（加 `--remove` 取消）
-  - 調整同一欄裡的順序：`speclink change rank <變更> --before <另一個變更>`（或 `--after`；只限本地）
+  - 調整同一欄裡的順序：`speclink change rank <變更> --before <另一個變更>`（或 `--after`）
+  - 改用較嚴格的重疊規則：`speclink plan --strict-overlap`。兩個變更只要改到同一個 capability，後面的就排到下一波
+  - 以上指令在本機專案與遠端專案都能用
 - **下一步**：從 `next` 指出的變更開工。桌面變更詳情頁文件樹的「排程」文件與「狀態」區的「排程」列顯示同一份資訊。
 
 ## <a id="discussion-outcomes"></a>討論結論怎麼走

@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 236" width="760" role="img" aria-label="A skill reads by path or through a verb: in the checkout of a remote project, a read by path finds no spec file; with a verb, the CLI gets the content from the Server over HTTP">
+  <title>A skill reads by path or through a verb: in the checkout of a remote project, a read by path finds no spec file; with a verb, the CLI gets the content from the Server over HTTP</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk"/></marker>
+    <marker id="arrow-gap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-gap"/></marker>
+    <marker id="arrow-kit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-kit"/></marker>
+  </defs>
+  <style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+  .box { fill: #ffffff; stroke: #98a6a3; stroke-width: 1.25; }
+  .host { fill: #edf0ef; stroke: #98a6a3; stroke-width: 1.25; }
+  .kit { fill: #e9effb; stroke: #1f55c4; stroke-width: 1.5; }
+  .eng { fill: #e2f1ee; stroke: #0b6b5f; stroke-width: 1.5; }
+  .gap { fill: #fdefea; stroke: #b4371a; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .zone { fill: none; stroke: #98a6a3; stroke-width: 1; stroke-dasharray: 2 5; }
+  .zl { font-size: 12px; fill: #5c6b68; font-weight: 500; }
+  .t { font-size: 14px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t13 { font-size: 13px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t-kit { fill: #1f55c4; }
+  .t-eng { fill: #0b6b5f; }
+  .t-gap { fill: #b4371a; }
+  .s { font-size: 12px; fill: #40504d; text-anchor: middle; }
+  .lbl { font-size: 12px; fill: #40504d; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+  .start { text-anchor: start; }
+  .end { text-anchor: end; }
+  .l-gap { fill: #b4371a; font-weight: 700; }
+  .l-kit { fill: #1f55c4; font-weight: 700; }
+  .edge { fill: none; stroke: #40504d; stroke-width: 1.4; }
+  .e-gap { fill: none; stroke: #b4371a; stroke-width: 1.6; stroke-dasharray: 6 4; }
+  .e-kit { fill: none; stroke: #1f55c4; stroke-width: 2; }
+  .mk { fill: #40504d; }
+  .mk-gap { fill: #b4371a; }
+  .mk-kit { fill: #1f55c4; }
+  </style>
+  <rect width="760" height="236" fill="#ffffff"/>
+  <text class="zl" x="14" y="22">Engineer’s checkout (remote project: no spec files)</text>
+  <rect class="zone" x="10" y="32" width="460" height="192" rx="8"/>
+  <text class="zl" x="544" y="22">Server (holds the specs)</text>
+  <rect class="zone" x="540" y="32" width="210" height="192" rx="8"/>
+  <rect class="box" x="26" y="96" width="160" height="64" rx="6"/>
+  <text class="t" x="106" y="123">One step of a skill</text>
+  <text class="s" x="106" y="144">must read a spec</text>
+  <rect class="gap" x="290" y="48" width="160" height="64" rx="6"/>
+  <text class="t t-gap mono" x="370" y="75">specs/…/spec.md</text>
+  <text class="s" x="370" y="96">file not found</text>
+  <rect class="box" x="290" y="144" width="160" height="64" rx="6"/>
+  <text class="t" x="370" y="171">CLI</text>
+  <text class="s mono" x="370" y="192">speclink show &lt;name&gt;</text>
+  <rect class="box" x="566" y="144" width="160" height="64" rx="6"/>
+  <text class="t" x="646" y="181">Specs</text>
+  <path class="e-gap" d="M186 114 C236 114 240 80 286 80" marker-end="url(#arrow-gap)"/>
+  <text class="lbl l-gap end" x="270" y="72">read by path</text>
+  <path class="e-kit" d="M186 142 C236 142 240 176 286 176" marker-end="url(#arrow-kit)"/>
+  <text class="lbl l-kit end" x="276" y="200">read through a verb</text>
+  <path class="e-kit" d="M450 176 H562" marker-end="url(#arrow-kit)"/>
+  <text class="lbl l-kit" x="506" y="167">over HTTP</text>
+</svg>

@@ -2,12 +2,26 @@
 
 **繁體中文** · [English](sdk-node.md)
 
-`@speclink/engine` 讓你在 Node.js 程式裡直接執行 Speclink 的動詞、把規格存進自己的資料庫，並為任何 AI 工具產生技能檔。它就是 CLI 用的那顆 Rust 引擎，透過 [napi-rs](https://napi.rs) 接到 Node，不是另外重寫的版本，所以動詞行為、`--json` 輸出形狀與技能內容都和 CLI 一致。
+`@speclink/engine` 是把 Speclink 內嵌進 Node.js 後端用的 SDK。你實作三個儲存函式，把規格存進自己的資料庫；套件給你引擎、宿主套件與合格測試。做完之後，你的系統就是遠端專案的 Server：原版的 CLI 與 Speclink Desktop 連得上，你自己的 AI Agent 也用同一個引擎。
 
-常見的兩種用法：
+它就是 CLI 用的那顆 Rust 引擎，透過 [napi-rs](https://napi.rs) 接到 Node，不是另外重寫的版本。動詞的行為、`--json` 的輸出與技能的內容都和 CLI 相同。
 
-- 把 Speclink 接進既有流程，例如腳本、內部工具，或執行 AI agent 的服務。
-- 拿它當**自建 server 的引擎**。官方的 `speclink-server` 只是參考實作；遠端模式由 `speclink/specs/` 底下的 `host-runtime` 與 `client-protocol` 兩份公開契約定義。你可以照這兩份契約，用這個引擎寫自己的 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。官方 server 的用法見 [Remote 入門](remote-getting-started.zh-TW.md)。
+還沒決定要不要內嵌？先看 README 的[把 Speclink 內嵌進你的系統](../README.zh-TW.md#embedding)。只想試遠端專案、不想寫程式，用[官方的示範用 server](../README.zh-TW.md#official-server)。
+
+## <a id="contents"></a>這個套件有什麼
+
+SDK 是這個工具箱的名字。裡面有四樣東西：
+
+![SDK 的組成：@speclink/engine 這個套件裡有引擎、宿主套件、儲存接口的契約與合格測試四樣東西](assets/figures/zh-TW/sdk-contents.svg)
+
+| 東西 | 做什麼 | 你用到的名稱 |
+| --- | --- | --- |
+| 引擎 | 執行動詞：讀規格、跑流程、交出要寫入的內容 | `createEngine`、`skills` |
+| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool` |
+| 儲存接口的契約 | 你要實作的三個函式與它們的規則 | `StorePort`（型別）、`StoreConflictError`、`StoreUnavailableError` |
+| 合格測試 | 檢查你的三個函式符不符合契約 | `runStoreConformance` |
+
+這份文件裡，「宿主」指你的系統，「範圍」（scope）指一份獨立的規格集合，通常是一個專案的一個 repo。範圍是你自己取的字串，引擎不解讀它。
 
 ## <a id="install"></a>安裝
 
@@ -18,7 +32,7 @@ npm install @speclink/engine
 0.2.0 起可從 npm 安裝，版號跟著 Speclink 的 release 走。需要 Node.js 18 以上。Windows x64、macOS x64 與 arm64、Linux x64 與 arm64（glibc）五個平台都有預先編譯好的套件，安裝時只下載你的平台那一份，不需要 Rust。Alpine 這類 musl Linux 沒有預編譯套件。
 
 ```js
-const { createEngine, skills } = require('@speclink/engine')
+const { createHost, createEngine, skills } = require('@speclink/engine')
 ```
 
 ### 替代路徑：自 repo 建置
@@ -35,243 +49,572 @@ npm run build          # 為目前的平台建出 .node 檔
 然後用路徑引用：
 
 ```js
-const { createEngine } = require('/path/to/speclink/crates/adapters/speclink-node')
+const { createHost } = require('/path/to/speclink/crates/adapters/speclink-node')
 ```
 
 `npm run build` 只建出目前平台的檔案，所以要在部署的目標平台上建置。
 
-## <a id="create-engine"></a>建立引擎
+## <a id="local-project"></a>在本機專案上執行動詞
 
-`createEngine` 有兩種儲存方式。
-
-**本機檔案**：指向含 `speclink/`（或舊版建立的 `openspec/`）的專案根目錄，適合本機工具與測試。
+`createEngine` 只接受本機資料夾：指向含 `speclink/` 的專案根目錄。它適合腳本、內部工具與測試。要把規格存進自己的資料庫，用下一節的 `createHost`。
 
 ```js
 const engine = createEngine({ store: { type: 'fs', root: '/path/to/project' } })
-// 選填：specDir（預設與 CLI 相同：依序取 .speclink.yaml 的 spec_dir、speclink/、openspec/，都沒有時為 "speclink"）
-```
+// 選填：specDir（預設與 CLI 相同：依序取 .speclink.yaml 的 spec_dir、speclink/、舊的 openspec/，都沒有時為 "speclink"）
+// 選填：actor（"Name <email>"，蓋章與建立變更時記下的操作者；沒給時用該專案的 git 身分）
 
-**自己的 Store**：傳入一個實作 Store 介面的物件（見[自己實作 Store](#store)），引擎透過它讀寫文件。
-
-```js
-const engine = createEngine({ store: myStore })
-```
-
-物件缺少必要方法時，`createEngine` 會立刻拋錯，並列出所有缺少的方法名。
-
-**`actor`（選填）**：這顆引擎的操作者，格式是 `"Name <email>"`。引擎記下的 `created_by`（`new change`）、`reviewed_by`（`review stamp`）與 `verified_by`（`verify stamp`）都是它。
-
-```js
-const engine = createEngine({ store: myStore, actor: 'Alice <alice@example.com>' })
-```
-
-- 一個實例只有一個身分。`dispatch` 沒有身分參數，呼叫端無法冒用別人。多人系統請每個請求（或每個使用者）建一個實例；建立成本只是一個物件。
-- 沒給 `actor` 時，本機檔案形式用該 workspace 的 git 身分（和 CLI 相同）；自己的 Store 則不記身分。只有空白也視同沒給。
-- 誰可以用哪個身分，由你的系統決定。SDK 只接收結果。
-
-## <a id="dispatch"></a>執行動詞
-
-```js
 const list = await engine.dispatch(['list', '--json'])
-const status = await engine.dispatch(['status', '--change', 'add-auth', '--json'])
 await engine.dispatch(
   ['new', 'artifact', 'proposal', '--change', 'add-auth', '--stdin'],
   { stdin: '## Why\n…' },
 )
 ```
 
-- **輸入**：字串陣列，和 CLI 的寫法一樣，只是去掉程式名。CLI 從 stdin 讀內容的動詞，改用第二個參數 `{ stdin }` 傳入。
-- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output: string }`，`output` 是 CLI 印到 stdout 的文字，不帶色碼。CLI 另有提示印到 stderr 時（例如封存沒有任務證據的變更），物件另帶 `stderr`。`discuss conclude` 收尾的封存失敗時不算錯誤：結論已經寫入，物件另帶 `closingError` 說明原因。這時不要再執行一次 `discuss conclude`，改執行 `discuss archive`。TypeScript 型別是 `Promise<unknown>`，欄位形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
-- **不會卡住事件迴圈**：每次 dispatch 都在背景執行緒執行，可以同時發出多個。
+`store` 傳入其他形狀的物件時，`createEngine` 會立刻拋錯，而且不會呼叫它的任何方法。
 
-有引擎命令的動詞全部能用。需要 checkout 的動詞會以 `invalid_argv` 拒絕：`drift`、`change rank`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更：給多個名稱或 `--all` 會以 `invalid_argv` 拒絕。
+`dispatch` 的規則（`host.dispatch` 也一樣）：
 
-失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 agent；`code` 是分類：
+- **輸入**：字串陣列，和 CLI 的寫法一樣，只是去掉程式名。CLI 從 stdin 讀內容的動詞，改用 `stdin` 傳入，並在陣列裡帶 `--stdin`。
+- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output }`，`output` 是 CLI 印到 stdout 的文字，不帶色碼。CLI 另有提示印到 stderr 時，物件另帶 `stderr`。欄位的形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
+- **不認得的旗標會被拒絕**：多出來的旗標或位置參數以 `invalid_argv` 拒絕，不會被靜默忽略。
+- **`discuss conclude`**：結論已經寫入、但收尾的封存失敗時不算錯誤，物件另帶 `closingError` 說明原因。這時不要再執行一次 `discuss conclude`，改執行 `discuss archive`。
+- **不會卡住事件迴圈**：每次呼叫都在背景執行緒執行，可以同時發出多個。
+
+有引擎命令的動詞全部能用，流程設定的動詞（`workflow-config`）也在內。需要 checkout 的動詞以 `invalid_argv` 拒絕：`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更。
+
+失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 Agent；`code` 是分類：
 
 | `code` | 意思 |
 | --- | --- |
-| `invalid_argv` | 參數有誤、這個動詞需要 checkout，或寫入的內容格式不對（例如 tasks 沒有 `- [ ]`、審查輪缺 `**Scope**:` 行） |
-| `not_found` | 找不到 change 或討論 |
+| `invalid_argv` | 參數有誤、這個動詞需要 checkout，或寫入的內容格式不對 |
+| `not_found` | 找不到變更或討論 |
 | `invalid_config` | 設定檔存在但無法解析（不會改用預設值） |
-| `refused` | 前置條件不成立 |
-| `error` | 其他引擎錯誤。在本機檔案形式或沒實作 `claim` 的 Store 上執行 `claim`，也會得到這個 |
-| Store 自訂的 code | Store 方法拋出帶 `code` 的錯誤時原樣傳回，例如 `ownership_lost` |
-| `store_error` | Store 方法拋出沒有 `code` 的錯誤 |
+| `refused` | 前置條件不成立，或執行前掛鉤拒絕（只有 `createHost`） |
+| `revision_conflict` | 提交時版本對不上：別人先改了同一份文件（只有 `createHost`） |
+| `unavailable` | 儲存暫時不能用，可以重試（只有 `createHost`） |
+| `internal` | 儲存函式或掛鉤以其他方式失敗（只有 `createHost`） |
+| `error` | 其他引擎錯誤 |
 | `panic` | 引擎內部錯誤 |
 
-## <a id="store"></a>自己實作 Store
+## <a id="create-host"></a>把引擎內嵌進你的後端
 
-Store 是一個物件，引擎透過它讀寫 change、artifact、規格與討論。資料要怎麼存（資料表、檔案、物件儲存）由你決定。完整的方法簽名見 [`index.d.ts`](../crates/adapters/speclink-node/index.d.ts)。每個方法可以直接回傳值，也可以回傳 Promise。
-
-**必要方法**（共 31 個）：
-
-| 分組 | 方法 |
-| --- | --- |
-| Change | `listChanges`、`findChange`、`changeExists`、`createChange`、`updatedAtSecs` |
-| Artifact | `readArtifact`、`writeArtifact`、`artifactExists` |
-| Delta 規格 | `deltaCapabilities`、`hasCapabilityDirs` |
-| 正式規格 | `listCanonicalCapabilities`、`canonicalSpecExists`、`readCanonicalSpec`、`writeCanonicalSpec`、`canonicalSpecPath` |
-| 封存 | `archivedChangeExists`、`archiveChange`、`readArchivedMeta`、`writeArchivedMeta` |
-| 討論 | `liveDiscussionExists`、`archivedDiscussionExists`、`liveDiscussionPath`、`readLiveDiscussion`、`writeLiveDiscussion`、`deleteLiveDiscussion`、`readDiscussion`、`listLiveDiscussions`、`listArchivedDiscussions`、`archiveDiscussion` |
-| 設定與詞彙 | `readWorkflowConfig`、`readLanguage` |
-
-**選配方法**：
-
-| 方法 | 什麼時候需要 |
-| --- | --- |
-| `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` | `review stamp`、`verify stamp`。缺任何一個，蓋章會在動手前拒絕 |
-| `claim` | `claim` 動詞。見下方 |
-| `deleteChange`、`readEvidence`、`writeEvidence` | 目前接上的動詞用不到，可以先不實作 |
-
-實作時要注意：
-
-- **change 的 meta 兩邊命名不同。** `createChange(name, metaText)` 收到的是 YAML 文字，鍵名用底線，例如 `created_by: Alice <alice@example.com>`。`listChanges` 與 `findChange` 要回傳物件，meta 的鍵名用駝峰，例如 `createdBy`。
-- **回傳型別要對。** 布林、數字、字串型別不對時，引擎不會報錯，而是當成預設值（例如 `changeExists` 回傳非布林會被當成 `false`）。`listChanges`、`findChange` 的形狀不對則會報錯。
-- **`path`、`dir` 這類回傳值只是顯示用的字串**，引擎不會拿它去開檔案。
-- **artifact 的識別碼**是相對於 change 的路徑：`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`。空文件也算存在。
-- **只能用內建 schema。** 自己的 Store 沒有本機 workspace，所以專案層與使用者層的自訂 schema 都讀不到。
-- **錯誤處理**：Store 方法拋錯或 reject 時，進行中的 `dispatch` 會以 `Error` 拒絕，訊息前面加上方法名，例如 `listChanges: connection refused`。
-- **不要在 Store 方法裡同步等待同一顆引擎的另一個 `dispatch`**，兩邊會互相等待而卡住。Store 方法回傳之後再發新的 dispatch 沒有問題。
-
-下面是用 `Map` 存在記憶體的片段，示範 meta 的兩種命名：
+`createHost` 建立一個宿主套件，整個程序共用一個，所有使用者都經過它。
 
 ```js
-const changes = new Map() // name → { metaText, artifacts: Map }
+const host = createHost({
+  store,                 // 必填：三個儲存函式，見下一節
+  hooks,                 // 選填：兩個掛鉤，見「一個動詞的四個步驟」
+  scopes,                // 選填：這個人可以用哪些專案與 repo，見「服務 CLI 與 Speclink Desktop」
+  authMethods,           // 選填：支援哪些登入方式
+  skills: ['discuss', 'propose', 'ingest', 'archive'], // 選填：給連進來的工程師哪幾支技能
+  limits: { importBytes: 32 * 1024 * 1024 },           // 選填：匯入的大小上限
+})
+```
 
-const store = {
-  createChange(name, metaText) {
-    // metaText 例如 "schema: spec-driven\ncreated: 2026-10-07\ncreated_by: Alice <alice@example.com>\n"
-    changes.set(name, { metaText, artifacts: new Map() })
-    return `changes/${name}`
-  },
-  findChange(name) {
-    const c = changes.get(name)
-    if (!c) return null
-    const meta = parseYaml(c.metaText) // 用你慣用的 YAML 套件
-    return { name, meta: { schema: meta.schema, created: meta.created, createdBy: meta.created_by } }
-  },
-  listChanges() {
-    return [...changes.keys()].sort().map((name) => store.findChange(name))
-  },
-  changeExists: (name) => changes.has(name),
-  readArtifact: (change, artifact) => changes.get(change)?.artifacts.get(artifact) ?? null,
-  writeArtifact(change, artifact, content) {
-    changes.get(change).artifacts.set(artifact, content)
-    return `changes/${change}/${artifact}`
-  },
-  // ……其餘必要方法依此類推
+| 輸入 | 沒給的時候 |
+| --- | --- |
+| `store` | 缺 `list`、`read` 或 `commit` 時立刻拋錯，並列出缺少的函式 |
+| `hooks` | 每個動詞都允許，提交之後不通知任何人 |
+| `scopes` | 範圍清單與每個專案路徑都回 404。只用 Agent 工具的宿主不會意外開放任何東西 |
+| `authMethods` | 登入方式的路徑回 404，用戶端維持舊的登入行為 |
+| `pushTransports` | 握手只宣告輪詢 |
+| `skills` | 提供引擎的全部技能。空陣列或引擎沒有的名稱會立刻拋錯 |
+| `limits.importBytes` | 33554432（32 MiB） |
+
+`createHost` 不接受 `actor`：身分跟著每一次呼叫來，不是建立時給一次。不認得的選項會立刻拋錯。
+
+身分是兩個欄位：`id` 是改名之後也不會變的識別，`displayName` 是文件上蓋章用的名字。兩者都不能是空的。
+
+```js
+const identity = { id: 'u_42', displayName: 'Alice' }
+```
+
+`skills` 只決定「提供哪幾支」。技能的文字一律來自引擎，宿主不能改，也不能加自己的技能。
+
+## <a id="store-port"></a>實作三個儲存函式
+
+儲存接口是三個函式，每個函式都作用在一個範圍上。可以直接回傳值，也可以回傳 Promise。
+
+```ts
+interface StorePort {
+  list(scope: string, prefix: string): PortListing
+  read(scope: string, keys: string[]): (PortDocument | null)[]
+  commit(scope: string, commit: PortCommit): number
 }
 ```
 
-### `claim`（選配）
+| 函式 | 收到 | 回傳 |
+| --- | --- | --- |
+| `list` | 範圍、鍵的前綴 | 範圍目前的版本，加上鍵以這個前綴開頭的文件（鍵、版本、最後修改時間），依鍵的位元組順序排列，每個鍵一次 |
+| `read` | 範圍、一組鍵 | 每個鍵一個結果，順序和輸入相同；文件不存在時是 `null`。全部結果要來自同一次完成的提交 |
+| `commit` | 範圍、一筆提交 | 範圍的新版本（一個數字） |
 
-認領（claim）是團隊系統的概念，由你的 Store 決定誰可以認領。實作 `claim(name)` 之後，`dispatch(['claim', '<name>'])` 會呼叫它：
-
-- 成功時回傳你自己的資料，例如 `{ claimed: true, claimedBy: 'alice' }`，SDK 原樣交給呼叫端。
-- 衝突時拋出帶 `code` 的 `Error`（例如 `ownership_lost`），訊息寫明誰持有這個 change、該怎麼做。SDK 也原樣傳回。
-
-沒有實作 `claim` 時，這個動詞以 `error` 失敗。
-
-## <a id="stamp"></a>品質關卡：`review` 與 `verify`
-
-兩個品質關卡各接上兩個動詞，參數和 CLI 相同：
+一筆提交（`PortCommit`）帶著一個動詞的全部寫入：
 
 ```js
-// 新增一輪：內容用 stdin 參數傳入
-await engine.dispatch(['review', 'add-round', 'add-auth', '--stdin'], { stdin: round })
-// → { change: 'add-auth', round: 1 }
-
-// 蓋章：檔案指紋放進 stdin 的 JSON
-await engine.dispatch(['review', 'stamp', 'add-auth', '--agent', 'claude', '--stdin'], {
-  stdin: JSON.stringify({
-    scope: [{ path: 'src/auth.ts', hash: '<sha256>' }],
-    missing: [],
-  }),
-})
-// → { change: 'add-auth' }
+{
+  actor: { id: 'u_42', displayName: 'Alice' },
+  command: 'new-change',          // 命令的固定名稱
+  at: 1763440000000,              // 毫秒
+  ops: [
+    { op: 'put', key: 'changes/add-auth/.meta.yaml', content: '…', expected: null }, // null：必須不存在
+    { op: 'put', key: 'changes/add-auth/tasks.md', content: '…', expected: 3 },     // 數字：目前必須是這個版本
+    { op: 'delete', key: 'changes/old/proposal.md', expected: 2 },
+  ],
+  events: [{ name: 'change-created', payload: { … } }],
+}
 ```
 
-- `scope` 是**你算好的檔案指紋**。引擎看不到你的工作目錄，所以不會替你計算。要和 CLI 相容，就用檔案內容的 SHA-256（十六進位）；文字檔先把 CRLF 換成 LF。
-- `missing` 列出工單範圍裡已經不存在的檔案。`scope` 與 `missing` 合起來必須剛好等於工單涵蓋的檔案、而且不重複，否則拒絕。兩個欄位都可以省略（視為空清單），多出其他欄位會以 `invalid_argv` 拒絕。
-- 任務還沒做完（標 `[M]` 的手動任務不算），或最後一輪還有 CRITICAL／WARNING 時，蓋章會被拒絕。`--accept` 可以略過必修發現；SUGGESTION 本來就不擋。
-- `reviewed_by`／`verified_by` 是建立引擎時的 `actor`；`--agent` 記在 `reviewed_with`／`verified_with`。
-- 蓋章需要 `readChangeMeta`、`writeChangeMeta`、`deleteArtifact` 三個方法，缺一個就在動手前拒絕，工單與 meta 都不會被改。
-- 同一個引擎實例裡的蓋章會自動排隊，不會互相覆蓋。跨實例、跨程序對同一個 change 蓋章時，由你的 Store 負責協調。
+**三項保證**（你的實作要做到）：
 
-## <a id="render"></a>產生技能檔
+1. **一次提交全部成功或全部不做。** 用一次資料庫交易完成。
+2. **版本對不上就整筆拒絕。** 第一筆寫入之前，先檢查每一個 `expected`；有一個不成立就拒絕整筆提交，拋出 `StoreConflictError`。
+3. **事件與寫入在同一次提交裡。** 需要每個事件都送達時，在同一次交易裡把 `events` 寫進你自己的事件表。
 
-`skills` 用的是和 `speclink init`／`speclink update` 同一份產生程式，內容不會和 CLI 有落差。
+提交成功時：範圍的版本加一；這次寫入的每份文件，版本是範圍的新版本、最後修改時間是 `at`。
+
+文件用字串鍵，命名規則由引擎決定。你的儲存不需要認得文件的種類，只要照鍵存：
+
+| 鍵 | 內容 |
+| --- | --- |
+| `changes/<名稱>/…` | 進行中的變更：`.meta.yaml`、`proposal.md`、`design.md`、`tasks.md`、`specs/<capability>/spec.md`、`.evidence.json` |
+| `specs/<capability>/spec.md` | 正式規格 |
+| `archive/changes/<日期-名稱>/…` | 已封存的變更 |
+| `discussions/<slug>.md`、`archive/discussions/<日期-slug>.md` | 討論記錄 |
+| `config.yaml`、`LANGUAGE.md`、`board/order` | 流程設定、詞彙表、看板順序 |
+
+限制：鍵最長 512 位元組，範圍最長 256 位元組；版本與時間是 0 到 2^53 − 1 的整數。
+
+失敗時拋出帶 `code` 的物件。SDK 只讀欄位，不看 `instanceof`：
+
+| 情況 | 拋出 |
+| --- | --- |
+| 版本對不上 | `new StoreConflictError(key, actual)`：`actual` 是那份文件目前的版本，不存在時是 `null` |
+| 暫時不能用（連線中斷、逾時） | `new StoreUnavailableError(message)`：呼叫端可以重試 |
+| 其他 | 任何錯誤；呼叫端收到 `internal` |
+
+下面是用 `Map` 存在記憶體的最小實作。換成資料庫時，`commit` 整段放進一次交易：
+
+```js
+const { StoreConflictError } = require('@speclink/engine')
+
+function memoryStore() {
+  const scopes = new Map() // scope → { version, docs: Map<key, { content, version, modifiedAt }>, events: [] }
+  const state = (scope) => {
+    if (!scopes.has(scope)) scopes.set(scope, { version: 0, docs: new Map(), events: [] })
+    return scopes.get(scope)
+  }
+  const byBytes = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
+
+  const store = {
+    list(scope, prefix) {
+      const s = state(scope)
+      const entries = [...s.docs.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .sort(([a], [b]) => byBytes(a, b))
+        .map(([key, doc]) => ({ key, version: doc.version, modifiedAt: doc.modifiedAt }))
+      return { version: s.version, entries }
+    },
+    read(scope, keys) {
+      const s = state(scope)
+      return keys.map((key) => (s.docs.has(key) ? { ...s.docs.get(key) } : null))
+    },
+    commit(scope, commit) {
+      const s = state(scope)
+      // 先檢查每一個 expected，再開始寫。
+      for (const op of commit.ops) {
+        const actual = s.docs.has(op.key) ? s.docs.get(op.key).version : null
+        if (op.expected !== actual) throw new StoreConflictError(op.key, actual)
+      }
+      const version = s.version + 1
+      for (const op of commit.ops) {
+        if (op.op === 'put') s.docs.set(op.key, { content: op.content, version, modifiedAt: commit.at })
+        else s.docs.delete(op.key)
+      }
+      for (const event of commit.events) s.events.push({ ...event, version })
+      s.version = version
+      return version
+    },
+  }
+  // recordedEvents 給合格測試用：這個範圍留下的事件，由舊到新。
+  return { store, recordedEvents: (scope) => state(scope).events.map((e) => ({ ...e })) }
+}
+```
+
+實作時要注意：
+
+- **每個函式都要有結果。** 引擎會一直等，沒有時間上限。需要逾時就寫在函式裡。
+- **不要在這三個函式裡等同一個宿主套件的另一個 `dispatch`。** `dispatch` 正在等這個函式，兩邊會互相等待而卡住。
+- **回傳值以 JSON 傳給引擎。** 數字會保持原值；JSON 裝不下的值（循環參照、BigInt）會讓這次呼叫失敗。
+
+用 SQL 資料庫時，資料表與一次提交的寫法可以參考三個 Rust 範例（SQLite、PostgreSQL、檔案系統），見[儲存接口的範例](server-store-drivers.zh-TW.md)。目前沒有 JavaScript 寫的範例。
+
+## <a id="conformance"></a>用合格測試檢查你的實作
+
+`runStoreConformance` 對你的三個函式跑契約的十六項檢查，和 Rust 的實作跑的是同一份。其中兩項會從多個執行緒同時呼叫你的儲存，檢查交易有沒有做對。
+
+```js
+const { runStoreConformance } = require('@speclink/engine')
+
+let n = 0
+const { store, recordedEvents } = memoryStore()
+const report = await runStoreConformance({
+  store,
+  newScope: () => `conformance-${++n}`, // 每次呼叫給一個沒用過的範圍
+  recordedEvents,                       // 選填：沒給時跳過 events-with-commit 那一項
+})
+
+console.log(report.passed) // true
+for (const check of report.checks.filter((c) => c.outcome !== 'passed')) {
+  console.log(check.name, check.outcome, check.detail)
+}
+```
+
+預期結果：`report.passed` 是 `true`，十六項的 `outcome` 都是 `passed`（沒給 `recordedEvents` 時有一項是 `skipped`）。每一項有固定的名稱，例如 `conflict-stale-version`、`conflict-rejects-whole-commit`、`concurrent-single-winner`；失敗時 `detail` 說明原因。
+
+把它放進你的測試，對真正的資料庫跑。`newScope` 給的範圍會被寫入資料，用測試專用的資料庫。
+
+## <a id="four-steps"></a>一個動詞的四個步驟
+
+不論請求從哪個入口進來，宿主套件都照同樣的四個步驟執行一個動詞：
+
+![一個動詞的四個步驟：一、執行前掛鉤，可以拒絕並給原因；二、列出與讀取；三、一次提交，帶全部寫入與事件；四、提交後掛鉤，只能旁觀。第二、三步呼叫宿主的儲存函式](assets/figures/zh-TW/verb-four-steps.svg)
+
+1. **執行前掛鉤**（`beforeCommand`）：宿主可以拒絕，並給原因。
+2. **列出與讀取**：引擎經 `list` 與 `read` 讀它需要的文件，用到才讀。
+3. **一次提交**：引擎把全部寫入與事件交給 `commit`，只呼叫一次。純讀取的動詞沒有這一步。
+4. **提交後掛鉤**（`afterCommit`）：宿主只能旁觀。
+
+兩個掛鉤都是選填的：
+
+```js
+const hooks = {
+  // 每次呼叫問剛好一次，在任何寫入之前。
+  async beforeCommand({ identity, scope, command, params, changedKeys }) {
+    if (command === 'archive' && !(await isMerged(scope, params.change))) {
+      return { allow: false, reason: '程式碼還沒合併，不能封存' }
+    }
+    // 不回傳（或回傳 { allow: true }）就是允許。
+  },
+  // 提交成功之後呼叫。dispatch 不等它，它的回傳值與錯誤都被忽略。
+  afterCommit({ identity, scope, command, scopeVersion, events }) {
+    notifyChannel(scope, events)
+  },
+}
+```
+
+- **`beforeCommand` 收到**誰、哪個範圍、命令的固定名稱（例如 `archive`、`new-change`、`workflow-config-edit`）與參數。參數只能讀，改了沒有作用：掛鉤可以拒絕或旁觀，不能改內容。流程設定的寫入另外帶 `changedKeys`（這次會改的鍵，例如 `['tdd']`）。
+- **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了流程設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
+- **掛鉤自己失敗**（拋錯、回傳其他形狀，`null` 也算）時不算允許：這次呼叫以 `internal` 結束。
+- **`afterCommit` 不保證送達。** 程序在提交之後、通知之前中斷，這個事件就不會再來。需要「至少送達一次」時，在 `commit` 的同一次交易裡把 `events` 寫進你自己的事件表，再由你的程式從那張表送出。
+- **不要在掛鉤裡等同一個宿主套件的 `dispatch`**，理由和儲存函式相同。
+
+Speclink 不內建「沒有落地就不能封存」「commit 必須在某個分支」這類規則。引擎只記錄分支與落地的 commit（見 `change landed`）；要擋，用 `beforeCommand` 自己擋，像上面的例子。
+
+## <a id="agent-tool"></a>給 Agent 工具用
+
+`host.dispatch` 是給宿主自己的 Agent 用的入口：在你的程序裡直接呼叫，不經過 HTTP。
+
+```js
+const result = await host.dispatch({
+  identity: { id: 'u_42', displayName: 'Alice' }, // 來自你的 session，不是來自模型
+  scope: 'acme/web',
+  argv: ['new', 'change', 'add-auth'],
+  fields: { source: 'chat', ticket: 'OPS-128' },    // 選填：自由欄位
+})
+```
+
+- **身分與範圍由你的程式給。** 它們不在 `argv` 裡，模型改不到。空的身分或範圍會在呼叫儲存之前以 `invalid_argv` 拒絕。
+- **動詞、`stdin` 的規則、回傳值與錯誤**和[在本機專案上執行動詞](#local-project)的 `dispatch` 相同。
+- **`agentTool`** 是現成的工具定義，不用自己寫給模型看的說明：`name` 是 `speclink`，`description` 列出全部可用的動詞（和解析用的是同一份定義；需要 checkout 的動詞不在裡面），`inputSchema` 只有 `argv` 與選填的 `stdin`。
+
+```js
+const { agentTool } = require('@speclink/engine')
+
+const speclinkTool = {
+  name: agentTool.name,
+  description: agentTool.description,
+  inputSchema: agentTool.inputSchema,
+  async handler({ argv, stdin }, session) {
+    try {
+      return await host.dispatch({ identity: session.user, scope: session.scope, argv, stdin })
+    } catch (err) {
+      return { error: err.message, code: err.code } // 把錯誤交回模型，讓它自己修正
+    }
+  },
+}
+```
+
+**自由欄位**是宿主自訂的鍵值，引擎只存不解讀，例如這個變更是從哪張工單來的。`fields` 只在動詞建立變更或討論時寫入（`new change`、`discuss new`、`discuss promote`），和建立在同一次提交裡；其他動詞會忽略它，所以每次呼叫都帶同一組也沒關係。它優先於 `--field` 給的同名欄位，`beforeCommand` 可以在 `params.fields` 看到將要寫入的欄位並檢查。規則：鍵由 `a-z`、`0-9`、`_`、`.`、`-` 組成並以字母開頭，最長 64 個字元；值是單行、最多 1024 位元組；最多 32 個鍵。不合規則時以 `invalid_argv` 拒絕，什麼都不寫。不要把密鑰放進欄位：讀得到這個變更的人都看得到。
+
+**宿主套件不讀 git，也不讀你的檔案。** 需要本機事實的動詞，由你的程式收集後當成輸入：
+
+- 蓋章（`review stamp`、`verify stamp`）：檔案指紋與 commit 放進 `stdin` 的 JSON，例如 `{ "scope": [{ "path": "src/auth.ts", "hash": "<sha256>" }], "missing": [], "headCommit": "<commit>" }`。指紋是檔案內容的 SHA-256（十六進位）；文字檔先把 CRLF 換成 LF。
+- `task done`：任務照常勾選，但不記錄改了哪些檔。
+- 落地：用 `change landed <名稱> --commit <commit>` 回報。
+
+## <a id="http-entry"></a>服務 CLI 與 Speclink Desktop
+
+`host.handleRequest` 是給原版 CLI 與 Speclink Desktop 的 HTTP 入口。你只要掛一條路由，把 `/api/speclink/v1/` 底下的請求全部交給它：
+
+```js
+// Express：掛在任何 body parser 之前，讓 body 保持原始位元組。
+app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
+  const identity = await verifyToken(req.headers.authorization) // 你的程式；驗不出時回傳 null
+  const [path, query] = req.originalUrl.split('?')
+  const answer = await host.handleRequest(
+    { method: req.method, path, query, headers: req.headers, body: Buffer.isBuffer(req.body) ? req.body : undefined },
+    identity,
+  )
+  if (answer === null) return next() // 不是入口的路徑：交給你自己的路由
+  res.status(answer.status).set(answer.headers).send(Buffer.from(answer.body))
+})
+```
+
+- **你驗 token，入口不看 `Authorization`。** 驗得出就把身分交給入口；驗不出就傳 `null`，不要自己回 401。哪些路徑不用登入由入口決定：登入方式的路徑對 `null` 照常回答，其他路徑回 401。
+- **`path` 與 `query` 照收到的樣子傳**（不要先解碼），`body` 是位元組。
+- **回傳 `null`** 表示這個路徑不是入口的。GET、HEAD、POST、PUT、DELETE 以外的方法得到 405。
+- **路徑固定在 `/api/speclink/v1/` 底下**，用戶端假設 API 在這裡，不能掛到別的前綴。
+- **掛鉤和 `host.dispatch` 共用。** 不經引擎的讀取（流程設定的原文、已封存的內容、搜尋）不會逐一問 `beforeCommand`，由「這個人看不看得到這個範圍」決定。
+- 第三個參數可以帶自由欄位：`host.handleRequest(request, identity, { fields })`，規則和 `host.dispatch` 的 `fields` 相同。
+
+**`scopes`** 回答「這個人可以用哪些專案與 repo」。每個請求問一次，不快取；慢的話自己快取。
+
+```js
+async function scopes(identity) {
+  return [
+    {
+      key: 'acme', name: 'Acme',
+      repos: [
+        // scope：這個 repo 的請求讀寫哪一個範圍。canWrite 為 false 時，寫入的請求得到 403。
+        { key: 'web', name: 'Web', scope: 'acme/web', canWrite: true, canWritePolicy: false },
+      ],
+    },
+  ]
+}
+```
+
+`canWritePolicy` 為 `false` 時，會改到政策鍵（`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）的流程設定寫入得到 403。`scopes` 拋錯時，請求得到 503。
+
+**登入方式的宣告**讓用戶端知道要怎麼登入。入口在 `GET /api/speclink/v1/auth-methods` 回答它，不需要登入：
+
+```js
+const authMethods = {
+  methods: ['browser', 'token'],
+  browser: { issuer: 'https://login.example.com', clientId: 'speclink', scopes: ['openid'] },
+}
+```
+
+用戶端依 `browser`、`device`、`token` 的順序選第一個宿主有宣告的方式。入口不做登入的端點、帳號與成員：那些是你的。要支援瀏覽器登入（`browser`），你的登入服務要做到三件事：
+
+1. 在 `issuer` 底下提供 RFC 8414 的說明文件（`/.well-known/oauth-authorization-server`；找不到時用戶端改讀 `/.well-known/openid-configuration`），列出授權與換 token 的網址。
+2. 接受 `http://127.0.0.1:<任意埠>/callback` 的回呼。用戶端每次用作業系統給的隨機埠。
+3. 把 `clientId` 登記成不帶密鑰的公開用戶端，並支援 PKCE（S256）。
+
+用戶端拿到 token 之後放在 `Authorization: Bearer` 標頭送來，由你的路由驗證。不宣告 `browser` 也可以：用戶端改用存取金鑰（`token`），金鑰由你的系統發。
+
+**推送事件**預設關閉：握手只宣告輪詢，用戶端定時問「這個範圍有沒有變」。你自己提供串流（SSE 或 WebSocket）時，用 `pushTransports` 宣告它的網址；入口不提供串流。
+
+## <a id="export-import"></a>匯出與匯入
+
+```js
+// 匯出：這個範圍的全部文件，加上讀取當下的範圍版本。
+const bundle = await host.exportScope({ identity, scope: 'acme/web' })
+// → { formatVersion: 2, scopeVersion: 17, documents: [{ key, content, digest }, …] }
+
+// 匯入：寫進一個空的範圍，用一次 commit。
+const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle })
+// → { scopeVersion: 1, documents: 42 }
+```
+
+- **匯出**只用你的 `list` 與 `read`。匯出途中範圍有變就重來，最多三次，再不行以 `unavailable` 拒絕：不會把新舊內容混在一起。
+- **匯入**的範圍必須是空的，否則以 `refused` 拒絕。包的內容不對（摘要和內容不符、鍵不合引擎的命名規則、鍵重複、超過上限）以 `invalid_argv` 拒絕，訊息會指出是哪個鍵。失敗時範圍維持原樣。
+- **兩者都先問 `beforeCommand`**：命令名稱是 `scope-export`（沒有參數）與 `scope-import`（參數是文件數與位元組數，不含內容）。誰可以匯出與匯入由你決定。
+- **包有兩個版本。** 匯出一律給第 2 版（每份文件以鍵命名）。匯入兩版都收：第 1 版是舊的 Speclink Desktop 送的格式。
+- **大小上限**：`limits.importBytes` 是匯入最多收多少位元組，預設 32 MiB；匯出沒有上限。經 HTTP 匯入時，入口在解析之前比對請求本文的大小，超過就回 413。
+- **你的框架的本文上限要不小於它。** 入口拿到的是框架已經讀完的本文，所以匯入那條路徑的框架上限要調到至少 `limits.importBytes`（上面 Express 範例的 4 MB 對匯入不夠）。
+- **壓縮由路由層做。** 宿主套件不壓縮也不解壓縮，要壓縮就在你的框架打開。
+
+CLI 沒有匯入匯出的動詞。搬專案的入口是 Speclink Desktop 與你自己的程式。
+
+## <a id="skills"></a>產生技能檔
+
+技能檔是給 AI Agent 讀的步驟說明。有兩種情況：
+
+- **連進來的工程師**：他們的 CLI 執行 `speclink update` 時，從你的 Server 取得技能（`createHost` 的 `skills` 決定給哪幾支）。你不用做別的事。
+- **宿主自己的 Agent**：用 `skills.render` 產生技能的文字，交給你的 Agent 載入。
 
 ```js
 skills.list() // [{ name: 'analyze', description: '…' }, …]
 
-const skillMd = skills.render('propose', { target: 'neutral', invocation: 'tool-call' })
+const skillMd = skills.render('propose', {
+  target: 'neutral',
+  invocation: 'tool-call',
+  specInCheckout: false,
+})
 ```
 
 | 選項 | 值 | 說明 |
 | --- | --- | --- |
 | `target` | `claude`、`codex`、`copilot`、`pi`、`cursor`、`neutral` | `neutral` 給自訂工具用：沒有 `/speclink-` 斜線指令，也不提 plan mode |
-| `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配以 `dispatch` 實作的工具；`cli` 寫成 shell 指令 |
+| `invocation` | `cli`（預設）、`tool-call` | `tool-call` 把動詞寫成「呼叫 speclink 工具，參數是 argv 陣列」，搭配 `agentTool`；`cli` 寫成 shell 指令 |
+| `specInCheckout` | `true`（預設）、`false` | 規格在不在使用技能的那個 checkout 裡。內嵌的宿主與遠端專案傳 `false`：技能不會提到規格資料夾的路徑，也沒有對規格檔的 git 步驟 |
 | `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `speclink` |
 | `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
 
-把產生的 `SKILL.md` 寫進一個目錄，交給你的 agent 載入。每個技能的 `description` 說明什麼時候用它，結尾的 Next steps 說明之後建議做什麼，不需要另外的系統提示。前提是你的 agent 會讀技能的 description。
+沒有程式碼 checkout 的 Agent 用得到的是 `discuss`、`propose`、`ingest`、`archive`、`improve`、`analyze`、`trace` 這幾支。`apply`、`review`、`verify`、`quality`、`commit` 與 worktree 的技能需要程式碼的 checkout，交給工程師那一邊的工具。
 
-## <a id="example"></a>完整範例：接上 Copilot SDK
+## <a id="example"></a>完整範例
 
-一個名為 `speclink`、參數是 argv 陣列的工具，加上產生好的技能檔。Copilot SDK 的 API 以它的官方文件為準；這個範例對照的是 `@github/copilot-sdk` 1.0.16。
+一個檔案走完全部：三個儲存函式、合格測試、宿主套件、Agent 工具與一條路由。這裡用 Node 內建的 `http`，換成 Express 的寫法見[服務 CLI 與 Speclink Desktop](#http-entry)。
 
 ```js
-const { createEngine, skills } = require('@speclink/engine')
-const { CopilotClient, defineTool } = require('@github/copilot-sdk')
-const { mkdirSync, writeFileSync } = require('node:fs')
-const { join } = require('node:path')
+const http = require('node:http')
+const { createHost, runStoreConformance, agentTool, skills, StoreConflictError } = require('@speclink/engine')
 
-const engine = createEngine({ store: myDatabaseStore, actor: 'Alice <alice@example.com>' })
-
-// 1. speclink 工具：argv 進、結果出；錯誤以文字交回 agent。
-const speclinkTool = defineTool('speclink', {
-  description:
-    'Run a speclink verb. Pass the argv array exactly as the skill says, ' +
-    "e.g. ['status', '--change', 'add-auth', '--json'].",
-  parameters: {
-    type: 'object',
-    properties: {
-      argv: { type: 'array', items: { type: 'string' } },
-      stdin: { type: 'string', description: 'Content for verbs that take --stdin' },
+// 1. 三個儲存函式（記憶體版；正式環境把 commit 換成一次資料庫交易）。
+function memoryStore() {
+  const scopes = new Map()
+  const state = (scope) => {
+    if (!scopes.has(scope)) scopes.set(scope, { version: 0, docs: new Map(), events: [] })
+    return scopes.get(scope)
+  }
+  const byBytes = (a, b) => Buffer.compare(Buffer.from(a), Buffer.from(b))
+  const store = {
+    list(scope, prefix) {
+      const s = state(scope)
+      const entries = [...s.docs.entries()]
+        .filter(([key]) => key.startsWith(prefix))
+        .sort(([a], [b]) => byBytes(a, b))
+        .map(([key, doc]) => ({ key, version: doc.version, modifiedAt: doc.modifiedAt }))
+      return { version: s.version, entries }
     },
-    required: ['argv'],
-  },
-  async handler({ argv, stdin }) {
-    try {
-      return await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
-    } catch (err) {
-      return { error: err.message, code: err.code }
+    read(scope, keys) {
+      const s = state(scope)
+      return keys.map((key) => (s.docs.has(key) ? { ...s.docs.get(key) } : null))
+    },
+    commit(scope, commit) {
+      const s = state(scope)
+      for (const op of commit.ops) {
+        const actual = s.docs.has(op.key) ? s.docs.get(op.key).version : null
+        if (op.expected !== actual) throw new StoreConflictError(op.key, actual)
+      }
+      const version = s.version + 1
+      for (const op of commit.ops) {
+        if (op.op === 'put') s.docs.set(op.key, { content: op.content, version, modifiedAt: commit.at })
+        else s.docs.delete(op.key)
+      }
+      for (const event of commit.events) s.events.push({ ...event, version })
+      s.version = version
+      return version
+    },
+  }
+  return { store, recordedEvents: (scope) => state(scope).events.map((e) => ({ ...e })) }
+}
+
+// 你的系統的部分：這裡用固定的資料代替。
+const ALICE = { id: 'u_42', displayName: 'Alice' }
+const verifyToken = async (authorization) => (authorization === 'Bearer demo-token' ? ALICE : null)
+
+async function main() {
+  // 2. 合格測試：先確認三個函式符合契約。
+  let n = 0
+  const probe = memoryStore()
+  const report = await runStoreConformance({
+    store: probe.store,
+    newScope: () => `conformance-${++n}`,
+    recordedEvents: probe.recordedEvents,
+  })
+  if (!report.passed) throw new Error('store port failed the conformance tests')
+
+  // 3. 宿主套件：整個程序共用一個。
+  const { store } = memoryStore()
+  const host = createHost({
+    store,
+    hooks: {
+      beforeCommand({ command, params }) {
+        if (command === 'archive' && params.change === 'frozen') {
+          return { allow: false, reason: '這個變更被凍結，不能封存' }
+        }
+      },
+      afterCommit({ scope, command, scopeVersion }) {
+        console.log(`[${scope}] ${command} → 版本 ${scopeVersion}`)
+      },
+    },
+    scopes: async () => [
+      {
+        key: 'acme', name: 'Acme',
+        repos: [{ key: 'web', name: 'Web', scope: 'acme/web', canWrite: true, canWritePolicy: true }],
+      },
+    ],
+    authMethods: { methods: ['token'] },
+  })
+
+  // 4. Agent 工具：模型給 argv，身分與範圍由你的 session 給。
+  const speclinkTool = {
+    name: agentTool.name,
+    description: agentTool.description,
+    inputSchema: agentTool.inputSchema,
+    async handler({ argv, stdin }, session) {
+      try {
+        return await host.dispatch({ identity: session.user, scope: session.scope, argv, stdin })
+      } catch (err) {
+        return { error: err.message, code: err.code }
+      }
+    },
+  }
+  const session = { user: ALICE, scope: 'acme/web' }
+  await speclinkTool.handler({ argv: ['new', 'change', 'add-auth'] }, session)
+  const listed = await speclinkTool.handler({ argv: ['list', '--json'] }, session)
+  console.log(listed.changes.map((change) => change.name)) // [ 'add-auth' ]
+
+  // 給你的 Agent 的技能文字：動詞寫成工具呼叫，規格不在 checkout 裡。
+  const proposeSkill = skills.render('propose', { target: 'neutral', invocation: 'tool-call', specInCheckout: false })
+  console.log(`propose 技能有 ${proposeSkill.length} 個字元`)
+
+  // 5. 一條路由：/api/speclink/v1/ 底下的請求全部交給入口。
+  const server = http.createServer(async (req, res) => {
+    const chunks = []
+    for await (const chunk of req) chunks.push(chunk)
+    const [path, query] = req.url.split('?')
+    const answer = await host.handleRequest(
+      { method: req.method, path, query, headers: req.headers, body: Buffer.concat(chunks) },
+      await verifyToken(req.headers.authorization),
+    )
+    if (answer === null) {
+      res.writeHead(404).end()
+      return
     }
-  },
+    res.writeHead(answer.status, answer.headers).end(Buffer.from(answer.body))
+  })
+  server.listen(8080, () => console.log('listening on http://127.0.0.1:8080'))
+}
+
+main().catch((err) => {
+  console.error(err)
+  process.exit(1)
 })
-
-// 2. 產生技能檔。
-const skillsRoot = join(process.cwd(), '.my-agent', 'skills')
-for (const { name } of skills.list()) {
-  const dir = join(skillsRoot, `speclink-${name}`)
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'SKILL.md'), skills.render(name, { target: 'neutral', invocation: 'tool-call' }))
-}
-
-// 3. 建立 session 時交給它工具與技能目錄。
-async function startSession() {
-  const client = new CopilotClient()
-  return client.createSession({ tools: [speclinkTool], skillDirectories: [skillsRoot] })
-}
 ```
 
-技能用工具呼叫的方式描述動詞，工具把呼叫送進同一個程序裡的引擎，引擎再透過你的 Store 存檔。整條路上沒有 CLI、沒有子程序，也不需要本機的 `speclink/` 目錄。
+預期的輸出：
+
+```text
+[acme/web] new-change → 版本 1
+[ 'add-auth' ]
+propose 技能有 … 個字元
+listening on http://127.0.0.1:8080
+```
+
+執行之後，另一個終端機可以用 `curl http://127.0.0.1:8080/api/speclink/v1/auth-methods` 看到登入方式的宣告（`{"methods":["token"]}`）。CLI 在一個測試資料夾裡用 `speclink link http://127.0.0.1:8080/api/speclink/v1/projects/acme --repo web` 連上這個範例，再執行 `speclink auth login --pat`，貼上 `demo-token` 當存取金鑰。連線的完整步驟見 [Remote 入門](remote-getting-started.zh-TW.md)。
 
 ## <a id="limits"></a>目前的限制
 
-- 需要 checkout 的動詞不能透過 SDK 執行（見[執行動詞](#dispatch)）。
-- 自己的 Store 只能用內建 schema。
+- 沒有本機規格檔的宿主不能用需要 checkout 的動詞（見[在本機專案上執行動詞](#local-project)）。
+- 宿主套件不讀 git 與檔案：`task done` 不記錄改了哪些檔，蓋章與落地的 commit 要由你的程式提供。
+- 用 Node 內嵌的宿主沒有現成的推送事件，用戶端靠輪詢。
+- 沒有 JavaScript 寫的儲存接口範例。
+- 只能用內建的產出流程（schema）。
 - 沒有 musl Linux 的預編譯套件。
-- Store 方法拋錯時，stderr 可能會多印一行 Rust 的 panic 訊息；Promise 仍會照上面的規則拒絕。
 - `dispatch` 的回傳值沒有個別的 TypeScript 型別，形狀以[動詞與旗標契約](verb-contract.zh-TW.md)為準。
+
+這個系列刻意延後或不做的項目，完整清單與替代做法在專案能力狀態的[已知缺口](product-status.zh-TW.md#known-gaps)。

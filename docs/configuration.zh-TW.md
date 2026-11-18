@@ -10,9 +10,9 @@ Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟
 | --- | --- | --- | --- |
 | `speclink/config.yaml` | 工作流政策：`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`、`context`、`rules`、`review`、`subagent_model` | CLI、桌面 app；技能透過 `speclink instructions` 取得生效值 | 是 |
 | `.speclink.yaml` | 這個 checkout 的綁定：`tools`、`spec_dir`、`remote` | CLI、桌面 app | 是（裡面沒有憑證） |
-| `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端模式的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
-| 使用者層設定目錄 | `credentials.yaml`（CLI 用存取金鑰登入時存的憑證）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
-| 系統鑰匙圈 | 裝置登入的憑證、桌面 app 存的存取金鑰（PAT） | CLI 與桌面 app 共用 | 否 |
+| `.speclink/` | 本機工作資料：封存與品質關卡用的快照、生成工具的記錄、遠端專案的唯讀內容快照 | CLI、桌面 app | 否（`speclink init` 會把它加進 `.gitignore`） |
+| 使用者層設定目錄 | `credentials.yaml`（這台機器沒有鑰匙圈時，CLI 把存取金鑰存在這裡）、`skill-notice.json`（CLI 技能版本提醒的狀態檔）、`schemas/`（使用者層自訂 schema）、`config.yaml`（`speclink config` 的鍵值） | CLI、桌面 app | 否 |
+| 系統鑰匙圈 | 瀏覽器登入與裝置登入的憑證、CLI 與桌面 app 存的存取金鑰（PAT） | CLI 與桌面 app 共用 | 否 |
 | `SPECLINK_*` 環境變數 | 單次執行的覆寫 | CLI、Node SDK | 否 |
 
 使用者層設定目錄的位置：
@@ -54,7 +54,7 @@ Speclink 的設定分三層：工作流政策寫在 `speclink/config.yaml`，跟
 遠端連線另有兩條順序：
 
 - **連線網址**：`SPECLINK_STORE_URL` 優先，其次是 `.speclink.yaml` 的 `remote.url`。是不是遠端模式只看 `.speclink.yaml` 有沒有 `remote:` 區段，`SPECLINK_STORE_URL` 不會把本機專案切成遠端模式。有 `remote:` 區段、兩邊卻都沒有網址時，指令直接報錯，不會退回本機模式。
-- **憑證**：依序找 `SPECLINK_TOKEN` → 鑰匙圈裡的裝置登入 → 鑰匙圈裡的存取金鑰 → 使用者層的 `credentials.yaml`。憑證以伺服器的 origin（`scheme://host:port`）區分，同一台 server 上的專案共用一份登入。`speclink auth status` 會告訴你目前用的是哪一層。
+- **憑證**：依序找 `SPECLINK_TOKEN` → 鑰匙圈裡的瀏覽器登入或裝置登入 → 鑰匙圈裡的存取金鑰 → 使用者層的 `credentials.yaml`。憑證以伺服器的 origin（`scheme://host:port`）區分，同一台 server 上的專案共用一份登入。`speclink auth status` 會告訴你目前用的是哪一層。
 
 ## <a id="workflow-config"></a>修改工作流政策
 
@@ -160,16 +160,53 @@ tools:
 
 舊版允許名為 `copilot`、或 `skills_dir` 是 `.github/skills` 的描述子。升級後 `speclink update` 會拒絕它並以非零結束。刪掉這個描述子，改在 `tools` 寫 `copilot` 即可。名為 `pi` 或 `cursor`、或 `skills_dir` 是 `.pi/skills`、`.cursor/skills` 的描述子也一樣：刪掉描述子，改在 `tools` 寫 `pi` 或 `cursor`。
 
-## <a id="remote"></a>遠端模式
+## <a id="remote"></a>遠端專案
 
-接上遠端後，設定的歸屬不變，只是「規格放在哪裡」換成 server：
+遠端專案的規格由一台 Server 持有。每個設定的歸屬不變，只是「規格放在哪裡」換成 Server：
 
-- `speclink link <url> --repo <name>` 在 `.speclink.yaml` 寫入 `remote:` 區段（`url` 與 `repo`），`speclink unlink` 移除它。有這個區段就是遠端模式。
-- 工作流政策改存在 server 上。`speclink workflow-config` 讀寫 server 那一份，本機的 `speclink/config.yaml` 不再生效。
+- `speclink link <url> --repo <name>` 在 `.speclink.yaml` 寫入 `remote:` 區段（`url` 與 `repo`），`speclink unlink` 移除它。有這個區段，這個 checkout 就是遠端專案。
+- 工作流政策存在 Server 上。`speclink workflow-config` 讀寫 Server 那一份，本機的 `speclink/config.yaml` 不生效。
+- 技能檔由 Server 提供。`speclink update` 向 Server 取得 `tools` 所列工具的技能，版本跟著 Server；Server 沒有宣告技能時，改用 CLI 內建的範本，並在 stderr 說明。
 - `.speclink/context/` 是遠端內容的唯讀快照。不要手改，下一個指令會發現它被改過而拒絕執行；要刷新就重新執行 `speclink instructions`。
 - 憑證不寫進任何專案檔案，所以 `.speclink.yaml` 可以放心 commit。
 
-怎麼啟動 server、登入、斷線後怎麼恢復，見 [Remote 入門](remote-getting-started.zh-TW.md)。啟動 server 用的環境變數（例如 `SPECLINK_PORT`）也在那裡。
+怎麼啟動示範用 server、三種登入方式、取得技能、斷線後怎麼恢復，見 [Remote 入門](remote-getting-started.zh-TW.md)。啟動示範用 server 用的環境變數（例如 `SPECLINK_PORT`）也在那裡。
+
+### CLI 的技能版本提醒
+
+遠端專案的技能來自 Server。CLI 內建的技能範本比 Server 的舊時，CLI 會提醒你更新 Speclink：
+
+- **什麼時候出現**：在遠端專案執行動詞時，CLI 的技能範本版本比 Server 宣告的舊，stderr 多一行，寫出兩邊的版本與更新的方式：
+
+  ```text
+  speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.58.0) — update Speclink: npm i -g @speclink/cli, brew upgrade speclink, the install script, or the desktop app's updater
+  ```
+
+- **多久一次**：同一台 Server 一天最多一次，日期以這台機器的時間為準。
+- **不擋操作**：指令照常完成，stdout、`--json` 的輸出與 exit code 都不變。CLI 不會自己更新。
+- Server 沒有宣告技能版本時不提醒。`speclink update` 也不印這一行，它的輸出本來就有技能的來源與版本。
+
+提醒的狀態檔是使用者層設定目錄的 `skill-notice.json`（macOS 上是 `~/Library/Application Support/speclink/skill-notice.json`，其他平台的目錄見[設定放在哪裡](#layers)）。它記錄每台 Server 位址上次提醒的日期，不含憑證。刪掉它，當天會再提醒一次。這個檔案讀不到或寫不進去時，CLI 不提醒，也不報錯。
+
+## <a id="free-fields"></a>自由欄位
+
+自由欄位是你掛在變更或討論記錄上的鍵與值，例如工單編號。Speclink 只存放、讀回，不依它們做任何決定。不要把機密放進去。
+
+- 建立時帶入：`speclink new change <name> --field <key>=<value>`、`speclink discuss new <topic> --field <key>=<value>`。`--field` 可以重複。
+- 之後修改：`speclink change field set <name> <key>=<value>...`、`speclink change field unset <name> <key>...`；討論記錄用 `speclink discuss field set` 與 `speclink discuss field unset`。
+- 第一個 `=` 之後的全部內容都是值。
+
+| 項目 | 規則 |
+| --- | --- |
+| 鍵 | 以小寫英文字母開頭，之後只能用 `a-z`、`0-9`、`_`、`.`、`-`；最長 64 個字元 |
+| 值 | 單行文字，最多 1024 位元組，不能有控制字元（換行也算） |
+| 數量 | 一個變更或一份討論記錄最多 32 個鍵 |
+
+不合規則時，指令以非零結束，不寫入任何東西；錯誤訊息只寫出鍵，不寫出值。
+
+本機專案把自由欄位存在變更的 `.meta.yaml` 與討論記錄開頭的 `fields:` 區塊；遠端專案存在 Server 上。規則只在寫入時檢查：你手動寫進 `fields:` 區塊的內容照樣讀得出來。連到還不支援自由欄位的舊版 Server 時，建立照常成功，但 stderr 會警告這些欄位沒有被保存。
+
+已封存的變更與討論記錄不能再改自由欄位，也還沒有依欄位查詢的動詞，見[已知缺口](product-status.zh-TW.md#known-gaps)。
 
 ## <a id="reference"></a>完整鍵值參考
 
@@ -196,10 +233,12 @@ tools:
 
 | 鍵 | 值 | 預設 | 用途 |
 | --- | --- | --- | --- |
-| `spec_dir` | 相對路徑 | `speclink` | 規格目錄的位置，相對於專案根目錄。沒寫時，舊版建立、只有 `openspec/` 的專案照常讀 `openspec/`，直到 `speclink update` 把它搬到 `speclink/`；搬移與 OpenSpec 匯入都不會寫入這個鍵。寫明這個鍵的專案不會自動搬移 |
+| `spec_dir` | 相對路徑 | `speclink` | 規格目錄的位置，相對於專案根目錄。沒寫時，舊版建立、只有 `openspec/` 的專案照常讀 `openspec/`，直到 `speclink update` 把它搬到 `speclink/`；搬移與 OpenSpec 匯入都不會寫入這個鍵。寫明這個鍵的專案不會自動搬移。這個值目前不檢查，見表格下方的說明 |
 | `tools` | 清單 | 無 | 要產生技能檔的 AI 工具：`claude`、`codex`、`copilot`、`pi`、`cursor` 或自訂工具描述子 |
 | `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
 | `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |
+
+`spec_dir` 目前不檢查絕對路徑與 `../`。寫成絕對路徑，或用 `../` 指到專案根目錄之外，行為未定義：Speclink 不保證這樣的規格目錄能正常運作。請只寫專案根目錄底下的相對路徑。把規格放在 checkout 之外還不支援，見[已知缺口](product-status.zh-TW.md#known-gaps)。
 
 ### 環境變數
 

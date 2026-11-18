@@ -2,9 +2,11 @@
 
 [繁體中文](remote-getting-started.zh-TW.md) · **English**
 
-Follow this guide once. You start a Speclink server on your own computer, and then you connect the Desktop app and the CLI to the same project. Each step shows the result that you must see. For the local path without a server, see [Local Repo Getting Started](getting-started.md). [Project Capability Status](product-status.md) is the reference for what works today.
+Follow this guide once. You start a demonstration server on your own computer, and then you connect Speclink Desktop (the Desktop app) and the CLI to the same remote project. Each step shows the result that you must see. For a local project, which needs no Server, see [Getting started](getting-started.md). [Product status](product-status.md) is the reference for what works today.
 
-The `speclink-server` in this guide is the official **reference implementation**. It lets you start out of the box and try the remote features. Remote mode does not depend on this server. Two public contracts under `speclink/specs/` define remote mode: `host-runtime` and `client-protocol`. You can write your own server on the Speclink engine and connect your own authentication, database, and permission model. The CLI and the Desktop app connect to it in the same way. The screens and commands below belong to the official server. After you connect, the contracts control what the CLI and the Desktop app do, so the behavior is the same on your own server.
+The official server is for demonstration and trial. It lets you try remote projects without writing code. For production use, embed the engine in your own system. See [Embed Speclink in your system](../README.md#embedding).
+
+The steps of this guide use the demonstration server (`speclink-server`). The demonstration server and a host that embeds the engine use the same host kit and the same store contract. Thus, the CLI and Speclink Desktop work the same way with such a host. The first-run setup, the admin console, and the account page (sections 1 to 4) belong to the demonstration server. A host supplies its own accounts, login, and permissions.
 
 ## <a id="before-you-begin"></a>Before you begin
 
@@ -48,7 +50,7 @@ The current folder now also contains `speclink-data/`. All data is in this folde
 - `store.db`: the project data (specs, changes, and more). The `store.db-wal` and `store.db-shm` files next to it are SQLite work files.
 - `identity.db`: accounts, memberships, and credentials.
 
-By default, the server listens only on `127.0.0.1:8080`. Only this computer can connect. To use a different port, run `SPECLINK_PORT=8090 npx @speclink/server`, and change the port in all later URLs. For other settings and team deployments, see [Server Deployment](server-deployment.md).
+By default, the server listens only on `127.0.0.1:8080`. Only this computer can connect. To use a different port, run `SPECLINK_PORT=8090 npx @speclink/server`, and change the port in all later URLs. For other settings and the other run modes, see [Server Deployment](server-deployment.md).
 
 Keep this terminal open. Press `Ctrl+C` to stop the server cleanly.
 
@@ -85,7 +87,7 @@ Without membership, you see these results:
 
 - A read of a project resource returns `403` (`permission_denied`), not 404. A 404 means only that the project key does not exist.
 - The Desktop Project and Repo list is empty.
-- The CLI `speclink auth login` or `speclink auth status` shows `access denied`.
+- The CLI `speclink auth status` and the verbs that read or write the project show `access denied`. `speclink auth login` itself succeeds: a login checks only your identity, not your membership.
 
 So you must do this step:
 
@@ -106,7 +108,7 @@ To add a teammate, click "Invite user" on the same page. In the dialog, enter th
 
 ## <a id="access-key"></a>4. Create an access key (for CI)
 
-You do not need an access key (PAT, Personal Access Token) for daily sign-in. By default, the Desktop app and the CLI use device sign-in: you click "Approve" once in a browser. Access keys are for CI and for environments without a browser. If you do not need one now, go to the next step.
+You do not need an access key (PAT, Personal Access Token) for daily sign-in. The demonstration server supports two login methods: device login and access keys. The Desktop app and the CLI use device login first: you click "Approve" once in a browser. Access keys are for CI and for environments without a browser. If you do not need one now, go to the next step. For the three login methods and the order of selection, see [section 6](#cli).
 
 To create an access key:
 
@@ -126,7 +128,7 @@ Keep these three rules in mind:
 
 1. In the icon rail on the left of the Desktop app, click "+" (New project). Select the "Server" source card, and then click "Next".
 2. Under "Choose a Server", enter the server URL `http://localhost:8080` (the Server base URL), and then click "Add and sign in".
-3. The Desktop app opens the device sign-in page `/activate` in a browser. Sign in if necessary. The page fills in the code. Click "Next", make sure that the code is the same as the code in the Desktop app, and then click "Approve".
+3. The Desktop app opens the device login page `/activate` in a browser. Sign in if necessary. The page fills in the code. Click "Next", make sure that the code is the same as the code in the Desktop app, and then click "Approve".
 4. Go back to the Desktop app. Under "Choose a Project and Repo", select `demo` and `backend`.
 5. Under "Connect a local checkout?", select one of the two modes below.
 6. Click "Open Project".
@@ -138,9 +140,20 @@ The two modes:
 - **"Skip (spec mode)"**: spec-only. You read and write the remote specs and changes, with no local folder. Use it if you only work with specs.
 - **"Choose local folder"**: checkout. You bind the remote project to a local Git folder. The folder must already point to the same remote, or it must be a Git repo with no binding. Select at least one AI tool. Before the workspace opens, the Desktop app writes the Speclink skill files into the folder. If a step fails, the screen stays on that step so you can try again.
 
-The Desktop app keeps your credentials in the system keychain, not in project files. On one computer, the Desktop app and the CLI share the same device sign-in.
+The Desktop app keeps your credentials in the system keychain, not in project files. On one computer, the Desktop app and the CLI share the same login in the keychain.
 
-The Desktop app shows an access key field only when the server does not support device sign-in. The official server supports device sign-in, so you do not see this field. If the field appears with your own server, paste the key that you copied from `/account`.
+The Desktop app selects a login method in the same order as the CLI (see section 6). The "Sign-in methods" card in Settings → Servers lists the three methods: Browser login, Device login, and Access key.
+
+- When the Server declares browser login, the Desktop app opens the login service of that Server in a browser. The screen shows "Waiting for browser sign-in" and a URL that you can copy.
+- The Desktop app shows an access key field only when the Server accepts only access keys, or when the Server declares no login methods and has no device login. In that case, paste the key that you got from that Server. The demonstration server supports device login, so you do not see this field.
+
+For a remote project that you open with "Choose local folder", the Server supplies the skill files (see "Get the skills" in section 6). The Desktop app compares the skill files in the checkout with the skill files from the Server. When you must do something, it shows a notice card:
+
+- The skill files are different from those of the Server: click "Update skill files".
+- The checkout has no skill files: click "Install skill files".
+- The Desktop app is older than the Server: the dialog also shows "Update Speclink". You can still install the skills from the Server first.
+
+A project that you open with "Skip (spec mode)" has no checkout, so the Desktop app does not do this check.
 
 For the differences between the remote board and the local board, see [Project Capability Status](product-status.md).
 
@@ -163,14 +176,14 @@ speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
 
 Use the repository key for `--repo`. If the key does not match, `link` shows the available keys and stops. It writes nothing.
 
-The Desktop app and the CLI share the device sign-in. If you signed in with the Desktop app in section 5, the output has one more line, `✓ Repo 'backend' is registered in this project`, and you can skip `auth login` below. If not, sign in and check the result:
+The Desktop app and the CLI share the login in the keychain. If you signed in with the Desktop app in section 5, the output has one more line, `✓ Repo 'backend' is registered in this project`, and you can skip `auth login` below. If not, sign in and check the result:
 
 ```bash
 speclink auth login
 speclink auth status
 ```
 
-`auth login` shows a URL and a code, and it opens `/activate` in a browser. The page fills in the code. Click "Next", and then click "Approve" to finish the sign-in. `auth status` shows your identity. Its last line is `Repo 'backend' is registered in this project`, which means that the repository key matches.
+With the demonstration server, `auth login` uses device login. It shows a URL and a code, and it opens `/activate` in a browser. The page fills in the code. Click "Next", and then click "Approve" to finish the sign-in. `auth status` shows your identity and the source of the credential (the `Credential from:` line). Its last line is `Repo 'backend' is registered in this project`, which means that the repository key matches.
 
 Do one read and write test:
 
@@ -188,23 +201,100 @@ Changes:
 
 The Desktop board also shows `smoke-test`. When you finish the test, run `speclink discard smoke-test` to remove it.
 
+### Three login methods and the order of selection
+
+The CLI and Speclink Desktop have three login methods. The Server decides which methods are possible:
+
+| Login method | How it works | Flag that selects it |
+| --- | --- | --- |
+| Browser login | The CLI shows a login URL and opens the login service of the Server in a browser. You sign in there. The browser then sends the result to a temporary port that the CLI opens on `127.0.0.1`. The CLI waits for a maximum of 5 minutes | `--browser` |
+| Device login | The CLI shows a URL and a code. You approve this device on a page of the Server | `--device` |
+| Access key | You give the CLI a key that you got from the Server | `--pat` (paste by hand), `--token-stdin` (read from standard input) |
+
+Without a flag, `speclink auth login` first asks the Server which login methods it supports. Then it uses the first method that the Server declares, in this fixed order: **browser login → device login → access key**. The client sets this order. The order in the list from the Server has no effect.
+
+- The Server declares browser login: the CLI uses browser login first. To use one of the other two methods, add `--device`, `--pat`, or `--token-stdin`.
+- The demonstration server declares device login and access keys: the CLI uses device login.
+- The Server declares only access keys: `auth login` exits non-zero. The message tells you to use `--pat` or `--token-stdin`.
+- You select a method with `--browser` or `--device`, and the Server does not declare it: `auth login` exits non-zero. The message lists the methods that the Server supports. The CLI does not change to a different method by itself.
+- You can use only one of the four flags at a time.
+
+When the Server declares no login methods (an old Server, or a host that sets no login methods), the CLI keeps the old behavior:
+
+- No flag, or `--device`: the CLI tries device login first. If the Server has no device login either, the CLI exits non-zero. The message tells you to use `speclink auth login --pat`.
+- `--browser`: the CLI refuses, because the Server publishes no login service.
+- `--pat` and `--token-stdin`: these work as usual.
+
+If the query for the login methods fails (for example, the Server has an error or you cannot connect), the login stops. The CLI does not try a different method.
+
+### Where credentials are stored
+
+- **Browser login and device login**: the CLI keeps the credential only in the system keychain. If this computer has no usable keychain, these two logins do not start. The message tells you to use `--pat` or `SPECLINK_TOKEN`.
+- **Access key**: the CLI first asks the Server whether the key is valid. Then it stores the key in the system keychain. If no keychain is usable (for example, CI without a desktop environment), the CLI stores the key in `credentials.yaml` in the user config directory. On macOS and Linux, only your account can read that file. For the location of the directory, see [Configuration](configuration.md#layers).
+- A key that an older CLI stored in `credentials.yaml` still works.
+- No credential is in the repo. The CLI and the Desktop app share the logins in the keychain.
+
+`speclink auth logout` removes all credentials for this Server from this computer (the keychain and `credentials.yaml`). It also revokes a device login credential on the Server. It revokes a browser login credential when the login service supports revocation. An access key stays valid on the Server. With the demonstration server, revoke it on `/account`.
+
 ### In CI or without a terminal
 
-Device sign-in needs an interactive terminal. Outside a terminal, `speclink auth login` stops with an error. In that case, use an access key in one of these ways:
+`speclink auth login` without a flag needs an interactive terminal. Outside a terminal, it stops with an error. In that case, use an access key in one of these ways:
 
-- Set the environment variable `SPECLINK_TOKEN` from the secret store of your CI. The CLI uses it first.
+- Set the environment variable `SPECLINK_TOKEN` from the secret store of your CI. The CLI uses it first and writes it to no file.
 - Run `speclink auth login --token-stdin` to read the key from standard input. To paste the key by hand, use `speclink auth login --pat`.
 
-After a sign-in with a key, the CLI keeps the key in a credentials file in your user configuration folder. Only your account can read that file, and it is not in the repo. `speclink auth logout` removes only this local copy. The key on the server stays valid until you revoke it on `/account`.
+### Get the skills
 
-### Verb differences in remote mode
+Skill files are the step-by-step instructions in the checkout that AI tools read. After you connect to a remote project and sign in, run this command once:
 
-Most verbs work as usual in remote mode, and they write to the server. These are the exceptions. If you run one in the wrong mode, the CLI refuses it:
+```bash
+speclink update
+```
 
-- Local only: `demo`, `trace`, `change rank`, `plan --strict-overlap`.
-- Remote only: `claim`.
+`speclink update` gets skills only for the AI tools in the `tools` list of `.speclink.yaml`. A folder that you connected only with `speclink link` does not have this list yet. Add it first (see [Configuration](configuration.md#tools)):
 
-For the full list, see the [Verb and Flag Contract](verb-contract.md). In checkout mode, AI tools read the read-only `.speclink/context/` folder. Do not edit it. To update it, run `speclink instructions` again.
+```yaml
+tools:
+  - claude
+```
+
+**Expected output** (when the tool is `claude`; the value in parentheses is the skill version of the Server):
+
+```text
+✓ Updated skill files for: claude
+  Skills source: server (v1.58.0)
+```
+
+Keep these points in mind about the skills of a remote project:
+
+- **The skills come from the Server.** The engine on the Server runs the verbs of a remote project, so the Server also supplies the skills. Their text comes from the templates of the engine version on the Server. The Server decides which skills it supplies. For example, the two worktree skills exist only when the workflow config on the Server turns on worktree.
+- **The version follows the Server.** If the version from the Server is older than the version in the checkout, the CLI installs it anyway. The output has one more line, `! Skills replaced with the server's version …`. You do not need `--allow-downgrade` here.
+- **When you connect to a Server, you trust the skills that it supplies.** Skill files are instructions that AI tools follow. Speclink does not sign the skills and does not check their content. Connect only to a Server that you trust.
+- After the Server is upgraded, or after the workflow config on the Server changes, run `speclink update` again.
+- If the Server supplies no skills for an AI tool, the skill files of that tool stay as they are. The output has one more line, `! The server gives no skills for: …`.
+- If the Server declares skills but the CLI cannot get them, the command exits non-zero and writes no file.
+
+With an old Server that declares no skills, `speclink update` makes the skills from the templates in this CLI. stderr shows one more line, `speclink: skills generated from this CLI's templates — this server does not provide skills`, and the output shows `local` as the source. In this case, the two worktree skills are not made. See the [known gaps](product-status.md#known-gaps). The CLI also uses its own templates when you are not signed in or cannot connect to the Server. The stderr line then gives the cause.
+
+A checkout that you make with `speclink init --store remote` also starts with skills from the templates in the CLI. After you sign in, run `speclink update` in the same way. When the skill templates of the CLI are older than those of the Server, the CLI reminds you to update Speclink. See [Configuration](configuration.md#remote).
+
+### Verb differences in remote projects
+
+Most verbs work as usual in a remote project, and they write to the Server. The CLI limits only two verbs to one side. If you run one on the other side, the CLI refuses it:
+
+- Local projects only: `demo`. It writes a demo change into the local spec folder.
+- Remote projects only: `claim`. A local project has no claim state.
+
+`trace`, `change rank`, and `plan --strict-overlap` work in remote projects. The Server calculates the result.
+
+There are two more differences:
+
+- In a remote project, `speclink archive` archives one change at a time. The CLI refuses `--all` and more than one name.
+- In a remote project, the CLI refuses `--schema` on `speclink status` and `speclink instructions`. The workflow config on the Server decides the schema.
+
+For skills: remote projects do not support the baseline and manual skills yet. Each skill gives the cause and stops, and it writes no file. The tour mode of the manual skill is not affected. See the [known gaps](product-status.md#known-gaps).
+
+For the full list, see the [Verb and Flag Contract](verb-contract.md#mode-assignment). In checkout mode, `speclink instructions` puts the remote content into the read-only `.speclink/context/` folder. Do not edit it. To update it, run `speclink instructions` again.
 
 ## <a id="restart"></a>7. Data stays after a restart
 
@@ -256,6 +346,9 @@ To move data or to make regular backups, see [Server Backup and Restore](server-
 | You open `/api/speclink/v1/web/account/tokens` in a browser and get `405` | This URL accepts only POST. On the `/account` page, click "Create access key". |
 | You lost an access key | You cannot get it back. Revoke it on `/account` and create a new one. |
 | `speclink auth login` says that it needs a terminal | You are not in an interactive terminal. Use `--token-stdin` or `SPECLINK_TOKEN`. See section 6. |
+| `speclink auth login --browser` says `this server does not support browser login` | This Server does not declare browser login. The demonstration server is an example. Remove `--browser` and let the CLI select the method. See section 6. |
+| `speclink update` says `No AI tool configurations found` | `.speclink.yaml` has no `tools` list. Add the AI tools that you use and run the command again. See "Get the skills" in section 6. |
+| stderr shows `this CLI's skill templates (…) are older than this server's (…)` | The skill templates of the CLI are older than those of the Server. This is only a reminder, and the command completes as usual. Update Speclink. See [Configuration](configuration.md#remote). |
 | `link` or `auth status` says `repo '…' is not registered in this project` | The `--repo` value does not match the repository key. The message shows the available keys. Run `speclink link` again with the correct key. |
 | The server URL changed | In the test folder, run `speclink unlink`, and then run `link` with the new URL. In the Desktop app, add a new connection. |
 | The server does not start, or `/healthz` does not return `200` | Read the error in the server terminal. If the configuration has an error, the server stops. It never starts with a bad configuration. |

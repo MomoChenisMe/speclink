@@ -143,9 +143,9 @@
 
 ### 儲存後端
 
-- **definition**: TeamStore 的實作與其執行狀態——驅動（sqlite／postgres／serverfs 等）、契約版本、等級、能力與健康，統一以「儲存後端」為主詞，呈現於系統頁。
+- **definition**: 示範用 server 用來存規格文件的儲存——三個儲存接口範例之一（sqlite、postgres、serverfs）與它是否可用，統一以「儲存後端」為主詞，呈現於系統頁。
 - **avoid**: Store、Store 狀態、store driver（使用者可見文案中）
-- **why**: 「Store」單獨出現時看不出是什麼的儲存；統一主詞後，「儲存後端目前無法使用」這類降級訊息才讀得通。2026-07-25 變更「admin-console-redesign」定案。
+- **why**: 「Store」單獨出現時看不出是什麼的儲存；統一主詞後，「儲存後端目前無法使用」這類降級訊息才讀得通。2026-07-25 變更「admin-console-redesign」定案。定義原本寫的是舊儲存層的實作與它的契約版本、等級、能力；舊儲存層已移除，示範用 server 改用三個儲存接口的範例，系統頁只顯示種類與是否可用，定義跟著改（docs-embedded-host，2026-11-18）。
 
 ### 審查
 
@@ -289,3 +289,57 @@
 - **definition**: 內建 schema `no-spec-change`，給不改任何正式規格承諾行為的變更（重構、用詞修正、平台小調整）：只有 proposal、design（選用）與 tasks，沒有 delta spec。判準只有一個——「這個變更會不會改到正式規格承諾的行為？」不會才選它；會就用 spec-driven。
 - **avoid**: quick-fix、小修正 schema
 - **why**: 名字講判準，不講大小或速度：修 bug 多半要寫 delta 把正確行為釘住（52 個修 bug 的變更有 51 個寫了 delta），所以修 bug 不等於不改規格，「小修正」「quick-fix」會讓人把修 bug 歸到這裡。`skip-specs` 不列入 avoid：它是 `speclink archive --skip-specs` 的真實旗標，docs 有合法存量。2026-10-21 討論「positioning-and-process-cost」定案。
+
+### 本機專案
+
+- **definition**: 規格放在 repo 的規格資料夾（預設 `speclink/`）、用 Git 協作的專案。一個人用它就夠。英文是 local project。
+- **avoid**: （無）
+- **why**: 使用者要選的是「規格放在哪裡」，不是一種技術。和「遠端專案」成對，取代 README 原本的「Local Repo」說法；「本地」「Local Repo」的存量不追討，新寫的段落用這個詞。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 遠端專案
+
+- **definition**: 規格由一台 Server 持有的專案；checkout 裡沒有規格檔，CLI 與 Speclink Desktop 經 HTTP 讀寫。Server 可以是內嵌了引擎的宿主，也可以是官方的示範用 server。英文是 remote project。
+- **avoid**: 團隊模式、Remote Store
+- **why**: 「Remote Store」把儲存的實作當成使用者要認識的東西，「團隊模式」讓人以為是一個開關。使用者看到的只有「這個專案的規格在遠端」。「遠端模式」不列入 avoid：它不違反這個用詞，存量也大，新寫的段落用「遠端專案」。Remote Store 是純 ASCII，不入機械守門集，由文件的中英對照檢查直接禁止。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 宿主
+
+- **definition**: 把引擎內嵌進自己後端程序的系統。帳號、登入、權限與儲存都由它自己負責；speclink 只提供引擎與宿主套件。英文是 host。
+- **avoid**: （無）
+- **why**: 整合者需要一個詞指「接 speclink 的那個系統」，並和 speclink 提供的部分分開。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 內嵌
+
+- **definition**: 在宿主的程序裡執行引擎，相對於連到另一台 server。英文是 embed。
+- **avoid**: （無）
+- **why**: 講「怎麼蓋出 Server」時用這個詞；講「規格在哪裡」時用本機與遠端。兩組詞不混用。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### SDK
+
+- **definition**: npm 套件 `@speclink/engine` 這個工具箱；引擎是裡面的一件，另外有宿主套件、儲存接口的契約與合格測試。
+- **avoid**: （無）
+- **why**: SDK 是工具的名字，不用它統稱整塊遠端功能：連到官方 server 的遠端專案沒有用到它。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 宿主套件
+
+- **definition**: speclink 提供給宿主的那一層——每次呼叫帶身分與範圍、兩個掛鉤（執行前可以拒絕、提交後只能旁觀），以及給 CLI 與 Speclink Desktop 的 HTTP 入口。官方的示範用 server 也用它組成。英文是 host kit。
+- **avoid**: 主機套件
+- **why**: 「主機」讀起來像一台機器；這一層是給宿主的程式用的，和「宿主」同一個詞根才對得上。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 儲存接口
+
+- **definition**: 宿主實作的三個函式——列出、讀取、提交。引擎的全部讀寫都經過它們；一次提交全部成功或全部不做。英文是 store port。
+- **avoid**: （無）
+- **why**: 和「儲存後端」分開：儲存接口是契約，儲存後端是示範用 server 選用的那一個實作。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 入口
+
+- **definition**: 宿主套件接收請求的地方，有兩個：給 CLI 與 Speclink Desktop 的 HTTP 入口，與給宿主 Agent 工具的呼叫入口。英文是 entry point。
+- **avoid**: （無）
+- **why**: 宿主只要知道「請求交到哪裡」；兩個入口共用同一個儲存與同一組掛鉤。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。
+
+### 合格測試
+
+- **definition**: 檢查一個儲存接口的實作是否符合契約的那一組檢查；Rust 的實作與 JavaScript 的實作跑同一份。英文是 conformance tests。
+- **avoid**: （無）
+- **why**: 宿主寫完三個函式之後要有一個明確的「過了沒」。2026-11-10 討論「embedded-host-needs」定案，2026-11-18 變更「docs-embedded-host」落地。

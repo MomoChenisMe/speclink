@@ -10,9 +10,9 @@ Speclink keeps settings in three layers. Workflow policy lives in `speclink/conf
 | --- | --- | --- | --- |
 | `speclink/config.yaml` | Workflow policy: `schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`, `context`, `rules`, `review`, `subagent_model` | The CLI and the desktop app; skills get the effective values through `speclink instructions` | Yes |
 | `.speclink.yaml` | The binding of this checkout: `tools`, `spec_dir`, `remote` | The CLI and the desktop app | Yes (it holds no credentials) |
-| `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of remote mode | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
-| User config directory | `credentials.yaml` (the credential that the CLI stores for an access-token login), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
-| System keychain | Device-login credentials, and access tokens (PATs) that the desktop app stores | Shared by the CLI and the desktop app | No |
+| `.speclink/` | Local work data: snapshots for archive and the quality stations, records of generated tool files, the read-only content snapshot of a remote project | The CLI and the desktop app | No (`speclink init` adds it to `.gitignore`) |
+| User config directory | `credentials.yaml` (the CLI stores an access token here when this computer has no keychain), `skill-notice.json` (the state file of the CLI skill-version reminder), `schemas/` (user-level custom schemas), `config.yaml` (the key-value store of `speclink config`) | The CLI and the desktop app | No |
+| System keychain | Browser-login and device-login credentials, and access tokens (PATs) that the CLI and the desktop app store | Shared by the CLI and the desktop app | No |
 | `SPECLINK_*` environment variables | Overrides for one run | The CLI and the Node SDK | No |
 
 The user config directory is here:
@@ -54,7 +54,7 @@ Three more points:
 The remote connection has two more orders:
 
 - **Connection URL**: `SPECLINK_STORE_URL` comes first, then `remote.url` in `.speclink.yaml`. Only a `remote:` section in `.speclink.yaml` turns on remote mode. `SPECLINK_STORE_URL` never turns a local project into a remote one. If the `remote:` section exists but neither source gives a URL, the command fails. It does not fall back to local mode.
-- **Credentials**: Speclink checks `SPECLINK_TOKEN`, then the device login in the keychain, then an access token in the keychain, then the user-level `credentials.yaml`. Credentials are keyed by the server origin (`scheme://host:port`), so all projects on one server share one login. `speclink auth status` shows which layer it uses.
+- **Credentials**: Speclink checks `SPECLINK_TOKEN`, then the browser login or device login in the keychain, then an access token in the keychain, then the user-level `credentials.yaml`. Credentials are keyed by the server origin (`scheme://host:port`), so all projects on one server share one login. `speclink auth status` shows which layer it uses.
 
 ## <a id="workflow-config"></a>Change workflow policy
 
@@ -160,16 +160,53 @@ If a field is not valid, the command prints one error line that names the field 
 
 Old versions accepted a descriptor named `copilot`, or a descriptor with `skills_dir` set to `.github/skills`. After you upgrade, `speclink update` rejects such a descriptor and exits non-zero. Remove the descriptor and add `copilot` to `tools`. The same applies to a descriptor named `pi` or `cursor`, or a descriptor with `skills_dir` set to `.pi/skills` or `.cursor/skills`: remove the descriptor and add `pi` or `cursor` to `tools`.
 
-## <a id="remote"></a>Remote mode
+## <a id="remote"></a>Remote projects
 
-When you connect to a remote, each setting keeps its layer. Only the location of the specs moves to the server:
+One Server holds the specs of a remote project. Each setting keeps its layer. Only the location of the specs moves to the Server:
 
-- `speclink link <url> --repo <name>` writes a `remote:` section (`url` and `repo`) into `.speclink.yaml`. `speclink unlink` removes it. The section turns on remote mode.
-- Workflow policy lives on the server. `speclink workflow-config` reads and writes the server copy, and the local `speclink/config.yaml` has no effect.
+- `speclink link <url> --repo <name>` writes a `remote:` section (`url` and `repo`) into `.speclink.yaml`. `speclink unlink` removes it. With this section, the checkout is a remote project.
+- Workflow policy lives on the Server. `speclink workflow-config` reads and writes the Server copy, and the local `speclink/config.yaml` has no effect.
+- The Server supplies the skill files. `speclink update` gets the skills for the tools in `tools` from the Server, and their version follows the Server. If the Server declares no skills, the CLI uses its own templates and says so on stderr.
 - `.speclink/context/` is a read-only snapshot of the remote content. Do not edit it. The next command finds the edit and refuses to run. Run `speclink instructions` again to refresh it.
 - No credential goes into a project file, so you can safely commit `.speclink.yaml`.
 
-[Remote Getting Started](remote-getting-started.md) shows how to start a server, sign in, and recover from a lost connection. It also lists the environment variables for the server, such as `SPECLINK_PORT`.
+[Remote Getting Started](remote-getting-started.md) shows how to start the demonstration server, the three login methods, how to get the skills, and how to recover from a lost connection. It also lists the environment variables for the demonstration server, such as `SPECLINK_PORT`.
+
+### The CLI skill-version reminder
+
+The skills of a remote project come from the Server. When the skill templates in the CLI are older than those of the Server, the CLI reminds you to update Speclink:
+
+- **When it appears**: You run a verb in a remote project, and the skill template version of the CLI is older than the version that the Server declares. stderr then shows one more line with the two versions and the ways to update:
+
+  ```text
+  speclink: this CLI's skill templates (v1.57.0) are older than this server's (v1.58.0) — update Speclink: npm i -g @speclink/cli, brew upgrade speclink, the install script, or the desktop app's updater
+  ```
+
+- **How often**: At most once a day for each Server. The day is the local date of this computer.
+- **It does not block**: The command completes as usual. stdout, the `--json` output, and the exit code do not change. The CLI does not update itself.
+- The CLI shows no reminder when the Server declares no skill version. `speclink update` does not show this line either, because its output already has the source and the version of the skills.
+
+The state file of the reminder is `skill-notice.json` in the user config directory (on macOS, `~/Library/Application Support/speclink/skill-notice.json`; for the other platforms, see [Where settings live](#layers)). It records the date of the last reminder for each Server address. It holds no credential. If you delete it, the reminder appears one more time that day. If the CLI cannot read or write this file, it shows no reminder and no error.
+
+## <a id="free-fields"></a>Free fields
+
+Free fields are keys and values that you attach to a change or a discussion record, for example a ticket number. Speclink only stores them and reads them back. It makes no decision from them. Do not put a secret in a free field.
+
+- Set fields at creation: `speclink new change <name> --field <key>=<value>` and `speclink discuss new <topic> --field <key>=<value>`. You can repeat `--field`.
+- Change fields later: `speclink change field set <name> <key>=<value>...` and `speclink change field unset <name> <key>...`. For a discussion record, use `speclink discuss field set` and `speclink discuss field unset`.
+- The value is all the text after the first `=`.
+
+| Item | Rule |
+| --- | --- |
+| Key | Starts with a lowercase letter. After that, only `a-z`, `0-9`, `_`, `.`, and `-`. At most 64 characters |
+| Value | One line of text, at most 1024 bytes, with no control characters (a line break is a control character) |
+| Count | At most 32 keys for one change or one discussion record |
+
+If a field breaks a rule, the command exits non-zero and writes nothing. The error message names the key and never the value.
+
+A local project keeps free fields in a `fields:` block, in the `.meta.yaml` of the change and at the top of the discussion record. A remote project keeps them on the Server. Speclink checks the rules only on a write: it still reads the content that you put into a `fields:` block by hand. With an old Server that does not support free fields, the creation succeeds, but stderr warns that the Server did not keep the fields.
+
+You cannot change the free fields of an archived change or discussion record, and no verb searches by field yet. See the [known gaps](product-status.md#known-gaps).
 
 ## <a id="reference"></a>Key reference
 
@@ -196,10 +233,12 @@ Speclink ignores other keys.
 
 | Key | Values | Default | Use |
 | --- | --- | --- | --- |
-| `spec_dir` | A relative path | `speclink` | The spec directory, relative to the project root. Without it, a project that an older version created with only `openspec/` keeps reading `openspec/` until `speclink update` moves it to `speclink/`. The move and the OpenSpec import never write this key. A project that sets this key is never moved automatically |
+| `spec_dir` | A relative path | `speclink` | The spec directory, relative to the project root. Without it, a project that an older version created with only `openspec/` keeps reading `openspec/` until `speclink update` moves it to `speclink/`. The move and the OpenSpec import never write this key. A project that sets this key is never moved automatically. Speclink does not check this value today; see the note below the table |
 | `tools` | A list | None | AI tools that get skill files: `claude`, `codex`, `copilot`, `pi`, `cursor`, or custom tool descriptors |
 | `remote.url` | A URL | None | The connection URL of the remote project (project-scoped URL) |
 | `remote.repo` | A name | None | The registered name of this repo in the remote project. A project with one repo can leave it out |
+
+Today, Speclink does not check `spec_dir` for absolute paths or `../`. If the value is an absolute path, or if it uses `../` to point outside the project root, the behavior is undefined: Speclink does not guarantee that such a spec directory works. Use only a relative path inside the project root. A spec directory outside the checkout is not supported yet. See the [known gaps](product-status.md#known-gaps).
 
 ### Environment variables
 

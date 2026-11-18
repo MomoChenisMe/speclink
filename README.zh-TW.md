@@ -22,10 +22,10 @@
 
 Speclink 是用 Rust 寫的 Spec-Driven Development（SDD，規格驅動開發）引擎，讓 AI 做的變更可以驗收。每個變更先寫一小份規格，講清楚它要做到什麼；接著交給 AI agent 實作；封存前由審查與驗證兩道品質關卡檢查並留下證據。規格是 repo 裡的純文字。
 
-Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共用規格再接 Remote Store。
+Speclink 有兩條路徑：一個人用本機專案就夠；團隊要共用規格時用遠端專案。
 
-- **Local Repo**：規格放在 repo 的 `speclink/`，用 Git 協作，不需要 server。
-- **Remote Store**：規格放在團隊共用的 Store，由 Host 統一處理認證、版本、交易、事件與流程判定。Host 與 Protocol 都是公開契約，server 可以用官方那一份，也可以自己寫。PM、PO 在團隊這一層參與討論與提案，和 RD、AI Agent 用同一套語意協作：change（變更）、artifact（產物）、task（任務）、verify（驗證）與 archive（封存）。
+- **本機專案**：規格放在 repo 的 `speclink/`，用 Git 協作，不需要 Server。
+- **遠端專案**：規格由一台 Server 持有，checkout 裡沒有規格檔。Server 可以是[內嵌了引擎的系統](#embedding)（你自己的後端），也可以是[官方的示範用 server](#official-server)；CLI 與桌面 app 對兩者的用法相同。PM、PO 在團隊這一層參與討論與提案，和 RD、AI Agent 用同一套語意協作：change（變更）、artifact（產物）、task（任務）、verify（驗證）與 archive（封存）。
 
 ![Speclink 桌面 app 的看板，分成討論、提案中、進行中與已就緒四欄](docs/assets/screenshots/zh-TW/desktop-board.png)
 
@@ -34,7 +34,7 @@ Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共�
 - **規格就放在程式碼旁邊。** 規格是 repo 裡的 Markdown 與 YAML 純文字檔。不裝 Speclink 也讀得懂，每次修改都看得到 Git diff。
 - **AI Agent 知道每一步該做什麼。** Speclink 為 Claude Code、Codex、GitHub Copilot、pi 與 Cursor 產生技能。每個技能告訴 Agent 要讀什麼、要寫什麼、什麼時候停下來問你。
 - **封存前先檢查。** 封存前有兩道選用的品質關卡：`review` 看程式碼寫得好不好，`verify` 看交付是否符合規格。
-- **一個人到整個團隊，同一套流程。** 先在自己的 repo 用 Git 開始。團隊變大後再接上共用的 server，流程與用語都不變。
+- **一個人到整個團隊，同一套流程。** 先在自己的 repo 用本機專案開始。團隊要共用規格時改用遠端專案，流程與用語都不變。
 
 ## <a id="quick-start"></a>快速開始
 
@@ -56,7 +56,7 @@ Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共�
 
 3. 請 Agent 開一個變更：在 Claude Code、GitHub Copilot 或 Cursor 輸入 `/speclink-propose <變更名稱>`，在 Codex 輸入 `$speclink-propose <變更名稱>`，在 pi 輸入 `/skill:speclink-propose <變更名稱>`。Agent 會寫出提案、規格與任務清單。
 
-完整的第一輪（提案、實作、檢查、封存）見 [Local Repo 入門](docs/getting-started.zh-TW.md)。要接共用的 server，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
+完整的第一輪（提案、實作、檢查、封存）見 [Local Repo 入門](docs/getting-started.zh-TW.md)。要用遠端專案，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
 
 ## <a id="screenshots"></a>畫面一覽
 
@@ -67,7 +67,7 @@ Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共�
   </tr>
   <tr>
     <td width="50%"><img src="docs/assets/screenshots/zh-TW/desktop-spec.png" alt="正式規格的詳情頁，列出需求與情境" /><br /><sub>一份正式規格的需求與情境</sub></td>
-    <td width="50%"><img src="docs/assets/screenshots/zh-TW/server-overview.png" alt="Server 後台的總覽頁" /><br /><sub>自架 server 的後台</sub></td>
+    <td width="50%"><img src="docs/assets/screenshots/zh-TW/server-overview.png" alt="Server 後台的總覽頁" /><br /><sub>示範用 server 的後台</sub></td>
   </tr>
   <tr>
     <td width="50%" align="center"><img src="docs/assets/screenshots/zh-TW/desktop-tray.png" width="200" alt="從 macOS 選單列打開的 Speclink 系統匣面板，依提案中、進行中、已就緒與討論分組列出變更" /><br /><sub>macOS 選單列的系統匣面板</sub></td>
@@ -77,13 +77,13 @@ Speclink 有兩條部署路徑：一個人用 Local Repo 就夠；團隊要共�
 
 ## <a id="features"></a>特色
 
-- **純文字**：Local 模式的產物放在 repo 的 `speclink/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.meta.yaml`（生命週期資料）。這一點只適用 Local 模式；遠端模式的正式規格在 Store，本機只有唯讀投影。已經在用 OpenSpec 的專案，在專案根執行 `speclink init` 就能匯入：`openspec/` 會搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案，所以這是單向的匯入，不能再轉回去。
+- **純文字**：Local 模式的產物放在 repo 的 `speclink/` 底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容全是 Markdown 與 YAML，不裝 Speclink 也讀得懂、改得動，每次變動都看得到 Git diff。Speclink 只多放兩樣東西：`discussions/`（討論記錄）與每個變更的 `.meta.yaml`（生命週期資料）。這一點只適用 Local 模式，不適用遠端模式：遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。已經在用 OpenSpec 的專案，在專案根執行 `speclink init` 就能匯入：`openspec/` 會搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案，所以這是單向的匯入，不能再轉回去。
 - **給 AI Agent 的技能**：`speclink init` 為 Claude Code、Codex、GitHub Copilot、pi 與 Cursor 產生技能檔。從討論、提案、實作、品質關卡到封存，每一站都有對應的 `/speclink-*` 指令（Codex 寫成 `$speclink-*`，pi 寫成 `/skill:speclink-*`）。
 - **桌面看板**：每個變更是一張卡片。你看得到它在哪一站、任務做到哪裡、規格改了什麼。
 - **品質關卡**：`review` 看程式碼寫得好不好，`verify` 看交付是否符合規格。兩道都是選用的。
 - **執行順序**：`speclink plan` 依宣告的依賴把變更分成一波一波，並指出下一個可以開工的變更。
 - **手冊與溯源**：Speclink 能從正式規格產生好讀的手冊，`trace` 指令列出一項能力是怎麼一步步形成的。
-- **團隊共用**：接上 server 之後，CLI、桌面 app 與 Agent 讀寫同一份正式規格。
+- **團隊共用**：用遠端專案時，CLI、桌面 app 與 Agent 讀寫 Server 上的同一份正式規格。
 
 ## <a id="workflow"></a>工作流程
 
@@ -188,11 +188,30 @@ node scripts/herdr/dock-panel.mjs
 
 快捷鍵、需求與已知限制見 [Speclink 的 Herdr mod](integrations/herdr/README.md)。
 
-## <a id="self-hosting"></a>自架 server
+## <a id="embedding"></a>把 Speclink 內嵌進你的系統
 
-Server 只有在團隊要共用同一份正式規格時才需要。一個人在自己的 repo 裡用，不必裝 server。
+團隊要共用規格，而且你已經有自己的後端（帳號、登入、權限與資料庫）時，走這條路：把引擎放進你的後端程序，規格存進你自己的資料庫。你的系統就是遠端專案的 Server。原版的 CLI 與桌面 app 直接連上它，你自己的 AI Agent 也用同一個引擎。這裡把你的系統叫做「宿主」。
 
-`speclink-server` 是官方的**參考實作**，讓你開箱即用，或拿來試遠端功能。三種跑法擇一：
+![整體形態：CLI 與 Speclink Desktop 經宿主的一條路由、宿主的 Agent 工具直接呼叫，兩者都進到宿主套件的入口；引擎經列出、讀取、提交三個函式讀寫宿主的資料庫](docs/assets/figures/zh-TW/embedded-shape.svg)
+
+請求從兩個地方來：工程師的 CLI 與桌面 app 經 HTTP 到宿主的一條路由，宿主的 Agent 工具直接呼叫。兩者都進到宿主套件的入口，再由引擎執行。引擎只經三個函式（列出、讀取、提交）讀寫規格；這三個函式由宿主實作，資料放在宿主的資料庫。宿主套件與引擎由 Speclink 提供，其餘都是宿主自己的。
+
+宿主要做四件事：
+
+1. **實作三個儲存函式，並通過合格測試。** `list`、`read`、`commit` 三個函式在你的資料庫裡完成；一次提交要全部成功或全部不做。套件附的合格測試會檢查你的實作。見 Node SDK 的[實作三個儲存函式](docs/sdk-node.zh-TW.md#store-port)與[用合格測試檢查你的實作](docs/sdk-node.zh-TW.md#conformance)。
+2. **掛一條路由，把請求交給入口。** `/api/speclink/v1/` 底下的請求全部交給 `host.handleRequest`，CLI 與桌面 app 就能連上。見[服務 CLI 與 Speclink Desktop](docs/sdk-node.zh-TW.md#http-entry)。
+3. **驗不出身分時傳空值。** 你的路由自己驗 token：驗得出就把身分交給入口，驗不出就傳 `null`。哪些路徑不用登入，由入口決定。
+4. **要支援瀏覽器登入時，讓你的登入服務提供標準的說明文件並接受本機回呼。** 登入服務要提供 RFC 8414 的說明文件、接受 `http://127.0.0.1` 任意埠的回呼，並把 Speclink 的用戶端登記成不帶密鑰的公開用戶端。不做這一項也可以：用戶端改用存取金鑰登入。
+
+用 Node.js 的後端以 `createHost` 建立宿主套件，完整的說明與範例見 [Node SDK](docs/sdk-node.zh-TW.md)。SQLite、PostgreSQL 與檔案系統各有一個通過合格測試的實作可以參考，見[儲存接口的範例](docs/server-store-drivers.zh-TW.md)。
+
+Speclink 不做帳號、登入、權限與資料庫連線：這些都是宿主的。還沒做的部分列在專案能力狀態的[已知缺口](docs/product-status.zh-TW.md#known-gaps)。
+
+## <a id="official-server"></a>試用官方 server
+
+官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。見[把 Speclink 內嵌進你的系統](#embedding)。
+
+`speclink-server` 和內嵌的宿主用同一套宿主套件與同一份儲存契約組成，所以 CLI 與桌面 app 對兩者同樣可用。三種跑法擇一：
 
 | 跑法 | 指令 |
 | --- | --- |
@@ -201,8 +220,6 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | Docker Compose | `cd deploy && docker compose up -d` |
 
 第一次啟動時，server 會印出一次性的 `/setup` 連結；之後重啟不會再印。預設用 SQLite，資料放在 `./speclink-data`（容器內是 `/data`）。環境變數、PostgreSQL 與升級回退見 [Server 部署](docs/server-deployment.zh-TW.md)。桌面 app 與 CLI 怎麼連上，見 [Remote 入門](docs/remote-getting-started.zh-TW.md)。
-
-遠端模式不綁這一份 server。遠端模式由兩份公開契約定義：`speclink/specs/` 底下的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自己寫 server，接上自家的認證、資料庫與權限模型，CLI 與桌面 app 一樣接得上。載入引擎的方式見 [Node SDK](docs/sdk-node.zh-TW.md)。
 
 ## <a id="docs"></a>文件
 
@@ -214,20 +231,20 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 | [完整 SDD 工作流](docs/workflow.zh-TW.md) | 每一站的用途、技能、完成判準與下一站 |
 | [設定說明](docs/configuration.zh-TW.md) | `.speclink.yaml`、`speclink/config.yaml` 與遠端設定 |
 
-**團隊共用一份正式規格**
+**遠端專案**
 
 | 文件 | 內容 |
 | --- | --- |
-| [Remote 入門](docs/remote-getting-started.zh-TW.md) | 從啟動 server 到 Desktop 與 CLI 連上 |
-| [Server 部署](docs/server-deployment.zh-TW.md) | npx、Docker、Compose、升級與回退 |
-| [Server 儲存後端](docs/server-store-drivers.zh-TW.md) | SQLite、Server FS、PostgreSQL 怎麼選 |
-| [Server 備份與還原](docs/server-backup.zh-TW.md) | `backup`、`verify-backup`、`restore` |
+| [Remote 入門](docs/remote-getting-started.zh-TW.md) | 從啟動示範用 server 到桌面 app 與 CLI 連上 |
+| [Server 部署](docs/server-deployment.zh-TW.md) | 示範用 server 的 npx、Docker、Compose、升級與回退 |
+| [Server 備份與還原](docs/server-backup.zh-TW.md) | 示範用 server 的 `backup`、`verify-backup`、`restore` |
 
-**把 Speclink 接進自己的程式**
+**把 Speclink 內嵌進你的系統**
 
 | 文件 | 內容 |
 | --- | --- |
-| [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine` 的載入、Store 介面與 `dispatch` |
+| [Node SDK](docs/sdk-node.zh-TW.md) | `@speclink/engine`：`createHost`、三個儲存函式、合格測試、掛鉤與兩個入口 |
+| [儲存接口的範例](docs/server-store-drivers.zh-TW.md) | SQLite、PostgreSQL 與檔案系統三個範例，以及示範用 server 怎麼選 |
 | [動詞與旗標契約](docs/verb-contract.zh-TW.md) | 動詞在本地與遠端的歸屬、輸出格式與 HTTP 端點 |
 
 **專案現況與方向**
@@ -243,11 +260,11 @@ Server 只有在團隊要共用同一份正式規格時才需要。一個人在�
 
 ## <a id="status"></a>目前狀態
 
-- **可用**：Local Repo CLI、Local 桌面 app、Agent 技能（Claude、Codex、GitHub Copilot、pi 與 Cursor）、品質關卡、執行順序、手冊與溯源、Node SDK（`@speclink/engine`）、三種 TeamStore（SQLite、Server FS、PostgreSQL）、單節點 server 與後台、Remote CLI、安裝通路、server 營運（部署、備份還原）。
+- **可用**：本機專案的 CLI 與桌面 app、Agent 技能（Claude、Codex、GitHub Copilot、pi 與 Cursor）、品質關卡、執行順序、手冊與溯源、Node SDK 與宿主套件（`@speclink/engine`）、三個儲存接口的範例（SQLite、PostgreSQL、檔案系統）、示範用 server 與後台、遠端專案的 CLI、安裝通路、示範用 server 的營運（部署、備份還原）。
 - **部分可用**：桌面 app 的遠端專案、Claude Code 外掛、Herdr mod。
-- **規劃中**：Agent 工具套件與 MCP、SSO、runtime plugin、多節點部署。
+- **規劃中**：MCP、SSO、runtime plugin、多節點部署。
 
-每一項的證據、限制與查核日期見[專案能力狀態](docs/product-status.zh-TW.md)。還沒做的方向見[專案路線圖](docs/roadmap.zh-TW.md)。
+每一項的證據、限制與查核日期見[專案能力狀態](docs/product-status.zh-TW.md)。這一版刻意延後或不做的項目列在它的[已知缺口](docs/product-status.zh-TW.md#known-gaps)。還沒做的方向見[專案路線圖](docs/roadmap.zh-TW.md)。
 
 ## <a id="contributing"></a>參與貢獻
 
@@ -266,7 +283,7 @@ speclink --version
 
 ## <a id="acknowledgments"></a>致謝
 
-- [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app)：Local CLI 設計之初以它附的 CLI 為行為參考。golden 與 CLI 整合測試守住人眼輸出、`--json` 格式與核心工作流。Speclink 在這個基礎上加入討論、桌面 app、Store 抽象層、Node SDK 與遠端平台。
+- [Spectra App 2.3.1](https://github.com/kaochenlong/spectra-app)：Local CLI 設計之初以它附的 CLI 為行為參考。golden 與 CLI 整合測試守住人眼輸出、`--json` 格式與核心工作流。Speclink 在這個基礎上加入討論、桌面 app、Node SDK、宿主套件與遠端專案。
 - [OpenSpec](https://github.com/Fission-AI/OpenSpec)：Local 模式的規格與變更沿用 OpenSpec 的目錄結構。
 
 ## <a id="license"></a>授權

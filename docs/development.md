@@ -4,7 +4,7 @@
 
 This document is for developers who clone the source tree. It explains the five one-command entry points at the repo root, how to run the tests, and the repo layout. The last section shows how to open unsigned installers from Releases.
 
-If you only want to host a server outside a checkout, you do not need this document. Use `npx @speclink/server` and see [Remote Getting Started](remote-getting-started.md).
+If you only want to run the demonstration server outside a checkout, you do not need this document. Use `npx @speclink/server` and see [Remote Getting Started](remote-getting-started.md).
 
 ## <a id="prerequisites"></a>Prerequisites
 
@@ -125,14 +125,14 @@ node --test scripts/*.test.mjs scripts/*/*.test.mjs     # the same, for Node 20
 npm test -w packages/ui                                 # shared UI
 npm test -w apps/desktop                                # desktop frontend
 npm test -w apps/server-web                             # server web console
-cargo test --workspace                                  # Rust: engine, CLI, Host, Store drivers, server, desktop app
+cargo test --workspace                                  # Rust: engine, CLI, Host, store port examples, server, desktop app
 npm --prefix crates/adapters/speclink-node ci           # Node SDK: install dependencies first
 npm --prefix crates/adapters/speclink-node run build    #           then build the .node file
 npm --prefix crates/adapters/speclink-node test         #           then run the tests
 ```
 
 - `cargo test --workspace` takes a long time. When you change only one crate, use `cargo test -p <crate>`.
-- The PostgreSQL Store driver tests skip when `SPECLINK_TEST_POSTGRES_URL` is not set. To run them, point it at a working database (CI uses PostgreSQL 15).
+- The tests that use PostgreSQL (the PostgreSQL store port example, and the tests of the demonstration server on it) skip when `SPECLINK_TEST_POSTGRES_URL` is not set. To run them, point it at a working database (CI uses PostgreSQL 15).
 - The Node SDK is not an npm workspace member, so you must give its path with `npm --prefix`. The `-w` option does not find it.
 
 ## <a id="layout"></a>Repo layout
@@ -143,8 +143,8 @@ npm --prefix crates/adapters/speclink-node test         #           then run the
 | `apps/server-web/` | The server web console (React). Its build goes into `speclink-server` |
 | `crates/engine/` | The engine core: `speclink-core` (verbs, workflow, skill generation) and `speclink-fs` (reads and writes the local `speclink/`) |
 | `crates/protocol/` | The remote protocol: `speclink-protocol` (data types that the client and the server share) and `speclink-remote` (the remote client and sign-in for the CLI and the desktop app) |
-| `crates/store/` | The server Store drivers: the shared interface `speclink-store`, plus sqlite, file (serverfs), and postgres drivers |
-| `crates/host/` | `speclink-host` (the shared layer between the engine and the CLI, desktop app, and server) and `speclink-server` (the official reference server) |
+| `crates/store/` | The store port: `speclink-store-port` (the contract, the map from each kind of document to its key, the conformance tests, and an in-memory implementation for tests), plus the three examples `speclink-store-port-sqlite`, `speclink-store-port-postgres`, and `speclink-store-port-fs`. See [Store port examples](server-store-drivers.md) |
+| `crates/host/` | `speclink-host` (the shared layer around the engine; the CLI, the desktop app, the Node SDK, and the demonstration server use it. It contains the host kit: engine commands on a store port, the two hooks, and the HTTP entry point) and `speclink-server` (the official demonstration server; its storage backend is one of the three examples) |
 | `crates/adapters/` | The entry points: `speclink-cli` (the `speclink` command) and `speclink-node` (the Node SDK `@speclink/engine`) |
 | `packages/ui/` | UI components that the desktop app and the web console share |
 | `packages/cli-npm/`, `packages/server-npm/` | The npm packages `@speclink/cli` and `@speclink/server`. Each platform binary ships as a separate package |

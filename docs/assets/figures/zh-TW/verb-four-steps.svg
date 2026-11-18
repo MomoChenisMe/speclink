@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 262" width="760" role="img" aria-label="一個動詞的四個步驟：一、執行前掛鉤，可以拒絕並給原因；二、列出與讀取；三、一次提交，帶全部寫入與事件；四、提交後掛鉤，只能旁觀。第二、三步呼叫宿主的儲存函式">
+  <title>一個動詞的四個步驟：一、執行前掛鉤，可以拒絕並給原因；二、列出與讀取；三、一次提交，帶全部寫入與事件；四、提交後掛鉤，只能旁觀。第二、三步呼叫宿主的儲存函式</title>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk"/></marker>
+    <marker id="arrow-gap" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-gap"/></marker>
+    <marker id="arrow-kit" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0 0L10 5L0 10z" class="mk-kit"/></marker>
+  </defs>
+  <style>
+  text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang TC", "Microsoft JhengHei", "Noto Sans TC", "Noto Sans CJK TC", sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; }
+  .box { fill: #ffffff; stroke: #98a6a3; stroke-width: 1.25; }
+  .host { fill: #edf0ef; stroke: #98a6a3; stroke-width: 1.25; }
+  .kit { fill: #e9effb; stroke: #1f55c4; stroke-width: 1.5; }
+  .eng { fill: #e2f1ee; stroke: #0b6b5f; stroke-width: 1.5; }
+  .gap { fill: #fdefea; stroke: #b4371a; stroke-width: 1.5; stroke-dasharray: 6 4; }
+  .zone { fill: none; stroke: #98a6a3; stroke-width: 1; stroke-dasharray: 2 5; }
+  .zl { font-size: 12px; fill: #5c6b68; font-weight: 500; }
+  .t { font-size: 14px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t13 { font-size: 13px; font-weight: 700; fill: #17201f; text-anchor: middle; }
+  .t-kit { fill: #1f55c4; }
+  .t-eng { fill: #0b6b5f; }
+  .t-gap { fill: #b4371a; }
+  .s { font-size: 12px; fill: #40504d; text-anchor: middle; }
+  .lbl { font-size: 12px; fill: #40504d; text-anchor: middle; paint-order: stroke; stroke: #ffffff; stroke-width: 5px; stroke-linejoin: round; }
+  .start { text-anchor: start; }
+  .end { text-anchor: end; }
+  .l-gap { fill: #b4371a; font-weight: 700; }
+  .l-kit { fill: #1f55c4; font-weight: 700; }
+  .edge { fill: none; stroke: #40504d; stroke-width: 1.4; }
+  .e-gap { fill: none; stroke: #b4371a; stroke-width: 1.6; stroke-dasharray: 6 4; }
+  .e-kit { fill: none; stroke: #1f55c4; stroke-width: 2; }
+  .mk { fill: #40504d; }
+  .mk-gap { fill: #b4371a; }
+  .mk-kit { fill: #1f55c4; }
+  </style>
+  <rect width="760" height="262" fill="#ffffff"/>
+  <rect class="kit" x="24" y="16" width="712" height="60" rx="6"/>
+  <text class="t t-kit" x="380" y="41">宿主套件（裡面是引擎）</text>
+  <text class="s" x="380" y="62">入口收到呼叫 → 引擎執行 → 把結果回給呼叫端</text>
+  <path class="edge" d="M110 76 V136" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="119" y="110">① 先問</text>
+  <rect class="host" x="24" y="140" width="172" height="86" rx="6"/>
+  <text class="t" x="110" y="168">執行前掛鉤</text>
+  <text class="s" x="110" y="189">可以拒絕，並給原因</text>
+  <text class="s" x="110" y="208">選填；沒有時預設允許</text>
+  <path class="edge" d="M290 76 V136" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="299" y="110">② 讀取</text>
+  <rect class="host" x="204" y="140" width="172" height="86" rx="6"/>
+  <text class="t" x="290" y="168">列出、讀取</text>
+  <text class="s" x="290" y="189">用到的文件才讀</text>
+  <text class="s" x="290" y="208">一次可以讀多份</text>
+  <path class="edge" d="M470 76 V136" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="479" y="110">③ 一次提交</text>
+  <rect class="host" x="384" y="140" width="172" height="86" rx="6"/>
+  <text class="t" x="470" y="168">一次提交</text>
+  <text class="s" x="470" y="189">全部寫入與事件</text>
+  <text class="s" x="470" y="208">全部成功，或全部不做</text>
+  <path class="edge" d="M650 76 V136" marker-end="url(#arrow)"/>
+  <text class="lbl start" x="659" y="110">④ 通知</text>
+  <rect class="host" x="564" y="140" width="172" height="86" rx="6"/>
+  <text class="t" x="650" y="168">提交後掛鉤</text>
+  <text class="s" x="650" y="189">只能旁觀</text>
+  <text class="s" x="650" y="208">選填；不保證送達</text>
+  <text class="zl" x="24" y="250">下面四格都由宿主提供。① ④ 是宿主的掛鉤；② ③ 呼叫宿主實作的三個儲存函式。</text>
+</svg>

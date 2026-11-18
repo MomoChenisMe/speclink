@@ -114,7 +114,7 @@ speclink/
 
 All files are plain Markdown and YAML. You can read and edit them without Speclink, and each change shows in the Git diff. Speclink adds only two items: `discussions/`, and a `.meta.yaml` file in each change folder. That file keeps lifecycle data, such as the start time and the source discussion.
 
-This applies to Local mode only. After you connect a remote server, the specs live in the Store. Your machine keeps only a read-only projection (`.speclink/context/`).
+This applies to Local mode only, not to remote mode: the Server holds the specs of a remote project, and the checkout has no spec files.
 
 Make sure that you start from an empty state:
 
