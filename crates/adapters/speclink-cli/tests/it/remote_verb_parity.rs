@@ -594,6 +594,233 @@ fn remote_list_matches_fs_output_byte_for_byte_including_the_invalid_marker() {
     );
 }
 
+// --- list --json --detail：關卡、認領、分支與落地兩模式同鍵同值（verb-output-for-embedded D2）---
+
+const DETAIL_KEYS: [&str; 5] = ["review", "verify", "claimed", "branch", "landed"];
+const DETAIL_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+const DETAIL_META: &str = "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: 0f9c\nbranch: speclink/recorded\nlanded_commit: 0123456789abcdef0123456789abcdef01234567\nlanded_at: 2026-11-18T11:00:00+00:00\n";
+
+/// 兩個變更的 fs 沙盒：`plain` 什麼記錄都沒有；`recorded` 的審查已蓋章、驗證有未結
+/// 的工單、記下分支、已落地。
+fn detail_fs_project(tag: &str) -> TempProject {
+    let p = TempProject::fs(tag);
+    for (name, meta) in [("plain", LIST_GOOD_META), ("recorded", DETAIL_META)] {
+        p.write(&format!("speclink/changes/{name}/.meta.yaml"), meta);
+        p.write(&format!("speclink/changes/{name}/proposal.md"), LIST_PROPOSAL);
+        p.write(&format!("speclink/changes/{name}/tasks.md"), LIST_TASKS);
+    }
+    p.write(
+        "speclink/changes/recorded/verify.md",
+        "# Verify — recorded\n\n## Round 1\n\n**Scope**: src/lib.rs\n",
+    );
+    p
+}
+
+/// server 對 `detail_fs_project` 的清單回應：每一項的既有欄位取自 fs 的
+/// `list --json`（兩邊因此是同一份資料，含 modifiedAt），再加上 server 在清單裡
+/// 補的欄位——每個變更都有兩個關卡物件，分支與落地有記錄才有。
+fn detail_wire_changes(fs: &TempProject) -> String {
+    let out = fs.run(&["list", "--json", "--sort", "name"]);
+    assert!(out.status.success(), "fs stderr: {}", stderr_of(&out));
+    let mut listed: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("fs list json");
+    for item in listed["changes"].as_array_mut().expect("changes") {
+        let extras = match item["name"].as_str() {
+            Some("recorded") => serde_json::json!({
+                "review": {
+                    "state": "stamped",
+                    "stampedAt": "2026-08-01",
+                    "stampedBy": "Rev <r@example.com>",
+                    "stampedWith": "claude",
+                    "rounds": 0,
+                    "tasksTotal": 1,
+                },
+                "verify": { "state": "inProgress" },
+                "branch": "speclink/recorded",
+                "landedCommit": DETAIL_COMMIT,
+            }),
+            _ => serde_json::json!({ "review": { "state": "none" }, "verify": { "state": "none" } }),
+        };
+        item.as_object_mut().unwrap().extend(extras.as_object().unwrap().clone());
+    }
+    listed.to_string()
+}
+
+fn changes_of(out: &Output) -> Vec<serde_json::Value> {
+    let listed: serde_json::Value = serde_json::from_str(&stdout_of(out)).expect("list json");
+    listed["changes"].as_array().expect("changes").clone()
+}
+
+fn detail_keys_of(item: &serde_json::Value) -> Vec<&'static str> {
+    DETAIL_KEYS.into_iter().filter(|key| item.get(key).is_some()).collect()
+}
+
+#[test]
+fn remote_list_detail_matches_fs_mode_key_for_key() {
+    // spec verb-contract「清單的詳細輸出」Scenario「三種執行方式輸出相同」的 CLI 兩模式。
+    let fs = detail_fs_project("list-detail-fs");
+    let mock = mock_server(vec![("GET", "/changes", 200, detail_wire_changes(&fs))]);
+    let p = TempProject::remote("list-detail-remote", &mock.base, "backend");
+
+    let args = ["list", "--json", "--detail", "--sort", "name"];
+    let fs_out = fs.run(&args);
+    assert!(fs_out.status.success(), "fs stderr: {}", stderr_of(&fs_out));
+    let remote_out = p.run(&args);
+    assert!(remote_out.status.success(), "remote stderr: {}", stderr_of(&remote_out));
+
+    let (fs_changes, remote_changes) = (changes_of(&fs_out), changes_of(&remote_out));
+    assert_eq!(remote_changes, fs_changes, "the same keys and values in both modes");
+    assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "and the same bytes");
+
+    // The records are there (fs is the reference), and only for the change that has them.
+    let (plain, recorded) = (&fs_changes[0], &fs_changes[1]);
+    assert_eq!(detail_keys_of(plain), Vec::<&str>::new(), "{plain}");
+    assert_eq!(detail_keys_of(recorded), ["review", "verify", "branch", "landed"], "{recorded}");
+    assert_eq!(recorded["review"]["state"], "stamped");
+    assert_eq!(recorded["review"]["stampedAt"], "2026-08-01");
+    assert_eq!(recorded["review"]["tasksTotal"], 1);
+    assert_eq!(recorded["verify"], serde_json::json!({ "state": "inProgress" }));
+    assert_eq!(recorded["branch"], "speclink/recorded");
+    assert_eq!(recorded["landed"], serde_json::json!({ "commit": DETAIL_COMMIT }));
+
+    // One list request, and no request for a single change.
+    let caps = mock.captured.lock().unwrap().clone();
+    let change_requests: Vec<&Captured> = caps.iter().filter(|c| c.path.contains("/changes")).collect();
+    assert_eq!(change_requests.len(), 1, "{change_requests:?}");
+    assert!(change_requests[0].path.ends_with("/changes"), "{change_requests:?}");
+}
+
+#[test]
+fn list_json_without_detail_is_unchanged_in_both_modes() {
+    // Scenario「不帶 --detail 時輸出不變」：server 的回應帶著關卡、分支與落地，
+    // 輸出仍然沒有任何一個新鍵，兩模式逐位元相同。
+    let fs = detail_fs_project("list-plain-fs");
+    let mock = mock_server(vec![("GET", "/changes", 200, detail_wire_changes(&fs))]);
+    let p = TempProject::remote("list-plain-remote", &mock.base, "backend");
+
+    let args = ["list", "--json", "--sort", "name"];
+    let fs_out = fs.run(&args);
+    let remote_out = p.run(&args);
+    assert!(fs_out.status.success() && remote_out.status.success(), "{}{}", stderr_of(&fs_out), stderr_of(&remote_out));
+    assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out));
+    for item in changes_of(&fs_out) {
+        assert_eq!(detail_keys_of(&item), Vec::<&str>::new(), "{item}");
+        let mut keys: Vec<&str> = item.as_object().unwrap().keys().map(String::as_str).collect();
+        keys.sort_unstable();
+        assert_eq!(keys, ["completedTasks", "created", "modifiedAt", "name", "status", "summary", "totalTasks"]);
+    }
+}
+
+#[test]
+fn remote_list_detail_prints_the_claim_of_a_claimed_change() {
+    // 認領只在遠端專案有：claimedBy／claimedById／claimedAt 組成 claimed。
+    let item = |name: &str, extras: serde_json::Value| {
+        let mut item = serde_json::json!({
+            "name": name, "status": "in-progress", "summary": "Demo.", "completedTasks": 0, "totalTasks": 1,
+        });
+        item.as_object_mut().unwrap().extend(extras.as_object().unwrap().clone());
+        item
+    };
+    let body = serde_json::json!({
+        "changes": [
+            item("held", serde_json::json!({
+                "claimedBy": "Alice", "claimedById": "u_1", "claimedAt": "2026-11-18T10:00:00+00:00",
+            })),
+            // An older server names the holder only.
+            item("held-by-name", serde_json::json!({ "claimedBy": "Alice <a@example.com>" })),
+            // No holder name is no claim, whatever else came.
+            item("unheld", serde_json::json!({ "claimedById": "u_1", "claimedAt": "2026-11-18T10:00:00+00:00" })),
+        ]
+    })
+    .to_string();
+    let mock = mock_server(vec![("GET", "/changes", 200, body)]);
+    let p = TempProject::remote("list-detail-claimed", &mock.base, "backend");
+
+    let out = p.run(&["list", "--json", "--detail"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let changes = changes_of(&out);
+    assert_eq!(
+        changes[0]["claimed"],
+        serde_json::json!({ "by": "Alice", "byId": "u_1", "at": "2026-11-18T10:00:00+00:00" })
+    );
+    assert_eq!(changes[1]["claimed"], serde_json::json!({ "by": "Alice <a@example.com>" }));
+    assert_eq!(detail_keys_of(&changes[2]), Vec::<&str>::new(), "{}", changes[2]);
+
+    let plain = p.run(&["list", "--json"]);
+    assert!(plain.status.success(), "stderr: {}", stderr_of(&plain));
+    for item in changes_of(&plain) {
+        assert_eq!(detail_keys_of(&item), Vec::<&str>::new(), "{item}");
+    }
+}
+
+#[test]
+fn remote_list_detail_against_an_old_server_succeeds_with_no_new_key() {
+    // Scenario「連到舊版 Server 時不失敗」：回應沒有關卡、分支與落地欄位。
+    let mock = mock_server(list_routes());
+    let p = TempProject::remote("list-detail-old-server", &mock.base, "backend");
+    let detailed = p.run(&["list", "--json", "--detail", "--sort", "name"]);
+    assert!(detailed.status.success(), "stderr: {}", stderr_of(&detailed));
+    for item in changes_of(&detailed) {
+        assert_eq!(detail_keys_of(&item), Vec::<&str>::new(), "{item}");
+    }
+    let plain = p.run(&["list", "--json", "--sort", "name"]);
+    assert_eq!(stdout_of(&detailed), stdout_of(&plain));
+}
+
+#[test]
+fn remote_list_detail_gives_no_key_for_a_change_with_corrupt_metadata() {
+    // Scenario「metadata 損壞的變更不帶新鍵」在遠端：Server 是外部邊界，回應就算同時
+    // 帶著 metaError 與關卡、認領、分支、落地欄位，CLI 也不輸出任何一個新鍵。
+    let body = serde_json::json!({
+        "changes": [{
+            "name": "broken-change",
+            "status": "in-progress",
+            "summary": "Demo.",
+            "completedTasks": 0,
+            "totalTasks": 1,
+            "metaError": "did not find expected key, while parsing a block mapping",
+            "review": { "state": "inProgress" },
+            "verify": { "state": "stamped", "stampedAt": "2026-08-01", "rounds": 1, "tasksTotal": 1 },
+            "claimedBy": "Alice",
+            "branch": "speclink/broken-change",
+            "landedCommit": DETAIL_COMMIT,
+        }]
+    })
+    .to_string();
+    let mock = mock_server(vec![("GET", "/changes", 200, body)]);
+    let p = TempProject::remote("list-detail-broken-meta", &mock.base, "backend");
+
+    let out = p.run(&["list", "--json", "--detail"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let changes = changes_of(&out);
+    assert_eq!(changes.len(), 1);
+    assert!(changes[0].get("metaError").is_some(), "{}", changes[0]);
+    assert_eq!(detail_keys_of(&changes[0]), Vec::<&str>::new(), "{}", changes[0]);
+}
+
+#[test]
+fn list_detail_without_json_or_with_specs_is_a_usage_error_in_both_modes() {
+    // Scenario「--detail 不帶 --json 被拒絕」「--detail 與 --specs 並用被拒絕」。
+    let fs = detail_fs_project("list-detail-usage-fs");
+    let mock = mock_server(list_routes());
+    let remote = TempProject::remote("list-detail-usage-remote", &mock.base, "backend");
+    for p in [&fs, &remote] {
+        let alone = p.run(&["list", "--detail"]);
+        assert!(!alone.status.success());
+        assert_eq!(stdout_of(&alone), "", "no list on stdout");
+        assert!(stderr_of(&alone).contains("--json"), "{}", stderr_of(&alone));
+
+        let with_specs = p.run(&["list", "--specs", "--json", "--detail"]);
+        assert!(!with_specs.status.success());
+        assert_eq!(stdout_of(&with_specs), "");
+        let stderr = stderr_of(&with_specs);
+        assert!(stderr.contains("--specs") && stderr.contains("--detail"), "{stderr}");
+    }
+    assert!(
+        mock.captured.lock().unwrap().iter().all(|c| !c.path.ends_with("/changes")),
+        "a refused argv asks the server for nothing"
+    );
+}
+
 // --- discuss：全家的成功訊息兩模式同形（conclude 的重收清單曾只在 fs 側可見）---
 
 const CONCLUSION: &str = "**Decision**: ship it\n";

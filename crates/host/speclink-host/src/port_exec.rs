@@ -360,6 +360,7 @@ mod tests {
             specs: false,
             changes: false,
             worktrees: Default::default(),
+            detail: false,
         }
     }
 

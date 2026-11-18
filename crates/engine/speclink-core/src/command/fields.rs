@@ -511,7 +511,7 @@ mod tests {
     // --- D5：讀取的結果帶出欄位（規格「自由欄位的讀取輸出」） ---
 
     fn list_items(store: &TestStore) -> Vec<serde_json::Value> {
-        let cmd = Command::List { sort: "name".to_string(), specs: false, changes: true, worktrees: Default::default() };
+        let cmd = Command::List { sort: "name".to_string(), specs: false, changes: true, worktrees: Default::default(), detail: false };
         let (outcome, events) = ok(store, cmd);
         assert!(events.is_empty());
         let CommandOutcome::List(list) = outcome else { panic!("expected a list outcome") };

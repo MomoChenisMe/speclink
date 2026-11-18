@@ -89,6 +89,7 @@ fn samples() -> Vec<Command> {
                 s("demo"),
                 ListWorktreeJson { path: s("/work/repo.worktrees/demo"), branch: s("speclink/demo") },
             )]),
+            detail: true,
         },
         Command::Show { item: Some(s("demo")), item_type: Some(s("change")) },
         Command::Status { change: Some(s("demo")), schema: None },

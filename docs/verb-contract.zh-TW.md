@@ -191,7 +191,51 @@ speclink discuss new "看板搜尋列" --field owner=alice
 | `modifiedAt` | 這個變更底下的文件最後一次被修改的時間，RFC 3339 的 UTC 時間。儲存答不出來時不出現。本機專案的值取自檔案時間，checkout 或複製也會改到它，只適合拿來估「閒置多久」 |
 | `fields` | 自由欄位 |
 
-`list --json` 不帶品質關卡的欄位，遠端專案也一樣。
+不帶 `--detail` 的 `list --json` 沒有品質關卡的欄位，遠端專案也一樣。
+
+#### <a id="list-detail"></a>`speclink list --json --detail`
+
+`--detail` 讓每個變更多帶出它記下的狀態：兩個品質關卡、認領、分支與落地。這樣一次呼叫就能回答「哪些變更已經通過審查」「我認領了哪些」。
+
+- `--detail` 只能和 `--json` 一起用，也不能和 `--specs` 一起用。`speclink list --detail` 與 `speclink list --specs --json --detail` 會以用法錯誤結束：exit code 不是 0、訊息在 stderr、stdout 沒有輸出。經呼叫入口（`host.dispatch`）執行時，錯誤代碼是 `invalid_argv`。
+- 不帶 `--detail` 時，`list --json` 的輸出和以前逐位元相同。
+- `--detail` 不改變原有的欄位、項目的順序與 `specs` 區段。
+
+下面每個鍵都只在變更有那一筆記錄時出現：
+
+| 欄位 | 什麼時候出現 | 內容 |
+| --- | --- | --- |
+| `review`、`verify` | 這個關卡有未結的工單，或已經蓋章 | 和下面 `show --json` 的同名物件相同 |
+| `claimed` | 有人認領了這個變更 | 和下面 `show --json` 的同名物件相同：`by`，以及認領時有記下才出現的 `byId` 與 `at` |
+| `branch` | 開工或落地回報時記下了分支 | 分支名稱 |
+| `landed` | 有落地回報 | 只有 `commit`。要看回報時間與回報的人，請用 `show --json` |
+
+```json
+{
+  "changes": [
+    {
+      "completedTasks": 5,
+      "name": "add-login",
+      "status": "done",
+      "totalTasks": 5,
+      "created": "2026-11-01",
+      "review": { "state": "stamped", "stampedAt": "2026-11-02T14:03:44+08:00", "rounds": 2, "tasksTotal": 5, "commit": "0123456789ab" },
+      "verify": { "state": "inProgress" },
+      "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
+      "branch": "speclink/add-login",
+      "landed": { "commit": "0123456789ab" }
+    },
+    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10" }
+  ]
+}
+```
+
+- 同樣的資料在本機專案、遠端專案與 `host.dispatch` 會得到相同的鍵與值。本機專案沒有認領，所以不會出現 `claimed`。
+- 在遠端專案，CLI 用一次 `GET /changes` 的回應組出這些鍵，不會對每個變更另外發請求。
+- 鍵不出現，代表這個變更沒有那一筆記錄。舊版 Server 不提供其中一些欄位，這時對應的鍵同樣不出現，指令不會失敗。請不要把缺少 `review` 或 `verify` 讀成「這個關卡沒跑過」。
+- metadata 損壞的變更帶 `metaError`，這些鍵一個都沒有。
+- 清單不判斷蓋章之後檔案有沒有再改過。`review` 與 `verify` 只反映記下的狀態，和 `show --json` 相同。
+- `claimed.byId` 是宿主給這個人的識別。讀得到這個專案的人都看得到它。
 
 `speclink show <變更> --json`：
 
@@ -754,7 +798,7 @@ POST /skills
 { "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
 ```
 
-`speclink list --json` 只輸出其中的 `created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。
+`speclink list --json` 只輸出其中的 `created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。帶上 `--detail` 時，它另外輸出 `review`、`verify` 與 `branch`，用 `landedCommit` 組出 `landed`，用 `claimedBy`、`claimedById`、`claimedAt` 組出 `claimed`。見 [`speclink list --json --detail`](#list-detail)。
 
 ### `GET /changes/{name}`
 

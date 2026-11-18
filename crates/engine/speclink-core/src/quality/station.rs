@@ -370,6 +370,12 @@ impl StationStatus {
         }
     }
 
+    /// 這個關卡有沒有記錄：有未結的工單，或已經蓋章。沒有記錄的關卡在 `show --json`
+    /// 與 `list --json --detail` 都不輸出，兩邊用這一個判斷。
+    pub fn is_recorded(&self) -> bool {
+        self.progress != StationProgress::None
+    }
+
     /// `show --json` 的形狀：`state`，蓋章後另有 `stampedAt`、`rounds`、`tasksTotal` 與
     /// 有值才出現的 `stampedBy`、`stampedWith`、`commit`。不含 scope。
     pub fn to_json(&self) -> serde_json::Value {
@@ -413,6 +419,12 @@ pub fn status(st: &Station, meta: &ChangeMeta, ticket_open: bool) -> StationStat
         commit: stamp.commit.map(str::to_string),
         scope: stamp.scope.to_vec(),
     }
+}
+
+/// 一個變更在儲存裡記下的關卡狀態，`show --json` 與 `list --json --detail` 共用這一份。
+/// metadata 損壞時回 None：損壞的文件讀成預設值，不能從它報出「未開始」。
+pub fn recorded_status(st: &Station, store: &dyn Store, change: &crate::model::Change) -> Option<StationStatus> {
+    change.meta_error.is_none().then(|| status(st, &change.meta, store.artifact_exists(&change.name, st.doc)))
 }
 
 /// 追加一輪（工單不存在則建立，自 Round 1 起算）。回傳本輪編號。

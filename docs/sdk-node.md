@@ -339,6 +339,8 @@ const result = await host.dispatch({
 - **Your program gives the identity and the scope.** They are not in `argv`, so the model cannot change them. An empty identity or scope is refused with `invalid_argv` before any store call.
 - **The verbs, the `stdin` rules, the result, and the errors** are the same as for `dispatch` in [Run verbs on a local project](#local-project).
 - **`agentTool`** is a tool definition that is ready to use, so you do not write the description for the model. Its `name` is `speclink`. Its `description` lists all available verbs (from the same definition that the parser uses; the verbs that need a checkout are not in it). Its `inputSchema` has only `argv` and an optional `stdin`.
+- **A result names no local path.** The documents are in your store, not in a folder. Thus the `{ output }` text of `new change` through `host.dispatch` has no `Path:` line. `createEngine` on a local project prints the line as before.
+- **A `path` in a structured result is a key in your store, not a file.** `discuss new` and `discuss promote` return a structured value, with no text; `new artifact --json` does the same. The `path` key stays in these results. To read a document, call `artifact cat`, `show`, or `discuss show`. The `description` of `agentTool` tells the model the same, so the model does not try to open the path.
 
 ```js
 const { agentTool } = require('@speclink/engine')
@@ -356,6 +358,16 @@ const speclinkTool = {
   },
 }
 ```
+
+**An overview screen needs one call.** `list --json --detail` returns each change with the records that it has: the two quality stations, the claim, the branch, and the landing. You do not call `show` for each change, and you do not call the HTTP entry point from your own process:
+
+```js
+const { changes } = await host.dispatch({ identity: session.user, scope: session.scope, argv: ['list', '--json', '--detail'] })
+const reviewed = changes.filter((change) => change.review?.state === 'stamped')
+const mine = changes.filter((change) => change.claimed?.byId === session.user.id)
+```
+
+A key appears only when the change has that record. For the keys and their rules, see [`speclink list --json --detail`](verb-contract.md#list-detail).
 
 **Free fields** are key-value pairs that the host defines. The engine stores them and does not interpret them. An example is the ticket that a change came from. `fields` is written only when the verb creates a change or a discussion (`new change`, `discuss new`, `discuss promote`), in the commit that creates it. All other verbs ignore it, so you can pass the same fields with each call. It has priority over a `--field` with the same key. `beforeCommand` sees the fields that will be written in `params.fields` and can check them. The rules: a key uses `a-z`, `0-9`, `_`, `.`, `-`, starts with a letter, and has 64 characters maximum; a value is one line of 1024 bytes maximum; the maximum is 32 keys. Fields that break the rules are refused with `invalid_argv`, and nothing is written. Do not put a secret in a field: each reader of the change can see it.
 
@@ -547,7 +559,7 @@ async function main() {
   }
   const session = { user: ALICE, scope: 'acme/web' }
   await speclinkTool.handler({ argv: ['new', 'change', 'add-auth'] }, session)
-  const listed = await speclinkTool.handler({ argv: ['list', '--json'] }, session)
+  const listed = await speclinkTool.handler({ argv: ['list', '--json', '--detail'] }, session)
   console.log(listed.changes.map((change) => change.name)) // [ 'add-auth' ]
 
   // The skill text for your Agent: verbs are tool calls, and the specs are not in a checkout.

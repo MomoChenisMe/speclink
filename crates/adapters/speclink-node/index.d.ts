@@ -441,6 +441,13 @@ export interface Host {
    * empty rejects with `invalid_argv` before any store call. Store failures
    * reject with `revision_conflict`, `unavailable` or `internal`; a refusal
    * of `beforeCommand` with `refused`.
+   *
+   * One difference from `engine.dispatch`: the documents are in your store,
+   * not in a local folder, so the `{ output }` text of `new change` has no
+   * `Path:` line. `discuss new` and `discuss promote` return a structured
+   * value, with no text; its `path` is still there. A `path` is the
+   * document's key in the store, not a file to open. Read a document with
+   * `artifact cat`, `show` or `discuss show`.
    */
   dispatch(call: HostDispatchCall): Promise<unknown>
   /**

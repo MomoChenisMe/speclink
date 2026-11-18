@@ -3,6 +3,7 @@
     "name": "list",
     "params": {
       "changes": true,
+      "detail": true,
       "sort": "name",
       "specs": false,
       "worktrees": {

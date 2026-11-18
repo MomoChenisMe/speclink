@@ -191,7 +191,51 @@ Each change in `speclink list --json`:
 | `modifiedAt` | The time of the last modification of a document of the change, as an RFC 3339 UTC time. It does not appear when the store cannot tell. In a local project, the value comes from file times, and a checkout or a copy also changes them. Use it only to estimate how long a change was idle. |
 | `fields` | The free fields |
 
-`list --json` has no quality station fields, also in a remote project.
+Without `--detail`, `list --json` has no quality station fields, also in a remote project.
+
+#### <a id="list-detail"></a>`speclink list --json --detail`
+
+`--detail` adds what each change has on record: the two quality stations, the claim, the branch, and the landing. One call then answers questions such as "which changes passed review" and "which changes do I hold".
+
+- `--detail` works only with `--json`, and it does not go with `--specs`. `speclink list --detail` and `speclink list --specs --json --detail` stop with a usage error: a non-zero exit code, a message on stderr, and nothing on stdout. Through the call entry point (`host.dispatch`), the error code is `invalid_argv`.
+- Without `--detail`, the output of `list --json` is the same as before, byte for byte.
+- `--detail` does not change the fields that were there before, the order of the items, or the `specs` section.
+
+Each key below appears only when the change has that record:
+
+| Field | It appears when | Content |
+| --- | --- | --- |
+| `review`, `verify` | The station has an open ticket or a stamp | The same object as in `show --json` below |
+| `claimed` | A person holds the change | The same object as in `show --json` below: `by`, plus `byId` and `at` when the claim recorded them |
+| `branch` | The start marker or the landing report recorded a branch | The branch name |
+| `landed` | A landing report exists | `commit` only. For the report time and the reporter, use `show --json`. |
+
+```json
+{
+  "changes": [
+    {
+      "completedTasks": 5,
+      "name": "add-login",
+      "status": "done",
+      "totalTasks": 5,
+      "created": "2026-11-01",
+      "review": { "state": "stamped", "stampedAt": "2026-11-02T14:03:44+08:00", "rounds": 2, "tasksTotal": 5, "commit": "0123456789ab" },
+      "verify": { "state": "inProgress" },
+      "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
+      "branch": "speclink/add-login",
+      "landed": { "commit": "0123456789ab" }
+    },
+    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10" }
+  ]
+}
+```
+
+- The same data gives the same keys and values in a local project, in a remote project, and through `host.dispatch`. A local project has no claims, so `claimed` does not appear there.
+- In a remote project, the CLI makes these keys from the one response of `GET /changes`. It sends no request for each change.
+- A missing key means that the change has no such record. An older Server does not send some of these fields: the keys are then missing too, and the command does not fail. Do not read a missing `review` or `verify` as "the station did not run".
+- A change with corrupt metadata has `metaError` and none of these keys.
+- The list does not tell whether files changed after a stamp. `review` and `verify` show the recorded state only, as in `show --json`.
+- `claimed.byId` is the identifier that the host gives for the person. Each person who can read the project can see it.
 
 `speclink show <change> --json`:
 
@@ -754,7 +798,7 @@ Optional:
 { "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
 ```
 
-Of these fields, `speclink list --json` prints only `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`.
+Of these fields, `speclink list --json` prints only `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, and `branch`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail).
 
 ### `GET /changes/{name}`
 

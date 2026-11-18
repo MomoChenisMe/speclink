@@ -19,6 +19,9 @@ pub struct ListArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
+    /// With --json, add what each change has on record: review, verify, claimed, branch, landed
+    #[arg(long, requires = "json", conflicts_with = "specs")]
+    pub detail: bool,
 }
 #[derive(Args, Debug)]
 pub struct ShowArgs {
@@ -58,6 +61,7 @@ impl ToCommand for ListArgs {
             specs: self.specs,
             changes: self.changes,
             worktrees: inputs.worktrees,
+            detail: self.detail,
         }))
     }
 }
@@ -89,7 +93,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn list(sort: &str, specs: bool, changes: bool) -> Command {
-        Command::List { sort: sort.into(), specs, changes, worktrees: BTreeMap::new() }
+        Command::List { sort: sort.into(), specs, changes, worktrees: BTreeMap::new(), detail: false }
     }
 
     #[test]
@@ -114,7 +118,7 @@ mod tests {
         let got = command_of(&["list"], VerbInputs { worktrees: facts.clone(), ..Default::default() });
         assert_eq!(
             got,
-            Command::List { sort: "modified".into(), specs: false, changes: false, worktrees: facts }
+            Command::List { sort: "modified".into(), specs: false, changes: false, worktrees: facts, detail: false }
         );
     }
 

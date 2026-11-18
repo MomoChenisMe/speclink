@@ -327,17 +327,34 @@ fn run_verb(
 
 /// A verb's envelope value: its structured value when it has one, else
 /// `{ output }` with its stdout text (no color), plus `stderr` when the verb
-/// also has stderr text — the output definition the CLI uses.
+/// also has stderr text — the output definition the CLI uses. For an engine
+/// on a local folder: a path in the text is a real one.
 pub(crate) fn value_of(
     parsed: &speclink_verbs::ParsedVerb,
     outcome: &core::command::CommandOutcome,
 ) -> DispatchResult {
-    use speclink_verbs::render::{render, RenderOptions};
-    let rendered = render(parsed, outcome, RenderOptions { json: false, color: false })?;
-    Ok(match rendered.json {
+    Ok(envelope_value(speclink_verbs::render::render(parsed, outcome, TEXT)?))
+}
+
+/// [`value_of`] for a host: its documents are in a store, so the text of
+/// `new change`, `discuss new` and `discuss promote` has no `Path:` line. A
+/// structured value is the same one, its `path` key included.
+pub(crate) fn embedded_value_of(
+    parsed: &speclink_verbs::ParsedVerb,
+    outcome: &core::command::CommandOutcome,
+) -> DispatchResult {
+    Ok(envelope_value(speclink_verbs::render::render_embedded(parsed, outcome, TEXT)?))
+}
+
+/// The human form with no color: a verb's structured value comes with it.
+const TEXT: speclink_verbs::render::RenderOptions =
+    speclink_verbs::render::RenderOptions { json: false, color: false };
+
+fn envelope_value(rendered: speclink_verbs::render::Rendered) -> serde_json::Value {
+    match rendered.json {
         Some(value) => value,
         None if rendered.stderr.is_empty() => serde_json::json!({ "output": rendered.stdout }),
         // A note the CLI prints to stderr (archive's zero-evidence note).
         None => serde_json::json!({ "output": rendered.stdout, "stderr": rendered.stderr }),
-    })
+    }
 }

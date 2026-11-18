@@ -21,6 +21,7 @@ const USAGE: &str = "Run one speclink verb on this project's specs, changes and 
 A verb that writes content (an artifact, a discussion round, a stamp's scope) reads it from `stdin`: when the verb has a --stdin flag, put --stdin in argv and the content in `stdin`.
 Add --json to get a structured result instead of text.
 Add --help to a verb to get its arguments; the help text comes back as the error message.
+A \"path\" in a result is the document's key in the store, not a file you can open. To read a document, use \"artifact cat\", \"show\" or \"discuss show\".
 ";
 
 /// The `speclink` tool: argv and an optional stdin in, the verb list in the
@@ -220,6 +221,28 @@ mod tests {
         assert!(description.contains("--stdin"), "{description}");
         assert!(description.contains("--json"), "{description}");
         assert!(description.contains("without the program name"), "{description}");
+    }
+
+    #[test]
+    fn the_description_says_a_path_is_a_key_in_the_store_and_names_the_read_verbs() {
+        // spec node-sdk「Agent 工具的說明指出 path 是儲存的鍵」；句子是設計 D5 的原文，
+        // 在動詞清單之前。
+        let description = tool_definition().description;
+        let (usage, _) = description.split_once("\nVerbs:\n").expect("the description has a verb list");
+        assert!(
+            usage.contains(
+                "A \"path\" in a result is the document's key in the store, not a file you can open. \
+                 To read a document, use \"artifact cat\", \"show\" or \"discuss show\"."
+            ),
+            "{usage}"
+        );
+        for piece in ["\"path\"", "not a file", "\"artifact cat\"", "\"show\"", "\"discuss show\""] {
+            assert!(usage.contains(piece), "{piece}: {usage}");
+        }
+        // The three verbs it names are verbs of the list.
+        for verb in ["artifact cat", "show", "discuss show"] {
+            assert!(listed().contains(verb), "{verb}");
+        }
     }
 
     #[test]

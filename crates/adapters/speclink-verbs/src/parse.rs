@@ -160,6 +160,42 @@ mod tests {
     }
 
     #[test]
+    fn list_detail_goes_with_json_and_never_with_specs() {
+        // spec verb-contract「清單的詳細輸出」：三個解析情境。兩條檢查在這個共用的
+        // 解析裡，CLI 與宿主套件因此給出同一個用法錯誤。
+        use speclink_core::command::Command;
+        let detail_of = |argv: &[&str]| match parse(argv.iter().copied()).expect("parses").to_command(VerbInputs::default()) {
+            Ok(CommandTarget::Command(Command::List { detail, .. })) => detail,
+            other => panic!("{argv:?} must convert to a list command, got {other:?}"),
+        };
+        assert!(detail_of(&["list", "--json", "--detail"]));
+        assert!(detail_of(&["list", "--detail", "--changes", "--sort", "name", "--json"]));
+        assert!(!detail_of(&["list", "--json"]));
+        assert!(!detail_of(&["list"]));
+
+        let refused = |argv: &[&str]| {
+            let err = parse(argv.iter().copied()).err().unwrap_or_else(|| panic!("{argv:?} must not parse"));
+            assert_eq!(err.kind, ParseErrorKind::Usage, "{argv:?}");
+            assert_eq!(err.exit_code, 2, "{argv:?}");
+            err.message
+        };
+        let without_json = refused(&["list", "--detail"]);
+        assert!(
+            without_json.contains("required arguments were not provided") && without_json.contains("--json"),
+            "{without_json}"
+        );
+        for argv in [&["list", "--specs", "--json", "--detail"][..], &["list", "--detail", "--json", "--specs", "--changes"]] {
+            let with_specs = refused(argv);
+            assert!(
+                with_specs.contains("cannot be used with")
+                    && with_specs.contains("--specs")
+                    && with_specs.contains("--detail"),
+                "{with_specs}"
+            );
+        }
+    }
+
+    #[test]
     fn empty_argv_is_a_usage_error() {
         let err = parse(Vec::<String>::new()).err().expect("empty argv must not parse");
         assert_eq!(err.kind, ParseErrorKind::Usage);

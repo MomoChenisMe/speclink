@@ -13,7 +13,7 @@ use crate::common::{
     worktree_overlay,
 };
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::listing::ListChangeJson;
+use core::listing::{ListChangeJson, ListLandedJson};
 use speclink_verbs::families::query::{ListArgs, ShowArgs, StatusArgs};
 use speclink_verbs::render::query as render;
 use speclink_verbs::{ToCommand, VerbInputs};
@@ -62,8 +62,14 @@ pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     Ok(())
 }
 /// The wire summary reshaped into the core listing item — the same rendering
-/// path then keeps stdout byte-identical to fs mode.
-fn to_list_change_json(c: &protocol_query::ChangeSummary) -> ListChangeJson {
+/// path then keeps stdout byte-identical to fs mode. With `detail` the five
+/// detail keys come from what the list response already carries, converted as
+/// the remote `show` converts them; a field the server did not send leaves its
+/// key out. Without it none of the five is read. A change the server reports
+/// with corrupt metadata gets none of them, whatever else the response says:
+/// the server is another program, so the rule is checked here too.
+fn to_list_change_json(c: &protocol_query::ChangeSummary, detail: bool) -> ListChangeJson {
+    let recorded = (detail && c.meta_error.is_none()).then_some(c);
     ListChangeJson {
         completed_tasks: c.completed_tasks,
         name: c.name.clone(),
@@ -77,6 +83,14 @@ fn to_list_change_json(c: &protocol_query::ChangeSummary) -> ListChangeJson {
         created: c.created.clone(),
         modified_at: c.modified_at.clone(),
         fields: c.fields.clone(),
+        review: recorded.and_then(|c| c.review.as_ref()).and_then(speclink_remote::convert::station_status),
+        verify: recorded.and_then(|c| c.verify.as_ref()).and_then(speclink_remote::convert::station_status),
+        // An older server sends `claimedBy` alone: the record then has the holder only.
+        claimed: recorded.and_then(|c| {
+            core::command::ClaimRecord::new(c.claimed_by.clone(), c.claimed_by_id.clone(), c.claimed_at.clone())
+        }),
+        branch: recorded.and_then(|c| c.branch.clone()),
+        landed: recorded.and_then(|c| c.landed_commit.clone()).map(|commit| ListLandedJson { commit }),
         // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
         // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
         worktree: None,
@@ -90,7 +104,7 @@ pub(crate) fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
         None
     } else {
         let mut items: Vec<ListChangeJson> =
-            ctx.client.list_changes()?.changes.iter().map(to_list_change_json).collect();
+            ctx.client.list_changes()?.changes.iter().map(|c| to_list_change_json(c, a.detail)).collect();
         // `--sort name` 在本地重排對齊 fs；`created`／`modified` 的排序鍵
         // （meta created、store mtime）不在 wire 上，維持 server 回傳序。
         if a.sort == "name" {

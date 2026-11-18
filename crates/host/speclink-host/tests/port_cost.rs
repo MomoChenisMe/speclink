@@ -10,7 +10,8 @@
 //! Run with `cargo test -p speclink-host --test port_cost -- --nocapture` to
 //! see the table.
 
-use speclink_core::command::Command;
+use speclink_core::command::{Command, CommandOutcome};
+use speclink_core::station::StationProgress;
 use speclink_host::port_exec;
 use speclink_store_port::{DocKey, Expected, MemoryStorePort, Op};
 
@@ -132,6 +133,7 @@ fn commands_read_only_what_they_use() {
                 specs: false,
                 changes: false,
                 worktrees: Default::default(),
+                detail: false,
             },
         ),
         measure(
@@ -277,4 +279,79 @@ fn the_archived_list_is_one_list_and_one_read() {
     assert_eq!(calls.lists, ["archive/changes/"]);
     assert_eq!(calls.reads.len(), 1);
     assert!(!list.archived.is_empty(), "this project has archived changes");
+}
+
+/// What `list --json --detail` costs (verb-output-for-embedded D3): the calls
+/// of a list without it, and not one more. The two stations need to know
+/// whether a ticket exists, and the listing of `changes/` the list already
+/// made answers that; the claim, the branch and the landing are in the data
+/// file the list already reads.
+#[test]
+fn a_detailed_list_costs_the_calls_of_a_plain_list() {
+    const PROBE: &str = "cost-probe-detail";
+    let (inner, _, _) = loaded_store();
+    seed(
+        &inner,
+        vec![
+            doc(
+                &format!("changes/{PROBE}/.meta.yaml"),
+                "schema: spec-driven\ncreated: 2026-11-18\nbranch: speclink/cost-probe-detail\n",
+            ),
+            doc(&format!("changes/{PROBE}/tasks.md"), "- [ ] 1.1 first task\n"),
+            doc(
+                &format!("changes/{PROBE}/review.md"),
+                "# Review — cost-probe-detail\n\n## Round 1\n\n**Scope**: src/app.rs\n",
+            ),
+        ],
+    );
+    let store = Recorder::new(inner);
+    let run = |detail| {
+        let cmd = Command::List {
+            sort: "modified".to_string(),
+            specs: false,
+            changes: false,
+            worktrees: Default::default(),
+            detail,
+        };
+        store.take();
+        let execution = port_exec::execute(&store, &scope(), &host_ctx(), cmd).expect("list");
+        (execution.outcome, store.take())
+    };
+    let (_, plain) = run(false);
+    let (outcome, detailed) = run(true);
+
+    // The detail is there: the open ticket and the recorded branch.
+    let CommandOutcome::List(list) = outcome else {
+        panic!("expected a list outcome");
+    };
+    let probe = list
+        .changes
+        .expect("the changes section")
+        .into_iter()
+        .find(|change| change.name == PROBE)
+        .expect("the probe change");
+    assert_eq!(
+        probe.review.map(|status| status.progress),
+        Some(StationProgress::InProgress)
+    );
+    assert_eq!(probe.branch.as_deref(), Some("speclink/cost-probe-detail"));
+
+    println!(
+        "list changes --detail: {} list, {} read, {} keys (plain: {} list, {} read, {} keys)",
+        detailed.lists.len(),
+        detailed.reads.len(),
+        detailed.reads.iter().map(Vec::len).sum::<usize>(),
+        plain.lists.len(),
+        plain.reads.len(),
+        plain.reads.iter().map(Vec::len).sum::<usize>(),
+    );
+    assert_eq!(detailed.lists, plain.lists, "no list call more");
+    assert_eq!(detailed.read_keys(), plain.read_keys(), "no read call and no key more");
+    assert!(detailed.commits.is_empty());
+    for key in detailed.read_keys().iter().flatten() {
+        assert!(
+            !key.ends_with("/review.md") && !key.ends_with("/verify.md"),
+            "a ticket is not read to know that it exists: {key}"
+        );
+    }
 }

@@ -17,6 +17,7 @@ use speclink_verbs::render::discuss::{
     self as render, Concluded, DiscussBind, NewDiscussionLines, Promoted, RecordedRound,
 };
 use speclink_verbs::render::fields::{self as render_fields, FieldKind};
+use speclink_verbs::render::PathLines;
 use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
@@ -26,7 +27,7 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
     match a.command {
         DiscussCommands::New { json, .. } => {
             let info: core::discuss::DiscussionInfo = run(&store, Some(&ws), cmd)?;
-            emit(render::new(&info, render_options(json)));
+            emit(render::new(&info, PathLines::Printed, render_options(json)));
         }
         DiscussCommands::List { archived, json } => {
             let items: Vec<core::discuss::DiscussionInfo> = run(&store, Some(&ws), cmd)?;
@@ -67,7 +68,7 @@ pub(crate) fn cmd_discuss(a: DiscussArgs) -> Result<()> {
         }
         DiscussCommands::Promote { json, .. } => {
             let o: core::command::DiscussPromoteOutcome = run(&store, Some(&ws), cmd)?;
-            emit(render::promoted(&o, render_options(json)));
+            emit(render::promoted(&o, PathLines::Printed, render_options(json)));
         }
         DiscussCommands::Link { json, .. } => {
             let o: core::command::DiscussBindOutcome = run(&store, Some(&ws), cmd)?;
@@ -139,7 +140,7 @@ pub(crate) fn remote_discuss(ctx: &RemoteCtx, a: DiscussArgs) -> Result<()> {
             // 組 core 型別會捏造 server 沒說的欄位，形狀凍結不允許。
             emit(render::new_from(
                 &resp,
-                NewDiscussionLines { slug: &resp.slug, topic: &resp.topic, path: &resp.path },
+                NewDiscussionLines { slug: &resp.slug, topic: &resp.topic, path: Some(&resp.path) },
                 render_options(json),
             ));
         }

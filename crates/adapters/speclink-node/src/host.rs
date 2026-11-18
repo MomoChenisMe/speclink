@@ -10,7 +10,8 @@
 use crate::port_bridge::{events_json, person_json, settle_call, JsPort};
 use crate::js_bridge::{create_bridge, JsBridge};
 use crate::{
-    command_of, envelope, on_worker, panic_message, parse_verb, status_notice, value_of, DispatchError, DispatchResult,
+    command_of, embedded_value_of, envelope, on_worker, panic_message, parse_verb, status_notice, DispatchError,
+    DispatchResult,
 };
 use napi::bindgen_prelude::*;
 use napi::{JsFunction, JsObject};
@@ -454,7 +455,9 @@ fn by_verb(e: ExecError, verb: &str) -> ExecError {
     }
 }
 
-/// The envelope value of `cmd` run by `call` on this host's kit.
+/// The envelope value of `cmd` run by `call` on this host's kit: `dispatch`
+/// and the hook's `read` both end here, so both give the output of a store
+/// with no local folder.
 fn through_kit(
     setup: &HostSetup,
     parsed: &speclink_verbs::ParsedVerb,
@@ -464,7 +467,7 @@ fn through_kit(
     let status_without_name = matches!(cmd, Command::Status { change: None, .. });
 
     match with_kit(setup, |kit| call(kit, cmd))? {
-        Ok(execution) => value_of(parsed, &execution.outcome),
+        Ok(execution) => embedded_value_of(parsed, &execution.outcome),
         Err(ExecError::Command(e)) => match status_notice(status_without_name, &e) {
             Some(notice) => Ok(notice),
             None => Err(exec_error(ExecError::Command(e))),

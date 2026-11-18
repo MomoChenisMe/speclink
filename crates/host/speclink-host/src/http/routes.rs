@@ -419,7 +419,7 @@ fn wrong_outcome(route: &str) -> HttpError {
 /// and its tickets. A broken data file stays absent: the list reports it as
 /// `metaError` and does not fail.
 pub(crate) fn list_changes(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let cmd = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default() };
+    let cmd = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false };
     let (execution, etag) = req.run(cmd)?;
     let changes = match execution.outcome {
         CommandOutcome::List(list) => list.changes.unwrap_or_default(),
@@ -547,7 +547,7 @@ pub(crate) fn get_artifact(req: &Request<'_>) -> Result<HttpResponse, HttpError>
 
 /// `GET /specs`.
 pub(crate) fn list_specs(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let cmd = Command::List { sort: "name".to_string(), specs: true, changes: false, worktrees: Default::default() };
+    let cmd = Command::List { sort: "name".to_string(), specs: true, changes: false, worktrees: Default::default(), detail: false };
     let (execution, etag) = req.run(cmd)?;
     let specs = match execution.outcome {
         CommandOutcome::List(list) => list.specs.unwrap_or_else(|| serde_json::json!([])),

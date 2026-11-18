@@ -13,6 +13,7 @@ use crate::common::{
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
 use speclink_verbs::families::new::{NewArgs, NewArtifactArgs, NewChangeArgs, NewCommands};
 use speclink_verbs::render::new::{self as render, NewArtifact, NewChangeLines};
+use speclink_verbs::render::PathLines;
 use speclink_verbs::{ToCommand, VerbInputs};
 
 pub(crate) fn cmd_new(a: NewArgs) -> Result<()> {
@@ -25,7 +26,7 @@ fn cmd_new_change(a: NewChangeArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let o: core::command::NewChangeOutcome = run(&store, Some(&ws), cmd)?;
-    emit(render::change_created(&o, a.from_discussion.as_deref(), render_options(false)));
+    emit(render::change_created(&o, a.from_discussion.as_deref(), PathLines::Printed, render_options(false)));
     Ok(())
 }
 fn cmd_new_artifact(a: NewArtifactArgs) -> Result<()> {

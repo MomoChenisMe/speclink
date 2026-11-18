@@ -10,6 +10,7 @@ fn list_cmd() -> Command {
         specs: false,
         changes: false,
         worktrees: Default::default(),
+        detail: false,
     }
 }
 
@@ -31,6 +32,27 @@ fn list_returns_typed_outcome_without_events() {
         other => panic!("expected a list outcome, got {other:?}"),
     }
     assert!(events.is_empty(), "queries never produce events");
+}
+
+#[test]
+fn list_carries_the_detail_keys_only_when_the_command_asks_for_them() {
+    // verb-output-for-embedded D1：`detail` 由命令帶進清單的組裝。
+    let store = TestStore::with_meta("demo", "schema: spec-driven\nbranch: speclink/demo\n");
+    let branch_of = |detail| {
+        let cmd = Command::List {
+            sort: "name".to_string(),
+            specs: false,
+            changes: false,
+            worktrees: Default::default(),
+            detail,
+        };
+        match execute(&store, &ExecutionContext::default(), cmd).expect("list executes").0 {
+            CommandOutcome::List(list) => list.changes.expect("changes section present")[0].branch.clone(),
+            other => panic!("expected a list outcome, got {other:?}"),
+        }
+    };
+    assert_eq!(branch_of(true).as_deref(), Some("speclink/demo"));
+    assert_eq!(branch_of(false), None);
 }
 
 #[test]
@@ -2432,7 +2454,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
     // 來自 ExecutionContext，呼叫端與模型無從經 command 參數覆寫。
     let probe = list_cmd();
     match probe {
-        Command::List { sort: _, specs: _, changes: _, worktrees: _ } => {}
+        Command::List { sort: _, specs: _, changes: _, worktrees: _, detail: _ } => {}
         Command::Show { item: _, item_type: _ } => {}
         Command::Status { change: _, schema: _ } => {}
         Command::Instructions { artifact: _, change: _, schema: _ } => {}

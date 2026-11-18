@@ -94,6 +94,7 @@ fn list_cmd() -> Command {
         specs: false,
         changes: false,
         worktrees: Default::default(),
+        detail: false,
     }
 }
 

@@ -351,6 +351,10 @@ pub enum Command {
         /// fs main-checkout path ever fills this; every other entry point passes
         /// an empty map, whose output is byte-identical to the frozen baseline.
         worktrees: std::collections::BTreeMap<String, crate::listing::ListWorktreeJson>,
+        /// `--detail`: every change also carries what it has on record — the
+        /// two quality stations, the claim, the branch and the landing. False
+        /// is the frozen output, and asks the store for nothing more.
+        detail: bool,
     },
     /// `show <item> [--item-type change|spec]`
     Show {
@@ -715,13 +719,17 @@ pub struct ClaimOutcome {
 }
 
 /// The claim a change's metadata holds, as `show --json` reports it. It exists
-/// only when the metadata names a holder (`claimed_by`).
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// only when the metadata names a holder (`claimed_by`). It serializes as the
+/// `claimed` object of `show --json` and `list --json --detail`: `by`, and
+/// `byId` and `at` when the claim recorded them.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct ClaimRecord {
     pub by: String,
     /// The holder's identifier, when the claim recorded one.
+    #[serde(rename = "byId", skip_serializing_if = "Option::is_none")]
     pub by_id: Option<String>,
     /// The claim time as written.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub at: Option<String>,
 }
 
@@ -959,8 +967,8 @@ pub fn execute(
 ) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
     let ws = ctx.workspace.as_ref();
     let outcome = match cmd {
-        Command::List { sort, specs, changes, worktrees } => {
-            run_list(store, &sort, specs, changes, &worktrees)
+        Command::List { sort, specs, changes, worktrees, detail } => {
+            run_list(store, &sort, specs, changes, &worktrees, detail)
         }
         Command::Show { item, item_type } => run_show(store, item.as_deref(), item_type.as_deref()),
         Command::Status { change, schema } => {
@@ -1423,6 +1431,7 @@ fn run_list(
     specs: bool,
     changes_flag: bool,
     worktrees: &std::collections::BTreeMap<String, crate::listing::ListWorktreeJson>,
+    detail: bool,
 ) -> Result<CommandOutcome, CommandError> {
     // --specs alone omits the changes section; combined with --changes both appear.
     let changes = if specs && !changes_flag {
@@ -1430,7 +1439,7 @@ fn run_list(
     } else {
         let mut changes = crate::model::list_changes(store);
         crate::listing::sort_changes(store, &mut changes, sort);
-        Some(crate::listing::changes_json_with(store, &changes, worktrees))
+        Some(crate::listing::changes_json_detail(store, &changes, worktrees, detail))
     };
     let specs = specs.then(|| crate::listing::specs_json_items(store));
     Ok(CommandOutcome::List(ListOutcome { changes, specs }))
@@ -1495,17 +1504,9 @@ fn run_show(
         (Some(s), Some(c)) => (Some(s.clone()), Some(c.clone())),
         _ => (None, None),
     };
-    // A corrupt metadata document reads as defaults; "not started" must not
-    // be reported from it.
-    let station_status = |st: &Station| {
-        change
-            .meta_error
-            .is_none()
-            .then(|| station::status(st, &change.meta, store.artifact_exists(&change.name, st.doc)))
-    };
     Ok(CommandOutcome::Show(ShowOutcome::Change(ShowChange {
-        review: station_status(&REVIEW),
-        verify: station_status(&VERIFY),
+        review: station::recorded_status(&REVIEW, store, &change),
+        verify: station::recorded_status(&VERIFY, store, &change),
         branch: change.meta.branch.clone(),
         landed: LandedRecord::new(
             change.meta.landed_commit.clone(),

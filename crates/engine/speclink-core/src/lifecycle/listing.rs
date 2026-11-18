@@ -2,7 +2,9 @@
 //! the two surfaces cannot drift (their parity is additionally locked by the
 //! SDK's fixture comparison tests).
 
+use crate::command::{ClaimRecord, LandedRecord};
 use crate::model::Change;
+use crate::station::{self, StationStatus};
 use crate::store::Store;
 use serde::Serialize;
 use std::collections::BTreeMap;
@@ -51,6 +53,26 @@ pub struct ListChangeJson {
     /// for byte.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: crate::fields::Fields,
+    /// The five detail keys (`list --json --detail`): what the change has on
+    /// record, each in the shape `show --json` gives it. All five stay unset,
+    /// and out of the output, unless the list was asked for detail; with
+    /// detail each one is there only when the change has that record.
+    ///
+    /// The two quality stations. A station with no ticket and no stamp has
+    /// nothing recorded and is not serialized.
+    #[serde(skip_serializing_if = "station_unrecorded", serialize_with = "station_json")]
+    pub review: Option<StationStatus>,
+    #[serde(skip_serializing_if = "station_unrecorded", serialize_with = "station_json")]
+    pub verify: Option<StationStatus>,
+    /// Who holds the change.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub claimed: Option<ClaimRecord>,
+    /// The branch recorded when work started.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub branch: Option<String>,
+    /// The landing record. The list carries the commit only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub landed: Option<ListLandedJson>,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -67,6 +89,21 @@ pub struct ListWorktreeJson {
     pub path: String,
     /// Full branch name, e.g. `speclink/add-dark-mode`.
     pub branch: String,
+}
+
+/// The `landed` object of a `list --json --detail` entry: the commit alone.
+/// The report time and the reporter are in `show --json`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ListLandedJson {
+    pub commit: String,
+}
+
+fn station_unrecorded(status: &Option<StationStatus>) -> bool {
+    !status.as_ref().is_some_and(StationStatus::is_recorded)
+}
+
+fn station_json<S: serde::Serializer>(status: &Option<StationStatus>, serializer: S) -> Result<S::Ok, S::Error> {
+    status.as_ref().map(StationStatus::to_json).serialize(serializer)
 }
 
 /// Order changes for listing (frozen ordering contract):
@@ -144,7 +181,7 @@ pub fn task_counts(store: &dyn Store, change: &Change) -> (usize, usize) {
 
 /// The `changes` items of `list --json`, in the given (already sorted) order.
 pub fn changes_json(store: &dyn Store, changes: &[Change]) -> Vec<ListChangeJson> {
-    changes_json_with(store, changes, &BTreeMap::new())
+    changes_json_detail(store, changes, &BTreeMap::new(), false)
 }
 
 /// `changes_json` plus the local worktree observation surface: entries named in
@@ -156,10 +193,28 @@ pub fn changes_json_with(
     changes: &[Change],
     worktrees: &BTreeMap<String, ListWorktreeJson>,
 ) -> Vec<ListChangeJson> {
+    changes_json_detail(store, changes, worktrees, false)
+}
+
+/// [`changes_json_with`], and with `detail` the five detail keys of every
+/// change whose metadata reads. Each comes from where `show` takes it: the
+/// stations from [`station::recorded_status`], the claim and the landing from
+/// the same two records. Without `detail` nothing here runs, so the output and
+/// what the store is asked for are the ones of [`changes_json_with`].
+pub fn changes_json_detail(
+    store: &dyn Store,
+    changes: &[Change],
+    worktrees: &BTreeMap<String, ListWorktreeJson>,
+    detail: bool,
+) -> Vec<ListChangeJson> {
     changes
         .iter()
         .map(|c| {
             let (complete, total) = task_counts(store, c);
+            // A corrupt metadata document reads as the default one, which
+            // holds no claim, branch or landing; `recorded_status` gives no
+            // station for it, also when a ticket lies beside it.
+            let meta = detail.then_some(&c.meta);
             ListChangeJson {
                 completed_tasks: complete,
                 name: c.name.clone(),
@@ -177,6 +232,15 @@ pub fn changes_json_with(
                 created: c.meta.created.clone(),
                 modified_at: modified_at(store.updated_at_secs(&c.name)),
                 fields: c.meta.fields.clone(),
+                review: meta.and_then(|_| station::recorded_status(&station::REVIEW, store, c)),
+                verify: meta.and_then(|_| station::recorded_status(&station::VERIFY, store, c)),
+                claimed: meta.and_then(|m| {
+                    ClaimRecord::new(m.claimed_by.clone(), m.claimed_by_id.clone(), m.claimed_at.clone())
+                }),
+                branch: meta.and_then(|m| m.branch.clone()),
+                landed: meta
+                    .and_then(|m| LandedRecord::new(m.landed_commit.clone(), m.landed_at.clone(), m.landed_by.clone()))
+                    .map(|landed| ListLandedJson { commit: landed.commit }),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })
@@ -220,7 +284,7 @@ pub fn specs_json_items(store: &dyn Store) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{changes_json, changes_json_with, ListWorktreeJson};
+    use super::{changes_json, changes_json_detail, changes_json_with, ListWorktreeJson};
     use crate::teststore::TestStore;
     use std::collections::BTreeMap;
 
@@ -498,5 +562,138 @@ mod tests {
         assert_eq!(item_json(&store)["modifiedAt"], "9999-12-31T23:59:59Z");
         store.updated_at.borrow_mut().insert("demo".to_string(), 1);
         assert_eq!(item_json(&store)["modifiedAt"], "1970-01-01T00:00:01Z");
+    }
+
+    // --- the detail keys (verb-output-for-embedded D1) ---
+
+    const DETAIL_KEYS: [&str; 5] = ["review", "verify", "claimed", "branch", "landed"];
+    const REVIEW_STAMP: &str = "reviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 2\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: 0f9c\n";
+    const LANDED_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
+
+    /// `demo_store` with `extra` appended to the metadata.
+    fn recorded_store(extra: &str) -> TestStore {
+        let store = TestStore::with_meta("demo", &format!("schema: spec-driven\ncreated: 2026-07-01\n{extra}"));
+        store.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        store.put_artifact("demo", "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
+        store
+    }
+
+    fn detail_item(store: &TestStore, detail: bool) -> serde_json::Value {
+        let changes = crate::model::list_changes(store);
+        let items = changes_json_detail(store, &changes, &BTreeMap::new(), detail);
+        assert_eq!(items.len(), 1);
+        serde_json::to_value(&items[0]).unwrap()
+    }
+
+    fn detail_keys_of(item: &serde_json::Value) -> Vec<&'static str> {
+        DETAIL_KEYS.into_iter().filter(|key| item.get(key).is_some()).collect()
+    }
+
+    #[test]
+    fn detail_adds_the_records_a_change_has() {
+        // spec verb-contract「清單的詳細輸出」Scenario「有記錄的變更帶出四類狀態」。
+        let store = recorded_store(&format!(
+            "{REVIEW_STAMP}claimed_by: Alice\nclaimed_by_id: u_1\nclaimed_at: 2026-11-18T10:00:00+00:00\nbranch: speclink/demo\nlanded_commit: {LANDED_COMMIT}\nlanded_at: 2026-11-18T11:00:00+00:00\nlanded_by: Bob\n"
+        ));
+        store.put_artifact("demo", crate::station::VERIFY_DOC, "## Round 1\n");
+        let item = detail_item(&store, true);
+        assert_eq!(
+            item["review"],
+            serde_json::json!({
+                "state": "stamped",
+                "stampedAt": "2026-08-01",
+                "stampedBy": "Rev <r@example.com>",
+                "stampedWith": "claude",
+                "rounds": 0,
+                "tasksTotal": 2,
+            }),
+            "the shape of `show --json`, without the scope"
+        );
+        assert_eq!(item["verify"], serde_json::json!({ "state": "inProgress" }));
+        assert_eq!(
+            item["claimed"],
+            serde_json::json!({ "by": "Alice", "byId": "u_1", "at": "2026-11-18T10:00:00+00:00" })
+        );
+        assert_eq!(item["branch"], "speclink/demo");
+        assert_eq!(item["landed"], serde_json::json!({ "commit": LANDED_COMMIT }), "the commit only");
+
+        // The fields that were there before are the ones of a list without detail.
+        let mut without = item.clone();
+        for key in DETAIL_KEYS {
+            without.as_object_mut().unwrap().remove(key);
+        }
+        assert_eq!(without, detail_item(&store, false));
+        assert_eq!(detail_keys_of(&detail_item(&store, false)), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn detail_gives_each_record_its_own_key() {
+        // spec Example「各種記錄對應的鍵」，一列一個案例。
+        let landed = format!("branch: speclink/demo\nlanded_commit: {LANDED_COMMIT}\nlanded_at: 2026-11-18T11:00:00+00:00\n");
+        let unlanded_branchless = format!("landed_commit: {LANDED_COMMIT}\n");
+        let cases: [(&str, &str, bool, &[&str]); 7] = [
+            ("no record", "", false, &[]),
+            ("a review stamp only", REVIEW_STAMP, false, &["review"]),
+            ("an open review ticket, no stamp", "", true, &["review"]),
+            ("claimed, no identifier", "claimed_by: Alice\nclaimed_at: 2026-11-18T10:00:00+00:00\n", false, &["claimed"]),
+            ("a branch, not landed", "branch: speclink/demo\n", false, &["branch"]),
+            ("landed", &landed, false, &["branch", "landed"]),
+            ("landed, no branch recorded", &unlanded_branchless, false, &["landed"]),
+        ];
+        for (case, extra, review_ticket, keys) in cases {
+            let store = recorded_store(extra);
+            if review_ticket {
+                store.put_artifact("demo", crate::station::REVIEW_DOC, "## Round 1\n");
+            }
+            let item = detail_item(&store, true);
+            assert_eq!(detail_keys_of(&item), keys, "{case}: {item}");
+        }
+        // The values of the rows that say more than "the key is there".
+        let ticket = recorded_store("");
+        ticket.put_artifact("demo", crate::station::REVIEW_DOC, "## Round 1\n");
+        assert_eq!(detail_item(&ticket, true)["review"], serde_json::json!({ "state": "inProgress" }));
+        let unkeyed = recorded_store("claimed_by: Alice\nclaimed_at: 2026-11-18T10:00:00+00:00\n");
+        assert_eq!(
+            detail_item(&unkeyed, true)["claimed"],
+            serde_json::json!({ "by": "Alice", "at": "2026-11-18T10:00:00+00:00" })
+        );
+    }
+
+    #[test]
+    fn a_change_with_no_record_serializes_the_same_with_and_without_detail() {
+        let store = recorded_store("");
+        let changes = crate::model::list_changes(&store);
+        let text = |detail| serde_json::to_string(&changes_json_detail(&store, &changes, &BTreeMap::new(), detail)).unwrap();
+        assert_eq!(text(true), text(false));
+        assert_eq!(text(false), serde_json::to_string(&changes_json(&store, &changes)).unwrap());
+    }
+
+    #[test]
+    fn a_change_with_corrupt_metadata_carries_no_detail_key() {
+        // 損壞的 metadata 讀成預設值：不能從它報出「沒有記錄」以外的任何狀態，
+        // 工單在也一樣。
+        let store = TestStore::with_meta("demo", "schema: [unclosed\n");
+        store.put_artifact("demo", crate::station::REVIEW_DOC, "## Round 1\n");
+        store.put_artifact("demo", crate::station::VERIFY_DOC, "## Round 1\n");
+        let item = detail_item(&store, true);
+        assert!(item.get("metaError").is_some(), "{item}");
+        assert_eq!(detail_keys_of(&item), Vec::<&str>::new(), "{item}");
+        assert_eq!(item, detail_item(&store, false));
+    }
+
+    #[test]
+    fn the_detail_keys_come_after_the_fields_and_before_worktree() {
+        let store = recorded_store(&format!("branch: speclink/demo\nlanded_commit: {LANDED_COMMIT}\n"));
+        let changes = crate::model::list_changes(&store);
+        let facts = BTreeMap::from([(
+            "demo".to_string(),
+            ListWorktreeJson { path: "/x".into(), branch: "speclink/demo".into() },
+        )]);
+        assert_eq!(
+            serde_json::to_string(&changes_json_detail(&store, &changes, &facts, true)).unwrap(),
+            format!(
+                r#"[{{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","landed":{{"commit":"{LANDED_COMMIT}"}},"worktree":{{"path":"/x","branch":"speclink/demo"}}}}]"#
+            )
+        );
     }
 }

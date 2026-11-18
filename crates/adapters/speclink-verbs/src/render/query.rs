@@ -2,12 +2,13 @@
 
 use serde_json::{json, Value};
 use speclink_core::command::{ListOutcome, ShowChange, ShowOutcome};
-use speclink_core::station::StationProgress;
 use speclink_core::status::StatusReport;
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
 /// `list --json`: `{ changes }`, `{ specs }` or both, as the flags asked.
+/// With `--detail` the engine filled each item's five detail fields; an item
+/// serializes the ones that have a value, so there is nothing to add here.
 pub fn list_json(list: &ListOutcome) -> Value {
     // `--specs` alone omits the changes section (`changes` is None).
     let Some(items) = &list.changes else {
@@ -119,7 +120,7 @@ pub fn show_json(show: &ShowOutcome) -> Value {
             // A station with no ticket and no stamp has nothing recorded, so a
             // change without records prints what it printed before these keys.
             for (key, station) in [("review", &c.review), ("verify", &c.verify)] {
-                if let Some(station) = station.as_ref().filter(|s| s.progress != StationProgress::None) {
+                if let Some(station) = station.as_ref().filter(|s| s.is_recorded()) {
                     shown[key] = station.to_json();
                 }
             }
@@ -132,14 +133,10 @@ pub fn show_json(show: &ShowOutcome) -> Value {
                     shown["landed"]["by"] = json!(by);
                 }
             }
+            // The record serializes itself, so `list --json --detail` gives
+            // the same object.
             if let Some(claimed) = &c.claimed {
-                shown["claimed"] = json!({ "by": claimed.by });
-                if let Some(by_id) = &claimed.by_id {
-                    shown["claimed"]["byId"] = json!(by_id);
-                }
-                if let Some(at) = &claimed.at {
-                    shown["claimed"]["at"] = json!(at);
-                }
+                shown["claimed"] = json!(claimed);
             }
             if !c.fields.is_empty() {
                 shown["fields"] = json!(c.fields);
@@ -239,6 +236,7 @@ mod tests {
     use serde_json::json;
     use speclink_core::command::{ClaimRecord, ShowChange};
     use speclink_core::listing::{ListChangeJson, ListWorktreeJson};
+    use speclink_core::station::StationProgress;
     use speclink_core::status::ArtifactStatusJson;
 
     const PLAIN: Paint = Paint::new(false);
@@ -257,6 +255,11 @@ mod tests {
             created: None,
             modified_at: None,
             fields: Default::default(),
+            review: None,
+            verify: None,
+            claimed: None,
+            branch: None,
+            landed: None,
             worktree: None,
         }
     }
@@ -339,6 +342,105 @@ mod tests {
         };
         assert_eq!(list_human(&list, &PLAIN), list_human(&untimed, &PLAIN));
         assert_eq!(list_human(&list, &COLOR), list_human(&untimed, &COLOR));
+    }
+
+    /// `change` with a record of each of the five detail kinds.
+    fn detailed_change() -> ListChangeJson {
+        use speclink_core::listing::ListLandedJson;
+        use speclink_core::station::StationStatus;
+        ListChangeJson {
+            review: Some(StationStatus {
+                progress: StationProgress::Stamped,
+                stamped_at: Some("2026-11-02".to_string()),
+                stamped_by: Some("Rev <r@example.com>".to_string()),
+                stamped_with: None,
+                rounds: Some(3),
+                tasks_total: Some(12),
+                commit: Some("0123456789ab".to_string()),
+                scope: vec![speclink_core::model::ReviewedScopeEntry { path: "src/a.rs".into(), hash: "aa".into() }],
+            }),
+            verify: Some(StationStatus { progress: StationProgress::InProgress, ..StationStatus::none() }),
+            claimed: Some(ClaimRecord {
+                by: "Alice".to_string(),
+                by_id: Some("u_1".to_string()),
+                at: Some("2026-11-18T10:00:00+00:00".to_string()),
+            }),
+            branch: Some("speclink/demo".to_string()),
+            landed: Some(ListLandedJson { commit: "0123456789abcdef0123456789abcdef01234567".to_string() }),
+            ..change("demo", 1, 4, "Sign-in needs a second rule.")
+        }
+    }
+
+    #[test]
+    fn list_json_carries_the_five_detail_keys_of_a_change_that_has_the_records() {
+        // spec verb-contract「清單的詳細輸出」：鍵名 camelCase，形狀與 show --json 相同，
+        // landed 只有 commit。
+        let list = ListOutcome { changes: Some(vec![detailed_change(), change("other", 0, 0, "")]), specs: None };
+        let json = list_json(&list);
+        let demo = &json["changes"][0];
+        assert_eq!(
+            demo["review"],
+            json!({
+                "state": "stamped",
+                "stampedAt": "2026-11-02",
+                "stampedBy": "Rev <r@example.com>",
+                "rounds": 3,
+                "tasksTotal": 12,
+                "commit": "0123456789ab",
+            }),
+            "no scope and no stampedWith key"
+        );
+        assert_eq!(demo["verify"], json!({ "state": "inProgress" }));
+        assert_eq!(demo["claimed"], json!({ "by": "Alice", "byId": "u_1", "at": "2026-11-18T10:00:00+00:00" }));
+        assert_eq!(demo["branch"], json!("speclink/demo"));
+        assert_eq!(demo["landed"], json!({ "commit": "0123456789abcdef0123456789abcdef01234567" }));
+        // The keys that were there before are unchanged, and a change with no
+        // record has none of the five.
+        let before = list_json(&ListOutcome {
+            changes: Some(vec![change("demo", 1, 4, "Sign-in needs a second rule.")]),
+            specs: None,
+        });
+        for (key, value) in before["changes"][0].as_object().unwrap() {
+            assert_eq!(&demo[key], value, "{key}");
+        }
+        for key in ["review", "verify", "claimed", "branch", "landed"] {
+            assert!(json["changes"][1].get(key).is_none(), "{key}: {json}");
+        }
+    }
+
+    #[test]
+    fn list_json_has_the_same_shapes_as_show_json_for_the_same_records() {
+        // 「形狀 SHALL 與 show --json 的同名鍵相同」：同一份記錄，兩個動詞的物件相等。
+        let shown = show_json(&shown_change_with_records_of(&detailed_change()));
+        let listed = list_json(&ListOutcome { changes: Some(vec![detailed_change()]), specs: None });
+        for key in ["review", "verify", "claimed", "branch"] {
+            assert_eq!(listed["changes"][0][key], shown[key], "{key}");
+        }
+        assert_eq!(listed["changes"][0]["landed"]["commit"], shown["landed"]["commit"]);
+    }
+
+    #[test]
+    fn list_text_is_unchanged_for_changes_with_no_detail_record() {
+        // 不帶 --detail 時五個欄位都沒有值：JSON 的文字與引入它們之前逐位元相同。
+        let list = ListOutcome { changes: Some(vec![change("alpha", 1, 4, "Sign-in needs a second rule.")]), specs: None };
+        assert_eq!(
+            super::list(&list, RenderOptions { json: true, color: false }).stdout,
+            "{\n  \"changes\": [\n    {\n      \"completedTasks\": 1,\n      \"name\": \"alpha\",\n      \"status\": \"in-progress\",\n      \"summary\": \"Sign-in needs a second rule.\",\n      \"totalTasks\": 4\n    }\n  ]\n}\n"
+        );
+        // A station that never started is no record: nothing is printed for it.
+        let unstarted = ListChangeJson {
+            review: Some(speclink_core::station::StationStatus::none()),
+            verify: Some(speclink_core::station::StationStatus::none()),
+            ..change("alpha", 1, 4, "Sign-in needs a second rule.")
+        };
+        assert_eq!(
+            list_json(&ListOutcome { changes: Some(vec![unstarted]), specs: None }),
+            list_json(&list)
+        );
+        // The human form never shows the detail.
+        let detailed = ListOutcome { changes: Some(vec![detailed_change()]), specs: None };
+        let plain = ListOutcome { changes: Some(vec![change("demo", 1, 4, "Sign-in needs a second rule.")]), specs: None };
+        assert_eq!(list_human(&detailed, &PLAIN), list_human(&plain, &PLAIN));
     }
 
     #[test]
@@ -458,6 +560,22 @@ mod tests {
         change.branch = Some("feature/x".to_string());
         change.landed = Some(LandedRecord {
             commit: "89abcdef0123".to_string(),
+            at: "2026-11-03T09:00:00+08:00".to_string(),
+            by: None,
+        });
+        ShowOutcome::Change(change)
+    }
+
+    /// `shown_change` with the records `item` carries.
+    fn shown_change_with_records_of(item: &ListChangeJson) -> ShowOutcome {
+        use speclink_core::command::LandedRecord;
+        let ShowOutcome::Change(mut change) = shown_change() else { unreachable!() };
+        change.review = item.review.clone();
+        change.verify = item.verify.clone();
+        change.claimed = item.claimed.clone();
+        change.branch = item.branch.clone();
+        change.landed = item.landed.as_ref().map(|landed| LandedRecord {
+            commit: landed.commit.clone(),
             at: "2026-11-03T09:00:00+08:00".to_string(),
             by: None,
         });

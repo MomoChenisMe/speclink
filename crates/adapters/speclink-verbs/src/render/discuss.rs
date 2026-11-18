@@ -8,29 +8,34 @@ use speclink_core::command::{
 };
 use speclink_core::discuss::{DiscussionHit, DiscussionInfo};
 
-use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
+use super::{JsonForm, Paint, PathLines, RenderOptions, Rendered, Text};
 
-/// The three lines of `discuss new`, by name.
+/// The lines of `discuss new`, by name. `path` is absent for a caller with no
+/// local folder (a host that embeds the engine): the record's key in the store
+/// is no file the reader can open, so the Path line is left out.
 #[derive(Debug, Clone, Copy)]
 pub struct NewDiscussionLines<'a> {
     pub slug: &'a str,
     pub topic: &'a str,
-    pub path: &'a str,
+    pub path: Option<&'a str>,
 }
 
-/// `discuss new`: the success line, the topic and the path.
+/// `discuss new`: the success line, the topic, and the path when given.
 pub fn new_human(lines: NewDiscussionLines<'_>, paint: &Paint) -> Text {
     let mut t = Text::default();
     outln!(t, "{} Created discussion: {}", paint.green("✓"), lines.slug);
     outln!(t, "  Topic: {}", lines.topic);
-    outln!(t, "  Path: {}", lines.path);
+    if let Some(path) = lines.path {
+        outln!(t, "  Path: {path}");
+    }
     t
 }
 
-/// `discuss new --json` is the new record's info.
-pub fn new(info: &DiscussionInfo, options: RenderOptions) -> Rendered {
-    let lines = NewDiscussionLines { slug: &info.slug, topic: &info.topic, path: &info.path };
-    new_from(info, lines, options)
+/// `discuss new --json` is the new record's info, its `path` included
+/// whatever `paths` says: `paths` decides the Path line of the human form only.
+pub fn new(info: &DiscussionInfo, paths: PathLines, options: RenderOptions) -> Rendered {
+    let path = (paths == PathLines::Printed).then_some(info.path.as_str());
+    new_from(info, NewDiscussionLines { slug: &info.slug, topic: &info.topic, path }, options)
 }
 
 /// `discuss new` where the JSON form is the source's own shape: remote mode
@@ -341,19 +346,20 @@ pub fn promote(p: &Promoted<'_>, options: RenderOptions) -> Rendered {
     Rendered::of(options, Some(JsonForm::pretty(&promote_json(p))), |paint| promote_human(p, paint))
 }
 
-/// `discuss promote`, from the engine's result: a local store, so the new
-/// change's directory is shown.
-pub fn promoted(o: &DiscussPromoteOutcome, options: RenderOptions) -> Rendered {
+/// `discuss promote`, from the engine's result. The JSON form always carries
+/// `path`. `paths` decides the human form: with a local folder the new
+/// change's directory is shown; without one the Path line and the hint are
+/// left out, as remote mode does.
+pub fn promoted(o: &DiscussPromoteOutcome, paths: PathLines, options: RenderOptions) -> Rendered {
     let shown = o.path.to_string_lossy();
     let wire = speclink_core::util::to_slash(&o.path);
-    promote(
-        &Promoted {
-            slug: &o.slug,
-            change: &o.change,
-            path: Some(PromotedPath { shown: &shown, wire: &wire }),
-        },
-        options,
-    )
+    let with_path =
+        Promoted { slug: &o.slug, change: &o.change, path: Some(PromotedPath { shown: &shown, wire: &wire }) };
+    let human = match paths {
+        PathLines::Printed => with_path,
+        PathLines::Omitted => Promoted { path: None, ..with_path },
+    };
+    Rendered::of(options, Some(JsonForm::pretty(&promote_json(&with_path))), |paint| promote_human(&human, paint))
 }
 
 /// `discuss link` or `discuss seal`: the two differ only in their verb and
@@ -432,7 +438,7 @@ mod tests {
         let lines = NewDiscussionLines {
             slug: "fresh-topic",
             topic: "Fresh topic",
-            path: "/p/speclink/discussions/fresh-topic.md",
+            path: Some("/p/speclink/discussions/fresh-topic.md"),
         };
         assert_eq!(
             new_human(lines, &COLOR).stdout,
@@ -444,7 +450,7 @@ mod tests {
     fn new_json_is_the_info_and_its_text_keeps_the_field_order() {
         let fresh = info("fresh-topic", "Fresh topic", "open", 0, false);
         assert_eq!(
-            new(&fresh, RenderOptions::default()).json.unwrap(),
+            new(&fresh, PathLines::Printed, RenderOptions::default()).json.unwrap(),
             json!({
                 "slug": "fresh-topic", "topic": "Fresh topic", "status": "open", "rounds": 0,
                 "created": "2026-11-11", "createdBy": "Base Line <base@example.com>",
@@ -452,18 +458,18 @@ mod tests {
             })
         );
         assert_eq!(
-            new(&fresh, JSON).stdout,
+            new(&fresh, PathLines::Printed, JSON).stdout,
             "{\n  \"slug\": \"fresh-topic\",\n  \"topic\": \"Fresh topic\",\n  \"status\": \"open\",\n  \"rounds\": 0,\n  \"created\": \"2026-11-11\",\n  \"createdBy\": \"Base Line <base@example.com>\",\n  \"path\": \"/p/speclink/discussions/fresh-topic.md\",\n  \"archived\": false\n}\n"
         );
         assert_eq!(
-            new(&fresh, RenderOptions::default()).stdout,
+            new(&fresh, PathLines::Printed, RenderOptions::default()).stdout,
             "✓ Created discussion: fresh-topic\n  Topic: Fresh topic\n  Path: /p/speclink/discussions/fresh-topic.md\n"
         );
     }
 
     #[test]
     fn new_from_prints_the_source_it_was_given() {
-        let lines = NewDiscussionLines { slug: "fresh", topic: "Fresh topic", path: "discussions/fresh.md" };
+        let lines = NewDiscussionLines { slug: "fresh", topic: "Fresh topic", path: Some("discussions/fresh.md") };
         let wire = json!({ "slug": "fresh", "topic": "Fresh topic", "path": "discussions/fresh.md" });
         let out = new_from(&wire, lines, JSON);
         assert_eq!(out.stdout, "{\n  \"path\": \"discussions/fresh.md\",\n  \"slug\": \"fresh\",\n  \"topic\": \"Fresh topic\"\n}\n");

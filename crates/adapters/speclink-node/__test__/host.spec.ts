@@ -1182,3 +1182,158 @@ describe('the JS store port', () => {
     expect(err.code).toBe('internal')
   }, 5_000)
 })
+
+// verb-contract「內嵌宿主的人眼輸出不印路徑行」「清單的詳細輸出」: a host's
+// documents are in its store, so the output names no local path, and a list
+// with --detail carries what each change has on record.
+describe('host output for a store with no local folder', () => {
+  const COMMIT = '0123456789abcdef0123456789abcdef01234567'
+  const DETAIL_KEYS = ['review', 'verify', 'claimed', 'branch', 'landed']
+  const RECORDED_META = [
+    'schema: spec-driven',
+    'created: 2026-07-01',
+    'reviewed_at: 2026-08-01',
+    'reviewed_by: Rev <r@example.com>',
+    'reviewed_with: claude',
+    'reviewed_tasks_total: 1',
+    'reviewed_scope:',
+    '  - path: src/lib.rs',
+    '    hash: 0f9c',
+    'branch: speclink/demo',
+    `landed_commit: ${COMMIT}`,
+    'landed_at: 2026-11-18T11:00:00+00:00',
+    '',
+  ].join('\n')
+  const CLAIM = 'claimed_by: Alice\nclaimed_by_id: u_1\nclaimed_at: 2026-11-18T10:00:00+00:00\n'
+  const VERIFY_TICKET = '# Verify — demo\n\n## Round 1\n\n**Scope**: src/lib.rs\n'
+  const PLAIN_META = 'schema: spec-driven\ncreated: 2026-07-01\n'
+
+  const dispatcher = (host: ReturnType<typeof createHost>) => (argv: string[], stdin?: string) =>
+    host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+
+  it('prints no Path line for new change and keeps its other lines', async () => {
+    const run = dispatcher(createHost({ store: memoryPort().store }))
+    await run(['discuss', 'new', 'Topic', '--slug', 'topic'])
+
+    expect(await run(['new', 'change', 'demo'])).toEqual({ output: '✓ Created change: demo\n  Schema: spec-driven\n' })
+    expect(await run(['new', 'change', 'from-topic', '--from-discussion', 'topic'])).toEqual({
+      output: '✓ Created change: from-topic\n  Schema: spec-driven\n  From discussion: topic\n',
+    })
+  })
+
+  // These two verbs have a structured value, and dispatch returns that value
+  // with or without --json: there is no text for a Path line to be in. What a
+  // host can see is the `path` key, which stays. The text form of the two
+  // verbs is pinned where it exists: speclink-verbs' render tests.
+  it('returns discuss new and discuss promote as structured values that keep path, with no text output', async () => {
+    const run = dispatcher(createHost({ store: memoryPort().store }))
+
+    const created = (await run(['discuss', 'new', 'Topic', '--slug', 'topic'])) as Record<string, unknown>
+    expect(created).toMatchObject({ slug: 'topic', topic: 'Topic' })
+    expect(created).not.toHaveProperty('output')
+    expect(String(created.path)).toContain('topic')
+    const viaJson = (await run(['discuss', 'new', 'Other', '--slug', 'other', '--json'])) as Record<string, unknown>
+    expect(Object.keys(viaJson).sort()).toEqual(Object.keys(created).sort())
+    expect(String(viaJson.path)).toContain('other')
+
+    await run(['discuss', 'conclude', 'topic', '--stdin', '--hold'], '**Decision**: ship it\n')
+    const promoted = (await run(['discuss', 'promote', 'topic'])) as Record<string, unknown>
+    expect(Object.keys(promoted).sort()).toEqual(['change', 'path', 'slug', 'status'])
+    expect(promoted).toMatchObject({ slug: 'topic', change: 'topic', status: 'promoted' })
+    expect(String(promoted.path)).toContain('topic')
+  })
+
+  it('still prints the Path line for an engine on a local folder', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-host-path-line-')))
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }))
+    mkdirSync(join(root, 'speclink', 'changes'), { recursive: true })
+
+    const created = (await createEngine({ store: { type: 'fs', root } }).dispatch(['new', 'change', 'demo'])) as {
+      output: string
+    }
+
+    expect(created.output.split('\n')).toEqual([
+      '✓ Created change: demo',
+      `  Path: ${join(root, 'speclink', 'changes', 'demo')}`,
+      '  Schema: spec-driven',
+      '',
+    ])
+  })
+
+  it('lists what each change has on record with --detail, and nothing more without it', async () => {
+    const port = memoryPort()
+    port.seed('s1', {
+      'changes/demo/.meta.yaml': RECORDED_META + CLAIM,
+      'changes/demo/tasks.md': OPEN_TASKS,
+      'changes/demo/verify.md': VERIFY_TICKET,
+      'changes/plain/.meta.yaml': PLAIN_META,
+      'config.yaml': CONFIG,
+    })
+    const run = dispatcher(createHost({ store: port.store }))
+    type Listed = { changes: Record<string, any>[] }
+
+    const detailed = (await run(['list', '--json', '--detail', '--sort', 'name'])) as Listed
+    const [demo, plain] = detailed.changes
+    expect(demo.review).toEqual({
+      state: 'stamped',
+      stampedAt: '2026-08-01',
+      stampedBy: 'Rev <r@example.com>',
+      stampedWith: 'claude',
+      rounds: 0,
+      tasksTotal: 1,
+    })
+    expect(demo.verify).toEqual({ state: 'inProgress' })
+    expect(demo.claimed).toEqual({ by: 'Alice', byId: 'u_1', at: '2026-11-18T10:00:00+00:00' })
+    expect(demo.branch).toBe('speclink/demo')
+    expect(demo.landed).toEqual({ commit: COMMIT })
+    expect(Object.keys(demo).every(isCamel)).toBe(true)
+    for (const key of DETAIL_KEYS) expect(plain, key).not.toHaveProperty(key)
+
+    const listed = (await run(['list', '--json', '--sort', 'name'])) as Listed
+    for (const change of listed.changes) for (const key of DETAIL_KEYS) expect(change, key).not.toHaveProperty(key)
+    // The fields that were there before are the same with and without --detail.
+    for (const [i, change] of listed.changes.entries()) expect(detailed.changes[i]).toMatchObject(change)
+  })
+
+  it('lists the same detail as an engine on a local folder with the same documents', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-host-detail-')))
+    cleanup.push(() => rmSync(root, { recursive: true, force: true }))
+    const docs: Record<string, string> = {
+      'changes/demo/.meta.yaml': RECORDED_META,
+      'changes/demo/tasks.md': OPEN_TASKS,
+      'changes/demo/verify.md': VERIFY_TICKET,
+      'changes/plain/.meta.yaml': PLAIN_META,
+    }
+    for (const [key, content] of Object.entries(docs)) {
+      mkdirSync(join(root, 'speclink', key, '..'), { recursive: true })
+      writeFileSync(join(root, 'speclink', key), content)
+    }
+    const port = memoryPort()
+    port.seed('s1', { ...docs, 'config.yaml': CONFIG })
+    const argv = ['list', '--json', '--detail', '--sort', 'name']
+    // The last-modified time is the store's own: a file time on one side.
+    const changes = (listed: unknown) =>
+      (listed as { changes: Record<string, unknown>[] }).changes.map(({ modifiedAt: _, ...rest }) => rest)
+
+    const viaEngine = await createEngine({ store: { type: 'fs', root } }).dispatch(argv)
+    const viaHost = await createHost({ store: port.store }).dispatch({ identity: ALICE, scope: 's1', argv })
+
+    expect(changes(viaHost)).toEqual(changes(viaEngine))
+    expect(changes(viaHost)[0]).toMatchObject({ branch: 'speclink/demo', landed: { commit: COMMIT } })
+  })
+
+  it('refuses --detail without --json or with --specs as invalid_argv, with no store call', async () => {
+    const port = portWithDemo()
+    const run = dispatcher(createHost({ store: port.store }))
+    const before = totalCalls(port)
+
+    const alone = await rejection(run(['list', '--detail']))
+    expect(alone.code).toBe('invalid_argv')
+    expect(alone.message).toContain('--json')
+    const withSpecs = await rejection(run(['list', '--specs', '--json', '--detail']))
+    expect(withSpecs.code).toBe('invalid_argv')
+    expect(withSpecs.message).toContain('--specs')
+    expect(withSpecs.message).toContain('--detail')
+    expect(totalCalls(port)).toBe(before)
+  })
+})

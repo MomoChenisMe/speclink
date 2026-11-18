@@ -25,7 +25,7 @@
 相容性影響：
 
 - CLI 在本機專案與遠端專案的人眼輸出全部不變。`createEngine`（本機資料夾）的 `dispatch` 輸出也不變。
-- `host.dispatch` 對三個動詞回傳的 `{ output }` 文字少了路徑行，這是刻意的變更。它們的 `--json` 形式不變。
+- `host.dispatch` 對三個動詞的人眼輸出少了路徑行，這是刻意的變更。它們的 `--json` 形式不變。實作時查到：Node SDK 的 `dispatch` 對有 JSON 形式的動詞一律回傳結構化的值，所以實際看得到差別的是 `new change` 的 `{ output }`；`discuss new` 與 `discuss promote` 回傳的是帶 `path` 的物件，本來就沒有文字行。`speclink-verbs` 的內嵌入口仍然三個動詞都處理，給直接用人眼文字的 Rust 宿主。
 - `list --json` 的預設輸出不變，review-station 與 verify-station 固定欄位的兩條需求改寫成「不帶 `--detail` 時」，原本的保證完整保留。
 - 引擎的 `list` 命令多一個參數，命令名稱與參數的 golden 同批更新。
 
@@ -53,16 +53,19 @@
 ## Impact
 
 - Affected specs: verb-contract、review-station、verify-station、node-sdk
-- Affected crates: speclink-core（清單命令與每一項的資料）、speclink-verbs（解析、輸出、Agent 工具說明）、speclink-node（宿主的輸出入口）、speclink-cli（遠端分支）；speclink-host、speclink-protocol、apps/desktop 的程式碼不改
+- Affected crates: speclink-core（清單命令與每一項的資料）、speclink-verbs（解析、輸出、Agent 工具說明）、speclink-node（宿主的輸出入口）、speclink-cli（遠端分支）；speclink-host 只在建立 `List` 命令的地方補上 `detail: false`（命令多了一個欄位，行為不變）；speclink-protocol、apps/desktop 的程式碼不改
 - Affected code:
   - New: (none)
   - Modified:
     - crates/engine/speclink-core/src/command/mod.rs
-    - crates/engine/speclink-core/src/command/describe.rs
+    - crates/engine/speclink-core/src/command/fields.rs
+    - crates/engine/speclink-core/src/command/tests.rs
     - crates/engine/speclink-core/src/lifecycle/listing.rs
+    - crates/engine/speclink-core/src/quality/station.rs
+    - crates/engine/speclink-core/tests/it/command_describe.rs
     - crates/engine/speclink-core/tests/golden/command-describe.json
+    - crates/adapters/speclink-verbs/src/families/query.rs
     - crates/adapters/speclink-verbs/src/parse.rs
-    - crates/adapters/speclink-verbs/src/inputs.rs
     - crates/adapters/speclink-verbs/src/tool.rs
     - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/adapters/speclink-verbs/src/render/new.rs
@@ -74,8 +77,16 @@
     - crates/adapters/speclink-node/__test__/host.spec.ts
     - crates/adapters/speclink-node/__test__/agent-tool.spec.ts
     - crates/adapters/speclink-cli/src/verbs/query.rs
+    - crates/adapters/speclink-cli/src/verbs/discuss.rs
+    - crates/adapters/speclink-cli/src/verbs/new.rs
     - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    - crates/host/speclink-host/src/http/routes.rs
+    - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/tests/port_cost.rs
+    - crates/host/speclink-host/tests/port_dual_path.rs
+    - crates/host/speclink-host/tests/free_fields.rs
+    - crates/host/speclink-host/tests/kit.rs
+    - crates/host/speclink-host/tests/common/mod.rs
     - docs/verb-contract.md
     - docs/verb-contract.zh-TW.md
     - docs/sdk-node.md

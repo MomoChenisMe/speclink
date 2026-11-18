@@ -85,7 +85,7 @@ fn new_change(name: &str, fields: &[(&str, &str)]) -> Command {
 }
 
 fn list_changes() -> Command {
-    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default() }
+    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false }
 }
 
 fn fields_of(door: &Door, change: &str) -> Fields {

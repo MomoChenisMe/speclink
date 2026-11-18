@@ -339,6 +339,8 @@ const result = await host.dispatch({
 - **身分與範圍由你的程式給。** 它們不在 `argv` 裡，模型改不到。空的身分或範圍會在呼叫儲存之前以 `invalid_argv` 拒絕。
 - **動詞、`stdin` 的規則、回傳值與錯誤**和[在本機專案上執行動詞](#local-project)的 `dispatch` 相同。
 - **`agentTool`** 是現成的工具定義，不用自己寫給模型看的說明：`name` 是 `speclink`，`description` 列出全部可用的動詞（和解析用的是同一份定義；需要 checkout 的動詞不在裡面），`inputSchema` 只有 `argv` 與選填的 `stdin`。
+- **回傳的文字不會指向本機路徑。** 文件存在你的儲存裡，不在資料夾裡。所以經 `host.dispatch` 執行 `new change` 時，`{ output }` 的文字沒有 `Path:` 那一行。`createEngine` 開本機專案時照舊會印那一行。
+- **結構化結果裡的 `path` 是儲存裡的鍵，不是檔案。** `discuss new` 與 `discuss promote` 回傳的是結構化的值，沒有文字；`new artifact --json` 也一樣。這些結果仍然帶著 `path` 這個鍵。要讀文件，請呼叫 `artifact cat`、`show` 或 `discuss show`。`agentTool` 的 `description` 也對模型說了同一件事，模型就不會去開那個路徑。
 
 ```js
 const { agentTool } = require('@speclink/engine')
@@ -356,6 +358,16 @@ const speclinkTool = {
   },
 }
 ```
+
+**總覽畫面只要一次呼叫。** `list --json --detail` 回傳每個變更和它記下的狀態：兩個品質關卡、認領、分支與落地。不必對每個變更各呼叫一次 `show`，也不必在自己的程序裡呼叫 HTTP 入口：
+
+```js
+const { changes } = await host.dispatch({ identity: session.user, scope: session.scope, argv: ['list', '--json', '--detail'] })
+const reviewed = changes.filter((change) => change.review?.state === 'stamped')
+const mine = changes.filter((change) => change.claimed?.byId === session.user.id)
+```
+
+每個鍵都只在變更有那一筆記錄時出現。鍵的清單與規則見 [`speclink list --json --detail`](verb-contract.zh-TW.md#list-detail)。
 
 **自由欄位**是宿主自訂的鍵值，引擎只存不解讀，例如這個變更是從哪張工單來的。`fields` 只在動詞建立變更或討論時寫入（`new change`、`discuss new`、`discuss promote`），和建立在同一次提交裡；其他動詞會忽略它，所以每次呼叫都帶同一組也沒關係。它優先於 `--field` 給的同名欄位，`beforeCommand` 可以在 `params.fields` 看到將要寫入的欄位並檢查。規則：鍵由 `a-z`、`0-9`、`_`、`.`、`-` 組成並以字母開頭，最長 64 個字元；值是單行、最多 1024 位元組；最多 32 個鍵。不合規則時以 `invalid_argv` 拒絕，什麼都不寫。不要把密鑰放進欄位：讀得到這個變更的人都看得到。
 
@@ -547,7 +559,7 @@ async function main() {
   }
   const session = { user: ALICE, scope: 'acme/web' }
   await speclinkTool.handler({ argv: ['new', 'change', 'add-auth'] }, session)
-  const listed = await speclinkTool.handler({ argv: ['list', '--json'] }, session)
+  const listed = await speclinkTool.handler({ argv: ['list', '--json', '--detail'] }, session)
   console.log(listed.changes.map((change) => change.name)) // [ 'add-auth' ]
 
   // 給你的 Agent 的技能文字：動詞寫成工具呼叫，規格不在 checkout 裡。

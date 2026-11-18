@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use speclink_core::command::{NewArtifactOutcome, NewChangeOutcome};
 
-use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
+use super::{JsonForm, Paint, PathLines, RenderOptions, Rendered, Text};
 
 /// The optional lines of `new change`, by name. `path` is absent in remote
 /// mode (a store-side directory means nothing on the caller's machine);
@@ -37,17 +37,17 @@ pub fn new_change(name: &str, lines: NewChangeLines<'_>, options: RenderOptions)
 }
 
 /// `new change`, from the engine's result. The discussion's name is not in
-/// the result: it comes from the call.
+/// the result: it comes from the call. `paths` says whether the new change's
+/// directory is a location the reader has.
 pub fn change_created(
     o: &NewChangeOutcome,
     from_discussion: Option<&str>,
+    paths: PathLines,
     options: RenderOptions,
 ) -> Rendered {
-    new_change(
-        &o.name,
-        NewChangeLines { path: Some(&o.dir.to_string_lossy()), schema: Some(&o.schema), from_discussion },
-        options,
-    )
+    let dir = o.dir.to_string_lossy();
+    let path = (paths == PathLines::Printed).then_some(&*dir);
+    new_change(&o.name, NewChangeLines { path, schema: Some(&o.schema), from_discussion }, options)
 }
 
 /// What `new artifact` reports. `artifact_type` is the word the caller gave

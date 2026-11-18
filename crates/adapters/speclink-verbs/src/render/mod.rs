@@ -162,16 +162,85 @@ pub fn no_active_changes() -> Rendered {
 /// The single exit: one verb's result as its whole output.
 ///
 /// `verb` gives the facts only argv holds (the `--on` names of
-/// `change depends`, `--archived` of `discuss list`, …). The match on the
-/// result has no wildcard arm: a new result type does not compile until it
-/// has an output here.
+/// `change depends`, `--archived` of `discuss list`, …).
 ///
 /// The error case is a result that both entry points report as a failure
 /// with no output: a task already in the asked state.
+///
+/// This entry is for a caller with a local folder (the CLI, an engine on a
+/// project folder): a `Path:` line names a real location. A host that embeds
+/// the engine calls [`render_embedded`]. The two have the same signature, and
+/// a caller that takes the wrong one gets or loses three path lines and
+/// nothing else: no JSON form changes, and nothing the caller is allowed to
+/// read changes.
+///
+/// Sharp-edges notes on `list --json --detail`, whose items this entry
+/// serializes as the engine filled them:
+/// - The flag's two checks (it needs `--json`; it does not go with `--specs`)
+///   are in the verb definition every entry point parses with, so the CLI and
+///   a host refuse the same argv with the same text, before any store call.
+/// - Without the flag no detail field is set, and none is serialized: the
+///   frozen output is the default, not something a caller must ask for.
+/// - A change whose metadata does not read is listed with `metaError` and no
+///   detail key. It never fails the list.
+/// - A missing key means "no record here", and against an older server "the
+///   server did not say". It is never a statement that a station did not run.
+/// - `claimed.byId` is the identifier the host gave for the holder. Whoever
+///   can list the scope sees it, as with `show --json`; the user documents say
+///   so. The list adds no read the caller could not already make.
 pub fn render(
     verb: &ParsedVerb,
     outcome: &CommandOutcome,
     options: RenderOptions,
+) -> Result<Rendered, CommandError> {
+    render_with(verb, outcome, options, PathLines::Printed)
+}
+
+/// [`render`] for a caller whose documents are in a store and not in a local
+/// folder: a host that embeds the engine. The human output of `new change`,
+/// `discuss new` and `discuss promote` leaves out the `Path:` line (and, for
+/// `discuss promote`, the propose hint that goes with it), because the path
+/// names no file the reader can open. Every other verb, and the JSON form of
+/// every verb (its `path` key included), is the one of [`render`].
+///
+/// Sharp-edges notes:
+/// - The difference from [`render`] is those three human outputs only. The
+///   tests compare the two entries over every result type, in the human form,
+///   the colored form and the JSON form.
+/// - The JSON `path` stays, so a caller that reads it keeps working; it is the
+///   document's key in the store. The Agent tool's description tells the model
+///   that it is not a file, and names the verbs that read a document.
+/// - The choice is a separate entry and not a field of [`RenderOptions`]: a
+///   field would default to "print the path" in every literal that omits
+///   thinking about it, and only one kind of caller needs the other answer.
+pub fn render_embedded(
+    verb: &ParsedVerb,
+    outcome: &CommandOutcome,
+    options: RenderOptions,
+) -> Result<Rendered, CommandError> {
+    render_with(verb, outcome, options, PathLines::Omitted)
+}
+
+/// Whether the three verbs whose human output names a path print that line:
+/// `new change`, `discuss new` and `discuss promote`. It never changes a JSON
+/// form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PathLines {
+    /// The caller has a local folder: the path is a real location.
+    Printed,
+    /// The documents are in a store: the path names no file the reader can
+    /// open, so the line is left out.
+    Omitted,
+}
+
+/// The one definition behind the two entries. The match on the result has no
+/// wildcard arm: a new result type does not compile until it has an output
+/// here.
+fn render_with(
+    verb: &ParsedVerb,
+    outcome: &CommandOutcome,
+    options: RenderOptions,
+    paths: PathLines,
 ) -> Result<Rendered, CommandError> {
     use progress::TaskFlip;
     use speclink_core::station::{REVIEW, VERIFY};
@@ -208,7 +277,7 @@ pub fn render(
                 Some(NewCommands::Change(c)) => c.from_discussion.as_deref(),
                 _ => None,
             };
-            new::change_created(o, from_discussion, options)
+            new::change_created(o, from_discussion, paths, options)
         }
         O::NewArtifact(o) => {
             // The output names the artifact with the word the caller gave.
@@ -240,7 +309,7 @@ pub fn render(
         O::ChangeFieldsEdit(o) => fields::edited(fields::FieldKind::Change, o, options),
         O::Archive(o) => lifecycle::archive(o, options),
         O::Discard(o) => lifecycle::discard(&o.change_name, &o.unlinked_discussions, options),
-        O::DiscussNew(info) => discuss::new(info, options),
+        O::DiscussNew(info) => discuss::new(info, paths, options),
         O::DiscussContext(o) => discuss::context(&o.slug, options),
         O::DiscussAddRound(o) => discuss::round_recorded(o, options),
         // The conclusion landed even when the closing step failed, so this is
@@ -253,7 +322,7 @@ pub fn render(
             },
             options,
         ),
-        O::DiscussPromote(o) => discuss::promoted(o, options),
+        O::DiscussPromote(o) => discuss::promoted(o, paths, options),
         O::DiscussLink(o) => discuss::bind(discuss::DiscussBind::Link, &o.slug, &o.change, options),
         O::DiscussSeal(o) => discuss::bind(discuss::DiscussBind::Seal, &o.slug, &o.change, options),
         O::DiscussArchive(o) => discuss::archived(o, options),
@@ -820,6 +889,143 @@ mod tests {
             let human_out = render(&parsed(argv), &outcome, HUMAN).unwrap();
             assert_eq!(human_out.json.as_ref(), Some(value), "{argv:?}");
         }
+    }
+
+    // --- the embedded entry (verb-output-for-embedded D4) ---
+
+    /// The three result types whose human output has a path line: `new
+    /// change`, `discuss new` and `discuss promote`.
+    fn has_path_line(outcome: &CommandOutcome) -> bool {
+        matches!(
+            outcome,
+            CommandOutcome::NewChange(_) | CommandOutcome::DiscussNew(_) | CommandOutcome::DiscussPromote(_)
+        )
+    }
+
+    fn row(argv: &[&str]) -> (ParsedVerb, CommandOutcome) {
+        let (_, outcome, _, _) =
+            rows().into_iter().find(|(row, ..)| *row == argv).unwrap_or_else(|| panic!("no row {argv:?}"));
+        (parsed(argv), outcome)
+    }
+
+    #[test]
+    fn the_embedded_entry_prints_no_path_line_for_the_three_verbs() {
+        // spec verb-contract「內嵌宿主的人眼輸出不印路徑行」Example「三個動詞在兩種執行
+        // 方式的輸出」：其餘的行與 `render` 的逐位元相同。
+        let embedded = |argv: &[&str]| {
+            let (verb, outcome) = row(argv);
+            render_embedded(&verb, &outcome, HUMAN).unwrap_or_else(|e| panic!("{argv:?}: {e}"))
+        };
+        assert_eq!(
+            embedded(&["new", "change", "c", "--from-discussion", "t"]).stdout,
+            "✓ Created change: c\n  Schema: spec-driven\n  From discussion: t\n"
+        );
+        assert_eq!(embedded(&["discuss", "new", "T"]).stdout, "✓ Created discussion: t\n  Topic: T\n");
+        // The Path line and the propose hint go together.
+        assert_eq!(embedded(&["discuss", "promote", "t"]).stdout, "✓ Promoted discussion 't' → change 'c'\n");
+
+        // The rows of the spec's table, with the table's own values.
+        let table: [(&[&str], CommandOutcome, &str); 3] = [
+            (
+                &["new", "change", "demo"],
+                CommandOutcome::NewChange(cmd::NewChangeOutcome {
+                    name: s("demo"),
+                    dir: "speclink/changes/demo".into(),
+                    schema: s("spec-driven"),
+                }),
+                "✓ Created change: demo\n  Schema: spec-driven\n",
+            ),
+            (
+                &["discuss", "new", "Topic", "--slug", "topic"],
+                CommandOutcome::DiscussNew(speclink_core::discuss::DiscussionInfo {
+                    slug: s("topic"),
+                    topic: s("Topic"),
+                    path: s("speclink/discussions/topic.md"),
+                    ..info()
+                }),
+                "✓ Created discussion: topic\n  Topic: Topic\n",
+            ),
+            (
+                &["discuss", "promote", "topic"],
+                CommandOutcome::DiscussPromote(cmd::DiscussPromoteOutcome {
+                    slug: s("topic"),
+                    change: s("topic"),
+                    path: "speclink/changes/topic".into(),
+                }),
+                "✓ Promoted discussion 'topic' → change 'topic'\n",
+            ),
+        ];
+        for (argv, outcome, stdout) in table {
+            let verb = parsed(argv);
+            assert_eq!(render_embedded(&verb, &outcome, HUMAN).unwrap().stdout, stdout, "{argv:?}");
+            // The local column of the same row: the same lines plus the path.
+            let local = render(&verb, &outcome, HUMAN).unwrap().stdout;
+            assert!(local.starts_with(stdout.lines().next().unwrap()), "{argv:?}: {local}");
+            assert!(local.contains("\n  Path: speclink/"), "{argv:?}: {local}");
+        }
+        for argv in [&["new", "change", "c", "--from-discussion", "t"][..], &["discuss", "new", "T"], &["discuss", "promote", "t"]] {
+            let out = embedded(argv);
+            assert!(!out.stdout.lines().any(|line| line.trim_start().starts_with("Path:")), "{argv:?}: {}", out.stdout);
+            assert_eq!(out.stderr, "", "{argv:?}");
+        }
+    }
+
+    #[test]
+    fn the_embedded_entry_keeps_every_json_form_and_its_path_key() {
+        for (argv, outcome, has_json, _) in rows() {
+            let verb = parsed(argv);
+            let embedded = render_embedded(&verb, &outcome, JSON).unwrap_or_else(|e| panic!("{argv:?}: {e}"));
+            let plain = render(&verb, &outcome, JSON).unwrap();
+            if has_json {
+                assert_eq!(embedded, plain, "{argv:?}");
+            }
+            // The structured value is the same when the human form was asked for.
+            assert_eq!(
+                render_embedded(&verb, &outcome, HUMAN).unwrap().json,
+                render(&verb, &outcome, HUMAN).unwrap().json,
+                "{argv:?}"
+            );
+        }
+        let json_of = |argv: &[&str]| {
+            let (verb, outcome) = row(argv);
+            render_embedded(&verb, &outcome, JSON).unwrap().json.expect("a JSON form")
+        };
+        assert_eq!(json_of(&["discuss", "new", "T"])["path"], "/p/t.md");
+        assert_eq!(json_of(&["discuss", "promote", "t"])["path"], "/p/c");
+    }
+
+    #[test]
+    fn the_embedded_entry_changes_no_other_verb() {
+        let mut same = 0;
+        for (argv, outcome, _, _) in rows() {
+            if has_path_line(&outcome) {
+                continue;
+            }
+            let verb = parsed(argv);
+            for options in [HUMAN, JSON, RenderOptions { json: false, color: true }] {
+                assert_eq!(
+                    render_embedded(&verb, &outcome, options).unwrap(),
+                    render(&verb, &outcome, options).unwrap(),
+                    "{argv:?} {options:?}"
+                );
+            }
+            same += 1;
+        }
+        assert_eq!(same, RESULT_TYPES - 3, "every result type but the three with a path line");
+        // The two samples the task names, by their own argv.
+        for argv in [&["list"][..], &["archive", "c"]] {
+            let (verb, outcome) = row(argv);
+            assert_eq!(render_embedded(&verb, &outcome, HUMAN).unwrap(), render(&verb, &outcome, HUMAN).unwrap());
+        }
+    }
+
+    #[test]
+    fn the_embedded_entry_reports_the_same_errors() {
+        let (verb, outcome) = (parsed(&["task", "done", "1"]), CommandOutcome::TaskDone(flipped(true)));
+        assert_eq!(
+            render_embedded(&verb, &outcome, HUMAN).unwrap_err().message,
+            render(&verb, &outcome, HUMAN).unwrap_err().message
+        );
     }
 
     #[test]

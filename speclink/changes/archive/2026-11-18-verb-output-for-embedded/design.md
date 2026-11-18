@@ -46,6 +46,14 @@ Agent 工具的說明由 `speclink-verbs` 的 `tool.rs` 產生。
 
 `--detail` 的檢查（要有 `--json`、不能和 `--specs` 並用）放在共用的動詞解析（`speclink-verbs`），所以 CLI 與宿主套件給出同一個用法錯誤。
 
+實作記錄：
+
+- 兩條檢查寫在 `list` 的旗標定義上（`families/query.rs` 的 `ListArgs`，clap 的 `requires` 與 `conflicts_with`），`parse.rs` 與 `inputs.rs` 的程式不用改；錯誤訊息是 clap 的原文。
+- 引擎的組裝函式是 `changes_json_detail(store, changes, worktrees, detail)`；既有的 `changes_json_with` 簽名不變、固定傳 `false`，所以 apps/desktop 的呼叫端不用改。
+- 關卡狀態的共用函式抽成 `station::recorded_status`，`show` 與清單都呼叫它。「這個關卡有沒有記錄」的判斷是 `StationStatus::is_recorded`，`show --json` 與清單用同一個。認領記錄 `ClaimRecord` 自己會序列化，`show --json` 與清單因此輸出同一個物件。
+- 命令的參數由序列化自動產生，`command/describe.rs` 不用改；golden 的樣本在 `tests/it/command_describe.rs`。
+- `Command::List` 多一個欄位，所有手寫這個命令的地方（含 speclink-host 的兩條路由與測試）都補上 `detail: false`。
+
 替代方案：讓宿主套件在 `List` 的結果之外補欄位（像 HTTP 路由那樣）。否決：本機專案與 `createEngine` 不經過宿主套件，會變成兩份實作。
 
 ### D2 連到遠端的 CLI 用既有的清單回應組出相同的鍵
@@ -58,6 +66,8 @@ Agent 工具的說明由 `speclink-verbs` 的 `tool.rs` 產生。
 
 不帶 `--detail` 時這五個欄位不轉，輸出不變。回應缺欄位（舊版 Server）時對應的鍵不出現。不新增請求。
 
+實作記錄：回應裡帶 `metaError` 的變更不輸出這五個鍵，不論回應另外帶了什麼欄位。Server 是另一支程式，所以「metadata 損壞的變更不帶新鍵」在用戶端這一側也檢查一次。
+
 `speclink-cli` 的 `remote_verb_parity` 測試加一組對照：同樣的資料在本機與遠端的 `list --json --detail` 輸出相同。
 
 ### D3 呼叫儲存的次數：不帶 detail 時不變
@@ -67,6 +77,8 @@ Agent 工具的說明由 `speclink-verbs` 的 `tool.rs` 產生。
 - 不帶 `--detail`：既有的斷言一個都不改。
 - 帶 `--detail`：關卡狀態需要知道兩張工單在不在。實作時把工單的讀取併進每個變更既有的讀取批次（一次讀取帶多個鍵），並在 `port_cost` 新增一個斷言記下帶 `--detail` 時的呼叫數，讓之後的改動看得到成本的變化。帶 `--detail` 的呼叫數比不帶時多是可以接受的；這是使用者明確要求更多資料的代價。
 
+實作結果比上面的預期好：清單本來就會列一次 `changes/` 底下的鍵，「工單在不在」直接由那份列表回答，不用讀工單；認領、分支與落地在清單本來就會讀的 metadata 裡。所以帶 `--detail` 的呼叫數與讀取的鍵和不帶時完全相同。`port_cost` 的新測試 `a_detailed_list_costs_the_calls_of_a_plain_list` 斷言這件事（列表呼叫相同、讀取的鍵相同、沒有任何一張工單被讀）。
+
 ### D4 內嵌用的輸出入口不給路徑行
 
 `speclink-verbs` 的統一入口拆成一個內部函式加兩個公開的入口：
@@ -75,6 +87,13 @@ Agent 工具的說明由 `speclink-verbs` 的 `tool.rs` 產生。
 - 新的 `render_embedded(parsed, outcome, options)`：三個動詞的人眼輸出不帶路徑。作法是在組輸出資料時把路徑設成「沒有」：`new change` 沿用既有的 `NewChangeLines { path: None, .. }`；`discuss promote` 沿用既有的「沒有路徑就不印 Path 與提示行」；`discuss new` 的輸出資料把路徑改成選填，沒有時不印那一行。
 
 `speclink-node` 的 `createHost` 路徑（`dispatch` 與變更 hook-read-function 引入的讀取）改呼叫 `render_embedded`；`createEngine` 的路徑繼續呼叫 `render`。JSON 形式兩個入口相同。
+
+實作記錄：
+
+- 三個動詞各自的輸出函式（`new::change_created`、`discuss::new`、`discuss::promoted`）都多收一個 `PathLines`（`Printed` 或 `Omitted`），入口只把它傳下去，自己不分支。CLI 本機路徑的三個呼叫端（`speclink-cli` 的 `verbs/new.rs` 與 `verbs/discuss.rs`）傳 `Printed`。
+- `discuss promote` 既有的「沒有路徑」資料形狀會連 JSON 的 `path` 一起拿掉，所以 `promoted` 在 `Omitted` 時 JSON 仍用帶路徑的資料，只有人眼輸出用不帶路徑的。
+- `discuss new` 的 `NewDiscussionLines.path` 改成選填，CLI 遠端分支的呼叫端（`speclink-cli` 的 `verbs/discuss.rs`）跟著包成有值。
+- Node SDK 的 `dispatch` 對有 JSON 形式的動詞一律回傳結構化的值，所以在 Node 看得到差別的是 `new change` 的 `{ output }`；`discuss new` 與 `discuss promote` 回傳帶 `path` 的物件，本來就沒有文字行。
 
 不在 `RenderOptions` 加欄位，因為它有二十幾處手寫的字面值，加欄位要全部改一遍，而需要這個差別的只有一個呼叫端。
 

@@ -68,6 +68,16 @@ describe('agentTool', () => {
     expect(agentTool.description).toContain('--json')
   })
 
+  // node-sdk「Agent 工具的說明指出 path 是儲存的鍵」
+  it('tells the model that a path is a key in the store, and names the verbs that read', () => {
+    const [usage] = agentTool.description.split('\nVerbs:\n')
+    expect(usage).toContain(
+      'A "path" in a result is the document\'s key in the store, not a file you can open. To read a document, use "artifact cat", "show" or "discuss show".',
+    )
+    const listed = verbLines().map(words)
+    for (const verb of ['artifact cat', 'show', 'discuss show']) expect(listed).toContain(verb)
+  })
+
   it('lists only verbs host.dispatch can parse, and none that needs a checkout', async () => {
     const usages = verbLines()
     const listed = usages.map(words)

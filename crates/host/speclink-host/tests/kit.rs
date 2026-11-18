@@ -88,7 +88,7 @@ fn new_change(name: &str) -> Command {
 }
 
 fn list_changes() -> Command {
-    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default() }
+    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false }
 }
 
 fn archive(carry_review: bool) -> Command {
