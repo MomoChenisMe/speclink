@@ -1,0 +1,152 @@
+{
+  "version": 2,
+  "change": "hook-read-function",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗的測試（D2 讀取類命令的判定是一張沒有萬用分支的對照）：把 crates/host/speclink-host/tests/http_door.rs 的 `every_command` 搬到 crates/host/speclink-host/tests/common/mod.rs 讓測試檔共用；在 crates/host/speclink-host/tests/kit.rs 新增測試，對 `every_command` 裡每一個被 `read_only::is_read` 判為讀取類的命令，在有資料的記憶體儲存上經 `HostKit::read` 執行，斷言儲存的提交次數是零；另一個測試斷言設計 D2 列出的十七種讀取類命令都被判為讀取類，而 `NewChange`、`TaskDone`、`Archive`、`Claim` 被判為寫入類。驗證：`cargo test -p speclink-host --test kit` 這時因 `read_only` 與 `HostKit::read` 不存在而編譯失敗。",
+      "files": [
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/kit.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 D2：新增 crates/host/speclink-host/src/read_only.rs 的 `is_read`，對每一種引擎命令列出結果、不寫萬用分支，並在 crates/host/speclink-host/src/lib.rs 掛上模組。驗證：`cargo build -p speclink-host` 通過；暫時在 match 裡拿掉一個分支會編譯失敗（確認後還原）。",
+      "files": [
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/read_only.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作 D1 讀取的唯一實作是宿主套件的 HostKit::read：在 crates/host/speclink-host/src/kit.rs 新增 `HostKit::read(caller, cmd)`，先經 `is_read` 判定，不是讀取類就回 `invalid_argv`（訊息 `read accepts only commands that write nothing; '<命令名稱>' is not one of them`），是的話去掉本機事實後交給既有的執行路徑，不呼叫 `ask` 與 `watch`。驗證：1.1 的兩個測試通過。",
+      "files": [
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-host/tests/free_fields.rs",
+        "crates/host/speclink-host/tests/station_wire.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 先寫失敗的測試，涵蓋需求「beforeCommand 的讀取函式」的七個情境，寫在 crates/adapters/speclink-node/__test__/host.spec.ts 與 crates/adapters/speclink-node/__test__/handle-request.spec.ts：用 read 讀出狀態後拒絕封存（code `refused`、commit 沒有被呼叫、beforeCommand 正好被呼叫一次）；read 的值與 host.dispatch 對同一個 argv 的值深度相等；read 拒絕 `['new', 'change', 'other']`（code `invalid_argv`、message 含 `new change`、儲存的三個函式沒有因此被呼叫）；沒有接住 read 的錯誤時 dispatch 以 `internal` 結束且訊息指出 beforeCommand；掛鉤結束後呼叫存下來的 read 得到 `invalid_argv` 且儲存沒有被呼叫；只宣告一個參數的掛鉤照常運作；handleRequest 進來的封存請求在掛鉤用 read 拒絕時得到拒絕的回應。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`，新增的測試失敗（第二個參數是 undefined）。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts",
+        "crates/adapters/speclink-node/src/host.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 實作 D4 Node 的 read 由 index.js 組出來，原生端多一個不對外的方法：crates/adapters/speclink-node/src/host.rs 的 `Host` 新增 `read(id, displayName, scope, argv)`，在背景執行緒解析 argv、經 `HostKit::read` 執行、用和 `dispatch` 相同的輸出函式與信封回傳，非讀取類的動詞回 `invalid_argv`（訊息 `read accepts only verbs that write nothing; '<動詞>' is not one of them`）；該檔的掛鉤轉接閉包配合 2.3 多收一個不使用的參數。crates/adapters/speclink-node/index.js 的 `createHost` 呼叫使用者的 beforeCommand 時傳入 `{ read }`，身分與範圍取自這次的 info，並在掛鉤的回傳值或 Promise 完成後關上開關；對外的 `Host` 物件不多出 read。驗證：build 後 `npm --prefix crates/adapters/speclink-node test` 全部通過，包含 3.1 的七個情境。",
+      "files": [
+        "crates/adapters/speclink-node/index.js"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 更新型別宣告：crates/adapters/speclink-node/index.d.ts 新增 `BeforeCommandTools`（含 `read(argv: string[]): Promise<unknown>`），`beforeCommand` 的簽名加上第二個參數，`Host` 介面不變；`HostHooks` 的說明依 D6 改寫，不再出現用在掛鉤上的「never finish」。驗證：`npm --prefix crates/adapters/speclink-node test` 通過（測試檔以 TypeScript 編譯，會檢查簽名）；在 index.d.ts 搜尋 `never finish`，只剩 `StorePort` 說明裡的那一處。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 對這次新增的介面套用 sharp-edges 稽核清單（用 `speclink instructions --skill audit` 取得），逐項確認並把結論寫在 crates/host/speclink-host/src/read_only.rs 的模組註解：讀取器沒有任何路徑能呼叫儲存的提交；掛鉤不能經讀取器換身分或範圍（`Reader` 沒有公開建構方式、JS 的 read 不接受身分與範圍）；read 的 argv 經過和 dispatch 相同的解析，沒有另一套解析；掛鉤結束後 read 失效；D5 讀取器讀到的不是外層命令的那一份這個限制已寫進文件。驗證：`cargo test -p speclink-host` 與 `npm --prefix crates/adapters/speclink-node test` 全部通過，稽核結論在模組註解中逐項可讀。",
+      "files": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7PN309E7546632M1NWD3FHS",
+      "taskDesc": "1.1 先寫失敗的測試（D2 讀取類命令的判定是一張沒有萬用分支的對照）：把 crates/host/speclink-host/tests/http_door.rs 的 `every_command` 搬到 crates/host/speclink-host/tests/common/mod.rs 讓測試檔共用；在 crates/host/speclink-host/tests/kit.rs 新增測試，對 `every_command` 裡每一個被 `read_only::is_read` 判為讀取類的命令，在有資料的記憶體儲存上經 `HostKit::read` 執行，斷言儲存的提交次數是零；另一個測試斷言設計 D2 列出的十七種讀取類命令都被判為讀取類，而 `NewChange`、`TaskDone`、`Archive`、`Claim` 被判為寫入類。驗證：`cargo test -p speclink-host --test kit` 這時因 `read_only` 與 `HostKit::read` 不存在而編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/common/mod.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-host/tests/kit.rs"
+      ],
+      "recordedAt": "2026-11-18T06:46:33Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309E34E83PB0GCREAN4M",
+      "taskDesc": "1.2 實作 D2：新增 crates/host/speclink-host/src/read_only.rs 的 `is_read`，對每一種引擎命令列出結果、不寫萬用分支，並在 crates/host/speclink-host/src/lib.rs 掛上模組。驗證：`cargo build -p speclink-host` 通過；暫時在 match 裡拿掉一個分支會編譯失敗（確認後還原）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/lib.rs",
+        "crates/host/speclink-host/src/read_only.rs"
+      ],
+      "recordedAt": "2026-11-18T06:47:15Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309EWEVY71F9TA95BVD7",
+      "taskDesc": "2.2 實作 D1 讀取的唯一實作是宿主套件的 HostKit::read：在 crates/host/speclink-host/src/kit.rs 新增 `HostKit::read(caller, cmd)`，先經 `is_read` 判定，不是讀取類就回 `invalid_argv`（訊息 `read accepts only commands that write nothing; '<命令名稱>' is not one of them`），是的話去掉本機事實後交給既有的執行路徑，不呼叫 `ask` 與 `watch`。驗證：1.1 的兩個測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/kit.rs",
+        "crates/host/speclink-host/tests/free_fields.rs",
+        "crates/host/speclink-host/tests/station_wire.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ],
+      "recordedAt": "2026-11-18T06:49:50Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309E26Z07Q567SPPD59P",
+      "taskDesc": "3.1 先寫失敗的測試，涵蓋需求「beforeCommand 的讀取函式」的七個情境，寫在 crates/adapters/speclink-node/__test__/host.spec.ts 與 crates/adapters/speclink-node/__test__/handle-request.spec.ts：用 read 讀出狀態後拒絕封存（code `refused`、commit 沒有被呼叫、beforeCommand 正好被呼叫一次）；read 的值與 host.dispatch 對同一個 argv 的值深度相等；read 拒絕 `['new', 'change', 'other']`（code `invalid_argv`、message 含 `new change`、儲存的三個函式沒有因此被呼叫）；沒有接住 read 的錯誤時 dispatch 以 `internal` 結束且訊息指出 beforeCommand；掛鉤結束後呼叫存下來的 read 得到 `invalid_argv` 且儲存沒有被呼叫；只宣告一個參數的掛鉤照常運作；handleRequest 進來的封存請求在掛鉤用 read 拒絕時得到拒絕的回應。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`，新增的測試失敗（第二個參數是 undefined）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts",
+        "crates/adapters/speclink-node/src/host.rs"
+      ],
+      "recordedAt": "2026-11-18T06:52:24Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309EJNCZ5PDN8221GQGG",
+      "taskDesc": "3.2 實作 D4 Node 的 read 由 index.js 組出來，原生端多一個不對外的方法：crates/adapters/speclink-node/src/host.rs 的 `Host` 新增 `read(id, displayName, scope, argv)`，在背景執行緒解析 argv、經 `HostKit::read` 執行、用和 `dispatch` 相同的輸出函式與信封回傳，非讀取類的動詞回 `invalid_argv`（訊息 `read accepts only verbs that write nothing; '<動詞>' is not one of them`）；該檔的掛鉤轉接閉包配合 2.3 多收一個不使用的參數。crates/adapters/speclink-node/index.js 的 `createHost` 呼叫使用者的 beforeCommand 時傳入 `{ read }`，身分與範圍取自這次的 info，並在掛鉤的回傳值或 Promise 完成後關上開關；對外的 `Host` 物件不多出 read。驗證：build 後 `npm --prefix crates/adapters/speclink-node test` 全部通過，包含 3.1 的七個情境。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.js"
+      ],
+      "recordedAt": "2026-11-18T06:54:07Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309EWH7CH9J83NR2HWS6",
+      "taskDesc": "3.3 更新型別宣告：crates/adapters/speclink-node/index.d.ts 新增 `BeforeCommandTools`（含 `read(argv: string[]): Promise<unknown>`），`beforeCommand` 的簽名加上第二個參數，`Host` 介面不變；`HostHooks` 的說明依 D6 改寫，不再出現用在掛鉤上的「never finish」。驗證：`npm --prefix crates/adapters/speclink-node test` 通過（測試檔以 TypeScript 編譯，會檢查簽名）；在 index.d.ts 搜尋 `never finish`，只剩 `StorePort` 說明裡的那一處。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts"
+      ],
+      "recordedAt": "2026-11-18T06:54:43Z"
+    },
+    {
+      "taskId": "tsk_01M7PN309E1GK15GE5CS143VZP",
+      "taskDesc": "4.1 對這次新增的介面套用 sharp-edges 稽核清單（用 `speclink instructions --skill audit` 取得），逐項確認並把結論寫在 crates/host/speclink-host/src/read_only.rs 的模組註解：讀取器沒有任何路徑能呼叫儲存的提交；掛鉤不能經讀取器換身分或範圍（`Reader` 沒有公開建構方式、JS 的 read 不接受身分與範圍）；read 的 argv 經過和 dispatch 相同的解析，沒有另一套解析；掛鉤結束後 read 失效；D5 讀取器讀到的不是外層命令的那一份這個限制已寫進文件。驗證：`cargo test -p speclink-host` 與 `npm --prefix crates/adapters/speclink-node test` 全部通過，稽核結論在模組註解中逐項可讀。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "934a3a11190a39232baa6bd87722d9ae300bed69",
+      "touchedFiles": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-18T06:57:26Z"
+    }
+  ]
+}

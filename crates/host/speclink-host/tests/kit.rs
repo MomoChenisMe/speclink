@@ -4,12 +4,15 @@
 //! requirements runs here on the in-memory store port, wrapped in the shared
 //! recorder that keeps the calls the store receives.
 
-use speclink_core::command::{Command, CommandOutcome, ErrorCode};
+use speclink_core::command::{Command, CommandOutcome, ErrorCode, ShowChange, ShowOutcome};
 use speclink_core::config::WorkflowConfigEdit;
 use speclink_core::model::ChangeMeta;
-use speclink_host::kit::{AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, Identity};
+use speclink_core::station::{StationProgress, StationStatus};
+use speclink_host::kit::{AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, Identity, Reader};
 use speclink_host::port_exec::{self, ExecError};
+use speclink_host::read_only;
 use speclink_store_port::{DocKey, MemoryStorePort, PortError, ScopeId, StorePort, Version};
+use std::collections::BTreeSet;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
@@ -147,9 +150,17 @@ type AskLog = Arc<Mutex<Vec<Asked>>>;
 
 /// A `before_command` hook that records each call and answers with `decide`.
 fn before(log: &AskLog, decide: impl Fn(&BeforeCommand) -> Decision + Send + Sync + 'static) -> Hooks {
+    before_reading(log, move |info, _| decide(info))
+}
+
+/// [`before`] for a hook that uses the reader.
+fn before_reading(
+    log: &AskLog,
+    decide: impl Fn(&BeforeCommand, &Reader<'_>) -> Decision + Send + Sync + 'static,
+) -> Hooks {
     let log = log.clone();
     Hooks {
-        before_command: Some(Box::new(move |info: &BeforeCommand| {
+        before_command: Some(Box::new(move |info: &BeforeCommand, reader: &Reader<'_>| {
             log.lock().unwrap().push(Asked {
                 id: info.caller.identity.id().to_string(),
                 scope: info.caller.scope.as_str().to_string(),
@@ -157,7 +168,7 @@ fn before(log: &AskLog, decide: impl Fn(&BeforeCommand) -> Decision + Send + Syn
                 params: info.params.clone(),
                 changed_keys: info.changed_keys.clone(),
             });
-            decide(info)
+            decide(info, reader)
         })),
         after_commit: None,
     }
@@ -525,7 +536,7 @@ fn a_failed_commit_does_not_trigger_it() {
 fn a_refused_command_does_not_trigger_it() {
     let watched = WatchLog::default();
     let mut hooks = after(&watched);
-    hooks.before_command = Some(Box::new(|_: &BeforeCommand| Decision::Deny { reason: "no".into() }));
+    hooks.before_command = Some(Box::new(|_: &BeforeCommand, _: &Reader<'_>| Decision::Deny { reason: "no".into() }));
     let kit = HostKit::new(store_with_demo(OPEN_TASKS), hooks);
     let _ = kit.run(&alice(), task_done("demo")).expect_err("refused");
     assert!(watched.lock().unwrap().is_empty());
@@ -630,5 +641,328 @@ fn an_unavailable_store_is_a_store_failure() {
         Err(ExecError::Store(PortError::Unavailable { .. })) => {}
         other => panic!("expected a store unavailable, got {other:?}"),
     }
+    assert!(recorder.calls().commits.is_empty());
+}
+
+// --- 讀取類命令的判定（design D2） ---
+
+/// Scope s1 with something for every read command of `every_command` to
+/// find: change demo with its artifacts and both tickets, spec auth,
+/// discussion talk, the config and the glossary.
+fn store_with_data() -> MemoryStorePort {
+    let port = MemoryStorePort::new();
+    common::write_in(
+        &port,
+        &scope_of("s1"),
+        &[
+            ("changes/demo/.meta.yaml", META),
+            (
+                "changes/demo/proposal.md",
+                "## Why\n\nA reason.\n\n## What Changes\n\n- one thing\n\n## Capabilities\n\n### New Capabilities\n\n(none)\n\n### Modified Capabilities\n\n- `auth`: sign in twice\n\n## Impact\n\n- Affected specs: auth\n",
+            ),
+            ("changes/demo/tasks.md", OPEN_TASKS),
+            (
+                "changes/demo/specs/auth/spec.md",
+                "## ADDED Requirements\n\n### Requirement: R2\n\nIt SHALL work twice.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+            ),
+            ("changes/demo/review.md", "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n"),
+            ("changes/demo/verify.md", "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n"),
+            (
+                "specs/auth/spec.md",
+                "## Purpose\n\nSign in.\n\n## Requirements\n\n### Requirement: R1\n\nIt SHALL work.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n",
+            ),
+            ("discussions/talk.md", "# Talk\n\n## Context\n\nauth\n"),
+            ("config.yaml", CONFIG),
+            ("LANGUAGE.md", "# Language\n"),
+        ],
+    );
+    port
+}
+
+#[test]
+fn every_command_judged_read_commits_nothing() {
+    let recorder = recorded(store_with_data());
+    let kit = HostKit::new(recorder.clone(), Hooks::default());
+    let read: Vec<Command> = common::every_command().into_iter().filter(read_only::is_read).collect();
+    assert!(!read.is_empty());
+
+    for cmd in read {
+        let name = cmd.name();
+        kit.read(&alice(), cmd).unwrap_or_else(|e| panic!("{name} reads the seeded data: {e:?}"));
+        let calls = recorder.take();
+        assert!(calls.commits.is_empty(), "{name} committed");
+        assert!(!calls.is_empty(), "{name} read the store");
+    }
+}
+
+#[test]
+fn the_read_kinds_are_the_seventeen_of_the_design() {
+    let judged: BTreeSet<&str> =
+        common::every_command().iter().filter(|cmd| read_only::is_read(cmd)).map(Command::name).collect();
+    // Seventeen kinds: a list is one kind for changes and specs, and a plan
+    // is one kind with two commands.
+    let read = [
+        "list",
+        "show",
+        "status",
+        "instructions",
+        "validate",
+        "analyze",
+        "trace",
+        "plan",
+        "plan-strict",
+        "artifact-cat",
+        "evidence-show",
+        "language-show",
+        "review-show",
+        "verify-show",
+        "discuss-list",
+        "discuss-show",
+        "discuss-search",
+        "workflow-config-show",
+    ];
+    assert_eq!(judged, BTreeSet::from(read));
+
+    for cmd in [new_change("other"), task_done("demo"), archive(false), Command::Claim { name: "demo".to_string() }] {
+        assert!(!read_only::is_read(&cmd), "{} writes", cmd.name());
+    }
+}
+
+// --- 執行前掛鉤可以用讀取器讀取 ---
+
+/// A review stamp and a verify stamp over the one task of `DONE_TASKS`, and a
+/// landing record.
+const REVIEW_STAMP: &str = "reviewed_at: 2026-11-02T10:00:00+08:00\nreviewed_by: Rev <r@example.com>\n\
+reviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_rounds: 1\nreviewed_scope:\n  - path: src/a.rs\n    hash: aa\n";
+const VERIFY_STAMP: &str = "verified_at: 2026-11-03T10:00:00+08:00\nverified_tasks_total: 1\nverified_rounds: 1\n\
+verified_scope:\n  - path: src/a.rs\n    hash: aa\n";
+const LANDED: &str = "landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-04T09:00:00+08:00\n";
+
+fn show(item: &str) -> Command {
+    Command::Show { item: Some(item.to_string()), item_type: None }
+}
+
+/// What the reader shows of change `name`.
+fn shown(reader: &Reader<'_>, name: &str) -> Result<ShowChange, ExecError> {
+    match reader.read(show(name))?.outcome {
+        CommandOutcome::Show(ShowOutcome::Change(change)) => Ok(change),
+        other => panic!("expected a shown change, got {other:?}"),
+    }
+}
+
+fn stamped(status: &Option<StationStatus>) -> bool {
+    status.as_ref().is_some_and(|status| status.progress == StationProgress::Stamped)
+}
+
+/// The code and the message of a command failure.
+fn failure(err: ExecError) -> (ErrorCode, String) {
+    match err {
+        ExecError::Command(e) => (e.code, e.message),
+        other => panic!("expected a command failure, got {other:?}"),
+    }
+}
+
+/// "Archive only what passed the review": the hook reads the state itself.
+fn archive_needs_a_review(log: &AskLog) -> Hooks {
+    before_reading(log, |info, reader| {
+        if info.command != "archive" {
+            return Decision::Allow;
+        }
+        match stamped(&shown(reader, "demo").expect("demo is shown").review) {
+            true => Decision::Allow,
+            false => Decision::Deny { reason: "還沒通過審查".to_string() },
+        }
+    })
+}
+
+#[test]
+fn a_hook_reads_the_state_and_refuses_the_archive() {
+    // 「掛鉤讀出變更的狀態後拒絕封存」
+    let recorder = recorded(demo_store(DONE_TASKS));
+    let log = AskLog::default();
+    let kit = HostKit::new(recorder.clone(), archive_needs_a_review(&log));
+
+    let err = kit.run(&alice(), archive(false)).expect_err("refused");
+
+    assert_eq!(refused(err), "還沒通過審查");
+    let calls = recorder.calls();
+    assert!(calls.commits.is_empty(), "no commit");
+    assert!(!calls.reads.is_empty(), "the hook's own read reached the store");
+    let asked: Vec<String> = log.lock().unwrap().iter().map(|asked| asked.command.clone()).collect();
+    assert_eq!(asked, ["archive"], "the read did not ask the hook again");
+    assert_eq!(names(&kit.run(&alice(), list_changes()).unwrap().outcome), ["demo"], "still active");
+}
+
+#[test]
+fn a_hook_reads_the_state_and_allows_the_archive() {
+    // 「掛鉤讀出狀態後放行」
+    let ready = || {
+        let port = MemoryStorePort::new();
+        let meta = format!("{META}{REVIEW_STAMP}{VERIFY_STAMP}{LANDED}");
+        common::write_in(
+            &port,
+            &scope_of("s1"),
+            &[("changes/demo/.meta.yaml", &meta), ("changes/demo/tasks.md", DONE_TASKS), ("config.yaml", CONFIG)],
+        );
+        Arc::new(port)
+    };
+    let log = AskLog::default();
+    let with_hook = HostKit::new(
+        ready(),
+        before_reading(&log, |info, reader| {
+            if info.command != "archive" {
+                return Decision::Allow;
+            }
+            let change = shown(reader, "demo").expect("demo is shown");
+            match stamped(&change.review) && stamped(&change.verify) && change.landed.is_some() {
+                true => Decision::Allow,
+                false => Decision::Deny { reason: "not ready".to_string() },
+            }
+        }),
+    );
+    let without = HostKit::new(ready(), Hooks::default());
+
+    let a = with_hook.run(&alice(), archive(false)).expect("allowed");
+    let b = without.run(&alice(), archive(false)).expect("no hook");
+
+    assert_eq!(format!("{:?}", a.outcome), format!("{:?}", b.outcome));
+    assert_eq!(a.scope_version, b.scope_version);
+    assert_eq!(log.lock().unwrap().len(), 1);
+}
+
+#[test]
+fn the_reader_refuses_a_command_that_writes() {
+    // 「讀取器拒絕會寫入的命令」 with the rows of its example table.
+    let port = demo_store(DONE_TASKS);
+    common::write_in(
+        &port,
+        &scope_of("s1"),
+        &[("changes/demo/review.md", "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n")],
+    );
+    let recorder = recorded(port);
+    let store = recorder.clone();
+    // Each command with what the reader answered and whether the store was
+    // left alone.
+    type Row = (&'static str, Result<(), (ErrorCode, String)>, bool);
+    let rows: Arc<Mutex<Vec<Row>>> = Arc::default();
+    let seen = rows.clone();
+    let log = AskLog::default();
+    let hooks = before_reading(&log, move |_, reader| {
+        let commands = [
+            show("demo"),
+            list_changes(),
+            Command::ReviewShow { change: "demo".to_string() },
+            Command::WorkflowConfigShow,
+            new_change("other"),
+            // The task is checked already: the kind decides, not this result.
+            task_done("demo"),
+            archive(false),
+            Command::Claim { name: "demo".to_string() },
+        ];
+        for cmd in commands {
+            let name = cmd.name();
+            store.take();
+            let answer = reader.read(cmd).map(|_| ()).map_err(failure);
+            seen.lock().unwrap().push((name, answer, store.take().is_empty()));
+        }
+        Decision::Allow
+    });
+    let kit = HostKit::new(recorder.clone(), hooks);
+
+    kit.run(&alice(), list_changes()).expect("the outer call runs");
+
+    let rows = rows.lock().unwrap().clone();
+    for (name, answer, _) in &rows[..4] {
+        assert_eq!(answer, &Ok(()), "{name} is a read");
+    }
+    for (name, answer, untouched) in &rows[4..] {
+        let message = format!("read accepts only commands that write nothing; '{name}' is not one of them");
+        assert_eq!(answer, &Err((ErrorCode::InvalidArgv, message)), "{name} writes");
+        assert!(untouched, "{name}: no list, no read, no commit");
+    }
+    let refused: Vec<&str> = rows[4..].iter().map(|(name, ..)| *name).collect();
+    assert_eq!(refused, ["new-change", "task-done", "archive", "claim"]);
+    assert_eq!(content_of(&recorder.inner, &scope_of("s1"), "changes/other/.meta.yaml"), None, "no change other");
+    assert!(recorder.calls().commits.is_empty());
+    assert_eq!(log.lock().unwrap().len(), 1, "no read asked the hook again");
+}
+
+#[test]
+fn a_read_that_finds_nothing_leaves_the_decision_to_the_hook() {
+    // 「讀取的對象不存在時由掛鉤決定」
+    let direct = failure(HostKit::new(store_with_demo(OPEN_TASKS), Hooks::default()).run(&alice(), show("ghost")).unwrap_err());
+    let answered: Arc<Mutex<Option<(ErrorCode, String)>>> = Arc::default();
+    let seen = answered.clone();
+    let log = AskLog::default();
+    let kit = HostKit::new(
+        store_with_demo(OPEN_TASKS),
+        before_reading(&log, move |_, reader| {
+            *seen.lock().unwrap() = shown(reader, "ghost").err().map(failure);
+            Decision::Allow
+        }),
+    );
+
+    let listed = kit.run(&alice(), list_changes()).expect("the outer call runs as usual");
+
+    assert_eq!(names(&listed.outcome), ["demo"]);
+    let answered = answered.lock().unwrap().clone().expect("the read failed");
+    assert_eq!(answered.0, ErrorCode::NotFound);
+    assert_eq!(answered, direct, "the code and the message of a direct run");
+}
+
+#[test]
+fn the_reader_keeps_the_callers_identity_and_scope() {
+    // 「讀取器沿用呼叫的身分與範圍」
+    let port = demo_store(OPEN_TASKS);
+    common::write_in(&port, &scope_of("s2"), &[("changes/other/.meta.yaml", META)]);
+    let listed: Arc<Mutex<Vec<String>>> = Arc::default();
+    let seen = listed.clone();
+    let log = AskLog::default();
+    let kit = HostKit::new(
+        Arc::new(port),
+        before_reading(&log, move |_, reader| {
+            *seen.lock().unwrap() = names(&reader.read(list_changes()).expect("a list").outcome);
+            Decision::Allow
+        }),
+    );
+
+    kit.run(&alice(), show("demo")).expect("the outer call");
+
+    assert_eq!(*listed.lock().unwrap(), ["demo"], "s1 only");
+}
+
+#[test]
+fn a_hook_that_does_not_read_leaves_the_store_untouched() {
+    // 「沒有使用讀取器時儲存沒有收到讀取」
+    let recorder = recorded(demo_store(DONE_TASKS));
+    let log = AskLog::default();
+    let hooks = before_reading(&log, |info, _reader| match info.command {
+        "archive" => Decision::Deny { reason: "no".to_string() },
+        _ => Decision::Allow,
+    });
+    let kit = HostKit::new(recorder.clone(), hooks);
+
+    let err = kit.run(&alice(), archive(false)).expect_err("refused");
+
+    assert_eq!(refused(err), "no");
+    assert!(recorder.calls().is_empty(), "no list, no read, no commit");
+}
+
+#[test]
+fn a_workflow_config_write_gets_the_reader_too() {
+    let recorder = recorded(demo_store(OPEN_TASKS));
+    let read: Arc<Mutex<Vec<bool>>> = Arc::default();
+    let seen = read.clone();
+    let log = AskLog::default();
+    let hooks = before_reading(&log, move |_, reader| {
+        seen.lock().unwrap().push(reader.read(Command::WorkflowConfigShow).is_ok());
+        Decision::Deny { reason: "frozen".to_string() }
+    });
+    let kit = HostKit::new(recorder.clone(), hooks);
+
+    let err = kit.run(&alice(), set_policy("tdd", "true")).expect_err("refused");
+
+    assert_eq!(refused(err), "frozen");
+    assert_eq!(*read.lock().unwrap(), [true], "asked once, and the read worked");
     assert!(recorder.calls().commits.is_empty());
 }

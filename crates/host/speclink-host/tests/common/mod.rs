@@ -3,7 +3,8 @@
 // Each test target uses its own part of this module.
 #![allow(dead_code)]
 
-use speclink_core::config::ResolvedPolicy;
+use speclink_core::command::Command;
+use speclink_core::config::{ResolvedPolicy, WorkflowConfigEdit};
 use speclink_host::binding::local_default_binding;
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
 use speclink_host::policy::EffectiveWorkflowPolicy;
@@ -248,6 +249,148 @@ impl StorePort for Recorder {
         }
         self.inner.commit(scope, commit)
     }
+}
+
+// --- one command of every kind ---
+
+/// One command of every kind. The match below has no catch-all arm, so a
+/// new kind does not compile until it is listed here too.
+pub fn every_command() -> Vec<Command> {
+    fn listed(cmd: &Command) {
+        match cmd {
+            Command::List { .. }
+            | Command::Show { .. }
+            | Command::Status { .. }
+            | Command::Instructions { .. }
+            | Command::Validate { .. }
+            | Command::Analyze { .. }
+            | Command::Trace { .. }
+            | Command::Plan { .. }
+            | Command::PlanStrict
+            | Command::ArtifactCat { .. }
+            | Command::EvidenceShow { .. }
+            | Command::LanguageShow
+            | Command::DiscussList { .. }
+            | Command::DiscussShow { .. }
+            | Command::DiscussSearch { .. }
+            | Command::NewChange { .. }
+            | Command::NewArtifact { .. }
+            | Command::TaskDone { .. }
+            | Command::TaskUndone { .. }
+            | Command::TaskMove { .. }
+            | Command::Claim { .. }
+            | Command::InProgressAdd { .. }
+            | Command::InProgressRemove { .. }
+            | Command::ChangeDepends { .. }
+            | Command::ChangeSchema { .. }
+            | Command::ChangeRank { .. }
+            | Command::ChangeLanded { .. }
+            | Command::ChangeFieldsEdit { .. }
+            | Command::DiscussFieldsEdit { .. }
+            | Command::Archive { .. }
+            | Command::Discard { .. }
+            | Command::DiscussNew { .. }
+            | Command::DiscussContext { .. }
+            | Command::DiscussAddRound { .. }
+            | Command::DiscussConclude { .. }
+            | Command::DiscussPromote { .. }
+            | Command::DiscussLink { .. }
+            | Command::DiscussSeal { .. }
+            | Command::DiscussArchive { .. }
+            | Command::DiscussDiscard { .. }
+            | Command::ReviewAddRound { .. }
+            | Command::ReviewShow { .. }
+            | Command::ReviewStamp { .. }
+            | Command::ReviewDiscard { .. }
+            | Command::VerifyAddRound { .. }
+            | Command::VerifyShow { .. }
+            | Command::VerifyStamp { .. }
+            | Command::VerifyDiscard { .. }
+            | Command::WorkflowConfigShow
+            | Command::WorkflowConfigEdit { .. }
+            | Command::WorkflowConfigReplace { .. } => {}
+        }
+    }
+    let s = |text: &str| text.to_string();
+    let list = |specs| Command::List { sort: s("name"), specs, changes: false, worktrees: Default::default() };
+    let commands = vec![
+        list(false),
+        list(true),
+        Command::Show { item: Some(s("demo")), item_type: None },
+        Command::Status { change: Some(s("demo")), schema: None },
+        Command::Instructions { artifact: Some(s("apply")), change: Some(s("demo")), schema: None },
+        Command::Validate { item: Some(s("demo")), all: false, changes: false, specs: false, strict: false },
+        Command::Analyze { change: Some(s("demo")) },
+        Command::Trace { capability: s("auth") },
+        Command::Plan { ranks: None },
+        Command::PlanStrict,
+        Command::ArtifactCat { artifact: s("proposal"), change: Some(s("demo")) },
+        Command::EvidenceShow { change: s("demo") },
+        Command::LanguageShow,
+        Command::DiscussList { archived: false },
+        Command::DiscussShow { slug: s("talk") },
+        Command::DiscussSearch { terms: vec![s("auth")] },
+        Command::NewChange { name: s("demo"), description: None, schema: None, agent: None, from_discussion: None, last: false, fields: Default::default() },
+        Command::NewArtifact {
+            kind: s("proposal"),
+            capability: None,
+            change: Some(s("demo")),
+            content: Some(s("## Why\n")),
+            force: true,
+            new_capability: true,
+        },
+        Command::TaskDone { task_id: s("1"), change: Some(s("demo")), touched_files: None, head_commit: None },
+        Command::TaskUndone { task_id: s("1"), change: Some(s("demo")) },
+        Command::TaskMove { change: s("demo"), from: 1, to: 2, before: None },
+        Command::Claim { name: s("demo") },
+        Command::InProgressAdd { name: s("demo"), branch: None },
+        Command::InProgressRemove { name: s("demo") },
+        Command::ChangeDepends { name: s("demo"), on: vec![s("base")], remove: false },
+        Command::ChangeSchema { name: s("demo"), schema: s("spec-driven") },
+        Command::ChangeRank {
+            name: s("demo"),
+            anchor: s("base"),
+            position: speclink_core::plan::Side::parse("before").unwrap(),
+            force: false,
+        },
+        Command::ChangeLanded { name: s("demo"), commit: s("0123456789ab"), branch: None },
+        Command::ChangeFieldsEdit { name: s("demo"), set: [(s("ticket"), s("PROJ-1"))].into(), unset: vec![] },
+        Command::DiscussFieldsEdit { slug: s("talk"), set: [(s("owner"), s("alice"))].into(), unset: vec![] },
+        Command::Archive {
+            change: Some(s("demo")),
+            skip_specs: false,
+            no_validate: false,
+            mark_tasks_complete: false,
+            carry_review: false,
+            carry_verify: false,
+        },
+        Command::Discard { change: s("demo"), force: false },
+        Command::DiscussNew { topic: s("Talk"), slug: None, kind: None, fields: Default::default() },
+        Command::DiscussContext { slug: s("talk"), content: s("context") },
+        Command::DiscussAddRound { slug: s("talk"), mode: s("round"), content: s("text") },
+        Command::DiscussConclude { slug: s("talk"), content: s("done"), hold: false },
+        Command::DiscussPromote { slug: s("talk"), name: Some(s("demo")), last: false, fields: Default::default() },
+        Command::DiscussLink { slug: s("talk"), change: s("demo") },
+        Command::DiscussSeal { slug: s("talk"), change: s("demo"), last: false },
+        Command::DiscussArchive { slug: s("talk") },
+        Command::DiscussDiscard { slug: s("talk"), force: false },
+        Command::ReviewAddRound { change: s("demo"), content: s("round") },
+        Command::ReviewShow { change: s("demo") },
+        Command::ReviewStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
+        Command::ReviewDiscard { change: s("demo") },
+        Command::VerifyAddRound { change: s("demo"), content: s("round") },
+        Command::VerifyShow { change: s("demo") },
+        Command::VerifyStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
+        Command::VerifyDiscard { change: s("demo") },
+        Command::WorkflowConfigShow,
+        Command::WorkflowConfigEdit {
+            edit: WorkflowConfigEdit::Policy { key: s("tdd"), value: s("true") },
+            dry_run: false,
+        },
+        Command::WorkflowConfigReplace { content: s("schema: spec-driven\ntdd: false\n") },
+    ];
+    commands.iter().for_each(listed);
+    commands
 }
 
 // --- this project's own spec folder ---

@@ -544,7 +544,9 @@ fn this_projects_spec_folder_goes_through_an_export_and_an_import_unchanged() {
 // ======================================================================
 
 use speclink_core::command::ErrorCode;
-use speclink_host::kit::{AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, HostKitOptions, Identity};
+use speclink_host::kit::{
+    AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, HostKitOptions, Identity, Reader,
+};
 use speclink_host::port_exec::ExecError;
 use std::sync::{Arc, Mutex};
 
@@ -563,7 +565,7 @@ struct Seen {
 fn recording(seen: &Arc<Seen>, decide: impl Fn(&BeforeCommand) -> Decision + Send + Sync + 'static) -> Hooks {
     let (before, after) = (seen.clone(), seen.clone());
     Hooks {
-        before_command: Some(Box::new(move |info: &BeforeCommand| {
+        before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| {
             before.asked.lock().unwrap().push((info.command.to_string(), info.params.clone()));
             decide(info)
         })),

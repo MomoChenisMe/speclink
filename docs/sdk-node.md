@@ -290,11 +290,14 @@ The two hooks are optional:
 ```js
 const hooks = {
   // Asked exactly one time for each call, before any write.
-  async beforeCommand({ identity, scope, command, params, changedKeys }) {
-    if (command === 'archive' && !(await isMerged(scope, params.change))) {
-      return { allow: false, reason: 'The code is not merged, so the change cannot be archived' }
-    }
+  async beforeCommand({ identity, scope, command, params, changedKeys }, { read }) {
     // No return value (or { allow: true }) allows the call.
+    if (command !== 'archive') return
+    // `read` runs a verb that only reads, for the identity and the scope of this call.
+    const shown = await read(['show', params.change, '--json'])
+    if (shown.review?.state !== 'stamped') return { allow: false, reason: 'The change did not pass the review' }
+    if (shown.verify?.state !== 'stamped') return { allow: false, reason: 'The change did not pass the verification' }
+    if (!shown.landed) return { allow: false, reason: 'The code did not land, so the change cannot be archived' }
   },
   // Called after a successful commit. The dispatch does not wait for it, and its result and errors are ignored.
   afterCommit({ identity, scope, command, scopeVersion, events }) {
@@ -307,7 +310,9 @@ const hooks = {
 - **A refusal** ends the call with `refused`, and the message is your reason. A request through the HTTP entry point gets the same sentence. Except for workflow configuration writes, the refusal comes before the store gets a call.
 - **A hook that fails** (a throw, or an answer of another shape, `null` included) does not allow the call: the call ends with `internal`.
 - **`afterCommit` does not guarantee delivery.** If the process stops after the commit and before the notification, that event does not come again. When you need at-least-once delivery, write `events` to your own event table in the same transaction as `commit`, and send them from that table with your own program.
-- **Do not wait for a `dispatch` of the same host kit in a hook**, for the same reason as in the store functions.
+- **`read` gets the data for the decision.** It is the second argument of `beforeCommand`. It takes argv as `dispatch` does, and it gives the same result and the same errors, for the identity and the scope of this call. It accepts only the verbs that write nothing: `list`, `show`, `status`, `plan`, `trace`, `evidence show`, `review show`, `verify show`, `discuss list`, `discuss show`, `discuss search`, `artifact cat`, `language show`, `workflow-config show`, `validate`, `analyze`, `instructions`. All other verbs are refused with `invalid_argv`, and the store gets no call. A `read` does not ask `beforeCommand` again. It works only while the hook runs: after the hook answers, `read` is refused with `invalid_argv`. If you do not catch an error from `read`, the hook fails.
+- **A `read` and the command do not read the same data.** Each `read` is a different call to your store. If another commit comes between the `read` and the command, the two see different content. The engine's own checks (for an archive: the completed tasks and an open ticket) always use what the command reads. If your rules need the two to agree, do that in your own `read` and `commit` store functions.
+- **Do not wait for a `dispatch` of the same host kit in a hook; use `read`.** That `dispatch` asks `beforeCommand` again, and it stops when your store holds a lock of its own.
 
 Speclink has no built-in rules such as "no archive before the code lands" or "the commit must be on a specified branch". The engine only records the branch and the landed commit (see `change landed`). To block a call, use `beforeCommand`, as in the example above.
 
@@ -496,10 +501,10 @@ async function main() {
   const host = createHost({
     store,
     hooks: {
-      beforeCommand({ command, params }) {
-        if (command === 'archive' && params.change === 'frozen') {
-          return { allow: false, reason: 'This change is frozen and cannot be archived' }
-        }
+      async beforeCommand({ command, params }, { read }) {
+        if (command !== 'archive') return
+        const shown = await read(['show', params.change, '--json'])
+        if (!shown.landed) return { allow: false, reason: 'The code did not land, so the change cannot be archived' }
       },
       afterCommit({ scope, command, scopeVersion }) {
         console.log(`[${scope}] ${command} → version ${scopeVersion}`)

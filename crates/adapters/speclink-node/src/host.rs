@@ -20,9 +20,10 @@ use speclink_core::fields::Fields;
 use speclink_host::http::{HttpError, HttpRequest, Method, API_ROOT};
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit,
-    HostKitOptions, Identity, ProjectEntry, RepoEntry, ScopesFn, InvalidSkills,
+    HostKitOptions, Identity, InvalidSkills, ProjectEntry, Reader, RepoEntry, ScopesFn,
 };
-use speclink_host::port_exec::ExecError;
+use speclink_host::port_exec::{ExecError, PortExecution};
+use speclink_host::read_only::is_read;
 use speclink_host::transfer;
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::EventTransport;
@@ -152,6 +153,23 @@ impl Host {
                 run(&setup, &caller, &argv, stdin.as_deref(), &fields)
             })
         })
+    }
+
+    /// One verb that writes nothing, for `identity` on `scope`, on a
+    /// background thread: the `read` index.js gives `beforeCommand`. It is
+    /// not on the public `Host` object. The result and the errors are those
+    /// of `dispatch`; no hook is asked.
+    #[napi(ts_return_type = "Promise<unknown>")]
+    pub fn read(
+        &self,
+        env: Env,
+        id: String,
+        display_name: String,
+        scope: String,
+        argv: Vec<String>,
+    ) -> Result<JsObject> {
+        let setup = self.setup.clone();
+        on_worker(env, move || guarded(|| read(&setup, &caller_of(id, display_name, scope)?, &argv)))
     }
 
     /// One HTTP request for `identity` (none when `id` is absent), on a
@@ -403,10 +421,35 @@ fn caller_of(id: String, display_name: String, scope: String) -> std::result::Re
 fn run(setup: &HostSetup, caller: &Caller, argv: &[String], stdin: Option<&str>, fields: &Fields) -> DispatchResult {
     let parsed = parse_verb(argv)?;
     let cmd = command_of(&parsed, stdin)?;
+    through_kit(setup, &parsed, cmd, |kit, cmd| kit.run_with_fields(caller, cmd, fields))
+}
+
+/// [`run`] for the hook's `read`: the same parsing and the same output, for a
+/// verb that writes nothing, through the kit's reader. Any other verb is
+/// refused here, by its verb text.
+fn read(setup: &HostSetup, caller: &Caller, argv: &[String]) -> DispatchResult {
+    let parsed = parse_verb(argv)?;
+    let cmd = command_of(&parsed, None)?;
+    if !is_read(&cmd) {
+        return Err(DispatchError::new(
+            "invalid_argv",
+            format!("read accepts only verbs that write nothing; '{}' is not one of them", parsed.name()),
+        ));
+    }
+    through_kit(setup, &parsed, cmd, |kit, cmd| kit.read(caller, cmd))
+}
+
+/// The envelope value of `cmd` run by `call` on this host's kit.
+fn through_kit(
+    setup: &HostSetup,
+    parsed: &speclink_verbs::ParsedVerb,
+    cmd: Command,
+    call: impl FnOnce(&HostKit, Command) -> std::result::Result<PortExecution, ExecError>,
+) -> DispatchResult {
     let status_without_name = matches!(cmd, Command::Status { change: None, .. });
 
-    match with_kit(setup, |kit| kit.run_with_fields(caller, cmd, fields))? {
-        Ok(execution) => value_of(&parsed, &execution.outcome),
+    match with_kit(setup, |kit| call(kit, cmd))? {
+        Ok(execution) => value_of(parsed, &execution.outcome),
         Err(ExecError::Command(e)) => match status_notice(status_without_name, &e) {
             Some(notice) => Ok(notice),
             None => Err(exec_error(ExecError::Command(e))),
@@ -430,7 +473,7 @@ fn hooks_for(setup: &HostSetup, broken_hook: &Arc<Mutex<Option<String>>>) -> Hoo
     let before_command = setup.has_before.then(|| {
         let bridge = setup.hooks.clone();
         let broken_hook = broken_hook.clone();
-        Box::new(move |info: &BeforeCommand| decide(&bridge, info, &broken_hook)) as BeforeCommandHook
+        Box::new(move |info: &BeforeCommand, _: &Reader<'_>| decide(&bridge, info, &broken_hook)) as BeforeCommandHook
     });
     let after_commit = setup.has_after.then(|| {
         let bridge = setup.hooks.clone();

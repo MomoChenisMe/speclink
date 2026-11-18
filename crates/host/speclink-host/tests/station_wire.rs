@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 use speclink_core::command::Command;
 use speclink_host::http::{routes, wire_coverage, Method, WireCoverage};
 use speclink_host::kit::{
-    AfterCommit, BeforeCommand, Decision, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry,
+    AfterCommit, BeforeCommand, Decision, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, Reader, RepoEntry,
 };
 use speclink_protocol::events::InvalidationScope;
 use speclink_store_port::{MemoryStorePort, ScopeId};
@@ -292,7 +292,7 @@ fn a_landing_report_is_one_commit_with_one_event_and_the_hooks_see_it() {
     let watched: Arc<Mutex<Vec<(String, Vec<String>)>>> = Arc::default();
     let (before, after) = (asked.clone(), watched.clone());
     let hooks = Hooks {
-        before_command: Some(Box::new(move |info: &BeforeCommand| {
+        before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| {
             before.lock().unwrap().push((info.command.to_string(), info.params.clone()));
             Decision::Allow
         })),
@@ -321,7 +321,7 @@ fn a_landing_report_is_one_commit_with_one_event_and_the_hooks_see_it() {
 fn a_hook_can_refuse_a_landing_report() {
     // Scenario「掛鉤可以拒絕回報」。
     let hooks = Hooks {
-        before_command: Some(Box::new(|info: &BeforeCommand| match info.command == "change-landed" {
+        before_command: Some(Box::new(|info: &BeforeCommand, _: &Reader<'_>| match info.command == "change-landed" {
             true => Decision::Deny { reason: "the commit is not on main".to_string() },
             false => Decision::Allow,
         })),

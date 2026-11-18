@@ -290,11 +290,14 @@ for (const check of report.checks.filter((c) => c.outcome !== 'passed')) {
 ```js
 const hooks = {
   // 每次呼叫問剛好一次，在任何寫入之前。
-  async beforeCommand({ identity, scope, command, params, changedKeys }) {
-    if (command === 'archive' && !(await isMerged(scope, params.change))) {
-      return { allow: false, reason: '程式碼還沒合併，不能封存' }
-    }
+  async beforeCommand({ identity, scope, command, params, changedKeys }, { read }) {
     // 不回傳（或回傳 { allow: true }）就是允許。
+    if (command !== 'archive') return
+    // `read` 執行只讀取的動詞，用這次呼叫的身分與範圍。
+    const shown = await read(['show', params.change, '--json'])
+    if (shown.review?.state !== 'stamped') return { allow: false, reason: '還沒通過審查' }
+    if (shown.verify?.state !== 'stamped') return { allow: false, reason: '還沒通過驗證' }
+    if (!shown.landed) return { allow: false, reason: '程式碼還沒落地，不能封存' }
   },
   // 提交成功之後呼叫。dispatch 不等它，它的回傳值與錯誤都被忽略。
   afterCommit({ identity, scope, command, scopeVersion, events }) {
@@ -307,7 +310,9 @@ const hooks = {
 - **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了工作流設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
 - **掛鉤自己失敗**（拋錯、回傳其他形狀，`null` 也算）時不算允許：這次呼叫以 `internal` 結束。
 - **`afterCommit` 不保證送達。** 程序在提交之後、通知之前中斷，這個事件就不會再來。需要「至少送達一次」時，在 `commit` 的同一次交易裡把 `events` 寫進你自己的事件表，再由你的程式從那張表送出。
-- **不要在掛鉤裡等同一個宿主套件的 `dispatch`**，理由和儲存函式相同。
+- **用 `read` 讀出判斷需要的資料。** 它是 `beforeCommand` 的第二個參數。它和 `dispatch` 一樣吃 argv，結果與錯誤也相同，用的是這次呼叫的身分與範圍。它只接受不寫入任何文件的動詞：`list`、`show`、`status`、`plan`、`trace`、`evidence show`、`review show`、`verify show`、`discuss list`、`discuss show`、`discuss search`、`artifact cat`、`language show`、`workflow-config show`、`validate`、`analyze`、`instructions`。其他動詞以 `invalid_argv` 拒絕，儲存不會收到任何呼叫。`read` 不會再問一次 `beforeCommand`。它只在掛鉤執行期間有效：掛鉤回答之後再呼叫，會以 `invalid_argv` 拒絕。沒有接住 `read` 的錯誤，就算掛鉤自己失敗。
+- **`read` 讀到的內容和命令本身讀到的不是同一份。** 每次 `read` 都是對儲存的另一次呼叫。`read` 和命令之間有別人提交時，兩邊看到的內容會不同。引擎自己的守門（以封存來說：任務完成度與未結的工單）一律以命令本身讀到的內容判斷。你的規則需要兩邊一致時，在自己的 `read` 與 `commit` 儲存函式裡處理。
+- **不要在掛鉤裡等同一個宿主套件的 `dispatch`，要讀資料就用 `read`。** 那個 `dispatch` 會再問一次 `beforeCommand`，而且宿主的儲存自己持有鎖時會卡住。
 
 Speclink 不內建「沒有落地就不能封存」「commit 必須在某個分支」這類規則。引擎只記錄分支與落地的 commit（見 `change landed`）；要擋，用 `beforeCommand` 自己擋，像上面的例子。
 
@@ -496,10 +501,10 @@ async function main() {
   const host = createHost({
     store,
     hooks: {
-      beforeCommand({ command, params }) {
-        if (command === 'archive' && params.change === 'frozen') {
-          return { allow: false, reason: '這個變更被凍結，不能封存' }
-        }
+      async beforeCommand({ command, params }, { read }) {
+        if (command !== 'archive') return
+        const shown = await read(['show', params.change, '--json'])
+        if (!shown.landed) return { allow: false, reason: '程式碼還沒落地，不能封存' }
       },
       afterCommit({ scope, command, scopeVersion }) {
         console.log(`[${scope}] ${command} → 版本 ${scopeVersion}`)

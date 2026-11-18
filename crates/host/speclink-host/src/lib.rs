@@ -22,6 +22,7 @@ pub mod policy;
 pub mod port_exec;
 pub(crate) mod port_view;
 pub mod projection;
+pub mod read_only;
 pub mod scope;
 pub mod transfer;
 pub mod worktree;

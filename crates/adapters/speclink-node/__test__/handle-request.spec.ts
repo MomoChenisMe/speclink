@@ -115,6 +115,30 @@ describe('host.handleRequest', () => {
     expect(viaTool.message).toBe('程式碼還沒合併')
   })
 
+  // node-sdk「beforeCommand 的讀取函式」「handleRequest 進來的呼叫也有 read」
+  it('gives beforeCommand the read function on a request too', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'changes/demo/.meta.yaml': META, 'changes/demo/tasks.md': '## 1. Work\n\n- [x] 1.1 First task\n' })
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          if (info.command !== 'archive') return
+          const shown = (await read(['show', info.params.change as string, '--json'])) as { landed?: unknown }
+          if (!shown.landed) return { allow: false, reason: '程式碼還沒落地' }
+        },
+      },
+    })
+
+    const viaDoor = await host.handleRequest(request('POST', alpha('changes/demo/archive')), ALICE)
+
+    expect(viaDoor?.status).toBe(409)
+    expect(json(viaDoor).reason).toBe('refused')
+    expect(json(viaDoor).message).toBe('程式碼還沒落地')
+    expect(port.calls.commit).toBe(0)
+  })
+
   it('waits for an async scopes function', async () => {
     const host = createHost({
       store: memoryPort().store,

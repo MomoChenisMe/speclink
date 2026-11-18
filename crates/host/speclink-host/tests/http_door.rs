@@ -429,7 +429,8 @@ fn the_method_names_are_the_five_the_door_takes() {
 // ======================================================================
 
 use serde_json::{json, Value};
-use speclink_host::kit::{AfterCommit, BeforeCommand, Decision};
+use speclink_core::command::{CommandOutcome, ShowOutcome};
+use speclink_host::kit::{AfterCommit, BeforeCommand, Decision, Reader};
 use speclink_protocol::auth::{AuthMethodsResponse, BrowserLogin};
 use speclink_protocol::events::{EventTransport, TransportKind};
 use std::sync::Mutex;
@@ -491,7 +492,7 @@ struct Seen {
 fn recording(seen: &Arc<Seen>, decide: impl Fn(&BeforeCommand) -> Decision + Send + Sync + 'static) -> Hooks {
     let (before, after) = (seen.clone(), seen.clone());
     Hooks {
-        before_command: Some(Box::new(move |info: &BeforeCommand| {
+        before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| {
             before.asked.lock().unwrap().push((info.command.to_string(), info.params.clone()));
             decide(info)
         })),
@@ -636,6 +637,34 @@ fn a_hook_refusal_through_the_door_is_409_with_the_hosts_reason() {
     assert_eq!(message, "程式碼還沒合併");
     assert_eq!(content(&door, "s1", "changes/demo/.meta.yaml").as_deref(), Some(META), "the change is still active");
     assert!(door.store.calls().commits.is_empty(), "no commit");
+}
+
+#[test]
+fn a_hook_reads_through_the_door_and_refuses_the_archive() {
+    // 「HTTP 入口進來的呼叫也拿得到讀取器」
+    let hooks = Hooks {
+        before_command: Some(Box::new(|info: &BeforeCommand, reader: &Reader<'_>| {
+            if info.command != "archive" {
+                return Decision::Allow;
+            }
+            let shown = reader.read(Command::Show { item: Some("demo".to_string()), item_type: None });
+            match shown.expect("demo is shown").outcome {
+                CommandOutcome::Show(ShowOutcome::Change(change)) if change.landed.is_some() => Decision::Allow,
+                _ => Decision::Deny { reason: "程式碼還沒落地".to_string() },
+            }
+        })),
+        after_commit: None,
+    };
+    let door = door_with(one_repo(), hooks);
+    with_demo(&door);
+
+    let response = answer(&door, &request(Method::Post, &alpha("changes/demo/archive")), Some(&alice()));
+
+    let (status, reason, message) = error(&response);
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert_eq!(message, "程式碼還沒落地");
+    assert!(door.store.calls().commits.is_empty(), "no commit");
+    assert!(!door.store.calls().reads.is_empty(), "the hook's own read reached the store");
 }
 
 #[test]
@@ -887,149 +916,9 @@ fn without_a_declaration_auth_methods_is_404() {
 // 每個引擎命令都有線上的歸屬 (design D6). Run with the `coverage` filter.
 // ======================================================================
 
+use common::every_command;
 use speclink_core::command::Command;
-use speclink_core::config::WorkflowConfigEdit;
 use speclink_host::http::{routes, wire_coverage, WireCoverage};
-
-/// One command of every kind. The match below has no catch-all arm, so a
-/// new kind does not compile until it is listed here too.
-fn every_command() -> Vec<Command> {
-    fn listed(cmd: &Command) {
-        match cmd {
-            Command::List { .. }
-            | Command::Show { .. }
-            | Command::Status { .. }
-            | Command::Instructions { .. }
-            | Command::Validate { .. }
-            | Command::Analyze { .. }
-            | Command::Trace { .. }
-            | Command::Plan { .. }
-            | Command::PlanStrict
-            | Command::ArtifactCat { .. }
-            | Command::EvidenceShow { .. }
-            | Command::LanguageShow
-            | Command::DiscussList { .. }
-            | Command::DiscussShow { .. }
-            | Command::DiscussSearch { .. }
-            | Command::NewChange { .. }
-            | Command::NewArtifact { .. }
-            | Command::TaskDone { .. }
-            | Command::TaskUndone { .. }
-            | Command::TaskMove { .. }
-            | Command::Claim { .. }
-            | Command::InProgressAdd { .. }
-            | Command::InProgressRemove { .. }
-            | Command::ChangeDepends { .. }
-            | Command::ChangeSchema { .. }
-            | Command::ChangeRank { .. }
-            | Command::ChangeLanded { .. }
-            | Command::ChangeFieldsEdit { .. }
-            | Command::DiscussFieldsEdit { .. }
-            | Command::Archive { .. }
-            | Command::Discard { .. }
-            | Command::DiscussNew { .. }
-            | Command::DiscussContext { .. }
-            | Command::DiscussAddRound { .. }
-            | Command::DiscussConclude { .. }
-            | Command::DiscussPromote { .. }
-            | Command::DiscussLink { .. }
-            | Command::DiscussSeal { .. }
-            | Command::DiscussArchive { .. }
-            | Command::DiscussDiscard { .. }
-            | Command::ReviewAddRound { .. }
-            | Command::ReviewShow { .. }
-            | Command::ReviewStamp { .. }
-            | Command::ReviewDiscard { .. }
-            | Command::VerifyAddRound { .. }
-            | Command::VerifyShow { .. }
-            | Command::VerifyStamp { .. }
-            | Command::VerifyDiscard { .. }
-            | Command::WorkflowConfigShow
-            | Command::WorkflowConfigEdit { .. }
-            | Command::WorkflowConfigReplace { .. } => {}
-        }
-    }
-    let s = |text: &str| text.to_string();
-    let list = |specs| Command::List { sort: s("name"), specs, changes: false, worktrees: Default::default() };
-    let commands = vec![
-        list(false),
-        list(true),
-        Command::Show { item: Some(s("demo")), item_type: None },
-        Command::Status { change: Some(s("demo")), schema: None },
-        Command::Instructions { artifact: Some(s("apply")), change: Some(s("demo")), schema: None },
-        Command::Validate { item: Some(s("demo")), all: false, changes: false, specs: false, strict: false },
-        Command::Analyze { change: Some(s("demo")) },
-        Command::Trace { capability: s("auth") },
-        Command::Plan { ranks: None },
-        Command::PlanStrict,
-        Command::ArtifactCat { artifact: s("proposal"), change: Some(s("demo")) },
-        Command::EvidenceShow { change: s("demo") },
-        Command::LanguageShow,
-        Command::DiscussList { archived: false },
-        Command::DiscussShow { slug: s("talk") },
-        Command::DiscussSearch { terms: vec![s("auth")] },
-        Command::NewChange { name: s("demo"), description: None, schema: None, agent: None, from_discussion: None, last: false, fields: Default::default() },
-        Command::NewArtifact {
-            kind: s("proposal"),
-            capability: None,
-            change: Some(s("demo")),
-            content: Some(s("## Why\n")),
-            force: true,
-            new_capability: true,
-        },
-        Command::TaskDone { task_id: s("1"), change: Some(s("demo")), touched_files: None, head_commit: None },
-        Command::TaskUndone { task_id: s("1"), change: Some(s("demo")) },
-        Command::TaskMove { change: s("demo"), from: 1, to: 2, before: None },
-        Command::Claim { name: s("demo") },
-        Command::InProgressAdd { name: s("demo"), branch: None },
-        Command::InProgressRemove { name: s("demo") },
-        Command::ChangeDepends { name: s("demo"), on: vec![s("base")], remove: false },
-        Command::ChangeSchema { name: s("demo"), schema: s("spec-driven") },
-        Command::ChangeRank {
-            name: s("demo"),
-            anchor: s("base"),
-            position: speclink_core::plan::Side::parse("before").unwrap(),
-            force: false,
-        },
-        Command::ChangeLanded { name: s("demo"), commit: s("0123456789ab"), branch: None },
-        Command::ChangeFieldsEdit { name: s("demo"), set: [(s("ticket"), s("PROJ-1"))].into(), unset: vec![] },
-        Command::DiscussFieldsEdit { slug: s("talk"), set: [(s("owner"), s("alice"))].into(), unset: vec![] },
-        Command::Archive {
-            change: Some(s("demo")),
-            skip_specs: false,
-            no_validate: false,
-            mark_tasks_complete: false,
-            carry_review: false,
-            carry_verify: false,
-        },
-        Command::Discard { change: s("demo"), force: false },
-        Command::DiscussNew { topic: s("Talk"), slug: None, kind: None, fields: Default::default() },
-        Command::DiscussContext { slug: s("talk"), content: s("context") },
-        Command::DiscussAddRound { slug: s("talk"), mode: s("round"), content: s("text") },
-        Command::DiscussConclude { slug: s("talk"), content: s("done"), hold: false },
-        Command::DiscussPromote { slug: s("talk"), name: Some(s("demo")), last: false, fields: Default::default() },
-        Command::DiscussLink { slug: s("talk"), change: s("demo") },
-        Command::DiscussSeal { slug: s("talk"), change: s("demo"), last: false },
-        Command::DiscussArchive { slug: s("talk") },
-        Command::DiscussDiscard { slug: s("talk"), force: false },
-        Command::ReviewAddRound { change: s("demo"), content: s("round") },
-        Command::ReviewShow { change: s("demo") },
-        Command::ReviewStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
-        Command::ReviewDiscard { change: s("demo") },
-        Command::VerifyAddRound { change: s("demo"), content: s("round") },
-        Command::VerifyShow { change: s("demo") },
-        Command::VerifyStamp { change: s("demo"), accept: false, tool: None, head_commit: None, scope: Vec::new(), missing: Vec::new() },
-        Command::VerifyDiscard { change: s("demo") },
-        Command::WorkflowConfigShow,
-        Command::WorkflowConfigEdit {
-            edit: WorkflowConfigEdit::Policy { key: s("tdd"), value: s("true") },
-            dry_run: false,
-        },
-        Command::WorkflowConfigReplace { content: s(CONFIG) },
-    ];
-    commands.iter().for_each(listed);
-    commands
-}
 
 /// A request to `pattern` that gets as far as the route's handler: the
 /// params filled in, a body of the route's shape, and the headers it needs.

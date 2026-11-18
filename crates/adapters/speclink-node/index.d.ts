@@ -185,6 +185,32 @@ export interface BeforeCommandInfo {
 /** `undefined` or `{ allow: true }` allows; `{ allow: false, reason }` refuses with that reason. Any other answer, `null` included, does not allow. */
 export type BeforeCommandAnswer = void | { allow: true } | { allow: false; reason: string }
 
+/** What `beforeCommand` gets besides the call's info. */
+export interface BeforeCommandTools {
+  /**
+   * Run one verb that writes nothing, as the identity and on the scope of
+   * this call. Resolves to what `host.dispatch` gives for the same `argv`,
+   * and rejects with the same Error (`message` and `code`). It takes no
+   * stdin and no fields.
+   *
+   * The verbs are `list`, `show`, `status`, `plan`, `trace`, `evidence show`,
+   * `review show`, `verify show`, `discuss list`, `discuss show`,
+   * `discuss search`, `artifact cat`, `language show`,
+   * `workflow-config show`, `validate`, `analyze` and `instructions`. Any
+   * other verb rejects with code `invalid_argv` before the store gets a call.
+   *
+   * A read does not ask `beforeCommand` again and does not call
+   * `afterCommit`. You can call it several times in one hook, also at once.
+   * It works only while this `beforeCommand` call runs: after the hook
+   * answered, it rejects with code `invalid_argv`.
+   *
+   * Each read is a call of its own to your store. What it gives and what the
+   * command itself reads can differ when another commit lands between them;
+   * the engine's own checks judge by what the command reads.
+   */
+  read(argv: string[]): Promise<unknown>
+}
+
 export interface AfterCommitInfo {
   identity: HostIdentity
   scope: string
@@ -201,8 +227,9 @@ export interface AfterCommitInfo {
  *
  * `beforeCommand` must settle: the dispatch waits for it with no time limit.
  *
- * WARNING: do not wait for a `dispatch` of the same host inside a hook —
- * the dispatch waits for `beforeCommand`, so it would never finish.
+ * To read data inside `beforeCommand`, use the `read` of its second argument.
+ * Do not wait for a `dispatch` of the same host there: that call asks
+ * `beforeCommand` again, and it hangs when your store holds a lock of its own.
  */
 export interface HostHooks {
   /**
@@ -210,9 +237,11 @@ export interface HostHooks {
    * the call with code `refused` and your reason; for any command but the
    * workflow-config writes it comes before the store sees a call. A throw, a
    * rejected Promise or an answer of another shape does not allow: the call
-   * ends with code `internal`.
+   * ends with code `internal`. `tools.read` reads what the decision needs,
+   * for example `read(['show', info.params.change, '--json'])`; its rejection
+   * that you do not catch is such a throw.
    */
-  beforeCommand?(info: BeforeCommandInfo): MaybePromise<BeforeCommandAnswer>
+  beforeCommand?(info: BeforeCommandInfo, tools: BeforeCommandTools): MaybePromise<BeforeCommandAnswer>
   /**
    * Called after a successful commit; it only watches. The dispatch does not
    * wait for it, what it returns is ignored, and its throw or rejected

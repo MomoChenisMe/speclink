@@ -7,7 +7,7 @@ use serde_json::{json, Value};
 use speclink_core::command::{Command, ErrorCode};
 use speclink_core::fields::Fields;
 use speclink_host::http::{routes, wire_coverage, HttpRequest, HttpResponse, Method, WireCoverage};
-use speclink_host::kit::{BeforeCommand, Caller, Decision, Hooks};
+use speclink_host::kit::{BeforeCommand, Caller, Decision, Hooks, Reader};
 use speclink_host::port_exec::ExecError;
 use speclink_store_port::{Commit, Op};
 use std::sync::{Arc, Mutex};
@@ -31,7 +31,7 @@ fn door_that_records() -> (Door, Arc<Mutex<Vec<BeforeCommand>>>) {
     let asked = Arc::new(Mutex::new(Vec::new()));
     let seen = asked.clone();
     let hooks = Hooks {
-        before_command: Some(Box::new(move |info: &BeforeCommand| {
+        before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| {
             seen.lock().unwrap().push(info.clone());
             Decision::Allow
         })),
@@ -189,7 +189,7 @@ fn the_before_hook_sees_the_fields_that_will_be_written() {
 #[test]
 fn a_hook_can_refuse_by_the_fields_and_nothing_is_written() {
     let hooks = Hooks {
-        before_command: Some(Box::new(|info: &BeforeCommand| match info.params["fields"].get("source") {
+        before_command: Some(Box::new(|info: &BeforeCommand, _: &Reader<'_>| match info.params["fields"].get("source") {
             Some(_) => Decision::Allow,
             None => Decision::Deny { reason: "a change needs a source".to_string() },
         })),

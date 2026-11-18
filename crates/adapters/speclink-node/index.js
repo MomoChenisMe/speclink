@@ -316,6 +316,28 @@ function decisionOf(answer) {
 }
 
 /**
+ * The second argument of one `beforeCommand` call, and the function that
+ * ends it. `read` runs a verb that writes nothing, as the identity and on the
+ * scope of this call, and does not ask the hook again. A `read` kept past the
+ * hook's answer is refused here, before the native side.
+ */
+function readTools(native, info) {
+  // Taken before the hook runs: the hook cannot change who reads, or where.
+  const who = whoAndWhere(info)
+  let open = true
+  const read = async (argv) => {
+    if (!open) {
+      const err = new Error('read works only while its beforeCommand call runs, and that call has ended')
+      err.code = 'invalid_argv'
+      throw err
+    }
+    checkArgv(argv, 'read(argv)')
+    return unwrap(await native.read(...who, argv))
+  }
+  return [{ read }, () => (open = false)]
+}
+
+/**
  * Build a host kit over a store port (`list`, `read`, `commit`), optional
  * hooks (`beforeCommand`, `afterCommit`) and the HTTP door's optional inputs
  * (`scopes`, `authMethods`, `pushTransports`, `skills`, `limits`). One host
@@ -348,8 +370,17 @@ function createHost(options) {
     throw new TypeError('createHost: scopes must be a function')
   }
   checkLimits(options.limits)
+  // The hooks are called only during a call of the host built below.
+  let native
   const hookTarget = {
-    beforeCommand: asJson(async (info) => decisionOf(await hooks.beforeCommand(info))),
+    beforeCommand: asJson(async (info) => {
+      const [tools, close] = readTools(native, info)
+      try {
+        return decisionOf(await hooks.beforeCommand(info, tools))
+      } finally {
+        close()
+      }
+    }),
     // Nothing reads what afterCommit returns, so none of it crosses back.
     afterCommit: async (info) => {
       await hooks.afterCommit(info)
@@ -364,16 +395,15 @@ function createHost(options) {
     skills: options.skills,
     limits: options.limits,
   })
-  return new Host(
-    binding.hostFromPort(
-      makeInvoker(target),
-      makeInvoker(hookTarget),
-      typeof hooks.beforeCommand === 'function',
-      typeof hooks.afterCommit === 'function',
-      typeof options.scopes === 'function',
-      doorOptions,
-    ),
+  native = binding.hostFromPort(
+    makeInvoker(target),
+    makeInvoker(hookTarget),
+    typeof hooks.beforeCommand === 'function',
+    typeof hooks.afterCommit === 'function',
+    typeof options.scopes === 'function',
+    doorOptions,
   )
+  return new Host(native)
 }
 
 function deepFreeze(value) {

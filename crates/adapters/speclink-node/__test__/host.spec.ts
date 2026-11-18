@@ -484,6 +484,229 @@ describe('createHost and host.dispatch', () => {
   })
 })
 
+// node-sdk「beforeCommand 的讀取函式」: the second parameter of the hook.
+describe('the read function of beforeCommand', () => {
+  type Read = (argv: string[]) => Promise<unknown>
+  type Shown = { name: string; review?: { state: string } }
+  const LIST = { identity: ALICE, scope: 's1', argv: ['list', '--json'] }
+
+  it('reads the state of a change and refuses its archive', async () => {
+    const port = portWithDemo(DONE_TASKS)
+    let asked = 0
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          asked += 1
+          if (info.command !== 'archive') return
+          const shown = (await read(['show', info.params.change as string, '--json'])) as Shown
+          if (shown.review?.state !== 'stamped') return { allow: false, reason: '還沒通過審查' }
+        },
+      },
+    })
+
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['archive', 'demo'] }))
+
+    expect(err.code).toBe('refused')
+    expect(err.message).toBe('還沒通過審查')
+    expect(port.calls.commit).toBe(0)
+    expect(asked).toBe(1)
+  })
+
+  it('gives the value host.dispatch gives for the same argv', async () => {
+    const argv = ['show', 'demo', '--json']
+    let viaRead: unknown
+    const host = createHost({
+      store: portWithDemo().store,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          if (info.command === 'list') viaRead = await read(argv)
+        },
+      },
+    })
+
+    await host.dispatch(LIST)
+    const direct = await host.dispatch({ identity: ALICE, scope: 's1', argv })
+
+    expect(viaRead).toEqual(direct)
+    expect(viaRead).toMatchObject({ name: 'demo' })
+  })
+
+  it('refuses a verb that writes, before the store gets a call', async () => {
+    const port = portWithDemo(DONE_TASKS)
+    const refused: { verb: string; code?: string; message: string; storeCalls: number }[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (_info, { read }) => {
+          // The task of `task done` is checked already: the verb decides, not this result.
+          for (const argv of [['new', 'change', 'other'], ['task', 'done', '1', '--change', 'demo'], ['archive', 'demo'], ['claim', 'demo']]) {
+            const before = totalCalls(port)
+            const err = await rejection(read(argv))
+            refused.push({ verb: argv[0], code: err.code, message: err.message, storeCalls: totalCalls(port) - before })
+          }
+        },
+      },
+    })
+
+    await host.dispatch(LIST)
+
+    expect(refused.map((r) => r.verb)).toEqual(['new', 'task', 'archive', 'claim'])
+    for (const r of refused) expect(r, r.verb).toMatchObject({ code: 'invalid_argv', storeCalls: 0 })
+    expect(refused[0].message).toBe("read accepts only verbs that write nothing; 'new change' is not one of them")
+    expect(refused[1].message).toContain("'task done'")
+    expect(port.doc('s1', 'changes/other/.meta.yaml')).toBeUndefined()
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('rejects as host.dispatch does when the change does not exist, and the call goes on', async () => {
+    const argv = ['show', 'ghost', '--json']
+    let caught: (Error & { code?: string }) | undefined
+    const host = createHost({
+      store: portWithDemo().store,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          if (info.command === 'list') caught = await rejection(read(argv))
+        },
+      },
+    })
+
+    const listed = (await host.dispatch(LIST)) as { changes: { name: string }[] }
+    const direct = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv }))
+
+    expect(listed.changes.map((c) => c.name)).toEqual(['demo'])
+    expect(caught?.code).toBe('not_found')
+    expect(caught?.message).toBe(direct.message)
+  })
+
+  it('ends the call as internal when the hook lets a read failure out', async () => {
+    const port = portWithDemo()
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (_info, { read }) => {
+          await read(['show', 'ghost', '--json'])
+        },
+      },
+    })
+
+    const err = await rejection(host.dispatch(LIST))
+
+    expect(err.code).toBe('internal')
+    expect(err.message).toContain('beforeCommand')
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('stops working when the hook has answered', async () => {
+    const port = portWithDemo()
+    let kept: Read | undefined
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: (_info, { read }) => {
+          kept = read
+        },
+      },
+    })
+
+    await host.dispatch(LIST)
+    const before = totalCalls(port)
+    const err = await rejection(kept!(['list', '--json']))
+
+    expect(err.code).toBe('invalid_argv')
+    expect(totalCalls(port)).toBe(before)
+  })
+
+  it('reads as the caller and on the scope of the call, whatever the hook does to its info', async () => {
+    const port = portWithDemo()
+    port.seed('s2', { 'changes/other/.meta.yaml': META })
+    let listed: { changes: { name: string }[] } | undefined
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          info.scope = 's2'
+          info.identity = BOB
+          listed = (await read(['list', '--json'])) as typeof listed
+        },
+      },
+    })
+
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['show', 'demo', '--json'] })
+
+    expect(listed?.changes.map((c) => c.name)).toEqual(['demo'])
+  })
+
+  it('reads in the hook of a workflow-config write too', async () => {
+    const port = portWithDemo()
+    let shown: unknown
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (info, { read }) => {
+          if (info.command !== 'workflow-config-edit') return
+          shown = await read(['workflow-config', 'show', '--json'])
+          return { allow: false, reason: 'frozen' }
+        },
+      },
+    })
+
+    const err = await rejection(
+      host.dispatch({ identity: ALICE, scope: 's1', argv: ['workflow-config', 'set', 'tdd', 'true'] }),
+    )
+
+    expect(err.code).toBe('refused')
+    expect(shown).toMatchObject({ schema: 'spec-driven' })
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('is not on the host object', () => {
+    const host = createHost({ store: memoryPort().store, hooks: { beforeCommand: () => undefined } })
+    expect((host as unknown as { read?: unknown }).read).toBeUndefined()
+  })
+
+  it('leaves a hook that declares one parameter as it was', async () => {
+    const port = memoryPort()
+    const argv = ['new', 'change', 'demo']
+    const host = createHost({ store: port.store, hooks: { beforeCommand: (_info) => undefined } })
+
+    const created = await host.dispatch({ identity: ALICE, scope: 's1', argv })
+
+    expect(created).toEqual(await createHost({ store: memoryPort().store }).dispatch({ identity: ALICE, scope: 's1', argv }))
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')).toBeDefined()
+    expect(port.calls.commit).toBe(1)
+  })
+
+  it('takes several reads at once, as the caller and on the scope of the call', async () => {
+    const port = portWithDemo(OPEN_TASKS, { async: true })
+    port.seed('s2', { 'changes/other/.meta.yaml': META })
+    let asked = 0
+    let results: unknown[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (_info, { read }) => {
+          asked += 1
+          results = await Promise.all([
+            read(['list', '--json']),
+            read(['show', 'demo', '--json']),
+            read(['status', '--change', 'demo', '--json']),
+          ])
+        },
+      },
+    })
+
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['show', 'demo', '--json'] })
+
+    const [listed, shown] = results as [{ changes: { name: string }[] }, Shown]
+    expect(results).toHaveLength(3)
+    expect(listed.changes.map((c) => c.name)).toEqual(['demo'])
+    expect(shown.name).toBe('demo')
+    expect(asked).toBe(1)
+    expect(port.calls.commit).toBe(0)
+  })
+})
+
 // change-landing「change landed 動詞回報落地的 commit」and the two stations'
 // 「蓋章記錄程式碼的 commit」: a host has no checkout, so it names the commit itself.
 describe('the landing report and the stamp commit through host.dispatch', () => {

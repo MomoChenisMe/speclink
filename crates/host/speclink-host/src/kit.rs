@@ -10,6 +10,7 @@
 
 use crate::documents::scope_version;
 use crate::port_exec::{at_version, execute_with, now, AtVersion, BeforeCommit, ExecError, PortExecution, WriteAt};
+use crate::read_only::is_read;
 use crate::transfer::{self, ImportReport, ScopeBundle, TransferError};
 use speclink_core::command::{
     Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext, WorkflowConfigWriteOutcome,
@@ -136,14 +137,35 @@ pub struct AfterCommit {
     pub events: Vec<Event>,
 }
 
-pub type BeforeCommandHook = Box<dyn Fn(&BeforeCommand) -> Decision + Send + Sync>;
+/// What the before-command hook reads with: it runs commands that write
+/// nothing ([`HostKit::read`]), as this call's caller on this call's scope.
+/// Only the kit builds one, so a hook cannot read as another identity or on
+/// another scope.
+///
+/// A read here and the read of the command the hook is asked about are two
+/// calls to the store: a commit between them makes them differ. The Engine's
+/// own checks judge by what the command reads.
+pub struct Reader<'a> {
+    kit: &'a HostKit,
+    caller: &'a Caller,
+}
+
+impl Reader<'_> {
+    /// [`HostKit::read`] for this call's caller.
+    pub fn read(&self, cmd: Command) -> Result<PortExecution, ExecError> {
+        self.kit.read(self.caller, cmd)
+    }
+}
+
+pub type BeforeCommandHook = Box<dyn Fn(&BeforeCommand, &Reader<'_>) -> Decision + Send + Sync>;
 pub type AfterCommitHook = Box<dyn Fn(&AfterCommit) + Send + Sync>;
 
 /// The hooks of a kit; each one is optional.
 #[derive(Default)]
 pub struct Hooks {
     /// Asked exactly once per call, before anything reaches the store's
-    /// commit. Absent: every call is allowed.
+    /// commit. Absent: every call is allowed. What the hook reads with its
+    /// [`Reader`] does not ask it again.
     pub before_command: Option<BeforeCommandHook>,
     /// Called once after the store's commit succeeded; it cannot change the
     /// result, and a panic in it is caught.
@@ -322,14 +344,7 @@ impl HostKit {
             None => serde_json::Value::Null,
         };
         let cmd = without_local_facts(cmd);
-        // The kit reads no process environment and no checkout: the Engine
-        // gets the caller's name and identifier, and nothing else.
-        let engine_ctx = ExecutionContext {
-            actor: Some(caller.identity.display_name().to_string()),
-            actor_id: Some(caller.identity.id().to_string()),
-            repo: options.repo.clone(),
-            ..Default::default()
-        };
+        let engine_ctx = engine_context(caller, options.repo.clone());
         let (scope, actor) = (&caller.scope, &caller.identity.actor);
         let write_guard = options.write_at.as_ref().map(|(key, expected)| WriteAt {
             port: self.store.as_ref(),
@@ -385,6 +400,23 @@ impl HostKit {
             }
         }
         Ok(Ran { at, before })
+    }
+
+    /// Run `cmd` for `caller` when it is of a kind that writes nothing
+    /// ([`crate::read_only::is_read`]); any other command is `invalid_argv`
+    /// before the store is called. The result is what [`HostKit::run`] gives
+    /// for the same command, and no hook is asked or told: this is what the
+    /// before-command hook reads with ([`Reader`]).
+    pub fn read(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError> {
+        if !is_read(&cmd) {
+            return Err(ExecError::Command(CommandError::new(
+                ErrorCode::InvalidArgv,
+                format!("read accepts only commands that write nothing; '{}' is not one of them", cmd.name()),
+            )));
+        }
+        let engine_ctx = engine_context(caller, None);
+        let cmd = without_local_facts(cmd);
+        execute_with(self.store.as_ref(), &caller.scope, &engine_ctx, caller.identity.actor(), cmd, None)
     }
 
     /// The most an import takes, in bytes ([`HostKitOptions::import_limit_bytes`]).
@@ -448,7 +480,7 @@ impl HostKit {
             return Ok(());
         };
         let info = BeforeCommand { caller: caller.clone(), command, params: params.clone(), changed_keys };
-        match hook(&info) {
+        match hook(&info, &Reader { kit: self, caller }) {
             Decision::Allow => Ok(()),
             Decision::Deny { reason } => {
                 let reason = if reason.trim().is_empty() { NO_REASON.to_string() } else { reason };
@@ -528,6 +560,18 @@ fn refuse_policy_change(changed: &[ChangedKey]) -> Result<(), ExecError> {
         ),
         source: Some(anyhow::Error::new(PolicyChangeRefused)),
     }))
+}
+
+/// The Engine's context for `caller`. The kit reads no process environment
+/// and no checkout: the Engine gets the caller's name and identifier, and
+/// nothing else.
+fn engine_context(caller: &Caller, repo: Option<String>) -> ExecutionContext {
+    ExecutionContext {
+        actor: Some(caller.identity.display_name().to_string()),
+        actor_id: Some(caller.identity.id().to_string()),
+        repo,
+        ..Default::default()
+    }
 }
 
 /// A task completion that names no changed files records none. Without this,
