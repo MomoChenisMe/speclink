@@ -5,7 +5,7 @@ use crate::events::EventHub;
 use crate::identity::{IdentityStore, MembershipRole};
 use crate::storage::ServerStore;
 use speclink_host::kit::{AfterCommit, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
-use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::{EventTransport, TransportKind};
 use speclink_store_port::StorePort;
@@ -116,9 +116,9 @@ fn member_scopes(identity: &dyn IdentityStore, user_id: &str) -> Result<Vec<Proj
             == Some(MembershipRole::Editor);
         let mut repos = Vec::new();
         for repo in identity.list_repos(&project.key).map_err(unavailable)? {
-            let scope = Scope::new(ProjectId::new(project.key.clone()), RepoId::new(repo.key.clone()));
             repos.push(RepoEntry {
-                scope: scope_id(&scope).map_err(|e| e.to_string())?,
+                scope: scope_id(&ProjectId::new(project.key.clone()), &RepoId::new(repo.key.clone()))
+                    .map_err(|e| e.to_string())?,
                 key: repo.key,
                 name: repo.name,
                 can_write: editor,

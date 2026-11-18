@@ -2359,7 +2359,7 @@ fn audit_a_project_that_is_not_the_callers_gives_no_skills() {
 // the two bundle versions, the write switch and the size limit.
 // ======================================================================
 
-use speclink_store::content_digest;
+use speclink_host::projection::content_digest;
 
 const MIB: usize = 1024 * 1024;
 
@@ -2642,12 +2642,14 @@ fn a_body_that_is_not_a_bundle_keeps_the_statuses_the_import_always_gave() {
     first_selector["mode"] = json!("overwrite");
     let mut no_scope = by_kind(&[(json!({ "type": "workflowConfig" }), CONFIG)]);
     no_scope.as_object_mut().unwrap().remove("scope");
+    let unknown_kind = by_kind(&[(json!({ "type": "workflowConfig" }), CONFIG), (json!({ "type": "mystery" }), "x")]);
 
     for (case, body) in [
         ("no format version", no_version),
         ("a mode field on a keyed bundle", selector),
         ("a mode field on a first-version bundle", first_selector),
         ("a first-version bundle with no scope", no_scope),
+        ("a first-version document of a kind outside the nine", unknown_kind),
     ] {
         let (status, reason, _) = error(&import(&door, body));
         assert_eq!((status, reason.as_str()), (422, "invalid_argument"), "{case}");

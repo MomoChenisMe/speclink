@@ -8,7 +8,7 @@
 
 use crate::policy::EffectiveWorkflowPolicy;
 use speclink_core::workspace::{ModeResolution, Workspace};
-use speclink_store::{ProjectId, RepoId};
+use crate::scope::{ProjectId, RepoId};
 
 /// Where an actor identity came from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -42,7 +42,7 @@ impl Actor {
 pub enum ExecutionMode {
     /// Local `openspec/` layout via the fs adapter.
     Fs,
-    /// A shared TeamStore backend.
+    /// A shared store behind a store port.
     SharedStore,
 }
 

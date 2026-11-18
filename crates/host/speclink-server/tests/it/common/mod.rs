@@ -9,7 +9,7 @@ use chrono::{Duration, Utc};
 use speclink_server::config::{IdentityConfig, ServerConfig, StoreConfig};
 use speclink_server::events::{EventHub, EventSettings};
 use speclink_server::identity::{IdentitySqlite, IdentityStore, NewInvitation};
-use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_server::state::{AppState, SharedIdentity, SharedStore};
 use speclink_server::storage::{Memory, ServerStore};
 use speclink_store_port::{
@@ -348,7 +348,7 @@ impl TestStore {
 }
 
 fn scope_of(project: &str, repo: &str) -> ScopeId {
-    scope_id(&Scope::new(ProjectId::new(project), RepoId::new(repo))).expect("a scope id")
+    scope_id(&ProjectId::new(project), &RepoId::new(repo)).expect("a scope id")
 }
 
 fn doc_key(key: &str) -> DocKey {

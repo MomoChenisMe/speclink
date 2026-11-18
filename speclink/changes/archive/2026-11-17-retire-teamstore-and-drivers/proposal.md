@@ -37,8 +37,10 @@ Source discussion: embedded-host-needs（cut 20）。
 
 **其他 crate**
 
-- Speclink Desktop 與 `speclink-remote`：改從宿主套件引用上面那幾樣，移除對 `speclink-store` 的相依。行為不變。
+- Speclink Desktop：改從宿主套件引用上面那幾樣，移除對 `speclink-store` 的相依。行為不變。`speclink-remote` 與 Speclink Desktop 的測試對 `speclink-store` 的引用，前一個變更（server-on-port-examples）已經移除，這個變更確認沒有殘留、不用再改。
 - 引擎、協定、示範用 server 裡提到 TeamStore 的註解與套件說明更新。
+- 示範用 server 有五個檔案用舊儲存層的範圍型別組範圍識別字；範圍識別字的函式改成直接收專案與儲存庫之後，這五處的呼叫寫法跟著改。行為不變。
+- deploy 的 PostgreSQL 組態範例裡一句提到 TeamStore 的註解更新。
 
 **CI**
 
@@ -91,7 +93,7 @@ Source discussion: embedded-host-needs（cut 20）。
 ## Impact
 
 - Affected specs: host-runtime（移除三條、新增兩條、修改一條）、server-read-api（修改一條）、server-identity（修改一條）、change-diff-scope（修改兩條）；刪除 teamstore-contract、sqlite-team-store、serverfs-team-store、postgres-team-store 四份
-- Affected crates 與 app: 刪除 `speclink-store`、`speclink-store-sqlite`、`speclink-store-fs`、`speclink-store-postgres`；修改 `speclink-host`、`speclink-remote`、apps/desktop（Tauri 殼）；`speclink-core`、`speclink-protocol`、`speclink-server` 只改註解與套件說明。`speclink-cli`、`speclink-node`、儲存契約與三個範例不改。
+- Affected crates 與 app: 刪除 `speclink-store`、`speclink-store-sqlite`、`speclink-store-fs`、`speclink-store-postgres`；修改 `speclink-host`、apps/desktop（Tauri 殼）；`speclink-remote` 只確認沒有殘留；`speclink-core`、`speclink-protocol` 只改註解；`speclink-server` 改註解，以及五個檔案裡呼叫範圍識別字函式的寫法（行為不變）。`speclink-cli`、`speclink-node`、儲存契約與三個範例不改。
 - Affected code:
   - New: (none)
   - Modified:
@@ -111,16 +113,18 @@ Source discussion: embedded-host-needs（cut 20）。
     - crates/host/speclink-host/tests/documents.rs
     - crates/host/speclink-host/tests/http_door.rs
     - crates/host/speclink-host/tests/transfer.rs
-    - crates/protocol/speclink-remote/Cargo.toml
-    - crates/protocol/speclink-remote/tests/it/read_api.rs
-    - crates/protocol/speclink-remote/tests/it/events_sse.rs
     - apps/desktop/src-tauri/Cargo.toml
     - apps/desktop/src-tauri/src/remote.rs
-    - apps/desktop/src-tauri/tests/it/common/mod.rs
-    - apps/desktop/src-tauri/tests/it/login_orchestration.rs
-    - apps/desktop/src-tauri/tests/it/remote_data.rs
-    - crates/host/speclink-server/Cargo.toml
-    - crates/host/speclink-server/Dockerfile
+    - crates/host/speclink-server/src/state.rs
+    - crates/host/speclink-server/src/admin.rs
+    - crates/host/speclink-server/src/admin/backup.rs
+    - crates/host/speclink-server/src/api/routes.rs
+    - crates/host/speclink-server/tests/it/common/mod.rs
+    - crates/host/speclink-server/tests/it/legacy_layout.rs（既有的測試補上「兩個儲存庫各自只有自己的文件」的斷言）
+    - crates/host/speclink-server/tests/pg/mod.rs
+    - crates/host/speclink-server/tests/postgres_store.rs
+    - crates/host/speclink-server/tests/it/serverfs_store.rs
+    - deploy/docker-compose.postgres.yml
     - crates/engine/speclink-core/src/lifecycle/tasks.rs
     - crates/protocol/speclink-protocol/src/query.rs
     - .github/workflows/ci.yml

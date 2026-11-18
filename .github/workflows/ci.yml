@@ -311,8 +311,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          cargo test --locked -p speclink-store-postgres 2>&1 | tee postgres-suites.log
-          cargo test --locked -p speclink-server --test postgres_store 2>&1 | tee -a postgres-suites.log
+          cargo test --locked -p speclink-server --test postgres_store 2>&1 | tee postgres-suites.log
           cargo test --locked -p speclink-store-port-postgres 2>&1 | tee -a postgres-suites.log
 
       # The suites skip rather than fail when no database is configured — right

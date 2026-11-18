@@ -3,12 +3,11 @@ name = "speclink-host"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Canonical Rust Host application layer: ExecutionContext, binding fail-closed validation, policy injection, lifecycle gate, TeamStore composition"
+description = "Canonical Rust Host application layer: ExecutionContext, binding fail-closed validation, policy injection, lifecycle gate, command execution on a store port"
 
 [dependencies]
 speclink-core = { path = "../../engine/speclink-core" }
 speclink-protocol = { path = "../../protocol/speclink-protocol" }
-speclink-store = { path = "../../store/speclink-store" }
 speclink-store-port = { path = "../../store/speclink-store-port" }
 anyhow.workspace = true
 serde.workspace = true

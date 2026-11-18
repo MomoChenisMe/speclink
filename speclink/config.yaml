@@ -10,21 +10,22 @@ context: |
   ## 專案
 
   Speclink — 可驗收的 SDD 引擎（Spec-Driven Development，以 Rust 實作）：每個變更先寫一小份
-  規格、交給 AI agent 實作，封存前由審查與驗證兩道品質關卡檢查並留下證據。同時支援 Local Repo
-  （`speclink/` ＋ Git、可完全離線）與 Remote Store（Speclink Host ＋ TeamStore）兩條路徑。
+  規格、交給 AI agent 實作，封存前由審查與驗證兩道品質關卡檢查並留下證據。同時支援本機專案
+  （`speclink/` ＋ Git、可完全離線）與遠端專案（規格由一台 Server 持有：內嵌了引擎的宿主，
+  或官方的示範用 server）兩條路徑。
 
   技術棧：Rust（serde／chrono／anyhow／clap／ulid，HTTP client 用 ureq、async 用 tokio ＋
-  axum）、store driver 為 rusqlite／postgres／檔案系統、Node SDK 用 napi-rs、桌面用 Tauri；
+  axum）、儲存接口的三個範例用 rusqlite／postgres／檔案系統、Node SDK 用 napi-rs、桌面用 Tauri；
   前端 React ＋ TypeScript ＋ Vite ＋ Tailwind ＋ Radix UI ＋ zustand，測試用 vitest；
   drift 與 archive 會呼叫 git。
 
   Cargo workspace：`speclink-core`（SDD 引擎）、`speclink-fs`（儲存介面的
-  預設檔案系統實作，維持 `speclink/` 版面）、`speclink-store` ＋
-  `speclink-store-{sqlite,fs,postgres}`（TeamStore contract：Project／Repo 定址、CAS 寫入、
-  不可變歷史、transactional outbox，及三種 driver）、`speclink-host`（引擎唯一的應用層邊界：
-  execution context、revision、transaction、event、evidence）、`speclink-protocol`（wire
+  預設檔案系統實作，維持 `speclink/` 版面）、`speclink-store-port`（儲存契約：列出、讀取、
+  提交三個操作，合格測試與記憶體版參考實作）＋ `speclink-store-port-{sqlite,fs,postgres}`
+  （三個範例，也是示範用 server 的儲存）、`speclink-host`（引擎唯一的應用層邊界與宿主套件：
+  execution context、命令經儲存接口執行、掛鉤、HTTP 入口、匯入匯出）、`speclink-protocol`（wire
   contract，Rust 型別為正典、JSON Schema 是匯出）＋ `speclink-remote`（型別化 client）、
-  `speclink-cli`、`speclink-server`（axum adapter，async 邊界僅在此）、`speclink-node`
+  `speclink-cli`、`speclink-server`（示範用，axum adapter，async 邊界僅在此）、`speclink-node`
   （napi-rs 綁定，引擎核心維持同步）。桌面與前端：`apps/desktop/core`（純邏輯、不依賴 Tauri）
   ＋ `apps/desktop/src-tauri`（Tauri 殼）、`apps/desktop`、`apps/server-web`、`packages/ui`。
 
@@ -53,7 +54,7 @@ rules:
   - 若涉及生成的技能或 Agent 指令，必須說明影響哪些技能與哪些工具（claude / codex）
   - 新增或變更引擎命令、動詞、文件種類或技能步驟時，必須逐一寫明三種形態下的結果——本機 repo、連到遠端的 checkout、沒有本機規格檔的內嵌宿主：可用、不適用（寫理由）、或這次不做（寫成已知缺口）
   design:
-  - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、TeamStore contract 與 driver 歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
+  - 必須指明變更落在哪個 crate 與其邊界：領域演算法歸 speclink-core（不得含 ANSI 或寫死儲存媒介）、Local Repo I/O 歸 speclink-fs、儲存契約與範例歸 store crates、應用層裁決歸 speclink-host；CLI / Server / Node / Desktop 只經穩定 Host 或 Protocol contract 組裝輸入與呈現
   - 同一對外契約同時落本機、遠端連線與內嵌宿主（CLI／server／desktop／Node SDK）路徑時，必須指明唯一實作落點與各端共用方式，不得平行實作兩套（回歸對照：crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs）；新增的引擎功能若需要本機事實（改了哪些檔、檔案指紋、commit），由呼叫端收集後當成輸入，不在引擎內直接讀 checkout 或呼叫 git，文件讀寫一律經儲存介面
   - 以文字手術改寫 YAML（.meta.yaml、speclink/config.yaml）的設計，純量寫出必須走 crates/engine/speclink-core/src/util.rs 的 yaml_scalar 跳脫，不得手拼未跳脫純量
   - 動詞觸發多筆寫入或刪除時，必須敘明寫入順序與任一步失敗後的可觀察狀態（不得留下半套狀態，或明確記載接受哪種半套及其理由）

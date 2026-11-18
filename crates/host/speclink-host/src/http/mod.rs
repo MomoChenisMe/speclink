@@ -35,7 +35,7 @@ use serde::Serialize;
 use speclink_protocol::binding::ScopeRef;
 use speclink_protocol::query::{AuthWhoamiResponse, ProjectScope, ScopesResponse, WhoamiUser};
 use speclink_protocol::API_VERSION;
-use speclink_store::{ProjectId, RepoId};
+use crate::scope::{ProjectId, RepoId};
 
 /// The five methods the door takes. A host answers any other with 405.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

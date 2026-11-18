@@ -173,40 +173,17 @@ code:
 ---
 ### Requirement: archived 列舉為 Store 契約的一部分
 
-core Store 契約 SHALL 提供 archived changes 的列舉（dated name 清單）；各實作站點 SHALL 補齊——測試 store 與 host 的 TeamStore 橋接回真值、drift 專用唯讀最小 adapter 顯式回空並註明用途限定、檔案系統實作以 archive 目錄列舉。列舉排序 SHALL 為 dated name 降冪。
+core Store 契約 SHALL 提供 archived changes 的列舉（dated name 清單）；各實作站點 SHALL 補齊——測試 store 與 host 經儲存接口的儲存視圖回真值、drift 專用唯讀最小 adapter 顯式回空並註明用途限定、檔案系統實作以 archive 目錄列舉。列舉排序 SHALL 為 dated name 降冪。
 
 #### Scenario: 橋接列舉與點讀一致
 
-- **WHEN** 對 TeamStore 橋接先 archive 一個 change 再呼叫列舉與 exists 點讀
+- **WHEN** 經儲存接口的儲存視圖先 archive 一個 change 再呼叫列舉與 exists 點讀
 - **THEN** 列舉含該 dated name 且 exists 為真，兩者一致
 
+
 <!-- @trace
-source: server-scope-read-api
-updated: 2026-07-20
-code:
-  - apps/desktop/src-tauri/src/lib.rs
-  - apps/desktop/src-tauri/src/remote.rs
-  - apps/desktop/src-tauri/tests/remote_data.rs
-  - apps/desktop/src/__tests__/helpers/remoteFixtures.ts
-  - apps/desktop/src/__tests__/remoteCapabilities.test.tsx
-  - apps/desktop/src/__tests__/remoteDataSource.test.ts
-  - apps/desktop/src/__tests__/remoteOpen.test.ts
-  - apps/desktop/src/adapter/remoteDataSource.ts
-  - crates/speclink-core/src/store.rs
-  - crates/speclink-core/src/teststore.rs
-  - crates/speclink-fs/src/lib.rs
-  - crates/speclink-fs/tests/store_fs.rs
-  - crates/speclink-host/src/bridge.rs
-  - crates/speclink-host/src/drift.rs
-  - crates/speclink-protocol/src/query.rs
-  - crates/speclink-remote/src/client.rs
-  - crates/speclink-remote/tests/read_api.rs
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/read_api.rs
-  - crates/speclink-server/tests/read_api.rs
-  - scripts/dev.mjs
+source: retire-teamstore-and-drivers
+updated: 2026-11-17T22:53:25+08:00
 -->
 
 ---

@@ -17,7 +17,7 @@ use speclink_core::command::{CommandError, ErrorCode};
 use speclink_protocol::query::{
     ImportBundle, ImportDocumentId, ImportDocumentOutcome, ImportReportResponse, ImportedDocument,
 };
-use speclink_store::content_digest;
+use crate::projection::content_digest;
 use speclink_store_port::{
     keys, Actor, Commit, DocKey, Event, Expected, KeyPrefix, Op, PortError, ScopeId, StorePort, Timestamp, Version,
 };
@@ -31,7 +31,7 @@ pub const FORMAT_VERSION: u32 = 2;
 
 /// The bundle format that names each document by its kind
 /// ([`from_first_version`]).
-const FIRST_VERSION: u32 = 1;
+pub const FIRST_VERSION: u32 = 1;
 
 /// The most keys one read of an export asks for. A host's store often turns a
 /// read into one query with a list of keys, and such a list has a limit.
@@ -319,7 +319,7 @@ pub fn key_of_document(doc: &ImportDocumentId) -> Option<DocKey> {
 
 /// The document kind a key names, or `None` when the key follows none of the
 /// naming rules: the reverse of [`key_of_document`].
-pub(crate) fn document_of_key(key: &DocKey) -> Option<ImportDocumentId> {
+pub fn document_of_key(key: &DocKey) -> Option<ImportDocumentId> {
     Some(match parse_key(key.as_str())? {
         KeyKind::ChangeMeta { change } => ImportDocumentId::ChangeMeta { change: change.to_string() },
         KeyKind::ChangeEvidence { change } => ImportDocumentId::ChangeEvidence { change: change.to_string() },

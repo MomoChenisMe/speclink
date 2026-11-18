@@ -7,7 +7,7 @@
 # server 由 SPECLINK_POSTGRES_PASSWORD 補全；postgres 服務用同源的變數初始化。
 # 版本控制內（本檔與 .env.example）沒有任何明文密碼。
 #
-# identity 資料庫維持 /data 下的 SQLite 檔（identity 獨立於 TeamStore driver 選擇）。
+# identity 資料庫維持 /data 下的 SQLite 檔（identity 獨立於規格文件儲存的選擇）。
 
 name: speclink-postgres
 

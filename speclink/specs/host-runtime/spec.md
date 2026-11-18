@@ -2,7 +2,7 @@
 
 ## Purpose
 
-應用層 Host 作為引擎唯一邊界的語意：ExecutionContext 由 Host 解析且不可被呼叫端覆寫、Project 與 Repo binding 的驗證、lifecycle gate 作為單一裁決點，以及 TeamStore 的 unit of work 與事件提交歸屬。本 capability 保證引擎規格面不讀 process 環境變數、不讀 git 身分——這些一律由 Host 注入，且組裝點遷移不改變任何對外輸出。
+應用層 Host 作為引擎唯一邊界的語意：ExecutionContext 由 Host 解析且不可被呼叫端覆寫、Project 與 Repo binding 的驗證、lifecycle gate 作為單一裁決點，以及引擎命令經儲存接口執行、一個動詞收成一次提交的歸屬。本 capability 保證引擎規格面不讀 process 環境變數、不讀 git 身分——這些一律由 Host 注入，且組裝點遷移不改變任何對外輸出。
 
 ## Requirements
 
@@ -226,27 +226,6 @@ code:
 -->
 
 ---
-### Requirement: Host 承擔 TeamStore 的 UoW 與 event commit
-
-Host SHALL 經 TeamStore 的轉接提供 commit 組合路徑：儲存接口的一次提交轉成一個 unit of work，提交裡的全部寫入與刪除放進同一個 unit of work，領域事件單向映射為 event records，經 commit 原子落入文件與 outbox；TeamStore 的 revision_conflict SHALL 轉成儲存接口的衝突並保留文件、expected 與 actual 的詳情。event record 的時間 SHALL 是該次提交的時間。這條 commit 路徑 SHALL NOT 接線任何本機模式的 CLI 流程。
-
-#### Scenario: commit 後 outbox 含對應事件
-
-- **WHEN** Host 經 TeamStore 的轉接對 in-memory reference store 提交一份文件的寫入並帶一筆領域事件
-- **THEN** 提交成功後自 cursor 0 重讀 outbox 得到恰一筆對應 event record（含 actor 與事件名）；文件與事件同 commit 可見
-
-#### Scenario: CAS 衝突原樣傳遞
-
-- **WHEN** 兩次提交以相同的預期版本競寫同一文件
-- **THEN** 敗方收到的 Host 錯誤是衝突，保留 revision_conflict 分類與 expected/actual 詳情，並指出是哪一份文件
-
-
-<!-- @trace
-source: engine-on-store-port
-updated: 2026-11-11T12:52:06+08:00
--->
-
----
 ### Requirement: 組裝點遷移輸出凍結
 
 CLI 與 Node dispatch 改經 Host 組裝後，全部現行動詞的人眼輸出、--json 輸出、exit code 與錯誤訊息 SHALL 與遷移前逐位元一致；政策環境變數與 git 身分的可觀測效果 SHALL 不變。
@@ -262,32 +241,6 @@ source: stale-verification-vehicles
 updated: 2026-07-27
 code:
   - docs/implementation-refactor-roadmap.zh-TW.md
--->
-
----
-### Requirement: engine 動詞經橋接於 TeamStore 上執行
-
-Host SHALL 提供 engine-over-TeamStore 執行橋接：橋接 SHALL 把 TeamStore 的範圍經轉接包成儲存接口，再走「engine 動詞經儲存接口執行」的同一條執行路徑；Host SHALL NOT 另外保留一套把整個範圍載入記憶體的讀取視圖。同一動詞對語意相同的內容分別經本地 fs seam 與經橋接執行，typed outcome、錯誤分類與領域事件 SHALL 一致；TeamStore 的 revision_conflict SHALL 映射為命令層錯誤且保留 expected/actual 詳情。橋接 SHALL NOT 分叉 engine 命令層的動詞語意，發現的檔案系統暗依賴 SHALL 修在引擎的儲存視圖。
-
-#### Scenario: 雙路徑 outcome 一致
-
-- **WHEN** 對含相同 change 內容的 fs workspace 與 TeamStore scope 分別執行同一查詢動詞與同一變更型動詞
-- **THEN** 兩路徑的 typed outcome 結構相等、變更型動詞回報相同種類的領域事件；失敗情境（如 not_found）的錯誤碼相同
-
-#### Scenario: 橋接寫入原子落店
-
-- **WHEN** 經橋接執行 task done 成功
-- **THEN** 任務勾選後的文件內容、revision 遞增與 task-completed 事件記錄在同一 commit 內可見；commit 前 store 無任何中間狀態
-
-#### Scenario: 版本衝突經 Server 回報
-
-- **WHEN** 經橋接執行的變更型動詞在提交時遇到別人先寫入的同一份文件
-- **THEN** Server 回應 HTTP 409，reason 是 revision_conflict，message 含該文件的鍵、expected 與 actual
-
-
-<!-- @trace
-source: engine-on-store-port
-updated: 2026-11-11T12:52:06+08:00
 -->
 
 ---
@@ -361,93 +314,9 @@ updated: 2026-11-11T12:52:06+08:00
 -->
 
 ---
-### Requirement: TeamStore 轉接成儲存接口
-
-Host SHALL 提供把 TeamStore 包成儲存接口的轉接，一個轉接 SHALL 能長期持有並服務多個範圍，讓示範用的 Server 繼續使用既有的 driver。轉接 SHALL 讓鍵與 TeamStore 的九種文件雙向對應，對應 SHALL 依儲存接口的鍵命名規則。範圍識別 SHALL 是 `<project>/<repo>` 的形式；project 裡的 `%` 與 `/` SHALL 寫成 `%25` 與 `%2F`，使一個範圍識別只對應一個範圍。轉接 SHALL 為每個用過的範圍保留最近一次載入的內容：下一次列出或讀取時，該範圍所屬專案的 revision 與載入當時相同 SHALL 重用它而 SHALL NOT 再次匯出；revision 不同 SHALL 重新載入。因此轉接在一次動詞執行裡 SHALL 最多匯出該範圍一次，而連續只查詢範圍版本號 SHALL NOT 造成任何匯出。轉接自己的提交成功後 SHALL 丟棄該範圍已載入的內容。同一個範圍的載入 SHALL 一次一個：等待中的呼叫在 revision 相同時 SHALL 重用剛完成的載入，SHALL NOT 另行匯出。直接經轉接（不經視圖）的每次呼叫，回傳的內容 SHALL NOT 比該次呼叫開始時 TeamStore 的 revision 舊。轉接 SHALL 另外提供一個請求用的視圖：視圖的第一次列出或讀取取得該範圍當下的載入，同一個請求之後的列出與讀取 SHALL 由這份載入回答；經視圖提交之後，視圖 SHALL 重新載入，因此讀得到自己寫入的內容。示範用 Server 的每個請求 SHALL 經這樣的視圖讀寫，使一個請求只載入一次範圍，命令內的讀取也來自同一個 revision。文件版本 SHALL 是 TeamStore 的文件 revision，範圍版本號 SHALL 是專案 revision。轉接回報的最後修改時間 SHALL 是 0。對不到任何一種文件的鍵：讀取 SHALL 回傳「沒有」，寫入 SHALL 回報後端錯誤並指出該鍵。範圍識別的形式不合時 SHALL 回報後端錯誤。
-
-#### Scenario: 鍵與文件種類雙向對應
-
-- **WHEN** 對九種文件各取一份，由文件種類換成鍵再換回
-- **THEN** 得到原本的文件種類與名稱
-
-##### Example: 對應
-
-| TeamStore 的文件 | 鍵 |
-| ---------------- | -- |
-| 變更 `add-x` 的 metadata | `changes/add-x/.meta.yaml` |
-| 變更 `add-x` 的 artifact `specs/auth/spec.md` | `changes/add-x/specs/auth/spec.md` |
-| 變更 `add-x` 的 evidence | `changes/add-x/.evidence.json` |
-| 已封存變更 `2026-11-10-add-x` 的 `proposal.md` | `archive/changes/2026-11-10-add-x/proposal.md` |
-| 正式規格 `auth` | `specs/auth/spec.md` |
-| 流程設定 | `config.yaml` |
-| 詞彙表 | `LANGUAGE.md` |
-| 看板順序 | `board/order` |
-
-#### Scenario: 一次執行只匯出一次
-
-- **WHEN** 經轉接執行一個會列出兩個前綴並讀取多份文件的動詞
-- **THEN** TeamStore 的匯出只被呼叫一次
-
-#### Scenario: 對不到文件種類的鍵
-
-- **WHEN** 提交裡有一筆寫入的鍵不屬於九種文件的任何一種
-- **THEN** 提交回報後端錯誤並指出該鍵，TeamStore 沒有任何變動
-
-#### Scenario: 一個轉接服務兩個範圍
-
-- **WHEN** 同一個轉接先後對範圍 `p1/main` 與 `p2/main` 各列出一次變更
-- **THEN** 兩次各得到自己範圍的內容，互不混用
-
-#### Scenario: revision 沒變時不再匯出
-
-- **WHEN** 對同一個範圍連續兩次經轉接取得範圍版本號，中間沒有任何提交
-- **THEN** 兩次得到相同的版本號；TeamStore 的匯出在第二次沒有被呼叫
-
-#### Scenario: 別人提交後讀到新內容
-
-- **WHEN** 轉接載入某個範圍之後，另一方直接對 TeamStore 提交了一份文件，之後再經轉接讀取該文件
-- **THEN** 讀到的是新內容與新的文件版本
-
-#### Scenario: 自己提交後讀到新內容
-
-- **WHEN** 經轉接提交一筆寫入後，再經同一個轉接讀取該文件
-- **THEN** 讀到剛寫入的內容，文件版本等於提交回傳的範圍版本號
-
-#### Scenario: 一個請求只載入一次
-
-- **WHEN** 一個請求經視圖列出兩個前綴並讀取一份文件，之後另一方直接對 TeamStore 提交了該文件，同一個請求再讀取它
-- **THEN** TeamStore 的快照只被取一次；第二次讀取得到的仍是原本的內容與文件版本
-
-#### Scenario: 經視圖提交後讀到自己寫的內容
-
-- **WHEN** 經視圖提交一筆寫入後，再經同一個視圖讀取該文件
-- **THEN** 讀到剛寫入的內容，文件版本等於提交回傳的範圍版本號
-
-#### Scenario: 同時錯過同一份載入的兩個請求
-
-- **WHEN** 轉接沒有該範圍的載入，兩個請求同時列出同一個範圍
-- **THEN** TeamStore 的匯出只被呼叫一次，兩個請求都得到同樣的內容
-
-#### Scenario: 含 `/` 的專案名稱
-
-- **WHEN** 專案 `team/alpha` 的 repo `main` 與專案 `team` 的 repo `alpha/main` 各有一份不同的文件，經同一個轉接各列出一次
-- **THEN** 範圍識別分別是 `team%2Falpha/main` 與 `team/alpha/main`，兩次各得到自己範圍的內容
-
-#### Scenario: 範圍識別的形式不合
-
-- **WHEN** 以不含 `/` 的範圍識別經轉接列出
-- **THEN** 回報後端錯誤並指出範圍識別；TeamStore 沒有被呼叫
-
-
-<!-- @trace
-source: server-routes-on-store-port
-updated: 2026-11-11T22:20:41+08:00
--->
-
----
 ### Requirement: 不經引擎命令的文件讀寫只用儲存接口
 
-Host SHALL 為遠端用戶端需要、但不是引擎命令的文件讀寫提供函式，每個函式 SHALL 只用儲存接口的列出、讀取、提交三個操作，SHALL NOT 依賴任何 HTTP 框架，並 SHALL 能在任何儲存接口實作上執行。涵蓋：範圍版本號；流程設定的原文與 schema 名稱；看板順序的讀取與整份寫入；某個變更的 evidence；單份正式規格；已封存的清單、單份已封存文件與已封存變更的 capability 清單；搜尋；Context 快照；變更清單與單筆變更回應補充的欄位；spec drift。需要回報範圍版本號的函式 SHALL 先取版本再讀內容，使回報的版本 SHALL NOT 比內容新。讀取一批文件 SHALL 以一次帶多個鍵的讀取完成。這些函式 SHALL NOT 匯出整個範圍來取得其中一部分：只需要某個前綴底下的鍵時 SHALL 只列出該前綴。示範用 Server 的對應路由 SHALL 呼叫這些函式；它的專案路由中，直接呼叫 TeamStore 的 SHALL 只剩推送事件的串流；匯入 SHALL 由宿主套件以儲存接口完成。改用這些函式後，各路由的狀態碼、回應本文與 ETag 標頭 SHALL 維持既有的位元級輸出，例外只在儲存失敗時：兩個請求幾乎同時、比對之後提交之前別人改了同一份文件時，409 的訊息文字與儲存回報後端錯誤時 500 的訊息文字改用儲存接口的格式；TeamStore 回報找不到或無權限時改回 500，因為儲存接口只有衝突、暫時無法使用與後端錯誤三種失敗。
+Host SHALL 為遠端用戶端需要、但不是引擎命令的文件讀寫提供函式，每個函式 SHALL 只用儲存接口的列出、讀取、提交三個操作，SHALL NOT 依賴任何 HTTP 框架，並 SHALL 能在任何儲存接口實作上執行。涵蓋：範圍版本號；流程設定的原文與 schema 名稱；看板順序的讀取與整份寫入；某個變更的 evidence；單份正式規格；已封存的清單、單份已封存文件與已封存變更的 capability 清單；搜尋；Context 快照；變更清單與單筆變更回應補充的欄位；spec drift。需要回報範圍版本號的函式 SHALL 先取版本再讀內容，使回報的版本 SHALL NOT 比內容新。讀取一批文件 SHALL 以一次帶多個鍵的讀取完成。這些函式 SHALL NOT 匯出整個範圍來取得其中一部分：只需要某個前綴底下的鍵時 SHALL 只列出該前綴。示範用 Server 的對應路由 SHALL 呼叫這些函式；它的專案路由 SHALL NOT 經儲存接口以外的途徑讀寫文件；匯入 SHALL 由宿主套件以儲存接口完成。改用這些函式後，各路由的狀態碼、回應本文與 ETag 標頭 SHALL 維持既有的位元級輸出，例外只在儲存失敗時：兩個請求幾乎同時、比對之後提交之前別人改了同一份文件時，409 的訊息文字與儲存回報後端錯誤時 500 的訊息文字改用儲存接口的格式。儲存接口只有衝突、暫時無法使用與後端錯誤三種失敗；儲存回報後端錯誤時示範用 Server SHALL 回 500。
 
 看板順序的整份寫入 SHALL：內容超過 1 MiB 時拒絕；請求帶的預期範圍版本與當下不同時以版本衝突拒絕；以一次提交寫入，文件存在時預期它的文件版本、不存在時預期「必須不存在」，並在同一次提交帶一筆 board-order-updated 事件。任何一種拒絕發生時儲存 SHALL 沒有變動。
 
@@ -521,15 +390,15 @@ Host SHALL 為遠端用戶端需要、但不是引擎命令的文件讀寫提供
 - **WHEN** 儲存在讀取流程設定時回報暫時無法使用
 - **THEN** 函式回報儲存的「暫時無法使用」；示範用 Server 回應既有的 unavailable
 
-#### Scenario: 示範用 Server 的匯入不直接呼叫 TeamStore
+#### Scenario: 示範用 Server 的匯入經儲存接口的一次提交
 
 - **WHEN** 對示範用 Server 送出匯入請求並成功
-- **THEN** TeamStore 的匯入操作沒有被呼叫；文件經儲存接口的一次提交寫入
+- **THEN** 全部文件經儲存接口的一次提交寫入；儲存沒有收到其他寫入的呼叫
 
 
 <!-- @trace
-source: import-export-on-port
-updated: 2026-11-14T22:04:44+08:00
+source: retire-teamstore-and-drivers
+updated: 2026-11-17T22:53:25+08:00
 -->
 
 ---
@@ -555,4 +424,67 @@ updated: 2026-11-14T22:04:44+08:00
 <!-- @trace
 source: server-routes-on-store-port
 updated: 2026-11-11T22:20:41+08:00
+-->
+
+---
+### Requirement: 專案與儲存庫對映成範圍識別字
+
+Host SHALL 提供把一組專案與儲存庫對映成儲存接口範圍識別字的函式，以及它的反向。範圍識別字 SHALL 是 `<project>/<repo>` 的形式；project 裡的 `%` 與 `/` SHALL 寫成 `%25` 與 `%2F`，使一個範圍識別字只對應一組專案與儲存庫。專案與儲存庫的名稱組不成合格的範圍識別字（例如超過範圍識別字的長度上限）時，函式 SHALL 回報錯誤。反向的函式遇到形式不合的範圍識別字（沒有 `/`、任一段是空的、project 含 `%25` 與 `%2F` 以外的跳脫）SHALL 回報錯誤並指出該範圍識別字，SHALL NOT 猜測。示範用 Server SHALL 用對映的函式（由專案與儲存庫得到範圍識別字）決定每個請求讀寫的範圍。
+
+#### Scenario: 含斜線的專案名稱
+
+- **WHEN** 把專案 `team/alpha` 的儲存庫 `main` 與專案 `team` 的儲存庫 `alpha/main` 各自對映成範圍識別字
+- **THEN** 得到 `team%2Falpha/main` 與 `team/alpha/main`，兩者不同；各自經反向的函式得回原本的專案與儲存庫
+
+#### Scenario: 含百分號的專案名稱
+
+- **WHEN** 把專案 `50%` 的儲存庫 `main` 對映成範圍識別字再反向
+- **THEN** 範圍識別字是 `50%25/main`；反向得回專案 `50%` 與儲存庫 `main`
+
+#### Scenario: 範圍識別字的形式不合
+
+- **WHEN** 以不含 `/` 的範圍識別字呼叫反向的函式
+- **THEN** 回報錯誤並指出該範圍識別字
+
+#### Scenario: 兩個儲存庫各自的範圍
+
+- **WHEN** 經示範用 Server 對同一個專案的兩個儲存庫各寫入一份文件
+- **THEN** 兩份文件落在兩個不同的範圍；讀其中一個儲存庫看不到另一個的文件
+
+<!-- @trace
+source: retire-teamstore-and-drivers
+updated: 2026-11-17T22:53:25+08:00
+-->
+
+---
+### Requirement: 文件種類與鍵的對應
+
+Host SHALL 提供把第一版的包用的九種文件種類換成儲存接口的鍵的對應，以及它的反向，對應 SHALL 依儲存接口的鍵命名規則。這份對應 SHALL 是第一版匯入包與第一版備份檔唯一的轉換來源。換不成鍵的文件種類 SHALL 回報「沒有對應」，呼叫端據此拒絕整個包，SHALL NOT 略過該文件。
+
+#### Scenario: 文件種類換成鍵再換回
+
+- **WHEN** 對九種文件各取一份，由文件種類換成鍵再換回
+- **THEN** 得到原本的文件種類與名稱
+
+##### Example: 對應
+
+| 文件種類 | 鍵 |
+| -------- | -- |
+| 變更 `add-x` 的 metadata | `changes/add-x/.meta.yaml` |
+| 變更 `add-x` 的 artifact `specs/auth/spec.md` | `changes/add-x/specs/auth/spec.md` |
+| 變更 `add-x` 的 evidence | `changes/add-x/.evidence.json` |
+| 已封存變更 `2026-11-10-add-x` 的 `proposal.md` | `archive/changes/2026-11-10-add-x/proposal.md` |
+| 正式規格 `auth` | `specs/auth/spec.md` |
+| 流程設定 | `config.yaml` |
+| 詞彙表 | `LANGUAGE.md` |
+| 看板順序 | `board/order` |
+
+#### Scenario: 不認得的文件種類
+
+- **WHEN** 第一版的包裡有一份文件換不成鍵（名稱不合鍵的命名規則，或種類不在九種之內），匯入這個包
+- **THEN** 匯入的呼叫以「不合格的包」結束並指出該文件，範圍沒有被寫入；名稱不合命名規則的文件換成鍵時回報沒有對應
+
+<!-- @trace
+source: retire-teamstore-and-drivers
+updated: 2026-11-17T22:53:25+08:00
 -->

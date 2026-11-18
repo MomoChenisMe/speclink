@@ -8,7 +8,7 @@
 //! this single module — no second Git algorithm exists anywhere else.
 //!
 //! Everything here is host-local work data under `.speclink/review-scopes/`:
-//! never a touched record, never change metadata, never a TeamStore document.
+//! never a touched record, never change metadata, never a document of a remote store.
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

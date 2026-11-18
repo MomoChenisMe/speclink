@@ -4583,7 +4583,6 @@ dependencies = [
  "speclink-protocol",
  "speclink-remote",
  "speclink-server",
- "speclink-store",
  "speclink-store-port",
  "tauri",
  "tauri-build",
@@ -4640,7 +4639,6 @@ dependencies = [
  "speclink-core",
  "speclink-fs",
  "speclink-protocol",
- "speclink-store",
  "speclink-store-port",
  "tempfile",
 ]
@@ -4732,28 +4730,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "speclink-store"
-version = "0.12.0"
-dependencies = [
- "chrono",
- "serde_json",
- "sha2 0.10.9",
-]
-
-[[package]]
-name = "speclink-store-fs"
-version = "0.12.0"
-dependencies = [
- "chrono",
- "fs4",
- "serde",
- "serde_json",
- "speclink-store",
- "speclink-store-sqlite",
- "tempfile",
-]
-
-[[package]]
 name = "speclink-store-port"
 version = "0.12.0"
 dependencies = [
@@ -4786,29 +4762,6 @@ dependencies = [
  "rusqlite",
  "serde_json",
  "speclink-store-port",
- "tempfile",
-]
-
-[[package]]
-name = "speclink-store-postgres"
-version = "0.12.0"
-dependencies = [
- "chrono",
- "postgres",
- "serde_json",
- "speclink-store",
- "speclink-store-sqlite",
- "tempfile",
-]
-
-[[package]]
-name = "speclink-store-sqlite"
-version = "0.12.0"
-dependencies = [
- "chrono",
- "rusqlite",
- "serde_json",
- "speclink-store",
  "tempfile",
 ]
 

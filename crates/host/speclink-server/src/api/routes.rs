@@ -9,7 +9,7 @@ use axum::extract::State;
 use axum::http::HeaderMap;
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
-use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_protocol::events::InvalidationEvent;
 use speclink_store_port::{PortError, ScopeId};
 use std::convert::Infallible;
@@ -17,10 +17,7 @@ use tokio::sync::broadcast::error::RecvError;
 
 /// The store scope a binding addresses.
 fn scope_of(binding: &Binding) -> Result<ScopeId, PortError> {
-    scope_id(&Scope::new(
-        ProjectId::new(binding.project.key.clone()),
-        RepoId::new(binding.repo.clone()),
-    ))
+    scope_id(&ProjectId::new(binding.project.key.clone()), &RepoId::new(binding.repo.clone()))
 }
 
 /// `GET /events` — the project-scoped SSE invalidation stream (server-event-stream

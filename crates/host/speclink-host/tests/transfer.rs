@@ -5,7 +5,7 @@
 use speclink_host::documents::BOARD_ORDER_LIMIT;
 use speclink_host::transfer::{self, BundleDocument, ScopeBundle, TransferError};
 use speclink_protocol::query::{ImportBundle, ImportBundleDocument, ImportDocumentId, ImportScope};
-use speclink_store::content_digest;
+use speclink_host::projection::content_digest;
 use speclink_store_port::{
     Actor, Commit, DocKey, Document, Expected, KeyPrefix, Listing, MemoryStorePort, Op, PortError, ScopeId, StorePort,
     Timestamp, Version,
@@ -442,8 +442,13 @@ fn a_first_version_bundle_imports_like_the_same_documents_by_key() {
 #[test]
 fn a_first_version_document_that_has_no_key_is_refused_by_name() {
     let rows = [
+        // `a/b` as a change name would read back as change `a`.
         (ImportDocumentId::ChangeMeta { change: "a/b".to_string() }, "a/b"),
+        // The refusal shows the empty name as it is.
+        (ImportDocumentId::ChangeMeta { change: String::new() }, "change: \"\""),
+        (ImportDocumentId::ChangeMeta { change: "archive".to_string() }, "archive"),
         (ImportDocumentId::CanonicalSpec { capability: "..".to_string() }, ".."),
+        (ImportDocumentId::CanonicalSpec { capability: "a/b".to_string() }, "a/b"),
         // The key naming rules keep `archive` for the archive folder.
         (ImportDocumentId::ChangeArtifact { change: "archive".to_string(), artifact: "x/proposal.md".to_string() }, "archive"),
     ];
@@ -454,6 +459,66 @@ fn a_first_version_document_that_has_no_key_is_refused_by_name() {
             Err(TransferError::InvalidBundle(message)) => assert!(message.contains(named), "{id:?}: {message}"),
             other => panic!("{id:?}: expected an invalid bundle, got {other:?}"),
         }
+    }
+}
+
+#[test]
+fn the_first_version_constant_is_1_and_a_host_can_name_it() {
+    assert_eq!(transfer::FIRST_VERSION, 1);
+    assert_eq!(first_version(Vec::new()).format_version, transfer::FIRST_VERSION);
+}
+
+#[test]
+fn each_of_the_nine_document_kinds_goes_to_its_key_and_back() {
+    // 規格範例「對應」的八列，加上進行中與已封存的討論。
+    let change = || "add-x".to_string();
+    let archived = |doc: &str| ImportDocumentId::ArchivedChange { change: "2026-11-10-add-x".to_string(), doc: doc.to_string() };
+    let discussion = |slug: &str, archived| ImportDocumentId::Discussion { slug: slug.to_string(), archived };
+    let rows = [
+        (ImportDocumentId::ChangeMeta { change: change() }, "changes/add-x/.meta.yaml"),
+        (
+            ImportDocumentId::ChangeArtifact { change: change(), artifact: "specs/auth/spec.md".to_string() },
+            "changes/add-x/specs/auth/spec.md",
+        ),
+        (ImportDocumentId::ChangeEvidence { change: change() }, "changes/add-x/.evidence.json"),
+        (archived("proposal.md"), "archive/changes/2026-11-10-add-x/proposal.md"),
+        (ImportDocumentId::CanonicalSpec { capability: "auth".to_string() }, "specs/auth/spec.md"),
+        (ImportDocumentId::WorkflowConfig, "config.yaml"),
+        (ImportDocumentId::Language, "LANGUAGE.md"),
+        (ImportDocumentId::BoardOrder, "board/order"),
+        (discussion("board-search", false), "discussions/board-search.md"),
+        // The name of an archived discussion is kept as it is: a new record
+        // carries its creation date, an older one does not.
+        (discussion("2026-11-10-board-search", true), "archive/discussions/2026-11-10-board-search.md"),
+        (discussion("reuse", true), "archive/discussions/reuse.md"),
+    ];
+    for (document, key) in rows {
+        let made = transfer::key_of_document(&document).unwrap_or_else(|| panic!("{document:?} has a key"));
+        assert_eq!(made.as_str(), key, "{document:?}");
+        assert_eq!(transfer::document_of_key(&made), Some(document), "{key}");
+    }
+}
+
+#[test]
+fn a_key_that_follows_no_naming_rule_names_no_document_kind() {
+    for key in ["notes/today.md", "specs/auth/notes.md", "changes/add-x"] {
+        assert_eq!(transfer::document_of_key(&DocKey::new(key).unwrap()), None, "{key}");
+    }
+}
+
+#[test]
+fn a_first_version_bundle_with_a_kind_outside_the_nine_is_not_a_bundle() {
+    let digest = content_digest("x");
+    let json = format!(
+        r#"{{"formatVersion":1,"scope":{{"project":"default","repo":"main"}},"projectRevision":1,"documents":[{{"document":{{"type":"mystery"}},"content":"x","digest":"{digest}"}}]}}"#
+    );
+    match transfer::read_bundle(json.as_bytes()) {
+        Err(unread @ transfer::UnreadBundle::WrongShape(_)) => {
+            let message = unread.to_string();
+            assert!(message.starts_with("the bundle is not valid"), "{message}");
+            assert!(message.contains("mystery"), "{message}");
+        }
+        other => panic!("expected a bundle of the wrong shape, got {other:?}"),
     }
 }
 

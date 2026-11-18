@@ -31,7 +31,6 @@ speclink-core = { path = "../../../crates/engine/speclink-core" }
 speclink-host = { path = "../../../crates/host/speclink-host" }
 speclink-remote = { path = "../../../crates/protocol/speclink-remote" }
 speclink-protocol = { path = "../../../crates/protocol/speclink-protocol" }
-speclink-store = { path = "../../../crates/store/speclink-store" }
 notify-debouncer-mini = "0.7.0"
 ulid = { workspace = true }
 

@@ -755,7 +755,7 @@ pub struct TouchedRecord {
 impl TouchedRecord {
     /// Read the change's record through the storage seam. Where the record
     /// physically lives — the change directory's `.evidence.json` for the
-    /// filesystem supplier, a change-scoped document for a TeamStore — is the
+    /// filesystem supplier, a change-scoped document for a remote store — is the
     /// supplier's business. Absent = empty record; a record that does not
     /// parse is treated the same way, so a corrupt file never blocks a
     /// completion.

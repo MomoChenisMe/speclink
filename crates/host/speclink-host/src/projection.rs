@@ -15,6 +15,7 @@
 
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use speclink_core::workspace::{StoreMode, Workspace};
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
 use std::path::{Component, Path, PathBuf};
@@ -26,9 +27,12 @@ pub trait SnapshotProvider {
     fn snapshot(&self, request: &ContextSnapshotRequest) -> Result<ContextSnapshot>;
 }
 
-/// The digest form snapshot documents and the manifest agree on — re-exported
-/// so providers compute the same digests the materializer verifies.
-pub use speclink_store::content_digest;
+/// The digest form snapshot documents, the manifest and the bundles agree
+/// on: SHA-256, lowercase hex, prefixed with the algorithm. Providers compute
+/// the same digests the materializer verifies.
+pub fn content_digest(content: &str) -> String {
+    format!("sha256:{:x}", Sha256::digest(content.as_bytes()))
+}
 
 /// The manifest.json shape (camelCase, mirroring the protocol
 /// [`ContextSnapshot`] fields): snapshot id, policy revision when present,
@@ -261,7 +265,7 @@ fn materialize_with_fault(
     // does not match its content is a corrupt snapshot — refuse it rather
     // than stage a projection that can never verify.
     for d in &documents {
-        if speclink_store::content_digest(&d.content) != d.digest {
+        if content_digest(&d.content) != d.digest {
             bail!("snapshot document digest mismatch: {}", d.path);
         }
     }
@@ -278,7 +282,7 @@ fn materialize_with_fault(
     let index = index_content(&snapshot.snapshot_id, &selected, &documents);
     let mut files: Vec<ManifestFile> = vec![ManifestFile {
         path: "INDEX.md".to_string(),
-        digest: speclink_store::content_digest(&index),
+        digest: content_digest(&index),
         revision: None,
     }];
     files.extend(selected.iter().map(|d| ManifestFile {
@@ -411,7 +415,7 @@ pub fn verify_projection(ws: &Workspace) -> Result<()> {
         let Some(content) = speclink_core::util::read_opt(&dir.join(rel)) else {
             return Err(reject(format!("missing file: {}", f.path)));
         };
-        if speclink_store::content_digest(&content) != f.digest {
+        if content_digest(&content) != f.digest {
             return Err(reject(format!("digest mismatch: {}", f.path)));
         }
     }
@@ -574,7 +578,7 @@ mod tests {
             for p in speclink_core::util::walk_files(&self.root.join("openspec")) {
                 let rel = p.strip_prefix(&self.root).unwrap();
                 let content = std::fs::read_to_string(&p)?;
-                let digest = speclink_store::content_digest(&content);
+                let digest = content_digest(&content);
                 documents.push(ContextDocument {
                     path: speclink_core::util::to_slash(rel),
                     content,
@@ -586,7 +590,7 @@ mod tests {
             Ok(ContextSnapshot {
                 snapshot_id: self.snapshot_id.borrow().clone(),
                 policy_revision: self.policy_revision,
-                digest: speclink_store::content_digest(&combined.join("\n")),
+                digest: content_digest(&combined.join("\n")),
                 documents,
             })
         }
@@ -646,7 +650,7 @@ mod tests {
             .find(|f| f["path"] == "openspec/config.yaml")
             .expect("config.yaml has a manifest entry");
         let content = std::fs::read_to_string(dir.join("openspec/config.yaml")).unwrap();
-        assert_eq!(entry["digest"], speclink_store::content_digest(&content));
+        assert_eq!(entry["digest"], content_digest(&content));
         assert_eq!(entry["revision"], 1, "per-file revision carried");
 
         // manifest 覆蓋投影內全部可讀文件（INDEX.md 也在內）——manifest.json 自身除外。
@@ -1091,7 +1095,7 @@ mod tests {
         impl SnapshotProvider for OneDoc {
             fn snapshot(&self, _request: &ContextSnapshotRequest) -> Result<ContextSnapshot> {
                 let content = "x".to_string();
-                let digest = speclink_store::content_digest(&content);
+                let digest = content_digest(&content);
                 Ok(ContextSnapshot {
                     snapshot_id: "snap-h".to_string(),
                     policy_revision: None,

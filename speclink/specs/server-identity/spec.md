@@ -372,7 +372,7 @@ code:
 ---
 ### Requirement: identity 儲存獨立且版本守門
 
-identity 資料（users、memberships、invitations、PATs、sessions）SHALL 存於 server 自有的資料庫，與 TeamStore 的資料庫分離，SHALL NOT 寫入 TeamStore driver 的檔案。identity 資料庫 SHALL 記錄 schema version：空資料庫初始化為現行版本；version 較新或 schema 非本 server 所建 SHALL 使啟動失敗並印出原因，SHALL NOT 寫入。密碼、PAT、邀請 token 與 session 識別 SHALL 僅以 hash 落庫，SHALL NOT 出現在 log。
+identity 資料（users、memberships、invitations、PATs、sessions）SHALL 存於 server 自有的資料庫，與規格文件的儲存分離，SHALL NOT 寫入規格文件儲存的資料庫或資料夾。identity 資料庫 SHALL 記錄 schema version：空資料庫初始化為現行版本；version 較新或 schema 非本 server 所建 SHALL 使啟動失敗並印出原因，SHALL NOT 寫入。密碼、PAT、邀請 token 與 session 識別 SHALL 僅以 hash 落庫，SHALL NOT 出現在 log。
 
 #### Scenario: 陌生 identity 資料庫拒啟動
 
@@ -384,34 +384,10 @@ identity 資料（users、memberships、invitations、PATs、sessions）SHALL �
 - **WHEN** 完成邀請接受、登入與 PAT 建立後檢視 identity 資料庫內容
 - **THEN** 密碼、邀請 token、session 識別與 PAT 欄位皆為 hash 形式，庫內不存在任何憑證明文
 
+
 <!-- @trace
-source: server-identity-pat
-updated: 2026-07-14
-code:
-  - Cargo.lock
-  - crates/speclink-server/Cargo.toml
-  - crates/speclink-server/src/app.rs
-  - crates/speclink-server/src/auth.rs
-  - crates/speclink-server/src/config.rs
-  - crates/speclink-server/src/identity.rs
-  - crates/speclink-server/src/identity_sqlite.rs
-  - crates/speclink-server/src/lib.rs
-  - crates/speclink-server/src/main.rs
-  - crates/speclink-server/src/state.rs
-  - crates/speclink-server/src/web.rs
-  - crates/speclink-server/tests/auth_pat.rs
-  - crates/speclink-server/tests/binding.rs
-  - crates/speclink-server/tests/command_routes.rs
-  - crates/speclink-server/tests/common/mod.rs
-  - crates/speclink-server/tests/discussion_routes.rs
-  - crates/speclink-server/tests/e2e_cli.rs
-  - crates/speclink-server/tests/identity.rs
-  - crates/speclink-server/tests/invite.rs
-  - crates/speclink-server/tests/query_routes.rs
-  - crates/speclink-server/tests/startup.rs
-  - crates/speclink-server/tests/sync_state.rs
-  - crates/speclink-server/tests/web_account.rs
-  - crates/speclink-server/tests/web_invite.rs
+source: retire-teamstore-and-drivers
+updated: 2026-11-17T22:53:25+08:00
 -->
 
 ---

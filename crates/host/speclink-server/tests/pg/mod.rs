@@ -1,10 +1,10 @@
 //! Scaffolding for the server's PostgreSQL tests.
 //!
-//! Small on purpose, and deliberately not shared with the driver crate's copy:
-//! exporting test scaffolding from `speclink-store-postgres` would put it in
+//! Small on purpose, and deliberately not shared with the example crate's copy:
+//! exporting test scaffolding from `speclink-store-port-postgres` would put it in
 //! that crate's public API, where it would outlive its one caller.
 //!
-//! The skip rule is the same one the driver crate follows — without an instance
+//! The skip rule is the same one the example crate follows — without an instance
 //! named by `SPECLINK_TEST_POSTGRES_URL`, report `skipped`, never `passed`.
 
 #![allow(dead_code)]

@@ -20,7 +20,7 @@ use speclink_protocol::query::{
     ArchivedItem, ArchivedListResponse, BoardOrderResponse, ConfigResponse,
     SearchHit, SearchResponse, SpecDocumentResponse, StationOutcome,
 };
-use speclink_store::content_digest;
+use crate::projection::content_digest;
 use speclink_store_port::{
     keys, Actor, Commit, DocKey, Document, Event, Expected, InvalidValue, KeyPrefix, Listing, Op,
     PortError, ScopeId, StorePort, Timestamp, Version,

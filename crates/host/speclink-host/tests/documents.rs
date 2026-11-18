@@ -6,7 +6,7 @@
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_host::documents::{self, ContextOutcome, DocumentsError};
 use speclink_protocol::context::ContextSnapshotRequest;
-use speclink_store::content_digest;
+use speclink_host::projection::content_digest;
 use speclink_store_port::{
     Actor, DocKey, Expected, MemoryStorePort, Op, PortError, StorePort, Timestamp, Version,
 };
@@ -38,6 +38,23 @@ const META: &str = "schema: spec-driven\ncreated: 2026-11-01\n";
 /// A change's evidence record (other documents' reads must not reach it).
 const EVIDENCE: &str = r#"{"version":2,"change":"add-x","touched":["src/a.rs"],"entries":[{"taskId":"1","taskDesc":"1.1 a","actor":"Alice","touchedFiles":["src/a.rs"],"recordedAt":"2026-11-01T00:00:00Z"}]}"#;
 
+
+// --- 內容摘要 ---
+
+#[test]
+fn the_content_digest_is_sha256_in_lowercase_hex_with_its_prefix() {
+    let rows = [
+        ("", "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+        ("範圍識別字", "sha256:70c6dce1b2ca0b085ba57a93b410a79f242050398e5140b05367cf026603da1f"),
+        ("abc", "sha256:ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+        // A NUL and characters of 4 bytes in UTF-8.
+        ("a\0b", "sha256:59b271ae1bbcb1d31d41929817f4b16fb439eb4f31520b5ad1d5ce98920a7138"),
+        ("𠮷野家🍣", "sha256:54056c6a3b242c3a67b5efa8e0fdaf000f5bd048070730b31e00ca6dc55ef139"),
+    ];
+    for (content, digest) in rows {
+        assert_eq!(content_digest(content), digest, "{content:?}");
+    }
+}
 
 // --- 範圍版本號 ---
 

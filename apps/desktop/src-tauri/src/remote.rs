@@ -38,11 +38,11 @@ use speclink_desktop_core::query::{archived_status_str, put_station_fields, stat
 use speclink_core::config::AppConfig;
 use speclink_core::init::ToolSelection;
 use speclink_protocol::skills::{SkillsRequest, SkillsResponse};
-use speclink_host::transfer::{first_version_report, from_first_version, UNSUPPORTED_VERSION};
+use speclink_host::projection::content_digest;
+use speclink_host::transfer::{first_version_report, from_first_version, FIRST_VERSION, UNSUPPORTED_VERSION};
 use speclink_remote::client::Client;
 use speclink_remote::skills as remote_skills;
 use speclink_remote::RemoteError;
-use speclink_store::content_digest;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -606,7 +606,7 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     }
 
     Ok(ImportBundle {
-        format_version: speclink_store::BUNDLE_FORMAT_VERSION,
+        format_version: FIRST_VERSION,
         scope: ImportScope {
             project: project.to_string(),
             repo: repo.to_string(),

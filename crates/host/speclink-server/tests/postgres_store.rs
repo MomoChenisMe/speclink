@@ -1,5 +1,5 @@
-//! The server over the `postgres` store driver (postgres-team-store spec
-//! 「連線失敗分類與版本守門」, 「密碼來源紀律」).
+//! The server over the `postgres` store driver (store-port-examples spec
+//! 「可用性檢查與失敗的分類」).
 //!
 //! The point of a store contract is that the layer above cannot tell which
 //! driver is underneath. So this drives the same verb flow through a

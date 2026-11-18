@@ -1,0 +1,238 @@
+{
+  "version": 2,
+  "change": "retire-teamstore-and-drivers",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 （Red）為 D1 寫測試，對應規格「專案與儲存庫對映成範圍識別字」的前三個情境與「文件種類與鍵的對應」：專案 `team/alpha` 的儲存庫 `main` 與專案 `team` 的儲存庫 `alpha/main` 對映成 `team%2Falpha/main` 與 `team/alpha/main`，各自反向得回原值；專案 `50%` 對映成 `50%25/main` 並可反向；不含 `/`、任一段是空的、含 `%2G` 這類跳脫的範圍識別字反向時回報錯誤並指出它；名稱組出來超過範圍識別字長度上限時回報錯誤；九種文件種類各換成鍵再換回得到原值，鍵與規格的對應表相同；不認得的文件種類回報沒有對應，含它的第一版包匯入時以不合格的包結束、範圍沒有被寫入；內容摘要對固定的輸入回傳固定的 `sha256:` 字串（空字串與一段中文各一個已知值）；第一版的版本常數是 1 且從宿主套件外部引用得到。測試只從宿主套件引用型別與函式，不引用 `speclink_store`。涉及 crates/host/speclink-host/src/scope.rs、crates/host/speclink-host/tests/transfer.rs、crates/host/speclink-host/tests/documents.rs。驗證：`cargo test -p speclink-host` 編譯失敗（識別型別與常數還不能從這些位置引用）。",
+      "files": [
+        "crates/host/speclink-host/src/scope.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 （Green）依 D1 把專案與儲存庫的識別型別定義搬到宿主套件的 scope 模組，範圍識別字的兩個函式改成直接收送專案與儲存庫；內容摘要的函式定義搬到 projection 模組，對外的路徑不變；第一版的版本常數改成公開；`binding`、`context`、`http`、`documents`、`transfer` 改從新位置引用。涉及 crates/host/speclink-host/src/scope.rs、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/binding.rs、crates/host/speclink-host/src/context.rs、crates/host/speclink-host/src/http/mod.rs、crates/host/speclink-host/src/projection.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/transfer.rs、crates/host/speclink-host/tests/http_door.rs、crates/host/speclink-host/Cargo.toml、Cargo.lock，以及示範用 server 呼叫範圍識別字函式的五個檔案：crates/host/speclink-server/src/state.rs、crates/host/speclink-server/src/admin.rs、crates/host/speclink-server/src/admin/backup.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/tests/it/common/mod.rs。驗證：1.1 的測試通過；`cargo test -p speclink-host` 與 `cargo test -p speclink-server` 全部通過（示範用 server 的測試涵蓋規格「專案與儲存庫對映成範圍識別字」的情境「兩個儲存庫各自的範圍」，不改斷言）。",
+      "files": [
+        "crates/host/speclink-host/src/binding.rs",
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/context.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/drift.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/projection.rs",
+        "crates/host/speclink-host/src/teamstore_port.rs",
+        "crates/host/speclink-host/src/transfer.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-server/src/admin.rs",
+        "crates/host/speclink-server/src/admin/backup.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/state.rs",
+        "crates/host/speclink-server/tests/it/common/mod.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 依 D2 刪除轉接、執行橋接與「兩條路徑」的測試檔，宿主套件移除對舊儲存層的相依，對應規格「不經引擎命令的文件讀寫只用儲存接口」修改後的內容（示範用 Server 的專案路由不經儲存接口以外的途徑讀寫文件；匯入經儲存接口的一次提交）。涉及 crates/host/speclink-host/src/teamstore_port.rs、crates/host/speclink-host/src/bridge.rs、crates/host/speclink-host/tests/bridge_dual_path.rs、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/change_diff.rs、crates/host/speclink-host/Cargo.toml、Cargo.lock。驗證：`cargo test -p speclink-host` 全部通過；`cargo tree -p speclink-host -i speclink-store` 回報找不到套件；`cargo test -p speclink-server --test it import_api` 通過且不改斷言。",
+      "files": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/change_diff.rs",
+        "crates/host/speclink-host/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 依 D3 讓 Speclink Desktop 與 `speclink-remote` 改從宿主套件引用內容摘要與第一版的版本常數，移除兩者對 `speclink-store` 的相依與測試裡殘留的引用；行為不變。涉及 apps/desktop/src-tauri/src/remote.rs、apps/desktop/src-tauri/Cargo.toml、apps/desktop/src-tauri/tests/it/common/mod.rs、apps/desktop/src-tauri/tests/it/login_orchestration.rs、apps/desktop/src-tauri/tests/it/remote_data.rs、crates/protocol/speclink-remote/Cargo.toml、crates/protocol/speclink-remote/tests/it/read_api.rs、crates/protocol/speclink-remote/tests/it/events_sse.rs、Cargo.lock。驗證：`cargo test -p speclink-remote` 與 `cargo test -p speclink-desktop` 全部通過，遷移（把本機專案搬到 Server）的測試不改斷言；之後執行 `cargo build -p speclink-cli`。",
+      "files": [
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 依 D4 刪除四份整份過期的正式規格資料夾（teamstore-contract、sqlite-team-store、serverfs-team-store、postgres-team-store），並直接更新 host-runtime 的 Purpose 一段（只改這一段，`## Requirements` 以下不碰）；刪除前搜尋其他正式規格、scripts、crates 與 apps 裡提到這四個名稱的地方並逐一處理。涉及 speclink/specs/teamstore-contract/spec.md、speclink/specs/sqlite-team-store/spec.md、speclink/specs/serverfs-team-store/spec.md、speclink/specs/postgres-team-store/spec.md、speclink/specs/host-runtime/spec.md。驗證：`speclink list --specs --json` 沒有這四個名稱；`speclink validate retire-teamstore-and-drivers` 通過；在 speclink/specs、scripts、crates、apps 搜尋這四個名稱沒有命中。",
+      "files": [
+        ".github/workflows/ci.yml",
+        "Cargo.toml",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/host/speclink-server/tests/it/serverfs_store.rs",
+        "crates/host/speclink-server/tests/pg/mod.rs",
+        "crates/host/speclink-server/tests/postgres_store.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/store/speclink-store-fs/Cargo.toml",
+        "crates/store/speclink-store-fs/src/layout.rs",
+        "crates/store/speclink-store-fs/src/lib.rs",
+        "crates/store/speclink-store-fs/tests/it/atomic_publish.rs",
+        "crates/store/speclink-store-fs/tests/it/bundle_and_outbox.rs",
+        "crates/store/speclink-store-fs/tests/it/conformance.rs",
+        "crates/store/speclink-store-fs/tests/it/main.rs",
+        "crates/store/speclink-store-fs/tests/it/single_writer.rs",
+        "crates/store/speclink-store-fs/tests/it/version_gate.rs",
+        "crates/store/speclink-store-postgres/Cargo.toml",
+        "crates/store/speclink-store-postgres/src/lib.rs",
+        "crates/store/speclink-store-postgres/src/schema.rs",
+        "crates/store/speclink-store-postgres/tests/it/bundle_and_outbox.rs",
+        "crates/store/speclink-store-postgres/tests/it/conformance.rs",
+        "crates/store/speclink-store-postgres/tests/it/infra.rs",
+        "crates/store/speclink-store-postgres/tests/it/main.rs",
+        "crates/store/speclink-store-postgres/tests/it/resilience.rs",
+        "crates/store/speclink-store-postgres/tests/it/single_writer.rs",
+        "crates/store/speclink-store-postgres/tests/it/support/mod.rs",
+        "crates/store/speclink-store-postgres/tests/it/version_gate.rs",
+        "crates/store/speclink-store-sqlite/Cargo.toml",
+        "crates/store/speclink-store-sqlite/src/lib.rs",
+        "crates/store/speclink-store-sqlite/src/schema.rs",
+        "crates/store/speclink-store-sqlite/tests/conformance.rs",
+        "crates/store/speclink-store/Cargo.toml",
+        "crates/store/speclink-store/src/conformance/mod.rs",
+        "crates/store/speclink-store/src/error.rs",
+        "crates/store/speclink-store/src/lib.rs",
+        "crates/store/speclink-store/src/memory.rs",
+        "crates/store/speclink-store/src/types.rs",
+        "crates/store/speclink-store/src/uow.rs",
+        "deploy/docker-compose.postgres.yml"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "5.2 最後檢查 design 的 Implementation Contract 驗收條件：2.1 的 36 個測試去向表完整；3.2 的搜尋結果只剩允許清單；Cargo.lock 沒有新增套件。涉及 Cargo.lock。驗證：`cargo build --workspace` 成功；`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-desktop`、`cargo test -p speclink-cli` 全部通過；之後 `cargo build -p speclink-cli`，再執行 `speclink validate retire-teamstore-and-drivers`；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "crates/host/speclink-server/tests/it/legacy_layout.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7D8X05240FBRETVA7FT5WXT",
+      "taskDesc": "1.1 （Red）為 D1 寫測試，對應規格「專案與儲存庫對映成範圍識別字」的前三個情境與「文件種類與鍵的對應」：專案 `team/alpha` 的儲存庫 `main` 與專案 `team` 的儲存庫 `alpha/main` 對映成 `team%2Falpha/main` 與 `team/alpha/main`，各自反向得回原值；專案 `50%` 對映成 `50%25/main` 並可反向；不含 `/`、任一段是空的、含 `%2G` 這類跳脫的範圍識別字反向時回報錯誤並指出它；名稱組出來超過範圍識別字長度上限時回報錯誤；九種文件種類各換成鍵再換回得到原值，鍵與規格的對應表相同；不認得的文件種類回報沒有對應，含它的第一版包匯入時以不合格的包結束、範圍沒有被寫入；內容摘要對固定的輸入回傳固定的 `sha256:` 字串（空字串與一段中文各一個已知值）；第一版的版本常數是 1 且從宿主套件外部引用得到。測試只從宿主套件引用型別與函式，不引用 `speclink_store`。涉及 crates/host/speclink-host/src/scope.rs、crates/host/speclink-host/tests/transfer.rs、crates/host/speclink-host/tests/documents.rs。驗證：`cargo test -p speclink-host` 編譯失敗（識別型別與常數還不能從這些位置引用）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/scope.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ],
+      "recordedAt": "2026-11-17T13:27:49Z"
+    },
+    {
+      "taskId": "tsk_01M7D8X052J8A4RHDND8SY26RX",
+      "taskDesc": "1.2 （Green）依 D1 把專案與儲存庫的識別型別定義搬到宿主套件的 scope 模組，範圍識別字的兩個函式改成直接收送專案與儲存庫；內容摘要的函式定義搬到 projection 模組，對外的路徑不變；第一版的版本常數改成公開；`binding`、`context`、`http`、`documents`、`transfer` 改從新位置引用。涉及 crates/host/speclink-host/src/scope.rs、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/binding.rs、crates/host/speclink-host/src/context.rs、crates/host/speclink-host/src/http/mod.rs、crates/host/speclink-host/src/projection.rs、crates/host/speclink-host/src/documents.rs、crates/host/speclink-host/src/transfer.rs、crates/host/speclink-host/tests/http_door.rs、crates/host/speclink-host/Cargo.toml、Cargo.lock，以及示範用 server 呼叫範圍識別字函式的五個檔案：crates/host/speclink-server/src/state.rs、crates/host/speclink-server/src/admin.rs、crates/host/speclink-server/src/admin/backup.rs、crates/host/speclink-server/src/api/routes.rs、crates/host/speclink-server/tests/it/common/mod.rs。驗證：1.1 的測試通過；`cargo test -p speclink-host` 與 `cargo test -p speclink-server` 全部通過（示範用 server 的測試涵蓋規格「專案與儲存庫對映成範圍識別字」的情境「兩個儲存庫各自的範圍」，不改斷言）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/binding.rs",
+        "crates/host/speclink-host/src/bridge.rs",
+        "crates/host/speclink-host/src/context.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/drift.rs",
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/projection.rs",
+        "crates/host/speclink-host/src/teamstore_port.rs",
+        "crates/host/speclink-host/src/transfer.rs",
+        "crates/host/speclink-host/tests/bridge_dual_path.rs",
+        "crates/host/speclink-host/tests/http_door.rs",
+        "crates/host/speclink-server/src/admin.rs",
+        "crates/host/speclink-server/src/admin/backup.rs",
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/src/state.rs",
+        "crates/host/speclink-server/tests/it/common/mod.rs"
+      ],
+      "recordedAt": "2026-11-17T13:30:45Z"
+    },
+    {
+      "taskId": "tsk_01M7D8X0524Z1NB069XMZ190SW",
+      "taskDesc": "2.2 依 D2 刪除轉接、執行橋接與「兩條路徑」的測試檔，宿主套件移除對舊儲存層的相依，對應規格「不經引擎命令的文件讀寫只用儲存接口」修改後的內容（示範用 Server 的專案路由不經儲存接口以外的途徑讀寫文件；匯入經儲存接口的一次提交）。涉及 crates/host/speclink-host/src/teamstore_port.rs、crates/host/speclink-host/src/bridge.rs、crates/host/speclink-host/tests/bridge_dual_path.rs、crates/host/speclink-host/src/lib.rs、crates/host/speclink-host/src/change_diff.rs、crates/host/speclink-host/Cargo.toml、Cargo.lock。驗證：`cargo test -p speclink-host` 全部通過；`cargo tree -p speclink-host -i speclink-store` 回報找不到套件；`cargo test -p speclink-server --test it import_api` 通過且不改斷言。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        "Cargo.lock",
+        "crates/host/speclink-host/Cargo.toml",
+        "crates/host/speclink-host/src/change_diff.rs",
+        "crates/host/speclink-host/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-17T13:33:59Z"
+    },
+    {
+      "taskId": "tsk_01M7D8X052W56ZDE7NYVBYT81N",
+      "taskDesc": "3.1 依 D3 讓 Speclink Desktop 與 `speclink-remote` 改從宿主套件引用內容摘要與第一版的版本常數，移除兩者對 `speclink-store` 的相依與測試裡殘留的引用；行為不變。涉及 apps/desktop/src-tauri/src/remote.rs、apps/desktop/src-tauri/Cargo.toml、apps/desktop/src-tauri/tests/it/common/mod.rs、apps/desktop/src-tauri/tests/it/login_orchestration.rs、apps/desktop/src-tauri/tests/it/remote_data.rs、crates/protocol/speclink-remote/Cargo.toml、crates/protocol/speclink-remote/tests/it/read_api.rs、crates/protocol/speclink-remote/tests/it/events_sse.rs、Cargo.lock。驗證：`cargo test -p speclink-remote` 與 `cargo test -p speclink-desktop` 全部通過，遷移（把本機專案搬到 Server）的測試不改斷言；之後執行 `cargo build -p speclink-cli`。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/Cargo.toml",
+        "apps/desktop/src-tauri/src/remote.rs",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-17T13:35:41Z"
+    },
+    {
+      "taskId": "tsk_01M7D8X0528QYG6NCA1Z8SVRZN",
+      "taskDesc": "4.1 依 D4 刪除四份整份過期的正式規格資料夾（teamstore-contract、sqlite-team-store、serverfs-team-store、postgres-team-store），並直接更新 host-runtime 的 Purpose 一段（只改這一段，`## Requirements` 以下不碰）；刪除前搜尋其他正式規格、scripts、crates 與 apps 裡提到這四個名稱的地方並逐一處理。涉及 speclink/specs/teamstore-contract/spec.md、speclink/specs/sqlite-team-store/spec.md、speclink/specs/serverfs-team-store/spec.md、speclink/specs/postgres-team-store/spec.md、speclink/specs/host-runtime/spec.md。驗證：`speclink list --specs --json` 沒有這四個名稱；`speclink validate retire-teamstore-and-drivers` 通過；在 speclink/specs、scripts、crates、apps 搜尋這四個名稱沒有命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        ".github/workflows/ci.yml",
+        "Cargo.toml",
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/host/speclink-server/tests/it/serverfs_store.rs",
+        "crates/host/speclink-server/tests/pg/mod.rs",
+        "crates/host/speclink-server/tests/postgres_store.rs",
+        "crates/protocol/speclink-protocol/src/query.rs",
+        "crates/store/speclink-store-fs/Cargo.toml",
+        "crates/store/speclink-store-fs/src/layout.rs",
+        "crates/store/speclink-store-fs/src/lib.rs",
+        "crates/store/speclink-store-fs/tests/it/atomic_publish.rs",
+        "crates/store/speclink-store-fs/tests/it/bundle_and_outbox.rs",
+        "crates/store/speclink-store-fs/tests/it/conformance.rs",
+        "crates/store/speclink-store-fs/tests/it/main.rs",
+        "crates/store/speclink-store-fs/tests/it/single_writer.rs",
+        "crates/store/speclink-store-fs/tests/it/version_gate.rs",
+        "crates/store/speclink-store-postgres/Cargo.toml",
+        "crates/store/speclink-store-postgres/src/lib.rs",
+        "crates/store/speclink-store-postgres/src/schema.rs",
+        "crates/store/speclink-store-postgres/tests/it/bundle_and_outbox.rs",
+        "crates/store/speclink-store-postgres/tests/it/conformance.rs",
+        "crates/store/speclink-store-postgres/tests/it/infra.rs",
+        "crates/store/speclink-store-postgres/tests/it/main.rs",
+        "crates/store/speclink-store-postgres/tests/it/resilience.rs",
+        "crates/store/speclink-store-postgres/tests/it/single_writer.rs",
+        "crates/store/speclink-store-postgres/tests/it/support/mod.rs",
+        "crates/store/speclink-store-postgres/tests/it/version_gate.rs",
+        "crates/store/speclink-store-sqlite/Cargo.toml",
+        "crates/store/speclink-store-sqlite/src/lib.rs",
+        "crates/store/speclink-store-sqlite/src/schema.rs",
+        "crates/store/speclink-store-sqlite/tests/conformance.rs",
+        "crates/store/speclink-store/Cargo.toml",
+        "crates/store/speclink-store/src/conformance/mod.rs",
+        "crates/store/speclink-store/src/error.rs",
+        "crates/store/speclink-store/src/lib.rs",
+        "crates/store/speclink-store/src/memory.rs",
+        "crates/store/speclink-store/src/types.rs",
+        "crates/store/speclink-store/src/uow.rs",
+        "deploy/docker-compose.postgres.yml"
+      ],
+      "recordedAt": "2026-11-17T13:37:16Z"
+    },
+    {
+      "taskId": "tsk_01M7D8X052DPVYFHA1ADEBPX2G",
+      "taskDesc": "5.2 最後檢查 design 的 Implementation Contract 驗收條件：2.1 的 36 個測試去向表完整；3.2 的搜尋結果只剩允許清單；Cargo.lock 沒有新增套件。涉及 Cargo.lock。驗證：`cargo build --workspace` 成功；`cargo test -p speclink-host`、`cargo test -p speclink-server`、`cargo test -p speclink-remote`、`cargo test -p speclink-desktop`、`cargo test -p speclink-cli` 全部通過；之後 `cargo build -p speclink-cli`，再執行 `speclink validate retire-teamstore-and-drivers`；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "ed9207f82624c691cf4a399a5255d6b4e6b7f793",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/legacy_layout.rs"
+      ],
+      "recordedAt": "2026-11-17T14:37:28Z"
+    }
+  ]
+}

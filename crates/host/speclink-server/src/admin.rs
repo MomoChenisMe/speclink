@@ -26,9 +26,9 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
-use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_protocol::API_VERSION;
-use speclink_store_port::PortError;
+use speclink_store_port::{PortError, ScopeId};
 
 /// An acknowledgment body for admin API actions whose response the caller ignores.
 #[derive(Serialize)]
@@ -317,10 +317,9 @@ pub struct SystemInfo {
 
 /// How many events the store keeps for one scope: the newest sequence minus
 /// the floor. The events after the floor are read in batches to find it.
-fn scope_backlog(state: &AppState, scope: &Scope) -> Result<u64, PortError> {
-    let scope = scope_id(scope)?;
-    let floor = state.store.event_floor(&scope)?;
-    let newest = crate::storage::newest_event(&*state.store, &scope, floor, state.events.settings().buffer)?;
+fn scope_backlog(state: &AppState, scope: &ScopeId) -> Result<u64, PortError> {
+    let floor = state.store.event_floor(scope)?;
+    let newest = crate::storage::newest_event(&*state.store, scope, floor, state.events.settings().buffer)?;
     Ok(newest - floor)
 }
 
@@ -338,14 +337,13 @@ fn gather_system(state: &AppState) -> SystemInfo {
     let mut outbox_backlogs = Vec::new();
     for project in state.identity.list_projects().unwrap_or_default() {
         for repo in state.identity.list_repos(&project.key).unwrap_or_default() {
-            let scope = Scope::new(
-                ProjectId::new(project.key.clone()),
-                RepoId::new(repo.key.clone()),
-            );
+            let backlog = scope_id(&ProjectId::new(project.key.clone()), &RepoId::new(repo.key.clone()))
+                .and_then(|scope| scope_backlog(state, &scope))
+                .ok();
             outbox_backlogs.push(ScopeBacklog {
                 project: project.key.clone(),
                 repo: repo.key,
-                backlog: scope_backlog(state, &scope).ok(),
+                backlog,
             });
         }
     }
@@ -389,8 +387,11 @@ pub async fn web_export_scope(
         )
             .into_response();
     }
-    let scope = Scope::new(ProjectId::new(&project), RepoId::new(&repo));
-    let exported = state.blocking(move |state| crate::backup::export_bundle_json(state.store.as_ref(), &scope));
+    let scope = scope_id(&ProjectId::new(&project), &RepoId::new(&repo));
+    let exported = state.blocking(move |state| {
+        let scope = scope.map_err(|e| crate::backup::BackupError::Store(e.to_string()))?;
+        crate::backup::export_bundle_json(state.store.as_ref(), &scope)
+    });
     let bytes = match exported.await {
         Ok(bytes) => bytes,
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),

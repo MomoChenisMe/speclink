@@ -8,7 +8,7 @@
 //! handshake) is Phase 2 — this module owns the validation logic and the
 //! error shapes only.
 
-use speclink_store::{ProjectId, RepoId};
+use crate::scope::{ProjectId, RepoId};
 
 /// One available binding a resolution can land on. Phase 2's server
 /// handshake supplies these; local fs mode maps the workspace root to the
@@ -78,8 +78,8 @@ pub fn resolve_binding(candidates: Vec<BindingCandidate>) -> Result<ResolvedBind
 }
 
 /// The fixed zero-configuration binding of local fs mode: the workspace root
-/// is the binding source and maps to the default project/repo (the same
-/// identities the TeamStore contract uses for local deployments).
+/// is the binding source and maps to the default project/repo (`default` and
+/// `main`).
 pub fn local_default_binding() -> ResolvedBinding {
     ResolvedBinding {
         project: ProjectId::new("default"),
@@ -90,7 +90,7 @@ pub fn local_default_binding() -> ResolvedBinding {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use speclink_store::{ProjectId, RepoId};
+    use crate::scope::{ProjectId, RepoId};
 
     fn candidate(project: &str, repo: &str, permitted: bool) -> BindingCandidate {
         BindingCandidate {

@@ -45,7 +45,7 @@ pub struct ImportBundleDocument {
 }
 
 /// The closed logical document identity used by migration bundles. The tagged
-/// shape stays path-free and maps one-to-one to the TeamStore contract.
+/// shape stays path-free, and each kind maps to one key of the store port.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "camelCase", deny_unknown_fields)]
 pub enum ImportDocumentId {

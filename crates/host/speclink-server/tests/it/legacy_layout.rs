@@ -362,8 +362,9 @@ fn a_change_on_a_fresh_sqlite_store_has_a_last_modified_time() {
     );
 }
 
-/// Each scope has its own version: a write to one repo does not move the
-/// other repo's.
+/// spec host-runtime「兩個儲存庫各自的範圍」: each scope has its own version —
+/// a write to one repo does not move the other repo's — and holds only its
+/// own documents.
 #[test]
 fn two_repos_of_one_project_have_their_own_scope_versions() {
     let dir = tempfile::tempdir().expect("tempdir");
@@ -374,6 +375,9 @@ fn two_repos_of_one_project_have_their_own_scope_versions() {
 
     assert_eq!(store.version("multi", "web"), 1, "one commit in web");
     assert_eq!(store.version("multi", "api"), 1, "one commit in api: web's commit did not move it");
+    let (web, api) = (store.keys("multi", "web"), store.keys("multi", "api"));
+    assert!(!web.is_empty() && web.iter().all(|key| key.starts_with("changes/in-web/")), "{web:?}");
+    assert!(!api.is_empty() && api.iter().all(|key| key.starts_with("changes/in-api/")), "{api:?}");
 }
 
 /// spec reference-server「成功寫入事件同步可見」: the event of a task done is

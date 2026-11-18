@@ -512,8 +512,6 @@ pub fn basis_from_wire(basis: &wire::DriftBasisDigests) -> BasisDigests {
 mod tests {
     use super::*;
     use crate::binding::local_default_binding;
-    use crate::teamstore_port::{scope_id, TeamStorePort};
-    use speclink_store::Scope;
     use speclink_core::store::Store;
     use speclink_core::workspace::Workspace;
     use speclink_fs::FsStore;
@@ -690,106 +688,56 @@ mod tests {
     fn spec_drift_reports_a_store_failure_as_a_store_failure() {
         // The Engine store view reads a failed store as "no document". The
         // drift entry must not turn that into "change not found".
-        use speclink_store::memory::MemoryStore;
-        use speclink_store::{CommandContext, DocumentId, FaultPoint, TeamStore};
-        use speclink_store_port::PortError;
+        use crate::port_view::testing::{scope, seed, Probe};
+        use speclink_store_port::{MemoryStorePort, PortError};
 
-        let store = MemoryStore::new();
-        let binding = local_default_binding();
-        let scope = Scope::new(binding.project, binding.repo);
-        let seed = |change: &str| {
-            let mut uow = store
-                .begin_unit_of_work(
-                    &scope,
-                    CommandContext { command: "seed".to_string(), actor: "seed".to_string() },
-                )?;
-            uow.create(DocumentId::ChangeMeta { change: change.to_string() }, "schema: spec-driven\n");
-            store.commit(uow, Vec::new())
+        let seeded = || {
+            let port = MemoryStorePort::new();
+            seed(&port, 1_000, &[("changes/demo/.meta.yaml", "schema: spec-driven\n")]);
+            port
         };
-        seed("demo").expect("seed commit");
-        let port = TeamStorePort::new(&store);
-        let id = scope_id(&scope).unwrap();
-        assert!(spec_drift(&port, &id, "demo").is_ok(), "the healthy store answers");
+        let id = scope();
+        let healthy = Probe::new(seeded());
+        assert!(spec_drift(&healthy, &id, "demo").is_ok(), "the healthy store answers");
+        let calls = healthy.lists().len() + healthy.reads().len();
+        assert!(calls >= 1, "the drift reads the store");
         assert!(matches!(
-            spec_drift(&port, &id, "nope"),
+            spec_drift(&seeded(), &id, "nope"),
             Err(ExecError::Command(e)) if e.code == ErrorCode::NotFound
         ));
 
-        // A commit that crashes leaves the store unavailable.
-        store.crash_at(FaultPoint::AfterDocWrites);
-        seed("other").expect_err("the crashed commit");
-        match spec_drift(&port, &id, "demo") {
-            Err(ExecError::Store(PortError::Unavailable { .. })) => {}
-            other => panic!("expected the store failure, got {:?}", other.map(|_| ())),
+        // The store is unavailable at one of the calls: each call in turn.
+        for n in 1..=calls {
+            match spec_drift(&Probe::new(seeded()).failing_at(n), &id, "demo") {
+                Err(ExecError::Store(PortError::Unavailable { .. })) => {}
+                other => panic!("call {n}: expected the store failure, got {:?}", other.map(|_| ())),
+            }
         }
     }
 
     #[test]
-    fn spec_drift_gives_the_same_answer_on_a_memory_store_and_on_the_teamstore_adapter() {
-        use speclink_store::memory::MemoryStore;
-        use speclink_store::{CommandContext, DocumentId, TeamStore};
-        use speclink_store_port::{Actor as PortActor, Commit, DocKey, Expected, MemoryStorePort, Op, Timestamp};
+    fn spec_drift_reads_the_change_and_the_canonical_spec_of_a_store_port() {
+        use crate::port_view::testing::{scope, seed};
+        use speclink_store_port::MemoryStorePort;
 
         const DELTA: &str = "## ADDED Requirements\n\n### Requirement: Token rotation\n\nIt SHALL rotate.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
         const CANON: &str = "## Purpose\n\nAuth.\n\n## Requirements\n\n### Requirement: Token rotation\n\nIt SHALL rotate.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
-        let docs: [(DocumentId, &str, &str); 5] = [
-            (DocumentId::ChangeMeta { change: "demo".into() }, "changes/demo/.meta.yaml", META),
-            (
-                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "design.md".into() },
-                "changes/demo/design.md",
-                "# Design\n",
-            ),
-            (
-                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "tasks.md".into() },
-                "changes/demo/tasks.md",
-                "- [ ] 1.1 a\n",
-            ),
-            (
-                DocumentId::ChangeArtifact { change: "demo".into(), artifact: "specs/auth/spec.md".into() },
-                "changes/demo/specs/auth/spec.md",
-                DELTA,
-            ),
-            (DocumentId::CanonicalSpec { capability: "auth".into() }, "specs/auth/spec.md", CANON),
-        ];
+        let port = MemoryStorePort::new();
+        seed(
+            &port,
+            1_700_000_000_000,
+            &[
+                ("changes/demo/.meta.yaml", META),
+                ("changes/demo/design.md", "# Design\n"),
+                ("changes/demo/tasks.md", "- [ ] 1.1 a\n"),
+                ("changes/demo/specs/auth/spec.md", DELTA),
+                ("specs/auth/spec.md", CANON),
+            ],
+        );
 
-        let teamstore = MemoryStore::new();
-        let binding = local_default_binding();
-        let scope = Scope::new(binding.project, binding.repo);
-        let mut uow = teamstore
-            .begin_unit_of_work(&scope, CommandContext { command: "seed".into(), actor: "seed".into() })
-            .unwrap();
-        for (doc, _, content) in &docs {
-            uow.create(doc.clone(), *content);
-        }
-        teamstore.commit(uow, Vec::new()).unwrap();
-
-        let memory = MemoryStorePort::new();
-        let id = scope_id(&scope).unwrap();
-        let ops = docs
-            .iter()
-            .map(|(_, key, content)| Op::Put {
-                key: DocKey::new(*key).unwrap(),
-                content: content.to_string(),
-                expected: Expected::Absent,
-            })
-            .collect();
-        let commit = Commit::new(
-            PortActor::new("seed", "seed").unwrap(),
-            "seed",
-            Timestamp::new(1_700_000_000_000).unwrap(),
-            ops,
-            Vec::new(),
-        )
-        .unwrap();
-        memory.commit(&id, &commit).unwrap();
-
-        let on_memory = spec_drift(&memory, &id, "demo").map_err(|e| format!("{e:?}")).unwrap();
-        let on_teamstore = spec_drift(&TeamStorePort::new(&teamstore), &id, "demo")
-            .map_err(|e| format!("{e:?}"))
-            .unwrap();
-        assert_eq!(spec_drift_view_to_wire(&on_memory), spec_drift_view_to_wire(&on_teamstore));
-        assert_eq!(on_memory.spec.spec_assumptions.len(), 1, "the ADDED requirement already exists");
-        assert_eq!(on_memory.design.as_deref(), Some("# Design\n"));
+        let view = spec_drift(&port, &scope(), "demo").map_err(|e| format!("{e:?}")).unwrap();
+        assert_eq!(view.spec.spec_assumptions.len(), 1, "the ADDED requirement already exists");
+        assert_eq!(view.design.as_deref(), Some("# Design\n"));
     }
 
     #[test]

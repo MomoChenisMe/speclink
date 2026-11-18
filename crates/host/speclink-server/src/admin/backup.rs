@@ -20,7 +20,7 @@ use chrono::{DateTime, SecondsFormat, Utc};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use speclink_host::scope::{scope_id, ProjectId, RepoId, Scope};
+use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_host::transfer::{self, BundleDocument, ScopeBundle};
 use speclink_protocol::query::ImportDocumentId;
 use speclink_store_port::{Actor, MemoryStorePort, ScopeId};
@@ -169,7 +169,7 @@ impl ScopeEntry {
     }
 
     fn scope_id(&self) -> Result<ScopeId, BackupError> {
-        scope_id(&Scope::new(ProjectId::new(&self.project), RepoId::new(&self.repo)))
+        scope_id(&ProjectId::new(&self.project), &RepoId::new(&self.repo))
             .map_err(|e| BackupError::Store(e.to_string()))
     }
 }
@@ -776,9 +776,8 @@ fn digests_by_key(bundle: &ScopeBundle) -> BTreeMap<&str, &str> {
 /// Export one scope as the same self-verifying bundle JSON a backup member holds
 /// (决策 5) — the admin scope-download reuses the backup export shape, so a
 /// downloaded bundle passes the same structure and digest verification.
-pub fn export_bundle_json(store: &dyn ServerStore, scope: &Scope) -> Result<Vec<u8>, BackupError> {
-    let scope = scope_id(scope).map_err(|e| BackupError::Store(e.to_string()))?;
-    let bundle = transfer::export(store, &scope).map_err(|e| BackupError::Store(e.to_string()))?;
+pub fn export_bundle_json(store: &dyn ServerStore, scope: &ScopeId) -> Result<Vec<u8>, BackupError> {
+    let bundle = transfer::export(store, scope).map_err(|e| BackupError::Store(e.to_string()))?;
     serde_json::to_vec_pretty(&bundle).map_err(|e| BackupError::Store(format!("serialize bundle: {e}")))
 }
 

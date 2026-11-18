@@ -1,5 +1,5 @@
-//! The server over the `serverfs` store driver (serverfs-team-store spec
-//! 「serverfs 組態可服務」).
+//! The server over the `serverfs` store driver (store-port-examples spec
+//! 「三個範例通過合格測試」).
 //!
 //! The point of a store contract is that the layer above cannot tell which
 //! driver is underneath. So this drives the same verb flow through a
