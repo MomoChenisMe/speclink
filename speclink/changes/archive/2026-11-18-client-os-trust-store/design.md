@@ -92,6 +92,8 @@ rustls-platform-verifier 在 Linux 上讀不到任何系統 CA 時，建立驗�
 
 真實的作業系統信任庫不能在測試裡修改，所以測試不經過它。`http` 模組內部把「建立信任設定」寫成一個接受額外信任根的私有函式；正式路徑傳空的清單，單元測試傳測試用的 CA。rustls-platform-verifier 在三個平台都提供帶額外信任根的建構函式（`Verifier::new_with_extra_roots`），所以這條測試路徑在 macOS、Windows、Linux 的 CI 都會跑到各平台真正的驗證器。
 
+清單是空的時候，這個私有函式改呼叫不帶額外信任根的建構函式（`Verifier::new`），測試傳入測試 CA 時才用 `Verifier::new_with_extra_roots`。原因在 Windows：帶額外信任根的建構函式會另外建一個鏈引擎，多一個可能失敗的步驟（失敗會觸發 D3 的退回），而且每條被拒絕的鏈會再對它驗一次。macOS 與 Linux 上，兩個建構函式對空清單的行為相同。這是品質關卡提出後補上的。
+
 測試寫在 `http` 模組自己的 `#[cfg(test)]` 區塊，因此私有函式不必變成公開 API，也不新增環境變數或設定。測試內容：
 
 - 用 rcgen（新增的測試用依賴）產生一個 CA 與一張由它簽發、對象是 `127.0.0.1` 的憑證；用 rustls 的伺服器端在本機的隨機埠起一個只回一行 JSON 的 HTTPS 服務。
@@ -140,6 +142,9 @@ docs/product-status 的已知缺口沒有這一項，所以不需要移走任何
 - `cargo test -p speclink-cli --test it remote_read_path` 通過：既有的 `server unreachable` 斷言不變。
 - `node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過：文件的中英對照、連結與詞彙守門。
 - 手動：在一台把測試 CA 裝進系統信任庫的電腦上，CLI 與 Speclink Desktop 連得上用該 CA 簽發憑證的 Server；移除 CA 後，CLI 印出憑證被拒絕的訊息，Speclink Desktop 顯示連線中斷。
+- 有兩段沒有實跑成功路徑，靠程式結構保證（品質關卡提出後，使用者決定用註明的方式收）：
+  - 瀏覽器登入經 HTTPS 的成功路徑（說明文件查詢、換 token、撤銷），以及登入服務的憑證被拒絕時登入指令的 exit code。手動驗收用的是裝置登入。保證來自四點：登入服務的用戶端（`oauth.rs` 的 `agent`）和其他五處走同一個共用建立函式；守門測試擋住自己建立用戶端的寫法；憑證被拒絕的訊息有單元測試；這個錯誤和既有的 `could not reach the login service` 從同一個位置回傳。
+  - 「作業系統沒有任何 CA 時退回內建清單」只驗到決定函式這一層（建立失敗的結果 → ureq 預設的建立器）。沒有在缺 CA 憑證套件的 Linux 上實跑連公開的 Server；手動驗收在 macOS，那裡不會走到退回。「沒有 CA 時建立驗證器會回傳錯誤」是讀 rustls-platform-verifier 0.7.0 的原始碼判讀的。
 
 **範圍**
 
@@ -155,4 +160,5 @@ docs/product-status 的已知缺口沒有這一項，所以不需要移走任何
 - [組織用系統設定移除某個公開 CA 時，原本連得上的 Server 會連不上] → 這是跟隨系統政策的預期結果，寫進提案的相容性影響；訊息會指出是憑證被拒絕。
 - [新增 rcgen 這個測試用依賴，Cargo.lock 會多幾個套件] → 只在 `dev-dependencies`，不進發行的 binary。
 - [`speclink-remote` 直接宣告 rustls 時若開了預設功能，會帶進第二個加密提供者並拉長建置時間] → 依 D2 關閉預設功能，實作後用 `cargo tree -p speclink-remote -i aws-lc-rs` 確認這個 crate 沒有因此帶進它。
+- [Windows 的系統驗證查憑證撤銷時，最多會等 10 秒的網路回應，這段時間不受 ureq 的逾時管。撤銷站台連不到時，驗證本身會放行，但總逾時 10 秒的狀態查詢（sync-state）可能已經超過期限，於是使用者看到一般的連線失敗訊息] → 本變更不處理。已查證的部分：rustls-platform-verifier 0.7.0 把撤銷的網路等待設為 10 秒、結果不明時忽略；ureq 2.12.1 的逾時只作用在 socket 讀寫與讀回應前的期限檢查，管不到憑證驗證。沒有查證的部分：實際會不會超過期限，本機沒有 Windows 可以實測。這只在 Windows、憑證帶撤銷網址、而且撤銷站台連不到時發生；之後有人回報再決定是否拉長狀態查詢的逾時。
 - [Linux 上 `SSL_CERT_FILE` 會改變信任來源，這不是本變更承諾的行為] → 不寫進規格與文件；之後若要正式支援指定 CA 檔，另開變更。

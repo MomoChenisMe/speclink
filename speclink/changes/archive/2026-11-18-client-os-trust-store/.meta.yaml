@@ -1,0 +1,83 @@
+schema: spec-driven
+created: 2026-11-18T14:13:12+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-2
+started_at: 2026-11-18T14:44:15+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: speclink/client-os-trust-store
+landed_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+landed_at: 2026-11-18T15:38:08+08:00
+landed_by: MomoChen <momochenisme@gmail.com>
+reviewed_at: 2026-11-18T16:42:09+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_rounds: 2
+reviewed_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+reviewed_scope:
+  - path: Cargo.lock
+    hash: bb12ec0c9d4cdf010e2fedfb6ad32c09ceab7afa0e5ad60f31d43ca42cce392e
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: 292f971a7973db8240dbe74cc0ad8a1274d0a76f4e123860947bee7f2a64204a
+  - path: crates/protocol/speclink-remote/src/client.rs
+    hash: 972607f08ff35de77146512cac55af0800e7c6f6bd0dac3c12a1b324f1842a92
+  - path: crates/protocol/speclink-remote/src/device.rs
+    hash: 8c1bc6b44322da0701edfc57461a9727272baf70047657db9a74e71ec339358b
+  - path: crates/protocol/speclink-remote/src/events.rs
+    hash: 51381b2b07a6f0c568d5493a47dc8222106a0b79c4d19c6c5f11bb1177fc8e86
+  - path: crates/protocol/speclink-remote/src/http.rs
+    hash: 363e1024c7ebbc04e191e08c464e2935e218462eed06032b7a37c58d9364dfbe
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 39201d0b9b1fb12bac7105c6e12044d17b7b82673665151fef70c718b1d89767
+  - path: crates/protocol/speclink-remote/src/oauth.rs
+    hash: e75c77542898832e38fc142340b0bf0ed0fa64082d539afcb8ce61fa0ab58c6d
+  - path: docs/configuration.md
+    hash: 3cff3e362ad7800e86d1f215882cdc0f38cebfaf695f5cbdee65b93762f7b05a
+  - path: docs/configuration.zh-TW.md
+    hash: 030f92f829d360c734313d62356f6b6af853bad27dd3304cf3165bfd7a77cf6b
+  - path: docs/remote-getting-started.md
+    hash: 5d861d5f6c5ee6848021bca1d526f7bc2a4a46afbdb0ed4ee981a5fab3b56437
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: b975e14bd9621737b53ce02158026e0ca0d20aeeadf8c1457b6b91f33f57296c
+  - path: docs/sdk-node.md
+    hash: cab3b00848d425781d933cac6ec28b6613a040e61068b24ece9d40f67c52ab05
+  - path: docs/sdk-node.zh-TW.md
+    hash: fd0fcf2f1860d30f31906f6c3cace1e1468d366bc00555c2ac4cba669fe6be49
+verified_at: 2026-11-18T16:42:10+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_rounds: 2
+verified_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+verified_scope:
+  - path: Cargo.lock
+    hash: bb12ec0c9d4cdf010e2fedfb6ad32c09ceab7afa0e5ad60f31d43ca42cce392e
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: 292f971a7973db8240dbe74cc0ad8a1274d0a76f4e123860947bee7f2a64204a
+  - path: crates/protocol/speclink-remote/src/client.rs
+    hash: 972607f08ff35de77146512cac55af0800e7c6f6bd0dac3c12a1b324f1842a92
+  - path: crates/protocol/speclink-remote/src/device.rs
+    hash: 8c1bc6b44322da0701edfc57461a9727272baf70047657db9a74e71ec339358b
+  - path: crates/protocol/speclink-remote/src/events.rs
+    hash: 51381b2b07a6f0c568d5493a47dc8222106a0b79c4d19c6c5f11bb1177fc8e86
+  - path: crates/protocol/speclink-remote/src/http.rs
+    hash: 363e1024c7ebbc04e191e08c464e2935e218462eed06032b7a37c58d9364dfbe
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 39201d0b9b1fb12bac7105c6e12044d17b7b82673665151fef70c718b1d89767
+  - path: crates/protocol/speclink-remote/src/oauth.rs
+    hash: e75c77542898832e38fc142340b0bf0ed0fa64082d539afcb8ce61fa0ab58c6d
+  - path: docs/configuration.md
+    hash: 3cff3e362ad7800e86d1f215882cdc0f38cebfaf695f5cbdee65b93762f7b05a
+  - path: docs/configuration.zh-TW.md
+    hash: 030f92f829d360c734313d62356f6b6af853bad27dd3304cf3165bfd7a77cf6b
+  - path: docs/remote-getting-started.md
+    hash: 5d861d5f6c5ee6848021bca1d526f7bc2a4a46afbdb0ed4ee981a5fab3b56437
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: b975e14bd9621737b53ce02158026e0ca0d20aeeadf8c1457b6b91f33f57296c
+  - path: docs/sdk-node.md
+    hash: cab3b00848d425781d933cac6ec28b6613a040e61068b24ece9d40f67c52ab05
+  - path: docs/sdk-node.zh-TW.md
+    hash: fd0fcf2f1860d30f31906f6c3cace1e1468d366bc00555c2ac4cba669fe6be49
+archived_at: 2026-11-18T16:44:57+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

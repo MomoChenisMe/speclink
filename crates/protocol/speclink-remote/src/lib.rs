@@ -63,7 +63,8 @@ impl std::fmt::Display for RemoteError {
 impl std::error::Error for RemoteError {}
 
 /// Translate a transport-level failure (refused/timeout/DNS) — loud, no
-/// cache fallback, no retry loop.
+/// cache fallback, no retry loop. This crate's request paths go through
+/// `http::translate_transport_error`, which also names a rejected certificate.
 pub fn translate_transport() -> RemoteError {
     RemoteError {
         message: "server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),

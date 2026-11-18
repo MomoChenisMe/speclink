@@ -175,7 +175,7 @@ impl Client {
                 let body = resp.into_string().unwrap_or_default();
                 Err(translate_protocol_error(status, &body))
             }
-            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
+            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_transport_error(&error)),
         }
     }
 
@@ -391,7 +391,7 @@ impl Client {
                 let body = resp.into_string().unwrap_or_default();
                 Err(translate_protocol_error(status, &body))
             }
-            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
+            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_transport_error(&error)),
         }
     }
 

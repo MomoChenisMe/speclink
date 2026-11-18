@@ -21,8 +21,8 @@
 
 ## 5. 手動驗證
 
-- [ ] [M] 5.1 在一台電腦上用本機 CA 工具（例如 mkcert）產生 CA 並裝進作業系統的信任庫，用它簽發的憑證讓一台示範用 server 或宿主以 https 服務。確認：CLI 的 `speclink auth login` 與 `speclink list` 成功；Speclink Desktop 開啟同一個遠端專案後看板載入、事件串流連上（改一個任務的勾選，畫面不用手動重新整理就更新）。記下 `speclink list` 的耗時，與變更前的版本連同一台 server 的耗時比較。 <!-- speclink-task:tsk_01M7PMT62PG7ZAW1VZF7Z0AK87 -->
-- [ ] [M] 5.2 把 5.1 的 CA 從作業系統的信任庫移除後重試。確認：`speclink list` 以非零 exit code 結束，stderr 的訊息以 `server unreachable` 開頭並指出憑證被拒絕與處理方法；Speclink Desktop 顯示連線中斷、寫入動作停用。 <!-- speclink-task:tsk_01M7PMT62PBY8191MSWBSGDXKE -->
+- [x] [M] 5.1 在一台電腦上用本機 CA 工具（例如 mkcert）產生 CA 並裝進作業系統的信任庫，用它簽發的憑證讓一台示範用 server 或宿主以 https 服務。確認：CLI 的 `speclink auth login` 與 `speclink list` 成功；Speclink Desktop 開啟同一個遠端專案後看板載入、事件串流連上（改一個任務的勾選，畫面不用手動重新整理就更新）。記下 `speclink list` 的耗時，與變更前的版本連同一台 server 的耗時比較。 <!-- speclink-task:tsk_01M7PMT62PG7ZAW1VZF7Z0AK87 -->
+- [x] [M] 5.2 把 5.1 的 CA 從作業系統的信任庫移除後重試。確認：`speclink list` 以非零 exit code 結束，stderr 的訊息以 `server unreachable` 開頭並指出憑證被拒絕與處理方法；Speclink Desktop 顯示連線中斷、寫入動作停用。 <!-- speclink-task:tsk_01M7PMT62PBY8191MSWBSGDXKE -->
 
 ## 6. 使用者文件與收尾（D6）
 

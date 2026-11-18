@@ -13,7 +13,7 @@
 //! - **The fallback cannot be forced by a server.** [`builder_with`] falls
 //!   back only when the trust settings cannot be built, once per process,
 //!   before any request. A certificate refused on one request goes to
-//!   [`translate_failure`]; nothing retries with other trust settings. The
+//!   [`translate_transport_error`]; nothing retries with other trust settings. The
 //!   fallback itself still checks certificates, against ureq's built-in list
 //!   of public CAs.
 //! - **The message carries the name of the reason and nothing else.**
@@ -24,8 +24,9 @@
 //!   adds `redirects(0)` on top of [`agent_builder`]; the oauth test
 //!   `a_redirect_from_the_login_service_is_a_failure_not_a_success` holds it.
 //! - **The safe way is the easy way.** [`agent_builder`] takes no argument, so
-//!   a caller cannot pass weaker settings, and the guard test below fails when
-//!   another module builds an agent or uses a ureq shortcut that makes one.
+//!   a caller cannot pass weaker settings, and the guard tests below fail when
+//!   another module builds an agent, uses a ureq shortcut that makes one, or
+//!   translates a connection-layer failure without looking at the certificate.
 //! - **Not ours to decide:** on Linux the library that reads the system's CA
 //!   files also obeys `SSL_CERT_FILE` and `SSL_CERT_DIR`. Whoever sets the
 //!   environment of the process already controls it.
@@ -66,8 +67,14 @@ fn trust_config(
     // The provider is named here, like ureq does, so that no other user of
     // rustls in the same process can change it.
     let provider = Arc::new(rustls::crypto::ring::default_provider());
-    let verifier =
-        rustls_platform_verifier::Verifier::new_with_extra_roots(extra_roots, provider.clone())?;
+    // With no extra roots, `new` is the constructor to use. On Windows the
+    // other one builds a second chain engine for the extra roots — one more
+    // thing that can fail — and tries every refused chain against it again.
+    let verifier = if extra_roots.is_empty() {
+        rustls_platform_verifier::Verifier::new(provider.clone())?
+    } else {
+        rustls_platform_verifier::Verifier::new_with_extra_roots(extra_roots, provider.clone())?
+    };
     let config = rustls::ClientConfig::builder_with_provider(provider)
         .with_safe_default_protocol_versions()?
         // rustls has no other way to install a verifier of our choice. This
@@ -78,13 +85,15 @@ fn trust_config(
     Ok(Arc::new(config))
 }
 
-/// Translate a connection-layer failure. A certificate the trust store refused
-/// gets its own line, because the fix is not the URL. Every other failure
-/// (refused, timeout, DNS) keeps the line of [`crate::translate_transport`].
-pub(crate) fn translate_failure(error: &ureq::Transport) -> RemoteError {
-    match certificate_rejection(error) {
+/// Translate the connection-layer error of a request. A certificate the trust
+/// store refused gets its own line, because the fix is not the URL. Every
+/// other failure (refused, timeout, DNS) keeps the line of
+/// [`crate::translate_transport`] — which no request path calls directly: it
+/// cannot see the error, so it cannot name a certificate.
+pub(crate) fn translate_transport_error(error: &ureq::Transport) -> RemoteError {
+    match certificate_rejection(error, "the server's") {
         Some(rejection) => RemoteError {
-            message: format!("server unreachable — the server's {rejection}"),
+            message: format!("server unreachable — {rejection}"),
             reason: None,
             status: None,
             evidence: None,
@@ -93,15 +102,15 @@ pub(crate) fn translate_failure(error: &ureq::Transport) -> RemoteError {
     }
 }
 
-/// When the certificate check is what broke the connection: the half of the
-/// message that names the reason and the fix. The caller puts the owner of
-/// the certificate in front.
-pub(crate) fn certificate_rejection(error: &ureq::Transport) -> Option<String> {
+/// When the certificate check is what broke the connection: the sentence that
+/// names whose certificate it was (`owner`, for example `the server's`), the
+/// reason and the fix.
+pub(crate) fn certificate_rejection(error: &ureq::Transport, owner: &str) -> Option<String> {
     let mut cause = std::error::Error::source(error);
     while let Some(error) = cause {
         if let Some(rustls::Error::InvalidCertificate(reason)) = error.downcast_ref() {
             return Some(format!(
-                "TLS certificate was rejected ({}); if your organisation's own CA issued it, add that CA to the operating system's trust store",
+                "{owner} TLS certificate was rejected ({}); if your organisation's own CA issued it, add that CA to the operating system's trust store",
                 reason_name(reason)
             ));
         }
@@ -134,11 +143,11 @@ pub(crate) mod tests {
 
     use rustls::pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer};
 
-    /// A test CA, and the chain and key of a server certificate it issued for
-    /// `127.0.0.1`.
+    /// A test CA, and a server certificate it issued for `127.0.0.1` with its
+    /// key.
     pub(crate) struct TestPki {
         ca: CertificateDer<'static>,
-        chain: Vec<CertificateDer<'static>>,
+        leaf: CertificateDer<'static>,
         key: PrivateKeyDer<'static>,
     }
 
@@ -173,16 +182,7 @@ pub(crate) mod tests {
 
         TestPki {
             ca: ca_cert.der().clone(),
-            // Which chain makes the system name an unknown issuer differs.
-            // Windows names it only when it can build the chain up to the
-            // root, so the root travels with the leaf. macOS names it only
-            // when the root is absent: with the root attached it reports
-            // "not trusted", which rustls has no name for.
-            chain: if cfg!(windows) {
-                vec![leaf_cert.der().clone(), ca_cert.der().clone()]
-            } else {
-                vec![leaf_cert.der().clone()]
-            },
+            leaf: leaf_cert.der().clone(),
             key: PrivatePkcs8KeyDer::from(key.serialize_der()).into(),
         }
     }
@@ -208,15 +208,29 @@ pub(crate) mod tests {
         stream.flush()
     }
 
-    /// An HTTPS server on a random local port that presents `pki`'s chain.
+    /// An HTTPS server on a random local port whose chain makes a system
+    /// that does not trust the test CA name an unknown issuer. Which chain
+    /// that is differs: Windows names an unknown issuer only when it can
+    /// build the chain up to the root, so there the root travels with the
+    /// leaf. macOS names it only when the root is absent.
     pub(crate) fn https_server(pki: &TestPki) -> String {
+        https_server_sending(pki, cfg!(windows))
+    }
+
+    /// An HTTPS server on a random local port that presents `pki`'s leaf,
+    /// with or without the root behind it.
+    fn https_server_sending(pki: &TestPki, root_too: bool) -> String {
+        let mut chain = vec![pki.leaf.clone()];
+        if root_too {
+            chain.push(pki.ca.clone());
+        }
         let config = rustls::ServerConfig::builder_with_provider(Arc::new(
             rustls::crypto::ring::default_provider(),
         ))
         .with_safe_default_protocol_versions()
         .unwrap()
         .with_no_client_auth()
-        .with_single_cert(pki.chain.clone(), pki.key.clone_key())
+        .with_single_cert(chain, pki.key.clone_key())
         .unwrap();
         let config = Arc::new(config);
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -269,7 +283,9 @@ pub(crate) mod tests {
         }
     }
 
-    /// A port with no process listening on it.
+    /// A port with no process listening on it. Nothing holds the port after
+    /// this returns, so a test that runs at the same time can, rarely, bind
+    /// it: a caller gives its request a timeout.
     pub(crate) fn closed_port() -> u16 {
         std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
     }
@@ -277,12 +293,25 @@ pub(crate) mod tests {
     #[test]
     fn a_rejected_certificate_names_the_certificate_and_the_fix() {
         let error = transport_error(builder_with(trust_config(Vec::new())), &https_server(&test_pki()));
-        let translated = translate_failure(&error);
+        let translated = translate_transport_error(&error);
         assert_eq!(
             translated.message,
             "server unreachable — the server's TLS certificate was rejected (UnknownIssuer); if your organisation's own CA issued it, add that CA to the operating system's trust store"
         );
         assert!(translated.status.is_none() && translated.reason.is_none() && translated.evidence.is_none());
+    }
+
+    /// The spec's example row for macOS: a root that travels with the leaf
+    /// and is not trusted is a reason rustls has no name for.
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn macos_reads_other_when_the_untrusted_root_travels_with_the_leaf() {
+        let url = https_server_sending(&test_pki(), true);
+        let error = transport_error(builder_with(trust_config(Vec::new())), &url);
+        assert_eq!(
+            translate_transport_error(&error).message,
+            "server unreachable — the server's TLS certificate was rejected (Other); if your organisation's own CA issued it, add that CA to the operating system's trust store"
+        );
     }
 
     /// The text some reasons carry comes from the other side's certificate.
@@ -303,7 +332,8 @@ pub(crate) mod tests {
     #[test]
     fn a_refused_connection_keeps_the_existing_message() {
         let url = format!("https://127.0.0.1:{}", closed_port());
-        let translated = translate_failure(&transport_error(agent_builder(), &url));
+        let builder = agent_builder().timeout(std::time::Duration::from_secs(5));
+        let translated = translate_transport_error(&transport_error(builder, &url));
         assert_eq!(translated.message, crate::translate_transport().message);
         assert!(!translated.message.contains("certificate"));
     }
@@ -337,8 +367,9 @@ pub(crate) mod tests {
     fn only_this_module_builds_an_agent() {
         // The builder, and the ureq shortcuts that make an agent with ureq's
         // own trust settings.
-        const AGENT_MAKERS: [&str; 11] = [
+        const AGENT_MAKERS: [&str; 12] = [
             "AgentBuilder::new",
+            "Agent::new(",
             "ureq::builder(",
             "ureq::agent(",
             "ureq::request(",
@@ -350,18 +381,33 @@ pub(crate) mod tests {
             "ureq::put(",
             "ureq::delete(",
         ];
-        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
-        let mut offenders: Vec<String> = std::fs::read_dir(&src)
-            .unwrap()
-            .map(|entry| entry.unwrap().path())
-            .filter(|path| path.file_name().unwrap() != "http.rs")
-            .filter(|path| {
-                let text = std::fs::read_to_string(path).unwrap();
-                AGENT_MAKERS.iter().any(|maker| text.contains(maker))
-            })
-            .map(|path| path.file_name().unwrap().to_string_lossy().into_owned())
-            .collect();
-        offenders.sort();
+        let offenders = other_files_containing(&AGENT_MAKERS, &["http.rs"]);
         assert!(offenders.is_empty(), "these files build their own agent: {offenders:?}");
+    }
+
+    /// `translate_transport()` cannot see the error, so a request path that
+    /// calls it loses the certificate's line without any test going red.
+    /// `lib.rs` defines it; this module is its one caller.
+    #[test]
+    fn only_this_module_translates_without_the_error() {
+        let offenders = other_files_containing(&["translate_transport()"], &["http.rs", "lib.rs"]);
+        assert!(offenders.is_empty(), "these files call translate_transport() themselves: {offenders:?}");
+    }
+
+    /// The files of this crate's `src`, `skipped` left out, that hold one of
+    /// `needles`.
+    fn other_files_containing(needles: &[&str], skipped: &[&str]) -> Vec<String> {
+        let src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+        let mut found: Vec<String> = std::fs::read_dir(&src)
+            .unwrap()
+            .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+            .filter(|name| !skipped.contains(&name.as_str()))
+            .filter(|name| {
+                let text = std::fs::read_to_string(src.join(name)).unwrap();
+                needles.iter().any(|needle| text.contains(needle))
+            })
+            .collect();
+        found.sort();
+        found
     }
 }

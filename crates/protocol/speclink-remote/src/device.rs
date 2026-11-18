@@ -67,7 +67,7 @@ fn post<T: DeserializeOwned, B: Serialize>(
             let body = resp.into_string().unwrap_or_default();
             Err((Some(status), translate_protocol_error(status, &body)))
         }
-        Err(ureq::Error::Transport(error)) => Err((None, crate::http::translate_failure(&error))),
+        Err(ureq::Error::Transport(error)) => Err((None, crate::http::translate_transport_error(&error))),
     }
 }
 
@@ -149,7 +149,7 @@ pub(crate) fn get_json<T: DeserializeOwned>(url: &str, bearer: Option<&str>) -> 
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_transport_error(&error)),
     }
 }
 

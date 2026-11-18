@@ -111,7 +111,7 @@ pub fn subscribe(
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_transport_error(&error)),
     }
 }
 
@@ -250,7 +250,7 @@ pub fn sync_state(
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_transport_error(&error)),
     }
 }
 

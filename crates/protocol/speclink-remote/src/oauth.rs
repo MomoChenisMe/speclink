@@ -92,11 +92,8 @@ fn agent() -> ureq::Agent {
 
 /// The line for a connection-layer failure: the certificate's own line when
 /// the trust store refused it, `otherwise` for every other failure.
-fn unreachable(error: &ureq::Transport, otherwise: String) -> String {
-    match crate::http::certificate_rejection(error) {
-        Some(rejection) => format!("the login service's {rejection}"),
-        None => otherwise,
-    }
+fn unreachable_line(error: &ureq::Transport, otherwise: String) -> String {
+    crate::http::certificate_rejection(error, "the login service's").unwrap_or(otherwise)
 }
 
 /// An error code from outside, cut down to something safe to print.
@@ -121,7 +118,7 @@ fn fetch(url: &str) -> Result<Option<Metadata>, String> {
             "could not read the login service's metadata at {url} (HTTP {status})"
         )),
         Err(ureq::Error::Transport(error)) => {
-            Err(unreachable(&error, format!("could not reach the login service at {url}")))
+            Err(unreachable_line(&error, format!("could not reach the login service at {url}")))
         }
     }
 }
@@ -284,7 +281,7 @@ fn token_request(endpoint: &str, what: &str, form: &[(&str, &str)]) -> Result<To
                 Err(GrantFailure::Unavailable(line))
             }
         }
-        Err(ureq::Error::Transport(error)) => Err(GrantFailure::Unavailable(unreachable(
+        Err(ureq::Error::Transport(error)) => Err(GrantFailure::Unavailable(unreachable_line(
             &error,
             "could not reach the login service".to_string(),
         ))),
@@ -342,7 +339,7 @@ pub(crate) fn revoke(revocation_endpoint: &str, client_id: &str, refresh_token: 
         Ok(resp) => Err(format!("HTTP {}", resp.status())),
         Err(ureq::Error::Status(status, _)) => Err(format!("HTTP {status}")),
         Err(ureq::Error::Transport(error)) => {
-            Err(unreachable(&error, "could not reach the login service".to_string()))
+            Err(unreachable_line(&error, "could not reach the login service".to_string()))
         }
     }
 }
