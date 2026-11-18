@@ -177,12 +177,14 @@ describe('host.exportScope and host.importScope', () => {
     const port = memoryPort()
     const host = createHost({ store: port.store })
     const bundle = keyed([doc('config.yaml', CONFIG)])
+    // Each call starts only when it is awaited: a call that is already running
+    // can reject while an earlier one is still awaited, before anything listens.
     const calls = [
-      host.exportScope({ identity: { id: '', displayName: 'Alice' }, scope: 's1' }),
-      host.exportScope({ identity: ALICE, scope: '' }),
-      host.importScope({ identity: ALICE, scope: '', bundle }),
+      () => host.exportScope({ identity: { id: '', displayName: 'Alice' }, scope: 's1' }),
+      () => host.exportScope({ identity: ALICE, scope: '' }),
+      () => host.importScope({ identity: ALICE, scope: '', bundle }),
     ]
-    for (const call of calls) expect((await rejection(call)).code).toBe('invalid_argv')
+    for (const call of calls) expect((await rejection(call())).code).toBe('invalid_argv')
     expect(port.calls).toEqual({ list: 0, read: 0, commit: 0 })
   })
 
