@@ -1,12 +1,12 @@
 // node-sdk「createHost 與 host.dispatch」and「JS 版的儲存接口」: the host kit's
 // Agent-tool door over a JS store port of three functions.
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { createEngine, createHost, StoreConflictError } from '../index.js'
-import { cliJson, rejection } from './helpers'
+import { cliJson, rejection, repoRoot } from './helpers'
 import { memoryPort, type PortCommit } from './memory-port'
 
 const ALICE = { id: 'u_1', displayName: 'Alice' }
@@ -513,6 +513,37 @@ describe('the read function of beforeCommand', () => {
     expect(asked).toBe(1)
   })
 
+  // The archive hook of docs/sdk-node: an archive without a name and an
+  // archive of a change that does not exist do not end as `internal`.
+  it('lets the archive hook of the docs give a clear answer without a name and for an unknown change', async () => {
+    const port = portWithDemo(DONE_TASKS)
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async ({ command, params }, { read }) => {
+          if (command !== 'archive') return
+          if (typeof params.change !== 'string') return { allow: false, reason: 'Give the name of the change to archive' }
+          const shown = (await read(['show', params.change, '--json']).catch((err) => {
+            if (err.code === 'not_found') return null
+            throw err
+          })) as Shown | null
+          if (shown === null) return
+          if (shown.review?.state !== 'stamped') return { allow: false, reason: 'The change did not pass the review' }
+        },
+      },
+    })
+    const archive = (...name: string[]) => rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['archive', ...name] }))
+
+    const unnamed = await archive()
+    const unknown = await archive('ghost')
+    const unreviewed = await archive('demo')
+
+    expect([unnamed.code, unnamed.message]).toEqual(['refused', 'Give the name of the change to archive'])
+    expect(unknown.code).toBe('not_found')
+    expect([unreviewed.code, unreviewed.message]).toEqual(['refused', 'The change did not pass the review'])
+    expect(port.calls.commit).toBe(0)
+  })
+
   it('gives the value host.dispatch gives for the same argv', async () => {
     const argv = ['show', 'demo', '--json']
     let viaRead: unknown
@@ -556,6 +587,37 @@ describe('the read function of beforeCommand', () => {
     expect(refused[0].message).toBe("read accepts only verbs that write nothing; 'new change' is not one of them")
     expect(refused[1].message).toContain("'task done'")
     expect(port.doc('s1', 'changes/other/.meta.yaml')).toBeUndefined()
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('names a verb that takes content as a verb that writes, not as one that lacks its content', async () => {
+    const port = portWithDemo()
+    const messages: string[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: async (_info, { read }) => {
+          for (const argv of [
+            ['workflow-config', 'context', '--stdin'],
+            ['new', 'artifact', 'proposal', '--change', 'demo', '--stdin'],
+            ['discuss', 'add-round', 'talk'],
+            // A stamp's content is JSON: it converts with no placeholder content.
+            ['review', 'stamp', 'demo', '--stdin'],
+            ['verify', 'stamp', 'demo', '--stdin'],
+          ]) {
+            const err = await rejection(read(argv))
+            messages.push(`${err.code}: ${err.message}`)
+          }
+        },
+      },
+    })
+
+    await host.dispatch(LIST)
+
+    const refusal = (verb: string) => `invalid_argv: read accepts only verbs that write nothing; '${verb}' is not one of them`
+    expect(messages).toEqual(
+      ['workflow-config context', 'new artifact', 'discuss add-round', 'review stamp', 'verify stamp'].map(refusal),
+    )
     expect(port.calls.commit).toBe(0)
   })
 
@@ -658,6 +720,34 @@ describe('the read function of beforeCommand', () => {
     expect(err.code).toBe('refused')
     expect(shown).toMatchObject({ schema: 'spec-driven' })
     expect(port.calls.commit).toBe(0)
+  })
+
+  // The verbs `read` takes are written out in three texts. A read kind added
+  // to `is_read`, or a text that falls behind, fails here.
+  it('names the same read verbs in the typings, in both docs and in is_read', () => {
+    const between = (file: string, from: string, to: string) => {
+      const text = readFileSync(join(repoRoot, file), 'utf8')
+      const start = text.indexOf(from)
+      const end = text.indexOf(to, start)
+      expect(start, `${file}: "${from}"`).toBeGreaterThan(-1)
+      expect(end, `${file}: "${to}"`).toBeGreaterThan(start)
+      return text.slice(start, end)
+    }
+    const quoted = (text: string) => [...text.matchAll(/`([^`]+)`/g)].map((match) => match[1]).sort()
+    const typings = quoted(between('crates/adapters/speclink-node/index.d.ts', 'The verbs are', 'Any'))
+    const english = quoted(between('docs/sdk-node.md', 'It accepts only the verbs that write nothing:', 'All other verbs'))
+    const chinese = quoted(between('docs/sdk-node.zh-TW.md', '它只接受不寫入任何文件的動詞：', '其他動詞'))
+    // The read kinds of `is_read`, as verb text without spaces and hyphens.
+    // `PlanStrict` is the verb `plan` with a flag.
+    const kinds = [...between('crates/host/speclink-host/src/read_only.rs', 'match command {', '=> true').matchAll(/Command::(\w+)/g)]
+      .map((match) => match[1].toLowerCase())
+      .filter((kind) => kind !== 'planstrict')
+      .sort()
+
+    expect(typings).toHaveLength(17)
+    expect(english).toEqual(typings)
+    expect(chinese).toEqual(typings)
+    expect(typings.map((verb) => verb.replace(/[ -]/g, '')).sort()).toEqual(kinds)
   })
 
   it('is not on the host object', () => {

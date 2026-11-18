@@ -20,10 +20,9 @@ use speclink_core::fields::Fields;
 use speclink_host::http::{HttpError, HttpRequest, Method, API_ROOT};
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit,
-    HostKitOptions, Identity, InvalidSkills, ProjectEntry, Reader, RepoEntry, ScopesFn,
+    HostKitOptions, Identity, InvalidSkills, NotARead, ProjectEntry, Reader, RepoEntry, ScopesFn,
 };
 use speclink_host::port_exec::{ExecError, PortExecution};
-use speclink_host::read_only::is_read;
 use speclink_host::transfer;
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::EventTransport;
@@ -425,18 +424,34 @@ fn run(setup: &HostSetup, caller: &Caller, argv: &[String], stdin: Option<&str>,
 }
 
 /// [`run`] for the hook's `read`: the same parsing and the same output, for a
-/// verb that writes nothing, through the kit's reader. Any other verb is
-/// refused here, by its verb text.
+/// verb that writes nothing, through the kit's reader. The kit refuses any
+/// other verb, and the refusal names the verb as the caller wrote it.
 fn read(setup: &HostSetup, caller: &Caller, argv: &[String]) -> DispatchResult {
     let parsed = parse_verb(argv)?;
-    let cmd = command_of(&parsed, None)?;
-    if !is_read(&cmd) {
-        return Err(DispatchError::new(
-            "invalid_argv",
-            format!("read accepts only verbs that write nothing; '{}' is not one of them", parsed.name()),
-        ));
+    // `read` has no content to give, and a verb that takes content converts
+    // only with it: refused by its name here, not for the content it lacks.
+    if parsed.stdin_policy() != speclink_verbs::StdinPolicy::Never {
+        return Err(DispatchError::new("invalid_argv", not_a_read(parsed.name())));
     }
-    through_kit(setup, &parsed, cmd, |kit, cmd| kit.read(caller, cmd))
+    let cmd = command_of(&parsed, None)?;
+    through_kit(setup, &parsed, cmd, |kit, cmd| kit.read(caller, cmd).map_err(|e| by_verb(e, parsed.name())))
+}
+
+/// The message of `read`'s refusal of `verb`.
+fn not_a_read(verb: &str) -> String {
+    format!("read accepts only verbs that write nothing; '{verb}' is not one of them")
+}
+
+/// The kit's refusal of a command that writes, with the verb text in place of
+/// the command's name; any other failure as it is.
+fn by_verb(e: ExecError, verb: &str) -> ExecError {
+    match e {
+        ExecError::Command(mut e) if e.source.as_ref().is_some_and(|source| source.is::<NotARead>()) => {
+            e.message = not_a_read(verb);
+            ExecError::Command(e)
+        }
+        other => other,
+    }
 }
 
 /// The envelope value of `cmd` run by `call` on this host's kit.

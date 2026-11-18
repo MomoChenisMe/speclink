@@ -157,6 +157,20 @@ impl Reader<'_> {
     }
 }
 
+/// The source of [`HostKit::read`]'s refusal of a command that writes. A door
+/// knows the refusal by this type, not by the message text, and can name the
+/// verb its caller wrote in place of the command.
+#[derive(Debug)]
+pub struct NotARead;
+
+impl std::fmt::Display for NotARead {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("the command is not of a kind that only reads")
+    }
+}
+
+impl std::error::Error for NotARead {}
+
 pub type BeforeCommandHook = Box<dyn Fn(&BeforeCommand, &Reader<'_>) -> Decision + Send + Sync>;
 pub type AfterCommitHook = Box<dyn Fn(&AfterCommit) + Send + Sync>;
 
@@ -409,10 +423,11 @@ impl HostKit {
     /// before-command hook reads with ([`Reader`]).
     pub fn read(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError> {
         if !is_read(&cmd) {
-            return Err(ExecError::Command(CommandError::new(
-                ErrorCode::InvalidArgv,
-                format!("read accepts only commands that write nothing; '{}' is not one of them", cmd.name()),
-            )));
+            return Err(ExecError::Command(CommandError {
+                code: ErrorCode::InvalidArgv,
+                message: format!("read accepts only commands that write nothing; '{}' is not one of them", cmd.name()),
+                source: Some(anyhow::Error::new(NotARead)),
+            }));
         }
         let engine_ctx = engine_context(caller, None);
         let cmd = without_local_facts(cmd);

@@ -43,7 +43,7 @@ Rust 的掛鉤與 Node 的掛鉤都經過這個方法（D3、D4），不各寫�
 
 `speclink-host` 新增模組 `read_only`，提供 `is_read(&Command) -> bool`。寫法比照 `wire_coverage`：對每一種命令列出結果，不寫萬用分支，所以引擎新增命令而沒有在這裡歸類時編譯不過。
 
-讀取類：`List`（變更與正式規格）、`Show`、`Status`、`Instructions`、`Validate`、`Analyze`、`Trace`、`Plan`、`ArtifactCat`、`EvidenceShow`、`Language`、`ReviewShow`、`VerifyShow`、`DiscussList`、`DiscussShow`、`DiscussSearch`、`WorkflowConfigShow`。其餘全部是寫入類，包含「這一次剛好沒有東西要寫」的情況（例如勾一個已經勾過的任務）：判定看的是命令的種類，不是這一次的結果，這樣掛鉤的作者能事先知道哪些動詞可以用。
+讀取類：`List`（變更與正式規格）、`Show`、`Status`、`Instructions`、`Validate`、`Analyze`、`Trace`、`Plan`（含 `PlanStrict`，也就是帶旗標的 `plan`）、`ArtifactCat`、`EvidenceShow`、`LanguageShow`、`ReviewShow`、`VerifyShow`、`DiscussList`、`DiscussShow`、`DiscussSearch`、`WorkflowConfigShow`。其餘全部是寫入類，包含「這一次剛好沒有東西要寫」的情況（例如勾一個已經勾過的任務）：判定看的是命令的種類，不是這一次的結果，這樣掛鉤的作者能事先知道哪些動詞可以用。
 
 用一個測試固定判定與實際行為一致：對每一種歸為讀取類的命令，在有資料的記憶體儲存上執行，斷言儲存的提交次數是零。命令的樣本沿用 `speclink-host` 的 HTTP 入口測試既有的「每一種命令各一個」的清單（`tests/http_door.rs` 的 `every_command`）；把它搬到測試共用的位置讓兩個測試檔都能用，不另外維護第二份清單。
 
@@ -69,7 +69,7 @@ repo 內設定執行前掛鉤的地方只有測試（`speclink-host` 的五個�
 
 `read` 的回傳值與錯誤沿用 `dispatch` 既有的信封與解包函式，所以值的形狀與 Error 的 `code` 自然相同。
 
-原生端解析 argv 之後先判定是否讀取類（D2），不是就回 `invalid_argv`，訊息是 `read accepts only verbs that write nothing; '<動詞>' is not one of them`，動詞用解析出的動詞文字（例如 `new change`）。需要 checkout 的動詞維持既有的 `invalid_argv`。
+原生端解析 argv 之後交給 `HostKit::read`；判定是否讀取類（D2）的只有 `HostKit::read` 一處，不在原生端再判一次。它拒絕時回 `invalid_argv`，原生端靠錯誤的來源型別（`NotARead`）認出這個拒絕，不比對訊息文字，再把訊息換成 `read accepts only verbs that write nothing; '<動詞>' is not one of them`，動詞用解析出的動詞文字（例如 `new change`）。`read` 沒有內容可給，所以吃內容的動詞（有 `--stdin` 旗標的寫入，例如 `new artifact`、兩站的 `stamp`）在轉成命令之前就由原生端以同一句拒絕，而不是被要求補上內容。需要 checkout 的動詞維持既有的 `invalid_argv`。
 
 替代方案：把 `read` 做成對外的 `host.read(...)`。否決：它等於一個不問掛鉤的 dispatch，放上對外介面會讓「每次呼叫正好問一次掛鉤」多一個例外；掛鉤以外的地方要讀資料，用 `host.dispatch` 就可以。
 
@@ -102,7 +102,7 @@ repo 內設定執行前掛鉤的地方只有測試（`speclink-host` 的五個�
 
 **介面與資料形狀**
 
-- Rust：`BeforeCommandHook = Box<dyn Fn(&BeforeCommand, &Reader<'_>) -> Decision + Send + Sync>`；`Reader::read(&self, cmd: Command) -> Result<PortExecution, ExecError>`；`HostKit::read(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError>`；`read_only::is_read(&Command) -> bool`。
+- Rust：`BeforeCommandHook = Box<dyn Fn(&BeforeCommand, &Reader<'_>) -> Decision + Send + Sync>`；`Reader::read(&self, cmd: Command) -> Result<PortExecution, ExecError>`；`HostKit::read(&self, caller: &Caller, cmd: Command) -> Result<PortExecution, ExecError>`；`read_only::is_read(&Command) -> bool`；`HostKit::read` 拒絕寫入類命令時，錯誤的來源型別是 `kit::NotARead`。
 - Node：`beforeCommand?(info: BeforeCommandInfo, tools: BeforeCommandTools): MaybePromise<BeforeCommandAnswer>`，`BeforeCommandTools` 是 `{ read(argv: string[]): Promise<unknown> }`。`read` 的值與 `host.dispatch` 對同一個 argv 的值相同；`read` 不接受 stdin 與自由欄位。
 - `BeforeCommandInfo`、`BeforeCommandAnswer`、`AfterCommitInfo`、`Host` 介面都不變。
 

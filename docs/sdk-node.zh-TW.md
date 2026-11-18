@@ -293,8 +293,15 @@ const hooks = {
   async beforeCommand({ identity, scope, command, params, changedKeys }, { read }) {
     // 不回傳（或回傳 { allow: true }）就是允許。
     if (command !== 'archive') return
+    // 沒有給名稱時由引擎自己選變更，這條規則讀不到它的狀態。
+    if (typeof params.change !== 'string') return { allow: false, reason: '封存時請指定變更名稱' }
     // `read` 執行只讀取的動詞，用這次呼叫的身分與範圍。
-    const shown = await read(['show', params.change, '--json'])
+    const shown = await read(['show', params.change, '--json']).catch((err) => {
+      // 變更不存在：放行，由引擎自己回 `not_found`。
+      if (err.code === 'not_found') return null
+      throw err
+    })
+    if (shown === null) return
     if (shown.review?.state !== 'stamped') return { allow: false, reason: '還沒通過審查' }
     if (shown.verify?.state !== 'stamped') return { allow: false, reason: '還沒通過驗證' }
     if (!shown.landed) return { allow: false, reason: '程式碼還沒落地，不能封存' }
@@ -503,8 +510,12 @@ async function main() {
     hooks: {
       async beforeCommand({ command, params }, { read }) {
         if (command !== 'archive') return
-        const shown = await read(['show', params.change, '--json'])
-        if (!shown.landed) return { allow: false, reason: '程式碼還沒落地，不能封存' }
+        if (typeof params.change !== 'string') return { allow: false, reason: '封存時請指定變更名稱' }
+        const shown = await read(['show', params.change, '--json']).catch((err) => {
+          if (err.code === 'not_found') return null // 由引擎自己回錯
+          throw err
+        })
+        if (shown && !shown.landed) return { allow: false, reason: '程式碼還沒落地，不能封存' }
       },
       afterCommit({ scope, command, scopeVersion }) {
         console.log(`[${scope}] ${command} → 版本 ${scopeVersion}`)

@@ -26,7 +26,10 @@
 //! - **One parsing.** The Node `read` parses argv with the functions of
 //!   `dispatch` (`parse_verb`, `command_of`): a usage error, or a verb that
 //!   needs a checkout, fails as it does there. There is no stdin and no free
-//!   field to attach.
+//!   field to attach, so a verb that takes content is refused by its name
+//!   before the conversion asks for the content. The Node side does not
+//!   judge the kind a second time: it knows the kit's refusal by its type
+//!   ([`crate::kit::NotARead`]) and names the verb in the message.
 //! - **It ends with the hook.** In Rust the reader borrows the kit and the
 //!   caller, so it cannot outlive the hook call. In Node a switch closes when
 //!   the hook's value or Promise settles; a `read` kept past that is refused

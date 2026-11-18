@@ -3,11 +3,13 @@
 // Each test target uses its own part of this module.
 #![allow(dead_code)]
 
-use speclink_core::command::Command;
+use speclink_core::command::{Command, CommandOutcome, ShowChange, ShowOutcome};
 use speclink_core::config::{ResolvedPolicy, WorkflowConfigEdit};
 use speclink_host::binding::local_default_binding;
 use speclink_host::context::{Actor, ActorSource, ExecutionMode, SpeclinkExecutionContext};
+use speclink_host::kit::Reader;
 use speclink_host::policy::EffectiveWorkflowPolicy;
+use speclink_host::port_exec::ExecError;
 use speclink_store_port::{
     Actor as PortActor, Commit, DocKey, Document, Event, Expected, KeyPrefix, Listing, MemoryStorePort,
     Op, PortError, ScopeId, StorePort, Timestamp, Version,
@@ -391,6 +393,20 @@ pub fn every_command() -> Vec<Command> {
     ];
     commands.iter().for_each(listed);
     commands
+}
+
+// --- what a before-command hook reads ---
+
+pub fn show(item: &str) -> Command {
+    Command::Show { item: Some(item.to_string()), item_type: None }
+}
+
+/// What the reader shows of change `name`.
+pub fn shown(reader: &Reader<'_>, name: &str) -> Result<ShowChange, ExecError> {
+    match reader.read(show(name))?.outcome {
+        CommandOutcome::Show(ShowOutcome::Change(change)) => Ok(change),
+        other => panic!("expected a shown change, got {other:?}"),
+    }
 }
 
 // --- this project's own spec folder ---

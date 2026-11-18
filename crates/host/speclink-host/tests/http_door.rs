@@ -429,7 +429,6 @@ fn the_method_names_are_the_five_the_door_takes() {
 // ======================================================================
 
 use serde_json::{json, Value};
-use speclink_core::command::{CommandOutcome, ShowOutcome};
 use speclink_host::kit::{AfterCommit, BeforeCommand, Decision, Reader};
 use speclink_protocol::auth::{AuthMethodsResponse, BrowserLogin};
 use speclink_protocol::events::{EventTransport, TransportKind};
@@ -647,10 +646,9 @@ fn a_hook_reads_through_the_door_and_refuses_the_archive() {
             if info.command != "archive" {
                 return Decision::Allow;
             }
-            let shown = reader.read(Command::Show { item: Some("demo".to_string()), item_type: None });
-            match shown.expect("demo is shown").outcome {
-                CommandOutcome::Show(ShowOutcome::Change(change)) if change.landed.is_some() => Decision::Allow,
-                _ => Decision::Deny { reason: "程式碼還沒落地".to_string() },
+            match common::shown(reader, "demo").expect("demo is shown").landed {
+                Some(_) => Decision::Allow,
+                None => Decision::Deny { reason: "程式碼還沒落地".to_string() },
             }
         })),
         after_commit: None,

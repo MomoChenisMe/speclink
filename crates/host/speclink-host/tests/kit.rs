@@ -4,11 +4,13 @@
 //! requirements runs here on the in-memory store port, wrapped in the shared
 //! recorder that keeps the calls the store receives.
 
-use speclink_core::command::{Command, CommandOutcome, ErrorCode, ShowChange, ShowOutcome};
+use speclink_core::command::{Command, CommandOutcome, ErrorCode};
 use speclink_core::config::WorkflowConfigEdit;
 use speclink_core::model::ChangeMeta;
 use speclink_core::station::{StationProgress, StationStatus};
-use speclink_host::kit::{AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, Identity, Reader};
+use speclink_host::kit::{
+    AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKit, Identity, NotARead, Reader,
+};
 use speclink_host::port_exec::{self, ExecError};
 use speclink_host::read_only;
 use speclink_store_port::{DocKey, MemoryStorePort, PortError, ScopeId, StorePort, Version};
@@ -17,6 +19,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 mod common;
+use common::{show, shown};
 
 const META: &str = "schema: spec-driven\n";
 const DONE_TASKS: &str = "## 1. Section\n\n- [x] 1.1 first task\n";
@@ -738,18 +741,6 @@ const VERIFY_STAMP: &str = "verified_at: 2026-11-03T10:00:00+08:00\nverified_tas
 verified_scope:\n  - path: src/a.rs\n    hash: aa\n";
 const LANDED: &str = "landed_commit: \"89abcdef0123\"\nlanded_at: 2026-11-04T09:00:00+08:00\n";
 
-fn show(item: &str) -> Command {
-    Command::Show { item: Some(item.to_string()), item_type: None }
-}
-
-/// What the reader shows of change `name`.
-fn shown(reader: &Reader<'_>, name: &str) -> Result<ShowChange, ExecError> {
-    match reader.read(show(name))?.outcome {
-        CommandOutcome::Show(ShowOutcome::Change(change)) => Ok(change),
-        other => panic!("expected a shown change, got {other:?}"),
-    }
-}
-
 fn stamped(status: &Option<StationStatus>) -> bool {
     status.as_ref().is_some_and(|status| status.progress == StationProgress::Stamped)
 }
@@ -841,9 +832,9 @@ fn the_reader_refuses_a_command_that_writes() {
     );
     let recorder = recorded(port);
     let store = recorder.clone();
-    // Each command with what the reader answered and whether the store was
-    // left alone.
-    type Row = (&'static str, Result<(), (ErrorCode, String)>, bool);
+    // Each command with what the reader answered and the calls the store
+    // received for it.
+    type Row = (&'static str, Result<(), (ErrorCode, String)>, common::Calls);
     let rows: Arc<Mutex<Vec<Row>>> = Arc::default();
     let seen = rows.clone();
     let log = AskLog::default();
@@ -863,7 +854,7 @@ fn the_reader_refuses_a_command_that_writes() {
             let name = cmd.name();
             store.take();
             let answer = reader.read(cmd).map(|_| ()).map_err(failure);
-            seen.lock().unwrap().push((name, answer, store.take().is_empty()));
+            seen.lock().unwrap().push((name, answer, store.take()));
         }
         Decision::Allow
     });
@@ -872,19 +863,29 @@ fn the_reader_refuses_a_command_that_writes() {
     kit.run(&alice(), list_changes()).expect("the outer call runs");
 
     let rows = rows.lock().unwrap().clone();
-    for (name, answer, _) in &rows[..4] {
+    for (name, answer, calls) in &rows[..4] {
         assert_eq!(answer, &Ok(()), "{name} is a read");
+        assert!(calls.commits.is_empty(), "{name} committed");
     }
-    for (name, answer, untouched) in &rows[4..] {
+    for (name, answer, calls) in &rows[4..] {
         let message = format!("read accepts only commands that write nothing; '{name}' is not one of them");
         assert_eq!(answer, &Err((ErrorCode::InvalidArgv, message)), "{name} writes");
-        assert!(untouched, "{name}: no list, no read, no commit");
+        assert!(calls.is_empty(), "{name}: no list, no read, no commit");
     }
     let refused: Vec<&str> = rows[4..].iter().map(|(name, ..)| *name).collect();
     assert_eq!(refused, ["new-change", "task-done", "archive", "claim"]);
     assert_eq!(content_of(&recorder.inner, &scope_of("s1"), "changes/other/.meta.yaml"), None, "no change other");
-    assert!(recorder.calls().commits.is_empty());
     assert_eq!(log.lock().unwrap().len(), 1, "no read asked the hook again");
+}
+
+#[test]
+fn the_refusal_of_a_write_is_known_by_its_type() {
+    // A door that has the verb text names the verb in its own message.
+    let kit = HostKit::new(Arc::new(MemoryStorePort::new()), Hooks::default());
+    match kit.read(&alice(), new_change("other")) {
+        Err(ExecError::Command(e)) => assert!(e.source.is_some_and(|source| source.is::<NotARead>())),
+        other => panic!("expected a refused read, got {other:?}"),
+    }
 }
 
 #[test]
