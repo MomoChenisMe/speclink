@@ -1,0 +1,201 @@
+schema: spec-driven
+created: 2026-11-14T22:57:54+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs
+depends_on: retire-teamstore-and-drivers
+started_at: 2026-11-18T08:37:26+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-18T10:40:49+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 16
+reviewed_rounds: 3
+reviewed_commit: 1bfc7a30251426f2befff8ea535e27025817981f
+reviewed_scope:
+  - path: README.md
+    hash: f6e64adaed862e5a81a92b8207118ff833685de733d4f213d64a8015fd3c9da2
+  - path: README.zh-TW.md
+    hash: 7bdbcee7a265178716734b2cec13fcc960c66c10cf4199394d7ba9467b7b048e
+  - path: docs/assets/figures/en/embedded-shape.svg
+    hash: af16337fff5fa2a8d3d78403124d48a46c763ab1a5c874b7798e1c968dd6586a
+  - path: docs/assets/figures/en/sdk-contents.svg
+    hash: e13f63f2af746f96752735595dde0158ed504ce27a012d92154a0f2921a4c7f9
+  - path: docs/assets/figures/en/shared-host-kit.svg
+    hash: 64bd2f4cb074c4e88d45d59aaad4f73abc467cf9e1b3debf7c36fdf65c7a091d
+  - path: docs/assets/figures/en/skill-path-vs-verb.svg
+    hash: afd237881922e1ae9675420c6f3d7d9347cc63e4578043fd0ceeb21bc89aabdb
+  - path: docs/assets/figures/en/verb-four-steps.svg
+    hash: b5e26132c819ce84f4397b2a074763791d58ca88c55ca0a3401d86182b13cd3d
+  - path: docs/assets/figures/zh-TW/embedded-shape.svg
+    hash: 5ae5241117f417a4c913b786b89ad50478c6236475b185614164ad9f399f3e36
+  - path: docs/assets/figures/zh-TW/sdk-contents.svg
+    hash: ca3f584a3a917319bde12ff61afcd03fff297bab2867a49b599979de264b20b7
+  - path: docs/assets/figures/zh-TW/shared-host-kit.svg
+    hash: eab7a0c9c4e02035ce2b433f8a9f853af3001908ed6fff834a21250485136a7a
+  - path: docs/assets/figures/zh-TW/skill-path-vs-verb.svg
+    hash: cf8ab5533abfb148ef8c50126e6885b16958920a55b9aeed0c00f413e0fe141b
+  - path: docs/assets/figures/zh-TW/verb-four-steps.svg
+    hash: d1834ef79df240aa722e10d6fd0493c4cd5ba7aafaba04ffaf4930045b67b31d
+  - path: docs/assets/screenshots/en/server-setup.png
+    hash: 6c21a26b75ea29378701729dce13714941660e0222b30b2655a5eacfd12a08d3
+  - path: docs/assets/screenshots/zh-TW/server-setup.png
+    hash: 2ff2b127acf1361b76efd58879c14a4fb07975ff7d8503cd466b5f4bf75583cb
+  - path: docs/configuration.md
+    hash: 749d47e73f9bef847848a6d3c953adfaf58b2b56bad071abfee0ba4f3e9588e6
+  - path: docs/configuration.zh-TW.md
+    hash: fc177c3eaf72fbe36abeebfc6618d0cfd456b7a88580f89c25f4d08887242713
+  - path: docs/development.md
+    hash: cbe7511d3ae5b7d99418025436f2d90cbc112bb87065ca4007ed4e654b460f53
+  - path: docs/development.zh-TW.md
+    hash: 41e8d91e6a98719e027a2a4b687668330fc41917b9b08c299aa42a12a72ae18e
+  - path: docs/getting-started.md
+    hash: 473a48c38b25869a93e4ec86caab6af8b0afe499958eb5a487921ccf4d3b19a1
+  - path: docs/getting-started.zh-TW.md
+    hash: bb663b8e4fecd8320523b91e03d56aa7b89aee47f54e53a4bff05fb42ea81574
+  - path: docs/product-status.md
+    hash: 45ab2156cb8654e32d6423b2094399f51b68526b7862d7f459c3aec663030d7a
+  - path: docs/product-status.zh-TW.md
+    hash: eddf527b545502a140a63ffcbf1a086b892695ba17915b00d65659d370e06f61
+  - path: docs/remote-getting-started.md
+    hash: c732590b8580c3a0b34c4236d1cd2d9cda613961dce6473d1a51b30e52e99a1b
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 0dc9f0db0348dd5b99dda8a976b1f71a4901e63db0884b716eebb1089d2ca6fd
+  - path: docs/roadmap.md
+    hash: e9f9560bb4de8de80248f6acb8ffa55ea26b87cb7cd9337a804896209d3079fa
+  - path: docs/roadmap.zh-TW.md
+    hash: 27524731e57a50f9287a7147159adfbcddac152d3b0f74ec9ad5fb4ef80b39be
+  - path: docs/sdk-node.md
+    hash: b08d1c836219cc915aa7900e5822b33360887841401af14bda0257ae7361279d
+  - path: docs/sdk-node.zh-TW.md
+    hash: d25ad941756e97618769318aa1010ef8927e02734eb681eef81fc6fc9f696d6b
+  - path: docs/server-backup.md
+    hash: 0999e56caeef423f3ecd6cd3a155432a702df459566bd19b7c0645d352ccd5fc
+  - path: docs/server-backup.zh-TW.md
+    hash: 772066495c1ae4bf84f9e4546ff9b1ad9c852a7d8329f2e052f669cd4107ba2f
+  - path: docs/server-deployment.md
+    hash: 214c3ce60b35394d9a463d8faf3ab16d86a4828d5db378fac5fb6a6fdcc2afc3
+  - path: docs/server-deployment.zh-TW.md
+    hash: 9284119fd4e087b50a25a322c0217a08f63f1359754f5c3744f25f742b5f3caa
+  - path: docs/server-store-drivers.md
+    hash: 028c77aa399a05a7cc64c48a7e8f31cfd344004f5a2b613bb24cae5d5fe75cb9
+  - path: docs/server-store-drivers.zh-TW.md
+    hash: 9cee0db394c0ff0590903f9341ae9c6f038505f328fdb621d48b12e356bb5d3b
+  - path: docs/verb-contract.md
+    hash: 59c1491849e4aa0aa0670cde07768014ae685e2163603d1903edc00a9626d57c
+  - path: docs/verb-contract.zh-TW.md
+    hash: abc13b385b10742b1fd3167d0519a48137aae94d8b7def4eacf8c315c60ebab8
+  - path: docs/workflow.md
+    hash: 895a5e59e3bbd07c9f2a93e00e8bbdfd8a6cecf6a4eba0b55b63e167b36479cc
+  - path: docs/workflow.zh-TW.md
+    hash: f091015a715861e595d9fe83c0ec654b083d2d4868c24c78c3a5088ff52663c9
+  - path: scripts/docs/docs-figures.test.mjs
+    hash: 2ee387b9c73f9665528eda86d20bf39169d116b919975d8082dac2435ca1e865
+  - path: scripts/docs/docs-links.mjs
+    hash: 10987ef45ea6726c1d4f4600da4faaf462862682e82c4b0b1c8004606c44b88e
+  - path: scripts/docs/docs-links.test.mjs
+    hash: 6c2981aea0ce70d2924df537357e78689bdc05793275605cd96f3ffb1c6ff105
+  - path: scripts/docs/docs-parity.test.mjs
+    hash: 1466f1d19253f50d38d57a80f100861a3027b259d317ff79e9593fa800a2429d
+  - path: scripts/docs/docs-surface.test.mjs
+    hash: 8d97cf649538cb49153746dfae772e24553b2b3eb583fac44a89ada27f24459d
+  - path: scripts/docs/remote-docs.test.mjs
+    hash: 7a5ef7f6616523c28e5230ea836aa5b5ffb1e8897236440cce614486d96a3b9e
+verified_at: 2026-11-18T10:40:53+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 16
+verified_rounds: 3
+verified_commit: 1bfc7a30251426f2befff8ea535e27025817981f
+verified_scope:
+  - path: README.md
+    hash: f6e64adaed862e5a81a92b8207118ff833685de733d4f213d64a8015fd3c9da2
+  - path: README.zh-TW.md
+    hash: 7bdbcee7a265178716734b2cec13fcc960c66c10cf4199394d7ba9467b7b048e
+  - path: docs/assets/figures/en/embedded-shape.svg
+    hash: af16337fff5fa2a8d3d78403124d48a46c763ab1a5c874b7798e1c968dd6586a
+  - path: docs/assets/figures/en/sdk-contents.svg
+    hash: e13f63f2af746f96752735595dde0158ed504ce27a012d92154a0f2921a4c7f9
+  - path: docs/assets/figures/en/shared-host-kit.svg
+    hash: 64bd2f4cb074c4e88d45d59aaad4f73abc467cf9e1b3debf7c36fdf65c7a091d
+  - path: docs/assets/figures/en/skill-path-vs-verb.svg
+    hash: afd237881922e1ae9675420c6f3d7d9347cc63e4578043fd0ceeb21bc89aabdb
+  - path: docs/assets/figures/en/verb-four-steps.svg
+    hash: b5e26132c819ce84f4397b2a074763791d58ca88c55ca0a3401d86182b13cd3d
+  - path: docs/assets/figures/zh-TW/embedded-shape.svg
+    hash: 5ae5241117f417a4c913b786b89ad50478c6236475b185614164ad9f399f3e36
+  - path: docs/assets/figures/zh-TW/sdk-contents.svg
+    hash: ca3f584a3a917319bde12ff61afcd03fff297bab2867a49b599979de264b20b7
+  - path: docs/assets/figures/zh-TW/shared-host-kit.svg
+    hash: eab7a0c9c4e02035ce2b433f8a9f853af3001908ed6fff834a21250485136a7a
+  - path: docs/assets/figures/zh-TW/skill-path-vs-verb.svg
+    hash: cf8ab5533abfb148ef8c50126e6885b16958920a55b9aeed0c00f413e0fe141b
+  - path: docs/assets/figures/zh-TW/verb-four-steps.svg
+    hash: d1834ef79df240aa722e10d6fd0493c4cd5ba7aafaba04ffaf4930045b67b31d
+  - path: docs/assets/screenshots/en/server-setup.png
+    hash: 6c21a26b75ea29378701729dce13714941660e0222b30b2655a5eacfd12a08d3
+  - path: docs/assets/screenshots/zh-TW/server-setup.png
+    hash: 2ff2b127acf1361b76efd58879c14a4fb07975ff7d8503cd466b5f4bf75583cb
+  - path: docs/configuration.md
+    hash: 749d47e73f9bef847848a6d3c953adfaf58b2b56bad071abfee0ba4f3e9588e6
+  - path: docs/configuration.zh-TW.md
+    hash: fc177c3eaf72fbe36abeebfc6618d0cfd456b7a88580f89c25f4d08887242713
+  - path: docs/development.md
+    hash: cbe7511d3ae5b7d99418025436f2d90cbc112bb87065ca4007ed4e654b460f53
+  - path: docs/development.zh-TW.md
+    hash: 41e8d91e6a98719e027a2a4b687668330fc41917b9b08c299aa42a12a72ae18e
+  - path: docs/getting-started.md
+    hash: 473a48c38b25869a93e4ec86caab6af8b0afe499958eb5a487921ccf4d3b19a1
+  - path: docs/getting-started.zh-TW.md
+    hash: bb663b8e4fecd8320523b91e03d56aa7b89aee47f54e53a4bff05fb42ea81574
+  - path: docs/product-status.md
+    hash: 45ab2156cb8654e32d6423b2094399f51b68526b7862d7f459c3aec663030d7a
+  - path: docs/product-status.zh-TW.md
+    hash: eddf527b545502a140a63ffcbf1a086b892695ba17915b00d65659d370e06f61
+  - path: docs/remote-getting-started.md
+    hash: c732590b8580c3a0b34c4236d1cd2d9cda613961dce6473d1a51b30e52e99a1b
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 0dc9f0db0348dd5b99dda8a976b1f71a4901e63db0884b716eebb1089d2ca6fd
+  - path: docs/roadmap.md
+    hash: e9f9560bb4de8de80248f6acb8ffa55ea26b87cb7cd9337a804896209d3079fa
+  - path: docs/roadmap.zh-TW.md
+    hash: 27524731e57a50f9287a7147159adfbcddac152d3b0f74ec9ad5fb4ef80b39be
+  - path: docs/sdk-node.md
+    hash: b08d1c836219cc915aa7900e5822b33360887841401af14bda0257ae7361279d
+  - path: docs/sdk-node.zh-TW.md
+    hash: d25ad941756e97618769318aa1010ef8927e02734eb681eef81fc6fc9f696d6b
+  - path: docs/server-backup.md
+    hash: 0999e56caeef423f3ecd6cd3a155432a702df459566bd19b7c0645d352ccd5fc
+  - path: docs/server-backup.zh-TW.md
+    hash: 772066495c1ae4bf84f9e4546ff9b1ad9c852a7d8329f2e052f669cd4107ba2f
+  - path: docs/server-deployment.md
+    hash: 214c3ce60b35394d9a463d8faf3ab16d86a4828d5db378fac5fb6a6fdcc2afc3
+  - path: docs/server-deployment.zh-TW.md
+    hash: 9284119fd4e087b50a25a322c0217a08f63f1359754f5c3744f25f742b5f3caa
+  - path: docs/server-store-drivers.md
+    hash: 028c77aa399a05a7cc64c48a7e8f31cfd344004f5a2b613bb24cae5d5fe75cb9
+  - path: docs/server-store-drivers.zh-TW.md
+    hash: 9cee0db394c0ff0590903f9341ae9c6f038505f328fdb621d48b12e356bb5d3b
+  - path: docs/verb-contract.md
+    hash: 59c1491849e4aa0aa0670cde07768014ae685e2163603d1903edc00a9626d57c
+  - path: docs/verb-contract.zh-TW.md
+    hash: abc13b385b10742b1fd3167d0519a48137aae94d8b7def4eacf8c315c60ebab8
+  - path: docs/workflow.md
+    hash: 895a5e59e3bbd07c9f2a93e00e8bbdfd8a6cecf6a4eba0b55b63e167b36479cc
+  - path: docs/workflow.zh-TW.md
+    hash: f091015a715861e595d9fe83c0ec654b083d2d4868c24c78c3a5088ff52663c9
+  - path: scripts/docs/docs-figures.test.mjs
+    hash: 2ee387b9c73f9665528eda86d20bf39169d116b919975d8082dac2435ca1e865
+  - path: scripts/docs/docs-links.mjs
+    hash: 10987ef45ea6726c1d4f4600da4faaf462862682e82c4b0b1c8004606c44b88e
+  - path: scripts/docs/docs-links.test.mjs
+    hash: 6c2981aea0ce70d2924df537357e78689bdc05793275605cd96f3ffb1c6ff105
+  - path: scripts/docs/docs-parity.test.mjs
+    hash: 1466f1d19253f50d38d57a80f100861a3027b259d317ff79e9593fa800a2429d
+  - path: scripts/docs/docs-surface.test.mjs
+    hash: 8d97cf649538cb49153746dfae772e24553b2b3eb583fac44a89ada27f24459d
+  - path: scripts/docs/remote-docs.test.mjs
+    hash: 7a5ef7f6616523c28e5230ea836aa5b5ffb1e8897236440cce614486d96a3b9e
+archived_at: 2026-11-18T10:56:03+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

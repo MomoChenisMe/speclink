@@ -1,9 +1,0 @@
-schema: spec-driven
-created: 2026-11-14T22:57:54+08:00
-created_by: MomoChen <momochenisme@gmail.com>
-created_with: claude
-from_discussion: embedded-host-needs
-depends_on: retire-teamstore-and-drivers
-started_at: 2026-11-18T08:37:26+08:00
-started_by: MomoChen <momochenisme@gmail.com>
-branch: main
