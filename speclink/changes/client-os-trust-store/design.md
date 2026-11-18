@@ -76,6 +76,10 @@ rustls-platform-verifier 在 Linux 上讀不到任何系統 CA 時，建立驗�
 - 找到：回傳的 `RemoteError` 訊息是 `server unreachable — the server's TLS certificate was rejected (<原因>); if your organisation's own CA issued it, add that CA to the operating system's trust store`。`<原因>` 是 rustls 給的原因名稱，例如 `UnknownIssuer`、`Expired`、`NotValidForName`。`status`、`reason`、`evidence` 都是空的，和其他連線失敗相同。
 - 沒找到：回傳既有的 `translate_transport` 結果，文字逐字不變。
 
+原因名稱由各平台的驗證器決定，同一種情況在不同平台、或 Server 送出的憑證鏈不同時，名稱可能不同。實作時在 macOS 實測：簽發的 CA 不在信任庫時，Server 只送出自己的憑證是 `UnknownIssuer`；連根憑證一起送出時，系統回報的是「不被信任」，rustls 沒有對應的名稱，括號內是 `Other`。驗證器沒有給出具體名稱的其他失敗也是 `Other`。處理方法那半句不受影響，每一種情況都會出現。
+
+訊息只放名稱本身，不放名稱附帶的資料（主機名稱、時間、作業系統給的說明文字）：那些文字有一部分來自對方的憑證。rustls 把帶資料的版本叫 `ExpiredContext`、`NotValidForNameContext`，訊息去掉結尾的 `Context`，所以讀起來仍是 `Expired`、`NotValidForName`。
+
 `client.rs`、`events.rs`、`device.rs` 裡把連線層錯誤翻成 `translate_transport` 的每一處，都改成把錯誤物件交給新函式。
 
 訊息保留 `server unreachable` 開頭有兩個理由：Speclink Desktop 的離線判斷靠這個開頭，保留它就不必改桌面的程式；CLI 的既有測試與使用者文件也用這個開頭辨識連線失敗。
@@ -92,7 +96,7 @@ rustls-platform-verifier 在 Linux 上讀不到任何系統 CA 時，建立驗�
 
 - 用 rcgen（新增的測試用依賴）產生一個 CA 與一張由它簽發、對象是 `127.0.0.1` 的憑證；用 rustls 的伺服器端在本機的隨機埠起一個只回一行 JSON 的 HTTPS 服務。
 - 信任根含測試 CA：請求成功。
-- 信任根不含測試 CA：請求失敗，翻譯後的訊息符合 D4。
+- 信任根不含測試 CA：請求失敗，翻譯後的訊息符合 D4。測試伺服器送出的憑證鏈依平台而不同，目的是讓系統回報 `UnknownIssuer`：Windows 連根憑證一起送出（它要能把鏈建到根，才回報根不被信任），其他平台只送伺服器憑證（macOS 在根憑證一起送出時回報的是沒有對應名稱的「不被信任」）。
 - 沒有程序在聽的埠：翻譯後的訊息和既有的 `translate_transport` 逐字相同。
 - 建立信任設定失敗時（把失敗的結果直接交給決定「用自訂設定還是 ureq 預設」的那個函式），回傳的是 ureq 預設的建立器。
 
@@ -146,6 +150,7 @@ docs/product-status 的已知缺口沒有這一項，所以不需要移走任何
 
 - [macOS 與 Windows 的系統驗證可能為了查撤銷狀態而連網，讓第一次握手變慢] → `Client` 物件在一次指令或一個桌面連線期間重用同一個用戶端，連線會被重用；手動驗收時記下 `speclink list` 在變更前後的耗時，差距明顯時在這個變更裡回報並決定是否處理。
 - [三個平台各走不同的驗證器，行為可能不一致] → D5 的測試在 CI 的 macOS、Windows、Linux 都跑真正的平台驗證器；測試憑證照 D5 的注意事項產生，避免只在 macOS 失敗。
+- [原因名稱在某些平台與憑證鏈下是 `Other`，使用者看不出細節] → 使用者決定維持只印名稱（不印作業系統的說明文字，避免帶出對方憑證上的文字）；處理方法那半句照常出現。D5 測試裡 Windows 那一半的憑證鏈是依 rustls-platform-verifier 的原始碼判讀的，本機無法執行，要由 CI 的 Windows 工作確認。
 - [既有輸出的回歸] → 憑證以外的連線失敗訊息逐字不變，由 D5 的「沒有程序在聽」測試與 `speclink-cli` 既有的 `remote_read_path` 測試固定；引擎的 golden 不涉及連線訊息，不需要更新。
 - [組織用系統設定移除某個公開 CA 時，原本連得上的 Server 會連不上] → 這是跟隨系統政策的預期結果，寫進提案的相容性影響；訊息會指出是憑證被拒絕。
 - [新增 rcgen 這個測試用依賴，Cargo.lock 會多幾個套件] → 只在 `dev-dependencies`，不進發行的 binary。

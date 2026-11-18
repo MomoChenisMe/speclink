@@ -316,6 +316,14 @@ Try this once on purpose: keep a remote tab open in the Desktop app, and press `
 - The Desktop app disables all write actions (check a task, save a document, change settings). It does not queue them for later.
 - CLI commands fail with `Error: server unreachable — …`.
 
+A TLS certificate that this computer does not trust also stops the connection. The Desktop app shows the same "Connection interrupted", and the CLI message names the certificate:
+
+```text
+Error: server unreachable — the server's TLS certificate was rejected (UnknownIssuer); if your organisation's own CA issued it, add that CA to the operating system's trust store
+```
+
+See [Troubleshooting](#troubleshooting) for the fix.
+
 Start the server again. The Desktop app connects again by itself, queries the server again, and updates the screen. You do not need to reload. Changes that other people made during the outage also appear.
 
 ## <a id="reset"></a>9. Full reset
@@ -350,6 +358,7 @@ To move data or to make regular backups, see [Server Backup and Restore](server-
 | `speclink update` says `No AI tool configurations found` | `.speclink.yaml` has no `tools` list. Add the AI tools that you use and run the command again. See "Get the skills" in section 6. |
 | stderr shows `this CLI's skill templates (…) are older than this server's (…)` | The skill templates of the CLI are older than those of the Server. This is only a reminder, and the command completes as usual. Update Speclink. See [Configuration](configuration.md#remote). |
 | `link` or `auth status` says `repo '…' is not registered in this project` | The `--repo` value does not match the repository key. The message shows the available keys. Run `speclink link` again with the correct key. |
+| A CLI command fails with `Error: server unreachable — the server's TLS certificate was rejected (…)`. Or the Desktop app shows "Connection interrupted" for an `https://` Server that is in operation | This computer does not trust the TLS certificate of the Server. The text in the parentheses is the reason name from the operating system, for example `UnknownIssuer`. Another operating system can give a different name, and the name can be `Other`. If a CA of your organisation issued the certificate, install that CA into the trust store of the operating system, and then run the command again. Speclink has no setting that skips this check. During login, the message starts with `the login service's TLS certificate was rejected`, and the fix is the same. See [Configuration](configuration.md#remote). |
 | The server URL changed | In the test folder, run `speclink unlink`, and then run `link` with the new URL. In the Desktop app, add a new connection. |
 | The server does not start, or `/healthz` does not return `200` | Read the error in the server terminal. If the configuration has an error, the server stops. It never starts with a bad configuration. |
 | You run `speclink-server` directly and see `missing required argument --config` | The binary always needs `--config`. Use `npx @speclink/server`, or give your own configuration file. See [Server Deployment](server-deployment.md). |

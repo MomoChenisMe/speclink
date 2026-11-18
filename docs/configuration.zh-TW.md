@@ -169,6 +169,7 @@ tools:
 - 技能檔由 Server 提供。`speclink update` 向 Server 取得 `tools` 所列工具的技能，版本跟著 Server；Server 沒有宣告技能時，改用 CLI 內建的範本，並在 stderr 說明。
 - `.speclink/context/` 是遠端內容的唯讀快照。不要手改，下一個指令會發現它被改過而拒絕執行；要刷新就重新執行 `speclink instructions`。
 - 憑證不寫進任何專案檔案，所以 `.speclink.yaml` 可以放心 commit。
+- CLI 與 Speclink Desktop 用作業系統的信任庫（系統記錄「信任哪些 CA」的清單）檢查 Server 與登入服務的 TLS 憑證。TLS 憑證由組織自己的 CA 簽發時，把那個 CA 裝進作業系統的信任庫就能連線。Speclink 沒有另外指定 CA 的設定，也沒有略過檢查的設定。作業系統完全沒有提供 CA 時（例如沒有安裝 CA 憑證套件的精簡 Linux 容器），改用程式內建的公開 CA 清單。
 
 怎麼啟動示範用 server、三種登入方式、取得技能、斷線後怎麼恢復，見 [Remote 入門](remote-getting-started.zh-TW.md)。啟動示範用 server 用的環境變數（例如 `SPECLINK_PORT`）也在那裡。
 

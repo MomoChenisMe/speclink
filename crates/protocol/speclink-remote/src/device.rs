@@ -15,7 +15,7 @@
 //! interval-respecting loop (and its cancellation) belongs to the caller's
 //! orchestration (design 決策 5).
 
-use crate::{translate_protocol_error, translate_transport, RemoteError};
+use crate::{translate_protocol_error, RemoteError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::device::{
@@ -45,7 +45,7 @@ fn post<T: DeserializeOwned, B: Serialize>(
     body: Option<&B>,
 ) -> Result<T, (Option<u16>, RemoteError)> {
     let url = format!("{}{path}", base_url.trim_end_matches('/'));
-    let req = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build().post(&url);
+    let req = crate::http::agent_builder().timeout(REQUEST_TIMEOUT).build().post(&url);
     let result = match body {
         Some(payload) => req.send_json(payload),
         None => req.call(),
@@ -67,7 +67,7 @@ fn post<T: DeserializeOwned, B: Serialize>(
             let body = resp.into_string().unwrap_or_default();
             Err((Some(status), translate_protocol_error(status, &body)))
         }
-        Err(ureq::Error::Transport(_)) => Err((None, translate_transport())),
+        Err(ureq::Error::Transport(error)) => Err((None, crate::http::translate_failure(&error))),
     }
 }
 
@@ -134,7 +134,7 @@ fn get_identity(url: &str, bearer: &str) -> Result<AuthWhoamiResponse, RemoteErr
 /// goes through the shared registry mapping and keeps its HTTP status, so a
 /// caller can tell "no such route" from a refusal.
 pub(crate) fn get_json<T: DeserializeOwned>(url: &str, bearer: Option<&str>) -> Result<T, RemoteError> {
-    let mut request = ureq::AgentBuilder::new().timeout(REQUEST_TIMEOUT).build().get(url);
+    let mut request = crate::http::agent_builder().timeout(REQUEST_TIMEOUT).build().get(url);
     if let Some(bearer) = bearer {
         request = request.set("Authorization", &format!("Bearer {bearer}"));
     }
@@ -149,7 +149,7 @@ pub(crate) fn get_json<T: DeserializeOwned>(url: &str, bearer: Option<&str>) -> 
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
     }
 }
 

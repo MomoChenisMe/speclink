@@ -10,7 +10,7 @@
 //! socket read timeout doubles as the abort poll — a blocked read wakes up
 //! within [`ABORT_POLL`] to observe the abort flag.
 
-use crate::{translate_protocol_error, translate_transport, RemoteError};
+use crate::{translate_protocol_error, RemoteError};
 use speclink_protocol::events::InvalidationEvent;
 use std::io::Read;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -82,7 +82,7 @@ pub fn subscribe(
     repo: Option<&str>,
     last_event_id: Option<u64>,
 ) -> Result<EventStream, RemoteError> {
-    let agent = ureq::AgentBuilder::new()
+    let agent = crate::http::agent_builder()
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(ABORT_POLL)
         .build();
@@ -111,7 +111,7 @@ pub fn subscribe(
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
     }
 }
 
@@ -234,7 +234,7 @@ pub fn sync_state(
     token: &str,
     repo: Option<&str>,
 ) -> Result<String, RemoteError> {
-    let agent = ureq::AgentBuilder::new()
+    let agent = crate::http::agent_builder()
         .timeout(Duration::from_secs(10))
         .build();
     let mut req = agent
@@ -250,7 +250,7 @@ pub fn sync_state(
             let body = resp.into_string().unwrap_or_default();
             Err(translate_protocol_error(status, &body))
         }
-        Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+        Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
     }
 }
 

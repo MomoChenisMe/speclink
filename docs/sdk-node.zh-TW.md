@@ -426,6 +426,8 @@ const authMethods = {
 
 用戶端拿到 token 之後放在 `Authorization: Bearer` 標頭送來，由你的路由驗證。不宣告 `browser` 也可以：用戶端改用存取金鑰（`token`），金鑰由你的系統發。
 
+**TLS 憑證。** CLI 與 Speclink Desktop 用使用者那台電腦的作業系統信任庫，檢查宿主與登入服務的 TLS 憑證。公開 CA 簽發的 TLS 憑證不用額外處理。用組織自己的 CA 簽發時，每位使用者都要把那個 CA 裝進作業系統的信任庫。用戶端沒有另外指定 CA 的設定，也沒有略過檢查的設定。檢查失敗時，CLI 印出 `server unreachable — the server's TLS certificate was rejected (…)`，Speclink Desktop 顯示連線中斷。
+
 **推送事件**預設關閉：握手只宣告輪詢，用戶端定時問「這個範圍有沒有變」。你自己提供串流（SSE 或 WebSocket）時，用 `pushTransports` 宣告它的網址；入口不提供串流。
 
 ## <a id="export-import"></a>匯出與匯入

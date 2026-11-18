@@ -7,7 +7,7 @@
 //! speclink-protocol DTOs end to end — no verb assembles or picks apart raw JSON,
 //! and no verb re-implements transport or error handling.
 
-use crate::{translate_protocol_error, translate_transport, RemoteError};
+use crate::{translate_protocol_error, RemoteError};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_protocol::binding::BindingResponse;
@@ -105,7 +105,7 @@ impl Client {
             api_root,
             token: token.to_string(),
             repo: repo.map(str::to_string),
-            agent: ureq::AgentBuilder::new()
+            agent: crate::http::agent_builder()
                 .timeout(std::time::Duration::from_secs(30))
                 .build(),
         }
@@ -175,7 +175,7 @@ impl Client {
                 let body = resp.into_string().unwrap_or_default();
                 Err(translate_protocol_error(status, &body))
             }
-            Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
         }
     }
 
@@ -391,7 +391,7 @@ impl Client {
                 let body = resp.into_string().unwrap_or_default();
                 Err(translate_protocol_error(status, &body))
             }
-            Err(ureq::Error::Transport(_)) => Err(translate_transport()),
+            Err(ureq::Error::Transport(error)) => Err(crate::http::translate_failure(&error)),
         }
     }
 

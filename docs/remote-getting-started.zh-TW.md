@@ -314,6 +314,14 @@ tools:
 - 所有寫入動作（勾任務、存文件、改設定）都停用。它們不會排隊等之後補送。
 - CLI 指令直接失敗，訊息是 `Error: server unreachable — …`。
 
+這台電腦不信任 Server 的 TLS 憑證時，連線同樣會中斷。Desktop 一樣顯示「連線中斷」，CLI 的訊息會指出是 TLS 憑證的問題：
+
+```text
+Error: server unreachable — the server's TLS certificate was rejected (UnknownIssuer); if your organisation's own CA issued it, add that CA to the operating system's trust store
+```
+
+處理方法見[故障排除](#troubleshooting)。
+
 再啟動 server，Desktop 會自己重新連線、重新查詢並更新畫面，不必手動重新整理。離線期間別人做的變更也會出現。
 
 ## <a id="reset"></a>9. 完全重置
@@ -348,6 +356,7 @@ npx 跑法的所有資料都在 `speclink-data/`。要從頭來過：
 | `speclink update` 說 `No AI tool configurations found` | `.speclink.yaml` 沒有 `tools` 清單。加上要用的 AI 工具後重跑，見第 6 節的「取得技能」。 |
 | stderr 出現 `this CLI's skill templates (…) are older than this server's (…)` | CLI 的技能範本比 Server 舊。這只是提醒，指令照常完成。更新 Speclink 即可，見[設定說明](configuration.zh-TW.md#remote)。 |
 | `link` 或 `auth status` 說 `repo '…' is not registered in this project` | `--repo` 的值和儲存庫代號對不上。訊息會列出可用的代號；用正確的代號重跑 `speclink link`。 |
+| CLI 指令失敗，訊息是 `Error: server unreachable — the server's TLS certificate was rejected (…)`；或 Server 正常執行中，Desktop 連 `https://` 的 Server 卻顯示「連線中斷」 | 這台電腦不信任 Server 的 TLS 憑證。括號裡是作業系統回報的原因名稱，例如 `UnknownIssuer`；不同作業系統給的名稱可能不同，也可能是 `Other`。TLS 憑證由組織自己的 CA 簽發時，把那個 CA 裝進作業系統的信任庫，再重跑指令。Speclink 沒有略過這項檢查的設定。登入時遇到的訊息開頭是 `the login service's TLS certificate was rejected`，處理方法相同。見[設定說明](configuration.zh-TW.md#remote)。 |
 | server 換了網址 | 在測試資料夾執行 `speclink unlink`，再用新網址 `link`。Desktop 則新增一個連線。 |
 | server 起不來，或 `/healthz` 不回 `200` | 看 server 終端機的錯誤訊息。組態有錯時，server 會直接結束，不會帶著錯誤啟動。 |
 | 直接執行 `speclink-server` 出現 `missing required argument --config` | binary 一定要帶 `--config`。改用 `npx @speclink/server`，或自己指定組態檔，見 [Server 部署](server-deployment.zh-TW.md)。 |

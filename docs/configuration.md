@@ -169,6 +169,7 @@ One Server holds the specs of a remote project. Each setting keeps its layer. On
 - The Server supplies the skill files. `speclink update` gets the skills for the tools in `tools` from the Server, and their version follows the Server. If the Server declares no skills, the CLI uses its own templates and says so on stderr.
 - `.speclink/context/` is a read-only snapshot of the remote content. Do not edit it. The next command finds the edit and refuses to run. Run `speclink instructions` again to refresh it.
 - No credential goes into a project file, so you can safely commit `.speclink.yaml`.
+- The CLI and Speclink Desktop use the trust store of the operating system to check the TLS certificate of the Server and of its login service. If a CA of your organisation issued the certificate, install that CA into the trust store of the operating system. Speclink has no setting for an additional CA and no setting that skips the check. If the operating system supplies no CA at all (for example, a small Linux container without the CA certificates package), the client uses its built-in list of public CAs.
 
 [Remote Getting Started](remote-getting-started.md) shows how to start the demonstration server, the three login methods, how to get the skills, and how to recover from a lost connection. It also lists the environment variables for the demonstration server, such as `SPECLINK_PORT`.
 

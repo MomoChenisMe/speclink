@@ -13,6 +13,10 @@ serde_json.workspace = true
 serde_yaml.workspace = true
 anyhow.workspace = true
 ureq = { version = "2", features = ["json"] }
+# HTTPS 的信任來源改用作業系統的信任庫（client-os-trust-store D2）。rustls 關閉
+# 預設功能、只開 ring：和 ureq 用同一個加密提供者，不帶進第二個。
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rustls-platform-verifier = "0.7"
 # credential 唯一落點 OS Keychain（cli-desktop-credential-sharing）：僅啟用
 # macOS/Windows 原生後端——其他平台退 keyring 內建 mock，桌面支援面即 macOS
 # Keychain／Windows Credential Manager。CLI 在無 keyring 的平台靜默下探至 PAT。
@@ -33,3 +37,6 @@ axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "net"] }
 chrono = { workspace = true }
 tempfile = "3"
+# 測試用的 CA 與伺服器憑證（client-os-trust-store D5）：只開 ring，不帶進第二個
+# 加密提供者。
+rcgen = { version = "0.14", default-features = false, features = ["crypto", "ring"] }

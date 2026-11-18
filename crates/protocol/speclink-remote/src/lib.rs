@@ -29,6 +29,7 @@ pub mod credentials;
 pub mod device;
 pub mod discovery;
 pub mod events;
+mod http;
 pub mod login;
 mod loopback;
 mod oauth;

@@ -6,7 +6,7 @@ CLI 與 Speclink Desktop 以 HTTPS 連到 Server 或登入服務時，SHALL 由�
 
 作業系統沒有提供任何 CA 時（例如沒有安裝 CA 憑證套件的精簡 Linux 容器），用戶端 SHALL 退回程式內建的公開 CA 清單，SHALL NOT 因此讓全部 HTTPS 連線失敗。以 http:// 開頭的連線 SHALL 不受本需求影響。
 
-Server 的憑證被拒絕時（簽發的 CA 不在信任庫、憑證過期、主機名稱不符等），用戶端 SHALL 把它當成連線失敗處理：不讀快取、不重試、不退回本機模式。CLI SHALL 以非零 exit code 結束，並在 stderr 輸出一行英文訊息；這行訊息 SHALL 以 `server unreachable` 開頭，SHALL 含 `certificate` 一詞與憑證被拒絕的原因，SHALL 指出處理方法是把簽發憑證的 CA 加進作業系統的信任庫。訊息的語言 SHALL 不隨 `locale`（`tw`、`ja`、`en` 或未設定）改變，`--no-color` 下文字相同。Speclink Desktop SHALL 把這種失敗呈現為連線中斷，與其他連線失敗相同。登入服務的憑證被拒絕時，登入指令 SHALL 以非零 exit code 結束，訊息 SHALL 同樣含 `certificate` 一詞、被拒絕的原因與處理方法。
+Server 的憑證被拒絕時（簽發的 CA 不在信任庫、憑證過期、主機名稱不符等），用戶端 SHALL 把它當成連線失敗處理：不讀快取、不重試、不退回本機模式。CLI SHALL 以非零 exit code 結束，並在 stderr 輸出一行英文訊息；這行訊息 SHALL 以 `server unreachable` 開頭，SHALL 含 `certificate` 一詞與憑證被拒絕的原因，SHALL 指出處理方法是把簽發憑證的 CA 加進作業系統的信任庫。原因是作業系統的驗證器回報的原因名稱；同一種情況在不同作業系統、或 Server 送出的憑證鏈不同時，名稱 MAY 不同，驗證器沒有給出具體名稱時是 `Other`。訊息 SHALL NOT 含原因名稱以外、取自對方憑證的文字。訊息的語言 SHALL 不隨 `locale`（`tw`、`ja`、`en` 或未設定）改變，`--no-color` 下文字相同。Speclink Desktop SHALL 把這種失敗呈現為連線中斷，與其他連線失敗相同。登入服務的憑證被拒絕時，登入指令 SHALL 以非零 exit code 結束，訊息 SHALL 同樣含 `certificate` 一詞、被拒絕的原因與處理方法。
 
 憑證以外的連線失敗（拒絕連線、逾時、DNS 解析失敗）的訊息 SHALL 維持既有的位元級輸出：`server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)`。憑證被拒絕的訊息是刻意新增的輸出：變更前它和其他連線失敗共用上面那一句，變更後改為指出憑證的那一句。動詞的 stdout 與 `--json` 輸出 SHALL 不因本需求改變。
 
@@ -24,7 +24,8 @@ Server 的憑證被拒絕時（簽發的 CA 不在信任庫、憑證過期、主
 
 | 失敗的原因 | stderr 訊息的開頭 | 訊息另外含有 |
 | --- | --- | --- |
-| 簽發的 CA 不在信任庫 | `Error: server unreachable — ` | `certificate`、`UnknownIssuer`、`trust store` |
+| 簽發的 CA 不在信任庫，Server 只送出自己的憑證（macOS、Linux） | `Error: server unreachable — ` | `certificate`、`UnknownIssuer`、`trust store` |
+| 簽發的 CA 不在信任庫，Server 連根憑證一起送出（macOS） | `Error: server unreachable — ` | `certificate`、`Other`、`trust store` |
 | Server 沒有在聽（拒絕連線） | `Error: server unreachable — check the connection url` | 與變更前逐字相同，不含 `certificate` |
 
 #### Scenario: 其他連線失敗的訊息不變
