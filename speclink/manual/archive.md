@@ -3,8 +3,8 @@ title: 封存
 section: SDD 工作流
 order: 170
 keywords: [封存, archive, 正式規格, 守門, Purpose, 證據, 手冊, 封存順序, 同名衝突, 封存名稱, evidence show, 遠端專案]
-sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序", "verb-contract#artifact cat 讀取已封存變更的文件"]
-generated: 2026-11-19T16:40:41+08:00
+sources: [archive-skill, archive-merge, "change-lifecycle#歸檔保留完整生命週期歸屬", "change-lifecycle#壞 metadata 使生命週期寫入 fail closed", "change-lifecycle#單筆封存的任務完成度守門", "change-lifecycle#封存的 linked worktree 環境守門", "change-lifecycle#封存的章失效守門", "change-lifecycle#封存寫入 archived_at", verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序", "verb-contract#artifact cat 讀取已封存變更的文件"]
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 封存

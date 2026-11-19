@@ -3,8 +3,8 @@ title: 帳號、邀請、存取金鑰與 membership
 section: Remote 模式
 order: 430
 keywords: [邀請, 登入, 存取金鑰, PAT, membership, reader, editor, 403]
-sources: [server-identity, server-policy-write, user-documentation, "server-web-console#帳號頁呈現我的專案", "server-web-console#管理列表以詳情頁與對話框承載檢視與建立"]
-generated: 2026-11-19T16:40:41+08:00
+sources: [server-identity, server-policy-write, "user-documentation#帳號、PAT 與 membership 的操作邊界明確", "user-documentation#品質關卡蓋章效果與非成員錯誤碼的文件揭露", "server-web-console#帳號頁呈現我的專案", "server-web-console#管理列表以詳情頁與對話框承載檢視與建立"]
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 帳號、邀請、存取金鑰與 membership

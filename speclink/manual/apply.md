@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 120
 keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據, evidence show, 分支]
 sources: ["change-lifecycle#in-progress 標記真相存於 change meta", "change-lifecycle#任務完成蘊含開工標記", "change-lifecycle#in-progress 標記可自 change meta 移除(零工作痕跡守門)", "change-lifecycle#變更以 discard 動詞廢棄", "change-lifecycle#壞 metadata 使生命週期寫入 fail closed", "change-lifecycle#restale_from 記錄變更待重新反映的討論並經 CLI 觀測", manual-task-marker, task-identity, verify-evidence, "verb-contract#任務取消勾選動詞", "verb-contract#change 的 repo 歸屬規則", "verb-contract#模式分岔的單點宣告", "skill-routing#出口交棒由技能結尾承載", "skill-routing#去中心化路由不留集中總表", "change-plan#apply 技能以 plan 挑選與守門", "change-landing#開工時記下分支"]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 實作：完成任務
@@ -125,7 +125,7 @@ speclink in-progress remove <變更名>
 speclink discard <變更名>
 ```
 
-這會整棵刪掉變更目錄與它的 touched 記錄，並把來源討論解鏈。有動工痕跡（已蓋開工章、或任何一個任務已勾）時會拒絕，要帶 `--force` 才放行。.meta.yaml 壞掉時就算帶 `--force` 也拒絕，修好再刪。remote 模式下 CLI 的 discard 會報「不支援」。變更的各種狀態見 [認識資料：變更、討論與規格](data-layout.md)。
+這會整棵刪掉變更目錄與它的 touched 記錄，並把來源討論解鏈。有動工痕跡（已蓋開工章、或任何一個任務已勾）時會拒絕，要帶 `--force` 才放行。.meta.yaml 壞掉時就算帶 `--force` 也拒絕，修好再刪。遠端專案同樣可以 discard：指令經 Server 執行，守門、`--force` 的放行與輸出都和本機專案相同。變更的各種狀態見 [認識資料：變更、討論與規格](data-layout.md)。
 
 ## 需求中途變更
 

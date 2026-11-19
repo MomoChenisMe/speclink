@@ -3,8 +3,8 @@ title: 執行順序：plan 與依賴
 section: SDD 工作流
 order: 125
 keywords: [plan, 執行順序, 波次, 依賴, 前置, depends, 阻擋, 並行, 依賴成環, change depends, 封存順序, 同名重疊, 衝突, change rank, 插隊, strict-overlap, 尚未轉出, 分刀, Unpromoted cuts]
-sources: [change-plan, "desktop-roadmap#路線圖列出尚未轉出的刀", "desktop-app#討論結論以欄位標籤呈現", "verb-contract#模式分岔的單點宣告"]
-generated: 2026-11-19T16:40:41+08:00
+sources: [change-plan, "desktop-roadmap#路線圖列出尚未轉出的刀", "desktop-app#討論結論以欄位標籤呈現"]
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 執行順序：plan 與依賴
@@ -289,10 +289,9 @@ speclink change rank <變更名> --after <另一個變更> --force
 
 remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 speclink 資料夾。尚未轉出的刀由 server 用同一份引擎實作算好。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
 
-`speclink plan --strict-overlap` 在遠端專案同樣可用：CLI 把這個旗標一起送給 server，由 server 算出結果。一般輸出與 `--json` 輸出都和本機專案逐字相同，不會讀本機的 speclink 資料夾。
+`speclink plan --strict-overlap` 在遠端專案同樣可用：CLI 把這個旗標一起送給 server，由 server 算出結果。一般輸出與 `--json` 輸出都和本機專案同形，不會讀本機的 speclink 資料夾。
 
-> [!NOTE]
-> 規格在這一點上有兩種說法。`change-plan` 仍寫這個旗標只限本機、遠端專案會以固定訊息拒絕；較晚的 `verb-contract` 規定這一族指令沒有只限本機的子指令或旗標，並有遠端專案執行它的情境。本頁照較晚的說法寫，實際行為以產品為準。
+舊版的 server 不認得這個旗標，會照樣回一般的計畫。這時 CLI 不會把它當成嚴格重疊的結果印出來：指令以錯誤結束，stdout 是空的，stderr 含 `this server does not support plan --strict-overlap`。帶不帶 `--json` 都一樣。
 
 `speclink change rank` 在遠端專案把同一個請求（排在誰的前面或後面、有沒有帶 `--force`）送到 server 執行。檢查、欄內順序、補鍵、中間值與依賴檢查都和本機專案是同一套引擎實作，成功訊息與 `--json` 的長相也相同。差別在順序鍵存在哪裡、怎麼寫：
 
@@ -308,4 +307,4 @@ remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` �
 
 remote 看板拖排也做同一套依賴檢查，只計涉及被拖卡的配對；違反時不送出寫回，畫面顯示與本地相同的一行錯誤。server 沒有 plan（舊 server、成環或請求失敗）時略過檢查。
 
-**出處**：`change-plan`、`desktop-roadmap`、`desktop-app`、`verb-contract`
+**出處**：`change-plan`、`desktop-roadmap`、`desktop-app`

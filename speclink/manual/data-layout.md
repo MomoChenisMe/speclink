@@ -4,7 +4,7 @@ section: 開始使用
 order: 40
 keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄, 認領, 釋放認領, claim, release]
 sources: [change-lifecycle, discussion-docs, "user-documentation#使用者文件載明本地產物的純文字可攜性", "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -92,7 +92,7 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 | 否 | 是 | 拒絕 |
 | 是 | 是 | 拒絕 |
 
-成功時 stdout 報告已刪除的變更名，以及每份解鏈討論的 slug 與回退後的狀態。Remote 模式不支援 discard，執行會以錯誤結束。
+成功時 stdout 報告已刪除的變更名，以及每份解鏈討論的 slug 與回退後的狀態。遠端專案同樣可以 discard：指令經 Server 執行，工作痕跡的守門、`--force` 的放行與輸出都和本機專案相同。被守門拒絕時，stderr 一樣指出工作痕跡與 `--force`，Server 上的變更不變。
 
 ### 封存
 

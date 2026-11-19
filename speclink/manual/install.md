@@ -3,8 +3,8 @@ title: 安裝 CLI 與桌面 app
 section: 開始使用
 order: 20
 keywords: [安裝, CLI, 桌面 app, npm, Homebrew, 安裝腳本, 未簽章, universal, AppImage]
-sources: [cli-distribution, user-documentation]
-generated: 2026-11-19T16:40:41+08:00
+sources: [cli-distribution, "user-documentation#安裝通路文件與發布狀態誠實化", "user-documentation#安裝章節載明桌面 app 與 CLI 的佈署衝突"]
+generated: 2026-11-19T17:04:25+08:00
 ---
 
 # 安裝 CLI 與桌面 app
