@@ -1,5 +1,186 @@
 [
   {
+    "version": "0.13.0",
+    "date": "2026-11-19",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "`@speclink/engine` now has a host kit. `createHost` puts the engine into your own backend: you write three store functions (list, read, commit) for your own database, and you give the identity and the scope on each call.",
+            "zh-TW": "`@speclink/engine` 新增宿主套件：用 `createHost` 把引擎內嵌進自己的後端，你用自己的資料庫實作列出、讀取、提交三個儲存函式，每次呼叫帶上身分與範圍。"
+          },
+          {
+            "en": "The host kit has two entry points and two hooks. `host.handleRequest` serves the standard CLI and Speclink Desktop from one route, and `host.dispatch` runs verbs for your own agent tool with the ready-made `agentTool` definition. One hook can refuse a command before it runs, and one hook watches after the commit.",
+            "zh-TW": "宿主套件有兩個入口與兩個掛鉤：`host.handleRequest` 掛一條路由就能讓原版的 CLI 與 Speclink Desktop 連上來，`host.dispatch` 搭配現成的 `agentTool` 定義給你自己的 Agent 工具執行動詞；執行前掛鉤可以拒絕命令，提交後掛鉤只能旁觀。"
+          },
+          {
+            "en": "`runStoreConformance` checks your three store functions with the same tests that the Rust implementations use.",
+            "zh-TW": "新增 `runStoreConformance`：用和 Rust 實作同一組合格測試檢查你寫的三個儲存函式。"
+          },
+          {
+            "en": "Three store port examples in Rust are now available: SQLite, PostgreSQL, and the file system. All three pass the conformance tests.",
+            "zh-TW": "新增三個用 Rust 寫的儲存接口範例：SQLite、PostgreSQL 與檔案系統，三個都通過合格測試。"
+          },
+          {
+            "en": "The before-command hook now gets a `read` function. The hook can run read-only verbs, for example `show <change> --json`, and then allow or refuse the command.",
+            "zh-TW": "執行前掛鉤多了一個 `read` 函式：掛鉤可以先執行唯讀的動詞（例如 `show <變更> --json`）讀出資料，再決定放行或拒絕。"
+          },
+          {
+            "en": "A host can now export and import a full scope. Call `host.exportScope` and `host.importScope` in your program, or use `GET /export` and `POST /import` of the HTTP entry point. Import goes only into an empty scope, and the host sets the size limit.",
+            "zh-TW": "宿主可以匯出與匯入整個範圍：在程式裡呼叫 `host.exportScope` 與 `host.importScope`，或用 HTTP 入口的 `GET /export` 與 `POST /import`；匯入只進空的範圍，大小上限由宿主設定。"
+          },
+          {
+            "en": "`engine.exportScope()` makes an import bundle from a local project, so a host program can move local projects into its store. The export and \"Migrate to Server\" in Speclink Desktop now stop when the spec folder contains a symbolic link.",
+            "zh-TW": "`engine.exportScope()` 可以把本機專案做成匯入包，宿主的程式就能把本機專案搬進自己的儲存；匯出與 Speclink Desktop 的「遷移到 Server」遇到規格資料夾裡有符號連結時會中止。"
+          },
+          {
+            "en": "The CLI and Speclink Desktop now support browser login. The client asks the Server which login methods it supports and selects browser login, device login, or an access token, in that order. Access tokens now go into the OS keychain, and logout removes all credentials of that Server.",
+            "zh-TW": "CLI 與 Speclink Desktop 支援瀏覽器登入：用戶端先問 Server 支援哪些登入方式，再依瀏覽器登入、裝置登入、存取金鑰的順序選用；存取金鑰改存進 OS 金鑰圈，登出會清掉該 Server 在本機的全部憑證。"
+          },
+          {
+            "en": "The CLI and Speclink Desktop now use the trust store of the operating system to check the TLS certificate of the Server. A certificate from the CA of your organisation works after you install that CA in the operating system, and a rejected certificate gives a message that names the cause.",
+            "zh-TW": "CLI 與 Speclink Desktop 改用作業系統的信任庫檢查 Server 的 TLS 憑證：組織自己的 CA 裝進作業系統後就能連線，憑證被拒絕時錯誤訊息會指出原因。"
+          },
+          {
+            "en": "In a remote project, `speclink update` now gets the skills from the Server, so the skills match the workflow config of the Server. The CLI tells you when its own templates are older than the skills of the Server.",
+            "zh-TW": "遠端專案執行 `speclink update` 時改向 Server 取得技能，技能會跟著 Server 的流程設定；CLI 的技能範本比 Server 舊時會提醒你更新。"
+          },
+          {
+            "en": "pi and Cursor are now built-in AI tools. `speclink init --tools pi` writes skills to `.pi/skills/` (use `/skill:speclink-*`), and `--tools cursor` writes skills to `.cursor/skills/`. Speclink Desktop shows the two tools in its tool options.",
+            "zh-TW": "內建的 AI 工具新增 pi 與 Cursor：`speclink init --tools pi` 把技能寫到 `.pi/skills/`（用 `/skill:speclink-*` 呼叫），`--tools cursor` 寫到 `.cursor/skills/`，Speclink Desktop 的工具選項也多了這兩個。"
+          },
+          {
+            "en": "You can now set the model of the sub-agents for each quality gate and each AI tool. Add a `subagent_model` block to `speclink/config.yaml`, or run `speclink workflow-config subagent-model review <tool> <model>`. Review and verify show the model that each round used.",
+            "zh-TW": "品質關卡可以依站與 AI 工具指定子代理的模型：在 `speclink/config.yaml` 加 `subagent_model` 區塊，或執行 `speclink workflow-config subagent-model review <工具> <模型>`；審查與驗證會寫明每一輪用的模型。"
+          },
+          {
+            "en": "The project settings in Speclink Desktop have a new page, \"Quality gates › Sub-agent model\", where you select or type the model for each gate and tool.",
+            "zh-TW": "Speclink Desktop 的專案設定新增「品質關卡 › 子代理模型」頁，可以替每一站、每個工具選擇或輸入模型。"
+          },
+          {
+            "en": "The new `speclink evidence show <change>` command shows the task evidence of a change, also after archive. `speclink artifact cat` now reads the documents of archived changes. `speclink trace` and `speclink plan --strict-overlap` now work in remote projects.",
+            "zh-TW": "新增 `speclink evidence show <變更>`，可以看變更的任務證據，封存後也讀得到；`speclink artifact cat` 讀得到已封存變更的文件；`speclink trace` 與 `speclink plan --strict-overlap` 在遠端專案可用。"
+          },
+          {
+            "en": "The discuss, propose, and ingest skills now read and write through verbs, so they work when the specs are on a Server. `speclink change rank` now works in remote projects.",
+            "zh-TW": "discuss、propose、ingest 三支技能改經動詞讀寫，規格在 Server 上時也能用；`speclink change rank` 在遠端專案可用。"
+          },
+          {
+            "en": "The other skills now read and write through verbs too. `speclink update` generates skills that match the project: a project with no spec files in the checkout gets skills with no git steps for spec files. In such a project, baseline and manual tell you the reason and stop.",
+            "zh-TW": "其餘技能也改經動詞讀寫；`speclink update` 會依規格在不在 checkout 產生對應的技能檔，規格不在 checkout 的專案拿到的技能沒有規格檔的 git 步驟，baseline 與 manual 會說明原因後結束。"
+          },
+          {
+            "en": "Review and verify stamps now record the commit of the code. The new `speclink change landed <change>` command reports the commit where the code of a change landed, and `/speclink-commit` and `/speclink-worktree-merge` run it for you. Speclink Desktop now shows the review and verify state of changes in remote projects, and a change that was archived with an open ticket no longer shows as passed.",
+            "zh-TW": "審查與驗證蓋章時會記下程式碼的 commit；新增 `speclink change landed <變更>` 回報變更的程式碼落在哪個 commit，`/speclink-commit` 與 `/speclink-worktree-merge` 會替你執行；Speclink Desktop 看得到遠端專案變更的審查與驗證狀態，帶著未結工單封存的變更不再顯示為通過。"
+          },
+          {
+            "en": "Changes and discussions can now keep your own key-value fields, for example a ticket number. Use `speclink change field set <change> <key>=<value>`, `speclink discuss field set`, or `--field` when you create one. The fields show in `--json` output.",
+            "zh-TW": "變更與討論可以存你自己的鍵值欄位（例如工單編號）：用 `speclink change field set <變更> <鍵>=<值>`、`speclink discuss field set`，或建立時帶 `--field`，欄位會出現在 `--json` 輸出。"
+          },
+          {
+            "en": "`speclink claim <change> --release` now releases a claim in a remote project. `claim` has a `--json` output, and `speclink show <change> --json` shows the claimant. In the Node SDK, `dispatch(['claim', name])` now returns `{ change, claimedBy }`, not `{ output }`.",
+            "zh-TW": "遠端專案的認領可以用 `speclink claim <變更> --release` 釋放；`claim` 多了 `--json`，`speclink show <變更> --json` 看得到認領的人。Node SDK 的 `dispatch(['claim', 名稱])` 回傳值改為 `{ change, claimedBy }`，不再是 `{ output }`。"
+          },
+          {
+            "en": "`speclink list --json --detail` adds the review and verify state, the claimant, the branch, and the landed commit to each change. Through `host.dispatch`, `new change` no longer prints a `Path:` line, because an embedded host has no such folder.",
+            "zh-TW": "`speclink list --json --detail` 會替每個變更多帶出審查與驗證狀態、認領的人、分支與落地的 commit；經 `host.dispatch` 執行 `new change` 時不再印 `Path:` 行，因為內嵌的宿主沒有那個資料夾。"
+          },
+          {
+            "en": "`speclink language replace --stdin` writes the full glossary, and `speclink discuss restore <slug>` moves an archived discussion back to the open discussions. Both work in local projects, remote projects, and embedded hosts.",
+            "zh-TW": "新增 `speclink language replace --stdin` 整份寫入詞彙表，以及 `speclink discuss restore <slug>` 把封存錯的討論搬回進行中；本機專案、遠端專案與內嵌的宿主都能用。"
+          },
+          {
+            "en": "Stamp events now carry the commit, and a write to the workflow config now sends a `workflow-config-changed` event with the changed keys. Speclink Desktop connects to the SSE address that the Server declares, when it has the same origin as the Server. The demonstration server refuses to start when `events.heartbeat_secs` is 45 or more.",
+            "zh-TW": "蓋章事件會帶 commit，流程設定的寫入會發出帶變動鍵的 `workflow-config-changed` 事件；Speclink Desktop 改連 Server 宣告的 SSE 網址（要和 Server 同一個 origin）；示範用 server 的 `events.heartbeat_secs` 設成 45 以上時會拒絕啟動。"
+          },
+          {
+            "en": "`speclink show <change> --json --detail` adds the file fingerprints that a stamp recorded. `engine.exportScope()` now refuses a folder that has no spec folder.",
+            "zh-TW": "`speclink show <變更> --json --detail` 會帶出蓋章時記下的檔案指紋；`engine.exportScope()` 會拒絕沒有規格資料夾的目錄。"
+          },
+          {
+            "en": "The skill dialog of the Herdr mod has a new \"My skills\" page, and the mod now works with Codex and Pi agents.",
+            "zh-TW": "Herdr mod 的技能跳窗新增「我的技能」頁，mod 也支援 Codex 與 Pi 的 agent。"
+          },
+          {
+            "en": "In the Herdr panel, a proposed change that already has an agent can now also start in a worktree.",
+            "zh-TW": "Herdr 面板裡，提案中而且已經有 agent 的變更也能選用 worktree 開工。"
+          },
+          {
+            "en": "Before a discussion has a record, its card in the Herdr panel now shows the agents that work on it.",
+            "zh-TW": "討論還沒寫下記錄時，Herdr 面板的討論卡會先列出正在討論的 agent。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "On Windows, usage messages now show the program name `speclink`, not `speclink.exe`.",
+            "zh-TW": "Windows 上的用法訊息改為顯示程式名稱 `speclink`，不再是 `speclink.exe`。"
+          },
+          {
+            "en": "The Herdr mod now works with Herdr 0.1.14 to 0.1.16.",
+            "zh-TW": "Herdr mod 跟上 Herdr 0.1.14 到 0.1.16。"
+          },
+          {
+            "en": "The Herdr panel now finds the change or discussion when a command gives `speclink` with a path or keeps it in a variable.",
+            "zh-TW": "指令裡的 `speclink` 帶路徑或存在變數裡時，Herdr 面板也認得出變更與討論。"
+          },
+          {
+            "en": "An agent that finishes a proposal now stays with its discussion in the Herdr panel, not with the change.",
+            "zh-TW": "寫完提案的 agent 在 Herdr 面板歸到它的討論，不再算在變更上。"
+          },
+          {
+            "en": "Buttons in the Herdr panel now show the skill that they send.",
+            "zh-TW": "Herdr 面板的按鈕會寫出實際送出的技能。"
+          },
+          {
+            "en": "Scrolling on the Herdr tab bar no longer switches tabs.",
+            "zh-TW": "在 Herdr 的頁籤列捲動不再切換頁籤。"
+          },
+          {
+            "en": "The last row of a card in the Herdr panel keeps its round corners.",
+            "zh-TW": "Herdr 面板卡片最後一列的底色不再蓋過圓角。"
+          },
+          {
+            "en": "The English hints in the Herdr skill dialog are shorter and are no longer cut off.",
+            "zh-TW": "Herdr 技能跳窗的英文提示縮短了，不再被截斷。"
+          },
+          {
+            "en": "The English \"Current tab\" label in the Herdr mod now starts with a capital letter.",
+            "zh-TW": "Herdr mod 英文的「目前分頁」標籤改成大寫開頭。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "Breaking: `createEngine` in `@speclink/engine` now accepts only a local project folder. To keep specs in your own database, use `createHost` with the three store functions.",
+            "zh-TW": "不相容的變更：`@speclink/engine` 的 `createEngine` 只接受本機專案資料夾；要把規格存進自己的資料庫，改用 `createHost` 與三個儲存函式。"
+          },
+          {
+            "en": "Breaking: the demonstration server (`speclink-server`) now stores specs with the three store port examples and cannot read data from 0.12.0 or earlier. Before you upgrade, make a backup with the old version. Then install the new version, point it at an empty store, and run `speclink-server restore`. The new version refuses to start on old data and prints these steps.",
+            "zh-TW": "不相容的變更：示範用 server（`speclink-server`）的儲存改用三個儲存接口範例，讀不到 0.12.0 或更早版本建立的資料；升級前先用舊版執行 `speclink-server backup`，再安裝新版、指向空的儲存並執行 `speclink-server restore`，新版遇到舊資料會拒絕啟動並印出這些步驟。"
+          },
+          {
+            "en": "`dispatch` in the Node SDK now accepts every verb that has an engine command, with the same parsing and output as the CLI. It rejects unknown flags and extra arguments.",
+            "zh-TW": "Node SDK 的 `dispatch` 接受全部有引擎命令的動詞，解析與輸出和 CLI 是同一份；不認得的旗標與多餘的參數會被拒絕。"
+          },
+          {
+            "en": "A workflow config write that changes no value no longer rewrites `config.yaml` or syncs skills.",
+            "zh-TW": "流程設定的寫入如果沒有改變任何值，不再重寫 `config.yaml`，也不同步技能。"
+          },
+          {
+            "en": "The README and the user documents now describe the embedded host as the way to run remote projects in production. The official server is for demonstration and trial.",
+            "zh-TW": "README 與使用者文件改以「把引擎內嵌進自己的系統」說明遠端專案的正式用法；官方 server 定位為示範與試用。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.12.0",
     "date": "2026-11-05",
     "sections": [

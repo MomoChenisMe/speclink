@@ -1,6 +1,57 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.13.0 (2026-11-19)
+
+### New features
+
+- `@speclink/engine` now has a host kit. `createHost` puts the engine into your own backend: you write three store functions (list, read, commit) for your own database, and you give the identity and the scope on each call.
+- The host kit has two entry points and two hooks. `host.handleRequest` serves the standard CLI and Speclink Desktop from one route, and `host.dispatch` runs verbs for your own agent tool with the ready-made `agentTool` definition. One hook can refuse a command before it runs, and one hook watches after the commit.
+- `runStoreConformance` checks your three store functions with the same tests that the Rust implementations use.
+- Three store port examples in Rust are now available: SQLite, PostgreSQL, and the file system. All three pass the conformance tests.
+- The before-command hook now gets a `read` function. The hook can run read-only verbs, for example `show <change> --json`, and then allow or refuse the command.
+- A host can now export and import a full scope. Call `host.exportScope` and `host.importScope` in your program, or use `GET /export` and `POST /import` of the HTTP entry point. Import goes only into an empty scope, and the host sets the size limit.
+- `engine.exportScope()` makes an import bundle from a local project, so a host program can move local projects into its store. The export and "Migrate to Server" in Speclink Desktop now stop when the spec folder contains a symbolic link.
+- The CLI and Speclink Desktop now support browser login. The client asks the Server which login methods it supports and selects browser login, device login, or an access token, in that order. Access tokens now go into the OS keychain, and logout removes all credentials of that Server.
+- The CLI and Speclink Desktop now use the trust store of the operating system to check the TLS certificate of the Server. A certificate from the CA of your organisation works after you install that CA in the operating system, and a rejected certificate gives a message that names the cause.
+- In a remote project, `speclink update` now gets the skills from the Server, so the skills match the workflow config of the Server. The CLI tells you when its own templates are older than the skills of the Server.
+- pi and Cursor are now built-in AI tools. `speclink init --tools pi` writes skills to `.pi/skills/` (use `/skill:speclink-*`), and `--tools cursor` writes skills to `.cursor/skills/`. Speclink Desktop shows the two tools in its tool options.
+- You can now set the model of the sub-agents for each quality gate and each AI tool. Add a `subagent_model` block to `speclink/config.yaml`, or run `speclink workflow-config subagent-model review <tool> <model>`. Review and verify show the model that each round used.
+- The project settings in Speclink Desktop have a new page, "Quality gates › Sub-agent model", where you select or type the model for each gate and tool.
+- The new `speclink evidence show <change>` command shows the task evidence of a change, also after archive. `speclink artifact cat` now reads the documents of archived changes. `speclink trace` and `speclink plan --strict-overlap` now work in remote projects.
+- The discuss, propose, and ingest skills now read and write through verbs, so they work when the specs are on a Server. `speclink change rank` now works in remote projects.
+- The other skills now read and write through verbs too. `speclink update` generates skills that match the project: a project with no spec files in the checkout gets skills with no git steps for spec files. In such a project, baseline and manual tell you the reason and stop.
+- Review and verify stamps now record the commit of the code. The new `speclink change landed <change>` command reports the commit where the code of a change landed, and `/speclink-commit` and `/speclink-worktree-merge` run it for you. Speclink Desktop now shows the review and verify state of changes in remote projects, and a change that was archived with an open ticket no longer shows as passed.
+- Changes and discussions can now keep your own key-value fields, for example a ticket number. Use `speclink change field set <change> <key>=<value>`, `speclink discuss field set`, or `--field` when you create one. The fields show in `--json` output.
+- `speclink claim <change> --release` now releases a claim in a remote project. `claim` has a `--json` output, and `speclink show <change> --json` shows the claimant. In the Node SDK, `dispatch(['claim', name])` now returns `{ change, claimedBy }`, not `{ output }`.
+- `speclink list --json --detail` adds the review and verify state, the claimant, the branch, and the landed commit to each change. Through `host.dispatch`, `new change` no longer prints a `Path:` line, because an embedded host has no such folder.
+- `speclink language replace --stdin` writes the full glossary, and `speclink discuss restore <slug>` moves an archived discussion back to the open discussions. Both work in local projects, remote projects, and embedded hosts.
+- Stamp events now carry the commit, and a write to the workflow config now sends a `workflow-config-changed` event with the changed keys. Speclink Desktop connects to the SSE address that the Server declares, when it has the same origin as the Server. The demonstration server refuses to start when `events.heartbeat_secs` is 45 or more.
+- `speclink show <change> --json --detail` adds the file fingerprints that a stamp recorded. `engine.exportScope()` now refuses a folder that has no spec folder.
+- The skill dialog of the Herdr mod has a new "My skills" page, and the mod now works with Codex and Pi agents.
+- In the Herdr panel, a proposed change that already has an agent can now also start in a worktree.
+- Before a discussion has a record, its card in the Herdr panel now shows the agents that work on it.
+
+### Fixes
+
+- On Windows, usage messages now show the program name `speclink`, not `speclink.exe`.
+- The Herdr mod now works with Herdr 0.1.14 to 0.1.16.
+- The Herdr panel now finds the change or discussion when a command gives `speclink` with a path or keeps it in a variable.
+- An agent that finishes a proposal now stays with its discussion in the Herdr panel, not with the change.
+- Buttons in the Herdr panel now show the skill that they send.
+- Scrolling on the Herdr tab bar no longer switches tabs.
+- The last row of a card in the Herdr panel keeps its round corners.
+- The English hints in the Herdr skill dialog are shorter and are no longer cut off.
+- The English "Current tab" label in the Herdr mod now starts with a capital letter.
+
+### Improvements
+
+- Breaking: `createEngine` in `@speclink/engine` now accepts only a local project folder. To keep specs in your own database, use `createHost` with the three store functions.
+- Breaking: the demonstration server (`speclink-server`) now stores specs with the three store port examples and cannot read data from 0.12.0 or earlier. Before you upgrade, make a backup with the old version. Then install the new version, point it at an empty store, and run `speclink-server restore`. The new version refuses to start on old data and prints these steps.
+- `dispatch` in the Node SDK now accepts every verb that has an engine command, with the same parsing and output as the CLI. It rejects unknown flags and extra arguments.
+- A workflow config write that changes no value no longer rewrites `config.yaml` or syncs skills.
+- The README and the user documents now describe the embedded host as the way to run remote projects in production. The official server is for demonstration and trial.
+
 ## 0.12.0 (2026-11-05)
 
 ### New features
