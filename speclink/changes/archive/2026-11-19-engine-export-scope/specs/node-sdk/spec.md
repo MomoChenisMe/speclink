@@ -8,7 +8,9 @@ createEngine 回傳的引擎 SHALL 有方法 exportScope()：不接受參數，�
 
 exportScope SHALL 只讀取、不寫入：本機專案的檔案 SHALL 逐位元不變。它 SHALL 於背景工作執行，SHALL NOT 阻塞 JS 事件迴圈。專案沒有任何規格文件時 SHALL 成功並回傳 `documents` 為空陣列的包。
 
-失敗時 SHALL 以 Error 拒絕 Promise，SHALL NOT 回傳不完整的包：任何一個變更（進行中或已封存）的 metadata 無法解析時，message SHALL 指出是哪個檔案；變更含有引擎的文件命名規則對不上的文件時，message SHALL 指出是哪份文件。Error 的形狀（message 加 code 欄位）SHALL 與 engine.dispatch 的失敗相同。createHost 回傳的宿主 SHALL 維持既有的 exportScope（接受身分與範圍），兩者互不影響。
+失敗時 SHALL 以 Error 拒絕 Promise，SHALL NOT 回傳不完整的包：任何一個變更（進行中或已封存）的 metadata 無法解析時，message SHALL 指出是哪個檔案；變更含有引擎的文件命名規則對不上的文件時，message SHALL 指出是哪份文件；通往規格資料夾路上的資料夾、規格資料夾本身或它底下任何一個檔案或資料夾是符號連結時（舊位置的 evidence 資料夾 `.speclink/touched/` 亦同），exportScope SHALL NOT 經連結讀檔，message SHALL 以相對專案根目錄、使用正斜線的路徑指出那個項目，連結指向的內容 SHALL NOT 出現在 message 裡（見 workspace-migration「本機專案的匯出與遷移產生相同的文件集合」）。
+
+exportScope SHALL 只讀 createEngine 的 root 底下的規格資料夾：規格資料夾名稱（來自本機專案 `.speclink.yaml` 的 `spec_dir`，或 createEngine 的 `specDir`）是絕對路徑、含 `..` 或 `.` 路徑段、或是空的時，exportScope SHALL 在讀取任何檔案之前以 Error 拒絕，`code` 是 `error`，message SHALL 以雙引號原樣指出那個名稱，SHALL NOT 含任何檔案內容。專案根目錄裡面的多層名稱（例如 `docs/specs`）SHALL 照常匯出。engine.dispatch 讀規格資料夾的方式不受這條影響。Error 的形狀（message 加 code 欄位）SHALL 與 engine.dispatch 的失敗相同。createHost 回傳的宿主 SHALL 維持既有的 exportScope（接受身分與範圍），兩者互不影響。
 
 #### Scenario: 匯出本機專案並匯入宿主
 
@@ -35,6 +37,24 @@ exportScope SHALL 只讀取、不寫入：本機專案的檔案 SHALL 逐位元�
 
 - **WHEN** 本機專案有兩個變更，其中 broken 的 metadata 無法解析，呼叫 `engine.exportScope()`
 - **THEN** Promise 以 Error 拒絕，message 指出 broken 的 metadata 檔；沒有回傳任何包
+
+#### Scenario: 規格資料夾裡的符號連結讓匯出失敗
+
+- **WHEN** 本機專案的 `speclink/specs/leak/spec.md` 是一個連到專案外檔案的符號連結，呼叫 `engine.exportScope()`
+- **THEN** Promise 以 Error 拒絕，`code` 是 `error`，message 含 `speclink/specs/leak/spec.md`、不含那個外部檔案的內容；沒有回傳任何包
+
+#### Scenario: 規格資料夾指到專案外讓匯出失敗
+
+- **WHEN** 本機專案的 `.speclink.yaml` 寫 `spec_dir: ../other/speclink`，那個資料夾裡有一份正式規格，呼叫 `engine.exportScope()`
+- **THEN** Promise 以 Error 拒絕，`code` 是 `error`，message 含 `"../other/speclink"`、不含那份正式規格的內容；沒有回傳任何包
+
+##### Example: 規格資料夾名稱
+
+| 規格資料夾名稱 | 結果 |
+| --- | --- |
+| `../other/speclink` | 失敗，message 含 `"../other/speclink"` |
+| 專案外的一個絕對路徑 | 失敗，message 含那個路徑 |
+| `docs/specs` | 成功，包含 `docs/specs` 裡的文件 |
 
 #### Scenario: 空的專案
 

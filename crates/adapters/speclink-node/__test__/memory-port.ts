@@ -17,7 +17,7 @@ export type MemoryPortOptions = {
 }
 
 /** Byte order of two keys (UTF-8), as the contract orders them. */
-function byBytes(a: string, b: string): number {
+export function byBytes(a: string, b: string): number {
   return Buffer.compare(Buffer.from(a, 'utf8'), Buffer.from(b, 'utf8'))
 }
 

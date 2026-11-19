@@ -1,6 +1,7 @@
 // Shared test helpers: the fs fixture project and CLI invocation, so engine
 // output can be compared to CLI output field by field.
 import { execFileSync } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import {
   existsSync,
   mkdtempSync,
@@ -9,6 +10,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -41,22 +43,31 @@ export async function rejection(promise: Promise<unknown>): Promise<Error & { co
   return thrown!
 }
 
-/**
- * Every file under `root`, as path (forward slashes) → content: compare two of
- * them to see what a call wrote, or that it wrote nothing.
- */
-export function projectFiles(root: string): Record<string, string> {
-  const files: Record<string, string> = {}
+/** Every file under `root`, as path (forward slashes) → what `read` gives for it. */
+function eachFile<T>(root: string, read: (file: string) => T): Record<string, T> {
+  const files: Record<string, T> = {}
   const walk = (dir: string) => {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
       const full = join(dir, entry.name)
       if (entry.isDirectory()) walk(full)
-      else files[relative(root, full).split(sep).join('/')] = readFileSync(full, 'utf8')
+      else files[relative(root, full).split(sep).join('/')] = read(full)
     }
   }
   walk(root)
   return files
 }
+
+/**
+ * Every file under `root`, as path (forward slashes) → content: compare two of
+ * them to see what a call wrote, or that it wrote nothing.
+ */
+export const projectFiles = (root: string) => eachFile(root, (file) => readFileSync(file, 'utf8'))
+
+/** Every file under `root`, as path (forward slashes) → modification time. */
+export const fileTimes = (root: string) => eachFile(root, (file) => statSync(file).mtimeMs)
+
+/** The digest of a bundle document: `sha256:` and the hex SHA-256 of its content (UTF-8). */
+export const digestOf = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`
 
 export const PROPOSAL_ALPHA =
   '## Why\n\nAdd rate limiting to the public API so abusive clients cannot exhaust capacity.\n\n## What Changes\n\n- add limiter\n'

@@ -145,18 +145,51 @@ impl Engine {
         let actor = self.actor.clone();
         let rewrite_lock = self.rewrite_lock.clone();
         on_worker(env, move || {
-            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_dispatch(&workspace, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref())
-            }));
-            envelope(outcome.unwrap_or_else(|payload| {
-                // A panic is an Error, never a process abort.
-                Err(DispatchError::new(
-                    "panic",
-                    format!("speclink engine panicked: {}", panic_message(&payload)),
-                ))
-            }))
+            caught(|| run_dispatch(&workspace, actor.as_deref(), &rewrite_lock, &argv, stdin.as_deref()))
         })
     }
+
+    /// Every document of the local project as a bundle by key, on a
+    /// background worker thread. Resolves to the envelope index.js unwraps:
+    /// the JSON text of the bundle, which index.js parses — a large bundle
+    /// crosses as one string, as the host's export does.
+    #[napi(ts_return_type = "Promise<unknown>")]
+    pub fn export_scope(&self, env: Env) -> Result<JsObject> {
+        let workspace = self.workspace.clone();
+        on_worker(env, move || caught(|| export_local(&workspace)))
+    }
+}
+
+/// The envelope of `work`. A panic in it is an Error, never a process abort.
+fn caught(work: impl FnOnce() -> DispatchResult) -> serde_json::Value {
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+    envelope(outcome.unwrap_or_else(|payload| {
+        Err(DispatchError::new("panic", format!("speclink engine panicked: {}", panic_message(&payload))))
+    }))
+}
+
+/// The local project as the JSON text of a bundle by key, its documents in
+/// byte order of the keys and with no scope version: a local project has
+/// none (engine-export-scope D2). The documents are the ones Speclink
+/// Desktop's move to a server sends. Any failure is the whole answer.
+fn export_local(workspace: &core::workspace::Workspace) -> DispatchResult {
+    use speclink_host::transfer;
+    use speclink_protocol::query::{ImportBundle, ImportScope};
+    let failed = |message: String| DispatchError::new("error", message);
+    let store = speclink_fs::FsStore::new(&workspace.root, &workspace.spec_dir_name);
+    let documents = transfer::local_documents(workspace, &store, &speclink_host::context::global_config_dir())
+        .map_err(failed)?;
+    // The conversion does not read a first version's target: a local
+    // project has none, so it stays empty.
+    let first = ImportBundle {
+        format_version: transfer::FIRST_VERSION,
+        scope: ImportScope { project: String::new(), repo: String::new() },
+        project_revision: 0,
+        documents,
+    };
+    let mut bundle = transfer::from_first_version(first).map_err(|e| failed(e.to_string()))?;
+    bundle.documents.sort_by(|a, b| a.key.cmp(&b.key));
+    Ok(serde_json::Value::String(serde_json::to_string(&bundle).expect("a bundle serializes to JSON")))
 }
 
 pub(crate) fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {

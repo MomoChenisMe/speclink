@@ -75,6 +75,51 @@ export interface Engine {
    * `invalid_argv`, `invalid_config`, `refused`, or `panic`).
    */
   dispatch(argv: string[], options?: DispatchOptions): Promise<unknown>
+  /**
+   * Every document of the local project `createEngine` points at, as a
+   * bundle by key: pass it as it is to `host.importScope` to move the project
+   * into an empty scope of your store. The documents are the ones Speclink
+   * Desktop's "Migrate to Server" sends: the active changes (metadata,
+   * artifacts, evidence), the canonical specs, the live and the archived
+   * discussions, every document of the archived changes, the workflow
+   * config, the vocabulary and the board order. A change's schema is
+   * resolved in the project, then in the user-level config directory of the
+   * user that runs it.
+   *
+   * It reads and never writes, and runs on a background thread. The bundle
+   * has no `scopeVersion`: a local project has none. Its `documents` are in
+   * byte order of their keys; a project with no document gives none, and so
+   * does a `root` that is no project: check how many documents you got.
+   *
+   * The bundle holds the full text of the workflow config and of every
+   * discussion: decide yourself who may run an export. A large project makes
+   * a large bundle, and `host.importScope` refuses one over its
+   * `limits.importBytes`.
+   *
+   * Rejects with an `Error` whose `code` is `error`, and gives no bundle,
+   * when a change (active or archived) has metadata that does not parse or a
+   * document the engine's naming rules do not cover: the `message` names the
+   * file or the document. A file that is there but cannot be read (no
+   * permission, or not UTF-8) is no failure: the bundle has no document for
+   * it.
+   *
+   * It reads no file outside the project. It rejects the same way, before it
+   * reads a document, when a symbolic link is on the way to the spec folder,
+   * is the spec folder, or is anything under it — or in the older evidence
+   * folder `.speclink/touched/` (the `message` starts with `symbolic link in
+   * the spec folder:` and names the item by its path from `root`, never what
+   * it points at); when a folder there cannot be listed (the `message`
+   * starts with `cannot list`); and when the spec folder's name — `spec_dir`
+   * in `.speclink.yaml`, or `specDir` — is an absolute path or has a `..` or
+   * `.` segment (the `message` starts with `spec folder outside the
+   * project:` and names it). To export a spec folder somewhere else, point
+   * `root` at the folder above it.
+   *
+   * It reads the files one by one, with no snapshot: do not write to the
+   * project — through this engine, the CLI or anything else — while it
+   * exports, or the bundle can hold old and new content together.
+   */
+  exportScope(): Promise<ScopeBundle>
 }
 
 /**

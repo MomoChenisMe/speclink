@@ -110,12 +110,16 @@ fn remove_tree(dir: &Path) -> std::io::Result<()> {
 /// projection.
 fn safe_rel_path(path: &str) -> Result<PathBuf> {
     let p = Path::new(path);
-    let ok = !path.is_empty()
-        && p.components().all(|c| matches!(c, Component::Normal(_)));
-    if !ok {
+    if !is_plain_relative(path) {
         bail!("snapshot document path escapes the projection: {path}");
     }
     Ok(p.to_path_buf())
+}
+
+/// True when `path` is one or more plain names: not empty, no root, no drive,
+/// no `..` and no leading `.`.
+pub(crate) fn is_plain_relative(path: &str) -> bool {
+    !path.is_empty() && Path::new(path).components().all(|c| matches!(c, Component::Normal(_)))
 }
 
 /// The projection's own files are reserved at the document-ingest boundary:

@@ -23,6 +23,11 @@ class Engine {
     checkArgv(argv, 'dispatch(argv)')
     return unwrap(await this.#native.dispatch(argv, options?.stdin))
   }
+
+  /** Every document of the local project as a bundle by key, for host.importScope. */
+  async exportScope() {
+    return JSON.parse(unwrap(await this.#native.exportScope()))
+  }
 }
 
 function checkArgv(argv, caller) {

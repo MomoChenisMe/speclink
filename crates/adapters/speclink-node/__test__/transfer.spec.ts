@@ -1,10 +1,9 @@
 // node-sdk「宿主的匯出與匯入方法」: host.exportScope and host.importScope over
 // a JS store port, the hooks they go through, and createHost's import limit.
-import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
 
 import { createHost } from '../index.js'
-import { rejection } from './helpers'
+import { digestOf, rejection } from './helpers'
 import { memoryPort } from './memory-port'
 
 const API = '/api/speclink/v1'
@@ -19,7 +18,6 @@ const ONE_REPO = [
 type Doc = { key: string; content: string; digest: string }
 type Bundle = { formatVersion: number; scopeVersion?: number; documents: Doc[] }
 
-const digestOf = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`
 const doc = (key: string, content: string): Doc => ({ key, content, digest: digestOf(content) })
 const keyed = (documents: Doc[]): Bundle => ({ formatVersion: 2, documents })
 

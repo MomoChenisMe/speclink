@@ -467,7 +467,35 @@ const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle
 - **The body limit of your framework must not be smaller than this value.** The entry point gets a body that the framework already read. Thus, for the import path, set the body limit of the framework to `limits.importBytes` or more (the 4 MB in the Express example above is not sufficient for an import).
 - **Compression belongs to the route layer.** The host kit does not compress or decompress. If you want compression, turn it on in your framework.
 
-The CLI has no import or export verb. To move a project, use Speclink Desktop or your own program.
+### <a id="export-local"></a>Export a local project
+
+`engine.exportScope()` makes the local project that `createEngine` points at into a bundle of version 2. Give the bundle as it is to `host.importScope`, and the project moves into an empty scope of your store. The documents are the same ones that "Migrate to Server" in Speclink Desktop sends: the active changes (metadata, artifacts, and evidence), the canonical specs, the live and the archived discussions, all the documents of the archived changes, the workflow config, the vocabulary, and the board order.
+
+```js
+// Move local projects, each into its own empty scope.
+const moves = [
+  ['/srv/checkouts/web', 'acme/web'],
+  ['/srv/checkouts/api', 'acme/api'],
+]
+for (const [root, scope] of moves) {
+  const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
+  // → { formatVersion: 2, documents: [{ key, content, digest }, …] } (no scopeVersion)
+  if (bundle.documents.length === 0) throw new Error(`${root} has no spec documents`)
+  const report = await host.importScope({ identity, scope, bundle })
+  // → { scopeVersion: 1, documents: 42 }
+}
+```
+
+- **It only reads.** It changes no file of the project. The documents are in byte order of their keys. A local project has no scope version, so the bundle has no `scopeVersion`. An import does not read it.
+- **You never get a partial bundle on these failures.** If a change (active or archived) has metadata that does not parse, or a document that the naming rules of the engine do not cover, the call rejects with `error`, and the message names the file. A file that is there but cannot be read (no permission, or not UTF-8) is not a failure: the bundle has no document for it.
+- **It reads only files inside the project.** If a folder on the way to the spec folder, the spec folder, or a file or a folder under it is a symbolic link, the call rejects with `error` before it reads a document. The older evidence folder `.speclink/touched/` follows the same rule. The message starts with `symbolic link in the spec folder:` and names the item by its path from the project root. It never shows what the link points at. Replace the link with the file itself, or remove it. A folder there that cannot be listed also stops the call, with a message that starts with `cannot list`. If the name of the spec folder (`spec_dir` in `.speclink.yaml`, or the `specDir` of `createEngine`) is an absolute path, or has a `..` or `.` segment, the call rejects with `error`. The message starts with `spec folder outside the project:` and names it. To export a spec folder at a different place, point `root` at the folder above it.
+- **A folder that is not a project gives an empty bundle.** Before you import, check how many documents you got.
+- **Do not write to the project during the export.** The export reads the files one at a time and takes no snapshot. A write at the same time, through the same engine, the CLI, or another program, can put old and new content into one bundle.
+- **The scope of the import must be empty**, and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
+- **The bundle has the full text** of the workflow config and of all the discussions. You decide who can run an export.
+- **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project.
+
+The CLI has no import or export verb. There are three ways to move a project: "Migrate to Server" in Speclink Desktop, `engine.exportScope()` with `host.importScope` in your own program, and, between two scopes, `GET /export` and `POST /import` of the HTTP entry point.
 
 ## <a id="skills"></a>Generate skill files
 

@@ -12,9 +12,7 @@
 use crate::connections::RefreshFailure;
 use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::Serialize;
-use speclink_core::model::{require_valid_meta, ChangeMeta, LEGACY_META_FILE, META_FILE};
 use speclink_core::workspace::{Workspace, DEFAULT_SPEC_DIR, LEGACY_SPEC_DIR};
-use speclink_core::store::Store;
 use speclink_desktop_core::settings::{
     read_workflow_settings_from_text, rewrite_workflow_content_text, rewrite_workflow_fields_text,
     AppSettings, ContentEdit, WorkflowPolicyFields, WorkflowSettings,
@@ -28,7 +26,7 @@ use speclink_protocol::events::TransportKind;
 use speclink_remote::events::StreamUrl;
 use speclink_protocol::query::{
     ArchivedItem, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
-    DiscussionCut, DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId,
+    DiscussionCut, DiscussionInfo, ImportBundle,
     ImportReportResponse, ImportScope, ListSpecsResponse,
     PlanChangeEntry, PlanResponse, PlanUnpromotedCut, ScopeBundle, ScopesResponse, SearchResponse,
     ShowDiscussionResponse, SpecDocumentResponse, StationOutcome, StationState,
@@ -39,12 +37,13 @@ use speclink_desktop_core::query::{archived_status_str, put_station_fields, stat
 use speclink_core::config::AppConfig;
 use speclink_core::init::ToolSelection;
 use speclink_protocol::skills::{SkillsRequest, SkillsResponse};
-use speclink_host::projection::content_digest;
-use speclink_host::transfer::{first_version_report, from_first_version, FIRST_VERSION, UNSUPPORTED_VERSION};
+use speclink_host::transfer::{
+    first_version_report, from_first_version, local_documents, FIRST_VERSION, UNSUPPORTED_VERSION,
+};
 use speclink_remote::client::Client;
 use speclink_remote::skills as remote_skills;
 use speclink_remote::RemoteError;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
@@ -459,153 +458,20 @@ fn artifact_id(artifact: &str) -> &str {
     artifact.strip_suffix(".md").unwrap_or(artifact)
 }
 
-/// 已封存變更的 evidence 在封存資料夾裡的檔名。
-const EVIDENCE_FILE: &str = ".evidence.json";
-
 /// Read one local filesystem workspace through the Engine Store seam and
-/// produce the migration wire bundle. Every source is read before upload; any
-/// corrupt metadata or unsupported artifact pattern aborts the whole build.
-///
-/// 內容涵蓋進行中變更的資料檔、artifact 與 evidence，正式規格，討論，已封存變更
-/// 的全部文件（含 evidence），流程設定，詞彙表，以及由各變更與各討論的順序鍵組成
-/// 的看板順序文件（一個順序鍵都沒有時不含）。
+/// produce the migration wire bundle: the documents the shared
+/// [`local_documents`] lists, for the selected project and repo. Every source
+/// is read before upload; any corrupt metadata or unsupported artifact pattern
+/// aborts the whole build. Node's `engine.exportScope()` lists the same
+/// documents (engine-export-scope D1).
 pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<ImportBundle, String> {
     if project.trim().is_empty() || repo.trim().is_empty() {
         return Err("migration target project and repo must both be selected".to_string());
     }
     let context = speclink_desktop_core::init_core_context(root)
         .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
-    let store: &dyn Store = &context.store;
-    let user_dir = speclink_host::context::global_config_dir();
-    let mut documents = BTreeMap::<ImportDocumentId, String>::new();
-
-    let changes = store.list_changes();
-    for change in &changes {
-        require_valid_meta(store, change).map_err(|error| error.to_string())?;
-        let meta = store.read_change_meta(&change.name).unwrap_or_default();
-        insert_import_document(
-            &mut documents,
-            ImportDocumentId::ChangeMeta {
-                change: change.name.clone(),
-            },
-            meta,
-        )?;
-        let schema =
-            resolve_migration_schema(&context.workspace, &user_dir, &change.meta.schema_name())?;
-        for artifact in migration_artifact_paths(&schema, store.delta_capabilities(&change.name))? {
-            if let Some(content) = store.read_artifact(&change.name, &artifact) {
-                insert_import_document(
-                    &mut documents,
-                    ImportDocumentId::ChangeArtifact {
-                        change: change.name.clone(),
-                        artifact,
-                    },
-                    content,
-                )?;
-            }
-        }
-        if let Some(content) = store.read_evidence(&change.name) {
-            insert_import_document(
-                &mut documents,
-                ImportDocumentId::ChangeEvidence { change: change.name.clone() },
-                content,
-            )?;
-        }
-    }
-
-    let mut capabilities = store.list_canonical_capabilities();
-    capabilities.sort();
-    for capability in capabilities {
-        if let Some(content) = store.read_canonical_spec(&capability) {
-            insert_import_document(
-                &mut documents,
-                ImportDocumentId::CanonicalSpec { capability },
-                content,
-            )?;
-        }
-    }
-
-    for discussion in store.list_live_discussions() {
-        insert_import_document(
-            &mut documents,
-            ImportDocumentId::Discussion {
-                slug: discussion.slug,
-                archived: false,
-            },
-            discussion.text,
-        )?;
-    }
-    for discussion in store.list_archived_discussions() {
-        insert_import_document(
-            &mut documents,
-            ImportDocumentId::Discussion {
-                slug: discussion.slug,
-                archived: true,
-            },
-            discussion.text,
-        )?;
-    }
-
-    for dated_name in store.list_archived_changes() {
-        let meta = store.read_archived_meta(&dated_name).unwrap_or_default();
-        let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-            // 讀取先新後舊：新檔名不在時，壞的是舊檔名那份。
-            let dir = format!("{}/changes/archive/{dated_name}", context.workspace.spec_dir_name);
-            let file = if context.workspace.root.join(&dir).join(META_FILE).is_file() {
-                META_FILE
-            } else {
-                LEGACY_META_FILE
-            };
-            format!("invalid {dir}/{file}: {reason}")
-        })?;
-        // 讀取先新後舊，上傳一律以 .meta.yaml 為鍵（desktop-spec-dir-migration D5）。
-        insert_import_document(
-            &mut documents,
-            ImportDocumentId::ArchivedChange {
-                change: dated_name.clone(),
-                doc: META_FILE.to_string(),
-            },
-            meta,
-        )?;
-        let schema =
-            resolve_migration_schema(&context.workspace, &user_dir, &parsed.schema_name())?;
-        let mut paths = migration_artifact_paths(&schema, store.archived_delta_capabilities(&dated_name))?;
-        paths.push(EVIDENCE_FILE.to_string());
-        for artifact in paths {
-            if let Some(content) = store.read_archived_artifact(&dated_name, &artifact) {
-                insert_import_document(
-                    &mut documents,
-                    ImportDocumentId::ArchivedChange {
-                        change: dated_name.clone(),
-                        doc: artifact,
-                    },
-                    content,
-                )?;
-            }
-        }
-    }
-
-    if let Some(content) = store.read_workflow_config() {
-        insert_import_document(&mut documents, ImportDocumentId::WorkflowConfig, content)?;
-    }
-    if let Some(content) = store.read_language() {
-        insert_import_document(&mut documents, ImportDocumentId::Language, content)?;
-    }
-
-    // 本機的看板順序在各變更與各討論自己的順序鍵裡；遠端是一份文件。變更的資料檔
-    // 原樣上傳，裡面的順序鍵留著：遠端不讀它，搬回本機時還在。
-    let board = BoardOrderDoc {
-        changes: store.board_ranks(&changes),
-        discussions: speclink_core::discuss::list_discussions(store)
-            .into_iter()
-            .filter_map(|info| Some((info.slug, info.head.board_rank?)))
-            .collect(),
-    };
-    if !board.changes.is_empty() || !board.discussions.is_empty() {
-        let content = serde_json::to_string(&board).map_err(|error| error.to_string())?;
-        insert_import_document(&mut documents, ImportDocumentId::BoardOrder, content)?;
-    }
-
+    let documents =
+        local_documents(&context.workspace, &context.store, &speclink_host::context::global_config_dir())?;
     Ok(ImportBundle {
         format_version: FIRST_VERSION,
         scope: ImportScope {
@@ -613,59 +479,8 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
             repo: repo.to_string(),
         },
         project_revision: 0,
-        documents: documents
-            .into_iter()
-            .map(|(document, content)| ImportBundleDocument {
-                digest: content_digest(&content),
-                document,
-                content,
-            })
-            .collect(),
+        documents,
     })
-}
-
-fn resolve_migration_schema(
-    workspace: &speclink_core::workspace::Workspace,
-    user_dir: &Path,
-    name: &str,
-) -> Result<speclink_core::schema::Schema, String> {
-    speclink_core::schema::resolve_with(Some(workspace), Some(user_dir), name)
-        .ok_or_else(|| speclink_core::schema::not_found_msg(name))?
-}
-
-fn migration_artifact_paths(
-    schema: &speclink_core::schema::Schema,
-    delta_capabilities: Vec<String>,
-) -> Result<Vec<String>, String> {
-    let mut paths = BTreeSet::new();
-    for artifact in &schema.artifacts {
-        if artifact.output_path == "specs/**/*.md" {
-            paths.extend(
-                delta_capabilities
-                    .iter()
-                    .map(|capability| format!("specs/{capability}/spec.md")),
-            );
-        } else if artifact.output_path.contains('*') {
-            return Err(format!(
-                "cannot enumerate migration artifact pattern '{}' in schema '{}'",
-                artifact.output_path, schema.name
-            ));
-        } else {
-            paths.insert(artifact.output_path.clone());
-        }
-    }
-    Ok(paths.into_iter().collect())
-}
-
-fn insert_import_document(
-    documents: &mut BTreeMap<ImportDocumentId, String>,
-    document: ImportDocumentId,
-    content: String,
-) -> Result<(), String> {
-    if documents.insert(document.clone(), content).is_some() {
-        return Err(format!("duplicate local migration document: {document:?}"));
-    }
-    Ok(())
 }
 
 /// 先送第二版；Server 不認得它時改送第一版一次，內容相同。回報一律是第一版的
@@ -3331,11 +3146,9 @@ mod board_reorder_tests {
 mod migration_bundle_tests {
     use super::{
         adopt_remote_workspace_with, build_import_bundle, finalize_local_migration_with, from_first_version,
-        migratable_spec_dir, send_bundle,
+        local_documents, migratable_spec_dir, send_bundle,
     };
-    use speclink_protocol::query::{BoardOrderDoc, ImportBundle, ImportDocumentId};
     use speclink_remote::client::Client;
-    use std::collections::BTreeMap;
     use std::path::Path;
     use std::sync::{Arc, Mutex};
     use tempfile::TempDir;
@@ -3417,113 +3230,6 @@ mod migration_bundle_tests {
         root
     }
 
-    // --- evidence、看板順序與第二版的包（import-export-on-port D6）---
-
-    const EVIDENCE: &str = "{\"version\":2,\"change\":\"active-change\",\"entries\":[{\"taskId\":\"tsk_1\",\"taskDesc\":\"1.1 Active task\",\"touchedFiles\":[\"src/a.rs\"],\"recordedAt\":\"2026-07-21T10:00:00Z\"}]}\n";
-    const ARCHIVED_EVIDENCE: &str = "{\"version\":2,\"change\":\"old-change\",\"entries\":[]}\n";
-
-    fn content_of<'b>(bundle: &'b ImportBundle, id: &ImportDocumentId) -> Option<&'b str> {
-        bundle.documents.iter().find(|doc| &doc.document == id).map(|doc| doc.content.as_str())
-    }
-
-    #[test]
-    fn the_evidence_of_an_active_and_of_an_archived_change_is_in_the_bundle() {
-        let root = complete_workspace();
-        write(root.path(), "openspec/changes/active-change/.evidence.json", EVIDENCE);
-        write(root.path(), "openspec/changes/archive/2026-07-20-old-change/.evidence.json", ARCHIVED_EVIDENCE);
-
-        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-
-        let active = ImportDocumentId::ChangeEvidence { change: "active-change".into() };
-        assert_eq!(content_of(&bundle, &active), Some(EVIDENCE));
-        let archived = ImportDocumentId::ArchivedChange {
-            change: "2026-07-20-old-change".into(),
-            doc: ".evidence.json".into(),
-        };
-        assert_eq!(content_of(&bundle, &archived), Some(ARCHIVED_EVIDENCE));
-    }
-
-    #[test]
-    fn the_rank_keys_of_changes_and_discussions_become_the_board_order_document() {
-        let root = complete_workspace();
-        let ranked_meta = "schema: spec-driven\ncreated: 2026-07-21\nboard_rank: f\n";
-        write(root.path(), "openspec/changes/active-change/.openspec.yaml", ranked_meta);
-        write(root.path(), "openspec/changes/second-change/.openspec.yaml", "schema: spec-driven\ncreated: 2026-07-21\nboard_rank: b\n");
-        write(root.path(), "openspec/changes/second-change/proposal.md", "## Why\n\nSecond.\n");
-        write(root.path(), "openspec/changes/unranked-change/.openspec.yaml", "schema: spec-driven\ncreated: 2026-07-21\n");
-        write(
-            root.path(),
-            "openspec/discussions/live-plan.md",
-            "---\ntopic: Live plan\nslug: live-plan\nstatus: open\ncreated: 2026-07-21\nboard_rank: n\n---\n\nLive discussion.\n",
-        );
-
-        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-
-        let board = BoardOrderDoc::from_content(content_of(&bundle, &ImportDocumentId::BoardOrder));
-        let ranks = |pairs: &[(&str, &str)]| -> BTreeMap<String, String> {
-            pairs.iter().map(|(name, rank)| (name.to_string(), rank.to_string())).collect()
-        };
-        assert_eq!(board.changes, ranks(&[("active-change", "f"), ("second-change", "b")]));
-        assert_eq!(board.discussions, ranks(&[("live-plan", "n")]));
-        // 本機的順序：second-change（b）在 active-change（f）之前；遠端的文件說同一件事。
-        assert!(board.changes["second-change"] < board.changes["active-change"]);
-        // 變更自己的資料檔原樣上傳，順序鍵留著。
-        let meta = ImportDocumentId::ChangeMeta { change: "active-change".into() };
-        assert_eq!(content_of(&bundle, &meta), Some(ranked_meta));
-    }
-
-    #[test]
-    fn a_workspace_with_no_rank_key_has_no_board_order_document() {
-        let root = complete_workspace();
-        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-        assert_eq!(content_of(&bundle, &ImportDocumentId::BoardOrder), None);
-    }
-
-    #[test]
-    fn the_keyed_bundle_names_every_document_by_its_store_key_with_the_same_content() {
-        let root = complete_workspace();
-        write(root.path(), "openspec/changes/active-change/.evidence.json", EVIDENCE);
-        let first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-
-        let keyed = from_first_version(first.clone()).expect("every document has a key");
-
-        assert_eq!((keyed.format_version, keyed.scope_version), (2, None));
-        let keys: Vec<&str> = keyed.documents.iter().map(|doc| doc.key.as_str()).collect();
-        let mut expected = vec![
-            "LANGUAGE.md",
-            "archive/changes/2026-07-20-old-change/.meta.yaml",
-            "archive/changes/2026-07-20-old-change/proposal.md",
-            "archive/changes/2026-07-20-old-change/specs/payments/spec.md",
-            "archive/changes/2026-07-20-old-change/tasks.md",
-            "archive/discussions/old-plan.md",
-            "changes/active-change/.evidence.json",
-            "changes/active-change/.meta.yaml",
-            "changes/active-change/design.md",
-            "changes/active-change/proposal.md",
-            "changes/active-change/specs/payments/spec.md",
-            "changes/active-change/tasks.md",
-            "config.yaml",
-            "discussions/live-plan.md",
-            "specs/accounts/spec.md",
-        ];
-        let mut sorted = keys.clone();
-        sorted.sort_unstable();
-        expected.sort_unstable();
-        assert_eq!(sorted, expected);
-        for (by_key, by_kind) in keyed.documents.iter().zip(&first.documents) {
-            assert_eq!((&by_key.content, &by_key.digest), (&by_kind.content, &by_kind.digest), "{}", by_key.key);
-        }
-    }
-
-    #[test]
-    fn a_document_whose_names_make_no_key_stops_the_keyed_bundle_and_is_named() {
-        let root = complete_workspace();
-        let mut first = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-        first.documents[0].document = ImportDocumentId::CanonicalSpec { capability: "a/b".into() };
-        let error = from_first_version(first).expect_err("no key").to_string();
-        assert!(error.contains("a/b"), "{error}");
-    }
-
     /// 一個只認得第一版的 Server：第二版的包以 `refusal` 回覆，第一版回成功。
     /// 回傳它的專案網址與它收到的每個請求（格式版本、文件份數）。
     fn first_version_only_server(refusal: (u16, &'static str)) -> (Arc<tiny_http::Server>, String, Arc<Mutex<Vec<(u64, usize)>>>) {
@@ -3590,131 +3296,46 @@ mod migration_bundle_tests {
     }
 
     #[test]
-    fn bundle_contains_every_local_workspace_document_with_exact_content() {
+    fn the_bundle_is_the_shared_document_list_for_the_selected_target() {
+        // 文件的涵蓋與中止條件由 speclink-host 的 local_documents 測試固定；這裡只看
+        // 包成第一版：目標、版本，以及原樣的共用清單。
         let root = complete_workspace();
-        let bundle = build_import_bundle(root.path(), "demo", "backend")
-            .expect("complete local workspace builds");
+        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("complete local workspace builds");
         assert_eq!(bundle.format_version, 1);
         assert_eq!(bundle.scope.project, "demo");
         assert_eq!(bundle.scope.repo, "backend");
         assert_eq!(bundle.project_revision, 0);
 
-        let documents: BTreeMap<ImportDocumentId, String> = bundle
-            .documents
-            .into_iter()
-            .map(|document| (document.document, document.content))
-            .collect();
-        let expected = BTreeMap::from([
-            (
-                ImportDocumentId::ChangeMeta {
-                    change: "active-change".into(),
-                },
-                "schema: spec-driven\ncreated: 2026-07-21\n".into(),
-            ),
-            (
-                ImportDocumentId::ChangeArtifact {
-                    change: "active-change".into(),
-                    artifact: "proposal.md".into(),
-                },
-                "## Why\n\nActive proposal.\n".into(),
-            ),
-            (
-                ImportDocumentId::ChangeArtifact {
-                    change: "active-change".into(),
-                    artifact: "design.md".into(),
-                },
-                "## Context\n\nActive design.\n".into(),
-            ),
-            (
-                ImportDocumentId::ChangeArtifact {
-                    change: "active-change".into(),
-                    artifact: "tasks.md".into(),
-                },
-                "- [ ] 1.1 Active task\n".into(),
-            ),
-            (
-                ImportDocumentId::ChangeArtifact {
-                    change: "active-change".into(),
-                    artifact: "specs/payments/spec.md".into(),
-                },
-                "## ADDED Requirements\n\n### Requirement: Active payment\n".into(),
-            ),
-            (
-                ImportDocumentId::CanonicalSpec {
-                    capability: "accounts".into(),
-                },
-                "# accounts Specification\n\nCanonical accounts.\n".into(),
-            ),
-            (
-                ImportDocumentId::Discussion {
-                    slug: "live-plan".into(),
-                    archived: false,
-                },
-                "---\ntopic: Live plan\nslug: live-plan\nstatus: open\ncreated: 2026-07-21\n---\n\nLive discussion.\n".into(),
-            ),
-            (
-                ImportDocumentId::Discussion {
-                    slug: "old-plan".into(),
-                    archived: true,
-                },
-                "---\ntopic: Old plan\nslug: old-plan\nstatus: concluded\ncreated: 2026-07-20\n---\n\nArchived discussion.\n".into(),
-            ),
-            (
-                // 舊檔名的已封存資料檔一律以 .meta.yaml 為鍵上傳（desktop-spec-dir-migration D5）。
-                ImportDocumentId::ArchivedChange {
-                    change: "2026-07-20-old-change".into(),
-                    doc: ".meta.yaml".into(),
-                },
-                "schema: spec-driven\ncreated: 2026-07-20\n".into(),
-            ),
-            (
-                ImportDocumentId::ArchivedChange {
-                    change: "2026-07-20-old-change".into(),
-                    doc: "proposal.md".into(),
-                },
-                "## Why\n\nArchived proposal.\n".into(),
-            ),
-            (
-                ImportDocumentId::ArchivedChange {
-                    change: "2026-07-20-old-change".into(),
-                    doc: "tasks.md".into(),
-                },
-                "- [x] 1.1 Archived task\n".into(),
-            ),
-            (
-                ImportDocumentId::ArchivedChange {
-                    change: "2026-07-20-old-change".into(),
-                    doc: "specs/payments/spec.md".into(),
-                },
-                "## ADDED Requirements\n\n### Requirement: Archived payment\n".into(),
-            ),
-            (
-                ImportDocumentId::WorkflowConfig,
-                "schema: spec-driven\nlocale: tw\n".into(),
-            ),
-            (
-                ImportDocumentId::Language,
-                "TeamStore: 團隊儲存\n".into(),
-            ),
-        ]);
-        assert_eq!(documents, expected);
+        let context = speclink_desktop_core::init_core_context(root.path()).expect("a local workspace");
+        let shared = local_documents(&context.workspace, &context.store, &speclink_host::context::global_config_dir())
+            .expect("the documents are listed");
+        assert_eq!(bundle.documents.len(), 14);
+        assert_eq!(bundle.documents, shared);
     }
 
     #[test]
-    fn corrupt_change_metadata_aborts_the_bundle_and_names_the_file() {
+    #[cfg(unix)]
+    fn a_symbolic_link_in_the_spec_folder_stops_the_bundle_and_is_named() {
+        // spec「規格資料夾裡的符號連結讓兩個入口都中止」：Desktop 這一側。
+        let outside = tempfile::tempdir().unwrap();
+        write(outside.path(), "secret.md", "TOP SECRET\n");
         let root = complete_workspace();
-        write(
-            root.path(),
-            "openspec/changes/active-change/.openspec.yaml",
-            "schema: [unterminated\n",
-        );
+        std::fs::create_dir_all(root.path().join("openspec/specs/leak")).unwrap();
+        std::os::unix::fs::symlink(outside.path().join("secret.md"), root.path().join("openspec/specs/leak/spec.md"))
+            .unwrap();
 
-        let error = build_import_bundle(root.path(), "demo", "backend")
-            .expect_err("corrupt metadata must fail closed");
-        assert!(
-            error.contains("openspec/changes/active-change/.openspec.yaml"),
-            "error names the corrupt metadata file: {error}"
-        );
+        let error = build_import_bundle(root.path(), "demo", "backend").expect_err("a link stops the bundle");
+        assert!(error.contains("openspec/specs/leak/spec.md"), "{error}");
+        assert!(!error.contains("TOP SECRET"), "{error}");
+    }
+
+    #[test]
+    fn a_target_without_project_or_repo_is_refused() {
+        let root = complete_workspace();
+        for (project, repo) in [("", "backend"), ("demo", " "), ("", "")] {
+            let error = build_import_bundle(root.path(), project, repo).expect_err("no target");
+            assert!(error.contains("must both be selected"), "{error}");
+        }
     }
 
     #[test]
@@ -3819,41 +3440,6 @@ mod migration_bundle_tests {
         };
         let error = migratable_spec_dir(&legacy, "local-to-remote migration").unwrap_err();
         assert!(error.contains("move or remove speclink/ first"), "{error}");
-    }
-
-    #[test]
-    fn a_corrupt_legacy_archived_data_file_is_named_as_it_is_on_disk() {
-        let root = complete_workspace();
-        write(
-            root.path(),
-            "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml",
-            "schema: [unterminated\n",
-        );
-        let error = build_import_bundle(root.path(), "demo", "backend").expect_err("corrupt metadata must fail closed");
-        assert!(
-            error.contains("openspec/changes/archive/2026-07-20-old-change/.openspec.yaml"),
-            "error names the file that is on disk: {error}"
-        );
-    }
-
-    #[test]
-    fn an_archived_change_with_both_data_files_uploads_only_the_new_one() {
-        let root = complete_workspace();
-        write(
-            root.path(),
-            "openspec/changes/archive/2026-07-20-old-change/.meta.yaml",
-            "schema: spec-driven\ncreated: 2026-07-19\n",
-        );
-        let bundle = build_import_bundle(root.path(), "demo", "backend").expect("bundle builds");
-        let metas: Vec<(String, String)> = bundle
-            .documents
-            .into_iter()
-            .filter_map(|d| match d.document {
-                ImportDocumentId::ArchivedChange { doc, .. } if doc.ends_with(".yaml") => Some((doc, d.content)),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(metas, [(".meta.yaml".to_string(), "schema: spec-driven\ncreated: 2026-07-19\n".to_string())]);
     }
 
     #[test]

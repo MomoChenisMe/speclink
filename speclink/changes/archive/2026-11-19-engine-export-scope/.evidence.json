@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "change": "engine-export-scope",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗的測試，寫在 crates/host/speclink-host/src/transfer.rs 的測試區塊：把 apps/desktop/src-tauri/src/remote.rs 既有的匯入包測試（本機專案的每一種文件都在包裡且內容相同、進行中與已封存變更的 evidence 在包裡、壞掉的變更 metadata 中止並點名檔案、名稱轉不成鍵的文件中止並點名）改寫成對共用函式的斷言；另加 D3 兩個入口的對照測試固定「同一份實作」的鍵對照——共用函式的結果經 `from_first_version` 轉換後，每一項的鍵等於對該文件種類呼叫 `key_of_document` 的結果，沒有轉不成鍵的種類。驗證：`cargo test -p speclink-host transfer` 這時因共用函式不存在而編譯失敗。",
+      "files": [
+        "crates/host/speclink-host/src/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 先寫失敗的測試，涵蓋需求「本機引擎的 exportScope 方法」的五個情境，寫在新檔 crates/adapters/speclink-node/__test__/export-local.spec.ts：匯出含進行中變更、正式規格與討論的 fixture 專案，包的 formatVersion 是 2、沒有 scopeVersion、documents 依鍵的位元組順序且鍵不重複、每一項的 digest 是 content 的 SHA-256；把包交給 JS 記憶體儲存的 `host.importScope` 後，`host.dispatch` 與 `engine.dispatch` 對 `['list', '--json']`、`['show', 'auth', '--item-type', 'spec']`、`['discuss', 'list', '--json']` 的結果相同（本機才有的欄位除外）；匯出前後規格資料夾每個檔案的內容與修改時間不變；有一個 metadata 壞掉的變更時 Promise 以 Error 拒絕、message 點名該檔、沒有回傳包；剛初始化的專案匯出成功；已封存的變更與討論在匯入後的宿主讀得到。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`，新檔的測試因 `exportScope` 不存在而失敗。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 Speclink Desktop 改用共用的版本（需求「本機專案的匯出與遷移產生相同的文件集合」）：apps/desktop/src-tauri/src/remote.rs 的 `build_import_bundle` 只保留目標專案與 repo 的檢查、建立工作區與儲存、呼叫共用函式、包成帶目標的第 1 版包；已搬走的測試從這個檔案移除，保留針對目標檢查與包成第 1 版的測試；送出流程不動。驗證：先補齊桌面測試需要的 sidecar 與 server-web dist，`cargo test -p speclink-desktop` 全部通過；跑完後執行 `cargo build -p speclink-cli` 讓 CLI 的 binary 回到最新。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 依 D4 使用者文件更新，中英兩版同步：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出與匯入」一節新增本機專案的匯出與批次搬遷的範例（對每個專案資料夾 createEngine、exportScope、host.importScope 到各自的空範圍），說明失敗時沒有不完整的包、匯入的範圍必須是空的、大小上限、自訂產出流程的位置，並改寫該節結尾關於搬專案入口的那一句；docs/product-status.md 與 docs/product-status.zh-TW.md 的已知缺口「CLI 沒有匯入與匯出的動詞」那一列加上新的替代做法，Node SDK 那一列提到本機專案的匯出。驗證：文件的範例程式碼使用的方法名稱與回傳欄位和 2.1 的測試一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.3 依 D6 補文件，中英兩版同步：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出與匯入」一節說明匯出只讀 `root` 底下的規格資料夾，`.speclink.yaml` 的 `spec_dir` 或 `createEngine` 的 `specDir` 是絕對路徑或含 `..` 時以 `error` 拒絕並點名那個名稱，改法是把 `root` 指到規格資料夾的上一層；crates/adapters/speclink-node/index.d.ts 的 `Engine.exportScope` 說明補上同一條失敗。驗證：文件寫的訊息開頭與 1.7 實作的訊息相同；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/adapters/speclink-node/__test__/memory-port.ts",
+        "crates/adapters/speclink-node/__test__/transfer.spec.ts",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/projection.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7PP718YWZK98M623C77VCR5",
+      "taskDesc": "1.1 先寫失敗的測試，寫在 crates/host/speclink-host/src/transfer.rs 的測試區塊：把 apps/desktop/src-tauri/src/remote.rs 既有的匯入包測試（本機專案的每一種文件都在包裡且內容相同、進行中與已封存變更的 evidence 在包裡、壞掉的變更 metadata 中止並點名檔案、名稱轉不成鍵的文件中止並點名）改寫成對共用函式的斷言；另加 D3 兩個入口的對照測試固定「同一份實作」的鍵對照——共用函式的結果經 `from_first_version` 轉換後，每一項的鍵等於對該文件種類呼叫 `key_of_document` 的結果，沒有轉不成鍵的種類。驗證：`cargo test -p speclink-host transfer` 這時因共用函式不存在而編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c9d06e7e0177daf93efd38ee3401d44a0a234cb1",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/transfer.rs"
+      ],
+      "recordedAt": "2026-11-19T02:51:31Z"
+    },
+    {
+      "taskId": "tsk_01M7PP718YWHZNNTG81EA6F4SC",
+      "taskDesc": "2.1 先寫失敗的測試，涵蓋需求「本機引擎的 exportScope 方法」的五個情境，寫在新檔 crates/adapters/speclink-node/__test__/export-local.spec.ts：匯出含進行中變更、正式規格與討論的 fixture 專案，包的 formatVersion 是 2、沒有 scopeVersion、documents 依鍵的位元組順序且鍵不重複、每一項的 digest 是 content 的 SHA-256；把包交給 JS 記憶體儲存的 `host.importScope` 後，`host.dispatch` 與 `engine.dispatch` 對 `['list', '--json']`、`['show', 'auth', '--item-type', 'spec']`、`['discuss', 'list', '--json']` 的結果相同（本機才有的欄位除外）；匯出前後規格資料夾每個檔案的內容與修改時間不變；有一個 metadata 壞掉的變更時 Promise 以 Error 拒絕、message 點名該檔、沒有回傳包；剛初始化的專案匯出成功；已封存的變更與討論在匯入後的宿主讀得到。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`，新檔的測試因 `exportScope` 不存在而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c9d06e7e0177daf93efd38ee3401d44a0a234cb1",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts"
+      ],
+      "recordedAt": "2026-11-19T02:57:28Z"
+    },
+    {
+      "taskId": "tsk_01M7PP718YRF2K8Z1RH7MJ7720",
+      "taskDesc": "1.3 Speclink Desktop 改用共用的版本（需求「本機專案的匯出與遷移產生相同的文件集合」）：apps/desktop/src-tauri/src/remote.rs 的 `build_import_bundle` 只保留目標專案與 repo 的檢查、建立工作區與儲存、呼叫共用函式、包成帶目標的第 1 版包；已搬走的測試從這個檔案移除，保留針對目標檢查與包成第 1 版的測試；送出流程不動。驗證：先補齊桌面測試需要的 sidecar 與 server-web dist，`cargo test -p speclink-desktop` 全部通過；跑完後執行 `cargo build -p speclink-cli` 讓 CLI 的 binary 回到最新。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c9d06e7e0177daf93efd38ee3401d44a0a234cb1",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-19T02:59:43Z"
+    },
+    {
+      "taskId": "tsk_01M7PP718YHD2Z9TTRTFQBAK0H",
+      "taskDesc": "5.1 依 D4 使用者文件更新，中英兩版同步：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出與匯入」一節新增本機專案的匯出與批次搬遷的範例（對每個專案資料夾 createEngine、exportScope、host.importScope 到各自的空範圍），說明失敗時沒有不完整的包、匯入的範圍必須是空的、大小上限、自訂產出流程的位置，並改寫該節結尾關於搬專案入口的那一句；docs/product-status.md 與 docs/product-status.zh-TW.md 的已知缺口「CLI 沒有匯入與匯出的動詞」那一列加上新的替代做法，Node SDK 那一列提到本機專案的匯出。驗證：文件的範例程式碼使用的方法名稱與回傳欄位和 2.1 的測試一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c9d06e7e0177daf93efd38ee3401d44a0a234cb1",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-19T04:13:51Z"
+    },
+    {
+      "taskId": "tsk_01M7RZMGPRXV39BF7VHGE6MME0",
+      "taskDesc": "5.3 依 D6 補文件，中英兩版同步：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出與匯入」一節說明匯出只讀 `root` 底下的規格資料夾，`.speclink.yaml` 的 `spec_dir` 或 `createEngine` 的 `specDir` 是絕對路徑或含 `..` 時以 `error` 拒絕並點名那個名稱，改法是把 `root` 指到規格資料夾的上一層；crates/adapters/speclink-node/index.d.ts 的 `Engine.exportScope` 說明補上同一條失敗。驗證：文件寫的訊息開頭與 1.7 實作的訊息相同；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c9d06e7e0177daf93efd38ee3401d44a0a234cb1",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/helpers.ts",
+        "crates/adapters/speclink-node/__test__/memory-port.ts",
+        "crates/adapters/speclink-node/__test__/transfer.spec.ts",
+        "crates/host/speclink-host/src/port_view.rs",
+        "crates/host/speclink-host/src/projection.rs"
+      ],
+      "recordedAt": "2026-11-19T06:06:31Z"
+    }
+  ]
+}

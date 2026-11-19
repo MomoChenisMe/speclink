@@ -19,7 +19,8 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-const EVIDENCE_FILE: &str = ".evidence.json";
+/// The evidence file in the folder of a change, active or archived.
+pub(crate) const EVIDENCE_FILE: &str = ".evidence.json";
 
 /// What a document key names, with the names taken from the key.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

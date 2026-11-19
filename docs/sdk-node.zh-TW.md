@@ -467,7 +467,35 @@ const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle
 - **你的框架的本文上限要不小於它。** 入口拿到的是框架已經讀完的本文，所以匯入那條路徑的框架上限要調到至少 `limits.importBytes`（上面 Express 範例的 4 MB 對匯入不夠）。
 - **壓縮由路由層做。** 宿主套件不壓縮也不解壓縮，要壓縮就在你的框架打開。
 
-CLI 沒有匯入匯出的動詞。搬專案的入口是 Speclink Desktop 與你自己的程式。
+### <a id="export-local"></a>匯出本機專案
+
+`engine.exportScope()` 把 `createEngine` 指向的本機專案做成第 2 版的包。把包原樣交給 `host.importScope`，專案就搬進你的儲存裡一個空的範圍。包裡的文件和 Speclink Desktop「遷移到 Server」送出的相同：進行中的變更（metadata、artifact 與 evidence）、正式規格、進行中與已封存的討論、已封存變更的全部文件、流程設定、詞彙表與看板順序。
+
+```js
+// 批次搬遷：每個本機專案搬進各自的空範圍。
+const moves = [
+  ['/srv/checkouts/web', 'acme/web'],
+  ['/srv/checkouts/api', 'acme/api'],
+]
+for (const [root, scope] of moves) {
+  const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
+  // → { formatVersion: 2, documents: [{ key, content, digest }, …] } （沒有 scopeVersion）
+  if (bundle.documents.length === 0) throw new Error(`${root} 沒有規格文件`)
+  const report = await host.importScope({ identity, scope, bundle })
+  // → { scopeVersion: 1, documents: 42 }
+}
+```
+
+- **只讀不寫**：不改專案的任何檔案。文件依鍵的位元組順序排列。本機專案沒有範圍版本號，所以包沒有 `scopeVersion`；匯入本來就不讀它。
+- **這些失敗不會給不完整的包**：任何一個變更（進行中或已封存）的 metadata 無法解析，或有引擎命名規則對不上的文件時，以 `error` 拒絕，訊息指出是哪個檔案。檔案存在但讀不出來（沒有權限，或內容不是 UTF-8）不算失敗：包裡就沒有那份文件。
+- **只讀專案裡面的檔案**：通往規格資料夾路上的資料夾、規格資料夾本身，或它底下任何一個檔案或資料夾是符號連結時，在讀取任何文件之前以 `error` 拒絕；舊位置的 evidence 資料夾 `.speclink/touched/` 也照這條規則。訊息以 `symbolic link in the spec folder:` 開頭，用相對專案根目錄的路徑指出那個項目，不會顯示連結指向哪裡；把連結換成實體檔案或移除即可。那些位置有列不出內容的資料夾時也會拒絕，訊息以 `cannot list` 開頭。規格資料夾名稱（`.speclink.yaml` 的 `spec_dir`，或 `createEngine` 的 `specDir`）是絕對路徑，或含 `..`、`.` 路徑段時，以 `error` 拒絕，訊息以 `spec folder outside the project:` 開頭並指出那個名稱。要匯出別處的規格資料夾，把 `root` 指到它的上一層。
+- **不是專案的資料夾會得到空的包**：匯入之前先看文件數量。
+- **匯出期間不要寫入這個專案**：匯出是逐一讀檔，不做快照。同一時間經同一個引擎、CLI 或其他程式寫入，包裡可能同時有新舊內容。
+- **匯入的範圍必須是空的**，而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
+- **包裡有全文**：流程設定與每一份討論的全文都在包裡。誰可以執行匯出由你決定。
+- **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。
+
+CLI 沒有匯入匯出的動詞。搬專案有三個入口：Speclink Desktop 的「遷移到 Server」、在你自己的程式裡用 `engine.exportScope()` 加 `host.importScope`，以及在兩個範圍之間用 HTTP 入口的 `GET /export` 與 `POST /import`。
 
 ## <a id="skills"></a>產生技能檔
 
