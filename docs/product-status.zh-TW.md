@@ -88,7 +88,7 @@
 | CLI 沒有匯入與匯出的動詞。 | 要把專案搬進、搬出遠端專案，或要定期備份的人。 | 本機專案搬到 Server：用 Speclink Desktop 的「遷移到 Server」。宿主的程式：呼叫 `host.exportScope` 與 `host.importScope`，或使用 HTTP 入口的 `GET /export` 與 `POST /import`。要從宿主的程式搬本機專案：對每個專案資料夾呼叫 `createEngine` 的 `exportScope()`，再交給 `host.importScope`（見[匯出本機專案](sdk-node.zh-TW.md#export-local)）。示範用 server：用後台「系統」頁的匯出，或 `speclink-server backup`。 |
 | 沒有 JavaScript 寫的儲存接口範例。 | 用 Node 內嵌、要自己寫三個儲存函式的整合者。 | 從 Node SDK 文件[實作三個儲存函式](sdk-node.zh-TW.md#store-port)裡用 Map 寫的最小範例起步，對照三個 Rust 範例的資料表與提交步驟，寫完用 `runStoreConformance` 檢查。 |
 | 示範用 server 只支援單一實例。 | 示範用 server 的管理者。 | 一份儲存只跑一個 server 程序。需要多個實例時，把引擎內嵌進自己的系統，由自己的資料庫負責交易。 |
-| 規格放在 checkout 之外的本機位置。`spec_dir` 今天不檢查絕對路徑與 `../`：寫了會被接受，但行為未定義。 | 想把規格資料夾放到 repo 外面的本機專案使用者。 | `spec_dir` 只寫專案根目錄底下的相對路徑。要讓幾個 repo 共用一份規格，改用遠端專案。 |
+| 規格放在 checkout 之外的本機位置。`spec_dir` 今天不檢查絕對路徑與 `../`：寫了會被接受，但行為未定義。只有 Node SDK 的 `engine.exportScope()` 會拒絕這種寫法。 | 想把規格資料夾放到 repo 外面的本機專案使用者。 | `spec_dir` 只寫專案根目錄底下的相對路徑。要讓幾個 repo 共用一份規格，改用遠端專案。 |
 | 唯讀引用另一套規格。 | 想在一個專案裡引用另一個專案的正式規格的人。 | 沒有內建的引用。要對照時，到另一個專案執行 `speclink show <capability> --item-type spec` 讀出內容。 |
 | 遠端專案的自訂產出流程。 | 想在遠端專案使用自己定義的產出流程的團隊。 | 用內建的兩種：`spec-driven` 與 `no-spec-change`。自訂的產出流程只在本機專案可用。 |
 | 嚴格一致的讀取快照。一次讀取可能對儲存發出兩到三次呼叫；中間剛好有人提交時，會短暫看到新舊混合的內容。 | 讀看板、清單與搜尋的人。寫入不受影響，仍由提交時的版本比對把關。 | 重新讀一次就一致。要嚴格一致的宿主，在自己的 `list` 與 `read` 函式裡處理。`host.exportScope` 不受影響：匯出期間範圍有變動時它會重來。 |

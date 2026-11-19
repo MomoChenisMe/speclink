@@ -239,7 +239,7 @@ Speclink ignores other keys.
 | `remote.url` | A URL | None | The connection URL of the remote project (project-scoped URL) |
 | `remote.repo` | A name | None | The registered name of this repo in the remote project. A project with one repo can leave it out |
 
-Today, Speclink does not check `spec_dir` for absolute paths or `../`. If the value is an absolute path, or if it uses `../` to point outside the project root, the behavior is undefined: Speclink does not guarantee that such a spec directory works. Use only a relative path inside the project root. A spec directory outside the checkout is not supported yet. See the [known gaps](product-status.md#known-gaps).
+Today, Speclink does not check `spec_dir` for absolute paths or `../`. If the value is an absolute path, or if it uses `../` to point outside the project root, the behavior is undefined: Speclink does not guarantee that such a spec directory works. The one exception is `engine.exportScope()` of the Node SDK: it refuses such a value. See [Export a local project](sdk-node.md#export-local). Use only a relative path inside the project root. A spec directory outside the checkout is not supported yet. See the [known gaps](product-status.md#known-gaps).
 
 ### Environment variables
 

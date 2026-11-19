@@ -41,7 +41,7 @@ Speclink Desktop is only one front end of the engine, and the official server is
 **Where it is now**
 
 - One crate, `speclink-core`, holds all the rules.
-- You can embed the engine today. The host kit (`createHost`) handles the identity and the scope of each call, and two hooks: one can refuse a command before it runs, and one only watches after the commit.
+- You can embed the engine today. The host kit (`createHost`) handles the identity and the scope of each call, and two hooks: one can read data and then allow or refuse a command before it runs, and one only watches after the commit.
 - The store port has only three functions: list, read, and commit. You write them for your own database. Then you check them with the conformance tests in the package (`runStoreConformance`).
 - There are two entry points. They share one store and one set of hooks:
   - The HTTP entry point (`host.handleRequest`): you add one route, and the original CLI and Speclink Desktop can connect.
@@ -70,24 +70,24 @@ For one person, a local project is complete. When several people share one set o
 - The CLI for remote projects works: `link`, `auth`, the read-only projection, and most verbs work in both kinds of project, including `plan`, dependency declarations, `change rank`, and trace.
 - There are three login methods: browser login, device login, and access tokens. The Server supplies the skills. After you connect, run `speclink update` to get them.
 - Speclink Desktop opens the board of a remote project. You can browse changes, check tasks, read and write artifacts, and see the creator, the claimant, and the capability list. It can also migrate a local project to a Server.
-- The Server keeps the claimant. A claim on a change that another person holds fails, and the message names the holder.
+- The Server keeps the claimant. A claim on a change that another person holds fails, and the message names the holder. To release a claim, run `speclink claim <change> --release`. Each person with write access can run it.
+- `speclink discuss restore <slug>` makes an archived discussion a live record again. `speclink language replace --stdin` writes the full glossary.
+- The CLI and Speclink Desktop use the trust store of the operating system to check the TLS certificate of the Server. If a CA of your organisation issued the certificate, install that CA into the trust store of the operating system, and the connection works.
 - You can read the state of review and verify, the branch of a change, and the landed commit. `speclink change landed` reports the landed commit.
 - When the connection drops, the board becomes a read-only snapshot and rejects all writes. After the connection returns, the board updates by itself.
 - Not done yet:
   - When you check a task of a remote project in Speclink Desktop, report the touched files (the CLI does this already).
-  - Release and takeover of a claim.
+  - A button in Speclink Desktop that releases a claim. Now you run `speclink claim <change> --release` in the CLI.
   - Manual generation for remote projects. Now only the tour mode works. The spec baseline (`baseline`) also works only in a local project.
   - Custom artifact workflows for remote projects. Now only the two built-in schemas work.
   - Import and export verbs in the CLI. Now you move a project with Speclink Desktop or with the program of the host.
-  - A verb that brings an archived discussion back.
-  - A verb that writes the glossary.
   - A view of the audit history. Each commit gives the store the actor and the command, but no API or screen shows "who changed what, when, and with which command".
   - Cleanup of the local projection cache: removal after a time limit, removal at logout or at a project switch, and read access for the owner only. Now the projection is read-only and stays out of Git.
   - A handoff gate from PM to engineer (an approval that expires when somebody edits the document), and a record of the spec version that apply used. Quality stations and claims cover part of this need. A new decision about this item is necessary.
 
 **The next visible step**
 
-You check a task of a remote project in Speclink Desktop, and you can see the files that it touched, the same as in the CLI. When a claimant leaves, you can release or take over the claim. You can generate a manual in a remote project too.
+You check a task of a remote project in Speclink Desktop, and you can see the files that it touched, the same as in the CLI. You can release a claim in Speclink Desktop, and the CLI is not necessary for this. You can generate a manual in a remote project too.
 
 ## <a id="agent-tools"></a>Agent tool integration
 
@@ -126,7 +126,7 @@ In a company, Speclink cannot be an island. Accounts must come from the existing
   - Runtime plugins: give the demonstration server another store or custom behavior without a code change.
   - Multi-node deployment. Now the demonstration server supports one instance only.
   - Online backup without a server stop.
-  - A spec folder outside the checkout: path rules for `spec_dir`. Now it does not check absolute paths or `../`, and the behavior is not defined.
+  - A spec folder outside the checkout: path rules for `spec_dir`. Now it does not check absolute paths or `../`, and the behavior is not defined. Only `engine.exportScope()` of the Node SDK refuses such a value.
   - A read-only reference to another set of specs.
   - A WebSocket transport (low priority).
 

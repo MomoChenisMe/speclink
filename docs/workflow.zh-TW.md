@@ -393,6 +393,7 @@ worktree：apply-with-worktree ⇄ ingest → (quality? | review? ∥ verify?) �
 - 轉為變更不一定要等討論結束：討論還在進行時，就可以先轉出一部分。
 - 一份討論可以轉出好幾個變更。要分批轉出時，用 `speclink discuss conclude --hold` 保留討論；轉出最後一批時加 `--last`（`discuss promote`、`new change --from-discussion` 與 `discuss seal` 都接受）。
 - 討論已寫結論、沒有標 `hold`，而且最後一個關聯的變更封存時，討論會自動一起封存。
+- 討論封存錯了：執行 `speclink discuss restore <slug>`，把它搬回進行中。同一個 slug 有多份封存記錄時，搬回最新的一份；記錄的內容不變。
 - `link` 之後不能先 `seal` 再補內容。seal 代表決定已經寫進文件了。
 - 想找以前的決定：`speclink discuss search <關鍵字>` 會搜尋進行中與已封存的討論。
 

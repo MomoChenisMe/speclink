@@ -281,7 +281,7 @@ tools:
 大多數動詞在遠端專案照常可用，結果寫到 Server。CLI 只把兩個動詞限定在一邊；在另一邊執行，CLI 會直接拒絕：
 
 - 只限本機專案：`demo`。它把示範用的變更寫進本機的規格資料夾。
-- 只限遠端專案：`claim`。本機專案沒有認領的狀態。
+- 只限遠端專案：`claim`。本機專案沒有認領的狀態。要釋放認領，執行 `speclink claim <變更> --release`。有寫入權限的人都可以釋放，不必是認領的人；內嵌引擎的 Server 可以訂更嚴格的規則。
 
 `trace`、`change rank` 與 `plan --strict-overlap` 在遠端專案可用，由 Server 算出結果。
 

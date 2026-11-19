@@ -239,7 +239,7 @@ tools:
 | `remote.url` | 網址 | 無 | 遠端專案的連線網址（project-scoped URL） |
 | `remote.repo` | 名稱 | 無 | 這個 repo 在遠端專案裡的註冊名稱；只有一個 repo 的專案可以省略 |
 
-`spec_dir` 目前不檢查絕對路徑與 `../`。寫成絕對路徑，或用 `../` 指到專案根目錄之外，行為未定義：Speclink 不保證這樣的規格目錄能正常運作。請只寫專案根目錄底下的相對路徑。把規格放在 checkout 之外還不支援，見[已知缺口](product-status.zh-TW.md#known-gaps)。
+`spec_dir` 目前不檢查絕對路徑與 `../`。寫成絕對路徑，或用 `../` 指到專案根目錄之外，行為未定義：Speclink 不保證這樣的規格目錄能正常運作。唯一的例外是 Node SDK 的 `engine.exportScope()`：它遇到這種寫法會直接拒絕，見[匯出本機專案](sdk-node.zh-TW.md#export-local)。請只寫專案根目錄底下的相對路徑。把規格放在 checkout 之外還不支援，見[已知缺口](product-status.zh-TW.md#known-gaps)。
 
 ### 環境變數
 

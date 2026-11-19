@@ -393,6 +393,7 @@ Put all open changes in an execution order.
 - A discussion does not have to end before you promote part of it.
 - One discussion can produce several changes. To promote in parts, keep the discussion open with `speclink discuss conclude --hold`. For the last part, add `--last` (`discuss promote`, `new change --from-discussion`, and `discuss seal` accept it).
 - When the discussion has a conclusion and no `hold`, and its last linked change goes into the archive, the discussion goes into the archive too.
+- If a discussion went into the archive by mistake, run `speclink discuss restore <slug>`. The discussion becomes a live record again. When one slug has several archived records, the verb takes the newest one. The content of the record does not change.
 - After `link`, do not `seal` first and add the content later. A seal means that the decision is already in the documents.
 - To find an old decision, run `speclink discuss search <keyword>`. It searches open and archived discussions.
 

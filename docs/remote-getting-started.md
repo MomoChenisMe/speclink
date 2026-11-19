@@ -283,7 +283,7 @@ A checkout that you make with `speclink init --store remote` also starts with sk
 Most verbs work as usual in a remote project, and they write to the Server. The CLI limits only two verbs to one side. If you run one on the other side, the CLI refuses it:
 
 - Local projects only: `demo`. It writes a demo change into the local spec folder.
-- Remote projects only: `claim`. A local project has no claim state.
+- Remote projects only: `claim`. A local project has no claim state. To release a claim, run `speclink claim <change> --release`. Each person with write access can release it, not only the claimant. A Server that embeds the engine can set a stricter rule.
 
 `trace`, `change rank`, and `plan --strict-overlap` work in remote projects. The Server calculates the result.
 

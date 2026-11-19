@@ -41,7 +41,7 @@ Speclink Desktop 只是引擎的其中一個前端，官方 server 只是示範�
 **目前到哪**
 
 - 規則只在 `speclink-core` 實作一次。
-- 內嵌已經可用。宿主套件（`createHost`）替你處理每次呼叫的身分與範圍，以及兩個掛鉤：執行前可以拒絕，提交後只能旁觀。
+- 內嵌已經可用。宿主套件（`createHost`）替你處理每次呼叫的身分與範圍，以及兩個掛鉤：執行前可以先讀資料，再決定放行或拒絕；提交後只能旁觀。
 - 儲存接口只有三個函式：列出、讀取、提交。你用自己的資料庫實作它們，再用套件裡的合格測試（`runStoreConformance`）檢查。
 - 入口有兩個，共用同一個儲存與同一組掛鉤：
   - HTTP 入口（`host.handleRequest`）：你只掛一條路由，原版的 CLI 與 Speclink Desktop 就能連上來。
@@ -70,24 +70,24 @@ Speclink Desktop 只是引擎的其中一個前端，官方 server 只是示範�
 - 遠端專案的 CLI 可用：`link`、`auth`、唯讀投影，絕大多數動詞兩邊都能用，包括 `plan`、前置宣告、`change rank` 與溯源。
 - 登入有三種方式：瀏覽器登入、裝置登入與存取金鑰。技能由 Server 提供，連上之後執行 `speclink update` 取得。
 - Speclink Desktop 可以開遠端專案的看板：瀏覽變更、勾任務、讀寫 artifact，看到建立者、認領人與 capability 清單；也能把本機專案遷移到 Server。
-- 認領人由 Server 保存；認領到別人持有的變更會被拒絕，訊息寫出持有人。
+- 認領人由 Server 保存；認領到別人持有的變更會被拒絕，訊息寫出持有人。要釋放認領，執行 `speclink claim <變更> --release`；有寫入權限的人都可以執行。
+- 已封存的討論記錄可以用 `speclink discuss restore <slug>` 搬回進行中。詞彙表可以用 `speclink language replace --stdin` 整份寫入。
+- CLI 與 Speclink Desktop 用作業系統的信任庫檢查 Server 的 TLS 憑證。憑證由組織自己的 CA 簽發時，把那個 CA 裝進作業系統的信任庫就能連線。
 - 審查與驗證的狀態、變更的分支與落地的 commit 都讀得到；`speclink change landed` 回報落地。
 - 斷線時看板變成唯讀 snapshot，寫入一律被拒，重連後自動收斂。
 - 還沒做：
   - 在 Speclink Desktop 勾遠端專案的任務時，回報動到的檔案（CLI 已經會）。
-  - 認領的釋放與接手。
+  - Speclink Desktop 釋放認領的按鈕。目前要在 CLI 執行 `speclink claim <變更> --release`。
   - 遠端專案的手冊產生。目前只有導覽模式可用；規格基準（`baseline`）同樣只能在本機專案做。
   - 遠端專案的自訂產出流程。目前只能用內建的兩種。
   - CLI 的匯入與匯出動詞。目前搬專案要用 Speclink Desktop 或宿主自己的程式。
-  - 把封存的討論記錄搬回來的動詞。
-  - 寫入詞彙表的動詞。
   - 稽核歷史的查詢介面。每次提交都把是誰、用哪個命令交給儲存，但還沒有 API 或畫面可以查「誰在什麼時候用哪個指令改了什麼」。
   - 本機投影快取的清理：逾期清除、登出或切換專案時清除，以及只限本人讀取。目前投影已是唯讀，並排除在 Git 之外。
   - PM 到 RD 的交接關卡（核准後被改動就失效），以及 apply 時記下依據的規格版本。品質關卡與認領已涵蓋一部分，還要重新決定是否需要。
 
 **可觀察的下一步**
 
-在 Speclink Desktop 勾掉遠端專案的一個任務之後，查得到它動了哪些檔案，和在 CLI 上勾一樣。持有人離開之後，有辦法釋放或接手認領。在遠端專案也能產生手冊。
+在 Speclink Desktop 勾掉遠端專案的一個任務之後，查得到它動了哪些檔案，和在 CLI 上勾一樣。在 Speclink Desktop 也能釋放認領，不必切到 CLI。在遠端專案也能產生手冊。
 
 ## <a id="agent-tools"></a>Agent 工具整合
 
@@ -126,7 +126,7 @@ Speclink 進到一間公司之後不會是孤島。帳號要接既有的身分�
   - runtime plugin：不改程式碼就替示範用 server 換一種儲存或掛上自訂行為。
   - 多節點部署。目前示範用 server 只支援單一實例。
   - 不停機的線上備份。
-  - 規格放在 checkout 之外的本機位置：`spec_dir` 的路徑規則。目前它不檢查絕對路徑與 `../`，行為未定義。
+  - 規格放在 checkout 之外的本機位置：`spec_dir` 的路徑規則。目前它不檢查絕對路徑與 `../`，行為未定義。只有 Node SDK 的 `engine.exportScope()` 會拒絕這種寫法。
   - 唯讀引用另一套規格。
   - WebSocket 傳輸（優先度低）。
 
