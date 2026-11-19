@@ -2999,3 +2999,35 @@ fn a_language_write_over_a_document_that_changed_meanwhile_is_409_revision_confl
     assert_eq!((status, reason.as_str()), (409, "revision_conflict"));
     assert_eq!(content(&door, "s1", "LANGUAGE.md").as_deref(), Some("# Someone else\n"), "the other write stays");
 }
+
+// ======================================================================
+// Change event-payloads-and-push-url: the event of a workflow-config write
+// (spec command-runtime「蓋章事件帶 commit 與流程設定變動的事件」).
+// ======================================================================
+
+#[test]
+fn a_config_write_commits_its_keys_and_pushes_no_one_resource() {
+    use speclink_protocol::events::InvalidationScope;
+    let door = door(switches(true, true));
+    with_demo(&door);
+    let revision = json(&answer(&door, &get(&alpha("config")), Some(&alice())))["revision"].as_u64().unwrap();
+    door.store.take();
+
+    let put = send(
+        Method::Put,
+        &alpha("config"),
+        json!({ "content": "schema: spec-driven\ntdd: true\n", "expectedRevision": revision }),
+    );
+    let response = answer(&door, &put, Some(&alice()));
+
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    let commits = door.store.take().commits;
+    assert_eq!(commits.len(), 1, "{commits:?}");
+    let events: Vec<(&str, &Value)> = commits[0].events().iter().map(|e| (e.name(), e.payload())).collect();
+    assert_eq!(events, [("workflow-config-changed", &json!({ "keys": ["tdd"] }))]);
+    // The push names no resource and carries no keys: the client reads everything again.
+    assert_eq!(
+        resources_of(&commits[0]),
+        [("workflow-config-changed".to_string(), InvalidationScope::Unknown("unknown".to_string()), String::new())]
+    );
+}

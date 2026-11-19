@@ -281,10 +281,21 @@ export interface HostAuthMethods {
   browser?: { issuer: string; clientId: string; scopes?: string[] }
 }
 
-/** A push stream the host serves itself; the handshake declares it before the polling fallback. */
+/**
+ * A push stream the host serves itself; the handshake declares it, as
+ * written, before the polling fallback. An idle `sse` stream sends a comment
+ * line more often than every 45 seconds: a client that gets no data for 45
+ * seconds subscribes again.
+ */
 export interface HostPushTransport {
-  /** `sse` or `websocket`. */
+  /** `sse` or `websocket`. Speclink Desktop uses the first `sse`, and polls when there is none. */
   type: string
+  /**
+   * A path that starts with `/`, relative to the project URL as `/sync-state`
+   * is, or a full URL with the host's own origin (scheme, host, and port). A
+   * client does not connect to another origin and does not send it the
+   * credential: it polls.
+   */
   url: string
   resume?: boolean
 }

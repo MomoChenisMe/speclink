@@ -12,7 +12,7 @@ use crate::common;
 
 use speclink_remote::credentials::{CredentialKind, CredentialStore, MemoryCredentialStore};
 use speclink_desktop_lib::event_manager::EventManager;
-use speclink_desktop_lib::remote::{ConnectionState, ConnectionStateEvent, TokenManager};
+use speclink_desktop_lib::remote::{self, ConnectionState, ConnectionStateEvent, DeclaredStreams, TokenManager};
 use speclink_remote::client::Client;
 use speclink_remote::events;
 use speclink_server::events::EventSettings;
@@ -197,7 +197,7 @@ fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
     h.server.stop();
     let (notify, notify_rx) = sink();
     let events = EventManager::new(notify);
-    let sub_base = project_base(&h.origin);
+    let sub_url = common::demo_stream(&project_base(&h.origin));
     let sub_runtime = runtime.clone();
     let sub_credentials = credentials.clone();
     let sync_base = project_base(&h.origin);
@@ -207,7 +207,7 @@ fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
         KEY,
         move |last| {
             sub_runtime.execute(sub_credentials.as_ref(), |token| {
-                events::subscribe(&sub_base, token, Some("backend"), last)
+                events::subscribe(&sub_url, token, Some("backend"), last)
             })
         },
         move || {
@@ -241,6 +241,111 @@ fn a_restarted_server_recovers_online_and_invalidates_without_user_action() {
         .map(|change| change.name)
         .collect::<Vec<_>>();
     assert!(names.iter().any(|name| name == "recovered"));
+    events.unregister(KEY);
+}
+
+// --- 訂閱的網址取自握手的宣告：remote_open 記下、remote_watch 每次訂閱時讀取 ---
+
+/// remote_watch 註冊的那一對函式：訂閱走 `remote::subscribe_declared`，輪詢照常。
+fn register_declared(
+    events: &EventManager,
+    streams: &Arc<DeclaredStreams>,
+    runtime: &Arc<TokenManager>,
+    credentials: &Arc<MemoryCredentialStore>,
+    origin: &str,
+    backoff: Duration,
+) {
+    let (sub_streams, sub_runtime, sub_credentials) = (streams.clone(), runtime.clone(), credentials.clone());
+    let (sync_base, sync_runtime, sync_credentials) = (project_base(origin), runtime.clone(), credentials.clone());
+    events.register(
+        KEY,
+        move |last| {
+            remote::subscribe_declared(
+                &sub_streams,
+                "conn_x",
+                "demo",
+                "backend",
+                &sub_runtime,
+                sub_credentials.as_ref(),
+                last,
+            )
+        },
+        move || {
+            sync_runtime.execute(sync_credentials.as_ref(), |token| {
+                events::sync_state(&sync_base, token, Some("backend"))
+            })
+        },
+        vec![backoff],
+    );
+}
+
+/// 一個已登入的 runtime，連線狀態送進回傳的 channel。
+fn signed_in(h: &common::Harness, pat: &str) -> (Arc<TokenManager>, Arc<MemoryCredentialStore>, mpsc::Receiver<ConnectionStateEvent>) {
+    let credentials = Arc::new(MemoryCredentialStore::new());
+    credentials.set(&h.origin, CredentialKind::Pat, pat).expect("set PAT");
+    let (state_tx, state_rx) = mpsc::channel::<ConnectionStateEvent>();
+    let runtime = Arc::new(TokenManager::with_connection_state(&h.origin, "conn_x", 1, move |event| {
+        let _ = state_tx.send(event);
+    }));
+    runtime.adopt_access_token(pat);
+    (runtime, credentials, state_rx)
+}
+
+#[test]
+fn a_tab_subscribes_to_the_stream_its_handshake_declared() {
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let (runtime, credentials, _states) = signed_in(&h, &pat);
+
+    // remote_open 的那一半：握手，記下宣告的串流（示範用 server 宣告 `/events`）。
+    let (workspace, _info) =
+        remote::open_workspace(&h.origin, "demo/backend", &runtime, credentials.as_ref()).expect("open");
+    let streams = Arc::new(DeclaredStreams::default());
+    streams.remember("conn_x", "demo", "backend", workspace.declared_stream().cloned());
+    assert_eq!(streams.get("conn_x", "demo", "backend"), Some(common::demo_stream(&project_base(&h.origin))));
+
+    // remote_watch 的那一半。訂閱失敗時 worker 會先輪詢一次並發一筆通知，所以寫入前
+    // 先瀝乾；退避設得比等待長，之後的通知只可能來自串流。
+    let (notify, rx) = sink();
+    let events = EventManager::new(notify);
+    register_declared(&events, &streams, &runtime, &credentials, &h.origin, Duration::from_secs(60));
+    std::thread::sleep(Duration::from_millis(150));
+    drain(&rx);
+
+    writer(&h.origin, &pat).task_done("demo", "1", &[], None).expect("task done");
+    expect_notified(&rx, "宣告的串流送來失效提示");
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_tab_with_no_declared_stream_only_polls_and_shows_no_error() {
+    // 規格「不同 origin 時不送出憑證並改用輪詢」「握手沒有宣告 sse transport」：沒有
+    // 可用的網址時不建立訂閱、靠 sync-state 收斂，而且不算連線失敗。
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let (runtime, credentials, states) = signed_in(&h, &pat);
+    let streams = Arc::new(DeclaredStreams::default());
+
+    let refused = remote::subscribe_declared(&streams, "conn_x", "demo", "backend", &runtime, credentials.as_ref(), None)
+        .err()
+        .expect("no stream, no subscription");
+    assert!(refused.message.contains("no usable event stream"), "{}", refused.message);
+    assert_eq!(refused.status, None, "nothing was requested");
+
+    let (notify, rx) = sink();
+    let events = EventManager::new(notify);
+    register_declared(&events, &streams, &runtime, &credentials, &h.origin, Duration::from_millis(30));
+    std::thread::sleep(Duration::from_millis(150));
+    drain(&rx);
+
+    writer(&h.origin, &pat).task_done("demo", "1", &[], None).expect("task done");
+    expect_notified(&rx, "沒有串流時靠輪詢收斂");
+    assert!(
+        states.try_iter().all(|event| event.state != ConnectionState::Offline),
+        "沒有串流不是連線失敗"
+    );
     events.unregister(KEY);
 }
 
@@ -351,7 +456,7 @@ impl Proxy {
 
 /// 對 manager 注入的訂閱與 sync-state 閉包（帶連線計數）。
 fn register_via(manager: &EventManager, base: &str, pat: &str, connects: &Arc<AtomicUsize>) {
-    let sub_base = project_base(base);
+    let sub_url = common::demo_stream(&project_base(base));
     let sub_pat = pat.to_string();
     let counter = connects.clone();
     let etag_base = project_base(base);
@@ -360,7 +465,7 @@ fn register_via(manager: &EventManager, base: &str, pat: &str, connects: &Arc<At
         KEY,
         move |last| {
             counter.fetch_add(1, Ordering::SeqCst);
-            events::subscribe(&sub_base, &sub_pat, Some("backend"), last)
+            events::subscribe(&sub_url, &sub_pat, Some("backend"), last)
         },
         move || events::sync_state(&etag_base, &etag_pat, Some("backend")),
         vec![Duration::from_millis(30)],
@@ -485,7 +590,7 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
     let pat = common::pat_of(&h);
 
     // 一條測試自有的直連訂閱持續瀝乾——讓 server 的保留期 floor 前進。
-    let mut driver = events::subscribe(&project_base(&h.origin), &pat, Some("backend"), None)
+    let mut driver = events::subscribe(&common::demo_stream(&project_base(&h.origin)), &pat, Some("backend"), None)
         .expect("driver subscribe");
     let driver_abort = driver.abort_handle();
     std::thread::spawn(move || while let Ok(Some(_)) = driver.next() {});

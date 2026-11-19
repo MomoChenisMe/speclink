@@ -345,7 +345,7 @@ fn merged_rules(
 #[cfg(test)]
 mod tests {
     use crate::command::{
-        execute, Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext,
+        execute, Command, CommandError, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext,
         WorkflowConfigShowOutcome, WorkflowConfigWriteOutcome,
     };
     use crate::config::{
@@ -369,9 +369,14 @@ rules:
   - Use checkbox format
 ";
 
+    /// Run one command. The only event a workflow-config command reports is
+    /// `workflow-config-changed`; when it reports it, and with which keys, is
+    /// the row test's job ([`a_write_reports_the_changed_keys_only_when_it_writes`]).
     fn run(store: &dyn Store, cmd: Command) -> Result<CommandOutcome, CommandError> {
         let (outcome, events) = execute(store, &ExecutionContext::default(), cmd)?;
-        assert!(events.is_empty(), "the workflow-config commands produce no domain event");
+        for event in &events {
+            assert_eq!(event.kind(), "workflow-config-changed", "a workflow-config command reported {event:?}");
+        }
         Ok(outcome)
     }
 
@@ -647,6 +652,59 @@ rules:
         assert!(done.written);
         assert_eq!(keys(&done), [""; 0]);
         assert_eq!(stored(&store).as_deref(), Some(next.as_str()));
+    }
+
+    // --- the domain event ---
+
+    /// The keys of the one `workflow-config-changed` event a command reported;
+    /// `None` when it reported no event.
+    fn event_keys(store: &dyn Store, cmd: Command) -> Result<Option<Vec<String>>, CommandError> {
+        let (_, events) = execute(store, &ExecutionContext::default(), cmd)?;
+        Ok(match &events[..] {
+            [] => None,
+            // No `..`: the event has the keys and the time, and no value.
+            [DomainEvent::WorkflowConfigChanged { keys, occurred_at: _ }] => Some(keys.clone()),
+            other => panic!("expected at most one workflow-config-changed event, got {other:?}"),
+        })
+    }
+
+    #[test]
+    fn a_write_reports_the_changed_keys_only_when_it_writes() {
+        // Spec Example「各種寫入對應的事件」（逐列）。
+        let set = |key: &str, value: &str, dry_run| Command::WorkflowConfigEdit { edit: policy(key, value), dry_run };
+        // `tdd: false` is the default, and setting it false drops the line: the
+        // row「設成它現在的值」sets a document's `tdd: true` to true.
+        let tdd_on = DOC.replace("tdd: false\n", "tdd: true\n");
+        let rows: [(&str, &str, Command, Option<&[&str]>); 5] = [
+            ("tdd false → true", DOC, set("tdd", "true", false), Some(&["tdd"])),
+            (
+                "replace with a new locale and context",
+                DOC,
+                Command::WorkflowConfigReplace {
+                    content: DOC.replace("locale: tw\n", "locale: ja\n").replace("Line one.", "Line two."),
+                },
+                Some(&["locale", "context"]),
+            ),
+            (
+                "replace that only changes a comment",
+                DOC,
+                Command::WorkflowConfigReplace { content: DOC.replace("# team config\n", "# our config\n") },
+                Some(&[]),
+            ),
+            ("tdd set to its current value", &tdd_on, set("tdd", "true", false), None),
+            ("a dry run", DOC, set("tdd", "true", true), None),
+        ];
+        for (row, doc, cmd, expected) in rows {
+            let store = TestStore::with_workflow_config(doc);
+            let keys = event_keys(&store, cmd).expect("the write executes");
+            let expected = expected.map(|keys| keys.iter().map(ToString::to_string).collect::<Vec<_>>());
+            assert_eq!(keys, expected, "{row}");
+        }
+
+        let store = TestStore::with_workflow_config(DOC);
+        let err = event_keys(&store, set("locale", "fr", false)).expect_err("an invalid locale is refused");
+        assert_eq!(err.code, ErrorCode::InvalidConfig, "{}", err.message);
+        assert_eq!(writes(&store), 0);
     }
 
     // --- a store without the write method ---

@@ -809,3 +809,9 @@ pub fn pat_of(h: &Harness) -> String {
         .expect("pat");
     pat
 }
+
+/// The demo server's event stream under a project URL: the `/events` its
+/// handshake declares, as a client resolves it.
+pub fn demo_stream(project_url: &str) -> speclink_remote::events::StreamUrl {
+    speclink_remote::events::stream_url(project_url, "/events").expect("the demo server's /events")
+}

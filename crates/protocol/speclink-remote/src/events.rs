@@ -1,4 +1,4 @@
-//! Client-side SSE consumption for a project's `/events` stream (blueprint
+//! Client-side SSE consumption for a project's event stream (blueprint
 //! §9.1/§9.2): a blocking, abortable subscription that yields typed events —
 //! invalidation hints and the reset signal. Push is a pointer, never a
 //! payload: consumers re-read the canon through Query + ETag, so this module
@@ -28,9 +28,10 @@ const ABORT_POLL: Duration = Duration::from_secs(2);
 /// whose FIN/RST never arrived would otherwise block [`EventStream::next`]
 /// forever (observed on macOS loopback under CPU starvation). Three missed
 /// default heartbeats: generous against scheduler pauses, still a bounded
-/// recovery. A server configured with a heartbeat above this limit only costs
-/// a periodic lossless resubscribe (Last-Event-ID continues the sequence).
-const STALL_LIMIT: Duration = Duration::from_secs(45);
+/// recovery. A stream whose heartbeat is not shorter than this limit only
+/// costs a periodic lossless resubscribe (Last-Event-ID continues the
+/// sequence); the demonstration server refuses such a setting at startup.
+const STALL_LIMIT: Duration = Duration::from_secs(speclink_protocol::events::STALL_LIMIT_SECS);
 
 /// A typed event off the stream. Unknown event names are skipped (a newer
 /// server never breaks an older client); convergence is guaranteed by Query +
@@ -57,7 +58,7 @@ impl AbortHandle {
     }
 }
 
-/// An open `/events` subscription. [`next`](EventStream::next) blocks until a
+/// An open event-stream subscription. [`next`](EventStream::next) blocks until a
 /// typed event arrives, the stream ends, or the abort handle fires.
 pub struct EventStream {
     reader: Box<dyn Read + Send + Sync + 'static>,
@@ -72,12 +73,67 @@ pub struct EventStream {
     last_activity: std::time::Instant,
 }
 
-/// Open a subscription to `{base_url}/events`. `base_url`, `token`, and
-/// `repo` are the same triple [`crate::client::Client::new`] takes; a
-/// `last_event_id` resumes after the given outbox sequence. Fails closed on
-/// any non-2xx precondition (same translation as every request).
+/// A project's event-stream URL as [`stream_url`] resolved it: it has the
+/// project's origin, so the access token [`subscribe`] sends goes to the
+/// project's Server only. [`stream_url`] is the only way to make one. The
+/// text is the parsed URL in its normal form (host in lower case, no default
+/// port, no `.` or `..` segment) — the very parse result the origin check saw.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StreamUrl(String);
+
+impl StreamUrl {
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// The full URL of a project's event stream, from the url the handshake
+/// declares for its sse transport. `project_base` is the project's API
+/// address (`{origin}/api/speclink/v1/projects/{project}`).
+///
+/// - A url that starts with `/` is a path under the project's API address,
+///   as the polling url is: `/events` gives `{project_base}/events`.
+/// - A full `http://` or `https://` url is used only when its origin (scheme,
+///   host, port) is the project's.
+/// - Any other url — empty, a path without the leading `/`, another scheme,
+///   or one that does not parse — gives `None`: the client then polls.
+///
+/// Sharp edges, as audited:
+///
+/// - The access token goes to the Server's origin only. The check compares
+///   the parsed scheme, host and port (the `url` crate, the parser ureq uses
+///   for the request), never the text: in `https://specs.example.com@evil.example`
+///   the host is evil.example, and a path url is checked after it is joined.
+///   The result is that parsed URL, not the declared text: the host the check
+///   saw is the host [`subscribe`] connects to, whichever parser the HTTP
+///   client uses. ureq drops `Authorization` on a redirect (its default), so
+///   a redirect does not carry the token away either.
+/// - A declaration that does not parse is `None`, never a guess. Swapped
+///   arguments give a URL of the same origin or `None`, never another host.
+/// - [`subscribe`] takes a [`StreamUrl`], which only this function makes: a
+///   caller cannot subscribe to a declared url that skipped the check.
+///
+/// What the events themselves carry is audited at `event_payload` in
+/// `speclink-host`.
+pub fn stream_url(project_base: &str, declared: &str) -> Option<StreamUrl> {
+    let base = url::Url::parse(project_base).ok()?;
+    let stream = if declared.starts_with('/') {
+        format!("{}{declared}", project_base.trim_end_matches('/'))
+    } else {
+        declared.to_string()
+    };
+    let parsed = url::Url::parse(&stream).ok()?;
+    let web = |url: &url::Url| matches!(url.scheme(), "http" | "https");
+    (web(&base) && web(&parsed) && parsed.origin() == base.origin()).then(|| StreamUrl(parsed.into()))
+}
+
+/// Open a subscription to the event stream at `stream`, the full URL
+/// [`stream_url`] resolves. `token` and `repo` are what
+/// [`crate::client::Client::new`] takes; a `last_event_id` resumes after the
+/// given outbox sequence. Fails closed on any non-2xx precondition (same
+/// translation as every request).
 pub fn subscribe(
-    base_url: &str,
+    stream: &StreamUrl,
     token: &str,
     repo: Option<&str>,
     last_event_id: Option<u64>,
@@ -87,7 +143,7 @@ pub fn subscribe(
         .timeout_read(ABORT_POLL)
         .build();
     let mut req = agent
-        .get(&format!("{}/events", base_url.trim_end_matches('/')))
+        .get(stream.as_str())
         .set("Authorization", &format!("Bearer {token}"))
         .set("X-Speclink-Api-Version", speclink_protocol::API_VERSION)
         .set("Accept", "text/event-stream");
@@ -273,5 +329,121 @@ fn stalled() -> RemoteError {
         reason: None,
         status: None,
         evidence: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{EventStream, STALL_LIMIT};
+    use std::io::{Error, ErrorKind, Read};
+    use std::sync::atomic::AtomicBool;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
+
+    const BASE: &str = "https://specs.example.com/api/speclink/v1/projects/acme";
+
+    /// A connection that sends nothing: one read timeout, then the peer closes.
+    struct Silent {
+        timed_out: bool,
+    }
+
+    impl Read for Silent {
+        fn read(&mut self, _: &mut [u8]) -> std::io::Result<usize> {
+            if std::mem::replace(&mut self.timed_out, true) {
+                return Ok(0);
+            }
+            Err(Error::from(ErrorKind::TimedOut))
+        }
+    }
+
+    /// A stream that got its last byte `silent_for` ago and gets nothing more.
+    fn silent_stream(silent_for: Duration) -> EventStream {
+        EventStream {
+            reader: Box::new(Silent { timed_out: false }),
+            aborted: Arc::new(AtomicBool::new(false)),
+            pending: Vec::new(),
+            event: None,
+            data: Vec::new(),
+            have_fields: false,
+            last_activity: Instant::now().checked_sub(silent_for).expect("a clock past the stall limit"),
+        }
+    }
+
+    #[test]
+    fn a_stream_silent_for_45_seconds_is_treated_as_broken() {
+        // Spec server-event-stream「超過 45 秒沒有資料時用戶端重連」：45 秒是文件寫明
+        // 的對外數字，改它要連文件一起改。
+        assert_eq!(STALL_LIMIT, Duration::from_secs(45));
+        // One source for the number: a stream's heartbeat is checked against the same constant.
+        assert_eq!(STALL_LIMIT, Duration::from_secs(speclink_protocol::events::STALL_LIMIT_SECS));
+
+        let err = silent_stream(STALL_LIMIT).next().expect_err("a stalled stream is an error");
+        assert!(err.message.starts_with("event stream stalled"), "{}", err.message);
+
+        // Under the limit a read timeout is only the abort poll: the stream
+        // goes on reading, and here meets the peer's close.
+        let err = silent_stream(STALL_LIMIT - Duration::from_secs(5)).next().expect_err("the peer closed");
+        assert!(err.message.starts_with("event stream disconnected"), "{}", err.message);
+    }
+
+    /// [`super::stream_url`]'s answer as text.
+    fn resolved(project_base: &str, declared: &str) -> Option<String> {
+        super::stream_url(project_base, declared).map(|url| url.as_str().to_string())
+    }
+
+    #[test]
+    fn a_declared_url_resolves_against_the_project_or_is_refused() {
+        // Spec remote-workspace-data Example「宣告的 url 與實際訂閱的網址」的網址列
+        // （「只宣告 websocket」那列沒有 url，由 Desktop 的握手測試涵蓋）。
+        let rows: [(&str, Option<&str>); 7] = [
+            ("/events", Some("https://specs.example.com/api/speclink/v1/projects/acme/events")),
+            ("/stream/changes", Some("https://specs.example.com/api/speclink/v1/projects/acme/stream/changes")),
+            ("https://specs.example.com/push/acme", Some("https://specs.example.com/push/acme")),
+            ("https://SPECS.Example.com:443/push/acme", Some("https://specs.example.com/push/acme")),
+            ("https://push.example.com/acme", None),
+            ("http://specs.example.com/push/acme", None),
+            ("https://specs.example.com:8443/push", None),
+        ];
+        for (declared, expected) in rows {
+            assert_eq!(resolved(BASE, declared).as_deref(), expected, "{declared}");
+        }
+    }
+
+    #[test]
+    fn the_url_to_connect_to_is_the_parsed_one_in_its_normal_form() {
+        // The check and the connection use one parse result: what `subscribe`
+        // gets is that result, never the declared text parsed a second time.
+        // A trailing slash on the project's API address adds no empty segment.
+        assert_eq!(
+            resolved(&format!("{BASE}/"), "/events").as_deref(),
+            Some("https://specs.example.com/api/speclink/v1/projects/acme/events")
+        );
+        // The default port written or not is the same origin, both ways, and
+        // the normal form leaves it out.
+        assert_eq!(resolved(BASE, "https://specs.example.com:443/push").as_deref(), Some("https://specs.example.com/push"));
+        assert_eq!(
+            resolved("https://specs.example.com:443/api/speclink/v1/projects/acme", "https://specs.example.com/push")
+                .as_deref(),
+            Some("https://specs.example.com/push")
+        );
+        // A host that differs only in case is the same origin, in lower case.
+        assert_eq!(
+            resolved(BASE, "https://SPECS.Example.com/push/acme").as_deref(),
+            Some("https://specs.example.com/push/acme")
+        );
+        // `.` and `..` in a path are resolved.
+        assert_eq!(
+            resolved(BASE, "/a/../events").as_deref(),
+            Some("https://specs.example.com/api/speclink/v1/projects/acme/events")
+        );
+        // The text before `@` is a user name: the host is evil.example.
+        assert_eq!(resolved(BASE, "https://specs.example.com@evil.example/x"), None);
+    }
+
+    #[test]
+    fn an_empty_or_unrooted_url_is_refused() {
+        for declared in ["", "events", "stream/changes", "ftp://specs.example.com/events", "https://"] {
+            assert_eq!(resolved(BASE, declared), None, "{declared:?}");
+        }
     }
 }

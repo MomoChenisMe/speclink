@@ -5,6 +5,13 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+/// How many seconds an event stream may stay completely silent before a
+/// client treats it as broken and subscribes again. A heartbeat counts as
+/// data, so the heartbeat interval of a stream must be shorter than this.
+/// Both sides read the number here: the client's stall check, and the
+/// demonstration server's check of its configured heartbeat.
+pub const STALL_LIMIT_SECS: u64 = 45;
+
 /// The `capabilities.events` declaration a server hands out at handshake.
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

@@ -159,7 +159,7 @@ server 只讀一份 YAML 組態檔：
 | `store` | 是 | 儲存後端（`driver` 加上 `path` 或 `url`），見[儲存接口的範例](server-store-drivers.zh-TW.md)。 |
 | `identity` | 是 | 帳號資料庫：`driver: sqlite` 加上 `path`。 |
 | `public_url` | 否 | 對外網址，預設 `http://localhost:8080`。 |
-| `events` | 否 | 即時事件串流的調整值：`retention`（每個範圍保留的事件數，預設 1024）、`buffer`（每條連線的緩衝，預設 256）、`heartbeat_secs`（心跳間隔秒數，預設 15）。 |
+| `events` | 否 | 即時事件串流的調整值：`retention`（每個範圍保留的事件數，預設 1024）、`buffer`（每條連線的緩衝，預設 256）、`heartbeat_secs`（心跳間隔秒數，預設 15）。`heartbeat_secs` 必須小於 45：用戶端 45 秒沒有收到資料就把串流視為中斷。設成 45 以上時 server 不啟動，並印出 `'events.heartbeat_secs' must be less than 45`。 |
 
 範例：
 

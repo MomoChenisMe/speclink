@@ -478,14 +478,15 @@ fn the_door_events_of_a_stamp_and_a_landing_are_classified_as_the_change() {
     use speclink_host::commit::event_resource;
     let door = door();
     ready_to_stamp(&door, "review");
-    post(&door, "changes/demo/review/stamp", json!({ "scope": [{ "path": "src/a.rs", "hash": "aa" }] }));
+    let stamp = json!({ "scope": [{ "path": "src/a.rs", "hash": "aa" }], "headCommit": SHA });
+    post(&door, "changes/demo/review/stamp", stamp);
     post(&door, "changes/demo/landed", json!({ "commit": SHA }));
-    let resources: Vec<(String, InvalidationScope, String)> = door
-        .store
-        .take()
-        .commits
+    let events: Vec<_> = door.store.take().commits.iter().flat_map(|commit| commit.events().to_vec()).collect();
+    // The store keeps the stamp's commit; the push names the change only.
+    let stamped = events.iter().find(|e| e.name() == "review-stamped").expect("a review-stamped event");
+    assert_eq!(stamped.payload(), &json!({ "change": "demo", "commit": SHA }));
+    let resources: Vec<(String, InvalidationScope, String)> = events
         .iter()
-        .flat_map(|commit| commit.events().to_vec())
         .map(|event| {
             let (scope, id) = event_resource(event.name(), event.payload());
             (event.name().to_string(), scope, id)

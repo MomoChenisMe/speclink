@@ -546,10 +546,20 @@ The routes below belong to the demonstration server. They are not in the entry p
 
 Each commit of a write carries events. The Server decides how it pushes events to clients, and it declares that in `events.transports` of the handshake. The demonstration server has `GET /events`, an SSE stream (Server-Sent Events: the Server pushes events over one long-lived connection). A host that embeds the engine with Node has no ready stream at this time, so its clients poll `GET /sync-state`.
 
+An event only tells you which resource changed. It does not carry the new content, and this is intentional: when you get an event, read the resource again. Then a client always shows what the Server has, and an event that you missed is not lost, because the next read gives the current state.
+
+The `url` of an `sse` transport has one of two forms:
+
+- A path that starts with `/`, such as `/events`. It is relative to the project URL, the same as the `polling` url: `/events` is `{origin}/api/speclink/v1/projects/{project}/events`.
+- A full URL that starts with `http://` or `https://`. It must have the same origin as the Server: the same scheme, host, and port.
+
+Speclink Desktop uses the first `sse` transport. It does not connect to a URL of another origin, and it does not send your credential there. It polls `GET /sync-state` instead, and it shows no error. It also polls when the handshake declares no `sse` transport, for example only `websocket`.
+
 - `invalidate` event: a resource changed. The `data` is, for example, `{"eventId":"42","scope":"change","resourceId":"add-login","revision":42}`. Read the resource again when you get it.
 - `reset` event: the Server removed your resume position. Read all data again.
 - When you reconnect, send `Last-Event-ID` to get the events that you missed.
-- When the stream is idle, the Server sends heartbeat comment lines to keep the connection open.
+- When the stream is idle, the Server sends a comment line as a heartbeat. The demonstration server sends one every 15 seconds by default (`events.heartbeat_secs` in its configuration, which must be less than 45).
+- When a client gets no data for 45 seconds, heartbeats included, it treats the connection as broken. It checks `GET /sync-state` for changes that it missed, and it subscribes again. A host that serves its own stream must send a heartbeat more often than every 45 seconds.
 
 The kind of the event decides `scope` and `resourceId`. A host that pushes events itself uses the same table:
 
@@ -559,11 +569,14 @@ The kind of the event decides `scope` and `resourceId`. A host that pushes event
 | `review-round-added`, `review-stamped`, `review-discarded`, `verify-round-added`, `verify-stamped`, `verify-discarded` | `change` | The change name |
 | `change-archived` | `spec` | The change name |
 | `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-archived`, `discussion-restored`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
-| All others (for example `scope-imported` of an import, and `language-replaced` of a write of the shared vocabulary document) | `unknown` | An empty string |
+| All others (for example `scope-imported` of an import, `language-replaced` of a write of the shared vocabulary document, and `workflow-config-changed` of a workflow-config write) | `unknown` | An empty string |
 
 - The six events of the review station and the verify station belong to the change: a new round, a stamp, and a discarded ticket. `resourceId` is the change name. A client that reads the change again gets the new station state.
+- The payload of `review-stamped` and `verify-stamped` has `change`. It also has `commit` when the stamp recorded a commit, that is, when the stamp request gave `headCommit`. The value is the commit in the change's metadata.
 - The payload of `change-landed` has `change` and `commit`. It has `branch` only when the report gave a branch.
 - The payload of the two free-field events has only the name and the changed keys (`keys`). It has no values.
+- `workflow-config-changed` comes from a workflow-config write that wrote the document. A dry run, a write of the same content, and a refused write have no event. Its payload is `{"keys": [...]}`: the keys whose value changed, in the order of the write. The list is empty when only layout or comments changed. The payload has no values. The event belongs to `unknown`, so a client reads all data again.
+- The push to a client never carries a payload: no `commit` and no `keys`. Only the host's store and its `afterCommit` hook get them.
 - When you get `unknown`, read all data again. An import changes the full scope, so it is in this group on purpose.
 
 ## <a id="payload-examples"></a>Request and response examples

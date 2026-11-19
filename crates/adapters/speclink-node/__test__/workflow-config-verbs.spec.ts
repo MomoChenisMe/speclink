@@ -4,9 +4,11 @@
 import { execFileSync } from 'node:child_process'
 import { readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
+import { createHost } from '../index.js'
 import { BAD_CONFIG, cliBin, cliJson, fsEngine, makeFsFixture, projectFiles, rejection } from './helpers'
+import { memoryPort } from './memory-port'
 
 const CONFIG = 'schema: spec-driven\nlocale: tw\ntdd: false\n'
 /** The workflow config, as `projectFiles` names it. */
@@ -127,6 +129,34 @@ describe('會寫入的動詞', () => {
     const err = await rejection(fsEngine(root).dispatch(['workflow-config', 'set', 'locale', 'fr']))
     expect(err.code).toBe('invalid_config')
     expect(projectFiles(root)).toEqual(before)
+  })
+})
+
+// command-runtime「蓋章事件帶 commit 與流程設定變動的事件」：經宿主套件寫入時，JS 的 commit
+// 函式與 afterCommit 都收到 workflow-config-changed 與變動的鍵；沒有寫入就沒有提交與事件。
+describe('流程設定的寫入經宿主套件回報事件', () => {
+  it('commit 函式與 afterCommit 都收到 workflow-config-changed 與 keys', async () => {
+    const watched: { command: string; events: { name: string; payload: unknown }[] }[] = []
+    const port = memoryPort()
+    port.seed('s1', { 'config.yaml': 'schema: spec-driven\n' })
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        afterCommit: (info) => {
+          watched.push({ command: info.command, events: info.events })
+        },
+      },
+    })
+    const set = (...argv: string[]) =>
+      host.dispatch({ identity: { id: 'u_1', displayName: 'Alice' }, scope: 's1', argv: ['workflow-config', 'set', ...argv] })
+
+    await set('audit', 'true')
+    await set('audit', 'true') // 設成現在的值：沒有寫入
+    await set('tdd', 'true', '--dry-run')
+
+    const expected = [{ name: 'workflow-config-changed', payload: { keys: ['audit'] } }]
+    expect(port.commits.map(({ commit }) => commit.events)).toEqual([expected])
+    await vi.waitFor(() => expect(watched).toEqual([{ command: 'workflow-config-edit', events: expected }]))
   })
 })
 

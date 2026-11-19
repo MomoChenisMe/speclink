@@ -1,0 +1,153 @@
+schema: spec-driven
+created: 2026-11-18T14:37:11+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-2
+depends_on: client-os-trust-store, language-replace-and-discuss-restore
+started_at: 2026-11-19T08:32:10+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-19T10:37:28+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 17
+reviewed_rounds: 3
+reviewed_commit: ab0b4a5418d5c4347041f4f34eacdf1746b4a544
+reviewed_scope:
+  - path: Cargo.lock
+    hash: 235e2a9471e00dd532af14024564a9b0a3e1acdea4f673de4447a2735af288c4
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: b278ae2b9c665c24371aea42c77b989a6bb33d5922e529aab0ce35b1d9f84a6a
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 1508c35bd7a613280ea94f1432e62dbcbeacfac48b7464dbf940b4fd6ffb1fc5
+  - path: apps/desktop/src-tauri/tests/it/common/mod.rs
+    hash: abbb3aa8f9fad54205c026f9ff1868b2452883ec127685d9c84233e09f9e35dd
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: f79db5bc3c6c9d6fb0134a0a5d3f4514672a1c23a16b908eaf9d9676022f09c3
+  - path: apps/desktop/src-tauri/tests/it/phase3_chain.rs
+    hash: cdaced29cba681dc371bf09549becec3e0e175b7e8b151cc9d4b7b4b46d719f5
+  - path: crates/adapters/speclink-node/__test__/host.spec.ts
+    hash: 43e6547cd3bd260cfb2b43947f863ea1412b5e6353dbc76ddd9d4763829659f1
+  - path: crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts
+    hash: f9593972350bfe6d1ab0926bb4903d2b4d30dbe459d95d29e62cc4c4366a35ac
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 50321ff980e4d8ba8af2a05e5c2ed68b1a3c9a139ec187657270f521bae0b64c
+  - path: crates/adapters/speclink-verbs/src/render/mod.rs
+    hash: 5a69223b38ce3f11eb7043f06a64d05bb5ae73f3636a760ecccf9ed68e7b6d94
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 54e4dc593096ae7bca8aeb79d151809a52d53f4338d08f58865e40c3ae248484
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 058168423abbe054e5aea2af623db16369acb572ab497a90d749ecbb9d23dd35
+  - path: crates/engine/speclink-core/src/command/workflow_config.rs
+    hash: 76e38daa1cfeea867f1a468e6c8d9c004e40fe1e31b4e0c6d1806527dc14ea6c
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 84108d13b7b775bd629bf4148badc048418884cc8e4cfe6ff7c577fef92a9cf6
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: e421fdc3d4e61cb6d4a594b8bc54cf01eac37dddfeeff5f9cb5a186b8da32f15
+  - path: crates/host/speclink-host/src/port_exec.rs
+    hash: d0bc5cc208e36d044cba45de68dc7327947f40a6e5a42cb27b0ff0c0e83217e0
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: 0263377bba562b1114d85463236feb7b8dedd1d97c211367991cbd98b8c0e061
+  - path: crates/host/speclink-host/tests/kit.rs
+    hash: c4157382e2dd956b1b6d6c36604b471eb47767da8dc96318ed5febdc9ca6e82a
+  - path: crates/host/speclink-host/tests/station_wire.rs
+    hash: 0f9e170197854a36dd18775e30557096eff94f62b50aff59c209f1901436142f
+  - path: crates/host/speclink-server/src/config.rs
+    hash: f90e0a3961f5590b2fa3d3380e53c7a9363cf17750d35df6b729512704fda1cf
+  - path: crates/protocol/speclink-protocol/src/events.rs
+    hash: 46157528c5930849710e5be8bf48644d2e4b0004def60a90bd85d4c7b97f397d
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: 751a1a6a2f609130df04076d58859bd1c090d7f20feed29375e0f429d647ae45
+  - path: crates/protocol/speclink-remote/src/events.rs
+    hash: 039d955c62be6b244047227f839fa153f6001ca80822d1c1c4e668a3900a3692
+  - path: crates/protocol/speclink-remote/tests/it/events_sse.rs
+    hash: 9ae0a02100cf5f3cc98f303caf5f964f1280f7f916a816c3eacbe65153bafdb3
+  - path: docs/product-status.md
+    hash: c345af8294d984d01b4d14b41f1dd54598e22880679aeb09a00908cbdf6ecd1b
+  - path: docs/product-status.zh-TW.md
+    hash: e6a676294a213bdc06bf852c4c3d6c5dabe692679b34d875e87f58a8b627ff8c
+  - path: docs/sdk-node.md
+    hash: a4dd4467edc977b63b15446d867712bc10abd70b80e4518489794a90355694c3
+  - path: docs/sdk-node.zh-TW.md
+    hash: c1522ca029027d635c443d8bc3848f7988b42e09ea73c343d06531b6748dac69
+  - path: docs/server-deployment.md
+    hash: 22fcd7e63ebcf93d9873f1a226a527c5ecc9040dcd6c5c6d10970c3b0f424ca0
+  - path: docs/server-deployment.zh-TW.md
+    hash: affc7b1d083b9373c8b013d1fbac1a94530ee4ef7955ec3d0ca171a246013980
+  - path: docs/verb-contract.md
+    hash: 5c64f02915429e700db0b5bd0861508bda002022735e67584607a56e71a8cc7b
+  - path: docs/verb-contract.zh-TW.md
+    hash: 84dea4a9f8dd622dc0684f80954735320cadd2cc037b2f3a8586dbb37f6bdfad
+verified_at: 2026-11-19T10:37:31+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 17
+verified_rounds: 3
+verified_commit: ab0b4a5418d5c4347041f4f34eacdf1746b4a544
+verified_scope:
+  - path: Cargo.lock
+    hash: 235e2a9471e00dd532af14024564a9b0a3e1acdea4f673de4447a2735af288c4
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: b278ae2b9c665c24371aea42c77b989a6bb33d5922e529aab0ce35b1d9f84a6a
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 1508c35bd7a613280ea94f1432e62dbcbeacfac48b7464dbf940b4fd6ffb1fc5
+  - path: apps/desktop/src-tauri/tests/it/common/mod.rs
+    hash: abbb3aa8f9fad54205c026f9ff1868b2452883ec127685d9c84233e09f9e35dd
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: f79db5bc3c6c9d6fb0134a0a5d3f4514672a1c23a16b908eaf9d9676022f09c3
+  - path: apps/desktop/src-tauri/tests/it/phase3_chain.rs
+    hash: cdaced29cba681dc371bf09549becec3e0e175b7e8b151cc9d4b7b4b46d719f5
+  - path: crates/adapters/speclink-node/__test__/host.spec.ts
+    hash: 43e6547cd3bd260cfb2b43947f863ea1412b5e6353dbc76ddd9d4763829659f1
+  - path: crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts
+    hash: f9593972350bfe6d1ab0926bb4903d2b4d30dbe459d95d29e62cc4c4366a35ac
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 50321ff980e4d8ba8af2a05e5c2ed68b1a3c9a139ec187657270f521bae0b64c
+  - path: crates/adapters/speclink-verbs/src/render/mod.rs
+    hash: 5a69223b38ce3f11eb7043f06a64d05bb5ae73f3636a760ecccf9ed68e7b6d94
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 54e4dc593096ae7bca8aeb79d151809a52d53f4338d08f58865e40c3ae248484
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 058168423abbe054e5aea2af623db16369acb572ab497a90d749ecbb9d23dd35
+  - path: crates/engine/speclink-core/src/command/workflow_config.rs
+    hash: 76e38daa1cfeea867f1a468e6c8d9c004e40fe1e31b4e0c6d1806527dc14ea6c
+  - path: crates/engine/speclink-core/src/quality/station.rs
+    hash: 84108d13b7b775bd629bf4148badc048418884cc8e4cfe6ff7c577fef92a9cf6
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: e421fdc3d4e61cb6d4a594b8bc54cf01eac37dddfeeff5f9cb5a186b8da32f15
+  - path: crates/host/speclink-host/src/port_exec.rs
+    hash: d0bc5cc208e36d044cba45de68dc7327947f40a6e5a42cb27b0ff0c0e83217e0
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: 0263377bba562b1114d85463236feb7b8dedd1d97c211367991cbd98b8c0e061
+  - path: crates/host/speclink-host/tests/kit.rs
+    hash: c4157382e2dd956b1b6d6c36604b471eb47767da8dc96318ed5febdc9ca6e82a
+  - path: crates/host/speclink-host/tests/station_wire.rs
+    hash: 0f9e170197854a36dd18775e30557096eff94f62b50aff59c209f1901436142f
+  - path: crates/host/speclink-server/src/config.rs
+    hash: f90e0a3961f5590b2fa3d3380e53c7a9363cf17750d35df6b729512704fda1cf
+  - path: crates/protocol/speclink-protocol/src/events.rs
+    hash: 46157528c5930849710e5be8bf48644d2e4b0004def60a90bd85d4c7b97f397d
+  - path: crates/protocol/speclink-remote/Cargo.toml
+    hash: 751a1a6a2f609130df04076d58859bd1c090d7f20feed29375e0f429d647ae45
+  - path: crates/protocol/speclink-remote/src/events.rs
+    hash: 039d955c62be6b244047227f839fa153f6001ca80822d1c1c4e668a3900a3692
+  - path: crates/protocol/speclink-remote/tests/it/events_sse.rs
+    hash: 9ae0a02100cf5f3cc98f303caf5f964f1280f7f916a816c3eacbe65153bafdb3
+  - path: docs/product-status.md
+    hash: c345af8294d984d01b4d14b41f1dd54598e22880679aeb09a00908cbdf6ecd1b
+  - path: docs/product-status.zh-TW.md
+    hash: e6a676294a213bdc06bf852c4c3d6c5dabe692679b34d875e87f58a8b627ff8c
+  - path: docs/sdk-node.md
+    hash: a4dd4467edc977b63b15446d867712bc10abd70b80e4518489794a90355694c3
+  - path: docs/sdk-node.zh-TW.md
+    hash: c1522ca029027d635c443d8bc3848f7988b42e09ea73c343d06531b6748dac69
+  - path: docs/server-deployment.md
+    hash: 22fcd7e63ebcf93d9873f1a226a527c5ecc9040dcd6c5c6d10970c3b0f424ca0
+  - path: docs/server-deployment.zh-TW.md
+    hash: affc7b1d083b9373c8b013d1fbac1a94530ee4ef7955ec3d0ca171a246013980
+  - path: docs/verb-contract.md
+    hash: 5c64f02915429e700db0b5bd0861508bda002022735e67584607a56e71a8cc7b
+  - path: docs/verb-contract.zh-TW.md
+    hash: 84dea4a9f8dd622dc0684f80954735320cadd2cc037b2f3a8586dbb37f6bdfad
+archived_at: 2026-11-19T10:40:03+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

@@ -2118,6 +2118,88 @@ fn review_verbs_execute_over_commands_with_events_and_actor() {
 }
 
 #[test]
+fn stamp_outcomes_and_events_carry_the_commit_the_stamp_recorded() {
+    // spec「蓋章事件帶 commit 與流程設定變動的事件」：帶 commit 的蓋章，結果、事件與
+    // metadata 是同一個值；沒有帶時事件沒有 commit。design D1：值取自記下來的
+    // commit——請求帶了前後空白，事件帶的是去掉空白後寫進 metadata 的那個。
+    const SHA: &str = "0123456789abcdef0123456789abcdef01234567";
+    let store = TestStore::with_meta("demo", META);
+    store.put_artifact("demo", "tasks.md", "- [x] 1 a\n");
+    let round = "**Scope**: src/lib.rs\n".to_string();
+    let scope = || {
+        vec![crate::model::ReviewedScopeEntry {
+            path: "src/lib.rs".to_string(),
+            hash: crate::station::content_fingerprint("fn lib() {}\n"),
+        }]
+    };
+
+    ok(&store, Command::ReviewAddRound { change: "demo".to_string(), content: round.clone() });
+    let (outcome, ev) = ok(
+        &store,
+        Command::ReviewStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            head_commit: Some(SHA.to_string()),
+            scope: scope(),
+            missing: vec![],
+        },
+    );
+    let CommandOutcome::ReviewStamp(o) = outcome else { panic!("expected review stamp, got {outcome:?}") };
+    assert_eq!(o.commit.as_deref(), Some(SHA));
+    match &ev[..] {
+        [DomainEvent::ReviewStamped { change, commit, .. }] => {
+            assert_eq!((change.as_str(), commit.as_deref()), ("demo", Some(SHA)));
+        }
+        other => panic!("expected one review-stamped event, got {other:?}"),
+    }
+    let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
+    assert_eq!(meta.reviewed_commit.as_deref(), Some(SHA));
+
+    ok(&store, Command::VerifyAddRound { change: "demo".to_string(), content: round.clone() });
+    let (outcome, ev) = ok(
+        &store,
+        Command::VerifyStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            head_commit: None,
+            scope: scope(),
+            missing: vec![],
+        },
+    );
+    let CommandOutcome::VerifyStamp(o) = outcome else { panic!("expected verify stamp, got {outcome:?}") };
+    assert_eq!(o.commit, None);
+    match &ev[..] {
+        [DomainEvent::VerifyStamped { change, commit, .. }] => {
+            assert_eq!((change.as_str(), commit.as_deref()), ("demo", None));
+        }
+        other => panic!("expected one verify-stamped event, got {other:?}"),
+    }
+
+    ok(&store, Command::VerifyAddRound { change: "demo".to_string(), content: round });
+    let (outcome, ev) = ok(
+        &store,
+        Command::VerifyStamp {
+            change: "demo".to_string(),
+            accept: false,
+            tool: None,
+            head_commit: Some(format!("  {SHA}\n")),
+            scope: scope(),
+            missing: vec![],
+        },
+    );
+    let CommandOutcome::VerifyStamp(o) = outcome else { panic!("expected verify stamp, got {outcome:?}") };
+    assert_eq!(o.commit.as_deref(), Some(SHA));
+    match &ev[..] {
+        [DomainEvent::VerifyStamped { commit, .. }] => assert_eq!(commit.as_deref(), Some(SHA)),
+        other => panic!("expected one verify-stamped event, got {other:?}"),
+    }
+    let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).expect("meta parses");
+    assert_eq!(meta.verified_commit.as_deref(), Some(SHA));
+}
+
+#[test]
 fn discuss_verbs_report_their_events() {
     // 覆蓋表 discuss 全系列（new/context/add-round/conclude/link/seal/
     // archive）：一條真實生命週期，每步斷言恰一筆對應事件。
@@ -2587,6 +2669,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
         (DomainEvent::DiscussionArchived { slug: s("d"), occurred_at: at }, "discussion-archived"),
         (DomainEvent::DiscussionRestored { slug: s("d"), occurred_at: at }, "discussion-restored"),
         (DomainEvent::LanguageReplaced { occurred_at: at }, "language-replaced"),
+        (DomainEvent::WorkflowConfigChanged { keys: vec![s("tdd")], occurred_at: at }, "workflow-config-changed"),
         (
             DomainEvent::DiscussionDiscarded { slug: s("d"), occurred_at: at },
             "discussion-discarded",
@@ -2595,20 +2678,20 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             DomainEvent::ReviewRoundAdded { change: s("c"), round: 1, occurred_at: at },
             "review-round-added",
         ),
-        (DomainEvent::ReviewStamped { change: s("c"), occurred_at: at }, "review-stamped"),
+        (DomainEvent::ReviewStamped { change: s("c"), commit: None, occurred_at: at }, "review-stamped"),
         (DomainEvent::ReviewDiscarded { change: s("c"), occurred_at: at }, "review-discarded"),
         (
             DomainEvent::VerifyRoundAdded { change: s("c"), round: 1, occurred_at: at },
             "verify-round-added",
         ),
-        (DomainEvent::VerifyStamped { change: s("c"), occurred_at: at }, "verify-stamped"),
+        (DomainEvent::VerifyStamped { change: s("c"), commit: None, occurred_at: at }, "verify-stamped"),
         (DomainEvent::VerifyDiscarded { change: s("c"), occurred_at: at }, "verify-discarded"),
         (
             DomainEvent::ChangeLanded { change: s("c"), commit: s("0123456"), branch: None, occurred_at: at },
             "change-landed",
         ),
     ];
-    assert_eq!(table.len(), 33, "the coverage table has 33 mutating verbs");
+    assert_eq!(table.len(), 34, "the coverage table has 34 event kinds");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }

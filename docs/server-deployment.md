@@ -159,7 +159,7 @@ The server reads one YAML configuration file:
 | `store` | Yes | The storage backend (`driver` plus `path` or `url`). See the [store port examples](server-store-drivers.md). |
 | `identity` | Yes | The account database: `driver: sqlite` plus `path`. |
 | `public_url` | No | The public URL. The default is `http://localhost:8080`. |
-| `events` | No | Settings for the live event stream: `retention` (events kept per scope, default 1024), `buffer` (buffer per connection, default 256), and `heartbeat_secs` (heartbeat interval in seconds, default 15). |
+| `events` | No | Settings for the live event stream: `retention` (events kept per scope, default 1024), `buffer` (buffer per connection, default 256), and `heartbeat_secs` (heartbeat interval in seconds, default 15). `heartbeat_secs` must be less than 45: a client treats a stream with no data for 45 seconds as broken. With 45 or more, the server does not start, and it prints `'events.heartbeat_secs' must be less than 45`. |
 
 Example:
 

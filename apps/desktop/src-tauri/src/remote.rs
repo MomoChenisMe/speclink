@@ -25,6 +25,7 @@ use speclink_protocol::command::{
     ReviewTicketResponse,
 };
 use speclink_protocol::events::TransportKind;
+use speclink_remote::events::StreamUrl;
 use speclink_protocol::query::{
     ArchivedItem, ArtifactContent, BoardOrderDoc, ChangeStatus, ChangeSummary,
     DiscussionCut, DiscussionInfo, ImportBundle, ImportBundleDocument, ImportDocumentId,
@@ -1560,12 +1561,72 @@ pub fn open_workspace(
         capabilities: RemoteCapabilities::from_binding(&binding),
     };
     let workspace = RemoteWorkspace {
+        stream: stream_of(&project_base, &binding),
         project_base,
         // 以 handshake 裁定後的 repo 為準（省略 repo 時 server 綁定唯一 repo）。
         repo: binding.repo.key,
         manager: Arc::clone(manager),
     };
     Ok((workspace, info))
+}
+
+/// 握手宣告的事件串流（D4）：第一個 sse transport 的 url，經
+/// [`speclink_remote::events::stream_url`] 對專案的 API 位址解析。沒有宣告 sse、
+/// 宣告的網址與 Server 不同 origin 或無法解析時是 `None`——Desktop 這時只輪詢。
+fn stream_of(project_base: &str, binding: &BindingResponse) -> Option<StreamUrl> {
+    let declared = binding.capabilities.events.transports.iter().find(|t| t.kind == TransportKind::Sse)?;
+    speclink_remote::events::stream_url(project_base, &declared.url)
+}
+
+/// 每個 remote 分頁（connection／project／repo）握手宣告的事件串流：開啟時記下，
+/// 訂閱時讀取。網址會收到存取憑證，所以只留在 Rust 端，不送給前端、也不由前端
+/// 轉交回來。沒有條目＝沒有可用的串流，只輪詢。
+#[derive(Default)]
+pub struct DeclaredStreams(std::sync::Mutex<HashMap<String, HashMap<(String, String), StreamUrl>>>);
+
+impl DeclaredStreams {
+    /// 記下一次握手的結果；`None` 清掉這個分頁先前的網址。
+    pub fn remember(&self, connection_id: &str, project: &str, repo: &str, stream: Option<StreamUrl>) {
+        let mut connections = self.0.lock().expect("streams lock");
+        let tabs = connections.entry(connection_id.to_string()).or_default();
+        let tab = (project.to_string(), repo.to_string());
+        match stream {
+            Some(stream) => tabs.insert(tab, stream),
+            None => tabs.remove(&tab),
+        };
+    }
+
+    pub fn get(&self, connection_id: &str, project: &str, repo: &str) -> Option<StreamUrl> {
+        let connections = self.0.lock().expect("streams lock");
+        connections.get(connection_id)?.get(&(project.to_string(), repo.to_string())).cloned()
+    }
+
+    /// 連線移除時，它的分頁記下的網址一起丟掉。
+    pub fn forget_connection(&self, connection_id: &str) {
+        self.0.lock().expect("streams lock").remove(connection_id);
+    }
+}
+
+/// 訂閱一個分頁握手宣告的事件串流。每次訂閱都重讀 `streams`，所以之後的握手換了
+/// 網址，下一次重連就用新的。沒有可用的網址時不發任何請求、回一個錯誤：事件管理器
+/// 對訂閱失敗只做輪詢，不呈現錯誤，也不算連線失敗（請求沒有經過 `manager`）。
+pub fn subscribe_declared(
+    streams: &DeclaredStreams,
+    connection_id: &str,
+    project: &str,
+    repo: &str,
+    manager: &TokenManager,
+    credentials: &dyn CredentialStore,
+    last_event_id: Option<u64>,
+) -> Result<speclink_remote::events::EventStream, RemoteError> {
+    let Some(stream) = streams.get(connection_id, project, repo) else {
+        return Err(unavailable(
+            "the handshake declares no usable event stream — converging via sync-state".to_string(),
+        ));
+    };
+    manager.execute(credentials, |token| {
+        speclink_remote::events::subscribe(&stream, token, Some(repo), last_event_id)
+    })
 }
 
 /// chooser 在選定 project/repo 前讀取登入者可見 scopes。此請求只有 bearer，
@@ -1604,6 +1665,9 @@ pub struct RemoteWorkspace {
     project_base: String,
     repo: String,
     manager: Arc<TokenManager>,
+    /// 握手宣告的事件串流（[`stream_of`]）。只有 [`open_workspace`] 握手建立的把手
+    /// 才有；[`RemoteWorkspace::at`] 沒有握手，所以是 `None`。
+    stream: Option<StreamUrl>,
 }
 
 // 手寫 Debug：TokenManager 持有 bearer，絕不進任何 Debug 輸出。
@@ -1632,7 +1696,14 @@ impl RemoteWorkspace {
             ),
             repo: repo.to_string(),
             manager: Arc::clone(manager),
+            stream: None,
         }
+    }
+
+    /// 這次握手宣告的事件串流；`None` 時只輪詢。開啟分頁的一方把它記進
+    /// [`DeclaredStreams`]。
+    pub fn declared_stream(&self) -> Option<&StreamUrl> {
+        self.stream.as_ref()
     }
 
     /// 逐請求建構 Client 執行一擊（token 生命週期由 TokenManager 承擔）。
@@ -2214,8 +2285,9 @@ pub fn station_ticket_payload(ticket: ReviewTicketResponse) -> Option<serde_json
 
 #[cfg(test)]
 mod capability_tests {
-    use super::RemoteCapabilities;
+    use super::{stream_of, DeclaredStreams, RemoteCapabilities};
     use speclink_protocol::binding::{Actor, BindingResponse, Capabilities, ScopeRef};
+    use speclink_protocol::events::{EventTransport, EventsDeclaration, PollingDeclaration, TransportKind};
 
     fn binding_with(capabilities: Capabilities) -> BindingResponse {
         let scope = |key: &str| ScopeRef {
@@ -2257,6 +2329,75 @@ mod capability_tests {
         assert!(caps.archive);
         assert!(caps.promote_discussion);
         assert!(caps.archive_discussion);
+    }
+
+    fn declaring(transports: Vec<EventTransport>, polling: bool) -> BindingResponse {
+        binding_with(Capabilities {
+            events: EventsDeclaration {
+                transports,
+                polling: polling.then(|| PollingDeclaration { url: "/sync-state".to_string(), etag: true }),
+            },
+            ..Default::default()
+        })
+    }
+
+    fn transport(kind: TransportKind, url: &str) -> EventTransport {
+        EventTransport { kind, url: url.to_string(), resume: true }
+    }
+
+    #[test]
+    fn the_stream_url_is_the_first_sse_the_handshake_declares() {
+        // 規格「事件串流的網址取自握手的宣告」：相對的 url 接在專案的 API 位址之後、
+        // 同 origin 的完整網址可以使用（這裡的宣告都已是正規寫法，連線的網址與宣告的
+        // 相同）、其他情況沒有網址（只輪詢）；live_updates 的算法不變。
+        const BASE: &str = "https://specs.example.com/api/speclink/v1/projects/acme";
+        let sse = |url: &str| transport(TransportKind::Sse, url);
+        let ws = || transport(TransportKind::Websocket, "wss://specs.example.com/ws");
+        let events = || Some(format!("{BASE}/events"));
+        let rows: Vec<(&str, Vec<EventTransport>, bool, Option<String>, bool)> = vec![
+            ("/events", vec![sse("/events")], true, events(), true),
+            (
+                "the same origin",
+                vec![sse("https://specs.example.com/push/acme")],
+                true,
+                Some("https://specs.example.com/push/acme".to_string()),
+                true,
+            ),
+            ("another origin", vec![sse("https://push.example.com/acme")], true, None, true),
+            ("another origin, no polling", vec![sse("https://push.example.com/acme")], false, None, true),
+            ("websocket only", vec![ws()], true, None, true),
+            ("websocket only, no polling", vec![ws()], false, None, false),
+            ("no transports", vec![], true, None, true),
+            ("two sse after a websocket", vec![ws(), sse("/events"), sse("/other")], true, events(), true),
+        ];
+        for (row, transports, polling, expected, live) in rows {
+            let binding = declaring(transports, polling);
+            assert_eq!(stream_of(BASE, &binding).map(|url| url.as_str().to_string()), expected, "{row}");
+            assert_eq!(RemoteCapabilities::from_binding(&binding).live_updates, live, "{row}");
+        }
+    }
+
+    #[test]
+    fn declared_streams_are_kept_per_tab_and_go_with_their_connection() {
+        let url = |path: &str| {
+            speclink_remote::events::stream_url("https://specs.example.com/api/speclink/v1/projects/acme", path)
+        };
+        let streams = DeclaredStreams::default();
+        streams.remember("conn_a", "acme", "web", url("/events"));
+        streams.remember("conn_a", "acme", "api", url("/other"));
+        streams.remember("conn_b", "acme", "web", url("/events"));
+        assert_eq!(streams.get("conn_a", "acme", "web"), url("/events"));
+        assert_eq!(streams.get("conn_a", "acme", "api"), url("/other"));
+        assert_eq!(streams.get("conn_a", "acme", "docs"), None, "a tab that never shook hands");
+
+        // 之後的握手沒有可用的串流：舊的網址不留下。
+        streams.remember("conn_a", "acme", "web", None);
+        assert_eq!(streams.get("conn_a", "acme", "web"), None);
+
+        // 連線移除：它的分頁都不再有串流，別的連線不受影響。
+        streams.forget_connection("conn_a");
+        assert_eq!(streams.get("conn_a", "acme", "api"), None);
+        assert_eq!(streams.get("conn_b", "acme", "web"), url("/events"));
     }
 
     #[test]

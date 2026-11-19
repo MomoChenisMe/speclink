@@ -870,6 +870,9 @@ struct ConnectionsState {
     state_observer: std::sync::Arc<dyn Fn(remote::ConnectionStateEvent) + Send + Sync>,
     /// 進行中的登入的取消旗標（connection_login_cancel 設定）。
     logins: connections::LoginCancels,
+    /// 每個 remote 分頁握手宣告的事件串流：remote_open 記下、remote_watch 的訂閱
+    /// 讀取、connection_remove 清掉。
+    streams: remote::DeclaredStreams,
 }
 
 impl ConnectionsState {
@@ -900,6 +903,7 @@ impl ConnectionsState {
         manager.bind_connection_id(connection_id);
         manager
     }
+
 }
 
 /// 條目的 TS 檢視：registry 欄位＋由 Keychain 推導的登入狀態。secret 不出現。
@@ -996,6 +1000,7 @@ async fn connection_remove(app: tauri::AppHandle, id: String) -> Result<(), Stri
         if let Some(origin) = connections::remove_connection(&path, &id, &*state.credentials)? {
             state.managers.lock().expect("manager lock").remove(&origin);
         }
+        state.streams.forget_connection(&id);
         Ok(())
     })
     .await
@@ -1188,8 +1193,14 @@ async fn remote_open(
         .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
-        let (_, info) = remote::open_workspace(&origin, &target, &manager, &*state.credentials)
+        let (workspace, info) = remote::open_workspace(&origin, &target, &manager, &*state.credentials)
             .map_err(remote::RemoteOpenFailure::from)?;
+        state.streams.remember(
+            &connection_id,
+            &info.project_key,
+            &info.repo_key,
+            workspace.declared_stream().cloned(),
+        );
         serde_json::to_value(&info)
             .map_err(|error| remote::RemoteOpenFailure::unknown(error.to_string()))
     })
@@ -1933,15 +1944,22 @@ async fn remote_watch(
         let manager = state.manager_for_connection(&connection_id, &origin);
         let sub_state = state.clone();
         let sub_manager = manager.clone();
-        let sub_base = base.clone();
         let sub_repo = repo.clone();
         let etag_repo = repo;
         events.register(
             &key,
+            // 握手宣告的串流（remote_open 記下的）；沒有就不發請求，事件管理器照既有
+            // 路徑只輪詢、不呈現錯誤（D4）。
             move |last| {
-                sub_manager.execute(&*sub_state.credentials, |token| {
-                    speclink_remote::events::subscribe(&sub_base, token, Some(&sub_repo), last)
-                })
+                remote::subscribe_declared(
+                    &sub_state.streams,
+                    &connection_id,
+                    &project,
+                    &sub_repo,
+                    &sub_manager,
+                    &*sub_state.credentials,
+                    last,
+                )
             },
             move || {
                 manager.execute(&*state.credentials, |token| {
@@ -2042,6 +2060,7 @@ pub fn run() {
                     let _ = state_emitter.emit(remote::REMOTE_CONNECTION_STATE_EVENT, event);
                 }),
                 logins: connections::LoginCancels::default(),
+                streams: remote::DeclaredStreams::default(),
             }));
             // remote 事件中樞：invalidate → remote-workspace-changed（payload＝
             // locator key），前端 session 據此過濾重讀。

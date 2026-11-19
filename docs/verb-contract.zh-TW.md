@@ -546,10 +546,20 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 
 每一次寫入的提交都帶著事件。Server 把事件推給用戶端的方式由它自己決定，並在握手的 `events.transports` 宣告。示範用 server 提供 `GET /events`，它是 SSE（Server-Sent Events：Server 透過一條長連線持續推送事件）。用 Node 內嵌的宿主目前沒有現成的串流，用戶端靠 `GET /sync-state` 輪詢。
 
+事件只指出哪個資源變了，不帶新的內容，這是刻意的設計：收到事件後重新讀取那個資源。這樣用戶端顯示的永遠是 Server 上的內容；漏掉一筆事件也不會遺失什麼，因為下一次讀取就拿到目前的狀態。
+
+`sse` transport 的 `url` 有兩種寫法：
+
+- 以 `/` 開頭的路徑，例如 `/events`。它接在專案網址之後，和 `polling` 的 url 相同：`/events` 就是 `{origin}/api/speclink/v1/projects/{project}/events`。
+- 以 `http://` 或 `https://` 開頭的完整網址。它必須和 Server 是同一個 origin：協定、主機、埠都相同。
+
+Speclink Desktop 使用第一個 `sse` transport。網址是別的 origin 時，Desktop 不連線，也不把你的憑證送過去，改用 `GET /sync-state` 輪詢，而且不顯示錯誤。握手沒有宣告 `sse` transport 時（例如只宣告 `websocket`）也一樣輪詢。
+
 - `invalidate` 事件：某個資源變了。`data` 例如 `{"eventId":"42","scope":"change","resourceId":"add-login","revision":42}`。收到後重新讀取對應資源。
 - `reset` 事件：你的續傳位置已被清掉，請重新讀取全部資料。
 - 斷線重連時帶 `Last-Event-ID`，可以補收中間漏掉的事件。
-- 閒置時 Server 會送 heartbeat 註解行，維持連線。
+- 串流閒置時，Server 送一行註解當作心跳（heartbeat）。示範用 server 預設每 15 秒送一次（設定檔的 `events.heartbeat_secs`，必須小於 45）。
+- 用戶端 45 秒沒有收到任何資料（心跳也算）時，把連線視為中斷：先用 `GET /sync-state` 確認有沒有漏掉的變更，再重新訂閱。自己提供串流的宿主，心跳的間隔必須小於 45 秒。
 
 `scope` 與 `resourceId` 由事件的種類決定。內嵌的宿主自己推送事件時，用同一張對照：
 
@@ -559,11 +569,14 @@ CLI 目前沒有匯出與匯入的動詞，這兩條路由由桌面 app 與宿�
 | `review-round-added`、`review-stamped`、`review-discarded`、`verify-round-added`、`verify-stamped`、`verify-discarded` | `change` | 變更名稱 |
 | `change-archived` | `spec` | 變更名稱 |
 | `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-archived`、`discussion-restored`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
-| 其他（例如匯入的 `scope-imported`、寫入共用詞彙文件的 `language-replaced`） | `unknown` | 空字串 |
+| 其他（例如匯入的 `scope-imported`、寫入共用詞彙文件的 `language-replaced`、寫入工作流設定的 `workflow-config-changed`） | `unknown` | 空字串 |
 
 - 審查站與驗證站的六種事件都歸到變更：新增一輪、蓋章、丟棄工單，`resourceId` 是變更名稱。用戶端收到後重新讀取那個變更，就拿得到新的關卡狀態。
+- `review-stamped` 與 `verify-stamped` 的 payload 有 `change`；這次蓋章有記下 commit 時（蓋章請求帶了 `headCommit`），還有 `commit`，值和變更 metadata 記下的相同。
 - `change-landed` 的 payload 有 `change`、`commit`，以及這次有回報分支時才出現的 `branch`。
 - 兩種自由欄位的事件，payload 只有名稱與動到的鍵（`keys`），沒有值。
+- `workflow-config-changed` 來自真的寫入了文件的工作流設定寫入；dry-run、內容相同的寫入與被拒絕的寫入都沒有事件。payload 是 `{"keys": [...]}`：值有變動的鍵，順序與這次寫入相同；只改了排版或註解時是空陣列。payload 沒有值。這筆事件歸在 `unknown`，用戶端收到後重新讀取全部資料。
+- 推送給用戶端的訊息不帶 payload，沒有 `commit` 也沒有 `keys`；只有宿主的儲存與 `afterCommit` 掛鉤拿得到它們。
 - 收到 `unknown` 時重新讀取全部資料。匯入一次改動整個範圍，所以刻意歸在這一類。
 
 ## <a id="payload-examples"></a>請求與回應範例

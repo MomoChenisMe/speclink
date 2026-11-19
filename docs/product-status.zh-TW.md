@@ -80,7 +80,7 @@
 | --- | --- | --- |
 | 沒有本機規格檔的內嵌宿主不能用需要 checkout 的動詞：`drift`、`review prepare`、`review scope`、`verify scope`，以及帶 `--skill` 的 `instructions`。技能裡「讀使用者給的檔案路徑」這種輸入，也只在 Agent 有檔案系統時可用。 | 經 `host.dispatch` 執行動詞的宿主與它的 Agent 工具。這幾個動詞會被拒絕，錯誤碼是 `invalid_argv`。 | 由工程師在連到這個遠端專案的 checkout 用 CLI 執行這幾個動詞。Agent 沒有檔案系統時，請使用者把文件內容直接貼進對話。 |
 | `task done` 不替宿主收集改了哪些檔；蓋章與開工標記也不替宿主讀 commit 與分支。宿主套件不讀 git。 | 經 `host.dispatch` 勾任務、蓋章或標記開工的宿主。任務照常勾選，但 evidence 不記檔案、repo 與 commit。 | 需要 evidence 時，由工程師在 checkout 用 CLI 執行 `speclink task done`，CLI 會收集。蓋章的 commit 由宿主放進 `--stdin` 的 JSON（`headCommit`）。落地的 commit 與分支用 `speclink change landed <名稱> --commit <sha> --branch <分支>` 回報。 |
-| 用 Node 內嵌的宿主沒有現成的推送事件。 | 連到這種宿主的 Speclink Desktop 與其他用戶端：畫面靠定時詢問更新，不是即時。 | 不用設定，用戶端會自己輪詢。要即時更新的宿主自己提供 SSE 或 WebSocket 串流，並用 `createHost` 的 `pushTransports` 宣告網址。 |
+| 用 Node 內嵌的宿主沒有現成的推送事件。 | 連到這種宿主的 Speclink Desktop 與其他用戶端：畫面靠定時詢問更新，不是即時。 | 不用設定，用戶端會自己輪詢。要即時更新的宿主自己提供 SSE 串流，並用 `createHost` 的 `pushTransports` 宣告網址。Speclink Desktop 連握手宣告的第一個 SSE 網址（要和宿主同一個 origin）。 |
 | Speclink Desktop 沒有釋放認領的按鈕。 | 只用 Speclink Desktop 操作遠端專案，又要交出自己認領的變更、或接手離開的人認領的變更的人。 | 在連到這個遠端專案的 checkout 執行 `speclink claim <變更> --release`。在內嵌引擎的宿主裡，Agent 工具執行同一個動詞。釋放之後，再回 Speclink Desktop 認領。 |
 | `baseline` 與 `manual` 兩支技能在遠端專案被拒絕。 | 遠端專案裡，要從既有程式碼建立規格基準或要生成手冊的人。 | `manual` 的導覽模式照常可用（`/speclink-manual 導覽`）。規格基準先在本機專案做完，再用 Speclink Desktop 的「遷移到 Server」搬到一個空的遠端專案。遠端專案的手冊今天沒有替代做法。 |
 | 連到沒有宣告技能的舊版 Server 時，CLI 用本機的範本，worktree 的兩支技能不會產生。 | 連到舊版示範用 server 的遠端專案使用者。 | 把 Server 升級到會提供技能的版本，再執行 `speclink update`。升級之前，本機範本產生的其他技能照常可用。 |

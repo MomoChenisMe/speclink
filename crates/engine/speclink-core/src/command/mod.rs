@@ -184,7 +184,7 @@ fn classify(e: anyhow::Error) -> CommandError {
 }
 
 /// 兩個品質站的工單動詞執行體：站別只差常數、outcome 結構兩站共用，Command
-/// 臂只剩選站別與包 `CommandOutcome` 變體。`stamp` 臂不抽——抽出去要 8 個參數。
+/// 臂只剩選站別與包 `CommandOutcome` 變體。
 fn station_add_round(
     st: &Station,
     store: &dyn Store,
@@ -211,6 +211,33 @@ fn station_discard(
 ) -> Result<ReviewSubjectOutcome, CommandError> {
     station::discard(st, store, &change).map_err(classify)?;
     Ok(ReviewSubjectOutcome { change })
+}
+
+/// 蓋章：參數多，但兩站只差站別；結果帶這次蓋章實際記下的 commit。
+fn station_stamp(
+    st: &Station,
+    store: &dyn Store,
+    ctx: &ExecutionContext,
+    change: String,
+    accept: bool,
+    tool: Option<String>,
+    head_commit: Option<String>,
+    scope: Vec<crate::model::ReviewedScopeEntry>,
+    missing: Vec<String>,
+) -> Result<StampOutcome, CommandError> {
+    let commit = station::stamp_with_scope(
+        st,
+        store,
+        &change,
+        accept,
+        ctx.actor.as_deref(),
+        tool.as_deref(),
+        head_commit.as_deref(),
+        scope,
+        missing,
+    )
+    .map_err(classify)?;
+    Ok(StampOutcome { change, commit })
 }
 
 /// Command-layer fail-closed gate: a resolved change whose metadata is corrupt
@@ -276,10 +303,13 @@ pub enum DomainEvent {
     ChangeArchived { change: String, dated_name: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ChangeDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
-    ReviewStamped { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `commit` is the commit the stamp recorded in the change's metadata,
+    /// when the stamp request gave one.
+    ReviewStamped { change: String, commit: Option<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     ReviewDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     VerifyRoundAdded { change: String, round: usize, occurred_at: chrono::DateTime<chrono::Utc> },
-    VerifyStamped { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `commit` as in [`DomainEvent::ReviewStamped`].
+    VerifyStamped { change: String, commit: Option<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     VerifyDiscarded { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionCreated { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionContextSet { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -296,6 +326,11 @@ pub enum DomainEvent {
     /// The LANGUAGE document was written. It carries no content and no subject:
     /// a project has one such document.
     LanguageReplaced { occurred_at: chrono::DateTime<chrono::Utc> },
+    /// A workflow-config write wrote the document. `keys` are the keys whose
+    /// value changed, in the write's order — empty when only layout or
+    /// comments changed. No value and no subject: the scope has one such
+    /// document, and an event goes to every subscriber.
+    WorkflowConfigChanged { keys: Vec<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionDiscarded { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
 }
 
@@ -336,6 +371,7 @@ impl DomainEvent {
             DomainEvent::DiscussionArchived { .. } => "discussion-archived",
             DomainEvent::DiscussionRestored { .. } => "discussion-restored",
             DomainEvent::LanguageReplaced { .. } => "language-replaced",
+            DomainEvent::WorkflowConfigChanged { .. } => "workflow-config-changed",
             DomainEvent::DiscussionDiscarded { .. } => "discussion-discarded",
         }
     }
@@ -908,10 +944,18 @@ pub struct ReviewShowOutcome {
     pub content: Option<String>,
 }
 
-/// `review stamp` / `review discard` outcome (subject only).
+/// `review discard` / `verify discard` outcome (subject only).
 #[derive(Debug)]
 pub struct ReviewSubjectOutcome {
     pub change: String,
+}
+
+/// `review stamp` / `verify stamp` outcome: the subject, and the commit the
+/// stamp recorded in the change's metadata (`None` when the request gave none).
+#[derive(Debug)]
+pub struct StampOutcome {
+    pub change: String,
+    pub commit: Option<String>,
 }
 
 /// Typed result of one command execution.
@@ -963,13 +1007,13 @@ pub enum CommandOutcome {
     DiscussFieldsEdit(FieldsOutcome),
     ReviewAddRound(ReviewRoundOutcome),
     ReviewShow(ReviewShowOutcome),
-    ReviewStamp(ReviewSubjectOutcome),
+    ReviewStamp(StampOutcome),
     ReviewDiscard(ReviewSubjectOutcome),
     /// 驗證站的四個結果沿用審查站的 outcome 型別——工單形狀站別無關，
     /// 差異只在寫哪份文件（[`crate::station`] 的常數組承載）。
     VerifyAddRound(ReviewRoundOutcome),
     VerifyShow(ReviewShowOutcome),
-    VerifyStamp(ReviewSubjectOutcome),
+    VerifyStamp(StampOutcome),
     VerifyDiscard(ReviewSubjectOutcome),
     WorkflowConfigShow(WorkflowConfigShowOutcome),
     /// 兩種寫入共用同一個結果型別。
@@ -1169,19 +1213,8 @@ pub fn execute(
             Ok(CommandOutcome::ReviewShow(station_show(&REVIEW, store, change)?))
         }
         Command::ReviewStamp { change, accept, tool, head_commit, scope, missing } => {
-            station::stamp_with_scope(
-                &REVIEW,
-                store,
-                &change,
-                accept,
-                ctx.actor.as_deref(),
-                tool.as_deref(),
-                head_commit.as_deref(),
-                scope,
-                missing,
-            )
-            .map_err(classify)?;
-            Ok(CommandOutcome::ReviewStamp(ReviewSubjectOutcome { change }))
+            station_stamp(&REVIEW, store, ctx, change, accept, tool, head_commit, scope, missing)
+                .map(CommandOutcome::ReviewStamp)
         }
         Command::ReviewDiscard { change } => {
             Ok(CommandOutcome::ReviewDiscard(station_discard(&REVIEW, store, change)?))
@@ -1193,19 +1226,8 @@ pub fn execute(
             Ok(CommandOutcome::VerifyShow(station_show(&VERIFY, store, change)?))
         }
         Command::VerifyStamp { change, accept, tool, head_commit, scope, missing } => {
-            station::stamp_with_scope(
-                &VERIFY,
-                store,
-                &change,
-                accept,
-                ctx.actor.as_deref(),
-                tool.as_deref(),
-                head_commit.as_deref(),
-                scope,
-                missing,
-            )
-            .map_err(classify)?;
-            Ok(CommandOutcome::VerifyStamp(ReviewSubjectOutcome { change }))
+            station_stamp(&VERIFY, store, ctx, change, accept, tool, head_commit, scope, missing)
+                .map(CommandOutcome::VerifyStamp)
         }
         Command::VerifyDiscard { change } => {
             Ok(CommandOutcome::VerifyDiscard(station_discard(&VERIFY, store, change)?))
@@ -1245,10 +1267,15 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         | CommandOutcome::DiscussList(_)
         | CommandOutcome::DiscussShow(_)
         | CommandOutcome::DiscussSearch(_) => Vec::new(),
-        // 流程設定的寫入不產生領域事件（workflow-config-commands 的 Non-Goal）。
-        CommandOutcome::WorkflowConfigShow(_)
-        | CommandOutcome::WorkflowConfigEdit(_)
-        | CommandOutcome::WorkflowConfigReplace(_) => Vec::new(),
+        CommandOutcome::WorkflowConfigShow(_) => Vec::new(),
+        // 只有真的寫入才回報；dry-run 與內容相同的寫入沒有事件。
+        CommandOutcome::WorkflowConfigEdit(o) | CommandOutcome::WorkflowConfigReplace(o) if o.written => {
+            vec![DomainEvent::WorkflowConfigChanged {
+                keys: o.changed_keys.iter().map(ToString::to_string).collect(),
+                occurred_at: at,
+            }]
+        }
+        CommandOutcome::WorkflowConfigEdit(_) | CommandOutcome::WorkflowConfigReplace(_) => Vec::new(),
         CommandOutcome::NewChange(o) => vec![DomainEvent::ChangeCreated {
             change: o.name.clone(),
             occurred_at: at,
@@ -1397,6 +1424,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::ReviewStamp(o) => vec![DomainEvent::ReviewStamped {
             change: o.change.clone(),
+            commit: o.commit.clone(),
             occurred_at: at,
         }],
         CommandOutcome::ReviewDiscard(o) => vec![DomainEvent::ReviewDiscarded {
@@ -1411,6 +1439,7 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
         }],
         CommandOutcome::VerifyStamp(o) => vec![DomainEvent::VerifyStamped {
             change: o.change.clone(),
+            commit: o.commit.clone(),
             occurred_at: at,
         }],
         CommandOutcome::VerifyDiscard(o) => vec![DomainEvent::VerifyDiscarded {

@@ -12,6 +12,7 @@
 
 use crate::events::EventSettings;
 use serde::Deserialize;
+use speclink_protocol::events::STALL_LIMIT_SECS;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -284,6 +285,15 @@ pub fn load(path: &Path) -> Result<ServerConfig, ConfigError> {
             rule: "must be at least 1".to_string(),
         });
     }
+    // A client treats a stream that is silent for the stall limit as broken:
+    // a heartbeat that slow makes every client reconnect again and again.
+    if raw.events.as_ref().and_then(|e| e.heartbeat_secs).is_some_and(|secs| secs >= STALL_LIMIT_SECS) {
+        return Err(ConfigError::InvalidValue {
+            path: shown,
+            field: "events.heartbeat_secs".to_string(),
+            rule: format!("must be less than {STALL_LIMIT_SECS}"),
+        });
+    }
     let events = match raw.events {
         Some(e) => EventSettings {
             retention: e.retention.unwrap_or(defaults.retention),
@@ -536,6 +546,8 @@ mod tests {
             EventSettings::default(),
             "no events section means all defaults"
         );
+        // The documented default: a client treats 45 silent seconds as a broken stream.
+        assert_eq!(cfg.events.heartbeat, Duration::from_secs(15));
     }
 
     #[test]
@@ -563,6 +575,28 @@ mod tests {
             matches!(err, ConfigError::Unparseable { .. }),
             "shape mismatch is a parse failure"
         );
+    }
+
+    #[test]
+    fn a_heartbeat_of_45_seconds_or_more_fails_closed_and_names_the_field() {
+        // Spec server-event-stream Example「各種 heartbeat_secs 的結果」：用戶端 45 秒沒有
+        // 資料就斷線重連，所以 45 以上的心跳是設定錯誤。（沒有 `events` 區段那一列在
+        // `an_absent_events_section_uses_all_defaults`。）
+        let with = |secs: u64| {
+            load_text(&format!(
+                "store:\n  driver: memory\nidentity:\n  driver: memory\nevents:\n  heartbeat_secs: {secs}\n"
+            ))
+        };
+        for secs in [5, 44] {
+            let cfg = with(secs).unwrap_or_else(|e| panic!("{secs} loads: {e}"));
+            assert_eq!(cfg.events.heartbeat, Duration::from_secs(secs));
+        }
+        for secs in [45, 60] {
+            let err = with(secs).expect_err("a heartbeat the clients cannot wait for fails startup");
+            assert!(matches!(err, ConfigError::InvalidValue { .. }), "{secs}: {err}");
+            let shown = err.to_string();
+            assert!(shown.contains("'events.heartbeat_secs' must be less than 45"), "{secs}: {shown}");
+        }
     }
 
     #[test]

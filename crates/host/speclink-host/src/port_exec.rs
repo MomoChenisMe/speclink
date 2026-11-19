@@ -549,7 +549,12 @@ mod tests {
             }
             other => panic!("expected one write of config.yaml, got {other:?}"),
         }
-        assert!(commit.events().is_empty(), "a workflow-config write has no domain event");
+        let events: Vec<_> = commit.events().iter().map(|e| (e.name(), e.payload().clone())).collect();
+        assert_eq!(
+            events,
+            [("workflow-config-changed", serde_json::json!({ "keys": ["tdd"] }))],
+            "the write's event is in the same commit"
+        );
         assert_eq!(done.scope_version.map(Version::get), Some(version(&probe.inner)));
         assert_eq!(probe.reads(), [["config.yaml"]], "the command reads only the config document");
         assert!(probe.lists().is_empty());

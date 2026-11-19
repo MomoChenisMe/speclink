@@ -969,6 +969,40 @@ describe('the landing report and the stamp commit through host.dispatch', () => 
     for (const key of Object.keys(shown)) expect(isCamel(key)).toBe(true)
   })
 
+  // command-runtime「蓋章事件帶 commit 與流程設定變動的事件」: the store's commit and
+  // afterCommit get the commit the stamp recorded, and no commit when it recorded none.
+  it('gives the commit function and afterCommit the commit a stamp recorded', async () => {
+    const watched: { command: string; events: { name: string; payload: unknown }[] }[] = []
+    const port = portWithDemo(DONE_TASKS)
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        afterCommit: (info) => {
+          watched.push({ command: info.command, events: info.events })
+        },
+      },
+    })
+    const call = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+    const scope = [{ path: 'src/lib.rs', hash: '0f9c' }]
+
+    await call(['review', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
+    await call(['review', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope, headCommit: SHA }))
+    await call(['verify', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
+    await call(['verify', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope }))
+
+    const stamps = port.commits
+      .filter(({ commit }) => commit.command.endsWith('-stamp'))
+      .map(({ commit }) => [commit.command, commit.events])
+    expect(stamps).toEqual([
+      ['review-stamp', [{ name: 'review-stamped', payload: { change: 'demo', commit: SHA } }]],
+      ['verify-stamp', [{ name: 'verify-stamped', payload: { change: 'demo' } }]],
+    ])
+    // afterCommit runs after dispatch resolves: wait for it, not for a fixed time.
+    await vi.waitFor(() =>
+      expect(watched.filter((w) => w.command.endsWith('-stamp')).map((w) => [w.command, w.events])).toEqual(stamps),
+    )
+  })
+
   it('stamps without a commit when the stdin JSON names none, and refuses a malformed one', async () => {
     const port = portWithDemo(DONE_TASKS)
     const host = createHost({ store: port.store })

@@ -408,7 +408,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         let _ = invalidated_tx.send(key);
     });
     let rd_connects = Arc::new(AtomicUsize::new(0));
-    let sub_base = h.first.project_url();
+    let sub_url = common::demo_stream(&h.first.project_url());
     let sub_runtime = first_manager.clone();
     let sub_credentials = credentials.clone();
     let sub_counter = rd_connects.clone();
@@ -420,7 +420,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         move |last| {
             sub_counter.fetch_add(1, Ordering::SeqCst);
             sub_runtime.execute(sub_credentials.as_ref(), |token| {
-                events::subscribe(&sub_base, token, Some("rd"), last)
+                events::subscribe(&sub_url, token, Some("rd"), last)
             })
         },
         move || {
@@ -573,7 +573,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
 
     const SECOND_KEY: &str = "remote:conn_second/beta/main";
     let second_connects = Arc::new(AtomicUsize::new(0));
-    let second_sub_base = h.second.project_url();
+    let second_sub_url = common::demo_stream(&h.second.project_url());
     let second_sub_runtime = second_manager.clone();
     let second_sub_credentials = credentials.clone();
     let second_sub_counter = second_connects.clone();
@@ -585,7 +585,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         move |last| {
             second_sub_counter.fetch_add(1, Ordering::SeqCst);
             second_sub_runtime.execute(second_sub_credentials.as_ref(), |token| {
-                events::subscribe(&second_sub_base, token, Some("main"), last)
+                events::subscribe(&second_sub_url, token, Some("main"), last)
             })
         },
         move || {
@@ -632,7 +632,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
 
     const PM_KEY: &str = "remote:conn_first/alpha/pm";
     let pm_connects = Arc::new(AtomicUsize::new(0));
-    let pm_sub_base = h.first.project_url();
+    let pm_sub_url = common::demo_stream(&h.first.project_url());
     let pm_sub_runtime = first_manager.clone();
     let pm_sub_credentials = credentials.clone();
     let pm_sub_counter = pm_connects.clone();
@@ -644,7 +644,7 @@ fn phase3_five_scenarios_run_as_one_continuous_chain() {
         move |last| {
             pm_sub_counter.fetch_add(1, Ordering::SeqCst);
             pm_sub_runtime.execute(pm_sub_credentials.as_ref(), |token| {
-                events::subscribe(&pm_sub_base, token, Some("pm"), last)
+                events::subscribe(&pm_sub_url, token, Some("pm"), last)
             })
         },
         move || {

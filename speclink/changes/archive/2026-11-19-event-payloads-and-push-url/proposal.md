@@ -20,6 +20,8 @@
   - 宣告的網址沒有協定與主機時，接在專案的 API 位址後面（和輪詢網址 `/sync-state` 的寫法一致；示範用 server 宣告的 `/events` 因此照常可用）。
   - 宣告的網址是完整的網址時，只在它和 Server 是同一個 origin（協定、主機、埠都相同）時使用，避免把登入憑證送到別的主機。不是同一個 origin 時不連線，改用輪詢。
   - 只宣告 WebSocket 時照舊輪詢。
+  - 連線用的是通過檢查的那一次解析結果（正規寫法：主機小寫、預設埠省略），不把宣告的字串再解析一次；檢查看到的主機和實際連線的主機一定相同。
+- 示範用 server 拒絕 45 秒以上的心跳設定：設定檔的 `events.heartbeat_secs` 是 45 以上時，server 不啟動，並指出欄位與規則。45 秒這個數字改由用戶端與 server 共用的一個常數提供。
 - 使用者文件寫明：
   - 事件的設計：事件只指出哪個資源變了，內容刻意精簡，收到後重新讀取。
   - 推送網址的兩種寫法與同 origin 的規則。
@@ -32,6 +34,7 @@
 - 事件的內容是新增欄位與新增一種事件：只認得舊內容的宿主忽略新欄位即可；用戶端收到的推送格式（哪個資源變了）不變。
 - 流程設定的寫入以前沒有事件；有測試或宿主程式假設「這種提交的事件清單是空的」時要調整。repo 內這類斷言同批更新。
 - Speclink Desktop 連到示範用 server 的行為不變（宣告的 `/events` 解析出來就是原本的路徑）。連到宣告了別的同 origin 網址的宿主時，從「連不到、只輪詢」變成「連得到」。
+- 示範用 server 的設定檔若把 `events.heartbeat_secs` 設成 45 以上，升級後不啟動，stderr 印出 `'events.heartbeat_secs' must be less than 45`。遷移方式：把值改成小於 45（預設是 15）。這種設定原本就讓每個用戶端每 45 秒斷線重連一次。
 
 三種形態：
 
@@ -39,7 +42,7 @@
 - 連到遠端的 checkout：CLI 不訂閱事件，不受影響。Speclink Desktop 連到遠端專案時使用宣告的 SSE 網址。
 - 沒有本機規格檔的內嵌宿主：可用。宿主在儲存的 `commit` 與提交後掛鉤收到的事件多出 commit 與新的事件種類；宿主宣告的 SSE 網址會被 Speclink Desktop 使用。
 
-不涉及設定欄位，不涉及生成的技能與 Agent 指令。
+設定欄位：不涉及 `speclink/config.yaml` 與 `.speclink.yaml`。示範用 server 自己的設定檔，`events.heartbeat_secs` 新增上限（必須小於 45），預設值 15 不變。不涉及生成的技能與 Agent 指令。
 
 ## Non-Goals
 
@@ -59,29 +62,37 @@
 ### Modified Capabilities
 
 - `command-runtime`: 新增一條需求——蓋章事件帶 commit，以及流程設定變動的事件。
-- `remote-workspace-data`: 新增一條需求——Speclink Desktop 的事件串流網址取自握手的宣告，含解析與同 origin 的規則。
-- `server-event-stream`: 新增一條需求——宣告的串流網址的寫法與心跳的契約。
+- `remote-workspace-data`: 新增一條需求——Speclink Desktop 的事件串流網址取自握手的宣告，含解析與同 origin 的規則，以及連線用解析後的正規寫法。
+- `server-event-stream`: 新增一條需求——宣告的串流網址的寫法與心跳的契約，含示範用 server 拒絕 45 秒以上的心跳設定。
 
 ## Impact
 
 - Affected specs: command-runtime、remote-workspace-data、server-event-stream
-- Affected crates: speclink-core（兩種事件的內容與發出條件）、speclink-remote（串流網址的解析與訂閱）、apps/desktop（把握手宣告的網址交給訂閱）；speclink-host 與 speclink-node 只更新測試
+- Affected crates: speclink-core（兩種事件的內容與發出條件）、speclink-host（事件內容的輸出）、speclink-remote（串流網址的解析與訂閱）、speclink-protocol（斷線時限的常數）、speclink-server（心跳設定的上限檢查）、apps/desktop（把握手宣告的網址交給訂閱）；speclink-verbs 與 speclink-node 只更新測試
 - Affected code:
   - New: (none)
   - Modified:
     - crates/engine/speclink-core/src/command/mod.rs
     - crates/engine/speclink-core/src/command/tests.rs
     - crates/engine/speclink-core/src/command/workflow_config.rs
+    - crates/engine/speclink-core/src/quality/station.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
     - crates/host/speclink-host/src/commit.rs
+    - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/tests/kit.rs
     - crates/host/speclink-host/tests/station_wire.rs
     - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-server/src/config.rs
+    - crates/protocol/speclink-protocol/src/events.rs
     - crates/protocol/speclink-remote/Cargo.toml
     - Cargo.lock
     - crates/protocol/speclink-remote/src/events.rs
     - crates/protocol/speclink-remote/tests/it/events_sse.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src-tauri/src/lib.rs
+    - apps/desktop/src-tauri/tests/it/common/mod.rs
+    - apps/desktop/src-tauri/tests/it/event_manager.rs
+    - apps/desktop/src-tauri/tests/it/phase3_chain.rs
     - crates/adapters/speclink-node/__test__/host.spec.ts
     - crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts
     - crates/adapters/speclink-node/index.d.ts
@@ -89,6 +100,8 @@
     - docs/verb-contract.zh-TW.md
     - docs/sdk-node.md
     - docs/sdk-node.zh-TW.md
+    - docs/server-deployment.md
+    - docs/server-deployment.zh-TW.md
     - docs/product-status.md
     - docs/product-status.zh-TW.md
   - Removed: (none)

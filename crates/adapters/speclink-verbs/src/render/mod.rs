@@ -533,6 +533,7 @@ mod tests {
         use speclink_core::validate::ValidationResult;
         use CommandOutcome as O;
         let subject = || cmd::ReviewSubjectOutcome { change: s("c") };
+        let stamped = || cmd::StampOutcome { change: s("c"), commit: None };
         let round = || cmd::ReviewRoundOutcome { change: s("c"), round: 1 };
         let bound = || cmd::DiscussBindOutcome { slug: s("t"), change: s("c") };
         vec![
@@ -773,7 +774,7 @@ mod tests {
             ),
             (&["review", "add-round", "c"], O::ReviewAddRound(round()), true, "✓ Recorded review Round 1 for change 'c'\n"),
             (&["review", "show", "c"], O::ReviewShow(shown_ticket()), true, "# Ticket — c\n"),
-            (&["review", "stamp", "c"], O::ReviewStamp(subject()), true, "✓ Stamped review for change 'c'\n"),
+            (&["review", "stamp", "c"], O::ReviewStamp(stamped()), true, "✓ Stamped review for change 'c'\n"),
             (&["review", "discard", "c"], O::ReviewDiscard(subject()), false, "✓ Discarded review ticket for change 'c'\n"),
             (
                 &["verify", "add-round", "c"],
@@ -782,7 +783,7 @@ mod tests {
                 "✓ Recorded verification Round 1 for change 'c'\n",
             ),
             (&["verify", "show", "c"], O::VerifyShow(shown_ticket()), true, "# Ticket — c\n"),
-            (&["verify", "stamp", "c"], O::VerifyStamp(subject()), true, "✓ Stamped verification for change 'c'\n"),
+            (&["verify", "stamp", "c"], O::VerifyStamp(stamped()), true, "✓ Stamped verification for change 'c'\n"),
             (
                 &["verify", "discard", "c"],
                 O::VerifyDiscard(subject()),

@@ -18,6 +18,12 @@ pub(crate) fn actor_name(actor: &Actor) -> String {
 /// The camelCase subject payload of a domain event. With the event's stable
 /// kind string it is all a store keeps of the event; no store type is
 /// involved, so every commit path shares this one mapping.
+///
+/// As audited, a payload carries no secret: names, keys and a recorded commit
+/// — never a config value, a free field's value, a token or document content
+/// (`workflow-config-changed` has the changed keys, a stamp event the commit
+/// it recorded). The push to a client carries no payload at all: it names
+/// only the resource that changed ([`event_resource`]).
 pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
     use serde_json::json;
     match event {
@@ -63,12 +69,21 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::DiscussionRestored { slug, .. } => json!({ "slug": slug }),
         // No subject and no content: the project has one LANGUAGE document.
         DomainEvent::LanguageReplaced { .. } => json!({}),
+        // The keys only, as the fields events: a value is the host's own data.
+        DomainEvent::WorkflowConfigChanged { keys, .. } => json!({ "keys": keys }),
         DomainEvent::DiscussionDiscarded { slug, .. } => json!({ "slug": slug }),
         DomainEvent::ReviewRoundAdded { change, round, .. } => json!({ "change": change, "round": round }),
-        DomainEvent::ReviewStamped { change, .. } => json!({ "change": change }),
+        DomainEvent::ReviewStamped { change, commit, .. } | DomainEvent::VerifyStamped { change, commit, .. } => {
+            // `commit` is in the payload only when the stamp recorded one, so
+            // a stamp without it keeps the `{change}` payload it always had.
+            let mut payload = json!({ "change": change });
+            if let Some(commit) = commit {
+                payload["commit"] = json!(commit);
+            }
+            payload
+        }
         DomainEvent::ReviewDiscarded { change, .. } => json!({ "change": change }),
         DomainEvent::VerifyRoundAdded { change, round, .. } => json!({ "change": change, "round": round }),
-        DomainEvent::VerifyStamped { change, .. } => json!({ "change": change }),
         DomainEvent::VerifyDiscarded { change, .. } => json!({ "change": change }),
     }
 }
@@ -82,7 +97,8 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
 /// point at the change; every discussion event at the discussion. A name
 /// this table does not have is `unknown` with no identity: the client then
 /// reads everything again, and misses nothing. An import's `scope-imported`
-/// is left out for that reason: it changes every resource of the scope.
+/// is left out for that reason: it changes every resource of the scope. So is
+/// `workflow-config-changed`: the workflow config is none of the categories.
 pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationScope, String) {
     let field = |key: &str| payload.get(key).and_then(serde_json::Value::as_str).unwrap_or_default().to_string();
     match kind {
@@ -198,6 +214,25 @@ mod tests {
         ];
         for (event, payload) in rows {
             assert_eq!(event_payload(&event), payload, "{}", event.kind());
+        }
+    }
+
+    #[test]
+    fn a_stamp_event_carries_the_commit_only_when_the_stamp_recorded_one() {
+        let sha = "0123456789abcdef0123456789abcdef01234567";
+        for (with, without) in [
+            (
+                DomainEvent::ReviewStamped { change: "add-x".into(), commit: Some(sha.into()), occurred_at: at() },
+                DomainEvent::ReviewStamped { change: "add-x".into(), commit: None, occurred_at: at() },
+            ),
+            (
+                DomainEvent::VerifyStamped { change: "add-x".into(), commit: Some(sha.into()), occurred_at: at() },
+                DomainEvent::VerifyStamped { change: "add-x".into(), commit: None, occurred_at: at() },
+            ),
+        ] {
+            assert_eq!(event_payload(&with), json!({ "change": "add-x", "commit": sha }), "{}", with.kind());
+            // Byte for byte the payload a stamp had before it carried a commit.
+            assert_eq!(event_payload(&without).to_string(), r#"{"change":"add-x"}"#, "{}", without.kind());
         }
     }
 

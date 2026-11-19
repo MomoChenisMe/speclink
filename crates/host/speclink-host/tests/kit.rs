@@ -513,6 +513,29 @@ fn after_a_commit_the_hook_gets_the_events() {
 }
 
 #[test]
+fn a_workflow_config_write_reaches_the_store_and_the_hook_with_its_keys() {
+    // Spec scenario「宿主在提交與提交後掛鉤收到事件」。
+    let recorder = recorded(demo_store(OPEN_TASKS));
+    let log = WatchLog::default();
+    let kit = HostKit::new(recorder.clone(), after(&log));
+
+    kit.run(&alice(), set_policy("audit", "true")).expect("written");
+
+    let expected = vec![("workflow-config-changed".to_string(), serde_json::json!({ "keys": ["audit"] }))];
+    let committed: Vec<(String, serde_json::Value)> = recorder
+        .calls()
+        .commits
+        .iter()
+        .flat_map(|commit| commit.events().iter().map(|e| (e.name().to_string(), e.payload().clone())))
+        .collect();
+    assert_eq!(committed, expected, "the store's commit gets the event");
+    let watched = log.lock().unwrap().clone();
+    assert_eq!(watched.len(), 1);
+    assert_eq!(watched[0].command, "workflow-config-edit");
+    assert_eq!(watched[0].events, expected, "the hook after the commit gets the same event");
+}
+
+#[test]
 fn a_query_does_not_trigger_it() {
     let log = WatchLog::default();
     let kit = HostKit::new(store_with_demo(OPEN_TASKS), after(&log));

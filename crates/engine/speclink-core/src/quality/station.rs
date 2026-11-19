@@ -536,7 +536,8 @@ pub fn discard(st: &Station, store: &dyn Store, change: &str) -> Result<()> {
 /// 「provided ∪ missing ＝工單各輪 Scope 聯集且不相交」（CAS 式保護），
 /// 不成立即拒。`missing` 是 checkout 持有者對「聯集中已不存在的檔」的明示
 /// 宣告——server 無工作樹無從驗證存在性，宣告與雜湊同屬提交端的權威。
-/// `head_commit` 同 [`stamp`]。
+/// `head_commit` 同 [`stamp`]；回傳的是實際記進章裡的 commit（形狀驗過、去掉
+/// 前後空白），沒有記就是 `None`。
 pub fn stamp_with_scope(
     st: &Station,
     store: &dyn Store,
@@ -547,7 +548,7 @@ pub fn stamp_with_scope(
     head_commit: Option<&str>,
     scope: Vec<ReviewedScopeEntry>,
     missing: Vec<String>,
-) -> Result<()> {
+) -> Result<Option<String>> {
     let gate = stamp_gate(st, store, change, accept, head_commit)?;
     let mut entries: Vec<(String, String)> =
         scope.into_iter().map(|e| (e.path.replace('\\', "/"), e.hash)).collect();
@@ -604,7 +605,8 @@ pub fn stamp_with_scope(
             extra.join(", ")
         )));
     }
-    write_stamp(st, store, change, &gate, actor, tool, &entries)
+    write_stamp(st, store, change, &gate, actor, tool, &entries)?;
+    Ok(gate.commit)
 }
 
 /// 蓋章（spec「蓋章守門與蓋章效果」）：守門＝任務全完成＋末輪零待處理必修

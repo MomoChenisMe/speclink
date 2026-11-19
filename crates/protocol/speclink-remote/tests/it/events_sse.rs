@@ -178,7 +178,8 @@ impl Feed {
 }
 
 fn subscribe(base: &str, token: &str, last_event_id: Option<u64>) -> Feed {
-    let stream = events::subscribe(&project_base(base), token, Some("backend"), last_event_id)
+    let url = events::stream_url(&project_base(base), "/events").expect("the demo server's /events");
+    let stream = events::subscribe(&url, token, Some("backend"), last_event_id)
         .expect("subscribe");
     feed(stream)
 }

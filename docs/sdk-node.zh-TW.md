@@ -316,6 +316,7 @@ const hooks = {
 - **`beforeCommand` 收到**誰、哪個範圍、命令的固定名稱（例如 `archive`、`new-change`、`workflow-config-edit`）與參數。參數只能讀，改了沒有作用：掛鉤可以拒絕或旁觀，不能改內容。工作流設定的寫入另外帶 `changedKeys`（這次會改的鍵，例如 `['tdd']`）。
 - **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了工作流設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
 - **掛鉤自己失敗**（拋錯、回傳其他形狀，`null` 也算）時不算允許：這次呼叫以 `internal` 結束。
+- **事件**（`commit` 與 `afterCommit` 收到的 `events`）指出這次提交改了什麼，內容刻意精簡。蓋章記下了 commit 時帶 `commit`（`review-stamped`、`verify-stamped`）。真的寫入了文件的工作流設定寫入有一筆 `workflow-config-changed`，帶變動的 `keys`，沒有值。全部的事件名稱見[事件流](verb-contract.zh-TW.md#events)。
 - **`afterCommit` 不保證送達。** 程序在提交之後、通知之前中斷，這個事件就不會再來。需要「至少送達一次」時，在 `commit` 的同一次交易裡把 `events` 寫進你自己的事件表，再由你的程式從那張表送出。
 - **用 `read` 讀出判斷需要的資料。** 它是 `beforeCommand` 的第二個參數。它和 `dispatch` 一樣吃 argv，結果與錯誤也相同，用的是這次呼叫的身分與範圍。它只接受不寫入任何文件的動詞：`list`、`show`、`status`、`plan`、`trace`、`evidence show`、`review show`、`verify show`、`discuss list`、`discuss show`、`discuss search`、`artifact cat`、`language show`、`workflow-config show`、`validate`、`analyze`、`instructions`。其他動詞以 `invalid_argv` 拒絕，儲存不會收到任何呼叫。`read` 不會再問一次 `beforeCommand`。它只在掛鉤執行期間有效：掛鉤回答之後再呼叫，會以 `invalid_argv` 拒絕。沒有接住 `read` 的錯誤，就算掛鉤自己失敗。
 - **`read` 讀到的內容和命令本身讀到的不是同一份。** 每次 `read` 都是對儲存的另一次呼叫。`read` 和命令之間有別人提交時，兩邊看到的內容會不同。引擎自己的守門（以封存來說：任務完成度與未結的工單）一律以命令本身讀到的內容判斷。你的規則需要兩邊一致時，在自己的 `read` 與 `commit` 儲存函式裡處理。
@@ -440,7 +441,11 @@ const authMethods = {
 
 **TLS 憑證。** CLI 與 Speclink Desktop 用使用者那台電腦的作業系統信任庫，檢查宿主與登入服務的 TLS 憑證。公開 CA 簽發的 TLS 憑證不用額外處理。用組織自己的 CA 簽發時，每位使用者都要把那個 CA 裝進作業系統的信任庫。用戶端沒有另外指定 CA 的設定，也沒有略過檢查的設定。檢查失敗時，CLI 印出 `Error: server unreachable — the server's TLS certificate was rejected (…)`，Speclink Desktop 顯示連線中斷。
 
-**推送事件**預設關閉：握手只宣告輪詢，用戶端定時問「這個範圍有沒有變」。你自己提供串流（SSE 或 WebSocket）時，用 `pushTransports` 宣告它的網址；入口不提供串流。
+**推送事件**預設關閉：握手只宣告輪詢，用戶端定時問「這個範圍有沒有變」。你自己提供串流（SSE 或 WebSocket）時，用 `pushTransports` 宣告它的網址；握手照你寫的內容原樣宣告。入口不提供串流。
+
+- **`url` 用兩種寫法之一。** 以 `/` 開頭的路徑接在專案網址之後，和 `/sync-state` 一樣。完整網址必須和你的宿主是同一個 origin：協定、主機、埠都相同。Speclink Desktop 使用第一個 `sse` transport；網址是別的 origin 時不連線，也不把憑證送過去，改用輪詢。Desktop 不使用 `websocket`。
+- **送心跳。** 串流閒置時，每隔不到 45 秒送一行 SSE 註解。用戶端 45 秒沒有收到任何資料，就把連線視為中斷並重新訂閱。示範用 server 每 15 秒送一次。
+- **只送資源。** 事件告訴用戶端哪個資源變了，用戶端再重新讀取。用[事件流](verb-contract.zh-TW.md#events)的對照表把事件轉成 `scope` 與 `resourceId`；不要把事件的 payload 送給用戶端。
 
 ## <a id="export-import"></a>匯出與匯入
 
