@@ -2,9 +2,9 @@
 title: 基準盤點：既有專案採用 Speclink
 section: SDD 工作流
 order: 90
-keywords: [baseline, 基準, 盤點, 既有專案, 採用, capability map, rules.specs, onboard]
-sources: [baseline-skill, skill-routing, user-documentation]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [baseline, 基準, 盤點, 既有專案, 採用, capability map, rules.specs, onboard, 遠端專案, 不支援]
+sources: [baseline-skill, "skill-routing#出口交棒由技能結尾承載", "skill-routing#去中心化路由不留集中總表", "user-documentation#工作流正典逐站列出技能與完成判準"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 基準盤點：既有專案採用 Speclink
@@ -23,6 +23,14 @@ generated: 2026-10-27T11:03:57+08:00
 6. **寫完後做嚴格結構驗證**，並修正結構性發現。
 
 一次盤點做完之後，變更目錄沒有新檔案，repo 裡除了新增的規格檔以外沒有其他異動。
+
+## 遠端專案還不支援
+
+基準盤點會把規格檔直接寫進規格資料夾。規格資料夾不在這個 checkout 裡的時候（遠端專案，或把引擎內嵌進自己的系統、手邊沒有規格檔的環境），寫出的檔只會留在這個 checkout，到不了持有規格的 Server。
+
+所以在這種專案執行 `/speclink-baseline`，技能在第一步之前就告訴你這個專案還不支援基準盤點，然後結束，不寫任何檔案。
+
+本機專案（規格資料夾就在這個 checkout 裡）沒有這個拒絕的步驟，照下一節的流程走。
 
 ## 流程
 
@@ -64,7 +72,7 @@ generated: 2026-10-27T11:03:57+08:00
 > [!NOTE]
 > 這些規則是 agent 產生內容時必須遵守的指令。`speclink validate` 只檢查結構，不會機械式驗證自由文字的規則有沒有被遵守。
 
-**設定讀不到就停止**：`speclink workflow-config show --json` 失敗時（`speclink/config.yaml` 無法解析、remote 模式離線或認證失效），技能回報錯誤並停止。它不寫任何規格，也不會退回去手讀設定檔。remote 模式與本地模式的設定內容形狀相同，技能對兩種模式沒有差別規定。
+**設定讀不到就停止**：`speclink workflow-config show --json` 失敗時（例如 `speclink/config.yaml` 無法解析），技能回報錯誤並停止。它不寫任何規格，也不會退回去手讀設定檔。遠端專案走不到這一步：技能一開始就拒絕，見上面的「遠端專案還不支援」。
 
 工作流設定的內容與寫法見[工作流政策與設定](policy-config.md)。
 

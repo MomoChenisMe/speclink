@@ -4,18 +4,18 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-11-04T17:42:55+08:00
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # Speclink 操作手冊
 
-Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Development）引擎：每個變更先寫一小份規格、交給 AI agent 實作，封存前由審查與驗證兩道品質關卡檢查並留下證據。一個人用本機的 Local Repo 就夠；團隊要共用規格時，再接上 Remote Store，讓 PM、PO、RD 與 AI agent 共用同一套「變更、產物、任務、驗證、封存」的語意。
+Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Development）引擎：每個變更先寫一小份規格、交給 AI agent 實作，封存前由審查與驗證兩道品質關卡檢查並留下證據。一個人用本機專案就夠：規格放在 repo 裡，用 Git 協作。團隊要共用規格時改用遠端專案：規格由一台 Server 持有，PM、PO、RD 與 AI agent 共用同一套「變更、產物、任務、驗證、封存」的語意。
 
 ## 三個核心觀念
 
 1. **變更（change）與產物**：每一件要做的事都是一個變更。變更底下有提案、設計、任務清單與規格差異（delta）這些產物。任務勾完、品質關卡蓋章後，變更就能封存。
 2. **正式規格與封存**：規格資料夾裡的 `specs/`（預設 `speclink/specs/`）是系統現況的唯一真相。封存把變更的規格差異併進正式規格，之後所有人讀到的都是併入後的版本。
-3. **本地與 remote 兩條路**：本地模式把一切存在你的 repo 裡，純 Markdown 與 YAML。remote 模式把正式規格放在 server 上的 Store，本機只有唯讀投影，團隊成員用帳號與 membership 共用同一份資料。
+3. **本機專案與遠端專案**：本機專案把一切存在你的 repo 裡，純 Markdown 與 YAML。遠端專案把正式規格放在 Server 上，本機只有唯讀投影，團隊成員用帳號與 membership 共用同一份資料。官方 server 是示範與試用用的；正式使用請把引擎內嵌進自己的系統。
 
 ## 依角色選入口
 
@@ -37,7 +37,7 @@ Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Developmen
 - 放了一陣子再回來、或需求中途變了：[續作與需求變更](drift-ingest.md)
 - 交付前的把關：[品質關卡總覽](quality-stations.md)、[審查站](review.md)、[驗證站](verify.md)、[封存](archive.md)
 - 好幾個變更同時做：先看[執行順序：plan 與依賴](plan.md)（桌面的[路線圖](desktop-roadmap.md)畫的是同一份結果），再走[平行實作與合回](worktree.md)
-- 工具：[提交單一變更的檔案](commit.md)、[安全稽核](audit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
+- 工具：[提交單一變更的檔案](commit.md)、[分支與落地記錄](landing.md)、[安全稽核](audit.md)、[溯源](trace.md)、[工作流政策與設定](policy-config.md)、[自由欄位](free-fields.md)、[產出流程 schema 管理](schemas.md)、[操作手冊：生成與導覽](manual.md)
 
 ### 產品負責人／PM（看進度、不碰 checkout）
 
@@ -46,7 +46,7 @@ Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Developmen
 - [專案、新增專案與設定頁](desktop-projects.md)、[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)、[系統匣面板與選單](tray.md)、[用 speclink 網址開啟畫面](desktop-deep-link.md)
 - 接上團隊 server：[桌面連線 server 與 remote 專案](desktop-remote.md)
 
-### 團隊協作（remote 模式）
+### 團隊協作（遠端專案）
 
 - 先讀 [remote 模式總覽](remote-overview.md)
 - 開發者接上 server：[CLI 連接 remote](cli-remote.md)、[remote 模式的規格投影](remote-context.md)

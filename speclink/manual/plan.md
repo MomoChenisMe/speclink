@@ -3,8 +3,8 @@ title: 執行順序：plan 與依賴
 section: SDD 工作流
 order: 125
 keywords: [plan, 執行順序, 波次, 依賴, 前置, depends, 阻擋, 並行, 依賴成環, change depends, 封存順序, 同名重疊, 衝突, change rank, 插隊, strict-overlap, 尚未轉出, 分刀, Unpromoted cuts]
-sources: [change-plan, "desktop-roadmap#路線圖列出尚未轉出的刀", "desktop-app#討論結論以欄位標籤呈現"]
-generated: 2026-11-04T17:13:07+08:00
+sources: [change-plan, "desktop-roadmap#路線圖列出尚未轉出的刀", "desktop-app#討論結論以欄位標籤呈現", "verb-contract#模式分岔的單點宣告"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 執行順序：plan 與依賴
@@ -134,7 +134,7 @@ speclink plan --strict-overlap
 | a 與 b 都動到 desktop-app，但是不同的 requirement | 同為第 1 波 | a 第 1 波、b 第 2 波，b 被 a 擋住 |
 | 提案中的 a（12 個任務、09-01 建立）與 b（5 個任務、09-02 建立），都沒有順序鍵，都動到 desktop-app | b 排在 a 前、同為第 1 波 | a 第 1 波、b 第 2 波，b 被 a 擋住 |
 
-這個旗標只能在本機模式用，見下面的「remote 模式」。
+這個旗標在本機專案與遠端專案都能用，見下面的「remote 模式」。
 
 ## 討論結論裡尚未轉出的刀
 
@@ -289,11 +289,23 @@ speclink change rank <變更名> --after <另一個變更> --force
 
 remote 模式下 `speclink plan` 向 server 查詢，`speclink change depends` 向 server 寫入，人眼與 `--json` 輸出的長相都與本機模式相同，不會讀寫本機的 speclink 資料夾。尚未轉出的刀由 server 用同一份引擎實作算好。server 回報依賴成環時，plan 同樣以錯誤結束，stderr 是 server 轉發的 `dependency cycle: …`。change depends 被 server 拒絕（找不到變更、守門失敗）時，stderr 印 server 轉發的一行訊息，以錯誤結束。
 
-有兩件事只能在本機模式做。remote 模式下它們以錯誤結束，而且不向 server 發出任何請求：
+`speclink plan --strict-overlap` 在遠端專案同樣可用：CLI 把這個旗標一起送給 server，由 server 算出結果。一般輸出與 `--json` 輸出都和本機專案逐字相同，不會讀本機的 speclink 資料夾。
 
-- `speclink plan --strict-overlap`：stderr 印 `plan --strict-overlap is not available in remote mode`，stdout 是空的。
-- `speclink change rank`：stderr 說明 remote 的順序由 server 上的看板順序文件決定。
+> [!NOTE]
+> 規格在這一點上有兩種說法。`change-plan` 仍寫這個旗標只限本機、遠端專案會以固定訊息拒絕；較晚的 `verb-contract` 規定這一族指令沒有只限本機的子指令或旗標，並有遠端專案執行它的情境。本頁照較晚的說法寫，實際行為以產品為準。
+
+`speclink change rank` 在遠端專案把同一個請求（排在誰的前面或後面、有沒有帶 `--force`）送到 server 執行。檢查、欄內順序、補鍵、中間值與依賴檢查都和本機專案是同一套引擎實作，成功訊息與 `--json` 的長相也相同。差別在順序鍵存在哪裡、怎麼寫：
+
+- 順序鍵讀自並寫入 server 上的看板順序文件，不會改任何變更的 `.meta.yaml`。
+- 一次請求要寫的全部順序鍵（替整欄補的鍵加上這個變更的鍵）在同一次提交寫入。任何一項檢查不過、或提交失敗，就一個都不寫；不會出現補鍵補到一半的狀態。
+- server 讀取之後、提交之前，看板順序文件被另一方改寫時，指令以錯誤結束，stderr 說明版本衝突，一個都不寫。
+
+| 遠端專案的情況 | 結果 |
+| --- | --- |
+| 看板順序文件記有 a 的順序鍵 n，c 沒有順序鍵，兩者同為提案中、欄內只有這兩個，執行 `speclink change rank c --before a` | 印 `✓ c ranked before a`；文件裡 c 多一個比 n 小的順序鍵，c 與 a 的 `.meta.yaml` 不變，plan 的順序 c 在 a 前 |
+| 提案中欄的 a、b、c 在文件裡都沒有順序鍵，順序是 a、b、c，執行 `speclink change rank c --before b` | 文件的版本只前進一次，a、b、c 都有順序鍵，plan 的順序變成 a、c、b |
+| c 在文件裡已有順序鍵，執行 `speclink change rank c --after a` | 拒絕，訊息含 `already has a board rank` 與 `--force`；文件的內容與版本不變 |
 
 remote 看板拖排也做同一套依賴檢查，只計涉及被拖卡的配對；違反時不送出寫回，畫面顯示與本地相同的一行錯誤。server 沒有 plan（舊 server、成環或請求失敗）時略過檢查。
 
-**出處**：`change-plan`、`desktop-roadmap`、`desktop-app`
+**出處**：`change-plan`、`desktop-roadmap`、`desktop-app`、`verb-contract`

@@ -2,9 +2,9 @@
 title: 桌面連線 server 與 remote 專案
 section: Remote 模式
 order: 470
-keywords: [伺服器頁, 裝置登入, 存取金鑰, Keychain, 新增專案, 預設連線, 最近開啟, Project／Repo, checkout, 只看規格, Copilot]
-sources: [desktop-connections, workspace-chooser, server-device-auth]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [伺服器頁, 瀏覽器登入, 裝置登入, 存取金鑰, 登入方式, Keychain, 新增專案, 預設連線, 最近開啟, Project／Repo, checkout, 只看規格, Copilot, Pi, Cursor, 審查標示, 驗證標示, 其後有變動]
+sources: [desktop-connections, workspace-chooser, server-device-auth, "host-kit#登入方式由宿主宣告", "desktop-app#remote 專案的審查與驗證標示"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 桌面連線 server 與 remote 專案
@@ -19,13 +19,36 @@ generated: 2026-10-27T11:03:57+08:00
 - 同一個位址重複新增時，app 只更新顯示名，不新增第二筆。
 - 「連線」卡：每個 server 一列。左邊是顯示名與狀態籤（已登入、未登入、登入過期、等待授權、失敗），下面是等寬字的位址與登入身分。右邊依狀態是「登出」（已登入），或「登入」／「重新登入」（未登入、登入過期），再加一個「⋯」選單，內含「開啟專案」與「移除」。登入過期的狀態籤是警示色。等待授權的細節與存取金鑰輸入，在那一列下方就地展開。沒有任何連線時顯示空狀態。
 - 「預設」卡：一列「新增遠端專案時預設使用」下拉，選項是已登入的連線與「不預選」，記在 app 本機。之後在「新增專案」選 Server 來源時，Server 步驟會預選這個連線，你仍可改選。那個連線已登出或被移除時不預選；對話框是帶著特定目的打開的（指定了某個連線，或資料夾的 remote 標記指向某個伺服器）時也不預選。
-- 「登入方式」卡：兩列說明裝置登入（預設）與存取金鑰（伺服器不支援裝置登入時就地改用），沒有其他動作。
+- 「登入方式」卡：三列，依序說明瀏覽器登入（伺服器宣告支援時優先使用）、裝置登入、存取金鑰（伺服器不支援前兩者時就地改用），沒有其他動作。介面語言是英文時，三列以英文呈現。
 - 清單跨重啟保留。清單檔只有識別、位址、顯示名、身分顯示名，不含任何憑證。清單檔壞掉時清單歸零，app 不會崩潰。
 - 登入成功後，那一列出現開啟專案的行動呼籲並取得鍵盤焦點。app 不會自動打開「新增專案」對話框。
 
 ## 登入
 
-app 先嘗試裝置登入。server 支援時：
+新增或登入連線時，app 先問 server 宣告支援哪些登入方式，再依固定順序選第一個：瀏覽器登入、裝置登入、存取金鑰。這個順序與 CLI 相同。
+
+- server 宣告瀏覽器登入：走瀏覽器登入。
+- server 只宣告存取金鑰：就地顯示存取金鑰的貼上輸入，不先嘗試裝置登入。
+- server 沒有宣告登入方式：先嘗試裝置登入。
+- 查詢回錯誤，或 server 連不上：顯示連線錯誤，不進入任何登入方式，也不開啟瀏覽器。
+
+官方的示範用 server 宣告裝置登入與存取金鑰兩種，所以連它時走的是裝置登入。
+
+### 瀏覽器登入
+
+1. app 開啟系統瀏覽器到登入服務的授權網址。
+2. 發起登入的地方就地顯示等待瀏覽器登入面：一句說明、授權網址（附複製）、剩餘時間倒數、取消。這裡不顯示裝置碼。
+3. 你在瀏覽器完成登入後，app 把續約憑證存進 OS Keychain，並顯示登入身分。
+
+其他結果：
+
+- 你在登入服務拒絕授權：連線列顯示已拒絕，不留任何憑證。
+- 逾時沒有完成：顯示逾時。
+- 你按取消：等待立即停止，該連線回到未登入，不留任何憑證。之後就算在瀏覽器完成登入，這個連線也不會變成已登入。
+
+### 裝置登入
+
+走裝置登入、而且 server 支援時：
 
 1. app 開啟系統瀏覽器到核准頁，裝置碼已預填。
 2. 發起登入的地方就地顯示等待授權面：裝置碼與驗證網址（各附複製）、剩餘時間倒數、取消。你不必依賴那個瀏覽器分頁，可以換另一部裝置開驗證網址完成核准。
@@ -41,20 +64,24 @@ app 先嘗試裝置登入。server 支援時：
 - server 明確不支援裝置登入（回 404 或 405）：等待授權面改為存取金鑰的貼上輸入。貼入有效的存取金鑰後登入成功並顯示身分。app 先向 server 查驗身分，確認有效後才存進 Keychain。
 - 網路不可達或 server 錯誤（5xx）：顯示連線錯誤，不會進入存取金鑰輸入。
 
-在「新增專案」的 Server 步驟就地新增連線並登入時，看到的是同一套等待授權面。取消時停留在 Server 步驟。
+### 在「新增專案」裡登入
+
+在「新增專案」的 Server 步驟就地新增連線並登入時，看到的是同一套等待面：瀏覽器登入是等待瀏覽器登入面，裝置登入是等待授權面。取消時停留在 Server 步驟。瀏覽器登入完成後，那個 server 出現在已登入的清單，可以接著選專案。
 
 ## 憑證存在哪
 
 - 憑證只存在 OS Keychain：macOS 用 Keychain，Windows 用 Credential Manager。每個 server 一筆。
-- 憑證不在 localStorage、連線清單檔、repo、URL 或 log 裡。存取金鑰只在你貼上的那一刻經過一次。
+- 憑證不在 localStorage、連線清單檔、repo、URL 或 log 裡。存取金鑰只在你貼上的那一刻經過一次。瀏覽器登入時畫面上顯示的授權網址，不含授權碼或任何 token。
 - 短效通行證只留在記憶體。續約後，Keychain 裡的憑證立即換新。重啟 app 後不必重新登入。
 
 CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 
 ## 登出與移除
 
-- 登出會刪掉該 server 的 Keychain 條目，並清掉清單上的身分顯示名。
+- 登出會刪掉該 server 的全部 Keychain 條目（續約憑證、通行證快取、存取金鑰），並清掉清單上的身分顯示名。
+- 清除的範圍與 CLI 的 `speclink auth logout` 對金鑰圈的清除相同。所以在 app 登出後，同一台機器的 CLI 對這個 server 也回到未登入（沒有設環境變數、憑證檔也沒有這個 server 的金鑰時）。
 - 裝置登入的連線：app 盡力呼叫 server 撤銷這組裝置憑證。server 不可達時，本機清理照常完成，畫面顯示未登入。
+- 瀏覽器登入的連線：登入服務列有撤銷端點時，app 盡力向那個端點撤銷。登入服務不可達時，本機清理同樣照常完成。
 - 存取金鑰登入的連線：app 刪掉本機條目，並提示你到 server 的帳號頁撤銷那把金鑰。
 - 移除連線：先做登出，再刪清單條目。
 
@@ -93,8 +120,8 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 
 檢查通過後：
 
-- 畫面顯示 Claude、Codex、Copilot 三個勾選框與資料夾路徑。
-- 既有 `.speclink.yaml` 記錄的內建工具成為預選值。沒有工具清單時，app 只依資料夾裡實際存在的工具痕跡預選，不會預設勾 Claude。資料夾裡有 `.github/` 不會讓 Copilot 被預選。
+- 畫面顯示 Claude、Codex、Copilot、Pi、Cursor 五個勾選框與資料夾路徑。
+- 既有 `.speclink.yaml` 記錄的內建工具成為預選值。沒有工具清單時，app 只依資料夾裡實際存在的工具痕跡預選，不會預設勾 Claude。資料夾裡有 `.github/` 不會讓 Copilot 被預選，有 `.pi/`、`.cursor/` 也不會讓 Pi、Cursor 被預選。
 - 至少勾一個工具、且路徑齊備之前，開啟按鈕停用。
 
 > [!NOTE]
@@ -115,6 +142,7 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 | --- | --- |
 | 沒標記的 Git repository，勾 Claude 與 Codex | `.speclink.yaml` 記兩個工具與 remote 區段，兩組技能檔就位，不產生 AGENTS.md、CLAUDE.md |
 | 沒標記、含 `.github/workflows/ci.yml` 的 repository，勾 Claude 與 Copilot | `.claude/skills/` 與 `.github/skills/` 兩組技能檔就位，`ci.yml` 一個位元都不變 |
+| 沒標記、含 `.cursor/rules/style.mdc` 的 repository，Cursor 沒被預選，你勾 Claude 與 Cursor | `.claude/skills/` 與 `.cursor/skills/` 兩組技能檔就位，`style.mdc` 一個位元都不變，不產生 `.cursor/agents/`、AGENTS.md、CLAUDE.md |
 | 原本只用 Claude、CLAUDE.md 有舊 Speclink 區塊與你的文字，改成只勾 Codex | 補上 Codex 技能檔；Claude 技能檔與 CLAUDE.md 的舊區塊移除，你的文字與 remote 區段保留；不產生 AGENTS.md |
 | 標記相符、工具只有 Codex，但 Codex 技能檔不見了 | 補齊 Codex 技能檔，remote 區段不變，同步成功後才開啟 |
 
@@ -122,8 +150,8 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 
 從本機資料夾入口打開一個帶 remote 標記的資料夾時：
 
-- 對應的 server 已登入，且 `.speclink.yaml` 至少有一個有效的內建工具（claude、codex、copilot）：app 先補齊或更新那些工具的受管產物，成功後直接開 remote 專案，不經對話框。checkout 就是你打開的那個資料夾。
-- 工具清單缺席或不含任何內建工具：app 導向對話框的 checkout 步驟，預填 server、Project／Repo 與路徑，要你明示勾選 Claude、Codex 或 Copilot。送出成功前不會開啟。
+- 對應的 server 已登入，且 `.speclink.yaml` 至少有一個有效的內建工具（claude、codex、copilot、pi、cursor）：app 先補齊或更新那些工具的受管產物，成功後直接開 remote 專案，不經對話框。checkout 就是你打開的那個資料夾。
+- 工具清單缺席或不含任何內建工具：app 導向對話框的 checkout 步驟，預填 server、Project／Repo 與路徑，要你明示勾選 Claude、Codex、Copilot、Pi 或 Cursor。送出成功前不會開啟。
 - 沒有對應連線或未登入：app 導向對話框的 Server 步驟，預填 server 位址。
 - 補齊受管產物時遇到檔案系統錯誤：app 顯示含路徑與失敗階段的錯誤，不開啟、不連線。
 - 標記無法解析：app 顯示解析錯誤，不動資料夾，不開啟。
@@ -136,4 +164,29 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 
 remote 專案的專案設定（政策版次、版次衝突、reader 唯讀）見[專案、新增專案與設定頁](desktop-projects.md)。
 
-**出處**：`desktop-connections`、`workspace-chooser`、`server-device-auth`
+## 遠端專案的審查與驗證標示
+
+遠端專案的變更，在看板卡片、變更詳情頁與已封存頁上，顯示與本機專案相同的審查與驗證標示，樣式與配色也相同。每種標示的意思見 [桌面上的品質關卡](desktop-quality.md)。差別只在資料來源：遠端專案的標示依 Server 回報的關卡狀態判定。
+
+| Server 回報的狀態 | 標示 |
+| --- | --- |
+| 關卡進行中 | 「審查中」／「驗證中」 |
+| 已蓋章，蓋章時的任務數與目前的任務數相同 | 「已審查」／「已驗證」 |
+| 已蓋章，但任務數與蓋章時不同 | 「已審查·其後有變動」／「已驗證·其後有變動」 |
+| 沒有痕跡，或 Server 沒有給資料 | 沒有標示 |
+
+任務數相符的已蓋章變更，要不要再顯示成「其後有變動」，看這個遠端專案有沒有連接 checkout：
+
+- 沒有 checkout：只看任務數。
+- 有 checkout：app 另外拿章記下的檔案內容指紋，比對 checkout 裡這些檔案現在的內容。對不上就顯示成「其後有變動」。
+- 這項比對只在 checkout 握有蓋章的那一版時才做，也就是 checkout 的 HEAD 包含章記下的 commit。章沒有記下 commit，或 checkout 不包含它（章蓋在別的分支或別台機器）時，只看任務數，不會因為 checkout 的檔案不同就顯示成「其後有變動」。
+- 比對時，某個檔案的內容與記錄的指紋不同，但仍與章記下的那個 commit 當時的內容相同（當時不存在、現在也不存在也算），不算有變動。章記下的是蓋章當下的 HEAD，被審的內容那時可能還沒提交；這種情況只是 checkout 還沒有那批內容。
+
+已封存頁依 Server 回報的結局顯示「已審查」「曾審查未通過」，以及對應的驗證標示。
+
+對「審查中」或「驗證中」的遠端變更按封存，會出現與本機專案相同的三選項對話框。選「照樣帶走」時，工單跟著封存，之後已封存頁顯示「曾審查未通過」或「曾驗證未通過」。
+
+> [!NOTE]
+> 連到的 Server 回應裡沒有關卡資料時（例如較舊的 Server），卡片沒有審查與驗證標示，封存也不會出現三選項對話框。
+
+**出處**：`desktop-connections`、`workspace-chooser`、`server-device-auth`、`host-kit`、`desktop-app`

@@ -2,9 +2,9 @@
 title: 審查站
 section: SDD 工作流
 order: 150
-keywords: [審查, review, 工藝品質, code smell, 工單, 蓋章, 審查規則, 驗證門, 子代理, 首輪, 複驗]
+keywords: [審查, review, 工藝品質, code smell, 工單, 蓋章, 審查規則, 驗證門, 子代理, 子代理模型, subagent_model, 首輪, 複驗, commit]
 sources: [review-skill, review-station]
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 審查站
@@ -15,11 +15,11 @@ generated: 2026-10-27T11:03:57+08:00
 
 1. 選定要審的變更。
 2. 檢查寫碼任務完成度。還有寫碼任務沒完成就停止，不算範圍、不派子代理（主對話另外派出、只讀不改檔的助手）、不寫工單。只剩 `[M]` 手動任務時繼續，結果會點名剩餘的手動任務，並說明「章可以先蓋、手動任務完成後再封存」。
-3. 開審前用 `speclink workflow-config show` 讀專案的審查規則（見下一節）。讀不到（例如 config.yaml 無法解析）就原樣回報錯誤並停止，不算範圍、不派子代理、不寫工單。
+3. 開審前用 `speclink workflow-config show` 讀專案的審查規則（見下一節），同一步也讀到審查站的子代理模型設定（見「子代理用哪個模型」）。讀不到（例如 config.yaml 無法解析）就原樣回報錯誤並停止，不算範圍、不派子代理、不寫工單。
 4. 用 `speclink review scope` 取得凍結的差異。沒有工單時是首輪；有工單時是複驗。首輪範圍有歧義時，技能等你提供可信的基準、明確的段落挑選、或改用隔離的 worktree，不會拿整個檔案代替。
 5. 讀變更的產物（提案、設計、規格、任務）當判斷脈絡。產物很薄時，子代理只憑程式碼與測試判斷，不編需求。
 6. 依輪次分流：首輪完整檢查，複驗只驗收修正。
-7. 並列呈現結果（開頭先印一行套用的規則），並對每筆發現給處置分類。
+7. 並列呈現結果（開頭先印一行套用的規則；派出子代理的那一輪再接一行子代理模型），並對每筆發現給處置分類。
 8. 用 `speclink review add-round` 把這一輪寫進工單。首輪會一併記下套用的規則。
 
 ## 專案審查規則
@@ -78,6 +78,31 @@ generated: 2026-10-27T11:03:57+08:00
 兩軸只看變更的差異段落，加上判斷所需的呼叫端與測試。兩份報告原樣並列，不合併、不重排。
 
 發現的描述用工作區設定的語言寫；工作區沒設語言就用英文。嚴重度標籤、`Standards:`／`Correctness:` 前綴、檔案路徑維持英文。
+
+## 子代理用哪個模型
+
+審查的兩個子代理預設沿用主對話的模型。專案可以在 `speclink/config.yaml` 的 subagent_model 區塊替審查站指定模型：每個 AI 工具一格，Standards 與 Correctness 兩軸共用同一個值。怎麼設定見 [工作流政策與設定](policy-config.md)。
+
+技能只看自己這個工具的那一格：在 Claude Code 是 subagent_model.review.claude，在 Codex 是 subagent_model.review.codex。遠端專案讀的是 server 上的設定。改設定不用重新生成技能檔，下一次審查就生效。首輪與複驗的做法相同：
+
+| 情況 | 技能怎麼做 |
+| --- | --- |
+| 這一格有值 | 兩個子代理都帶這個模型 |
+| 這一格沒設定（包括只設了別的工具） | 子代理不帶模型，沿用主對話的模型 |
+| 有值，但這個工具派子代理時不能指定模型（例如 Codex 沒在 `~/.codex/config.toml` 設 `expose_spawn_agent_model_overrides = true`） | 照常派出子代理、沿用主對話的模型，並在呈現中寫明設定沒有套用；工具是 Codex 時附上這個設定的開法 |
+| 有值，但工具拒絕這個模型名稱 | 停在派子代理那一步：原文回報工具的錯誤，指出要改 `speclink/config.yaml` 的 `subagent_model.review.<工具名稱>`。不改用主對話的模型重派，不寫工單、不蓋章 |
+| 工具不能派子代理 | 兩軸改在主對話裡依序跑，設定不套用，呈現中寫明這一點 |
+
+模型名稱被拒時（例如把 opus 拼成 opux），用 `speclink workflow-config subagent-model review <工具名稱> <模型名稱>` 改掉再重跑。
+
+派出子代理的那一輪，呈現開頭的規則行之後恰有一行「子代理模型行」，寫明這一輪子代理用的模型，或設定沒有套用的原因。這行用工作區的語言寫（沒設語言就用英文），模型名稱、subagent_model 的鍵路徑與設定名稱維持原文。它只出現在呈現中，不寫進工單。語言設為 tw 時：
+
+| 情況 | 子代理模型行 |
+| --- | --- |
+| subagent_model.review.claude 為 opus | 子代理模型：opus（subagent_model.review.claude） |
+| subagent_model.review.claude 沒有設定 | 子代理模型：沿用主對話（subagent_model.review.claude 沒有設定） |
+| Codex、subagent_model.review.codex 為 gpt-6.1-sol、沒有開放指定模型 | 子代理模型：沿用主對話——Codex 沒有開放子代理指定模型，本輪用主對話的模型。要開放，請在 ~/.codex/config.toml 設 expose_spawn_agent_model_overrides = true。 |
+| 工具不能派子代理 | 子代理模型：不適用——這個工具不能派子代理，本輪檢查在主對話裡跑 |
 
 ## 子代理簡報的查找紀律
 
@@ -187,6 +212,8 @@ add-round 會拒絕的內容：
 stamp 會拒絕的情況：寫碼任務沒全完成（列出計數）；最後一輪還有未解必修且沒帶 `--accept`（提示 `--accept` 或先修正重審）。最後一輪只剩 SUGGESTION 時照常蓋章。
 
 蓋章時引擎同時記下審查輪數：原有的輪數加上這次工單的輪數。例如工單跑了 3 輪就蓋章，記 3；章失效後重開的工單又跑 2 輪，重新蓋章後記 5。帶 `--accept` 也記；守門失敗、或用 discard 放棄審查時不變。規則細節見[品質關卡總覽](quality-stations.md)。
+
+`speclink review stamp` 還會把蓋章當下 checkout 的 HEAD commit 一起記進章裡，本機專案與遠端專案都一樣。讀不到 HEAD（例如不在 git checkout 裡）就不記，蓋章照常進行；蓋章印出的訊息與 exit code 都不變。這筆 commit 只是記錄：引擎不檢查它存不存在，也不拿它判斷章有沒有效。章失效仍然只看任務數與內容指紋，所以蓋章後 checkout 前進到新的 commit、審查面的檔案內容與任務數都沒變時，章照樣有效。章被清掉時，這筆 commit 一併清掉。`speclink show <變更名> --json` 會帶出審查站的狀態與這筆 commit。
 
 蓋章後工單刪除，fs 模式只剩 git 歷史，remote 模式不可回讀。
 

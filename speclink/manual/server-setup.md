@@ -3,8 +3,8 @@ title: 開箱：第一位 Admin 與第一組 Project／Repo
 section: Remote 模式
 order: 420
 keywords: [setup, bootstrap token, Admin, Project, Repo, membership]
-sources: [server-setup, user-documentation]
-generated: 2026-10-27T11:03:57+08:00
+sources: [server-setup, "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#帳號、PAT 與 membership 的操作邊界明確"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 開箱：第一位 Admin 與第一組 Project／Repo
@@ -27,7 +27,7 @@ generated: 2026-10-27T11:03:57+08:00
 開箱流程依序有四個節點：
 
 1. 建立第一位 Admin。填 email、顯示名、密碼。這個帳號直接啟用並帶 admin 旗標，不經邀請。
-2. 看儲存後端狀態。頁面顯示驅動與能力、健康檢查結果、資料結構版本。
+2. 看儲存後端狀態。頁面顯示儲存的種類、可用性檢查的結果、資料結構版本。
 3. 建立第一組 Project 與 Repo。填專案代號、儲存庫代號。
 4. 看初始連線資訊。頁面顯示部署設定的 public URL，以及剛建立的專案代號與儲存庫代號。
 

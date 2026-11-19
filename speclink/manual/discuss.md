@@ -2,9 +2,9 @@
 title: 討論：需求還模糊時
 section: SDD 工作流
 order: 100
-keywords: [討論, discuss, 決策樹, slug, 結論, 條列, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search, locale, 記錄語言]
-sources: [discuss-skill, discussion-docs, improve-skill, user-documentation]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [討論, discuss, 決策樹, slug, 結論, 條列, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search, locale, 記錄語言, restore, 搬回, 誤封存, 詞彙表, LANGUAGE, language replace]
+sources: [discuss-skill, discussion-docs, improve-skill, "user-documentation#完整工作流指南說明用途與使用時機", "user-documentation#討論結論後的轉出與併入分流完整", "verb-contract#詞彙文件的寫入動詞"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 討論：需求還模糊時
@@ -193,6 +193,32 @@ Decision 保留全部定案細節，不為了縮短而刪減；各點（含縮�
 
 在桌面 app 的討論詳情頁裡，結論的六個欄位各自顯示成一個區段，條列的每一點各佔一列，見[規格、討論、已封存與搜尋](desktop-browse.md)。
 
+### 用詞偏移記進詞彙表
+
+寫結論時，agent 會把這場討論的用詞偏移記進專案的共用詞彙表（LANGUAGE 文件；本機專案是規格資料夾裡的 `LANGUAGE.md`）。預設會記，你可以拒絕；你拒絕時不寫入。結論的 Capture to 值照舊寫 `LANGUAGE.md`。
+
+agent 的做法是先用 `speclink language show` 讀出全文（還沒有詞彙表時從空白開始），加入或修改詞條，再整份寫回。本機專案與遠端專案都是同一套做法，agent 不會直接編輯規格資料夾裡的檔案。
+
+寫回用的指令你也可以自己執行：
+
+```
+speclink language replace --stdin
+```
+
+指令從標準輸入讀內容，把它整份寫成詞彙表：
+
+| 情況 | 結果 |
+| --- | --- |
+| 已經有詞彙表 | 以輸入的內容整份取代，不做合併。輸出 `✓ Replaced the LANGUAGE document` |
+| 還沒有詞彙表 | 建立一份。輸出 `✓ Created the LANGUAGE document` |
+| 輸入是空的，或只有空白與換行 | 拒絕，既有的詞彙表不變 |
+| 沒帶 `--stdin` | 以用法錯誤拒絕 |
+
+寫入之後，`speclink language show` 輸出的就是剛寫入的內容。輸出是英文，不隨 locale 變動。
+
+> [!WARNING]
+> 寫入是整份取代。只想加一個詞條時，也要先用 `speclink language show` 讀出全文，改完再整份送回去。只送新詞條，其他詞條就不見了。
+
 ## 搜尋舊討論的定案
 
 想知道某件事以前有沒有討論過、當時怎麼決定的，用 search：
@@ -286,8 +312,37 @@ speclink discuss conclude <slug> --hold
 
 沒有 frontmatter 的舊記錄不能帶 `--hold`：指令以錯誤結束、記錄不動；不帶 `--hold` 照常結論。remote 模式的 `--hold`、`--last` 與旗標的行為都與本機相同。
 
+### 把封存的討論搬回來
+
+討論被誤封存時，用 restore 把記錄搬回進行中。在不是最後一刀的變更上帶了 `--last`，記錄會在最後一個在途變更封存時被收走，也用這個指令救回。
+
+```
+speclink discuss restore <slug>
+```
+
+- 記錄離開封存、回到進行中，內容一個字元都不變。
+- 同一個 slug 有多份封存的記錄時，搬回最新的一份：封存名稱的日期最新者；同一天重複封存（名稱帶 -N 序號）時取序號最大的。其餘留在封存裡。
+- 搬回之後，show、add-round、conclude、promote、link、seal 都把它當成進行中的記錄。`speclink discuss list` 會列出它，`speclink discuss list --archived` 不再列出被搬回的那一份。
+
+成功時輸出兩行：
+
+```
+✓ Restored discussion: <slug>
+  From: <封存時的名稱>
+```
+
+例如討論 demo-topic 被封存成 `2026-11-10-demo-topic.md`，搬回時第二行就是 `  From: 2026-11-10-demo-topic.md`。輸出不隨 locale 變動。
+
+| 情況 | 結果 |
+| --- | --- |
+| slug 是空字串、`.`、`..`，或含路徑分隔字元 | 拒絕，不讀寫任何東西 |
+| 這個 slug 已經有進行中的記錄 | 拒絕，訊息指出進行中的記錄已存在；兩份記錄都不動 |
+| 這個 slug 沒有任何封存的記錄 | 拒絕，訊息指出找不到它的封存記錄；不寫任何東西 |
+
+搬回是一次完成的：不是「進行中有、封存沒有」，就是什麼都沒變。不會出現兩邊都有或兩邊都沒有的狀態。
+
 > [!TIP]
-> 討論被誤封存時，把記錄檔從 `speclink/discussions/archive/` 搬回 `speclink/discussions/` 就能繼續用。在不是最後一刀的變更上帶了 `--last`，記錄會在最後一個在途變更封存時被收走，也走這條路救回。引擎對已封存討論的轉出錯誤訊息也會指向這條路。
+> 不要自己搬規格資料夾裡的檔案。本機專案的 restore 會把檔案從 `speclink/discussions/archive/` 搬回 `speclink/discussions/`，並拿掉檔名的日期前綴；遠端專案也是用這個指令。對已封存的討論執行 add-round 這類續寫指令、promote、link 或 seal 會被拒絕，錯誤訊息也會指向 `speclink discuss restore <slug>`。
 
 ### link 與 seal 的細節
 
@@ -343,6 +398,10 @@ conclude 時，如果這份討論轉出的變更全部已經封存、沒有任�
 
 `speclink discuss search` 在 remote 模式也可用，結果的順序與每筆命中和本地相同。斷線、登入失效時的錯誤訊息，與其他 remote 讀取指令一致。
 
+`speclink discuss restore` 在遠端專案也可用，輸出與本機專案逐字相同。碰上版本衝突、離線或登入失效時，它和其他討論寫入指令一樣失敗。
+
+`speclink language replace --stdin` 在遠端專案也可用，輸出與本機專案逐字相同。它只需要一般的寫入權限；只有讀取權限的身分會被拒絕，詞彙表不變。碰上版本衝突時指令失敗並請你重跑，詞彙表維持衝突前的內容。離線或登入失效時直接失敗，不排隊。
+
 下一步：[提案：建立變更與產物](propose.md)。
 
-**出處**：`discuss-skill`、`discussion-docs`、`improve-skill`、`user-documentation`
+**出處**：`discuss-skill`、`discussion-docs`、`improve-skill`、`user-documentation`、`verb-contract`

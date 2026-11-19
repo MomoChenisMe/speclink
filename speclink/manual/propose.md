@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 110
 keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊, schema, no-spec-change, 不改規格]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 提案：建立變更與產物
@@ -54,7 +54,7 @@ speclink new change <變更名> --from-discussion <slug> --last
 帶 `--last` 的效果：記錄的保留在途旗標解除，之後最後一個轉出變更封存時，記錄自動隨行封存，不用再手動執行 `speclink discuss archive`。
 
 > [!WARNING]
-> 不是最後一刀卻帶了 `--last`，記錄會在最後一個在途變更封存時被收走。再立下一刀之前，把記錄檔從 `speclink/discussions/archive/` 搬回 `speclink/discussions/`。
+> 不是最後一刀卻帶了 `--last`，記錄會在最後一個在途變更封存時被收走。再立下一刀之前，用 `speclink discuss restore <slug>` 把記錄搬回進行中，不要自己搬規格資料夾裡的檔案。本機專案與遠端專案都是同一個做法，見[討論：需求還模糊時](discuss.md)。
 
 ### 從文件建立
 

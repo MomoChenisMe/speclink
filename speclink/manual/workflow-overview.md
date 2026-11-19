@@ -2,9 +2,9 @@
 title: 工作流總覽：站別與交棒
 section: 開始使用
 order: 50
-keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊, 蓋章, CI, rebase]
-sources: [skill-routing, user-documentation, "change-plan#apply 技能以 plan 挑選與守門", "workspace-tools#Copilot 渲染目標"]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [工作流, 技能, 交棒, 下一步, SDD, 站別, baseline, 手冊, 蓋章, CI, rebase, Pi, Cursor]
+sources: [skill-routing, "user-documentation#完整工作流指南說明用途與使用時機", "user-documentation#Getting Started 僅使用已驗證入口", "user-documentation#工作流正典逐站列出技能與完成判準", "user-documentation#品質關卡蓋章效果與非成員錯誤碼的文件揭露", "user-documentation#workflow 文件載明蓋章前的預防規矩", "change-plan#apply 技能以 plan 挑選與守門", "workspace-tools#Copilot 渲染目標", "workspace-tools#Pi 渲染目標", "workspace-tools#Cursor 渲染目標"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 工作流總覽：站別與交棒
@@ -17,7 +17,7 @@ Speclink 的工作流由一組 AI 技能串起來。每個技能就是一站：�
 - 技能只會「建議」下一步，不會自動呼叫另一個技能。要不要走下一站，由你決定。
 
 > [!NOTE]
-> 本手冊把技能一律寫成 `/speclink-*`，這是 Claude 與 GitHub Copilot 的叫法；Codex 要寫成 `$speclink-*`，例如 `$speclink-propose`。三個工具的技能分別放在 `.claude/skills/`、`.agents/skills/`、`.github/skills/`。`/speclink-analyze` 只有 Claude 有，Codex 與 Copilot 沒有這個技能；要做產物一致性檢查時，直接執行 `speclink analyze`，見[分析：交叉檢查變更的產物](analyze.md)。
+> 本手冊把技能一律寫成 `/speclink-*`，這是 Claude、GitHub Copilot 與 Cursor 的叫法；Codex 要寫成 `$speclink-*`，例如 `$speclink-propose`；Pi 要寫成 `/skill:speclink-*`，例如 `/skill:speclink-propose`。五個工具的技能分別放在 `.claude/skills/`、`.agents/skills/`、`.github/skills/`、`.pi/skills/`、`.cursor/skills/`。`/speclink-analyze` 只有 Claude 有，Codex、Copilot、Pi 與 Cursor 沒有這個技能；要做產物一致性檢查時，直接執行 `speclink analyze`，見[分析：交叉檢查變更的產物](analyze.md)。
 
 ## 每一站的入口情境
 

@@ -3,8 +3,8 @@ title: 續作與需求變更：drift 與 ingest
 section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate, no-spec-change, change schema]
-sources: [drift-computation, archive-merge, skill-routing, user-documentation, ingest-skill]
-generated: 2026-10-27T11:03:57+08:00
+sources: [drift-computation, archive-merge, "skill-routing#出口交棒由技能結尾承載", "user-documentation#完整工作流指南說明用途與使用時機", "user-documentation#討論結論後的轉出與併入分流完整", ingest-skill]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -15,7 +15,7 @@ generated: 2026-10-27T11:03:57+08:00
 - **實作到一半需求變了**：走 ingest，把新的需求併進這個變更的產物，再回去實作。
 
 > [!NOTE]
-> drift 技能的內文行為規格未載；ingest 技能只有參數的解讀、不改規格變更的產出流程切換，以及收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 怎麼解讀你帶的參數、什麼時候切回 spec-driven、收尾怎麼重判依賴，以及兩個技能的交棒方向。
+> drift 技能的內文行為規格未載；ingest 技能只有參數的解讀、不改規格變更的產出流程切換、更新產物時保留既有內容，以及收尾的依賴判定有規格。本頁只寫規格有寫的部分：drift 報告的內容、它與封存守門的關係、ingest 怎麼解讀你帶的參數、什麼時候切回 spec-driven、更新產物時保留什麼、收尾怎麼重判依賴，以及兩個技能的交棒方向。
 
 ## drift：看漂移了多少
 
@@ -104,6 +104,16 @@ ingest 更新產物之前，先讀這個變更的產出流程。變更是 no-spe
 
 > [!NOTE]
 > ingest 不會自己把 spec-driven 的變更切成 no-spec-change。只有你明確要求、而且變更已經沒有 delta 時才會切。切換指令的規則見[產出流程 schema 管理](schemas.md)。
+
+### 更新產物時保留既有內容
+
+ingest 更新每一份產物（提案、設計、delta、任務）時，都是先讀出全文、在全文上併入新內容，再整份寫回。你會看到這幾個結果：
+
+- 合併時不移除既有內容。
+- 任務清單裡既有的每一行原樣保留，已勾選的仍是勾選的。新任務加在既有任務之外，是未勾選的。
+- 變更在 worktree 裡時，更新落在 worktree 的那一份，也就是 apply 會讀的那一份。
+- 遠端專案也照同一套做：更新直接落在 Server 上，不讀寫 checkout 裡的任何規格檔。
+- 整份寫回被引擎拒絕時，ingest 停下來告訴你原因，不會改成直接編輯檔案。
 
 ### ingest 收尾：重判這個變更的依賴
 

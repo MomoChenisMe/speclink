@@ -2,13 +2,13 @@
 title: 工作流政策與設定
 section: SDD 工作流
 order: 210
-keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 確認表, 提醒分流, dry-run, 對話語言]
+keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言]
 sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落"]
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-19T16:40:41+08:00
 ---
 # 工作流政策與設定
 
-工作流政策存在 `speclink/config.yaml`。這個檔有四類內容：五個政策欄位、專案說明、產出規則，以及審查規則。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
+工作流政策存在 `speclink/config.yaml`。這個檔有五類內容：五個政策欄位、專案說明、產出規則、審查規則，以及品質關卡的子代理模型。你可以用 `speclink workflow-config` 指令讀寫，也可以請 `/speclink-config` 技能幫你整理。桌面 app 的設定頁怎麼編輯這些內容，見 [專案、新增專案與設定頁](desktop-projects.md)。
 
 ## 五個政策欄位
 
@@ -45,7 +45,7 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 布林環境變數只接受 true 或 false。其他值視為未設定，落到下一層，不報錯。`.speclink.yaml` 裡的同名鍵一律不生效，也不會有警告。
 
 > [!WARNING]
-> `speclink/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。review 區塊寫錯也算無法解析，見下方「審查規則」。
+> `speclink/config.yaml` 存在但無法解析（YAML 語法錯誤或型別不符）時，所有讀政策的指令都會失敗。錯誤訊息指出檔案路徑與解析原因。指令不會退回預設值繼續跑，設環境變數也繞不過。檔案不存在時才用內建預設。review 區塊或 subagent_model 區塊寫錯也算無法解析，見下方「審查規則」與「子代理模型」。
 
 ## 讀設定：workflow-config show
 
@@ -53,7 +53,7 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 speclink workflow-config show
 ```
 
-顯示 config.yaml 裡的正典內容：專案預設的產出流程（schema）、五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。
+顯示 config.yaml 裡的正典內容：專案預設的產出流程（schema）、五個政策欄位（未設定的會標示未設定與其預設語意）、專案說明的有無與行數、各產出規則節的條數，以及審查規則的摘要。它顯示的是檔案裡的值，不套用環境變數覆寫。remote 模式下讀的是 server 上的設定，輸出形狀相同。子代理模型的設定不在這份輸出裡，要加 `--json` 才看得到。
 
 產出流程那一行在最上面，標題空行之後、locale 那一行之前，標籤欄寬與其他行相同：
 
@@ -84,12 +84,15 @@ key 只能是五個政策欄位之一。其他 key 被拒絕，不動檔案。�
 - tdd、audit、worktree 設 false，或 locale、spec_locale 設空字串，會移除該鍵，回到未設定＝預設。鍵上方的註解行保留。
 - 寫入只動目標鍵所在的行。其他行逐位元保留，包括註解、空行與你自己加的內容。
 - 加 `--dry-run` 只印出前後差異，不寫檔。沒有變更時差異為空。值不合法時同樣拒絕，不印差異。
+- 值沒有變時（例如 tdd 已經是 true 再設一次 true），照常印確認訊息，但本機專案不會重寫 config.yaml；檔案原本不存在時（例如直接執行 `set tdd false`）也不會為此建立。
 
 remote 模式下，指令先讀 server 上的現行設定，套用同樣的改寫再寫回。寫回時發現別人已先改過，指令失敗並提示你重新執行，不會蓋掉別人的寫入。離線或認證失效時指令失敗，不會暫存或排隊。
 
 ### worktree 欄位的額外效果
 
 `set worktree true` 寫入成功後會同步技能，範圍同 `speclink update`。各工具的技能目錄多出兩顆 worktree 技能。
+
+值沒有變的寫入不同步技能：worktree 已經是 true 時再執行 `set worktree true`，或沒有 worktree 鍵時執行 `set worktree false`，只印確認訊息（`✓ worktree = true`、`✓ worktree = false`），沒有技能同步的那一行，config.yaml 與技能檔都不動。
 
 `set worktree false` 時，若還有活躍的 worktree 掛著，指令拒絕寫入，列出每個 worktree 的變更名、分支與路徑，並提示先收尾。
 
@@ -165,13 +168,83 @@ speclink: warning: skill files are older than this engine (claude v1.44.0; engin
 - 技能檔都是現版，或整組缺失。
 - 工作區的技能檔比引擎新（執行 update 會降級），或判斷不出來。
 - 帶 `--dry-run`（沒有寫入，也不檢查）。
+- 值沒有變的寫入，例如沒有 review 區塊時執行 `review baseline extend`：確認訊息照印，本機專案不重寫 config.yaml。遠端專案這時仍會送出寫入，但同樣不提醒。
 - set、context、rules 的寫入。這些內容由 CLI 在下指令時注入，技能檔新舊不影響生效。
 
 remote 模式寫入成功後，用本機工作區的技能檔判斷，條件相同。檢查本身失敗時不影響寫入結果。
 
+## 子代理模型：subagent_model 區塊
+
+品質關卡的檢查由子代理（主對話另外派出、只讀不改檔的助手）執行，預設沿用主對話的模型。想讓某一站、某個 AI 工具的子代理改用別的模型，寫在 config.yaml 的頂層 subagent_model 區塊。子鍵只有三個：
+
+- **review、verify**：兩站各自的設定，每一格是「AI 工具名稱：模型名稱」。某個工具沒寫，那一站在那個工具上就沿用主對話的模型。
+- **choices**：各 AI 工具的自訂清單，每一項是「AI 工具名稱：模型名稱清單」。兩站設的值不必出現在清單裡。
+
+整個區塊不寫（或寫成 null），等於三個子鍵都空：每一站、每一個 AI 工具都沿用主對話的模型。
+
+```yaml
+subagent_model:
+  review:
+    claude: opus
+    codex: gpt-6.1-sol
+  verify:
+    claude: sonnet
+  choices:
+    codex:
+      - gpt-6.1-sol
+      - gpt-6-astra
+```
+
+- **AI 工具名稱**要是 kebab-case：2 到 50 個字元，只含小寫英文字母、數字與連字號，不以連字號開頭或結尾，也不連寫兩個連字號。同一個子鍵底下，同一個名稱只能出現一次。名稱不限於這個 checkout 啟用的工具，也不限於內建工具，例如 my-agent 也合法。
+- **模型名稱**是字串，頭尾空白會去掉。引擎不檢查模型名稱存不存在。
+- review 或 verify 的某一格寫成 null 或只有空白，當作那一格沒設定。清單裡的空白條目會被略過，null 清單當作空清單。
+- 子代理模型不是政策欄位：沒有環境變數可以覆寫，`.speclink.yaml` 的同名鍵也不讀。
+- 還不認得這個區塊的舊版 CLI 讀到它時，會略過整個區塊。
+
+兩站怎麼套用這個設定、模型名稱被 AI 工具拒絕時怎麼處理，見 [審查站](review.md)、[驗證站](verify.md) 與 [品質關卡總覽](quality-stations.md)。桌面 app 的設定頁怎麼編輯這個區塊，見 [專案、新增專案與設定頁](desktop-projects.md)。
+
+> [!CAUTION]
+> subagent_model 區塊寫錯，整份 config.yaml 同樣當成無法解析：出現不認得的子鍵（例如把 review 拼成 reveiw）、AI 工具名稱不是 kebab-case（例如 Claude）或在同一個子鍵底下重複、review 或 verify 不是「名稱對值」的對照、某一格的值不是字串（例如寫成數字 3）、choices 的值不是字串清單時，所有讀設定的指令（含 `speclink workflow-config show` 與 `speclink instructions`）都會失敗，錯誤訊息點名出錯的鍵或值，不會退回預設。遠端專案的 server 用同一套規則拒收，server 上的內容與版本都不變。
+
+### 寫子代理模型：workflow-config subagent-model
+
+```
+speclink workflow-config subagent-model review <工具> <模型>
+speclink workflow-config subagent-model verify <工具> <模型>
+speclink workflow-config subagent-model choices <工具> --stdin
+```
+
+- **review、verify**：把那一站、那個 AI 工具的模型設成你給的名稱，頭尾空白去掉。名稱給空字串或只有空白時移除那一格，回到沿用主對話。這兩個形式不讀 stdin。
+- **choices**：stdin 整段代換那個 AI 工具的自訂清單，一行一條，頭尾空白去掉，空行略過。stdin 為空或只有空白時移除那個工具的清單。沒帶 `--stdin` 時失敗並說明用法，不動檔案。
+- 寫完後 review、verify、choices 都空時，整個 subagent_model 區塊會被移除。
+- 第一個參數不是 review、verify、choices 之一，或工具名稱不是 kebab-case 時拒絕，列出合法值或名稱規則，不動檔案。工具名稱不必是這個 checkout 啟用的工具。
+- 只代換 subagent_model 區塊：其他鍵、註解與空行逐位元保留；區塊內的註解不保留，AI 工具名稱依字母序寫出。以 YAML 保留字元開頭的模型名稱會自動加引號，讀回時一字不差。
+- 寫入結果和原本一樣時（例如移除一格本來就沒設定的、設成現有的值、用空的 stdin 移除一份不存在的清單），config.yaml 逐位元不變，訊息是 `✓ <鍵路徑> unchanged`。
+- `--dry-run`、遠端專案的讀改寫與版本衝突處理、離線與認證失效、壞檔拒寫，行為都與 set 相同。
+
+成功時印一行訊息：
+
+| 寫入前 | 指令 | 寫入後 | 訊息 |
+| --- | --- | --- | --- |
+| 沒有 subagent_model | subagent-model review claude opus | review 的 claude 為 opus | ✓ subagent_model.review.claude = opus |
+| review 的 claude 為 opus | subagent-model review claude sonnet | review 的 claude 為 sonnet | ✓ subagent_model.review.claude = sonnet |
+| review 的 claude 為 opus、verify 的 codex 為 gpt-6.1-sol | subagent-model verify codex "" | 只剩 review 的 claude 為 opus | ✓ subagent_model.verify.codex removed |
+| review 的 claude 為 opus | subagent-model review claude "" | subagent_model 區塊被移除 | ✓ subagent_model.review.claude removed |
+| 沒有 subagent_model | subagent-model choices codex --stdin（兩行） | choices 的 codex 兩條 | ✓ subagent_model.choices.codex = 2 entries |
+| choices 的 codex 兩條 | subagent-model choices codex --stdin（空） | subagent_model 區塊被移除 | ✓ subagent_model.choices.codex removed |
+| review 的 claude 為 opus，verify 沒有 claude | subagent-model verify claude "" | 不變 | ✓ subagent_model.verify.claude unchanged |
+
+實際寫入成功後，CLI 也會檢查本機工作區的技能檔，判定條件與上面「寫完提醒技能檔過期」相同，只有提醒的內容不同：舊版的品質關卡技能可能不套用這個子代理模型。
+
+```
+speclink: warning: skill files are older than this engine (claude v1.44.0; engine v1.54.0) — an older quality-station skill may not apply this sub-agent model; run `speclink update`
+```
+
+這行同樣只是提醒，stdout 與 exit code 不受影響。帶 `--dry-run`、或值沒有變（訊息是 unchanged）時不提醒。遠端專案一樣用本機工作區的技能檔判斷。
+
 ## 先看差異：--dry-run
 
-所有寫入子指令（set、context、rules、review）帶 `--dry-run` 時，只印差異、不寫檔。差異是單一段的 unified diff：`--- a/…`、`+++ b/…` 兩行開頭，接一行 `@@` 標頭，前後各帶至多三行沒改的內容。
+所有寫入子指令（set、context、rules、review、subagent-model）帶 `--dry-run` 時，只印差異、不寫檔。差異是單一段的 unified diff：`--- a/…`、`+++ b/…` 兩行開頭，接一行 `@@` 標頭，前後各帶至多三行沒改的內容。
 
 - 沒改動、順序也沒變的行以空白開頭顯示，不會成對出現 `-` 與 `+`。
 - 只有被刪、新增或換了位置的行才帶 `-`／`+`；同一處有刪有增時，`-` 在前。

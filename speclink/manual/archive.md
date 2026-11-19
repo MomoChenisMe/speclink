@@ -2,9 +2,9 @@
 title: 封存
 section: SDD 工作流
 order: 170
-keywords: [封存, archive, 正式規格, 守門, Purpose, 證據, 手冊, 封存順序, 同名衝突]
-sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序"]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [封存, archive, 正式規格, 守門, Purpose, 證據, 手冊, 封存順序, 同名衝突, 封存名稱, evidence show, 遠端專案]
+sources: [archive-skill, archive-merge, change-lifecycle, verify-evidence, spec-validation, "change-plan#archive 技能以 plan 建議封存順序", "verb-contract#artifact cat 讀取已封存變更的文件"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 封存
@@ -127,12 +127,16 @@ delta 新開一個正式規格還沒有的 capability 時，delta 檔頂部要�
 
 全部驗證通過後，引擎依序做三件事：先把所有受影響正式規格的封存前備份寫進快照目錄，再把合併結果寫回正式規格，最後把變更目錄搬進封存區。寫到一半 I/O 失敗，可以用已落地的快照與 git 恢復。
 
+> [!NOTE]
+> 封存名稱已經存在時，兩種專案的處理不同。本機專案：技能有改名或刪除既有封存資料夾的步驟。遠端專案：技能停下來，告訴你這一步要在持有規格的 Server 上處理。
+
 ## 封存後會留下什麼
 
 - **正式規格裡的 trace 區塊**：每條 ADDED 或 MODIFIED 的需求後面，引擎一律注入一個 trace 區塊，只有兩欄：來源變更名與封存時戳。時戳帶時區偏移量、精確到秒（例如 `2026-09-05T23:17:28+08:00`），它的日曆日與這次封存目錄名的日期前綴相同，因為兩者取自同一個當下。正式規格裡其他需求原本只有純日期的時戳，封存不會回改。不含檔案清單。
 - **變更的三站欄位**：封存目錄裡的 .meta.yaml 同時保留建立、開工、封存三站的時間與人；開工欄位不會被剝掉。
 - **封存時間**：封存成功時，.meta.yaml 多一行封存時間，是帶時區偏移量的秒級時戳。它與封存目錄名的日期前綴、trace 區塊的時戳取自同一個當下。例如 2026-10-21 封存的變更，目錄名以 `2026-10-21-` 開頭，封存時間以 `2026-10-21T` 開頭。引擎在守門全數通過之後、搬目錄之前寫這一行；守門拒絕時不寫。搬目錄失敗時，變更留在進行中、帶著這一行，下次封存成功會換成新的時間，檔內只留一行。沒有 .meta.yaml 的舊式變更照常封存，不會為了這一行新建檔案。
-- **任務證據**：變更目錄的 .evidence.json 跟著搬進封存區。
+- **任務證據**：變更目錄的 .evidence.json 跟著搬進封存區。封存後仍然可以用 `speclink evidence show <變更名>` 讀出來，給原本的變更名或帶日期的封存名稱都行，見[實作：完成任務](apply.md)。
+- **變更的文件**：封存後仍然可以用 `speclink artifact cat <文件> --change <變更名>` 讀出提案（`proposal`）、設計（`design`）、任務清單（`tasks`）與 delta 規格（`specs/<capability>`）。給原本的變更名或帶日期的封存名稱都行；同一個名稱封存過好幾次時讀最新的一份。有同名的進行中變更時，讀到的是進行中的那一份。本機專案與遠端專案的結果相同。
 - **蓋章的變更不含工單檔**：蓋章時工單已刪除。只有帶 `--carry-*` 搬走的未結工單會出現在封存目錄裡。
 
 ### 零證據提示
@@ -145,12 +149,14 @@ delta 新開一個正式規格還沒有的 capability 時，delta 檔頂部要�
 
 ## 封存之後
 
-封存完成後，技能提醒你下面幾件事。都只是提醒，技能不會代跑。
+封存完成後，技能用封存指令回傳的封存名稱告訴你結果，再提醒你下面幾件事。都只是提醒，技能不會代跑。
 
 - **提交收尾**：用一般的 git 提交收尾這次封存產生的異動：delta 併入正式規格、變更目錄搬進封存區。commit 技能的「挑選變更檔案」流程不適用於封存之後。
 - **檢查手冊是否過期**：工作區有 `speclink/manual/` 時，技能提醒你可以跑 `/speclink-manual` 檢查手冊有沒有因這次封存而過期。條件只看目錄存不存在，不看這次封存動到哪些規格。見[操作手冊：生成與導覽](manual.md)。
 - **排在後面的變更要先重寫**：封存前記下的「封存要等目標」的變更不是空的時，技能提醒它們先重讀同名 requirement 的區塊、對照正式規格重寫（走 ingest）再封存。目標封存後 plan 不再列出它，這是最後一次點名的機會。這一條不會另外問你問題，也不會代跑 ingest。
 - **下一個可開工**：技能再執行一次 `speclink plan --json`。算得出下一個可開工的變更時，提一句「plan 的下一個可開工：<變更名>，執行 /speclink-apply <變更名>」。有效的 worktree 政策開啟、而且第 1 波裡沒被擋住又還沒開工的變更有兩個以上時，再列出這份名單為可並行，各開一個 session 走 apply-with-worktree。沒有可開工的變更、或 plan 失敗（依賴成環）時，不提順序。
+
+前兩條（提交收尾、檢查手冊）只在本機專案出現。遠端專案的規格資料夾不在這個 checkout 裡，技能不提這兩條，告知結果時也不列規格資料夾的路徑。
 
 | plan 的結果 | worktree 政策 | 提示 |
 | --- | --- | --- |
@@ -160,4 +166,4 @@ delta 新開一個正式規格還沒有的 capability 時，delta 檔頂部要�
 | 沒有可開工的變更 | 開或關 | 不提順序 |
 | plan 回報依賴成環 | 開或關 | 不提順序 |
 
-**出處**：`archive-skill`、`archive-merge`、`change-lifecycle`、`verify-evidence`、`spec-validation`、`change-plan`
+**出處**：`archive-skill`、`archive-merge`、`change-lifecycle`、`verify-evidence`、`spec-validation`、`change-plan`、`verb-contract`

@@ -3,8 +3,8 @@ title: 失聯與恢復
 section: Remote 模式
 order: 500
 keywords: [離線, offline, 重新登入, stale, 恢復, 重置]
-sources: [remote-resilience, user-documentation]
-generated: 2026-10-27T11:03:57+08:00
+sources: [remote-resilience, "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "remote-connection#用戶端以作業系統的信任庫驗證 Server 的憑證"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 # 失聯與恢復
 
@@ -21,6 +21,9 @@ remote 工作區連不上 server 時，桌面 app 不會退回本地模式，也
 | needs-reauth | server 明確拒絕已撤銷、失效或遭重放的憑證 | 分頁層級的需要重新登入橫幅 |
 
 needs-reauth 優先於 offline 呈現。本地分頁不受任何 remote 連線狀態影響。同一台機器上第二個 server 也不受影響。
+
+> [!TIP]
+> Server 用 HTTPS、明明在運作，桌面 app 卻一直顯示連線中斷時，可能是這台電腦不信任 Server 的 HTTPS 憑證。憑證被拒絕時，桌面 app 的呈現和 Server 沒有回應時相同：連線中斷，寫入動作停用。怎麼確認與處理，見 [CLI 連接 remote](cli-remote.md) 的「HTTPS 連線：信不信任 Server 的憑證」一節。
 
 ## 離線時：能看、不能寫
 
@@ -73,4 +76,4 @@ server 撤銷了這台裝置的憑證後，連線進入 needs-reauth。重新登
 
 重置後的開箱流程見 [開箱：第一位 Admin 與第一組 Project／Repo](server-setup.md)。
 
-**出處**：`remote-resilience`、`user-documentation`
+**出處**：`remote-resilience`、`user-documentation`、`remote-connection`

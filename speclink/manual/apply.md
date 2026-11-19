@@ -2,9 +2,9 @@
 title: 實作：完成任務
 section: SDD 工作流
 order: 120
-keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據]
-sources: [change-lifecycle, manual-task-marker, task-identity, verify-evidence, verb-contract, skill-routing, "change-plan#apply 技能以 plan 挑選與守門"]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [apply, 任務, 勾選, 手動任務, 開工, 證據, evidence show, 分支]
+sources: ["change-lifecycle#in-progress 標記真相存於 change meta", "change-lifecycle#任務完成蘊含開工標記", "change-lifecycle#in-progress 標記可自 change meta 移除(零工作痕跡守門)", "change-lifecycle#變更以 discard 動詞廢棄", "change-lifecycle#壞 metadata 使生命週期寫入 fail closed", "change-lifecycle#restale_from 記錄變更待重新反映的討論並經 CLI 觀測", manual-task-marker, task-identity, verify-evidence, "verb-contract#任務取消勾選動詞", "verb-contract#change 的 repo 歸屬規則", "verb-contract#模式分岔的單點宣告", "skill-routing#出口交棒由技能結尾承載", "skill-routing#去中心化路由不留集中總表", "change-plan#apply 技能以 plan 挑選與守門", "change-landing#開工時記下分支"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 實作：完成任務
@@ -12,7 +12,7 @@ generated: 2026-10-27T11:03:57+08:00
 這一站把提案裡的任務一項一項做完、勾掉。你會用到 `/speclink-apply` 技能，或直接下 `speclink task done` 指令。變更第一次有任務被勾掉時，就自動從「提案中」進到「進行中」。
 
 > [!NOTE]
-> apply 技能本身的內文行為（怎麼讀任務、怎麼寫碼）規格未載。本頁只寫規格有寫的部分：挑選變更的第一步、任務行的格式、勾選與取消勾選的指令、手動任務的規則、開工標記，以及做完之後的交棒。
+> apply 技能本身的內文行為（怎麼讀任務、怎麼寫碼）規格未載。本頁只寫規格有寫的部分：挑選變更的第一步、任務行的格式、勾選與取消勾選的指令、查看證據的指令、手動任務的規則、開工標記，以及做完之後的交棒。
 
 ## 進入這一站之前
 
@@ -62,6 +62,26 @@ speclink task done <任務序號或 ID> --change <變更名>
 - 序號超出範圍或 ID 查無：報錯，形狀與序號超界一致。
 - 變更的 .meta.yaml 壞掉解析不了：報錯並指出檔案位置與原因。引擎不會把壞檔當成「未開工」。
 
+### 查看記下了哪些證據
+
+```
+speclink evidence show <變更名>
+```
+
+這個指令只讀不寫。輸出的第一行是變更名與有記錄的任務數；之後每筆記錄一段，列出任務 ID、任務說明、記錄時間，以及它改到的每個檔案。變更存在但還沒有任何記錄時，只印一行說明，仍算成功。
+
+你給的名稱依這個順序找：
+
+| 情況 | 讀到哪一份 |
+| --- | --- |
+| 有同名的進行中變更 | 進行中的那一份。就算封存區也有同名的變更，也是讀進行中的 |
+| 沒有進行中的；封存區有 `2026-11-12-demo`，你給 `demo` | 那份封存的記錄。輸出多一行指出封存名稱 |
+| 你給帶日期的封存名稱 `2026-11-12-demo` | 那一份封存 |
+| 同一個名稱有好幾份封存 | 最新的一份，依封存名稱的日期判定；名稱不帶日期的舊封存排在帶日期的之後 |
+| 進行中與已封存都沒有 | 報錯：找不到這個變更 |
+
+證據的內容壞掉解析不了時，指令報錯，不會當成「沒有記錄」。遠端專案也可以用這個指令，相同的內容輸出相同。
+
 ## 取消勾選
 
 ```
@@ -88,6 +108,8 @@ speclink in-progress add <變更名>
 ```
 
 這個指令靜默完成、重複執行不會改章。名字打錯也靜默成功、不寫檔，這是刻意保留的舊行為。
+
+用這個指令標記開工時，CLI 會把 checkout 目前的分支名稱一起記進這個變更。已經開工的變更再執行一次，不會改寫記下的分支；退回提案中時，分支的記錄一併移除。細節見[分支與落地記錄](landing.md)。
 
 誤開工的變更可以退回提案中：
 
@@ -128,4 +150,4 @@ apply 技能結尾只給建議、不會自動叫下一個技能：
 
 品質關卡的說明見 [品質關卡總覽](quality-stations.md)，封存見 [封存](archive.md)。
 
-**出處**：`change-lifecycle`、`manual-task-marker`、`task-identity`、`verify-evidence`、`verb-contract`、`skill-routing`、`change-plan`
+**出處**：`change-lifecycle`、`manual-task-marker`、`task-identity`、`verify-evidence`、`verb-contract`、`skill-routing`、`change-plan`、`change-landing`

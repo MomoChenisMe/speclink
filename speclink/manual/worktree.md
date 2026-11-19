@@ -2,9 +2,9 @@
 title: 平行實作與合回：worktree
 section: SDD 工作流
 order: 190
-keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併]
-sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, workflow-config]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併, 回報落地, change landed]
+sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, "workflow-config#worktree 欄位寫入的技能同步與關閉擋下"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 # 平行實作與合回：worktree
 
@@ -32,8 +32,8 @@ speclink workflow-config set worktree true
 1. **一次只收一個變更。** 你給了兩個以上的變更名時，技能先執行 `speclink plan --json`，把沒被擋住的變更列成並行配方（其餘變更各開一個新 session 執行本技能），被擋住的逐一列出前置並說明要等前置落地再開，然後停下來請你從並行名單擇一。恰好只有一個沒被擋住時，技能改問你要不要就在這裡做它，不印配方。一個都沒有時，技能列出要等的與不可用的名字，然後停止。它不會默默依序做完。
 2. **檢查政策。** 有效的 worktree 政策不是 true 時，技能拒絕執行，說明「本專案未啟用 worktree 流程」，並告訴你用 `workflow-config set worktree true` 開啟。它不會改在主資料夾執行實作。
 3. **以 plan 選變更並守門。** 技能在主 checkout 執行 `speclink plan --json`。沒指名時取「下一個可開工」；沒有可開工的變更時列出每個變更的阻擋清單並停止。指名時讀該變更的阻擋清單，非空就印出前置並停止。指名的變更不在 plan 裡（已封存、不存在、或因 metadata 壞掉被略過）時，停止並列出可用的變更名。plan 失敗（依賴成環、專案未初始化）時顯示錯誤並停止。任何一種停止都不會提交產物、也不會建立 worktree。順序與阻擋怎麼算，見[執行順序：plan 與依賴](plan.md)。
-4. **確認變更的產物已提交進 HEAD。** worktree 由 HEAD 建出來。產物不在 HEAD，worktree 裡就沒有這個變更。未提交時，技能只提交該變更目錄本身，不夾帶其他髒檔。
-5. **檢查進度與程式碼有沒有分家。** 技能讀變更目錄裡的證據檔（.evidence.json）記錄的觸及檔案，對主資料夾查 git 狀態。任一檔案在主資料夾是髒的，技能停下列出髒檔，依推薦順序給你三個選項：「先執行 speclink-commit 將本 change 的程式碼提交進 HEAD 再回來」、「照樣繼續（明知 worktree 缺這些實作）」、「停止」。沒有證據檔或清單為空時，靜默續行。
+4. **確認變更的產物已提交進 HEAD。** worktree 由 HEAD 建出來。產物不在 HEAD，worktree 裡就沒有這個變更。未提交時，技能只提交該變更目錄本身，不夾帶其他髒檔。遠端專案沒有這一步：規格文件在 Server 上，沒有東西要先 commit。
+5. **檢查進度與程式碼有沒有分家。** 技能用 `speclink evidence show <變更名>` 取得這個變更已經改到的檔案，對主資料夾查 git 狀態。任一檔案在主資料夾是髒的，技能停下列出髒檔，依推薦順序給你三個選項：「先執行 speclink-commit 將本 change 的程式碼提交進 HEAD 再回來」、「照樣繼續（明知 worktree 缺這些實作）」、「停止」。沒有證據記錄或清單為空時，靜默續行。
 6. **建立 worktree。** 分支名為 `speclink/<變更名>`，位置在主資料夾旁邊的 `<repo 資料夾名>.worktrees/<變更名>/`。分支或 worktree 已存在時，沿用既有的續作，不重複建立。
 7. **印出建置成本提示。** worktree 是完整的原始碼副本，你要自行安裝依賴與建置產物。
 8. **在 worktree 資料夾內執行實作流程。** 之後的步驟與 [實作：完成任務](apply.md) 相同。實作流程第一步在 worktree 內再跑的 plan 只是複查：worktree 裡的 plan 讀不到其他 worktree 的進度，也讀不到主線後來的封存。複查結果與第 3 步不同時，以主 checkout 的判定為準，第二步（開審查工單、蓋開工章）照常執行。
@@ -51,7 +51,7 @@ speclink workflow-config set worktree true
 
 ### 實作完成後
 
-技能在 worktree 內完成這個變更的提交，沿用 [提交單一變更的檔案](commit.md) 的歸屬慣例。它不會合併回主分支，也不會移除 worktree。
+技能在 worktree 內完成這個變更的提交，沿用 [提交單一變更的檔案](commit.md) 的歸屬慣例。提交的是任務證據記錄的檔案；本機專案另外加上這個變更在規格資料夾底下的檔案。它不會合併回主分支，也不會移除 worktree。
 
 提交之後、交棒之前，技能會把分支 rebase 到主分支的最新位置，並重設品質關卡的起點。起點是品質關卡用來比對「這個變更動了哪些東西」的那個 commit。
 
@@ -89,6 +89,20 @@ speclink workflow-config set worktree true
 
 > [!NOTE]
 > 合併後才在主 checkout 跑品質關卡，不是降級路徑：第 5 步已經把品質關卡的起點承接到主資料夾。
+
+### 合併後回報落地
+
+變更分支合併進主分支成功之後，技能還會回報這個變更的程式碼落在哪個 commit。它先用 git 取得合併後主分支的 HEAD，再執行：
+
+```
+speclink change landed <變更名> --branch speclink/<變更名> --commit <合併後主分支的 HEAD>
+```
+
+- 合併失敗或中止時不回報。
+- 回報被拒絕時，技能把訊息告訴你，然後繼續收尾，不會還原合併。
+- 本機專案的回報會寫進這個變更的資料檔，所以主 checkout 從這一步起多了一個改動的檔。技能不代你提交它，交棒時會點名這個檔。遠端專案的規格資料夾不在 checkout 裡，沒有這一段。
+
+落地記錄記了什麼、怎麼讀，見 [分支與落地記錄](landing.md)。
 
 ## 在主資料夾看 worktree 的進度
 

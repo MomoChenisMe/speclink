@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 230
 keywords: [manual, 手冊, 導覽, tour, 生成, 過期, 未入冊, speclink/manual, frontmatter]
 sources: [manual-skill, manual-pages]
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 操作手冊：生成與導覽
@@ -74,6 +74,8 @@ sources 的每一項有兩種寫法：
 ## remote 模式的限制
 
 專案綁定 remote store（`.speclink.yaml` 有 remote 區段）時，生成模式會明示 remote 模式尚不支援手冊生成，然後停止，零檔案寫入。導覽模式不受這條限制。remote 模式的說明見[remote 模式總覽](remote-overview.md)。
+
+規格資料夾不在這個 checkout 的專案（遠端專案，或內嵌引擎而沒有本機規格檔的宿主）拿到的技能檔，另外在生成模式的開頭就直接寫明這個專案不支援手冊生成：技能輸出同一句說明後結束，零檔案寫入，不靠讀取 `.speclink.yaml` 來判斷，所以沒有 `.speclink.yaml` 的宿主也一樣被擋下。導覽模式同樣不受影響。本機專案拿到的技能檔沒有這一段，照舊在執行時判斷。
 
 ## 手冊頁長什麼樣
 

@@ -2,9 +2,9 @@
 title: 認識資料：變更、討論與規格
 section: 開始使用
 order: 40
-keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄]
-sources: [change-lifecycle, discussion-docs, user-documentation, "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄, 認領, 釋放認領, claim, release]
+sources: [change-lifecycle, discussion-docs, "user-documentation#使用者文件載明本地產物的純文字可攜性", "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -28,7 +28,7 @@ Speclink 在這些產物之外多加了兩樣東西：
 - 每個變更資料夾裡的 `.meta.yaml`：這個變更的狀態檔。
 
 > [!NOTE]
-> 這種可攜性只適用本地模式。Remote 模式的正式規格存在 server 的 Store，本機只有唯讀投影。見 [remote 模式總覽](remote-overview.md)。
+> 這種可攜性只適用本機專案。遠端專案的正式規格由 Server 持有，checkout 裡沒有規格檔。見 [remote 模式總覽](remote-overview.md)。
 
 可以從 OpenSpec 專案匯入，但只能單向：在 OpenSpec 專案執行 `speclink init`，會把 `openspec/` 搬到 `speclink/`，之後 OpenSpec CLI 就讀不到這個專案。舊版 Speclink 建立的專案仍是 `openspec/` 資料夾與 `.openspec.yaml` 狀態檔，怎麼搬過來見[規格資料夾與舊佈局遷移](spec-folder.md)。
 
@@ -109,11 +109,39 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 
 ### 認領
 
-團隊模式的 Store 支援「認領」變更：認領後狀態檔記錄認領者與時間。同一人重複認領直接成功；別人已認領時拒絕，並指出目前持有人。本地模式不支援認領。
+遠端專案支援「認領」變更：
+
+```
+speclink claim <變更名>
+```
+
+認領後狀態檔記錄認領者與時間；你的身分帶有識別時，也一併記下識別。同一人重複認領直接成功；別人已認領時拒絕，並指出目前持有人。本機專案不支援認領。
+
+判斷是不是同一人時，兩邊都有識別就只比識別：識別相同、顯示的名字不同，仍算同一人；識別不同、名字相同，算不同人。任一邊沒有識別時，才比名字。
+
+**釋放認領**：要把認領放掉時執行：
+
+```
+speclink claim <變更名> --release
+```
+
+釋放會把認領記錄從狀態檔移除，其他欄位一個字元都不動。釋放之後，任何人都能重新認領這個變更。引擎不限定誰可以釋放：執行的人不必是當初認領的人。把 Speclink 內嵌進自己系統的宿主可以自己加限制；被擋下時，你看到的是宿主給的原因。
+
+| 情況 | 結果 |
+| --- | --- |
+| 變更已被認領 | 成功。輸出 `✓ Released claim on change: <name> (was claimed by <holder>)` |
+| 變更沒有被認領 | 仍算成功，不寫任何東西。輸出 `Change '<name>' is not claimed — nothing to release` |
+| 狀態檔只剩認領時間、沒有認領者（這時認領會被拒絕） | 成功，殘留的記錄被清掉，之後可以重新認領。輸出 `✓ Released claim on change: <name>`，沒有括號那一段 |
+| 變更不存在 | 拒絕，訊息指出找不到這個變更 |
+| 本機專案 | 拒絕，訊息與 `speclink claim <變更名>` 被拒絕時相同 |
+
+碰上版本衝突時，釋放會失敗並請你重跑。離線或登入失效時直接失敗，不排隊。
+
+**查看誰認領了**：執行 `speclink show <變更名> --json`。被認領的變更會多帶一段認領記錄：認領者，以及有記錄時的識別與認領時間。連到不提供識別與時間的舊版 Server 時，只有認領者。沒有被認領的變更，輸出和以前完全相同。`speclink show` 的一般輸出與 `speclink list --json` 都不因認領而改變。
 
 ### 狀態檔壞掉時
 
-`.meta.yaml` 存在但無法解析時，所有會改狀態的動作都會拒絕，並指出檔案位置與解析原因：標記開工、認領、完成任務、取消完成、新增產物、封存、廢棄。壞掉的狀態檔不會被當成「未開工」處理，discard 帶 `--force` 也一樣拒絕。修好檔案再重試。
+`.meta.yaml` 存在但無法解析時，所有會改狀態的動作都會拒絕，並指出檔案位置與解析原因：標記開工、認領、釋放認領、完成任務、取消完成、新增產物、封存、廢棄。壞掉的狀態檔不會被當成「未開工」處理，discard 帶 `--force` 也一樣拒絕。修好檔案再重試。
 
 ## 討論記錄
 
@@ -130,6 +158,8 @@ discard 會刪掉整個變更資料夾與它的觸及記錄檔，並解開它與
 狀態之外，記錄的 frontmatter 還可能有一行 `hold: true`，意思是「保留在途」：這份討論之後還要再轉出變更，引擎不要在最後一個變更封存時自動把它收走。這行只由 `speclink discuss conclude --hold` 寫入。解除它的方式有三種：不帶 `--hold` 的 conclude、轉出時帶 `--last`（宣告這是最後一刀）、或 `speclink discuss archive`。不帶 `--last` 的轉出不會清掉它。用法見[討論：需求還模糊時](discuss.md)。
 
 建立討論時會蓋建立者章，取自 git 身分。git 身分取不到時省略。
+
+已封存的討論可以用 `speclink discuss restore <slug>` 搬回進行中，內容一個字元都不變。不要自己搬 `discussions/archive/` 底下的檔案。用法見[討論：需求還模糊時](discuss.md)。
 
 ## 討論與變更怎麼連起來
 

@@ -2,9 +2,9 @@
 title: remote 模式總覽
 section: Remote 模式
 order: 400
-keywords: [remote, server, link, 參考實作, project-scoped URL, .speclink.yaml]
-sources: [user-documentation, remote-connection]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [remote, server, link, 示範與試用, 內嵌, 宿主, 登入方式, project-scoped URL, .speclink.yaml]
+sources: ["user-documentation#使用者文件載明本地產物的純文字可攜性", "user-documentation#官方 server 定位為示範與試用", "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#遠端專案的登入與技能來源有說明", remote-connection, "remote-auth#登入方式的探索與選擇"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 # remote 模式總覽
 
@@ -14,13 +14,15 @@ Speclink 有兩種工作方式。本地模式把正式規格放在你的 repo �
 
 **本地模式**的產物放在規格資料夾（預設 `speclink/`）底下：`specs/<capability>/spec.md`、`changes/<名稱>/`、`changes/archive/` 與 `config.yaml`。內容是純 Markdown 與 YAML，不經 Speclink 也讀得到、改得動，每次變動都呈現在 git diff 裡。Speclink 另外多加兩樣東西：`discussions/` 目錄，以及各變更目錄裡的 `.meta.yaml`。細節見 [認識資料：變更、討論與規格](data-layout.md)。
 
-**remote 模式**的正式規格在 server 的儲存後端。本機沒有 `speclink/` 目錄，只有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述的純文字可攜性不適用 remote 模式。
+**遠端專案**（remote 模式）的正式規格由 Server 持有，checkout 裡沒有規格檔，也沒有 `speclink/` 目錄。本機另有一份唯讀的投影，見 [remote 模式的規格投影](remote-context.md)。上述的純文字可攜性不適用遠端專案。
 
-## 官方 server 是參考實作
+## 官方 server 用於示範與試用
 
-`speclink-server` 是官方的參考實作，用途是開箱即用與試用遠端功能。它不是 remote 模式的唯一路徑。remote 模式由兩份公開契約定義：`speclink/specs/` 裡的 `host-runtime` 與 `client-protocol`。你可以用 Speclink 引擎自行實作 server 端，接上自己的認證、資料庫與權限模型。CLI 與桌面 app 對自建 server 同樣可用。
+官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。
 
-本地與 remote 的能力對照表以官方參考 server 為量測對象，同樣的欄位適用於自建 server。
+這裡的官方 server 指 `speclink-server`。把 Speclink 引擎內嵌進去的那套系統，叫做宿主。官方 server 與內嵌的宿主用同一套宿主套件與同一份儲存契約組成，CLI 與桌面 app 對兩者同樣可用。
+
+本機與遠端的能力對照表，遠端一欄以官方的示範用 server 為量測對象。內嵌的宿主行為相同，差異列在已知缺口。
 
 ## 三種網址
 
@@ -60,6 +62,8 @@ CLI 看 `.speclink.yaml` 裡有沒有 remote 區段。
 
 init 與 link 當下已有可用憑證時，CLI 立即向 server 查驗 repo 是否屬於這個 Project 並回報結果。沒有憑證時提示你執行 `speclink auth login`。操作細節見 [CLI 連接 remote](cli-remote.md)。
 
+登入有三種方式：瀏覽器登入、裝置登入、存取金鑰。Server 宣告了自己支援哪幾種時，CLI 與桌面 app 依這個順序選第一個；Server 沒有宣告時走裝置登入。連 HTTPS 的 Server 時，信不信任它的 HTTPS 憑證由作業系統的信任庫決定，組織自己的 CA 裝進信任庫就能連，不必另外設定。兩件事的細節都在 [CLI 連接 remote](cli-remote.md)。
+
 remote 模式下每個動詞都自動帶上 remote 區段的 repo 名。你在 repo 名為 frontend 的資料夾操作一個歸屬 backend 的變更時，指令失敗，錯誤訊息同時列出 backend 與 frontend 兩個名稱與改正指引。
 
 ## remote 旅程的順序
@@ -71,7 +75,7 @@ remote 模式下每個動詞都自動帶上 remote 區段的 repo 名。你在 r
 3. 在 `/admin/users` 為實際登入的帳號授予 Project membership。第一位 Admin 為自己授予所建 Project 的 membership 是必經步驟，不會自動發生。見 [帳號、邀請、存取金鑰與 membership](accounts.md)。
 4. 在 `/account` 建立存取金鑰（若要走 PAT 路徑）。
 5. 桌面 app 以裝置登入連線，或以存取金鑰為備援；選擇 Project／Repo；決定開 spec-only 還是 checkout 工作區。見 [桌面連線 server 與 remote 專案](desktop-remote.md)。
-6. CLI 用 `speclink link` 與 `speclink auth login` 接上，跑一次讀寫。見 [CLI 連接 remote](cli-remote.md)。
+6. CLI 用 `speclink link` 與 `speclink auth login` 接上，執行 `speclink update` 取得 Server 提供的技能，再跑一次讀寫。見 [CLI 連接 remote](cli-remote.md)。
 7. 了解一般重啟、失聯與完全重置的行為。見 [失聯與恢復](remote-offline.md)。
 
 > [!CAUTION]
@@ -79,4 +83,4 @@ remote 模式下每個動詞都自動帶上 remote 區段的 repo 名。你在 r
 
 已經有本地工作區、想整個搬到 server 的人，走 [本地工作區遷移到 remote](migrate.md)。
 
-**出處**：`user-documentation`、`remote-connection`
+**出處**：`user-documentation`、`remote-connection`、`remote-auth`

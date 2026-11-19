@@ -2,17 +2,17 @@
 title: 啟動 server
 section: Remote 模式
 order: 410
-keywords: [server, npx, Docker, compose, SQLite, PostgreSQL]
-sources: [server-release, user-documentation]
-generated: 2026-10-27T11:03:57+08:00
+keywords: [server, npx, Docker, compose, SQLite, PostgreSQL, 示範與試用, 升級]
+sources: [server-release, "user-documentation#官方 server 定位為示範與試用", "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#示範用 server 的升級步驟有說明", "reference-server#啟動組態 fail closed"]
+generated: 2026-11-19T16:40:41+08:00
 ---
 
 # 啟動 server
 
-Speclink server 是 remote 模式的官方參考實作。它的用途是開箱即用、試用遠端功能。本頁說明四種官方啟動方式，以及啟動後第一件要找的東西：setup 連結。
+官方 server 是示範與試用用的。它讓你不寫程式就能試遠端專案。正式使用請把引擎內嵌進自己的系統。本頁說明四種官方啟動方式，以及啟動後第一件要找的東西：setup 連結。
 
 > [!NOTE]
-> 官方 server 不是 remote 模式的唯一路徑。你可以用 Speclink 引擎自建 server 端，CLI 與桌面 app 對自建 server 同樣可用。詳見 [remote 模式總覽](remote-overview.md)。
+> 官方 server 與內嵌的宿主（把 Speclink 引擎內嵌進去的那套系統）用同一套宿主套件與同一份儲存契約組成，CLI 與桌面 app 對兩者同樣可用。詳見 [remote 模式總覽](remote-overview.md)。
 
 ## 四種官方啟動方式
 
@@ -80,7 +80,25 @@ Docker 部署時，backup、restore、verify-backup 與 invite 子命令在容�
 
 - 一般重啟不重印 setup token。資料與桌面 app 的 remote 分頁都保留。
 - 完全重置：npx 路徑刪除資料目錄；在 checkout 內開發的人改跑 `npm run dev:reset`。重置後重新出現全新的 setup token。
-- 升級步驟：規格只要求部署文件涵蓋升級步驟，未載步驟內容。
+
+### 從 0.12.0 以前的版本升級
+
+資料是 0.12.0 以前的版本（含 0.12.0）建立的時候，不能直接換新版啟動。照這三步做：
+
+1. 以舊版執行備份：`speclink-server backup --config <file> --output <file>`。
+2. 把設定指向空的儲存位置與空的 identity 資料庫。
+3. 以新版執行還原：`speclink-server restore --config <file> --input <file>`，並確認驗證報告。
+
+沒先備份就用新版啟動時：
+
+- server 拒絕啟動：非零 exit code，不綁定任何連接埠，資料一個位元都不動。
+- stderr 說明這份資料由較舊的版本建立，並列出上面三個步驟。SQLite、serverfs、postgres 三種儲存都一樣。
+- 用新版對舊資料執行 backup 子命令，會以同樣的方式失敗，不產生備份檔。備份要用舊版做。
+- 要回退：換回舊版，並把設定指回原本的位置。
+
+儲存位置的資料認不出來時（帶有其他標記、沒有標記，或是更新的版本建立的），啟動同樣失敗並印出讀到的標記與配置版本，不印上面三個步驟，資料不動。
+
+備份與還原各步的行為見 [備份與還原](server-backup.md)。
 
 ## 三種網址要分清楚
 
@@ -90,4 +108,4 @@ Docker 部署時，backup、restore、verify-backup 與 invite 子命令在容�
 
 CLI 連接用第三種。詳見 [CLI 連接 remote](cli-remote.md)。
 
-**出處**：`server-release`、`user-documentation`
+**出處**：`server-release`、`user-documentation`、`reference-server`
