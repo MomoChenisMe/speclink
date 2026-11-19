@@ -5,7 +5,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 
 # /release — 執行即發版
 
-這個技能把發版一次做完：守門 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push。
+這個技能把發版一次做完：守門 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push → 清理編譯產物。
 唯一的不可逆點是 push；push 之前一定會停下來讓使用者點頭。
 
 **這是 repo 本地技能**：不進 ASSET_VERSION／golden／assets.lock，不隨 `speclink init`／`speclink update`
@@ -157,6 +157,10 @@ git push --atomic origin main "vVERSION"
    - job 綠不等於套件已在 registry——到 npm／ghcr／tap 各看一眼。
    - 新套件的 packument 可能延遲可見，先等、別重發。
    - 發完重裝本機 app：`node scripts/desktop/desktop-install.mjs --install`（更新日誌彈窗會在下一版才對這台機器彈出，
-     本版內容可從設定頁「更新日誌」看）。
+     本版內容可從設定頁「更新日誌」看）。清理（下一項）之後重裝會從頭編 release 版，多花幾分鐘。
+3. **清理本機的編譯產物**：執行 `node scripts/dev/clean-target.mjs`，把腳本印出的清理前後大小轉述給使用者。
+   版號一升，workspace 的 crate 全部要重編，舊產物全部作廢，所以每次發版後清一次。腳本發現有 cargo、rustc
+   或 tauri 在跑時不清任何東西、以非零結束：照實回報，請使用者等編譯結束後自己跑 `npm run clean:target`，
+   不要等、不要重試。這一步失敗不影響已經完成的發版。
 
 發版失敗後的重跑（移 tag 重推）不在本技能內，維持 release-pipeline-npm-pitfalls 備忘的手動程序。
