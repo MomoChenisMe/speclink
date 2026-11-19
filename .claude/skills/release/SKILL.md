@@ -5,7 +5,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 
 # /release — 執行即發版
 
-這個技能把發版一次做完：守門 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push → 清理編譯產物。
+這個技能把發版一次做完：守門 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push → 重裝本機 app → 清理編譯產物。
 唯一的不可逆點是 push；push 之前一定會停下來讓使用者點頭。
 
 **這是 repo 本地技能**：不進 ASSET_VERSION／golden／assets.lock，不隨 `speclink init`／`speclink update`
@@ -149,18 +149,24 @@ git push --atomic origin main "vVERSION"
 
 ## 8. 收尾
 
-成功後印出：
+push 成功後依序做這四件事。順序固定：重裝會用到 release 版的編譯快取，所以清理一定排在重裝之後。
 
-1. Release 工作流網址：`https://github.com/MomoChenisMe/speclink/actions/workflows/release.yml`
+1. 印出 Release 工作流網址：`https://github.com/MomoChenisMe/speclink/actions/workflows/release.yml`
    （或 `gh run list --workflow Release --limit 1 --json url` 取到的那筆）。
-2. 三項提醒（來自 release-pipeline-npm-pitfalls 備忘）：
+2. 印出兩項提醒（來自 release-pipeline-npm-pitfalls 備忘）：
    - job 綠不等於套件已在 registry——到 npm／ghcr／tap 各看一眼。
    - 新套件的 packument 可能延遲可見，先等、別重發。
-   - 發完重裝本機 app：`node scripts/desktop/desktop-install.mjs --install`（更新日誌彈窗會在下一版才對這台機器彈出，
-     本版內容可從設定頁「更新日誌」看）。清理（下一項）之後重裝會從頭編 release 版，多花幾分鐘。
-3. **清理本機的編譯產物**：執行 `node scripts/dev/clean-target.mjs`，把腳本印出的清理前後大小轉述給使用者。
-   版號一升，workspace 的 crate 全部要重編，舊產物全部作廢，所以每次發版後清一次。腳本發現有 cargo、rustc
-   或 tauri 在跑時不清任何東西、以非零結束：照實回報，請使用者等編譯結束後自己跑 `npm run clean:target`，
-   不要等、不要重試。這一步失敗不影響已經完成的發版。
+3. **重裝本機 app**：執行 `node scripts/desktop/desktop-install.mjs --install`，帶上簽章用的兩個環境變數
+   （`TAURI_SIGNING_PRIVATE_KEY`、`TAURI_SIGNING_PRIVATE_KEY_PASSWORD`；金鑰位置見 desktop-updater-signing 備忘）。
+   它從本機源碼建置，不必等 Release 工作流跑完；要十分鐘以上，放背景跑。成功後回報安裝的 app 與
+   `~/.local/bin/speclink --version` 的版號，並提醒：更新日誌彈窗要到下一版才會對這台機器彈出，本版內容可從
+   設定頁「更新日誌」看。腳本發現 Speclink 正在執行時會拒絕安裝、不代為結束程序：照實回報，不要等、不要重試。
+4. **清理本機的編譯產物**：只在第 3 步成功後執行 `node scripts/dev/clean-target.mjs`，把腳本印出的清理前後
+   大小轉述給使用者。版號一升，workspace 的 crate 全部要重編，舊產物全部作廢，所以每次發版後清一次。腳本發現
+   有 cargo、rustc 或 tauri 在跑時不清任何東西、以非零結束：照實回報，請使用者等編譯結束後自己跑
+   `npm run clean:target`，不要等、不要重試。
+
+第 3 步沒有成功（app 正在執行、建置失敗、缺簽章環境變數）時**不清理**：先清再重裝會讓 release 版從頭編一次。
+改成回報原因，並請使用者之後依序執行重裝與 `npm run clean:target`。第 3、4 步失敗都不影響已經完成的發版。
 
 發版失敗後的重跑（移 tag 重推）不在本技能內，維持 release-pipeline-npm-pitfalls 備忘的手動程序。
