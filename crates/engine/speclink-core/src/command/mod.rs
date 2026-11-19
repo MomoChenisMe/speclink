@@ -689,7 +689,8 @@ pub struct ShowChange {
     pub delta_capabilities: Vec<String>,
     pub from_discussions: Vec<String>,
     pub restale_from: Vec<String>,
-    /// The two quality stations' states (`--json` only, without the scope).
+    /// The two quality stations' states (`--json` only). They carry the scope;
+    /// only `--json --detail` prints it.
     /// `None` when there is nothing to judge them by: a corrupt metadata
     /// document, or a server that does not report them.
     pub review: Option<station::StationStatus>,

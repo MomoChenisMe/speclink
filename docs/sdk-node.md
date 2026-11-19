@@ -322,7 +322,82 @@ const hooks = {
 - **A `read` and the command do not read the same data.** Each `read` is a different call to your store. If another commit comes between the `read` and the command, the two see different content. The engine's own checks (for an archive: the completed tasks and an open ticket) always use what the command reads. If your rules need the two to agree, do that in your own `read` and `commit` store functions.
 - **Do not wait for a `dispatch` of the same host kit in a hook; use `read`.** That `dispatch` asks `beforeCommand` again, and it hangs when your store holds a lock of its own.
 
-Speclink has no built-in rules such as "no archive before the code lands" or "the commit must be on a specified branch". The engine only records the branch and the landed commit (see `change landed`). To block a call, use `beforeCommand`, as in the example above.
+Speclink has no built-in rules such as "no archive before the code lands" or "the commit must be on a specified branch", and it does not limit who can release a claim. The engine only records the branch and the landed commit (see `change landed`). To block a call, use `beforeCommand`, as in the example above.
+
+### <a id="release-hook"></a>Let only the holder and an admin release a claim
+
+Any person who can write to the scope can release a claim. The hook gets a release under the command name `claim-release`, with the change name in `params.name`. A hook that refuses only `claim` does not refuse a release. This hook lets only the holder and an admin release:
+
+```js
+async function beforeCommand({ identity, command, params }, { read }) {
+  if (command !== 'claim-release') return
+  // isAdmin is your own function. Speclink gives the identity no role.
+  if (await isAdmin(identity)) return
+  const change = await read(['show', params.name, '--json']).catch((err) => {
+    // An unknown change: allow the call, and the release gives its own `not_found`.
+    if (err.code === 'not_found') return null
+    throw err
+  })
+  if (change === null) return
+  const holder = change.claimed
+  if (!holder) return
+  // A claim with no identifier is judged by the name, as the engine does.
+  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
+  if (!isHolder) return { allow: false, reason: 'Only the holder or an admin can release this claim' }
+}
+```
+
+- **Only a `not_found` goes through.** For an unknown change, the hook allows the call, and the release gives its own `not_found`. Any other failure of `read` is thrown: the hook fails, and the call ends with `internal`. A permission hook must not allow a release that it could not judge, for example when your store is down for a moment.
+- **It is a function declaration**, so you can paste it as it is. Connect it with `createHost({ store, hooks: { beforeCommand } })`.
+- **A claim from before identifiers has no `byId`.** The example then compares the name, so the holder can always release.
+- **Where the `reason` appears**: the CLI prints it as it is on stderr. Speclink Desktop has no action that releases a claim. When your hook refuses a claim, the failure message of Speclink Desktop shows the reason.
+
+### <a id="stamp-scope"></a>Compare the files at the stamp before an archive
+
+A commit that a squash, a rebase, or a cherry-pick makes has a new identifier, so the `commit` of a stamp does not tell whether the main branch has the reviewed files. Compare the files themselves: `read(['show', name, '--json', '--detail'])` gives `scope` in each stamped station, `review.scope` and `verify.scope`. Each item is `{ path, hash }`: the path from the repo root, with forward slashes, and the fingerprint at the stamp. A station that is not stamped has no `scope`.
+
+The fingerprint: if the bytes of the file read as UTF-8, change each CRLF to LF, and take the SHA-256 of the text as lowercase hexadecimal. Keep a leading BOM. If the bytes do not read as UTF-8, take the SHA-256 of the raw bytes. This function gives the value that the engine records:
+
+```js
+import { createHash } from 'node:crypto'
+
+function fingerprint(bytes) {
+  // A string or a path is no file content: refuse it, do not hash it.
+  if (!(bytes instanceof Uint8Array)) throw new TypeError('fingerprint takes the bytes of a file')
+  // fatal: bytes that are not UTF-8 throw. ignoreBOM: a leading BOM stays in the text.
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+  let text
+  try {
+    text = decoder.decode(bytes)
+  } catch {
+    // Not UTF-8: the raw bytes, line endings and all.
+    return createHash('sha256').update(bytes).digest('hex')
+  }
+  return createHash('sha256').update(text.replaceAll('\r\n', '\n'), 'utf8').digest('hex')
+}
+
+async function beforeCommand({ command, params }, { read }) {
+  if (command !== 'archive') return
+  // Without a name, the engine selects the change, and this rule cannot read its files.
+  if (typeof params.change !== 'string') return { allow: false, reason: 'Give the name of the change to archive' }
+  const shown = await read(['show', params.change, '--json', '--detail']).catch((err) => {
+    // An unknown change: allow the call, and the engine gives its own `not_found`.
+    if (err.code === 'not_found') return null
+    throw err
+  })
+  if (shown === null) return
+  for (const station of [shown.review, shown.verify]) {
+    for (const { path, hash } of station?.scope ?? []) {
+      // readOnMainBranch is your own function: the bytes of the file, or null when it is not there.
+      const bytes = await readOnMainBranch(path)
+      if (bytes === null || fingerprint(bytes) !== hash) return { allow: false, reason: `${path} changed after the stamp` }
+    }
+  }
+}
+```
+
+- **A file that was deleted before the stamp is not in `scope`.** To make sure that it is also deleted on the main branch, check it yourself.
+- **`scope` is what the stamp recorded.** The output does not tell whether a file changed after the stamp. The comparison is yours.
 
 ## <a id="agent-tool"></a>For an Agent tool
 
@@ -374,7 +449,7 @@ A key appears only when the change has that record. For the keys and their rules
 
 **The host kit does not read git or your files.** For verbs that need local facts, your program collects the facts and passes them as input:
 
-- Stamps (`review stamp`, `verify stamp`): put the file fingerprints and the commit in the `stdin` JSON, for example `{ "scope": [{ "path": "src/auth.ts", "hash": "<sha256>" }], "missing": [], "headCommit": "<commit>" }`. A fingerprint is the SHA-256 of the file content, in hexadecimal. For text files, change CRLF to LF first.
+- Stamps (`review stamp`, `verify stamp`): put the file fingerprints and the commit in the `stdin` JSON, for example `{ "scope": [{ "path": "src/auth.ts", "hash": "<sha256>" }], "missing": [], "headCommit": "<commit>" }`. For how to compute a fingerprint, see [Compare the files at the stamp before an archive](#stamp-scope).
 - `task done`: the task is checked as usual, but no changed files are recorded.
 - Landing: report it with `change landed <name> --commit <commit>`.
 
@@ -480,7 +555,6 @@ const moves = [
 for (const [root, scope] of moves) {
   const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
   // → { formatVersion: 2, documents: [{ key, content, digest }, …] } (no scopeVersion)
-  if (bundle.documents.length === 0) throw new Error(`${root} has no spec documents`)
   const report = await host.importScope({ identity, scope, bundle })
   // → { scopeVersion: 1, documents: 42 }
 }
@@ -489,13 +563,30 @@ for (const [root, scope] of moves) {
 - **It only reads.** It changes no file of the project. The documents are in byte order of their keys. A local project has no scope version, so the bundle has no `scopeVersion`. An import does not read it.
 - **You never get a partial bundle on these failures.** If a change (active or archived) has metadata that does not parse, or a document that the naming rules of the engine do not cover, the call rejects with `error`, and the message names the file. A file that is there but cannot be read (no permission, or not UTF-8) is not a failure: the bundle has no document for it.
 - **It reads only files inside the project.** If a folder on the way to the spec folder, the spec folder, or a file or a folder under it is a symbolic link, the call rejects with `error` before it reads a document. The older evidence folder `.speclink/touched/` follows the same rule. The message starts with `symbolic link in the spec folder:` and names the item by its path from the project root. It never shows what the link points at. Replace the link with the file itself, or remove it. A folder there that cannot be listed also stops the call, with a message that starts with `cannot list`. If the name of the spec folder (`spec_dir` in `.speclink.yaml`, or the `specDir` of `createEngine`) is an absolute path, or has a `..` or `.` segment, the call rejects with `error`. The message starts with `spec folder outside the project:` and names it. To export a spec folder at a different place, point `root` at the folder above it.
-- **A folder that is not a project gives an empty bundle.** Before you import, check how many documents you got.
+- **A `root` with no spec folder is refused.** After the name and link checks, the call rejects with `error` when `root` holds no spec folder under that name: nothing is there, or the folder has no `changes/`, `specs/`, `discussions/`, and no `config.yaml`. A folder that holds only `LANGUAGE.md` is refused too. The message starts with `no spec folder:` and names the folder, never the path of `root`. The files stay as they were. This catches a download that is in the wrong place, which otherwise gives no document and looks like a success. A spec folder with no document still gives a bundle with no documents. To export an empty project, make its spec folder first.
 - **Do not write to the project during the export.** The export reads the files one at a time and takes no snapshot. A write at the same time, through the same engine, the CLI, or another program, can put old and new content into one bundle.
 - **The scope of the import must be empty**, and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
 - **The bundle has the full text** of the workflow config and of all the discussions. You decide who can run an export.
 - **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project.
 
 The CLI has no import or export verb. There are three ways to move a project: "Migrate to Server" in Speclink Desktop, `engine.exportScope()` with `host.importScope` in your own program, and, between two scopes, `GET /export` and `POST /import` of the HTTP entry point.
+
+### <a id="server-side-import"></a>Import on the server
+
+Your backend can bring the specs of an existing repo into a scope. It downloads the files, exports them with `createEngine`, and imports the bundle with `host.importScope` in the same process:
+
+```js
+// The backend downloaded only the spec folder of the repo, to /tmp/acme-web/specs-folder/.
+const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
+const bundle = await engine.exportScope()
+const report = await host.importScope({ identity, scope: 'acme/web', bundle })
+// → { scopeVersion: 1, documents: 42 }
+```
+
+- **`root` and `specDir`**: when you download only the spec folder, point `root` at the folder above it, and give the folder name in `store.specDir`. Without `specDir`, the engine finds the folder as the CLI does: first `spec_dir` in `root/.speclink.yaml`, then `speclink/`, then the older `openspec/`. A `root` with no spec folder under that name is refused with a message that starts with `no spec folder:`.
+- **Size limit**: `limits.importBytes` (default 32 MiB) also applies to a `host.importScope` that your program calls in the same process. The export has no limit. For a large project, increase the limit of the host.
+- **The import is a one-time move, not a sync.** A change in the repo after the import does not come into the scope, and a change in the scope does not go back to the repo.
+- **To import again**, delete all documents of the scope in your store first, then import. This deletes all the work that people did in the host after the import: the changes, the discussions, and the stamps. An import into a scope that is not empty is refused.
 
 ## <a id="skills"></a>Generate skill files
 

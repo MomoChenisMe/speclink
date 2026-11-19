@@ -246,6 +246,27 @@ mod tests {
     }
 
     #[test]
+    fn show_detail_goes_with_json_and_leaves_the_engine_command_alone() {
+        // spec verb-contract「單筆變更的詳細輸出」：旗標在共用的解析裡綁住 --json，
+        // 引擎的 Show 命令不多欄位（解構不帶 `..`，多一個欄位就編譯不過）。
+        use speclink_core::command::Command;
+        let parsed = parse(["show", "demo", "--json", "--detail"]).expect("parses");
+        match parsed.to_command(VerbInputs::default()) {
+            Ok(CommandTarget::Command(Command::Show { item, item_type })) => {
+                assert_eq!((item.as_deref(), item_type), (Some("demo"), None));
+            }
+            other => panic!("show must convert to a show command, got {other:?}"),
+        }
+        let err = parse(["show", "demo", "--detail"]).err().expect("--detail without --json must not parse");
+        assert_eq!((err.kind, err.exit_code), (ParseErrorKind::Usage, 2));
+        assert!(
+            err.message.contains("required arguments were not provided") && err.message.contains("--json"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
     fn empty_argv_is_a_usage_error() {
         let err = parse(Vec::<String>::new()).err().expect("empty argv must not parse");
         assert_eq!(err.kind, ParseErrorKind::Usage);

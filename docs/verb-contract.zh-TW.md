@@ -92,7 +92,7 @@
 - 旗標：`--release`、`--json`。
 - 不帶 `--release` 是認領。同一個人重複認領照樣成功、不重寫；別人已經認領時以非零結束，stderr 寫出持有人。
 - `--release` 是釋放認領。釋放之後，任何人都可以再認領。
-- **有寫入權限的人都可以釋放，不必是認領的人。** 引擎不管誰可以釋放。「只有認領的人可以釋放」這類規則由宿主自己加，寫在執行前掛鉤（`beforeCommand`）裡，見下面的範例。
+- **有寫入權限的人都可以釋放，不必是認領的人。** 引擎不管誰可以釋放。「只有認領的人可以釋放」這類規則由宿主自己加，寫在執行前掛鉤（`beforeCommand`）裡，見 [Node SDK 的範例](sdk-node.zh-TW.md#release-hook)。
 - 釋放成功時輸出 `✓ Released claim on change: <變更> (was claimed by <持有人>)`。
 - 對沒有被認領的變更執行 `--release` 不是錯誤：輸出 `Change '<變更>' is not claimed — nothing to release`，什麼都不寫，exit code 是 0。
 - `claim --json` 輸出 `{"change":"add-login","claimedBy":"Demo <demo@example.com>"}`。
@@ -100,26 +100,7 @@
 - 認領被拒絕、變更不存在、在本機專案執行，都以非零結束。訊息寫到 stderr，stdout 沒有 JSON。
 - 在 Node SDK，`dispatch(['claim', name])` 現在回傳 `--json` 的物件，和其他有 JSON 形式的動詞一樣。`claim` 有 JSON 形式之前，它回傳 `{ output }`；讀 `output` 的宿主要改讀 `claimedBy`。
 
-掛鉤收到的釋放，命令名稱是 `claim-release`，變更名稱在 `params.name`。這個名稱不是 `claim`：只擋 `claim` 的掛鉤擋不到釋放。下面是 Node SDK 的範例，只讓認領的人釋放：
-
-```js
-async beforeCommand({ identity, command, params }, { read }) {
-  if (command !== 'claim-release') return
-  let change
-  try {
-    change = await read(['show', params.name, '--json'])
-  } catch {
-    return // 變更不存在或資料壞掉，由釋放本身回報。
-  }
-  const holder = change.claimed
-  if (!holder) return
-  // 沒有識別的認領比對名稱，和引擎的判斷相同。
-  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
-  if (!isHolder) return { allow: false, reason: '只有認領的人可以釋放' }
-}
-```
-
-範例刻意接住讀取失敗。掛鉤丟出例外時，這次呼叫會以掛鉤的錯誤結束，蓋掉釋放本身的訊息（例如「找不到變更」）。還沒有識別的時候留下的認領沒有 `byId`，範例這時比對名稱，所以認領的人一定放得掉。
+掛鉤收到的釋放，命令名稱是 `claim-release`，變更名稱在 `params.name`。這個名稱不是 `claim`：只擋 `claim` 的掛鉤擋不到釋放。只讓認領的人與管理者釋放的掛鉤，見 [Node SDK](sdk-node.zh-TW.md#release-hook)。
 
 要知道誰認領了一個變更，讀 `speclink show <變更> --json` 的 `claimed`，見[下面的欄位說明](#verb-reference)。
 
@@ -287,6 +268,35 @@ speclink discuss new "看板搜尋列" --field owner=alice
 ```
 
 上面的範例省略了 `schema`、`proposal`、`tasks` 等既有欄位。自由欄位也出現在 `discuss list --json`、`discuss show --json` 與 `discuss search --json` 的討論資訊裡。
+
+#### <a id="show-detail"></a>`speclink show <變更> --json --detail`
+
+`--detail` 帶出每個章的範圍：蓋章時涵蓋的每個檔的路徑與指紋。宿主因此能比對正式分支上的檔案和通過關卡的檔案，squash 或 rebase 換掉 commit 編號之後也一樣。
+
+- `--detail` 只能和 `--json` 一起用。`speclink show <變更> --detail` 以用法錯誤結束：非零 exit code、stderr 的訊息指出 `--json`、stdout 沒有輸出。經 `host.dispatch`、掛鉤的 `read` 與 `engine.dispatch` 執行時，錯誤代碼是 `invalid_argv`。
+- 已蓋章的關卡（`state` 是 `stamped` 的 `review` 或 `verify`）另有 `scope`：陣列，每個檔一項 `{ "path", "hash" }`，順序照記錄的順序。`path` 是相對 repo 根目錄、以正斜線分隔的路徑；`hash` 是蓋章時的指紋（小寫十六進位）。沒有記下任何指紋的章是 `"scope": []`。
+- `scope` 只在已蓋章的關卡出現。有未結工單的關卡仍是 `{ "state": "inProgress" }`，沒有記錄的關卡不出現，和不帶 `--detail` 時相同。
+- 不帶 `--detail` 時，`show --json` 的輸出和以前逐位元相同。`list --json --detail` 不帶 `scope`。對象是正式規格時（`--item-type spec`，或名稱是正式規格），帶不帶 `--detail` 輸出都相同。
+- 相同的資料在本機專案、遠端專案與 `host.dispatch` 得到相同的 `review` 與 `verify`。遠端專案的 CLI 從 `GET /changes/{name}` 的那一次回應取得 `scope`，不另外發請求。不回報關卡的舊版 Server 不給 `review` 與 `verify`，指令不失敗。
+- `scope` 是蓋章時記下的內容。這個輸出不判斷檔案在蓋章後有沒有改過；蓋章前已刪除的檔也不在裡面。算指紋的函式與比對檔案的掛鉤，見 [Node SDK](sdk-node.zh-TW.md#stamp-scope)。
+
+```json
+{
+  "name": "add-login",
+  "review": {
+    "state": "stamped",
+    "stampedAt": "2026-11-02T14:03:44+08:00",
+    "rounds": 2,
+    "tasksTotal": 5,
+    "commit": "0123456789ab",
+    "scope": [
+      { "path": "src/auth.ts", "hash": "42c1e65b2c948bb754efb6ac171319d6e97ecb3d9afd4f20bd91b3ded25183c0" },
+      { "path": "src/login.ts", "hash": "e9024f1a07d29d52ad3aa5e1a18e94db1f3a9fd32b89e39d47c472cd99071e13" }
+    ]
+  },
+  "verify": { "state": "inProgress" }
+}
+```
 
 ## <a id="request-rules"></a>請求的共同規則
 

@@ -88,8 +88,7 @@ export interface Engine {
    *
    * It reads and never writes, and runs on a background thread. The bundle
    * has no `scopeVersion`: a local project has none. Its `documents` are in
-   * byte order of their keys; a project with no document gives none, and so
-   * does a `root` that is no project: check how many documents you got.
+   * byte order of their keys; a spec folder with no document gives none.
    *
    * The bundle holds the full text of the workflow config and of every
    * discussion: decide yourself who may run an export. A large project makes
@@ -114,6 +113,14 @@ export interface Engine {
    * `.` segment (the `message` starts with `spec folder outside the
    * project:` and names it). To export a spec folder somewhere else, point
    * `root` at the folder above it.
+   *
+   * After those checks it rejects the same way when `root` holds no spec
+   * folder under that name — nothing there, or a folder with no `changes/`,
+   * `specs/`, `discussions/` and no `config.yaml`, also when it holds a
+   * `LANGUAGE.md` (the `message` starts with `no spec folder:` and names the
+   * folder, never the path of `root`). This catches a download put in the
+   * wrong place, which would otherwise export no document and look like a
+   * success. To export an empty project, make its spec folder first.
    *
    * It reads the files one by one, with no snapshot: do not write to the
    * project — through this engine, the CLI or anything else — while it

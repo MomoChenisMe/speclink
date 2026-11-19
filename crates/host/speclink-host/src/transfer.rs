@@ -1205,6 +1205,18 @@ mod tests {
     }
 
     #[test]
+    fn a_folder_with_no_spec_folder_lists_no_document() {
+        // Speclink Desktop's "Migrate to Server" sends an empty set for such a
+        // folder. Only the Node export refuses it (show-detail-and-export-check).
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "notes/README.md", "# notes\n");
+
+        let documents = documents_in(root.path(), "speclink").expect("no spec folder is no failure here");
+
+        assert!(documents.is_empty(), "{documents:?}");
+    }
+
+    #[test]
     fn an_empty_name_and_a_dot_segment_stop_the_listing() {
         // Contract D6: an empty name, `.` and `..` are no plain names either.
         let root = tempfile::tempdir().unwrap();

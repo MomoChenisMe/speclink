@@ -48,7 +48,7 @@ pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
     let cmd = plain_command(&a)?;
     let show: core::command::ShowOutcome = run(&store, Some(&ws), cmd)?;
-    emit(render::show(&show, render_options(a.json)));
+    emit(render::show(&show, a.detail, render_options(a.json)));
     Ok(())
 }
 pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
@@ -239,6 +239,6 @@ fn remote_show_outcome(
 /// 具名，`remote_show_outcome` 因此不必離開本檔。
 pub(crate) fn remote_show(ctx: &RemoteCtx, a: ShowArgs) -> Result<()> {
     let show = remote_show_outcome(ctx, a.item.as_deref(), a.item_type.as_deref())?;
-    emit(render::show(&show, render_options(a.json)));
+    emit(render::show(&show, a.detail, render_options(a.json)));
     Ok(())
 }

@@ -1,0 +1,46 @@
+## MODIFIED Requirements
+
+### Requirement: 驗證蓋章記錄程式碼的 commit
+<!-- BEFORE: show --json 的 verify 物件只有 state 與蓋章欄位，沒有帶出 scope 的方式 -->
+
+驗證蓋章 SHALL 接受由呼叫端提供的 commit，並在寫入章欄位的同一次寫入裡把它記進 metadata 的 `verified_commit`。CLI 的 `speclink verify stamp` SHALL 以 checkout 目前的 HEAD 提供它（本機與 remote 模式皆然）；讀不到 HEAD 時 SHALL 不提供，蓋章照常進行。commit SHALL 是 7 到 64 個十六進位字元，否則蓋章 SHALL 以非零 exit code 拒絕且不寫入。引擎 SHALL NOT 讀取 git，SHALL NOT 檢查 commit 是否存在，SHALL NOT 以它判斷章是否有效：章的凍結判定仍然只看任務錨與內容指紋錨。清除章的每一條既有路徑 SHALL 一併清除 `verified_commit`。沒有提供 commit 時 SHALL NOT 寫入這個鍵。`speclink show <change> --json` SHALL 增列選填的 `verify` 物件（`state`，以及蓋章後的 `stampedAt`、`rounds`、`tasksTotal` 與有值才出現的 `stampedBy`、`stampedWith`、`commit`）；這個關卡沒有工單也沒有章時 SHALL 不輸出 `verify`，沒有任何記錄的變更輸出因此維持既有的位元級輸出；`speclink list --json` 的形狀 SHALL 維持不變。帶 `--detail` 時（`speclink show <change> --json --detail`），已蓋章的 `verify` 物件 SHALL 另含 `scope`：蓋章時記下的每個檔的 `path` 與 `hash`（見 verb-contract「單筆變更的詳細輸出」）；不帶 `--detail` 時 `verify` 物件 SHALL NOT 含 `scope`。蓋章的 stdout 與 exit code SHALL 維持既有的位元級輸出。
+
+#### Scenario: 蓋章記下 HEAD
+
+- **WHEN** checkout 的 HEAD 是某個 commit，對符合蓋章條件的 demo 執行 speclink verify stamp demo
+- **THEN** metadata 含 `verified_commit`，值是該 commit；stdout 與新增這條需求前相同
+
+#### Scenario: 不是 git checkout 時照常蓋章
+
+- **WHEN** 在不是 git checkout 的資料夾對符合條件的 demo 蓋章
+- **THEN** 蓋章成功，metadata 沒有 `verified_commit`
+
+#### Scenario: 清章時一併清除
+
+- **WHEN** 已蓋章並記有 `verified_commit` 的 demo 經既有的路徑失去這個關卡的章
+- **THEN** metadata 不再有 `verified_commit`
+
+#### Scenario: commit 不影響凍結判定
+
+- **WHEN** 蓋章後 checkout 前進到新的 commit，但 scope 內的檔案內容與任務數都沒有變
+- **THEN** 這個關卡的章仍然判定為有效
+
+#### Scenario: show --json 帶出關卡狀態
+
+- **WHEN** 對已蓋章的 demo 執行 speclink show demo --json
+- **THEN** 輸出的 verify 物件含 state `stamped`、stampedAt、rounds、tasksTotal 與 commit
+
+#### Scenario: 沒有工單也沒有章時 show 不輸出
+
+- **WHEN** 對沒有驗證工單也沒有驗證章的變更執行 speclink show --json
+- **THEN** 輸出沒有 verify 鍵
+
+#### Scenario: list --json 不變
+
+- **WHEN** 比對蓋章前後 speclink list --json 的輸出形狀
+- **THEN** 欄位集合相同
+
+#### Scenario: 帶 --detail 時帶出蓋章時的指紋
+
+- **WHEN** 對已蓋章、章記下 `src/a.rs` 指紋的 demo 分別執行 speclink show demo --json 與 speclink show demo --json --detail
+- **THEN** 前者的 verify 物件沒有 scope；後者的 verify 物件含 scope，其中一項的 path 是 `src/a.rs`、hash 是章記下的指紋

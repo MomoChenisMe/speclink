@@ -84,19 +84,25 @@ impl TempProject {
 
     /// The files of this project, as paths from its root.
     fn files(&self) -> Vec<String> {
-        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut Vec<String>) {
+        self.contents().into_keys().collect()
+    }
+
+    /// Every file of this project with its bytes, by path from its root
+    /// (forward slashes).
+    pub(crate) fn contents(&self) -> std::collections::BTreeMap<String, Vec<u8>> {
+        fn walk(dir: &std::path::Path, root: &std::path::Path, out: &mut std::collections::BTreeMap<String, Vec<u8>>) {
             for entry in std::fs::read_dir(dir).unwrap().flatten() {
                 let path = entry.path();
                 if path.is_dir() {
                     walk(&path, root, out);
                 } else {
-                    out.push(path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/"));
+                    let key = path.strip_prefix(root).unwrap().to_string_lossy().replace('\\', "/");
+                    out.insert(key, std::fs::read(&path).unwrap());
                 }
             }
         }
-        let mut out = Vec::new();
+        let mut out = std::collections::BTreeMap::new();
         walk(&self.dir, &self.dir, &mut out);
-        out.sort();
         out
     }
 }
@@ -123,7 +129,7 @@ pub(crate) fn json_of(out: &Output) -> serde_json::Value {
 pub(crate) struct Pair {
     pub(crate) fs: TempProject,
     pub(crate) remote: TempProject,
-    door: Door,
+    pub(crate) door: Door,
 }
 
 pub(crate) fn pair(tag: &str, docs: &[(&str, &str)]) -> Pair {
@@ -602,7 +608,7 @@ fn a_server_from_before_the_engine_lookup_is_refused_by_evidence_show() {
     }
 }
 
-const BINDING: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
+pub(crate) const BINDING: &str = r#"{"actor":{"id":"u_1","name":"Tester"},"project":{"id":"prj_1","key":"demo","name":"Demo"},"repo":{"id":"repo_1","key":"backend","name":"Backend"},"apiVersion":"1","engineVersion":"0.1.0","capabilities":{"events":{"transports":[],"polling":{"url":"/sync-state","etag":true}}}}"#;
 
 #[test]
 fn a_server_without_the_trace_route_is_a_not_found_failure() {

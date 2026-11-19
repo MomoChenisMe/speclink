@@ -729,11 +729,13 @@ createEngine 回傳的引擎 SHALL 有方法 exportScope()：不接受參數，�
 
 包的內容 SHALL 是這個本機專案的全部規格文件（見 workspace-migration「Bundle 組裝涵蓋本地 workspace 全集」）：進行中變更的 metadata、文件與 evidence，正式規格，進行中與已封存的討論，已封存變更的全部文件，流程設定，詞彙表，以及看板順序（一個順序鍵都沒有時不含）。把這個包匯入宿主之後，經 host.dispatch 讀到的變更、正式規格與討論 SHALL 與在原本的本機專案經 engine.dispatch 讀到的相同。
 
-exportScope SHALL 只讀取、不寫入：本機專案的檔案 SHALL 逐位元不變。它 SHALL 於背景工作執行，SHALL NOT 阻塞 JS 事件迴圈。專案沒有任何規格文件時 SHALL 成功並回傳 `documents` 為空陣列的包。
+exportScope SHALL 只讀取、不寫入：本機專案的檔案 SHALL 逐位元不變。它 SHALL 於背景工作執行，SHALL NOT 阻塞 JS 事件迴圈。規格資料夾存在、但裡面沒有任何規格文件時 SHALL 成功並回傳 `documents` 為空陣列的包。
 
 失敗時 SHALL 以 Error 拒絕 Promise，SHALL NOT 回傳不完整的包：任何一個變更（進行中或已封存）的 metadata 無法解析時，message SHALL 指出是哪個檔案；變更含有引擎的文件命名規則對不上的文件時，message SHALL 指出是哪份文件；通往規格資料夾路上的資料夾、規格資料夾本身或它底下任何一個檔案或資料夾是符號連結時（舊位置的 evidence 資料夾 `.speclink/touched/` 亦同），exportScope SHALL NOT 經連結讀檔，message SHALL 以相對專案根目錄、使用正斜線的路徑指出那個項目，連結指向的內容 SHALL NOT 出現在 message 裡（見 workspace-migration「本機專案的匯出與遷移產生相同的文件集合」）。
 
 exportScope SHALL 只讀 createEngine 的 root 底下的規格資料夾：規格資料夾名稱（來自本機專案 `.speclink.yaml` 的 `spec_dir`，或 createEngine 的 `specDir`）是絕對路徑、含 `..` 或 `.` 路徑段、或是空的時，exportScope SHALL 在讀取任何檔案之前以 Error 拒絕，`code` 是 `error`，message SHALL 以雙引號原樣指出那個名稱，SHALL NOT 含任何檔案內容。專案根目錄裡面的多層名稱（例如 `docs/specs`）SHALL 照常匯出。engine.dispatch 讀規格資料夾的方式不受這條影響。Error 的形狀（message 加 code 欄位）SHALL 與 engine.dispatch 的失敗相同。createHost 回傳的宿主 SHALL 維持既有的 exportScope（接受身分與範圍），兩者互不影響。
+
+規格資料夾名稱的檢查與符號連結的檢查都通過之後，root 底下以規格資料夾名稱指到的位置不是規格資料夾時——不存在、不是資料夾，或資料夾裡沒有 `changes/`、`specs/`、`discussions/` 子資料夾也沒有 `config.yaml`——exportScope SHALL 以 Error 拒絕，`code` 是 `error`，message SHALL 以 `no spec folder:` 開頭並以雙引號原樣指出規格資料夾名稱，SHALL NOT 含任何檔案內容或絕對路徑，SHALL NOT 回傳任何包；本機專案的檔案 SHALL 逐位元不變。規格資料夾名稱本身不合規則時（絕對路徑、含 `..` 或 `.` 段、空的），SHALL 維持上一段的拒絕，SHALL NOT 改報這一條。這條只管 createEngine 的 exportScope：Speclink Desktop 的「遷移到 Server」SHALL 維持既有行為，沒有規格資料夾的本機資料夾仍得到空的文件集合。
 
 #### Scenario: 匯出本機專案並匯入宿主
 
@@ -789,7 +791,29 @@ exportScope SHALL 只讀 createEngine 的 root 底下的規格資料夾：規格
 - **WHEN** 本機專案有一個已封存的變更與一份已封存的討論，呼叫 `await engine.exportScope()` 並匯入宿主
 - **THEN** 宿主的已封存變更清單與 `discuss list --archived` 都列出它們，內容與本機相同
 
+#### Scenario: 沒有規格資料夾的 root 讓匯出失敗
+
+- **WHEN** 以 createEngine 指向一個沒有 `.speclink.yaml`、也沒有 `speclink/` 與 `openspec/` 的資料夾（例如後端把下載的內容放錯位置），呼叫 `engine.exportScope()`
+- **THEN** Promise 以 Error 拒絕，`code` 是 `error`，message 以 `no spec folder: "speclink"` 開頭；沒有回傳任何包，資料夾裡的檔案不變
+
+##### Example: root 底下的內容與結果
+
+| root 底下的內容 | 結果 |
+| --- | --- |
+| `speclink/specs/auth/spec.md` | 成功，包含那份正式規格 |
+| `speclink/` 只有一個空的 `specs/` | 成功，`documents` 是空陣列 |
+| `speclink/` 只有一個 `README.md` | 失敗，message 以 `no spec folder: "speclink"` 開頭 |
+| 沒有 `speclink/` | 失敗，message 以 `no spec folder: "speclink"` 開頭 |
+| `.speclink.yaml` 寫 `spec_dir: docs/specs`，但沒有 `docs/specs/` | 失敗，message 以 `no spec folder: "docs/specs"` 開頭 |
+| `.speclink.yaml` 寫 `spec_dir: ../other/speclink` | 失敗，message 含 `spec folder outside the project:` 與 `"../other/speclink"`，不是 `no spec folder:` |
+
+#### Scenario: 只下載規格資料夾時以 specDir 指定名稱
+
+- **WHEN** 後端只把 repo 的規格資料夾下載到 `<tmp>/repo/specs-folder/`（裡面有 `specs/` 與 `changes/`），以 `createEngine({ store: { type: 'fs', root: '<tmp>/repo', specDir: 'specs-folder' } })` 呼叫 `engine.exportScope()`
+- **THEN** 成功，包含 `specs-folder` 裡的文件
+
+
 <!-- @trace
-source: engine-export-scope
-updated: 2026-11-19T14:28:10+08:00
+source: show-detail-and-export-check
+updated: 2026-11-19T16:02:55+08:00
 -->

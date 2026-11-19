@@ -1,5 +1,6 @@
 // node-sdk「createHost 與 host.dispatch」and「JS 版的儲存接口」: the host kit's
 // Agent-tool door over a JS store port of three functions.
+import { createHash } from 'node:crypto'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -27,6 +28,18 @@ function portWithDemo(tasks = OPEN_TASKS, options: Parameters<typeof memoryPort>
     'config.yaml': CONFIG,
   })
   return port
+}
+
+type ScopeEntry = { path: string; hash: string }
+type Call = (argv: string[], stdin?: string) => Promise<unknown>
+
+/** Through `call`: one round and one stamp for the review of `demo`, then the same for its verify. */
+async function stampBoth(call: Call, reviewScope: ScopeEntry[], verifyScope: ScopeEntry[], headCommit?: string) {
+  const round = (scope: ScopeEntry[]) => `**Scope**: ${scope.map((entry) => entry.path).join(', ')}\n`
+  await call(['review', 'add-round', 'demo', '--stdin'], round(reviewScope))
+  await call(['review', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope: reviewScope, headCommit }))
+  await call(['verify', 'add-round', 'demo', '--stdin'], round(verifyScope))
+  await call(['verify', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope: verifyScope }))
 }
 
 function totalCalls(port: ReturnType<typeof memoryPort>) {
@@ -487,8 +500,8 @@ describe('createHost and host.dispatch', () => {
   })
 
   it('lets beforeCommand keep a release to the holder, under its own command name', async () => {
-    // The hook of docs/verb-contract.md: `claim-release` is not `claim`, and
-    // the holder is read from `show --json`.
+    // A holder-only hook: `claim-release` is not `claim`, and the holder is
+    // read from `show --json`. The hook of the SDK docs is tested below.
     const port = portWithDemo()
     const asked: { command: string; params: unknown }[] = []
     const host = createHost({
@@ -985,10 +998,7 @@ describe('the landing report and the stamp commit through host.dispatch', () => 
     const call = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
     const scope = [{ path: 'src/lib.rs', hash: '0f9c' }]
 
-    await call(['review', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
-    await call(['review', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope, headCommit: SHA }))
-    await call(['verify', 'add-round', 'demo', '--stdin'], '**Scope**: src/lib.rs\n')
-    await call(['verify', 'stamp', 'demo', '--stdin'], JSON.stringify({ scope }))
+    await stampBoth(call, scope, scope, SHA)
 
     const stamps = port.commits
       .filter(({ commit }) => commit.command.endsWith('-stamp'))
@@ -1498,5 +1508,208 @@ describe('language replace and discuss restore through host.dispatch', () => {
     expect(port.doc('s1', 'LANGUAGE.md')?.content).toBe('# Old\n')
     expect(port.doc('s1', 'discussions/topic.md')).toBeUndefined()
     expect(port.calls.commit).toBe(commits)
+  })
+})
+
+// verb-contract「單筆變更的詳細輸出」and the two stations' commit requirements: a
+// stamped station's scope through host.dispatch and the read function of beforeCommand.
+describe('show --json --detail through the host kit', () => {
+  const REVIEW_SCOPE = [
+    { path: 'src/a.rs', hash: 'aa01' },
+    { path: 'src/b.rs', hash: 'bb01' },
+  ]
+  const VERIFY_SCOPE = [{ path: 'src/a.rs', hash: 'aa02' }]
+  const DETAIL = ['show', 'demo', '--json', '--detail']
+  type Shown = { review?: Record<string, unknown>; verify?: Record<string, unknown> }
+
+  async function stamped(hooks: Parameters<typeof createHost>[0]['hooks'] = {}) {
+    const port = portWithDemo(DONE_TASKS)
+    const host = createHost({ store: port.store, hooks })
+    const call = (argv: string[], stdin?: string) => host.dispatch({ identity: ALICE, scope: 's1', argv, stdin })
+    await stampBoth(call, REVIEW_SCOPE, VERIFY_SCOPE)
+    return { port, call }
+  }
+
+  it('gives the scope of both stamps with --detail, and none without it', async () => {
+    const { call } = await stamped()
+
+    const detailed = (await call(DETAIL)) as Shown
+    const plain = (await call(['show', 'demo', '--json'])) as Shown
+
+    expect(detailed.review).toMatchObject({ state: 'stamped', scope: REVIEW_SCOPE })
+    expect(detailed.verify).toMatchObject({ state: 'stamped', scope: VERIFY_SCOPE })
+    expect(plain.review?.scope).toBeUndefined()
+    expect(plain.verify?.scope).toBeUndefined()
+    const { scope: _review, ...reviewRest } = detailed.review ?? {}
+    expect(reviewRest).toEqual(plain.review)
+  })
+
+  it('keeps the order the metadata records, not path order', async () => {
+    // A stamp writes its scope in path order, so this metadata is written directly.
+    const port = portWithDemo(DONE_TASKS)
+    port.seed('s1', {
+      'changes/demo/.meta.yaml': `${META}reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/b.rs\n    hash: bb01\n  - path: src/a.rs\n    hash: aa01\n`,
+    })
+    const host = createHost({ store: port.store })
+
+    const shown = (await host.dispatch({ identity: ALICE, scope: 's1', argv: DETAIL })) as Shown
+
+    expect(shown.review?.scope).toEqual([
+      { path: 'src/b.rs', hash: 'bb01' },
+      { path: 'src/a.rs', hash: 'aa01' },
+    ])
+  })
+
+  it('gives the same scope to read in beforeCommand', async () => {
+    let viaRead: Shown | undefined
+    const { call } = await stamped({
+      beforeCommand: async (info, { read }) => {
+        if (info.command === 'list') viaRead = (await read(DETAIL)) as Shown
+      },
+    })
+
+    await call(['list', '--json'])
+
+    expect(viaRead?.review?.scope).toEqual(REVIEW_SCOPE)
+    expect(viaRead?.verify?.scope).toEqual(VERIFY_SCOPE)
+  })
+
+  it('refuses --detail without --json as invalid_argv, in dispatch and in read', async () => {
+    let fromRead: { code?: string } | undefined
+    const { port, call } = await stamped({
+      beforeCommand: async (info, { read }) => {
+        if (info.command === 'list') fromRead = await rejection(read(['show', 'demo', '--detail']))
+      },
+    })
+    const commits = port.calls.commit
+
+    const direct = await rejection(call(['show', 'demo', '--detail']))
+    await call(['list', '--json'])
+
+    expect(direct.code).toBe('invalid_argv')
+    expect(direct.message).toContain('--json')
+    expect(fromRead?.code).toBe('invalid_argv')
+    expect(port.calls.commit).toBe(commits)
+  })
+})
+
+// user-documentation「SDK 文件說明伺服端匯入、釋放認領的掛鉤與蓋章指紋」: the fingerprint
+// function of docs/sdk-node (both languages), taken from the docs and run as it is, gives
+// the values the engine's stamp gives (crates/engine/speclink-core/src/quality/station/tests.rs
+// pins the same table).
+describe('the fingerprint function of the SDK docs', () => {
+  /** The `fingerprint` function of `file`, from its declaration to its closing brace. */
+  function fingerprintOf(file: string): (bytes: Uint8Array) => string {
+    const text = readFileSync(join(repoRoot, file), 'utf8')
+    const start = text.indexOf('function fingerprint(bytes) {')
+    const end = text.indexOf('\n}\n', start)
+    expect(start, `${file}: the fingerprint function`).toBeGreaterThan(-1)
+    expect(end, `${file}: the end of the fingerprint function`).toBeGreaterThan(start)
+    const source = text.slice(start, end + 2)
+    return new Function('createHash', 'Buffer', 'TextDecoder', 'TypeError', `${source}\nreturn fingerprint`)(
+      createHash,
+      Buffer,
+      TextDecoder,
+      TypeError,
+    )
+  }
+  const docs = ['docs/sdk-node.md', 'docs/sdk-node.zh-TW.md']
+
+  it.each([
+    ['UTF-8 with a BOM', [0xef, 0xbb, 0xbf, ...Buffer.from('hello\n')], '42c1e65b2c948bb754efb6ac171319d6e97ecb3d9afd4f20bd91b3ded25183c0'],
+    ['text with CRLF line endings', [...Buffer.from('line one\r\nline two\r\n')], 'e9024f1a07d29d52ad3aa5e1a18e94db1f3a9fd32b89e39d47c472cd99071e13'],
+    ['bytes that are not UTF-8', [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0xff, 0x00], 'dbe1f5fa9495a8b8cfbc43377e7436cd26c273696b8807d3737633994c9760d2'],
+  ])('gives the engine value for %s', (_, bytes, want) => {
+    for (const file of docs) expect(fingerprintOf(file)(Uint8Array.from(bytes)), file).toBe(want)
+  })
+
+  it('refuses a value that is not the bytes of a file, and does not hash it as raw bytes', () => {
+    for (const file of docs) expect(() => fingerprintOf(file)('line one\r\n' as never), file).toThrow(TypeError)
+  })
+})
+
+// user-documentation「SDK 文件說明伺服端匯入、釋放認領的掛鉤與蓋章指紋」: the release hook of
+// docs/sdk-node (both languages), taken from the docs and run as it is, for each row of the
+// Example「釋放範例對各種情況的結果」.
+describe('the release hook of the SDK docs', () => {
+  const CAROL = { id: 'u_3', displayName: 'Carol' }
+  const HEAD = "async function beforeCommand({ identity, command, params }, { read }) {\n  if (command !== 'claim-release') return"
+  type Hook = (info: unknown, context: unknown) => Promise<unknown>
+
+  /** The release hook of `file`, from its declaration to its closing brace. */
+  function sourceOf(file: string): string {
+    const text = readFileSync(join(repoRoot, file), 'utf8')
+    const start = text.indexOf(HEAD)
+    const end = text.indexOf('\n}\n', start)
+    expect(start, `${file}: the release hook as a function declaration`).toBeGreaterThan(-1)
+    expect(end, `${file}: the end of the release hook`).toBeGreaterThan(start)
+    return text.slice(start, end + 2)
+  }
+
+  /**
+   * A host whose `demo` Alice claimed, with the release hook of `file` and an
+   * `isAdmin` that knows Carol. While `failReads` is set, every store read the
+   * hook makes throws.
+   */
+  async function claimedHost(file: string, failReads = false) {
+    const port = portWithDemo()
+    const isAdmin = async (identity: { id: string }) => identity.id === CAROL.id
+    const hook = new Function('isAdmin', `${sourceOf(file)}\nreturn beforeCommand`)(isAdmin) as Hook
+    let failing = false
+    const store = {
+      ...port.store,
+      read: (scope: string, keys: string[]) => {
+        if (failing) throw new Error('the store is down')
+        return port.store.read(scope, keys)
+      },
+    }
+    const host = createHost({
+      store,
+      hooks: {
+        beforeCommand: async (info, context) => {
+          failing = failReads
+          try {
+            return (await hook(info, context)) as never
+          } finally {
+            failing = false
+          }
+        },
+      },
+    })
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['claim', 'demo'] })
+    const release = (identity: typeof ALICE, name = 'demo') =>
+      host.dispatch({ identity, scope: 's1', argv: ['claim', name, '--release', '--json'] })
+    return { port, release }
+  }
+
+  const docs = ['docs/sdk-node.md', 'docs/sdk-node.zh-TW.md']
+
+  it.each(docs)('lets the holder and an admin release, in %s', async (file) => {
+    const released = { change: 'demo', released: true, previousHolder: 'Alice' }
+    expect(await (await claimedHost(file)).release(ALICE)).toEqual(released)
+    expect(await (await claimedHost(file)).release(CAROL)).toEqual(released)
+  })
+
+  it.each(docs)('refuses anyone else with the reason of the example, in %s', async (file) => {
+    const reason = /reason: '([^']+)'/.exec(sourceOf(file))?.[1]
+    const err = await rejection((await claimedHost(file)).release(BOB))
+    expect([err.code, err.message]).toEqual(['refused', reason])
+  })
+
+  it.each(docs)('lets the release report a change that does not exist, in %s', async (file) => {
+    const err = await rejection((await claimedHost(file)).release(BOB, 'ghost'))
+    expect(err.code).toBe('not_found')
+  })
+
+  it.each(docs)('does not release when its read fails, in %s', async (file) => {
+    const { port, release } = await claimedHost(file, true)
+    const commits = port.calls.commit
+
+    const err = await rejection(release(BOB))
+
+    // The hook failed on the read: a refusal would mean the read error never happened.
+    expect(err.code).toBe('internal')
+    expect(port.calls.commit).toBe(commits)
+    expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('claimed_by: Alice\n')
   })
 })

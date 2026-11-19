@@ -15,7 +15,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 
 import type { ScopeBundle } from '../index'
-import { createHost } from '../index.js'
+import { createEngine, createHost } from '../index.js'
 import { cliBin, digestOf, fileTimes, fsEngine, projectFiles, rejection, repoRoot } from './helpers'
 import { byBytes, memoryPort } from './memory-port'
 
@@ -41,16 +41,21 @@ afterAll(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true, maxRetries: 5 })
 })
 
-/** A new local project: each key of `files` is a path under its spec folder. */
-function project(files: Record<string, string>): string {
+/** A new folder that holds `files` and `dirs`, each a path from the folder itself. */
+function folder(files: Record<string, string>, dirs: string[] = []): string {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-export-local-')))
   roots.push(root)
+  for (const dir of dirs) mkdirSync(join(root, dir), { recursive: true })
   for (const [path, content] of Object.entries(files)) {
-    mkdirSync(join(root, 'speclink', path, '..'), { recursive: true })
-    writeFileSync(join(root, 'speclink', path), content)
+    mkdirSync(join(root, path, '..'), { recursive: true })
+    writeFileSync(join(root, path), content)
   }
   return root
 }
+
+/** A new local project: each key of `files` is a path under its spec folder. */
+const project = (files: Record<string, string>) =>
+  folder(Object.fromEntries(Object.entries(files).map(([path, content]) => [`speclink/${path}`, content])))
 
 
 /** The bundle of the project at `root`, imported into scope s1 of a new host on a JS memory store. */
@@ -197,6 +202,59 @@ describe('engine.exportScope', () => {
     expect(error.code).toBe('error')
     expect(error.message).toContain('"../other/speclink"')
     expect(error.message).not.toContain('OTHER PROJECT SECRET')
+    // The name check comes first: a bad name is never reported as a missing spec folder.
+    expect(error.message.startsWith('spec folder outside the project:')).toBe(true)
+    expect(error.message).not.toContain('no spec folder:')
+  })
+
+  // spec「沒有規格資料夾的 root 讓匯出失敗」and its example table.
+  describe('a root that holds no spec folder', () => {
+    it('rejects a root with no speclink/, names the folder but not the root, and changes nothing', async () => {
+      const root = folder({ 'downloaded/README.md': '# Put in the wrong place\n' })
+      const [files, times] = [projectFiles(root), fileTimes(root)]
+
+      const error = await rejection(fsEngine(root).exportScope())
+
+      expect(error.code).toBe('error')
+      expect(error.message.startsWith('no spec folder: "speclink"'), error.message).toBe(true)
+      expect(error.message).not.toContain(root)
+      expect(projectFiles(root)).toEqual(files)
+      expect(fileTimes(root)).toEqual(times)
+    })
+
+    it.each([
+      ['a speclink/ that holds only a README.md', { 'speclink/README.md': '# Not specs\n' }, 'speclink'],
+      ['a spec_dir that names no folder', { '.speclink.yaml': 'spec_dir: docs/specs\n' }, 'docs/specs'],
+    ])('rejects %s', async (_, files, name) => {
+      const error = await rejection(fsEngine(folder(files)).exportScope())
+
+      expect(error.code).toBe('error')
+      expect(error.message.startsWith(`no spec folder: "${name}"`), error.message).toBe(true)
+    })
+
+    it('exports a spec folder that holds only an empty specs/, with no documents', async () => {
+      const bundle = await fsEngine(folder({}, ['speclink/specs'])).exportScope()
+
+      expect(bundle.formatVersion).toBe(2)
+      expect(bundle.documents).toEqual([])
+    })
+
+    it('exports a spec folder that was downloaded alone, named by specDir', async () => {
+      // spec「只下載規格資料夾時以 specDir 指定名稱」.
+      const root = folder({
+        'specs-folder/specs/auth/spec.md': SPEC_AUTH,
+        'specs-folder/changes/demo/.meta.yaml': META,
+        'specs-folder/changes/demo/proposal.md': PROPOSAL,
+      })
+
+      const bundle = await createEngine({ store: { type: 'fs', root, specDir: 'specs-folder' } }).exportScope()
+
+      expect(bundle.documents.map((d) => d.key)).toEqual([
+        'changes/demo/.meta.yaml',
+        'changes/demo/proposal.md',
+        'specs/auth/spec.md',
+      ])
+    })
   })
 
   describe('a project that was just initialized', () => {
@@ -213,6 +271,33 @@ describe('engine.exportScope', () => {
       expect(bundle.formatVersion).toBe(2)
       expect(bundle.documents.map((d) => d.key)).toEqual(['config.yaml'])
     })
+  })
+
+  // verb-contract「單筆變更的詳細輸出」Scenario「三種執行方式輸出相同」: the local engine and a
+  // host that imported the same project give the same stations with --detail.
+  it('gives the same show --json --detail through engine.dispatch and through the host', async () => {
+    const stamped =
+      `${META}reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_rounds: 2\n` +
+      'reviewed_scope:\n  - path: src/b.rs\n    hash: bb01\n  - path: src/a.rs\n    hash: aa01\n' +
+      'verified_at: 2026-11-03\nverified_tasks_total: 1\nverified_rounds: 1\n' +
+      'verified_scope:\n  - path: src/a.rs\n    hash: aa02\n'
+    const root = project({ 'changes/demo/.meta.yaml': stamped, 'changes/demo/proposal.md': PROPOSAL })
+    const engine = fsEngine(root)
+    const { viaHost } = await importedFrom(root)
+    type Shown = { review?: { scope?: unknown }; verify?: { scope?: unknown } }
+    const argv = ['show', 'demo', '--json', '--detail']
+
+    const local = (await engine.dispatch(argv)) as Shown
+    const hosted = (await viaHost(argv)) as Shown
+
+    expect(hosted.review).toEqual(local.review)
+    expect(hosted.verify).toEqual(local.verify)
+    expect(local.review?.scope).toEqual([
+      { path: 'src/b.rs', hash: 'bb01' },
+      { path: 'src/a.rs', hash: 'aa01' },
+    ])
+    expect(local.verify?.scope).toEqual([{ path: 'src/a.rs', hash: 'aa02' }])
+    expect((await rejection(engine.dispatch(['show', 'demo', '--detail']))).code).toBe('invalid_argv')
   })
 
   it('takes the archived changes and discussions too, and the host reads them', async () => {

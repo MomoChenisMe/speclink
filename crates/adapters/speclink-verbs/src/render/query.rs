@@ -98,7 +98,9 @@ fn delta_spec_files(c: &ShowChange) -> Vec<String> {
 }
 
 /// `show --json`: a spec as `{ files, name }`, a change as its documents.
-pub fn show_json(show: &ShowOutcome) -> Value {
+/// With `detail` (`--json --detail`) a stamped station also carries its
+/// `scope`; a spec has no stations, so its form is the same either way.
+pub fn show_json(show: &ShowOutcome, detail: bool) -> Value {
     match show {
         ShowOutcome::Spec { name, content } => json!({
             "files": [{ "content": content, "name": "spec.md" }],
@@ -121,7 +123,7 @@ pub fn show_json(show: &ShowOutcome) -> Value {
             // change without records prints what it printed before these keys.
             for (key, station) in [("review", &c.review), ("verify", &c.verify)] {
                 if let Some(station) = station.as_ref().filter(|s| s.is_recorded()) {
-                    shown[key] = station.to_json();
+                    shown[key] = if detail { station.to_detail_json() } else { station.to_json() };
                 }
             }
             if let Some(branch) = &c.branch {
@@ -197,8 +199,10 @@ pub fn show_human(show: &ShowOutcome, paint: &Paint) -> Text {
     t
 }
 
-pub fn show(show: &ShowOutcome, options: RenderOptions) -> Rendered {
-    Rendered::of(options, Some(JsonForm::pretty(&show_json(show))), |paint| show_human(show, paint))
+/// `show`. `detail` is the `--detail` flag; it changes the JSON form only, and
+/// the parse never lets it come without `--json`.
+pub fn show(show: &ShowOutcome, detail: bool, options: RenderOptions) -> Rendered {
+    Rendered::of(options, Some(JsonForm::pretty(&show_json(show, detail))), |paint| show_human(show, paint))
 }
 
 /// `status`: one line per artifact with its state.
@@ -411,7 +415,7 @@ mod tests {
     #[test]
     fn list_json_has_the_same_shapes_as_show_json_for_the_same_records() {
         // 「形狀 SHALL 與 show --json 的同名鍵相同」：同一份記錄，兩個動詞的物件相等。
-        let shown = show_json(&shown_change_with_records_of(&detailed_change()));
+        let shown = show_json(&shown_change_with_records_of(&detailed_change()), false);
         let listed = list_json(&ListOutcome { changes: Some(vec![detailed_change()]), specs: None });
         for key in ["review", "verify", "claimed", "branch"] {
             assert_eq!(listed["changes"][0][key], shown[key], "{key}");
@@ -521,7 +525,7 @@ mod tests {
     #[test]
     fn show_json_carries_the_documents_of_a_change_and_the_file_of_a_spec() {
         assert_eq!(
-            show_json(&shown_change()),
+            show_json(&shown_change(), false),
             json!({
                 "created": "2026-07-01T10:00:00+08:00",
                 "deltaSpecs": ["auth/spec.md"],
@@ -536,7 +540,7 @@ mod tests {
         );
         let spec = ShowOutcome::Spec { name: "auth".to_string(), content: "# auth\n".to_string() };
         assert_eq!(
-            show_json(&spec),
+            show_json(&spec, false),
             json!({ "files": [{ "content": "# auth\n", "name": "spec.md" }], "name": "auth" })
         );
     }
@@ -585,7 +589,7 @@ mod tests {
     #[test]
     fn show_json_adds_the_stations_the_branch_and_the_landing_when_the_change_has_them() {
         // spec change-landing「分支與落地記錄的讀取」與兩個關卡規格的 show 情境。
-        let shown = show_json(&shown_change_with_records());
+        let shown = show_json(&shown_change_with_records(), false);
         assert_eq!(
             shown["review"],
             json!({
@@ -602,7 +606,7 @@ mod tests {
         assert_eq!(shown["branch"], json!("feature/x"));
         assert_eq!(shown["landed"], json!({ "commit": "89abcdef0123", "at": "2026-11-03T09:00:00+08:00" }));
         // The keys that were there before are unchanged.
-        let before = show_json(&shown_change());
+        let before = show_json(&shown_change(), false);
         for (key, value) in before.as_object().unwrap() {
             assert_eq!(&shown[key], value, "{key}");
         }
@@ -633,11 +637,11 @@ mod tests {
     fn show_json_carries_the_fields_only_when_the_change_has_some_and_the_human_form_does_not() {
         let ShowOutcome::Change(plain) = shown_change() else { unreachable!() };
         let with = ShowOutcome::Change(ShowChange { fields: fields_of(&[("ticket", "PROJ-1"), ("n", "123")]), ..plain });
-        let shown = show_json(&with);
+        let shown = show_json(&with, false);
         assert_eq!(shown["fields"], json!({ "n": "123", "ticket": "PROJ-1" }));
         assert!(shown["fields"]["n"].is_string(), "a value is always a string");
         // 沒有欄位的變更：沒有這個鍵，其餘和之前一樣。
-        let before = show_json(&shown_change());
+        let before = show_json(&shown_change(), false);
         assert!(before.get("fields").is_none());
         let mut without = shown.clone();
         without.as_object_mut().unwrap().remove("fields");
@@ -657,15 +661,15 @@ mod tests {
             by_id: Some("u_1".to_string()),
             at: Some("2026-11-18T10:00:00+00:00".to_string()),
         });
-        let shown = show_json(&full);
+        let shown = show_json(&full, false);
         assert_eq!(shown["claimed"], json!({ "by": "Alice", "byId": "u_1", "at": "2026-11-18T10:00:00+00:00" }));
         // 其餘欄位與沒有認領時相同；人眼輸出不變。
-        let before = show_json(&shown_change());
+        let before = show_json(&shown_change(), false);
         let mut without = shown.clone();
         without.as_object_mut().unwrap().remove("claimed");
         assert_eq!(without, before);
         assert_eq!(show_human(&full, &PLAIN).stdout, show_human(&shown_change(), &PLAIN).stdout);
-        assert_eq!(show(&shown_change(), RenderOptions { json: true, color: false }).stdout.contains("claimed"), false);
+        assert_eq!(show(&shown_change(), false, RenderOptions { json: true, color: false }).stdout.contains("claimed"), false);
 
         // 沒有識別的認領不輸出 byId；舊版 Server 只給得出 by。
         let unkeyed = with(ClaimRecord {
@@ -674,16 +678,16 @@ mod tests {
             at: Some("2026-11-18T10:00:00+00:00".to_string()),
         });
         assert_eq!(
-            show_json(&unkeyed)["claimed"],
+            show_json(&unkeyed, false)["claimed"],
             json!({ "by": "Alice <a@example.com>", "at": "2026-11-18T10:00:00+00:00" })
         );
         let by_only = with(ClaimRecord { by: "Alice".to_string(), by_id: None, at: None });
-        assert_eq!(show_json(&by_only)["claimed"], json!({ "by": "Alice" }));
+        assert_eq!(show_json(&by_only, false)["claimed"], json!({ "by": "Alice" }));
     }
 
     #[test]
     fn show_json_has_no_key_for_a_record_the_change_does_not_have() {
-        let shown = show_json(&shown_change());
+        let shown = show_json(&shown_change(), false);
         for key in ["review", "verify", "branch", "landed", "claimed"] {
             assert!(shown.get(key).is_none(), "{key}");
         }
@@ -692,7 +696,40 @@ mod tests {
         let ShowOutcome::Change(mut change) = shown_change() else { unreachable!() };
         change.review = Some(speclink_core::station::StationStatus::none());
         change.verify = Some(speclink_core::station::StationStatus::none());
-        assert_eq!(show_json(&ShowOutcome::Change(change)), shown);
+        let change = ShowOutcome::Change(change);
+        assert_eq!(show_json(&change, false), shown);
+        // verb-contract「各種關卡記錄對應的輸出」的第一列：沒有記錄的關卡帶 --detail 也不輸出。
+        assert_eq!(show_json(&change, true), shown);
+    }
+
+    #[test]
+    fn show_json_with_the_detail_adds_the_scope_of_a_stamped_station_only() {
+        // spec verb-contract「單筆變更的詳細輸出」：已蓋章的 review 帶 scope，
+        // inProgress 的 verify 不帶；其他鍵與不帶詳細時相同。
+        let shown = shown_change_with_records();
+        let detailed = show_json(&shown, true);
+        assert_eq!(detailed["review"]["scope"], json!([{ "path": "src/a.rs", "hash": "aa" }]));
+        assert_eq!(detailed["verify"], json!({ "state": "inProgress" }));
+        let mut without_scope = detailed.clone();
+        without_scope["review"].as_object_mut().unwrap().remove("scope");
+        assert_eq!(without_scope, show_json(&shown, false));
+    }
+
+    #[test]
+    fn show_without_the_detail_prints_the_bytes_it_printed_before() {
+        // 回歸對照：不帶詳細的 show --json 逐位元不變（這段文字取自加入 --detail 之前的輸出）。
+        let before = "{\n  \"branch\": \"feature/x\",\n  \"created\": \"2026-07-01T10:00:00+08:00\",\n  \"deltaSpecs\": [\n    \"auth/spec.md\"\n  ],\n  \"design\": null,\n  \"fromDiscussions\": [],\n  \"landed\": {\n    \"at\": \"2026-11-03T09:00:00+08:00\",\n    \"commit\": \"89abcdef0123\"\n  },\n  \"name\": \"alpha\",\n  \"proposal\": \"## Why\\n\\nSign-in needs a second rule.\\n\",\n  \"restaleFrom\": [],\n  \"review\": {\n    \"commit\": \"0123456789ab\",\n    \"rounds\": 3,\n    \"stampedAt\": \"2026-11-02\",\n    \"stampedBy\": \"Rev <r@example.com>\",\n    \"state\": \"stamped\",\n    \"tasksTotal\": 12\n  },\n  \"schema\": \"spec-driven\",\n  \"tasks\": \"- [ ] 1.1 x\\n\",\n  \"verify\": {\n    \"state\": \"inProgress\"\n  }\n}\n";
+        let options = RenderOptions { json: true, color: false };
+        assert_eq!(show(&shown_change_with_records(), false, options).stdout, before);
+        assert!(show(&shown_change_with_records(), true, options).stdout.contains("\"scope\""));
+    }
+
+    #[test]
+    fn show_of_a_spec_is_the_same_with_and_without_the_detail() {
+        let spec = ShowOutcome::Spec { name: "auth".to_string(), content: "# auth\n".to_string() };
+        assert_eq!(show_json(&spec, true), show_json(&spec, false));
+        let options = RenderOptions { json: true, color: false };
+        assert_eq!(show(&spec, true, options), show(&spec, false, options));
     }
 
     #[test]

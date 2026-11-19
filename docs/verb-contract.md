@@ -92,7 +92,7 @@ It records that you work on the change, so that other people do not start the sa
 - Flags: `--release`, `--json`.
 - Without `--release`, the verb claims the change. A repeat claim by the same person succeeds and writes nothing. If another person holds the claim, the verb stops with a non-zero exit code, and stderr names the holder.
 - `--release` removes the claim. After that, any person can claim the change again.
-- **Any person who can write to the project can release a claim.** The person does not have to be the holder. The engine has no rule about who releases. A rule such as "only the holder releases" belongs to the host, in its `beforeCommand` hook. See the example below.
+- **Any person who can write to the project can release a claim.** The person does not have to be the holder. The engine has no rule about who releases. A rule such as "only the holder releases" belongs to the host, in its `beforeCommand` hook. See [the example in the Node SDK](sdk-node.md#release-hook).
 - A release prints `✓ Released claim on change: <change> (was claimed by <holder>)`.
 - `--release` on a change with no claim is not an error. It prints `Change '<change>' is not claimed — nothing to release`, it writes nothing, and the exit code is 0.
 - `claim --json` prints `{"change":"add-login","claimedBy":"Demo <demo@example.com>"}`.
@@ -100,26 +100,7 @@ It records that you work on the change, so that other people do not start the sa
 - A refused claim, an unknown change, and a local project give a non-zero exit code. The message goes to stderr, and stdout has no JSON.
 - In the Node SDK, `dispatch(['claim', name])` now returns the `--json` object, as each verb with a JSON form does. Before `claim` had a JSON form, it returned `{ output }`. A host that reads `output` must read `claimedBy`.
 
-The hook gets the release under the command name `claim-release`, with the change name in `params.name`. This name is not `claim`: a hook that refuses only `claim` does not refuse a release. This example, for the Node SDK, lets only the holder release:
-
-```js
-async beforeCommand({ identity, command, params }, { read }) {
-  if (command !== 'claim-release') return
-  let change
-  try {
-    change = await read(['show', params.name, '--json'])
-  } catch {
-    return // The release reports an unknown change or broken data itself.
-  }
-  const holder = change.claimed
-  if (!holder) return
-  // A claim with no identifier is judged by the name, as the engine does.
-  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
-  if (!isHolder) return { allow: false, reason: 'Only the holder can release this claim' }
-}
-```
-
-The example catches a failed read on purpose. A hook that throws ends the call with an error of the hook, and that error hides the message of the release, for example "not found". A claim from before identifiers has no `byId`; the example then compares the name, so the holder can always release.
+The hook gets the release under the command name `claim-release`, with the change name in `params.name`. This name is not `claim`: a hook that refuses only `claim` does not refuse a release. For a hook that lets only the holder and an admin release, see [the Node SDK](sdk-node.md#release-hook).
 
 To see who holds a change, read `claimed` in `speclink show <change> --json`. See [the fields below](#verb-reference).
 
@@ -287,6 +268,35 @@ Each key below appears only when the change has that record:
 ```
 
 The example leaves out the fields that existed before, such as `schema`, `proposal`, and `tasks`. The free fields also appear in the discussion data of `discuss list --json`, `discuss show --json`, and `discuss search --json`.
+
+#### <a id="show-detail"></a>`speclink show <change> --json --detail`
+
+`--detail` adds the scope of each stamp: the path and the fingerprint of each file that the stamp covered. A host can then compare the files on its main branch with the files that passed the station, also after a squash or a rebase gives the commits new identifiers.
+
+- `--detail` works only with `--json`. `speclink show <change> --detail` stops with a usage error: a non-zero exit code, a message on stderr that names `--json`, and nothing on stdout. Through `host.dispatch`, the `read` of a hook, and `engine.dispatch`, the error code is `invalid_argv`.
+- A stamped station (`review` or `verify` with `state` `stamped`) also has `scope`: an array with one `{ "path", "hash" }` for each file, in the order of the record. `path` is the path from the repo root, with forward slashes. `hash` is the fingerprint at the stamp, in lowercase hexadecimal. A stamp that recorded no fingerprint has `"scope": []`.
+- `scope` appears only in a stamped station. A station with an open ticket stays `{ "state": "inProgress" }`, and a station with no record has no key, as without `--detail`.
+- Without `--detail`, the output of `show --json` is the same as before, byte for byte. `list --json --detail` has no `scope`. For a spec (`--item-type spec`, or a name that is a spec), the output is the same with and without `--detail`.
+- The same data gives the same `review` and `verify` in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI takes `scope` from the one response of `GET /changes/{name}` and sends no other request. An older Server that does not send the stations gives no `review` and no `verify`, and the command does not fail.
+- `scope` is what the stamp recorded. The output does not tell whether a file changed after the stamp, and a file that was deleted before the stamp is not in it. For the fingerprint function and a hook that compares the files, see [the Node SDK](sdk-node.md#stamp-scope).
+
+```json
+{
+  "name": "add-login",
+  "review": {
+    "state": "stamped",
+    "stampedAt": "2026-11-02T14:03:44+08:00",
+    "rounds": 2,
+    "tasksTotal": 5,
+    "commit": "0123456789ab",
+    "scope": [
+      { "path": "src/auth.ts", "hash": "42c1e65b2c948bb754efb6ac171319d6e97ecb3d9afd4f20bd91b3ded25183c0" },
+      { "path": "src/login.ts", "hash": "e9024f1a07d29d52ad3aa5e1a18e94db1f3a9fd32b89e39d47c472cd99071e13" }
+    ]
+  },
+  "verify": { "state": "inProgress" }
+}
+```
 
 ## <a id="request-rules"></a>Shared request rules
 

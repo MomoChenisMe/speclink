@@ -44,6 +44,7 @@ mod remote_verb_parity;
 mod remote_write_path;
 mod review_verbs;
 mod schema_commands;
+mod show_detail;
 mod spec_dir_layout;
 mod spec_dir_migration;
 mod task_done_stamps;

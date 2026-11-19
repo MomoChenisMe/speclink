@@ -322,7 +322,82 @@ const hooks = {
 - **`read` 讀到的內容和命令本身讀到的不是同一份。** 每次 `read` 都是對儲存的另一次呼叫。`read` 和命令之間有別人提交時，兩邊看到的內容會不同。引擎自己的守門（以封存來說：任務完成度與未結的工單）一律以命令本身讀到的內容判斷。你的規則需要兩邊一致時，在自己的 `read` 與 `commit` 儲存函式裡處理。
 - **不要在掛鉤裡等同一個宿主套件的 `dispatch`，要讀資料就用 `read`。** 那個 `dispatch` 會再問一次 `beforeCommand`，而且宿主的儲存自己持有鎖時會卡住。
 
-Speclink 不內建「沒有落地就不能封存」「commit 必須在某個分支」這類規則。引擎只記錄分支與落地的 commit（見 `change landed`）；要擋，用 `beforeCommand` 自己擋，像上面的例子。
+Speclink 不內建「沒有落地就不能封存」「commit 必須在某個分支」這類規則，也不限定誰可以釋放認領。引擎只記錄分支與落地的 commit（見 `change landed`）；要擋，用 `beforeCommand` 自己擋，像上面的例子。
+
+### <a id="release-hook"></a>只讓認領的人與管理者釋放認領
+
+能寫入這個範圍的人都可以釋放認領。掛鉤收到的釋放命令名稱是 `claim-release`，變更名稱在 `params.name`；只擋 `claim` 的掛鉤擋不到釋放。下面的掛鉤只讓認領的人與管理者釋放：
+
+```js
+async function beforeCommand({ identity, command, params }, { read }) {
+  if (command !== 'claim-release') return
+  // isAdmin 是你自己的函式：Speclink 不給身分任何角色。
+  if (await isAdmin(identity)) return
+  const change = await read(['show', params.name, '--json']).catch((err) => {
+    // 變更不存在：放行，由釋放本身回 `not_found`。
+    if (err.code === 'not_found') return null
+    throw err
+  })
+  if (change === null) return
+  const holder = change.claimed
+  if (!holder) return
+  // 沒有識別的認領以名稱判斷，和引擎相同。
+  const isHolder = holder.byId ? holder.byId === identity.id : holder.by === identity.displayName
+  if (!isHolder) return { allow: false, reason: '只有認領的人或管理者可以釋放這個認領' }
+}
+```
+
+- **只讓 `not_found` 通過。** 變更不存在時掛鉤放行，由釋放本身回 `not_found`。`read` 的其他失敗都往外拋：掛鉤失敗，這次呼叫以 `internal` 結束。權限掛鉤判斷不了時不能放行，例如你的儲存暫時連不上。
+- **它是函式宣告**，可以原樣貼上，用 `createHost({ store, hooks: { beforeCommand } })` 接上。
+- **加入識別之前的認領沒有 `byId`。** 範例這時改比對名稱，認領的人一定能釋放。
+- **`reason` 出現在哪裡**：CLI 把它原文印到 stderr。Speclink Desktop 沒有釋放認領的操作；你的掛鉤拒絕認領時，Speclink Desktop 的失敗提示會帶出原因。
+
+### <a id="stamp-scope"></a>封存前比對蓋章時的檔案
+
+squash、rebase、cherry-pick 做出的 commit 編號都不同，所以章的 `commit` 判斷不了正式分支上是不是審過的檔案。要比對檔案本身：`read(['show', name, '--json', '--detail'])` 在每個已蓋章的關卡給出 `scope`，也就是 `review.scope` 與 `verify.scope`。每一項是 `{ path, hash }`：相對 repo 根目錄、以正斜線分隔的路徑，以及蓋章時的指紋。沒有蓋章的關卡沒有 `scope`。
+
+指紋的算法：檔案的位元組能以 UTF-8 解讀時，把每個 CRLF 換成 LF，取這段文字的 SHA-256（小寫十六進位），開頭的 BOM 保留、不剝掉；不能以 UTF-8 解讀時，取原始位元組的 SHA-256。下面的函式算出的值和引擎記下的相同：
+
+```js
+import { createHash } from 'node:crypto'
+
+function fingerprint(bytes) {
+  // 字串或路徑不是檔案內容：拒絕，不拿來算。
+  if (!(bytes instanceof Uint8Array)) throw new TypeError('fingerprint takes the bytes of a file')
+  // fatal：不是 UTF-8 的位元組會拋錯。ignoreBOM：開頭的 BOM 留在文字裡。
+  const decoder = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true })
+  let text
+  try {
+    text = decoder.decode(bytes)
+  } catch {
+    // 不是 UTF-8：用原始位元組，行尾也不換。
+    return createHash('sha256').update(bytes).digest('hex')
+  }
+  return createHash('sha256').update(text.replaceAll('\r\n', '\n'), 'utf8').digest('hex')
+}
+
+async function beforeCommand({ command, params }, { read }) {
+  if (command !== 'archive') return
+  // 沒有給名稱時由引擎自己選變更，這條規則讀不到它的檔案。
+  if (typeof params.change !== 'string') return { allow: false, reason: '封存時請指定變更名稱' }
+  const shown = await read(['show', params.change, '--json', '--detail']).catch((err) => {
+    // 變更不存在：放行，由引擎自己回 `not_found`。
+    if (err.code === 'not_found') return null
+    throw err
+  })
+  if (shown === null) return
+  for (const station of [shown.review, shown.verify]) {
+    for (const { path, hash } of station?.scope ?? []) {
+      // readOnMainBranch 是你自己的函式：回傳檔案的位元組，檔案不存在時回傳 null。
+      const bytes = await readOnMainBranch(path)
+      if (bytes === null || fingerprint(bytes) !== hash) return { allow: false, reason: `${path} 在蓋章後改過` }
+    }
+  }
+}
+```
+
+- **蓋章前已刪除的檔不在 `scope` 裡。** 要確認正式分支上也刪掉了，自己另外比對。
+- **`scope` 是蓋章時記下的內容。** 這個輸出不判斷檔案在蓋章後有沒有改過，比對由你自己做。
 
 ## <a id="agent-tool"></a>給 Agent 工具用
 
@@ -374,7 +449,7 @@ const mine = changes.filter((change) => change.claimed?.byId === session.user.id
 
 **宿主套件不讀 git，也不讀你的檔案。** 需要本機事實的動詞，由你的程式收集後當成輸入：
 
-- 蓋章（`review stamp`、`verify stamp`）：檔案指紋與 commit 放進 `stdin` 的 JSON，例如 `{ "scope": [{ "path": "src/auth.ts", "hash": "<sha256>" }], "missing": [], "headCommit": "<commit>" }`。指紋是檔案內容的 SHA-256（十六進位）；文字檔先把 CRLF 換成 LF。
+- 蓋章（`review stamp`、`verify stamp`）：檔案指紋與 commit 放進 `stdin` 的 JSON，例如 `{ "scope": [{ "path": "src/auth.ts", "hash": "<sha256>" }], "missing": [], "headCommit": "<commit>" }`。指紋怎麼算，見[封存前比對蓋章時的檔案](#stamp-scope)。
 - `task done`：任務照常勾選，但不記錄改了哪些檔。
 - 落地：用 `change landed <名稱> --commit <commit>` 回報。
 
@@ -480,7 +555,6 @@ const moves = [
 for (const [root, scope] of moves) {
   const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
   // → { formatVersion: 2, documents: [{ key, content, digest }, …] } （沒有 scopeVersion）
-  if (bundle.documents.length === 0) throw new Error(`${root} 沒有規格文件`)
   const report = await host.importScope({ identity, scope, bundle })
   // → { scopeVersion: 1, documents: 42 }
 }
@@ -489,13 +563,30 @@ for (const [root, scope] of moves) {
 - **只讀不寫**：不改專案的任何檔案。文件依鍵的位元組順序排列。本機專案沒有範圍版本號，所以包沒有 `scopeVersion`；匯入本來就不讀它。
 - **這些失敗不會給不完整的包**：任何一個變更（進行中或已封存）的 metadata 無法解析，或有引擎命名規則對不上的文件時，以 `error` 拒絕，訊息指出是哪個檔案。檔案存在但讀不出來（沒有權限，或內容不是 UTF-8）不算失敗：包裡就沒有那份文件。
 - **只讀專案裡面的檔案**：通往規格資料夾路上的資料夾、規格資料夾本身，或它底下任何一個檔案或資料夾是符號連結時，在讀取任何文件之前以 `error` 拒絕；舊位置的 evidence 資料夾 `.speclink/touched/` 也照這條規則。訊息以 `symbolic link in the spec folder:` 開頭，用相對專案根目錄的路徑指出那個項目，不會顯示連結指向哪裡；把連結換成實體檔案或移除即可。那些位置有列不出內容的資料夾時也會拒絕，訊息以 `cannot list` 開頭。規格資料夾名稱（`.speclink.yaml` 的 `spec_dir`，或 `createEngine` 的 `specDir`）是絕對路徑，或含 `..`、`.` 路徑段時，以 `error` 拒絕，訊息以 `spec folder outside the project:` 開頭並指出那個名稱。要匯出別處的規格資料夾，把 `root` 指到它的上一層。
-- **不是專案的資料夾會得到空的包**：匯入之前先看文件數量。
+- **`root` 底下沒有規格資料夾時拒絕**：名稱與符號連結的檢查都通過之後，`root` 底下以那個名稱找不到規格資料夾——什麼都沒有，或資料夾裡沒有 `changes/`、`specs/`、`discussions/`，也沒有 `config.yaml`——就以 `error` 拒絕。只有 `LANGUAGE.md` 的資料夾也會被拒絕。訊息以 `no spec folder:` 開頭並指出資料夾名稱，不含 `root` 的路徑；檔案都不變。這是為了抓出放錯位置的下載內容：不擋的話它會得到零份文件，看起來像成功。規格資料夾存在但沒有文件時，照常得到沒有文件的包。要匯出空的專案，先建立它的規格資料夾。
 - **匯出期間不要寫入這個專案**：匯出是逐一讀檔，不做快照。同一時間經同一個引擎、CLI 或其他程式寫入，包裡可能同時有新舊內容。
 - **匯入的範圍必須是空的**，而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
 - **包裡有全文**：流程設定與每一份討論的全文都在包裡。誰可以執行匯出由你決定。
 - **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。
 
 CLI 沒有匯入匯出的動詞。搬專案有三個入口：Speclink Desktop 的「遷移到 Server」、在你自己的程式裡用 `engine.exportScope()` 加 `host.importScope`，以及在兩個範圍之間用 HTTP 入口的 `GET /export` 與 `POST /import`。
+
+### <a id="server-side-import"></a>在伺服端匯入
+
+你的後端可以把既有 repo 的規格搬進一個範圍：下載檔案，用 `createEngine` 匯出，再在同一個程序裡用 `host.importScope` 匯入：
+
+```js
+// 後端只把 repo 的規格資料夾下載到 /tmp/acme-web/specs-folder/。
+const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
+const bundle = await engine.exportScope()
+const report = await host.importScope({ identity, scope: 'acme/web', bundle })
+// → { scopeVersion: 1, documents: 42 }
+```
+
+- **`root` 與 `specDir`**：只下載規格資料夾時，`root` 指到它的上一層，資料夾名稱給 `store.specDir`。不給 `specDir` 時，引擎和 CLI 一樣找資料夾：先讀 `root/.speclink.yaml` 的 `spec_dir`，再找 `speclink/`，最後找舊的 `openspec/`。`root` 底下以那個名稱找不到規格資料夾時，以 `no spec folder:` 開頭的訊息拒絕。
+- **大小上限**：`limits.importBytes`（預設 32 MiB）也管你的程式在同一個程序裡呼叫的 `host.importScope`。匯出沒有上限；大的專案要調高宿主的上限。
+- **匯入是一次性的搬遷，不是同步。** 匯入之後 repo 裡的改動不會進到範圍，範圍裡的改動也不會回到 repo。
+- **要重新匯入**，先在你的儲存裡刪掉這個範圍的全部文件，再匯入。這會刪掉匯入之後大家在宿主裡做的全部改動：變更、討論與蓋章。範圍不是空的時，匯入會被拒絕。
 
 ## <a id="skills"></a>產生技能檔
 

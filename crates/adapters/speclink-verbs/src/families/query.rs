@@ -39,6 +39,9 @@ pub struct ShowArgs {
     /// Show requirements
     #[arg(short = 'r', long)]
     pub requirements: bool,
+    /// With --json, add each stamped station's scope: the path and hash of every file at the stamp
+    #[arg(long, requires = "json")]
+    pub detail: bool,
 }
 #[derive(Args, Debug)]
 pub struct StatusArgs {

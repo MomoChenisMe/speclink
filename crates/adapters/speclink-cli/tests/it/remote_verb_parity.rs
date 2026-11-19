@@ -2553,6 +2553,36 @@ fn remote_show_json_carries_the_claim_record_like_the_engine() {
 }
 
 #[test]
+fn remote_show_detail_matches_the_engine_for_both_stations() {
+    // spec verb-contract「單筆變更的詳細輸出」Scenario「三種執行方式輸出相同」的 CLI 兩模式：
+    // 同一份文件放進本機專案與 Server，Server 自己算出關卡。兩個關卡都已蓋章，記錄的
+    // 順序不是路徑順序（b 在 a 前）。
+    const STAMPED: &str = "schema: spec-driven\ncreated: 2026-11-01\n\
+reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_rounds: 2\n\
+reviewed_scope:\n  - path: src/b.rs\n    hash: bb01\n  - path: src/a.rs\n    hash: aa01\n\
+verified_at: 2026-11-03\nverified_tasks_total: 1\nverified_rounds: 1\n\
+verified_scope:\n  - path: src/a.rs\n    hash: aa02\n";
+    let docs = claim_docs(STAMPED);
+    let fs = DoorProject::local("show-detail-parity", &docs);
+    let server = door(&docs, NOV_18_MS);
+    let remote = DoorProject::remote("show-detail-parity", &server.base);
+
+    let args = ["show", "demo", "--json", "--detail"];
+    let (fs_out, remote_out) = (fs.run(&args), remote.run(&args));
+    assert!(fs_out.status.success() && remote_out.status.success(), "{}", stderr_of(&remote_out));
+    assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "--json --detail is byte-identical to the engine's");
+    let (local, served) = (json_of(&fs_out), json_of(&remote_out));
+    for station in ["review", "verify"] {
+        assert_eq!(served[station], local[station], "{station}");
+    }
+    assert_eq!(
+        local["review"]["scope"],
+        serde_json::json!([{ "path": "src/b.rs", "hash": "bb01" }, { "path": "src/a.rs", "hash": "aa01" }])
+    );
+    assert_eq!(local["verify"]["scope"], serde_json::json!([{ "path": "src/a.rs", "hash": "aa02" }]));
+}
+
+#[test]
 fn remote_show_json_from_an_older_server_carries_the_holder_only() {
     // 舊版 Server 只有 claimedBy：`claimed` 只含 by。
     let mut routes = show_change_routes();

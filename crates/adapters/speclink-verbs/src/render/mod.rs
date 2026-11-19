@@ -249,7 +249,7 @@ fn render_with(
 
     Ok(match outcome {
         O::List(o) => query::list(o, options),
-        O::Show(o) => query::show(o, options),
+        O::Show(o) => query::show(o, matches!(verb.spec(), SpecVerb::Show(a) if a.detail), options),
         O::Status(o) => query::status(o, options),
         O::Instructions(o) => instructions::instructions(o, options),
         O::Validate(o) => checks::validate(&o.results, options),

@@ -503,6 +503,41 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     }
 
     #[test]
+    fn the_detail_form_adds_the_scope_of_a_stamp() {
+        // verb-contract「單筆變更的詳細輸出」：show --json --detail 的形狀＝預設形狀加上
+        // scope，每項只有 path 與 hash，順序照 metadata。
+        let status = status(&REVIEW, &meta(STAMPED), false);
+        let mut want = status.to_json();
+        want["scope"] = serde_json::json!([
+            { "path": "src/a.rs", "hash": "aa" },
+            { "path": "src/b.rs", "hash": "bb" },
+        ]);
+        assert_eq!(status.to_detail_json(), want);
+        assert!(status.to_json().get("scope").is_none(), "the default form keeps the scope out");
+    }
+
+    #[test]
+    fn the_detail_form_of_a_stamp_without_fingerprints_is_an_empty_scope() {
+        // 已蓋章但沒有記下任何指紋（例如 Server 回應沒有 scope）：鍵照樣出現，是空陣列。
+        let status = StationStatus {
+            progress: StationProgress::Stamped,
+            stamped_at: Some("2026-11-02".into()),
+            rounds: Some(1),
+            tasks_total: Some(1),
+            ..StationStatus::none()
+        };
+        assert_eq!(status.to_detail_json()["scope"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn the_detail_form_of_an_unstamped_station_has_no_scope() {
+        let open = status(&REVIEW, &meta(STAMPED), true);
+        assert_eq!(open.to_detail_json(), serde_json::json!({ "state": "inProgress" }));
+        let none = status(&REVIEW, &meta(META), false);
+        assert_eq!(none.to_detail_json(), serde_json::json!({ "state": "none" }));
+    }
+
+    #[test]
     fn the_two_stations_read_their_own_fields() {
         // Scenario「兩個關卡各自獨立」：審查已蓋章、驗證有未結的工單。
         let m = meta(STAMPED);
@@ -1691,6 +1726,24 @@ mod review {
             format!("{:x}", Sha256::digest(png))
         };
         assert_eq!(content_fingerprint_bytes(png), raw_sha, "no line-ending normalization");
+    }
+
+    /// 指紋的對照資料（user-documentation「SDK 文件說明伺服端匯入、釋放認領的掛鉤與蓋章指紋」）：
+    /// SDK 文件的 JS 指紋函式對同樣三份位元組要得到同樣的值，Node 的 host.spec.ts 釘同一張表。
+    const FINGERPRINT_SAMPLES: [(&[u8], &str); 3] = [
+        // 開頭有 BOM 的 UTF-8：BOM 保留，不剝掉。
+        (b"\xEF\xBB\xBFhello\n", "42c1e65b2c948bb754efb6ac171319d6e97ecb3d9afd4f20bd91b3ded25183c0"),
+        // 行尾是 CRLF 的文字：換成 LF 後再算。
+        (b"line one\r\nline two\r\n", "e9024f1a07d29d52ad3aa5e1a18e94db1f3a9fd32b89e39d47c472cd99071e13"),
+        // 不是 UTF-8：原始位元組，裡面的 CR LF 不換。
+        (&[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0xFF, 0x00], "dbe1f5fa9495a8b8cfbc43377e7436cd26c273696b8807d3737633994c9760d2"),
+    ];
+
+    #[test]
+    fn content_fingerprint_bytes_gives_the_values_the_sdk_docs_pin() {
+        for (bytes, want) in FINGERPRINT_SAMPLES {
+            assert_eq!(content_fingerprint_bytes(bytes), want, "{bytes:?}");
+        }
     }
 
     #[test]

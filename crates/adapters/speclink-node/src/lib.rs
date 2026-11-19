@@ -179,6 +179,19 @@ fn export_local(workspace: &core::workspace::Workspace) -> DispatchResult {
     let store = speclink_fs::FsStore::new(&workspace.root, &workspace.spec_dir_name);
     let documents = transfer::local_documents(workspace, &store, &speclink_host::context::global_config_dir())
         .map_err(failed)?;
+    // A root with no spec folder gives no documents, and a move of nothing
+    // looks like a success, so it is refused (show-detail-and-export-check,
+    // 「exportScope 在既有檢查之後確認規格資料夾」). The shared assembly checked
+    // the name and the links first, so this looks at no path outside the
+    // project. Desktop's move to a server does not come here: it still sends
+    // an empty set for such a folder.
+    if !core::workspace::is_spec_folder(&workspace.spec_dir()) {
+        return Err(failed(format!(
+            "no spec folder: \"{}\" under the root holds no changes/, specs/, discussions/ or config.yaml \
+             — point root at the folder above the spec folder, or set specDir",
+            workspace.spec_dir_name
+        )));
+    }
     // The conversion does not read a first version's target: a local
     // project has none, so it stays empty.
     let first = ImportBundle {

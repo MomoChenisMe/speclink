@@ -331,7 +331,7 @@ pub struct StationStatus {
     pub rounds: Option<u64>,
     pub tasks_total: Option<usize>,
     pub commit: Option<String>,
-    /// 蓋章時每個檔案的路徑與內容指紋。清單與 `show --json` 不帶它。
+    /// 蓋章時每個檔案的路徑與內容指紋。清單與 `show --json` 不帶它，`show --json --detail` 才帶。
     pub scope: Vec<ReviewedScopeEntry>,
 }
 
@@ -392,6 +392,16 @@ impl StationStatus {
             if let Some(value) = value {
                 json[key] = serde_json::json!(value);
             }
+        }
+        json
+    }
+
+    /// `show --json --detail` 的形狀：[`Self::to_json`] 在已蓋章時再加 `scope`——每項
+    /// `path` 與 `hash`，順序照 metadata，與線上格式的 `scope` 同名；沒有記下指紋時是空陣列。
+    pub fn to_detail_json(&self) -> serde_json::Value {
+        let mut json = self.to_json();
+        if self.progress == StationProgress::Stamped {
+            json["scope"] = serde_json::json!(self.scope);
         }
         json
     }
