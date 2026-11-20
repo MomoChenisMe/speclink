@@ -24,6 +24,9 @@ use std::sync::Arc;
 pub(crate) struct DispatchError {
     code: String,
     message: String,
+    /// The fixed code of an export or an import failure, when it has one
+    /// (spec node-sdk: 匯出與匯入的失敗帶原因代碼). Every other failure has none.
+    reason: Option<speclink_host::transfer::TransferReason>,
 }
 
 impl DispatchError {
@@ -31,7 +34,14 @@ impl DispatchError {
         DispatchError {
             code: code.to_string(),
             message: message.into(),
+            reason: None,
         }
+    }
+
+    /// This failure with the code `reason`. No code leaves the failure as
+    /// it is: a code it already has is kept.
+    pub(crate) fn with_reason(self, reason: Option<speclink_host::transfer::TransferReason>) -> DispatchError {
+        DispatchError { reason: reason.or(self.reason), ..self }
     }
 }
 
@@ -68,11 +78,18 @@ pub(crate) fn status_notice(status_without_name: bool, e: &core::command::Comman
         .then(|| serde_json::json!({ "output": speclink_verbs::render::no_active_changes().stdout }))
 }
 
-/// The envelope a dispatch Promise resolves to; index.js unwraps it.
+/// The envelope a dispatch Promise resolves to; index.js unwraps it. A
+/// failure has a `reason` key only when it has a code.
 pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
     match result {
         Ok(value) => serde_json::json!({ "ok": true, "value": value }),
-        Err(e) => serde_json::json!({ "ok": false, "code": e.code, "message": e.message }),
+        Err(e) => {
+            let mut failure = serde_json::json!({ "ok": false, "code": e.code, "message": e.message });
+            if let Some(reason) = e.reason {
+                failure["reason"] = reason.as_str().into();
+            }
+            failure
+        }
     }
 }
 
@@ -178,7 +195,7 @@ fn export_local(workspace: &core::workspace::Workspace) -> DispatchResult {
     let failed = |message: String| DispatchError::new("error", message);
     let store = speclink_fs::FsStore::new(&workspace.root, &workspace.spec_dir_name);
     let documents = transfer::local_documents(workspace, &store, &speclink_host::context::global_config_dir())
-        .map_err(failed)?;
+        .map_err(|error| failed(error.to_string()).with_reason(error.reason()))?;
     // A root with no spec folder gives no documents, and a move of nothing
     // looks like a success, so it is refused (show-detail-and-export-check,
     // 「exportScope 在既有檢查之後確認規格資料夾」). The shared assembly checked
@@ -190,7 +207,8 @@ fn export_local(workspace: &core::workspace::Workspace) -> DispatchResult {
             "no spec folder: \"{}\" under the root holds no changes/, specs/, discussions/ or config.yaml \
              — point root at the folder above the spec folder, or set specDir",
             workspace.spec_dir_name
-        )));
+        ))
+        .with_reason(Some(transfer::TransferReason::NoSpecFolder)));
     }
     // The conversion does not read a first version's target: a local
     // project has none, so it stays empty.

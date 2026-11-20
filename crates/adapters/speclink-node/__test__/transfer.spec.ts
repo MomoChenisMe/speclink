@@ -2,7 +2,7 @@
 // a JS store port, the hooks they go through, and createHost's import limit.
 import { describe, expect, it } from 'vitest'
 
-import { createHost } from '../index.js'
+import { createHost, StoreUnavailableError } from '../index.js'
 import { digestOf, rejection } from './helpers'
 import { memoryPort } from './memory-port'
 
@@ -207,6 +207,91 @@ describe('host.exportScope and host.importScope', () => {
     }
     // Every store call above settled on a timer of this loop.
     expect(ticks).toBeGreaterThan(0)
+  })
+})
+
+// node-sdk「匯出與匯入的失敗帶原因代碼」: the three codes of host.importScope,
+// and the failures that have none.
+describe('the reason of a failed host.importScope or host.exportScope', () => {
+  it('names scope_not_empty for a scope that holds documents', async () => {
+    const host = createHost({ store: memoryPort().store })
+    await host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([doc('config.yaml', CONFIG)]) })
+
+    const error = await rejection(
+      host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([doc('config.yaml', CONFIG)]) }),
+    )
+
+    expect([error.code, error.reason]).toEqual(['refused', 'scope_not_empty'])
+    expect(error.message).toBe('import (create-new): the target scope already holds documents')
+  })
+
+  it('names bundle_too_large for content over limits.importBytes', async () => {
+    const host = createHost({ store: memoryPort().store, limits: { importBytes: 1024 } })
+    const bundle = keyed([doc('config.yaml', 'x'.repeat(2000))])
+
+    const error = await rejection(host.importScope({ identity: ALICE, scope: 's1', bundle }))
+
+    expect([error.code, error.reason]).toEqual(['invalid_argv', 'bundle_too_large'])
+    expect(error.message).toBe("the bundle's content is 2000 bytes, over the 1024-byte import limit")
+  })
+
+  it.each([
+    [
+      'a digest that is not the content’s',
+      { key: 'config.yaml', content: CONFIG, digest: digestOf('other\n') },
+      'bundle document "config.yaml": the digest is not the digest of the content',
+    ],
+    [
+      'a key of notes/a.md',
+      doc('notes/a.md', '# notes\n'),
+      'bundle document "notes/a.md": the key follows none of the Engine\'s naming rules',
+    ],
+  ])('names invalid_bundle_document for %s', async (_, document, message) => {
+    const host = createHost({ store: memoryPort().store })
+
+    const error = await rejection(host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([document]) }))
+
+    expect([error.code, error.reason]).toEqual(['invalid_argv', 'invalid_bundle_document'])
+    expect(error.message).toBe(message)
+  })
+
+  it('gives no reason when beforeCommand refuses the import', async () => {
+    const host = createHost({
+      store: memoryPort().store,
+      hooks: { beforeCommand: (info) => (info.command === 'scope-import' ? { allow: false, reason: 'not allowed' } : undefined) },
+    })
+
+    const error = await rejection(host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([doc('config.yaml', CONFIG)]) }))
+
+    expect([error.code, error.message]).toEqual(['refused', 'not allowed'])
+    expect('reason' in error).toBe(false)
+  })
+
+  it('gives no reason for a bundle of formatVersion 99', async () => {
+    const host = createHost({ store: memoryPort().store })
+
+    const error = await rejection(
+      host.importScope({ identity: ALICE, scope: 's1', bundle: { formatVersion: 99, documents: [] } as never }),
+    )
+
+    expect(error.code).toBe('invalid_argv')
+    expect('reason' in error).toBe(false)
+  })
+
+  it('gives no reason when the store’s list throws StoreUnavailableError during an export', async () => {
+    const port = memoryPort()
+    const store = {
+      ...port.store,
+      list: () => {
+        throw new StoreUnavailableError('the store is down')
+      },
+    }
+    const host = createHost({ store })
+
+    const error = await rejection(host.exportScope({ identity: ALICE, scope: 's1' }))
+
+    expect(error.code).toBe('unavailable')
+    expect('reason' in error).toBe(false)
   })
 })
 

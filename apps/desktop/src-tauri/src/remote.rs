@@ -470,8 +470,8 @@ pub fn build_import_bundle(root: &Path, project: &str, repo: &str) -> Result<Imp
     }
     let context = speclink_desktop_core::init_core_context(root)
         .ok_or_else(|| format!("not a local speclink workspace: {}", root.display()))?;
-    let documents =
-        local_documents(&context.workspace, &context.store, &speclink_host::context::global_config_dir())?;
+    let documents = local_documents(&context.workspace, &context.store, &speclink_host::context::global_config_dir())
+        .map_err(|error| error.to_string())?;
     Ok(ImportBundle {
         format_version: FIRST_VERSION,
         scope: ImportScope {

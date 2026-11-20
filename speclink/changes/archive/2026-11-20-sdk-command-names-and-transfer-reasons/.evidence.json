@@ -1,0 +1,236 @@
+{
+  "version": 2,
+  "change": "sdk-command-names-and-transfer-reasons",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫會失敗的測試，釘住需求「引擎提供全部命令名稱的清單」與 design「命令名稱清單是 speclink-core 的一份常數」「宿主套件在引擎的清單後面加上自己的兩個名稱」。在 `crates/engine/speclink-core/tests/it/command_describe.rs` 加一條斷言：每一種命令的樣本名稱排序後，等於新常數排序後的內容，常數沒有重複，個數是 54；斷言失敗的訊息要印出缺少與多出的名稱。在 `crates/host/speclink-host/src/transfer.rs` 的測試加一條：宿主套件的完整清單是 56 個不重複的名稱，含引擎的每一個名稱與 `scope-export`、`scope-import`。驗證：`cargo test -p speclink-core --test it command_describe` 與 `cargo test -p speclink-host command_names` 因為常數與函式還不存在而編譯失敗。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/host/speclink-host/src/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作：`crates/engine/speclink-core/src/command/describe.rs` 加上公開的命令名稱常數（54 個，順序照 `name()` 的分支），`crates/host/speclink-host/src/transfer.rs` 加上回傳完整清單的公開函式，`scope-export`、`scope-import` 沿用既有的常數；`put-board-order` 改成 `crates/host/speclink-host/src/documents.rs` 的公開常數，`crates/host/speclink-host/src/http/routes.rs` 與看板排序的 commit 都改讀它。完成後清單與命令的種類一一對應。驗證：1.1 的兩個指令通過；`cargo test -p speclink-core --test it command_describe` 的 golden 不需要更新。",
+      "files": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/routes.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫會失敗的 vitest，釘住需求「SDK 匯出命令名稱清單」的五個情境。在 `crates/adapters/speclink-node/__test__/engine.spec.ts` 斷言：`commandNames` 是 57 個不重複字串的陣列，含 `new-change`、`claim-release`、`workflow-config-edit`、`scope-export`、`scope-import`、`put-board-order`，而且 `Object.isFrozen(commandNames)` 是 `true`。在 `crates/adapters/speclink-node/__test__/host.spec.ts` 斷言：beforeCommand 依序記下 `new-change`、`claim`、`claim-release`、`scope-export`、`scope-import`，每一個都在 `commandNames` 裡。在 `crates/adapters/speclink-node/__test__/handle-request.spec.ts` 斷言：`PUT /board-order` 時 beforeCommand 收到的 `command` 是 `put-board-order`，而且它在 `commandNames` 裡。驗證：`npm --prefix crates/adapters/speclink-node test` 的這幾個案例失敗，原因是 `commandNames` 是 undefined。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/engine.spec.ts",
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 實作 design「SDK 在載入時取一次清單並凍結」：`crates/adapters/speclink-node/src/host.rs` 加一個回傳字串陣列的原生函式，`crates/adapters/speclink-node/index.js` 在載入時取一次、凍結後匯出，`crates/adapters/speclink-node/index.d.ts` 宣告 `export const commandNames: readonly string[]`，說明寫明含宿主套件的三個名稱、順序不是契約、不帶讀寫資訊。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test`，2.1 的案例通過；照 `.github/workflows/node-sdk.yml` 打包工作的步驟在本機打包主套件與本機平台的子套件，執行 `node scripts/npm/npm-engine-consumer-check.mjs`，輸出的匯出名稱個數是 8。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 先寫會失敗的單元測試，釘住 design「原因代碼是失敗型別上的一個方法」。在 `crates/host/speclink-host/src/transfer.rs` 與 `crates/host/speclink-host/src/kit.rs` 的測試斷言每一個失敗點回傳的原因：規格資料夾名稱指到專案之外是 `spec_folder_outside_project`、符號連結是 `symlink_in_spec_folder`、資料夾無法列出是 `spec_folder_unreadable`、進行中變更與已封存變更的 metadata 無法解析都是 `invalid_change_metadata`、目標範圍不是空的是 `scope_not_empty`、內容超過上限是 `bundle_too_large`、鍵不合命名規則／digest 不符／鍵重複都是 `invalid_bundle_document`；格式版本不支援、產出流程找不到、匯出時範圍一直在變、儲存錯誤都沒有原因。另外斷言每一個失敗的訊息與既有測試的期望逐字相同。驗證：`cargo test -p speclink-host` 因為原因的型別與方法還不存在而編譯失敗。",
+      "files": [
+        "crates/host/speclink-host/src/kit.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 實作：`crates/host/speclink-host/src/transfer.rs` 加上原因的列舉（八個成員，各有固定的字串）、把匯入失敗型別裡「帶字串的不合法匯入包」拆出「內容超過上限」與「文件不合規則」兩個變體、本機匯出清單的錯誤改成「訊息加選填原因」的型別（顯示文字與原字串相同）；`crates/host/speclink-host/src/kit.rs` 的大小上限檢查改用新變體；匯入失敗轉成命令層失敗時把原本的失敗掛在來源欄位。兩個呼叫端一起改到能編譯：`crates/adapters/speclink-node/src/lib.rs` 與 `apps/desktop/src-tauri/src/remote.rs`（把錯誤轉成字串，行為不變）。驗證：`cargo test -p speclink-host` 全部通過，3.1 的案例變綠；`cargo test -p speclink-desktop --lib remote` 通過，搬移中止訊息的既有期望值沒有改動。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 先寫會失敗的 vitest，釘住需求「匯出與匯入的失敗帶原因代碼」的六個情境與範例表。`crates/adapters/speclink-node/__test__/export-local.spec.ts`：沒有規格資料夾、`specDir` 是 `../outside`、符號連結、權限 000 的資料夾（Windows 與 root 身分略過）、壞掉的 `.meta.yaml` 五種失敗的 `code` 是 `error`、`reason` 是對應的代碼、`message` 與既有期望相同。`crates/adapters/speclink-node/__test__/transfer.spec.ts`：範圍不是空的（`refused`／`scope_not_empty`）、內容超過 `limits.importBytes`（`invalid_argv`／`bundle_too_large`）、digest 不符與鍵不合規則（`invalid_argv`／`invalid_bundle_document`）；掛鉤拒絕、`formatVersion` 是 99、儲存丟出 StoreUnavailableError 三種失敗的 `'reason' in error` 是 `false`。`crates/adapters/speclink-node/__test__/host.spec.ts`：`host.dispatch(['show','no-such-change','--json'])` 的失敗沒有 `reason`。驗證：`npm --prefix crates/adapters/speclink-node test` 的這些案例失敗，原因是 `reason` 是 undefined。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts",
+        "crates/adapters/speclink-node/__test__/transfer.spec.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.1 先寫會失敗的測試，釘住需求「經儲存接口寫入 artifact 時回報儲存的鍵」。把 `crates/host/speclink-host/src/port_view.rs` 裡 artifact 寫入的既有測試期望改成 `changes/add-x/design.md` 與 `changes/add-x/specs/board/spec.md`，並斷言回傳值等於儲存收到的那一筆寫入的鍵。在 `crates/adapters/speclink-node/__test__/host.spec.ts` 斷言 `host.dispatch(['new','artifact','proposal','--change','demo','--stdin','--json'])` 的 `path` 是 `changes/demo/proposal.md`、delta spec 是 `changes/demo/specs/user-auth/spec.md`，以及已存在時的拒絕訊息仍以 `Artifact already exists:` 開頭、commit 函式沒有被呼叫。驗證：`cargo test -p speclink-host port_view` 與 `npm --prefix crates/adapters/speclink-node test` 的這幾個案例失敗，實際值帶 `speclink/` 前綴。",
+      "files": [
+        "crates/host/speclink-host/src/port_view.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.1 先寫會失敗的測試，釘住需求「workflow-config set 的說明寫出空值的作用」。在 `crates/adapters/speclink-verbs/src/families/workflow_config.rs` 的測試斷言 `workflow-config set --help` 的文字含 `an empty value unsets locale or spec_locale`，並照舊含 `tdd/audit/worktree take true or false`；另外斷言 `set tdd ''` 的錯誤碼是 `invalid_argv`。驗證：`cargo test -p speclink-verbs workflow_config` 的說明文字案例失敗。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/families/workflow_config.rs"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "6.3 文件，釘住需求「--json 輸出裡既有的 snake_case 欄位是凍結契約」與 design「snake_case 的欄位清單寫進規格與文件」。先用 `target/debug/speclink` 對每一個有 `--json` 形式的動詞（含有發現的 `analyze`、`drift`、`task done`、`task undone`、`discuss archive` 與其他寫入動詞）取輸出，列出全部帶底線的欄位；和 verb-contract delta spec 的表不同時，先以 write-back 更新 delta spec 再寫文件。`docs/verb-contract.md` 與 `docs/verb-contract.zh-TW.md` 在說明 `--json` 欄位命名的段落加上四組動詞與欄位的表，寫明它們不會改名、之後新增的欄位是 camelCase。`docs/sdk-node.md` 與 `docs/sdk-node.zh-TW.md`：dispatch 結果的那一句改成「欄位大多是 camelCase、少數既有欄位是 snake_case」並連到那張表；「套件內容」列出 `commandNames` 並附一段用它檢查權限對照表的測試範例；匯出與匯入的段落把「比對訊息開頭」改成 `reason` 的代碼表與沒有 `reason` 的失敗；流程政策動詞的段落補一句空字串把 `locale`、`spec_locale` 設回未設定。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、連結與詞彙守門）；四份文件裡不再有要宿主比對訊息開頭的句子。",
+      "files": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "7.1 跑完受影響面的測試並確認回歸對照沒有被動到：`cargo test -p speclink-core --test it command_describe`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-server --test it e2e_cli`、`cargo test -p speclink-desktop --lib remote`、`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs`。驗證：全部通過；`git status` 顯示 `crates/engine/speclink-core/tests/golden` 沒有任何檔案被改動，`crates/adapters/speclink-cli/tests` 裡被改動的期望值只有 6.2 的說明文字。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs",
+        "crates/adapters/speclink-node/__test__/helpers.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7VRWFFHQ2Y6P9Y4ZPMSF9D0",
+      "taskDesc": "1.1 先寫會失敗的測試，釘住需求「引擎提供全部命令名稱的清單」與 design「命令名稱清單是 speclink-core 的一份常數」「宿主套件在引擎的清單後面加上自己的兩個名稱」。在 `crates/engine/speclink-core/tests/it/command_describe.rs` 加一條斷言：每一種命令的樣本名稱排序後，等於新常數排序後的內容，常數沒有重複，個數是 54；斷言失敗的訊息要印出缺少與多出的名稱。在 `crates/host/speclink-host/src/transfer.rs` 的測試加一條：宿主套件的完整清單是 56 個不重複的名稱，含引擎的每一個名稱與 `scope-export`、`scope-import`。驗證：`cargo test -p speclink-core --test it command_describe` 與 `cargo test -p speclink-host command_names` 因為常數與函式還不存在而編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/command_describe.rs",
+        "crates/host/speclink-host/src/transfer.rs"
+      ],
+      "recordedAt": "2026-11-20T06:09:29Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFHKKVF705HKV8V1N5Z",
+      "taskDesc": "1.2 實作：`crates/engine/speclink-core/src/command/describe.rs` 加上公開的命令名稱常數（54 個，順序照 `name()` 的分支），`crates/host/speclink-host/src/transfer.rs` 加上回傳完整清單的公開函式，`scope-export`、`scope-import` 沿用既有的常數；`put-board-order` 改成 `crates/host/speclink-host/src/documents.rs` 的公開常數，`crates/host/speclink-host/src/http/routes.rs` 與看板排序的 commit 都改讀它。完成後清單與命令的種類一一對應。驗證：1.1 的兩個指令通過；`cargo test -p speclink-core --test it command_describe` 的 golden 不需要更新。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/describe.rs",
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/routes.rs"
+      ],
+      "recordedAt": "2026-11-20T06:22:40Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFHKVJAMXG52G81QNR0",
+      "taskDesc": "2.1 先寫會失敗的 vitest，釘住需求「SDK 匯出命令名稱清單」的五個情境。在 `crates/adapters/speclink-node/__test__/engine.spec.ts` 斷言：`commandNames` 是 57 個不重複字串的陣列，含 `new-change`、`claim-release`、`workflow-config-edit`、`scope-export`、`scope-import`、`put-board-order`，而且 `Object.isFrozen(commandNames)` 是 `true`。在 `crates/adapters/speclink-node/__test__/host.spec.ts` 斷言：beforeCommand 依序記下 `new-change`、`claim`、`claim-release`、`scope-export`、`scope-import`，每一個都在 `commandNames` 裡。在 `crates/adapters/speclink-node/__test__/handle-request.spec.ts` 斷言：`PUT /board-order` 時 beforeCommand 收到的 `command` 是 `put-board-order`，而且它在 `commandNames` 裡。驗證：`npm --prefix crates/adapters/speclink-node test` 的這幾個案例失敗，原因是 `commandNames` 是 undefined。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/engine.spec.ts",
+        "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
+        "crates/adapters/speclink-node/__test__/host.spec.ts"
+      ],
+      "recordedAt": "2026-11-20T06:24:20Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFHS54NHSQE2P669CG7",
+      "taskDesc": "2.2 實作 design「SDK 在載入時取一次清單並凍結」：`crates/adapters/speclink-node/src/host.rs` 加一個回傳字串陣列的原生函式，`crates/adapters/speclink-node/index.js` 在載入時取一次、凍結後匯出，`crates/adapters/speclink-node/index.d.ts` 宣告 `export const commandNames: readonly string[]`，說明寫明含宿主套件的三個名稱、順序不是契約、不帶讀寫資訊。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，再 `npm --prefix crates/adapters/speclink-node test`，2.1 的案例通過；照 `.github/workflows/node-sdk.yml` 打包工作的步驟在本機打包主套件與本機平台的子套件，執行 `node scripts/npm/npm-engine-consumer-check.mjs`，輸出的匯出名稱個數是 8。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/host.rs"
+      ],
+      "recordedAt": "2026-11-20T06:25:31Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFH2365YT13VWKQ2JB5",
+      "taskDesc": "3.1 先寫會失敗的單元測試，釘住 design「原因代碼是失敗型別上的一個方法」。在 `crates/host/speclink-host/src/transfer.rs` 與 `crates/host/speclink-host/src/kit.rs` 的測試斷言每一個失敗點回傳的原因：規格資料夾名稱指到專案之外是 `spec_folder_outside_project`、符號連結是 `symlink_in_spec_folder`、資料夾無法列出是 `spec_folder_unreadable`、進行中變更與已封存變更的 metadata 無法解析都是 `invalid_change_metadata`、目標範圍不是空的是 `scope_not_empty`、內容超過上限是 `bundle_too_large`、鍵不合命名規則／digest 不符／鍵重複都是 `invalid_bundle_document`；格式版本不支援、產出流程找不到、匯出時範圍一直在變、儲存錯誤都沒有原因。另外斷言每一個失敗的訊息與既有測試的期望逐字相同。驗證：`cargo test -p speclink-host` 因為原因的型別與方法還不存在而編譯失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/kit.rs"
+      ],
+      "recordedAt": "2026-11-20T06:27:25Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFH1BHKYPXGMQYJ0RG1",
+      "taskDesc": "3.2 實作：`crates/host/speclink-host/src/transfer.rs` 加上原因的列舉（八個成員，各有固定的字串）、把匯入失敗型別裡「帶字串的不合法匯入包」拆出「內容超過上限」與「文件不合規則」兩個變體、本機匯出清單的錯誤改成「訊息加選填原因」的型別（顯示文字與原字串相同）；`crates/host/speclink-host/src/kit.rs` 的大小上限檢查改用新變體；匯入失敗轉成命令層失敗時把原本的失敗掛在來源欄位。兩個呼叫端一起改到能編譯：`crates/adapters/speclink-node/src/lib.rs` 與 `apps/desktop/src-tauri/src/remote.rs`（把錯誤轉成字串，行為不變）。驗證：`cargo test -p speclink-host` 全部通過，3.1 的案例變綠；`cargo test -p speclink-desktop --lib remote` 通過，搬移中止訊息的既有期望值沒有改動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "crates/adapters/speclink-node/src/lib.rs",
+        "crates/host/speclink-host/tests/transfer.rs"
+      ],
+      "recordedAt": "2026-11-20T06:30:38Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFHXJCDXW7P3ESCXTMN",
+      "taskDesc": "4.1 先寫會失敗的 vitest，釘住需求「匯出與匯入的失敗帶原因代碼」的六個情境與範例表。`crates/adapters/speclink-node/__test__/export-local.spec.ts`：沒有規格資料夾、`specDir` 是 `../outside`、符號連結、權限 000 的資料夾（Windows 與 root 身分略過）、壞掉的 `.meta.yaml` 五種失敗的 `code` 是 `error`、`reason` 是對應的代碼、`message` 與既有期望相同。`crates/adapters/speclink-node/__test__/transfer.spec.ts`：範圍不是空的（`refused`／`scope_not_empty`）、內容超過 `limits.importBytes`（`invalid_argv`／`bundle_too_large`）、digest 不符與鍵不合規則（`invalid_argv`／`invalid_bundle_document`）；掛鉤拒絕、`formatVersion` 是 99、儲存丟出 StoreUnavailableError 三種失敗的 `'reason' in error` 是 `false`。`crates/adapters/speclink-node/__test__/host.spec.ts`：`host.dispatch(['show','no-such-change','--json'])` 的失敗沒有 `reason`。驗證：`npm --prefix crates/adapters/speclink-node test` 的這些案例失敗，原因是 `reason` 是 undefined。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts",
+        "crates/adapters/speclink-node/__test__/transfer.spec.ts"
+      ],
+      "recordedAt": "2026-11-20T06:32:55Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFH1SBAA30WEAYA5NFV",
+      "taskDesc": "5.1 先寫會失敗的測試，釘住需求「經儲存接口寫入 artifact 時回報儲存的鍵」。把 `crates/host/speclink-host/src/port_view.rs` 裡 artifact 寫入的既有測試期望改成 `changes/add-x/design.md` 與 `changes/add-x/specs/board/spec.md`，並斷言回傳值等於儲存收到的那一筆寫入的鍵。在 `crates/adapters/speclink-node/__test__/host.spec.ts` 斷言 `host.dispatch(['new','artifact','proposal','--change','demo','--stdin','--json'])` 的 `path` 是 `changes/demo/proposal.md`、delta spec 是 `changes/demo/specs/user-auth/spec.md`，以及已存在時的拒絕訊息仍以 `Artifact already exists:` 開頭、commit 函式沒有被呼叫。驗證：`cargo test -p speclink-host port_view` 與 `npm --prefix crates/adapters/speclink-node test` 的這幾個案例失敗，實際值帶 `speclink/` 前綴。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/port_view.rs"
+      ],
+      "recordedAt": "2026-11-20T06:35:40Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFHE7KCFJW29K5Q155Q",
+      "taskDesc": "6.1 先寫會失敗的測試，釘住需求「workflow-config set 的說明寫出空值的作用」。在 `crates/adapters/speclink-verbs/src/families/workflow_config.rs` 的測試斷言 `workflow-config set --help` 的文字含 `an empty value unsets locale or spec_locale`，並照舊含 `tdd/audit/worktree take true or false`；另外斷言 `set tdd ''` 的錯誤碼是 `invalid_argv`。驗證：`cargo test -p speclink-verbs workflow_config` 的說明文字案例失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/families/workflow_config.rs"
+      ],
+      "recordedAt": "2026-11-20T06:47:19Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFH9E6Q2J1WRQH046NE",
+      "taskDesc": "6.3 文件，釘住需求「--json 輸出裡既有的 snake_case 欄位是凍結契約」與 design「snake_case 的欄位清單寫進規格與文件」。先用 `target/debug/speclink` 對每一個有 `--json` 形式的動詞（含有發現的 `analyze`、`drift`、`task done`、`task undone`、`discuss archive` 與其他寫入動詞）取輸出，列出全部帶底線的欄位；和 verb-contract delta spec 的表不同時，先以 write-back 更新 delta spec 再寫文件。`docs/verb-contract.md` 與 `docs/verb-contract.zh-TW.md` 在說明 `--json` 欄位命名的段落加上四組動詞與欄位的表，寫明它們不會改名、之後新增的欄位是 camelCase。`docs/sdk-node.md` 與 `docs/sdk-node.zh-TW.md`：dispatch 結果的那一句改成「欄位大多是 camelCase、少數既有欄位是 snake_case」並連到那張表；「套件內容」列出 `commandNames` 並附一段用它檢查權限對照表的測試範例；匯出與匯入的段落把「比對訊息開頭」改成 `reason` 的代碼表與沒有 `reason` 的失敗；流程政策動詞的段落補一句空字串把 `locale`、`spec_locale` 設回未設定。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、連結與詞彙守門）；四份文件裡不再有要宿主比對訊息開頭的句子。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-20T06:52:42Z"
+    },
+    {
+      "taskId": "tsk_01M7VRWFFH5G0DYAB3XC3CMDAH",
+      "taskDesc": "7.1 跑完受影響面的測試並確認回歸對照沒有被動到：`cargo test -p speclink-core --test it command_describe`、`cargo test -p speclink-host`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-server --test it e2e_cli`、`cargo test -p speclink-desktop --lib remote`、`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs`。驗證：全部通過；`git status` 顯示 `crates/engine/speclink-core/tests/golden` 沒有任何檔案被改動，`crates/adapters/speclink-cli/tests` 裡被改動的期望值只有 6.2 的說明文字。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "a553da993f9808b4a5663eb7564a8522b45d3b9e",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/workflow_config.rs",
+        "crates/adapters/speclink-node/__test__/helpers.ts"
+      ],
+      "recordedAt": "2026-11-20T07:31:32Z"
+    }
+  ]
+}

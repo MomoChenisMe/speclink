@@ -6,7 +6,7 @@
 //! Regenerate the golden deliberately with:
 //! UPDATE_GOLDEN=1 cargo test -p speclink-core --test it command_describe::
 
-use speclink_core::command::Command;
+use speclink_core::command::{Command, COMMAND_NAMES};
 use speclink_core::config::{ReviewList, SubagentStation, ToolName, WorkflowConfigEdit};
 use speclink_core::listing::ListWorktreeJson;
 use speclink_core::model::ReviewedScopeEntry;
@@ -252,6 +252,28 @@ fn names_are_unique_kebab_case_of_the_variant() {
     names.sort_unstable();
     names.dedup();
     assert_eq!(names.len(), VARIANT_COUNT, "two commands share a name");
+}
+
+/// spec command-runtime「引擎提供全部命令名稱的清單」: the list holds each
+/// command's name once and nothing else. A new command with no entry in the
+/// list (or an entry with no command) fails here, naming the difference.
+#[test]
+fn the_name_list_is_every_command_name_once() {
+    let samples = samples();
+    let mut from_commands: Vec<&str> = samples.iter().map(Command::name).collect();
+    from_commands.sort_unstable();
+    let mut listed: Vec<&str> = COMMAND_NAMES.to_vec();
+    listed.sort_unstable();
+
+    let missing: Vec<&str> = from_commands.iter().filter(|name| !listed.contains(name)).copied().collect();
+    let extra: Vec<&str> = listed.iter().filter(|name| !from_commands.contains(name)).copied().collect();
+    assert!(missing.is_empty() && extra.is_empty(), "COMMAND_NAMES is missing {missing:?} and has extra {extra:?}");
+
+    let mut unique = listed.clone();
+    unique.dedup();
+    assert_eq!(unique.len(), listed.len(), "COMMAND_NAMES holds a name twice: {listed:?}");
+    assert_eq!(listed, from_commands);
+    assert_eq!(COMMAND_NAMES.len(), VARIANT_COUNT);
 }
 
 #[test]

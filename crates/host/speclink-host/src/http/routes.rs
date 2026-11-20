@@ -253,7 +253,7 @@ pub(crate) fn board_order(req: &Request<'_>) -> Result<HttpResponse, HttpError> 
 /// `If-Match` revision. It is not an Engine command, but it goes through
 /// the same hooks, as `put-board-order` with no params.
 pub(crate) fn put_board_order(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    const COMMAND: &str = "put-board-order";
+    const COMMAND: &str = documents::PUT_BOARD_ORDER_COMMAND;
     let body: PutBoardOrderRequest = req.body()?;
     // An oversized body is refused before the precondition is looked at.
     documents::check_board_order_size(&body.content)?;

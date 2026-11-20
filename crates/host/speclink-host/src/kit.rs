@@ -300,6 +300,16 @@ impl std::error::Error for InvalidSkills {}
 /// The fixed text of a refusal that gives no reason.
 const NO_REASON: &str = "refused by host";
 
+/// Every command name a host's before hook and its store's commit can see,
+/// once each: the Engine's ([`speclink_core::command::COMMAND_NAMES`]), then
+/// the kit's own export and import, then the HTTP door's write of the board
+/// order (spec node-sdk: SDK 匯出命令名稱清單). The order is no contract.
+pub fn command_names() -> Vec<&'static str> {
+    let mut names = speclink_core::command::COMMAND_NAMES.to_vec();
+    names.extend([transfer::EXPORT_COMMAND, transfer::IMPORT_COMMAND, crate::documents::PUT_BOARD_ORDER_COMMAND]);
+    names
+}
+
 /// One kit for every user: the store, the hooks and the door's options,
 /// with no state of its own, so one value serves every request.
 pub struct HostKit {
@@ -466,7 +476,7 @@ impl HostKit {
         let bytes: usize = bundle.documents.iter().map(|doc| doc.content.len()).sum();
         let limit = self.import_limit_bytes();
         if bytes > limit {
-            return Err(TransferError::InvalidBundle(format!(
+            return Err(TransferError::TooLarge(format!(
                 "the bundle's content is {bytes} bytes, over the {limit}-byte import limit"
             ))
             .into());
@@ -652,5 +662,78 @@ mod tests {
         let named = task_done(Some(vec!["src/app.rs".to_string()]));
         assert_eq!(without_local_facts(named.clone()), named);
         assert_eq!(without_local_facts(Command::LanguageShow), Command::LanguageShow);
+    }
+
+    /// spec node-sdk「SDK 匯出命令名稱清單」: the Engine's names and the
+    /// kit's own three, each once.
+    #[test]
+    fn command_names_are_the_engines_and_the_kits_three_each_once() {
+        let engine = speclink_core::command::COMMAND_NAMES;
+        let names = command_names();
+        assert_eq!(names.len(), engine.len() + 3, "{names:?}");
+        let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+        assert_eq!(unique.len(), names.len(), "a name appears twice: {names:?}");
+        for name in engine.iter().chain(&["scope-export", "scope-import", "put-board-order"]) {
+            assert!(unique.contains(name), "{name} is missing");
+        }
+    }
+
+    // --- the reason of an import failure (sdk-command-names-and-transfer-reasons) ---
+
+    use crate::projection::content_digest;
+    use crate::transfer::{BundleDocument, TransferReason};
+
+    fn kit_with(limit: Option<usize>, before_command: Option<BeforeCommandHook>) -> HostKit {
+        let options = HostKitOptions { import_limit_bytes: limit, ..HostKitOptions::default() };
+        let hooks = Hooks { before_command, after_commit: None };
+        HostKit::with_options(Arc::new(speclink_store_port::MemoryStorePort::new()), hooks, options).unwrap()
+    }
+
+    fn alice() -> Caller {
+        Caller { identity: Identity::new("u_42", "Alice").unwrap(), scope: ScopeId::new("default/main").unwrap() }
+    }
+
+    fn bundle_of(content: &str) -> ScopeBundle {
+        let document =
+            BundleDocument { key: "config.yaml".to_string(), content: content.to_string(), digest: content_digest(content) };
+        ScopeBundle { format_version: transfer::FORMAT_VERSION, scope_version: None, documents: vec![document] }
+    }
+
+    /// The code, the message and the reason of a failed import.
+    fn failure(result: Result<ImportReport, ExecError>) -> (ErrorCode, String, Option<TransferReason>) {
+        match result {
+            Err(ExecError::Command(error)) => {
+                let reason = transfer::reason_of(&error);
+                (error.code, error.message, reason)
+            }
+            other => panic!("expected a command failure, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn an_import_over_the_limit_names_bundle_too_large() {
+        let kit = kit_with(Some(1_024), None);
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of(&"x".repeat(2_000))));
+        assert_eq!(code, ErrorCode::InvalidArgv);
+        assert_eq!(message, "the bundle's content is 2000 bytes, over the 1024-byte import limit");
+        assert_eq!(reason, Some(TransferReason::BundleTooLarge));
+    }
+
+    #[test]
+    fn an_import_into_a_scope_that_holds_documents_names_scope_not_empty() {
+        let kit = kit_with(None, None);
+        kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")).expect("the first import");
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")));
+        assert_eq!(code, ErrorCode::Refused);
+        assert_eq!(message, "import (create-new): the target scope already holds documents");
+        assert_eq!(reason, Some(TransferReason::ScopeNotEmpty));
+    }
+
+    #[test]
+    fn an_import_the_hook_refuses_has_no_reason() {
+        let deny: BeforeCommandHook = Box::new(|_, _| Decision::Deny { reason: "not allowed".to_string() });
+        let kit = kit_with(None, Some(deny));
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")));
+        assert_eq!((code, message.as_str(), reason), (ErrorCode::Refused, "not allowed", None));
     }
 }

@@ -2,6 +2,7 @@
 // project into a bundle by key, and host.importScope takes it as it is.
 import { execFileSync, execSync } from 'node:child_process'
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -80,6 +81,71 @@ const withoutLocalFields = (listed: unknown) =>
         : value,
     ]),
   )
+
+// node-sdk「匯出與匯入的失敗帶原因代碼」: the five codes of engine.exportScope.
+describe('the reason of a failed engine.exportScope', () => {
+  // A folder with no permission still lists for root, and Windows has no such mode.
+  const noPermission = process.platform === 'win32' || process.getuid?.() === 0
+
+  it('names no_spec_folder for a root that holds no spec folder', async () => {
+    const error = await rejection(fsEngine(folder({ 'notes/README.md': '# notes\n' })).exportScope())
+
+    expect([error.code, error.reason]).toEqual(['error', 'no_spec_folder'])
+    expect(error.message.startsWith('no spec folder:'), error.message).toBe(true)
+  })
+
+  it('names spec_folder_outside_project for a specDir of ../outside', async () => {
+    const root = project({ 'changes/demo/.meta.yaml': META })
+    const engine = createEngine({ store: { type: 'fs', root, specDir: '../outside' } })
+
+    const error = await rejection(engine.exportScope())
+
+    expect([error.code, error.reason]).toEqual(['error', 'spec_folder_outside_project'])
+    expect(error.message).toBe(
+      'spec folder outside the project: "../outside" — spec_dir must name a folder under the project root',
+    )
+  })
+
+  it.skipIf(process.platform === 'win32')('names symlink_in_spec_folder for a change folder that is a link', async () => {
+    const outside = folder({ 'demo/.meta.yaml': META, 'demo/proposal.md': PROPOSAL })
+    const root = project({ 'specs/auth/spec.md': SPEC_AUTH })
+    mkdirSync(join(root, 'speclink', 'changes'))
+    symlinkSync(join(outside, 'demo'), join(root, 'speclink', 'changes', 'demo'))
+
+    const error = await rejection(fsEngine(root).exportScope())
+
+    expect([error.code, error.reason]).toEqual(['error', 'symlink_in_spec_folder'])
+    expect(error.message).toBe(
+      'symbolic link in the spec folder: speclink/changes/demo — replace it with the file itself or remove it',
+    )
+  })
+
+  it.skipIf(noPermission)('names spec_folder_unreadable for a folder with permission 000', async () => {
+    const root = project({ 'changes/demo/.meta.yaml': META, 'changes/locked/.meta.yaml': META })
+    const locked = join(root, 'speclink', 'changes', 'locked')
+    chmodSync(locked, 0o000)
+    try {
+      const error = await rejection(fsEngine(root).exportScope())
+
+      expect([error.code, error.reason]).toEqual(['error', 'spec_folder_unreadable'])
+      expect(
+        error.message.startsWith('cannot list speclink/changes/locked to check it for symbolic links:'),
+        error.message,
+      ).toBe(true)
+    } finally {
+      chmodSync(locked, 0o755)
+    }
+  })
+
+  it('names invalid_change_metadata for a data file that does not parse', async () => {
+    const root = project({ 'changes/demo/.meta.yaml': ': [', 'changes/demo/proposal.md': PROPOSAL })
+
+    const error = await rejection(fsEngine(root).exportScope())
+
+    expect([error.code, error.reason]).toEqual(['error', 'invalid_change_metadata'])
+    expect(error.message).toContain('speclink/changes/demo/.meta.yaml')
+  })
+})
 
 describe('engine.exportScope', () => {
   it('gives a bundle by key that a host imports, and the host reads what the engine reads', async () => {

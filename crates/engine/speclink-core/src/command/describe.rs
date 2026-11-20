@@ -5,6 +5,67 @@
 
 use super::Command;
 
+/// Every engine command's name ([`Command::name`]), once each, in the order of
+/// its match arms (spec command-runtime: 引擎提供全部命令名稱的清單). The order
+/// is no contract. The command-describe test pins this list to the commands:
+/// a new command whose name is not added here turns it red.
+pub const COMMAND_NAMES: &[&str] = &[
+    "list",
+    "show",
+    "status",
+    "instructions",
+    "validate",
+    "analyze",
+    "trace",
+    "plan",
+    "plan-strict",
+    "artifact-cat",
+    "evidence-show",
+    "language-show",
+    "language-replace",
+    "discuss-list",
+    "discuss-show",
+    "discuss-search",
+    "new-change",
+    "new-artifact",
+    "task-done",
+    "task-undone",
+    "task-move",
+    "claim",
+    "claim-release",
+    "in-progress-add",
+    "in-progress-remove",
+    "change-depends",
+    "change-schema",
+    "change-rank",
+    "change-landed",
+    "change-fields-edit",
+    "archive",
+    "discard",
+    "discuss-new",
+    "discuss-context",
+    "discuss-add-round",
+    "discuss-conclude",
+    "discuss-promote",
+    "discuss-link",
+    "discuss-seal",
+    "discuss-archive",
+    "discuss-restore",
+    "discuss-discard",
+    "discuss-fields-edit",
+    "review-add-round",
+    "review-show",
+    "review-stamp",
+    "review-discard",
+    "verify-add-round",
+    "verify-show",
+    "verify-stamp",
+    "verify-discard",
+    "workflow-config-show",
+    "workflow-config-edit",
+    "workflow-config-replace",
+];
+
 impl Command {
     /// The command's kebab-case name: the variant name, fixed per kind and
     /// independent of the params. Matched with no wildcard arm, so a new

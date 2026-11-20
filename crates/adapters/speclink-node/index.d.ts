@@ -125,6 +125,22 @@ export interface Engine {
    * It reads the files one by one, with no snapshot: do not write to the
    * project — through this engine, the CLI or anything else — while it
    * exports, or the bundle can hold old and new content together.
+   *
+   * Five of these failures also give `error.reason`, a fixed string to show
+   * your own text by; do not match the `message`, which can change:
+   *
+   * | `reason` | the failure |
+   * | --- | --- |
+   * | `no_spec_folder` | `root` holds no spec folder |
+   * | `spec_folder_outside_project` | the spec folder's name points out of the project |
+   * | `symlink_in_spec_folder` | a symbolic link on the way to the spec folder, at it or under it, or in the older evidence folder `.speclink/touched/` |
+   * | `spec_folder_unreadable` | a folder under the spec folder, or the older evidence folder, cannot be listed |
+   * | `invalid_change_metadata` | an active or archived change's metadata does not parse |
+   *
+   * Every other failure has no `reason` property (`'reason' in error` is
+   * false): a schema a change names that is not found, for one. Take "no
+   * reason" as a valid answer: a later version can add a code to such a
+   * failure, never change the meaning of one above.
    */
   exportScope(): Promise<ScopeBundle>
 }
@@ -559,6 +575,10 @@ export interface Host {
    * new content together. An empty scope is a bundle with no documents.
    * `beforeCommand` is asked first, as `scope-export` with no params. Runs
    * on a background thread.
+   *
+   * No failure of this method has a `reason` property for now: a refusal of
+   * `beforeCommand`, a store failure and a scope that kept changing have
+   * none (see `importScope` for the codes an import gives).
    */
   exportScope(call: HostExportCall): Promise<ScopeBundle>
   /**
@@ -575,6 +595,23 @@ export interface Host {
    * the key) and with `refused` when the scope is not empty or
    * `beforeCommand` refuses. Store failures reject with `revision_conflict`,
    * `unavailable` or `internal`. Runs on a background thread.
+   *
+   * Three of these failures also give `error.reason`, a fixed string to show
+   * your own text by; do not match the `message`, which can change:
+   *
+   * | `code` | `reason` | the failure |
+   * | --- | --- | --- |
+   * | `refused` | `scope_not_empty` | the scope already holds documents |
+   * | `invalid_argv` | `bundle_too_large` | the content is over `limits.importBytes` |
+   * | `invalid_argv` | `invalid_bundle_document` | a document breaks a rule: a key outside the naming rules, a digest that is not its content's, a key that appears twice, or a board order over its size |
+   *
+   * Every other failure has no `reason` property (`'reason' in error` is
+   * false): a refusal of `beforeCommand`, a store failure, a format version
+   * this engine does not take, a value that is no bundle, a document of a
+   * version 1 bundle whose names make no key (the same problem in a version
+   * 2 bundle is `invalid_bundle_document`). Take "no reason"
+   * as a valid answer: a later version can add a code to such a failure,
+   * never change the meaning of one above.
    */
   importScope(call: HostImportCall): Promise<HostImportReport>
 }
@@ -601,6 +638,18 @@ export const agentTool: {
   readonly description: string
   readonly inputSchema: Readonly<Record<string, unknown>>
 }
+
+/**
+ * Every command name `beforeCommand` and a store port's `commit` can be
+ * given, each once: the engine's commands, and the host kit's own three,
+ * `scope-export` (`host.exportScope`), `scope-import` (`host.importScope`)
+ * and `put-board-order` (the board order write of `host.handleRequest`).
+ * Check that your permission table covers each name, so a command a new
+ * version adds is not refused by mistake. The order is no contract, and the
+ * list says nothing about a command but its name: whether it writes is not
+ * here, since a command that writes nothing can still give whole documents.
+ */
+export const commandNames: readonly string[]
 
 /** A version conflict for a store port's `commit` to throw. */
 export class StoreConflictError extends Error {

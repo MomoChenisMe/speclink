@@ -17,11 +17,26 @@ SDK is the name of this toolbox. It contains four things:
 | Part | What it does | Names you use |
 | --- | --- | --- |
 | Engine | Runs verbs: reads specs, runs the workflow, and returns the content to write | `createEngine`, `skills` |
-| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool` |
+| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `commandNames` |
 | Store port contract | The three functions that you implement, and their rules | `StorePort` (type), `StoreConflictError`, `StoreUnavailableError` |
 | Conformance tests | Check that your three functions obey the contract | `runStoreConformance` |
 
 In this document, the host is your system. A scope is one independent set of specs, usually one repo of one project. A scope is a string that you choose. The engine does not interpret it.
+
+`commandNames` is a frozen array of every command name that `beforeCommand` and the `commit` of your store can get: the commands of the engine, and the three of the host kit, `scope-export`, `scope-import`, and `put-board-order` (the board order write of `handleRequest`). Its order is not part of the contract, and it tells nothing about a command but its name. It does not tell whether a command writes: a command that writes nothing can still give whole documents. Use it in a test that checks that your permission table covers each name, so that a command a new version adds is not refused by mistake:
+
+```js
+// permissions.test.js, with Node's own test runner. permissionOf is your table: command name → action.
+const { test } = require('node:test')
+const assert = require('node:assert')
+const { commandNames } = require('@speclink/engine')
+const { permissionOf } = require('./permissions')
+
+test('the permission table covers every command name', () => {
+  const missing = commandNames.filter((name) => permissionOf(name) === undefined)
+  assert.deepStrictEqual(missing, [])
+})
+```
 
 ## <a id="install"></a>Install
 
@@ -75,12 +90,12 @@ When `store` has another shape, `createEngine` throws immediately and calls none
 The rules of `dispatch` (they also apply to `host.dispatch`):
 
 - **Input**: an array of strings. It is the CLI command line without the program name. For verbs that read stdin in the CLI, pass the content as `stdin` and keep `--stdin` in the array.
-- **Output**: a Promise. The result is the same as the CLI `--json` output, with camelCase fields. Verbs without a `--json` form (for example `new change`) return `{ output }`, where `output` is the text that the CLI prints to stdout, without color codes. When the CLI also prints a note to stderr, the object has `stderr` too. For the field shapes, see the [verb and flag contract](verb-contract.md).
+- **Output**: a Promise. The result is the same as the CLI `--json` output. Most fields are camelCase; a few older fields are snake_case, and the [verb and flag contract lists them](verb-contract.md#snake-case-fields). Verbs without a `--json` form (for example `new change`) return `{ output }`, where `output` is the text that the CLI prints to stdout, without color codes. When the CLI also prints a note to stderr, the object has `stderr` too. For the field shapes, see the [verb and flag contract](verb-contract.md).
 - **Unknown flags are refused**: an unknown flag or an extra positional argument is refused with `invalid_argv`. It is not ignored.
 - **`discuss conclude`**: when the conclusion is written but the closing archive step fails, this is not an error. The object has `closingError` with the reason. Do not run `discuss conclude` again. Run `discuss archive`.
 - **The event loop is not blocked**: each call runs on a background thread, and you can start many calls at the same time.
 
-All verbs that have an engine command work, and this includes the workflow configuration verbs (`workflow-config`). The verbs that need a checkout are refused with `invalid_argv`: `drift`, `review prepare`, `review scope`, `verify scope`, and `instructions --skill`. One `archive` call archives one change.
+All verbs that have an engine command work, and this includes the workflow configuration verbs (`workflow-config`). In `workflow-config set`, an empty value (`['workflow-config', 'set', 'locale', '']`) sets `locale` or `spec_locale` back to unset; an empty value of `tdd`, `audit`, or `worktree` is refused with `invalid_argv`. The verbs that need a checkout are refused with `invalid_argv`: `drift`, `review prepare`, `review scope`, `verify scope`, and `instructions --skill`. One `archive` call archives one change.
 
 On failure, the Promise rejects with an `Error`. The `message` is the same message that the CLI prints, so you can give it to the user or the agent. The `code` is the class:
 
@@ -542,6 +557,16 @@ const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle
 - **The body limit of your framework must not be smaller than this value.** The entry point gets a body that the framework already read. Thus, for the import path, set the body limit of the framework to `limits.importBytes` or more (the 4 MB in the Express example above is not sufficient for an import).
 - **Compression belongs to the route layer.** The host kit does not compress or decompress. If you want compression, turn it on in your framework.
 
+Show your own text for a failure by `error.reason`, not by the `message`: the message can change. Three failures of `host.importScope` have a `reason`:
+
+| `code` | `reason` | The failure |
+| --- | --- | --- |
+| `refused` | `scope_not_empty` | The scope already holds documents |
+| `invalid_argv` | `bundle_too_large` | The content is over `limits.importBytes` |
+| `invalid_argv` | `invalid_bundle_document` | A document breaks a rule: a key outside the naming rules, a digest that does not match the content, a key that appears two times, or a board order over its size |
+
+All other failures have no `reason` property (`'reason' in error` is `false`): a refusal of `beforeCommand`, a store failure, a bundle version that the engine does not accept, a value that is not a bundle, and a document of a version 1 bundle whose names make no key (the same problem in a version 2 bundle is `invalid_bundle_document`). For now, no failure of `host.exportScope` has a `reason`. A later version can give a code to a failure that has none, but it does not change the meaning of a code above. The responses of `GET /export` and `POST /import` do not change.
+
 ### <a id="export-local"></a>Export a local project
 
 `engine.exportScope()` makes the local project that `createEngine` points at into a bundle of version 2. Give the bundle as it is to `host.importScope`, and the project moves into an empty scope of your store. The documents are the same ones that "Migrate to Server" in Speclink Desktop sends: the active changes (metadata, artifacts, and evidence), the canonical specs, the live and the archived discussions, all the documents of the archived changes, the workflow config, the vocabulary, and the board order.
@@ -561,13 +586,25 @@ for (const [root, scope] of moves) {
 ```
 
 - **It only reads.** It changes no file of the project. The documents are in byte order of their keys. A local project has no scope version, so the bundle has no `scopeVersion`. An import does not read it.
-- **You never get a partial bundle on these failures.** If a change (active or archived) has metadata that does not parse, or a document that the naming rules of the engine do not cover, the call rejects with `error`, and the message names the file. A file that is there but cannot be read (no permission, or not UTF-8) is not a failure: the bundle has no document for it.
-- **It reads only files inside the project.** If a folder on the way to the spec folder, the spec folder, or a file or a folder under it is a symbolic link, the call rejects with `error` before it reads a document. The older evidence folder `.speclink/touched/` follows the same rule. The message starts with `symbolic link in the spec folder:` and names the item by its path from the project root. It never shows what the link points at. Replace the link with the file itself, or remove it. A folder there that cannot be listed also stops the call, with a message that starts with `cannot list`. If the name of the spec folder (`spec_dir` in `.speclink.yaml`, or the `specDir` of `createEngine`) is an absolute path, or has a `..` or `.` segment, the call rejects with `error`. The message starts with `spec folder outside the project:` and names it. To export a spec folder at a different place, point `root` at the folder above it.
-- **A `root` with no spec folder is refused.** After the name and link checks, the call rejects with `error` when `root` holds no spec folder under that name: nothing is there, or the folder has no `changes/`, `specs/`, `discussions/`, and no `config.yaml`. A folder that holds only `LANGUAGE.md` is refused too. The message starts with `no spec folder:` and names the folder, never the path of `root`. The files stay as they were. This catches a download that is in the wrong place, which otherwise gives no document and looks like a success. A spec folder with no document still gives a bundle with no documents. To export an empty project, make its spec folder first.
+- **You never get a partial bundle on these failures.** If a change (active or archived) has metadata that does not parse, or a document that the naming rules of the engine do not cover, the call rejects with `error`, and the message names the file (for metadata, the `reason` is `invalid_change_metadata`). A file that is there but cannot be read (no permission, or not UTF-8) is not a failure: the bundle has no document for it.
+- **It reads only files inside the project.** If a folder on the way to the spec folder, the spec folder, or a file or a folder under it is a symbolic link, the call rejects with `error` before it reads a document. The older evidence folder `.speclink/touched/` follows the same rule. The `reason` is `symlink_in_spec_folder`. The message starts with `symbolic link in the spec folder:` and names the item by its path from the project root. It never shows what the link points at. Replace the link with the file itself, or remove it. A folder there that cannot be listed also stops the call: the `reason` is `spec_folder_unreadable`, and the message starts with `cannot list`. If the name of the spec folder (`spec_dir` in `.speclink.yaml`, or the `specDir` of `createEngine`) is an absolute path, or has a `..` or `.` segment, the call rejects with `error`. The `reason` is `spec_folder_outside_project`. The message starts with `spec folder outside the project:` and names it. To export a spec folder at a different place, point `root` at the folder above it.
+- **A `root` with no spec folder is refused.** After the name and link checks, the call rejects with `error` when `root` holds no spec folder under that name: nothing is there, or the folder has no `changes/`, `specs/`, `discussions/`, and no `config.yaml`. A folder that holds only `LANGUAGE.md` is refused too. The `reason` is `no_spec_folder`. The message starts with `no spec folder:` and names the folder, never the path of `root`. The files stay as they were. This catches a download that is in the wrong place, which otherwise gives no document and looks like a success. A spec folder with no document still gives a bundle with no documents. To export an empty project, make its spec folder first.
 - **Do not write to the project during the export.** The export reads the files one at a time and takes no snapshot. A write at the same time, through the same engine, the CLI, or another program, can put old and new content into one bundle.
 - **The scope of the import must be empty**, and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
 - **The bundle has the full text** of the workflow config and of all the discussions. You decide who can run an export.
 - **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project.
+
+Five failures of `engine.exportScope()` have a `reason`. Their `code` is `error`. Show your own text by the `reason`, not by the start of the message:
+
+| `reason` | The failure |
+| --- | --- |
+| `no_spec_folder` | `root` holds no spec folder |
+| `spec_folder_outside_project` | The name of the spec folder points out of the project |
+| `symlink_in_spec_folder` | A symbolic link on the way to the spec folder, at it, or under it, or in the older evidence folder `.speclink/touched/` |
+| `spec_folder_unreadable` | A folder under the spec folder, or the older evidence folder, cannot be listed |
+| `invalid_change_metadata` | The metadata of an active or archived change does not parse |
+
+All other failures have no `reason` property, for example a schema that a change names and that is not found.
 
 The CLI has no import or export verb. There are three ways to move a project: "Migrate to Server" in Speclink Desktop, `engine.exportScope()` with `host.importScope` in your own program, and, between two scopes, `GET /export` and `POST /import` of the HTTP entry point.
 
@@ -583,7 +620,7 @@ const report = await host.importScope({ identity, scope: 'acme/web', bundle })
 // → { scopeVersion: 1, documents: 42 }
 ```
 
-- **`root` and `specDir`**: when you download only the spec folder, point `root` at the folder above it, and give the folder name in `store.specDir`. Without `specDir`, the engine finds the folder as the CLI does: first `spec_dir` in `root/.speclink.yaml`, then `speclink/`, then the older `openspec/`. A `root` with no spec folder under that name is refused with a message that starts with `no spec folder:`.
+- **`root` and `specDir`**: when you download only the spec folder, point `root` at the folder above it, and give the folder name in `store.specDir`. Without `specDir`, the engine finds the folder as the CLI does: first `spec_dir` in `root/.speclink.yaml`, then `speclink/`, then the older `openspec/`. A `root` with no spec folder under that name is refused with the `reason` `no_spec_folder`.
 - **Size limit**: `limits.importBytes` (default 32 MiB) also applies to a `host.importScope` that your program calls in the same process. The export has no limit. For a large project, increase the limit of the host.
 - **The import is a one-time move, not a sync.** A change in the repo after the import does not come into the scope, and a change in the scope does not go back to the repo.
 - **To import again**, delete all documents of the scope in your store first, then import. This deletes all the work that people did in the host after the import: the changes, the discussions, and the stamps. An import into a scope that is not empty is refused.

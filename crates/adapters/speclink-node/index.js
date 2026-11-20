@@ -41,6 +41,9 @@ function unwrap(envelope) {
   if (envelope.ok) return envelope.value
   const err = new Error(envelope.message)
   err.code = envelope.code
+  // Only an export or an import failure with a code has one: `'reason' in
+  // err` is false for every other failure.
+  if ('reason' in envelope) err.reason = envelope.reason
   throw err
 }
 
@@ -427,6 +430,13 @@ function deepFreeze(value) {
  */
 const agentTool = deepFreeze(binding.agentToolDefinition())
 
+/**
+ * Every command name `beforeCommand` and a store's `commit` can be given:
+ * the engine's commands and the host kit's own `scope-export`,
+ * `scope-import` and `put-board-order`. Taken once at load and frozen.
+ */
+const commandNames = Object.freeze(binding.commandNames())
+
 /** Run the store contract's conformance checks on a host's JS store port. */
 async function runStoreConformance(harness) {
   const target = portFunctions(harness?.store, 'runStoreConformance')
@@ -449,6 +459,7 @@ module.exports = {
   createEngine,
   createHost,
   agentTool,
+  commandNames,
   skills,
   runStoreConformance,
   StoreConflictError,

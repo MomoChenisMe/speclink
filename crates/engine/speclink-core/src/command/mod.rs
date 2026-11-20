@@ -17,6 +17,7 @@ mod landing;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
+pub use describe::COMMAND_NAMES;
 pub use evidence::EvidenceShowOutcome;
 pub use fields::FieldsOutcome;
 pub use landing::{ChangeLandedOutcome, LandedRecord};

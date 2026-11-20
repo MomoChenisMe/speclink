@@ -63,7 +63,18 @@ For verbs that work in both modes, the human-readable output (also with `--no-co
 
 Items 1–5 are the differences that the canonical spec declares. Items 6–9 show the current code; the canonical spec does not list them yet.
 
-The `--json` field set and its camelCase names are a frozen contract. Fields do not change names and do not disappear. No `--json` output contains ticket text. A new field is always optional. See [the next section](#verb-reference).
+The `--json` field set and its names are a frozen contract. Fields do not change names and do not disappear. Most names are camelCase. A few fields that were there before this rule have snake_case names: the [table below](#snake-case-fields) lists all of them. No `--json` output contains ticket text. A new field is always optional, and its name is camelCase. See [the next section](#verb-reference).
+
+### <a id="snake-case-fields"></a>Fields with snake_case names
+
+These `--json` fields have snake_case names. They are part of the same frozen contract as the camelCase fields: they keep these names, they do not become camelCase, and they do not disappear. No other verb has a snake_case field.
+
+| Verb | snake_case fields |
+| --- | --- |
+| `task done`, `task undone` | `task_id`, `task_desc` |
+| `discuss archive` | `archived_to` |
+| `analyze` | `change_id`, `artifacts_analyzed`, `artifacts_missing`, `finding_count`, and `summary_msg` and `recommendation_msg` of each finding |
+| `drift` | `change_id`, `last_commit`, `commits_since_created`, `broken_anchors`, `tasks_maybe_resolved`, `tasks_blocked_external`, `spec_assumptions`, `total_score`, `primary_recommendation`, `contributes_to_total` |
 
 ## <a id="verb-reference"></a>Verbs, flags, and `--json` fields
 

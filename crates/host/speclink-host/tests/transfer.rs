@@ -74,11 +74,19 @@ fn import(port: &dyn StorePort, scope: &ScopeId, bundle: ScopeBundle) -> Result<
     transfer::import(port, scope, &actor(), bundle, at())
 }
 
-/// The text of the refusal of a bundle that is not valid.
+/// The text of the refusal of a bundle that is not valid as a whole.
 fn invalid(result: Result<transfer::ImportReport, TransferError>) -> String {
     match result {
         Err(TransferError::InvalidBundle(message)) => message,
         other => panic!("expected an invalid bundle, got {other:?}"),
+    }
+}
+
+/// The text of the refusal of a bundle one of whose documents breaks a rule.
+fn invalid_document(result: Result<transfer::ImportReport, TransferError>) -> String {
+    match result {
+        Err(TransferError::InvalidDocument(message)) => message,
+        other => panic!("expected a document that is not valid, got {other:?}"),
     }
 }
 
@@ -318,7 +326,7 @@ fn a_bundle_that_is_not_valid_is_refused_by_key_before_the_store_is_called() {
     ];
     for (case, documents, named) in rows {
         let store = Recorder::new(MemoryStorePort::new());
-        let message = invalid(import(&store, &scope(), bundle(documents)));
+        let message = invalid_document(import(&store, &scope(), bundle(documents)));
         assert!(message.contains(named), "{case}: {message}");
         assert!(store.take().is_empty(), "{case}: the store was called");
     }
@@ -329,7 +337,7 @@ fn a_refusal_names_the_first_document_that_is_wrong_and_shows_no_content() {
     let store = Recorder::new(MemoryStorePort::new());
     let secret = "the content of a document never goes into an error";
     let documents = vec![document("config.yaml", "a\n"), document("secrets/token", secret), document("other/x", secret)];
-    let message = invalid(import(&store, &scope(), bundle(documents)));
+    let message = invalid_document(import(&store, &scope(), bundle(documents)));
     assert!(message.contains("secrets/token") && !message.contains("other/x"), "{message}");
     assert!(!message.contains(secret), "{message}");
 }
@@ -339,7 +347,7 @@ fn a_refusal_never_grows_with_what_the_bundle_holds() {
     // A name or a key of any length is cut in the message.
     let store = Recorder::new(MemoryStorePort::new());
     let long_key = format!("secrets/{}", "k".repeat(400));
-    let message = invalid(import(&store, &scope(), bundle(vec![document(&long_key, "x")])));
+    let message = invalid_document(import(&store, &scope(), bundle(vec![document(&long_key, "x")])));
     assert!(message.len() < 400, "{} bytes", message.len());
 
     let long_name = "n/".repeat(100_000);

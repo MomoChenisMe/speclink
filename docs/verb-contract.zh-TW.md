@@ -63,7 +63,18 @@
 
 第 1–5 項是正式規格明列的差異。第 6–9 項是目前程式的實際行為，正式規格還沒列入。
 
-`--json` 的欄位集合與 camelCase 命名是凍結的契約：不改名、不刪除既有欄位，而且工單原文不會出現在任何 `--json` 輸出裡。新欄位只會以選填的方式加入，見[下一節](#verb-reference)。
+`--json` 的欄位集合與欄位名稱是凍結的契約：不改名、不刪除既有欄位。欄位名稱大多是 camelCase；少數在這條規則之前就有的欄位是 snake_case，[下表](#snake-case-fields)列出全部。工單原文不會出現在任何 `--json` 輸出裡。新欄位只會以選填的方式加入，名稱是 camelCase，見[下一節](#verb-reference)。
+
+### <a id="snake-case-fields"></a>snake_case 的欄位
+
+下列 `--json` 欄位的名稱是 snake_case。它們和 camelCase 的欄位一樣屬於凍結的契約：名稱維持不變，不會改成 camelCase，也不會消失。其他動詞沒有 snake_case 的欄位。
+
+| 動詞 | snake_case 的欄位 |
+| --- | --- |
+| `task done`、`task undone` | `task_id`、`task_desc` |
+| `discuss archive` | `archived_to` |
+| `analyze` | `change_id`、`artifacts_analyzed`、`artifacts_missing`、`finding_count`，以及每一條發現的 `summary_msg`、`recommendation_msg` |
+| `drift` | `change_id`、`last_commit`、`commits_since_created`、`broken_anchors`、`tasks_maybe_resolved`、`tasks_blocked_external`、`spec_assumptions`、`total_score`、`primary_recommendation`、`contributes_to_total` |
 
 ## <a id="verb-reference"></a>動詞、旗標與 `--json` 欄位
 

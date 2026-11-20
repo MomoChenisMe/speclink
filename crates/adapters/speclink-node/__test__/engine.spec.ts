@@ -1,10 +1,13 @@
 // Parity tests: the fs-form engine must return the same objects the CLI
 // prints with --json on the same fixture project (spec: fs 形式與 CLI 行為對等).
 import { beforeAll, describe, expect, it } from 'vitest'
-import { execSync } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { execFileSync, execSync } from 'node:child_process'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { createRequire } from 'node:module'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
 
-import { createEngine } from '../index.js'
+import { commandNames, createEngine } from '../index.js'
 import { cliBin, cliJson, makeFsFixture, repoRoot } from './helpers'
 
 let fixture: string
@@ -169,4 +172,71 @@ describe('createEngine input checks', () => {
       expect((thrown as Error).message).toBe('createEngine: options.actor must be a string ("Name <email>")')
     },
   )
+})
+
+// node-sdk「SDK 匯出命令名稱清單」
+describe('commandNames', () => {
+  it('lists each command name once, the host kit’s three included', () => {
+    expect(Array.isArray(commandNames)).toBe(true)
+    expect(commandNames).toHaveLength(57)
+    expect(new Set(commandNames).size).toBe(57)
+    for (const name of commandNames) expect(typeof name).toBe('string')
+    for (const name of [
+      'new-change',
+      'claim-release',
+      'workflow-config-edit',
+      'scope-export',
+      'scope-import',
+      'put-board-order',
+    ]) {
+      expect(commandNames).toContain(name)
+    }
+  })
+
+  // node-sdk「型別定義檔宣告了這個匯出」: strict, and the library file is checked too.
+  it('is declared as a read-only string array', () => {
+    const require = createRequire(import.meta.url)
+    const typescript = dirname(require.resolve('typescript/package.json'))
+    const dir = mkdtempSync(join(tmpdir(), 'speclink-command-names-'))
+    try {
+      writeFileSync(
+        join(dir, 'consumer.ts'),
+        [
+          "import { commandNames } from '@speclink/engine'",
+          'export const names: readonly string[] = commandNames',
+          '// @ts-expect-error a read-only array has no push',
+          "commandNames.push('x')",
+          '// @ts-expect-error an item is a string, not a number',
+          'export const first: number = commandNames[0]',
+          '',
+        ].join('\n'),
+      )
+      writeFileSync(
+        join(dir, 'tsconfig.json'),
+        JSON.stringify({
+          compilerOptions: {
+            module: 'nodenext',
+            moduleResolution: 'nodenext',
+            strict: true,
+            noEmit: true,
+            skipLibCheck: false,
+            types: [],
+            paths: { '@speclink/engine': [join(repoRoot, 'crates/adapters/speclink-node/index.d.ts')] },
+          },
+          files: ['consumer.ts'],
+        }),
+      )
+      const tsc = join(typescript, 'bin', 'tsc')
+      // A compile error throws, with the compiler's text in the message.
+      execFileSync(process.execPath, [tsc, '-p', dir, '--pretty', 'false'], { encoding: 'utf8', stdio: 'pipe' })
+    } finally {
+      rmSync(dir, { recursive: true, force: true, maxRetries: 5 })
+    }
+  }, 120_000)
+
+  it('cannot be changed', () => {
+    // A value that is no object is frozen too: the array comes first.
+    expect(Array.isArray(commandNames)).toBe(true)
+    expect(Object.isFrozen(commandNames)).toBe(true)
+  })
 })

@@ -552,9 +552,12 @@ impl Store for PortView<'_> {
         self.exists_named(keys::change_meta(name))
     }
 
+    /// The start of the new change's keys (`changes/<name>`), not the
+    /// change's folder: `discuss promote --json` reports it as its `path`
+    /// (host-runtime: 經儲存接口寫入時回報儲存的鍵).
     fn create_change(&self, name: &str, meta_text: &str) -> anyhow::Result<PathBuf> {
         self.put_named(keys::change_meta(name), meta_text)?;
-        Ok(change_dir(name))
+        Ok(PathBuf::from(Self::change_prefix(name)?.trim_end_matches('/')))
     }
 
     fn updated_at_secs(&self, name: &str) -> u64 {
@@ -594,17 +597,40 @@ impl Store for PortView<'_> {
         self.read_named(keys::change_artifact(change, artifact))
     }
 
+    /// The key it wrote: `new artifact --json` reports it as its `path`
+    /// (host-runtime: 經儲存接口寫入時回報儲存的鍵).
+    ///
+    /// Where else a path of this view reaches an embedded `--json` result
+    /// (sdk-command-names-and-transfer-reasons 5.3). Searched: `DEFAULT_SPEC_DIR`
+    /// in this file, `"path"` in `speclink-verbs/src/render`, and every verb
+    /// with a `--json` form run through `host.dispatch` on a memory store,
+    /// listing each value that holds `speclink/`.
+    ///
+    /// - [`change_dir`] (the one `DEFAULT_SPEC_DIR` here): the folder of each
+    ///   listed change. Not changed: the refusal "Artifact already exists" and
+    ///   other messages are made of it. It reaches two `--json` fields,
+    ///   `changeDir` and `contextFiles` of `instructions`, which still start
+    ///   with `speclink/changes/` when embedded; changing them means changing
+    ///   the folder or how `instructions` builds them, left to a later change.
+    /// - `new artifact`'s `path` (render/new.rs): this function. Fixed here.
+    /// - `discuss promote`'s `path`: [`Self::create_change`]. It gave
+    ///   `speclink/changes/<name>`; fixed in this task to `changes/<name>`.
+    /// - `discuss new`'s `path` (render/discuss.rs `path.wire`): already a key.
+    /// - The other `"path"` hits in `render` are in tests, or are a file
+    ///   path an agent or a station names (`review` findings, a stamp's
+    ///   scope, `instructions`' dependencies such as `proposal.md`): none is
+    ///   made by this view.
+    /// - The run found no other value with `speclink/` in an embedded result.
     fn write_artifact(
         &self,
         change: &str,
         artifact: &str,
         content: &str,
     ) -> anyhow::Result<PathBuf> {
-        self.put_named(keys::change_artifact(change, artifact), content)?;
-        // One string, so the separators are `/` on every platform.
-        Ok(PathBuf::from(format!(
-            "{DEFAULT_SPEC_DIR}/changes/{change}/{artifact}"
-        )))
+        let key = keys::change_artifact(change, artifact)?;
+        self.put(key.clone(), content.to_string());
+        // The key, as the write staged it: `/` on every platform.
+        Ok(PathBuf::from(key.as_str()))
     }
 
     fn artifact_exists(&self, change: &str, artifact: &str) -> bool {
@@ -1499,10 +1525,9 @@ mod tests {
     fn create_change() {
         let port = fixture();
         let view = PortView::new(&port, scope());
-        assert_eq!(
-            view.create_change("add-z", META_Y).unwrap(),
-            PathBuf::from("speclink/changes/add-z")
-        );
+        // host-runtime「經儲存接口寫入時回報儲存的鍵」: the start of the new
+        // change's keys, with `/` on every platform.
+        assert_eq!(view.create_change("add-z", META_Y).unwrap().to_string_lossy(), "changes/add-z");
         assert!(view.change_exists("add-z"));
         let names: Vec<String> = view.list_changes().into_iter().map(|c| c.name).collect();
         assert_eq!(names, ["add-x", "add-y", "add-z"]);
@@ -1542,30 +1567,28 @@ mod tests {
     }
 
     fn write_artifact() {
+        // host-runtime「經儲存接口寫入時回報儲存的鍵」: the path is the
+        // key the write staged, with `/` on every platform, also for a nested
+        // artifact: compare the text, not the `PathBuf`.
         let port = fixture();
         let view = PortView::new(&port, scope());
-        assert_eq!(
-            view.write_artifact("add-x", "design.md", "# D\n").unwrap(),
-            PathBuf::from("speclink/changes/add-x/design.md")
-        );
+        let design = view.write_artifact("add-x", "design.md", "# D\n").unwrap();
+        assert_eq!(design.to_string_lossy(), "changes/add-x/design.md");
         assert_eq!(view.read_artifact("add-x", "design.md").as_deref(), Some("# D\n"));
         assert!(view.artifact_exists("add-x", "design.md"));
         assert!(view.write_artifact("add-x", "../x.md", "x").is_err());
-        // The display location uses `/` on every platform, also for a nested
-        // artifact: compare the text, not the `PathBuf`.
-        assert_eq!(
-            view.write_artifact("add-x", "specs/board/spec.md", "## ADDED\n")
-                .unwrap()
-                .to_string_lossy(),
-            "speclink/changes/add-x/specs/board/spec.md"
-        );
-        assert_eq!(
-            staged(view),
-            [
-                "put changes/add-x/design.md new \"# D\\n\"",
-                "put changes/add-x/specs/board/spec.md new \"## ADDED\\n\"",
-            ]
-        );
+        let delta = view.write_artifact("add-x", "specs/board/spec.md", "## ADDED\n").unwrap();
+        assert_eq!(delta.to_string_lossy(), "changes/add-x/specs/board/spec.md");
+        let ops = view.into_ops().expect("no store failure");
+        let written: Vec<&str> = ops
+            .iter()
+            .map(|op| match op {
+                Op::Put { key, expected: Expected::Absent, .. } => key.as_str(),
+                other => panic!("expected a new put, got {other:?}"),
+            })
+            .collect();
+        assert_eq!(written, [design.to_string_lossy(), delta.to_string_lossy()]);
+        assert_eq!(written, ["changes/add-x/design.md", "changes/add-x/specs/board/spec.md"]);
     }
 
     fn delete_artifact() {

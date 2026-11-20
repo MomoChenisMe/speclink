@@ -119,6 +119,13 @@ pub fn host_from_port(
     })
 }
 
+/// Every command name the hooks and the store's commits can see
+/// ([`speclink_host::kit::command_names`]): index.js freezes it once as `commandNames`.
+#[napi(js_name = "commandNames")]
+pub fn command_names() -> Vec<&'static str> {
+    speclink_host::kit::command_names()
+}
+
 /// The `speclink` Agent tool (design D9), shaped for JS:
 /// `{ name, description, inputSchema }`.
 #[napi(js_name = "agentToolDefinition")]
@@ -258,10 +265,15 @@ fn with_kit<T>(setup: &HostSetup, call: impl FnOnce(&HostKit) -> T) -> std::resu
     Ok(result)
 }
 
-/// A kit call's failure, by the codes of a dispatch.
+/// A kit call's failure, by the codes of a dispatch. A command failure whose
+/// source is an import's failure keeps that failure's code; no other source
+/// gives one.
 fn exec_error(e: ExecError) -> DispatchError {
     match e {
-        ExecError::Command(e) => DispatchError::new(e.code.as_str(), e.message),
+        ExecError::Command(e) => {
+            let reason = transfer::reason_of(&e);
+            DispatchError::new(e.code.as_str(), e.message).with_reason(reason)
+        }
         ExecError::Store(e) => store_error(e),
     }
 }

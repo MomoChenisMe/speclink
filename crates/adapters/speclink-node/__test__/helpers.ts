@@ -32,12 +32,12 @@ export function cliJson(cwd: string, args: string[]): unknown {
 }
 
 /** The Error a promise rejects with; fails the test when it resolves. */
-export async function rejection(promise: Promise<unknown>): Promise<Error & { code?: string }> {
-  let thrown: (Error & { code?: string }) | undefined
+export async function rejection(promise: Promise<unknown>): Promise<Error & { code?: string; reason?: string }> {
+  let thrown: (Error & { code?: string; reason?: string }) | undefined
   try {
     await promise
   } catch (e) {
-    thrown = e as Error & { code?: string }
+    thrown = e as Error & { code?: string; reason?: string }
   }
   expect(thrown).toBeInstanceOf(Error)
   return thrown!

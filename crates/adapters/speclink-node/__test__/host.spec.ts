@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createEngine, createHost, StoreConflictError } from '../index.js'
+import { commandNames, createEngine, createHost, StoreConflictError } from '../index.js'
 import { cliJson, rejection, repoRoot } from './helpers'
 import { memoryPort, type PortCommit } from './memory-port'
 
@@ -547,6 +547,88 @@ describe('createHost and host.dispatch', () => {
     const ghost = await rejection(host.dispatch({ identity: BOB, scope: 's1', argv: ['claim', 'ghost', '--release'] }))
     expect(ghost.code).toBe('not_found')
     expect(ghost.message).toContain('ghost')
+  })
+
+  // host-runtime「經儲存接口寫入時回報儲存的鍵」
+  it('reports the store key as the path of new artifact, and keeps the refusal of one that exists', async () => {
+    const port = memoryPort()
+    port.seed('s1', {
+      'config.yaml': CONFIG,
+      'specs/user-auth/spec.md': '## Purpose\nAuthentication.\n\n### Requirement: Login\nUsers SHALL log in.\n',
+    })
+    const host = createHost({ store: port.store })
+    const call = (argv: string[], stdin?: string) =>
+      host.dispatch({ identity: ALICE, scope: 's1', argv, stdin }) as Promise<{ path: string }>
+    const putKeys = () => port.commits.at(-1)!.commit.ops.filter((op) => op.op === 'put').map((op) => op.key)
+    await call(['new', 'change', 'demo'])
+
+    const proposal = await call(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin', '--json'], PROPOSAL)
+    expect(proposal.path).toBe('changes/demo/proposal.md')
+    expect(putKeys()).toEqual(['changes/demo/proposal.md'])
+
+    const delta =
+      '## ADDED Requirements\n\n### Requirement: Logout\nUsers SHALL be able to log out.\n\n#### Scenario: logout\n- **WHEN** a user logs out\n- **THEN** the session ends\n'
+    const spec = await call(['new', 'artifact', 'spec', 'user-auth', '--change', 'demo', '--stdin', '--json'], delta)
+    expect(spec.path).toBe('changes/demo/specs/user-auth/spec.md')
+    expect(putKeys()).toEqual(['changes/demo/specs/user-auth/spec.md'])
+
+    const commits = port.calls.commit
+    const error = await rejection(call(['new', 'artifact', 'proposal', '--change', 'demo', '--stdin', '--json'], PROPOSAL))
+    expect(error.message.startsWith('Artifact already exists:'), error.message).toBe(true)
+    expect(port.calls.commit).toBe(commits)
+  })
+
+  // host-runtime「經儲存接口寫入時回報儲存的鍵」「內嵌宿主的 discuss promote 回報鍵的開頭」
+  it('reports the start of the new change’s keys as the path of discuss promote', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'config.yaml': CONFIG })
+    const host = createHost({ store: port.store })
+    const call = (argv: string[], stdin?: string) =>
+      host.dispatch({ identity: ALICE, scope: 's1', argv, stdin }) as Promise<{ path: string }>
+    await call(['discuss', 'new', 'Topic one'])
+    await call(['discuss', 'conclude', 'topic-one', '--stdin'], '## Conclusion\n\nDo one thing.\n')
+
+    const promoted = await call(['discuss', 'promote', 'topic-one', '--name', 'next-one', '--json'])
+
+    expect(promoted.path).toBe('changes/next-one')
+    const keys = port.commits.at(-1)!.commit.ops.map((op) => op.key)
+    expect(keys).toContain('changes/next-one/.meta.yaml')
+  })
+
+  // node-sdk「匯出與匯入的失敗帶原因代碼」「一般動詞的失敗沒有 reason」
+  it('gives no reason to the failure of a plain verb', async () => {
+    const host = createHost({ store: portWithDemo().store })
+
+    const error = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv: ['show', 'no-such-change', '--json'] }))
+
+    expect(error.code).toBe('not_found')
+    expect('reason' in error).toBe(false)
+  })
+
+  // node-sdk「SDK 匯出命令名稱清單」「掛鉤收到的名稱都在清單裡」
+  it('asks beforeCommand and commits only under names of commandNames', async () => {
+    const port = memoryPort()
+    const asked: string[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: ({ command }) => {
+          asked.push(command)
+        },
+      },
+    })
+    const call = (argv: string[]) => host.dispatch({ identity: ALICE, scope: 's1', argv })
+
+    await call(['new', 'change', 'demo'])
+    await call(['claim', 'demo'])
+    await call(['claim', 'demo', '--release'])
+    const bundle = await host.exportScope({ identity: ALICE, scope: 's1' })
+    await host.importScope({ identity: ALICE, scope: 's2', bundle })
+
+    expect(asked).toEqual(['new-change', 'claim', 'claim-release', 'scope-export', 'scope-import'])
+    for (const name of asked) expect(commandNames).toContain(name)
+    expect(port.commits.length).toBeGreaterThan(0)
+    for (const { commit } of port.commits) expect(commandNames).toContain(commit.command)
   })
 
   it('stamps with the three functions only, in one commit', async () => {

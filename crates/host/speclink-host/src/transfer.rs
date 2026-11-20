@@ -65,12 +65,92 @@ pub struct ImportReport {
     pub documents: usize,
 }
 
+/// Why an export or an import failed, as a fixed code a host can show its
+/// own text for (spec node-sdk: 匯出與匯入的失敗帶原因代碼). The code comes
+/// from the kind of the failure, never from its text. A failure with no code
+/// here has none: a host takes "no reason" as a valid answer, and a code
+/// added later goes only to a failure that has none yet.
+///
+/// What the sharp-edges audit found (sdk-command-names-and-transfer-reasons
+/// 3.3), for this enum, [`TransferError::reason`], the split variants and
+/// [`LocalExportError`]:
+///
+/// - Can a caller's input decide the code? No. The enum is closed and
+///   [`TransferReason::as_str`] is a fixed match, so no text of a bundle, a
+///   key, a file name or a hook reaches the code. [`TransferError::reason`]
+///   reads the variant only. [`LocalExportError`] gets a code only from the
+///   private constructor at the five failure points of [`local_documents`];
+///   its one public constructor, `From<String>`, gives no code. A variant a
+///   crate user builds by hand gets the code of its kind, whatever its text.
+/// - Does the source of a command failure carry a store's text further? No.
+///   Only the four failures with a code or a whole-bundle refusal
+///   ([`TransferError::InvalidBundle`], `TooLarge`, `InvalidDocument`,
+///   `NotEmpty`) become a command failure with a source, and its text is the
+///   command failure's own message. A store's failure and a moving scope
+///   stay store failures with no source. The readers of a command failure's
+///   source (the HTTP door's error mapping, the Node binding) only ask its
+///   type; none of them writes it into an answer.
+/// - Does the text of [`LocalExportError`] show a path outside the project?
+///   No more than before: its text is the string the function always gave.
+///   A spec folder outside the project is named as it is written, a link by
+///   its path from the project root and never by its target, and a folder
+///   that cannot be listed by its path from the root.
+/// - The edge that stays: a new failure point in [`local_documents`] that
+///   returns a `String` through `?` gets no code, with no warning. That is
+///   the safe side (no code is a valid answer), and the code table of the
+///   Node SDK lists only the five points here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TransferReason {
+    /// The root of a local export holds no spec folder.
+    NoSpecFolder,
+    /// The spec folder's name points out of the project.
+    SpecFolderOutsideProject,
+    /// A symbolic link on the way to the spec folder, at it or below it, or
+    /// in the older evidence folder (`.speclink/touched/`).
+    SymlinkInSpecFolder,
+    /// A folder below the spec folder, or the older evidence folder, cannot
+    /// be listed.
+    SpecFolderUnreadable,
+    /// The data file of an active or an archived change does not parse.
+    InvalidChangeMetadata,
+    /// The target scope of an import holds documents.
+    ScopeNotEmpty,
+    /// The content of an import is over the host's limit.
+    BundleTooLarge,
+    /// A document of an import breaks a rule of its own.
+    InvalidBundleDocument,
+}
+
+impl TransferReason {
+    /// The code as the Node SDK gives it in `error.reason`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            TransferReason::NoSpecFolder => "no_spec_folder",
+            TransferReason::SpecFolderOutsideProject => "spec_folder_outside_project",
+            TransferReason::SymlinkInSpecFolder => "symlink_in_spec_folder",
+            TransferReason::SpecFolderUnreadable => "spec_folder_unreadable",
+            TransferReason::InvalidChangeMetadata => "invalid_change_metadata",
+            TransferReason::ScopeNotEmpty => "scope_not_empty",
+            TransferReason::BundleTooLarge => "bundle_too_large",
+            TransferReason::InvalidBundleDocument => "invalid_bundle_document",
+        }
+    }
+}
+
 /// Why an export or an import failed.
 #[derive(Debug)]
 pub enum TransferError {
-    /// The bundle is not valid. The text names the first document that is
-    /// wrong and the rule it breaks; it never holds document content.
+    /// The bundle is not valid as a whole: a format version this module does
+    /// not take, or a first-version document whose names make no key.
     InvalidBundle(String),
+    /// The bundle's content is over the import limit. The text gives the two
+    /// sizes.
+    TooLarge(String),
+    /// A document of the bundle breaks a rule: its key, its digest, a key
+    /// that appears twice, or a board order over its size. The text names
+    /// the first such document and the rule; it never holds document
+    /// content.
+    InvalidDocument(String),
     /// The target scope holds a document: before the import, or by the time
     /// it committed.
     NotEmpty,
@@ -80,10 +160,24 @@ pub enum TransferError {
     Store(PortError),
 }
 
+impl TransferError {
+    /// The failure's code, when it has one.
+    pub fn reason(&self) -> Option<TransferReason> {
+        match self {
+            TransferError::TooLarge(_) => Some(TransferReason::BundleTooLarge),
+            TransferError::InvalidDocument(_) => Some(TransferReason::InvalidBundleDocument),
+            TransferError::NotEmpty => Some(TransferReason::ScopeNotEmpty),
+            TransferError::InvalidBundle(_) | TransferError::Unstable | TransferError::Store(_) => None,
+        }
+    }
+}
+
 impl fmt::Display for TransferError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            TransferError::InvalidBundle(message) => f.write_str(message),
+            TransferError::InvalidBundle(message)
+            | TransferError::TooLarge(message)
+            | TransferError::InvalidDocument(message) => f.write_str(message),
             TransferError::NotEmpty => {
                 f.write_str("import (create-new): the target scope already holds documents")
             }
@@ -107,17 +201,28 @@ impl From<PortError> for TransferError {
 /// The failure as a call through the host kit gives it: a bundle that is not
 /// valid is `invalid_argv`, a target that is not empty is `refused`, and an
 /// export that found no still moment is the store's temporary failure, since
-/// the caller can try again.
+/// the caller can try again. A command failure keeps the transfer failure as
+/// its source, so a door can ask it for its [`TransferError::reason`].
 impl From<TransferError> for ExecError {
     fn from(e: TransferError) -> ExecError {
-        let command = |code| ExecError::Command(CommandError::new(code, e.to_string()));
+        let command = |code, e: TransferError| {
+            ExecError::Command(CommandError { code, message: e.to_string(), source: Some(anyhow::Error::new(e)) })
+        };
         match e {
-            TransferError::InvalidBundle(_) => command(ErrorCode::InvalidArgv),
-            TransferError::NotEmpty => command(ErrorCode::Refused),
+            TransferError::InvalidBundle(_) | TransferError::TooLarge(_) | TransferError::InvalidDocument(_) => {
+                command(ErrorCode::InvalidArgv, e)
+            }
+            TransferError::NotEmpty => command(ErrorCode::Refused, e),
             TransferError::Unstable => ExecError::Store(PortError::Unavailable { message: e.to_string() }),
             TransferError::Store(e) => ExecError::Store(e),
         }
     }
+}
+
+/// The code of a command failure that came from a transfer (the conversion
+/// above keeps it as the source). Any other command failure has none.
+pub fn reason_of(failure: &CommandError) -> Option<TransferReason> {
+    failure.source.as_ref()?.downcast_ref::<TransferError>()?.reason()
 }
 
 fn everything() -> KeyPrefix {
@@ -253,7 +358,7 @@ pub(crate) fn import_with_events(
     let mut ops = Vec::with_capacity(bundle.documents.len());
     for doc in bundle.documents {
         let refused = |rule: &dyn fmt::Display| {
-            TransferError::InvalidBundle(format!("bundle document {}: {rule}", shown(&doc.key)))
+            TransferError::InvalidDocument(format!("bundle document {}: {rule}", shown(&doc.key)))
         };
         let key = DocKey::new(doc.key.as_str()).map_err(|e| refused(&e))?;
         if !follows_naming_rules(&key) {
@@ -369,6 +474,41 @@ pub fn from_first_version(bundle: ImportBundle) -> Result<ScopeBundle, TransferE
 
 // --- the documents of a local project ---
 
+/// Why [`local_documents`] stopped: its text, as it always was, and the code
+/// of the failure when it has one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocalExportError {
+    message: String,
+    reason: Option<TransferReason>,
+}
+
+impl LocalExportError {
+    fn new(reason: TransferReason, message: String) -> LocalExportError {
+        LocalExportError { message, reason: Some(reason) }
+    }
+
+    /// The failure's code, when it has one.
+    pub fn reason(&self) -> Option<TransferReason> {
+        self.reason
+    }
+}
+
+impl fmt::Display for LocalExportError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for LocalExportError {}
+
+/// A failure with no code: a schema that is not found, an artifact pattern
+/// that cannot be listed, a document listed twice.
+impl From<String> for LocalExportError {
+    fn from(message: String) -> LocalExportError {
+        LocalExportError { message, reason: None }
+    }
+}
+
 /// Every document of the local project `workspace`, read through `store`,
 /// each named by its kind and in kind order: the documents of a first-version
 /// bundle. Speclink Desktop's move to a server and the Node engine's export
@@ -437,11 +577,14 @@ pub fn local_documents(
     workspace: &Workspace,
     store: &dyn Store,
     user_dir: &Path,
-) -> Result<Vec<ImportBundleDocument>, String> {
+) -> Result<Vec<ImportBundleDocument>, LocalExportError> {
     if !inside_the_project(&workspace.spec_dir_name) {
-        return Err(format!(
-            "spec folder outside the project: \"{}\" — spec_dir must name a folder under the project root",
-            workspace.spec_dir_name
+        return Err(LocalExportError::new(
+            TransferReason::SpecFolderOutsideProject,
+            format!(
+                "spec folder outside the project: \"{}\" — spec_dir must name a folder under the project root",
+                workspace.spec_dir_name
+            ),
         ));
     }
     check_for_links(&workspace.root, Path::new(&workspace.spec_dir_name))?;
@@ -453,7 +596,8 @@ pub fn local_documents(
 
     let changes = store.list_changes();
     for change in &changes {
-        require_valid_meta(store, change).map_err(|error| error.to_string())?;
+        require_valid_meta(store, change)
+            .map_err(|error| LocalExportError::new(TransferReason::InvalidChangeMetadata, error.to_string()))?;
         let meta = store.read_change_meta(&change.name).unwrap_or_default();
         insert_local_document(&mut documents, ImportDocumentId::ChangeMeta { change: change.name.clone() }, meta)?;
         let schema = resolve_local_schema(workspace, user_dir, &change.meta.schema_name())?;
@@ -501,7 +645,7 @@ pub fn local_documents(
             // broken one is the legacy file.
             let dir = format!("{}/changes/archive/{dated_name}", workspace.spec_dir_name);
             let file = if workspace.root.join(&dir).join(META_FILE).is_file() { META_FILE } else { LEGACY_META_FILE };
-            format!("invalid {dir}/{file}: {reason}")
+            LocalExportError::new(TransferReason::InvalidChangeMetadata, format!("invalid {dir}/{file}: {reason}"))
         })?;
         // Read new name first, then the legacy one; listed as .meta.yaml
         // always (desktop-spec-dir-migration D5).
@@ -567,7 +711,7 @@ fn inside_the_project(name: &str) -> bool {
 /// by a known name. An entry that is not there is no stop. The text names the
 /// entry by its path from `root`, with forward slashes, and never what a link
 /// points at.
-fn check_for_links(root: &Path, relative: &Path) -> Result<(), String> {
+fn check_for_links(root: &Path, relative: &Path) -> Result<(), LocalExportError> {
     let parts: Vec<_> = relative.components().collect();
     let mut on_the_way = PathBuf::new();
     for part in &parts[..parts.len().saturating_sub(1)] {
@@ -579,7 +723,7 @@ fn check_for_links(root: &Path, relative: &Path) -> Result<(), String> {
     check_below(root, relative)
 }
 
-fn check_below(root: &Path, relative: &Path) -> Result<(), String> {
+fn check_below(root: &Path, relative: &Path) -> Result<(), LocalExportError> {
     let path = root.join(relative);
     let Ok(meta) = std::fs::symlink_metadata(&path) else {
         return Ok(());
@@ -590,19 +734,27 @@ fn check_below(root: &Path, relative: &Path) -> Result<(), String> {
     if !meta.is_dir() {
         return Ok(());
     }
-    let unlisted =
-        |error: std::io::Error| format!("cannot list {} to check it for symbolic links: {error}", shown_path(relative));
     let mut names = std::fs::read_dir(&path)
-        .map_err(unlisted)?
+        .map_err(|error| unlisted(relative, error))?
         .map(|entry| entry.map(|entry| entry.file_name()))
         .collect::<Result<Vec<_>, _>>()
-        .map_err(unlisted)?;
+        .map_err(|error| unlisted(relative, error))?;
     names.sort();
     names.into_iter().try_for_each(|name| check_below(root, &relative.join(name)))
 }
 
-fn link_found(relative: &Path) -> String {
-    format!("symbolic link in the spec folder: {} — replace it with the file itself or remove it", shown_path(relative))
+fn unlisted(relative: &Path, error: std::io::Error) -> LocalExportError {
+    LocalExportError::new(
+        TransferReason::SpecFolderUnreadable,
+        format!("cannot list {} to check it for symbolic links: {error}", shown_path(relative)),
+    )
+}
+
+fn link_found(relative: &Path) -> LocalExportError {
+    LocalExportError::new(
+        TransferReason::SymlinkInSpecFolder,
+        format!("symbolic link in the spec folder: {} — replace it with the file itself or remove it", shown_path(relative)),
+    )
 }
 
 /// `relative` with forward slashes, as an error shows a path.
@@ -868,14 +1020,14 @@ mod tests {
 
     /// The documents of the project at `root`, with an empty folder as the
     /// user-level config directory: no schema of the machine leaks in.
-    fn documents_of(root: &Path) -> Result<Vec<ImportBundleDocument>, String> {
+    fn documents_of(root: &Path) -> Result<Vec<ImportBundleDocument>, LocalExportError> {
         let workspace = Workspace::discover(root).unwrap().expect("a local project");
         documents_in(&workspace.root, &workspace.spec_dir_name)
     }
 
     /// The documents of the project at `root` whose spec folder is named
     /// `spec_dir`, as `.speclink.yaml` or `createEngine` would name it.
-    fn documents_in(root: &Path, spec_dir: &str) -> Result<Vec<ImportBundleDocument>, String> {
+    fn documents_in(root: &Path, spec_dir: &str) -> Result<Vec<ImportBundleDocument>, LocalExportError> {
         let workspace = Workspace { root: root.to_path_buf(), spec_dir_name: spec_dir.to_string() };
         let store = FsStore::new(&workspace.root, &workspace.spec_dir_name);
         let user_dir = tempfile::tempdir().unwrap();
@@ -1062,8 +1214,9 @@ mod tests {
         let root = complete_project();
         let mut documents = documents_of(root.path()).expect("the documents are listed");
         documents[0].document = ImportDocumentId::CanonicalSpec { capability: "a/b".into() };
-        let error = from_first_version(first_version(documents)).expect_err("no key").to_string();
-        assert!(error.contains("a/b"), "{error}");
+        let error = from_first_version(first_version(documents)).expect_err("no key");
+        assert!(error.to_string().contains("a/b"), "{error}");
+        assert_eq!(error.reason(), None);
     }
 
     #[test]
@@ -1072,7 +1225,8 @@ mod tests {
         write(root.path(), "openspec/changes/active-change/.openspec.yaml", "schema: [unterminated\n");
 
         let error = documents_of(root.path()).expect_err("corrupt metadata must fail closed");
-        assert!(error.contains("openspec/changes/active-change/.openspec.yaml"), "{error}");
+        assert!(error.to_string().contains("openspec/changes/active-change/.openspec.yaml"), "{error}");
+        assert_eq!(error.reason(), Some(TransferReason::InvalidChangeMetadata));
     }
 
     #[test]
@@ -1081,7 +1235,8 @@ mod tests {
         write(root.path(), "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml", "schema: [unterminated\n");
 
         let error = documents_of(root.path()).expect_err("corrupt metadata must fail closed");
-        assert!(error.contains("openspec/changes/archive/2026-07-20-old-change/.openspec.yaml"), "{error}");
+        assert!(error.to_string().contains("openspec/changes/archive/2026-07-20-old-change/.openspec.yaml"), "{error}");
+        assert_eq!(error.reason(), Some(TransferReason::InvalidChangeMetadata));
     }
 
     #[test]
@@ -1115,7 +1270,7 @@ mod tests {
     /// project. The folder outside holds one change, so a project whose spec
     /// folder is the link is still a project.
     #[cfg(unix)]
-    fn error_with_link(link: &str, to_folder: bool) -> String {
+    fn error_with_link(link: &str, to_folder: bool) -> LocalExportError {
         let outside = tempfile::tempdir().unwrap();
         write(outside.path(), "secret.md", OUTSIDE);
         write(outside.path(), "folder/changes/hidden/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-21\n");
@@ -1131,7 +1286,8 @@ mod tests {
         std::os::unix::fs::symlink(&target, &at).unwrap();
 
         let error = documents_of(root.path()).expect_err("a link stops the listing");
-        assert!(!error.contains(OUTSIDE.trim()), "{error}");
+        assert!(!error.to_string().contains(OUTSIDE.trim()), "{error}");
+        assert_eq!(error.reason(), Some(TransferReason::SymlinkInSpecFolder));
         error
     }
 
@@ -1144,21 +1300,21 @@ mod tests {
     #[cfg(unix)]
     fn a_file_in_the_spec_folder_that_is_a_link_stops_the_listing_and_is_named() {
         let error = error_with_link("speclink/specs/leak/spec.md", false);
-        assert_eq!(error, link_message("speclink/specs/leak/spec.md"));
+        assert_eq!(error.to_string(), link_message("speclink/specs/leak/spec.md"));
     }
 
     #[test]
     #[cfg(unix)]
     fn a_folder_in_the_spec_folder_that_is_a_link_stops_the_listing_and_is_named() {
         let error = error_with_link("speclink/changes/linked", true);
-        assert_eq!(error, link_message("speclink/changes/linked"));
+        assert_eq!(error.to_string(), link_message("speclink/changes/linked"));
     }
 
     #[test]
     #[cfg(unix)]
     fn a_spec_folder_that_is_a_link_stops_the_listing_and_is_named() {
         let error = error_with_link("speclink", true);
-        assert_eq!(error, link_message("speclink"));
+        assert_eq!(error.to_string(), link_message("speclink"));
     }
 
     // --- a spec folder outside the project (engine-export-scope D6) ---
@@ -1178,7 +1334,8 @@ mod tests {
 
         let error = documents_in(&base.path().join("project"), "../other/speclink").expect_err("outside the project");
 
-        assert_eq!(error, outside_message("../other/speclink"));
+        assert_eq!(error.to_string(), outside_message("../other/speclink"));
+        assert_eq!(error.reason(), Some(TransferReason::SpecFolderOutsideProject));
     }
 
     #[test]
@@ -1190,7 +1347,8 @@ mod tests {
 
         let error = documents_in(root.path(), &name).expect_err("outside the project");
 
-        assert_eq!(error, outside_message(&name));
+        assert_eq!(error.to_string(), outside_message(&name));
+        assert_eq!(error.reason(), Some(TransferReason::SpecFolderOutsideProject));
     }
 
     #[test]
@@ -1224,7 +1382,9 @@ mod tests {
         // A path drops a `.` that is not its first segment: `speclink/.` is
         // refused by its text.
         for name in ["", ".", "speclink/..", "speclink/."] {
-            assert_eq!(documents_in(root.path(), name).expect_err(name), outside_message(name));
+            let error = documents_in(root.path(), name).expect_err(name);
+            assert_eq!(error.to_string(), outside_message(name));
+            assert_eq!(error.reason(), Some(TransferReason::SpecFolderOutsideProject), "{name}");
         }
     }
 
@@ -1240,7 +1400,8 @@ mod tests {
 
         let error = documents_in(root.path(), "docs/specs").expect_err("a link on the way stops the listing");
 
-        assert_eq!(error, link_message("docs"));
+        assert_eq!(error.to_string(), link_message("docs"));
+        assert_eq!(error.reason(), Some(TransferReason::SymlinkInSpecFolder));
     }
 
     #[test]
@@ -1258,7 +1419,8 @@ mod tests {
 
         let error = documents_of(root.path()).expect_err("a link in the older evidence folder stops the listing");
 
-        assert_eq!(error, link_message(".speclink/touched/demo.json"));
+        assert_eq!(error.to_string(), link_message(".speclink/touched/demo.json"));
+        assert_eq!(error.reason(), Some(TransferReason::SymlinkInSpecFolder));
     }
 
     #[test]
@@ -1279,6 +1441,140 @@ mod tests {
             return; // A privileged user lists any folder: nothing to check here.
         }
         let error = result.expect_err("a folder that cannot be listed stops the listing");
-        assert!(error.starts_with("cannot list openspec/specs/accounts to check it for symbolic links:"), "{error}");
+        assert!(
+            error.to_string().starts_with("cannot list openspec/specs/accounts to check it for symbolic links:"),
+            "{error}"
+        );
+        assert_eq!(error.reason(), Some(TransferReason::SpecFolderUnreadable));
+    }
+
+    // --- the reason of a failure (sdk-command-names-and-transfer-reasons) ---
+
+    #[test]
+    fn a_folder_that_cannot_be_listed_names_its_reason_whatever_the_user_may_read() {
+        // No file permission is set here: a privileged user gets the same check.
+        let error = std::io::Error::from(std::io::ErrorKind::PermissionDenied);
+        let expected = format!("cannot list speclink/changes/locked to check it for symbolic links: {error}");
+
+        let failure = unlisted(Path::new("speclink/changes/locked"), error);
+
+        assert_eq!(failure.to_string(), expected);
+        assert_eq!(failure.reason(), Some(TransferReason::SpecFolderUnreadable));
+    }
+
+    #[test]
+    fn each_reason_has_its_fixed_text() {
+        let texts: Vec<&str> = [
+            TransferReason::NoSpecFolder,
+            TransferReason::SpecFolderOutsideProject,
+            TransferReason::SymlinkInSpecFolder,
+            TransferReason::SpecFolderUnreadable,
+            TransferReason::InvalidChangeMetadata,
+            TransferReason::ScopeNotEmpty,
+            TransferReason::BundleTooLarge,
+            TransferReason::InvalidBundleDocument,
+        ]
+        .into_iter()
+        .map(TransferReason::as_str)
+        .collect();
+        assert_eq!(
+            texts,
+            [
+                "no_spec_folder",
+                "spec_folder_outside_project",
+                "symlink_in_spec_folder",
+                "spec_folder_unreadable",
+                "invalid_change_metadata",
+                "scope_not_empty",
+                "bundle_too_large",
+                "invalid_bundle_document",
+            ]
+        );
+    }
+
+    #[test]
+    fn a_change_whose_schema_is_not_found_stops_the_listing_with_no_reason() {
+        let root = complete_project();
+        write(root.path(), "openspec/changes/active-change/.openspec.yaml", "schema: no-such-schema\ncreated: 2026-07-21\n");
+
+        let error = documents_of(root.path()).expect_err("an unknown schema stops the listing");
+
+        assert_eq!(error.to_string(), speclink_core::schema::not_found_msg("no-such-schema"));
+        assert_eq!(error.reason(), None);
+    }
+
+    fn port_doc(key: &str, content: &str) -> BundleDocument {
+        BundleDocument { key: key.to_string(), content: content.to_string(), digest: content_digest(content) }
+    }
+
+    fn keyed_bundle(documents: Vec<BundleDocument>) -> ScopeBundle {
+        ScopeBundle { format_version: FORMAT_VERSION, scope_version: None, documents }
+    }
+
+    fn import_into(port: &dyn StorePort, bundle: ScopeBundle) -> Result<ImportReport, TransferError> {
+        let scope = ScopeId::new("default/main").unwrap();
+        import(port, &scope, &Actor::new("u_42", "Alice").unwrap(), bundle, Timestamp::new(1_800_000_000_000).unwrap())
+    }
+
+    #[test]
+    fn each_import_failure_names_its_reason_and_keeps_its_message() {
+        let port = speclink_store_port::MemoryStorePort::new();
+        let config = || port_doc("config.yaml", "schema: spec-driven\n");
+        let mut wrong_digest = config();
+        wrong_digest.digest = content_digest("other");
+        let board_order_message = format!(
+            "bundle document \"board/order\": board order content exceeds the {}-byte cap",
+            crate::documents::BOARD_ORDER_LIMIT
+        );
+        let rows: Vec<(ScopeBundle, &str, Option<TransferReason>)> = vec![
+            (
+                keyed_bundle(vec![wrong_digest]),
+                "bundle document \"config.yaml\": the digest is not the digest of the content",
+                Some(TransferReason::InvalidBundleDocument),
+            ),
+            (
+                keyed_bundle(vec![port_doc("notes/a.md", "x")]),
+                "bundle document \"notes/a.md\": the key follows none of the Engine's naming rules",
+                Some(TransferReason::InvalidBundleDocument),
+            ),
+            (
+                keyed_bundle(vec![config(), config()]),
+                "bundle document \"config.yaml\": the key appears twice",
+                Some(TransferReason::InvalidBundleDocument),
+            ),
+            (
+                keyed_bundle(vec![port_doc("board/order", &"x".repeat(crate::documents::BOARD_ORDER_LIMIT + 1))]),
+                &board_order_message,
+                Some(TransferReason::InvalidBundleDocument),
+            ),
+            (
+                ScopeBundle { format_version: 99, scope_version: None, documents: Vec::new() },
+                "unsupported bundle format version 99 (supported: 2)",
+                None,
+            ),
+        ];
+        for (bundle, message, reason) in rows {
+            let error = import_into(&port, bundle).expect_err(message);
+            assert_eq!(error.to_string(), message);
+            assert_eq!(error.reason(), reason, "{message}");
+        }
+
+        import_into(&port, keyed_bundle(vec![config()])).expect("the first import");
+        let error = import_into(&port, keyed_bundle(vec![config()])).expect_err("the scope holds a document");
+        assert_eq!(error.to_string(), "import (create-new): the target scope already holds documents");
+        assert_eq!(error.reason(), Some(TransferReason::ScopeNotEmpty));
+    }
+
+    #[test]
+    fn a_failure_of_the_store_or_of_a_moving_scope_has_no_reason() {
+        assert_eq!(TransferError::Unstable.reason(), None);
+        assert_eq!(TransferError::Store(PortError::Unavailable { message: "down".into() }).reason(), None);
+        let first = ImportBundle {
+            format_version: 3,
+            scope: ImportScope { project: "demo".into(), repo: "backend".into() },
+            project_revision: 0,
+            documents: Vec::new(),
+        };
+        assert_eq!(from_first_version(first).expect_err("not the first version").reason(), None);
     }
 }

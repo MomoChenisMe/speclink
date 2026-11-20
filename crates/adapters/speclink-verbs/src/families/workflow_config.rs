@@ -28,7 +28,7 @@ pub enum WorkflowConfigCommands {
         key: String,
         // 布林鍵子集刻意維持字面（design D1：程式裡沒有這個子集的常數，單一消費者
         // 不值得再立一個真相來源）；由 set_help_value_argument_names_every_boolean_key 釘住。
-        /// Policy value (tdd/audit/worktree take true or false)
+        /// Policy value (tdd/audit/worktree take true or false; an empty value unsets locale or spec_locale)
         value: String,
         /// Print the unified diff instead of writing
         #[arg(long = "dry-run")]
@@ -524,6 +524,34 @@ mod tests {
             assert_eq!(err.code, ErrorCode::InvalidArgv, "{argv:?}");
             assert_eq!(err.message, MESSAGE, "{argv:?}");
         }
+    }
+
+    // workflow-config「workflow-config set 的說明寫出空值的作用」.
+    #[test]
+    fn set_help_says_what_an_empty_value_does() {
+        let err = crate::parse(["workflow-config", "set", "--help"]).err().expect("help text");
+        assert!(err.message.contains("an empty value unsets locale or spec_locale"), "{}", err.message);
+        assert!(err.message.contains("tdd/audit/worktree take true or false"), "{}", err.message);
+    }
+
+    // The help only names the rule: an empty value of a boolean key is still refused.
+    #[test]
+    fn an_empty_value_of_a_boolean_key_is_invalid_argv() {
+        let Command::WorkflowConfigEdit { edit, .. } =
+            command_of(&["workflow-config", "set", "tdd", ""], VerbInputs::default())
+        else {
+            panic!("set converts to a workflow-config edit");
+        };
+        let err = speclink_core::command::plan_workflow_config_edit(
+            &edit,
+            "speclink/config.yaml",
+            Some("schema: spec-driven\n".to_string()),
+            None,
+            None,
+        )
+        .expect_err("an empty value of tdd is refused");
+        assert_eq!(err.code, ErrorCode::InvalidArgv);
+        assert_eq!(err.message, "Value for 'tdd' must be true or false (got '')");
     }
 
     #[test]

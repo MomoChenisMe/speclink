@@ -4,8 +4,7 @@ slug: embedded-host-needs-4
 status: promoted
 created: 2026-11-20
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: sdk-types-parse-check
+promoted_to: sdk-types-parse-check, sdk-command-names-and-transfer-reasons
 ---
 
 # Discussion: 內嵌宿主第四輪（三項需求、四個觀察）

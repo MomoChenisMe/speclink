@@ -225,6 +225,11 @@ pub fn check_board_order_size(content: &str) -> Result<(), DocumentsError> {
     Ok(())
 }
 
+/// The name a write of the board order asks the before hook about and its
+/// commit carries. It is no Engine command: the host kit adds it to its
+/// command names ([`crate::kit::command_names`]).
+pub const PUT_BOARD_ORDER_COMMAND: &str = "put-board-order";
+
 /// Replace the board order (design D3) when the scope is at `expected`, and
 /// return the new scope version.
 ///
@@ -258,7 +263,7 @@ pub fn put_board_order(
     let event = board_order_updated()?;
     let commit = Commit::new(
         actor.clone(),
-        "put-board-order",
+        PUT_BOARD_ORDER_COMMAND,
         at,
         vec![Op::Put {
             key,

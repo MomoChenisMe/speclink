@@ -17,11 +17,26 @@ SDK 是這個工具箱的名字。裡面有四樣東西：
 | 東西 | 做什麼 | 你用到的名稱 |
 | --- | --- | --- |
 | 引擎 | 執行動詞：讀規格、跑流程、交出要寫入的內容 | `createEngine`、`skills` |
-| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool` |
+| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool`、`commandNames` |
 | 儲存接口的契約 | 你要實作的三個函式與它們的規則 | `StorePort`（型別）、`StoreConflictError`、`StoreUnavailableError` |
 | 合格測試 | 檢查你的三個函式符不符合契約 | `runStoreConformance` |
 
 這份文件裡，「宿主」指你的系統，「範圍」（scope）指一份獨立的規格集合，通常是一個專案的一個 repo。範圍是你自己取的字串，引擎不解讀它。
+
+`commandNames` 是凍結的陣列，列出 `beforeCommand` 與你的儲存的 `commit` 可能收到的每一個命令名稱：引擎的命令，加上宿主套件自己的三個，`scope-export`、`scope-import` 與 `put-board-order`（`handleRequest` 寫看板排序時用的名稱）。陣列的順序不是契約，它也只給名稱：不告訴你命令會不會寫入，因為不寫入的命令也可能帶出整份文件。用它寫一個測試，確認你的權限對照表涵蓋每一個名稱，新版本多出來的命令就不會被誤擋：
+
+```js
+// permissions.test.js，用 Node 內建的測試工具。permissionOf 是你的對照表：命令名稱 → 權限動作。
+const { test } = require('node:test')
+const assert = require('node:assert')
+const { commandNames } = require('@speclink/engine')
+const { permissionOf } = require('./permissions')
+
+test('權限對照表涵蓋每一個命令名稱', () => {
+  const missing = commandNames.filter((name) => permissionOf(name) === undefined)
+  assert.deepStrictEqual(missing, [])
+})
+```
 
 ## <a id="install"></a>安裝
 
@@ -75,12 +90,12 @@ await engine.dispatch(
 `dispatch` 的規則（`host.dispatch` 也一樣）：
 
 - **輸入**：字串陣列，和 CLI 的寫法一樣，只是去掉程式名。CLI 從 stdin 讀內容的動詞，改用 `stdin` 傳入，並在陣列裡帶 `--stdin`。
-- **輸出**：Promise，結果和 CLI `--json` 的輸出相同（欄位是 camelCase）。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output }`，`output` 是 CLI 印到 stdout 的文字，不帶色碼。CLI 另有提示印到 stderr 時，物件另帶 `stderr`。欄位的形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
+- **輸出**：Promise，結果和 CLI `--json` 的輸出相同。欄位大多是 camelCase，少數既有欄位是 snake_case，[動詞與旗標契約列出它們](verb-contract.zh-TW.md#snake-case-fields)。沒有 `--json` 形式的動詞（例如 `new change`）回傳 `{ output }`，`output` 是 CLI 印到 stdout 的文字，不帶色碼。CLI 另有提示印到 stderr 時，物件另帶 `stderr`。欄位的形狀見[動詞與旗標契約](verb-contract.zh-TW.md)。
 - **不認得的旗標會被拒絕**：多出來的旗標或位置參數以 `invalid_argv` 拒絕，不會被靜默忽略。
 - **`discuss conclude`**：結論已經寫入、但收尾的封存失敗時不算錯誤，物件另帶 `closingError` 說明原因。這時不要再執行一次 `discuss conclude`，改執行 `discuss archive`。
 - **不會卡住事件迴圈**：每次呼叫都在背景執行緒執行，可以同時發出多個。
 
-有引擎命令的動詞全部能用，工作流設定的動詞（`workflow-config`）也在內。需要 checkout 的動詞以 `invalid_argv` 拒絕：`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更。
+有引擎命令的動詞全部能用，工作流設定的動詞（`workflow-config`）也在內。`workflow-config set` 的值給空字串（`['workflow-config', 'set', 'locale', '']`）時，把 `locale` 或 `spec_locale` 設回未設定；`tdd`、`audit`、`worktree` 給空字串則以 `invalid_argv` 拒絕。需要 checkout 的動詞以 `invalid_argv` 拒絕：`drift`、`review prepare`、`review scope`、`verify scope`、`instructions --skill`。一次 `archive` 只封存一個變更。
 
 失敗時 Promise 以 `Error` 拒絕。`message` 和 CLI 印出的訊息相同，可以直接交給使用者或 Agent；`code` 是分類：
 
@@ -542,6 +557,16 @@ const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle
 - **你的框架的本文上限要不小於它。** 入口拿到的是框架已經讀完的本文，所以匯入那條路徑的框架上限要調到至少 `limits.importBytes`（上面 Express 範例的 4 MB 對匯入不夠）。
 - **壓縮由路由層做。** 宿主套件不壓縮也不解壓縮，要壓縮就在你的框架打開。
 
+要對失敗顯示你自己的說明，看 `error.reason`，不要看 `message`：訊息的措辭可能改變。`host.importScope` 有三種失敗帶 `reason`：
+
+| `code` | `reason` | 失敗 |
+| --- | --- | --- |
+| `refused` | `scope_not_empty` | 範圍裡已經有文件 |
+| `invalid_argv` | `bundle_too_large` | 內容超過 `limits.importBytes` |
+| `invalid_argv` | `invalid_bundle_document` | 有一份文件不合規則：鍵不合命名規則、摘要和內容不符、鍵重複，或看板排序超過它的大小上限 |
+
+其他失敗都沒有 `reason` 屬性（`'reason' in error` 是 `false`）：`beforeCommand` 的拒絕、儲存的失敗、引擎不收的包版本、不是包的值，以及第 1 版的包裡名稱組不出鍵的文件（第 2 版的包遇到同樣的問題是 `invalid_bundle_document`）。`host.exportScope` 目前沒有任何失敗帶 `reason`。之後的版本可能替還沒有代碼的失敗加上代碼，但不會改變上表代碼的意思。`GET /export` 與 `POST /import` 的回應不變。
+
 ### <a id="export-local"></a>匯出本機專案
 
 `engine.exportScope()` 把 `createEngine` 指向的本機專案做成第 2 版的包。把包原樣交給 `host.importScope`，專案就搬進你的儲存裡一個空的範圍。包裡的文件和 Speclink Desktop「遷移到 Server」送出的相同：進行中的變更（metadata、artifact 與 evidence）、正式規格、進行中與已封存的討論、已封存變更的全部文件、流程設定、詞彙表與看板順序。
@@ -561,13 +586,25 @@ for (const [root, scope] of moves) {
 ```
 
 - **只讀不寫**：不改專案的任何檔案。文件依鍵的位元組順序排列。本機專案沒有範圍版本號，所以包沒有 `scopeVersion`；匯入本來就不讀它。
-- **這些失敗不會給不完整的包**：任何一個變更（進行中或已封存）的 metadata 無法解析，或有引擎命名規則對不上的文件時，以 `error` 拒絕，訊息指出是哪個檔案。檔案存在但讀不出來（沒有權限，或內容不是 UTF-8）不算失敗：包裡就沒有那份文件。
-- **只讀專案裡面的檔案**：通往規格資料夾路上的資料夾、規格資料夾本身，或它底下任何一個檔案或資料夾是符號連結時，在讀取任何文件之前以 `error` 拒絕；舊位置的 evidence 資料夾 `.speclink/touched/` 也照這條規則。訊息以 `symbolic link in the spec folder:` 開頭，用相對專案根目錄的路徑指出那個項目，不會顯示連結指向哪裡；把連結換成實體檔案或移除即可。那些位置有列不出內容的資料夾時也會拒絕，訊息以 `cannot list` 開頭。規格資料夾名稱（`.speclink.yaml` 的 `spec_dir`，或 `createEngine` 的 `specDir`）是絕對路徑，或含 `..`、`.` 路徑段時，以 `error` 拒絕，訊息以 `spec folder outside the project:` 開頭並指出那個名稱。要匯出別處的規格資料夾，把 `root` 指到它的上一層。
-- **`root` 底下沒有規格資料夾時拒絕**：名稱與符號連結的檢查都通過之後，`root` 底下以那個名稱找不到規格資料夾——什麼都沒有，或資料夾裡沒有 `changes/`、`specs/`、`discussions/`，也沒有 `config.yaml`——就以 `error` 拒絕。只有 `LANGUAGE.md` 的資料夾也會被拒絕。訊息以 `no spec folder:` 開頭並指出資料夾名稱，不含 `root` 的路徑；檔案都不變。這是為了抓出放錯位置的下載內容：不擋的話它會得到零份文件，看起來像成功。規格資料夾存在但沒有文件時，照常得到沒有文件的包。要匯出空的專案，先建立它的規格資料夾。
+- **這些失敗不會給不完整的包**：任何一個變更（進行中或已封存）的 metadata 無法解析，或有引擎命名規則對不上的文件時，以 `error` 拒絕，訊息指出是哪個檔案（metadata 的 `reason` 是 `invalid_change_metadata`）。檔案存在但讀不出來（沒有權限，或內容不是 UTF-8）不算失敗：包裡就沒有那份文件。
+- **只讀專案裡面的檔案**：通往規格資料夾路上的資料夾、規格資料夾本身，或它底下任何一個檔案或資料夾是符號連結時，在讀取任何文件之前以 `error` 拒絕；舊位置的 evidence 資料夾 `.speclink/touched/` 也照這條規則。`reason` 是 `symlink_in_spec_folder`；訊息以 `symbolic link in the spec folder:` 開頭，用相對專案根目錄的路徑指出那個項目，不會顯示連結指向哪裡；把連結換成實體檔案或移除即可。那些位置有列不出內容的資料夾時也會拒絕：`reason` 是 `spec_folder_unreadable`，訊息以 `cannot list` 開頭。規格資料夾名稱（`.speclink.yaml` 的 `spec_dir`，或 `createEngine` 的 `specDir`）是絕對路徑，或含 `..`、`.` 路徑段時，以 `error` 拒絕：`reason` 是 `spec_folder_outside_project`，訊息以 `spec folder outside the project:` 開頭並指出那個名稱。要匯出別處的規格資料夾，把 `root` 指到它的上一層。
+- **`root` 底下沒有規格資料夾時拒絕**：名稱與符號連結的檢查都通過之後，`root` 底下以那個名稱找不到規格資料夾——什麼都沒有，或資料夾裡沒有 `changes/`、`specs/`、`discussions/`，也沒有 `config.yaml`——就以 `error` 拒絕。只有 `LANGUAGE.md` 的資料夾也會被拒絕。`reason` 是 `no_spec_folder`；訊息以 `no spec folder:` 開頭並指出資料夾名稱，不含 `root` 的路徑；檔案都不變。這是為了抓出放錯位置的下載內容：不擋的話它會得到零份文件，看起來像成功。規格資料夾存在但沒有文件時，照常得到沒有文件的包。要匯出空的專案，先建立它的規格資料夾。
 - **匯出期間不要寫入這個專案**：匯出是逐一讀檔，不做快照。同一時間經同一個引擎、CLI 或其他程式寫入，包裡可能同時有新舊內容。
 - **匯入的範圍必須是空的**，而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
 - **包裡有全文**：流程設定與每一份討論的全文都在包裡。誰可以執行匯出由你決定。
 - **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。
+
+`engine.exportScope()` 有五種失敗帶 `reason`，它們的 `code` 都是 `error`。要顯示你自己的說明，看 `reason`，不要看訊息的開頭：
+
+| `reason` | 失敗 |
+| --- | --- |
+| `no_spec_folder` | `root` 底下沒有規格資料夾 |
+| `spec_folder_outside_project` | 規格資料夾的名稱指到專案之外 |
+| `symlink_in_spec_folder` | 通往規格資料夾的路上、規格資料夾本身或它底下有符號連結，或舊位置的 evidence 資料夾 `.speclink/touched/` 裡有符號連結 |
+| `spec_folder_unreadable` | 規格資料夾底下有列不出內容的資料夾，或舊位置的 evidence 資料夾列不出內容 |
+| `invalid_change_metadata` | 進行中或已封存變更的 metadata 無法解析 |
+
+其他失敗都沒有 `reason` 屬性，例如變更指定的產出流程找不到。
 
 CLI 沒有匯入匯出的動詞。搬專案有三個入口：Speclink Desktop 的「遷移到 Server」、在你自己的程式裡用 `engine.exportScope()` 加 `host.importScope`，以及在兩個範圍之間用 HTTP 入口的 `GET /export` 與 `POST /import`。
 
@@ -583,7 +620,7 @@ const report = await host.importScope({ identity, scope: 'acme/web', bundle })
 // → { scopeVersion: 1, documents: 42 }
 ```
 
-- **`root` 與 `specDir`**：只下載規格資料夾時，`root` 指到它的上一層，資料夾名稱給 `store.specDir`。不給 `specDir` 時，引擎和 CLI 一樣找資料夾：先讀 `root/.speclink.yaml` 的 `spec_dir`，再找 `speclink/`，最後找舊的 `openspec/`。`root` 底下以那個名稱找不到規格資料夾時，以 `no spec folder:` 開頭的訊息拒絕。
+- **`root` 與 `specDir`**：只下載規格資料夾時，`root` 指到它的上一層，資料夾名稱給 `store.specDir`。不給 `specDir` 時，引擎和 CLI 一樣找資料夾：先讀 `root/.speclink.yaml` 的 `spec_dir`，再找 `speclink/`，最後找舊的 `openspec/`。`root` 底下以那個名稱找不到規格資料夾時會拒絕，`reason` 是 `no_spec_folder`。
 - **大小上限**：`limits.importBytes`（預設 32 MiB）也管你的程式在同一個程序裡呼叫的 `host.importScope`。匯出沒有上限；大的專案要調高宿主的上限。
 - **匯入是一次性的搬遷，不是同步。** 匯入之後 repo 裡的改動不會進到範圍，範圍裡的改動也不會回到 repo。
 - **要重新匯入**，先在你的儲存裡刪掉這個範圍的全部文件，再匯入。這會刪掉匯入之後大家在宿主裡做的全部改動：變更、討論與蓋章。範圍不是空的時，匯入會被拒絕。

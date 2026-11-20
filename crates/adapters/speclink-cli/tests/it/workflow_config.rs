@@ -433,6 +433,11 @@ fn set_accepts_auto_for_spec_locale_and_empty_removes_the_key() {
     let out = p.run(&["workflow-config", "set", "locale", ""]);
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(!p.config_text().contains("locale: tw"), "locale key removed: {}", p.config_text());
+    // Spec scenario 空值照舊移除語言的鍵：show --json 的 locale 是 null.
+    let out = p.run(&["workflow-config", "show", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let shown = json_of(&out);
+    assert_eq!(shown["locale"], serde_json::Value::Null, "{shown}");
 }
 
 #[test]

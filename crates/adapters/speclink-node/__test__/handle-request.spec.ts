@@ -2,7 +2,7 @@
 // door for a host's one route, over a JS store port.
 import { describe, expect, it } from 'vitest'
 
-import { createHost, skills } from '../index.js'
+import { commandNames, createHost, skills } from '../index.js'
 import { rejection } from './helpers'
 import { memoryPort } from './memory-port'
 
@@ -113,6 +113,31 @@ describe('host.handleRequest', () => {
     expect(json(viaDoor).reason).toBe('refused')
     expect(json(viaDoor).message).toBe(viaTool.message)
     expect(viaTool.message).toBe('程式碼還沒合併')
+  })
+
+  // node-sdk「SDK 匯出命令名稱清單」「看板排序的寫入也用清單裡的名稱」
+  it('asks beforeCommand about a board order write under a name of commandNames', async () => {
+    const port = memoryPort()
+    const asked: string[] = []
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: ({ command }: { command: string }) => {
+          asked.push(command)
+        },
+      },
+    })
+    const read = await host.handleRequest(request('GET', alpha('board-order')), ALICE)
+    const put = request('PUT', alpha('board-order'), { content: '{"changes":{}}' })
+    put.headers['if-match'] = read!.headers.etag
+
+    const response = await host.handleRequest(put, ALICE)
+
+    expect(response?.status).toBe(200)
+    expect(asked).toEqual(['put-board-order'])
+    expect(commandNames).toContain('put-board-order')
+    expect(port.commits.map(({ commit }) => commit.command)).toEqual(['put-board-order'])
   })
 
   // node-sdk「beforeCommand 的讀取函式」「handleRequest 進來的呼叫也有 read」
