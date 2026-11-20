@@ -1,5 +1,20 @@
 [
   {
+    "version": "0.13.1",
+    "date": "2026-11-20",
+    "sections": [
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "TypeScript projects that import `@speclink/engine` now compile. A comment in the published type definition file ended early and caused 91 syntax errors.",
+            "zh-TW": "匯入 `@speclink/engine` 的 TypeScript 專案現在能通過編譯：發佈的型別定義檔有一段註解提早結束，造成 91 個語法錯誤。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.13.0",
     "date": "2026-11-19",
     "sections": [

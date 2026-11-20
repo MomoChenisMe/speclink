@@ -1,6 +1,12 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.13.1 (2026-11-20)
+
+### Fixes
+
+- TypeScript projects that import `@speclink/engine` now compile. A comment in the published type definition file ended early and caused 91 syntax errors.
+
 ## 0.13.0 (2026-11-19)
 
 ### New features

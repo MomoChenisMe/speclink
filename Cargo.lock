@@ -4672,7 +4672,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-cli"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4693,7 +4693,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-core"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4707,7 +4707,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-desktop"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "axum",
  "block2",
@@ -4744,7 +4744,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-desktop-core"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "chrono",
  "regex",
@@ -4759,7 +4759,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-fs"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "speclink-core",
@@ -4767,7 +4767,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-host"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "chrono",
@@ -4785,7 +4785,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-node"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "napi",
@@ -4803,7 +4803,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-protocol"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "schemars 1.2.1",
  "serde",
@@ -4812,7 +4812,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-remote"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "axum",
@@ -4842,7 +4842,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-server"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "anyhow",
  "argon2",
@@ -4875,14 +4875,14 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-port"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "serde_json",
 ]
 
 [[package]]
 name = "speclink-store-port-fs"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "fs4",
  "serde_json",
@@ -4892,7 +4892,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-port-postgres"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "postgres",
  "serde_json",
@@ -4901,7 +4901,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-store-port-sqlite"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "rusqlite",
  "serde_json",
@@ -4911,7 +4911,7 @@ dependencies = [
 
 [[package]]
 name = "speclink-verbs"
-version = "0.13.0"
+version = "0.13.1"
 dependencies = [
  "clap",
  "serde",
