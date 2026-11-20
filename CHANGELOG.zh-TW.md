@@ -1,6 +1,22 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.14.0（2026-11-20）
+
+### 新功能
+
+- `@speclink/engine` 新增匯出 `commandNames`：執行前掛鉤會收到的全部命令名稱，可以用在測試裡檢查自己的權限對照表有沒有漏掉命令。
+- `engine.exportScope` 與 `host.importScope` 失敗時，Error 可能多帶 `reason` 屬性，值是穩定的原因代碼（例如 `no_spec_folder`、`scope_not_empty`），宿主不必再比對訊息的開頭。
+
+### 修正
+
+- 內嵌宿主經 `host.dispatch` 執行 `new artifact` 與 `discuss promote` 時，`--json` 輸出的 `path` 改成儲存的鍵（`changes/<name>/…`），不再以 `speclink/` 開頭；CLI 的輸出不變。
+
+### 改善
+
+- `speclink workflow-config set --help` 的說明寫出空值會把 `locale` 與 `spec_locale` 設回未設定。
+- SDK 文件與動詞契約文件列出 `--json` 輸出裡使用 snake_case 的欄位，這些欄位是凍結的契約，不會改名。
+
 ## 0.13.1（2026-11-20）
 
 ### 修正

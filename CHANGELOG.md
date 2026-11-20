@@ -1,6 +1,22 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.14.0 (2026-11-20)
+
+### New features
+
+- `@speclink/engine` now exports `commandNames`, a frozen list of every command name that the `beforeCommand` hook can get. Use it in a test to check that your permission table covers each command.
+- A failure of `engine.exportScope` or `host.importScope` can now have a `reason` property with a stable code, such as `no_spec_folder` or `scope_not_empty`. Your host no longer needs to match the start of the message.
+
+### Fixes
+
+- In an embedded host, the `path` in the `--json` output of `new artifact` and `discuss promote` is now the store key (`changes/<name>/…`). Before, it started with `speclink/`. The CLI output does not change.
+
+### Improvements
+
+- `speclink workflow-config set --help` now tells that an empty value unsets `locale` and `spec_locale`.
+- The SDK document and the verb contract now list the `--json` fields that use snake_case. These fields are a frozen contract and keep their names.
+
 ## 0.13.1 (2026-11-20)
 
 ### Fixes
