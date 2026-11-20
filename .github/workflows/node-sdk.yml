@@ -14,6 +14,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/node-sdk.yml'
+  # 手動觸發：一次 push 改動超過 300 個檔案時，GitHub 不比對 paths，這個
+  # workflow 不會自己跑；這時從 Actions 頁面或 gh workflow run 補跑。
+  workflow_dispatch:
   # 同檔雙角色（設計 D1）：push／PR 是 CI 驗證（無 version，佔位版號打包），
   # release.yml 以 workflow_call 帶 tag 版重用同一份 build/pack，蓋章後的
   # npm-tarballs artifact 因屬同一 workflow run 而能被 caller 的後續 job 下載。
