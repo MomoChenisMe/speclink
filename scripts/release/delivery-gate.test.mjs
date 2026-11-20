@@ -757,6 +757,29 @@ test('node-sdk.yml 可被 release 管線重用，且版號蓋章不經字串內�
   const packStep = requireStep(pack, [/name: Pack the main package/], 'node-sdk.yml package job：打包步驟');
   assert.match(packStep, /tar -tzf[\s\S]{0,200}binding\.js/, 'node-sdk.yml：打包後須斷言主套件 tarball 含 binding.js');
   assert.match(packStep, /npm\/\*\/\*\.tgz[\s\S]{0,300}\\\.node/, 'node-sdk.yml：打包後須逐一斷言子套件 tarball 含 .node');
+
+  // 打包好的主套件要通過使用端檢查（node-sdk-release spec「打包好的主套件通過使用端檢查」；
+  // 設計決策六）：排在打包之後、上傳之前，沒有執行條件，push／PR／release 都跑。以步驟自己
+  // 的 run: 鍵錨定（行首 8 格縮排）：步驟上方的註解會被切進前一個步驟，被註解掉的 run 行
+  // 也不算數。
+  const consumerStep = requireStep(
+    pack,
+    [/^ {8}run:[^\n]*npm-engine-consumer-check\.mjs/m],
+    'node-sdk.yml package job：使用端檢查步驟',
+  );
+  const iConsumer = pack.indexOf(consumerStep);
+  const iUpload = requireIndex(pack, 'name: Upload npm tarballs', 'node-sdk.yml package job');
+  assert.ok(iPack < iConsumer, 'node-sdk.yml：使用端檢查須排在打包步驟之後');
+  assert.ok(iConsumer < iUpload, 'node-sdk.yml：使用端檢查須排在上傳 npm tarballs 之前，失敗時才不產出可發佈的 tarball');
+  assert.doesNotMatch(consumerStep, /^ {8}if:/m, 'node-sdk.yml：使用端檢查不得帶 if 條件（push／PR／release 都要跑）');
+  assert.doesNotMatch(pack, /^ {4}if:/m, 'node-sdk.yml：package job 不得帶 if 條件，否則整個 job（含使用端檢查）可以被跳過');
+  // 步驟在、但失敗不擋的三種寫法：continue-on-error、run 行尾接 ||、另一個 run: 蓋掉檢查。
+  assert.doesNotMatch(consumerStep, /continue-on-error/, 'node-sdk.yml：使用端檢查不得設 continue-on-error');
+  const runLines = consumerStep.match(/^ {8}run:.*$/gm);
+  assert.equal(runLines.length, 1, 'node-sdk.yml：使用端檢查步驟只能有一個 run:');
+  assert.doesNotMatch(runLines[0], /\|\||;|run:\s*[|>]/, 'node-sdk.yml：使用端檢查的 run 須是單一指令，不得接 ||、; 或改成多行區塊');
+  assert.match(runLines[0], /--main\s/, 'node-sdk.yml：使用端檢查須以 --main 給主套件 tarball');
+  assert.match(runLines[0], /--platform\s/, 'node-sdk.yml：使用端檢查須以 --platform 給平台子套件 tarball');
 });
 
 test('release.yml 的 engine 三 job：版號前置把關、重用建置、發布冪等且子套件先發', () => {

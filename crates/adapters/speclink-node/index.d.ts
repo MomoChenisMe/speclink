@@ -521,7 +521,7 @@ export interface Host {
    *
    * ```ts
    * // Express: mount it before any body parser, so the body is the raw bytes.
-   * app.all('/api/speclink/v1/*', express.raw({ type: '*/*', limit: '4mb' }), async (req, res, next) => {
+   * app.all('/api/speclink/v1/*', express.raw({ type: '*\/*', limit: '4mb' }), async (req, res, next) => {
    *   const identity = await verifyToken(req.headers.authorization) // yours; null when invalid
    *   const [path, query] = req.originalUrl.split('?')
    *   const answer = await host.handleRequest(

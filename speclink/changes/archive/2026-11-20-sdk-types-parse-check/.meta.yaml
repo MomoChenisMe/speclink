@@ -1,0 +1,52 @@
+schema: spec-driven
+created: 2026-11-20T10:41:19+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-4
+started_at: 2026-11-20T10:48:06+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-20T11:36:47+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_rounds: 2
+reviewed_commit: 1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd
+reviewed_scope:
+  - path: .github/workflows/node-sdk.yml
+    hash: b547c3f90ec7a3cf70d8b93dfd19c8c77b7b9a677d91fa5eedd427fb9649d493
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 9bec29b14340bf38577359102e4bd36dfa8e17c3f378d49dd9b53a16effb6575
+  - path: crates/adapters/speclink-node/package-lock.json
+    hash: 0e8d9a0c3e2cc0cdae011d03ea0a361b7f3856c41ec1fc5da8bdb8e667406589
+  - path: crates/adapters/speclink-node/package.json
+    hash: 6809274c30b76d6033ed9137939560abd4252fc73a0d839c5617dcf441f1d5e6
+  - path: scripts/npm/npm-engine-consumer-check.mjs
+    hash: 129d62349058923497d831eec92eee0fb42f211f886bf8edea5a25eaea6a2dc5
+  - path: scripts/npm/npm-engine-consumer-check.test.mjs
+    hash: fbce727055fae60200a58ce2134bcbd2a3c8995e597d4da16aa8ed4ab1fdf44f
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: 149a838ab431a4d7d5928fa38480d6ef8b69bf9fda682013e7b4b95e620d3dce
+verified_at: 2026-11-20T11:36:47+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_rounds: 2
+verified_commit: 1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd
+verified_scope:
+  - path: .github/workflows/node-sdk.yml
+    hash: b547c3f90ec7a3cf70d8b93dfd19c8c77b7b9a677d91fa5eedd427fb9649d493
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 9bec29b14340bf38577359102e4bd36dfa8e17c3f378d49dd9b53a16effb6575
+  - path: crates/adapters/speclink-node/package-lock.json
+    hash: 0e8d9a0c3e2cc0cdae011d03ea0a361b7f3856c41ec1fc5da8bdb8e667406589
+  - path: crates/adapters/speclink-node/package.json
+    hash: 6809274c30b76d6033ed9137939560abd4252fc73a0d839c5617dcf441f1d5e6
+  - path: scripts/npm/npm-engine-consumer-check.mjs
+    hash: 129d62349058923497d831eec92eee0fb42f211f886bf8edea5a25eaea6a2dc5
+  - path: scripts/npm/npm-engine-consumer-check.test.mjs
+    hash: fbce727055fae60200a58ce2134bcbd2a3c8995e597d4da16aa8ed4ab1fdf44f
+  - path: scripts/release/delivery-gate.test.mjs
+    hash: 149a838ab431a4d7d5928fa38480d6ef8b69bf9fda682013e7b4b95e620d3dce
+archived_at: 2026-11-20T11:38:52+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

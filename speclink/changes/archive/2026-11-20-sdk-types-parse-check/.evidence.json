@@ -1,0 +1,102 @@
+{
+  "version": 2,
+  "change": "sdk-types-parse-check",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫會失敗的測試（design 決策一、決策二、決策三、決策四）：新檔 scripts/npm/npm-engine-consumer-check.test.mjs，用 node:test 在暫存資料夾組出假套件（package/package.json、package/index.js、package/index.d.ts），以工作目錄設在暫存資料夾、只帶相對檔名的 tar 壓成 tgz，再以子程序執行 scripts/npm/npm-engine-consumer-check.mjs，子程序的工作目錄固定設為 repo 根（typescript 從那裡解析）。六個案例並行執行：(a) index.js 匯出 createEngine 與 agentTool、index.d.ts 兩者都有宣告，而且 package.json 的 optionalDependencies 指向 registry 上不存在的套件版本時，exit code 是 0、stdout 含套件名稱與匯出個數 2、傳入的 tgz 位元組不變；(b) index.d.ts 的區塊註解含 `'*/*'` 時，exit code 非零、stderr 第一行以 type check failed 開頭、含 TS1131 與 index.d.ts；(c) index.js 多匯出 commandNames 而 index.d.ts 沒有宣告時，exit code 非零、stderr 含 commandNames；(d) index.js 載入時拋錯時，exit code 非零、stderr 第一行以 load failed 開頭、不含 error TS；(e) 不給 --main 時 exit code 非零、stderr 點名 --main；(f) tgz 裡沒有 package/package.json 時 exit code 非零、stderr 點名那個 tgz。每個案例結束後斷言系統暫存資料夾裡沒有腳本留下的使用端資料夾。驗證：node --test scripts/npm/npm-engine-consumer-check.test.mjs 失敗（腳本還不存在）",
+      "files": [
+        "scripts/npm/npm-engine-consumer-check.test.mjs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 1.1，交付使用端檢查腳本 scripts/npm/npm-engine-consumer-check.mjs：收 --main（必填）與 --platform（選填）；照決策二把每個 tarball 複製進暫存的使用端資料夾、以相對檔名解開、搬到 node_modules 下由 package.json 的 name 決定的位置；照決策三起 Node 子程序載入主套件、取得匯出的鍵，產生具名匯入全部名稱的 TypeScript 檔；照決策四從執行當下的工作目錄解析 typescript，用目前的 Node 執行它的 tsc 入口，tsconfig 是 nodenext、strict、noEmit、skipLibCheck 為 false、types 為空陣列；結果與訊息照 design 的 Implementation Contract（load failed、type check failed 的第一行，用法錯誤的訊息，結束時一律刪掉暫存資料夾）。腳本不連線到 registry、不執行被檢查套件的安裝腳本。驗證：node --test scripts/npm/npm-engine-consumer-check.test.mjs 六個案例全綠",
+      "files": [
+        "scripts/npm/npm-engine-consumer-check.mjs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 先寫會失敗的守門測試（design 決策六）：在 scripts/release/delivery-gate.test.mjs 既有的 node-sdk.yml 測試加上三個斷言——package 工作裡恰有一個呼叫 npm-engine-consumer-check.mjs 的步驟、它的位置在 Pack the main package 步驟之後、在 Upload npm tarballs 步驟之前；另斷言這個步驟沒有 if 條件，並同時帶 --main 與 --platform 兩個參數。驗證：node --test scripts/release/delivery-gate.test.mjs 對這個測試失敗",
+      "files": [
+        "scripts/release/delivery-gate.test.mjs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 實作 2.1，交付「打包好的主套件通過使用端檢查」的 workflow 步驟：crates/adapters/speclink-node/package.json 的開發相依加上 typescript（^5.7.0），並更新 crates/adapters/speclink-node/package-lock.json；.github/workflows/node-sdk.yml 的 package 工作在打包步驟之後、上傳步驟之前新增一個沒有執行條件的步驟，以該工作的預設工作目錄執行腳本，--main 給工作目錄下的主套件 tgz、--platform 給 npm/linux-x64-gnu 底下的 tgz，步驟上方以註解寫明它擋的是哪三種錯。驗證：node --test scripts/release/delivery-gate.test.mjs 全綠；npm --prefix crates/adapters/speclink-node ci 成功，且 crates/adapters/speclink-node/package.json 的 files 清單不變（typescript 不進發佈的套件）",
+      "files": [
+        ".github/workflows/node-sdk.yml",
+        "crates/adapters/speclink-node/package-lock.json",
+        "crates/adapters/speclink-node/package.json"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 修正 3.1（design 決策五）：crates/adapters/speclink-node/index.d.ts 裡 Host.handleRequest 的 Express 範例，`'*/*'` 改成 `'*\\/*'`，其餘內容不動。重新打包主套件後再執行 3.1 的檢查。驗證：exit code 是 0，stdout 的匯出個數是 7；git status 確認預演產生的 tgz 與 npm 資料夾都被 .gitignore 忽略、沒有進工作樹的變更清單，然後刪掉它們",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7VDEPQ12SXRWKEDGQB0W18N",
+      "taskDesc": "1.1 先寫會失敗的測試（design 決策一、決策二、決策三、決策四）：新檔 scripts/npm/npm-engine-consumer-check.test.mjs，用 node:test 在暫存資料夾組出假套件（package/package.json、package/index.js、package/index.d.ts），以工作目錄設在暫存資料夾、只帶相對檔名的 tar 壓成 tgz，再以子程序執行 scripts/npm/npm-engine-consumer-check.mjs，子程序的工作目錄固定設為 repo 根（typescript 從那裡解析）。六個案例並行執行：(a) index.js 匯出 createEngine 與 agentTool、index.d.ts 兩者都有宣告，而且 package.json 的 optionalDependencies 指向 registry 上不存在的套件版本時，exit code 是 0、stdout 含套件名稱與匯出個數 2、傳入的 tgz 位元組不變；(b) index.d.ts 的區塊註解含 `'*/*'` 時，exit code 非零、stderr 第一行以 type check failed 開頭、含 TS1131 與 index.d.ts；(c) index.js 多匯出 commandNames 而 index.d.ts 沒有宣告時，exit code 非零、stderr 含 commandNames；(d) index.js 載入時拋錯時，exit code 非零、stderr 第一行以 load failed 開頭、不含 error TS；(e) 不給 --main 時 exit code 非零、stderr 點名 --main；(f) tgz 裡沒有 package/package.json 時 exit code 非零、stderr 點名那個 tgz。每個案例結束後斷言系統暫存資料夾裡沒有腳本留下的使用端資料夾。驗證：node --test scripts/npm/npm-engine-consumer-check.test.mjs 失敗（腳本還不存在）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd",
+      "touchedFiles": [
+        "scripts/npm/npm-engine-consumer-check.test.mjs"
+      ],
+      "recordedAt": "2026-11-20T02:50:54Z"
+    },
+    {
+      "taskId": "tsk_01M7VDEPQ3T2AXGR1HHAC2DVAT",
+      "taskDesc": "1.2 實作 1.1，交付使用端檢查腳本 scripts/npm/npm-engine-consumer-check.mjs：收 --main（必填）與 --platform（選填）；照決策二把每個 tarball 複製進暫存的使用端資料夾、以相對檔名解開、搬到 node_modules 下由 package.json 的 name 決定的位置；照決策三起 Node 子程序載入主套件、取得匯出的鍵，產生具名匯入全部名稱的 TypeScript 檔；照決策四從執行當下的工作目錄解析 typescript，用目前的 Node 執行它的 tsc 入口，tsconfig 是 nodenext、strict、noEmit、skipLibCheck 為 false、types 為空陣列；結果與訊息照 design 的 Implementation Contract（load failed、type check failed 的第一行，用法錯誤的訊息，結束時一律刪掉暫存資料夾）。腳本不連線到 registry、不執行被檢查套件的安裝腳本。驗證：node --test scripts/npm/npm-engine-consumer-check.test.mjs 六個案例全綠",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd",
+      "touchedFiles": [
+        "scripts/npm/npm-engine-consumer-check.mjs"
+      ],
+      "recordedAt": "2026-11-20T02:51:59Z"
+    },
+    {
+      "taskId": "tsk_01M7VDEPQ336MH619BZ0TPY7ZC",
+      "taskDesc": "2.1 先寫會失敗的守門測試（design 決策六）：在 scripts/release/delivery-gate.test.mjs 既有的 node-sdk.yml 測試加上三個斷言——package 工作裡恰有一個呼叫 npm-engine-consumer-check.mjs 的步驟、它的位置在 Pack the main package 步驟之後、在 Upload npm tarballs 步驟之前；另斷言這個步驟沒有 if 條件，並同時帶 --main 與 --platform 兩個參數。驗證：node --test scripts/release/delivery-gate.test.mjs 對這個測試失敗",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd",
+      "touchedFiles": [
+        "scripts/release/delivery-gate.test.mjs"
+      ],
+      "recordedAt": "2026-11-20T02:56:26Z"
+    },
+    {
+      "taskId": "tsk_01M7VDEPQ3JYG4YX9759WK0QET",
+      "taskDesc": "2.2 實作 2.1，交付「打包好的主套件通過使用端檢查」的 workflow 步驟：crates/adapters/speclink-node/package.json 的開發相依加上 typescript（^5.7.0），並更新 crates/adapters/speclink-node/package-lock.json；.github/workflows/node-sdk.yml 的 package 工作在打包步驟之後、上傳步驟之前新增一個沒有執行條件的步驟，以該工作的預設工作目錄執行腳本，--main 給工作目錄下的主套件 tgz、--platform 給 npm/linux-x64-gnu 底下的 tgz，步驟上方以註解寫明它擋的是哪三種錯。驗證：node --test scripts/release/delivery-gate.test.mjs 全綠；npm --prefix crates/adapters/speclink-node ci 成功，且 crates/adapters/speclink-node/package.json 的 files 清單不變（typescript 不進發佈的套件）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd",
+      "touchedFiles": [
+        ".github/workflows/node-sdk.yml",
+        "crates/adapters/speclink-node/package-lock.json",
+        "crates/adapters/speclink-node/package.json"
+      ],
+      "recordedAt": "2026-11-20T02:57:34Z"
+    },
+    {
+      "taskId": "tsk_01M7VDEPQ3ZXV8J8BHEQC786ZR",
+      "taskDesc": "3.2 修正 3.1（design 決策五）：crates/adapters/speclink-node/index.d.ts 裡 Host.handleRequest 的 Express 範例，`'*/*'` 改成 `'*\\/*'`，其餘內容不動。重新打包主套件後再執行 3.1 的檢查。驗證：exit code 是 0，stdout 的匯出個數是 7；git status 確認預演產生的 tgz 與 npm 資料夾都被 .gitignore 忽略、沒有進工作樹的變更清單，然後刪掉它們",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts"
+      ],
+      "recordedAt": "2026-11-20T02:59:42Z"
+    }
+  ]
+}

@@ -172,6 +172,14 @@ jobs:
               || { echo "::error::子套件 tarball $tgz 缺 .node（napi artifacts 沒分配到二進位）"; exit 1; }
           done
 
+      # 使用端檢查（node-sdk-release spec「打包好的主套件通過使用端檢查」）：把打包好的
+      # 主套件與 Linux x64 子套件解開成使用端的 node_modules，擋下三種錯——套件載入不了、
+      # 型別定義檔編譯不過（語法或型別錯誤，不開 skipLibCheck）、執行期的匯出在型別定義檔
+      # 裡沒有宣告。沒有執行條件，push／PR／release 都跑；失敗時後面的上傳不執行。
+      # 不連 registry，所以 release 蓋上還沒發佈的版號也照常檢查。
+      - name: Check the packed main package as a consumer
+        run: node ../../../scripts/npm/npm-engine-consumer-check.mjs --main ./*.tgz --platform npm/linux-x64-gnu/*.tgz
+
       - name: Upload npm tarballs
         uses: actions/upload-artifact@v4
         with:
