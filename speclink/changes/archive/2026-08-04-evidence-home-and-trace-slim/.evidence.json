@@ -114,7 +114,7 @@
       "taskDesc": "1.1 依規格需求「task done 寫入逐任務 evidence」的三個 scenario，於 crates/speclink-core/src/tasks.rs 測試模組新增失敗測試：task done 後 `.evidence.json` 出現在 change 目錄且 entry 欄位齊全、change 目錄缺席時回退讀取 `.speclink/touched/<change>.json`（v1 與 v2 皆可讀）、寫入一律落 change 目錄。完成時 cargo test -p speclink-core 出現對應紅燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-core/src/tasks.rs"
       ],
@@ -130,7 +130,7 @@
       "taskDesc": "1.2 依設計「evidence 檔的家：change 目錄 dot 檔與雙位置相容讀取」實作 TouchedRecord 的讀寫路徑（crates/speclink-core/src/tasks.rs）：serde 結構不變、讀取 change 目錄優先缺席回退舊路徑、寫入落新位置。完成時 1.1 測試全綠，crates/speclink-host/src/drift.rs 等既有讀取端經回退路徑行為不變。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-core/src/workspace.rs"
       ],
@@ -146,7 +146,7 @@
       "taskDesc": "2.1 依規格需求「archive trace 注入與本地 evidence gate」的四個 scenario，於 crates/speclink-core/src/archive.rs 測試模組新增失敗測試：trace 僅 source 與 updated 兩欄且 ADDED／MODIFIED 一律注入（含 evidence 缺席但 waive 放行的情境）、evidence 缺席拒絕且訊息點名 --waive-evidence 並附完整重跑指令、stale 拒絕列出不符 basis 項且未變項不列。完成時對應紅燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-core/src/archive.rs"
       ],
@@ -162,7 +162,7 @@
       "taskDesc": "2.2 依設計「@trace 一律注入：source 與 updated 兩欄」實作 trace 瘦身（crates/speclink-core/src/archive.rs）：trace_block 移除 code 清單、注入不再依檔案清單決定、archive 的 git dirty worktree fallback 掃描整段移除（tasks 模組的任務證據髒檔歸屬不動）——被移除需求「archive trace 由 evidence 建立」的檔案清單聚合語意至此正式退場。完成時 2.1 的 trace 相關測試綠燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-core/src/command/mod.rs"
       ],
@@ -178,7 +178,7 @@
       "taskDesc": "2.3 依設計「evidence gate 內建 core archive 與 --waive-evidence 旗標」實作 gate：VerifyBundle 產生與 staleness 判定自 crates/speclink-host/src/evidence.rs 下沉 speclink-core，archive 流程於既有守門序列插入 evidence gate（缺席拒絕、stale 拒絕列不符項、ArchiveOptions.waive_evidence 放行），拒絕訊息含原因、旗標名與完整重跑指令；host 的 check_archive_evidence 改為委派 core 同一實作且對外符號與拒絕型別不變。完成時 2.1 全綠、host 委派層單元測試綠燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-core/src/drift.rs",
         "crates/speclink-core/src/lib.rs",
@@ -197,7 +197,7 @@
       "taskDesc": "2.4 呼叫端與 wire contract 對齊：crates/speclink-cli 新增 --waive-evidence 旗標、crates/speclink-protocol 與 crates/speclink-remote 的 archive 選項新增 waiveEvidence 欄位（serde default false、camelCase）、apps/desktop/core 與 apps/desktop/src-tauri 及 crates/speclink-node 呼叫端帶預設值。完成時 --json payload 斷言 waiveEvidence 欄位存在且為 camelCase，remote_verb_parity 測試綠燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "apps/desktop/src-tauri/src/remote.rs",
         "crates/speclink-cli/src/commands.rs",
@@ -222,7 +222,7 @@
       "taskDesc": "3.1 依設計「bulk 整潔工作樹守門移除」移除 crates/speclink-cli/src/commands.rs 的 bulk archive dirty worktree 前置檢查（任務完成度與過期 delta 預檢不動）。完成時 dirty worktree 下 bulk archive 不再被整潔要求擋下的 CLI 測試綠燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-cli/tests/it/main.rs",
         "crates/speclink-cli/tests/it/archive_evidence_gate.rs"
@@ -239,7 +239,7 @@
       "taskDesc": "3.2 依設計「技能文字：刪除步驟消失與路徑更新」實作規格需求「trace 與 evidence gate 的技能敘述」，承接被移除的「touched 記錄的刪除排在封存與提交之後」與「@trace 來源敘述與引擎行為一致」兩需求的敘述義務：改寫 crates/speclink-core/assets/skills/archive.md（移除 touched 刪除步驟與整潔工作樹要求、@trace 敘述改為兩欄一律注入、補 evidence gate 拒絕情形與 --waive-evidence 放行時機）與 crates/speclink-core/assets/skills/commit.md（檔案歸屬來源改指 change 目錄 `.evidence.json` 並敘明該檔歸入該 change 的提交）。完成時渲染產出無刪除與整潔要求殘留（內容審閱），render_golden 快照同批更新。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "AGENTS.md",
         "CLAUDE.md",
@@ -265,7 +265,7 @@
       "taskDesc": "3.3 同批更新 crates/speclink-core/tests/render_golden.rs 與 crates/speclink-cli/tests/ 受影響整合測試（trace 兩欄輸出、gate 拒絕輸出、bulk 行為，含 --no-color 人眼斷言與 fs／remote 對照）。完成時 cargo test -p speclink-core --test it 與 speclink-cli 整合測試全綠，變更僅限提案相容性影響段列明的刻意項目。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "crates/speclink-cli/tests/it/archive_merge_gate.rs",
         "crates/speclink-cli/tests/it/archive_readiness_gate.rs",
@@ -284,7 +284,7 @@
       "taskDesc": "4.1 桌面清單斷言：apps/desktop/core 測試釘住 change 的 artifact 清單與檢視不含 `.evidence.json`（比照 .openspec.yaml 的 dot 檔過濾）。完成時 desktop-core cargo test 綠燈。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "e902eaa422cbe7858034f82f65e1488a686abb4f",
+      "headCommit": "ae871fd59000e282d92f1defa61a1a62ebcab7c2",
       "touchedFiles": [
         "apps/desktop/core/src/manage.rs",
         "apps/desktop/core/src/query.rs"
@@ -301,7 +301,7 @@
       "taskDesc": "5.3 帳瘦身（承接被移除需求「VerifyBundle 固定驗證基準」與「evidence 的 stale 判定」的拆除義務）：先於 crates/speclink-core/src/tasks.rs 寫失敗測試「含 basisDigests 的既有 v2 記錄仍可讀且 all_files 不變、新寫入的 entry 無 basisDigests 欄位」，再實作——EvidenceEntry 移除 basis_digests 欄位、complete() 不再寫入（current_basis_digests 函式保留供 drift 現場計算）；刪除 crates/speclink-core/src/evidence.rs 與 crates/speclink-host/src/evidence.rs（含兩側 lib.rs 模組註冊與其單元測試）。完成時 cargo test -p speclink-core -p speclink-host 全綠。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "a4c97bdda8a212629bb29628c2d8659ac483530c",
+      "headCommit": "4c16d4b109c1c116e75d2c6c5084034f2b3e9053",
       "touchedFiles": [
         "crates/speclink-core/src/inprogress.rs",
         "crates/speclink-host/src/lib.rs"

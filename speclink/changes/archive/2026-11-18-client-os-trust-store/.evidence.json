@@ -47,7 +47,7 @@
       "taskDesc": "1.1 先寫失敗的守門測試：在 crates/protocol/speclink-remote/src/http.rs 的測試區塊掃描這個 crate 的 src 目錄，斷言 `AgentBuilder::new` 字樣只出現在 http 模組。同時用全 workspace 搜尋（crates 與 apps/desktop 兩處的 Rust 原始碼與 Cargo.toml，搜尋 ureq 與 reqwest）確認 speclink-remote 以外沒有自己建立 HTTP 用戶端的地方，並把搜尋的寫法與結果記在測試的註解。驗證：`cargo test -p speclink-remote http::` 這時失敗，失敗訊息列出 client.rs、events.rs、device.rs、oauth.rs。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ea1a8e04ac9d8f09b4a8b9562b039ea96334c89e",
+      "headCommit": "933300e6f9960e119c2944b6d53c5c0dffd7fb57",
       "touchedFiles": [
         "crates/protocol/speclink-remote/src/lib.rs",
         "crates/protocol/speclink-remote/src/http.rs"
@@ -59,7 +59,7 @@
       "taskDesc": "1.2 依 D1 共用的用戶端建立函式放在 speclink-remote 的 http 模組：新增回傳 `ureq::AgentBuilder` 的函式（這一步先回傳 ureq 預設的建立器），並把六處建立用戶端的地方（crates/protocol/speclink-remote/src/client.rs、events.rs 的兩處、device.rs 的兩處、oauth.rs）改成呼叫它；各處原有的逾時數值與 oauth.rs 的不跟隨轉址維持不變。驗證：1.1 的守門測試通過，`cargo test -p speclink-remote` 全部通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ea1a8e04ac9d8f09b4a8b9562b039ea96334c89e",
+      "headCommit": "933300e6f9960e119c2944b6d53c5c0dffd7fb57",
       "touchedFiles": [
         "crates/protocol/speclink-remote/src/client.rs",
         "crates/protocol/speclink-remote/src/device.rs",
@@ -73,7 +73,7 @@
       "taskDesc": "2.1 先寫失敗的測試（D5 測試用函式層注入的額外信任根）：在 crates/protocol/speclink-remote/Cargo.toml 的 dev-dependencies 加 rcgen，在 http 模組的測試區塊用 rcgen 產生測試 CA 與一張對象是 127.0.0.1 的憑證（含 serverAuth 延伸金鑰用途、IP SAN、有效期不超過 825 天），用 rustls 的伺服器端在本機隨機埠起 HTTPS 服務。兩個測試：信任根含測試 CA 時請求成功並讀到回應內容；信任根不含測試 CA 時請求失敗。驗證：`cargo test -p speclink-remote http::` 這時因為接受額外信任根的函式還不存在而編譯失敗或測試失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ea1a8e04ac9d8f09b4a8b9562b039ea96334c89e",
+      "headCommit": "933300e6f9960e119c2944b6d53c5c0dffd7fb57",
       "touchedFiles": [
         "Cargo.lock",
         "crates/protocol/speclink-remote/Cargo.toml"
@@ -85,7 +85,7 @@
       "taskDesc": "6.1 依 D6 使用者文件寫明信任規則，中英兩版同步：docs/configuration.md 與 docs/configuration.zh-TW.md 的「遠端專案」一節寫明用戶端信任作業系統的信任庫、組織的 CA 要裝進系統、沒有另外的 CA 設定；docs/remote-getting-started.md 與 docs/remote-getting-started.zh-TW.md 的連線失敗說明加上憑證被拒絕時的訊息與處理方法；docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的 HTTP 入口一節告訴整合者用戶端如何檢查宿主的憑證。驗證：逐一對照規格 delta 的訊息文字與文件引用的訊息一致；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ea1a8e04ac9d8f09b4a8b9562b039ea96334c89e",
+      "headCommit": "933300e6f9960e119c2944b6d53c5c0dffd7fb57",
       "touchedFiles": [
         "docs/configuration.md",
         "docs/configuration.zh-TW.md",

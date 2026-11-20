@@ -11,7 +11,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 16
 reviewed_rounds: 4
-reviewed_commit: 7642ae7c48ebec217ce555b5d58edb214ee9cdf6
+reviewed_commit: 96a1ea7ca2ab42a66f9f98e7f93ceae1566b9513
 reviewed_scope:
   - path: apps/desktop/core/src/cache.rs
     hash: 32178dd5599b3bf4bf4547df6d38363ef81a30fa9ba6fc17715b248fb1cb15d5
@@ -178,7 +178,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 16
 verified_rounds: 4
-verified_commit: 7642ae7c48ebec217ce555b5d58edb214ee9cdf6
+verified_commit: 96a1ea7ca2ab42a66f9f98e7f93ceae1566b9513
 verified_scope:
   - path: apps/desktop/core/src/cache.rs
     hash: 32178dd5599b3bf4bf4547df6d38363ef81a30fa9ba6fc17715b248fb1cb15d5

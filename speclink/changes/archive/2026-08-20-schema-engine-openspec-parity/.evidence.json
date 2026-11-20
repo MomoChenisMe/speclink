@@ -51,7 +51,7 @@
       "taskDesc": "1.1 先寫紅測（單一正典載入）：內建 schema 與正典 YAML 的欄位一致——spec_driven() 回傳的 name、description、apply 區塊與四個 artifact 的中繼資料同於正典 YAML；四個 artifact 的 template 內容與對應內嵌 template 資產逐字相同。驗證：cargo test -p speclink-core 出現預期紅燈",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "9108066939f9809f3239d2ac96ede51eb95587c4",
+      "headCommit": "8a8ba41f37a65be444a2f805fdbbf29631248d68",
       "touchedFiles": [
         "crates/speclink-core/src/schema.rs"
       ],
@@ -62,7 +62,7 @@
       "taskDesc": "1.2 實作 D1 單一正典載入：spec_driven() 保名保簽名，函式體改為 OnceLock 快取「解析內嵌 fork.schema.yaml ＋依 template 檔名附掛內嵌 template」；刪除手寫的內建定義；builtin_template() 改查快取結果。驗證：1.1 測試轉綠且 cargo test -p speclink-core 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "9108066939f9809f3239d2ac96ede51eb95587c4",
+      "headCommit": "8a8ba41f37a65be444a2f805fdbbf29631248d68",
       "touchedFiles": [
         "crates/speclink-cli/tests/it/main.rs",
         "crates/speclink-cli/tests/it/schema_commands.rs"
@@ -74,7 +74,7 @@
       "taskDesc": "2.2 實作 D2 飄移收斂：以 crates/speclink-core/assets/schema/spec-driven/specs.instruction.md 全文整檔覆蓋正典 YAML 的 specs instruction 區塊（其餘四份已逐位元組相同）；刪除五份 instruction 資產檔與其 include_str! 常數；既有的雙份標記同步測試改為只釘正典 YAML。驗證：2.1 轉綠；speclink instructions specs 的 instruction 欄位與改動前輸出逐字相同（改動前先存快照檔比對）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "9108066939f9809f3239d2ac96ede51eb95587c4",
+      "headCommit": "8a8ba41f37a65be444a2f805fdbbf29631248d68",
       "touchedFiles": [
         "crates/speclink-core/assets/schema/spec-driven/apply.instruction.md",
         "crates/speclink-core/assets/schema/spec-driven/design.instruction.md",
@@ -90,7 +90,7 @@
       "taskDesc": "4.2 實作 D4 旗標與 config 寫入：toolchain.rs 落實三旗標行為；validate 本體補 template 檔存在檢查（自訂查 templates 目錄、內建查內嵌附掛表）；config.rs 新增 byte-preserving 的 schema 鍵 setter（寫後重讀驗證，無法解析的 config.yaml fail closed 拒寫且訊息明說骨架已建、預設未設）。驗證：4.1 轉綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "9108066939f9809f3239d2ac96ede51eb95587c4",
+      "headCommit": "8a8ba41f37a65be444a2f805fdbbf29631248d68",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/toolchain.rs",
         "crates/speclink-core/src/config.rs"
@@ -102,7 +102,7 @@
       "taskDesc": "6.1 全量回歸與孤兒清理：cargo test --workspace 全綠；grep 確認無殘留對已刪 instruction 資產檔的引用；speclink validate schema-engine-openspec-parity 通過。驗證：三項指令輸出全部通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "9108066939f9809f3239d2ac96ede51eb95587c4",
+      "headCommit": "8a8ba41f37a65be444a2f805fdbbf29631248d68",
       "touchedFiles": [
         "docs/assets/SCR-20260819-tkpq.png"
       ],

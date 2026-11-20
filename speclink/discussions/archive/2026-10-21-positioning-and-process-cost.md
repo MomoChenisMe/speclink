@@ -147,7 +147,7 @@ Prior discussions: cross-station-staleness, quality-gate-speed, code-review-stag
 **Position**: 改名細節另開討論；使用者要 `speclink update` 自動偵測舊資料夾並改名，本輪只記下這個起點與初步條件，由新討論定案。
 - 偵測條件：`.speclink.yaml` 沒有啟用的 `spec_dir` 行、有 `openspec/`、沒有 `speclink/`；init 只在非預設時寫入 spec_dir（workspace/init.rs:145），所以這個組合就是舊版預設佈局
 - 不動的情況：`.speclink.yaml` 明寫 spec_dir（含 `openspec`）視為使用者自選；遠端模式沒有本機規格資料夾；沒有 `.speclink.yaml` 的純 OpenSpec 專案走 init 匯入，不走 update
-- 改名時同時寫入 `spec_dir: speclink`：spec_dir 從第一個 commit（5d7fa5c8，2026-07-01）就有，隊友的舊版 CLI 也找得到新資料夾
+- 改名時同時寫入 `spec_dir: speclink`：spec_dir 從第一個 commit（3e45445e，2026-07-01）就有，隊友的舊版 CLI 也找得到新資料夾
 - 初步的暫緩條件：有進行中的 worktree（分支裡仍是 openspec/）、openspec/ 有未提交的修改；暫緩時比照 `.speclink.remote.yaml` 前例，每次印一行警告與要跑的指令
 - update 改不到使用者自己的腳本、CI 設定、.gitignore 裡的 openspec/ 路徑，只能在改名後提醒
 **Ruled out**: 無

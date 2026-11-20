@@ -6,7 +6,7 @@ from_discussion: embedded-host-needs-2
 started_at: 2026-11-18T14:44:14+08:00
 started_by: MomoChen <momochenisme@gmail.com>
 branch: speclink/hook-read-function
-landed_commit: d910b892995648c87ea9ded620f4e2511b20d3e3
+landed_commit: 3444a41400bacb894f330597e07c31974edb6e39
 landed_at: 2026-11-18T15:01:33+08:00
 landed_by: MomoChen <momochenisme@gmail.com>
 reviewed_at: 2026-11-18T15:30:52+08:00
@@ -14,7 +14,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 10
 reviewed_rounds: 3
-reviewed_commit: d910b892995648c87ea9ded620f4e2511b20d3e3
+reviewed_commit: 3444a41400bacb894f330597e07c31974edb6e39
 reviewed_scope:
   - path: crates/adapters/speclink-node/__test__/handle-request.spec.ts
     hash: 749323dc63388dd9ce777777d5808403f72f7715c5ef956da4e55f866ebb7f6b
@@ -53,7 +53,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 10
 verified_rounds: 3
-verified_commit: d910b892995648c87ea9ded620f4e2511b20d3e3
+verified_commit: 3444a41400bacb894f330597e07c31974edb6e39
 verified_scope:
   - path: crates/adapters/speclink-node/__test__/handle-request.spec.ts
     hash: 749323dc63388dd9ce777777d5808403f72f7715c5ef956da4e55f866ebb7f6b

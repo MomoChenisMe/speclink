@@ -12,7 +12,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 15
 reviewed_rounds: 2
-reviewed_commit: c9d06e7e0177daf93efd38ee3401d44a0a234cb1
+reviewed_commit: 337815297c0759232c49019619efaee34592e454
 reviewed_scope:
   - path: apps/desktop/src-tauri/src/remote.rs
     hash: 888a506efc4c56354293d7337be7f631a4f980445fdef7b6c01d95ba0ffd236e
@@ -49,7 +49,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 15
 verified_rounds: 2
-verified_commit: c9d06e7e0177daf93efd38ee3401d44a0a234cb1
+verified_commit: 337815297c0759232c49019619efaee34592e454
 verified_scope:
   - path: apps/desktop/src-tauri/src/remote.rs
     hash: 888a506efc4c56354293d7337be7f631a4f980445fdef7b6c01d95ba0ffd236e

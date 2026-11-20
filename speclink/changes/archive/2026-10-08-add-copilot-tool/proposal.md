@@ -6,7 +6,7 @@
 - claude 版帶 Claude 專用的 frontmatter（`agent: Explore`、`disallowedTools`）與「Claude fork context」前言，而且建立變更、蓋章時把 agent 記成 `claude`。
 - Copilot CLI 的官方優先序是 `.github/skills` → `.agents/skills` → `.claude/skills`，所以同時勾 claude＋codex 的專案，Copilot CLI 會先吃到 codex 版。
 
-2026-07-02 把工具矩陣收回 claude＋codex（commit 9d67e7d1），當時每多一個工具就多一種指令檔格式。現在 Copilot 讀同一份 SKILL.md（Agent Skills 開放標準），多一個工具只多一個目錄與一個叫用前綴，代價低到值得收回該決定。
+2026-07-02 把工具矩陣收回 claude＋codex（commit dea45445），當時每多一個工具就多一種指令檔格式。現在 Copilot 讀同一份 SKILL.md（Agent Skills 開放標準），多一個工具只多一個目錄與一個叫用前綴，代價低到值得收回該決定。
 
 這個變更作用在 init（建立工作區）與 update（技能同步）兩個階段，影響所有在 init 或 desktop 選工具的使用者。
 

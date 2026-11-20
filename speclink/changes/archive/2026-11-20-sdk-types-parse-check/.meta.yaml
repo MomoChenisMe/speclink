@@ -11,7 +11,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 12
 reviewed_rounds: 2
-reviewed_commit: 1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd
+reviewed_commit: 9f373f91bae5c14c3298edc6f3f9297729f27821
 reviewed_scope:
   - path: .github/workflows/node-sdk.yml
     hash: b547c3f90ec7a3cf70d8b93dfd19c8c77b7b9a677d91fa5eedd427fb9649d493
@@ -32,7 +32,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 12
 verified_rounds: 2
-verified_commit: 1e973c4e5ad7d673f1feaa12fe6f368fc54bb6bd
+verified_commit: 9f373f91bae5c14c3298edc6f3f9297729f27821
 verified_scope:
   - path: .github/workflows/node-sdk.yml
     hash: b547c3f90ec7a3cf70d8b93dfd19c8c77b7b9a677d91fa5eedd427fb9649d493

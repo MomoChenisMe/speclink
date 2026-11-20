@@ -107,7 +107,7 @@
       "taskDesc": "2.1 （Red）依 D9 先改文件的守門，對應規格「中英文文件保持結構與事實對等」新增的圖解情境、「圖解以自帶樣式的 SVG 呈現」「使用者文件採用本機專案與遠端專案的用詞」與「官方 server 定位為示範與試用」：中英對照的檢查加上圖解的檔名序列（兩版相同、各自在自己語言的資料夾）、禁止 `Remote Store`、`Self-hosting`、`自架 server`、README 兩版有 `embedding` 與 `official-server` 兩個錨點且前者在前、沒有 `self-hosting`；新增圖解的檢查（兩個語言資料夾檔名相同、沒有 script、foreignObject 與外部資源、第一個繪圖元素是鋪滿的矩形、有 `aria-label`、每張圖被同語言的文件引用）；Remote 入門、Server 部署與 Server 備份與還原的兩個語言含各自語言的定位句。涉及 scripts/docs/docs-parity.test.mjs、scripts/docs/docs-figures.test.mjs、scripts/docs/remote-docs.test.mjs、scripts/docs/docs-links.test.mjs。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs`，新增的檢查失敗、既有的檢查照常通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "scripts/docs/docs-parity.test.mjs",
         "scripts/docs/remote-docs.test.mjs",
@@ -120,7 +120,7 @@
       "taskDesc": "3.1 依 D3 改寫 README 中英兩版，對應規格「使用者文件採漸進揭露與單一責任」修改後的內容與兩個新情境、「官方 server 定位為示範與試用」（移除的「官方 server 定位為參考實作而非唯一路徑」由它承接）與「使用者文件載明本地產物的純文字可攜性」修改後的一句：雙路徑段改用本機專案與遠端專案；「自架 server」換成 `embedding` 與 `official-server` 兩節，前者列出宿主要做的四件事並預留整體形態圖的引用，後者第一句是定位句並保留三種跑法；「文件」一節的分組與連結、畫面一覽的說明文字、「目前狀態」跟著改，並用一行連到專案能力狀態的已知缺口；說明本地產物可攜性的那一句改成遠端專案的正式規格由 Server 持有。兩版的 H2 錨點序列相同。涉及 README.md、README.zh-TW.md。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 中 README 的錨點、禁用說法與中英對照的檢查通過（圖的引用在 4.1 與 4.2 補上之前，連結檢查對 README 的那一項可以是紅的，並在完成說明註明）。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "README.md",
         "README.zh-TW.md"
@@ -132,7 +132,7 @@
       "taskDesc": "3.2 依 D4 改寫 Node SDK 文件中英兩版，對應規格「內嵌宿主的文件涵蓋宿主套件的對外介面」的三個情境：十三個章節依 D4 的順序；`createEngine` 只講本機資料夾；`createHost`、三個儲存函式與三項保證、合格測試、兩個掛鉤、`host.dispatch` 與 Agent 工具定義、`host.handleRequest` 與一條路由、登入方式的宣告、技能清單、自由欄位、匯出與匯入與大小上限都有說明與範例；移除 Store 物件、方法表與 `claim` 選配一節；預留兩張圖的引用。範例用到的每個名稱對照套件的型別宣告。涉及 docs/sdk-node.md、docs/sdk-node.zh-TW.md。驗證：先 `npm --prefix crates/adapters/speclink-node run build`，把「完整範例」存成暫存檔以 node 執行一次不丟錯；在兩個檔搜尋 `listChanges`、`writeArtifact` 與「31」個方法的說法沒有命中；中英對照的檢查通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/remote-getting-started.zh-TW.md",
         "docs/sdk-node.md",
@@ -147,7 +147,7 @@
       "taskDesc": "3.3 依 D5 改寫 Server 儲存後端文件與開發指南的 repo 結構表（中英兩版），對應規格「儲存接口的範例有專文說明」的兩個情境：標題改成儲存接口的範例；三個範例的位置、怎麼選、各自的資料表或檔案配置、一次提交的步驟、事件記錄、範例不做的事、換一種儲存要走備份與還原；移除契約版本、等級、能力清單與資料結構遷移的說明。內容對照三個範例 crate 的實作。涉及 docs/server-store-drivers.md、docs/server-store-drivers.zh-TW.md、docs/development.md、docs/development.zh-TW.md。驗證：文件裡列的資料表名稱與檔案名稱和範例的程式相同（逐一對照並在完成說明列出）；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的中英對照與連結檢查對這四個檔通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/configuration.md",
         "docs/configuration.zh-TW.md",
@@ -180,7 +180,7 @@
       "taskDesc": "3.4 依 D5 改寫 Server 部署與 Server 備份與還原文件（中英兩版），對應規格「示範用 server 的升級步驟有說明」的兩個情境與「官方 server 定位為示範與試用」的情境「營運文件開頭標明定位」：兩份文件第一個 H2 之前加定位句；部署文件改寫「參考實作」一節、預留共用宿主套件圖的引用、升級一節加從 0.12.0 以前升級的三個步驟（指令與預期的輸出）、拒絕啟動時的訊息與回退；備份文件加備份格式第 2 版、新版能檢查與還原第 1 版、範圍匯出下載的內容。訊息的文字對照示範用 server 實際印出的內容。涉及 docs/server-deployment.md、docs/server-deployment.zh-TW.md、docs/server-backup.md、docs/server-backup.zh-TW.md。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 中定位句、中英對照與發佈守門對部署文件的必要字串檢查通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/roadmap.zh-TW.md"
       ],
@@ -191,7 +191,7 @@
       "taskDesc": "3.7 依 D6 改寫專案能力狀態與專案路線圖（中英兩版），對應規格「已知缺口逐項列出」的兩個情境、「產品狀態以證據分類目前與規劃能力」修改後的列與「使用者面路線圖與內部交付順序分列」修改後的方向名稱：能力清單的列改成 Node SDK 與宿主套件、儲存接口的範例、示範用 server、Speclink Desktop 的遠端專案，證據連結指向存在的測試，查核日期兩版相同；本地與遠端對照照 CLI 的實際宣告重做，表頭說明量測對象；新增 `known-gaps` 一節，每項三欄，項目以 1.1 的盤點結果為準；路線圖把已完成的方向改寫、延後的項目各有落點。涉及 docs/product-status.md、docs/product-status.zh-TW.md、docs/roadmap.md、docs/roadmap.zh-TW.md。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的能力狀態表格、中英對照與連結檢查通過；1.1 的表裡每一條仍然成立的缺口都在 `known-gaps` 一節。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/roadmap.md",
         "docs/workflow.zh-TW.md"
@@ -203,7 +203,7 @@
       "taskDesc": "3.6 依 D5 改寫動詞與旗標的參考文件、工作流程與入門教學（中英兩版），對應規格「動詞參考文件涵蓋遠端可用的動詞與新增的路由」的兩個情境與「品質關卡蓋章效果與非成員錯誤碼的文件揭露」修改後的內容：模式分岔表的只限本機一列含 demo、不含 trace、change rank 與 plan --strict-overlap；列出 `evidence show`、`change landed`、自由欄位的四個動詞與兩個 `--field`、`list --json` 與 `show --json` 的新欄位、新的路由與事件的分類、匯入包的兩個版本；工作流程移除 `trace` 與 `change rank` 的「只限本機」、加上回報落地與遠端專案的 commit 只含程式碼、預留技能讀法圖的引用；入門教學只校正用詞與連到 README 新錨點的連結。涉及 docs/verb-contract.md、docs/verb-contract.zh-TW.md、docs/workflow.md、docs/workflow.zh-TW.md、docs/getting-started.md、docs/getting-started.zh-TW.md。驗證：先 `cargo build -p speclink-cli`，再跑 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`，「文件裡的指令存在於 CLI」的檢查沒有被略過並通過；動詞參考文件列的每個新動詞用 `speclink <動詞> --help` 確認存在。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/getting-started.md",
         "docs/getting-started.zh-TW.md",
@@ -216,7 +216,7 @@
       "taskDesc": "4.4 依 D8 重拍初次設定頁的截圖（中英各一張）：用既有的截圖腳本與程序，在示範用 server 的初次設定頁拍下新的儲存狀態；移除 PNG 的文字區塊與拍攝資訊；確認畫面裡沒有真實的帳號或金鑰。檔名與截圖清單不變。涉及 docs/assets/screenshots/en/server-setup.png、docs/assets/screenshots/zh-TW/server-setup.png。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的截圖檢查通過；兩張圖的儲存狀態只顯示種類與是否可用。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3e29183b6ca08e783a4f142e1031c956f062b274",
+      "headCommit": "9ad1efa8d3dbfdde1eb7ca33b4e259defd68c4f6",
       "touchedFiles": [
         "docs/assets/screenshots/en/server-setup.png",
         "docs/assets/screenshots/zh-TW/server-setup.png"
@@ -228,7 +228,7 @@
       "taskDesc": "5.2 依 D10 整理發版說明的素材並做最後檢查：把前二十個變更的相容性影響裡使用者要採取行動的項目寫進 design.md 的「發版說明的素材」一節；用 1.1 的盤點表逐列核對每一條文件影響都已落在文件裡；規格 user-documentation 這次新增與修改的每個情境都能指出對應的段落；在 README 與 docs 搜尋 Remote Store、Self-hosting、自架 server、團隊模式、主機套件、TeamStore 沒有命中。涉及 speclink/changes/docs-embedded-host/design.md。驗證：先 `cargo build -p speclink-cli`；`speclink validate docs-embedded-host` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "f5484747d923888e44c988c17fa1f16e7c6d7b16",
+      "headCommit": "d1134d17acf23e250a4b79ac57a80768e265f6ab",
       "touchedFiles": [
         "scripts/docs/docs-links.mjs",
         "scripts/docs/docs-links.test.mjs",

@@ -6,7 +6,7 @@ from_discussion: embedded-host-needs
 started_at: 2026-11-15T21:27:01+08:00
 started_by: MomoChen <momochenisme@gmail.com>
 branch: speclink/store-port-examples
-landed_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+landed_commit: 16db23804ba319e556ad63883752bed695d00959
 landed_at: 2026-11-15T22:22:56+08:00
 landed_by: MomoChen <momochenisme@gmail.com>
 reviewed_at: 2026-11-16T21:55:47+08:00
@@ -14,7 +14,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 9
 reviewed_rounds: 3
-reviewed_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+reviewed_commit: 16db23804ba319e556ad63883752bed695d00959
 reviewed_scope:
   - path: .github/workflows/ci.yml
     hash: 78d8053b9e3f09d0bba9119941886763341fc7d26a7a4718f30f539b5adbff10
@@ -93,7 +93,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 9
 verified_rounds: 3
-verified_commit: cb6852970340a7370a4f39d8e16c48cc1124c745
+verified_commit: 16db23804ba319e556ad63883752bed695d00959
 verified_scope:
   - path: .github/workflows/ci.yml
     hash: 78d8053b9e3f09d0bba9119941886763341fc7d26a7a4718f30f539b5adbff10

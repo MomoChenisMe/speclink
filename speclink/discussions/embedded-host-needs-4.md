@@ -20,7 +20,7 @@ Document rules:
 
 ## Context
 
-同一個導入規劃照設計實作了第一段，用的是 npm 上的 @speclink/engine 0.13.0，回報三項需求與四個觀察：F1 發佈的型別定義檔解析不了、F2 SDK 沒有匯出命令名稱的清單、F3 匯出與匯入的失敗沒有穩定的原因代碼；O1 --json 的欄位命名不一致、O2 new artifact 的 path 不是儲存的鍵、O3 空字串把 locale 設回未設定、O4 平台套件只在 macOS arm64 實跑過。來源文件已寫明需求與待確認的點，不需要先釐清需求（不跑 grill）；這份紀錄只談通用的內嵌宿主情境，不寫那個系統的名稱與內部細節。查證用 main（1e973c4e，index.d.ts 與 0.13.0 發佈的那一份逐位元相同）讀碼，加上在暫存資料夾安裝 0.13.0 搭配記憶體儲存實跑。相關的正式規格是 node-sdk、node-sdk-release、host-kit、host-runtime、command-runtime、verb-contract、workflow-config、change-analysis；沒有進行中的變更。
+同一個導入規劃照設計實作了第一段，用的是 npm 上的 @speclink/engine 0.13.0，回報三項需求與四個觀察：F1 發佈的型別定義檔解析不了、F2 SDK 沒有匯出命令名稱的清單、F3 匯出與匯入的失敗沒有穩定的原因代碼；O1 --json 的欄位命名不一致、O2 new artifact 的 path 不是儲存的鍵、O3 空字串把 locale 設回未設定、O4 平台套件只在 macOS arm64 實跑過。來源文件已寫明需求與待確認的點，不需要先釐清需求（不跑 grill）；這份紀錄只談通用的內嵌宿主情境，不寫那個系統的名稱與內部細節。查證用 main（9f373f91，index.d.ts 與 0.13.0 發佈的那一份逐位元相同）讀碼，加上在暫存資料夾安裝 0.13.0 搭配記憶體儲存實跑。相關的正式規格是 node-sdk、node-sdk-release、host-kit、host-runtime、command-runtime、verb-contract、workflow-config、change-analysis；沒有進行中的變更。
 Prior discussions: embedded-host-needs-3, embedded-host-needs-2, embedded-host-needs
 Source doc: ../speclink-embedded-host-needs-4.md
 

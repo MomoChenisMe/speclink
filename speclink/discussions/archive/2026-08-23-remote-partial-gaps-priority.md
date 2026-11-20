@@ -19,7 +19,7 @@ Document rules:
 
 ## Context
 
-Day 12 遠端能力盤點（docs/product-status.zh-TW.md、remote-getting-started.zh-TW.md、roadmap.zh-TW.md）後，使用者問兩個 Partial 缺口——Desktop Remote Workspace 與 remote task evidence——是否優先處理、先後怎麼排。目標可驗證（排序決策），無需 grill，直接假設清單。相關 specs：verify-evidence（evidence 語意正典）、workspace-session（remote locator 模型）、remote-workspace-data、teamstore-contract。相關已封存 changes：remote-data-source（2026-07-19，c4a8ba0）、offline-stale-reauth 與 remote-workspace-recovery-ux（2026-07-21）。待開 change 名 remote-task-evidence 已由 crates/speclink-server/tests/it/phase2_chain.rs 的 #[ignore] 紅色測試預留。
+Day 12 遠端能力盤點（docs/product-status.zh-TW.md、remote-getting-started.zh-TW.md、roadmap.zh-TW.md）後，使用者問兩個 Partial 缺口——Desktop Remote Workspace 與 remote task evidence——是否優先處理、先後怎麼排。目標可驗證（排序決策），無需 grill，直接假設清單。相關 specs：verify-evidence（evidence 語意正典）、workspace-session（remote locator 模型）、remote-workspace-data、teamstore-contract。相關已封存 changes：remote-data-source（2026-07-19，418b7e0）、offline-stale-reauth 與 remote-workspace-recovery-ux（2026-07-21）。待開 change 名 remote-task-evidence 已由 crates/speclink-server/tests/it/phase2_chain.rs 的 #[ignore] 紅色測試預留。
 
 ## Rounds
 
@@ -40,7 +40,7 @@ Day 12 遠端能力盤點（docs/product-status.zh-TW.md、remote-getting-starte
 
 **Focus**: Desktop 情境 2（remote+checkout）是否其實已經存在
 **Position**: 已存在——且情境 1 也有、情境 3 部分有；文件與程式碼矛盾，程式碼＋綠測試為準：
-- remote-data-source（c4a8ba0，2026-07-19，在 HEAD 祖先鏈上）即已「enable Desktop remote workspaces」
+- remote-data-source（418b7e0，2026-07-19，在 HEAD 祖先鏈上）即已「enable Desktop remote workspaces」
 - 建構路徑完整可達：WorkspaceChooser → openRemoteWorkspace → remote_open（fail-closed handshake）→ createRemoteSession（main.tsx:30-37、session.ts:378）
 - chooser 有兩種模式：skip＝免 checkout 直接開（＝情境 1 spec-only）；folder＝bindCheckout 綁本機資料夾後開（＝情境 2 remote+checkout，WorkspaceChooser.tsx:412-436）
 - workspace-session spec 本文寫「remote 變體經 chooser 或 remote marker 探測的 handshake 成功路徑建構」——spec 與程式碼一致，錯的是狀態文件

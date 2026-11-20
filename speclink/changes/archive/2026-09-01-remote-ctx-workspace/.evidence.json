@@ -40,7 +40,7 @@
       "taskDesc": "1.1 在 crates/speclink-cli/src/remote_base.rs 為 RemoteCtx 加 pub(crate) ws: Workspace 欄位，remote_ctx() 把探索到的 Workspace 區域變數移入回傳值（design D1）；cargo build -p speclink-cli 編譯通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "headCommit": "31aa55560a5a433099a858f888f7554d8eceee73",
       "touchedFiles": [
         "crates/speclink-cli/src/remote_base.rs"
       ],
@@ -51,7 +51,7 @@
       "taskDesc": "1.2 遷移 crates/speclink-cli/src/verbs/station.rs 三處（review prepare、station scope、station stamp 指令）：require_workspace 與 discover 加自訂 bail 改為讀 ctx.ws，stamp 的缺席 bail 整段刪除（design D2）；station.rs 孤兒化的 require_workspace import 清除",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "headCommit": "31aa55560a5a433099a858f888f7554d8eceee73",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/station.rs"
       ],
@@ -62,7 +62,7 @@
       "taskDesc": "1.3 遷移 crates/speclink-cli/src/verbs/checks.rs（drift 指令：探索改 Some(&ctx.ws)，git_available 過濾保留）、crates/speclink-cli/src/verbs/instructions.rs（instructions 指令的 context 投影：靜默略過分支刪除）、crates/speclink-cli/src/verbs/progress.rs（task done 指令：touched 與 head 直接自 ctx.ws 計算，空集合語意不變）（design D2）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "headCommit": "31aa55560a5a433099a858f888f7554d8eceee73",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/checks.rs",
         "crates/speclink-cli/src/verbs/instructions.rs",
@@ -75,7 +75,7 @@
       "taskDesc": "2.1 把 crates/speclink-cli/src/verbs/new.rs（new artifact）、crates/speclink-cli/src/verbs/progress.rs（task done、task undone）、crates/speclink-cli/src/verbs/documents.rs（artifact cat）四處 remote 臂的外層 match 改為 let-else 一行形（design D3），各臂提示字串逐字保留",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "cf05738ef93c589df16a276de7a79129e5477906",
+      "headCommit": "31aa55560a5a433099a858f888f7554d8eceee73",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/documents.rs",
         "crates/speclink-cli/src/verbs/new.rs"

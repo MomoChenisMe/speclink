@@ -21,7 +21,7 @@
       "taskDesc": "1.1 抽出看板卡片統一解剖學的名稱列共用元件 CardNameRow：名稱恆單行、溢出時尾端漸層淡出、未溢出時不套遮罩（末尾字元不被誤淡），複製鈕與名稱同列且不被壓縮。驗證：packages/ui/src/__tests__/cardNameRow.test.tsx 的「名稱不換行，複製鈕與名稱在同一列容器內」「名稱溢出時尾端套漸層淡出遮罩」「名稱未溢出時不套遮罩」三條通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "96d11029465cb1c1666b4ac4677ffc466674a75b",
+      "headCommit": "1b409bea02d62602d81270aca3d2b1268fbe52fd",
       "touchedFiles": [
         "packages/ui/src/components/CardNameRow.tsx",
         "packages/ui/src/__tests__/cardNameRow.test.tsx",

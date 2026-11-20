@@ -2,7 +2,7 @@
 
 2026-07-04 執行自我基線雙沙盒對照（沿用 store-trait-and-fs-adapter 核准的作法）：
 
-- **基線**：git HEAD `19230df` ＋ 前一 session 遺留的未提交修改（`assets/skills/{archive,commit,discuss}.md` 措辭、`init.rs` 的 MARKER_VERSION v1.2.0 與討論歸檔措辭——皆非本 change 範圍）建置的 release exe。
+- **基線**：git HEAD `948bf9a` ＋ 前一 session 遺留的未提交修改（`assets/skills/{archive,commit,discuss}.md` 措辭、`init.rs` 的 MARKER_VERSION v1.2.0 與討論歸檔措辭——皆非本 change 範圍）建置的 release exe。
 - **對照**：本 change 完成後的 release exe。
 - **方法**：39 個指令區塊（24 parity ＋ 6 color[CLICOLOR_FORCE=1] ＋ 9 twin/樹狀 SHA），雙沙盒逐 byte 比對，路徑三種拼法與 ISO 時間戳正規化。腳本 `regress.ps1` 位於 session scratchpad（會隨 session 清空；沿用先前建議：如需長期保留應收進 repo `scripts/`）。
 

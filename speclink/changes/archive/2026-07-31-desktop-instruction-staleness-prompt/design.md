@@ -99,7 +99,7 @@ render_golden 測試檔新增鎖定測試，鎖定檔 assets.lock 與 golden 同
 - 桌面 GUI 以真實視窗驗證橫幅出現、更新後消失、保留後同版不再現。
 - render golden 四份 snapshot 與兩套 repo 技能實例於乾淨樹同批再生，diff 僅含版本欄位變動與本變更的刻意內容。
 
-**範圍邊界**：in scope＝上述引擎探測、desktop 搭載與提示、鎖定測試、側欄版號刪除；out of scope＝CLAUDE.md 開發備忘一行（實作期取消：備忘已於 c0303d8 移除，該檔現僅剩引擎受管區塊；bump 紀律改由鎖定測試的失敗訊息單獨承載）、CLI 指令面、codex 以外自訂工具描述子的探測（tools 清單含自訂描述子時第一版僅涵蓋內建工具，探測回報結構預留 tool 名欄位不需改形狀）、逐檔更新、diff 檢視 UI。
+**範圍邊界**：in scope＝上述引擎探測、desktop 搭載與提示、鎖定測試、側欄版號刪除；out of scope＝CLAUDE.md 開發備忘一行（實作期取消：備忘已於 008a35f 移除，該檔現僅剩引擎受管區塊；bump 紀律改由鎖定測試的失敗訊息單獨承載）、CLI 指令面、codex 以外自訂工具描述子的探測（tools 清單含自訂描述子時第一版僅涵蓋內建工具，探測回報結構預留 tool 名欄位不需改形狀）、逐檔更新、diff 檢視 UI。
 
 ## Risks / Trade-offs
 

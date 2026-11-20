@@ -2350,7 +2350,7 @@
       "taskDesc": "1.2 把本變更目前的文件與勾選狀態 commit，讓規格資料夾沒有未提交修改。驗證：`git status --porcelain --untracked-files=all -- openspec` 沒有輸出",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         "openspec/LANGUAGE.md",
         "openspec/changes/archive/2026-07-04-config-system-rework/.openspec.yaml",
@@ -4625,7 +4625,7 @@
       "taskDesc": "2.1 文件守門與發版守門改用新路徑：scripts/docs/vocabulary-guard.test.mjs 讀 `speclink/LANGUAGE.md`、排除 `speclink/` 下的規格散文與封存內容；scripts/release/delivery-gate.test.mjs 的略過路徑改為 `speclink/changes` 與 `speclink/discussions`；scripts/docs/docs-screenshots.mjs 的示範工作區路徑與資料檔名改為 `speclink/` 與 `.meta.yaml`。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         "scripts/docs/docs-screenshots.mjs",
         "scripts/docs/vocabulary-guard.test.mjs",
@@ -4638,7 +4638,7 @@
       "taskDesc": "2.2 版控與打包的排除項指向新資料夾：`.gitignore` 的向量搜尋資料庫改為 `speclink/.vector-search.db*`，`.dockerignore` 的排除項改為 `speclink`。驗證：`git status` 沒有出現向量搜尋資料庫檔；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的發版守門通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         ".dockerignore"
       ],
@@ -4649,7 +4649,7 @@
       "taskDesc": "2.3 協作入口指向新資料夾：.github/PULL_REQUEST_TEMPLATE.md、CONTRIBUTING.md 與 .claude/skills/release/SKILL.md 裡指本 repo 規格資料夾的路徑改為 `speclink/`。驗證：`git grep -n \"openspec/\" -- .github CONTRIBUTING.md .claude/skills/release` 沒有命中",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         ".github/PULL_REQUEST_TEMPLATE.md",
         "CONTRIBUTING.md"
@@ -4661,7 +4661,7 @@
       "taskDesc": "2.4 技能評測以新版 `speclink init` 建立的 `speclink/` 示範專案為準：integrations/claude-code/skill-evals 下的 fixtures.sh、各 scaffold.sh、評分規則與提示裡的 `openspec/` 改為 `speclink/`、`.openspec.yaml` 改為 `.meta.yaml`；integrations/claude-code/speclink-skills 的兩份 README 同步。驗證：`git grep -n -E \"openspec/|\\\\.openspec\\\\.yaml\" -- integrations` 沒有命中；`bash -n integrations/claude-code/skill-evals/evals/fixtures.sh` 通過",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         "integrations/claude-code/skill-evals/evals/analyze-reports-only/scaffold.sh",
         "integrations/claude-code/skill-evals/evals/apply-leaves-manual-task/graders/code-task-checked.md",
@@ -4689,7 +4689,7 @@
       "taskDesc": "3.1 文件描述本 repo 自身的句子與指向 repo 內檔案的相對連結改為新資料夾：README.md 與 README.zh-TW.md（遠端契約所在位置、「Speclink 自己的規格」一段）、docs/server-deployment、docs/remote-getting-started、docs/sdk-node、docs/product-status、docs/roadmap、docs/verb-contract、docs/development（中英）裡的 `openspec/` 與 `../openspec/...` 改為 `speclink/` 與 `../speclink/...`；說明舊佈局相容的句子保留 `openspec/`；CHANGELOG 不改。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 的連結檢查通過；`git grep -n \"openspec/\" -- README.md README.zh-TW.md docs` 只命中說明舊佈局相容的句子（README 中英版的 OpenSpec 匯入說明，以及 docs/getting-started、docs/configuration、docs/sdk-node、docs/verb-contract 的中英版）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c2b8cf3f5d5f5493d66063ec70dbecb441b7b1d0",
+      "headCommit": "976fd9e04a375241f48d21e214581328995d8c9c",
       "touchedFiles": [
         "README.md",
         "README.zh-TW.md",

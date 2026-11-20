@@ -21,7 +21,7 @@ Document rules:
 
 起因是一份外部的需求清單：一個團隊要把 speclink 內嵌進自己的系統（Node 後端、自己的帳號與 Postgres），非工程角色經 AI Agent 做討論與提案，工程師用 CLI 與 Speclink Desktop 連到宿主，封存由宿主發起。文件列了 SDK（S1–S9）、協定與用戶端（C1、C2、P1、P2）、技能（K1–K4）與遠端模式既有缺口共 22 項主張。需求已夠明確，沒有做 grill；輸入是文件，所以第一輪是逐項對照程式碼，不另列假設。
 相關正式規格：node-sdk、teamstore-contract、host-runtime、store-abstraction、postgres-team-store、remote-auth、server-device-auth、client-protocol、server-verb-api、server-event-stream、server-policy-write、skill-routing、verb-contract、spec-dir-migration、workflow-schemas。進行中的變更：station-subagent-model、add-pi-cursor-tools；in-flight delta 命中 add-pi-cursor-tools: node-sdk。
-背景文件：已刪除的平台藍圖 docs/design/platform-architecture.zh-TW.md 與重構路線圖 docs/design/implementation-refactor-roadmap.zh-TW.md（刪於 147076be，可從 git 歷史讀回），兩者是 TeamStore 與 Node 路徑的原始設計依據。
+背景文件：已刪除的平台藍圖 docs/design/platform-architecture.zh-TW.md 與重構路線圖 docs/design/implementation-refactor-roadmap.zh-TW.md（刪於 800ad68e，可從 git 歷史讀回），兩者是 TeamStore 與 Node 路徑的原始設計依據。
 Prior discussions: agent-tool-sdk-layering, sdd-engine-as-sdk-with-pluggable-document-storage-for-team-scenarios, collab-scenario-replan, node-sdk-completion-and-doc-alignment, schema-engine-openspec-parity, improve-wire-convert-seam
 Source doc: ../speclink-embedded-host-needs.md
 

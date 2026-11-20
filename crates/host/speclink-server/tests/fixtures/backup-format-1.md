@@ -1,7 +1,7 @@
 # backup-format-1.tar
 
 A backup in backup format version 1, made once by speclink-server 0.12.0
-(commit a6cbb604, before the backup code moved to the store port). The
+(commit 637da561, before the backup code moved to the store port). The
 tests use it to check that this version can verify and restore a backup
 of an older version. It holds only made-up data. Do not make it again:
 the code that wrote this format is gone.

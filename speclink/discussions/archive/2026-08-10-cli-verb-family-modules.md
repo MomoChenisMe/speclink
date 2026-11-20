@@ -22,7 +22,7 @@ Document rules:
 
 前因：improve-cli-command-layer（2026-08-07，已轉出封存）盤出四個候選；候選 1（cli-render-unification）已落地封存、候選 2（cli-mode-dispatch-convergence）已完成待封存，使用者指示接續候選 3「include! 文字包含改真模組，按動詞族重切檔案」。
 
-偵察（候選 1、2 落地後的前提複核）：include! 仍在（main.rs:916–917），三檔合計 5,603 行單一編譯單元（main.rs 917／commands.rs 3,217／remote_commands.rs 1,469），零模組邊界。include! 源自創始 commit（5d7fa5c），屬初期便利、非有記錄理由的決策——無重提衝突。近三月動到 CLI 三檔的 commit 檔次共 140，共動摩擦持續。候選 1、2 落地後的形狀是重切的有利起點：dispatch 已是 31 動詞的模式形狀表（commands.rs:6–75，ModeFree／Dual／FsOnly／RemoteOnly），每動詞渲染已收斂單份（吃 core outcome 型別），wire→core 轉接（to_*）集中於 remote_commands.rs。跨檔散佈實例：ModeFree 的 link／unlink／auth 實作住在 remote_commands.rs:370–692（與檔名語意脫鉤）；clap 參數定義全在 main.rs、實作在另兩檔。commands.rs 內嵌兩個單元測試模組（patch_hash_chain_tests、init_tools_tests）以 use super::* 依賴所在檔，改真模組後隨族檔搬移即可。
+偵察（候選 1、2 落地後的前提複核）：include! 仍在（main.rs:916–917），三檔合計 5,603 行單一編譯單元（main.rs 917／commands.rs 3,217／remote_commands.rs 1,469），零模組邊界。include! 源自創始 commit（3e45445），屬初期便利、非有記錄理由的決策——無重提衝突。近三月動到 CLI 三檔的 commit 檔次共 140，共動摩擦持續。候選 1、2 落地後的形狀是重切的有利起點：dispatch 已是 31 動詞的模式形狀表（commands.rs:6–75，ModeFree／Dual／FsOnly／RemoteOnly），每動詞渲染已收斂單份（吃 core outcome 型別），wire→core 轉接（to_*）集中於 remote_commands.rs。跨檔散佈實例：ModeFree 的 link／unlink／auth 實作住在 remote_commands.rs:370–692（與檔名語意脫鉤）；clap 參數定義全在 main.rs、實作在另兩檔。commands.rs 內嵌兩個單元測試模組（patch_hash_chain_tests、init_tools_tests）以 use super::* 依賴所在檔，改真模組後隨族檔搬移即可。
 
 相關 change：cli-mode-dispatch-convergence（候選 2）done 未封存、程式碼已 commit、工作樹乾淨——無程式碼撞車，封存先後不構成前置。候選 4（wire→core 轉接收進 speclink-remote）仍留在原討論待後續，與本候選相容：族檔先收攏該族 to_*，候選 4 若做再整批遷出。
 

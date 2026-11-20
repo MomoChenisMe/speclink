@@ -16,7 +16,7 @@
       "taskDesc": "1.1 crates/speclink-cli/tests/it/new_artifact.rs 的 `TempProject::new` 改為非 Windows 才 canonicalize(沿用 crates/speclink-cli/tests/it/trace.rs 第 42-43 行的既有模式與註解措辭),使 Windows 上期望路徑不帶 `\\\\?\\` 前綴、與 CLI 輸出同底。驗證:grep 確認 new_artifact.rs 帶 `cfg!(windows)` 分支,且 macOS 本機 `cargo test -p speclink-cli --test it new_artifact` 全綠。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "036dfb1511df3c883acb225ac26fdc2f449d0b5f",
+      "headCommit": "3156748baaa010bdff86a5d78f32e6d74a6d7a80",
       "touchedFiles": [
         "crates/speclink-cli/tests/it/new_artifact.rs"
       ],

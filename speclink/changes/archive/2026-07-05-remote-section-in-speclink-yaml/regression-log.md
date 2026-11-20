@@ -5,7 +5,7 @@
 
 ## 基線
 
-- 舊 exe:`git worktree add <tmp> HEAD`(42e5b21)建置的 release binary——動工前 working tree 的修改全數屬於本 change,HEAD 即乾淨基線,無遺留 hunks 需標注。
+- 舊 exe:`git worktree add <tmp> HEAD`(52ef3ad)建置的 release binary——動工前 working tree 的修改全數屬於本 change,HEAD 即乾淨基線,無遺留 hunks 需標注。
 - 新 exe:working tree 的 release binary。
 
 ## 比對(regress.ps1,session scratchpad)

@@ -34,7 +34,7 @@ Prior discussions: archived-page-fill-height, tray-panel-scroll-and-vibrancy
 **Position**: 成因是 CopyButton 的隱藏朗讀區（sr-only、position:absolute）跳出看板欄的捲動裁切、把 main 撐高，修法是在 CopyButton 把它釘在定位容器左上角；使用者確認四條假設全對。
 - 成因鏈：詳情頁開著時看板仍掛載但隱形（desktop-app「變更與討論詳情頁的宿主為看板」）→ 看板卡片的複製鈕旁有 `<span role="status" aria-live="polite" class="sr-only">`（packages/ui/src/components/CopyButton.tsx:66）→ absolute 元素的定位容器在欄與 grid 捲動區之外，靜態位置落在欄內容深處、不被裁切 → main（overflow-hidden，程式仍可捲）的 scrollHeight 大於 clientHeight → TaskList highlightRow 的 scrollIntoView({block:"center"}) 在閱讀區捲到底後續捲 main → 詳情頁層（main 內 absolute inset-0）跟著上移、底部露白
 - 實測（WKWebView）：假看板讓 main scrollHeight 890／clientHeight 852，點「前往」後 main.scrollTop=38、詳情頁上移 38px；main 的 scrollHeight 恰等於最低一個 sr-only span 的底緣；換成真實專案卡片多時位移更大（截圖約 180px）
-- 引入點：2026-10-08 bdf1d7cc（desktop-design-foundation）為 CopyButton 加上朗讀區
+- 引入點：2026-10-08 6855a0eb（desktop-design-foundation）為 CopyButton 加上朗讀區
 - 修法：朗讀區加 `top-0 left-0`；實測 19 個朗讀區釘住後 main 無多餘高度、「前往」後詳情頁不位移；朗讀不受位置影響；15 處 CopyButton（desktop 與 server-web）一併受惠
 - 看板其他 absolute 元素（搜尋列圖示、篩選浮層、封存落點浮層）都有自己的 relative 外框，不跑出裁切
 - 規格：在「變更與討論詳情頁的宿主為看板」補一個情境（宿主頁內容不推動詳情頁外框）；避開「任務群組標題與章節標籤同款式」，因 manual-callout-unchecked-only 正改寫它

@@ -19,7 +19,7 @@ Document rules:
 
 ## Context
 
-同一個導入規劃拿 main（5ba701c2，CLI 0.12.0、engine v1.58.0，尚未發版）對照自己的設計，列出九個接不上的點（N1 到 N6、M1 到 M3），寫成一份文件當作討論的輸入。那個系統是私有的，本記錄只談通用的情境。文件的每一項都有可檢驗的現況與需求，所以不需要先磨需求，直接逐項對照程式碼分類。
+同一個導入規劃拿 main（9629b544，CLI 0.12.0、engine v1.58.0，尚未發版）對照自己的設計，列出九個接不上的點（N1 到 N6、M1 到 M3），寫成一份文件當作討論的輸入。那個系統是私有的，本記錄只談通用的情境。文件的每一項都有可檢驗的現況與需求，所以不需要先磨需求，直接逐項對照程式碼分類。
 相關的正式規格：verb-contract、review-station、verify-station、change-lifecycle、host-kit、node-sdk、client-protocol、server-event-stream、remote-connection、workflow-config、discussion-docs。目前沒有進行中的變更。
 Prior discussions: embedded-host-needs
 Source doc: ../speclink-embedded-host-needs-2.md

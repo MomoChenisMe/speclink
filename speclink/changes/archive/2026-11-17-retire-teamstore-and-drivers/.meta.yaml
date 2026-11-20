@@ -12,7 +12,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 11
 reviewed_rounds: 2
-reviewed_commit: ed9207f82624c691cf4a399a5255d6b4e6b7f793
+reviewed_commit: b56c43f901568f2dfbbfdf4d584d5cb8b65bd346
 reviewed_scope:
   - path: .github/workflows/ci.yml
     hash: 62a7af4ff7ccbd340a800ef419d04fd9ea5c92455421acccf5af8b449fddccc3
@@ -85,7 +85,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 11
 verified_rounds: 2
-verified_commit: ed9207f82624c691cf4a399a5255d6b4e6b7f793
+verified_commit: b56c43f901568f2dfbbfdf4d584d5cb8b65bd346
 verified_scope:
   - path: .github/workflows/ci.yml
     hash: 62a7af4ff7ccbd340a800ef419d04fd9ea5c92455421acccf5af8b449fddccc3

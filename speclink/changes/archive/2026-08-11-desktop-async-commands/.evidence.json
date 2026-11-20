@@ -16,7 +16,7 @@
       "taskDesc": "1.1 apps/desktop/src-tauri/src/lib.rs：將 list_changes、list_specs、status、document、spec_document、search_workspace、change_capabilities、change_meta 改為 async fn＋tauri::async_runtime::spawn_blocking 委派，落實 spec「觸及檔案系統的 command 不佔用主執行緒」；樣板照既有寫入側（set_task_done 等，design D2）：閉包 move 收 root 與參數、錯誤訊息帶 command 語境。回傳型別與 serde 形狀不變。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "292e8cd050cf92130263ba750bc548e5c47a5922",
+      "headCommit": "eba881e9c1dbbf89effaf3e6bcb3c29f3cf49d0f",
       "touchedFiles": [
         "apps/desktop/src-tauri/src/lib.rs"
       ],

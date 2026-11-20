@@ -6,7 +6,7 @@ from_discussion: embedded-host-needs-2
 started_at: 2026-11-18T14:44:15+08:00
 started_by: MomoChen <momochenisme@gmail.com>
 branch: speclink/client-os-trust-store
-landed_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+landed_commit: 96f5881f54b8071e9eb51468941385f66155da96
 landed_at: 2026-11-18T15:38:08+08:00
 landed_by: MomoChen <momochenisme@gmail.com>
 reviewed_at: 2026-11-18T16:42:09+08:00
@@ -14,7 +14,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 12
 reviewed_rounds: 2
-reviewed_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+reviewed_commit: 96f5881f54b8071e9eb51468941385f66155da96
 reviewed_scope:
   - path: Cargo.lock
     hash: bb12ec0c9d4cdf010e2fedfb6ad32c09ceab7afa0e5ad60f31d43ca42cce392e
@@ -49,7 +49,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 12
 verified_rounds: 2
-verified_commit: b6487e489b5b1b31799c5dc95b573f89711900f1
+verified_commit: 96f5881f54b8071e9eb51468941385f66155da96
 verified_scope:
   - path: Cargo.lock
     hash: bb12ec0c9d4cdf010e2fedfb6ad32c09ceab7afa0e5ad60f31d43ca42cce392e

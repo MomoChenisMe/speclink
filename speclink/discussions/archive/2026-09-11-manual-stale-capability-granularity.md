@@ -34,8 +34,8 @@ Prior discussions: manual-stale-time-granularity, manual-generation-skill
 **Position**: 判定沒錯，錯在粒度：capability 級的過期判定配上「內文不變就不寫」的技能規則，讓餵自超大規格的頁永遠亮燈。
 - 三頁 sources 只有 desktop-app，generated 停在純日期 2026-09-05（openspec/manual/desktop-{overview,browse,quality}.md）
 - desktop-app 規格在 09-09 與 09-10 兩次封存後帶 RFC 3339 時戳，晚於 09-05，依 manual-pages 契約「任一 @trace updated 晚於頁即過期」標記正確（apps/desktop/core/src/manual.rs:159）
-- 那兩次封存改的是看板討論欄 hold 標示與更新日誌彈窗，三頁內文 grep 不到相關詞；09-11 手冊 commit 816a2903 只重生受影響的 desktop-board／desktop-update／tray
-- 技能 SKILL.md 第 74 行「重生後逐位元相同即未動、不寫」，所以三頁 generated 沒推進；但 09-07 那輪 commit 328f5a59 曾對 apply／data-layout／discuss 三頁只換時戳（各差兩行），兩輪行為不一致，技能文字沒寫這條
+- 那兩次封存改的是看板討論欄 hold 標示與更新日誌彈窗，三頁內文 grep 不到相關詞；09-11 手冊 commit db641b03 只重生受影響的 desktop-board／desktop-update／tray
+- 技能 SKILL.md 第 74 行「重生後逐位元相同即未動、不寫」，所以三頁 generated 沒推進；但 09-07 那輪 commit c00a8302 曾對 apply／data-layout／discuss 三頁只換時戳（各差兩行），兩輪行為不一致，技能文字沒寫這條
 - desktop-app 一份規格餵 5 頁手冊（about 除外 4 頁），任何動到桌面 app 的封存都讓所有頁亮燈
 - 決策樹：A 技能改規則「逐位元相同→只推進 generated」；B 判定粒度降到 Requirement（sources 記到段落）；C 拆 desktop-app 規格
 **Ruled out**: 時間判定本身有 bug（manual.rs 分段判定與契約一致、測試 stale_compares_at_second_precision 覆蓋）；C 拆規格（大工程、與手冊無關的封存流程一併受影響，不為手冊亮燈做）

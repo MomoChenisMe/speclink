@@ -6,7 +6,7 @@ from_discussion: embedded-host-needs
 depends_on: skills-verbs-second-wave
 started_at: 2026-11-12T16:59:01+08:00
 started_by: MomoChen <momochenisme@gmail.com>
-landed_commit: 007e82cb546374c19e54aa1f2c8c0c74f88a9b47
+landed_commit: ee872cc611f0558ecd7d649ded6a23eca39aa70c
 landed_at: 2026-11-13T10:14:25+08:00
 landed_by: MomoChen <momochenisme@gmail.com>
 branch: speclink/remote-skill-delivery
@@ -15,7 +15,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 21
 reviewed_rounds: 4
-reviewed_commit: 6d145fa7a836c5798fef97196a0b498720f64f56
+reviewed_commit: 9a4bfb887228f36f19821da0c3352f982f674376
 reviewed_scope:
   - path: apps/desktop/core/src/project.rs
     hash: ccc246a10b1162da764cb6c8d2559b99653e0b3fb173046f901c1209fc900310
@@ -118,7 +118,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 21
 verified_rounds: 4
-verified_commit: 6d145fa7a836c5798fef97196a0b498720f64f56
+verified_commit: 9a4bfb887228f36f19821da0c3352f982f674376
 verified_scope:
   - path: apps/desktop/core/src/project.rs
     hash: ccc246a10b1162da764cb6c8d2559b99653e0b3fb173046f901c1209fc900310

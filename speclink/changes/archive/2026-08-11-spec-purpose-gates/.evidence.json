@@ -99,7 +99,7 @@
       "taskDesc": "1.1 實作需求「Purpose 合格判準單一定義」：crates/speclink-core 新增公開的 Purpose 合格判準函式（存在 ## Purpose 區段、內容非空、trim 後 chars().count() >= 50）與常數 MIN_PURPOSE_LENGTH = 50。先寫單元測試：合格、缺段、空內容、49 字元、50 個中文字元五個 case",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-core/src/model.rs"
       ],
@@ -110,7 +110,7 @@
       "taskDesc": "1.2 佔位前綴「TBD - created by archiving」上移為 speclink-core 公開常數；archive.rs 佔位產生處與 apps/desktop/core/src/query.rs 的 PURPOSE_TBD_PREFIX 改引用同一常數，desktop 既有一致性測試（list_specs_purpose_tbd_flags_archive_placeholder）改釘 core 常數後仍綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "apps/desktop/core/src/query.rs",
         "crates/speclink-core/src/archive.rs"
@@ -122,7 +122,7 @@
       "taskDesc": "2.1 實作需求「新開 capability 的 change 驗證早期檢查」：crates/speclink-core/src/validate.rs 的 validate_change 對每個 delta capability 查正典存在性，新開且 Purpose 不合格 → error；既有 capability 零報。先寫測試：新開缺 Purpose 報 error、新開合格通過、既有 capability 無 Purpose 零報三個 case",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-core/src/validate.rs"
       ],
@@ -133,7 +133,7 @@
       "taskDesc": "3.1 實作 archive-merge 需求「新 capability 的 Purpose 自 delta 帶入」的守門面：crates/speclink-core/src/archive.rs 的 merge_violations 對「正典尚無此 capability 且 delta Purpose 不合格」回 violation（沿用 D1 判準），拒絕時零檔案效果。先寫測試：缺 Purpose 拒絕、過短拒絕、合格帶入、既有 capability 帶 Purpose 忽略不拒、skip_specs 不觸發五個 case",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-core/src/drift.rs"
       ],
@@ -144,7 +144,7 @@
       "taskDesc": "4.1 實作需求「validate --specs 驗證正典規格」的 core 面：新增正典規格驗證函式（缺段／空＝error；不足 50 字元＝strict 下 warning；佔位前綴開頭＝warning），Command::Validate 增 specs 分支。先寫測試：四種分級各一 case、--specs 單獨僅驗規格、--all 聯集、預設不變",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/checks.rs",
         "crates/speclink-cli/tests/it/main.rs",
@@ -159,7 +159,7 @@
       "taskDesc": "4.3 remote 模式的 --specs：client 以既有正典規格讀取動詞取內容、本地跑同一驗證器，輸出與 fs 模式同形；補兩模式同形測試（比照既有 Dual 動詞測試風格）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-cli/tests/it/remote_verb_parity.rs"
       ],
@@ -170,7 +170,7 @@
       "taskDesc": "5.1 crates/speclink-core/assets/schema/spec-driven/specs.instruction.md 於 Format requirements 與 MODIFIED workflow 之間補 Purpose 規則段：新 capability 的 delta 以 ## Purpose 開頭（一兩句、50 字元以上，validate 會擋）；既有 capability 的 delta 不要加（會被忽略）；要改既有 Purpose（含殘留佔位）直接編輯正典檔；附範例（對齊上游 schema.yaml 同段落、融入現有行文）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-core/assets/schema/spec-driven/specs.instruction.md"
       ],
@@ -181,7 +181,7 @@
       "taskDesc": "5.2 asset 三連動：MARKER_VERSION 遞增、golden 快照再生（crates/speclink-core/tests/golden/*.snapshot.md 與 marker）、assets.lock 更新；cargo test -p speclink-core render_golden 綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "crates/speclink-core/src/init.rs",
         "crates/speclink-core/tests/golden/assets.lock",
@@ -199,7 +199,7 @@
       "taskDesc": "6.1 全量：cargo test --workspace 通過（含 CLI 整合測試）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "6b79d13d5c718c3b4d5552160e58c873c2e29487",
+      "headCommit": "4a2da94f54d1bc43a1641917228ec172e85810c9",
       "touchedFiles": [
         "apps/desktop/core/src/verbs.rs",
         "apps/desktop/src-tauri/tests/it/remote_data.rs",
@@ -217,7 +217,7 @@
       "taskDesc": "7.1 實作 archive-merge 需求「封存合併 fail-closed 守門」的 (7) Purpose 類與需求「新 capability 缺 Purpose 的違規呈現三處一致」場景：reason 帶「archive would refuse it」、merge_refusal 分流補救動線、bulk 預檢點名 capability、drift 主建議改道 validate；validate --specs 與名稱同傳以參數錯誤拒絕",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c56992d3f140880ec088dc122c42c69c22391a3c",
+      "headCommit": "43f981db9a1025be5d4cc9546039d4f6baeb0f54",
       "touchedFiles": [
         "crates/speclink-cli/src/verbs/lifecycle.rs",
         "crates/speclink-cli/tests/it/archive_merge_gate.rs"

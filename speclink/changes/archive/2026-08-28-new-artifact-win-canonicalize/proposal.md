@@ -1,6 +1,6 @@
 ## Why
 
-Windows CI 的 build-and-smoke job 掛在 `new_artifact::a_canonical_capability_keeps_the_exact_success_output`(run 33133958088,418 過 1 敗)。這批測試隨 df41cb7(capability 命名主閘)上線,Windows 的 Rust 測試步驟這次才第一次跑到它——先前同 job 都死在更早的 scripts 步驟。目標使用者:仰賴三平台 CI 綠燈守門的維護者;情境:跨平台測試正典(期望值與 CLI 輸出同底比對)。
+Windows CI 的 build-and-smoke job 掛在 `new_artifact::a_canonical_capability_keeps_the_exact_success_output`(run 33133958088,418 過 1 敗)。這批測試隨 c0ebfce(capability 命名主閘)上線,Windows 的 Rust 測試步驟這次才第一次跑到它——先前同 job 都死在更早的 scripts 步驟。目標使用者:仰賴三平台 CI 綠燈守門的維護者;情境:跨平台測試正典(期望值與 CLI 輸出同底比對)。
 
 ## Problem 與 Root Cause
 

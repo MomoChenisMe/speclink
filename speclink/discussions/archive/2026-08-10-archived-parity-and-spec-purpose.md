@@ -55,8 +55,8 @@ Document rules:
 **Position**: Purpose 唯一的機器消費者是 propose 的 capability 歸屬判斷；全數 TBD 的成因是「預設路徑從創始日就是寫 TBD、帶入機制上線 7 天且只被用過一次、技能層從未要求寫、寫進正典後無任何守門複查」四件事疊加。
 - 消費面一（唯一機器消費）：`.claude/skills/speclink-propose/SKILL.md:103` 要求 propose 對候選 capability 跑 `speclink show <spec-id>` 讀頂端 Purpose，用以決定新需求歸入哪個既有 capability 或另開新的。67 個 capability 全為 TBD 時，這步只能靠 capability 名稱與 requirement 內文猜——capability 邊界漂移的直接來源。
 - 消費面二、三（人眼）：規格卡描述列（`query.rs:207` 的 `purposeExcerpt`）與 `speclink show` 輸出頂端，實測 `speclink show verb-contract` 首段即該句 TBD。
-- 成因一（預設路徑）：`archive.rs:858-864`——建立新 capability 時 delta 未帶 `## Purpose` 即寫入佔位句。`git log -S` 顯示該佔位文字源自創始 commit `5d7fa5c`，即專案第一天起的預設行為。
-- 成因二（機制新且未被沿用）：讓 delta 自帶 Purpose 的 `delta_purpose`（`archive.rs:790`）由 `e902eaa`（2026-08-03，change archive-fail-changed-merge／archive-fail-closed-merge）引入，距今 7 天。283 份封存 delta 中僅 1 份寫了 `## Purpose`，正是該機制自身的 change，產出唯一一份有真 Purpose 的規格 `archive-merge`——上線後只被 dogfood 過一次。
+- 成因一（預設路徑）：`archive.rs:858-864`——建立新 capability 時 delta 未帶 `## Purpose` 即寫入佔位句。`git log -S` 顯示該佔位文字源自創始 commit `3e45445`，即專案第一天起的預設行為。
+- 成因二（機制新且未被沿用）：讓 delta 自帶 Purpose 的 `delta_purpose`（`archive.rs:790`）由 `ae871fd`（2026-08-03，change archive-fail-changed-merge／archive-fail-closed-merge）引入，距今 7 天。283 份封存 delta 中僅 1 份寫了 `## Purpose`，正是該機制自身的 change，產出唯一一份有真 Purpose 的規格 `archive-merge`——上線後只被 dogfood 過一次。
 - 成因三（技能層未接）：`speclink-propose` 的步驟從未要求「新 capability 的 delta 需帶 `## Purpose`」；僅 `speclink-archive/SKILL.md:82-83` 以說明語氣提及此機制存在。agent 讀不到要求就不會寫。
 - 成因四（無守門複查）：analyzer 的模糊詞檢查（`analyzer.rs:208-235`，含 TBD／TODO）作用於 change 的 delta，正典規格寫入後不再受任何檢查。
 - 判讀：「Purpose 待補」不是 UI 出錯，而是誠實標示——66 個能力從未有人寫過邊界說明。

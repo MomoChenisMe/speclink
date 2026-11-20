@@ -20,7 +20,7 @@ Document rules:
 ## Context
 
 使用者希望 speclink 在 claude、codex 之外增加支援 GitHub Copilot。需求目標可驗證（init／desktop 能選 Copilot 並產出 Copilot 讀得到且內容正確的技能），未經 grill 直接進假設；使用者要求先查證 Copilot 技能資料夾的正式位置與注意事項再下結論，並順帶提到 Copilot 也支援 AGENTS.md。
-偵查相關：正式規格 workspace-tools（init 內建 Agent 工具選擇、built-in tools 權威收斂、中性渲染目標的 golden 鎖定）、node-sdk（skills.render target）、workspace-chooser、desktop-config、user-documentation，進行中變更 sync-specs-after-docs-cleanup: user-documentation；程式碼 crates/engine/speclink-core/src/workspace/skills.rs（Tool 列舉）、crates/adapters/speclink-cli/src/verbs/init.rs、crates/adapters/speclink-node/src/render.rs、apps/desktop 的 WorkspaceChooser.tsx／ProjectSettingsView.tsx／core/src/project.rs；歷史決定 commit 9d67e7d1（2026-07-02 把工具矩陣收回 claude＋codex）。
+偵查相關：正式規格 workspace-tools（init 內建 Agent 工具選擇、built-in tools 權威收斂、中性渲染目標的 golden 鎖定）、node-sdk（skills.render target）、workspace-chooser、desktop-config、user-documentation，進行中變更 sync-specs-after-docs-cleanup: user-documentation；程式碼 crates/engine/speclink-core/src/workspace/skills.rs（Tool 列舉）、crates/adapters/speclink-cli/src/verbs/init.rs、crates/adapters/speclink-node/src/render.rs、apps/desktop 的 WorkspaceChooser.tsx／ProjectSettingsView.tsx／core/src/project.rs；歷史決定 commit dea45445（2026-07-02 把工具矩陣收回 claude＋codex）。
 Prior discussions: agent-tool-sdk-layering, init-marker-openspec-alignment, node-sdk-completion-and-doc-alignment
 
 ## Rounds
@@ -32,7 +32,7 @@ Prior discussions: agent-tool-sdk-layering, init-marker-openspec-alignment, node
 **Focus**: 「支援 Copilot」在 speclink 裡要做什麼——補文件、用自訂描述子，還是新增第三個內建工具
 **Position**: 初始假設為新增第三個內建工具 copilot，使用者未逐條裁定，要求先查證 Copilot 技能資料夾的正式位置與注意事項。決策樹：
 - A 寫程式或只補文件：建議新增內建工具。Copilot 已讀 .claude/skills 與 .agents/skills，但讀到的版本錯——codex 版的技能互相引用寫 $speclink-（Codex 語法，Copilot 用 /），claude 版帶 agent: Explore、disallowedTools、Claude fork context 前言，且變更記錄成 --agent claude
-- 重開 commit 9d67e7d1（2026-07-02 收回 claude＋codex）的理由：當時每多一個工具就多一種指令檔格式；如今 Copilot 讀同一份 SKILL.md，多一個工具只多一個目錄與一個前綴
+- 重開 commit dea45445（2026-07-02 收回 claude＋codex）的理由：當時每多一個工具就多一種指令檔格式；如今 Copilot 讀同一份 SKILL.md，多一個工具只多一個目錄與一個前綴
 - B 目錄：初判 .github/skills/（待查證）
 - C 內文：照 codex 版產生，前綴換 /speclink-，技能子集沿用 for_codex，--agent 自動成 copilot（--agent 是自由字串，引擎不需改）
 - D 同時勾 claude＋copilot 會重複：初判不繞開、只寫文件＋手動任務實測

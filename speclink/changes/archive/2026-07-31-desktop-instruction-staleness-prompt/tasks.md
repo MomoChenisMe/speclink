@@ -12,7 +12,7 @@
 
 - [x] 3.1 撰寫鎖定測試：於 crates/speclink-core/tests/render_golden.rs 新增 version–hash 鎖定測試——自寫 FNV-1a 指紋函式、讀取 crates/speclink-core/tests/golden/assets.lock（版號＋指紋兩欄）、判定「指紋不符且版號未變即失敗」，失敗訊息含修復步驟（遞增 MARKER_VERSION 後 UPDATE_ASSETS_LOCK=1 重生）；重生路徑含防呆（指紋變而版號未變時拒絕改寫並失敗）。落實決策 8：version–hash 鎖定測試與重生防呆。驗證：無 lock 檔時測試以指引訊息失敗（紅燈確認訊息內容）。 <!-- speclink-task:tsk_01KYTYJZ9R8P2398EP5YS29ECS -->
 - [x] 3.2 首次生成鎖定檔：乾淨樹上 UPDATE_ASSETS_LOCK=1 生成 crates/speclink-core/tests/golden/assets.lock。驗證三情境：cargo test -p speclink-core 全綠；手動改動任一 assets 檔一字元後測試紅燈且訊息含修復步驟、還原後復綠；僅遞增版號不改內容時綠燈（對應規格「內嵌資產版本鎖定紀律」三場景）。 <!-- speclink-task:tsk_01KYTYJZ9RK4Y4W2PEZGJCD13X -->
-- [x] 3.3 ~~CLAUDE.md 開發備忘「內嵌技能三處必須同步」條目補一句~~ **取消（2026-07-31 使用者裁定）**：該備忘已於 commit c0303d8 被刻意移除，CLAUDE.md 現僅剩引擎生成的 SPECLINK 受管區塊（手改會被 update 覆蓋）。紀律落點改為鎖定測試自身——其失敗訊息已完整寫明「bump MARKER_VERSION 後以 UPDATE_ASSETS_LOCK=1 於乾淨樹重生」，是機械強制且對所有貢獻者一視同仁（與提案 Non-Goal「不以 harness hooks 強制 bump 紀律」同理）。 <!-- speclink-task:tsk_01KYTYJZ9R7ZQVMS9H0MVKVZ5C -->
+- [x] 3.3 ~~CLAUDE.md 開發備忘「內嵌技能三處必須同步」條目補一句~~ **取消（2026-07-31 使用者裁定）**：該備忘已於 commit 008a35f 被刻意移除，CLAUDE.md 現僅剩引擎生成的 SPECLINK 受管區塊（手改會被 update 覆蓋）。紀律落點改為鎖定測試自身——其失敗訊息已完整寫明「bump MARKER_VERSION 後以 UPDATE_ASSETS_LOCK=1 於乾淨樹重生」，是機械強制且對所有貢獻者一視同仁（與提案 Non-Goal「不以 harness hooks 強制 bump 紀律」同理）。 <!-- speclink-task:tsk_01KYTYJZ9R7ZQVMS9H0MVKVZ5C -->
 
 ## 4. 指令檔過期探測（引擎，決策 2、3）
 

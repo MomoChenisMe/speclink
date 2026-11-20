@@ -76,7 +76,7 @@ Document rules:
 
 ### 候選 5：頂層雜項——根目錄的 `prompt.md`、`docs/` 使用者文件與內部設計文件混放
 
-- **Files**：`prompt.md`（根目錄；ed9068a4 的早期規劃筆記「plan engine-as-SDK」，之後未再改）、`docs/`（24 檔：getting-started／configuration／workflow／sdk-node／remote-getting-started 是使用者文件；platform-architecture／implementation-refactor-roadmap／product-status／roadmap／server-backup／server-deployment／server-store-drivers／verb-contract 是設計與營運文件；雙語成對）。
+- **Files**：`prompt.md`（根目錄；f218a411 的早期規劃筆記「plan engine-as-SDK」，之後未再改）、`docs/`（24 檔：getting-started／configuration／workflow／sdk-node／remote-getting-started 是使用者文件；platform-architecture／implementation-refactor-roadmap／product-status／roadmap／server-backup／server-deployment／server-store-drivers／verb-contract 是設計與營運文件；雙語成對）。
 - **Problem**：訊號 1 的弱版。根目錄一份沒有標題的 `prompt.md`，新人會以為是專案級的 AI 提示檔；`docs/` 把「怎麼用」與「為什麼這樣設計」混在同一層，24 個檔名要先讀一遍才分得出。
 - **Solution**：`prompt.md` 移入 `docs/design/`（或封存為討論記錄的背景，因其內容就是 remote 模式的起源需求）；`docs/design/` 收 platform-architecture、implementation-refactor-roadmap、roadmap、verb-contract、server-store-drivers；使用者文件留 `docs/` 根。docs-links 測試會抓斷鏈。
 - **Wins**：根目錄只剩每個 repo 都有的檔；docs 一層分「用」與「設計」。刪除測試：不做也只是一份多餘檔與一層混排，成本低收益也低。
@@ -180,7 +180,7 @@ Document rules:
 
 **Focus**: 候選 4 收斂（五組＋根留 install.*、跨組 import 一處、ci.yml 與 config 規則 glob 改遞迴、舊路徑斷言涵蓋 scripts）。進候選 5 第一題——prompt.md 去向、docs/design/ 成員。
 **Position**: prompt.md 刪除；docs/design/ 只收兩份未對外連結的內部藍圖。查證：
-- prompt.md：7 行、無標題、repo 內零引用（只有本討論提到它）；內容是 remote 模式的起源需求陳述（PO／PM／RD 在同一 AI Agent 系統跑 SDD），ed9068a4「plan engine-as-SDK」那次 commit 帶入後未再改。它的內容已被 docs/platform-architecture.zh-TW.md §1 核心結論與 §5／§6 兩種模式完整吸收；git 歷史保留原文。刪除通過刪除測試：沒有讀者需要它、沒有工具引用它。
+- prompt.md：7 行、無標題、repo 內零引用（只有本討論提到它）；內容是 remote 模式的起源需求陳述（PO／PM／RD 在同一 AI Agent 系統跑 SDD），f218a411「plan engine-as-SDK」那次 commit 帶入後未再改。它的內容已被 docs/platform-architecture.zh-TW.md §1 核心結論與 §5／§6 兩種模式完整吸收；git 歷史保留原文。刪除通過刪除測試：沒有讀者需要它、沒有工具引用它。
 - docs/ 的 24 檔分三類，用「README 有沒有連結」當客觀判準：(a) 兩份 README 連結的 12 對——getting-started／configuration／workflow／development／sdk-node／remote-getting-started／product-status／roadmap／verb-contract 與 server-backup／server-deployment／server-store-drivers（後三份中文版被兩份 README 直接連結，是營運者文件，不是內部設計）——全部留 docs/ 根；(b) README 未連結、只有中文版、互相引用的兩份——platform-architecture.zh-TW.md 與 implementation-refactor-roadmap.zh-TW.md——移入 docs/design/；(c) assets/ 不動。
 - 引用面：openspec/config.yaml:31 的專案說明字面（`docs/platform-architecture.zh-TW.md` 僅是架構藍圖）改路徑；兩份藍圖互相的相對連結不變（同目錄）；docs-links.mjs 對 docs/ 遞迴掃描，斷鏈即紅；docs-parity 的 PAIRS 與 ZH_DOCS 名單不含這兩份，不受影響。
 - 本候選不單開，併入候選 2＋4 那一刀順手做（同一批動 config.yaml 與 docs 路徑）。
@@ -202,7 +202,7 @@ Document rules:
 ### Round 12 — interview (2026-09-11)
 
 **Focus**: 系列收尾盤點——三刀是否全部落地、結論 Deferred 的現況、記錄怎麼關。
-**Position**: 三刀已封存（repo-layout-groups c48a361d、core-module-groups 9247ef4b、server-module-groups ad4a1e0c），目錄現況與結論逐項一致；記錄以 `discuss archive` 手動收尾（hold 語意下最後一刀不自動隨行封存，改法另立 hold-countdown-auto-close）。
+**Position**: 三刀已封存（repo-layout-groups 2ffc23b6、core-module-groups 773251ef、server-module-groups d71219e9），目錄現況與結論逐項一致；記錄以 `discuss archive` 手動收尾（hold 語意下最後一刀不自動隨行封存，改法另立 hold-countdown-auto-close）。
 - Deferred「station.rs 是否過 500 行門檻」已在刀二處理：station 列為第十個搬測試的模組，`quality/station/tests.rs` 已存在
 - Deferred「speclink-fs 改名」未重提：位置差（crates/engine/ vs crates/store/）已在，改名成本 36 檔 87 處，維持 Deferred
 - Deferred「memory 檔舊路徑」仍待 Claude 側更新（8 份記憶檔約 20 處）

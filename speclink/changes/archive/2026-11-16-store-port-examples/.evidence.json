@@ -75,7 +75,7 @@
       "taskDesc": "1.1 （Red）依 D1 建立 crate 的骨架並加進 workspace，依 D8 寫 SQLite 範例的整合測試，涵蓋規格「三個範例通過合格測試」「事件與寫入同一次交易並可依序號讀回」「清除舊事件與下限」「開啟時只認自己的配置」「重新開啟與中斷後的一致性」「兩個儲存物件開同一份資料」「可用性檢查與失敗的分類」裡 SQLite 適用的每個情境：合格測試 16 項通過且沒有略過；最後修改時間等於提交帶的時間；兩個範圍各有版本號；一次提交的兩筆事件序號是 1 與 2；被拒絕的提交不留事件也不用掉序號；從序號 2、上限 2 讀到 3 與 4；沒有事件的範圍回空清單；清到 3 之後只讀到 4 與 5 且下限是 3；清到 100 時下限是 5、下一筆是 6；不存在的檔案路徑會初始化且 meta 的 format 是 `speclink-store-port`；meta 的 format 是 `speclink-team-store` 的檔案被拒絕、錯誤帶出該標記、檔案逐位元不變；layout_version 是 2 被拒絕；有資料表但沒有 meta 被拒絕；重新開啟後列出、讀取、版本號、事件與下限相同；同一次提交的第二個操作預期不符時第一個操作沒有留下文件與事件；兩個物件開同一個檔案時舊版本的提交得到衝突並回報目前版本；兩個物件同時以「必須不存在」提交同一個鍵時正好一個成功；開啟後把檔案移走時可用性檢查失敗且不是衝突。涉及 Cargo.toml、crates/store/speclink-store-port-sqlite/Cargo.toml、crates/store/speclink-store-port-sqlite/src/lib.rs、crates/store/speclink-store-port-sqlite/tests/it/main.rs。驗證：`cargo test -p speclink-store-port-sqlite` 編譯失敗或測試失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "21109c4b6632a33e98ed863ad7fff41b70deb440",
+      "headCommit": "97267e82229ac467ddc45fc06e4df87f87197db3",
       "touchedFiles": [
         "Cargo.lock",
         "Cargo.toml",
@@ -90,7 +90,7 @@
       "taskDesc": "2.1 （Red）依 D1 建立 crate 的骨架並加進 workspace，依 D8 寫檔案系統範例的整合測試，涵蓋同樣七條需求裡檔案系統適用的每個情境：1.1 列的合格測試、事件、清除與重新開啟的情境；空的或不存在的資料夾會初始化；meta.json 的 format 是 `speclink-team-store-fs` 被拒絕並帶出該標記、資料夾內容不變；layout_version 是 2 被拒絕；放著其他檔案、沒有 meta.json 的資料夾被拒絕且沒有新增任何檔案；只寫了一半的初始化（只有範例自己的空資料夾與鎖檔）再開啟時得到可用的空儲存；手動放一個沒被索引引用的內容檔、一個序號大於索引的事件檔與一個 `index.json.new` 之後開啟，列出、讀取與讀事件都看不到它們，下一次提交成功且版本號接著加 1；一個物件開著時由子程序開同一個資料夾得到「使用中」且資料夾不變；持有鎖的子程序被強制結束後可以開啟且先前的提交都在；範圍名稱含大寫、`.`、`/` 與 `..` 時資料只落在這個資料夾底下且兩個只差大小寫的範圍互不干擾；開啟後把資料夾移走時可用性檢查失敗。涉及 Cargo.toml、crates/store/speclink-store-port-fs/Cargo.toml、crates/store/speclink-store-port-fs/src/lib.rs、crates/store/speclink-store-port-fs/tests/it/main.rs。驗證：`cargo test -p speclink-store-port-fs` 編譯失敗或測試失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "21109c4b6632a33e98ed863ad7fff41b70deb440",
+      "headCommit": "97267e82229ac467ddc45fc06e4df87f87197db3",
       "touchedFiles": [
         "crates/store/speclink-store-port-fs/Cargo.toml",
         "crates/store/speclink-store-port-fs/src/lib.rs",
@@ -103,7 +103,7 @@
       "taskDesc": "3.1 （Red）依 D1 建立 crate 的骨架並加進 workspace，依 D8 寫 PostgreSQL 範例的整合測試與自己當主程式的測試執行檔，涵蓋同樣七條需求裡 PostgreSQL 適用的每個情境，加上規格「PostgreSQL 範例的測試不靜默略過」：1.1 列的合格測試、事件、清除、重新開啟與交易中途失敗的情境；沒有 meta 資料表的 schema 會初始化，其中不相干的資料表不被改動；meta 的 format 是 `speclink-team-store` 被拒絕並帶出該標記、沒有新增資料表；meta 存在但沒有標記被拒絕；兩個連到同一個 schema 的物件同時以「必須不存在」提交同一個鍵時正好一個成功且版本號只前進 1；不同範圍的提交互不等待；以伺服器端終止連線之後的下一次列出成功；資料庫連不上時回報暫時無法使用；以帶密碼的網址連到不存在的主機時錯誤訊息不含密碼；環境變數的密碼優先於網址的密碼；`url_embeds_password` 對帶與不帶密碼的網址回報正確；內容含 NUL 字元與非 ASCII 字元時原樣讀回。沒有設定 `SPECLINK_TEST_POSTGRES_URL` 時逐一印出測試名稱與 `skipped` 並以 0 結束；有設定時每個測試用自己的新 schema。涉及 Cargo.toml、crates/store/speclink-store-port-postgres/Cargo.toml、crates/store/speclink-store-port-postgres/src/lib.rs、crates/store/speclink-store-port-postgres/tests/it/main.rs。驗證：不設定環境變數執行 `cargo test -p speclink-store-port-postgres`，輸出逐一列出測試並含 `skipped`；設定後測試失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "21109c4b6632a33e98ed863ad7fff41b70deb440",
+      "headCommit": "97267e82229ac467ddc45fc06e4df87f87197db3",
       "touchedFiles": [
         "crates/store/speclink-store-port-postgres/Cargo.toml",
         "crates/store/speclink-store-port-postgres/src/lib.rs",
@@ -116,7 +116,7 @@
       "taskDesc": "4.1 依 D9 讓 CI 的 PostgreSQL job 執行新範例的測試，並讓既有的略過守門涵蓋它，對應規格「PostgreSQL 範例的測試不靜默略過」的情境「CI 上真的執行」：在 job 的測試步驟加一行 `cargo test --locked -p speclink-store-port-postgres`，輸出接到同一個記錄檔。涉及 .github/workflows/ci.yml。驗證：檢視 workflow 檔，新的一行在同一個步驟、輸出用 `tee -a` 接到 postgres-suites.log；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "21109c4b6632a33e98ed863ad7fff41b70deb440",
+      "headCommit": "97267e82229ac467ddc45fc06e4df87f87197db3",
       "touchedFiles": [
         ".github/workflows/ci.yml"
       ],
@@ -127,7 +127,7 @@
       "taskDesc": "4.3 最後檢查 D1 與 design 的 Implementation Contract 驗收條件：三個 crate 都設 `publish = false`、說明註解第一段寫明定位；`cargo tree -p speclink-store-port-sqlite -i speclink-store`、`cargo tree -p speclink-store-port-fs -i speclink-store`、`cargo tree -p speclink-store-port-postgres -i speclink-store` 都回報找不到套件；Cargo.lock 只多三個 workspace 成員、沒有新的第三方套件；`speclink-server`、`speclink-host` 與舊的 store crates 沒有檔案被改動（用 git status 對照）。涉及 Cargo.toml、Cargo.lock。驗證：`cargo build --workspace` 成功；`cargo test -p speclink-store-port-sqlite`、`cargo test -p speclink-store-port-fs` 通過；`speclink validate store-port-examples` 通過；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "cb6852970340a7370a4f39d8e16c48cc1124c745",
+      "headCommit": "16db23804ba319e556ad63883752bed695d00959",
       "touchedFiles": [
         "crates/store/speclink-store-port-fs/tests/it/availability.rs",
         "crates/store/speclink-store-port-fs/tests/it/boundaries.rs",

@@ -135,7 +135,7 @@
       "taskDesc": "1.1 （Red→Green）依 D1、D2 新增線上型別，對應規格「握手宣告技能版本」與「技能清單的請求與回應」的型別情境：先寫測試——握手的 `capabilities.skills.version` 能解析、缺席讀作沒有、不認得它的舊型別仍能解析新回應；技能清單的請求與回應序列化的鍵是 camelCase（`targets`、`tool`、`custom`、`invocation`、`contents`、`version`、`skills`、`name`、`digest`、`content`），`contents` 缺席讀作 false，沒有要求全文時不序列化 `content`；JSON Schema 的匯出含這些型別。再實作。涉及 crates/protocol/speclink-protocol/src/skills.rs、crates/protocol/speclink-protocol/src/binding.rs、crates/protocol/speclink-protocol/src/lib.rs。驗證：`cargo test -p speclink-protocol` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/protocol/speclink-protocol/src/binding.rs",
         "crates/protocol/speclink-protocol/src/lib.rs",
@@ -148,7 +148,7 @@
       "taskDesc": "1.2 （Red）為 D3 寫入口的測試，用記憶體版儲存，對應規格「入口提供這個範圍的技能」的九個情境：worktree 開啟時含兩支、沒有流程設定文件時不含、流程設定無法解析時保留；宿主的技能清單只留清單裡的；只給 Claude 的技能不給 codex；全文不含規格資料夾的路徑且 frontmatter 的版本等於握手宣告的版號；自訂工具得到中性的 tool-call 渲染且交棒是 `speclink-<名稱>`；`digest` 等於內容換行正規化後的 SHA-256；沒有寫入能力的人得到 200 且沒有提交；技能清單含不認得的名稱時建立失敗並列出名稱；握手宣告技能版號；空的 `targets`、不認得的內建工具、不合法的 `invocation` 各回 400。涉及 crates/host/speclink-host/tests/http_door.rs。驗證：`cargo test -p speclink-host --test http_door skills` 編譯失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/host/speclink-host/tests/http_door.rs"
       ],
@@ -159,7 +159,7 @@
       "taskDesc": "1.3 （Green）實作技能的路由與握手的宣告：把引擎裡「某個目標要產生哪些技能」的函式改成公開並多收一個「worktree 是否開啟」的值，本機的產生改呼叫同一個函式；入口讀這個範圍的流程設定決定 worktree；`HostKitOptions` 新增技能清單並在建立時驗證；路由列進唯讀 POST 的清單。示範用 server 不給清單。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/src/workspace/skills.rs、crates/host/speclink-host/src/kit.rs、crates/host/speclink-host/src/http/skills.rs、crates/host/speclink-host/src/http/mod.rs、crates/host/speclink-host/src/http/router.rs、crates/host/speclink-host/src/http/routes.rs、crates/host/speclink-server/src/state.rs。驗證：1.2 的測試通過；`cargo test -p speclink-core`（既有的 golden 不變）、`cargo test -p speclink-host` 與 `cargo test -p speclink-server` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs",
         "crates/adapters/speclink-node/src/host.rs",
@@ -184,7 +184,7 @@
       "taskDesc": "2.2 （Red）寫 CLI 的整合測試，用假的 Server，對應規格「remote 專案的技能取自 Server」的七個情境、「worktree 技能的政策條件式生成」與「受管檔再生的降級守門」新增的情境：自 Server 安裝後各工具的技能檔等於回應的內容且摘要指出來源與版本；舊 Server 與無法連線各退回本機範本並在 stderr 說明、exit code 0；宣告了卻取不到時非 0 且技能檔逐位元不變；Server 不再提供的技能目錄被清掉；自訂工具的技能自 Server 取得；本機專案不發任何請求且輸出不變；Server 的 worktree 設定由開改關後兩個技能目錄被移除；Server 的版本較舊時照常寫入並說明；退回本機範本時降級守門仍然拒絕；`speclink init --store remote` 的結尾有登入後執行 update 的提示。涉及 crates/adapters/speclink-cli/tests/it/remote_skills.rs、crates/adapters/speclink-cli/tests/it/main.rs。驗證：`cargo test -p speclink-cli --test it remote_skills::` 失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/adapters/speclink-cli/tests/it/main.rs",
         "crates/adapters/speclink-cli/tests/it/remote_skills.rs"
@@ -196,7 +196,7 @@
       "taskDesc": "2.3 （Green）`speclink update` 在 remote 專案改成「握手 → 有宣告就自 Server 取得並安裝，否則退回本機範本」；`speclink init --store remote` 的結尾加一行提示。涉及 crates/adapters/speclink-cli/src/verbs/init.rs。驗證：2.2 的測試通過；`cargo test -p speclink-cli` 全部通過，既有的 update 與 init 測試不改斷言。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/adapters/speclink-cli/src/remote_base.rs",
         "crates/adapters/speclink-cli/src/verbs/init.rs"
@@ -208,7 +208,7 @@
       "taskDesc": "2.4 （Red→Green）依 D5 實作 CLI 的提醒，對應規格「CLI 的技能版本提醒」的五個情境：先寫測試（日期可注入）——本機較舊時 stderr 有一行含兩邊版號與更新方式，stdout 與 exit code 不變；同一天不重複；隔天再提醒；本機較新或相同、Server 沒有宣告、版號無法解析時不提醒；另一台 Server 各自計算；記錄檔所在的目錄不可寫時不提醒也不報錯；`speclink update` 自己不印這一行。再實作，由建立遠端連線語境的單一入口呼叫。涉及 crates/adapters/speclink-cli/src/skill_notice.rs、crates/adapters/speclink-cli/src/remote_base.rs、crates/adapters/speclink-cli/src/main.rs、crates/adapters/speclink-cli/tests/it/remote_skills.rs。驗證：`cargo test -p speclink-cli` 通過；`remote_verb_parity` 不改斷言。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/adapters/speclink-cli/Cargo.toml",
         "crates/adapters/speclink-cli/src/main.rs",
@@ -221,7 +221,7 @@
       "taskDesc": "3.1 （Red→Green）依 D6 實作 remote 專案的探測與更新（Rust 這一邊）：先寫測試——給定 Server 的摘要與一個 checkout，全部相同回報現版；一支內容不同、少一支、多一支各回報過期並列出檔案；任一工具沒有任何技能檔回報缺少；只有換行不同不算不同；結果帶 Server 的版本與「app 比 Server 舊」的布林；更新後 checkout 的技能檔等於 Server 的全文。再實作，Tauri 的兩個 command 各只做委派，更新期間暫停檔案監看（和本機的更新相同）。涉及 apps/desktop/core/src/project.rs、apps/desktop/src-tauri/src/remote.rs、apps/desktop/src-tauri/src/lib.rs。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "apps/desktop/core/src/project.rs",
         "apps/desktop/src-tauri/src/lib.rs",
@@ -235,7 +235,7 @@
       "taskDesc": "3.2 （Red）寫前端的測試，對應規格「指令檔過期提示」修改後新增的六個情境：有 checkout 的 remote 專案的技能與 Server 不同時出現提示卡，確認框有「Server 提供的技能版本」一列與「更新技能檔」，按下後呼叫遠端的更新並讓提示消失；沒有技能檔時主要按鈕是「安裝技能檔」；app 比 Server 舊時多一句說明並同時有「更新技能檔」與「更新 Speclink」；沒有 checkout 的 remote 分頁不探測；Server 沒有宣告技能時沒有提示也沒有略過被記下；探測失敗時沒有提示。本機專案的既有測試不改斷言；把既有「remote 分頁不觸發」的測試改寫成「沒有 checkout 的 remote 分頁不觸發」。涉及 apps/desktop/src/__tests__ 底下既有的技能檔提示測試檔。驗證：`npm test -w apps/desktop` 中新增的測試失敗。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "apps/desktop/src/__tests__/App.test.tsx",
         "apps/desktop/src/__tests__/assetNotice.test.tsx",
@@ -250,7 +250,7 @@
       "taskDesc": "3.3 （Green）前端接上 remote 專案的探測：作用中的分頁是有 checkout 的 remote 專案時呼叫遠端的探測；提示卡、略過的記憶與其他分頁的琥珀點沿用既有的元件與邏輯，略過的鍵改用 Server 的版本；確認框多一列與多一個按鈕；中英文案加進訊息檔（沿用 `@speclink/ui` 既有的元件，不新增共用元件）。涉及 apps/desktop/src/store.ts、apps/desktop/src/assetPrompt.ts、apps/desktop/src/components/AssetNoticeDialog.tsx、apps/desktop/src/i18n/messages.ts。驗證：`npm test -w apps/desktop` 全部通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "apps/desktop/src/App.tsx",
         "apps/desktop/src/adapter/workspace.ts",
@@ -267,7 +267,7 @@
       "taskDesc": "4.1 （Red→Green）依 D7 讓 `createHost` 接受 `skills`，對應規格「createHost 的技能清單」的四個情境：先寫測試——只提供兩支時路由只回兩支；省略時回全部；不認得的名稱讓 `createHost` 同步拋出錯誤並列出名稱；`skills.render` 不受影響。再實作並更新型別宣告。涉及 crates/adapters/speclink-node/src/host.rs、crates/adapters/speclink-node/index.js、crates/adapters/speclink-node/index.d.ts 與 crates/adapters/speclink-node/__test__ 底下既有的 handleRequest 測試檔。驗證：先 `cargo build -p speclink-cli`，再 `npm --prefix crates/adapters/speclink-node run build` 與 `npm --prefix crates/adapters/speclink-node test` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "559e65026a1301903199806d5991a909642c42b2",
+      "headCommit": "9f28124e9b741038cb52c83ce2b74e6fc1f3a2cf",
       "touchedFiles": [
         "crates/adapters/speclink-node/__test__/handle-request.spec.ts",
         "crates/adapters/speclink-node/index.d.ts",
@@ -291,7 +291,7 @@
       "taskDesc": "7.1 （Red→Green）依 D9 讓引擎不動 Server 一支技能都不給的工具，對應規格「remote 專案的技能取自 Server」新增的情境與「指令檔過期提示」的「Server 對某個工具不提供任何技能時不提示」：先寫測試——`SyncPlan::from_rendered` 收到某個工具是空的清單時，套用後那個工具技能目錄下的每個檔案逐位元不變（既有的 `speclink-` 目錄不被清掉），其餘工具照常寫入與清理，那個工具不在「已更新」裡而在「沒有拿到技能」的清單裡；每個工具都是空的時沒有任何檔案被寫入；`probe_served_skills` 對空的工具不算缺少、不算過期、它既有的檔案不列入不同的檔案，每個工具都是空的時為現版。再實作。涉及 crates/engine/speclink-core/src/workspace/init.rs、crates/engine/speclink-core/src/workspace/init/tests.rs。驗證：`cargo test -p speclink-core init` 通過，既有的 golden 不變。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "007e82cb546374c19e54aa1f2c8c0c74f88a9b47",
+      "headCommit": "ee872cc611f0558ecd7d649ded6a23eca39aa70c",
       "touchedFiles": [
         "crates/adapters/speclink-cli/tests/it/door.rs"
       ],
@@ -302,7 +302,7 @@
       "taskDesc": "7.3 （Red→Green）依 D8 推導 checkout 的監看目標並讓監看槽位能掛上它們：先寫測試——`skill_watch_targets_at` 對 tools 為 claude 與一個自訂描述子的 checkout 回傳 checkout 的根（不遞迴）與兩個技能目錄（遞迴）；技能目錄不存在時改回傳最近一個存在的上層（不遞迴），不重複回傳根；`.speclink.yaml` 讀不出來時只回傳根。監看：改動技能目錄裡的檔案、改動 `.speclink.yaml` 各通知一次；改動 checkout 裡其他位置的檔案（例如 `src/` 底下）不通知；目標不變時重掛沿用原監看；暫停期間不掛。再實作，`.git` 哨兵的既有測試不改斷言。涉及 apps/desktop/core/src/project.rs、apps/desktop/src-tauri/src/watch.rs。驗證：`cargo test -p speclink-desktop-core` 與 `cargo test -p speclink-desktop` 通過。",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "007e82cb546374c19e54aa1f2c8c0c74f88a9b47",
+      "headCommit": "ee872cc611f0558ecd7d649ded6a23eca39aa70c",
       "touchedFiles": [
         "apps/desktop/src-tauri/src/watch.rs"
       ],

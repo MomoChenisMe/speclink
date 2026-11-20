@@ -6,7 +6,7 @@ from_discussion: embedded-host-needs
 started_at: 2026-11-15T21:27:07+08:00
 started_by: MomoChen <momochenisme@gmail.com>
 branch: speclink/node-retire-legacy-store
-landed_commit: 37699fd4f23b68c3dfe391c6a60208d80e5a9c51
+landed_commit: 0bf33f38d2f17045cd9ac5dd7d20da9ce0fdeecc
 landed_at: 2026-11-15T21:43:53+08:00
 landed_by: MomoChen <momochenisme@gmail.com>
 reviewed_at: 2026-11-15T22:19:34+08:00
@@ -14,7 +14,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 9
 reviewed_rounds: 4
-reviewed_commit: 37699fd4f23b68c3dfe391c6a60208d80e5a9c51
+reviewed_commit: 0bf33f38d2f17045cd9ac5dd7d20da9ce0fdeecc
 reviewed_scope:
   - path: crates/adapters/speclink-node/__test__/actor.spec.ts
     hash: 846abc95654115d078a1b42f3b2b3ffe4a849918b5e22492528c060871f8499c
@@ -53,7 +53,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 9
 verified_rounds: 4
-verified_commit: 37699fd4f23b68c3dfe391c6a60208d80e5a9c51
+verified_commit: 0bf33f38d2f17045cd9ac5dd7d20da9ce0fdeecc
 verified_scope:
   - path: crates/adapters/speclink-node/__test__/actor.spec.ts
     hash: 846abc95654115d078a1b42f3b2b3ffe4a849918b5e22492528c060871f8499c

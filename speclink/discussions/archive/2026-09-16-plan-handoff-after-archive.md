@@ -21,7 +21,7 @@ Document rules:
 
 使用者在 change-execution-order 三刀立案後追問：commit 技能的「先封存再一起提交」路徑是否也會提醒，若會是否該跟隨新的 plan 邏輯；並要求掃其他流程有無同樣情境。需求可驗證，未經 grill 直接進假設。
 掃描結果：commit 技能 7a 子流程直接執行 speclink archive，沒有 archive 技能 3b 的 Plan order hint，也沒有尾段的手冊過期提醒；archive 技能尾段只提醒提交與手冊，封存完成後沒有「下一個可開工」；review／verify／quality／worktree-merge 的下一步固定是封存、ingest／drift 導向 apply（apply 第一步已跑 plan 守門）、discuss promote 立骨架後仍由 propose 建 artifacts 並盤點——皆不需動。選 change 模糊時各動詞用 list --json 列候選，只有 archive 的候選順序影響合併閘。
-相關規格：archive-skill、commit-skill、skill-routing、change-plan。相關變更：add-change-plan-engine（已封存，da75931c）、add-change-plan-desktop、add-change-plan-remote（提案中）。
+相關規格：archive-skill、commit-skill、skill-routing、change-plan。相關變更：add-change-plan-engine（已封存，9bb3c145）、add-change-plan-desktop、add-change-plan-remote（提案中）。
 Prior discussions: propose-apply-handoff-updates, change-execution-order, hold-countdown-auto-close
 
 ## Rounds

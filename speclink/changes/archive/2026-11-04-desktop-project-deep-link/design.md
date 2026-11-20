@@ -6,7 +6,7 @@ Herdr 面板的 Logo 在 `integrations/herdr/mods/speclink/main.js` 的 `logoBut
 
 2026-11-04 查到三個會影響舊版處理的事實：
 
-- 網址功能的 commit（c6fd3309、f7ab4a85，2026-11-03）不在任何 tag 裡；v0.11.0 是 2026-10-27 發的。所以 v0.11.0 以前的發佈版都沒有註冊 speclink 網址。
+- 網址功能的 commit（700a4222、5bd69cc5，2026-11-03）不在任何 tag 裡；v0.11.0 是 2026-10-27 發的。所以 v0.11.0 以前的發佈版都沒有註冊 speclink 網址。
 - open 指令遇到沒有註冊的網址格式時，結束碼是 1，訊息是 No application knows how to open URL。
 - 這台機器的安裝版（由 main 建置）回報版號 0.11.0，但有註冊 speclink 網址。也就是說，版號相同的 app 可能有網址功能，也可能沒有。
 

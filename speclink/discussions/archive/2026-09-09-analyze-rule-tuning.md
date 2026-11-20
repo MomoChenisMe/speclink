@@ -21,7 +21,7 @@ Document rules:
 
 起因：另一個 session 在 acme repo 跑 speclink analyze，對 change remove-depth-cap 留下三個 Warning（CON-1／CON-2 design 標題未出現在 tasks、AMB-1 REMOVED 需求無 scenario），判斷為誤報並請本 session 評估規則。本 session 讀 crates/speclink-core/src/analyzer.rs 後確認三個都是 analyze 的規則問題，validate 無責。使用者先問 validate 能怎麼優化，釐清分工後把主題收斂到 analyze，並要求檢視其餘規則有無可優化處。
 需求已夠清楚（三個具體誤報＋量化證據），不需 grill 階段。
-相關規格與程式：analyze 四個面向目前沒有正典規格（只有 drift-computation 與 desktop-app 順帶提到）；鄰近 capability 為 spec-validation（validate）、drift-computation（drift）。規則實作全在 crates/speclink-core/src/analyzer.rs，該檔零個單元測試；CLI 端 crates/speclink-cli/tests/it/remote_verb_parity.rs 只比對輸出形狀。凍結權威自 2026-07-27（commit 3b8661e0）起為 speclink 自身契約，允許與 OpenSpec 原版分岔。
+相關規格與程式：analyze 四個面向目前沒有正典規格（只有 drift-computation 與 desktop-app 順帶提到）；鄰近 capability 為 spec-validation（validate）、drift-computation（drift）。規則實作全在 crates/speclink-core/src/analyzer.rs，該檔零個單元測試；CLI 端 crates/speclink-cli/tests/it/remote_verb_parity.rs 只比對輸出形狀。凍結權威自 2026-07-27（commit c2a5ed7a）起為 speclink 自身契約，允許與 OpenSpec 原版分岔。
 Prior discussions: manual-marker-placement-lint
 
 ## Rounds

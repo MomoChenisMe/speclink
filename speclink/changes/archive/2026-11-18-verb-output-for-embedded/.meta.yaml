@@ -12,7 +12,7 @@ reviewed_by: MomoChen <momochenisme@gmail.com>
 reviewed_with: claude
 reviewed_tasks_total: 14
 reviewed_rounds: 2
-reviewed_commit: 8a526b957f35f452fd4e7faa5831f02e5bf57c23
+reviewed_commit: a742ef0c695a74389702b992605c751947d75427
 reviewed_scope:
   - path: crates/adapters/speclink-cli/src/verbs/discuss.rs
     hash: 264c4b1237bb985a547e8957d7dd1a980cf72695091df00e92664f568db66f0a
@@ -91,7 +91,7 @@ verified_by: MomoChen <momochenisme@gmail.com>
 verified_with: claude
 verified_tasks_total: 14
 verified_rounds: 2
-verified_commit: 8a526b957f35f452fd4e7faa5831f02e5bf57c23
+verified_commit: a742ef0c695a74389702b992605c751947d75427
 verified_scope:
   - path: crates/adapters/speclink-cli/src/verbs/discuss.rs
     hash: 264c4b1237bb985a547e8957d7dd1a980cf72695091df00e92664f568db66f0a

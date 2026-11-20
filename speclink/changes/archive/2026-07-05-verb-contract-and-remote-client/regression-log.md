@@ -2,7 +2,7 @@
 
 2026-07-05 執行自我基線雙沙盒對照（沿用 store-trait-and-fs-adapter 與 config-system-rework 核准的作法）：
 
-- **基線**：git HEAD `cfb760b` worktree 建置的 release exe（不含前 session 遺留的未提交資產修改——`assets/skills/{archive,commit,sync}.md` 的 completeness 措辭改寫屬先前已歸檔 change 的產物，會出現在 twin 分歧清單並標注）。
+- **基線**：git HEAD `ac219e4` worktree 建置的 release exe（不含前 session 遺留的未提交資產修改——`assets/skills/{archive,commit,sync}.md` 的 completeness 措辭改寫屬先前已歸檔 change 的產物，會出現在 twin 分歧清單並標注）。
 - **對照**：本 change 完成後的 release exe。
 - **方法**：32 個指令區塊（22 parity ＋ 6 color[CLICOLOR_FORCE=1] ＋ 4 twin/樹狀 SHA），雙沙盒逐 byte 比對，沙盒路徑三種拼法（`\`、`\\`、`/`）與 ISO 時間戳正規化。腳本 `regress.ps1` 位於 session scratchpad（會隨 session 清空；沿用先前建議：如需長期保留應收進 repo `scripts/`）。
 

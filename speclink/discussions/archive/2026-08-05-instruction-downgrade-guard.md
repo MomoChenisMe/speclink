@@ -23,7 +23,7 @@ Document rules:
 
 模式：assumptions——掃到 crates/speclink-core/src/init.rs（probe_instructions、marker_version_of、stale 判準）、apps/desktop/core/src/project.rs（probe 序列化）、apps/desktop/src/instructionPrompt.ts（橫幅裁決與略過記憶），足以列假設。
 
-相關變更：desktop-instruction-staleness-prompt（1ae63b9，引入 probe 與橫幅）；記憶中的「安裝版 CLI 過期陷阱」屬同一類事故（舊引擎對新 workspace 動手）。
+相關變更：desktop-instruction-staleness-prompt（214c024，引入 probe 與橫幅）；記憶中的「安裝版 CLI 過期陷阱」屬同一類事故（舊引擎對新 workspace 動手）。
 
 ## Rounds
 

@@ -39,7 +39,7 @@ Document rules:
 
 **候選 1：受管技能集合在四處各算一次**
 - **Files**：`crates/speclink-core/src/init.rs:676`（generate_tool）、`:506`（generate_custom）、`:546`（expected_skill_dirs）、`:993`（differing_managed_files）；`:482`（worktree_skills_enabled）
-- **Problem**：訊號 1（一個概念散在多處）。「target T 在政策 P 下應有哪些 speclink-* 目錄與內容」這條規則——for_codex 子集過濾＋worktree 門檻過濾＋目錄名格式——在四個函式各寫一遍，而且 `worktree_skills_enabled` 在每一處都重新讀一次 `openspec/config.yaml`（一次 update 對兩個工具讀約 4～6 次）。實證：worktree-toggle-and-guards（eacbb69）落地時 `differing_managed_files` 漏補門檻過濾，政策關閉的專案被永久報成「檔案缺失／過期」，事後補了那段註解；rename-onboard-to-baseline（5aa3a13）要清孤兒目錄，只能再加第四份 `expected_skill_dirs`。
+- **Problem**：訊號 1（一個概念散在多處）。「target T 在政策 P 下應有哪些 speclink-* 目錄與內容」這條規則——for_codex 子集過濾＋worktree 門檻過濾＋目錄名格式——在四個函式各寫一遍，而且 `worktree_skills_enabled` 在每一處都重新讀一次 `openspec/config.yaml`（一次 update 對兩個工具讀約 4～6 次）。實證：worktree-toggle-and-guards（c36e749）落地時 `differing_managed_files` 漏補門檻過濾，政策關閉的專案被永久報成「檔案缺失／過期」，事後補了那段註解；rename-onboard-to-baseline（392d17c）要清孤兒目錄，只能再加第四份 `expected_skill_dirs`。
 - **Solution**：一支 `managed_skills(target: RenderTarget, worktree_on: bool, spec_dir) -> Vec<ManagedSkill { dir_name, content }>` 當唯一擁有者。generate ＝ 逐一寫檔；prune_orphan ＝ 目錄不在集合內就刪；differing ＝ 逐一比對；worktree 政策在一次同步開頭讀一次傳下去。四支函式縮成「集合 × 動作」。
 - **Wins**：新增一種門檻（例如未來的 tdd 開關）或改名技能只動一支函式；probe 與 update 結構上不可能再漂移（讀同一個集合）；config.yaml 讀取次數降到每次同步一次。
 - **Recommendation**：**strongly recommended**——刪除測試明確通過：四份規則消失後，同一行為只剩一處可讀。

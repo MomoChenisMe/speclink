@@ -149,7 +149,7 @@
       "taskDesc": "2.1 在 release.yml 的 desktop job 落實 spec「OS 程式碼簽章為可插鑰匙開關」與設計「D1：macOS 公證接在既有簽章開關上，部分設定 fail-closed」——簽章組閘門與公證環境注入：macOS 憑證半組與公證半組六項齊備時，於 Tauri 建置步驟注入公證三項環境變數（Tauri 簽章後自動公證並 staple）；任一平台簽章組「部分存在」時，前置檢查步驟以列出缺項 secrets 名稱的錯誤讓 job 失敗；全缺時維持現行跳過且全綠。驗證：以 bash 條件模擬三種 secrets 組合（全有、全無、缺一）的檢查邏輯正確，workflow 通過 repo 既有的 CI workflow 檢查",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         ".github/workflows/release.yml",
         "scripts/signing-gate.mjs",
@@ -162,7 +162,7 @@
       "taskDesc": "2.2 主 CI 納入 scripts 測試面，落實 spec「CI 執行完整測試」的擴充：ci.yml 的 build-and-smoke job 在其他測試面之前加入 scripts 測試步驟；執行方式須相容 job 釘選的 Node 版本與三平台預設 shell（Node 20 的 --test 不自行展開 glob、Windows runner 預設 shell 也不展開，故指定 shell: bash 讓 glob 先展開）；delivery-gate.test.mjs 補靜態契約斷言守住此步驟與其 shell 宣告。驗證：以 CI 釘選的 Node 版本在 bash 下實跑該指令，全部 scripts 測試檔確實載入且全綠；node --test scripts/*.test.mjs 全綠；actionlint 對 ci.yml 零問題",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         ".github/workflows/ci.yml",
         "scripts/delivery-gate.test.mjs"
@@ -174,7 +174,7 @@
       "taskDesc": "4.1 先寫 scripts/install.test.mjs 再實作 scripts/install.sh，落實 spec「安裝腳本一行安裝對應平台 CLI」與設計「D3：安裝腳本以 dry-run 與環境變數覆寫換取可測性」：測試覆蓋 dry-run 的五 target 平台對映矩陣與資產 URL 組裝、SPECLINK_INSTALL_VERSION 釘選、SPECLINK_INSTALL_DIR 覆寫、checksum 不符時非零退出且不落檔（以本地 fixture 檔模擬下載內容）。驗證：node --test scripts/install.test.mjs 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         "docs/assets/screenshots/desktop-archived.png",
         "docs/assets/screenshots/desktop-board.png",
@@ -199,7 +199,7 @@
       "taskDesc": "4.2 補 PowerShell 版：在 scripts/install.test.mjs 增加 pwsh 案例（無 pwsh 環境自動跳過）再實作 scripts/install.ps1，行為契約與 install.sh 一致（dry-run、版本釘選、目錄覆寫、checksum 驗證、PATH 提示）。驗證：本機（若有 pwsh）與 Windows CI 測試綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         "scripts/install.ps1"
       ],
@@ -210,7 +210,7 @@
       "taskDesc": "5.1 先寫 scripts/homebrew-formula.test.mjs 再實作 scripts/homebrew-formula.mjs，落實 spec「Homebrew formula 產生器」與設計「D4：Homebrew formula 由腳本產生，tap repo 手動維護」：輸入 --tag 與 --sums（SHA256SUMS.txt 路徑），stdout 輸出含 on_macos／on_linux × arm64／x86_64 四組 url＋sha256 的 formula；fixture 驗證四組對應正確、缺任一平台條目時非零退出並指出缺項。驗證：node --test scripts/homebrew-formula.test.mjs 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         "scripts/homebrew-formula.mjs",
         "scripts/homebrew-formula.test.mjs"
@@ -222,7 +222,7 @@
       "taskDesc": "6.1 README（中英）新增安裝區塊並同步 getting-started（中英）安裝節，落實 spec「安裝通路文件與發布狀態誠實化」與設計「D5：文件的「誠實入口」原則落到安裝面」：桌面三平台下載表（macOS dmg／Windows 安裝器／Linux AppImage 與 deb，連到 GitHub Releases）、CLI 一行安裝（curl 安裝腳本與 brew install tap 指令）、cargo install 從原始碼建置移到開發者導向段落；中英結構與事實對等。驗證：對照 user-documentation 規格的安裝區塊 scenario 逐項自查",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         "README.en.md",
         "README.md",
@@ -236,7 +236,7 @@
       "taskDesc": "6.2 sdk-node（中英）改標尚未發布至 npm 並改教 repo 內建置載入路徑，全文移除 npm install @speclink/engine 指示；docs/product-status.zh-TW.md 刷新查核日期並在 Node N-API SDK 列的限制欄補「尚未發布至 npm」。驗證：兩語 sdk-node 全文搜尋無 npm install @speclink/engine 字樣",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "3c456b6c6b467016a9ec0e41bf8b66c40e399eee",
+      "headCommit": "8ea4487d96c7ea166e615ab9037e26076a6883cd",
       "touchedFiles": [
         "docs/product-status.md",
         "docs/product-status.zh-TW.md",
@@ -250,7 +250,7 @@
       "taskDesc": "2.4 修正未知 API 路徑回裸 404 的規格違反（首發實跑於四個 smoke target 同時紅燈）：正典 server-web-console 的 scenario「拼錯 API 不被 SPA fallback 吞掉」要求回 JSON 404，但 `crates/speclink-server/src/assets.rs` 的 spa_fallback 回 `StatusCode::NOT_FOUND` 裸回應（無 body、無 content type），而既有整合測試只斷言狀態碼與「body 不含 SPA shell」，漏掉 JSON 那一半，實作因此長期偏離而未被察覺；改為沿用既有 `{error:{code,message}}` 外殼，並在 `crates/speclink-server/tests/it/web_assets.rs` 新增斷言 content type 為 application/json 且 body 具該外殼的測試。驗證：新測試對修正前的實作為紅；`cargo test -p speclink-server --test it` 全綠且無回歸",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ecbd61531ca429e96e2473160e98dbd82c37fdce",
+      "headCommit": "83894f88092e2abe3d3217ee670f55d3046942b1",
       "touchedFiles": [
         "crates/speclink-server/src/assets.rs",
         "crates/speclink-server/tests/it/web_assets.rs"
@@ -262,7 +262,7 @@
       "taskDesc": "2.6 修正 scripts 測試面首次在 CI 三平台執行時暴露的三處環境假設（任務 2.2 只在本機驗過，CI 上三平台全紅）：(a) `scripts/remote-docs.test.mjs` 以 `spawnSync('speclink')` 從 PATH 取 CLI——本機因有安裝版而通過、CI 無安裝版即 ENOENT，且比對到的可能是過期安裝版的 help surface；改為解析本 repo 的 `target/debug` 或 `target/release` binary（debug 優先，對齊專案慣例），皆不存在時跳過。(b) install.ps1 測試的跳過條件寫成「無 pwsh 才跳」，但 macOS 與 Linux runner 皆預裝 pwsh，於是拿 Windows 專用腳本去跑 arm64 mac 而撞上「不支援的架構」；改為僅在 Windows 執行。(c) install.sh 測試在 Windows 的 Git Bash 下無法解析無副檔名的假 curl／uname，且 sh 版不出貨到 Windows；改為 Windows 上整組跳過，由 ps1 那組接手。驗證：node --test scripts/*.test.mjs 本機全綠；三處閘門各自對應到平台而非工具是否存在",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "ecbd61531ca429e96e2473160e98dbd82c37fdce",
+      "headCommit": "83894f88092e2abe3d3217ee670f55d3046942b1",
       "touchedFiles": [
         "scripts/remote-docs.test.mjs"
       ],
@@ -273,7 +273,7 @@
       "taskDesc": "8.1 先寫 scripts/release-notes.test.mjs 再實作 scripts/release-notes.mjs，落實 spec「Release 說明含下載指南」與設計「D7：Release 下載指南由腳本產生前置於說明，v0.1.0 就地修正不重發 tag」：輸入 --tag（vX.Y.Z 格式，不符即非零退出且 stdout 無輸出），stdout 輸出下載指南 markdown——三平台安裝檔對照表（Speclink_X.Y.Z_aarch64.dmg／Speclink_X.Y.Z_x64.dmg、Speclink_X.Y.Z_x64-setup.exe、Speclink_X.Y.Z_amd64.AppImage／Speclink_X.Y.Z_aarch64.AppImage、Speclink_X.Y.Z_amd64.deb／Speclink_X.Y.Z_arm64.deb，檔名與 release 管線資產命名一致）、CLI 安裝腳本一行指令與 brew install 指令、註明 .app.tar.gz 與全部 .sig 為自動更新機制使用毋須手動下載。測試覆蓋：檔名對齊版號、.sig 註記存在、tag 格式 fail-closed。驗證：node --test scripts/release-notes.test.mjs 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "headCommit": "bf59a4dc90b455041de7671e817aa46547fa6833",
       "touchedFiles": [
         "scripts/release-notes.mjs",
         "scripts/release-notes.test.mjs"
@@ -285,7 +285,7 @@
       "taskDesc": "8.3 部署文件對齊 server 通路收斂，落實 spec「release 產物含 server 與部署文件」的文件半部：docs/server-deployment.zh-TW.md 開頭形態總覽改為官方形態（Docker 直跑、SQLite compose、PostgreSQL compose；任務 10.4 再補 npx 成四種）＋從原始碼建置的替代路徑；native binary 節改教 npm ci → npm run build -w apps/server-web → cargo build --release -p speclink-server 的建置順序；回退章節的 binary 路徑改為重建上一版 tag 或改用上一版 Docker image tag；全文移除 Release 的 server 壓縮檔下載指示。驗證：全文搜尋無 speclink-server- 開頭的資產下載指示；node --test scripts/delivery-gate.test.mjs 綠（文件建置順序斷言仍過）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "headCommit": "bf59a4dc90b455041de7671e817aa46547fa6833",
       "touchedFiles": [
         "docs/server-deployment.zh-TW.md"
       ],
@@ -296,7 +296,7 @@
       "taskDesc": "10.2 先寫測試再實作 npm launcher 與套件物化腳本，落實 spec「npm 套件一行啟動 server」與設計「D9：server 的 npm 通路——esbuild 式平台套件，launcher 插值組態、Rust 不動」：先寫 scripts/npm-server-launcher.test.mjs（os/cpu → 平台子套件名對映矩陣、零參數時依 SPECLINK_STORE／SPECLINK_DATA_DIR／SPECLINK_PUBLIC_URL／SPECLINK_PORT 產生的組態 YAML 內容正確且寫入資料目錄、sqlite 為預設 driver、SPECLINK_STORE=postgres 缺 SPECLINK_POSTGRES_URL 時非零退出點名缺項、帶 --config／SPECLINK_CONFIG／子命令時純透傳不產組態、以假 binary 驗證參數與 exit code 透傳、平台無對應子套件時可讀錯誤點名平台）與 scripts/npm-server-package.test.mjs（給定 --version 與 binary fixture，物化出主套件與五平台子套件，各 package.json 的 name／version／os／cpu／optionalDependencies／bin 欄位正確、--scope 覆寫生效），再實作 packages/server-npm（主套件 package.json 與 bin/speclink-server.mjs launcher）與 scripts/npm-server-package.mjs。驗證：node --test 兩個測試檔全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "c35165eff07166686cafdb338c5dfe860a44466e",
+      "headCommit": "bf59a4dc90b455041de7671e817aa46547fa6833",
       "touchedFiles": [
         "packages/server-npm/bin/speclink-server.mjs",
         "packages/server-npm/package.json",
@@ -311,7 +311,7 @@
       "taskDesc": "2.7 根治 docker 多架構建置的 QEMU SIGILL flaky（v0.1.1 與 v0.1.2 的首跑連兩次紅在 linux/arm64 的 web 階段，重跑才過）：Node/V8 的 JIT 在 QEMU 使用者態模擬下會偶發非法指令（exit 132），而 web 階段的 Vite 產出是架構無關的靜態 dist，根本不需要在目標架構下執行；crates/speclink-server/Dockerfile 的 web 階段改為 FROM --platform=$BUILDPLATFORM（buildx 內建變數，釘在建置機原生架構跑），Rust 編譯階段維持目標架構不動；scripts/delivery-gate.test.mjs 的 Dockerfile 斷言同步改為要求 web 階段帶 --platform=$BUILDPLATFORM。驗證：新斷言對修正前的 Dockerfile 為紅；node --test scripts/delivery-gate.test.mjs 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "65e8e327515943208b8fbfbf843a15e1e7ed056d",
+      "headCommit": "e41df819bc865da8b238aa42485f0f7a11510e1d",
       "touchedFiles": [
         "crates/speclink-server/Dockerfile"
       ],
@@ -322,7 +322,7 @@
       "taskDesc": "11.1 NSIS 安裝器繁中化與 Speclink 圖示，落實 spec「Release 產出三平台桌面安裝檔」（修訂後——安裝器語系與圖示）與設計「D11：NSIS 安裝器語系跟隨系統、圖示用現有 logo」：apps/desktop/src-tauri/tauri.conf.json 的 bundle.windows.nsis 補 languages 為 TradChinese 與 English 兩項（NSIS 於系統語言在清單內時直接採用、否則落回英文）與 installerIcon 指向 icons/icon.ico；scripts/delivery-gate.test.mjs 補契約斷言：nsis.languages 含 TradChinese 與 English、installerIcon 指向 icon.ico。驗證：新斷言對修改前的設定為紅；node --test scripts/delivery-gate.test.mjs 全綠；tauri 設定 JSON 可解析",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "fd3dfd7d52d594eab0f7d180d8d7b29b44b86557",
+      "headCommit": "684a41a4b2d7a8941fd565481c19f651bc3bf144",
       "touchedFiles": [
         "apps/desktop/src-tauri/tauri.conf.json"
       ],
@@ -333,7 +333,7 @@
       "taskDesc": "11.2 macOS CLI 啟動自動佈署與 PATH 冪等追加，落實 spec「安裝 CLI 指令到 PATH」（修訂後）與設計「D12：macOS CLI 啟動自動佈署，PATH 以 ~/.zprofile 冪等追加」：apps/desktop/src/core/cliInstall.ts 的 needsRedeploy 擴為 macOS（未安裝與版本不符皆自動佈署、AppImage 維持版本不符）並新增 zprofile 追加決策純函式（輸入 PATH 涵蓋狀態與 ~/.zprofile 內容，輸出 append 行或 none；識別註解冪等）；adapter 與 app 啟動流程接上自動佈署與 zprofile 寫入（佈署失敗不阻斷啟動）；apps/desktop/src/__tests__/cliInstall.test.ts 先補紅測試：macOS 未安裝→自動佈署決策、版本不符→重佈署、zprofile 已有識別行→不重複追加、已在 PATH→不寫入。驗證：新測試對修改前為紅；npm test -w apps/desktop 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "fd3dfd7d52d594eab0f7d180d8d7b29b44b86557",
+      "headCommit": "684a41a4b2d7a8941fd565481c19f651bc3bf144",
       "touchedFiles": [
         "apps/desktop/src-tauri/src/cli_install.rs",
         "apps/desktop/src-tauri/src/lib.rs",

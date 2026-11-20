@@ -104,7 +104,7 @@
       "taskDesc": "1.1 先寫會失敗的測試（design：關卡狀態帶 scope 的 JSON 形狀只定義一次）：在 crates/engine/speclink-core/src/quality/station/tests.rs 新增測試，斷言關卡狀態的新序列化在 `state` 為 `stamped` 時含 `scope` 陣列，每項只有 `path` 與 `hash` 兩個字串鍵、順序與 metadata 的 `reviewed_scope` 相同；章沒有記下任何指紋時是 `\"scope\": []`；`inProgress` 時是 `{ \"state\": \"inProgress\" }`、沒有 `scope`；既有的序列化（`show --json` 預設與 `list --json --detail` 共用）對同一個已蓋章的狀態仍然沒有 `scope` 鍵。驗證：`cargo test -p speclink-core --lib station` 對新測試失敗（方法尚未存在而無法編譯，或斷言失敗）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/engine/speclink-core/src/quality/station/tests.rs"
       ],
@@ -115,7 +115,7 @@
       "taskDesc": "1.2 實作 1.1：在 crates/engine/speclink-core/src/quality/station.rs 的關卡狀態加上帶 `scope` 的序列化方法，沿用既有 `show --json` 形狀再加 `scope`，既有序列化不動；把 crates/engine/speclink-core/src/command/mod.rs 的 `ShowChange` 上「without the scope」的註解改成「帶著 scope，預設輸出不印」。驗證：`cargo test -p speclink-core --lib station` 與 `cargo test -p speclink-core --lib listing` 全綠（`list --json --detail` 的既有測試不改期望值）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/engine/speclink-core/src/command/mod.rs",
         "crates/engine/speclink-core/src/quality/station.rs"
@@ -127,7 +127,7 @@
       "taskDesc": "2.1 先寫會失敗的測試（design：`--detail` 只影響 show 的輸出，不進引擎命令；show 的輸出函式收旗標，三種執行方式共用一支）：在 crates/adapters/speclink-verbs/src/parse.rs 的測試斷言 `show demo --json --detail` 解析成功、轉出的引擎命令仍是不帶新欄位的 `Show`，`show demo --detail` 以解析錯誤拒絕且訊息含 `--json`；在 crates/adapters/speclink-verbs/src/render/query.rs 的測試斷言帶詳細的 `show` 輸出在已蓋章的 `review` 含 `scope`、`inProgress` 的 `verify` 不含，不帶詳細時與既有 JSON 逐位元相同，正式規格的輸出帶不帶詳細都相同。驗證：`cargo test -p speclink-verbs` 對新測試失敗",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-verbs/src/parse.rs",
         "crates/adapters/speclink-verbs/src/render/query.rs"
@@ -139,7 +139,7 @@
       "taskDesc": "2.2 實作 2.1，交付「單筆變更的詳細輸出」的解析與輸出：crates/adapters/speclink-verbs/src/families/query.rs 的 `ShowArgs` 新增 `--detail`（`#[arg(long, requires = \"json\")]`，說明寫「With --json, add each stamped station's scope: the path and hash of every file at the stamp」），引擎的 `Show` 命令不加欄位；crates/adapters/speclink-verbs/src/render/query.rs 的 `show` 輸出函式多收「是否帶詳細」，帶時對 `review`、`verify` 改用 1.2 的序列化；crates/adapters/speclink-verbs/src/render/mod.rs 的 `render_with` 從已解析的 `show` 動詞讀出 `detail` 傳下去。驗證：`cargo test -p speclink-verbs` 全綠；`cargo test -p speclink-core --test it command_describe` 全綠且命令描述的 golden 沒有改動",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-cli/src/verbs/query.rs",
         "crates/adapters/speclink-verbs/src/families/query.rs",
@@ -152,7 +152,7 @@
       "taskDesc": "2.3 先寫會失敗的 CLI 測試：新檔 crates/adapters/speclink-cli/tests/it/show_detail.rs（在 crates/adapters/speclink-cli/tests/it/main.rs 註冊），本機專案的 fixture 直接在 `.meta.yaml` 寫入審查章欄位與兩項 `reviewed_scope`；斷言 `speclink show demo --json --detail` 的 exit code 是 0、`review.scope` 兩項的 `path` 與 `hash` 照 metadata 的順序、型別都是字串；`speclink show demo --json` 沒有 `scope`；`speclink list --json --detail` 的 demo 項沒有 `scope`；`speclink show demo --detail` 的 exit code 非零、stderr 含 `--json`、stdout 是空的；以 crates/adapters/speclink-cli/tests/it/fake_server.rs 的假 Server 驗證遠端的 `show demo --json --detail` 從單筆變更回應帶出 `scope`、回應沒有關卡欄位時成功且沒有 `review`、連不上時的 exit code 與 stderr 和 `show demo --json` 相同。另在 crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 加上本機與遠端 `show demo --json --detail` 的 `review`、`verify` 深度相等。驗證：`cargo test -p speclink-cli --test it show_detail` 與 `cargo test -p speclink-cli --test it remote_verb_parity` 對新測試失敗",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-cli/tests/it/main.rs",
         "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
@@ -165,7 +165,7 @@
       "taskDesc": "2.5 宿主套件路徑的測試（「蓋章記錄程式碼的 commit」與「驗證蓋章記錄程式碼的 commit」補上的 `--detail` 行為）：在 crates/adapters/speclink-node/__test__/host.spec.ts 以 JS 記憶體儲存建立宿主，經 `host.dispatch` 對 demo 蓋審查章與驗證章（stdin 帶 scope 的 JSON），斷言 `['show', 'demo', '--json', '--detail']` 的 `review.scope` 與 `verify.scope` 等於蓋章時給的內容、`['show', 'demo', '--json']` 兩者都沒有 `scope`；在 `beforeCommand` 裡 `read(['show', 'demo', '--json', '--detail'])` 得到同樣的 `scope`；`['show', 'demo', '--detail']` 經 `host.dispatch` 與 `read` 都以 `code` 為 `invalid_argv` 拒絕。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-node/__test__/host.spec.ts"
       ],
@@ -176,7 +176,7 @@
       "taskDesc": "3.1 先寫會失敗的測試（「本機引擎的 exportScope 方法」；design：exportScope 在既有檢查之後確認規格資料夾）：在 crates/adapters/speclink-node/__test__/export-local.spec.ts 斷言 `root` 底下沒有 `speclink/` 時 `exportScope()` 以 Error 拒絕、`code` 是 `error`、message 以 `no spec folder: \"speclink\"` 開頭且不含 `root` 的絕對路徑、資料夾裡的檔案內容與修改時間不變；`spec_dir: docs/specs` 但沒有那個資料夾時 message 以 `no spec folder: \"docs/specs\"` 開頭；`speclink/` 只有 `README.md` 時拒絕；`speclink/` 只有空的 `specs/` 時成功且 `documents` 是空陣列；只下載規格資料夾、以 `specDir` 指定名稱時成功；`spec_dir: ../other/speclink` 仍是 `spec folder outside the project:` 的錯誤。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 對新測試失敗、既有的「空的專案」測試仍綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-node/__test__/export-local.spec.ts"
       ],
@@ -187,7 +187,7 @@
       "taskDesc": "3.2 實作 3.1：crates/adapters/speclink-node/src/lib.rs 的本機匯出在共用組包函式成功之後，以引擎既有的「是不是規格資料夾」判斷檢查 `root` 加規格資料夾名稱的位置，不是時以 `code` 為 `error` 拒絕，message 照 design 的寫法；共用組包函式（crates/host/speclink-host/src/transfer.rs）不改；crates/adapters/speclink-node/index.d.ts 的 `exportScope` 說明把「a `root` that is no project gives none」改成新的拒絕規則。驗證：`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 全綠；`cargo test -p speclink-host --lib transfer` 全綠（組包函式對沒有規格資料夾的資料夾仍回傳空的清單，Speclink Desktop 的「遷移到 Server」行為不變）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-node/index.d.ts",
         "crates/adapters/speclink-node/src/lib.rs"
@@ -199,7 +199,7 @@
       "taskDesc": "4.2 Node SDK 文件（docs/sdk-node.md 與 docs/sdk-node.zh-TW.md）依 design「SDK 文件的三段放在既有段落旁邊」補三段：匯出本機專案之後的「在伺服端匯入」（錨點 `server-side-import`，寫 `root` 與 `store.specDir`、`no spec folder:` 的拒絕、`limits.importBytes` 與匯出沒有上限、一次性搬遷不是同步、重新匯入要先清空範圍且會刪掉宿主裡的改動）；掛鉤段落封存範例之後的釋放認領範例（從 docs/verb-contract 搬來，加 `if (await isAdmin(identity)) return` 並註明 `isAdmin` 是宿主自己的函式），「不內建…規則」那句補「也不限定誰可以釋放認領」，寫明 `reason` 在 CLI 的 stderr 與 Speclink Desktop 認領失敗提示出現；掛鉤段落的「封存前比對蓋章時的檔案」（`read(['show', name, '--json', '--detail'])`、4.1 的 JS 指紋函式原文、蓋章時已刪除的檔不在 `scope`），並把蓋章段落「文字檔先把 CRLF 換成 LF」改成精確的算法。驗證：逐段對照 design 與 user-documentation 的 delta 做內容審查；中英兩版段落一一對應；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（含範例程式的匯出名稱存在於型別宣告的守門）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "docs/sdk-node.md",
         "docs/sdk-node.zh-TW.md"
@@ -211,7 +211,7 @@
       "taskDesc": "4.3 動詞參考文件（docs/verb-contract.md 與 docs/verb-contract.zh-TW.md）：`show --json` 欄位表之後加 `--detail` 的說明（只能和 `--json` 一起用、`scope` 只在已蓋章的關卡出現、每項 `path` 與 `hash`、`list --detail` 不帶）與輸出範例；釋放認領一節刪掉範例程式，只留「命令名稱是 `claim-release`，只擋 `claim` 的掛鉤擋不到釋放」並連到 SDK 文件的新範例。驗證：`target/debug/speclink show --help` 列出 `--detail`；中英兩版都搜尋不到 `claim-release` 的範例程式；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠（含「文件列出的旗標存在於 CLI 說明」的守門與連結檢查）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "docs/verb-contract.md",
         "docs/verb-contract.zh-TW.md"
@@ -223,7 +223,7 @@
       "taskDesc": "4.4 產品狀態（docs/product-status.md 與 docs/product-status.zh-TW.md）：Node SDK 那一列補上「`show --json --detail` 帶出蓋章時的檔案指紋」，更新該列日期。驗證：內容審查；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全綠",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "docs/product-status.md",
         "docs/product-status.zh-TW.md"
@@ -235,7 +235,7 @@
       "taskDesc": "5.2 跑完受影響面的測試：`cargo test -p speclink-core`、`cargo test -p speclink-verbs`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-host`、`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs`。驗證：全部通過；golden 與既有 CLI 測試沒有改期望值",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "7cff6e61f231c8a9bac04b8014baf85cdfd46017",
+      "headCommit": "825b8d478569bff034e1e3056d7110bf98a204cc",
       "touchedFiles": [
         "crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs",
         "crates/host/speclink-host/src/transfer.rs"

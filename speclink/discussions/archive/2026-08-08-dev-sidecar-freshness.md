@@ -19,7 +19,7 @@ Document rules:
 
 ## Context
 
-起因：desktop-dev-frontend-hmr 的 verify Round 1 帶保留蓋章（全文在 commit 5a76ad9）留下兩個未根治的既有落差——(1) 全新 clone 跑 npm run dev 因缺 gitignored 的 apps/desktop/src-tauri/binaries/speclink-<triple> 而編譯硬失敗，spec 場景「全新 checkout 且未安裝 CLI 仍可啟動」實測不成立；(2) 改 crates/ 後 sidecar 不會更新，全 repo 只有 scripts/desktop-install.mjs 會呼叫 scripts/desktop-sidecar.mjs 佈署。使用者要求討論解決方式。
+起因：desktop-dev-frontend-hmr 的 verify Round 1 帶保留蓋章（全文在 commit 4bc9117）留下兩個未根治的既有落差——(1) 全新 clone 跑 npm run dev 因缺 gitignored 的 apps/desktop/src-tauri/binaries/speclink-<triple> 而編譯硬失敗，spec 場景「全新 checkout 且未安裝 CLI 仍可啟動」實測不成立；(2) 改 crates/ 後 sidecar 不會更新，全 repo 只有 scripts/desktop-install.mjs 會呼叫 scripts/desktop-sidecar.mjs 佈署。使用者要求討論解決方式。
 
 模式：assumptions——相關程式碼充足（scripts/dev.mjs、scripts/desktop-sidecar.mjs、scripts/desktop-install.mjs、apps/desktop/src-tauri/src/cli_install.rs、tauri.conf.json），且本輪 scout 直接讀了 tauri-build 2.6.3 原始碼驗證關鍵行為。
 

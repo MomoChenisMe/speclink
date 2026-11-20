@@ -19,7 +19,7 @@ Document rules:
 
 ## Context
 
-同一個導入規劃拿 main（c9d06e7e，加上尚未 commit 的 engine-export-scope）重新對照自己的設計，第二輪的九項都接上了，剩三項：T1 讀取動詞拿不到蓋章時的檔案指紋、T2 宿主在伺服端匯入規格資料夾的做法、T3 釋放認領的規則。來源文件已寫明需求與待確認的點，不需要先釐清需求（不跑 grill）；這份紀錄只談通用的內嵌宿主情境，不寫那個系統的名稱與內部細節。相關的正式規格是 node-sdk、host-runtime、workspace-migration、review-station、verify-station、client-protocol、change-lifecycle；進行中的變更是 engine-export-scope（尚未 commit，品質關卡第 1 輪進行中），它的 delta 改寫 engine-export-scope: node-sdk、engine-export-scope: workspace-migration。
+同一個導入規劃拿 main（33781529，加上尚未 commit 的 engine-export-scope）重新對照自己的設計，第二輪的九項都接上了，剩三項：T1 讀取動詞拿不到蓋章時的檔案指紋、T2 宿主在伺服端匯入規格資料夾的做法、T3 釋放認領的規則。來源文件已寫明需求與待確認的點，不需要先釐清需求（不跑 grill）；這份紀錄只談通用的內嵌宿主情境，不寫那個系統的名稱與內部細節。相關的正式規格是 node-sdk、host-runtime、workspace-migration、review-station、verify-station、client-protocol、change-lifecycle；進行中的變更是 engine-export-scope（尚未 commit，品質關卡第 1 輪進行中），它的 delta 改寫 engine-export-scope: node-sdk、engine-export-scope: workspace-migration。
 Prior discussions: embedded-host-needs-2, embedded-host-needs
 Source doc: ../speclink-embedded-host-needs-3.md
 

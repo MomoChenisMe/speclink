@@ -42,7 +42,7 @@
       "taskDesc": "1.1 新增 crates/speclink-node/__test__/actor.spec.ts，覆蓋 delta spec 五個 scenario：fs 形式明給 actor 優先於 git identity（created_by 為給值）、fs 形式未給回退 git identity（與 CLI 蓋章逐位元一致）、宿主 Store 形式帶 actor 落章（created_by 為給值；同 scenario 的 review／verify _by 面由 1.2 覆蓋）、宿主 Store 形式未給維持無章（metadata 不含 created_by）、trim 後空字串視同未給；先寫並確認紅燈——此測試檔即 spec 需求「createEngine 的建構期 actor 注入」的驗證面",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "010c357ffca2ca22342b5520ba6b66e4a368dbdd",
+      "headCommit": "4c93c2e0559c87b62a3c08aa36b97942177d518a",
       "touchedFiles": [
         "crates/speclink-node/__test__/helpers.ts",
         "crates/speclink-node/__test__/actor.spec.ts",
@@ -55,7 +55,7 @@
       "taskDesc": "2.1 crates/speclink-node/src/lib.rs：engineFromFs 與 engineFromStore 增選填 actor 參數並存於 Engine 實例；run_engine 的 ExecutionContext actor 解析改為「建構期 actor（trim 後非空）優先 → fs 形式回退 git_identity → 宿主 Store 形式維持 None」；dispatch 簽名不增任何身分參數",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "010c357ffca2ca22342b5520ba6b66e4a368dbdd",
+      "headCommit": "4c93c2e0559c87b62a3c08aa36b97942177d518a",
       "touchedFiles": [
         "crates/speclink-node/index.d.ts",
         "crates/speclink-node/index.js",
@@ -68,7 +68,7 @@
       "taskDesc": "2.3 crates/speclink-node/src/lib.rs 的 run_dispatch 增 review 與 verify 兩個動詞分支：子動詞只認 add-round 與 stamp（其餘回 invalid_argv 並指出支援清單）；add-round 以 --stdin 取輪次內容組 Command::ReviewAddRound／VerifyAddRound，回 { change, round }；stamp 以 --accept／--agent 取旗標、--stdin 的 JSON（{ scope: [{ path, hash }], missing: [] }，缺席讀作空清單、解析失敗回 invalid_argv）組 Command::ReviewStamp／VerifyStamp，回 { change }；守門錯誤沿既有 DispatchError 路徑傳遞",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "010c357ffca2ca22342b5520ba6b66e4a368dbdd",
+      "headCommit": "4c93c2e0559c87b62a3c08aa36b97942177d518a",
       "touchedFiles": [
         "crates/speclink-node/src/store_bridge.rs"
       ],
@@ -79,7 +79,7 @@
       "taskDesc": "3.1 docs/sdk-node.zh-TW.md 與 docs/sdk-node.md 的 createEngine 段補 actor 選項：語意（建構期綁定、優先序與兩形式回退）、格式（\"Name <email>\"）、多人宿主用法（每請求或每身分一個 engine 實例）與「認證是宿主職責、SDK 只收結果」的邊界說明；同節補上 dispatch 新增的 review／verify 蓋章動詞（argv 詞彙、stamp 的 stdin JSON 形狀、守門行為）",
       "actor": "MomoChen <momochenisme@gmail.com>",
       "repo": "main",
-      "headCommit": "010c357ffca2ca22342b5520ba6b66e4a368dbdd",
+      "headCommit": "4c93c2e0559c87b62a3c08aa36b97942177d518a",
       "touchedFiles": [
         "docs/sdk-node.md",
         "docs/sdk-node.zh-TW.md"

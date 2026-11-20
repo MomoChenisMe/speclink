@@ -4,7 +4,7 @@
 
 ## Motivation
 
-2026-10-07 的文件整理（commit 147076be）照程式碼重寫了 README 與 docs/，稽核時發現正式規格與周邊文字有幾處落後：
+2026-10-07 的文件整理（commit 800ad68e）照程式碼重寫了 README 與 docs/，稽核時發現正式規格與周邊文字有幾處落後：
 
 - `user-documentation` 規格仍要求已移除的平台架構與實作路線圖文件、仍以 H2 字串相同判斷中英對等、仍寫 GET `/account/tokens` 回 405、仍把 server 文件列為「只有中文」、仍寫 sdk-node「以首個帶 engine 的 release 為準」，並把 macOS 桌面 app 寫成「每次啟動都換掉 CLI」（程式碼只在未安裝或版本不同時換）。
 - `verb-contract` 規格的 409 reason（`version_conflict`、`ownership_lost`、`change_busy`、`repo_mismatch`）在 Protocol 的 reason 註冊表裡不存在；實際是 `revision_conflict` 與 `refused`。
