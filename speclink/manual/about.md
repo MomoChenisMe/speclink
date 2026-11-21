@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-11-19T17:04:25+08:00
+generated: 2026-11-21T17:53:22+08:00
 ---
 
 # 本手冊的來源
@@ -17,7 +17,7 @@ generated: 2026-11-19T17:04:25+08:00
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-kit`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`skill-authoring`、`store-abstraction`、`store-port-contract`、`store-port-examples`、`ui-copy-vocabulary`、`workspace-session`。
 
-2026-11-19 這次與上次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
+2026-11-21 這次與上次相比，能力沒有增減。2026-11-19 那次與更早一次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
 
 `release-notes` 定義的更新日誌，使用者看得到的那一面（桌面 app 的更新日誌）由 `desktop-app` 載明，寫在[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。`store-abstraction` 規定的變更資料檔讀取順序（先讀 `.meta.yaml`、沒有才讀 `.openspec.yaml`），使用者看得到的那一面由 `spec-dir-migration` 載明，寫在[規格資料夾與舊佈局遷移](spec-folder.md)。`desktop-app` 裡有兩段需求講前端元件怎麼共用（「前端元件庫與資料源解耦」「共用元件唯一來源」），屬於內部結構，沒有任何一頁取材。
 
@@ -38,10 +38,12 @@ generated: 2026-11-19T17:04:25+08:00
 > 2026-10-25T21:44:20+08:00 那次封存（spec-dir-path-rewrite）把正式規格裡的 `openspec/` 路徑改成 `speclink/`，順帶替大量需求重新蓋了時戳；2026-10-21T22:05:05+08:00 那次（quality-gate-wording-in-specs）把「品質站」改成「品質關卡」，也是一樣。這兩次只改了路徑與用詞，沒有改到下面任何一條矛盾的字句。所以下面引的時戳雖然是現值，判定「哪一邊較晚」時，看的是這兩次重蓋之前的時戳；會因為重蓋而翻盤的條目，各自寫出重蓋之前的時戳。
 >
 > 2026-11-10 之後又有幾次封存替下面引用的需求換了時戳：add-pi-cursor-tools（2026-11-10T21:23:31+08:00，內建工具從三個變五個）、desktop-subagent-model-page（2026-11-10T23:06:26+08:00）、remote-skill-delivery（2026-11-13T14:35:20+08:00）與 server-on-port-examples（2026-11-16T23:24:33+08:00）。它們改的是工具清單、設定頁分類、技能來源與儲存的用詞，沒有改到第 2、4、5、8、27 條矛盾的字句，所以這幾條的裁定不變，條目裡寫的仍是那幾次封存之前的時戳。第 3 條與第 30 條的字句有被改到，已經改寫。
+>
+> 2026-11-21 的 project-whoami-and-denied-state（2026-11-21T17:43:14+08:00）也替第 2、3 條引用的「remote 初始化與連接指令」換了時戳。它加上的是多個 repo 的查驗，Claude／Codex 選集與不建立指令檔的字句都沒有改，所以這兩條的裁定不變。
 
 1. **政策解析層數**：`workflow-config` 的 Purpose 寫「四層解析：環境變數 ＞ .speclink.yaml 舊鍵 ＞ 正典檔 ＞ 內建預設」且舊鍵命中會出警告；同規格的需求「工作流政策的正典歸屬與三層解析順序」（2026-10-25T21:44:20+08:00）改為三層，.speclink.yaml 的同名鍵一律不生效、不出警告。內文採三層。
-2. **綁定 checkout 後產生什麼**：`remote-connection`「Remote Workspace bootstrap 跨入口一致性」寫 CLI 的 remote init 與桌面綁定會產生 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-chooser`「checkout 綁定驗證與 marker 寫入」、`workspace-tools`「built-in tools 權威收斂」（2026-10-08T11:52:22+08:00），以及 `remote-connection` 自己的「remote 初始化與連接指令」，都寫只生成技能檔、並剝除指令檔裡遺留的 SPECLINK 區塊。四段中有三段現在的時戳都是 2026-10-25T21:44:20+08:00（路徑重蓋）；重蓋之前，「Remote Workspace bootstrap 跨入口一致性」是 2026-07-24，「checkout 綁定驗證與 marker 寫入」是 2026-10-08T11:52:22+08:00，「remote 初始化與連接指令」是 2026-08-23，只生成技能檔的一方較晚。內文採只生成技能檔。
-3. **可選的 AI 工具有幾個**：`remote-connection`「remote 初始化與連接指令」（2026-10-25T21:44:20+08:00，路徑重蓋；重蓋之前是 2026-08-23）寫 remote init 要一個 Claude／Codex 的選集，非互動終端只指引 `--tools claude`、`codex` 或 `claude,codex`；同規格「Remote Workspace bootstrap 跨入口一致性」也寫「相同 Claude／Codex 選集」。`workspace-tools`「init 內建 Agent 工具選擇」（2026-11-10T21:23:31+08:00）寫所有 `speclink init`（含遠端專案）都接受 claude、codex、copilot、pi、cursor 五個，`workspace-chooser` 與 `desktop-config` 的勾選框也已是五個。內文採五個，[CLI 連接 remote](cli-remote.md) 以附註指出差異。同族還有一處：`desktop-app`「表單控制項與按鈕以主題化元件呈現」（2026-10-11T21:42:42+08:00）的情境寫初始化對話框的工具多選只有 claude 與 codex 兩個；`desktop-config`「未初始化目錄經確認後自動初始化」（2026-11-10T21:23:31+08:00）寫五個。[認識桌面 app](desktop-overview.md)採五個。
+2. **綁定 checkout 後產生什麼**：`remote-connection`「Remote Workspace bootstrap 跨入口一致性」寫 CLI 的 remote init 與桌面綁定會產生 AGENTS.md／CLAUDE.md 的 Speclink 區塊；`workspace-chooser`「checkout 綁定驗證與 marker 寫入」、`workspace-tools`「built-in tools 權威收斂」（2026-10-08T11:52:22+08:00），以及 `remote-connection` 自己的「remote 初始化與連接指令」，都寫只生成技能檔、並剝除指令檔裡遺留的 SPECLINK 區塊。四段的時戳後來都被沒有改到這些字句的封存重蓋過（路徑重蓋，以及上方附註列的幾次）；重蓋之前，「Remote Workspace bootstrap 跨入口一致性」是 2026-07-24，「checkout 綁定驗證與 marker 寫入」是 2026-10-08T11:52:22+08:00，「remote 初始化與連接指令」是 2026-08-23，只生成技能檔的一方較晚。內文採只生成技能檔。
+3. **可選的 AI 工具有幾個**：`remote-connection`「remote 初始化與連接指令」（現為 2026-11-21T17:43:14+08:00，見上方附註；2026-10-25 路徑重蓋之前是 2026-08-23）寫 remote init 要一個 Claude／Codex 的選集，非互動終端只指引 `--tools claude`、`codex` 或 `claude,codex`；同規格「Remote Workspace bootstrap 跨入口一致性」也寫「相同 Claude／Codex 選集」。`workspace-tools`「init 內建 Agent 工具選擇」（2026-11-10T21:23:31+08:00）寫所有 `speclink init`（含遠端專案）都接受 claude、codex、copilot、pi、cursor 五個，`workspace-chooser` 與 `desktop-config` 的勾選框也已是五個。內文採五個，[CLI 連接 remote](cli-remote.md) 以附註指出差異。同族還有一處：`desktop-app`「表單控制項與按鈕以主題化元件呈現」（2026-10-11T21:42:42+08:00）的情境寫初始化對話框的工具多選只有 claude 與 codex 兩個；`desktop-config`「未初始化目錄經確認後自動初始化」（2026-11-10T21:23:31+08:00）寫五個。[認識桌面 app](desktop-overview.md)採五個。
 4. **技能檔過期怎麼判**：`desktop-app`「指令檔過期提示」（2026-10-25T21:44:20+08:00）的情境仍以「CLAUDE.md 不存在就提示安裝」「指令檔的 SPECLINK 標記被移除不提示」舉例；`workspace-tools`「技能檔過期探測」（2026-10-08T11:52:22+08:00）以 skills 目錄下的 speclink- 技能檔與版號判定。`desktop-app` 時戳較晚，但它的需求本文只說「執行指令檔過期探測」，不定義判定方式。內文照探測規格寫。
 5. **唯讀角色叫什麼**：`server-policy-write`（2026-07-20）、`user-documentation`「帳號、PAT 與 membership 的操作邊界明確」（2026-10-08T10:00:10+08:00）、`desktop-config`「設定頁圖形化讀寫兩層設定」（2026-10-25T21:44:20+08:00）與 `server-web-console`「管理列表以詳情頁與對話框承載檢視與建立」（2026-10-15T10:20:04+08:00）寫 reader；`server-identity`「帳號 browser API 保持憑證祕密邊界」的一條 scenario（2026-07-28）與 `server-verb-api`「task done 消費 touchedFiles 且 evidence 有唯讀端點」（2026-08-25）寫 viewer。內文採 reader。
 6. **server 的官方發布物**：`server-release`「Server 交付物內嵌同版本 SPA 資產」（2026-07-25）寫 release binary 與「tag 觸發 server binary 與 Docker image 發布」；同規格「release 產物含 server 與部署文件」（2026-08-14）寫 server binary 不上傳 GitHub Release，官方通路只有 Docker 映像與 npm 套件。內文採後者。
@@ -99,19 +101,21 @@ generated: 2026-11-19T17:04:25+08:00
 - 沒有截圖。畫面文字與按鈕名稱逐字取自規格，實際畫面若不同，以執行中的產品為準。
 - drift 技能沒有自己的規格，手冊只寫 `skill-routing` 與 `user-documentation` 載明的入口情境與交棒關係。audit 的規格 `audit-skill` 目前只管獨立模式報告的語言，[安全稽核：/speclink-audit](audit.md) 只寫這部分與 `user-documentation` 載明的定位。apply 只有挑選變更的第一步（plan 守門）有規格，載於 `change-plan`；ingest 只有參數解讀、不改規格變更的產出流程切換，以及收尾的依賴、插隊判定有規格，載於 `ingest-skill`；兩者其餘的內文行為未載。analyze 的技能本身也沒有規格，但 `speclink analyze` 指令的判定規則有 `change-analysis`，寫在[分析：交叉檢查變更的產物](analyze.md)。
 - 手冊一律寫新佈局的 `speclink/` 與 `.meta.yaml`。還沒遷移的舊專案，畫面與檔案仍是 `openspec/` 與 `.openspec.yaml`；兩者怎麼對應，見[規格資料夾與舊佈局遷移](spec-folder.md)。
+- `tray-status-menu`「系統匣標示存取被拒」寫原生選單的項目標籤「與離線時的寫法相同」，但系統匣規格沒有寫已有 session 的離線專案在原生選單的標籤。[系統匣面板與選單](tray.md)只寫沒有存取權限的字面，沒有寫離線的。
 - `server-web-console` 的確認框清單列了「刪除專案」，但 `server-admin` 的管理功能只有專案的建立與改顯示名，沒有需求說刪除專案從哪裡進入。[瀏覽器後台](web-console.md)照規格把它列在確認框清單，沒有另外寫入口。
 - 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。2026-10-27 那次「品質站蓋章配色與主色分離」改名為「品質關卡蓋章配色與主色分離」，[認識桌面 app](desktop-overview.md)與[桌面上的品質關卡](desktop-quality.md)因此整頁重生、錨定到新名稱。
 - 只改路徑或用詞的封存也會把整份規格、或整段需求重新蓋章，讓取材自它的頁被標為可能過期。2026-10-25 那次（spec-dir-path-rewrite）就讓 37 頁同時過期；其中內容沒有受影響的頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。
-- 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-10-27 那次 `desktop-app` 新增的「已封存頁的流程成本摘要」與「技能檔提示承載規格資料夾遷移」兩段就是這樣，已分別寫進[規格、討論、已封存與搜尋](desktop-browse.md)與[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。2026-11-04 這次新增的「以 speclink 網址開啟詳情頁」也一樣；其他頁沒有過期、不能動，所以單獨寫成[用 speclink 網址開啟畫面](desktop-deep-link.md)。2026-11-19 這次新增的「remote 專案的審查與驗證標示」寫進[桌面連線 server 與 remote 專案](desktop-remote.md)。`verb-contract` 新增的「artifact cat 讀取已封存變更的文件」寫進[封存](archive.md)。目前 `desktop-app` 沒有被任何頁錨定的需求，只有上面說的兩段內部結構需求。
-- `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。同樣的情況還有兩個：`host-kit` 只有「登入方式由宿主宣告」一段被[CLI 連接 remote](cli-remote.md)與[桌面連線 server 與 remote 專案](desktop-remote.md)引用（它決定不帶旗標時走哪一種登入）；`reference-server` 只有「啟動組態 fail closed」一段被[啟動 server](server-start.md)引用（升級時直接換版啟動會被拒）。
+- 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-10-27 那次 `desktop-app` 新增的「已封存頁的流程成本摘要」與「技能檔提示承載規格資料夾遷移」兩段就是這樣，已分別寫進[規格、討論、已封存與搜尋](desktop-browse.md)與[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。2026-11-04 這次新增的「以 speclink 網址開啟詳情頁」也一樣；其他頁沒有過期、不能動，所以單獨寫成[用 speclink 網址開啟畫面](desktop-deep-link.md)。2026-11-19 這次新增的「remote 專案的審查與驗證標示」寫進[桌面連線 server 與 remote 專案](desktop-remote.md)。`verb-contract` 新增的「artifact cat 讀取已封存變更的文件」寫進[封存](archive.md)。目前 `desktop-app` 沒有被任何頁錨定的需求，只有上面說的兩段內部結構需求。2026-11-21 這次，使用者面向能力新增的需求都在有頁以裸名取材的能力裡（`remote-connection`、`remote-auth`、`remote-resilience`、`tray-status-menu`、`workflow-config`），過期判定照常亮起；只以錨定取材的能力裡，只有 `verb-contract` 新增一段「--json 輸出裡既有的 snake_case 欄位是凍結契約」，它只規定給程式讀的輸出，不入冊。
+- `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。同樣的情況還有兩個：`host-kit` 只有兩段被引用：「登入方式由宿主宣告」被[CLI 連接 remote](cli-remote.md)與[桌面連線 server 與 remote 專案](desktop-remote.md)引用（它決定不帶旗標時走哪一種登入）；「範圍與能力由宿主的函式決定」被[CLI 連接 remote](cli-remote.md)引用（專案有多個 repo 而沒有指名時，Server 拒絕的訊息怎麼寫）；`reference-server` 只有「啟動組態 fail closed」一段被[啟動 server](server-start.md)引用（升級時直接換版啟動會被拒）。
 - 只給宿主的程式或 Agent 讀的輸出不入冊：清單與單筆變更的詳細輸出、內嵌宿主不印路徑行、領域事件，以及掛鉤收到的命令名稱。這些寫在 `verb-contract`、`host-kit` 等規格裡，整合者要看的是 SDK 文件，不是這份手冊。
 - `change-landing` 只規定 `speclink in-progress add` 會記下分支；完成第一個任務時自動蓋開工章的那條路會不會也記分支，規格未載，[實作：完成任務](apply.md)與[分支與落地記錄](landing.md)都只寫前者。
 - 2026-11-19 重生時找到四條沒有跟上後來變更的需求（遠端專案的 discard、遠端專案的 `plan --strict-overlap`、誤封存討論的救援路徑、已知缺口的清單），當天由變更 fix-stale-spec-claims 改正並封存。原本為它們記的三條矛盾與一條附註已經從上面拿掉，[實作：完成任務](apply.md)、[認識資料：變更、討論與規格](data-layout.md)與[執行順序：plan 與依賴](plan.md)也跟著改成遠端專案可用。
 - 只改用詞或清單的封存仍會讓大量頁面過期。2026-11-19 這次有 34 頁被標為可能過期，其中 4 頁的內容沒有受影響，只換生成時戳。這次重生的頁把裸名的 `user-documentation` 改成錨定到實際取材的需求，之後使用者文件規格的其他改動不會再把它們標成過期。
+- 2026-11-21 這次有 5 頁被標為可能過期，5 頁都有內容要改，沒有只換時戳的頁。[remote 模式總覽](remote-overview.md)把裸名的 `remote-connection` 改成錨定到實際取材的五段需求。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-11-19
+2026-11-21
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

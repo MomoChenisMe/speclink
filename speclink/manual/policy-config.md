@@ -2,9 +2,9 @@
 title: 工作流政策與設定
 section: SDD 工作流
 order: 210
-keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言]
+keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言, 空字串, "--help"]
 sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落"]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-21T17:53:22+08:00
 ---
 # 工作流政策與設定
 
@@ -82,6 +82,8 @@ speclink workflow-config set <key> <value>
 key 只能是五個政策欄位之一。其他 key 被拒絕，不動檔案。值不合法時指令失敗，錯誤訊息指出欄位名、收到的值與合法代碼集合。
 
 - tdd、audit、worktree 設 false，或 locale、spec_locale 設空字串，會移除該鍵，回到未設定＝預設。鍵上方的註解行保留。
+- tdd、audit、worktree 不接受空字串：`speclink workflow-config set tdd ''` 失敗，config.yaml 不動。
+- `speclink workflow-config set --help` 的值說明寫出空字串的作用，內容含 `an empty value unsets locale or spec_locale`。這段說明固定是英文，不隨 locale 改變。
 - 寫入只動目標鍵所在的行。其他行逐位元保留，包括註解、空行與你自己加的內容。
 - 加 `--dry-run` 只印出前後差異，不寫檔。沒有變更時差異為空。值不合法時同樣拒絕，不印差異。
 - 值沒有變時（例如 tdd 已經是 true 再設一次 true），照常印確認訊息，但本機專案不會重寫 config.yaml；檔案原本不存在時（例如直接執行 `set tdd false`）也不會為此建立。

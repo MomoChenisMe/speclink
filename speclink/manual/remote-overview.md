@@ -3,8 +3,8 @@ title: remote 模式總覽
 section: Remote 模式
 order: 400
 keywords: [remote, server, link, 示範與試用, 內嵌, 宿主, 登入方式, project-scoped URL, .speclink.yaml]
-sources: ["user-documentation#使用者文件載明本地產物的純文字可攜性", "user-documentation#官方 server 定位為示範與試用", "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#遠端專案的登入與技能來源有說明", remote-connection, "remote-auth#登入方式的探索與選擇"]
-generated: 2026-11-19T16:40:41+08:00
+sources: ["user-documentation#使用者文件載明本地產物的純文字可攜性", "user-documentation#官方 server 定位為示範與試用", "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#遠端專案的登入與技能來源有說明", "remote-connection#remote 初始化與連接指令", "remote-connection#repo 身分攜帶與歸屬防呆", "remote-connection#remote 區段與模式解析", "remote-connection#殘留連接檔的遷移警告", "remote-connection#用戶端以作業系統的信任庫驗證 Server 的憑證", "remote-auth#登入方式的探索與選擇"]
+generated: 2026-11-21T17:53:22+08:00
 ---
 # remote 模式總覽
 
@@ -60,7 +60,7 @@ CLI 看 `.speclink.yaml` 裡有沒有 remote 區段。
 | `speclink unlink` | 移除 remote 區段，保留其他欄位。之後指令回到本地模式 |
 | `speclink auth login` | 取得憑證 |
 
-init 與 link 當下已有可用憑證時，CLI 立即向 server 查驗 repo 是否屬於這個 Project 並回報結果。沒有憑證時提示你執行 `speclink auth login`。操作細節見 [CLI 連接 remote](cli-remote.md)。
+init 與 link 當下已有可用憑證時，CLI 立即向 server 查驗 repo 是否屬於這個 Project 並回報結果。Project 註冊了兩個以上 repo 時，要用 `--repo` 指名一個：link 沒有指名就不寫入 remote 區段，以非零 exit code 結束，並列出可用的註冊名。沒有憑證時提示你執行 `speclink auth login`。操作細節見 [CLI 連接 remote](cli-remote.md)。
 
 登入有三種方式：瀏覽器登入、裝置登入、存取金鑰。Server 宣告了自己支援哪幾種時，CLI 與桌面 app 依這個順序選第一個；Server 沒有宣告時走裝置登入。連 HTTPS 的 Server 時，信不信任它的 HTTPS 憑證由作業系統的信任庫決定，組織自己的 CA 裝進信任庫就能連，不必另外設定。兩件事的細節都在 [CLI 連接 remote](cli-remote.md)。
 

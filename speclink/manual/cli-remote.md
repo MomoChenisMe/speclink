@@ -2,9 +2,9 @@
 title: CLI 連接 remote
 section: Remote 模式
 order: 460
-keywords: [link, auth login, 瀏覽器登入, 裝置登入, 存取金鑰, 登入方式, 金鑰圈, logout, .speclink.yaml, 信任庫, CA, certificate, server unreachable, Pi, Cursor]
-sources: [remote-connection, remote-auth, server-device-auth, "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#遠端專案的登入與技能來源有說明", "workspace-tools#init 內建 Agent 工具選擇", "workspace-tools#remote 專案的技能取自 Server", "host-kit#登入方式由宿主宣告"]
-generated: 2026-11-19T16:40:41+08:00
+keywords: [link, auth login, auth status, 瀏覽器登入, 裝置登入, 存取金鑰, 登入方式, 金鑰圈, logout, .speclink.yaml, 多個 repo, "--repo", 信任庫, CA, certificate, server unreachable, server unavailable, 暫時無法服務, Pi, Cursor]
+sources: [remote-connection, remote-auth, server-device-auth, "user-documentation#Remote Getting Started 提供可重複的完整操作路徑", "user-documentation#遠端專案的登入與技能來源有說明", "workspace-tools#init 內建 Agent 工具選擇", "workspace-tools#remote 專案的技能取自 Server", "host-kit#登入方式由宿主宣告", "host-kit#範圍與能力由宿主的函式決定"]
+generated: 2026-11-21T17:53:22+08:00
 ---
 
 # CLI 連接 remote
@@ -43,9 +43,27 @@ speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
 
 `init` 與 `link` 共同的行為：
 
-- 當下已有可用憑證時，CLI 立刻向 server 查這個 repo 是否屬於該專案，並回報結果。repo 不在專案裡：非零 exit code，stderr 指出並列出可用的儲存庫代號，remote 區段不寫入。
+- 當下已有可用憑證時，CLI 立刻向 server 查這個 repo 是否屬於該專案，並回報結果。
 - 沒有憑證時，CLI 提示執行 `speclink auth login`。
 - server 提供本 repo 的 git 位址參考值，而它與本地 git remote 不一致時：stderr 一行警告，提示你可能在 fork 或鏡像上工作。這只是警告，不影響結果。
+
+查驗的結果，看專案註冊了幾個 repo，以及你有沒有給 `--repo`：
+
+| 專案註冊的 repo | 你給的 `--repo` | `link` 的結果 | `init` 的結果 |
+| --- | --- | --- | --- |
+| 一個 | 沒給 | 和以前相同 | 和以前相同 |
+| 一個或多個 | 已註冊的名稱 | 和以前相同，連接成功 | 和以前相同 |
+| 兩個以上 | 沒給 | 非零 exit code，remote 區段不寫入 | 初始化照常完成，之後以非零 exit code 結束 |
+| 任何 | 沒註冊的名稱 | 非零 exit code，remote 區段不寫入 | 規格未載 |
+
+專案有多個 repo，這件事本身不會讓查驗失敗。指名一個已註冊的 repo，就照常連上。兩種失敗的 stderr 訊息：
+
+- **專案有兩個以上 repo，而你沒有指名**：訊息指引你用 `speclink link <url> --repo <名稱>` 指名一個，並列出全部可用的註冊名。`init` 與 `link` 印的是同一則訊息。`init` 時，Skills、`.gitignore` 與含 remote URL 的 `.speclink.yaml` 都已建立，照訊息再執行一次 `speclink link` 即可。`--no-color` 下訊息的文字相同。
+- **指名的 repo 沒有註冊**：訊息列出可用的註冊名。例如專案註冊 erp 與 crm，你給了 `--repo nope`：
+
+  ```
+  Error: repo 'nope' is not registered in this project (available: erp, crm)
+  ```
 
 ## 模式怎麼判定
 
@@ -59,6 +77,7 @@ speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
 ## 每個 remote 動詞怎麼跑
 
 - 動詞執行前，CLI 先向 server 確認你要操作的專案與 repo（規格稱為 handshake）。確認失敗時，動詞以非零 exit code 停止，錯誤指向原因。原因有四種：API 版本不相容、找不到對應的專案或 repo、無權限、專案有多個候選 repo。
+- 專案有多個候選 repo，而 remote 區段沒有 repo：stderr 指出這件事並列出候選。Server 拒絕的訊息另外指出兩種指名方式：`X-Speclink-Repo` 標頭，或 `.speclink.yaml` 的 `remote.repo`。用 CLI 時，執行 `speclink link <url> --repo <名稱>`，把 repo 寫進 remote 區段。
 - 動詞自動帶上 remote 區段的 repo 名。你操作的變更屬於別的 repo 時，CLI 以非零 exit code 結束。訊息一行同時列出變更所屬的 repo、當前 repo 名，以及改正指引。
 
 ## HTTPS 連線：信不信任 Server 的憑證
@@ -92,6 +111,33 @@ server unreachable — check the connection url (`remote.url` in .speclink.yaml 
 ```
 
 桌面 app 把憑證被拒絕呈現為連線中斷，寫入動作停用，與 Server 沒有回應時相同。見 [失聯與恢復](remote-offline.md)。
+
+## Server 暫時無法服務時
+
+Server 以 500 以上的狀態碼回應時，CLI 以非零 exit code 結束。stderr 的訊息看 Server 有沒有說明原因：
+
+- Server 回的是可讀的錯誤說明，標明暫時無法服務，而且附上原因文字：訊息是 `server unavailable — <原因>`。原因照 Server 寫的原文顯示，不翻譯、不截短，也沒有檢查連接網址的提示。
+- 其他情況：訊息和以前相同，提示你檢查連接網址：
+
+```
+server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)
+```
+
+| Server 的回應 | 訊息 |
+| --- | --- |
+| 503，標明暫時無法服務，原因是「資料庫切換中」 | `server unavailable — 資料庫切換中` |
+| 503，標明暫時無法服務，但原因是空的 | `server unavailable — check the connection url (…)` |
+| 500，標明是內部錯誤 | `server unavailable — check the connection url (…)` |
+| 502，回的是 HTML 網頁 | `server unavailable — check the connection url (…)` |
+| 連不上 Server | `server unreachable — check the connection url (…)` |
+
+例如 Server 維護期間對登入方式的查詢回 503，原因是「系統維護中，預計 10 分鐘後恢復」。這時執行 `speclink auth login --browser`，stderr 是：
+
+```
+Error: server unavailable — 系統維護中，預計 10 分鐘後恢復
+```
+
+桌面 app 進入離線時，離線橫幅也會顯示 Server 回報的原因。見 [失聯與恢復](remote-offline.md)。
 
 ## 登入：`speclink auth login`
 
@@ -190,7 +236,14 @@ remote 動詞與 `speclink auth status` 依固定順序找憑證：
 - 四層都沒有：非零 exit code 報未登入，指引 `speclink auth login`。
 - 桌面 app 登入過的 server，CLI 免登入就能用。
 
-`speclink auth status` 顯示目前解析到的身分、repo 驗證結果，以及憑證來自哪一層。未登入時 exit code 非 0，並附登入指引。
+`speclink auth status` 顯示目前解析到的身分、憑證來自哪一層，以及 repo 的查驗結果：
+
+- 第一行是身分。第二行是兩個空白加 `Credential from: <來源說明>`。`--no-color` 下這兩行的文字相同。
+- 憑證是金鑰圈裡的續約憑證時，來源說明是 `system keychain (login session, shared with the desktop app)`。它不寫是瀏覽器登入還是裝置登入，因為金鑰圈的條目不記錄這件事。以前這一行寫的是 `device login`。
+- 其他三層（環境變數、金鑰圈的存取金鑰、憑證檔）的來源說明不變。
+- 專案註冊多個 repo 時照常完成，exit code 0。remote 區段有 repo 時，印出它的查驗結果，例如 `Repo 'crm' is registered in this project`；沒有註冊時，改印一行以 `! ` 開頭的提示，列出可用的註冊名。remote 區段沒有 repo 時，印一行以 `! ` 開頭的提示，指引你用 `speclink link <url> --repo <名稱>` 指名，並列出全部可用的註冊名。
+- 加 `--json` 時只輸出身分與憑證來源，不輸出 repo 的查驗結果或提示。
+- 未登入、憑證被拒、或你不是這個專案的成員時，exit code 非 0。未登入時附登入指引。不是成員時，stderr 是存取被拒的訊息，stdout 不印身分與憑證來源。
 
 ## 憑證失效時
 

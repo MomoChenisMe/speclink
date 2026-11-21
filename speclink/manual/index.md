@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-11-19T17:04:25+08:00
+generated: 2026-11-21T17:53:22+08:00
 ---
 
 # Speclink 操作手冊
@@ -51,7 +51,7 @@ Speclink 是一套可驗收的 SDD（規格驅動開發，Spec-Driven Developmen
 - 先讀 [remote 模式總覽](remote-overview.md)
 - 開發者接上 server：[CLI 連接 remote](cli-remote.md)、[remote 模式的規格投影](remote-context.md)
 - 既有本機資料搬上去：[本地工作區遷移到 remote](migrate.md)
-- 網路斷了怎麼辦：[失聯與恢復](remote-offline.md)
+- 網路斷了、或被移出專案怎麼辦：[失聯與恢復](remote-offline.md)
 
 ### Server 管理員／部署者
 
