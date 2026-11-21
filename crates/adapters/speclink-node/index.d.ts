@@ -126,7 +126,7 @@ export interface Engine {
    * project — through this engine, the CLI or anything else — while it
    * exports, or the bundle can hold old and new content together.
    *
-   * Five of these failures also give `error.reason`, a fixed string to show
+   * Six of these failures also give `error.reason`, a fixed string to show
    * your own text by; do not match the `message`, which can change:
    *
    * | `reason` | the failure |
@@ -136,11 +136,25 @@ export interface Engine {
    * | `symlink_in_spec_folder` | a symbolic link on the way to the spec folder, at it or under it, or in the older evidence folder `.speclink/touched/` |
    * | `spec_folder_unreadable` | a folder under the spec folder, or the older evidence folder, cannot be listed |
    * | `invalid_change_metadata` | an active or archived change's metadata does not parse |
+   * | `change_schema_unusable` | the schema an active or archived change names cannot be used: it is not found, its definition does not load, or it has a file pattern the engine cannot list |
+   *
+   * The last two are about one change, and only they give two more strings:
+   * `error.change`, the change's folder name (an archived change's is its
+   * dated name, `2026-03-03-old-one`), and `error.path`, its metadata file by
+   * its path from `root` with forward slashes
+   * (`speclink/changes/archive/2026-03-03-old-one/.meta.yaml`). The path
+   * names the file that is there: the older name `.openspec.yaml` when only
+   * that one is. When the change has no metadata file, the path names the
+   * place of `.meta.yaml`, and no file is there. Every other failure has no
+   * `change` and no `path` property.
+   * The `message` of `change_schema_unusable` starts with `change '<name>': `.
+   * Both values are names from the disk, as they are: show them, and the
+   * `message`, as plain text.
    *
    * Every other failure has no `reason` property (`'reason' in error` is
-   * false): a schema a change names that is not found, for one. Take "no
-   * reason" as a valid answer: a later version can add a code to such a
-   * failure, never change the meaning of one above.
+   * false): a document whose names make no key under the engine's naming
+   * rules, for one. Take "no reason" as a valid answer: a later version can
+   * add a code to such a failure, never change the meaning of one above.
    */
   exportScope(): Promise<ScopeBundle>
 }

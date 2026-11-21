@@ -10,6 +10,8 @@ use std::process::{Command, Output};
 
 const SPEC_META: &str = "schema: spec-driven\ncreated: 2026-10-01\n";
 const NO_SPEC_META: &str = "schema: no-spec-change\ncreated: 2026-10-01\n";
+/// 舊版工具留下的寫法：空白的 schema。
+const BLANK_META: &str = "schema: ''\ncreated: 2026-03-01\n";
 const DELTA: &str = "## ADDED Requirements\n\n### Requirement: Login\n\nIt SHALL log in.\n\n#### Scenario: ok\n\n- **WHEN** used\n- **THEN** works\n";
 const CANON_AUTH: &str = "# auth Specification\n\n## Purpose\n\nAuth session lifecycle used by the change schema tests.\n\n## Requirements\n";
 
@@ -236,4 +238,46 @@ fn change_schema_gate_on_new_artifact_spec() {
     let out = p.run_stdin(&["new", "artifact", "spec", "auth", "--change", "c", "--stdin"], Some(DELTA));
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(c.join("specs").join("auth").join("spec.md").is_file());
+}
+
+#[test]
+fn blank_schema_reads_as_the_default_flow_and_keeps_the_meta_bytes() {
+    // change-lifecycle「change metadata 的 schema 空白時視同沒有設定」：
+    // Scenario「空白的 schema 用預設的產出流程」。
+    let p = TempProject::new("blank-status");
+    p.change("old-one", BLANK_META);
+    let out = p.run(&["status", "--change", "old-one", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json stdout");
+    assert_eq!(json["schemaName"], "spec-driven");
+    assert_eq!(p.meta("old-one"), BLANK_META, "reading never rewrites the metadata");
+}
+
+#[test]
+fn blank_schema_show_output_equals_the_output_without_the_key() {
+    // Scenario「show 的輸出與沒有這個鍵時相同」。
+    let p = TempProject::new("blank-show");
+    let dir = p.change("old-one", BLANK_META);
+    let blank = p.run(&["show", "old-one", "--json"]);
+    assert!(blank.status.success(), "stderr: {}", stderr_of(&blank));
+    assert_eq!(p.meta("old-one"), BLANK_META, "reading never rewrites the metadata");
+
+    std::fs::write(dir.join(".meta.yaml"), "created: 2026-03-01\n").unwrap();
+    let absent = p.run(&["show", "old-one", "--json"]);
+    assert!(absent.status.success(), "stderr: {}", stderr_of(&absent));
+    assert_eq!(stdout_of(&blank), stdout_of(&absent));
+
+    let json: serde_json::Value = serde_json::from_slice(&blank.stdout).expect("json stdout");
+    // 成對回報：沒有 schema 時兩個欄位都是 null，`created` 的值不單獨輸出。
+    assert!(json["schema"].is_null() && json["created"].is_null(), "{json}");
+}
+
+#[test]
+fn blank_schema_rule_leaves_a_named_missing_schema_failing() {
+    // Scenario「有名稱但找不到的 schema 照舊失敗」。
+    let p = TempProject::new("blank-named");
+    p.change("old-one", "schema: nope\n");
+    let out = p.run(&["status", "--change", "old-one", "--json"]);
+    assert!(!out.status.success());
+    assert!(stderr_of(&out).contains("Schema not found: Schema 'nope'"), "{}", stderr_of(&out));
 }

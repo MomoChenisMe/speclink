@@ -27,6 +27,9 @@ pub(crate) struct DispatchError {
     /// The fixed code of an export or an import failure, when it has one
     /// (spec node-sdk: 匯出與匯入的失敗帶原因代碼). Every other failure has none.
     reason: Option<speclink_host::transfer::TransferReason>,
+    /// The change a local export failure is about, when it is about one
+    /// (the change's folder name and its data file's path from the root).
+    location: Option<speclink_host::transfer::ChangeLocation>,
 }
 
 impl DispatchError {
@@ -35,6 +38,7 @@ impl DispatchError {
             code: code.to_string(),
             message: message.into(),
             reason: None,
+            location: None,
         }
     }
 
@@ -79,7 +83,8 @@ pub(crate) fn status_notice(status_without_name: bool, e: &core::command::Comman
 }
 
 /// The envelope a dispatch Promise resolves to; index.js unwraps it. A
-/// failure has a `reason` key only when it has a code.
+/// failure has a `reason` key only when it has a code, and the `change` and
+/// `path` keys only when it is about one change.
 pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
     match result {
         Ok(value) => serde_json::json!({ "ok": true, "value": value }),
@@ -87,6 +92,10 @@ pub(crate) fn envelope(result: DispatchResult) -> serde_json::Value {
             let mut failure = serde_json::json!({ "ok": false, "code": e.code, "message": e.message });
             if let Some(reason) = e.reason {
                 failure["reason"] = reason.as_str().into();
+            }
+            if let Some(location) = e.location {
+                failure["change"] = location.change.into();
+                failure["path"] = location.path.into();
             }
             failure
         }
@@ -195,7 +204,10 @@ fn export_local(workspace: &core::workspace::Workspace) -> DispatchResult {
     let failed = |message: String| DispatchError::new("error", message);
     let store = speclink_fs::FsStore::new(&workspace.root, &workspace.spec_dir_name);
     let documents = transfer::local_documents(workspace, &store, &speclink_host::context::global_config_dir())
-        .map_err(|error| failed(error.to_string()).with_reason(error.reason()))?;
+        .map_err(|error| DispatchError {
+            location: error.location().cloned(),
+            ..failed(error.to_string()).with_reason(error.reason())
+        })?;
     // A root with no spec folder gives no documents, and a move of nothing
     // looks like a success, so it is refused (show-detail-and-export-check,
     // 「exportScope 在既有檢查之後確認規格資料夾」). The shared assembly checked

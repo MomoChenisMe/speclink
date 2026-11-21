@@ -1,0 +1,108 @@
+{
+  "version": 2,
+  "change": "export-failure-reason-and-location",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 寫出會失敗的測試，釘住「change metadata 的 schema 空白時視同沒有設定」：在 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組加名稱含 `blank_schema` 的測試，斷言 `ChangeMeta::from_text` 對 `schema: ''`、`schema: '   '`、`schema: ~` 與沒有這個鍵四種內容都得到沒有值的 `schema` 且 `schema_name()` 是 `spec-driven`，對 `schema: no-spec-change` 維持 `no-spec-change`，並斷言 `ChangeMeta::from_fields` 填入空字串時同樣收斂；在 crates/adapters/speclink-cli/tests/it/change_schema.rs 加名稱含 `blank_schema` 的測試，斷言 `.meta.yaml` 是 `schema: ''` 加 `created: 2026-03-01` 的變更執行 `speclink status --change old-one --json` 時 exit code 是 0、`schemaName` 是 `spec-driven`、`.meta.yaml` 逐位元不變，執行 `speclink show old-one --json` 的 stdout 與刪掉 `schema` 那一行之後逐位元相同且 `schema` 與 `created` 兩個欄位都是 `null`，並斷言 `schema: nope` 時 `status` 的 exit code 不是 0、stderr 含 `Schema not found: Schema 'nope'`。驗證：`cargo test -p speclink-core --lib blank_schema` 與 `cargo test -p speclink-cli --test it blank_schema` 在實作前是紅的，失敗的原因是空白的 `schema` 被讀成名為空字串的產出流程。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/change_schema.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 寫出會失敗的測試，釘住 D2、D3、D4 在 `local_documents` 的行為：在 crates/host/speclink-host/src/transfer.rs 的測試模組加入或改寫測試，斷言（a）進行中的變更指名找不到的產出流程時，原因代碼是 `change_schema_unusable`，位置的變更名稱是那個變更、路徑是它實際存在的 metadata 檔（夾具用舊檔名時是舊檔名），訊息是 `change '<名稱>': ` 接 `speclink_core::schema::not_found_msg` 的原文；（b）已封存的變更同樣，變更名稱是帶日期的名稱；（c）專案的 `schemas/broken/schema.yaml` 無法解析而變更指名 `broken` 時是同一個代碼；（d）產出流程有 `docs/*.md` 這類列不出的檔案樣式時是同一個代碼，訊息以 `change '<名稱>': ` 開頭；（e）metadata 無法解析時代碼仍是 `invalid_change_metadata`、訊息逐字不變，位置有變更名稱與路徑；（f）符號連結與規格資料夾在專案外兩種失敗沒有位置；（g）`schema: ''` 的已封存變更讓清單成功並含它的 `proposal.md`；（h）代碼字串的清單測試多一項 `change_schema_unusable`。把既有的 `a_change_whose_schema_is_not_found_stops_the_listing_with_no_reason` 改成新的行為，不留兩套說法。驗證：`cargo test -p speclink-host --lib transfer::` 在實作前對這些新斷言是紅的。",
+      "files": [
+        "crates/host/speclink-host/src/transfer.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "2.3 寫出會失敗的測試，釘住 node-sdk「匯出與匯入的失敗帶原因代碼」在 JS 端的形狀：在 crates/adapters/speclink-node/__test__/export-local.spec.ts 加測試，並把 crates/adapters/speclink-node/__test__/helpers.ts 的 `rejection` 回傳型別加上選填的 `change` 與 `path`；斷言（a）已封存的變更 `2026-03-03-old-one` 的 `.meta.yaml` 是 `schema: nope` 時，`[error.code, error.reason, error.change, error.path]` 是 `['error', 'change_schema_unusable', '2026-03-03-old-one', 'speclink/changes/archive/2026-03-03-old-one/.meta.yaml']`，`error.message` 是 `change '2026-03-03-old-one': Schema not found: Schema 'nope' not found in project, user, or built-in locations`；（b）專案的 `speclink/schemas/broken/schema.yaml` 是 `: [` 而變更指名 `broken` 時 `reason` 是 `change_schema_unusable`；（c）`changes/demo/.meta.yaml` 是 `: [` 時 `reason` 是 `invalid_change_metadata`、`change` 是 `demo`、`path` 是 `speclink/changes/demo/.meta.yaml`，`message` 以 `invalid speclink/changes/demo/.meta.yaml:` 開頭；（d）符號連結與沒有規格資料夾兩種失敗的 `'change' in error` 與 `'path' in error` 都是 `false`；（e）`schema: ''` 加 `created: ''` 的已封存變更讓 `exportScope()` 成功，包裡有 `archive/changes/2026-03-03-old-one/.meta.yaml`（內容是原文）與 `archive/changes/2026-03-03-old-one/proposal.md`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 對這些新斷言是紅的。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts",
+        "crates/adapters/speclink-node/__test__/helpers.ts"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "2.4 依 D3 讓 Node 綁定把位置轉成 Error 的屬性：crates/adapters/speclink-node/src/lib.rs 的 `DispatchError` 多帶選填的變更名稱與路徑，`export_local` 從 `LocalExportError` 取出位置，`envelope` 只在有值時加上 `change` 與 `path` 兩個鍵；crates/adapters/speclink-node/index.js 只在信封有這兩個鍵時把它們放到 Error 上；crates/adapters/speclink-node/index.d.ts 的 `exportScope` 說明改成六個代碼並說明 `change` 與 `path` 在哪兩個代碼出現。完成後的行為：JS 端的 Error 帶 `change` 與 `path`，沒有位置的失敗沒有這兩個屬性，`host.exportScope`、`host.importScope` 與 dispatch 的失敗不變。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 全部通過。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "3.1 依 D5 更新 docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出本機專案」一節，交付「SDK 文件說明匯出失敗的位置、鍵的契約、範圍摘要與匯出匯入的耗時」的第一段：原因代碼的表從五列變成六列（多 `change_schema_unusable`），寫明 `invalid_change_metadata` 與 `change_schema_unusable` 帶 `change` 與 `path`、其他失敗沒有，並把「其他失敗都沒有 `reason`」那句裡的產出流程例子換成仍然沒有代碼的失敗。驗證：兩版的表都有六列且代碼字串與 `TransferReason::as_str` 一致；`grep -n \"change_schema_unusable\" docs/sdk-node.md docs/sdk-node.zh-TW.md` 兩版都有命中。",
+      "files": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7ZA0PD29CC3E520EQ9SD7P8",
+      "taskDesc": "1.1 寫出會失敗的測試，釘住「change metadata 的 schema 空白時視同沒有設定」：在 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組加名稱含 `blank_schema` 的測試，斷言 `ChangeMeta::from_text` 對 `schema: ''`、`schema: '   '`、`schema: ~` 與沒有這個鍵四種內容都得到沒有值的 `schema` 且 `schema_name()` 是 `spec-driven`，對 `schema: no-spec-change` 維持 `no-spec-change`，並斷言 `ChangeMeta::from_fields` 填入空字串時同樣收斂；在 crates/adapters/speclink-cli/tests/it/change_schema.rs 加名稱含 `blank_schema` 的測試，斷言 `.meta.yaml` 是 `schema: ''` 加 `created: 2026-03-01` 的變更執行 `speclink status --change old-one --json` 時 exit code 是 0、`schemaName` 是 `spec-driven`、`.meta.yaml` 逐位元不變，執行 `speclink show old-one --json` 的 stdout 與刪掉 `schema` 那一行之後逐位元相同且 `schema` 與 `created` 兩個欄位都是 `null`，並斷言 `schema: nope` 時 `status` 的 exit code 不是 0、stderr 含 `Schema not found: Schema 'nope'`。驗證：`cargo test -p speclink-core --lib blank_schema` 與 `cargo test -p speclink-cli --test it blank_schema` 在實作前是紅的，失敗的原因是空白的 `schema` 被讀成名為空字串的產出流程。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/change_schema.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ],
+      "recordedAt": "2026-11-21T15:06:10Z"
+    },
+    {
+      "taskId": "tsk_01M7ZA0PD3TG20VW7SJPKBZZHQ",
+      "taskDesc": "2.1 寫出會失敗的測試，釘住 D2、D3、D4 在 `local_documents` 的行為：在 crates/host/speclink-host/src/transfer.rs 的測試模組加入或改寫測試，斷言（a）進行中的變更指名找不到的產出流程時，原因代碼是 `change_schema_unusable`，位置的變更名稱是那個變更、路徑是它實際存在的 metadata 檔（夾具用舊檔名時是舊檔名），訊息是 `change '<名稱>': ` 接 `speclink_core::schema::not_found_msg` 的原文；（b）已封存的變更同樣，變更名稱是帶日期的名稱；（c）專案的 `schemas/broken/schema.yaml` 無法解析而變更指名 `broken` 時是同一個代碼；（d）產出流程有 `docs/*.md` 這類列不出的檔案樣式時是同一個代碼，訊息以 `change '<名稱>': ` 開頭；（e）metadata 無法解析時代碼仍是 `invalid_change_metadata`、訊息逐字不變，位置有變更名稱與路徑；（f）符號連結與規格資料夾在專案外兩種失敗沒有位置；（g）`schema: ''` 的已封存變更讓清單成功並含它的 `proposal.md`；（h）代碼字串的清單測試多一項 `change_schema_unusable`。把既有的 `a_change_whose_schema_is_not_found_stops_the_listing_with_no_reason` 改成新的行為，不留兩套說法。驗證：`cargo test -p speclink-host --lib transfer::` 在實作前對這些新斷言是紅的。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/transfer.rs"
+      ],
+      "recordedAt": "2026-11-21T15:12:31Z"
+    },
+    {
+      "taskId": "tsk_01M7ZA0PD3Z7JDQS37BBTJ6QY9",
+      "taskDesc": "2.3 寫出會失敗的測試，釘住 node-sdk「匯出與匯入的失敗帶原因代碼」在 JS 端的形狀：在 crates/adapters/speclink-node/__test__/export-local.spec.ts 加測試，並把 crates/adapters/speclink-node/__test__/helpers.ts 的 `rejection` 回傳型別加上選填的 `change` 與 `path`；斷言（a）已封存的變更 `2026-03-03-old-one` 的 `.meta.yaml` 是 `schema: nope` 時，`[error.code, error.reason, error.change, error.path]` 是 `['error', 'change_schema_unusable', '2026-03-03-old-one', 'speclink/changes/archive/2026-03-03-old-one/.meta.yaml']`，`error.message` 是 `change '2026-03-03-old-one': Schema not found: Schema 'nope' not found in project, user, or built-in locations`；（b）專案的 `speclink/schemas/broken/schema.yaml` 是 `: [` 而變更指名 `broken` 時 `reason` 是 `change_schema_unusable`；（c）`changes/demo/.meta.yaml` 是 `: [` 時 `reason` 是 `invalid_change_metadata`、`change` 是 `demo`、`path` 是 `speclink/changes/demo/.meta.yaml`，`message` 以 `invalid speclink/changes/demo/.meta.yaml:` 開頭；（d）符號連結與沒有規格資料夾兩種失敗的 `'change' in error` 與 `'path' in error` 都是 `false`；（e）`schema: ''` 加 `created: ''` 的已封存變更讓 `exportScope()` 成功，包裡有 `archive/changes/2026-03-03-old-one/.meta.yaml`（內容是原文）與 `archive/changes/2026-03-03-old-one/proposal.md`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 對這些新斷言是紅的。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/export-local.spec.ts",
+        "crates/adapters/speclink-node/__test__/helpers.ts"
+      ],
+      "recordedAt": "2026-11-21T15:20:39Z"
+    },
+    {
+      "taskId": "tsk_01M7ZA0PD357X00NKKR1CQJBVE",
+      "taskDesc": "2.4 依 D3 讓 Node 綁定把位置轉成 Error 的屬性：crates/adapters/speclink-node/src/lib.rs 的 `DispatchError` 多帶選填的變更名稱與路徑，`export_local` 從 `LocalExportError` 取出位置，`envelope` 只在有值時加上 `change` 與 `path` 兩個鍵；crates/adapters/speclink-node/index.js 只在信封有這兩個鍵時把它們放到 Error 上；crates/adapters/speclink-node/index.d.ts 的 `exportScope` 說明改成六個代碼並說明 `change` 與 `path` 在哪兩個代碼出現。完成後的行為：JS 端的 Error 帶 `change` 與 `path`，沒有位置的失敗沒有這兩個屬性，`host.exportScope`、`host.importScope` 與 dispatch 的失敗不變。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js",
+        "crates/adapters/speclink-node/src/lib.rs"
+      ],
+      "recordedAt": "2026-11-21T15:21:41Z"
+    },
+    {
+      "taskId": "tsk_01M7ZA0PD369ZHZAX15WGJYD2X",
+      "taskDesc": "3.1 依 D5 更新 docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的「匯出本機專案」一節，交付「SDK 文件說明匯出失敗的位置、鍵的契約、範圍摘要與匯出匯入的耗時」的第一段：原因代碼的表從五列變成六列（多 `change_schema_unusable`），寫明 `invalid_change_metadata` 與 `change_schema_unusable` 帶 `change` 與 `path`、其他失敗沒有，並把「其他失敗都沒有 `reason`」那句裡的產出流程例子換成仍然沒有代碼的失敗。驗證：兩版的表都有六列且代碼字串與 `TransferReason::as_str` 一致；`grep -n \"change_schema_unusable\" docs/sdk-node.md docs/sdk-node.zh-TW.md` 兩版都有命中。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21",
+      "touchedFiles": [
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-21T15:26:26Z"
+    }
+  ]
+}

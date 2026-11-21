@@ -78,10 +78,13 @@ pub struct ImportReport {
 /// - Can a caller's input decide the code? No. The enum is closed and
 ///   [`TransferReason::as_str`] is a fixed match, so no text of a bundle, a
 ///   key, a file name or a hook reaches the code. [`TransferError::reason`]
-///   reads the variant only. [`LocalExportError`] gets a code only from the
-///   private constructor at the five failure points of [`local_documents`];
-///   its one public constructor, `From<String>`, gives no code. A variant a
-///   crate user builds by hand gets the code of its kind, whatever its text.
+///   reads the variant only. [`LocalExportError`] gets a code only from its
+///   private constructors, at the failures of [`local_documents`] that have
+///   one: a spec folder outside the project, a link, a folder that cannot be
+///   listed, a data file that does not parse, and a schema that cannot be
+///   used (the last two for an active and for an archived change). Its one
+///   public constructor, `From<String>`, gives no code. A variant a crate
+///   user builds by hand gets the code of its kind, whatever its text.
 /// - Does the source of a command failure carry a store's text further? No.
 ///   Only the four failures with a code or a whole-bundle refusal
 ///   ([`TransferError::InvalidBundle`], `TooLarge`, `InvalidDocument`,
@@ -98,7 +101,52 @@ pub struct ImportReport {
 /// - The edge that stays: a new failure point in [`local_documents`] that
 ///   returns a `String` through `?` gets no code, with no warning. That is
 ///   the safe side (no code is a valid answer), and the code table of the
-///   Node SDK lists only the five points here.
+///   Node SDK lists only the six kinds of failure of a local export that
+///   have one: the five kinds here, and `no_spec_folder`, which the Node
+///   binding gives before it calls [`local_documents`].
+///
+/// What the sharp-edges audit found (export-failure-reason-and-location
+/// 2.5), for [`TransferReason::ChangeSchemaUnusable`] and the two values of
+/// [`ChangeLocation`]:
+///
+/// - Can a change's folder name or the path of its data file decide the
+///   code? No. The call site gives the code, by the check that failed: a
+///   data file that does not parse is `invalid_change_metadata`, and a schema
+///   that does not resolve or whose artifacts cannot be listed is
+///   `change_schema_unusable`. The location is data only. No code reads it,
+///   and its two values have names, so a caller cannot swap them and not see
+///   it.
+/// - Can the two values show a path outside the project, or the content of
+///   a file? No. The change is one name a folder listing gave, so it has no
+///   separator and is no `..`. The path is the spec folder's name (plain
+///   names only, checked before anything is read, and put together again
+///   with forward slashes), fixed segments, the change's name and one of two
+///   fixed file names. No file is read to make either value, and neither is
+///   an absolute path.
+/// - What does a long name, or a name with control characters, look like?
+///   As it is on disk, in the text and in the two values: not escaped and
+///   not cut. A file system limits one name (255 bytes on the common ones),
+///   and bytes that are not UTF-8 become U+FFFD. The text of a data file
+///   that does not parse always had the same name in its path. The values
+///   cross to JS as JSON strings, so they cannot break the envelope. A host
+///   that shows them must show them as plain text: the Node SDK's guide says
+///   so.
+/// - Is a new failure point with no location on the safe side? Yes. Only
+///   the two private constructors that take a [`ChangeLocation`] give one,
+///   and they are called only in the two loops of [`local_documents`], for
+///   an active and for an archived change. A failure made any other way has
+///   no location, and a host takes "no location" as a valid answer.
+/// - The edge that stays, and that this change did not make: the text of
+///   `change_schema_unusable` is the text the failure always had, after the
+///   change's name. It holds the schema name as the data file has it, with
+///   no limit on its length. The engine's schema lookup joins that name to
+///   the schema folders with no check of its shape, as it does for every
+///   verb: a name with `..` segments can name a `schema.yaml` outside them
+///   when the project has a `schemas/` folder, and the parser's text for a
+///   definition that does not load can quote a value of that file. The
+///   artifacts a schema names are read by the same kind of join, but a name
+///   that makes no key stops [`from_first_version`] before a bundle exists,
+///   and its text shows names only.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TransferReason {
     /// The root of a local export holds no spec folder.
@@ -113,6 +161,10 @@ pub enum TransferReason {
     SpecFolderUnreadable,
     /// The data file of an active or an archived change does not parse.
     InvalidChangeMetadata,
+    /// The schema an active or an archived change names cannot be used here:
+    /// it is not found, its definition does not load, or it names an artifact
+    /// pattern that cannot be listed.
+    ChangeSchemaUnusable,
     /// The target scope of an import holds documents.
     ScopeNotEmpty,
     /// The content of an import is over the host's limit.
@@ -130,6 +182,7 @@ impl TransferReason {
             TransferReason::SymlinkInSpecFolder => "symlink_in_spec_folder",
             TransferReason::SpecFolderUnreadable => "spec_folder_unreadable",
             TransferReason::InvalidChangeMetadata => "invalid_change_metadata",
+            TransferReason::ChangeSchemaUnusable => "change_schema_unusable",
             TransferReason::ScopeNotEmpty => "scope_not_empty",
             TransferReason::BundleTooLarge => "bundle_too_large",
             TransferReason::InvalidBundleDocument => "invalid_bundle_document",
@@ -474,22 +527,56 @@ pub fn from_first_version(bundle: ImportBundle) -> Result<ScopeBundle, TransferE
 
 // --- the documents of a local project ---
 
-/// Why [`local_documents`] stopped: its text, as it always was, and the code
-/// of the failure when it has one.
+/// Which change a failure of [`local_documents`] is about.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ChangeLocation {
+    /// The change's folder name on disk: an archived change's is its dated
+    /// name.
+    pub change: String,
+    /// The change's data file by its path from the project root, with
+    /// forward slashes only, whatever way the spec folder's name is written.
+    /// It names the file that is there: the legacy name when only that one
+    /// is, and the new name when neither is.
+    pub path: String,
+}
+
+/// Why [`local_documents`] stopped: its text, the code of the failure when it
+/// has one, and the change it is about when it is about one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LocalExportError {
     message: String,
     reason: Option<TransferReason>,
+    location: Option<ChangeLocation>,
 }
 
 impl LocalExportError {
     fn new(reason: TransferReason, message: String) -> LocalExportError {
-        LocalExportError { message, reason: Some(reason) }
+        LocalExportError { message, reason: Some(reason), location: None }
+    }
+
+    /// A failure about one change. The code is the caller's: the location
+    /// never decides it.
+    fn about(location: ChangeLocation, reason: TransferReason, message: String) -> LocalExportError {
+        LocalExportError { message, reason: Some(reason), location: Some(location) }
+    }
+
+    /// The schema the change at `location` names cannot be used. The text is
+    /// the one this failure always had, with the change's name before it.
+    fn schema_unusable(location: ChangeLocation, message: String) -> LocalExportError {
+        let message = format!("change '{}': {message}", location.change);
+        LocalExportError::about(location, TransferReason::ChangeSchemaUnusable, message)
     }
 
     /// The failure's code, when it has one.
     pub fn reason(&self) -> Option<TransferReason> {
         self.reason
+    }
+
+    /// The change the failure is about. Only a failure whose code is
+    /// [`TransferReason::InvalidChangeMetadata`] or
+    /// [`TransferReason::ChangeSchemaUnusable`] has one.
+    pub fn location(&self) -> Option<&ChangeLocation> {
+        self.location.as_ref()
     }
 }
 
@@ -501,11 +588,11 @@ impl fmt::Display for LocalExportError {
 
 impl std::error::Error for LocalExportError {}
 
-/// A failure with no code: a schema that is not found, an artifact pattern
-/// that cannot be listed, a document listed twice.
+/// A failure with no code and no location: a document listed twice, a board
+/// order that cannot be written as JSON.
 impl From<String> for LocalExportError {
     fn from(message: String) -> LocalExportError {
-        LocalExportError { message, reason: None }
+        LocalExportError { message, reason: None, location: None }
     }
 }
 
@@ -522,10 +609,13 @@ impl From<String> for LocalExportError {
 /// no rank key is set). A change's schema is resolved in the project, then in
 /// `user_dir`, the user-level config directory.
 ///
-/// Every source is read before the list is given: a change (active or
-/// archived) whose data file does not parse, or whose schema names an
-/// artifact pattern that cannot be listed, stops it, and the text names the
-/// file or the pattern.
+/// Every source is read before the list is given. A change (active or
+/// archived) whose data file does not parse stops it, and the text names the
+/// file. So does a change whose schema cannot be used (it is not found, its
+/// definition does not load, or it names an artifact pattern that cannot be
+/// listed), and the text starts with the change's name: `change '<name>': `.
+/// Both failures give the change and its data file
+/// ([`LocalExportError::location`]).
 ///
 /// Only a spec folder inside the project is read (engine-export-scope D6):
 /// before anything is read, the spec folder's name must be one or more plain
@@ -596,12 +686,18 @@ pub fn local_documents(
 
     let changes = store.list_changes();
     for change in &changes {
-        require_valid_meta(store, change)
-            .map_err(|error| LocalExportError::new(TransferReason::InvalidChangeMetadata, error.to_string()))?;
+        let located = |written: &str| change_location(workspace, &change.name, written);
+        require_valid_meta(store, change).map_err(|error| {
+            // The text and the location name one file: the one the failure found.
+            LocalExportError::about(located(&error.file), TransferReason::InvalidChangeMetadata, error.to_string())
+        })?;
         let meta = store.read_change_meta(&change.name).unwrap_or_default();
         insert_local_document(&mut documents, ImportDocumentId::ChangeMeta { change: change.name.clone() }, meta)?;
-        let schema = resolve_local_schema(workspace, user_dir, &change.meta.schema_name())?;
-        for artifact in local_artifact_paths(&schema, store.delta_capabilities(&change.name))? {
+        let deltas = store.delta_capabilities(&change.name);
+        let artifacts = local_artifact_paths(workspace, user_dir, &change.meta.schema_name(), deltas).map_err(|message| {
+            LocalExportError::schema_unusable(located(&store.change_meta_display(&change.name)), message)
+        })?;
+        for artifact in artifacts {
             if let Some(content) = store.read_artifact(&change.name, &artifact) {
                 insert_local_document(
                     &mut documents,
@@ -639,13 +735,12 @@ pub fn local_documents(
     }
 
     for dated_name in store.list_archived_changes() {
+        let located = |written: &str| change_location(workspace, &dated_name, written);
         let meta = store.read_archived_meta(&dated_name).unwrap_or_default();
         let parsed = ChangeMeta::from_text(Some(&meta)).map_err(|reason| {
-            // The new file name is read first: when it is not there, the
-            // broken one is the legacy file.
-            let dir = format!("{}/changes/archive/{dated_name}", workspace.spec_dir_name);
-            let file = if workspace.root.join(&dir).join(META_FILE).is_file() { META_FILE } else { LEGACY_META_FILE };
-            LocalExportError::new(TransferReason::InvalidChangeMetadata, format!("invalid {dir}/{file}: {reason}"))
+            let written = archived_meta_path(workspace, &dated_name);
+            let message = format!("invalid {written}: {reason}");
+            LocalExportError::about(located(&written), TransferReason::InvalidChangeMetadata, message)
         })?;
         // Read new name first, then the legacy one; listed as .meta.yaml
         // always (desktop-spec-dir-migration D5).
@@ -654,8 +749,10 @@ pub fn local_documents(
             ImportDocumentId::ArchivedChange { change: dated_name.clone(), doc: META_FILE.to_string() },
             meta,
         )?;
-        let schema = resolve_local_schema(workspace, user_dir, &parsed.schema_name())?;
-        let mut paths = local_artifact_paths(&schema, store.archived_delta_capabilities(&dated_name))?;
+        let deltas = store.archived_delta_capabilities(&dated_name);
+        let mut paths = local_artifact_paths(workspace, user_dir, &parsed.schema_name(), deltas).map_err(|message| {
+            LocalExportError::schema_unusable(located(&archived_meta_path(workspace, &dated_name)), message)
+        })?;
         paths.push(EVIDENCE_FILE.to_string());
         for artifact in paths {
             if let Some(content) = store.read_archived_artifact(&dated_name, &artifact) {
@@ -763,12 +860,44 @@ fn shown_path(relative: &Path) -> String {
     parts.join("/")
 }
 
-fn resolve_local_schema(workspace: &Workspace, user_dir: &Path, name: &str) -> Result<speclink_core::schema::Schema, String> {
-    speclink_core::schema::resolve_with(Some(workspace), Some(user_dir), name)
-        .ok_or_else(|| speclink_core::schema::not_found_msg(name))?
+/// The data file of the archived change `dated_name` by its path from the
+/// project root, as a text shows it (the spec folder's name as it is
+/// written): the rule a file store has for an active change. The new file
+/// name is read first, so the legacy name is the answer only when it alone
+/// is there.
+fn archived_meta_path(workspace: &Workspace, dated_name: &str) -> String {
+    let dir = format!("{}/changes/archive/{dated_name}", workspace.spec_dir_name);
+    let on_disk = |file: &str| workspace.root.join(&dir).join(file).exists();
+    let file = if !on_disk(META_FILE) && on_disk(LEGACY_META_FILE) { LEGACY_META_FILE } else { META_FILE };
+    format!("{dir}/{file}")
 }
 
-fn local_artifact_paths(schema: &speclink_core::schema::Schema, delta_capabilities: Vec<String>) -> Result<Vec<String>, String> {
+/// The location of `change`, whose data file a text shows as `written`: the
+/// spec folder's name as it is written, then segments with forward slashes.
+/// The name can hold a slash at its end, or backslashes on Windows, so the
+/// location has it put together again segment by segment: its path has
+/// forward slashes only, and no empty segment.
+fn change_location(workspace: &Workspace, change: &str, written: &str) -> ChangeLocation {
+    let name = workspace.spec_dir_name.as_str();
+    let path = match written.strip_prefix(name) {
+        Some(below) => format!("{}/{}", shown_path(Path::new(name)), below.trim_start_matches('/')),
+        None => written.to_string(),
+    };
+    ChangeLocation { change: change.to_string(), path }
+}
+
+/// The artifact paths of a change whose data file names the schema `name`,
+/// with one path for each of `delta_capabilities`. The failure is the text of
+/// a schema that cannot be used: not found, a definition that does not load,
+/// or an artifact pattern that cannot be listed.
+fn local_artifact_paths(
+    workspace: &Workspace,
+    user_dir: &Path,
+    name: &str,
+    delta_capabilities: Vec<String>,
+) -> Result<Vec<String>, String> {
+    let schema = speclink_core::schema::resolve_with(Some(workspace), Some(user_dir), name)
+        .ok_or_else(|| speclink_core::schema::not_found_msg(name))??;
     let mut paths = BTreeSet::new();
     for artifact in &schema.artifacts {
         if artifact.output_path == "specs/**/*.md" {
@@ -1225,8 +1354,11 @@ mod tests {
         write(root.path(), "openspec/changes/active-change/.openspec.yaml", "schema: [unterminated\n");
 
         let error = documents_of(root.path()).expect_err("corrupt metadata must fail closed");
-        assert!(error.to_string().contains("openspec/changes/active-change/.openspec.yaml"), "{error}");
+        // The text is the one this failure always had: `invalid <path>: <the parser's reason>`.
+        let reason = ChangeMeta::from_text(Some("schema: [unterminated\n")).expect_err("the fixture does not parse");
+        assert_eq!(error.to_string(), format!("invalid openspec/changes/active-change/.openspec.yaml: {reason}"));
         assert_eq!(error.reason(), Some(TransferReason::InvalidChangeMetadata));
+        assert_eq!(location(&error), Some(("active-change", "openspec/changes/active-change/.openspec.yaml")));
     }
 
     #[test]
@@ -1235,8 +1367,11 @@ mod tests {
         write(root.path(), "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml", "schema: [unterminated\n");
 
         let error = documents_of(root.path()).expect_err("corrupt metadata must fail closed");
-        assert!(error.to_string().contains("openspec/changes/archive/2026-07-20-old-change/.openspec.yaml"), "{error}");
+        let reason = ChangeMeta::from_text(Some("schema: [unterminated\n")).expect_err("the fixture does not parse");
+        let path = "openspec/changes/archive/2026-07-20-old-change/.openspec.yaml";
+        assert_eq!(error.to_string(), format!("invalid {path}: {reason}"));
         assert_eq!(error.reason(), Some(TransferReason::InvalidChangeMetadata));
+        assert_eq!(location(&error), Some(("2026-07-20-old-change", path)));
     }
 
     #[test]
@@ -1288,6 +1423,7 @@ mod tests {
         let error = documents_of(root.path()).expect_err("a link stops the listing");
         assert!(!error.to_string().contains(OUTSIDE.trim()), "{error}");
         assert_eq!(error.reason(), Some(TransferReason::SymlinkInSpecFolder));
+        assert_eq!(error.location(), None, "a link is about no change");
         error
     }
 
@@ -1336,6 +1472,7 @@ mod tests {
 
         assert_eq!(error.to_string(), outside_message("../other/speclink"));
         assert_eq!(error.reason(), Some(TransferReason::SpecFolderOutsideProject));
+        assert_eq!(error.location(), None, "a spec folder outside the project is about no change");
     }
 
     #[test]
@@ -1460,6 +1597,7 @@ mod tests {
 
         assert_eq!(failure.to_string(), expected);
         assert_eq!(failure.reason(), Some(TransferReason::SpecFolderUnreadable));
+        assert_eq!(failure.location(), None);
     }
 
     #[test]
@@ -1470,6 +1608,7 @@ mod tests {
             TransferReason::SymlinkInSpecFolder,
             TransferReason::SpecFolderUnreadable,
             TransferReason::InvalidChangeMetadata,
+            TransferReason::ChangeSchemaUnusable,
             TransferReason::ScopeNotEmpty,
             TransferReason::BundleTooLarge,
             TransferReason::InvalidBundleDocument,
@@ -1485,6 +1624,7 @@ mod tests {
                 "symlink_in_spec_folder",
                 "spec_folder_unreadable",
                 "invalid_change_metadata",
+                "change_schema_unusable",
                 "scope_not_empty",
                 "bundle_too_large",
                 "invalid_bundle_document",
@@ -1492,15 +1632,217 @@ mod tests {
         );
     }
 
+    // --- which change a failure is about (export-failure-reason-and-location D2, D3, D4) ---
+
+    /// The change and the data file a failure names, when it names one.
+    fn location(error: &LocalExportError) -> Option<(&str, &str)> {
+        error.location().map(|at| (at.change.as_str(), at.path.as_str()))
+    }
+
+    /// A custom schema with one artifact, written to `generates`.
+    fn schema_yaml(name: &str, generates: &str) -> String {
+        format!("name: {name}\nversion: 1\nartifacts:\n- id: plan\n  generates: {generates}\n  description: The plan\n  template: plan.md\n")
+    }
+
+    /// A project in `speclink/` with one change, active (`demo`) or archived
+    /// (`2026-03-03-old-one`), whose data file `file` holds `meta`. It gives
+    /// the root, the change's name and the path of the data file.
+    fn project_with_change(archived: bool, file: &str, meta: &str) -> (TempDir, &'static str, String) {
+        let (name, dir) = if archived {
+            ("2026-03-03-old-one", "speclink/changes/archive/2026-03-03-old-one")
+        } else {
+            ("demo", "speclink/changes/demo")
+        };
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), &format!("{dir}/{file}"), meta);
+        write(root.path(), &format!("{dir}/proposal.md"), "## Why\n\nDemo.\n");
+        (root, name, format!("{dir}/{file}"))
+    }
+
     #[test]
-    fn a_change_whose_schema_is_not_found_stops_the_listing_with_no_reason() {
+    fn a_change_whose_schema_is_not_found_stops_the_listing_and_names_the_change() {
         let root = complete_project();
         write(root.path(), "openspec/changes/active-change/.openspec.yaml", "schema: no-such-schema\ncreated: 2026-07-21\n");
 
         let error = documents_of(root.path()).expect_err("an unknown schema stops the listing");
 
-        assert_eq!(error.to_string(), speclink_core::schema::not_found_msg("no-such-schema"));
-        assert_eq!(error.reason(), None);
+        assert_eq!(
+            error.to_string(),
+            format!("change 'active-change': {}", speclink_core::schema::not_found_msg("no-such-schema"))
+        );
+        assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+        // The fixture holds the legacy file name only: the path names the file that is there.
+        assert_eq!(location(&error), Some(("active-change", "openspec/changes/active-change/.openspec.yaml")));
+    }
+
+    #[test]
+    fn an_archived_change_whose_schema_is_not_found_is_named_by_its_dated_name() {
+        let (root, name, path) = project_with_change(true, ".meta.yaml", "schema: nope\n");
+
+        let error = documents_in(root.path(), "speclink").expect_err("an unknown schema stops the listing");
+
+        assert_eq!(
+            error.to_string(),
+            "change '2026-03-03-old-one': Schema not found: Schema 'nope' not found in project, user, or built-in locations"
+        );
+        assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+        assert_eq!(location(&error), Some((name, path.as_str())));
+        assert_eq!(path, "speclink/changes/archive/2026-03-03-old-one/.meta.yaml");
+    }
+
+    #[test]
+    fn each_failure_about_a_change_gives_its_location() {
+        // spec node-sdk, Example「位置屬性在哪些失敗出現」: the rows a local list makes.
+        let rows = [
+            (false, ".meta.yaml", "schema: nope\n", TransferReason::ChangeSchemaUnusable, "demo", "speclink/changes/demo/.meta.yaml"),
+            (
+                true,
+                ".openspec.yaml",
+                "schema: nope\n",
+                TransferReason::ChangeSchemaUnusable,
+                "2026-03-03-old-one",
+                "speclink/changes/archive/2026-03-03-old-one/.openspec.yaml",
+            ),
+            (
+                false,
+                ".meta.yaml",
+                "reviewed_rounds: ''\n",
+                TransferReason::InvalidChangeMetadata,
+                "demo",
+                "speclink/changes/demo/.meta.yaml",
+            ),
+        ];
+        for (archived, file, meta, reason, change, path) in rows {
+            let (root, _, _) = project_with_change(archived, file, meta);
+            let error = documents_in(root.path(), "speclink").expect_err(meta);
+            assert_eq!(error.reason(), Some(reason), "{meta}");
+            assert_eq!(location(&error), Some((change, path)), "{meta}");
+        }
+    }
+
+    #[test]
+    fn an_archived_change_with_no_data_file_is_located_at_the_new_file_name() {
+        // No data file means the default schema; the project's own copy of it
+        // does not load. The path names where the data file would be.
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), "speclink/schemas/spec-driven/schema.yaml", ": [\n");
+        write(root.path(), "speclink/changes/archive/2026-03-03-old-one/proposal.md", "## Why\n\nDemo.\n");
+
+        let error = documents_in(root.path(), "speclink").expect_err("the schema does not load");
+
+        assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+        assert_eq!(
+            location(&error),
+            Some(("2026-03-03-old-one", "speclink/changes/archive/2026-03-03-old-one/.meta.yaml"))
+        );
+    }
+
+    #[test]
+    fn a_schema_that_does_not_load_gives_the_same_reason_as_one_that_is_not_found() {
+        for archived in [false, true] {
+            let (root, name, path) = project_with_change(archived, ".meta.yaml", "schema: broken\n");
+            write(root.path(), "speclink/schemas/broken/schema.yaml", ": [\n");
+            let workspace = Workspace { root: root.path().to_path_buf(), spec_dir_name: "speclink".to_string() };
+            let before = speclink_core::schema::resolve_with(Some(&workspace), None, "broken")
+                .expect("the schema is found")
+                .expect_err("the schema does not load");
+
+            let error = documents_in(root.path(), "speclink").expect_err("a schema that does not load stops the listing");
+
+            assert_eq!(error.to_string(), format!("change '{name}': {before}"));
+            assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+            assert_eq!(location(&error), Some((name, path.as_str())));
+        }
+    }
+
+    #[test]
+    fn a_schema_with_a_pattern_that_cannot_be_listed_gives_the_same_reason() {
+        for archived in [false, true] {
+            let (root, name, path) = project_with_change(archived, ".meta.yaml", "schema: wide\n");
+            write(root.path(), "speclink/schemas/wide/schema.yaml", &schema_yaml("wide", "docs/*.md"));
+
+            let error = documents_in(root.path(), "speclink").expect_err("a pattern that cannot be listed stops the listing");
+
+            assert_eq!(
+                error.to_string(),
+                format!("change '{name}': cannot enumerate migration artifact pattern 'docs/*.md' in schema 'wide'")
+            );
+            assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+            assert_eq!(location(&error), Some((name, path.as_str())));
+        }
+    }
+
+    #[test]
+    fn an_archived_change_with_a_blank_schema_is_listed_by_the_default_schema() {
+        // spec change-lifecycle「change metadata 的 schema 空白時視同沒有設定」:
+        // an older tool wrote `schema: ''`. The data file is listed as it is.
+        const META: &str = "schema: ''\ncreated: ''\n";
+        let (root, name, _) = project_with_change(true, ".meta.yaml", META);
+
+        let documents = documents_in(root.path(), "speclink").expect("a blank schema is no failure");
+
+        let doc = |doc: &str| ImportDocumentId::ArchivedChange { change: name.to_string(), doc: doc.to_string() };
+        assert_eq!(content_of(&documents, &doc(".meta.yaml")), Some(META));
+        assert_eq!(content_of(&documents, &doc("proposal.md")), Some("## Why\n\nDemo.\n"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn a_folder_name_with_odd_characters_is_given_as_it_is_and_never_as_an_absolute_path() {
+        // Audit 2.5: the name is not escaped and not cut, and it decides no code.
+        let name = "it's <b>\n\u{1b}[31m";
+        let root = tempfile::tempdir().unwrap();
+        write(root.path(), &format!("speclink/changes/{name}/.meta.yaml"), "schema: nope\n");
+
+        let error = documents_in(root.path(), "speclink").expect_err("an unknown schema stops the listing");
+
+        assert_eq!(error.reason(), Some(TransferReason::ChangeSchemaUnusable));
+        let path = format!("speclink/changes/{name}/.meta.yaml");
+        assert_eq!(location(&error), Some((name, path.as_str())));
+        assert_eq!(error.to_string(), format!("change '{name}': {}", speclink_core::schema::not_found_msg("nope")));
+        assert!(!error.to_string().contains(&*root.path().to_string_lossy()), "{error}");
+    }
+
+    #[test]
+    fn the_path_of_a_location_has_forward_slashes_whatever_the_spec_folder_is_named() {
+        // A name with a slash at its end is plain names too: the path has no `//`.
+        for archived in [false, true] {
+            let (root, name, path) = project_with_change(archived, ".meta.yaml", "schema: nope\n");
+            let error = documents_in(root.path(), "speclink/").expect_err("an unknown schema stops the listing");
+            assert_eq!(location(&error), Some((name, path.as_str())), "archived: {archived}");
+        }
+        // A data file that does not parse: the path is the same, and the text
+        // names the file as it always did, with the spec folder as it is written.
+        for (archived, text) in [
+            (false, "invalid speclink//changes/demo/.meta.yaml: "),
+            (true, "invalid speclink//changes/archive/2026-03-03-old-one/.meta.yaml: "),
+        ] {
+            let (root, name, path) = project_with_change(archived, ".meta.yaml", ": [\n");
+            let error = documents_in(root.path(), "speclink/").expect_err("corrupt metadata must fail closed");
+            assert_eq!(location(&error), Some((name, path.as_str())), "archived: {archived}");
+            assert!(error.to_string().starts_with(text), "{error}");
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn the_path_of_a_location_has_forward_slashes_for_a_spec_folder_named_with_backslashes() {
+        for (archived, path) in [
+            (false, "docs/specs/changes/demo/.meta.yaml"),
+            (true, "docs/specs/changes/archive/2026-03-03-old-one/.meta.yaml"),
+        ] {
+            let root = tempfile::tempdir().unwrap();
+            write(root.path(), path, "schema: nope\n");
+            let error = documents_in(root.path(), "docs\\specs").expect_err("an unknown schema stops the listing");
+            assert_eq!(error.location().map(|at| at.path.as_str()), Some(path), "archived: {archived}");
+        }
+    }
+
+    #[test]
+    fn a_failure_with_no_code_has_no_location() {
+        let failure = LocalExportError::from("duplicate local migration document".to_string());
+        assert_eq!(failure.reason(), None);
+        assert_eq!(failure.location(), None);
     }
 
     fn port_doc(key: &str, content: &str) -> BundleDocument {

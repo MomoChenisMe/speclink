@@ -31,13 +31,16 @@ export function cliJson(cwd: string, args: string[]): unknown {
   return JSON.parse(out)
 }
 
+/** What an Error of the SDK can carry: `change` and `path` only on an export failure about one change. */
+type Rejection = Error & { code?: string; reason?: string; change?: string; path?: string }
+
 /** The Error a promise rejects with; fails the test when it resolves. */
-export async function rejection(promise: Promise<unknown>): Promise<Error & { code?: string; reason?: string }> {
-  let thrown: (Error & { code?: string; reason?: string }) | undefined
+export async function rejection(promise: Promise<unknown>): Promise<Rejection> {
+  let thrown: Rejection | undefined
   try {
     await promise
   } catch (e) {
-    thrown = e as Error & { code?: string; reason?: string }
+    thrown = e as Rejection
   }
   expect(thrown).toBeInstanceOf(Error)
   return thrown!

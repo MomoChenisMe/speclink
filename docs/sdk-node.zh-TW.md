@@ -188,7 +188,7 @@ interface StorePort {
 
 提交成功時：範圍的版本加一；這次寫入的每份文件，版本是範圍的新版本、最後修改時間是 `at`。
 
-文件用字串鍵，命名規則由引擎決定。你的儲存不需要認得文件的種類，只要照鍵存：
+文件用字串鍵，命名規則由引擎決定。你的儲存照鍵存取就夠。下面這張表是契約：既有的鍵不會改，你可以用它在自己的儲存裡統計文件（見[範圍的摘要](#scope-summary)）：
 
 | 鍵 | 內容 |
 | --- | --- |
@@ -263,6 +263,23 @@ function memoryStore() {
 - **回傳值以 JSON 傳給引擎。** 數字會保持原值；JSON 裝不下的值（循環參照、BigInt）會讓這次呼叫失敗。
 
 用 SQL 資料庫時，資料表與一次提交的寫法可以參考三個 Rust 範例（SQLite、PostgreSQL、檔案系統），見[儲存接口的範例](server-store-drivers.zh-TW.md)。目前沒有 JavaScript 寫的範例。
+
+### <a id="scope-summary"></a>範圍的摘要
+
+管理頁可以顯示每個範圍的摘要：有幾份文件、最後是誰寫入的、各階段有幾個變更。Speclink 不提供另外的摘要呼叫。這些資料來自你自己的儲存和一個動詞：
+
+| 資料 | 來源 |
+| --- | --- |
+| 正式規格的數量 | 你自己的儲存裡以 `specs/` 開頭的鍵 |
+| 進行中變更的數量 | 以 `changes/` 開頭的鍵：數第二段不重複的名稱 |
+| 已封存變更的數量 | 以 `archive/changes/` 開頭的鍵：數第三段不重複的名稱 |
+| 討論的數量 | 以 `discussions/` 與 `archive/discussions/` 開頭的鍵 |
+| 最後寫入的人與時間 | 你的 `commit` 函式收到的 `actor` 與 `at` |
+| 各階段的變更數 | 每個範圍一次 `host.dispatch` 的 `list --json` |
+
+- **用鍵的前綴在你自己的儲存裡數。** 上面那張鍵的對照表就是前綴的契約。資料庫的一次查詢可以數很多個範圍。
+- **在你的 `commit` 函式裡記下最後一次寫入。** 把這次提交的 `actor` 與 `at` 寫進你自己的資料表，和寫入放在同一次交易。
+- **`list --json` 會經過 `beforeCommand`**，和每個動詞一樣。它回傳每一個進行中的變更與它的 `status`。加上 `--detail` 還會回傳每個變更的記錄，見[給 Agent 工具用](#agent-tool)。
 
 ## <a id="conformance"></a>用合格測試檢查你的實作
 
@@ -597,9 +614,9 @@ for (const [root, scope] of moves) {
 - **匯出期間不要寫入這個專案**：匯出是逐一讀檔，不做快照。同一時間經同一個引擎、CLI 或其他程式寫入，包裡可能同時有新舊內容。
 - **匯入的範圍必須是空的**，而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
 - **包裡有全文**：流程設定與每一份討論的全文都在包裡。誰可以執行匯出由你決定。
-- **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。
+- **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。變更指名的產出流程不能用時，呼叫會被拒絕：`reason` 是 `change_schema_unusable`。
 
-`engine.exportScope()` 有五種失敗帶 `reason`，它們的 `code` 都是 `error`。要顯示你自己的說明，看 `reason`，不要看訊息的開頭：
+`engine.exportScope()` 有六種失敗帶 `reason`，它們的 `code` 都是 `error`。要顯示你自己的說明，看 `reason`，不要看訊息的開頭：
 
 | `reason` | 失敗 |
 | --- | --- |
@@ -608,8 +625,16 @@ for (const [root, scope] of moves) {
 | `symlink_in_spec_folder` | 通往規格資料夾的路上、規格資料夾本身或它底下有符號連結，或舊位置的 evidence 資料夾 `.speclink/touched/` 裡有符號連結 |
 | `spec_folder_unreadable` | 規格資料夾底下有列不出內容的資料夾，或舊位置的 evidence 資料夾列不出內容 |
 | `invalid_change_metadata` | 進行中或已封存變更的 metadata 無法解析 |
+| `change_schema_unusable` | 進行中或已封存變更指名的產出流程不能用：找不到、定義無法載入，或有引擎列不出的檔案樣式 |
 
-其他失敗都沒有 `reason` 屬性，例如變更指定的產出流程找不到。
+`reason` 是 `invalid_change_metadata` 或 `change_schema_unusable` 時，Error 另有兩個字串屬性，告訴你是哪一個變更造成失敗：
+
+- **`change`**：變更的資料夾名稱。已封存的變更是帶日期的名稱，例如 `2026-03-03-old-one`。
+- **`path`**：那個變更的 metadata 檔，是相對於專案根目錄的路徑，用正斜線，例如 `speclink/changes/archive/2026-03-03-old-one/.meta.yaml`。它指名實際存在的檔案：變更只有舊檔名 `.openspec.yaml` 時，路徑就是那個檔案。變更沒有 metadata 檔時，路徑是 `.meta.yaml` 的位置，那裡沒有檔案。
+
+其他失敗都沒有 `change` 與 `path` 屬性。`change_schema_unusable` 的訊息以 `change '<名稱>': ` 開頭。這兩個值是磁碟上的名稱，原樣給你：顯示它們與訊息時，當成純文字。
+
+其他失敗都沒有 `reason` 屬性，例如有引擎命名規則對不上的文件。
 
 CLI 沒有匯入匯出的動詞。搬專案有三個入口：Speclink Desktop 的「遷移到 Server」、在你自己的程式裡用 `engine.exportScope()` 加 `host.importScope`，以及在兩個範圍之間用 HTTP 入口的 `GET /export` 與 `POST /import`。
 
@@ -627,6 +652,7 @@ const report = await host.importScope({ identity, scope: 'acme/web', bundle })
 
 - **`root` 與 `specDir`**：只下載規格資料夾時，`root` 指到它的上一層，資料夾名稱給 `store.specDir`。不給 `specDir` 時，引擎和 CLI 一樣找資料夾：先讀 `root/.speclink.yaml` 的 `spec_dir`，再找 `speclink/`，最後找舊的 `openspec/`。`root` 底下以那個名稱找不到規格資料夾時會拒絕，`reason` 是 `no_spec_folder`。
 - **大小上限**：`limits.importBytes`（預設 32 MiB）也管你的程式在同一個程序裡呼叫的 `host.importScope`。匯出沒有上限；大的專案要調高宿主的上限。
+- **耗時與進度**：`engine.exportScope()` 與 `host.importScope()` 沒有進度回呼。約 1,600 份文件、約 19 MB 的規格資料夾，兩步各在數秒內完成。匯入只呼叫你的 `list` 函式一次與 `commit` 函式一次，所以寫入的時間在你自己的 `commit` 函式裡。下載規格資料夾是你的後端自己的工作，進度由你的後端提供。
 - **匯入是一次性的搬遷，不是同步。** 匯入之後 repo 裡的改動不會進到範圍，範圍裡的改動也不會回到 repo。
 - **要重新匯入**，先在你的儲存裡刪掉這個範圍的全部文件，再匯入。這會刪掉匯入之後大家在宿主裡做的全部改動：變更、討論與蓋章。範圍不是空的時，匯入會被拒絕。
 

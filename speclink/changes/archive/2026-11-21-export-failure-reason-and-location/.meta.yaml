@@ -1,0 +1,64 @@
+schema: spec-driven
+created: 2026-11-21T22:55:40+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-6
+started_at: 2026-11-21T23:03:44+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-21T23:49:14+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 12
+reviewed_rounds: 2
+reviewed_commit: 8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21
+reviewed_scope:
+  - path: crates/adapters/speclink-cli/tests/it/change_schema.rs
+    hash: 3372c26e2d069b91603f3d8cb041846ffc94ebff3d7eabe931b618dcbe709db3
+  - path: crates/adapters/speclink-node/__test__/export-local.spec.ts
+    hash: d0f5e2d2d818dac22560072a75a18a877b68ac9bea192c0063ac875291d0b853
+  - path: crates/adapters/speclink-node/__test__/helpers.ts
+    hash: c147432657c55834f72b9d0a9fe4da47b0586aac78ebac396d963c4fcca2f49b
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: e98180dd7d3e1f339d08b928a1e9956918a5a89f32ffc99a6a6a5f111a53536a
+  - path: crates/adapters/speclink-node/index.js
+    hash: 1a2c6eb06137b7f20b3824b22e4a4168204d41fe5436b4d0e2a29dd40d1ff6e9
+  - path: crates/adapters/speclink-node/src/lib.rs
+    hash: 8684272e4227843484d244fef11c29b5717bc513546a4f993a42792cb362e51d
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 85ada5489dc7ab7bc042901a12343e354914ce4487ad08d101a7d680239fe33e
+  - path: crates/host/speclink-host/src/transfer.rs
+    hash: 1ea8211d706d7f317c39ba54c6921ee8fcd9572357e341224d711a6c477b7990
+  - path: docs/sdk-node.md
+    hash: 2f37258dbc0b7b22ac08a2e92125c10b72d4eb2488cccbf38622a95725d423bc
+  - path: docs/sdk-node.zh-TW.md
+    hash: 45b888860e6154a3fdf47e39e8320357a62dabee32b94ba50fcc2bb9b966c9a5
+verified_at: 2026-11-21T23:49:14+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 12
+verified_rounds: 2
+verified_commit: 8a5f4098ab135e446cf3d2bcacaa4ab91d6eab21
+verified_scope:
+  - path: crates/adapters/speclink-cli/tests/it/change_schema.rs
+    hash: 3372c26e2d069b91603f3d8cb041846ffc94ebff3d7eabe931b618dcbe709db3
+  - path: crates/adapters/speclink-node/__test__/export-local.spec.ts
+    hash: d0f5e2d2d818dac22560072a75a18a877b68ac9bea192c0063ac875291d0b853
+  - path: crates/adapters/speclink-node/__test__/helpers.ts
+    hash: c147432657c55834f72b9d0a9fe4da47b0586aac78ebac396d963c4fcca2f49b
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: e98180dd7d3e1f339d08b928a1e9956918a5a89f32ffc99a6a6a5f111a53536a
+  - path: crates/adapters/speclink-node/index.js
+    hash: 1a2c6eb06137b7f20b3824b22e4a4168204d41fe5436b4d0e2a29dd40d1ff6e9
+  - path: crates/adapters/speclink-node/src/lib.rs
+    hash: 8684272e4227843484d244fef11c29b5717bc513546a4f993a42792cb362e51d
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 85ada5489dc7ab7bc042901a12343e354914ce4487ad08d101a7d680239fe33e
+  - path: crates/host/speclink-host/src/transfer.rs
+    hash: 1ea8211d706d7f317c39ba54c6921ee8fcd9572357e341224d711a6c477b7990
+  - path: docs/sdk-node.md
+    hash: 2f37258dbc0b7b22ac08a2e92125c10b72d4eb2488cccbf38622a95725d423bc
+  - path: docs/sdk-node.zh-TW.md
+    hash: 45b888860e6154a3fdf47e39e8320357a62dabee32b94ba50fcc2bb9b966c9a5
+archived_at: 2026-11-21T23:50:24+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

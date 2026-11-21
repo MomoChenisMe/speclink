@@ -188,7 +188,7 @@ One commit (`PortCommit`) carries all writes of one verb:
 
 When a commit succeeds, the scope version increases by one. Each document that the commit writes gets the new scope version as its version and `at` as its last modified time.
 
-Documents have string keys, and the engine sets the naming rules. Your store does not need to know the document types. It stores by key:
+Documents have string keys, and the engine sets the naming rules. Your store only stores and reads by key. The table below is a contract: the keys that exist do not change, and you can use them to count the documents in your own store (see [A summary of a scope](#scope-summary)):
 
 | Key | Content |
 | --- | --- |
@@ -263,6 +263,23 @@ Notes for your implementation:
 - **Results go to the engine as JSON.** Numbers keep their value. A value that JSON cannot hold (a cycle, a BigInt) makes the call fail.
 
 For an SQL database, see the three Rust examples (SQLite, PostgreSQL, file system) for the tables and for the steps of one commit: [Store port examples](server-store-drivers.md). There is no JavaScript example at this time.
+
+### <a id="scope-summary"></a>A summary of a scope
+
+An admin page can show a summary of each scope: how many documents it holds, who wrote to it last, and how many changes are at each stage. Speclink has no separate summary call. You get this data from your own store and from one verb:
+
+| Data | Source |
+| --- | --- |
+| The number of specs | The keys in your own store that start with `specs/` |
+| The number of active changes | The keys that start with `changes/`: count the different names in the second segment |
+| The number of archived changes | The keys that start with `archive/changes/`: count the different names in the third segment |
+| The number of discussions | The keys that start with `discussions/` and with `archive/discussions/` |
+| The last writer and the time of the last write | The `actor` and the `at` that your `commit` function receives |
+| The number of changes at each stage | One `host.dispatch` of `list --json` for each scope |
+
+- **Count by key prefix in your own store.** The key table above is the contract for the prefixes. One query of your database can count many scopes.
+- **Record the last write in your `commit` function.** Write the `actor` and the `at` of the commit to your own table, in the same transaction as the writes.
+- **`list --json` goes through `beforeCommand`**, as each verb does. It returns each active change with its `status`. With `--detail`, it also returns the records of each change: see [For an Agent tool](#agent-tool).
 
 ## <a id="conformance"></a>Check your implementation with the conformance tests
 
@@ -597,9 +614,9 @@ for (const [root, scope] of moves) {
 - **Do not write to the project during the export.** The export reads the files one at a time and takes no snapshot. A write at the same time, through the same engine, the CLI, or another program, can put old and new content into one bundle.
 - **The scope of the import must be empty**, and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
 - **The bundle has the full text** of the workflow config and of all the discussions. You decide who can run an export.
-- **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project.
+- **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project. A change that names a schema that cannot be used stops the call: the `reason` is `change_schema_unusable`.
 
-Five failures of `engine.exportScope()` have a `reason`. Their `code` is `error`. Show your own text by the `reason`, not by the start of the message:
+Six failures of `engine.exportScope()` have a `reason`. Their `code` is `error`. Show your own text by the `reason`, not by the start of the message:
 
 | `reason` | The failure |
 | --- | --- |
@@ -608,8 +625,16 @@ Five failures of `engine.exportScope()` have a `reason`. Their `code` is `error`
 | `symlink_in_spec_folder` | A symbolic link on the way to the spec folder, at it, or under it, or in the older evidence folder `.speclink/touched/` |
 | `spec_folder_unreadable` | A folder under the spec folder, or the older evidence folder, cannot be listed |
 | `invalid_change_metadata` | The metadata of an active or archived change does not parse |
+| `change_schema_unusable` | The schema that an active or archived change names cannot be used: it is not found, its definition does not load, or it has a file pattern that the engine cannot list |
 
-All other failures have no `reason` property, for example a schema that a change names and that is not found.
+When the `reason` is `invalid_change_metadata` or `change_schema_unusable`, the Error has two more string properties. They tell you which change caused the failure:
+
+- **`change`**: the folder name of the change. For an archived change, this is the name with its date, for example `2026-03-03-old-one`.
+- **`path`**: the metadata file of that change, as its path from the project root with forward slashes, for example `speclink/changes/archive/2026-03-03-old-one/.meta.yaml`. It names the file that is there: when the change has only the older file `.openspec.yaml`, the path names that file. When the change has no metadata file, the path names the place of `.meta.yaml`, and no file is there.
+
+All other failures have no `change` and no `path` property. The message of `change_schema_unusable` starts with `change '<name>': `. The two values are names from the disk, as they are: show them, and the message, as plain text.
+
+All other failures have no `reason` property, for example a document that the naming rules of the engine do not cover.
 
 The CLI has no import or export verb. There are three ways to move a project: "Migrate to Server" in Speclink Desktop, `engine.exportScope()` with `host.importScope` in your own program, and, between two scopes, `GET /export` and `POST /import` of the HTTP entry point.
 
@@ -627,6 +652,7 @@ const report = await host.importScope({ identity, scope: 'acme/web', bundle })
 
 - **`root` and `specDir`**: when you download only the spec folder, point `root` at the folder above it, and give the folder name in `store.specDir`. Without `specDir`, the engine finds the folder as the CLI does: first `spec_dir` in `root/.speclink.yaml`, then `speclink/`, then the older `openspec/`. A `root` with no spec folder under that name is refused with the `reason` `no_spec_folder`.
 - **Size limit**: `limits.importBytes` (default 32 MiB) also applies to a `host.importScope` that your program calls in the same process. The export has no limit. For a large project, increase the limit of the host.
+- **Time and progress**: `engine.exportScope()` and `host.importScope()` have no progress callback. For a spec folder of approximately 1,600 documents and approximately 19 MB, each of the two steps completes in a few seconds. The import calls your `list` function one time and your `commit` function one time, so the time of the write is in your own `commit` function. The download of the spec folder is the work of your backend, and your backend shows its progress.
 - **The import is a one-time move, not a sync.** A change in the repo after the import does not come into the scope, and a change in the scope does not go back to the repo.
 - **To import again**, delete all documents of the scope in your store first, then import. This deletes all the work that people did in the host after the import: the changes, the discussions, and the stamps. An import into a scope that is not empty is refused.
 

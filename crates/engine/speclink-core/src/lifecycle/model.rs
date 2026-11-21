@@ -151,19 +151,31 @@ impl ChangeMeta {
         };
         let mut meta: ChangeMeta = crate::config::parse_lenient_or_reason(s)?;
         meta.fields = crate::fields::read(&KeyLines::whole(s));
-        meta.collapse_time_fields();
+        meta.normalize();
         Ok(meta)
     }
 
     /// 由已結構化的欄位（SDK store bridge、remote drift）組一份 meta：`fill` 填欄位，
-    /// 收尾時跑與 [`Self::from_text`] 同一道時間欄位收斂。`ChangeMeta` 帶
+    /// 收尾時跑與 [`Self::from_text`] 同一道收斂（[`Self::normalize`]）。`ChangeMeta` 帶
     /// `#[non_exhaustive]`，core 以外不能用字面值建構；從 `default()` 逐欄填值會
     /// 跳過收斂，填欄位一律走這裡。
     pub fn from_fields(fill: impl FnOnce(&mut ChangeMeta)) -> ChangeMeta {
         let mut meta = ChangeMeta::default();
         fill(&mut meta);
-        meta.collapse_time_fields();
+        meta.normalize();
         meta
+    }
+
+    /// [`Self::from_text`] 與 [`Self::from_fields`] 共用的收尾：每一個讀取端拿到的都是
+    /// 收斂後的值，metadata 的原文不動。Idempotent.
+    fn normalize(&mut self) {
+        // 空白的 `schema` 視同沒有這個鍵（舊版工具會寫出 `schema: ''`）：留著空字串時，
+        // `schema_name()` 會指名一個叫空字串的產出流程，而直接看 `schema` 有沒有值的
+        // 讀取端（`show` 的成對回報、依建立日排序）會把它當成有值。
+        if self.schema.as_deref().is_some_and(|s| s.trim().is_empty()) {
+            self.schema = None;
+        }
+        self.collapse_time_fields();
     }
 
     /// Time fields written as RFC 3339 stamps collapse to their date part, so every
@@ -908,6 +920,34 @@ mod tests {
         let m = ChangeMeta::from_text(Some("created: 2026-07-01\n")).expect("absent fields → defaults");
         assert!(m.schema.is_none());
         assert!(m.started_at.is_none());
+    }
+
+    #[test]
+    fn blank_schema_reads_as_no_schema_in_from_text() {
+        // spec「change metadata 的 schema 空白時視同沒有設定」的 Example 表：空字串、
+        // 只有空白、`~` 與沒有這個鍵四種寫法都是沒有值，產出流程是預設的 spec-driven。
+        for text in ["schema: ''\n", "schema: '   '\n", "schema: ~\n", "created: 2026-03-01\n"] {
+            let m = ChangeMeta::from_text(Some(text))
+                .unwrap_or_else(|e| panic!("{text:?} must parse, got: {e}"));
+            assert!(m.schema.is_none(), "{text:?} must read as no schema, got {:?}", m.schema);
+            assert_eq!(m.schema_name(), "spec-driven", "{text:?}");
+        }
+        // 有名稱的對照：照字面保留。
+        let named = ChangeMeta::from_text(Some("schema: no-spec-change\n")).expect("meta parses");
+        assert_eq!(named.schema.as_deref(), Some("no-spec-change"));
+        assert_eq!(named.schema_name(), "no-spec-change");
+    }
+
+    #[test]
+    fn blank_schema_reads_as_no_schema_in_from_fields() {
+        // SDK store bridge 與 remote drift 不經 from_text：from_fields 收尾時跑同一道收斂。
+        for blank in ["", "   "] {
+            let meta = ChangeMeta::from_fields(|m| m.schema = Some(blank.into()));
+            assert!(meta.schema.is_none(), "{blank:?} must read as no schema");
+            assert_eq!(meta.schema_name(), "spec-driven");
+        }
+        let named = ChangeMeta::from_fields(|m| m.schema = Some("no-spec-change".into()));
+        assert_eq!(named.schema.as_deref(), Some("no-spec-change"));
     }
 
     #[test]

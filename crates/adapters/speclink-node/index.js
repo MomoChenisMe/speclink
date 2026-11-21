@@ -44,6 +44,10 @@ function unwrap(envelope) {
   // Only an export or an import failure with a code has one: `'reason' in
   // err` is false for every other failure.
   if ('reason' in envelope) err.reason = envelope.reason
+  // Only a local export failure about one change has these two: the change's
+  // folder name and its data file's path from the project root.
+  if ('change' in envelope) err.change = envelope.change
+  if ('path' in envelope) err.path = envelope.path
   throw err
 }
 
