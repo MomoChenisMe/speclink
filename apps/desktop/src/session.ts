@@ -76,8 +76,13 @@ export interface WorkspaceSettingsProvider {
 
 /** 事件面（design 決策 5）：workspace-changed 以自身 locator 過濾後才觸發。 */
 export interface WorkspaceEvents {
-  /** 訂閱過濾後的變更通知；回傳解除訂閱函式。 */
-  subscribe(onChange: () => void, onConnectionState?: (event: RemoteConnectionStateEvent) => void): () => void;
+  /** 訂閱過濾後的變更通知；回傳解除訂閱函式。remote 另收連線狀態（以連線為單位）
+   * 與存取狀態（以這個分頁為單位）的事件。 */
+  subscribe(
+    onChange: () => void,
+    onConnectionState?: (event: RemoteConnectionStateEvent) => void,
+    onAccessState?: (event: RemoteAccessStateEvent) => void,
+  ): () => void;
 }
 
 export type RemoteConnectionState = "online" | "offline" | "needs-reauth";
@@ -85,6 +90,15 @@ export type RemoteConnectionState = "online" | "offline" | "needs-reauth";
 export interface RemoteConnectionStateEvent {
   connectionId: string;
   state: RemoteConnectionState;
+  message: string | null;
+}
+
+/** `remote-access-state` 的 payload（Rust AccessNotice 的 camelCase 序列化）：分頁
+ * （locator key）進入或解除「存取被拒」。`message` 是 Server 回報的原因原文；Server
+ * 沒有可讀的原因、或這是解除時為 null。 */
+export interface RemoteAccessStateEvent {
+  key: string;
+  denied: boolean;
   message: string | null;
 }
 
@@ -171,6 +185,10 @@ export interface WorkspaceSession {
   baseCapabilities?: WorkspaceCapabilities;
   /** local 為缺席；remote 初始 online，之後只接受 Rust 事件更新。 */
   connectionState?: RemoteConnectionStateEvent;
+  /** 這個分頁的存取被拒（remote-resilience「存取被拒的狀態跟著分頁」）：有值＝被拒，
+   * `message` 是 Server 回報的原因。只接受 Rust 事件更新；背景分頁沒有輪詢，留著的是
+   * 上次作用中時的狀態，回到作用中時重新判定。 */
+  accessDenied?: { message: string | null };
 }
 
 export type InvokeFn = <T>(cmd: string, args?: Record<string, unknown>) => Promise<T>;
@@ -254,10 +272,12 @@ export type RemoteWorkspaceStatus =
   | "restoring"
   | "offline"
   | "needs-reauth"
+  | "access-denied"
   | "error";
 
 /** 主視窗 tab、復原頁與 Tray 共用的單一狀態裁決。無 session 且無明確
- * recovery state 是不完整狀態，安全降階為 error，絕不偽裝成 ready。 */
+ * recovery state 是不完整狀態，安全降階為 error，絕不偽裝成 ready。有 session 時
+ * 多種狀態並存只回一種：needs-reauth、offline（連線層）先於 access-denied（分頁層）。 */
 export function remoteWorkspaceStatus(
   session: WorkspaceSession | undefined,
   recovery: RemoteWorkspaceRecoveryState | undefined,
@@ -266,7 +286,8 @@ export function remoteWorkspaceStatus(
   if (!session) return "error";
   if (session.locator.kind !== "remote") return "ready";
   const connectionState = session.connectionState?.state ?? "online";
-  return connectionState === "online" ? "ready" : connectionState;
+  if (connectionState !== "online") return connectionState;
+  return session.accessDenied ? "access-denied" : "ready";
 }
 
 function structuredRemoteOpenFailure(
@@ -358,19 +379,20 @@ function maskRemoteWrites(capabilities: WorkspaceCapabilities): WorkspaceCapabil
   return masked;
 }
 
-export function applyRemoteConnectionState(
-  session: WorkspaceSession,
-  event: RemoteConnectionStateEvent,
-): WorkspaceSession {
-  if (session.locator.kind !== "remote" || session.locator.connectionId !== event.connectionId) {
-    return session;
-  }
+/** remote session 現在可不可以寫：連線是 online，而且這個分頁沒有存取被拒。離線遮罩
+ * 與流程政策的寫入開關都由 [`withWriteMask`] 照這一個答案決定。 */
+function remoteWritable(session: WorkspaceSession): boolean {
+  return (session.connectionState?.state ?? "online") === "online" && !session.accessDenied;
+}
+
+/** 依 `session` 目前的連線與存取狀態重算寫入能力：不能寫時遮掉全部寫入能力與流程
+ * 政策的寫入開關，能寫時還原成握手當時的值。 */
+function withWriteMask(session: WorkspaceSession): WorkspaceSession {
   const baseCapabilities = session.baseCapabilities ?? session.capabilities;
-  const writable = event.state === "online";
+  const writable = remoteWritable(session);
   return {
     ...session,
     baseCapabilities,
-    connectionState: event,
     capabilities: writable ? baseCapabilities : maskRemoteWrites(baseCapabilities),
     settings: {
       ...session.settings,
@@ -379,12 +401,46 @@ export function applyRemoteConnectionState(
   };
 }
 
+export function applyRemoteConnectionState(
+  session: WorkspaceSession,
+  event: RemoteConnectionStateEvent,
+): WorkspaceSession {
+  if (session.locator.kind !== "remote" || session.locator.connectionId !== event.connectionId) {
+    return session;
+  }
+  return withWriteMask({ ...session, connectionState: event });
+}
+
+/** 套用一則存取狀態事件：只影響 key 相符的分頁，同一連線的其他分頁原樣回傳。 */
+export function applyRemoteAccessState(
+  session: WorkspaceSession,
+  event: RemoteAccessStateEvent,
+): WorkspaceSession {
+  if (session.id !== event.key) return session;
+  // 沒有被拒的分頁收到解除：沒有東西要改。
+  if (!event.denied && !session.accessDenied) return session;
+  return withWriteMask({
+    ...session,
+    accessDenied: event.denied ? { message: event.message } : undefined,
+  });
+}
+
 function isRemoteConnectionStateEvent(payload: unknown): payload is RemoteConnectionStateEvent {
   if (!payload || typeof payload !== "object") return false;
   const event = payload as Partial<RemoteConnectionStateEvent>;
   return (
     typeof event.connectionId === "string" &&
     (event.state === "online" || event.state === "offline" || event.state === "needs-reauth") &&
+    (event.message === null || typeof event.message === "string")
+  );
+}
+
+function isRemoteAccessStateEvent(payload: unknown): payload is RemoteAccessStateEvent {
+  if (!payload || typeof payload !== "object") return false;
+  const event = payload as Partial<RemoteAccessStateEvent>;
+  return (
+    typeof event.key === "string" &&
+    typeof event.denied === "boolean" &&
     (event.message === null || typeof event.message === "string")
   );
 }
@@ -424,8 +480,7 @@ export function createRemoteSession(
       invoke,
     ),
     events: {
-      subscribe(onChange, onConnectionState) {
-        void invoke("remote_watch", { ...watchArgs });
+      subscribe(onChange, onConnectionState, onAccessState) {
         const unlistenWorkspace = listen("remote-workspace-changed", (e) => {
           if (e.payload === key) onChange();
         });
@@ -437,10 +492,21 @@ export function createRemoteSession(
             onConnectionState?.(e.payload);
           }
         });
+        const unlistenAccess = listen("remote-access-state", (e) => {
+          if (isRemoteAccessStateEvent(e.payload) && e.payload.key === key) {
+            onAccessState?.(e.payload);
+          }
+        });
+        // 三個 listener 都掛好才開始監看：worker 的第一則通知不會早於 listener。
+        // 解除時的 remote_unwatch 排在 remote_watch 之後送出，兩者一定成對。
+        const watching = Promise.allSettled([unlistenWorkspace, unlistenState, unlistenAccess]).then(() => {
+          void invoke("remote_watch", { ...watchArgs });
+        });
         return () => {
           void unlistenWorkspace.then((f) => f());
           void unlistenState.then((f) => f());
-          void invoke("remote_unwatch", { ...watchArgs });
+          void unlistenAccess.then((f) => f());
+          void watching.then(() => invoke("remote_unwatch", { ...watchArgs }));
         };
       },
     },

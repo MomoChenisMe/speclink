@@ -14,22 +14,36 @@
 //!   the other pattern;
 //! - HEAD takes the GET routes.
 
-use super::routes::{self, Handler};
+use super::routes::{self, Handler, ProjectHandler};
 use super::skills;
 use super::Method;
 
 /// Every project path starts here; the segment after it is the project key.
 pub(crate) const PROJECTS: &str = "/api/speclink/v1/projects/";
 
-/// One route: a method, a pattern under [`PROJECTS`]`{key}`, and its handler.
+/// What answers a route, and so what the door resolves before it runs.
+#[derive(Clone, Copy)]
+pub(crate) enum Answer {
+    /// The route is for one repo: the door chooses it first.
+    Repo(Handler),
+    /// The route is for the project: the door answers it before it chooses a
+    /// repo, and does not read the header that names one.
+    Project(ProjectHandler),
+}
+
+/// One route: a method, a pattern under [`PROJECTS`]`{key}`, and its answer.
 pub(crate) struct Route {
     pub method: Method,
     pub pattern: &'static str,
-    pub handler: Handler,
+    pub answer: Answer,
 }
 
 const fn route(method: Method, pattern: &'static str, handler: Handler) -> Route {
-    Route { method, pattern, handler }
+    Route { method, pattern, answer: Answer::Repo(handler) }
+}
+
+const fn project_route(method: Method, pattern: &'static str, handler: ProjectHandler) -> Route {
+    Route { method, pattern, answer: Answer::Project(handler) }
 }
 
 use Method::{Delete, Get, Post, Put};
@@ -98,7 +112,7 @@ pub(crate) static ROUTES: &[Route] = &[
     route(Put, "/config", routes::put_config),
     route(Get, "/board-order", routes::board_order),
     route(Put, "/board-order", routes::put_board_order),
-    route(Get, "/whoami", routes::whoami),
+    project_route(Get, "/whoami", routes::whoami),
     route(Get, "/sync-state", routes::sync_state),
     route(Post, "/context", routes::context),
     route(Post, "/skills", skills::skills),

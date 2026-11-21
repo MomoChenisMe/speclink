@@ -11,7 +11,12 @@ import { ProjectRail, type ProjectRailProps } from "../components/ProjectRail";
 import type { ProjectActions } from "../components/ProjectActionsMenu";
 import { APP_MESSAGES } from "../i18n/messages";
 import type { ProjectTab } from "../tabs";
-import type { RemoteWorkspaceRecoveryState, WorkspaceLocator } from "../session";
+import type {
+  RemoteConnectionState,
+  RemoteWorkspaceRecoveryState,
+  WorkspaceLocator,
+  WorkspaceSession,
+} from "../session";
 
 const zh = APP_MESSAGES["zh-TW"];
 const zhWrapper = ({ children }: { children: ReactNode }) => (
@@ -54,6 +59,19 @@ function renderRail(over: Partial<ProjectRailProps> = {}) {
   };
   render(<ProjectRail {...props} />);
   return props;
+}
+
+/** 圖示列只讀 session 的 locator、連線狀態與存取狀態（經共用的 remoteWorkspaceStatus）。 */
+function remoteSession(
+  repoId: string,
+  over: { state?: RemoteConnectionState; denied?: boolean } = {},
+): WorkspaceSession {
+  return {
+    id: `remote:c1/demo/${repoId}`,
+    locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId },
+    connectionState: { connectionId: "c1", state: over.state ?? "online", message: null },
+    ...(over.denied ? { accessDenied: { message: "帳號已停用" } } : {}),
+  } as WorkspaceSession;
 }
 
 const square = (key: string) =>
@@ -252,14 +270,65 @@ describe("ProjectRail", () => {
         },
       ],
       activeKey: null,
-      connectionStates: {
-        "remote:c1/demo/api": { connectionId: "c1", state: "offline", message: null },
-        "remote:c1/demo/web": { connectionId: "c1", state: "needs-reauth", message: null },
+      sessions: {
+        "remote:c1/demo/api": remoteSession("api", { state: "offline" }),
+        "remote:c1/demo/web": remoteSession("web", { state: "needs-reauth" }),
       },
     });
     for (const key of ["remote:c1/demo/api", "remote:c1/demo/web"]) {
       expect(square(key).querySelector("[data-tab-dot]")?.className).toContain("bg-status-warning");
     }
+  });
+
+  it("remote 存取被拒：角落錯誤色的點，無障礙名稱與 tooltip 說「存取遭拒」，方塊照常可選", async () => {
+    // spec remote-resilience「存取被拒的狀態跟著分頁」：被拒是錯誤（紅），不是離線的琥珀。
+    const onActivate = vi.fn();
+    renderRail({
+      tabs: [
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "web" },
+          name: "Demo/web",
+        },
+      ],
+      activeKey: null,
+      sessions: {
+        "remote:c1/demo/api": remoteSession("api", { denied: true }),
+        "remote:c1/demo/web": remoteSession("web"),
+      },
+      onActivate,
+    });
+    const denied = square("remote:c1/demo/api");
+    expect(denied.getAttribute("data-status")).toBe("access-denied");
+    const dot = denied.querySelector("[data-tab-dot]") as HTMLElement;
+    expect(dot.className).toContain("bg-destructive");
+    expect(dot.className).not.toContain("status-warning");
+    expect(denied.getAttribute("aria-label")).toContain("存取遭拒");
+    // 同一連線的另一個分頁沒有點。
+    expect(square("remote:c1/demo/web").querySelector("[data-tab-dot]")).toBeNull();
+    fireEvent.click(denied);
+    expect(onActivate).toHaveBeenCalledWith("remote:c1/demo/api");
+    fireEvent.focus(denied);
+    expect((await screen.findByRole("tooltip")).textContent).toContain("存取遭拒");
+  });
+
+  it("remote 同時離線與存取被拒：照優先序呈現離線的琥珀點", () => {
+    const key = "remote:c1/demo/api";
+    renderRail({
+      tabs: [
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+          name: "Demo/api",
+        },
+      ],
+      activeKey: null,
+      sessions: { [key]: remoteSession("api", { state: "offline", denied: true }) },
+    });
+    expect(square(key).getAttribute("data-status")).toBe("offline");
+    expect(square(key).querySelector("[data-tab-dot]")?.className).toContain("bg-status-warning");
   });
 
   it("assetPrompts 有值的背景方塊：角落琥珀點、tooltip 附「技能檔需要處理」（spec「其他專案的狀況以琥珀點提示」）", async () => {

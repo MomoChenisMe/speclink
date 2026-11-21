@@ -33,9 +33,11 @@ import type { ConnectionsAdapter, ConnectionView, LoginPhase } from "./adapter/c
 import type { AssetUpdateResult, ProjectProbe, RemoteCheckout, WorkspaceAdapter } from "./adapter/workspace";
 import type { MigrationAdapter } from "./adapter/migration";
 import {
+  applyRemoteAccessState,
   applyRemoteConnectionState,
   locatorKey,
   normalizeRemoteOpenFailure,
+  type RemoteAccessStateEvent,
   type RemoteConnectionStateEvent,
   type RemoteWorkspaceRecoveryState,
   type WorkspaceSession,
@@ -392,6 +394,8 @@ export interface AppState {
   sessions: Record<string, WorkspaceSession>;
   /** Rust connection 狀態事件套用至同 connection 的所有 remote sessions。 */
   applyRemoteConnectionState: (event: RemoteConnectionStateEvent) => void;
+  /** 套用一則分頁的存取狀態事件（進入或解除「存取被拒」）。 */
+  applyRemoteAccessState: (event: RemoteAccessStateEvent) => void;
   /** session 事件訂閱世代；重新認證完成後遞增，讓 active worker 解除再重掛。 */
   sessionEpoch: number;
   /** 目前 active 分頁的 locator key（null＝零分頁空狀態）。 */
@@ -1892,6 +1896,12 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         }),
       );
       if (changed) set({ sessions });
+    },
+    applyRemoteAccessState(event) {
+      const session = get().sessions[event.key];
+      if (!session) return;
+      const next = applyRemoteAccessState(session, event);
+      if (next !== session) set({ sessions: { ...get().sessions, [event.key]: next } });
     },
     activeKey: null,
     pendingTabKey: null,

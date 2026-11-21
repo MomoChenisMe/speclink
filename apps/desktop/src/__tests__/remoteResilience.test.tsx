@@ -5,13 +5,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
 import type { ConnectionsAdapter } from "../adapter/connections";
+import { SEMANTIC_SURFACE } from "@speclink/ui";
 import {
+  applyRemoteAccessState,
   applyRemoteConnectionState,
   createLocalSession,
   createRemoteSession,
+  remoteWorkspaceStatus,
   type InvokeFn,
   type ListenFn,
+  type RemoteConnectionState,
   type RemoteOpenInfo,
+  type WorkspaceCapabilities,
   type WorkspaceSession,
 } from "../session";
 import { changeList } from "./helpers/changeList";
@@ -509,5 +514,220 @@ describe("remote offline stale snapshot", () => {
     const row = await screen.findByTestId("server-row-http://server.test");
     expect(row.textContent).toContain("登入過期");
     expect(row.textContent).toContain("重新登入");
+  });
+});
+
+// remote-resilience「存取被拒的狀態跟著分頁」：Rust 的事件 worker 以分頁（locator key）
+// 為單位廣播 remote-access-state；前端只照事件更新，不由查詢失敗自行推斷。
+describe("remote access denied", () => {
+  const WRITE_CAPS: Array<keyof WorkspaceCapabilities> = [
+    "deleteChange",
+    "setTaskDone",
+    "setAllTasks",
+    "moveTask",
+    "archive",
+    "promoteDiscussion",
+    "archiveDiscussion",
+    "reorderCard",
+    "setDepends",
+    "claim",
+    "policyWrite",
+  ];
+  /** 11 個寫入能力全開的握手結果：關掉與復原都看得出來。 */
+  const ALL_WRITES: WorkspaceCapabilities = {
+    ...REMOTE_CAPS,
+    deleteChange: true,
+    moveTask: true,
+    reorderCard: true,
+    setDepends: true,
+  };
+  const DENIED = { key: REMOTE_KEY, denied: true, message: "帳號已停用" };
+  const REGAINED = { key: REMOTE_KEY, denied: false, message: null };
+
+  function sessionOf(repoKey = "backend", capabilities = ALL_WRITES): WorkspaceSession {
+    return createRemoteSession("c1", { ...INFO, repoKey, capabilities }, undefined, {
+      invoke: vi.fn() as never,
+      listen: fakeEvents().listen,
+    });
+  }
+
+  it("多種狀態並存時只呈現一種：needs-reauth、offline、access-denied、ready", () => {
+    // spec 的範例表逐列（connection 狀態、分頁是否存取被拒、呈現）。
+    const rows: Array<[RemoteConnectionState, boolean, string]> = [
+      ["online", false, "ready"],
+      ["online", true, "access-denied"],
+      ["offline", true, "offline"],
+      ["needs-reauth", true, "needs-reauth"],
+      ["offline", false, "offline"],
+    ];
+    for (const [state, denied, shown] of rows) {
+      let session = applyRemoteConnectionState(sessionOf(), { connectionId: "c1", state, message: null });
+      if (denied) session = applyRemoteAccessState(session, DENIED);
+      expect(remoteWorkspaceStatus(session, undefined), `${state}／${denied}`).toBe(shown);
+    }
+  });
+
+  it("被拒時關掉該分頁的 11 個寫入能力與流程政策的寫入開關，解除後復原；其他分頁不變", () => {
+    const backend = sessionOf("backend");
+    const frontend = sessionOf("frontend");
+
+    const denied = applyRemoteAccessState(backend, DENIED);
+    expect(denied.accessDenied).toEqual({ message: "帳號已停用" });
+    for (const cap of WRITE_CAPS) expect(denied.capabilities[cap], cap).toBe(false);
+    expect(denied.settings.policyWrite).toBe(false);
+    // 讀取照常：已載入的內容仍可看。
+    expect(denied.capabilities.listChanges).toBe(true);
+    expect(denied.capabilities.getDocument).toBe(true);
+    // 同一連線的另一個分頁：原樣回傳。
+    expect(applyRemoteAccessState(frontend, DENIED)).toBe(frontend);
+
+    const regained = applyRemoteAccessState(denied, REGAINED);
+    expect(regained.accessDenied).toBeUndefined();
+    expect(regained.capabilities).toEqual(ALL_WRITES);
+    expect(regained.settings.policyWrite).toBe(true);
+  });
+
+  it("「可不可以寫」只有一個答案：離線與被拒任一成立就不能寫", () => {
+    const offline = { connectionId: "c1", state: "offline" as const, message: null };
+    const online = { connectionId: "c1", state: "online" as const, message: null };
+
+    // 被拒期間連線回到 online：仍不能寫。
+    let session = applyRemoteAccessState(applyRemoteConnectionState(sessionOf(), offline), DENIED);
+    session = applyRemoteConnectionState(session, online);
+    expect(session.capabilities.setTaskDone).toBe(false);
+    expect(session.settings.policyWrite).toBe(false);
+
+    // 離線期間解除被拒：仍不能寫，回到 online 才復原。
+    session = applyRemoteAccessState(applyRemoteConnectionState(session, offline), REGAINED);
+    expect(session.capabilities.setTaskDone).toBe(false);
+    session = applyRemoteConnectionState(session, online);
+    expect(session.capabilities).toEqual(ALL_WRITES);
+    expect(session.settings.policyWrite).toBe(true);
+  });
+
+  async function openBoard() {
+    persistRemote();
+    const events = fakeEvents();
+    const network = remoteInvoke();
+    const session = createRemoteSession("c1", INFO, undefined, {
+      invoke: network.invoke,
+      listen: events.listen,
+    });
+    render(
+      <App
+        createSession={() => {
+          throw new Error("remote 流程不得建立 local session");
+        }}
+        openRemote={async () => session}
+        workspace={fakeWorkspace() as never}
+      />,
+    );
+    await screen.findByText("remote-change");
+    await waitFor(() => expect(events.count("remote-access-state")).toBe(1));
+    return { events, network };
+  }
+
+  const railSquare = () =>
+    Array.from(document.querySelectorAll<HTMLElement>("[data-tab]")).find(
+      (el) => el.getAttribute("data-tab") === REMOTE_KEY,
+    ) as HTMLElement;
+
+  it("看板開著時被拒：紅色橫幅顯示 Server 的原因、圖示列紅點、內容保留、寫入停用", async () => {
+    const { events } = await openBoard();
+    fireEvent.click(screen.getByText("remote-change"));
+    const archive = (await screen.findByRole("button", { name: "封存" })) as HTMLButtonElement;
+    fireEvent.click(screen.getByRole("tab", { name: /任務/ }));
+    await screen.findAllByRole("checkbox");
+    expect(archive.disabled).toBe(false);
+
+    act(() => {
+      events.emit("remote-access-state", DENIED);
+    });
+
+    const banner = await screen.findByTestId("remote-stale-banner");
+    expect(banner.getAttribute("data-connection-state")).toBe("access-denied");
+    for (const token of SEMANTIC_SURFACE.danger.split(" ")) expect(banner.className).toContain(token);
+    expect(banner.className).not.toContain("status-warning");
+    expect(banner.textContent).toContain("沒有存取權限");
+    expect(banner.textContent).toContain("帳號已停用");
+    expect(banner.textContent).toContain("目前顯示最後成功載入的內容");
+    expect(banner.textContent).toContain("stale");
+    expect(banner.querySelector("button")).toBeNull();
+    // 圖示列：錯誤色的點，無障礙名稱說明原因。
+    expect(railSquare().querySelector("[data-tab-dot]")?.className).toContain("bg-destructive");
+    expect(railSquare().getAttribute("aria-label")).toContain("存取遭拒");
+    // 已載入的內容還在；寫入停用並說明原因。
+    expect(screen.getAllByText("remote-change").length).toBeGreaterThan(0);
+    expect((screen.getByRole("button", { name: "封存" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getAllByRole("checkbox")[0] as HTMLInputElement).disabled).toBe(true);
+    expect(document.querySelector('[title*="目前沒有存取權限"]')).toBeTruthy();
+  });
+
+  it("恢復存取後橫幅與紅點消失、寫入恢復、看板重新查詢", async () => {
+    const { events, network } = await openBoard();
+    act(() => {
+      events.emit("remote-access-state", DENIED);
+    });
+    await screen.findByTestId("remote-stale-banner");
+
+    network.addRecoveredChange();
+    act(() => {
+      events.emit("remote-access-state", REGAINED);
+      // Rust 的 worker 在解除時同時發一次重新載入。
+      events.emit("remote-workspace-changed", REMOTE_KEY);
+    });
+
+    await screen.findByText("recovered-change");
+    expect(screen.queryByTestId("remote-stale-banner")).toBeNull();
+    expect(railSquare().querySelector("[data-tab-dot]")).toBeNull();
+    fireEvent.click(screen.getByText("remote-change"));
+    const archive = (await screen.findByRole("button", { name: "封存" })) as HTMLButtonElement;
+    expect(archive.disabled).toBe(false);
+  });
+
+  it("Server 沒有說明原因時，橫幅用固定的說明文案", async () => {
+    const { events } = await openBoard();
+    act(() => {
+      events.emit("remote-access-state", { key: REMOTE_KEY, denied: true, message: null });
+    });
+    const banner = await screen.findByTestId("remote-stale-banner");
+    expect(banner.textContent).toContain("目前帳號無法存取這個專案");
+    expect(banner.textContent).toContain("目前顯示最後成功載入的內容");
+  });
+
+  it("別的分頁的事件與形狀不對的 payload 不影響這個分頁", async () => {
+    const { events } = await openBoard();
+    act(() => {
+      events.emit("remote-access-state", { ...DENIED, key: "remote:c1/demo/frontend" });
+      events.emit("remote-access-state", { key: REMOTE_KEY, denied: "yes", message: null });
+      events.emit("remote-access-state", REMOTE_KEY);
+    });
+    expect(screen.queryByTestId("remote-stale-banner")).toBeNull();
+    expect(railSquare().querySelector("[data-tab-dot]")).toBeNull();
+  });
+
+  it("被拒之後連線離線：只呈現離線橫幅；回到 online 而仍被拒時改回存取被拒", async () => {
+    const { events } = await openBoard();
+    act(() => {
+      events.emit("remote-access-state", DENIED);
+    });
+    await screen.findByTestId("remote-stale-banner");
+
+    act(() => {
+      events.emit("remote-connection-state", { connectionId: "c1", state: "offline", message: "系統維護中——顯示最後成功載入的內容" });
+    });
+    expect(screen.getAllByTestId("remote-stale-banner")).toHaveLength(1);
+    const offline = screen.getByTestId("remote-stale-banner");
+    expect(offline.getAttribute("data-connection-state")).toBe("offline");
+    expect(offline.textContent).toContain("系統維護中");
+    expect(offline.textContent).not.toContain("沒有存取權限");
+    expect(railSquare().querySelector("[data-tab-dot]")?.className).toContain("bg-status-warning");
+
+    act(() => {
+      events.emit("remote-connection-state", { connectionId: "c1", state: "online", message: null });
+    });
+    await waitFor(() =>
+      expect(screen.getByTestId("remote-stale-banner").getAttribute("data-connection-state")).toBe("access-denied"),
+    );
   });
 });

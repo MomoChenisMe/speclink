@@ -345,7 +345,11 @@ export interface HostScopeProject {
 export interface HostAuthMethods {
   /** `browser`, `device`, `token`. */
   methods: string[]
-  /** The login service behind `browser`. */
+  /**
+   * The login service behind `browser`. `scopes` is optional here. The answer
+   * of the entry point always has `browser.scopes`: an empty array when it is
+   * not declared.
+   */
   browser?: { issuer: string; clientId: string; scopes?: string[] }
 }
 
@@ -353,7 +357,10 @@ export interface HostAuthMethods {
  * A push stream the host serves itself; the handshake declares it, as
  * written, before the polling fallback. An idle `sse` stream sends a comment
  * line more often than every 45 seconds: a client that gets no data for 45
- * seconds subscribes again.
+ * seconds subscribes again. The host ends the stream of a user who loses
+ * access (a suspended account, a removed membership): the entry point serves
+ * no stream, so it cannot. The client then subscribes again and polls, and
+ * Speclink Desktop shows "Access denied" when the two are refused.
  */
 export interface HostPushTransport {
   /** `sse` or `websocket`. Speclink Desktop uses the first `sse`, and polls when there is none. */

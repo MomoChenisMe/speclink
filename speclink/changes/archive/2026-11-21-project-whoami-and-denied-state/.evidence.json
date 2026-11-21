@@ -1,0 +1,362 @@
+{
+  "version": 2,
+  "change": "project-whoami-and-denied-state",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫會失敗的測試（`crates/host/speclink-host/tests/http_door.rs`）：兩個 repo 的專案對專案底下的 `/whoami` 不帶 `X-Speclink-Repo` 時回 200、`repos` 列出兩個 repo、回應沒有 ETag 標頭；標頭指名未註冊的 repo 時同樣回 200；專案不在清單裡仍回 404、API 版本不符仍回 409；同一個不帶標頭的請求改送變更清單時回 409，訊息含 `X-Speclink-Repo` 與 `remote.repo`。驗證：`cargo test -p speclink-host --test http_door` 中新增的測試失敗、其餘通過。",
+      "files": [
+        "crates/host/speclink-host/tests/http_door.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 實作 D1 與 D2（`crates/host/speclink-host/src/http/mod.rs`、`crates/host/speclink-host/src/http/routes.rs`）：入口在選 repo 之前回答專案底下的身分查詢，且多個 repo 而沒有指名的訊息寫出兩種指定方式，滿足 host-kit「範圍與能力由宿主的函式決定」。同批更新比對舊 409 字面或 `/whoami` ETag 的既有測試。驗證：`cargo test -p speclink-host` 全部通過。",
+      "files": [
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "1.3 示範用 Server 經同一個入口得到相同行為：在 `crates/host/speclink-server/tests/it/api/read_api.rs` 補上 reference-server「binding 與認證前置 fail closed」的兩個新情境（兩個 repo 的 project 不帶標頭呼叫 whoami 回 200 並列出兩個 repo；非成員呼叫 whoami 回 403），並更新比對舊 409 字面的既有測試。驗證：`cargo test -p speclink-server --test it` 通過。",
+      "files": [
+        "crates/host/speclink-server/tests/it/api/read_api.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.1 先寫會失敗的測試（`crates/protocol/speclink-remote/tests/it/client_errors.rs` 與 `crates/protocol/speclink-remote/src/auth.rs` 的單元測試）：依 remote-connection「Server 回報暫時無法服務時顯示它的原因」的範例表，逐列斷言 500 以上各種回應的訊息；斷言取回伺服器原因的函式對 403 的句子與 `server unavailable — <原因>` 的句子回原文、對其他錯誤回「沒有」；斷言金鑰圈登入憑證的來源說明是 `system keychain (login session, shared with the desktop app)`。驗證：`cargo test -p speclink-remote` 中新增的測試失敗。",
+      "files": [
+        "crates/protocol/speclink-remote/src/auth.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.2 實作 D4 與 D5（`crates/protocol/speclink-remote/src/lib.rs`、`crates/protocol/speclink-remote/src/auth.rs`）：500 以上而信封的 reason 為 unavailable 且有 message 時顯示原因，其餘訊息逐字不變；組字與拆解用同一組常數；`RemoteError` 的欄位不增加。驗證：`cargo test -p speclink-remote` 全部通過，既有的錯誤訊息測試沒有非預期的變動。",
+      "files": [
+        "crates/protocol/speclink-remote/src/lib.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 先寫會失敗的測試（`crates/adapters/speclink-cli/tests/it/remote_connect.rs`，`auth status` 的部分寫在 `crates/adapters/speclink-cli/src/verbs/connection.rs` 的測試模組並注入既有的 `AuthEnv`，不新增環境變數接縫）：對兩個 repo（erp、crm）的專案，`speclink link <url> --repo crm` 成功並寫入；`--repo nope` 以非 0 結束且 stderr 為 `Error: repo 'nope' is not registered in this project (available: erp, crm)`；不帶 `--repo` 以非 0 結束、stderr 含 `--repo`、erp、crm，`.speclink.yaml` 不變；`speclink init --store remote` 不帶 `--repo` 時產物已建立、exit code 非 0、stderr 含 `speclink link`；`auth status` 在有設定 repo 與沒有設定 repo 兩種情況都 exit 0，後者多一行 `! ` 開頭的提示；`auth status --json` 的 payload 只有 `user.name`、`user.handle`、`credentialSource` 三個欄位（camelCase、皆為字串）。驗證：`cargo test -p speclink-cli` 中新增的測試失敗。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/connection.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_connect.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 實作 D3（`crates/adapters/speclink-cli/src/remote_base.rs`、`crates/adapters/speclink-cli/src/verbs/connection.rs`）：一個函式裁決「有宣告而不在清單」「沒有宣告而有多個 repo」「可以通過」三種結果，`link`、`init --store remote`、`auth status` 共用，滿足 remote-connection「remote 初始化與連接指令」與 remote-auth「auth status 的憑證來源說明與多個 repo 的專案」。專案只有一個 repo 的既有輸出逐字不變。驗證：`cargo test -p speclink-cli --test it remote_connect` 與 `cargo test -p speclink-cli --test it remote_verb_parity` 通過，`cargo test -p speclink-cli` 的單元測試通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/remote_base.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 先寫會失敗的測試（`apps/desktop/src-tauri/tests/it/event_manager.rs`、`apps/desktop/src-tauri/tests/it/remote_runtime.rs`）：worker 在輪詢回 403 時以（鍵、原因）通知被拒，原因相同時不重複通知，輪詢成功時通知解除並發一次重新載入；訂閱失敗後接著的輪詢回 403 也走同一條路；同一條連線上另一個鍵不受影響；500 以上的回應連續 3 次使連線進入 offline 且訊息含伺服器的原因，單次 503 後接著成功時維持 online，403 與 404 不計入；被拒登記有該鍵時寫入命令立即回 `reason` 為 `access_denied` 的錯誤、伺服器沒有收到請求。驗證：`cargo test -p speclink-desktop --test it` 中新增的測試失敗。",
+      "files": [
+        "apps/desktop/src-tauri/tests/it/event_manager.rs",
+        "apps/desktop/src-tauri/tests/it/remote_runtime.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 實作 D9（`apps/desktop/src-tauri/src/remote.rs`）：500 以上計入離線的連續失敗，進入 offline 的訊息在有伺服器的原因時帶上它，滿足 remote-resilience「離線狀態機單一真相且明確呈現」。驗證：4.1 中離線的測試通過，既有的離線與重新登入測試沒有變動。",
+      "files": [
+        "apps/desktop/src-tauri/src/event_manager.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "5.1 先寫會失敗的測試（`apps/desktop/src/__tests__/remoteResilience.test.tsx`、`apps/desktop/src/__tests__/projectRail.test.tsx`、`apps/desktop/src/__tests__/tray.test.ts`、`apps/desktop/src/__tests__/trayPanel.test.tsx`）：`remoteWorkspaceStatus` 依 needs-reauth、offline、access-denied、ready 的優先序回結果（照 remote-resilience 的範例表逐列）；收到 `remote-access-state` 後該分頁的 11 個寫入能力與流程政策的寫入開關關掉，解除後復原，同一連線的其他分頁不變；提示列在 access-denied 時為錯誤色、標題「沒有存取權限」、說明含伺服器的原因與新文案、沒有按鈕，原因是 null 時用既有的說明文案；專案圖示列的狀態點為錯誤色且無障礙名稱含「存取遭拒」；原生選單的標籤為「<專案名> — 沒有存取權限」且可點選；面板的 tab 顯示警示三角形與紅色狀態文字、上方的狀態卡為紅色且沒有重新登入鈕。驗證：`npm test -w apps/desktop` 中新增的測試失敗。",
+      "files": [
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.2 實作 D7 的前端部分與 D8 的狀態裁決（`apps/desktop/src/session.ts`、`apps/desktop/src/store.ts`）：session 記錄存取被拒與原因，「可不可以寫」由單一函式決定並為離線遮罩與流程政策開關共用，`remoteWorkspaceStatus` 多一個 `access-denied`。驗證：5.1 中狀態與能力的測試通過。",
+      "files": [
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/store.ts"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "5.3 實作 D8 的主視窗呈現（`apps/desktop/src/App.tsx`、`apps/desktop/src/components/ProjectRail.tsx`、`apps/desktop/src/i18n/messages.ts`）：看板上方的提示列與專案圖示列在 access-denied 時依 remote-resilience「存取被拒的狀態跟著分頁」呈現；新增 `remote.deniedHint` 與 `remote.writeDenied` 兩條文案（zh-TW 與 en）；只用 `@speclink/ui` 既有的語意色常數，不寫原生色階。驗證：5.1 中提示列與圖示列的測試通過，主題守門測試通過。",
+      "files": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "5.4 實作 D8 的系統匣呈現（`apps/desktop/src/tray.ts`、`apps/desktop/src/panel/TrayPanel.tsx`），滿足 tray-status-menu「系統匣標示存取被拒」：面板的 tab、狀態卡與原生選單的項目。驗證：5.1 中系統匣的測試通過；`npm test -w apps/desktop` 全部通過。",
+      "files": [
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/tray.ts"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "6.1 先寫會失敗的測試（`crates/host/speclink-server/tests/it/api/sse_events.rs`，心跳設為 50 毫秒）：成員被移出 project 後串流在期限內結束，重新訂閱回 403；帳號被停用後串流在期限內結束；權限沒有變動的串流經過三個以上的間隔仍開著，期間的 invalidate 事件恰收到一次；另以單元測試斷言「身分儲存回報錯誤時不結束串流」的裁決。驗證：`cargo test -p speclink-server --test it` 中新增的測試失敗。",
+      "files": [
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/tests/it/api/sse_events.rs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "6.2 實作 D10（`crates/host/speclink-server/src/api/routes.rs`）：事件串流每隔一個心跳間隔確認帳號可用與成員資格，不成立就結束串流，滿足 server-event-stream「使用者失去權限時關閉串流」；不檢查 access token 的期限。驗證：6.1 的測試通過，`cargo test -p speclink-server --test it` 中既有的串流測試（續傳、reset、慢消費者）沒有變動。",
+      "files": [
+        "crates/host/speclink-server/Cargo.toml"
+      ]
+    },
+    {
+      "task_id": "20",
+      "task_desc": "7.2 依 D11 更新文件：`docs/sdk-node.md`、`docs/sdk-node.zh-TW.md`、`crates/adapters/speclink-node/index.d.ts`（`browser.scopes` 一定在回應裡；宿主要在使用者失去權限時關閉自己的串流；專案底下的 `/whoami` 不要求 repo）、`docs/verb-contract.md`、`docs/verb-contract.zh-TW.md`（`X-Speclink-Repo` 的例外）、`docs/remote-getting-started.md`、`docs/remote-getting-started.zh-TW.md`（多個 repo 的專案怎麼連、Speclink Desktop 的「沒有存取權限」提示）、`docs/product-status.md`、`docs/product-status.zh-TW.md`（宿主要升級 `@speclink/engine`、CLI、Speclink Desktop 三樣）。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、詞彙守門、連結檢查）；`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "23",
+      "task_desc": "8.1 先寫會失敗的測試（`apps/desktop/src-tauri/tests/it/remote_runtime.rs`、`apps/desktop/src-tauri/tests/it/event_manager.rs`）：連線進入 offline 之後，伺服器對一個請求回 403 時廣播 online，404 與 409 亦同；online 時依序回應 503、503、404、503、503 不進入 offline（404 把連續失敗歸零）；needs-reauth 的連線收到 403 不回 online。另以示範用 Server 寫一個端到端測試：只用輪詢的分頁，使用者被移出專案而且 Server 停止 → 連線 offline；Server 重新啟動後輪詢回 403 → 連線廣播 online，分頁仍通知存取被拒。驗證：`cargo test -p speclink-desktop --test it` 中新增的測試失敗、其餘通過。",
+      "files": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M7WMVE2AQ1P0RJW3Z3GA24NM",
+      "taskDesc": "1.1 先寫會失敗的測試（`crates/host/speclink-host/tests/http_door.rs`）：兩個 repo 的專案對專案底下的 `/whoami` 不帶 `X-Speclink-Repo` 時回 200、`repos` 列出兩個 repo、回應沒有 ETag 標頭；標頭指名未註冊的 repo 時同樣回 200；專案不在清單裡仍回 404、API 版本不符仍回 409；同一個不帶標頭的請求改送變更清單時回 409，訊息含 `X-Speclink-Repo` 與 `remote.repo`。驗證：`cargo test -p speclink-host --test http_door` 中新增的測試失敗、其餘通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/host/speclink-host/tests/http_door.rs"
+      ],
+      "recordedAt": "2026-11-20T14:19:36Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AY2E7F27CSVXVWAJC",
+      "taskDesc": "1.2 實作 D1 與 D2（`crates/host/speclink-host/src/http/mod.rs`、`crates/host/speclink-host/src/http/routes.rs`）：入口在選 repo 之前回答專案底下的身分查詢，且多個 repo 而沒有指名的訊息寫出兩種指定方式，滿足 host-kit「範圍與能力由宿主的函式決定」。同批更新比對舊 409 字面或 `/whoami` ETag 的既有測試。驗證：`cargo test -p speclink-host` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/http/mod.rs",
+        "crates/host/speclink-host/src/http/router.rs",
+        "crates/host/speclink-host/src/http/routes.rs"
+      ],
+      "recordedAt": "2026-11-20T14:21:06Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2ATD2PQTEAETR4HXHV",
+      "taskDesc": "1.3 示範用 Server 經同一個入口得到相同行為：在 `crates/host/speclink-server/tests/it/api/read_api.rs` 補上 reference-server「binding 與認證前置 fail closed」的兩個新情境（兩個 repo 的 project 不帶標頭呼叫 whoami 回 200 並列出兩個 repo；非成員呼叫 whoami 回 403），並更新比對舊 409 字面的既有測試。驗證：`cargo test -p speclink-server --test it` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/api/read_api.rs"
+      ],
+      "recordedAt": "2026-11-20T14:26:55Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AVDVS03C9DPHD952J",
+      "taskDesc": "2.1 先寫會失敗的測試（`crates/protocol/speclink-remote/tests/it/client_errors.rs` 與 `crates/protocol/speclink-remote/src/auth.rs` 的單元測試）：依 remote-connection「Server 回報暫時無法服務時顯示它的原因」的範例表，逐列斷言 500 以上各種回應的訊息；斷言取回伺服器原因的函式對 403 的句子與 `server unavailable — <原因>` 的句子回原文、對其他錯誤回「沒有」；斷言金鑰圈登入憑證的來源說明是 `system keychain (login session, shared with the desktop app)`。驗證：`cargo test -p speclink-remote` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/protocol/speclink-remote/src/auth.rs",
+        "crates/protocol/speclink-remote/tests/it/client_errors.rs"
+      ],
+      "recordedAt": "2026-11-20T14:27:55Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AZDC2BC6868J4AJ83",
+      "taskDesc": "2.2 實作 D4 與 D5（`crates/protocol/speclink-remote/src/lib.rs`、`crates/protocol/speclink-remote/src/auth.rs`）：500 以上而信封的 reason 為 unavailable 且有 message 時顯示原因，其餘訊息逐字不變；組字與拆解用同一組常數；`RemoteError` 的欄位不增加。驗證：`cargo test -p speclink-remote` 全部通過，既有的錯誤訊息測試沒有非預期的變動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/protocol/speclink-remote/src/lib.rs",
+        "crates/protocol/speclink-remote/tests/it/typed_client.rs"
+      ],
+      "recordedAt": "2026-11-20T14:29:12Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2A7WN08SJW9F70K76R",
+      "taskDesc": "3.1 先寫會失敗的測試（`crates/adapters/speclink-cli/tests/it/remote_connect.rs`，`auth status` 的部分寫在 `crates/adapters/speclink-cli/src/verbs/connection.rs` 的測試模組並注入既有的 `AuthEnv`，不新增環境變數接縫）：對兩個 repo（erp、crm）的專案，`speclink link <url> --repo crm` 成功並寫入；`--repo nope` 以非 0 結束且 stderr 為 `Error: repo 'nope' is not registered in this project (available: erp, crm)`；不帶 `--repo` 以非 0 結束、stderr 含 `--repo`、erp、crm，`.speclink.yaml` 不變；`speclink init --store remote` 不帶 `--repo` 時產物已建立、exit code 非 0、stderr 含 `speclink link`；`auth status` 在有設定 repo 與沒有設定 repo 兩種情況都 exit 0，後者多一行 `! ` 開頭的提示；`auth status --json` 的 payload 只有 `user.name`、`user.handle`、`credentialSource` 三個欄位（camelCase、皆為字串）。驗證：`cargo test -p speclink-cli` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/connection.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_connect.rs"
+      ],
+      "recordedAt": "2026-11-20T14:32:06Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AM5KNZC74AS0GGPDW",
+      "taskDesc": "3.2 實作 D3（`crates/adapters/speclink-cli/src/remote_base.rs`、`crates/adapters/speclink-cli/src/verbs/connection.rs`）：一個函式裁決「有宣告而不在清單」「沒有宣告而有多個 repo」「可以通過」三種結果，`link`、`init --store remote`、`auth status` 共用，滿足 remote-connection「remote 初始化與連接指令」與 remote-auth「auth status 的憑證來源說明與多個 repo 的專案」。專案只有一個 repo 的既有輸出逐字不變。驗證：`cargo test -p speclink-cli --test it remote_connect` 與 `cargo test -p speclink-cli --test it remote_verb_parity` 通過，`cargo test -p speclink-cli` 的單元測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/remote_base.rs"
+      ],
+      "recordedAt": "2026-11-20T14:33:03Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2A4G7VG4SHK7WBM4QH",
+      "taskDesc": "4.1 先寫會失敗的測試（`apps/desktop/src-tauri/tests/it/event_manager.rs`、`apps/desktop/src-tauri/tests/it/remote_runtime.rs`）：worker 在輪詢回 403 時以（鍵、原因）通知被拒，原因相同時不重複通知，輪詢成功時通知解除並發一次重新載入；訂閱失敗後接著的輪詢回 403 也走同一條路；同一條連線上另一個鍵不受影響；500 以上的回應連續 3 次使連線進入 offline 且訊息含伺服器的原因，單次 503 後接著成功時維持 online，403 與 404 不計入；被拒登記有該鍵時寫入命令立即回 `reason` 為 `access_denied` 的錯誤、伺服器沒有收到請求。驗證：`cargo test -p speclink-desktop --test it` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/tests/it/event_manager.rs",
+        "apps/desktop/src-tauri/tests/it/remote_runtime.rs"
+      ],
+      "recordedAt": "2026-11-20T14:41:23Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AH5WPNZJ6RVQ2TPMC",
+      "taskDesc": "4.2 實作 D9（`apps/desktop/src-tauri/src/remote.rs`）：500 以上計入離線的連續失敗，進入 offline 的訊息在有伺服器的原因時帶上它，滿足 remote-resilience「離線狀態機單一真相且明確呈現」。驗證：4.1 中離線的測試通過，既有的離線與重新登入測試沒有變動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/event_manager.rs",
+        "apps/desktop/src-tauri/src/lib.rs",
+        "apps/desktop/src-tauri/src/remote.rs"
+      ],
+      "recordedAt": "2026-11-20T14:43:41Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AB28WYWQPTE5CB2S4",
+      "taskDesc": "5.1 先寫會失敗的測試（`apps/desktop/src/__tests__/remoteResilience.test.tsx`、`apps/desktop/src/__tests__/projectRail.test.tsx`、`apps/desktop/src/__tests__/tray.test.ts`、`apps/desktop/src/__tests__/trayPanel.test.tsx`）：`remoteWorkspaceStatus` 依 needs-reauth、offline、access-denied、ready 的優先序回結果（照 remote-resilience 的範例表逐列）；收到 `remote-access-state` 後該分頁的 11 個寫入能力與流程政策的寫入開關關掉，解除後復原，同一連線的其他分頁不變；提示列在 access-denied 時為錯誤色、標題「沒有存取權限」、說明含伺服器的原因與新文案、沒有按鈕，原因是 null 時用既有的說明文案；專案圖示列的狀態點為錯誤色且無障礙名稱含「存取遭拒」；原生選單的標籤為「<專案名> — 沒有存取權限」且可點選；面板的 tab 顯示警示三角形與紅色狀態文字、上方的狀態卡為紅色且沒有重新登入鈕。驗證：`npm test -w apps/desktop` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/projectRail.test.tsx",
+        "apps/desktop/src/__tests__/remoteResilience.test.tsx",
+        "apps/desktop/src/__tests__/tray.test.ts",
+        "apps/desktop/src/__tests__/trayPanel.test.tsx"
+      ],
+      "recordedAt": "2026-11-20T14:47:56Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2A9RT8EAMHEA29FQ24",
+      "taskDesc": "5.2 實作 D7 的前端部分與 D8 的狀態裁決（`apps/desktop/src/session.ts`、`apps/desktop/src/store.ts`）：session 記錄存取被拒與原因，「可不可以寫」由單一函式決定並為離線遮罩與流程政策開關共用，`remoteWorkspaceStatus` 多一個 `access-denied`。驗證：5.1 中狀態與能力的測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src/session.ts",
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-11-20T14:48:17Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2A080QV46ZBS0W458R",
+      "taskDesc": "5.3 實作 D8 的主視窗呈現（`apps/desktop/src/App.tsx`、`apps/desktop/src/components/ProjectRail.tsx`、`apps/desktop/src/i18n/messages.ts`）：看板上方的提示列與專案圖示列在 access-denied 時依 remote-resilience「存取被拒的狀態跟著分頁」呈現；新增 `remote.deniedHint` 與 `remote.writeDenied` 兩條文案（zh-TW 與 en）；只用 `@speclink/ui` 既有的語意色常數，不寫原生色階。驗證：5.1 中提示列與圖示列的測試通過，主題守門測試通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src/App.tsx",
+        "apps/desktop/src/components/ProjectRail.tsx",
+        "apps/desktop/src/i18n/messages.ts"
+      ],
+      "recordedAt": "2026-11-20T14:49:43Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2ARP9WQW07EMHHK1Z5",
+      "taskDesc": "5.4 實作 D8 的系統匣呈現（`apps/desktop/src/tray.ts`、`apps/desktop/src/panel/TrayPanel.tsx`），滿足 tray-status-menu「系統匣標示存取被拒」：面板的 tab、狀態卡與原生選單的項目。驗證：5.1 中系統匣的測試通過；`npm test -w apps/desktop` 全部通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src/panel/TrayPanel.tsx",
+        "apps/desktop/src/tray.ts"
+      ],
+      "recordedAt": "2026-11-20T14:51:03Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AY3Q6KGAZGPT8JQD2",
+      "taskDesc": "6.1 先寫會失敗的測試（`crates/host/speclink-server/tests/it/api/sse_events.rs`，心跳設為 50 毫秒）：成員被移出 project 後串流在期限內結束，重新訂閱回 403；帳號被停用後串流在期限內結束；權限沒有變動的串流經過三個以上的間隔仍開著，期間的 invalidate 事件恰收到一次；另以單元測試斷言「身分儲存回報錯誤時不結束串流」的裁決。驗證：`cargo test -p speclink-server --test it` 中新增的測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/host/speclink-server/src/api/routes.rs",
+        "crates/host/speclink-server/tests/it/api/sse_events.rs"
+      ],
+      "recordedAt": "2026-11-20T14:52:43Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2AVRKW5ZMTW6RPBPZH",
+      "taskDesc": "6.2 實作 D10（`crates/host/speclink-server/src/api/routes.rs`）：事件串流每隔一個心跳間隔確認帳號可用與成員資格，不成立就結束串流，滿足 server-event-stream「使用者失去權限時關閉串流」；不檢查 access token 的期限。驗證：6.1 的測試通過，`cargo test -p speclink-server --test it` 中既有的串流測試（續傳、reset、慢消費者）沒有變動。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/host/speclink-server/Cargo.toml"
+      ],
+      "recordedAt": "2026-11-20T14:56:03Z"
+    },
+    {
+      "taskId": "tsk_01M7WMVE2A2HCERCHQMMM8ZWV4",
+      "taskDesc": "7.2 依 D11 更新文件：`docs/sdk-node.md`、`docs/sdk-node.zh-TW.md`、`crates/adapters/speclink-node/index.d.ts`（`browser.scopes` 一定在回應裡；宿主要在使用者失去權限時關閉自己的串流；專案底下的 `/whoami` 不要求 repo）、`docs/verb-contract.md`、`docs/verb-contract.zh-TW.md`（`X-Speclink-Repo` 的例外）、`docs/remote-getting-started.md`、`docs/remote-getting-started.zh-TW.md`（多個 repo 的專案怎麼連、Speclink Desktop 的「沒有存取權限」提示）、`docs/product-status.md`、`docs/product-status.zh-TW.md`（宿主要升級 `@speclink/engine`、CLI、Speclink Desktop 三樣）。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、詞彙守門、連結檢查）；`npm --prefix crates/adapters/speclink-node run build` 後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/remote-getting-started.md",
+        "docs/remote-getting-started.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md",
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-20T15:03:06Z"
+    },
+    {
+      "taskId": "tsk_01M7YPYRZEFK5TF2K20DKZDN1T",
+      "taskDesc": "8.1 先寫會失敗的測試（`apps/desktop/src-tauri/tests/it/remote_runtime.rs`、`apps/desktop/src-tauri/tests/it/event_manager.rs`）：連線進入 offline 之後，伺服器對一個請求回 403 時廣播 online，404 與 409 亦同；online 時依序回應 503、503、404、503、503 不進入 offline（404 把連續失敗歸零）；needs-reauth 的連線收到 403 不回 online。另以示範用 Server 寫一個端到端測試：只用輪詢的分頁，使用者被移出專案而且 Server 停止 → 連線 offline；Server 重新啟動後輪詢回 403 → 連線廣播 online，分頁仍通知存取被拒。驗證：`cargo test -p speclink-desktop --test it` 中新增的測試失敗、其餘通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "0a2009813bf5b3d15691bc6626a8be3abbde4edc",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteDataSource.test.ts"
+      ],
+      "recordedAt": "2026-11-21T09:30:07Z"
+    }
+  ]
+}

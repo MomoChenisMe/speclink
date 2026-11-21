@@ -639,3 +639,382 @@ fn a_reset_triggers_a_full_reload_notification_and_a_stable_fresh_subscription()
 
     driver_abort.abort();
 }
+
+// --- 存取被拒由輪詢的 403 判定、以分頁為鍵（remote-resilience「存取被拒的狀態跟著分頁」） ---
+
+use speclink_desktop_lib::event_manager::{AccessNotice, AccessState};
+
+const DISABLED: &str = r#"{"status":403,"reason":"permission_denied","message":"帳號已停用"}"#;
+const NOT_A_MEMBER: &str =
+    r#"{"status":403,"reason":"permission_denied","message":"actor is not a member of project 'demo'"}"#;
+
+/// 一個 worker 的輪詢下一次會得到什麼。
+#[derive(Clone, Copy)]
+enum Poll {
+    Ok,
+    /// 403，本文是這段文字。
+    Refused(&'static str),
+    Unreachable,
+}
+
+/// 腳本化的訂閱：串流一律開不起來（`subscribe_error`），輪詢照 `poll` 回應。
+struct Scripted {
+    poll: Arc<Mutex<Poll>>,
+    subscribes: Arc<AtomicUsize>,
+}
+
+impl Scripted {
+    fn register(events: &EventManager, key: &str, subscribe_error: fn() -> speclink_remote::RemoteError) -> Scripted {
+        let scripted = Scripted { poll: Arc::new(Mutex::new(Poll::Ok)), subscribes: Arc::default() };
+        let (poll, subscribes) = (scripted.poll.clone(), scripted.subscribes.clone());
+        events.register(
+            key,
+            move |_| {
+                subscribes.fetch_add(1, Ordering::SeqCst);
+                Err(subscribe_error())
+            },
+            move || match *poll.lock().unwrap() {
+                Poll::Ok => Ok("\"7\"".to_string()),
+                Poll::Refused(body) => Err(speclink_remote::translate_protocol_error(403, body)),
+                Poll::Unreachable => Err(speclink_remote::translate_transport()),
+            },
+            vec![Duration::from_millis(5)],
+        );
+        scripted
+    }
+
+    fn next(&self, poll: Poll) {
+        *self.poll.lock().unwrap() = poll;
+    }
+}
+
+fn access_sink() -> (impl Fn(AccessNotice) + Send + Sync + 'static, mpsc::Receiver<AccessNotice>) {
+    let (tx, rx) = mpsc::channel();
+    (
+        move |notice: AccessNotice| {
+            let _ = tx.send(notice);
+        },
+        rx,
+    )
+}
+
+fn expect_access(rx: &mpsc::Receiver<AccessNotice>, why: &str) -> AccessNotice {
+    rx.recv_timeout(Duration::from_secs(5)).unwrap_or_else(|_| panic!("{why}: 未收到存取狀態通知"))
+}
+
+/// 許多輪退避（每輪 5 毫秒）之內沒有新的存取狀態通知。
+fn expect_no_access(rx: &mpsc::Receiver<AccessNotice>, why: &str) {
+    if let Ok(notice) = rx.recv_timeout(Duration::from_millis(150)) {
+        panic!("{why}: 多了一則通知 {notice:?}");
+    }
+}
+
+fn denied(key: &str, message: Option<&str>) -> AccessNotice {
+    AccessNotice { key: key.to_string(), denied: true, message: message.map(str::to_string) }
+}
+
+fn regained(key: &str) -> AccessNotice {
+    AccessNotice { key: key.to_string(), denied: false, message: None }
+}
+
+#[test]
+fn a_403_poll_denies_the_tab_once_and_a_good_poll_clears_it_with_one_reload() {
+    let (notify, reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+
+    // 第一次輪詢成功：只是一般的收斂，沒有存取狀態通知。
+    expect_notified(&reloads, "第一次收斂");
+    expect_no_access(&access, "輪詢成功時");
+    drain(&reloads);
+
+    tab.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "輪詢回 403"), denied(KEY, Some("帳號已停用")));
+    expect_no_access(&access, "原因相同時不重複通知");
+    assert!(reloads.try_recv().is_err(), "被拒期間不發重新載入");
+
+    tab.next(Poll::Ok);
+    assert_eq!(expect_access(&access, "輪詢成功即解除"), regained(KEY));
+    expect_notified(&reloads, "解除時重新載入");
+    std::thread::sleep(Duration::from_millis(100));
+    assert!(reloads.try_recv().is_err(), "解除只重新載入一次（ETag 沒變）");
+    expect_no_access(&access, "解除之後");
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_403_with_no_readable_reason_denies_without_a_message_and_a_new_reason_is_told() {
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+
+    tab.next(Poll::Refused("<html>Forbidden</html>"));
+    assert_eq!(expect_access(&access, "403 而沒有信封"), denied(KEY, None));
+
+    tab.next(Poll::Refused(NOT_A_MEMBER));
+    assert_eq!(
+        expect_access(&access, "原因改變"),
+        denied(KEY, Some("actor is not a member of project 'demo'"))
+    );
+    expect_no_access(&access, "原因相同時不重複通知");
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_denied_tab_stays_denied_while_the_server_cannot_be_reached() {
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+
+    tab.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "輪詢回 403"), denied(KEY, Some("帳號已停用")));
+
+    tab.next(Poll::Unreachable);
+    expect_no_access(&access, "連不上時維持被拒");
+
+    tab.next(Poll::Ok);
+    assert_eq!(expect_access(&access, "輪詢成功即解除"), regained(KEY));
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_refused_subscription_decides_nothing_and_the_poll_after_it_does() {
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    // 訂閱被 403 拒絕，輪詢卻成功：不算被拒（只認輪詢的結果）。
+    let tab = Scripted::register(&events, KEY, || speclink_remote::translate_protocol_error(403, DISABLED));
+    expect_no_access(&access, "訂閱的 403 不直接判定");
+
+    tab.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "接著的輪詢回 403"), denied(KEY, Some("帳號已停用")));
+    events.unregister(KEY);
+}
+
+#[test]
+fn while_a_tab_is_denied_the_worker_polls_and_does_not_subscribe() {
+    // 被拒期間只輪詢：重新訂閱若先成功，worker 就停在串流上、不再輪詢，「被拒」
+    // 便沒有解除的機會。解除之後才再訂閱。
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+
+    tab.next(Poll::Refused(DISABLED));
+    expect_access(&access, "輪詢回 403");
+    std::thread::sleep(Duration::from_millis(30));
+    let while_denied = tab.subscribes.load(Ordering::SeqCst);
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(tab.subscribes.load(Ordering::SeqCst), while_denied, "被拒期間不訂閱");
+
+    tab.next(Poll::Ok);
+    expect_access(&access, "輪詢成功即解除");
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    while tab.subscribes.load(Ordering::SeqCst) == while_denied && std::time::Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    assert!(tab.subscribes.load(Ordering::SeqCst) > while_denied, "解除之後再訂閱");
+    events.unregister(KEY);
+}
+
+#[test]
+fn another_tab_of_the_same_connection_is_not_denied() {
+    const OTHER: &str = "remote:conn_x/beta/backend";
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let alpha = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+    let _beta = Scripted::register(&events, OTHER, speclink_remote::translate_transport);
+
+    alpha.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "alpha 的輪詢回 403"), denied(KEY, Some("帳號已停用")));
+    expect_no_access(&access, "beta 的輪詢照常成功");
+    events.unregister(KEY);
+    events.unregister(OTHER);
+}
+
+#[test]
+fn the_manager_answers_the_access_state_of_a_key_while_someone_watches_it() {
+    // 寫入守門問的就是這個答案：沒有另一份要保持同步的登記。
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    assert_eq!(events.access_of(KEY), AccessState::Allowed, "沒有訂閱的 key 沒有人在判定");
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+    // 同一個鍵的第二個 session：共用同一條訂閱。
+    events.register(KEY, |_| Err(speclink_remote::translate_transport()), || Ok(String::new()), Vec::new());
+
+    tab.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "輪詢回 403"), denied(KEY, Some("帳號已停用")));
+    assert_eq!(events.access_of(KEY), AccessState::Denied { reason: Some("帳號已停用".to_string()) });
+    assert_eq!(events.access_of("remote:conn_x/beta/backend"), AccessState::Allowed, "別的 key 不受影響");
+
+    events.unregister(KEY);
+    assert!(matches!(events.access_of(KEY), AccessState::Denied { .. }), "還有一個 session 在");
+
+    // 最後一個 session 退訂：訂閱收束，這個 key 不再有人判定。收束不是「解除」，不送通知；
+    // 收束之後這條訂閱也不再改變狀態。
+    events.unregister(KEY);
+    assert_eq!(events.access_of(KEY), AccessState::Allowed);
+    tab.next(Poll::Refused(NOT_A_MEMBER));
+    expect_no_access(&access, "收束之後");
+
+    // 同一個鍵再訂閱是一條新的訂閱：仍被拒的話重新判定、重新通知。
+    let again = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+    again.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "新的訂閱重新判定"), denied(KEY, Some("帳號已停用")));
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_session_that_joins_a_denied_subscription_is_told_the_state_again() {
+    // 同一個 key 重新訂閱時，新的 register 可能比舊的 unregister 先到：舊的 worker 被沿用，
+    // 而它在原因相同時不再通知。加入的一方要拿到目前的狀態，畫面才不會以為沒有被拒。
+    let (notify, _reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    let tab = Scripted::register(&events, KEY, speclink_remote::translate_transport);
+    tab.next(Poll::Refused(DISABLED));
+    assert_eq!(expect_access(&access, "輪詢回 403"), denied(KEY, Some("帳號已停用")));
+    expect_no_access(&access, "原因相同時不重複通知");
+
+    events.register(KEY, |_| Err(speclink_remote::translate_transport()), || Ok(String::new()), Vec::new());
+    assert_eq!(expect_access(&access, "加入既有的訂閱"), denied(KEY, Some("帳號已停用")));
+
+    // 沒有被拒的訂閱：加入時沒有東西要補。
+    const OTHER: &str = "remote:conn_x/beta/backend";
+    let _other = Scripted::register(&events, OTHER, speclink_remote::translate_transport);
+    events.register(OTHER, |_| Err(speclink_remote::translate_transport()), || Ok(String::new()), Vec::new());
+    expect_no_access(&access, "沒有被拒的訂閱");
+    for key in [KEY, KEY, OTHER, OTHER] {
+        events.unregister(key);
+    }
+}
+
+#[test]
+fn a_member_removed_from_the_project_is_denied_with_the_servers_reason_and_recovers() {
+    // 只用輪詢的分頁（握手沒有宣告串流），接真的示範用 Server。
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let (runtime, credentials, states) = signed_in(&h, &pat);
+    let streams = Arc::new(DeclaredStreams::default());
+    let (notify, reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    register_declared(&events, &streams, &runtime, &credentials, &h.origin, Duration::from_millis(30));
+    expect_notified(&reloads, "第一次收斂");
+
+    let membership = |member: bool| {
+        speclink_server::identity::IdentityStore::admin_set_membership(
+            h.identity.as_ref(),
+            &speclink_server::audit::AuditActor::system_cli(),
+            &h.user_id,
+            "demo",
+            speclink_server::identity::MembershipRole::Editor,
+            member,
+        )
+        .expect("set membership");
+    };
+
+    membership(false);
+    assert_eq!(
+        expect_access(&access, "被移出專案後的輪詢"),
+        denied(KEY, Some("actor is not a member of project 'demo'"))
+    );
+    drain(&reloads);
+
+    membership(true);
+    assert_eq!(expect_access(&access, "加回專案後的輪詢"), regained(KEY));
+    expect_notified(&reloads, "恢復存取後重新載入");
+    assert!(
+        states.try_iter().all(|event| event.state != ConnectionState::Offline),
+        "403 不計入離線（這條連線的門檻是 1）"
+    );
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_stream_the_server_closes_for_a_removed_member_ends_in_the_same_denied_state() {
+    // spec「推送串流被 Server 關閉後偵測到被拒」：示範用 Server 在心跳間隔發現使用者不再是
+    // 成員而結束串流；重新訂閱與接著的輪詢都回 403，分頁進入存取被拒，與只用輪詢時相同。
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let (runtime, credentials, _states) = signed_in(&h, &pat);
+    let (workspace, _info) =
+        remote::open_workspace(&h.origin, "demo/backend", &runtime, credentials.as_ref()).expect("open");
+    let streams = Arc::new(DeclaredStreams::default());
+    streams.remember("conn_x", "demo", "backend", workspace.declared_stream().cloned());
+
+    let (notify, reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    register_declared(&events, &streams, &runtime, &credentials, &h.origin, Duration::from_millis(30));
+    // 串流確實開著：一筆寫入經串流送來失效提示。
+    std::thread::sleep(Duration::from_millis(150));
+    drain(&reloads);
+    writer(&h.origin, &pat).task_done("demo", "1", &[], None).expect("task done");
+    expect_notified(&reloads, "串流送來失效提示");
+
+    speclink_server::identity::IdentityStore::admin_set_membership(
+        h.identity.as_ref(),
+        &speclink_server::audit::AuditActor::system_cli(),
+        &h.user_id,
+        "demo",
+        speclink_server::identity::MembershipRole::Editor,
+        false,
+    )
+    .expect("remove the member");
+
+    assert_eq!(
+        expect_access(&access, "串流被關閉後的輪詢"),
+        denied(KEY, Some("actor is not a member of project 'demo'"))
+    );
+    events.unregister(KEY);
+}
+
+#[test]
+fn a_denied_tab_whose_server_went_down_shows_denied_again_when_the_server_returns() {
+    // spec「離線期間 Server 以 403 回應即回 online」：被拒期間 worker 只輪詢，而輪詢只會得到 403。
+    // Server 斷線又恢復之後沒有任何成功的請求；連線仍要回 online，分頁才不會停在離線。
+    let h = common::harness_with_events(common::fast_events());
+    common::seed_change(h.store.as_ref(), FOUR_TASKS);
+    let pat = common::pat_of(&h);
+    let (runtime, credentials, states) = signed_in(&h, &pat);
+    let streams = Arc::new(DeclaredStreams::default());
+    let (notify, reloads) = sink();
+    let (on_access, access) = access_sink();
+    let events = EventManager::with_access_observer(notify, on_access);
+    register_declared(&events, &streams, &runtime, &credentials, &h.origin, Duration::from_millis(30));
+    expect_notified(&reloads, "第一次收斂");
+
+    speclink_server::identity::IdentityStore::admin_set_membership(
+        h.identity.as_ref(),
+        &speclink_server::audit::AuditActor::system_cli(),
+        &h.user_id,
+        "demo",
+        speclink_server::identity::MembershipRole::Editor,
+        false,
+    )
+    .expect("remove the member");
+    assert_eq!(
+        expect_access(&access, "被移出專案後的輪詢"),
+        denied(KEY, Some("actor is not a member of project 'demo'"))
+    );
+
+    // Windows 對 refused connect 會在 winsock 內部重試，上限只防吊死。
+    h.server.stop();
+    let offline = states.recv_timeout(Duration::from_secs(15)).expect("Server 停止後連線轉 offline");
+    assert_eq!(offline.state, ConnectionState::Offline);
+
+    h.server.start();
+    let online = states.recv_timeout(Duration::from_secs(15)).expect("Server 回來後輪詢回 403，連線仍回 online");
+    assert_eq!(online.state, ConnectionState::Online);
+    assert!(matches!(events.access_of(KEY), AccessState::Denied { .. }), "分頁仍是存取被拒");
+    assert!(access.try_recv().is_err(), "沒有解除的通知");
+    events.unregister(KEY);
+}

@@ -1,0 +1,188 @@
+schema: spec-driven
+created: 2026-11-20T22:03:16+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-5
+started_at: 2026-11-20T22:17:38+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-21T17:42:13+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 25
+reviewed_rounds: 2
+reviewed_commit: 0a2009813bf5b3d15691bc6626a8be3abbde4edc
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/event_manager.rs
+    hash: 22501c46286884dc930644fd25f28ae839e5bb2735cd01665c71de8b78c53a58
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: ccfddc96eaa5ac430ba24b523f3727cacb691e91f75c98e75abf1a9e9936cc63
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 5d7daddc26512a0a1cb1e9afd3ffd7e274be95529da1f61c0abfa9589929394b
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: aa9657fba2c04e68a4aa1f39de80fb69ef97517817c62de09197910902dfc334
+  - path: apps/desktop/src-tauri/tests/it/remote_runtime.rs
+    hash: 55770651461493b3caed903590bc1a6c338e1bc8f58d7bbab65f21eeb8cf1af9
+  - path: apps/desktop/src/App.tsx
+    hash: 18db04552b0722284f3327fdaa94005deca4ee81be8c856f0ce5bb77ccb57713
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: e25aca1ebff0fb71139cfd66cd387637de542afdec99d617e12093f5cac0de74
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: c72d69799c0826c48899035ccc282eacbcffa7244bc9830b059125f1b9fee289
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: e7d7746375124933abefb2cf6f59e0c9ab5e0ac534ae92309d4364970205eefe
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 2528cd0ec6f44545001eefc30027f75092dbe32b286948ceb5d3948f2a499c0a
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 6c34fb1d6c6dc4f0e07b8eae558013c59d6fe494225e05912fd96b3224f69ee9
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 1e40ff8006806ab764ba70cece8aef0c6c4907eef94078b8928381776a319433
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: f8d9631fbba6c3795f3c156774b570e004de9b905a5978339ba1f3482eab4ae3
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: f272b804ae98227a3a2c4d2711fdfca72f5c313601e74003334ccfb7c5581e85
+  - path: apps/desktop/src/session.ts
+    hash: 62d5ddc3b17077cea2351bfb1d3cd8c2da3a961fa6be9001cc332cafe49d1fbe
+  - path: apps/desktop/src/store.ts
+    hash: 2db5bf77da005a5d62f163bdbebd94ed1634e68d6d3091846055249b70d4b1ea
+  - path: apps/desktop/src/tray.ts
+    hash: d137ffe97fe51d7910babe6b9c19dc37fa90c8addaeb3284fd6fbc4ca699f188
+  - path: crates/adapters/speclink-cli/src/remote_base.rs
+    hash: 02b0494b8b44395bc826837fe8a1343627c4348e3d106789974abd517620e539
+  - path: crates/adapters/speclink-cli/src/verbs/connection.rs
+    hash: 6e01d838a5acd4835a1eb09e96b7b328d07b256236dc42a865d1f4457f39364c
+  - path: crates/adapters/speclink-cli/tests/it/remote_connect.rs
+    hash: f2d31c06ca7e4c4ae1994fd27bc590a124f9bed275a429c344b8478abb799936
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 050607cf18f689576140aaeddb2462620dc103f2f2d534d0ffd0ef1be27288be
+  - path: crates/host/speclink-host/src/http/mod.rs
+    hash: 813941741f7e0290fc140c537354f9aec4ddeac4e2ec8da9ea1e90253de07a51
+  - path: crates/host/speclink-host/src/http/router.rs
+    hash: 1c347f08b5dbe4c42847e481e0ae383e6bb2e26839f4d06e15227a7108d22f2f
+  - path: crates/host/speclink-host/src/http/routes.rs
+    hash: 790e6693f8c12cc72c2991cb352d6953a885d7c379a2cfc8b4d603bd78ada884
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: c09a9f3287fbb639f5acbd78f709e90241c0136bd8516ab28acbcddda8e39114
+  - path: crates/host/speclink-server/Cargo.toml
+    hash: 2fd90b967ecde9bffb20e8b5063f0a6f9acb0b64affadae457007a2fb2dbe9cf
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 71a9c8cb4bef0c193f4fd4769d02961a509cc2afe6ed63dd781993b2189d5fc4
+  - path: crates/host/speclink-server/tests/it/api/read_api.rs
+    hash: 0ee9057377fa01930114e7963beb3b0a6c766a9d03742ab6fb15924b31054996
+  - path: crates/host/speclink-server/tests/it/api/sse_events.rs
+    hash: 30c7f85c64a5e281870e776264af1361d8a5f822ac94717511bbf59dc6c39162
+  - path: crates/protocol/speclink-remote/src/auth.rs
+    hash: d835fb3d77b11ea67ae65afd156b73be5da62ed2060c81b3574eaaa843012e0a
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 0540045f9f8ad4ada8961259eda41a73527c8f48778af278ae1a0587f781e220
+  - path: crates/protocol/speclink-remote/tests/it/client_errors.rs
+    hash: 1ad0161ace2f5fc2b3a5c75a80a549db26c4940d9b3b0ba77893cdf5dc836029
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: fe625ee6d452d45d2349936cefc0e51ffad52bb67f1a816b1fca798762bc2d37
+  - path: docs/product-status.md
+    hash: fd4846c1bedfc305470fd76b4d3a9a8e75fb4cdb5d1c175947620128e184dc05
+  - path: docs/product-status.zh-TW.md
+    hash: c4d07d9d39afafc369fa9825c47729792717cf088218227ae32a6bd2370b20b5
+  - path: docs/remote-getting-started.md
+    hash: 600d525ca990c0c103de8302a503c39a95f782d8cd5d78a9dec5bc9b67c1e725
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 30ccf207d74ac5a909c29add084f52ea9aed43c16962e3754d214ee355ab8764
+  - path: docs/sdk-node.md
+    hash: d4d771479c7b643dce16c08a1be19df9b0b7f43d3aba46d0a71d34dd86a0c0c3
+  - path: docs/sdk-node.zh-TW.md
+    hash: 10d25b394dd4549999670c26ee86876321d8741be7b483001e9646ca1a4f0161
+  - path: docs/verb-contract.md
+    hash: 3bdd253a776d8430d42d1440e26e55d886473a1ba3fc250d02e6ae1f34aba9ce
+  - path: docs/verb-contract.zh-TW.md
+    hash: 7bbff52b4d53573053b2db46d32a5fa56f7643d3e9fc42efc6931baf5c8d4b87
+verified_at: 2026-11-21T17:42:13+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 25
+verified_rounds: 2
+verified_commit: 0a2009813bf5b3d15691bc6626a8be3abbde4edc
+verified_scope:
+  - path: apps/desktop/src-tauri/src/event_manager.rs
+    hash: 22501c46286884dc930644fd25f28ae839e5bb2735cd01665c71de8b78c53a58
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: ccfddc96eaa5ac430ba24b523f3727cacb691e91f75c98e75abf1a9e9936cc63
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 5d7daddc26512a0a1cb1e9afd3ffd7e274be95529da1f61c0abfa9589929394b
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: aa9657fba2c04e68a4aa1f39de80fb69ef97517817c62de09197910902dfc334
+  - path: apps/desktop/src-tauri/tests/it/remote_runtime.rs
+    hash: 55770651461493b3caed903590bc1a6c338e1bc8f58d7bbab65f21eeb8cf1af9
+  - path: apps/desktop/src/App.tsx
+    hash: 18db04552b0722284f3327fdaa94005deca4ee81be8c856f0ce5bb77ccb57713
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: e25aca1ebff0fb71139cfd66cd387637de542afdec99d617e12093f5cac0de74
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: c72d69799c0826c48899035ccc282eacbcffa7244bc9830b059125f1b9fee289
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: e7d7746375124933abefb2cf6f59e0c9ab5e0ac534ae92309d4364970205eefe
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: 2528cd0ec6f44545001eefc30027f75092dbe32b286948ceb5d3948f2a499c0a
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 6c34fb1d6c6dc4f0e07b8eae558013c59d6fe494225e05912fd96b3224f69ee9
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 1e40ff8006806ab764ba70cece8aef0c6c4907eef94078b8928381776a319433
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: f8d9631fbba6c3795f3c156774b570e004de9b905a5978339ba1f3482eab4ae3
+  - path: apps/desktop/src/panel/TrayPanel.tsx
+    hash: f272b804ae98227a3a2c4d2711fdfca72f5c313601e74003334ccfb7c5581e85
+  - path: apps/desktop/src/session.ts
+    hash: 62d5ddc3b17077cea2351bfb1d3cd8c2da3a961fa6be9001cc332cafe49d1fbe
+  - path: apps/desktop/src/store.ts
+    hash: 2db5bf77da005a5d62f163bdbebd94ed1634e68d6d3091846055249b70d4b1ea
+  - path: apps/desktop/src/tray.ts
+    hash: d137ffe97fe51d7910babe6b9c19dc37fa90c8addaeb3284fd6fbc4ca699f188
+  - path: crates/adapters/speclink-cli/src/remote_base.rs
+    hash: 02b0494b8b44395bc826837fe8a1343627c4348e3d106789974abd517620e539
+  - path: crates/adapters/speclink-cli/src/verbs/connection.rs
+    hash: 6e01d838a5acd4835a1eb09e96b7b328d07b256236dc42a865d1f4457f39364c
+  - path: crates/adapters/speclink-cli/tests/it/remote_connect.rs
+    hash: f2d31c06ca7e4c4ae1994fd27bc590a124f9bed275a429c344b8478abb799936
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 050607cf18f689576140aaeddb2462620dc103f2f2d534d0ffd0ef1be27288be
+  - path: crates/host/speclink-host/src/http/mod.rs
+    hash: 813941741f7e0290fc140c537354f9aec4ddeac4e2ec8da9ea1e90253de07a51
+  - path: crates/host/speclink-host/src/http/router.rs
+    hash: 1c347f08b5dbe4c42847e481e0ae383e6bb2e26839f4d06e15227a7108d22f2f
+  - path: crates/host/speclink-host/src/http/routes.rs
+    hash: 790e6693f8c12cc72c2991cb352d6953a885d7c379a2cfc8b4d603bd78ada884
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: c09a9f3287fbb639f5acbd78f709e90241c0136bd8516ab28acbcddda8e39114
+  - path: crates/host/speclink-server/Cargo.toml
+    hash: 2fd90b967ecde9bffb20e8b5063f0a6f9acb0b64affadae457007a2fb2dbe9cf
+  - path: crates/host/speclink-server/src/api/routes.rs
+    hash: 71a9c8cb4bef0c193f4fd4769d02961a509cc2afe6ed63dd781993b2189d5fc4
+  - path: crates/host/speclink-server/tests/it/api/read_api.rs
+    hash: 0ee9057377fa01930114e7963beb3b0a6c766a9d03742ab6fb15924b31054996
+  - path: crates/host/speclink-server/tests/it/api/sse_events.rs
+    hash: 30c7f85c64a5e281870e776264af1361d8a5f822ac94717511bbf59dc6c39162
+  - path: crates/protocol/speclink-remote/src/auth.rs
+    hash: d835fb3d77b11ea67ae65afd156b73be5da62ed2060c81b3574eaaa843012e0a
+  - path: crates/protocol/speclink-remote/src/lib.rs
+    hash: 0540045f9f8ad4ada8961259eda41a73527c8f48778af278ae1a0587f781e220
+  - path: crates/protocol/speclink-remote/tests/it/client_errors.rs
+    hash: 1ad0161ace2f5fc2b3a5c75a80a549db26c4940d9b3b0ba77893cdf5dc836029
+  - path: crates/protocol/speclink-remote/tests/it/typed_client.rs
+    hash: fe625ee6d452d45d2349936cefc0e51ffad52bb67f1a816b1fca798762bc2d37
+  - path: docs/product-status.md
+    hash: fd4846c1bedfc305470fd76b4d3a9a8e75fb4cdb5d1c175947620128e184dc05
+  - path: docs/product-status.zh-TW.md
+    hash: c4d07d9d39afafc369fa9825c47729792717cf088218227ae32a6bd2370b20b5
+  - path: docs/remote-getting-started.md
+    hash: 600d525ca990c0c103de8302a503c39a95f782d8cd5d78a9dec5bc9b67c1e725
+  - path: docs/remote-getting-started.zh-TW.md
+    hash: 30ccf207d74ac5a909c29add084f52ea9aed43c16962e3754d214ee355ab8764
+  - path: docs/sdk-node.md
+    hash: d4d771479c7b643dce16c08a1be19df9b0b7f43d3aba46d0a71d34dd86a0c0c3
+  - path: docs/sdk-node.zh-TW.md
+    hash: 10d25b394dd4549999670c26ee86876321d8741be7b483001e9646ca1a4f0161
+  - path: docs/verb-contract.md
+    hash: 3bdd253a776d8430d42d1440e26e55d886473a1ba3fc250d02e6ae1f34aba9ce
+  - path: docs/verb-contract.zh-TW.md
+    hash: 7bbff52b4d53573053b2db46d32a5fa56f7643d3e9fc42efc6931baf5c8d4b87
+archived_at: 2026-11-21T17:43:14+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

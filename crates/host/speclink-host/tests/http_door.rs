@@ -223,7 +223,7 @@ fn several_repos_without_a_named_one_are_refused_and_listed() {
     assert_eq!((status, reason.as_str()), (409, "refused"));
     assert_eq!(
         message,
-        "project 'alpha' registers multiple repos — specify one with X-Speclink-Repo (candidates: alpha/web, alpha/api)"
+        "project 'alpha' registers multiple repos — name one with the X-Speclink-Repo header, or set `remote.repo` in .speclink.yaml (candidates: alpha/web, alpha/api)"
     );
     assert!(door.store.calls().is_empty(), "no scope was read");
 }
@@ -863,7 +863,63 @@ fn the_project_whoami_names_the_identity_and_the_projects_repos() {
             "repos": [{ "name": "web", "gitUrl": "" }, { "name": "api", "gitUrl": "" }],
         })
     );
-    etag_of(&response);
+}
+
+// --- 專案底下的身分查詢不選 repo ---
+
+fn both_repos() -> serde_json::Value {
+    json!({
+        "user": { "name": "Alice", "handle": "u_42" },
+        "repos": [{ "name": "web", "gitUrl": "" }, { "name": "api", "gitUrl": "" }],
+    })
+}
+
+#[test]
+fn the_project_whoami_of_several_repos_needs_no_named_repo_and_has_no_etag() {
+    let door = door(two_repos());
+
+    let response = answer(&door, &get(&alpha("whoami")), Some(&alice()));
+
+    assert_eq!(response.status, 200);
+    assert_eq!(json(&response), both_repos());
+    assert_eq!(header(&response, "etag"), None, "the answer comes from no scope, so it has no version");
+    assert!(door.store.calls().is_empty(), "no scope was read: {:?}", door.store.calls());
+
+    // The same request for another route is still refused, and says both ways to name a repo.
+    let (status, reason, message) = error(&answer(&door, &get(&alpha("changes")), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert!(message.contains("X-Speclink-Repo") && message.contains("remote.repo"), "{message}");
+}
+
+#[test]
+fn the_project_whoami_does_not_look_at_the_named_repo() {
+    let door = door(two_repos());
+    let named = |tail: &str| get(&alpha(tail)).header("x-speclink-repo", "nope");
+
+    let response = answer(&door, &named("whoami"), Some(&alice()));
+
+    assert_eq!(response.status, 200);
+    assert_eq!(json(&response), both_repos());
+    assert_eq!(header(&response, "etag"), None);
+
+    let (status, reason, _) = error(&answer(&door, &named("changes"), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (404, "not_found"));
+}
+
+#[test]
+fn the_project_whoami_still_checks_the_identity_the_project_and_the_version() {
+    let door = door(two_repos());
+
+    let (status, reason, _) = error(&answer(&door, &get(&alpha("whoami")), None));
+    assert_eq!((status, reason.as_str()), (401, "permission_denied"));
+
+    let (status, reason, message) = error(&answer(&door, &get(&format!("{API}/projects/beta/whoami")), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (404, "not_found"));
+    assert_eq!(message, "project 'beta' not found");
+
+    let wrong = get(&alpha("whoami")).header("x-speclink-api-version", "0");
+    let (status, reason, _) = error(&answer(&door, &wrong, Some(&alice())));
+    assert_eq!((status, reason.as_str()), (409, "refused"));
 }
 
 #[test]

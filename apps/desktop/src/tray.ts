@@ -74,6 +74,24 @@ export interface TraySnapshot {
   workspaceLoadFailed: boolean;
 }
 
+/** remote 分頁的狀態文字（原生選單的標籤與面板的 tab 共用）；本機分頁與正常的分頁是空字串。 */
+export function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
+  if (tab.source === "local") return "";
+  if (tab.status === "restoring") return t("tray.recovery.restoring");
+  if (tab.status === "offline") return t("tray.recovery.offline");
+  if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
+    return t("tray.recovery.needsReauth");
+  }
+  // 有 session 而被拒（status），或沒有 session 時握手就被拒（failureKind）。
+  if (tab.status === "access-denied" || tab.failureKind === "access-denied") {
+    return t("tray.recovery.accessDenied");
+  }
+  if (tab.failureKind === "not-found") return t("tray.recovery.notFound");
+  if (tab.failureKind === "unknown") return t("tray.recovery.unknown");
+  if (tab.status === "error") return t("tray.recovery.unreachable");
+  return "";
+}
+
 /** 變更子選單的動作項。 */
 export type TrayChangeAction = { kind: "open-change" | "copy-name"; label: string };
 
@@ -96,7 +114,8 @@ export type TrayMenuItem =
       label: string;
       checked: boolean;
       source: "local" | "remote";
-      status: "ready" | "offline";
+      /** 有 session 的三種：正常、離線、存取被拒。後兩種的標籤帶狀態說明，項目仍可點選。 */
+      status: "ready" | "offline" | "access-denied";
     }
   | {
       kind: "recovery";
@@ -170,19 +189,6 @@ export function buildTrayModel(
   const hideWorkspaceData =
     activeTab?.status === "restoring" || activeTab?.status === "error";
 
-  const statusSummary = (tab: TrayTabSnapshot): string => {
-    if (tab.source === "local") return "";
-    if (tab.status === "restoring") return t("tray.recovery.restoring");
-    if (tab.status === "offline") return t("tray.recovery.offline");
-    if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
-      return t("tray.recovery.needsReauth");
-    }
-    if (tab.failureKind === "access-denied") return t("tray.recovery.accessDenied");
-    if (tab.failureKind === "not-found") return t("tray.recovery.notFound");
-    if (tab.failureKind === "unknown") return t("tray.recovery.unknown");
-    return t("tray.recovery.unreachable");
-  };
-
   /** 分區切片：逾門檻收進「還有 N 個…」溢出節點（≤門檻原樣返回）。 */
   const withOverflow = (rows: TrayMenuItem[]): TrayMenuItem[] => {
     if (rows.length <= OVERFLOW_LIMIT) return rows;
@@ -198,12 +204,12 @@ export function buildTrayModel(
 
   // 專案區（識別＝locator key；顯示文字與行為不變）
   for (const tab of snapshot.tabs) {
-    if (tab.status === "ready" || tab.status === "offline") {
+    // 有 session 的分頁是專案項（可點選切換）；離線與存取被拒在標籤後面帶狀態說明。
+    if (tab.status === "ready" || tab.status === "offline" || tab.status === "access-denied") {
       items.push({
         kind: "project",
         key: tab.key,
-        label:
-          tab.status === "offline" ? `${tab.name} — ${statusSummary(tab)}` : tab.name,
+        label: tab.status === "ready" ? tab.name : `${tab.name} — ${tabStatusLabel(tab, t)}`,
         checked: tab.key === snapshot.activeKey,
         source: tab.source,
         status: tab.status,
@@ -211,7 +217,7 @@ export function buildTrayModel(
     } else {
       const needsReauth =
         tab.status === "needs-reauth" || tab.failureKind === "needs-reauth";
-      const summary = statusSummary(tab);
+      const summary = tabStatusLabel(tab, t);
       const actions: TrayRecoveryAction[] =
         tab.status === "restoring"
           ? []

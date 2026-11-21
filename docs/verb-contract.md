@@ -327,7 +327,7 @@ All paths in the endpoint tables below follow this URL. The CLI keeps this URL i
 | --- | --- | --- |
 | `Authorization` | `Bearer <credential>` | 401 `permission_denied` |
 | `X-Speclink-Api-Version` | `1` | 409 `refused` (incompatible version) |
-| `X-Speclink-Repo` | The repo key | Optional when the project has one repo. With several repos, a missing header gives 409 `refused`. An unregistered repo gives 404 `not_found`. |
+| `X-Speclink-Repo` | The repo key | Optional when the project has one repo. With several repos, a missing header gives 409 `refused`, and the message gives the two ways to name a repo (this header, or `remote.repo` in `.speclink.yaml`). An unregistered repo gives 404 `not_found`. The `/whoami` of a project is the exception: it does not read this header and always lists all repos of the project. |
 | `Content-Type` | `application/json` (when a body is sent) | 415 with a plain-text body |
 
 The Server decides which credentials it accepts. The demonstration server accepts two kinds. One is an access key (PAT) that starts with `spk_pat_`; you make it on the account page of the server. The other is the device login credential from `speclink auth login`; it starts with `spk_at_`. A valid credential of a user who is not a project member gives 403. A host that embeds the engine verifies the credential itself and gives the identity to the entry point. When it cannot verify an identity, it passes an empty value, and the entry point answers 401. When the host declares browser login, the credential is the access token from its login service.
@@ -439,7 +439,7 @@ The routes below are in the HTTP entry point of the host kit, except where a row
 | Method | Path | Minimum role | Purpose |
 | --- | --- | --- | --- |
 | GET | `/binding` | reader | Handshake: identity, project, repo, versions, and capabilities |
-| GET | `/whoami` | reader | The current user and all repos of the project |
+| GET | `/whoami` | reader | The current user and all repos of the project. It needs no `X-Speclink-Repo`, and its response has no ETag |
 | GET | `/sync-state` | reader | Only the `ETag`. With a matching `If-None-Match`, it answers 304. |
 | GET | `/events` | reader | SSE event stream. See [Event stream](#events) below. This route belongs to the demonstration server. It is not in the entry point of the host kit. |
 | POST | `/context` | reader | One consistent snapshot of the documents. The body can set `change` to narrow it. |

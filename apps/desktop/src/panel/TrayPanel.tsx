@@ -69,7 +69,7 @@ import {
   RAIL_SQUARE,
   projectInitial,
 } from "../components/projectTile";
-import { OVERFLOW_LIMIT, type TraySnapshot, type TrayTabSnapshot } from "../tray";
+import { OVERFLOW_LIMIT, tabStatusLabel, type TraySnapshot, type TrayTabSnapshot } from "../tray";
 import type { Platform } from "../platform";
 import { readTrayPromotedExpanded, writeTrayPromotedExpanded } from "./promotedExpanded";
 import {
@@ -430,24 +430,10 @@ function OverflowGroup({
 /** 專案 tab 與「加入專案」共用的直欄容器（方塊＋其下文字，hover 灰底）。 */
 const TAB_ITEM = "flex shrink-0 flex-col items-center gap-1 rounded-lg px-1 py-1.5 hover:bg-foreground/5";
 
-function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
-  if (tab.source === "local") return "";
-  if (tab.status === "restoring") return t("tray.recovery.restoring");
-  if (tab.status === "offline") return t("tray.recovery.offline");
-  if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
-    return t("tray.recovery.needsReauth");
-  }
-  if (tab.failureKind === "access-denied") return t("tray.recovery.accessDenied");
-  if (tab.failureKind === "not-found") return t("tray.recovery.notFound");
-  if (tab.failureKind === "unknown") return t("tray.recovery.unknown");
-  if (tab.status === "error") return t("tray.recovery.unreachable");
-  return "";
-}
-
 /**
  * 分頁狀態文字的語意色（spec「介面狀態語意色分層」）：選取由首字母方塊承載，
  * 狀態則由方塊下這行文字承載——還原中＝藍、離線／需重新登入＝琥珀警示、
- * 連不上＝紅。無狀態文字的本機分頁走中性。
+ * 連不上與存取被拒＝紅。無狀態文字的本機分頁走中性。
  */
 function tabStatusTone(tab: TrayTabSnapshot): string {
   if (tab.source === "local") return "text-muted-foreground";
@@ -455,7 +441,7 @@ function tabStatusTone(tab: TrayTabSnapshot): string {
   if (tab.status === "offline" || tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
     return SEMANTIC_TONE.warning;
   }
-  if (tab.status === "error") return SEMANTIC_TONE.danger;
+  if (tab.status === "error" || tab.status === "access-denied") return SEMANTIC_TONE.danger;
   return "text-muted-foreground";
 }
 
@@ -467,7 +453,9 @@ function RemoteTabIcon({ tab }: { tab: Extract<TrayTabSnapshot, { source: "remot
   if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
     return <LogIn className="h-4 w-4" />;
   }
-  if (tab.status === "error") return <AlertTriangle className="h-4 w-4" />;
+  if (tab.status === "error" || tab.status === "access-denied") {
+    return <AlertTriangle className="h-4 w-4" />;
+  }
   return <Cloud className="h-4 w-4" />;
 }
 
@@ -664,10 +652,14 @@ export function TrayPanel({
   const activeTab = tabs.find((tab) => tab.key === activeKey);
   const activeRecovery =
     activeTab?.status === "restoring" || activeTab?.status === "error" ? activeTab : null;
+  // 有 session 而狀態不正常：保留最後成功的內容，上方加一張狀態卡。
   const activeStale =
-    activeTab?.status === "offline" || activeTab?.status === "needs-reauth"
+    activeTab?.status === "offline" ||
+    activeTab?.status === "needs-reauth" ||
+    activeTab?.status === "access-denied"
       ? activeTab
       : null;
+  const activeDenied = activeStale?.status === "access-denied";
 
   return (
     // macOS 補光層（tray-panel-content-priority「毛玻璃找回」）：HudWindow（NSVisualEffectView
@@ -808,14 +800,20 @@ export function TrayPanel({
           {activeStale && (
             <div
               data-testid="panel-stale-status"
+              data-status={activeStale.status}
               role="status"
-              // 琥珀淡底卡（design D5）：與專案欄的提示卡同語意，保留淡底而非白卡。
+              // 淡底卡（design D5）：與專案欄的提示卡同語意，保留淡底而非白卡。離線與
+              // 需要重新登入是琥珀；存取被拒是錯誤的紅，圖示換成警示三角形、沒有按鈕。
               className={cn(
                 "flex min-h-8 items-center gap-2 rounded-xl border px-3 py-2 text-[11px]",
-                SEMANTIC_SURFACE.warning,
+                activeDenied ? SEMANTIC_SURFACE.danger : SEMANTIC_SURFACE.warning,
               )}
             >
-              <CloudOff className={cn("h-3.5 w-3.5 shrink-0", SEMANTIC_TONE.warning)} />
+              {activeDenied ? (
+                <AlertTriangle className={cn("h-3.5 w-3.5 shrink-0", SEMANTIC_TONE.danger)} />
+              ) : (
+                <CloudOff className={cn("h-3.5 w-3.5 shrink-0", SEMANTIC_TONE.warning)} />
+              )}
               <span className="font-medium">{tabStatusLabel(activeStale, t)}</span>
               <span className="ml-auto text-muted-foreground">{t("tray.recovery.stale")}</span>
               {activeStale.status === "needs-reauth" && (

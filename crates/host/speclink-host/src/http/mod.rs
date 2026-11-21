@@ -30,7 +30,7 @@ pub use router::{match_route, routes, RouteMatch};
 use crate::binding::{resolve_binding, BindingCandidate, BindingError};
 use crate::kit::{Caller, HostKit, Identity, ProjectEntry};
 use speclink_core::fields::Fields;
-use router::{Route, READ_ONLY_POSTS, WRITER_ONLY_READS};
+use router::{Answer, Route, READ_ONLY_POSTS, WRITER_ONLY_READS};
 use serde::Serialize;
 use speclink_protocol::binding::ScopeRef;
 use speclink_protocol::query::{AuthWhoamiResponse, ProjectScope, ScopesResponse, WhoamiUser};
@@ -130,7 +130,8 @@ impl HostKit {
     /// project (404) and the repo — the `X-Speclink-Repo` header's, or the
     /// only one (404, or 409 with the candidates when there are several);
     /// a request that writes, and the export, need `can_write` (403). Then
-    /// the route runs.
+    /// the route runs. The project's `/whoami` is answered after the project
+    /// check and before the repo choice: it lists the repos, so it needs none.
     pub fn handle(&self, request: &HttpRequest, identity: Option<&Identity>) -> Option<HttpResponse> {
         self.handle_with_fields(request, identity, &Fields::new())
     }
@@ -228,6 +229,13 @@ impl HostKit {
 
         let projects = self.projects_of(identity, Some(&key))?;
         let project = projects.iter().find(|p| p.key == key).ok_or_else(|| project_not_found(&key))?;
+        // A route for the project (the identity query, which lists the
+        // project's repos) is answered before a repo is chosen, and the
+        // header that names one is not read.
+        let handler = match route.answer {
+            Answer::Project(answer) => return Ok(answer(identity, project)),
+            Answer::Repo(handler) => handler,
+        };
         let repo = choose_repo(&project.key, &project.repos, |r| &r.key, request.header("x-speclink-repo"))?;
 
         let needs_write = match request.method.reads() {
@@ -240,7 +248,7 @@ impl HostKit {
 
         let caller = Caller { identity: identity.clone(), scope: repo.scope.clone() };
         let bound = routes::Request { kit: self, http: request, caller, project, repo, params, attached: fields };
-        (route.handler)(&bound)
+        handler(&bound)
     }
 }
 
@@ -290,7 +298,7 @@ pub fn choose_repo<'r, R>(
             Err(HttpError::not_found(format!("project '{project_key}' has no registered repo")))
         }
         Err(BindingError::Ambiguous { candidates }) => Err(HttpError::refused(format!(
-            "project '{project_key}' registers multiple repos — specify one with X-Speclink-Repo (candidates: {})",
+            "project '{project_key}' registers multiple repos — name one with the X-Speclink-Repo header, or set `remote.repo` in .speclink.yaml (candidates: {})",
             candidates.join(", ")
         ))),
         Err(BindingError::PermissionDenied { .. }) => {

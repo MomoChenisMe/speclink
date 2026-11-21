@@ -512,6 +512,8 @@ async function scopes(identity) {
 
 When `canWritePolicy` is `false`, a workflow configuration write that changes a policy key (`schema`, `locale`, `spec_locale`, `tdd`, `audit`, `worktree`) gets 403. When `scopes` throws, the request gets 503.
 
+When a project has more than one repo, a request names one in the `X-Speclink-Repo` header. With no name, the entry point returns 409 with the candidates and does not select one. The `/whoami` of a project is the exception: it lists all repos of the project, needs no name, and its response has no ETag. The CLI uses it in `link`, `init --store remote`, and `auth status` to check the repo.
+
 **The login methods declaration** tells the client how to log in. The entry point answers it at `GET /api/speclink/v1/auth-methods`, and no login is necessary:
 
 ```js
@@ -520,6 +522,8 @@ const authMethods = {
   browser: { issuer: 'https://login.example.com', clientId: 'speclink', scopes: ['openid'] },
 }
 ```
+
+The `scopes` of `browser` is optional. The response of the entry point always has `browser.scopes`: when you do not declare it, the value is an empty array.
 
 The client uses the first method that the host declares, in the order `browser`, `device`, `token`. The entry point does not supply login endpoints, accounts, or memberships: those are yours. For browser login (`browser`), your login service must do three things:
 
@@ -536,6 +540,7 @@ After the client gets a token, it sends the token in the `Authorization: Bearer`
 - **Write the `url` in one of two forms.** A path that starts with `/` is relative to the project URL, as `/sync-state` is. A full URL must have the origin of your host: the same scheme, host, and port. Speclink Desktop uses the first `sse` transport. It does not connect to a URL of another origin, and it does not send the credential there: it polls instead. It does not use `websocket`.
 - **Send a heartbeat.** When the stream is idle, send an SSE comment line more often than every 45 seconds. A client that gets no data for 45 seconds treats the connection as broken and subscribes again. The demonstration server sends one every 15 seconds.
 - **Send only the resource.** An event tells the client which resource changed, and the client reads it again. Use the table in [Event stream](verb-contract.md#events) to turn an event into `scope` and `resourceId`. Do not send the event payload to clients.
+- **Close the stream when the user loses access.** The entry point does not supply a stream, so it cannot close yours. When a user is suspended or removed from the project, end the streams that the user has open. After the stream ends, the client subscribes again and polls. When the two requests are refused (403), Speclink Desktop shows "Access denied" and disables writes. If you do not close the stream, Speclink Desktop finds the problem only when the stream breaks. A host that uses only polling needs no action here: Speclink Desktop shows the message in 30 seconds or less. The demonstration server does the check one time in each heartbeat interval.
 
 ## <a id="export-import"></a>Export and import
 

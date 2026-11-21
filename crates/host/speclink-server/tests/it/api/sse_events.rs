@@ -546,3 +546,122 @@ fn dropped_events_converge_via_reset_and_full_reread_on_a_sqlite_server() {
     let (_, event, _) = parts(tail.next_event(Duration::from_secs(3)).expect("a new event"));
     assert_eq!(event.as_deref(), Some("invalidate"), "new writes stream from the newest sequence");
 }
+
+// --- spec server-event-stream「使用者失去權限時關閉串流」 ---
+
+use speclink_server::audit::AuditActor;
+use speclink_server::identity::MembershipRole;
+
+/// The interval the stream checks its subscriber at is the heartbeat's.
+fn quick_recheck() -> EventSettings {
+    EventSettings { retention: 1024, buffer: 64, heartbeat: Duration::from_millis(50) }
+}
+
+impl Sub {
+    /// True when the server ends the stream (the body reaches its end) within
+    /// `timeout`. Frames that arrive before the end are read and dropped.
+    fn ended_within(&self, timeout: Duration) -> bool {
+        let deadline = Instant::now() + timeout;
+        loop {
+            match self.rx.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+                Ok(_) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return true,
+                Err(mpsc::RecvTimeoutError::Timeout) => return false,
+            }
+        }
+    }
+}
+
+/// The status and the envelope's reason of a subscription the server refuses.
+fn refusal_of_a_new_subscription(base: &str, token: &str) -> (u16, String) {
+    let call = ureq::get(&format!("{base}{EVENTS_PATH}"))
+        .set("Authorization", &format!("Bearer {token}"))
+        .set("X-Speclink-Api-Version", "1")
+        .set("X-Speclink-Repo", "backend")
+        .set("Accept", "text/event-stream")
+        .call();
+    match call {
+        Err(ureq::Error::Status(code, response)) => {
+            let body: serde_json::Value = response.into_json().expect("an error envelope");
+            (code, body["reason"].as_str().unwrap_or_default().to_string())
+        }
+        Ok(_) => panic!("the subscription opened"),
+        Err(e) => panic!("transport error: {e}"),
+    }
+}
+
+#[test]
+fn a_member_removed_from_the_project_loses_the_stream_and_cannot_resubscribe() {
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store.shared(), quick_recheck());
+    let (pat, alice) = common::seed_named_pat(&state.identity, "alice@example.com", "Alice", &["demo"]);
+    let identity = state.identity.clone();
+    let base = common::start(state);
+
+    let sub = Sub::open(&base, &pat, None).expect("a member's subscription opens");
+    assert!(sub.next(Duration::from_secs(3)).is_some(), "the stream is live: a heartbeat arrives");
+
+    identity
+        .admin_set_membership(&AuditActor::system_cli(), &alice, "demo", MembershipRole::Editor, false)
+        .expect("remove alice from demo");
+
+    // The check runs once per heartbeat interval (50 ms here); the limit only
+    // guards against a hang.
+    assert!(sub.ended_within(Duration::from_secs(5)), "the server ends the stream of a removed member");
+    assert_eq!(refusal_of_a_new_subscription(&base, &pat), (403, "permission_denied".to_string()));
+}
+
+#[test]
+fn a_suspended_account_loses_the_stream() {
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store.shared(), quick_recheck());
+    let (pat, alice) = common::seed_named_pat(&state.identity, "alice@example.com", "Alice", &["demo"]);
+    let identity = state.identity.clone();
+    let base = common::start(state);
+
+    let sub = Sub::open(&base, &pat, None).expect("a member's subscription opens");
+    assert!(sub.next(Duration::from_secs(3)).is_some(), "the stream is live: a heartbeat arrives");
+
+    identity
+        .admin_set_user_suspended(&AuditActor::system_cli(), &alice, true)
+        .expect("suspend alice");
+
+    assert!(sub.ended_within(Duration::from_secs(5)), "the server ends the stream of a suspended account");
+}
+
+#[test]
+fn a_stream_whose_subscriber_keeps_access_stays_open_and_loses_no_event() {
+    let store = seeded_store();
+    let state = common::state_with_event_settings(store.shared(), quick_recheck());
+    let (pat, _bob) = common::seed_named_pat(&state.identity, "bob@example.com", "Bob", &["demo"]);
+    let base = common::start(state);
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    // Five intervals of the check, and the stream is still open.
+    assert!(!sub.ended_within(Duration::from_millis(250)), "the check does not end a member's stream");
+
+    client(&base, &pat).task_done("demo", "1", &[], None).expect("task done");
+    let (_, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("the invalidation arrives"));
+    assert_eq!(event.as_deref(), Some("invalidate"));
+    assert!(sub.next_event(Duration::from_millis(300)).is_none(), "it arrives exactly once");
+    assert!(!sub.ended_within(Duration::from_millis(200)), "the stream is still open after the event");
+}
+
+#[test]
+fn a_zero_heartbeat_does_not_end_the_stream() {
+    // `events.heartbeat_secs: 0` loads (only 45 and above is refused). The
+    // access check then has no interval of its own to run at; the stream must
+    // still stay open and deliver.
+    let store = seeded_store();
+    let settings = EventSettings { retention: 1024, buffer: 64, heartbeat: Duration::ZERO };
+    let state = common::state_with_event_settings(store.shared(), settings);
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    client(&base, &pat).task_done("demo", "1", &[], None).expect("task done");
+
+    let (_, event, _) = parts(sub.next_event(Duration::from_secs(3)).expect("the invalidation arrives"));
+    assert_eq!(event.as_deref(), Some("invalidate"));
+}

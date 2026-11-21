@@ -174,7 +174,7 @@ speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
   No credentials yet — run `speclink auth login` to connect
 ```
 
-Use the repository key for `--repo`. If the key does not match, `link` shows the available keys and stops. It writes nothing.
+Use the repository key for `--repo`. If the key does not match, `link` shows the available keys and stops. It writes nothing. When the project has one repository, you can omit `--repo`. When the project has two or more repositories and you are signed in, `--repo` is necessary: without it, `link` tells you to add `--repo`, shows the available keys, and stops. It writes nothing then too.
 
 The Desktop app and the CLI share the login in the keychain. If you signed in with the Desktop app in section 5, the output has one more line, `✓ Repo 'backend' is registered in this project`, and you can skip `auth login` below. If not, sign in and check the result:
 
@@ -326,6 +326,10 @@ See [Troubleshooting](#troubleshooting) for the fix.
 
 Start the server again. The Desktop app connects again by itself, queries the server again, and updates the screen. You do not need to reload. Changes that other people made during the outage also appear.
 
+When the Server answers but cannot serve for a time (for example, during maintenance), the Desktop app also goes offline. If the Server gives a reason, the Desktop app shows that reason next to "Connection interrupted", and the CLI message is `Error: server unavailable — <the reason from the Server>`.
+
+In a different condition, the Server operates correctly, but your account is suspended or removed from the project. The open tab shows a red "Access denied" above the board with the reason from the Server. The project square in the left rail gets a red dot, and the system tray shows the condition too. The screen keeps the last content that loaded successfully, and all write actions are disabled. After an admin gives your access back, the tab recovers by itself and queries the Server again.
+
 ## <a id="reset"></a>9. Full reset
 
 With npx, all data is in `speclink-data/`. To start from zero:
@@ -358,6 +362,9 @@ To move data or to make regular backups, see [Server Backup and Restore](server-
 | `speclink update` says `No AI tool configurations found` | `.speclink.yaml` has no `tools` list. Add the AI tools that you use and run the command again. See "Get the skills" in section 6. |
 | stderr shows `this CLI's skill templates (…) are older than this server's (…)` | The skill templates of the CLI are older than those of the Server. This is only a reminder, and the command completes as usual. Update Speclink. See [Configuration](configuration.md#remote). |
 | `link` or `auth status` says `repo '…' is not registered in this project` | The `--repo` value does not match the repository key. The message shows the available keys. Run `speclink link` again with the correct key. |
+| `link`, `init --store remote`, or `auth status` says `this project registers multiple repos` | The project has two or more repositories, and this folder does not name one. Run `speclink link <url> --repo <key>` as the message tells you, with a key from the list in the message. `init --store remote` completed the initialization before this message, so this one step is sufficient. |
+| A CLI command fails, and the message contains `registers multiple repos — specify one with X-Speclink-Repo` | This Server is an old version (0.14.0 or earlier). Upgrade the Server (or the `@speclink/engine` of the host). Before the upgrade, write `repo: <key>` below `remote` in `.speclink.yaml` yourself. |
+| The Desktop app shows a red "Access denied" above the board | The account is suspended, or it is not a member of this project now. The text is the reason from the Server. Ask an admin to give the access back. The tab then recovers by itself, and you do not need to open it again. |
 | A CLI command fails with `Error: server unreachable — the server's TLS certificate was rejected (…)`. Or the Desktop app shows "Connection interrupted" for an `https://` Server that is in operation | This computer does not trust the TLS certificate of the Server. The text in the parentheses is the reason name from the operating system, for example `UnknownIssuer`. Another operating system can give a different name, and the name can be `Other`. If a CA of your organisation issued the certificate, install that CA into the trust store of the operating system, and then run the command again. Speclink has no setting that skips this check. During login, the message starts with `the login service's TLS certificate was rejected`, and the fix is the same. See [Configuration](configuration.md#remote). |
 | The server URL changed | In the test folder, run `speclink unlink`, and then run `link` with the new URL. In the Desktop app, add a new connection. |
 | The server does not start, or `/healthz` does not return `200` | Read the error in the server terminal. If the configuration has an error, the server stops. It never starts with a bad configuration. |

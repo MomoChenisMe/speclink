@@ -62,6 +62,36 @@ impl std::fmt::Display for RemoteError {
 
 impl std::error::Error for RemoteError {}
 
+/// The client's frame around a server's reason for a 403: the sentence is
+/// [`DENIED_BEFORE`], the reason, [`DENIED_AFTER`]. [`server_reason`] takes it
+/// apart with the same two, so the wording has one place.
+const DENIED_BEFORE: &str = "access denied — ";
+const DENIED_AFTER: &str = "; ask a project admin";
+
+/// The start of every sentence for a 500 or above. A server's reason follows
+/// it; with no reason, [`CHECK_URL`] does.
+const UNAVAILABLE_BEFORE: &str = "server unavailable — ";
+const CHECK_URL: &str = "check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)";
+
+/// The sentence for a server that answered and cannot serve, when it gave no
+/// reason to show.
+fn unavailable_without_a_reason() -> String {
+    format!("{UNAVAILABLE_BEFORE}{CHECK_URL}")
+}
+
+/// The reason the server gave, when `error` is one of the two sentences that
+/// carry one: a 403's `access denied — <reason>; ask a project admin`, and a
+/// 500 or above's `server unavailable — <reason>`. Every other error — the
+/// fixed sentences, a transport failure, an empty reason — gives none.
+pub fn server_reason(error: &RemoteError) -> Option<&str> {
+    let reason = match error.status? {
+        403 => error.message.strip_prefix(DENIED_BEFORE)?.strip_suffix(DENIED_AFTER)?,
+        500.. => error.message.strip_prefix(UNAVAILABLE_BEFORE).filter(|rest| *rest != CHECK_URL)?,
+        _ => return None,
+    };
+    (!reason.is_empty()).then_some(reason)
+}
+
 /// Translate a transport-level failure (refused/timeout/DNS) — loud, no
 /// cache fallback, no retry loop. This crate's request paths go through
 /// `http::translate_transport_error`, which also names a rejected certificate.
@@ -83,15 +113,18 @@ pub fn translate_transport() -> RemoteError {
 pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
     use speclink_protocol::error::{ErrorReason, ErrorResponse};
 
-    // Server-side failures never carry a usable envelope — translate on
-    // status first, like the 5xx rule the client has always had.
+    // A server-side failure is translated on its status first. Its envelope
+    // gives one thing only: the reason of a server that says it is
+    // unavailable. The `reason` field stays empty, as it always was here.
     if status >= 500 {
-        return RemoteError {
-            message: "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".into(),
-            reason: None,
-            status: Some(status),
-            evidence: None,
+        let said = serde_json::from_str::<ErrorResponse>(body)
+            .ok()
+            .filter(|err| err.reason == ErrorReason::Unavailable && !err.message.is_empty());
+        let message = match said {
+            Some(err) => format!("{UNAVAILABLE_BEFORE}{}", err.message),
+            None => unavailable_without_a_reason(),
         };
+        return RemoteError { message, reason: None, status: Some(status), evidence: None };
     }
 
     let Ok(err) = serde_json::from_str::<ErrorResponse>(body) else {
@@ -111,9 +144,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         ErrorReason::RevisionConflict => {
             "content changed since you read it — re-read it and re-apply your edit".to_string()
         }
-        ErrorReason::Unavailable => {
-            "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)".to_string()
-        }
+        ErrorReason::Unavailable => unavailable_without_a_reason(),
         ErrorReason::Internal => {
             "internal speclink error — update speclink or report a bug".to_string()
         }
@@ -123,7 +154,7 @@ pub fn translate_protocol_error(status: u16, body: &str) -> RemoteError {
         // 403 relays the server's reason inside the client-owned frame: a
         // non-member and a reader write need different fixes.
         ErrorReason::PermissionDenied => {
-            format!("access denied — {}; ask a project admin", err.message)
+            format!("{DENIED_BEFORE}{}{DENIED_AFTER}", err.message)
         }
         ErrorReason::NotFound
         | ErrorReason::InvalidArgument

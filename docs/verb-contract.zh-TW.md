@@ -327,7 +327,7 @@ https://<server>/api/speclink/v1/projects/<專案代號>
 | --- | --- | --- |
 | `Authorization` | `Bearer <憑證>` | 401 `permission_denied` |
 | `X-Speclink-Api-Version` | `1` | 409 `refused`（版本不相容） |
-| `X-Speclink-Repo` | 儲存庫代號 | 專案只有一個 repo 時可省略；有多個 repo 卻省略回 409 `refused`；寫了沒註冊的 repo 回 404 `not_found` |
+| `X-Speclink-Repo` | 儲存庫代號 | 專案只有一個 repo 時可省略；有多個 repo 卻省略回 409 `refused`，訊息寫出兩種指定方式（這個標頭，或 `.speclink.yaml` 的 `remote.repo`）；寫了沒註冊的 repo 回 404 `not_found`。專案底下的 `/whoami` 是例外：不看這個標頭，一律列出專案的全部 repo |
 | `Content-Type` | `application/json`（有 body 時） | 415，回應是純文字 |
 
 憑證由 Server 決定。示範用 server 接受兩種：存取金鑰（PAT，`spk_pat_` 開頭，在 server 的帳號頁建立），或 `speclink auth login` 取得的裝置登入憑證（`spk_at_` 開頭）；憑證有效但帳號不是這個專案的成員，回 403。內嵌的宿主自己驗用戶端送來的 token，再把身分交給入口；驗不出身分時傳空值，入口就回 401。宿主宣告了瀏覽器登入時，憑證是它的登入服務發的 access token。
@@ -439,7 +439,7 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 | 方法 | 路徑 | 最低角色 | 用途 |
 | --- | --- | --- | --- |
 | GET | `/binding` | reader | 握手：身分、專案、repo、版本與能力 |
-| GET | `/whoami` | reader | 目前使用者，以及這個專案的所有 repo |
+| GET | `/whoami` | reader | 目前使用者，以及這個專案的所有 repo。不需要 `X-Speclink-Repo`，回應沒有 ETag |
 | GET | `/sync-state` | reader | 只回 `ETag`；帶 `If-None-Match` 且沒變時回 304 |
 | GET | `/events` | reader | SSE 事件流，見下方[事件流](#events)。這一條是示範用 server 自己的，不在宿主套件的入口裡 |
 | POST | `/context` | reader | 一次取回一致的文件快照；body 可帶 `change` 縮小範圍 |

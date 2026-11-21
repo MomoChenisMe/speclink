@@ -64,6 +64,7 @@ const fakeT = (key: string): string =>
     "tray.recovery.offline": "離線（最後資料）",
     "tray.recovery.needsReauth": "需要重新登入",
     "tray.recovery.unreachable": "無法連線",
+    "tray.recovery.accessDenied": "沒有存取權限",
     "tray.recovery.retry": "重新連線",
     "tray.recovery.open": "查看問題",
     "tray.recovery.settings": "伺服器設定",
@@ -406,6 +407,42 @@ describe("buildTrayModel", () => {
     expect(byKind(model.items, "change")).toHaveLength(0);
     expect(byKind(model.items, "discussion")).toHaveLength(0);
   });
+
+  it("存取被拒的 remote 專案仍是專案項：標籤「<專案名> — 沒有存取權限」，不是復原 submenu，資料照舊", () => {
+    // spec tray-status-menu「系統匣標示存取被拒」：與離線時的寫法相同，項目可點選切換。
+    const key = "remote:c1/demo/backend";
+    const model = buildTrayModel(
+      snapshot({
+        tabs: [
+          { key: "local:/proj/one", name: "one", source: "local", status: "ready" },
+          {
+            key,
+            name: "demo",
+            source: "remote",
+            status: "access-denied",
+            connectionId: "c1",
+            serverLabel: "Team Server",
+          },
+        ],
+        activeKey: key,
+      }),
+      fakeT,
+    );
+
+    expect(byKind(model.items, "recovery")).toHaveLength(0);
+    const project = byKind(model.items, "project").find((item) => item.key === key);
+    expect(project).toEqual({
+      kind: "project",
+      key,
+      label: "demo — 沒有存取權限",
+      checked: true,
+      source: "remote",
+      status: "access-denied",
+    });
+    // 作用中的專案被拒時保留最後成功的內容。
+    expect(byKind(model.items, "change").length).toBeGreaterThan(0);
+    expect(byKind(model.items, "discussion").length).toBeGreaterThan(0);
+  });
 });
 
 // ---- 接線層（Tauri tray/menu/window API）----
@@ -583,6 +620,54 @@ describe("initTray 接線（選單）", () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(win.show).toHaveBeenCalled();
     expect(bag.openDetail).toHaveBeenCalledWith("alpha");
+  });
+
+  it("原生選單：存取被拒的專案標籤帶「沒有存取權限」且點選仍切換；連線離線時照優先序顯示離線", async () => {
+    const bag = makeStore();
+    const key = "remote:c1/demo/backend";
+    const session = (state: "online" | "offline") =>
+      ({
+        locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+        connectionState: { connectionId: "c1", state, message: null },
+        accessDenied: { message: "帳號已停用" },
+      }) as WorkspaceSession;
+    bag.emit({
+      tabs: [
+        { locator: { kind: "local", root: "/proj/one" }, name: "one" },
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+          name: "demo",
+        },
+      ],
+      sessions: { [key]: session("online") },
+    });
+
+    expect(buildTraySnapshot(bag.store.getState()).tabs[1]).toEqual(
+      expect.objectContaining({ key, status: "access-denied" }),
+    );
+    // Server 的原因不進系統匣的快照（只有封閉的狀態）。
+    expect(JSON.stringify(buildTraySnapshot(bag.store.getState()))).not.toContain("帳號已停用");
+
+    await initTray(bag.store, { platform: "macos" });
+    const item = lastItems.find((i) => i.text === "demo — 沒有存取權限");
+    expect(item).toBeDefined();
+    expect("checked" in item).toBe(true);
+    expect(Array.isArray(item.items)).toBe(false);
+    item.action();
+    expect(bag.activateTab).toHaveBeenCalledWith(key);
+
+    bag.emit({ sessions: { [key]: session("offline") } });
+    expect(buildTraySnapshot(bag.store.getState()).tabs[1]).toEqual(
+      expect.objectContaining({ key, status: "offline" }),
+    );
+
+    // 解除後：項目回到 ready 的呈現，標籤只剩專案名。
+    const regained = { ...session("online"), accessDenied: undefined } as WorkspaceSession;
+    bag.emit({ sessions: { [key]: regained } });
+    const model = buildTrayModel(buildTraySnapshot(bag.store.getState()), fakeT);
+    expect(byKind(model.items, "project").find((project) => project.key === key)).toEqual(
+      expect.objectContaining({ label: "demo", status: "ready" }),
+    );
   });
 
   it("原生 needs-reauth submenu 的顯式詳情與登入才聚焦主視窗", async () => {

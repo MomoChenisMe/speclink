@@ -26,9 +26,10 @@ import type { Platform } from "../platform";
 import type { ProjectTab } from "../tabs";
 import {
   locatorKey,
-  type RemoteConnectionStateEvent,
+  remoteWorkspaceStatus,
   type RemoteWorkspaceRecoveryState,
   type RemoteWorkspaceStatus,
+  type WorkspaceSession,
 } from "../session";
 import { ProjectActionItems, type ProjectActions } from "./ProjectActionsMenu";
 import { ADD_TILE, PROJECT_TILE_ACTIVE, PROJECT_TILE_IDLE, RAIL_SQUARE, projectInitial } from "./projectTile";
@@ -39,7 +40,8 @@ export interface ProjectRailProps {
   /** 失效分頁錯誤（locator key → 單行訊息）。 */
   tabErrors: Record<string, string>;
   recoveryStates?: Record<string, RemoteWorkspaceRecoveryState>;
-  connectionStates?: Record<string, RemoteConnectionStateEvent | undefined>;
+  /** 已開啟的 session（locator key → session）：remote 分頁的狀態由它與復原狀態裁決。 */
+  sessions?: Record<string, WorkspaceSession>;
   /** 連線 id → 連線名稱（remote 無 checkout 時 tooltip 用）。 */
   connectionNames?: Record<string, string>;
   /** 探測進行中的目標方塊（store 的 pendingTabKey）。 */
@@ -76,7 +78,7 @@ export function ProjectRail({
   activeKey,
   tabErrors,
   recoveryStates = {},
-  connectionStates = {},
+  sessions = {},
   connectionNames = {},
   pendingKey = null,
   assetPrompts = {},
@@ -105,14 +107,13 @@ export function ProjectRail({
           {tabs.map((tab) => {
             const key = locatorKey(tab.locator);
             const recovery = recoveryStates[key];
-            const connectionState = connectionStates[key]?.state;
-            const status: RemoteWorkspaceStatus = recovery
-              ? recovery.status
-              : connectionState === "offline" || connectionState === "needs-reauth"
-                ? connectionState
-                : tabErrors[key] !== undefined
-                  ? "error"
-                  : "ready";
+            const session = sessions[key];
+            // 有 session 或復原狀態的分頁走共用的單一裁決（與系統匣同一個函式）；
+            // 其餘（還沒開過的分頁、本機路徑失效）只看分頁錯誤。
+            const shared: RemoteWorkspaceStatus =
+              recovery || session ? remoteWorkspaceStatus(session, recovery) : "ready";
+            const status: RemoteWorkspaceStatus =
+              shared !== "ready" ? shared : tabErrors[key] !== undefined ? "error" : "ready";
             const active = key === activeKey;
             const pending = key === pendingKey;
             // 技能檔狀況是上次看過時的狀態（背景分頁不主動探測），只說「需要處理」不帶版號。
@@ -127,16 +128,19 @@ export function ProjectRail({
                   ? t("remote.recovery.offlineShort")
                   : status === "needs-reauth"
                     ? t("remote.recovery.reauthShort")
-                    : status === "error"
-                      ? recovery?.status === "error"
-                        ? t(`remote.recovery.${recovery.failure.kind}Short`)
-                        : localError
-                          ? tabErrors[key]
-                          : t("remote.recovery.unknownShort")
-                      : "";
+                    : status === "access-denied"
+                      ? t("remote.recovery.access-deniedShort")
+                      : status === "error"
+                        ? recovery?.status === "error"
+                          ? t(`remote.recovery.${recovery.failure.kind}Short`)
+                          : localError
+                            ? tabErrors[key]
+                            : t("remote.recovery.unknownShort")
+                        : "";
             const path = tabPathHint(tab, connectionNames, t);
+            // 存取被拒是錯誤（紅），不是離線那種可自行恢復的警示（琥珀）。
             const dot =
-              status === "error"
+              status === "error" || status === "access-denied"
                 ? "error"
                 : status === "offline" || status === "needs-reauth" || assetFlag
                   ? "warning"

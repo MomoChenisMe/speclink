@@ -161,7 +161,9 @@ impl CredentialSource {
     pub fn describe(self) -> &'static str {
         match self {
             CredentialSource::Env => "SPECLINK_TOKEN environment variable",
-            CredentialSource::KeychainRefresh => "system keychain (device login, shared with the desktop app)",
+            // The entry does not record which login made it (browser or
+            // device), so the text names neither.
+            CredentialSource::KeychainRefresh => "system keychain (login session, shared with the desktop app)",
             CredentialSource::KeychainPat => "system keychain (personal access token)",
             CredentialSource::CredentialsFile => "credentials file",
         }
@@ -348,4 +350,27 @@ pub fn resolve_credential(
         &crate::credentials::KeyringCredentialStore,
         std::env::var("SPECLINK_TOKEN").ok(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CredentialSource;
+
+    /// spec remote-auth「auth status 的憑證來源說明與多個 repo 的專案」: a keyring
+    /// entry does not record which login made it, so the text names none.
+    #[test]
+    fn a_keychain_login_is_described_without_naming_the_login_method() {
+        assert_eq!(
+            CredentialSource::KeychainRefresh.describe(),
+            "system keychain (login session, shared with the desktop app)"
+        );
+        assert_eq!(CredentialSource::KeychainRefresh.as_str(), "keychain_refresh");
+    }
+
+    #[test]
+    fn the_other_three_sources_keep_their_text() {
+        assert_eq!(CredentialSource::Env.describe(), "SPECLINK_TOKEN environment variable");
+        assert_eq!(CredentialSource::KeychainPat.describe(), "system keychain (personal access token)");
+        assert_eq!(CredentialSource::CredentialsFile.describe(), "credentials file");
+    }
 }

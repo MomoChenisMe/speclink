@@ -1112,6 +1112,21 @@ fn connection_origin(app: &tauri::AppHandle, connection_id: &str) -> Result<Stri
         .ok_or_else(|| "連線不存在——請重新設定 server 連線".to_string())
 }
 
+/// 資料面命令用的 RemoteWorkspace：每個寫入先問事件中樞這個分頁有沒有存取被拒
+///（remote-resilience「存取被拒的狀態跟著分頁」）。兩個骨架都由這裡建立把手，
+/// 所以每個資料面命令都帶著這道守門。
+fn guarded_workspace(
+    events: &std::sync::Arc<event_manager::EventManager>,
+    origin: &str,
+    connection_id: &str,
+    project: &str,
+    repo: &str,
+    manager: &std::sync::Arc<remote::TokenManager>,
+) -> remote::RemoteWorkspace {
+    let (events, key) = (events.clone(), remote_locator_key(connection_id, project, repo));
+    remote::RemoteWorkspace::at(origin, project, repo, manager).guarded_by(move || events.access_of(&key))
+}
+
 /// 資料面命令的共用骨架：解析 origin、取 TokenManager，於 blocking pool 以
 /// 無狀態重建的 RemoteWorkspace 執行一擊。
 async fn with_remote<T, F>(
@@ -1132,9 +1147,13 @@ where
         .state::<std::sync::Arc<ConnectionsState>>()
         .inner()
         .clone();
+    let events = app
+        .state::<std::sync::Arc<event_manager::EventManager>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
-        let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
+        let workspace = guarded_workspace(&events, &origin, &connection_id, &project, &repo, &manager);
         call(&workspace, &*state.credentials)
     })
     .await
@@ -1165,9 +1184,13 @@ where
         .state::<std::sync::Arc<ConnectionsState>>()
         .inner()
         .clone();
+    let events = app
+        .state::<std::sync::Arc<event_manager::EventManager>>()
+        .inner()
+        .clone();
     tauri::async_runtime::spawn_blocking(move || {
         let manager = state.manager_for_connection(&connection_id, &origin);
-        let workspace = remote::RemoteWorkspace::at(&origin, &project, &repo, &manager);
+        let workspace = guarded_workspace(&events, &origin, &connection_id, &project, &repo, &manager);
         call(&workspace, &*state.credentials)
     })
     .await
@@ -2063,11 +2086,16 @@ pub fn run() {
                 streams: remote::DeclaredStreams::default(),
             }));
             // remote 事件中樞：invalidate → remote-workspace-changed（payload＝
-            // locator key），前端 session 據此過濾重讀。
+            // locator key），前端 session 據此過濾重讀。分頁進入與解除「存取被拒」
+            // → remote-access-state；寫入命令另外直接問中樞（guarded_workspace）。
             let emitter = app.handle().clone();
-            app.manage(std::sync::Arc::new(event_manager::EventManager::new(
+            let access_emitter = app.handle().clone();
+            app.manage(std::sync::Arc::new(event_manager::EventManager::with_access_observer(
                 move |key: String| {
                     let _ = emitter.emit("remote-workspace-changed", key);
+                },
+                move |notice: event_manager::AccessNotice| {
+                    let _ = access_emitter.emit(remote::REMOTE_ACCESS_STATE_EVENT, notice);
                 },
             )));
             // 觸控板滑動返回的手指按下／離開訊號（desktop-swipe-back-finger-lift）：只在 macOS 提供。

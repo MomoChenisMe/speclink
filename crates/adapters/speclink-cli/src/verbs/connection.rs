@@ -21,8 +21,8 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 
 use crate::color;
-use crate::common::{print_json, read_stdin};
-use crate::remote_base::{ensure_repo_registered, git_reference_warning};
+use crate::common::read_stdin;
+use crate::remote_base::{check_repo, git_reference_warning};
 
 #[derive(Args)]
 pub(crate) struct LinkArgs {
@@ -72,8 +72,9 @@ pub(crate) fn cmd_link(a: LinkArgs) -> Result<()> {
         Some(resolved) => {
             let token = resolved.token;
             let whoami = RemoteClient::new(&a.url, &token, None).whoami()?;
+            // Before anything is written: a refused repo leaves the file as it was.
+            check_repo(&whoami, &a.url, a.repo.as_deref())?;
             if let Some(repo) = a.repo.as_deref() {
-                ensure_repo_registered(&whoami, repo)?;
                 println!("{} Repo '{repo}' is registered in this project", color::green("✓"));
             }
             core::config::write_remote_section(&root, &a.url, a.repo.as_deref())?;
@@ -308,15 +309,19 @@ fn auth_status(
     };
     let whoami = RemoteClient::new(&conn.url, &resolved.token, None).whoami()?;
     if json {
-        return print_json(&status_json(&whoami, resolved.source));
+        let payload = serde_json::to_string_pretty(&status_json(&whoami, resolved.source))?;
+        writeln!(env.out.borrow_mut(), "{payload}")?;
+        return Ok(());
     }
     print_identity(env, &whoami.user.name, &whoami.user.handle);
-    println!("  Credential from: {}", resolved.source.describe());
-    if let Some(repo) = conn.repo.as_deref() {
-        match ensure_repo_registered(&whoami, repo) {
-            Ok(()) => println!("Repo '{repo}' is registered in this project"),
-            Err(e) => println!("! {e}"),
-        }
+    let mut out = env.out.borrow_mut();
+    writeln!(out, "  Credential from: {}", resolved.source.describe())?;
+    // A repo problem is a line of advice here, not a failure: the identity
+    // and the credential are what this verb reports.
+    match (check_repo(&whoami, &conn.url, conn.repo.as_deref()), conn.repo.as_deref()) {
+        (Err(e), _) => writeln!(out, "! {e}")?,
+        (Ok(()), Some(repo)) => writeln!(out, "Repo '{repo}' is registered in this project")?,
+        (Ok(()), None) => {}
     }
     git_reference_warning(root, conn.repo.as_deref(), &whoami);
     Ok(())
@@ -618,6 +623,30 @@ mod tests {
         assert_eq!(fake.paths(), vec!["/api/speclink/v1/auth-methods".to_string()]);
     }
 
+    /// spec remote-connection「Server 回 503 並說明原因」: the login-methods
+    /// query gets a 503 whose envelope says why, and `auth login --browser`
+    /// shows that reason, not the hint to check the url.
+    #[test]
+    fn a_server_that_says_why_it_is_unavailable_has_its_reason_shown_by_the_browser_login() {
+        let fake = Fake::new();
+        fake.route(
+            "/api/speclink/v1/auth-methods",
+            503,
+            r#"{"status":503,"reason":"unavailable","message":"系統維護中，預計 10 分鐘後恢復"}"#,
+        );
+        let (store, dir) = (MemoryCredentialStore::new(), temp_dir("discovery-503-reason"));
+
+        let (result, out) = with_env(&store, &dir, true, "", |env| {
+            auth_login(&conn(&fake, None), &fake.origin, LoginRequest::Browser, env)
+        });
+
+        // The binary prints an error as `Error: <this text>` on stderr.
+        let err = result.unwrap_err().to_string();
+        assert_eq!(err, "server unavailable — 系統維護中，預計 10 分鐘後恢復");
+        assert!(!err.contains("check the connection url"), "{err}");
+        assert!(out.is_empty(), "{out}");
+    }
+
     /// `--token-stdin` prints what it always printed, and the PAT now lives in
     /// the keyring: `auth status --json` reports it as `keychain_pat`.
     #[test]
@@ -647,6 +676,108 @@ mod tests {
         assert_eq!(payload["credentialSource"], serde_json::json!("keychain_pat"));
         assert!(payload["credentialSource"].is_string());
         assert_eq!(payload["user"]["handle"], "dev");
+    }
+
+    // --- `auth status` (spec remote-auth「auth status 的憑證來源說明與多個 repo 的專案」) ---
+
+    /// A project with the two repos `erp` and `crm`, and a keyring that holds a
+    /// login (a refresh credential and a live access token), as after a
+    /// browser or a device login.
+    fn two_repos_and_a_keychain_login(fake: &Fake) -> MemoryCredentialStore {
+        fake.route(
+            "/api/speclink/v1/projects/demo/whoami",
+            200,
+            r#"{"user":{"name":"Dev","handle":"dev"},"repos":[{"name":"erp","gitUrl":""},{"name":"crm","gitUrl":""}]}"#,
+        );
+        let store = MemoryCredentialStore::new();
+        store.set(&fake.origin, CredentialKind::Refresh, "spk_rt_live").unwrap();
+        speclink_remote::refresh::store_cached_bearer(&fake.origin, &store, "access-1", 3600).unwrap();
+        store
+    }
+
+    fn status(fake: &Fake, store: &MemoryCredentialStore, tag: &str, repo: Option<&str>, json: bool) -> (Result<()>, String) {
+        let dir = temp_dir(tag);
+        with_env(store, &dir, false, "", |env| auth_status(&dir, &conn(fake, repo), &fake.origin, json, env))
+    }
+
+    #[test]
+    fn status_after_a_keychain_login_names_no_login_method_and_checks_the_repo() {
+        let fake = Fake::new();
+        let store = two_repos_and_a_keychain_login(&fake);
+
+        let (result, out) = status(&fake, &store, "status-named", Some("crm"), false);
+
+        result.expect("exit code 0");
+        assert_eq!(
+            out,
+            "✓ Logged in as Dev (@dev)\n  Credential from: system keychain (login session, shared with the desktop app)\nRepo 'crm' is registered in this project\n"
+        );
+        assert!(!out.contains("device login"), "{out}");
+    }
+
+    #[test]
+    fn status_with_a_repo_that_is_not_registered_says_so_and_still_exits_zero() {
+        let fake = Fake::new();
+        let store = two_repos_and_a_keychain_login(&fake);
+
+        let (result, out) = status(&fake, &store, "status-unknown", Some("nope"), false);
+
+        result.expect("exit code 0");
+        let last = out.lines().last().unwrap();
+        assert_eq!(last, "! repo 'nope' is not registered in this project (available: erp, crm)");
+    }
+
+    #[test]
+    fn status_without_a_repo_in_a_project_of_several_adds_one_hint_line() {
+        let fake = Fake::new();
+        let store = two_repos_and_a_keychain_login(&fake);
+
+        let (result, out) = status(&fake, &store, "status-unnamed", None, false);
+
+        result.expect("exit code 0");
+        assert_eq!(
+            out,
+            format!(
+                "✓ Logged in as Dev (@dev)\n  Credential from: system keychain (login session, shared with the desktop app)\n! this project registers multiple repos — run `speclink link {} --repo <key>` with one of: erp, crm\n",
+                fake.project_url()
+            )
+        );
+    }
+
+    #[test]
+    fn status_json_has_the_three_fields_and_no_repo_hint() {
+        let fake = Fake::new();
+        let store = two_repos_and_a_keychain_login(&fake);
+
+        let (result, out) = status(&fake, &store, "status-json", None, true);
+
+        result.expect("exit code 0");
+        // The whole of stdout is this one object: three string fields, no other
+        // field, and no line about the repos.
+        let payload = serde_json::json!({
+            "user": { "name": "Dev", "handle": "dev" },
+            "credentialSource": "keychain_refresh",
+        });
+        assert_eq!(out, format!("{}\n", serde_json::to_string_pretty(&payload).unwrap()));
+    }
+
+    #[test]
+    fn status_of_a_user_who_is_not_a_member_fails_and_prints_no_identity() {
+        let fake = Fake::new();
+        let store = two_repos_and_a_keychain_login(&fake);
+        fake.route(
+            "/api/speclink/v1/projects/demo/whoami",
+            403,
+            r#"{"status":403,"reason":"permission_denied","message":"actor is not a member of project 'demo'"}"#,
+        );
+
+        let (result, out) = status(&fake, &store, "status-outsider", Some("crm"), false);
+
+        assert_eq!(
+            result.unwrap_err().to_string(),
+            "access denied — actor is not a member of project 'demo'; ask a project admin"
+        );
+        assert!(out.is_empty(), "{out}");
     }
 
     /// The browser launch gets the URL as one argument and no shell parses it:

@@ -892,12 +892,21 @@ fn every_registry_reason_maps_to_the_frozen_cli_message() {
 
 #[test]
 fn unavailable_covers_every_5xx_before_the_reason_table() {
-    let mock = serve(503, r#"{"status":503,"reason":"unavailable","message":"maintenance"}"#);
+    // A reason the table relays below 500 does not reach it at 500 or above.
+    let mock = serve(503, r#"{"status":503,"reason":"refused","message":"maintenance"}"#);
     let err = client(&mock).list_changes().unwrap_err();
     assert_eq!(
         err.message,
         "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)"
     );
+    assert_eq!(err.reason, None);
+
+    // A server that says it is unavailable, and why: its reason is shown
+    // (spec remote-connection「Server 回報暫時無法服務時顯示它的原因」).
+    let mock = serve(503, r#"{"status":503,"reason":"unavailable","message":"maintenance"}"#);
+    let err = client(&mock).list_changes().unwrap_err();
+    assert_eq!(err.message, "server unavailable — maintenance");
+    assert_eq!(err.reason, None);
 }
 
 // --- context snapshot: the two-valued conditional read ---
@@ -950,11 +959,7 @@ fn context_snapshot_translates_a_503_like_any_verb() {
     let mock = serve(503, r#"{"status":503,"reason":"unavailable","message":"maintenance"}"#);
     let request = ContextSnapshotRequest { change: None, flow: None };
     let err = client(&mock).context_snapshot(&request, None).unwrap_err();
-    assert_eq!(
-        err.message,
-        "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)",
-        "a 5xx collapses to the frozen unavailable message"
-    );
+    assert_eq!(err.message, "server unavailable — maintenance", "a 5xx shows the reason the server gave");
 }
 
 // --- review scope 組裝的 ticket 讀取（change-diff-scope spec「remote workspace

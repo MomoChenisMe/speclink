@@ -10,6 +10,7 @@
 //! 的可觀察契約相同），不另外追蹤 expires_in。
 
 use crate::connections::RefreshFailure;
+use crate::event_manager::AccessState;
 use speclink_remote::credentials::{CredentialKind, CredentialStore};
 use serde::Serialize;
 use speclink_core::workspace::{Workspace, DEFAULT_SPEC_DIR, LEGACY_SPEC_DIR};
@@ -50,8 +51,14 @@ use std::sync::{Arc, Mutex};
 /// needs-reauth 的繁中狀態訊息（完整重新認證 UX 屬後續刀，本刀只回報狀態）。
 const REAUTH_MESSAGE: &str = "此連線的登入已失效——請重新登入";
 const OFFLINE_MESSAGE: &str = "此連線目前離線——顯示最後成功載入的內容";
+/// Server 有回報原因時，離線訊息是原因接上這一段。
+const OFFLINE_STALE_NOTE: &str = "——顯示最後成功載入的內容";
 const OFFLINE_WRITE_MESSAGE: &str = "此連線目前離線——寫入已拒絕，未排隊或暫存";
+/// 存取被拒而 Server 沒有說明原因時，寫入被拒的訊息。
+const DENIED_WRITE_MESSAGE: &str = "目前沒有存取權限——寫入已拒絕，未排隊或暫存";
 pub const REMOTE_CONNECTION_STATE_EVENT: &str = "remote-connection-state";
+/// 分頁進入與解除「存取被拒」的事件；payload 是事件管理器的 `AccessNotice`。
+pub const REMOTE_ACCESS_STATE_EVENT: &str = "remote-access-state";
 pub const DEFAULT_FAILURE_THRESHOLD: usize = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -231,8 +238,11 @@ impl TokenManager {
                 Ok(value)
             }
             Err(error) => {
-                if is_transport_failure(&error) {
-                    self.record_transport_failure();
+                if counts_toward_offline(&error) {
+                    self.record_failure(speclink_remote::server_reason(&error));
+                } else if server_answered(&error) {
+                    // Server 收到請求並做了裁決：對連線來說和成功一樣，是「在服務」的證據。
+                    self.record_success();
                 }
                 Err(error)
             }
@@ -260,7 +270,9 @@ impl TokenManager {
         self.emit_state(event);
     }
 
-    fn record_transport_failure(&self) {
+    /// 記一次計入離線的失敗。`reason` 是這次失敗裡 Server 回報的原因（沒有就是
+    /// None）；這次失敗使連線進入 offline 時，廣播的訊息帶上它。
+    fn record_failure(&self, reason: Option<&str>) {
         let event = {
             let mut health = self.health.lock().expect("health lock");
             if health.state == ConnectionState::NeedsReauth {
@@ -277,7 +289,10 @@ impl TokenManager {
                     .map(|connection_id| ConnectionStateEvent {
                         connection_id,
                         state: ConnectionState::Offline,
-                        message: Some(OFFLINE_MESSAGE.to_string()),
+                        message: Some(match reason {
+                            Some(reason) => format!("{reason}{OFFLINE_STALE_NOTE}"),
+                            None => OFFLINE_MESSAGE.to_string(),
+                        }),
                     })
             } else {
                 None
@@ -413,10 +428,19 @@ impl TokenManager {
     }
 }
 
-fn is_transport_failure(error: &RemoteError) -> bool {
-    error.status.is_none()
-        && error.reason.is_none()
-        && error.message.starts_with("server unreachable")
+/// 這次失敗算不算離線：連不上 Server，或 Server 有回應但不能服務（500 以上）。
+/// 其他有狀態碼的回應（401、403、404、409…）是 Server 正常的答覆，不算。
+fn counts_toward_offline(error: &RemoteError) -> bool {
+    let unreachable =
+        error.status.is_none() && error.reason.is_none() && error.message.starts_with("server unreachable");
+    unreachable || error.status.is_some_and(|status| status >= 500)
+}
+
+/// 這個錯誤是不是 Server 對請求做出的裁決：有狀態碼而且低於 500（403、404、409…）。
+/// 它表示 Server 在服務，連續失敗因此歸零、offline 的連線回 online。401 不算：它走
+/// 換發與重試，仍是 401 就進入 needs-reauth，不會以「回 online」收場。
+fn server_answered(error: &RemoteError) -> bool {
+    error.status.is_some_and(|status| status < 500 && status != 401)
 }
 
 /// needs-reauth 的拒絕錯誤：繁中訊息＋機讀 reason。
@@ -433,6 +457,16 @@ fn offline_rejected() -> RemoteError {
     RemoteError {
         message: OFFLINE_WRITE_MESSAGE.to_string(),
         reason: Some("offline".to_string()),
+        status: None,
+        evidence: None,
+    }
+}
+
+/// 分頁存取被拒時，寫入要回的拒絕：訊息是 Server 回報的原因，沒有原因時是固定的一句。
+fn access_denied_rejected(reason: Option<String>) -> RemoteError {
+    RemoteError {
+        message: reason.unwrap_or_else(|| DENIED_WRITE_MESSAGE.to_string()),
+        reason: Some("access_denied".to_string()),
         status: None,
         evidence: None,
     }
@@ -1381,6 +1415,7 @@ pub fn open_workspace(
         // 以 handshake 裁定後的 repo 為準（省略 repo 時 server 綁定唯一 repo）。
         repo: binding.repo.key,
         manager: Arc::clone(manager),
+        access: None,
     };
     Ok((workspace, info))
 }
@@ -1483,6 +1518,8 @@ pub struct RemoteWorkspace {
     /// 握手宣告的事件串流（[`stream_of`]）。只有 [`open_workspace`] 握手建立的把手
     /// 才有；[`RemoteWorkspace::at`] 沒有握手，所以是 `None`。
     stream: Option<StreamUrl>,
+    /// 寫入前要問的：這個分頁目前的存取狀態（[`RemoteWorkspace::guarded_by`]）。
+    access: Option<Arc<dyn Fn() -> AccessState + Send + Sync>>,
 }
 
 // 手寫 Debug：TokenManager 持有 bearer，絕不進任何 Debug 輸出。
@@ -1512,6 +1549,24 @@ impl RemoteWorkspace {
             repo: repo.to_string(),
             manager: Arc::clone(manager),
             stream: None,
+            access: None,
+        }
+    }
+
+    /// 讓這個把手的每個寫入先問 `access`（這個分頁目前的存取狀態，正式程式裡是
+    /// 事件管理器的 `access_of`）：被拒時立即拒絕，不送出請求、不排隊。
+    pub fn guarded_by(mut self, access: impl Fn() -> AccessState + Send + Sync + 'static) -> RemoteWorkspace {
+        self.access = Some(Arc::new(access));
+        self
+    }
+
+    /// 寫入的前置檢查：連線可寫（離線與需要重新登入時拒絕），而且這個分頁沒有
+    /// 存取被拒。
+    fn ensure_write_allowed(&self) -> Result<(), RemoteError> {
+        self.manager.ensure_write_allowed()?;
+        match self.access.as_ref().map(|access| access()) {
+            Some(AccessState::Denied { reason }) => Err(access_denied_rejected(reason)),
+            Some(AccessState::Allowed) | None => Ok(()),
         }
     }
 
@@ -1537,9 +1592,8 @@ impl RemoteWorkspace {
         credentials: &dyn CredentialStore,
         call: impl Fn(&Client) -> Result<T, RemoteError>,
     ) -> Result<T, RemoteError> {
-        self.manager.execute_write(credentials, |token| {
-            call(&Client::new(&self.project_base, token, Some(&self.repo)))
-        })
+        self.ensure_write_allowed()?;
+        self.run(credentials, call)
     }
 
     /// 清單同時取 board resource 與 plan 於 Rust 側合併排序（決策 4；
@@ -1669,8 +1723,7 @@ impl RemoteWorkspace {
         fields: &WorkflowPolicyFields,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
-        self.manager
-            .ensure_write_allowed()
+        self.ensure_write_allowed()
             .map_err(RemoteSettingsError::from)?;
         let config = self
             .run(credentials, |client| client.config())
@@ -1694,8 +1747,7 @@ impl RemoteWorkspace {
         name: &str,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
-        self.manager
-            .ensure_write_allowed()
+        self.ensure_write_allowed()
             .map_err(RemoteSettingsError::from)?;
         let config = self
             .run(credentials, |client| client.config())
@@ -1718,8 +1770,7 @@ impl RemoteWorkspace {
         edit: &ContentEdit,
         expected_revision: u64,
     ) -> Result<u64, RemoteSettingsError> {
-        self.manager
-            .ensure_write_allowed()
+        self.ensure_write_allowed()
             .map_err(RemoteSettingsError::from)?;
         let config = self
             .run(credentials, |client| client.config())
@@ -2036,8 +2087,7 @@ impl RemoteWorkspace {
         task_ids: &[String],
         done: bool,
     ) -> Result<usize, SetTasksFailure> {
-        self.manager
-            .ensure_write_allowed()
+        self.ensure_write_allowed()
             .map_err(|error| SetTasksFailure {
                 completed: 0,
                 error,
@@ -2059,8 +2109,7 @@ impl RemoteWorkspace {
         change: &str,
         done: bool,
     ) -> Result<usize, SetTasksFailure> {
-        self.manager
-            .ensure_write_allowed()
+        self.ensure_write_allowed()
             .map_err(|error| SetTasksFailure {
                 completed: 0,
                 error,

@@ -549,3 +549,78 @@ fn a_project_the_caller_is_not_a_member_of_is_still_forbidden() {
     assert_eq!(error.reason, ErrorReason::PermissionDenied);
     assert_eq!(error.message, "actor is not a member of project 'multi'");
 }
+
+// --- spec reference-server「binding 與認證前置 fail closed」: 專案底下的 whoami 不經 repo 裁決 ---
+
+impl Fixture {
+    /// Project `books` with the two repos `erp` and `crm`.
+    fn seed_books(&self) {
+        self.identity.create_project("books", "Books").expect("seed books project");
+        self.identity.create_repo("books", "erp", "erp").expect("seed erp repo");
+        self.identity.create_repo("books", "crm", "crm").expect("seed crm repo");
+    }
+
+    /// A project request with no `X-Speclink-Repo` header.
+    fn unnamed_repo_request(&self, project: &str, token: &str, path: &str) -> Result<ureq::Response, ureq::Error> {
+        ureq::get(&format!("{}/api/speclink/v1/projects/{project}{path}", self.base))
+            .set("Authorization", &format!("Bearer {token}"))
+            .set("X-Speclink-Api-Version", API_VERSION)
+            .call()
+    }
+}
+
+#[test]
+fn the_project_whoami_of_a_two_repo_project_needs_no_repo_header() {
+    let fixture = Fixture::new();
+    fixture.seed_books();
+    let (pat, user_id) = fixture.seed_user("books@example.com", &["books"], false);
+
+    let response = fixture.unnamed_repo_request("books", &pat, "/whoami").expect("whoami succeeds");
+
+    assert_eq!(response.status(), 200);
+    assert!(response.header("etag").is_none(), "the answer comes from no scope, so it has no ETag");
+    let body: serde_json::Value = response.into_json().expect("JSON body");
+    assert_eq!(
+        body,
+        serde_json::json!({
+            "user": { "name": "books@example.com", "handle": user_id },
+            // The identity store lists a project's repos by key.
+            "repos": [{ "name": "crm", "gitUrl": "" }, { "name": "erp", "gitUrl": "" }],
+        })
+    );
+
+    // The same request for the handshake is still refused, and says both ways to name a repo.
+    let (status, error) = error_of(fixture.unnamed_repo_request("books", &pat, "/binding"));
+    assert_eq!(status, 409);
+    assert_eq!(error.reason, ErrorReason::Refused);
+    assert!(
+        error.message.contains("X-Speclink-Repo") && error.message.contains("`remote.repo`"),
+        "{}",
+        error.message
+    );
+}
+
+#[test]
+fn the_project_whoami_does_not_look_at_an_unregistered_repo_header() {
+    let fixture = Fixture::new();
+    fixture.seed_books();
+    let (pat, _) = fixture.seed_user("books@example.com", &["books"], false);
+
+    let response = fixture.project_request("books", "nope", &pat, "/whoami").expect("whoami succeeds");
+
+    assert_eq!(response.status(), 200);
+    let body: serde_json::Value = response.into_json().expect("JSON body");
+    assert_eq!(body["repos"].as_array().map(Vec::len), Some(2));
+}
+
+#[test]
+fn the_project_whoami_of_a_non_member_is_still_forbidden() {
+    let fixture = Fixture::new();
+    fixture.seed_books();
+    let (pat, _) = fixture.seed_user("outsider@example.com", &["demo"], false);
+
+    let (status, error) = error_of(fixture.unnamed_repo_request("books", &pat, "/whoami"));
+
+    assert_eq!(status, 403);
+    assert_eq!(error.reason, ErrorReason::PermissionDenied);
+}

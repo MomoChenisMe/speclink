@@ -637,3 +637,220 @@ fn a_pat_connection_uses_the_pat_as_bearer_without_rotation() {
         "PAT 連線沒有 refresh credential、無 rotation"
     );
 }
+
+// --- 500 以上計入離線、離線訊息帶伺服器的原因（remote-resilience「離線狀態機單一真相且明確呈現」） ---
+
+const MAINTENANCE: &str = r#"{"status":503,"reason":"unavailable","message":"系統維護中"}"#;
+
+fn answered(status: u16, body: &str) -> Result<(), RemoteError> {
+    Err(speclink_remote::translate_protocol_error(status, body))
+}
+
+/// 一條門檻為預設值（連續 3 次）的連線，狀態事件送進回傳的 channel。
+fn watched_connection() -> (TokenManager, MemoryCredentialStore, std::sync::mpsc::Receiver<ConnectionStateEvent>) {
+    let (notify, rx) = state_sink();
+    let manager = TokenManager::with_connection_state(
+        "http://server.test",
+        "conn_x",
+        speclink_desktop_lib::remote::DEFAULT_FAILURE_THRESHOLD,
+        notify,
+    );
+    manager.adopt_access_token("pat");
+    (manager, MemoryCredentialStore::new(), rx)
+}
+
+#[test]
+fn three_503_responses_in_a_row_go_offline_and_the_message_carries_the_servers_reason() {
+    let (manager, store, rx) = watched_connection();
+
+    for _ in 0..2 {
+        manager.execute(&store, |_| answered(503, MAINTENANCE)).expect_err("503");
+    }
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "未達門檻不廣播 offline");
+
+    manager.execute(&store, |_| answered(503, MAINTENANCE)).expect_err("503");
+    let offline = rx.recv_timeout(Duration::from_secs(1)).expect("第三次廣播 offline");
+    assert_eq!(offline.state, ConnectionState::Offline);
+    assert_eq!(offline.message.as_deref(), Some("系統維護中——顯示最後成功載入的內容"));
+
+    manager.execute(&store, |_| Ok(())).expect("Server 恢復");
+    assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("online").state, ConnectionState::Online);
+}
+
+#[test]
+fn a_5xx_with_no_server_reason_goes_offline_with_the_fixed_message() {
+    let (manager, store, rx) = watched_connection();
+
+    for _ in 0..3 {
+        manager.execute(&store, |_| answered(502, "<html>Bad Gateway</html>")).expect_err("502");
+    }
+
+    let offline = rx.recv_timeout(Duration::from_secs(1)).expect("offline");
+    assert_eq!(offline.state, ConnectionState::Offline);
+    assert_eq!(offline.message.as_deref(), Some("此連線目前離線——顯示最後成功載入的內容"));
+}
+
+#[test]
+fn a_single_503_followed_by_a_success_stays_online() {
+    let (manager, store, rx) = watched_connection();
+
+    // 成功把連續失敗歸零：503、成功、503、503 仍未達三次。
+    manager.execute(&store, |_| answered(503, MAINTENANCE)).expect_err("503");
+    manager.execute(&store, |_| Ok(())).expect("成功");
+    for _ in 0..2 {
+        manager.execute(&store, |_| answered(503, MAINTENANCE)).expect_err("503");
+    }
+
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "沒有任何狀態事件");
+    assert_eq!(manager.connection_state(), ConnectionState::Online);
+}
+
+#[test]
+fn responses_with_a_status_below_500_do_not_count_toward_offline() {
+    let (manager, store, rx) = watched_connection();
+
+    for (status, body) in [
+        (403, r#"{"status":403,"reason":"permission_denied","message":"帳號已停用"}"#),
+        (404, r#"{"status":404,"reason":"not_found","message":"Change 'x' not found."}"#),
+        (409, r#"{"status":409,"reason":"refused","message":"held"}"#),
+    ] {
+        for _ in 0..3 {
+            manager.execute(&store, |_| answered(status, body)).expect_err("有狀態碼的回應");
+        }
+    }
+
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "沒有任何狀態事件");
+    assert_eq!(manager.connection_state(), ConnectionState::Online);
+}
+
+// --- 被拒登記擋下寫入（remote-resilience「存取被拒的狀態跟著分頁」） ---
+
+#[test]
+fn a_write_to_a_denied_tab_is_refused_before_the_server_and_other_tabs_still_write() {
+    use speclink_desktop_lib::event_manager::AccessState;
+
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let pat = common::pat_of(&h);
+    store.set(&h.origin, CredentialKind::Pat, &pat).expect("set PAT");
+    let manager = Arc::new(TokenManager::with_connection_state(&h.origin, "conn_x", 1, |_| {}));
+    manager.adopt_access_token(&pat);
+    // 這個分頁目前的存取狀態；正式程式裡是事件管理器對這個分頁的答案。
+    let access = Arc::new(Mutex::new(AccessState::Allowed));
+    let asked = access.clone();
+    let tab = RemoteWorkspace::at(&h.origin, "demo", "backend", &manager)
+        .guarded_by(move || asked.lock().unwrap().clone());
+    let set = |state: AccessState| *access.lock().unwrap() = state;
+    let first_task = |tab: &RemoteWorkspace| {
+        let tasks = tab.document(&store, "demo", "tasks.md").expect("讀取照常").content;
+        tasks.lines().next().unwrap_or_default().to_string()
+    };
+
+    set(AccessState::Denied { reason: Some("帳號已停用".to_string()) });
+    let refused = tab.set_task_done(&store, "demo", "1", true).expect_err("被拒的分頁寫入立即拒絕");
+    assert_eq!(refused.reason.as_deref(), Some("access_denied"));
+    assert_eq!(refused.message, "帳號已停用");
+    assert_eq!(refused.status, None, "沒有請求送出");
+    // 這個使用者其實仍是成員：請求若送到 Server 就會成功。內容沒變＝Server 沒有收到。
+    assert_eq!(first_task(&tab), "- [ ] 1.1 First");
+
+    // 沒有原因時是固定的一句。
+    set(AccessState::Denied { reason: None });
+    let refused = tab.set_task_done(&store, "demo", "1", true).expect_err("仍被拒");
+    assert_eq!(refused.reason.as_deref(), Some("access_denied"));
+    assert!(refused.message.contains("沒有存取權限"), "{}", refused.message);
+
+    // 同一條連線上另一個分頁（它的狀態是沒有被拒）不受影響。
+    let other = RemoteWorkspace::at(&h.origin, "demo", "backend", &manager).guarded_by(|| AccessState::Allowed);
+    other.set_task_done(&store, "demo", "2", true).expect("另一個分頁照常寫入");
+
+    // 解除之後恢復寫入。
+    set(AccessState::Allowed);
+    tab.set_task_done(&store, "demo", "1", true).expect("解除後寫入");
+    // 引擎在第一次寫入時替任務補上識別碼，所以只比開頭。
+    assert!(first_task(&tab).starts_with("- [x] 1.1 First"), "{}", first_task(&tab));
+}
+
+#[test]
+fn a_settings_write_to_a_denied_tab_sends_no_request_at_all() {
+    use speclink_desktop_lib::event_manager::AccessState;
+
+    // 流程設定的寫入是「先讀全文、再寫回」。被拒時連那一次讀取也不送：Server 停著，
+    // 送了就會是連不上的錯誤，而不是 access_denied。
+    let h = harness();
+    let store = MemoryCredentialStore::new();
+    let pat = common::pat_of(&h);
+    store.set(&h.origin, CredentialKind::Pat, &pat).expect("set PAT");
+    let manager = Arc::new(TokenManager::with_connection_state(&h.origin, "conn_x", 3, |_| {}));
+    manager.adopt_access_token(&pat);
+    let tab = RemoteWorkspace::at(&h.origin, "demo", "backend", &manager)
+        .guarded_by(|| AccessState::Denied { reason: Some("帳號已停用".to_string()) });
+    h.server.stop();
+
+    let refused = tab.write_workflow_schema(&store, "spec-driven", 1).expect_err("被拒的分頁寫入立即拒絕");
+
+    assert_eq!(refused.reason.as_deref(), Some("access_denied"));
+    assert_eq!(refused.message, "帳號已停用");
+    assert_eq!(manager.connection_state(), ConnectionState::Online, "沒有請求送出，連線狀態不變");
+}
+
+// --- Server 以低於 500 的狀態碼回應也算連線恢復（remote-resilience「離線狀態機單一真相且明確呈現」） ---
+
+#[test]
+fn an_offline_connection_returns_online_when_the_server_answers_below_500() {
+    for (status, body) in [
+        (403, r#"{"status":403,"reason":"permission_denied","message":"帳號已停用"}"#),
+        (404, r#"{"status":404,"reason":"not_found","message":"Change 'x' not found."}"#),
+        (409, r#"{"status":409,"reason":"refused","message":"held"}"#),
+    ] {
+        let (manager, store, rx) = watched_connection();
+        for _ in 0..3 {
+            manager.execute(&store, |_| answered(503, MAINTENANCE)).expect_err("503");
+        }
+        assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("offline").state, ConnectionState::Offline);
+
+        // Server 回來了，但對這個請求的答覆是拒絕：錯誤照常回給呼叫端，連線回 online。
+        let refused = manager.execute(&store, |_| answered(status, body)).expect_err("有狀態碼的回應");
+        assert_eq!(refused.status, Some(status));
+        let online = rx.recv_timeout(Duration::from_secs(1)).unwrap_or_else(|_| panic!("{status} 之後廣播 online"));
+        assert_eq!(online.state, ConnectionState::Online, "{status}");
+        assert_eq!(online.connection_id, "conn_x");
+        assert_eq!(manager.connection_state(), ConnectionState::Online, "{status}");
+    }
+}
+
+#[test]
+fn an_answer_below_500_resets_the_run_of_failures() {
+    let (manager, store, rx) = watched_connection();
+    let not_found = r#"{"status":404,"reason":"not_found","message":"Change 'x' not found."}"#;
+
+    // 503、503、404、503、503：404 之後連續失敗從零重新計算，後面兩次未達三次。
+    for (status, body) in [(503, MAINTENANCE), (503, MAINTENANCE), (404, not_found), (503, MAINTENANCE), (503, MAINTENANCE)] {
+        manager.execute(&store, |_| answered(status, body)).expect_err("有狀態碼的回應");
+    }
+
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "沒有任何狀態事件");
+    assert_eq!(manager.connection_state(), ConnectionState::Online);
+}
+
+#[test]
+fn a_connection_that_needs_reauth_is_not_brought_online_by_a_403() {
+    let (notify, rx) = state_sink();
+    let manager = TokenManager::with_connection_state("http://server.test", "conn_x", 1, notify);
+    let store = MemoryCredentialStore::new();
+    store.set("http://server.test", CredentialKind::Pat, "spk_pat_dead").expect("set PAT");
+    manager.adopt_access_token("spk_pat_dead");
+    let unauthorized = || -> Result<(), RemoteError> {
+        Err(RemoteError { message: "unauthorized".into(), reason: Some("permission_denied".into()), status: Some(401), evidence: None })
+    };
+
+    // 401 不走「低於 500 即恢復」：換發後仍是 401 就進入 needs-reauth。
+    manager.execute(&store, |_| unauthorized()).expect_err("兩次 401");
+    assert_eq!(rx.recv_timeout(Duration::from_secs(1)).expect("needs-reauth").state, ConnectionState::NeedsReauth);
+
+    manager
+        .execute(&store, |_| answered(403, r#"{"status":403,"reason":"permission_denied","message":"x"}"#))
+        .expect_err("needs-reauth 時直接拒絕");
+    assert!(rx.recv_timeout(Duration::from_millis(50)).is_err(), "沒有 online 事件");
+    assert_eq!(manager.connection_state(), ConnectionState::NeedsReauth);
+}

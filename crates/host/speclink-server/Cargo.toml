@@ -18,7 +18,7 @@ speclink-store-port-fs = { path = "../../store/speclink-store-port-fs" }
 speclink-store-port-postgres = { path = "../../store/speclink-store-port-postgres" }
 axum = "0.8"
 async-stream = "0.3"
-tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "net", "macros", "signal", "sync", "time"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

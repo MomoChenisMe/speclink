@@ -521,3 +521,121 @@ fn link_in_a_non_git_dir_skips_the_reference_check() {
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     assert!(!stderr_of(&out).contains("fork"), "non-git dir → silence: {}", stderr_of(&out));
 }
+
+// --- a project with several repos (spec remote-connection「remote 初始化與連接指令」) ---
+
+const WHOAMI_ERP_CRM: &str = r#"{"user":{"id":"u1","name":"王小明","handle":"xiaoming"},"project":"demo","repos":[{"name":"erp"},{"name":"crm"}]}"#;
+
+#[test]
+fn link_to_a_project_of_several_repos_with_a_named_repo_succeeds() {
+    let mock = whoami_server(200, WHOAMI_ERP_CRM);
+    let env = TempEnv::new("link-multi-named");
+    let out = env.run(&["link", &mock.base, "--repo", "crm"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(
+        stdout_of(&out),
+        format!("✓ Repo 'crm' is registered in this project\n✓ Linked to {}\n", mock.base)
+    );
+    let yaml = std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect("remote section written");
+    assert!(yaml.contains(&mock.base) && yaml.contains("repo: crm"), "{yaml}");
+}
+
+#[test]
+fn link_to_a_project_of_several_repos_with_an_unknown_repo_lists_them() {
+    let mock = whoami_server(200, WHOAMI_ERP_CRM);
+    let env = TempEnv::new("link-multi-unknown");
+    let out = env.run(&["link", &mock.base, "--repo", "nope"], Some("tok"));
+    assert!(!out.status.success(), "an unknown repo must fail");
+    assert_eq!(
+        stderr_of(&out),
+        "Error: repo 'nope' is not registered in this project (available: erp, crm)\n"
+    );
+    assert!(!env.has_remote_section(), "no remote section on failed validation");
+}
+
+#[test]
+fn link_to_a_project_of_several_repos_without_a_named_repo_asks_for_one() {
+    let mock = whoami_server(200, WHOAMI_ERP_CRM);
+    let env = TempEnv::new("link-multi-unnamed");
+    let before = "tools:\n- claude\n";
+    std::fs::write(env.dir.join(".speclink.yaml"), before).unwrap();
+
+    let out = env.run(&["link", &mock.base], Some("tok"));
+
+    assert!(!out.status.success(), "several repos and no --repo must fail");
+    assert!(stdout_of(&out).is_empty(), "stdout: {}", stdout_of(&out));
+    assert_eq!(
+        stderr_of(&out),
+        format!(
+            "Error: this project registers multiple repos — run `speclink link {} --repo <key>` with one of: erp, crm\n",
+            mock.base
+        )
+    );
+    assert_eq!(std::fs::read_to_string(env.dir.join(".speclink.yaml")).unwrap(), before, ".speclink.yaml 不變");
+
+    // `--no-color` changes no word of it.
+    let plain = env.run(&["--no-color", "link", &mock.base], Some("tok"));
+    assert_eq!(stderr_of(&plain), stderr_of(&out));
+}
+
+#[test]
+fn link_to_a_project_of_one_repo_without_a_named_repo_still_links() {
+    let mock = whoami_server(200, WHOAMI_WITH_GITURL);
+    let env = TempEnv::new("link-single-unnamed");
+    let out = env.run(&["link", &mock.base], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(stdout_of(&out), format!("✓ Linked to {}\n", mock.base));
+    assert!(stderr_of(&out).is_empty(), "stderr: {}", stderr_of(&out));
+    assert!(env.has_remote_section());
+}
+
+#[test]
+fn init_remote_to_a_project_of_several_repos_without_a_named_repo_initializes_then_fails() {
+    let mock = whoami_server(200, WHOAMI_ERP_CRM);
+    let env = TempEnv::new("init-multi-unnamed");
+
+    let out = env.run(&["init", "--store", "remote", "--url", &mock.base, "--tools", "claude"], Some("tok"));
+
+    assert!(!out.status.success(), "several repos and no --repo must end non-zero");
+    // The initialization ran first, in its usual order, and stays.
+    assert!(env.dir.join(".claude").join("skills").is_dir(), "skills installed");
+    assert!(env.dir.join(".gitignore").is_file(), ".gitignore written");
+    let yaml = std::fs::read_to_string(env.dir.join(".speclink.yaml")).expect("app config written");
+    assert!(yaml.contains(&mock.base), "the remote url is written: {yaml}");
+    assert!(stdout_of(&out).contains("Initialized at"), "stdout: {}", stdout_of(&out));
+    let stderr = stderr_of(&out);
+    for part in ["speclink link", "--repo", "erp", "crm"] {
+        assert!(stderr.contains(part), "stderr names {part}: {stderr}");
+    }
+}
+
+/// The env-token layer of the two `auth status` cases; the keychain layer and
+/// the exact lines are pinned at the function level in `src/verbs/connection.rs`.
+#[test]
+fn auth_status_in_a_project_of_several_repos_exits_zero_with_or_without_a_repo() {
+    let mock = whoami_server(200, WHOAMI_ERP_CRM);
+
+    let named = TempEnv::new("status-multi-named").with_connection(&mock.base, Some("crm"));
+    let out = named.run(&["auth", "status"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert!(stdout_of(&out).contains("Repo 'crm' is registered in this project"), "{}", stdout_of(&out));
+
+    let unnamed = TempEnv::new("status-multi-unnamed").with_connection(&mock.base, None);
+    let out = unnamed.run(&["auth", "status"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let stdout = stdout_of(&out);
+    let hint: Vec<&str> = stdout.lines().filter(|line| line.starts_with("! ")).collect();
+    assert_eq!(hint.len(), 1, "one hint line: {stdout}");
+    for part in ["--repo", "erp", "crm"] {
+        assert!(hint[0].contains(part), "the hint names {part}: {stdout}");
+    }
+
+    // `--json` carries the three fields and nothing about the repos.
+    let out = unnamed.run(&["auth", "status", "--json"], Some("tok"));
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let payload: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("one JSON object");
+    assert_eq!(
+        payload,
+        serde_json::json!({ "user": { "name": "王小明", "handle": "xiaoming" }, "credentialSource": "env" })
+    );
+}

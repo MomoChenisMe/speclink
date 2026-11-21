@@ -700,7 +700,7 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     const unsubscribe = session.events.subscribe(() => {
       fired += 1;
     });
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(calls.map((c) => c.cmd)).toContain("remote_watch");
     expect(calls.find((c) => c.cmd === "remote_watch")?.args).toMatchObject({
       connectionId: CONN,
@@ -714,10 +714,44 @@ describe("createRemoteSession（決策 6/7：handshake 結果建 session）", ()
     expect(fired).toBe(1);
 
     unsubscribe();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(calls.map((c) => c.cmd)).toContain("remote_unwatch");
     handlers.get("remote-workspace-changed")?.({ payload: session.id });
     expect(fired).toBe(1);
+  });
+
+  it("events subscribe 先掛好三個 listener 才開始監看；還沒掛好就解除時仍是先 watch 再 unwatch", async () => {
+    // worker 的第一則通知（例如加入既有訂閱時重送的「存取被拒」）不能早於 listener。
+    const { calls, invoke } = fakeInvoke();
+    const ready: Array<() => void> = [];
+    const listened: string[] = [];
+    const listen = (event: string) =>
+      new Promise<() => void>((resolve) => {
+        listened.push(event);
+        ready.push(() => resolve(() => {}));
+      });
+    const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+    const session = createRemoteSession(CONN, openInfo(), undefined, { invoke, listen });
+
+    const unsubscribe = session.events.subscribe(() => {});
+    await flush();
+    expect(listened.sort()).toEqual([
+      "remote-access-state",
+      "remote-connection-state",
+      "remote-workspace-changed",
+    ]);
+    expect(calls.some((c) => c.cmd === "remote_watch")).toBe(false);
+
+    unsubscribe();
+    await flush();
+    expect(calls.some((c) => c.cmd === "remote_unwatch")).toBe(false);
+
+    ready.forEach((resolve) => resolve());
+    await flush();
+    expect(calls.map((c) => c.cmd).filter((cmd) => cmd.startsWith("remote_"))).toEqual([
+      "remote_watch",
+      "remote_unwatch",
+    ]);
   });
 
   it("local sessions 除 RemoteOnly 的 claim 外全真（決策 2：同一 UI 路徑）", () => {

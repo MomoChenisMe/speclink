@@ -979,6 +979,60 @@ describe("TrayPanel 狀態語意色（spec「介面狀態語意色分層」）",
     expect(button.getAttribute("tabindex")).toBe("-1");
   });
 
+  // spec tray-status-menu「系統匣標示存取被拒」
+  it("存取被拒的 tab：警示三角形與紅色的「沒有存取權限」，不只靠顏色", () => {
+    renderTab({ status: "access-denied" });
+    const tab = screen.getByTestId("panel-project-remote:c1/demo/backend");
+    expect(tab.getAttribute("data-status")).toBe("access-denied");
+    expect(tab.getAttribute("aria-label")).toContain("沒有存取權限");
+    expect(tab.querySelector("[data-project-tile] svg.lucide-triangle-alert")).toBeTruthy();
+    const label = within(tab).getByText("沒有存取權限");
+    expect(label.className).toContain(SEMANTIC_TONE.danger);
+    expect(label.className).not.toContain("status-warning");
+  });
+
+  it("作用中專案存取被拒：紅色狀態卡、沒有重新登入鈕、保留最後成功的內容、不改成復原卡", () => {
+    renderTab({ status: "access-denied" });
+    const stale = screen.getByTestId("panel-stale-status");
+    expect(stale.getAttribute("data-status")).toBe("access-denied");
+    expect(stale.className.split(/\s+/)).toEqual(
+      expect.arrayContaining(["rounded-xl", "border", ...SEMANTIC_SURFACE.danger.split(" ")]),
+    );
+    expect(stale.className).not.toContain("status-warning");
+    expect(stale.querySelector("svg.lucide-triangle-alert")).toBeTruthy();
+    expect(stale.querySelector("svg.lucide-cloud-off")).toBeNull();
+    expect(stale.textContent).toContain("沒有存取權限");
+    expect(stale.textContent).toContain("stale · 顯示最後成功資料");
+    expect(within(stale).queryByRole("button")).toBeNull();
+    expect(screen.queryByTestId("panel-recovery-card")).toBeNull();
+    // 生命週期與討論區塊仍是最後成功的內容。
+    expect(screen.getByText("inprog")).toBeTruthy();
+    expect(screen.getByText("d1")).toBeTruthy();
+  });
+
+  it("存取被拒解除後：tab 回到 ready 的呈現，紅色狀態卡消失", () => {
+    const panel = renderTab({ status: "access-denied" });
+    panel.pushSnapshot(
+      snapshot({
+        tabs: [remoteTab({ status: "ready" })],
+        activeKey: "remote:c1/demo/backend",
+      } as unknown as Partial<TraySnapshot>),
+    );
+    const tab = screen.getByTestId("panel-project-remote:c1/demo/backend");
+    expect(tab.getAttribute("data-status")).toBe("ready");
+    expect(within(tab).queryByText("沒有存取權限")).toBeNull();
+    expect(tab.querySelector("svg.lucide-triangle-alert")).toBeNull();
+    expect(screen.queryByTestId("panel-stale-status")).toBeNull();
+  });
+
+  it("離線的狀態卡維持琥珀與 cloud-off（存取被拒的紅色不外溢）", () => {
+    renderTab({ status: "offline" });
+    const stale = screen.getByTestId("panel-stale-status");
+    expect(stale.className.split(/\s+/)).toEqual(expect.arrayContaining(SEMANTIC_SURFACE.warning.split(" ")));
+    expect(stale.querySelector("svg.lucide-cloud-off")).toBeTruthy();
+    expect(stale.querySelector("svg.lucide-triangle-alert")).toBeNull();
+  });
+
   it("復原卡為白底卡＋語意色邊框，資訊區淡灰底，動作鈕為共用 Button（主要實心、次要 outline）", () => {
     renderTab({ status: "error", failureKind: "unreachable" });
     const card = screen.getByTestId("panel-recovery-card");

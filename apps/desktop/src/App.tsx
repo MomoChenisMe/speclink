@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { invoke } from "@tauri-apps/api/core";
 import { emit } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CloudOff, MoreHorizontal } from "lucide-react";
+import { AlertTriangle, CloudOff, MoreHorizontal } from "lucide-react";
 import {
   KanbanBoard,
   RoadmapView,
@@ -51,7 +51,7 @@ import {
   selectAssetPrompt,
   type AppState,
 } from "./store";
-import { locatorKey, type WorkspaceSession } from "./session";
+import { locatorKey, remoteWorkspaceStatus, type WorkspaceSession } from "./session";
 import { initTray, type TrayController } from "./tray";
 import { installDeepLinks } from "./deepLink";
 import { installAppMenu, type AppMenuAction } from "./appMenu";
@@ -353,9 +353,10 @@ function AppInner({
     activeSession?.locator.kind === "remote" &&
     connectionState !== undefined &&
     connectionState.state !== "online";
-  const sessionConnectionStates = Object.fromEntries(
-    Object.entries(s.sessions).map(([key, session]) => [key, session.connectionState]),
-  );
+  // 作用中分頁要在看板上方提示的狀態（單一裁決 remoteWorkspaceStatus）：連線層的
+  // offline／needs-reauth 先於分頁層的 access-denied，同時只呈現一種。
+  const bannerStatus = activeSession ? remoteWorkspaceStatus(activeSession, undefined) : "ready";
+  const accessDenied = bannerStatus === "access-denied" ? activeSession?.accessDenied : undefined;
   const servers = connections && {
     connections: s.connections,
     phases: s.connectionPhases,
@@ -443,9 +444,12 @@ function AppInner({
   useEffect(() => {
     setAppT(t);
   }, [t]);
-  // 寫入面的停用說明（server-reader-write-guard D5）：離線時是連線原因；連線
-  // 正常仍停用的寫入只剩角色原因——server 對 reader 的每個寫入都回 403。
-  const writeDisabledReason = t(stale ? "remote.writeUnavailable" : "remote.readerRole");
+  // 寫入面的停用說明（server-reader-write-guard D5）：離線時是連線原因；這個分頁
+  // 存取被拒時是存取原因；兩者皆非仍停用的寫入只剩角色原因——server 對 reader 的
+  // 每個寫入都回 403。
+  const writeDisabledReason = t(
+    stale ? "remote.writeUnavailable" : accessDenied ? "remote.writeDenied" : "remote.readerRole",
+  );
 
   // 看板拖曳手勢讓路（design D6、TaskList 同款）：手勢中暫緩 workspace-changed
   // 的整批 refresh（避免拖曳中卡片重排打斷手勢），放開後補跑一次。
@@ -501,6 +505,9 @@ function AppInner({
     const st = useStore.getState();
     const session = st.activeKey ? st.sessions[st.activeKey] : undefined;
     if (!session) return;
+    // 存取被拒只由作用中分頁的 worker 判定。重新訂閱會開一個新的 worker，所以先清掉
+    // 上次留下的狀態、由它重新判定——仍被拒的話，第一輪輪詢就會再送來。
+    st.applyRemoteAccessState({ key: session.id, denied: false, message: null });
     return session.events.subscribe(
       () => {
         // 監看重掛先於刷新（worktree 增減會改變監看拓撲；目標不變時 Rust 端
@@ -521,6 +528,8 @@ function AppInner({
         // 驅動全量 Query 重查，使用者不需再等下一筆 SSE 或手動重整。
         if (event.state === "online") void store.refresh();
       },
+      // 解除時 Rust 的 worker 另外發一次 remote-workspace-changed，重查走上面那條。
+      (event) => useStore.getState().applyRemoteAccessState(event),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useStore, s.activeKey, s.sessionEpoch]);
@@ -1139,7 +1148,7 @@ function AppInner({
             activeKey={s.activeKey}
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
-            connectionStates={sessionConnectionStates}
+            sessions={s.sessions}
             connectionNames={connectionNames}
             pendingKey={s.pendingTabKey}
             assetPrompts={s.assetPrompts}
@@ -1207,31 +1216,49 @@ function AppInner({
           }
         />
 
-          {stale && connectionState && (
+          {(bannerStatus === "offline" ||
+            bannerStatus === "needs-reauth" ||
+            bannerStatus === "access-denied") && (
             <div
               role="status"
               data-testid="remote-stale-banner"
-              data-connection-state={connectionState.state}
+              data-connection-state={bannerStatus}
               className={cn(
                 "flex min-h-10 shrink-0 items-center gap-2 border-b px-4 py-2",
-                SEMANTIC_SURFACE.warning,
+                accessDenied ? SEMANTIC_SURFACE.danger : SEMANTIC_SURFACE.warning,
               )}
             >
-              <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
+              {accessDenied ? (
+                <AlertTriangle className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.danger)} />
+              ) : (
+                <CloudOff className={cn("h-4 w-4 shrink-0", SEMANTIC_TONE.warning)} />
+              )}
               <div className="min-w-0 text-xs">
                 <span className="font-semibold">
-                  {connectionState.state === "needs-reauth"
-                    ? t("remote.reauthTitle")
-                    : t("remote.offlineTitle")}
+                  {accessDenied
+                    ? t("remote.recovery.access-deniedTitle")
+                    : bannerStatus === "needs-reauth"
+                      ? t("remote.reauthTitle")
+                      : t("remote.offlineTitle")}
                 </span>
-                <span className="ml-2 text-muted-foreground">
-                  {connectionState.message ?? t("remote.staleHint")}
-                </span>
+                {accessDenied ? (
+                  <>
+                    {/* Server 回報的原因原樣顯示、不翻譯；沒有原因時用固定的說明。 */}
+                    <span className="ml-2 text-muted-foreground">
+                      {accessDenied.message ?? t("remote.recovery.access-deniedDesc")}
+                    </span>
+                    <span className="ml-2 text-muted-foreground">{t("remote.deniedHint")}</span>
+                  </>
+                ) : (
+                  <span className="ml-2 text-muted-foreground">
+                    {connectionState?.message ?? t("remote.staleHint")}
+                  </span>
+                )}
               </div>
               <span className="ml-auto rounded border border-border bg-background/60 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                 stale
               </span>
-              {connectionState.state === "needs-reauth" && (
+              {bannerStatus === "needs-reauth" && connectionState && (
                 <Button
                   type="button"
                   variant="outline"

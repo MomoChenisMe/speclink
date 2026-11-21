@@ -254,3 +254,75 @@ fn err_envelope_less_401_and_404_keep_their_status_fallbacks() {
         err.message
     );
 }
+
+// --- spec remote-connection「Server 回報暫時無法服務時顯示它的原因」 ---
+
+const CHECK_URL: &str =
+    "server unavailable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)";
+
+/// The error of one `list_changes` against a server that answers `status` and `body`.
+fn error_of(status: u16, body: &'static str) -> speclink_remote::RemoteError {
+    let (base, _rx) = serve_once(status, body);
+    Client::new(&base, "tok", Some("backend")).list_changes().unwrap_err()
+}
+
+/// The example table of the requirement, one row per case.
+#[test]
+fn err_5xx_shows_the_servers_reason_only_when_the_envelope_says_unavailable() {
+    let rows: [(u16, &'static str, &str); 4] = [
+        (503, r#"{"status":503,"reason":"unavailable","message":"資料庫切換中"}"#, "server unavailable — 資料庫切換中"),
+        (503, r#"{"status":503,"reason":"unavailable","message":""}"#, CHECK_URL),
+        (500, r#"{"status":500,"reason":"internal","message":"boom"}"#, CHECK_URL),
+        (502, "<html><body>Bad Gateway</body></html>", CHECK_URL),
+    ];
+    for (status, body, message) in rows {
+        let err = error_of(status, body);
+        assert_eq!(err.message, message, "{status} {body}");
+        // The fields keep their values: no reason, and the status the server sent.
+        assert_eq!((err.reason.as_deref(), err.status), (None, Some(status)), "{status} {body}");
+    }
+}
+
+#[test]
+fn err_connection_refused_keeps_its_message_to_the_letter() {
+    let port = {
+        let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        l.local_addr().unwrap().port()
+    };
+    let base = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
+    let err = Client::new(&base, "tok", Some("backend")).list_changes().unwrap_err();
+    assert_eq!(
+        err.message,
+        "server unreachable — check the connection url (`remote.url` in .speclink.yaml or SPECLINK_STORE_URL)"
+    );
+}
+
+#[test]
+fn the_servers_reason_comes_back_out_of_the_two_sentences_that_carry_it() {
+    let denied = error_of(403, r#"{"status":403,"reason":"permission_denied","message":"帳號已停用"}"#);
+    assert_eq!(denied.message, "access denied — 帳號已停用; ask a project admin");
+    assert_eq!(speclink_remote::server_reason(&denied), Some("帳號已停用"));
+
+    let down = error_of(503, r#"{"status":503,"reason":"unavailable","message":"系統維護中，預計 10 分鐘後恢復"}"#);
+    assert_eq!(down.message, "server unavailable — 系統維護中，預計 10 分鐘後恢復");
+    assert_eq!(speclink_remote::server_reason(&down), Some("系統維護中，預計 10 分鐘後恢復"));
+}
+
+#[test]
+fn an_error_that_carries_no_server_reason_gives_none() {
+    let cases: [(u16, &'static str); 6] = [
+        // The fixed sentence of a 5xx is the client's own text.
+        (502, "<html></html>"),
+        (503, r#"{"status":503,"reason":"unavailable","message":""}"#),
+        // A 403 with nothing readable, or with an empty message.
+        (403, "nope"),
+        (403, r#"{"status":403,"reason":"permission_denied","message":""}"#),
+        // Other sentences relay or replace the server's text; they are not these two.
+        (401, r#"{"status":401,"reason":"permission_denied","message":"token expired"}"#),
+        (404, r#"{"status":404,"reason":"not_found","message":"access denied — x; ask a project admin"}"#),
+    ];
+    for (status, body) in cases {
+        assert_eq!(speclink_remote::server_reason(&error_of(status, body)), None, "{status} {body}");
+    }
+    assert_eq!(speclink_remote::server_reason(&speclink_remote::translate_transport()), None);
+}

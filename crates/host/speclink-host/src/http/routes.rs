@@ -6,7 +6,7 @@ use super::error::HttpError;
 use super::wire;
 use super::{HttpRequest, HttpResponse};
 use crate::documents::{self, ContextOutcome};
-use crate::kit::{Caller, HostKit, ProjectEntry, RepoEntry, RunOptions};
+use crate::kit::{Caller, HostKit, Identity, ProjectEntry, RepoEntry, RunOptions};
 use crate::port_exec::{self, AtVersion, ExecError, PortExecution};
 use crate::transfer::{self, SentBundle, TransferError, UnreadBundle};
 use serde::de::DeserializeOwned;
@@ -59,6 +59,10 @@ pub(crate) struct Request<'a> {
 }
 
 pub(crate) type Handler = fn(&Request<'_>) -> Result<HttpResponse, HttpError>;
+
+/// A handler the door runs for the project, before it chooses a repo: it gets
+/// the caller and the project, and no scope.
+pub(crate) type ProjectHandler = fn(&Identity, &ProjectEntry) -> HttpResponse;
 
 impl Request<'_> {
     pub(super) fn port(&self) -> &dyn StorePort {
@@ -194,14 +198,14 @@ pub(crate) fn sync_state(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     Ok(ok(&serde_json::json!({}), etag))
 }
 
-/// `GET /whoami`: the identity, and the project's repos by key.
-pub(crate) fn whoami(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let identity = &req.caller.identity;
+/// `GET /whoami`: the identity, and the project's repos by key. The answer
+/// comes from the host's scope function and from no scope, so it has no ETag.
+pub(crate) fn whoami(identity: &Identity, project: &ProjectEntry) -> HttpResponse {
     let dto = WhoamiResponse {
         user: WhoamiUser { name: identity.shown_name().to_string(), handle: identity.id().to_string() },
-        repos: req.project.repos.iter().map(|r| WhoamiRepo { name: r.key.clone(), git_url: String::new() }).collect(),
+        repos: project.repos.iter().map(|r| WhoamiRepo { name: r.key.clone(), git_url: String::new() }).collect(),
     };
-    Ok(ok(&dto, req.etag_now()?))
+    HttpResponse::json(200, &dto)
 }
 
 // --- the workflow config ---

@@ -150,16 +150,25 @@ pub(crate) fn remote_resolve_change(
 
 // --- repo 歸屬驗證：init 的 remote 初始化與 connection 的 link／auth 共用 ---
 
-/// Check the declared repo against the server's registry (`whoami.repos[]`).
-pub(crate) fn ensure_repo_registered(whoami: &protocol_query::WhoamiResponse, repo: &str) -> Result<()> {
+/// Check the repo a checkout declares (`repo`, or none) against the project's
+/// registry (`whoami.repos[]`). It fails in two cases, each with a message
+/// that lists the registered names: a declared repo that is not registered,
+/// and no declared repo in a project that registers several — the server
+/// never chooses one. `url` is the project url the message's `speclink link`
+/// command repeats. `link`, `init --store remote` and `auth status` share it.
+pub(crate) fn check_repo(whoami: &protocol_query::WhoamiResponse, url: &str, repo: Option<&str>) -> Result<()> {
     let names: Vec<&str> = whoami.repos.iter().map(|r| r.name.as_str()).collect();
-    if names.iter().any(|n| *n == repo) {
-        return Ok(());
+    match repo {
+        Some(repo) if !names.contains(&repo) => bail!(
+            "repo '{repo}' is not registered in this project (available: {})",
+            names.join(", ")
+        ),
+        None if names.len() > 1 => bail!(
+            "this project registers multiple repos — run `speclink link {url} --repo <key>` with one of: {}",
+            names.join(", ")
+        ),
+        _ => Ok(()),
     }
-    bail!(
-        "repo '{repo}' is not registered in this project (available: {})",
-        names.join(", ")
-    )
 }
 /// Post-init/link validation: immediate when credentials exist, deferred with
 /// a login hint otherwise.
@@ -171,8 +180,8 @@ pub(crate) fn validate_or_defer(root: &std::path::Path, url: &str, repo: Option<
         Some(resolved) => {
             let token = resolved.token;
             let whoami = RemoteClient::new(url, &token, None).whoami()?;
+            check_repo(&whoami, url, repo)?;
             if let Some(repo) = repo {
-                ensure_repo_registered(&whoami, repo)?;
                 println!("{} Repo '{repo}' is registered in this project", color::green("✓"));
             }
             git_reference_warning(root, repo, &whoami);
@@ -217,6 +226,54 @@ pub(crate) fn git_reference_warning(
     if norm(&local) != norm(&reference) {
         eprintln!(
             "speclink: warning: local git remote ({local}) differs from the project's reference ({reference}) — you may be working on a fork or mirror"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const URL: &str = "https://team.example.com/api/speclink/v1/projects/demo";
+
+    fn whoami(repos: &[&str]) -> protocol_query::WhoamiResponse {
+        let repos: Vec<_> = repos.iter().map(|name| serde_json::json!({ "name": name, "gitUrl": "" })).collect();
+        serde_json::from_value(serde_json::json!({ "user": { "name": "Dev", "handle": "dev" }, "repos": repos }))
+            .unwrap()
+    }
+
+    fn refusal(repos: &[&str], repo: Option<&str>) -> Option<String> {
+        check_repo(&whoami(repos), URL, repo).err().map(|e| e.to_string())
+    }
+
+    #[test]
+    fn no_declared_repo_passes_unless_the_project_registers_several() {
+        assert_eq!(refusal(&[], None), None);
+        assert_eq!(refusal(&["erp"], None), None);
+        assert_eq!(
+            refusal(&["erp", "crm"], None).as_deref(),
+            Some(
+                "this project registers multiple repos — run `speclink link https://team.example.com/api/speclink/v1/projects/demo --repo <key>` with one of: erp, crm"
+            )
+        );
+    }
+
+    /// A declared repo is compared to the letter: an empty name, a blank
+    /// around it or another case is not the registered one, and the refusal
+    /// shows the name in quotes with the registered names beside it.
+    #[test]
+    fn a_declared_repo_must_be_a_registered_name_to_the_letter() {
+        assert_eq!(refusal(&["erp", "crm"], Some("crm")), None);
+        for (declared, shown) in [("", "''"), (" crm", "' crm'"), ("crm ", "'crm '"), ("CRM", "'CRM'"), ("nope", "'nope'")] {
+            assert_eq!(
+                refusal(&["erp", "crm"], Some(declared)),
+                Some(format!("repo {shown} is not registered in this project (available: erp, crm)")),
+                "{declared:?}"
+            );
+        }
+        assert_eq!(
+            refusal(&[], Some("crm")).as_deref(),
+            Some("repo 'crm' is not registered in this project (available: )")
         );
     }
 }

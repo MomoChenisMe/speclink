@@ -172,7 +172,7 @@ speclink link http://localhost:8080/api/speclink/v1/projects/demo --repo backend
   No credentials yet — run `speclink auth login` to connect
 ```
 
-`--repo` 填儲存庫代號。代號對不上時，`link` 會列出可用的代號並結束，不寫入任何東西。
+`--repo` 填儲存庫代號。代號對不上時，`link` 會列出可用的代號並結束，不寫入任何東西。專案只有一個儲存庫時可以不寫 `--repo`。專案有兩個以上的儲存庫而你已經登入時，一定要寫：沒寫的話，`link` 會請你加上 `--repo`、列出可用的代號並結束，同樣不寫入任何東西。
 
 Desktop 與 CLI 共用鑰匙圈裡的登入。如果第 5 節已經用 Desktop 登入，輸出會多一行 `✓ Repo 'backend' is registered in this project`，下面的 `auth login` 可以略過。否則，登入並確認：
 
@@ -324,6 +324,10 @@ Error: server unreachable — the server's TLS certificate was rejected (Unknown
 
 再啟動 server，Desktop 會自己重新連線、重新查詢並更新畫面，不必手動重新整理。離線期間別人做的變更也會出現。
 
+Server 有回應但暫時不能服務（例如維護中）時，Desktop 同樣進入離線狀態；Server 有說明原因的話，「連線中斷」旁邊會顯示它的原因，CLI 的訊息是 `Error: server unavailable — <Server 的原因>`。
+
+另一種情況是 Server 正常，但你的帳號被停用或被移出專案。開著的分頁會在看板上方顯示紅色的「沒有存取權限」與 Server 回報的原因，左側圖示列的專案方塊多一個紅點，系統匣也會標示。畫面保留最後一次成功載入的內容，所有寫入動作都停用。管理員恢復你的權限後，分頁會自己復原並重新查詢。
+
 ## <a id="reset"></a>9. 完全重置
 
 npx 跑法的所有資料都在 `speclink-data/`。要從頭來過：
@@ -356,6 +360,9 @@ npx 跑法的所有資料都在 `speclink-data/`。要從頭來過：
 | `speclink update` 說 `No AI tool configurations found` | `.speclink.yaml` 沒有 `tools` 清單。加上要用的 AI 工具後重跑，見第 6 節的「取得技能」。 |
 | stderr 出現 `this CLI's skill templates (…) are older than this server's (…)` | CLI 的技能範本比 Server 舊。這只是提醒，指令照常完成。更新 Speclink 即可，見[設定說明](configuration.zh-TW.md#remote)。 |
 | `link` 或 `auth status` 說 `repo '…' is not registered in this project` | `--repo` 的值和儲存庫代號對不上。訊息會列出可用的代號；用正確的代號重跑 `speclink link`。 |
+| `link`、`init --store remote` 或 `auth status` 說 `this project registers multiple repos` | 專案有兩個以上的儲存庫，而這個資料夾沒有指定要用哪一個。照訊息執行 `speclink link <網址> --repo <代號>`，代號從訊息列出的清單裡選。`init --store remote` 這時已經完成初始化，補上這一步就好。 |
+| CLI 指令失敗，訊息含 `registers multiple repos — specify one with X-Speclink-Repo` | 這台 Server 是舊版（0.14.0 或更早）。把 Server（或宿主的 `@speclink/engine`）升級；升級之前，在 `.speclink.yaml` 的 `remote` 底下自己寫上 `repo: <代號>`。 |
+| Desktop 的看板上方出現紅色的「沒有存取權限」 | 這個帳號被停用，或已經不是這個專案的成員。說明文字是 Server 回報的原因。請管理員恢復權限；恢復後分頁會自己復原，不必重開。 |
 | CLI 指令失敗，訊息是 `Error: server unreachable — the server's TLS certificate was rejected (…)`；或 Server 正常執行中，Desktop 連 `https://` 的 Server 卻顯示「連線中斷」 | 這台電腦不信任 Server 的 TLS 憑證。括號裡是作業系統回報的原因名稱，例如 `UnknownIssuer`；不同作業系統給的名稱可能不同，也可能是 `Other`。TLS 憑證由組織自己的 CA 簽發時，把那個 CA 裝進作業系統的信任庫，再重跑指令。Speclink 沒有略過這項檢查的設定。登入時遇到的訊息開頭是 `the login service's TLS certificate was rejected`，處理方法相同。見[設定說明](configuration.zh-TW.md#remote)。 |
 | server 換了網址 | 在測試資料夾執行 `speclink unlink`，再用新網址 `link`。Desktop 則新增一個連線。 |
 | server 起不來，或 `/healthz` 不回 `200` | 看 server 終端機的錯誤訊息。組態有錯時，server 會直接結束，不會帶著錯誤啟動。 |

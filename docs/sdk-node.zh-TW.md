@@ -512,6 +512,8 @@ async function scopes(identity) {
 
 `canWritePolicy` 為 `false` 時，會改到政策鍵（`schema`、`locale`、`spec_locale`、`tdd`、`audit`、`worktree`）的工作流設定寫入得到 403。`scopes` 拋錯時，請求得到 503。
 
+專案有多個 repo 時，請求用 `X-Speclink-Repo` 標頭指名一個；沒有指名時，入口回 409 並列出候選，不替它選。專案底下的 `/whoami` 是例外：它列出這個專案的全部 repo，不需要指名，回應也沒有 ETag。CLI 的 `link`、`init --store remote` 與 `auth status` 用它檢查 repo。
+
 **登入方式的宣告**讓用戶端知道要怎麼登入。入口在 `GET /api/speclink/v1/auth-methods` 回答它，不需要登入：
 
 ```js
@@ -520,6 +522,8 @@ const authMethods = {
   browser: { issuer: 'https://login.example.com', clientId: 'speclink', scopes: ['openid'] },
 }
 ```
+
+`browser` 的 `scopes` 可以不寫。入口的回應一定帶 `browser.scopes`：沒有宣告時是空陣列。
 
 用戶端依 `browser`、`device`、`token` 的順序選第一個宿主有宣告的方式。入口不做登入的端點、帳號與成員：那些是你的。要支援瀏覽器登入（`browser`），你的登入服務要做到三件事：
 
@@ -536,6 +540,7 @@ const authMethods = {
 - **`url` 用兩種寫法之一。** 以 `/` 開頭的路徑接在專案網址之後，和 `/sync-state` 一樣。完整網址必須和你的宿主是同一個 origin：協定、主機、埠都相同。Speclink Desktop 使用第一個 `sse` transport；網址是別的 origin 時不連線，也不把憑證送過去，改用輪詢。Desktop 不使用 `websocket`。
 - **送心跳。** 串流閒置時，每隔不到 45 秒送一行 SSE 註解。用戶端 45 秒沒有收到任何資料，就把連線視為中斷並重新訂閱。示範用 server 每 15 秒送一次。
 - **只送資源。** 事件告訴用戶端哪個資源變了，用戶端再重新讀取。用[事件流](verb-contract.zh-TW.md#events)的對照表把事件轉成 `scope` 與 `resourceId`；不要把事件的 payload 送給用戶端。
+- **使用者失去權限時關閉串流。** 入口不提供串流，所以不會替你關。使用者被停用或被移出專案時，由你結束他開著的串流。串流結束後，用戶端重新訂閱並輪詢；兩個請求都被拒絕（403）時，Speclink Desktop 顯示「沒有存取權限」並停用寫入。串流沒有關閉的話，Speclink Desktop 要等到串流中斷才會發現。只用輪詢的宿主不用處理這一點：Speclink Desktop 最長 30 秒內顯示。示範用 server 每個心跳間隔確認一次。
 
 ## <a id="export-import"></a>匯出與匯入
 
