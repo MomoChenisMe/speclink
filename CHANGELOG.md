@@ -1,6 +1,22 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.15.0 (2026-11-21)
+
+### New features
+
+- The desktop app now shows "Access denied" when the server stops your access to a remote project, for example after an admin removes you from the project. A red banner shows above the board, and the project rail and the tray mark the project. You can still read the last loaded content, writes stop, and the app recovers by itself when your access comes back.
+- `speclink link`, `speclink init --store remote`, and `speclink auth status` now work with a project that has more than one repo. If you do not name a repo, `link` asks you to add `--repo` and lists the repos of the project.
+
+### Fixes
+
+- When the server answers with a 5xx error and gives a reason, the CLI now shows `server unavailable — <reason>`, and the desktop offline banner shows the reason too.
+- The desktop app no longer stays offline when the server answers with an error below 500, such as 403 or 404. Such an answer shows that the server works, so the connection goes back online.
+
+### Improvements
+
+- `speclink auth status` now says `login session` for the credential in the system keychain, because the keychain does not record if you used the browser login or the device login.
+
 ## 0.14.0 (2026-11-20)
 
 ### New features

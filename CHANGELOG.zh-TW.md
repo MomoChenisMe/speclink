@@ -1,6 +1,22 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.15.0（2026-11-21）
+
+### 新功能
+
+- 遠端專案的存取被 Server 收回時（例如你被移出專案、或帳號被停用），Speclink Desktop 會在看板上方顯示紅色的「沒有存取權限」橫幅，專案圖示列與系統匣也會標示；已載入的內容仍可讀、寫入停用，存取恢復後自動復原。
+- 專案註冊多個 repo 時，`speclink link`、`speclink init --store remote` 與 `speclink auth status` 不再被拒絕；沒有指名 repo 時，`link` 會提示加上 `--repo` 並列出專案的全部 repo。
+
+### 修正
+
+- Server 回 5xx 並說明原因時，CLI 會顯示 `server unavailable — <原因>`，Speclink Desktop 的離線橫幅也會顯示這個原因，不再只提示檢查連接網址。
+- Server 回 403、404 這類 500 以下的錯誤時，Speclink Desktop 不再停在離線：這類回應表示 Server 還在服務，連線會回到正常。
+
+### 改善
+
+- `speclink auth status` 對金鑰圈裡的登入憑證改寫 `login session`，不再寫 `device login`，因為金鑰圈不記錄你用的是瀏覽器登入還是裝置登入。
+
 ## 0.14.0（2026-11-20）
 
 ### 新功能
