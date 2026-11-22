@@ -1,6 +1,22 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.16.0 (2026-11-22)
+
+### New features
+
+- `host.importScope` of `@speclink/engine` now has a replace mode. `mode: 'replace'` makes a scope that holds documents equal to a bundle in one commit, and `dryRun: true` lists the keys to add, change, and remove and writes nothing. A host can use it to import the spec folder of a repo again.
+- When `engine.exportScope()` fails because of the schema or the metadata of a change, the error now tells which change. It has the new reason code `change_schema_unusable` and two new properties, `change` and `path`. The error message of "Migrate to Server" in Speclink Desktop starts with the change name too.
+
+### Fixes
+
+- A change whose `.meta.yaml` has an empty `schema` value, such as `schema: ''` from an older tool, now uses the default `spec-driven` flow. Before, `show`, `status`, the export, and "Migrate to Server" in Speclink Desktop stopped with `Schema not found: Schema ''`. The file does not change.
+
+### Improvements
+
+- The report of `host.importScope` now has three key lists, `added`, `changed`, and `removed`, in both modes. The `scope-import` params of `beforeCommand` now have `mode` and `dryRun`. If your host code compares the whole report or the whole params object, change it to read each field.
+- The SDK document now has an example that imports a spec folder again with the replace mode and keeps the workflow policy of the host. It also tells that the key names of the store are a contract, how to get a summary of a scope, and about how long an export and an import take.
+
 ## 0.15.0 (2026-11-21)
 
 ### New features

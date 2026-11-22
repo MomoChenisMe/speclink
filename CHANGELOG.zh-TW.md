@@ -1,6 +1,22 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.16.0（2026-11-22）
+
+### 新功能
+
+- `@speclink/engine` 的 `host.importScope` 多了取代模式：`mode: 'replace'` 用一次提交讓已經有文件的範圍等於匯入包，`dryRun: true` 先列出會新增、更新與刪除的鍵、不寫入任何文件，宿主可以用它重新匯入 repo 的規格資料夾。
+- `engine.exportScope()` 因為某個變更的產出流程或狀態檔而失敗時，Error 會指出是哪一個變更：新增原因代碼 `change_schema_unusable`，並多帶 `change` 與 `path` 兩個屬性；Speclink Desktop「遷移到 Server」的錯誤訊息也以變更名稱開頭。
+
+### 修正
+
+- 變更的 `.meta.yaml` 裡 `schema` 是空值（例如舊版工具留下的 `schema: ''`）時，改照預設的 `spec-driven` 執行，`show`、`status`、匯出與 Speclink Desktop 的「遷移到 Server」不再以 `Schema not found: Schema ''` 失敗，檔案內容也不會被改寫。
+
+### 改善
+
+- `host.importScope` 的回報在兩種模式都多了 `added`、`changed`、`removed` 三個鍵的清單，`beforeCommand` 收到的 `scope-import` 參數也多了 `mode` 與 `dryRun`；以整個物件比對的宿主程式要改成讀個別的欄位。
+- SDK 文件補上用取代模式重新匯入規格資料夾、並保住宿主流程政策的範例，也說明儲存鍵的命名是契約、範圍摘要怎麼取得，以及匯出與匯入大約要多久。
+
 ## 0.15.0（2026-11-21）
 
 ### 新功能
