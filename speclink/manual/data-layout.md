@@ -2,9 +2,9 @@
 title: 認識資料：變更、討論與規格
 section: 開始使用
 order: 40
-keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄, 認領, 釋放認領, claim, release]
+keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄, 認領, 釋放認領, claim, release, schema, 產出流程]
 sources: [change-lifecycle, discussion-docs, "user-documentation#使用者文件載明本地產物的純文字可攜性", "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
-generated: 2026-11-19T17:04:25+08:00
+generated: 2026-11-22T10:15:18+08:00
 ---
 
 # 認識資料：變更、討論與規格
@@ -50,6 +50,19 @@ Speclink 在這些產物之外多加了兩樣東西：
 
 狀態檔還可以有一行「前置變更」（`depends_on`）：逗號分隔的變更名清單，意思是這個變更要等那些變更先落地。這一行由 `speclink change depends` 寫入，沒有這一行就是沒有依賴。有沒有這一行，`speclink list` 與 `speclink status` 的輸出都一樣，前置只影響 `speclink plan` 算出來的順序與波次。見[執行順序：plan 與依賴](plan.md)。
 
+**產出流程那一行**：狀態檔的 `schema:` 那一行指名這個變更用哪一個產出流程，換法見[產出流程 schema 管理](schemas.md)。這一行的值是空的時，視同沒有這一行：這個變更照預設的 spec-driven 執行。進行中與已封存的變更都一樣；CLI、Speclink Desktop、Server 與把 Speclink 內嵌進自己系統的宿主，都這樣讀。讀取不會改寫狀態檔，檔案內容一個字元都不變。
+
+| 狀態檔裡的 `schema` | 這個變更的產出流程 |
+| --- | --- |
+| 沒有這一行 | spec-driven |
+| `schema: ~` | spec-driven |
+| `schema: ''` | spec-driven |
+| `schema: '   '`（只有空白） | spec-driven |
+| `schema: no-spec-change` | no-spec-change |
+| `schema: nope`（沒有這個產出流程） | 找不到。需要產出流程的指令照舊失敗，錯誤訊息含 `Schema not found: Schema 'nope'` |
+
+較早的工具可能留下 `schema: ''`。以前這樣的變更被讀成名為空字串的產出流程，`speclink status` 這類指令會以 `Schema not found: Schema ''` 失敗；現在照 spec-driven 執行。
+
 ### 開工標記
 
 有兩種方式讓變更進入「進行中」：
@@ -57,10 +70,12 @@ Speclink 在這些產物之外多加了兩樣東西：
 - 執行 `speclink in-progress add <變更名>`。
 - 執行 `speclink task done` 完成任何一項任務。這會在同一個動作裡順手蓋開工章。
 
-開工章只蓋一次。已經開工的變更再標記或再完成任務，章不會變。
+開工章只蓋一次。已經開工的變更再標記或再完成任務，章不會變。狀態檔裡沒有開工欄位的變更（例如較早建立的），視為還沒開工；所有指令照常運作，不會出現警告。
 
 > [!NOTE]
 > `speclink in-progress add` 對不存在的變更名會靜默成功：沒有輸出、不寫任何檔案。這是刻意保留的既有行為。打錯名字時不會有錯誤提示。
+
+遠端專案也一樣：`speclink in-progress add` 交給 Server 執行，開工者記的是 Server 認得的登入身分。輸出與本機專案相同：第一次標記、重複標記、變更名不存在，都沒有輸出、直接成功。變更不存在或早已開工時，Server 上什麼都不寫。
 
 ### 退回提案中
 

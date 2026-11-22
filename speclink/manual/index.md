@@ -4,7 +4,7 @@ section: 開始使用
 order: 10
 keywords: [首頁, 入門, 角色, 導覽, SDD, 手冊]
 sources: []
-generated: 2026-11-21T17:53:22+08:00
+generated: 2026-11-22T10:15:18+08:00
 ---
 
 # Speclink 操作手冊
