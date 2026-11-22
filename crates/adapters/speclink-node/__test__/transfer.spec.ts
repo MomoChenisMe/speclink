@@ -2,9 +2,9 @@
 // a JS store port, the hooks they go through, and createHost's import limit.
 import { describe, expect, it } from 'vitest'
 
-import { createHost, StoreUnavailableError } from '../index.js'
+import { createHost, StoreConflictError, StoreUnavailableError } from '../index.js'
 import { digestOf, rejection } from './helpers'
-import { memoryPort } from './memory-port'
+import { memoryPort, type PortCommit } from './memory-port'
 
 const API = '/api/speclink/v1'
 const ALICE = { id: 'u_42', displayName: 'Alice' }
@@ -54,7 +54,13 @@ describe('host.exportScope and host.importScope', () => {
 
     const report = await host.importScope({ identity: ALICE, scope: 's2', bundle })
 
-    expect(report).toEqual({ scopeVersion: port.version('s2'), documents: bundle.documents.length })
+    expect(report).toEqual({
+      scopeVersion: port.version('s2'),
+      documents: bundle.documents.length,
+      added: keys,
+      changed: [],
+      removed: [],
+    })
     const listed = (await host.dispatch({ identity: ALICE, scope: 's2', argv: ['list', '--json'] })) as {
       changes: { name: string }[]
     }
@@ -118,7 +124,13 @@ describe('host.exportScope and host.importScope', () => {
 
     const report = await host.importScope({ identity: ALICE, scope: 's1', bundle })
 
-    expect(report).toEqual({ scopeVersion: port.version('s1'), documents: 2 })
+    expect(report).toEqual({
+      scopeVersion: port.version('s1'),
+      documents: 2,
+      added: ['changes/demo/.meta.yaml', 'config.yaml'],
+      changed: [],
+      removed: [],
+    })
     expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toBe(CONFIG)
   })
 
@@ -141,7 +153,9 @@ describe('host.exportScope and host.importScope', () => {
 
     expect(error.code).toBe('refused')
     expect(error.message).toBe('搬移凍結中')
-    expect(asked).toEqual([{ command: 'scope-import', params: { documents: 2, bytes } }])
+    expect(asked).toEqual([
+      { command: 'scope-import', params: { documents: 2, bytes, mode: 'create', dryRun: false } },
+    ])
     expect(port.calls.commit).toBe(0)
 
     // An export is asked about under its own name.
@@ -199,7 +213,13 @@ describe('host.exportScope and host.importScope', () => {
         scope: 's1',
         bundle: keyed([doc('config.yaml', CONFIG), doc('specs/auth/spec.md', '# auth\n')]),
       })
-      expect(report).toEqual({ scopeVersion: 1, documents: 2 })
+      expect(report).toEqual({
+        scopeVersion: 1,
+        documents: 2,
+        added: ['config.yaml', 'specs/auth/spec.md'],
+        changed: [],
+        removed: [],
+      })
       const bundle = (await host.exportScope({ identity: ALICE, scope: 's1' })) as Bundle
       expect(bundle.documents.map((d) => d.key)).toEqual(['config.yaml', 'specs/auth/spec.md'])
     } finally {
@@ -292,6 +312,274 @@ describe('the reason of a failed host.importScope or host.exportScope', () => {
 
     expect(error.code).toBe('unavailable')
     expect('reason' in error).toBe(false)
+  })
+})
+
+// node-sdk「宿主的匯出與匯入方法」(import-replace-mode): the replace mode, the
+// dry run, the three lists of the report and the checks of the two new fields.
+describe('host.importScope: the replace mode and the dry run', () => {
+  const OLD_AUTH = '# auth Specification\n\nThe old content.\n'
+  const NEW_AUTH = '# auth Specification\n\nThe new content.\n'
+  const BILLING = '# billing Specification\n'
+  const D1 = '---\ntopic: D1\nslug: d1\nstatus: open\ncreated: 2026-11-10\n---\n'
+
+  /** A store whose scope s1 holds an older auth spec and a discussion. */
+  function seeded() {
+    const port = memoryPort()
+    port.seed('s1', { 'specs/auth/spec.md': OLD_AUTH, 'discussions/d1.md': D1 })
+    return port
+  }
+  /** The newer auth spec and a billing spec, not in key order. */
+  const replacement = () => keyed([doc('specs/billing/spec.md', BILLING), doc('specs/auth/spec.md', NEW_AUTH)])
+  const LISTS = { added: ['specs/billing/spec.md'], changed: ['specs/auth/spec.md'], removed: ['discussions/d1.md'] }
+  const NO_CALLS = { list: 0, read: 0, commit: 0 }
+
+  it('makes the scope equal the bundle in one commit and reports the three lists', async () => {
+    const port = seeded()
+    const host = createHost({ store: port.store })
+
+    const report = await host.importScope({ identity: ALICE, scope: 's1', bundle: replacement(), mode: 'replace' })
+
+    expect(report).toEqual({ scopeVersion: port.version('s1'), documents: 2, ...LISTS })
+    expect(port.calls.commit).toBe(1)
+    const events = port.commits[0].commit.events
+    expect(events).toEqual([{ name: 'scope-imported', payload: { documents: 2, removed: 1 } }])
+    const after = (await host.exportScope({ identity: ALICE, scope: 's1' })) as Bundle
+    expect(after.documents.map((d) => [d.key, d.content])).toEqual([
+      ['specs/auth/spec.md', NEW_AUTH],
+      ['specs/billing/spec.md', BILLING],
+    ])
+  })
+
+  it('gives each list in byte order of the keys, and leaves a document with the same content as it is', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'discussions/z.md': D1, 'discussions/a.md': D1, 'config.yaml': CONFIG, 'LANGUAGE.md': 'same\n' })
+    const same = port.doc('s1', 'LANGUAGE.md')
+    const host = createHost({ store: port.store })
+    const bundle = keyed([
+      doc('specs/b/spec.md', '# b\n'),
+      doc('config.yaml', 'schema: spec-driven\ntdd: true\n'),
+      doc('specs/a/spec.md', '# a\n'),
+      doc('LANGUAGE.md', 'same\n'),
+    ])
+
+    const report = await host.importScope({ identity: ALICE, scope: 's1', bundle, mode: 'replace' })
+
+    expect(report).toEqual({
+      scopeVersion: port.version('s1'),
+      documents: 3,
+      added: ['specs/a/spec.md', 'specs/b/spec.md'],
+      changed: ['config.yaml'],
+      removed: ['discussions/a.md', 'discussions/z.md'],
+    })
+    expect(port.doc('s1', 'LANGUAGE.md')).toEqual(same)
+  })
+
+  it('reports a dry run like the real run, and calls neither commit nor afterCommit', async () => {
+    const port = seeded()
+    const watched: string[] = []
+    const host = createHost({ store: port.store, hooks: { afterCommit: (info) => void watched.push(info.command) } })
+    const before = port.version('s1')
+    const call = { identity: ALICE, scope: 's1', bundle: replacement(), mode: 'replace' as const }
+
+    const dry = await host.importScope({ ...call, dryRun: true })
+    await new Promise((resolve) => setTimeout(resolve, 20))
+
+    expect(dry).toEqual({ scopeVersion: before, documents: 2, ...LISTS })
+    expect(port.calls.commit).toBe(0)
+    expect(watched).toEqual([])
+    expect(port.doc('s1', 'specs/auth/spec.md')?.content).toBe(OLD_AUTH)
+
+    const real = await host.importScope(call)
+    expect(real).toEqual({ ...dry, scopeVersion: port.version('s1') })
+    expect(port.version('s1')).toBe(before + 1)
+  })
+
+  it('reports the three lists in the create mode too: every key is added', async () => {
+    const port = memoryPort()
+    const host = createHost({ store: port.store })
+    const bundle = keyed([doc('specs/auth/spec.md', NEW_AUTH), doc('LANGUAGE.md', 'TeamStore: 團隊儲存\n')])
+
+    const report = await host.importScope({ identity: ALICE, scope: 's1', bundle })
+
+    expect(report).toEqual({
+      scopeVersion: port.version('s1'),
+      documents: 2,
+      added: ['LANGUAGE.md', 'specs/auth/spec.md'],
+      changed: [],
+      removed: [],
+    })
+  })
+
+  it('still imports a bundle with no documents into an empty scope in the create mode, with no commit', async () => {
+    const port = memoryPort()
+    const host = createHost({ store: port.store })
+
+    const report = await host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([]) })
+
+    expect(report).toEqual({ scopeVersion: 0, documents: 0, added: [], changed: [], removed: [] })
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('names empty_bundle for a replace with no documents, and calls no commit', async () => {
+    const port = seeded()
+    const host = createHost({ store: port.store })
+
+    const error = await rejection(host.importScope({ identity: ALICE, scope: 's1', bundle: keyed([]), mode: 'replace' }))
+
+    expect([error.code, error.reason]).toEqual(['invalid_argv', 'empty_bundle'])
+    expect(error.message.startsWith('import (replace): the bundle holds no documents')).toBe(true)
+    expect(port.calls).toEqual(NO_CALLS)
+    expect(port.doc('s1', 'discussions/d1.md')?.content).toBe(D1)
+  })
+
+  it('names scope_changed when the commit finds a key the replace updates changed', async () => {
+    const port = seeded()
+    const OTHER_AUTH = '# auth Specification\n\nThe content of another writer.\n'
+    // Another writer lands between the list and the commit: the store's own
+    // check of `expected` finds it, and throws as a host's store does.
+    const store = {
+      ...port.store,
+      commit: (scope: string, commit: PortCommit) => {
+        port.seed('s1', { 'specs/auth/spec.md': OTHER_AUTH })
+        try {
+          return port.store.commit(scope, commit)
+        } catch (e) {
+          const { key, actual } = e as { key: string; actual: number | null }
+          throw new StoreConflictError(key, actual)
+        }
+      },
+    }
+    const host = createHost({ store })
+
+    const error = await rejection(host.importScope({ identity: ALICE, scope: 's1', bundle: replacement(), mode: 'replace' }))
+
+    expect([error.code, error.reason]).toEqual(['refused', 'scope_changed'])
+    expect(error.message).toBe('import (replace): the target scope changed during the import — run it again')
+    // Nothing of the bundle was written and nothing was deleted.
+    expect(port.doc('s1', 'specs/auth/spec.md')?.content).toBe(OTHER_AUTH)
+    expect(port.doc('s1', 'specs/billing/spec.md')).toBeUndefined()
+    expect(port.doc('s1', 'discussions/d1.md')?.content).toBe(D1)
+  })
+
+  it('reads the fields of a call that is a function, as it does of any object', async () => {
+    // A function can carry properties: its `mode` and `dryRun` are not dropped.
+    const port = seeded()
+    const host = createHost({ store: port.store })
+    const fields = { identity: ALICE, scope: 's1', bundle: replacement(), mode: 'replace', dryRun: true }
+
+    const report = await host.importScope(Object.assign(() => undefined, fields) as never)
+
+    expect(report).toEqual({ scopeVersion: port.version('s1'), documents: 2, ...LISTS })
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('still rejects a call that is no object with invalid_argv', async () => {
+    const port = seeded()
+    const host = createHost({ store: port.store })
+    for (const call of ['a call', 7, null, undefined]) {
+      const error = await rejection(host.importScope(call as never))
+      expect(error.code, String(call)).toBe('invalid_argv')
+    }
+    expect(port.calls).toEqual(NO_CALLS)
+  })
+
+  it.each([
+    ['a mode that is neither value', { mode: 'Replace' }, 'Replace'],
+    ['a mode that is a number', { mode: 1 }, 'number'],
+    ['a dryRun that is the text false', { mode: 'replace', dryRun: 'false' }, 'dryRun'],
+    ['a dryRun that is the number 0', { mode: 'replace', dryRun: 0 }, 'dryRun'],
+    // `dryRun: body.dryRun` with a body that says `dry_run`: not a real replace.
+    ['a dryRun key that holds undefined', { mode: 'replace', dryRun: undefined }, 'dryRun'],
+    ['dryRun written dryrun', { mode: 'replace', dryrun: true }, 'dryrun'],
+    ['dryRun written dry_run', { mode: 'replace', dry_run: true }, 'dry_run'],
+  ])('refuses %s before the store and the hook are called', async (_, fields, named) => {
+    const port = seeded()
+    let asked = 0
+    const host = createHost({ store: port.store, hooks: { beforeCommand: () => void asked++ } })
+
+    const error = await rejection(
+      host.importScope({ identity: ALICE, scope: 's1', bundle: replacement(), ...fields } as never),
+    )
+
+    expect(error.code).toBe('invalid_argv')
+    expect('reason' in error).toBe(false)
+    expect(error.message).toContain(named)
+    expect(port.calls).toEqual(NO_CALLS)
+    expect(asked).toBe(0)
+    expect(port.doc('s1', 'discussions/d1.md')?.content).toBe(D1)
+  })
+
+  it('still takes a call with another key in the create mode', async () => {
+    const port = memoryPort()
+    const host = createHost({ store: port.store })
+    const call = { identity: ALICE, scope: 's1', bundle: keyed([doc('config.yaml', CONFIG)]), note: 'from the admin page' }
+
+    const report = (await host.importScope(call as never)) as { documents: number }
+
+    expect(report.documents).toBe(1)
+    expect(port.doc('s1', 'config.yaml')?.content).toBe(CONFIG)
+  })
+
+  it('lets beforeCommand allow the dry run of a replace and refuse the real one', async () => {
+    const port = seeded()
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: (info) => {
+          const params = info.params as { mode: string; dryRun: boolean }
+          return params.mode === 'replace' && !params.dryRun ? { allow: false, reason: '只有管理者可以取代' } : undefined
+        },
+      },
+    })
+    const call = { identity: ALICE, scope: 's1', bundle: replacement(), mode: 'replace' as const }
+
+    const dry = await host.importScope({ ...call, dryRun: true })
+    const error = await rejection(host.importScope(call))
+
+    expect(dry).toEqual({ scopeVersion: port.version('s1'), documents: 2, ...LISTS })
+    expect([error.code, error.message]).toEqual(['refused', '只有管理者可以取代'])
+    expect('reason' in error).toBe(false)
+    expect(port.calls.commit).toBe(0)
+  })
+
+  // user-documentation「整合者照文件重新匯入並保住流程政策」: the calls of the
+  // guide's example, in its order (docs/sdk-node.md, "Import on the server").
+  it('keeps the workflow policy of the host through the import-again example of the guide', async () => {
+    const HOST_CONFIG = 'schema: spec-driven\ntdd: true\n'
+    const port = memoryPort()
+    port.seed('s1', { 'config.yaml': HOST_CONFIG, 'specs/auth/spec.md': OLD_AUTH, 'discussions/d1.md': D1 })
+    const host = createHost({ store: port.store })
+    const who = { identity: ALICE, scope: 's1' }
+    // The repo's workflow config has no `tdd`.
+    const bundle = keyed([doc('config.yaml', CONFIG), doc('specs/auth/spec.md', NEW_AUTH)])
+    const policy = async () =>
+      (await host.dispatch({ ...who, argv: ['workflow-config', 'show', '--json'] })) as Record<string, unknown>
+
+    // 1. Read the policy the host manages.
+    const before = await policy()
+    expect(before.tdd).toBe(true)
+
+    // 2. Dry run: nothing is written.
+    const version = port.version('s1')
+    const plan = await host.importScope({ ...who, bundle, mode: 'replace', dryRun: true })
+    expect(plan.changed).toContain('config.yaml')
+    expect(plan.removed).toEqual(['discussions/d1.md'])
+    expect(port.version('s1')).toBe(version)
+    expect(port.doc('s1', 'config.yaml')?.content).toBe(HOST_CONFIG)
+
+    // 3. Replace: the scope holds the bundle's keys, and the repo's config.
+    await host.importScope({ ...who, bundle, mode: 'replace' })
+    const after = (await host.exportScope(who)) as Bundle
+    expect(after.documents.map((d) => d.key)).toEqual(bundle.documents.map((d) => d.key))
+    expect((await policy()).tdd).toBe(false)
+
+    // 4. Write the policy keys the host manages back.
+    for (const key of ['tdd', 'audit']) {
+      await host.dispatch({ ...who, argv: ['workflow-config', 'set', key, String(before[key])] })
+    }
+    expect((await policy()).tdd).toBe(true)
+    expect((await policy()).audit).toBe(false)
   })
 })
 

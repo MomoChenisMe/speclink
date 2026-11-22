@@ -11,7 +11,7 @@
 use crate::documents::scope_version;
 use crate::port_exec::{at_version, execute_with, now, AtVersion, BeforeCommit, ExecError, PortExecution, WriteAt};
 use crate::read_only::is_read;
-use crate::transfer::{self, ImportReport, ScopeBundle, TransferError};
+use crate::transfer::{self, ImportOptions, ImportReport, ScopeBundle, TransferError};
 use speclink_core::command::{
     Command, CommandError, CommandOutcome, ErrorCode, ExecutionContext, WorkflowConfigWriteOutcome,
 };
@@ -466,13 +466,22 @@ impl HostKit {
         Ok(transfer::export(self.store.as_ref(), &caller.scope))
     }
 
-    /// Write `bundle` into the caller's scope, which must be empty
-    /// ([`transfer::import`]). Content over the kit's import limit is not
-    /// valid. The before hook is asked first, as `scope-import` with the
-    /// number of documents and the bytes of their content, and never the
+    /// Write `bundle` into the caller's scope in the mode `options` names
+    /// ([`transfer::import_with`]): the default takes an empty scope only,
+    /// the replace mode makes the scope equal the bundle, and a dry run of
+    /// either commits nothing. Content over the kit's import limit is not
+    /// valid, in both modes. The before hook is asked next, once, as
+    /// `scope-import` with the number of documents, the bytes of their
+    /// content, the mode (`create` or `replace`) and `dryRun`, and never the
     /// content; a refusal ends the call as `refused` before the store is
-    /// called. The after hook watches the commit.
-    pub fn import_scope(&self, caller: &Caller, bundle: ScopeBundle) -> Result<ImportReport, ExecError> {
+    /// called. A dry run is asked about too: its report names the keys of
+    /// the scope. The after hook watches the commit, when there is one.
+    pub fn import_scope(
+        &self,
+        caller: &Caller,
+        bundle: ScopeBundle,
+        options: ImportOptions,
+    ) -> Result<ImportReport, ExecError> {
         let bytes: usize = bundle.documents.iter().map(|doc| doc.content.len()).sum();
         let limit = self.import_limit_bytes();
         if bytes > limit {
@@ -481,11 +490,16 @@ impl HostKit {
             ))
             .into());
         }
-        let params = serde_json::json!({ "documents": bundle.documents.len(), "bytes": bytes });
+        let params = serde_json::json!({
+            "documents": bundle.documents.len(),
+            "bytes": bytes,
+            "mode": options.mode.as_str(),
+            "dryRun": options.dry_run,
+        });
         self.ask(caller, transfer::IMPORT_COMMAND, &params, None)?;
         let at = now().map_err(ExecError::Store)?;
-        let (report, events) =
-            transfer::import_with_events(self.store.as_ref(), &caller.scope, caller.identity.actor(), bundle, at)?;
+        let (store, actor) = (self.store.as_ref(), caller.identity.actor());
+        let (report, events) = transfer::import_with(store, &caller.scope, actor, bundle, at, options)?;
         if !events.is_empty() {
             self.watch(caller, transfer::IMPORT_COMMAND, report.scope_version, events);
         }
@@ -681,7 +695,10 @@ mod tests {
     // --- the reason of an import failure (sdk-command-names-and-transfer-reasons) ---
 
     use crate::projection::content_digest;
-    use crate::transfer::{BundleDocument, TransferReason};
+    use crate::transfer::{BundleDocument, ImportMode, ImportOptions, TransferReason};
+
+    const CREATE: ImportOptions = ImportOptions { mode: ImportMode::Create, dry_run: false };
+    const REPLACE: ImportOptions = ImportOptions { mode: ImportMode::Replace, dry_run: false };
 
     fn kit_with(limit: Option<usize>, before_command: Option<BeforeCommandHook>) -> HostKit {
         let options = HostKitOptions { import_limit_bytes: limit, ..HostKitOptions::default() };
@@ -713,7 +730,7 @@ mod tests {
     #[test]
     fn an_import_over_the_limit_names_bundle_too_large() {
         let kit = kit_with(Some(1_024), None);
-        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of(&"x".repeat(2_000))));
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of(&"x".repeat(2_000)), CREATE));
         assert_eq!(code, ErrorCode::InvalidArgv);
         assert_eq!(message, "the bundle's content is 2000 bytes, over the 1024-byte import limit");
         assert_eq!(reason, Some(TransferReason::BundleTooLarge));
@@ -722,8 +739,8 @@ mod tests {
     #[test]
     fn an_import_into_a_scope_that_holds_documents_names_scope_not_empty() {
         let kit = kit_with(None, None);
-        kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")).expect("the first import");
-        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")));
+        kit.import_scope(&alice(), bundle_of("schema: spec-driven\n"), CREATE).expect("the first import");
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n"), CREATE));
         assert_eq!(code, ErrorCode::Refused);
         assert_eq!(message, "import (create-new): the target scope already holds documents");
         assert_eq!(reason, Some(TransferReason::ScopeNotEmpty));
@@ -733,7 +750,24 @@ mod tests {
     fn an_import_the_hook_refuses_has_no_reason() {
         let deny: BeforeCommandHook = Box::new(|_, _| Decision::Deny { reason: "not allowed".to_string() });
         let kit = kit_with(None, Some(deny));
-        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n")));
+        let (code, message, reason) = failure(kit.import_scope(&alice(), bundle_of("schema: spec-driven\n"), CREATE));
         assert_eq!((code, message.as_str(), reason), (ErrorCode::Refused, "not allowed", None));
+    }
+
+    // --- a replace with no documents (import-replace-mode D3); the scope that
+    // changed during a replace is in tests/transfer.rs, on the shared recorder ---
+
+    #[test]
+    fn a_replace_with_no_documents_names_empty_bundle() {
+        let kit = kit_with(None, None);
+        kit.import_scope(&alice(), bundle_of("schema: spec-driven\n"), CREATE).expect("the first import");
+        let empty = ScopeBundle { documents: Vec::new(), ..bundle_of("") };
+        let (code, message, reason) = failure(kit.import_scope(&alice(), empty, REPLACE));
+        assert_eq!(code, ErrorCode::InvalidArgv);
+        assert_eq!(
+            message,
+            "import (replace): the bundle holds no documents — a replace with it would remove every document of the scope"
+        );
+        assert_eq!(reason, Some(TransferReason::EmptyBundle));
     }
 }

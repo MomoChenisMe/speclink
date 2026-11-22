@@ -24,7 +24,7 @@ use speclink_host::kit::{
     HostKitOptions, Identity, InvalidSkills, NotARead, ProjectEntry, Reader, RepoEntry, ScopesFn,
 };
 use speclink_host::port_exec::{ExecError, PortExecution};
-use speclink_host::transfer;
+use speclink_host::transfer::{self, ImportMode, ImportOptions};
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::EventTransport;
 use speclink_store_port::{PortError, ScopeId, StorePort};
@@ -217,11 +217,14 @@ impl Host {
         })
     }
 
-    /// Write a bundle into `scope`, which must be empty, for `identity`, on a
-    /// background thread. `bundle` is the JSON text of a bundle of either
-    /// version. Resolves to the envelope index.js unwraps:
-    /// `{ scopeVersion, documents }`.
+    /// Write a bundle into `scope` for `identity`, on a background thread.
+    /// `bundle` is the JSON text of a bundle of either version. `mode` is
+    /// the text of an import mode (`create` or `replace`), and `dry_run`
+    /// commits nothing: index.js checked both before the call. Resolves to the
+    /// envelope index.js unwraps:
+    /// `{ scopeVersion, documents, added, changed, removed }`.
     #[napi(ts_return_type = "Promise<unknown>")]
+    #[allow(clippy::too_many_arguments)]
     pub fn import_scope(
         &self,
         env: Env,
@@ -229,18 +232,29 @@ impl Host {
         display_name: String,
         scope: String,
         bundle: String,
+        mode: String,
+        dry_run: bool,
     ) -> Result<JsObject> {
         let setup = self.setup.clone();
         on_worker(env, move || {
             guarded(|| {
                 let caller = caller_of(id, display_name, scope)?;
                 let invalid = |message: String| DispatchError::new("invalid_argv", message);
+                let mode = ImportMode::parse(&mode)
+                    .ok_or_else(|| invalid("importScope: mode must be 'create' or 'replace'".to_string()))?;
+                let options = ImportOptions { mode, dry_run };
                 let bundle = transfer::read_bundle(bundle.as_bytes())
                     .map_err(|unread| invalid(unread.to_string()))?
                     .into_keyed()
                     .map_err(|e| invalid(e.to_string()))?;
-                let report = with_kit(&setup, |kit| kit.import_scope(&caller, bundle))?.map_err(exec_error)?;
-                Ok(serde_json::json!({ "scopeVersion": report.scope_version.get(), "documents": report.documents }))
+                let report = with_kit(&setup, |kit| kit.import_scope(&caller, bundle, options))?.map_err(exec_error)?;
+                Ok(serde_json::json!({
+                    "scopeVersion": report.scope_version.get(),
+                    "documents": report.documents,
+                    "added": report.added,
+                    "changed": report.changed,
+                    "removed": report.removed,
+                }))
             })
         })
     }

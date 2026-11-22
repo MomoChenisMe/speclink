@@ -485,18 +485,42 @@ export interface HostExportCall {
 }
 
 export interface HostImportCall {
-  /** From your own code (your session). You decide who may import. */
+  /** From your own code (your session). You decide who may import, and who may replace. */
   identity: HostIdentity
-  /** The scope to fill. It must be empty. */
+  /** The scope to write. In the `'create'` mode it must be empty. */
   scope: string
   bundle: ScopeBundle | FirstVersionBundle
+  /**
+   * `'create'` (the default) writes the bundle into an empty scope.
+   * `'replace'` makes the scope equal the bundle: it adds, updates and
+   * **deletes** documents. Any other value rejects with `invalid_argv`.
+   */
+  mode?: 'create' | 'replace'
+  /**
+   * `true` does every check and the compare, reports what a real run would
+   * do, and commits nothing. The default is `false`: a real run. A value
+   * that is not a boolean (the text `'false'`, the number `0`) rejects with
+   * `invalid_argv`, and so does a `dryRun` key that holds `undefined`: for a
+   * real run, leave the key out.
+   */
+  dryRun?: boolean
 }
 
 export interface HostImportReport {
-  /** The scope version after the import. */
+  /**
+   * The scope version after the commit. With no commit (a dry run, a replace
+   * with nothing to write or delete, a create with no documents) it is the
+   * version the scope had when it was listed.
+   */
   scopeVersion: number
-  /** How many documents were written. */
+  /** How many documents were written: `added.length + changed.length`. */
   documents: number
+  /** The keys the scope did not hold, in byte order. The `'create'` mode gives every key of the bundle. */
+  added: string[]
+  /** The keys both sides hold with different content, in byte order. Always empty in the `'create'` mode. */
+  changed: string[]
+  /** The keys only the scope held, which a replace deletes, in byte order. Always empty in the `'create'` mode. */
+  removed: string[]
 }
 
 export interface HostDispatchCall {
@@ -603,26 +627,71 @@ export interface Host {
    */
   exportScope(call: HostExportCall): Promise<ScopeBundle>
   /**
-   * Write a bundle into `scope`, which must be empty, in one `commit` of
-   * your store: every document with `expected: null`, and one
-   * `scope-imported` event. A failure leaves the scope as it was.
-   * `beforeCommand` is asked first, as `scope-import` with
-   * `params: { documents, bytes }` — the count and the bytes of the content,
-   * never the content; `afterCommit` is told about the commit.
+   * Write a bundle into `scope` in one `commit` of your store. A failure
+   * leaves the scope as it was. Runs on a background thread.
+   *
+   * **`mode: 'create'`** (the default) takes an empty scope only: every
+   * document is written with `expected: null`, with one `scope-imported`
+   * event (`{ documents }`). A bundle with no documents writes nothing and
+   * is no failure.
+   *
+   * **`mode: 'replace'`** makes the scope equal the bundle. It deletes every
+   * document the bundle does not hold: the workflow config, and the changes,
+   * the discussions and the stamps made in your host after the first import.
+   * The scope is listed once, the keys both sides hold are read and
+   * compared, and one `commit` carries everything: a key only the bundle
+   * holds is written with `expected: null`; a key with different content is
+   * written, and a key only the scope holds is deleted, both with the
+   * version it was listed at. A document with the same content is not
+   * written again: its version and its `modifiedAt` stay. The commit has one
+   * `scope-imported` event (`{ documents, removed }`). With nothing to write
+   * or delete there is no commit and no event. A bundle with no documents is
+   * refused: one call cannot empty a scope.
+   *
+   * **`dryRun: true`** does all of it but the commit, in both modes, and
+   * resolves to the same `added`, `changed` and `removed` as the real run
+   * that follows it at once. Show `removed` to the person who decides, then
+   * call again without `dryRun`.
+   *
+   * A commit states what it expects of its own keys only. A replace is
+   * refused whole (`scope_changed`) when another writer changed or deleted a
+   * key it writes or deletes; it does not try again. It does not see another
+   * writer's change to a key it has no operation for: a key whose content is
+   * the same on both sides, or a key that neither side held when the scope
+   * was listed. That document stays as the other writer left it, and a dry
+   * run after the replace shows it. To make sure the scope equals the
+   * bundle, refuse the other writes in `beforeCommand` while you replace.
+   *
+   * The replace mode and the dry run are for this call only: the HTTP door
+   * (`handleRequest`, `POST /import`) has the create mode only.
+   *
+   * The two fields are checked before the store and `beforeCommand` are
+   * called, and reject with `invalid_argv`: a `mode` that is neither value, a
+   * `dryRun` key that holds no boolean, and, in the replace mode, a call with a
+   * key other than `identity`, `scope`, `bundle`, `mode` and `dryRun` (so
+   * `dryrun: true` cannot run as a real replace). Then the size limit, then
+   * `beforeCommand`, which is asked once for every call, a dry run too, as
+   * `scope-import` with `params: { documents, bytes, mode, dryRun }` — the
+   * count, the bytes of the content, `'create'` or `'replace'`, and a
+   * boolean; never the content. `afterCommit` is told about the commit, when
+   * there is one.
    *
    * Rejects with `invalid_argv` when the bundle is not valid (a digest that
    * is not its content's, a key outside the engine's naming rules, a key
    * that appears twice, content over `limits.importBytes`; the message names
-   * the key) and with `refused` when the scope is not empty or
+   * the key) or a replace has no documents, and with `refused` when the
+   * scope of a create is not empty, the scope changed during a replace, or
    * `beforeCommand` refuses. Store failures reject with `revision_conflict`,
-   * `unavailable` or `internal`. Runs on a background thread.
+   * `unavailable` or `internal`.
    *
-   * Three of these failures also give `error.reason`, a fixed string to show
+   * Five of these failures also give `error.reason`, a fixed string to show
    * your own text by; do not match the `message`, which can change:
    *
    * | `code` | `reason` | the failure |
    * | --- | --- | --- |
-   * | `refused` | `scope_not_empty` | the scope already holds documents |
+   * | `refused` | `scope_not_empty` | `'create'`: the scope already holds documents |
+   * | `invalid_argv` | `empty_bundle` | `'replace'`: the bundle holds no documents |
+   * | `refused` | `scope_changed` | `'replace'`: after the scope was listed, another writer changed or deleted a key this replace writes or deletes; nothing was written, run it again |
    * | `invalid_argv` | `bundle_too_large` | the content is over `limits.importBytes` |
    * | `invalid_argv` | `invalid_bundle_document` | a document breaks a rule: a key outside the naming rules, a digest that is not its content's, a key that appears twice, or a board order over its size |
    *
@@ -630,7 +699,8 @@ export interface Host {
    * false): a refusal of `beforeCommand`, a store failure, a format version
    * this engine does not take, a value that is no bundle, a document of a
    * version 1 bundle whose names make no key (the same problem in a version
-   * 2 bundle is `invalid_bundle_document`). Take "no reason"
+   * 2 bundle is `invalid_bundle_document`), and a `mode`, a `dryRun` or a
+   * key of a replace call that is refused. Take "no reason"
    * as a valid answer: a later version can add a code to such a failure,
    * never change the meaning of one above.
    */

@@ -431,6 +431,21 @@ async function beforeCommand({ command, params }, { read }) {
 - **蓋章前已刪除的檔不在 `scope` 裡。** 要確認正式分支上也刪掉了，自己另外比對。
 - **`scope` 是蓋章時記下的內容。** 這個輸出不判斷檔案在蓋章後有沒有改過，比對由你自己做。
 
+### <a id="replace-hook"></a>只讓管理者取代範圍
+
+`host.importScope` 的每一次呼叫都先問 `beforeCommand`，試跑也問。命令名稱是 `scope-import`，參數是 `documents`（文件數）、`bytes`（位元組數）、`mode`（`'create'` 或 `'replace'`）與 `dryRun`（布林），沒有文件內容。建立模式與取代模式用同一個命令名稱，所以只依名稱放行 `scope-import` 的掛鉤，也會放行取代。要分開，就讀 `params.mode`：
+
+```js
+async function beforeCommand({ identity, command, params }) {
+  if (command !== 'scope-import' || params.mode !== 'replace') return
+  // isAdmin 是你自己的函式：Speclink 不給身分任何角色。
+  if (!(await isAdmin(identity))) return { allow: false, reason: '只有管理者可以重新匯入' }
+}
+```
+
+- **試跑也擋。** 試跑的回報會列出範圍裡的鍵，也就是變更與討論的名稱。要讓更多人試跑，再看 `params.dryRun`。
+- **經 HTTP 入口的匯入**也收到這四個參數，`mode` 一定是 `'create'`、`dryRun` 一定是 `false`：原版的用戶端沒有辦法取代。
+
 ## <a id="agent-tool"></a>給 Agent 工具用
 
 `host.dispatch` 是給宿主自己的 Agent 用的入口：在你的程序裡直接呼叫，不經過 HTTP。
@@ -568,26 +583,46 @@ const bundle = await host.exportScope({ identity, scope: 'acme/web' })
 
 // 匯入：寫進一個空的範圍，用一次 commit。
 const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle })
-// → { scopeVersion: 1, documents: 42 }
+// → { scopeVersion: 1, documents: 42, added: [/* 42 個鍵 */], changed: [], removed: [] }
+
+// 取代：讓已經有文件的範圍等於另一份包。newer 是較新的包，例如 repo 重新匯出的規格。
+// 先試跑，看會動到哪些文件；試跑不寫入。
+const plan = await host.importScope({ identity, scope: 'acme/web', bundle: newer, mode: 'replace', dryRun: true })
+// → { scopeVersion: 17, documents: 3,
+//     added: ['specs/billing/spec.md'],
+//     changed: ['config.yaml', 'specs/auth/spec.md'],
+//     removed: ['changes/add-x/proposal.md', 'discussions/d1.md'] }
+const replaced = await host.importScope({ identity, scope: 'acme/web', bundle: newer, mode: 'replace' })
+// → 同樣的三個清單，scopeVersion: 18
 ```
 
 - **匯出**只用你的 `list` 與 `read`。匯出途中範圍有變就重來，最多三次，再不行以 `unavailable` 拒絕：不會把新舊內容混在一起。
-- **匯入**的範圍必須是空的，否則以 `refused` 拒絕。包的內容不對（摘要和內容不符、鍵不合引擎的命名規則、鍵重複、超過上限）以 `invalid_argv` 拒絕，訊息會指出是哪個鍵。失敗時範圍維持原樣。
-- **兩者都先問 `beforeCommand`**：命令名稱是 `scope-export`（沒有參數）與 `scope-import`（參數是文件數與位元組數，不含內容）。誰可以匯出與匯入由你決定。
+- **匯入有兩種模式。** `mode: 'create'`（預設）只寫進空的範圍，範圍不是空的就以 `refused` 拒絕。`mode: 'replace'` 讓範圍的內容等於包：包有而範圍沒有的鍵新增，內容不同的鍵更新，**範圍有而包沒有的鍵全部刪除**。流程設定、匯入之後才在宿主裡建立的變更與討論、你自己放進同一個範圍的文件，都在刪除的範圍內。兩種模式都用一次 `commit` 寫完，失敗時範圍維持原樣。
+- **包的內容不對**（摘要和內容不符、鍵不合引擎的命名規則、鍵重複、超過上限）以 `invalid_argv` 拒絕，訊息會指出是哪個鍵。兩種模式的檢查相同，都在呼叫你的儲存之前完成。
+- **`dryRun: true` 只回報、不寫入。** 試跑做全部的檢查與比對，回報的三個清單和緊接著真的執行所得到的相同，但是不呼叫 `commit`，也不通知 `afterCommit`。兩種模式都能試跑。取代之前先試跑，把 `removed` 給做決定的人看。
+- **回報**是 `{ scopeVersion, documents, added, changed, removed }`。`added`（新增）、`changed`（更新）、`removed`（刪除）是鍵的陣列，各依鍵的位元組順序排列，只有鍵、沒有內容。`documents` 是寫入的份數，等於 `added` 加 `changed` 的長度。建立模式的 `added` 是包裡全部的鍵，另外兩個是空的。有提交時 `scopeVersion` 是提交之後的版本；沒有提交時（試跑、取代沒有任何鍵要寫入或刪除、建立模式的空包）是列出範圍當時的版本。
+- **內容相同的文件不重寫。** 取代只寫入內容不同的文件；內容相同的文件，版本與修改時間都不變，連線中的用戶端不用重新讀取它們。沒有任何鍵要寫入或刪除時，取代不提交，也沒有事件。
+- **空的包不能取代。** 取代模式收到沒有任何文件的包時以 `invalid_argv` 拒絕，你的儲存不會收到任何呼叫：一次呼叫不能清空整個範圍。建立模式收到空的包照舊成功，寫入零份。
+- **取代期間別人的寫入。** 列出範圍之後、提交之前，別人改動或刪除了這次要寫入或刪除的鍵時，整筆取代以 `refused` 拒絕，什麼都沒有寫入；取代不會自己重試，再執行一次即可。有兩種寫入取代不會察覺：別人改了一個兩邊內容相同、所以這次不用寫的鍵；別人新增了一個列出時不存在、包裡也沒有的鍵。這兩種情況下取代照樣成功，那份文件留著別人的內容；取代之後再試跑一次，就看得到差異。要保證範圍完全等於包，取代期間在 `beforeCommand` 拒絕其他寫入。
+- **`mode` 與 `dryRun` 寫錯會被拒絕**，檢查在呼叫你的儲存與 `beforeCommand` 之前：`mode` 不是 `'create'` 或 `'replace'`，或 `dryRun` 不是布林（字串 `'false'`、數字 `0`、值是 `undefined` 的 `dryRun` 鍵都算），以 `invalid_argv` 拒絕。取代模式的呼叫只能有 `identity`、`scope`、`bundle`、`mode`、`dryRun` 五個鍵，多了別的鍵（例如把 `dryRun` 打成 `dryrun`）也拒絕。這樣一次本來要試跑的呼叫不會變成真的刪除。
+- **取代模式與試跑只在程序內的呼叫提供。** HTTP 入口的 `POST /import`（`handleRequest`）只收空的範圍。
+- **兩者都先問 `beforeCommand`**：命令名稱是 `scope-export`（沒有參數）與 `scope-import`。`scope-import` 的參數是 `documents`（文件數）、`bytes`（位元組數）、`mode`（`'create'` 或 `'replace'`）與 `dryRun`（布林），不含內容。試跑的回報會列出範圍裡的鍵，所以試跑也先問。誰可以匯出、匯入與取代由你決定，例子見[只讓管理者取代](#replace-hook)。
 - **包有兩個版本。** 匯出一律給第 2 版（每份文件以鍵命名）。匯入兩版都收：第 1 版是舊的 Speclink Desktop 送的格式。
 - **大小上限**：`limits.importBytes` 是匯入最多收多少位元組，預設 32 MiB；匯出沒有上限。經 HTTP 匯入時，入口在解析之前比對請求本文的大小，超過就回 413。
 - **你的框架的本文上限要不小於它。** 入口拿到的是框架已經讀完的本文，所以匯入那條路徑的框架上限要調到至少 `limits.importBytes`（上面 Express 範例的 4 MB 對匯入不夠）。
 - **壓縮由路由層做。** 宿主套件不壓縮也不解壓縮，要壓縮就在你的框架打開。
 
-要對失敗顯示你自己的說明，看 `error.reason`，不要看 `message`：訊息的措辭可能改變。`host.importScope` 有三種失敗帶 `reason`：
+要對失敗顯示你自己的說明，看 `error.reason`，不要看 `message`：訊息的措辭可能改變。`host.importScope` 有五種失敗帶 `reason`：
 
 | `code` | `reason` | 失敗 |
 | --- | --- | --- |
-| `refused` | `scope_not_empty` | 範圍裡已經有文件 |
+| `refused` | `scope_not_empty` | 建立模式：範圍裡已經有文件 |
+| `invalid_argv` | `empty_bundle` | 取代模式：包沒有任何文件 |
+| `refused` | `scope_changed` | 取代模式：列出範圍之後、提交之前，別人改動或刪除了這次要寫入或刪除的鍵。什麼都沒有寫入，再執行一次即可 |
 | `invalid_argv` | `bundle_too_large` | 內容超過 `limits.importBytes` |
 | `invalid_argv` | `invalid_bundle_document` | 有一份文件不合規則：鍵不合命名規則、摘要和內容不符、鍵重複，或看板排序超過它的大小上限 |
 
-其他失敗都沒有 `reason` 屬性（`'reason' in error` 是 `false`）：`beforeCommand` 的拒絕、儲存的失敗、引擎不收的包版本、不是包的值，以及第 1 版的包裡名稱組不出鍵的文件（第 2 版的包遇到同樣的問題是 `invalid_bundle_document`）。`host.exportScope` 目前沒有任何失敗帶 `reason`。之後的版本可能替還沒有代碼的失敗加上代碼，但不會改變上表代碼的意思。`GET /export` 與 `POST /import` 的回應不變。
+其他失敗都沒有 `reason` 屬性（`'reason' in error` 是 `false`）：`beforeCommand` 的拒絕、儲存的失敗、引擎不收的包版本、不是包的值、第 1 版的包裡名稱組不出鍵的文件（第 2 版的包遇到同樣的問題是 `invalid_bundle_document`），以及 `mode`、`dryRun` 不合格或取代模式的呼叫帶其他的鍵。`host.exportScope` 目前沒有任何失敗帶 `reason`。之後的版本可能替還沒有代碼的失敗加上代碼，但不會改變上表代碼的意思。`GET /export` 與 `POST /import` 的回應不變。
 
 ### <a id="export-local"></a>匯出本機專案
 
@@ -603,7 +638,7 @@ for (const [root, scope] of moves) {
   const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
   // → { formatVersion: 2, documents: [{ key, content, digest }, …] } （沒有 scopeVersion）
   const report = await host.importScope({ identity, scope, bundle })
-  // → { scopeVersion: 1, documents: 42 }
+  // → { scopeVersion: 1, documents: 42, added: [/* 42 個鍵 */], changed: [], removed: [] }
 }
 ```
 
@@ -612,7 +647,7 @@ for (const [root, scope] of moves) {
 - **只讀專案裡面的檔案**：通往規格資料夾路上的資料夾、規格資料夾本身，或它底下任何一個檔案或資料夾是符號連結時，在讀取任何文件之前以 `error` 拒絕；舊位置的 evidence 資料夾 `.speclink/touched/` 也照這條規則。`reason` 是 `symlink_in_spec_folder`；訊息以 `symbolic link in the spec folder:` 開頭，用相對專案根目錄的路徑指出那個項目，不會顯示連結指向哪裡；把連結換成實體檔案或移除即可。那些位置有列不出內容的資料夾時也會拒絕：`reason` 是 `spec_folder_unreadable`，訊息以 `cannot list` 開頭。規格資料夾名稱（`.speclink.yaml` 的 `spec_dir`，或 `createEngine` 的 `specDir`）是絕對路徑，或含 `..`、`.` 路徑段時，以 `error` 拒絕：`reason` 是 `spec_folder_outside_project`，訊息以 `spec folder outside the project:` 開頭並指出那個名稱。要匯出別處的規格資料夾，把 `root` 指到它的上一層。
 - **`root` 底下沒有規格資料夾時拒絕**：名稱與符號連結的檢查都通過之後，`root` 底下以那個名稱找不到規格資料夾——什麼都沒有，或資料夾裡沒有 `changes/`、`specs/`、`discussions/`，也沒有 `config.yaml`——就以 `error` 拒絕。只有 `LANGUAGE.md` 的資料夾也會被拒絕。`reason` 是 `no_spec_folder`；訊息以 `no spec folder:` 開頭並指出資料夾名稱，不含 `root` 的路徑；檔案都不變。這是為了抓出放錯位置的下載內容：不擋的話它會得到零份文件，看起來像成功。規格資料夾存在但沒有文件時，照常得到沒有文件的包。要匯出空的專案，先建立它的規格資料夾。
 - **匯出期間不要寫入這個專案**：匯出是逐一讀檔，不做快照。同一時間經同一個引擎、CLI 或其他程式寫入，包裡可能同時有新舊內容。
-- **匯入的範圍必須是空的**，而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
+- **這樣匯入的範圍必須是空的**（要寫進已經有文件的範圍，見[在伺服端匯入](#server-side-import)的重新匯入），而且受 `limits.importBytes` 的大小上限限制（預設 32 MiB）。大的專案會做出大的包，必要時調高匯入端宿主的上限。
 - **包裡有全文**：流程設定與每一份討論的全文都在包裡。誰可以執行匯出由你決定。
 - **自訂的產出流程**：每個變更的產出流程先在專案裡找，再到執行匯出那個使用者的使用者層設定目錄找。在宿主機器上匯出時，把自訂流程放在那個目錄，或改用專案內的流程。變更指名的產出流程不能用時，呼叫會被拒絕：`reason` 是 `change_schema_unusable`。
 
@@ -647,14 +682,40 @@ CLI 沒有匯入匯出的動詞。搬專案有三個入口：Speclink Desktop �
 const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
 const bundle = await engine.exportScope()
 const report = await host.importScope({ identity, scope: 'acme/web', bundle })
-// → { scopeVersion: 1, documents: 42 }
+// → { scopeVersion: 1, documents: 42, added: [/* 42 個鍵 */], changed: [], removed: [] }
 ```
 
 - **`root` 與 `specDir`**：只下載規格資料夾時，`root` 指到它的上一層，資料夾名稱給 `store.specDir`。不給 `specDir` 時，引擎和 CLI 一樣找資料夾：先讀 `root/.speclink.yaml` 的 `spec_dir`，再找 `speclink/`，最後找舊的 `openspec/`。`root` 底下以那個名稱找不到規格資料夾時會拒絕，`reason` 是 `no_spec_folder`。
 - **大小上限**：`limits.importBytes`（預設 32 MiB）也管你的程式在同一個程序裡呼叫的 `host.importScope`。匯出沒有上限；大的專案要調高宿主的上限。
-- **耗時與進度**：`engine.exportScope()` 與 `host.importScope()` 沒有進度回呼。約 1,600 份文件、約 19 MB 的規格資料夾，兩步各在數秒內完成。匯入只呼叫你的 `list` 函式一次與 `commit` 函式一次，所以寫入的時間在你自己的 `commit` 函式裡。下載規格資料夾是你的後端自己的工作，進度由你的後端提供。
+- **耗時與進度**：`engine.exportScope()` 與 `host.importScope()` 沒有進度回呼。約 1,600 份文件、約 19 MB 的規格資料夾，兩步各在數秒內完成。建立模式的匯入只呼叫你的 `list` 函式一次與 `commit` 函式一次，所以寫入的時間在你自己的 `commit` 函式裡。取代模式另外會分批呼叫你的 `read` 函式，讀出兩邊都有的鍵來比對，每批最多 200 個鍵。下載規格資料夾是你的後端自己的工作，進度由你的後端提供。
 - **匯入是一次性的搬遷，不是同步。** 匯入之後 repo 裡的改動不會進到範圍，範圍裡的改動也不會回到 repo。
-- **要重新匯入**，先在你的儲存裡刪掉這個範圍的全部文件，再匯入。這會刪掉匯入之後大家在宿主裡做的全部改動：變更、討論與蓋章。範圍不是空的時，匯入會被拒絕。
+- **要重新匯入**，用取代模式（`mode: 'replace'`），並且先試跑。不用自己清空儲存。**取代會刪掉匯入之後大家在宿主裡做的全部改動**：變更、討論與蓋章都會消失，範圍的內容變成和匯入包一樣。流程設定（`config.yaml`）也會變成 repo 的版本，管理者在宿主裡調過的政策要再寫回去。照下面的順序做：
+
+```js
+// 重新匯入 acme/web：repo 的規格資料夾已經重新下載到 /tmp/acme-web/specs-folder/。
+const who = { identity, scope: 'acme/web' }
+const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
+const bundle = await engine.exportScope()
+
+// 1. 讀出宿主管理的流程政策：取代之後，流程設定是 repo 的版本。
+const before = await host.dispatch({ ...who, argv: ['workflow-config', 'show', '--json'] })
+
+// 2. 試跑，不寫入。把會刪除的鍵給管理者確認（adminConfirms 是你自己的函式）。
+const plan = await host.importScope({ ...who, bundle, mode: 'replace', dryRun: true })
+if (!(await adminConfirms(plan.removed))) return
+
+// 3. 取代。
+const report = await host.importScope({ ...who, bundle, mode: 'replace' })
+
+// 4. 把宿主管理的政策鍵寫回去（這裡是 tdd 與 audit）。
+for (const key of ['tdd', 'audit']) {
+  await host.dispatch({ ...who, argv: ['workflow-config', 'set', key, String(before[key])] })
+}
+```
+
+- **`removed` 要給人看過。** 它列出會被刪除的每一個鍵：`changes/<名稱>/…` 是變更，`discussions/<名稱>.md` 是討論。管理者看不到 repo，要靠這份清單決定。試跑與取代之間範圍還可能改變，真的執行的回報才是實際刪除的清單。
+- **政策鍵由你決定。** 範例寫回 `tdd` 與 `audit`；你的宿主管理哪些鍵，就寫回哪些鍵。`locale` 與 `spec_locale` 讀到 `null` 時，給空字串設回未設定。取代與寫回是兩次提交：中間的片刻，流程設定是 repo 的版本。
+- **先調政策、再第一次匯入**，用同一段範例。流程設定是範圍裡的一份文件，管理者調過政策之後範圍就不是空的，建立模式會以 `scope_not_empty` 拒絕。
 
 ## <a id="skills"></a>產生技能檔
 

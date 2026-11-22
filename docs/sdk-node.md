@@ -431,6 +431,21 @@ async function beforeCommand({ command, params }, { read }) {
 - **A file that was deleted before the stamp is not in `scope`.** To make sure that it is also deleted on the main branch, check it yourself.
 - **`scope` is what the stamp recorded.** The output does not tell whether a file changed after the stamp. The comparison is yours.
 
+### <a id="replace-hook"></a>Let only an admin replace a scope
+
+Each call of `host.importScope` asks `beforeCommand` first, and a dry run does too. The command name is `scope-import`. The params are `documents` (the number of documents), `bytes` (the number of bytes), `mode` (`'create'` or `'replace'`), and `dryRun` (a boolean), without document content. The create mode and the replace mode use the same command name. Thus a hook that allows `scope-import` by its name only also allows a replace. To tell them apart, read `params.mode`:
+
+```js
+async function beforeCommand({ identity, command, params }) {
+  if (command !== 'scope-import' || params.mode !== 'replace') return
+  // isAdmin is your own function: Speclink gives an identity no role.
+  if (!(await isAdmin(identity))) return { allow: false, reason: 'Only an admin can import again' }
+}
+```
+
+- **This refuses the dry run too.** The report of a dry run lists keys of the scope, and thus the names of changes and discussions. To let more people do a dry run, read `params.dryRun`.
+- **An import through the HTTP entry point** gets these four params too. Its `mode` is always `'create'` and its `dryRun` is always `false`: an original client cannot replace.
+
 ## <a id="agent-tool"></a>For an Agent tool
 
 `host.dispatch` is the entry point for the Agent of the host. You call it in your process, without HTTP.
@@ -568,26 +583,46 @@ const bundle = await host.exportScope({ identity, scope: 'acme/web' })
 
 // Import: write into an empty scope, in one commit.
 const report = await host.importScope({ identity, scope: 'acme/web-copy', bundle })
-// → { scopeVersion: 1, documents: 42 }
+// → { scopeVersion: 1, documents: 42, added: [/* 42 keys */], changed: [], removed: [] }
+
+// Replace: make a scope that holds documents equal to another bundle. `newer` is a newer bundle,
+// for example the specs of the repo exported again. Do a dry run first: it writes nothing.
+const plan = await host.importScope({ identity, scope: 'acme/web', bundle: newer, mode: 'replace', dryRun: true })
+// → { scopeVersion: 17, documents: 3,
+//     added: ['specs/billing/spec.md'],
+//     changed: ['config.yaml', 'specs/auth/spec.md'],
+//     removed: ['changes/add-x/proposal.md', 'discussions/d1.md'] }
+const replaced = await host.importScope({ identity, scope: 'acme/web', bundle: newer, mode: 'replace' })
+// → the same three lists, scopeVersion: 18
 ```
 
 - **An export** uses only your `list` and `read`. If the scope changes during the export, it starts again, three times maximum, and then rejects with `unavailable`. It never mixes old and new content.
-- **An import** needs an empty scope. If the scope is not empty, the import is refused with `refused`. A bundle that is not valid (a digest that does not match the content, a key outside the naming rules of the engine, a key that appears two times, content over the limit) is refused with `invalid_argv`, and the message names the key. On failure, the scope stays as it was.
-- **The two calls ask `beforeCommand` first.** The command names are `scope-export` (no params) and `scope-import` (the params are the number of documents and the number of bytes, without the content). You decide who can export and import.
+- **An import has two modes.** `mode: 'create'` (the default) writes only into an empty scope. If the scope is not empty, the import is refused with `refused`. `mode: 'replace'` makes the content of the scope equal to the bundle. It adds the keys that only the bundle holds. It updates the keys whose content is different. **It deletes all keys that the scope holds and the bundle does not.** This includes the workflow configuration, the changes and the discussions that people made in the host after the import, and documents that you put into the same scope. Each mode writes in one `commit`. On failure, the scope stays as it was.
+- **A bundle that is not valid** (a digest that does not match the content, a key outside the naming rules of the engine, a key that appears two times, content over the limit) is refused with `invalid_argv`, and the message names the key. The checks are the same in the two modes, and they come before a call to your store.
+- **`dryRun: true` only reports.** A dry run does all the checks and the comparison. It reports the same three lists as the real run that follows it immediately. It does not call `commit`, and it does not tell `afterCommit`. You can do a dry run in the two modes. Before a replace, do a dry run and show `removed` to the person who decides.
+- **The report** is `{ scopeVersion, documents, added, changed, removed }`. `added`, `changed`, and `removed` are arrays of keys, each in byte order of the keys. They hold keys only, not content. `documents` is the number of documents written: the length of `added` plus the length of `changed`. In the create mode, `added` holds all keys of the bundle, and the other two lists are empty. After a commit, `scopeVersion` is the version after the commit. Without a commit (a dry run, a replace with no key to write or delete, a create with an empty bundle), it is the version of the scope when it was listed.
+- **A document with the same content is not written again.** A replace writes only the documents whose content is different. The version and the modified time of the other documents do not change, so connected clients do not read them again. When there is no key to write or delete, a replace does not commit, and there is no event.
+- **An empty bundle cannot replace.** In the replace mode, a bundle with no documents is refused with `invalid_argv`, and your store gets no call: one call cannot empty a scope. In the create mode, an empty bundle succeeds as before and writes zero documents.
+- **Writes by others during a replace.** If another writer changes or deletes a key that this replace writes or deletes, after the scope was listed and before the commit, the replace is refused with `refused` and nothing is written. A replace does not try again: run it again. A replace does not see two types of writes. The first is a change to a key whose content is the same on the two sides, so that this replace does not write it. The second is a new key that the scope did not hold when it was listed and that the bundle does not hold. In these two cases the replace succeeds, and that document keeps the content of the other writer. A dry run after the replace shows the difference. To make sure that the scope is equal to the bundle, refuse other writes in `beforeCommand` during the replace.
+- **A wrong `mode` or `dryRun` is refused.** The check comes before a call to your store and to `beforeCommand`. A `mode` that is not `'create'` or `'replace'`, or a `dryRun` that is not a boolean (the string `'false'`, the number `0`, and a `dryRun` key whose value is `undefined` included), is refused with `invalid_argv`. A call in the replace mode can have only the keys `identity`, `scope`, `bundle`, `mode`, and `dryRun`. Another key (for example `dryrun` for `dryRun`) is refused too. Thus a call that you intended as a dry run cannot delete documents.
+- **The replace mode and the dry run are available only for a call in the same process.** `POST /import` of the HTTP entry point (`handleRequest`) accepts only an empty scope.
+- **The two calls ask `beforeCommand` first.** The command names are `scope-export` (no params) and `scope-import`. The params of `scope-import` are `documents` (the number of documents), `bytes` (the number of bytes), `mode` (`'create'` or `'replace'`), and `dryRun` (a boolean), without the content. The report of a dry run lists keys of the scope, so a dry run asks first too. You decide who can export, import, and replace. For an example, see [Let only an admin replace a scope](#replace-hook).
 - **The bundle has two versions.** An export always gives version 2 (each document is named by its key). An import accepts the two versions: version 1 is the format that an older Speclink Desktop sends.
 - **Size limit**: `limits.importBytes` is the maximum number of bytes that an import accepts. The default is 32 MiB. An export has no limit. For an import through HTTP, the entry point compares the size of the request body before it parses the body, and returns 413 above the limit.
 - **The body limit of your framework must not be smaller than this value.** The entry point gets a body that the framework already read. Thus, for the import path, set the body limit of the framework to `limits.importBytes` or more (the 4 MB in the Express example above is not sufficient for an import).
 - **Compression belongs to the route layer.** The host kit does not compress or decompress. If you want compression, turn it on in your framework.
 
-Show your own text for a failure by `error.reason`, not by the `message`: the message can change. Three failures of `host.importScope` have a `reason`:
+Show your own text for a failure by `error.reason`, not by the `message`: the message can change. Five failures of `host.importScope` have a `reason`:
 
 | `code` | `reason` | The failure |
 | --- | --- | --- |
-| `refused` | `scope_not_empty` | The scope already holds documents |
+| `refused` | `scope_not_empty` | Create mode: the scope already holds documents |
+| `invalid_argv` | `empty_bundle` | Replace mode: the bundle holds no documents |
+| `refused` | `scope_changed` | Replace mode: after the scope was listed and before the commit, another writer changed or deleted a key that this replace writes or deletes. Nothing was written. Run it again |
 | `invalid_argv` | `bundle_too_large` | The content is over `limits.importBytes` |
 | `invalid_argv` | `invalid_bundle_document` | A document breaks a rule: a key outside the naming rules, a digest that does not match the content, a key that appears two times, or a board order over its size |
 
-All other failures have no `reason` property (`'reason' in error` is `false`): a refusal of `beforeCommand`, a store failure, a bundle version that the engine does not accept, a value that is not a bundle, and a document of a version 1 bundle whose names make no key (the same problem in a version 2 bundle is `invalid_bundle_document`). For now, no failure of `host.exportScope` has a `reason`. A later version can give a code to a failure that has none, but it does not change the meaning of a code above. The responses of `GET /export` and `POST /import` do not change.
+All other failures have no `reason` property (`'reason' in error` is `false`): a refusal of `beforeCommand`, a store failure, a bundle version that the engine does not accept, a value that is not a bundle, a document of a version 1 bundle whose names make no key (the same problem in a version 2 bundle is `invalid_bundle_document`), and a `mode` or a `dryRun` that is not valid or a call in the replace mode with another key. For now, no failure of `host.exportScope` has a `reason`. A later version can give a code to a failure that has none, but it does not change the meaning of a code above. The responses of `GET /export` and `POST /import` do not change.
 
 ### <a id="export-local"></a>Export a local project
 
@@ -603,7 +638,7 @@ for (const [root, scope] of moves) {
   const bundle = await createEngine({ store: { type: 'fs', root } }).exportScope()
   // → { formatVersion: 2, documents: [{ key, content, digest }, …] } (no scopeVersion)
   const report = await host.importScope({ identity, scope, bundle })
-  // → { scopeVersion: 1, documents: 42 }
+  // → { scopeVersion: 1, documents: 42, added: [/* 42 keys */], changed: [], removed: [] }
 }
 ```
 
@@ -612,7 +647,7 @@ for (const [root, scope] of moves) {
 - **It reads only files inside the project.** If a folder on the way to the spec folder, the spec folder, or a file or a folder under it is a symbolic link, the call rejects with `error` before it reads a document. The older evidence folder `.speclink/touched/` follows the same rule. The `reason` is `symlink_in_spec_folder`. The message starts with `symbolic link in the spec folder:` and names the item by its path from the project root. It never shows what the link points at. Replace the link with the file itself, or remove it. A folder there that cannot be listed also stops the call: the `reason` is `spec_folder_unreadable`, and the message starts with `cannot list`. If the name of the spec folder (`spec_dir` in `.speclink.yaml`, or the `specDir` of `createEngine`) is an absolute path, or has a `..` or `.` segment, the call rejects with `error`. The `reason` is `spec_folder_outside_project`. The message starts with `spec folder outside the project:` and names it. To export a spec folder at a different place, point `root` at the folder above it.
 - **A `root` with no spec folder is refused.** After the name and link checks, the call rejects with `error` when `root` holds no spec folder under that name: nothing is there, or the folder has no `changes/`, `specs/`, `discussions/`, and no `config.yaml`. A folder that holds only `LANGUAGE.md` is refused too. The `reason` is `no_spec_folder`. The message starts with `no spec folder:` and names the folder, never the path of `root`. The files stay as they were. This catches a download that is in the wrong place, which otherwise gives no document and looks like a success. A spec folder with no document still gives a bundle with no documents. To export an empty project, make its spec folder first.
 - **Do not write to the project during the export.** The export reads the files one at a time and takes no snapshot. A write at the same time, through the same engine, the CLI, or another program, can put old and new content into one bundle.
-- **The scope of the import must be empty**, and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
+- **The scope of this import must be empty** (to write into a scope that holds documents, see "To import again" in [Import on the server](#server-side-import)), and the size limit `limits.importBytes` (default 32 MiB) applies. A large project makes a large bundle. If necessary, increase the limit of the host that imports it.
 - **The bundle has the full text** of the workflow config and of all the discussions. You decide who can run an export.
 - **Custom schemas**: the schema of each change is found in the project first, then in the user-level config directory of the user that runs the export. On a host machine, put a custom schema in that directory, or keep it in the project. A change that names a schema that cannot be used stops the call: the `reason` is `change_schema_unusable`.
 
@@ -647,14 +682,40 @@ Your backend can bring the specs of an existing repo into a scope. It downloads 
 const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
 const bundle = await engine.exportScope()
 const report = await host.importScope({ identity, scope: 'acme/web', bundle })
-// → { scopeVersion: 1, documents: 42 }
+// → { scopeVersion: 1, documents: 42, added: [/* 42 keys */], changed: [], removed: [] }
 ```
 
 - **`root` and `specDir`**: when you download only the spec folder, point `root` at the folder above it, and give the folder name in `store.specDir`. Without `specDir`, the engine finds the folder as the CLI does: first `spec_dir` in `root/.speclink.yaml`, then `speclink/`, then the older `openspec/`. A `root` with no spec folder under that name is refused with the `reason` `no_spec_folder`.
 - **Size limit**: `limits.importBytes` (default 32 MiB) also applies to a `host.importScope` that your program calls in the same process. The export has no limit. For a large project, increase the limit of the host.
-- **Time and progress**: `engine.exportScope()` and `host.importScope()` have no progress callback. For a spec folder of approximately 1,600 documents and approximately 19 MB, each of the two steps completes in a few seconds. The import calls your `list` function one time and your `commit` function one time, so the time of the write is in your own `commit` function. The download of the spec folder is the work of your backend, and your backend shows its progress.
+- **Time and progress**: `engine.exportScope()` and `host.importScope()` have no progress callback. For a spec folder of approximately 1,600 documents and approximately 19 MB, each of the two steps completes in a few seconds. An import in the create mode calls your `list` function one time and your `commit` function one time, so the time of the write is in your own `commit` function. An import in the replace mode also calls your `read` function in batches, to read and compare the keys that the two sides hold: 200 keys maximum for each batch. The download of the spec folder is the work of your backend, and your backend shows its progress.
 - **The import is a one-time move, not a sync.** A change in the repo after the import does not come into the scope, and a change in the scope does not go back to the repo.
-- **To import again**, delete all documents of the scope in your store first, then import. This deletes all the work that people did in the host after the import: the changes, the discussions, and the stamps. An import into a scope that is not empty is refused.
+- **To import again**, use the replace mode (`mode: 'replace'`), and do a dry run first. You do not empty your store. **A replace deletes all the work that people did in the host after the import**: the changes, the discussions, and the stamps go, and the content of the scope becomes the same as the bundle. The workflow configuration (`config.yaml`) also becomes the version of the repo, so you must write back the policy that an admin set in the host. Use this sequence:
+
+```js
+// Import acme/web again: the spec folder of the repo is downloaded again, to /tmp/acme-web/specs-folder/.
+const who = { identity, scope: 'acme/web' }
+const engine = createEngine({ store: { type: 'fs', root: '/tmp/acme-web', specDir: 'specs-folder' } })
+const bundle = await engine.exportScope()
+
+// 1. Read the workflow policy that the host manages: after the replace, the configuration is the version of the repo.
+const before = await host.dispatch({ ...who, argv: ['workflow-config', 'show', '--json'] })
+
+// 2. Dry run: it writes nothing. Let an admin confirm the keys to delete (adminConfirms is your own function).
+const plan = await host.importScope({ ...who, bundle, mode: 'replace', dryRun: true })
+if (!(await adminConfirms(plan.removed))) return
+
+// 3. Replace.
+const report = await host.importScope({ ...who, bundle, mode: 'replace' })
+
+// 4. Write back the policy keys that the host manages (here: tdd and audit).
+for (const key of ['tdd', 'audit']) {
+  await host.dispatch({ ...who, argv: ['workflow-config', 'set', key, String(before[key])] })
+}
+```
+
+- **Show `removed` to a person.** It lists each key that the replace deletes: `changes/<name>/…` is a change, and `discussions/<name>.md` is a discussion. An admin cannot see the repo, and decides from this list. The scope can change between the dry run and the replace, so the report of the real run is the list of what was deleted.
+- **You decide the policy keys.** The example writes back `tdd` and `audit`. Write back the keys that your host manages. When `locale` or `spec_locale` reads as `null`, give an empty string to set it back to not set. The replace and the write-back are two commits: for a moment between them, the workflow configuration is the version of the repo.
+- **To set the policy first and then import for the first time**, use the same example. The workflow configuration is a document of the scope. After an admin sets the policy, the scope is not empty, and the create mode refuses with `scope_not_empty`.
 
 ## <a id="skills"></a>Generate skill files
 

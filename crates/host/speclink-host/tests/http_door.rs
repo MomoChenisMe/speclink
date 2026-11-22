@@ -2616,8 +2616,8 @@ fn the_import_and_the_export_go_through_the_hooks() {
     let bytes = META.len() + OPEN_TASKS.len() + CONFIG.len();
     assert_eq!(
         seen.asked.lock().unwrap().clone(),
-        vec![("scope-import".to_string(), json!({ "documents": 3, "bytes": bytes }))],
-        "the count and the bytes, and no content"
+        vec![("scope-import".to_string(), json!({ "documents": 3, "bytes": bytes, "mode": "create", "dryRun": false }))],
+        "the count, the bytes and the door's one mode, and no content"
     );
     assert!(seen.watched.lock().unwrap().is_empty());
     assert!(stored(&door, "s1").is_empty(), "the scope is unchanged");
@@ -2634,6 +2634,50 @@ fn the_import_and_the_export_go_through_the_hooks() {
     let (status, reason, message) = error(&export(&door));
     assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "不開放匯出"));
     assert_eq!(seen.asked.lock().unwrap().last().cloned(), Some(("scope-export".to_string(), json!({}))));
+}
+
+#[test]
+fn a_body_that_asks_for_a_replace_or_a_dry_run_is_422_and_neither_the_store_nor_the_hook_is_called() {
+    // spec host-kit「經 HTTP 入口帶 mode 或 dryRun 的請求照舊被拒絕」: the door
+    // has the create mode only, and a field no bundle has is not read as an
+    // option. It is refused as any other such field is.
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    seed(&door, "s1", &[("config.yaml", "schema: other\n")]);
+    let mut other_field = keyed(THREE);
+    other_field["extra"] = json!(1);
+    let unknown_field = error(&import(&door, other_field));
+    assert_eq!((unknown_field.0, unknown_field.1.as_str()), (422, "invalid_argument"));
+
+    for (field, value) in [("mode", json!("replace")), ("dryRun", json!(true))] {
+        let mut body = keyed(THREE);
+        body[field] = value;
+
+        let (status, reason, _) = error(&import(&door, body));
+
+        assert_eq!((status, reason.as_str()), (unknown_field.0, unknown_field.1.as_str()), "{field}");
+    }
+    assert!(seen.asked.lock().unwrap().is_empty(), "the before hook was asked");
+    assert!(door.store.calls().is_empty(), "the store was called");
+    assert_eq!(stored(&door, "s1"), ["config.yaml"]);
+    assert_eq!(content(&door, "s1", "config.yaml").as_deref(), Some("schema: other\n"));
+}
+
+#[test]
+fn an_import_through_the_door_into_a_scope_that_holds_a_document_is_asked_about_as_a_create() {
+    // spec host-kit「經 HTTP 入口的匯入一律是建立模式」.
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    seed(&door, "s1", &[("config.yaml", "schema: other\n")]);
+
+    let (status, reason, message) = error(&import(&door, keyed(THREE)));
+
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert!(message.contains("create-new"), "{message}");
+    let asked = seen.asked.lock().unwrap().clone();
+    assert_eq!(asked.len(), 1);
+    assert_eq!((&asked[0].1["mode"], &asked[0].1["dryRun"]), (&json!("create"), &json!(false)));
+    assert_eq!(content(&door, "s1", "config.yaml").as_deref(), Some("schema: other\n"));
 }
 
 // ======================================================================

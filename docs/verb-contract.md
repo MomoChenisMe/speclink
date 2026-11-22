@@ -830,7 +830,8 @@ Version 1:
 Rules for both versions:
 
 - The target repo must be empty. If not, the Server answers 409 `refused` and writes nothing.
-- One commit writes all documents: all of them, or none. The commit carries one `scope-imported` event.
+- `POST /import` accepts only an empty repo. The replace mode (make a scope that holds documents equal to the bundle) and the dry run are available only when the program of the host calls `host.importScope`. See the [Node SDK](sdk-node.md#export-import). A body with a `mode` or a `dryRun` field is not a bundle, and gives 422.
+- One commit writes all documents: all of them, or none. The commit carries one `scope-imported` event. Its payload is `documents` (the number of documents written). When the program of the host imports in the replace mode, this event also has `removed` (the number of documents deleted).
 - The Server checks each document: the key must follow a naming rule of the engine, `digest` must be the digest of the content, and a key must not appear twice. A failed check gives 400 `invalid_argument`. The `message` names the first document that is wrong.
 - A body that is not JSON gives 400. JSON that is not a bundle gives 422. A `formatVersion` that is not 1 or 2 gives 409 `refused`; the `message` starts with `unsupported bundle format version`.
 - A body larger than the import limit gives 413. The host sets the limit, and the default is 32 MiB. The body limit of the host's web framework must not be smaller than this limit.

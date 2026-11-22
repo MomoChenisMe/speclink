@@ -4,8 +4,7 @@ slug: embedded-host-needs-6
 status: promoted
 created: 2026-11-21
 created_by: MomoChen <momochenisme@gmail.com>
-hold: true
-promoted_to: export-failure-reason-and-location
+promoted_to: export-failure-reason-and-location, import-replace-mode
 ---
 
 # Discussion: 內嵌宿主：管理者實際匯入規格資料夾之後的第六輪（四項）

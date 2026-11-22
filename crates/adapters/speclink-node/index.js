@@ -268,15 +268,55 @@ class Host {
   }
 
   /**
-   * Write `bundle` (of either version) into `scope`, which must be empty,
-   * for `identity`. Resolves to `{ scopeVersion, documents }`.
+   * Write `bundle` (of either version) into `scope` for `identity`. `mode`
+   * is `'create'` (the default: the scope must be empty) or `'replace'` (the
+   * scope becomes equal to the bundle); `dryRun: true` reports and commits
+   * nothing. Resolves to `{ scopeVersion, documents, added, changed, removed }`.
    */
   async importScope(call) {
+    const [mode, dryRun] = importOptions(call)
     // What is not a bundle crosses as `null`, which the native side refuses
     // with invalid_argv.
     const bundle = JSON.stringify(call?.bundle) ?? 'null'
-    return unwrap(await this.#native.importScope(...whoAndWhere(call), bundle))
+    return unwrap(await this.#native.importScope(...whoAndWhere(call), bundle, mode, dryRun))
   }
+}
+
+/** Every key a call of `importScope` in the replace mode can have. */
+const REPLACE_CALL_KEYS = ['identity', 'scope', 'bundle', 'mode', 'dryRun']
+
+/**
+ * `importScope`'s `mode` and `dryRun` as `[mode, dryRun]`, checked here,
+ * before anything crosses to the native side: a replace deletes documents, so
+ * a value of the wrong type or a misspelled key must not read as a default.
+ * `dryRun: 'false'` is not false, and `dryrun: true` next to `mode:
+ * 'replace'` would be a real replace. A `dryRun` key that is there must hold
+ * a boolean: `dryRun: body.dryRun` with nothing in `body.dryRun` is refused,
+ * not run for real. A `mode` that is `undefined` is the create mode, which
+ * deletes nothing. The create mode keeps taking other keys, as it always
+ * did. A call that can hold no key (not an object and not a function) goes
+ * on to the native side, which refuses its identity.
+ */
+function importOptions(call) {
+  const invalid = (message) => Object.assign(new Error(`host.importScope: ${message}`), { code: 'invalid_argv' })
+  // A string is shown cut and quoted; any other value by its type only.
+  const shown = (value) => (typeof value === 'string' ? JSON.stringify(value.slice(0, 40)) : value === null ? 'null' : typeof value)
+  if (call === null || (typeof call !== 'object' && typeof call !== 'function')) return ['create', false]
+  const { mode, dryRun } = call
+  if (mode !== undefined && mode !== 'create' && mode !== 'replace') {
+    throw invalid(`mode must be 'create' or 'replace', got ${shown(mode)}`)
+  }
+  if ('dryRun' in call && typeof dryRun !== 'boolean') {
+    throw invalid(`dryRun must be true or false, got ${shown(dryRun)} (leave the key out for a real run)`)
+  }
+  if (mode === 'replace') {
+    const unknown = Object.keys(call).filter((name) => !REPLACE_CALL_KEYS.includes(name))
+    if (unknown.length > 0) {
+      const names = unknown.map(shown).join(', ')
+      throw invalid(`unknown key ${names} in a call with mode 'replace' (the keys are ${REPLACE_CALL_KEYS.join(', ')})`)
+    }
+  }
+  return [mode ?? 'create', dryRun === true]
 }
 
 /**

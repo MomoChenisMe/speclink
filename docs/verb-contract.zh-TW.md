@@ -830,7 +830,8 @@ POST /skills
 兩個版本共同的規則：
 
 - 目標 repo 必須是空的，否則回 409 `refused`，什麼都不寫。
-- 全部文件在一次提交寫入：全部成功，或全部不寫。提交帶一筆 `scope-imported` 事件。
+- `POST /import` 只收空的 repo。取代模式（讓已經有文件的範圍等於包）與試跑只在宿主的程式呼叫 `host.importScope` 時提供，見 [Node SDK](sdk-node.zh-TW.md#export-import)。body 帶 `mode` 或 `dryRun` 欄位時不是包的形狀，回 422。
+- 全部文件在一次提交寫入：全部成功，或全部不寫。提交帶一筆 `scope-imported` 事件，payload 是 `documents`（寫入的份數）。宿主的程式以取代模式匯入時，這筆事件多一個 `removed`（刪除的份數）。
 - 每份文件都會檢查：鍵要符合引擎的命名規則、`digest` 要等於內容的摘要、同一個鍵不能出現兩次。任何一項不過回 400 `invalid_argument`，`message` 指出第一份有問題的文件。
 - body 不是 JSON 回 400；是 JSON 但不是包的形狀回 422；`formatVersion` 不是 1 也不是 2 回 409 `refused`，`message` 以 `unsupported bundle format version` 開頭。
 - body 超過匯入的大小上限回 413。上限由宿主設定，預設 32 MiB。宿主的 Web 框架自己的本文上限不能比它小。

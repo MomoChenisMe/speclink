@@ -8,7 +8,7 @@ use super::{HttpRequest, HttpResponse};
 use crate::documents::{self, ContextOutcome};
 use crate::kit::{Caller, HostKit, Identity, ProjectEntry, RepoEntry, RunOptions};
 use crate::port_exec::{self, AtVersion, ExecError, PortExecution};
-use crate::transfer::{self, SentBundle, TransferError, UnreadBundle};
+use crate::transfer::{self, ImportOptions, SentBundle, TransferError, UnreadBundle};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use speclink_core::command::{Command, CommandError, CommandOutcome, ErrorCode, InstructionsOutcome};
@@ -290,8 +290,10 @@ pub(crate) fn export_scope(req: &Request<'_>) -> Result<HttpResponse, HttpError>
     Ok(ok(&bundle, format!("\"{version}\"")))
 }
 
-/// `POST /import`: a bundle into the scope, which must be empty. A body over
-/// the kit's import limit is refused before it is parsed. The format version
+/// `POST /import`: a bundle into the scope, which must be empty. The door
+/// has the create mode only: the replace mode and the dry run are for a
+/// host's own program, and a body that names one is no bundle (422). A body
+/// over the kit's import limit is refused before it is parsed. The format version
 /// is read first and chooses the shape: 1 names each document by its kind
 /// and answers each document's outcome, as it always did; 2 names it by its
 /// key and answers the count.
@@ -319,12 +321,12 @@ pub(crate) fn import_scope(req: &Request<'_>) -> Result<HttpResponse, HttpError>
             }
             let sent: Vec<ImportDocumentId> = bundle.documents.iter().map(|doc| doc.document.clone()).collect();
             let keyed = transfer::from_first_version(bundle).map_err(ExecError::from)?;
-            let report = req.kit.import_scope(&req.caller, keyed)?;
+            let report = req.kit.import_scope(&req.caller, keyed, ImportOptions::default())?;
             let dto = transfer::first_version_report(report.scope_version.get(), sent);
             Ok(ok_at(&dto, report.scope_version))
         }
         SentBundle::Keyed(bundle) => {
-            let report = req.kit.import_scope(&req.caller, bundle)?;
+            let report = req.kit.import_scope(&req.caller, bundle, ImportOptions::default())?;
             let dto = ScopeImportResponse {
                 scope_version: report.scope_version.get(),
                 documents: report.documents as u64,

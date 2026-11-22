@@ -2,9 +2,10 @@
 //!
 //! Both use only the three operations of a store port, so any store that
 //! implements the port has them with no work of its own. An export is every
-//! document of the scope at one scope version. An import takes an empty scope
-//! only, and writes the whole bundle in one commit: there is no state in
-//! between.
+//! document of the scope at one scope version. An import has two modes
+//! ([`ImportMode`]): it takes an empty scope only, or it makes a scope that
+//! holds documents equal to the bundle. Both write in one commit: there is no
+//! state in between.
 //!
 //! The functions here ask no hook and check no permission: the host kit's
 //! [`crate::kit::HostKit::export_scope`] and
@@ -56,13 +57,57 @@ pub const EXPORT_COMMAND: &str = "scope-export";
 /// words in a `refused` answer to know it can send the first.
 pub const UNSUPPORTED_VERSION: &str = "unsupported bundle format version";
 
-/// What an import wrote.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What an import does with a scope that holds documents.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ImportMode {
+    /// Take an empty scope only, and write every document of the bundle.
+    #[default]
+    Create,
+    /// Make the scope equal the bundle: add, update and delete documents.
+    Replace,
+}
+
+impl ImportMode {
+    /// The mode as the before hook's params give it, and as a door names it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ImportMode::Create => "create",
+            ImportMode::Replace => "replace",
+        }
+    }
+
+    /// The mode a door named by the text of [`ImportMode::as_str`], or `None`
+    /// for any other text.
+    pub fn parse(text: &str) -> Option<ImportMode> {
+        [ImportMode::Create, ImportMode::Replace].into_iter().find(|mode| mode.as_str() == text)
+    }
+}
+
+/// How an import runs. The default is the import as it always was: the
+/// create mode, and a real run.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ImportOptions {
+    pub mode: ImportMode,
+    /// Do every check, the list and the compare, and report what a real run
+    /// would do; commit nothing.
+    pub dry_run: bool,
+}
+
+/// What an import wrote, or what its dry run would write.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImportReport {
-    /// The scope version after the import.
+    /// The scope version after the commit; with no commit (a dry run, or
+    /// nothing to write or delete), the version the scope was listed at.
     pub scope_version: Version,
-    /// How many documents were written.
+    /// How many documents were written: the added and the changed ones.
     pub documents: usize,
+    /// The keys the scope did not hold, in byte order. The create mode gives
+    /// every key of the bundle here.
+    pub added: Vec<String>,
+    /// The keys both sides hold with different content, in byte order.
+    pub changed: Vec<String>,
+    /// The keys only the scope held, in byte order.
+    pub removed: Vec<String>,
 }
 
 /// Why an export or an import failed, as a fixed code a host can show its
@@ -86,10 +131,10 @@ pub struct ImportReport {
 ///   public constructor, `From<String>`, gives no code. A variant a crate
 ///   user builds by hand gets the code of its kind, whatever its text.
 /// - Does the source of a command failure carry a store's text further? No.
-///   Only the four failures with a code or a whole-bundle refusal
+///   Only the six failures with a code or a whole-bundle refusal
 ///   ([`TransferError::InvalidBundle`], `TooLarge`, `InvalidDocument`,
-///   `NotEmpty`) become a command failure with a source, and its text is the
-///   command failure's own message. A store's failure and a moving scope
+///   `NotEmpty`, `EmptyBundle`, `ScopeChanged`) become a command failure with
+///   a source, and its text is the command failure's own message. A store's failure and a moving scope
 ///   stay store failures with no source. The readers of a command failure's
 ///   source (the HTTP door's error mapping, the Node binding) only ask its
 ///   type; none of them writes it into an answer.
@@ -165,8 +210,13 @@ pub enum TransferReason {
     /// it is not found, its definition does not load, or it names an artifact
     /// pattern that cannot be listed.
     ChangeSchemaUnusable,
-    /// The target scope of an import holds documents.
+    /// The target scope of an import in the create mode holds documents.
     ScopeNotEmpty,
+    /// The bundle of an import in the replace mode holds no document.
+    EmptyBundle,
+    /// During an import in the replace mode, another writer wrote or deleted
+    /// a key that import writes or deletes.
+    ScopeChanged,
     /// The content of an import is over the host's limit.
     BundleTooLarge,
     /// A document of an import breaks a rule of its own.
@@ -184,6 +234,8 @@ impl TransferReason {
             TransferReason::InvalidChangeMetadata => "invalid_change_metadata",
             TransferReason::ChangeSchemaUnusable => "change_schema_unusable",
             TransferReason::ScopeNotEmpty => "scope_not_empty",
+            TransferReason::EmptyBundle => "empty_bundle",
+            TransferReason::ScopeChanged => "scope_changed",
             TransferReason::BundleTooLarge => "bundle_too_large",
             TransferReason::InvalidBundleDocument => "invalid_bundle_document",
         }
@@ -204,9 +256,15 @@ pub enum TransferError {
     /// the first such document and the rule; it never holds document
     /// content.
     InvalidDocument(String),
-    /// The target scope holds a document: before the import, or by the time
-    /// it committed.
+    /// The create mode's target scope holds a document: before the import,
+    /// or by the time it committed.
     NotEmpty,
+    /// The replace mode got a bundle with no documents: it would remove every
+    /// document of the scope.
+    EmptyBundle,
+    /// During a replace, after the list, another writer wrote or deleted a
+    /// key the replace writes or deletes. Nothing was written.
+    ScopeChanged,
     /// The scope changed during every try of the export.
     Unstable,
     /// The store failed.
@@ -220,6 +278,8 @@ impl TransferError {
             TransferError::TooLarge(_) => Some(TransferReason::BundleTooLarge),
             TransferError::InvalidDocument(_) => Some(TransferReason::InvalidBundleDocument),
             TransferError::NotEmpty => Some(TransferReason::ScopeNotEmpty),
+            TransferError::EmptyBundle => Some(TransferReason::EmptyBundle),
+            TransferError::ScopeChanged => Some(TransferReason::ScopeChanged),
             TransferError::InvalidBundle(_) | TransferError::Unstable | TransferError::Store(_) => None,
         }
     }
@@ -233,6 +293,12 @@ impl fmt::Display for TransferError {
             | TransferError::InvalidDocument(message) => f.write_str(message),
             TransferError::NotEmpty => {
                 f.write_str("import (create-new): the target scope already holds documents")
+            }
+            TransferError::EmptyBundle => f.write_str(
+                "import (replace): the bundle holds no documents — a replace with it would remove every document of the scope",
+            ),
+            TransferError::ScopeChanged => {
+                f.write_str("import (replace): the target scope changed during the import — run it again")
             }
             TransferError::Unstable => write!(
                 f,
@@ -252,7 +318,8 @@ impl From<PortError> for TransferError {
 }
 
 /// The failure as a call through the host kit gives it: a bundle that is not
-/// valid is `invalid_argv`, a target that is not empty is `refused`, and an
+/// valid (or, for a replace, holds no documents) is `invalid_argv`, a target
+/// that is not empty or that changed during a replace is `refused`, and an
 /// export that found no still moment is the store's temporary failure, since
 /// the caller can try again. A command failure keeps the transfer failure as
 /// its source, so a door can ask it for its [`TransferError::reason`].
@@ -262,10 +329,11 @@ impl From<TransferError> for ExecError {
             ExecError::Command(CommandError { code, message: e.to_string(), source: Some(anyhow::Error::new(e)) })
         };
         match e {
-            TransferError::InvalidBundle(_) | TransferError::TooLarge(_) | TransferError::InvalidDocument(_) => {
-                command(ErrorCode::InvalidArgv, e)
-            }
-            TransferError::NotEmpty => command(ErrorCode::Refused, e),
+            TransferError::InvalidBundle(_)
+            | TransferError::TooLarge(_)
+            | TransferError::InvalidDocument(_)
+            | TransferError::EmptyBundle => command(ErrorCode::InvalidArgv, e),
+            TransferError::NotEmpty | TransferError::ScopeChanged => command(ErrorCode::Refused, e),
             TransferError::Unstable => ExecError::Store(PortError::Unavailable { message: e.to_string() }),
             TransferError::Store(e) => ExecError::Store(e),
         }
@@ -322,10 +390,19 @@ pub fn export(port: &dyn StorePort, scope: &ScopeId) -> Result<ScopeBundle, Tran
     for _ in 0..EXPORT_TRIES {
         let listing = port.list(scope, &everything())?;
         let keys: Vec<DocKey> = listing.entries.into_iter().map(|entry| entry.key).collect();
-        let Some(documents) = read_in_batches(port, scope, keys)? else {
+        let Some(contents) = read_in_batches(port, scope, &keys)? else {
             continue;
         };
         if scope_version(port, scope)? == listing.version {
+            let documents = keys
+                .iter()
+                .zip(contents)
+                .map(|(key, content)| BundleDocument {
+                    key: key.as_str().to_string(),
+                    digest: content_digest(&content),
+                    content,
+                })
+                .collect();
             return Ok(ScopeBundle {
                 format_version: FORMAT_VERSION,
                 scope_version: Some(listing.version.get()),
@@ -336,16 +413,12 @@ pub fn export(port: &dyn StorePort, scope: &ScopeId) -> Result<ScopeBundle, Tran
     Err(TransferError::Unstable)
 }
 
-/// The documents of `keys`, in that order, or `None` when a listed key has
-/// no document any more: the scope changed after the list. A read that does
-/// not answer every key is the store's failure: a bundle with a document
-/// missing is no export.
-fn read_in_batches(
-    port: &dyn StorePort,
-    scope: &ScopeId,
-    keys: Vec<DocKey>,
-) -> Result<Option<Vec<BundleDocument>>, PortError> {
-    let mut documents = Vec::with_capacity(keys.len());
+/// The content of each of `keys`, in that order and in batches of
+/// [`READ_BATCH`] keys, or `None` when a listed key has no document any more:
+/// the scope changed after the list. A read that does not answer every key is
+/// the store's failure: a bundle with a document missing is no export.
+fn read_in_batches(port: &dyn StorePort, scope: &ScopeId, keys: &[DocKey]) -> Result<Option<Vec<String>>, PortError> {
+    let mut contents = Vec::with_capacity(keys.len());
     for batch in keys.chunks(READ_BATCH) {
         let read = port.read(scope, batch)?;
         if read.len() != batch.len() {
@@ -353,38 +426,20 @@ fn read_in_batches(
                 message: format!("the store's read gave {} documents for {} keys", read.len(), batch.len()),
             });
         }
-        for (key, doc) in batch.iter().zip(read) {
+        for doc in read {
             let Some(doc) = doc else {
                 return Ok(None);
             };
-            documents.push(BundleDocument {
-                key: key.as_str().to_string(),
-                digest: content_digest(&doc.content),
-                content: doc.content,
-            });
+            contents.push(doc.content);
         }
     }
-    Ok(Some(documents))
+    Ok(Some(contents))
 }
 
 // --- the import ---
 
-/// Write `bundle` into `scope`, which must be empty, in one commit.
-///
-/// Checked before the store is called: the format version, then for each
-/// document that its key follows the contract's format and one of the
-/// Engine's naming rules, that its digest is its content's, and that no key
-/// appears twice; a board order must also be within the size its write route
-/// takes. Then the scope must list no document. The commit writes
-/// every document with the expectation "no document", with one
-/// `scope-imported` event; a conflict there means another writer landed after
-/// the list, and the answer is [`TransferError::NotEmpty`] too. Every failure
-/// leaves the scope as it was.
-///
-/// The naming-rule check keeps arbitrary keys out of a host's store. It does
-/// not look at content: a broken document is reported when it is read.
-///
-/// A bundle with no documents commits nothing.
+/// Write `bundle` into `scope`, which must be empty, in one commit: the
+/// create mode of [`import_with`], and a real run.
 pub fn import(
     port: &dyn StorePort,
     scope: &ScopeId,
@@ -392,23 +447,125 @@ pub fn import(
     bundle: ScopeBundle,
     at: Timestamp,
 ) -> Result<ImportReport, TransferError> {
-    import_with_events(port, scope, actor, bundle, at).map(|(report, _)| report)
+    import_with(port, scope, actor, bundle, at, ImportOptions::default()).map(|(report, _)| report)
 }
 
-/// [`import`], with the events of its commit for the after hook: none when
-/// nothing was committed.
-pub(crate) fn import_with_events(
+/// Write `bundle` into `scope` in one commit, in the mode `options` names.
+/// It gives the report, and the events of its commit for the after hook:
+/// none when nothing was committed.
+///
+/// Checked before the store is called, in both modes: the format version,
+/// then for each document that its key follows the contract's format and one
+/// of the Engine's naming rules, that its digest is its content's, and that
+/// no key appears twice; a board order must also be within the size its write
+/// route takes. The naming-rule check keeps arbitrary keys out of a host's
+/// store. It does not look at content: a broken document is reported when it
+/// is read.
+///
+/// The create mode ([`ImportMode::Create`]): the scope must list no document.
+/// The commit writes every document with the expectation "no document", with
+/// one `scope-imported` event (`documents`); a conflict there means another
+/// writer landed after the list, and the answer is
+/// [`TransferError::NotEmpty`] too. A bundle with no documents commits
+/// nothing.
+///
+/// The replace mode ([`ImportMode::Replace`]) makes the scope equal the
+/// bundle. A bundle with no documents is refused before the store is called
+/// ([`TransferError::EmptyBundle`]). Then the scope is listed, and the keys
+/// both sides hold are read in batches and compared with the bundle:
+///
+/// - a key only the bundle holds is written, with the expectation "no
+///   document";
+/// - a key both hold with different content is written, with the expectation
+///   "the listed version";
+/// - a key both hold with the same content gets no operation, so its version
+///   and its modified time stay;
+/// - a key only the scope holds is deleted, with the expectation "the listed
+///   version", whatever document it is: the workflow config, a change or a
+///   discussion made after the first import, a key outside the naming rules.
+///
+/// All of it is one commit with one `scope-imported` event (`documents` and
+/// `removed`). With nothing to write or delete there is no commit and no
+/// event. A key that was listed and has no document at the read, or a
+/// conflict at the commit, means another writer changed a key this replace
+/// touches: the answer is [`TransferError::ScopeChanged`], and the replace
+/// does not start again.
+///
+/// A commit states what it expects of its own keys only. So a replace does
+/// not see another writer's change to a key it has no operation for: a key
+/// with the same content on both sides, or a key that neither side held at
+/// the list. That document stays as the other writer left it.
+///
+/// A dry run (`options.dry_run`) does all of the above but the commit, in
+/// both modes, and its refusals are the same.
+///
+/// Every failure leaves the scope as it was.
+///
+/// What the sharp-edges audit found (import-replace-mode 3.3), for the
+/// replace mode and the dry run:
+///
+/// - Are the defaults on the safe side? The mode is: [`ImportOptions`] with
+///   no mode is the create mode, which deletes nothing, and so is a JS call
+///   with no `mode`. No `dry_run` is a real run, as an import always was.
+///   So a replace that is meant as a dry run and does not say so is real.
+///   That edge stays: the replace mode must be named, and nothing else is
+///   needed to delete.
+/// - Can a misspelled field or a value of the wrong type turn a dry run
+///   into a real delete? Not here: the mode is an enum and the dry run is a
+///   `bool` in a struct with named fields. The JS call is where it could, so
+///   the Node binding checks it before anything crosses to this crate: a
+///   `mode` that is not one of the two texts and a `dryRun` key that holds
+///   no boolean are refused (the text `'false'`, the number `0`, and
+///   `undefined`, which is what `dryRun: body.dryRun` gives when the body
+///   says `dry_run`), and a call in the replace mode with any other key is
+///   refused too (`dryrun`, `dry_run`). A misspelled `mode` key is a create,
+///   which a scope that holds documents refuses.
+/// - How much can a bundle with no document, or with one, delete? With
+///   none: nothing, [`TransferError::EmptyBundle`] before the store is
+///   called. With one: every other document of the scope. There is no limit
+///   on how much of a scope one replace removes: the rule is "the scope
+///   equals the bundle". A local export of a spec folder that holds only a
+///   `config.yaml` is such a bundle. What stands against it is the dry run,
+///   whose `removed` names every key, and the host's before hook.
+/// - Can a caller decide the code of a failure by what a bundle holds? No.
+///   `empty_bundle` comes from the count of documents only, and
+///   `scope_changed` from the store: a listed key with no document at the
+///   read, or a conflict at the commit. No key and no content reaches
+///   [`TransferError::reason`], and the two texts are fixed.
+/// - Do the three lists show document content? No: they hold keys only.
+///   A key is an address, but it names a change, a discussion or a document
+///   the host put into the scope itself, and `removed` shows the keys of the
+///   scope to whoever calls. So the host kit asks its before hook about a
+///   dry run too. The keys are given whole, as the store listed them.
+/// - What does a write the replace does not see leave? Never a part of the
+///   bundle: every write and every delete is in the one commit. The scope is
+///   then the bundle, but for the other writer's document: a key neither
+///   side held at the list stays, and a key with the same content on both
+///   sides is as the other writer left it — changed, or deleted when the
+///   delete landed after the read. A dry run after the replace shows each
+///   of them. A host that needs the scope to equal the bundle refuses other
+///   writes in its before hook while it replaces.
+/// - Does any path of the HTTP door reach the replace mode or the dry run?
+///   No. The import route is the door's only caller of
+///   [`crate::kit::HostKit::import_scope`], and it passes the default
+///   options. [`read_bundle`] reads the body, and both bundle shapes refuse
+///   a field they do not have, so a `mode` or a `dryRun` in the body is 422
+///   before the hook is asked. The demo server's restore calls [`import`],
+///   which is the create mode. A host's own Rust code can call this function
+///   and the kit's with any options: that is what the two modes are for.
+pub fn import_with(
     port: &dyn StorePort,
     scope: &ScopeId,
     actor: &Actor,
     bundle: ScopeBundle,
     at: Timestamp,
+    options: ImportOptions,
 ) -> Result<(ImportReport, Vec<Event>), TransferError> {
     if bundle.format_version != FORMAT_VERSION {
         return Err(unsupported(bundle.format_version, FORMAT_VERSION));
     }
     let mut seen = HashSet::with_capacity(bundle.documents.len());
-    let mut ops = Vec::with_capacity(bundle.documents.len());
+    let mut documents = Vec::with_capacity(bundle.documents.len());
     for doc in bundle.documents {
         let refused = |rule: &dyn fmt::Display| {
             TransferError::InvalidDocument(format!("bundle document {}: {rule}", shown(&doc.key)))
@@ -426,25 +583,108 @@ pub(crate) fn import_with_events(
         if !seen.insert(key.clone()) {
             return Err(refused(&"the key appears twice"));
         }
-        ops.push(Op::Put { key, content: doc.content, expected: Expected::Absent });
+        documents.push((key, doc.content));
     }
 
+    let ImportPlan { listed_at, ops, added, changed, removed, payload, on_conflict } = match options.mode {
+        ImportMode::Create => plan_create(port, scope, documents)?,
+        ImportMode::Replace => plan_replace(port, scope, documents)?,
+    };
+    let report =
+        |scope_version| ImportReport { scope_version, documents: added.len() + changed.len(), added, changed, removed };
+    if ops.is_empty() || options.dry_run {
+        return Ok((report(listed_at), Vec::new()));
+    }
+    let events = vec![Event::new("scope-imported", payload).map_err(invalid_value)?];
+    let commit = Commit::new(actor.clone(), IMPORT_COMMAND, at, ops, events.clone()).map_err(invalid_value)?;
+    match port.commit(scope, &commit) {
+        Ok(scope_version) => Ok((report(scope_version), events)),
+        Err(PortError::Conflict { .. }) => Err(on_conflict),
+        Err(e) => Err(TransferError::Store(e)),
+    }
+}
+
+/// What an import commits, with the scope version it was listed at, the
+/// three lists of its report (each in byte order of the keys), and the two
+/// things its mode decides about the commit.
+struct ImportPlan {
+    listed_at: Version,
+    ops: Vec<Op>,
+    added: Vec<String>,
+    changed: Vec<String>,
+    removed: Vec<String>,
+    /// The payload of the one event of an import: how many documents, and
+    /// nothing of them.
+    payload: serde_json::Value,
+    /// What a conflict at the commit means in this mode.
+    on_conflict: TransferError,
+}
+
+/// The create mode: every document is written into a scope that lists none.
+fn plan_create(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    documents: Vec<(DocKey, String)>,
+) -> Result<ImportPlan, TransferError> {
     let listing = port.list(scope, &everything())?;
     if !listing.entries.is_empty() {
         return Err(TransferError::NotEmpty);
     }
-    let documents = ops.len();
-    if documents == 0 {
-        return Ok((ImportReport { scope_version: listing.version, documents }, Vec::new()));
+    let mut added: Vec<String> = documents.iter().map(|(key, _)| key.as_str().to_string()).collect();
+    added.sort_unstable();
+    let ops = documents.into_iter().map(|(key, content)| Op::Put { key, content, expected: Expected::Absent }).collect();
+    Ok(ImportPlan {
+        listed_at: listing.version,
+        ops,
+        payload: serde_json::json!({ "documents": added.len() }),
+        added,
+        changed: Vec::new(),
+        removed: Vec::new(),
+        on_conflict: TransferError::NotEmpty,
+    })
+}
+
+/// The replace mode: the operations that make the scope equal `documents`.
+fn plan_replace(
+    port: &dyn StorePort,
+    scope: &ScopeId,
+    mut documents: Vec<(DocKey, String)>,
+) -> Result<ImportPlan, TransferError> {
+    if documents.is_empty() {
+        return Err(TransferError::EmptyBundle);
     }
-    // The one event of an import: how many documents, and nothing of them.
-    let events = vec![Event::new("scope-imported", serde_json::json!({ "documents": documents })).map_err(invalid_value)?];
-    let commit = Commit::new(actor.clone(), IMPORT_COMMAND, at, ops, events.clone()).map_err(invalid_value)?;
-    match port.commit(scope, &commit) {
-        Ok(scope_version) => Ok((ImportReport { scope_version, documents }, events)),
-        Err(PortError::Conflict { .. }) => Err(TransferError::NotEmpty),
-        Err(e) => Err(TransferError::Store(e)),
+    let listing = port.list(scope, &everything())?;
+    let mut listed: BTreeMap<DocKey, Version> = listing.entries.into_iter().map(|entry| (entry.key, entry.version)).collect();
+    documents.sort_by(|a, b| a.0.cmp(&b.0));
+
+    let held: Vec<DocKey> = documents.iter().map(|(key, _)| key).filter(|key| listed.contains_key(key)).cloned().collect();
+    let Some(stored) = read_in_batches(port, scope, &held)? else {
+        return Err(TransferError::ScopeChanged);
+    };
+    let stored: BTreeMap<DocKey, String> = held.into_iter().zip(stored).collect();
+
+    let (mut ops, mut added, mut changed) = (Vec::new(), Vec::new(), Vec::new());
+    for (key, content) in documents {
+        let (expected, reported) = match listed.remove(&key) {
+            None => (Expected::Absent, &mut added),
+            Some(_) if stored[&key] == content => continue,
+            Some(version) => (Expected::At(version), &mut changed),
+        };
+        reported.push(key.as_str().to_string());
+        ops.push(Op::Put { key, content, expected });
     }
+    // What is left was listed and is not in the bundle.
+    let removed: Vec<String> = listed.keys().map(|key| key.as_str().to_string()).collect();
+    ops.extend(listed.into_iter().map(|(key, expected)| Op::Delete { key, expected }));
+    Ok(ImportPlan {
+        listed_at: listing.version,
+        ops,
+        payload: serde_json::json!({ "documents": added.len() + changed.len(), "removed": removed.len() }),
+        added,
+        changed,
+        removed,
+        on_conflict: TransferError::ScopeChanged,
+    })
 }
 
 fn unsupported(sent: u32, supported: u32) -> TransferError {
@@ -1601,6 +1841,16 @@ mod tests {
     }
 
     #[test]
+    fn a_mode_is_parsed_from_the_text_it_gives_and_from_no_other() {
+        for mode in [ImportMode::Create, ImportMode::Replace] {
+            assert_eq!(ImportMode::parse(mode.as_str()), Some(mode));
+        }
+        for text in ["", "Replace", "replace ", "overwrite"] {
+            assert_eq!(ImportMode::parse(text), None, "{text:?}");
+        }
+    }
+
+    #[test]
     fn each_reason_has_its_fixed_text() {
         let texts: Vec<&str> = [
             TransferReason::NoSpecFolder,
@@ -1610,6 +1860,8 @@ mod tests {
             TransferReason::InvalidChangeMetadata,
             TransferReason::ChangeSchemaUnusable,
             TransferReason::ScopeNotEmpty,
+            TransferReason::EmptyBundle,
+            TransferReason::ScopeChanged,
             TransferReason::BundleTooLarge,
             TransferReason::InvalidBundleDocument,
         ]
@@ -1626,6 +1878,8 @@ mod tests {
                 "invalid_change_metadata",
                 "change_schema_unusable",
                 "scope_not_empty",
+                "empty_bundle",
+                "scope_changed",
                 "bundle_too_large",
                 "invalid_bundle_document",
             ]
@@ -1905,6 +2159,37 @@ mod tests {
         let error = import_into(&port, keyed_bundle(vec![config()])).expect_err("the scope holds a document");
         assert_eq!(error.to_string(), "import (create-new): the target scope already holds documents");
         assert_eq!(error.reason(), Some(TransferReason::ScopeNotEmpty));
+    }
+
+    #[test]
+    fn the_two_refusals_of_a_replace_have_their_reason_and_their_fixed_message() {
+        // import-replace-mode D3.
+        let port = speclink_store_port::MemoryStorePort::new();
+        let scope = ScopeId::new("default/main").unwrap();
+        let replace = ImportOptions { mode: ImportMode::Replace, dry_run: false };
+        let import = |bundle| {
+            let (actor, at) = (Actor::new("u_42", "Alice").unwrap(), Timestamp::new(1_800_000_000_000).unwrap());
+            import_with(&port, &scope, &actor, bundle, at, replace).map(|(report, _)| report)
+        };
+
+        let error = import(keyed_bundle(Vec::new())).expect_err("a replace with no documents");
+        assert_eq!(
+            error.to_string(),
+            "import (replace): the bundle holds no documents — a replace with it would remove every document of the scope"
+        );
+        assert_eq!(error.reason(), Some(TransferReason::EmptyBundle));
+
+        assert_eq!(
+            TransferError::ScopeChanged.to_string(),
+            "import (replace): the target scope changed during the import — run it again"
+        );
+        assert_eq!(TransferError::ScopeChanged.reason(), Some(TransferReason::ScopeChanged));
+
+        // A bundle that is not valid is refused by its own rule first, as in the create mode.
+        let error = import(ScopeBundle { format_version: 99, scope_version: None, documents: Vec::new() })
+            .expect_err("not a format version");
+        assert_eq!(error.to_string(), "unsupported bundle format version 99 (supported: 2)");
+        assert_eq!(error.reason(), None);
     }
 
     #[test]
