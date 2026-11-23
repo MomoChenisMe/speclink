@@ -86,6 +86,7 @@ rules:
   - task 的驗證步驟只跑受影響面的測試：Rust Cargo package（無論位於 crates/ 或 apps/desktop）用 `cargo test -p <package>`，有 integration test target 時才加 `--test <target>`；前端用 manifest 宣告的 `npm test -w <workspace>`；crates/adapters/speclink-node 先用 `npm --prefix crates/adapters/speclink-node run build` 建置 napi binding，再用 `npm --prefix crates/adapters/speclink-node test`；scripts/ 一律跑全組 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`（不到一秒，不分受影響檔）；完整測試 `npm run test:all` 只由 CI（.github/workflows/ci.yml）守門，不寫進 task 驗證步驟
   - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 speclink/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過
   - 修正 bug 的變更，必須有一項 task 排查同類位置：寫明搜尋的寫法與命中的檔案，逐一標明一併修正或不修的理由
+  - 改到 `@speclink/engine` 的對外介面（crates/adapters/speclink-node/index.d.ts 的匯出、`createHost`／`createEngine` 的選項）時，必須有一項 task 同步 docs/sdk-node.md 與 docs/sdk-node.zh-TW.md；新增、改名或移除匯出名稱時，同一項 task 也更新 crates/adapters/speclink-node/README.md 的「What the package contains」表
 
 review:
   critical:

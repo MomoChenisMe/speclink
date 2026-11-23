@@ -80,6 +80,7 @@
     - docs/verb-contract.zh-TW.md
     - docs/sdk-node.md
     - docs/sdk-node.zh-TW.md
+    - crates/adapters/speclink-node/README.md
   - New:
     - crates/host/speclink-host/tests/event_coverage.rs
   - Removed: （無）
