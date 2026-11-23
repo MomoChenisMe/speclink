@@ -4,7 +4,9 @@ use crate::config::ServerConfig;
 use crate::events::EventHub;
 use crate::identity::{IdentityStore, MembershipRole};
 use crate::storage::ServerStore;
-use speclink_host::kit::{AfterCommit, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
+use speclink_host::kit::{
+    AfterCommit, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry, ReservedFieldPrefixes,
+};
 use speclink_host::scope::{scope_id, ProjectId, RepoId};
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::{EventTransport, TransportKind};
@@ -92,6 +94,8 @@ fn host_kit(port: Arc<dyn StorePort>, identity: SharedIdentity, events: Arc<Even
         skills: None,
         // The same allowance the server reads a body up to.
         import_limit_bytes: Some(crate::forward::READ_LIMIT_BYTES),
+        // The demo server keeps no free-field key for itself.
+        reserved_field_prefixes: ReservedFieldPrefixes::default(),
     };
     HostKit::with_options(port, hooks, options).expect("no skill list, so no unknown skill name")
 }

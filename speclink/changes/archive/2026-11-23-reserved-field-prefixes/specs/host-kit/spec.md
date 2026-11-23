@@ -36,11 +36,11 @@
 | --- | --- |
 | `new change spoof --field host.project=p2` | `refused` |
 | `discuss new 主題 --field host.project=p2` | `refused` |
-| `discuss promote talk --field host.project=p2` | `refused` |
 | `change field set ok host.project=p2` | `refused` |
 | `change field unset ok host.project` | `refused` |
 | `discuss field set talk host.project=p2` | `refused` |
 | `discuss field unset talk host.project` | `refused` |
+| `POST /discussions/talk/promote`，本文的 `fields` 含 `host.project` | 409、reason 為 refused |
 | `PUT /changes/ok/fields`，本文設定或移除 `host.project` | 409、reason 為 refused |
 | `PUT /discussions/talk/fields`，本文設定或移除 `host.project` | 409、reason 為 refused |
 | `new change web --field team=web` | 成功 |

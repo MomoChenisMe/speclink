@@ -125,6 +125,7 @@ const host = createHost({
   authMethods,           // 選填：支援哪些登入方式
   skills: ['discuss', 'propose', 'ingest', 'archive'], // 選填：給連進來的工程師哪幾支技能
   limits: { importBytes: 32 * 1024 * 1024 },           // 選填：匯入的大小上限
+  reservedFieldPrefixes: ['host.'],                    // 選填：只有你的程式寫得了的自由欄位鍵
 })
 ```
 
@@ -137,6 +138,7 @@ const host = createHost({
 | `pushTransports` | 握手只宣告輪詢 |
 | `skills` | 提供引擎的全部技能。空陣列或引擎沒有的名稱會立刻拋錯 |
 | `limits.importBytes` | 33554432（32 MiB） |
+| `reservedFieldPrefixes` | 不保留任何鍵。不是字串陣列、或有不合鍵規則的前綴時會立刻拋錯 |
 
 `createHost` 不接受 `actor`：身分跟著每一次呼叫來，不是建立時給一次。不認得的選項會立刻拋錯。
 
@@ -509,6 +511,24 @@ const mine = changes.filter((change) => change.claimed?.byId === session.user.id
 | 討論轉出的變更 | `['discuss', 'list', '--json']` 或 `['discuss', 'show', '<slug>', '--json']` | [`promotedTo`](verb-contract.zh-TW.md#discussion-promoted-to) |
 
 **自由欄位**是宿主自訂的鍵值，引擎只存不解讀，例如這個變更是從哪張工單來的。`fields` 只在動詞建立變更或討論時寫入（`new change`、`discuss new`、`discuss promote`），和建立在同一次提交裡；其他動詞會忽略它，所以每次呼叫都帶同一組也沒關係。它優先於 `--field` 給的同名欄位，`beforeCommand` 可以在 `params.fields` 看到將要寫入的欄位並檢查。規則：鍵由 `a-z`、`0-9`、`_`、`.`、`-` 組成並以字母開頭，最長 64 個字元；值是單行、最多 1024 位元組；最多 32 個鍵。不合規則時以 `invalid_argv` 拒絕，什麼都不寫。不要把密鑰放進欄位：讀得到這個變更的人都看得到。
+
+<a id="reserved-fields"></a>**保留的鍵。** 某個欄位只能由你的程式寫入時用它，例如「這次呼叫是從哪個專案發起的」，你的程式附上之前會先檢查。把前綴交給 `createHost`：
+
+```js
+const host = createHost({ store, hooks, reservedFieldPrefixes: ['host.'] })
+```
+
+之後以 `host.` 開頭的鍵，只有 `host.dispatch` 與 `host.handleRequest` 的 `fields` 寫得了。請求要設定或移除這種鍵時，在 `beforeCommand` 之前、儲存收到任何呼叫之前就被拒絕：
+
+- `new change` 與 `discuss new` 的 `--field`
+- `change field set|unset` 與 `discuss field set|unset`
+- 做同樣事情的 HTTP 請求本文，以及轉出變更的請求本文（`discuss promote` 沒有 `--field`）
+
+錯誤碼是 `refused`，訊息是 `field '<key>' is reserved by the host`；經 `handleRequest` 時回應是 409、reason 為 `refused`。`beforeCommand` 的拒絕也用同一個錯誤碼，要分辨兩者請看訊息。請求帶了保留的鍵、你的 `fields` 也帶同一個鍵時，這次呼叫被拒絕：你的值不會默默蓋過請求的值。不是保留的鍵照上一段的規則，你的值優先。
+
+比對是單純的「開頭相同」：前綴 `host` 保留 `host.project`，也保留 `hostname` 與 `host`。前綴請以 `.`、`-` 或 `_` 結尾，才只保留你要的鍵。前綴要符合鍵的規則；其他的值（不是字串陣列、空字串、大寫字母、空白）會讓 `createHost` 立刻拋錯。不給這個選項、或給 `[]`，就不保留任何鍵。讀取照常輸出保留的鍵。
+
+有兩個限制。保留的鍵在變更或討論建立之後就不能改，連你的程式也不能，因為 `fields` 只在建立時寫入。匯入（`host.importScope`、`POST /import`）寫入的是整份文件，不檢查保留的鍵。
 
 **宿主套件不讀 git，也不讀你的檔案。** 需要本機事實的動詞，由你的程式收集後當成輸入：
 

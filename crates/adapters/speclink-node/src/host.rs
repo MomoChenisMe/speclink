@@ -21,7 +21,8 @@ use speclink_core::fields::Fields;
 use speclink_host::http::{HttpError, HttpRequest, Method, API_ROOT};
 use speclink_host::kit::{
     AfterCommit, AfterCommitHook, BeforeCommand, BeforeCommandHook, Caller, Decision, Hooks, HostKit,
-    HostKitOptions, Identity, InvalidSkills, NotARead, ProjectEntry, Reader, RepoEntry, ScopesFn,
+    HostKitOptions, Identity, InvalidSkills, NotARead, ProjectEntry, Reader, RepoEntry, ReservedFieldPrefixes,
+    ScopesFn,
 };
 use speclink_host::port_exec::{ExecError, PortExecution};
 use speclink_host::transfer::{self, ImportMode, ImportOptions};
@@ -47,22 +48,25 @@ struct HostSetup {
     skills: Option<Vec<String>>,
     /// The most an import takes, in bytes. Absent: the kit's default.
     import_limit_bytes: Option<usize>,
+    /// The free-field keys only the host writes, checked at `createHost`.
+    reserved_field_prefixes: ReservedFieldPrefixes,
 }
 
-/// The HTTP door's declarations as index.js passes them, in the wire's own
-/// camelCase shape: an unknown field or a wrong type is refused at
-/// `createHost`.
-#[derive(serde::Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct DoorOptions {
-    #[serde(default)]
-    auth_methods: Option<AuthMethodsResponse>,
-    #[serde(default)]
-    push_transports: Vec<EventTransport>,
-    #[serde(default)]
-    skills: Option<Vec<String>>,
-    #[serde(default)]
-    limits: DoorLimits,
+/// The options index.js passes as JSON, by the name `createHost` gives each.
+type DoorOptions = serde_json::Map<String, serde_json::Value>;
+
+/// The option `name` of `door`, in the wire's own camelCase shape, taken out
+/// of it. One the host left out reads as the default; a wrong type is refused
+/// at `createHost`, by the option's name.
+fn door_option<T: serde::de::DeserializeOwned + Default>(door: &mut DoorOptions, name: &str) -> Result<T> {
+    match door.remove(name) {
+        None => Ok(T::default()),
+        Some(value) => serde_json::from_value(value).map_err(|e| invalid_option(name, e)),
+    }
+}
+
+fn invalid_option(name: &str, why: impl std::fmt::Display) -> Error {
+    Error::new(Status::InvalidArg, format!("createHost: {name}: {why}"))
 }
 
 /// `createHost`'s `limits`. index.js lets an object through only, and checks
@@ -83,10 +87,11 @@ pub struct Host {
 /// Build a host over a JS store port. `port_invoker` and `hook_invoker` are
 /// index.js's invokers over the store's three functions and over the two
 /// hooks; the flags say which hooks the host gave.
-/// `door_options` is the JSON text of `{ authMethods, pushTransports, skills, limits }`;
-/// `has_scopes` says whether the host gave a scope function. An empty skill
-/// list, or a name the Engine does not have, throws here: `createHost` gives
-/// no host.
+/// `door_options` is the JSON text of the options index.js names in
+/// `DOOR_OPTIONS`; `has_scopes` says whether the host gave a scope function.
+/// An option of a wrong type, an empty skill list, a name the Engine does not
+/// have, or a reserved prefix that is not a field key throws here:
+/// `createHost` gives no host.
 #[napi(js_name = "hostFromPort")]
 pub fn host_from_port(
     env: Env,
@@ -97,11 +102,20 @@ pub fn host_from_port(
     has_scopes: bool,
     door_options: String,
 ) -> Result<Host> {
-    let door: DoorOptions = serde_json::from_str(&door_options).map_err(|e| {
-        Error::new(Status::InvalidArg, format!("createHost: authMethods, pushTransports, skills or limits: {e}"))
-    })?;
-    InvalidSkills::check(door.skills.as_deref())
-        .map_err(|e| Error::new(Status::InvalidArg, format!("createHost: skills: {e}")))?;
+    let mut door: DoorOptions =
+        serde_json::from_str(&door_options).map_err(|e| invalid_option("the options", e))?;
+    let skills: Option<Vec<String>> = door_option(&mut door, "skills")?;
+    InvalidSkills::check(skills.as_deref()).map_err(|e| invalid_option("skills", e))?;
+    let reserved_field_prefixes = ReservedFieldPrefixes::new(door_option(&mut door, "reservedFieldPrefixes")?)
+        .map_err(|e| invalid_option("reservedFieldPrefixes", e))?;
+    let auth_methods = door_option(&mut door, "authMethods")?;
+    let push_transports = door_option(&mut door, "pushTransports")?;
+    let import_limit_bytes = door_option::<DoorLimits>(&mut door, "limits")?.import_bytes;
+    // index.js names an option this does not read: without this, the host
+    // would get no word that the option does nothing.
+    if let Some(name) = door.keys().next() {
+        return Err(invalid_option(name, "the native side does not read this option"));
+    }
     let store: Arc<dyn StorePort> = Arc::new(JsPort::new(create_bridge(env, port_invoker)?));
     let hooks = create_bridge(env, hook_invoker)?;
     Ok(Host {
@@ -111,10 +125,11 @@ pub fn host_from_port(
             has_before,
             has_after,
             has_scopes,
-            auth_methods: door.auth_methods,
-            push_transports: door.push_transports,
-            skills: door.skills,
-            import_limit_bytes: door.limits.import_bytes,
+            auth_methods,
+            push_transports,
+            skills,
+            import_limit_bytes,
+            reserved_field_prefixes,
         }),
     })
 }
@@ -278,6 +293,7 @@ fn with_kit<T>(setup: &HostSetup, call: impl FnOnce(&HostKit) -> T) -> std::resu
         push_transports: setup.push_transports.clone(),
         skills: setup.skills.clone(),
         import_limit_bytes: setup.import_limit_bytes,
+        reserved_field_prefixes: setup.reserved_field_prefixes.clone(),
     };
     let kit = HostKit::with_options(setup.store.clone(), hooks_for(setup, &broken_hook), options)
         .expect("the skill list was checked at createHost");

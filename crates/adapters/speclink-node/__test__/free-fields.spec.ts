@@ -274,6 +274,133 @@ describe('host.handleRequest with fields', () => {
   })
 })
 
+// node-sdk「createHost 的保留欄位前綴」(change reserved-field-prefixes).
+describe('createHost with reservedFieldPrefixes', () => {
+  const RESERVED = "field 'host.project' is reserved by the host"
+
+  /** A host that keeps `host.` for itself, with hooks that count their calls. */
+  function reservingHost() {
+    const port = memoryPort()
+    const seen = { before: 0, after: 0 }
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      reservedFieldPrefixes: ['host.'],
+      hooks: {
+        beforeCommand: () => {
+          seen.before += 1
+        },
+        afterCommit: () => {
+          seen.after += 1
+        },
+      },
+    })
+    return { port, host, seen }
+  }
+
+  it('keeps the reserved keys for the fields of the host', async () => {
+    const { port, host, seen } = reservingHost()
+    const call = (argv: string[], fields?: Record<string, string>) =>
+      host.dispatch({ identity: ALICE, scope: 's1', argv, fields })
+
+    // Scenario「dispatch 拒絕請求寫保留的鍵」與「beforeCommand 沒有被問」。
+    const refused = await rejection(call(['new', 'change', 'spoof', '--field', 'host.project=p2']))
+    expect([refused.code, refused.message]).toEqual(['refused', RESERVED])
+    expect(port.calls).toEqual({ list: 0, read: 0, commit: 0 })
+    expect(seen).toEqual({ before: 0, after: 0 })
+
+    // Scenario「宿主的 fields 寫得了保留的鍵」。
+    await call(['new', 'change', 'ok'], { 'host.project': 'p1' })
+    const listed = (await call(['list', '--json'])) as { changes: { name: string; fields?: unknown }[] }
+    expect(listed.changes.find((c) => c.name === 'ok')?.fields).toEqual({ 'host.project': 'p1' })
+
+    // Scenario「設定與移除都被拒絕」：儲存與兩個掛鉤都沒有被呼叫。
+    const calls = { ...port.calls }
+    const hooks = { ...seen }
+    for (const argv of [
+      ['change', 'field', 'set', 'ok', 'host.project=p2'],
+      ['change', 'field', 'unset', 'ok', 'host.project'],
+    ]) {
+      const err = await rejection(call(argv))
+      expect([err.code, err.message]).toEqual(['refused', RESERVED])
+    }
+    expect(port.calls).toEqual(calls)
+    expect(seen).toEqual(hooks)
+
+    // Scenario「handleRequest 回 409」。
+    const response = await host.handleRequest(
+      request('PUT', 'changes/ok/fields', { set: { 'host.project': 'p2' } }),
+      ALICE,
+    )
+    expect(response?.status).toBe(409)
+    expect(json(response)).toMatchObject({ reason: 'refused', message: RESERVED })
+    expect(port.calls).toEqual(calls)
+    expect(seen).toEqual(hooks)
+    const shown = (await call(['show', 'ok', '--json'])) as { fields: unknown }
+    expect(shown.fields).toEqual({ 'host.project': 'p1' })
+  })
+
+  it('refuses the --field=key=value spelling on both verbs that take the flag', async () => {
+    // 稽核：`--field=鍵=值` 與分開的兩個參數是同一個欄位。
+    const { port, host, seen } = reservingHost()
+    for (const argv of [
+      ['new', 'change', 'spoof', '--field=host.project=p2'],
+      ['discuss', 'new', '主題', '--field=team=web', '--field=host.project=p2'],
+    ]) {
+      const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv }))
+      expect([err.code, err.message]).toEqual(['refused', RESERVED])
+    }
+    expect(port.calls).toEqual({ list: 0, read: 0, commit: 0 })
+    expect(seen).toEqual({ before: 0, after: 0 })
+  })
+
+  it('reports the reserved key, not a field outside the rules in the same argv', async () => {
+    // 「一次呼叫同時有保留的鍵與不合規則的欄位時，回報保留鍵的拒絕」，經 argv。
+    const { port, host, seen } = reservingHost()
+    const argv = ['new', 'change', 'demo', '--field', 'Bad=1', '--field', 'host.project=p2']
+    const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv }))
+    expect([err.code, err.message]).toEqual(['refused', RESERVED])
+    expect(port.calls).toEqual({ list: 0, read: 0, commit: 0 })
+    expect(seen).toEqual({ before: 0, after: 0 })
+  })
+
+  it('throws at once on a value that is not an array of field keys', () => {
+    // Scenario「選項的值不合法」，加上 null 與有空洞的陣列。
+    const port = memoryPort()
+    // eslint-disable-next-line no-sparse-arrays
+    for (const reservedFieldPrefixes of ['host.', ['host.', 7], [''], ['Host.'], null, [, 'host.']]) {
+      expect(() => createHost({ store: port.store, reservedFieldPrefixes: reservedFieldPrefixes as never })).toThrow(
+        /reservedFieldPrefixes/,
+      )
+    }
+    expect(port.calls).toEqual({ list: 0, read: 0, commit: 0 })
+  })
+
+  it('throws on a value JSON would drop, which would leave no key reserved', () => {
+    // JSON 會把函式與 symbol 整個丟掉：原生端看起來就是沒有給這個選項。
+    const port = memoryPort()
+    for (const reservedFieldPrefixes of [() => ['host.'], Symbol('host.')]) {
+      expect(() => createHost({ store: port.store, reservedFieldPrefixes: reservedFieldPrefixes as never })).toThrow(
+        'createHost: reservedFieldPrefixes must be an array of strings',
+      )
+    }
+  })
+
+  it('is as before when it is left out or empty', async () => {
+    // Scenario「省略時行為不變」。
+    for (const options of [{}, { reservedFieldPrefixes: [] }]) {
+      const port = memoryPort()
+      const host = createHost({ store: port.store, ...options })
+      const argv = ['new', 'change', 'demo', '--field', 'host.project=p2']
+      await host.dispatch({ identity: ALICE, scope: 's1', argv })
+      const shown = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['show', 'demo', '--json'] })) as {
+        fields: unknown
+      }
+      expect(shown.fields).toEqual({ 'host.project': 'p2' })
+    }
+  })
+})
+
 describe('engine.dispatch and the field verbs', () => {
   it('runs them on the fs form', async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'speclink-node-fields-')))

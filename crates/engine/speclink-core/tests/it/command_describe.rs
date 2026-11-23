@@ -344,6 +344,34 @@ fn names_and_params_match_the_golden() {
     crate::render_golden::assert_matches_golden("command-describe.json", &actual);
 }
 
+/// The params that carry free fields to write or remove. A host refuses the
+/// keys it reserves by [`Command::written_field_keys`] (spec host-kit: 宿主保留的
+/// 自由欄位鍵), so every kind with such a param answers there: a new command
+/// that writes fields is checked once it is named in that method.
+const FIELD_PARAMS: [&str; 3] = ["fields", "set", "unset"];
+
+#[test]
+fn every_command_that_carries_free_fields_names_their_keys() {
+    for mut cmd in samples() {
+        if let Some(fields) = cmd.creation_fields_mut() {
+            fields.insert(s("walk"), s("1"));
+        }
+        let params = cmd.params();
+        let carried: Vec<&serde_json::Value> = FIELD_PARAMS.iter().filter_map(|key| params.get(*key)).collect();
+        let keys: std::collections::BTreeSet<String> = carried
+            .iter()
+            .flat_map(|value| match value {
+                serde_json::Value::Object(set) => set.keys().cloned().collect::<Vec<_>>(),
+                serde_json::Value::Array(unset) => unset.iter().map(|key| key.as_str().expect("a key").to_string()).collect(),
+                other => panic!("{}: a field param is {other}", cmd.name()),
+            })
+            .collect();
+        assert!(carried.is_empty() || !keys.is_empty(), "{}: give the sample a free field", cmd.name());
+        let named: std::collections::BTreeSet<String> = cmd.written_field_keys().into_iter().map(s).collect();
+        assert_eq!(named, keys, "{}", cmd.name());
+    }
+}
+
 /// The nested workflow-config edit keeps camelCase keys too.
 #[test]
 fn workflow_config_edit_params_use_camel_case_inside() {

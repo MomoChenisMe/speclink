@@ -3538,3 +3538,82 @@ fn an_artifact_write_without_if_match_is_400_and_the_hook_is_not_asked() {
     let asked = seen.asked.lock().unwrap().clone();
     assert!(asked.is_empty(), "the hook is asked after the checks pass: {asked:?}");
 }
+
+// ======================================================================
+// Change reserved-field-prefixes: every write path of the door refuses a
+// key the host reserves (spec host-kit「宿主保留的自由欄位鍵」).
+// ======================================================================
+
+use speclink_host::kit::ReservedFieldPrefixes;
+
+const RESERVED_META: &str = "schema: spec-driven\nfields:\n  host.project: \"p1\"\n";
+const TALK: &str = "---\ntopic: Talk\nslug: talk\nstatus: open\ncreated: 2026-11-01\n---\n\n\
+                    # Discussion: Talk\n\n## Context\n\n## Rounds\n\n## Conclusion\n\nShip it.\n";
+
+/// A one-repo door that keeps `host.` for the host, with change ok
+/// (`host.project=p1`) and the open discussion talk on s1, and what its
+/// hooks saw.
+fn door_reserving_host() -> (Door, Arc<Seen>) {
+    let seen = Arc::new(Seen::default());
+    let reserved = ReservedFieldPrefixes::new(vec!["host.".to_string()]).expect("a field key");
+    let door = door_with(HostKitOptions { reserved_field_prefixes: reserved, ..one_repo() }, recording(&seen, allow));
+    seed(
+        &door,
+        "s1",
+        &[
+            ("config.yaml", CONFIG),
+            ("changes/ok/.meta.yaml", RESERVED_META),
+            ("changes/ok/tasks.md", OPEN_TASKS),
+            ("discussions/talk.md", TALK),
+        ],
+    );
+    (door, seen)
+}
+
+#[test]
+fn every_write_route_of_the_door_refuses_a_reserved_key_with_409() {
+    let (door, seen) = door_reserving_host();
+    let p2 = json!({ "host.project": "p2" });
+    let writes = [
+        (Method::Post, "changes", json!({ "name": "spoof", "fields": p2 })),
+        (Method::Post, "discussions", json!({ "topic": "主題", "fields": p2 })),
+        (Method::Post, "discussions/talk/promote", json!({ "fields": p2 })),
+        (Method::Put, "changes/ok/fields", json!({ "set": p2 })),
+        (Method::Put, "changes/ok/fields", json!({ "unset": ["host.project"] })),
+        (Method::Put, "discussions/talk/fields", json!({ "set": p2 })),
+        (Method::Put, "discussions/talk/fields", json!({ "unset": ["host.project"] })),
+    ];
+    for (method, tail, body) in writes {
+        let response = answer(&door, &send(method, &alpha(tail), body.clone()), Some(&alice()));
+        let (status, reason, message) = error(&response);
+        assert_eq!((status, reason.as_str()), (409, "refused"), "{tail} {body}");
+        assert_eq!(message, "field 'host.project' is reserved by the host", "{tail} {body}");
+        let calls = door.store.take();
+        assert!(calls.is_empty(), "{tail} {body}: the store saw no call: {calls:?}");
+    }
+    assert!(seen.asked.lock().unwrap().is_empty(), "the before hook was not asked");
+    assert!(seen.watched.lock().unwrap().is_empty(), "the after hook was not called");
+    assert_eq!(content(&door, "s1", "changes/ok/.meta.yaml").as_deref(), Some(RESERVED_META));
+    assert_eq!(content(&door, "s1", "discussions/talk.md").as_deref(), Some(TALK));
+    assert!(content(&door, "s1", "changes/spoof/.meta.yaml").is_none());
+}
+
+#[test]
+fn a_reserved_key_the_host_attaches_to_a_request_is_written() {
+    let (door, seen) = door_reserving_host();
+    let attached = speclink_core::fields::Fields::from([("host.project".to_string(), "p1".to_string())]);
+    let create = send(Method::Post, &alpha("changes"), json!({ "name": "made", "fields": { "team": "web" } }));
+    let response = door.kit.handle_with_fields(&create, Some(&alice()), &attached).expect("the door's path");
+    assert_eq!(response.status, 200, "{:?}", String::from_utf8_lossy(&response.body));
+    let meta = content(&door, "s1", "changes/made/.meta.yaml").expect("made was created");
+    assert!(meta.ends_with("fields:\n  host.project: \"p1\"\n  team: \"web\"\n"), "{meta}");
+    assert_eq!(seen.asked.lock().unwrap().len(), 1);
+    // 同一組附上的欄位，請求自己也帶保留的鍵：拒絕。
+    let both = send(Method::Post, &alpha("changes"), json!({ "name": "both", "fields": { "host.project": "p2" } }));
+    let response = door.kit.handle_with_fields(&both, Some(&alice()), &attached).expect("the door's path");
+    let (status, reason, message) = error(&response);
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+    assert_eq!(message, "field 'host.project' is reserved by the host");
+    assert_eq!(seen.asked.lock().unwrap().len(), 1, "the before hook was not asked again");
+    assert!(content(&door, "s1", "changes/both/.meta.yaml").is_none());
+}

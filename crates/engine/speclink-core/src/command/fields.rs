@@ -7,6 +7,7 @@
 
 use super::{classify, Command, CommandError, CommandOutcome, ErrorCode};
 use crate::fields::Fields;
+use std::collections::BTreeSet;
 use crate::store::Store;
 
 impl Command {
@@ -29,6 +30,19 @@ impl Command {
             | Command::DiscussNew { fields, .. }
             | Command::DiscussPromote { fields, .. } => Some(fields),
             _ => None,
+        }
+    }
+
+    /// Every free-field key this command writes or removes, once each in byte
+    /// order: a create command's fields, an edit command's set and unset keys.
+    /// Empty for a command that writes no field. The Engine reads no key: a
+    /// host decides which of these it keeps for itself.
+    pub fn written_field_keys(&self) -> BTreeSet<&str> {
+        match self {
+            Command::ChangeFieldsEdit { set, unset, .. } | Command::DiscussFieldsEdit { set, unset, .. } => {
+                set.keys().chain(unset).map(String::as_str).collect()
+            }
+            _ => self.creation_fields().into_iter().flat_map(|fields| fields.keys().map(String::as_str)).collect(),
         }
     }
 }
@@ -152,6 +166,38 @@ mod tests {
         // 編輯命令寫的是既有的文件，不是建立時附帶。
         assert!(change_edit("demo", &[("a", "1")], &[]).creation_fields().is_none());
         assert!(Command::DiscussList { archived: false }.creation_fields().is_none());
+    }
+
+    fn written(cmd: &Command) -> Vec<&str> {
+        cmd.written_field_keys().into_iter().collect()
+    }
+
+    #[test]
+    fn written_field_keys_are_the_create_fields_and_the_edit_keys() {
+        // 設計「命令帶了哪些請求欄位鍵，由 speclink-core 的一個方法回答」。
+        assert_eq!(written(&new_change("demo", &[("team", "web"), ("host.project", "p2")])), ["host.project", "team"]);
+        let new = Command::DiscussNew { topic: "T".to_string(), slug: None, kind: None, fields: map(&[("a", "1")]) };
+        assert_eq!(written(&new), ["a"]);
+        let promote =
+            Command::DiscussPromote { slug: "t".to_string(), name: None, last: false, fields: map(&[("b", "2")]) };
+        assert_eq!(written(&promote), ["b"]);
+        // 編輯命令：設定的鍵加移除的鍵，依位元組順序、各一次。
+        assert_eq!(written(&change_edit("demo", &[("team", "web")], &["host.project", "a"])), ["a", "host.project", "team"]);
+        assert_eq!(written(&discuss_edit("talk", &[], &["host.project"])), ["host.project"]);
+        assert_eq!(written(&discuss_edit("talk", &[("a", "1")], &["a"])), ["a"]);
+        // 不寫欄位的命令。
+        let list = Command::List {
+            sort: "name".to_string(),
+            specs: false,
+            changes: true,
+            worktrees: Default::default(),
+            detail: false,
+            archived: false,
+        };
+        let task_done =
+            Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None };
+        assert!(written(&list).is_empty() && written(&task_done).is_empty());
+        assert!(written(&new_change("demo", &[])).is_empty());
     }
 
     // --- D3：套用順序、結果與事件 ---

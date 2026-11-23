@@ -432,6 +432,22 @@ export interface CreateHostOptions {
   skills?: string[]
   /** Size limits. A value that is not a positive integer makes `createHost` throw at once. */
   limits?: HostLimits
+  /**
+   * Free-field keys only your own code writes: every key that starts with one
+   * of these prefixes (`['host.']` keeps `host.project`). The comparison is a
+   * plain start of the text, so `host` keeps `hostname` too: end a prefix with
+   * `.`, `-` or `_`. Only `HostDispatchCall.fields` and
+   * `HostRequestExtras.fields` write such a key. A `--field`, `change field
+   * set|unset`, `discuss field set|unset` or a request body that sets or
+   * removes one rejects with code `refused` and the message
+   * `field '<key>' is reserved by the host` (`handleRequest`: 409, reason
+   * `refused`), before `beforeCommand` and before any store call — also when
+   * your own fields carry the same key. Reads give these keys as they are, and
+   * an import does not check them. Each prefix follows the rules of a field
+   * key; anything else (not an array of strings, an empty string, a capital
+   * letter) makes `createHost` throw at once. Absent or empty: no key is kept.
+   */
+  reservedFieldPrefixes?: string[]
 }
 
 export interface HostLimits {
@@ -551,8 +567,9 @@ export interface HostDispatchCall {
    * Free fields from your own code, never from the model: for example where
    * the call came from. They are written only when the verb creates a change
    * or a discussion (`new change`, `discuss new`, `discuss promote`), in the
-   * commit that creates it, and they win over a `--field` of the same key.
-   * Every other verb ignores them, so you can pass the same fields with every
+   * commit that creates it, and they win over a `--field` of the same key —
+   * except a key under `CreateHostOptions.reservedFieldPrefixes`: a `--field`
+   * with that key rejects the call. Every other verb ignores them, so you can pass the same fields with every
    * call. `beforeCommand` sees the fields that will be written, in
    * `params.fields`. A value that is not a string, or fields outside the
    * rules of free fields (a key of `a-z`, `0-9`, `_`, `.`, `-` that starts
@@ -568,7 +585,9 @@ export interface HostRequestExtras {
   /**
    * Free fields from your own code, as `HostDispatchCall.fields`: written
    * only when the request creates a change or a discussion, over a field of
-   * the same key in the request body; every other request ignores them. A
+   * the same key in the request body (a body field under
+   * `CreateHostOptions.reservedFieldPrefixes` answers 409 instead); every
+   * other request ignores them. A
    * value that is not a string, or fields outside the rules, answers 400.
    */
   fields?: Record<string, string>

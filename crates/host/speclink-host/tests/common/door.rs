@@ -25,6 +25,11 @@ pub fn alice() -> Identity {
 
 /// Project alpha, one repo web on scope s1, with this write switch.
 pub fn door_with(can_write: bool, hooks: Hooks) -> Door {
+    door_with_options(can_write, hooks, HostKitOptions::default())
+}
+
+/// [`door_with`], with `options` besides its scope function.
+pub fn door_with_options(can_write: bool, hooks: Hooks, options: HostKitOptions) -> Door {
     let repo = RepoEntry {
         key: "web".to_string(),
         name: "WEB".to_string(),
@@ -35,7 +40,7 @@ pub fn door_with(can_write: bool, hooks: Hooks) -> Door {
     let projects = vec![ProjectEntry { key: "alpha".to_string(), name: "Project alpha".to_string(), repos: vec![repo] }];
     let options = HostKitOptions {
         scopes: Some(Box::new(move |_identity: &Identity| Ok(projects.clone()))),
-        ..Default::default()
+        ..options
     };
     let store = Arc::new(super::Recorder::new(MemoryStorePort::new()));
     let kit = HostKit::with_options(store.clone(), hooks, options).expect("the options name no unknown skill");

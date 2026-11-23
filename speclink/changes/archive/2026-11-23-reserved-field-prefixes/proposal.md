@@ -1,6 +1,6 @@
 ## Why
 
-內嵌引擎的宿主在建立變更或討論時，用「這次呼叫附上的自由欄位」記下自己的資料，例如「這次呼叫是從宿主的哪個專案發起的」。宿主附上之前會先檢查呼叫者能不能從那個專案發起。但同一個鍵也能從請求寫入：`new change --field`、`discuss new --field`、`discuss promote --field`、`change field set|unset`、`discuss field set|unset`，以及入口的兩條 `PUT …/fields`。宿主這次沒有附上那個鍵時，Agent 或 CLI 寫的值照樣生效；宿主附上了，之後也能被 `field set` 改掉或被 `field unset` 刪掉。所以宿主的檢查可以被繞過，這個欄位只能當成不可信的標記。SDK 的型別說明寫自由欄位「from your own code, never from the model」，行為卻做不到。
+內嵌引擎的宿主在建立變更或討論時，用「這次呼叫附上的自由欄位」記下自己的資料，例如「這次呼叫是從宿主的哪個專案發起的」。宿主附上之前會先檢查呼叫者能不能從那個專案發起。但同一個鍵也能從請求寫入：`new change --field`、`discuss new --field`、`change field set|unset`、`discuss field set|unset`，以及入口的建立變更、建立討論、轉出變更的請求本文與兩條 `PUT …/fields`。宿主這次沒有附上那個鍵時，Agent 或 CLI 寫的值照樣生效；宿主附上了，之後也能被 `field set` 改掉或被 `field unset` 刪掉。所以宿主的檢查可以被繞過，這個欄位只能當成不可信的標記。SDK 的型別說明寫自由欄位「from your own code, never from the model」，行為卻做不到。
 
 目標使用者是內嵌 `@speclink/engine` 的宿主開發者；他們的 Agent（代表 PO、PM）與工程師的 CLI、Speclink Desktop 都會寫入同一個範圍。對應的 workflow 階段是建立變更與討論（discuss、propose 技能），以及之後任何編輯自由欄位的時候。
 
@@ -10,7 +10,7 @@
 
 - `createHost` 新增選項 `reservedFieldPrefixes`（字串陣列，預設空）。鍵以其中任何一個前綴開頭的自由欄位是「宿主保留的鍵」。
 - 請求要寫入或刪除宿主保留的鍵時，宿主套件拒絕這次呼叫：錯誤碼 `refused`、訊息指出那個鍵；經 HTTP 入口時回應是 409、reason 為 `refused`。拒絕發生在問 `beforeCommand` 之前，儲存沒有收到任何呼叫。
-- 涵蓋每一條從請求寫欄位的路：三個建立動詞的 `--field`（`new change`、`discuss new`、`discuss promote`）、`change field set|unset`、`discuss field set|unset`，以及入口的建立變更、建立討論、轉出變更的請求本文與 `PUT /changes/{name}/fields`、`PUT /discussions/{slug}/fields`。
+- 涵蓋每一條從請求寫欄位的路：兩個建立動詞的 `--field`（`new change`、`discuss new`；`discuss promote` 沒有這個旗標，轉出變更的欄位只經入口的請求本文）、`change field set|unset`、`discuss field set|unset`，以及入口的建立變更、建立討論、轉出變更的請求本文與 `PUT /changes/{name}/fields`、`PUT /discussions/{slug}/fields`。
 - 宿主保留的鍵只有宿主自己寫得了：`host.dispatch` 的 `fields` 與 `host.handleRequest` 第三個參數的 `fields`，行為和現在相同（只在建立變更或討論時寫入）。
 - 請求寫了保留的鍵就拒絕，即使宿主這次也附上了同名的鍵。現在的行為是宿主的值默默蓋過；改成拒絕後，呼叫者會看到原因。
 - 前綴要符合自由欄位的鍵的規則（小寫字母開頭，之後是小寫字母、數字、`_`、`.`、`-`，最長 64 個字元）；不符合時 `createHost` 直接拋出錯誤。
@@ -51,9 +51,12 @@
 - Affected code:
   - Modified:
     - crates/engine/speclink-core/src/command/fields.rs
+    - crates/engine/speclink-core/tests/it/command_describe.rs
     - crates/host/speclink-host/src/kit.rs
     - crates/host/speclink-host/tests/free_fields.rs
     - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-host/tests/common/door.rs
+    - crates/host/speclink-server/src/state.rs
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts

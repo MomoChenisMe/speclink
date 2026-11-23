@@ -20,6 +20,7 @@ use speclink_core::fields::Fields;
 use speclink_protocol::auth::AuthMethodsResponse;
 use speclink_protocol::events::EventTransport;
 use speclink_store_port::{Actor, DocKey, Event, Expected, ScopeId, StorePort, Version};
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 /// Who acts: an id that stays when the user is renamed, and the name that
@@ -245,7 +246,52 @@ pub struct HostKitOptions {
     /// value. The kit neither compresses nor decompresses: that is the
     /// framework's route layer. An export has no limit.
     pub import_limit_bytes: Option<usize>,
+    /// The free-field keys only the host writes, by prefix. A call whose own
+    /// command or request sets or removes one fails as `refused` before the
+    /// hook is asked and before the store sees a call; the fields the host
+    /// attaches ([`HostKit::run_with_fields`]) write them. Default: none.
+    pub reserved_field_prefixes: ReservedFieldPrefixes,
 }
+
+/// The prefixes of the free-field keys a host keeps for itself
+/// ([`HostKitOptions::reserved_field_prefixes`]). A key is reserved when it
+/// starts with one of them, byte for byte: `host.` keeps `host.project`, and
+/// `host` keeps `hostname` too, so end a prefix with `.`, `-` or `_`. The
+/// Engine reads no key: the kit alone applies them. The default keeps none.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ReservedFieldPrefixes(BTreeSet<String>);
+
+impl ReservedFieldPrefixes {
+    /// Every prefix is within the Engine's rules of a field key
+    /// ([`speclink_core::fields::check`]), or the first that is not is the
+    /// error. A prefix given twice counts once; an empty list keeps no key.
+    pub fn new(prefixes: Vec<String>) -> Result<ReservedFieldPrefixes, InvalidFieldPrefix> {
+        for prefix in &prefixes {
+            // A field with this key and an empty value is within the rules.
+            speclink_core::fields::check(&Fields::from([(prefix.clone(), String::new())]))
+                .map_err(|rule| InvalidFieldPrefix(rule.to_string()))?;
+        }
+        Ok(ReservedFieldPrefixes(prefixes.into_iter().collect()))
+    }
+
+    /// The first of `keys` that one of the prefixes keeps.
+    fn first_reserved<'k>(&self, keys: impl IntoIterator<Item = &'k str>) -> Option<&'k str> {
+        keys.into_iter().find(|key| self.0.iter().any(|prefix| key.starts_with(prefix.as_str())))
+    }
+}
+
+/// A [`ReservedFieldPrefixes`] entry that is not a field key: what the
+/// Engine says of that key, which names it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InvalidFieldPrefix(String);
+
+impl std::fmt::Display for InvalidFieldPrefix {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "reserved field prefix: {}", self.0)
+    }
+}
+
+impl std::error::Error for InvalidFieldPrefix {}
 
 /// The import limit of a kit whose host gave none: 32 MiB.
 pub const DEFAULT_IMPORT_LIMIT_BYTES: usize = 32 * 1024 * 1024;
@@ -360,7 +406,9 @@ impl HostKit {
     /// written only when the call creates a change or a discussion (new
     /// change, new discussion, promote), in the commit that creates it, and
     /// they win over a field of the same key that the verb text or the HTTP
-    /// request gave. Every other call ignores them, so a host can attach the
+    /// request gave — except a key the host reserves
+    /// ([`HostKitOptions::reserved_field_prefixes`]): a call whose own command
+    /// writes one is refused. Every other call ignores them, so a host can attach the
     /// same fields to every call. Attached fields that break the rules of
     /// free fields are the host's own defect: a call that would write them
     /// fails as `invalid_argv` before the hook is asked, with nothing written.
@@ -373,6 +421,12 @@ impl HostKit {
 
     /// [`HostKit::run`] with what the HTTP door adds; see [`RunOptions`].
     pub(crate) fn run_with(&self, caller: &Caller, cmd: Command, options: &RunOptions) -> Result<Ran, ExecError> {
+        // Before the merge, so the keys are the command's own, and before
+        // the hook and the store: a refused call reaches neither.
+        if let Some(key) = self.options.reserved_field_prefixes.first_reserved(cmd.written_field_keys()) {
+            let message = format!("field '{key}' is reserved by the host");
+            return Err(ExecError::Command(CommandError::new(ErrorCode::Refused, message)));
+        }
         // Before the hook: it sees the fields that will be written.
         let cmd = attach_fields(cmd, &options.fields)?;
         let command = cmd.name();

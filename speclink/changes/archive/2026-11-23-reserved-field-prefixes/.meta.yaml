@@ -1,0 +1,77 @@
+schema: spec-driven
+created: 2026-11-23T11:32:55+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-7
+depends_on: render-host-options-and-tool-verbs
+started_at: 2026-11-23T16:02:21+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-23T16:54:08+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_rounds: 2
+reviewed_commit: cc974c906b5c15d37b40048bb6d1a7d4a41a2acc
+reviewed_scope:
+  - path: crates/adapters/speclink-node/__test__/free-fields.spec.ts
+    hash: 80f580b32d79479bbb8774b84874438c6602950d375b84491a61273a875a3931
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 2145f9c923d9f94e88734f2640719896dcf5bafe015a66a33fd72726c461eb1d
+  - path: crates/adapters/speclink-node/index.js
+    hash: 8ce70ab93c1e99d54f7ab0d69d19b01299380fe0adbbf30c60074637bd7e7895
+  - path: crates/adapters/speclink-node/src/host.rs
+    hash: 615c46c083d05a9ad4f9247df9e6f4fa3554f4072703f3474903c3bf8ec6ec0c
+  - path: crates/engine/speclink-core/src/command/fields.rs
+    hash: f33b396d59e02f6bca0a38fbfe95e4aba63ca80fa68e294e2ef23a51aa859c5e
+  - path: crates/engine/speclink-core/tests/it/command_describe.rs
+    hash: 7cbfa1c0120db057ad1d90b1ed337eefe1f1dda6f3c93809894a095f38831d7e
+  - path: crates/host/speclink-host/src/kit.rs
+    hash: 2f17604f7705fdc63b2de96ca78f43bd65604a464bff1a81cea307607da07044
+  - path: crates/host/speclink-host/tests/common/door.rs
+    hash: 5602cf776d2480f7229085e120e01d081828f86e6021ed4a9051a27c5b13ebd3
+  - path: crates/host/speclink-host/tests/free_fields.rs
+    hash: 1607b9b25502399869bd16a5cef38529f86be3370bc26a6e0240437327c0afce
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: 119c23de33661914ff417591ab8091b859fb5888b194ba326e4f8ba1d9f0cef7
+  - path: crates/host/speclink-server/src/state.rs
+    hash: 5aa3c7193e1b29c39fd1d839561e5b74428552dc5b15b5a773cd3b90798602c1
+  - path: docs/sdk-node.md
+    hash: e76714a542e79b7ffa2d4b5f50c217e457046153185a7e8d2bcb7adcba87214e
+  - path: docs/sdk-node.zh-TW.md
+    hash: b9f61d57d0c7bbe117a9b25e430cd2a1538d01e3fea9c23ef6660468a02d1956
+verified_at: 2026-11-23T16:54:08+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_rounds: 2
+verified_commit: cc974c906b5c15d37b40048bb6d1a7d4a41a2acc
+verified_scope:
+  - path: crates/adapters/speclink-node/__test__/free-fields.spec.ts
+    hash: 80f580b32d79479bbb8774b84874438c6602950d375b84491a61273a875a3931
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 2145f9c923d9f94e88734f2640719896dcf5bafe015a66a33fd72726c461eb1d
+  - path: crates/adapters/speclink-node/index.js
+    hash: 8ce70ab93c1e99d54f7ab0d69d19b01299380fe0adbbf30c60074637bd7e7895
+  - path: crates/adapters/speclink-node/src/host.rs
+    hash: 615c46c083d05a9ad4f9247df9e6f4fa3554f4072703f3474903c3bf8ec6ec0c
+  - path: crates/engine/speclink-core/src/command/fields.rs
+    hash: f33b396d59e02f6bca0a38fbfe95e4aba63ca80fa68e294e2ef23a51aa859c5e
+  - path: crates/engine/speclink-core/tests/it/command_describe.rs
+    hash: 7cbfa1c0120db057ad1d90b1ed337eefe1f1dda6f3c93809894a095f38831d7e
+  - path: crates/host/speclink-host/src/kit.rs
+    hash: 2f17604f7705fdc63b2de96ca78f43bd65604a464bff1a81cea307607da07044
+  - path: crates/host/speclink-host/tests/common/door.rs
+    hash: 5602cf776d2480f7229085e120e01d081828f86e6021ed4a9051a27c5b13ebd3
+  - path: crates/host/speclink-host/tests/free_fields.rs
+    hash: 1607b9b25502399869bd16a5cef38529f86be3370bc26a6e0240437327c0afce
+  - path: crates/host/speclink-host/tests/http_door.rs
+    hash: 119c23de33661914ff417591ab8091b859fb5888b194ba326e4f8ba1d9f0cef7
+  - path: crates/host/speclink-server/src/state.rs
+    hash: 5aa3c7193e1b29c39fd1d839561e5b74428552dc5b15b5a773cd3b90798602c1
+  - path: docs/sdk-node.md
+    hash: e76714a542e79b7ffa2d4b5f50c217e457046153185a7e8d2bcb7adcba87214e
+  - path: docs/sdk-node.zh-TW.md
+    hash: b9f61d57d0c7bbe117a9b25e430cd2a1538d01e3fea9c23ef6660468a02d1956
+archived_at: 2026-11-23T16:56:02+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

@@ -125,6 +125,7 @@ const host = createHost({
   authMethods,           // Optional: the login methods that you support
   skills: ['discuss', 'propose', 'ingest', 'archive'], // Optional: the skills for the engineers who connect
   limits: { importBytes: 32 * 1024 * 1024 },           // Optional: the size limit of an import
+  reservedFieldPrefixes: ['host.'],                    // Optional: the free-field keys that only your program writes
 })
 ```
 
@@ -137,6 +138,7 @@ const host = createHost({
 | `pushTransports` | The handshake declares polling only |
 | `skills` | All skills of the engine are supplied. An empty array or an unknown name throws immediately |
 | `limits.importBytes` | 33554432 (32 MiB) |
+| `reservedFieldPrefixes` | No key is reserved. A value that is not an array of strings, or a prefix that breaks the rules of a key, throws immediately |
 
 `createHost` does not accept `actor`: the identity comes with each call, not one time at construction. An unknown option throws immediately.
 
@@ -509,6 +511,24 @@ A key appears only when the change has that record. For the keys and their rules
 | The changes a discussion was promoted to | `['discuss', 'list', '--json']` or `['discuss', 'show', '<slug>', '--json']` | [`promotedTo`](verb-contract.md#discussion-promoted-to) |
 
 **Free fields** are key-value pairs that the host defines. The engine stores them and does not interpret them. An example is the ticket that a change came from. `fields` is written only when the verb creates a change or a discussion (`new change`, `discuss new`, `discuss promote`), in the commit that creates it. All other verbs ignore it, so you can pass the same fields with each call. It has priority over a `--field` with the same key. `beforeCommand` sees the fields that will be written in `params.fields` and can check them. The rules: a key uses `a-z`, `0-9`, `_`, `.`, `-`, starts with a letter, and has 64 characters maximum; a value is one line of 1024 bytes maximum; the maximum is 32 keys. Fields that break the rules are refused with `invalid_argv`, and nothing is written. Do not put a secret in a field: each reader of the change can see it.
+
+<a id="reserved-fields"></a>**Reserved keys.** Use them when a field must come only from your program. An example is the project that a call came from, which your program checks before it attaches it. Give the prefix to `createHost`:
+
+```js
+const host = createHost({ store, hooks, reservedFieldPrefixes: ['host.'] })
+```
+
+Then only `fields` of `host.dispatch` and of `host.handleRequest` can write a key that starts with `host.`. A request that sets or removes such a key is refused before `beforeCommand` and before any store call:
+
+- `--field` of `new change` and `discuss new`
+- `change field set|unset` and `discuss field set|unset`
+- the bodies of the HTTP requests that do the same, and the body of a promote request (`discuss promote` has no `--field`)
+
+The error has the code `refused` and the message `field '<key>' is reserved by the host`. Through `handleRequest`, the response is 409 with the reason `refused`. A refusal from `beforeCommand` has the same code, so read the message to tell the two apart. When a request carries a reserved key and your `fields` carry the same key, the call is refused: your value does not silently replace the request's value. Keys that are not reserved keep the rule above: your value has priority.
+
+The comparison is a plain "starts with": the prefix `host` keeps `host.project`, and also `hostname` and `host`. End a prefix with `.`, `-`, or `_`, so that it keeps only the keys that you mean. A prefix follows the rules of a key. Anything else (not an array of strings, an empty string, a capital letter, a space) makes `createHost` throw immediately. Leave the option out, or give `[]`, to reserve no key. Reads give the reserved keys as usual.
+
+Two limits apply. A reserved key cannot change after the change or discussion is created, not even by your program, because `fields` is written only at creation. An import (`host.importScope`, `POST /import`) writes whole documents and does not check reserved keys.
 
 **The host kit does not read git or your files.** For verbs that need local facts, your program collects the facts and passes them as input:
 

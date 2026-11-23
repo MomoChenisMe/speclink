@@ -7,9 +7,13 @@ use serde_json::{json, Value};
 use speclink_core::command::{Command, ErrorCode};
 use speclink_core::fields::Fields;
 use speclink_host::http::{routes, wire_coverage, HttpRequest, HttpResponse, Method, WireCoverage};
-use speclink_host::kit::{BeforeCommand, Caller, Decision, Hooks, Reader};
+use speclink_host::kit::{
+    AfterCommit, BeforeCommand, Caller, Decision, Hooks, HostKitOptions, Reader, ReservedFieldPrefixes,
+};
 use speclink_host::port_exec::ExecError;
-use speclink_store_port::{Commit, Op};
+use speclink_host::projection::content_digest;
+use speclink_host::transfer::{ImportMode, ImportOptions};
+use speclink_store_port::{Commit, KeyPrefix, Op, StorePort};
 use std::sync::{Arc, Mutex};
 
 mod common;
@@ -26,18 +30,30 @@ fn caller() -> Caller {
     Caller { identity: alice(), scope: scope_s1() }
 }
 
-/// A door whose before hook keeps what it was asked.
-fn door_that_records() -> (Door, Arc<Mutex<Vec<BeforeCommand>>>) {
-    let asked = Arc::new(Mutex::new(Vec::new()));
-    let seen = asked.clone();
+/// What the two hooks of a [`recording_door`] saw.
+#[derive(Default)]
+struct Seen {
+    asked: Mutex<Vec<BeforeCommand>>,
+    told: Mutex<Vec<&'static str>>,
+}
+
+/// A door with these kit options, whose hooks keep every question and every
+/// commit they are told of.
+fn recording_door(options: HostKitOptions) -> (Door, Arc<Seen>) {
+    let seen = Arc::new(Seen::default());
+    let (before, after) = (seen.clone(), seen.clone());
     let hooks = Hooks {
         before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| {
-            seen.lock().unwrap().push(info.clone());
+            before.asked.lock().unwrap().push(info.clone());
             Decision::Allow
         })),
-        ..Default::default()
+        after_commit: Some(Box::new(move |info: &AfterCommit| after.told.lock().unwrap().push(info.command))),
     };
-    (door_with(true, hooks), asked)
+    (door_with_options(true, hooks, options), seen)
+}
+
+fn door_that_records() -> (Door, Arc<Seen>) {
+    recording_door(HostKitOptions::default())
 }
 
 fn map(pairs: &[(&str, &str)]) -> Fields {
@@ -177,10 +193,10 @@ fn every_other_command_ignores_the_attached_fields() {
 #[test]
 fn the_before_hook_sees_the_fields_that_will_be_written() {
     // Scenario「掛鉤看到最後的欄位」。
-    let (door, asked) = door_that_records();
+    let (door, seen) = door_that_records();
     let cmd = new_change("demo", &[("source", "cli"), ("ticket", "PROJ-1")]);
     door.kit.run_with_fields(&caller(), cmd, &map(&[("source", "portal")])).expect("created");
-    let asked = asked.lock().unwrap();
+    let asked = seen.asked.lock().unwrap();
     assert_eq!(asked.len(), 1);
     assert_eq!(asked[0].command, "new-change");
     assert_eq!(asked[0].params["fields"], json!({ "source": "portal", "ticket": "PROJ-1" }));
@@ -205,7 +221,7 @@ fn a_hook_can_refuse_by_the_fields_and_nothing_is_written() {
 #[test]
 fn attached_fields_outside_the_rules_fail_the_call_as_invalid_argv_with_nothing_written() {
     // Scenario「附上的欄位不合規則」。
-    let (door, asked) = door_that_records();
+    let (door, seen) = door_that_records();
     let too_long = "x".repeat(1025);
     for attached in [map(&[("Bad", "1")]), map(&[("note", "a\nb")]), map(&[("note", too_long.as_str())])] {
         let err = command_error(door.kit.run_with_fields(&caller(), new_change("demo", &[]), &attached));
@@ -222,7 +238,7 @@ fn attached_fields_outside_the_rules_fail_the_call_as_invalid_argv_with_nothing_
     assert!(content(&door, "changes/demo/.meta.yaml").is_none(), "the change was not created");
     assert!(door.store.take().commits.is_empty());
     // 是宿主的程式錯誤：在問掛鉤之前就失敗。
-    assert!(asked.lock().unwrap().is_empty());
+    assert!(seen.asked.lock().unwrap().is_empty());
 }
 
 #[test]
@@ -318,7 +334,7 @@ fn nothing_in_the_request_removes_or_rewrites_what_the_host_attached() {
 
 #[test]
 fn the_attached_fields_change_no_other_part_of_the_command() {
-    let (door, asked) = door_that_records();
+    let (door, seen) = door_that_records();
     let cmd = || Command::NewChange {
         name: "demo".to_string(),
         description: Some("A demo".to_string()),
@@ -333,11 +349,11 @@ fn the_attached_fields_change_no_other_part_of_the_command() {
     door.kit
         .run_with_fields(&caller(), cmd(), &map(&[("name", "other"), ("schema", "evil"), ("agent", "x")]))
         .expect("created");
-    let asked = asked.lock().unwrap();
-    let mut seen = asked[0].params.clone();
-    assert_eq!(seen["fields"], json!({ "agent": "x", "name": "other", "schema": "evil", "ticket": "PROJ-1" }));
-    seen["fields"] = plain["fields"].clone();
-    assert_eq!(seen, plain, "only `fields` differs");
+    let asked = seen.asked.lock().unwrap();
+    let mut params = asked[0].params.clone();
+    assert_eq!(params["fields"], json!({ "agent": "x", "name": "other", "schema": "evil", "ticket": "PROJ-1" }));
+    params["fields"] = plain["fields"].clone();
+    assert_eq!(params, plain, "only `fields` differs");
     assert!(content(&door, "changes/demo/.meta.yaml").unwrap().starts_with("schema: spec-driven\n"));
     assert!(content(&door, "changes/other/.meta.yaml").is_none());
 }
@@ -650,6 +666,222 @@ fn a_client_type_that_does_not_know_fields_still_reads_the_responses() {
     assert_eq!((demo.status.as_str(), demo.total_tasks), ("in-progress", 1));
     let binding: OldBinding = serde_json::from_value(get(&door, "binding")).expect("the old handshake type reads it");
     assert!(binding.capabilities.validate);
+}
+
+// === host-kit「宿主保留的自由欄位鍵」 ===
+
+/// The metadata of a change that carries `host.project=p1`.
+fn reserved_meta() -> String {
+    format!("{META}fields:\n  host.project: \"p1\"\n")
+}
+
+/// The record of the open discussion talk.
+fn talk() -> String {
+    RECORD.replace("board-search", "talk")
+}
+
+/// A [`recording_door`] whose kit keeps the keys under `prefixes` for the host.
+fn reserving(prefixes: &[&str]) -> (Door, Arc<Seen>) {
+    let reserved = ReservedFieldPrefixes::new(prefixes.iter().map(|p| p.to_string()).collect()).expect("field keys");
+    recording_door(HostKitOptions { reserved_field_prefixes: reserved, ..Default::default() })
+}
+
+/// Change ok with `host.project=p1` and the open discussion talk.
+fn seed_ok_and_talk(door: &Door) {
+    seed(
+        door,
+        &[
+            ("config.yaml", "schema: spec-driven\n"),
+            ("changes/ok/.meta.yaml", &reserved_meta()),
+            ("changes/ok/tasks.md", TASKS),
+            ("discussions/talk.md", &talk()),
+        ],
+    );
+}
+
+/// The call failed as the refusal of the reserved `key`, before anything:
+/// the store saw no call, not even a read, and neither hook was called.
+fn assert_reserved(door: &Door, seen: &Seen, result: Result<speclink_host::port_exec::PortExecution, ExecError>, key: &str) {
+    let err = command_error(result);
+    assert_eq!((err.code, err.message.as_str()), (ErrorCode::Refused, format!("field '{key}' is reserved by the host").as_str()));
+    let calls = door.store.take();
+    assert!(calls.is_empty(), "the store saw no call: {calls:?}");
+    assert!(seen.asked.lock().unwrap().is_empty(), "the before hook was not asked");
+    assert!(seen.told.lock().unwrap().is_empty(), "the after hook was not called");
+}
+
+fn change_edit(name: &str, set: &[(&str, &str)], unset: &[&str]) -> Command {
+    Command::ChangeFieldsEdit { name: name.to_string(), set: map(set), unset: unset.iter().map(|k| k.to_string()).collect() }
+}
+
+fn discuss_edit(slug: &str, set: &[(&str, &str)], unset: &[&str]) -> Command {
+    Command::DiscussFieldsEdit { slug: slug.to_string(), set: map(set), unset: unset.iter().map(|k| k.to_string()).collect() }
+}
+
+#[test]
+fn every_way_a_request_writes_a_reserved_key_is_refused_before_the_hook_and_the_store() {
+    // Example「各條寫入路徑」的動詞文字（Agent 工具的門），加上轉出變更的請求本文
+    // 建出的命令：`discuss promote` 沒有 `--field`。
+    let (door, seen) = reserving(&["host."]);
+    seed_ok_and_talk(&door);
+    let p2 = map(&[("host.project", "p2")]);
+    let writes = [
+        ("new change spoof --field host.project=p2", new_change("spoof", &[("host.project", "p2")])),
+        (
+            "discuss new 主題 --field host.project=p2",
+            Command::DiscussNew { topic: "主題".to_string(), slug: None, kind: None, fields: p2.clone() },
+        ),
+        (
+            "POST /discussions/talk/promote with fields host.project=p2",
+            Command::DiscussPromote { slug: "talk".to_string(), name: None, last: false, fields: p2.clone() },
+        ),
+        ("change field set ok host.project=p2", change_edit("ok", &[("host.project", "p2")], &[])),
+        ("change field unset ok host.project", change_edit("ok", &[], &["host.project"])),
+        ("discuss field set talk host.project=p2", discuss_edit("talk", &[("host.project", "p2")], &[])),
+        ("discuss field unset talk host.project", discuss_edit("talk", &[], &["host.project"])),
+    ];
+    for (verb, cmd) in writes {
+        eprintln!("{verb}");
+        assert_reserved(&door, &seen, door.kit.run(&caller(), cmd), "host.project");
+    }
+    assert_eq!(fields_of(&door, "ok"), map(&[("host.project", "p1")]));
+    assert_eq!(content(&door, "discussions/talk.md"), Some(talk()));
+    assert!(content(&door, "changes/spoof/.meta.yaml").is_none(), "spoof was not created");
+}
+
+#[test]
+fn a_write_with_a_reserved_key_writes_none_of_its_other_keys() {
+    // Example：`change field set ok team=web host.project=p2`。
+    let (door, seen) = reserving(&["host."]);
+    seed_ok_and_talk(&door);
+    let cmd = change_edit("ok", &[("team", "web"), ("host.project", "p2")], &[]);
+    assert_reserved(&door, &seen, door.kit.run(&caller(), cmd), "host.project");
+    assert_eq!(fields_of(&door, "ok"), map(&[("host.project", "p1")]), "team was not written");
+}
+
+#[test]
+fn a_reserved_key_the_host_attaches_is_written() {
+    // Scenario「宿主附上的保留鍵照常寫入」。
+    let (door, seen) = reserving(&["host."]);
+    door.kit.run_with_fields(&caller(), new_change("ok", &[]), &map(&[("host.project", "p1")])).expect("created");
+    assert_eq!(fields_of(&door, "ok"), map(&[("host.project", "p1")]));
+    let asked = seen.asked.lock().unwrap();
+    assert_eq!(asked.len(), 1);
+    assert_eq!(asked[0].params["fields"], json!({ "host.project": "p1" }));
+    assert_eq!(*seen.told.lock().unwrap(), ["new-change"]);
+}
+
+#[test]
+fn a_reserved_key_from_the_request_is_refused_even_when_the_host_attaches_it_too() {
+    // Scenario「請求與宿主帶同一個保留的鍵」：拒絕，不是宿主的值蓋過。
+    let (door, seen) = reserving(&["host."]);
+    let cmd = new_change("both", &[("host.project", "p2")]);
+    assert_reserved(&door, &seen, door.kit.run_with_fields(&caller(), cmd, &map(&[("host.project", "p1")])), "host.project");
+    assert!(content(&door, "changes/both/.meta.yaml").is_none(), "both was not created");
+}
+
+#[test]
+fn a_key_that_is_not_reserved_is_as_before() {
+    // Scenario「不是保留的鍵不受影響」。
+    let (door, _) = reserving(&["host."]);
+    door.kit.run_with_fields(&caller(), new_change("demo", &[("team", "cli")]), &map(&[("team", "web")])).expect("created");
+    assert_eq!(fields_of(&door, "demo"), map(&[("team", "web")]));
+    door.kit.run(&caller(), change_edit("demo", &[("team", "api")], &[])).expect("set");
+    assert_eq!(fields_of(&door, "demo"), map(&[("team", "api")]));
+    // Example：`new change web --field team=web`。
+    door.kit.run(&caller(), new_change("web", &[("team", "web")])).expect("created");
+    assert_eq!(fields_of(&door, "web"), map(&[("team", "web")]));
+}
+
+#[test]
+fn reads_give_the_reserved_keys_as_they_are() {
+    // Scenario「讀取照常輸出保留的鍵」。
+    let (door, _) = reserving(&["host."]);
+    seed_ok_and_talk(&door);
+    assert_eq!(listed(&door, "ok")["fields"], json!({ "host.project": "p1" }));
+    assert_eq!(get(&door, "changes/ok")["fields"], json!({ "host.project": "p1" }));
+}
+
+#[test]
+fn an_archive_carries_the_reserved_keys_into_the_archive() {
+    // 「封存照常讓它們隨文件進入封存」。
+    let (door, _) = reserving(&["host."]);
+    seed(&door, &[("changes/ok/.meta.yaml", &reserved_meta()), ("changes/ok/tasks.md", "- [x] 1.1 done\n")]);
+    let archive = Command::Archive {
+        change: Some("ok".to_string()),
+        skip_specs: true,
+        no_validate: true,
+        mark_tasks_complete: false,
+        carry_review: false,
+        carry_verify: false,
+    };
+    door.kit.run(&caller(), archive).expect("archived");
+    let archived = door.store.inner.list(&scope_s1(), &KeyPrefix::new("archive/changes/").unwrap()).expect("listed").entries;
+    let key = archived.iter().map(|entry| entry.key.as_str()).find(|key| key.ends_with("-ok/.meta.yaml"));
+    let meta = content(&door, key.expect("ok is in the archive")).expect("the archived metadata");
+    assert!(meta.contains("  host.project: \"p1\"\n"), "{meta}");
+}
+
+#[test]
+fn the_export_and_the_import_of_a_scope_do_not_check_the_reserved_keys() {
+    // 「範圍的匯入與匯出寫入與讀出的是整份文件，不做這個檢查」。
+    let (door, _) = reserving(&["host."]);
+    seed_ok_and_talk(&door);
+    let mut bundle = door.kit.export_scope(&caller()).expect("exported");
+    let meta = bundle.documents.iter_mut().find(|doc| doc.key == "changes/ok/.meta.yaml").expect("ok is in the bundle");
+    assert_eq!(meta.content, reserved_meta());
+    meta.content = meta.content.replace("\"p1\"", "\"p2\"");
+    meta.digest = content_digest(&meta.content);
+    let replace = ImportOptions { mode: ImportMode::Replace, dry_run: false };
+    door.kit.import_scope(&caller(), bundle, replace).expect("imported");
+    assert_eq!(fields_of(&door, "ok"), map(&[("host.project", "p2")]));
+}
+
+#[test]
+fn without_reserved_prefixes_a_request_writes_any_key() {
+    // Scenario「沒有設定保留前綴時行為不變」：預設，以及空的清單。
+    let empty = ReservedFieldPrefixes::new(Vec::new()).expect("an empty list");
+    assert_eq!(empty, ReservedFieldPrefixes::default());
+    for door in [door(), door_with_options(true, Hooks::default(), HostKitOptions { reserved_field_prefixes: empty, ..Default::default() })] {
+        door.kit.run(&caller(), new_change("demo", &[("host.project", "p2")])).expect("created");
+        assert_eq!(fields_of(&door, "demo"), map(&[("host.project", "p2")]));
+    }
+}
+
+#[test]
+fn a_prefix_reserves_every_key_that_starts_with_it() {
+    // Scenario「前綴是單純的字串開頭比對」：前綴 host 也保留 hostname。
+    let (door, seen) = reserving(&["host"]);
+    assert_reserved(&door, &seen, door.kit.run(&caller(), new_change("demo", &[("hostname", "web1")])), "hostname");
+    // 重複的前綴視為一個。
+    let (door, seen) = reserving(&["host.", "host."]);
+    assert_reserved(&door, &seen, door.kit.run(&caller(), new_change("demo", &[("host.project", "p2")])), "host.project");
+    door.kit.run(&caller(), new_change("demo", &[("hostname", "web1")])).expect("hostname is not under host.");
+}
+
+#[test]
+fn the_refusal_names_the_first_reserved_key_and_wins_over_a_field_outside_the_rules() {
+    let (door, seen) = reserving(&["host."]);
+    // 設定與移除的鍵合起來，依位元組順序的第一個。
+    let cmd = change_edit("ok", &[("host.zone", "z")], &["host.app"]);
+    assert_reserved(&door, &seen, door.kit.run(&caller(), cmd), "host.app");
+    // 同時有不合規則的欄位：回報保留鍵的拒絕，不是 invalid_argv。
+    let cmd = new_change("demo", &[("Bad", "1"), ("host.project", "p2")]);
+    assert_reserved(&door, &seen, door.kit.run(&caller(), cmd), "host.project");
+}
+
+#[test]
+fn a_prefix_outside_the_rules_of_a_field_key_builds_no_option() {
+    // Scenario「前綴不合規則」：所以建立不出宿主套件。
+    for bad in ["Host.", "", "host project"] {
+        let Err(error) = ReservedFieldPrefixes::new(vec!["host.".to_string(), bad.to_string()]) else {
+            panic!("{bad:?} is not a field key");
+        };
+        // 引擎自己對這個鍵的說法，不另外寫一份規則。
+        let rule = speclink_core::fields::check(&map(&[(bad, "")])).expect_err("not a field key").to_string();
+        assert!(rule.contains(&format!("{bad:?}")), "{rule}");
+        assert_eq!(error.to_string(), format!("reserved field prefix: {rule}"));
+    }
 }
 
 // === 線上歸屬表 ===

@@ -13,7 +13,7 @@ createHost SHALL 接受選填的 `reservedFieldPrefixes`（字串陣列）。它
 
 #### Scenario: 宿主的 fields 寫得了保留的鍵
 
-- **WHEN** 同一個 host 執行 `host.dispatch({ identity, scope, argv: ['new', 'change', 'ok', '--json'], fields: { 'host.project': 'p1' } })`，之後執行 `['list', '--json']`
+- **WHEN** 同一個 host 執行 `host.dispatch({ identity, scope, argv: ['new', 'change', 'ok'], fields: { 'host.project': 'p1' } })`，之後執行 `['list', '--json']`
 - **THEN** 建立成功；清單裡 ok 的 `fields` 是 `{ 'host.project': 'p1' }`
 
 #### Scenario: 設定與移除都被拒絕
@@ -38,5 +38,5 @@ createHost SHALL 接受選填的 `reservedFieldPrefixes`（字串陣列）。它
 
 #### Scenario: 省略時行為不變
 
-- **WHEN** 以沒有 `reservedFieldPrefixes` 的選項建立 host，執行 argv `['new', 'change', 'demo', '--field', 'host.project=p2', '--json']`
+- **WHEN** 以沒有 `reservedFieldPrefixes` 的選項建立 host，執行 argv `['new', 'change', 'demo', '--field', 'host.project=p2']`
 - **THEN** 建立成功，demo 的 `fields` 有 `host.project`

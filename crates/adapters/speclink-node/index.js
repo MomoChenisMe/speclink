@@ -334,7 +334,26 @@ function whoAndWhere(call) {
   return [text(call?.identity?.id), text(call?.identity?.displayName), text(call?.scope)]
 }
 
-const HOST_OPTIONS = ['store', 'hooks', 'scopes', 'authMethods', 'pushTransports', 'skills', 'limits']
+/**
+ * The options of `createHost` that cross to the native side as JSON. It reads
+ * each by this name, checks its shape, and throws on one it does not read.
+ */
+const DOOR_OPTIONS = ['authMethods', 'pushTransports', 'skills', 'limits', 'reservedFieldPrefixes']
+
+const HOST_OPTIONS = ['store', 'hooks', 'scopes', ...DOOR_OPTIONS]
+
+/**
+ * `createHost`'s `reservedFieldPrefixes`, checked here for what JSON would
+ * hide: it leaves out a value it cannot write (a function, a symbol), and the
+ * native side would then keep no key for the host. The native side checks
+ * that each prefix is a field key.
+ */
+function checkReservedFieldPrefixes(prefixes) {
+  if (prefixes === undefined) return
+  if (!Array.isArray(prefixes) || !prefixes.every((prefix) => typeof prefix === 'string')) {
+    throw new TypeError('createHost: reservedFieldPrefixes must be an array of strings')
+  }
+}
 
 /**
  * `createHost`'s `limits`, checked here for what the native side cannot see:
@@ -395,7 +414,8 @@ function readTools(native, info) {
 /**
  * Build a host kit over a store port (`list`, `read`, `commit`), optional
  * hooks (`beforeCommand`, `afterCommit`) and the HTTP door's optional inputs
- * (`scopes`, `authMethods`, `pushTransports`, `skills`, `limits`). One host
+ * (`scopes`, `authMethods`, `pushTransports`, `skills`, `limits`), and the
+ * free-field keys it keeps for itself (`reservedFieldPrefixes`). One host
  * serves every user: each call brings its own identity.
  */
 function createHost(options) {
@@ -425,6 +445,7 @@ function createHost(options) {
     throw new TypeError('createHost: scopes must be a function')
   }
   checkLimits(options.limits)
+  checkReservedFieldPrefixes(options.reservedFieldPrefixes)
   // The hooks are called only during a call of the host built below.
   let native
   const hookTarget = {
@@ -443,13 +464,9 @@ function createHost(options) {
     scopes: asJson(async (identity) => options.scopes(identity)),
   }
   // The native side checks the shapes and throws on a field it does not know,
-  // and on a skill name the engine does not have.
-  const doorOptions = JSON.stringify({
-    authMethods: options.authMethods,
-    pushTransports: options.pushTransports,
-    skills: options.skills,
-    limits: options.limits,
-  })
+  // on a skill name the engine does not have, and on a prefix that is not a
+  // field key.
+  const doorOptions = JSON.stringify(Object.fromEntries(DOOR_OPTIONS.map((name) => [name, options[name]])))
   native = binding.hostFromPort(
     makeInvoker(target),
     makeInvoker(hookTarget),
