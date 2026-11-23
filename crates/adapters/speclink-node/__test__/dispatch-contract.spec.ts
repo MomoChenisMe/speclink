@@ -760,7 +760,9 @@ describe('the write verbs dispatch now serves keep the gates and records of the 
     }
     expect(sdk.repo).toBe('main')
     expect(sdk.touchedFiles).toEqual(['src/lib.rs'])
-  })
+    // 建兩個 git repo 再各跑一次 SDK 與 CLI，Windows runner 上超過預設的 5 秒
+    // （v0.14.0、v0.17.0 的 engine-npm-build 都因此逾時）。
+  }, 60_000)
 
   it('archive of a change with open tasks is refused with the CLI message', async () => {
     const root = makeFsFixture()
