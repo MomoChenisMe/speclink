@@ -806,6 +806,40 @@ export function agentToolDescription(options?: AgentToolDescriptionOptions): str
  */
 export const commandNames: readonly string[]
 
+/**
+ * Every event name `afterCommit` and a store port's `commit` can be given,
+ * each once: the engine's events, and the host kit's own two:
+ * `scope-imported` (`host.importScope` and the door's import) and
+ * `board-order-updated` (the board order write of `host.handleRequest`).
+ * Check in a test that your push table knows each name, so an event a new
+ * version adds does not go by unnoticed. The order is no contract.
+ */
+export const eventNames: readonly string[]
+
+/** What an event is about: see {@link eventResource}. */
+export interface EventResource {
+  /** `unknown` for a name the table does not have: read the whole scope again. */
+  scope: 'change' | 'discussion' | 'spec' | 'unknown'
+  /** The change name or the discussion slug; empty for `unknown`, or when the payload lacks the key. */
+  resourceId: string
+}
+
+/**
+ * The resource an event is about, from its `name` and `payload` as
+ * `afterCommit` or a store's `commit` gives them. It is the table the demo
+ * server pushes its invalidations by: a change's events, the two quality
+ * stations' events and the landing report point at the change (`change`);
+ * `change-archived` at the specs the archive promoted (`spec`, the change's
+ * name); a discussion's events at the discussion (`slug`). Any other name,
+ * `scope-imported`, `board-order-updated` and `workflow-config-changed`
+ * included, is `{ scope: 'unknown', resourceId: '' }`. One commit can carry
+ * several events, so call it for each. It reads no store. A `payload`
+ * that is not an object, or has no string under the key, gives an empty
+ * `resourceId`. Throws a `TypeError` when `name` is not a string; `payload`
+ * is a JSON value (or left out).
+ */
+export function eventResource(name: string, payload?: unknown): EventResource
+
 /** A version conflict for a store port's `commit` to throw. */
 export class StoreConflictError extends Error {
   readonly code: 'conflict'

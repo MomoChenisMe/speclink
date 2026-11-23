@@ -2426,7 +2426,8 @@ fn discuss_verbs_report_their_events() {
             change: "auth-change".to_string(),
         },
     );
-    assert_eq!(kinds(&ev), ["discussion-linked"]);
+    // The first link writes the change's from_discussion, so the change has its own event.
+    assert_eq!(kinds(&ev), ["discussion-linked", "change-provenance-changed"]);
 
     let (_, ev) = ok(
         &store,
@@ -2677,6 +2678,195 @@ fn promote_reports_promoted_and_change_created() {
     }
 }
 
+// --- 一次提交的事件涵蓋它寫到的每個變更與討論（cross-resource-events-and-event-names）---
+
+/// One event the way the spec's example table writes it: `kind(subject,
+/// attached change name)`. Only the kinds these tests produce have a shape.
+fn ev(e: &DomainEvent) -> String {
+    let names: Vec<&str> = match e {
+        DomainEvent::ChangeCreated { change, .. }
+        | DomainEvent::ChangeArchived { change, .. }
+        | DomainEvent::ChangeDiscarded { change, .. }
+        | DomainEvent::ChangeProvenanceChanged { change, .. } => vec![change],
+        DomainEvent::DiscussionConcluded { slug, .. } | DomainEvent::DiscussionArchived { slug, .. } => vec![slug],
+        DomainEvent::DiscussionPromoted { slug, change, .. }
+        | DomainEvent::DiscussionLinked { slug, change, .. }
+        | DomainEvent::DiscussionSealed { slug, change, .. }
+        | DomainEvent::DiscussionUnlinked { slug, change, .. } => vec![slug, change],
+        other => panic!("no example shape for {other:?}"),
+    };
+    format!("{}({})", e.kind(), names.join(", "))
+}
+
+fn evs(events: &[DomainEvent]) -> Vec<String> {
+    events.iter().map(ev).collect()
+}
+
+/// Discussion `two` with a real conclusion, in `status`, spun out to `promoted_to`.
+fn two(status: &str, promoted_to: Option<&str>) -> String {
+    let promoted = promoted_to.map(|c| format!("promoted_to: {c}\n")).unwrap_or_default();
+    format!(
+        "---\ntopic: two\nslug: two\nstatus: {status}\n{promoted}created: 2026-11-01\n---\n\n\
+         # Discussion: two\n\n## Conclusion\n\n**Decision**: x\n"
+    )
+}
+
+fn new_change_from(name: &str, from_discussion: Option<&str>) -> Command {
+    Command::NewChange {
+        name: name.to_string(),
+        description: None,
+        schema: None,
+        agent: None,
+        from_discussion: from_discussion.map(str::to_string),
+        last: false,
+        fields: Default::default(),
+    }
+}
+
+fn archive_cmd(name: &str) -> Command {
+    Command::Archive {
+        change: Some(name.to_string()),
+        skip_specs: false,
+        no_validate: false,
+        mark_tasks_complete: false,
+        carry_review: false,
+        carry_verify: false,
+    }
+}
+
+fn conclude_two() -> Command {
+    Command::DiscussConclude { slug: "two".to_string(), content: "結論：做。\n".to_string(), hold: false }
+}
+
+#[test]
+fn new_change_from_a_discussion_also_reports_the_discussion_it_promoted() {
+    let store = TestStore::with_live_discussion("two", &two("concluded", None));
+    let (_, events) = ok(&store, new_change_from("add-two", Some("two")));
+    assert_eq!(evs(&events), ["change-created(add-two)", "discussion-promoted(two, add-two)"]);
+
+    let (_, events) = ok(&store, new_change_cmd("solo"));
+    assert_eq!(evs(&events), ["change-created(solo)"], "no source discussion — the event is as before");
+}
+
+#[test]
+fn archive_also_reports_each_discussion_it_archives_along() {
+    let store = TestStore::with_meta("add-two", "schema: spec-driven\nfrom_discussion: two\n");
+    store.put_artifact("add-two", "tasks.md", "- [x] 1.1 done\n");
+    store.discussions.borrow_mut().insert("two".into(), two("promoted", Some("add-two")));
+    let (_, events) = ok(&store, archive_cmd("add-two"));
+    assert_eq!(evs(&events), ["change-archived(add-two)", "discussion-archived(two)"]);
+    assert!(store.archived_discussion_exists("two"));
+}
+
+#[test]
+fn archive_reports_no_discussion_that_another_change_keeps_live() {
+    let store = TestStore::with_meta("add-two", "schema: spec-driven\nfrom_discussion: two\n");
+    store.metas.borrow_mut().insert("add-three".into(), "schema: spec-driven\nfrom_discussion: two\n".into());
+    store.put_artifact("add-two", "tasks.md", "- [x] 1.1 done\n");
+    store.discussions.borrow_mut().insert("two".into(), two("promoted", Some("add-two, add-three")));
+    let (_, events) = ok(&store, archive_cmd("add-two"));
+    assert_eq!(evs(&events), ["change-archived(add-two)"]);
+    assert!(store.live_discussion_exists("two"));
+}
+
+#[test]
+fn discard_also_reports_each_discussion_it_unlinks() {
+    // Spec scenario 廢棄變更時解開的討論有自己的事件.
+    let store = TestStore::with_meta("add-two", "schema: spec-driven\nfrom_discussion: two\n");
+    store.discussions.borrow_mut().insert("two".into(), two("promoted", Some("add-two")));
+    let (_, events) = ok(&store, Command::Discard { change: "add-two".to_string(), force: false });
+    assert_eq!(evs(&events), ["change-discarded(add-two)", "discussion-unlinked(two, add-two)"]);
+
+    // Example row: no source discussion — one event, as before.
+    let store = TestStore::with_meta("add-two", META);
+    let (_, events) = ok(&store, Command::Discard { change: "add-two".to_string(), force: false });
+    assert_eq!(evs(&events), ["change-discarded(add-two)"]);
+}
+
+#[test]
+fn conclude_that_archives_the_record_also_reports_the_archive() {
+    // Spec scenario 順手封存的結論回報封存事件: add-two is no longer active.
+    let store = TestStore::with_live_discussion("two", &two("promoted", Some("add-two")));
+    let (_, events) = ok(&store, conclude_two());
+    assert_eq!(evs(&events), ["discussion-concluded(two)", "discussion-archived(two)"]);
+    assert!(store.archived_discussion_exists("two"));
+}
+
+#[test]
+fn reconclude_reports_only_the_changes_it_newly_flags() {
+    // Spec scenario 重新結論只為新記上標記的變更回報.
+    let store = TestStore::with_meta("add-two", "schema: spec-driven\nfrom_discussion: two\n");
+    store.discussions.borrow_mut().insert("two".into(), two("promoted", Some("add-two")));
+    let (_, events) = ok(&store, conclude_two());
+    assert_eq!(evs(&events), ["discussion-concluded(two)", "change-provenance-changed(add-two)"]);
+
+    let (outcome, events) = ok(&store, conclude_two());
+    assert_eq!(evs(&events), ["discussion-concluded(two)"], "add-two already carries the flag");
+    match outcome {
+        CommandOutcome::DiscussConclude(o) => {
+            assert_eq!(o.restale_flagged, ["add-two"], "restale_flagged keeps its meaning")
+        }
+        other => panic!("expected a conclude outcome, got {other:?}"),
+    }
+}
+
+#[test]
+fn link_and_seal_report_the_change_only_when_they_write_it() {
+    // Spec scenario link 與 seal 只在改到變更時多回報.
+    let store = TestStore::with_meta("add-two", "schema: spec-driven\nfrom_discussion: two\nrestale_from: two\n");
+    store.metas.borrow_mut().insert("add-three".into(), META.into());
+    store.discussions.borrow_mut().insert("two".into(), two("promoted", Some("add-two")));
+    let link = || Command::DiscussLink { slug: "two".to_string(), change: "add-three".to_string() };
+    let seal = || Command::DiscussSeal { slug: "two".to_string(), change: "add-two".to_string(), last: false };
+
+    assert_eq!(evs(&ok(&store, link()).1), ["discussion-linked(two, add-three)", "change-provenance-changed(add-three)"]);
+    assert_eq!(evs(&ok(&store, link()).1), ["discussion-linked(two, add-three)"]);
+    assert_eq!(evs(&ok(&store, seal()).1), ["discussion-sealed(two, add-two)", "change-provenance-changed(add-two)"]);
+    assert_eq!(evs(&ok(&store, seal()).1), ["discussion-sealed(two, add-two)"]);
+}
+
+#[test]
+fn promote_keeps_its_two_events_in_their_order() {
+    let store = TestStore::with_live_discussion("two", &two("concluded", None));
+    let (_, events) = ok(
+        &store,
+        Command::DiscussPromote {
+            slug: "two".to_string(),
+            name: Some("add-two".to_string()),
+            last: false,
+            fields: Default::default(),
+        },
+    );
+    assert_eq!(evs(&events), ["discussion-promoted(two, add-two)", "change-created(add-two)"]);
+}
+
+#[test]
+fn every_reported_event_name_is_in_the_event_name_list() {
+    // Spec scenario 回報的事件名稱都在清單裡.
+    let store = TestStore::with_live_discussion("two", &two("concluded", None));
+    let mut names = Vec::new();
+    for cmd in [
+        new_change_cmd("demo"),
+        Command::NewArtifact {
+            kind: "tasks".to_string(),
+            capability: None,
+            change: Some("demo".to_string()),
+            content: Some("## 1. S\n\n- [ ] 1.1 a\n".to_string()),
+            force: true,
+            new_capability: false,
+        },
+        Command::TaskDone { task_id: "1".to_string(), change: Some("demo".to_string()), touched_files: None, head_commit: None },
+        Command::DiscussPromote { slug: "two".to_string(), name: Some("add-two".to_string()), last: false, fields: Default::default() },
+        Command::Discard { change: "add-two".to_string(), force: false },
+    ] {
+        names.extend(kinds(&ok(&store, cmd).1));
+    }
+    assert!(names.contains(&"discussion-unlinked"), "{names:?}");
+    for name in &names {
+        assert!(EVENT_NAMES.contains(name), "{name} is not in EVENT_NAMES");
+    }
+}
+
 // --- TaskMove 經 gateway（spec「任務搬移端點與重編號效果」；design 決策 4）---
 
 #[test]
@@ -2778,6 +2968,10 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-marked-in-progress",
         ),
         (
+            DomainEvent::ChangeInProgressRemoved { change: s("c"), occurred_at: at },
+            "change-in-progress-removed",
+        ),
+        (
             DomainEvent::ChangeDependsChanged { change: s("c"), depends_on: vec![s("a")], occurred_at: at },
             "change-depends-changed",
         ),
@@ -2824,6 +3018,14 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             DomainEvent::DiscussionSealed { slug: s("d"), change: s("c"), occurred_at: at },
             "discussion-sealed",
         ),
+        (
+            DomainEvent::DiscussionUnlinked { slug: s("d"), change: s("c"), occurred_at: at },
+            "discussion-unlinked",
+        ),
+        (
+            DomainEvent::ChangeProvenanceChanged { change: s("c"), occurred_at: at },
+            "change-provenance-changed",
+        ),
         (DomainEvent::DiscussionArchived { slug: s("d"), occurred_at: at }, "discussion-archived"),
         (DomainEvent::DiscussionRestored { slug: s("d"), occurred_at: at }, "discussion-restored"),
         (DomainEvent::LanguageReplaced { occurred_at: at }, "language-replaced"),
@@ -2849,7 +3051,7 @@ fn event_kind_table_matches_the_spec_coverage_table() {
             "change-landed",
         ),
     ];
-    assert_eq!(table.len(), 34, "the coverage table has 34 event kinds");
+    assert_eq!(table.len(), 37, "the coverage table has all 37 event kinds");
     for (event, kind) in &table {
         assert_eq!(event.kind(), *kind, "for {event:?}");
     }
@@ -2947,15 +3149,7 @@ fn actor_ctx(actor: Option<&str>) -> ExecutionContext {
 }
 
 fn new_change_cmd(name: &str) -> Command {
-    Command::NewChange {
-        name: name.to_string(),
-        description: None,
-        schema: None,
-        agent: None,
-        from_discussion: None,
-        last: false,
-        fields: Default::default(),
-    }
+    new_change_from(name, None)
 }
 
 #[test]

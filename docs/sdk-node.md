@@ -17,7 +17,7 @@ SDK is the name of this toolbox. It contains four things:
 | Part | What it does | Names you use |
 | --- | --- | --- |
 | Engine | Runs verbs: reads specs, runs the workflow, and returns the content to write | `createEngine`, `skills` |
-| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `agentToolDescription`, `commandNames` |
+| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `agentToolDescription`, `commandNames`, `eventNames`, `eventResource` |
 | Store port contract | The three functions that you implement, and their rules | `StorePort` (type), `StoreConflictError`, `StoreUnavailableError` |
 | Conformance tests | Check that your three functions obey the contract | `runStoreConformance` |
 
@@ -352,13 +352,56 @@ const hooks = {
 - **`beforeCommand` receives** the identity, the scope, the stable name of the command (for example `archive`, `new-change`, `workflow-config-edit`), and the params. You can only read the params. A change to them has no effect: a hook can refuse or watch, but it cannot change content. A workflow configuration write also has `changedKeys` (the keys that the write changes, for example `['tdd']`).
 - **A refusal** ends the call with `refused`, and the message is your reason. A request through the HTTP entry point gets the same sentence. Except for workflow configuration writes, the refusal comes before the store gets a call.
 - **A hook that fails** (a throw, or an answer of another shape, `null` included) does not allow the call: the call ends with `internal`.
-- **The events** in `commit` and `afterCommit` name what the commit changed, with a small payload. A stamp has `commit` when it recorded one (`review-stamped`, `verify-stamped`). A workflow configuration write that writes the document has `workflow-config-changed` with the changed `keys` and no values. For all event names, see [Event stream](verb-contract.md#events).
+- **The events** in `commit` and `afterCommit` name what the commit changed, with a small payload. A stamp has `commit` when it recorded one (`review-stamped`, `verify-stamped`). A workflow configuration write that writes the document has `workflow-config-changed` with the changed `keys` and no values. For all event names, see [Event stream](verb-contract.md#events). To push them to your clients, see [Push the events to your clients](#push-events).
 - **`afterCommit` does not guarantee delivery.** If the process stops after the commit and before the notification, that event does not come again. When you need at-least-once delivery, write `events` to your own event table in the same transaction as `commit`, and send them from that table with your own program.
 - **`read` gets the data for the decision.** It is the second argument of `beforeCommand`. It takes argv as `dispatch` does, and it gives the same result and the same errors, for the identity and the scope of this call. It accepts only the verbs that write nothing: `list`, `show`, `status`, `plan`, `trace`, `evidence show`, `review show`, `verify show`, `discuss list`, `discuss show`, `discuss search`, `artifact cat`, `language show`, `workflow-config show`, `validate`, `analyze`, `instructions`. All other verbs are refused with `invalid_argv`, and the store gets no call. A `read` does not ask `beforeCommand` again. It works only while the hook runs: after the hook answers, `read` is refused with `invalid_argv`. If you do not catch an error from `read`, the hook fails.
 - **A `read` and the command do not read the same data.** Each `read` is a different call to your store. If another commit comes between the `read` and the command, the two see different content. The engine's own checks (for an archive: the completed tasks and an open ticket) always use what the command reads. If your rules need the two to agree, do that in your own `read` and `commit` store functions.
 - **Do not wait for a `dispatch` of the same host kit in a hook; use `read`.** That `dispatch` asks `beforeCommand` again, and it hangs when your store holds a lock of its own.
 
 Speclink has no built-in rules such as "no archive before the code lands" or "the commit must be on a specified branch", and it does not limit who can release a claim. The engine only records the branch and the landed commit (see `change landed`). To block a call, use `beforeCommand`, as in the example above.
+
+### <a id="push-events"></a>Push the events to your clients
+
+An event names only the resource that changed. Your client reads that resource again. `eventResource(name, payload)` gives the resource of one event: `{ scope, resourceId }`. It uses the same table as the demonstration server's push (see [Event stream](verb-contract.md#events)), so you do not need a table of your own:
+
+```js
+const { createHost, eventResource } = require('@speclink/engine')
+
+const host = createHost({
+  store,
+  hooks: {
+    afterCommit({ scope, events }) {
+      for (const event of events) {
+        const { scope: kind, resourceId } = eventResource(event.name, event.payload)
+        // kind is 'change', 'discussion', 'spec' or 'unknown'.
+        if (kind === 'unknown') pushToClients(scope, { reloadAll: true })
+        else pushToClients(scope, { kind, resourceId })
+      }
+    },
+  },
+})
+```
+
+- **One commit can carry several events.** When a commit writes a change and a discussion, it has one event for each of them. For example, `new change --from-discussion` gives `change-created` and then `discussion-promoted`. Call `eventResource` for each event. For the full list, see [One commit, several events](verb-contract.md#multi-event-commits).
+- **A name that the table does not have is `unknown`**, with an empty `resourceId`: read all data of the scope again. `scope-imported`, `board-order-updated`, `language-replaced`, and `workflow-config-changed` are in this group. When the payload does not have the key, `resourceId` is an empty string and `scope` stays the category of the event.
+- **`eventResource` reads no store.** It throws a `TypeError` when `name` is not a string. It takes any JSON value as `payload`, and you can leave `payload` out: a payload that is not an object, or that has no string under the key, gives an empty `resourceId`.
+
+`eventNames` is a frozen array of every event name that `afterCommit` and the `commit` of your store can get: the events of the engine, and the two of the host kit, `scope-imported` (`importScope` and the import of `handleRequest`) and `board-order-updated` (the board order write of `handleRequest`). There are 39 names. Its order is not part of the contract. Use it in a test that checks that your push table knows each name, so that an event a new version adds does not go by unnoticed:
+
+```js
+// events.test.js. kindOf is your push table: event name → what your clients reload.
+const { test } = require('node:test')
+const assert = require('node:assert')
+const { eventNames } = require('@speclink/engine')
+const { kindOf } = require('./push')
+
+test('the push table knows every event name', () => {
+  const missing = eventNames.filter((name) => kindOf(name) === undefined)
+  assert.deepStrictEqual(missing, [])
+})
+```
+
+When you upgrade from a version without `eventNames`, some commits carry more events than before: the cases in [One commit, several events](verb-contract.md#multi-event-commits). There are also two new event names, `discussion-unlinked` and `change-provenance-changed`. A host that treats an unknown name as "the whole scope changed" stays correct, and only reads more until it adds the names. Change the tests that compare the exact names or the number of the events of a commit.
 
 ### <a id="release-hook"></a>Let only the holder and an admin release a claim
 

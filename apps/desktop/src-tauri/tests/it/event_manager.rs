@@ -491,6 +491,42 @@ fn an_invalidate_dispatches_the_locator_key_to_the_frontend() {
     expect_notified(&rx, "invalidate 到達即發前端事件");
 }
 
+#[test]
+fn a_commit_with_two_events_only_reloads() {
+    // cross-resource-events-and-event-names：從討論建立變更的一次提交推兩筆
+    // invalidate（變更與討論）。Desktop 照舊每筆只發重讀通知，串流不斷、不重連。
+    let h = common::harness_with_events(common::fast_events());
+    common::put(
+        h.store.as_ref(),
+        &common::scope(),
+        &[(
+            "discussions/two.md",
+            "---\ntopic: two\nslug: two\nstatus: concluded\ncreated: 2026-11-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: x\n",
+        )],
+    );
+    let pat = common::pat_of(&h);
+    let (notify, rx) = sink();
+    let manager = EventManager::new(notify);
+    let connects = Arc::new(AtomicUsize::new(0));
+    register_via(&manager, &h.origin, &pat, &connects);
+    std::thread::sleep(Duration::from_millis(150));
+
+    writer(&h.origin, &pat)
+        .create_change(speclink_protocol::command::CreateChangeRequest {
+            name: "add-two".to_string(),
+            schema: None,
+            description: None,
+            agent: None,
+            from_discussion: Some("two".to_string()),
+            last: false,
+            fields: Default::default(),
+        })
+        .expect("create change from discussion");
+    expect_notified(&rx, "變更的 invalidate");
+    expect_notified(&rx, "討論的 invalidate");
+    assert_eq!(connects.load(Ordering::SeqCst), 1, "兩筆都在同一條串流上，沒有重連");
+}
+
 // --- 同 connection 兩 session 共用單一訂閱 ---
 
 #[test]

@@ -68,7 +68,12 @@
     - crates/engine/speclink-core/tests/it/command_describe.rs
     - crates/host/speclink-host/src/commit.rs
     - crates/host/speclink-host/src/kit.rs
+    - crates/host/speclink-host/src/documents.rs
+    - crates/host/speclink-host/src/transfer.rs
     - crates/host/speclink-server/src/api/events.rs
+    - crates/host/speclink-server/tests/it/api/sse_events.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
+    - apps/desktop/src-tauri/tests/it/event_manager.rs
     - crates/adapters/speclink-node/src/host.rs
     - crates/adapters/speclink-node/index.js
     - crates/adapters/speclink-node/index.d.ts

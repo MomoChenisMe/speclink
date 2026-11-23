@@ -671,11 +671,11 @@ The kind of the event decides `scope` and `resourceId`. A host that pushes event
 
 | Event kind | `scope` | `resourceId` |
 | --- | --- | --- |
-| `change-created`, `artifact-created`, `task-completed`, `task-uncompleted`, `task-moved`, `change-claimed`, `change-claim-released`, `change-marked-in-progress`, `change-in-progress-removed`, `change-depends-changed`, `change-schema-changed`, `change-ranked`, `change-fields-changed`, `change-landed`, `change-discarded` | `change` | The change name |
+| `change-created`, `artifact-created`, `task-completed`, `task-uncompleted`, `task-moved`, `change-claimed`, `change-claim-released`, `change-marked-in-progress`, `change-in-progress-removed`, `change-depends-changed`, `change-schema-changed`, `change-ranked`, `change-fields-changed`, `change-landed`, `change-discarded`, `change-provenance-changed` | `change` | The change name |
 | `review-round-added`, `review-stamped`, `review-discarded`, `verify-round-added`, `verify-stamped`, `verify-discarded` | `change` | The change name |
 | `change-archived` | `spec` | The change name |
-| `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-archived`, `discussion-restored`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
-| All others (for example `scope-imported` of an import, `language-replaced` of a write of the shared vocabulary document, and `workflow-config-changed` of a workflow-config write) | `unknown` | An empty string |
+| `discussion-created`, `discussion-context-set`, `discussion-round-added`, `discussion-concluded`, `discussion-promoted`, `discussion-linked`, `discussion-sealed`, `discussion-unlinked`, `discussion-archived`, `discussion-restored`, `discussion-fields-changed`, `discussion-discarded` | `discussion` | The discussion slug |
+| All others (for example `scope-imported` of an import, `board-order-updated` of a board order write, `language-replaced` of a write of the shared vocabulary document, and `workflow-config-changed` of a workflow-config write) | `unknown` | An empty string |
 
 - The six events of the review station and the verify station belong to the change: a new round, a stamp, and a discarded ticket. `resourceId` is the change name. A client that reads the change again gets the new station state.
 - The payload of `review-stamped` and `verify-stamped` has `change`. It also has `commit` when the stamp recorded a commit, that is, when the stamp request gave `headCommit`. The value is the commit in the change's metadata.
@@ -684,6 +684,25 @@ The kind of the event decides `scope` and `resourceId`. A host that pushes event
 - `workflow-config-changed` comes from a workflow-config write that wrote the document. A dry run, a write of the same content, and a refused write have no event. Its payload is `{"keys": [...]}`: the keys whose value changed, in the order of the write. The list is empty when only layout or comments changed. The payload has no values. The event belongs to `unknown`, so a client reads all data again.
 - The push to a client never carries a payload: no `commit` and no `keys`. Only the host's store and its `afterCommit` hook get them.
 - When you get `unknown`, read all data again. An import changes the full scope, so it is in this group on purpose.
+
+#### <a id="multi-event-commits"></a>One commit, several events
+
+One event names one resource. When a commit writes more than one active change or discussion, it carries one event for each of them. The command's own event comes first, and the events for the other resources come after it. An event is only for a write that really happened: when the other resource does not change, it gets no event.
+
+| Verb and case | Events, in this order |
+| --- | --- |
+| `new change --from-discussion` | `change-created`, then `discussion-promoted` (`slug`, `change`) |
+| `archive`, and the source discussions are archived along with the change | `change-archived`, then one `discussion-archived` (`slug`) for each discussion |
+| `discuss conclude`, and the same run archives the discussion | `discussion-concluded`, then `discussion-archived` (`slug`) |
+| `discard`, and the source discussions are unlinked | `change-discarded`, then one `discussion-unlinked` (`slug`, `change`) for each discussion |
+| `discuss conclude` again, and a change that reflected the discussion gets the re-ingest flag | `discussion-concluded`, then one `change-provenance-changed` (`change`) for each change that the run flagged |
+| `discuss link`, the first time for that change | `discussion-linked`, then `change-provenance-changed` (`change`) |
+| `discuss seal`, and the change's re-ingest flag is cleared | `discussion-sealed`, then `change-provenance-changed` (`change`) |
+| `discuss promote` | `discussion-promoted`, then `change-created` (as before) |
+
+- `discussion-unlinked` and `change-provenance-changed` are the two event kinds for these cases. Their payloads have only names: `{"slug", "change"}` and `{"change"}`.
+- A second `discuss link` of the same pair, a `discuss seal` with no flag to clear, and a re-conclude where the change already has the flag send only the command's own event.
+- The demonstration server pushes one `invalidate` for each event, in the order of the commit. Each one has its own event id, so a resume with `Last-Event-ID` counts events, not commits.
 
 ## <a id="payload-examples"></a>Request and response examples
 

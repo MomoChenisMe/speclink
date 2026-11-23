@@ -388,6 +388,14 @@ mod tests {
                 InvalidationScope::Discussion,
                 "topic",
             ),
+            // The other resource a commit wrote has its own event.
+            (
+                "discussion-unlinked",
+                json!({ "slug": "topic", "change": "add-auth" }),
+                InvalidationScope::Discussion,
+                "topic",
+            ),
+            ("change-provenance-changed", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),
             // The two quality stations and the landing report point at their change.
             ("review-round-added", json!({ "change": "add-auth", "round": 2 }), InvalidationScope::Change, "add-auth"),
             ("review-stamped", json!({ "change": "add-auth" }), InvalidationScope::Change, "add-auth"),

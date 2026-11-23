@@ -527,6 +527,22 @@ function agentToolDescription(options) {
  */
 const commandNames = Object.freeze(binding.commandNames())
 
+/**
+ * Every event name `afterCommit` and a store's `commit` can be given: the
+ * engine's events and the host kit's own `scope-imported` and
+ * `board-order-updated`. Taken once at load and frozen.
+ */
+const eventNames = Object.freeze(binding.eventNames())
+
+/** The resource an event is about: `{ scope, resourceId }`. */
+function eventResource(name, payload) {
+  if (typeof name !== 'string') {
+    throw new TypeError(`eventResource: name must be an event name string, got ${name === null ? 'null' : typeof name}`)
+  }
+  // The native side takes JSON values only; a payload left out is no payload.
+  return binding.eventResource(name, payload === undefined ? null : payload)
+}
+
 /** Run the store contract's conformance checks on a host's JS store port. */
 async function runStoreConformance(harness) {
   const target = portFunctions(harness?.store, 'runStoreConformance')
@@ -573,6 +589,8 @@ module.exports = {
   agentTool,
   agentToolDescription,
   commandNames,
+  eventNames,
+  eventResource,
   skills,
   runStoreConformance,
   StoreConflictError,

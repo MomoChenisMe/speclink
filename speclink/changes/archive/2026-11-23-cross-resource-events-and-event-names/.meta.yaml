@@ -1,0 +1,125 @@
+schema: spec-driven
+created: 2026-11-23T11:35:27+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-7
+depends_on: reserved-field-prefixes
+started_at: 2026-11-23T17:02:10+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-23T20:36:44+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 9
+reviewed_rounds: 3
+reviewed_commit: 6e972d4f4e6717f99b20b2bad8ed8cff26239676
+reviewed_scope:
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: 0c879d3fdf400e1af0296618a224567ee73614a5bcad5a521cd7128c8fa308e2
+  - path: crates/adapters/speclink-node/README.md
+    hash: cfe33b461f469fe600712a47035d43e9c0e9013295c9adb0bb0c6790ff234f31
+  - path: crates/adapters/speclink-node/__test__/engine.spec.ts
+    hash: 006769c564ff5611bf4f1d68a412c6e993fb1a051f1f82e83ec7b5b35983faa7
+  - path: crates/adapters/speclink-node/__test__/host.spec.ts
+    hash: cdd8b9563445541479a2e1df1b60d91d8a88164be7f36b232abedd6b93322422
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 3af37cd96de1841b766b7a25f26879f810ad10451bb0111befa75996593df64c
+  - path: crates/adapters/speclink-node/index.js
+    hash: c72b8c3b00c69963848bca6db143656f2334cb953d33de6d3fc21128dbb408c2
+  - path: crates/adapters/speclink-node/src/host.rs
+    hash: 32a80c8b7d5578d2074974ab0dd3435972c17a828208ac42f07b71482bfa5dd2
+  - path: crates/adapters/speclink-verbs/src/render/mod.rs
+    hash: 17660e371090cdd81fdbd79539ae7584551430fe4a28e581fd426d26a5f63a30
+  - path: crates/engine/speclink-core/src/command/describe.rs
+    hash: dd856a5c06add5956cbba7904cfc092c08f84c07c162cab6140c7d635d46b9d7
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 11a1cd6d1157f4b1ed184b60f18b8f41454b82f425cda084d59fd2249c81dd61
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 40466749c729b63f9115f2cc315e7587c15ec8fa970d6befcf11b531b2d56ae6
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: d541398b3e5120440a22ddad48f86465aec6fbae01a8579af4ba748e255032dc
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 0ed0d348ec6999b8b4987300b3bc84df42c3aa5ad1e12bbbe2f9fd0c98189240
+  - path: crates/engine/speclink-core/tests/it/command_describe.rs
+    hash: 4b615047eb14711bd7b1e9095a2b0097f67becbbdaccd1c68f3973f3c1e4e591
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: e18c1c5bd8e58ddd279cbc78d5baec86339f2cb83392fe8fa247218aac38cc31
+  - path: crates/host/speclink-host/src/documents.rs
+    hash: c2616c19e19328f27eb0e3eb7c46ec4dc40584d2b3cf7ca08ab5ebd944188c1a
+  - path: crates/host/speclink-host/src/kit.rs
+    hash: 4c2932f9a7a692e778279b18cf930418eaff210bb69cf2b5954d2f737863b8b6
+  - path: crates/host/speclink-host/src/transfer.rs
+    hash: 48f10b8a48a6133e81be25af2c09d863faaa39451e8f0fedcb0c6a5a337a96df
+  - path: crates/host/speclink-host/tests/event_coverage.rs
+    hash: 819866703b97a91cedcdac6a213cd6282820660a12a566c17ed1d678de4d3bc8
+  - path: crates/host/speclink-server/src/api/events.rs
+    hash: cd34541f719a804449deff78e3784fb773f86e3f8e397936255b573722212892
+  - path: crates/host/speclink-server/tests/it/api/sse_events.rs
+    hash: 7711c4ddf637caf5b3eec5cc96d930b1994e95331771ff5a36d1765d7a52ce92
+  - path: docs/sdk-node.md
+    hash: 2ef42b8eb172f15de276659bd7ae1b0e941557aff45fb82116100c5a6701a88b
+  - path: docs/sdk-node.zh-TW.md
+    hash: 931eb9100948761aeea401fc1f565e91731cebd0116f9fc2aa8e0cd54d764eac
+  - path: docs/verb-contract.md
+    hash: ed970a5d01f611c748433e4e26ee1d4744b6e5ae0d6ad3990bfd73fc568ed7b3
+  - path: docs/verb-contract.zh-TW.md
+    hash: 63e08921c63fadf69c948b665f5d8e3c8f84cb58195cdee8f061fdf964c1e7c8
+verified_at: 2026-11-23T20:36:44+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 9
+verified_rounds: 3
+verified_commit: 6e972d4f4e6717f99b20b2bad8ed8cff26239676
+verified_scope:
+  - path: apps/desktop/src-tauri/tests/it/event_manager.rs
+    hash: 0c879d3fdf400e1af0296618a224567ee73614a5bcad5a521cd7128c8fa308e2
+  - path: crates/adapters/speclink-node/README.md
+    hash: cfe33b461f469fe600712a47035d43e9c0e9013295c9adb0bb0c6790ff234f31
+  - path: crates/adapters/speclink-node/__test__/engine.spec.ts
+    hash: 006769c564ff5611bf4f1d68a412c6e993fb1a051f1f82e83ec7b5b35983faa7
+  - path: crates/adapters/speclink-node/__test__/host.spec.ts
+    hash: cdd8b9563445541479a2e1df1b60d91d8a88164be7f36b232abedd6b93322422
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: 3af37cd96de1841b766b7a25f26879f810ad10451bb0111befa75996593df64c
+  - path: crates/adapters/speclink-node/index.js
+    hash: c72b8c3b00c69963848bca6db143656f2334cb953d33de6d3fc21128dbb408c2
+  - path: crates/adapters/speclink-node/src/host.rs
+    hash: 32a80c8b7d5578d2074974ab0dd3435972c17a828208ac42f07b71482bfa5dd2
+  - path: crates/adapters/speclink-verbs/src/render/mod.rs
+    hash: 17660e371090cdd81fdbd79539ae7584551430fe4a28e581fd426d26a5f63a30
+  - path: crates/engine/speclink-core/src/command/describe.rs
+    hash: dd856a5c06add5956cbba7904cfc092c08f84c07c162cab6140c7d635d46b9d7
+  - path: crates/engine/speclink-core/src/command/mod.rs
+    hash: 11a1cd6d1157f4b1ed184b60f18b8f41454b82f425cda084d59fd2249c81dd61
+  - path: crates/engine/speclink-core/src/command/tests.rs
+    hash: 40466749c729b63f9115f2cc315e7587c15ec8fa970d6befcf11b531b2d56ae6
+  - path: crates/engine/speclink-core/src/lifecycle/discuss.rs
+    hash: d541398b3e5120440a22ddad48f86465aec6fbae01a8579af4ba748e255032dc
+  - path: crates/engine/speclink-core/src/lifecycle/model.rs
+    hash: 0ed0d348ec6999b8b4987300b3bc84df42c3aa5ad1e12bbbe2f9fd0c98189240
+  - path: crates/engine/speclink-core/tests/it/command_describe.rs
+    hash: 4b615047eb14711bd7b1e9095a2b0097f67becbbdaccd1c68f3973f3c1e4e591
+  - path: crates/host/speclink-host/src/commit.rs
+    hash: e18c1c5bd8e58ddd279cbc78d5baec86339f2cb83392fe8fa247218aac38cc31
+  - path: crates/host/speclink-host/src/documents.rs
+    hash: c2616c19e19328f27eb0e3eb7c46ec4dc40584d2b3cf7ca08ab5ebd944188c1a
+  - path: crates/host/speclink-host/src/kit.rs
+    hash: 4c2932f9a7a692e778279b18cf930418eaff210bb69cf2b5954d2f737863b8b6
+  - path: crates/host/speclink-host/src/transfer.rs
+    hash: 48f10b8a48a6133e81be25af2c09d863faaa39451e8f0fedcb0c6a5a337a96df
+  - path: crates/host/speclink-host/tests/event_coverage.rs
+    hash: 819866703b97a91cedcdac6a213cd6282820660a12a566c17ed1d678de4d3bc8
+  - path: crates/host/speclink-server/src/api/events.rs
+    hash: cd34541f719a804449deff78e3784fb773f86e3f8e397936255b573722212892
+  - path: crates/host/speclink-server/tests/it/api/sse_events.rs
+    hash: 7711c4ddf637caf5b3eec5cc96d930b1994e95331771ff5a36d1765d7a52ce92
+  - path: docs/sdk-node.md
+    hash: 2ef42b8eb172f15de276659bd7ae1b0e941557aff45fb82116100c5a6701a88b
+  - path: docs/sdk-node.zh-TW.md
+    hash: 931eb9100948761aeea401fc1f565e91731cebd0116f9fc2aa8e0cd54d764eac
+  - path: docs/verb-contract.md
+    hash: ed970a5d01f611c748433e4e26ee1d4744b6e5ae0d6ad3990bfd73fc568ed7b3
+  - path: docs/verb-contract.zh-TW.md
+    hash: 63e08921c63fadf69c948b665f5d8e3c8f84cb58195cdee8f061fdf964c1e7c8
+archived_at: 2026-11-23T21:04:06+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

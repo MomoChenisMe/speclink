@@ -238,6 +238,98 @@ fn station_and_landing_writes_invalidate_their_change_and_a_board_write_stays_un
     assert_eq!(hints[5], ("unknown".to_string(), String::new()), "a board-order write stays unknown");
 }
 
+/// Discussion `two` with a conclusion, in `status`, spun out to `promoted_to`.
+fn two(status: &str, promoted_to: Option<&str>) -> String {
+    let promoted = promoted_to.map(|c| format!("promoted_to: {c}\n")).unwrap_or_default();
+    format!(
+        "---\ntopic: two\nslug: two\nstatus: {status}\n{promoted}created: 2026-11-01\n---\n\n\
+         ## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: x\n"
+    )
+}
+
+/// (event id, scope, resource id) of the next invalidation.
+fn hint(sub: &Sub) -> (String, String, String) {
+    let (id, _, data) = parts(sub.next_event(Duration::from_secs(3)).expect("an invalidation arrives"));
+    let dto: serde_json::Value = serde_json::from_str(&data).expect("data is the JSON DTO");
+    (id.expect("an event id"), dto["scope"].as_str().unwrap().to_string(), dto["resourceId"].as_str().unwrap().to_string())
+}
+
+/// (scope, resource id) of the next invalidation.
+fn resource(sub: &Sub) -> (String, String) {
+    let (_, scope, id) = hint(sub);
+    (scope, id)
+}
+
+#[test]
+fn a_reconclude_and_a_discard_push_the_other_resource_too() {
+    // server-event-stream「重新結論推出受影響的變更」與「廢棄變更推出被解開的討論」：
+    // 命令自己的資源在前，另一個資源在後。
+    let store = seeded_store();
+    store.put(
+        "demo",
+        "backend",
+        &[
+            ("discussions/two.md", two("promoted", Some("add-two")).as_str()),
+            ("changes/add-two/.meta.yaml", "schema: spec-driven\nfrom_discussion: two\n"),
+        ],
+    );
+    let state = common::state_with_event_settings(store.shared(), fast_events());
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let c = client(&base, &pat);
+    let change = ("change".to_string(), "add-two".to_string());
+    let discussion = ("discussion".to_string(), "two".to_string());
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    c.discussion_conclude("two", "**Decision**: y\n", false).expect("conclude again");
+    assert_eq!([resource(&sub), resource(&sub)], [discussion.clone(), change.clone()], "the re-conclude");
+    assert!(sub.next_event(Duration::from_millis(400)).is_none(), "the re-conclude pushes two");
+
+    c.discard("add-two", false).expect("discard");
+    assert_eq!([resource(&sub), resource(&sub)], [change, discussion], "the discard");
+    assert!(sub.next_event(Duration::from_millis(400)).is_none(), "the discard pushes two");
+}
+
+#[test]
+fn a_change_from_a_discussion_pushes_both_and_a_resume_counts_each_event() {
+    // server-event-stream「跨資源事件的歸屬」：一次提交兩筆事件推兩筆 invalidation，
+    // 依提交裡的順序；續傳以事件為單位；勾選任務仍然恰一筆。
+    let store = seeded_store();
+    store.put("demo", "backend", &[("discussions/two.md", two("concluded", None).as_str())]);
+    let state = common::state_with_event_settings(store.shared(), fast_events());
+    let (pat, _) = common::seed_pat(&state.identity, &["demo"]);
+    let base = common::start(state);
+    let c = client(&base, &pat);
+
+    let sub = Sub::open(&base, &pat, None).expect("subscribe");
+    std::thread::sleep(Duration::from_millis(80));
+    c.create_change(speclink_protocol::command::CreateChangeRequest {
+        name: "add-two".to_string(),
+        schema: None,
+        description: None,
+        agent: None,
+        from_discussion: Some("two".to_string()),
+        last: false,
+        fields: Default::default(),
+    })
+    .expect("create change from discussion");
+    let first = hint(&sub);
+    let second = hint(&sub);
+    assert_eq!((first.1.as_str(), first.2.as_str()), ("change", "add-two"));
+    assert_eq!((second.1.as_str(), second.2.as_str()), ("discussion", "two"));
+    assert_ne!(first.0, second.0, "each event has its own id");
+    drop(sub);
+
+    let resumed = Sub::open(&base, &pat, Some(&first.0)).expect("resubscribe");
+    assert_eq!(hint(&resumed), second, "the resume sends the second one only");
+    assert!(resumed.next_event(Duration::from_millis(400)).is_none(), "the first is not sent again");
+
+    c.task_done("demo", "1", &[], None).expect("task done");
+    assert_eq!(resource(&resumed), ("change".to_string(), "demo".to_string()));
+    assert!(resumed.next_event(Duration::from_millis(400)).is_none(), "a task completion is still one invalidation");
+}
+
 #[test]
 fn every_subscriber_receives_the_write_exactly_once() {
     let store = seeded_store();

@@ -66,6 +66,50 @@ pub const COMMAND_NAMES: &[&str] = &[
     "workflow-config-replace",
 ];
 
+/// Every domain event's kind name ([`super::DomainEvent::kind`]), once each
+/// (spec command-runtime: 引擎提供全部事件名稱的清單). The order is no
+/// contract. The command-describe test pins this list to the event kinds: a
+/// new kind whose name is not added here turns it red.
+pub const EVENT_NAMES: &[&str] = &[
+    "change-created",
+    "artifact-created",
+    "task-completed",
+    "task-uncompleted",
+    "task-moved",
+    "change-claimed",
+    "change-claim-released",
+    "change-marked-in-progress",
+    "change-in-progress-removed",
+    "change-depends-changed",
+    "change-schema-changed",
+    "change-ranked",
+    "change-landed",
+    "change-fields-changed",
+    "change-archived",
+    "change-discarded",
+    "change-provenance-changed",
+    "review-round-added",
+    "review-stamped",
+    "review-discarded",
+    "verify-round-added",
+    "verify-stamped",
+    "verify-discarded",
+    "discussion-created",
+    "discussion-context-set",
+    "discussion-round-added",
+    "discussion-concluded",
+    "discussion-promoted",
+    "discussion-linked",
+    "discussion-sealed",
+    "discussion-unlinked",
+    "discussion-fields-changed",
+    "discussion-archived",
+    "discussion-restored",
+    "discussion-discarded",
+    "language-replaced",
+    "workflow-config-changed",
+];
+
 impl Command {
     /// The command's kebab-case name: the variant name, fixed per kind and
     /// independent of the params. Matched with no wildcard arm, so a new

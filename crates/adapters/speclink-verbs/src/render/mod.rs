@@ -496,6 +496,7 @@ mod tests {
         cmd::DiscussConcludeOutcome {
             slug: s("t"),
             restale_flagged: Vec::new(),
+            restale_written: Vec::new(),
             auto_archived: false,
             closing_error: closing_error.map(s),
             held: false,
@@ -545,7 +546,7 @@ mod tests {
         let subject = || cmd::ReviewSubjectOutcome { change: s("c") };
         let stamped = || cmd::StampOutcome { change: s("c"), commit: None };
         let round = || cmd::ReviewRoundOutcome { change: s("c"), round: 1 };
-        let bound = || cmd::DiscussBindOutcome { slug: s("t"), change: s("c") };
+        let bound = || cmd::DiscussBindOutcome { slug: s("t"), change: s("c"), change_written: false };
         vec![
             (&["list"], O::List(cmd::ListOutcome::Sections { changes: Some(Vec::new()), specs: None }), true, "No active changes.\n"),
             (
@@ -657,7 +658,12 @@ mod tests {
             (&["discuss", "search", "a", "b"], O::DiscussSearch(Vec::new()), true, "No discussions match \"a b\".\n"),
             (
                 &["new", "change", "c", "--from-discussion", "t"],
-                O::NewChange(cmd::NewChangeOutcome { name: s("c"), dir: "/p/c".into(), schema: s("spec-driven") }),
+                O::NewChange(cmd::NewChangeOutcome {
+                    name: s("c"),
+                    dir: "/p/c".into(),
+                    schema: s("spec-driven"),
+                    promoted_discussion: None,
+                }),
                 false,
                 "✓ Created change: c\n  Path: /p/c\n  Schema: spec-driven\n  From discussion: t\n",
             ),
@@ -959,6 +965,7 @@ mod tests {
                     name: s("demo"),
                     dir: "speclink/changes/demo".into(),
                     schema: s("spec-driven"),
+                    promoted_discussion: None,
                 }),
                 "✓ Created change: demo\n  Schema: spec-driven\n",
             ),

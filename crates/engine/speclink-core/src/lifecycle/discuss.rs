@@ -987,14 +987,20 @@ pub fn unlink_discarded(store: &dyn Store, slug: &str, change: &str) -> Result<O
 /// archived or gone — are skipped (their spec deltas are already in canon; a
 /// re-ingest is impossible). Each active change's `restale_from` comma accumulator
 /// gains this slug (idempotent: already present skips the write). Returns the active
-/// change names carrying the flag, for CLI reporting. `promoted_to` absent/empty, or
-/// resolving entirely to non-active changes, writes no change meta.
-fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result<Vec<String>> {
-    let mut flagged = Vec::new();
+/// change names carrying the flag, for CLI reporting, and — of those — the ones this
+/// call wrote. `promoted_to` absent/empty, or resolving entirely to non-active
+/// changes, writes no change meta.
+fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result<Restaled> {
+    let mut restaled = Restaled::default();
     for change in &DiscussionHead::parse(discussion_text).promoted_to {
         // 已旗標的 change 冪等（`push_list` 不改、`edit_meta` 不寫），仍列入回報。
-        match crate::model::edit_meta(store, change, |m| m.push_list("restale_from", slug)) {
-            Ok(Some(_)) => flagged.push(change.to_string()),
+        match edit_meta_wrote(store, change, |m| m.push_list("restale_from", slug)) {
+            Ok(Some(wrote)) => {
+                restaled.flagged.push(change.to_string());
+                if wrote {
+                    restaled.written.push(change.to_string());
+                }
+            }
             Ok(None) => continue, // archived or gone — not an active change, skip
             // 壞 metadata 卡跳過（沿 archived/gone 的 skip 原則）：不得對壞檔
             // 疊寫，也不得使 conclude 因單一壞檔中止——使用者修檔後重新 conclude。
@@ -1002,7 +1008,25 @@ fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result
             Err(e) => return Err(e),
         }
     }
-    Ok(flagged)
+    Ok(restaled)
+}
+
+/// What [`stamp_restale`] did: the active changes that carry the flag, and — of
+/// those — the ones this call wrote it on.
+#[derive(Default)]
+struct Restaled {
+    flagged: Vec<String>,
+    written: Vec<String>,
+}
+
+/// Whether an edit of a change's metadata wrote: `Some(false)` when it left the
+/// document as it was, `None` when the change is not active.
+fn edit_meta_wrote(
+    store: &dyn Store,
+    change: &str,
+    edit: impl FnOnce(&mut KeyLines) -> Result<()>,
+) -> Result<Option<bool>> {
+    Ok(crate::model::edit_meta_wrote(store, change, edit)?.map(|((), wrote)| wrote))
 }
 
 /// Clear one discussion slug from a change's `restale_from` accumulator — the seal-side
@@ -1010,14 +1034,12 @@ fn stamp_restale(store: &dyn Store, slug: &str, discussion_text: &str) -> Result
 /// dropped; otherwise the remaining slugs are kept. The slug being absent (or no
 /// `restale_from` field at all) is an idempotent no-op that skips the write. Only the
 /// `restale_from` field is touched; every other meta field stays byte-identical.
-fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<()> {
+/// Returns whether it wrote.
+fn clear_restale(store: &dyn Store, change: &str, slug: &str) -> Result<bool> {
     // 深度防禦：唯一呼叫者 seal 已對壞 metadata 守門，此處到達即應可解析；
     // 萬一未來新增未守門的呼叫者，`edit_meta` fail closed 而非靜默疊寫。
     // change 不存在（`None`）與 slug 不在清單都是冪等無寫入。
-    crate::model::edit_meta(store, change, |m| {
-        m.remove_list("restale_from", slug)
-    })?;
-    Ok(())
+    Ok(edit_meta_wrote(store, change, |m| m.remove_list("restale_from", slug))?.unwrap_or(false))
 }
 
 /// Outcome of promoting a discussion into a change.
@@ -1106,8 +1128,9 @@ pub fn promote_with_fields(
 /// earlier decision), so `from_discussion` is a comma-separated accumulator that
 /// appends rather than rejecting. Guards run before any write (a rejection leaves
 /// the change meta byte-identical); re-linking the same pair is an idempotent
-/// success that skips the change-side write.
-pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
+/// success that skips the change-side write. Returns whether it wrote the change
+/// meta.
+pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<bool> {
     match info(store, slug) {
         None => {
             return Err(WriteRefusal::not_found(format!(
@@ -1125,12 +1148,8 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
     // "no source discussion" and take the from_discussion write. A chain already
     // forged for this slug is idempotent — `push_list` leaves the text alone and
     // nothing is written.
-    let linked =
-        crate::model::edit_meta(store, change, |m| m.push_list("from_discussion", slug))?;
-    if linked.is_none() {
-        return Err(WriteRefusal::not_found(format!("Change '{change}' not found.")));
-    }
-    Ok(())
+    edit_meta_wrote(store, change, |m| m.push_list("from_discussion", slug))?
+        .ok_or_else(|| WriteRefusal::not_found(format!("Change '{change}' not found.")))
 }
 
 /// 內容落地後的封印：把討論標記已轉出（status: promoted、promoted_to 累加變更名）。
@@ -1138,8 +1157,8 @@ pub fn link(store: &dyn Store, slug: &str, change: &str) -> Result<()> {
 /// artifacts 落地完成時呼叫。前置守衛全數通過方寫入：討論存在且未封存、變更存在、且
 /// 變更 meta 的 from_discussion 清單已含該 slug（鏈須先由 link／promote／new change
 /// 鑄妥）。守衛失敗回可記錄的 Err，兩側檔案逐位元不變。冪等：promoted_to 已含該變更名
-/// 時 `mark_promoted` 改寫等值內容。
-pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<()> {
+/// 時 `mark_promoted` 改寫等值內容。回傳是否寫到變更的 metadata（清掉了待重新反映）。
+pub fn seal(store: &dyn Store, slug: &str, change: &str, last: bool) -> Result<bool> {
     match info(store, slug) {
         None => {
             return Err(WriteRefusal::not_found(format!(
@@ -1318,6 +1337,9 @@ pub fn discard_discussion(store: &dyn Store, slug: &str, force: bool) -> Result<
 /// `closing_error` into its own non-zero exit.
 pub struct ConcludeOutcome {
     pub restale_flagged: Vec<String>,
+    /// The changes of `restale_flagged` this conclude wrote the flag on; a change
+    /// that already carried it is flagged but not written.
+    pub restale_written: Vec<String>,
     pub auto_archived: bool,
     pub closing_error: Option<String>,
     /// Whether the record carries the hold flag after this write.
@@ -1363,7 +1385,7 @@ pub fn conclude(
     // Re-concluding an already-reflected discussion (promoted_to non-empty) flags each
     // of its active changes as stale against the new conclusion. Returns the flagged
     // change names for the CLI to report; empty when nothing was reflected yet.
-    let restale_flagged = stamp_restale(store, slug, &text)?;
+    let restaled = stamp_restale(store, slug, &text)?;
     // Closing step: a spun-out discussion (promoted_to non-empty — a link-only record
     // has none and is closed by its change's archive instead) whose changes have all
     // left the in-flight set has no future change archive left to co-archive it, so
@@ -1384,7 +1406,13 @@ pub fn conclude(
             }
         }
     };
-    Ok(ConcludeOutcome { restale_flagged, auto_archived, closing_error, held })
+    Ok(ConcludeOutcome {
+        restale_flagged: restaled.flagged,
+        restale_written: restaled.written,
+        auto_archived,
+        closing_error,
+        held,
+    })
 }
 
 #[cfg(test)]

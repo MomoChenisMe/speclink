@@ -428,6 +428,15 @@ pub fn edit_meta<T>(
     name: &str,
     edit: impl FnOnce(&mut KeyLines) -> anyhow::Result<T>,
 ) -> anyhow::Result<Option<T>> {
+    Ok(edit_meta_wrote(store, name, edit)?.map(|(out, _)| out))
+}
+
+/// [`edit_meta`]，並回報這次有沒有回寫：閉包沒改任何行時是 `false`。
+pub fn edit_meta_wrote<T>(
+    store: &dyn Store,
+    name: &str,
+    edit: impl FnOnce(&mut KeyLines) -> anyhow::Result<T>,
+) -> anyhow::Result<Option<(T, bool)>> {
     let Some(meta) = store.read_change_meta(name) else {
         return Ok(None);
     };
@@ -435,10 +444,11 @@ pub fn edit_meta<T>(
     let mut lines = KeyLines::whole(&meta);
     let out = edit(&mut lines)?;
     let edited = lines.text();
-    if edited != meta {
+    let wrote = edited != meta;
+    if wrote {
         store.write_change_meta(name, &edited)?;
     }
-    Ok(Some(out))
+    Ok(Some((out, wrote)))
 }
 
 /// 寫入（或原位更新）一個 change 的看板排序鍵 `board_rank`；其餘欄位逐位元組
@@ -1096,6 +1106,26 @@ mod tests {
         assert_eq!(out, Some(7));
         assert_eq!(*store.meta_writes.borrow(), 1, "exactly one write");
         assert_eq!(store.meta("demo"), format!("{STAMPED_META}board_rank: n\n"));
+    }
+
+    #[test]
+    fn edit_meta_wrote_tells_a_write_from_an_edit_that_changed_nothing() {
+        let store = TestStore::with_meta("demo", STAMPED_META);
+        let wrote = super::edit_meta_wrote(&store, "demo", |m| {
+            m.set("board_rank", "n")?;
+            Ok(7)
+        })
+        .unwrap();
+        assert_eq!(wrote, Some((7, true)));
+        let again = super::edit_meta_wrote(&store, "demo", |m| {
+            m.set("board_rank", "n")?;
+            Ok(8)
+        })
+        .unwrap();
+        assert_eq!(again, Some((8, false)));
+        assert_eq!(*store.meta_writes.borrow(), 1, "the second edit changed nothing");
+        let ghost = super::edit_meta_wrote(&store, "ghost", |_| Ok(())).unwrap();
+        assert!(ghost.is_none());
     }
 
     #[test]

@@ -6,7 +6,7 @@
 //! Regenerate the golden deliberately with:
 //! UPDATE_GOLDEN=1 cargo test -p speclink-core --test it command_describe::
 
-use speclink_core::command::{Command, COMMAND_NAMES};
+use speclink_core::command::{Command, DomainEvent, COMMAND_NAMES, EVENT_NAMES};
 use speclink_core::config::{ReviewList, SubagentStation, ToolName, WorkflowConfigEdit};
 use speclink_core::listing::ListWorktreeJson;
 use speclink_core::model::ReviewedScopeEntry;
@@ -397,4 +397,126 @@ fn workflow_config_edit_params_use_camel_case_inside() {
         list.params()["edit"],
         serde_json::json!({ "reviewList": { "list": "critical", "body": "rule" } })
     );
+}
+
+// --- 引擎提供全部事件名稱的清單（cross-resource-events-and-event-names）---
+
+/// Every event kind's position, matched with no wildcard arm: a new
+/// `DomainEvent` kind does not compile here until it has a sample below.
+fn event_index(event: &DomainEvent) -> usize {
+    match event {
+        DomainEvent::ChangeCreated { .. } => 0,
+        DomainEvent::ArtifactCreated { .. } => 1,
+        DomainEvent::TaskCompleted { .. } => 2,
+        DomainEvent::TaskUncompleted { .. } => 3,
+        DomainEvent::TaskMoved { .. } => 4,
+        DomainEvent::ChangeClaimed { .. } => 5,
+        DomainEvent::ChangeClaimReleased { .. } => 6,
+        DomainEvent::ChangeMarkedInProgress { .. } => 7,
+        DomainEvent::ChangeInProgressRemoved { .. } => 8,
+        DomainEvent::ChangeDependsChanged { .. } => 9,
+        DomainEvent::ChangeSchemaChanged { .. } => 10,
+        DomainEvent::ChangeRanked { .. } => 11,
+        DomainEvent::ChangeLanded { .. } => 12,
+        DomainEvent::ChangeFieldsChanged { .. } => 13,
+        DomainEvent::ChangeArchived { .. } => 14,
+        DomainEvent::ChangeDiscarded { .. } => 15,
+        DomainEvent::ReviewRoundAdded { .. } => 16,
+        DomainEvent::ReviewStamped { .. } => 17,
+        DomainEvent::ReviewDiscarded { .. } => 18,
+        DomainEvent::VerifyRoundAdded { .. } => 19,
+        DomainEvent::VerifyStamped { .. } => 20,
+        DomainEvent::VerifyDiscarded { .. } => 21,
+        DomainEvent::DiscussionCreated { .. } => 22,
+        DomainEvent::DiscussionContextSet { .. } => 23,
+        DomainEvent::DiscussionRoundAdded { .. } => 24,
+        DomainEvent::DiscussionConcluded { .. } => 25,
+        DomainEvent::DiscussionPromoted { .. } => 26,
+        DomainEvent::DiscussionLinked { .. } => 27,
+        DomainEvent::DiscussionSealed { .. } => 28,
+        DomainEvent::DiscussionUnlinked { .. } => 29,
+        DomainEvent::ChangeProvenanceChanged { .. } => 30,
+        DomainEvent::DiscussionFieldsChanged { .. } => 31,
+        DomainEvent::DiscussionArchived { .. } => 32,
+        DomainEvent::DiscussionRestored { .. } => 33,
+        DomainEvent::LanguageReplaced { .. } => 34,
+        DomainEvent::WorkflowConfigChanged { .. } => 35,
+        DomainEvent::DiscussionDiscarded { .. } => 36,
+    }
+}
+
+const EVENT_KIND_COUNT: usize = 37;
+
+/// One event of every kind.
+fn event_samples() -> Vec<DomainEvent> {
+    let at = chrono::Utc::now();
+    let (c, d) = (|| s("c"), || s("d"));
+    vec![
+        DomainEvent::ChangeCreated { change: c(), occurred_at: at },
+        DomainEvent::ArtifactCreated { change: c(), artifact: s("proposal"), occurred_at: at },
+        DomainEvent::TaskCompleted { change: c(), task_id: s("1"), touched_files: vec![], occurred_at: at },
+        DomainEvent::TaskUncompleted { change: c(), task_id: s("1"), occurred_at: at },
+        DomainEvent::TaskMoved { change: c(), occurred_at: at },
+        DomainEvent::ChangeClaimed { change: c(), occurred_at: at },
+        DomainEvent::ChangeClaimReleased { change: c(), occurred_at: at },
+        DomainEvent::ChangeMarkedInProgress { change: c(), occurred_at: at },
+        DomainEvent::ChangeInProgressRemoved { change: c(), occurred_at: at },
+        DomainEvent::ChangeDependsChanged { change: c(), depends_on: vec![], occurred_at: at },
+        DomainEvent::ChangeSchemaChanged { change: c(), schema: s("spec-driven"), occurred_at: at },
+        DomainEvent::ChangeRanked { change: c(), occurred_at: at },
+        DomainEvent::ChangeLanded { change: c(), commit: s("0123456"), branch: None, occurred_at: at },
+        DomainEvent::ChangeFieldsChanged { change: c(), keys: vec![], occurred_at: at },
+        DomainEvent::ChangeArchived { change: c(), dated_name: s("2026-11-23-c"), occurred_at: at },
+        DomainEvent::ChangeDiscarded { change: c(), occurred_at: at },
+        DomainEvent::ReviewRoundAdded { change: c(), round: 1, occurred_at: at },
+        DomainEvent::ReviewStamped { change: c(), commit: None, occurred_at: at },
+        DomainEvent::ReviewDiscarded { change: c(), occurred_at: at },
+        DomainEvent::VerifyRoundAdded { change: c(), round: 1, occurred_at: at },
+        DomainEvent::VerifyStamped { change: c(), commit: None, occurred_at: at },
+        DomainEvent::VerifyDiscarded { change: c(), occurred_at: at },
+        DomainEvent::DiscussionCreated { slug: d(), occurred_at: at },
+        DomainEvent::DiscussionContextSet { slug: d(), occurred_at: at },
+        DomainEvent::DiscussionRoundAdded { slug: d(), round: 1, occurred_at: at },
+        DomainEvent::DiscussionConcluded { slug: d(), occurred_at: at },
+        DomainEvent::DiscussionPromoted { slug: d(), change: c(), occurred_at: at },
+        DomainEvent::DiscussionLinked { slug: d(), change: c(), occurred_at: at },
+        DomainEvent::DiscussionSealed { slug: d(), change: c(), occurred_at: at },
+        DomainEvent::DiscussionUnlinked { slug: d(), change: c(), occurred_at: at },
+        DomainEvent::ChangeProvenanceChanged { change: c(), occurred_at: at },
+        DomainEvent::DiscussionFieldsChanged { slug: d(), keys: vec![], occurred_at: at },
+        DomainEvent::DiscussionArchived { slug: d(), occurred_at: at },
+        DomainEvent::DiscussionRestored { slug: d(), occurred_at: at },
+        DomainEvent::LanguageReplaced { occurred_at: at },
+        DomainEvent::WorkflowConfigChanged { keys: vec![], occurred_at: at },
+        DomainEvent::DiscussionDiscarded { slug: d(), occurred_at: at },
+    ]
+}
+
+/// spec command-runtime「引擎提供全部事件名稱的清單」: the list holds each
+/// event kind's name once and nothing else. A new kind with no entry in the
+/// list fails here, naming it.
+#[test]
+fn the_event_name_list_is_every_event_kind_once() {
+    let mut seen: Vec<usize> = event_samples().iter().map(event_index).collect();
+    seen.sort_unstable();
+    assert_eq!(seen, (0..EVENT_KIND_COUNT).collect::<Vec<_>>(), "one sample per kind");
+
+    let mut from_events: Vec<&str> = event_samples().iter().map(DomainEvent::kind).collect();
+    from_events.sort_unstable();
+    let mut listed: Vec<&str> = EVENT_NAMES.to_vec();
+    listed.sort_unstable();
+    assert_eq!(listed, from_events, "EVENT_NAMES and the event kinds differ");
+    listed.dedup();
+    assert_eq!(listed.len(), 37, "37 names, none twice");
+    for name in [
+        "change-created",
+        "task-completed",
+        "review-stamped",
+        "discussion-promoted",
+        "workflow-config-changed",
+        "discussion-unlinked",
+        "change-provenance-changed",
+    ] {
+        assert!(EVENT_NAMES.contains(&name), "{name} is missing");
+    }
 }

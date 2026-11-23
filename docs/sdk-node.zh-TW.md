@@ -17,7 +17,7 @@ SDK 是這個工具箱的名字。裡面有四樣東西：
 | 東西 | 做什麼 | 你用到的名稱 |
 | --- | --- | --- |
 | 引擎 | 執行動詞：讀規格、跑流程、交出要寫入的內容 | `createEngine`、`skills` |
-| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool`、`agentToolDescription`、`commandNames` |
+| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool`、`agentToolDescription`、`commandNames`、`eventNames`、`eventResource` |
 | 儲存接口的契約 | 你要實作的三個函式與它們的規則 | `StorePort`（型別）、`StoreConflictError`、`StoreUnavailableError` |
 | 合格測試 | 檢查你的三個函式符不符合契約 | `runStoreConformance` |
 
@@ -352,13 +352,56 @@ const hooks = {
 - **`beforeCommand` 收到**誰、哪個範圍、命令的固定名稱（例如 `archive`、`new-change`、`workflow-config-edit`）與參數。參數只能讀，改了沒有作用：掛鉤可以拒絕或旁觀，不能改內容。工作流設定的寫入另外帶 `changedKeys`（這次會改的鍵，例如 `['tdd']`）。
 - **拒絕**時，這次呼叫以 `refused` 結束，訊息就是你給的原因；經 HTTP 入口進來的請求得到同一句話。除了工作流設定的寫入，拒絕都發生在儲存收到任何呼叫之前。
 - **掛鉤自己失敗**（拋錯、回傳其他形狀，`null` 也算）時不算允許：這次呼叫以 `internal` 結束。
-- **事件**（`commit` 與 `afterCommit` 收到的 `events`）指出這次提交改了什麼，內容刻意精簡。蓋章記下了 commit 時帶 `commit`（`review-stamped`、`verify-stamped`）。真的寫入了文件的工作流設定寫入有一筆 `workflow-config-changed`，帶變動的 `keys`，沒有值。全部的事件名稱見[事件流](verb-contract.zh-TW.md#events)。
+- **事件**（`commit` 與 `afterCommit` 收到的 `events`）指出這次提交改了什麼，內容刻意精簡。蓋章記下了 commit 時帶 `commit`（`review-stamped`、`verify-stamped`）。真的寫入了文件的工作流設定寫入有一筆 `workflow-config-changed`，帶變動的 `keys`，沒有值。全部的事件名稱見[事件流](verb-contract.zh-TW.md#events)；要推給用戶端，見[把事件推給你的用戶端](#push-events)。
 - **`afterCommit` 不保證送達。** 程序在提交之後、通知之前中斷，這個事件就不會再來。需要「至少送達一次」時，在 `commit` 的同一次交易裡把 `events` 寫進你自己的事件表，再由你的程式從那張表送出。
 - **用 `read` 讀出判斷需要的資料。** 它是 `beforeCommand` 的第二個參數。它和 `dispatch` 一樣吃 argv，結果與錯誤也相同，用的是這次呼叫的身分與範圍。它只接受不寫入任何文件的動詞：`list`、`show`、`status`、`plan`、`trace`、`evidence show`、`review show`、`verify show`、`discuss list`、`discuss show`、`discuss search`、`artifact cat`、`language show`、`workflow-config show`、`validate`、`analyze`、`instructions`。其他動詞以 `invalid_argv` 拒絕，儲存不會收到任何呼叫。`read` 不會再問一次 `beforeCommand`。它只在掛鉤執行期間有效：掛鉤回答之後再呼叫，會以 `invalid_argv` 拒絕。沒有接住 `read` 的錯誤，就算掛鉤自己失敗。
 - **`read` 讀到的內容和命令本身讀到的不是同一份。** 每次 `read` 都是對儲存的另一次呼叫。`read` 和命令之間有別人提交時，兩邊看到的內容會不同。引擎自己的守門（以封存來說：任務完成度與未結的工單）一律以命令本身讀到的內容判斷。你的規則需要兩邊一致時，在自己的 `read` 與 `commit` 儲存函式裡處理。
 - **不要在掛鉤裡等同一個宿主套件的 `dispatch`，要讀資料就用 `read`。** 那個 `dispatch` 會再問一次 `beforeCommand`，而且宿主的儲存自己持有鎖時會卡住。
 
 Speclink 不內建「沒有落地就不能封存」「commit 必須在某個分支」這類規則，也不限定誰可以釋放認領。引擎只記錄分支與落地的 commit（見 `change landed`）；要擋，用 `beforeCommand` 自己擋，像上面的例子。
+
+### <a id="push-events"></a>把事件推給你的用戶端
+
+事件只指出哪個資源變了，用戶端收到後重新讀取那個資源。`eventResource(name, payload)` 給出一筆事件指的資源：`{ scope, resourceId }`。它和示範用 server 推送時用的是同一張對照（見[事件流](verb-contract.zh-TW.md#events)），你不用自己維護一張：
+
+```js
+const { createHost, eventResource } = require('@speclink/engine')
+
+const host = createHost({
+  store,
+  hooks: {
+    afterCommit({ scope, events }) {
+      for (const event of events) {
+        const { scope: kind, resourceId } = eventResource(event.name, event.payload)
+        // kind 是 'change'、'discussion'、'spec' 或 'unknown'。
+        if (kind === 'unknown') pushToClients(scope, { reloadAll: true })
+        else pushToClients(scope, { kind, resourceId })
+      }
+    },
+  },
+})
+```
+
+- **一次提交可能帶好幾筆事件。** 一次提交寫到一個變更和一份討論時，兩者各有一筆事件。例如 `new change --from-discussion` 依序是 `change-created` 與 `discussion-promoted`。每一筆事件都呼叫一次 `eventResource`。完整的清單見[一次提交的多筆事件](verb-contract.zh-TW.md#multi-event-commits)。
+- **對照表沒有的名稱回 `unknown`**，`resourceId` 是空字串：重新讀取這個範圍的全部資料。`scope-imported`、`board-order-updated`、`language-replaced` 與 `workflow-config-changed` 都在這一類。payload 沒有對應的鍵時，`resourceId` 是空字串，`scope` 維持這筆事件的類別。
+- **`eventResource` 不讀取儲存。** `name` 不是字串時拋出 `TypeError`。`payload` 接受任何 JSON 值，也可以不給：不是物件、或對應的鍵不是字串時，`resourceId` 是空字串。
+
+`eventNames` 是一個凍結的陣列，列出 `afterCommit` 與你的儲存的 `commit` 收得到的每個事件名稱：引擎的事件，加上宿主套件自己的兩個，`scope-imported`（`importScope` 與 `handleRequest` 的匯入）和 `board-order-updated`（`handleRequest` 寫看板排序）。共 39 個。順序不是契約的一部分。拿它寫一個測試，檢查你的推送對照表認得每一個名稱，新版本多了事件時就不會沒發現：
+
+```js
+// events.test.js。kindOf 是你的推送對照表：事件名稱 → 用戶端要重讀什麼。
+const { test } = require('node:test')
+const assert = require('node:assert')
+const { eventNames } = require('@speclink/engine')
+const { kindOf } = require('./push')
+
+test('推送對照表認得每一個事件名稱', () => {
+  const missing = eventNames.filter((name) => kindOf(name) === undefined)
+  assert.deepStrictEqual(missing, [])
+})
+```
+
+從沒有 `eventNames` 的版本升級時，有些提交的事件比以前多：就是[一次提交的多筆事件](verb-contract.zh-TW.md#multi-event-commits)列的那幾種情況。另外有兩個新的事件名稱：`discussion-unlinked` 與 `change-provenance-changed`。把不認得的名稱當成「整個範圍變了」的宿主行為仍然正確，只是在加進對照之前會多讀幾次。嚴格比對一次提交的事件名稱或個數的測試要更新。
 
 ### <a id="release-hook"></a>只讓認領的人與管理者釋放認領
 

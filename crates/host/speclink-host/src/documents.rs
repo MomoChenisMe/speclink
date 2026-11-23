@@ -231,6 +231,10 @@ pub fn check_board_order_size(content: &str) -> Result<(), DocumentsError> {
 /// command names ([`crate::kit::command_names`]).
 pub const PUT_BOARD_ORDER_COMMAND: &str = "put-board-order";
 
+/// The one event of a board-order write; like [`PUT_BOARD_ORDER_COMMAND`] it
+/// is the kit's own ([`crate::kit::event_names`]).
+pub const BOARD_ORDER_UPDATED_EVENT: &str = "board-order-updated";
+
 /// The names the HTTP door's reads that no Engine command answers ask the
 /// before hook about (spec host-kit「入口的文件讀取先問執行前掛鉤」): the
 /// board order, the search, the context snapshot and the spec-side drift.
@@ -289,7 +293,7 @@ pub fn put_board_order(
 
 /// The one event of a board-order write.
 pub(crate) fn board_order_updated() -> Result<Event, PortError> {
-    Event::new("board-order-updated", serde_json::json!({})).map_err(invalid_value)
+    Event::new(BOARD_ORDER_UPDATED_EVENT, serde_json::json!({})).map_err(invalid_value)
 }
 
 // --- canonical specs and the archive ---

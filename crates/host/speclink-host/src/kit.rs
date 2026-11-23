@@ -369,6 +369,16 @@ pub fn command_names() -> Vec<&'static str> {
     names
 }
 
+/// Every event name a host's after-commit hook and its store's commit can
+/// see, once each: the Engine's ([`speclink_core::command::EVENT_NAMES`]),
+/// then the kit's import and board-order write (spec node-sdk: SDK
+/// 匯出事件名稱清單與資源對照). The order is no contract.
+pub fn event_names() -> Vec<&'static str> {
+    let mut names = speclink_core::command::EVENT_NAMES.to_vec();
+    names.extend([transfer::IMPORTED_EVENT, crate::documents::BOARD_ORDER_UPDATED_EVENT]);
+    names
+}
+
 /// One kit for every user: the store, the hooks and the door's options,
 /// with no state of its own, so one value serves every request.
 pub struct HostKit {
@@ -768,6 +778,21 @@ mod tests {
         ];
         let names = command_names();
         assert_eq!(names.len(), engine.len() + kits.len(), "{names:?}");
+        let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
+        assert_eq!(unique.len(), names.len(), "a name appears twice: {names:?}");
+        for name in engine.iter().chain(&kits) {
+            assert!(unique.contains(name), "{name} is missing");
+        }
+    }
+
+    /// spec node-sdk「SDK 匯出事件名稱清單與資源對照」: the Engine's event
+    /// names and the kit's own two, each once — 39 in all.
+    #[test]
+    fn event_names_are_the_engines_and_the_kits_two_each_once() {
+        let engine = speclink_core::command::EVENT_NAMES;
+        let kits = ["scope-imported", "board-order-updated"];
+        let names = event_names();
+        assert_eq!(names.len(), 39, "{names:?}");
         let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
         assert_eq!(unique.len(), names.len(), "a name appears twice: {names:?}");
         for name in engine.iter().chain(&kits) {

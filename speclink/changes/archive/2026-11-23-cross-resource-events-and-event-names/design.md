@@ -79,6 +79,10 @@ Speclink Desktop 收到任何推送都整批重讀（`apps/desktop/src-tauri/src
 
 例外只有一個：範圍的匯入（`scope-imported`）改的是整個範圍，不逐一檢查。
 
+apply 時的結果：情境表涵蓋 36 個會寫入的引擎命令，守門測試沒有找到這七種以外的缺口，例外清單因此只有範圍的匯入（它不是引擎命令，所以寫在測試檔開頭的說明裡，不是一張清單）。`change rank` 在儲存埠上只寫看板順序文件（不是錨點變更的 metadata），不在這條規則內。
+
+守門測試抓不到的一筆：`discuss conclude` 順手封存時多送的 `discussion-archived`。那次提交只寫到討論 two，而 `discussion-concluded` 已經指到它，所以拿掉 `discussion-archived` 時守門測試仍然通過。這筆事件由 core 的測試 `conclude_that_archives_the_record_also_reports_the_archive` 釘住。其餘六種跨資源情況，拿掉新增的事件都會讓守門測試失敗。
+
 替代方案：在產生提交的程式裡放 debug 斷言。否決，因為用 debug 建置的 Rust 宿主遇到沒料到的缺口時會直接 panic。
 
 ### 引擎與 SDK 的事件名稱清單
@@ -125,7 +129,7 @@ Node 新增 `eventResource(name, payload)`，經 napi 呼叫 `speclink_host::com
 **驗收條件**
 
 - `cargo test -p speclink-core command::tests` 涵蓋上表每一列。
-- `cargo test -p speclink-host --test event_coverage` 通過；把任何一個新增的事件拿掉時它失敗。
+- `cargo test -p speclink-host --test event_coverage` 通過；把新增的事件拿掉時它失敗（`discuss conclude` 順手封存的 `discussion-archived` 除外，它由 core 的測試釘住，見「以守門測試釘住…」一節）。
 - `cargo test -p speclink-host commit` 與 `cargo test -p speclink-server` 的事件對照測試含兩個新名稱。
 - Node 的測試確認 `eventNames` 的個數與內容、`eventResource` 的結果、`afterCommit` 收到補齊的事件。
 - 人眼輸出與 `--json` 輸出的 golden 不變。
@@ -134,6 +138,18 @@ Node 新增 `eventResource(name, payload)`，經 napi 呼叫 `speclink_host::com
 
 - 在範圍內：core 的事件種類、結果欄位與 `events_of`；宿主套件的兩個對照與名稱清單；示範用 Server 的對照測試；Node 的兩個匯出；`docs/verb-contract` 與 `docs/sdk-node` 的中英文說明；守門測試。
 - 不在範圍內：`speclink-protocol` 的 `invalidate` 型別、`speclink-remote`、Speclink Desktop、CLI 的輸出、各命令寫入哪些文件。
+
+### Sharp-edges 稽核的結論（apply 時）
+
+對 `eventNames`、`eventResource` 與兩個新事件套用 `speclink instructions --skill audit` 的清單：
+
+- **濫用**：`eventResource` 不讀寫儲存、沒有設定；回傳的 `resourceId` 只是 payload 裡的字串，和示範用 Server 推送的相同，用戶端照舊經有權限的路由重讀。`eventNames` 凍結，改不掉。
+- **預設安全**：不認得的名稱回 `unknown`，宿主照文件重讀整個範圍，不會漏。
+- **用錯時大聲失敗**：參數對調、把整個事件物件當 `name` 傳，都因 `name` 不是字串而同步拋出 `TypeError`；`scope` 的型別是四個字面值的聯集。
+- **不回傳錯誤的識別**：payload 不是物件、缺鍵、鍵值不是字串時，`resourceId` 是空字串，不會把數字或物件轉成字串當識別。
+- **已修**：漏傳 payload（`undefined`）原本由 napi 拋出看不懂的錯誤；index.js 改成把它當 `null`，型別也標成可省略。
+- **不修**：payload 含 BigInt、函式或 Symbol 這些不是 JSON 的值時，napi 拋出一般的 `Error`。契約只承諾 JSON 值，`afterCommit` 與儲存的 `commit` 給的 payload 一定是 JSON；為它們另寫轉換是為不會發生的輸入加防護。
+- **新事件只帶名稱**：`discussion-unlinked` 是 `{ slug, change }`，`change-provenance-changed` 是 `{ change }`，沒有內容與值。
 
 ## Risks / Trade-offs
 

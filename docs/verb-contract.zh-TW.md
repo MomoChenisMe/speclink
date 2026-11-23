@@ -671,11 +671,11 @@ Speclink Desktop 使用第一個 `sse` transport。網址是別的 origin 時，
 
 | 事件種類 | `scope` | `resourceId` |
 | --- | --- | --- |
-| `change-created`、`artifact-created`、`task-completed`、`task-uncompleted`、`task-moved`、`change-claimed`、`change-claim-released`、`change-marked-in-progress`、`change-in-progress-removed`、`change-depends-changed`、`change-schema-changed`、`change-ranked`、`change-fields-changed`、`change-landed`、`change-discarded` | `change` | 變更名稱 |
+| `change-created`、`artifact-created`、`task-completed`、`task-uncompleted`、`task-moved`、`change-claimed`、`change-claim-released`、`change-marked-in-progress`、`change-in-progress-removed`、`change-depends-changed`、`change-schema-changed`、`change-ranked`、`change-fields-changed`、`change-landed`、`change-discarded`、`change-provenance-changed` | `change` | 變更名稱 |
 | `review-round-added`、`review-stamped`、`review-discarded`、`verify-round-added`、`verify-stamped`、`verify-discarded` | `change` | 變更名稱 |
 | `change-archived` | `spec` | 變更名稱 |
-| `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-archived`、`discussion-restored`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
-| 其他（例如匯入的 `scope-imported`、寫入共用詞彙文件的 `language-replaced`、寫入工作流設定的 `workflow-config-changed`） | `unknown` | 空字串 |
+| `discussion-created`、`discussion-context-set`、`discussion-round-added`、`discussion-concluded`、`discussion-promoted`、`discussion-linked`、`discussion-sealed`、`discussion-unlinked`、`discussion-archived`、`discussion-restored`、`discussion-fields-changed`、`discussion-discarded` | `discussion` | 討論代號 |
+| 其他（例如匯入的 `scope-imported`、寫入看板排序的 `board-order-updated`、寫入共用詞彙文件的 `language-replaced`、寫入工作流設定的 `workflow-config-changed`） | `unknown` | 空字串 |
 
 - 審查站與驗證站的六種事件都歸到變更：新增一輪、蓋章、丟棄工單，`resourceId` 是變更名稱。用戶端收到後重新讀取那個變更，就拿得到新的關卡狀態。
 - `review-stamped` 與 `verify-stamped` 的 payload 有 `change`；這次蓋章有記下 commit 時（蓋章請求帶了 `headCommit`），還有 `commit`，值和變更 metadata 記下的相同。
@@ -684,6 +684,25 @@ Speclink Desktop 使用第一個 `sse` transport。網址是別的 origin 時，
 - `workflow-config-changed` 來自真的寫入了文件的工作流設定寫入；dry-run、內容相同的寫入與被拒絕的寫入都沒有事件。payload 是 `{"keys": [...]}`：值有變動的鍵，順序與這次寫入相同；只改了排版或註解時是空陣列。payload 沒有值。這筆事件歸在 `unknown`，用戶端收到後重新讀取全部資料。
 - 推送給用戶端的訊息不帶 payload，沒有 `commit` 也沒有 `keys`；只有宿主的儲存與 `afterCommit` 掛鉤拿得到它們。
 - 收到 `unknown` 時重新讀取全部資料。匯入一次改動整個範圍，所以刻意歸在這一類。
+
+#### <a id="multi-event-commits"></a>一次提交的多筆事件
+
+一筆事件只指一個資源。一次提交寫到不只一個進行中的變更或討論時，每個資源各有一筆事件：命令原本的事件在前，為其他資源補的事件在後。事件只為真的發生的寫入送：另一個資源這次沒有改變時，它沒有事件。
+
+| 動詞與情況 | 事件（依序） |
+| --- | --- |
+| `new change --from-discussion` | `change-created`，接著 `discussion-promoted`（`slug`、`change`） |
+| `archive`，來源討論隨變更一起封存 | `change-archived`，接著每份討論一筆 `discussion-archived`（`slug`） |
+| `discuss conclude`，同一次執行把討論封存 | `discussion-concluded`，接著 `discussion-archived`（`slug`） |
+| `discard`，來源討論被解開 | `change-discarded`，接著每份討論一筆 `discussion-unlinked`（`slug`、`change`） |
+| 再次 `discuss conclude`，已反映這份討論的變更被記上「待重新反映」 | `discussion-concluded`，接著這次新記上標記的每個變更一筆 `change-provenance-changed`（`change`） |
+| `discuss link`，第一次連結這個變更 | `discussion-linked`，接著 `change-provenance-changed`（`change`） |
+| `discuss seal`，清掉變更的「待重新反映」 | `discussion-sealed`，接著 `change-provenance-changed`（`change`） |
+| `discuss promote` | `discussion-promoted`，接著 `change-created`（和以前相同） |
+
+- `discussion-unlinked` 與 `change-provenance-changed` 是為這些情況新增的兩種事件，payload 只有名稱：`{"slug", "change"}` 與 `{"change"}`。
+- 同一組再 `discuss link` 一次、沒有標記可清的 `discuss seal`、變更已經帶著標記的重新結論，都只送命令原本的那一筆事件。
+- 示範用 server 為每一筆事件各推一筆 `invalidate`，順序和提交裡相同。每一筆都有自己的事件識別，所以用 `Last-Event-ID` 續傳是以事件為單位，不是以提交為單位。
 
 ## <a id="payload-examples"></a>請求與回應範例
 

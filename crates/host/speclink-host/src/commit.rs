@@ -65,6 +65,8 @@ pub fn event_payload(event: &DomainEvent) -> serde_json::Value {
         DomainEvent::DiscussionPromoted { slug, change, .. } => json!({ "slug": slug, "change": change }),
         DomainEvent::DiscussionLinked { slug, change, .. } => json!({ "slug": slug, "change": change }),
         DomainEvent::DiscussionSealed { slug, change, .. } => json!({ "slug": slug, "change": change }),
+        DomainEvent::DiscussionUnlinked { slug, change, .. } => json!({ "slug": slug, "change": change }),
+        DomainEvent::ChangeProvenanceChanged { change, .. } => json!({ "change": change }),
         DomainEvent::DiscussionArchived { slug, .. } => json!({ "slug": slug }),
         DomainEvent::DiscussionRestored { slug, .. } => json!({ "slug": slug }),
         // No subject and no content: the project has one LANGUAGE document.
@@ -117,6 +119,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "change-fields-changed"
         | "change-landed"
         | "change-discarded"
+        | "change-provenance-changed"
         | "review-round-added"
         | "review-stamped"
         | "review-discarded"
@@ -131,6 +134,7 @@ pub fn event_resource(kind: &str, payload: &serde_json::Value) -> (InvalidationS
         | "discussion-promoted"
         | "discussion-linked"
         | "discussion-sealed"
+        | "discussion-unlinked"
         | "discussion-archived"
         | "discussion-restored"
         | "discussion-fields-changed"
@@ -211,6 +215,14 @@ mod tests {
                 DomainEvent::DiscussionFieldsChanged { slug: "talk".into(), keys: vec!["owner".into()], occurred_at: at() },
                 json!({ "slug": "talk", "keys": ["owner"] }),
             ),
+            (
+                DomainEvent::DiscussionUnlinked { slug: "talk".into(), change: "add-x".into(), occurred_at: at() },
+                json!({ "slug": "talk", "change": "add-x" }),
+            ),
+            (
+                DomainEvent::ChangeProvenanceChanged { change: "add-x".into(), occurred_at: at() },
+                json!({ "change": "add-x" }),
+            ),
         ];
         for (event, payload) in rows {
             assert_eq!(event_payload(&event), payload, "{}", event.kind());
@@ -245,6 +257,18 @@ mod tests {
         assert_eq!(
             event_resource("discussion-fields-changed", &json!({ "slug": "talk", "keys": ["owner"] })),
             (InvalidationScope::Discussion, "talk".to_string())
+        );
+    }
+
+    #[test]
+    fn the_cross_resource_events_point_at_the_resource_they_name() {
+        assert_eq!(
+            event_resource("discussion-unlinked", &json!({ "slug": "two", "change": "add-two" })),
+            (InvalidationScope::Discussion, "two".to_string())
+        );
+        assert_eq!(
+            event_resource("change-provenance-changed", &json!({ "change": "add-two" })),
+            (InvalidationScope::Change, "add-two".to_string())
         );
     }
 

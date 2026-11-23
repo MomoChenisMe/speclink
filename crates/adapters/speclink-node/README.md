@@ -21,7 +21,7 @@ The package includes TypeScript types.
 | Part | What it does | Names you use |
 | --- | --- | --- |
 | Engine | Runs verbs: reads specs, runs the workflow, and returns the content to write | `createEngine`, `skills` |
-| Host kit | The layer for your system: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `commandNames` |
+| Host kit | The layer for your system: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `agentToolDescription`, `commandNames`, `eventNames`, `eventResource` |
 | Store port contract | The three functions that you implement, and their rules | `StorePort` (type), `StoreConflictError`, `StoreUnavailableError` |
 | Conformance tests | Check that your three functions obey the contract | `runStoreConformance` |
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { commandNames, createEngine, createHost, StoreConflictError } from '../index.js'
+import { commandNames, createEngine, createHost, eventNames, eventResource, StoreConflictError } from '../index.js'
 import { cliJson, rejection, repoRoot } from './helpers'
 import { memoryPort, type PortCommit } from './memory-port'
 
@@ -17,6 +17,9 @@ const PROPOSAL = '## Why\n\nA demo change for the host kit tests, long enough to
 const OPEN_TASKS = '## 1. Work\n\n- [ ] 1.1 First task\n'
 const DONE_TASKS = '## 1. Work\n\n- [x] 1.1 First task\n'
 const CONFIG = 'schema: spec-driven\n'
+/** Discussion `two`, concluded. */
+const TWO =
+  '---\ntopic: two\nslug: two\nstatus: concluded\ncreated: 2026-11-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: x\n'
 
 /** A port with change `demo` in scope `s1`. */
 function portWithDemo(tasks = OPEN_TASKS, options: Parameters<typeof memoryPort>[0] = {}) {
@@ -629,6 +632,68 @@ describe('createHost and host.dispatch', () => {
     for (const name of asked) expect(commandNames).toContain(name)
     expect(port.commits.length).toBeGreaterThan(0)
     for (const { commit } of port.commits) expect(commandNames).toContain(commit.command)
+  })
+
+  // node-sdk「SDK 匯出事件名稱清單與資源對照」「掛鉤收到的事件名稱都在清單裡」
+  it('tells afterCommit and the store only names of eventNames', async () => {
+    const port = portWithDemo()
+    port.seed('s1', { 'discussions/two.md': TWO })
+    const seen: string[] = []
+    const host = createHost({
+      store: port.store,
+      scopes: () => [
+        { key: 'alpha', name: 'Alpha', repos: [{ key: 'web', name: 'Web', scope: 's1', canWrite: true, canWritePolicy: true }] },
+      ],
+      hooks: {
+        afterCommit: ({ events }) => {
+          for (const { name } of events) seen.push(name)
+        },
+      },
+    })
+    const call = (argv: string[]) => host.dispatch({ identity: ALICE, scope: 's1', argv })
+
+    await call(['new', 'change', 'add-two', '--from-discussion', 'two'])
+    await call(['task', 'done', '--change', 'demo', '1'])
+    await call(['discard', 'add-two'])
+    const bundle = await host.exportScope({ identity: ALICE, scope: 's1' })
+    await host.importScope({ identity: ALICE, scope: 's2', bundle })
+    const boardOrder = `/api/speclink/v1/projects/alpha/board-order`
+    const headers = { 'x-speclink-api-version': '1', 'content-type': 'application/json' }
+    const read = await host.handleRequest({ method: 'GET', path: boardOrder, headers }, ALICE)
+    const body = new TextEncoder().encode(JSON.stringify({ content: '{"changes":{}}' }))
+    const put = { method: 'PUT', path: boardOrder, headers: { ...headers, 'if-match': read!.headers.etag }, body }
+    expect((await host.handleRequest(put, ALICE))?.status).toBe(200)
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    for (const name of ['discussion-promoted', 'discussion-unlinked', 'scope-imported', 'board-order-updated']) {
+      expect(seen).toContain(name)
+    }
+    for (const name of seen) expect(eventNames).toContain(name)
+    const stored = port.commits.flatMap(({ commit }) => commit.events.map((event) => event.name))
+    expect(stored).toEqual(seen)
+  })
+
+  // node-sdk「用掛鉤收到的事件直接查資源」
+  it('points each event afterCommit is told about at its resource', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'config.yaml': CONFIG, 'discussions/two.md': TWO })
+    const resources: { scope: string; resourceId: string }[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        afterCommit: ({ events }) => {
+          for (const event of events) resources.push(eventResource(event.name, event.payload))
+        },
+      },
+    })
+
+    await host.dispatch({ identity: ALICE, scope: 's1', argv: ['new', 'change', 'add-two', '--from-discussion', 'two'] })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+
+    expect(resources).toEqual([
+      { scope: 'change', resourceId: 'add-two' },
+      { scope: 'discussion', resourceId: 'two' },
+    ])
   })
 
   it('stamps with the three functions only, in one commit', async () => {

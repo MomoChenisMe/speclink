@@ -17,7 +17,7 @@ mod landing;
 mod typed;
 mod workflow_config;
 pub use change_rank::ChangeRankOutcome;
-pub use describe::COMMAND_NAMES;
+pub use describe::{COMMAND_NAMES, EVENT_NAMES};
 pub use evidence::EvidenceShowOutcome;
 pub use fields::FieldsOutcome;
 pub use landing::{ChangeLandedOutcome, LandedRecord};
@@ -319,6 +319,13 @@ pub enum DomainEvent {
     DiscussionPromoted { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionLinked { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionSealed { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// `discard` took the discarded `change` out of the discussion's spun-out
+    /// changes.
+    DiscussionUnlinked { slug: String, change: String, occurred_at: chrono::DateTime<chrono::Utc> },
+    /// Another verb wrote the change's source-discussion facts
+    /// (`from_discussion` or `restale_from`): `discuss link`, `discuss seal` or
+    /// a re-conclude.
+    ChangeProvenanceChanged { change: String, occurred_at: chrono::DateTime<chrono::Utc> },
     /// The discussion twin of [`DomainEvent::ChangeFieldsChanged`]: keys, no values.
     DiscussionFieldsChanged { slug: String, keys: Vec<String>, occurred_at: chrono::DateTime<chrono::Utc> },
     DiscussionArchived { slug: String, occurred_at: chrono::DateTime<chrono::Utc> },
@@ -368,6 +375,8 @@ impl DomainEvent {
             DomainEvent::DiscussionPromoted { .. } => "discussion-promoted",
             DomainEvent::DiscussionLinked { .. } => "discussion-linked",
             DomainEvent::DiscussionSealed { .. } => "discussion-sealed",
+            DomainEvent::DiscussionUnlinked { .. } => "discussion-unlinked",
+            DomainEvent::ChangeProvenanceChanged { .. } => "change-provenance-changed",
             DomainEvent::DiscussionFieldsChanged { .. } => "discussion-fields-changed",
             DomainEvent::DiscussionArchived { .. } => "discussion-archived",
             DomainEvent::DiscussionRestored { .. } => "discussion-restored",
@@ -750,6 +759,8 @@ pub struct NewChangeOutcome {
     pub dir: std::path::PathBuf,
     /// The schema the change was created with (explicit or config default).
     pub schema: String,
+    /// The discussion this creation marked promoted (`--from-discussion`).
+    pub promoted_discussion: Option<String>,
 }
 
 /// `new artifact` outcome.
@@ -891,6 +902,8 @@ pub struct DiscussRoundOutcome {
 pub struct DiscussConcludeOutcome {
     pub slug: String,
     pub restale_flagged: Vec<String>,
+    /// The changes of `restale_flagged` this conclude wrote the flag on.
+    pub restale_written: Vec<String>,
     pub auto_archived: bool,
     pub closing_error: Option<String>,
     /// Whether the record carries the hold flag after this write.
@@ -910,6 +923,9 @@ pub struct DiscussPromoteOutcome {
 pub struct DiscussBindOutcome {
     pub slug: String,
     pub change: String,
+    /// Whether the verb wrote the change's metadata: `link` added the slug to
+    /// `from_discussion`, `seal` cleared it from `restale_from`.
+    pub change_written: bool,
 }
 
 /// `discuss archive` outcome.
@@ -1178,6 +1194,7 @@ pub fn execute(
             Ok(CommandOutcome::DiscussConclude(DiscussConcludeOutcome {
                 slug,
                 restale_flagged: outcome.restale_flagged,
+                restale_written: outcome.restale_written,
                 auto_archived: outcome.auto_archived,
                 closing_error: outcome.closing_error,
                 held: outcome.held,
@@ -1193,12 +1210,12 @@ pub fn execute(
             }))
         }
         Command::DiscussLink { slug, change } => {
-            crate::discuss::link(store, &slug, &change).map_err(classify)?;
-            Ok(CommandOutcome::DiscussLink(DiscussBindOutcome { slug, change }))
+            let change_written = crate::discuss::link(store, &slug, &change).map_err(classify)?;
+            Ok(CommandOutcome::DiscussLink(DiscussBindOutcome { slug, change, change_written }))
         }
         Command::DiscussSeal { slug, change, last } => {
-            crate::discuss::seal(store, &slug, &change, last).map_err(classify)?;
-            Ok(CommandOutcome::DiscussSeal(DiscussBindOutcome { slug, change }))
+            let change_written = crate::discuss::seal(store, &slug, &change, last).map_err(classify)?;
+            Ok(CommandOutcome::DiscussSeal(DiscussBindOutcome { slug, change, change_written }))
         }
         Command::DiscussArchive { slug } => {
             match crate::discuss::archive_discussion(store, &slug).map_err(classify)? {
@@ -1257,6 +1274,18 @@ pub fn execute(
     Ok((outcome, events))
 }
 
+/// A command's own event first, then the events for the other resources its commit wrote.
+fn with_others(own: DomainEvent, others: impl IntoIterator<Item = DomainEvent>) -> Vec<DomainEvent> {
+    let mut events = vec![own];
+    events.extend(others);
+    events
+}
+
+/// The change's event of a `discuss link` or `discuss seal` that wrote the change's metadata.
+fn provenance_changed(o: &DiscussBindOutcome, at: chrono::DateTime<chrono::Utc>) -> Option<DomainEvent> {
+    o.change_written.then(|| DomainEvent::ChangeProvenanceChanged { change: o.change.clone(), occurred_at: at })
+}
+
 /// The single event-emission point (design 決策四): events derive from the
 /// typed outcome after the core flow succeeded. Queries yield none; outcomes
 /// that report "nothing changed" (already-flipped task, unstamped in-progress)
@@ -1287,10 +1316,16 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             }]
         }
         CommandOutcome::WorkflowConfigEdit(_) | CommandOutcome::WorkflowConfigReplace(_) => Vec::new(),
-        CommandOutcome::NewChange(o) => vec![DomainEvent::ChangeCreated {
-            change: o.name.clone(),
-            occurred_at: at,
-        }],
+        // 一次提交寫到幾個變更與討論就送幾個事件：命令原本的事件在前，為其他資源
+        // 補的事件在後（spec command-runtime「一次提交的事件涵蓋它寫到的每個變更與討論」）。
+        CommandOutcome::NewChange(o) => with_others(
+            DomainEvent::ChangeCreated { change: o.name.clone(), occurred_at: at },
+            o.promoted_discussion.iter().map(|slug| DomainEvent::DiscussionPromoted {
+                slug: slug.clone(),
+                change: o.name.clone(),
+                occurred_at: at,
+            }),
+        ),
         CommandOutcome::NewArtifact(o) => vec![DomainEvent::ArtifactCreated {
             change: o.change.clone(),
             artifact: o.artifact.clone(),
@@ -1367,15 +1402,24 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             keys: o.changed.clone(),
             occurred_at: at,
         }],
-        CommandOutcome::Archive(o) => vec![DomainEvent::ChangeArchived {
-            change: o.change_name.clone(),
-            dated_name: o.dated_name.clone(),
-            occurred_at: at,
-        }],
-        CommandOutcome::Discard(o) => vec![DomainEvent::ChangeDiscarded {
-            change: o.change_name.clone(),
-            occurred_at: at,
-        }],
+        CommandOutcome::Archive(o) => with_others(
+            DomainEvent::ChangeArchived {
+                change: o.change_name.clone(),
+                dated_name: o.dated_name.clone(),
+                occurred_at: at,
+            },
+            o.archived_discussions
+                .iter()
+                .map(|(slug, _)| DomainEvent::DiscussionArchived { slug: slug.clone(), occurred_at: at }),
+        ),
+        CommandOutcome::Discard(o) => with_others(
+            DomainEvent::ChangeDiscarded { change: o.change_name.clone(), occurred_at: at },
+            o.unlinked_discussions.iter().map(|(slug, _)| DomainEvent::DiscussionUnlinked {
+                slug: slug.clone(),
+                change: o.change_name.clone(),
+                occurred_at: at,
+            }),
+        ),
         CommandOutcome::DiscussNew(info) => vec![DomainEvent::DiscussionCreated {
             slug: info.slug.clone(),
             occurred_at: at,
@@ -1389,10 +1433,17 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
             round: o.round,
             occurred_at: at,
         }],
-        CommandOutcome::DiscussConclude(o) => vec![DomainEvent::DiscussionConcluded {
-            slug: o.slug.clone(),
-            occurred_at: at,
-        }],
+        CommandOutcome::DiscussConclude(o) => with_others(
+            DomainEvent::DiscussionConcluded { slug: o.slug.clone(), occurred_at: at },
+            o.auto_archived
+                .then(|| DomainEvent::DiscussionArchived { slug: o.slug.clone(), occurred_at: at })
+                .into_iter()
+                .chain(
+                    o.restale_written
+                        .iter()
+                        .map(|change| DomainEvent::ChangeProvenanceChanged { change: change.clone(), occurred_at: at }),
+                ),
+        ),
         CommandOutcome::DiscussPromote(o) => vec![
             DomainEvent::DiscussionPromoted {
                 slug: o.slug.clone(),
@@ -1404,16 +1455,14 @@ fn events_of(outcome: &CommandOutcome) -> Vec<DomainEvent> {
                 occurred_at: at,
             },
         ],
-        CommandOutcome::DiscussLink(o) => vec![DomainEvent::DiscussionLinked {
-            slug: o.slug.clone(),
-            change: o.change.clone(),
-            occurred_at: at,
-        }],
-        CommandOutcome::DiscussSeal(o) => vec![DomainEvent::DiscussionSealed {
-            slug: o.slug.clone(),
-            change: o.change.clone(),
-            occurred_at: at,
-        }],
+        CommandOutcome::DiscussLink(o) => with_others(
+            DomainEvent::DiscussionLinked { slug: o.slug.clone(), change: o.change.clone(), occurred_at: at },
+            provenance_changed(o, at),
+        ),
+        CommandOutcome::DiscussSeal(o) => with_others(
+            DomainEvent::DiscussionSealed { slug: o.slug.clone(), change: o.change.clone(), occurred_at: at },
+            provenance_changed(o, at),
+        ),
         CommandOutcome::DiscussArchive(o) => vec![DomainEvent::DiscussionArchived {
             slug: o.slug.clone(),
             occurred_at: at,
@@ -1947,10 +1996,12 @@ fn run_new_change(
     .map_err(classify)?;
     // A change born of a discussion marks that discussion promoted — both
     // entry points already did this inline; it is part of the verb's meaning.
-    if let (Some(slug), Some(out)) = (from_discussion.as_deref(), linked) {
-        store.write_live_discussion(slug, &out).map_err(classify)?;
+    let mut promoted_discussion = None;
+    if let (Some(slug), Some(out)) = (from_discussion, linked) {
+        store.write_live_discussion(&slug, &out).map_err(classify)?;
+        promoted_discussion = Some(slug);
     }
-    Ok(CommandOutcome::NewChange(NewChangeOutcome { name, dir, schema }))
+    Ok(CommandOutcome::NewChange(NewChangeOutcome { name, dir, schema, promoted_discussion }))
 }
 
 fn run_new_artifact(

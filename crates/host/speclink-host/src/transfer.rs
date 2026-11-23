@@ -52,6 +52,10 @@ pub const IMPORT_COMMAND: &str = "scope-import";
 /// The name the before hook is asked about for an export.
 pub const EXPORT_COMMAND: &str = "scope-export";
 
+/// The one event of an import's commit. It is no Engine event: the host kit
+/// adds it to its event names ([`crate::kit::event_names`]).
+pub const IMPORTED_EVENT: &str = "scope-imported";
+
 /// How every refusal of a format version starts. The wire has no reason of
 /// its own for it, so a client that sent the second version looks for these
 /// words in a `refused` answer to know it can send the first.
@@ -595,7 +599,7 @@ pub fn import_with(
     if ops.is_empty() || options.dry_run {
         return Ok((report(listed_at), Vec::new()));
     }
-    let events = vec![Event::new("scope-imported", payload).map_err(invalid_value)?];
+    let events = vec![Event::new(IMPORTED_EVENT, payload).map_err(invalid_value)?];
     let commit = Commit::new(actor.clone(), IMPORT_COMMAND, at, ops, events.clone()).map_err(invalid_value)?;
     match port.commit(scope, &commit) {
         Ok(scope_version) => Ok((report(scope_version), events)),

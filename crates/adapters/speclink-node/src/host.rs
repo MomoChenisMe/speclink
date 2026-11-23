@@ -141,6 +141,22 @@ pub fn command_names() -> Vec<&'static str> {
     speclink_host::kit::command_names()
 }
 
+/// Every event name `afterCommit` and the store's commits can see
+/// ([`speclink_host::kit::event_names`]): index.js freezes it once as `eventNames`.
+#[napi(js_name = "eventNames")]
+pub fn event_names() -> Vec<&'static str> {
+    speclink_host::kit::event_names()
+}
+
+/// The resource an event is about, `{ scope, resourceId }`, from the one
+/// table the demo server pushes by ([`speclink_host::commit::event_resource`]).
+/// index.js checks that `name` is a string.
+#[napi(js_name = "eventResource", ts_return_type = "{ scope: string; resourceId: string }")]
+pub fn event_resource(name: String, payload: serde_json::Value) -> serde_json::Value {
+    let (scope, resource_id) = speclink_host::commit::event_resource(&name, &payload);
+    serde_json::json!({ "scope": scope, "resourceId": resource_id })
+}
+
 /// The `speclink` Agent tool (design D9), shaped for JS:
 /// `{ name, description, inputSchema }`.
 #[napi(js_name = "agentToolDefinition")]
