@@ -17,7 +17,8 @@
   "files": [
     "bin/speclink",
     "postinstall.mjs",
-    "platform.mjs"
+    "platform.mjs",
+    "README.md"
   ],
   "engines": {
     "node": "^18.19.0 || ^20.10.0 || >=21"

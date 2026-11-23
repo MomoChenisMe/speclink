@@ -12,7 +12,8 @@
     "speclink-server": "bin/speclink-server.mjs"
   },
   "files": [
-    "bin/speclink-server.mjs"
+    "bin/speclink-server.mjs",
+    "README.md"
   ],
   "engines": {
     "node": ">=18"

@@ -6,6 +6,11 @@
   "main": "index.js",
   "types": "index.d.ts",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MomoChenisMe/speclink.git",
+    "directory": "crates/adapters/speclink-node"
+  },
   "engines": {
     "node": ">= 18"
   },
