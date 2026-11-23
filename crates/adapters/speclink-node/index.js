@@ -36,6 +36,9 @@ function checkArgv(argv, caller) {
   }
 }
 
+/** The keys of `object` that are not in `known`: a misspelled key must fail, not read as left out. */
+const unknownKeys = (object, known) => Object.keys(object).filter((key) => !known.includes(key))
+
 /** The native envelope as a value, or an Error carrying its `code`. */
 function unwrap(envelope) {
   if (envelope.ok) return envelope.value
@@ -248,7 +251,7 @@ class Host {
       throw new TypeError('host.handleRequest: extras must be an object')
     }
     // A misspelled key would drop the fields without a word.
-    const unknown = Object.keys(extras ?? {}).filter((name) => name !== 'fields')
+    const unknown = unknownKeys(extras ?? {}, ['fields'])
     if (unknown.length > 0) {
       throw new TypeError(`host.handleRequest: unknown extras: ${unknown.join(', ')} (the only one is fields)`)
     }
@@ -310,7 +313,7 @@ function importOptions(call) {
     throw invalid(`dryRun must be true or false, got ${shown(dryRun)} (leave the key out for a real run)`)
   }
   if (mode === 'replace') {
-    const unknown = Object.keys(call).filter((name) => !REPLACE_CALL_KEYS.includes(name))
+    const unknown = unknownKeys(call, REPLACE_CALL_KEYS)
     if (unknown.length > 0) {
       const names = unknown.map(shown).join(', ')
       throw invalid(`unknown key ${names} in a call with mode 'replace' (the keys are ${REPLACE_CALL_KEYS.join(', ')})`)
@@ -398,7 +401,7 @@ function readTools(native, info) {
 function createHost(options) {
   const target = portFunctions(options?.store, 'createHost')
   // `actor` belongs to createEngine: a host gets the identity with every call.
-  const unknownOptions = Object.keys(options).filter((name) => !HOST_OPTIONS.includes(name))
+  const unknownOptions = unknownKeys(options, HOST_OPTIONS)
   if (unknownOptions.length > 0) {
     throw new TypeError(
       `createHost: unknown options: ${unknownOptions.join(', ')} (the options are ${HOST_OPTIONS.join(', ')}; the identity comes with every call)`,
@@ -409,7 +412,7 @@ function createHost(options) {
     throw new TypeError('createHost: hooks must be an object')
   }
   // A misspelled hook would leave every call allowed without a word.
-  const unknown = Object.keys(hooks).filter((name) => !HOOK_NAMES.includes(name))
+  const unknown = unknownKeys(hooks, HOOK_NAMES)
   if (unknown.length > 0) {
     throw new TypeError(`createHost: unknown hooks: ${unknown.join(', ')} (the hooks are ${HOOK_NAMES.join(' and ')})`)
   }
@@ -475,6 +478,32 @@ function deepFreeze(value) {
 const agentTool = deepFreeze(binding.agentToolDefinition())
 
 /**
+ * The `speclink` tool's description without the verbs `options.exclude`
+ * names (`['archive', 'discuss archive']`): an item leaves out every verb
+ * whose words start with its words, so `review` leaves out `review show`
+ * and `archive` keeps `discuss archive`. Without options it is
+ * `agentTool.description`. An `exclude` key that is there must hold an array
+ * of strings: a value read from a missing setting does not list every verb.
+ */
+function agentToolDescription(options) {
+  if (options === undefined) return binding.agentToolDescription([])
+  // A Map or a class instance has no key of its own to check: it would list every verb.
+  const proto = options !== null && typeof options === 'object' ? Object.getPrototypeOf(options) : undefined
+  if (proto !== Object.prototype && proto !== null) {
+    throw new TypeError('agentToolDescription: options must be a plain object ({ exclude })')
+  }
+  const unknown = unknownKeys(options, ['exclude'])
+  if (unknown.length > 0) {
+    throw new TypeError(`agentToolDescription: unknown options: ${unknown.join(', ')} (the only one is exclude)`)
+  }
+  const exclude = 'exclude' in options ? options.exclude : []
+  if (!Array.isArray(exclude) || exclude.some((verb) => typeof verb !== 'string')) {
+    throw new TypeError("agentToolDescription: exclude must be an array of verbs (['archive', 'discuss archive'])")
+  }
+  return binding.agentToolDescription(exclude)
+}
+
+/**
  * Every command name `beforeCommand` and a store's `commit` can be given:
  * the engine's commands and the host kit's own `scope-export`,
  * `scope-import` and `put-board-order`. Taken once at load and frozen.
@@ -493,16 +522,39 @@ async function runStoreConformance(harness) {
   return binding.runStoreConformance(makeInvoker(target), keepsEvents)
 }
 
+const RENDER_OPTIONS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout']
+
 /** Skill knowledge: list the registry, render one SKILL.md for a matrix point. */
 const skills = {
   list: () => binding.skillsList(),
-  render: (name, options) => binding.skillsRender(name, options),
+  render: (name, options) => {
+    // The native side drops a key it does not know: a misspelled key would
+    // render as if it were not given. What is not an object it refuses itself.
+    if (options !== null && typeof options === 'object') {
+      const unknown = unknownKeys(options, RENDER_OPTIONS)
+      if (unknown.length > 0) {
+        throw new TypeError(
+          `skills.render: unknown options: ${unknown.join(', ')} (the options are ${RENDER_OPTIONS.join(', ')})`,
+        )
+      }
+      // The native side reads `undefined` as a key that is not there: a limit
+      // read from a missing setting would render a skill with no limits.
+      if ('skills' in options && options.skills === undefined) {
+        throw new TypeError('skills.render: skills must be an array of skill names, got undefined (leave the key out for every skill)')
+      }
+      if ('checkout' in options && options.checkout === undefined) {
+        throw new TypeError('skills.render: checkout must be true or false, got undefined (leave the key out for true)')
+      }
+    }
+    return binding.skillsRender(name, options)
+  },
 }
 
 module.exports = {
   createEngine,
   createHost,
   agentTool,
+  agentToolDescription,
   commandNames,
   skills,
   runStoreConformance,

@@ -17,7 +17,7 @@ SDK is the name of this toolbox. It contains four things:
 | Part | What it does | Names you use |
 | --- | --- | --- |
 | Engine | Runs verbs: reads specs, runs the workflow, and returns the content to write | `createEngine`, `skills` |
-| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `commandNames` |
+| Host kit | The layer for the host: each call brings an identity and a scope, two hooks, two entry points | `createHost`, `agentTool`, `agentToolDescription`, `commandNames` |
 | Store port contract | The three functions that you implement, and their rules | `StorePort` (type), `StoreConflictError`, `StoreUnavailableError` |
 | Conformance tests | Check that your three functions obey the contract | `runStoreConformance` |
 
@@ -464,11 +464,12 @@ const result = await host.dispatch({
 - **Your program gives the identity and the scope.** They are not in `argv`, so the model cannot change them. An empty identity or scope is refused with `invalid_argv` before any store call.
 - **The verbs, the `stdin` rules, the result, and the errors** are the same as for `dispatch` in [Run verbs on a local project](#local-project).
 - **`agentTool`** is a tool definition that is ready to use, so you do not write the description for the model. Its `name` is `speclink`. Its `description` lists all available verbs (from the same definition that the parser uses; the verbs that need a checkout are not in it). Its `inputSchema` has only `argv` and an optional `stdin`.
+- **`agentToolDescription(options)`** gives the same description with only the verbs that you open. `options.exclude` lists the verbs to leave out. Write each verb as its words with one space between them: `['archive', 'review', 'discuss archive']`. An item leaves out each verb whose words start with the words of the item: `review` leaves out `review show`, `review add-round`, `review stamp`, and `review discard`, but `archive` does not leave out `discuss archive`. The usage text and the other lines do not change. Without options, or with an empty `exclude`, the result is `agentTool.description`. These cases throw: the options are not a plain object; `exclude` is not an array of strings (an `exclude` key that holds `undefined` throws too); an item leaves out no verb of the list (the message names the item; a verb that needs a checkout, such as `drift`, is not in the list, so it throws too); an option other than `exclude`. The description tells the model which verbs it can use. Your `beforeCommand` hook still decides which verbs run.
 - **A result names no local path.** The documents are in your store, not in a folder. Thus the `{ output }` text of `new change` through `host.dispatch` has no `Path:` line. `createEngine` on a local project prints the line as before.
 - **A `path` in a structured result is a key in your store, not a file.** `discuss new` and `discuss promote` return a structured value, with no text; `new artifact --json` does the same. The `path` key stays in these results. To read a document, call `artifact cat`, `show`, or `discuss show`. The `description` of `agentTool` tells the model the same, so the model does not try to open the path.
 
 ```js
-const { agentTool } = require('@speclink/engine')
+const { agentTool, agentToolDescription } = require('@speclink/engine')
 
 const speclinkTool = {
   name: agentTool.name,
@@ -482,6 +483,9 @@ const speclinkTool = {
     }
   },
 }
+
+// Your beforeCommand refuses these verbs, so the model does not see them in the list.
+const shortDescription = agentToolDescription({ exclude: ['archive', 'review', 'verify'] })
 ```
 
 **An overview screen needs one call.** `list --json --detail` returns each change with the records that it has: the two quality stations, the claim, the branch, and the landing. You do not call `show` for each change, and you do not call the HTTP entry point from your own process:
@@ -773,8 +777,29 @@ const skillMd = skills.render('propose', {
 | `specInCheckout` | `true` (default), `false` | Whether the spec folder is in the checkout where the skill is used. An embedded host and a remote project pass `false`: the skill then names no spec folder path and has no git step on spec files |
 | `specDir` | string | The spec directory name in the skill text. The default is `speclink` |
 | `toolName` | string | For `neutral` only: the tool name in the skill text. The default is `speclink` |
+| `skills` | array of skill names | The skills that your Agent has, for example `['discuss', 'propose']` (`skills.list()` has the names). The skill text then has a `## Harness limits` section after the start. The section lists these skills and tells the model not to load another skill and not to tell the user to run one. When a step points to another skill, the model tells the user that an engineer does that step in a checkout of the code. The default is every skill, with no section |
+| `checkout` | `true` (default), `false` | Whether your Agent has a checkout of the code and its git history. `false` adds an item to `## Harness limits`: the model skips the steps that read code files, search the code, or run a git command, checks facts only with speclink verbs, and says which steps it skipped. `false` also makes an omitted `specInCheckout` `false` |
 
-An Agent without a code checkout can use these skills: `discuss`, `propose`, `ingest`, `archive`, `improve`, `analyze`, and `trace`. The skills `apply`, `review`, `verify`, `quality`, `commit`, and the worktree skills need a code checkout. Leave them to the tools on the side of the engineers.
+The two options add the `## Harness limits` section. With the same `specInCheckout`, the rest of the text is the text that you get without them. One case changes more: `checkout: false` with `specInCheckout` omitted gives the rest of the text of `specInCheckout: false`. Without `skills`, and with `checkout` omitted or `true`, the text is the same as before, with no section. These values throw, and nothing is rendered:
+
+- `skills` is not an array of strings (a `skills` key that holds `undefined` throws too), is an empty array, has a name that `skills.list()` does not have (the message names it), or does not include the skill that you render.
+- `checkout` is not a boolean (`'false'`, `null`, and a key that holds `undefined` throw too), or `checkout: false` comes with `specInCheckout: true` (the message says that the two options contradict).
+
+**Behavior change:** an option key that `skills.render` does not know throws. The message names the key and the valid keys. Before, `skills.render` ignored such a key, so a misspelled key (`skils`) had no effect and gave no error.
+
+There is no option for a tool that asks the user a question. Each step that asks with `AskUserQuestion` also tells the model to ask the same question in plain text when the tool is not there.
+
+```js
+// An Agent with five skills and no checkout of the code
+const discussMd = skills.render('discuss', {
+  target: 'neutral',
+  invocation: 'tool-call',
+  checkout: false, // specInCheckout is then false too
+  skills: ['discuss', 'trace', 'propose', 'ingest', 'analyze'],
+})
+```
+
+An Agent without a code checkout can use these skills: `discuss`, `propose`, `ingest`, `archive`, `improve`, `analyze`, and `trace`. The skills `apply`, `review`, `verify`, `quality`, `commit`, and the worktree skills need a code checkout. Leave them to the tools on the side of the engineers. Give the skills that your Agent has as `skills`, and pass `checkout: false`.
 
 ## <a id="example"></a>Complete example
 

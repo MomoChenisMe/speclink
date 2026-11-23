@@ -32,6 +32,20 @@ afterAll(() => {
   if (piCursorProject) rmSync(piCursorProject, { recursive: true, force: true })
 })
 
+/** The golden snapshot of the remote neutral tool-call skill files, by file path. */
+const remoteSnapshot = () => {
+  const text = normalize(
+    readFileSync(
+      join(repoRoot, 'crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md'),
+      'utf8',
+    ),
+  )
+  const parts = text.split(/^=== (.*) ===\n/m)
+  const sections = new Map<string, string>()
+  for (let i = 1; i < parts.length; i += 2) sections.set(parts[i], parts[i + 1])
+  return sections
+}
+
 describe('skills.list', () => {
   it('returns the skill registry (names and descriptions)', () => {
     const list = skills.list()
@@ -106,19 +120,6 @@ describe('skills.render — render matrix', () => {
   })
 
   // spec node-sdk「渲染 API」：specInCheckout（規格資料夾是否在使用這份技能的 checkout）。
-  const remoteSnapshot = () => {
-    const text = normalize(
-      readFileSync(
-        join(repoRoot, 'crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md'),
-        'utf8',
-      ),
-    )
-    const parts = text.split(/^=== (.*) ===\n/m)
-    const sections = new Map<string, string>()
-    for (let i = 1; i < parts.length; i += 2) sections.set(parts[i], parts[i + 1])
-    return sections
-  }
-
   it('specInCheckout false renders no spec-folder path and names hand-offs as skills', () => {
     const s = skills.render('archive', {
       target: 'neutral',
@@ -180,5 +181,138 @@ describe('skills.render — render matrix', () => {
     expect(existsSync(join(initedProject, 'CLAUDE.md'))).toBe(false)
     const propose = skills.list().find((s: { name: string }) => s.name === 'propose')
     expect(propose.description.length).toBeGreaterThan(0)
+  })
+})
+
+// spec node-sdk「渲染 API 的宿主限制選項」.
+describe('skills.render — harness limits', () => {
+  const HOST_SKILLS = ['discuss', 'trace', 'propose', 'ingest', 'analyze', 'config']
+
+  /** The rendered text cut around its `## Harness limits` section: before, the section, after. */
+  function aroundLimits(rendered: string): [string, string, string] {
+    const start = rendered.indexOf('## Harness limits\n')
+    expect(start, rendered).toBeGreaterThanOrEqual(0)
+    const end = rendered.indexOf('\n---\n\n', start) + '\n---\n\n'.length
+    return [rendered.slice(0, start), rendered.slice(start, end), rendered.slice(end)]
+  }
+
+  /** The items of a `## Harness limits` section. */
+  const items = (section: string) => section.split('\n').filter((line) => line.startsWith('- '))
+
+  it('declares the skills the host provides, after the invocation preamble', () => {
+    const base = { target: 'neutral', invocation: 'tool-call', specInCheckout: false } as const
+    const [before, section, after] = aroundLimits(skills.render('propose', { ...base, skills: HOST_SKILLS }))
+    expect(before).toContain('## Invocation')
+    expect(before.endsWith('---\n\n')).toBe(true)
+    for (const name of HOST_SKILLS) expect(section).toContain(`\`speclink-${name}\``)
+    expect(section).not.toContain('speclink-apply')
+    expect(section).toContain('do not load it, and do not tell the user to run it')
+    expect(items(section)).toHaveLength(1)
+    expect(before + after).toBe(skills.render('propose', base))
+  })
+
+  it('declares no checkout, and renders the body of specInCheckout: false', () => {
+    const base = { target: 'neutral', invocation: 'tool-call' } as const
+    const [before, section, after] = aroundLimits(skills.render('discuss', { ...base, checkout: false }))
+    expect(items(section)).toHaveLength(1)
+    const [item] = items(section)
+    expect(item).toContain('no checkout of the code and no git history')
+    expect(item).toContain('Skip every step of this document that reads code files')
+    expect(item).toContain('runs a git command')
+    expect(before + after).toBe(skills.render('discuss', { ...base, specInCheckout: false }))
+    // discuss 有規格資料夾的條件區塊：兩份內文不同，所以上一行驗到了連帶的 specInCheckout。
+    expect(before + after).not.toBe(skills.render('discuss', base))
+  })
+
+  it('puts the skills item first when both options are given', () => {
+    const rendered = skills.render('trace', {
+      target: 'neutral',
+      invocation: 'tool-call',
+      checkout: false,
+      skills: ['discuss', 'trace'],
+    })
+    const list = items(aroundLimits(rendered)[1])
+    expect(list).toHaveLength(2)
+    expect(list[0]).toContain('provides only these skills: `speclink-discuss`, `speclink-trace`.')
+    expect(list[1]).toContain('no checkout of the code and no git history')
+  })
+
+  it('renders the same text with checkout: true as without the two options', () => {
+    const base = { target: 'neutral', invocation: 'tool-call', specInCheckout: false } as const
+    const omitted = skills.render('propose', base)
+    expect(skills.render('propose', { ...base, checkout: true })).toBe(omitted)
+    expect(omitted).not.toContain('## Harness limits')
+    // The golden snapshot is the output from before the two options.
+    const section = remoteSnapshot().get('.xyz/skills/speclink-propose/SKILL.md')
+    expect(section).toBeDefined()
+    const rendered = skills.render('propose', { ...base, toolName: 'xyz-harness', checkout: true })
+    expect(normalize(rendered).trimEnd()).toBe(section!.trimEnd())
+  })
+
+  it('works for the claude target, naming each skill the Claude way', () => {
+    const [before, section, after] = aroundLimits(
+      skills.render('propose', { target: 'claude', skills: ['propose', 'discuss'] }),
+    )
+    expect(section).toContain('only these skills: `/speclink-discuss`, `/speclink-propose`.')
+    expect(before + after).toBe(skills.render('propose', { target: 'claude' }))
+  })
+
+  // Example「各種不合法的值」：每一列都拋出錯誤，沒有一列回傳字串。
+  it.each([
+    [{ skills: 'propose' }, undefined],
+    [{ skills: [] }, /empty/],
+    [{ skills: ['propose', 'aply'] }, /aply/],
+    [{ skills: ['discuss'] }, /propose/],
+    [{ skills: ['propose', 7] }, undefined],
+    [{ checkout: 'false' }, undefined],
+    [{ checkout: null }, undefined],
+    [{ checkout: false, specInCheckout: true }, /checkout: false.*specInCheckout: true/],
+  ])('refuses %o', (bad, message) => {
+    expect(() => skills.render('propose', { target: 'neutral', ...bad } as never)).toThrow(message)
+  })
+
+  it('refuses a skills or checkout key that holds undefined, instead of reading it as left out', () => {
+    const render = (extra: object) => () => skills.render('propose', { target: 'neutral', ...extra } as never)
+    expect(render({ skills: undefined })).toThrow(/skills must be an array.*undefined/)
+    expect(render({ checkout: undefined })).toThrow(/checkout must be true or false.*undefined/)
+  })
+
+  it('tells a caller who writes the rendered name to leave the prefix out', () => {
+    expect(() => skills.render('propose', { target: 'neutral', skills: ['speclink-propose'] })).toThrow(
+      /'speclink-propose' is not a skill name.*without the speclink- prefix/,
+    )
+  })
+})
+
+// spec node-sdk「渲染 API 拒絕不認得的選項鍵」.
+describe('skills.render — option keys', () => {
+  const KEYS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout']
+
+  it('refuses a misspelled key, naming it and every valid key', () => {
+    let message = ''
+    try {
+      skills.render('propose', { target: 'neutral', skils: ['propose'] } as never)
+    } catch (e) {
+      message = (e as Error).message
+    }
+    expect(message).toContain('skils')
+    for (const key of KEYS) expect(message).toContain(key)
+  })
+
+  it('renders as before when every key is valid', () => {
+    const options = {
+      target: 'neutral',
+      invocation: 'tool-call',
+      specInCheckout: false,
+      specDir: 'speclink',
+      toolName: 'xyz-harness',
+    } as const
+    const section = remoteSnapshot().get('.xyz/skills/speclink-propose/SKILL.md')
+    expect(normalize(skills.render('propose', options)).trimEnd()).toBe(section!.trimEnd())
+    // The scenario's own values: `specDir` and `toolName` hold their defaults.
+    const base = { target: 'neutral', invocation: 'tool-call', specInCheckout: false } as const
+    expect(skills.render('propose', { ...base, specDir: 'speclink', toolName: 'speclink' })).toBe(
+      skills.render('propose', base),
+    )
   })
 })

@@ -27,17 +27,9 @@ A \"path\" in a result is the document's key in the store, not a file you can op
 /// The `speclink` tool: argv and an optional stdin in, the verb list in the
 /// description. Verbs that need a checkout are left out.
 pub fn tool_definition() -> ToolDefinition {
-    let mut tree = crate::parse::verb_tree();
-    tree.build();
-    let mut lines = Vec::new();
-    for_each_leaf(&mut tree, &mut Vec::new(), &mut |words, leaf| {
-        if let Some(line) = verb_line(words, leaf) {
-            lines.push(line);
-        }
-    });
     ToolDefinition {
         name: "speclink",
-        description: format!("{USAGE}\nVerbs:\n{}", lines.join("\n")),
+        description: tool_description(&[]).expect("excluding no verb matches nothing to refuse"),
         input_schema: serde_json::json!({
             "type": "object",
             "properties": {
@@ -55,6 +47,41 @@ pub fn tool_definition() -> ToolDefinition {
             "additionalProperties": false
         }),
     }
+}
+
+/// The tool's description without the verbs `exclude` names. Each item is a
+/// verb's words with one space between them (`review`, `discuss archive`) and
+/// leaves out every listed verb whose words start with its words: `review`
+/// leaves out `review show`, while `archive` keeps `discuss archive`. The
+/// error names each item that leaves out no listed verb.
+pub fn tool_description(exclude: &[String]) -> Result<String, String> {
+    let excluded: Vec<Vec<String>> = exclude.iter().map(|item| item.split(' ').map(str::to_string).collect()).collect();
+    let mut matched = vec![false; exclude.len()];
+    let mut tree = crate::parse::verb_tree();
+    tree.build();
+    let mut lines = Vec::new();
+    for_each_leaf(&mut tree, &mut Vec::new(), &mut |words, leaf| {
+        let Some(line) = verb_line(words, leaf) else { return };
+        let mut kept = true;
+        for (item, hit) in excluded.iter().zip(matched.iter_mut()) {
+            if words.starts_with(item) {
+                *hit = true;
+                kept = false;
+            }
+        }
+        if kept {
+            lines.push(line);
+        }
+    });
+    let unmatched: Vec<String> =
+        exclude.iter().zip(&matched).filter(|(_, hit)| !**hit).map(|(item, _)| format!("'{item}'")).collect();
+    if !unmatched.is_empty() {
+        return Err(format!(
+            "exclude: {} matches no verb of the list (a verb that needs a checkout is not in it)",
+            unmatched.join(", ")
+        ));
+    }
+    Ok(format!("{USAGE}\nVerbs:\n{}", lines.join("\n")))
 }
 
 /// Call `visit` with each leaf verb under `cmd` and its words
@@ -179,10 +206,9 @@ mod tests {
         out
     }
 
-    /// The verb words of each line of the description's verb list: the words
-    /// before the first `[` or `<`.
-    fn listed() -> BTreeSet<String> {
-        let description = tool_definition().description;
+    /// The verb words of each line of `description`'s verb list, in order: the
+    /// words before the first `[` or `<`.
+    fn verbs_of(description: &str) -> Vec<String> {
         let (_, list) = description.split_once("\nVerbs:\n").expect("the description has a verb list");
         list.lines()
             .filter_map(|line| line.strip_prefix("- "))
@@ -195,6 +221,15 @@ mod tests {
                     .join(" ")
             })
             .collect()
+    }
+
+    /// The verb words of each line of the tool definition's verb list.
+    fn listed() -> BTreeSet<String> {
+        verbs_of(&tool_definition().description).into_iter().collect()
+    }
+
+    fn excluding(verbs: &[&str]) -> Result<String, String> {
+        tool_description(&verbs.iter().map(|v| v.to_string()).collect::<Vec<_>>())
     }
 
     #[test]
@@ -350,5 +385,65 @@ mod tests {
         ] {
             assert_eq!(local_only_of(argv), Some(verb), "{argv:?}");
         }
+    }
+
+    // design「工具說明的動詞篩選」.
+    #[test]
+    fn excluding_nothing_gives_the_tool_definition_description() {
+        assert_eq!(excluding(&[]), Ok(tool_definition().description));
+    }
+
+    #[test]
+    fn excluding_archive_drops_the_top_level_archive_only() {
+        let description = excluding(&["archive"]).unwrap();
+        let verbs = verbs_of(&description);
+        assert!(!verbs.iter().any(|v| v == "archive"), "{description}");
+        assert!(verbs.iter().any(|v| v == "discuss archive"), "{description}");
+        // Every other line, its order and the usage text stay as they are.
+        let expected: Vec<String> = verbs_of(&tool_definition().description).into_iter().filter(|v| v != "archive").collect();
+        assert_eq!(verbs, expected);
+        assert_eq!(description.split_once("\nVerbs:\n").unwrap().0, USAGE);
+    }
+
+    #[test]
+    fn excluding_review_drops_every_verb_under_it() {
+        let description = excluding(&["review"]).unwrap();
+        let verbs = verbs_of(&description);
+        assert!(!verbs.iter().any(|v| v == "review" || v.starts_with("review ")), "{description}");
+        let before = verbs_of(&tool_definition().description);
+        for verb in ["review show", "review add-round", "review stamp", "review discard"] {
+            assert!(before.iter().any(|v| v == verb), "{verb} is a listed verb");
+        }
+        assert!(verbs.iter().any(|v| v == "verify show"), "{description}");
+    }
+
+    #[test]
+    fn excluding_a_two_word_verb_keeps_its_siblings_and_the_top_level_verb() {
+        let description = excluding(&["discuss archive"]).unwrap();
+        let verbs = verbs_of(&description);
+        assert!(!verbs.iter().any(|v| v == "discuss archive"), "{description}");
+        assert!(verbs.iter().any(|v| v == "discuss list"), "{description}");
+        assert!(verbs.iter().any(|v| v == "archive"), "{description}");
+        // Only that one line is gone.
+        let full = tool_definition().description;
+        let kept: Vec<&str> = full.lines().filter(|line| !line.starts_with("- discuss archive ")).collect();
+        assert_eq!(description, kept.join("\n"));
+    }
+
+    #[test]
+    fn an_exclusion_that_matches_no_listed_verb_is_an_error_naming_it() {
+        // `archiv` is no verb; `drift` needs a checkout, so it is not in the list.
+        for verb in ["archiv", "drift"] {
+            let err = excluding(&["archive", verb]).unwrap_err();
+            assert!(err.contains(&format!("'{verb}'")), "{err}");
+            assert!(!err.contains("'archive'"), "{err}");
+        }
+    }
+
+    #[test]
+    fn excluding_every_verb_leaves_the_usage_only() {
+        let tops: BTreeSet<String> = listed().iter().map(|v| v.split(' ').next().unwrap().to_string()).collect();
+        let tops: Vec<&str> = tops.iter().map(String::as_str).collect();
+        assert_eq!(excluding(&tops), Ok(format!("{USAGE}\nVerbs:\n")));
     }
 }

@@ -5,7 +5,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use speclink_core::config::{CustomTool, Invocation};
-use speclink_core::skills::{self, RenderTarget, SpecLocation, Tool};
+use speclink_core::skills::{self, HarnessLimits, RenderTarget, SpecLocation, Tool};
 
 /// One entry of `skills.list()`.
 #[napi(object)]
@@ -19,7 +19,9 @@ pub struct SkillInfo {
 /// cli) and `specInCheckout` (whether the spec folder is in the checkout the
 /// skill is used in; default true — a host that embeds the engine and has no
 /// local spec files passes false), plus the spec directory name and the neutral
-/// target's tool name ({{TOOL}} substitution, default "speclink").
+/// target's tool name ({{TOOL}} substitution, default "speclink"), and the
+/// host's limits: the skills it provides and whether it has a checkout of the
+/// code (default true).
 #[napi(object)]
 pub struct RenderOptions {
     pub target: String,
@@ -27,6 +29,8 @@ pub struct RenderOptions {
     pub spec_in_checkout: Option<bool>,
     pub spec_dir: Option<String>,
     pub tool_name: Option<String>,
+    pub skills: Option<Vec<String>>,
+    pub checkout: Option<bool>,
 }
 
 /// The resolved matrix point.
@@ -34,6 +38,7 @@ struct Matrix {
     target: TargetKind,
     spec_dir: String,
     location: SpecLocation,
+    limits: HarnessLimits,
 }
 
 enum TargetKind {
@@ -69,16 +74,25 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
             }
         },
     };
+    let checkout = opts.checkout != Some(false);
+    // Without a checkout of the code, the spec folder is not in one either.
+    let location = match (opts.spec_in_checkout, checkout) {
+        (Some(true), false) => {
+            return Err(Error::from_reason(
+                "checkout: false contradicts specInCheckout: true — without a checkout of the code, the spec folder is not in one either",
+            ))
+        }
+        (Some(false), _) | (None, false) => SpecLocation::Elsewhere,
+        (Some(true) | None, true) => SpecLocation::InCheckout,
+    };
     Ok(Matrix {
         target,
         spec_dir: opts
             .spec_dir
             .clone()
             .unwrap_or_else(|| speclink_core::workspace::DEFAULT_SPEC_DIR.to_string()),
-        location: match opts.spec_in_checkout {
-            Some(false) => SpecLocation::Elsewhere,
-            Some(true) | None => SpecLocation::InCheckout,
-        },
+        location,
+        limits: HarnessLimits { skills: opts.skills.clone(), checkout },
     })
 }
 
@@ -106,5 +120,6 @@ pub fn skills_render(name: String, opts: RenderOptions) -> Result<String> {
         TargetKind::Builtin(tool) => RenderTarget::Builtin(*tool),
         TargetKind::Neutral(custom) => RenderTarget::Custom(custom),
     };
-    Ok(skills::render_skill_file_for(target, &skill, &matrix.spec_dir, matrix.location))
+    skills::render_skill_file_with_limits(target, &skill, &matrix.spec_dir, matrix.location, &matrix.limits)
+        .map_err(Error::from_reason)
 }

@@ -483,6 +483,70 @@ follow it — do not send it to the speclink tool as arguments.\n\n---\n\n"
     }
 }
 
+/// What the harness a skill is rendered for lacks. The default lacks nothing: every
+/// skill, and a checkout of the code with its git history — the files the CLI generates.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HarnessLimits {
+    /// The skills the harness provides, by registry name (`propose`); `None` is every
+    /// skill. [`render_skill_file_with_limits`] refuses a list it cannot write down.
+    pub skills: Option<Vec<String>>,
+    /// Whether the harness has a checkout of the code and its git history.
+    pub checkout: bool,
+}
+
+impl Default for HarnessLimits {
+    fn default() -> Self {
+        HarnessLimits { skills: None, checkout: true }
+    }
+}
+
+/// A skill list [`render_skill_file_with_limits`] can write down for `rendered`: not empty,
+/// every name a registry skill, and the rendered skill among them. The error says which
+/// rule the list breaks.
+fn check_skill_list(skills: &[String], rendered: &str) -> Result<(), String> {
+    if skills.is_empty() {
+        return Err("skills must not be empty: list the skills the harness provides".to_string());
+    }
+    let registry = registry();
+    if let Some(unknown) = skills.iter().find(|name| !registry.iter().any(|s| s.name == name.as_str())) {
+        return Err(format!(
+            "skills: '{unknown}' is not a skill name: use a name of the skill registry, without the speclink- prefix (for example 'propose')"
+        ));
+    }
+    if !skills.iter().any(|name| name == rendered) {
+        return Err(format!("skills must include '{rendered}', the skill being rendered"));
+    }
+    Ok(())
+}
+
+/// The `## Harness limits` preamble: one item per limit, the skills first; `None` when
+/// `limits` lacks nothing. `skill_prefix` is what this target writes before a skill's name.
+fn harness_limits_note(limits: &HarnessLimits, skill_prefix: &str) -> Option<String> {
+    let mut items = Vec::new();
+    if let Some(names) = &limits.skills {
+        let list = registry()
+            .into_iter()
+            .filter(|s| names.iter().any(|n| n == s.name))
+            .map(|s| format!("`{skill_prefix}{}`", s.name))
+            .collect::<Vec<_>>()
+            .join(", ");
+        items.push(format!(
+            "- This harness provides only these skills: {list}. A skill that is not in this list \
+is not available here: do not load it, and do not tell the user to run it. When a step of this \
+document points to such a skill, tell the user that an engineer does that step in a checkout of the code."
+        ));
+    }
+    if !limits.checkout {
+        items.push(
+            "- This harness has no checkout of the code and no git history. Skip every step of \
+this document that reads code files, searches the code, or runs a git command. Check facts only \
+with speclink verbs. In your answer, say which steps you skipped for this reason."
+                .to_string(),
+        );
+    }
+    (!items.is_empty()).then(|| format!("## Harness limits\n\n{}\n\n---\n\n", items.join("\n")))
+}
+
 /// Render a complete SKILL.md (frontmatter + preamble + conversation-language paragraph +
 /// substituted body) for one target.
 /// The fork/agent and disallowedTools lines are Claude-only; descriptors get the neutral
@@ -496,6 +560,25 @@ pub fn render_skill_file_for(
     spec_dir: &str,
     location: SpecLocation,
 ) -> String {
+    render_skill_file_with_limits(target, skill, spec_dir, location, &HarnessLimits::default())
+        .expect("the default limits have no skill list to refuse")
+}
+
+/// [`render_skill_file_for`] with a `## Harness limits` preamble when `limits` lacks
+/// something: after the frontmatter and the fork or invocation preamble, before the
+/// conversation-language paragraph. The rest of the file does not change. A skill list
+/// that is empty, has a name the registry does not have, or leaves `skill` out is an
+/// error, and nothing is rendered.
+pub fn render_skill_file_with_limits(
+    target: RenderTarget,
+    skill: &Skill,
+    spec_dir: &str,
+    location: SpecLocation,
+    limits: &HarnessLimits,
+) -> Result<String, String> {
+    if let Some(list) = &limits.skills {
+        check_skill_list(list, skill.name)?;
+    }
     let claude = matches!(target, RenderTarget::Builtin(Tool::Claude));
     let subs = substitutions(target, spec_dir, location);
     let mut fm = String::from("---\n");
@@ -529,6 +612,9 @@ pub fn render_skill_file_for(
         }
         RenderTarget::Custom(custom) => fm.push_str(invocation_note(custom.invocation)),
     }
+    if let Some(note) = harness_limits_note(limits, subs.slash_replacement) {
+        fm.push_str(&note);
+    }
     fm.push_str(subs.apply("conversation-language.md", CONVERSATION_LANGUAGE).trim_end());
     fm.push_str("\n\n");
     fm.push_str(&subs.apply(skill.name, skill.body));
@@ -539,7 +625,7 @@ pub fn render_skill_file_for(
     if !fm.ends_with('\n') {
         fm.push('\n');
     }
-    fm
+    Ok(fm)
 }
 
 #[cfg(test)]
@@ -884,6 +970,136 @@ mod tests {
                 rendered.contains("## Invocation"),
                 "{label} carries the descriptor invocation preamble"
             );
+        }
+    }
+
+    /// The render targets the harness-limits tests walk: the five built-in tools and a
+    /// descriptor of each invocation.
+    fn every_target<'a>(cli: &'a CustomTool, tool_call: &'a CustomTool) -> Vec<RenderTarget<'a>> {
+        Tool::ALL.into_iter().map(RenderTarget::Builtin).chain([RenderTarget::Custom(cli), RenderTarget::Custom(tool_call)]).collect()
+    }
+
+    fn limits(skills: &[&str], checkout: bool) -> HarnessLimits {
+        let skills = (!skills.is_empty()).then(|| skills.iter().map(|s| s.to_string()).collect());
+        HarnessLimits { skills, checkout }
+    }
+
+    /// `rendered` cut around its `## Harness limits` section: what comes before it, the
+    /// section through its closing `---` and blank line, and what comes after it.
+    fn around_limits(rendered: &str) -> (&str, &str, &str) {
+        let start = rendered.find("## Harness limits\n").unwrap_or_else(|| panic!("no Harness limits section:\n{rendered}"));
+        let len = rendered[start..].find("\n---\n\n").expect("the section ends with ---") + "\n---\n\n".len();
+        (&rendered[..start], &rendered[start..start + len], &rendered[start + len..])
+    }
+
+    const SKILLS_ITEM: &str = "This harness provides only these skills: {list}. A skill that is not in \
+this list is not available here: do not load it, and do not tell the user to run it. When a step of \
+this document points to such a skill, tell the user that an engineer does that step in a checkout of \
+the code.";
+    const CHECKOUT_ITEM: &str = "This harness has no checkout of the code and no git history. Skip \
+every step of this document that reads code files, searches the code, or runs a git command. Check \
+facts only with speclink verbs. In your answer, say which steps you skipped for this reason.";
+
+    /// 預設的限制是「什麼都不缺」：`render_skill_file_for` 用它轉呼叫，所以 CLI 的輸出由 golden 守住。
+    #[test]
+    fn the_default_harness_limits_lack_nothing() {
+        assert_eq!(HarnessLimits::default(), limits(&[], true));
+    }
+
+    /// 清單是空的、有登錄表沒有的名稱、或不含正在渲染的技能時不渲染，訊息指出是哪一項。
+    #[test]
+    fn a_skill_list_that_cannot_be_listed_is_refused() {
+        let cli = custom_target();
+        let propose = registry().into_iter().find(|s| s.name == "propose").unwrap();
+        let refused = |given: HarnessLimits| {
+            render_skill_file_with_limits(RenderTarget::Custom(&cli), &propose, "openspec", SpecLocation::InCheckout, &given).unwrap_err()
+        };
+        let empty = refused(HarnessLimits { skills: Some(Vec::new()), checkout: true });
+        assert!(empty.contains("must not be empty"), "{empty}");
+        let unknown = refused(limits(&["propose", "aply"], true));
+        assert!(unknown.contains("'aply' is not a skill name"), "{unknown}");
+        // The engine's message names no function of an SDK.
+        assert!(!unknown.contains("skills.list()"), "{unknown}");
+        assert!(unknown.contains("without the speclink- prefix"), "{unknown}");
+        let missing = refused(limits(&["discuss"], false));
+        assert!(missing.contains("must include 'propose'"), "{missing}");
+    }
+
+    /// 段落在既有前言之後、對話語言段落之前，以 `---` 結束；拿掉它就是不帶限制的渲染。
+    #[test]
+    fn a_skill_list_adds_one_section_between_the_preamble_and_the_conversation_language() {
+        let cli = custom_target();
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+        for target in every_target(&cli, &tool_call) {
+            for skill in registry() {
+                for location in SpecLocation::BOTH {
+                    let given = limits(&[skill.name, "discuss"], true);
+                    let rendered = render_skill_file_with_limits(target, &skill, "openspec", location, &given).unwrap();
+                    let plain = render_skill_file_for(target, &skill, "openspec", location);
+                    let (before, section, after) = around_limits(&rendered);
+                    assert_eq!(format!("{before}{after}"), plain, "skill '{}' ({location:?})", skill.name);
+                    assert!(before.ends_with("---\n\n"), "skill '{}': {before}", skill.name);
+                    assert!(after.starts_with("**Conversation language**"), "skill '{}': {after}", skill.name);
+                    assert!(section.starts_with("## Harness limits\n\n- This harness provides only these skills: "));
+                    assert!(!section.contains("no checkout"), "{section}");
+                }
+            }
+        }
+    }
+
+    /// 兩個限制同時出現時技能那一項在前；清單依登錄表的順序、重複的只列一次。
+    #[test]
+    fn both_limits_give_two_items_with_the_skills_first_in_registry_order() {
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+        let trace = registry().into_iter().find(|s| s.name == "trace").unwrap();
+        let rendered = render_skill_file_with_limits(
+            RenderTarget::Custom(&tool_call),
+            &trace,
+            "openspec",
+            SpecLocation::Elsewhere,
+            &limits(&["trace", "discuss", "trace"], false),
+        )
+        .unwrap();
+        let (_, section, _) = around_limits(&rendered);
+        let skills = SKILLS_ITEM.replace("{list}", "`speclink-discuss`, `speclink-trace`");
+        assert_eq!(section, format!("## Harness limits\n\n- {skills}\n- {CHECKOUT_ITEM}\n\n---\n\n"));
+    }
+
+    /// 沒有 checkout 的那一項單獨出現；段落之後的內容與相同 location 不帶限制的渲染相同。
+    #[test]
+    fn no_checkout_alone_gives_its_own_item_and_keeps_the_body() {
+        let cli = custom_target();
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+        for target in every_target(&cli, &tool_call) {
+            for skill in registry() {
+                let rendered =
+                    render_skill_file_with_limits(target, &skill, "openspec", SpecLocation::Elsewhere, &limits(&[], false)).unwrap();
+                let plain = render_skill_file_for(target, &skill, "openspec", SpecLocation::Elsewhere);
+                let (before, section, after) = around_limits(&rendered);
+                assert_eq!(format!("{before}{after}"), plain, "skill '{}'", skill.name);
+                assert_eq!(section, format!("## Harness limits\n\n- {CHECKOUT_ITEM}\n\n---\n\n"));
+            }
+        }
+    }
+
+    /// 清單裡的技能以這個 target 引用技能的形式列出。
+    #[test]
+    fn the_skill_list_names_each_skill_the_way_the_target_refers_to_skills() {
+        let cli = custom_target();
+        let propose = registry().into_iter().find(|s| s.name == "propose").unwrap();
+        for (target, list) in [
+            (RenderTarget::Builtin(Tool::Claude), "`/speclink-discuss`, `/speclink-propose`"),
+            (RenderTarget::Builtin(Tool::Codex), "`$speclink-discuss`, `$speclink-propose`"),
+            (RenderTarget::Builtin(Tool::Copilot), "`/speclink-discuss`, `/speclink-propose`"),
+            (RenderTarget::Builtin(Tool::Pi), "`/skill:speclink-discuss`, `/skill:speclink-propose`"),
+            (RenderTarget::Builtin(Tool::Cursor), "`/speclink-discuss`, `/speclink-propose`"),
+            (RenderTarget::Custom(&cli), "`speclink-discuss`, `speclink-propose`"),
+        ] {
+            let rendered =
+                render_skill_file_with_limits(target, &propose, "openspec", SpecLocation::InCheckout, &limits(&["propose", "discuss"], true))
+                    .unwrap();
+            let (_, section, _) = around_limits(&rendered);
+            assert_eq!(section, format!("## Harness limits\n\n- {}\n\n---\n\n", SKILLS_ITEM.replace("{list}", list)));
         }
     }
 }

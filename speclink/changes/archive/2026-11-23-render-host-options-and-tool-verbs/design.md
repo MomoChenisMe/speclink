@@ -34,7 +34,7 @@
 
 ### 前言由引擎產生，技能內文不改
 
-在 `speclink-core` 的 `workspace/skills.rs` 新增 `render_skill_file_with(target, skill, spec_dir, location, limits)`，`limits` 是新型別 `HarnessLimits { skills: Option<Vec<String>>, checkout: bool }`（預設是沒有清單、有 checkout）。既有的 `render_skill_file_for` 改成以預設的 `limits` 轉呼叫它，所以全部既有的呼叫端（CLI 的產生、測試、golden）不必改、輸出不變。
+在 `speclink-core` 的 `workspace/skills.rs` 新增 `render_skill_file_with_limits(target, skill, spec_dir, location, limits)`，`limits` 是新型別 `HarnessLimits { skills: Option<Vec<String>>, checkout: bool }`（預設是沒有清單、有 checkout）。既有的 `render_skill_file_for` 改成以預設的 `limits` 轉呼叫它，所以全部既有的呼叫端（CLI 的產生、測試、golden）不必改、輸出不變。`render_skill_file_with_limits` 回傳 `Result`：技能清單不能列出時（見下一節的驗證）回傳錯誤、不渲染；預設的 `limits` 沒有清單，所以 `render_skill_file_for` 不會失敗。
 
 `limits` 不是預設值時，在 frontmatter 與既有前言（fork 說明或 `## Invocation`）之後、對話語言段落之前，多寫一段 `## Harness limits`，每個限制一個項目，段落以 `---` 結束，格式和 `## Invocation` 段相同。這是唯一的實作落點：Node SDK 只負責把 options 轉成 `HarnessLimits`。
 
@@ -81,7 +81,7 @@
 
 - `RenderOptions` 多 `skills?: string[]` 與 `checkout?: boolean`。
 - 新匯出 `agentToolDescription(options?: { exclude?: string[] }): string`。
-- Rust：`HarnessLimits`、`render_skill_file_with`、`tool_description`。
+- Rust：`HarnessLimits`、`render_skill_file_with_limits`、`tool_description`。
 
 **失敗模式**（都是同步拋出 Error，不回傳部分結果）
 
@@ -93,7 +93,7 @@
 **驗收條件**
 
 - `cargo test -p speclink-core --test it render_golden::` 與 `cargo test -p speclink-core --test it skill_verbization` 不改任何 golden 就通過。
-- `cargo test -p speclink-core skills` 的新測試：預設的 `limits` 與 `render_skill_file_for` 逐位元相同；兩種限制各自與同時出現時的段落文字與位置。
+- `cargo test -p speclink-core skills` 的新測試：預設的 `limits` 是沒有清單、有 checkout（`render_skill_file_for` 以它轉呼叫，逐位元不變由上一條的 golden 守住）；兩種限制各自與同時出現時的段落文字與位置；不能列出的技能清單回傳錯誤。
 - `cargo test -p speclink-verbs tool` 的新測試：不排除時與 `tool_definition().description` 相同；前綴比對；比對不到時的錯誤。
 - `crates/adapters/speclink-node/__test__/render.spec.ts` 與 `agent-tool.spec.ts` 涵蓋上面每一種行為與失敗模式。
 
@@ -111,3 +111,20 @@
 - [跨平台] → 沒有路徑處理、檔案系統與 git 呼叫；前言的文字以 `\n` 換行，和既有的前言相同。Windows、macOS、Linux 的輸出相同。
 - [前言的英文文字沒有經過技能的寫法守門] → 任務裡把新文字對照 skill-authoring 的寫法規範審閱一次，並確認既有的守門測試不因新函式而失敗。
 - [改到 napi 的匯出後忘記重新產生 binding 檔] → 任務的驗證步驟先跑 Node 的建置再跑測試。
+
+## 稽核結論
+
+新參數的處理對照 sharp-edges 稽核清單、兩段英文前言對照 skill-authoring 的寫法規範，結論如下：
+
+- **型別檢查**：`skills` 不是陣列（包含 `null`）、陣列裡有不是字串的項目、`checkout` 不是布林（包含 `null` 與 `'false'`），都由 napi 的型別轉換拋出錯誤，訊息帶 `RenderOptions.skills` 或 `RenderOptions.checkout`。`exclude` 由 `index.js` 檢查：鍵在而值是 `undefined` 也拒絕。`skills` 與 `checkout` 的鍵在而值是 `undefined` 時，同樣由 `index.js` 拒絕（napi 會把 `undefined` 當成沒有給，從缺少的設定讀來的值就會產生沒有限制的技能）。`agentToolDescription` 的參數必須是一般的物件：`Map`、`Date` 與類別實例沒有自己的鍵可以檢查，會被拒絕。沒有不合法的值被當成預設值。
+- **不修：`specInCheckout: undefined` 仍視同省略**。理由：這是既有選項的既有行為，不在這次變更的範圍；新的兩個選項不沿用它。
+- **錯誤訊息**：每一種失敗都指出是哪一個鍵或哪一項。已修：技能名稱寫成 `speclink-propose` 時，訊息提示去掉 `speclink-` 前綴（測試 `tells a caller who writes the rendered name to leave the prefix out`）。
+- **前綴比對**：以完整的字為單位，`archive` 不排除 `discuss archive`，`archiv` 比對不到 `archive`，Rust 與 Node 都有測試。
+- **注入**：前言只列技能登錄表裡的名稱，呼叫端給的字串不會寫進技能的文字；`exclude` 的字串只用來比對，只出現在錯誤訊息裡。
+- **技能清單在核心檢查**：`render_skill_file_with_limits` 拒絕空的清單、登錄表沒有的名稱、不含正在渲染的技能的清單，所以任何呼叫端都不會渲染出空清單的句子；Node SDK 只把錯誤轉成例外。**不修**：`checkout: false` 配 `InCheckout` 仍只在 Node SDK 檢查，因為只有它看得到 `specInCheckout` 是省略還是明確給了 true。
+- **任務 1.1 的比對已拿掉**：任務 1.1 寫的「預設的限制與 `render_skill_file_for` 逐位元相同」測試，兩邊是同一條路徑（後者就是以預設值轉呼叫前者），不可能失敗。留下的斷言是預設值的內容；逐位元不變由 `render_golden` 與 `skill_verbization` 守住。
+- **前言對照寫法規範十條**：沒有全大寫強調字、沒有歷史資訊、沒有提到 plan mode（自訂描述子的渲染會整行刪掉提到它的行）；技能引用依 target 的寫法產生；「harness」「checkout of the code」「speclink verbs」「load」與既有的 `## Invocation` 前言用同一個詞。
+- **不修：第 2 條「例外要寫明哪一條優先」不另加優先序的句子**。理由：兩個項目直接點名它們改寫的步驟（「Skip every step of this document that…」「When a step of this document points to such a skill…」），哪一條優先已經寫在句子裡。
+- **清單的寫法**：設計原文的 `<list>` 寫在一組反引號裡。實作讓每個技能名稱各自一組反引號（`` `speclink-discuss`, `speclink-trace` ``），因為一整組反引號會把逗號也包進行內程式碼。
+- **函式改名**：新函式原本叫 `render_skill_file_with`，和 `render_skill_file_for` 只差一個介系詞，看不出帶的是什麼，所以改成 `render_skill_file_with_limits`。tasks 的 1.1 與 1.2 兩行跟著改名，是直接改檔：任務全部勾選後 `new artifact tasks` 拒絕寫回（`Tasks must contain at least one checkbox`），勾選與任務 ID 不變。
+- **核心的錯誤訊息不提 SDK 的函式**：技能清單的檢查搬進核心後，「不是技能名稱」的訊息改寫成「use a name of the skill registry」，不再寫 Node SDK 的 `skills.list()`。

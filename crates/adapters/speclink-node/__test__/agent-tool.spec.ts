@@ -2,15 +2,15 @@
 // its own Agent framework; its input goes to host.dispatch as it is.
 import { describe, expect, it } from 'vitest'
 
-import { agentTool, createHost } from '../index.js'
+import { agentTool, agentToolDescription, createHost } from '../index.js'
 import { memoryPort } from './memory-port'
 
 const ALICE = { id: 'u_1', displayName: 'Alice' }
 const NEEDS_CHECKOUT = ['drift', 'review prepare', 'review scope', 'verify scope']
 
-/** Each line of the verb list: `- <usage>: <help>`. */
-function verbLines(): string[] {
-  const [, list] = agentTool.description.split('\nVerbs:\n')
+/** The usage of each line of the verb list: `- <usage>: <help>`. */
+function verbLines(description: string = agentTool.description): string[] {
+  const [, list] = description.split('\nVerbs:\n')
   return list
     .split('\n')
     .filter((line) => line.startsWith('- '))
@@ -113,5 +113,82 @@ describe('agentTool', () => {
     }
     expect(Array.isArray(result.discussions)).toBe(true)
     expect(result.discussions.map((d) => d.slug)).toEqual(['host-kit'])
+  })
+})
+
+// node-sdk「Agent 工具說明的動詞篩選」
+describe('agentToolDescription', () => {
+  const verbsOf = (description: string) => verbLines(description).map(words)
+  const fullVerbs = () => verbsOf(agentTool.description)
+
+  it('equals agentTool.description without options or with an empty exclude', () => {
+    expect(agentToolDescription()).toBe(agentTool.description)
+    expect(agentToolDescription({ exclude: [] })).toBe(agentTool.description)
+  })
+
+  it('leaves out the top-level archive and keeps discuss archive', () => {
+    const description = agentToolDescription({ exclude: ['archive'] })
+    const verbs = verbsOf(description)
+    expect(verbs).not.toContain('archive')
+    expect(verbs).toContain('discuss archive')
+    expect(verbs).toEqual(fullVerbs().filter((verb) => verb !== 'archive'))
+    expect(description.split('\nVerbs:\n')[0]).toBe(agentTool.description.split('\nVerbs:\n')[0])
+  })
+
+  it('leaves out every verb under review and verify', () => {
+    const verbs = verbsOf(agentToolDescription({ exclude: ['review', 'verify'] }))
+    for (const verb of ['review show', 'review add-round', 'review stamp', 'review discard']) {
+      expect(fullVerbs()).toContain(verb)
+    }
+    expect(verbs.filter((verb) => /^(review|verify)( |$)/.test(verb))).toEqual([])
+    expect(verbs).toContain('discuss show')
+  })
+
+  it('leaves out a two-word verb and keeps its siblings and the top-level verb', () => {
+    const verbs = verbsOf(agentToolDescription({ exclude: ['discuss archive'] }))
+    expect(verbs).not.toContain('discuss archive')
+    expect(verbs).toContain('discuss list')
+    expect(verbs).toContain('archive')
+  })
+
+  it('keeps only verbs host.dispatch can parse', async () => {
+    const usages = verbLines(agentToolDescription({ exclude: ['archive', 'review'] }))
+    expect(usages.map(words)).toEqual(
+      fullVerbs().filter((verb) => verb !== 'archive' && verb !== 'review' && !verb.startsWith('review ')),
+    )
+    const host = createHost({ store: memoryPort().store })
+    for (const usage of usages) {
+      const argv = minimalArgv(usage)
+      try {
+        await host.dispatch({ identity: ALICE, scope: 's1', argv, stdin: undefined })
+      } catch (e) {
+        expect((e as Error).message, argv.join(' ')).not.toMatch(/Usage:|checkout/)
+      }
+    }
+  })
+
+  it('refuses options it cannot use, naming what is wrong', () => {
+    expect(() => agentToolDescription({ exclude: 'archive' } as never)).toThrow()
+    expect(() => agentToolDescription({ exclude: ['archiv'] })).toThrow(/archiv/)
+    expect(() => agentToolDescription({ exclude: ['drift'] })).toThrow(/drift/)
+    expect(() => agentToolDescription({ include: ['list'] } as never)).toThrow(/include/)
+  })
+
+  it('refuses options that are not a plain object, instead of listing every verb', () => {
+    class Settings {
+      exclude = ['archive']
+    }
+    for (const bad of [new Map([['exclude', ['archive']]]), new Date(), new Settings(), ['archive'], null, 'archive']) {
+      expect(() => agentToolDescription(bad as never)).toThrow(/options must be a plain object/)
+    }
+  })
+
+  it('does not change agentTool', () => {
+    const before = JSON.stringify(agentTool)
+    agentToolDescription({ exclude: ['archive', 'review'] })
+    expect(JSON.stringify(agentTool)).toBe(before)
+    expect(Object.keys(agentTool).sort()).toEqual(['description', 'inputSchema', 'name'])
+    expect(agentTool.name).toBe('speclink')
+    expect(Object.isFrozen(agentTool)).toBe(true)
   })
 })

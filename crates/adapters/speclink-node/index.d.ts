@@ -747,6 +747,31 @@ export const agentTool: {
   readonly inputSchema: Readonly<Record<string, unknown>>
 }
 
+export interface AgentToolDescriptionOptions {
+  /**
+   * The verbs to leave out of the verb list, each as its words with one space
+   * between them (`'archive'`, `'review'`, `'discuss archive'`). An item
+   * leaves out every verb whose words start with its words: `'review'`
+   * leaves out `review show`, `review add-round`, `review stamp` and
+   * `review discard`, and `'archive'` keeps `discuss archive`. An item that
+   * leaves out no verb of the list throws, naming it; the verbs that need a
+   * checkout are not in the list. A value that is not an array of strings
+   * throws.
+   */
+  exclude?: string[]
+}
+
+/**
+ * The `speclink` tool's description with only the verbs your host opens:
+ * the same usage text and the same lines as `agentTool.description`, without
+ * the lines `options.exclude` leaves out. Without options, or with an empty
+ * `exclude`, it equals `agentTool.description`. An option other than
+ * `exclude` throws, and so do options that are not a plain object. It
+ * changes nothing on `agentTool`; your `beforeCommand` hook still decides
+ * which verbs run.
+ */
+export function agentToolDescription(options?: AgentToolDescriptionOptions): string
+
 /**
  * Every command name `beforeCommand` and a store port's `commit` can be
  * given, each once: the engine's commands, and the host kit's own seven:
@@ -807,7 +832,10 @@ export interface ConformanceReport {
  */
 export function runStoreConformance(harness: ConformanceHarness): Promise<ConformanceReport>
 
-/** The render matrix: target × invocation × specInCheckout. */
+/**
+ * The render matrix: target × invocation × specInCheckout, and the host's
+ * limits (`skills`, `checkout`).
+ */
 export interface RenderOptions {
   target: 'claude' | 'codex' | 'copilot' | 'pi' | 'cursor' | 'neutral'
   /** How the harness executes speclink verbs. Default: `'cli'`. */
@@ -824,6 +852,25 @@ export interface RenderOptions {
   specDir?: string
   /** Neutral target only: the harness name (`{{TOOL}}` substitution). Default: `"speclink"`. */
   toolName?: string
+  /**
+   * The skills your harness provides, by name (`['discuss', 'propose']`;
+   * `skills.list()` has the names). Absent: every skill. Given: the rendered
+   * skill starts with a `## Harness limits` section that lists these skills
+   * and tells the model not to load or suggest any other skill. Throws when
+   * it is not an array of strings, is empty, has a name the engine does not
+   * have, or does not include the skill being rendered. A key that holds
+   * `undefined` throws too: leave the key out for every skill.
+   */
+  skills?: string[]
+  /**
+   * Whether the harness has a checkout of the code and its git history.
+   * Default: `true`. `false` adds an item to `## Harness limits` that tells
+   * the model to skip the steps that read code or run git, and makes an
+   * omitted `specInCheckout` false; `specInCheckout: true` with it throws.
+   * A value that is not a boolean throws, `undefined` included: leave the
+   * key out for the default.
+   */
+  checkout?: boolean
 }
 
 export interface SkillInfo {
@@ -837,7 +884,8 @@ export const skills: {
   /**
    * Render one skill's SKILL.md content for a matrix point — identical to
    * what `speclink init` (or `speclink init --store remote`, for
-   * `specInCheckout: false`) generates for equivalent parameters.
+   * `specInCheckout: false`) generates for equivalent parameters. A key that
+   * is not one of `RenderOptions` throws, naming the key and the valid keys.
    */
   render(name: string, options: RenderOptions): string
 }

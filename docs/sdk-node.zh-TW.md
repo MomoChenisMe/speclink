@@ -17,7 +17,7 @@ SDK 是這個工具箱的名字。裡面有四樣東西：
 | 東西 | 做什麼 | 你用到的名稱 |
 | --- | --- | --- |
 | 引擎 | 執行動詞：讀規格、跑流程、交出要寫入的內容 | `createEngine`、`skills` |
-| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool`、`commandNames` |
+| 宿主套件 | 給宿主的那一層：每次呼叫帶身分與範圍、兩個掛鉤、兩個入口 | `createHost`、`agentTool`、`agentToolDescription`、`commandNames` |
 | 儲存接口的契約 | 你要實作的三個函式與它們的規則 | `StorePort`（型別）、`StoreConflictError`、`StoreUnavailableError` |
 | 合格測試 | 檢查你的三個函式符不符合契約 | `runStoreConformance` |
 
@@ -464,11 +464,12 @@ const result = await host.dispatch({
 - **身分與範圍由你的程式給。** 它們不在 `argv` 裡，模型改不到。空的身分或範圍會在呼叫儲存之前以 `invalid_argv` 拒絕。
 - **動詞、`stdin` 的規則、回傳值與錯誤**和[在本機專案上執行動詞](#local-project)的 `dispatch` 相同。
 - **`agentTool`** 是現成的工具定義，不用自己寫給模型看的說明：`name` 是 `speclink`，`description` 列出全部可用的動詞（和解析用的是同一份定義；需要 checkout 的動詞不在裡面），`inputSchema` 只有 `argv` 與選填的 `stdin`。
+- **`agentToolDescription(options)`** 產生同一份說明，但只列你開放的動詞。`options.exclude` 列出不要出現的動詞，每個動詞寫成它的字、字與字之間一個空格：`['archive', 'review', 'discuss archive']`。一項會拿掉「開頭的字和它相同」的每一個動詞：`review` 拿掉 `review show`、`review add-round`、`review stamp` 與 `review discard`，但 `archive` 不會拿掉 `discuss archive`。用法說明與其他各行不變。不帶參數、或 `exclude` 是空陣列時，結果就是 `agentTool.description`。下列情況會拋出錯誤：參數不是一般的物件；`exclude` 不是字串陣列（`exclude` 這個鍵的值是 `undefined` 也會報錯）；某一項在清單裡一個動詞都拿不掉（訊息會指出那一項；需要 checkout 的動詞，例如 `drift`，本來就不在清單裡，所以也會報錯）；`exclude` 以外的選項。這份說明只是告訴模型能用哪些動詞，哪些動詞能執行仍然由你的 `beforeCommand` 掛鉤決定。
 - **回傳的文字不會指向本機路徑。** 文件存在你的儲存裡，不在資料夾裡。所以經 `host.dispatch` 執行 `new change` 時，`{ output }` 的文字沒有 `Path:` 那一行。`createEngine` 開本機專案時照舊會印那一行。
 - **結構化結果裡的 `path` 是儲存裡的鍵，不是檔案。** `discuss new` 與 `discuss promote` 回傳的是結構化的值，沒有文字；`new artifact --json` 也一樣。這些結果仍然帶著 `path` 這個鍵。要讀文件，請呼叫 `artifact cat`、`show` 或 `discuss show`。`agentTool` 的 `description` 也對模型說了同一件事，模型就不會去開那個路徑。
 
 ```js
-const { agentTool } = require('@speclink/engine')
+const { agentTool, agentToolDescription } = require('@speclink/engine')
 
 const speclinkTool = {
   name: agentTool.name,
@@ -482,6 +483,9 @@ const speclinkTool = {
     }
   },
 }
+
+// 你的 beforeCommand 會拒絕這幾個動詞，所以不讓模型在清單裡看到它們。
+const shortDescription = agentToolDescription({ exclude: ['archive', 'review', 'verify'] })
 ```
 
 **總覽畫面只要一次呼叫。** `list --json --detail` 回傳每個變更和它記下的狀態：兩個品質關卡、認領、分支與落地。不必對每個變更各呼叫一次 `show`，也不必在自己的程序裡呼叫 HTTP 入口：
@@ -773,8 +777,29 @@ const skillMd = skills.render('propose', {
 | `specInCheckout` | `true`（預設）、`false` | 規格在不在使用技能的那個 checkout 裡。內嵌的宿主與遠端專案傳 `false`：技能不會提到規格資料夾的路徑，也沒有對規格檔的 git 步驟 |
 | `specDir` | 字串 | 技能內文裡的規格目錄名，預設 `speclink` |
 | `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
+| `skills` | 技能名稱的陣列 | 你的 Agent 有的技能，例如 `['discuss', 'propose']`（名稱見 `skills.list()`）。技能的文字會在開頭之後多一段 `## Harness limits`：列出這些技能，並告訴模型不要載入別的技能，也不要叫使用者執行別的技能；步驟指到別的技能時，告訴使用者那一步由工程師在程式碼的 checkout 裡做。預設是全部的技能，沒有這一段 |
+| `checkout` | `true`（預設）、`false` | 你的 Agent 有沒有程式碼的 checkout 與 git 歷史。`false` 會在 `## Harness limits` 多一個項目：模型跳過讀程式碼檔、搜尋程式碼與執行 git 的步驟，只用 speclink 的動詞查證事實，並說明跳過了哪些步驟。`false` 也會讓省略的 `specInCheckout` 變成 `false` |
 
-沒有程式碼 checkout 的 Agent 用得到的是 `discuss`、`propose`、`ingest`、`archive`、`improve`、`analyze`、`trace` 這幾支。`apply`、`review`、`verify`、`quality`、`commit` 與 worktree 的技能需要程式碼的 checkout，交給工程師那一邊的工具。
+這兩個選項會多出 `## Harness limits` 這一段。`specInCheckout` 相同時，其餘的文字和不帶它們時相同。有一種情況會改到更多：`checkout: false` 而 `specInCheckout` 省略時，其餘的文字是 `specInCheckout: false` 的那一份。不帶 `skills`、而且 `checkout` 省略或是 `true` 時，文字和以前一樣，沒有這一段。下列的值會拋出錯誤，不會產生任何文字：
+
+- `skills` 不是字串陣列（`skills` 這個鍵的值是 `undefined` 也會報錯）、是空陣列、有 `skills.list()` 沒有的名稱（訊息會指出那個名稱），或不含你正在產生的那一支技能。
+- `checkout` 不是布林值（`'false'`、`null`，以及鍵的值是 `undefined` 也會報錯），或 `checkout: false` 和 `specInCheckout: true` 一起給（訊息會說兩個選項互相矛盾）。
+
+**行為變更：** `skills.render` 遇到不認得的選項鍵會拋出錯誤，訊息會指出那個鍵並列出合法的鍵。以前 `skills.render` 會忽略這種鍵，所以打錯的鍵名（`skils`）沒有作用，也不會報錯。
+
+沒有「提問工具」的選項。技能裡每一個用 `AskUserQuestion` 問使用者的步驟，都已經告訴模型：沒有這個工具時，用文字問同一個問題。
+
+```js
+// 有五支技能、沒有程式碼 checkout 的 Agent
+const discussMd = skills.render('discuss', {
+  target: 'neutral',
+  invocation: 'tool-call',
+  checkout: false, // specInCheckout 也跟著是 false
+  skills: ['discuss', 'trace', 'propose', 'ingest', 'analyze'],
+})
+```
+
+沒有程式碼 checkout 的 Agent 用得到的是 `discuss`、`propose`、`ingest`、`archive`、`improve`、`analyze`、`trace` 這幾支。`apply`、`review`、`verify`、`quality`、`commit` 與 worktree 的技能需要程式碼的 checkout，交給工程師那一邊的工具。把你的 Agent 有的技能傳給 `skills`，並傳 `checkout: false`。
 
 ## <a id="example"></a>完整範例
 

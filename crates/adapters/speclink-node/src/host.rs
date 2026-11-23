@@ -134,6 +134,13 @@ pub fn agent_tool_definition() -> serde_json::Value {
     serde_json::json!({ "name": tool.name, "description": tool.description, "inputSchema": tool.input_schema })
 }
 
+/// The `speclink` Agent tool's description without the verbs `exclude` names
+/// ([`speclink_verbs::tool::tool_description`]): index.js checks the options.
+#[napi(js_name = "agentToolDescription")]
+pub fn agent_tool_description(exclude: Vec<String>) -> Result<String> {
+    speclink_verbs::tool::tool_description(&exclude).map_err(Error::from_reason)
+}
+
 #[napi]
 impl Host {
     /// One verb for `identity` on `scope`, on a background thread. Resolves
