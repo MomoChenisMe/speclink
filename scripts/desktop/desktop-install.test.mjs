@@ -1,6 +1,7 @@
 // 本機安裝入口的斷言鏈（desktop-release spec「本機安裝的新鮮度斷言」）。
 // 覆蓋純函式部分：源碼版號讀取、--version 的引擎版號解析、版號斷言的失敗形狀，
-// 以及 --install 的平台限定與簽章環境變數檢查。實際建置與安裝為手動驗證。
+// --install 的平台限定與簽章環境變數檢查，以及程式碼簽章身分的選擇與簽章結果的判斷。
+// 實際建置、安裝與 security／codesign 的呼叫為手動驗證。
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -9,9 +10,12 @@ import { fileURLToPath } from 'node:url';
 
 import {
   assertSameEngineVersion,
+  chooseSigningIdentity,
+  developerIdIdentity,
   engineVersionOf,
   missingSigningEnv,
   preflight,
+  signatureProblem,
   sourceAssetVersion,
 } from './desktop-install.mjs';
 
@@ -87,4 +91,139 @@ test('preflight：macOS 且簽章 env 齊備即通過（帶不帶 --install 皆�
 
 test('preflight：不帶 --install 時平台不設限（建置步驟平台中立）', () => {
   assert.doesNotThrow(() => preflight({ env: SIGNED, platform: 'linux', install: false }));
+});
+
+// security find-identity -v -p codesigning 的輸出形狀（身分名稱為虛構）。
+const DEVELOPER_ID = 'Developer ID Application: Acme Inc (A1B2C3D4E5)';
+const findIdentity = (...names) =>
+  [
+    ...names.map((name, i) => `  ${i + 1}) ${String(i + 1).repeat(40)} "${name}"`),
+    `     ${names.length} valid identities found`,
+    '',
+  ].join('\n');
+
+test('developerIdIdentity：只有一張 Developer ID 時回傳它', () => {
+  assert.equal(developerIdIdentity(findIdentity(DEVELOPER_ID)), DEVELOPER_ID);
+});
+
+test('developerIdIdentity：兩張 Developer ID 時回傳第一張', () => {
+  const second = 'Developer ID Application: Globex LLC (Z9Y8X7W6V5)';
+  assert.equal(developerIdIdentity(findIdentity(DEVELOPER_ID, second)), DEVELOPER_ID);
+});
+
+test('developerIdIdentity：只有 Apple Development 身分時回傳 null', () => {
+  assert.equal(
+    developerIdIdentity(findIdentity('Apple Development: dev@example.com (Q1W2E3R4T5)')),
+    null,
+  );
+});
+
+test('developerIdIdentity：0 valid identities found 與空字串回傳 null', () => {
+  assert.equal(developerIdIdentity('     0 valid identities found\n'), null);
+  assert.equal(developerIdIdentity(''), null);
+});
+
+const AD_HOC_NOTE = '找不到 Developer ID Application 憑證，這次以 ad-hoc 簽章建置；重裝後鑰匙圈會重新詢問';
+
+/// 記錄是否被呼叫的假 lookup。
+function fakeLookup(result) {
+  const lookup = () => {
+    lookup.called = true;
+    if (result instanceof Error) throw result;
+    return result;
+  };
+  lookup.called = false;
+  return lookup;
+}
+
+test('chooseSigningIdentity：非 macOS 不查找，也沒有說明', () => {
+  const lookup = fakeLookup(findIdentity(DEVELOPER_ID));
+  assert.deepEqual(chooseSigningIdentity({ env: {}, platform: 'linux', lookup }), {
+    identity: null,
+    note: null,
+  });
+  assert.equal(lookup.called, false);
+});
+
+test('chooseSigningIdentity：APPLE_SIGNING_IDENTITY 有值時用它，不查找鑰匙圈', () => {
+  const lookup = fakeLookup(findIdentity(DEVELOPER_ID));
+  const env = { APPLE_SIGNING_IDENTITY: 'Developer ID Application: Globex LLC (Z9Y8X7W6V5)' };
+  assert.deepEqual(chooseSigningIdentity({ env, platform: 'darwin', lookup }), {
+    identity: env.APPLE_SIGNING_IDENTITY,
+    note: null,
+  });
+  assert.equal(lookup.called, false);
+});
+
+test('chooseSigningIdentity：查找到 Developer ID 時用它', () => {
+  const lookup = fakeLookup(findIdentity(DEVELOPER_ID));
+  assert.deepEqual(chooseSigningIdentity({ env: {}, platform: 'darwin', lookup }), {
+    identity: DEVELOPER_ID,
+    note: null,
+  });
+  assert.equal(lookup.called, true);
+});
+
+test('chooseSigningIdentity：沒有 Developer ID 時以 ad-hoc 建置並說明', () => {
+  const lookup = fakeLookup('     0 valid identities found\n');
+  assert.deepEqual(chooseSigningIdentity({ env: {}, platform: 'darwin', lookup }), {
+    identity: null,
+    note: AD_HOC_NOTE,
+  });
+});
+
+test('chooseSigningIdentity：查找丟錯時以 ad-hoc 建置，說明附上錯誤訊息', () => {
+  const lookup = fakeLookup(new Error('security find-identity -v -p codesigning 以非零結束（1）'));
+  const { identity, note } = chooseSigningIdentity({ env: {}, platform: 'darwin', lookup });
+  assert.equal(identity, null);
+  assert.ok(note.startsWith(AD_HOC_NOTE), note);
+  assert.match(note, /以非零結束（1）/);
+});
+
+// codesign -dv 印在 stderr 的形狀（身分名稱為虛構）。
+const SIGNED_CLI = [
+  'Executable=/Applications/Speclink.app/Contents/MacOS/speclink',
+  'Identifier=speclink',
+  'Format=Mach-O thin (arm64)',
+  'CodeDirectory v=20500 size=96536 flags=0x10000(runtime) hashes=3013+7 location=embedded',
+  'Signature size=9046',
+  `Authority=${DEVELOPER_ID}`,
+  'Authority=Developer ID Certification Authority',
+  'Authority=Apple Root CA',
+  'Info.plist=not bound',
+  'TeamIdentifier=A1B2C3D4E5',
+  'Sealed Resources=none',
+  '',
+].join('\n');
+const AD_HOC_CLI = [
+  'Executable=/Applications/Speclink.app/Contents/MacOS/speclink',
+  'Identifier=speclink-9973c961f6bb5a30',
+  'Format=Mach-O thin (arm64)',
+  'CodeDirectory v=20400 size=96536 flags=0x20002(adhoc,linker-signed) hashes=3013+0 location=embedded',
+  'Signature=adhoc',
+  'Info.plist=not bound',
+  'TeamIdentifier=not set',
+  'Sealed Resources=none',
+  '',
+].join('\n');
+
+test('signatureProblem：帶 Team ID 的 Developer ID 簽章回傳 null', () => {
+  assert.equal(signatureProblem(SIGNED_CLI), null);
+});
+
+test('signatureProblem：ad-hoc 且 TeamIdentifier=not set 時回傳原因與原始輸出', () => {
+  const problem = signatureProblem(AD_HOC_CLI);
+  assert.notEqual(problem, null);
+  assert.ok(problem.includes('Identifier=speclink-9973c961f6bb5a30'), problem);
+});
+
+test('signatureProblem：有 Team ID 但同時是 ad-hoc 時不通過', () => {
+  assert.notEqual(signatureProblem(`${SIGNED_CLI}Signature=adhoc\n`), null);
+});
+
+test('signatureProblem：沒有 TeamIdentifier 行時不通過', () => {
+  const output = 'path/to/speclink: code object is not signed at all\n';
+  const problem = signatureProblem(output);
+  assert.notEqual(problem, null);
+  assert.ok(problem.includes('code object is not signed at all'), problem);
 });

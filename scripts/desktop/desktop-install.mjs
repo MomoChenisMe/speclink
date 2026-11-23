@@ -7,6 +7,10 @@
 // 用法：node scripts/desktop/desktop-install.mjs [--install]
 //   無旗標：建置並斷言 bundle 內 CLI 的引擎版號等於源碼版號
 //   --install：續行覆蓋安裝 /Applications/Speclink.app 並再斷言一次（僅 macOS）
+//
+// 程式碼簽章身分（僅 macOS）依序取自：環境變數 APPLE_SIGNING_IDENTITY → 鑰匙圈裡第一張
+// 「Developer ID Application」憑證 → 都沒有就 ad-hoc（重裝後鑰匙圈會重新詢問）。有身分時
+// 只交給 tauri bundle，並斷言 bundle 內的 CLI 帶 Team ID、不是 ad-hoc；只簽章，不公證。
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync, renameSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -62,6 +66,43 @@ export function preflight({ env, platform, install }) {
   }
 }
 
+/// `security find-identity -v -p codesigning` 列出的第一個 Developer ID Application
+/// 身分（引號內的完整名稱）。只認這一種：它和正式版是同一個 Team 的身分。
+export function developerIdIdentity(findIdentityOutput) {
+  return findIdentityOutput.match(/"(Developer ID Application:[^"]+)"/)?.[1] ?? null;
+}
+
+const AD_HOC_NOTE =
+  '找不到 Developer ID Application 憑證，這次以 ad-hoc 簽章建置；重裝後鑰匙圈會重新詢問';
+
+/// 這次建置的程式碼簽章身分：環境變數優先，其次鑰匙圈的 Developer ID，都沒有就
+/// ad-hoc。查找失敗不停止——ad-hoc 就是改動前的行為，版號斷言照常把關。
+/// `lookup` 回傳 `security find-identity` 的輸出，失敗時丟錯。
+export function chooseSigningIdentity({ env, platform, lookup }) {
+  if (platform !== 'darwin') return { identity: null, note: null };
+  if (env.APPLE_SIGNING_IDENTITY) return { identity: env.APPLE_SIGNING_IDENTITY, note: null };
+  let output;
+  try {
+    output = lookup();
+  } catch (error) {
+    return { identity: null, note: `${AD_HOC_NOTE}（${error.message}）` };
+  }
+  const identity = developerIdIdentity(output);
+  return { identity, note: identity ? null : AD_HOC_NOTE };
+}
+
+/// 簽章斷言：`codesign -dv` 的輸出必須帶 Team ID 且不是 ad-hoc，符合時回傳 null，
+/// 不符時回傳要印的原因（附原始輸出）。不比對 Team ID 是哪一個：環境變數可能給
+/// 的是 SHA-1 雜湊，無從對照。
+export function signatureProblem(codesignOutput) {
+  const team = codesignOutput.match(/^TeamIdentifier=(.*)$/m)?.[1].trim();
+  const reasons = [];
+  if (!team || team === 'not set') reasons.push('沒有 Team ID');
+  if (/^Signature=adhoc$/m.test(codesignOutput)) reasons.push('是 ad-hoc 簽章');
+  if (reasons.length === 0) return null;
+  return `bundle 內的 CLI ${reasons.join('、')}，沒有簽上程式碼簽章身分——codesign -dv 的輸出：\n${codesignOutput.trim()}`;
+}
+
 /// spawnSync 的失敗形狀收攏：spawn 本身失敗（ENOENT、權限）與被訊號收束時
 /// status 為 null，不能一律報成「非零結束（null）」而丟掉真正的原因。
 function checkSpawn(result, command, args) {
@@ -105,22 +146,39 @@ function main(argv) {
   );
   console.log(`來源：${branch} @ ${head}${dirty ? '（工作樹有未提交變更）' : '（工作樹乾淨）'}`);
   console.log(`源碼引擎版號：${expected}`);
+  // 固定的簽章身分讓鑰匙圈的「永遠允許」在重裝之後仍然有效；ad-hoc 每次重建都是新程式。
+  const { identity, note } = chooseSigningIdentity({
+    env: process.env,
+    platform: process.platform,
+    lookup: () => capture('security', ['find-identity', '-v', '-p', 'codesigning']),
+  });
+  if (identity) console.log(`簽章身分：${identity}`);
+  else if (note) console.log(note);
 
   // (2) sidecar 永遠重建：src-tauri/binaries/ 殘留的舊 CLI 會被 externalBin 靜默
   // 打包，那正是 2026-08-05 裝進 v1.11 引擎的路徑。
   run('node', ['scripts/desktop/desktop-sidecar.mjs']);
 
-  // (3) 前端建置與 bundle（簽章 env 已於 preflight 驗過）。
+  // (3) 前端建置與 bundle（updater 簽章 env 已於 preflight 驗過）。程式碼簽章身分只交給
+  // tauri bundle，由它簽 app 與 sidecar CLI。
   run('npm', ['run', 'build', '-w', 'apps/desktop']);
-  run('npm', ['run', '-w', 'apps/desktop', 'tauri', '--', 'build', '--bundles', 'app']);
+  run('npm', ['run', '-w', 'apps/desktop', 'tauri', '--', 'build', '--bundles', 'app'], {
+    env: identity ? { ...process.env, APPLE_SIGNING_IDENTITY: identity } : process.env,
+  });
 
   // (4) 第一道斷言：打包進去的 CLI 是不是這棵樹的。
-  assertSameEngineVersion(
-    'bundle 內的 CLI',
-    engineVersionOfBinary(path.join(BUNDLE_APP, SIDECAR_IN_APP)),
-    expected,
-  );
+  const bundleCli = path.join(BUNDLE_APP, SIDECAR_IN_APP);
+  assertSameEngineVersion('bundle 內的 CLI', engineVersionOfBinary(bundleCli), expected);
   console.log(`✓ bundle 內的 CLI 引擎版號為 ${expected}`);
+  // 簽章斷言：不信任「給了身分就會簽」。codesign -dv 的資訊在 stderr；沒簽過的檔案
+  // 以非零結束，輸出照樣交給 signatureProblem 說明，不當成 codesign 本身失敗。
+  if (identity) {
+    const signed = spawnSync('codesign', ['-dv', bundleCli], { encoding: 'utf8' });
+    if (signed.error) throw new Error(`codesign -dv 無法執行：${signed.error.message}`);
+    const problem = signatureProblem(signed.stderr);
+    if (problem) throw new Error(problem);
+    console.log('✓ bundle 內的 CLI 帶 Team ID、不是 ad-hoc 簽章');
+  }
 
   if (!install) {
     console.log(`建置完成：${path.relative(ROOT, BUNDLE_APP)}（加 --install 覆蓋安裝）`);

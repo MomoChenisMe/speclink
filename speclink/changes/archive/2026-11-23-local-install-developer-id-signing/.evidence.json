@@ -1,0 +1,28 @@
+{
+  "version": 2,
+  "change": "local-install-developer-id-signing",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 在 scripts/desktop/desktop-install.test.mjs 先加會失敗的測試，再在 scripts/desktop/desktop-install.mjs 匯出 `developerIdIdentity(findIdentityOutput)`：從 `security find-identity -v -p codesigning` 的輸出回傳第一個以「Developer ID Application:」開頭的身分名稱（引號內的完整字串），沒有時回傳 null。測試案例：只有一張 Developer ID（回傳它）、兩張 Developer ID（回傳第一張）、只有「Apple Development」身分（null）、`0 valid identities found`（null）、空字串（null）。驗證：node --test scripts/desktop/desktop-install.test.mjs 通過",
+      "files": [
+        "scripts/desktop/desktop-install.mjs",
+        "scripts/desktop/desktop-install.test.mjs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M84CG9GZ2C6NSSNMCG4W8MWK",
+      "taskDesc": "1.1 在 scripts/desktop/desktop-install.test.mjs 先加會失敗的測試，再在 scripts/desktop/desktop-install.mjs 匯出 `developerIdIdentity(findIdentityOutput)`：從 `security find-identity -v -p codesigning` 的輸出回傳第一個以「Developer ID Application:」開頭的身分名稱（引號內的完整字串），沒有時回傳 null。測試案例：只有一張 Developer ID（回傳它）、兩張 Developer ID（回傳第一張）、只有「Apple Development」身分（null）、`0 valid identities found`（null）、空字串（null）。驗證：node --test scripts/desktop/desktop-install.test.mjs 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "7809f277317f3006df2880a97155eb7aeb61d614",
+      "touchedFiles": [
+        "scripts/desktop/desktop-install.mjs",
+        "scripts/desktop/desktop-install.test.mjs"
+      ],
+      "recordedAt": "2026-11-23T14:26:26Z"
+    }
+  ]
+}
