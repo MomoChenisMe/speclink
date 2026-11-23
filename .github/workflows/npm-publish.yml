@@ -165,17 +165,19 @@ jobs:
           # 不一定相同，formula 指的是 registry 那份，所以不能拿本次 pack 的算。這裡直接抓 tarball、
           # 不用 npm pack：npm pack 要先讀 packument，formula 卻用不到它；v0.11.0、v0.12.0 的
           # npm pack 都對 cli-linux-arm64 連續失敗五分鐘（當時錯誤訊息被丟掉，原因未明），事後才取得到。
+          # 改用 curl 之後，v0.15.0、v0.17.0 的 cli-linux-arm64 仍在五分鐘內取不到、事後才取得到；
+          # v0.16.0 的 server 子套件發出後約十四分鐘才查得到。所以最多等二十分鐘。
           if [ -n "$SUMS_ARTIFACT" ]; then
             mkdir -p registry-tarballs
             for tgz in tarballs/*.tgz; do
               name="$(pkg_field "$tgz" name)"
               url="https://registry.npmjs.org/$name/-/${name##*/}-$EXPECTED.tgz"
               fetched=""
-              for _ in $(seq 1 30); do
+              for _ in $(seq 1 120); do
                 if curl -fsSL --max-time 120 "$url" -o "registry-tarballs/$(basename "$tgz")"; then fetched=1; break; fi
                 sleep 10
               done
-              [ -n "$fetched" ] || { echo "::error::$name@$EXPECTED 五分鐘內無法自 registry 取回 tarball（$url）"; exit 1; }
+              [ -n "$fetched" ] || { echo "::error::$name@$EXPECTED 二十分鐘內無法自 registry 取回 tarball（$url）"; exit 1; }
             done
             (cd registry-tarballs && sha256sum *.tgz) > "$SUMS_ARTIFACT.txt"
             cat "$SUMS_ARTIFACT.txt"
