@@ -5,7 +5,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 
 # /release — 執行即發版
 
-這個技能把發版一次做完：守門 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push → 重裝本機 app → 清理編譯產物。
+這個技能把發版一次做完：守門 → README 對照 → 版號 → 更新日誌 → 停一次 → 寫檔 → commit／tag／push → 重裝本機 app → 清理編譯產物。
 唯一的不可逆點是 push；push 之前一定會停下來讓使用者點頭。
 
 **這是 repo 本地技能**：不進 ASSET_VERSION／golden／assets.lock，不隨 `speclink init`／`speclink update`
@@ -43,7 +43,29 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
   版號判定與日誌策展都只看這批 commit 的主旨與內文，不看其他來源。
 - 範圍為空（HEAD 就是上次 tag）：印出「上次 tag 之後沒有新 commit」並停止。
 
-## 3. 版號判定
+## 3. 對照三份 npm 套件的 README（不改檔）
+
+npm 頁面上的 README 只在發版時更新，所以每次發版前對照一次。沒有規格或守門測試管這三份 README：
+
+| 套件 | README | 要對照的內容 | 來源 |
+| --- | --- | --- | --- |
+| `@speclink/engine` | `crates/adapters/speclink-node/README.md` | 「What the package contains」表的名稱 | `crates/adapters/speclink-node/index.d.ts` 的每個 `export function`、`export const`、`export class` 都要在表裡，表裡的名稱也都要在檔裡找得到 |
+| | | 安裝條件（Node 版本、預建平台）、範例程式 | 套件 `package.json` 的 `engines`、`docs/sdk-node.md` |
+| `@speclink/cli` | `packages/cli-npm/README.md` | `--tools` 的工具清單與各工具的呼叫寫法、常用指令表、安裝條件 | `speclink init --help`、`speclink --help`、`packages/cli-npm/package.json` 的 `engines` |
+| `@speclink/server` | `packages/server-npm/README.md` | 環境變數表與預設值、健康檢查路由、安裝條件 | `packages/server-npm/bin/speclink-server.mjs`、`packages/server-npm/package.json` 的 `engines` |
+
+做法：
+
+1. 用第 2 節的範圍找出可能讓 README 過時的 commit：`git diff --name-only <上次 tag>..HEAD` 列出上表的來源檔時，那一份一定要對照；其餘 commit 讀主旨與封存變更的 proposal，判斷有沒有改到上表的內容。
+2. `@speclink/engine` 的名稱表每次都逐一比對，不看範圍。
+3. 每一份 README 寫成「相符」，或寫成「過時：哪一段、哪一筆 commit 造成」。
+4. 三份都相符就繼續第 4 節。有過時時列出來，用 AskUserQuestion 問「先修 README（建議）」或「照樣發版」：
+   - 先修：停止，不改任何檔。請使用者用另一個 `docs` commit 修好、push、等 CI 綠燈後再跑 `/release`。README 不能放進發版 commit：第 8 節的 commit 只帶固定的檔，第 1 節也要求工作樹乾淨、HEAD 的 CI 綠燈。
+   - 照樣發版：繼續第 4 節，第 6 節呈現草稿時再列一次過時的段落。
+
+這一節只讀檔與執行 `--help`，不改任何檔。
+
+## 4. 版號判定
 
 逐筆解析 conventional commit 的 type，取最高影響：
 
@@ -64,7 +86,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 - **建議而非決定**：判定結果連同理由（哪幾筆 commit 決定了這個等級）一起呈現；使用者可覆寫為任一合法的 `X.Y.Z`。
   使用者在輸入就給了版號時，仍印出判定結果供對照，但以使用者的為準。
 
-## 4. 更新日誌策展
+## 5. 更新日誌策展
 
 把範圍內的 commit 改寫成**使用者語氣的中英雙語條目**：每一條同時寫英文（`en`）與繁體中文（`zh-TW`），
 兩種寫法描述同一件事，不多不少。分三組（JSON 的 `kind`，標題由渲染端依語言決定）：
@@ -89,7 +111,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 7. **技術名詞保留原文**：兩種語言都直接寫 CLI、worktree、Tauri、slug、capability、server、npm 等，不硬翻。
 8. 沒有條目的分組不寫；不能只寫一種語言——兩種都寫齊才算一條。
 
-## 5. 停一次
+## 6. 停一次
 
 寫任何檔之前，呈現：
 
@@ -100,12 +122,13 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
   - en: `speclink plan` now shows the archive order.
     zh-TW: `speclink plan` 會標出封存順序。
   ```
-- 將被改動的檔案清單（見第 6 節）
+- 將被改動的檔案清單（見第 7 節）
+- 第 3 節選了「照樣發版」時，列出過時的 README 段落
 
 用 AskUserQuestion 等使用者點頭。使用者要改任一語言的條目文字或版號時，改完**重新呈現**整份雙語草稿再問一次；
 點頭之前工作樹零改動。
 
-## 6. 寫檔（順序固定，任一步失敗即停在該步）
+## 7. 寫檔（順序固定，任一步失敗即停在該步）
 
 設 `VERSION` 為點頭的版號、`DATE` 為當天（`YYYY-MM-DD`）：
 
@@ -127,7 +150,7 @@ description: "執行即發版——在乾淨的 main 上守門、判定版號、
 任一步失敗：印出失敗的步驟與原因，**不 commit**；已改的檔留在工作樹供使用者檢視，並提示
 `git checkout -- . && git clean -f CHANGELOG.md CHANGELOG.zh-TW.md` 可整批還原（兩份更新日誌已存在時只需前半句）。
 
-## 7. 提交、附註 tag、原子 push
+## 8. 提交、附註 tag、原子 push
 
 全部成功後：
 
@@ -147,7 +170,7 @@ git push --atomic origin main "vVERSION"
   ```
   不要自行 reset 或刪 tag。
 
-## 8. 收尾
+## 9. 收尾
 
 push 成功後依序做這四件事。順序固定：重裝會用到 release 版的編譯快取，所以清理一定排在重裝之後。
 
