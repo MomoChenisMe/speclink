@@ -10,9 +10,10 @@
 //! function never exports a whole scope: it lists only the prefix it needs,
 //! and it reads a batch of documents in one call.
 
-use crate::port_view::{archived_doc_key, parse_key, spec_capability, KeyKind};
+use crate::port_view::{archived_doc_key, parse_key, spec_capability, KeyKind, PortView};
 use speclink_core::config::WorkflowConfig;
-use speclink_core::model::{ChangeMeta, META_READ_ORDER};
+use speclink_core::model::ChangeMeta;
+use speclink_core::listing::ListArchivedOutcome;
 use speclink_core::station::{self, ArchivedOutcome, Station, StationStatus, REVIEW, VERIFY};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_protocol::context::{ContextDocument, ContextSnapshot, ContextSnapshotRequest};
@@ -296,77 +297,50 @@ pub fn spec_document(
     Ok((SpecDocumentResponse { content }, version))
 }
 
-/// Every archived change, newest name first, with its task counts, spec
-/// count and creator — one list of the archive and one read of every
-/// change's task list and data file.
+/// Every archived change, newest name first: the Engine's archived list
+/// ([`speclink_core::listing::archived_json`]) on a view of the store, in the
+/// wire shape — one list of the archive and one read of every change's data
+/// file, task list and tickets. The version is the archive listing's, taken
+/// before any document was read.
 pub fn archived_list(
     port: &dyn StorePort,
     scope: &ScopeId,
 ) -> Result<(ArchivedListResponse, Version), DocumentsError> {
-    let listing = port.list(scope, &prefix(keys::ARCHIVED_CHANGES))?;
-    // Each archived change and the paths of its documents.
-    let mut changes: BTreeMap<&str, Vec<&str>> = BTreeMap::new();
-    let mut wanted = Vec::new();
-    for entry in &listing.entries {
-        if let Some(KeyKind::ArchivedChangeDoc { dated_name, doc }) = parse_key(entry.key.as_str())
-        {
-            changes.entry(dated_name).or_default().push(doc);
-            if doc == "tasks.md" || META_READ_ORDER.contains(&doc) {
-                wanted.push(entry.key.clone());
-            }
-        }
-    }
-    let docs = read_all(port, scope, wanted)?;
-    let text = |dated_name: &str, doc: &str| {
-        archived_doc_key(dated_name, doc)
-            .and_then(|key| docs.get(&key))
-            .map(|doc| doc.content.as_str())
-    };
-
-    let archived = changes
-        .iter()
-        .rev()
-        .map(|(dated_name, paths)| {
-            let (date, name) = split_dated_name(dated_name);
-            let tasks = text(dated_name, "tasks.md").map(|text| {
-                let parsed = speclink_core::tasks::parse(text);
-                let (total, done, _) = speclink_core::tasks::progress(&parsed);
-                (total, done)
-            });
-            let meta = META_READ_ORDER
-                .into_iter()
-                .find_map(|doc| text(dated_name, doc));
-            let meta = ChangeMeta::from_text(meta).unwrap_or_default();
-            // How a station ended: its ticket archived with the change, or a
-            // stamp, or nothing. The paths are the ones already listed.
-            let outcome = |st: &Station| {
-                let stamped = station::is_stamped(meta.anchors(st));
-                match ArchivedOutcome::of(paths.contains(&st.doc), stamped) {
-                    ArchivedOutcome::None => StationOutcome::None,
-                    ArchivedOutcome::Stamped => StationOutcome::Stamped,
-                    ArchivedOutcome::NotPassed => StationOutcome::NotPassed,
-                }
-            };
-            ArchivedItem {
-                review_outcome: Some(outcome(&REVIEW)),
-                verify_outcome: Some(outcome(&VERIFY)),
-                dated_name: dated_name.to_string(),
-                date: date.to_string(),
-                name: name.to_string(),
-                tasks_total: tasks.map(|counts| counts.0),
-                tasks_done: tasks.map(|counts| counts.1),
-                spec_count: paths
-                    .iter()
-                    .filter(|p| spec_capability(p).is_some())
-                    .count(),
-                from_discussions: meta.from_discussions(),
-                created_by: meta.created_by,
-                // From the archived data file this list already read.
-                fields: meta.fields,
-            }
+    let view = PortView::new(port, scope.clone());
+    let items = speclink_core::listing::archived_json(&view);
+    let version = view.listed_version();
+    // A store failure made the view answer "no document": the list means
+    // nothing then. A read writes nothing, so there is no op.
+    view.into_ops()?;
+    let version = version.expect("the archived list lists the archive before it reads");
+    let archived = items
+        .into_iter()
+        .map(|item| ArchivedItem {
+            review_outcome: Some(station_outcome(item.review_outcome)),
+            verify_outcome: Some(station_outcome(item.verify_outcome)),
+            dated_name: item.dated_name,
+            date: item.date,
+            name: item.name,
+            tasks_total: item.tasks_total,
+            tasks_done: item.tasks_done,
+            spec_count: item.delta_capabilities.len(),
+            created_by: item.created_by,
+            from_discussions: item.from_discussions,
+            fields: item.fields,
+            delta_capabilities: item.delta_capabilities,
         })
         .collect();
-    Ok((ArchivedListResponse { archived }, listing.version))
+    Ok((ArchivedListResponse { archived }, version))
+}
+
+/// The wire outcome of an archived list item's outcome.
+fn station_outcome(outcome: ListArchivedOutcome) -> StationOutcome {
+    match outcome {
+        ListArchivedOutcome::Known(ArchivedOutcome::None) => StationOutcome::None,
+        ListArchivedOutcome::Known(ArchivedOutcome::Stamped) => StationOutcome::Stamped,
+        ListArchivedOutcome::Known(ArchivedOutcome::NotPassed) => StationOutcome::NotPassed,
+        ListArchivedOutcome::Other(text) => StationOutcome::Unknown(text),
+    }
 }
 
 /// One document of an archived change and the scope version.
@@ -432,8 +406,8 @@ pub struct ChangeExtras {
 }
 
 /// The [`ChangeExtras`] of each named change, in one read: each change's
-/// data file and its two tickets go into the same read, so the stations cost
-/// no store call. A name with no data file, or one that does not parse, has
+/// data file and its two tickets go into the same read, so the stations and
+/// the rounds of an open ticket cost no store call. A name with no data file, or one that does not parse, has
 /// no entry: the Engine already reports a broken data file, and the list
 /// must not fail on it.
 pub fn change_extras(
@@ -458,7 +432,8 @@ pub fn change_extras(
         .filter_map(|(name, key, [review, verify])| {
             let meta = ChangeMeta::from_text(Some(&docs.get(&key)?.content)).ok()?;
             let status = |st: &Station, ticket: Option<DocKey>| {
-                station::status(st, &meta, ticket.is_some_and(|key| docs.contains_key(&key)))
+                let ticket = ticket.and_then(|key| docs.get(&key)).map(|doc| station::OpenTicket::of(st, &doc.content));
+                station::status(st, &meta, ticket)
             };
             let (review, verify) = (status(&REVIEW, review), status(&VERIFY, verify));
             Some((name.clone(), ChangeExtras { meta, review, verify }))
@@ -752,27 +727,6 @@ pub fn context_snapshot(
 
 // --- text helpers ---
 
-/// The date and the name of an archived change, by the rule the archived
-/// list has always answered with: a `-` at bytes 4, 7 and 10, digits not
-/// checked, and no date at all when the name does not fit. It is lenient on
-/// purpose and differs from `port_view::split_archived_stem`, the key
-/// contract's strict rule for archived discussions: changing this one would
-/// change the `date` and `name` the archived list returns.
-fn split_dated_name(dated_name: &str) -> (&str, &str) {
-    let bytes = dated_name.as_bytes();
-    if bytes.len() > 11
-        && bytes.get(4) == Some(&b'-')
-        && bytes.get(7) == Some(&b'-')
-        && bytes.get(10) == Some(&b'-')
-        && dated_name.is_char_boundary(10)
-        && dated_name.is_char_boundary(11)
-    {
-        (&dated_name[..10], &dated_name[11..])
-    } else {
-        ("", dated_name)
-    }
-}
-
 fn find_snippet(text: &str, query: &str) -> Option<String> {
     let haystack: Vec<char> = text.chars().collect();
     let folded_haystack: Vec<char> = haystack.iter().map(lower_first).collect();
@@ -811,9 +765,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn dated_names_and_capabilities_parse_fail_closed() {
-        assert_eq!(split_dated_name("2026-07-20-demo"), ("2026-07-20", "demo"));
-        assert_eq!(split_dated_name("demo"), ("", "demo"));
+    fn spec_capabilities_parse_fail_closed() {
         assert_eq!(spec_capability("specs/auth/spec.md"), Some("auth"));
         assert!(spec_capability("specs/nested/auth/spec.md").is_none());
     }

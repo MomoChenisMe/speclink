@@ -586,6 +586,132 @@ fn list_json_keeps_every_field_it_had() {
     );
 }
 
+// --- list --archived（archived-list-and-detail-reads）---
+
+const STAMPS: &str = "reviewed_at: 2026-11-20\nreviewed_tasks_total: 3\nreviewed_scope:\n  - path: src/a.rs\n    hash: 0f9c\nverified_at: 2026-11-21\nverified_tasks_total: 3\nverified_scope:\n  - path: src/a.rs\n    hash: 0f9c\n";
+
+/// One active change and the archived changes of spec verb-contract
+/// 「已封存變更的清單」.
+fn archived_docs() -> Vec<(String, String)> {
+    let archive = |dated: &str, doc: &str, text: &str| (format!("archive/changes/{dated}/{doc}"), text.to_string());
+    let mut docs: Vec<(String, String)> = listed().into_iter().map(|(k, v)| (k.to_string(), v.to_string())).collect();
+    docs.extend([
+        archive(
+            "2026-11-22-add-two",
+            ".meta.yaml",
+            &format!("schema: spec-driven\ncreated: 2026-11-01\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n{STAMPS}"),
+        ),
+        archive("2026-11-22-add-two", "tasks.md", "## 1. Group\n\n- [x] 1.1 One\n- [x] 1.2 Two\n- [x] 1.3 Three\n"),
+        archive("2026-11-22-add-two", "specs/auth/spec.md", "## ADDED Requirements\n"),
+        archive("2026-11-10-old-one", ".meta.yaml", "schema: spec-driven\n"),
+        archive("2026-11-15-open-verify", ".meta.yaml", "schema: spec-driven\nfields:\n  ticket: \"PROJ-1\"\n"),
+        archive("2026-11-15-open-verify", "verify.md", "# Verify — open-verify\n\n## Round 1\n"),
+        archive("2026-11-01-broken", ".meta.yaml", "schema: [unclosed\n"),
+        archive("2026-11-01-broken", "tasks.md", "## 1. Group\n\n- [x] 1.1 One\n- [ ] 1.2 Two\n"),
+    ]);
+    docs
+}
+
+fn as_refs(docs: &[(String, String)]) -> Vec<(&str, &str)> {
+    docs.iter().map(|(k, v)| (k.as_str(), v.as_str())).collect()
+}
+
+#[test]
+fn list_archived_json_is_the_same_in_both_modes() {
+    // 「列出已封存的變更」「帶著未結的工單封存」「metadata 無法解析的已封存變更」，
+    // 以及「三種執行方式輸出相同」的本機與遠端兩邊。
+    let docs = archived_docs();
+    let p = pair("list-archived", &as_refs(&docs));
+    let out = p.same_ok(&["list", "--archived", "--json"]);
+    let list = json_of(&out);
+    assert_eq!(list.as_object().unwrap().keys().collect::<Vec<_>>(), ["archived"], "no changes, no specs: {list}");
+    assert_eq!(
+        list["archived"],
+        serde_json::json!([
+            {
+                "datedName": "2026-11-22-add-two", "date": "2026-11-22", "name": "add-two",
+                "reviewOutcome": "stamped", "verifyOutcome": "stamped", "tasksTotal": 3, "tasksDone": 3,
+                "createdBy": "Ann <ann@example.com>", "fromDiscussions": ["two"], "deltaCapabilities": ["auth"],
+            },
+            {
+                "datedName": "2026-11-15-open-verify", "date": "2026-11-15", "name": "open-verify",
+                "reviewOutcome": "none", "verifyOutcome": "notPassed", "fields": { "ticket": "PROJ-1" },
+            },
+            {
+                "datedName": "2026-11-10-old-one", "date": "2026-11-10", "name": "old-one",
+                "reviewOutcome": "none", "verifyOutcome": "none",
+            },
+            {
+                "datedName": "2026-11-01-broken", "date": "2026-11-01", "name": "broken",
+                "reviewOutcome": "none", "verifyOutcome": "none", "tasksTotal": 2, "tasksDone": 1,
+            },
+        ])
+    );
+    // `--sort` does not change the order.
+    assert_eq!(stdout_of(&p.same_ok(&["list", "--archived", "--json", "--sort", "name"])), stdout_of(&out));
+    // 「用清單的名稱讀文件」.
+    let delta = p.same_ok(&["artifact", "cat", "specs/auth", "--change", "2026-11-22-add-two"]);
+    assert_eq!(stdout_of(&delta), "## ADDED Requirements\n");
+    p.assert_remote_read_no_local_store();
+}
+
+#[test]
+fn a_project_with_nothing_archived_lists_an_empty_archive_in_both_modes() {
+    let p = pair("list-archived-empty", &listed());
+    let out = p.same_ok(&["list", "--archived", "--json"]);
+    assert_eq!(stdout_of(&out), "{\n  \"archived\": []\n}\n");
+}
+
+#[test]
+fn list_archived_without_json_or_with_another_section_is_a_usage_error_in_both_modes() {
+    // 「不帶 --json 被拒絕」「與其他旗標並用被拒絕」.
+    let p = pair("list-archived-usage", &listed());
+    let alone = p.same(&["list", "--archived"]);
+    assert!(!alone.status.success());
+    assert!(alone.stdout.is_empty());
+    assert!(stderr_of(&alone).contains("--json"), "{}", stderr_of(&alone));
+    for other in ["--specs", "--changes", "--detail"] {
+        let out = p.same(&["list", "--archived", "--json", other]);
+        assert!(!out.status.success(), "{other}");
+        assert!(out.stdout.is_empty(), "{other}");
+        let stderr = stderr_of(&out);
+        assert!(stderr.contains("--archived") && stderr.contains(other), "{other}: {stderr}");
+    }
+}
+
+#[test]
+fn list_without_archived_is_the_same_with_and_without_an_archive() {
+    // 「不帶 --archived 時輸出不變」：同一個進行中的變更，有沒有已封存的變更，
+    // `list` 與 `list --json` 都逐位元相同。The server's clock is fixed, so the
+    // remote projects date the change the same way.
+    let docs = archived_docs();
+    let with = pair("list-with-archive", &as_refs(&docs));
+    let without = pair("list-without-archive", &listed());
+    for args in [&["list", "--no-color"][..], &["list", "--json"]] {
+        let (a, b) = (with.remote.run(args), without.remote.run(args));
+        assert!(a.status.success(), "{args:?}: {}", stderr_of(&a));
+        assert_eq!(stdout_of(&a), stdout_of(&b), "{args:?}");
+    }
+    assert!(!stdout_of(&with.fs.run(&["list", "--json"])).contains("archived"));
+}
+
+#[test]
+fn remote_list_archived_offline_fails_as_list_does() {
+    // 「離線時與不帶 --archived 相同地失敗」.
+    let port = {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("probe port");
+        listener.local_addr().expect("addr").port()
+    }; // the listener is dropped: the port now refuses connections
+    let url = format!("http://127.0.0.1:{port}/api/speclink/v1/projects/demo");
+    let p = TempProject::remote("list-archived-offline", &url);
+    let archived = p.run(&["list", "--archived", "--json"]);
+    let plain = p.run(&["list", "--json"]);
+    assert!(!archived.status.success());
+    assert_eq!(archived.status.code(), plain.status.code());
+    assert_eq!(stderr_of(&archived), stderr_of(&plain));
+    assert!(archived.stdout.is_empty(), "{}", stdout_of(&archived));
+}
+
 // --- 連到沒有新路由的舊版 Server ---
 
 #[test]

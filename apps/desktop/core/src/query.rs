@@ -94,7 +94,9 @@ pub fn list_changes_at(root: &Path) -> Value {
             // D5）與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故各判各的，
             // 共用同一份四態判定（[`station_view`]，remote 清單也走它）與同一個讀取根。
             for st in [&REVIEW, &VERIFY] {
-                let status = station::status(st, &c.meta, store.artifact_exists(&c.name, st.doc));
+                // The board shows no rounds: an open ticket is known by its existence alone.
+                let ticket = store.artifact_exists(&c.name, st.doc).then_some(station::OpenTicket { rounds: None });
+                let status = station::status(st, &c.meta, ticket);
                 let view = station_view(&status, &counts, Some(&read_file));
                 if let Some(item) = v.as_object_mut() {
                     put_station_fields(item, st, &status, view);

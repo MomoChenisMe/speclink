@@ -13,7 +13,7 @@ use crate::common::{
     worktree_overlay,
 };
 use crate::remote_base::{remote_resolve_change, RemoteCtx};
-use core::listing::{ListChangeJson, ListLandedJson};
+use core::listing::{ListArchivedJson, ListArchivedOutcome, ListChangeJson, ListLandedJson};
 use speclink_verbs::families::query::{ListArgs, ShowArgs, StatusArgs};
 use speclink_verbs::render::query as render;
 use speclink_verbs::{ToCommand, VerbInputs};
@@ -42,7 +42,7 @@ fn remote_list_outcome(
     specs: Option<Vec<protocol_query::SpecSummary>>,
 ) -> Result<core::command::ListOutcome> {
     let specs = specs.map(serde_json::to_value).transpose()?;
-    Ok(core::command::ListOutcome { changes, specs })
+    Ok(core::command::ListOutcome::Sections { changes, specs })
 }
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
     let (ws, store) = open_project()?;
@@ -62,10 +62,10 @@ pub(crate) fn cmd_status(a: StatusArgs) -> Result<()> {
     Ok(())
 }
 /// The wire summary reshaped into the core listing item — the same rendering
-/// path then keeps stdout byte-identical to fs mode. With `detail` the five
+/// path then keeps stdout byte-identical to fs mode. With `detail` the
 /// detail keys come from what the list response already carries, converted as
 /// the remote `show` converts them; a field the server did not send leaves its
-/// key out. Without it none of the five is read. A change the server reports
+/// key out. Without it none of them is read. A change the server reports
 /// with corrupt metadata gets none of them, whatever else the response says:
 /// the server is another program, so the rule is checked here too.
 fn to_list_change_json(c: &protocol_query::ChangeSummary, detail: bool) -> ListChangeJson {
@@ -91,12 +91,52 @@ fn to_list_change_json(c: &protocol_query::ChangeSummary, detail: bool) -> ListC
         }),
         branch: recorded.and_then(|c| c.branch.clone()),
         landed: recorded.and_then(|c| c.landed_commit.clone()).map(|commit| ListLandedJson { commit }),
+        created_by: recorded.and_then(|c| c.created_by.clone()),
+        from_discussions: recorded.map(|c| c.from_discussions.clone()).unwrap_or_default(),
         // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
         // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
         worktree: None,
     }
 }
+/// The wire archived item reshaped into the engine's: the same output function
+/// then prints what fs mode prints. A server that does not report an outcome
+/// reads as one with nothing recorded; one that does not report the delta
+/// capabilities leaves the key out.
+fn to_list_archived_json(item: protocol_query::ArchivedItem) -> ListArchivedJson {
+    fn outcome(outcome: Option<protocol_query::StationOutcome>) -> ListArchivedOutcome {
+        use core::station::ArchivedOutcome;
+        use protocol_query::StationOutcome;
+        match outcome {
+            None | Some(StationOutcome::None) => ListArchivedOutcome::Known(ArchivedOutcome::None),
+            Some(StationOutcome::Stamped) => ListArchivedOutcome::Known(ArchivedOutcome::Stamped),
+            Some(StationOutcome::NotPassed) => ListArchivedOutcome::Known(ArchivedOutcome::NotPassed),
+            Some(StationOutcome::Unknown(text)) => ListArchivedOutcome::Other(text),
+        }
+    }
+    ListArchivedJson {
+        dated_name: item.dated_name,
+        date: item.date,
+        name: item.name,
+        review_outcome: outcome(item.review_outcome),
+        verify_outcome: outcome(item.verify_outcome),
+        tasks_total: item.tasks_total,
+        tasks_done: item.tasks_done,
+        created_by: item.created_by,
+        from_discussions: item.from_discussions,
+        delta_capabilities: item.delta_capabilities,
+        fields: item.fields,
+    }
+}
 pub(crate) fn remote_list(ctx: &RemoteCtx, a: &ListArgs) -> Result<()> {
+    if a.archived {
+        // One request for the whole archive; the order is the engine's.
+        let mut archived: Vec<ListArchivedJson> =
+            ctx.client.archived_list()?.archived.into_iter().map(to_list_archived_json).collect();
+        archived.sort_by(|x, y| y.dated_name.cmp(&x.dated_name));
+        let list = core::command::ListOutcome::Archived(archived);
+        emit(render::list(&list, render_options(a.json)));
+        return Ok(());
+    }
     // 組出 fs 模式同一個 ListOutcome 再交給共用渲染：`--specs` 單獨給定時
     // changes 為 None，與引擎的 List outcome 同構。
     let specs_only = a.specs && !a.changes;

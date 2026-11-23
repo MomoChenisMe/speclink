@@ -492,6 +492,16 @@ const mine = changes.filter((change) => change.claimed?.byId === session.user.id
 
 A key appears only when the change has that record. For the keys and their rules, see [`speclink list --json --detail`](verb-contract.md#list-detail).
 
+**Other screens read through verbs too.** You do not call the HTTP entry point for any of these reads:
+
+| The screen shows | Call `host.dispatch` with | See |
+| --- | --- | --- |
+| The archived changes | `['list', '--archived', '--json']` | [`list --archived`](verb-contract.md#list-archived) |
+| A document of an archived change | `['artifact', 'cat', '<artifact>', '--change', '<datedName>']` | [`list --archived`](verb-contract.md#list-archived) |
+| The creator, the source discussions, and the rounds of an open station | `['list', '--json', '--detail']`, or `['show', '<change>', '--json', '--detail']` for one change | [`list --json --detail`](verb-contract.md#list-detail) |
+| The text of a review or verify ticket | `['review', 'show', '<change>', '--json', '--detail']` or `['verify', 'show', '<change>', '--json', '--detail']` | [The ticket text](verb-contract.md#ticket-detail) |
+| The changes a discussion was promoted to | `['discuss', 'list', '--json']` or `['discuss', 'show', '<slug>', '--json']` | [`promotedTo`](verb-contract.md#discussion-promoted-to) |
+
 **Free fields** are key-value pairs that the host defines. The engine stores them and does not interpret them. An example is the ticket that a change came from. `fields` is written only when the verb creates a change or a discussion (`new change`, `discuss new`, `discuss promote`), in the commit that creates it. All other verbs ignore it, so you can pass the same fields with each call. It has priority over a `--field` with the same key. `beforeCommand` sees the fields that will be written in `params.fields` and can check them. The rules: a key uses `a-z`, `0-9`, `_`, `.`, `-`, starts with a letter, and has 64 characters maximum; a value is one line of 1024 bytes maximum; the maximum is 32 keys. Fields that break the rules are refused with `invalid_argv`, and nothing is written. Do not put a secret in a field: each reader of the change can see it.
 
 **The host kit does not read git or your files.** For verbs that need local facts, your program collects the facts and passes them as input:

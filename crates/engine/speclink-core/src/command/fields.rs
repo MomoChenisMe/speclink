@@ -85,7 +85,9 @@ pub(super) fn run_discussion(
 
 #[cfg(test)]
 mod tests {
-    use crate::command::{execute, Command, CommandError, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext};
+    use crate::command::{
+        execute, Command, CommandError, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext, ListOutcome,
+    };
     use crate::fields::Fields;
     use crate::model::{ChangeMeta, ReviewedScopeEntry};
     use crate::plan::Side;
@@ -511,11 +513,13 @@ mod tests {
     // --- D5：讀取的結果帶出欄位（規格「自由欄位的讀取輸出」） ---
 
     fn list_items(store: &TestStore) -> Vec<serde_json::Value> {
-        let cmd = Command::List { sort: "name".to_string(), specs: false, changes: true, worktrees: Default::default(), detail: false };
+        let cmd = Command::List { sort: "name".to_string(), specs: false, changes: true, worktrees: Default::default(), detail: false, archived: false };
         let (outcome, events) = ok(store, cmd);
         assert!(events.is_empty());
-        let CommandOutcome::List(list) = outcome else { panic!("expected a list outcome") };
-        list.changes.expect("the changes section").iter().map(|item| serde_json::to_value(item).unwrap()).collect()
+        let CommandOutcome::List(ListOutcome::Sections { changes: Some(changes), .. }) = outcome else {
+            panic!("expected a list outcome with the changes section")
+        };
+        changes.iter().map(|item| serde_json::to_value(item).unwrap()).collect()
     }
 
     #[test]

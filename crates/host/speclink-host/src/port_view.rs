@@ -8,7 +8,7 @@
 //! together. A view lives for one command.
 
 use speclink_core::model::{Change, ChangeMeta, META_FILE, META_READ_ORDER};
-use speclink_core::store::{DiscussionDoc, Store};
+use speclink_core::store::{DiscussionDoc, DocRef, Store};
 use speclink_core::workspace::DEFAULT_SPEC_DIR;
 use speclink_protocol::query::BoardOrderDoc;
 use speclink_store_port::{
@@ -85,7 +85,7 @@ pub(crate) fn parse_key(key: &str) -> Option<KeyKind<'_>> {
 /// Split the stored name of an archived discussion into its creation date
 /// and the rest. `None` when the name does not start with `YYYY-MM-DD-`.
 /// This is the key contract's strict rule; the archived list answers with
-/// its own lenient rule (`documents::split_dated_name`), kept as it was.
+/// its own lenient rule (`speclink_core::listing::split_dated_name`), kept as it was.
 pub(crate) fn split_archived_stem(stem: &str) -> Option<(&str, &str)> {
     let date = stem.get(..10)?;
     let rest = stem.get(10..)?.strip_prefix('-')?;
@@ -183,6 +183,8 @@ struct State {
     base: BTreeMap<DocKey, Option<Version>>,
     /// The writes to commit, one per key; `None` is a delete.
     staged: BTreeMap<DocKey, Option<String>>,
+    /// The scope version the first listing reported.
+    listed_version: Option<Version>,
     /// The first failure the store reported.
     error: Option<PortError>,
 }
@@ -219,6 +221,13 @@ impl<'a> PortView<'a> {
             scope,
             state: RefCell::new(State::default()),
         }
+    }
+
+    /// The scope version of this view's first listing, or `None` when it
+    /// listed nothing. Every list reports the scope version, and a read
+    /// that follows the listing cannot be older than it.
+    pub(crate) fn listed_version(&self) -> Option<Version> {
+        self.state.borrow().listed_version
     }
 
     /// The staged writes in key order, or the failure the store reported
@@ -261,6 +270,7 @@ impl<'a> PortView<'a> {
         let key_prefix = KeyPrefix::new(prefix).expect("a fixed prefix follows the prefix format");
         match self.port.list(&self.scope, &key_prefix) {
             Ok(listing) => {
+                state.listed_version.get_or_insert(listing.version);
                 for entry in listing.entries {
                     state
                         .base
@@ -281,9 +291,10 @@ impl<'a> PortView<'a> {
             return;
         }
         let mut wanted: Vec<DocKey> = Vec::new();
+        // A batch can hold thousands of keys (the archived list's prefetch).
+        let mut seen: BTreeSet<&DocKey> = BTreeSet::new();
         for key in keys {
-            if state.read.contains_key(key) || state.staged.contains_key(key) || wanted.contains(key)
-            {
+            if state.read.contains_key(key) || state.staged.contains_key(key) || !seen.insert(key) {
                 continue;
             }
             if state.listed_as_absent(key) {
@@ -898,6 +909,33 @@ impl Store for PortView<'_> {
         Ok(Some(file))
     }
 
+    // --- read batching ---
+
+    /// One store read for every document of `docs` this view has not read
+    /// yet. A key under a prefix this view already listed, and not in that
+    /// listing, is not read: it is known to be absent. Each kind makes the
+    /// keys of its read method, so the read that follows answers from memory.
+    fn prefetch(&self, docs: &[DocRef<'_>]) {
+        let wanted: Vec<DocKey> = docs
+            .iter()
+            .flat_map(|doc| -> Vec<DocKey> {
+                match *doc {
+                    DocRef::Artifact { change, artifact } => {
+                        keys::change_artifact(change, artifact).ok().into_iter().collect()
+                    }
+                    DocRef::ArchivedMeta { dated_name } => META_READ_ORDER
+                        .into_iter()
+                        .filter_map(|file| archived_doc_key(dated_name, file))
+                        .collect(),
+                    DocRef::ArchivedArtifact { dated_name, artifact } => {
+                        archived_doc_key(dated_name, artifact).into_iter().collect()
+                    }
+                }
+            })
+            .collect();
+        self.fetch(&wanted);
+    }
+
     // --- workflow config / shared vocabulary ---
 
     fn read_workflow_config(&self) -> Option<String> {
@@ -1424,6 +1462,40 @@ mod tests {
         assert!(view.archived_delta_capabilities("2026-10-01-add-v").is_empty());
     }
 
+    fn prefetch() {
+        // One read for the batch; the reads after it answer from memory. A key
+        // the archive listing does not have is not read, and a name that cannot
+        // make a key is skipped.
+        let probe = Probe::new(fixture());
+        let view = PortView::new(&probe, scope());
+        view.list_archived_changes();
+        view.prefetch(&[
+            DocRef::ArchivedMeta { dated_name: "2026-10-01-add-v" },
+            DocRef::ArchivedArtifact { dated_name: "2026-11-10-add-w", artifact: "proposal.md" },
+            DocRef::ArchivedArtifact { dated_name: "2026-11-10-add-w", artifact: "review.md" },
+            DocRef::ArchivedArtifact { dated_name: "../escape", artifact: "proposal.md" },
+            DocRef::Artifact { change: "add-x", artifact: "tasks.md" },
+            DocRef::Artifact { change: "no/such", artifact: "tasks.md" },
+        ]);
+        assert_eq!(
+            probe.reads(),
+            [vec![
+                "archive/changes/2026-10-01-add-v/.openspec.yaml".to_string(),
+                "archive/changes/2026-11-10-add-w/proposal.md".to_string(),
+                "changes/add-x/tasks.md".to_string(),
+            ]]
+        );
+        assert_eq!(view.read_archived_meta("2026-10-01-add-v").as_deref(), Some("created: 2026-09-30\n"));
+        assert_eq!(view.read_archived_artifact("2026-11-10-add-w", "proposal.md").as_deref(), Some("# W\n"));
+        assert_eq!(view.read_archived_artifact("2026-11-10-add-w", "review.md"), None);
+        assert_eq!(view.read_artifact("add-x", "tasks.md").as_deref(), Some("- [ ] 1.1 a\n"));
+        assert_eq!(probe.reads().len(), 1, "the reads after the hint make no store call");
+        // Nothing to read: no store call.
+        let probe = Probe::new(fixture());
+        PortView::new(&probe, scope()).prefetch(&[]);
+        assert!(probe.reads().is_empty());
+    }
+
     fn live_discussion_exists() {
         let port = fixture();
         let view = PortView::new(&port, scope());
@@ -1928,6 +2000,7 @@ mod tests {
         ("read_archived_meta", read_archived_meta),
         ("read_archived_artifact", read_archived_artifact),
         ("archived_delta_capabilities", archived_delta_capabilities),
+        ("prefetch", prefetch),
         ("live_discussion_exists", live_discussion_exists),
         ("archived_discussion_exists", archived_discussion_exists),
         ("live_discussion_path", live_discussion_path),

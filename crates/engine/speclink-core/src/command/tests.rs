@@ -11,6 +11,7 @@ fn list_cmd() -> Command {
         changes: false,
         worktrees: Default::default(),
         detail: false,
+        archived: false,
     }
 }
 
@@ -21,13 +22,13 @@ fn list_returns_typed_outcome_without_events() {
     let store = TestStore::with_meta("demo", META);
     let (outcome, events) = execute(&store, &ExecutionContext::default(), list_cmd()).expect("list executes");
     match outcome {
-        CommandOutcome::List(list) => {
-            let changes = list.changes.expect("changes section present");
+        CommandOutcome::List(ListOutcome::Sections { changes, specs }) => {
+            let changes = changes.expect("changes section present");
             assert!(
                 changes.iter().any(|c| c.name == "demo"),
                 "list outcome carries the change"
             );
-            assert!(list.specs.is_none(), "specs section only when requested");
+            assert!(specs.is_none(), "specs section only when requested");
         }
         other => panic!("expected a list outcome, got {other:?}"),
     }
@@ -45,14 +46,172 @@ fn list_carries_the_detail_keys_only_when_the_command_asks_for_them() {
             changes: false,
             worktrees: Default::default(),
             detail,
+            archived: false,
         };
         match execute(&store, &ExecutionContext::default(), cmd).expect("list executes").0 {
-            CommandOutcome::List(list) => list.changes.expect("changes section present")[0].branch.clone(),
+            CommandOutcome::List(ListOutcome::Sections { changes, .. }) => {
+                changes.expect("changes section present")[0].branch.clone()
+            }
             other => panic!("expected a list outcome, got {other:?}"),
         }
     };
     assert_eq!(branch_of(true).as_deref(), Some("speclink/demo"));
     assert_eq!(branch_of(false), None);
+}
+
+// --- list --archived（archived-list-and-detail-reads）---
+
+const STAMPS: &str = "reviewed_at: 2026-11-20\nreviewed_tasks_total: 3\nreviewed_scope:\n  - path: src/a.rs\n    hash: 0f9c\nverified_at: 2026-11-21\nverified_tasks_total: 3\nverified_scope:\n  - path: src/a.rs\n    hash: 0f9c\n";
+
+/// The archived changes of spec verb-contract「已封存變更的清單」, beside one
+/// active change the archived list must leave out.
+fn archived_store() -> TestStore {
+    let store = TestStore::with_meta("demo", META);
+    let archive = |dated: &str, meta: &str, docs: &[(&str, &str)]| {
+        store.archived_metas.borrow_mut().insert(dated.to_string(), meta.to_string());
+        for (doc, text) in docs {
+            store.archived_artifacts.borrow_mut().insert((dated.to_string(), doc.to_string()), text.to_string());
+        }
+    };
+    archive(
+        "2026-11-22-add-two",
+        &format!("schema: spec-driven\ncreated: 2026-11-01\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n{STAMPS}"),
+        &[
+            ("tasks.md", "## 1. Group\n\n- [x] 1.1 One\n- [x] 1.2 Two\n- [x] 1.3 Three\n"),
+            ("specs/auth/spec.md", "## ADDED Requirements\n"),
+        ],
+    );
+    archive("2026-11-10-old-one", "schema: spec-driven\n", &[]);
+    archive(
+        "2026-11-15-open-verify",
+        "schema: spec-driven\nfields:\n  ticket: \"PROJ-1\"\n",
+        &[(crate::station::VERIFY_DOC, "# Verify — open-verify\n\n## Round 1\n")],
+    );
+    archive(
+        "2026-11-01-broken",
+        "schema: [unclosed\n",
+        &[
+            ("tasks.md", "## 1. Group\n\n- [x] 1.1 One\n- [ ] 1.2 Two\n"),
+            (crate::station::REVIEW_DOC, "# Review — broken\n\n## Round 1\n"),
+        ],
+    );
+    store
+}
+
+fn archived_cmd() -> Command {
+    Command::List {
+        sort: "name".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    }
+}
+
+fn archived_items(store: &TestStore) -> Vec<serde_json::Value> {
+    let (outcome, events) = execute(store, &ExecutionContext::default(), archived_cmd()).expect("list executes");
+    assert!(events.is_empty(), "queries never produce events");
+    // The archived list is its own outcome: it carries no changes or specs section.
+    let CommandOutcome::List(ListOutcome::Archived(archived)) = outcome else {
+        panic!("expected an archived list outcome, got {outcome:?}");
+    };
+    archived
+        .iter()
+        .map(|item| serde_json::to_value(item).unwrap())
+        .collect()
+}
+
+#[test]
+fn the_archived_list_has_one_item_per_archived_change_newest_name_first() {
+    let items = archived_items(&archived_store());
+    let names: Vec<&str> = items.iter().map(|item| item["datedName"].as_str().unwrap()).collect();
+    assert_eq!(
+        names,
+        ["2026-11-22-add-two", "2026-11-15-open-verify", "2026-11-10-old-one", "2026-11-01-broken"]
+    );
+}
+
+#[test]
+fn an_archived_item_carries_the_keys_of_the_spec_example() {
+    // spec verb-contract Example「兩個項目的內容」，兩欄各一個斷言。
+    let items = archived_items(&archived_store());
+    assert_eq!(
+        items[0],
+        serde_json::json!({
+            "datedName": "2026-11-22-add-two",
+            "date": "2026-11-22",
+            "name": "add-two",
+            "reviewOutcome": "stamped",
+            "verifyOutcome": "stamped",
+            "tasksTotal": 3,
+            "tasksDone": 3,
+            "createdBy": "Ann <ann@example.com>",
+            "fromDiscussions": ["two"],
+            "deltaCapabilities": ["auth"],
+        })
+    );
+    assert_eq!(
+        items[2],
+        serde_json::json!({
+            "datedName": "2026-11-10-old-one",
+            "date": "2026-11-10",
+            "name": "old-one",
+            "reviewOutcome": "none",
+            "verifyOutcome": "none",
+        })
+    );
+    // The keys go out in the order of the spec's list.
+    let keys: Vec<&String> = items[0].as_object().unwrap().keys().collect();
+    let text = serde_json::to_string(&items[0]).unwrap();
+    let mut at = 0;
+    for key in keys {
+        let found = text[at..].find(&format!("\"{key}\"")).unwrap_or_else(|| panic!("{key} out of order: {text}"));
+        at += found;
+    }
+}
+
+#[test]
+fn an_item_archived_with_its_verify_ticket_open_did_not_pass_verify() {
+    let items = archived_items(&archived_store());
+    assert_eq!(items[1]["verifyOutcome"], "notPassed");
+    assert_eq!(items[1]["reviewOutcome"], "none");
+    assert_eq!(items[1]["fields"], serde_json::json!({ "ticket": "PROJ-1" }));
+    assert!(items[1].get("tasksTotal").is_none() && items[1].get("tasksDone").is_none(), "{}", items[1]);
+}
+
+#[test]
+fn an_archived_item_whose_metadata_does_not_parse_is_still_listed() {
+    // spec Scenario「metadata 無法解析的已封存變更」：名稱、日期、任務數照常；結局
+    // 以「沒有章」判定——工單照樣算數。
+    let items = archived_items(&archived_store());
+    assert_eq!(
+        items[3],
+        serde_json::json!({
+            "datedName": "2026-11-01-broken",
+            "date": "2026-11-01",
+            "name": "broken",
+            "reviewOutcome": "notPassed",
+            "verifyOutcome": "none",
+            "tasksTotal": 2,
+            "tasksDone": 1,
+        })
+    );
+}
+
+#[test]
+fn an_archived_name_without_a_date_has_an_empty_date_and_its_whole_name() {
+    let store = TestStore::default();
+    store.archived_metas.borrow_mut().insert("legacy".to_string(), META.to_string());
+    let items = archived_items(&store);
+    assert_eq!(items[0]["date"], "");
+    assert_eq!(items[0]["name"], "legacy");
+    assert_eq!(items[0]["datedName"], "legacy");
+}
+
+#[test]
+fn a_project_with_nothing_archived_lists_an_empty_archive() {
+    assert_eq!(archived_items(&TestStore::with_meta("demo", META)), Vec::<serde_json::Value>::new());
 }
 
 #[test]
@@ -306,10 +465,9 @@ fn list_on_corrupt_meta_flags_the_item_and_keeps_valid_items_intact() {
     store.metas.borrow_mut().insert("broken".to_string(), BAD_META.to_string());
     store.put_artifact("good", "tasks.md", "- [x] 1.1 a\n");
     let (outcome, _) = execute(&store, &ExecutionContext::default(), list_cmd()).expect("list must stay available");
-    let CommandOutcome::List(list) = outcome else {
-        panic!("expected a list outcome");
+    let CommandOutcome::List(ListOutcome::Sections { changes: Some(changes), .. }) = outcome else {
+        panic!("expected a list outcome with the changes section");
     };
-    let changes = list.changes.expect("changes section present");
     assert_eq!(changes.len(), 2, "corrupt meta must not drop the change");
     let broken = changes.iter().find(|c| c.name == "broken").expect("broken listed");
     let reason = broken.meta_error.as_deref().expect("corrupt item carries the diagnostic");
@@ -2706,7 +2864,7 @@ fn command_inputs_carry_no_actor_or_policy_fields() {
     // 來自 ExecutionContext，呼叫端與模型無從經 command 參數覆寫。
     let probe = list_cmd();
     match probe {
-        Command::List { sort: _, specs: _, changes: _, worktrees: _, detail: _ } => {}
+        Command::List { sort: _, specs: _, changes: _, worktrees: _, detail: _, archived: _ } => {}
         Command::Show { item: _, item_type: _ } => {}
         Command::Status { change: _, schema: _ } => {}
         Command::Instructions { artifact: _, change: _, schema: _ } => {}

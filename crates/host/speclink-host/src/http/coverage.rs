@@ -28,6 +28,9 @@ const fn off(reason: &'static str) -> WireCoverage {
 pub fn wire_coverage(command: &Command) -> WireCoverage {
     use Method::{Delete, Get, Post, Put};
     match command {
+        Command::List { archived: true, .. } => off(
+            "GET /archived answers with the same list, read straight from the store; it does not run the command",
+        ),
         Command::List { specs: true, .. } => route(Get, "/specs"),
         Command::List { .. } => route(Get, "/changes"),
         Command::Show { .. } => off(

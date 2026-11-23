@@ -4,7 +4,7 @@
 //! requirements runs here on the in-memory store port, wrapped in the shared
 //! recorder that keeps the calls the store receives.
 
-use speclink_core::command::{Command, CommandOutcome, ErrorCode};
+use speclink_core::command::{Command, CommandOutcome, ErrorCode, ListOutcome};
 use speclink_core::config::WorkflowConfigEdit;
 use speclink_core::model::ChangeMeta;
 use speclink_core::station::{StationProgress, StationStatus};
@@ -88,7 +88,7 @@ fn new_change(name: &str) -> Command {
 }
 
 fn list_changes() -> Command {
-    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false }
+    Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false, archived: false }
 }
 
 fn archive(carry_review: bool) -> Command {
@@ -120,8 +120,8 @@ fn set_policy(key: &str, value: &str) -> Command {
 
 fn names(outcome: &CommandOutcome) -> Vec<String> {
     match outcome {
-        CommandOutcome::List(list) => {
-            list.changes.as_ref().map(|c| c.iter().map(|entry| entry.name.clone()).collect()).unwrap_or_default()
+        CommandOutcome::List(ListOutcome::Sections { changes, .. }) => {
+            changes.as_ref().map(|c| c.iter().map(|entry| entry.name.clone()).collect()).unwrap_or_default()
         }
         other => panic!("expected a list outcome, got {other:?}"),
     }

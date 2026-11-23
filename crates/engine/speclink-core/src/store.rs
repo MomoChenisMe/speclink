@@ -34,6 +34,18 @@ pub struct DiscussionDoc {
     pub archived: bool,
 }
 
+/// A document a caller is about to read, for [`Store::prefetch`]. Each kind
+/// stands for one read method and takes that method's names.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DocRef<'a> {
+    /// A document of an active change: [`Store::read_artifact`].
+    Artifact { change: &'a str, artifact: &'a str },
+    /// The data file of an archived change: [`Store::read_archived_meta`].
+    ArchivedMeta { dated_name: &'a str },
+    /// A document of an archived change: [`Store::read_archived_artifact`].
+    ArchivedArtifact { dated_name: &'a str, artifact: &'a str },
+}
+
 /// `&self` as `&dyn Store`, for a default method that hands the store to an
 /// engine function taking `&dyn Store`. Every sized [`Store`] has it.
 pub trait AsDynStore {
@@ -216,6 +228,16 @@ pub trait Store: AsDynStore {
     /// atomic: the record is live and gone from the archive, or nothing
     /// changed. The caller refuses first when a live record already exists.
     fn restore_discussion(&self, slug: &str) -> Result<Option<String>>;
+
+    // --- read batching ---
+
+    /// A hint: the caller is about to read `docs`. A backend that pays for
+    /// every call reads them together here, so the reads that follow cost no
+    /// more calls. It changes no answer, so the default does nothing; a name
+    /// that cannot make a document is skipped, never an error.
+    fn prefetch(&self, docs: &[DocRef<'_>]) {
+        let _ = docs;
+    }
 
     // --- workflow config ---
 

@@ -12,7 +12,7 @@
 - `speclink list --json --detail` 的每個變更增列兩個有值才出現的鍵：`createdBy` 與 `fromDiscussions`。
 - `speclink list --json --detail` 與 `speclink show <change> --json --detail` 的進行中關卡（`state` 是 `inProgress`）增列 `rounds`：工單目前的輪數。
 - `speclink review show <change> --json` 與 `speclink verify show <change> --json` 新增旗標 `--detail`：輸出增列 `content`，內容是工單全文。不帶 `--json` 的 `--detail` 以用法錯誤結束。
-- `speclink discuss list --json` 的每一項與 `speclink discuss show <slug> --json` 的討論資訊增列 `promotedTo`：這份討論轉出或併入的變更名稱，沒有時不出現。
+- `speclink discuss list --json` 的每一項、`speclink discuss show <slug> --json` 的討論資訊與 `speclink discuss search --json` 的每一筆命中增列 `promotedTo`：這份討論轉出或併入的變更名稱，沒有時不出現。
 - 線上格式（wire）兩處選填的補充，讓連到遠端的 CLI 不必對每個項目另外發請求：已封存清單的項目增列 `deltaCapabilities`；變更清單與單筆變更回應的關卡物件在 `inProgress` 時帶 `rounds`。
 - 已封存變更的文件不新增動詞：既有的 `speclink artifact cat <artifact> --change <名稱或帶日期的名稱>` 已經讀得到。
 
@@ -24,11 +24,11 @@
 | `list --json --detail` 的 `createdBy`、`fromDiscussions` | 可用 | 可用（變更清單回應已有這兩個欄位） | 可用 |
 | 進行中關卡的 `rounds` | 可用 | 可用（舊版 Server 沒有回報時該鍵不出現） | 可用 |
 | `review show`／`verify show` 的 `--json --detail` | 可用 | 可用（工單回應已有 `content`；舊版 Server 沒有時該鍵不出現） | 可用 |
-| `discuss list`／`discuss show` 的 `promotedTo` | 可用 | 可用（討論資訊回應已有這個欄位） | 可用 |
+| `discuss list`／`discuss show`／`discuss search` 的 `promotedTo` | 可用 | 可用（討論資訊回應與搜尋回應已有這個欄位） | 可用 |
 
 相容性影響：
 
-- 會改到既有輸出的只有一處：已轉出的討論，在 `discuss list --json` 與 `discuss show --json` 多一個 `promotedTo` 鍵，放在該項的最後。沒有轉出的討論輸出逐位元不變。只認得舊鍵的程式不受影響；golden 同批更新。這推翻了討論 remote-remaining-gaps 的決定（引擎不輸出、由 Server 端組裝）：當時的理由是 CLI 的 JSON 逐位元不變，之後 `fields`、`createdBy`、`kind` 都採用「沒有值就不出現」而成為慣例；而且內嵌宿主直接讀動詞的輸出，沒有 Server 那一層可以補。
+- 會改到既有輸出的只有一處：已轉出的討論，在 `discuss list --json`、`discuss show --json` 與 `discuss search --json`（三者輸出同一個討論資訊結構）多一個 `promotedTo` 鍵；輸出的鍵照字母順序排列，所以它排在 `path` 與 `rounds` 之間，既有鍵的相對順序不變。沒有轉出的討論輸出逐位元不變。只認得舊鍵的程式不受影響；golden 同批更新。這推翻了討論 remote-remaining-gaps 的決定（引擎不輸出、由 Server 端組裝）：當時的理由是 CLI 的 JSON 逐位元不變，之後 `fields`、`createdBy`、`kind` 都採用「沒有值就不出現」而成為慣例；而且內嵌宿主直接讀動詞的輸出，沒有 Server 那一層可以補。
 - 正式規格 verb-contract 的「工單原文 SHALL NOT 出現在任何 --json 輸出」改成「不帶 `--detail` 時不出現」。不帶 `--detail` 的 `review show --json`、`verify show --json` 逐位元不變，所以審查與驗證技能讀到的內容不變。
 - 其餘四項都在新旗標或 `--detail` 後面：不帶這些旗標的輸出逐位元不變，人眼輸出不變。
 - Node SDK 的 `dispatch` 對這些動詞一律回傳結構化的值，所以新鍵會直接出現在回傳的物件裡（`promotedTo`），或在 argv 帶了新旗標時出現。
@@ -54,46 +54,51 @@
 - Affected specs: `verb-contract`、`discussion-docs`、`client-protocol`
 - Affected code:
   - Modified:
-    - crates/engine/speclink-core/src/command/mod.rs
-    - crates/engine/speclink-core/src/command/typed.rs
+    - apps/desktop/core/src/query.rs
+    - crates/adapters/speclink-cli/src/verbs/query.rs
+    - crates/adapters/speclink-cli/src/verbs/station.rs
+    - crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs
+    - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
+    - crates/adapters/speclink-cli/tests/it/review_verbs.rs
+    - crates/adapters/speclink-cli/tests/it/show_detail.rs
+    - crates/adapters/speclink-node/__test__/host.spec.ts
+    - crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts
+    - crates/adapters/speclink-verbs/src/families/query.rs
+    - crates/adapters/speclink-verbs/src/families/station.rs
+    - crates/adapters/speclink-verbs/src/parse.rs
+    - crates/adapters/speclink-verbs/src/render/mod.rs
+    - crates/adapters/speclink-verbs/src/render/query.rs
+    - crates/adapters/speclink-verbs/src/render/station.rs
     - crates/engine/speclink-core/src/command/fields.rs
+    - crates/engine/speclink-core/src/command/mod.rs
     - crates/engine/speclink-core/src/command/tests.rs
-    - crates/engine/speclink-core/src/lifecycle/listing.rs
+    - crates/engine/speclink-core/src/command/typed.rs
     - crates/engine/speclink-core/src/lifecycle/discuss.rs
+    - crates/engine/speclink-core/src/lifecycle/discuss/tests.rs
+    - crates/engine/speclink-core/src/lifecycle/listing.rs
     - crates/engine/speclink-core/src/quality/station.rs
     - crates/engine/speclink-core/src/quality/station/tests.rs
     - crates/engine/speclink-core/src/store.rs
+    - crates/engine/speclink-core/tests/golden/command-describe.json
     - crates/engine/speclink-core/tests/it/command_describe.rs
-    - crates/engine/speclink-core/tests/it/render_golden.rs
-    - crates/adapters/speclink-verbs/src/families/query.rs
-    - crates/adapters/speclink-verbs/src/families/station.rs
-    - crates/adapters/speclink-verbs/src/render/query.rs
-    - crates/adapters/speclink-verbs/src/render/station.rs
-    - crates/adapters/speclink-verbs/src/render/discuss.rs
-    - crates/adapters/speclink-verbs/src/render/mod.rs
-    - crates/adapters/speclink-cli/src/verbs/query.rs
-    - crates/adapters/speclink-cli/src/verbs/station.rs
-    - crates/adapters/speclink-cli/src/verbs/discuss.rs
-    - crates/adapters/speclink-cli/tests/it/review_verbs.rs
-    - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
-    - crates/adapters/speclink-cli/tests/it/remote_read_verbs.rs
     - crates/host/speclink-host/src/documents.rs
+    - crates/host/speclink-host/src/http/coverage.rs
+    - crates/host/speclink-host/src/http/routes.rs
+    - crates/host/speclink-host/src/port_exec.rs
     - crates/host/speclink-host/src/port_view.rs
     - crates/host/speclink-host/src/worktree.rs
-    - crates/host/speclink-host/src/http/routes.rs
-    - crates/host/speclink-host/src/http/wire.rs
-    - crates/host/speclink-host/src/port_exec.rs
+    - crates/host/speclink-host/tests/common/mod.rs
     - crates/host/speclink-host/tests/documents.rs
-    - crates/host/speclink-host/tests/station_wire.rs
+    - crates/host/speclink-host/tests/free_fields.rs
+    - crates/host/speclink-host/tests/http_door.rs
+    - crates/host/speclink-host/tests/kit.rs
     - crates/host/speclink-host/tests/port_cost.rs
     - crates/host/speclink-host/tests/port_dual_path.rs
+    - crates/host/speclink-host/tests/station_wire.rs
     - crates/protocol/speclink-protocol/src/query.rs
-    - crates/adapters/speclink-node/index.d.ts
-    - crates/adapters/speclink-node/__test__/host.spec.ts
-    - crates/adapters/speclink-node/__test__/review-verify-verbs.spec.ts
-    - docs/verb-contract.md
-    - docs/verb-contract.zh-TW.md
     - docs/sdk-node.md
     - docs/sdk-node.zh-TW.md
+    - docs/verb-contract.md
+    - docs/verb-contract.zh-TW.md
   - New: （無）
   - Removed: （無）

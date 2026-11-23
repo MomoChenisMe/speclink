@@ -50,6 +50,9 @@ pub enum ReviewCommands {
         change: String,
         #[arg(long)]
         json: bool,
+        /// With --json, add the ticket's text as `content`
+        #[arg(long, requires = "json")]
+        detail: bool,
     },
     /// Stamp the review: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
     Stamp {
@@ -100,6 +103,9 @@ pub enum VerifyCommands {
         change: String,
         #[arg(long)]
         json: bool,
+        /// With --json, add the ticket's text as `content`
+        #[arg(long, requires = "json")]
+        detail: bool,
     },
     /// Stamp the verification: requires all tasks done and an empty must-fix set in the last round (SUGGESTION never blocks)
     Stamp {

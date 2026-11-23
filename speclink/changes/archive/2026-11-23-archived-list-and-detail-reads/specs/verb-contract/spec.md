@@ -151,7 +151,7 @@
 
 <!-- BEFORE: 工單原文不得出現在任何 --json 輸出；討論的 --json 輸出沒有 promotedTo -->
 
-動詞的 --json 輸出欄位集合與 camelCase 命名 SHALL 維持既有契約不變;工單原文 SHALL NOT 出現在不帶 `--detail` 的任何 --json 輸出；只有 `review show --json --detail` 與 `verify show --json --detail` SHALL 以 `content` 鍵帶出工單原文。manual-task-marker 系列的兩次刻意契約更新:instructions apply 的任務項增列 `manual` 欄位、progress 增列 `codeTotal`/`codeComplete`/`codeRemaining`;隨 `[P]` 語意移除,任務項的 `parallel` 欄位 SHALL 自基線移除——任務項欄位集合為 `id`/`description`/`done`/`manual`。另一次刻意契約更新:list 的 change 條目增列 `created` 與 `modifiedAt` 兩個可缺席的欄位。再一次刻意契約更新：`discuss list --json` 的每一項與 `discuss show --json` 的 `info` 增列可缺席的 `promotedTo`，只在該討論有轉出或併入的變更時出現，位置在該物件的最後。除上述刻意更新外 SHALL NOT 改名或移除既有欄位;更新後的欄位集合即凍結契約的新基線。
+動詞的 --json 輸出欄位集合與 camelCase 命名 SHALL 維持既有契約不變;工單原文 SHALL NOT 出現在不帶 `--detail` 的任何 --json 輸出；只有 `review show --json --detail` 與 `verify show --json --detail` SHALL 以 `content` 鍵帶出工單原文。manual-task-marker 系列的兩次刻意契約更新:instructions apply 的任務項增列 `manual` 欄位、progress 增列 `codeTotal`/`codeComplete`/`codeRemaining`;隨 `[P]` 語意移除,任務項的 `parallel` 欄位 SHALL 自基線移除——任務項欄位集合為 `id`/`description`/`done`/`manual`。另一次刻意契約更新:list 的 change 條目增列 `created` 與 `modifiedAt` 兩個可缺席的欄位。再一次刻意契約更新：`discuss list --json` 的每一項、`discuss show --json` 的 `info` 與 `discuss search --json` 的每一筆命中增列可缺席的 `promotedTo`，只在該討論有轉出或併入的變更時出現，依字母順序排在 `path` 與 `rounds` 之間。除上述刻意更新外 SHALL NOT 改名或移除既有欄位;更新後的欄位集合即凍結契約的新基線。
 
 #### Scenario: 工單 --json 兩模式同形且無原文欄位
 
@@ -176,7 +176,7 @@
 #### Scenario: 討論的 promotedTo 不影響既有欄位
 
 - **WHEN** 比對新增 `promotedTo` 前後 speclink discuss list --json 對同一個專案的輸出，專案裡有一份已轉出的討論與一份沒有轉出的討論
-- **THEN** 沒有轉出的那一項逐位元相同；已轉出的那一項既有鍵的名稱、順序與值不變，差異只有最後多出的 `promotedTo`
+- **THEN** 沒有轉出的那一項逐位元相同；已轉出的那一項既有鍵的名稱、相對順序與值不變，差異只有多出的 `promotedTo`；對 speclink discuss search --json 的命中項作同樣的比對，結果相同
 
 ### Requirement: 清單的詳細輸出
 

@@ -14,7 +14,7 @@ fn freshness(
     counts: &crate::tasks::Counts,
     read_file: &ScopeReadFn<'_>,
 ) -> Freshness {
-    status(st, meta, false).freshness(counts, Some(read_file))
+    status(st, meta, None).freshness(counts, Some(read_file))
 }
 
 fn store_with_round(round: &str) -> TestStore {
@@ -431,6 +431,47 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
         ChangeMeta::from_text(Some(text)).expect("meta parses")
     }
 
+    /// An open ticket whose rounds are not known.
+    const OPEN: Option<OpenTicket> = Some(OpenTicket { rounds: None });
+
+    const TWO_ROUNDS: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n## Round 2\n\n**Scope**: src/a.rs\n";
+
+    #[test]
+    fn an_open_ticket_counts_its_rounds_and_one_that_does_not_parse_has_none() {
+        // archived-list-and-detail-reads「進行中的關卡帶輪數」：輪數用既有的工單解析函式數。
+        assert_eq!(OpenTicket::of(&REVIEW, TWO_ROUNDS), OpenTicket { rounds: Some(2) });
+        for broken in ["# Review — demo\n", "## Round x\n", "## Round 1\n\n- [bogus] not a finding\n"] {
+            assert_eq!(OpenTicket::of(&REVIEW, broken), OpenTicket { rounds: None }, "{broken:?}");
+        }
+        let open = status(&REVIEW, &meta(META), Some(OpenTicket::of(&REVIEW, TWO_ROUNDS)));
+        assert_eq!(open.progress, StationProgress::InProgress);
+        assert_eq!(open.rounds, Some(2));
+        let unparsed = status(&REVIEW, &meta(STAMPED), OPEN);
+        assert_eq!((unparsed.progress, unparsed.rounds), (StationProgress::InProgress, None));
+    }
+
+    #[test]
+    fn the_three_forms_of_an_open_station() {
+        // 不帶 --detail：只有 state；show --detail 與 list --detail：多 rounds；
+        // 輪數不明時三種都只有 state。
+        let open = status(&REVIEW, &meta(META), Some(OpenTicket { rounds: Some(2) }));
+        assert_eq!(open.to_json(), serde_json::json!({ "state": "inProgress" }));
+        assert_eq!(open.to_detail_json(), serde_json::json!({ "state": "inProgress", "rounds": 2 }));
+        assert_eq!(open.to_list_json(), serde_json::json!({ "state": "inProgress", "rounds": 2 }));
+        let unknown = status(&REVIEW, &meta(META), OPEN);
+        for form in [unknown.to_json(), unknown.to_detail_json(), unknown.to_list_json()] {
+            assert_eq!(form, serde_json::json!({ "state": "inProgress" }));
+        }
+    }
+
+    #[test]
+    fn the_list_form_of_a_stamp_is_the_plain_form_without_the_scope() {
+        let stamped = status(&REVIEW, &meta(STAMPED), None);
+        assert_eq!(stamped.to_list_json(), stamped.to_json());
+        assert!(stamped.to_list_json().get("scope").is_none());
+        assert!(stamped.to_detail_json().get("scope").is_some());
+    }
+
     #[test]
     fn an_archived_ticket_outranks_a_stamp() {
         // 已封存的結局與進行中同一個順序：有工單 → 未通過，章還在 meta 裡也一樣
@@ -454,7 +495,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn an_open_ticket_is_in_progress_even_over_an_earlier_stamp() {
         // 判定第一條：工單存在 → 進行中。章還在 meta 裡時也一樣，章的欄位不帶出。
         for text in [META, STAMPED] {
-            let status = status(&REVIEW, &meta(text), true);
+            let status = status(&REVIEW, &meta(text), OPEN);
             assert_eq!(status.progress, StationProgress::InProgress);
             assert_eq!(status.to_json(), serde_json::json!({ "state": "inProgress" }));
             assert!(status.scope.is_empty());
@@ -463,7 +504,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
 
     #[test]
     fn a_complete_stamp_without_a_ticket_is_stamped_with_its_fields() {
-        let status = status(&REVIEW, &meta(STAMPED), false);
+        let status = status(&REVIEW, &meta(STAMPED), None);
         assert_eq!(status.progress, StationProgress::Stamped);
         assert_eq!(
             status.to_json(),
@@ -486,7 +527,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn a_stamp_reports_only_the_fields_it_has() {
         let bare = "reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: a\n    hash: h\n";
         assert_eq!(
-            status(&REVIEW, &meta(bare), false).to_json(),
+            status(&REVIEW, &meta(bare), None).to_json(),
             serde_json::json!({ "state": "stamped", "stampedAt": "2026-11-02", "rounds": 0, "tasksTotal": 1 }),
             "no by, with or commit key; rounds absent from an old stamp reads as 0"
         );
@@ -496,7 +537,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn no_ticket_and_no_complete_stamp_is_none() {
         // 章不完整（沒有 scope）讀作未蓋章，和引擎既有的判斷同一條。
         for text in [META, "reviewed_at: 2026-11-02\nreviewed_tasks_total: 1\n", "reviewed_rounds: 4\n"] {
-            let status = status(&REVIEW, &meta(text), false);
+            let status = status(&REVIEW, &meta(text), None);
             assert_eq!(status.progress, StationProgress::None, "{text:?}");
             assert_eq!(status.to_json(), serde_json::json!({ "state": "none" }));
         }
@@ -506,7 +547,7 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn the_detail_form_adds_the_scope_of_a_stamp() {
         // verb-contract「單筆變更的詳細輸出」：show --json --detail 的形狀＝預設形狀加上
         // scope，每項只有 path 與 hash，順序照 metadata。
-        let status = status(&REVIEW, &meta(STAMPED), false);
+        let status = status(&REVIEW, &meta(STAMPED), None);
         let mut want = status.to_json();
         want["scope"] = serde_json::json!([
             { "path": "src/a.rs", "hash": "aa" },
@@ -531,9 +572,9 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
 
     #[test]
     fn the_detail_form_of_an_unstamped_station_has_no_scope() {
-        let open = status(&REVIEW, &meta(STAMPED), true);
+        let open = status(&REVIEW, &meta(STAMPED), OPEN);
         assert_eq!(open.to_detail_json(), serde_json::json!({ "state": "inProgress" }));
-        let none = status(&REVIEW, &meta(META), false);
+        let none = status(&REVIEW, &meta(META), None);
         assert_eq!(none.to_detail_json(), serde_json::json!({ "state": "none" }));
     }
 
@@ -541,9 +582,9 @@ reviewed_scope:\n  - path: src/a.rs\n    hash: aa\n  - path: src/b.rs\n    hash:
     fn the_two_stations_read_their_own_fields() {
         // Scenario「兩個關卡各自獨立」：審查已蓋章、驗證有未結的工單。
         let m = meta(STAMPED);
-        assert_eq!(status(&REVIEW, &m, false).progress, StationProgress::Stamped);
-        assert_eq!(status(&VERIFY, &m, true).progress, StationProgress::InProgress);
-        assert_eq!(status(&VERIFY, &m, false).progress, StationProgress::None);
+        assert_eq!(status(&REVIEW, &m, None).progress, StationProgress::Stamped);
+        assert_eq!(status(&VERIFY, &m, OPEN).progress, StationProgress::InProgress);
+        assert_eq!(status(&VERIFY, &m, None).progress, StationProgress::None);
     }
 }
 

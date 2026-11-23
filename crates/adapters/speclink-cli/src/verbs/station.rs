@@ -33,6 +33,7 @@ enum StationVerb {
     Show {
         change: String,
         json: bool,
+        detail: bool,
     },
     Stamp {
         change: String,
@@ -68,7 +69,7 @@ pub(crate) fn cmd_review(a: ReviewArgs) -> Result<()> {
             StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
         }
         ReviewCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
-        ReviewCommands::Show { change, json } => StationVerb::Show { change, json },
+        ReviewCommands::Show { change, json, detail } => StationVerb::Show { change, json, detail },
         ReviewCommands::Stamp { change, accept, agent } => {
             StationVerb::Stamp { change, accept, agent }
         }
@@ -82,7 +83,7 @@ pub(crate) fn cmd_verify(a: VerifyArgs) -> Result<()> {
             StationVerb::Scope { change, json, base, candidate_hash, include_hunk }
         }
         VerifyCommands::AddRound { change, stdin } => StationVerb::AddRound { change, stdin },
-        VerifyCommands::Show { change, json } => StationVerb::Show { change, json },
+        VerifyCommands::Show { change, json, detail } => StationVerb::Show { change, json, detail },
         VerifyCommands::Stamp { change, accept, agent } => {
             StationVerb::Stamp { change, accept, agent }
         }
@@ -164,18 +165,11 @@ fn station_fs(cli: &StationCli, verb: StationVerb) -> Result<()> {
             let round = core::station::add_round(st, &store, &change, &content)?;
             emit_action(st, StationAction::AddRound(round), &change);
         }
-        StationVerb::Show { change, json } => {
-            // `--json` 只要解析後的工單，不碰原文——與導入共用渲染前的行為一致
-            // （多讀一次是多一個失敗面）。
-            if json {
-                let ticket = core::station::show(st, &store, &change)?;
-                emit(render::show(st, &change, &ticket, None, render_options(true)));
-                return Ok(());
-            }
-            // 人眼路徑印工單原文（show 已驗證存在與格式）。
+        StationVerb::Show { change, json, detail } => {
+            // 人眼路徑與 `--json --detail` 都要原文；`--json` 本身只要解析後的工單。
+            // 三條路都是同一次讀取。
             let (ticket, doc) = core::station::show_with_content(st, &store, &change)?;
-            let doc = doc.expect("show verified the ticket exists");
-            emit(render::show(st, &change, &ticket, Some(&doc), render_options(false)));
+            emit(render::show(st, &change, &ticket, doc.as_deref(), detail, render_options(json)));
         }
         StationVerb::Stamp { change, accept, agent } => {
             let actor = speclink_host::context::git_identity(&ws.root);
@@ -607,7 +601,7 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
             emit_action(st, StationAction::AddRound(round as usize), &change);
             Ok(())
         }
-        StationVerb::Show { change, json } => {
+        StationVerb::Show { change, json, detail } => {
             let resp = ctx.client.station_ticket(noun, &change)?;
             // 人眼＋有原文＝純轉印，不碰結構化欄位——這正是原文上 wire 的目的：
             // server 詞彙比 CLI 新（未知 token、新形狀）也不影響印出工單本文。
@@ -618,8 +612,11 @@ fn remote_station(ctx: &RemoteCtx, cli: &StationCli, verb: StationVerb) -> Resul
                     return Ok(());
                 }
             }
+            // `--json --detail` gives the text the response carries; an old
+            // server sends none, and the key is left out.
+            let content = resp.content.clone();
             let ticket = to_station_ticket(resp)?;
-            emit(render::show(st, &change, &ticket, None, render_options(json)));
+            emit(render::show(st, &change, &ticket, content.as_deref(), detail, render_options(json)));
             Ok(())
         }
         StationVerb::Stamp { change, accept, agent } => {

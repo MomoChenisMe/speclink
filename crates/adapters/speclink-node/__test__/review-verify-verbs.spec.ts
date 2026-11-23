@@ -195,3 +195,30 @@ describe('讀取與丟棄工單', () => {
     expect(ticket()).toBeNull()
   })
 })
+
+// archived-list-and-detail-reads：工單全文只在 `--json --detail` 出現。
+describe('show --json --detail through host.dispatch', () => {
+  it('gives the ticket text as content, and nothing more without --detail', async () => {
+    const { createHost } = await import('../index.js')
+    const { memoryPort } = await import('./memory-port')
+    const ticket = '# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n'
+    const port = memoryPort()
+    port.seed('s1', {
+      'changes/demo/.meta.yaml': 'schema: spec-driven\n',
+      'changes/demo/review.md': ticket,
+      'config.yaml': 'schema: spec-driven\n',
+    })
+    const host = createHost({ store: port.store })
+    const identity = { id: 'u_1', displayName: 'Alice' }
+    const detailed = (await host.dispatch({ identity, scope: 's1', argv: ['review', 'show', 'demo', '--json', '--detail'] })) as Record<
+      string,
+      unknown
+    >
+    expect(detailed.content).toBe(ticket)
+    const plain = (await host.dispatch({ identity, scope: 's1', argv: ['review', 'show', 'demo', '--json'] })) as Record<string, unknown>
+    expect(Object.keys(plain).sort()).toEqual(['change', 'lastRound', 'rounds'])
+    const { content, ...rest } = detailed
+    expect(content).toBeDefined()
+    expect(rest).toEqual(plain)
+  })
+})

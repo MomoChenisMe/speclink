@@ -62,14 +62,44 @@ fn the_list_reports_the_three_states() {
     assert_eq!(states, [json!("none"), json!("inProgress"), json!("stamped")]);
 }
 
+/// A review ticket of two rounds.
+const TWO_ROUNDS: &str = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n## Round 2\n\n**Scope**: src/a.rs\n";
+
 #[test]
-fn a_ticketed_item_carries_the_state_only() {
-    // Scenario「審查中的清單項」。
+fn a_ticketed_item_carries_the_state_and_the_rounds() {
+    // Scenario「審查中的清單項」：兩輪的審查工單、沒有章。
     let door = door();
-    seed(&door, &[("changes/demo/.meta.yaml", META), ("changes/demo/review.md", REVIEW_TICKET)]);
+    seed(&door, &[("changes/demo/.meta.yaml", META), ("changes/demo/review.md", TWO_ROUNDS)]);
     let demo = listed(&door, "demo");
-    assert_eq!(demo["review"], json!({ "state": "inProgress" }));
+    assert_eq!(demo["review"], json!({ "state": "inProgress", "rounds": 2 }));
     assert_eq!(demo["verify"], json!({ "state": "none" }));
+}
+
+#[test]
+fn the_single_change_carries_the_rounds_of_an_open_ticket() {
+    // Scenario「單筆回應的進行中關卡也帶輪數」：三輪的驗證工單、沒有章。
+    let door = door();
+    let three = "# Verify — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n## Round 2\n\n**Scope**: src/a.rs\n\n## Round 3\n\n**Scope**: src/a.rs\n";
+    seed(&door, &[("changes/demo/.meta.yaml", META), ("changes/demo/verify.md", three)]);
+    assert_eq!(get(&door, "changes/demo")["verify"], json!({ "state": "inProgress", "rounds": 3 }));
+}
+
+#[test]
+fn a_ticket_that_does_not_parse_is_in_progress_without_rounds() {
+    // 工單無法解析時不出現 rounds，清單照常成功。
+    let door = door();
+    seed(&door, &[("changes/demo/.meta.yaml", META), ("changes/demo/review.md", "# Review — demo\n")]);
+    assert_eq!(listed(&door, "demo")["review"], json!({ "state": "inProgress" }));
+    assert_eq!(get(&door, "changes/demo")["review"], json!({ "state": "inProgress" }));
+}
+
+#[test]
+fn a_new_client_reads_an_open_station_without_rounds() {
+    // Scenario「新版用戶端解析沒有輪數的進行中關卡」。
+    let station: speclink_protocol::query::StationState =
+        serde_json::from_value(json!({ "state": "inProgress" })).expect("parses");
+    assert_eq!(station.state, speclink_protocol::query::StationPhase::InProgress);
+    assert_eq!(station.rounds, None);
 }
 
 #[test]
@@ -119,7 +149,7 @@ fn the_two_stations_are_judged_apart() {
     );
     let demo = listed(&door, "demo");
     assert_eq!(demo["review"]["state"], "stamped");
-    assert_eq!(demo["verify"], json!({ "state": "inProgress" }));
+    assert_eq!(demo["verify"], json!({ "state": "inProgress", "rounds": 1 }));
     let change = get(&door, "changes/demo");
     assert_eq!((&change["review"]["state"], &change["verify"]["state"]), (&json!("stamped"), &json!("inProgress")));
 }
@@ -374,7 +404,7 @@ fn a_stamp_request_with_a_head_commit_records_it() {
     for station in ["review", "verify"] {
         let door = door();
         ready_to_stamp(&door, station);
-        assert_eq!(get(&door, "changes/demo")[station], json!({ "state": "inProgress" }), "{station}");
+        assert_eq!(get(&door, "changes/demo")[station], json!({ "state": "inProgress", "rounds": 1 }), "{station}");
         let stamp = json!({ "scope": [{ "path": "src/a.rs", "hash": "aa" }], "headCommit": "0123456789ab" });
         let response = post(&door, &format!("changes/demo/{station}/stamp"), stamp);
         assert_eq!(response.status, 200, "{station}: {:?}", String::from_utf8_lossy(&response.body));
@@ -404,7 +434,7 @@ fn a_stamp_request_with_a_malformed_head_commit_is_400_and_stamps_nothing() {
     ready_to_stamp(&door, "verify");
     let stamp = json!({ "scope": [{ "path": "src/a.rs", "hash": "aa" }], "headCommit": "not-a-sha" });
     assert_eq!(error(&post(&door, "changes/demo/verify/stamp", stamp)), (400, "invalid_argument".to_string()));
-    assert_eq!(get(&door, "changes/demo")["verify"], json!({ "state": "inProgress" }));
+    assert_eq!(get(&door, "changes/demo")["verify"], json!({ "state": "inProgress", "rounds": 1 }));
 }
 
 #[test]

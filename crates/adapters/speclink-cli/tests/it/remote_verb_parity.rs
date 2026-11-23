@@ -596,9 +596,9 @@ fn remote_list_matches_fs_output_byte_for_byte_including_the_invalid_marker() {
 
 // --- list --json --detail：關卡、認領、分支與落地兩模式同鍵同值（verb-output-for-embedded D2）---
 
-const DETAIL_KEYS: [&str; 5] = ["review", "verify", "claimed", "branch", "landed"];
+const DETAIL_KEYS: [&str; 7] = ["review", "verify", "claimed", "branch", "landed", "createdBy", "fromDiscussions"];
 const DETAIL_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
-const DETAIL_META: &str = "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: 0f9c\nbranch: speclink/recorded\nlanded_commit: 0123456789abcdef0123456789abcdef01234567\nlanded_at: 2026-11-18T11:00:00+00:00\n";
+const DETAIL_META: &str = "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: 0f9c\nbranch: speclink/recorded\nlanded_commit: 0123456789abcdef0123456789abcdef01234567\nlanded_at: 2026-11-18T11:00:00+00:00\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n";
 
 /// 兩個變更的 fs 沙盒：`plain` 什麼記錄都沒有；`recorded` 的審查已蓋章、驗證有未結
 /// 的工單、記下分支、已落地。
@@ -634,9 +634,11 @@ fn detail_wire_changes(fs: &TempProject) -> String {
                     "rounds": 0,
                     "tasksTotal": 1,
                 },
-                "verify": { "state": "inProgress" },
+                "verify": { "state": "inProgress", "rounds": 1 },
                 "branch": "speclink/recorded",
                 "landedCommit": DETAIL_COMMIT,
+                "createdBy": "Ann <ann@example.com>",
+                "fromDiscussions": ["two"],
             }),
             _ => serde_json::json!({ "review": { "state": "none" }, "verify": { "state": "none" } }),
         };
@@ -674,11 +676,17 @@ fn remote_list_detail_matches_fs_mode_key_for_key() {
     // The records are there (fs is the reference), and only for the change that has them.
     let (plain, recorded) = (&fs_changes[0], &fs_changes[1]);
     assert_eq!(detail_keys_of(plain), Vec::<&str>::new(), "{plain}");
-    assert_eq!(detail_keys_of(recorded), ["review", "verify", "branch", "landed"], "{recorded}");
+    assert_eq!(
+        detail_keys_of(recorded),
+        ["review", "verify", "branch", "landed", "createdBy", "fromDiscussions"],
+        "{recorded}"
+    );
+    assert_eq!(recorded["createdBy"], "Ann <ann@example.com>");
+    assert_eq!(recorded["fromDiscussions"], serde_json::json!(["two"]));
     assert_eq!(recorded["review"]["state"], "stamped");
     assert_eq!(recorded["review"]["stampedAt"], "2026-08-01");
     assert_eq!(recorded["review"]["tasksTotal"], 1);
-    assert_eq!(recorded["verify"], serde_json::json!({ "state": "inProgress" }));
+    assert_eq!(recorded["verify"], serde_json::json!({ "state": "inProgress", "rounds": 1 }));
     assert_eq!(recorded["branch"], "speclink/recorded");
     assert_eq!(recorded["landed"], serde_json::json!({ "commit": DETAIL_COMMIT }));
 
@@ -687,6 +695,23 @@ fn remote_list_detail_matches_fs_mode_key_for_key() {
     let change_requests: Vec<&Captured> = caps.iter().filter(|c| c.path.contains("/changes")).collect();
     assert_eq!(change_requests.len(), 1, "{change_requests:?}");
     assert!(change_requests[0].path.ends_with("/changes"), "{change_requests:?}");
+}
+
+#[test]
+fn remote_list_detail_without_the_servers_rounds_prints_the_state_alone() {
+    // verb-contract「清單的詳細輸出」Scenario「舊版 Server 沒有回報進行中的輪數」。
+    let fs = detail_fs_project("list-detail-no-rounds-fs");
+    let mut wire: serde_json::Value = serde_json::from_str(&detail_wire_changes(&fs)).unwrap();
+    for item in wire["changes"].as_array_mut().unwrap() {
+        if let Some(verify) = item["verify"].as_object_mut() {
+            verify.remove("rounds");
+        }
+    }
+    let mock = mock_server(vec![("GET", "/changes", 200, wire.to_string())]);
+    let p = TempProject::remote("list-detail-no-rounds-remote", &mock.base, "backend");
+    let out = p.run(&["list", "--json", "--detail", "--sort", "name"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    assert_eq!(changes_of(&out)[1]["verify"], serde_json::json!({ "state": "inProgress" }));
 }
 
 #[test]
@@ -764,6 +789,38 @@ fn remote_list_detail_against_an_old_server_succeeds_with_no_new_key() {
     }
     let plain = p.run(&["list", "--json", "--sort", "name"]);
     assert_eq!(stdout_of(&detailed), stdout_of(&plain));
+}
+
+#[test]
+fn remote_list_archived_against_an_old_server_gives_no_delta_capabilities() {
+    // verb-contract「已封存變更的清單」Scenario「連到舊版 Server 時不失敗」：項目沒有
+    // `deltaCapabilities`（也沒有兩個結局）的回應照樣組出輸出，順序是帶日期的名稱由大到小。
+    let archived = r#"{"archived":[{"datedName":"2026-11-10-old-one","date":"2026-11-10","name":"old-one","specCount":0,"fromDiscussions":[]},{"datedName":"2026-11-22-add-two","date":"2026-11-22","name":"add-two","tasksTotal":3,"tasksDone":3,"specCount":1,"createdBy":"Ann","fromDiscussions":["two"],"reviewOutcome":"stamped","verifyOutcome":"notPassed"}]}"#;
+    let mock = mock_server(vec![("GET", "/archived", 200, archived.to_string())]);
+    let p = TempProject::remote("list-archived-old-server", &mock.base, "backend");
+    let out = p.run(&["list", "--archived", "--json"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let list: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(
+        list,
+        serde_json::json!({ "archived": [
+            {
+                "datedName": "2026-11-22-add-two", "date": "2026-11-22", "name": "add-two",
+                "reviewOutcome": "stamped", "verifyOutcome": "notPassed", "tasksTotal": 3, "tasksDone": 3,
+                "createdBy": "Ann", "fromDiscussions": ["two"],
+            },
+            {
+                "datedName": "2026-11-10-old-one", "date": "2026-11-10", "name": "old-one",
+                "reviewOutcome": "none", "verifyOutcome": "none",
+            },
+        ] })
+    );
+    let calls = mock.captured.lock().unwrap();
+    assert_eq!(
+        calls.iter().filter(|c| c.path.contains("/archived")).count(),
+        1,
+        "one request for the whole list: {calls:?}"
+    );
 }
 
 #[test]
@@ -944,6 +1001,96 @@ fn discuss_list_fs_project(tag: &str) -> TempProject {
         "---\ntopic: Rate limits\nslug: rate-limits\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n",
     );
     p
+}
+
+// --- 討論的 promotedTo（discussion-docs「討論的 JSON 輸出帶出轉出的變更」）---
+
+const PROMOTED_TWO: &str = "---\ntopic: Two\nslug: two\nstatus: promoted\npromoted_to: add-two, add-three\ncreated: 2026-07-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: ship it\n";
+const OPEN_IDEA: &str = "---\ntopic: Idea\nslug: idea\nstatus: open\ncreated: 2026-07-02\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n";
+const ARCHIVED_OLD: &str = "---\ntopic: Old\nslug: old\nstatus: promoted\npromoted_to: first-cut\ncreated: 2026-06-01\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n\n**Decision**: done\n";
+
+#[test]
+fn discuss_promoted_to_is_the_same_in_both_modes() {
+    // Scenario「已轉出的討論帶出變更名稱」「discuss show 的 info 帶出同一份清單」「搜尋的命中項帶出
+    // 同一份清單」「沒有轉出的討論輸出不變」「已封存的討論也帶出」「人眼輸出不變」與「找不到討論」，
+    // 本機與一台真的 Server。
+    use crate::remote_read_verbs::{json_of, pair, stdout_of as out_of};
+    let p = pair(
+        "discuss-promoted",
+        &[
+            ("discussions/two.md", PROMOTED_TWO),
+            ("discussions/idea.md", OPEN_IDEA),
+            ("archive/discussions/2026-06-01-old.md", ARCHIVED_OLD),
+        ],
+    );
+    // The two modes report a discussion's `path` each its own way (a file, a
+    // store key); `promotedTo` is the same in both.
+    let both = |args: &[&str]| -> [serde_json::Value; 2] {
+        let (fs, remote) = (p.fs.run(args), p.remote.run(args));
+        assert!(fs.status.success() && remote.status.success(), "{args:?}: {}{}", stderr_of(&fs), stderr_of(&remote));
+        [json_of(&fs), json_of(&remote)]
+    };
+    let promoted = |items: &serde_json::Value, slug: &str| {
+        let item = items.as_array().expect("discussions").iter().find(|d| d["slug"] == slug).cloned();
+        item.unwrap_or_else(|| panic!("{slug}: {items}"))["promotedTo"].clone()
+    };
+    // The keys go out in alphabetical order: `promotedTo` between `path` and `rounds`.
+    let text = out_of(&p.fs.run(&["discuss", "list", "--json"]));
+    let key_at = text.find("\"promotedTo\"").unwrap_or_else(|| panic!("{text}"));
+    let item = &text[text[..key_at].rfind('{').expect("the item opens")..];
+    let at = |key: &str| item.find(&format!("\"{key}\"")).unwrap_or_else(|| panic!("{key}: {item}"));
+    assert!(at("path") < at("promotedTo") && at("promotedTo") < at("rounds"), "{item}");
+    for list in both(&["discuss", "list", "--json"]) {
+        assert_eq!(promoted(&list["discussions"], "two"), serde_json::json!(["add-two", "add-three"]), "{list}");
+        assert_eq!(promoted(&list["discussions"], "idea"), serde_json::Value::Null, "no key: {list}");
+    }
+    for archived in both(&["discuss", "list", "--archived", "--json"]) {
+        assert_eq!(promoted(&archived["discussions"], "old"), serde_json::json!(["first-cut"]), "{archived}");
+    }
+    for shown in both(&["discuss", "show", "two", "--json"]) {
+        assert_eq!(shown["info"]["promotedTo"], serde_json::json!(["add-two", "add-three"]));
+        assert_eq!(shown["content"], PROMOTED_TWO);
+    }
+    for idea in both(&["discuss", "show", "idea", "--json"]) {
+        assert!(idea["info"].get("promotedTo").is_none(), "{idea}");
+    }
+    // A search hit is the list item plus its matches; the search covers the archive too.
+    for found in both(&["discuss", "search", "two", "idea", "old", "--json"]) {
+        assert_eq!(promoted(&found["hits"], "two"), serde_json::json!(["add-two", "add-three"]), "{found}");
+        assert_eq!(promoted(&found["hits"], "old"), serde_json::json!(["first-cut"]), "{found}");
+        assert_eq!(promoted(&found["hits"], "idea"), serde_json::Value::Null, "no key: {found}");
+    }
+
+    for args in [
+        &["discuss", "list", "--no-color"][..],
+        &["discuss", "show", "two", "--no-color"],
+        &["discuss", "search", "two", "--no-color"],
+    ] {
+        let human = out_of(&p.same_ok(args));
+        assert!(!human.contains("promotedTo"), "{args:?}: {human}");
+    }
+    let ghost = p.same(&["discuss", "show", "ghost", "--json"]);
+    assert!(!ghost.status.success());
+    assert!(ghost.stdout.is_empty());
+}
+
+#[test]
+fn remote_discuss_list_against_an_old_server_has_no_promoted_to() {
+    // Scenario「連到舊版 Server 時不失敗」：清單回應沒有 `promotedTo`。
+    let fs = TempProject::fs("discuss-old-server-fs");
+    fs.write("speclink/discussions/two.md", PROMOTED_TWO);
+    let out = fs.run(&["discuss", "list", "--json"]);
+    assert!(out.status.success(), "fs stderr: {}", stderr_of(&out));
+    let mut wire: serde_json::Value = serde_json::from_str(&stdout_of(&out)).unwrap();
+    for item in wire["discussions"].as_array_mut().unwrap() {
+        item.as_object_mut().unwrap().remove("promotedTo");
+    }
+    let mock = mock_server(vec![("GET", "/discussions", 200, wire.to_string())]);
+    let p = TempProject::remote("discuss-old-server-remote", &mock.base, "backend");
+    let remote = p.run(&["discuss", "list", "--json"]);
+    assert!(remote.status.success(), "remote stderr: {}", stderr_of(&remote));
+    let listed: serde_json::Value = serde_json::from_str(&stdout_of(&remote)).unwrap();
+    assert!(listed["discussions"][0].get("promotedTo").is_none(), "{listed}");
 }
 
 #[test]
@@ -1487,6 +1634,48 @@ fn remote_review_show_json_matches_fs_key_set() {
         keys(&remote_payload["lastRound"]["findings"][0]),
         "finding key sets match"
     );
+}
+
+#[test]
+fn review_and_verify_show_json_detail_match_in_both_modes() {
+    // verb-contract「關卡工單的詳細輸出」Scenario「三種執行方式輸出相同」的 CLI 兩模式：
+    // server 回應的 `content` 是同一份原文，兩模式逐位元相同，且只發一個請求。
+    let fs = TempProject::fs("ticket-detail-fs");
+    fs.write("speclink/changes/demo/.meta.yaml", "schema: spec-driven\ncreated: 2026-07-01\n");
+    fs.write("speclink/changes/demo/tasks.md", "- [x] 1.1 done\n");
+    fs.write("speclink/changes/demo/review.md", TICKET_DOC);
+    let verify_doc = TICKET_DOC.replace("# Review", "# Verify");
+    fs.write("speclink/changes/demo/verify.md", &verify_doc);
+
+    let mut routes = ticket_routes(Some(TICKET_DOC));
+    let mut verify = ticket_routes(Some(&verify_doc)).remove(0);
+    verify.1 = "/changes/demo/verify";
+    routes.push(verify);
+    let mock = mock_server(routes);
+    let p = TempProject::remote("ticket-detail-remote", &mock.base, "backend");
+    for station in ["review", "verify"] {
+        let args = [station, "show", "demo", "--json", "--detail"];
+        let (fs_out, remote_out) = (fs.run(&args), p.run(&args));
+        assert!(fs_out.status.success(), "{station} fs stderr: {}", stderr_of(&fs_out));
+        assert!(remote_out.status.success(), "{station} remote stderr: {}", stderr_of(&remote_out));
+        assert_eq!(stdout_of(&remote_out), stdout_of(&fs_out), "{station}");
+        let value: serde_json::Value = serde_json::from_str(&stdout_of(&fs_out)).unwrap();
+        assert!(value["content"].as_str().is_some_and(|text| text.ends_with("possible Feature Envy\n")), "{value}");
+    }
+    let calls = mock.captured.lock().unwrap();
+    assert_eq!(calls.iter().filter(|c| c.path.ends_with("/review")).count(), 1, "{calls:?}");
+}
+
+#[test]
+fn remote_review_show_json_detail_against_an_old_server_has_no_content() {
+    // Scenario「連到舊版 Server 時不失敗」：工單回應沒有 `content`。
+    let mock = mock_server(ticket_routes(None));
+    let p = TempProject::remote("ticket-detail-old", &mock.base, "backend");
+    let detailed = p.run(&["review", "show", "demo", "--json", "--detail"]);
+    assert!(detailed.status.success(), "stderr: {}", stderr_of(&detailed));
+    let value: serde_json::Value = serde_json::from_str(&stdout_of(&detailed)).unwrap();
+    assert_eq!(value.as_object().unwrap().keys().collect::<Vec<_>>(), ["change", "lastRound", "rounds"]);
+    assert_eq!(stdout_of(&detailed), stdout_of(&p.run(&["review", "show", "demo", "--json"])));
 }
 
 #[test]

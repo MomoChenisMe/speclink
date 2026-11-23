@@ -997,3 +997,64 @@ fn an_archived_documents_version_is_one_read_and_a_store_failure_is_an_error() {
     }
 }
 
+
+#[test]
+fn the_archived_list_answers_as_before_and_adds_the_delta_capabilities() {
+    // 「已封存清單的 delta capability 欄位」：同一份資料，改用引擎的共用函式之前的回應
+    // （下面的原文），多出的只有 `deltaCapabilities`，個數等於 `specCount`。
+    let store = archive();
+    write(
+        &store.inner,
+        &[
+            ("archive/changes/2026-11-04-delta/.meta.yaml", "schema: spec-driven\nreviewed_at: 2026-11-04\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/a.rs\n    hash: 0f9c\nverified_at: 2026-11-04\nverified_tasks_total: 1\nverified_scope:\n  - path: src/a.rs\n    hash: 0f9c\nfields:\n  ticket: \"PROJ-1\"\n"),
+            ("archive/changes/2026-11-04-delta/verify.md", "# Verify\n\n## Round 1\n"),
+            ("archive/changes/2026-11-04-delta/specs/auth/spec.md", "## ADDED Requirements\n"),
+            ("archive/changes/legacy/.meta.yaml", "schema: [unclosed\n"),
+            ("archive/changes/legacy/review.md", "# Review\n"),
+        ],
+    );
+    let (list, _) = documents::archived_list(&store, &scope()).unwrap();
+    const BEFORE: &str = r#"{"archived":[{"datedName":"legacy","date":"","name":"legacy","specCount":0,"fromDiscussions":[],"reviewOutcome":"notPassed","verifyOutcome":"none"},{"datedName":"2026-11-04-delta","date":"2026-11-04","name":"delta","specCount":1,"fromDiscussions":[],"reviewOutcome":"stamped","verifyOutcome":"notPassed","fields":{"ticket":"PROJ-1"}},{"datedName":"2026-11-03-beta","date":"2026-11-03","name":"beta","specCount":0,"createdBy":"Bob","fromDiscussions":["talk"],"reviewOutcome":"none","verifyOutcome":"none"},{"datedName":"2026-11-02-gamma","date":"2026-11-02","name":"gamma","tasksTotal":1,"tasksDone":1,"specCount":0,"fromDiscussions":[],"reviewOutcome":"none","verifyOutcome":"none"},{"datedName":"2026-11-01-alpha","date":"2026-11-01","name":"alpha","tasksTotal":2,"tasksDone":1,"specCount":2,"createdBy":"Alice","fromDiscussions":[],"reviewOutcome":"none","verifyOutcome":"none"}]}"#;
+    let expected = BEFORE
+        .replace(r#""fields":{"ticket":"PROJ-1"}}"#, r#""fields":{"ticket":"PROJ-1"},"deltaCapabilities":["auth"]}"#)
+        .replace(
+            r#""createdBy":"Alice","fromDiscussions":[],"reviewOutcome":"none","verifyOutcome":"none"}"#,
+            r#""createdBy":"Alice","fromDiscussions":[],"reviewOutcome":"none","verifyOutcome":"none","deltaCapabilities":["auth","billing"]}"#,
+        );
+    assert_eq!(serde_json::to_string(&list).unwrap(), expected);
+    for item in &list.archived {
+        assert_eq!(item.delta_capabilities.len(), item.spec_count, "{}", item.dated_name);
+    }
+}
+
+#[test]
+fn archived_items_of_the_old_and_the_new_shape_parse_each_other() {
+    // 「新舊版本互相解析」：加入 `deltaCapabilities` 之前的項目型別讀新回應，新型別讀舊回應。
+    #[derive(serde::Deserialize, Debug, PartialEq)]
+    #[serde(rename_all = "camelCase")]
+    struct OldItem {
+        dated_name: String,
+        date: String,
+        name: String,
+        #[serde(default)]
+        tasks_total: Option<usize>,
+        #[serde(default)]
+        tasks_done: Option<usize>,
+        #[serde(default)]
+        spec_count: usize,
+        #[serde(default)]
+        created_by: Option<String>,
+        #[serde(default)]
+        from_discussions: Vec<String>,
+    }
+    let new = r#"{"datedName":"2026-11-22-add-two","date":"2026-11-22","name":"add-two","specCount":2,"fromDiscussions":["two"],"reviewOutcome":"stamped","verifyOutcome":"stamped","deltaCapabilities":["auth","billing"]}"#;
+    let old: OldItem = serde_json::from_str(new).expect("the old shape reads the new item");
+    assert_eq!(old.spec_count, 2);
+    assert_eq!(old.from_discussions, ["two"]);
+    let old_text = r#"{"datedName":"2026-11-10-old-one","date":"2026-11-10","name":"old-one","specCount":0,"fromDiscussions":[]}"#;
+    let item: speclink_protocol::query::ArchivedItem =
+        serde_json::from_str(old_text).expect("the new shape reads the old item");
+    assert!(item.delta_capabilities.is_empty());
+    assert_eq!((item.dated_name.as_str(), item.spec_count), ("2026-11-10-old-one", 0));
+    assert!(!serde_json::to_string(&item).unwrap().contains("deltaCapabilities"), "an empty list is not sent");
+}

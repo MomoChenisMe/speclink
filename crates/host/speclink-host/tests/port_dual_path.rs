@@ -5,7 +5,7 @@
 //! domain events and the error code of a not_found failure must agree.
 
 use speclink_core::command::{
-    execute as engine_execute, Command, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext,
+    execute as engine_execute, Command, CommandOutcome, DomainEvent, ErrorCode, ExecutionContext, ListOutcome,
 };
 use speclink_core::store::Store;
 use speclink_core::workspace::{Workspace, DEFAULT_SPEC_DIR};
@@ -95,6 +95,7 @@ fn list_cmd() -> Command {
         changes: false,
         worktrees: Default::default(),
         detail: false,
+        archived: false,
     }
 }
 
@@ -111,8 +112,8 @@ fn list_changes_matches_and_commits_nothing() {
     // commit times), so `modifiedAt` is the one field that differs: both
     // sides must carry it, and everything else must be the same.
     let changes = |o: &CommandOutcome| match o {
-        CommandOutcome::List(l) => {
-            let mut items = serde_json::to_value(&l.changes).unwrap();
+        CommandOutcome::List(ListOutcome::Sections { changes, .. }) => {
+            let mut items = serde_json::to_value(changes).unwrap();
             for item in items.as_array_mut().expect("a changes array") {
                 let at = item.as_object_mut().unwrap().remove("modifiedAt");
                 assert!(at.is_some_and(|at| at.is_string()), "every change is dated");
@@ -126,6 +127,52 @@ fn list_changes_matches_and_commits_nothing() {
     // 「查詢不提交」：沒有提交，範圍版本號不變，回傳的是「沒有」。
     assert_eq!(ported.scope_version, None);
     assert_eq!(scope_version(&port), before);
+}
+
+#[test]
+fn the_archived_list_matches_on_both_paths() {
+    // verb-contract「已封存變更的清單」Scenario「三種執行方式輸出相同」的宿主套件那一邊：
+    // 同樣的已封存文件，經本機儲存與經儲存接口，`archived` 深度相等。
+    const STAMPED: &str = "schema: spec-driven\ncreated_by: Ann\nfrom_discussion: two\nreviewed_at: 2026-11-20\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/a.rs\n    hash: 0f9c\n";
+    let docs: [(&str, &str, &str); 7] = [
+        ("2026-11-22-add-two", ".meta.yaml", STAMPED),
+        ("2026-11-22-add-two", "tasks.md", "- [x] 1.1 a\n"),
+        ("2026-11-22-add-two", "specs/auth/spec.md", "## ADDED Requirements\n"),
+        ("2026-11-15-open", ".meta.yaml", "schema: spec-driven\nfields:\n  ticket: \"PROJ-1\"\n"),
+        ("2026-11-15-open", "verify.md", "# Verify\n\n## Round 1\n"),
+        ("2026-11-01-broken", ".meta.yaml", "schema: [unclosed\n"),
+        ("legacy", ".openspec.yaml", "schema: spec-driven\ncreated_by: Old\n"),
+    ];
+    let (dir, fs) = seed_fs();
+    let archive = dir.path().join(DEFAULT_SPEC_DIR).join("changes").join("archive");
+    let port = seed_port();
+    let mut keyed = Vec::new();
+    for (dated, doc, text) in docs {
+        let file = archive.join(dated).join(doc.split('/').collect::<std::path::PathBuf>());
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        std::fs::write(file, text).unwrap();
+        // A plain key: the builder takes dated names only, and a store can hold
+        // an older archived change without a date.
+        keyed.push((DocKey::new(format!("{}{dated}/{doc}", keys::ARCHIVED_CHANGES)).unwrap(), text.to_string()));
+    }
+    seed(&port, keyed);
+    let cmd = || Command::List {
+        sort: "name".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    };
+    let archived = |o: &CommandOutcome| match o {
+        CommandOutcome::List(ListOutcome::Archived(items)) => serde_json::to_value(items).unwrap(),
+        other => panic!("expected list, got {other:?}"),
+    };
+    let (fs_out, _) = on_fs(&fs, cmd());
+    let ported = on_port(&port, cmd()).expect("ported archived list");
+    assert_eq!(archived(&fs_out), archived(&ported.outcome));
+    assert_eq!(archived(&fs_out).as_array().map(Vec::len), Some(4), "{}", archived(&fs_out));
+    assert_eq!(ported.scope_version, None, "a query commits nothing");
 }
 
 #[test]

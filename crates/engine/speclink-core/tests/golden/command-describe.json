@@ -2,6 +2,7 @@
   {
     "name": "list",
     "params": {
+      "archived": false,
       "changes": true,
       "detail": true,
       "sort": "name",

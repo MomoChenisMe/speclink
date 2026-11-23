@@ -80,10 +80,24 @@ pub struct DiscussionInfo {
     #[serde(skip)]
     pub concluded: bool,
     /// 同一趟 frontmatter 解析的型別化結果（`promoted_to`、`hold`、`board_rank` 都在
-    /// 這裡）：desktop 看板與 server 列表直接讀它，不再逐卡讀檔。不進 JSON；反序列化
-    /// 取預設（remote 端由 wire DTO 回填 `promoted_to`）。
-    #[serde(skip)]
+    /// 這裡）：desktop 看板與 server 列表直接讀它，不再逐卡讀檔。JSON 只帶 `promoted_to`
+    /// ——鍵 `promotedTo`、空清單省略；它是最後一個欄位，所以是物件的最後一個鍵。
+    /// 反序列化取預設（remote 端由 wire DTO 回填 `promoted_to`）。
+    #[serde(
+        rename = "promotedTo",
+        serialize_with = "promoted_to_json",
+        skip_serializing_if = "not_promoted",
+        skip_deserializing
+    )]
     pub head: DiscussionHead,
+}
+
+fn not_promoted(head: &DiscussionHead) -> bool {
+    head.promoted_to.is_empty()
+}
+
+fn promoted_to_json<S: serde::Serializer>(head: &DiscussionHead, serializer: S) -> Result<S::Ok, S::Error> {
+    head.promoted_to.serialize(serializer)
 }
 
 /// `discuss new --kind` 的白名單——驗證與拒絕訊息的單一事實來源。

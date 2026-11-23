@@ -386,7 +386,7 @@ impl DomainEvent {
 #[serde(rename_all_fields = "camelCase")]
 pub enum Command {
     // --- 查詢群 ---
-    /// `list [--specs] [--changes] [--sort <key>]`
+    /// `list [--specs] [--changes] [--sort <key>] [--detail] [--archived]`
     List {
         sort: String,
         specs: bool,
@@ -396,9 +396,15 @@ pub enum Command {
         /// an empty map, whose output is byte-identical to the frozen baseline.
         worktrees: std::collections::BTreeMap<String, crate::listing::ListWorktreeJson>,
         /// `--detail`: every change also carries what it has on record — the
-        /// two quality stations, the claim, the branch and the landing. False
-        /// is the frozen output, and asks the store for nothing more.
+        /// two quality stations, the claim, the branch, the landing, the
+        /// creator and the source discussions. False is the frozen output,
+        /// and asks the store for nothing more.
         detail: bool,
+        /// `--archived`: the archived changes instead of the active ones and
+        /// the specs ([`crate::listing::archived_json`]). The verb refuses it
+        /// beside `--specs`, `--changes` and `--detail`; the command then
+        /// ignores those three.
+        archived: bool,
     },
     /// `show <item> [--item-type change|spec]`
     Show {
@@ -660,13 +666,15 @@ fn serialize_len<S: serde::Serializer>(text: &str, serializer: S) -> Result<S::O
 /// `plan` outcome — the engine's plan payload as computed (design D3).
 pub type PlanReport = crate::plan::Plan;
 
-/// `list` outcome: the changes section (sorted per the requested key, absent
-/// for `--specs` alone) and the specs section (present when specs were
-/// requested; the `list --specs --json` item shape, human rendering reads `id`).
+/// `list` outcome: the sections of the active list, or the archived list.
 #[derive(Debug)]
-pub struct ListOutcome {
-    pub changes: Option<Vec<crate::listing::ListChangeJson>>,
-    pub specs: Option<serde_json::Value>,
+pub enum ListOutcome {
+    /// The changes section (sorted per the requested key, absent for
+    /// `--specs` alone) and the specs section (present when specs were
+    /// requested; the `list --specs --json` item shape, human rendering reads `id`).
+    Sections { changes: Option<Vec<crate::listing::ListChangeJson>>, specs: Option<serde_json::Value> },
+    /// `list --archived`: the archived changes, newest first.
+    Archived(Vec<crate::listing::ListArchivedJson>),
 }
 
 /// `show` outcome — the item resolved to a canonical spec or a change.
@@ -1064,7 +1072,8 @@ pub fn execute(
 ) -> Result<(CommandOutcome, Vec<DomainEvent>), CommandError> {
     let ws = ctx.workspace.as_ref();
     let outcome = match cmd {
-        Command::List { sort, specs, changes, worktrees, detail } => {
+        Command::List { archived: true, .. } => Ok(CommandOutcome::List(ListOutcome::Archived(crate::listing::archived_json(store)))),
+        Command::List { sort, specs, changes, worktrees, detail, archived: false } => {
             run_list(store, &sort, specs, changes, &worktrees, detail)
         }
         Command::Show { item, item_type } => run_show(store, item.as_deref(), item_type.as_deref()),
@@ -1531,7 +1540,7 @@ fn run_list(
         Some(crate::listing::changes_json_detail(store, &changes, worktrees, detail))
     };
     let specs = specs.then(|| crate::listing::specs_json_items(store));
-    Ok(CommandOutcome::List(ListOutcome { changes, specs }))
+    Ok(CommandOutcome::List(ListOutcome::Sections { changes, specs }))
 }
 
 fn run_show(

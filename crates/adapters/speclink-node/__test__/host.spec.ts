@@ -1408,7 +1408,8 @@ describe('host output for a store with no local folder', () => {
       rounds: 0,
       tasksTotal: 1,
     })
-    expect(demo.verify).toEqual({ state: 'inProgress' })
+    // archived-list-and-detail-reads: an open station carries its ticket's rounds with --detail.
+    expect(demo.verify).toEqual({ state: 'inProgress', rounds: 1 })
     expect(demo.claimed).toEqual({ by: 'Alice', byId: 'u_1', at: '2026-11-18T10:00:00+00:00' })
     expect(demo.branch).toBe('speclink/demo')
     expect(demo.landed).toEqual({ commit: COMMIT })
@@ -1793,5 +1794,104 @@ describe('the release hook of the SDK docs', () => {
     expect(err.code).toBe('internal')
     expect(port.calls.commit).toBe(commits)
     expect(port.doc('s1', 'changes/demo/.meta.yaml')?.content).toContain('claimed_by: Alice\n')
+  })
+})
+
+// archived-list-and-detail-reads：宿主畫面要的五項資料都經 host.dispatch 讀得到。
+describe('the reads a host screen needs, through host.dispatch', () => {
+  const STAMPS =
+    'reviewed_at: 2026-11-20\nreviewed_tasks_total: 3\nreviewed_scope:\n  - path: src/a.rs\n    hash: 0f9c\n' +
+    'verified_at: 2026-11-21\nverified_tasks_total: 3\nverified_scope:\n  - path: src/a.rs\n    hash: 0f9c\n'
+  const TWO_ROUNDS = '# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n## Round 2\n\n**Scope**: src/a.rs\n'
+
+  function portWithRecords() {
+    const port = memoryPort()
+    port.seed('s1', {
+      'changes/demo/.meta.yaml': 'schema: spec-driven\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n',
+      'changes/demo/proposal.md': PROPOSAL,
+      'changes/demo/tasks.md': OPEN_TASKS,
+      'changes/demo/review.md': TWO_ROUNDS,
+      'archive/changes/2026-11-22-add-two/.meta.yaml': `schema: spec-driven\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n${STAMPS}`,
+      'archive/changes/2026-11-22-add-two/tasks.md': '- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n',
+      'archive/changes/2026-11-22-add-two/specs/auth/spec.md': '## ADDED Requirements\n',
+      'archive/changes/2026-11-10-old-one/.meta.yaml': META,
+      'discussions/two.md': '---\ntopic: Two\nslug: two\nstatus: promoted\npromoted_to: demo, add-two\ncreated: 2026-11-01\n---\n',
+      'discussions/idea.md': '---\ntopic: Idea\nslug: idea\nstatus: open\ncreated: 2026-11-02\n---\n',
+      'config.yaml': CONFIG,
+    })
+    return port
+  }
+
+  it('lists the archived changes, newest first', async () => {
+    const port = portWithRecords()
+    const asked: { command: string; archived: unknown }[] = []
+    const host = createHost({
+      store: port.store,
+      hooks: {
+        beforeCommand: (info) => {
+          asked.push({ command: info.command, archived: info.params.archived })
+          return { allow: true }
+        },
+      },
+    })
+    const listed = await host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--archived', '--json'] })
+    // The hook sees the `list` command with `archived` set.
+    expect(asked).toEqual([{ command: 'list', archived: true }])
+    expect(listed).toEqual({
+      archived: [
+        {
+          datedName: '2026-11-22-add-two',
+          date: '2026-11-22',
+          name: 'add-two',
+          reviewOutcome: 'stamped',
+          verifyOutcome: 'stamped',
+          tasksTotal: 3,
+          tasksDone: 3,
+          createdBy: 'Ann <ann@example.com>',
+          fromDiscussions: ['two'],
+          deltaCapabilities: ['auth'],
+        },
+        { datedName: '2026-11-10-old-one', date: '2026-11-10', name: 'old-one', reviewOutcome: 'none', verifyOutcome: 'none' },
+      ],
+    })
+    expect(port.calls.commit).toBe(0)
+  })
+
+  it('gives the creator, the source discussions and the rounds of an open station with --detail', async () => {
+    const host = createHost({ store: portWithRecords().store })
+    const listed = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json', '--detail'] })) as {
+      changes: Record<string, unknown>[]
+    }
+    const demo = listed.changes.find((c) => c.name === 'demo')!
+    expect(demo.createdBy).toBe('Ann <ann@example.com>')
+    expect(demo.fromDiscussions).toEqual(['two'])
+    expect(demo.review).toEqual({ state: 'inProgress', rounds: 2 })
+    const plain = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['list', '--json'] })) as {
+      changes: Record<string, unknown>[]
+    }
+    expect(Object.keys(plain.changes[0])).not.toContain('createdBy')
+  })
+
+  it('gives the changes a discussion was promoted to', async () => {
+    const host = createHost({ store: portWithRecords().store })
+    const listed = (await host.dispatch({ identity: ALICE, scope: 's1', argv: ['discuss', 'list', '--json'] })) as {
+      discussions: Record<string, unknown>[]
+    }
+    expect(listed.discussions.find((d) => d.slug === 'two')!.promotedTo).toEqual(['demo', 'add-two'])
+    expect(Object.keys(listed.discussions.find((d) => d.slug === 'idea')!)).not.toContain('promotedTo')
+  })
+
+  it('refuses --archived without --json, and beside --detail, with invalid_argv', async () => {
+    const port = portWithRecords()
+    const host = createHost({ store: port.store })
+    const before = totalCalls(port)
+    for (const argv of [
+      ['list', '--archived'],
+      ['list', '--archived', '--json', '--detail'],
+    ]) {
+      const err = await rejection(host.dispatch({ identity: ALICE, scope: 's1', argv }))
+      expect(err.code, argv.join(' ')).toBe('invalid_argv')
+    }
+    expect(totalCalls(port)).toBe(before)
   })
 })

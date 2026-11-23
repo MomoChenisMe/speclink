@@ -5,7 +5,7 @@
 use crate::command::{ClaimRecord, LandedRecord};
 use crate::model::Change;
 use crate::station::{self, StationStatus};
-use crate::store::Store;
+use crate::store::{DocRef, Store};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -53,10 +53,10 @@ pub struct ListChangeJson {
     /// for byte.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub fields: crate::fields::Fields,
-    /// The five detail keys (`list --json --detail`): what the change has on
-    /// record, each in the shape `show --json` gives it. All five stay unset,
-    /// and out of the output, unless the list was asked for detail; with
-    /// detail each one is there only when the change has that record.
+    /// The detail keys (`list --json --detail`): what the change has on
+    /// record, each in the shape `show --json` gives it. All of them stay
+    /// unset, and out of the output, unless the list was asked for detail;
+    /// with detail each one is there only when the change has that record.
     ///
     /// The two quality stations. A station with no ticket and no stamp has
     /// nothing recorded and is not serialized.
@@ -73,6 +73,13 @@ pub struct ListChangeJson {
     /// The landing record. The list carries the commit only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub landed: Option<ListLandedJson>,
+    /// Who created the change, as its metadata records it.
+    #[serde(rename = "createdBy", skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    /// The discussions the change came from, in the order of its metadata
+    /// (the order `show --json` gives them).
+    #[serde(rename = "fromDiscussions", skip_serializing_if = "Vec::is_empty")]
+    pub from_discussions: Vec<String>,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -103,7 +110,7 @@ fn station_unrecorded(status: &Option<StationStatus>) -> bool {
 }
 
 fn station_json<S: serde::Serializer>(status: &Option<StationStatus>, serializer: S) -> Result<S::Ok, S::Error> {
-    status.as_ref().map(StationStatus::to_json).serialize(serializer)
+    status.as_ref().map(StationStatus::to_list_json).serialize(serializer)
 }
 
 /// Order changes for listing (frozen ordering contract):
@@ -196,8 +203,8 @@ pub fn changes_json_with(
     changes_json_detail(store, changes, worktrees, false)
 }
 
-/// [`changes_json_with`], and with `detail` the five detail keys of every
-/// change whose metadata reads. Each comes from where `show` takes it: the
+/// [`changes_json_with`], and with `detail` the detail keys of every change
+/// whose metadata reads. Each comes from where `show` takes it: the
 /// stations from [`station::recorded_status`], the claim and the landing from
 /// the same two records. Without `detail` nothing here runs, so the output and
 /// what the store is asked for are the ones of [`changes_json_with`].
@@ -207,6 +214,18 @@ pub fn changes_json_detail(
     worktrees: &BTreeMap<String, ListWorktreeJson>,
     detail: bool,
 ) -> Vec<ListChangeJson> {
+    if detail {
+        // Every open ticket is read for its rounds: one batch for a store that
+        // pays per call. A change whose metadata is broken reports no station.
+        let tickets: Vec<DocRef<'_>> = changes
+            .iter()
+            .filter(|c| c.meta_error.is_none())
+            .flat_map(|c| {
+                [&station::REVIEW, &station::VERIFY].map(|st| DocRef::Artifact { change: &c.name, artifact: st.doc })
+            })
+            .collect();
+        store.prefetch(&tickets);
+    }
     changes
         .iter()
         .map(|c| {
@@ -241,6 +260,8 @@ pub fn changes_json_detail(
                 landed: meta
                     .and_then(|m| LandedRecord::new(m.landed_commit.clone(), m.landed_at.clone(), m.landed_by.clone()))
                     .map(|landed| ListLandedJson { commit: landed.commit }),
+                created_by: meta.and_then(|m| m.created_by.clone()),
+                from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })
@@ -257,6 +278,122 @@ fn modified_at(secs: u64) -> Option<String> {
     }
     let at = chrono::DateTime::from_timestamp(i64::try_from(secs).ok()?, 0)?;
     (at.year() <= 9999).then(|| at.to_rfc3339_opts(chrono::SecondsFormat::Secs, true))
+}
+
+/// One item of `list --archived --json`: an archived change. The order of the
+/// fields is the output order; every key past `verifyOutcome` is there only
+/// when it has a value.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListArchivedJson {
+    pub dated_name: String,
+    /// `YYYY-MM-DD` from the start of `dated_name`; empty when the name has
+    /// no date.
+    pub date: String,
+    /// `dated_name` without its date; the whole name when it has none.
+    pub name: String,
+    pub review_outcome: ListArchivedOutcome,
+    pub verify_outcome: ListArchivedOutcome,
+    /// The two task counts, both or neither: there when the archived change
+    /// has a task list.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tasks_total: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tasks_done: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub from_discussions: Vec<String>,
+    /// The capabilities of the archived change's delta specs, ascending.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub delta_capabilities: Vec<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub fields: crate::fields::Fields,
+}
+
+/// A station's outcome on an archived change, as the archived list prints it:
+/// `none`, `stamped` or `notPassed` for the outcomes this Engine names, and
+/// the text as it came for one that only a newer server names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(untagged)]
+pub enum ListArchivedOutcome {
+    Known(station::ArchivedOutcome),
+    Other(String),
+}
+
+/// The items of `list --archived --json`, newest dated name first. One
+/// implementation for every entry point: the CLI and the host kit run it as
+/// the `list` command, and the remote door's archived list calls it on its
+/// store view.
+///
+/// Each item is judged by the archived documents alone: the task counts from
+/// the task list, the two outcomes by [`station::ArchivedOutcome::of`] (the
+/// station's ticket archived with the change, else a stamp in the metadata,
+/// else nothing). Metadata that does not parse reads as having no stamp,
+/// creator, source discussion or field; the item is still listed.
+pub fn archived_json(store: &dyn Store) -> Vec<ListArchivedJson> {
+    let mut names = store.list_archived_changes();
+    names.sort_by(|a, b| b.cmp(a));
+    // Every document an item reads, in one batch for a store that pays per call.
+    let docs: Vec<DocRef<'_>> = names
+        .iter()
+        .flat_map(|dated_name| {
+            [
+                DocRef::ArchivedMeta { dated_name },
+                DocRef::ArchivedArtifact { dated_name, artifact: "tasks.md" },
+                DocRef::ArchivedArtifact { dated_name, artifact: station::REVIEW.doc },
+                DocRef::ArchivedArtifact { dated_name, artifact: station::VERIFY.doc },
+            ]
+        })
+        .collect();
+    store.prefetch(&docs);
+    names.iter().map(|dated_name| archived_item(store, dated_name)).collect()
+}
+
+fn archived_item(store: &dyn Store, dated_name: &str) -> ListArchivedJson {
+    let (date, name) = split_dated_name(dated_name);
+    let tasks = store.read_archived_artifact(dated_name, "tasks.md").map(|text| {
+        let (total, done, _) = crate::tasks::progress(&crate::tasks::parse(&text));
+        (total, done)
+    });
+    let meta = crate::model::ChangeMeta::from_text(store.read_archived_meta(dated_name).as_deref()).unwrap_or_default();
+    let outcome = |st: &station::Station| {
+        let ticket_archived = store.read_archived_artifact(dated_name, st.doc).is_some();
+        ListArchivedOutcome::Known(station::ArchivedOutcome::of(ticket_archived, station::is_stamped(meta.anchors(st))))
+    };
+    ListArchivedJson {
+        dated_name: dated_name.to_string(),
+        date: date.to_string(),
+        name: name.to_string(),
+        review_outcome: outcome(&station::REVIEW),
+        verify_outcome: outcome(&station::VERIFY),
+        tasks_total: tasks.map(|(total, _)| total),
+        tasks_done: tasks.map(|(_, done)| done),
+        from_discussions: meta.from_discussions(),
+        created_by: meta.created_by,
+        delta_capabilities: store.archived_delta_capabilities(dated_name),
+        fields: meta.fields,
+    }
+}
+
+/// The date and the name of an archived change, by the rule the archived
+/// list has always answered with: a `-` at bytes 4, 7 and 10, digits not
+/// checked, and no date at all when the name does not fit. It is lenient on
+/// purpose; changing it would change the `date` and `name` every archived
+/// list returns.
+pub fn split_dated_name(dated_name: &str) -> (&str, &str) {
+    let bytes = dated_name.as_bytes();
+    if bytes.len() > 11
+        && bytes.get(4) == Some(&b'-')
+        && bytes.get(7) == Some(&b'-')
+        && bytes.get(10) == Some(&b'-')
+        && dated_name.is_char_boundary(10)
+        && dated_name.is_char_boundary(11)
+    {
+        (&dated_name[..10], &dated_name[11..])
+    } else {
+        ("", dated_name)
+    }
 }
 
 /// The `specs` items of `list --specs --json`.
@@ -284,7 +421,7 @@ pub fn specs_json_items(store: &dyn Store) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::{changes_json, changes_json_detail, changes_json_with, ListWorktreeJson};
+    use super::{changes_json, changes_json_detail, changes_json_with, split_dated_name, ListWorktreeJson};
     use crate::teststore::TestStore;
     use std::collections::BTreeMap;
 
@@ -293,6 +430,16 @@ mod tests {
         store.put_artifact(tag, "proposal.md", "## Why\n\nDemo.\n");
         store.put_artifact(tag, "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
         store
+    }
+
+    #[test]
+    fn a_dated_name_splits_into_its_date_and_its_name_and_other_names_have_no_date() {
+        assert_eq!(split_dated_name("2026-07-20-demo"), ("2026-07-20", "demo"));
+        assert_eq!(split_dated_name("demo"), ("", "demo"));
+        // The digits are not checked; the three dashes and a name after them are.
+        assert_eq!(split_dated_name("abcd-ef-gh-x"), ("abcd-ef-gh", "x"));
+        assert_eq!(split_dated_name("2026-07-20-"), ("", "2026-07-20-"));
+        assert_eq!(split_dated_name("2026-07-20"), ("", "2026-07-20"));
     }
 
     #[test]
@@ -566,7 +713,7 @@ mod tests {
 
     // --- the detail keys (verb-output-for-embedded D1) ---
 
-    const DETAIL_KEYS: [&str; 5] = ["review", "verify", "claimed", "branch", "landed"];
+    const DETAIL_KEYS: [&str; 7] = ["review", "verify", "claimed", "branch", "landed", "createdBy", "fromDiscussions"];
     const REVIEW_STAMP: &str = "reviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 2\nreviewed_scope:\n  - path: crates/a/src/lib.rs\n    hash: 0f9c\n";
     const LANDED_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 
@@ -631,10 +778,13 @@ mod tests {
         // spec Example「各種記錄對應的鍵」，一列一個案例。
         let landed = format!("branch: speclink/demo\nlanded_commit: {LANDED_COMMIT}\nlanded_at: 2026-11-18T11:00:00+00:00\n");
         let unlanded_branchless = format!("landed_commit: {LANDED_COMMIT}\n");
-        let cases: [(&str, &str, bool, &[&str]); 7] = [
+        let two_rounds = "# Review — demo\n\n## Round 1\n\n**Scope**: src/a.rs\n\n## Round 2\n\n**Scope**: src/a.rs\n";
+        let cases: [(&str, &str, bool, &[&str]); 9] = [
             ("no record", "", false, &[]),
             ("a review stamp only", REVIEW_STAMP, false, &["review"]),
-            ("an open review ticket, no stamp", "", true, &["review"]),
+            ("an open review ticket of two rounds, no stamp", "", true, &["review"]),
+            ("a recorded creator", "created_by: Ann <ann@example.com>\n", false, &["createdBy"]),
+            ("promoted from discussion two", "from_discussion: two\n", false, &["fromDiscussions"]),
             ("claimed, no identifier", "claimed_by: Alice\nclaimed_at: 2026-11-18T10:00:00+00:00\n", false, &["claimed"]),
             ("a branch, not landed", "branch: speclink/demo\n", false, &["branch"]),
             ("landed", &landed, false, &["branch", "landed"]),
@@ -643,13 +793,16 @@ mod tests {
         for (case, extra, review_ticket, keys) in cases {
             let store = recorded_store(extra);
             if review_ticket {
-                store.put_artifact("demo", crate::station::REVIEW_DOC, "## Round 1\n");
+                store.put_artifact("demo", crate::station::REVIEW_DOC, two_rounds);
             }
             let item = detail_item(&store, true);
             assert_eq!(detail_keys_of(&item), keys, "{case}: {item}");
         }
         // The values of the rows that say more than "the key is there".
         let ticket = recorded_store("");
+        ticket.put_artifact("demo", crate::station::REVIEW_DOC, two_rounds);
+        assert_eq!(detail_item(&ticket, true)["review"], serde_json::json!({ "state": "inProgress", "rounds": 2 }));
+        // A ticket whose rounds cannot be counted is still an open one.
         ticket.put_artifact("demo", crate::station::REVIEW_DOC, "## Round 1\n");
         assert_eq!(detail_item(&ticket, true)["review"], serde_json::json!({ "state": "inProgress" }));
         let unkeyed = recorded_store("claimed_by: Alice\nclaimed_at: 2026-11-18T10:00:00+00:00\n");
@@ -657,6 +810,39 @@ mod tests {
             detail_item(&unkeyed, true)["claimed"],
             serde_json::json!({ "by": "Alice", "at": "2026-11-18T10:00:00+00:00" })
         );
+    }
+
+    #[test]
+    fn detail_adds_the_creator_and_the_source_discussions() {
+        // spec verb-contract「清單的詳細輸出」Scenario「帶出建立的人與來源討論」。
+        let store = recorded_store("created_by: Ann <ann@example.com>\nfrom_discussion: two, three\n");
+        let item = detail_item(&store, true);
+        assert_eq!(item["createdBy"], "Ann <ann@example.com>");
+        assert_eq!(item["fromDiscussions"], serde_json::json!(["two", "three"]), "the order of the metadata");
+        let plain = detail_item(&store, false);
+        assert!(plain.get("createdBy").is_none() && plain.get("fromDiscussions").is_none(), "{plain}");
+        // A change with neither record has neither key.
+        let solo = detail_item(&recorded_store(""), true);
+        assert!(solo.get("createdBy").is_none() && solo.get("fromDiscussions").is_none(), "{solo}");
+        // The two keys come after the other detail keys and before worktree.
+        let store = recorded_store("branch: speclink/demo\ncreated_by: Ann\nfrom_discussion: two\n");
+        let changes = crate::model::list_changes(&store);
+        let facts = BTreeMap::from([(
+            "demo".to_string(),
+            ListWorktreeJson { path: "/x".into(), branch: "speclink/demo".into() },
+        )]);
+        assert_eq!(
+            serde_json::to_string(&changes_json_detail(&store, &changes, &facts, true)).unwrap(),
+            r#"[{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","createdBy":"Ann","fromDiscussions":["two"],"worktree":{"path":"/x","branch":"speclink/demo"}}]"#
+        );
+    }
+
+    #[test]
+    fn a_change_with_corrupt_metadata_has_no_creator_or_source_discussion() {
+        let store = TestStore::with_meta("demo", "created_by: Ann\nfrom_discussion: two\nschema: [unclosed\n");
+        let item = detail_item(&store, true);
+        assert!(item.get("metaError").is_some(), "{item}");
+        assert!(item.get("createdBy").is_none() && item.get("fromDiscussions").is_none(), "{item}");
     }
 
     #[test]

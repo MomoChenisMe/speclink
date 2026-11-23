@@ -492,6 +492,16 @@ const mine = changes.filter((change) => change.claimed?.byId === session.user.id
 
 每個鍵都只在變更有那一筆記錄時出現。鍵的清單與規則見 [`speclink list --json --detail`](verb-contract.zh-TW.md#list-detail)。
 
+**其他畫面也用動詞讀。** 下面這些讀取都不必呼叫 HTTP 入口：
+
+| 畫面要顯示 | 呼叫 `host.dispatch` 時給的 argv | 說明 |
+| --- | --- | --- |
+| 已封存的變更 | `['list', '--archived', '--json']` | [`list --archived`](verb-contract.zh-TW.md#list-archived) |
+| 已封存變更的一份文件 | `['artifact', 'cat', '<文件>', '--change', '<datedName>']` | [`list --archived`](verb-contract.zh-TW.md#list-archived) |
+| 建立的人、來源討論與進行中關卡的輪數 | `['list', '--json', '--detail']`；單一變更用 `['show', '<變更>', '--json', '--detail']` | [`list --json --detail`](verb-contract.zh-TW.md#list-detail) |
+| 審查或驗證工單的全文 | `['review', 'show', '<變更>', '--json', '--detail']` 或 `['verify', 'show', '<變更>', '--json', '--detail']` | [工單全文](verb-contract.zh-TW.md#ticket-detail) |
+| 討論轉出的變更 | `['discuss', 'list', '--json']` 或 `['discuss', 'show', '<slug>', '--json']` | [`promotedTo`](verb-contract.zh-TW.md#discussion-promoted-to) |
+
 **自由欄位**是宿主自訂的鍵值，引擎只存不解讀，例如這個變更是從哪張工單來的。`fields` 只在動詞建立變更或討論時寫入（`new change`、`discuss new`、`discuss promote`），和建立在同一次提交裡；其他動詞會忽略它，所以每次呼叫都帶同一組也沒關係。它優先於 `--field` 給的同名欄位，`beforeCommand` 可以在 `params.fields` 看到將要寫入的欄位並檢查。規則：鍵由 `a-z`、`0-9`、`_`、`.`、`-` 組成並以字母開頭，最長 64 個字元；值是單行、最多 1024 位元組；最多 32 個鍵。不合規則時以 `invalid_argv` 拒絕，什麼都不寫。不要把密鑰放進欄位：讀得到這個變更的人都看得到。
 
 **宿主套件不讀 git，也不讀你的檔案。** 需要本機事實的動詞，由你的程式收集後當成輸入：

@@ -58,7 +58,10 @@ fn show_detail_prints_the_scope_of_each_stamp_alike_in_both_modes() {
         assert_eq!(keys, ["hash", "path"], "{entry}");
         assert!(entry["path"].is_string() && entry["hash"].is_string(), "{entry}");
     }
-    assert_eq!(demo["verify"], serde_json::json!({ "state": "inProgress" }));
+    // archived-list-and-detail-reads: an open station carries its ticket's rounds with --detail.
+    assert_eq!(demo["verify"], serde_json::json!({ "state": "inProgress", "rounds": 1 }));
+    let plain = json_of(&p.same_ok(&["show", "demo", "--json"]));
+    assert_eq!(plain["verify"], serde_json::json!({ "state": "inProgress" }), "no rounds without --detail");
 
     // verify-station「帶 --detail 時帶出蓋章時的指紋」.
     let checked = json_of(&p.same_ok(&["show", "checked", "--json", "--detail"]));
@@ -135,6 +138,23 @@ fn remote_show_detail_against_a_server_without_stations_succeeds_with_no_station
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     let shown = json_of(&out);
     assert!(shown.get("review").is_none() && shown.get("verify").is_none(), "{shown}");
+}
+
+#[test]
+fn a_ticket_that_does_not_read_as_text_still_counts_as_open() {
+    // The ticket is there, so the station is in progress, as `archive` judges
+    // it; its rounds cannot be counted, so there is no `rounds`.
+    let docs = stamped_docs();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let p = TempProject::local("show-unreadable-ticket", &refs);
+    std::fs::write(p.spec_file("changes/demo/verify.md"), [0xff, 0xfe, 0x00]).expect("write the ticket");
+    let open = serde_json::json!({ "state": "inProgress" });
+    for args in [&["show", "demo", "--json"][..], &["show", "demo", "--json", "--detail"]] {
+        assert_eq!(json_of(&p.run(args))["verify"], open, "{args:?}");
+    }
+    let listed = json_of(&p.run(&["list", "--json", "--detail"]));
+    let demo = listed["changes"].as_array().unwrap().iter().find(|c| c["name"] == "demo").expect("demo is listed");
+    assert_eq!(demo["verify"], open);
 }
 
 #[test]

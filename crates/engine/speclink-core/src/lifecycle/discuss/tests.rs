@@ -2166,14 +2166,61 @@ fn info_from_doc_projects_concluded_and_the_head_from_the_record() {
 }
 
 #[test]
-fn info_serialization_omits_concluded_and_the_head() {
-    let text = "---\ntopic: Alpha\nslug: alpha\nstatus: promoted\npromoted_to: cut-a\n\
+fn info_serialization_carries_promoted_to_last_and_omits_the_rest_of_the_head() {
+    // archived-list-and-detail-reads：已轉出的討論多一個 `promotedTo`（字串陣列，順序同
+    // frontmatter）；結構序列化時它在最後（動詞的 --json 輸出照字母順序排鍵）。
+    // `concluded`、`hold`、`board_rank` 仍不進 JSON。
+    let text = "---\ntopic: Alpha\nslug: alpha\nstatus: promoted\npromoted_to: cut-b, cut-a\n\
                     created: 2026-01-02\nhold: true\nboard_rank: n\n---\n\n## Conclusion\n\n**Decision**: x\n";
     let json = serde_json::to_string(&super::info_from_doc(&doc_of("alpha", text))).unwrap();
-    for key in ["promotedTo", "promoted_to", "concluded", "held", "hold", "head", "boardRank", "board_rank"] {
+    assert!(json.ends_with(r#","archived":false,"promotedTo":["cut-b","cut-a"]}"#), "{json}");
+    for key in ["promoted_to", "concluded", "held", "hold", "head", "boardRank", "board_rank"] {
         assert!(!json.contains(&format!("\"{key}\"")), "`{key}` 不得進 JSON: {json}");
     }
     assert!(json.contains("\"status\":\"promoted\""));
+}
+
+#[test]
+fn an_unpromoted_info_serializes_as_it_did_before_promoted_to() {
+    // 「沒有轉出的討論輸出不變」：這段文字取自加入 `promotedTo` 之前的輸出。
+    let json = serde_json::to_string(&super::info_from_doc(&doc_of("beta", &open_doc("beta", "Beta")))).unwrap();
+    assert_eq!(
+        json,
+        r#"{"slug":"beta","topic":"Beta","status":"open","rounds":0,"created":"2026-01-02","path":"openspec/discussions/beta.md","archived":false}"#
+    );
+}
+
+#[test]
+fn the_list_and_the_archived_list_carry_promoted_to_alike() {
+    // 「已封存的討論也帶出」：清單與已封存清單用同一個結構。
+    let store = crate::teststore::TestStore::with_live_discussion(
+        "two",
+        "---\ntopic: Two\nslug: two\nstatus: promoted\npromoted_to: add-two, add-three\ncreated: 2026-01-02\n---\n",
+    );
+    store.archived_discussions.borrow_mut().insert(
+        "old".to_string(),
+        "---\ntopic: Old\nslug: old\nstatus: promoted\npromoted_to: first-cut\ncreated: 2026-01-01\n---\n".to_string(),
+    );
+    let live = serde_json::to_value(super::list_discussions(&store)).unwrap();
+    assert_eq!(live[0]["promotedTo"], serde_json::json!(["add-two", "add-three"]));
+    let archived = serde_json::to_value(super::list_archived(&store)).unwrap();
+    assert_eq!(archived[0]["promotedTo"], serde_json::json!(["first-cut"]));
+}
+
+#[test]
+fn a_search_hit_carries_promoted_to_as_its_list_item_does() {
+    // 「搜尋的命中項帶出同一份清單」：命中項是清單項目加上 `matches`，所以跟著帶 `promotedTo`；
+    // 沒有轉出的討論的命中項沒有這個鍵。
+    let store = crate::teststore::TestStore::with_live_discussion(
+        "two",
+        "---\ntopic: Two\nslug: two\nstatus: promoted\npromoted_to: add-two, add-three\ncreated: 2026-01-02\n---\n",
+    );
+    store.discussions.borrow_mut().insert("twofold".to_string(), open_doc("twofold", "Twofold"));
+    let hits = serde_json::to_value(super::search(&store, &["two".to_string()]).unwrap()).unwrap();
+    let hit = |slug: &str| hits.as_array().unwrap().iter().find(|h| h["slug"] == slug).cloned().expect(slug);
+    assert_eq!(hit("two")["promotedTo"], serde_json::json!(["add-two", "add-three"]));
+    assert!(hit("twofold").get("promotedTo").is_none(), "{hits}");
+    assert!(hit("twofold")["matches"].is_array());
 }
 
 #[test]
@@ -2342,3 +2389,4 @@ fn show_returns_the_text_and_info_of_one_read() {
     );
     assert!(super::show(&store, "no-such-topic").is_none());
 }
+

@@ -296,6 +296,22 @@ impl ArchivedOutcome {
             (false, false) => ArchivedOutcome::None,
         }
     }
+
+    /// 對外的字串（`list --archived --json` 與線上已封存清單的 `reviewOutcome`／`verifyOutcome`）。
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            ArchivedOutcome::None => "none",
+            ArchivedOutcome::Stamped => "stamped",
+            ArchivedOutcome::NotPassed => "notPassed",
+        }
+    }
+}
+
+/// 序列化成 [`ArchivedOutcome::as_str`] 的字串，對外的名稱只有那一處。
+impl serde::Serialize for ArchivedOutcome {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(self.as_str())
+    }
 }
 
 /// 一個品質站在一個變更上走到哪裡（station-status-and-landing D1）。「蓋章後內容有沒有
@@ -321,13 +337,15 @@ impl StationProgress {
     }
 }
 
-/// 一個品質站的狀態與章的內容。章的欄位只在 [`StationProgress::Stamped`] 時有值。
+/// 一個品質站的狀態與章的內容。章的欄位只在 [`StationProgress::Stamped`] 時有值；
+/// `rounds` 例外，進行中時是工單目前的輪數（工單解析不了時沒有）。
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StationStatus {
     pub progress: StationProgress,
     pub stamped_at: Option<String>,
     pub stamped_by: Option<String>,
     pub stamped_with: Option<String>,
+    /// 已蓋章：歷次蓋章累加的回合數（metadata 的 `*_rounds`）；進行中：工單目前的輪數。
     pub rounds: Option<u64>,
     pub tasks_total: Option<usize>,
     pub commit: Option<String>,
@@ -396,10 +414,20 @@ impl StationStatus {
         json
     }
 
-    /// `show --json --detail` 的形狀：[`Self::to_json`] 在已蓋章時再加 `scope`——每項
+    /// `list --json --detail` 的形狀：[`Self::to_json`] 在進行中時再加 `rounds`（輪數
+    /// 已知時）。不含 scope。
+    pub fn to_list_json(&self) -> serde_json::Value {
+        let mut json = self.to_json();
+        if let (StationProgress::InProgress, Some(rounds)) = (self.progress, self.rounds) {
+            json["rounds"] = serde_json::json!(rounds);
+        }
+        json
+    }
+
+    /// `show --json --detail` 的形狀：[`Self::to_list_json`] 在已蓋章時再加 `scope`——每項
     /// `path` 與 `hash`，順序照 metadata，與線上格式的 `scope` 同名；沒有記下指紋時是空陣列。
     pub fn to_detail_json(&self) -> serde_json::Value {
-        let mut json = self.to_json();
+        let mut json = self.to_list_json();
         if self.progress == StationProgress::Stamped {
             json["scope"] = serde_json::json!(self.scope);
         }
@@ -407,12 +435,26 @@ impl StationStatus {
     }
 }
 
-/// 關卡狀態的判定，`show --json` 與線上的清單、單筆回應共用這一份：工單存在 → 進行中；
-/// 否則 meta 有完整的章（[`is_stamped`]）→ 已蓋章；否則未開始。`ticket_open` 由呼叫端給：
-/// 它手上多半已經有這個變更的文件清單，不必為此再讀一次。
-pub fn status(st: &Station, meta: &ChangeMeta, ticket_open: bool) -> StationStatus {
-    if ticket_open {
-        return StationStatus { progress: StationProgress::InProgress, ..StationStatus::none() };
+/// 一張未結的工單在關卡判定裡要的事：它有幾輪。工單解析不了時 `rounds` 是 None——
+/// 關卡照樣是進行中，只是不報輪數。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OpenTicket {
+    pub rounds: Option<u64>,
+}
+
+impl OpenTicket {
+    /// 工單原文的輪數，用既有的工單解析函式數（[`parse_ticket`]）。
+    pub fn of(st: &Station, text: &str) -> OpenTicket {
+        OpenTicket { rounds: parse_ticket(st, text).ok().map(|ticket| ticket.rounds.len() as u64) }
+    }
+}
+
+/// 關卡狀態的判定，`show --json` 與線上的清單、單筆回應共用這一份：工單存在 → 進行中
+/// （帶工單的輪數）；否則 meta 有完整的章（[`is_stamped`]）→ 已蓋章；否則未開始。
+/// `ticket` 由呼叫端給，沒有工單是 None：它手上多半已經讀了這個變更的文件。
+pub fn status(st: &Station, meta: &ChangeMeta, ticket: Option<OpenTicket>) -> StationStatus {
+    if let Some(ticket) = ticket {
+        return StationStatus { progress: StationProgress::InProgress, rounds: ticket.rounds, ..StationStatus::none() };
     }
     let stamp = meta.stamp(st);
     if !is_stamped(stamp.anchors()) {
@@ -432,9 +474,17 @@ pub fn status(st: &Station, meta: &ChangeMeta, ticket_open: bool) -> StationStat
 }
 
 /// 一個變更在儲存裡記下的關卡狀態，`show --json` 與 `list --json --detail` 共用這一份。
-/// metadata 損壞時回 None：損壞的文件讀成預設值，不能從它報出「未開始」。
+/// 工單在就讀它數輪數；工單在、但讀不成文字時仍然是未結的工單（封存守門用同一個
+/// 「在不在」判定），只是沒有輪數。metadata 損壞時回 None：損壞的文件讀成預設值，
+/// 不能從它報出「未開始」。
 pub fn recorded_status(st: &Station, store: &dyn Store, change: &crate::model::Change) -> Option<StationStatus> {
-    change.meta_error.is_none().then(|| status(st, &change.meta, store.artifact_exists(&change.name, st.doc)))
+    change.meta_error.is_none().then(|| {
+        let ticket = store
+            .read_artifact(&change.name, st.doc)
+            .map(|text| OpenTicket::of(st, &text))
+            .or_else(|| store.artifact_exists(&change.name, st.doc).then_some(OpenTicket { rounds: None }));
+        status(st, &change.meta, ticket)
+    })
 }
 
 /// 追加一輪（工單不存在則建立，自 Round 1 起算）。回傳本輪編號。

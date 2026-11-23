@@ -11,7 +11,7 @@ use crate::port_exec::{self, AtVersion, ExecError, PortExecution};
 use crate::transfer::{self, ImportOptions, SentBundle, TransferError, UnreadBundle};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
-use speclink_core::command::{Command, CommandError, CommandOutcome, ErrorCode, InstructionsOutcome};
+use speclink_core::command::{Command, CommandError, CommandOutcome, ErrorCode, InstructionsOutcome, ListOutcome};
 use speclink_core::discuss::WriteRefusal;
 use speclink_core::config::WorkflowConfig;
 use speclink_core::init::ASSET_VERSION;
@@ -426,10 +426,10 @@ fn wrong_outcome(route: &str) -> HttpError {
 /// and its tickets. A broken data file stays absent: the list reports it as
 /// `metaError` and does not fail.
 pub(crate) fn list_changes(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let cmd = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false };
+    let cmd = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false, archived: false };
     let (execution, etag) = req.run(cmd)?;
     let changes = match execution.outcome {
-        CommandOutcome::List(list) => list.changes.unwrap_or_default(),
+        CommandOutcome::List(ListOutcome::Sections { changes, .. }) => changes.unwrap_or_default(),
         _ => return Err(wrong_outcome("list")),
     };
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
@@ -554,10 +554,10 @@ pub(crate) fn get_artifact(req: &Request<'_>) -> Result<HttpResponse, HttpError>
 
 /// `GET /specs`.
 pub(crate) fn list_specs(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
-    let cmd = Command::List { sort: "name".to_string(), specs: true, changes: false, worktrees: Default::default(), detail: false };
+    let cmd = Command::List { sort: "name".to_string(), specs: true, changes: false, worktrees: Default::default(), detail: false, archived: false };
     let (execution, etag) = req.run(cmd)?;
     let specs = match execution.outcome {
-        CommandOutcome::List(list) => list.specs.unwrap_or_else(|| serde_json::json!([])),
+        CommandOutcome::List(ListOutcome::Sections { specs, .. }) => specs.unwrap_or_else(|| serde_json::json!([])),
         _ => return Err(wrong_outcome("specs")),
     };
     let specs: Vec<SpecSummary> =

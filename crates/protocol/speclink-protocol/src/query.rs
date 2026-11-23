@@ -293,6 +293,11 @@ pub struct ArchivedItem {
     /// The document's free fields; left out when it has none.
     #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
     pub fields: FreeFields,
+    /// The capabilities of the archived change's delta specs, ascending: as
+    /// many as `specCount`. Left out when there are none, and empty from a
+    /// server that does not report them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub delta_capabilities: Vec<String>,
 }
 
 /// `GET /search` response.

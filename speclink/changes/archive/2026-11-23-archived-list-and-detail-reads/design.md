@@ -37,11 +37,11 @@
 
 在 `speclink-core` 的 `lifecycle/listing.rs` 新增一個函式，從 `Store` 介面組出已封存清單的項目（型別 `ListArchivedJson`）。三個呼叫端共用它：
 
-- 引擎命令 `Command::List` 多一個布林欄位 `archived`；為 true 時 `ListOutcome` 只帶 `archived` 清單，不帶 `changes` 與 `specs`。本機 CLI 與宿主套件的 `dispatch` 都走這條。
-- 入口的 `documents::archived_list` 改成：以 `PortView` 包住儲存接口後呼叫同一個函式，再把結果轉成線上格式的 `ArchivedItem`（`specCount` 取 `deltaCapabilities` 的個數）。它不經過宿主套件的執行流程，所以這次不會開始問 `beforeCommand`。範圍版本在讀取之前先取，ETag 不會比內容新。
+- 引擎命令 `Command::List` 多一個布林欄位 `archived`；為 true 時結果是 `ListOutcome::Archived`（已封存清單），否則是 `ListOutcome::Sections`（`changes` 與 `specs` 兩段）。兩種結果互斥，所以 `ListOutcome` 是 enum。本機 CLI 與宿主套件的 `dispatch` 都走這條。
+- 入口的 `documents::archived_list` 改成：以 `PortView` 包住儲存接口後呼叫同一個函式，再把結果轉成線上格式的 `ArchivedItem`（`specCount` 取 `deltaCapabilities` 的個數）。它不經過宿主套件的執行流程，所以這次不會開始問 `beforeCommand`；線上歸屬表（`http/coverage.rs`）因此把 `list --archived` 記為「沒有執行這個命令的路由」，理由寫明 `GET /archived` 回同一份清單。範圍版本在讀取之前先取，ETag 不會比內容新。
 - 連到遠端的 CLI 呼叫既有的 `GET /archived`，把 `ArchivedItem` 轉成 `ListArchivedJson`，交給同一支輸出函式。
 
-每一項的判定沿用現在入口的規則：任務數來自 `tasks.md`（沒有這份文件就沒有這兩個鍵）；關卡結局用既有的 `ArchivedOutcome::of`（封存的文件含工單是 `notPassed`，否則有章是 `stamped`，否則 `none`）；順序是帶日期的名稱由新到舊。
+每一項的判定沿用現在入口的規則：任務數來自 `tasks.md`（沒有這份文件就沒有這兩個鍵）；關卡結局用既有的 `ArchivedOutcome::of`（封存的文件含工單是 `notPassed`，否則有章是 `stamped`，否則 `none`）；順序是帶日期的名稱由新到舊。項目的兩個結局欄位是有型別的 `ListArchivedOutcome`：引擎認得的結局（`Known(ArchivedOutcome)`），或較新的 Server 才有的值（`Other(String)`，只有連到遠端的 CLI 會填）。入口與 CLI 的轉換都是窮舉的 match，新增結局時編譯器會擋下漏改的地方。
 
 替代方案：引擎命令在 core 另寫一份、入口維持原樣。否決，因為同一份清單會有兩份判定規則，之後改其中一份就會分岔。
 
@@ -74,7 +74,7 @@
 - `show --json --detail` 與 `list --json --detail`：進行中的關卡是 `{ "state": "inProgress", "rounds": <整數> }`。
 - 線上格式的變更清單與單筆變更回應：關卡物件在 `inProgress` 時帶 `rounds`。入口的 `documents::change_extras` 已經讀了工單，只多一次解析。
 - 連到遠端的 CLI：Server 的回應有 `rounds` 就輸出，沒有（舊版 Server）就不輸出這個鍵。
-- 工單讀得到但解析失敗時不輸出 `rounds`，清單照常成功。
+- 工單讀得到但解析失敗時不輸出 `rounds`，清單照常成功。工單在、但讀不成文字時（例如不是 UTF-8）仍然算進行中，沒有 `rounds`：這和封存守門「工單在不在」的判定一致。
 
 成本：`list --json --detail` 在有未結工單時，比不帶 `--detail` 多一次儲存讀取（全部未結的工單合在這一次）；沒有未結工單時次數相同。這修訂了 verb-output-for-embedded D3「一次也不多」的數字，`port_cost.rs` 對應的測試跟著改。
 
@@ -86,11 +86,11 @@
 
 ### 討論資訊直接序列化 promotedTo
 
-`DiscussionInfo.head` 從 `serde(skip)` 改成只序列化 `promoted_to` 一個值：輸出鍵 `promotedTo`，空清單時省略，不反序列化（維持取預設，遠端由線上格式回填）。`hold` 與 `board_rank` 仍然不進 JSON。因為 `head` 是結構的最後一個欄位，新鍵出現在每一項的最後，既有鍵的順序不變。
+`DiscussionInfo.head` 從 `serde(skip)` 改成只序列化 `promoted_to` 一個值：輸出鍵 `promotedTo`，空清單時省略，不反序列化（維持取預設，遠端由線上格式回填）。`hold` 與 `board_rank` 仍然不進 JSON。`--json` 的輸出照字母順序排列鍵（輸出經過 `serde_json::Value`），所以新鍵出現在 `path` 與 `rounds` 之間，既有鍵的相對順序不變。`head` 是結構的最後一個欄位，只有直接序列化結構時新鍵才在最後。
 
-這樣不需要第二個欄位存同一份資料。`discuss list --json` 的每一項與 `discuss show --json` 的 `info` 用的是同一個結構，兩者一起得到這個鍵。`discuss new --json` 也輸出這個結構，但新建的討論沒有轉出的變更，輸出不變。
+這樣不需要第二個欄位存同一份資料。`discuss list --json` 的每一項與 `discuss show --json` 的 `info` 用的是同一個結構，兩者一起得到這個鍵。`discuss search --json` 的命中項（`DiscussionHit`）把同一個結構攤平再加上 `matches`，所以也一起得到；規格把三個動詞都寫明。`discuss new --json` 也輸出這個結構，但新建的討論沒有轉出的變更，輸出不變。
 
-連到遠端的 CLI 已經把線上格式的 `promotedTo` 回填到 `head`（`verbs/discuss.rs`），所以輸出自動一致；`discuss show` 的遠端路徑要確認同樣有回填。
+連到遠端的 CLI 已經把線上格式的 `promotedTo` 回填到 `head`（`verbs/discuss.rs`），所以輸出自動一致；`discuss show` 與 `discuss search` 的遠端路徑用同一個回填函式。
 
 ### list --archived 的參數規則
 
@@ -108,12 +108,12 @@
 - `speclink list --json --detail`：每個 metadata 可解析的變更，有記錄時多 `createdBy`、`fromDiscussions`；進行中的關卡多 `rounds`。
 - `speclink show <change> --json --detail`：進行中的關卡多 `rounds`。
 - `speclink review show <change> --json --detail`、`speclink verify show <change> --json --detail`：既有的 `change`、`rounds`、`lastRound` 之外多 `content`（字串，工單全文）。
-- `speclink discuss list --json`、`speclink discuss show <slug> --json`：已轉出的討論多 `promotedTo`（字串陣列，順序是轉出的先後）。
+- `speclink discuss list --json`、`speclink discuss show <slug> --json`、`speclink discuss search --json`：已轉出的討論多 `promotedTo`（字串陣列，順序是轉出的先後）。
 
 **介面與資料形狀**
 
 - 引擎命令：`Command::List` 多 `archived: bool`；`beforeCommand` 收到的參數因此多 `archived`。命令名稱仍是 `list`，`commandNames` 不變。
-- 結果：`ListOutcome` 多 `archived: Option<Vec<ListArchivedJson>>`。
+- 結果：`ListOutcome` 改成 enum，`Sections { changes, specs }` 或 `Archived(Vec<ListArchivedJson>)`。
 - `Store` 介面：多 `prefetch`，預設空實作。
 - 線上格式：`ArchivedItem` 多選填的 `deltaCapabilities`（預設空陣列，空的時候不序列化）；關卡物件的 `rounds` 在 `inProgress` 時也會出現。
 - 不帶 `--detail` 的 `review show --json`、`verify show --json`、`show --json`、`list --json` 與任何人眼輸出：逐位元不變。
@@ -129,7 +129,7 @@
 **驗收條件**
 
 - `cargo test -p speclink-core --test it render_golden::` 通過；只有已轉出討論的 golden 有差異，而且差異只是多出 `promotedTo`。
-- `crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs` 對五項各有一個對照：本機與遠端的 `--json` 輸出相等。
+- CLI 的整合測試（`crates/adapters/speclink-cli/tests/it/`）對五項各有一個對照：本機與遠端的 `--json` 輸出相等。`list --archived` 的對照在 `remote_read_verbs.rs`（用真的 Server）；其餘四項在 `remote_verb_parity.rs`，單筆變更的進行中輪數另在 `show_detail.rs`。
 - `crates/host/speclink-host/tests/port_dual_path.rs`（或同層的測試）確認宿主套件與本機對 `list --archived --json` 的結果深度相等。
 - `crates/host/speclink-host/tests/port_cost.rs`：已封存清單經共用函式仍是一次列出加一次讀取；`list --json --detail` 在有未結工單時比不帶時最多多一次讀取、沒有時次數相同。
 - `GET /archived` 的回應除了多出 `deltaCapabilities` 之外，和這個變更之前對同一份資料的回應相同。
@@ -142,7 +142,7 @@
 
 ## Risks / Trade-offs
 
-- [`promotedTo` 改到既有的 `discuss list --json` 輸出] → 只有已轉出的討論多一個鍵，放在最後；golden 同批更新；提案的相容性影響寫明。技能讀這份輸出時只取認得的鍵，不受影響。
+- [`promotedTo` 改到既有的 `discuss list --json`、`discuss show --json` 與 `discuss search --json` 輸出] → 只有已轉出的討論多一個鍵，依字母順序排在 `path` 與 `rounds` 之間；golden 同批更新；提案的相容性影響寫明。技能讀這份輸出時只取認得的鍵，不受影響。
 - [`DiscussionInfo` 的序列化改變波及其他把它整個序列化的地方] → apply 時搜尋全部序列化這個結構的地方（含 `apps/desktop`）。Speclink Desktop 的討論清單自己組 JSON 並明確寫入 `promotedTo`，確認不會出現重複的鍵。
 - [入口的 `GET /archived` 改走 `PortView` 後成本變高] → `prefetch` 把讀取合成一次，`port_cost.rs` 的測試釘住一次列出加一次讀取。
 - [`list --json --detail` 多一次讀取，推翻先前的設計數字] → 只在有未結工單時發生，而且全部工單合成一次；測試改成釘住這個新的上限。
@@ -151,3 +151,15 @@
 - [回歸對照] → 不帶新旗標的輸出由既有的 golden 與 CLI 測試保護；新旗標各有新的測試。
 - [跨平台] → 這次沒有新的路徑處理與 git 呼叫。已封存清單的 `datedName` 來自儲存的鍵（一律正斜線）或資料夾名稱，不含路徑分隔字元。Windows、macOS、Linux 的行為相同。
 - [舊版 Server] → 兩處線上格式的補充都是選填並帶預設值；新版用戶端對舊回應把它們讀作沒有資料，測試涵蓋這個情況。
+
+## Audit (sharp edges)
+
+apply 期依 sharp-edges 稽核清單逐項檢查新加的參數處理，結論如下：
+
+- [`--archived` 與兩個 `--detail` 的互斥與必要旗標] → 由共用的參數解析（`requires = "json"`、`conflicts_with_all`）擋下，CLI 與宿主套件給同一個用法錯誤，什麼都不讀。直接組 `Command::List { archived: true, .. }` 的呼叫端，`specs`、`changes`、`detail` 被忽略，命令的說明寫明。沒有問題（測試：verbs 的 `list_archived_goes_with_json_and_with_no_other_section_flag`、CLI 與 Node 的用法錯誤測試）。
+- [`prefetch` 收到不合法的名稱] → 略過、不讀、不失敗。它只是提示：後面的讀取對同一個名稱也回「沒有文件」，所以安靜略過不會藏住錯誤。儲存之前已經失敗時不再呼叫儲存。沒有問題（測試：`port_view.rs` 的 `prefetch` 檢查）。
+- [已封存清單遇到沒有日期前綴或 metadata 損壞的資料夾] → 照常列出：`date` 是空字串、`name` 等於 `datedName`；metadata 損壞時沒有 `createdBy`、`fromDiscussions`、`fields`，結局以「沒有章」判定，工單照樣算數。沒有問題（測試：core 的 `command::tests`、CLI 與宿主套件的對照）。
+- [連到不回報結局的舊版 Server（v0.13.0 之前）] → 遠端的 `reviewOutcome`、`verifyOutcome` 輸出 `none`。不修：規格要求這兩個鍵一定出現，省略它們會讓每個讀者都要處理缺席；這個情況只在 v0.13.0 之前的 Server 發生。讀者要分辨時，以同一份清單沒有 `deltaCapabilities`（這次之前的 Server 都沒有）作為舊版 Server 的訊號。
+- [較新的 Server 回報不認得的結局值] → 原樣輸出。不修：線上格式的規則是保留不認得的值（`StationOutcome::Unknown`），CLI 不替 Server 改寫事實。
+- [`review show`／`verify show` 的 `--detail` 不進引擎命令，`beforeCommand` 分不出要不要全文] → 不修：同一份工單原文已經由入口的 `GET /changes/{name}/{station}` 給讀得到這張工單的人，權限的邊界是「讀不讀得到這張工單」，不是輸出的形狀。
+- [`list --archived` 的結局欄位原本是字串] → 已改（品質關卡第 1 輪）：欄位是有型別的 `ListArchivedOutcome`，本機的值是 `Known(ArchivedOutcome)`，遠端不認得的值是 `Other(String)` 並原樣輸出；對外的字串只有 `ArchivedOutcome::as_str` 一處。

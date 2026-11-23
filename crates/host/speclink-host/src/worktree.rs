@@ -342,6 +342,12 @@ impl Store for WorktreeOverlay<'_> {
         self.inner.read_archived_artifact(dated_name, artifact)
     }
 
+    /// A hint only, so it goes to the main copy whole: a mapped change's
+    /// reads still go to its worktree, and answer the same without it.
+    fn prefetch(&self, docs: &[speclink_core::store::DocRef<'_>]) {
+        self.inner.prefetch(docs);
+    }
+
     fn archived_delta_capabilities(&self, dated_name: &str) -> Vec<String> {
         self.inner.archived_delta_capabilities(dated_name)
     }

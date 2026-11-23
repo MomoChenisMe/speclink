@@ -19,9 +19,12 @@ pub struct ListArgs {
     /// Output as JSON
     #[arg(long)]
     pub json: bool,
-    /// With --json, add what each change has on record: review, verify, claimed, branch, landed
+    /// With --json, add what each change has on record: review, verify, claimed, branch, landed, createdBy, fromDiscussions
     #[arg(long, requires = "json", conflicts_with = "specs")]
     pub detail: bool,
+    /// With --json, list the archived changes instead, newest first
+    #[arg(long, requires = "json", conflicts_with_all = ["specs", "changes", "detail"])]
+    pub archived: bool,
 }
 #[derive(Args, Debug)]
 pub struct ShowArgs {
@@ -65,6 +68,7 @@ impl ToCommand for ListArgs {
             changes: self.changes,
             worktrees: inputs.worktrees,
             detail: self.detail,
+            archived: self.archived,
         }))
     }
 }
@@ -96,7 +100,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     fn list(sort: &str, specs: bool, changes: bool) -> Command {
-        Command::List { sort: sort.into(), specs, changes, worktrees: BTreeMap::new(), detail: false }
+        Command::List { sort: sort.into(), specs, changes, worktrees: BTreeMap::new(), detail: false, archived: false }
     }
 
     #[test]
@@ -121,7 +125,7 @@ mod tests {
         let got = command_of(&["list"], VerbInputs { worktrees: facts.clone(), ..Default::default() });
         assert_eq!(
             got,
-            Command::List { sort: "modified".into(), specs: false, changes: false, worktrees: facts, detail: false }
+            Command::List { sort: "modified".into(), specs: false, changes: false, worktrees: facts, detail: false, archived: false }
         );
     }
 

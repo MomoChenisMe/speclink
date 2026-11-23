@@ -6,32 +6,36 @@ use speclink_core::status::StatusReport;
 
 use super::{JsonForm, Paint, RenderOptions, Rendered, Text};
 
-/// `list --json`: `{ changes }`, `{ specs }` or both, as the flags asked.
-/// With `--detail` the engine filled each item's five detail fields; an item
-/// serializes the ones that have a value, so there is nothing to add here.
+/// `list --json`: `{ changes }`, `{ specs }` or both, as the flags asked;
+/// `{ archived }` alone for `--archived`. With `--detail` the engine filled
+/// each item's detail fields; an item serializes the ones that have a value,
+/// so there is nothing to add here.
 pub fn list_json(list: &ListOutcome) -> Value {
-    // `--specs` alone omits the changes section (`changes` is None).
-    let Some(items) = &list.changes else {
-        return json!({ "specs": list.specs });
-    };
-    match &list.specs {
-        Some(specs) => json!({ "changes": items, "specs": specs }),
-        None => json!({ "changes": items }),
+    match list {
+        ListOutcome::Archived(archived) => json!({ "archived": archived }),
+        // `--specs` alone omits the changes section (`changes` is None).
+        ListOutcome::Sections { changes: None, specs } => json!({ "specs": specs }),
+        ListOutcome::Sections { changes: Some(items), specs: Some(specs) } => json!({ "changes": items, "specs": specs }),
+        ListOutcome::Sections { changes: Some(items), specs: None } => json!({ "changes": items }),
     }
 }
 
-/// `list`: one line per change, then the specs section when asked for.
+/// `list`: one line per change, then the specs section when asked for. An
+/// archived list has no human form (`--archived` goes with `--json`).
 pub fn list_human(list: &ListOutcome, paint: &Paint) -> Text {
     let mut t = Text::default();
-    let Some(items) = &list.changes else {
-        if let Some(specs) = &list.specs {
+    let ListOutcome::Sections { changes, specs } = list else {
+        return t;
+    };
+    let Some(items) = changes else {
+        if let Some(specs) = specs {
             specs_section(&mut t, specs, paint);
         }
         return t;
     };
     if items.is_empty() {
         outln!(t, "No active changes.");
-        if let Some(specs) = &list.specs {
+        if let Some(specs) = specs {
             outln!(t);
             specs_section(&mut t, specs, paint);
         }
@@ -69,7 +73,7 @@ pub fn list_human(list: &ListOutcome, paint: &Paint) -> Text {
             paint.dim(&suffix)
         );
     }
-    if let Some(specs) = &list.specs {
+    if let Some(specs) = specs {
         outln!(t);
         specs_section(&mut t, specs, paint);
     }
@@ -264,6 +268,8 @@ mod tests {
             claimed: None,
             branch: None,
             landed: None,
+            created_by: None,
+            from_discussions: Vec::new(),
             worktree: None,
         }
     }
@@ -273,7 +279,7 @@ mod tests {
     }
 
     fn both() -> ListOutcome {
-        ListOutcome {
+        ListOutcome::Sections {
             changes: Some(vec![
                 change("alpha", 1, 4, "Sign-in needs a second rule."),
                 change("empty", 0, 0, ""),
@@ -299,7 +305,7 @@ mod tests {
         let mut mapped = change("gamma", 0, 0, "");
         mapped.worktree =
             Some(ListWorktreeJson { path: "/w/gamma".to_string(), branch: "speclink/gamma".to_string() });
-        let list = ListOutcome { changes: Some(vec![broken, mapped]), specs: None };
+        let list = ListOutcome::Sections { changes: Some(vec![broken, mapped]), specs: None };
         assert_eq!(
             list_human(&list, &COLOR).stdout,
             "\x1b[1mChanges:\x1b[0m\n  \x1b[36m•\x1b[0m beta [0/2]\x1b[2m — Billing needs a yearly invoice…\x1b[0m \x1b[31m(invalid .meta.yaml)\x1b[0m\n  \x1b[36m•\x1b[0m gamma\x1b[2m\x1b[0m [worktree]\n"
@@ -308,9 +314,9 @@ mod tests {
 
     #[test]
     fn list_human_with_no_changes_and_with_specs_only() {
-        let none = ListOutcome { changes: Some(Vec::new()), specs: Some(json!([])) };
+        let none = ListOutcome::Sections { changes: Some(Vec::new()), specs: Some(json!([])) };
         assert_eq!(list_human(&none, &PLAIN).stdout, "No active changes.\n\nNo specs.\n");
-        let specs_only = ListOutcome { changes: None, specs: Some(specs()) };
+        let specs_only = ListOutcome::Sections { changes: None, specs: Some(specs()) };
         assert_eq!(list_human(&specs_only, &PLAIN).stdout, "Specs:\n  • auth\n  • billing\n");
     }
 
@@ -322,9 +328,9 @@ mod tests {
         });
         let empty = json!({ "completedTasks": 0, "name": "empty", "status": "in-progress", "totalTasks": 0 });
         assert_eq!(list_json(&both()), json!({ "changes": [alpha, empty], "specs": specs() }));
-        let changes_only = ListOutcome { changes: Some(vec![change("empty", 0, 0, "")]), specs: None };
+        let changes_only = ListOutcome::Sections { changes: Some(vec![change("empty", 0, 0, "")]), specs: None };
         assert_eq!(list_json(&changes_only), json!({ "changes": [empty] }));
-        let specs_only = ListOutcome { changes: None, specs: Some(specs()) };
+        let specs_only = ListOutcome::Sections { changes: None, specs: Some(specs()) };
         assert_eq!(list_json(&specs_only), json!({ "specs": specs() }));
     }
 
@@ -333,14 +339,14 @@ mod tests {
         let mut timed = change("alpha", 1, 4, "Sign-in needs a second rule.");
         timed.created = Some("2026-11-01".to_string());
         timed.modified_at = Some("2026-11-12T03:00:00Z".to_string());
-        let list = ListOutcome { changes: Some(vec![timed, change("empty", 0, 0, "")]), specs: None };
+        let list = ListOutcome::Sections { changes: Some(vec![timed, change("empty", 0, 0, "")]), specs: None };
         let value = list_json(&list);
         assert_eq!(value["changes"][0]["created"], "2026-11-01");
         assert_eq!(value["changes"][0]["modifiedAt"], "2026-11-12T03:00:00Z");
         // A change the store cannot date, with no usable metadata, has neither key.
         assert!(value["changes"][1].get("created").is_none(), "{value}");
         assert!(value["changes"][1].get("modifiedAt").is_none(), "{value}");
-        let untimed = ListOutcome {
+        let untimed = ListOutcome::Sections {
             changes: Some(vec![change("alpha", 1, 4, "Sign-in needs a second rule."), change("empty", 0, 0, "")]),
             specs: None,
         };
@@ -379,7 +385,7 @@ mod tests {
     fn list_json_carries_the_five_detail_keys_of_a_change_that_has_the_records() {
         // spec verb-contract「清單的詳細輸出」：鍵名 camelCase，形狀與 show --json 相同，
         // landed 只有 commit。
-        let list = ListOutcome { changes: Some(vec![detailed_change(), change("other", 0, 0, "")]), specs: None };
+        let list = ListOutcome::Sections { changes: Some(vec![detailed_change(), change("other", 0, 0, "")]), specs: None };
         let json = list_json(&list);
         let demo = &json["changes"][0];
         assert_eq!(
@@ -400,7 +406,7 @@ mod tests {
         assert_eq!(demo["landed"], json!({ "commit": "0123456789abcdef0123456789abcdef01234567" }));
         // The keys that were there before are unchanged, and a change with no
         // record has none of the five.
-        let before = list_json(&ListOutcome {
+        let before = list_json(&ListOutcome::Sections {
             changes: Some(vec![change("demo", 1, 4, "Sign-in needs a second rule.")]),
             specs: None,
         });
@@ -416,7 +422,7 @@ mod tests {
     fn list_json_has_the_same_shapes_as_show_json_for_the_same_records() {
         // 「形狀 SHALL 與 show --json 的同名鍵相同」：同一份記錄，兩個動詞的物件相等。
         let shown = show_json(&shown_change_with_records_of(&detailed_change()), false);
-        let listed = list_json(&ListOutcome { changes: Some(vec![detailed_change()]), specs: None });
+        let listed = list_json(&ListOutcome::Sections { changes: Some(vec![detailed_change()]), specs: None });
         for key in ["review", "verify", "claimed", "branch"] {
             assert_eq!(listed["changes"][0][key], shown[key], "{key}");
         }
@@ -426,7 +432,7 @@ mod tests {
     #[test]
     fn list_text_is_unchanged_for_changes_with_no_detail_record() {
         // 不帶 --detail 時五個欄位都沒有值：JSON 的文字與引入它們之前逐位元相同。
-        let list = ListOutcome { changes: Some(vec![change("alpha", 1, 4, "Sign-in needs a second rule.")]), specs: None };
+        let list = ListOutcome::Sections { changes: Some(vec![change("alpha", 1, 4, "Sign-in needs a second rule.")]), specs: None };
         assert_eq!(
             super::list(&list, RenderOptions { json: true, color: false }).stdout,
             "{\n  \"changes\": [\n    {\n      \"completedTasks\": 1,\n      \"name\": \"alpha\",\n      \"status\": \"in-progress\",\n      \"summary\": \"Sign-in needs a second rule.\",\n      \"totalTasks\": 4\n    }\n  ]\n}\n"
@@ -438,18 +444,18 @@ mod tests {
             ..change("alpha", 1, 4, "Sign-in needs a second rule.")
         };
         assert_eq!(
-            list_json(&ListOutcome { changes: Some(vec![unstarted]), specs: None }),
+            list_json(&ListOutcome::Sections { changes: Some(vec![unstarted]), specs: None }),
             list_json(&list)
         );
         // The human form never shows the detail.
-        let detailed = ListOutcome { changes: Some(vec![detailed_change()]), specs: None };
-        let plain = ListOutcome { changes: Some(vec![change("demo", 1, 4, "Sign-in needs a second rule.")]), specs: None };
+        let detailed = ListOutcome::Sections { changes: Some(vec![detailed_change()]), specs: None };
+        let plain = ListOutcome::Sections { changes: Some(vec![change("demo", 1, 4, "Sign-in needs a second rule.")]), specs: None };
         assert_eq!(list_human(&detailed, &PLAIN), list_human(&plain, &PLAIN));
     }
 
     #[test]
     fn list_prints_the_json_form_indented_with_a_final_newline() {
-        let changes_only = ListOutcome { changes: Some(Vec::new()), specs: None };
+        let changes_only = ListOutcome::Sections { changes: Some(Vec::new()), specs: None };
         let out = list(&changes_only, RenderOptions { json: true, color: true });
         assert_eq!(out.stdout, "{\n  \"changes\": []\n}\n");
         assert_eq!(out.json, Some(json!({ "changes": [] })));
@@ -619,10 +625,44 @@ mod tests {
     }
 
     #[test]
+    fn list_json_of_the_archive_is_the_archived_section_alone() {
+        // spec verb-contract「已封存變更的清單」：`{ "archived": [...] }`，沒有 changes 與 specs。
+        use speclink_core::listing::{ListArchivedJson, ListArchivedOutcome};
+        use speclink_core::station::ArchivedOutcome;
+        let item = ListArchivedJson {
+            dated_name: "2026-11-22-add-two".into(),
+            date: "2026-11-22".into(),
+            name: "add-two".into(),
+            review_outcome: ListArchivedOutcome::Known(ArchivedOutcome::Stamped),
+            verify_outcome: ListArchivedOutcome::Known(ArchivedOutcome::None),
+            tasks_total: Some(3),
+            tasks_done: Some(3),
+            created_by: None,
+            from_discussions: vec!["two".into()],
+            delta_capabilities: vec!["auth".into()],
+            fields: Default::default(),
+        };
+        let listed = ListOutcome::Archived(vec![item]);
+        assert_eq!(
+            list_json(&listed),
+            json!({ "archived": [{
+                "datedName": "2026-11-22-add-two", "date": "2026-11-22", "name": "add-two",
+                "reviewOutcome": "stamped", "verifyOutcome": "none", "tasksTotal": 3, "tasksDone": 3,
+                "fromDiscussions": ["two"], "deltaCapabilities": ["auth"],
+            }] })
+        );
+        // An outcome only a newer server names prints as it came.
+        assert_eq!(json!(ListArchivedOutcome::Other("waived".into())), json!("waived"));
+        let empty = ListOutcome::Archived(Vec::new());
+        assert_eq!(list_json(&empty), json!({ "archived": [] }));
+        assert_eq!(list(&empty, RenderOptions { json: true, color: false }).stdout, "{\n  \"archived\": []\n}\n");
+    }
+
+    #[test]
     fn list_json_carries_the_fields_of_the_changes_that_have_some_and_the_human_form_does_not() {
         // 規格「清單帶出欄位」「人眼輸出不變」：demo 有兩個欄位，other 沒有。
         let with = ListChangeJson { fields: fields_of(&[("ticket", "PROJ-1"), ("source", "portal")]), ..change("demo", 0, 0, "") };
-        let listed = |items| ListOutcome { changes: Some(items), specs: None };
+        let listed = |items| ListOutcome::Sections { changes: Some(items), specs: None };
         let json = list_json(&listed(vec![with, change("other", 0, 0, "")]));
         assert_eq!(json["changes"][0]["fields"], json!({ "source": "portal", "ticket": "PROJ-1" }));
         assert!(json["changes"][1].get("fields").is_none(), "{json}");
@@ -713,6 +753,25 @@ mod tests {
         let mut without_scope = detailed.clone();
         without_scope["review"].as_object_mut().unwrap().remove("scope");
         assert_eq!(without_scope, show_json(&shown, false));
+    }
+
+    #[test]
+    fn an_open_station_carries_its_rounds_with_the_detail_only() {
+        // spec verb-contract Example「各種關卡記錄對應的輸出」的第二列，與「清單的詳細輸出」
+        // Scenario「進行中的關卡帶輪數」：show 不帶 --detail 只有 state；帶 --detail 與
+        // list --detail 多 rounds；list 的已蓋章關卡沒有 scope。
+        use speclink_core::station::StationStatus;
+        let open = StationStatus { progress: StationProgress::InProgress, rounds: Some(2), ..StationStatus::none() };
+        let ShowOutcome::Change(mut change) = shown_change_with_records() else { unreachable!() };
+        change.verify = Some(open.clone());
+        let shown = ShowOutcome::Change(change);
+        assert_eq!(show_json(&shown, false)["verify"], json!({ "state": "inProgress" }));
+        assert_eq!(show_json(&shown, true)["verify"], json!({ "state": "inProgress", "rounds": 2 }));
+
+        let item = ListChangeJson { verify: Some(open), ..detailed_change() };
+        let listed = list_json(&ListOutcome::Sections { changes: Some(vec![item]), specs: None });
+        assert_eq!(listed["changes"][0]["verify"], json!({ "state": "inProgress", "rounds": 2 }));
+        assert!(listed["changes"][0]["review"].get("scope").is_none(), "{listed}");
     }
 
     #[test]

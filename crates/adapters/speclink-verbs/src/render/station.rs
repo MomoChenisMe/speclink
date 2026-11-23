@@ -45,7 +45,7 @@ pub fn action(st: &Station, action: StationAction, change: &str, options: Render
 }
 
 /// `show --json`: the ticket's rounds. The field set and the null meanings
-/// are a public contract; the ticket's text is not part of it.
+/// are a public contract; the ticket's text is in it with `--detail` only.
 pub fn ticket_json(change: &str, ticket: &Ticket) -> Value {
     json!({
         "change": change,
@@ -80,16 +80,22 @@ pub fn show_human(st: &Station, change: &str, ticket: &Ticket, doc: Option<&str>
     t
 }
 
+/// `show`. With `detail` (`--json --detail`) the JSON form also carries the
+/// ticket's text as `content`, when there is one to give; the human form is
+/// the same either way.
 pub fn show(
     st: &Station,
     change: &str,
     ticket: &Ticket,
     doc: Option<&str>,
+    detail: bool,
     options: RenderOptions,
 ) -> Rendered {
-    Rendered::of(options, Some(JsonForm::pretty(&ticket_json(change, ticket))), |_| {
-        show_human(st, change, ticket, doc)
-    })
+    let mut json = ticket_json(change, ticket);
+    if let (true, Some(doc)) = (detail, doc) {
+        json["content"] = json!(doc);
+    }
+    Rendered::of(options, Some(JsonForm::pretty(&json)), |_| show_human(st, change, ticket, doc))
 }
 
 fn ticket_text_human(doc: &str) -> Text {
@@ -205,8 +211,32 @@ mod tests {
                 ],
             })
         );
-        let out = show(&REVIEW, "ready", &ticket(), Some("# Review — ready\n"), JSON);
+        let out = show(&REVIEW, "ready", &ticket(), Some("# Review — ready\n"), false, JSON);
         assert!(out.stdout.starts_with("{\n  \"change\": \"ready\",\n  \"lastRound\": {\n"), "{}", out.stdout);
         assert_eq!(out.json, Some(value));
+    }
+
+    #[test]
+    fn show_json_with_the_detail_adds_the_ticket_text() {
+        // spec verb-contract「關卡工單的詳細輸出」：`content` 與人眼輸出的原文逐字相同；
+        // 鍵照字母順序，`content` 在 `change` 之後、`lastRound` 之前；其餘三個鍵不變。
+        let doc = "# Review — ready\n\n## Round 1\n\n**Scope**: src/auth.rs\n";
+        let plain = show(&REVIEW, "ready", &ticket(), Some(doc), false, JSON);
+        let detailed = show(&REVIEW, "ready", &ticket(), Some(doc), true, JSON);
+        let value = detailed.json.clone().expect("a JSON form");
+        assert_eq!(value["content"], doc);
+        assert_eq!(value["content"].as_str(), Some(show_human(&REVIEW, "ready", &ticket(), Some(doc)).stdout.as_str()));
+        let mut without = value.clone();
+        without.as_object_mut().unwrap().remove("content");
+        assert_eq!(Some(without), plain.json);
+        assert!(detailed.stdout.starts_with("{\n  \"change\": \"ready\",\n  \"content\": "), "{}", detailed.stdout);
+        // Without the detail the bytes are the ones before it, with no `content`.
+        assert!(!plain.stdout.contains("\"content\""));
+        // No text to give (an old server): no `content` key, the rest the same.
+        let old = show(&VERIFY, "ready", &ticket(), None, true, JSON);
+        assert_eq!(old.json, plain.json);
+        // The human form is the text with or without the flag.
+        let human = RenderOptions { json: false, color: false };
+        assert_eq!(show(&REVIEW, "ready", &ticket(), Some(doc), true, human).stdout, doc);
     }
 }

@@ -63,7 +63,7 @@ For verbs that work in both modes, the human-readable output (also with `--no-co
 
 Items 1–5 are the differences that the canonical spec declares. Items 6–9 show the current code; the canonical spec does not list them yet.
 
-The `--json` field set and its names are a frozen contract. Fields do not change names and do not disappear. Most names are camelCase. A few fields that were there before this rule have snake_case names: the [table below](#snake-case-fields) lists all of them. No `--json` output contains ticket text. A new field is always optional, and its name is camelCase. See [the next section](#verb-reference).
+The `--json` field set and its names are a frozen contract. Fields do not change names and do not disappear. Most names are camelCase. A few fields that were there before this rule have snake_case names: the [table below](#snake-case-fields) lists all of them. No `--json` output without `--detail` contains ticket text: only `review show --json --detail` and `verify show --json --detail` give it, as `content` (see [the ticket text](#ticket-detail)). A new field is always optional, and its name is camelCase. See [the next section](#verb-reference).
 
 ### <a id="snake-case-fields"></a>Fields with snake_case names
 
@@ -214,7 +214,7 @@ Without `--detail`, `list --json` has no quality station fields, also in a remot
 
 #### <a id="list-detail"></a>`speclink list --json --detail`
 
-`--detail` adds what each change has on record: the two quality stations, the claim, the branch, and the landing. One call then answers questions such as "which changes passed review" and "which changes do I hold".
+`--detail` adds what each change has on record: the two quality stations, the claim, the branch, the landing, the creator, and the source discussions. One call then answers questions such as "which changes passed review" and "which changes do I hold".
 
 - `--detail` works only with `--json`, and it does not go with `--specs`. `speclink list --detail` and `speclink list --specs --json --detail` stop with a usage error: a non-zero exit code, a message on stderr, and nothing on stdout. Through the call entry point (`host.dispatch`), the error code is `invalid_argv`.
 - Without `--detail`, the output of `list --json` is the same as before, byte for byte.
@@ -224,10 +224,12 @@ Each key below appears only when the change has that record:
 
 | Field | It appears when | Content |
 | --- | --- | --- |
-| `review`, `verify` | The station has an open ticket or a stamp | The same object as in `show --json` below |
+| `review`, `verify` | The station has an open ticket or a stamp | The same object as in `show --json` below. An open station (`inProgress`) also has `rounds`: the number of rounds in its ticket. |
 | `claimed` | A person holds the change | The same object as in `show --json` below: `by`, plus `byId` and `at` when the claim recorded them |
 | `branch` | The start marker or the landing report recorded a branch | The branch name |
 | `landed` | A landing report exists | `commit` only. For the report time and the reporter, use `show --json`. |
+| `createdBy` | The metadata recorded a creator | The creator, as the metadata records it |
+| `fromDiscussions` | The change came from a discussion | The slugs of the source discussions, in the order of `fromDiscussions` in `show --json` |
 
 ```json
 {
@@ -239,10 +241,12 @@ Each key below appears only when the change has that record:
       "totalTasks": 5,
       "created": "2026-11-01",
       "review": { "state": "stamped", "stampedAt": "2026-11-02T14:03:44+08:00", "rounds": 2, "tasksTotal": 5, "commit": "0123456789ab" },
-      "verify": { "state": "inProgress" },
+      "verify": { "state": "inProgress", "rounds": 1 },
       "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
       "branch": "speclink/add-login",
-      "landed": { "commit": "0123456789ab" }
+      "landed": { "commit": "0123456789ab" },
+      "createdBy": "Demo <demo@example.com>",
+      "fromDiscussions": ["login-flow"]
     },
     { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10" }
   ]
@@ -255,6 +259,54 @@ Each key below appears only when the change has that record:
 - A change with corrupt metadata has `metaError` and none of these keys.
 - The list does not tell whether files changed after a stamp. `review` and `verify` show the recorded state only, as in `show --json`.
 - `claimed.byId` is the identifier that the host gives for the person. Each person who can read the project can see it.
+- A station whose ticket does not parse has no `rounds`, and the list does not fail. An older Server that does not send `rounds` gives `{ "state": "inProgress" }`.
+- Through `host.dispatch`, `--detail` reads the open tickets to count their rounds: one more store read for all of them, and no read more when no ticket is open.
+
+#### <a id="list-archived"></a>`speclink list --archived --json`
+
+`--archived` lists the archived changes instead of the active ones, newest first. A host screen that shows the archive can then read it through a verb.
+
+- `--archived` works only with `--json`, and it does not go with `--specs`, `--changes`, or `--detail`. `speclink list --archived` and, for example, `speclink list --archived --json --detail` stop with a usage error: a non-zero exit code, a message on stderr, and nothing on stdout. Through `host.dispatch`, the error code is `invalid_argv`.
+- The output is `{ "archived": [ … ] }`, with no `changes` and no `specs`. When nothing is archived, it is `{ "archived": [] }`.
+- The items are in descending order of `datedName`. `--sort` does not change this order.
+- Without `--archived`, the output of `list` and of `list --json` is the same as before, byte for byte.
+
+| Field | It appears | Content |
+| --- | --- | --- |
+| `datedName` | Always | The archived name with its date, for example `2026-11-22-add-two` |
+| `date` | Always | The date at the start of `datedName`, `YYYY-MM-DD`. It is an empty string when the name has no date. |
+| `name` | Always | `datedName` without its date. It is the whole `datedName` when the name has no date. |
+| `reviewOutcome`, `verifyOutcome` | Always | `none`, `stamped`, or `notPassed`, as in [`GET /archived`](#archived-items) |
+| `tasksTotal`, `tasksDone` | Both, when the archived change has a task list | The number of tasks and the number of checked tasks |
+| `createdBy` | The metadata recorded a creator | The creator |
+| `fromDiscussions` | The change came from a discussion | The slugs of the source discussions |
+| `deltaCapabilities` | The archived change has delta specs | The capability names, in ascending order |
+| `fields` | The change has free fields | The free fields |
+
+```json
+{
+  "archived": [
+    {
+      "createdBy": "Ann <ann@example.com>",
+      "date": "2026-11-22",
+      "datedName": "2026-11-22-add-two",
+      "deltaCapabilities": ["auth"],
+      "fromDiscussions": ["two"],
+      "name": "add-two",
+      "reviewOutcome": "stamped",
+      "tasksDone": 3,
+      "tasksTotal": 3,
+      "verifyOutcome": "stamped"
+    },
+    { "date": "2026-11-10", "datedName": "2026-11-10-old-one", "name": "old-one", "reviewOutcome": "none", "verifyOutcome": "none" }
+  ]
+}
+```
+
+- An archived change whose metadata does not parse is still listed. It has no `createdBy`, `fromDiscussions`, or `fields`, and its two outcomes are judged as if it had no stamp.
+- To read a document of an archived change, use `speclink artifact cat <artifact> --change <datedName>`, for example `speclink artifact cat specs/auth --change 2026-11-22-add-two`.
+- The same data gives the same items in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI makes the output from the one response of `GET /archived`. An older Server that does not send `deltaCapabilities` gives items without that key, and the command does not fail. When the Server cannot be reached or the login is not valid, the command fails as `list --json` does.
+- Through `host.dispatch`, `beforeCommand` gets the command name `list`, with `archived: true` in its parameters. The list costs the store one list of the archive and one read.
 
 `speclink show <change> --json`:
 
@@ -282,13 +334,13 @@ The example leaves out the fields that existed before, such as `schema`, `propos
 
 #### <a id="show-detail"></a>`speclink show <change> --json --detail`
 
-`--detail` adds the scope of each stamp: the path and the fingerprint of each file that the stamp covered. A host can then compare the files on its main branch with the files that passed the station, also after a squash or a rebase gives the commits new identifiers.
+`--detail` adds the scope of each stamp: the path and the fingerprint of each file that the stamp covered. It also adds the rounds of an open ticket. A host can then compare the files on its main branch with the files that passed the station, also after a squash or a rebase gives the commits new identifiers.
 
 - `--detail` works only with `--json`. `speclink show <change> --detail` stops with a usage error: a non-zero exit code, a message on stderr that names `--json`, and nothing on stdout. Through `host.dispatch`, the `read` of a hook, and `engine.dispatch`, the error code is `invalid_argv`.
 - A stamped station (`review` or `verify` with `state` `stamped`) also has `scope`: an array with one `{ "path", "hash" }` for each file, in the order of the record. `path` is the path from the repo root, with forward slashes. `hash` is the fingerprint at the stamp, in lowercase hexadecimal. A stamp that recorded no fingerprint has `"scope": []`.
-- `scope` appears only in a stamped station. A station with an open ticket stays `{ "state": "inProgress" }`, and a station with no record has no key, as without `--detail`.
+- `scope` appears only in a stamped station. A station with an open ticket has `rounds` instead: the number of rounds in its ticket, as in `{ "state": "inProgress", "rounds": 2 }`. The key does not appear when the ticket does not parse, or when an older Server does not send it. A station with no record has no key, as without `--detail`.
 - Without `--detail`, the output of `show --json` is the same as before, byte for byte. `list --json --detail` has no `scope`. For a spec (`--item-type spec`, or a name that is a spec), the output is the same with and without `--detail`.
-- The same data gives the same `review` and `verify` in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI takes `scope` from the one response of `GET /changes/{name}` and sends no other request. An older Server that does not send the stations gives no `review` and no `verify`, and the command does not fail.
+- The same data gives the same `review` and `verify` in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI takes `scope` and `rounds` from the one response of `GET /changes/{name}` and sends no other request. An older Server that does not send the stations gives no `review` and no `verify`, and the command does not fail.
 - `scope` is what the stamp recorded. The output does not tell whether a file changed after the stamp, and a file that was deleted before the stamp is not in it. For the fingerprint function and a hook that compares the files, see [the Node SDK](sdk-node.md#stamp-scope).
 
 ```json
@@ -305,8 +357,39 @@ The example leaves out the fields that existed before, such as `schema`, `propos
       { "path": "src/login.ts", "hash": "e9024f1a07d29d52ad3aa5e1a18e94db1f3a9fd32b89e39d47c472cd99071e13" }
     ]
   },
-  "verify": { "state": "inProgress" }
+  "verify": { "state": "inProgress", "rounds": 2 }
 }
+```
+
+#### <a id="ticket-detail"></a>`speclink review show <change> --json --detail`
+
+`--detail` adds the text of the ticket. A host screen that shows a review or a verification in progress can then read the whole ticket through a verb. `speclink verify show <change> --json --detail` does the same for the verify ticket.
+
+- `--detail` works only with `--json`. `speclink review show <change> --detail` stops with a usage error: a non-zero exit code, a message on stderr that names `--json`, and nothing on stdout. Through `host.dispatch`, the error code is `invalid_argv`.
+- The output has `content` beside `change`, `rounds`, and `lastRound`: the text of the ticket, the same text that `speclink review show <change>` prints. The keys are in alphabetical order, so `content` comes after `change`. The other three keys are the same as without `--detail`.
+- Without `--detail`, the output of `review show --json` and `verify show --json` is the same as before, byte for byte, and has no `content`. The review and verify skills read this form, so the ticket text does not go into their context.
+- When the change has no ticket, or the change does not exist, the command fails as without `--detail`.
+- The same ticket gives the same output in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI takes `content` from the one response of `GET /changes/{name}/{station}`. An older Server that does not send it gives no `content` key, and the command does not fail.
+
+```json
+{
+  "change": "add-login",
+  "content": "# Review — add-login\n\n## Round 1\n\n**Scope**: src/login.rs\n",
+  "lastRound": { "index": 1, "phase": null, "patchHash": null, "rules": null, "scope": ["src/login.rs"], "findings": [] },
+  "rounds": [{ "index": 1, "phase": null, "patchHash": null, "rules": null, "scope": ["src/login.rs"], "findings": [] }]
+}
+```
+
+#### <a id="discussion-promoted-to"></a>`promotedTo` in `discuss list --json`, `discuss show --json`, and `discuss search --json`
+
+Each item of `discuss list --json` (also with `--archived`), the `info` of `discuss show <slug> --json`, and each hit of `discuss search --json` have `promotedTo` when the discussion was promoted to a change or merged into one: the change names, in the order of the `promoted_to` list of the discussion record. A search hit is the list item plus its `matches`, so it has the same `promotedTo` as the list.
+
+- This is a deliberate change of the output. A discussion with no promotion gives the same output as before, byte for byte. The keys are in alphabetical order, so `promotedTo` comes between `path` and `rounds`. The other keys keep their names, their order, and their values.
+- The human output of the three verbs does not change.
+- The same data gives the same `promotedTo` in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI takes it from the discussion data and the search hits that the Server already sends. An older Server that does not send it gives no `promotedTo` key, and the command does not fail.
+
+```json
+{ "archived": false, "created": "2026-10-07", "path": "discussions/board-search-bar.md", "promotedTo": ["add-search-bar"], "rounds": 1, "slug": "board-search-bar", "status": "promoted", "topic": "Board search bar" }
 ```
 
 ## <a id="request-rules"></a>Shared request rules
@@ -866,7 +949,7 @@ Optional:
 { "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
 ```
 
-Of these fields, `speclink list --json` prints only `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, and `branch`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail).
+Of these fields, `speclink list --json` prints only `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, `branch`, `createdBy`, and `fromDiscussions`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail).
 
 ### `GET /changes/{name}`
 
@@ -895,7 +978,7 @@ CLI `show` in remote mode and the detail page of the desktop app use these field
 | --- | --- |
 | `state` | `none` (no ticket and no stamp), `inProgress` (an open ticket), or `stamped`. Treat an unknown value as "no data". |
 | `stampedAt`, `stampedBy`, `stampedWith` | The time of the stamp, the person, and the agent. They appear only for a stamped station. |
-| `rounds` | The number of ticket rounds before the stamp |
+| `rounds` | For a stamped station, the number of ticket rounds before the stamp. For an open ticket, the number of rounds in the ticket; it does not appear when the ticket does not parse. |
 | `tasksTotal` | The total number of tasks at the stamp |
 | `commit` | The commit that the stamping client reported. The Server does not check it. |
 | `scope` | The `path` and `hash` of each file that the stamp covers. It appears only in the response for one change. |
@@ -907,11 +990,11 @@ CLI `show` in remote mode and the detail page of the desktop app use these field
 - The Server reports facts only. A client with a checkout decides whether files changed after the stamp: it compares the fingerprints in `scope` with the working tree, and `tasksTotal` with the current number of tasks.
 - When the metadata of the change is corrupt, or when the Server does not report station states yet, the `review` and `verify` keys do not appear. A client treats both cases as "no data".
 
-### Each item of `GET /archived`
+### <a id="archived-items"></a>Each item of `GET /archived`
 
 Always present: `datedName`, `date`, `name`, `specCount`, `fromDiscussions`.
 
-Optional: `tasksTotal`, `tasksDone`, `createdBy`, `fields`, and the two station outcomes `reviewOutcome` and `verifyOutcome`. An outcome is `none` (the station did not run), `stamped`, or `notPassed` (the archive took an open ticket). If the archived documents hold a ticket, the outcome is `notPassed`, also when the metadata still has a stamp.
+Optional: `tasksTotal`, `tasksDone`, `createdBy`, `fields`, `deltaCapabilities` (the capabilities of the delta specs, in ascending order; as many as `specCount`), and the two station outcomes `reviewOutcome` and `verifyOutcome`. An outcome is `none` (the station did not run), `stamped`, or `notPassed` (the archive took an open ticket). If the archived documents hold a ticket, the outcome is `notPassed`, also when the metadata still has a stamp.
 
 ### Each item of `GET /discussions`
 

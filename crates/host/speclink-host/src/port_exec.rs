@@ -361,6 +361,7 @@ mod tests {
             changes: false,
             worktrees: Default::default(),
             detail: false,
+            archived: false,
         }
     }
 

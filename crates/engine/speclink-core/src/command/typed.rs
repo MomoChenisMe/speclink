@@ -185,10 +185,9 @@ mod tests {
 
     #[test]
     fn list_outcome_converts_from_list_variant() {
-        let o = CommandOutcome::List(ListOutcome { changes: None, specs: None });
+        let o = CommandOutcome::List(ListOutcome::Sections { changes: None, specs: None });
         let got = ListOutcome::try_from(o).expect("List variant carries ListOutcome");
-        assert!(got.changes.is_none());
-        assert!(got.specs.is_none());
+        assert!(matches!(got, ListOutcome::Sections { changes: None, specs: None }));
     }
 
     #[test]

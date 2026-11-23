@@ -317,7 +317,7 @@ pub fn every_command() -> Vec<Command> {
         }
     }
     let s = |text: &str| text.to_string();
-    let list = |specs| Command::List { sort: s("name"), specs, changes: false, worktrees: Default::default(), detail: false };
+    let list = |specs| Command::List { sort: s("name"), specs, changes: false, worktrees: Default::default(), detail: false, archived: false };
     let commands = vec![
         list(false),
         list(true),

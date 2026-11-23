@@ -265,6 +265,52 @@ fn show_json_payload_carries_the_camel_case_contract() {
 }
 
 #[test]
+fn show_json_detail_adds_the_ticket_text() {
+    // spec verb-contract「關卡工單的詳細輸出」Scenario「帶出審查工單的全文」「驗證工單同樣帶出全文」
+    // 「不帶 --detail 時輸出不變」。
+    let p = TempProject::with_change("show-detail", TASKS_DONE);
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], ROUND_WITH_FINDINGS);
+    p.run_stdin(&["review", "add-round", "demo", "--stdin"], CLEAN_ROUND);
+    let text = stdout_of(&p.run(&["review", "show", "demo", "--no-color"]));
+    let plain = p.run(&["review", "show", "demo", "--json"]);
+    let out = p.run(&["review", "show", "demo", "--json", "--detail"]);
+    assert!(out.status.success(), "stderr: {}", stderr_of(&out));
+    let mut v: serde_json::Value = serde_json::from_str(&stdout_of(&out)).expect("valid JSON");
+    assert_eq!(v["content"], text.as_str(), "the text the human form prints");
+    assert_eq!(v["rounds"].as_array().map(Vec::len), Some(2));
+    v.as_object_mut().unwrap().remove("content");
+    let plain: serde_json::Value = serde_json::from_str(&stdout_of(&plain)).expect("valid JSON");
+    assert_eq!(v, plain, "the other keys are the ones without --detail");
+    assert!(plain.get("content").is_none());
+
+    p.run_stdin(&["verify", "add-round", "demo", "--stdin"], CLEAN_ROUND);
+    let verify = p.run(&["verify", "show", "demo", "--json", "--detail"]);
+    assert!(verify.status.success(), "stderr: {}", stderr_of(&verify));
+    let verify: serde_json::Value = serde_json::from_str(&stdout_of(&verify)).expect("valid JSON");
+    assert_eq!(verify["content"], stdout_of(&p.run(&["verify", "show", "demo", "--no-color"])).as_str());
+    assert_eq!(verify["rounds"].as_array().map(Vec::len), Some(1));
+}
+
+#[test]
+fn show_detail_without_json_is_a_usage_error_and_no_ticket_fails_as_before() {
+    // Scenario「--detail 不帶 --json 被拒絕」「沒有工單」。
+    let p = TempProject::with_change("show-detail-usage", TASKS_DONE);
+    for station in ["review", "verify"] {
+        let out = p.run(&[station, "show", "demo", "--detail"]);
+        assert!(!out.status.success(), "{station}");
+        assert_eq!(stdout_of(&out), "", "{station}");
+        assert!(stderr_of(&out).contains("--json"), "{station}: {}", stderr_of(&out));
+
+        let detailed = p.run(&[station, "show", "demo", "--json", "--detail"]);
+        let plain = p.run(&[station, "show", "demo", "--json"]);
+        assert!(!detailed.status.success(), "{station}");
+        assert_eq!(stdout_of(&detailed), "", "{station}");
+        assert_eq!(detailed.status.code(), plain.status.code(), "{station}");
+        assert_eq!(stderr_of(&detailed), stderr_of(&plain), "{station}");
+    }
+}
+
+#[test]
 fn show_without_ticket_fails_semantically() {
     // Scenario 無工單：非零、stderr 說明該 change 無審查工單。
     let p = TempProject::with_change("show-none", TASKS_DONE);

@@ -1895,6 +1895,24 @@ fn coverage_puts_the_three_reads_on_their_routes() {
     assert_eq!(wire_coverage(&Command::EvidenceShow { change: s("demo") }), route("/changes/{name}/evidence"));
 }
 
+#[test]
+fn coverage_keeps_the_archived_list_off_the_changes_route() {
+    // GET /archived answers with the Engine's archived list, but it does not
+    // run the command, so the command has no route yet.
+    let archived = Command::List {
+        sort: "name".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    };
+    let WireCoverage::NotOnWire { reason } = wire_coverage(&archived) else {
+        panic!("the archived list is not on a route that runs it");
+    };
+    assert!(reason.contains("GET /archived"), "{reason}");
+}
+
 // --- sharp-edges audit of the three reads ---
 
 #[test]

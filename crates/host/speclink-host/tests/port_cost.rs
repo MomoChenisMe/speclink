@@ -10,7 +10,7 @@
 //! Run with `cargo test -p speclink-host --test port_cost -- --nocapture` to
 //! see the table.
 
-use speclink_core::command::{Command, CommandOutcome};
+use speclink_core::command::{Command, CommandOutcome, ListOutcome};
 use speclink_core::station::StationProgress;
 use speclink_host::port_exec;
 use speclink_store_port::{DocKey, Expected, MemoryStorePort, Op};
@@ -134,6 +134,7 @@ fn commands_read_only_what_they_use() {
                 changes: false,
                 worktrees: Default::default(),
                 detail: false,
+                archived: false,
             },
         ),
         measure(
@@ -257,38 +258,74 @@ fn commands_read_only_what_they_use() {
     }
 }
 
-/// What the archived list costs on this project's own archive (design Open
-/// Questions): one list of the archive and one read of every archived
-/// change's task list and data file. The numbers are printed for the design.
+/// What the archived list costs on this project's own archive
+/// (archived-list-and-detail-reads, the store's prefetch hint): one list of
+/// the archive and one read of every archived change's data file, task list
+/// and tickets, through the one implementation every entry point shares. The
+/// numbers are printed for the design.
 #[test]
 fn the_archived_list_is_one_list_and_one_read() {
     let (inner, _, _) = loaded_store();
     let store = Recorder::new(inner);
+    let cmd = Command::List {
+        sort: "name".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    };
+    store.take();
     let started = std::time::Instant::now();
-    let (list, _) = speclink_host::documents::archived_list(&store, &scope()).expect("the archived list");
+    let execution = port_exec::execute(&store, &scope(), &host_ctx(), cmd).expect("the archived list");
     let elapsed = started.elapsed();
     let calls = store.take();
+    let CommandOutcome::List(ListOutcome::Archived(archived)) = execution.outcome else {
+        panic!("expected an archived list outcome");
+    };
     let keys: usize = calls.reads.iter().map(Vec::len).sum();
     let bytes: usize = calls.reads.iter().flatten().filter_map(|(_, size)| *size).sum();
     println!(
         "archived list: {} archived changes; {} list, {} read, {keys} keys, {bytes} bytes, {elapsed:?}",
-        list.archived.len(),
+        archived.len(),
         calls.lists.len(),
         calls.reads.len()
     );
     assert_eq!(calls.lists, ["archive/changes/"]);
     assert_eq!(calls.reads.len(), 1);
-    assert!(!list.archived.is_empty(), "this project has archived changes");
+    assert!(calls.commits.is_empty());
+    // A key the listing does not have is not read.
+    for (key, size) in calls.reads.iter().flatten() {
+        assert!(size.is_some(), "a document the listing does not have was read: {key}");
+    }
+    assert!(!archived.is_empty(), "this project has archived changes");
 }
 
-/// What `list --json --detail` costs (verb-output-for-embedded D3): the calls
-/// of a list without it, and not one more. The two stations need to know
-/// whether a ticket exists, and the listing of `changes/` the list already
-/// made answers that; the claim, the branch and the landing are in the data
-/// file the list already reads.
+/// What `list --json --detail` costs (archived-list-and-detail-reads,
+/// revising verb-output-for-embedded D3): with open tickets, the calls of a
+/// list without it and one read more, which holds every open ticket at once —
+/// their rounds are in them; with none, the calls of a list without it. The
+/// claim, the branch and the landing are in the data file the list already
+/// reads, and the listing of `changes/` says which tickets exist.
 #[test]
-fn a_detailed_list_costs_the_calls_of_a_plain_list() {
+fn a_detailed_list_costs_one_read_more_only_for_open_tickets() {
     const PROBE: &str = "cost-probe-detail";
+    const OTHER: &str = "cost-probe-detail-two";
+    let run = |store: &Recorder, detail| {
+        let cmd = Command::List {
+            sort: "modified".to_string(),
+            specs: false,
+            changes: false,
+            worktrees: Default::default(),
+            detail,
+            archived: false,
+        };
+        store.take();
+        let execution = port_exec::execute(store, &scope(), &host_ctx(), cmd).expect("list");
+        (execution.outcome, store.take())
+    };
+
+    // Two changes with an open ticket: one more read, for both tickets.
     let (inner, _, _) = loaded_store();
     seed(
         &inner,
@@ -302,39 +339,27 @@ fn a_detailed_list_costs_the_calls_of_a_plain_list() {
                 &format!("changes/{PROBE}/review.md"),
                 "# Review — cost-probe-detail\n\n## Round 1\n\n**Scope**: src/app.rs\n",
             ),
+            doc(&format!("changes/{OTHER}/.meta.yaml"), "schema: spec-driven\n"),
+            doc(
+                &format!("changes/{OTHER}/verify.md"),
+                "# Verify — two\n\n## Round 1\n\n**Scope**: src/app.rs\n\n## Round 2\n\n**Scope**: src/app.rs\n",
+            ),
         ],
     );
     let store = Recorder::new(inner);
-    let run = |detail| {
-        let cmd = Command::List {
-            sort: "modified".to_string(),
-            specs: false,
-            changes: false,
-            worktrees: Default::default(),
-            detail,
-        };
-        store.take();
-        let execution = port_exec::execute(&store, &scope(), &host_ctx(), cmd).expect("list");
-        (execution.outcome, store.take())
-    };
-    let (_, plain) = run(false);
-    let (outcome, detailed) = run(true);
+    let (_, plain) = run(&store, false);
+    let (outcome, detailed) = run(&store, true);
 
-    // The detail is there: the open ticket and the recorded branch.
-    let CommandOutcome::List(list) = outcome else {
-        panic!("expected a list outcome");
+    // The detail is there: the open tickets with their rounds, the recorded branch.
+    let CommandOutcome::List(ListOutcome::Sections { changes: Some(changes), .. }) = outcome else {
+        panic!("expected a list outcome with the changes section");
     };
-    let probe = list
-        .changes
-        .expect("the changes section")
-        .into_iter()
-        .find(|change| change.name == PROBE)
-        .expect("the probe change");
-    assert_eq!(
-        probe.review.map(|status| status.progress),
-        Some(StationProgress::InProgress)
-    );
+    let probe = changes.iter().find(|change| change.name == PROBE).expect("the probe change");
+    let review = probe.review.as_ref().expect("an open review");
+    assert_eq!((review.progress, review.rounds), (StationProgress::InProgress, Some(1)));
     assert_eq!(probe.branch.as_deref(), Some("speclink/cost-probe-detail"));
+    let other = changes.iter().find(|change| change.name == OTHER).expect("the second change");
+    assert_eq!(other.verify.as_ref().and_then(|status| status.rounds), Some(2));
 
     println!(
         "list changes --detail: {} list, {} read, {} keys (plain: {} list, {} read, {} keys)",
@@ -346,12 +371,32 @@ fn a_detailed_list_costs_the_calls_of_a_plain_list() {
         plain.reads.iter().map(Vec::len).sum::<usize>(),
     );
     assert_eq!(detailed.lists, plain.lists, "no list call more");
-    assert_eq!(detailed.read_keys(), plain.read_keys(), "no read call and no key more");
+    assert_eq!(detailed.reads.len(), plain.reads.len() + 1, "one read call more");
     assert!(detailed.commits.is_empty());
-    for key in detailed.read_keys().iter().flatten() {
-        assert!(
-            !key.ends_with("/review.md") && !key.ends_with("/verify.md"),
-            "a ticket is not read to know that it exists: {key}"
-        );
+    let tickets: Vec<&(String, Option<usize>)> = detailed
+        .reads
+        .iter()
+        .flatten()
+        .filter(|(key, _)| key.ends_with("/review.md") || key.ends_with("/verify.md"))
+        .collect();
+    for key in [format!("changes/{PROBE}/review.md"), format!("changes/{OTHER}/verify.md")] {
+        assert_eq!(tickets.iter().filter(|(k, _)| *k == key).count(), 1, "{key} is read once: {tickets:?}");
     }
+    assert!(tickets.iter().all(|(_, size)| size.is_some()), "a ticket the listing does not have is not read");
+
+    // No open ticket: the calls of a plain list, not one more.
+    let docs = spec_folder_docs()
+        .into_iter()
+        .filter(|(key, _)| {
+            let key = key.as_str();
+            !(key.starts_with("changes/") && (key.ends_with("/review.md") || key.ends_with("/verify.md")))
+        })
+        .collect();
+    let inner = MemoryStorePort::new();
+    seed(&inner, docs);
+    let store = Recorder::new(inner);
+    let (_, plain) = run(&store, false);
+    let (_, detailed) = run(&store, true);
+    assert_eq!(detailed.lists, plain.lists, "no list call more");
+    assert_eq!(detailed.read_keys(), plain.read_keys(), "no read call and no key more");
 }

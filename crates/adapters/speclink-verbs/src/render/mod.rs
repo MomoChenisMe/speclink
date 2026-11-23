@@ -17,6 +17,7 @@ use speclink_core::command::{CommandError, CommandOutcome};
 use crate::families::discuss::DiscussCommands;
 use crate::families::new::NewCommands;
 use crate::families::plan::ChangeCommands;
+use crate::families::station::{ReviewCommands, VerifyCommands};
 use crate::{ParsedVerb, SpecVerb};
 
 // The three writers every human-output function uses. They append to a
@@ -333,13 +334,13 @@ fn render_with(
         O::ReviewAddRound(o) => {
             station::action(&REVIEW, StationAction::AddRound(o.round), &o.change, options)
         }
-        O::ReviewShow(o) => station::show(&REVIEW, &o.change, &o.ticket, o.content.as_deref(), options),
+        O::ReviewShow(o) => station::show(&REVIEW, &o.change, &o.ticket, o.content.as_deref(), station_detail(verb), options),
         O::ReviewStamp(o) => station::action(&REVIEW, StationAction::Stamp, &o.change, options),
         O::ReviewDiscard(o) => station::action(&REVIEW, StationAction::Discard, &o.change, options),
         O::VerifyAddRound(o) => {
             station::action(&VERIFY, StationAction::AddRound(o.round), &o.change, options)
         }
-        O::VerifyShow(o) => station::show(&VERIFY, &o.change, &o.ticket, o.content.as_deref(), options),
+        O::VerifyShow(o) => station::show(&VERIFY, &o.change, &o.ticket, o.content.as_deref(), station_detail(verb), options),
         O::VerifyStamp(o) => station::action(&VERIFY, StationAction::Stamp, &o.change, options),
         O::VerifyDiscard(o) => station::action(&VERIFY, StationAction::Discard, &o.change, options),
         O::WorkflowConfigShow(o) => workflow_config::show(o, options),
@@ -367,6 +368,15 @@ fn new_command(verb: &ParsedVerb) -> Option<&NewCommands> {
     match verb.spec() {
         SpecVerb::New(a) => Some(&a.command),
         _ => None,
+    }
+}
+
+/// `review show --detail` or `verify show --detail`.
+fn station_detail(verb: &ParsedVerb) -> bool {
+    match verb.spec() {
+        SpecVerb::Review(a) => matches!(a.command, ReviewCommands::Show { detail: true, .. }),
+        SpecVerb::Verify(a) => matches!(a.command, VerifyCommands::Show { detail: true, .. }),
+        _ => false,
     }
 }
 
@@ -537,7 +547,7 @@ mod tests {
         let round = || cmd::ReviewRoundOutcome { change: s("c"), round: 1 };
         let bound = || cmd::DiscussBindOutcome { slug: s("t"), change: s("c") };
         vec![
-            (&["list"], O::List(cmd::ListOutcome { changes: Some(Vec::new()), specs: None }), true, "No active changes.\n"),
+            (&["list"], O::List(cmd::ListOutcome::Sections { changes: Some(Vec::new()), specs: None }), true, "No active changes.\n"),
             (
                 &["show", "auth"],
                 O::Show(cmd::ShowOutcome::Spec { name: s("auth"), content: s("# auth\n") }),

@@ -246,6 +246,36 @@ mod tests {
     }
 
     #[test]
+    fn list_archived_goes_with_json_and_with_no_other_section_flag() {
+        // spec verb-contract「已封存變更的清單」：`--archived` 綁住 --json，與 --specs、
+        // --changes、--detail 互斥；CLI 與宿主套件因此給出同一個用法錯誤。
+        use speclink_core::command::Command;
+        let archived_of = |argv: &[&str]| match parse(argv.iter().copied()).expect("parses").to_command(VerbInputs::default()) {
+            Ok(CommandTarget::Command(Command::List { archived, .. })) => archived,
+            other => panic!("{argv:?} must convert to a list command, got {other:?}"),
+        };
+        assert!(archived_of(&["list", "--archived", "--json"]));
+        assert!(archived_of(&["list", "--json", "--archived", "--sort", "name"]));
+        assert!(!archived_of(&["list", "--json"]));
+        assert!(!archived_of(&["list"]));
+
+        let refused = |argv: &[&str]| {
+            let err = parse(argv.iter().copied()).err().unwrap_or_else(|| panic!("{argv:?} must not parse"));
+            assert_eq!((err.kind, err.exit_code), (ParseErrorKind::Usage, 2), "{argv:?}");
+            err.message
+        };
+        let without_json = refused(&["list", "--archived"]);
+        assert!(without_json.contains("--json"), "{without_json}");
+        for other in ["--specs", "--changes", "--detail"] {
+            let message = refused(&["list", "--archived", "--json", other]);
+            assert!(
+                message.contains("cannot be used with") && message.contains("--archived") && message.contains(other),
+                "{other}: {message}"
+            );
+        }
+    }
+
+    #[test]
     fn show_detail_goes_with_json_and_leaves_the_engine_command_alone() {
         // spec verb-contract「單筆變更的詳細輸出」：旗標在共用的解析裡綁住 --json，
         // 引擎的 Show 命令不多欄位（解構不帶 `..`，多一個欄位就編譯不過）。
