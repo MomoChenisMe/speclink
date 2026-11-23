@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板。
+// 複製 Herdr 的 main 版面成 speclink 版面，在最右邊加一欄常駐的 Speclink 面板，終端機的 Cmd+點也交一部分給它。
 // 也複製 spaces、agents 接上階段徽章和 Speclink 資訊，因為內建的沒有擴充點；複製 files、changes 讓檔案名稱和差異內容不會被 i18n.js 翻掉。
 // 內建版面不能停靠，複製版又不會跟著 Herdr 更新，所以 Herdr 更新後要重跑這支。
 // 舊的版面會留在 layouts/speclink.json.old-<時間>，和 Herdr 的 layout.reset 同樣做法；
@@ -210,5 +210,7 @@ for (const clone of clones) {
 }
 layout.children.push(PANEL);
 layout.floating = [...(layout.floating ?? []), COLUMN_SYNC];
+// 終端機裡 Cmd+點變更或討論底下的路徑，交給面板的 link.js 用桌面 app 開。
+layout.link_handlers = [...(layout.link_handlers ?? []), PANEL.content.mod];
 writeFileSync(file, `${JSON.stringify(layout, null, 2)}\n`);
 console.log(`已停靠：${file}`);

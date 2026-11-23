@@ -48,6 +48,14 @@ Only in the `speclink` layout.
 - **Stage badge**: a project row in the Spaces list shows the number of changes in each stage, in the same order and colors as the panel cards: a dot and a number for proposed and in progress, and a green `✓2` for ready. A stage with 0 changes does not show. Move the pointer over the badge to see the stage names. It updates about every 30 seconds.
 - **Agents list**: the list at the bottom left groups agents by space, in the same order as the Spaces list. Each space has its own Done, Working and Idle sections, and the title of a folded space shows the count for each status. An agent that waits for your answer goes in Needs you at the top, for any space. An agent with its own tab no longer shows a second time under the agent that started it. A row for an agent that works on a change ends with the stage color and the task progress. A tab with no name shows the change name. The match rules are the same as in the panel. The icon beside the title opens the sort menu, which can switch to Priority.
 
+### Cmd-click in a terminal
+
+In the `speclink` layout, hold `⌘` and click a path in a change folder in a terminal (for example `speclink/changes/add-a/tasks.md` that an agent prints). The desktop app opens the detail page of that change. Click `speclink/discussions/<slug>.md` to open that discussion. A path in a worktree also opens the page of the main project. Old projects that still use `openspec/` work too.
+
+Archived changes, spec files and other paths open as Herdr usually opens them. They also open that way if the terminal is on another machine, the desktop app is not installed, or the app does not know `speclink://` URLs.
+
+The first time that you copy this version of the mod, Herdr adds it to the personal layout that shows at that time (`link_handlers` in the layout file). If you do not want this in that layout, remove `speclink` from the list.
+
 ### Language
 
 The interface follows the system language: Chinese on a Chinese system, and English on other systems. Restart Herdr after you change the system language.
@@ -212,7 +220,7 @@ The logo sends a `speclink://project` URL. The desktop app goes to the project o
 
 ## Requirements
 
-- Herdr 0.1.16 or later (tested with this version). The panel cancels the folder watches that it does not need, and only 0.1.16 can do this. The lines that `dock-panel.mjs` edits also follow the Herdr version, so the script stops on 0.1.12.
+- Herdr 0.1.17 or later (tested with this version). Cmd-click in a terminal needs 0.1.17, and the panel needs 0.1.16 to cancel the folder watches that it does not need. The lines that `dock-panel.mjs` edits also follow the Herdr version, so the script stops on 0.1.12.
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list`, `speclink workflow-config show` and `speclink instructions apply`. The CLI does not give the stamps, so the panel also reads `.meta.yaml` in the change folder.
 - A project with `speclink init` done. If it is not done, the panel gives an initialize button.
 - To open pages in Speclink, or to go to a project with the logo, a desktop app that knows `speclink://` URLs (a version after v0.11.0). Releases up to and including v0.11.0 do not have these URLs, so the logo only brings up the app. A version that you built yourself after 2026-11-03 may not know `speclink://project` yet. In that version the logo brings the app to the front, the project does not change, and the app shows "Can't open this speclink link". The message goes away after you update the app.
@@ -241,7 +249,7 @@ Work from the repo root, with Herdr open:
    "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
    ```
 
-3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the left sidebar with clones connected to Speclink, and switches to it. To keep the pop-up only, skip this step.
+3. To dock the panel, run this line. It clones Herdr's `main` layout as the `speclink` layout, adds the panel as the rightmost column, replaces the left sidebar with clones connected to Speclink, gives Cmd-click in terminals to the panel, and switches to it. To keep the pop-up only, skip this step.
 
    ```bash
    node scripts/herdr/dock-panel.mjs
@@ -279,7 +287,7 @@ The script does these steps:
 1. It switches to `main`.
 2. It renames the old clone to `layouts/speclink.json.old-<time>` and deletes the old `mods/speclink-spaces`, `mods/speclink-agents`, `mods/speclink-files`, `mods/speclink-changes`, and the `mods/speclink-tabs` that earlier versions made.
 3. It clones the new `spaces`, `agents`, `files` and `changes` and connects them. If Herdr changed the lines that the script edits in `spaces` or `agents`, the script stops before it changes anything. If it cannot edit `files` or `changes`, it warns, uses the built-in mod, and continues.
-4. It clones the new `main`, adds the panel, and switches to the new `speclink` layout.
+4. It clones the new `main`, adds the panel and Cmd-click, and switches to the new `speclink` layout.
 
 If you edited `keys.json`, a Herdr update does not add new shortcuts, so add them yourself. For example, for terminal search in 0.1.13, add `"cmd-f": "terminal.search"` to the `terminal` section.
 
@@ -290,6 +298,7 @@ After this, the panel column has its default width, and the other column widths 
 1. Press `⌘⇧L` to switch to `main`.
 2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces`, `speclink-agents`, `speclink-files`, `speclink-changes` and `speclink-tabs` in `~/.config/herdr-app/mods/`.
 3. Remove the additions from `keys.json`.
+4. If Herdr added Cmd-click to other personal layouts, remove `speclink` from `link_handlers` in those layouts.
 
 ### Why a cloned layout
 
@@ -318,7 +327,8 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **Row buttons do not check installed skills**: for example, in a project without Codex skill files, the button still sends `$speclink-…`. The Skills pop-up checks, and it shows how to install them.
 - **My skills guesses the use from the name**: it matches `SKILL_USES` in `model.js`. A name with no match goes to Other. The description is the original text in `SKILL.md`, with no translation.
 - **Plugins only for Claude Code**: skills in Codex plugins are not listed.
-- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, but it only brings up the app on this computer and does not change the project.
+- **Opening pages works only on macOS**: the panel uses `open`. On other systems a notice says that the page cannot open. A project in a space on another machine cannot open, so its rows do nothing on click and there is no Roadmap button. The logo still works, but it only brings up the app on this computer and does not change the project. On other systems, Cmd-click in a terminal opens as Herdr usually opens it.
+- **Cmd-click was not tested with a real click**: Herdr does not allow automatic mouse clicks on the person's screen, so the test called `link.js` directly in an isolated Herdr window. It checked the URL that it sends and the cases that go back to Herdr.
 - **The `SPECLINK_WORKTREE` environment variable is not read**: the panel reads only the workflow config. If the variable turns worktree off, Start still asks. If you choose a worktree, the skill stops and explains why.
 - **A worktree does not show on the left by itself**: the agent's terminal stays in the main folder and only each command goes into the worktree, so Herdr shows no row for the worktree. To open a shell or run tests in the worktree, use Herdr's built-in Open worktree.
 - **A folder that is new to Claude Code asks for trust first**: during that question the terminal is not yet an agent, so the panel does not see it, and the Start button comes back after 15 seconds. A trusted folder does not ask.

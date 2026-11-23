@@ -48,6 +48,14 @@
 - **階段徽章**：Spaces 清單的專案列會依階段寫出變更的數量，順序和顏色都和面板的卡片相同：提案中和進行中是圓點加數字，已就緒是綠色的 `✓2`。數量是 0 的階段不顯示。游標移上去會寫出階段名稱。約 30 秒更新一次。
 - **Agents 清單**：左下的清單依 space 分組，順序和 Spaces 清單相同。每個 space 裡再分 已完成、執行中、閒置，收起 space 時標題右邊寫各狀態的數量。等你回答的 agent 不分 space，放在最上面的「需要你」。有自己分頁的 agent 不再重複接在開它的 agent 底下。在做變更的 agent，列尾有階段顏色和任務進度，沒取過名的分頁會寫變更名稱，比對規則和面板相同。標題旁的圖示是排序選單，可以切回依狀態排序。
 
+### 終端機的 Cmd+點
+
+在 `speclink` 版面，按住 `⌘` 點終端機裡變更資料夾的路徑（例如 agent 印出的 `speclink/changes/add-a/tasks.md`），桌面 app 會開那個變更的詳情頁。點 `speclink/discussions/<slug>.md` 會開那場討論。worktree 裡的路徑也開主專案的頁面，還沒搬到 `speclink/` 的舊專案（`openspec/`）一樣認得。
+
+封存的變更、規格檔和其他路徑照 Herdr 原本的方式開。終端機在別台機器、沒裝桌面 app，或 app 不認得 `speclink://` 網址時，也照原本的方式開。
+
+第一次複製這一版 mod 時，Herdr 會把它加進當時顯示的個人版面（版面檔的 `link_handlers`）。不想讓那個版面這樣開，就從清單刪掉 `speclink`。
+
 ### 語言
 
 介面跟隨系統語系，中文系統用中文，其他系統用英文。改系統語言後要重開 Herdr。
@@ -212,7 +220,7 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
 
 ## 需求
 
-- Herdr 0.1.16 以上（以這一版測試）。面板會取消用不到的資料夾監看，這要 0.1.16 才有。`dock-panel.mjs` 要改的程式行也跟著 Herdr 的版本走，在 0.1.12 上會停下來。
+- Herdr 0.1.17 以上（以這一版測試）。終端機的 Cmd+點要 0.1.17 才有，面板取消用不到的資料夾監看要 0.1.16。`dock-panel.mjs` 要改的程式行也跟著 Herdr 的版本走，在 0.1.12 上會停下來。
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show`、`speclink instructions apply` 的 `--json` 輸出。CLI 沒有提供的章，另外讀變更資料夾的 `.meta.yaml`。
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
@@ -241,7 +249,7 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
    "layout:speclink": { "cmd-shift-s": "layout.toggle:speclink" }
    ```
 
-3. 要停靠就執行這一行。它把 Herdr 的 `main` 版面複製成 `speclink` 版面，在最右邊加一欄面板，把左邊側欄換成接上 Speclink 的複製版，然後切過去。不想停靠就跳過這一步，用 `⌘⇧S` 彈出。
+3. 要停靠就執行這一行。它把 Herdr 的 `main` 版面複製成 `speclink` 版面，在最右邊加一欄面板，把左邊側欄換成接上 Speclink 的複製版，把終端機的 Cmd+點交給面板，然後切過去。不想停靠就跳過這一步，用 `⌘⇧S` 彈出。
 
    ```bash
    node scripts/herdr/dock-panel.mjs
@@ -279,7 +287,7 @@ node scripts/herdr/dock-panel.mjs
 1. 切回 `main`。
 2. 把舊的複製版改名成 `layouts/speclink.json.old-<時間>`，刪掉舊的 `mods/speclink-spaces`、`mods/speclink-agents`、`mods/speclink-files`、`mods/speclink-changes`，以及之前版本留下的 `mods/speclink-tabs`。
 3. 用新版的 `spaces`、`agents`、`files`、`changes` 重新複製並接上。Herdr 改了 `spaces`、`agents` 要接的那幾行時，腳本會在動任何東西之前停下來。`files`、`changes` 改不到時，腳本會警告並改用內建的，不擋停靠。
-4. 用新版的 `main` 重新複製，加上面板，切到新的 `speclink` 版面。
+4. 用新版的 `main` 重新複製，加上面板和 Cmd+點，切到新的 `speclink` 版面。
 
 改過 `keys.json` 的話，Herdr 更新不會自動加新的快捷鍵，要自己加。例如 0.1.13 的終端機搜尋，要在 `terminal` 區段加 `"cmd-f": "terminal.search"`。
 
@@ -290,6 +298,7 @@ node scripts/herdr/dock-panel.mjs
 1. 用 `⌘⇧L` 切回 `main`。
 2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`，以及 `~/.config/herdr-app/mods/` 底下的 `speclink`、`speclink-new`、`speclink-spaces`、`speclink-agents`、`speclink-files`、`speclink-changes`、`speclink-tabs`。
 3. 刪掉 `keys.json` 裡加的那幾行。
+4. Herdr 自動把 Cmd+點加進其他個人版面的話，刪掉那些版面 `link_handlers` 裡的 `speclink`。
 
 ### 為什麼用複製的版面
 
@@ -318,7 +327,8 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **列上的技能鈕不看專案裝了哪些技能**：例如專案沒有 Codex 的技能檔時，鈕還是會送 `$speclink-…`。技能跳窗會看，沒有時會寫要怎麼裝。
 - **我的技能的用途是用名稱猜的**：比對 `model.js` 的 `SKILL_USES`，對不到的放「其他」。說明是 `SKILL.md` 的原文，不翻譯。
 - **外掛只算 Claude Code**：Codex 外掛的技能不列。
-- **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，但只叫出這台電腦的 app，不切專案。
+- **開頁面只有 macOS**：面板用 `open`，其他系統會跳通知說開不了。專案在別台機器的 space 不能開，所以那些列點了沒有反應，也沒有「路線圖」鈕。Logo 還是能按，但只叫出這台電腦的 app，不切專案。終端機的 Cmd+點在其他系統照 Herdr 原本的方式開。
+- **Cmd+點沒有用真的點擊測過**：Herdr 規定不能在使用者的螢幕上自動點滑鼠，所以只在隔離的 Herdr 視窗直接呼叫 `link.js`，測過送出的網址和交回 Herdr 的情況。
 - **不看 `SPECLINK_WORKTREE` 環境變數**：面板只讀工作流設定。環境變數把 worktree 關掉時，開工一樣會問。選「用 worktree」的話，技能會自己停下來並說明。
 - **worktree 不會自動出現在左邊**：agent 的終端機留在主資料夾，只在每個指令切到 worktree，所以 Herdr 不會多一列 worktree。要在 worktree 開 shell 或跑測試時，用 Herdr 內建的 Open worktree。
 - **第一次開的資料夾會先問信任**：Claude Code 問要不要信任資料夾時還不算 agent，面板看不到它，15 秒後開工鈕會再出現。信任過的資料夾不會問。

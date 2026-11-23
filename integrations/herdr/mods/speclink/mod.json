@@ -1,5 +1,6 @@
 {
   "place": "none",
   "title": "Speclink",
-  "overlay": { "kind": "window", "key": "speclink", "width": 400, "height": 0.85 }
+  "overlay": { "kind": "window", "key": "speclink", "width": 400, "height": 0.85 },
+  "link_handlers": [{ "kind": "file", "pattern": "(?:^|/)(?:speclink|openspec)/(?:changes|discussions)/" }]
 }

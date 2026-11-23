@@ -186,6 +186,14 @@ export function speclinkUrl(kind, project, name) {
   return `speclink://${kind}${path}?project=${encodeURIComponent(project)}`;
 }
 
+// 在終端機 Cmd+點的路徑：變更資料夾裡的東西，或還沒封存的討論記錄。dir 是規格資料夾所在的資料夾。
+// 其他路徑回 null，由 Herdr 照原本的方式開。
+export function linkTarget(path) {
+  const m = /^(.*)\/(?:speclink|openspec)\/(?:changes\/([^/]+)(?:\/|$)|discussions\/([^/]+)\.md$)/.exec(path);
+  if (!m || m[2] === "archive") return null;
+  return m[2] ? { kind: "change", name: m[2], dir: m[1] } : { kind: "discussion", name: m[3], dir: m[1] };
+}
+
 // 桌面 app 的 bundle id。
 export const APP_ID = "app.speclink.desktop";
 

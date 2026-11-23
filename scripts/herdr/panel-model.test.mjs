@@ -46,6 +46,7 @@ import {
   joinAgents,
   groupedOrder,
   lastOpenError,
+  linkTarget,
   logoOpenAttempts,
   newTabPlan,
   parseStations,
@@ -1098,6 +1099,28 @@ test('logoOpenAttempts：別台機器的 space 只叫出 app，路徑在這台�
   assert.deepEqual(logoOpenAttempts({ root: LOGO_ROOT, hasBoard: true, on: 'build-box' }), [BRING_UP]);
 });
 
+test('linkTarget：變更資料夾裡的路徑開變更，討論記錄開討論', () => {
+  assert.deepEqual(linkTarget('/Users/dev/app/speclink/changes/add-a/tasks.md'), { kind: 'change', name: 'add-a', dir: '/Users/dev/app' });
+  assert.deepEqual(linkTarget('/Users/dev/app/speclink/changes/add-a/specs/auth/spec.md'), { kind: 'change', name: 'add-a', dir: '/Users/dev/app' });
+  assert.deepEqual(linkTarget('/Users/dev/app/speclink/changes/add-a'), { kind: 'change', name: 'add-a', dir: '/Users/dev/app' });
+  assert.deepEqual(linkTarget('/Users/dev/app/speclink/discussions/dark-mode.md'), { kind: 'discussion', name: 'dark-mode', dir: '/Users/dev/app' });
+  // 還沒搬到 speclink/ 的舊專案
+  assert.deepEqual(linkTarget('/Users/dev/old/openspec/changes/fix-b/proposal.md'), { kind: 'change', name: 'fix-b', dir: '/Users/dev/old' });
+});
+
+test('linkTarget：封存的、規格資料夾本身和其他路徑交回 Herdr', () => {
+  for (const path of [
+    '/Users/dev/app/speclink/changes/archive/2026-01-02-add-a/tasks.md',
+    '/Users/dev/app/speclink/discussions/archive/2026-01-02-dark-mode.md',
+    '/Users/dev/app/speclink/changes/',
+    '/Users/dev/app/speclink/discussions/notes.txt',
+    '/Users/dev/app/speclink/specs/auth/spec.md',
+    '/Users/dev/app/src/changes/a.ts',
+  ]) {
+    assert.equal(linkTarget(path), null, path);
+  }
+});
+
 // 假的 exec：依序回傳給定的結果，Error 代表 exec 本身失敗（例如系統沒有 open 指令）。
 function fakeExec(...results) {
   const calls = [];
@@ -1673,6 +1696,19 @@ test('dock-panel：頁籤列用內建的，刪掉之前複製的頁籤列', () =
   const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
   assert.ok(!source.includes("as: 'speclink-tabs'"));
   assert.match(source, /rmSync\(path\.join\(home, 'mods', 'speclink-tabs'\), \{ recursive: true, force: true \}\);/);
+});
+
+test('dock-panel：版面把 Cmd+點交給面板，mod.json 的規則和 linkTarget 認得的資料夾相同', () => {
+  const source = readFileSync(fileURLToPath(new URL('dock-panel.mjs', import.meta.url)), 'utf8');
+  assert.match(source, /layout\.link_handlers = \[\.\.\.\(layout\.link_handlers \?\? \[\]\), PANEL\.content\.mod\];/);
+  const mod = JSON.parse(readFileSync(fileURLToPath(new URL('../../integrations/herdr/mods/speclink/mod.json', import.meta.url)), 'utf8'));
+  const [rule] = mod.link_handlers;
+  assert.equal(rule.kind, 'file');
+  const pattern = new RegExp(rule.pattern);
+  for (const path of ['/a/speclink/changes/x/tasks.md', '/a/openspec/changes/x', '/a/speclink/discussions/d.md']) {
+    assert.ok(pattern.test(path) && linkTarget(path), path);
+  }
+  assert.ok(!pattern.test('/a/speclink/specs/auth/spec.md'));
 });
 
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));
