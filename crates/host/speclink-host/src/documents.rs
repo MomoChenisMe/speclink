@@ -231,6 +231,16 @@ pub fn check_board_order_size(content: &str) -> Result<(), DocumentsError> {
 /// command names ([`crate::kit::command_names`]).
 pub const PUT_BOARD_ORDER_COMMAND: &str = "put-board-order";
 
+/// The names the HTTP door's reads that no Engine command answers ask the
+/// before hook about (spec host-kit「入口的文件讀取先問執行前掛鉤」): the
+/// board order, the search, the context snapshot and the spec-side drift.
+/// They are no Engine command either, so the hook's reader does not take
+/// them; the kit adds them to its command names.
+pub const GET_BOARD_ORDER_COMMAND: &str = "get-board-order";
+pub const WORKSPACE_SEARCH_COMMAND: &str = "workspace-search";
+pub const CONTEXT_SNAPSHOT_COMMAND: &str = "context-snapshot";
+pub const SPEC_DRIFT_COMMAND: &str = "spec-drift";
+
 /// Replace the board order (design D3) when the scope is at `expected`, and
 /// return the new scope version.
 ///

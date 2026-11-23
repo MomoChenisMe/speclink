@@ -23,7 +23,7 @@ SDK 是這個工具箱的名字。裡面有四樣東西：
 
 這份文件裡，「宿主」指你的系統，「範圍」（scope）指一份獨立的規格集合，通常是一個專案的一個 repo。範圍是你自己取的字串，引擎不解讀它。
 
-`commandNames` 是凍結的陣列，列出 `beforeCommand` 與你的儲存的 `commit` 可能收到的每一個命令名稱：引擎的命令，加上宿主套件自己的三個，`scope-export`、`scope-import` 與 `put-board-order`（`handleRequest` 寫看板排序時用的名稱）。陣列的順序不是契約，它也只給名稱：不告訴你命令會不會寫入，因為不寫入的命令也可能帶出整份文件。用它寫一個測試，確認你的權限對照表涵蓋每一個名稱，新版本多出來的命令就不會被誤擋：
+`commandNames` 是凍結的陣列，列出 `beforeCommand` 與你的儲存的 `commit` 可能收到的每一個命令名稱：引擎的命令，加上宿主套件自己的七個：`scope-export`、`scope-import`、`put-board-order`（`handleRequest` 寫看板排序時用的名稱），以及 `handleRequest` 裡沒有對應引擎命令的四條讀取用的 `get-board-order`（`GET /board-order`）、`workspace-search`（`GET /search`）、`context-snapshot`（`POST /context`）與 `spec-drift`（`GET /changes/{name}/drift`）。共 61 個名稱。陣列的順序不是契約，它也只給名稱：不告訴你命令會不會寫入，因為不寫入的命令也可能帶出整份文件。用它寫一個測試，確認你的權限對照表涵蓋每一個名稱，新版本多出來的命令就不會被誤擋：
 
 ```js
 // permissions.test.js，用 Node 內建的測試工具。permissionOf 是你的對照表：命令名稱 → 權限動作。
@@ -37,6 +37,8 @@ test('權限對照表涵蓋每一個命令名稱', () => {
   assert.deepStrictEqual(missing, [])
 })
 ```
+
+從 57 個名稱的版本升級時，把四個讀取的名稱加進對照表。只放行已知名稱的掛鉤會擋下它們，Speclink Desktop 的搜尋與看板順序、CLI 的文件快照與 `drift` 會收到 409 與你的原因。
 
 ## <a id="install"></a>安裝
 
@@ -533,8 +535,28 @@ app.use('/api/speclink/v1', express.raw({ type: '*/*', limit: '4mb' }), async (r
 - **`path` 與 `query` 照收到的樣子傳**（不要先解碼），`body` 是位元組。
 - **回傳 `null`** 表示這個路徑不是入口的。GET、HEAD、POST、PUT、DELETE 以外的方法得到 405。
 - **路徑固定在 `/api/speclink/v1/` 底下**，用戶端假設 API 在這裡，不能掛到別的前綴。
-- **掛鉤和 `host.dispatch` 共用。** 不經引擎的讀取（工作流設定的原文、已封存的內容、搜尋）不會逐一問 `beforeCommand`，由「這個人看不看得到這個範圍」決定。
+- **掛鉤和 `host.dispatch` 共用。** 讀寫範圍文件的每一條路由都在你的儲存收到呼叫之前問 `beforeCommand` 一次。拒絕時回 409、reason 為 `refused`、訊息是你給的原因。不執行引擎命令的讀取列在下面的表。
 - 第三個參數可以帶自由欄位：`host.handleRequest(request, identity, { fields })`，規則和 `host.dispatch` 的 `fields` 相同。
+
+入口裡不執行引擎命令的讀取，用下面的名稱與參數問 `beforeCommand`：
+
+| 路由 | 命令名稱 | 參數 |
+| --- | --- | --- |
+| `GET /config` | `workflow-config-show` | 沒有 |
+| `GET /specs/{capability}/document` | `show` | `item`（capability 名稱）、`itemType`（`'spec'`） |
+| `GET /archived/{datedName}/artifacts/{path}` | `artifact-cat` | `artifact`（文件路徑，例如 `proposal.md`）、`change`（帶日期的名稱） |
+| `GET /archived` | `list` | `archived`（`true`） |
+| `GET /archived/{datedName}/capabilities` | `list` | `archived`（`true`） |
+| `GET /search` | `workspace-search` | `query` |
+| `POST /context` | `context-snapshot` | 請求指定變更時有 `change` |
+| `GET /board-order` | `get-board-order` | 沒有 |
+| `GET /changes/{name}/drift` | `spec-drift` | `change` |
+
+- **前五條用引擎命令的名稱。** 你對 `workflow-config-show`、`show`、`artifact-cat`、`list` 的規則也管這幾條讀取，參數的鍵相同。這裡的 `artifact` 是文件路徑（`proposal.md`），不是動詞用的識別（`proposal`）。
+- **其餘四條有自己的名稱**，都在 `commandNames` 裡。掛鉤的 `read` 不接受它們：它們不是動詞。
+- **這些路由不問：** 握手、`GET /sync-state`、兩個身分查詢、範圍清單、登入方式與 `POST /skills`。它們不給範圍裡的文件。
+- **兩條路由在問之前先讀一次你的儲存：** 工作流設定的寫入（先讀設定才知道變動的鍵）與一般的 `GET /plan`（先讀看板順序才組出命令）。被拒絕時仍回 409，不帶內容。
+- **文件的寫入先問，再比對 `If-Match`。** 掛鉤收到一次 `new-artifact`，`If-Match` 不相符時也一樣。被拒絕時回 409 `refused`，不帶文件的版本。
 
 **`scopes`** 回答「這個人可以用哪些專案與 repo」。每個請求問一次，不快取；慢的話自己快取。
 

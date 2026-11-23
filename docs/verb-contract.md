@@ -517,6 +517,8 @@ All paths follow the [project URL](#request-rules). `{name}` is a change name, a
 
 The routes below are in the HTTP entry point of the host kit, except where a row says something different. A host that embeds the engine and the demonstration server both have them.
 
+In a host that embeds the engine, each route that reads or writes the documents of the scope asks the host's before-command hook first. This includes the reads that run no engine command: `GET /config`, `GET /board-order`, `GET /specs/{capability}/document`, `GET /search`, `GET /archived` and its two sub-routes, `POST /context`, and `GET /changes/{name}/drift`. When the hook refuses, the answer is 409 `refused` with the host's reason. The demonstration server has no hook. For the command names that the hook gets, see [Serve the CLI and Speclink Desktop](sdk-node.md#http-entry) in the Node SDK.
+
 ### Connection and sync
 
 | Method | Path | Minimum role | Purpose |

@@ -256,7 +256,11 @@ export interface HostIdentity {
 export interface BeforeCommandInfo {
   identity: HostIdentity
   scope: string
-  /** The engine command's stable name, e.g. `archive` or `workflow-config-edit`. */
+  /**
+   * The command's stable name, e.g. `archive` or `workflow-config-edit`: an
+   * engine command, or one of the host kit's own names. Every name is in
+   * {@link commandNames}.
+   */
   command: string
   /** The command's params, camelCase (e.g. `{ change: 'demo', carryReview: true, … }`). Read them; changing them changes nothing. */
   params: Record<string, unknown>
@@ -322,6 +326,19 @@ export interface HostHooks {
    * ends with code `internal`. `tools.read` reads what the decision needs,
    * for example `read(['show', info.params.change, '--json'])`; its rejection
    * that you do not catch is such a throw.
+   *
+   * `host.handleRequest` asks it for every route that reads or writes the
+   * scope's documents. A read that answers what an engine command answers is
+   * asked by that command's name and params, so your rule for the command
+   * covers it: `GET /config` as `workflow-config-show`,
+   * `GET /specs/{capability}/document` as `show` (`item`, `itemType: 'spec'`),
+   * `GET /archived/{datedName}/artifacts/{path}` as `artifact-cat`
+   * (`artifact` is the document path, e.g. `proposal.md`; `change` the dated
+   * name), `GET /archived` and `GET /archived/{datedName}/capabilities` as
+   * `list` with `archived: true`. Four reads have names of their own (see
+   * {@link commandNames}). The handshake, `GET /sync-state`, the identity
+   * queries, the scope list, the login-method declaration and `POST /skills`
+   * do not ask: they give no document of the scope.
    */
   beforeCommand?(info: BeforeCommandInfo, tools: BeforeCommandTools): MaybePromise<BeforeCommandAnswer>
   /**
@@ -732,10 +749,13 @@ export const agentTool: {
 
 /**
  * Every command name `beforeCommand` and a store port's `commit` can be
- * given, each once: the engine's commands, and the host kit's own three,
- * `scope-export` (`host.exportScope`), `scope-import` (`host.importScope`)
- * and `put-board-order` (the board order write of `host.handleRequest`).
- * Check that your permission table covers each name, so a command a new
+ * given, each once: the engine's commands, and the host kit's own seven:
+ * `scope-export` (`host.exportScope`), `scope-import` (`host.importScope`),
+ * `put-board-order` (the board order write of `host.handleRequest`), and the
+ * four reads of `host.handleRequest` that no engine command answers:
+ * `get-board-order` (`GET /board-order`), `workspace-search` (`GET /search`),
+ * `context-snapshot` (`POST /context`) and `spec-drift`
+ * (`GET /changes/{name}/drift`). Check that your permission table covers each name, so a command a new
  * version adds is not refused by mistake. The order is no contract, and the
  * list says nothing about a command but its name: whether it writes is not
  * here, since a command that writes nothing can still give whole documents.

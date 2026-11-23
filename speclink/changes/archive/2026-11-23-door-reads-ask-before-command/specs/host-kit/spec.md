@@ -2,7 +2,7 @@
 
 ### Requirement: 入口的文件讀取先問執行前掛鉤
 
-入口裡不是引擎命令的八條文件讀取 SHALL 在讀取儲存之前問執行前掛鉤正好一次，交給它身分、範圍、命令名稱與參數（參數的鍵一律 camelCase）：
+入口裡不是引擎命令的九條文件讀取 SHALL 在讀取儲存之前問執行前掛鉤正好一次，交給它身分、範圍、命令名稱與參數（參數的鍵一律 camelCase）：
 
 | 路由 | 命令名稱 | 參數 |
 | --- | --- | --- |
@@ -14,17 +14,22 @@
 | `GET /search` | `workspace-search` | `query` 是搜尋字串 |
 | `POST /context` | `context-snapshot` | 請求指定變更時 `change` 是它的名稱，否則是空物件 |
 | `GET /board-order` | `get-board-order` | 空物件 |
+| `GET /changes/{name}/drift` | `spec-drift` | `change` 是網址裡的變更名稱 |
 
-前五條用的 SHALL 是引擎既有的命令名稱，名稱與參數的鍵 SHALL 與經另一個門執行對應的動詞時掛鉤收到的相同，使宿主對那些命令的規則直接適用。`workspace-search`、`context-snapshot`、`get-board-order` SHALL 是宿主套件自己的命令名稱，SHALL 列在宿主套件的命令名稱清單裡；它們不是引擎命令，執行前掛鉤的讀取器 SHALL NOT 接受它們。
+前五條用的 SHALL 是引擎既有的命令名稱，名稱與參數的鍵 SHALL 與經另一個門執行對應的動詞時掛鉤收到的相同，使宿主對那些命令的規則直接適用。`workspace-search`、`context-snapshot`、`get-board-order`、`spec-drift` SHALL 是宿主套件自己的命令名稱，SHALL 列在宿主套件的命令名稱清單裡；它們不是引擎命令，執行前掛鉤的讀取器 SHALL NOT 接受它們。
 
-掛鉤放行時，回應的狀態碼、本文與 ETag SHALL 與問掛鉤之前相同。掛鉤拒絕時，回應 SHALL 是 409、reason 為 refused、訊息為宿主給的原因（原因是空字串時用固定的文字），儲存 SHALL 連讀取都沒有收到。掛鉤失敗或回答的形狀不對 SHALL 視為不放行，與引擎命令相同。這些路由只讀取：提交後掛鉤 SHALL NOT 被呼叫。沒有提供執行前掛鉤時，這八條路由的回應與儲存收到的呼叫 SHALL 與這條需求之前相同。
+掛鉤放行時，回應的狀態碼、本文與 ETag SHALL 與問掛鉤之前相同。掛鉤拒絕時，回應 SHALL 是 409、reason 為 refused、訊息為宿主給的原因（原因是空字串時用固定的文字），儲存 SHALL 連讀取都沒有收到。掛鉤失敗或回答的形狀不對 SHALL 視為不放行，與引擎命令相同。這些路由只讀取：提交後掛鉤 SHALL NOT 被呼叫。沒有提供執行前掛鉤時，這九條路由的回應與儲存收到的呼叫 SHALL 與這條需求之前相同。
 
 掛鉤 SHALL 在下列檢查都通過之後才被問，檢查沒有通過時 SHALL NOT 被問：沒有身分（401）、範圍清單對不到專案或 repo（404）、請求的本文或查詢字串不合法（400）。`POST /context` 帶著與範圍現況相符的 `If-None-Match` 時，掛鉤 SHALL 照樣先被問，放行後回應才是 304。
 
-#### Scenario: 掛鉤一律拒絕時八條讀取都被擋下
+入口其他讀寫範圍內容的路由也 SHALL 在讀取儲存之前問掛鉤，只有兩個例外：流程設定的寫入要先讀設定才知道變動的鍵；一般的 `GET /plan` 先讀看板順序才組出命令。這兩個例外被拒絕時，回應 SHALL 仍是 409、reason 為 refused，不帶範圍的內容。
 
-- **WHEN** 執行前掛鉤對某個身分的每一次詢問都回答拒絕、原因「帳號已停用」，這個身分在範圍清單裡，把八條讀取的請求逐一交給入口
-- **THEN** 八個回應都是 409、reason 為 refused、訊息是「帳號已停用」；儲存沒有收到任何列出或讀取
+文件的寫入（`PUT /changes/{name}/artifacts/{path}`）SHALL 在請求的格式檢查通過之後先問掛鉤，再讀文件的版本來比對 `If-Match`，掛鉤 SHALL 只被問一次，命令名稱與參數 SHALL 與之前相同（`new-artifact`）。掛鉤拒絕時，不論 `If-Match` 是否與文件的版本相符，回應 SHALL 都是 409、reason 為 refused，SHALL NOT 帶文件的版本，儲存 SHALL 連讀取都沒有收到。掛鉤放行時，`If-Match` 不相符的回應 SHALL 仍是 409、reason 為 revision_conflict，與之前相同。
+
+#### Scenario: 掛鉤一律拒絕時九條讀取都被擋下
+
+- **WHEN** 執行前掛鉤對某個身分的每一次詢問都回答拒絕、原因「帳號已停用」，這個身分在範圍清單裡，把九條讀取的請求逐一交給入口
+- **THEN** 九個回應都是 409、reason 為 refused、訊息是「帳號已停用」；儲存沒有收到任何列出或讀取
 
 ##### Example: 改動前後的對照
 
@@ -34,11 +39,12 @@
 | `GET /archived` | 200 與已封存清單 | 409 refused「帳號已停用」 |
 | `POST /context` | 200 與整個範圍的文件 | 409 refused「帳號已停用」 |
 | `GET /search?q=auth` | 200 與搜尋結果 | 409 refused「帳號已停用」 |
+| `GET /changes/demo/drift` | 200 與 demo 的 design、tasks 原文 | 409 refused「帳號已停用」 |
 
 #### Scenario: 掛鉤收到的命令名稱與參數
 
-- **WHEN** 執行前掛鉤記下每次收到的命令名稱與參數並一律放行，依序把 `GET /config`、`GET /specs/auth/document`、`GET /archived/2026-11-22-add-two/artifacts/proposal.md`、`GET /archived`、`GET /archived/2026-11-22-add-two/capabilities`、`GET /search?q=login`、指定變更 demo 的 `POST /context`、`GET /board-order` 交給入口
-- **THEN** 掛鉤被問 8 次，名稱依序是 `workflow-config-show`、`show`、`artifact-cat`、`list`、`list`、`workspace-search`、`context-snapshot`、`get-board-order`；`show` 的參數有 `item` `auth` 與 `itemType` `spec`；`artifact-cat` 的參數有 `artifact` `proposal.md` 與 `change` `2026-11-22-add-two`；兩次 `list` 的參數裡 `archived` 都是 true；`workspace-search` 的參數有 `query` `login`；`context-snapshot` 的參數有 `change` `demo`
+- **WHEN** 執行前掛鉤記下每次收到的命令名稱與參數並一律放行，依序把 `GET /config`、`GET /specs/auth/document`、`GET /archived/2026-11-22-add-two/artifacts/proposal.md`、`GET /archived`、`GET /archived/2026-11-22-add-two/capabilities`、`GET /search?q=login`、指定變更 demo 的 `POST /context`、`GET /board-order`、`GET /changes/demo/drift` 交給入口
+- **THEN** 掛鉤被問 9 次，名稱依序是 `workflow-config-show`、`show`、`artifact-cat`、`list`、`list`、`workspace-search`、`context-snapshot`、`get-board-order`、`spec-drift`；`show` 的參數有 `item` `auth` 與 `itemType` `spec`；`artifact-cat` 的參數有 `artifact` `proposal.md` 與 `change` `2026-11-22-add-two`；兩次 `list` 的參數裡 `archived` 都是 true；`workspace-search` 的參數有 `query` `login`；`context-snapshot` 的參數有 `change` `demo`；`spec-drift` 的參數有 `change` `demo`
 
 #### Scenario: 既有命令的規則直接適用
 
@@ -47,13 +53,13 @@
 
 #### Scenario: 放行時回應不變
 
-- **WHEN** 執行前掛鉤對全部命令回答放行，把八條讀取的請求交給入口；另以沒有掛鉤的宿主套件對相同的資料送相同的請求
+- **WHEN** 執行前掛鉤對全部命令回答放行，把九條讀取的請求交給入口；另以沒有掛鉤的宿主套件對相同的資料送相同的請求
 - **THEN** 每一對回應的狀態碼、本文與 ETag 相同；提交後掛鉤沒有被呼叫
 
 #### Scenario: 沒有掛鉤時行為不變
 
-- **WHEN** 建立宿主套件時沒有提供執行前掛鉤，把八條讀取的請求交給入口
-- **THEN** 八個回應都是 200，儲存收到的列出與讀取次數與這條需求之前相同
+- **WHEN** 建立宿主套件時沒有提供執行前掛鉤，把九條讀取的請求交給入口
+- **THEN** 九個回應都是 200，儲存收到的列出與讀取次數與這條需求之前相同
 
 #### Scenario: 先前的檢查沒過時不問掛鉤
 
@@ -73,7 +79,22 @@
 #### Scenario: 每一條讀寫範圍內容的路由都問掛鉤
 
 - **WHEN** 執行前掛鉤對每一次詢問都回答拒絕，對入口的每一條專案路由各送一個合法的請求
-- **THEN** 除了握手、輪詢、專案底下的身分查詢與技能的取得之外，每一個回應都是 409、reason 為 refused，儲存沒有收到提交；除了流程設定的寫入（它要先讀設定才知道變動的鍵）之外，儲存也沒有收到讀取
+- **THEN** 除了握手、輪詢、專案底下的身分查詢與技能的取得之外，每一個回應都是 409、reason 為 refused，儲存沒有收到提交；除了流程設定的寫入（它要先讀設定才知道變動的鍵）與一般的 `GET /plan`（它先讀看板順序才組出命令）之外，儲存也沒有收到讀取
+
+#### Scenario: 被拒絕的文件寫入不透露文件的版本
+
+- **WHEN** 執行前掛鉤對每一次詢問都回答拒絕、原因「帳號已停用」，變更 demo 的 design 已經存在，把兩個 `PUT /changes/demo/artifacts/design` 交給入口：一個的 `If-Match` 是 0，另一個的 `If-Match` 是 999
+- **THEN** 兩個回應都是 409、reason 為 refused、訊息是「帳號已停用」；儲存沒有收到任何列出、讀取或提交
+
+#### Scenario: 放行的文件寫入照舊比對版本
+
+- **WHEN** 執行前掛鉤記下每次收到的命令名稱並一律放行，變更 demo 的 design 已經存在，先把 `If-Match` 是 999 的 `PUT /changes/demo/artifacts/design` 交給入口，再把 `If-Match` 是文件目前版本的同一個請求交給入口；另以沒有掛鉤的宿主套件對相同的資料送相同的兩個請求
+- **THEN** 第一個回應是 409、reason 為 revision_conflict；第二個回應是 200；每一對回應的狀態碼與本文相同；兩次掛鉤各被問一次，命令名稱都是 `new-artifact`
+
+#### Scenario: 文件寫入的格式檢查沒過時不問掛鉤
+
+- **WHEN** 執行前掛鉤記下被問的次數，把沒有 `If-Match` 標頭的 `PUT /changes/demo/artifacts/design` 交給入口
+- **THEN** 回應是 400、reason 為 invalid_argument；掛鉤被問 0 次
 
 ## MODIFIED Requirements
 

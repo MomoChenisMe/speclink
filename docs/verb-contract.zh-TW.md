@@ -517,6 +517,8 @@ ETag 是 HTTP 回應標頭，用來判斷資料有沒有變。
 
 除了特別註明的幾條，下面的路由都在宿主套件的 HTTP 入口裡，內嵌的宿主與示範用 server 都有。
 
+內嵌引擎的宿主的入口，對讀寫範圍文件的每一條路由先問宿主的執行前掛鉤，不執行引擎命令的讀取也一樣：`GET /config`、`GET /board-order`、`GET /specs/{capability}/document`、`GET /search`、`GET /archived` 與它底下的兩條、`POST /context`、`GET /changes/{name}/drift`。掛鉤拒絕時回 409 `refused` 與宿主的原因。示範用 server 沒有掛鉤。掛鉤收到的命令名稱見 Node SDK 的[「服務 CLI 與 Speclink Desktop」](sdk-node.zh-TW.md#http-entry)。
+
 ### 連線與同步
 
 | 方法 | 路徑 | 最低角色 | 用途 |

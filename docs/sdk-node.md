@@ -23,7 +23,7 @@ SDK is the name of this toolbox. It contains four things:
 
 In this document, the host is your system. A scope is one independent set of specs, usually one repo of one project. A scope is a string that you choose. The engine does not interpret it.
 
-`commandNames` is a frozen array of every command name that `beforeCommand` and the `commit` of your store can get: the commands of the engine, and the three of the host kit, `scope-export`, `scope-import`, and `put-board-order` (the board order write of `handleRequest`). Its order is not part of the contract, and it tells nothing about a command but its name. It does not tell whether a command writes: a command that writes nothing can still give whole documents. Use it in a test that checks that your permission table covers each name, so that a command a new version adds is not refused by mistake:
+`commandNames` is a frozen array of every command name that `beforeCommand` and the `commit` of your store can get: the commands of the engine, and the seven of the host kit: `scope-export`, `scope-import`, `put-board-order` (the board order write of `handleRequest`), and the four reads of `handleRequest` that no engine command answers, `get-board-order` (`GET /board-order`), `workspace-search` (`GET /search`), `context-snapshot` (`POST /context`), and `spec-drift` (`GET /changes/{name}/drift`). There are 61 names. Its order is not part of the contract, and it tells nothing about a command but its name. It does not tell whether a command writes: a command that writes nothing can still give whole documents. Use it in a test that checks that your permission table covers each name, so that a command a new version adds is not refused by mistake:
 
 ```js
 // permissions.test.js, with Node's own test runner. permissionOf is your table: command name → action.
@@ -37,6 +37,8 @@ test('the permission table covers every command name', () => {
   assert.deepStrictEqual(missing, [])
 })
 ```
+
+When you upgrade from a version with 57 names, add the four read names to your table. A hook that allows only the names that it knows refuses them. Then the search and the board order of Speclink Desktop, and the context snapshot and `drift` of the CLI, get 409 with your reason.
 
 ## <a id="install"></a>Install
 
@@ -533,8 +535,28 @@ app.use('/api/speclink/v1', express.raw({ type: '*/*', limit: '4mb' }), async (r
 - **Pass `path` and `query` as you received them** (do not decode them first). `body` is bytes.
 - **A `null` result** means that the path does not belong to the entry point. A method other than GET, HEAD, POST, PUT, and DELETE gets 405.
 - **The paths are always below `/api/speclink/v1/`.** The clients expect the API there, so you cannot mount it below another prefix.
-- **The hooks are the same as for `host.dispatch`.** Reads that do not go through the engine (the workflow configuration text, archived content, search) do not ask `beforeCommand` one by one. The rule for them is whether the person can see the scope.
+- **The hooks are the same as for `host.dispatch`.** Each route that reads or writes the documents of the scope asks `beforeCommand` one time, before your store gets a call. A refusal is 409 with the reason `refused` and your text. The table below names the reads that run no engine command.
 - The third parameter can carry free fields: `host.handleRequest(request, identity, { fields })`. The rules are the same as for `fields` of `host.dispatch`.
+
+The reads of the entry point that run no engine command ask `beforeCommand` with these names and params:
+
+| Route | Command name | Params |
+| --- | --- | --- |
+| `GET /config` | `workflow-config-show` | none |
+| `GET /specs/{capability}/document` | `show` | `item` (the capability), `itemType` (`'spec'`) |
+| `GET /archived/{datedName}/artifacts/{path}` | `artifact-cat` | `artifact` (the document path, for example `proposal.md`), `change` (the dated name) |
+| `GET /archived` | `list` | `archived` (`true`) |
+| `GET /archived/{datedName}/capabilities` | `list` | `archived` (`true`) |
+| `GET /search` | `workspace-search` | `query` |
+| `POST /context` | `context-snapshot` | `change`, when the request names a change |
+| `GET /board-order` | `get-board-order` | none |
+| `GET /changes/{name}/drift` | `spec-drift` | `change` |
+
+- **The first five use the names of engine commands.** Your rule for `workflow-config-show`, `show`, `artifact-cat`, or `list` covers the read too, with the same param keys. Here `artifact` is a document path (`proposal.md`), not the artifact id of the verb (`proposal`).
+- **The other four have names of their own**, which are in `commandNames`. `read` of the hook does not take them: they are no verb.
+- **These routes do not ask:** the handshake, `GET /sync-state`, the two identity queries, the scope list, the login methods, and `POST /skills`. They give no document of the scope.
+- **Two routes read your store one time before they ask:** the workflow configuration write (it reads the configuration to find the keys that change) and the plain `GET /plan` (it reads the board order to make its command). A refusal is still 409 with no content.
+- **An artifact write asks before it compares `If-Match`.** The hook gets `new-artifact` one time, also when `If-Match` does not match. A refusal is 409 `refused` and does not give the version of the document.
 
 **`scopes`** answers which projects and repos a person can use. It is asked one time for each request and is not cached. If it is slow, cache it yourself.
 

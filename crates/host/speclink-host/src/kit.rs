@@ -303,10 +303,23 @@ const NO_REASON: &str = "refused by host";
 /// Every command name a host's before hook and its store's commit can see,
 /// once each: the Engine's ([`speclink_core::command::COMMAND_NAMES`]), then
 /// the kit's own export and import, then the HTTP door's write of the board
-/// order (spec node-sdk: SDK 匯出命令名稱清單). The order is no contract.
+/// order and its four reads that no Engine command answers (spec node-sdk:
+/// SDK 匯出命令名稱清單). The order is no contract.
 pub fn command_names() -> Vec<&'static str> {
+    use crate::documents::{
+        CONTEXT_SNAPSHOT_COMMAND, GET_BOARD_ORDER_COMMAND, PUT_BOARD_ORDER_COMMAND, SPEC_DRIFT_COMMAND,
+        WORKSPACE_SEARCH_COMMAND,
+    };
     let mut names = speclink_core::command::COMMAND_NAMES.to_vec();
-    names.extend([transfer::EXPORT_COMMAND, transfer::IMPORT_COMMAND, crate::documents::PUT_BOARD_ORDER_COMMAND]);
+    names.extend([
+        transfer::EXPORT_COMMAND,
+        transfer::IMPORT_COMMAND,
+        PUT_BOARD_ORDER_COMMAND,
+        GET_BOARD_ORDER_COMMAND,
+        WORKSPACE_SEARCH_COMMAND,
+        CONTEXT_SNAPSHOT_COMMAND,
+        SPEC_DRIFT_COMMAND,
+    ]);
     names
 }
 
@@ -410,7 +423,9 @@ impl HostKit {
         } else {
             // Asked before the Engine runs: a refused caller cannot tell
             // "not found" from "refused", and the store sees no call.
-            self.ask(caller, command, &params, None)?;
+            if !options.asked {
+                self.ask(caller, command, &params, None)?;
+            }
             let before = match options.version_first {
                 true => Some(scope_version(store, scope).map_err(ExecError::Store)?),
                 false => None,
@@ -556,6 +571,11 @@ pub(crate) struct RunOptions {
     /// The free fields the host attached to this call
     /// ([`HostKit::run_with_fields`]).
     pub fields: Fields,
+    /// The caller asked the before hook about this command already, by its
+    /// name and params, and was allowed: the run does not ask again. For a
+    /// route that must ask before a read of its own. A workflow-config write
+    /// asks all the same: only its commit knows the keys it changes.
+    pub asked: bool,
 }
 
 /// What [`HostKit::run_with`] did.
@@ -679,15 +699,24 @@ mod tests {
     }
 
     /// spec node-sdk「SDK 匯出命令名稱清單」: the Engine's names and the
-    /// kit's own three, each once.
+    /// kit's own seven, each once.
     #[test]
-    fn command_names_are_the_engines_and_the_kits_three_each_once() {
+    fn command_names_are_the_engines_and_the_kits_seven_each_once() {
         let engine = speclink_core::command::COMMAND_NAMES;
+        let kits = [
+            "scope-export",
+            "scope-import",
+            "put-board-order",
+            "get-board-order",
+            "workspace-search",
+            "context-snapshot",
+            "spec-drift",
+        ];
         let names = command_names();
-        assert_eq!(names.len(), engine.len() + 3, "{names:?}");
+        assert_eq!(names.len(), engine.len() + kits.len(), "{names:?}");
         let unique: std::collections::BTreeSet<&str> = names.iter().copied().collect();
         assert_eq!(unique.len(), names.len(), "a name appears twice: {names:?}");
-        for name in engine.iter().chain(&["scope-export", "scope-import", "put-board-order"]) {
+        for name in engine.iter().chain(&kits) {
             assert!(unique.contains(name), "{name} is missing");
         }
     }

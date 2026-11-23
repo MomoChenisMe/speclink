@@ -671,6 +671,8 @@ fn a_board_order_write_goes_through_the_hooks() {
     let door = door_with(one_repo(), recording(&seen, deny("put-board-order", "看板凍結中")));
     with_demo(&door);
     let revision = etag_of(&answer(&door, &get(&alpha("board-order")), Some(&alice())));
+    // The read asked as get-board-order; only the write is looked at here.
+    seen.asked.lock().unwrap().clear();
 
     let put = send(Method::Put, &alpha("board-order"), json!({ "content": "{\"changes\":{}}" }))
         .header("if-match", &format!("\"{revision}\""));
@@ -1061,6 +1063,18 @@ fn coverage_routes_are_in_the_table_and_run_their_command() {
     }
 }
 
+/// The reads the door answers from the store itself that ask the before
+/// hook by an Engine command's name and params, and do not run it (spec
+/// host-kit「入口的文件讀取先問執行前掛鉤」). The command's place on the
+/// wire is not one of them.
+const ASKED_AS_A_COMMAND: [&str; 5] = [
+    "/config",
+    "/specs/{capability}/document",
+    "/archived/{dated_name}/artifacts/{*artifact}",
+    "/archived",
+    "/archived/{dated_name}/capabilities",
+];
+
 #[test]
 fn coverage_points_at_every_route_that_runs_a_command() {
     let commands = every_command();
@@ -1074,6 +1088,9 @@ fn coverage_points_at_every_route_that_runs_a_command() {
         .collect();
     let mut running = 0;
     for (method, pattern) in routes() {
+        if method == Method::Get && ASKED_AS_A_COMMAND.contains(&pattern) {
+            continue;
+        }
         let asked = asked_by(method, pattern);
         if asked.iter().any(|name| names.contains(&name.as_str())) {
             running += 1;
@@ -1897,8 +1914,9 @@ fn coverage_puts_the_three_reads_on_their_routes() {
 
 #[test]
 fn coverage_keeps_the_archived_list_off_the_changes_route() {
-    // GET /archived answers with the Engine's archived list, but it does not
-    // run the command, so the command has no route yet.
+    // GET /archived answers with the Engine's archived list and asks the
+    // before hook as `list --archived`, but it does not run the command: the
+    // command has no route.
     let archived = Command::List {
         sort: "name".to_string(),
         specs: false,
@@ -3148,4 +3166,375 @@ fn a_config_write_commits_its_keys_and_pushes_no_one_resource() {
         resources_of(&commits[0]),
         [("workflow-config-changed".to_string(), InvalidationScope::Unknown("unknown".to_string()), String::new())]
     );
+}
+
+// ======================================================================
+// Change door-reads-ask-before-command: the door's document reads ask the
+// before hook first (spec host-kit「入口的文件讀取先問執行前掛鉤」).
+// ======================================================================
+
+use speclink_core::command::ErrorCode;
+use speclink_host::kit::Caller;
+use speclink_host::port_exec::ExecError;
+
+/// A scope where each of the nine reads finds what it reads: change demo
+/// with a design, capability auth, the archived change 2026-11-22-add-two,
+/// a config and a board order.
+fn with_every_read(door: &Door) {
+    seed(
+        door,
+        "s1",
+        &[
+            ("changes/demo/.meta.yaml", META),
+            ("changes/demo/tasks.md", OPEN_TASKS),
+            ("changes/demo/design.md", "## Context\n\nThe login flow.\n"),
+            ("config.yaml", CONFIG),
+            ("specs/auth/spec.md", AUTH_SPEC),
+            ("archive/changes/2026-11-22-add-two/.meta.yaml", META),
+            ("archive/changes/2026-11-22-add-two/proposal.md", ARCHIVED_PROPOSAL),
+            ("archive/changes/2026-11-22-add-two/specs/auth/spec.md", "## ADDED Requirements\n"),
+            ("board/order", "{}"),
+        ],
+    );
+}
+
+/// One of the nine reads, as a row of the spec's table: the request, the
+/// name and the params the hook is asked with, and the verb of the other
+/// door that asks by the same name (the five reads that use an engine name).
+struct Read {
+    request: HttpRequest,
+    command: &'static str,
+    params: Value,
+    verb: Option<Command>,
+}
+
+/// The archived list with the defaults of the verb.
+fn list_archived() -> Command {
+    Command::List {
+        sort: "modified".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    }
+}
+
+/// The nine reads, in the order of the spec's table; the search looks for `q`.
+fn nine_reads(q: &str) -> Vec<Read> {
+    let s = |text: &str| Some(text.to_string());
+    let read = |request, command, params, verb| Read { request, command, params, verb };
+    let archived = "2026-11-22-add-two";
+    let list_params = json!({
+        "sort": "modified", "specs": false, "changes": false, "worktrees": {}, "detail": false, "archived": true
+    });
+    vec![
+        read(get(&alpha("config")), "workflow-config-show", json!({}), Some(Command::WorkflowConfigShow)),
+        read(
+            get(&alpha("specs/auth/document")),
+            "show",
+            json!({ "item": "auth", "itemType": "spec" }),
+            Some(Command::Show { item: s("auth"), item_type: s("spec") }),
+        ),
+        // The door gives the hook the document's path; the verb takes the artifact's id.
+        read(
+            get(&alpha(&format!("archived/{archived}/artifacts/proposal.md"))),
+            "artifact-cat",
+            json!({ "artifact": "proposal.md", "change": archived }),
+            Some(Command::ArtifactCat { artifact: "proposal".to_string(), change: s(archived) }),
+        ),
+        read(get(&alpha("archived")), "list", list_params.clone(), Some(list_archived())),
+        read(get(&alpha(&format!("archived/{archived}/capabilities"))), "list", list_params, Some(list_archived())),
+        read(get_with(&alpha("search"), &format!("q={q}")), "workspace-search", json!({ "query": q }), None),
+        read(
+            send(Method::Post, &alpha("context"), json!({ "change": "demo" })),
+            "context-snapshot",
+            json!({ "change": "demo" }),
+            None,
+        ),
+        read(get(&alpha("board-order")), "get-board-order", json!({}), None),
+        read(get(&alpha("changes/demo/drift")), "spec-drift", json!({ "change": "demo" }), None),
+    ]
+}
+
+fn refuse_all(reason: &'static str) -> impl Fn(&BeforeCommand) -> Decision + Send + Sync {
+    move |_: &BeforeCommand| Decision::Deny { reason: reason.to_string() }
+}
+
+fn method_and_path(req: &HttpRequest) -> String {
+    format!("{} {}", req.method.as_str(), req.path)
+}
+
+#[test]
+fn a_hook_that_refuses_everything_refuses_the_nine_reads_before_the_store() {
+    let door = door_with(one_repo(), recording(&Arc::new(Seen::default()), refuse_all("帳號已停用")));
+    with_every_read(&door);
+    // The spec's example: the change list was refused before this change,
+    // and the reads now get the same answer.
+    let mut requests = vec![get(&alpha("changes"))];
+    requests.extend(nine_reads("auth").into_iter().map(|read| read.request));
+    for req in &requests {
+        let (status, reason, message) = error(&answer(&door, req, Some(&alice())));
+        let route = method_and_path(req);
+        assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "帳號已停用"), "{route}");
+    }
+    let calls = door.store.calls();
+    assert!(calls.is_empty(), "a refused read reaches no store call: {calls:?}");
+}
+
+#[test]
+fn the_hook_is_asked_about_each_read_by_the_name_and_params_of_the_table() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    with_every_read(&door);
+    let caller = Caller { identity: alice(), scope: scope_of("s1") };
+    for read in nine_reads("login") {
+        let route = method_and_path(&read.request);
+        seen.asked.lock().unwrap().clear();
+        let response = answer(&door, &read.request, Some(&alice()));
+        assert_eq!(response.status, 200, "{route}: {:?}", String::from_utf8_lossy(&response.body));
+        let asked = seen.asked.lock().unwrap().clone();
+        assert_eq!(asked, [(read.command.to_string(), read.params)], "{route} asks one time, as its row says");
+
+        // The other door asks with the same keys for the same verb, so a host's
+        // rule for a command reads the same params from both.
+        let Some(verb) = read.verb else { continue };
+        seen.asked.lock().unwrap().clear();
+        door.kit.run(&caller, verb).unwrap_or_else(|e| panic!("the verb of {route} runs: {e:?}"));
+        let (name, verb_params) = seen.asked.lock().unwrap()[0].clone();
+        assert_eq!(name, read.command, "{route}");
+        assert_eq!(keys(&verb_params), keys(&asked[0].1), "{route}");
+    }
+}
+
+#[test]
+fn an_allowed_read_answers_as_a_door_without_hooks_does() {
+    let seen = Arc::new(Seen::default());
+    let hooked = door_with(one_repo(), recording(&seen, allow));
+    let plain = door(one_repo());
+    with_every_read(&hooked);
+    with_every_read(&plain);
+    for Read { request: req, .. } in nine_reads("login") {
+        let (with_hook, without) = (answer(&hooked, &req, Some(&alice())), answer(&plain, &req, Some(&alice())));
+        let route = method_and_path(&req);
+        assert_eq!(with_hook.status, 200, "{route}");
+        assert_eq!(with_hook, without, "{route}: the status, the ETag and the body");
+    }
+    assert!(seen.watched.lock().unwrap().is_empty(), "a read commits nothing: the after hook is not called");
+}
+
+#[test]
+fn a_hosts_rule_for_show_refuses_the_spec_document_and_the_verb_alike() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, deny("show", "no specs for you")));
+    with_every_read(&door);
+
+    let (status, reason, _) = error(&answer(&door, &get(&alpha("specs/auth/document")), Some(&alice())));
+    assert_eq!((status, reason.as_str()), (409, "refused"));
+
+    let caller = Caller { identity: alice(), scope: scope_of("s1") };
+    let shown = door.kit.run(&caller, Command::Show { item: Some("auth".into()), item_type: Some("spec".into()) });
+    match shown {
+        Err(ExecError::Command(e)) => assert_eq!(e.code, ErrorCode::Refused, "{}", e.message),
+        other => panic!("the other door refuses `show` too: {other:?}"),
+    }
+}
+
+// --- 先前的檢查沒過時不問掛鉤；沒有變動的快照也先問；握手與輪詢不問 ---
+
+#[test]
+fn a_check_that_fails_first_answers_without_asking_the_hook() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    with_every_read(&door);
+
+    let no_identity = answer(&door, &get(&alpha("archived")), None);
+    let other_project = answer(&door, &get(&format!("{API}/projects/beta/board-order")), Some(&alice()));
+    let mut not_json = request(Method::Post, &alpha("context"));
+    not_json.body = b"{ not json".to_vec();
+    let not_json = answer(&door, &not_json, Some(&alice()));
+
+    assert_eq!(error(&no_identity).0, 401);
+    assert_eq!(error(&other_project).0, 404);
+    assert_eq!(error(&not_json).0, 400);
+    let asked = seen.asked.lock().unwrap().clone();
+    assert!(asked.is_empty(), "the hook is asked after the checks pass: {asked:?}");
+}
+
+#[test]
+fn a_snapshot_that_did_not_change_asks_the_hook_first() {
+    let refusing = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let refuses = refusing.clone();
+    let seen = Arc::new(Seen::default());
+    let door = door_with(
+        one_repo(),
+        recording(&seen, move |_| match refuses.load(Ordering::SeqCst) {
+            true => Decision::Deny { reason: "snapshots are off".to_string() },
+            false => Decision::Allow,
+        }),
+    );
+    with_every_read(&door);
+    let snapshot = send(Method::Post, &alpha("context"), json!({}));
+    let tag = header(&answer(&door, &snapshot, Some(&alice())), "etag").expect("a snapshot id").to_string();
+    seen.asked.lock().unwrap().clear();
+
+    let unchanged = snapshot.header("if-none-match", &tag);
+    let allowed = answer(&door, &unchanged, Some(&alice()));
+    refusing.store(true, Ordering::SeqCst);
+    let refused = answer(&door, &unchanged, Some(&alice()));
+
+    assert_eq!(allowed.status, 304);
+    let (status, reason, message) = error(&refused);
+    assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "snapshots are off"));
+    let asked = seen.asked.lock().unwrap().clone();
+    assert_eq!(asked, [("context-snapshot".to_string(), json!({})), ("context-snapshot".to_string(), json!({}))]);
+}
+
+#[test]
+fn the_handshake_and_the_polling_do_not_ask_the_hook() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, refuse_all("帳號已停用")));
+    with_every_read(&door);
+    for tail in ["binding", "sync-state"] {
+        let response = answer(&door, &get(&alpha(tail)), Some(&alice()));
+        assert_eq!(response.status, 200, "GET {tail}: {:?}", String::from_utf8_lossy(&response.body));
+    }
+    let asked = seen.asked.lock().unwrap().clone();
+    assert!(asked.is_empty(), "{asked:?}");
+}
+
+#[test]
+fn without_a_hook_the_nine_reads_answer_and_call_the_store_as_with_one_that_allows() {
+    // Asking reaches no store call: the store sees the same calls with a hook
+    // that allows everything as with no hook at all.
+    let plain = door(one_repo());
+    let hooked = door_with(one_repo(), recording(&Arc::new(Seen::default()), allow));
+    with_every_read(&plain);
+    with_every_read(&hooked);
+    for Read { request: req, .. } in nine_reads("login") {
+        let route = method_and_path(&req);
+        let response = answer(&plain, &req, Some(&alice()));
+        assert_eq!(response.status, 200, "{route}: {:?}", String::from_utf8_lossy(&response.body));
+        answer(&hooked, &req, Some(&alice()));
+        let (without, with) = (plain.store.take(), hooked.store.take());
+        assert_eq!((&without.lists, without.read_keys()), (&with.lists, with.read_keys()), "{route}");
+        assert!(without.commits.is_empty(), "{route} commits nothing");
+    }
+}
+
+// --- 每一條讀寫範圍內容的路由都問掛鉤：走訪路由表的守門 ---
+
+/// The routes that do not ask the before hook: they answer no document of
+/// the scope (spec host-kit「HTTP 入口處理原版用戶端的請求」).
+const NOT_ASKED: [(Method, &str); 4] =
+    [(Method::Get, "/binding"), (Method::Get, "/sync-state"), (Method::Get, "/whoami"), (Method::Post, "/skills")];
+
+/// The routes that read the store once before they ask (spec host-kit
+/// 「入口的文件讀取先問執行前掛鉤」): the config write reads the config to
+/// know the keys it changes, the plain plan reads the board order to build
+/// its command. Refused, they still answer 409 with no content.
+const READ_BEFORE_ASKING: [(Method, &str); 2] = [(Method::Put, "/config"), (Method::Get, "/plan")];
+
+/// A valid request to the route: the sample request, with a body the import
+/// and the skills take.
+fn valid_request(method: Method, pattern: &str) -> HttpRequest {
+    let mut req = sample_request(method, pattern);
+    let body = match (method, pattern) {
+        (Method::Post, "/import") => Some(keyed(&[("config.yaml", CONFIG)])),
+        (Method::Post, "/skills") => Some(json!({ "targets": [{ "tool": "claude" }] })),
+        _ => None,
+    };
+    if let Some(body) = body {
+        req.body = serde_json::to_vec(&body).unwrap();
+    }
+    req
+}
+
+#[test]
+fn every_route_that_reads_or_writes_the_scope_asks_the_hook_before_the_store() {
+    // A new route that does not ask the hook fails here.
+    let door = door_with(one_repo(), recording(&Arc::new(Seen::default()), refuse_all("帳號已停用")));
+    with_every_read(&door);
+    for (method, pattern) in routes() {
+        let response = answer(&door, &valid_request(method, pattern), Some(&alice()));
+        let calls = door.store.take();
+        let route = format!("{} {pattern}", method.as_str());
+        assert!(calls.commits.is_empty(), "{route} committed: {:?}", calls.commits);
+        if NOT_ASKED.contains(&(method, pattern)) {
+            assert_eq!(response.status, 200, "{route}: {:?}", String::from_utf8_lossy(&response.body));
+            continue;
+        }
+        let (status, reason, message) = error(&response);
+        assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "帳號已停用"), "{route}");
+        let read = !calls.lists.is_empty() || !calls.reads.is_empty();
+        match READ_BEFORE_ASKING.contains(&(method, pattern)) {
+            // An exception that no longer reads first comes off the list.
+            true => assert!(read, "{route} no longer reads before it asks: take it off READ_BEFORE_ASKING"),
+            false => assert!(!read, "{route} read the store before it asked: {calls:?}"),
+        }
+    }
+}
+
+// --- 文件的寫入先問掛鉤、再比對版本 ---
+
+/// A write of demo's design by a client that says it saw version `if_match`.
+fn put_design(if_match: Option<&str>) -> HttpRequest {
+    let put = send(
+        Method::Put,
+        &alpha("changes/demo/artifacts/design"),
+        json!({ "content": "## Context\n\nA new text.\n" }),
+    );
+    match if_match {
+        Some(version) => put.header("if-match", version),
+        None => put,
+    }
+}
+
+#[test]
+fn a_refused_artifact_write_does_not_tell_the_documents_version() {
+    let door = door_with(one_repo(), recording(&Arc::new(Seen::default()), refuse_all("帳號已停用")));
+    with_every_read(&door);
+    // The design is there, so create-only (0) and a version it is not at (999) both do not match.
+    for if_match in ["0", "999"] {
+        let (status, reason, message) = error(&answer(&door, &put_design(Some(if_match)), Some(&alice())));
+        assert_eq!((status, reason.as_str(), message.as_str()), (409, "refused", "帳號已停用"), "If-Match: {if_match}");
+    }
+    let calls = door.store.calls();
+    assert!(calls.is_empty(), "a refused write reaches no store call: {calls:?}");
+}
+
+#[test]
+fn an_allowed_artifact_write_compares_the_version_as_before_and_asks_one_time() {
+    let seen = Arc::new(Seen::default());
+    let hooked = door_with(one_repo(), recording(&seen, allow));
+    let plain = door(one_repo());
+    with_every_read(&hooked);
+    with_every_read(&plain);
+    let design = json(&answer(&plain, &get(&alpha("changes/demo/artifacts/design")), Some(&alice())));
+    let current = design["version"].as_u64().expect("the design's version").to_string();
+
+    for (if_match, status) in [("999", 409), (current.as_str(), 200)] {
+        seen.asked.lock().unwrap().clear();
+        let put = put_design(Some(if_match));
+        let (with_hook, without) = (answer(&hooked, &put, Some(&alice())), answer(&plain, &put, Some(&alice())));
+        assert_eq!(with_hook.status, status, "If-Match: {if_match}: {:?}", String::from_utf8_lossy(&with_hook.body));
+        assert_eq!(with_hook, without, "If-Match: {if_match}: the answer of a door without hooks");
+        let asked: Vec<String> = seen.asked.lock().unwrap().iter().map(|(name, _)| name.clone()).collect();
+        assert_eq!(asked, ["new-artifact"], "If-Match: {if_match}: the hook is asked one time");
+    }
+    let conflict = answer(&hooked, &put_design(Some("999")), Some(&alice()));
+    assert_eq!(error(&conflict).1, "revision_conflict");
+}
+
+#[test]
+fn an_artifact_write_without_if_match_is_400_and_the_hook_is_not_asked() {
+    let seen = Arc::new(Seen::default());
+    let door = door_with(one_repo(), recording(&seen, allow));
+    with_every_read(&door);
+
+    let (status, reason, _) = error(&answer(&door, &put_design(None), Some(&alice())));
+
+    assert_eq!((status, reason.as_str()), (400, "invalid_argument"));
+    let asked = seen.asked.lock().unwrap().clone();
+    assert!(asked.is_empty(), "the hook is asked after the checks pass: {asked:?}");
 }

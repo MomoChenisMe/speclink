@@ -4,7 +4,7 @@
 //! repo, `backend`, on scope `s1`, writable.
 
 use speclink_host::http::{HttpRequest, Method};
-use speclink_host::kit::{Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, RepoEntry};
+use speclink_host::kit::{BeforeCommand, Decision, Hooks, HostKit, HostKitOptions, Identity, ProjectEntry, Reader, RepoEntry};
 use speclink_store_port::{Actor, Commit, DocKey, Expected, MemoryStorePort, Op, ScopeId, StorePort, Timestamp};
 use std::sync::{Arc, Mutex};
 
@@ -31,6 +31,11 @@ fn commit(store: &MemoryStorePort, ops: Vec<Op>, at_millis: u64) {
 
 /// A server whose store holds `docs` (store keys), committed at `at_millis`.
 pub(crate) fn door(docs: &[(&str, &str)], at_millis: u64) -> Door {
+    door_with_hooks(docs, at_millis, Hooks::default())
+}
+
+/// [`door`] with the host's `hooks`.
+pub(crate) fn door_with_hooks(docs: &[(&str, &str)], at_millis: u64, hooks: Hooks) -> Door {
     let scope = scope();
     let store = Arc::new(MemoryStorePort::new());
     // A commit holds at least one operation: an empty store gets none.
@@ -62,7 +67,7 @@ pub(crate) fn door(docs: &[(&str, &str)], at_millis: u64) -> Door {
         })),
         ..Default::default()
     };
-    let kit = HostKit::with_options(store.clone(), Hooks::default(), options).unwrap();
+    let kit = HostKit::with_options(store.clone(), hooks, options).unwrap();
     let identity = Identity::new("u_1", "Tester").unwrap();
 
     let server = Arc::new(tiny_http::Server::http("127.0.0.1:0").expect("bind"));
@@ -126,4 +131,43 @@ impl Drop for Door {
     fn drop(&mut self) {
         self.server.unblock();
     }
+}
+
+// --- 入口的讀取被宿主拒絕時，CLI 的行為和 GET /changes 被拒絕時相同
+// (change door-reads-ask-before-command) ---
+
+/// Hooks that refuse `command` with `reason` and allow every other one.
+fn refusing(command: &'static str, reason: &'static str) -> Hooks {
+    Hooks {
+        before_command: Some(Box::new(move |info: &BeforeCommand, _: &Reader<'_>| match info.command == command {
+            true => Decision::Deny { reason: reason.to_string() },
+            false => Decision::Allow,
+        })),
+        after_commit: None,
+    }
+}
+
+#[test]
+fn door_refusing_workflow_config_show_fails_the_verb_like_a_refused_change_list() {
+    use crate::remote_read_verbs::TempProject;
+    const DOCS: [(&str, &str); 1] = [("config.yaml", "schema: spec-driven\n")];
+    let text = |bytes: &[u8]| String::from_utf8_lossy(bytes).into_owned();
+
+    let server = door_with_hooks(&DOCS, 1_794_452_400_000, refusing("workflow-config-show", "設定只給管理員看"));
+    let p = TempProject::remote("door-config-refused", &server.base);
+    let out = p.run(&["workflow-config", "show"]);
+    assert!(!out.status.success(), "stdout: {}", text(&out.stdout));
+    assert_eq!(text(&out.stdout), "", "nothing on stdout");
+    assert!(server.verb_calls().contains(&"GET /config".to_string()), "{:?}", server.verb_calls());
+    let config_refused = text(&out.stderr);
+    assert_eq!(config_refused, "Error: 設定只給管理員看\n", "the host's reason as the error");
+
+    // The same host reason on the change list: the same exit code and the
+    // same stderr, with the reason in its place.
+    let server = door_with_hooks(&DOCS, 1_794_452_400_000, refusing("list", "設定只給管理員看"));
+    let p = TempProject::remote("door-list-refused", &server.base);
+    let listed = p.run(&["list"]);
+    assert_eq!(listed.status.code(), out.status.code());
+    assert_eq!(text(&listed.stdout), "");
+    assert_eq!(text(&listed.stderr), config_refused);
 }

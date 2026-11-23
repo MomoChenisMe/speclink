@@ -176,10 +176,10 @@ describe('createEngine input checks', () => {
 
 // node-sdk「SDK 匯出命令名稱清單」
 describe('commandNames', () => {
-  it('lists each command name once, the host kit’s three included', () => {
+  it('lists each command name once, the host kit’s seven included', () => {
     expect(Array.isArray(commandNames)).toBe(true)
-    expect(commandNames).toHaveLength(57)
-    expect(new Set(commandNames).size).toBe(57)
+    expect(commandNames).toHaveLength(61)
+    expect(new Set(commandNames).size).toBe(61)
     for (const name of commandNames) expect(typeof name).toBe('string')
     for (const name of [
       'new-change',
@@ -188,6 +188,10 @@ describe('commandNames', () => {
       'scope-export',
       'scope-import',
       'put-board-order',
+      'get-board-order',
+      'workspace-search',
+      'context-snapshot',
+      'spec-drift',
     ]) {
       expect(commandNames).toContain(name)
     }

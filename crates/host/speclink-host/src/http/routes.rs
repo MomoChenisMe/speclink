@@ -94,6 +94,20 @@ impl Request<'_> {
         self.http.header(name)
     }
 
+    /// Ask the before hook by `command` and `params`, for a route that asks
+    /// by itself and not through a run: a refusal is 409. A route asks
+    /// before it touches the store, so the store of a refused caller sees no
+    /// call (spec host-kit「入口的文件讀取先問執行前掛鉤」).
+    fn ask(&self, command: &'static str, params: serde_json::Value) -> Result<(), HttpError> {
+        Ok(self.kit.ask(&self.caller, command, &params, None)?)
+    }
+
+    /// [`Request::ask`] by the name and params of `cmd`, so a host's rule for
+    /// the command covers the route too. It does not run `cmd`.
+    fn ask_as(&self, cmd: &Command) -> Result<(), HttpError> {
+        self.ask(cmd.name(), cmd.params())
+    }
+
     /// The scope's ETag now.
     fn etag_now(&self) -> Result<String, HttpError> {
         Ok(documents::etag(documents::scope_version(self.port(), self.scope())?))
@@ -213,6 +227,7 @@ pub(crate) fn whoami(identity: &Identity, project: &ProjectEntry) -> HttpRespons
 /// `GET /config`: the policy source and the scope revision, which is the
 /// ETag.
 pub(crate) fn config(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask_as(&Command::WorkflowConfigShow)?;
     let (dto, version) = documents::config_document(req.port(), req.scope())?;
     Ok(ok_at(&dto, version))
 }
@@ -248,7 +263,9 @@ pub(crate) fn put_config(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
 // --- the board order ---
 
 /// `GET /board-order`: the opaque document, or null, and the scope revision.
+/// Asked as `get-board-order` with no params.
 pub(crate) fn board_order(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask(documents::GET_BOARD_ORDER_COMMAND, serde_json::json!({}))?;
     let (dto, version) = documents::board_order(req.port(), req.scope())?;
     Ok(ok_at(&dto, version))
 }
@@ -266,7 +283,7 @@ pub(crate) fn put_board_order(req: &Request<'_>) -> Result<HttpResponse, HttpErr
         .and_then(|raw| raw.trim().trim_matches('"').parse::<u64>().ok())
         .ok_or_else(|| HttpError::invalid_argument("If-Match must carry the scope revision ETag"))?;
 
-    req.kit.ask(&req.caller, COMMAND, &serde_json::json!({}), None)?;
+    req.ask(COMMAND, serde_json::json!({}))?;
     let expected = req.expected_version(sent)?;
     let at = port_exec::now()?;
     let actor = req.caller.identity.actor();
@@ -360,26 +377,44 @@ pub(crate) fn trace(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
 
 // --- documents that are not Engine commands ---
 
-/// `GET /specs/{capability}/document`.
+/// `GET /specs/{capability}/document`: asked as `show <capability> --item-type spec`.
 pub(crate) fn spec_document(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask_as(&Command::Show { item: Some(req.param(0)), item_type: Some("spec".to_string()) })?;
     let (dto, version) = documents::spec_document(req.port(), req.scope(), &req.params[0])?;
     Ok(ok_at(&dto, version))
 }
 
+/// The command the two archived-list reads are asked as: `list --archived`,
+/// the rest as the verb's defaults.
+fn archived_list_command() -> Command {
+    Command::List {
+        sort: "modified".to_string(),
+        specs: false,
+        changes: false,
+        worktrees: Default::default(),
+        detail: false,
+        archived: true,
+    }
+}
+
 /// `GET /archived`.
 pub(crate) fn archived_list(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask_as(&archived_list_command())?;
     let (dto, version) = documents::archived_list(req.port(), req.scope())?;
     Ok(ok_at(&dto, version))
 }
 
-/// `GET /archived/{datedName}/artifacts/{*artifact}`.
+/// `GET /archived/{datedName}/artifacts/{*artifact}`: asked as `artifact cat`
+/// with the document path of the URL (`proposal.md`) and the dated name.
 pub(crate) fn archived_artifact(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask_as(&Command::ArtifactCat { artifact: req.param(1), change: Some(req.param(0)) })?;
     let (dto, version) = documents::archived_artifact(req.port(), req.scope(), &req.params[0], &req.params[1])?;
     Ok(ok_at(&dto, version))
 }
 
 /// `GET /archived/{datedName}/capabilities`.
 pub(crate) fn archived_capabilities(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask_as(&archived_list_command())?;
     let (dto, version) = documents::archived_capabilities(req.port(), req.scope(), &req.params[0])?;
     Ok(ok_at(&dto, version))
 }
@@ -391,18 +426,26 @@ struct SearchQuery {
 }
 
 /// `GET /search?q=`: the desktop's search over active changes and live
-/// discussions.
+/// discussions. Asked as `workspace-search` with the query.
 pub(crate) fn search(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let query: SearchQuery = req.query()?;
+    req.ask(documents::WORKSPACE_SEARCH_COMMAND, serde_json::json!({ "query": query.q }))?;
     let (dto, version) = documents::search(req.port(), req.scope(), &query.q)?;
     Ok(ok_at(&dto, version))
 }
 
 /// `POST /context`: one consistent snapshot of the scope; 304 while
 /// `If-None-Match` is the scope's state. It only reads, so a caller who
-/// cannot write still takes it.
+/// cannot write still takes it. Asked as `context-snapshot`, with the change
+/// when the request names one, before the scope state is compared: whether
+/// it moved is the scope's too.
 pub(crate) fn context(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
     let body: ContextSnapshotRequest = req.body()?;
+    let params = match &body.change {
+        Some(change) => serde_json::json!({ "change": change }),
+        None => serde_json::json!({}),
+    };
+    req.ask(documents::CONTEXT_SNAPSHOT_COMMAND, params)?;
     match documents::context_snapshot(req.port(), req.scope(), &body, req.header("if-none-match"))? {
         ContextOutcome::NotModified(version) => Ok(not_modified(documents::etag(version))),
         ContextOutcome::Snapshot(snapshot) => {
@@ -482,8 +525,10 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
 
 /// `GET /changes/{name}/drift`: the spec-side drift over one store view,
 /// with that view's basis digests. A read: no commit, no event. The
-/// version is taken first, so it is never newer than the report.
+/// version is taken first, so it is never newer than the report. It is no
+/// Engine command: asked as `spec-drift` with the change.
 pub(crate) fn drift(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
+    req.ask(documents::SPEC_DRIFT_COMMAND, serde_json::json!({ "change": req.param(0) }))?;
     let etag = req.etag_now()?;
     let view = crate::drift::spec_drift(req.port(), req.scope(), &req.params[0])?;
     Ok(ok(&crate::drift::spec_drift_view_to_wire(&view), etag))
@@ -653,8 +698,10 @@ pub(crate) fn move_task(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
 }
 
 /// `PUT /changes/{name}/artifacts/{*artifact}` with `If-Match`: `0` creates,
-/// a positive number overwrites that exact version. The check here answers
-/// a stale client read at once. The command then reads the document itself,
+/// a positive number overwrites that exact version. The before hook is
+/// asked first, one time, as the command that writes (spec host-kit
+/// 「入口的文件讀取先問執行前掛鉤」). The check here then answers a stale
+/// client read at once. The command then reads the document itself,
 /// and its commit lands only over the version `If-Match` named: a writer
 /// that lands in between makes it a conflict, on any store. The new
 /// document version is read after the commit.
@@ -671,11 +718,14 @@ pub(crate) fn put_artifact(req: &Request<'_>) -> Result<HttpResponse, HttpError>
         .ok_or_else(|| HttpError::invalid_argument(format!("unknown artifact '{artifact}'")))?;
     let cmd = artifact_write_command(&artifact, name.clone(), body.content)?;
 
+    // Asked before the version is read: a refused caller learns nothing of
+    // the document from how `If-Match` compares. The run does not ask again.
+    req.ask_as(&cmd)?;
     let version = || documents::document_version(req.port(), req.scope(), &name, &rel);
     let seen = version()?;
     check_if_match(if_match, seen.map(|v| v.get()))?;
     let write_at = documents::artifact_key(&name, &rel).map(|key| (key, seen.map_or(Expected::Absent, Expected::At)));
-    let (_, etag) = req.run_with(cmd, RunOptions { write_at, ..req.options() })?;
+    let (_, etag) = req.run_with(cmd, RunOptions { write_at, asked: true, ..req.options() })?;
     let written = version()?.map_or(0, |v| v.get());
     Ok(ok(&PutArtifactResponse { artifact, version: written }, etag))
 }

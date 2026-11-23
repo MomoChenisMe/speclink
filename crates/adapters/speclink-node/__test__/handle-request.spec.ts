@@ -129,6 +129,8 @@ describe('host.handleRequest', () => {
       },
     })
     const read = await host.handleRequest(request('GET', alpha('board-order')), ALICE)
+    // The read asked as get-board-order; only the write is looked at here.
+    asked.length = 0
     const put = request('PUT', alpha('board-order'), { content: '{"changes":{}}' })
     put.headers['if-match'] = read!.headers.etag
 
@@ -138,6 +140,115 @@ describe('host.handleRequest', () => {
     expect(asked).toEqual(['put-board-order'])
     expect(commandNames).toContain('put-board-order')
     expect(port.commits.map(({ commit }) => commit.command)).toEqual(['put-board-order'])
+  })
+
+  // node-sdk「SDK 匯出命令名稱清單」「入口的讀取也用清單裡的名稱」
+  it('asks beforeCommand about the door’s reads under names of commandNames, committing nothing', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'changes/demo/.meta.yaml': META, 'changes/demo/tasks.md': TASKS, 'config.yaml': META })
+    const asked: string[] = []
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: ({ command }: { command: string }) => {
+          asked.push(command)
+        },
+      },
+    })
+    const search = request('GET', alpha('search'))
+    search.query = 'q=auth'
+    const commitsBefore = port.calls.commit
+
+    const statuses: (number | undefined)[] = []
+    for (const req of [
+      request('GET', alpha('board-order')),
+      search,
+      request('POST', alpha('context'), {}),
+      request('GET', alpha('config')),
+      request('GET', alpha('archived')),
+    ]) {
+      statuses.push((await host.handleRequest(req, ALICE))?.status)
+    }
+
+    expect(statuses).toEqual([200, 200, 200, 200, 200])
+    expect(asked).toEqual(['get-board-order', 'workspace-search', 'context-snapshot', 'workflow-config-show', 'list'])
+    for (const name of asked) expect(commandNames).toContain(name)
+    expect(port.calls.commit).toBe(commitsBefore)
+  })
+
+  // node-sdk「只放行舊名稱的掛鉤擋下新的讀取」
+  it('lets a hook that allows only the 57 names from before refuse the search with its reason', async () => {
+    const added = ['get-board-order', 'workspace-search', 'context-snapshot', 'spec-drift']
+    const before = new Set(commandNames.filter((name) => !added.includes(name)))
+    expect(before.size).toBe(57)
+    const port = memoryPort()
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: ({ command }: { command: string }) =>
+          before.has(command) ? undefined : { allow: false, reason: '這個命令還沒有開放' },
+      },
+    })
+    const search = request('GET', alpha('search'))
+    search.query = 'q=auth'
+
+    const response = await host.handleRequest(search, ALICE)
+
+    expect(response?.status).toBe(409)
+    expect(json(response).reason).toBe('refused')
+    expect(json(response).message).toBe('這個命令還沒有開放')
+  })
+
+  // 稽核（door-reads-ask-before-command）：掛鉤拋錯時，入口的讀取不放行，儲存沒有收到呼叫。
+  it('does not let a door read through when beforeCommand throws', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'changes/demo/.meta.yaml': META, 'changes/demo/tasks.md': TASKS })
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: () => {
+          throw new Error('the rules database is down')
+        },
+      },
+    })
+    const before = { ...port.calls }
+
+    for (const req of [request('GET', alpha('changes/demo/drift')), request('POST', alpha('context'), {})]) {
+      const error = await rejection(host.handleRequest(req, ALICE))
+      expect(error.code).toBe('internal')
+    }
+    expect(port.calls).toEqual(before)
+  })
+
+  // host-kit「入口的文件讀取先問執行前掛鉤」：四個新名稱不是引擎命令，掛鉤的 read 不接受它們。
+  it('does not let the read function of beforeCommand take the four names of the door’s own reads', async () => {
+    const port = memoryPort()
+    port.seed('s1', { 'changes/demo/.meta.yaml': META, 'changes/demo/tasks.md': TASKS })
+    const codes: Record<string, string> = {}
+    const host = createHost({
+      store: port.store,
+      scopes: () => ONE_REPO,
+      hooks: {
+        beforeCommand: async (_info, { read }) => {
+          for (const name of ['get-board-order', 'workspace-search', 'context-snapshot', 'spec-drift']) {
+            codes[name] = (await rejection(read([name]))).code
+          }
+        },
+      },
+    })
+
+    const response = await host.handleRequest(request('GET', alpha('board-order')), ALICE)
+
+    expect(response?.status).toBe(200)
+    expect(codes).toEqual({
+      'get-board-order': 'invalid_argv',
+      'workspace-search': 'invalid_argv',
+      'context-snapshot': 'invalid_argv',
+      'spec-drift': 'invalid_argv',
+    })
   })
 
   // node-sdk「beforeCommand 的讀取函式」「handleRequest 進來的呼叫也有 read」

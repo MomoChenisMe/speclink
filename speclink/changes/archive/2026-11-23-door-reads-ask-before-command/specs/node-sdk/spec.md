@@ -4,12 +4,12 @@
 
 <!-- BEFORE: 宿主套件自己的命令名稱有三個，清單共 57 個 -->
 
-`@speclink/engine` SHALL 匯出 `commandNames`：一個凍結的字串陣列，含引擎每一種命令的名稱，以及宿主套件自己的六個命令名稱：`scope-export`、`scope-import`、`put-board-order`（host.handleRequest 寫看板排序時用的名稱），以及 host.handleRequest 的三條讀取用的 `get-board-order`（`GET /board-order`）、`workspace-search`（`GET /search`）與 `context-snapshot`（`POST /context`），每個名稱正好一次。宿主的 beforeCommand 掛鉤與儲存的 commit 函式收到的 `command` SHALL 一定是這個陣列裡的一個名稱。陣列裡名稱的順序 SHALL NOT 是契約的一部分。`commandNames` SHALL NOT 帶命令的其他性質（例如會不會寫入）。型別定義檔 SHALL 把它宣告成唯讀的字串陣列。
+`@speclink/engine` SHALL 匯出 `commandNames`：一個凍結的字串陣列，含引擎每一種命令的名稱，以及宿主套件自己的七個命令名稱：`scope-export`、`scope-import`、`put-board-order`（host.handleRequest 寫看板排序時用的名稱），以及 host.handleRequest 的四條讀取用的 `get-board-order`（`GET /board-order`）、`workspace-search`（`GET /search`）、`context-snapshot`（`POST /context`）與 `spec-drift`（`GET /changes/{name}/drift`），每個名稱正好一次。宿主的 beforeCommand 掛鉤與儲存的 commit 函式收到的 `command` SHALL 一定是這個陣列裡的一個名稱。陣列裡名稱的順序 SHALL NOT 是契約的一部分。`commandNames` SHALL NOT 帶命令的其他性質（例如會不會寫入）。型別定義檔 SHALL 把它宣告成唯讀的字串陣列。
 
 #### Scenario: 匯入得到全部名稱
 
 - **WHEN** 以 `const { commandNames } = require('@speclink/engine')` 取得清單
-- **THEN** 它是 60 個字串的陣列，沒有重複；含 `new-change`、`claim-release`、`workflow-config-edit`、`scope-export`、`scope-import`、`put-board-order`、`get-board-order`、`workspace-search` 與 `context-snapshot`
+- **THEN** 它是 61 個字串的陣列，沒有重複；含 `new-change`、`claim-release`、`workflow-config-edit`、`scope-export`、`scope-import`、`put-board-order`、`get-board-order`、`workspace-search`、`context-snapshot` 與 `spec-drift`
 
 #### Scenario: 清單不能被改動
 
