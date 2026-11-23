@@ -1,5 +1,58 @@
 [
   {
+    "version": "0.17.0",
+    "date": "2026-11-23",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "`speclink list --archived --json` now lists the archived changes. With `--json --detail`, `list` and `show` also give the creator, the source discussions, and the round count of an open station, and `review show` and `verify show` give the full ticket. The `--json` output of discussions has `promotedTo`, the changes that came from the discussion. Local projects, remote projects, and `host.dispatch` give the same data.",
+            "zh-TW": "`speclink list --archived --json` 會列出已封存的變更；`list` 與 `show` 帶 `--json --detail` 時多了建立的人、來源討論與進行中關卡的輪數，`review show` 與 `verify show` 帶 `--json --detail` 會輸出工單全文，討論的 `--json` 也多了轉出的變更 `promotedTo`，本機專案、遠端專案與 `host.dispatch` 都讀得到相同的資料。"
+          },
+          {
+            "en": "`skills.render` of `@speclink/engine` has two new options, `skills` and `checkout`. With them, a host tells which skills its Agent has and whether the Agent has a checkout of the code, and the skill text starts with a `## Harness limits` section. The new `agentToolDescription({ exclude })` gives a tool description with only the verbs that the host opens.",
+            "zh-TW": "`@speclink/engine` 的 `skills.render` 多了 `skills` 與 `checkout` 兩個選項，宿主說明自己的 Agent 有哪些技能、有沒有程式碼的 checkout 後，技能開頭會多一段 `## Harness limits`；新增的 `agentToolDescription({ exclude })` 產生只列宿主開放的動詞的工具說明。"
+          },
+          {
+            "en": "`createHost` has the new option `reservedFieldPrefixes`. Only the program of the host can write a free-field key that starts with one of these prefixes. A request that sets or removes such a key gets the refusal `field '<key>' is reserved by the host`, before the `beforeCommand` hook runs.",
+            "zh-TW": "`createHost` 多了 `reservedFieldPrefixes` 選項：以這些前綴開頭的自由欄位鍵只有宿主自己的程式寫得了，請求要設定或移除這種鍵時，在問 `beforeCommand` 之前就以 `field '<key>' is reserved by the host` 被拒絕。"
+          },
+          {
+            "en": "`@speclink/engine` exports `eventNames` and `eventResource`, so a host can list all event names and find the change or the discussion that each event changed. A commit that changes a change and a discussion together, for example a new change from a discussion, an archive that also archives its discussions, or a discard, now sends an event for each of them. Two new events are `discussion-unlinked` and `change-provenance-changed`.",
+            "zh-TW": "`@speclink/engine` 新增 `eventNames` 與 `eventResource`，宿主可以列出全部事件名稱、查出每一筆事件改到哪個變更或討論；一次提交同時改到變更與討論時（例如從討論建立變更、封存時連帶封存討論、廢棄變更），兩邊都會送事件，並新增 `discussion-unlinked` 與 `change-provenance-changed` 兩種事件。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "The HTTP entry point of an embedded host now asks `beforeCommand` before nine read routes: the workflow config, a spec document, search, the board order, the archived changes and their documents, the context snapshot, and drift. Before, these routes returned content to an identity that the hook refused. Now they return 409 with the reason from the host.",
+            "zh-TW": "內嵌宿主的 HTTP 入口裡，讀取流程設定、規格內文、搜尋、看板順序、已封存的變更與文件、文件快照與 drift 的九條路由現在會先問 `beforeCommand`，掛鉤拒絕的身分不再拿得到內容，而是收到 409 與宿主給的原因。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "Breaking change: `commandNames` has four new names, `workspace-search`, `context-snapshot`, `get-board-order`, and `spec-drift`, so it has 61 names now. A `beforeCommand` hook that allows only the names that it knows must add them. If it does not, search and the board order of Speclink Desktop, and the context snapshot and `drift` of the CLI, get 409.",
+            "zh-TW": "不相容的變更：`commandNames` 多了 `workspace-search`、`context-snapshot`、`get-board-order`、`spec-drift` 四個名稱，共 61 個；只放行已知名稱的 `beforeCommand` 要把它們加進權限表，否則 Speclink Desktop 的搜尋與看板順序、CLI 的文件快照與 `drift` 會收到 409。"
+          },
+          {
+            "en": "Breaking change: `skills.render` now throws an error for an option key that it does not know. Before, it ignored such a key.",
+            "zh-TW": "不相容的變更：`skills.render` 遇到不認得的選項鍵會拋出錯誤，以前這種鍵會被默默忽略。"
+          },
+          {
+            "en": "Host code that compares the full `--json` output of `discuss list`, `discuss show`, or `discuss search`, or that checks the exact event names or count, must change: the discussion output can have `promotedTo`, and one commit can send more events.",
+            "zh-TW": "以整個物件比對 `discuss list`、`discuss show`、`discuss search` 的 `--json` 輸出，或嚴格比對事件名稱與個數的宿主程式要更新：討論的輸出可能多了 `promotedTo`，一次提交也可能多送幾筆事件。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.16.0",
     "date": "2026-11-22",
     "sections": [

@@ -1,6 +1,25 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.17.0（2026-11-23）
+
+### 新功能
+
+- `speclink list --archived --json` 會列出已封存的變更；`list` 與 `show` 帶 `--json --detail` 時多了建立的人、來源討論與進行中關卡的輪數，`review show` 與 `verify show` 帶 `--json --detail` 會輸出工單全文，討論的 `--json` 也多了轉出的變更 `promotedTo`，本機專案、遠端專案與 `host.dispatch` 都讀得到相同的資料。
+- `@speclink/engine` 的 `skills.render` 多了 `skills` 與 `checkout` 兩個選項，宿主說明自己的 Agent 有哪些技能、有沒有程式碼的 checkout 後，技能開頭會多一段 `## Harness limits`；新增的 `agentToolDescription({ exclude })` 產生只列宿主開放的動詞的工具說明。
+- `createHost` 多了 `reservedFieldPrefixes` 選項：以這些前綴開頭的自由欄位鍵只有宿主自己的程式寫得了，請求要設定或移除這種鍵時，在問 `beforeCommand` 之前就以 `field '<key>' is reserved by the host` 被拒絕。
+- `@speclink/engine` 新增 `eventNames` 與 `eventResource`，宿主可以列出全部事件名稱、查出每一筆事件改到哪個變更或討論；一次提交同時改到變更與討論時（例如從討論建立變更、封存時連帶封存討論、廢棄變更），兩邊都會送事件，並新增 `discussion-unlinked` 與 `change-provenance-changed` 兩種事件。
+
+### 修正
+
+- 內嵌宿主的 HTTP 入口裡，讀取流程設定、規格內文、搜尋、看板順序、已封存的變更與文件、文件快照與 drift 的九條路由現在會先問 `beforeCommand`，掛鉤拒絕的身分不再拿得到內容，而是收到 409 與宿主給的原因。
+
+### 改善
+
+- 不相容的變更：`commandNames` 多了 `workspace-search`、`context-snapshot`、`get-board-order`、`spec-drift` 四個名稱，共 61 個；只放行已知名稱的 `beforeCommand` 要把它們加進權限表，否則 Speclink Desktop 的搜尋與看板順序、CLI 的文件快照與 `drift` 會收到 409。
+- 不相容的變更：`skills.render` 遇到不認得的選項鍵會拋出錯誤，以前這種鍵會被默默忽略。
+- 以整個物件比對 `discuss list`、`discuss show`、`discuss search` 的 `--json` 輸出，或嚴格比對事件名稱與個數的宿主程式要更新：討論的輸出可能多了 `promotedTo`，一次提交也可能多送幾筆事件。
+
 ## 0.16.0（2026-11-22）
 
 ### 新功能

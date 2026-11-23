@@ -1,6 +1,25 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.17.0 (2026-11-23)
+
+### New features
+
+- `speclink list --archived --json` now lists the archived changes. With `--json --detail`, `list` and `show` also give the creator, the source discussions, and the round count of an open station, and `review show` and `verify show` give the full ticket. The `--json` output of discussions has `promotedTo`, the changes that came from the discussion. Local projects, remote projects, and `host.dispatch` give the same data.
+- `skills.render` of `@speclink/engine` has two new options, `skills` and `checkout`. With them, a host tells which skills its Agent has and whether the Agent has a checkout of the code, and the skill text starts with a `## Harness limits` section. The new `agentToolDescription({ exclude })` gives a tool description with only the verbs that the host opens.
+- `createHost` has the new option `reservedFieldPrefixes`. Only the program of the host can write a free-field key that starts with one of these prefixes. A request that sets or removes such a key gets the refusal `field '<key>' is reserved by the host`, before the `beforeCommand` hook runs.
+- `@speclink/engine` exports `eventNames` and `eventResource`, so a host can list all event names and find the change or the discussion that each event changed. A commit that changes a change and a discussion together, for example a new change from a discussion, an archive that also archives its discussions, or a discard, now sends an event for each of them. Two new events are `discussion-unlinked` and `change-provenance-changed`.
+
+### Fixes
+
+- The HTTP entry point of an embedded host now asks `beforeCommand` before nine read routes: the workflow config, a spec document, search, the board order, the archived changes and their documents, the context snapshot, and drift. Before, these routes returned content to an identity that the hook refused. Now they return 409 with the reason from the host.
+
+### Improvements
+
+- Breaking change: `commandNames` has four new names, `workspace-search`, `context-snapshot`, `get-board-order`, and `spec-drift`, so it has 61 names now. A `beforeCommand` hook that allows only the names that it knows must add them. If it does not, search and the board order of Speclink Desktop, and the context snapshot and `drift` of the CLI, get 409.
+- Breaking change: `skills.render` now throws an error for an option key that it does not know. Before, it ignored such a key.
+- Host code that compares the full `--json` output of `discuss list`, `discuss show`, or `discuss search`, or that checks the exact event names or count, must change: the discussion output can have `promotedTo`, and one commit can send more events.
+
 ## 0.16.0 (2026-11-22)
 
 ### New features
