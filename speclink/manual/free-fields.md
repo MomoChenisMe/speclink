@@ -3,8 +3,8 @@ title: 自由欄位
 section: SDD 工作流
 order: 215
 keywords: [自由欄位, field, 欄位, 工單編號, change field, discuss field]
-sources: [free-fields]
-generated: 2026-11-19T16:40:41+08:00
+sources: [free-fields, "host-kit#宿主保留的自由欄位鍵"]
+generated: 2026-11-23T21:20:33+08:00
 ---
 
 # 自由欄位
@@ -74,6 +74,9 @@ speclink new change <變更> --field ticket=PROJ-1 --field source=portal
 | 變更或討論不存在 | 非零結束，訊息說明找不到 |
 | 討論已經封存 | 非零結束，訊息說明找不到 |
 | 欄位區塊被人手改成指令讀不懂的內容（巢狀的項目、重複的鍵） | 拒絕，文件完全不變；指令不會弄丟那些內容 |
+| 連到內嵌了引擎的 Server，而鍵以它保留的前綴開頭（設定、移除，或建立時用 `--field` 帶入） | 拒絕，訊息是 `field '<key>' is reserved by the host`，文件完全不變 |
+
+哪些鍵是保留的，由內嵌了引擎的宿主自己設定，例如所有以 `host.` 開頭的鍵。這種鍵只能由宿主自己的程式寫入；你讀得到它的值，但不能設定或移除。同一次指令裡同時有保留的鍵和不合規則的欄位時，你看到的是保留鍵的拒絕。本機專案沒有保留的鍵。
 
 ## 存在哪裡、會不會被洗掉
 
@@ -92,4 +95,4 @@ speclink new change <變更> --field ticket=PROJ-1 --field source=portal
 
 一般輸出（不加 `--json`）不顯示自由欄位，有沒有欄位看起來都一樣。
 
-**出處**：`free-fields`
+**出處**：`free-fields`、`host-kit`

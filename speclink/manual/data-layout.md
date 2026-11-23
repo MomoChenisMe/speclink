@@ -4,7 +4,7 @@ section: 開始使用
 order: 40
 keywords: [speclink, 變更, 討論, 規格, 生命週期, 封存, 廢棄, 認領, 釋放認領, claim, release, schema, 產出流程]
 sources: [change-lifecycle, discussion-docs, "user-documentation#使用者文件載明本地產物的純文字可攜性", "spec-dir-migration#規格資料夾的預設位置與舊佈局相容"]
-generated: 2026-11-22T10:15:18+08:00
+generated: 2026-11-23T21:20:33+08:00
 ---
 
 # 認識資料：變更、討論與規格

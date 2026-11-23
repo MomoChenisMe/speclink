@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-11-22T10:15:18+08:00
+generated: 2026-11-23T21:20:33+08:00
 ---
 
 # 本手冊的來源
@@ -17,7 +17,7 @@ generated: 2026-11-22T10:15:18+08:00
 
 `client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-kit`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`skill-authoring`、`store-abstraction`、`store-port-contract`、`store-port-examples`、`ui-copy-vocabulary`、`workspace-session`。
 
-2026-11-22 這次與 2026-11-21 那次相比，能力也沒有增減。2026-11-19 那次與更早一次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
+2026-11-23 這次與 2026-11-22 那次相比，能力沒有增減。2026-11-22 這次與 2026-11-21 那次相比，能力也沒有增減。2026-11-19 那次與更早一次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
 
 `release-notes` 定義的更新日誌，使用者看得到的那一面（桌面 app 的更新日誌）由 `desktop-app` 載明，寫在[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。`store-abstraction` 規定的變更資料檔讀取順序（先讀 `.meta.yaml`、沒有才讀 `.openspec.yaml`），使用者看得到的那一面由 `spec-dir-migration` 載明，寫在[規格資料夾與舊佈局遷移](spec-folder.md)。`desktop-app` 裡有兩段需求講前端元件怎麼共用（「前端元件庫與資料源解耦」「共用元件唯一來源」），屬於內部結構，沒有任何一頁取材。
 
@@ -106,17 +106,18 @@ generated: 2026-11-22T10:15:18+08:00
 - 過期判定逐項比較：頁的生成時戳與規格的更新時戳都帶時區時比到秒，同一秒不算；任一邊只有純日期時比到日，同一天也算。每一頁的 `generated` 都寫成帶時區的秒級時戳；較早封存的規格，其更新時戳仍是純日期，封存不會回改。只取材某規格幾段需求的頁，`sources` 用「capability#需求名」錨定到那幾段，別段的封存不會把它標成可能過期；錨定的需求標題改名或移除時，該頁會被標為可能過期並整頁重寫。2026-10-27 那次「品質站蓋章配色與主色分離」改名為「品質關卡蓋章配色與主色分離」，[認識桌面 app](desktop-overview.md)與[桌面上的品質關卡](desktop-quality.md)因此整頁重生、錨定到新名稱。
 - 只改路徑或用詞的封存也會把整份規格、或整段需求重新蓋章，讓取材自它的頁被標為可能過期。2026-10-25 那次（spec-dir-path-rewrite）就讓 37 頁同時過期；其中內容沒有受影響的頁重生後內文不變，只換生成時戳，「可能過期」標記就消掉。
 - 錨定寫法有一個盲點：某能力新增一段需求時，沒有任何頁錨定到它，過期判定不會亮。2026-10-27 那次 `desktop-app` 新增的「已封存頁的流程成本摘要」與「技能檔提示承載規格資料夾遷移」兩段就是這樣，已分別寫進[規格、討論、已封存與搜尋](desktop-browse.md)與[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。2026-11-04 這次新增的「以 speclink 網址開啟詳情頁」也一樣；其他頁沒有過期、不能動，所以單獨寫成[用 speclink 網址開啟畫面](desktop-deep-link.md)。2026-11-19 這次新增的「remote 專案的審查與驗證標示」寫進[桌面連線 server 與 remote 專案](desktop-remote.md)。`verb-contract` 新增的「artifact cat 讀取已封存變更的文件」寫進[封存](archive.md)。目前 `desktop-app` 沒有被任何頁錨定的需求，只有上面說的兩段內部結構需求。2026-11-21 這次，使用者面向能力新增的需求都在有頁以裸名取材的能力裡（`remote-connection`、`remote-auth`、`remote-resilience`、`tray-status-menu`、`workflow-config`），過期判定照常亮起；只以錨定取材的能力裡，只有 `verb-contract` 新增一段「--json 輸出裡既有的 snake_case 欄位是凍結契約」，它只規定給程式讀的輸出，不入冊。
-- `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。同樣的情況還有兩個：`host-kit` 只有兩段被引用：「登入方式由宿主宣告」被[CLI 連接 remote](cli-remote.md)與[桌面連線 server 與 remote 專案](desktop-remote.md)引用（它決定不帶旗標時走哪一種登入）；「範圍與能力由宿主的函式決定」被[CLI 連接 remote](cli-remote.md)引用（專案有多個 repo 而沒有指名時，Server 拒絕的訊息怎麼寫）；`reference-server` 只有「啟動組態 fail closed」一段被[啟動 server](server-start.md)引用（升級時直接換版啟動會被拒）。
-- 只給宿主的程式或 Agent 讀的輸出不入冊：清單與單筆變更的詳細輸出、內嵌宿主不印路徑行、領域事件，以及掛鉤收到的命令名稱。這些寫在 `verb-contract`、`host-kit` 等規格裡，整合者要看的是 SDK 文件，不是這份手冊。
+- `skill-authoring` 是技能檔寫法的內部規範，不入冊；只有其中「技能共用的對話語言段落」一段寫進[工作流政策與設定](policy-config.md)，因為它決定 agent 跟你對話用哪種語言。同樣的情況還有兩個：`host-kit` 只有三段被引用：「登入方式由宿主宣告」被[CLI 連接 remote](cli-remote.md)與[桌面連線 server 與 remote 專案](desktop-remote.md)引用（它決定不帶旗標時走哪一種登入）；「範圍與能力由宿主的函式決定」被[CLI 連接 remote](cli-remote.md)引用（專案有多個 repo 而沒有指名時，Server 拒絕的訊息怎麼寫）；「宿主保留的自由欄位鍵」被[自由欄位](free-fields.md)引用（連到內嵌了引擎的 Server 時，寫宿主保留的鍵會被拒絕）；`reference-server` 只有「啟動組態 fail closed」一段被[啟動 server](server-start.md)引用（升級時直接換版啟動會被拒）。
+- 只給宿主的程式或 Agent 讀的輸出不入冊：清單與單筆變更的詳細輸出、已封存變更的清單、關卡工單的詳細輸出、討論輸出裡轉出的變更清單、內嵌宿主不印路徑行、領域事件，以及掛鉤收到的命令名稱。這些寫在 `verb-contract`、`host-kit` 等規格裡，整合者要看的是 SDK 文件，不是這份手冊。
 - `change-landing` 只規定 `speclink in-progress add` 會記下分支；完成第一個任務時自動蓋開工章的那條路會不會也記分支，規格未載，[實作：完成任務](apply.md)與[分支與落地記錄](landing.md)都只寫前者。
 - 2026-11-19 重生時找到四條沒有跟上後來變更的需求（遠端專案的 discard、遠端專案的 `plan --strict-overlap`、誤封存討論的救援路徑、已知缺口的清單），當天由變更 fix-stale-spec-claims 改正並封存。原本為它們記的三條矛盾與一條附註已經從上面拿掉，[實作：完成任務](apply.md)、[認識資料：變更、討論與規格](data-layout.md)與[執行順序：plan 與依賴](plan.md)也跟著改成遠端專案可用。
 - 只改用詞或清單的封存仍會讓大量頁面過期。2026-11-19 這次有 34 頁被標為可能過期，其中 4 頁的內容沒有受影響，只換生成時戳。這次重生的頁把裸名的 `user-documentation` 改成錨定到實際取材的需求，之後使用者文件規格的其他改動不會再把它們標成過期。
 - 2026-11-21 這次有 5 頁被標為可能過期，5 頁都有內容要改，沒有只換時戳的頁。[remote 模式總覽](remote-overview.md)把裸名的 `remote-connection` 改成錨定到實際取材的五段需求。
 - 2026-11-22 這次只有[認識資料：變更、討論與規格](data-layout.md)被標為可能過期，內容有要改：補上狀態檔 `schema` 那一行空白時的讀法、遠端專案的開工標記，以及沒有開工欄位的舊狀態檔。這一頁刻意維持裸名的 `change-lifecycle`：它是這個能力唯一用裸名的頁，生命週期新增的需求要靠它亮起可能過期，這次的新需求「change metadata 的 schema 空白時視同沒有設定」就是這樣找到的。同一週 `host-kit` 新增「匯入的取代模式與試跑」、`user-documentation` 新增「SDK 文件說明匯出失敗的位置、鍵的契約、範圍摘要與匯出匯入的耗時」，兩段都只給整合者，沒有頁取材，也沒有頁因此過期。
+- 2026-11-23 這次只有[討論：需求還模糊時](discuss.md)與[認識資料：變更、討論與規格](data-layout.md)被標為可能過期，兩頁都以裸名取材 `discussion-docs`。這個能力新增的「討論的 JSON 輸出帶出轉出的變更」只改給程式讀的輸出，人眼輸出不變，照上面「只給宿主的程式或 Agent 讀的輸出不入冊」，兩頁內文不變、只換生成時戳。同一週只以錨定取材的能力也新增了需求：`verb-contract` 的「已封存變更的清單」與「關卡工單的詳細輸出」只規定給程式讀的輸出，不入冊；`host-kit` 的「宿主保留的自由欄位鍵」會讓 CLI 使用者看到拒絕訊息，寫進[自由欄位](free-fields.md)；`host-kit` 的「入口的文件讀取先問執行前掛鉤」是宿主自己的權限政策，手冊也沒有寫宿主的掛鉤拒絕寫入的情況，不入冊。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-11-22
+2026-11-23
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。
