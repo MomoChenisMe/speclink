@@ -2,9 +2,9 @@
 title: 桌面連線 server 與 remote 專案
 section: Remote 模式
 order: 470
-keywords: [伺服器頁, 瀏覽器登入, 裝置登入, 存取金鑰, 登入方式, Keychain, 新增專案, 預設連線, 最近開啟, Project／Repo, checkout, 只看規格, Copilot, Pi, Cursor, 審查標示, 驗證標示, 其後有變動]
+keywords: [伺服器頁, 瀏覽器登入, 裝置登入, 存取金鑰, 登入方式, Keychain, 新增專案, 預設連線, 最近開啟, Project／Repo, checkout, 只看規格, Copilot, Pi, Cursor, 審查標示, 驗證標示, 其後有變動, 繼續本地, 已不是 speclink 專案]
 sources: [desktop-connections, workspace-chooser, server-device-auth, "host-kit#登入方式由宿主宣告", "desktop-app#remote 專案的審查與驗證標示"]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-24T15:29:54+08:00
 ---
 
 # 桌面連線 server 與 remote 專案
@@ -158,9 +158,16 @@ CLI 端怎麼登入，見 [CLI 連接 remote](cli-remote.md)。
 
 資料夾同時有本地 `speclink/` 與 remote 標記時，app 停下來要你選。三個出口都不會自動覆蓋：
 
-- 「繼續本地」：這次以本地模式開啟，標記不動。
+- 「繼續本地」：以本地模式開啟，標記不動。
 - 「以 server 為準」：本地 `speclink/` 改名為帶日期的備份，資料夾轉為 checkout，同步工具後開 remote 專案。對話文案明說這是備份後棄用本地，不是合併。本地內容不上傳，server 不改動。
 - 「遷移本地內容」：進入遷移流程，目標必須是空的 Project／Repo。見 [本地工作區遷移到 remote](migrate.md)。
+
+「繼續本地」開出的分頁會記住這個選擇：
+
+- 之後切回這個分頁、用快捷鍵或系統匣切換到它，或重開 app（不論它是上次作用中的分頁，還是在背景），app 都照樣以本地開啟：分頁不轉成錯誤態，不再停下來要你選，也不向 server 交握。分頁在背景時，它的待收尾數照常計算。
+- 這只適用於分頁路徑本身就是同時有兩者的那個資料夾。分頁路徑是它底下的子資料夾時，或分頁原本的專案已刪掉本地 `speclink/`、而上層資料夾同時有兩者時，切回分頁會轉成錯誤態，提示「已不是 speclink 專案」，不會改開上層專案的內容，也不交握。
+- 本地 `speclink/` 被刪掉、只剩標記時，切回分頁會轉成錯誤態，提示「已不是 speclink 專案」，不交握。
+- 從「新增專案」或最近開啟清單再開一次同一個資料夾時，app 照舊停下來要你選三個出口之一。選擇前，作用中的專案不變。
 
 remote 專案的專案設定（政策版次、版次衝突、reader 唯讀）見[專案、新增專案與設定頁](desktop-projects.md)。
 

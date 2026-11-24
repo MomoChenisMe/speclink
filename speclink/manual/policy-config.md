@@ -2,9 +2,9 @@
 title: 工作流政策與設定
 section: SDD 工作流
 order: 210
-keywords: [config.yaml, 政策, locale, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言, 空字串, "--help"]
-sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落"]
-generated: 2026-11-21T17:53:22+08:00
+keywords: [config.yaml, 政策, locale, spec_locale, 規格語言, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言, 空字串, "--help"]
+sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落", "baseline-skill#盤點前取得 workflow config 並套用 specs 產出規則"]
+generated: 2026-11-24T15:29:54+08:00
 ---
 # 工作流政策與設定
 
@@ -15,7 +15,7 @@ generated: 2026-11-21T17:53:22+08:00
 | 欄位 | 合法值 | 未設定時 |
 | --- | --- | --- |
 | locale | tw、ja、en | English |
-| spec_locale | tw、ja、en、auto | 未設定 |
+| spec_locale | tw、ja、en、auto | English |
 | tdd | true、false | false |
 | audit | true、false | false |
 | worktree | true、false | false |
@@ -33,6 +33,34 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 - 技能在看不到對話的獨立情境中執行時，用收到的請求所用的語言。
 
 這段規則每一個技能都有，內容與 locale 的值無關。
+
+### spec_locale 管規格檔
+
+規格檔（變更裡的規格差異）的內文用 spec_locale 的語言寫，不看 locale。提案、設計、任務清單仍照 locale。
+
+| locale | spec_locale | 規格檔的語言 | 提案、設計與任務的語言 |
+| --- | --- | --- | --- |
+| tw | 未設定 | English | 繁體中文 |
+| tw | en | English | 繁體中文 |
+| tw | auto | 繁體中文 | 繁體中文 |
+| tw | ja | 日文 | 繁體中文 |
+| 未設定 | auto | English | English |
+| 未設定 | tw | 繁體中文 | English |
+
+- auto 跟著 locale 的有效值。spec_locale 沒設定時是英文，即使 locale 是 tw。
+- 不論哪種語言，結構標記（例如 `### Requirement:`、`#### Scenario:`）與 SHALL、MUST 這類規範關鍵字都維持英文。
+- 規格是繁體中文時，「應該、可能、也許、或許、大概、考慮、盡量、待定」這類模糊用語會被分析標出來，要改寫成 SHALL 或 MUST。
+- 環境變數 SPECLINK_SPEC_LOCALE 優先於 config.yaml，順序見下方「有效值怎麼決定」。例如 config.yaml 設 spec_locale: en，而環境變數設 ja，規格就用日文寫。
+- agent 不用自己去讀設定：`speclink instructions` 給規格這份產出物的指示，已寫明解析後的語言。
+
+> [!NOTE]
+> `/speclink-baseline` 是例外：它還沒有變更可以取得指示，所以讀 `speclink workflow-config show` 顯示的設定值，不套用環境變數。見 [基準盤點：既有專案採用 Speclink](baseline.md)。
+
+### tdd 與 audit 改變任務清單的排法
+
+- tdd 開啟時，提案寫任務清單會照紅、綠、重構（Red-Green-Refactor）的順序排：每一塊工作先有一項寫出會失敗的測試，再有一項讓它通過的實作。
+- audit 開啟時，任務會新增 API、設定選項或參數處理的地方，任務清單會有一項套用 sharp-edges 稽核檢查清單的步驟。檢查清單見 [安全稽核：/speclink-audit](audit.md)。
+- 完整的 TDD 紀律與稽核檢查清單在實作（apply）時才取用，寫任務清單時用不到。
 
 ### 有效值怎麼決定
 
@@ -365,4 +393,4 @@ config 已有 review 區塊時，確認表帶出模式與三個清單各自的�
 
 你也可以帶範圍提示呼叫技能。此時前三條判準只重審範圍內的 artifacts，第四條的引用核實仍掃全文件。
 
-**出處**：`workflow-config`、`config-skill`、`skill-authoring`
+**出處**：`workflow-config`、`config-skill`、`skill-authoring`、`baseline-skill`
