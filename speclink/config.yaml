@@ -87,6 +87,7 @@ rules:
   - 不論觸碰面，tasks.md 最後一個 task 的驗證步驟必含 `node --test scripts/*.test.mjs scripts/*/*.test.mjs`：scripts/ 內的詞彙守門、中英對照與連結檢查掃的是整個 README 與 docs 面，只改 speclink/、docs/ 或 LANGUAGE.md 的變更也會讓它們紅；它們紅時 CI 會把 UI、Desktop、Server Web 與 Rust 四組測試整批跳過
   - 修正 bug 的變更，必須有一項 task 排查同類位置：寫明搜尋的寫法與命中的檔案，逐一標明一併修正或不修的理由
   - 改到 `@speclink/engine` 的對外介面（crates/adapters/speclink-node/index.d.ts 的匯出、`createHost`／`createEngine` 的選項）時，必須有一項 task 同步 docs/sdk-node.md 與 docs/sdk-node.zh-TW.md；新增、改名或移除匯出名稱時，同一項 task 也更新 crates/adapters/speclink-node/README.md 的「What the package contains」表
+  - 新增、改名或移除 `--json` 輸出或 HTTP 回應的欄位時，必須有一項 task 同步 docs/verb-contract.md 與 docs/verb-contract.zh-TW.md：搜尋同一個欄位與同一個輸出在文件裡的每一處（例如 `list --json` 會印的鍵、`GET /changes` 的欄位表），逐一補齊
 
 review:
   critical:

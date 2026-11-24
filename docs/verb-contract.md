@@ -202,10 +202,11 @@ For the full login steps, see [Remote Getting Started](remote-getting-started.md
 
 All fields below are optional. When a field has no value, its key does not appear. Thus a project that does not use these features gets the same output as before, byte for byte.
 
-Each change in `speclink list --json`:
+Each change in `speclink list --json` always has `completedTasks`, `name`, `status`, and `totalTasks`. It has `summary` only when the summary is not an empty string. The new fields of each change:
 
 | Field | Content |
 | --- | --- |
+| `deltaCapabilities` | The capability names of the delta specs of the change, in ascending order. It appears only when the change has delta specs. An older Server that does not send it gives no key, and the command does not fail. |
 | `created` | The creation date, `YYYY-MM-DD` |
 | `modifiedAt` | The time of the last modification of a document of the change, as an RFC 3339 UTC time. It does not appear when the store cannot tell. In a local project, the value comes from file times, and a checkout or a copy also changes them. Use it only to estimate how long a change was idle. |
 | `fields` | The free fields |
@@ -970,7 +971,7 @@ Optional:
 { "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
 ```
 
-Of these fields, `speclink list --json` prints only `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, `branch`, `createdBy`, and `fromDiscussions`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail).
+Of these fields, `speclink list --json` prints only `restaleFrom`, `metaError`, `deltaCapabilities`, `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, `branch`, `createdBy`, and `fromDiscussions`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail). `GET /changes` always has `summary`, also when it is an empty string. `list --json` leaves out `summary` when it is empty.
 
 ### `GET /changes/{name}`
 
@@ -1038,4 +1039,4 @@ In local mode, `list --json` can add a `worktree` object to a change. It shows t
 - `path` is the absolute path of the worktree folder. `branch` is the full branch name (`speclink/<change>`).
 - The field appears only when all these conditions are true: local mode, a run from the main checkout, the `worktree` policy on, and a worktree that matches the change. In all other cases, the key does not appear.
 - Remote-mode `list` never has this field, because the Server does not know your local checkout. Without worktrees, both modes therefore give the same fields.
-- When the field appears, `completedTasks`, `totalTasks`, `status`, and `metaError` of the item come from the copy in the worktree, not from the main checkout.
+- When the field appears, all values of the item come from the copy in the worktree, not from the main checkout: for example `completedTasks`, `totalTasks`, `status`, `metaError`, and `deltaCapabilities`. `show --json` still reads the main checkout, so its `deltaSpecs` can differ from the `deltaCapabilities` of the list.

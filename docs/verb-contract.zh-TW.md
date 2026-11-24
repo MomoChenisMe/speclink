@@ -202,10 +202,11 @@ speclink discuss new "看板搜尋列" --field owner=alice
 
 下列欄位都是選填的：沒有值時整個鍵不出現，所以沒有用到這些功能的專案，輸出和以前逐位元相同。
 
-`speclink list --json` 的每個變更：
+`speclink list --json` 的每個變更一定有 `completedTasks`、`name`、`status` 與 `totalTasks`；摘要不是空字串時才有 `summary`。每個變更新增的欄位：
 
 | 欄位 | 內容 |
 | --- | --- |
+| `deltaCapabilities` | 這個變更的 delta spec 的 capability 名稱，依名稱遞增。變更有 delta spec 時才出現。舊版 Server 不送這個欄位時，鍵不出現，指令不失敗 |
 | `created` | 建立日期，格式 `YYYY-MM-DD` |
 | `modifiedAt` | 這個變更底下的文件最後一次被修改的時間，RFC 3339 的 UTC 時間。儲存答不出來時不出現。本機專案的值取自檔案時間，checkout 或複製也會改到它，只適合拿來估「閒置多久」 |
 | `fields` | 自由欄位 |
@@ -970,7 +971,7 @@ POST /skills
 { "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
 ```
 
-`speclink list --json` 只輸出其中的 `created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。帶上 `--detail` 時，它另外輸出 `review`、`verify`、`branch`、`createdBy` 與 `fromDiscussions`，用 `landedCommit` 組出 `landed`，用 `claimedBy`、`claimedById`、`claimedAt` 組出 `claimed`。見 [`speclink list --json --detail`](#list-detail)。
+`speclink list --json` 只輸出其中的 `restaleFrom`、`metaError`、`deltaCapabilities`、`created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。帶上 `--detail` 時，它另外輸出 `review`、`verify`、`branch`、`createdBy` 與 `fromDiscussions`，用 `landedCommit` 組出 `landed`，用 `claimedBy`、`claimedById`、`claimedAt` 組出 `claimed`。見 [`speclink list --json --detail`](#list-detail)。`GET /changes` 一定帶 `summary`，空字串也照送；`list --json` 遇到空字串就不輸出 `summary`。
 
 ### `GET /changes/{name}`
 
@@ -1038,4 +1039,4 @@ CLI 遠端模式的 `show` 與桌面 app 的詳情頁都靠這些欄位。
 - `path` 是 worktree 目錄的絕對路徑，`branch` 是完整分支名（`speclink/<變更>`）。
 - 只在這些條件都成立時出現：本機模式、從主 checkout 執行、工作流設定開啟 `worktree`，而且找得到這個變更對應的 worktree。其他情況整個鍵都不出現。
 - 遠端模式的 `list` 永遠不帶這個欄位，因為 Server 不知道你本機的 checkout。所以沒有 worktree 時，兩種模式的輸出逐欄一致。
-- 欄位出現時，這一項的 `completedTasks`、`totalTasks`、`status` 與 `metaError` 取自 worktree 裡的副本，不是主 checkout 的。
+- 欄位出現時，這一項的值全部取自 worktree 裡的副本，不是主 checkout 的，例如 `completedTasks`、`totalTasks`、`status`、`metaError` 與 `deltaCapabilities`。`show --json` 仍然讀主 checkout，所以它的 `deltaSpecs` 可能和清單的 `deltaCapabilities` 不同。
