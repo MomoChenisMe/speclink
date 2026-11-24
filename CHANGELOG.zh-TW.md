@@ -1,6 +1,24 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.18.0（2026-11-24）
+
+### 新功能
+
+- Speclink Desktop 會檢查圖示列上每個遠端專案的連線，包括還沒點開過的專案：啟動時、主視窗取得焦點時，以及之後每 60 秒；Server 連不上或登入失效時，專案方塊會亮琥珀點，系統匣也顯示同一個狀態，不必先點下去才知道。
+- `@speclink/engine` 的 `skills.render` 多了 `gitHistory` 選項：宿主的 Agent 讀得到程式碼、但不能執行 git 時設 `gitHistory: false`，技能文字會要模型跳過 git 的步驟、照常讀程式碼。
+- 在 Herdr 的終端機裡 Cmd+點變更或討論的路徑，會用 Speclink Desktop 開啟它的詳情頁；worktree 裡的路徑開主專案的頁面。需要 Herdr 0.1.17 以上。
+
+### 修正
+
+- Agent 寫變更的規格差異時會照 `spec_locale` 的語言寫：`speclink instructions specs` 的 `locale` 改為回報規格的語言（沒設定時是英文、`auto` 時跟著 `locale`），propose 與 ingest 技能照這個值寫；開了 `tdd` 或 `audit` 時，任務的指示也不再要 Agent 執行 `host.dispatch` 會拒絕的 `speclink instructions --skill`。
+- 同時有本機規格資料夾與 remote 標記的資料夾，在 Speclink Desktop 選「繼續本機」開啟後，切回這個專案或重開 app 時不再變成錯誤態。
+- 討論封存後，Herdr 面板不再把做那場討論的 agent 放在「討論中，還沒記錄」底下。
+
+### 改善
+
+- 讀 `speclink instructions specs --json` 的 `locale` 的程式，現在拿到的是規格的語言，不是專案的語言；其他產出物仍是專案的語言。
+
 ## 0.17.0（2026-11-23）
 
 ### 新功能

@@ -1,6 +1,24 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.18.0 (2026-11-24)
+
+### New features
+
+- Speclink Desktop now checks the connection of each remote project on the project rail, also a project that you did not open yet. It checks when the app starts, when the window gets focus, and every 60 seconds. When the server is unreachable or the login is no longer valid, the project shows an amber dot on the rail, and the tray shows the same status.
+- `skills.render` of `@speclink/engine` has the new option `gitHistory`. Set `gitHistory: false` when your Agent can read and search the code but cannot run git. The skill text then tells the model to skip the git steps and still read the code.
+- In a Herdr terminal, Cmd+click on the path of a change or a discussion now opens its page in Speclink Desktop. A path in a worktree opens the page of the main project. This needs Herdr 0.1.17 or later.
+
+### Fixes
+
+- Agents now write the delta specs of a change in the language that `spec_locale` sets. `speclink instructions specs` gives the spec language in `locale`: English when `spec_locale` is not set, and the `locale` language when it is `auto`. The propose and ingest skills use this value. With `tdd` or `audit` on, the task instructions also no longer tell the Agent to run `speclink instructions --skill`, which `host.dispatch` refuses.
+- In Speclink Desktop, a folder that has both a local spec folder and a remote marker, opened with "Continue locally", no longer turns into an error when you switch back to it or open the app again.
+- After a discussion is archived, the Herdr panel no longer shows its agent under "Discussing, not recorded yet".
+
+### Improvements
+
+- Code that reads `locale` from `speclink instructions specs --json` now gets the spec language, not the project language. Other artifacts keep the project language.
+
 ## 0.17.0 (2026-11-23)
 
 ### New features

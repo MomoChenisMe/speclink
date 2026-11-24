@@ -1,5 +1,54 @@
 [
   {
+    "version": "0.18.0",
+    "date": "2026-11-24",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "Speclink Desktop now checks the connection of each remote project on the project rail, also a project that you did not open yet. It checks when the app starts, when the window gets focus, and every 60 seconds. When the server is unreachable or the login is no longer valid, the project shows an amber dot on the rail, and the tray shows the same status.",
+            "zh-TW": "Speclink Desktop 會檢查圖示列上每個遠端專案的連線，包括還沒點開過的專案：啟動時、主視窗取得焦點時，以及之後每 60 秒；Server 連不上或登入失效時，專案方塊會亮琥珀點，系統匣也顯示同一個狀態，不必先點下去才知道。"
+          },
+          {
+            "en": "`skills.render` of `@speclink/engine` has the new option `gitHistory`. Set `gitHistory: false` when your Agent can read and search the code but cannot run git. The skill text then tells the model to skip the git steps and still read the code.",
+            "zh-TW": "`@speclink/engine` 的 `skills.render` 多了 `gitHistory` 選項：宿主的 Agent 讀得到程式碼、但不能執行 git 時設 `gitHistory: false`，技能文字會要模型跳過 git 的步驟、照常讀程式碼。"
+          },
+          {
+            "en": "In a Herdr terminal, Cmd+click on the path of a change or a discussion now opens its page in Speclink Desktop. A path in a worktree opens the page of the main project. This needs Herdr 0.1.17 or later.",
+            "zh-TW": "在 Herdr 的終端機裡 Cmd+點變更或討論的路徑，會用 Speclink Desktop 開啟它的詳情頁；worktree 裡的路徑開主專案的頁面。需要 Herdr 0.1.17 以上。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "Agents now write the delta specs of a change in the language that `spec_locale` sets. `speclink instructions specs` gives the spec language in `locale`: English when `spec_locale` is not set, and the `locale` language when it is `auto`. The propose and ingest skills use this value. With `tdd` or `audit` on, the task instructions also no longer tell the Agent to run `speclink instructions --skill`, which `host.dispatch` refuses.",
+            "zh-TW": "Agent 寫變更的規格差異時會照 `spec_locale` 的語言寫：`speclink instructions specs` 的 `locale` 改為回報規格的語言（沒設定時是英文、`auto` 時跟著 `locale`），propose 與 ingest 技能照這個值寫；開了 `tdd` 或 `audit` 時，任務的指示也不再要 Agent 執行 `host.dispatch` 會拒絕的 `speclink instructions --skill`。"
+          },
+          {
+            "en": "In Speclink Desktop, a folder that has both a local spec folder and a remote marker, opened with \"Continue locally\", no longer turns into an error when you switch back to it or open the app again.",
+            "zh-TW": "同時有本機規格資料夾與 remote 標記的資料夾，在 Speclink Desktop 選「繼續本機」開啟後，切回這個專案或重開 app 時不再變成錯誤態。"
+          },
+          {
+            "en": "After a discussion is archived, the Herdr panel no longer shows its agent under \"Discussing, not recorded yet\".",
+            "zh-TW": "討論封存後，Herdr 面板不再把做那場討論的 agent 放在「討論中，還沒記錄」底下。"
+          }
+        ]
+      },
+      {
+        "kind": "improvements",
+        "items": [
+          {
+            "en": "Code that reads `locale` from `speclink instructions specs --json` now gets the spec language, not the project language. Other artifacts keep the project language.",
+            "zh-TW": "讀 `speclink instructions specs --json` 的 `locale` 的程式，現在拿到的是規格的語言，不是專案的語言；其他產出物仍是專案的語言。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.17.0",
     "date": "2026-11-23",
     "sections": [
