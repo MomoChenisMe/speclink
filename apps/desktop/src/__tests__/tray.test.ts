@@ -14,15 +14,19 @@ import {
   buildTraySnapshot,
   progressBar,
   initTray,
+  tabStatusLabel,
   type TraySnapshot,
   type TrayMenuItem,
   type TrayStoreApi,
 } from "../tray";
 import type { WorkspaceLocator } from "../session";
 import type {
+  RemoteConnectionState,
+  RemoteConnectionStateEvent,
   RemoteWorkspaceRecoveryState,
   WorkspaceSession,
 } from "../session";
+import { APP_MESSAGES } from "../i18n/messages";
 import type { ConnectionView } from "../adapter/connections";
 import { trayIconBytes } from "../trayIcon";
 
@@ -420,6 +424,7 @@ describe("buildTrayModel", () => {
             name: "demo",
             source: "remote",
             status: "access-denied",
+            hasSession: true,
             connectionId: "c1",
             serverLabel: "Team Server",
           },
@@ -486,6 +491,7 @@ function makeStore(
     sessions: {} as Record<string, WorkspaceSession>,
     remoteRecovery: {} as Record<string, RemoteWorkspaceRecoveryState>,
     connections: [] as ConnectionView[],
+    connectionStates: {} as Record<string, RemoteConnectionStateEvent>,
     retryRemoteWorkspace: vi.fn(),
     showRemoteWorkspaceRecovery: vi.fn(),
     openConnectionReauth: vi.fn(),
@@ -1372,5 +1378,59 @@ describe("TraySnapshot 的載入態導出", () => {
     const bag = makeStore();
     bag.emit({ loaded: true, loadFailed: true });
     expect(buildTraySnapshot(bag.store.getState()).workspaceLoadFailed).toBe(false);
+  });
+});
+
+// remote-resilience「背景遠端分頁的連線定期檢查」：沒有 session 的遠端分頁以所屬 connection
+// 的狀態呈現；系統匣面板的 tab 與原生選單的項共用 tabStatusLabel，呈現同一段文字。
+describe("TraySnapshot 的 connection 狀態（沒有 session 的遠端分頁）", () => {
+  const key = "remote:c1/demo/backend";
+  const zhT = (k: string): string => (APP_MESSAGES["zh-TW"] as Record<string, string>)[k] ?? k;
+  const remoteOnly = (bag: ReturnType<typeof makeStore>, state: RemoteConnectionState) =>
+    bag.emit({
+      tabs: [
+        {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+          name: "Demo/backend",
+        },
+      ],
+      connectionStates: { c1: { connectionId: "c1", state, message: null } },
+    });
+
+  it("connection 為 offline：status 為 offline、hasSession 為 false，標籤為「離線」", () => {
+    const bag = makeStore();
+    remoteOnly(bag, "offline");
+    const tab = buildTraySnapshot(bag.store.getState()).tabs[0];
+    expect(tab).toEqual(expect.objectContaining({ key, status: "offline", hasSession: false }));
+    expect(tabStatusLabel(tab, zhT)).toBe("離線");
+    // 原生選單的專案項附同一段文字。
+    const project = byKind(buildTrayModel(buildTraySnapshot(bag.store.getState()), zhT).items, "project");
+    expect(project.find((item) => item.key === key)).toEqual(
+      expect.objectContaining({ label: "Demo/backend — 離線" }),
+    );
+  });
+
+  it("connection 為 needs-reauth：failureKind 為 needs-reauth", () => {
+    const bag = makeStore();
+    remoteOnly(bag, "needs-reauth");
+    expect(buildTraySnapshot(bag.store.getState()).tabs[0]).toEqual(
+      expect.objectContaining({ key, status: "needs-reauth", failureKind: "needs-reauth" }),
+    );
+  });
+
+  it("已有 session 的離線分頁：標籤照舊為「離線（最後資料）」", () => {
+    const bag = makeStore();
+    remoteOnly(bag, "offline");
+    bag.emit({
+      sessions: {
+        [key]: {
+          locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+          connectionState: { connectionId: "c1", state: "offline", message: null },
+        } as WorkspaceSession,
+      },
+    });
+    const tab = buildTraySnapshot(bag.store.getState()).tabs[0];
+    expect(tab).toEqual(expect.objectContaining({ status: "offline", hasSession: true }));
+    expect(tabStatusLabel(tab, zhT)).toBe("離線（最後資料）");
   });
 });

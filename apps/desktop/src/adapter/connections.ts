@@ -6,7 +6,12 @@
 import { invoke as tauriInvoke } from "@tauri-apps/api/core";
 import { listen as tauriListen } from "@tauri-apps/api/event";
 
-import type { InvokeFn, ListenFn } from "../session";
+import {
+  isRemoteConnectionStateEvent,
+  type InvokeFn,
+  type ListenFn,
+  type RemoteConnectionStateEvent,
+} from "../session";
 
 /** Rust 送來登入階段事件的名稱。 */
 const LOGIN_PHASE_EVENT = "connection-login-phase";
@@ -88,6 +93,11 @@ export interface ConnectionsAdapter {
   logout(origin: string): Promise<LogoutResult>;
   /** 登入者 membership 過濾後的 Project／Repo 清單。 */
   scopes(connectionId: string): Promise<ScopesView>;
+  /** 對這條 connection 做一次連線檢查（只查身分），回傳 Rust 判定的目前狀態；狀態轉換另經
+   * `remote-connection-state` 廣播。 */
+  checkConnection(connectionId: string): Promise<RemoteConnectionStateEvent>;
+  /** 訂閱所有 connection 的狀態廣播；回傳解除訂閱函式。 */
+  onConnectionState(listener: (event: RemoteConnectionStateEvent) => void): Promise<() => void>;
   /** 先檢查階段（零寫入）：驗證 checkout marker 一致性並回報要預選的既有工具選集。 */
   inspectCheckout(
     path: string,
@@ -129,6 +139,11 @@ export function createConnectionsAdapter(
     patLogin: (origin, pat) => invoke("pat_login", { origin, pat }),
     logout: (origin) => invoke("connection_logout", { origin }),
     scopes: (connectionId) => invoke("remote_scopes", { connectionId }),
+    checkConnection: (connectionId) => invoke("remote_check_connection", { connectionId }),
+    onConnectionState: (listener) =>
+      listen("remote-connection-state", (e) => {
+        if (isRemoteConnectionStateEvent(e.payload)) listener(e.payload);
+      }),
     inspectCheckout: (path, origin, project, repo) =>
       invoke("inspect_checkout", { path, origin, project, repo }),
     bindCheckout: (path, origin, project, repo, tools) =>

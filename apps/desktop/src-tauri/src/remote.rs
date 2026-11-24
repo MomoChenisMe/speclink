@@ -110,6 +110,8 @@ impl From<RemoteError> for RemoteOpenFailure {
 struct ConnectionHealth {
     connection_id: Option<String>,
     state: ConnectionState,
+    /// 進入目前狀態時廣播的訊息（online 為 None）。
+    message: Option<String>,
     consecutive_failures: usize,
 }
 
@@ -156,6 +158,7 @@ impl TokenManager {
             health: Mutex::new(ConnectionHealth {
                 connection_id: None,
                 state: ConnectionState::Online,
+                message: None,
                 consecutive_failures: 0,
             }),
             failure_threshold: failure_threshold.max(1),
@@ -181,6 +184,17 @@ impl TokenManager {
 
     pub fn connection_state(&self) -> ConnectionState {
         self.health.lock().expect("health lock").state
+    }
+
+    /// 目前的連線狀態，形狀與 `remote-connection-state` 事件相同；訊息是進入這個狀態時
+    /// 廣播的那一則。前端狀態歸零（webview 重建）後，靠它補回沒有再轉換的狀態。
+    pub fn current_state(&self, connection_id: &str) -> ConnectionStateEvent {
+        let health = self.health.lock().expect("health lock");
+        ConnectionStateEvent {
+            connection_id: connection_id.to_string(),
+            state: health.state,
+            message: health.message.clone(),
+        }
     }
 
     /// 以有效 bearer 執行一次請求（呼叫端逐請求建構 speclink-remote Client）：
@@ -223,6 +237,28 @@ impl TokenManager {
         self.execute(credentials, call)
     }
 
+    /// 一次連線檢查（remote-resilience「背景遠端分頁的連線定期檢查」）：送 `call`，
+    /// 計入離線的失敗而連線仍為 online 時，等 `retry_delays` 的下一個間隔再送，
+    /// 直到成功、不再是 online 或間隔用完。needs-reauth 時 `execute` 直接拒絕、
+    /// 不送請求，這裡隨即結束。狀態只經 `execute` 的既有判定改寫與廣播。
+    pub fn check_connection<T>(
+        &self,
+        credentials: &dyn CredentialStore,
+        call: impl Fn(&str) -> Result<T, RemoteError>,
+        retry_delays: &[std::time::Duration],
+    ) {
+        let mut delays = retry_delays.iter();
+        while let Err(error) = self.execute(credentials, &call) {
+            if !counts_toward_offline(&error) || self.connection_state() != ConnectionState::Online {
+                return;
+            }
+            match delays.next() {
+                Some(delay) => std::thread::sleep(*delay),
+                None => return,
+            }
+        }
+    }
+
     fn ensure_write_allowed(&self) -> Result<(), RemoteError> {
         match self.connection_state() {
             ConnectionState::Online => Ok(()),
@@ -255,6 +291,7 @@ impl TokenManager {
             health.consecutive_failures = 0;
             if health.state == ConnectionState::Offline {
                 health.state = ConnectionState::Online;
+                health.message = None;
                 health
                     .connection_id
                     .clone()
@@ -282,17 +319,19 @@ impl TokenManager {
             if health.consecutive_failures >= self.failure_threshold
                 && health.state != ConnectionState::Offline
             {
+                let message = Some(match reason {
+                    Some(reason) => format!("{reason}{OFFLINE_STALE_NOTE}"),
+                    None => OFFLINE_MESSAGE.to_string(),
+                });
                 health.state = ConnectionState::Offline;
+                health.message = message.clone();
                 health
                     .connection_id
                     .clone()
                     .map(|connection_id| ConnectionStateEvent {
                         connection_id,
                         state: ConnectionState::Offline,
-                        message: Some(match reason {
-                            Some(reason) => format!("{reason}{OFFLINE_STALE_NOTE}"),
-                            None => OFFLINE_MESSAGE.to_string(),
-                        }),
+                        message,
                     })
             } else {
                 None
@@ -307,6 +346,7 @@ impl TokenManager {
             health.consecutive_failures = 0;
             if health.state != ConnectionState::Online {
                 health.state = ConnectionState::Online;
+                health.message = None;
                 health
                     .connection_id
                     .clone()
@@ -328,6 +368,7 @@ impl TokenManager {
             health.consecutive_failures = 0;
             if health.state != ConnectionState::NeedsReauth {
                 health.state = ConnectionState::NeedsReauth;
+                health.message = Some(REAUTH_MESSAGE.to_string());
                 health
                     .connection_id
                     .clone()
@@ -3575,5 +3616,150 @@ mod discussion_document_tests {
         let error = |status| RemoteError { message: "boom".into(), reason: None, status, evidence: None };
         assert_eq!(discussion_document_of(Err(error(Some(404)))).unwrap(), None);
         assert_eq!(discussion_document_of(Err(error(Some(500)))).unwrap_err().message, "boom");
+    }
+}
+
+#[cfg(test)]
+mod connection_check_tests {
+    use super::{ConnectionState, ConnectionStateEvent, TokenManager, DEFAULT_FAILURE_THRESHOLD};
+    use speclink_remote::credentials::MemoryCredentialStore;
+    use speclink_remote::RemoteError;
+    use std::cell::Cell;
+    use std::sync::mpsc::{channel, Receiver};
+    use std::time::Duration;
+
+    /// 測試不真的等待：空間隔的個數＝離線閾值減一，最多送到閾值次數。
+    const NO_WAIT: [Duration; DEFAULT_FAILURE_THRESHOLD - 1] = [Duration::ZERO; DEFAULT_FAILURE_THRESHOLD - 1];
+
+    fn manager() -> (TokenManager, Receiver<ConnectionStateEvent>) {
+        let (tx, rx) = channel();
+        let manager = TokenManager::with_connection_state(
+            "http://server.test",
+            "conn_x",
+            DEFAULT_FAILURE_THRESHOLD,
+            move |event| {
+                let _ = tx.send(event);
+            },
+        );
+        manager.adopt_access_token("pat");
+        (manager, rx)
+    }
+
+    fn status(status: u16) -> RemoteError {
+        RemoteError { message: "answered".into(), reason: None, status: Some(status), evidence: None }
+    }
+
+    #[test]
+    fn check_connection_goes_offline_after_three_unreachable_sends() {
+        let (manager, rx) = manager();
+        let sends = Cell::new(0);
+        manager.check_connection(&MemoryCredentialStore::new(), |_| -> Result<(), RemoteError> {
+            sends.set(sends.get() + 1);
+            Err(speclink_remote::translate_transport())
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 3);
+        assert_eq!(manager.connection_state(), ConnectionState::Offline);
+        let events: Vec<_> = rx.try_iter().collect();
+        assert_eq!(events.len(), 1, "恰好一則事件");
+        assert_eq!(events[0].state, ConnectionState::Offline);
+        assert_eq!(manager.current_state("conn_x"), events[0], "目前狀態帶著進入 offline 時廣播的訊息");
+    }
+
+    #[test]
+    fn check_connection_stays_online_when_the_retry_succeeds() {
+        let (manager, rx) = manager();
+        let sends = Cell::new(0);
+        manager.check_connection(&MemoryCredentialStore::new(), |_| {
+            sends.set(sends.get() + 1);
+            if sends.get() == 1 { Err(speclink_remote::translate_transport()) } else { Ok(()) }
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 2);
+        assert_eq!(manager.connection_state(), ConnectionState::Online);
+        assert!(rx.try_iter().next().is_none(), "沒有事件");
+        assert_eq!(
+            manager.current_state("conn_x"),
+            ConnectionStateEvent { connection_id: "conn_x".into(), state: ConnectionState::Online, message: None }
+        );
+    }
+
+    #[test]
+    fn check_connection_on_an_offline_connection_sends_once_and_returns_online() {
+        let (manager, rx) = manager();
+        let store = MemoryCredentialStore::new();
+        for _ in 0..DEFAULT_FAILURE_THRESHOLD {
+            let _ = manager.execute(&store, |_| -> Result<(), RemoteError> {
+                Err(speclink_remote::translate_transport())
+            });
+        }
+        assert_eq!(manager.connection_state(), ConnectionState::Offline);
+        let _ = rx.try_iter().count();
+
+        let sends = Cell::new(0);
+        manager.check_connection(&store, |_| {
+            sends.set(sends.get() + 1);
+            Ok(())
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 1);
+        let events: Vec<_> = rx.try_iter().collect();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].state, ConnectionState::Online);
+        assert_eq!(manager.current_state("conn_x").message, None, "回到 online 不留離線訊息");
+    }
+
+    #[test]
+    fn check_connection_on_an_offline_connection_that_is_still_unreachable_sends_once() {
+        let (manager, rx) = manager();
+        let store = MemoryCredentialStore::new();
+        for _ in 0..DEFAULT_FAILURE_THRESHOLD {
+            let _ = manager.execute(&store, |_| -> Result<(), RemoteError> {
+                Err(speclink_remote::translate_transport())
+            });
+        }
+        let offline: Vec<_> = rx.try_iter().collect();
+        assert_eq!(offline.len(), 1);
+
+        let sends = Cell::new(0);
+        manager.check_connection(&store, |_| -> Result<(), RemoteError> {
+            sends.set(sends.get() + 1);
+            Err(speclink_remote::translate_transport())
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 1, "已是 offline：只送一次");
+        assert_eq!(manager.connection_state(), ConnectionState::Offline);
+        assert!(rx.try_iter().next().is_none(), "狀態沒變，沒有事件");
+        assert_eq!(manager.current_state("conn_x"), offline[0], "目前狀態仍是當初廣播的那一則");
+    }
+
+    #[test]
+    fn check_connection_sends_nothing_when_the_connection_needs_reauth() {
+        let (tx, _rx) = channel();
+        // 沒有 bearer、Keychain 也是空的：第一個請求就進 needs-reauth。
+        let manager = TokenManager::with_connection_state("http://server.test", "conn_x", 3, move |event| {
+            let _ = tx.send(event);
+        });
+        let store = MemoryCredentialStore::new();
+        let _ = manager.execute(&store, |_| Ok(()));
+        assert_eq!(manager.connection_state(), ConnectionState::NeedsReauth);
+
+        let sends = Cell::new(0);
+        manager.check_connection(&store, |_| {
+            sends.set(sends.get() + 1);
+            Ok(())
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 0, "needs-reauth 時一次都不送");
+        let current = manager.current_state("conn_x");
+        assert_eq!(current.state, ConnectionState::NeedsReauth);
+        assert!(current.message.unwrap_or_default().contains("重新登入"));
+    }
+
+    #[test]
+    fn check_connection_stops_after_one_answered_refusal() {
+        let (manager, _rx) = manager();
+        let sends = Cell::new(0);
+        manager.check_connection(&MemoryCredentialStore::new(), |_| -> Result<(), RemoteError> {
+            sends.set(sends.get() + 1);
+            Err(status(403))
+        }, &NO_WAIT);
+        assert_eq!(sends.get(), 1);
+        assert_eq!(manager.connection_state(), ConnectionState::Online);
     }
 }

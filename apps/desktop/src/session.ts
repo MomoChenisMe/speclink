@@ -275,18 +275,27 @@ export type RemoteWorkspaceStatus =
   | "access-denied"
   | "error";
 
+/** connection 為 offline 或 needs-reauth：沒有 session 的 remote 分頁據此呈現該狀態。 */
+export function isConnectionDown(
+  state: RemoteConnectionState | undefined,
+): state is "offline" | "needs-reauth" {
+  return state === "offline" || state === "needs-reauth";
+}
+
 /** 主視窗 tab、復原頁與 Tray 共用的單一狀態裁決。無 session 且無明確
- * recovery state 是不完整狀態，安全降階為 error，絕不偽裝成 ready。有 session 時
+ * recovery state 是不完整狀態，安全降階為 error，絕不偽裝成 ready——所屬 connection
+ * （`connectionState`）為 offline 或 needs-reauth 時例外，回該狀態。有 session 時
  * 多種狀態並存只回一種：needs-reauth、offline（連線層）先於 access-denied（分頁層）。 */
 export function remoteWorkspaceStatus(
   session: WorkspaceSession | undefined,
   recovery: RemoteWorkspaceRecoveryState | undefined,
+  connectionState?: RemoteConnectionState,
 ): RemoteWorkspaceStatus {
   if (recovery) return recovery.status;
-  if (!session) return "error";
+  if (!session) return isConnectionDown(connectionState) ? connectionState : "error";
   if (session.locator.kind !== "remote") return "ready";
-  const connectionState = session.connectionState?.state ?? "online";
-  if (connectionState !== "online") return connectionState;
+  const sessionState = session.connectionState?.state ?? "online";
+  if (sessionState !== "online") return sessionState;
   return session.accessDenied ? "access-denied" : "ready";
 }
 
@@ -408,6 +417,8 @@ export function applyRemoteConnectionState(
   if (session.locator.kind !== "remote" || session.locator.connectionId !== event.connectionId) {
     return session;
   }
+  const known = session.connectionState;
+  if (known?.state === event.state && known.message === event.message) return session;
   return withWriteMask({ ...session, connectionState: event });
 }
 
@@ -425,7 +436,7 @@ export function applyRemoteAccessState(
   });
 }
 
-function isRemoteConnectionStateEvent(payload: unknown): payload is RemoteConnectionStateEvent {
+export function isRemoteConnectionStateEvent(payload: unknown): payload is RemoteConnectionStateEvent {
   if (!payload || typeof payload !== "object") return false;
   const event = payload as Partial<RemoteConnectionStateEvent>;
   return (

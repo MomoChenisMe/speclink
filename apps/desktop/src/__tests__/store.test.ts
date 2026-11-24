@@ -19,6 +19,7 @@ import type { WorkspaceAdapter } from "../adapter/workspace";
 import { LOCAL_CAPABILITIES, type WorkspaceSession } from "../session";
 import { REMOTE_CHECKOUT, REMOTE_STALE_PROBE, STALE_PROBE } from "./helpers/assetFixtures";
 import { changeList } from "./helpers/changeList";
+import { fakeConnectionsAdapter } from "./helpers/adapterFakes";
 
 // sonner 雙面 mock：toast() 本體（背景檢查發現新版本的提示）與 toast.error（失敗路徑）。
 const { toastError, toastFn } = vi.hoisted(() => ({ toastError: vi.fn(), toastFn: vi.fn() }));
@@ -1547,6 +1548,7 @@ describe("登入階段", () => {
 
   function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
     return {
+      ...fakeConnectionsAdapter(),
       list: vi.fn().mockResolvedValue([{ id: "conn_1", origin: ORIGIN, name: "本地", loggedIn: false }]),
       add: vi.fn(),
       remove: vi.fn(),

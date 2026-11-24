@@ -88,6 +88,8 @@ import type { AppInfo } from "./adapter/appInfo";
 import type { ProjectSettingsSection, SettingsSection } from "./settingsCatalog";
 
 const FAILURE_TOAST_ID = "desktop-operation-failure";
+/** 背景遠端分頁的連線檢查間隔（remote-resilience「背景遠端分頁的連線定期檢查」；不開放設定）。 */
+const CONNECTION_CHECK_INTERVAL_MS = 60_000;
 type FailureMessageKey =
   | "store.claimFailed"
   | "store.deleteFailed"
@@ -394,6 +396,15 @@ export interface AppState {
   sessions: Record<string, WorkspaceSession>;
   /** Rust connection 狀態事件套用至同 connection 的所有 remote sessions。 */
   applyRemoteConnectionState: (event: RemoteConnectionStateEvent) => void;
+  /** 每條 connection 最後一則廣播的狀態（connectionId 為鍵）；沒有 session 的遠端分頁據此呈現。 */
+  connectionStates: Record<string, RemoteConnectionStateEvent>;
+  /** 全域監聽收到的連線狀態：記進 `connectionStates`，並套到同 connection 的所有 sessions。 */
+  applyConnectionStateEvent: (event: RemoteConnectionStateEvent) => void;
+  /** 對分頁列上遠端分頁所屬的每條 connection 各做一次連線檢查：去重、略過還在檢查中的
+   * connection；命令回傳的目前狀態交給 applyConnectionStateEvent，命令被拒時靜默略過。 */
+  checkRemoteConnections: () => Promise<void>;
+  /** 每 60 秒呼叫一次 checkRemoteConnections；回傳停止函式。 */
+  startConnectionChecks: () => () => void;
   /** 套用一則分頁的存取狀態事件（進入或解除「存取被拒」）。 */
   applyRemoteAccessState: (event: RemoteAccessStateEvent) => void;
   /** session 事件訂閱世代；重新認證完成後遞增，讓 active worker 解除再重掛。 */
@@ -797,6 +808,19 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     let pendingUpdate: PendingUpdate | null = null;
     // 上次真正進入檢查中的時刻（前景重檢的節流依據；design D2）——閉包層、不持久化。
     let lastCheckedAt: number | null = null;
+    // 還在檢查中的 connection：同一條 connection 的檢查不重疊——閉包層、不進 store state。
+    const checkingConnections = new Set<string>();
+    // 每條 connection 的狀態世代：登出或移除連線時遞增，之前送出的檢查回傳就作廢。
+    const connectionGenerations = new Map<string, number>();
+    /** 登出或移除連線後，Rust 端的連線狀態跟著消失：前端記的那份也拿掉，進行中的檢查回傳不再寫回。 */
+    const forgetConnectionStates = (ids: string[]) => {
+      const states = { ...get().connectionStates };
+      for (const id of ids) {
+        delete states[id];
+        connectionGenerations.set(id, (connectionGenerations.get(id) ?? 0) + 1);
+      }
+      set({ connectionStates: states });
+    };
     // 關於頁版本資訊的取得中 promise：併發進頁只發一次。
     let appInfoInFlight: Promise<void> | null = null;
     // 已以 toast 提示過的目標版本（desktop-notice-relocation design D4：同一版本於 app 執行期間
@@ -1886,6 +1910,41 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
     tabs: [],
     sessions: {},
     sessionEpoch: 0,
+    connectionStates: {},
+    applyConnectionStateEvent(event) {
+      const known = get().connectionStates[event.connectionId];
+      if (known?.state !== event.state || known.message !== event.message) {
+        set({ connectionStates: { ...get().connectionStates, [event.connectionId]: event } });
+      }
+      get().applyRemoteConnectionState(event);
+    },
+    async checkRemoteConnections() {
+      if (!connectionsAdapter) return;
+      const ids = new Set<string>();
+      for (const { locator } of get().tabs) {
+        if (locator.kind === "remote" && !checkingConnections.has(locator.connectionId)) {
+          ids.add(locator.connectionId);
+        }
+      }
+      await Promise.all(
+        [...ids].map(async (id) => {
+          checkingConnections.add(id);
+          const generation = connectionGenerations.get(id) ?? 0;
+          try {
+            const current = await connectionsAdapter.checkConnection(id);
+            if ((connectionGenerations.get(id) ?? 0) === generation) get().applyConnectionStateEvent(current);
+          } catch {
+            // 狀態由事件決定：命令被拒（連線已移除、非 Tauri 環境）不呈現。
+          } finally {
+            checkingConnections.delete(id);
+          }
+        }),
+      );
+    },
+    startConnectionChecks() {
+      const timer = setInterval(() => void get().checkRemoteConnections(), CONNECTION_CHECK_INTERVAL_MS);
+      return () => clearInterval(timer);
+    },
     applyRemoteConnectionState(event) {
       let changed = false;
       const sessions = Object.fromEntries(
@@ -2285,6 +2344,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       setConnectionPhase(origin, { kind: "busy" });
       try {
         const outcome = await connectionsAdapter.logout(origin);
+        // Rust 丟掉了這個 origin 的連線狀態，重新登入後不一定有事件：舊狀態一併清掉。
+        forgetConnectionStates(get().connections.filter((c) => c.origin === origin).map((c) => c.id));
         setConnectionPhase(
           origin,
           outcome.patNotice
@@ -2306,6 +2367,7 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       }
       try {
         await connectionsAdapter.remove(id);
+        forgetConnectionStates([id]);
         if (origin) {
           const phases = { ...get().connectionPhases };
           delete phases[origin];
@@ -2748,6 +2810,8 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
         storedRecents ?? [...tabs].reverse().map(({ locator, name }) => ({ locator, name }));
       if (storedRecents === null) persistRecents(recents);
       set({ tabs, recents });
+      // 遠端分頁所屬的 connection 先各檢查一次（不等待）：沒點過的分頁也能呈現離線。
+      void get().checkRemoteConnections();
       // 首啟活躍專案由持久化 activeKey 決定（決策 4/6）。
       const activeTab = persisted.activeKey
         ? tabs.find((t) => locatorKey(t.locator) === persisted.activeKey)

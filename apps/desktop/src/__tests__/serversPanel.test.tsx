@@ -21,6 +21,7 @@ import type {
 } from "../adapter/connections";
 import type { UseBoundStore, StoreApi } from "zustand";
 import type { WorkspaceSession } from "../session";
+import { fakeConnectionsAdapter } from "./helpers/adapterFakes";
 
 const DISPLAY = "Dev <dev@example.com>";
 
@@ -68,6 +69,7 @@ function fakeAdapter(over: Partial<ConnectionsAdapter> = {}) {
   const entries: Array<Omit<ConnectionView, "loggedIn">> = [];
   const loggedIn = new Set<string>();
   const adapter: ConnectionsAdapter = {
+    ...fakeConnectionsAdapter(),
     list: async () =>
       entries.map((e) => ({ ...e, loggedIn: loggedIn.has(e.origin) })),
     add: async (baseUrl, name) => {

@@ -1,0 +1,97 @@
+schema: spec-driven
+created: 2026-11-24T10:02:40+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: rail-remote-status-and-continue-local
+depends_on: continue-local-tab-reactivation
+started_at: 2026-11-24T11:28:06+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-24T13:37:38+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_rounds: 3
+reviewed_commit: faea2a7935af426d3126b442d5f5921745b38ae2
+reviewed_scope:
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: c721363e4cc9ffb8574a81acf827be47311f68d6d10a128384595d4837622c56
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 2c3a58650684136fdf4c6b46de7c223ef5b4ffdc7fc8967dcc4148451564a8ab
+  - path: apps/desktop/src/App.tsx
+    hash: 2512d2c2588536f98515dce1914f43e4a1e369c35c200f251c19c68824c05cc6
+  - path: apps/desktop/src/__tests__/connectionCheck.test.ts
+    hash: 69844a1899cc4760d6f133658c80b79f2ac1ef4f8312137ec858f58c2366763b
+  - path: apps/desktop/src/__tests__/helpers/adapterFakes.ts
+    hash: 95be487b43715e854214d2605bf5acd94501abd4c697fce6ecd0f7b65b97f1ad
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: 2e083572864423a97728d073014974250b8736c6a715ec5d2c56f04cdf6a5a6c
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 691b33328b8dc8907013cd10afa65d2f30e7019c9a16fceb66a53c1dffe323c8
+  - path: apps/desktop/src/__tests__/serversPanel.test.tsx
+    hash: 48a364ed71d5814f74cae0a73a0ff17e9293d326f417bfa68ff8c4608ae77130
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 5c36d0d982a8e37abc1ca75550fc7bd4f286697448d8c4907d4c8746f2495f5d
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: c1cbe09a6578af234d1348d0af662492dd8654a3bc0f28fe830c36bac93ba7be
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 39d269f641fbf6a65b7eef73cb9bd19f72e6f4cf1f8b8c1c262efb6d44ec9612
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 2d70a13cca992b77c79c184d98d2077c094c2966126caac6dafb3dbcc6bc1a13
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: 1aa6a24566e72fe2541f54ed040f62d9c99ba09269698f20b013bd8713b7d4f9
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 87bdd3c181051d983900487a7f47141afcd8425c17a6276506fd8722c253fd4e
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 8b754d4abac54c651caee46dd937ea22637577cbc287ce1a478c830b05ed8464
+  - path: apps/desktop/src/session.ts
+    hash: e65f11cc5d451b0c49678445cb21a930558d6bcc3df9216c8b49833c2df42296
+  - path: apps/desktop/src/store.ts
+    hash: f336f8c50f8e8ceda491f57eb98a9ccf2baeef4e4bfb62c5e52655aa5efd8540
+  - path: apps/desktop/src/tray.ts
+    hash: 145a4a622254e0a7f24ea15e4df4b448dac6cbcf9bc9237999518472b6412826
+verified_at: 2026-11-24T13:37:38+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_rounds: 3
+verified_commit: faea2a7935af426d3126b442d5f5921745b38ae2
+verified_scope:
+  - path: apps/desktop/src-tauri/src/lib.rs
+    hash: c721363e4cc9ffb8574a81acf827be47311f68d6d10a128384595d4837622c56
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: 2c3a58650684136fdf4c6b46de7c223ef5b4ffdc7fc8967dcc4148451564a8ab
+  - path: apps/desktop/src/App.tsx
+    hash: 2512d2c2588536f98515dce1914f43e4a1e369c35c200f251c19c68824c05cc6
+  - path: apps/desktop/src/__tests__/connectionCheck.test.ts
+    hash: 69844a1899cc4760d6f133658c80b79f2ac1ef4f8312137ec858f58c2366763b
+  - path: apps/desktop/src/__tests__/helpers/adapterFakes.ts
+    hash: 95be487b43715e854214d2605bf5acd94501abd4c697fce6ecd0f7b65b97f1ad
+  - path: apps/desktop/src/__tests__/projectRail.test.tsx
+    hash: 2e083572864423a97728d073014974250b8736c6a715ec5d2c56f04cdf6a5a6c
+  - path: apps/desktop/src/__tests__/remoteResilience.test.tsx
+    hash: 691b33328b8dc8907013cd10afa65d2f30e7019c9a16fceb66a53c1dffe323c8
+  - path: apps/desktop/src/__tests__/serversPanel.test.tsx
+    hash: 48a364ed71d5814f74cae0a73a0ff17e9293d326f417bfa68ff8c4608ae77130
+  - path: apps/desktop/src/__tests__/store.test.ts
+    hash: 5c36d0d982a8e37abc1ca75550fc7bd4f286697448d8c4907d4c8746f2495f5d
+  - path: apps/desktop/src/__tests__/tray.test.ts
+    hash: c1cbe09a6578af234d1348d0af662492dd8654a3bc0f28fe830c36bac93ba7be
+  - path: apps/desktop/src/__tests__/trayPanel.test.tsx
+    hash: 39d269f641fbf6a65b7eef73cb9bd19f72e6f4cf1f8b8c1c262efb6d44ec9612
+  - path: apps/desktop/src/__tests__/workspaceChooser.test.tsx
+    hash: 2d70a13cca992b77c79c184d98d2077c094c2966126caac6dafb3dbcc6bc1a13
+  - path: apps/desktop/src/adapter/connections.ts
+    hash: 1aa6a24566e72fe2541f54ed040f62d9c99ba09269698f20b013bd8713b7d4f9
+  - path: apps/desktop/src/components/ProjectRail.tsx
+    hash: 87bdd3c181051d983900487a7f47141afcd8425c17a6276506fd8722c253fd4e
+  - path: apps/desktop/src/i18n/messages.ts
+    hash: 8b754d4abac54c651caee46dd937ea22637577cbc287ce1a478c830b05ed8464
+  - path: apps/desktop/src/session.ts
+    hash: e65f11cc5d451b0c49678445cb21a930558d6bcc3df9216c8b49833c2df42296
+  - path: apps/desktop/src/store.ts
+    hash: f336f8c50f8e8ceda491f57eb98a9ccf2baeef4e4bfb62c5e52655aa5efd8540
+  - path: apps/desktop/src/tray.ts
+    hash: 145a4a622254e0a7f24ea15e4df4b448dac6cbcf9bc9237999518472b6412826
+archived_at: 2026-11-24T13:42:45+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

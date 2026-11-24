@@ -22,6 +22,7 @@ import type { ConnectionView } from "./adapter/connections";
 import {
   locatorKey,
   remoteWorkspaceStatus,
+  type RemoteConnectionStateEvent,
   type RemoteRecoveryKind,
   type RemoteWorkspaceRecoveryState,
   type RemoteWorkspaceStatus,
@@ -49,6 +50,8 @@ export type TrayTabSnapshot =
       status: RemoteWorkspaceStatus;
       /** 僅 remote error 的封閉分類；不把 raw technical detail 帶入 Tray。 */
       failureKind?: RemoteRecoveryKind;
+      /** 這個分頁有 session（保留了最後一份資料）。 */
+      hasSession: boolean;
       connectionId: string;
       serverLabel: string;
       serverOrigin?: string;
@@ -78,7 +81,8 @@ export interface TraySnapshot {
 export function tabStatusLabel(tab: TrayTabSnapshot, t: (key: string) => string): string {
   if (tab.source === "local") return "";
   if (tab.status === "restoring") return t("tray.recovery.restoring");
-  if (tab.status === "offline") return t("tray.recovery.offline");
+  // 沒有 session 的分頁沒有資料，不提最後資料。
+  if (tab.status === "offline") return t(tab.hasSession ? "tray.recovery.offline" : "tray.recovery.offlineNoData");
   if (tab.status === "needs-reauth" || tab.failureKind === "needs-reauth") {
     return t("tray.recovery.needsReauth");
   }
@@ -336,6 +340,8 @@ export interface TrayStoreApi {
     sessions: Record<string, WorkspaceSession>;
     remoteRecovery: Record<string, RemoteWorkspaceRecoveryState>;
     connections: ConnectionView[];
+    /** 每條 connection 最後廣播的狀態：沒有 session 的 remote 分頁據此呈現。 */
+    connectionStates: Record<string, RemoteConnectionStateEvent>;
     /** 系統匣樣式：native-menu 掛原生選單；panel 的點擊改走 action（Windows 右鍵仍是原生選單）。 */
     trayStyle: TrayStyle;
     /** 切換既有分頁；locator key 同時涵蓋 local 與 remote。 */
@@ -390,17 +396,19 @@ export function buildTraySnapshot(state: ReturnType<TrayStoreApi["getState"]>): 
       const recovery = state.remoteRecovery[key];
       const session = state.sessions[key];
       const connection = state.connections.find((entry) => entry.id === connectionId);
+      const connectionState = state.connectionStates[connectionId]?.state;
       return {
         key,
         name: tab.name,
         source: "remote",
-        status: remoteWorkspaceStatus(session, recovery),
+        status: remoteWorkspaceStatus(session, recovery, connectionState),
         failureKind:
           recovery?.status === "error"
             ? recovery.failure.kind
-            : session?.connectionState?.state === "needs-reauth"
+            : (session ? session.connectionState?.state : connectionState) === "needs-reauth"
               ? "needs-reauth"
               : undefined,
+        hasSession: session !== undefined,
         connectionId,
         serverLabel: connection?.name ?? connectionId,
         serverOrigin: connection?.origin,

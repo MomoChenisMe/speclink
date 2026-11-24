@@ -25,8 +25,10 @@ import type { AssetPromptState } from "../assetPrompt";
 import type { Platform } from "../platform";
 import type { ProjectTab } from "../tabs";
 import {
+  isConnectionDown,
   locatorKey,
   remoteWorkspaceStatus,
+  type RemoteConnectionStateEvent,
   type RemoteWorkspaceRecoveryState,
   type RemoteWorkspaceStatus,
   type WorkspaceSession,
@@ -42,6 +44,8 @@ export interface ProjectRailProps {
   recoveryStates?: Record<string, RemoteWorkspaceRecoveryState>;
   /** 已開啟的 session（locator key → session）：remote 分頁的狀態由它與復原狀態裁決。 */
   sessions?: Record<string, WorkspaceSession>;
+  /** 每條 connection 最後廣播的狀態（connectionId 為鍵）：沒有 session 的 remote 分頁據此呈現。 */
+  connectionStates?: Record<string, RemoteConnectionStateEvent>;
   /** 連線 id → 連線名稱（remote 無 checkout 時 tooltip 用）。 */
   connectionNames?: Record<string, string>;
   /** 探測進行中的目標方塊（store 的 pendingTabKey）。 */
@@ -79,6 +83,7 @@ export function ProjectRail({
   tabErrors,
   recoveryStates = {},
   sessions = {},
+  connectionStates = {},
   connectionNames = {},
   pendingKey = null,
   assetPrompts = {},
@@ -108,10 +113,14 @@ export function ProjectRail({
             const key = locatorKey(tab.locator);
             const recovery = recoveryStates[key];
             const session = sessions[key];
-            // 有 session 或復原狀態的分頁走共用的單一裁決（與系統匣同一個函式）；
-            // 其餘（還沒開過的分頁、本機路徑失效）只看分頁錯誤。
+            const connectionState =
+              tab.locator.kind === "remote" ? connectionStates[tab.locator.connectionId]?.state : undefined;
+            // 有 session、復原狀態，或所屬 connection 離線／需重新登入的分頁走共用的單一裁決
+            // （與系統匣同一個函式）；其餘（還沒開過的分頁、本機路徑失效）只看分頁錯誤。
             const shared: RemoteWorkspaceStatus =
-              recovery || session ? remoteWorkspaceStatus(session, recovery) : "ready";
+              recovery || session || isConnectionDown(connectionState)
+                ? remoteWorkspaceStatus(session, recovery, connectionState)
+                : "ready";
             const status: RemoteWorkspaceStatus =
               shared !== "ready" ? shared : tabErrors[key] !== undefined ? "error" : "ready";
             const active = key === activeKey;
@@ -125,7 +134,7 @@ export function ProjectRail({
               status === "restoring"
                 ? t("remote.recovery.restoringShort")
                 : status === "offline"
-                  ? t("remote.recovery.offlineShort")
+                  ? t(session ? "remote.recovery.offlineShort" : "remote.recovery.offlineNoDataShort")
                   : status === "needs-reauth"
                     ? t("remote.recovery.reauthShort")
                     : status === "access-denied"

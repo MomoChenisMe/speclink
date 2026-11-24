@@ -20,6 +20,7 @@ import {
   type WorkspaceSession,
 } from "../session";
 import { changeList } from "./helpers/changeList";
+import { fakeConnectionsAdapter, fakeWorkspaceAdapter } from "./helpers/adapterFakes";
 import { fakeRemoteDs, REMOTE_CAPS, REMOTE_KEY } from "./helpers/remoteFixtures";
 
 vi.mock("@speclink/ui", async (importOriginal) => {
@@ -45,17 +46,6 @@ function fakeEvents() {
     count(event: string) {
       return handlers.get(event)?.size ?? 0;
     },
-  };
-}
-
-function fakeWorkspace() {
-  return {
-    openProject: vi.fn().mockRejectedValue("not a project"),
-    initProject: vi.fn(),
-    startupDir: vi.fn().mockRejectedValue("no startup dir"),
-    projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
-    watchWorkspace: vi.fn().mockResolvedValue(undefined),
-    pickFolder: vi.fn().mockResolvedValue(null),
   };
 }
 
@@ -141,7 +131,7 @@ describe("remote offline stale snapshot", () => {
           throw new Error("remote 復原不得建立 local session");
         }}
         openRemote={openRemote}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
       />,
     );
 
@@ -176,7 +166,7 @@ describe("remote offline stale snapshot", () => {
           throw new Error("remote 流程不得建立 local session");
         }}
         openRemote={openRemote}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
       />,
     );
 
@@ -219,7 +209,7 @@ describe("remote offline stale snapshot", () => {
       }),
     );
     const events = fakeEvents();
-    const workspace = fakeWorkspace();
+    const workspace = fakeWorkspaceAdapter();
     workspace.openProject = vi
       .fn()
       .mockResolvedValue({ status: "project", root: "A", name: "Local" });
@@ -268,7 +258,7 @@ describe("remote offline stale snapshot", () => {
           throw new Error("remote 流程不得建立 local session");
         }}
         openRemote={async () => session}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
       />,
     );
     await screen.findByText("remote-change");
@@ -375,6 +365,7 @@ describe("remote offline stale snapshot", () => {
       loggedIn: true,
     };
     const connections: ConnectionsAdapter = {
+      ...fakeConnectionsAdapter(),
       list: vi.fn(async () => {
         order.push("connection-list");
         return [connection];
@@ -399,7 +390,7 @@ describe("remote offline stale snapshot", () => {
       <App
         createSession={createSession}
         openRemote={openRemote}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
         connections={connections}
       />,
     );
@@ -490,14 +481,14 @@ describe("remote offline stale snapshot", () => {
         listen: events.listen,
       }),
     );
-    const connections = {
+    const connections = fakeConnectionsAdapter({
       list: vi.fn(async () => [{ id: "c1", origin: "http://server.test", name: "Server", loggedIn: true }]),
-    } as unknown as ConnectionsAdapter;
+    });
     render(
       <App
         createSession={vi.fn()}
         openRemote={openRemote}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
         connections={connections}
       />,
     );
@@ -619,7 +610,7 @@ describe("remote access denied", () => {
           throw new Error("remote 流程不得建立 local session");
         }}
         openRemote={async () => session}
-        workspace={fakeWorkspace() as never}
+        workspace={fakeWorkspaceAdapter() as never}
       />,
     );
     await screen.findByText("remote-change");
@@ -729,5 +720,60 @@ describe("remote access denied", () => {
     await waitFor(() =>
       expect(screen.getByTestId("remote-stale-banner").getAttribute("data-connection-state")).toBe("access-denied"),
     );
+  });
+});
+
+// remote-resilience「背景遠端分頁的連線定期檢查」的 App 接線：掛載即全域監聽連線狀態，
+// 還原分頁列後檢查一次，主視窗取得焦點時再檢查；卸載時解除監聽。
+describe("背景遠端分頁的連線檢查接線", () => {
+  it("還原後檢查一次、取得焦點再檢查，卸載解除監聽", async () => {
+    localStorage.setItem(
+      "speclink.projectTabs",
+      JSON.stringify({
+        version: 2,
+        tabs: [
+          {
+            locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "backend" },
+            name: "Demo/Backend",
+          },
+        ],
+        activeKey: null,
+      }),
+    );
+    const unlistenState = vi.fn();
+    const connections = fakeConnectionsAdapter({
+      list: vi.fn(async () => [{ id: "c1", origin: "http://server.test", name: "Server", loggedIn: true }]),
+      onConnectionState: vi.fn(async () => unlistenState),
+    });
+    let onFocus: ((focused: boolean) => void) | null = null;
+    const updater = {
+      check: vi.fn().mockResolvedValue(null),
+      relaunch: vi.fn(),
+      onFocusChanged: vi.fn(async (h: (focused: boolean) => void) => {
+        onFocus = h;
+        return () => {};
+      }),
+    };
+    const { unmount } = render(
+      <App
+        createSession={vi.fn()}
+        workspace={fakeWorkspaceAdapter() as never}
+        connections={connections}
+        updater={updater as never}
+      />,
+    );
+
+    await waitFor(() => expect(connections.checkConnection).toHaveBeenCalledTimes(1));
+    expect(connections.checkConnection).toHaveBeenCalledWith("c1");
+    expect(connections.onConnectionState).toHaveBeenCalledTimes(1);
+
+    await waitFor(() => expect(onFocus).not.toBeNull());
+    act(() => onFocus?.(false));
+    expect(connections.checkConnection).toHaveBeenCalledTimes(1);
+    act(() => onFocus?.(true));
+    await waitFor(() => expect(connections.checkConnection).toHaveBeenCalledTimes(2));
+
+    unmount();
+    await waitFor(() => expect(unlistenState).toHaveBeenCalledTimes(1));
   });
 });

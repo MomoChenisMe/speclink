@@ -467,6 +467,13 @@ function AppInner({
   };
 
   useEffect(() => {
+    // 連線狀態全域監聽（remote-resilience「背景遠端分頁的連線定期檢查」），在還原分頁列之前
+    // 發出訂閱；第一次檢查的事件若早於監聽完成，檢查命令回傳的目前狀態照樣寫回，不會停在
+    // 錯的狀態。訂閱失敗（非 Tauri）靜默。
+    const connectionUnlisten = connections
+      ?.onConnectionState((event) => useStore.getState().applyConnectionStateEvent(event))
+      .catch(() => null);
+    const stopConnectionChecks = connections ? useStore.getState().startConnectionChecks() : null;
     // 啟動：有 workspace 即還原分頁列（依持久化 activeKey 切回上次活躍專案、
     // 背景徽章快照）；否則維持既有的整批 refresh（無活躍 session 時為無事）。
     // speclink 網址（desktop-app「以 speclink 網址開啟詳情頁」）排隊到分頁還原之後才處理。
@@ -483,7 +490,9 @@ function AppInner({
     const focusUnlisten = updater?.onFocusChanged
       ? updater
           .onFocusChanged((focused) => {
-            if (focused) void useStore.getState().recheckOnFocus();
+            if (!focused) return;
+            void useStore.getState().recheckOnFocus();
+            void useStore.getState().checkRemoteConnections();
           })
           .catch(() => null)
       : null;
@@ -492,6 +501,8 @@ function AppInner({
     return () => {
       uninstallDeepLinks?.();
       void focusUnlisten?.then((unlisten) => unlisten?.());
+      void connectionUnlisten?.then((unlisten) => unlisten?.());
+      stopConnectionChecks?.();
       // 卸載時取消漏出的搜尋去抖，杜絕在途 timer 於 store 卸載後才開火。
       useStore.getState().disposeSearch();
     };
@@ -1149,6 +1160,7 @@ function AppInner({
             tabErrors={s.tabErrors}
             recoveryStates={s.remoteRecovery}
             sessions={s.sessions}
+            connectionStates={s.connectionStates}
             connectionNames={connectionNames}
             pendingKey={s.pendingTabKey}
             assetPrompts={s.assetPrompts}

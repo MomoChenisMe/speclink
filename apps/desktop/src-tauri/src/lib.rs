@@ -2004,6 +2004,40 @@ fn remote_unwatch(app: tauri::AppHandle, connection_id: String, project: String,
     events.unregister(&remote_locator_key(&connection_id, &project, &repo));
 }
 
+/// 連線檢查失敗後的重試間隔：加上第一次最多送 3 次，等於離線閾值——Server 停著時
+/// 約 3 秒內轉 offline。
+const CONNECTION_CHECK_RETRY_DELAYS: [std::time::Duration; 2] =
+    [std::time::Duration::from_secs(1), std::time::Duration::from_secs(2)];
+// 間隔個數綁定離線閾值：閾值一改，這裡編譯失敗，不會悄悄少送或多送。
+const _: () = assert!(CONNECTION_CHECK_RETRY_DELAYS.len() + 1 == remote::DEFAULT_FAILURE_THRESHOLD);
+
+/// 背景遠端分頁的連線檢查（remote-resilience「背景遠端分頁的連線定期檢查」）：何時檢查由
+/// 前端決定；這裡只對這條 connection 送身分查詢，結果經 TokenManager 的既有判定改寫狀態、
+/// 以 `remote-connection-state` 廣播，並回傳檢查後的目前狀態（狀態沒變時沒有事件，前端
+/// 靠回傳值補回）。不讀專案資料、不建立 session、不 handshake。
+#[tauri::command]
+async fn remote_check_connection(
+    app: tauri::AppHandle,
+    connection_id: String,
+) -> Result<remote::ConnectionStateEvent, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let origin = connection_origin(&app, &connection_id)?;
+        let state = app
+            .state::<std::sync::Arc<ConnectionsState>>()
+            .inner()
+            .clone();
+        let manager = state.manager_for_connection(&connection_id, &origin);
+        manager.check_connection(
+            &*state.credentials,
+            |token| speclink_remote::device::identity(&origin, token),
+            &CONNECTION_CHECK_RETRY_DELAYS,
+        );
+        Ok(manager.current_state(&connection_id))
+    })
+    .await
+    .map_err(|e| format!("remote worker failed: {e}"))?
+}
+
 /// 系統匣面板 toggle（tray-status-menu「面板樣式」）：委派 panel 模組（Linux 恆回 Err，
 /// 系統匣樣式恆為原生選單、不可達，此為守門）。macOS 維持同步——NSPanel 操作須在主執行緒。
 #[cfg(not(target_os = "windows"))]
@@ -2226,6 +2260,7 @@ pub fn run() {
             remote_archive_discussion,
             remote_watch,
             remote_unwatch,
+            remote_check_connection,
             toggle_tray_panel,
             hide_tray_panel,
             quit_app

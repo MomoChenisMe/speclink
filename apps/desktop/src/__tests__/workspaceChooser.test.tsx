@@ -13,6 +13,7 @@ import type { UseBoundStore, StoreApi } from "zustand";
 import type { WorkspaceSession } from "../session";
 import type { RecentEntry } from "../recents";
 import { expectToolCheckboxes } from "./helpers/toolCheckboxes";
+import { fakeConnectionsAdapter } from "./helpers/adapterFakes";
 
 const CONNECTION: ConnectionView = {
   id: "conn_1",
@@ -54,6 +55,7 @@ function expectHoverOnlyWhenEnabled(el: HTMLElement) {
 
 function fakeConnections(over: Partial<ConnectionsAdapter> = {}): ConnectionsAdapter {
   return {
+    ...fakeConnectionsAdapter(),
     list: vi.fn().mockResolvedValue([CONNECTION]),
     add: vi.fn().mockResolvedValue(CONNECTION),
     remove: vi.fn().mockResolvedValue(undefined),
@@ -681,6 +683,7 @@ describe("WorkspaceChooser 登入回饋", () => {
     const entries: Array<Omit<ConnectionView, "loggedIn">> = [];
     const loggedIn = new Set<string>();
     return {
+      ...fakeConnectionsAdapter(),
       list: async () => entries.map((e) => ({ ...e, loggedIn: loggedIn.has(e.origin) })),
       add: async (baseUrl, name) => {
         const origin = baseUrl.trim().replace(/\/+$/, "").toLowerCase();

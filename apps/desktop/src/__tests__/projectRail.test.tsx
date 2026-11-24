@@ -331,6 +331,64 @@ describe("ProjectRail", () => {
     expect(square(key).querySelector("[data-tab-dot]")?.className).toContain("bg-status-warning");
   });
 
+  describe("沒有 session 的遠端分頁讀所屬 connection 的狀態（remote-resilience「背景遠端分頁的連線定期檢查」）", () => {
+    const key = "remote:c1/demo/api";
+    const apiTab: ProjectTab = {
+      locator: { kind: "remote", connectionId: "c1", projectId: "demo", repoId: "api" },
+      name: "Demo/api",
+    };
+    const states = (state: RemoteConnectionState) => ({ c1: { connectionId: "c1", state, message: null } });
+
+    it("connection 為 offline：琥珀點，提示為「離線」且不提最後資料", async () => {
+      renderRail({ tabs: [apiTab], activeKey: null, connectionStates: states("offline") });
+      const tile = square(key);
+      expect(tile.querySelector("[data-tab-dot]")?.getAttribute("data-tab-dot")).toBe("warning");
+      fireEvent.focus(tile);
+      const tip = (await screen.findByRole("tooltip")).textContent ?? "";
+      expect(tip).toContain("離線");
+      expect(tip).not.toContain("最後資料");
+    });
+
+    it("connection 為 needs-reauth：琥珀點，提示含「需要登入」", async () => {
+      renderRail({ tabs: [apiTab], activeKey: null, connectionStates: states("needs-reauth") });
+      const tile = square(key);
+      expect(tile.querySelector("[data-tab-dot]")?.getAttribute("data-tab-dot")).toBe("warning");
+      fireEvent.focus(tile);
+      expect((await screen.findByRole("tooltip")).textContent).toContain("需要登入");
+    });
+
+    it("有 session 的離線分頁：提示照舊為「離線，顯示最後資料」", async () => {
+      renderRail({
+        tabs: [apiTab],
+        activeKey: null,
+        sessions: { [key]: remoteSession("api", { state: "offline" }) },
+        connectionStates: states("offline"),
+      });
+      fireEvent.focus(square(key));
+      expect((await screen.findByRole("tooltip")).textContent).toContain("離線，顯示最後資料");
+    });
+
+    it("connection 為 online：沒有點", () => {
+      renderRail({ tabs: [apiTab], activeKey: null, connectionStates: states("online") });
+      expect(square(key).querySelector("[data-tab-dot]")).toBeNull();
+    });
+
+    it("分頁的復原狀態為 error 時，connection 為 offline 仍為紅點", () => {
+      renderRail({
+        tabs: [apiTab],
+        activeKey: null,
+        connectionStates: states("offline"),
+        recoveryStates: {
+          [key]: {
+            status: "error",
+            failure: { kind: "unreachable", message: "server unreachable", reason: null, status: null },
+          },
+        },
+      });
+      expect(square(key).querySelector("[data-tab-dot]")?.getAttribute("data-tab-dot")).toBe("error");
+    });
+  });
+
   it("assetPrompts 有值的背景方塊：角落琥珀點、tooltip 附「技能檔需要處理」（spec「其他專案的狀況以琥珀點提示」）", async () => {
     renderRail({
       assetPrompts: {
