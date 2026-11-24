@@ -23,7 +23,7 @@ To run another skill, click `⋯`.
 The panel has two placements. Neither takes the keyboard. In both, the project follows the terminal that has focus, so a switch of space also switches the project.
 
 - **Docked**: with the cloned `speclink` layout (see "Install"), the panel stays in the rightmost column of the window, beside the terminals. `⌘⇧S` opens or closes this column. Drag its edge to change the width. Each space remembers its own open or closed state, and a switch of space restores it. A space with no saved state starts open, so close it once in a project that does not use Speclink.
-- **Popped up**: in other layouts, `⌘⇧S` opens or closes the panel as a floating window that you can drag.
+- **Popped up**: in other layouts, `⌘⇧S` opens or closes the panel as a floating window that you can drag. You can also select "Speclink: Panel" in the command palette (`⌘⇧P`).
 
 What the panel contains:
 
@@ -178,7 +178,7 @@ A change has the Start button only if it is not blocked, has unfinished tasks an
 
 ![The Skills pop-up: skills in five groups on the left, and the changes that can pair with the skill on the right](../../docs/assets/screenshots/en/herdr-skill-picker.png)
 
-Press the Skills button at the top or `⌘⇧N` to open the pop-up. Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
+Press the Skills button at the top or `⌘⇧N` to open the pop-up, or select "Speclink: Skills" in the command palette (`⌘⇧P`). Press it again or press `Esc` to close. This works in all layouts, also when the panel column is closed.
 
 The pop-up has two pages: **Speclink** and **My skills**. Click a page name or press `Tab` to switch. If you installed two or more agents, select the agent at the top right.
 
@@ -220,7 +220,7 @@ The logo sends a `speclink://project` URL. The desktop app goes to the project o
 
 ## Requirements
 
-- Herdr 0.1.17 or later (tested with this version). Cmd-click in a terminal needs 0.1.17, and the panel needs 0.1.16 to cancel the folder watches that it does not need. The lines that `dock-panel.mjs` edits also follow the Herdr version, so the script stops on 0.1.12.
+- Herdr 0.1.17 or later (tested with 0.1.18). The command palette items and "No updates while the window is out of view" need 0.1.18. On 0.1.17 these two are missing, and all else works. Cmd-click in a terminal needs 0.1.17, and the panel needs 0.1.16 to cancel the folder watches that it does not need. The lines that `dock-panel.mjs` edits also follow the Herdr version, so the script stops on 0.1.12.
 - The `speclink` CLI on PATH, with `unpromotedCuts` in `plan --json`. The panel reads the `--json` output of `speclink list`, `speclink plan`, `speclink discuss list`, `speclink workflow-config show` and `speclink instructions apply`. The CLI does not give the stamps, so the panel also reads `.meta.yaml` in the change folder.
 - A project with `speclink init` done. If it is not done, the panel gives an initialize button.
 - To open pages in Speclink, or to go to a project with the logo, a desktop app that knows `speclink://` URLs (a version after v0.11.0). Releases up to and including v0.11.0 do not have these URLs, so the logo only brings up the app. A version that you built yourself after 2026-11-03 may not know `speclink://project` yet. In that version the logo brings the app to the front, the project does not change, and the app shows "Can't open this speclink link". The message goes away after you update the app.
@@ -319,6 +319,7 @@ Herdr's own `main` layout cannot dock a mod: `"place": "right"` in `mod.json` ha
 - **A clone does not follow Herdr updates**: the `speclink` layout stays as `main` was at the time of the clone, and the Spaces and Agents lists stay as `spaces` and `agents` were. Dock again after a Herdr update. See "Dock again after a Herdr update".
 - **The panel reads the stamps itself**: `list --json` leaves the stamps out on purpose, so the panel reads `.meta.yaml` in the change folder and uses `perl` to get the file fingerprints. A change with a worktree uses the copy in the worktree. On a machine with no `perl` or no `Digest::SHA`, the panel checks only the task count. `speclink archive` still decides, and it refuses a stale stamp.
 - **A changed file in the scope takes up to 10 seconds to change the color**: the panel does not watch those files, so it waits for the timer.
+- **No updates while the window is out of view**: when the Herdr window is minimized, fully covered or on another desktop, the panel does not ask the CLI. It catches up when the window shows again. The agent status is not affected, because Herdr gives it live.
 - **"Promoted" is approximate**: it uses `status` from `discuss list` and the unpromoted cuts from `plan`.
 - **What was tested with Codex and Pi**: status reports, paste into the input box, start and labels, with the real programs in an isolated Herdr window. Codex ran one turn and was stopped. Pi had no model login, so the test only shows that the command was sent. Neither finished a whole change. For Codex, only the `UserPromptSubmit` hook was tested. Cursor was not tested with the real program, only with the `model.js` tests.
 - **Opening many tabs can hit a git lock**: the same as starting a whole wave. An agent that hits a lock stops and reports it.

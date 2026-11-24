@@ -18,6 +18,7 @@ import {
   terminals,
   theme,
   watchFolder,
+  window,
 } from "herdr";
 import {
   attachPlan,
@@ -138,6 +139,10 @@ export default class SpeclinkPanel extends View {
   }
 
   reload(cx) {
+    // 視窗看不到時（縮小、被完全蓋住、在別的桌面），計時器和資料夾監看還是會叫這裡，這時不問 CLI。
+    // 記成 stale，回到畫面時 render 補抓；render 沒跑的話，下一次計時也會抓。
+    this.stale = window()?.visible === false;
+    if (this.stale) return;
     if (this.loading) {
       this.again = true;
       return;
@@ -955,6 +960,8 @@ export default class SpeclinkPanel extends View {
     if (this.other) return this.other.render(cx);
     const t = theme();
     this.follow(cx);
+    // 每次都讀 window()，視窗回到畫面時 render 才會重跑。
+    if (window()?.visible !== false && this.stale) this.reload(cx);
     const ctx = this.context();
     const overlay = props()?.overlay;
     return v_flex()

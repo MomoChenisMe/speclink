@@ -172,6 +172,11 @@ export const TO_ZH = {
   Copied: "已複製",
   // 遠端機器在中斷連線後會停掉 agent 時，機器名稱旁的警告。
   "Agents stop when you disconnect. Click for the fix.": "中斷連線後 agent 會停下來。點這裡看修正方法。",
+  // 移除 worktree 時，工作區的終端機 10 秒內還沒停下來。
+  "The space's terminals haven't stopped yet. Press Enter to check again.": "這個工作區的終端機還沒停下來。按 Enter 再檢查一次。",
+  // 指令面板（⌘⇧P）裡的項目，寫在 mod.json 的 palette。
+  "Speclink: Skills": "Speclink：技能",
+  "Speclink: Panel": "Speclink：面板",
   "Loading…": "載入中…",
   Connect: "連線",
   "Connecting…": "連線中…",

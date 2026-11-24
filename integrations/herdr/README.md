@@ -23,7 +23,7 @@
 面板有兩種放法。兩種都不搶鍵盤，專案都跟著目前焦點所在的終端機走，切 space 就換專案。
 
 - **停靠**：用複製出來的 `speclink` 版面（見「安裝」），面板常駐在視窗最右邊一欄，和終端機並排。`⌘⇧S` 開關這一欄，拖動邊界可以改寬度。每個 space 各自記住開或關，切 space 會還原，還沒記過的 space 預設打開，所以用不到 Speclink 的專案關一次就好。
-- **彈出**：其他版面按 `⌘⇧S` 開關面板，面板是一個可以拖動的浮動視窗。
+- **彈出**：其他版面按 `⌘⇧S` 開關面板，面板是一個可以拖動的浮動視窗。也可以在指令面板（`⌘⇧P`）選「Speclink：面板」。
 
 面板的內容：
 
@@ -178,7 +178,7 @@ Claude Code、GitHub Copilot 與 Cursor 送 `/speclink-<技能>`，Codex 送 `$s
 
 ![技能跳窗：左邊是分成五組的技能，右邊是這個技能能搭配的變更](../../docs/assets/screenshots/zh-TW/herdr-skill-picker.png)
 
-按頂端的「技能」或 `⌘⇧N` 開跳窗，再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
+按頂端的「技能」或 `⌘⇧N` 開跳窗，或在指令面板（`⌘⇧P`）選「Speclink：技能」。再按一次或按 `Esc` 關閉。所有版面都能用，面板那一欄收起來也一樣。
 
 跳窗有兩頁，點頁名或按 `Tab` 切換：**Speclink** 和**我的技能**。裝了兩個以上的 agent 時，右上角可以選要給哪一個。
 
@@ -220,7 +220,7 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
 
 ## 需求
 
-- Herdr 0.1.17 以上（以這一版測試）。終端機的 Cmd+點要 0.1.17 才有，面板取消用不到的資料夾監看要 0.1.16。`dock-panel.mjs` 要改的程式行也跟著 Herdr 的版本走，在 0.1.12 上會停下來。
+- Herdr 0.1.17 以上（以 0.1.18 測試）。指令面板的項目和「視窗看不到時不更新」要 0.1.18，在 0.1.17 上沒有這兩項，其他照常。終端機的 Cmd+點要 0.1.17 才有，面板取消用不到的資料夾監看要 0.1.16。`dock-panel.mjs` 要改的程式行也跟著 Herdr 的版本走，在 0.1.12 上會停下來。
 - `speclink` CLI 在 PATH 上，版本要有 `plan --json` 的 `unpromotedCuts`。面板讀 `speclink list`、`speclink plan`、`speclink discuss list`、`speclink workflow-config show`、`speclink instructions apply` 的 `--json` 輸出。CLI 沒有提供的章，另外讀變更資料夾的 `.meta.yaml`。
 - 專案執行過 `speclink init`。沒有的話，面板會給「初始化」鈕。
 - 要叫 Speclink 開頁面，或按 Logo 切專案時，桌面 app 要認得 `speclink://` 網址（v0.11.0 之後的版本）。v0.11.0 和更舊的發佈版沒有這個網址，Logo 只叫出 app。2026-11-03 之後自行建置、但還不認得 `speclink://project` 的版本，按 Logo 時 app 會到前景，專案不切換，並跳出「無法開啟這個 speclink 網址」，更新 app 後就不會再出現。
@@ -319,6 +319,7 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **複製版不會跟著 Herdr 更新**：`speclink` 版面停在複製當下的 `main`，Spaces 清單和 Agents 清單停在複製當下的 `spaces` 和 `agents`。Herdr 更新後要重做，方法見「Herdr 更新後重做停靠」。
 - **章是面板自己讀的**：CLI 的 `list --json` 刻意不帶章，所以面板讀變更資料夾的 `.meta.yaml`，再用 `perl` 算檔案指紋。有 worktree 的變更讀 worktree 裡的那份。機器上沒有 `perl` 或它的 `Digest::SHA` 時只看任務數。最後的判斷還是在 `speclink archive`，章過期時它會拒絕。
 - **範圍內的檔案改了，最多 10 秒才會變色**：那些檔案不在面板監看的資料夾裡，要等計時更新。
+- **視窗看不到時不更新**：Herdr 視窗縮小、被完全蓋住或在別的桌面時，面板不問 CLI，回到畫面時才補抓。Agent 的狀態不受影響，那是 Herdr 即時給的。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
 - **Codex 和 Pi 測到哪裡**：在隔離的 Herdr 視窗用真的程式測過狀態回報、貼進輸入框、開工和貼標籤。Codex 只跑一輪就中斷，Pi 沒有登入模型，只看到指令送出。沒有讓它們做完一整個變更。Codex 的 hook 只測過 `UserPromptSubmit`。Cursor 沒有用真的程式測過，只有 `model.js` 的測試。
 - **一次開多個分頁可能撞 git 鎖**：和整波開工相同，撞到時那個 agent 會停下來回報。

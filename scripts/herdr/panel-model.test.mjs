@@ -1713,6 +1713,17 @@ test('dock-panel：版面把 Cmd+點交給面板，mod.json 的規則和 linkTar
   assert.ok(!pattern.test('/a/speclink/specs/auth/spec.md'));
 });
 
+test('指令面板：mod.json 的項目開得到 repo 裡的 mod，名稱有中文', () => {
+  const mods = fileURLToPath(new URL('../../integrations/herdr/mods/', import.meta.url));
+  const { palette } = JSON.parse(readFileSync(path.join(mods, 'speclink/mod.json'), 'utf8'));
+  assert.equal(palette.length, 2);
+  for (const entry of palette) {
+    assert.equal(entry.command, 'mod.open');
+    assert.ok(readdirSync(mods).includes(entry.args.name), entry.args.name);
+    assert.ok(Object.hasOwn(TO_ZH, entry.title), `「${entry.title}」沒有中文`);
+  }
+});
+
 const HERDR_DIR = fileURLToPath(new URL('../../integrations/herdr/', import.meta.url));
 const code = (file) =>
   readFileSync(path.join(HERDR_DIR, file), 'utf8')

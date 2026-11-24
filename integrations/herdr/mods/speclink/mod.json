@@ -2,5 +2,9 @@
   "place": "none",
   "title": "Speclink",
   "overlay": { "kind": "window", "key": "speclink", "width": 400, "height": 0.85 },
-  "link_handlers": [{ "kind": "file", "pattern": "(?:^|/)(?:speclink|openspec)/(?:changes|discussions)/" }]
+  "link_handlers": [{ "kind": "file", "pattern": "(?:^|/)(?:speclink|openspec)/(?:changes|discussions)/" }],
+  "palette": [
+    { "title": "Speclink: Skills", "command": "mod.open", "args": { "name": "speclink-new" }, "group": "Speclink", "words": "speclink skill skills 技能" },
+    { "title": "Speclink: Panel", "command": "mod.open", "args": { "name": "speclink" }, "group": "Speclink", "words": "speclink panel board 面板 看板" }
+  ]
 }
