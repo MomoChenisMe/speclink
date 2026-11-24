@@ -1,6 +1,16 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.19.0 (2026-11-24)
+
+### New features
+
+- The Herdr panel no longer asks the CLI for updates while the Herdr window is minimized, fully covered, or on another desktop. It catches up when the window shows again. The command palette (`⌘⇧P`) also has the new items "Speclink: Skills" and "Speclink: Panel". Both need Herdr 0.1.18.
+
+### Fixes
+
+- When an Agent writes the delta specs of a change in the spec language, it now keeps each requirement and scenario name that points at the canonical spec exactly as the canonical spec writes it, so the change still passes validation. `speclink instructions specs` states which names to keep for every spec language, and the ingest summary lists each name that it changed as "old name → new name". When `speclink instructions` gets an unknown artifact ID, the error now lists the IDs that you can use, for example `Use proposal, design, specs, tasks, or apply`.
+
 ## 0.18.0 (2026-11-24)
 
 ### New features

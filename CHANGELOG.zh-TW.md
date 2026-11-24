@@ -1,6 +1,16 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.19.0（2026-11-24）
+
+### 新功能
+
+- Herdr 視窗縮小、被完全蓋住或在別的桌面時，Herdr 面板不再向 CLI 重抓資料，視窗再出現時補抓一次；指令面板（`⌘⇧P`）也多了「Speclink：技能」與「Speclink：面板」兩項，兩者都需要 Herdr 0.1.18。
+
+### 修正
+
+- Agent 用規格語言寫變更的規格差異時，指向正式規格的需求與情境名稱會照正式規格的原文保留，變更的驗證不會因此失敗：`speclink instructions specs` 對每種規格語言都寫明哪些名稱照原文，ingest 的摘要也會逐一列出改掉的名稱（「舊名稱 → 新名稱」）；`speclink instructions` 收到不認得的產出物代號時，錯誤訊息會列出可用的代號，例如 `Use proposal, design, specs, tasks, or apply`。
+
 ## 0.18.0（2026-11-24）
 
 ### 新功能

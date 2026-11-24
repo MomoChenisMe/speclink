@@ -1,5 +1,29 @@
 [
   {
+    "version": "0.19.0",
+    "date": "2026-11-24",
+    "sections": [
+      {
+        "kind": "features",
+        "items": [
+          {
+            "en": "The Herdr panel no longer asks the CLI for updates while the Herdr window is minimized, fully covered, or on another desktop. It catches up when the window shows again. The command palette (`⌘⇧P`) also has the new items \"Speclink: Skills\" and \"Speclink: Panel\". Both need Herdr 0.1.18.",
+            "zh-TW": "Herdr 視窗縮小、被完全蓋住或在別的桌面時，Herdr 面板不再向 CLI 重抓資料，視窗再出現時補抓一次；指令面板（`⌘⇧P`）也多了「Speclink：技能」與「Speclink：面板」兩項，兩者都需要 Herdr 0.1.18。"
+          }
+        ]
+      },
+      {
+        "kind": "fixes",
+        "items": [
+          {
+            "en": "When an Agent writes the delta specs of a change in the spec language, it now keeps each requirement and scenario name that points at the canonical spec exactly as the canonical spec writes it, so the change still passes validation. `speclink instructions specs` states which names to keep for every spec language, and the ingest summary lists each name that it changed as \"old name → new name\". When `speclink instructions` gets an unknown artifact ID, the error now lists the IDs that you can use, for example `Use proposal, design, specs, tasks, or apply`.",
+            "zh-TW": "Agent 用規格語言寫變更的規格差異時，指向正式規格的需求與情境名稱會照正式規格的原文保留，變更的驗證不會因此失敗：`speclink instructions specs` 對每種規格語言都寫明哪些名稱照原文，ingest 的摘要也會逐一列出改掉的名稱（「舊名稱 → 新名稱」）；`speclink instructions` 收到不認得的產出物代號時，錯誤訊息會列出可用的代號，例如 `Use proposal, design, specs, tasks, or apply`。"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "0.18.0",
     "date": "2026-11-24",
     "sections": [
