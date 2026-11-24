@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 210
 keywords: [config.yaml, 政策, locale, spec_locale, 規格語言, tdd, audit, worktree, 專案說明, 產出規則, 審查規則, review, 子代理模型, subagent_model, subagent-model, 確認表, 提醒分流, dry-run, 對話語言, 空字串, "--help"]
 sources: [workflow-config, config-skill, "skill-authoring#技能共用的對話語言段落", "baseline-skill#盤點前取得 workflow config 並套用 specs 產出規則"]
-generated: 2026-11-24T15:29:54+08:00
+generated: 2026-11-24T22:34:03+08:00
 ---
 # 工作流政策與設定
 
@@ -49,6 +49,7 @@ locale 決定 AI 產出的文件與報告用哪種語言。技能替自己的產
 
 - auto 跟著 locale 的有效值。spec_locale 沒設定時是英文，即使 locale 是 tw。
 - 不論哪種語言，結構標記（例如 `### Requirement:`、`#### Scenario:`）與 SHALL、MUST 這類規範關鍵字都維持英文。
+- 需求與情境的名稱也是內文，跟著規格的語言寫。例外是指向正式規格的四種名稱：`## MODIFIED Requirements` 與 `## REMOVED Requirements` 底下的需求名稱、改名項目的原名稱（`FROM:` 那一行）、MODIFIED 區塊沿用的正式規格情境名稱，以及 REMOVED-SCENARIO 註解裡的名稱。這四種名稱照正式規格的原文寫，不論原文是哪種語言；改掉它們，變更的驗證會失敗。不論規格是哪種語言，都照這個做法寫名稱。
 - 規格是繁體中文時，「應該、可能、也許、或許、大概、考慮、盡量、待定」這類模糊用語會被分析標出來，要改寫成 SHALL 或 MUST。
 - 環境變數 SPECLINK_SPEC_LOCALE 優先於 config.yaml，順序見下方「有效值怎麼決定」。例如 config.yaml 設 spec_locale: en，而環境變數設 ja，規格就用日文寫。
 - agent 不用自己去讀設定：`speclink instructions` 給規格這份產出物的指示，已寫明解析後的語言。

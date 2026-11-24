@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 110
 keywords: [提案, propose, 變更, capability, 命名守門, Purpose, 手動任務, validate, 最後一刀, 分期, 依賴, 插隊, schema, no-spec-change, 不改規格]
 sources: [propose-skill, capability-naming-guard, spec-validation, manual-task-marker]
-generated: 2026-11-24T15:29:54+08:00
+generated: 2026-11-24T22:34:03+08:00
 ---
 
 # 提案：建立變更與產物

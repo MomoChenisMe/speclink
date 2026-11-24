@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 130
 keywords: [drift, ingest, 漂移, 閒置, 需求變更, 過期, validate, no-spec-change, change schema]
 sources: [drift-computation, archive-merge, "skill-routing#出口交棒由技能結尾承載", "user-documentation#完整工作流指南說明用途與使用時機", "user-documentation#討論結論後的轉出與併入分流完整", ingest-skill]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-24T22:34:03+08:00
 ---
 
 # 續作與需求變更：drift 與 ingest
@@ -113,6 +113,8 @@ ingest 更新每一份產物（提案、設計、delta、任務）時，都是�
 - 任務清單裡既有的每一行原樣保留，已勾選的仍是勾選的。新任務加在既有任務之外，是未勾選的。
 - 變更在 worktree 裡時，更新落在 worktree 的那一份，也就是 apply 會讀的那一份。
 - 遠端專案也照同一套做：更新直接落在 Server 上，不讀寫 checkout 裡的任何規格檔。
+- 這次更新改到既有的需求或情境名稱時（例如把英文寫的 delta 規格改成規格的語言），最後的摘要逐一列出每個改掉的名稱，寫成「舊名稱 → 新名稱」，例如「Issue tokens at the token endpoint → 在 Token 端點簽發 Token」。沒有改到任何名稱時，摘要不列這一項。
+- 指向正式規格的名稱不翻譯：例如 delta 以 MODIFIED 改寫一條英文名稱的正式規格需求，內文改成規格的語言，名稱仍與正式規格逐字相同，摘要也不列它。哪些名稱照原文寫，見[工作流政策與設定](policy-config.md)的「spec_locale 管規格檔」。
 - 整份寫回被引擎拒絕時，ingest 停下來告訴你原因，不會改成直接編輯檔案。
 
 ### ingest 收尾：重判這個變更的依賴
