@@ -5,7 +5,7 @@
 use napi::bindgen_prelude::*;
 use napi_derive::napi;
 use speclink_core::config::{CustomTool, Invocation};
-use speclink_core::skills::{self, HarnessLimits, RenderTarget, SpecLocation, Tool};
+use speclink_core::skills::{self, CodeAccess, HarnessLimits, RenderTarget, SpecLocation, Tool};
 
 /// One entry of `skills.list()`.
 #[napi(object)]
@@ -20,8 +20,9 @@ pub struct SkillInfo {
 /// skill is used in; default true — a host that embeds the engine and has no
 /// local spec files passes false), plus the spec directory name and the neutral
 /// target's tool name ({{TOOL}} substitution, default "speclink"), and the
-/// host's limits: the skills it provides and whether it has a checkout of the
-/// code (default true).
+/// host's limits: the skills it provides, whether it has a checkout of the
+/// code (default true), and whether it can use git and its history (default:
+/// the value of checkout).
 #[napi(object)]
 pub struct RenderOptions {
     pub target: String,
@@ -31,6 +32,7 @@ pub struct RenderOptions {
     pub tool_name: Option<String>,
     pub skills: Option<Vec<String>>,
     pub checkout: Option<bool>,
+    pub git_history: Option<bool>,
 }
 
 /// The resolved matrix point.
@@ -75,6 +77,17 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
         },
     };
     let checkout = opts.checkout != Some(false);
+    // An omitted gitHistory follows checkout; git history comes with a checkout.
+    let code_access = match (checkout, opts.git_history) {
+        (true, None | Some(true)) => CodeAccess::WithGit,
+        (true, Some(false)) => CodeAccess::WithoutGit,
+        (false, None | Some(false)) => CodeAccess::NoCheckout,
+        (false, Some(true)) => {
+            return Err(Error::from_reason(
+                "checkout: false contradicts gitHistory: true — without a checkout of the code, there is no git history either",
+            ))
+        }
+    };
     // Without a checkout of the code, the spec folder is not in one either.
     let location = match (opts.spec_in_checkout, checkout) {
         (Some(true), false) => {
@@ -92,7 +105,7 @@ fn resolve_matrix(opts: &RenderOptions) -> Result<Matrix> {
             .clone()
             .unwrap_or_else(|| speclink_core::workspace::DEFAULT_SPEC_DIR.to_string()),
         location,
-        limits: HarnessLimits { skills: opts.skills.clone(), checkout },
+        limits: HarnessLimits { skills: opts.skills.clone(), code_access },
     })
 }
 

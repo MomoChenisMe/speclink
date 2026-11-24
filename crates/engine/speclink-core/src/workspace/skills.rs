@@ -483,21 +483,28 @@ follow it — do not send it to the speclink tool as arguments.\n\n---\n\n"
     }
 }
 
+/// What a harness can do with the code. A harness with git but no checkout cannot be
+/// written down: git history comes with a checkout.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum CodeAccess {
+    /// A checkout of the code and its git history.
+    #[default]
+    WithGit,
+    /// A copy of the code to read and search, with no git history and no way to run git.
+    WithoutGit,
+    /// No checkout of the code and no git history.
+    NoCheckout,
+}
+
 /// What the harness a skill is rendered for lacks. The default lacks nothing: every
 /// skill, and a checkout of the code with its git history — the files the CLI generates.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct HarnessLimits {
     /// The skills the harness provides, by registry name (`propose`); `None` is every
     /// skill. [`render_skill_file_with_limits`] refuses a list it cannot write down.
     pub skills: Option<Vec<String>>,
-    /// Whether the harness has a checkout of the code and its git history.
-    pub checkout: bool,
-}
-
-impl Default for HarnessLimits {
-    fn default() -> Self {
-        HarnessLimits { skills: None, checkout: true }
-    }
+    /// What the harness can do with the code.
+    pub code_access: CodeAccess,
 }
 
 /// A skill list [`render_skill_file_with_limits`] can write down for `rendered`: not empty,
@@ -536,13 +543,21 @@ is not available here: do not load it, and do not tell the user to run it. When 
 document points to such a skill, tell the user that an engineer does that step in a checkout of the code."
         ));
     }
-    if !limits.checkout {
-        items.push(
+    match limits.code_access {
+        CodeAccess::WithGit => {}
+        CodeAccess::WithoutGit => items.push(
+            "- This harness has a copy of the code that you can read and search, but it has no git \
+history and cannot run git. Skip every step of this document that runs a git command. When a step \
+names another way to get the same fact, use that way. In your answer, say which steps you skipped \
+for this reason."
+                .to_string(),
+        ),
+        CodeAccess::NoCheckout => items.push(
             "- This harness has no checkout of the code and no git history. Skip every step of \
 this document that reads code files, searches the code, or runs a git command. Check facts only \
 with speclink verbs. In your answer, say which steps you skipped for this reason."
                 .to_string(),
-        );
+        ),
     }
     (!items.is_empty()).then(|| format!("## Harness limits\n\n{}\n\n---\n\n", items.join("\n")))
 }
@@ -979,9 +994,9 @@ mod tests {
         Tool::ALL.into_iter().map(RenderTarget::Builtin).chain([RenderTarget::Custom(cli), RenderTarget::Custom(tool_call)]).collect()
     }
 
-    fn limits(skills: &[&str], checkout: bool) -> HarnessLimits {
+    fn limits(skills: &[&str], code_access: CodeAccess) -> HarnessLimits {
         let skills = (!skills.is_empty()).then(|| skills.iter().map(|s| s.to_string()).collect());
-        HarnessLimits { skills, checkout }
+        HarnessLimits { skills, code_access }
     }
 
     /// `rendered` cut around its `## Harness limits` section: what comes before it, the
@@ -999,11 +1014,68 @@ the code.";
     const CHECKOUT_ITEM: &str = "This harness has no checkout of the code and no git history. Skip \
 every step of this document that reads code files, searches the code, or runs a git command. Check \
 facts only with speclink verbs. In your answer, say which steps you skipped for this reason.";
+    const NO_GIT_ITEM: &str = "This harness has a copy of the code that you can read and search, but \
+it has no git history and cannot run git. Skip every step of this document that runs a git command. \
+When a step names another way to get the same fact, use that way. In your answer, say which steps you \
+skipped for this reason.";
 
     /// 預設的限制是「什麼都不缺」：`render_skill_file_for` 用它轉呼叫，所以 CLI 的輸出由 golden 守住。
     #[test]
     fn the_default_harness_limits_lack_nothing() {
-        assert_eq!(HarnessLimits::default(), limits(&[], true));
+        assert_eq!(CodeAccess::default(), CodeAccess::WithGit);
+        assert_eq!(HarnessLimits::default(), limits(&[], CodeAccess::WithGit));
+    }
+
+    /// 三個程式碼存取值各自的項目：有 git 沒有項目、不能用 git 是新的那一句、沒有 checkout 是原本那一句。
+    #[test]
+    fn each_code_access_gives_its_own_item() {
+        assert_eq!(harness_limits_note(&limits(&[], CodeAccess::WithGit), ""), None);
+        assert_eq!(
+            harness_limits_note(&limits(&[], CodeAccess::WithoutGit), "").as_deref(),
+            Some(format!("## Harness limits\n\n- {NO_GIT_ITEM}\n\n---\n\n").as_str())
+        );
+        assert_eq!(
+            harness_limits_note(&limits(&[], CodeAccess::NoCheckout), "").as_deref(),
+            Some(format!("## Harness limits\n\n- {CHECKOUT_ITEM}\n\n---\n\n").as_str())
+        );
+    }
+
+    /// 技能清單與「不能用 git」同時給時兩個項目、技能在前。
+    #[test]
+    fn the_skills_item_comes_before_the_no_git_item() {
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+        let trace = registry().into_iter().find(|s| s.name == "trace").unwrap();
+        let rendered = render_skill_file_with_limits(
+            RenderTarget::Custom(&tool_call),
+            &trace,
+            "openspec",
+            SpecLocation::Elsewhere,
+            &limits(&["discuss", "trace"], CodeAccess::WithoutGit),
+        )
+        .unwrap();
+        let (_, section, _) = around_limits(&rendered);
+        let skills = SKILLS_ITEM.replace("{list}", "`speclink-discuss`, `speclink-trace`");
+        assert_eq!(section, format!("## Harness limits\n\n- {skills}\n- {NO_GIT_ITEM}\n\n---\n\n"));
+    }
+
+    /// 「不能用 git」不改技能的內文：每一支技能（含有 git 步驟的 trace）在每個 target 與兩種
+    /// location 下，段落前後的文字合起來等於不帶限制的渲染。
+    #[test]
+    fn no_git_keeps_the_body_of_every_skill() {
+        let cli = custom_target();
+        let tool_call = CustomTool { invocation: Invocation::ToolCall, ..custom_target() };
+        for target in every_target(&cli, &tool_call) {
+            for skill in registry() {
+                for location in SpecLocation::BOTH {
+                    let given = limits(&[], CodeAccess::WithoutGit);
+                    let rendered = render_skill_file_with_limits(target, &skill, "openspec", location, &given).unwrap();
+                    let plain = render_skill_file_for(target, &skill, "openspec", location);
+                    let (before, section, after) = around_limits(&rendered);
+                    assert_eq!(format!("{before}{after}"), plain, "skill '{}' ({location:?})", skill.name);
+                    assert_eq!(section, format!("## Harness limits\n\n- {NO_GIT_ITEM}\n\n---\n\n"));
+                }
+            }
+        }
     }
 
     /// 清單是空的、有登錄表沒有的名稱、或不含正在渲染的技能時不渲染，訊息指出是哪一項。
@@ -1014,14 +1086,14 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
         let refused = |given: HarnessLimits| {
             render_skill_file_with_limits(RenderTarget::Custom(&cli), &propose, "openspec", SpecLocation::InCheckout, &given).unwrap_err()
         };
-        let empty = refused(HarnessLimits { skills: Some(Vec::new()), checkout: true });
+        let empty = refused(HarnessLimits { skills: Some(Vec::new()), code_access: CodeAccess::WithGit });
         assert!(empty.contains("must not be empty"), "{empty}");
-        let unknown = refused(limits(&["propose", "aply"], true));
+        let unknown = refused(limits(&["propose", "aply"], CodeAccess::WithGit));
         assert!(unknown.contains("'aply' is not a skill name"), "{unknown}");
         // The engine's message names no function of an SDK.
         assert!(!unknown.contains("skills.list()"), "{unknown}");
         assert!(unknown.contains("without the speclink- prefix"), "{unknown}");
-        let missing = refused(limits(&["discuss"], false));
+        let missing = refused(limits(&["discuss"], CodeAccess::NoCheckout));
         assert!(missing.contains("must include 'propose'"), "{missing}");
     }
 
@@ -1033,7 +1105,7 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
         for target in every_target(&cli, &tool_call) {
             for skill in registry() {
                 for location in SpecLocation::BOTH {
-                    let given = limits(&[skill.name, "discuss"], true);
+                    let given = limits(&[skill.name, "discuss"], CodeAccess::WithGit);
                     let rendered = render_skill_file_with_limits(target, &skill, "openspec", location, &given).unwrap();
                     let plain = render_skill_file_for(target, &skill, "openspec", location);
                     let (before, section, after) = around_limits(&rendered);
@@ -1042,6 +1114,7 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
                     assert!(after.starts_with("**Conversation language**"), "skill '{}': {after}", skill.name);
                     assert!(section.starts_with("## Harness limits\n\n- This harness provides only these skills: "));
                     assert!(!section.contains("no checkout"), "{section}");
+                    assert!(!section.contains("cannot run git"), "{section}");
                 }
             }
         }
@@ -1057,7 +1130,7 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
             &trace,
             "openspec",
             SpecLocation::Elsewhere,
-            &limits(&["trace", "discuss", "trace"], false),
+            &limits(&["trace", "discuss", "trace"], CodeAccess::NoCheckout),
         )
         .unwrap();
         let (_, section, _) = around_limits(&rendered);
@@ -1073,7 +1146,7 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
         for target in every_target(&cli, &tool_call) {
             for skill in registry() {
                 let rendered =
-                    render_skill_file_with_limits(target, &skill, "openspec", SpecLocation::Elsewhere, &limits(&[], false)).unwrap();
+                    render_skill_file_with_limits(target, &skill, "openspec", SpecLocation::Elsewhere, &limits(&[], CodeAccess::NoCheckout)).unwrap();
                 let plain = render_skill_file_for(target, &skill, "openspec", SpecLocation::Elsewhere);
                 let (before, section, after) = around_limits(&rendered);
                 assert_eq!(format!("{before}{after}"), plain, "skill '{}'", skill.name);
@@ -1096,7 +1169,7 @@ facts only with speclink verbs. In your answer, say which steps you skipped for 
             (RenderTarget::Custom(&cli), "`speclink-discuss`, `speclink-propose`"),
         ] {
             let rendered =
-                render_skill_file_with_limits(target, &propose, "openspec", SpecLocation::InCheckout, &limits(&["propose", "discuss"], true))
+                render_skill_file_with_limits(target, &propose, "openspec", SpecLocation::InCheckout, &limits(&["propose", "discuss"], CodeAccess::WithGit))
                     .unwrap();
             let (_, section, _) = around_limits(&rendered);
             assert_eq!(section, format!("## Harness limits\n\n- {}\n\n---\n\n", SKILLS_ITEM.replace("{list}", list)));

@@ -887,7 +887,7 @@ export function runStoreConformance(harness: ConformanceHarness): Promise<Confor
 
 /**
  * The render matrix: target × invocation × specInCheckout, and the host's
- * limits (`skills`, `checkout`).
+ * limits (`skills`, `checkout`, `gitHistory`).
  */
 export interface RenderOptions {
   target: 'claude' | 'codex' | 'copilot' | 'pi' | 'cursor' | 'neutral'
@@ -921,9 +921,20 @@ export interface RenderOptions {
    * the model to skip the steps that read code or run git, and makes an
    * omitted `specInCheckout` false; `specInCheckout: true` with it throws.
    * A value that is not a boolean throws, `undefined` included: leave the
-   * key out for the default.
+   * key out for the default. For a harness that can read the code but cannot
+   * run git, leave this out and pass `gitHistory: false`.
    */
   checkout?: boolean
+  /**
+   * Whether the harness can use git and its history. Default: the value of
+   * `checkout`. `false` with a checkout adds an item to `## Harness limits`
+   * that tells the model to skip the steps that run git, and keeps the steps
+   * that read and search the code; it does not change the `specInCheckout`
+   * default. `checkout: false` with `gitHistory: true` throws. A value that
+   * is not a boolean throws, `undefined` included: leave the key out to
+   * follow `checkout`.
+   */
+  gitHistory?: boolean
 }
 
 export interface SkillInfo {

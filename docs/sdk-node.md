@@ -842,11 +842,13 @@ const skillMd = skills.render('propose', {
 | `toolName` | string | For `neutral` only: the tool name in the skill text. The default is `speclink` |
 | `skills` | array of skill names | The skills that your Agent has, for example `['discuss', 'propose']` (`skills.list()` has the names). The skill text then has a `## Harness limits` section after the start. The section lists these skills and tells the model not to load another skill and not to tell the user to run one. When a step points to another skill, the model tells the user that an engineer does that step in a checkout of the code. The default is every skill, with no section |
 | `checkout` | `true` (default), `false` | Whether your Agent has a checkout of the code and its git history. `false` adds an item to `## Harness limits`: the model skips the steps that read code files, search the code, or run a git command, checks facts only with speclink verbs, and says which steps it skipped. `false` also makes an omitted `specInCheckout` `false` |
+| `gitHistory` | `true`, `false` | Whether your Agent can use git and its history. The default is the value of `checkout`. `false` with a checkout adds an item to `## Harness limits`: the model still reads and searches the code, but it skips the steps that run a git command, uses another way when a step names one, and says which steps it skipped. `false` does not change the default of `specInCheckout` |
 
-The two options add the `## Harness limits` section. With the same `specInCheckout`, the rest of the text is the text that you get without them. One case changes more: `checkout: false` with `specInCheckout` omitted gives the rest of the text of `specInCheckout: false`. Without `skills`, and with `checkout` omitted or `true`, the text is the same as before, with no section. These values throw, and nothing is rendered:
+The options `skills`, `checkout`, and `gitHistory` add the `## Harness limits` section. With the same `specInCheckout`, the rest of the text is the text that you get without them. One case changes more: `checkout: false` with `specInCheckout` omitted gives the rest of the text of `specInCheckout: false`. The item of `checkout: false` covers git too, so `gitHistory: false` with it adds no second item. Without `skills`, and with `checkout` and `gitHistory` omitted or `true`, the text is the same as before, with no section. These values throw, and nothing is rendered:
 
 - `skills` is not an array of strings (a `skills` key that holds `undefined` throws too), is an empty array, has a name that `skills.list()` does not have (the message names it), or does not include the skill that you render.
 - `checkout` is not a boolean (`'false'`, `null`, and a key that holds `undefined` throw too), or `checkout: false` comes with `specInCheckout: true` (the message says that the two options contradict).
+- `gitHistory` is not a boolean (`'false'`, `null`, and a key that holds `undefined` throw too), or `checkout: false` comes with `gitHistory: true` (the message says that the two options contradict).
 
 **Behavior change:** an option key that `skills.render` does not know throws. The message names the key and the valid keys. Before, `skills.render` ignored such a key, so a misspelled key (`skils`) had no effect and gave no error.
 
@@ -863,6 +865,21 @@ const discussMd = skills.render('discuss', {
 ```
 
 An Agent without a code checkout can use these skills: `discuss`, `propose`, `ingest`, `archive`, `improve`, `analyze`, and `trace`. The skills `apply`, `review`, `verify`, `quality`, `commit`, and the worktree skills need a code checkout. Leave them to the tools on the side of the engineers. Give the skills that your Agent has as `skills`, and pass `checkout: false`.
+
+Some Agents get a copy of the code that they can read and search, but no tool that runs git (for example, a read-only copy of one commit). For such an Agent, leave `checkout` out and pass `gitHistory: false`:
+
+```js
+// An Agent that can read and search the code, but cannot run git
+const traceMd = skills.render('trace', {
+  target: 'neutral',
+  invocation: 'tool-call',
+  specInCheckout: false,
+  gitHistory: false, // the model skips the git steps and still reads the code
+  skills: ['discuss', 'trace', 'propose', 'ingest', 'analyze', 'config'],
+})
+```
+
+Of these six skills, only `trace` has steps that run git. With `gitHistory: false`, the model answers from the discussions and the proposals when a change has no evidence, finds code with a keyword search and without `git log -S` and `git blame`, and says which git steps it skipped.
 
 ## <a id="example"></a>Complete example
 

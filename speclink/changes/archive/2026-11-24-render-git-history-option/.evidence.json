@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "change": "render-git-history-option",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 [Red] 在 crates/engine/speclink-core/src/workspace/skills.rs 的測試模組加失敗測試，對應 design「核心以一個三值的型別表示程式碼的存取」與「Harness limits 的新項目與順序」：`HarnessLimits` 的程式碼存取是「有 git」（預設）時沒有程式碼的項目；是「讀得到程式碼、不能用 git」時 `## Harness limits` 恰好多一個項目，含 `cannot run git` 與 `Skip every step of this document that runs a git command`、不含 `reads code files`；是「沒有 checkout」時項目文字與現在相同；同時給技能清單時技能的項目在前；以 trace 技能渲染「不能用 git」時，段落前後的文字合起來等於不帶限制的渲染結果。驗證：`cargo test -p speclink-core skills` 新測試失敗（型別或斷言不成立）。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 [Green] 把 `HarnessLimits` 的 `checkout: bool` 換成三個值的 `CodeAccess`（`WithGit` 為預設、`WithoutGit`、`None`），`harness_limits_note` 依三個值決定項目，新項目的文字照 design 寫明的那一句；同步改 crates/adapters/speclink-node/src/render.rs 建構 `HarnessLimits` 的地方讓它編譯（此時 `checkout: false` 對到 `None`、其餘對到 `WithGit`，行為不變）。驗證：`cargo test -p speclink-core skills` 通過；`cargo test -p speclink-core --test it render_golden` 不更新任何 golden 就通過（CLI 產生的技能檔不變）。",
+      "files": [
+        "crates/adapters/speclink-node/src/render.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 [Red] 在 crates/adapters/speclink-node/__test__/render.spec.ts 加失敗測試，涵蓋需求「渲染 API 的宿主限制選項」新增的五個情境與 Example 新增的三列：`gitHistory: false` 時 trace 的 `## Harness limits` 恰好一個項目且其餘文字不變；加上 `skills` 時兩個項目、技能在前；`{ checkout: false }` 與 `{ checkout: false, gitHistory: false }` 相同且等於現在 `checkout: false` 的輸出；`gitHistory: true` 的輸出等於不帶這個鍵；`{ target: 'neutral', gitHistory: false }` 的內文是 specInCheckout 為 true 的那一份；`gitHistory: 'false'`、`gitHistory: null`、`checkout: false` 加 `gitHistory: true` 都拋錯（最後一項的訊息含 `checkout: false` 與 `gitHistory: true`）；鍵在而值是 undefined 時拋 TypeError 且訊息含 `gitHistory must be true or false`。同一個檔裡需求「渲染 API 拒絕不認得的選項鍵」的測試把合法鍵清單改成含 `gitHistory`，並斷言打錯的鍵 `gitHistroy` 的錯誤訊息列出 `gitHistory`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 新測試失敗。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 [Green] 實作 design「選項 gitHistory 的形狀與預設」與「Node 這一層的檢查」：crates/adapters/speclink-node/src/render.rs 的 `RenderOptions` 加 `git_history`，`resolve_matrix` 把 `checkout` 與 `gitHistory` 轉成 `CodeAccess`（省略時跟著 `checkout`；`checkout: false` 加 `gitHistory: true` 回傳矛盾的錯誤；`gitHistory` 不影響 `specInCheckout` 的預設）；crates/adapters/speclink-node/index.js 的 `RENDER_OPTIONS` 加入 `gitHistory` 並拒絕值是 undefined 的鍵；crates/adapters/speclink-node/index.d.ts 的 `RenderOptions` 加 `gitHistory?: boolean` 與說明，`checkout` 的說明指向它。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 同步 SDK 文件：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的 `skills.render` 選項表加一列 `gitHistory`（值、預設跟著 `checkout`、`false` 時多出的 `## Harness limits` 項目），表後的說明把「這兩個選項」改成涵蓋三個選項、補上 `gitHistory` 的兩種錯誤（不是布林值、`checkout: false` 加 `gitHistory: true`），並加一個「讀得到程式碼、不能用 git 的 Agent」的範例；docs/product-status.md 與 docs/product-status.zh-TW.md 的 Node SDK 那一列，把「有沒有 checkout」補成「有沒有 checkout、能不能用 git」。沒有新增匯出名稱，crates/adapters/speclink-node/README.md 的「What the package contains」表不用改（在完成註記寫明已確認）。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、詞彙守門與連結檢查）。 完成註記：兩份 sdk-node 文件加了 `gitHistory` 那一列、三個選項的說明（含 `checkout: false` 已涵蓋 git、一起傳 `gitHistory: false` 不會多第二個項目）、`gitHistory` 的兩種錯誤，以及 trace 的「讀得到程式碼、不能用 git」範例；product-status 兩份的 Node SDK 列補上「能不能用 git」，並把那一列的日期改成 2026-11-24。已確認 crates/adapters/speclink-node/README.md 的「What the package contains」表只列匯出名稱，這次沒有新的匯出名稱，不用改。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M861CN1W82KQ9YJBW11VET4N",
+      "taskDesc": "1.1 [Red] 在 crates/engine/speclink-core/src/workspace/skills.rs 的測試模組加失敗測試，對應 design「核心以一個三值的型別表示程式碼的存取」與「Harness limits 的新項目與順序」：`HarnessLimits` 的程式碼存取是「有 git」（預設）時沒有程式碼的項目；是「讀得到程式碼、不能用 git」時 `## Harness limits` 恰好多一個項目，含 `cannot run git` 與 `Skip every step of this document that runs a git command`、不含 `reads code files`；是「沒有 checkout」時項目文字與現在相同；同時給技能清單時技能的項目在前；以 trace 技能渲染「不能用 git」時，段落前後的文字合起來等於不帶限制的渲染結果。驗證：`cargo test -p speclink-core skills` 新測試失敗（型別或斷言不成立）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "17a3d454281da7550d072b10502942928db6a47f",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/skills.rs"
+      ],
+      "recordedAt": "2026-11-24T06:57:44Z"
+    },
+    {
+      "taskId": "tsk_01M861CN1WX799E0C8WYTM1WHC",
+      "taskDesc": "1.2 [Green] 把 `HarnessLimits` 的 `checkout: bool` 換成三個值的 `CodeAccess`（`WithGit` 為預設、`WithoutGit`、`None`），`harness_limits_note` 依三個值決定項目，新項目的文字照 design 寫明的那一句；同步改 crates/adapters/speclink-node/src/render.rs 建構 `HarnessLimits` 的地方讓它編譯（此時 `checkout: false` 對到 `None`、其餘對到 `WithGit`，行為不變）。驗證：`cargo test -p speclink-core skills` 通過；`cargo test -p speclink-core --test it render_golden` 不更新任何 golden 就通過（CLI 產生的技能檔不變）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "17a3d454281da7550d072b10502942928db6a47f",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/src/render.rs"
+      ],
+      "recordedAt": "2026-11-24T06:58:41Z"
+    },
+    {
+      "taskId": "tsk_01M861CN1W43QCBJ29BNDBRBAD",
+      "taskDesc": "2.1 [Red] 在 crates/adapters/speclink-node/__test__/render.spec.ts 加失敗測試，涵蓋需求「渲染 API 的宿主限制選項」新增的五個情境與 Example 新增的三列：`gitHistory: false` 時 trace 的 `## Harness limits` 恰好一個項目且其餘文字不變；加上 `skills` 時兩個項目、技能在前；`{ checkout: false }` 與 `{ checkout: false, gitHistory: false }` 相同且等於現在 `checkout: false` 的輸出；`gitHistory: true` 的輸出等於不帶這個鍵；`{ target: 'neutral', gitHistory: false }` 的內文是 specInCheckout 為 true 的那一份；`gitHistory: 'false'`、`gitHistory: null`、`checkout: false` 加 `gitHistory: true` 都拋錯（最後一項的訊息含 `checkout: false` 與 `gitHistory: true`）；鍵在而值是 undefined 時拋 TypeError 且訊息含 `gitHistory must be true or false`。同一個檔裡需求「渲染 API 拒絕不認得的選項鍵」的測試把合法鍵清單改成含 `gitHistory`，並斷言打錯的鍵 `gitHistroy` 的錯誤訊息列出 `gitHistory`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 新測試失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "17a3d454281da7550d072b10502942928db6a47f",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/render.spec.ts"
+      ],
+      "recordedAt": "2026-11-24T06:59:54Z"
+    },
+    {
+      "taskId": "tsk_01M861CN1W7NY4JQ9VD0CTP483",
+      "taskDesc": "2.2 [Green] 實作 design「選項 gitHistory 的形狀與預設」與「Node 這一層的檢查」：crates/adapters/speclink-node/src/render.rs 的 `RenderOptions` 加 `git_history`，`resolve_matrix` 把 `checkout` 與 `gitHistory` 轉成 `CodeAccess`（省略時跟著 `checkout`；`checkout: false` 加 `gitHistory: true` 回傳矛盾的錯誤；`gitHistory` 不影響 `specInCheckout` 的預設）；crates/adapters/speclink-node/index.js 的 `RENDER_OPTIONS` 加入 `gitHistory` 並拒絕值是 undefined 的鍵；crates/adapters/speclink-node/index.d.ts 的 `RenderOptions` 加 `gitHistory?: boolean` 與說明，`checkout` 的說明指向它。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "17a3d454281da7550d072b10502942928db6a47f",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/index.d.ts",
+        "crates/adapters/speclink-node/index.js"
+      ],
+      "recordedAt": "2026-11-24T07:00:33Z"
+    },
+    {
+      "taskId": "tsk_01M861CN1WVY9SM2TMZE5N040T",
+      "taskDesc": "3.1 同步 SDK 文件：docs/sdk-node.md 與 docs/sdk-node.zh-TW.md 的 `skills.render` 選項表加一列 `gitHistory`（值、預設跟著 `checkout`、`false` 時多出的 `## Harness limits` 項目），表後的說明把「這兩個選項」改成涵蓋三個選項、補上 `gitHistory` 的兩種錯誤（不是布林值、`checkout: false` 加 `gitHistory: true`），並加一個「讀得到程式碼、不能用 git 的 Agent」的範例；docs/product-status.md 與 docs/product-status.zh-TW.md 的 Node SDK 那一列，把「有沒有 checkout」補成「有沒有 checkout、能不能用 git」。沒有新增匯出名稱，crates/adapters/speclink-node/README.md 的「What the package contains」表不用改（在完成註記寫明已確認）。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照、詞彙守門與連結檢查）。 完成註記：兩份 sdk-node 文件加了 `gitHistory` 那一列、三個選項的說明（含 `checkout: false` 已涵蓋 git、一起傳 `gitHistory: false` 不會多第二個項目）、`gitHistory` 的兩種錯誤，以及 trace 的「讀得到程式碼、不能用 git」範例；product-status 兩份的 Node SDK 列補上「能不能用 git」，並把那一列的日期改成 2026-11-24。已確認 crates/adapters/speclink-node/README.md 的「What the package contains」表只列匯出名稱，這次沒有新的匯出名稱，不用改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "17a3d454281da7550d072b10502942928db6a47f",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md",
+        "docs/sdk-node.md",
+        "docs/sdk-node.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-24T07:04:07Z"
+    }
+  ]
+}

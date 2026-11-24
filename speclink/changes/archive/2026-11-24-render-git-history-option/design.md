@@ -41,7 +41,7 @@
 
 ### 核心以一個三值的型別表示程式碼的存取
 
-`HarnessLimits` 的 `checkout: bool` 換成 `code: CodeAccess`，`CodeAccess` 有三個值：`WithGit`（預設）、`WithoutGit`、`None`。這樣「沒有 checkout 卻有 git」在核心裡寫不出來，`harness_limits_note` 只需要對三個值各自決定要不要加項目；矛盾的組合只在 Node 這一層把兩個布林轉成 `CodeAccess` 時檢查一次。`HarnessLimits` 的建構只有 `resolve_matrix` 與核心的測試兩處，改欄位的影響面就是這兩處。
+`HarnessLimits` 的 `checkout: bool` 換成 `code_access: CodeAccess`，`CodeAccess` 有三個值：`WithGit`（預設）、`WithoutGit`、`NoCheckout`。這樣「沒有 checkout 卻有 git」在核心裡寫不出來，`harness_limits_note` 只需要對三個值各自決定要不要加項目；矛盾的組合只在 Node 這一層把兩個布林轉成 `CodeAccess` 時檢查一次。`HarnessLimits` 的建構只有 `resolve_matrix` 與核心的測試兩處，改欄位的影響面就是這兩處。
 
 替代方案：在 `HarnessLimits` 再加一個 `git_history: bool`。不採用：四種組合裡有一種不合法，每個讀這個結構的地方都要記得那條規則。
 
@@ -53,7 +53,7 @@
 - This harness has a copy of the code that you can read and search, but it has no git history and cannot run git. Skip every step of this document that runs a git command. When a step names another way to get the same fact, use that way. In your answer, say which steps you skipped for this reason.
 ```
 
-`CodeAccess::None` 的項目文字不變（它已經說明沒有 git 歷史）。一次呼叫最多只有其中一個。順序不變：技能清單的項目在前，程式碼的項目在後。項目是英文，不加全大寫強調字。
+`CodeAccess::NoCheckout` 的項目文字不變（它已經說明沒有 git 歷史）。一次呼叫最多只有其中一個。順序不變：技能清單的項目在前，程式碼的項目在後。項目是英文，不加全大寫強調字。
 
 這個項目對 trace 的效果：前提的「requires git」由這個項目蓋過；evidence 是 null 的步驟改走它已經寫明的後備（用討論與提案的內容回答）；沒有對到能力的步驟照常用關鍵字搜尋程式碼，跳過 git log -S 與 git blame，並在回答裡說明。
 

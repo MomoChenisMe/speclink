@@ -555,7 +555,14 @@ async function runStoreConformance(harness) {
   return binding.runStoreConformance(makeInvoker(target), keepsEvents)
 }
 
-const RENDER_OPTIONS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout']
+const RENDER_OPTIONS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout', 'gitHistory']
+
+/** What `skills.render` says about a limit key that holds `undefined`. */
+const UNDEFINED_LIMIT = {
+  skills: 'skills must be an array of skill names, got undefined (leave the key out for every skill)',
+  checkout: 'checkout must be true or false, got undefined (leave the key out for true)',
+  gitHistory: 'gitHistory must be true or false, got undefined (leave the key out to follow checkout)',
+}
 
 /** Skill knowledge: list the registry, render one SKILL.md for a matrix point. */
 const skills = {
@@ -572,11 +579,8 @@ const skills = {
       }
       // The native side reads `undefined` as a key that is not there: a limit
       // read from a missing setting would render a skill with no limits.
-      if ('skills' in options && options.skills === undefined) {
-        throw new TypeError('skills.render: skills must be an array of skill names, got undefined (leave the key out for every skill)')
-      }
-      if ('checkout' in options && options.checkout === undefined) {
-        throw new TypeError('skills.render: checkout must be true or false, got undefined (leave the key out for true)')
+      for (const [key, message] of Object.entries(UNDEFINED_LIMIT)) {
+        if (key in options && options[key] === undefined) throw new TypeError(`skills.render: ${message}`)
       }
     }
     return binding.skillsRender(name, options)

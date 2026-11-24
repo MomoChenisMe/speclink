@@ -842,11 +842,13 @@ const skillMd = skills.render('propose', {
 | `toolName` | 字串 | 只用於 `neutral`：技能內文裡的工具名稱，預設 `speclink` |
 | `skills` | 技能名稱的陣列 | 你的 Agent 有的技能，例如 `['discuss', 'propose']`（名稱見 `skills.list()`）。技能的文字會在開頭之後多一段 `## Harness limits`：列出這些技能，並告訴模型不要載入別的技能，也不要叫使用者執行別的技能；步驟指到別的技能時，告訴使用者那一步由工程師在程式碼的 checkout 裡做。預設是全部的技能，沒有這一段 |
 | `checkout` | `true`（預設）、`false` | 你的 Agent 有沒有程式碼的 checkout 與 git 歷史。`false` 會在 `## Harness limits` 多一個項目：模型跳過讀程式碼檔、搜尋程式碼與執行 git 的步驟，只用 speclink 的動詞查證事實，並說明跳過了哪些步驟。`false` 也會讓省略的 `specInCheckout` 變成 `false` |
+| `gitHistory` | `true`、`false` | 你的 Agent 能不能使用 git 與它的歷史。預設跟著 `checkout` 的值。有 checkout 而傳 `false` 時，`## Harness limits` 會多一個項目：模型照常讀與搜尋程式碼，但跳過執行 git 的步驟，步驟寫了其他做法時改用那個做法，並說明跳過了哪些步驟。`false` 不會改變 `specInCheckout` 的預設 |
 
-這兩個選項會多出 `## Harness limits` 這一段。`specInCheckout` 相同時，其餘的文字和不帶它們時相同。有一種情況會改到更多：`checkout: false` 而 `specInCheckout` 省略時，其餘的文字是 `specInCheckout: false` 的那一份。不帶 `skills`、而且 `checkout` 省略或是 `true` 時，文字和以前一樣，沒有這一段。下列的值會拋出錯誤，不會產生任何文字：
+`skills`、`checkout` 與 `gitHistory` 這三個選項會多出 `## Harness limits` 這一段。`specInCheckout` 相同時，其餘的文字和不帶它們時相同。有一種情況會改到更多：`checkout: false` 而 `specInCheckout` 省略時，其餘的文字是 `specInCheckout: false` 的那一份。`checkout: false` 的項目已經涵蓋 git，所以和它一起傳 `gitHistory: false` 不會多出第二個項目。不帶 `skills`、而且 `checkout` 與 `gitHistory` 都省略或是 `true` 時，文字和以前一樣，沒有這一段。下列的值會拋出錯誤，不會產生任何文字：
 
 - `skills` 不是字串陣列（`skills` 這個鍵的值是 `undefined` 也會報錯）、是空陣列、有 `skills.list()` 沒有的名稱（訊息會指出那個名稱），或不含你正在產生的那一支技能。
 - `checkout` 不是布林值（`'false'`、`null`，以及鍵的值是 `undefined` 也會報錯），或 `checkout: false` 和 `specInCheckout: true` 一起給（訊息會說兩個選項互相矛盾）。
+- `gitHistory` 不是布林值（`'false'`、`null`，以及鍵的值是 `undefined` 也會報錯），或 `checkout: false` 和 `gitHistory: true` 一起給（訊息會說兩個選項互相矛盾）。
 
 **行為變更：** `skills.render` 遇到不認得的選項鍵會拋出錯誤，訊息會指出那個鍵並列出合法的鍵。以前 `skills.render` 會忽略這種鍵，所以打錯的鍵名（`skils`）沒有作用，也不會報錯。
 
@@ -863,6 +865,21 @@ const discussMd = skills.render('discuss', {
 ```
 
 沒有程式碼 checkout 的 Agent 用得到的是 `discuss`、`propose`、`ingest`、`archive`、`improve`、`analyze`、`trace` 這幾支。`apply`、`review`、`verify`、`quality`、`commit` 與 worktree 的技能需要程式碼的 checkout，交給工程師那一邊的工具。把你的 Agent 有的技能傳給 `skills`，並傳 `checkout: false`。
+
+有些 Agent 拿到的是可以讀與搜尋的程式碼副本，但沒有執行 git 的工具（例如只有一個 commit 的唯讀副本）。這種 Agent 不要傳 `checkout`，改傳 `gitHistory: false`：
+
+```js
+// 讀得到也搜尋得到程式碼、但不能執行 git 的 Agent
+const traceMd = skills.render('trace', {
+  target: 'neutral',
+  invocation: 'tool-call',
+  specInCheckout: false,
+  gitHistory: false, // 模型跳過 git 的步驟，照常讀程式碼
+  skills: ['discuss', 'trace', 'propose', 'ingest', 'analyze', 'config'],
+})
+```
+
+這六支技能裡只有 `trace` 有執行 git 的步驟。傳 `gitHistory: false` 時，變更沒有 evidence 的話，模型改用討論與提案的內容回答；找程式碼時只用關鍵字搜尋，不用 `git log -S` 與 `git blame`；並說明跳過了哪些 git 步驟。
 
 ## <a id="example"></a>完整範例
 

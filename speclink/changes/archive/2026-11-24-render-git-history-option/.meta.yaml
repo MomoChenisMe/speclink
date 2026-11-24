@@ -1,0 +1,61 @@
+schema: spec-driven
+created: 2026-11-24T13:43:00+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-8
+depends_on: instructions-spec-language-and-tasks-pointer
+started_at: 2026-11-24T14:56:24+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-24T15:21:20+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 7
+reviewed_rounds: 2
+reviewed_commit: 17a3d454281da7550d072b10502942928db6a47f
+reviewed_scope:
+  - path: crates/adapters/speclink-node/__test__/render.spec.ts
+    hash: 51fdb2fd33e2c8b3c2e488d47f2d59e6b3f4400521582e09fac0ecc7fd391571
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: d7d709a1cce52b5286912b2319f8bf1782eaae72dbdac5212427aa3a11807c53
+  - path: crates/adapters/speclink-node/index.js
+    hash: abd7af42e68dcff83a959ea82628855225f7f57943052a467ffd8f22e614bab6
+  - path: crates/adapters/speclink-node/src/render.rs
+    hash: 427e1ac7f0cffd666f069630257a84baabe8fb48b64a6f830ac32f4f439acb84
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: ca9d92c952e3d672aa006aad17b704cad3f1884d1b37d115159b234ce1fd4f2e
+  - path: docs/product-status.md
+    hash: b6ff9c58b4d56b3c1c694f9da48324359468791015dea0e01cd6c02c2c67c419
+  - path: docs/product-status.zh-TW.md
+    hash: 2841be734e40fc15d6a7023b4d7b9c0cf49aaed598f75e43a7c6c58585e32acb
+  - path: docs/sdk-node.md
+    hash: 464466d8d06042e84a9e6fbc822a8686c228fb96df82438a2304f82652e866c8
+  - path: docs/sdk-node.zh-TW.md
+    hash: 494697b958dc60747a1686efeaf0e75d392fadfa4d2dd4641c40e809609b33ca
+verified_at: 2026-11-24T15:21:20+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 7
+verified_rounds: 2
+verified_commit: 17a3d454281da7550d072b10502942928db6a47f
+verified_scope:
+  - path: crates/adapters/speclink-node/__test__/render.spec.ts
+    hash: 51fdb2fd33e2c8b3c2e488d47f2d59e6b3f4400521582e09fac0ecc7fd391571
+  - path: crates/adapters/speclink-node/index.d.ts
+    hash: d7d709a1cce52b5286912b2319f8bf1782eaae72dbdac5212427aa3a11807c53
+  - path: crates/adapters/speclink-node/index.js
+    hash: abd7af42e68dcff83a959ea82628855225f7f57943052a467ffd8f22e614bab6
+  - path: crates/adapters/speclink-node/src/render.rs
+    hash: 427e1ac7f0cffd666f069630257a84baabe8fb48b64a6f830ac32f4f439acb84
+  - path: crates/engine/speclink-core/src/workspace/skills.rs
+    hash: ca9d92c952e3d672aa006aad17b704cad3f1884d1b37d115159b234ce1fd4f2e
+  - path: docs/product-status.md
+    hash: b6ff9c58b4d56b3c1c694f9da48324359468791015dea0e01cd6c02c2c67c419
+  - path: docs/product-status.zh-TW.md
+    hash: 2841be734e40fc15d6a7023b4d7b9c0cf49aaed598f75e43a7c6c58585e32acb
+  - path: docs/sdk-node.md
+    hash: 464466d8d06042e84a9e6fbc822a8686c228fb96df82438a2304f82652e866c8
+  - path: docs/sdk-node.zh-TW.md
+    hash: 494697b958dc60747a1686efeaf0e75d392fadfa4d2dd4641c40e809609b33ca
+archived_at: 2026-11-24T15:22:50+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

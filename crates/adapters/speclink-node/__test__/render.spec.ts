@@ -257,6 +257,61 @@ describe('skills.render — harness limits', () => {
     expect(before + after).toBe(skills.render('propose', { target: 'claude' }))
   })
 
+  const NO_GIT_ITEM =
+    '- This harness has a copy of the code that you can read and search, but it has no git history ' +
+    'and cannot run git. Skip every step of this document that runs a git command. When a step names ' +
+    'another way to get the same fact, use that way. In your answer, say which steps you skipped for this reason.'
+  const NO_CHECKOUT_ITEM =
+    '- This harness has no checkout of the code and no git history. Skip every step of this document ' +
+    'that reads code files, searches the code, or runs a git command. Check facts only with speclink ' +
+    'verbs. In your answer, say which steps you skipped for this reason.'
+
+  it('declares code that can be read but no git, and keeps the rest of trace', () => {
+    const base = { target: 'neutral', invocation: 'tool-call', specInCheckout: false } as const
+    const [before, section, after] = aroundLimits(skills.render('trace', { ...base, gitHistory: false }))
+    expect(items(section)).toEqual([NO_GIT_ITEM])
+    expect(before + after).toBe(skills.render('trace', base))
+  })
+
+  it('puts the skills item before the no-git item', () => {
+    const rendered = skills.render('trace', {
+      target: 'neutral',
+      invocation: 'tool-call',
+      specInCheckout: false,
+      gitHistory: false,
+      skills: ['discuss', 'trace'],
+    })
+    const list = items(aroundLimits(rendered)[1])
+    expect(list).toHaveLength(2)
+    expect(list[0]).toContain('provides only these skills: `speclink-discuss`, `speclink-trace`.')
+    expect(list[1]).toBe(NO_GIT_ITEM)
+  })
+
+  it('follows checkout: false with gitHistory, and renders what checkout: false rendered before', () => {
+    const base = { target: 'neutral', invocation: 'tool-call', checkout: false } as const
+    const omitted = skills.render('discuss', base)
+    expect(skills.render('discuss', { ...base, gitHistory: false })).toBe(omitted)
+    const [before, section, after] = aroundLimits(omitted)
+    // The output from before gitHistory: the one no-checkout item, and the body of specInCheckout: false.
+    expect(section).toBe(`## Harness limits\n\n${NO_CHECKOUT_ITEM}\n\n---\n\n`)
+    expect(before + after).toBe(skills.render('discuss', { target: 'neutral', invocation: 'tool-call', specInCheckout: false }))
+  })
+
+  it('renders the same text with gitHistory: true as without it', () => {
+    const base = { target: 'neutral', invocation: 'tool-call', specInCheckout: false } as const
+    const omitted = skills.render('trace', base)
+    expect(skills.render('trace', { ...base, gitHistory: true })).toBe(omitted)
+    expect(skills.render('trace', { ...base, checkout: true, gitHistory: true })).toBe(omitted)
+    expect(omitted).not.toContain('## Harness limits')
+  })
+
+  it('leaves the specInCheckout default alone', () => {
+    const omitted = skills.render('discuss', { target: 'neutral', gitHistory: false })
+    expect(skills.render('discuss', { target: 'neutral', specInCheckout: true, gitHistory: false })).toBe(omitted)
+    // discuss 有規格資料夾的條件區塊：兩份內文不同，所以上一行驗到了 specInCheckout 的預設。
+    expect(omitted).not.toBe(skills.render('discuss', { target: 'neutral', specInCheckout: false, gitHistory: false }))
+  })
+
   // Example「各種不合法的值」：每一列都拋出錯誤，沒有一列回傳字串。
   it.each([
     [{ skills: 'propose' }, undefined],
@@ -267,14 +322,25 @@ describe('skills.render — harness limits', () => {
     [{ checkout: 'false' }, undefined],
     [{ checkout: null }, undefined],
     [{ checkout: false, specInCheckout: true }, /checkout: false.*specInCheckout: true/],
+    [{ gitHistory: 'false' }, /bool.*gitHistory/],
+    [{ gitHistory: null }, /bool.*gitHistory/],
+    [{ checkout: false, gitHistory: true }, /checkout: false.*gitHistory: true/],
   ])('refuses %o', (bad, message) => {
     expect(() => skills.render('propose', { target: 'neutral', ...bad } as never)).toThrow(message)
   })
 
-  it('refuses a skills or checkout key that holds undefined, instead of reading it as left out', () => {
+  it('refuses a gitHistory that only looks true or false, instead of reading it as a boolean', () => {
+    for (const bad of [0, 1, 'true', {}]) {
+      expect(() => skills.render('propose', { target: 'neutral', gitHistory: bad } as never)).toThrow(/bool.*gitHistory/)
+    }
+  })
+
+  it('refuses a skills, checkout or gitHistory key that holds undefined, instead of reading it as left out', () => {
     const render = (extra: object) => () => skills.render('propose', { target: 'neutral', ...extra } as never)
     expect(render({ skills: undefined })).toThrow(/skills must be an array.*undefined/)
     expect(render({ checkout: undefined })).toThrow(/checkout must be true or false.*undefined/)
+    expect(render({ gitHistory: undefined })).toThrow(TypeError)
+    expect(render({ gitHistory: undefined })).toThrow(/gitHistory must be true or false.*undefined/)
   })
 
   it('tells a caller who writes the rendered name to leave the prefix out', () => {
@@ -286,17 +352,28 @@ describe('skills.render — harness limits', () => {
 
 // spec node-sdk「渲染 API 拒絕不認得的選項鍵」.
 describe('skills.render — option keys', () => {
-  const KEYS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout']
+  const KEYS = ['target', 'invocation', 'specInCheckout', 'specDir', 'toolName', 'skills', 'checkout', 'gitHistory']
+
+  /** The message `skills.render` throws for these options. */
+  const thrown = (options: object) => {
+    try {
+      skills.render('propose', options as never)
+    } catch (e) {
+      return (e as Error).message
+    }
+    throw new Error('skills.render did not throw')
+  }
 
   it('refuses a misspelled key, naming it and every valid key', () => {
-    let message = ''
-    try {
-      skills.render('propose', { target: 'neutral', skils: ['propose'] } as never)
-    } catch (e) {
-      message = (e as Error).message
-    }
+    const message = thrown({ target: 'neutral', skils: ['propose'] })
     expect(message).toContain('skils')
     for (const key of KEYS) expect(message).toContain(key)
+  })
+
+  it('names gitHistory among the valid keys when gitHistory is misspelled', () => {
+    const message = thrown({ target: 'neutral', gitHistroy: false })
+    expect(message).toContain('gitHistroy')
+    expect(message).toMatch(/the options are .*\bgitHistory\b/)
   })
 
   it('renders as before when every key is valid', () => {
