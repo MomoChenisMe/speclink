@@ -160,6 +160,49 @@ describe('流程設定的寫入經宿主套件回報事件', () => {
   })
 })
 
+// workflow-config「instructions 對 specs 產出物回報解析後的規格語言」與「tasks 指示的
+// 紀律說明不指向帶 --skill 的 instructions」：經宿主套件得到和 CLI 相同的回應。
+describe('instructions 經宿主套件回報的語言與紀律說明', () => {
+  type Instructions = { locale: string; instruction: string }
+
+  /** A host scope `s1` with change `demo` and the workflow config `locale: tw`. */
+  function scopeDispatch() {
+    const port = memoryPort()
+    port.seed('s1', {
+      'config.yaml': 'schema: spec-driven\nlocale: tw\n',
+      'changes/demo/.meta.yaml': 'schema: spec-driven\n',
+    })
+    const host = createHost({ store: port.store })
+    return (...argv: string[]) =>
+      host.dispatch({ identity: { id: 'u_1', displayName: 'Alice' }, scope: 's1', argv }) as Promise<Instructions>
+  }
+
+  it('範圍設定 locale tw、未設 spec_locale 時，specs 的 locale 是 English', async () => {
+    const specs = await scopeDispatch()('instructions', 'specs', '--change', 'demo', '--json')
+    expect(specs.locale).toBe('English')
+    // 最後一段：和前文之間空一行，整份以一個換行結尾。
+    expect(specs.instruction).toMatch(/[^\n]\n\nWrite spec prose in English\. [^\n]+ can parse them\.\n$/)
+  })
+
+  it('設定 tdd、audit 之後，tasks 的指示不指向 instructions --skill', async () => {
+    const dispatch = scopeDispatch()
+    await dispatch('workflow-config', 'set', 'tdd', 'true')
+    await dispatch('workflow-config', 'set', 'audit', 'true')
+    const tasks = await dispatch('instructions', 'tasks', '--change', 'demo', '--json')
+    expect(tasks.instruction).toContain('The apply step supplies the full TDD discipline')
+    expect(tasks.instruction).toContain('The apply step supplies the checklist')
+    expect(tasks.instruction).not.toContain('instructions --skill')
+  })
+
+  it('dispatch 的 specs 回應和 CLI 的 --json 相同', async () => {
+    const root = fsProject(CONFIG)
+    const argv = ['instructions', 'specs', '--change', 'alpha', '--json']
+    const specs = (await fsEngine(root).dispatch(argv)) as Instructions
+    expect(specs).toEqual(cliJson(root, argv))
+    expect(specs.locale).toBe('English')
+  })
+})
+
 describe('同一個引擎上並行的寫入', () => {
   it('一個接一個執行，每個改動都留下', async () => {
     // 寫入是「讀、改、整份寫回」：兩次寫入要是同時讀到舊內容，後寫的會蓋掉先寫的。

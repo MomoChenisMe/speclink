@@ -27,9 +27,12 @@ impl TempProject {
     }
 
     fn instructions(&self, artifact: &str, envs: &[(&str, &str)]) -> Output {
+        self.run(&["instructions", artifact, "--change", "demo-change", "--json"], envs)
+    }
+
+    fn run(&self, args: &[&str], envs: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
-        cmd.args(["instructions", artifact, "--change", "demo-change", "--json"])
-            .current_dir(&self.dir);
+        cmd.args(args).current_dir(&self.dir);
         for key in [
             "SPECLINK_LOCALE",
             "SPECLINK_SPEC_LOCALE",
@@ -219,4 +222,93 @@ fn update_with_legacy_policy_keys_touches_no_config_and_stays_silent() {
         "",
         "no deprecation warning on stderr"
     );
+}
+
+// --- spec「instructions 對 specs 產出物回報解析後的規格語言」---
+
+/// The instruction ends with the engine's language paragraph for `display`, one blank
+/// line after the text before it, and with one closing newline.
+fn assert_ends_with_language_paragraph(instr: &str, display: &str) {
+    let paragraph = format!(
+        "Write spec prose in {display}. Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED \
+Requirements`, `### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative \
+keywords (SHALL/MUST/SHALL NOT/MUST NOT) stay in English so the analyzer and archive tooling \
+can parse them.\n"
+    );
+    let before = instr
+        .strip_suffix(&paragraph)
+        .unwrap_or_else(|| panic!("the instruction ends with the {display} language paragraph: {instr:?}"));
+    assert!(
+        before.ends_with("\n\n") && !before.ends_with("\n\n\n"),
+        "one blank line before the language paragraph: {instr:?}"
+    );
+}
+
+#[test]
+fn specs_locale_is_the_spec_language_and_proposal_keeps_the_project_locale() {
+    // Scenario 沒有設定 spec_locale 時規格語言是 English: locale tw, spec_locale unset.
+    let p = TempProject::new("spec-lang-default", "tools:\n  - claude\n", "locale: tw\n");
+    let specs = json_payload(&p.instructions("specs", &[]));
+    assert!(specs["locale"].is_string(), "locale stays a string: {specs}");
+    assert_eq!(specs["locale"], "English");
+    let instr = instruction_text(&specs);
+    assert_ends_with_language_paragraph(&instr, "English");
+    assert!(!instr.contains("config.yaml"), "the instruction never points at config.yaml: {instr}");
+    let proposal = json_payload(&p.instructions("proposal", &[]));
+    assert_eq!(proposal["locale"], "Traditional Chinese (繁體中文)");
+}
+
+#[test]
+fn spec_locale_env_var_overrides_the_config_file_for_the_specs_locale() {
+    // Scenario 環境變數覆寫規格語言: spec_locale en + SPECLINK_SPEC_LOCALE=ja.
+    let p = TempProject::new("spec-lang-env", "tools:\n  - claude\n", "spec_locale: en\n");
+    let specs = json_payload(&p.instructions("specs", &[("SPECLINK_SPEC_LOCALE", "ja")]));
+    assert_eq!(specs["locale"], "Japanese (日本語)");
+    assert_ends_with_language_paragraph(&instruction_text(&specs), "Japanese (日本語)");
+}
+
+#[test]
+fn human_instruction_section_ends_with_the_same_language_paragraph() {
+    let p = TempProject::new("spec-lang-human", "tools:\n  - claude\n", "locale: tw\n");
+    let json = instruction_text(&json_payload(&p.instructions("specs", &[])));
+    let out = p.run(&["instructions", "specs", "--change", "demo-change", "--no-color"], &[]);
+    assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
+    let human = String::from_utf8_lossy(&out.stdout);
+    assert!(!human.contains('\u{1b}'), "--no-color prints no color codes");
+    // No locale field: the header is the three known lines, and nothing stands between
+    // the instruction text and the next section.
+    let (header, _) = human.split_once("\nInstruction:\n").expect("Instruction section");
+    let labels: Vec<&str> = header.lines().filter_map(|l| l.split_once(": ")).map(|(label, _)| label).collect();
+    assert_eq!(labels, ["Artifact", "Output", "Description"], "{header}");
+    assert_ends_with_language_paragraph(&json, "English");
+    assert!(
+        human.contains(&format!("\nInstruction:\n{json}\n\nDependencies:\n")),
+        "the Instruction section is the payload's instruction, then the next section: {human}"
+    );
+}
+
+#[test]
+fn broken_config_yaml_fails_specs_instructions_without_a_payload() {
+    // Scenario 設定檔無法解析時不回報語言.
+    let p = TempProject::new("spec-lang-broken", "tools:\n  - claude\n", ": not yaml : [\n");
+    let out = p.instructions("specs", &[]);
+    assert!(!out.status.success(), "a broken config.yaml fails the command");
+    assert!(out.stdout.is_empty(), "no payload on stdout: {}", String::from_utf8_lossy(&out.stdout));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let reason = stderr.split_once("speclink/config.yaml:").map(|(_, reason)| reason.trim());
+    assert!(
+        reason.is_some_and(|r| !r.is_empty()),
+        "stderr names the file and the parse reason: {stderr}"
+    );
+}
+
+// --- spec「tasks 指示的紀律說明不指向帶 --skill 的 instructions」---
+
+#[test]
+fn tasks_instruction_never_points_at_skill_instructions() {
+    let p = TempProject::new("tasks-no-skill", "tools:\n  - claude\n", "tdd: true\naudit: true\n");
+    let instr = instruction_text(&json_payload(&p.instructions("tasks", &[])));
+    assert!(instr.contains("The apply step supplies the full TDD discipline"), "{instr}");
+    assert!(instr.contains("The apply step supplies the checklist"), "{instr}");
+    assert!(!instr.contains("instructions --skill"), "{instr}");
 }

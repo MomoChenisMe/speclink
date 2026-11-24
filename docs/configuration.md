@@ -217,7 +217,7 @@ You cannot change the free fields of an archived change or discussion record, an
 | --- | --- | --- | --- |
 | `schema` | A schema name | `spec-driven` | The workflow schema for new changes (which documents, in which order) |
 | `locale` | `tw`, `ja`, `en` | English | The language of AI-generated documents and reports; review and verify also present their results in it. Otherwise the agent talks to you in your own language |
-| `spec_locale` | `tw`, `ja`, `en`, `auto` | English | The language of spec files. `auto` follows `locale` |
+| `spec_locale` | `tw`, `ja`, `en`, `auto` | English | The language of spec files. `auto` follows `locale`. The `locale` field of `speclink instructions specs` gives the resolved spec language (English when this key is not set, the `locale` value for `auto`), and skills write specs in that language |
 | `tdd` | `true` / `false` | `false` | Write a failing test first, then the code (red to green) |
 | `audit` | `true` / `false` | `false` | Run a sharp-edges security check on new APIs and parameter handling |
 | `worktree` | `true` / `false` | `false` | Turn on the parallel worktree flow and make the two worktree skills |

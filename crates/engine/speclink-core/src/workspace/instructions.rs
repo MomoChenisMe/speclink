@@ -49,6 +49,19 @@ pub struct ArtifactInstructions {
     pub unlocks: Vec<String>,
 }
 
+/// Append `note` as the instruction's last paragraph, one blank line after the text before
+/// it; it is the whole instruction when the schema gives the artifact none. The result ends
+/// with one newline, like a schema instruction does — the human renderer relies on that.
+fn append_paragraph(instruction: &mut Option<String>, note: &str) {
+    let before = instruction.take().unwrap_or_default();
+    let before = before.trim_end_matches('\n');
+    *instruction = Some(if before.is_empty() {
+        format!("{note}\n")
+    } else {
+        format!("{before}\n\n{note}\n")
+    });
+}
+
 /// Build per-artifact instructions. `Ok(None)` = unknown artifact id; `Err` =
 /// a config file exists but cannot be parsed (fail-closed, no default policy).
 pub fn build_artifact(
@@ -107,33 +120,32 @@ pub fn build_artifact(
             .collect()
     };
 
-    // Make the configured spec language bite without the agent having to read the config:
-    // when spec_locale resolves to a non-English language, the specs instruction states it
-    // concretely. Unset (the default) leaves the payload byte-identical.
+    // The specs payload answers "which language?" itself, so the agent never reads a config:
+    // `locale` carries the resolved spec language and the instruction always ends by
+    // stating it (English included). Every other artifact keeps the project locale.
     let mut instruction = artifact.instruction.clone();
+    let mut locale = policy.locale;
     if artifact.id == "specs" {
-        if let Some(lang) = policy.spec_locale.as_deref() {
-            let display = crate::config::locale_display(Some(lang));
-            let lower = lang.to_ascii_lowercase();
-            let cjk_note = if lower == "tw" || lower.starts_with("zh") {
-                " Vague Chinese wording (應該、可能、也許、或許、大概、考慮、盡量、待定) is \
+        let lang = policy.spec_locale.as_deref();
+        locale = crate::config::locale_display(lang);
+        let cjk_note = if lang.is_some_and(|l| {
+            let lower = l.to_ascii_lowercase();
+            lower == "tw" || lower.starts_with("zh")
+        }) {
+            " Vague Chinese wording (應該、可能、也許、或許、大概、考慮、盡量、待定) is \
 flagged by the analyzer just like should/may/TBD — state requirements with SHALL/MUST."
-            } else {
-                ""
-            };
-            let note = format!(
-                "This project sets `spec_locale: {lang}` — write spec prose in {display}. \
-Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requirement:`, \
-`#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) still stay in English.{cjk_note}"
-            );
-            match instruction.as_mut() {
-                Some(s) => {
-                    s.push_str("\n\n");
-                    s.push_str(&note);
-                }
-                None => instruction = Some(note),
-            }
-        }
+        } else {
+            ""
+        };
+        append_paragraph(
+            &mut instruction,
+            &format!(
+                "Write spec prose in {locale}. Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED \
+Requirements`, `### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative \
+keywords (SHALL/MUST/SHALL NOT/MUST NOT) stay in English so the analyzer and archive tooling \
+can parse them.{cjk_note}"
+            ),
+        );
     }
     // Same pattern for the workflow toggles: when the RESOLVED policy enables them, the
     // tasks instruction states the discipline concretely — no new `--json` fields.
@@ -143,25 +155,19 @@ Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED Requirements`, `### Requi
             notes.push(
                 "This project enables TDD — structure implementation tasks in \
 Red-Green-Refactor order: each unit of work starts with a failing-test task, then the \
-implementation task that turns it green (fetch the full discipline with `speclink \
-instructions --skill tdd`).",
+implementation task that turns it green. The apply step supplies the full TDD discipline; \
+you do not need it to write the tasks.",
             );
         }
         if policy.audit {
             notes.push(
                 "This project enables the audit discipline — when tasks add APIs, \
 configuration options, or parameter handling, include a step to apply the sharp-edges \
-audit checklist (fetch it with `speclink instructions --skill audit`).",
+audit checklist. The apply step supplies the checklist; you do not need it to write the tasks.",
             );
         }
         for note in notes {
-            match instruction.as_mut() {
-                Some(s) => {
-                    s.push_str("\n\n");
-                    s.push_str(note);
-                }
-                None => instruction = Some(note.to_string()),
-            }
+            append_paragraph(&mut instruction, note);
         }
     }
 
@@ -175,7 +181,7 @@ audit checklist (fetch it with `speclink instructions --skill audit`).",
         instruction,
         context: wf.context_text(),
         rules: wf.rules_for(&artifact.id),
-        locale: policy.locale,
+        locale,
         // The payload template is looked up in the BUILT-IN schema matching the yaml display
         // name — never in the custom templates/ file (which only
         // `new artifact` reads). A custom display name therefore yields an empty template.
@@ -459,6 +465,157 @@ mod tests {
         let p = Progress::from(&tasks::counts(&tasks::parse("- [x] a\n- [ ] b\n")));
         assert_eq!((p.code_total, p.code_complete, p.code_remaining), (2, 1, 1));
         assert_eq!((p.total, p.complete, p.remaining), (2, 1, 1));
+    }
+
+    // --- spec「instructions 對 specs 產出物回報解析後的規格語言」---
+
+    use crate::config::EnvOverrides;
+    use crate::teststore::TestStore;
+
+    const META: &str = "schema: spec-driven\ncreated: 2026-11-24\n";
+    const TW: &str = "Traditional Chinese (繁體中文)";
+    const JA: &str = "Japanese (日本語)";
+    const EN: &str = "English";
+
+    fn built(config: &str, env: &EnvOverrides, schema: &Schema, artifact: &str) -> ArtifactInstructions {
+        let store = TestStore::with_meta("demo", META);
+        *store.workflow_config.borrow_mut() = Some(config.to_string());
+        let change = store.find_change("demo").expect("change listed");
+        build_artifact(&store, env, &change, schema, artifact)
+            .expect("config parses")
+            .expect("artifact known")
+    }
+
+    fn last_paragraph(instruction: &str) -> &str {
+        instruction.rsplit("\n\n").next().unwrap_or(instruction)
+    }
+
+    #[test]
+    fn specs_locale_reports_the_resolved_spec_language() {
+        // Example「規格語言的解析」每一列：(locale, spec_locale, SPECLINK_SPEC_LOCALE, specs, proposal)。
+        let rows: [(Option<&str>, Option<&str>, Option<&str>, &str, &str); 7] = [
+            (Some("tw"), None, None, EN, TW),
+            (Some("tw"), Some("en"), None, EN, TW),
+            (Some("tw"), Some("auto"), None, TW, TW),
+            (Some("tw"), Some("ja"), None, JA, TW),
+            (None, Some("auto"), None, EN, EN),
+            (None, Some("tw"), None, TW, EN),
+            (Some("tw"), Some("en"), Some("ja"), JA, TW),
+        ];
+        let schema = crate::schema::spec_driven();
+        for (i, (locale, spec_locale, env_spec, want_specs, want_proposal)) in rows.iter().enumerate() {
+            let mut config = String::from("schema: spec-driven\n");
+            if let Some(l) = locale {
+                config.push_str(&format!("locale: {l}\n"));
+            }
+            if let Some(s) = spec_locale {
+                config.push_str(&format!("spec_locale: {s}\n"));
+            }
+            let env = EnvOverrides {
+                spec_locale: env_spec.map(str::to_string),
+                ..EnvOverrides::default()
+            };
+            let specs = built(&config, &env, &schema, "specs");
+            assert_eq!(specs.locale, *want_specs, "row {i}: specs 的 locale");
+            let proposal = built(&config, &env, &schema, "proposal");
+            assert_eq!(proposal.locale, *want_proposal, "row {i}: proposal 的 locale");
+
+            let instruction = specs.instruction.expect("specs 帶 instruction");
+            let last = last_paragraph(&instruction);
+            assert!(
+                last.starts_with(&format!("Write spec prose in {want_specs}.")),
+                "row {i}: 最後一段寫明規格語言: {last}"
+            );
+            for marker in ["### Requirement:", "#### Scenario:", "SHALL/MUST/SHALL NOT/MUST NOT"] {
+                assert!(last.contains(marker), "row {i}: 最後一段點名 {marker}: {last}");
+            }
+            assert_eq!(
+                last.contains("Vague Chinese wording"),
+                *want_specs == TW,
+                "row {i}: 中文模糊用語的提醒只在 tw: {last}"
+            );
+            for banned in ["config.yaml", "English by default", "spec_locale"] {
+                assert!(!instruction.contains(banned), "row {i}: instruction 不含 {banned}");
+            }
+        }
+    }
+
+    #[test]
+    fn specs_without_schema_instruction_get_only_the_language_paragraph() {
+        let mut schema = crate::schema::spec_driven();
+        let specs = schema.artifacts.iter_mut().find(|a| a.id == "specs").expect("specs");
+        specs.instruction = None;
+        let got = built("locale: tw\n", &EnvOverrides::default(), &schema, "specs");
+        let instruction = got.instruction.expect("引擎補上語言段落");
+        assert!(instruction.starts_with("Write spec prose in English."), "{instruction}");
+        assert!(!instruction.contains("\n\n"), "只有這一段: {instruction}");
+        assert!(instruction.ends_with("can parse them.\n"), "和 schema 的 instruction 一樣以換行結尾: {instruction:?}");
+    }
+
+    /// 引擎補的段落和前文之間剛好空一行，整份 instruction 仍以一個換行結尾——
+    /// 人眼輸出的 renderer 依賴這個結尾。
+    #[test]
+    fn appended_paragraphs_follow_one_blank_line_and_end_with_a_newline() {
+        let schema = crate::schema::spec_driven();
+        let appended = |config: &str, artifact: &str| {
+            let raw = schema.artifact(artifact).and_then(|a| a.instruction.clone()).expect("schema 原稿");
+            let got = built(config, &EnvOverrides::default(), &schema, artifact).instruction.expect("instruction");
+            got.strip_prefix(raw.trim_end()).unwrap_or_else(|| panic!("以 schema 原稿開頭: {got:?}")).to_string()
+        };
+
+        let specs = appended("locale: tw\n", "specs");
+        assert!(specs.starts_with("\n\nWrite spec prose in English."), "{specs:?}");
+        assert!(specs.ends_with("can parse them.\n") && !specs.ends_with("\n\n"), "{specs:?}");
+
+        assert_eq!(
+            appended("tdd: true\naudit: true\n", "tasks"),
+            "\n\nThis project enables TDD — structure implementation tasks in Red-Green-Refactor order: \
+each unit of work starts with a failing-test task, then the implementation task that turns it green. \
+The apply step supplies the full TDD discipline; you do not need it to write the tasks.\
+\n\nThis project enables the audit discipline — when tasks add APIs, configuration options, or \
+parameter handling, include a step to apply the sharp-edges audit checklist. The apply step supplies \
+the checklist; you do not need it to write the tasks.\n"
+        );
+    }
+
+    /// 讀取端對代碼寬鬆：`zh` 開頭的代碼（不分大小寫）也帶中文模糊用語的提醒；
+    /// 環境變數給 `auto` 時跟著 locale。
+    #[test]
+    fn spec_language_note_covers_zh_codes_and_an_auto_override() {
+        let schema = crate::schema::spec_driven();
+        for code in ["zh-Hant", "ZH-Hant"] {
+            let specs = built(&format!("spec_locale: {code}\n"), &EnvOverrides::default(), &schema, "specs");
+            let instruction = specs.instruction.expect("instruction");
+            assert!(last_paragraph(&instruction).contains("Vague Chinese wording"), "{code}: {instruction}");
+        }
+        let env = EnvOverrides { spec_locale: Some("auto".to_string()), ..EnvOverrides::default() };
+        let specs = built("locale: tw\nspec_locale: en\n", &env, &schema, "specs");
+        assert_eq!(specs.locale, TW, "SPECLINK_SPEC_LOCALE=auto 跟著 locale");
+    }
+
+    // --- spec「tasks 指示的紀律說明不指向帶 --skill 的 instructions」---
+
+    #[test]
+    fn tasks_discipline_notes_do_not_point_at_skill_instructions() {
+        let schema = crate::schema::spec_driven();
+        let tasks = |config: &str| {
+            built(config, &EnvOverrides::default(), &schema, "tasks")
+                .instruction
+                .expect("tasks 帶 instruction")
+        };
+
+        let tdd = tasks("tdd: true\n");
+        assert!(tdd.contains("Red-Green-Refactor"), "{tdd}");
+        assert!(tdd.contains("The apply step supplies the full TDD discipline"), "{tdd}");
+        assert!(!tdd.contains("instructions --skill"), "{tdd}");
+
+        let audit = tasks("audit: true\n");
+        assert!(audit.contains("sharp-edges audit checklist"), "{audit}");
+        assert!(audit.contains("The apply step supplies the checklist"), "{audit}");
+        assert!(!audit.contains("instructions --skill"), "{audit}");
+
+        let raw = schema.artifact("tasks").and_then(|a| a.instruction.clone());
+        assert_eq!(Some(tasks("schema: spec-driven\n")), raw, "兩個開關都關閉時逐字等於 schema 原稿");
     }
 
     #[test]

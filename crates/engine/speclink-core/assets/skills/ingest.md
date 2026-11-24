@@ -127,7 +127,7 @@ Update an existing Speclink change — from a plan file or conversation context.
 
    Write every update as a write-back (see **Write-back** above the steps): merge the new content into the artifact's full text, then write the whole result back.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write this artifact in. The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 

@@ -217,7 +217,7 @@ tools:
 | --- | --- | --- | --- |
 | `schema` | schema 名稱 | `spec-driven` | 新變更使用的產出流程（產出哪些文件、什麼順序） |
 | `locale` | `tw`、`ja`、`en` | English | AI 產出文件與報告的語言；review、verify 也用它呈現結果。其餘時候 Agent 用你的語言跟你對話 |
-| `spec_locale` | `tw`、`ja`、`en`、`auto` | English | 規格檔的語言；`auto` 跟著 `locale` |
+| `spec_locale` | `tw`、`ja`、`en`、`auto` | English | 規格檔的語言；`auto` 跟著 `locale`。`speclink instructions specs` 的 `locale` 欄位回報解析後的規格語言（沒有設定時是 English，`auto` 時是 `locale` 的值），技能照這個欄位的語言寫規格 |
 | `tdd` | `true`／`false` | `false` | 實作時先寫會失敗的測試，再寫程式（紅→綠） |
 | `audit` | `true`／`false` | `false` | 實作時對新 API 與參數處理做 sharp-edges 安全檢查 |
 | `worktree` | `true`／`false` | `false` | 開啟 worktree 平行實作流程，並產生兩個 worktree 技能 |

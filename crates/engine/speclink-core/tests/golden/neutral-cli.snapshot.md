@@ -6,7 +6,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -360,7 +360,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -720,7 +720,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -975,7 +975,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -1107,7 +1107,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -1455,7 +1455,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -1707,7 +1707,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -2211,7 +2211,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -2351,7 +2351,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -2554,7 +2554,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -2702,7 +2702,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
 
    Write every update as a write-back (see **Write-back** above the steps): merge the new content into the artifact's full text, then write the whole result back.
 
-   The instructions JSON includes `locale` — the language to write artifacts in. If present, write the artifact content in that language. Spec files (specs/\*/\*.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write this artifact in. The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -2898,7 +2898,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -3119,7 +3119,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -3434,7 +3434,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
      - `instruction`: Schema-specific guidance
      - `outputPath`: where the engine stores the artifact — for display only; every write goes through `speclink new artifact`
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write the artifact in (e.g., "Japanese (日本語)"). If present, write the artifact content in this language. Spec files (specs/\*_/_.md) default to English instead — unless `speclink workflow-config show --json` returns a `specLocale` other than `null` (a locale code, or `auto` to follow `locale`), in which case write spec prose in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+     - `locale`: The language to write this artifact in (e.g., "Japanese (日本語)"). The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in this language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
    - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store)
    - Follow the `instruction` field and use `template` as the structure for your output file — fill in its sections
    - `context` and `rules` are constraints for you, not content for the file: apply them, but never copy `<context>`, `<rules>`, or `<project_context>` blocks into the artifact
@@ -3618,7 +3618,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -3762,7 +3762,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -4069,7 +4069,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 
@@ -4163,7 +4163,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.59.0"
+  version: "v1.60.0"
   generatedBy: "Speclink"
 ---
 

@@ -382,8 +382,18 @@ fn discuss_propose_and_ingest_keep_their_pinned_wording() {
         if !content.contains("speclink artifact cat") {
             problem("never names `speclink artifact cat`".into());
         }
-        if name != "discuss" && content.contains("config.yaml") {
-            problem("mentions config.yaml".into());
+        if name != "discuss" {
+            if content.contains("config.yaml") {
+                problem("mentions config.yaml".into());
+            }
+            // propose-skill「artifact 的讀取與改寫一律經動詞」: the spec language comes from
+            // the instructions payload's `locale`, never from a second policy lookup.
+            if content.contains("specLocale") {
+                problem("mentions specLocale".into());
+            }
+            if !content.contains("for the specs artifact it is the spec language") {
+                problem("does not say the specs artifact's `locale` is the spec language".into());
+            }
         }
         if name != "ingest" {
             let reads: Vec<_> = show.captures_iter(content).collect();
