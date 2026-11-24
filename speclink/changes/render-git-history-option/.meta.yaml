@@ -1,0 +1,6 @@
+schema: spec-driven
+created: 2026-11-24T13:43:00+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-8
+depends_on: instructions-spec-language-and-tasks-pointer
