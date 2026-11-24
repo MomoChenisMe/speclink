@@ -475,6 +475,57 @@ describe("分頁列（spec 需求「專案分頁列存於 app 本機」）", () 
     expect(keys(store.getState().tabs)).toEqual(["local:A"]);
     expect(store.getState().tabErrors["local:B"]).toBeUndefined();
   });
+
+  // 「繼續本機」開出的並存資料夾分頁，app 重開後不轉錯誤態（continue-local-tab-reactivation）。
+  describe("restoreTabs：本機規格資料夾與 remote 區段並存的分頁", () => {
+    const COEXISTS = "/work/coexists";
+    const COEXISTS_KEY = "local:/work/coexists";
+
+    function coexistsWorkspace() {
+      return fakeWorkspace({
+        openProject: vi.fn().mockImplementation((p: string) =>
+          Promise.resolve(
+            p === COEXISTS
+              ? {
+                  status: "remoteBinding",
+                  url: "https://spec.example.test/api/speclink/v1/projects/demo",
+                  repo: "backend",
+                  hasLocalOpenspec: true,
+                }
+              : { status: "project", root: p, name: p.toLowerCase() },
+          ),
+        ),
+        projectStats: vi.fn().mockResolvedValue({ pendingWrapUp: 0 }),
+      });
+    }
+
+    it("上次作用中：以本機開啟且沒有分頁錯誤", async () => {
+      persistTabs([tab(COEXISTS, "coexists"), tab("B", "b")], COEXISTS_KEY);
+      const store = makeStore(fakeDataSource(), coexistsWorkspace());
+
+      await store.getState().restoreTabs();
+
+      expect(store.getState().activeKey).toBe(COEXISTS_KEY);
+      expect(store.getState().tabErrors).not.toHaveProperty(COEXISTS_KEY);
+    });
+
+    // 修正在 Rust 的 project_stats_at（project.rs 的並存測試）；這裡釘住前端的契約：
+    // 背景分頁只靠 projectStats 判斷，不另外探測，所以 Rust 端接受並存就不會轉錯誤態。
+    it("在背景：只經 projectStats 判斷路徑有效性，沒有分頁錯誤", async () => {
+      persistTabs([tab(COEXISTS, "coexists"), tab("B", "b")], "local:B");
+      const ws = coexistsWorkspace();
+      const store = makeStore(fakeDataSource(), ws);
+
+      await store.getState().restoreTabs();
+      // 背景探測不被 restoreTabs 等待：讓它的收尾先跑完再斷言。
+      await new Promise((r) => setTimeout(r, 0));
+
+      expect(ws.projectStats).toHaveBeenCalledWith(COEXISTS);
+      expect(ws.openProject).not.toHaveBeenCalledWith(COEXISTS);
+      expect(store.getState().activeKey).toBe("local:B");
+      expect(store.getState().tabErrors).not.toHaveProperty(COEXISTS_KEY);
+    });
+  });
 });
 
 describe("最近開啟清單（spec 需求「最近開啟清單」；design D2 成功開啟即記入、D5 升級補種）", () => {

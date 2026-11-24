@@ -487,6 +487,127 @@ describe("remote marker probe 分流", () => {
     expect(store.getState().activeKey).toBe("local:/work/coexists");
     expect(openRemote).not.toHaveBeenCalled();
   });
+
+  // 「繼續本機」延續到之後的切回與遷移（continue-local-tab-reactivation）。
+  const COEXISTS_KEY = "local:/work/coexists";
+
+  /** 並存資料夾 /work/coexists 以「繼續本機」開出分頁後，再開純本機專案 /work/other。
+   * 回傳的 setCoexists 改寫之後探測 /work/coexists 時的 hasLocalOpenspec。 */
+  async function continuedLocalStore() {
+    let hasLocalOpenspec = true;
+    const workspace = fakeWorkspace();
+    vi.mocked(workspace.openProject).mockImplementation(async (path: string) =>
+      path === "/work/other"
+        ? { status: "project", root: "/work/other", name: "other" }
+        : { status: "remoteBinding", url: markerUrl, repo: "backend", hasLocalOpenspec },
+    );
+    // 預設分頁路徑就是專案根（Rust 端的根比對通過）。
+    vi.mocked(workspace.projectStats).mockResolvedValue({ pendingWrapUp: 0 });
+    const openRemote = vi.fn();
+    const store = createAppStore({
+      createSession: localSession,
+      workspace,
+      connections: fakeConnections([loggedIn]),
+      openRemote,
+    });
+    await store.getState().openProjectAt("/work/coexists");
+    await store.getState().continueLocalFromConflict();
+    await store.getState().openProjectAt("/work/other");
+    expect(store.getState().activeKey).toBe("local:/work/other");
+    const setCoexists = (value: boolean) => {
+      hasLocalOpenspec = value;
+    };
+    return { store, workspace, openRemote, setCoexists };
+  }
+
+  it("繼續本機的分頁切回仍以本機開啟：不轉錯誤態、不再強制選擇、不 handshake", async () => {
+    const { store, openRemote } = await continuedLocalStore();
+
+    await store.getState().activateTab(COEXISTS_KEY);
+
+    const st = store.getState();
+    expect(st.activeKey).toBe(COEXISTS_KEY);
+    expect(st.tabErrors).not.toHaveProperty(COEXISTS_KEY);
+    expect(st.pendingRemoteConflict).toBeNull();
+    expect(openRemote).not.toHaveBeenCalled();
+  });
+
+  // 專案設定沒有「遷移到 Server…」入口；並存資料夾要遷移走三出口對話框的「遷移本機內容」。
+  it("並存資料夾呼叫 requestMigration 照舊拒絕，不進入遷移流程", async () => {
+    const { store } = await continuedLocalStore();
+
+    await expect(store.getState().requestMigration("/work/coexists")).rejects.toThrow(
+      "不再是本機 Speclink 專案",
+    );
+
+    expect(store.getState().migrationRoot).toBeNull();
+  });
+
+  it("本機規格資料夾移除、只剩 marker：切回照舊轉錯誤態且不 handshake", async () => {
+    const { store, openRemote, setCoexists } = await continuedLocalStore();
+    setCoexists(false);
+
+    await store.getState().activateTab(COEXISTS_KEY);
+
+    expect(store.getState().tabErrors[COEXISTS_KEY]).toBe("已不是 speclink 專案");
+    expect(store.getState().pendingRemoteConflict).toBeNull();
+    expect(openRemote).not.toHaveBeenCalled();
+  });
+
+  it("並存但分頁路徑不是專案根（子目錄或巢狀專案）：切回轉錯誤態且不 handshake", async () => {
+    const { store, workspace, openRemote } = await continuedLocalStore();
+    vi.mocked(workspace.projectStats).mockRejectedValue(
+      "'/work/coexists' is no longer a speclink project root",
+    );
+
+    await store.getState().activateTab(COEXISTS_KEY);
+
+    expect(workspace.projectStats).toHaveBeenCalledWith("/work/coexists");
+    expect(store.getState().activeKey).toBe("local:/work/other");
+    expect(store.getState().tabErrors[COEXISTS_KEY]).toBe("已不是 speclink 專案");
+    expect(openRemote).not.toHaveBeenCalled();
+  });
+
+  it("並存分頁的根比對算在探測裡：比對完成前保留切換中標記，完成後才翻頁", async () => {
+    const { store, workspace } = await continuedLocalStore();
+    const stats = deferred<{ pendingWrapUp: number }>();
+    vi.mocked(workspace.projectStats).mockReturnValue(stats.promise);
+
+    const activation = store.getState().activateTab(COEXISTS_KEY);
+    await vi.waitFor(() => expect(workspace.projectStats).toHaveBeenCalledWith("/work/coexists"));
+
+    expect(store.getState().pendingTabKey).toBe(COEXISTS_KEY);
+    expect(store.getState().activeKey).toBe("local:/work/other");
+
+    stats.resolve({ pendingWrapUp: 0 });
+    await activation;
+    expect(store.getState().pendingTabKey).toBeNull();
+    expect(store.getState().activeKey).toBe(COEXISTS_KEY);
+  });
+
+  it("圖示列已有繼續本機分頁時再次開啟同一個並存資料夾：仍停在強制選擇，選擇前不切換作用中專案", async () => {
+    const { store, openRemote } = await continuedLocalStore();
+
+    await store.getState().openProjectAt("/work/coexists");
+
+    expect(store.getState().pendingRemoteConflict).toEqual({
+      path: "/work/coexists",
+      url: markerUrl,
+      repo: "backend",
+    });
+    expect(store.getState().activeKey).toBe("local:/work/other");
+    expect(openRemote).not.toHaveBeenCalled();
+  });
+
+  it("本機規格資料夾移除、只剩 marker：requestMigration 照舊拒絕", async () => {
+    const { store, setCoexists } = await continuedLocalStore();
+    setCoexists(false);
+
+    await expect(store.getState().requestMigration("/work/coexists")).rejects.toThrow(
+      "不再是本機 Speclink 專案",
+    );
+    expect(store.getState().migrationRoot).toBeNull();
+  });
 });
 
 describe("remote refresh（規格「capability 驅動停用且不偽造缺口」）", () => {

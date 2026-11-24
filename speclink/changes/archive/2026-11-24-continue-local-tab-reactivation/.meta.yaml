@@ -1,0 +1,40 @@
+schema: spec-driven
+created: 2026-11-24T09:47:53+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: rail-remote-status-and-continue-local
+started_at: 2026-11-24T10:10:50+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-24T11:20:22+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 13
+reviewed_rounds: 3
+reviewed_commit: 4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c
+reviewed_scope:
+  - path: apps/desktop/core/src/project.rs
+    hash: e59235feeacec53e4f9f5be0558e0f17a41bae6c5d7064de6c14f464b270a4a3
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: 11e2c8f565e93ded00dcc420f45e6b722394610ff95eeeca1b026bd7a995f19f
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: d173936932309e29c4a653987addf52c58f55aba0f54ca0b675f00b804d24031
+  - path: apps/desktop/src/store.ts
+    hash: 8838bc50556227e73535079d9ce287bbcd12bd0f71c95ad72c283aaaaf404222
+verified_at: 2026-11-24T11:20:32+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 13
+verified_rounds: 3
+verified_commit: 4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c
+verified_scope:
+  - path: apps/desktop/core/src/project.rs
+    hash: e59235feeacec53e4f9f5be0558e0f17a41bae6c5d7064de6c14f464b270a4a3
+  - path: apps/desktop/src/__tests__/remoteOpen.test.ts
+    hash: 11e2c8f565e93ded00dcc420f45e6b722394610ff95eeeca1b026bd7a995f19f
+  - path: apps/desktop/src/__tests__/workspace.test.ts
+    hash: d173936932309e29c4a653987addf52c58f55aba0f54ca0b675f00b804d24031
+  - path: apps/desktop/src/store.ts
+    hash: 8838bc50556227e73535079d9ce287bbcd12bd0f71c95ad72c283aaaaf404222
+archived_at: 2026-11-24T11:24:01+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

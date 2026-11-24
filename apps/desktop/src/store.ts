@@ -2499,8 +2499,17 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       // 已切換完成的分頁持續掛「正在切換」。
       set({ pendingTabKey: key });
       let probe: ProjectProbe | null = null;
+      let coexistsAtRoot = false;
       try {
         probe = await workspace.openProject(tab.locator.root);
+        // 並存時探測不帶根：沿用背景檢查的根比對，子目錄或巢狀專案的分頁不得開出上層的內容。
+        // 這一步也算探測，要在清掉切換中標記之前跑完。
+        if (probe.status === "remoteBinding" && probe.hasLocalOpenspec) {
+          coexistsAtRoot = await workspace.projectStats(tab.locator.root).then(
+            () => true,
+            () => false,
+          );
+        }
       } catch (e) {
         set({ tabErrors: { ...get().tabErrors, [key]: String(e) } });
       } finally {
@@ -2511,6 +2520,10 @@ export function createAppStore(deps: AppStoreDeps): UseBoundStore<StoreApi<AppSt
       try {
         if (probe.status === "project") {
           await enterProject(probe.root, probe.name);
+        } else if (coexistsAtRoot) {
+          // 本機分頁存在即視為選了本機（含資料夾在分頁建立後才加上 remote 區段的情況）：
+          // 並存照樣以本機開啟，不再跳三出口對話框（continue-local-tab-reactivation 決策一）。
+          await enterProject(tab.locator.root, tab.name);
         } else {
           // openspec/ 已刪但目錄還在：分頁轉錯誤態，不開初始化對話框。
           set({ tabErrors: { ...get().tabErrors, [key]: appT("store.tabInvalid") } });

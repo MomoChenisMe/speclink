@@ -90,15 +90,23 @@ pub fn project_name(root: &Path) -> String {
 /// ready 欄派生一致）變更數＋concluded 未轉出討論數（promoted 已轉出、open 仍在
 /// 推進，皆不計）。路徑失效回單行 Err；且探索命中的 root 必須就是 `path` 本身——
 /// openspec/ 已刪但目錄還在時，向上探索會誤命中祖先專案，不得回報別人的數字。
+/// 本機規格資料夾與 remote 區段並存的根同樣可統計——「繼續本機」開出的分頁讀的是
+/// 本機檔案（continue-local-tab-reactivation 決策三）。
 pub fn project_stats_at(path: &Path) -> Result<serde_json::Value, String> {
-    match open_project_at(path)? {
-        ProjectProbe::Project { root, .. } if root == path.display().to_string() => {}
-        _ => {
-            return Err(format!(
-                "'{}' is no longer a speclink project root",
-                path.display()
-            ))
-        }
+    let path_str = path.display().to_string();
+    let reads_local_files = matches!(
+        open_project_at(path)?,
+        ProjectProbe::Project { .. }
+            | ProjectProbe::RemoteBinding {
+                has_local_openspec: true,
+                ..
+            }
+    );
+    // 兩種結果一律以探索命中的根比對（RemoteBinding 不帶 root；Project 的 root 就是同一個值）。
+    let is_project_root = reads_local_files
+        && matches!(Workspace::discover(path), Ok(Some(ws)) if ws.root.display().to_string() == path_str);
+    if !is_project_root {
+        return Err(format!("'{path_str}' is no longer a speclink project root"));
     }
     let payload = crate::query::list_changes_at(path);
     let ready = payload["changes"]
@@ -1103,6 +1111,34 @@ mod tests {
         // 非專案的獨立目錄同樣是 Err（uninitialized 不是可統計狀態）。
         let plain = PlainDir::new("stats-plain");
         assert!(project_stats_at(plain.path()).is_err());
+    }
+
+    /// 本機規格資料夾與含 url 的 remote 區段並存的專案根（「繼續本機」開出的分頁）。
+    fn coexisting_fixture(tag: &str) -> FixtureRoot {
+        let fx = FixtureRoot::new(tag);
+        fx.write(
+            ".speclink.yaml",
+            "remote:\n  url: https://spec.example.test\n  repo: desktop\n",
+        );
+        fx.add_change("ready-a", "schema: spec-driven\ncreated: 2026-07-01\n");
+        fx.write("speclink/changes/ready-a/tasks.md", "- [x] 1.1 one\n");
+        fx
+    }
+
+    #[test]
+    fn project_stats_counts_a_root_where_local_specs_coexist_with_remote() {
+        // continue-local-tab-reactivation 決策三：背景分頁的啟動檢查接受並存資料夾。
+        let fx = coexisting_fixture("stats-coexists");
+        let stats = project_stats_at(fx.root()).expect("coexisting root must report stats");
+        assert_eq!(stats["pendingWrapUp"], 1, "ready-a: {stats}");
+    }
+
+    #[test]
+    fn project_stats_rejects_a_subdir_of_a_coexisting_root() {
+        // 根等於路徑的檢查不因並存放寬：子目錄向上探索命中的是別的根。
+        let fx = coexisting_fixture("stats-coexists-subdir");
+        let sub = fx.root().join("speclink").join("changes");
+        assert!(project_stats_at(&sub).is_err());
     }
 
     #[test]

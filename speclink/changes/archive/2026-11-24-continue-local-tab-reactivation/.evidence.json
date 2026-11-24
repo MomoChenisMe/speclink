@@ -1,0 +1,90 @@
+{
+  "version": 2,
+  "change": "continue-local-tab-reactivation",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫會失敗的測試：在 `apps/desktop/core/src/project.rs` 的測試模組新增兩個測試。(a) 資料夾有 `speclink/`（含一個任務全勾的變更），`.speclink.yaml` 有含 url 的 remote 區段，`project_stats_at` 回 `Ok` 且 `pendingWrapUp` 為 1；(b) 對同一個並存資料夾的子目錄呼叫 `project_stats_at` 仍回錯誤。驗證：`cargo test -p speclink-desktop-core project_stats` 顯示 (a) 失敗、(b) 通過",
+      "files": [
+        "apps/desktop/core/src/project.rs",
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md",
+        "integrations/herdr/mods/speclink/main.js",
+        "integrations/herdr/mods/speclink/model.js",
+        "scripts/herdr/panel-model.test.mjs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 先寫會失敗的測試：在 `apps/desktop/src/__tests__/remoteOpen.test.ts` 新增三個測試。(a) 並存資料夾 `/work/coexists` 經 `openProjectAt` 與 `continueLocalFromConflict` 開啟後，開另一個本機專案，再 `activateTab(\"local:/work/coexists\")`，斷言 `activeKey` 為 `local:/work/coexists`、`tabErrors` 沒有這個鍵、`pendingRemoteConflict` 為 `null`、`openRemote` 沒被呼叫；(b) 同樣開出這個分頁後呼叫 `requestMigration(\"/work/coexists\")`，斷言不拋錯、`migrationRoot` 為 `/work/coexists`；(c) 本機分頁的探測為 `remoteBinding` 且 `hasLocalOpenspec` 為 false 時，`activateTab` 後 `tabErrors` 的值為「已不是 speclink 專案」。驗證：`npm test -w @speclink/desktop -- remoteOpen` 顯示 (a)、(b) 失敗，(c) 通過（釘住不變的行為）",
+      "files": [
+        "apps/desktop/src/__tests__/remoteOpen.test.ts"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 先寫會失敗的測試：在 `apps/desktop/src/__tests__/workspace.test.ts` 新增兩個測試。用 `persistTabs` 放入 `local:/work/coexists` 與另一個本機分頁，探測對 `/work/coexists` 回 `remoteBinding` 且 `hasLocalOpenspec` 為 true。(a) activeKey 是 `local:/work/coexists` 時，`restoreTabs` 後它是作用中且 `tabErrors` 沒有它；(b) activeKey 是另一個分頁、`projectStats` 對 `/work/coexists` 回 `{ pendingWrapUp: 0 }` 時，`restoreTabs` 後 `tabErrors` 沒有它。驗證：`npm test -w @speclink/desktop -- workspace` 顯示 (a) 失敗，(b) 通過（背景路徑的修正在 1.2，前端只要照常呼叫 `projectStats`）",
+      "files": [
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 實作「本機分頁切回時把並存視為本機專案」（design 決策一）與「判斷依據沿用探測結果，不新增探測狀態」（design 決策二）：`apps/desktop/src/store.ts` 的 `activateTab` 本機分支在探測為 `remoteBinding` 且 `hasLocalOpenspec` 為 true 時，以分頁 locator 的 `root` 與分頁 `name` 呼叫 `enterProject`；`requestMigration` 在同一條件下以傳入的 `root` 與它的目錄名呼叫 `enterProject`，再設 `migrationRoot`。其他探測結果照舊。`ProjectProbe` 型別不改。這一項落實 workspace-chooser「remote marker 資料夾的探測分流」裡「繼續本地」延續到之後切回、重開與遷移的規定。驗證：`npm test -w @speclink/desktop -- remoteOpen workspace` 全部通過，含 2.1 與 2.2 的五個測試",
+      "files": [
+        "apps/desktop/src/store.ts"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M85M125Z30F6QV0W2RCGDY5W",
+      "taskDesc": "1.1 先寫會失敗的測試：在 `apps/desktop/core/src/project.rs` 的測試模組新增兩個測試。(a) 資料夾有 `speclink/`（含一個任務全勾的變更），`.speclink.yaml` 有含 url 的 remote 區段，`project_stats_at` 回 `Ok` 且 `pendingWrapUp` 為 1；(b) 對同一個並存資料夾的子目錄呼叫 `project_stats_at` 仍回錯誤。驗證：`cargo test -p speclink-desktop-core project_stats` 顯示 (a) 失敗、(b) 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c",
+      "touchedFiles": [
+        "apps/desktop/core/src/project.rs",
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md",
+        "integrations/herdr/mods/speclink/main.js",
+        "integrations/herdr/mods/speclink/model.js",
+        "scripts/herdr/panel-model.test.mjs"
+      ],
+      "recordedAt": "2026-11-24T02:12:02Z"
+    },
+    {
+      "taskId": "tsk_01M85M125ZBGSPS6V4VK07QWHF",
+      "taskDesc": "2.1 先寫會失敗的測試：在 `apps/desktop/src/__tests__/remoteOpen.test.ts` 新增三個測試。(a) 並存資料夾 `/work/coexists` 經 `openProjectAt` 與 `continueLocalFromConflict` 開啟後，開另一個本機專案，再 `activateTab(\"local:/work/coexists\")`，斷言 `activeKey` 為 `local:/work/coexists`、`tabErrors` 沒有這個鍵、`pendingRemoteConflict` 為 `null`、`openRemote` 沒被呼叫；(b) 同樣開出這個分頁後呼叫 `requestMigration(\"/work/coexists\")`，斷言不拋錯、`migrationRoot` 為 `/work/coexists`；(c) 本機分頁的探測為 `remoteBinding` 且 `hasLocalOpenspec` 為 false 時，`activateTab` 後 `tabErrors` 的值為「已不是 speclink 專案」。驗證：`npm test -w @speclink/desktop -- remoteOpen` 顯示 (a)、(b) 失敗，(c) 通過（釘住不變的行為）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/remoteOpen.test.ts"
+      ],
+      "recordedAt": "2026-11-24T02:14:05Z"
+    },
+    {
+      "taskId": "tsk_01M85M125ZHNCH2HXXM34VMG8Z",
+      "taskDesc": "2.2 先寫會失敗的測試：在 `apps/desktop/src/__tests__/workspace.test.ts` 新增兩個測試。用 `persistTabs` 放入 `local:/work/coexists` 與另一個本機分頁，探測對 `/work/coexists` 回 `remoteBinding` 且 `hasLocalOpenspec` 為 true。(a) activeKey 是 `local:/work/coexists` 時，`restoreTabs` 後它是作用中且 `tabErrors` 沒有它；(b) activeKey 是另一個分頁、`projectStats` 對 `/work/coexists` 回 `{ pendingWrapUp: 0 }` 時，`restoreTabs` 後 `tabErrors` 沒有它。驗證：`npm test -w @speclink/desktop -- workspace` 顯示 (a) 失敗，(b) 通過（背景路徑的修正在 1.2，前端只要照常呼叫 `projectStats`）",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c",
+      "touchedFiles": [
+        "apps/desktop/src/__tests__/workspace.test.ts"
+      ],
+      "recordedAt": "2026-11-24T02:14:35Z"
+    },
+    {
+      "taskId": "tsk_01M85M125ZZGSZS7BRVB84MCKC",
+      "taskDesc": "2.3 實作「本機分頁切回時把並存視為本機專案」（design 決策一）與「判斷依據沿用探測結果，不新增探測狀態」（design 決策二）：`apps/desktop/src/store.ts` 的 `activateTab` 本機分支在探測為 `remoteBinding` 且 `hasLocalOpenspec` 為 true 時，以分頁 locator 的 `root` 與分頁 `name` 呼叫 `enterProject`；`requestMigration` 在同一條件下以傳入的 `root` 與它的目錄名呼叫 `enterProject`，再設 `migrationRoot`。其他探測結果照舊。`ProjectProbe` 型別不改。這一項落實 workspace-chooser「remote marker 資料夾的探測分流」裡「繼續本地」延續到之後切回、重開與遷移的規定。驗證：`npm test -w @speclink/desktop -- remoteOpen workspace` 全部通過，含 2.1 與 2.2 的五個測試",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "4a0ae9f78d7b13c1f9bc78c6f272271391e48a0c",
+      "touchedFiles": [
+        "apps/desktop/src/store.ts"
+      ],
+      "recordedAt": "2026-11-24T02:15:42Z"
+    }
+  ]
+}
