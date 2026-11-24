@@ -394,6 +394,20 @@ fn discuss_propose_and_ingest_keep_their_pinned_wording() {
             if !content.contains("for the specs artifact it is the spec language") {
                 problem("does not say the specs artifact's `locale` is the spec language".into());
             }
+            // The name rule lives in the engine's specs instruction; the skill only points at it.
+            if !content.contains("the `instruction` also says which requirement and scenario names keep the canonical spec's wording") {
+                problem("does not point at the name rule in the specs instruction".into());
+            }
+        }
+        let delta_spec_wording: &[&str] = match name {
+            "ingest" => &["speclink instructions specs --change \"<name>\" --json", "with no capability name", "Names changed:"],
+            "propose" => &["The `specs` dependency is read one delta spec at a time", "deltaSpecs"],
+            _ => &[],
+        };
+        for needle in delta_spec_wording {
+            if !content.contains(needle) {
+                problem(format!("never says `{needle}`"));
+            }
         }
         if name != "ingest" {
             let reads: Vec<_> = show.captures_iter(content).collect();

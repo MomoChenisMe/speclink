@@ -687,6 +687,75 @@ fn validate_of_missing_change_is_not_found() {
     assert_eq!(err.code, ErrorCode::NotFound);
 }
 
+// --- spec「instructions 找不到產出物代號時列出可用的代號」---
+
+fn instructions_of(store: &TestStore, artifact: &str, change: &str) -> Result<CommandOutcome, CommandError> {
+    let ctx = ExecutionContext { workspace: Some(ghost_ws()), ..Default::default() };
+    let cmd = Command::Instructions {
+        artifact: Some(artifact.to_string()),
+        change: Some(change.to_string()),
+        schema: None,
+    };
+    execute(store, &ctx, cmd).map(|(outcome, _)| outcome)
+}
+
+#[test]
+fn instructions_for_an_unknown_artifact_lists_the_ids_of_the_change_schema() {
+    // Example「錯誤訊息的清單」每一列：(產出流程, 代號, 訊息全文)。
+    let rows = [
+        ("spec-driven", "specs/auth", "Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply"),
+        ("spec-driven", "spec", "Artifact 'spec' not found in schema. Use proposal, design, specs, tasks, or apply"),
+        ("no-spec-change", "specs", "Artifact 'specs' not found in schema. Use proposal, design, tasks, or apply"),
+    ];
+    for (schema, artifact, want) in rows {
+        let store = TestStore::with_meta("demo", &format!("schema: {schema}\n"));
+        let err = instructions_of(&store, artifact, "demo").expect_err("unknown artifact id must fail");
+        assert_eq!(err.code, ErrorCode::NotFound, "{schema} {artifact}");
+        assert_eq!(err.message, want, "{schema} {artifact}");
+    }
+}
+
+#[test]
+fn instructions_for_a_listed_artifact_or_apply_still_answer() {
+    let store = TestStore::with_meta("demo", META);
+    match instructions_of(&store, "specs", "demo").expect("specs answers") {
+        CommandOutcome::Instructions(InstructionsOutcome::Artifact(p)) => assert_eq!(p.artifact_id, "specs"),
+        other => panic!("expected the specs payload, got {other:?}"),
+    }
+    // Scenario「其他產出物的指示沒有名稱的規則」的條件：規格語言是 tw。
+    *store.workflow_config.borrow_mut() = Some("spec_locale: tw\n".to_string());
+    match instructions_of(&store, "apply", "demo").expect("apply answers") {
+        CommandOutcome::Instructions(InstructionsOutcome::Apply(p)) => {
+            let instruction = p.instruction.expect("the built-in schema has an apply instruction");
+            assert!(!instruction.contains("Requirement and scenario names are prose"), "{instruction}");
+        }
+        other => panic!("expected the apply payload, got {other:?}"),
+    }
+}
+
+#[test]
+fn the_unknown_artifact_message_names_apply_once_whatever_the_schema_defines() {
+    let message = |schema: &Schema| artifact_not_found("x", schema).message;
+    let mut schema = crate::schema::spec_driven();
+    schema.artifacts.retain(|a| a.id == "proposal");
+    assert_eq!(message(&schema), "Artifact 'x' not found in schema. Use proposal, or apply");
+    // 產出流程有代號叫 apply 的產出物：apply 只列一次。
+    schema.artifacts[0].id = "apply".to_string();
+    assert_eq!(message(&schema), "Artifact 'x' not found in schema. Use apply");
+    // 產出流程沒有定義任何產出物：只剩 apply，不印空的清單。
+    schema.artifacts.clear();
+    assert_eq!(message(&schema), "Artifact 'x' not found in schema. Use apply");
+}
+
+#[test]
+fn instructions_for_a_missing_change_keep_the_change_not_found_error() {
+    let store = TestStore::with_meta("demo", META);
+    let err = instructions_of(&store, "specs/auth", "ghost").expect_err("missing change must fail");
+    assert_eq!(err.code, ErrorCode::NotFound);
+    assert!(err.message.contains("Change 'ghost' not found"), "{}", err.message);
+    assert!(!err.message.contains("Use proposal"), "{}", err.message);
+}
+
 // --- auto-detect 語意：零與多個 active change ---
 
 #[test]

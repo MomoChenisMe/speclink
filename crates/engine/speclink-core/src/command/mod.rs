@@ -1723,13 +1723,22 @@ fn run_instructions(
         return Ok(CommandOutcome::Instructions(InstructionsOutcome::Apply(payload)));
     }
     let payload = crate::instructions::build_artifact(store, env, &change, &schema, artifact)?
-        .ok_or_else(|| {
-            CommandError::new(
-                ErrorCode::NotFound,
-                format!("Artifact '{artifact}' not found in schema"),
-            )
-        })?;
+        .ok_or_else(|| artifact_not_found(artifact, &schema))?;
     Ok(CommandOutcome::Instructions(InstructionsOutcome::Artifact(payload)))
+}
+
+/// The `instructions` error for an id the schema does not define. The id is only echoed
+/// into the message: never resolved as an alias or a path. The list is the schema's
+/// artifact ids in status order, then `apply` — once, also when the schema defines an
+/// artifact of that name or no artifact at all.
+fn artifact_not_found(artifact: &str, schema: &Schema) -> CommandError {
+    let ids: Vec<&str> = crate::status::display_order(schema)
+        .into_iter()
+        .map(|a| a.id.as_str())
+        .filter(|id| *id != "apply")
+        .collect();
+    let usable = if ids.is_empty() { "apply".to_string() } else { format!("{}, or apply", ids.join(", ")) };
+    CommandError::new(ErrorCode::NotFound, format!("Artifact '{artifact}' not found in schema. Use {usable}"))
 }
 
 fn run_validate(

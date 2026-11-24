@@ -1,0 +1,208 @@
+{
+  "version": 2,
+  "change": "spec-names-and-instructions-ids",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 [Red] 在 crates/engine/speclink-core/src/workspace/instructions.rs 的測試模組為 `build_artifact` 加失敗測試，對應需求「instructions 對 specs 產出物回報解析後的規格語言」新增的名稱規則：`spec_locale` 是 `tw`、`ja`、未設定三種情況下，specs 的 `instruction` 最後一段都含 `Requirement and scenario names are prose too: write them in <顯示名稱>`（顯示名稱等於同一份回應的 `locale`）、`exactly as the canonical spec writes it`、`## MODIFIED Requirements`、`## REMOVED Requirements`、`FROM:`、`REMOVED-SCENARIO` 與 `a changed name fails validation`；最後一段仍以 `Write spec prose in <顯示名稱>.` 開頭；`tw` 時名稱規則出現在中文模糊用語的提醒之前、提醒仍是結尾，`ja` 與 English 時不含提醒；proposal、design、tasks 的 `instruction` 不含 `Requirement and scenario names are prose`；specs 產出物沒有 instruction 的自訂 schema 得到只有這一段的 `instruction`。驗證：`cargo test -p speclink-core instructions` 新測試失敗，失敗原因是斷言不成立。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/instructions.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 [Red] 在 crates/engine/speclink-core/src/command/tests.rs 加失敗測試，對應需求「instructions 找不到產出物代號時列出可用的代號」：對 spec-driven 的變更以代號 `specs/auth` 與 `spec` 執行 instructions 命令，錯誤類別是 NotFound、訊息全文分別是 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply` 與 `Artifact 'spec' not found in schema. Use proposal, design, specs, tasks, or apply`；對 no-spec-change 的變更以代號 `specs` 執行，訊息全文是 `Artifact 'specs' not found in schema. Use proposal, design, tasks, or apply`；代號 `specs` 與 `apply` 對 spec-driven 的變更照常回傳 payload；變更不存在時錯誤訊息是既有的找不到變更、不含 `Use proposal`。驗證：`cargo test -p speclink-core command::` 新測試失敗，失敗原因是訊息不含清單。",
+      "files": [
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ]
+    },
+    {
+      "task_id": "4",
+      "task_desc": "2.2 [Green] 實作 design D5「instructions 的找不到訊息列出可用的代號」：crates/engine/speclink-core/src/command/mod.rs 的 `run_instructions` 在找不到產出物時，訊息改成 `Artifact '<代號>' not found in schema. Use <清單>, or apply`，清單取自這個變更的產出流程、順序用 `crate::status::display_order`、以 `, ` 分隔；錯誤類別維持 NotFound；不接受任何新的代號寫法。同一項任務套用 audit 的 sharp-edges 檢查清單到這條參數處理路徑：確認使用者輸入的代號只被原樣放進訊息、沒有被拿去組路徑或當成別名解析，並把檢查結果記在本項的完成註記。驗證：`cargo test -p speclink-core command::` 通過。 **完成註記**：sharp-edges 檢查結果。使用者給的代號只用在兩處：`Schema::artifact` 以 `a.id == id` 逐字比對（crates/engine/speclink-core/src/workspace/schema.rs），找不到時 `build_artifact` 在讀任何設定或檔案之前就回 `None`；`run_instructions` 把原字串放進訊息。代號沒有被拿去組路徑，沒有大小寫或前綴的寬鬆比對，也沒有別名解析；`specs/auth` 與 `spec` 照舊被拒（command::tests 的三列 Example 鎖住訊息全文）。錯誤類別維持 NotFound；清單取自這次呼叫解析出的 schema，帶 `--schema` 時列的是那份 schema 的代號。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "integrations/herdr/mods/speclink/i18n.js",
+        "integrations/herdr/mods/speclink/main.js",
+        "integrations/herdr/mods/speclink/mod.json"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "3.1 [Red] 在 crates/engine/speclink-core/tests/it/skill_verbization.rs 的 `discuss_propose_and_ingest_keep_their_pinned_wording` 加斷言，對應需求「artifact 的讀取與改寫一律經動詞」與「既有 artifact 的更新經動詞整份寫回」：propose 與 ingest 的每一種產生結果都含 design D2 的句子 ``the `instruction` also says which requirement and scenario names keep the canonical spec's wording``；ingest 的每一種產生結果含 `speclink instructions specs --change \"<name>\" --json`、`with no capability name` 與 `Names changed:`；propose 的每一種產生結果含 ``The `specs` dependency is read one delta spec at a time`` 與 `deltaSpecs`。驗證：`cargo test -p speclink-core --test it skill_verbization` 新斷言失敗。",
+      "files": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs",
+        "scripts/herdr/panel-model.test.mjs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.2 [Green] 實作 design D2「技能只加一句指向，完整規則不重述」、D3「ingest 的摘要列出改到的名稱」與 D4「技能分清 delta 規格的三種寫法」：在 crates/engine/speclink-core/assets/skills/propose.md 的 `locale` 欄位說明與 crates/engine/speclink-core/assets/skills/ingest.md 說明 `locale` 的段落各加 D2 的那一句；在 ingest.md 取指示的命令區塊之後加 D4 的三種寫法、在摘要步驟的 Show 清單加 D3 的「Names changed」項目；在 propose.md 讀前置產出物的那一項加 D4 的 `deltaSpecs` 讀法。不新增全大寫強調字，不寫規格檔的路徑。驗證：`cargo test -p speclink-core --test it skill_verbization` 與 `cargo test -p speclink-core --test it skill_authoring` 通過（強調字的登記上限不變）。",
+      "files": [
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.3 實作 design D6「內嵌資產版號與 golden 同批更新」：把 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 由 v1.60.0 升到 v1.61.0；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 與 `UPDATE_ASSETS_LOCK` 的既有做法重新產生 crates/engine/speclink-core/tests/golden/ 的十份技能快照與 assets.lock；執行 `cargo build -p speclink-cli` 之後用 target/debug/speclink update 重新產生這個 repo 的 .claude/skills 與 .agents/skills。驗證：`cargo test -p speclink-core --test it render_golden` 通過；`git diff --stat -- crates/engine/speclink-core/tests/golden` 只列出快照與 assets.lock，快照的差異只有 propose、ingest 兩支技能的新句子與版號。",
+      "files": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.1 在 crates/adapters/speclink-cli/tests/it/instructions_policy.rs 加整合測試，經 CLI 斷言需求「instructions 對 specs 產出物回報解析後的規格語言」與「instructions 找不到產出物代號時列出可用的代號」的可觀察行為：`spec_locale: tw` 時 `instructions specs --json` 的 payload 有字串欄位 `instruction` 與 `locale`，`instruction` 最後一段含 `Requirement and scenario names are prose too: write them in Traditional Chinese (繁體中文)` 與 `exactly as the canonical spec writes it`；`instructions proposal --json` 的 `instruction` 不含名稱規則；不帶 --json 與加 --no-color 的輸出以同一段文字結尾、--no-color 的輸出不含色碼；`instructions specs/auth --change <變更> --json` 的 exit code 非 0、stdout 是空的、stderr 含 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply`，不帶 --json 時 stderr 含同一句；`--change` 指到不存在的變更時 stderr 是找不到變更、不含 `Use proposal`。既有測試維持通過。驗證：`cargo test -p speclink-cli --test it instructions_policy` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/instructions_policy.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.2 在 crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts 加測試：宿主套件的範圍設定 `spec_locale: tw` 時，`host.dispatch` 執行 instructions specs 的回傳物件 `instruction`（字串）最後一段含 `exactly as the canonical spec writes it`；`host.dispatch` 執行 instructions specs/auth 以錯誤結束，錯誤碼是 `not_found`，訊息含 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "files": [
+        "crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "5.1 在 docs/configuration.md 與 docs/configuration.zh-TW.md 的 `spec_locale` 那一列補一句：需求與情境的名稱也用這個語言寫，指向正式規格的名稱（MODIFIED、REMOVED、RENAMED 的舊名稱與沿用的情境名稱）照正式規格的原文，`speclink instructions specs` 的指示會寫明這條規則。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照與詞彙守門）。",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M86WK4BBZWYFTGY82TFVVS46",
+      "taskDesc": "1.1 [Red] 在 crates/engine/speclink-core/src/workspace/instructions.rs 的測試模組為 `build_artifact` 加失敗測試，對應需求「instructions 對 specs 產出物回報解析後的規格語言」新增的名稱規則：`spec_locale` 是 `tw`、`ja`、未設定三種情況下，specs 的 `instruction` 最後一段都含 `Requirement and scenario names are prose too: write them in <顯示名稱>`（顯示名稱等於同一份回應的 `locale`）、`exactly as the canonical spec writes it`、`## MODIFIED Requirements`、`## REMOVED Requirements`、`FROM:`、`REMOVED-SCENARIO` 與 `a changed name fails validation`；最後一段仍以 `Write spec prose in <顯示名稱>.` 開頭；`tw` 時名稱規則出現在中文模糊用語的提醒之前、提醒仍是結尾，`ja` 與 English 時不含提醒；proposal、design、tasks 的 `instruction` 不含 `Requirement and scenario names are prose`；specs 產出物沒有 instruction 的自訂 schema 得到只有這一段的 `instruction`。驗證：`cargo test -p speclink-core instructions` 新測試失敗，失敗原因是斷言不成立。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/instructions.rs"
+      ],
+      "recordedAt": "2026-11-24T13:45:27Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BB3BGQETSBG84F35AF",
+      "taskDesc": "2.1 [Red] 在 crates/engine/speclink-core/src/command/tests.rs 加失敗測試，對應需求「instructions 找不到產出物代號時列出可用的代號」：對 spec-driven 的變更以代號 `specs/auth` 與 `spec` 執行 instructions 命令，錯誤類別是 NotFound、訊息全文分別是 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply` 與 `Artifact 'spec' not found in schema. Use proposal, design, specs, tasks, or apply`；對 no-spec-change 的變更以代號 `specs` 執行，訊息全文是 `Artifact 'specs' not found in schema. Use proposal, design, tasks, or apply`；代號 `specs` 與 `apply` 對 spec-driven 的變更照常回傳 payload；變更不存在時錯誤訊息是既有的找不到變更、不含 `Use proposal`。驗證：`cargo test -p speclink-core command::` 新測試失敗，失敗原因是訊息不含清單。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/tests.rs"
+      ],
+      "recordedAt": "2026-11-24T13:46:54Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BBAPJ56SK9SXA3VY4H",
+      "taskDesc": "2.2 [Green] 實作 design D5「instructions 的找不到訊息列出可用的代號」：crates/engine/speclink-core/src/command/mod.rs 的 `run_instructions` 在找不到產出物時，訊息改成 `Artifact '<代號>' not found in schema. Use <清單>, or apply`，清單取自這個變更的產出流程、順序用 `crate::status::display_order`、以 `, ` 分隔；錯誤類別維持 NotFound；不接受任何新的代號寫法。同一項任務套用 audit 的 sharp-edges 檢查清單到這條參數處理路徑：確認使用者輸入的代號只被原樣放進訊息、沒有被拿去組路徑或當成別名解析，並把檢查結果記在本項的完成註記。驗證：`cargo test -p speclink-core command::` 通過。 **完成註記**：sharp-edges 檢查結果。使用者給的代號只用在兩處：`Schema::artifact` 以 `a.id == id` 逐字比對（crates/engine/speclink-core/src/workspace/schema.rs），找不到時 `build_artifact` 在讀任何設定或檔案之前就回 `None`；`run_instructions` 把原字串放進訊息。代號沒有被拿去組路徑，沒有大小寫或前綴的寬鬆比對，也沒有別名解析；`specs/auth` 與 `spec` 照舊被拒（command::tests 的三列 Example 鎖住訊息全文）。錯誤類別維持 NotFound；清單取自這次呼叫解析出的 schema，帶 `--schema` 時列的是那份 schema 的代號。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "integrations/herdr/mods/speclink/i18n.js",
+        "integrations/herdr/mods/speclink/main.js",
+        "integrations/herdr/mods/speclink/mod.json"
+      ],
+      "recordedAt": "2026-11-24T13:47:53Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BBA0GPMYDX34HAQQEB",
+      "taskDesc": "3.1 [Red] 在 crates/engine/speclink-core/tests/it/skill_verbization.rs 的 `discuss_propose_and_ingest_keep_their_pinned_wording` 加斷言，對應需求「artifact 的讀取與改寫一律經動詞」與「既有 artifact 的更新經動詞整份寫回」：propose 與 ingest 的每一種產生結果都含 design D2 的句子 ``the `instruction` also says which requirement and scenario names keep the canonical spec's wording``；ingest 的每一種產生結果含 `speclink instructions specs --change \"<name>\" --json`、`with no capability name` 與 `Names changed:`；propose 的每一種產生結果含 ``The `specs` dependency is read one delta spec at a time`` 與 `deltaSpecs`。驗證：`cargo test -p speclink-core --test it skill_verbization` 新斷言失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/tests/it/skill_verbization.rs",
+        "scripts/herdr/panel-model.test.mjs"
+      ],
+      "recordedAt": "2026-11-24T13:48:25Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BB398PN3GQNQYFFMCH",
+      "taskDesc": "3.2 [Green] 實作 design D2「技能只加一句指向，完整規則不重述」、D3「ingest 的摘要列出改到的名稱」與 D4「技能分清 delta 規格的三種寫法」：在 crates/engine/speclink-core/assets/skills/propose.md 的 `locale` 欄位說明與 crates/engine/speclink-core/assets/skills/ingest.md 說明 `locale` 的段落各加 D2 的那一句；在 ingest.md 取指示的命令區塊之後加 D4 的三種寫法、在摘要步驟的 Show 清單加 D3 的「Names changed」項目；在 propose.md 讀前置產出物的那一項加 D4 的 `deltaSpecs` 讀法。不新增全大寫強調字，不寫規格檔的路徑。驗證：`cargo test -p speclink-core --test it skill_verbization` 與 `cargo test -p speclink-core --test it skill_authoring` 通過（強調字的登記上限不變）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/assets/skills/ingest.md",
+        "crates/engine/speclink-core/assets/skills/propose.md",
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ],
+      "recordedAt": "2026-11-24T13:49:16Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BBV72ZY5EZHQNDDZ2K",
+      "taskDesc": "3.3 實作 design D6「內嵌資產版號與 golden 同批更新」：把 crates/engine/speclink-core/src/workspace/init.rs 的 `ASSET_VERSION` 由 v1.60.0 升到 v1.61.0；以 `UPDATE_GOLDEN=1 cargo test -p speclink-core --test it render_golden::` 與 `UPDATE_ASSETS_LOCK` 的既有做法重新產生 crates/engine/speclink-core/tests/golden/ 的十份技能快照與 assets.lock；執行 `cargo build -p speclink-cli` 之後用 target/debug/speclink update 重新產生這個 repo 的 .claude/skills 與 .agents/skills。驗證：`cargo test -p speclink-core --test it render_golden` 通過；`git diff --stat -- crates/engine/speclink-core/tests/golden` 只列出快照與 assets.lock，快照的差異只有 propose、ingest 兩支技能的新句子與版號。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/workspace/init.rs",
+        "crates/engine/speclink-core/tests/golden/assets.lock",
+        "crates/engine/speclink-core/tests/golden/claude-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude-worktree.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/claude.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/codex.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/copilot.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/cursor.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-cli.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call-remote.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/neutral-tool-call.snapshot.md",
+        "crates/engine/speclink-core/tests/golden/pi.snapshot.md"
+      ],
+      "recordedAt": "2026-11-24T13:50:20Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BBXVSZMY6J2YB0B1AW",
+      "taskDesc": "4.1 在 crates/adapters/speclink-cli/tests/it/instructions_policy.rs 加整合測試，經 CLI 斷言需求「instructions 對 specs 產出物回報解析後的規格語言」與「instructions 找不到產出物代號時列出可用的代號」的可觀察行為：`spec_locale: tw` 時 `instructions specs --json` 的 payload 有字串欄位 `instruction` 與 `locale`，`instruction` 最後一段含 `Requirement and scenario names are prose too: write them in Traditional Chinese (繁體中文)` 與 `exactly as the canonical spec writes it`；`instructions proposal --json` 的 `instruction` 不含名稱規則；不帶 --json 與加 --no-color 的輸出以同一段文字結尾、--no-color 的輸出不含色碼；`instructions specs/auth --change <變更> --json` 的 exit code 非 0、stdout 是空的、stderr 含 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply`，不帶 --json 時 stderr 含同一句；`--change` 指到不存在的變更時 stderr 是找不到變更、不含 `Use proposal`。既有測試維持通過。驗證：`cargo test -p speclink-cli --test it instructions_policy` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/instructions_policy.rs"
+      ],
+      "recordedAt": "2026-11-24T13:51:01Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BB9NTZWEX0P6AYR40J",
+      "taskDesc": "4.2 在 crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts 加測試：宿主套件的範圍設定 `spec_locale: tw` 時，`host.dispatch` 執行 instructions specs 的回傳物件 `instruction`（字串）最後一段含 `exactly as the canonical spec writes it`；`host.dispatch` 執行 instructions specs/auth 以錯誤結束，錯誤碼是 `not_found`，訊息含 `Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply`。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "crates/adapters/speclink-node/__test__/workflow-config-verbs.spec.ts"
+      ],
+      "recordedAt": "2026-11-24T13:51:50Z"
+    },
+    {
+      "taskId": "tsk_01M86WK4BBMH76Q3VEQR4T4E26",
+      "taskDesc": "5.1 在 docs/configuration.md 與 docs/configuration.zh-TW.md 的 `spec_locale` 那一列補一句：需求與情境的名稱也用這個語言寫，指向正式規格的名稱（MODIFIED、REMOVED、RENAMED 的舊名稱與沿用的情境名稱）照正式規格的原文，`speclink instructions specs` 的指示會寫明這條規則。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（中英對照與詞彙守門）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "52ecf918c752a6016e68b7cdb7ae0fb664bcc322",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-24T13:52:39Z"
+    }
+  ]
+}

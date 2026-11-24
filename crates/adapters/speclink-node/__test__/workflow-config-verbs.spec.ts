@@ -165,11 +165,11 @@ describe('流程設定的寫入經宿主套件回報事件', () => {
 describe('instructions 經宿主套件回報的語言與紀律說明', () => {
   type Instructions = { locale: string; instruction: string }
 
-  /** A host scope `s1` with change `demo` and the workflow config `locale: tw`. */
-  function scopeDispatch() {
+  /** A host scope `s1` with change `demo` and the workflow config `config` (`locale: tw` by default). */
+  function scopeDispatch(config = 'schema: spec-driven\nlocale: tw\n') {
     const port = memoryPort()
     port.seed('s1', {
-      'config.yaml': 'schema: spec-driven\nlocale: tw\n',
+      'config.yaml': config,
       'changes/demo/.meta.yaml': 'schema: spec-driven\n',
     })
     const host = createHost({ store: port.store })
@@ -181,7 +181,22 @@ describe('instructions 經宿主套件回報的語言與紀律說明', () => {
     const specs = await scopeDispatch()('instructions', 'specs', '--change', 'demo', '--json')
     expect(specs.locale).toBe('English')
     // 最後一段：和前文之間空一行，整份以一個換行結尾。
-    expect(specs.instruction).toMatch(/[^\n]\n\nWrite spec prose in English\. [^\n]+ can parse them\.\n$/)
+    expect(specs.instruction).toMatch(/[^\n]\n\nWrite spec prose in English\. [^\n]+\.\n$/)
+  })
+
+  // workflow-config「instructions 對 specs 產出物回報解析後的規格語言」的名稱規則。
+  it('範圍設定 spec_locale tw 時，specs 指示的最後一段寫明名稱照正式規格的原文', async () => {
+    const specs = await scopeDispatch('schema: spec-driven\nspec_locale: tw\n')('instructions', 'specs', '--change', 'demo', '--json')
+    expect(typeof specs.instruction).toBe('string')
+    const last = specs.instruction.trimEnd().split('\n\n').at(-1)
+    expect(last).toContain('exactly as the canonical spec writes it')
+  })
+
+  // workflow-config「instructions 找不到產出物代號時列出可用的代號」：經宿主套件得到相同的錯誤。
+  it('代號寫成 specs/auth 時以 not_found 拒絕，訊息列出可用的代號', async () => {
+    const err = await rejection(scopeDispatch()('instructions', 'specs/auth', '--change', 'demo', '--json'))
+    expect(err.code).toBe('not_found')
+    expect(err.message).toContain("Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply")
   })
 
   it('設定 tdd、audit 之後，tasks 的指示不指向 instructions --skill', async () => {

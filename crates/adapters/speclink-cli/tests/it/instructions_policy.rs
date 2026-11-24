@@ -33,11 +33,13 @@ impl TempProject {
     fn run(&self, args: &[&str], envs: &[(&str, &str)]) -> Output {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_speclink"));
         cmd.args(args).current_dir(&self.dir);
+        // CLICOLOR_FORCE would color the human output although stdout is a pipe.
         for key in [
             "SPECLINK_LOCALE",
             "SPECLINK_SPEC_LOCALE",
             "SPECLINK_TDD",
             "SPECLINK_AUDIT",
+            "CLICOLOR_FORCE",
         ] {
             cmd.env_remove(key);
         }
@@ -233,7 +235,12 @@ fn assert_ends_with_language_paragraph(instr: &str, display: &str) {
         "Write spec prose in {display}. Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED \
 Requirements`, `### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative \
 keywords (SHALL/MUST/SHALL NOT/MUST NOT) stay in English so the analyzer and archive tooling \
-can parse them.\n"
+can parse them. Requirement and scenario names are prose too: write them in {display}. The \
+exception is a name that points at the canonical spec: the requirement name under `## MODIFIED \
+Requirements` or `## REMOVED Requirements`, the `FROM:` name of a RENAMED entry, a canonical \
+scenario name that a MODIFIED block carries over, and the name inside a `<!-- REMOVED-SCENARIO: … \
+-->` declaration. Copy each of those exactly as the canonical spec writes it, in whatever language \
+it is in — a changed name fails validation.\n"
     );
     let before = instr
         .strip_suffix(&paragraph)
@@ -285,6 +292,69 @@ fn human_instruction_section_ends_with_the_same_language_paragraph() {
         human.contains(&format!("\nInstruction:\n{json}\n\nDependencies:\n")),
         "the Instruction section is the payload's instruction, then the next section: {human}"
     );
+}
+
+// Scenario 語言說明寫明名稱的規則／其他產出物的指示沒有名稱的規則／人眼輸出帶同一段名稱規則.
+#[test]
+fn the_specs_language_paragraph_carries_the_name_rule_in_every_output_mode() {
+    const RULE: &str = "Requirement and scenario names are prose too: write them in Traditional Chinese (繁體中文)";
+    const CANON: &str = "exactly as the canonical spec writes it";
+    let p = TempProject::new("spec-names", "tools:\n  - claude\n", "locale: tw\nspec_locale: tw\n");
+    let specs = json_payload(&p.instructions("specs", &[]));
+    assert!(specs["locale"].is_string() && specs["instruction"].is_string(), "{specs}");
+    let instr = instruction_text(&specs);
+    let last = instr.trim_end().rsplit("\n\n").next().unwrap_or_default();
+    assert!(last.starts_with("Write spec prose in Traditional Chinese (繁體中文)."), "{last}");
+    for needle in [RULE, CANON] {
+        assert!(last.contains(needle), "the last paragraph carries {needle}: {last}");
+    }
+    let proposal = instruction_text(&json_payload(&p.instructions("proposal", &[])));
+    assert!(!proposal.contains("Requirement and scenario names are prose"), "{proposal}");
+
+    for flags in [&[][..], &["--no-color"][..]] {
+        let mut args = vec!["instructions", "specs", "--change", "demo-change"];
+        args.extend_from_slice(flags);
+        let out = p.run(&args, &[]);
+        assert!(out.status.success(), "{flags:?}: {}", String::from_utf8_lossy(&out.stderr));
+        let human = String::from_utf8_lossy(&out.stdout);
+        assert!(
+            human.contains(&format!("\nInstruction:\n{instr}\n\nDependencies:\n")),
+            "{flags:?}: the Instruction section ends with the same paragraph: {human}"
+        );
+        if !flags.is_empty() {
+            assert!(!human.contains('\u{1b}'), "--no-color prints no color codes");
+        }
+    }
+}
+
+// --- spec「instructions 找不到產出物代號時列出可用的代號」---
+
+#[test]
+fn an_unknown_artifact_id_lists_the_ids_on_stderr_with_and_without_json() {
+    const WANT: &str = "Artifact 'specs/auth' not found in schema. Use proposal, design, specs, tasks, or apply";
+    // The message is English whatever the locale, and the same text in every output mode.
+    let p = TempProject::new("unknown-id-tw", "tools:\n  - claude\n", "locale: tw\nspec_locale: tw\n");
+    let tw_stderr = p.run(&["instructions", "specs/auth", "--change", "demo-change"], &[]).stderr;
+    assert!(String::from_utf8_lossy(&tw_stderr).contains(WANT), "{}", String::from_utf8_lossy(&tw_stderr));
+
+    let p = TempProject::new("unknown-id", "tools:\n  - claude\n", "schema: spec-driven\n");
+    for flag in [None, Some("--json"), Some("--no-color")] {
+        let mut args = vec!["instructions", "specs/auth", "--change", "demo-change"];
+        args.extend(flag);
+        let out = p.run(&args, &[]);
+        assert!(!out.status.success(), "{flag:?}: an unknown id fails");
+        assert!(out.stdout.is_empty(), "{flag:?}: no payload: {}", String::from_utf8_lossy(&out.stdout));
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert!(stderr.contains(WANT), "{flag:?}: {stderr}");
+        assert!(flag != Some("--no-color") || !stderr.contains('\u{1b}'), "--no-color prints no color codes: {stderr}");
+    }
+    // Scenario 找不到變更時維持既有錯誤.
+    let out = p.run(&["instructions", "specs/auth", "--change", "no-such-change", "--json"], &[]);
+    assert!(!out.status.success(), "a missing change fails");
+    assert!(out.stdout.is_empty(), "no payload: {}", String::from_utf8_lossy(&out.stdout));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("Change 'no-such-change' not found"), "{stderr}");
+    assert!(!stderr.contains("Use proposal"), "{stderr}");
 }
 
 #[test]

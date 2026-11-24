@@ -121,7 +121,7 @@ updated: 2026-10-22T16:43:20+08:00
 ---
 ### Requirement: 既有 artifact 的更新經動詞整份寫回
 
-ingest 技能 SHALL 以動詞讀寫它更新的每一份 artifact：更新前以 speclink artifact cat 讀出全文，在全文上合併新內容，再以 speclink new artifact 帶 --stdin --force 整份寫回；delta spec 以 speclink new artifact spec <capability> 寫回。技能 SHALL 寫明合併時不移除既有內容。被更新的變更在 speclink list --json 的項目帶 worktree 時，讀取、整份寫回與修正的指令 SHALL 指示從它的 worktree.path 執行，使更新落在 apply 讀取的那一份副本。更新任務清單時，技能 SHALL 寫明既有的每一行任務原樣保留——勾選狀態與行尾的識別註解都不變——新任務加在既有任務之外。讀取其他進行中變更的提案與 spec 撰寫語言的說明 SHALL 與 propose 技能相同。整份寫回被引擎拒絕時，技能 SHALL 指示停下來告訴使用者原因，SHALL NOT 指示改用直接編輯檔案。技能全文 SHALL NOT 提及 config.yaml。
+ingest 技能 SHALL 以動詞讀寫它更新的每一份 artifact：更新前以 speclink artifact cat 讀出全文，在全文上合併新內容，再以 speclink new artifact 帶 --stdin --force 整份寫回；delta spec 以 speclink new artifact spec <capability> 寫回。技能 SHALL 寫明合併時不移除既有內容。被更新的變更在 speclink list --json 的項目帶 worktree 時，讀取、整份寫回與修正的指令 SHALL 指示從它的 worktree.path 執行，使更新落在 apply 讀取的那一份副本。更新任務清單時，技能 SHALL 寫明既有的每一行任務原樣保留——勾選狀態與行尾的識別註解都不變——新任務加在既有任務之外。讀取其他進行中變更的提案與 spec 撰寫語言的說明 SHALL 與 propose 技能相同（含「specs 的指示寫明哪些名稱照正式規格的原文」這一句）。取得指示的步驟 SHALL 寫明 delta 規格的三種寫法：指示以 speclink instructions specs 取得，整個變更只有一份、不帶 capability；讀取以 speclink artifact cat specs/<capability>；寫回以 speclink new artifact spec <capability>。最後的摘要 SHALL 有一項列出這次更新改到的既有需求名稱與情境名稱，每一筆寫成「舊名稱 → 新名稱」；沒有改到任何名稱時 SHALL NOT 列這一項。整份寫回被引擎拒絕時，技能 SHALL 指示停下來告訴使用者原因，SHALL NOT 指示改用直接編輯檔案。技能全文 SHALL NOT 提及 config.yaml。
 
 #### Scenario: 更新以讀出再整份寫回表述
 
@@ -148,7 +148,34 @@ ingest 技能 SHALL 以動詞讀寫它更新的每一份 artifact：更新前以
 - **WHEN** 檢視生成的 ingest 技能中讀取既有 artifact 與整份寫回的步驟
 - **THEN** 它寫明變更帶 worktree 時，這些指令從該變更的 worktree.path 執行
 
+#### Scenario: 取指示的步驟分清三種寫法
+
+- **WHEN** 檢視生成的 ingest 技能中取得指示的步驟
+- **THEN** 它寫明 delta 規格的指示是 speclink instructions specs、不帶 capability，並指名讀取用 speclink artifact cat specs/<capability>、寫回用 speclink new artifact spec <capability>
+
+#### Scenario: 摘要步驟列出改到的名稱
+
+- **WHEN** 檢視生成的 ingest 技能中最後的摘要步驟
+- **THEN** 摘要的項目含改到的需求與情境名稱，寫明每一筆是舊名稱到新名稱，並寫明沒有改到名稱時不列
+
+#### Scenario: 把 ADDED 的 delta 規格改成規格語言時回報改名
+
+- **WHEN** 規格語言是繁體中文，變更有一份內文與名稱都是英文的 ADDED delta 規格，依 ingest 技能把它改成規格語言
+- **THEN** 寫回的 delta 規格裡需求與情境的名稱是繁體中文；回給使用者的摘要逐一列出每個改掉的名稱，格式是舊名稱 → 新名稱
+
+#### Scenario: MODIFIED 的需求名稱不翻譯
+
+- **WHEN** 規格語言是繁體中文，正式規格有一條名稱是英文的需求，變更的 delta 規格以 MODIFIED 改寫它，依 ingest 技能把這份 delta 規格的內文改成規格語言
+- **THEN** 寫回的 delta 規格裡這條需求的名稱與正式規格逐字相同；speclink validate 該變更的結果是 valid；摘要不列這條需求的改名
+
+##### Example: 改名的摘要
+
+- **GIVEN** delta 規格有 ADDED 的需求「Issue tokens at the token endpoint」，底下有情境「Issue a token for a valid client」
+- **WHEN** 依 ingest 技能把這份 delta 規格改成繁體中文
+- **THEN** 摘要含兩筆：Issue tokens at the token endpoint → 在 Token 端點簽發 Token，以及 Issue a token for a valid client → 為合法的用戶端簽發 Token
+
+
 <!-- @trace
-source: skills-verbs-first-wave
-updated: 2026-11-11T17:52:57+08:00
+source: spec-names-and-instructions-ids
+updated: 2026-11-24T22:27:56+08:00
 -->

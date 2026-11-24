@@ -9,7 +9,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -102,7 +102,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -450,7 +450,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -1080,7 +1080,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -1435,7 +1435,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -1684,7 +1684,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -1810,7 +1810,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -2153,7 +2153,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -2400,7 +2400,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -2901,7 +2901,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -3044,7 +3044,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -3241,7 +3241,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -3380,11 +3380,13 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
    speclink instructions <artifact-id> --change "<name>" --json
    ```
 
+   `<artifact-id>` is an id that `speclink status --change "<name>" --json` lists, such as `proposal`, `design`, `specs` or `tasks`. A change has one `specs` instruction for all of its delta specs: run `speclink instructions specs --change "<name>" --json`, with no capability name. Only the read and the write name the capability: `speclink artifact cat specs/<capability>` reads one delta spec, and `speclink new artifact spec <capability>` writes it back.
+
    Use the `template` from instructions as the output structure. Apply `context` and `rules` as constraints but do not copy them into the file.
 
    Write every update as a write-back (see **Write-back** above the steps): merge the new content into the artifact's full text, then write the whole result back.
 
-   The instructions JSON includes `locale` — the language to write this artifact in. The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
+   The instructions JSON includes `locale` — the language to write this artifact in. The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in that language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English. For the specs artifact, the `instruction` also says which requirement and scenario names keep the canonical spec's wording — follow it.
 
    **Plan-to-Artifact Mapping** (when using a plan file):
 
@@ -3537,6 +3539,7 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
    - Source used: plan file (`<path>`) or conversation context
    - Change name and location
    - Artifacts created/updated
+   - Names changed: every requirement or scenario name this update changed, one per line as `<old name> → <new name>` — leave this item out when no name changed
    - Validation result
 
    Then state the suggestion from **Next steps** and STOP. NEVER invoke `/speclink-apply` yourself — starting implementation is the user's call, and this workflow is over once the summary is out.
@@ -3580,7 +3583,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -3795,7 +3798,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -4105,8 +4108,9 @@ A delta spec is written back with `speclink new artifact spec <capability> --cha
      - `instruction`: Schema-specific guidance
      - `outputPath`: where the engine stores the artifact — for display only; every write goes through `speclink new artifact`
      - `dependencies`: Completed artifacts to read for context
-     - `locale`: The language to write this artifact in (e.g., "Japanese (日本語)"). The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in this language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English.
-   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store)
+     - `locale`: The language to write this artifact in (e.g., "Japanese (日本語)"). The engine resolves it per artifact — for the specs artifact it is the spec language, which can differ from the other artifacts' language. If present, write the artifact content in this language. Structural markers (`### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative keywords (SHALL/MUST) always stay in English. For the specs artifact, the `instruction` also says which requirement and scenario names keep the canonical spec's wording — follow it.
+   - Read each completed dependency for context via `speclink artifact cat <artifact-id> --change "<name>"` before you write the new artifact (never open artifact files by path — the documents may live in a remote store).
+     The `specs` dependency is read one delta spec at a time: for each entry of `deltaSpecs` in `speclink show <name> --json` (listed as `<capability>/spec.md`), run `speclink artifact cat specs/<capability> --change "<name>"`.
    - Follow the `instruction` field and use `template` as the structure for your output file — fill in its sections
    - `context` and `rules` are constraints for you, not content for the file: apply them, but never copy `<context>`, `<rules>`, or `<project_context>` blocks into the artifact
    - **Mark manual tasks with `[M]`** (tasks artifact only): a task the agent cannot do itself — the user has to do it by hand, whether that is operating the product and accepting the result, creating an account on an external service, or placing a key — carries an `[M]` marker. Anything the agent can do itself, including code and automated tests, never carries it. The marker is what lets the quality stations judge "the code is finished" separately from "a human did their part": they run once every non-`[M]` task is checked, while archive still waits for all of them.
@@ -4290,7 +4294,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -4428,7 +4432,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -4732,7 +4736,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -4820,7 +4824,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 
@@ -5196,7 +5200,7 @@ license: MIT
 compatibility: Requires speclink CLI.
 metadata:
   author: speclink
-  version: "v1.60.0"
+  version: "v1.61.0"
   generatedBy: "Speclink"
 ---
 

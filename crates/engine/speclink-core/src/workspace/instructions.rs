@@ -143,7 +143,12 @@ flagged by the analyzer just like should/may/TBD — state requirements with SHA
                 "Write spec prose in {locale}. Structural markers (`## ADDED/MODIFIED/REMOVED/RENAMED \
 Requirements`, `### Requirement:`, `#### Scenario:`, `- **WHEN**`/`- **THEN**`) and normative \
 keywords (SHALL/MUST/SHALL NOT/MUST NOT) stay in English so the analyzer and archive tooling \
-can parse them.{cjk_note}"
+can parse them. Requirement and scenario names are prose too: write them in {locale}. The \
+exception is a name that points at the canonical spec: the requirement name under `## MODIFIED \
+Requirements` or `## REMOVED Requirements`, the `FROM:` name of a RENAMED entry, a canonical \
+scenario name that a MODIFIED block carries over, and the name inside a `<!-- REMOVED-SCENARIO: … \
+-->` declaration. Copy each of those exactly as the canonical spec writes it, in whatever language \
+it is in — a changed name fails validation.{cjk_note}"
             ),
         );
     }
@@ -549,7 +554,53 @@ mod tests {
         let instruction = got.instruction.expect("引擎補上語言段落");
         assert!(instruction.starts_with("Write spec prose in English."), "{instruction}");
         assert!(!instruction.contains("\n\n"), "只有這一段: {instruction}");
-        assert!(instruction.ends_with("can parse them.\n"), "和 schema 的 instruction 一樣以換行結尾: {instruction:?}");
+        assert!(
+            instruction.contains("Requirement and scenario names are prose too: write them in English."),
+            "名稱規則也在這一段: {instruction}"
+        );
+        assert!(instruction.ends_with(".\n"), "和 schema 的 instruction 一樣以換行結尾: {instruction:?}");
+    }
+
+    // --- 同一需求新增的名稱規則：三種規格語言都寫、四種例外逐一點名 ---
+
+    #[test]
+    fn specs_language_paragraph_states_the_name_rule() {
+        let schema = crate::schema::spec_driven();
+        for (config, want) in [("spec_locale: tw\n", TW), ("spec_locale: ja\n", JA), ("locale: tw\n", EN)] {
+            let specs = built(config, &EnvOverrides::default(), &schema, "specs");
+            assert_eq!(specs.locale, want, "{config}");
+            let instruction = specs.instruction.expect("specs 帶 instruction");
+            let last = last_paragraph(&instruction);
+            assert!(last.starts_with(&format!("Write spec prose in {want}.")), "{config}: {last}");
+            let rule = format!("Requirement and scenario names are prose too: write them in {}", specs.locale);
+            for needle in [
+                rule.as_str(),
+                "exactly as the canonical spec writes it",
+                "## MODIFIED Requirements",
+                "## REMOVED Requirements",
+                "FROM:",
+                "REMOVED-SCENARIO",
+                "a changed name fails validation",
+            ] {
+                assert!(last.contains(needle), "{config}: 最後一段含 {needle}: {last}");
+            }
+            let note = last.find("Vague Chinese wording");
+            if want == TW {
+                let note = note.expect("tw 帶中文模糊用語的提醒");
+                assert!(
+                    last.find("a changed name fails validation").expect("名稱規則") < note,
+                    "名稱規則在提醒之前: {last}"
+                );
+                assert!(last.trim_end().ends_with("state requirements with SHALL/MUST."), "提醒仍是結尾: {last}");
+            } else {
+                assert!(note.is_none(), "{config}: 只有 tw 帶提醒: {last}");
+            }
+        }
+        for artifact in ["proposal", "design", "tasks"] {
+            let got = built("spec_locale: tw\ntdd: true\naudit: true\n", &EnvOverrides::default(), &schema, artifact);
+            let instruction = got.instruction.expect("內建 schema 的產出物都帶 instruction");
+            assert!(!instruction.contains("Requirement and scenario names are prose"), "{artifact}: {instruction}");
+        }
     }
 
     /// 引擎補的段落和前文之間剛好空一行，整份 instruction 仍以一個換行結尾——
@@ -565,7 +616,7 @@ mod tests {
 
         let specs = appended("locale: tw\n", "specs");
         assert!(specs.starts_with("\n\nWrite spec prose in English."), "{specs:?}");
-        assert!(specs.ends_with("can parse them.\n") && !specs.ends_with("\n\n"), "{specs:?}");
+        assert!(specs.ends_with(".\n") && !specs.ends_with("\n\n"), "{specs:?}");
 
         assert_eq!(
             appended("tdd: true\naudit: true\n", "tasks"),
