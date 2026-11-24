@@ -155,14 +155,19 @@ export default class SpeclinkPanel extends View {
           this.watch(root, on, cx);
         }
         const read = (...verb) => speclinkJson(verb, root, on);
-        const [list, plan, discussions, config] = await Promise.all([
+        const [list, plan, discussions, archived, config] = await Promise.all([
           read("list"),
           read("plan"),
           read("discuss", "list"),
+          read("discuss", "list", "--archived"),
           read("workflow-config", "show"),
         ]);
         const [remaining, facts] = await Promise.all([codeRemaining(list, plan, root, on), stationFacts(list, plan, root, on)]);
-        this.board = buildBoard(list, plan, discussions, remaining, facts);
+        // 封存的討論不上看板，只用來認出做完討論的 agent（見 unrecordedDiscussions）。
+        this.board = {
+          ...buildBoard(list, plan, discussions, remaining, facts),
+          archived: archived.discussions.map((d) => d.slug),
+        };
         this.worktreePolicy = config.worktree === true;
         this.error = null;
         this.uninitialized = false;
