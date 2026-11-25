@@ -6,6 +6,7 @@ mod color;
 mod common;
 mod remote_base;
 mod skill_notice;
+mod terminal_report;
 mod verbs;
 use common::{warn_leftover_remote_file, warn_spec_layout};
 use remote_base::{remote_ctx, RemoteCtx};
@@ -130,8 +131,14 @@ fn main() -> ExitCode {
     let matches = cmd.get_matches_mut();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|e| e.format(&mut cmd).exit());
     color::init(cli.global.no_color);
+    // In a Herdr terminal, a verb that worked on a change or a discussion
+    // labels the terminal after it succeeds (spec terminal-activity-report).
+    let labels = terminal_report::labels(&cli.command);
     match dispatch(cli) {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(()) => {
+            terminal_report::report(labels, |key| std::env::var(key).ok());
+            ExitCode::SUCCESS
+        }
         Err(e) => {
             eprintln!("Error: {e}");
             ExitCode::FAILURE

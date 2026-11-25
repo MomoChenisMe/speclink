@@ -252,3 +252,4 @@ tools:
 | `SPECLINK_WORKTREE` | `true`／`false` | 覆寫 `worktree`；不影響技能檔要不要產生 |
 | `SPECLINK_STORE_URL` | 網址 | 取代 `remote.url`；不會把本機專案切成遠端模式 |
 | `SPECLINK_TOKEN` | 存取金鑰 | 遠端憑證，優先於鑰匙圈與 `credentials.yaml`，適合 CI |
+| `SPECLINK_TERMINAL_REPORT` | `true`／`false` | `false` 關掉 CLI 在 Herdr 終端機裡貼「正在做哪個變更或討論」標籤的回報；不設或其他值都是開著 |

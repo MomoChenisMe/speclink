@@ -1,0 +1,6 @@
+# 在 Herdr 終端機裡跑 cargo test 時，binary 測試開的 speclink 子程序也帶著
+# HC_TERMINAL_ID。這一行讓它們不把暫存專案裡的假變更名稱貼到開發者自己的
+# 終端機上（spec terminal-activity-report、design D7）。自己設的值優先：
+# 要在 cargo test 或 cargo run 裡試回報，就設 SPECLINK_TERMINAL_REPORT=true。
+[env]
+SPECLINK_TERMINAL_REPORT = "false"

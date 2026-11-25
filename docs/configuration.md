@@ -252,3 +252,4 @@ Today, Speclink does not check `spec_dir` for absolute paths or `../`. If the va
 | `SPECLINK_WORKTREE` | `true` / `false` | Overrides `worktree`. It does not change which skill files exist |
 | `SPECLINK_STORE_URL` | A URL | Replaces `remote.url`. It never turns a local project into a remote one |
 | `SPECLINK_TOKEN` | An access token | The remote credential. It comes before the keychain and `credentials.yaml`, so it suits CI |
+| `SPECLINK_TERMINAL_REPORT` | `true` / `false` | `false` stops the CLI from labeling its Herdr terminal with the change or discussion it works on. Unset or any other value keeps the report on |

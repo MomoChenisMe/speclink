@@ -50,6 +50,8 @@ mod spec_dir_migration;
 mod task_done_stamps;
 mod task_stable_id;
 mod task_undone;
+mod terminal_report;
+mod terminal_report_windows;
 mod tools_descriptor;
 mod trace;
 mod update_downgrade_guard;

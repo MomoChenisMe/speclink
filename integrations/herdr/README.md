@@ -31,7 +31,7 @@
 - **目前分頁**：目前分頁的 agent 在做某個變更或討論時，那一列左邊有藍色色帶和淡藍的底，agent 那一行標「目前分頁」。那一列捲到畫面外或卡片收起來時看不到標示，要捲動或打開卡片。
 - **變更**：提案中、進行中、已就緒三張卡常駐，標題有階段顏色的圓點和數量。每一列有波次、名稱、review 和 verify 的章、worktree 標記、任務進度。被擋住的列會變淡，並寫出在等誰。
 - **討論**：討論卡與已轉出卡。已轉出但還有刀沒轉出的討論留在討論卡，因為下一步還要 propose。
-- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。膠囊寫出 agent 在等什麼：「在等你允許」是要你同意它跑指令或改檔，「在問你問題」是它問了你一個問題，「在等你登入」是要你登入。原因是 agent 自己回報的（Claude Code 會報前兩種）；沒有回報原因的 agent 只寫「在等你回答」。左邊的 Agents 清單不分原因。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。在 agent 裡直接打字時，要裝 hook 面板才知道。寫提案的 agent 停下來後，不算在變更上；從討論提案時，它留在那場討論的列上（討論卡或已轉出卡），實作要另外開工。
+- **做這個變更或討論的 agent**：列上顯示 agent 的位置與狀態，點了切過去。狀態和左邊 Agents 清單相同：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等你回答是一顆膠囊。膠囊寫出 agent 在等什麼：「在等你允許」是要你同意它跑指令或改檔，「在問你問題」是它問了你一個問題，「在等你登入」是要你登入。原因是 agent 自己回報的（Claude Code 會報前兩種）；沒有回報原因的 agent 只寫「在等你回答」。左邊的 Agents 清單不分原因。變更的比對順序是 `speclink.change` 標籤、worktree 路徑、Claude Code 外掛回報的 `speclink.focus` 標籤。討論只看 `speclink.discussion` 標籤。標籤由開工、面板的技能鈕、技能跳窗和下面的 hook 貼上。agent 跑做變更或討論的 speclink 指令時，speclink CLI 自己也會貼，見「追蹤直接打的指令」。寫提案的 agent 停下來後，不算在變更上；從討論提案時，它留在那場討論的列上（討論卡或已轉出卡），實作要另外開工。
 - **還沒記錄的討論**：discuss 要先查資料、問完問題，才會建立討論記錄，這段時間可能要幾十分鐘。在那之前，討論卡最上面會先放一列「討論中，還沒記錄」，名稱是 agent 的標題，也看得到 agent 的位置與狀態。記錄建立後，agent 會移到正式的那一列。討論封存後，這個 agent 就不在討論卡上了。
 - **技能鈕**：每列放建議的下一步，建議怎麼決定見「各階段的技能」。`⋯` 在列上展開這一列其他能用的技能，按一下就送出，規則和建議的那一顆相同，見「技能會送給誰」。沒有其他技能的列沒有 `⋯`。滑鼠停在鈕上會寫出會送給誰。
 - **開工**：變更列上的鈕，在目前的工作區為這個變更開一個專用的新 agent。見下面的「開工」。
@@ -106,7 +106,10 @@
 
 ### 追蹤直接打的指令（選用）
 
-從面板和技能跳窗開始的工作，面板都知道。在 agent 裡直接打字時，面板要靠 hook 才知道，否則那一列看不到 agent，開工鈕也還在。
+從面板和技能跳窗開始的工作，面板都知道。在 agent 裡直接打字時，面板靠下面兩種方式知道：
+
+- **speclink CLI 自己回報**（0.19.0 之後發布的版本，不用裝）：任何 agent 在 Herdr 的終端機裡跑做變更或討論的 speclink 指令，而且指令成功時，CLI 替那個終端機貼 `speclink.change` 或 `speclink.discussion`。算數的指令是 `new change`、`instructions apply --change`、帶 `--change` 的 `task done`、`in-progress add`、`review prepare`、只帶一個名稱的 `archive`，以及帶 `--slug` 的 `discuss new`、`discuss context`、`discuss add-round`、`discuss conclude`。`show`、`status` 這類查詢不算。CLI 直接連 `HC_TERMINAL_SOCKET`，不執行 `hc`，最多等 0.1 秒，不改變指令的輸出。不在 Herdr 裡時什麼都不做。設 `SPECLINK_TERMINAL_REPORT=false` 就關掉。測過的 hc 版本是 0.1.22。Codex 預設的沙盒會擋住回報，見「已知限制」。
+- **hook**（選用）：CLI 不知道是哪個技能在跑，也要等 agent 跑完第一個算數的指令才會貼。hook 補上三件事：貼 `speclink.skill`、送出訊息當下就貼，以及 `/clear` 時清掉標籤。沒裝 hook 時，直接打字開始的工作要等第一個算數的指令跑完，那一列才看得到 agent，在那之前開工鈕也還在。
 
 **Claude Code：** 在 `~/.claude/settings.json` 加上這段，新開的 session 就會生效：
 
@@ -181,7 +184,7 @@ agent 在做事、在等你回答或出錯時不送，按鈕變灰，滑鼠停�
 
 列上的鈕一定照這個順序。變更有停著的 agent 時，要讓它在新分頁跑，請用頂端的「技能」鈕。
 
-Claude Code、GitHub Copilot 與 Cursor 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`，Pi 送 `/skill:speclink-<技能>`。Pi 用 `speclink init --tools pi` 產生的 `.pi/skills`，Cursor 用 `speclink init --tools cursor` 產生的 `.cursor/skills`。專案只有 Codex 的 `.agents/skills` 時，Pi 也讀得到，但那一份寫的是 `$speclink-`，建議改勾 pi。Cursor 也讀 `.claude/skills` 與 `.agents/skills`：專案只有 Claude 或 Codex 的技能時，面板判定 Cursor 有技能、不提示 `--tools cursor`，但 Cursor 用的是 Claude 或 Codex 版（記成 `--agent claude`，或寫 `$speclink-`），建議改勾 cursor。面板不為 Cursor 追蹤標籤：Claude Code 和 Codex 靠 hook，Pi 靠 extension，Cursor 沒有接上的機制，面板只把技能送給它。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
+Claude Code、GitHub Copilot 與 Cursor 送 `/speclink-<技能>`，Codex 送 `$speclink-<技能>`，Pi 送 `/skill:speclink-<技能>`。Pi 用 `speclink init --tools pi` 產生的 `.pi/skills`，Cursor 用 `speclink init --tools cursor` 產生的 `.cursor/skills`。專案只有 Codex 的 `.agents/skills` 時，Pi 也讀得到，但那一份寫的是 `$speclink-`，建議改勾 pi。Cursor 也讀 `.claude/skills` 與 `.agents/skills`：專案只有 Claude 或 Codex 的技能時，面板判定 Cursor 有技能、不提示 `--tools cursor`，但 Cursor 用的是 Claude 或 Codex 版（記成 `--agent claude`，或寫 `$speclink-`），建議改勾 cursor。Cursor 沒有 hook 可以接：它在做哪個變更或討論，只靠 speclink CLI 自己回報（Claude Code 和 Codex 另外有 hook，Pi 另外有 extension）。analyze 只有 Claude Code 有，送給其他 agent 時不顯示。其他 agent 沒有 speclink 技能，不會當送達對象。
 
 ### 開工
 
@@ -280,7 +283,7 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
    node scripts/herdr/dock-panel.mjs
    ```
 
-4. 要讓面板認得在 Claude Code 裡直接打的指令，再加上 hook，見「追蹤直接打的指令」。
+4. speclink CLI 會自己回報變更與討論。要讓面板也知道 Claude Code 裡直接打的技能，並在送出訊息當下就認得，再加上 hook，見「追蹤直接打的指令」。
 5. 要讓 Claude Code 會用 `hc` 開分頁派工，再裝技能，見「讓 agent 自己派工」。
 
 用 `⌘⇧L` 切換版面。
@@ -348,7 +351,15 @@ Herdr 內建的 `main` 版面不能停靠：`mod.json` 寫 `"place": "right"` �
 - **範圍內的檔案改了，最多 10 秒才會變色**：那些檔案不在面板監看的資料夾裡，要等計時更新。
 - **視窗看不到時不更新**：Herdr 視窗縮小、被完全蓋住或在別的桌面時，面板不問 CLI，回到畫面時才補抓。Agent 的狀態不受影響，那是 Herdr 即時給的。
 - **「已轉出」是粗分**：看 `discuss list` 的 `status`，以及 `plan` 有沒有未轉出的刀。
-- **Codex 和 Pi 測到哪裡**：在隔離的 Herdr 視窗用真的程式測過狀態回報、貼進輸入框、開工和貼標籤。Codex 只跑一輪就中斷，Pi 沒有登入模型，只看到指令送出。沒有讓它們做完一整個變更。Codex 的 hook 只測過 `UserPromptSubmit`。Cursor 沒有用真的程式測過，只有 `model.js` 的測試。
+- **Codex 的沙盒擋 CLI 回報**：Codex 預設的沙盒不讓它跑的指令連到 Unix socket，所以照預設設定，CLI 回報對 Codex 沒有效果：指令照常跑完，只是標籤沒貼上，Codex 還是靠 hook。要讓 CLI 回報對 Codex 有效，在 `~/.codex/config.toml` 加上下面這段。代價是 Codex 在沙盒裡跑的每個指令都能連網路。
+
+  ```toml
+  [sandbox_workspace_write]
+  network_access = true
+  ```
+
+- **面板用 Codex 和 Pi 測到哪裡**：在隔離的 Herdr 視窗用真的程式測過狀態回報、貼進輸入框、開工和貼標籤。Codex 只跑一輪就中斷，Pi 沒有登入模型，只看到指令送出。沒有讓它們做完一整個變更。Codex 的 hook 只測過 `UserPromptSubmit`。Cursor 沒有用真的程式測過，只有 `model.js` 的測試。
+- **CLI 回報測到哪裡**：在真的 Herdr 裡用暫存專案測過。Codex 用 speclink-apply 做完一個變更、跑了一次討論的指令（打開沙盒網路後標籤都對）；Pi 沒有登入模型，只用輸入框的 `!` 指令跑過；Cursor 沒測。
 - **一次開多個分頁可能撞 git 鎖**：和整波開工相同，撞到時那個 agent 會停下來回報。
 - **按鈕和資料夾的名稱不一樣**：按鈕叫「技能」，資料夾還是 `speclink-new`，這樣 `keys.json` 不用改。
 - **貼進輸入框只有 macOS，要約 0.7 秒**：Herdr 沒有「只貼上不按 Enter」的指令，所以面板用 `script` 開一個看不見的 `hc attach`，送出貼上的資料後離開。它是一次貼上，不是打字，不碰剪貼簿，也不會改變終端機大小。附加鈕在貼上時顯示轉動的圓弧，貼完顯示勾勾。其他系統的 `script` 用法不同，會失敗並跳通知，這時請改用「開新分頁並開工」。

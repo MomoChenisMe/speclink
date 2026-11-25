@@ -1,0 +1,63 @@
+schema: spec-driven
+created: 2026-11-25T15:22:51+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+started_at: 2026-11-25T16:00:21+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-25T17:12:30+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 15
+reviewed_rounds: 2
+reviewed_commit: c5bc035b30fac9632b7fbd1d11571772165a9f82
+reviewed_scope:
+  - path: .cargo/config.toml
+    hash: 1b8f2114215e538c2aa329049af04730fe92db42e3c9db0ce6465e13639407b3
+  - path: crates/adapters/speclink-cli/src/main.rs
+    hash: fc1b12c3b941d7c455c6ccb6e5afd64e534fee20ad1d031fba1283723a0754f1
+  - path: crates/adapters/speclink-cli/src/terminal_report.rs
+    hash: 691733188f706486f5e6bb9d078bd4bc0e315caeccc4e0b6817c340f003c3649
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: 08917320aed4e1a1ee0f25069309ca27ba83b5a50c351985f890f7a6a5e490dc
+  - path: crates/adapters/speclink-cli/tests/it/terminal_report.rs
+    hash: 9fc158b0ddd1d46ec9f831a17ec5ed4967486fc6000133f9ce5c78a44ddd2005
+  - path: crates/adapters/speclink-cli/tests/it/terminal_report_windows.rs
+    hash: 171c42c5fc3644dcb98e614ce107196d7914eb737993689c75f64bc2822d93de
+  - path: docs/configuration.md
+    hash: ab6f59f0a979b6c9ab44cb936f1241e637914b99ddebb1a7aa47ffe1f79d728b
+  - path: docs/configuration.zh-TW.md
+    hash: 1502a56beb84bd8042195662ee367748a2b5442eaa8a3e9b4fc6f749c76cc125
+  - path: integrations/herdr/README.en.md
+    hash: c366945a94b456c25d9c775438723f9df410db799a52733c5c15d32d07bc24dc
+  - path: integrations/herdr/README.md
+    hash: c029417afb7f6b8e0df595247b6bc2946df7d2877bdc515f39a382e1e99e442e
+verified_at: 2026-11-25T17:12:33+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 15
+verified_rounds: 2
+verified_commit: c5bc035b30fac9632b7fbd1d11571772165a9f82
+verified_scope:
+  - path: .cargo/config.toml
+    hash: 1b8f2114215e538c2aa329049af04730fe92db42e3c9db0ce6465e13639407b3
+  - path: crates/adapters/speclink-cli/src/main.rs
+    hash: fc1b12c3b941d7c455c6ccb6e5afd64e534fee20ad1d031fba1283723a0754f1
+  - path: crates/adapters/speclink-cli/src/terminal_report.rs
+    hash: 691733188f706486f5e6bb9d078bd4bc0e315caeccc4e0b6817c340f003c3649
+  - path: crates/adapters/speclink-cli/tests/it/main.rs
+    hash: 08917320aed4e1a1ee0f25069309ca27ba83b5a50c351985f890f7a6a5e490dc
+  - path: crates/adapters/speclink-cli/tests/it/terminal_report.rs
+    hash: 9fc158b0ddd1d46ec9f831a17ec5ed4967486fc6000133f9ce5c78a44ddd2005
+  - path: crates/adapters/speclink-cli/tests/it/terminal_report_windows.rs
+    hash: 171c42c5fc3644dcb98e614ce107196d7914eb737993689c75f64bc2822d93de
+  - path: docs/configuration.md
+    hash: ab6f59f0a979b6c9ab44cb936f1241e637914b99ddebb1a7aa47ffe1f79d728b
+  - path: docs/configuration.zh-TW.md
+    hash: 1502a56beb84bd8042195662ee367748a2b5442eaa8a3e9b4fc6f749c76cc125
+  - path: integrations/herdr/README.en.md
+    hash: c366945a94b456c25d9c775438723f9df410db799a52733c5c15d32d07bc24dc
+  - path: integrations/herdr/README.md
+    hash: c029417afb7f6b8e0df595247b6bc2946df7d2877bdc515f39a382e1e99e442e
+archived_at: 2026-11-25T17:16:14+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

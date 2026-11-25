@@ -1,0 +1,106 @@
+{
+  "version": 2,
+  "change": "cli-terminal-activity-report",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 先寫失敗的函式層測試（Red）：在 `crates/adapters/speclink-cli/src/terminal_report.rs` 的 `#[cfg(test)] mod tests`，用 CLI 真的參數解析器（`main.rs` 的 `cli_command()`）解析一串指令，逐一斷言要貼的標籤。表內：`new change add-auth`（change=add-auth、discussion 空字串）、`new change add-auth --from-discussion auth-flow`（discussion=auth-flow）、`instructions apply --change add-auth`、`task done 1.1 --change add-auth`、`in-progress add add-auth`、`review prepare add-auth`、`archive add-auth`、`discuss new \"登入流程\" --slug auth-flow`、`discuss context auth-flow`、`discuss add-round auth-flow --stdin`、`discuss conclude auth-flow`（後四個是 change 空字串、discussion=auth-flow）。表外都是「不貼」：`show add-auth`、`status --change add-auth --json`、`list --json`、`artifact cat proposal --change add-auth`、`instructions proposal --change add-auth --json`、`task done 1.1`、`discuss new \"登入流程\"`、`archive add-auth add-login`、`archive --all`、`plan --json`。另斷言結果永遠只有 `speclink.change` 與 `speclink.discussion` 兩個鍵。驗證：`cargo test -p speclink-cli terminal_report` 因規則還沒實作而失敗。",
+      "files": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/terminal_report.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "4.1 先擋住測試污染（D7）：新增 repo 根目錄的 `.cargo/config.toml`，在 `[env]` 設 `SPECLINK_TERMINAL_REPORT = \"false\"`（不加 `force`，使用者自己設的值優先），並用註解寫明原因：在 Herdr 裡跑 `cargo test` 時，binary 測試開的 speclink 子程序不能把假的變更名稱貼到開發者的終端機。這一項要在 4.4 之前完成。驗證：`cargo test -p speclink-cli` 通過；在 Herdr 終端機裡做這一項時，另跑一次並比對前後 `hc get \"$HC_TERMINAL_ID\" --json` 的 `labels` 相同（不在 Herdr 裡就留給 7.1）。",
+      "files": [
+        ".cargo/config.toml"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "4.2 先寫失敗的 binary 測試（Red）：新增 `crates/adapters/speclink-cli/tests/it/terminal_report.rs`（整檔 `#[cfg(unix)]`），在 `crates/adapters/speclink-cli/tests/it/main.rs` 登記模組。測試裡開假的 core（`UnixListener`，記錄收到的每一行與連線數），子程序設 `HC_TERMINAL_ID=t2p` 與 `HC_TERMINAL_SOCKET`，並 `env_remove(\"SPECLINK_TERMINAL_REPORT\")` 蓋過 4.1 的預設；比較對象是在另一份相同的暫存專案、不設兩個 HC 變數的同一個指令。本機模式涵蓋：`task done 1 --change add-auth` 收到一則請求，stdout、stderr、exit code 與比較對象位元級相同；`--json` 版本的 payload 欄位與值相同；`--no-color` 版本的 stdout 相同；`new change add-auth --from-discussion auth-flow`；`discuss add-round auth-flow --stdin`；只讀指令（`show`、`status --json`、`list --json`）沒有連線；`task done 99 --change add-auth` 失敗時沒有連線且 stderr 相同；socket 路徑不存在、`PATH` 最前面放一個被執行就建立記號檔的假 `hc` 時，記號檔不存在；假 core 不回覆時，指令的總耗時比比較對象多不到 1 秒（只抓「卡住」，不量 100 毫秒，避免 flaky）；`SPECLINK_TERMINAL_REPORT=false` 時沒有連線。。驗證：`cargo test -p speclink-cli --test it terminal_report` 失敗。",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/terminal_report.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "6.1 更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`，兩種語言寫同樣的事實：(a)「做這個變更或討論的 agent」段（英文版對應段）：標籤也由 speclink CLI 自己貼上；(b)「追蹤直接打的指令」段：含這個變更的 speclink 版本起，任何 agent 在 Herdr 終端機裡跑 spec 表內的指令時，CLI 自己貼 `speclink.change`／`speclink.discussion`，不用裝 hook；hook 仍負責 `speclink.skill`、送出訊息當下的標籤與 `/clear` 時清標籤；關掉的方法是 `SPECLINK_TERMINAL_REPORT=false`；測過的 hc 版本是 0.1.22；(c)「技能會送給誰」段：Cursor 的變更與討論標籤改由 CLI 回報，不再寫「Cursor 沒有接上的機制」。動手前先看 `git status` 與 `git diff` 這兩個檔有沒有別人未提交的改動，有就只改、只提交自己的段落。驗證：逐段比對兩種語言的段落與事實相同；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ]
+    },
+    {
+      "task_id": "13",
+      "task_desc": "6.2 在 `docs/configuration.md` 與 `docs/configuration.zh-TW.md` 的環境變數表加一列 `SPECLINK_TERMINAL_REPORT`：值 `true`／`false`，`false` 關掉在 Herdr 終端機裡貼標籤的回報，不設或其他值是開著；兩種語言放在同一個位置。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（含中英對照與詞彙守門）。",
+      "files": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M88SPW0ZYE1VT1ZWV7MJGBCA",
+      "taskDesc": "1.1 先寫失敗的函式層測試（Red）：在 `crates/adapters/speclink-cli/src/terminal_report.rs` 的 `#[cfg(test)] mod tests`，用 CLI 真的參數解析器（`main.rs` 的 `cli_command()`）解析一串指令，逐一斷言要貼的標籤。表內：`new change add-auth`（change=add-auth、discussion 空字串）、`new change add-auth --from-discussion auth-flow`（discussion=auth-flow）、`instructions apply --change add-auth`、`task done 1.1 --change add-auth`、`in-progress add add-auth`、`review prepare add-auth`、`archive add-auth`、`discuss new \"登入流程\" --slug auth-flow`、`discuss context auth-flow`、`discuss add-round auth-flow --stdin`、`discuss conclude auth-flow`（後四個是 change 空字串、discussion=auth-flow）。表外都是「不貼」：`show add-auth`、`status --change add-auth --json`、`list --json`、`artifact cat proposal --change add-auth`、`instructions proposal --change add-auth --json`、`task done 1.1`、`discuss new \"登入流程\"`、`archive add-auth add-login`、`archive --all`、`plan --json`。另斷言結果永遠只有 `speclink.change` 與 `speclink.discussion` 兩個鍵。驗證：`cargo test -p speclink-cli terminal_report` 因規則還沒實作而失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c5bc035b30fac9632b7fbd1d11571772165a9f82",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/main.rs",
+        "crates/adapters/speclink-cli/src/terminal_report.rs"
+      ],
+      "recordedAt": "2026-11-25T08:02:25Z"
+    },
+    {
+      "taskId": "tsk_01M88SPW0Z72HB02D17SKHQTJG",
+      "taskDesc": "4.1 先擋住測試污染（D7）：新增 repo 根目錄的 `.cargo/config.toml`，在 `[env]` 設 `SPECLINK_TERMINAL_REPORT = \"false\"`（不加 `force`，使用者自己設的值優先），並用註解寫明原因：在 Herdr 裡跑 `cargo test` 時，binary 測試開的 speclink 子程序不能把假的變更名稱貼到開發者的終端機。這一項要在 4.4 之前完成。驗證：`cargo test -p speclink-cli` 通過；在 Herdr 終端機裡做這一項時，另跑一次並比對前後 `hc get \"$HC_TERMINAL_ID\" --json` 的 `labels` 相同（不在 Herdr 裡就留給 7.1）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c5bc035b30fac9632b7fbd1d11571772165a9f82",
+      "touchedFiles": [
+        ".cargo/config.toml"
+      ],
+      "recordedAt": "2026-11-25T08:07:01Z"
+    },
+    {
+      "taskId": "tsk_01M88SPW0Z75D6MP5QBMGTGB8M",
+      "taskDesc": "4.2 先寫失敗的 binary 測試（Red）：新增 `crates/adapters/speclink-cli/tests/it/terminal_report.rs`（整檔 `#[cfg(unix)]`），在 `crates/adapters/speclink-cli/tests/it/main.rs` 登記模組。測試裡開假的 core（`UnixListener`，記錄收到的每一行與連線數），子程序設 `HC_TERMINAL_ID=t2p` 與 `HC_TERMINAL_SOCKET`，並 `env_remove(\"SPECLINK_TERMINAL_REPORT\")` 蓋過 4.1 的預設；比較對象是在另一份相同的暫存專案、不設兩個 HC 變數的同一個指令。本機模式涵蓋：`task done 1 --change add-auth` 收到一則請求，stdout、stderr、exit code 與比較對象位元級相同；`--json` 版本的 payload 欄位與值相同；`--no-color` 版本的 stdout 相同；`new change add-auth --from-discussion auth-flow`；`discuss add-round auth-flow --stdin`；只讀指令（`show`、`status --json`、`list --json`）沒有連線；`task done 99 --change add-auth` 失敗時沒有連線且 stderr 相同；socket 路徑不存在、`PATH` 最前面放一個被執行就建立記號檔的假 `hc` 時，記號檔不存在；假 core 不回覆時，指令的總耗時比比較對象多不到 1 秒（只抓「卡住」，不量 100 毫秒，避免 flaky）；`SPECLINK_TERMINAL_REPORT=false` 時沒有連線。。驗證：`cargo test -p speclink-cli --test it terminal_report` 失敗。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c5bc035b30fac9632b7fbd1d11571772165a9f82",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/main.rs",
+        "crates/adapters/speclink-cli/tests/it/terminal_report.rs"
+      ],
+      "recordedAt": "2026-11-25T08:10:12Z"
+    },
+    {
+      "taskId": "tsk_01M88SPW0ZSYR037XR677RPHM1",
+      "taskDesc": "6.1 更新 `integrations/herdr/README.md` 與 `integrations/herdr/README.en.md`，兩種語言寫同樣的事實：(a)「做這個變更或討論的 agent」段（英文版對應段）：標籤也由 speclink CLI 自己貼上；(b)「追蹤直接打的指令」段：含這個變更的 speclink 版本起，任何 agent 在 Herdr 終端機裡跑 spec 表內的指令時，CLI 自己貼 `speclink.change`／`speclink.discussion`，不用裝 hook；hook 仍負責 `speclink.skill`、送出訊息當下的標籤與 `/clear` 時清標籤；關掉的方法是 `SPECLINK_TERMINAL_REPORT=false`；測過的 hc 版本是 0.1.22；(c)「技能會送給誰」段：Cursor 的變更與討論標籤改由 CLI 回報，不再寫「Cursor 沒有接上的機制」。動手前先看 `git status` 與 `git diff` 這兩個檔有沒有別人未提交的改動，有就只改、只提交自己的段落。驗證：逐段比對兩種語言的段落與事實相同；`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c5bc035b30fac9632b7fbd1d11571772165a9f82",
+      "touchedFiles": [
+        "integrations/herdr/README.en.md",
+        "integrations/herdr/README.md"
+      ],
+      "recordedAt": "2026-11-25T08:15:47Z"
+    },
+    {
+      "taskId": "tsk_01M88SPW0ZJWVSZHARGFQ45XJ3",
+      "taskDesc": "6.2 在 `docs/configuration.md` 與 `docs/configuration.zh-TW.md` 的環境變數表加一列 `SPECLINK_TERMINAL_REPORT`：值 `true`／`false`，`false` 關掉在 Herdr 終端機裡貼標籤的回報，不設或其他值是開著；兩種語言放在同一個位置。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過（含中英對照與詞彙守門）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "c5bc035b30fac9632b7fbd1d11571772165a9f82",
+      "touchedFiles": [
+        "docs/configuration.md",
+        "docs/configuration.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-25T08:16:17Z"
+    }
+  ]
+}
