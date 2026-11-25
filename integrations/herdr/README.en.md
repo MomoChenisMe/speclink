@@ -150,7 +150,7 @@ Claude Code does not know `hc`. When you tell it "start the next wave" in Herdr,
 node scripts/herdr/install-skill.mjs
 ```
 
-The script copies `integrations/herdr/skills/herdr-speclink` to `~/.claude/skills/`. New sessions load it. Run the script again to update. Then you can tell the agent "start the next wave" or "run quality on add-auth in a new tab". It opens one tab for each change and does not answer questions for those tabs. The skill is for Claude Code only, and it only works in a Herdr terminal.
+The script copies `integrations/herdr/skills/herdr-speclink` to `~/.claude/skills/`. New sessions load it. Run the script again to update. Then you can tell the agent "start the next wave" or "run quality on add-auth in a new tab". It opens one tab for each change and does not answer questions for those tabs. When the work belongs to another project, the tab opens in the space of that project. You can also tell it to wait for the results, for example "start them and tell me when they finish". The skill is for Claude Code only, and it only works in a Herdr terminal.
 
 When you start agents from your own script, set these labels and the panel knows them:
 

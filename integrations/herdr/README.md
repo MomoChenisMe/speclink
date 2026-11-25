@@ -150,7 +150,7 @@ Claude Code 本身不認得 `hc`。你在 Herdr 裡對它說「開工下一波�
 node scripts/herdr/install-skill.mjs
 ```
 
-腳本把 `integrations/herdr/skills/herdr-speclink` 複製到 `~/.claude/skills/`，新開的 session 就會載入。再跑一次就是更新。之後可以對 agent 說「開工下一波」「用新分頁對 add-auth 跑 quality」，它會一個變更開一個分頁，不替那些分頁回答問題。這個技能只給 Claude Code 用，而且只在 Herdr 的終端機裡有作用。
+腳本把 `integrations/herdr/skills/herdr-speclink` 複製到 `~/.claude/skills/`，新開的 session 就會載入。再跑一次就是更新。之後可以對 agent 說「開工下一波」「用新分頁對 add-auth 跑 quality」，它會一個變更開一個分頁，不替那些分頁回答問題。工作屬於別的專案時，分頁開在那個專案的 space。你也可以叫它等結果，例如「開工後等它們做完再告訴我」。這個技能只給 Claude Code 用，而且只在 Herdr 的終端機裡有作用。
 
 自己寫腳本開 agent 時，貼上這些標籤，面板就認得：
 
