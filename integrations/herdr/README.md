@@ -142,6 +142,31 @@
 { "extensions": ["/Users/you/.config/herdr-app/mods/speclink/pi-labels.ts"] }
 ```
 
+### 讓 agent 自己派工（選用）
+
+Claude Code 本身不認得 `hc`。你在 Herdr 裡對它說「開工下一波」時，它只會用自己的子 agent，面板上看不到。裝了 `herdr-speclink` 技能，它才會用 `hc` 開新分頁，並貼上面板認得的標籤：
+
+```bash
+node scripts/herdr/install-skill.mjs
+```
+
+腳本把 `integrations/herdr/skills/herdr-speclink` 複製到 `~/.claude/skills/`，新開的 session 就會載入。再跑一次就是更新。之後可以對 agent 說「開工下一波」「用新分頁對 add-auth 跑 quality」，它會一個變更開一個分頁，不替那些分頁回答問題。這個技能只給 Claude Code 用，而且只在 Herdr 的終端機裡有作用。
+
+自己寫腳本開 agent 時，貼上這些標籤，面板就認得：
+
+| 標籤 | 值 | 作用 |
+| --- | --- | --- |
+| `herdr.space` | space 的 id（`hc get $HC_TERMINAL_ID --json` 的 `labels`） | Herdr 在那個 space 開分頁放它。沒有就藏在背景 |
+| `speclink.change` | 變更名稱 | agent 出現在那個變更的列上，開工鈕消失 |
+| `speclink.discussion` | 討論的 slug | agent 出現在那場討論的列上 |
+| `speclink.skill` | 完整的技能名稱，例如 `speclink-apply` | 判斷主資料夾有沒有 apply 在跑，以及哪個 agent 在討論但還沒記錄 |
+
+```bash
+hc run --bg --json --no-parent --cwd "$PWD" \
+  --label herdr.space="$SPACE" --label speclink.change=add-auth --label speclink.skill=speclink-apply \
+  claude "/speclink-apply add-auth"
+```
+
 ### 技能會送給誰
 
 依序找，找到就停：
@@ -192,7 +217,7 @@ Claude Code、GitHub Copilot 與 Cursor 送 `/speclink-<技能>`，Codex 送 `$s
 底部有兩顆鈕，兩種結果都可以直接按：
 
 - **放到輸入框（Enter）。** 把指令貼進目前分頁 agent 的輸入框，不送出。你可以接著打字，再自己按 Enter。agent 在做事也可以放；在等你回答時不放，因為貼上可能答掉對話框。
-- **開新分頁並開工（`⌘Enter`）。** 做法和 `herdr-dispatch` 技能相同：用 `hc run` 在目前的 space 開新分頁，分頁名稱是「技能 · 變更」，畫面留在原分頁。
+- **開新分頁並開工（`⌘Enter`）。** 做法和 `herdr-speclink` 技能相同：用 `hc run` 在目前的 space 開新分頁，分頁名稱是「技能 · 變更」，畫面留在原分頁。
 
 技能搭配變更時，每一列前面有勾選框，可以一次開多個分頁，一個變更一個分頁。點框或按 `Space` 勾選，`⌘A` 或「全選」勾全部。點那一列只是選它，不會勾。
 
@@ -256,6 +281,7 @@ Logo 送 `speclink://project` 網址：桌面 app 切到這個 space 的專案�
    ```
 
 4. 要讓面板認得在 Claude Code 裡直接打的指令，再加上 hook，見「追蹤直接打的指令」。
+5. 要讓 Claude Code 會用 `hc` 開分頁派工，再裝技能，見「讓 agent 自己派工」。
 
 用 `⌘⇧L` 切換版面。
 
@@ -299,6 +325,7 @@ node scripts/herdr/dock-panel.mjs
 2. 刪掉 `~/.config/herdr-app/layouts/speclink.json`，以及 `~/.config/herdr-app/mods/` 底下的 `speclink`、`speclink-new`、`speclink-spaces`、`speclink-agents`、`speclink-files`、`speclink-changes`、`speclink-tabs`。
 3. 刪掉 `keys.json` 裡加的那幾行。
 4. Herdr 自動把 Cmd+點加進其他個人版面的話，刪掉那些版面 `link_handlers` 裡的 `speclink`。
+5. 裝過技能的話，刪掉 `~/.claude/skills/herdr-speclink`。
 
 ### 為什麼用複製的版面
 

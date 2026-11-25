@@ -142,6 +142,31 @@ The hooks write no output and do not stop the message. Outside Herdr they do not
 { "extensions": ["/Users/you/.config/herdr-app/mods/speclink/pi-labels.ts"] }
 ```
 
+### Let an agent start the work (optional)
+
+Claude Code does not know `hc`. When you tell it "start the next wave" in Herdr, it uses its own subagents, and the panel does not show them. With the `herdr-speclink` skill, it uses `hc` to open new tabs and sets the labels that the panel reads:
+
+```bash
+node scripts/herdr/install-skill.mjs
+```
+
+The script copies `integrations/herdr/skills/herdr-speclink` to `~/.claude/skills/`. New sessions load it. Run the script again to update. Then you can tell the agent "start the next wave" or "run quality on add-auth in a new tab". It opens one tab for each change and does not answer questions for those tabs. The skill is for Claude Code only, and it only works in a Herdr terminal.
+
+When you start agents from your own script, set these labels and the panel knows them:
+
+| Label | Value | Effect |
+| --- | --- | --- |
+| `herdr.space` | the id of the space (`labels` in `hc get $HC_TERMINAL_ID --json`) | Herdr puts the terminal in a tab of that space. Without it the terminal stays hidden |
+| `speclink.change` | the change name | The agent shows on the row of that change, and the Start button goes away |
+| `speclink.discussion` | the slug of the discussion | The agent shows on the row of that discussion |
+| `speclink.skill` | the full skill name, for example `speclink-apply` | Tells the panel if an apply runs in the main folder, and which agent discusses something that has no record yet |
+
+```bash
+hc run --bg --json --no-parent --cwd "$PWD" \
+  --label herdr.space="$SPACE" --label speclink.change=add-auth --label speclink.skill=speclink-apply \
+  claude "/speclink-apply add-auth"
+```
+
 ### Where a skill goes
 
 The panel tries these in order and stops at the first match:
@@ -192,7 +217,7 @@ The pop-up has two pages: **Speclink** and **My skills**. Click a page name or p
 The bottom has two buttons, one for each result:
 
 - **Put in input (Enter).** The command is pasted into the input box of the agent in the current tab and is not sent. You can type more and press Enter yourself. This also works when the agent is working. It does not work when the agent waits for your answer, because the paste can answer its dialog.
-- **Start new tab (`⌘Enter`).** This works like the `herdr-dispatch` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
+- **Start new tab (`⌘Enter`).** This works like the `herdr-speclink` skill: `hc run` opens a new tab in the current space, the tab name is "skill · change", and the view stays on the current tab.
 
 When the skill uses a change, each row has a checkbox, so you can open many tabs at once, one tab for each change. Click the box or press `Space` to check a row. Use `⌘A` or "All" to check all rows. A click on the row only selects it and does not check it.
 
@@ -256,6 +281,7 @@ Work from the repo root, with Herdr open:
    ```
 
 4. To let the panel know the commands that you type in Claude Code, add the hooks. See "Track what you type directly".
+5. To let Claude Code open tabs with `hc`, install the skill. See "Let an agent start the work".
 
 Use `⌘⇧L` to switch layouts.
 
@@ -299,6 +325,7 @@ After this, the panel column has its default width, and the other column widths 
 2. Delete `~/.config/herdr-app/layouts/speclink.json`, and `speclink`, `speclink-new`, `speclink-spaces`, `speclink-agents`, `speclink-files`, `speclink-changes` and `speclink-tabs` in `~/.config/herdr-app/mods/`.
 3. Remove the additions from `keys.json`.
 4. If Herdr added Cmd-click to other personal layouts, remove `speclink` from `link_handlers` in those layouts.
+5. If you installed the skill, delete `~/.claude/skills/herdr-speclink`.
 
 ### Why a cloned layout
 

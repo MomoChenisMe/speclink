@@ -1759,6 +1759,16 @@ test('dock-panel：版面把 Cmd+點交給面板，mod.json 的規則和 linkTar
   assert.ok(!pattern.test('/a/speclink/specs/auth/spec.md'));
 });
 
+test('herdr-speclink 技能：名稱不會被當成 Speclink 的技能，貼的標籤是面板在讀的', () => {
+  const file = fileURLToPath(new URL('../../integrations/herdr/skills/herdr-speclink/SKILL.md', import.meta.url));
+  const text = readFileSync(file, 'utf8');
+  const name = text.match(/^name: (.+)$/m)[1];
+  // 開頭是 speclink- 的技能，面板會當成專案已經有 Speclink 技能，也不列在「我的技能」。
+  assert.equal(hasSpeclinkSkills([{ name }]), false);
+  assert.deepEqual(skillLabels('apply', 'add-a').slice(0, 2), ['speclink.skill=speclink-apply', 'speclink.change=add-a']);
+  for (const label of ['herdr.space=', 'speclink.change=', 'speclink.skill=', 'speclink.discussion=']) assert.ok(text.includes(label), label);
+});
+
 test('指令面板：mod.json 的項目開得到 repo 裡的 mod，名稱有中文', () => {
   const mods = fileURLToPath(new URL('../../integrations/herdr/mods/', import.meta.url));
   const { palette } = JSON.parse(readFileSync(path.join(mods, 'speclink/mod.json'), 'utf8'));
