@@ -11,7 +11,12 @@ const PREFIX = Object.fromEntries(Object.entries(SKILL_PREFIX).map(([key, prefix
 // speclink init --tools 的名稱。
 const SPECLINK_TOOL = { claude: "claude", copilot: "copilot", codex: "codex", pi: "pi", cursor: "cursor" };
 // sending：hc send 要等 agent 開工才回來（約兩秒），這段時間再按一次會重複送出。
-const BUSY = { working: "正在做事", blocked: "在等你回答", error: "出錯了", sending: "正在收指令" };
+const BUSY = { working: "正在做事", error: "出錯了", sending: "正在收指令" };
+// agent 在等什麼，是它自己回報的：Claude Code 要你允許指令時報 permission，問你問題時報 question。
+// 沒報原因的 agent 只說在等你回答。
+const WAITING_FOR = { permission: "在等你允許", question: "在問你問題", auth: "在等你登入" };
+export const waitingText = (agent) => WAITING_FOR[agent.waiting] ?? "在等你回答";
+const busyText = (agent) => (agent.status === "blocked" ? waitingText(agent) : (BUSY[agent.status] ?? agent.status));
 
 // 這些技能要在主資料夾跑；其餘技能跟著變更走，有 worktree 就在 worktree 裡跑。
 const MAIN_FOLDER = new Set(["archive", "archive+commit", "worktree-merge", "apply-with-worktree"]);
@@ -400,6 +405,7 @@ export function joinAgents(agents, terminals, panes) {
       ...a,
       status: t?.status ?? a.status,
       view: a.status,
+      waiting: t?.report?.kind ?? null,
       name: t?.name ?? null,
       key: a.program?.key,
       cwd: byPane.get(a.pane)?.cwd ?? t?.cwd ?? null,
@@ -489,7 +495,7 @@ export function planDelivery({ skill, change = null, discussion = null, args, ro
   if (target) {
     const { agent, where } = target;
     // skill 是實際送出的技能，按鈕寫它：有 worktree 時 apply 可能換成 apply-with-worktree。
-    if (!sendable(agent)) return { kind: "busy", where, agent, skill: name, reason: BUSY[agent.status] ?? agent.status };
+    if (!sendable(agent)) return { kind: "busy", where, agent, skill: name, reason: busyText(agent) };
     const text = commandText(agent.key, name, args);
     return { kind: "send", where, agent, skill: name, text, hc: sendArgs(agent, text), labels: skillLabels(name, change?.name ?? discussion?.slug) };
   }
@@ -610,7 +616,7 @@ function inputAgent(agents, focus) {
 }
 
 // agent 在等回答時不放，貼上可能答掉對話框。在做事可以放，因為不會送出。
-const WAITING = "目前分頁的 agent 在等你回答";
+const waitingHere = (agent) => none("目前分頁的 agent {0}", tr(waitingText(agent)));
 
 // 技能跳窗：把指令放到輸入框。
 export function placePlan({ skill, target, note, agents, focus, agentKey }) {
@@ -631,7 +637,7 @@ export function placePlan({ skill, target, note, agents, focus, agentKey }) {
 function placeTarget(agents, focus, agentKey) {
   const agent = inputAgent(agents, focus);
   if (!agent) return none("目前分頁沒有 agent。可以改開新分頁");
-  if (agent.status === "blocked") return none(WAITING);
+  if (agent.status === "blocked") return waitingHere(agent);
   if (agentKey && agent.key !== agentKey) return none("目前分頁是 {0}，要放到輸入框請選它", agent.program?.name ?? agent.key);
   return agent;
 }
@@ -640,7 +646,7 @@ function placeTarget(agents, focus, agentKey) {
 export function attachPlan({ name, agents, focus }) {
   const agent = inputAgent(agents, focus);
   if (!agent) return none("目前分頁沒有 agent");
-  if (agent.status === "blocked") return none(WAITING);
+  if (agent.status === "blocked") return waitingHere(agent);
   return { kind: "place", agent, text: pasteable(` ${name} `) };
 }
 
@@ -673,35 +679,45 @@ export function newTabPlan({ skill, target, note, root, agents, known, preferred
   const d = newAgent({ name, args: joinArgs(target, note), folder, change, discussion, known, preferred });
   if (d.kind === "none") return d;
   if (onlyClaude(skill, d.key)) return none("{0} 只有 Claude Code 能用", skill);
-  return {
-    ...d,
-    kind: "tab",
-    hc: [
-      "run",
-      "--bg",
-      "--json",
-      "--no-parent",
-      ...(on ? ["--on", on] : []),
-      "--cwd",
-      folder,
-      "--label",
-      `herdr.space=${space}`,
-      // 只有變更才取名。hc 的名稱不能重複（name_taken），已經被佔用時就不取名。
-      ...(change
-        ? [
-            ...(agents.some((a) => a.name === change.name.slice(0, 32)) ? [] : ["--name", change.name.slice(0, 32)]),
-            "--label",
-            `speclink.change=${change.name}`,
-            "--label",
-            skillLabel(name),
-          ]
-        : []),
-      ...(discussion ? ["--label", `speclink.discussion=${discussion.slug}`, "--label", `speclink.skill=speclink-${name}`] : []),
-      ...d.argv,
-      d.text,
-    ],
-  };
+  const labels = change
+    ? [`speclink.change=${change.name}`, skillLabel(name)]
+    : discussion
+      ? [`speclink.discussion=${discussion.slug}`, `speclink.skill=speclink-${name}`]
+      : [];
+  return { ...d, kind: "tab", hc: tabRun({ on, folder, space, name: terminalName(change?.name, agents), labels, argv: d.argv, text: d.text }) };
 }
+
+// 只有變更才取名。hc 的名稱不能重複（name_taken），已經被佔用時就不取名。
+const terminalName = (change, agents) => (change && !agents.some((a) => a.name === change.slice(0, 32)) ? change.slice(0, 32) : null);
+
+// hc run 的參數：分頁開在 space 裡，不接在誰底下。標籤在建立時就貼好，面板馬上認得這個 agent。
+const tabRun = ({ on, folder, space, name, labels, argv, text }) => [
+  "run",
+  "--bg",
+  "--json",
+  "--no-parent",
+  ...(on ? ["--on", on] : []),
+  "--cwd",
+  folder,
+  "--label",
+  `herdr.space=${space}`,
+  ...(name ? ["--name", name] : []),
+  ...labels.flatMap((label) => ["--label", label]),
+  ...argv,
+  text,
+];
+
+// 技能鈕找不到 agent 可以送時（planDelivery 的 new）也用 hc run 開分頁。delivery.labels 裡「k=」是清掉標籤，新終端機用不到。
+export const newTabRun = (delivery, { space, on, agents }) =>
+  tabRun({
+    on,
+    folder: delivery.folder,
+    space,
+    name: terminalName(delivery.change, agents),
+    labels: delivery.labels.filter((label) => !label.endsWith("=")),
+    argv: delivery.argv,
+    text: delivery.text,
+  });
 
 // 一次開多個分頁，一個變更一個分頁。不能開的變更略過，兩個都要在主資料夾跑的 apply 整批擋下。
 export function batchPlan({ skill, targets, ...context }) {

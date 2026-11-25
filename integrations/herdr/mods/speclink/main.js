@@ -14,7 +14,6 @@ import {
   props,
   run,
   shared,
-  spaces,
   terminals,
   theme,
   watchFolder,
@@ -34,10 +33,12 @@ import {
   joinAgents,
   lastOpenError,
   logoOpenAttempts,
+  newTabRun,
   rowChoices,
   speclinkUrl,
   startChoices,
   stationViews,
+  waitingText,
   waveToStart,
 } from "./model.js";
 import ColumnSync from "./column-sync.js";
@@ -55,7 +56,9 @@ const STAGES = [
   { id: "in-progress", label: "進行中", tone: "ansi4" },
   { id: "ready", label: "已就緒", tone: "ansi2" },
 ];
-const AGENT_STATE = { working: "執行中", blocked: "在等你回答", done: "已完成", idle: "閒置" };
+const AGENT_STATE = { working: "執行中", done: "已完成", idle: "閒置" };
+// 等你的 agent 寫出在等什麼（見 waitingText）。
+const stateText = (a) => (a.view === "blocked" ? waitingText(a) : (AGENT_STATE[a.view] ?? a.view));
 // 圖示和文字與桌面 app 的看板卡片相同：形狀分站別（徽章是 review，盾牌是 verify），顏色分狀態。
 const STATION_BADGE = {
   review: {
@@ -249,16 +252,15 @@ export default class SpeclinkPanel extends View {
         cx.notify();
       });
     } else if (delivery.kind === "new") {
-      const before = new Set(terminals().map((t) => t.address));
-      run("tab.new", {
-        folder: delivery.folder,
-        argv: delivery.argv,
-        task: delivery.text,
-        name: delivery.tabName,
-        space: spaceFor(delivery.folder)?.id,
-      });
-      this.labelNew(before, delivery, cx, 10);
+      // 和開工一樣用 hc run 開分頁，標籤在建立時就貼好。技能鈕是「交給某個 agent」，所以畫面切到新分頁。
+      const space = spaceFor(delivery.folder)?.id ?? focused()?.space;
+      const live = joinAgents(agents(), terminals(), panes());
+      const plan = { hc: newTabRun(delivery, { space, on: this.place.on, agents: live }), tabName: delivery.tabName, focus: true };
       if (delivery.change) this.markStarting(delivery.change, cx);
+      cx.spawn(async (cx) => {
+        const failed = await openTabs([plan], cx);
+        if (failed) notify({ title: tr("開工失敗"), body: sendError(failed), level: "warning" });
+      });
     }
   }
 
@@ -279,19 +281,6 @@ export default class SpeclinkPanel extends View {
     cx.timer.after(15000, (cx) => {
       this.starting.delete(change);
       cx.notify();
-    });
-  }
-
-  // 新分頁貼上標籤，之後按這個變更的技能才認得它。tab.new 不回傳終端機位址，要等它出現。
-  labelNew(before, delivery, cx, tries) {
-    cx.timer.after(300, (cx) => {
-      const tabs = new Map(spaces().flatMap((s) => s.tabs).map((t) => [t.id, t]));
-      const pane = panes().find((p) => p.terminal && !before.has(p.terminal) && tabs.get(p.tab)?.name === delivery.tabName);
-      if (pane) {
-        hc(["label", pane.terminal, ...delivery.labels]);
-      } else if (tries > 1) {
-        this.labelNew(before, delivery, cx, tries - 1);
-      }
     });
   }
 
@@ -538,7 +527,8 @@ export default class SpeclinkPanel extends View {
   }
 
   // 和 Herdr 內建的 Agents 清單同一套：做事中是轉動的圓弧，閒置是空心圈，做完是實心點，等回答是膠囊。
-  agentStatus(view, t) {
+  agentStatus(a, t) {
+    const { view } = a;
     if (view === "working") return icon("spinner", 12, t.working).mx(1).spin(900);
     if (view === "blocked") {
       return div()
@@ -552,7 +542,7 @@ export default class SpeclinkPanel extends View {
         .text_size(10.5)
         .font_semibold()
         .text_color(t.blocked)
-        .child(tr(AGENT_STATE.blocked));
+        .child(tr(waitingText(a)));
     }
     if (view === "idle") return div().size(7).mx(3).flex_none().rounded(4).border(1.5).border_color(t.idle);
     return div().size(7).mx(3).flex_none().rounded(4).bg(t[view] ?? t.dim);
@@ -574,7 +564,7 @@ export default class SpeclinkPanel extends View {
       .text_size(11)
       .cursor_pointer()
       .hover((s) => s.bg(t.hover))
-      .tooltip(tr("切到這個 agent（{0}）", tr(AGENT_STATE[a.view] ?? a.view)))
+      .tooltip(tr("切到這個 agent（{0}）", tr(stateText(a))))
       .on_click((_e, cx) => {
         cx.stop_propagation();
         run("agent.focus", { terminal: a.address });
@@ -584,7 +574,7 @@ export default class SpeclinkPanel extends View {
       .when(here, (el) =>
         el.child(div().flex_none().px(5).rounded(4).bg(`${t.accent}26`).text_size(10).text_color(t.accent).child(tr("目前分頁"))),
       )
-      .child(this.agentStatus(a.view, t));
+      .child(this.agentStatus(a, t));
   }
 
   // 點列本身叫 Speclink 開詳情。列上的鈕都會擋下點擊。別台機器的專案路徑在這台開不了。

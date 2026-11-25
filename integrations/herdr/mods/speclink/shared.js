@@ -91,12 +91,15 @@ export async function stationFacts(list, plan, root, on) {
   return Object.fromEntries(facts);
 }
 
-// hc run 回來時分頁可能還沒出現，等它出現才能改名。
+// hc run 回來時分頁可能還沒出現，等它出現才能改名。focus 是 true 的分頁，出現後畫面切過去。
 const nameTabs = (waiting, cx, tries = 20) =>
   new Promise((done) => {
-    const left = waiting.filter(({ address, name }) => {
+    const left = waiting.filter(({ address, name, focus }) => {
       const pane = panes().find((p) => p.terminal === address);
-      if (pane) run("tab.rename", { id: pane.tab, name });
+      if (pane) {
+        run("tab.rename", { id: pane.tab, name });
+        if (focus) run("pane.focus", { terminal: address });
+      }
       return !pane;
     });
     if (left.length === 0 || tries === 0) return done();
@@ -113,7 +116,7 @@ export async function openTabs(plans, cx) {
       failed = r;
       break;
     }
-    opened.push({ address: JSON.parse(r.stdout).address, name: plan.tabName });
+    opened.push({ address: JSON.parse(r.stdout).address, name: plan.tabName, focus: plan.focus });
   }
   await nameTabs(opened, cx);
   return failed;
