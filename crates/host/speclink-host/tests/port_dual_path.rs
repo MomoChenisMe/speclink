@@ -282,6 +282,18 @@ fn port_content(port: &MemoryStorePort, key: &str) -> Option<String> {
         .map(|doc| doc.content)
 }
 
+/// Archive stamps the @trace `updated:` line with the wall-clock second, and
+/// the two paths run one after the other, so they can land on either side of
+/// a second boundary. Compare the spec with that value masked.
+fn without_trace_time(spec: Option<String>) -> Option<String> {
+    spec.map(|s| {
+        s.lines()
+            .map(|line| if line.starts_with("updated: ") { "updated: <time>" } else { line })
+            .collect::<Vec<_>>()
+            .join("\n")
+    })
+}
+
 #[test]
 fn task_done_matches_and_records_the_same_evidence() {
     let (_dir, fs) = seed_fs();
@@ -370,8 +382,8 @@ fn archiving_a_change_matches_and_moves_every_document() {
     assert!(!fs.change_exists(CHANGE));
     assert_eq!(keys_under(&port, "changes/"), Vec::<String>::new());
     assert_eq!(
-        fs.read_canonical_spec("auth"),
-        port_content(&port, "specs/auth/spec.md")
+        without_trace_time(fs.read_canonical_spec("auth")),
+        without_trace_time(port_content(&port, "specs/auth/spec.md"))
     );
     for doc in ["tasks.md", "specs/auth/spec.md"] {
         assert_eq!(
