@@ -147,6 +147,29 @@ pub fn show_json(show: &ShowOutcome, detail: bool) -> Value {
             if !c.fields.is_empty() {
                 shown["fields"] = json!(c.fields);
             }
+            // The keys the detailed list gives, by the same rules, from the
+            // documents above: the local and the remote `show` both get here.
+            if c.meta_readable {
+                let tasks = speclink_core::tasks::counts(&speclink_core::tasks::parse(c.tasks.as_deref().unwrap_or_default()));
+                let progress = speclink_core::model::Progress::of(
+                    c.started_at.as_deref(),
+                    c.ready_at.as_deref(),
+                    tasks.complete,
+                    tasks.total,
+                );
+                shown["stage"] = json!(progress.stage);
+                if let Some(why) = c.proposal.as_deref().and_then(speclink_core::listing::why_excerpt) {
+                    shown["whyExcerpt"] = json!(why);
+                }
+                if let Some(ready) = progress.ready_at {
+                    shown["readyAt"] = json!(ready);
+                }
+            }
+            for (key, value) in [("startedAt", &c.started_at), ("createdBy", &c.created_by), ("createdById", &c.created_by_id)] {
+                if let Some(value) = value {
+                    shown[key] = json!(value);
+                }
+            }
             shown
         }
     }
@@ -270,6 +293,11 @@ mod tests {
             landed: None,
             created_by: None,
             from_discussions: Vec::new(),
+            why_excerpt: None,
+            stage: None,
+            started_at: None,
+            created_by_id: None,
+            ready_at: None,
             worktree: None,
         }
     }
@@ -483,6 +511,11 @@ mod tests {
             landed: None,
             claimed: None,
             fields: Default::default(),
+            created_by: None,
+            created_by_id: None,
+            started_at: None,
+            ready_at: None,
+            meta_readable: true,
         })
     }
 
@@ -513,6 +546,11 @@ mod tests {
                 landed: None,
                 claimed: None,
                 fields: Default::default(),
+                created_by: None,
+                created_by_id: None,
+                started_at: None,
+                ready_at: None,
+                meta_readable: true,
             })
         };
         assert_eq!(show_human(&bare(Vec::new()), &PLAIN).stdout, "Change: empty\n");
@@ -541,7 +579,9 @@ mod tests {
                 "proposal": "## Why\n\nSign-in needs a second rule.\n",
                 "restaleFrom": [],
                 "schema": "spec-driven",
+                "stage": "proposed",
                 "tasks": "- [ ] 1.1 x\n",
+                "whyExcerpt": "Sign-in needs a second rule.",
             })
         );
         let spec = ShowOutcome::Spec { name: "auth".to_string(), content: "# auth\n".to_string() };
@@ -638,6 +678,7 @@ mod tests {
             tasks_total: Some(3),
             tasks_done: Some(3),
             created_by: None,
+            created_by_id: None,
             from_discussions: vec!["two".into()],
             delta_capabilities: vec!["auth".into()],
             fields: Default::default(),
@@ -776,8 +817,9 @@ mod tests {
 
     #[test]
     fn show_without_the_detail_prints_the_bytes_it_printed_before() {
-        // 回歸對照：不帶詳細的 show --json 逐位元不變（這段文字取自加入 --detail 之前的輸出）。
-        let before = "{\n  \"branch\": \"feature/x\",\n  \"created\": \"2026-07-01T10:00:00+08:00\",\n  \"deltaSpecs\": [\n    \"auth/spec.md\"\n  ],\n  \"design\": null,\n  \"fromDiscussions\": [],\n  \"landed\": {\n    \"at\": \"2026-11-03T09:00:00+08:00\",\n    \"commit\": \"89abcdef0123\"\n  },\n  \"name\": \"alpha\",\n  \"proposal\": \"## Why\\n\\nSign-in needs a second rule.\\n\",\n  \"restaleFrom\": [],\n  \"review\": {\n    \"commit\": \"0123456789ab\",\n    \"rounds\": 3,\n    \"stampedAt\": \"2026-11-02\",\n    \"stampedBy\": \"Rev <r@example.com>\",\n    \"state\": \"stamped\",\n    \"tasksTotal\": 12\n  },\n  \"schema\": \"spec-driven\",\n  \"tasks\": \"- [ ] 1.1 x\\n\",\n  \"verify\": {\n    \"state\": \"inProgress\"\n  }\n}\n";
+        // 回歸對照：不帶詳細的 show --json 逐位元不變（這段文字取自加入 --detail 之前的輸出，
+        // 再加上 change-and-discussion-list-fields 刻意多出的 `stage` 與 `whyExcerpt`）。
+        let before = "{\n  \"branch\": \"feature/x\",\n  \"created\": \"2026-07-01T10:00:00+08:00\",\n  \"deltaSpecs\": [\n    \"auth/spec.md\"\n  ],\n  \"design\": null,\n  \"fromDiscussions\": [],\n  \"landed\": {\n    \"at\": \"2026-11-03T09:00:00+08:00\",\n    \"commit\": \"89abcdef0123\"\n  },\n  \"name\": \"alpha\",\n  \"proposal\": \"## Why\\n\\nSign-in needs a second rule.\\n\",\n  \"restaleFrom\": [],\n  \"review\": {\n    \"commit\": \"0123456789ab\",\n    \"rounds\": 3,\n    \"stampedAt\": \"2026-11-02\",\n    \"stampedBy\": \"Rev <r@example.com>\",\n    \"state\": \"stamped\",\n    \"tasksTotal\": 12\n  },\n  \"schema\": \"spec-driven\",\n  \"stage\": \"proposed\",\n  \"tasks\": \"- [ ] 1.1 x\\n\",\n  \"verify\": {\n    \"state\": \"inProgress\"\n  },\n  \"whyExcerpt\": \"Sign-in needs a second rule.\"\n}\n";
         let options = RenderOptions { json: true, color: false };
         assert_eq!(show(&shown_change_with_records(), false, options).stdout, before);
         assert!(show(&shown_change_with_records(), true, options).stdout.contains("\"scope\""));
@@ -862,5 +904,96 @@ mod tests {
             status(&done, RenderOptions { json: true, color: false }).stdout,
             "{\n  \"changeName\": \"empty\",\n  \"schemaName\": \"spec-driven\",\n  \"isComplete\": false,\n  \"applyRequires\": [\n    \"tasks\"\n  ],\n  \"artifacts\": [\n    {\n      \"id\": \"proposal\",\n      \"outputPath\": \"proposal.md\",\n      \"status\": \"ready\"\n    }\n  ]\n}\n"
         );
+    }
+
+    // --- the stage, the Why line, the times and the creator (change-and-discussion-list-fields D3) ---
+
+    const WHY_LINE: &str = "這個變更讓 Desktop Client Credentials 登入可以在沒有瀏覽器的機器上完成。";
+
+    /// The change of the spec's scenario: every task checked, every record there.
+    fn ready_change() -> ShowChange {
+        let ShowOutcome::Change(plain) = shown_change() else { unreachable!() };
+        ShowChange {
+            proposal: Some(format!("## Why\n\n{WHY_LINE}\n\n## What Changes\n\n- x\n")),
+            tasks: Some("- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n".to_string()),
+            created_by: Some("Ann <ann@example.com>".to_string()),
+            created_by_id: Some("u_1".to_string()),
+            started_at: Some("2026-11-24".to_string()),
+            ready_at: Some("2026-11-25".to_string()),
+            ..plain
+        }
+    }
+
+    #[test]
+    fn show_json_carries_the_stage_the_why_line_the_times_and_the_creator() {
+        // spec verb-contract Scenario「show 帶出同樣的鍵與建立者」與「建立者識別的輸出」。
+        let shown = show_json(&ShowOutcome::Change(ready_change()), false);
+        assert_eq!(shown["stage"], "ready");
+        assert_eq!(shown["whyExcerpt"], WHY_LINE);
+        assert_eq!(shown["startedAt"], "2026-11-24");
+        assert_eq!(shown["readyAt"], "2026-11-25");
+        assert_eq!(shown["createdBy"], "Ann <ann@example.com>");
+        assert_eq!(shown["createdById"], "u_1");
+        for key in ["stage", "whyExcerpt", "startedAt", "readyAt", "createdBy", "createdById"] {
+            assert!(shown[key].is_string(), "{key}: {shown}");
+        }
+        // The keys that were there before are unchanged, and so is the human form.
+        let before = show_json(&shown_change(), false);
+        for key in ["name", "schema", "created", "design", "deltaSpecs", "fromDiscussions", "restaleFrom"] {
+            assert_eq!(shown[key], before[key], "{key}");
+        }
+        let ShowOutcome::Change(plain) = shown_change() else { unreachable!() };
+        let same_documents = ShowChange { proposal: ready_change().proposal, tasks: ready_change().tasks, ..plain };
+        assert_eq!(
+            show_human(&ShowOutcome::Change(ready_change()), &PLAIN),
+            show_human(&ShowOutcome::Change(same_documents), &PLAIN)
+        );
+    }
+
+    #[test]
+    fn show_json_gives_the_values_the_detailed_list_gives_for_the_same_change() {
+        let shown = show_json(&ShowOutcome::Change(ready_change()), false);
+        let item = ListChangeJson {
+            why_excerpt: Some(WHY_LINE.to_string()),
+            stage: Some(speclink_core::model::Stage::Ready),
+            started_at: Some("2026-11-24".to_string()),
+            created_by_id: Some("u_1".to_string()),
+            ready_at: Some("2026-11-25".to_string()),
+            ..change("alpha", 3, 3, "")
+        };
+        let listed = list_json(&ListOutcome::Sections { changes: Some(vec![item]), specs: None });
+        for key in ["stage", "whyExcerpt", "startedAt", "createdById", "readyAt"] {
+            assert_eq!(listed["changes"][0][key], shown[key], "{key}");
+        }
+    }
+
+    #[test]
+    fn show_json_hides_the_ready_date_once_a_task_is_unchecked() {
+        // spec Scenario「取消勾選後就緒日不出現」。
+        let unchecked = ShowChange { tasks: Some("- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n".to_string()), ..ready_change() };
+        let shown = show_json(&ShowOutcome::Change(unchecked), false);
+        assert!(shown.get("readyAt").is_none(), "{shown}");
+        assert_eq!(shown["stage"], "in-progress");
+    }
+
+    #[test]
+    fn show_json_of_a_change_with_no_task_list_is_proposed_and_leaves_absent_records_out() {
+        let bare = ShowChange { tasks: None, proposal: None, ..ready_change() };
+        let bare = ShowChange { started_at: None, ready_at: None, created_by: None, created_by_id: None, ..bare };
+        let shown = show_json(&ShowOutcome::Change(bare), false);
+        assert_eq!(shown["stage"], "proposed");
+        for key in ["whyExcerpt", "startedAt", "readyAt", "createdBy", "createdById"] {
+            assert!(shown.get(key).is_none(), "{key}: {shown}");
+        }
+    }
+
+    #[test]
+    fn show_json_of_a_change_whose_metadata_does_not_read_has_no_stage() {
+        // The rule of the detailed list: a corrupt metadata document gives none of the keys.
+        let broken = ShowChange { meta_readable: false, created_by: None, created_by_id: None, started_at: None, ready_at: None, ..ready_change() };
+        let shown = show_json(&ShowOutcome::Change(broken), false);
+        for key in ["stage", "whyExcerpt", "readyAt"] {
+            assert!(shown.get(key).is_none(), "{key}: {shown}");
+        }
     }
 }

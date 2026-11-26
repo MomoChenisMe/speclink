@@ -32,6 +32,10 @@ pub struct DiscussionDoc {
     /// Display location of the document.
     pub path: PathBuf,
     pub archived: bool,
+    /// When the store last modified the document, in whole seconds since the
+    /// Unix epoch: the file time, or the key's time behind a store port. 0 is
+    /// a store that cannot tell.
+    pub updated_at_secs: u64,
 }
 
 /// A document a caller is about to read, for [`Store::prefetch`]. Each kind

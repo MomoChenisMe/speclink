@@ -3617,3 +3617,117 @@ fn a_reserved_key_the_host_attaches_to_a_request_is_written() {
     assert_eq!(seen.asked.lock().unwrap().len(), 1, "the before hook was not asked again");
     assert!(content(&door, "s1", "changes/both/.meta.yaml").is_none());
 }
+
+// ======================================================================
+// 清單與單項回應的新欄位（change-and-discussion-list-fields D7；client-protocol
+// 「變更、討論與已封存清單的回應帶識別、階段與時間欄位」）
+// ======================================================================
+
+const WHY_LINE: &str = "這個變更讓 Desktop Client Credentials 登入可以在沒有瀏覽器的機器上完成。";
+const READY_META: &str = "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Ann\ncreated_by_id: u_1\n\
+started_at: 2026-11-24T17:03:18+08:00\nready_at: 2026-11-25T09:00:00+08:00\n";
+const ALL_DONE: &str = "## 1. Section\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n";
+
+fn with_ready_demo(door: &Door, tasks: &str) {
+    let proposal = format!("## Why\n\n{WHY_LINE}\n\n## What Changes\n\n- x\n");
+    seed(
+        door,
+        "s1",
+        &[
+            ("changes/demo/.meta.yaml", READY_META),
+            ("changes/demo/proposal.md", &proposal),
+            ("changes/demo/tasks.md", tasks),
+            ("config.yaml", CONFIG),
+        ],
+    );
+}
+
+#[test]
+fn the_change_list_and_one_change_carry_the_new_fields() {
+    // Scenario「變更清單的回應帶出新欄位」。
+    let door = door(one_repo());
+    with_ready_demo(&door, ALL_DONE);
+    let [listed, single] = demo_reads(&door);
+    assert_eq!(listed["whyExcerpt"], WHY_LINE, "{listed}");
+    assert_eq!(listed["stage"], "ready");
+    assert_eq!(listed["createdById"], "u_1");
+    assert_eq!(listed["readyAt"], "2026-11-25");
+    assert_eq!(listed["startedAt"], "2026-11-24");
+    assert_eq!(single["createdById"], "u_1", "{single}");
+    assert_eq!(single["readyAt"], "2026-11-25");
+
+    // A task unchecked after the record: neither response has the ready date.
+    let door = self::door(one_repo());
+    with_ready_demo(&door, "## 1. Section\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+    let [listed, single] = demo_reads(&door);
+    assert_eq!(listed["stage"], "in-progress");
+    assert!(listed.get("readyAt").is_none() && single.get("readyAt").is_none(), "{listed} {single}");
+
+    // A change with none of the records: only the stage.
+    let door = self::door(one_repo());
+    with_demo(&door);
+    let [listed, single] = demo_reads(&door);
+    assert_eq!(listed["stage"], "proposed");
+    for key in ["whyExcerpt", "createdById", "readyAt"] {
+        assert!(listed.get(key).is_none() && single.get(key).is_none(), "{key}: {listed} {single}");
+    }
+}
+
+#[test]
+fn the_change_list_reads_the_proposals_in_the_read_it_already_makes() {
+    // 「SHALL NOT 為每個變更多發一次對儲存的呼叫」：路由在引擎的清單之外只多一次讀取，
+    // 提案和 metadata 在同一次裡。
+    use speclink_core::command::Command;
+    let door = door(one_repo());
+    with_ready_demo(&door, ALL_DONE);
+    seed(&door, "s1", &[("changes/other/.meta.yaml", META), ("changes/other/proposal.md", "## Why\n\nOther.\n")]);
+    let list = Command::List { sort: "name".to_string(), specs: false, changes: false, worktrees: Default::default(), detail: false, archived: false };
+    speclink_host::port_exec::execute(&*door.store, &scope_of("s1"), &common::host_ctx(), list).expect("the engine list");
+    let engine = door.store.take();
+    assert_eq!(answer(&door, &get(&alpha("changes")), Some(&alice())).status, 200);
+    let route = door.store.take();
+    assert_eq!(route.reads.len(), engine.reads.len() + 1, "engine {:?}\nroute {:?}", engine.reads, route.reads);
+    // The route's own read comes after the Engine's reads.
+    let extras = route.reads.last().expect("the read of the data files");
+    for key in ["changes/demo/.meta.yaml", "changes/demo/proposal.md", "changes/other/.meta.yaml", "changes/other/proposal.md"] {
+        assert!(extras.iter().any(|(k, _)| k == key), "{key} in {extras:?}");
+    }
+}
+
+#[test]
+fn the_discussion_responses_carry_the_modified_time_and_the_identifier() {
+    // Scenario「討論清單的回應帶出修改時間與識別」，單項與搜尋同樣帶出。
+    let door = door(one_repo());
+    seed(
+        &door,
+        "s1",
+        &[(
+            "discussions/auth-flow.md",
+            "---\ntopic: 登入流程\nslug: auth-flow\nstatus: open\ncreated: 2026-11-20\ncreated_by: Ann\ncreated_by_id: u_1\n---\n\n## Rounds\n",
+        )],
+    );
+    let listed = json(&answer(&door, &get(&alpha("discussions")), Some(&alice())))["discussions"][0].clone();
+    let shown = json(&answer(&door, &get(&alpha("discussions/auth-flow")), Some(&alice())))["info"].clone();
+    let hit = json(&answer(&door, &get_with(&alpha("discussions/search"), "q=auth"), Some(&alice())))["hits"][0].clone();
+    for item in [&listed, &shown, &hit] {
+        assert_eq!(item["createdById"], "u_1", "{item}");
+        let at = item["modifiedAt"].as_str().unwrap_or_else(|| panic!("a modified time: {item}"));
+        assert!(at.ends_with('Z') && chrono::DateTime::parse_from_rfc3339(at).is_ok(), "{at}");
+    }
+}
+
+#[test]
+fn the_archived_list_carries_the_creator_identifier() {
+    let door = door(one_repo());
+    seed(
+        &door,
+        "s1",
+        &[
+            ("archive/changes/2026-11-20-old/.meta.yaml", "schema: spec-driven\ncreated_by_id: u_1\n"),
+            ("archive/changes/2026-11-21-plain/.meta.yaml", "schema: spec-driven\n"),
+        ],
+    );
+    let archived = json(&answer(&door, &get(&alpha("archived")), Some(&alice())))["archived"].clone();
+    assert_eq!(archived[1]["createdById"], "u_1", "{archived}");
+    assert!(archived[0].get("createdById").is_none(), "{archived}");
+}

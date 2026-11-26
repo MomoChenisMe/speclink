@@ -67,6 +67,13 @@ pub struct DiscussionInfo {
     /// 建立者（"Name <email>"），discuss new 由 git 身分蓋章；缺席時省略。
     #[serde(rename = "createdBy", skip_serializing_if = "Option::is_none", default)]
     pub created_by: Option<String>,
+    /// 建立者的識別（宿主的穩定 id）；缺席時省略。
+    #[serde(rename = "createdById", skip_serializing_if = "Option::is_none", default)]
+    pub created_by_id: Option<String>,
+    /// 儲存回報的最後修改時間（RFC 3339 的 UTC 時間、整秒，與變更清單的 `modifiedAt`
+    /// 同格式）；儲存答不出來時省略。本機是檔案時間，checkout 或複製也會改到它。
+    #[serde(rename = "modifiedAt", skip_serializing_if = "Option::is_none", default)]
+    pub modified_at: Option<String>,
     /// 討論型別（目前唯一合法值 `improve`）；一般討論缺席時省略。
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub kind: Option<String>,
@@ -149,6 +156,9 @@ pub struct DiscussionHead {
     pub status: Status,
     pub created: Option<String>,
     pub created_by: Option<String>,
+    /// 建立者的識別（change-and-discussion-list-fields D4、D11），經 [`util::yaml_unscalar`]
+    /// 讀回；空值讀作缺席。
+    pub created_by_id: Option<String>,
     pub kind: Option<String>,
     pub promoted_to: Vec<String>,
     pub hold: bool,
@@ -194,6 +204,7 @@ impl DiscussionHead {
             status: parsed.status.clone(),
             created: get("created"),
             created_by: get("created_by"),
+            created_by_id: non_empty("created_by_id").map(|v| util::yaml_unscalar(&v)),
             kind: non_empty("kind"),
             promoted_to: parsed.promoted_to.clone(),
             hold: parsed.hold,
@@ -467,6 +478,8 @@ fn info_from_doc(doc: &DiscussionDoc) -> DiscussionInfo {
         rounds: count_rounds(&doc.text),
         created: head.created.clone().unwrap_or_default(),
         created_by: head.created_by.clone(),
+        created_by_id: head.created_by_id.clone(),
+        modified_at: crate::listing::modified_at(doc.updated_at_secs),
         kind: head.kind.clone(),
         path: util::to_slash(&doc.path),
         archived: doc.archived,
@@ -504,13 +517,15 @@ fn is_valid_slug_override(s: &str) -> bool {
 /// `slug_override` names the record file directly (validated ASCII kebab-case);
 /// without it the slug falls back to deriving from the topic. `kind` marks the
 /// record's type (whitelist [`DISCUSSION_KINDS`]); absent means a plain discussion.
+/// `creator` stamps `created_by` and, after it, `created_by_id`; a missing
+/// value writes no line.
 /// `fields` are the free fields the record starts with, in the frontmatter it is
 /// created with; a field outside the rules creates nothing.
 pub fn new_discussion(
     store: &dyn Store,
     topic: &str,
     slug_override: Option<&str>,
-    created_by: Option<&str>,
+    creator: crate::newcmd::Creator<'_>,
     kind: Option<&str>,
     fields: &crate::fields::Fields,
 ) -> Result<DiscussionInfo> {
@@ -554,8 +569,13 @@ pub fn new_discussion(
     }
     let created = util::today();
     // 建立者章（比照 change 的 newcmd）：有 git 身分才蓋，無身分省略該行。
-    let created_by_line = created_by
-        .map(|id| format!("created_by: {id}\n"))
+    let created_by_line = creator
+        .name
+        .map(|name| format!("created_by: {name}\n"))
+        .unwrap_or_default();
+    let created_by_id_line = creator
+        .id
+        .map(|id| format!("created_by_id: {}\n", util::yaml_roundtrip_scalar(id)))
         .unwrap_or_default();
     // kind 已過白名單，寫出的必是常數字串（無 YAML 跳脫顧慮）；缺席時整行不存在。
     let kind_line = kind.map(|k| format!("kind: {k}\n")).unwrap_or_default();
@@ -567,6 +587,7 @@ pub fn new_discussion(
          status: open\n\
          created: {created}\n\
          {created_by_line}\
+         {created_by_id_line}\
          {kind_line}\
          {fields_block}\
          ---\n\
@@ -602,7 +623,10 @@ pub fn new_discussion(
         status: "open".to_string(),
         rounds: 0,
         created,
-        created_by: created_by.map(str::to_string),
+        created_by: creator.name.map(str::to_string),
+        created_by_id: creator.id.map(str::to_string),
+        // The write does not tell when the store recorded it.
+        modified_at: None,
         kind: kind.map(str::to_string),
         path: util::to_slash(&path),
         archived: false,
@@ -1070,17 +1094,19 @@ pub fn promote(
     actor: Option<&str>,
     last: bool,
 ) -> Result<PromoteOutcome> {
-    promote_with_fields(store, slug, name, actor, last, &crate::fields::Fields::new())
+    let creator = crate::newcmd::Creator { name: actor, id: None };
+    promote_with_fields(store, slug, name, creator, last, &crate::fields::Fields::new())
 }
 
 /// [`promote`], and the change it creates starts with the free fields
-/// `fields` (in the metadata document it is created with). A field outside
-/// the rules fails before anything is written.
+/// `fields` (in the metadata document it is created with) and records the
+/// `creator`, identifier included. A field outside the rules fails before
+/// anything is written.
 pub fn promote_with_fields(
     store: &dyn Store,
     slug: &str,
     name: Option<&str>,
-    actor: Option<&str>,
+    creator: crate::newcmd::Creator<'_>,
     last: bool,
     fields: &crate::fields::Fields,
 ) -> Result<PromoteOutcome> {
@@ -1099,7 +1125,7 @@ pub fn promote_with_fields(
     let schema =
         crate::config::WorkflowConfig::from_store(store)?
             .schema_name();
-    let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), actor, fields)?;
+    let dir = crate::newcmd::new_change(store, &change_name, None, &schema, None, Some(slug), creator, fields)?;
     // Prefill the proposal's Why from the discussion conclusion (topic as fallback);
     // the remaining sections stay as TBD markers for /speclink-propose to complete.
     let why = conclusion_text(store, slug).unwrap_or_else(|| {

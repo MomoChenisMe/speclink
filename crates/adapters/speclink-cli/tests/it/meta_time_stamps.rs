@@ -92,7 +92,10 @@ fn plain_date_created_keeps_the_existing_outputs() {
             "proposal": "## Why\n\nDemo.\n",
             "restaleFrom": [],
             "schema": "spec-driven",
-            "tasks": "- [ ] 1.1 Do the thing\n"
+            // change-and-discussion-list-fields adds these two to every show --json.
+            "stage": "proposed",
+            "tasks": "- [ ] 1.1 Do the thing\n",
+            "whyExcerpt": "Demo."
         })
     );
     let list = p.run(&["list", "--json"]);

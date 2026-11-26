@@ -476,7 +476,7 @@ pub(crate) fn list_changes(req: &Request<'_>) -> Result<HttpResponse, HttpError>
         _ => return Err(wrong_outcome("list")),
     };
     let names: Vec<String> = changes.iter().map(|c| c.name.clone()).collect();
-    let extras = documents::change_extras(req.port(), req.scope(), &names)?;
+    let extras = documents::change_extras(req.port(), req.scope(), &names, "proposal.md")?;
     let changes = changes
         .into_iter()
         .map(|c| {
@@ -497,10 +497,12 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         CommandOutcome::Status(report) => report,
         _ => return Err(wrong_outcome("status")),
     };
-    let extras = documents::change_extras(req.port(), req.scope(), std::slice::from_ref(&name))?.remove(&name);
+    let extras = documents::change_extras(req.port(), req.scope(), std::slice::from_ref(&name), "tasks.md")?.remove(&name);
     let delta_capabilities = documents::change_delta_capabilities(req.port(), req.scope(), &name)?;
     let mut dto = wire::change_status(report);
-    if let Some(documents::ChangeExtras { meta, review, verify }) = extras {
+    if let Some(documents::ChangeExtras { meta, review, verify, doc: tasks }) = extras {
+        let counts = speclink_core::tasks::counts(&speclink_core::tasks::parse(&tasks));
+        dto.ready_at = speclink_core::model::shown_ready_at(meta.ready_at.as_deref(), counts.complete, counts.total);
         dto.review = Some(wire::station_state(&review, true));
         dto.verify = Some(wire::station_state(&verify, true));
         // `created` only with `schema`, as `show` pairs them.
@@ -518,6 +520,7 @@ pub(crate) fn get_change(req: &Request<'_>) -> Result<HttpResponse, HttpError> {
         dto.claimed_by = meta.claimed_by;
         dto.claimed_by_id = meta.claimed_by_id;
         dto.claimed_at = meta.claimed_at;
+        dto.created_by_id = meta.created_by_id;
     }
     dto.delta_capabilities = delta_capabilities;
     Ok(ok(&dto, etag))

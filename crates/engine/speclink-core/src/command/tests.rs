@@ -1476,6 +1476,19 @@ fn claimed_by_of(outcome: &CommandOutcome) -> (Option<&str>, bool) {
 }
 
 #[test]
+fn a_claim_identifier_yaml_reads_as_another_type_reads_back_the_same() {
+    // change-and-discussion-list-fields D11：`null` 這類識別加上引號寫出，show 讀回原字串。
+    let store = TestStore::team_with_meta("demo", CLAIM_META);
+    claim_as(&store, "Alice", Some("null")).expect("first claim succeeds");
+    assert!(store.meta("demo").contains("claimed_by_id: \"null\"\n"), "{}", store.meta("demo"));
+    let claimed = shown(&store, "demo").claimed.expect("a claim record");
+    assert_eq!(claimed.by_id.as_deref(), Some("null"));
+    // The same identifier is still the same person.
+    let (again, _) = claim_as(&store, "Alice Chen", Some("null")).expect("the holder is recognized");
+    assert_eq!(claimed_by_of(&again), (Some("Alice"), false));
+}
+
+#[test]
 fn a_claim_with_an_identifier_records_it_and_judges_the_owner_by_it() {
     // change-lifecycle「認領標記欄位」：帶識別的認領以識別判斷身分。
     let store = TestStore::team_with_meta("demo", CLAIM_META);
@@ -1878,6 +1891,24 @@ fn shown(store: &TestStore, name: &str) -> ShowChange {
         CommandOutcome::Show(ShowOutcome::Change(change)) => change,
         other => panic!("expected a change, got {other:?}"),
     }
+}
+
+#[test]
+fn show_carries_the_creator_the_started_and_the_ready_dates_of_the_metadata() {
+    // change-and-discussion-list-fields D3：記錄值照 metadata（時戳讀成日期）。
+    let meta = "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Ann <ann@example.com>\ncreated_by_id: u_1\n\
+started_at: 2026-11-24T17:03:18+08:00\nready_at: 2026-11-25T09:00:00+08:00\n";
+    let change = shown(&TestStore::with_meta("demo", meta), "demo");
+    assert_eq!(change.created_by.as_deref(), Some("Ann <ann@example.com>"));
+    assert_eq!(change.created_by_id.as_deref(), Some("u_1"));
+    assert_eq!(change.started_at.as_deref(), Some("2026-11-24"));
+    assert_eq!(change.ready_at.as_deref(), Some("2026-11-25"));
+    assert!(change.meta_readable);
+    let plain = shown(&TestStore::with_meta("demo", "schema: spec-driven\n"), "demo");
+    assert_eq!((plain.created_by, plain.created_by_id, plain.started_at, plain.ready_at), (None, None, None, None));
+    let broken = shown(&TestStore::with_meta("demo", "created_by_id: u_1\nschema: [unclosed\n"), "demo");
+    assert!(!broken.meta_readable);
+    assert_eq!(broken.created_by_id, None, "a corrupt document reads as the default one");
 }
 
 #[test]
@@ -3244,6 +3275,49 @@ fn created_by_stamp_follows_context_actor_only() {
         "anonymous context keeps the current no-stamp behavior, meta: {}",
         store.meta("anon")
     );
+}
+
+fn keyed_ctx(actor: &str, id: Option<&str>) -> ExecutionContext {
+    ExecutionContext { actor_id: id.map(str::to_string), ..actor_ctx(Some(actor)) }
+}
+
+#[test]
+fn new_change_and_discuss_promote_record_the_context_identifier() {
+    // spec change-lifecycle「建立變更時記下建立者的識別」：經宿主套件建立、轉為變更都記下，
+    // 沒有識別時不記。
+    let store = TestStore::with_live_discussion("two", &two("concluded", None));
+    execute(&store, &keyed_ctx("Ann", Some("u_1")), new_change_cmd("demo")).expect("new change succeeds");
+    assert!(store.meta("demo").contains("created_by: Ann\ncreated_by_id: u_1\n"), "{}", store.meta("demo"));
+    execute(&store, &keyed_ctx("Ann", None), new_change_cmd("local")).expect("new change succeeds");
+    assert!(!store.meta("local").contains("created_by_id"), "{}", store.meta("local"));
+    execute(
+        &store,
+        &keyed_ctx("Ann", Some("u_1")),
+        Command::DiscussPromote {
+            slug: "two".to_string(),
+            name: Some("add-two".to_string()),
+            last: false,
+            fields: Default::default(),
+        },
+    )
+    .expect("discuss promote succeeds");
+    assert!(store.meta("add-two").contains("created_by_id: u_1\n"), "{}", store.meta("add-two"));
+}
+
+#[test]
+fn discuss_new_records_the_context_identifier() {
+    let store = TestStore::default();
+    let new = |slug: &str| Command::DiscussNew {
+        topic: "Identity probe".to_string(),
+        slug: Some(slug.to_string()),
+        kind: None,
+        fields: Default::default(),
+    };
+    execute(&store, &keyed_ctx("Ann", Some("u_1")), new("keyed")).expect("discuss new succeeds");
+    let text = store.read_live_discussion("keyed").expect("record stored");
+    assert!(text.contains("created_by: Ann\ncreated_by_id: u_1\n"), "{text}");
+    execute(&store, &keyed_ctx("Ann", None), new("plain")).expect("discuss new succeeds");
+    assert!(!store.read_live_discussion("plain").expect("record stored").contains("created_by_id"));
 }
 
 #[test]

@@ -535,11 +535,13 @@ fn the_change_extras_are_one_read_of_the_metadata() {
                 "changes/add-x/.meta.yaml",
                 "schema: spec-driven\ncreated_by: Alice\n",
             ),
+            ("changes/add-x/proposal.md", "## Why\n\nThe reason.\n"),
+            ("changes/add-x/tasks.md", "- [x] 1.1 a\n- [ ] 1.2 b\n"),
             ("changes/broken/.meta.yaml", "schema: [unclosed\n"),
         ],
     );
     let names = ["add-x", "broken", "missing"].map(String::from);
-    let extras = documents::change_extras(&store, &scope(), &names).unwrap();
+    let extras = documents::change_extras(&store, &scope(), &names, "proposal.md").unwrap();
     assert_eq!(store.calls().read_keys().len(), 1, "one read for every name");
     assert_eq!(
         extras.len(),
@@ -547,6 +549,15 @@ fn the_change_extras_are_one_read_of_the_metadata() {
         "a broken or missing metadata file has no extras"
     );
     assert_eq!(extras["add-x"].meta.created_by.as_deref(), Some("Alice"));
+    // The named document is in the same read.
+    assert_eq!(extras["add-x"].doc, "## Why\n\nThe reason.\n");
+    store.take();
+    let extras = documents::change_extras(&store, &scope(), &names, "tasks.md").unwrap();
+    assert_eq!(store.calls().read_keys().len(), 1, "one read for every name");
+    assert_eq!(extras["add-x"].doc, "- [x] 1.1 a\n- [ ] 1.2 b\n");
+    // A change without the document reads it as empty.
+    let extras = documents::change_extras(&store, &scope(), &names, "design.md").unwrap();
+    assert_eq!(extras["add-x"].doc, "");
 }
 
 #[test]

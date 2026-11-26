@@ -45,9 +45,12 @@ fn remote_list_outcome(
     Ok(core::command::ListOutcome::Sections { changes, specs })
 }
 pub(crate) fn cmd_show(a: ShowArgs) -> Result<()> {
-    let (ws, store) = open_project()?;
+    let (ws, fs_store) = open_project()?;
+    // The same store `list` reads (worktree-overlay「show 的 worktree 觀察面」): a
+    // change mapped to a worktree shows that copy, so the two verbs agree.
+    let (_, overlaid) = worktree_overlay(&ws, &fs_store);
     let cmd = plain_command(&a)?;
-    let show: core::command::ShowOutcome = run(&store, Some(&ws), cmd)?;
+    let show: core::command::ShowOutcome = run(&overlaid, Some(&ws), cmd)?;
     emit(render::show(&show, a.detail, render_options(a.json)));
     Ok(())
 }
@@ -93,6 +96,14 @@ fn to_list_change_json(c: &protocol_query::ChangeSummary, detail: bool) -> ListC
         landed: recorded.and_then(|c| c.landed_commit.clone()).map(|commit| ListLandedJson { commit }),
         created_by: recorded.and_then(|c| c.created_by.clone()),
         from_discussions: recorded.map(|c| c.from_discussions.clone()).unwrap_or_default(),
+        why_excerpt: recorded.and_then(|c| c.why_excerpt.clone()),
+        // A stage only a newer server names reads as none: the key stays out.
+        stage: recorded.and_then(|c| c.stage.as_deref()).and_then(core::model::Stage::parse),
+        started_at: recorded.and_then(|c| c.started_at.clone()),
+        created_by_id: recorded.and_then(|c| c.created_by_id.clone()),
+        // The ready date shows by the counts this response gives, as in fs mode.
+        ready_at: recorded
+            .and_then(|c| core::model::shown_ready_at(c.ready_at.as_deref(), c.completed_tasks, c.total_tasks)),
         // remote 恆缺席：worktree 是本機主 checkout 的觀察面，
         // server 端沒有這回事（spec scenario remote list 恆無 worktree 欄位）。
         worktree: None,
@@ -122,6 +133,7 @@ fn to_list_archived_json(item: protocol_query::ArchivedItem) -> ListArchivedJson
         tasks_total: item.tasks_total,
         tasks_done: item.tasks_done,
         created_by: item.created_by,
+        created_by_id: item.created_by_id,
         from_discussions: item.from_discussions,
         delta_capabilities: item.delta_capabilities,
         fields: item.fields,
@@ -272,6 +284,12 @@ fn remote_show_outcome(
         // An older server sends `claimedBy` alone: the record then has the holder only.
         claimed: core::command::ClaimRecord::new(status.claimed_by, status.claimed_by_id, status.claimed_at),
         fields: status.fields,
+        created_by: status.created_by,
+        created_by_id: status.created_by_id,
+        started_at: status.started_at,
+        ready_at: status.ready_at,
+        // The server refuses a change whose metadata does not read.
+        meta_readable: true,
     }))
 }
 

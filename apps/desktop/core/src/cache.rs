@@ -26,7 +26,9 @@ use crate::query::archived_status_str;
 /// v7：加 doc_lines／lead_days／lead_hours／review_rounds／verify_rounds（已封存頁的
 ///     流程成本摘要，spec client-protocol「已封存清單的流程成本欄位」）。
 /// v8：表結構不變；審查與驗證的結局改成「有工單優先」，存下的舊結局要重算。
-const CACHE_VERSION: i64 = 8;
+/// v9：表結構不變；why_excerpt 改用引擎的規則（略過標題與 HTML 註解、只看第一個
+///     Why 段落），存下的舊值要重算。
+const CACHE_VERSION: i64 = 9;
 
 /// 回傳歸檔 change 清單：`{ "archived": [ { datedName, date, name } ] }`，按 datedName 排序。
 /// 非專案回傳 `{ "archived": [] }`。
@@ -102,7 +104,7 @@ fn reconcile(db_path: &Path, store: &dyn Store, names: &[String]) -> rusqlite::R
             let why_excerpt = store
                 .read_archived_artifact(name, "proposal.md")
                 .as_deref()
-                .and_then(crate::query::why_excerpt);
+                .and_then(speclink_core::listing::why_excerpt);
             // 流程成本（process-cost-metrics D4）：單項由 core 算，缺席存 NULL；
             // 存不進 SQLite 整數的超大輪數一樣存 NULL（讀出時不插 key）。
             let cost = speclink_core::cost::archived_cost(store, name);
@@ -761,6 +763,31 @@ mod tests {
         let v = archived_changes_at(&root);
         let item = &v["archived"].as_array().unwrap()[0];
         assert_eq!(item["reviewStatus"], "reviewedNotPassed", "{item}");
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn v8_cache_is_dropped_so_the_why_line_follows_the_engine_rule() {
+        // v9（change-and-discussion-list-fields D10）：Why 第一行略過標題與 HTML 註解。
+        // v8 存下的 why_excerpt 是舊規則算的，整表重建後重算。
+        let root = fixture_project("v8", &["2026-11-20-headed"]);
+        let dir = root.join("speclink").join("changes").join("archive").join("2026-11-20-headed");
+        fs::write(dir.join("proposal.md"), "## Why\n\n### 背景\n<!-- 佔位 -->\n這次要補上說明。\n").unwrap();
+        let db_dir = root.join(".speclink");
+        fs::create_dir_all(&db_dir).unwrap();
+        let conn = Connection::open(db_dir.join("desktop-cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE schema_version (version INTEGER);
+             INSERT INTO schema_version (version) VALUES (8);
+             CREATE TABLE archived_changes (dated_name TEXT PRIMARY KEY, meta TEXT, tasks_total INTEGER, tasks_done INTEGER, spec_count INTEGER, created_by TEXT, from_discussions TEXT, review_status TEXT, verify_status TEXT, why_excerpt TEXT, created TEXT, doc_lines INTEGER, lead_days INTEGER, lead_hours REAL, review_rounds INTEGER, verify_rounds INTEGER);
+             INSERT INTO archived_changes (dated_name, meta, spec_count, review_status, verify_status, why_excerpt) VALUES ('2026-11-20-headed', '', 0, 'none', 'none', '### 背景');",
+        )
+        .unwrap();
+        drop(conn);
+
+        let v = archived_changes_at(&root);
+        let item = &v["archived"].as_array().unwrap()[0];
+        assert_eq!(item["whyExcerpt"], "這次要補上說明。", "{item}");
         let _ = fs::remove_dir_all(&root);
     }
 

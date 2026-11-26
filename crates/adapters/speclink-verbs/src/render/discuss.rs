@@ -441,6 +441,8 @@ mod tests {
             rounds,
             created: "2026-11-11".to_string(),
             created_by: Some("Base Line <base@example.com>".to_string()),
+            created_by_id: None,
+            modified_at: None,
             kind: None,
             path: format!("/p/speclink/discussions/{slug}.md"),
             archived,
@@ -536,6 +538,38 @@ mod tests {
         // 人眼輸出不變。
         assert_eq!(list_human(&[with.clone()], false).stdout, list_human(&[plain.clone()], false).stdout);
         assert_eq!(show_human(&shown(&with)).stdout, show_human(&shown(&plain)).stdout);
+    }
+
+    #[test]
+    fn every_json_form_carries_the_modified_time_and_the_creator_identifier_and_the_human_forms_do_not() {
+        // 規格「討論的清單與單項輸出最後修改時間」「討論記錄記下建立者的識別」：清單、show 的
+        // info 與搜尋的命中項都帶出；沒有值時沒有鍵。
+        let plain = info("auth-flow", "登入流程", "open", 1, false);
+        let with = DiscussionInfo {
+            modified_at: Some("2026-11-25T14:50:00Z".to_string()),
+            created_by_id: Some("u_1".to_string()),
+            ..plain.clone()
+        };
+        let shown = |info: &DiscussionInfo| DiscussShowOutcome { info: Some(info.clone()), content: "# T\n".to_string() };
+        let hit = |info: &DiscussionInfo| DiscussionHit { info: info.clone(), matches: Vec::new() };
+        for value in [
+            list_json(std::slice::from_ref(&with))["discussions"][0].clone(),
+            show_json(&shown(&with))["info"].clone(),
+            search_json(&[hit(&with)])["hits"][0].clone(),
+        ] {
+            assert_eq!(value["modifiedAt"], "2026-11-25T14:50:00Z", "{value}");
+            assert_eq!(value["createdById"], "u_1", "{value}");
+        }
+        for value in [
+            list_json(std::slice::from_ref(&plain))["discussions"][0].clone(),
+            show_json(&shown(&plain))["info"].clone(),
+            search_json(&[hit(&plain)])["hits"][0].clone(),
+        ] {
+            assert!(value.get("modifiedAt").is_none() && value.get("createdById").is_none(), "{value}");
+        }
+        assert_eq!(list_human(&[with.clone()], false).stdout, list_human(&[plain.clone()], false).stdout);
+        assert_eq!(show_human(&shown(&with)).stdout, show_human(&shown(&plain)).stdout);
+        assert_eq!(search_human(&["登入".to_string()], &[hit(&with)], &PLAIN), search_human(&["登入".to_string()], &[hit(&plain)], &PLAIN));
     }
 
     #[test]

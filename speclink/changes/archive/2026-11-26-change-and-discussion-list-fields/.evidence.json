@@ -1,0 +1,348 @@
+{
+  "version": 2,
+  "change": "change-and-discussion-list-fields",
+  "touched": [
+    {
+      "task_id": "1",
+      "task_desc": "1.1 三條規則的純函式（design D1）：先在 crates/engine/speclink-core/src/lifecycle/listing.rs 與 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組寫失敗的測試，再實作——Why 第一行的函式（有 Why 段落且有非空行時回那一行去掉前後空白的原文、不截斷；提案沒有 Why 段落、段落是空的、或第一行在下一個二級標題之後時沒有值）；不讀儲存的階段函式（完成數、總數、有沒有開工標記 → 需求「清單的詳細輸出與 show 帶說明、階段與時間」Example 表的五列）；就緒日的顯示規則（總數大於 0 且完成數不小於總數時回記下的值，否則沒有值）。既有的 `stage(store, change)` 改成呼叫新的階段函式，`plan` 的結果不變。驗證：`cargo test -p speclink-core --lib listing` 與 `cargo test -p speclink-core --lib model` 通過；`cargo test -p speclink-core --lib plan` 不需要改任何斷言。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ]
+    },
+    {
+      "task_id": "2",
+      "task_desc": "1.2 metadata 與討論 frontmatter 的新欄位（design D4、D5）：先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/model.rs 的 `ChangeMeta` 讀得出 `created_by_id` 與 `ready_at`，`ready_at` 寫成 RFC 3339 時戳時收成前 10 個字元、純日期原樣保留、缺席讀作沒有；crates/engine/speclink-core/src/lifecycle/discuss.rs 的 `DiscussionHead` 讀得出 `created_by_id`，缺席讀作沒有。既有欄位的解析結果不變。驗證：`cargo test -p speclink-core --lib model` 與 `cargo test -p speclink-core --lib discuss` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs"
+      ]
+    },
+    {
+      "task_id": "3",
+      "task_desc": "2.1 變更的建立者識別（design D4）：依需求「建立變更時記下建立者的識別」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/newcmd.rs 的 `new_change` 多收呼叫者的識別，有值時在 `created_by` 之後寫 `created_by_id`，值經 `util::yaml_scalar` 跳脫；crates/engine/speclink-core/src/command/mod.rs 的 `NewChange` 與 `DiscussPromote` 從 `ExecutionContext.actor_id` 傳入。測試涵蓋：有識別時 metadata 有這一行、沒有識別時沒有、識別含冒號或引號時寫出的值讀回來相同、`discuss promote` 建立的變更同樣有這一行。驗證：`cargo test -p speclink-core --lib newcmd` 與 `cargo test -p speclink-core --lib command` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs"
+      ]
+    },
+    {
+      "task_id": "5",
+      "task_desc": "2.3 就緒時間的寫入（design D5）：依需求「任務全部完成時記下就緒時間」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/tasks.rs 加一個函式，讀目前的任務數，至少一個且全部勾完時以 `model::edit_meta` 把 `ready_at` 設成 `util::now_rfc3339()`（已有就取代），否則不寫；`tasks::complete` 在蓋開工章之後呼叫它，已勾過的任務不呼叫；`tasks::uncomplete` 不動。測試涵蓋需求的前四個情境與「直接編輯任務清單不寫入」：勾完最後一個時寫入且格式是帶偏移量的 RFC 3339、還有未勾選時不寫、取消勾選後那一行逐字不變、再次全部完成時仍只有一行且值更新、metadata 損壞時在寫入前拒絕。驗證：`cargo test -p speclink-core --lib tasks` 通過。",
+      "files": [
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks/tests.rs"
+      ]
+    },
+    {
+      "task_id": "6",
+      "task_desc": "3.1 清單的新鍵（design D2）：依需求「清單的詳細輸出與 show 帶說明、階段與時間」與「建立者識別的輸出」，先在 crates/engine/speclink-core/src/lifecycle/listing.rs 的測試寫失敗的斷言，再實作——`ListChangeJson` 加 `whyExcerpt`、`stage`、`startedAt`、`createdById`、`readyAt`，只在 `--detail` 填值；`ListArchivedJson` 加 `createdById`。斷言 payload 結構：五個鍵是 camelCase 的字串、`stage` 是三個值之一、沒有值的鍵不出現；不帶 `--detail` 的輸出與既有的期望字串逐位元相同；metadata 損壞的項目不帶五個鍵；`readyAt` 在取消勾選後不出現；`whyExcerpt` 與 `summary` 來自同一次提案讀取（用計數的測試儲存斷言提案只讀一次）。驗證：`cargo test -p speclink-core --lib listing` 通過，既有的期望字串沒有被改。",
+      "files": [
+        "crates/engine/speclink-core/src/teststore.rs"
+      ]
+    },
+    {
+      "task_id": "7",
+      "task_desc": "3.2 show 的新鍵（design D3）：先在 crates/adapters/speclink-verbs/src/render/query.rs 的測試寫失敗的斷言，再實作——crates/engine/speclink-core/src/command/mod.rs 的 `ShowChange` 加 `created_by`、`created_by_id`、`started_at`、`ready_at` 四個記錄值並由 `show` 填入；`show_json` 用 1.1 的函式從 `proposal` 與 `tasks` 全文算出 `stage`、`whyExcerpt` 與 `readyAt` 是否出現。斷言 payload 結構：`stage`、`whyExcerpt`、`startedAt`、`readyAt`、`createdBy`、`createdById` 都是 camelCase 的字串，值與 3.1 的清單對同一筆資料相同；沒有任務清單的變更 `stage` 是 `proposed`；人眼的 `show` 輸出逐位元不變。驗證：`cargo test -p speclink-verbs` 與 `cargo test -p speclink-core --lib command` 通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/query.rs"
+      ]
+    },
+    {
+      "task_id": "8",
+      "task_desc": "3.3 討論的修改時間與識別（design D6）：依需求「討論的清單與單項輸出最後修改時間」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/store.rs 的 `DiscussionDoc` 加 `updated_at_secs`；crates/engine/speclink-core/src/teststore.rs 預設 0 並可由測試設定；crates/engine/speclink-fs/src/lib.rs 取記錄檔案的修改時間（整秒，讀不到是 0）；crates/host/speclink-host/src/port_view.rs 取該鍵的修改時間；crates/engine/speclink-core/src/lifecycle/discuss.rs 的 `DiscussionInfo` 加 `modifiedAt`（用 `listing.rs` 既有的秒數轉 RFC 3339 函式）與 `createdById`。斷言 payload 結構：`modifiedAt` 是以 `Z` 結尾的整秒字串、0 時整個鍵不出現、`createdById` 是字串且缺席時不出現；進行中與已封存的清單、`discuss show` 的 `info` 與 `discuss search` 的命中項都帶出。fs 的測試放在 crates/engine/speclink-fs/tests/store_fs.rs。驗證：`cargo test -p speclink-core --lib discuss`、`cargo test -p speclink-fs`、`cargo test -p speclink-host --lib port_view` 通過。",
+      "files": [
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs",
+        "crates/host/speclink-host/src/port_view.rs"
+      ]
+    },
+    {
+      "task_id": "9",
+      "task_desc": "4.1 回應型別的新欄位（design D7）：依需求「變更、討論與已封存清單的回應帶識別、階段與時間欄位」，先在 crates/protocol/speclink-protocol/src/query.rs 的測試寫失敗的斷言，再加欄位——`ChangeSummary` 的 `whyExcerpt`、`stage`、`createdById`、`readyAt`，`ChangeStatus` 的 `createdById`、`readyAt`，`DiscussionInfo` 的 `modifiedAt`、`createdById`，`ArchivedItem` 的 `createdById`。斷言：有值時 JSON 鍵是 camelCase、沒有值時鍵不出現、沒有這些鍵的舊 JSON 解析成功且欄位缺席。驗證：`cargo test -p speclink-protocol` 通過。",
+      "files": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ]
+    },
+    {
+      "task_id": "10",
+      "task_desc": "4.2 HTTP 回應填入新欄位（design D7）：先在 crates/host/speclink-host/tests/http_door.rs 寫失敗的測試，再實作——crates/host/speclink-host/src/documents.rs 的 `change_extras` 在同一次批次讀取多讀 proposal.md 並算出 Why 第一行；crates/host/speclink-host/src/http/wire.rs 的 `change_summary` 用 1.1 的函式填 `stage` 與 `readyAt`、從 metadata 填 `createdById`，討論與已封存的轉換逐欄帶出新欄位；crates/host/speclink-host/src/http/routes.rs 的單一變更路由填 `createdById`，並與 metadata 同一批多讀 tasks.md 來決定 `readyAt`。測試涵蓋需求的「變更清單的回應帶出新欄位」「討論清單的回應帶出修改時間與識別」，以及變更清單對儲存的呼叫次數沒有增加（沿用 crates/host/speclink-host/tests/port_cost.rs 的計數做法）。驗證：`cargo test -p speclink-host` 通過（含「回應的每個欄位都有來源」的既有檢查）。",
+      "files": [
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ]
+    },
+    {
+      "task_id": "11",
+      "task_desc": "4.3 遠端 CLI 的對應與三種執行方式相同（design D7）：先在 crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 與 crates/adapters/speclink-cli/tests/it/show_detail.rs 寫失敗的測試，再實作——crates/adapters/speclink-cli/src/verbs/query.rs 把變更清單回應、單一變更回應與已封存回應的新欄位逐欄對應到引擎的清單項與 `ShowChange`，crates/adapters/speclink-cli/src/verbs/discuss.rs 對應討論的兩個新欄位。測試涵蓋：同一份資料下本機與遠端的 `list --json --detail`、`show --json`、`discuss list --json`、`list --archived --json` 輸出相同的鍵（修改時間的值比照既有測試對變更 `modifiedAt` 的處理）；不帶 `--detail` 的 `list --json` 逐位元不變；回應沒有新欄位時對應的鍵不出現且 exit code 為 0。驗證：`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-cli --test it show_detail`、`cargo test -p speclink-cli --test it discuss` 通過。",
+      "files": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/tests/it/discuss_promote_snapshot.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/adapters/speclink-cli/tests/it/show_detail.rs"
+      ]
+    },
+    {
+      "task_id": "12",
+      "task_desc": "5.1 Why 第一行改用引擎的函式（design D1）：apps/desktop/core/src/query.rs 與 apps/desktop/core/src/cache.rs 改成呼叫 speclink-core 的函式，移除 desktop-core 自己的 `why_excerpt`；本機清單與已封存快取的 `whyExcerpt` 結果不變，快取版本不升。驗證：`cargo test -p speclink-desktop-core` 既有的 `whyExcerpt` 測試不改斷言就通過。",
+      "files": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/query.rs",
+        "crates/adapters/speclink-cli/tests/it/free_fields.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs"
+      ]
+    },
+    {
+      "task_id": "14",
+      "task_desc": "5.3 遠端清單帶到前端的新欄位：在 apps/desktop/src-tauri/tests/it/remote_data.rs 加一個測試，斷言遠端清單項序列化後的 JSON 有 camelCase 的 `whyExcerpt`、`stage`、`createdById`、`readyAt`（回應有值時），回應沒有這些欄位時鍵不出現——對應需求「變更、討論與已封存清單的回應帶識別、階段與時間欄位」的情境「遠端專案的卡片有描述列」的資料面。驗證：`cargo test -p speclink-desktop --test it remote_data` 通過。",
+      "files": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs"
+      ]
+    },
+    {
+      "task_id": "15",
+      "task_desc": "6.1 動詞參考文件（design D8）：在 docs/verb-contract.zh-TW.md 與 docs/verb-contract.md 搜尋 `createdBy`、`modifiedAt`、`startedAt`、`claimedById` 出現的每一處，逐處補齊——`list --json --detail` 的表加五個鍵、`show --json` 的欄位加六個鍵、`discuss list`、`discuss show` 與 `discuss search` 加 `modifiedAt` 與 `createdById`、`list --archived --json` 加 `createdById`、`GET /changes` 與 `GET /changes/{name}` 的欄位表與範例 JSON、討論與已封存的回應；在 `list --json` 的段落寫明 `status` 只有 `done` 與 `in-progress` 兩個值、`done` 等於 `stage` 的 `ready`；`createdById` 沿用 `claimedById` 那一句「不要拿機密的值當識別」，討論的 `modifiedAt` 沿用變更 `modifiedAt` 的提醒。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "files": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "16",
+      "task_desc": "6.2 產品狀態與 Node SDK 的回歸：docs/product-status.zh-TW.md 與 docs/product-status.md 的 Node SDK 那一列補一句動詞現在帶出階段、開工日、建立者識別、就緒日與討論的修改時間，並更新那一列的日期；確認 `@speclink/engine` 的對外介面（crates/adapters/speclink-node/index.d.ts）沒有變動，SDK 的既有測試在新鍵出現後仍通過。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過；`git diff --stat crates/adapters/speclink-node/index.d.ts` 沒有輸出。",
+      "files": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ]
+    },
+    {
+      "task_id": "17",
+      "task_desc": "7.1 受影響面的全部測試：確認既有輸出的回歸對照沒有意外變動——render 的 golden 不需要更新，不帶 `--detail` 的 `list --json`、`status --json`、`plan --json` 與人眼輸出不變。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-fs`、`cargo test -p speclink-verbs`、`cargo test -p speclink-protocol`、`cargo test -p speclink-host`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --test it remote_data`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過，且 crates/engine/speclink-core/tests/golden 沒有任何檔案被改。",
+      "files": [
+        "crates/host/speclink-server/tests/it/api/discussion_routes.rs"
+      ]
+    },
+    {
+      "task_id": "18",
+      "task_desc": "8.1 show 讀 worktree 副本：依 design D9、需求「show 的 worktree 觀察面」與修改後的「list --json 曝變更的 delta capability」，先在 crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 寫失敗的測試，再讓 crates/adapters/speclink-cli/src/verbs/query.rs 的 `cmd_show` 改用 `common::worktree_overlay` 組出的 store 執行 `show`。測試涵蓋：映射成立時 `show --json` 的 `tasks` 是 worktree 副本的全文，`stage`、`startedAt` 與同一次 `list --json --detail` 的同名鍵相同，`deltaSpecs` 含只有 worktree 副本才有的 delta，輸出沒有 `worktree` 鍵；人眼 `show` 與 `show --no-color` 的 Proposal 區段是 worktree 副本的內容；政策關閉時 `show --json` 讀主副本；`artifact cat tasks` 仍讀主副本。驗證：`cargo test -p speclink-cli --test it worktree_overlay` 通過",
+      "files": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs"
+      ]
+    }
+  ],
+  "entries": [
+    {
+      "taskId": "tsk_01M8AMSTQG52N4N6D1GHDME70Z",
+      "taskDesc": "1.1 三條規則的純函式（design D1）：先在 crates/engine/speclink-core/src/lifecycle/listing.rs 與 crates/engine/speclink-core/src/lifecycle/model.rs 的測試模組寫失敗的測試，再實作——Why 第一行的函式（有 Why 段落且有非空行時回那一行去掉前後空白的原文、不截斷；提案沒有 Why 段落、段落是空的、或第一行在下一個二級標題之後時沒有值）；不讀儲存的階段函式（完成數、總數、有沒有開工標記 → 需求「清單的詳細輸出與 show 帶說明、階段與時間」Example 表的五列）；就緒日的顯示規則（總數大於 0 且完成數不小於總數時回記下的值，否則沒有值）。既有的 `stage(store, change)` 改成呼叫新的階段函式，`plan` 的結果不變。驗證：`cargo test -p speclink-core --lib listing` 與 `cargo test -p speclink-core --lib model` 通過；`cargo test -p speclink-core --lib plan` 不需要改任何斷言。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/listing.rs",
+        "crates/engine/speclink-core/src/lifecycle/model.rs"
+      ],
+      "recordedAt": "2026-11-26T01:56:32Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG8Y6ZEVN5CVFXVG3J",
+      "taskDesc": "1.2 metadata 與討論 frontmatter 的新欄位（design D4、D5）：先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/model.rs 的 `ChangeMeta` 讀得出 `created_by_id` 與 `ready_at`，`ready_at` 寫成 RFC 3339 時戳時收成前 10 個字元、純日期原樣保留、缺席讀作沒有；crates/engine/speclink-core/src/lifecycle/discuss.rs 的 `DiscussionHead` 讀得出 `created_by_id`，缺席讀作沒有。既有欄位的解析結果不變。驗證：`cargo test -p speclink-core --lib model` 與 `cargo test -p speclink-core --lib discuss` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/discuss.rs",
+        "crates/engine/speclink-core/src/lifecycle/discuss/tests.rs"
+      ],
+      "recordedAt": "2026-11-26T01:58:14Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG61AJB2M1J7FQ267M",
+      "taskDesc": "2.1 變更的建立者識別（design D4）：依需求「建立變更時記下建立者的識別」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/newcmd.rs 的 `new_change` 多收呼叫者的識別，有值時在 `created_by` 之後寫 `created_by_id`，值經 `util::yaml_scalar` 跳脫；crates/engine/speclink-core/src/command/mod.rs 的 `NewChange` 與 `DiscussPromote` 從 `ExecutionContext.actor_id` 傳入。測試涵蓋：有識別時 metadata 有這一行、沒有識別時沒有、識別含冒號或引號時寫出的值讀回來相同、`discuss promote` 建立的變更同樣有這一行。驗證：`cargo test -p speclink-core --lib newcmd` 與 `cargo test -p speclink-core --lib command` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/command/mod.rs",
+        "crates/engine/speclink-core/src/command/tests.rs",
+        "crates/engine/speclink-core/src/lifecycle/newcmd.rs"
+      ],
+      "recordedAt": "2026-11-26T01:59:34Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG2YKGS21QSGEKS9MJ",
+      "taskDesc": "2.3 就緒時間的寫入（design D5）：依需求「任務全部完成時記下就緒時間」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/lifecycle/tasks.rs 加一個函式，讀目前的任務數，至少一個且全部勾完時以 `model::edit_meta` 把 `ready_at` 設成 `util::now_rfc3339()`（已有就取代），否則不寫；`tasks::complete` 在蓋開工章之後呼叫它，已勾過的任務不呼叫；`tasks::uncomplete` 不動。測試涵蓋需求的前四個情境與「直接編輯任務清單不寫入」：勾完最後一個時寫入且格式是帶偏移量的 RFC 3339、還有未勾選時不寫、取消勾選後那一行逐字不變、再次全部完成時仍只有一行且值更新、metadata 損壞時在寫入前拒絕。驗證：`cargo test -p speclink-core --lib tasks` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/lifecycle/tasks.rs",
+        "crates/engine/speclink-core/src/lifecycle/tasks/tests.rs"
+      ],
+      "recordedAt": "2026-11-26T02:01:30Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGCXGN6FG0TK8M5WTF",
+      "taskDesc": "3.1 清單的新鍵（design D2）：依需求「清單的詳細輸出與 show 帶說明、階段與時間」與「建立者識別的輸出」，先在 crates/engine/speclink-core/src/lifecycle/listing.rs 的測試寫失敗的斷言，再實作——`ListChangeJson` 加 `whyExcerpt`、`stage`、`startedAt`、`createdById`、`readyAt`，只在 `--detail` 填值；`ListArchivedJson` 加 `createdById`。斷言 payload 結構：五個鍵是 camelCase 的字串、`stage` 是三個值之一、沒有值的鍵不出現；不帶 `--detail` 的輸出與既有的期望字串逐位元相同；metadata 損壞的項目不帶五個鍵；`readyAt` 在取消勾選後不出現；`whyExcerpt` 與 `summary` 來自同一次提案讀取（用計數的測試儲存斷言提案只讀一次）。驗證：`cargo test -p speclink-core --lib listing` 通過，既有的期望字串沒有被改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/engine/speclink-core/src/teststore.rs"
+      ],
+      "recordedAt": "2026-11-26T02:03:59Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGMWVVNGGARTQ42195",
+      "taskDesc": "3.2 show 的新鍵（design D3）：先在 crates/adapters/speclink-verbs/src/render/query.rs 的測試寫失敗的斷言，再實作——crates/engine/speclink-core/src/command/mod.rs 的 `ShowChange` 加 `created_by`、`created_by_id`、`started_at`、`ready_at` 四個記錄值並由 `show` 填入；`show_json` 用 1.1 的函式從 `proposal` 與 `tasks` 全文算出 `stage`、`whyExcerpt` 與 `readyAt` 是否出現。斷言 payload 結構：`stage`、`whyExcerpt`、`startedAt`、`readyAt`、`createdBy`、`createdById` 都是 camelCase 的字串，值與 3.1 的清單對同一筆資料相同；沒有任務清單的變更 `stage` 是 `proposed`；人眼的 `show` 輸出逐位元不變。驗證：`cargo test -p speclink-verbs` 與 `cargo test -p speclink-core --lib command` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/query.rs"
+      ],
+      "recordedAt": "2026-11-26T02:07:03Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG25WM6M8NRGTSXX33",
+      "taskDesc": "3.3 討論的修改時間與識別（design D6）：依需求「討論的清單與單項輸出最後修改時間」，先寫失敗的測試，再實作——crates/engine/speclink-core/src/store.rs 的 `DiscussionDoc` 加 `updated_at_secs`；crates/engine/speclink-core/src/teststore.rs 預設 0 並可由測試設定；crates/engine/speclink-fs/src/lib.rs 取記錄檔案的修改時間（整秒，讀不到是 0）；crates/host/speclink-host/src/port_view.rs 取該鍵的修改時間；crates/engine/speclink-core/src/lifecycle/discuss.rs 的 `DiscussionInfo` 加 `modifiedAt`（用 `listing.rs` 既有的秒數轉 RFC 3339 函式）與 `createdById`。斷言 payload 結構：`modifiedAt` 是以 `Z` 結尾的整秒字串、0 時整個鍵不出現、`createdById` 是字串且缺席時不出現；進行中與已封存的清單、`discuss show` 的 `info` 與 `discuss search` 的命中項都帶出。fs 的測試放在 crates/engine/speclink-fs/tests/store_fs.rs。驗證：`cargo test -p speclink-core --lib discuss`、`cargo test -p speclink-fs`、`cargo test -p speclink-host --lib port_view` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/adapters/speclink-verbs/src/render/discuss.rs",
+        "crates/adapters/speclink-verbs/src/render/mod.rs",
+        "crates/engine/speclink-core/src/store.rs",
+        "crates/engine/speclink-fs/src/lib.rs",
+        "crates/engine/speclink-fs/tests/store_fs.rs",
+        "crates/host/speclink-host/src/port_view.rs"
+      ],
+      "recordedAt": "2026-11-26T02:21:24Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGDZQQG0CEY9H258B4",
+      "taskDesc": "4.1 回應型別的新欄位（design D7）：依需求「變更、討論與已封存清單的回應帶識別、階段與時間欄位」，先在 crates/protocol/speclink-protocol/src/query.rs 的測試寫失敗的斷言，再加欄位——`ChangeSummary` 的 `whyExcerpt`、`stage`、`createdById`、`readyAt`，`ChangeStatus` 的 `createdById`、`readyAt`，`DiscussionInfo` 的 `modifiedAt`、`createdById`，`ArchivedItem` 的 `createdById`。斷言：有值時 JSON 鍵是 camelCase、沒有值時鍵不出現、沒有這些鍵的舊 JSON 解析成功且欄位缺席。驗證：`cargo test -p speclink-protocol` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/protocol/speclink-protocol/src/query.rs"
+      ],
+      "recordedAt": "2026-11-26T02:22:36Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG2D7FCWVY8RK77KH2",
+      "taskDesc": "4.2 HTTP 回應填入新欄位（design D7）：先在 crates/host/speclink-host/tests/http_door.rs 寫失敗的測試，再實作——crates/host/speclink-host/src/documents.rs 的 `change_extras` 在同一次批次讀取多讀 proposal.md 並算出 Why 第一行；crates/host/speclink-host/src/http/wire.rs 的 `change_summary` 用 1.1 的函式填 `stage` 與 `readyAt`、從 metadata 填 `createdById`，討論與已封存的轉換逐欄帶出新欄位；crates/host/speclink-host/src/http/routes.rs 的單一變更路由填 `createdById`，並與 metadata 同一批多讀 tasks.md 來決定 `readyAt`。測試涵蓋需求的「變更清單的回應帶出新欄位」「討論清單的回應帶出修改時間與識別」，以及變更清單對儲存的呼叫次數沒有增加（沿用 crates/host/speclink-host/tests/port_cost.rs 的計數做法）。驗證：`cargo test -p speclink-host` 通過（含「回應的每個欄位都有來源」的既有檢查）。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/host/speclink-host/src/documents.rs",
+        "crates/host/speclink-host/src/http/routes.rs",
+        "crates/host/speclink-host/src/http/wire.rs",
+        "crates/host/speclink-host/tests/documents.rs",
+        "crates/host/speclink-host/tests/http_door.rs"
+      ],
+      "recordedAt": "2026-11-26T02:27:00Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG5QPQC5C6ZSZ3ZWKF",
+      "taskDesc": "4.3 遠端 CLI 的對應與三種執行方式相同（design D7）：先在 crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs 與 crates/adapters/speclink-cli/tests/it/show_detail.rs 寫失敗的測試，再實作——crates/adapters/speclink-cli/src/verbs/query.rs 把變更清單回應、單一變更回應與已封存回應的新欄位逐欄對應到引擎的清單項與 `ShowChange`，crates/adapters/speclink-cli/src/verbs/discuss.rs 對應討論的兩個新欄位。測試涵蓋：同一份資料下本機與遠端的 `list --json --detail`、`show --json`、`discuss list --json`、`list --archived --json` 輸出相同的鍵（修改時間的值比照既有測試對變更 `modifiedAt` 的處理）；不帶 `--detail` 的 `list --json` 逐位元不變；回應沒有新欄位時對應的鍵不出現且 exit code 為 0。驗證：`cargo test -p speclink-cli --test it remote_verb_parity`、`cargo test -p speclink-cli --test it show_detail`、`cargo test -p speclink-cli --test it discuss` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/src/verbs/discuss.rs",
+        "crates/adapters/speclink-cli/src/verbs/query.rs",
+        "crates/adapters/speclink-cli/tests/it/discuss_promote_snapshot.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_read_path.rs",
+        "crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs",
+        "crates/adapters/speclink-cli/tests/it/show_detail.rs"
+      ],
+      "recordedAt": "2026-11-26T02:30:53Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGNJV4FVR0VN1G8ND3",
+      "taskDesc": "5.1 Why 第一行改用引擎的函式（design D1）：apps/desktop/core/src/query.rs 與 apps/desktop/core/src/cache.rs 改成呼叫 speclink-core 的函式，移除 desktop-core 自己的 `why_excerpt`；本機清單與已封存快取的 `whyExcerpt` 結果不變，快取版本不升。驗證：`cargo test -p speclink-desktop-core` 既有的 `whyExcerpt` 測試不改斷言就通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "apps/desktop/core/src/cache.rs",
+        "apps/desktop/core/src/manage.rs",
+        "apps/desktop/core/src/query.rs",
+        "crates/adapters/speclink-cli/tests/it/free_fields.rs",
+        "crates/adapters/speclink-cli/tests/it/meta_time_stamps.rs"
+      ],
+      "recordedAt": "2026-11-26T02:32:42Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGD50JDR1RBSMP6X8P",
+      "taskDesc": "5.3 遠端清單帶到前端的新欄位：在 apps/desktop/src-tauri/tests/it/remote_data.rs 加一個測試，斷言遠端清單項序列化後的 JSON 有 camelCase 的 `whyExcerpt`、`stage`、`createdById`、`readyAt`（回應有值時），回應沒有這些欄位時鍵不出現——對應需求「變更、討論與已封存清單的回應帶識別、階段與時間欄位」的情境「遠端專案的卡片有描述列」的資料面。驗證：`cargo test -p speclink-desktop --test it remote_data` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "apps/desktop/src-tauri/src/remote.rs",
+        "apps/desktop/src-tauri/tests/it/remote_data.rs"
+      ],
+      "recordedAt": "2026-11-26T02:35:16Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGENYMEW66ZY52Q3ZN",
+      "taskDesc": "6.1 動詞參考文件（design D8）：在 docs/verb-contract.zh-TW.md 與 docs/verb-contract.md 搜尋 `createdBy`、`modifiedAt`、`startedAt`、`claimedById` 出現的每一處，逐處補齊——`list --json --detail` 的表加五個鍵、`show --json` 的欄位加六個鍵、`discuss list`、`discuss show` 與 `discuss search` 加 `modifiedAt` 與 `createdById`、`list --archived --json` 加 `createdById`、`GET /changes` 與 `GET /changes/{name}` 的欄位表與範例 JSON、討論與已封存的回應；在 `list --json` 的段落寫明 `status` 只有 `done` 與 `in-progress` 兩個值、`done` 等於 `stage` 的 `ready`；`createdById` 沿用 `claimedById` 那一句「不要拿機密的值當識別」，討論的 `modifiedAt` 沿用變更 `modifiedAt` 的提醒。驗證：`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 通過。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "docs/verb-contract.md",
+        "docs/verb-contract.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-26T02:38:27Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQG5G070ZKW9CWH4SPR",
+      "taskDesc": "6.2 產品狀態與 Node SDK 的回歸：docs/product-status.zh-TW.md 與 docs/product-status.md 的 Node SDK 那一列補一句動詞現在帶出階段、開工日、建立者識別、就緒日與討論的修改時間，並更新那一列的日期；確認 `@speclink/engine` 的對外介面（crates/adapters/speclink-node/index.d.ts）沒有變動，SDK 的既有測試在新鍵出現後仍通過。驗證：`npm --prefix crates/adapters/speclink-node run build` 之後 `npm --prefix crates/adapters/speclink-node test` 通過；`git diff --stat crates/adapters/speclink-node/index.d.ts` 沒有輸出。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "docs/product-status.md",
+        "docs/product-status.zh-TW.md"
+      ],
+      "recordedAt": "2026-11-26T02:39:53Z"
+    },
+    {
+      "taskId": "tsk_01M8AMSTQGWWGNWYKJV2FTJQNG",
+      "taskDesc": "7.1 受影響面的全部測試：確認既有輸出的回歸對照沒有意外變動——render 的 golden 不需要更新，不帶 `--detail` 的 `list --json`、`status --json`、`plan --json` 與人眼輸出不變。驗證：`cargo test -p speclink-core`、`cargo test -p speclink-fs`、`cargo test -p speclink-verbs`、`cargo test -p speclink-protocol`、`cargo test -p speclink-host`、`cargo test -p speclink-cli --test it`、`cargo test -p speclink-desktop-core`、`cargo test -p speclink-desktop --test it remote_data`、`node --test scripts/*.test.mjs scripts/*/*.test.mjs` 全部通過，且 crates/engine/speclink-core/tests/golden 沒有任何檔案被改。",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/host/speclink-server/tests/it/api/discussion_routes.rs"
+      ],
+      "recordedAt": "2026-11-26T02:43:52Z"
+    },
+    {
+      "taskId": "tsk_01M8AYMF8CDJQGE18A2CJDTSZK",
+      "taskDesc": "8.1 show 讀 worktree 副本：依 design D9、需求「show 的 worktree 觀察面」與修改後的「list --json 曝變更的 delta capability」，先在 crates/adapters/speclink-cli/tests/it/worktree_overlay.rs 寫失敗的測試，再讓 crates/adapters/speclink-cli/src/verbs/query.rs 的 `cmd_show` 改用 `common::worktree_overlay` 組出的 store 執行 `show`。測試涵蓋：映射成立時 `show --json` 的 `tasks` 是 worktree 副本的全文，`stage`、`startedAt` 與同一次 `list --json --detail` 的同名鍵相同，`deltaSpecs` 含只有 worktree 副本才有的 delta，輸出沒有 `worktree` 鍵；人眼 `show` 與 `show --no-color` 的 Proposal 區段是 worktree 副本的內容；政策關閉時 `show --json` 讀主副本；`artifact cat tasks` 仍讀主副本。驗證：`cargo test -p speclink-cli --test it worktree_overlay` 通過",
+      "actor": "MomoChen <momochenisme@gmail.com>",
+      "repo": "main",
+      "headCommit": "6dd4d117c66a34d54f003585a85a20281656895a",
+      "touchedFiles": [
+        "crates/adapters/speclink-cli/tests/it/worktree_overlay.rs"
+      ],
+      "recordedAt": "2026-11-26T03:36:07Z"
+    }
+  ]
+}

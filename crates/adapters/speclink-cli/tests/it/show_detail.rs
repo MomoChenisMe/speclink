@@ -73,6 +73,18 @@ fn show_detail_prints_the_scope_of_each_stamp_alike_in_both_modes() {
 }
 
 #[test]
+fn show_json_carries_the_stage_and_the_why_line_alike_in_both_modes() {
+    // verb-contract「清單的詳細輸出與 show 帶說明、階段與時間」：兩種模式從同一份全文算出。
+    let p = stamped_pair("show-fields");
+    let demo = json_of(&p.same_ok(&["show", "demo", "--json"]));
+    assert_eq!(demo["stage"], "ready");
+    assert_eq!(demo["whyExcerpt"], "A reason.");
+    assert!(demo.get("readyAt").is_none(), "no ready time is recorded: {demo}");
+    let detailed = json_of(&p.same_ok(&["show", "demo", "--json", "--detail"]));
+    assert_eq!((&detailed["stage"], &detailed["whyExcerpt"]), (&demo["stage"], &demo["whyExcerpt"]));
+}
+
+#[test]
 fn remote_show_detail_sends_the_requests_show_sends() {
     let p = stamped_pair("show-detail-requests");
     assert!(p.remote.run(&["show", "demo", "--json"]).status.success());
@@ -138,6 +150,10 @@ fn remote_show_detail_against_a_server_without_stations_succeeds_with_no_station
     assert!(out.status.success(), "stderr: {}", stderr_of(&out));
     let shown = json_of(&out);
     assert!(shown.get("review").is_none() && shown.get("verify").is_none(), "{shown}");
+    // change-and-discussion-list-fields: a server that reports no record gives no key for it.
+    for key in ["createdBy", "createdById", "startedAt", "readyAt"] {
+        assert!(shown.get(key).is_none(), "{key}: {shown}");
+    }
 }
 
 #[test]

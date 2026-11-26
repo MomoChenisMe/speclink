@@ -320,9 +320,9 @@ const APPLY_BODY: &str = r#"{"changeName":"demo","changeDir":"changes/demo","sch
 
 const PROPOSAL_INSTR_BODY: &str = r###"{"changeName":"demo","artifactId":"proposal","schemaName":"spec-driven","changeDir":"changes/demo","outputPath":"proposal.md","description":"Initial proposal document outlining the change","instruction":"Create the proposal.\n","locale":"English","template":"## Why\n","dependencies":[],"unlocks":["design"]}"###;
 
-const DISCUSS_LIST_BODY: &str = r#"{"discussions":[{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false}]}"#;
+const DISCUSS_LIST_BODY: &str = r#"{"discussions":[{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","modifiedAt":"2026-11-12T03:00:00Z","path":"discussions/demo-topic.md","archived":false}]}"#;
 
-const DISCUSS_SHOW_BODY: &str = r#"{"info":{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","path":"discussions/demo-topic.md","archived":false},"content":"---\ntopic: Demo topic\n---\n\n# Discussion: Demo topic\n"}"#;
+const DISCUSS_SHOW_BODY: &str = r#"{"info":{"slug":"demo-topic","topic":"Demo topic","status":"open","rounds":0,"created":"2026-07-01","modifiedAt":"2026-11-12T03:00:00Z","path":"discussions/demo-topic.md","archived":false},"content":"---\ntopic: Demo topic\n---\n\n# Discussion: Demo topic\n"}"#;
 
 // --- JSON field-name parity, verb by verb ---
 
@@ -653,7 +653,8 @@ fn discuss_show_json_carries_no_cuts_in_either_mode() {
     let body = serde_json::json!({
         "info": {
             "slug": "demo-topic", "topic": "Demo topic", "status": "open", "rounds": 0,
-            "created": "2026-07-01", "path": "discussions/demo-topic.md", "archived": false
+            "created": "2026-07-01", "modifiedAt": "2026-11-12T03:00:00Z",
+            "path": "discussions/demo-topic.md", "archived": false
         },
         "content": CUT_RECORD,
         "cuts": [{

@@ -75,6 +75,16 @@ fn write_meta(path: &Path, content: &str) -> Result<()> {
     }
 }
 
+/// A file's modification time in whole seconds since the Unix epoch; 0 when it
+/// cannot be read (the store's "cannot tell").
+fn modified_secs(path: &Path) -> u64 {
+    std::fs::metadata(path)
+        .and_then(|m| m.modified())
+        .ok()
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map_or(0, |d| d.as_secs())
+}
+
 /// Strip a `YYYY-MM-DD-` prefix from an archived file stem.
 fn strip_date_prefix(name: &str) -> Option<&str> {
     let b = name.as_bytes();
@@ -211,10 +221,8 @@ impl Store for FsStore {
         // Newest file mtime inside the change (recursive), truncated to whole
         // seconds — the engine's "most recently modified" sort key.
         util::walk_files(&self.layout.change_dir(name))
-            .into_iter()
-            .filter_map(|p| std::fs::metadata(&p).and_then(|m| m.modified()).ok())
-            .filter_map(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-            .map(|d| d.as_secs())
+            .iter()
+            .map(|p| modified_secs(p))
             .max()
             .unwrap_or(0)
     }
@@ -412,6 +420,7 @@ impl Store for FsStore {
             return Some(DiscussionDoc {
                 slug: slug.to_string(),
                 text: util::read_opt(&live)?,
+                updated_at_secs: modified_secs(&live),
                 path: live,
                 archived: false,
             });
@@ -420,6 +429,7 @@ impl Store for FsStore {
         Some(DiscussionDoc {
             slug: slug.to_string(),
             text: util::read_opt(&path)?,
+            updated_at_secs: modified_secs(&path),
             path,
             archived: true,
         })
@@ -439,6 +449,7 @@ impl Store for FsStore {
                 out.push(DiscussionDoc {
                     slug: slug.to_string(),
                     text,
+                    updated_at_secs: modified_secs(&path),
                     path,
                     archived: false,
                 });
@@ -462,6 +473,7 @@ impl Store for FsStore {
                 out.push(DiscussionDoc {
                     slug,
                     text,
+                    updated_at_secs: modified_secs(&path),
                     path,
                     archived: true,
                 });

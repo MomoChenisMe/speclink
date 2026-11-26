@@ -5,7 +5,7 @@
 `speclink list --json --detail` 的 `changes` 每一項，與 `speclink show <change> --json` 的輸出，SHALL 在既有的鍵之外增列下列鍵（鍵名一律 camelCase）：
 
 - `stage`：字串，`proposed`、`in-progress` 或 `ready`。SHALL 與 `speclink plan --json` 對同一個變更回報的 `stage` 相同，且 SHALL NOT 依賴 plan 的計算：宣告的依賴成環、plan 失敗時，這個鍵 SHALL 照樣有值。metadata 讀得出來的變更 SHALL 一定有這個鍵。
-- `whyExcerpt`：字串，提案第一個 `## Why` 段落裡第一個非空行的原文（去掉前後空白），SHALL NOT 截斷。提案不存在、沒有 `## Why` 段落或段落裡沒有非空行時 SHALL 不輸出。
+- `whyExcerpt`：字串，提案第一個 `## Why` 段落裡第一個有內容的行的原文（去掉前後空白），SHALL NOT 截斷。空行、`#` 開頭的行（例如 `### 子標題`）與 HTML 註解（從 `<!--` 開頭的行起，到第一個含 `-->` 的行為止）SHALL NOT 算內容；`## ` 開頭的行結束段落。提案不存在、沒有 `## Why` 段落或第一個 Why 段落裡沒有內容時 SHALL 不輸出；後面的 `## Why` 段落 SHALL NOT 遞補。
 - `startedAt`：字串，開工的日期（`YYYY-MM-DD`）。metadata 沒有開工標記時 SHALL 不輸出。
 - `readyAt`：字串，任務全部完成的日期（`YYYY-MM-DD`）。SHALL 只在 metadata 記有就緒時間、而且這個變更目前至少有一個任務並且全部勾完時輸出（見 change-lifecycle「任務全部完成時記下就緒時間」）。
 
@@ -31,6 +31,16 @@
 | 1／3 | 否 | `in-progress` | `in-progress` |
 | 3／3 | 否 | `ready` | `done` |
 | 0／0 | 否 | `proposed` | `in-progress` |
+
+#### Scenario: Why 段落開頭是子標題或註解
+
+- **WHEN** 變更 demo 的提案是 `## Why` 之後依序有空行、`### 背景`、`<!-- 佔位`、`還沒寫 -->`，接著是「這次要補上說明。」，執行 `speclink list --json --detail` 與 `speclink show demo --json`
+- **THEN** 兩個輸出的 `whyExcerpt` 都是「這次要補上說明。」
+
+#### Scenario: 第一個 Why 段落沒有內容
+
+- **WHEN** 變更 demo 的提案是 `## Why` 之後只有一個註解行，接著 `## Impact`，再接著第二個 `## Why` 與「後面的說明。」，執行 `speclink list --json --detail`
+- **THEN** exit code 為 0；demo 這一項沒有 `whyExcerpt`
 
 #### Scenario: show 帶出同樣的鍵與建立者
 
@@ -59,7 +69,7 @@
 
 ### Requirement: 建立者識別的輸出
 
-metadata 或討論記錄記有建立者的識別時，下列輸出 SHALL 以 `createdById`（字串，原樣）帶出它：`speclink list --json --detail` 的每個變更、`speclink show <change> --json`、`speclink discuss list --json`（含 `--archived`）的每一筆、`speclink discuss show <slug> --json` 的 `info`，以及 `speclink list --archived --json` 的每一筆。沒有記錄時 SHALL 不輸出這個鍵，SHALL NOT 輸出 null 或空字串。`createdBy` 既有的輸出 SHALL 不變。三種執行方式（本機專案、連到遠端的 CLI、宿主套件）對相同的資料 SHALL 輸出相同的值；連到不提供這個欄位的舊版 Server 時鍵 SHALL 不出現，指令 SHALL NOT 失敗。
+metadata 或討論記錄記有建立者的識別時，下列輸出 SHALL 以 `createdById`（字串，原樣）帶出它：`speclink list --json --detail` 的每個變更、`speclink show <change> --json`、`speclink discuss list --json`（含 `--archived`）的每一筆、`speclink discuss show <slug> --json` 的 `info`，以及 `speclink list --archived --json` 的每一筆；`speclink discuss search --json` 的命中項是討論清單的項目加上 `matches`，所以每一筆命中 SHALL 帶出與清單相同的 `createdById`。沒有記錄時 SHALL 不輸出這個鍵，SHALL NOT 輸出 null 或空字串。`createdBy` 既有的輸出 SHALL 不變。三種執行方式（本機專案、連到遠端的 CLI、宿主套件）對相同的資料 SHALL 輸出相同的值；連到不提供這個欄位的舊版 Server 時鍵 SHALL 不出現，指令 SHALL NOT 失敗。
 
 #### Scenario: 五個輸出都帶出識別
 

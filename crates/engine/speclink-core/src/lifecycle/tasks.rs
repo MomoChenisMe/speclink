@@ -488,6 +488,9 @@ pub fn complete(
             touched_files: Vec::new(),
         });
     }
+    // The ready time goes first (change-and-discussion-list-fields D12): a write
+    // that fails checks nothing, so a retry of the same task writes it again.
+    record_ready(store, change, &new_content)?;
     store.write_artifact(change, "tasks.md", &new_content)?;
 
     // Record touched files: only those not already attributed to an earlier task;
@@ -529,6 +532,21 @@ pub fn complete(
         stable_id,
         touched_files: files,
     })
+}
+
+/// Record when the change becomes ready: when `tasks_md` — the task list a
+/// verb is about to write back — has at least one task and every task is
+/// checked, set `ready_at` in the change's metadata to now (replacing one
+/// already there); otherwise write nothing. Every verb that checks a task
+/// calls it BEFORE it writes the list back, so a failed write checks nothing.
+/// Unchecking never calls it, so an output shows the record through
+/// [`crate::model::shown_ready_at`] only.
+pub fn record_ready(store: &dyn Store, change: &str, tasks_md: &str) -> Result<()> {
+    let c = counts(&parse(tasks_md));
+    if c.total > 0 && c.complete >= c.total {
+        crate::model::edit_meta(store, change, |m| m.set("ready_at", &crate::util::now_rfc3339()))?;
+    }
+    Ok(())
 }
 
 /// Outcome of [`uncomplete`]: the task's cleaned description, whether it was

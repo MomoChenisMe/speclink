@@ -304,22 +304,25 @@ fn the_read_verbs_carry_the_fields_in_json_and_never_in_the_human_form() {
 #[test]
 fn a_project_with_no_free_field_prints_what_it_printed_before_this_capability() {
     // Scenario「沒有欄位的專案輸出不變」。底下三段文字是加上這個能力之前的 CLI 對同一批
-    // 文件印出的內容，逐位元照抄（清單的 modifiedAt 是檔案時間，先換成固定的字再比）。
+    // 文件印出的內容，逐位元照抄（清單的 modifiedAt 是檔案時間，先換成固定的字再比），
+    // 再加上 change-and-discussion-list-fields 刻意多出的 show 的 `stage`／`whyExcerpt`
+    // 與討論的 `modifiedAt`。
     let p = TempProject::local("fields-unchanged", DOCS);
-    let show = "{\n  \"created\": \"2026-11-01\",\n  \"deltaSpecs\": [],\n  \"design\": null,\n  \"fromDiscussions\": [],\n  \"name\": \"demo\",\n  \"proposal\": \"## Why\\n\\nBecause.\\n\",\n  \"restaleFrom\": [],\n  \"schema\": \"spec-driven\",\n  \"tasks\": \"- [ ] 1.1 first\\n\"\n}\n";
+    let show = "{\n  \"created\": \"2026-11-01\",\n  \"deltaSpecs\": [],\n  \"design\": null,\n  \"fromDiscussions\": [],\n  \"name\": \"demo\",\n  \"proposal\": \"## Why\\n\\nBecause.\\n\",\n  \"restaleFrom\": [],\n  \"schema\": \"spec-driven\",\n  \"stage\": \"proposed\",\n  \"tasks\": \"- [ ] 1.1 first\\n\",\n  \"whyExcerpt\": \"Because.\"\n}\n";
     assert_eq!(stdout_of(&ok_in(&p, &["show", "demo", "--json"])), show);
 
     let path = p.spec_file("discussions/board-search.md").to_string_lossy().replace('\\', "/");
     let path = serde_json::to_string(&path).unwrap();
     let discussions = format!(
-        "{{\n  \"discussions\": [\n    {{\n      \"archived\": false,\n      \"created\": \"2026-11-01\",\n      \"path\": {path},\n      \"rounds\": 0,\n      \"slug\": \"board-search\",\n      \"status\": \"open\",\n      \"topic\": \"Board search\"\n    }}\n  ]\n}}\n"
+        "{{\n  \"discussions\": [\n    {{\n      \"archived\": false,\n      \"created\": \"2026-11-01\",\n      \"modifiedAt\": \"<time>\",\n      \"path\": {path},\n      \"rounds\": 0,\n      \"slug\": \"board-search\",\n      \"status\": \"open\",\n      \"topic\": \"Board search\"\n    }}\n  ]\n}}\n"
     );
     let printed: Value = serde_json::from_slice(&ok_in(&p, &["discuss", "list", "--json"]).stdout).unwrap();
     let expected: Value = serde_json::from_str(&discussions).unwrap();
     // 路徑的寫法隨平台的暫存目錄而異（符號連結、磁碟代號），所以路徑以外逐位元比。
     let without_path = |text: &str, value: &Value| text.replace(&serde_json::to_string(&value["discussions"][0]["path"]).unwrap(), "\"<path>\"");
+    let time = printed["discussions"][0]["modifiedAt"].as_str().expect("a file time").to_string();
     assert_eq!(
-        without_path(&stdout_of(&ok_in(&p, &["discuss", "list", "--json"])), &printed),
+        without_path(&stdout_of(&ok_in(&p, &["discuss", "list", "--json"])), &printed).replace(&time, "<time>"),
         without_path(&discussions, &expected)
     );
 

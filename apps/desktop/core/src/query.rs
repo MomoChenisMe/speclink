@@ -60,7 +60,7 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["restaleFrom"] = json!(c.meta.restale_from());
             // 變更卡描述列的資料源：恆存在 key（缺件為 null），前端對 null 隱藏描述列。
             v["whyExcerpt"] =
-                json!(store.read_artifact(&c.name, "proposal.md").as_deref().and_then(why_excerpt));
+                json!(store.read_artifact(&c.name, "proposal.md").as_deref().and_then(speclink_core::listing::why_excerpt));
             // 審查狀態（spec client-protocol「變更清單的審查狀態欄位」；design D6）：
             // 工單存在 → inReview；否則以 core 失效純函式重算凍結度（有工作樹的
             // client 端）——Fresh → reviewed、Stale → reviewedStale、Unknown（無章）
@@ -406,23 +406,6 @@ fn trace_count(doc: &str) -> usize {
         }
     }
     sources.len()
-}
-
-/// proposal.md 的 `## Why` 區段首個非空行原文（board-card-anatomy design D2）；
-/// 區段缺席或區段內無內容時 `None`。
-pub(crate) fn why_excerpt(doc: &str) -> Option<String> {
-    let mut in_why = false;
-    for line in doc.lines() {
-        let trimmed = line.trim();
-        if let Some(heading) = trimmed.strip_prefix("## ") {
-            in_why = heading.trim() == "Why";
-            continue;
-        }
-        if in_why && !trimmed.is_empty() {
-            return Some(trimmed.to_string());
-        }
-    }
-    None
 }
 
 /// 檔案 mtime 衍生的本地日期（YYYY-MM-DD）；metadata 或 mtime 不可得時 `None`。

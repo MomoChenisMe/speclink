@@ -29,6 +29,10 @@ pub struct ChangeMeta {
     /// （lifecycle/cost.rs）逐鍵讀原文取得。
     pub created: Option<String>,
     pub created_by: Option<String>,
+    /// 建立者的識別（宿主的穩定 id；change-and-discussion-list-fields D4）。執行環境沒有
+    /// 識別時（本機 CLI）不寫；缺席讀作沒有。
+    #[serde(default)]
+    pub created_by_id: Option<String>,
     #[serde(default)]
     pub created_with: Option<String>,
     /// Slug of the discussion this change was promoted from (speclink extension).
@@ -49,6 +53,11 @@ pub struct ChangeMeta {
     pub started_by: Option<String>,
     #[serde(default)]
     pub started_with: Option<String>,
+    /// 任務全部完成的時間（change-and-discussion-list-fields D5）：一次任務完成讓全部任務
+    /// 都勾完時寫入時戳，讀成日期部分。取消勾選不清它，所以輸出要經
+    /// [`shown_ready_at`]，不直接拿這個值。
+    #[serde(default)]
+    pub ready_at: Option<String>,
     /// 認領標記（`claim` 於團隊模式 store 蓋章；remote-claim-ownership D1）。
     /// 與 started_* 同居 change meta：缺席即未認領，舊版讀者忽略。
     #[serde(default)]
@@ -185,6 +194,7 @@ impl ChangeMeta {
         let time_fields = [
             &mut self.created,
             &mut self.started_at,
+            &mut self.ready_at,
             &mut self.reviewed_at,
             &mut self.verified_at,
         ];
@@ -406,13 +416,42 @@ impl serde::Serialize for Stage {
 /// same rule the desktop board's column derivation uses.
 pub fn stage(store: &dyn Store, change: &Change) -> Stage {
     let (complete, total) = crate::listing::task_counts(store, change);
+    stage_of(complete, total, change.meta.started_at.is_some())
+}
+
+/// The [`Stage`] rule without the store: for an output that already holds the
+/// task counts and the metadata.
+pub fn stage_of(complete: usize, total: usize, started: bool) -> Stage {
     if total > 0 && complete >= total {
         Stage::Ready
-    } else if change.meta.started_at.is_some() || complete > 0 {
+    } else if started || complete > 0 {
         Stage::InProgress
     } else {
         Stage::Proposed
     }
+}
+
+/// The two keys every output derives from a change's task counts and its
+/// readable metadata — the detailed list, `show --json` and the HTTP change
+/// list all take them from here, so a derived key is added in one place.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Progress {
+    pub stage: Stage,
+    /// [`shown_ready_at`] of the recorded ready time.
+    pub ready_at: Option<String>,
+}
+
+impl Progress {
+    pub fn of(started_at: Option<&str>, ready_at: Option<&str>, complete: usize, total: usize) -> Progress {
+        Progress { stage: stage_of(complete, total, started_at.is_some()), ready_at: shown_ready_at(ready_at, complete, total) }
+    }
+}
+
+/// The `readyAt` an output gives: the recorded `ready_at`, only while there
+/// is at least one task and every task is checked. A task unchecked after the
+/// record (`task undone` leaves the record in place) hides it.
+pub fn shown_ready_at(ready_at: Option<&str>, complete: usize, total: usize) -> Option<String> {
+    ready_at.filter(|_| total > 0 && complete >= total).map(str::to_string)
 }
 
 /// 編輯一個 change 的 meta 文件：讀原文 → fail-closed 解析 → 套 `edit` 閉包做
@@ -1176,6 +1215,28 @@ mod tests {
     }
 
     #[test]
+    fn meta_reads_the_creator_identifier_and_the_ready_time() {
+        // change-and-discussion-list-fields D4、D5：ready_at 寫的是時戳、讀成日期部分；
+        // created_by_id 原樣；兩者缺席讀作沒有。
+        let text = "schema: spec-driven\ncreated: 2026-11-24T17:03:18+08:00\ncreated_by: Ann\ncreated_by_id: u_1\nready_at: 2026-11-25T09:00:00+08:00\n";
+        let meta = ChangeMeta::from_text(Some(text)).expect("meta parses");
+        assert_eq!(meta.created_by_id.as_deref(), Some("u_1"));
+        assert_eq!(meta.ready_at.as_deref(), Some("2026-11-25"));
+        assert_eq!(meta.created_by.as_deref(), Some("Ann"), "the other fields read as before");
+        assert_eq!(meta.created.as_deref(), Some("2026-11-24"));
+        let plain = ChangeMeta::from_text(Some("ready_at: 2026-11-25\n")).expect("meta parses");
+        assert_eq!(plain.ready_at.as_deref(), Some("2026-11-25"), "a plain date stays a plain date");
+        let bare = ChangeMeta::from_text(Some("schema: spec-driven\ncreated_by: Ann\n")).expect("meta parses");
+        assert_eq!((bare.created_by_id, bare.ready_at), (None, None));
+        // The values `yaml_scalar` writes read back as they were.
+        for id in ["auth0|abc:123", "say \"hi\"", "12345"] {
+            let text = format!("created_by_id: {}\n", crate::util::yaml_scalar(id));
+            let meta = ChangeMeta::from_text(Some(&text)).expect("meta parses");
+            assert_eq!(meta.created_by_id.as_deref(), Some(id), "{text}");
+        }
+    }
+
+    #[test]
     fn collapsing_an_already_collapsed_meta_changes_nothing() {
         // 收斂是冪等的：日期部分再收斂一次仍是同一個日期。
         let text = "created: 2026-10-21T14:05:00+08:00\nstarted_at: someday\nreviewed_at: 2026-10-24\n";
@@ -1406,6 +1467,40 @@ mod tests {
         let change = unchecked.find_change("demo").unwrap();
         assert_eq!(super::stage(&unchecked, &change), super::Stage::Proposed);
         assert_eq!(super::Stage::Proposed.as_str(), "proposed");
+    }
+
+    #[test]
+    fn stage_of_follows_the_task_counts_and_the_started_stamp() {
+        // spec verb-contract「清單的詳細輸出與 show 帶說明、階段與時間」Example
+        // 「階段與任務數、開工標記的對應」，一列一個案例。
+        use super::Stage::{InProgress, Proposed, Ready};
+        for (complete, total, started, stage) in [
+            (0, 3, false, Proposed),
+            (0, 3, true, InProgress),
+            (1, 3, false, InProgress),
+            (3, 3, false, Ready),
+            (0, 0, false, Proposed),
+        ] {
+            assert_eq!(super::stage_of(complete, total, started), stage, "{complete}/{total}, started {started}");
+        }
+    }
+
+    #[test]
+    fn the_ready_date_shows_only_while_every_task_is_checked() {
+        let ready_at = Some("2026-11-25");
+        assert_eq!(super::shown_ready_at(ready_at, 3, 3).as_deref(), Some("2026-11-25"));
+        assert_eq!(super::shown_ready_at(ready_at, 4, 3).as_deref(), Some("2026-11-25"), "not fewer than the total");
+        assert_eq!(super::shown_ready_at(ready_at, 2, 3), None, "a task unchecked after the record");
+        assert_eq!(super::shown_ready_at(ready_at, 0, 0), None, "no task at all");
+        assert_eq!(super::shown_ready_at(None, 3, 3), None, "nothing recorded");
+    }
+
+    #[test]
+    fn progress_is_the_stage_and_the_shown_ready_date_together() {
+        let ready = super::Progress::of(None, Some("2026-11-25"), 3, 3);
+        assert_eq!(ready, super::Progress { stage: super::Stage::Ready, ready_at: Some("2026-11-25".into()) });
+        let reopened = super::Progress::of(Some("2026-11-24"), Some("2026-11-25"), 2, 3);
+        assert_eq!(reopened, super::Progress { stage: super::Stage::InProgress, ready_at: None });
     }
 
     #[test]

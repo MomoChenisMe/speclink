@@ -613,6 +613,36 @@ fn discussion_archive_naming_resolution_and_delete() {
     assert!(store.archived_discussion_exists("topic-a"));
 }
 
+/// A file's modification time in whole seconds, as the test sets it.
+fn mtime_secs(path: &Path) -> u64 {
+    std::fs::metadata(path).unwrap().modified().unwrap().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs()
+}
+
+#[test]
+fn a_discussion_document_reports_its_file_time_in_whole_seconds() {
+    // discussion-docs「討論的清單與單項輸出最後修改時間」：本機專案是記錄檔案的修改時間。
+    let root = TempRoot::new("discussion-mtime");
+    let store = root.store();
+    let live = store.write_live_discussion("auth-flow", "---\nslug: auth-flow\n---\n").unwrap();
+    set_mtime(&live, 300);
+    let want = mtime_secs(&live);
+    assert_eq!(store.read_discussion("auth-flow").unwrap().updated_at_secs, want);
+    assert_eq!(store.list_live_discussions()[0].updated_at_secs, want);
+
+    // A round added later moves the time forward.
+    store.write_live_discussion("auth-flow", "---\nslug: auth-flow\n---\n\n### Round 1\n").unwrap();
+    let after = store.read_discussion("auth-flow").unwrap().updated_at_secs;
+    assert!(after > want, "{after} > {want}");
+
+    // The archived record reports the time of its archived file.
+    store.archive_discussion("auth-flow", "2026-11-20").unwrap().unwrap();
+    let archived = root.dir.join("openspec/discussions/archive/2026-11-20-auth-flow.md");
+    set_mtime(&archived, 200);
+    let want = mtime_secs(&archived);
+    assert_eq!(store.read_discussion("auth-flow").unwrap().updated_at_secs, want);
+    assert_eq!(store.list_archived_discussions()[0].updated_at_secs, want);
+}
+
 // --- restore: an archived discussion comes back live (language-replace-and-discuss-restore D2) ---
 
 #[test]

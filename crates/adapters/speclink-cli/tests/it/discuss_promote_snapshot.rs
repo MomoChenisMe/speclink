@@ -147,6 +147,7 @@ fn discuss_list_json_is_pinned() {
             "    {{\n\
              \x20     \"archived\": false,\n\
              \x20     \"created\": \"2026-01-02\",\n\
+             \x20     \"modifiedAt\": \"<file time>\",\n\
              \x20     \"path\": \"{}\",\n\
              \x20     \"rounds\": 1,\n\
              \x20     \"slug\": \"{slug}\",\n\
@@ -161,5 +162,17 @@ fn discuss_list_json_is_pinned() {
         doc("alpha-search", "Alpha search"),
         doc("beta-cache", "Beta cache")
     );
-    assert_eq!(stdout_of(&out), expected);
+    // change-and-discussion-list-fields: each item carries the file's modified
+    // time, which the fixture does not fix.
+    let pinned: String = stdout_of(&out)
+        .lines()
+        .map(|line| match line.trim().strip_prefix("\"modifiedAt\": \"").and_then(|v| v.strip_suffix("\",")) {
+            Some(at) => {
+                assert!(chrono::DateTime::parse_from_rfc3339(at).is_ok() && at.ends_with('Z'), "{at}");
+                format!("{}\"modifiedAt\": \"<file time>\",\n", &line[..line.len() - line.trim_start().len()])
+            }
+            None => format!("{line}\n"),
+        })
+        .collect();
+    assert_eq!(pinned, expected);
 }

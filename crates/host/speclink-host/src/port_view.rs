@@ -178,6 +178,8 @@ struct State {
     entries: BTreeMap<DocKey, Timestamp>,
     /// Every key already read; `None` is "no document".
     read: BTreeMap<DocKey, Option<String>>,
+    /// The last-modified time each read reported, for a document it found.
+    read_times: BTreeMap<DocKey, Timestamp>,
     /// The version of each key when this execution first saw it; `None` is
     /// "no document". Every write expects exactly this.
     base: BTreeMap<DocKey, Option<Version>>,
@@ -325,6 +327,9 @@ impl<'a> PortView<'a> {
                         .base
                         .entry(key.clone())
                         .or_insert(doc.as_ref().map(|d| d.version));
+                    if let Some(doc) = &doc {
+                        state.read_times.insert(key.clone(), doc.modified_at);
+                    }
                     state.read.insert(key, doc.map(|d| d.content));
                 }
             }
@@ -490,6 +495,14 @@ impl<'a> PortView<'a> {
         newest.map(|(_, _, key)| key)
     }
 
+    /// When the store last modified `key`, in whole seconds, as the listing
+    /// or the read that found it reported; 0 when neither did. It lists and
+    /// reads nothing itself.
+    fn modified_secs(&self, key: &DocKey) -> u64 {
+        let state = self.state.borrow();
+        state.entries.get(key).or_else(|| state.read_times.get(key)).map_or(0, |at| at.get() / 1000)
+    }
+
     /// The discussions under `fixed`, read in one store call.
     fn discussions_under(&self, fixed: &'static str) -> Vec<DiscussionDoc> {
         let keys = self.keys_under(fixed, fixed);
@@ -512,6 +525,7 @@ impl<'a> PortView<'a> {
                     text: self.content(key)?,
                     path: PathBuf::from(path),
                     archived,
+                    updated_at_secs: self.modified_secs(key),
                 })
             })
             .collect()
@@ -830,11 +844,13 @@ impl Store for PortView<'_> {
 
     fn read_discussion(&self, slug: &str) -> Option<DiscussionDoc> {
         if let Some(text) = self.read_live_discussion(slug) {
+            let updated_at_secs = keys::discussion(slug).map_or(0, |key| self.modified_secs(&key));
             return Some(DiscussionDoc {
                 slug: slug.to_string(),
                 text,
                 path: self.live_discussion_path(slug),
                 archived: false,
+                updated_at_secs,
             });
         }
         let key = self.newest_archived_discussion(slug)?;
@@ -844,6 +860,7 @@ impl Store for PortView<'_> {
             text: self.content(&key)?,
             path: PathBuf::from(format!("discussions/archive/{file}")),
             archived: true,
+            updated_at_secs: self.modified_secs(&key),
         })
     }
 
@@ -1528,24 +1545,30 @@ mod tests {
 
     fn read_discussion() {
         let port = fixture();
+        // Another writer changes the live record later: its key time moves on.
+        overwrite(&port, 7_000, "discussions/board-search.md", "live text");
         let view = PortView::new(&port, scope());
         let live = view.read_discussion("board-search").expect("live record");
         assert_eq!((live.text.as_str(), live.archived), ("live text", false));
         assert_eq!(live.path, PathBuf::from("discussions/board-search.md"));
+        assert_eq!(live.updated_at_secs, 7, "the key's time, in whole seconds");
         // No live record: the newest archived candidate (`-2` beats the plain name).
         let archived = view.read_discussion("old-talk").expect("archived record");
         assert_eq!(archived.slug, "old-talk");
         assert_eq!((archived.text.as_str(), archived.archived), ("newer text", true));
         assert_eq!(archived.path, PathBuf::from("discussions/archive/2026-11-01-old-talk-2.md"));
+        assert_eq!(archived.updated_at_secs, 5);
         assert!(view.read_discussion("nope").is_none());
     }
 
     fn list_live_discussions() {
         let port = fixture();
+        overwrite(&port, 7_000, "discussions/board-search.md", "live text");
         let docs = PortView::new(&port, scope()).list_live_discussions();
         assert_eq!(docs.len(), 1);
         assert_eq!((docs[0].slug.as_str(), docs[0].text.as_str()), ("board-search", "live text"));
         assert!(!docs[0].archived);
+        assert_eq!(docs[0].updated_at_secs, 7);
     }
 
     fn list_archived_discussions() {
@@ -1556,6 +1579,7 @@ mod tests {
         // Stored-name order; the slug keeps a `-N` reuse suffix.
         assert_eq!(rows, [("old-talk-2", "newer text"), ("old-talk", "archived text")]);
         assert!(docs.iter().all(|d| d.archived));
+        assert!(docs.iter().all(|d| d.updated_at_secs == 5), "the seed's time");
         assert_eq!(docs[1].path, PathBuf::from("discussions/archive/2026-11-01-old-talk.md"));
     }
 
@@ -2071,6 +2095,20 @@ mod tests {
         view.write_artifact("add-x", "tasks.md", "second").unwrap();
         // 同一個鍵寫兩次：一筆寫入，預期版本不變。
         assert_eq!(staged(view), ["put changes/add-x/tasks.md at 1 \"second\""]);
+    }
+
+    #[test]
+    fn one_live_discussion_is_read_with_its_time_and_no_listing() {
+        // The read itself reports the key's modified time: reading one live
+        // discussion costs one read and no listing of `discussions/`.
+        let port = fixture();
+        overwrite(&port, 7_000, "discussions/board-search.md", "live text");
+        let probe = Probe::new(port);
+        let view = PortView::new(&probe, scope());
+        let live = view.read_discussion("board-search").expect("live record");
+        assert_eq!(live.updated_at_secs, 7);
+        assert_eq!(probe.reads(), [vec!["discussions/board-search.md"]]);
+        assert!(probe.lists().is_empty(), "{:?}", probe.lists());
     }
 
     #[test]

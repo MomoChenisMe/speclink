@@ -9,8 +9,17 @@ use crate::util;
 use anyhow::{bail, Result};
 use std::path::PathBuf;
 
-/// Create a new change with its metadata document. `actor` is the
-/// Host-resolved display identity — None (anonymous) stamps no created_by.
+/// Who creates a change or a discussion: the display identity the Host
+/// resolved (written as `created_by`) and the caller's stable identifier when
+/// the entry point has one — the host kit (written as `created_by_id`). A
+/// missing value writes no line; both missing is an anonymous creation.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Creator<'a> {
+    pub name: Option<&'a str>,
+    pub id: Option<&'a str>,
+}
+
+/// Create a new change with its metadata document, stamped with `creator`.
 /// `fields` are the free fields the change starts with: they are part of the
 /// one document written here, and a field outside the rules creates nothing.
 #[allow(clippy::too_many_arguments)]
@@ -21,7 +30,7 @@ pub fn new_change(
     schema: &str,
     agent: Option<&str>,
     from_discussion: Option<&str>,
-    actor: Option<&str>,
+    creator: Creator<'_>,
     fields: &crate::fields::Fields,
 ) -> Result<PathBuf> {
     if !is_kebab_case(name) {
@@ -33,8 +42,11 @@ pub fn new_change(
     crate::fields::check(fields)?;
     let created = util::now_rfc3339();
     let mut meta = format!("schema: {schema}\ncreated: {created}\n");
-    if let Some(id) = actor {
-        meta.push_str(&format!("created_by: {id}\n"));
+    if let Some(name) = creator.name {
+        meta.push_str(&format!("created_by: {name}\n"));
+    }
+    if let Some(id) = creator.id {
+        meta.push_str(&format!("created_by_id: {}\n", util::yaml_roundtrip_scalar(id)));
     }
     if let Some(agent) = agent {
         meta.push_str(&format!("created_with: {agent}\n"));
@@ -224,7 +236,7 @@ mod tests {
     #[test]
     fn new_change_stamps_the_injected_actor_only() {
         let store = TestStore::default();
-        new_change(&store, "with-actor", None, "spec-driven", None, None, Some("Alice <a@example.com>"), &Default::default())
+        new_change(&store, "with-actor", None, "spec-driven", None, None, Creator { name: Some("Alice <a@example.com>"), id: None }, &Default::default())
             .expect("new change succeeds");
         assert!(
             store.meta("with-actor").contains("created_by: Alice <a@example.com>\n"),
@@ -237,7 +249,7 @@ mod tests {
     fn new_change_writes_created_as_an_offset_stamp() {
         // spec「新變更寫入時戳」：created 為帶偏移量、秒精度的 RFC 3339。
         let store = TestStore::default();
-        new_change(&store, "stamped", None, "spec-driven", None, None, None, &Default::default())
+        new_change(&store, "stamped", None, "spec-driven", None, None, Creator::default(), &Default::default())
             .expect("new change succeeds");
         let meta = store.meta("stamped");
         let created = util::offset_stamp_line(&meta, "created");
@@ -246,10 +258,46 @@ mod tests {
     }
 
     #[test]
+    fn new_change_writes_the_creator_identifier_after_created_by() {
+        // spec change-lifecycle「建立變更時記下建立者的識別」。
+        let store = TestStore::default();
+        new_change(&store, "keyed", None, "spec-driven", None, None, Creator { name: Some("Ann"), id: Some("u_1") }, &Default::default())
+            .expect("new change succeeds");
+        assert!(store.meta("keyed").contains("created_by: Ann\ncreated_by_id: u_1\n"), "{}", store.meta("keyed"));
+        // No identifier, no line; created_by is written as before.
+        new_change(&store, "plain", None, "spec-driven", None, None, Creator { name: Some("Ann"), id: None }, &Default::default())
+            .expect("new change succeeds");
+        assert!(store.meta("plain").contains("created_by: Ann\n"), "{}", store.meta("plain"));
+        assert!(!store.meta("plain").contains("created_by_id"), "{}", store.meta("plain"));
+    }
+
+    #[test]
+    fn a_creator_identifier_yaml_gives_a_meaning_reads_back_the_same() {
+        let store = TestStore::default();
+        let cases = [
+            ("colon", "auth0|abc:123"),
+            ("quote", "say \"hi\""),
+            ("digits", "12345"),
+            // change-and-discussion-list-fields D11：YAML 會讀成別種值的字。
+            ("null-id", "null"),
+            ("tilde-id", "~"),
+            ("true-id", "true"),
+            ("number-id", "123"),
+        ];
+        for (name, id) in cases {
+            new_change(&store, name, None, "spec-driven", None, None, Creator { name: None, id: Some(id) }, &Default::default())
+                .expect("new change succeeds");
+            let meta = model::ChangeMeta::from_text(Some(&store.meta(name))).expect("meta parses");
+            assert_eq!(meta.created_by_id.as_deref(), Some(id), "{}", store.meta(name));
+        }
+        assert!(store.meta("null-id").contains("created_by_id: \"null\"\n"), "{}", store.meta("null-id"));
+    }
+
+    #[test]
     fn new_change_without_actor_stamps_no_created_by() {
         // 無身分：沿用現行無章行為（同今日無 git／未設 user.name）。
         let store = TestStore::default();
-        new_change(&store, "anon", None, "spec-driven", None, None, None, &Default::default())
+        new_change(&store, "anon", None, "spec-driven", None, None, Creator::default(), &Default::default())
             .expect("new change succeeds");
         assert!(
             !store.meta("anon").contains("created_by:"),

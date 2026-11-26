@@ -80,6 +80,22 @@ pub struct ListChangeJson {
     /// (the order `show --json` gives them).
     #[serde(rename = "fromDiscussions", skip_serializing_if = "Vec::is_empty")]
     pub from_discussions: Vec<String>,
+    /// The first line of the proposal's Why section ([`why_excerpt`]).
+    #[serde(rename = "whyExcerpt", skip_serializing_if = "Option::is_none")]
+    pub why_excerpt: Option<String>,
+    /// The lifecycle stage ([`crate::model::stage_of`]): with detail, every
+    /// change whose metadata reads has one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stage: Option<crate::model::Stage>,
+    /// The date work started.
+    #[serde(rename = "startedAt", skip_serializing_if = "Option::is_none")]
+    pub started_at: Option<String>,
+    /// The creator's identifier, as the metadata records it.
+    #[serde(rename = "createdById", skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
+    /// The date every task got checked ([`crate::model::shown_ready_at`]).
+    #[serde(rename = "readyAt", skip_serializing_if = "Option::is_none")]
+    pub ready_at: Option<String>,
     /// The linked worktree this change is being implemented in (local main
     /// checkout only, worktree policy on). Last in the field order and omitted
     /// when absent, so every existing consumer's payload stays byte-identical.
@@ -156,8 +172,7 @@ fn truncate_summary(text: &str, limit: usize) -> String {
 
 /// The one-line change summary of `list`: first prose line after "## Why"
 /// (fallback: first prose line anywhere), truncated to 30 characters.
-pub fn proposal_summary(store: &dyn Store, change: &Change) -> String {
-    let proposal = store.read_artifact(&change.name, "proposal.md").unwrap_or_default();
+pub fn proposal_summary(proposal: &str) -> String {
     // First non-empty, non-header line after "## Why" (or first prose line).
     let mut after_why = false;
     for line in proposal.lines() {
@@ -178,6 +193,41 @@ pub fn proposal_summary(store: &dyn Store, change: &Change) -> String {
         }
     }
     String::new()
+}
+
+/// The first line with content in the proposal's first `## Why` section,
+/// trimmed and not cut — the `whyExcerpt` of every output (the verbs, the HTTP
+/// responses, the desktop board). Empty lines, `#` lines (a `### sub-heading`)
+/// and HTML comments (from a line that starts with `<!--` to the first line
+/// that holds `-->`) are no content; a `## ` line ends the section. `None`
+/// when there is no Why section or the first one has no content: a later
+/// `## Why` does not stand in.
+pub fn why_excerpt(proposal: &str) -> Option<String> {
+    let mut in_why = false;
+    let mut in_comment = false;
+    for line in proposal.lines() {
+        let trimmed = line.trim();
+        if in_comment {
+            in_comment = !trimmed.contains("-->");
+            continue;
+        }
+        if let Some(heading) = trimmed.strip_prefix("## ") {
+            if in_why {
+                return None;
+            }
+            in_why = heading.trim() == "Why";
+            continue;
+        }
+        if !in_why || trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        if trimmed.starts_with("<!--") {
+            in_comment = !trimmed.contains("-->");
+            continue;
+        }
+        return Some(trimmed.to_string());
+    }
+    None
 }
 
 /// (complete, total) checkbox counts of a change's tasks.md.
@@ -230,10 +280,16 @@ pub fn changes_json_detail(
         .iter()
         .map(|c| {
             let (complete, total) = task_counts(store, c);
+            let proposal = store.read_artifact(&c.name, "proposal.md").unwrap_or_default();
             // A corrupt metadata document reads as the default one, which
             // holds no claim, branch or landing; `recorded_status` gives no
             // station for it, also when a ticket lies beside it.
             let meta = detail.then_some(&c.meta);
+            // The keys derived from the metadata stay out for a corrupt one.
+            let readable = meta.filter(|_| c.meta_error.is_none());
+            let progress = readable.map(|m| {
+                crate::model::Progress::of(m.started_at.as_deref(), m.ready_at.as_deref(), complete, total)
+            });
             ListChangeJson {
                 completed_tasks: complete,
                 name: c.name.clone(),
@@ -243,7 +299,7 @@ pub fn changes_json_detail(
                 } else {
                     "in-progress".to_string()
                 },
-                summary: proposal_summary(store, c),
+                summary: proposal_summary(&proposal),
                 total_tasks: total,
                 restale_from: c.meta.restale_from(),
                 meta_error: c.meta_error.clone(),
@@ -262,6 +318,11 @@ pub fn changes_json_detail(
                     .map(|landed| ListLandedJson { commit: landed.commit }),
                 created_by: meta.and_then(|m| m.created_by.clone()),
                 from_discussions: meta.map(|m| m.from_discussions()).unwrap_or_default(),
+                why_excerpt: readable.and_then(|_| why_excerpt(&proposal)),
+                stage: progress.as_ref().map(|p| p.stage),
+                started_at: readable.and_then(|m| m.started_at.clone()),
+                created_by_id: readable.and_then(|m| m.created_by_id.clone()),
+                ready_at: progress.and_then(|p| p.ready_at),
                 worktree: worktrees.get(&c.name).cloned(),
             }
         })
@@ -271,7 +332,7 @@ pub fn changes_json_detail(
 /// Whole seconds since the Unix epoch as an RFC 3339 UTC time. 0 is a store
 /// that cannot tell, so it gives nothing; a value past what RFC 3339 can
 /// state (year 9999) gives nothing either.
-fn modified_at(secs: u64) -> Option<String> {
+pub(crate) fn modified_at(secs: u64) -> Option<String> {
     use chrono::Datelike;
     if secs == 0 {
         return None;
@@ -304,6 +365,9 @@ pub struct ListArchivedJson {
     pub created_by: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub from_discussions: Vec<String>,
+    /// The creator's identifier, as the archived metadata records it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
     /// The capabilities of the archived change's delta specs, ascending.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub delta_capabilities: Vec<String>,
@@ -371,6 +435,7 @@ fn archived_item(store: &dyn Store, dated_name: &str) -> ListArchivedJson {
         tasks_done: tasks.map(|(_, done)| done),
         from_discussions: meta.from_discussions(),
         created_by: meta.created_by,
+        created_by_id: meta.created_by_id,
         delta_capabilities: store.archived_delta_capabilities(dated_name),
         fields: meta.fields,
     }
@@ -430,6 +495,51 @@ mod tests {
         store.put_artifact(tag, "proposal.md", "## Why\n\nDemo.\n");
         store.put_artifact(tag, "tasks.md", "## 1. Group\n\n- [ ] 1.1 First task\n- [x] 1.2 Second task\n");
         store
+    }
+
+    // --- the first line of Why (change-and-discussion-list-fields D1) ---
+
+    #[test]
+    fn why_excerpt_is_the_first_non_empty_line_of_the_why_section_verbatim() {
+        // spec verb-contract「清單的詳細輸出與 show 帶說明、階段與時間」：原文、去掉前後空白、不截斷。
+        let line = "這個變更讓 Desktop Client Credentials 登入可以在沒有瀏覽器的機器上完成。";
+        let proposal = format!("## Why\n\n   {line}  \n\n第二行。\n\n## What Changes\n\n- x\n");
+        assert_eq!(super::why_excerpt(&proposal).as_deref(), Some(line));
+        assert!(line.chars().count() > 30, "longer than the summary's limit, and not cut");
+        // A Why section after other text is found too.
+        assert_eq!(super::why_excerpt("# Title\n\nIntro.\n\n## Why\nReason.\n").as_deref(), Some("Reason."));
+    }
+
+    #[test]
+    fn why_excerpt_skips_headings_and_html_comments() {
+        // spec verb-contract Scenario「Why 段落開頭是子標題或註解」與「第一個 Why 段落沒有內容」
+        // （change-and-discussion-list-fields D10）。
+        let line = "這次要補上說明。";
+        for (case, proposal) in [
+            ("a sub-heading and a comment over two lines", format!("## Why\n\n### 背景\n<!-- 佔位\n還沒寫 -->\n{line}\n")),
+            ("a one-line comment", format!("## Why\n<!-- TBD -->\n\n{line}\n")),
+            ("a deeper heading", format!("## Why\n#### 細節\n{line}\n")),
+            ("a plain first line", format!("## Why\n\n{line}\n\n### 背景\n")),
+        ] {
+            assert_eq!(super::why_excerpt(&proposal).as_deref(), Some(line), "{case}");
+        }
+        let later = "## Why\n\n<!-- 只有註解 -->\n\n## Impact\n\n## Why\n\n後面的說明。\n";
+        assert_eq!(super::why_excerpt(later), None, "the second Why section does not stand in");
+        let commented_out = "## Why\n\n<!--\n## Impact\n-->\n\n還在 Why 裡。\n";
+        assert_eq!(super::why_excerpt(commented_out).as_deref(), Some("還在 Why 裡。"), "a heading inside a comment ends nothing");
+    }
+
+    #[test]
+    fn why_excerpt_has_no_value_without_a_line_in_the_why_section() {
+        for (case, proposal) in [
+            ("no proposal text", ""),
+            ("no Why section", "## What Changes\n\n- x\n"),
+            ("an empty Why section", "## Why\n\n   \n"),
+            ("the next line is under the next heading", "## Why\n\n## What Changes\n\n- x\n"),
+            ("only the first Why section counts", "## Why\n\n## Impact\n\n## Why\n\nLater.\n"),
+        ] {
+            assert_eq!(super::why_excerpt(proposal), None, "{case}");
+        }
     }
 
     #[test]
@@ -766,7 +876,7 @@ mod tests {
 
         // The fields that were there before are the ones of a list without detail.
         let mut without = item.clone();
-        for key in DETAIL_KEYS {
+        for key in DETAIL_KEYS.into_iter().chain(LIST_FIELD_KEYS) {
             without.as_object_mut().unwrap().remove(key);
         }
         assert_eq!(without, detail_item(&store, false));
@@ -833,7 +943,7 @@ mod tests {
         )]);
         assert_eq!(
             serde_json::to_string(&changes_json_detail(&store, &changes, &facts, true)).unwrap(),
-            r#"[{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","createdBy":"Ann","fromDiscussions":["two"],"worktree":{"path":"/x","branch":"speclink/demo"}}]"#
+            r#"[{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","createdBy":"Ann","fromDiscussions":["two"],"whyExcerpt":"Demo.","stage":"in-progress","worktree":{"path":"/x","branch":"speclink/demo"}}]"#
         );
     }
 
@@ -847,10 +957,17 @@ mod tests {
 
     #[test]
     fn a_change_with_no_record_serializes_the_same_with_and_without_detail() {
+        // Past the keys every readable change has with detail (its stage, and
+        // here its Why line), a change with no record adds nothing.
         let store = recorded_store("");
         let changes = crate::model::list_changes(&store);
         let text = |detail| serde_json::to_string(&changes_json_detail(&store, &changes, &BTreeMap::new(), detail)).unwrap();
-        assert_eq!(text(true), text(false));
+        let mut detailed = detail_item(&store, true);
+        assert_eq!(list_field_keys_of(&detailed), ["whyExcerpt", "stage"]);
+        for key in LIST_FIELD_KEYS {
+            detailed.as_object_mut().unwrap().remove(key);
+        }
+        assert_eq!(detailed, detail_item(&store, false));
         assert_eq!(text(false), serde_json::to_string(&changes_json(&store, &changes)).unwrap());
     }
 
@@ -878,8 +995,126 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&changes_json_detail(&store, &changes, &facts, true)).unwrap(),
             format!(
-                r#"[{{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","landed":{{"commit":"{LANDED_COMMIT}"}},"worktree":{{"path":"/x","branch":"speclink/demo"}}}}]"#
+                r#"[{{"completedTasks":1,"name":"demo","status":"in-progress","summary":"Demo.","totalTasks":2,"created":"2026-07-01","branch":"speclink/demo","landed":{{"commit":"{LANDED_COMMIT}"}},"whyExcerpt":"Demo.","stage":"in-progress","worktree":{{"path":"/x","branch":"speclink/demo"}}}}]"#
             )
         );
+    }
+
+    // --- the stage, the Why line and the times (change-and-discussion-list-fields D2) ---
+
+    const LIST_FIELD_KEYS: [&str; 5] = ["whyExcerpt", "stage", "startedAt", "createdById", "readyAt"];
+    const WHY_LINE: &str = "這個變更讓 Desktop Client Credentials 登入可以在沒有瀏覽器的機器上完成。";
+
+    fn list_field_keys_of(item: &serde_json::Value) -> Vec<&'static str> {
+        LIST_FIELD_KEYS.into_iter().filter(|key| item.get(key).is_some()).collect()
+    }
+
+    fn ready_store() -> TestStore {
+        let store = TestStore::with_meta(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Ann <ann@example.com>\ncreated_by_id: u_1\nstarted_at: 2026-11-24T17:03:18+08:00\nready_at: 2026-11-25T09:00:00+08:00\n",
+        );
+        store.put_artifact("demo", "proposal.md", &format!("## Why\n\n{WHY_LINE}\n\n## What Changes\n\n- x\n"));
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n");
+        store
+    }
+
+    #[test]
+    fn detail_adds_the_stage_the_why_line_and_the_times() {
+        // spec verb-contract「清單的詳細輸出與 show 帶說明、階段與時間」Scenario
+        // 「清單的詳細輸出帶出新的鍵」，與「建立者識別的輸出」。
+        let item = detail_item(&ready_store(), true);
+        assert_eq!(item["stage"], "ready");
+        assert_eq!(item["whyExcerpt"], WHY_LINE, "the whole line, not cut");
+        assert_eq!(item["startedAt"], "2026-11-24");
+        assert_eq!(item["readyAt"], "2026-11-25");
+        assert_eq!(item["createdById"], "u_1");
+        assert_eq!(item["summary"], "這個變更讓 Desktop Client Credentia…", "the summary keeps its limit");
+        assert_eq!(item["status"], "done");
+        for key in LIST_FIELD_KEYS {
+            assert!(item[key].is_string(), "{key} is a string: {item}");
+        }
+        // Without detail the list has none of them.
+        assert_eq!(list_field_keys_of(&detail_item(&ready_store(), false)), Vec::<&str>::new());
+    }
+
+    #[test]
+    fn the_stage_and_the_status_follow_the_task_counts_and_the_started_stamp() {
+        // spec Example「階段與任務數、開工標記的對應」，一列一個案例。
+        for (tasks, started, stage, status) in [
+            ("- [ ] a\n- [ ] b\n- [ ] c\n", false, "proposed", "in-progress"),
+            ("- [ ] a\n- [ ] b\n- [ ] c\n", true, "in-progress", "in-progress"),
+            ("- [x] a\n- [ ] b\n- [ ] c\n", false, "in-progress", "in-progress"),
+            ("- [x] a\n- [x] b\n- [x] c\n", false, "ready", "done"),
+            ("", false, "proposed", "in-progress"),
+        ] {
+            let stamp = if started { "started_at: 2026-11-24\n" } else { "" };
+            let store = recorded_store(stamp);
+            store.put_artifact("demo", "tasks.md", tasks);
+            let item = detail_item(&store, true);
+            assert_eq!((item["stage"].as_str(), item["status"].as_str()), (Some(stage), Some(status)), "{tasks:?} {started}");
+        }
+    }
+
+    #[test]
+    fn a_key_with_no_value_is_left_out() {
+        // No Why section, no stamp, no identifier, no ready time: only the stage.
+        let store = TestStore::with_meta("demo", "schema: spec-driven\ncreated: 2026-11-24\n");
+        store.put_artifact("demo", "proposal.md", "## What Changes\n\n- x\n");
+        store.put_artifact("demo", "tasks.md", "- [ ] 1.1 a\n");
+        let item = detail_item(&store, true);
+        assert_eq!(list_field_keys_of(&item), ["stage"], "{item}");
+    }
+
+    #[test]
+    fn the_ready_date_is_left_out_once_a_task_is_unchecked() {
+        // spec Scenario「取消勾選後就緒日不出現」：metadata 的記錄還在。
+        let store = ready_store();
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+        let item = detail_item(&store, true);
+        assert!(item.get("readyAt").is_none(), "{item}");
+        assert_eq!(item["stage"], "in-progress");
+    }
+
+    #[test]
+    fn a_change_with_corrupt_metadata_has_none_of_the_list_field_keys() {
+        let store = TestStore::with_meta("demo", "created_by_id: u_1\nready_at: 2026-11-25\nschema: [unclosed\n");
+        store.put_artifact("demo", "proposal.md", "## Why\n\nDemo.\n");
+        store.put_artifact("demo", "tasks.md", "- [x] 1.1 a\n");
+        let item = detail_item(&store, true);
+        assert!(item.get("metaError").is_some(), "{item}");
+        assert_eq!(list_field_keys_of(&item), Vec::<&str>::new(), "{item}");
+    }
+
+    #[test]
+    fn changes_that_depend_on_each_other_still_have_a_stage() {
+        // spec Scenario「依賴成環時清單照樣有階段」：清單不經 plan。
+        let store = TestStore::with_meta("a", "schema: spec-driven\ndepends_on: b\n");
+        store.metas.borrow_mut().insert("b".to_string(), "schema: spec-driven\ndepends_on: a\n".to_string());
+        let changes = crate::model::list_changes(&store);
+        let items = serde_json::to_value(changes_json_detail(&store, &changes, &BTreeMap::new(), true)).unwrap();
+        for item in items.as_array().unwrap() {
+            assert_eq!(item["stage"], "proposed", "{item}");
+        }
+    }
+
+    #[test]
+    fn the_why_line_and_the_summary_come_from_one_read_of_the_proposal() {
+        let store = ready_store();
+        let changes = crate::model::list_changes(&store);
+        store.artifact_reads.borrow_mut().clear();
+        changes_json_detail(&store, &changes, &BTreeMap::new(), true);
+        let reads = store.artifact_reads.borrow().iter().filter(|(_, artifact)| artifact == "proposal.md").count();
+        assert_eq!(reads, 1);
+    }
+
+    #[test]
+    fn an_archived_item_carries_the_creator_identifier() {
+        let store = TestStore::default();
+        store.archived_metas.borrow_mut().insert("2026-11-20-old".to_string(), "schema: spec-driven\ncreated_by_id: u_1\n".to_string());
+        store.archived_metas.borrow_mut().insert("2026-11-21-plain".to_string(), "schema: spec-driven\n".to_string());
+        let items = serde_json::to_value(super::archived_json(&store)).unwrap();
+        assert_eq!(items[1]["createdById"], "u_1", "{items}");
+        assert!(items[0].get("createdById").is_none(), "{items}");
     }
 }

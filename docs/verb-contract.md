@@ -211,20 +211,27 @@ Each change in `speclink list --json` always has `completedTasks`, `name`, `stat
 | `modifiedAt` | The time of the last modification of a document of the change, as an RFC 3339 UTC time. It does not appear when the store cannot tell. In a local project, the value comes from file times, and a checkout or a copy also changes them. Use it only to estimate how long a change was idle. |
 | `fields` | The free fields |
 
+`status` has two values only: `done` when the change has at least one task and every task is checked, and `in-progress` in all other cases. For a change whose `status` is `done`, the `stage` of `--detail` is always `ready`. To tell "not started" from "half done", read `stage`.
+
 Without `--detail`, `list --json` has no quality station fields, also in a remote project.
 
 #### <a id="list-detail"></a>`speclink list --json --detail`
 
-`--detail` adds what each change has on record: the two quality stations, the claim, the branch, the landing, the creator, and the source discussions. One call then answers questions such as "which changes passed review" and "which changes do I hold".
+`--detail` adds what each change has on record: the two quality stations, the claim, the branch, the landing, the creator, and the source discussions, and also the stage, the first line of the proposal's Why, the start date, the creator's identifier, and the ready date. One call then answers questions such as "which changes passed review" and "which changes do I hold".
 
 - `--detail` works only with `--json`, and it does not go with `--specs`. `speclink list --detail` and `speclink list --specs --json --detail` stop with a usage error: a non-zero exit code, a message on stderr, and nothing on stdout. Through the call entry point (`host.dispatch`), the error code is `invalid_argv`.
 - Without `--detail`, the output of `list --json` is the same as before, byte for byte.
 - `--detail` does not change the fields that were there before, the order of the items, or the `specs` section.
 
-Each key below appears only when the change has that record:
+Each key below except `stage` appears only when the change has that record:
 
 | Field | It appears when | Content |
 | --- | --- | --- |
+| `stage` | For each change whose metadata reads | `proposed`, `in-progress`, or `ready`: the same as the `stage` of the change in `plan --json`. The value does not come from `plan`, so it is there also when the declared dependencies make a cycle and `plan` fails. |
+| `whyExcerpt` | The proposal's first `## Why` section has a line with content | That line as written (outer whitespace removed), not cut. Empty lines, lines that start with `#` (for example `### Sub-heading`), and HTML comments (from a line that starts with `<!--` to the first line that holds `-->`) are no content. When the first Why section has no content, a later `## Why` does not stand in. `summary` keeps its limit of 30 characters. |
+| `startedAt` | The metadata recorded the start | The start date, `YYYY-MM-DD` |
+| `createdById` | The metadata recorded the creator's identifier | As recorded. A change created through the host kit records the caller's identifier; a change created by the local CLI has none. Each person who can read the project can see it, so a host must not use a secret value as the identifier. |
+| `readyAt` | The metadata recorded a ready time, and the change now has at least one task and every task is checked | The date every task got checked, `YYYY-MM-DD`. `task done` records it when it checks the last task, and it records the time before it writes the task list back: when the time cannot be recorded, the task stays unchecked, and a retry records it again. Unchecking a task does not remove the record, but the key then does not appear. Checking every task by editing tasks.md records nothing. |
 | `review`, `verify` | The station has an open ticket or a stamp | The same object as in `show --json` below. An open station (`inProgress`) also has `rounds`: the number of rounds in its ticket. |
 | `claimed` | A person holds the change | The same object as in `show --json` below: `by`, plus `byId` and `at` when the claim recorded them |
 | `branch` | The start marker or the landing report recorded a branch | The branch name |
@@ -247,9 +254,14 @@ Each key below appears only when the change has that record:
       "branch": "speclink/add-login",
       "landed": { "commit": "0123456789ab" },
       "createdBy": "Demo <demo@example.com>",
-      "fromDiscussions": ["login-flow"]
+      "fromDiscussions": ["login-flow"],
+      "whyExcerpt": "Sign-in needs a second rule to stop requests that are sent twice.",
+      "stage": "ready",
+      "startedAt": "2026-11-01",
+      "createdById": "u_42",
+      "readyAt": "2026-11-02"
     },
-    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10" }
+    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10", "stage": "proposed" }
   ]
 }
 ```
@@ -259,7 +271,8 @@ Each key below appears only when the change has that record:
 - A missing key means that the change has no such record. An older Server does not send some of these fields: the keys are then missing too, and the command does not fail. Do not read a missing `review` or `verify` as "the station did not run".
 - A change with corrupt metadata has `metaError` and none of these keys.
 - The list does not tell whether files changed after a stamp. `review` and `verify` show the recorded state only, as in `show --json`.
-- `claimed.byId` is the identifier that the host gives for the person. Each person who can read the project can see it.
+- `claimed.byId` and `createdById` are the identifiers that the host gives for the person. Each person who can read the project can see them.
+- An older Server does not send `stage`, `whyExcerpt`, `createdById`, or `readyAt`. The keys are then missing, and the command does not fail.
 - A station whose ticket does not parse has no `rounds`, and the list does not fail. An older Server that does not send `rounds` gives `{ "state": "inProgress" }`.
 - Through `host.dispatch`, `--detail` reads the open tickets to count their rounds: one more store read for all of them, and no read more when no ticket is open.
 
@@ -280,6 +293,7 @@ Each key below appears only when the change has that record:
 | `reviewOutcome`, `verifyOutcome` | Always | `none`, `stamped`, or `notPassed`, as in [`GET /archived`](#archived-items) |
 | `tasksTotal`, `tasksDone` | Both, when the archived change has a task list | The number of tasks and the number of checked tasks |
 | `createdBy` | The metadata recorded a creator | The creator |
+| `createdById` | The metadata recorded the creator's identifier | As recorded |
 | `fromDiscussions` | The change came from a discussion | The slugs of the source discussions |
 | `deltaCapabilities` | The archived change has delta specs | The capability names, in ascending order |
 | `fields` | The change has free fields | The free fields |
@@ -304,7 +318,7 @@ Each key below appears only when the change has that record:
 }
 ```
 
-- An archived change whose metadata does not parse is still listed. It has no `createdBy`, `fromDiscussions`, or `fields`, and its two outcomes are judged as if it had no stamp.
+- An archived change whose metadata does not parse is still listed. It has no `createdBy`, `createdById`, `fromDiscussions`, or `fields`, and its two outcomes are judged as if it had no stamp.
 - To read a document of an archived change, use `speclink artifact cat <artifact> --change <datedName>`, for example `speclink artifact cat specs/auth --change 2026-11-22-add-two`.
 - The same data gives the same items in a local project, in a remote project, and through `host.dispatch`. In a remote project, the CLI makes the output from the one response of `GET /archived`. An older Server that does not send `deltaCapabilities` gives items without that key, and the command does not fail. When the Server cannot be reached or the login is not valid, the command fails as `list --json` does.
 - Through `host.dispatch`, `beforeCommand` gets the command name `list`, with `archived: true` in its parameters. The list costs the store one list of the archive and one read.
@@ -318,6 +332,9 @@ Each key below appears only when the change has that record:
 | `landed` | The landing record: `commit` and `at` (the report time, RFC 3339). `by` appears only when the report has a reporter. |
 | `claimed` | The claim record: `by` (the holder). `byId` (the identifier of the holder) and `at` (the time of the claim, as the change data records it) appear only when the claim recorded them. A change with no claim has no key. An older Server that does not send the identifier and the time gives `by` only. |
 | `fields` | The free fields |
+| `stage`, `whyExcerpt`, `startedAt`, `readyAt` | The same rules and the same values as the keys of [`list --json --detail`](#list-detail). `stage`, `whyExcerpt`, and `readyAt` come from the full text of `proposal` and `tasks` in the output, so a change with no task list has the `stage` `proposed`. When the metadata is corrupt, these three keys do not appear. |
+| `createdBy` | The creator that the metadata recorded. It does not appear without a record. |
+| `createdById` | The creator's identifier, with the same rules as in `list --json --detail` |
 
 ```json
 {
@@ -327,9 +344,17 @@ Each key below appears only when the change has that record:
   "branch": "speclink/add-login",
   "landed": { "commit": "0123456789ab", "at": "2026-11-03T10:10:00+08:00", "by": "Demo <demo@example.com>" },
   "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
-  "fields": { "ticket": "PROJ-1" }
+  "fields": { "ticket": "PROJ-1" },
+  "stage": "ready",
+  "whyExcerpt": "Sign-in needs a second rule to stop requests that are sent twice.",
+  "startedAt": "2026-11-01",
+  "readyAt": "2026-11-02",
+  "createdBy": "Demo <demo@example.com>",
+  "createdById": "u_42"
 }
 ```
+
+This is a deliberate change of the output: each `show --json` has `stage`, and the other keys when the change has the records. The human `show` does not change.
 
 The example leaves out the fields that existed before, such as `schema`, `proposal`, and `tasks`. `tasks` is the full text of tasks.md; for how to cut a task line into a title, a body, and a verification, see [The shape of a task line](#task-line-shape). The free fields also appear in the discussion data of `discuss list --json`, `discuss show --json`, and `discuss search --json`.
 
@@ -391,6 +416,25 @@ Each item of `discuss list --json` (also with `--archived`), the `info` of `disc
 
 ```json
 { "archived": false, "created": "2026-10-07", "path": "discussions/board-search-bar.md", "promotedTo": ["add-search-bar"], "rounds": 1, "slug": "board-search-bar", "status": "promoted", "topic": "Board search bar" }
+```
+
+#### <a id="discussion-modified-at"></a>`modifiedAt` and `createdById` in `discuss list --json`, `discuss show --json`, and `discuss search --json`
+
+Each item of `discuss list --json` (also with `--archived`), the `info` of `discuss show <slug> --json`, and each hit of `discuss search --json` get two optional keys:
+
+| Field | It appears when | Content |
+| --- | --- | --- |
+| `modifiedAt` | The store can tell when the record was modified | The time of the last modification of the discussion record, as an RFC 3339 UTC time in whole seconds: the same format as the change `modifiedAt` of `list --json` |
+| `createdById` | The discussion record recorded the creator's identifier | As recorded. `discuss new` through the host kit records the caller's identifier; a discussion created by the local CLI has none. |
+
+- This is a deliberate change of the output: a local project and a store port can both tell the time, so each item gets `modifiedAt`. `created` does not change, and the human output does not change.
+- Like the change `modifiedAt`, it is only a hint. In a local project, the value comes from the file time, and a checkout or a copy also changes it. For a document imported from somewhere else, the time is the time of the import. Use it only to estimate how long a discussion was idle.
+- Each person who can read the project can see `createdById`, so a host must not use a secret value as the identifier.
+- A search hit is the list item plus its `matches`, so it has the same two keys as the list.
+- In a remote project, the CLI takes them from the discussion data and the search hits that the Server already sends. It sends no other request. An older Server that does not send them gives no such keys, and the command does not fail.
+
+```json
+{ "archived": false, "created": "2026-11-20", "createdBy": "Ann", "createdById": "u_1", "modifiedAt": "2026-11-25T14:50:00Z", "path": "discussions/auth-flow.md", "rounds": 2, "slug": "auth-flow", "status": "open", "topic": "Sign-in flow" }
 ```
 
 ### <a id="task-line-shape"></a>The shape of a task line
@@ -998,12 +1042,16 @@ Optional:
 | `branch` | The branch that the start marker recorded, or the branch from the landing report |
 | `landedCommit` | The commit of the landing report |
 | `fields` | The free fields. It does not appear when the change has none. |
+| `whyExcerpt` | The first line with content in the proposal's first Why section as written, not cut. The rule is the same as for the key of [`list --json --detail`](#list-detail). |
+| `stage` | `proposed`, `in-progress`, or `ready`, by the same stage rule as the engine. It does not appear when the metadata is corrupt. |
+| `createdById` | The creator's identifier, as the metadata records it. As with `claimedById`, a host must not use a secret value as the identifier. |
+| `readyAt` | The date every task got checked, `YYYY-MM-DD`. It appears only while the change has at least one task and every task is checked. |
 
 ```json
-{ "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
+{ "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login", "whyExcerpt": "Sign-in needs a second rule.", "stage": "in-progress" }
 ```
 
-Of these fields, `speclink list --json` prints only `restaleFrom`, `metaError`, `deltaCapabilities`, `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, `branch`, `createdBy`, and `fromDiscussions`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail). `GET /changes` always has `summary`, also when it is an empty string. `list --json` leaves out `summary` when it is empty.
+Of these fields, `speclink list --json` prints only `restaleFrom`, `metaError`, `deltaCapabilities`, `created`, `modifiedAt`, and `fields`. It does not print `review`, `verify`, `branch`, or `landedCommit`. With `--detail`, it also prints `review`, `verify`, `branch`, `createdBy`, `fromDiscussions`, `whyExcerpt`, `stage`, `startedAt`, `createdById`, and `readyAt`, makes `landed` from `landedCommit`, and makes `claimed` from `claimedBy`, `claimedById`, and `claimedAt`. See [`speclink list --json --detail`](#list-detail). `GET /changes` always has `summary`, also when it is an empty string. `list --json` leaves out `summary` when it is empty.
 
 ### `GET /changes/{name}`
 
@@ -1013,6 +1061,7 @@ Optional fields:
 
 - `created`, `fromDiscussions`, `deltaCapabilities`, `createdBy`, `createdWith`, `startedAt`, `startedBy`, and `claimedBy`. `created` appears only when the metadata holds both the schema and the creation date.
 - `claimedById` and `claimedAt`: the identifier of the claim holder and the time of the claim. They follow the same rules as in the change list above.
+- `createdById` and `readyAt`: the creator's identifier and the ready date. They follow the same rules as in the change list above.
 - `review` and `verify`: the station state objects. A stamped station also has `scope` here.
 - `branch`: the branch that the start marker recorded, or the branch from the landing report.
 - `landedCommit`, `landedAt`, and `landedBy`: the commit of the landing report, the report time (RFC 3339), and the reporter.
@@ -1021,7 +1070,7 @@ Optional fields:
 CLI `show` in remote mode and the detail page of the desktop app use these fields.
 
 ```json
-{ "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>", "branch": "speclink/add-login", "landedCommit": "0123456789ab", "landedAt": "2026-10-08T10:10:00+08:00", "landedBy": "Demo <demo@example.com>", "fields": { "ticket": "PROJ-1" } }
+{ "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>", "branch": "speclink/add-login", "landedCommit": "0123456789ab", "landedAt": "2026-10-08T10:10:00+08:00", "landedBy": "Demo <demo@example.com>", "fields": { "ticket": "PROJ-1" } }
 ```
 
 ### <a id="station-state"></a>The station state object
@@ -1048,16 +1097,16 @@ CLI `show` in remote mode and the detail page of the desktop app use these field
 
 Always present: `datedName`, `date`, `name`, `specCount`, `fromDiscussions`.
 
-Optional: `tasksTotal`, `tasksDone`, `createdBy`, `fields`, `deltaCapabilities` (the capabilities of the delta specs, in ascending order; as many as `specCount`), and the two station outcomes `reviewOutcome` and `verifyOutcome`. An outcome is `none` (the station did not run), `stamped`, or `notPassed` (the archive took an open ticket). If the archived documents hold a ticket, the outcome is `notPassed`, also when the metadata still has a stamp.
+Optional: `tasksTotal`, `tasksDone`, `createdBy`, `createdById`, `fields`, `deltaCapabilities` (the capabilities of the delta specs, in ascending order; as many as `specCount`), and the two station outcomes `reviewOutcome` and `verifyOutcome`. An outcome is `none` (the station did not run), `stamped`, or `notPassed` (the archive took an open ticket). If the archived documents hold a ticket, the outcome is `notPassed`, also when the metadata still has a stamp.
 
 ### Each item of `GET /discussions`
 
 Always present: `slug`, `topic`, `status`, `rounds`, `created`, `path`, `archived`. The demonstration server also always fills `concluded` (the conclusion has text) and `hold` (the record stays live).
 
-Optional: `createdBy`, `kind` (`improve` for an improve discussion), `fields` (the free fields), and `promotedTo`. `promotedTo` lists the changes that the discussion turned into, in the order of promotion. The Server takes it directly from the discussion record. It does not appear when the discussion has no promotion.
+Optional: `createdBy`, `createdById` (the creator's identifier), `modifiedAt` (the time of the last modification that the store reports, as an RFC 3339 UTC time), `kind` (`improve` for an improve discussion), `fields` (the free fields), and `promotedTo`. `promotedTo` lists the changes that the discussion turned into, in the order of promotion. The Server takes it directly from the discussion record. It does not appear when the discussion has no promotion. The `info` of `GET /discussions/{slug}` and the hits of `GET /discussions/search` have the same fields.
 
 ```json
-{ "slug": "board-search-bar", "topic": "看板搜尋列", "status": "promoted", "rounds": 1, "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "promotedTo": ["add-search-bar"], "concluded": true, "hold": true, "path": "discussions/board-search-bar.md", "archived": false }
+{ "slug": "board-search-bar", "topic": "看板搜尋列", "status": "promoted", "rounds": 1, "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "modifiedAt": "2026-10-08T02:00:00Z", "promotedTo": ["add-search-bar"], "concluded": true, "hold": true, "path": "discussions/board-search-bar.md", "archived": false }
 ```
 
 ### The local `worktree` field of `speclink list --json`
@@ -1071,4 +1120,4 @@ In local mode, `list --json` can add a `worktree` object to a change. It shows t
 - `path` is the absolute path of the worktree folder. `branch` is the full branch name (`speclink/<change>`).
 - The field appears only when all these conditions are true: local mode, a run from the main checkout, the `worktree` policy on, and a worktree that matches the change. In all other cases, the key does not appear.
 - Remote-mode `list` never has this field, because the Server does not know your local checkout. Without worktrees, both modes therefore give the same fields.
-- When the field appears, all values of the item come from the copy in the worktree, not from the main checkout: for example `completedTasks`, `totalTasks`, `status`, `metaError`, and `deltaCapabilities`. `show --json` still reads the main checkout, so its `deltaSpecs` can differ from the `deltaCapabilities` of the list.
+- When the field appears, all values of the item come from the copy in the worktree, not from the main checkout: for example `completedTasks`, `totalTasks`, `status`, `metaError`, and `deltaCapabilities`. `show` reads the same copy in the worktree, so values such as `deltaSpecs`, `deltaCapabilities`, and `stage` agree between the two. The output of `show` has no `worktree` object. `artifact cat` still reads the main checkout.

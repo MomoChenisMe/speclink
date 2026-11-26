@@ -7,25 +7,30 @@
 ## What Changes
 
 - `speclink list --json --detail` 的每個變更與 `speclink show <變更> --json` 增加選填的鍵：
-  - `whyExcerpt`：提案 Why 段落第一個非空行的原文，不截斷。規則從 Desktop 搬進 speclink-core，Desktop 改成呼叫它。既有的 `summary` 與它的 30 個字元上限不動。
+  - `whyExcerpt`：提案第一個 Why 段落裡第一個有內容的行的原文，不截斷；標題行（`#` 開頭）與 HTML 註解（`<!--` 到 `-->`）不算內容。規則從 Desktop 搬進 speclink-core，Desktop 改成呼叫它。既有的 `summary` 與它的 30 個字元上限不動。
   - `stage`：`proposed`、`in-progress` 或 `ready`，直接用引擎既有的階段規則，不經 plan，所以依賴成環時照樣有值。
   - `startedAt`：開工日，只有日期。
   - `createdById`：建立者的識別。
   - `readyAt`：任務全部完成的日期，只有日期，而且只在目前全部任務都勾完時出現。
   - `show --json` 另外補上它一直沒有的 `createdBy`。
-- `speclink discuss list --json`（含 `--archived`）的每一筆與 `speclink discuss show <slug> --json` 的 `info` 增加 `modifiedAt`（儲存回報的最後修改時間，RFC 3339 的 UTC 時間，意思和變更清單的 `modifiedAt` 相同）與 `createdById`。
+- `speclink discuss list --json`（含 `--archived`）的每一筆、`speclink discuss show <slug> --json` 的 `info` 與 `speclink discuss search --json` 的每一筆命中增加 `modifiedAt`（儲存回報的最後修改時間，RFC 3339 的 UTC 時間，意思和變更清單的 `modifiedAt` 相同）與 `createdById`。
 - `speclink list --archived --json` 的每一筆增加 `createdById`。
 - 建立時多記一筆資料：執行環境有呼叫者的識別時，`new change`、`discuss new` 與 `discuss promote` 多寫 `created_by_id`。宿主套件每次呼叫都已經把識別交給引擎，所以宿主不用多傳任何東西；本機 CLI 沒有識別，不會寫。
 - 任務全部完成時多記一筆資料：一次任務完成讓全部任務都勾完時，在變更的 metadata 寫入 `ready_at`（再次發生時覆寫）。`task undone` 不動它。Desktop 的「全部標完成」同樣寫入。
 - HTTP 回應帶上同樣的新欄位：變更清單、單一變更、討論清單、單一討論與已封存清單。經遠端連線的 CLI 輸出與本機相同；Desktop 的遠端專案因此也拿得到 `whyExcerpt`，卡片多出描述列。
 - 動詞參考文件寫明 `list --json` 的 `status` 只有 `done` 與 `in-progress` 兩個值，`done` 等於 `stage` 的 `ready`。`status` 本身不改。
+- 品質關卡第 1 輪之後加入的四項（使用者在第 1 輪的停頓選定）：
+  - 本機主 checkout 開了 worktree 政策時，`speclink show` 改成和 `speclink list` 讀同一份副本：映射成立的變更從它的 worktree 副本讀。原本 `list` 讀 worktree 副本、`show` 讀主副本，同一個變更在兩個輸出的 `stage`、`startedAt`、`readyAt` 會不同。
+  - Why 第一行的規則略過標題與 HTML 註解（見上面的 `whyExcerpt`）。這會讓 Desktop 在這幾種邊角情況的描述列跟著變，所以 Desktop 的封存快取升一版，讓已封存項目重算。
+  - 建立者的識別（`created_by_id`）與認領人的識別（`claimed_by_id`）寫出時改用「讀回來不會變成別種值」的跳脫，`null`、`true`、`123` 這類識別讀回來仍是原字串；討論記錄裡空的 `created_by_id:` 讀作沒有記錄。
+  - 就緒時間改在任務清單寫回之前寫入：寫入就緒時間失敗時，任務不會被勾上，重試同一個任務會再寫一次。
 - 不新增任何 CLI 指令與旗標；不改 stdin 與 exit code；不改設定欄位；不改任何技能檔。
 
 ### 相容性影響
 
 - 新的鍵都是選填的：沒有值時整個鍵不出現，不用 null。
-- 不帶 `--detail` 的 `list --json`、`status --json`、`plan --json` 與全部的人眼輸出逐位元不變。
-- `show --json` 會變：每個變更多出 `stage`，有記錄時多出其他鍵。`discuss list --json` 與 `discuss show --json` 會變：儲存答得出修改時間時（本機專案與經儲存接口都答得出）每一筆多出 `modifiedAt`。這兩組輸出的回歸對照（render 的單元測試與 CLI 測試）同批更新。
+- 不帶 `--detail` 的 `list --json`、`status --json`、`plan --json` 與全部的人眼輸出逐位元不變。唯一的例外是本機主 checkout 開了 worktree 政策、而且變更有對應的 worktree：這時 `show` 的人眼與 `--json` 輸出改從 worktree 副本讀（鍵名與形狀不變，值可能和以前不同）。`artifact cat` 照舊讀主副本。
+- `show --json` 會變：每個變更多出 `stage`，有記錄時多出其他鍵。`discuss list --json`、`discuss show --json` 與 `discuss search --json` 會變：儲存答得出修改時間時（本機專案與經儲存接口都答得出）每一筆多出 `modifiedAt`。這兩組輸出的回歸對照（render 的單元測試與 CLI 測試）同批更新。
 - 舊資料不遷移、不回填：沒有 `created_by_id` 與 `ready_at` 的變更與討論照常運作，對應的鍵不出現。
 - 新的 CLI 連到舊的 Server：回應沒有新欄位，對應的鍵不出現，指令不失敗。舊的 CLI 與舊的 Desktop 連到新的 Server：多出的欄位被忽略。
 - metadata 多了兩個鍵（`created_by_id`、`ready_at`）。舊版引擎讀到不認得的鍵會略過。
@@ -33,9 +38,9 @@
 
 ### 三種形態
 
-- 本機 repo：輸出的鍵可用。`createdById` 不會出現，因為本機 CLI 沒有呼叫者的識別（除非 metadata 本來就帶著）；`modifiedAt` 取檔案時間，checkout 或複製也會改到它，只是提示。
-- 連到遠端的 checkout：可用，輸出與本機同形；要等 Server 升級到含這個變更的版本，之前對應的鍵不出現。
-- 沒有本機規格檔的內嵌宿主：可用。這是這個變更的主要對象：經呼叫入口執行動詞就拿得到全部新鍵，`created_by_id` 自動記下呼叫者的識別，`modifiedAt` 取儲存接口回報的鍵的修改時間（從別處匯入的文件，這個時間是匯入的時間）。
+- 本機 repo：輸出的鍵可用；開了 worktree 政策的主 checkout 上，`show` 與 `list` 讀同一份副本。`createdById` 不會出現，因為本機 CLI 沒有呼叫者的識別（除非 metadata 本來就帶著）；`modifiedAt` 取檔案時間，checkout 或複製也會改到它，只是提示。
+- 連到遠端的 checkout：可用，輸出與本機同形；要等 Server 升級到含這個變更的版本，之前對應的鍵不出現。遠端沒有 worktree 觀察面，`show` 的讀取不受 worktree 那一項影響。
+- 沒有本機規格檔的內嵌宿主：可用（worktree 那一項不適用：宿主沒有 checkout）。這是這個變更的主要對象：經呼叫入口執行動詞就拿得到全部新鍵，`created_by_id` 自動記下呼叫者的識別，`modifiedAt` 取儲存接口回報的鍵的修改時間（從別處匯入的文件，這個時間是匯入的時間）。
 
 ## Non-Goals (optional)
 
@@ -53,12 +58,14 @@
 - `change-lifecycle`: 新增需求，規定建立變更時記下建立者的識別，以及任務全部完成時記下就緒時間與它的輸出規則。
 - `discussion-docs`: 新增需求，規定討論記錄記下建立者的識別，以及討論的清單與單項輸出最後修改時間。
 - `client-protocol`: 新增需求，規定變更、討論與已封存清單的回應型別帶新的選填欄位，舊 Server 不送時以缺席容錯。
+- `worktree-overlay`: 新增需求，規定本機主 checkout 的 `show` 與 `list` 一樣讀映射成立的 worktree 副本。
+- `change-lifecycle` 另外修改既有需求「list --json 曝變更的 delta capability」：拿掉其中「show 仍讀主副本」的說法，改成 show 讀同一份副本。
 
-查過的相關正式規格：verb-contract（清單的詳細輸出、已封存變更的清單、任務取消勾選）、change-lifecycle（change metadata 時間欄位寫入時戳、對外輸出日期；任務完成蘊含開工）、change-plan（plan 的 stage）、discussion-docs（討論記錄蓋建立者章）、client-protocol（變更清單的建立者與來源討論欄位）、server-verb-api、store-abstraction、desktop-app（看板全尺寸卡的描述列）、verify-evidence、free-fields、host-kit。既有的需求都不修改；新的鍵以新增的需求規定。
+查過的相關正式規格：verb-contract（清單的詳細輸出、已封存變更的清單、任務取消勾選）、change-lifecycle（change metadata 時間欄位寫入時戳、對外輸出日期；任務完成蘊含開工）、change-plan（plan 的 stage）、discussion-docs（討論記錄蓋建立者章）、client-protocol（變更清單的建立者與來源討論欄位）、server-verb-api、store-abstraction、desktop-app（看板全尺寸卡的描述列）、verify-evidence、free-fields、host-kit。新的鍵以新增的需求規定。第 1 輪之後唯一修改的既有需求是 change-lifecycle「list --json 曝變更的 delta capability」，因為它寫明了 show 讀主副本；也查過 worktree-overlay（list 的 worktree 觀察面輸出）、change-plan 與 workflow-schemas（對映射成立的變更寫 worktree 副本）。
 
 ## Impact
 
-- Affected specs: verb-contract、change-lifecycle、discussion-docs、client-protocol
+- Affected specs: verb-contract、change-lifecycle、discussion-docs、client-protocol、worktree-overlay
 - Affected crates and apps: speclink-core、speclink-fs、speclink-host、speclink-protocol、speclink-remote、speclink-verbs、speclink-cli、speclink-node（只有測試）、apps/desktop（desktop-core 與 Tauri 殼的遠端資料源）
 - Affected code:
   - Modified:
@@ -87,6 +94,8 @@
     - crates/host/speclink-host/tests/http_door.rs
     - crates/adapters/speclink-cli/tests/it/remote_verb_parity.rs
     - crates/adapters/speclink-cli/tests/it/show_detail.rs
+    - crates/adapters/speclink-cli/tests/it/worktree_overlay.rs
+    - crates/host/speclink-server/tests/it/api/discussion_routes.rs
     - docs/verb-contract.md
     - docs/verb-contract.zh-TW.md
     - docs/product-status.md

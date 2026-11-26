@@ -471,6 +471,8 @@ mod tests {
             rounds: 0,
             created: s("2026-01-01"),
             created_by: None,
+            created_by_id: None,
+            modified_at: None,
             kind: None,
             path: s("/p/t.md"),
             archived: false,

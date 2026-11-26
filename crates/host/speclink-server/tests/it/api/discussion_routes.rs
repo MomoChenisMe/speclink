@@ -829,8 +829,8 @@ fn discussion_search_route_matches_the_engine_search_over_the_same_records() {
     let engine = speclink_fs::FsStore::new(root.path(), "openspec");
     let hits = speclink_core::discuss::search(&engine, &["drawer".to_string()]).expect("engine search");
 
-    // promotedTo／concluded／hold 是 route 邊緣增欄、path 是各 store 的位置——
-    // 都不是語意的一部分。
+    // promotedTo／concluded／hold 是 route 邊緣增欄、path 是各 store 的位置、
+    // modifiedAt 是各 store 的時間（檔案時間對上鍵的時間）——都不是語意的一部分。
     let strip = |h: &Value| {
         let mut h = h.clone();
         let o = h.as_object_mut().unwrap();
@@ -838,6 +838,7 @@ fn discussion_search_route_matches_the_engine_search_over_the_same_records() {
         o.remove("concluded");
         o.remove("hold");
         o.remove("path");
+        o.remove("modifiedAt");
         h
     };
     let route: Vec<Value> = body["hits"].as_array().unwrap().iter().map(strip).collect();

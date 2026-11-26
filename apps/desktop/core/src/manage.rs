@@ -252,6 +252,10 @@ pub fn set_all_tasks_at(root: &Path, change: &str, done: bool) -> Result<(), Str
     if had_trailing_newline {
         out.push('\n');
     }
+    if done {
+        // 就緒時間先寫（change-and-discussion-list-fields D12）：寫不進去時什麼都不勾。
+        speclink_core::tasks::record_ready(&ctx.store, change, &out).map_err(|e| e.to_string())?;
+    }
     ctx.store
         .write_artifact(change, "tasks.md", &out)
         .map_err(|e| e.to_string())?;
@@ -1411,6 +1415,55 @@ mod tests {
             1,
             "batch must record exactly one touched entry: {touched}"
         );
+    }
+
+    #[test]
+    fn set_all_tasks_done_records_the_ready_time_and_a_reset_leaves_it() {
+        // spec change-lifecycle「任務全部完成時記下就緒時間」Scenario「桌面 app 的全部標完成
+        // 同樣寫入」：引擎的同一個函式寫入；取消勾選不動它。
+        let ready_lines = |meta: &str| meta.lines().filter(|l| l.starts_with("ready_at:")).map(str::to_string).collect::<Vec<_>>();
+        let fx = crate::testfixture::FixtureRoot::new("all-ready");
+        fx.add_change("demo", META_UNSTARTED);
+        fx.write("speclink/changes/demo/tasks.md", "- [ ] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
+
+        set_all_tasks_at(fx.root(), "demo", true).expect("batch check ok");
+        let lines = ready_lines(&meta_of(&fx, "demo"));
+        assert_eq!(lines.len(), 1, "{}", meta_of(&fx, "demo"));
+
+        set_all_tasks_at(fx.root(), "demo", false).expect("batch reset ok");
+        assert_eq!(ready_lines(&meta_of(&fx, "demo")), lines, "the reset leaves the line verbatim");
+
+        // The single checkbox records it too, when it checks the last open task.
+        let fx = crate::testfixture::FixtureRoot::new("one-ready");
+        fx.add_change("demo", META_UNSTARTED);
+        fx.write("speclink/changes/demo/tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+        set_task_done_at(fx.root(), "demo", "3", true).expect("check ok");
+        assert_eq!(ready_lines(&meta_of(&fx, "demo")).len(), 1, "{}", meta_of(&fx, "demo"));
+    }
+
+    /// Unix only: the change folder refuses new files and `.meta.yaml` is
+    /// read-only, so the metadata write fails while `tasks.md` (writable) can
+    /// still be written in place — the two write orders give different results.
+    /// Folder permissions do not work this way on Windows.
+    #[cfg(unix)]
+    #[test]
+    fn set_all_tasks_done_writes_the_ready_time_before_the_task_list() {
+        // change-and-discussion-list-fields D12：就緒時間寫不進去時，什麼都不勾。
+        let fx = crate::testfixture::FixtureRoot::new("all-ready-first");
+        fx.add_change("demo", META_UNSTARTED);
+        let tasks_path = change_file(&fx, "demo", "tasks.md");
+        let tasks_before = fs::read_to_string(&tasks_path).unwrap();
+        let meta_path = change_file(&fx, "demo", ".meta.yaml");
+        let dir = meta_path.parent().unwrap().to_path_buf();
+        set_readonly(&meta_path, true);
+        set_readonly(&dir, true);
+        let r = set_all_tasks_at(fx.root(), "demo", true);
+        set_readonly(&dir, false);
+        set_readonly(&meta_path, false);
+        assert!(r.is_err(), "the failed metadata write is reported: {r:?}");
+        assert_eq!(fs::read_to_string(&tasks_path).unwrap(), tasks_before, "nothing is checked");
+        set_all_tasks_at(fx.root(), "demo", true).expect("the retry succeeds");
+        assert!(meta_of(&fx, "demo").contains("ready_at: "), "{}", meta_of(&fx, "demo"));
     }
 
     #[test]

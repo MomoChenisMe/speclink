@@ -225,6 +225,8 @@ fn to_discussion_info(d: &protocol_query::DiscussionInfo) -> core::discuss::Disc
         rounds: d.rounds,
         created: d.created.clone(),
         created_by: d.created_by.clone(),
+        created_by_id: d.created_by_id.clone(),
+        modified_at: d.modified_at.clone(),
         kind: d.kind.clone(),
         path: d.path.clone(),
         archived: d.archived,

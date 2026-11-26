@@ -2359,6 +2359,10 @@ mod board_order_tests {
             branch: None,
             landed_commit: None,
             fields: Default::default(),
+            why_excerpt: None,
+            stage: None,
+            created_by_id: None,
+            ready_at: None,
         }
     }
 
@@ -2521,6 +2525,8 @@ mod board_order_tests {
             rounds: 1,
             created: "2026-01-02".into(),
             created_by: None,
+            created_by_id: None,
+            modified_at: None,
             kind: None,
             promoted_to: Vec::new(),
             concluded: None,

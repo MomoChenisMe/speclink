@@ -211,20 +211,27 @@ speclink discuss new "看板搜尋列" --field owner=alice
 | `modifiedAt` | 這個變更底下的文件最後一次被修改的時間，RFC 3339 的 UTC 時間。儲存答不出來時不出現。本機專案的值取自檔案時間，checkout 或複製也會改到它，只適合拿來估「閒置多久」 |
 | `fields` | 自由欄位 |
 
+`status` 只有兩個值：至少有一個任務而且全部勾完時是 `done`，其他情況是 `in-progress`。`status` 是 `done` 的變更，`--detail` 的 `stage` 一定是 `ready`。要分出「還沒開工」和「做到一半」，請看 `stage`。
+
 不帶 `--detail` 的 `list --json` 沒有品質關卡的欄位，遠端專案也一樣。
 
 #### <a id="list-detail"></a>`speclink list --json --detail`
 
-`--detail` 讓每個變更多帶出它記下的狀態：兩個品質關卡、認領、分支、落地、建立的人與來源討論。這樣一次呼叫就能回答「哪些變更已經通過審查」「我認領了哪些」。
+`--detail` 讓每個變更多帶出它記下的狀態：兩個品質關卡、認領、分支、落地、建立的人與來源討論，以及階段、提案 Why 的第一行、開工日、建立者的識別與就緒日。這樣一次呼叫就能回答「哪些變更已經通過審查」「我認領了哪些」。
 
 - `--detail` 只能和 `--json` 一起用，也不能和 `--specs` 一起用。`speclink list --detail` 與 `speclink list --specs --json --detail` 會以用法錯誤結束：exit code 不是 0、訊息在 stderr、stdout 沒有輸出。經呼叫入口（`host.dispatch`）執行時，錯誤代碼是 `invalid_argv`。
 - 不帶 `--detail` 時，`list --json` 的輸出和以前逐位元相同。
 - `--detail` 不改變原有的欄位、項目的順序與 `specs` 區段。
 
-下面每個鍵都只在變更有那一筆記錄時出現：
+除了 `stage`，下面每個鍵都只在變更有那一筆記錄時出現：
 
 | 欄位 | 什麼時候出現 | 內容 |
 | --- | --- | --- |
+| `stage` | metadata 讀得出來的每個變更 | `proposed`、`in-progress` 或 `ready`，和 `plan --json` 對同一個變更的 `stage` 相同。這個值不經 `plan` 計算，所以宣告的依賴成環、`plan` 失敗時照樣有值 |
+| `whyExcerpt` | 提案第一個 `## Why` 段落裡有一行有內容 | 那一行的原文（去掉前後空白），不截斷。空行、`#` 開頭的行（例如 `### 子標題`）與 HTML 註解（`<!--` 開頭的行到第一個含 `-->` 的行）不算內容；第一個 Why 段落沒有內容時，後面的 `## Why` 不遞補。`summary` 照舊截到 30 個字元 |
+| `startedAt` | metadata 記下了開工 | 開工日期，格式 `YYYY-MM-DD` |
+| `createdById` | metadata 記下了建立者的識別 | 原樣。經宿主套件建立的變更記著呼叫者的識別；本機 CLI 建立的變更沒有。讀得到專案的人都看得到它，所以宿主不要拿機密的值當識別 |
+| `readyAt` | metadata 記下了就緒時間，而且這個變更目前至少有一個任務、全部勾完 | 任務全部完成的日期，格式 `YYYY-MM-DD`。`task done` 勾完最後一個任務時記下，而且先記下時間、再寫回任務清單：記不下來時任務不會被勾上，重試會再記一次。取消勾選不清掉記錄，但這時鍵不出現。直接編輯 tasks.md 勾完不會記下 |
 | `review`、`verify` | 這個關卡有未結的工單，或已經蓋章 | 和下面 `show --json` 的同名物件相同。進行中的關卡（`inProgress`）另有 `rounds`：工單目前的輪數 |
 | `claimed` | 有人認領了這個變更 | 和下面 `show --json` 的同名物件相同：`by`，以及認領時有記下才出現的 `byId` 與 `at` |
 | `branch` | 開工或落地回報時記下了分支 | 分支名稱 |
@@ -247,9 +254,14 @@ speclink discuss new "看板搜尋列" --field owner=alice
       "branch": "speclink/add-login",
       "landed": { "commit": "0123456789ab" },
       "createdBy": "Demo <demo@example.com>",
-      "fromDiscussions": ["login-flow"]
+      "fromDiscussions": ["login-flow"],
+      "whyExcerpt": "登入需要第二道規則，才能擋下重複送出的請求。",
+      "stage": "ready",
+      "startedAt": "2026-11-01",
+      "createdById": "u_42",
+      "readyAt": "2026-11-02"
     },
-    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10" }
+    { "completedTasks": 0, "name": "add-search", "status": "in-progress", "totalTasks": 3, "created": "2026-11-10", "stage": "proposed" }
   ]
 }
 ```
@@ -259,7 +271,8 @@ speclink discuss new "看板搜尋列" --field owner=alice
 - 鍵不出現，代表這個變更沒有那一筆記錄。舊版 Server 不提供其中一些欄位，這時對應的鍵同樣不出現，指令不會失敗。請不要把缺少 `review` 或 `verify` 讀成「這個關卡沒跑過」。
 - metadata 損壞的變更帶 `metaError`，這些鍵一個都沒有。
 - 清單不判斷蓋章之後檔案有沒有再改過。`review` 與 `verify` 只反映記下的狀態，和 `show --json` 相同。
-- `claimed.byId` 是宿主給這個人的識別。讀得到這個專案的人都看得到它。
+- `claimed.byId` 與 `createdById` 是宿主給這個人的識別。讀得到這個專案的人都看得到它們。
+- 舊版 Server 不送 `stage`、`whyExcerpt`、`createdById` 與 `readyAt`，這時這些鍵不出現，指令不失敗。
 - 工單解析不了的關卡沒有 `rounds`，清單照常成功。不送 `rounds` 的舊版 Server 給的是 `{ "state": "inProgress" }`。
 - 經 `host.dispatch` 執行時，`--detail` 會讀未結的工單來數輪數：全部合成一次儲存讀取，沒有未結工單時不多讀。
 
@@ -280,6 +293,7 @@ speclink discuss new "看板搜尋列" --field owner=alice
 | `reviewOutcome`、`verifyOutcome` | 一定出現 | `none`、`stamped` 或 `notPassed`，和 [`GET /archived`](#archived-items) 相同 |
 | `tasksTotal`、`tasksDone` | 封存的文件有任務清單時，兩個都出現 | 任務總數與已勾選的任務數 |
 | `createdBy` | metadata 記下了建立的人 | 建立的人 |
+| `createdById` | metadata 記下了建立者的識別 | 原樣 |
 | `fromDiscussions` | 這個變更由討論轉出 | 來源討論的 slug |
 | `deltaCapabilities` | 封存的文件裡有 delta spec | capability 名稱，依名稱遞增 |
 | `fields` | 這個變更有自由欄位 | 自由欄位 |
@@ -304,7 +318,7 @@ speclink discuss new "看板搜尋列" --field owner=alice
 }
 ```
 
-- metadata 解析不了的已封存變更照常列出：沒有 `createdBy`、`fromDiscussions`、`fields`，兩個結局以「沒有章」判定。
+- metadata 解析不了的已封存變更照常列出：沒有 `createdBy`、`createdById`、`fromDiscussions`、`fields`，兩個結局以「沒有章」判定。
 - 要讀已封存變更的文件，用 `speclink artifact cat <文件> --change <datedName>`，例如 `speclink artifact cat specs/auth --change 2026-11-22-add-two`。
 - 同樣的資料在本機專案、遠端專案與 `host.dispatch` 得到相同的項目。遠端專案的 CLI 用一次 `GET /archived` 的回應組出輸出。不送 `deltaCapabilities` 的舊版 Server，項目沒有這個鍵，指令不失敗。連不到 Server 或登入失效時，和 `list --json` 相同地失敗。
 - 經 `host.dispatch` 執行時，`beforeCommand` 收到的命令名稱是 `list`，參數裡 `archived` 是 true。這份清單對儲存的成本是一次列出封存區加一次讀取。
@@ -318,6 +332,9 @@ speclink discuss new "看板搜尋列" --field owner=alice
 | `landed` | 落地記錄：`commit`、`at`（回報時間，RFC 3339），以及有回報人時才出現的 `by` |
 | `claimed` | 認領記錄：`by`（認領的人），以及有記錄才出現的 `byId`（認領人的識別）與 `at`（認領的時間，照變更資料記的原樣）。沒有被認領的變更，整個鍵不出現。連到不提供識別與時間的舊版 Server 時，只有 `by` |
 | `fields` | 自由欄位 |
+| `stage`、`whyExcerpt`、`startedAt`、`readyAt` | 規則和 [`list --json --detail`](#list-detail) 的同名鍵相同，值也相同。`stage`、`whyExcerpt` 與 `readyAt` 由輸出裡的 `proposal` 與 `tasks` 全文算出，所以沒有任務清單的變更 `stage` 是 `proposed`。metadata 損壞時這三個鍵不出現 |
+| `createdBy` | metadata 記下的建立者；沒有記錄時不出現 |
+| `createdById` | 建立者的識別，規則和 `list --json --detail` 的相同 |
 
 ```json
 {
@@ -327,9 +344,17 @@ speclink discuss new "看板搜尋列" --field owner=alice
   "branch": "speclink/add-login",
   "landed": { "commit": "0123456789ab", "at": "2026-11-03T10:10:00+08:00", "by": "Demo <demo@example.com>" },
   "claimed": { "by": "Demo <demo@example.com>", "byId": "u_42", "at": "2026-11-18T10:00:00+08:00" },
-  "fields": { "ticket": "PROJ-1" }
+  "fields": { "ticket": "PROJ-1" },
+  "stage": "ready",
+  "whyExcerpt": "登入需要第二道規則，才能擋下重複送出的請求。",
+  "startedAt": "2026-11-01",
+  "readyAt": "2026-11-02",
+  "createdBy": "Demo <demo@example.com>",
+  "createdById": "u_42"
 }
 ```
+
+這是刻意的輸出變更：每個 `show --json` 都多出 `stage`，有記錄時多出其他鍵。人眼的 `show` 不變。
 
 上面的範例省略了 `schema`、`proposal`、`tasks` 等既有欄位。`tasks` 是 tasks.md 的全文，一個任務行怎麼切成標題、內文與驗證，見[任務行的切分](#task-line-shape)。自由欄位也出現在 `discuss list --json`、`discuss show --json` 與 `discuss search --json` 的討論資訊裡。
 
@@ -391,6 +416,25 @@ speclink discuss new "看板搜尋列" --field owner=alice
 
 ```json
 { "archived": false, "created": "2026-10-07", "path": "discussions/board-search-bar.md", "promotedTo": ["add-search-bar"], "rounds": 1, "slug": "board-search-bar", "status": "promoted", "topic": "看板搜尋列" }
+```
+
+#### <a id="discussion-modified-at"></a>`discuss list --json`、`discuss show --json` 與 `discuss search --json` 的 `modifiedAt` 與 `createdById`
+
+`discuss list --json` 的每一項（帶 `--archived` 也一樣）、`discuss show <slug> --json` 的 `info` 與 `discuss search --json` 的每一筆命中多出兩個選填的鍵：
+
+| 欄位 | 什麼時候出現 | 內容 |
+| --- | --- | --- |
+| `modifiedAt` | 儲存答得出這份記錄的修改時間 | 這份討論記錄最後一次被修改的時間，RFC 3339 的 UTC 時間、整秒，格式和 `list --json` 的變更 `modifiedAt` 相同 |
+| `createdById` | 討論記錄記下了建立者的識別 | 原樣。經宿主套件執行 `discuss new` 時記下呼叫者的識別；本機 CLI 建立的討論沒有 |
+
+- 這是刻意的輸出變更：本機專案與經儲存接口都答得出修改時間，所以每一筆都多出 `modifiedAt`。`created` 不變，人眼輸出也不變。
+- `modifiedAt` 和變更的 `modifiedAt` 一樣只是提示：本機專案的值取自檔案時間，checkout 或複製也會改到它；從別處匯入的文件，時間是匯入的時間。只適合拿來估「閒置多久」。
+- `createdById` 讀得到專案的人都看得到，所以宿主不要拿機密的值當識別。
+- 搜尋的命中項是清單的項目加上 `matches`，所以這兩個鍵和清單相同。
+- 遠端專案的 CLI 從 Server 本來就送的討論資訊與搜尋命中取得它們，不另外發請求。不送這兩個欄位的舊版 Server，輸出沒有這兩個鍵，指令不失敗。
+
+```json
+{ "archived": false, "created": "2026-11-20", "createdBy": "Ann", "createdById": "u_1", "modifiedAt": "2026-11-25T14:50:00Z", "path": "discussions/auth-flow.md", "rounds": 2, "slug": "auth-flow", "status": "open", "topic": "登入流程" }
 ```
 
 ### <a id="task-line-shape"></a>任務行的切分
@@ -998,12 +1042,16 @@ POST /skills
 | `branch` | 開工時記下的分支，或落地回報給的分支 |
 | `landedCommit` | 落地回報的 commit |
 | `fields` | 自由欄位；沒有欄位時不出現 |
+| `whyExcerpt` | 提案第一個 Why 段落裡第一個有內容的行的原文，不截斷；規則和 [`list --json --detail`](#list-detail) 的同名鍵相同 |
+| `stage` | `proposed`、`in-progress` 或 `ready`，用引擎的同一條階段規則算出。metadata 壞掉時不出現 |
+| `createdById` | 建立者的識別，照 metadata 記的原樣。和 `claimedById` 一樣，宿主不要拿機密的值當識別 |
+| `readyAt` | 任務全部完成的日期，格式 `YYYY-MM-DD`；只在這個變更目前至少有一個任務、而且全部勾完時出現 |
 
 ```json
-{ "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login" }
+{ "name": "add-login", "summary": "", "status": "in-progress", "completedTasks": 0, "totalTasks": 2, "startedAt": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "created": "2026-10-07", "modifiedAt": "2026-10-07T03:12:45Z", "review": { "state": "inProgress" }, "verify": { "state": "none" }, "branch": "speclink/add-login", "whyExcerpt": "登入需要第二道規則。", "stage": "in-progress" }
 ```
 
-`speclink list --json` 只輸出其中的 `restaleFrom`、`metaError`、`deltaCapabilities`、`created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。帶上 `--detail` 時，它另外輸出 `review`、`verify`、`branch`、`createdBy` 與 `fromDiscussions`，用 `landedCommit` 組出 `landed`，用 `claimedBy`、`claimedById`、`claimedAt` 組出 `claimed`。見 [`speclink list --json --detail`](#list-detail)。`GET /changes` 一定帶 `summary`，空字串也照送；`list --json` 遇到空字串就不輸出 `summary`。
+`speclink list --json` 只輸出其中的 `restaleFrom`、`metaError`、`deltaCapabilities`、`created`、`modifiedAt` 與 `fields`，不輸出 `review`、`verify`、`branch` 與 `landedCommit`。帶上 `--detail` 時，它另外輸出 `review`、`verify`、`branch`、`createdBy`、`fromDiscussions`、`whyExcerpt`、`stage`、`startedAt`、`createdById` 與 `readyAt`，用 `landedCommit` 組出 `landed`，用 `claimedBy`、`claimedById`、`claimedAt` 組出 `claimed`。見 [`speclink list --json --detail`](#list-detail)。`GET /changes` 一定帶 `summary`，空字串也照送；`list --json` 遇到空字串就不輸出 `summary`。
 
 ### `GET /changes/{name}`
 
@@ -1013,6 +1061,7 @@ POST /skills
 
 - `created`（只有 metadata 同時記了 schema 與建立日期時才出現）、`fromDiscussions`、`deltaCapabilities`、`createdBy`、`createdWith`、`startedAt`、`startedBy`、`claimedBy`。
 - `claimedById`、`claimedAt`：認領人的識別與認領的時間，規則和上面變更清單的相同。
+- `createdById`、`readyAt`：建立者的識別與就緒日，規則和上面變更清單的相同。
 - `review`、`verify`：品質關卡的狀態物件。已蓋章的站在這裡多帶 `scope`。
 - `branch`：開工時記下的分支，或落地回報給的分支。
 - `landedCommit`、`landedAt`、`landedBy`：落地回報的 commit、回報時間（RFC 3339）與回報的人。
@@ -1021,7 +1070,7 @@ POST /skills
 CLI 遠端模式的 `show` 與桌面 app 的詳情頁都靠這些欄位。
 
 ```json
-{ "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>", "branch": "speclink/add-login", "landedCommit": "0123456789ab", "landedAt": "2026-10-08T10:10:00+08:00", "landedBy": "Demo <demo@example.com>", "fields": { "ticket": "PROJ-1" } }
+{ "changeName": "add-login", "schemaName": "spec-driven", "isComplete": false, "applyRequires": ["tasks"], "artifacts": [{ "id": "tasks", "outputPath": "tasks.md", "status": "done" }], "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "createdWith": "claude", "startedAt": "2026-10-07", "startedBy": "Demo <demo@example.com>", "branch": "speclink/add-login", "landedCommit": "0123456789ab", "landedAt": "2026-10-08T10:10:00+08:00", "landedBy": "Demo <demo@example.com>", "fields": { "ticket": "PROJ-1" } }
 ```
 
 ### <a id="station-state"></a>品質關卡的狀態物件
@@ -1048,16 +1097,16 @@ CLI 遠端模式的 `show` 與桌面 app 的詳情頁都靠這些欄位。
 
 必定出現：`datedName`、`date`、`name`、`specCount`、`fromDiscussions`。
 
-選填：`tasksTotal`、`tasksDone`、`createdBy`、`fields`、`deltaCapabilities`（delta spec 的 capability，依名稱遞增，個數等於 `specCount`），以及兩個關卡的結局 `reviewOutcome` 與 `verifyOutcome`。結局的值是 `none`（沒跑這一站）、`stamped`（已蓋章）或 `notPassed`（帶著未結的工單封存）。封存的文件裡有工單就是 `notPassed`，章還留在 metadata 也一樣。
+選填：`tasksTotal`、`tasksDone`、`createdBy`、`createdById`、`fields`、`deltaCapabilities`（delta spec 的 capability，依名稱遞增，個數等於 `specCount`），以及兩個關卡的結局 `reviewOutcome` 與 `verifyOutcome`。結局的值是 `none`（沒跑這一站）、`stamped`（已蓋章）或 `notPassed`（帶著未結的工單封存）。封存的文件裡有工單就是 `notPassed`，章還留在 metadata 也一樣。
 
 ### `GET /discussions` 的每一項
 
 必定出現：`slug`、`topic`、`status`、`rounds`、`created`、`path`、`archived`。示範用 server 也一定會填 `concluded`（結論段是否已寫）與 `hold`（是否保留在途）。
 
-選填：`createdBy`、`kind`（改進討論為 `improve`）、`fields`（自由欄位），以及 `promotedTo`——這則討論已轉出的變更名稱，依轉出先後排列。`promotedTo` 直接取自討論記錄，沒有轉出過就不出現。
+選填：`createdBy`、`createdById`（建立者的識別）、`modifiedAt`（儲存回報的最後修改時間，RFC 3339 的 UTC 時間）、`kind`（改進討論為 `improve`）、`fields`（自由欄位），以及 `promotedTo`——這則討論已轉出的變更名稱，依轉出先後排列。`promotedTo` 直接取自討論記錄，沒有轉出過就不出現。`GET /discussions/{slug}` 的 `info` 與 `GET /discussions/search` 的命中項用同一組欄位。
 
 ```json
-{ "slug": "board-search-bar", "topic": "看板搜尋列", "status": "promoted", "rounds": 1, "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "promotedTo": ["add-search-bar"], "concluded": true, "hold": true, "path": "discussions/board-search-bar.md", "archived": false }
+{ "slug": "board-search-bar", "topic": "看板搜尋列", "status": "promoted", "rounds": 1, "created": "2026-10-07", "createdBy": "Demo <demo@example.com>", "createdById": "u_42", "modifiedAt": "2026-10-08T02:00:00Z", "promotedTo": ["add-search-bar"], "concluded": true, "hold": true, "path": "discussions/board-search-bar.md", "archived": false }
 ```
 
 ### `speclink list --json` 的本機 `worktree` 欄位
@@ -1071,4 +1120,4 @@ CLI 遠端模式的 `show` 與桌面 app 的詳情頁都靠這些欄位。
 - `path` 是 worktree 目錄的絕對路徑，`branch` 是完整分支名（`speclink/<變更>`）。
 - 只在這些條件都成立時出現：本機模式、從主 checkout 執行、工作流設定開啟 `worktree`，而且找得到這個變更對應的 worktree。其他情況整個鍵都不出現。
 - 遠端模式的 `list` 永遠不帶這個欄位，因為 Server 不知道你本機的 checkout。所以沒有 worktree 時，兩種模式的輸出逐欄一致。
-- 欄位出現時，這一項的值全部取自 worktree 裡的副本，不是主 checkout 的，例如 `completedTasks`、`totalTasks`、`status`、`metaError` 與 `deltaCapabilities`。`show --json` 仍然讀主 checkout，所以它的 `deltaSpecs` 可能和清單的 `deltaCapabilities` 不同。
+- 欄位出現時，這一項的值全部取自 worktree 裡的副本，不是主 checkout 的，例如 `completedTasks`、`totalTasks`、`status`、`metaError` 與 `deltaCapabilities`。`show` 也讀同一份 worktree 副本，所以兩者的 `deltaSpecs`、`deltaCapabilities`、`stage` 等值相同；`show` 的輸出不帶 `worktree` 物件。`artifact cat` 仍然讀主 checkout。

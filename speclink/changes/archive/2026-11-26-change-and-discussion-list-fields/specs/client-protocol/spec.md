@@ -4,7 +4,7 @@
 
 協定的回應型別 SHALL 增列下列選填欄位（皆 camelCase、serde default、沒有值時省略）：
 
-- ChangeSummary：`whyExcerpt`（提案 Why 段落第一個非空行的原文）、`stage`（`proposed`、`in-progress` 或 `ready`）、`createdById`（metadata 的 `created_by_id`）、`readyAt`（就緒的日期，只在變更目前至少有一個任務並且全部勾完時有值）。
+- ChangeSummary：`whyExcerpt`（提案第一個 Why 段落裡第一個有內容的行的原文，規則與 verb-contract「清單的詳細輸出與 show 帶說明、階段與時間」的 `whyExcerpt` 相同）、`stage`（`proposed`、`in-progress` 或 `ready`）、`createdById`（metadata 的 `created_by_id`）、`readyAt`（就緒的日期，只在變更目前至少有一個任務並且全部勾完時有值）。
 - ChangeStatus：`createdById` 與 `readyAt`，語意與 ChangeSummary 的相同。
 - DiscussionInfo：`modifiedAt`（RFC 3339 的 UTC 時間、整秒）與 `createdById`（frontmatter 的 `created_by_id`）。
 - ArchivedItem：`createdById`。

@@ -720,6 +720,18 @@ pub struct ShowChange {
     pub claimed: Option<ClaimRecord>,
     /// The change's free fields (`--json` only, and only when it has some).
     pub fields: crate::fields::Fields,
+    /// The creator and the creator's identifier, as the metadata records them.
+    pub created_by: Option<String>,
+    pub created_by_id: Option<String>,
+    /// The date work started, and the recorded ready date. The output shows
+    /// the ready date only while every task is checked
+    /// ([`crate::model::shown_ready_at`]), judged on `tasks`.
+    pub started_at: Option<String>,
+    pub ready_at: Option<String>,
+    /// Whether the metadata reads. When it does not, the keys derived from it
+    /// (`stage`, `whyExcerpt`, `readyAt`) stay out, as in the detailed list.
+    /// The server refuses such a change, so a remote `show` never has `false`.
+    pub meta_readable: bool,
 }
 
 /// `instructions` outcome: the apply view or one artifact's instructions.
@@ -1078,6 +1090,14 @@ pub struct ExecutionContext {
     pub user_config_dir: Option<std::path::PathBuf>,
 }
 
+impl ExecutionContext {
+    /// The creator a creating verb stamps: the display identity and the
+    /// stable identifier of this context.
+    fn creator(&self) -> crate::newcmd::Creator<'_> {
+        crate::newcmd::Creator { name: self.actor.as_deref(), id: self.actor_id.as_deref() }
+    }
+}
+
 /// Execute one command against the store under the Host-resolved context.
 /// Returns the typed outcome plus the domain events the execution produced
 /// (always empty for queries).
@@ -1133,7 +1153,7 @@ pub fn execute(
             // an argv defect (the server maps it to 400 invalid_argument).
             .map_err(|e| CommandError::new(ErrorCode::InvalidArgv, e.to_string())),
         Command::NewChange { name, description, schema, agent, from_discussion, last, fields } => {
-            run_new_change(store, ctx.actor.as_deref(), name, description, schema, agent, from_discussion, last, &fields)
+            run_new_change(store, ctx.creator(), name, description, schema, agent, from_discussion, last, &fields)
         }
         Command::NewArtifact { kind, capability, change, content, force, new_capability } => {
             run_new_artifact(store, ws, ctx.user_config_dir.as_deref(), &kind, capability.as_deref(), change.as_deref(), content.as_deref(), force, new_capability)
@@ -1178,7 +1198,7 @@ pub fn execute(
         ),
         Command::Discard { change, force } => run_discard(store, ws, &change, force),
         Command::DiscussNew { topic, slug, kind, fields } => {
-            run_discuss_new(store, ctx.actor.as_deref(), &topic, slug.as_deref(), kind.as_deref(), &fields)
+            run_discuss_new(store, ctx.creator(), &topic, slug.as_deref(), kind.as_deref(), &fields)
         }
         Command::DiscussContext { slug, content } => {
             crate::discuss::set_context(store, &slug, &content).map_err(classify)?;
@@ -1201,7 +1221,7 @@ pub fn execute(
             }))
         }
         Command::DiscussPromote { slug, name, last, fields } => {
-            let o = crate::discuss::promote_with_fields(store, &slug, name.as_deref(), ctx.actor.as_deref(), last, &fields)
+            let o = crate::discuss::promote_with_fields(store, &slug, name.as_deref(), ctx.creator(), last, &fields)
                 .map_err(classify)?;
             Ok(CommandOutcome::DiscussPromote(DiscussPromoteOutcome {
                 slug,
@@ -1666,6 +1686,11 @@ fn run_show(
             change.meta.claimed_at.clone(),
         ),
         fields: change.meta.fields.clone(),
+        created_by: change.meta.created_by.clone(),
+        created_by_id: change.meta.created_by_id.clone(),
+        started_at: change.meta.started_at.clone(),
+        ready_at: change.meta.ready_at.clone(),
+        meta_readable: change.meta_error.is_none(),
         schema,
         created,
         proposal: store.read_artifact(&change.name, "proposal.md"),
@@ -1964,7 +1989,7 @@ fn run_discuss_show(store: &dyn Store, slug: &str) -> Result<CommandOutcome, Com
 
 fn run_new_change(
     store: &dyn Store,
-    actor: Option<&str>,
+    creator: crate::newcmd::Creator<'_>,
     name: String,
     description: Option<String>,
     schema: Option<String>,
@@ -1999,7 +2024,7 @@ fn run_new_change(
         &schema,
         agent.as_deref(),
         from_discussion.as_deref(),
-        actor,
+        creator,
         fields,
     )
     .map_err(classify)?;
@@ -2270,7 +2295,7 @@ fn run_claim(
         m.set(CLAIMED_AT, &crate::util::now_rfc3339())?;
         m.set(CLAIMED_BY, &crate::util::yaml_scalar(actor))?;
         if let Some(id) = actor_id {
-            m.set(CLAIMED_BY_ID, &crate::util::yaml_scalar(id))?;
+            m.set(CLAIMED_BY_ID, &crate::util::yaml_roundtrip_scalar(id))?;
         }
         Ok(None)
     })
@@ -2454,13 +2479,13 @@ fn run_discard(
 
 fn run_discuss_new(
     store: &dyn Store,
-    actor: Option<&str>,
+    creator: crate::newcmd::Creator<'_>,
     topic: &str,
     slug: Option<&str>,
     kind: Option<&str>,
     fields: &crate::fields::Fields,
 ) -> Result<CommandOutcome, CommandError> {
-    let info = crate::discuss::new_discussion(store, topic, slug, actor, kind, fields).map_err(classify)?;
+    let info = crate::discuss::new_discussion(store, topic, slug, creator, kind, fields).map_err(classify)?;
     Ok(CommandOutcome::DiscussNew(info))
 }
 

@@ -593,3 +593,74 @@ fn plan_reads_the_worktree_copy_for_the_stage_derivation() {
     let change = json_of(&off.run(&["plan", "--json"]))["changes"][0].clone();
     assert_eq!(change["stage"], "proposed", "policy off reads the main copy: {change}");
 }
+
+// --- show 的 worktree 觀察面（change-and-discussion-list-fields D9；worktree-overlay
+//     「show 的 worktree 觀察面」、change-lifecycle「list --json 曝變更的 delta capability」）---
+
+/// The change folder of `add-dark-mode` under `root` (a checkout).
+fn change_dir(root: &Path) -> PathBuf {
+    root.join("speclink").join("changes").join("add-dark-mode")
+}
+
+/// A mapped worktree whose copy is ahead of the main copy: one task checked, a
+/// start stamp, another proposal and one more delta spec.
+fn mapped_and_ahead(f: &Fixture) -> PathBuf {
+    let wt = f.add_worktree("add-dark-mode");
+    check_one_task(&wt);
+    let dir = change_dir(&wt);
+    std::fs::write(dir.join(".meta.yaml"), format!("{META}started_at: 2026-11-24T09:00:00+08:00\n")).unwrap();
+    std::fs::write(dir.join("proposal.md"), "## Why\n\nThe worktree copy.\n").unwrap();
+    std::fs::create_dir_all(dir.join("specs").join("auth")).unwrap();
+    std::fs::write(dir.join("specs").join("auth").join("spec.md"), "## ADDED Requirements\n").unwrap();
+    wt
+}
+
+#[test]
+fn a_mapped_change_shows_the_worktree_copy_like_the_list() {
+    let f = Fixture::new("show-mapped", true);
+    let wt = mapped_and_ahead(&f);
+    let shown = f.run(&["show", "add-dark-mode", "--json"]);
+    assert!(shown.status.success(), "stderr: {}", String::from_utf8_lossy(&shown.stderr));
+    let shown = json_of(&shown);
+    let tasks = std::fs::read_to_string(change_dir(&wt).join("tasks.md")).unwrap();
+    assert_eq!(shown["tasks"], tasks.as_str(), "the worktree copy's task list");
+    assert_eq!(shown["deltaSpecs"], serde_json::json!(["auth/spec.md"]), "{shown}");
+    assert!(shown.get("worktree").is_none(), "no worktree key in show: {shown}");
+    let listed = first_change(&f.run(&["list", "--json", "--detail"]));
+    assert_eq!(listed["deltaCapabilities"], serde_json::json!(["auth"]), "{listed}");
+    for key in ["stage", "startedAt", "whyExcerpt"] {
+        assert_eq!(shown[key], listed[key], "{key}: show {shown} / list {listed}");
+    }
+    assert_eq!(shown["stage"], "in-progress");
+    assert_eq!(shown["startedAt"], "2026-11-24");
+}
+
+#[test]
+fn the_human_show_of_a_mapped_change_prints_the_worktree_proposal() {
+    let f = Fixture::new("show-human", true);
+    mapped_and_ahead(&f);
+    let plain = f.run(&["show", "add-dark-mode", "--no-color"]);
+    let colored = f.run(&["show", "add-dark-mode"]);
+    assert!(plain.status.success() && colored.status.success());
+    assert!(stdout_of(&plain).contains("The worktree copy."), "{}", stdout_of(&plain));
+    assert_eq!(stdout_of(&plain), stdout_of(&colored), "NO_COLOR and --no-color print the same text");
+}
+
+#[test]
+fn without_the_policy_show_reads_the_main_copy() {
+    let f = Fixture::new("show-policy-off", false);
+    mapped_and_ahead(&f);
+    let shown = json_of(&f.run(&["show", "add-dark-mode", "--json"]));
+    assert_eq!(shown["tasks"], TASKS, "the main copy: {shown}");
+    assert_eq!(shown["stage"], "proposed");
+    assert!(shown.get("startedAt").is_none(), "{shown}");
+}
+
+#[test]
+fn artifact_cat_still_reads_the_main_copy_of_a_mapped_change() {
+    let f = Fixture::new("cat-mapped", true);
+    mapped_and_ahead(&f);
+    let out = f.run(&["artifact", "cat", "tasks", "--change", "add-dark-mode"]);
+    assert!(out.status.success(), "stderr: {}", String::from_utf8_lossy(&out.stderr));
+    assert_eq!(stdout_of(&out), TASKS);
+}

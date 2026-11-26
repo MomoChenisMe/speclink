@@ -282,6 +282,10 @@ pub struct ArchivedItem {
     pub spec_count: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    /// The creator's identifier, as the archived metadata records it. Absent
+    /// when it records none, and from a server that does not report it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
     #[serde(default)]
     pub from_discussions: Vec<String>,
     /// How the two quality stations ended. Absent from a server that does not
@@ -439,6 +443,20 @@ pub struct ChangeSummary {
     /// The document's free fields; left out when it has none.
     #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
     pub fields: FreeFields,
+    /// The first non-empty line of the proposal's Why section, not cut.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub why_excerpt: Option<String>,
+    /// `proposed`, `in-progress` or `ready`, by the Engine's stage rule.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub stage: Option<String>,
+    /// The creator's identifier, as the metadata records it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
+    /// The date every task got checked, while at least one task exists and
+    /// every task is checked. All four are absent from a server that does not
+    /// report them: a client leaves the keys out and makes up no value.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_at: Option<String>,
 }
 
 /// `GET /changes/{name}` response — the fs `StatusReport` shape plus the
@@ -502,6 +520,11 @@ pub struct ChangeStatus {
     /// The document's free fields; left out when it has none.
     #[serde(default, skip_serializing_if = "FreeFields::is_empty")]
     pub fields: FreeFields,
+    /// As in [`ChangeSummary`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ready_at: Option<String>,
 }
 
 /// One artifact's status inside [`ChangeStatus`].
@@ -783,6 +806,12 @@ pub struct DiscussionInfo {
     pub created: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub created_by: Option<String>,
+    /// 建立者的識別（frontmatter 的 `created_by_id`）；缺席時省略。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_id: Option<String>,
+    /// 儲存回報的最後修改時間（RFC 3339 的 UTC 時間、整秒）；答不出來、或舊 server 時缺席。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modified_at: Option<String>,
     /// 討論型別（目前唯一合法值 `improve`）；一般討論缺席時省略。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub kind: Option<String>,
@@ -1201,6 +1230,51 @@ mod tests {
             legacy_json.get("startedAt").is_none(),
             "absent startedAt is omitted: {legacy_json}"
         );
+    }
+
+    #[test]
+    fn the_stage_the_why_line_the_ready_date_and_the_identifiers_are_optional_and_camel_case() {
+        // client-protocol「變更、討論與已封存清單的回應帶識別、階段與時間欄位」Scenario
+        // 「新欄位序列化與舊回應相容」，四個型別各一組。
+        let cases: [(&str, &[(&str, &str)]); 4] = [
+            (
+                r#"{"name":"demo"}"#,
+                &[("whyExcerpt", "Why."), ("stage", "ready"), ("createdById", "u_1"), ("readyAt", "2026-11-25")],
+            ),
+            (
+                r#"{"changeName":"demo","schemaName":"spec-driven","isComplete":false,"applyRequires":[],"artifacts":[]}"#,
+                &[("createdById", "u_1"), ("readyAt", "2026-11-25")],
+            ),
+            (
+                r#"{"slug":"t","topic":"T","status":"open","rounds":0,"created":"2026-11-01","path":"discussions/t.md","archived":false}"#,
+                &[("modifiedAt", "2026-11-25T14:50:00Z"), ("createdById", "u_1")],
+            ),
+            (r#"{"datedName":"2026-11-02-demo","name":"demo","date":"2026-11-02","specCount":0}"#, &[("createdById", "u_1")]),
+        ];
+        fn round_trip<T: serde::Serialize + serde::de::DeserializeOwned>(json: &serde_json::Value) -> serde_json::Value {
+            serde_json::to_value(serde_json::from_value::<T>(json.clone()).expect("parses")).unwrap()
+        }
+        for (index, (old, keys)) in cases.into_iter().enumerate() {
+            let old: serde_json::Value = serde_json::from_str(old).unwrap();
+            let mut full = old.clone();
+            for (key, value) in keys {
+                full[*key] = serde_json::json!(value);
+            }
+            let (from_full, from_old) = match index {
+                0 => (round_trip::<ChangeSummary>(&full), round_trip::<ChangeSummary>(&old)),
+                1 => (round_trip::<ChangeStatus>(&full), round_trip::<ChangeStatus>(&old)),
+                2 => (round_trip::<DiscussionInfo>(&full), round_trip::<DiscussionInfo>(&old)),
+                _ => (round_trip::<ArchivedItem>(&full), round_trip::<ArchivedItem>(&old)),
+            };
+            for (key, value) in keys {
+                assert_eq!(from_full[*key], *value, "{index}: {from_full}");
+                assert!(from_old.get(*key).is_none(), "{index}: an old response has no {key}: {from_old}");
+            }
+        }
+        let legacy: ChangeSummary = serde_json::from_str(r#"{"name":"demo"}"#).unwrap();
+        assert_eq!((legacy.why_excerpt, legacy.stage, legacy.created_by_id, legacy.ready_at), (None, None, None, None));
+        let legacy: DiscussionInfo = serde_json::from_str(cases[2].0).unwrap();
+        assert_eq!((legacy.modified_at, legacy.created_by_id), (None, None));
     }
 
     #[test]

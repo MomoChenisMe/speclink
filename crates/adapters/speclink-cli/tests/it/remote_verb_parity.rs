@@ -597,6 +597,8 @@ fn remote_list_matches_fs_output_byte_for_byte_including_the_invalid_marker() {
 // --- list --json --detail：關卡、認領、分支與落地兩模式同鍵同值（verb-output-for-embedded D2）---
 
 const DETAIL_KEYS: [&str; 7] = ["review", "verify", "claimed", "branch", "landed", "createdBy", "fromDiscussions"];
+/// The keys change-and-discussion-list-fields adds to the detailed list.
+const LIST_FIELD_KEYS: [&str; 5] = ["whyExcerpt", "stage", "startedAt", "createdById", "readyAt"];
 const DETAIL_COMMIT: &str = "0123456789abcdef0123456789abcdef01234567";
 const DETAIL_META: &str = "schema: spec-driven\ncreated: 2026-07-01\nreviewed_at: 2026-08-01\nreviewed_by: Rev <r@example.com>\nreviewed_with: claude\nreviewed_tasks_total: 1\nreviewed_scope:\n  - path: src/lib.rs\n    hash: 0f9c\nbranch: speclink/recorded\nlanded_commit: 0123456789abcdef0123456789abcdef01234567\nlanded_at: 2026-11-18T11:00:00+00:00\ncreated_by: Ann <ann@example.com>\nfrom_discussion: two\n";
 
@@ -643,6 +645,9 @@ fn detail_wire_changes(fs: &TempProject) -> String {
             _ => serde_json::json!({ "review": { "state": "none" }, "verify": { "state": "none" } }),
         };
         item.as_object_mut().unwrap().extend(extras.as_object().unwrap().clone());
+        // change-and-discussion-list-fields: the stage and the Why line of both.
+        item["stage"] = serde_json::json!("proposed");
+        item["whyExcerpt"] = serde_json::json!("Demo.");
     }
     listed.to_string()
 }
@@ -786,6 +791,10 @@ fn remote_list_detail_against_an_old_server_succeeds_with_no_new_key() {
     assert!(detailed.status.success(), "stderr: {}", stderr_of(&detailed));
     for item in changes_of(&detailed) {
         assert_eq!(detail_keys_of(&item), Vec::<&str>::new(), "{item}");
+        // verb-contract Scenario「連到舊版 Server 時鍵缺席」。
+        for key in LIST_FIELD_KEYS {
+            assert!(item.get(key).is_none(), "{key}: {item}");
+        }
     }
     let plain = p.run(&["list", "--json", "--sort", "name"]);
     assert_eq!(stdout_of(&detailed), stdout_of(&plain));
@@ -1074,6 +1083,104 @@ fn discuss_promoted_to_is_the_same_in_both_modes() {
     assert!(ghost.stdout.is_empty());
 }
 
+// --- 清單與單項的新鍵（change-and-discussion-list-fields；verb-contract「清單的詳細輸出與
+//     show 帶說明、階段與時間」「建立者識別的輸出」、discussion-docs「討論的清單與單項輸出
+//     最後修改時間」）---
+
+const FIELDS_WHY: &str = "這個變更讓 Desktop Client Credentials 登入可以在沒有瀏覽器的機器上完成。";
+const FIELDS_DEMO_META: &str = "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Ann\ncreated_by_id: u_1\nstarted_at: 2026-11-24T17:03:18+08:00\nready_at: 2026-11-25T09:00:00+08:00\n";
+const FIELDS_TALK: &str = "---\ntopic: 登入流程\nslug: auth-flow\nstatus: open\ncreated: 2026-11-20\ncreated_by: Ann\ncreated_by_id: u_1\n---\n\n## Context\n\nx\n\n## Rounds\n\n## Conclusion\n";
+
+fn fields_docs() -> Vec<(&'static str, String)> {
+    vec![
+        ("changes/demo/.meta.yaml", FIELDS_DEMO_META.to_string()),
+        ("changes/demo/proposal.md", format!("## Why\n\n{FIELDS_WHY}\n\n## What Changes\n\n- x\n")),
+        ("changes/demo/tasks.md", "- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n".to_string()),
+        ("changes/plain/.meta.yaml", "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Bob\n".to_string()),
+        ("changes/plain/proposal.md", "## What Changes\n\n- y\n".to_string()),
+        ("changes/plain/tasks.md", "- [ ] 1.1 a\n".to_string()),
+        ("discussions/auth-flow.md", FIELDS_TALK.to_string()),
+        ("archive/changes/2026-11-20-old/.meta.yaml", "schema: spec-driven\ncreated_by_id: u_1\n".to_string()),
+    ]
+}
+
+#[test]
+fn the_new_list_and_show_keys_are_the_same_in_both_modes() {
+    use crate::remote_read_verbs::{json_of, pair};
+    let docs = fields_docs();
+    let refs: Vec<(&str, &str)> = docs.iter().map(|(k, v)| (*k, v.as_str())).collect();
+    let p = pair("list-fields", &refs);
+    let both = |args: &[&str]| -> [serde_json::Value; 2] {
+        let (fs, remote) = (p.fs.run(args), p.remote.run(args));
+        assert!(fs.status.success() && remote.status.success(), "{args:?}: {}{}", stderr_of(&fs), stderr_of(&remote));
+        [json_of(&fs), json_of(&remote)]
+    };
+    // The modified time is a file time in one mode and a key time in the other:
+    // each mode has one, and the rest is the same.
+    let without_time = |mut item: serde_json::Value| {
+        let at = item.as_object_mut().unwrap().remove("modifiedAt").unwrap_or_else(|| panic!("a modifiedAt: {item}"));
+        assert!(at.as_str().is_some_and(|at| at.ends_with('Z')), "{at}");
+        item
+    };
+
+    // list --json --detail: one request in remote mode, the same keys and values.
+    let [fs, remote] = both(&["list", "--json", "--detail", "--sort", "name"]);
+    let items = |list: &serde_json::Value| -> Vec<serde_json::Value> {
+        list["changes"].as_array().expect("changes").iter().cloned().map(without_time).collect()
+    };
+    assert_eq!(items(&remote), items(&fs));
+    let demo = &fs["changes"][0];
+    assert_eq!(demo["stage"], "ready");
+    assert_eq!(demo["whyExcerpt"], FIELDS_WHY);
+    assert_eq!(demo["startedAt"], "2026-11-24");
+    assert_eq!(demo["createdById"], "u_1");
+    assert_eq!(demo["readyAt"], "2026-11-25");
+    let plain = &fs["changes"][1];
+    assert_eq!(plain["stage"], "proposed");
+    for key in ["whyExcerpt", "startedAt", "createdById", "readyAt"] {
+        assert!(plain.get(key).is_none(), "{key}: {plain}");
+    }
+
+    // show --json: the same bytes, the same values as the list.
+    let shown = json_of(&p.same_ok(&["show", "demo", "--json"]));
+    for key in ["stage", "whyExcerpt", "startedAt", "createdById", "readyAt"] {
+        assert_eq!(shown[key], demo[key], "{key}");
+    }
+    assert_eq!(shown["createdBy"], "Ann");
+    let plain_shown = json_of(&p.same_ok(&["show", "plain", "--json"]));
+    assert_eq!((&plain_shown["stage"], &plain_shown["createdBy"]), (&serde_json::json!("proposed"), &serde_json::json!("Bob")));
+    assert!(plain_shown.get("createdById").is_none(), "{plain_shown}");
+
+    // The discussion list, its show and its search: each mode has its own `path`.
+    let discussion = |item: &serde_json::Value| {
+        let mut item = without_time(item.clone());
+        item.as_object_mut().unwrap().remove("path");
+        item
+    };
+    let [fs, remote] = both(&["discuss", "list", "--json"]);
+    assert_eq!(discussion(&remote["discussions"][0]), discussion(&fs["discussions"][0]));
+    assert_eq!(fs["discussions"][0]["createdById"], "u_1");
+    let [fs, remote] = both(&["discuss", "show", "auth-flow", "--json"]);
+    assert_eq!(discussion(&remote["info"]), discussion(&fs["info"]));
+    let [fs, remote] = both(&["discuss", "search", "auth", "--json"]);
+    assert_eq!(discussion(&remote["hits"][0]), discussion(&fs["hits"][0]));
+    assert_eq!(fs["hits"][0]["createdById"], "u_1");
+
+    // list --archived --json.
+    let [fs, remote] = both(&["list", "--archived", "--json"]);
+    assert_eq!(remote, fs);
+    assert_eq!(fs["archived"][0]["createdById"], "u_1");
+
+    // Without --detail the list has none of the new keys, in either mode.
+    for list in both(&["list", "--json", "--sort", "name"]) {
+        for item in list["changes"].as_array().unwrap() {
+            for key in LIST_FIELD_KEYS {
+                assert!(item.get(key).is_none(), "{key}: {item}");
+            }
+        }
+    }
+}
+
 #[test]
 fn remote_discuss_list_against_an_old_server_has_no_promoted_to() {
     // Scenario「連到舊版 Server 時不失敗」：清單回應沒有 `promotedTo`。
@@ -1083,14 +1190,18 @@ fn remote_discuss_list_against_an_old_server_has_no_promoted_to() {
     assert!(out.status.success(), "fs stderr: {}", stderr_of(&out));
     let mut wire: serde_json::Value = serde_json::from_str(&stdout_of(&out)).unwrap();
     for item in wire["discussions"].as_array_mut().unwrap() {
-        item.as_object_mut().unwrap().remove("promotedTo");
+        for key in ["promotedTo", "modifiedAt", "createdById"] {
+            item.as_object_mut().unwrap().remove(key);
+        }
     }
     let mock = mock_server(vec![("GET", "/discussions", 200, wire.to_string())]);
     let p = TempProject::remote("discuss-old-server-remote", &mock.base, "backend");
     let remote = p.run(&["discuss", "list", "--json"]);
     assert!(remote.status.success(), "remote stderr: {}", stderr_of(&remote));
     let listed: serde_json::Value = serde_json::from_str(&stdout_of(&remote)).unwrap();
-    assert!(listed["discussions"][0].get("promotedTo").is_none(), "{listed}");
+    for key in ["promotedTo", "modifiedAt", "createdById"] {
+        assert!(listed["discussions"][0].get(key).is_none(), "{key}: {listed}");
+    }
 }
 
 #[test]

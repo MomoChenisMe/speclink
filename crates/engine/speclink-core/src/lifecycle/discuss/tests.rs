@@ -1,3 +1,4 @@
+use crate::newcmd::Creator;
 use crate::store::Store;
 use crate::teststore::TestStore;
 
@@ -548,6 +549,7 @@ fn discussion_info_json_is_unchanged_by_board_rank() {
             text: text.to_string(),
             path: std::path::PathBuf::from("discussions/alpha.md"),
             archived: false,
+            updated_at_secs: 0,
         }))
         .unwrap()
     };
@@ -1172,7 +1174,7 @@ fn new_discussion_rejects_invalid_slug_override() {
         "board--search",
         "",
     ] {
-        let err = super::new_discussion(&store, "看板搜尋列", Some(bad), None, None, &Default::default()).unwrap_err();
+        let err = super::new_discussion(&store, "看板搜尋列", Some(bad), Creator::default(), None, &Default::default()).unwrap_err();
         assert!(err.to_string().contains("kebab-case"), "slug {bad:?} err: {err}");
     }
     assert!(store.list_live_discussions().is_empty(), "invalid slug must not create files");
@@ -1181,7 +1183,7 @@ fn new_discussion_rejects_invalid_slug_override() {
 #[test]
 fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), None, None, &Default::default()).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-2"), Creator::default(), None, &Default::default()).unwrap();
     assert_eq!(info.slug, "board-search-2");
     assert_eq!(info.topic, "看板搜尋列");
     let text = store
@@ -1195,7 +1197,7 @@ fn new_discussion_accepts_valid_slug_override_and_keeps_topic() {
 fn new_discussion_slug_override_conflicts_with_existing() {
     let store = TestStore::with_live_discussion("taken", &open_doc("taken", "Taken"));
     let before = store.discussion("taken");
-    let err = super::new_discussion(&store, "另一個主題", Some("taken"), None, None, &Default::default()).unwrap_err();
+    let err = super::new_discussion(&store, "另一個主題", Some("taken"), Creator::default(), None, &Default::default()).unwrap_err();
     assert!(err.to_string().contains("already exists"), "err: {err}");
     assert_eq!(store.discussion("taken"), before, "existing record must not be overwritten");
 }
@@ -1209,14 +1211,14 @@ fn new_discussion_fallback_derivation_is_unchanged() {
         ("看板 搜尋列", "看板-搜尋列"),
     ] {
         let store = TestStore::default();
-        let info = super::new_discussion(&store, topic, None, None, None, &Default::default()).unwrap();
+        let info = super::new_discussion(&store, topic, None, Creator::default(), None, &Default::default()).unwrap();
         assert_eq!(info.slug, want, "topic: {topic}");
         assert_eq!(info.topic, topic);
         assert!(store.read_live_discussion(want).is_some(), "file under derived slug");
     }
     // 純 ASCII 標點主題衍生為空 → 報錯。
     let store = TestStore::default();
-    let err = super::new_discussion(&store, "!?!", None, None, None, &Default::default()).unwrap_err();
+    let err = super::new_discussion(&store, "!?!", None, Creator::default(), None, &Default::default()).unwrap_err();
     assert!(err.to_string().contains("could not derive"), "err: {err}");
 }
 
@@ -1226,7 +1228,7 @@ fn new_discussion_fallback_derivation_is_unchanged() {
 fn new_discussion_stamps_created_by_when_identity_present() {
     let store = TestStore::default();
     let id = "Base Line <base@example.com>";
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Some(id), None, &Default::default()).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-3"), Creator { name: Some(id), id: None }, None, &Default::default()).unwrap();
     // frontmatter 蓋 created_by、且 DiscussionInfo（→ --json createdBy）帶同值。
     let text = store.read_live_discussion("board-search-3").expect("record stored");
     assert!(text.contains(&format!("created_by: {id}\n")), "frontmatter: {text}");
@@ -1234,9 +1236,33 @@ fn new_discussion_stamps_created_by_when_identity_present() {
 }
 
 #[test]
+fn new_discussion_records_the_creator_identifier_after_created_by() {
+    // spec discussion-docs「討論記錄記下建立者的識別」：有識別寫在 created_by 之後、
+    // 沒有識別不寫，封存再還原後那一行逐字不變。
+    let store = TestStore::default();
+    let info = super::new_discussion(&store, "登入流程", Some("auth-flow"), Creator { name: Some("Ann"), id: Some("u_1") }, None, &Default::default())
+        .unwrap();
+    let text = store.read_live_discussion("auth-flow").expect("record stored");
+    assert!(text.contains("created_by: Ann\ncreated_by_id: u_1\n"), "frontmatter: {text}");
+    assert_eq!(info.head.created_by_id.as_deref(), Some("u_1"));
+    super::archive_discussion(&store, "auth-flow").unwrap().expect("archived");
+    super::restore(&store, "auth-flow").unwrap().expect("restored");
+    assert_eq!(store.read_live_discussion("auth-flow").as_deref(), Some(text.as_str()), "the record is moved as it was");
+
+    super::new_discussion(&store, "本機", Some("local"), Creator { name: Some("Ann"), id: None }, None, &Default::default()).unwrap();
+    let text = store.read_live_discussion("local").expect("record stored");
+    assert!(text.contains("created_by: Ann\n") && !text.contains("created_by_id"), "frontmatter: {text}");
+
+    // A value yaml gives a meaning is escaped, and reads back the same.
+    super::new_discussion(&store, "引號", Some("quoted"), Creator { name: None, id: Some("auth0|a:\"b\"") }, None, &Default::default()).unwrap();
+    let text = store.read_live_discussion("quoted").expect("record stored");
+    assert_eq!(super::DiscussionHead::parse(&text).created_by_id.as_deref(), Some("auth0|a:\"b\""), "{text}");
+}
+
+#[test]
 fn new_discussion_omits_created_by_when_identity_absent() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), None, None, &Default::default()).unwrap();
+    let info = super::new_discussion(&store, "看板搜尋列", Some("board-search-4"), Creator::default(), None, &Default::default()).unwrap();
     // 無身分：frontmatter 不含 created_by、createdBy 缺席。
     let text = store.read_live_discussion("board-search-4").expect("record stored");
     assert!(!text.contains("created_by:"), "frontmatter should omit created_by: {text}");
@@ -1392,7 +1418,7 @@ fn seal_restale_clear_is_noop_when_absent() {
 fn new_discussion_with_kind_writes_frontmatter_and_reports_it() {
     let store = TestStore::default();
     let info =
-        super::new_discussion(&store, "核心結構改進", Some("improve-core"), None, Some("improve"), &Default::default())
+        super::new_discussion(&store, "核心結構改進", Some("improve-core"), Creator::default(), Some("improve"), &Default::default())
             .unwrap();
     assert_eq!(info.kind.as_deref(), Some("improve"));
     let text = store.discussion("improve-core");
@@ -1403,7 +1429,7 @@ fn new_discussion_with_kind_writes_frontmatter_and_reports_it() {
 fn new_discussion_rejects_kind_outside_the_whitelist_without_writing() {
     for bad in ["refactor", "IMPROVE", "", "improve\nstatus: forged"] {
         let store = TestStore::default();
-        let err = super::new_discussion(&store, "主題", Some("alpha"), None, Some(bad), &Default::default())
+        let err = super::new_discussion(&store, "主題", Some("alpha"), Creator::default(), Some(bad), &Default::default())
             .expect_err("非白名單 kind 必須拒絕")
             .to_string();
         assert!(err.contains("improve"), "訊息須說明僅接受 improve：{err}");
@@ -1414,7 +1440,7 @@ fn new_discussion_rejects_kind_outside_the_whitelist_without_writing() {
 #[test]
 fn new_discussion_without_kind_leaves_frontmatter_unchanged() {
     let store = TestStore::default();
-    let info = super::new_discussion(&store, "主題", Some("alpha"), None, None, &Default::default()).unwrap();
+    let info = super::new_discussion(&store, "主題", Some("alpha"), Creator::default(), None, &Default::default()).unwrap();
     assert!(info.kind.is_none(), "無 kind 時欄位缺席");
     assert!(!store.discussion("alpha").contains("kind:"), "不得寫入 kind 行");
 }
@@ -1425,7 +1451,7 @@ fn new_discussion_rejects_multiline_topic_without_writing() {
     // （讀端取第一個命中），必須在系統邊界擋下。
     for bad in ["x\nkind: improve\nstatus: promoted", "x\rkind: improve", "x\r\ny"] {
         let store = TestStore::default();
-        let err = super::new_discussion(&store, bad, Some("plain-a"), None, None, &Default::default())
+        let err = super::new_discussion(&store, bad, Some("plain-a"), Creator::default(), None, &Default::default())
             .expect_err("多行 topic 必須拒絕")
             .to_string();
         assert!(err.contains("invalid topic"), "訊息須點名 topic：{err}");
@@ -2024,6 +2050,37 @@ fn head_parse_reads_every_field_and_normalizes_empties() {
 }
 
 #[test]
+fn head_parse_reads_the_creator_identifier_as_it_was_written() {
+    // change-and-discussion-list-fields D4：created_by_id 經 yaml_scalar 寫出，讀回原值；
+    // 缺席讀作沒有，其他欄位照舊。
+    let head = DiscussionHead::parse("---\nslug: two\ncreated_by: Ann\ncreated_by_id: u_1\n---\n");
+    assert_eq!(head.created_by_id.as_deref(), Some("u_1"));
+    assert_eq!(head.created_by.as_deref(), Some("Ann"));
+    assert_eq!(DiscussionHead::parse("---\nslug: two\ncreated_by: Ann\n---\n").created_by_id, None);
+    assert_eq!(DiscussionHead::parse("# no frontmatter\n").created_by_id, None);
+    for id in ["auth0|abc:123", "say \"hi\"", "12345"] {
+        let text = format!("---\nslug: two\ncreated_by_id: {}\n---\n", crate::util::yaml_scalar(id));
+        assert_eq!(DiscussionHead::parse(&text).created_by_id.as_deref(), Some(id), "{text}");
+    }
+    // An empty value is no record: the output never carries an empty string.
+    assert_eq!(DiscussionHead::parse("---\nslug: two\ncreated_by_id:\n---\n").created_by_id, None);
+    assert_eq!(DiscussionHead::parse("---\nslug: two\ncreated_by_id: \n---\n").created_by_id, None);
+}
+
+#[test]
+fn a_creator_identifier_yaml_reads_as_another_type_reads_back_the_same() {
+    // change-and-discussion-list-fields D11；spec discussion-docs Scenario「識別讀回原值、空值讀作沒有」。
+    let store = TestStore::default();
+    for (slug, id) in [("null-id", "null"), ("tilde-id", "~"), ("true-id", "true"), ("number-id", "123")] {
+        super::new_discussion(&store, "識別", Some(slug), Creator { name: None, id: Some(id) }, None, &Default::default()).unwrap();
+        let text = store.read_live_discussion(slug).expect("record stored");
+        assert_eq!(DiscussionHead::parse(&text).created_by_id.as_deref(), Some(id), "{text}");
+    }
+    let text = store.read_live_discussion("true-id").unwrap();
+    assert!(text.contains("created_by_id: \"true\"\n"), "{text}");
+}
+
+#[test]
 fn head_status_defaults_to_open_and_keeps_an_unknown_literal() {
     assert_eq!(DiscussionHead::parse("---\nslug: x\n---\n").status, Status::Open);
     assert_eq!(DiscussionHead::parse("---\nstatus: open\n---\n").status, Status::Open);
@@ -2145,6 +2202,7 @@ fn doc_of(slug: &str, text: &str) -> crate::store::DiscussionDoc {
         text: text.to_string(),
         path: std::path::PathBuf::from(format!("openspec/discussions/{slug}.md")),
         archived: false,
+        updated_at_secs: 0,
     }
 }
 
@@ -2390,3 +2448,56 @@ fn show_returns_the_text_and_info_of_one_read() {
     assert!(super::show(&store, "no-such-topic").is_none());
 }
 
+
+// --- 討論的修改時間與建立者識別（change-and-discussion-list-fields D6；spec discussion-docs
+//     「討論的清單與單項輸出最後修改時間」）---
+
+/// 2026-11-25T14:50:00Z in whole seconds since the Unix epoch.
+const NOV_25_1450: u64 = 1_795_618_200;
+
+fn keyed_doc(slug: &str) -> String {
+    format!("---\ntopic: 登入流程\nslug: {slug}\nstatus: open\ncreated: 2026-11-20\ncreated_by: Ann\ncreated_by_id: u_1\n---\n\n## Rounds\n")
+}
+
+#[test]
+fn discussion_info_carries_the_modified_time_and_the_creator_identifier() {
+    let doc = crate::store::DiscussionDoc { updated_at_secs: NOV_25_1450, ..doc_of("auth-flow", &keyed_doc("auth-flow")) };
+    let json = serde_json::to_value(super::info_from_doc(&doc)).unwrap();
+    assert_eq!(json["modifiedAt"], "2026-11-25T14:50:00Z");
+    assert_eq!(json["createdById"], "u_1");
+    assert_eq!(json["created"], "2026-11-20", "created is the creation date as before");
+    assert!(json.get("modified_at").is_none() && json.get("created_by_id").is_none(), "camelCase: {json}");
+    // A store that cannot tell, and a record with no identifier: neither key.
+    let plain = open_doc("alpha", "Alpha");
+    let json = serde_json::to_value(super::info_from_doc(&doc_of("alpha", &plain))).unwrap();
+    assert!(json.get("modifiedAt").is_none() && json.get("createdById").is_none(), "{json}");
+}
+
+#[test]
+fn the_live_and_archived_lists_show_and_search_all_carry_the_modified_time() {
+    let store = TestStore::with_live_discussion("auth-flow", &keyed_doc("auth-flow"));
+    store.archived_discussions.borrow_mut().insert("old-flow".into(), keyed_doc("old-flow"));
+    for slug in ["auth-flow", "old-flow"] {
+        store.discussion_updated_at.borrow_mut().insert(slug.to_string(), NOV_25_1450);
+    }
+    let live = super::list_discussions(&store);
+    let archived = super::list_archived(&store);
+    let shown = super::info(&store, "auth-flow").expect("the record");
+    let hits = super::search(&store, &["登入".to_string()]).unwrap();
+    for info in [&live[0], &archived[0], &shown, &hits[0].info, &hits[1].info] {
+        assert_eq!(info.modified_at.as_deref(), Some("2026-11-25T14:50:00Z"), "{}", info.slug);
+        assert_eq!(info.created_by_id.as_deref(), Some("u_1"), "{}", info.slug);
+    }
+    let hit = serde_json::to_value(&hits[0]).unwrap();
+    assert_eq!(hit["modifiedAt"], "2026-11-25T14:50:00Z", "a hit is a list item plus its matches: {hit}");
+    assert_eq!(hit["createdById"], "u_1");
+}
+
+#[test]
+fn a_store_that_cannot_tell_the_modified_time_leaves_the_key_out() {
+    // spec Scenario「儲存答不出來時省略」：0 是「不知道」。
+    let store = TestStore::with_live_discussion("auth-flow", &keyed_doc("auth-flow"));
+    let json = serde_json::to_value(&super::list_discussions(&store)[0]).unwrap();
+    assert!(json.get("modifiedAt").is_none(), "{json}");
+    assert_eq!(json["slug"], "auth-flow", "the other keys as before");
+}

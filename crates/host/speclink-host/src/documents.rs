@@ -339,6 +339,7 @@ pub fn archived_list(
             tasks_done: item.tasks_done,
             spec_count: item.delta_capabilities.len(),
             created_by: item.created_by,
+            created_by_id: item.created_by_id,
             from_discussions: item.from_discussions,
             fields: item.fields,
             delta_capabilities: item.delta_capabilities,
@@ -412,45 +413,52 @@ fn capabilities_in<'k>(
 // --- what the change list and one change add ---
 
 /// What the change list and one change add to the Engine's answer: the
-/// change's parsed data file and its two quality stations.
+/// change's parsed data file, its two quality stations, and the text of the
+/// one document the caller named.
 pub struct ChangeExtras {
     pub meta: ChangeMeta,
     pub review: StationStatus,
     pub verify: StationStatus,
+    /// The text of the document [`change_extras`] was asked for (the change
+    /// list asks for the proposal, one change for the task list); empty when
+    /// the change does not have it.
+    pub doc: String,
 }
 
 /// The [`ChangeExtras`] of each named change, in one read: each change's
-/// data file and its two tickets go into the same read, so the stations and
-/// the rounds of an open ticket cost no store call. A name with no data file, or one that does not parse, has
-/// no entry: the Engine already reports a broken data file, and the list
-/// must not fail on it.
+/// data file, its two tickets and its document `doc` (a name such as
+/// `proposal.md`) go into the same read, so they cost no store call. A name
+/// with no data file, or one that does not parse, has no entry: the Engine
+/// already reports a broken data file, and the list must not fail on it.
 pub fn change_extras(
     port: &dyn StorePort,
     scope: &ScopeId,
     names: &[String],
+    doc: &str,
 ) -> Result<BTreeMap<String, ChangeExtras>, DocumentsError> {
-    let named: Vec<(&String, DocKey, [Option<DocKey>; 2])> = names
+    let named: Vec<(&String, DocKey, [Option<DocKey>; 3])> = names
         .iter()
         .filter_map(|name| {
-            let tickets = [&REVIEW, &VERIFY].map(|st| artifact_key(name, st.doc));
-            Some((name, keys::change_meta(name).ok()?, tickets))
+            let [review, verify] = [&REVIEW, &VERIFY].map(|st| artifact_key(name, st.doc));
+            Some((name, keys::change_meta(name).ok()?, [review, verify, artifact_key(name, doc)]))
         })
         .collect();
     let wanted = named
         .iter()
-        .flat_map(|(_, meta, tickets)| std::iter::once(meta.clone()).chain(tickets.iter().flatten().cloned()))
+        .flat_map(|(_, meta, docs)| std::iter::once(meta.clone()).chain(docs.iter().flatten().cloned()))
         .collect();
     let docs = read_all(port, scope, wanted)?;
     Ok(named
         .into_iter()
-        .filter_map(|(name, key, [review, verify])| {
+        .filter_map(|(name, key, [review, verify, doc_key])| {
             let meta = ChangeMeta::from_text(Some(&docs.get(&key)?.content)).ok()?;
             let status = |st: &Station, ticket: Option<DocKey>| {
                 let ticket = ticket.and_then(|key| docs.get(&key)).map(|doc| station::OpenTicket::of(st, &doc.content));
                 station::status(st, &meta, ticket)
             };
             let (review, verify) = (status(&REVIEW, review), status(&VERIFY, verify));
-            Some((name.clone(), ChangeExtras { meta, review, verify }))
+            let doc = doc_key.and_then(|key| docs.get(&key)).map(|doc| doc.content.clone()).unwrap_or_default();
+            Some((name.clone(), ChangeExtras { meta, review, verify, doc }))
         })
         .collect())
 }

@@ -44,10 +44,16 @@ pub(crate) struct TestStore {
     pub fail_meta_write: RefCell<Option<String>>,
     /// Number of `write_artifact` calls (no-write assertions).
     pub artifact_writes: RefCell<u32>,
+    /// Every `read_artifact` call as (change, artifact), in order (read-count
+    /// assertions).
+    pub artifact_reads: RefCell<Vec<(String, String)>>,
     /// Live discussion slug → document text.
     pub discussions: RefCell<HashMap<String, String>>,
     /// Archived discussion slug → document text (promote must refuse these).
     pub archived_discussions: RefCell<HashMap<String, String>>,
+    /// Discussion slug → the seconds its documents report as `updated_at_secs`
+    /// (live and archived alike); a slug with no entry reports 0.
+    pub discussion_updated_at: RefCell<HashMap<String, u64>>,
     /// Archived discussion slug → the name `archive_discussion` gave it. A
     /// record a test put straight into `archived_discussions` has none, and
     /// is shown under one fixed date.
@@ -111,6 +117,10 @@ impl TestStore {
         self.artifacts
             .borrow_mut()
             .insert((change.to_string(), artifact.to_string()), content.to_string());
+    }
+
+    fn discussion_secs(&self, slug: &str) -> u64 {
+        self.discussion_updated_at.borrow().get(slug).copied().unwrap_or(0)
     }
 
     pub fn with_live_discussion(slug: &str, text: &str) -> TestStore {
@@ -192,6 +202,7 @@ impl Store for TestStore {
         Ok(())
     }
     fn read_artifact(&self, change: &str, artifact: &str) -> Option<String> {
+        self.artifact_reads.borrow_mut().push((change.to_string(), artifact.to_string()));
         self.artifacts
             .borrow()
             .get(&(change.to_string(), artifact.to_string()))
@@ -350,6 +361,7 @@ impl Store for TestStore {
                 text: text.clone(),
                 path: self.live_discussion_path(slug),
                 archived: false,
+                updated_at_secs: self.discussion_secs(slug),
             });
         }
         let archived = self.archived_discussions.borrow();
@@ -359,6 +371,7 @@ impl Store for TestStore {
             text: text.clone(),
             path: self.archived_discussion_path(slug),
             archived: true,
+            updated_at_secs: self.discussion_secs(slug),
         })
     }
     fn list_live_discussions(&self) -> Vec<DiscussionDoc> {
@@ -372,6 +385,7 @@ impl Store for TestStore {
                 text: text.clone(),
                 path: self.live_discussion_path(slug),
                 archived: false,
+                updated_at_secs: self.discussion_secs(slug),
             })
             .collect()
     }
@@ -384,6 +398,7 @@ impl Store for TestStore {
                 text: text.clone(),
                 path: self.archived_discussion_path(slug),
                 archived: true,
+                updated_at_secs: self.discussion_secs(slug),
             })
             .collect()
     }

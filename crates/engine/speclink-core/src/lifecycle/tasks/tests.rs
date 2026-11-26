@@ -1047,3 +1047,121 @@ fn move_preserves_trailing_newline_state() {
     move_task(&store, "demo", 1, 2, None).unwrap();
     assert!(!tasks_text(&store).ends_with("\n"), "absent trailing newline preserved");
 }
+
+// --- 就緒時間（change-and-discussion-list-fields D5；spec change-lifecycle
+//     「任務全部完成時記下就緒時間」）---
+
+const TASKS_THREE_TWO_DONE: &str = "## 1. Group\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n";
+
+fn done(store: &TestStore, ordinal: usize) {
+    complete(
+        store,
+        "demo",
+        &TaskAddr::Ordinal(ordinal),
+        &CompleteAttribution::default(),
+        TouchedCandidates::Injected { files: &[], head_commit: None },
+    )
+    .unwrap();
+}
+
+/// The `ready_at:` lines of the metadata, as written.
+fn ready_lines(store: &TestStore) -> Vec<String> {
+    store.meta("demo").lines().filter(|l| l.starts_with("ready_at:")).map(str::to_string).collect()
+}
+
+#[test]
+fn completing_the_last_task_records_the_ready_time() {
+    let store = store_with(META_UNSTARTED, TASKS_THREE_TWO_DONE);
+    done(&store, 3);
+    let lines = ready_lines(&store);
+    assert_eq!(lines.len(), 1, "{}", store.meta("demo"));
+    let stamp = lines[0].trim_start_matches("ready_at:").trim();
+    assert!(crate::util::is_offset_stamp(stamp), "RFC 3339 with an offset, in seconds: {stamp}");
+    let meta = crate::model::ChangeMeta::from_text(Some(&store.meta("demo"))).unwrap();
+    assert_eq!(meta.ready_at.as_deref(), Some(&stamp[..10]), "outputs read the date part");
+}
+
+#[test]
+fn completing_a_task_while_others_stay_open_records_nothing() {
+    let store = store_with(META_UNSTARTED, "- [x] 1.1 a\n- [ ] 1.2 b\n- [ ] 1.3 c\n");
+    done(&store, 2);
+    assert!(ready_lines(&store).is_empty(), "{}", store.meta("demo"));
+}
+
+#[test]
+fn unchecking_a_task_leaves_the_ready_time_verbatim() {
+    let meta = format!("{META_UNSTARTED}ready_at: 2026-11-25T09:00:00+08:00\n");
+    let store = store_with(&meta, "- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n");
+    uncomplete(&store, "demo", &TaskAddr::Ordinal(3)).unwrap();
+    assert_eq!(store.meta("demo"), meta, "a pure state flip");
+}
+
+#[test]
+fn completing_every_task_again_replaces_the_ready_time() {
+    let meta = format!("{META_UNSTARTED}ready_at: 2026-11-25T09:00:00+08:00\nstarted_at: 2026-11-24T09:00:00+08:00\n");
+    let store = store_with(&meta, "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n");
+    done(&store, 3);
+    let lines = ready_lines(&store);
+    assert_eq!(lines.len(), 1, "one line, never two: {}", store.meta("demo"));
+    assert_ne!(lines[0], "ready_at: 2026-11-25T09:00:00+08:00", "the time of this completion");
+    // An already-checked task writes nothing, the ready time included.
+    let before = store.meta("demo");
+    assert!(complete(&store, "demo", &TaskAddr::Ordinal(3), &CompleteAttribution::default(), TouchedCandidates::Injected { files: &[], head_commit: None }).unwrap().already);
+    assert_eq!(store.meta("demo"), before);
+}
+
+#[test]
+fn corrupt_metadata_refuses_before_any_write() {
+    let store = store_with("schema: [unclosed\n", "- [x] 1.1 a\n- [ ] 1.2 b\n");
+    let err = complete(&store, "demo", &TaskAddr::Ordinal(2), &CompleteAttribution::default(), TouchedCandidates::Injected { files: &[], head_commit: None }).unwrap_err();
+    assert!(err.downcast_ref::<crate::model::MetaError>().is_some(), "{err}");
+    assert_eq!(store.meta("demo"), "schema: [unclosed\n");
+    assert_eq!(store.read_artifact("demo", "tasks.md").as_deref(), Some("- [x] 1.1 a\n- [ ] 1.2 b\n"));
+}
+
+#[test]
+fn a_task_list_checked_by_hand_has_no_ready_time() {
+    // The ready time is written by the verbs only: a list edited by hand is
+    // ready by its counts and has no record.
+    let store = store_with(META_UNSTARTED, "- [x] 1.1 a\n- [x] 1.2 b\n");
+    let change = store.find_change("demo").unwrap();
+    assert_eq!(crate::model::stage(&store, &change), crate::model::Stage::Ready);
+    assert!(ready_lines(&store).is_empty());
+    assert_eq!(change.meta.ready_at, None);
+    // spec Scenario「直接編輯任務清單不寫入」的清單面：`stage` 是 `ready`，沒有 `readyAt`。
+    let changes = crate::model::list_changes(&store);
+    let listed = crate::listing::changes_json_detail(&store, &changes, &Default::default(), true);
+    let item = serde_json::to_value(&listed[0]).unwrap();
+    assert_eq!(item["stage"], "ready", "{item}");
+    assert!(item.get("readyAt").is_none(), "{item}");
+}
+
+#[test]
+fn record_ready_writes_only_when_every_task_is_checked() {
+    // It judges the task list it is given, not the stored one (D12: it runs
+    // before the list is written back).
+    for (tasks, written) in [("- [x] 1.1 a\n", true), ("- [x] 1.1 a\n- [ ] 1.2 b\n", false), ("", false)] {
+        let store = store_with(META_UNSTARTED, "- [ ] 1.1 stored\n");
+        record_ready(&store, "demo", tasks).unwrap();
+        assert_eq!(ready_lines(&store).len(), usize::from(written), "{tasks:?}: {}", store.meta("demo"));
+    }
+}
+
+#[test]
+fn a_ready_time_that_cannot_be_written_checks_nothing_and_a_retry_writes_it() {
+    // spec change-lifecycle Scenario「寫入就緒時間失敗時不勾選」（D12）。
+    let tasks = "- [x] 1.1 a\n- [x] 1.2 b\n- [ ] 1.3 c\n";
+    let store = store_with(META_UNSTARTED, tasks);
+    *store.fail_meta_write.borrow_mut() = Some("demo".to_string());
+    let attempt = || {
+        complete(&store, "demo", &TaskAddr::Ordinal(3), &CompleteAttribution::default(), TouchedCandidates::Injected { files: &[], head_commit: None })
+    };
+    assert!(attempt().is_err(), "the failed write is reported");
+    assert_eq!(store.read_artifact("demo", "tasks.md").as_deref(), Some(tasks), "nothing is checked");
+    assert!(ready_lines(&store).is_empty());
+    *store.fail_meta_write.borrow_mut() = None;
+    let out = attempt().expect("the retry succeeds");
+    assert!(!out.already, "the task was still open");
+    assert!(store.read_artifact("demo", "tasks.md").unwrap().contains("- [x] 1.3 c"));
+    assert_eq!(ready_lines(&store).len(), 1, "{}", store.meta("demo"));
+}

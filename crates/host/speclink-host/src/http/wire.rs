@@ -46,7 +46,19 @@ pub(crate) fn station_state(status: &StationStatus, with_scope: bool) -> Station
 
 pub(crate) fn change_summary(change: ListChangeJson, extras: Option<&ChangeExtras>) -> ChangeSummary {
     let meta = extras.map(|e| &e.meta);
+    let progress = meta.map(|m| {
+        speclink_core::model::Progress::of(
+            m.started_at.as_deref(),
+            m.ready_at.as_deref(),
+            change.completed_tasks,
+            change.total_tasks,
+        )
+    });
     ChangeSummary {
+        why_excerpt: extras.and_then(|e| speclink_core::listing::why_excerpt(&e.doc)),
+        stage: progress.as_ref().map(|p| p.stage.as_str().to_string()),
+        created_by_id: meta.and_then(|m| m.created_by_id.clone()),
+        ready_at: progress.and_then(|p| p.ready_at),
         review: extras.map(|e| station_state(&e.review, false)),
         verify: extras.map(|e| station_state(&e.verify, false)),
         branch: meta.and_then(|m| m.branch.clone()),
@@ -162,6 +174,8 @@ pub(crate) fn change_status(report: StatusReport) -> ChangeStatus {
         landed_at: None,
         landed_by: None,
         fields: Default::default(),
+        created_by_id: None,
+        ready_at: None,
     }
 }
 
@@ -331,6 +345,8 @@ pub(crate) fn discussion(info: EngineDiscussionInfo) -> DiscussionInfo {
         rounds: info.rounds,
         created: info.created,
         created_by: info.created_by,
+        created_by_id: info.created_by_id,
+        modified_at: info.modified_at,
         kind: info.kind,
         promoted_to: info.head.promoted_to,
         concluded: Some(info.concluded),
