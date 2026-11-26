@@ -4,7 +4,7 @@ section: 附錄
 order: 900
 keywords: [來源, 矛盾, 限制, 編纂日期, 規格]
 sources: []
-generated: 2026-11-24T22:34:03+08:00
+generated: 2026-11-26T14:22:49+08:00
 ---
 
 # 本手冊的來源
@@ -13,13 +13,13 @@ generated: 2026-11-24T22:34:03+08:00
 
 本手冊全部內容只取材自 `speclink/specs/` 底下的正式規格。README、`docs/` 與原始碼都不是來源。規格沒寫的，手冊就不寫，或在該處標明「規格未載」。每一頁的最後一行列出它取材的能力名稱。
 
-正式規格共 91 個能力。其中 64 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 27 個是引擎內部（儲存契約、wire 契約、宿主套件與 host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範），不入冊：
+正式規格共 92 個能力。其中 64 個是使用者會操作或看到的東西（畫面、指令、技能、輸出、檔案），已入冊。其餘 28 個是引擎內部（儲存契約、wire 契約、宿主套件與 host 執行期、測試骨架、建置與發布管線、本 repo 自用的發版技能、更新日誌的資料契約、技能原稿的寫法規範、回報給終端機程式的狀態），不入冊：
 
-`client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-kit`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`skill-authoring`、`store-abstraction`、`store-port-contract`、`store-port-examples`、`ui-copy-vocabulary`、`workspace-session`。
+`client-protocol`、`command-runtime`、`delivery-baseline`、`desktop-release`、`dev-harness`、`host-kit`、`host-runtime`、`node-sdk`、`node-sdk-release`、`phase2-acceptance`、`phase3-acceptance`、`reference-server`、`release-notes`、`release-skill`、`remote-board-order`、`remote-workspace-data`、`server-context-api`、`server-drift-api`、`server-event-stream`、`server-read-api`、`server-verb-api`、`skill-authoring`、`store-abstraction`、`store-port-contract`、`store-port-examples`、`terminal-activity-report`、`ui-copy-vocabulary`、`workspace-session`。
 
-2026-11-24 第二次與同日第一次相比，能力沒有增減。2026-11-24 第一次與 2026-11-23 那次相比，能力沒有增減。2026-11-23 這次與 2026-11-22 那次相比，能力沒有增減。2026-11-22 這次與 2026-11-21 那次相比，能力也沒有增減。2026-11-19 那次與更早一次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
+2026-11-26 這次與 2026-11-24 第二次相比，新增一個能力 `terminal-activity-report`：speclink CLI 在 Herdr 終端機裡執行時，把正在做的變更或討論回報給那個終端機。回報的對象是 Herdr 這個程式，Herdr 的畫面怎麼用這些資料不在這個能力的範圍內；speclink 這一側的輸出、結束碼與速度都不變，所以照下面「只給宿主的程式或 Agent 讀的輸出不入冊」不入冊。要關掉回報，把環境變數 `SPECLINK_TERMINAL_REPORT` 設成 `false`。2026-11-24 第二次與同日第一次相比，能力沒有增減。2026-11-24 第一次與 2026-11-23 那次相比，能力沒有增減。2026-11-23 這次與 2026-11-22 那次相比，能力沒有增減。2026-11-22 這次與 2026-11-21 那次相比，能力也沒有增減。2026-11-19 那次與更早一次相比：舊的儲存層四個能力（`postgres-team-store`、`serverfs-team-store`、`sqlite-team-store`、`teamstore-contract`）已從正式規格移除。新增的五個能力裡，`change-landing` 與 `free-fields` 有使用者會打的指令，各寫成一頁：[分支與落地記錄](landing.md)與[自由欄位](free-fields.md)。`host-kit`、`store-port-contract`、`store-port-examples` 是給「把引擎內嵌進自己系統」的整合者看的契約（宿主套件、三個儲存函式與它們的範例），屬於宿主執行期與儲存契約，不入冊。
 
-`release-notes` 定義的更新日誌，使用者看得到的那一面（桌面 app 的更新日誌）由 `desktop-app` 載明，寫在[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。`store-abstraction` 規定的變更資料檔讀取順序（先讀 `.meta.yaml`、沒有才讀 `.openspec.yaml`），使用者看得到的那一面由 `spec-dir-migration` 載明，寫在[規格資料夾與舊佈局遷移](spec-folder.md)。`desktop-app` 裡有兩段需求講前端元件怎麼共用（「前端元件庫與資料源解耦」「共用元件唯一來源」），屬於內部結構，沒有任何一頁取材。
+`release-notes` 定義的更新日誌，使用者看得到的那一面（桌面 app 的更新日誌）由 `desktop-app` 載明，寫在[自動更新、CLI、技能檔過期與關於頁](desktop-update.md)。`store-abstraction` 規定的變更資料檔讀取順序（先讀 `.meta.yaml`、沒有才讀 `.openspec.yaml`），使用者看得到的那一面由 `spec-dir-migration` 載明，寫在[規格資料夾與舊佈局遷移](spec-folder.md)。`desktop-app` 裡有兩段需求講前端元件怎麼共用（「前端元件庫與資料源解耦」「共用元件唯一來源」），屬於內部結構，沒有任何一頁取材。「看板欄位以清單帶的階段為準」只規定階段從哪裡來，並寫明各畫面的外觀不因它改變，也沒有頁取材。
 
 ## 旅程主幹
 
@@ -116,10 +116,11 @@ generated: 2026-11-24T22:34:03+08:00
 - 2026-11-23 這次只有[討論：需求還模糊時](discuss.md)與[認識資料：變更、討論與規格](data-layout.md)被標為可能過期，兩頁都以裸名取材 `discussion-docs`。這個能力新增的「討論的 JSON 輸出帶出轉出的變更」只改給程式讀的輸出，人眼輸出不變，照上面「只給宿主的程式或 Agent 讀的輸出不入冊」，兩頁內文不變、只換生成時戳。同一週只以錨定取材的能力也新增了需求：`verb-contract` 的「已封存變更的清單」與「關卡工單的詳細輸出」只規定給程式讀的輸出，不入冊；`host-kit` 的「宿主保留的自由欄位鍵」會讓 CLI 使用者看到拒絕訊息，寫進[自由欄位](free-fields.md)；`host-kit` 的「入口的文件讀取先問執行前掛鉤」是宿主自己的權限政策，手冊也沒有寫宿主的掛鉤拒絕寫入的情況，不入冊。
 - 2026-11-24 第一次有 4 頁被標為可能過期，都以裸名取材有新需求的能力。[桌面連線 server 與 remote 專案](desktop-remote.md)補上「繼續本地」開出的分頁會記住這個選擇（`workspace-chooser`）；[失聯與恢復](remote-offline.md)補上背景的遠端分頁也會定時檢查連線並亮琥珀點（`remote-resilience`「背景遠端分頁的連線定期檢查」）；[工作流政策與設定](policy-config.md)補上規格檔的語言怎麼決定，以及 tdd、audit 怎麼改變任務清單的排法（`workflow-config` 新增的兩段需求）。後者規定的是 `speclink instructions` 給 agent 的指示，照上面「只給宿主的程式或 Agent 讀的輸出不入冊」，手冊不寫指示的內容，只寫你看得到的結果：規格用哪種語言寫、任務怎麼排；`/speclink-baseline` 不套用環境變數的例外取自 `baseline-skill`，這一頁因此多一個錨定的來源。[提案：建立變更與產物](propose.md)的來源 `propose-skill` 只改技能判斷規格語言的方式，手冊沒有寫這一段，內文不變、只換生成時戳。同一週 `node-sdk` 新增宿主用的技能產生選項、`desktop-release` 改本機安裝的簽章，兩者都不入冊。
 - 2026-11-24 第二次有 3 頁被標為可能過期，都以裸名取材。[工作流政策與設定](policy-config.md)補上需求與情境的名稱怎麼寫（`workflow-config`）：這段規定的也是 `speclink instructions` 給 agent 的指示，手冊同樣只寫你看得到的結果，也就是名稱跟著規格的語言、指向正式規格的名稱照原文。同一個能力新增的「instructions 找不到產出物代號時列出可用的代號」只規定 agent 打錯代號時收到的錯誤，手冊沒有寫 `speclink instructions` 這個指令怎麼用，不入冊。[續作與需求變更：drift 與 ingest](drift-ingest.md)補上 ingest 的摘要會列出改掉的名稱（`ingest-skill`）。[提案：建立變更與產物](propose.md)的來源 `propose-skill` 只改技能怎麼讀指示與 delta 規格，手冊沒有寫這一段，內文不變、只換生成時戳。
+- 2026-11-26 這次有 5 頁被標為可能過期。[看板與任務](desktop-board.md)補上卡片的最後更新、詳情頁出身行的就緒日、以人為單位的建立者選單，以及任務列認得日文與英文的驗證標記；`desktop-app` 新增的「看板卡片顯示最後更新」與「變更詳情頁的出身行顯示就緒日」兩段沒有任何頁錨定（上面的錨定盲點），這次逐條檢查新需求時找到，改錨定進這一頁。[認識資料：變更、討論與規格](data-layout.md)靠裸名的 `change-lifecycle` 與 `discussion-docs` 亮起，補上狀態檔的就緒時間與建立者的識別；`discussion-docs` 新增的「討論的清單與單項輸出最後修改時間」只改給程式讀的輸出，桌面卡片怎麼用它寫在看板頁。[平行實作與合回：worktree](worktree.md)補上 `speclink show` 也讀 worktree 副本。[產出流程 schema 管理](schemas.md)補上任務指引的短標題形狀。[討論：需求還模糊時](discuss.md)內容沒有受影響，只換生成時戳。同一批封存在只以錨定取材的能力新增的需求：`verb-contract` 的「清單的詳細輸出與 show 帶說明、階段與時間」「建立者識別的輸出」只規定給程式讀的輸出，`user-documentation` 的「動詞參考文件載明任務行的切分規則」規定的是文件怎麼寫，都不入冊。
 - 規格裡的內部識別符（欄位名、型別名、旗標）不進手冊，改以白話描述效果。
 
 ## 編纂日期
 
-2026-11-24
+2026-11-26
 
 **出處**：本頁為說明頁，不直接取材自單一能力；各頁末行列出自己的出處。

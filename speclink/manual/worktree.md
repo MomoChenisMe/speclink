@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 190
 keywords: [worktree, 平行實作, apply-with-worktree, worktree-merge, 合併, 回報落地, change landed]
 sources: [worktree-apply-skill, worktree-merge-skill, worktree-overlay, "workflow-config#worktree 欄位寫入的技能同步與關閉擋下"]
-generated: 2026-11-19T16:40:41+08:00
+generated: 2026-11-26T14:22:49+08:00
 ---
 # 平行實作與合回：worktree
 
@@ -108,13 +108,15 @@ speclink change landed <變更名> --branch speclink/<變更名> --commit <合�
 
 政策開啟時，在主 checkout 執行 `speclink list`，有 worktree 的變更會在該行行尾多出「 [worktree]」字樣。這一行的任務計數、狀態與開工資訊都來自 worktree 副本，不是主資料夾的副本。
 
+`speclink show <變更名>` 也一樣：映射成立時，提案、設計、任務的全文與狀態都讀 worktree 副本，和清單同一份。`speclink artifact cat` 照舊讀主資料夾的副本。
+
 映射要三個條件同時成立：
 
 - worktree 的分支名是 `speclink/<變更名>`；
 - 主工作區有同名且未封存的變更；
 - worktree 底下該變更的目錄讀得到。
 
-任一條件不成立，`speclink list` 靜默略過這個 worktree，回讀主資料夾的副本。git 不可用時，清單照常輸出、沒有 worktree 標示，不會失敗。政策文件壞掉時也一樣：清單照常輸出，只是不做 worktree 探索。政策關閉、在 worktree 內執行、或 remote 工作區，都不套用映射。
+任一條件不成立，`speclink list` 與 `speclink show` 靜默略過這個 worktree，回讀主資料夾的副本。git 不可用時，清單照常輸出、沒有 worktree 標示，不會失敗。政策文件壞掉時也一樣：清單照常輸出，只是不做 worktree 探索。政策關閉、在 worktree 內執行、或 remote 工作區，都不套用映射。
 
 worktree 移除後再跑 `speclink list`，標示消失、計數回讀主資料夾。
 

@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 100
 keywords: [討論, discuss, 決策樹, slug, 結論, 條列, 轉為變更, 分期轉出, hold, 最後一刀, 改進討論, 搜尋舊討論, search, locale, 記錄語言, restore, 搬回, 誤封存, 詞彙表, LANGUAGE, language replace]
 sources: [discuss-skill, discussion-docs, improve-skill, "user-documentation#完整工作流指南說明用途與使用時機", "user-documentation#討論結論後的轉出與併入分流完整", "verb-contract#詞彙文件的寫入動詞"]
-generated: 2026-11-23T21:20:33+08:00
+generated: 2026-11-26T14:22:49+08:00
 ---
 
 # 討論：需求還模糊時

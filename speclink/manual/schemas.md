@@ -4,7 +4,7 @@ section: SDD 工作流
 order: 220
 keywords: [schema, 產出流程, spec-driven, no-spec-change, 不改規格, change schema, schema init, schema validate]
 sources: [workflow-schemas]
-generated: 2026-10-27T11:03:57+08:00
+generated: 2026-11-26T14:22:49+08:00
 ---
 # 產出流程 schema 管理
 
@@ -22,6 +22,8 @@ generated: 2026-10-27T11:03:57+08:00
 每個 artifact 各自帶有 template。名稱的解析順序是專案層 → user 層 → 內建：專案裡有同名的產出流程時，它會遮蔽內建的那一個。`speclink schema which --all` 會同時列出被遮蔽的內建位置。
 
 每個內建流程的定義都只有一份。`speclink schema fork spec-driven` 與 `speclink schema fork no-spec-change` 複製出來的 schema.yaml，各自與對應的內建定義逐位元組相同。spec-driven 的 specs 指引含 Purpose 段規則、MODIFIED 工作流的 BEFORE 註記步驟，以及 REMOVED-SCENARIO 合併門檻段落。
+
+兩個內建流程的 tasks 指引都建議每條任務寫成「短標題、分隔符號、行為，最後一段是驗證方式」，並依產出語言用一組固定的標記：繁體中文是全形「：」與「驗證：」，日文是全形「：」與「検証：」，英文是半形冒號加一個空白與「Verify: 」；其他語言用英文那一組。標題是短語、不含冒號，標記不翻譯。這只是建議，不是格式檢查：任務不照這個形狀寫，寫入任務、`speclink validate` 與 `speclink analyze` 的結果都一樣。桌面 app 依這些標記把任務列切成標題、內文與驗證，見[看板與任務](desktop-board.md)。
 
 兩個內建流程在本機與 remote 專案都可以用。
 
