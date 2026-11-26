@@ -217,6 +217,17 @@ artifacts:
       - File-edit-only tasks (e.g. "Update file X to handle Y") are invalid
         unless they also describe the resulting behavior and how it is
         verified.
+    - **Short title first:** Write each task as a short title, a separator, the
+      behavior, and a last part that names the verification. Readers that show
+      the task list cut the task at the separator and at the verification
+      marker, so a task with a short title can fold. Pick the line for the
+      instructions JSON `locale`; any other language uses the English line:
+      - Traditional Chinese: `<短標題>：<行為>。驗證：<驗證方式>`
+      - Japanese: `<短いタイトル>：<振る舞い>。検証：<検証方法>`
+      - English: `<Short title>: <behavior>. Verify: <how it is verified>`
+      The title is a phrase of a few words, not a sentence, and holds no colon.
+      Write the separator and the verification marker exactly as shown: do not
+      translate or reword them.
     - Cross-referencing (analyzer checks these):
       - Every `### Requirement:` name from specs MUST appear as a case-insensitive substring in at least one task description
       - If design.md exists, every `###` heading from design.md should be referenced in at least one task description — either its text or just its ordinal (`D1`, `Decision 1`, `決策一`) counts
@@ -225,13 +236,13 @@ artifacts:
     ```
     ## 1. Setup
 
-    - [ ] 1.1 Create new module structure
-    - [ ] 1.2 Add dependencies to package.json
+    - [ ] 1.1 Export module: `src/export/` exists and the build includes it. Verify: `npm run build` passes
+    - [ ] 1.2 CSV dependency: package.json lists the CSV writer that the export uses. Verify: `npm ls csv-stringify` shows it
 
     ## 2. Core Implementation
 
-    - [ ] 2.1 Implement data export function
-    - [ ] 2.2 Add CSV formatting utilities
+    - [ ] 2.1 Export data: `exportData` writes every record to the output file. Verify: `npm test -- export` passes
+    - [ ] 2.2 CSV formatting: the output has a header row and quotes the fields that hold commas. Verify: `npm test -- csv` passes
     ```
 
     Reference specs for what needs to be built. If design.md exists, reference it for how to build it.

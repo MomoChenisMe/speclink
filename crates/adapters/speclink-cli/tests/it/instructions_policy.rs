@@ -382,3 +382,22 @@ fn tasks_instruction_never_points_at_skill_instructions() {
     assert!(instr.contains("The apply step supplies the checklist"), "{instr}");
     assert!(!instr.contains("instructions --skill"), "{instr}");
 }
+
+// --- spec「tasks 指示說明短標題的任務形狀」---
+
+#[test]
+fn both_builtin_schemas_hand_the_short_title_shape_to_the_tasks_payload() {
+    const PLACEHOLDER: &str = "<!-- Short title: behavior/contract delivered. Verify: verification target -->";
+    let p = TempProject::new("tasks-shape", "tools:\n  - claude\n", "schema: spec-driven\n");
+    let meta = p.dir.join("speclink").join("changes").join("demo-change").join(".meta.yaml");
+    for schema in ["spec-driven", "no-spec-change"] {
+        std::fs::write(&meta, format!("schema: {schema}\ncreated: 2026-11-26\n")).unwrap();
+        let payload = json_payload(&p.instructions("tasks", &[]));
+        assert_eq!(payload["schemaName"], schema, "{payload}");
+        assert!(payload["instruction"].is_string() && payload["template"].is_string(), "{payload}");
+        let instr = instruction_text(&payload);
+        assert!(instr.contains("Verify: "), "{schema}: {instr}");
+        let template = payload["template"].as_str().unwrap_or_default();
+        assert!(template.contains(PLACEHOLDER), "{schema}: {template}");
+    }
+}

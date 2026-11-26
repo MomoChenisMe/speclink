@@ -331,7 +331,7 @@ speclink discuss new "看板搜尋列" --field owner=alice
 }
 ```
 
-上面的範例省略了 `schema`、`proposal`、`tasks` 等既有欄位。自由欄位也出現在 `discuss list --json`、`discuss show --json` 與 `discuss search --json` 的討論資訊裡。
+上面的範例省略了 `schema`、`proposal`、`tasks` 等既有欄位。`tasks` 是 tasks.md 的全文，一個任務行怎麼切成標題、內文與驗證，見[任務行的切分](#task-line-shape)。自由欄位也出現在 `discuss list --json`、`discuss show --json` 與 `discuss search --json` 的討論資訊裡。
 
 #### <a id="show-detail"></a>`speclink show <變更> --json --detail`
 
@@ -392,6 +392,38 @@ speclink discuss new "看板搜尋列" --field owner=alice
 ```json
 { "archived": false, "created": "2026-10-07", "path": "discussions/board-search-bar.md", "promotedTo": ["add-search-bar"], "rounds": 1, "slug": "board-search-bar", "status": "promoted", "topic": "看板搜尋列" }
 ```
+
+### <a id="task-line-shape"></a>任務行的切分
+
+`show --json` 的 `tasks` 是 tasks.md 的全文。自己畫任務頁的程式，照這一節把一個任務行切成序號、標題、內文與驗證。Speclink Desktop 與網頁後台的任務列用的是同一套規則。
+
+一個任務行依序這樣切：
+
+1. 行首的勾選框先拿掉：前面可以有縮排，寫法是 `- [ ] `、`- [x] ` 或 `- [X] `，括號後面恰好一個空白。之後的手動任務標記 `[M] ` 與舊版留下的 `[P] `（順序不限，各至多一個）也先拿掉；`[P]` 沒有任何意義，只是拿掉。
+2. 行尾的 stable ID 註解（`<!-- speclink-task:… -->`）先拿掉。
+3. 開頭的序號是數字，數字之間可以用一個點隔開（例如 `1`、`1.2`、`1.2.3`），後面接空白。`1.2.` 這種結尾帶點的寫法不是序號，整段照下面的步驟切。
+4. 驗證標記有三個：`驗證：`、`検証：` 與 `Verify: `（大寫 V、半形冒號、一個空白）。依這個順序取第一個有出現在文字裡的標記，在它首次出現的位置切：之前是前段，之後是驗證。三個都沒有時，沒有驗證。舊版只認得 `驗證：`，所以它排第一，原本切得開的任務切法不變。
+5. 前段有全形冒號 `：` 時，在第一個全形冒號切成標題與內文。沒有全形冒號時，才在第一個「半形冒號後接一個空白」（`: `）切。兩種都沒有時，整段是標題，沒有內文。
+6. `Verify: ` 與 `: ` 落在行內程式碼（成對的反引號之間）裡時不算標記。全形的標記不看行內程式碼。
+7. 標題尾的 `（design D1、D3）` 或 `(design D1, D3)` 括號從標題拿掉。括號裡到第一個 `；` 或 `;` 為止的那一段，取出其中的 `D` 編號；其餘的段落接到內文的最前面。Desktop 把 D 編號畫成可以點的籤。
+
+切分只看文字裡出現哪一個標記，不看專案的 `locale`，所以同一份任務清單可以混用三種語言。
+
+| 任務行 | 序號 | 標題 | 內文 | 驗證 |
+| --- | --- | --- | --- | --- |
+| `- [ ] 1.1 匯出 CSV：export --csv 寫出含標題列的檔案。驗證：cargo test -p demo export_csv` | `1.1` | 匯出 CSV | export --csv 寫出含標題列的檔案。 | cargo test -p demo export_csv |
+| `- [ ] 1.2 CSV エクスポート：ヘッダー行つきのファイルを書き出す。検証：cargo test -p demo export_csv` | `1.2` | CSV エクスポート | ヘッダー行つきのファイルを書き出す。 | cargo test -p demo export_csv |
+| `- [ ] 1.3 Export CSV: the command writes a file with a header row. Verify: cargo test -p demo export_csv` | `1.3` | Export CSV | the command writes a file with a header row. | cargo test -p demo export_csv |
+| `- [x] [M] 3.1 Board check: open the board by hand. Verify: each card shows its date <!-- speclink-task:tsk_01EXAMPLE -->` | `3.1` | Board check | open the board by hand. | each card shows its date |
+| `- [ ] 2.1 確認輸出為 status: ok：補上欄位` | `2.1` | 確認輸出為 status: ok | 補上欄位 | （無） |
+| ``- [ ] 2.2 Handle `a: b` keys`` | `2.2` | Handle `a: b` keys | （無） | （無） |
+| `- [ ] 2.3 Run the whole suite` | `2.3` | Run the whole suite | （無） | （無） |
+| `- [ ] 2.4 說明「Verify: 」標記：補測試。驗證：npm test` | `2.4` | 說明「Verify: 」標記 | 補測試。 | npm test |
+| `- [ ] 2.5 補日文標記：處理「検証：」。驗證：npm test` | `2.5` | 補日文標記 | 處理「検証：」。 | npm test |
+
+第四列是手動任務，勾選框、`[M]` 與 stable ID 註解都先拿掉。第五列的前段有全形冒號，所以不在 `status: ok` 的半形冒號切。第六列的半形冒號在行內程式碼裡，所以不切。第八列與第九列有 `驗證：`，所以不在一般文字裡的 `Verify: ` 或 `検証：` 切。
+
+這個形狀是 tasks 指示給寫入端的建議：`speclink instructions tasks` 的 `instruction` 會請 agent 照專案的 `locale` 寫成「短標題、分隔符號、行為、最後是驗證」。`validate` 與 `analyze` 不檢查任務有沒有照這個形狀寫，所以既有的任務不保證符合；切不開的任務整段是標題。
 
 ## <a id="request-rules"></a>請求的共同規則
 

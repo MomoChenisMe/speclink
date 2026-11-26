@@ -331,7 +331,7 @@ Each key below appears only when the change has that record:
 }
 ```
 
-The example leaves out the fields that existed before, such as `schema`, `proposal`, and `tasks`. The free fields also appear in the discussion data of `discuss list --json`, `discuss show --json`, and `discuss search --json`.
+The example leaves out the fields that existed before, such as `schema`, `proposal`, and `tasks`. `tasks` is the full text of tasks.md; for how to cut a task line into a title, a body, and a verification, see [The shape of a task line](#task-line-shape). The free fields also appear in the discussion data of `discuss list --json`, `discuss show --json`, and `discuss search --json`.
 
 #### <a id="show-detail"></a>`speclink show <change> --json --detail`
 
@@ -392,6 +392,38 @@ Each item of `discuss list --json` (also with `--archived`), the `info` of `disc
 ```json
 { "archived": false, "created": "2026-10-07", "path": "discussions/board-search-bar.md", "promotedTo": ["add-search-bar"], "rounds": 1, "slug": "board-search-bar", "status": "promoted", "topic": "Board search bar" }
 ```
+
+### <a id="task-line-shape"></a>The shape of a task line
+
+The `tasks` field of `show --json` is the full text of tasks.md. A program that draws its own task page cuts each task line into a number, a title, a body, and a verification with the rules in this section. The task rows of Speclink Desktop and of the web console use the same rules.
+
+Cut a task line in this order:
+
+1. Remove the checkbox at the start of the line. It can have an indent before it, it is `- [ ] `, `- [x] `, or `- [X] `, and exactly one space follows the bracket. Then remove the manual task marker `[M] ` and the `[P] ` that older versions left (in any order, at most one of each). `[P]` has no meaning; it only comes off.
+2. Remove the stable ID comment at the end of the line (`<!-- speclink-task:… -->`).
+3. The number at the start is digits, with one dot between groups of digits (for example `1`, `1.2`, or `1.2.3`), and white space after it. A form that ends with a dot, such as `1.2.`, is not a number, and all of the text goes through the steps below.
+4. There are three verification markers: `驗證：`, `検証：`, and `Verify: ` (a capital V, a half-width colon, and one space). In this order, take the first marker that is in the text, and cut at the first place where it occurs: the text before it is the front part, and the text after it is the verification. When none of the three is in the text, there is no verification. Older versions know only `驗證：`, so it comes first, and a task that cut before cuts the same way.
+5. When the front part has a full-width colon `：`, cut it into the title and the body at the first full-width colon. Only when it has no full-width colon, cut it at the first half-width colon that one space follows (`: `). When it has neither, all of it is the title and there is no body.
+6. `Verify: ` and `: ` are not markers when they are in inline code (between a pair of backticks). The full-width markers do not look at inline code.
+7. Remove a `（design D1、D3）` or `(design D1, D3)` parenthesis at the end of the title. From the part of the parenthesis up to the first `；` or `;`, take the `D` numbers; the other parts go to the start of the body. Desktop draws the D numbers as tags that you can click.
+
+The cut looks only at which marker is in the text, not at the `locale` of the project, so one task list can mix the three languages.
+
+| Task line | Number | Title | Body | Verification |
+| --- | --- | --- | --- | --- |
+| `- [ ] 1.1 匯出 CSV：export --csv 寫出含標題列的檔案。驗證：cargo test -p demo export_csv` | `1.1` | 匯出 CSV | export --csv 寫出含標題列的檔案。 | cargo test -p demo export_csv |
+| `- [ ] 1.2 CSV エクスポート：ヘッダー行つきのファイルを書き出す。検証：cargo test -p demo export_csv` | `1.2` | CSV エクスポート | ヘッダー行つきのファイルを書き出す。 | cargo test -p demo export_csv |
+| `- [ ] 1.3 Export CSV: the command writes a file with a header row. Verify: cargo test -p demo export_csv` | `1.3` | Export CSV | the command writes a file with a header row. | cargo test -p demo export_csv |
+| `- [x] [M] 3.1 Board check: open the board by hand. Verify: each card shows its date <!-- speclink-task:tsk_01EXAMPLE -->` | `3.1` | Board check | open the board by hand. | each card shows its date |
+| `- [ ] 2.1 確認輸出為 status: ok：補上欄位` | `2.1` | 確認輸出為 status: ok | 補上欄位 | (none) |
+| ``- [ ] 2.2 Handle `a: b` keys`` | `2.2` | Handle `a: b` keys | (none) | (none) |
+| `- [ ] 2.3 Run the whole suite` | `2.3` | Run the whole suite | (none) | (none) |
+| `- [ ] 2.4 說明「Verify: 」標記：補測試。驗證：npm test` | `2.4` | 說明「Verify: 」標記 | 補測試。 | npm test |
+| `- [ ] 2.5 補日文標記：處理「検証：」。驗證：npm test` | `2.5` | 補日文標記 | 處理「検証：」。 | npm test |
+
+The fourth row is a manual task: the checkbox, `[M]`, and the stable ID comment come off first. In the fifth row, the front part has a full-width colon, so the cut is not at the half-width colon of `status: ok`. In the sixth row, the half-width colon is in inline code, so there is no cut. The eighth and ninth rows have `驗證：`, so the cut is not at the `Verify: ` or the `検証：` in the plain text.
+
+This shape is advice that the tasks instruction gives to the writer: the `instruction` of `speclink instructions tasks` asks the agent to write a short title, a separator, the behavior, and the verification last, with the markers of the project `locale`. `validate` and `analyze` do not check whether a task has this shape, so a task that exists already may not have it. A task that does not cut is all title.
 
 ## <a id="request-rules"></a>Shared request rules
 

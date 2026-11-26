@@ -269,6 +269,56 @@ describe("splitTaskText", () => {
   it("半形括號與多個 D 編號", () => {
     expect(splitTaskText("改頁 (design D1, D3)：接線")).toMatchObject({ title: "改頁", decisions: ["D1", "D3"] });
   });
+
+  // 三種語言的標記、兩種優先序與行內程式碼的例外：前六列是 design Implementation Contract 的切分表，
+  // 後八列是 spec「任務群組標題與章節標籤同款式」Example「三種語言的標記與優先序」。
+  it.each([
+    [
+      "1.1 匯出 CSV：export --csv 寫出含標題列的檔案。驗證：cargo test -p demo export_csv",
+      "1.1",
+      "匯出 CSV",
+      "export --csv 寫出含標題列的檔案。",
+      "cargo test -p demo export_csv",
+      [],
+    ],
+    [
+      "1.2 CSV エクスポート：ヘッダー行つきのファイルを書き出す。検証：cargo test -p demo export_csv",
+      "1.2",
+      "CSV エクスポート",
+      "ヘッダー行つきのファイルを書き出す。",
+      "cargo test -p demo export_csv",
+      [],
+    ],
+    [
+      "1.3 Export CSV: the command writes a file with a header row. Verify: cargo test -p demo export_csv",
+      "1.3",
+      "Export CSV",
+      "the command writes a file with a header row.",
+      "cargo test -p demo export_csv",
+      [],
+    ],
+    ["2.1 確認輸出為 status: ok（design D2）：補上欄位", "2.1", "確認輸出為 status: ok", "補上欄位", null, ["D2"]],
+    ["2.2 Handle `a: b` keys", "2.2", "Handle `a: b` keys", null, null, []],
+    ["2.3 Run the whole suite", "2.3", "Run the whole suite", null, null, []],
+    ["匯出 CSV：寫出含標題列的檔案。驗證：cargo test", null, "匯出 CSV", "寫出含標題列的檔案。", "cargo test", []],
+    ["CSV エクスポート：ファイルを書き出す。検証：cargo test", null, "CSV エクスポート", "ファイルを書き出す。", "cargo test", []],
+    ["Export CSV: the command writes a file. Verify: cargo test", null, "Export CSV", "the command writes a file.", "cargo test", []],
+    ["確認輸出為 status: ok：補上欄位", null, "確認輸出為 status: ok", "補上欄位", null, []],
+    ["Handle `a: b` keys", null, "Handle `a: b` keys", null, null, []],
+    ["Run the whole suite", null, "Run the whole suite", null, null, []],
+    ["說明「Verify: 」標記：補測試。驗證：npm test", null, "說明「Verify: 」標記", "補測試。", "npm test", []],
+    ["補日文標記：處理「検証：」。驗證：npm test", null, "補日文標記", "處理「検証：」。", "npm test", []],
+  ])("%s", (text, number, title, body, verify, decisions) => {
+    expect(splitTaskText(text)).toEqual({ number, title, body, verify, decisions, note: null });
+  });
+
+  it("行內程式碼裡的「Verify: 」不算驗證標記", () => {
+    expect(splitTaskText("Explain `Verify: x`: the marker rule. Verify: npm test")).toMatchObject({
+      title: "Explain `Verify: x`",
+      body: "the marker rule.",
+      verify: "npm test",
+    });
+  });
 });
 
 describe("removedScenarios", () => {

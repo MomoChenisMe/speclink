@@ -389,16 +389,38 @@ const DESIGN_PAREN_RE = /[（(]\s*design\s+([^）)]*)[）)]\s*$/i;
 /** 描述開頭的「X.Y」序號（tasks.md 的寫法）。 */
 const TASK_NUMBER_RE = /^(\d+(?:\.\d+)*)\s+([\s\S]*)$/;
 
-/** 任務描述拆三層：先剝開頭序號，再以首個「驗證：」切驗證，再以首個全形「：」切標題與內文。 */
+/**
+ * 驗證標記，依這個順序取第一個有出現的：繁體中文（舊版唯一認得的標記，排第一才不會改變舊任務的切法）、
+ * 日文、英文。`skipCode`：落在行內程式碼裡的不算，只有半形的標記如此。
+ */
+const VERIFY_MARKS = [
+  { mark: "驗證：", skipCode: false },
+  { mark: "検証：", skipCode: false },
+  { mark: "Verify: ", skipCode: true },
+];
+
+/** 行內程式碼，與 InlineMarks 同一個寫法（成對的單一反引號）。 */
+const INLINE_CODE_RE = /`[^`]+`/g;
+
+/**
+ * 任務描述拆三層（docs/verb-contract 的 task-line-shape 一節）：先剝開頭序號；再依「驗證：」「検証：」
+ * 「Verify: 」的順序取第一個有出現的標記，在它首次出現的位置切驗證；前段有全形「：」時以首個全形「：」
+ * 切標題與內文，沒有時才以首個「: 」切。半形的「Verify: 」與「: 」落在行內程式碼裡時不算。
+ */
 export function splitTaskText(raw: string): TaskTextParts {
   const numbered = TASK_NUMBER_RE.exec(raw);
   const text = numbered ? numbered[2] : raw;
-  const v = text.indexOf("驗證：");
-  const front = v < 0 ? text : text.slice(0, v);
-  const verify = v < 0 ? null : text.slice(v + 3).trim() || null;
-  const c = front.indexOf("：");
-  let title = (c < 0 ? front : front.slice(0, c)).trim();
-  const body = c < 0 ? null : front.slice(c + 1).trim() || null;
+  // 行內程式碼換成等長的 NUL：半形標記只在這份副本上找，索引與 text 對齊。
+  const outsideCode = text.replace(INLINE_CODE_RE, (code) => "\0".repeat(code.length));
+  const hit = VERIFY_MARKS.map(({ mark, skipCode }) => ({ mark, at: (skipCode ? outsideCode : text).indexOf(mark) })).find(
+    (h) => h.at >= 0,
+  );
+  const front = hit ? text.slice(0, hit.at) : text;
+  const verify = hit ? text.slice(hit.at + hit.mark.length).trim() || null : null;
+  const fullColonAt = front.indexOf("：");
+  const colonAt = fullColonAt >= 0 ? fullColonAt : outsideCode.slice(0, front.length).indexOf(": ");
+  let title = (colonAt < 0 ? front : front.slice(0, colonAt)).trim();
+  const body = colonAt < 0 ? null : front.slice(colonAt + 1).trim() || null;
   const decisions: string[] = [];
   const notes: string[] = [];
   const paren = DESIGN_PAREN_RE.exec(title);

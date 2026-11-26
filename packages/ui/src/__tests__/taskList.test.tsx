@@ -277,6 +277,22 @@ describe("TaskList 群組卡與三層任務列", () => {
     expect(screen.queryByText("npm test")).toBeNull();
   });
 
+  it("日文與英文的任務同樣切成三層：標題層只有短標題，列尾鈕展開，內文與驗證各自顯示", () => {
+    const md =
+      "## 1. Export\n\n" +
+      "- [ ] 1.3 Export CSV: the command writes a file with a header row. Verify: cargo test -p demo export_csv\n" +
+      "- [ ] 1.2 CSV エクスポート：ヘッダー行つきのファイルを書き出す。検証：cargo test -p demo export_csv\n";
+    const { container } = render(<TaskList markdown={md} onToggle={vi.fn()} />);
+    const rows = [...container.querySelectorAll("[data-task-title-row]")];
+    expect(rows.map((r) => r.querySelector("[data-task-title]")!.textContent)).toEqual(["Export CSV", "CSV エクスポート"]);
+    for (const row of rows) {
+      expect(row.querySelector("[data-task-expand]")!.getAttribute("aria-expanded")).toBe("true");
+    }
+    expect(screen.getByText("the command writes a file with a header row.")).toBeTruthy();
+    expect(screen.getByText("ヘッダー行つきのファイルを書き出す。")).toBeTruthy();
+    expect(screen.getAllByText("cargo test -p demo export_csv")).toHaveLength(2);
+  });
+
   it.each([
     ["可拖排", true],
     ["無拖排", false],

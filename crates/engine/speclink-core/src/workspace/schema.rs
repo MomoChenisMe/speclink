@@ -902,6 +902,60 @@ artifacts:
         let _ = std::fs::remove_dir_all(&root);
     }
 
+    /// 需求「tasks 指示說明短標題的任務形狀」：兩個內建 schema 的 tasks 指示列出三種語言的形狀，
+    /// Example 的任務都是英文的形狀；共用範本的佔位文字是同一個形狀。
+    #[test]
+    fn tasks_instruction_describes_the_short_title_shape() {
+        const SHAPES: [&str; 3] = [
+            "`<短標題>：<行為>。驗證：<驗證方式>`",
+            "`<短いタイトル>：<振る舞い>。検証：<検証方法>`",
+            "`<Short title>: <behavior>. Verify: <how it is verified>`",
+        ];
+        for s in [spec_driven(), no_spec_change()] {
+            let instruction = s
+                .artifact("tasks")
+                .and_then(|a| a.instruction.clone())
+                .unwrap_or_else(|| panic!("{}: tasks 帶 instruction", s.name));
+            for marker in ["驗證：", "検証：", "Verify: "] {
+                assert!(instruction.contains(marker), "{}: tasks instruction 須含 {marker}", s.name);
+            }
+            for shape in SHAPES {
+                assert!(
+                    instruction.lines().any(|l| l.contains(shape)),
+                    "{}: tasks instruction 須有一行寫出 {shape}",
+                    s.name
+                );
+            }
+            let example = instruction
+                .split_once("Example:\n```\n")
+                .and_then(|(_, rest)| rest.split_once("```"))
+                .map(|(block, _)| block)
+                .unwrap_or_else(|| panic!("{}: tasks instruction 帶 Example 區塊", s.name));
+            let tasks: Vec<&str> = example.lines().filter(|l| l.starts_with("- [ ]")).collect();
+            assert!(!tasks.is_empty(), "{}: Example 區塊有任務", s.name);
+            for task in tasks {
+                // 「Verify: 」本身含「: 」，所以標題的分隔符號要在它之前找。
+                assert!(
+                    task.split_once("Verify: ").is_some_and(|(head, _)| head.contains(": ")),
+                    "{}: Example 的任務須是英文的形狀：{task}",
+                    s.name
+                );
+            }
+            if s.name == "no-spec-change" {
+                assert!(instruction.contains("Unchanged behavior (REQUIRED)"), "no-spec-change 既有的要求不動");
+            }
+        }
+
+        let placeholder = "<!-- Short title: behavior/contract delivered. Verify: verification target -->";
+        assert_eq!(A_TASKS_TMPL.matches(placeholder).count(), 4, "範本的四個任務都用新的佔位文字");
+        let header = A_TASKS_TMPL.split_once("## 1.").map(|(h, _)| h).unwrap_or_default();
+        assert!(header.contains("short title"), "範本開頭的說明須提到任務的形狀");
+        assert!(
+            !A_TASKS_TMPL.contains("<!-- Behavior/contract delivered + verification target -->"),
+            "範本不得留舊的佔位文字"
+        );
+    }
+
     #[test]
     fn design_cross_reference_guidance_says_the_ordinal_alone_counts() {
         // analyzer 只要編號（D1／Decision 1／決策一）出現就算引用；指引不講，

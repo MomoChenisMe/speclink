@@ -4,6 +4,9 @@
 //! 正典未收錄的名稱未帶 `--new` 即拒絕：非零收尾、stderr 含近似建議與兩條
 //! 指引、不落盤；帶 `--new` 照現行流程建立；命中正典名稱時輸出位元級不變；
 //! `--json` 成功 payload 形狀凍結，主閘拒絕時 stdout 無成功 payload。
+//!
+//! 另釘 tasks 的短標題形狀只是寫法建議：不照形狀寫的任務清單，寫入與
+//! validate 都照常通過（spec workflow-schemas「tasks 指示說明短標題的任務形狀」）。
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -43,9 +46,15 @@ impl TempProject {
     /// 跑 `speclink new artifact spec <cap> --change demo --stdin [extra...]`，
     /// stdin 餵一份合法 delta。
     fn new_spec(&self, cap: &str, extra: &[&str]) -> Output {
+        let mut args = vec!["new", "artifact", "spec", cap, "--change", "demo", "--stdin", "--no-color"];
+        args.extend_from_slice(extra);
+        self.run(&args, DELTA)
+    }
+
+    /// 在專案根目錄跑 `speclink <args...>`，stdin 餵 `input`。
+    fn run(&self, args: &[&str], input: &str) -> Output {
         let mut child = Command::new(env!("CARGO_BIN_EXE_speclink"))
-            .args(["new", "artifact", "spec", cap, "--change", "demo", "--stdin", "--no-color"])
-            .args(extra)
+            .args(args)
             .current_dir(&self.dir)
             .env_remove("SPECLINK_STORE_URL")
             .env_remove("SPECLINK_TOKEN")
@@ -54,7 +63,7 @@ impl TempProject {
             .stderr(Stdio::piped())
             .spawn()
             .expect("spawn speclink binary");
-        child.stdin.take().unwrap().write_all(DELTA.as_bytes()).unwrap();
+        child.stdin.take().unwrap().write_all(input.as_bytes()).unwrap();
         child.wait_with_output().expect("run speclink binary")
     }
 
@@ -140,4 +149,25 @@ fn json_refusal_emits_no_success_payload() {
     assert!(!out.status.success(), "refusal exits non-zero under --json too");
     let stdout = String::from_utf8_lossy(&out.stdout).to_string();
     assert!(!stdout.contains("\"status\""), "stdout 無成功 payload: {stdout}");
+}
+
+#[test]
+fn a_task_list_without_the_short_title_shape_still_passes() {
+    // spec Scenario「不照形狀寫的任務清單照常通過」：形狀不是格式守門。
+    let p = TempProject::new("tasks-shape");
+    let write = p.run(
+        &["new", "artifact", "tasks", "--change", "demo", "--stdin", "--no-color"],
+        "- [ ] 1.1 一句沒有冒號也沒有驗證標記的長句\n",
+    );
+    assert!(write.status.success(), "寫入照常通過: {}", String::from_utf8_lossy(&write.stderr));
+    let validate = p.run(&["validate", "demo", "--no-color"], "");
+    let output = format!(
+        "{}{}",
+        String::from_utf8_lossy(&validate.stdout),
+        String::from_utf8_lossy(&validate.stderr)
+    );
+    assert!(validate.status.success(), "validate 照常通過: {output}");
+    for word in ["title", "標題", "標記", "shape", "形狀", "separator", "冒號"] {
+        assert!(!output.to_lowercase().contains(word), "validate 不提任務的形狀（{word}）: {output}");
+    }
 }

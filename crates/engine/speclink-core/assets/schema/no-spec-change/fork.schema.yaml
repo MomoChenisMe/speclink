@@ -99,6 +99,17 @@ artifacts:
       - File-edit-only tasks (e.g. "Update file X to handle Y") are invalid
         unless they also describe the resulting behavior and how it is
         verified.
+    - **Short title first:** Write each task as a short title, a separator, the
+      behavior, and a last part that names the verification. Readers that show
+      the task list cut the task at the separator and at the verification
+      marker, so a task with a short title can fold. Pick the line for the
+      instructions JSON `locale`; any other language uses the English line:
+      - Traditional Chinese: `<短標題>：<行為>。驗證：<驗證方式>`
+      - Japanese: `<短いタイトル>：<振る舞い>。検証：<検証方法>`
+      - English: `<Short title>: <behavior>. Verify: <how it is verified>`
+      The title is a phrase of a few words, not a sentence, and holds no colon.
+      Write the separator and the verification marker exactly as shown: do not
+      translate or reword them.
     - **Unchanged behavior (REQUIRED):** The last task MUST confirm with the existing tests
       that the behavior of the canonical specs listed in the proposal's Why has not
       changed, and name the test commands it runs. The change has no delta spec, so tasks
@@ -110,12 +121,12 @@ artifacts:
     ```
     ## 1. Refactor
 
-    - [ ] 1.1 Move the export helpers into their own module
-    - [ ] 1.2 Rename the internal buffer type
+    - [ ] 1.1 Export helpers module: the export helpers live in their own module and every caller imports them from there. Verify: `npm run build` passes
+    - [ ] 1.2 Buffer type name: the internal buffer type has its new name in every file. Verify: `npm run typecheck` passes
 
     ## 2. Check
 
-    - [ ] 2.1 Run the existing export tests to confirm the export behavior is unchanged
+    - [ ] 2.1 Export behavior unchanged: the existing export tests pass with no edits to them. Verify: `npm test -- export` passes
     ```
 
     Reference the proposal for what changes. If design.md exists, reference it for how to build it.

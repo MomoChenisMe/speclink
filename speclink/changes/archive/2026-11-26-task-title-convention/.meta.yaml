@@ -1,0 +1,68 @@
+schema: spec-driven
+created: 2026-11-26T08:30:53+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-10
+started_at: 2026-11-26T08:50:42+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+reviewed_at: 2026-11-26T09:41:09+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 11
+reviewed_rounds: 2
+reviewed_commit: b6a3013bede3a27d1210ffe161464e8caeb6dac3
+reviewed_scope:
+  - path: crates/adapters/speclink-cli/tests/it/instructions_policy.rs
+    hash: 4bbe2e88ebe2d7361245679abdf7e84b7a512de162886a4012c5c4a390537fb0
+  - path: crates/adapters/speclink-cli/tests/it/new_artifact.rs
+    hash: 74c92e9a3e3394c889e91915d41eaba2045a7ef60fdf055965d6833c0e1b5291
+  - path: crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml
+    hash: aaeffd6007147df8952ad0207364da20d02ce4fc63e9644d0023d6123c482523
+  - path: crates/engine/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: cb37397cd280c630add82c73b04361e8386925664b47e1e6e9c58dd482413931
+  - path: crates/engine/speclink-core/assets/schema/spec-driven/tasks.template.md
+    hash: 48841275673a9e294575aadba428be1240392d1449fb0d001ae5dd35d706bf8b
+  - path: crates/engine/speclink-core/src/workspace/schema.rs
+    hash: 08a96c9d499d1af0130742de31037f57d3edc75402440195027023787df0dfb8
+  - path: docs/verb-contract.md
+    hash: d8384beaf8ca1c4a5b0bb634cc793f3d56969570b606ebbbe349da3a8cad32e4
+  - path: docs/verb-contract.zh-TW.md
+    hash: 08fd50c178d8709e03b478abbfa440724cd4ad4d6d950306aabaf81cbf32a79c
+  - path: packages/ui/src/__tests__/docModel.test.ts
+    hash: eac3c19170db83f74f5949c218fcc3e629673f3384632e2f7859f4d8c8a3ab05
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 6b0cc9a7e67ef507384d1547566ea9b0c3e240a3117a5cff618db9d992d105e5
+  - path: packages/ui/src/docModel.ts
+    hash: bfa50910b1a1bf300066018582c67a2d863738664aa24ad38a6e788aca20a56e
+verified_at: 2026-11-26T09:41:09+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 11
+verified_rounds: 2
+verified_commit: b6a3013bede3a27d1210ffe161464e8caeb6dac3
+verified_scope:
+  - path: crates/adapters/speclink-cli/tests/it/instructions_policy.rs
+    hash: 4bbe2e88ebe2d7361245679abdf7e84b7a512de162886a4012c5c4a390537fb0
+  - path: crates/adapters/speclink-cli/tests/it/new_artifact.rs
+    hash: 74c92e9a3e3394c889e91915d41eaba2045a7ef60fdf055965d6833c0e1b5291
+  - path: crates/engine/speclink-core/assets/schema/no-spec-change/fork.schema.yaml
+    hash: aaeffd6007147df8952ad0207364da20d02ce4fc63e9644d0023d6123c482523
+  - path: crates/engine/speclink-core/assets/schema/spec-driven/fork.schema.yaml
+    hash: cb37397cd280c630add82c73b04361e8386925664b47e1e6e9c58dd482413931
+  - path: crates/engine/speclink-core/assets/schema/spec-driven/tasks.template.md
+    hash: 48841275673a9e294575aadba428be1240392d1449fb0d001ae5dd35d706bf8b
+  - path: crates/engine/speclink-core/src/workspace/schema.rs
+    hash: 08a96c9d499d1af0130742de31037f57d3edc75402440195027023787df0dfb8
+  - path: docs/verb-contract.md
+    hash: d8384beaf8ca1c4a5b0bb634cc793f3d56969570b606ebbbe349da3a8cad32e4
+  - path: docs/verb-contract.zh-TW.md
+    hash: 08fd50c178d8709e03b478abbfa440724cd4ad4d6d950306aabaf81cbf32a79c
+  - path: packages/ui/src/__tests__/docModel.test.ts
+    hash: eac3c19170db83f74f5949c218fcc3e629673f3384632e2f7859f4d8c8a3ab05
+  - path: packages/ui/src/__tests__/taskList.test.tsx
+    hash: 6b0cc9a7e67ef507384d1547566ea9b0c3e240a3117a5cff618db9d992d105e5
+  - path: packages/ui/src/docModel.ts
+    hash: bfa50910b1a1bf300066018582c67a2d863738664aa24ad38a6e788aca20a56e
+archived_at: 2026-11-26T09:46:44+08:00
+archived_by: MomoChen <momochenisme@gmail.com>
