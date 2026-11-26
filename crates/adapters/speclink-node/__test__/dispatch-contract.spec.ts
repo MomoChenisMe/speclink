@@ -315,13 +315,17 @@ describe('dispatch covers every verb that has an engine command', () => {
   /**
    * A value two runs can compare: every mention of the fixture root is
    * replaced, and so is every date (a run across midnight writes two days).
+   * `modifiedAt` is each fixture's own file time, so it reads `<time>` as in
+   * `stable` above.
    */
   const portable = (value: unknown, root: string): unknown => {
     // On Windows the root has backslashes: path fields print it with forward
     // slashes, and JSON escapes the backslashes of every other mention.
     const forms = [root.split('\\').join('/'), JSON.stringify(root).slice(1, -1)]
     const text = forms.reduce((all, form) => all.split(form).join('<root>'), JSON.stringify(value))
-    return JSON.parse(text.replace(/\d{4}-\d{2}-\d{2}/g, '<date>'))
+    return JSON.parse(text.replace(/\d{4}-\d{2}-\d{2}/g, '<date>'), (key, v) =>
+      key === 'modifiedAt' ? '<time>' : v,
+    )
   }
 
   it('show resolves to what speclink show --json prints', async () => {
@@ -450,6 +454,12 @@ describe('dispatch covers every verb that has an engine command', () => {
       { argv: ['discuss', 'conclude', 'rate-limits', '--stdin'], stdin: conclusion },
     ]
     for (const { argv, stdin } of steps) {
+      if (argv[1] === 'list') {
+        // The two fixtures' records carry their own file times; a run that crosses a second
+        // writes two different ones (Windows CI, 2026-11-26), so make them differ on purpose.
+        const earlier = new Date(Date.now() - 3_600_000)
+        utimesSync(join(cliRoot, 'speclink', 'discussions', 'rate-limits.md'), earlier, earlier)
+      }
       const sdk = await engine.dispatch(argv, stdin === undefined ? undefined : { stdin })
       const out = execFileSync(cliBin, [...argv, '--json'], { cwd: cliRoot, encoding: 'utf8', input: stdin ?? '' })
       expect(portable(sdk, sdkRoot), argv.join(' ')).toEqual(portable(JSON.parse(out), cliRoot))
