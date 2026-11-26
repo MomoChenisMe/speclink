@@ -56,9 +56,10 @@ const card = (id: string) => document.querySelector(`[data-spec="${id}"]`) as HT
 
 describe("SpecList（規格頁清單）", () => {
   beforeEach(() => {
-    // 僅假造 Date 固定相對時間基準；timer 保持真實讓 waitFor 照常運作。
+    // 僅假造 Date 固定相對時間基準；timer 保持真實讓 waitFor 照常運作。相對時間以使用者
+    // 時區的日曆日計算，所以基準取本地時間的中午，任何時區都落在 2026-07-08。
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-07-08T04:00:00Z"));
+    vi.setSystemTime(new Date(2026, 6, 8, 12, 0));
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -174,7 +175,7 @@ describe("SpecList（規格頁清單）", () => {
 describe("SpecList（最新在前與換頁）", () => {
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2026-07-08T04:00:00Z"));
+    vi.setSystemTime(new Date(2026, 6, 8, 12, 0));
   });
   afterEach(() => {
     vi.useRealTimers();

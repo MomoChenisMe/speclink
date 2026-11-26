@@ -1237,6 +1237,43 @@ describe("標頭與狀態卡", () => {
     expect(within(plainRow).queryByText(/speclink\//)).toBeNull();
   });
 
+  // spec desktop-app「變更詳情頁的出身行顯示就緒日」（design D4）。
+  describe("出身行的就緒日", () => {
+    const segments = async (meta: Record<string, string>) => {
+      const { baseElement } = render(
+        <ChangeDetailPage
+          {...(makeProps({
+            loadMeta: vi.fn(async () => ({ created: "2026-11-20", createdBy: "MomoChen <momochenisme@gmail.com>", ...meta })),
+          }) as never)}
+        />,
+      );
+      await screen.findByText("MomoChen");
+      const row = baseElement.querySelector("[data-identity-provenance]") as HTMLElement;
+      // 各段之間的「·」分隔符不算一段。
+      return [...row.children].map((el) => el.textContent ?? "").filter((s) => s !== "·");
+    };
+
+    it("帶 readyAt 時就緒段緊接在開工段之後", async () => {
+      const texts = await segments({ startedAt: "2026-11-24", readyAt: "2026-11-25" });
+      const started = texts.indexOf("開工 2026-11-24");
+      expect(started).toBeGreaterThan(-1);
+      expect(texts[started + 1]).toBe("就緒 2026-11-25");
+    });
+
+    it("readyAt 缺席時沒有這一段，其餘各段與沒有這條需求時相同", async () => {
+      const texts = await segments({ startedAt: "2026-11-24" });
+      expect(texts.some((s) => s.startsWith("就緒"))).toBe(false);
+      expect(texts[texts.length - 1]).toBe("開工 2026-11-24");
+    });
+
+    it("沒有開工戳記但有 readyAt 時就緒段接在建立相對時間之後", async () => {
+      const texts = await segments({ readyAt: "2026-11-25" });
+      const ready = texts.indexOf("就緒 2026-11-25");
+      expect(ready).toBeGreaterThan(0);
+      expect(texts[ready - 1]).toMatch(/今天|昨天|天前/);
+    });
+  });
+
   it("出身行為不折行單行容器、關聯列各自一行（4 筆來源討論＋開工＋同源）", async () => {
     const props = makeProps({
       loadMeta: vi.fn(async () => ({

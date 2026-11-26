@@ -41,6 +41,9 @@ pub fn cached_git_identity(root: &Path) -> Option<String> {
 pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
     let ctx = crate::context_for_change(root, change)?;
     let change = ctx.store.find_change(change)?;
+    // 就緒日用引擎的顯示規則：取消勾選後紀錄還在，但不再給（spec client-protocol）。
+    let counts = speclink_core::tasks::counts_for(&ctx.store, &change.name);
+    let ready_at = speclink_core::model::shown_ready_at(change.meta.ready_at.as_deref(), counts.complete, counts.total);
     Some(json!({
         "schema": change.meta.schema,
         "created": change.meta.created,
@@ -50,6 +53,8 @@ pub fn change_meta_at(root: &Path, change: &str) -> Option<Value> {
         "startedAt": change.meta.started_at,
         "startedBy": change.meta.started_by,
         "startedWith": change.meta.started_with,
+        "readyAt": ready_at,
+        "createdById": change.meta.created_by_id,
     }))
 }
 
@@ -476,6 +481,33 @@ mod tests {
         assert_eq!(meta["startedAt"], "2026-07-06", "開工章須讀 worktree 副本: {meta}");
         assert_eq!(meta["startedBy"], "Worker <w@example.com>");
         assert_eq!(meta["startedWith"], "claude");
+    }
+
+    #[test]
+    fn change_meta_carries_the_ready_date_only_while_every_task_is_checked() {
+        // spec client-protocol Scenario「本機單一變更資料的就緒日」：readyAt 用引擎的顯示
+        // 規則——至少一個任務且全部勾完、metadata 記有就緒時間時才有值（日期）。
+        let fx = crate::testfixture::FixtureRoot::new("m-meta-ready");
+        fx.add_change(
+            "demo",
+            "schema: spec-driven\ncreated: 2026-11-24\ncreated_by: Ann\ncreated_by_id: u_1\nready_at: 2026-11-25T09:00:00+08:00\n",
+        );
+        fx.write("speclink/changes/demo/tasks.md", "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n");
+        let meta = change_meta_at(fx.root(), "demo").expect("meta exists");
+        assert_eq!(meta["readyAt"], "2026-11-25", "{meta}");
+        assert_eq!(meta["createdById"], "u_1");
+
+        fx.write("speclink/changes/demo/tasks.md", "## 1. G\n\n- [x] 1.1 a\n- [ ] 1.2 b\n");
+        let meta = change_meta_at(fx.root(), "demo").expect("meta exists");
+        assert!(meta["readyAt"].is_null(), "an unchecked task hides the ready date: {meta}");
+
+        // 沒有任務時也沒有就緒日；沒有識別時 createdById 為 null。
+        fx.add_change("empty", "schema: spec-driven\ncreated: 2026-11-24\nready_at: 2026-11-25\n");
+        fx.write("speclink/changes/empty/tasks.md", "## 1. G\n");
+        let meta = change_meta_at(fx.root(), "empty").expect("meta exists");
+        assert!(meta["readyAt"].is_null(), "{meta}");
+        assert!(meta.get("createdById").is_some_and(Value::is_null), "{meta}");
+        assert!(meta.get("ready_at").is_none() && meta.get("created_by_id").is_none(), "camelCase only");
     }
 
     #[test]

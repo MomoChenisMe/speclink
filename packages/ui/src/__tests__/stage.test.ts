@@ -42,6 +42,20 @@ describe("changeStage（標記驅動）", () => {
   });
 });
 
+// spec 需求「看板欄位以清單帶的階段為準」Example「階段的來源」：清單帶三個值之一時
+// 以它為準；缺席或不認得的值照上面的規則自己算。
+describe("changeStage（清單帶的階段）", () => {
+  it.each([
+    // [stage, totalTasks, completedTasks, startedAt, expected]
+    ["ready", 3, 1, undefined, "ready"], // stage 為 ready、任務 1/3——以清單的值為準
+    [undefined, 3, 3, undefined, "ready"], // 沒有 stage、任務 3/3——自己算
+    [undefined, 3, 0, "2026-11-24", "in-progress"], // 沒有 stage、任務 0/3、有 startedAt
+    ["paused", 3, 0, undefined, "proposed"], // 不認得的值、任務 0/3、沒有 startedAt——自己算
+  ] as const)("stage=%s total=%i done=%i started=%s → %s", (stage, total, done, startedAt, expected) => {
+    expect(changeStage({ ...ci(total, done, startedAt), stage })).toBe(expected);
+  });
+});
+
 // 生命週期與討論的色相單一來源（design D4）：每階一色相，色值只在 theme.css 的
 // stage-* token；看板與系統匣共用這幾張表，表內只保存「階段→token class」對照。
 describe("STAGE_* / DISCUSSION_TONE（生命週期每階一色相）", () => {

@@ -32,6 +32,13 @@ fn entry(info: &DiscussionInfo) -> Value {
     if let Some(cb) = &info.created_by {
         v["createdBy"] = json!(cb);
     }
+    // 建立者的識別與最後修改時間：引擎給什麼就帶什麼，缺席同樣省略。
+    if let Some(id) = &info.created_by_id {
+        v["createdById"] = json!(id);
+    }
+    if let Some(at) = &info.modified_at {
+        v["modifiedAt"] = json!(at);
+    }
     // 討論型別（改進標示的來源）——同樣缺席即省略。
     if let Some(kind) = &info.kind {
         v["kind"] = json!(kind);
@@ -264,6 +271,35 @@ mod tests {
         assert!(by("with-author").get("created_by").is_none(), "camelCase only");
         // 無 created_by → 省略該鍵。
         assert!(by("no-author").get("createdBy").is_none(), "omit when absent");
+    }
+
+    #[test]
+    fn list_discussions_carries_modified_at_and_creator_id_from_the_engine() {
+        // spec client-protocol「桌面清單與單一變更資料帶階段、建立者識別、就緒日與修改時間」：
+        // 討論清單項的 modifiedAt（RFC 3339 UTC）與 createdById 取自引擎的討論資訊，缺席即省略。
+        let fx = FixtureRoot::new("d-modified");
+        fx.write(
+            "speclink/discussions/keyed.md",
+            &discussion_doc("keyed", "Keyed", "open", "created_by: Ann\ncreated_by_id: u_1\n", 1, "<!-- x -->"),
+        );
+        fx.write(
+            "speclink/discussions/plain.md",
+            &discussion_doc("plain", "Plain", "open", "created_by: Bob\n", 1, "<!-- x -->"),
+        );
+        let ctx = crate::init_core_context(fx.root()).expect("project");
+        let engine = discuss::list_discussions(&ctx.store);
+        let v = super::list_discussions_at(fx.root());
+        let active = v["active"].as_array().expect("active array");
+        let by = |slug: &str| active.iter().find(|d| d["slug"] == slug).unwrap();
+        for info in &engine {
+            let item = by(&info.slug);
+            let modified = info.modified_at.as_deref().expect("a local store reports the file time");
+            assert_eq!(item["modifiedAt"], modified, "{item}");
+            assert!(chrono::DateTime::parse_from_rfc3339(modified).is_ok(), "{modified}");
+        }
+        assert_eq!(by("keyed")["createdById"], "u_1");
+        assert!(by("plain").get("createdById").is_none(), "omit when absent: {}", by("plain"));
+        assert!(by("keyed").get("created_by_id").is_none() && by("keyed").get("modified_at").is_none(), "camelCase only");
     }
 
     #[test]

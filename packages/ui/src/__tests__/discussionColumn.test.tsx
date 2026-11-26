@@ -130,6 +130,37 @@ describe("DiscussionColumn（兩級呈現）", () => {
     expect(within(card).getByText("2026-07-01")).toBeTruthy();
   });
 
+  // spec desktop-app「看板卡片顯示最後更新」Scenario「今天加過一輪的討論卡顯示今天」與
+  // 「沒有修改時間時缺席」（design D3）。
+  it("modifiedAt 為今天時 meta 列尾端在輪數之後顯示「今天」，提示含最後更新", () => {
+    const created = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+    const authFlow: DiscussionItem = { ...openD, slug: "auth-flow", created, modifiedAt: new Date().toISOString() };
+    render(<DiscussionColumn discussions={[openD, authFlow]} changes={[]} archived={[]} />);
+    const card = screen.getByText("auth-flow").closest("[data-discussion]") as HTMLElement;
+    const segment = card.querySelector("[data-last-updated]") as HTMLElement;
+    expect(segment.textContent).toBe("今天");
+    expect(segment.getAttribute("aria-label")).toMatch(/^最後更新 /);
+    const meta = segment.parentElement as HTMLElement;
+    expect(meta.firstElementChild?.textContent).toBe("3 輪");
+    expect(meta.lastElementChild).toBe(segment);
+    // 卡片在欄內的位置與沒有這一段時相同（順序仍是清單順序）。
+    const slugs = [...document.querySelectorAll("[data-discussion]")].map((el) => el.getAttribute("data-discussion"));
+    expect(slugs).toEqual(["open-topic", "auth-flow"]);
+  });
+
+  it("3 天前顯示「3 天前」；缺席或解析不出來時只有輪數與建立時間", () => {
+    const old: DiscussionItem = { ...openD, slug: "old-one", modifiedAt: new Date(Date.now() - 3 * 86_400_000).toISOString() };
+    const garbled: DiscussionItem = { ...openD, slug: "garbled", modifiedAt: "not-a-time" };
+    render(<DiscussionColumn discussions={[old, openD, garbled]} changes={[]} archived={[]} />);
+    const card = (slug: string) => screen.getByText(slug).closest("[data-discussion]") as HTMLElement;
+    expect(card("old-one").querySelector("[data-last-updated]")?.textContent).toBe("3 天前");
+    for (const slug of ["open-topic", "garbled"]) {
+      expect(card(slug).querySelector("[data-last-updated]")).toBeNull();
+      expect(within(card(slug)).getByText(/3 輪/)).toBeTruthy();
+    }
+    expect(within(card("garbled")).queryByText("not-a-time")).toBeNull();
+  });
+
   it("createdBy 缺席時圓點缺席", () => {
     const anonymous = { ...openD, slug: "anon-topic", createdBy: undefined };
     render(<DiscussionColumn discussions={[anonymous]} changes={[]} archived={[]} />);

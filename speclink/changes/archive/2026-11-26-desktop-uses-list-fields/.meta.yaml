@@ -1,0 +1,124 @@
+schema: spec-driven
+created: 2026-11-26T08:43:30+08:00
+created_by: MomoChen <momochenisme@gmail.com>
+created_with: claude
+from_discussion: embedded-host-needs-10
+depends_on: change-and-discussion-list-fields
+started_at: 2026-11-26T12:09:07+08:00
+started_by: MomoChen <momochenisme@gmail.com>
+branch: main
+ready_at: 2026-11-26T13:56:18+08:00
+reviewed_at: 2026-11-26T14:06:24+08:00
+reviewed_by: MomoChen <momochenisme@gmail.com>
+reviewed_with: claude
+reviewed_tasks_total: 14
+reviewed_rounds: 2
+reviewed_commit: eadff83552f33feaa0455622d2dac98033a1ebdc
+reviewed_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 988dbecc14469e449836690188ebc053f6f2e0f24d38e266e8ce1534ec9775fa
+  - path: apps/desktop/core/src/manage.rs
+    hash: fe744d50a557304b8b74d37442de8882545fbbb9761694d9fefd51c79dc13af7
+  - path: apps/desktop/core/src/query.rs
+    hash: 00c276b6b6ed35731608add32ce3b7947838bd6fdb36351ca00d8a764c0882ef
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: a68779a8a1df8f24552bfb3f4b8da709c5e40ef2ec60a53ff5e0dfcd1f829772
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 54a67b00c8cecd0c21064b2f7a7ec51c7ed79891549ab1d788f7882d3b4f392f
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: b71d06134766852706994f27c17092f06e82369a4b014989a1afee616f099f7e
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 36a0d140ea502a69a5ed825342b4b5a3b24d3a9d9c6fbaa502e46af955e2d239
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 64a81571a979b9a4cd2e68e75ba9283bdd2b922857e6bb8f0db845d351767380
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: de16e0574fe45349ea070d5ae6989488f38f434eb15729474d802c518fc95f5a
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: f1a96f76b3c451370c002cb60a4186439be2a5269c46c3f5d773cc9769a111ba
+  - path: packages/ui/src/__tests__/search.test.ts
+    hash: 596362aebaea5853be1c36b0fe49715ace59e430d18d1ec1e3d61fc8e4da39eb
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 955076763937c87db6c315cc81baeb9775df9977332471fbd71a07c65a88bd0f
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: 5485049124bce3c2dc62d5dde96c693e575a7194ffb1a29ff474d5c3ed2d4cf8
+  - path: packages/ui/src/__tests__/time.test.ts
+    hash: b98b2327f20d9bbfdea639736e1d7f9044f7a7b3067cac47f9e1586cf26eecf4
+  - path: packages/ui/src/adapter.ts
+    hash: 951c0f01fe1fcaa466aa47e0b06f516a83386c2b429c10f69c9ac55a2bb3b524
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 8d73aaad9a94a3148d284ff96813c1fe50b4ff4a17561e08c690e4bb00ea3650
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: 4c3c0472ee29a7794993fbf3351106b9453ae37b0e5a9ec09c1d0af08aa297ae
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 18160c06326e7f6b554cf18b66b388c95023bb35bc865f069c721d610c08219c
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 71e66f29db0de9968ca636e211e452f0c9dfdba3b1ed2465f28f186a78571513
+  - path: packages/ui/src/components/LastUpdated.tsx
+    hash: 7a15a42304b6173a1652efe4952fc5071f9f0f45b9207a96ecce6a6b679111ee
+  - path: packages/ui/src/i18n.tsx
+    hash: 822098574232e92bf93c9db0468bb21c42b73f4d5b92e75335a57fbb7a10bd4c
+  - path: packages/ui/src/search.ts
+    hash: 6615488738adebb897471e08dddad69a78c3a842702d1e561bf42f0c22d29935
+  - path: packages/ui/src/stage.ts
+    hash: ccdeb006aee0831bbabb3d0802f9d426180abc7af47bfb45c46cd3f9039000c3
+  - path: packages/ui/src/time.ts
+    hash: f267d4cd4841063d165bf7281d3088a29dc3bee84ded786298f39195c6f8745a
+verified_at: 2026-11-26T14:06:24+08:00
+verified_by: MomoChen <momochenisme@gmail.com>
+verified_with: claude
+verified_tasks_total: 14
+verified_rounds: 3
+verified_commit: eadff83552f33feaa0455622d2dac98033a1ebdc
+verified_scope:
+  - path: apps/desktop/core/src/discussions.rs
+    hash: 988dbecc14469e449836690188ebc053f6f2e0f24d38e266e8ce1534ec9775fa
+  - path: apps/desktop/core/src/manage.rs
+    hash: fe744d50a557304b8b74d37442de8882545fbbb9761694d9fefd51c79dc13af7
+  - path: apps/desktop/core/src/query.rs
+    hash: 00c276b6b6ed35731608add32ce3b7947838bd6fdb36351ca00d8a764c0882ef
+  - path: apps/desktop/src-tauri/src/remote.rs
+    hash: a68779a8a1df8f24552bfb3f4b8da709c5e40ef2ec60a53ff5e0dfcd1f829772
+  - path: apps/desktop/src-tauri/tests/it/remote_data.rs
+    hash: 54a67b00c8cecd0c21064b2f7a7ec51c7ed79891549ab1d788f7882d3b4f392f
+  - path: apps/desktop/src/__tests__/remoteDataSource.test.ts
+    hash: b71d06134766852706994f27c17092f06e82369a4b014989a1afee616f099f7e
+  - path: apps/desktop/src/adapter/remoteDataSource.ts
+    hash: 36a0d140ea502a69a5ed825342b4b5a3b24d3a9d9c6fbaa502e46af955e2d239
+  - path: packages/ui/src/__tests__/changeDetailPage.test.tsx
+    hash: 64a81571a979b9a4cd2e68e75ba9283bdd2b922857e6bb8f0db845d351767380
+  - path: packages/ui/src/__tests__/discussionColumn.test.tsx
+    hash: de16e0574fe45349ea070d5ae6989488f38f434eb15729474d802c518fc95f5a
+  - path: packages/ui/src/__tests__/kanban.test.tsx
+    hash: f1a96f76b3c451370c002cb60a4186439be2a5269c46c3f5d773cc9769a111ba
+  - path: packages/ui/src/__tests__/search.test.ts
+    hash: 596362aebaea5853be1c36b0fe49715ace59e430d18d1ec1e3d61fc8e4da39eb
+  - path: packages/ui/src/__tests__/specList.test.tsx
+    hash: 955076763937c87db6c315cc81baeb9775df9977332471fbd71a07c65a88bd0f
+  - path: packages/ui/src/__tests__/stage.test.ts
+    hash: 5485049124bce3c2dc62d5dde96c693e575a7194ffb1a29ff474d5c3ed2d4cf8
+  - path: packages/ui/src/__tests__/time.test.ts
+    hash: b98b2327f20d9bbfdea639736e1d7f9044f7a7b3067cac47f9e1586cf26eecf4
+  - path: packages/ui/src/adapter.ts
+    hash: 951c0f01fe1fcaa466aa47e0b06f516a83386c2b429c10f69c9ac55a2bb3b524
+  - path: packages/ui/src/components/ChangeCard.tsx
+    hash: 8d73aaad9a94a3148d284ff96813c1fe50b4ff4a17561e08c690e4bb00ea3650
+  - path: packages/ui/src/components/ChangeDetailPage.tsx
+    hash: 4c3c0472ee29a7794993fbf3351106b9453ae37b0e5a9ec09c1d0af08aa297ae
+  - path: packages/ui/src/components/DiscussionColumn.tsx
+    hash: 18160c06326e7f6b554cf18b66b388c95023bb35bc865f069c721d610c08219c
+  - path: packages/ui/src/components/KanbanBoard.tsx
+    hash: 71e66f29db0de9968ca636e211e452f0c9dfdba3b1ed2465f28f186a78571513
+  - path: packages/ui/src/components/LastUpdated.tsx
+    hash: 7a15a42304b6173a1652efe4952fc5071f9f0f45b9207a96ecce6a6b679111ee
+  - path: packages/ui/src/i18n.tsx
+    hash: 822098574232e92bf93c9db0468bb21c42b73f4d5b92e75335a57fbb7a10bd4c
+  - path: packages/ui/src/search.ts
+    hash: 6615488738adebb897471e08dddad69a78c3a842702d1e561bf42f0c22d29935
+  - path: packages/ui/src/stage.ts
+    hash: ccdeb006aee0831bbabb3d0802f9d426180abc7af47bfb45c46cd3f9039000c3
+  - path: packages/ui/src/time.ts
+    hash: f267d4cd4841063d165bf7281d3088a29dc3bee84ded786298f39195c6f8745a
+  - path: speclink/changes/desktop-uses-list-fields/specs/desktop-app/spec.md
+    hash: 308bf543ed989d67781bdf5f85d580812a428b5bb2d68844a771ec8df73a70a1
+archived_at: 2026-11-26T14:12:19+08:00
+archived_by: MomoChen <momochenisme@gmail.com>

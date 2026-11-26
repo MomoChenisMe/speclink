@@ -90,6 +90,17 @@ pub fn list_changes_at(root: &Path) -> Value {
             v["codeTotal"] = json!(counts.code_total);
             v["codeComplete"] = json!(counts.code_complete);
             v["codeRemaining"] = json!(counts.code_remaining);
+            // 階段與建立者識別（spec client-protocol「桌面清單與單一變更資料帶階段、
+            // 建立者識別、就緒日與修改時間」）：階段用引擎的同一條規則，壞 metadata 的
+            // 項目不給（前端退回自己推導）；沒有識別時 createdById 是 null。
+            if c.meta_error.is_none() {
+                v["stage"] = json!(speclink_core::model::stage_of(
+                    counts.complete,
+                    counts.total,
+                    c.meta.started_at.is_some()
+                ));
+            }
+            v["createdById"] = json!(c.meta.created_by_id);
             // 驗證狀態（spec client-protocol「變更清單的驗證狀態欄位」；design
             // D5）與審查狀態同構且互不遮蔽——兩站可各自獨立進行與蓋章，故各判各的，
             // 共用同一份四態判定（[`station_view`]，remote 清單也走它）與同一個讀取根。
@@ -953,6 +964,50 @@ mod tests {
         // 既有欄位形狀不變。
         assert_eq!(underway["totalTasks"], 2);
         assert_eq!(underway["completedTasks"], 1);
+    }
+
+    #[test]
+    fn list_changes_overlays_stage_and_creator_id() {
+        // spec client-protocol「桌面清單與單一變更資料帶階段、建立者識別、就緒日與修改時間」
+        // Scenario「本機清單帶階段與識別」：stage 取引擎的階段函式、createdById 取 metadata
+        // （沒有識別為 null）；metadata 損壞的項目沒有 stage。
+        let fx = FixtureRoot::new("q-stage");
+        fx.add_change("demo", OLD_META);
+        fx.write("speclink/changes/demo/tasks.md", "## 1. G\n\n- [x] 1.1 a\n- [x] 1.2 b\n- [x] 1.3 c\n");
+        fx.add_change(
+            "keyed",
+            "schema: spec-driven\ncreated: 2026-07-01\ncreated_by: Ann\ncreated_by_id: u_1\n",
+        );
+        fx.add_change("idle", OLD_META);
+        fx.write("speclink/changes/idle/tasks.md", "## 1. G\n\n- [ ] 1.1 a\n- [ ] 1.2 b\n");
+        fx.add_change("broken", ": : :\n\t bad yaml [unclosed\n");
+        let v = list_changes_at(fx.root());
+        let arr = v["changes"].as_array().expect("changes array");
+        let by_name = |name: &str| arr.iter().find(|c| c["name"] == name).unwrap().clone();
+
+        let demo = by_name("demo");
+        assert_eq!(demo["stage"], "ready", "{demo}");
+        assert!(demo.get("createdById").is_some_and(Value::is_null), "no identifier reads as null: {demo}");
+        assert_eq!(by_name("keyed")["stage"], "in-progress");
+        assert_eq!(by_name("keyed")["createdById"], "u_1");
+        assert_eq!(by_name("idle")["stage"], "proposed");
+        for item in arr.iter().filter(|c| c["name"] != "broken") {
+            let stage = item["stage"].as_str().expect("stage is a string");
+            assert!(["proposed", "in-progress", "ready"].contains(&stage), "{item}");
+            assert!(item.get("created_by_id").is_none(), "camelCase only");
+        }
+        let broken = by_name("broken");
+        assert!(broken.get("stage").is_none(), "corrupt metadata carries no stage: {broken}");
+        // 其餘鍵不變：鍵集合是這條需求加入之前的那一組，再加上兩個新鍵。
+        const BEFORE: [&str; 25] = [
+            "archiveAfter", "blockedBy", "codeComplete", "codeRemaining", "codeTotal", "completedTasks",
+            "created", "createdBy", "dependsOn", "fromDiscussions", "modifiedAt", "name", "overlaps",
+            "requirementOverlap", "restaleFrom", "reviewStatus", "startedAt", "startedBy", "startedWith",
+            "status", "summary", "totalTasks", "verifyStatus", "wave", "whyExcerpt",
+        ];
+        let keys: std::collections::BTreeSet<&str> = demo.as_object().unwrap().keys().map(String::as_str).collect();
+        let expected: std::collections::BTreeSet<&str> = BEFORE.into_iter().chain(["stage", "createdById"]).collect();
+        assert_eq!(keys, expected);
     }
 
     #[test]

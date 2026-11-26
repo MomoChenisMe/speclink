@@ -16,6 +16,7 @@ import { Button } from "./ui/button";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
+import { LastUpdated } from "./LastUpdated";
 import { REVIEW_ICON, REVIEW_LABEL_KEY, REVIEW_TONE, type ReviewBadgeStatus } from "./reviewStyle";
 import { VERIFY_ICON, VERIFY_LABEL_KEY, VERIFY_TONE, type VerifyBadgeStatus } from "./verifyStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -33,6 +34,8 @@ export interface ChangeCardProps {
   highlight?: string;
   /** 全文命中（design D6）：卡身呈 snippet 行（artifact 名＋前後文）。 */
   hit?: SearchHit;
+  /** 拖曳時浮起的複本：不顯示最後更新。 */
+  floating?: boolean;
 }
 
 /** 看板卡片（極簡）：名稱＋複製鈕＋進度。點卡片開詳情頁；動作歸詳情頁，僅 ready 卡有封存。 */
@@ -44,6 +47,7 @@ export function ChangeCard({
   barClass = "bg-primary",
   highlight,
   hit,
+  floating,
 }: ChangeCardProps) {
   const { t } = useI18n();
   const pct =
@@ -234,6 +238,7 @@ export function ChangeCard({
           <span className="text-xs text-muted-foreground tabular-nums">
             {change.completedTasks}/{change.totalTasks}
           </span>
+          {!floating && <LastUpdated at={change.modifiedAt} className="text-xs text-muted-foreground" />}
         </div>
         {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開卡片詳情。 */}
         {stage === "ready" && (

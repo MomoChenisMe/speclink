@@ -26,6 +26,14 @@ export interface ChangeItem {
   claimedBy?: string | null;
   /** 建立者（"Name <email>"）——卡片首字母圓標頭像的資料源；缺席時省略。 */
   createdBy?: string | null;
+  /** 建立者的識別（宿主的穩定 id）——建立者篩選依它認人；本機專案為 null、舊 server 缺席。 */
+  createdById?: string | null;
+  /** 引擎判定的階段（`proposed`／`in-progress`／`ready`）。型別刻意是字串：未來的引擎
+   * 可能多出新值，讀取一律經 `changeStage`，不認得的值照前端規則推導。缺席＝舊 server
+   * 或 metadata 損壞。 */
+  stage?: string | null;
+  /** 變更文件最後修改時間（RFC 3339 UTC）——卡片「最後更新」的資料源；缺席時那一段缺席。 */
+  modifiedAt?: string | null;
   /** 建立日期（.openspec.yaml 的 created，YYYY-MM-DD）——建立時間篩選的資料源；缺席時省略。 */
   created?: string | null;
   /** 來源討論 slug 清單（由討論轉出／併入的 change，第一個為出身討論）；空/缺席＝非討論而來。 */
@@ -117,6 +125,10 @@ export interface ChangeMetaInfo {
   startedAt?: string | null;
   startedBy?: string | null;
   startedWith?: string | null;
+  /** 就緒日 YYYY-MM-DD：只在目前至少一個任務而且全部勾完時有值；缺席時出身行沒有「就緒」段。 */
+  readyAt?: string | null;
+  /** 建立者的識別（宿主的穩定 id）；本機專案為 null、舊 server 缺席。 */
+  createdById?: string | null;
 }
 
 /** 一個歸檔 change 的清單項。任務計數缺席（無 tasks.md）時不顯示徽章。
@@ -216,6 +228,10 @@ export interface DiscussionItem {
   created: string;
   /** 建立者（"Name <email>"）——discuss new 由 git 身分蓋章；缺席時省略。 */
   createdBy?: string | null;
+  /** 建立者的識別（宿主的穩定 id）——建立者篩選依它認人；缺席時依名稱。 */
+  createdById?: string | null;
+  /** 記錄最後修改時間（RFC 3339 UTC）——卡片「最後更新」的資料源；缺席（舊 server）時那一段缺席。 */
+  modifiedAt?: string | null;
   /** 討論型別（目前唯一值 "improve"）——一般討論缺席；標示隨此欄恆定。 */
   kind?: string | null;
   /** 轉出（扇出）的 change 名累積清單；未轉出為空陣列。 */

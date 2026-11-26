@@ -26,7 +26,9 @@ import { useI18n } from "../i18n";
 import { SEMANTIC_SURFACE, SEMANTIC_TONE } from "../tone";
 import {
   EMPTY_FILTERS,
+  creatorOwnership,
   matchesFilters,
+  sameCreator,
   matchesFuzzy,
   matchesQuery,
   type BoardFilters,
@@ -252,7 +254,14 @@ export function KanbanBoard({
   const [filters, setFilters] = useState<BoardFilters>(EMPTY_FILTERS);
   // 篩選 chips 的展開狀態（design D5）：預設收合、不持久化；啟用中維度數供開關鈕徽章。
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const activeFilterCount = [filters.createdBy, filters.createdWithin, filters.fromDiscussion].filter(
+  // chip 選項自現有清單派生：建立者以人為單位（design D2）、來源討論取 promoted_to 非空者。
+  const creators = creatorOwnership([...changes, ...(discussions?.active ?? [])]);
+  // 重載後歸屬可能改變（沒有識別的名稱併進新出現的識別）：選定的人跟著走，
+  // 不在看板上了就清掉這個維度。render 中依前一份 state 調整自己的 state 是 React 允許的寫法。
+  const creator = filters.creator && creators.resolve(filters.creator);
+  if (!sameCreator(creator, filters.creator)) setFilters({ ...filters, creator });
+  const creatorIndex = creators.options.findIndex((o) => sameCreator(o.key, creator));
+  const activeFilterCount = [filters.creator, filters.createdWithin, filters.fromDiscussion].filter(
     (v) => v !== null,
   ).length;
   const today = new Date().toISOString().slice(0, 10);
@@ -265,22 +274,14 @@ export function KanbanBoard({
       (matchesQuery(q, c.name, c.summary) ||
         matchesFuzzy(q, c.name) ||
         hitByCard.has(`change:${c.name}`)) &&
-      matchesFilters(filters, c, today),
+      matchesFilters(filters, { ...c, creator: creators.keyOf(c) }, today),
   );
   const visibleDiscussions = discussions?.active.filter(
     (d) =>
       (matchesQuery(q, d.topic, d.slug) ||
         matchesFuzzy(q, d.slug) ||
         hitByCard.has(`discussion:${d.slug}`)) &&
-      matchesFilters(filters, d, today),
-  );
-  // chip 選項自現有清單派生：建立者去重、來源討論取 promoted_to 非空者。
-  const creators = Array.from(
-    new Set(
-      [...changes.map((c) => c.createdBy), ...(discussions?.active ?? []).map((d) => d.createdBy)].filter(
-        (x): x is string => !!x,
-      ),
-    ),
+      matchesFilters(filters, { ...d, creator: creators.keyOf(d) }, today),
   );
   const sourceDiscussions = (discussions?.active ?? []).filter((d) => d.promotedTo.length > 0);
   const byStage: Record<Stage, ChangeItem[]> = { proposed: [], "in-progress": [], ready: [] };
@@ -389,9 +390,9 @@ export function KanbanBoard({
       <div className="flex flex-col gap-1">
         <span className="text-xs font-medium text-muted-foreground">{t("filter.createdBy")}</span>
         <Select
-          value={filters.createdBy ?? SELECT_ALL}
+          value={creatorIndex < 0 ? SELECT_ALL : String(creatorIndex)}
           onValueChange={(v) =>
-            setFilters({ ...filters, createdBy: v === SELECT_ALL ? null : v })
+            setFilters({ ...filters, creator: v === SELECT_ALL ? null : creators.options[Number(v)].key })
           }
         >
           <SelectTrigger aria-label={t("filter.createdBy")}>
@@ -399,9 +400,10 @@ export function KanbanBoard({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={SELECT_ALL}>{t("filter.all")}</SelectItem>
-            {creators.map((c) => (
-              <SelectItem key={c} value={c}>
-                {c}
+            {/* 選項的值是在選單裡的位置：歸屬是物件，Select 的值只能是字串。 */}
+            {creators.options.map((c, i) => (
+              <SelectItem key={i} value={String(i)}>
+                {c.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -589,11 +591,11 @@ export function KanbanBoard({
       <DragOverlay dropAnimation={null}>
         {activeChange ? (
           <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
-            <ChangeCard change={activeChange} barClass={STAGE_STYLE[changeStage(activeChange)].bar} />
+            <ChangeCard change={activeChange} barClass={STAGE_STYLE[changeStage(activeChange)].bar} floating />
           </div>
         ) : activeDiscussion ? (
           <div className="rounded-xl shadow-lg rotate-2 cursor-grabbing">
-            <DiscussionCard d={activeDiscussion} />
+            <DiscussionCard d={activeDiscussion} floating />
           </div>
         ) : null}
       </DragOverlay>

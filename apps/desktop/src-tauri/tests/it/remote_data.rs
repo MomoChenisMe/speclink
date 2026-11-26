@@ -58,40 +58,43 @@ fn seed_discussion(store: &dyn StorePort, slug: &str, topic: &str) {
 
 // --- 看板欄位由生命週期標記驅動（spec desktop-app）---
 
+/// 只有欄位判定讀到的欄位有值的清單項（其餘取空）。
+fn stage_summary(started_at: Option<&str>, completed: usize, total: usize, stage: Option<&str>) -> ChangeSummary {
+    ChangeSummary {
+        name: "demo".into(),
+        summary: String::new(),
+        status: "in-progress".into(),
+        completed_tasks: completed,
+        total_tasks: total,
+        restale_from: Vec::new(),
+        meta_error: None,
+        repo: None,
+        lifecycle: None,
+        claimed_by: None,
+        claimed_by_id: None,
+        claimed_at: None,
+        started_at: started_at.map(str::to_string),
+        created_by: None,
+        created: None,
+        from_discussions: Vec::new(),
+        delta_capabilities: Vec::new(),
+        modified_at: None,
+        review: None,
+        verify: None,
+        branch: None,
+        landed_commit: None,
+        fields: Default::default(),
+        why_excerpt: None,
+        stage: stage.map(str::to_string),
+        created_by_id: None,
+        ready_at: None,
+    }
+}
+
 #[test]
 fn change_stage_matrix_follows_the_lifecycle_markers() {
     // spec「欄位判定矩陣」Example：0=提案中、1=進行中、2=已就緒。
-    fn summary(started_at: Option<&str>, completed: usize, total: usize) -> ChangeSummary {
-        ChangeSummary {
-            name: "demo".into(),
-            summary: String::new(),
-            status: "in-progress".into(),
-            completed_tasks: completed,
-            total_tasks: total,
-            restale_from: Vec::new(),
-            meta_error: None,
-            repo: None,
-            lifecycle: None,
-            claimed_by: None,
-            claimed_by_id: None,
-            claimed_at: None,
-            started_at: started_at.map(str::to_string),
-            created_by: None,
-            created: None,
-            from_discussions: Vec::new(),
-            delta_capabilities: Vec::new(),
-            modified_at: None,
-            review: None,
-            verify: None,
-            branch: None,
-            landed_commit: None,
-            fields: Default::default(),
-            why_excerpt: None,
-            stage: None,
-            created_by_id: None,
-            ready_at: None,
-        }
-    }
+    let summary = |started, completed, total| stage_summary(started, completed, total, None);
     let cases: [(Option<&str>, usize, usize, u8); 7] = [
         (None, 0, 0, 0),
         (None, 0, 28, 0),
@@ -108,6 +111,15 @@ fn change_stage_matrix_follows_the_lifecycle_markers() {
             "started={started:?} progress={completed}/{total}"
         );
     }
+}
+
+#[test]
+fn change_stage_takes_the_listed_stage_and_derives_without_a_known_one() {
+    // spec desktop-app「看板欄位以清單帶的階段為準」：回應帶 stage 時以它為準；
+    // 不認得的值視同沒有，照引擎的階段函式推導。
+    assert_eq!(remote::change_stage(&stage_summary(None, 1, 3, Some("ready"))), 2, "stage ready 以清單為準");
+    assert_eq!(remote::change_stage(&stage_summary(None, 0, 3, Some("paused"))), 0, "不認得的值照推導");
+    assert_eq!(remote::change_stage(&stage_summary(Some("2026-07-30"), 0, 3, Some("paused"))), 1);
 }
 
 #[test]

@@ -34,6 +34,9 @@ interface RemoteDiscussionInfo {
   rounds: number;
   created: string;
   createdBy?: string | null;
+  /** 建立者的識別與最後修改時間——舊 server 不送時缺席，原樣攤平給看板。 */
+  createdById?: string | null;
+  modifiedAt?: string | null;
   /** 討論型別（目前唯一值 "improve"）——一般討論缺席。 */
   kind?: string | null;
   /** 已轉出變更名清單（wire promotedTo）——空清單時 server 省略鍵。 */
@@ -56,6 +59,8 @@ interface RemoteStatusPayload extends StatusReport {
   createdWith?: string | null;
   startedAt?: string | null;
   startedBy?: string | null;
+  readyAt?: string | null;
+  createdById?: string | null;
   fromDiscussions?: string[];
   deltaCapabilities?: string[];
 }
@@ -143,6 +148,9 @@ export function createRemoteDataSource(
         fromDiscussions: s.fromDiscussions ?? [],
         startedAt: s.startedAt ?? null,
         startedBy: s.startedBy ?? null,
+        // 舊 server 不送這兩欄：缺席照原樣，出身行不出現「就緒」段。
+        readyAt: s.readyAt,
+        createdById: s.createdById,
       };
     },
     async claim(change: string): Promise<void> {

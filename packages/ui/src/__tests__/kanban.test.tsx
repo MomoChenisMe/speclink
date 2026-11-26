@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render as rtlRender, screen, fireEvent, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import type { ReactElement, ReactNode } from "react";
 
 import { I18nProvider } from "../i18n";
@@ -505,6 +506,67 @@ describe("KanbanBoard search（看板搜尋過濾卡片）", () => {
   });
 });
 
+// spec「看板搜尋過濾卡片」Scenario「建立者篩選以識別認人」（design D2）：遠端資料的
+// A（Ann／u_1）、B（Ann Lee／u_1）與討論卡 C（Ann／沒有識別）是同一個人。
+describe("KanbanBoard 建立者篩選以識別認人", () => {
+  it("選單只有一個「Ann」，選定後 A、B、C 三張都留下、開關鈕的啟用計數為 1", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    render(
+      <KanbanBoard
+        changes={[
+          { name: "card-a", status: "in-progress", totalTasks: 3, completedTasks: 0, createdBy: "Ann", createdById: "u_1" },
+          { name: "card-b", status: "in-progress", totalTasks: 3, completedTasks: 0, createdBy: "Ann Lee", createdById: "u_1" },
+          { name: "card-x", status: "in-progress", totalTasks: 3, completedTasks: 0, createdBy: "Bob", createdById: "u_9" },
+        ]}
+        discussions={{
+          active: [{ slug: "card-c", topic: "C", status: "open", rounds: 1, created: "2026-11-20", createdBy: "Ann", promotedTo: [] }],
+          archived: [],
+        }}
+        query=""
+        onQuery={vi.fn()}
+      />,
+    );
+    const toggle = screen.getByRole("button", { name: "篩選" });
+    fireEvent.click(toggle);
+    await user.click(screen.getByLabelText("建立者"));
+    const options = (await screen.findAllByRole("option")).map((o) => o.textContent);
+    expect(options).toEqual(["全部", "Ann", "Bob"]);
+    await user.click(screen.getByRole("option", { name: "Ann" }));
+    for (const name of ["card-a", "card-b"]) {
+      expect(document.querySelector(`[data-change="${name}"]`)).toBeTruthy();
+    }
+    expect(document.querySelector('[data-discussion="card-c"]')).toBeTruthy();
+    expect(document.querySelector('[data-change="card-x"]')).toBeNull();
+    expect(toggle.textContent).toContain("1");
+  });
+
+  // 審查 Round 1 的必修：重載後歸屬鍵可能改變，選定的人要跟著走；人不見了就清掉這個維度。
+  it("重載後選定的名稱併進一個識別時篩選跟著那個人；那個人不見時清掉建立者篩選", async () => {
+    const user = userEvent.setup({ pointerEventsCheck: 0 });
+    const card = (name: string, createdBy: string, createdById?: string): ChangeItem => ({
+      name, status: "in-progress", totalTasks: 3, completedTasks: 0, createdBy, createdById,
+    });
+    const board = (changes: ChangeItem[]) => <KanbanBoard changes={changes} query="" onQuery={vi.fn()} />;
+    const { rerender } = render(board([card("old-c", "Ann"), card("bob-x", "Bob")]));
+    const toggle = screen.getByRole("button", { name: "篩選" });
+    fireEvent.click(toggle);
+    await user.click(screen.getByLabelText("建立者"));
+    await user.click(screen.getByRole("option", { name: "Ann" }));
+    expect(document.querySelector('[data-change="bob-x"]')).toBeNull();
+
+    rerender(board([card("old-c", "Ann"), card("new-a", "Ann", "u_1"), card("bob-x", "Bob")]));
+    for (const name of ["old-c", "new-a"]) expect(document.querySelector(`[data-change="${name}"]`)).toBeTruthy();
+    expect(document.querySelector('[data-change="bob-x"]')).toBeNull();
+    expect(screen.getByLabelText("建立者").textContent).toBe("Ann");
+    expect(toggle.textContent).toContain("1");
+
+    rerender(board([card("bob-x", "Bob")]));
+    expect(document.querySelector('[data-change="bob-x"]')).toBeTruthy();
+    expect(screen.getByLabelText("建立者").textContent).toBe("全部");
+    expect(toggle.textContent).not.toContain("1");
+  });
+});
+
 // desktop-app「看板頁的頁標題區」（design D6）：title 選配；提供時搜尋與篩選落在標題同一列右端。
 describe("KanbanBoard 頁標題區", () => {
   it("傳 title 時出現 h2 標題與說明，搜尋輸入在同一列", () => {
@@ -973,6 +1035,121 @@ describe("看板卡片統一解剖學（變更卡）", () => {
     render(<KanbanBoard changes={anatomyChanges} />);
     const card = screen.getByText("with-desc").closest("[data-change]") as HTMLElement;
     expect(within(card).queryByText(/提案中|進行中|已就緒/)).toBeNull();
+  });
+});
+
+// spec desktop-app「看板卡片顯示最後更新」Scenario「變更卡同樣顯示」與 Example
+// 「modifiedAt 與顯示的文字」（design D3）。
+describe("看板卡片顯示最後更新（變更卡）", () => {
+  const DAY = 86_400_000;
+  const ago = (days: number) => new Date(Date.now() - days * DAY).toISOString();
+  const card = (name: string) => document.querySelector(`[data-change="${name}"]`) as HTMLElement;
+
+  // 日曆日（design D5）：現在固定在本地 2026-11-26 09:00，日期以本地時間建構，任何時區都成立。
+  it.each([
+    [[26, 0, 10], "今天"],
+    [[25, 23, 0], "昨天"], // 只過了 10 小時，但已是前一個日曆日
+    [[23, 12, 0], "3 天前"],
+  ] as const)("modifiedAt 本地 11/%j → meta 列在完成數之後顯示「%s」，提示含最後更新", ([d, h, m], text) => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 10, 26, 9, 0));
+    const modifiedAt = new Date(2026, 10, d, h, m).toISOString();
+    try {
+      render(<KanbanBoard changes={[{ name: "demo", status: "in-progress", totalTasks: 4, completedTasks: 1, modifiedAt }]} />);
+    } finally {
+      vi.useRealTimers();
+    }
+    const segment = card("demo").querySelector("[data-last-updated]") as HTMLElement;
+    expect(segment.textContent).toBe(text);
+    expect(segment.getAttribute("aria-label")).toMatch(/^最後更新 /);
+    // 位置：meta 列的尾端，緊接在「完成數/總數」之後。
+    expect(segment.previousElementSibling?.textContent).toBe("1/4");
+    expect(segment.nextElementSibling).toBeNull();
+  });
+
+  // spec Scenario「看板開著跨過午夜時自動重算」（design D6）。
+  it("看板開著跨過午夜時，不重載就由「今天」變成「昨天」；卸載後不留計時器", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(new Date(2026, 10, 26, 23, 59));
+      const modifiedAt = new Date(2026, 10, 26, 9, 0).toISOString();
+      const { unmount } = render(
+        <KanbanBoard changes={[{ name: "demo", status: "in-progress", totalTasks: 4, completedTasks: 1, modifiedAt }]} />,
+      );
+      const segment = () => card("demo").querySelector("[data-last-updated]") as HTMLElement;
+      const columnOf = () => card("demo").closest("[data-column]")?.getAttribute("data-column");
+      expect(segment().textContent).toBe("今天");
+      const label = segment().getAttribute("aria-label");
+      const column = columnOf();
+
+      act(() => {
+        vi.advanceTimersByTime(2 * 60_000);
+      });
+      expect(segment().textContent).toBe("昨天");
+      expect(segment().getAttribute("aria-label")).toBe(label);
+      expect(columnOf()).toBe(column);
+
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("modifiedAt 缺席或解析不出來時這一段缺席，不顯示原始字串", () => {
+    render(
+      <KanbanBoard
+        changes={[
+          { name: "absent", status: "in-progress", totalTasks: 4, completedTasks: 1 },
+          { name: "garbled", status: "in-progress", totalTasks: 4, completedTasks: 1, modifiedAt: "not-a-time" },
+        ]}
+      />,
+    );
+    expect(card("absent").querySelector("[data-last-updated]")).toBeNull();
+    expect(card("garbled").querySelector("[data-last-updated]")).toBeNull();
+    expect(within(card("garbled")).queryByText("not-a-time")).toBeNull();
+  });
+
+  it("拖曳時浮起的卡片沒有這一段，原位的卡片照常", () => {
+    captured.overlayChildren = true;
+    try {
+      render(
+        <KanbanBoard
+          changes={[{ name: "demo", status: "in-progress", totalTasks: 4, completedTasks: 1, modifiedAt: ago(0) }]}
+          onReorder={vi.fn()}
+        />,
+      );
+      act(() => captured.dnd.onDragStart({ active: { id: cardDndId("change", "demo") } }));
+      const overlay = document.querySelector("[data-drag-overlay]") as HTMLElement;
+      expect(overlay.querySelector('[data-change="demo"]')).toBeTruthy();
+      expect(overlay.querySelector("[data-last-updated]")).toBeNull();
+      const resting = [...document.querySelectorAll('[data-change="demo"]')].find((el) => !overlay.contains(el));
+      expect(resting?.querySelector("[data-last-updated]")).toBeTruthy();
+    } finally {
+      captured.overlayChildren = false;
+    }
+  });
+
+  it("拖曳時浮起的討論卡同樣沒有這一段", () => {
+    captured.overlayChildren = true;
+    try {
+      render(
+        <KanbanBoard
+          changes={[]}
+          discussions={{
+            active: [{ slug: "talk", topic: "Talk", status: "open", rounds: 1, created: "2026-11-20", modifiedAt: ago(0), promotedTo: [] }],
+            archived: [],
+          }}
+          onReorder={vi.fn()}
+        />,
+      );
+      act(() => captured.dnd.onDragStart({ active: { id: cardDndId("discussion", "talk") } }));
+      const overlay = document.querySelector("[data-drag-overlay]") as HTMLElement;
+      expect(overlay.querySelector('[data-discussion="talk"]')).toBeTruthy();
+      expect(overlay.querySelector("[data-last-updated]")).toBeNull();
+    } finally {
+      captured.overlayChildren = false;
+    }
   });
 });
 

@@ -600,6 +600,7 @@ export function ChangeDetailPage({
   );
 
   const startedLabel = meta?.startedAt ? t("rdrawer.started").replace("{date}", meta.startedAt) : null;
+  const readyLabel = meta?.readyAt ? t("rdrawer.ready").replace("{date}", meta.readyAt) : null;
   const sources = sourceDiscussions ?? [];
   const siblings = siblingChanges ?? [];
   const relations: DetailRelation[] = [];
@@ -666,6 +667,8 @@ export function ChangeDetailPage({
             ) : (
               <span className="shrink-0">{startedLabel}</span>
             )),
+          // 就緒段緊接在開工段之後（沒有開工戳記時接在建立相對時間之後）；readyAt 缺席時整段缺席。
+          readyLabel && <span className="shrink-0">{readyLabel}</span>,
           change.claimedBy && (
             <Tooltip>
               <TooltipTrigger asChild>

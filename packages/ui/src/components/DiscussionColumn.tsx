@@ -15,6 +15,7 @@ import { ColumnLoadFailed, ColumnSkeleton } from "./skeletons";
 import { Card, CardContent, CardHeader } from "./ui/card";
 import { CardNameRow } from "./CardNameRow";
 import { HighlightText } from "./HighlightText";
+import { LastUpdated } from "./LastUpdated";
 import { ImproveStamp } from "./ImproveStamp";
 import { isImproveKind } from "./improveStyle";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -137,10 +138,13 @@ export function DiscussionCard({
   onArchiveDiscussion,
   highlight,
   hit,
-}: { d: DiscussionItem; hit?: SearchHit } & Pick<
-  DiscussionColumnProps,
-  "onOpenDiscussion" | "onArchiveDiscussion" | "highlight"
->) {
+  floating,
+}: {
+  d: DiscussionItem;
+  hit?: SearchHit;
+  /** 拖曳時浮起的複本：不顯示最後更新。 */
+  floating?: boolean;
+} & Pick<DiscussionColumnProps, "onOpenDiscussion" | "onArchiveDiscussion" | "highlight">) {
   const { t, tn } = useI18n();
   const badge = statusBadge(d);
   return (
@@ -182,10 +186,15 @@ export function DiscussionCard({
         <span className="text-xs leading-snug text-foreground/80">
           <HighlightText text={d.topic} query={highlight} />
         </span>
-        {/* meta 列（anatomy 三列骨架）：輪數與建立時間並排；建立者圓點已上移識別列。 */}
+        {/* meta 列（anatomy 三列骨架）：輪數與建立時間並排，尾端是最後更新；建立者圓點已上移識別列。 */}
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span className="tabular-nums">{tn("common.rounds", d.rounds)}</span>
           <span className="tabular-nums">{d.created}</span>
+          {!floating && (
+            <TooltipProvider>
+              <LastUpdated at={d.modifiedAt} className="ml-auto" />
+            </TooltipProvider>
+          )}
         </div>
         {/* stopPropagation 掛在按鈕自身而非整列：鈕旁空白仍冒泡開討論抽屜。 */}
         {d.status === "concluded" && (

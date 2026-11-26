@@ -7,7 +7,7 @@
 ## What Changes
 
 - 就緒日：變更詳情頁左欄的出身行，在開工日之後接「就緒 YYYY-MM-DD」。只在變更有就緒日時出現（目前全部任務都勾完，而且引擎記下了時間）。
-- 最後更新：看板的變更卡與討論卡在 meta 列顯示最後更新的相對時間（今天、昨天、N 天前），取清單的 `modifiedAt`。沒有值時不出現。卡片的順序不變，仍然是拖排的順序。
+- 最後更新：看板的變更卡與討論卡在 meta 列顯示最後更新的相對時間（今天、昨天、N 天前），取清單的 `modifiedAt`。沒有值時不出現。卡片的順序不變，仍然是拖排的順序。相對時間以使用者時區的日曆日計算（同一天為今天、前一天為昨天）；看板開著跨過午夜時，卡片的最後更新自動更新。規格頁的相對修改時間與詳情頁的建立相對時間用同一個函式，一併改成日曆日。
 - 階段：看板、系統匣面板與詳情頁判斷階段時，清單項帶有 `stage` 就用它，沒有才照既有的規則自己算（連到舊版 Server 時）。畫面不變。
 - 建立者篩選：看板篩選面板的「建立者」選單改成用識別認人。卡片帶有 `createdById` 時依識別分組，名稱只當標籤；沒有識別的卡片照舊用名稱。同一個名稱只對應到一個識別時，沒有識別的舊卡片併進那個人的選項。
 - 資料：Desktop 本機專案的變更清單帶上 `stage` 與 `createdById`，單一變更的資料帶上 `readyAt` 與 `createdById`；遠端專案的同名欄位取自 Server 的回應。討論清單的 `modifiedAt` 與 `createdById` 由引擎的輸出帶出。
@@ -19,6 +19,7 @@
 - 連到舊版 Server 的遠端專案：清單沒有 `stage`、`createdById`，單一變更沒有 `readyAt`；階段照既有規則自己算，篩選照名稱，就緒日不出現。
 - 卡片的 meta 列多一段文字；卡片的高度與其他段落不變。
 - 本機專案的最後更新取自檔案時間，checkout 或複製也會改到它，所以顯示的時間有機會比實際的最後編輯新。
+- 規格頁的相對修改時間與詳情頁的建立相對時間改用日曆日：午夜前後幾小時的字樣可能和以前差一天（例如前一晚 23:00 的修改，隔天 09:00 由「今天」變成「昨天」）。
 - CLI 的輸出與 HTTP 回應都不受這個變更影響。
 
 ### 三種形態
@@ -47,7 +48,7 @@
 ## Impact
 
 - Affected specs: desktop-app、client-protocol
-- Affected crates and apps: apps/desktop（desktop-core 與 Tauri 殼）、packages/ui
+- Affected crates and apps: apps/desktop（desktop-core、Tauri 殼與遠端資料源）、packages/ui
 - 前置變更：change-and-discussion-list-fields（引擎的階段函式、metadata 的新欄位與 HTTP 回應的新欄位都由它提供）
 - Affected code:
   - Modified:
@@ -55,6 +56,7 @@
     - packages/ui/src/stage.ts
     - packages/ui/src/search.ts
     - packages/ui/src/i18n.tsx
+    - packages/ui/src/time.ts
     - packages/ui/src/components/KanbanBoard.tsx
     - packages/ui/src/components/ChangeCard.tsx
     - packages/ui/src/components/DiscussionColumn.tsx
@@ -64,9 +66,14 @@
     - packages/ui/src/__tests__/kanban.test.tsx
     - packages/ui/src/__tests__/discussionColumn.test.tsx
     - packages/ui/src/__tests__/changeDetailPage.test.tsx
+    - packages/ui/src/__tests__/time.test.ts
     - apps/desktop/core/src/query.rs
+    - apps/desktop/core/src/discussions.rs
     - apps/desktop/core/src/manage.rs
     - apps/desktop/src-tauri/src/remote.rs
     - apps/desktop/src-tauri/tests/it/remote_data.rs
-  - New: (none)
+    - apps/desktop/src/adapter/remoteDataSource.ts
+    - apps/desktop/src/__tests__/remoteDataSource.test.ts
+  - New:
+    - packages/ui/src/components/LastUpdated.tsx
   - Removed: (none)

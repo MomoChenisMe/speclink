@@ -546,6 +546,35 @@ describe("createRemoteDataSource（決策 7：薄 invoke 包裝）", () => {
     expect(meta?.fromDiscussions ?? []).toEqual([]);
   });
 
+  it("listDiscussions 帶出回應的 modifiedAt 與 createdById；舊 server 不送時缺席", async () => {
+    // spec client-protocol Scenario「遠端清單沿用回應的欄位」的討論清單那一半。
+    const list = (active: object[]) => async <T,>(): Promise<T> => ({ active, archived: [] }) as T;
+    const base = { slug: "s1", topic: "T", status: "open", rounds: 1, created: "2026-11-20" };
+    const fresh = await createRemoteDataSource(
+      CONN, PROJECT, REPO, list([{ ...base, modifiedAt: "2026-11-26T04:11:22Z", createdById: "u_1" }]),
+    ).listDiscussions();
+    expect(fresh.active[0]).toMatchObject({ modifiedAt: "2026-11-26T04:11:22Z", createdById: "u_1" });
+
+    const old = await createRemoteDataSource(CONN, PROJECT, REPO, list([base])).listDiscussions();
+    expect(old.active[0]).toMatchObject({ slug: "s1", promotedTo: [] });
+    expect("modifiedAt" in old.active[0]).toBe(false);
+    expect("createdById" in old.active[0]).toBe(false);
+  });
+
+  it("changeMeta 帶出回應的 readyAt 與 createdById；舊 server 不送時缺席", async () => {
+    // spec client-protocol「桌面清單與單一變更資料帶階段、建立者識別、就緒日與修改時間」：
+    // 遠端專案的單一變更資料取自 Server 單一變更回應的同名欄位。
+    const status = { changeName: "chg", schemaName: "spec-driven", isComplete: false, applyRequires: [], artifacts: [] };
+    const withFields = async <T,>(): Promise<T> => ({ ...status, readyAt: "2026-11-25", createdById: "u_1" }) as T;
+    const meta = await createRemoteDataSource(CONN, PROJECT, REPO, withFields).changeMeta("chg");
+    expect(meta).toMatchObject({ readyAt: "2026-11-25", createdById: "u_1" });
+
+    const legacy = async <T,>(): Promise<T> => status as T;
+    const old = await createRemoteDataSource(CONN, PROJECT, REPO, legacy).changeMeta("chg");
+    expect(old?.readyAt).toBeUndefined();
+    expect(old?.createdById).toBeUndefined();
+  });
+
   it("changeCapabilities 與 changeMeta 併發載入共用單次 remote_status 請求", async () => {
     // spec remote-workspace-data「以單 change 讀取回應既有 payload 映射實作、
     // 不另開請求」：抽屜同時載入 capability 清單與詮釋資料時只打一次端點；

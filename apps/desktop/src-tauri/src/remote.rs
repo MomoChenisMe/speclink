@@ -1019,16 +1019,20 @@ pub(crate) fn overlay_discussions_order(items: &mut [DiscussionInfo], board: &Bo
     sort_with_ranks(items, &board.discussions, |d| &d.slug);
 }
 
-/// 變更卡所屬欄——與前端 changeStage 的推導同構：全完成＝已就緒優先；
-/// meta 開工章（wire 的 startedAt）或任務完成數 > 0＝進行中（fallback 涵蓋
-/// 手改 tasks.md 等繞過工具的寫入路徑）；其餘＝提案中。
+/// 變更卡所屬欄（0＝提案中、1＝進行中、2＝已就緒）——與前端 changeStage 同一個
+/// 來源：回應帶認得的 `stage` 時用它；沒有（舊版 Server）或值不認得時，以引擎的
+/// 階段函式從任務數與開工章推導（spec desktop-app「看板欄位以清單帶的階段為準」）。
 pub fn change_stage(c: &ChangeSummary) -> u8 {
-    if c.total_tasks > 0 && c.completed_tasks >= c.total_tasks {
-        2
-    } else if c.started_at.is_some() || c.completed_tasks > 0 {
-        1
-    } else {
-        0
+    use speclink_core::model::{stage_of, Stage};
+    let stage = c
+        .stage
+        .as_deref()
+        .and_then(Stage::parse)
+        .unwrap_or_else(|| stage_of(c.completed_tasks, c.total_tasks, c.started_at.is_some()));
+    match stage {
+        Stage::Proposed => 0,
+        Stage::InProgress => 1,
+        Stage::Ready => 2,
     }
 }
 
