@@ -1,6 +1,20 @@
 # 更新日誌
 [English](CHANGELOG.md) · **繁體中文**
 
+## 0.20.0（2026-11-26）
+
+### 新功能
+
+- Speclink Desktop 的看板卡片在 meta 列尾端顯示最後更新（今天、昨天、N 天前，以你所在時區的日曆日計算，午夜自動更新；規格頁與變更詳情頁的相對時間也改用同一條規則），變更詳情頁的出身行在全部任務勾完時顯示「就緒 YYYY-MM-DD」，篩選的建立者選單改成以人為單位：改過名的人只有一個選項，同名的兩個人各有一個。
+- `speclink list --json --detail` 與 `speclink show --json` 多了提案 Why 的第一行、階段、開工日、建立者的識別與就緒日，討論的輸出多了最後修改時間與建立者的識別，最後一個任務勾完時會記下就緒時間；開啟 worktree 政策時，在主資料夾執行 `speclink show` 也讀變更的 worktree 副本，和 `speclink list` 同一份，內嵌的宿主不必再自己推導這些資料。
+- 在 Herdr 的終端機裡，speclink CLI 會自己替所在的終端機貼上正在做的變更或討論，Herdr 面板因此認得出每個 agent，包括你直接打字開始的；把 `SPECLINK_TERMINAL_REPORT` 設成 `false` 可以關掉，不在 Herdr 裡時 CLI 的行為不變。
+- 新增 `herdr-speclink` 技能：在 Herdr 裡請 Claude Code「開工下一波」或「替某個變更開一個 agent」，它會用 `hc run` 一個變更開一個分頁，並貼上 Herdr 面板讀的標籤；別的專案的工作開在那個專案的 space，也可以等派出去的分頁做完，用 `node scripts/herdr/install-skill.mjs` 安裝。
+- agent 在等人時，Herdr 面板會寫出原因：「在等你允許」「在問你問題」或「在等你登入」，不必切過去就分得出來；技能鈕開新分頁改用 `hc run`，分頁一建立就貼好標籤。
+
+### 改善
+
+- tasks 的指示會請 Agent 每個任務先寫短標題，再寫行為與驗證方式；Speclink Desktop 的任務列除了繁體中文，也認得日文（「検証：」）與英文（「Verify: 」）的標記，切成標題、內文與驗證。
+
 ## 0.19.0（2026-11-24）
 
 ### 新功能

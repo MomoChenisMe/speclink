@@ -1,6 +1,20 @@
 # Changelog
 **English** · [繁體中文](CHANGELOG.zh-TW.md)
 
+## 0.20.0 (2026-11-26)
+
+### New features
+
+- Speclink Desktop cards now show when they last changed, at the end of the meta row: today, yesterday, or N days ago, by calendar day in your time zone. The card updates at midnight, and the Specs page and the change page now use the same calendar-day rule. The origin line of a change page shows "ready YYYY-MM-DD" while every task is checked. The Creator filter now groups cards by person: a person who changes their name keeps one option, and two people with the same name get two.
+- `speclink list --json --detail` and `speclink show --json` now give the first line of the proposal's Why, the stage, the start date, the creator's identifier, and the ready date, and the discussion outputs give the last modified time and the creator's identifier. Speclink records the ready time when the last task gets checked. With the worktree policy on, `speclink show` in the main folder now reads the worktree copy of the change, as `speclink list` does. An embedded host no longer has to work these out by itself.
+- In a Herdr terminal, the speclink CLI now labels its own terminal with the change or the discussion that it works on, so the Herdr panel finds every agent, also one that you started by typing. Set `SPECLINK_TERMINAL_REPORT` to `false` to turn this off. Outside Herdr, the CLI works as before.
+- The new `herdr-speclink` skill lets Claude Code in Herdr start Speclink work in other tabs: ask it to start the next wave or to open an agent for a change, and it opens one tab for each change with `hc run`, with the labels that the Herdr panel reads. Work of another project opens in the space of that project, and the skill can wait for the tabs to finish. Install it with `node scripts/herdr/install-skill.mjs`.
+- When an agent waits, the Herdr panel now says why: it waits for your permission, asks you a question, or waits for you to sign in. A skill button that opens a new tab now uses `hc run`, so the tab gets its labels at once.
+
+### Improvements
+
+- The tasks instructions now ask the Agent to start each task with a short title, then the behavior, then the verification. Speclink Desktop also splits task lines in Japanese (`検証：`) and English (`Verify: `) into title, body, and verification, not only lines in Traditional Chinese.
+
 ## 0.19.0 (2026-11-24)
 
 ### New features
